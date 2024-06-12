@@ -118,7 +118,7 @@ def run_test_sdpa_tt_ND(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dt
 
     program_config = tt_lib.operations.primary.transformers.SDPAMultiCoreProgramConfig(
         # compute_with_storage_grid_size=device.compute_with_storage_grid_size(),
-        compute_with_storage_grid_size=[1, 1],
+        compute_with_storage_grid_size=[8, 5],
         q_chunk_size=q_chunk_size,
         k_chunk_size=k_chunk_size,
     )
@@ -175,12 +175,13 @@ def run_test_sdpa_tt_ND(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dt
 
 @skip_for_grayskull("Unsupported in GS since L1 runs OOM with most configs")
 @pytest.mark.parametrize("dtype", [tt_lib.tensor.DataType.BFLOAT16], ids=["bf16"])
-@pytest.mark.parametrize("q_chunk_size", [32], ids=["q128"])
-@pytest.mark.parametrize("k_chunk_size", [64], ids=["k128"])
+@pytest.mark.parametrize("q_chunk_size", [128], ids=["q128"])
+@pytest.mark.parametrize("k_chunk_size", [128], ids=["k128"])
 @pytest.mark.parametrize(
     "b, nh, nkv, s, d",
     (
-        [1, 1, 1, 512, 128],
+        # [1, 1, 1, 512, 128],
+        [1, 5, 1, 1024, 128],
         # [1, 8, 1, 2048, 128],  # Llama2-70B
         # [1, 16, 1, 2048, 64],  # Falcon-40B
         # [1, 71, 1, 2048, 64],  # Falcon-7B
