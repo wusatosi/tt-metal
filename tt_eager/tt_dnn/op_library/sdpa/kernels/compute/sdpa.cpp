@@ -62,11 +62,11 @@ void reduce_c() {
     for (uint32_t i = 0; i < rows; i++) {
         acquire_dst(tt::DstMode::Half);
         for (uint32_t j = 0; j < cols; j++) {
-            reduce_tile<pool_type, reduce_dim>(in0_cb, scale_cb, i*cols+j, 0, reduce_dst_idx);
+            // reduce_tile<pool_type, reduce_dim>(in0_cb, scale_cb, i*cols+j, 0, reduce_dst_idx);
         }
 
         cb_reserve_back(out_cb, 1);
-        pack_tile(reduce_dst_idx, out_cb);
+        // pack_tile(reduce_dst_idx, out_cb);
         cb_push_back(out_cb, 1);
         release_dst(tt::DstMode::Half);
     }
@@ -153,7 +153,7 @@ void mul_block_bcast_cols_inplace(uint32_t in0_cb, uint32_t in1_cb, uint32_t row
 }
 
 template<uint32_t in0_cb, uint32_t in1_scalar_cb, uint32_t num_tiles>
-void mul_block_bcast_scalar_inplace() {
+void  mul_block_bcast_scalar_inplace() {
     // Precondition: in0_cb has num_tiles produced
     // Precondition: in1_scalar_cb has 1 produced
     // Postcondition: in0_cb has num_tiles produced
@@ -273,7 +273,6 @@ void matmul_blocks(const uint32_t& in0_cb, const uint32_t& in1_cb, const uint32_
     // preconditino: in1_cb has K*N produced
     // postcondition: in0_cb is full, in1_cb is empty
     // postcondition: out_cb has M*N produced
-
 
     mm_block_init_short(in0_cb, in1_cb, transpose /*transpose*/, subblock_w /*ct_dim*/, subblock_h /*rt_dim*/, in0_block_w /*kt_dim*/);
 
@@ -407,10 +406,12 @@ void MAIN {
 
                     /* QK = Q_CHUNK @ K_CHUNK */
                     pack_reconfig_data_format(cb_qk_im);
+                    // tensix_sync();
                     matmul_blocks(cb_q_in, cb_k_in, cb_qk_im, Sq_chunk_t, Sk_chunk_t, DHt, qk_num_blocks, qk_in0_num_subblocks, qk_in1_num_subblocks, qk_in0_block_w, qk_subblock_h, qk_subblock_w, true /*transpose*/);
 
                     /* QK *= SCALE */
-                    mul_block_bcast_scalar_inplace<cb_qk_im, cb_scale_in, qk_chunk_tiles>();
+                    // tensix_sync();
+                    // mul_block_bcast_scalar_inplace<cb_qk_im, cb_scale_in, qk_chunk_tiles>();
 
                     // Finding the diagonal is harder now that q_chunk_size and k_chunk_size can differ
                     // Q-range = [q_low, q_high)
@@ -419,68 +420,91 @@ void MAIN {
                     // Due to loop bounds, we should never have k_low >= q_high. Can simplify this conditional check
                     if (!(q_low_idx >= k_high_idx)) {
                         /* QK += MASK */
-                        unpack_reconfig_data_format(cb_qk_im, cb_mask_in);
-                        add_block_inplace(cb_qk_im, cb_mask_in, qk_chunk_tiles);
+                        // unpack_reconfig_data_format(cb_qk_im, cb_mask_in);
+                        // tensix_sync();
+                        // add_block_inplace(cb_qk_im, cb_mask_in, qk_chunk_tiles);
+                        cb_wait_front(cb_mask_in, qk_chunk_tiles);
+                        cb_pop_front(cb_mask_in, qk_chunk_tiles);
                     }
 
-                    unpack_reconfig_data_format(cb_qk_im, cb_identity_scale_in);
-                    reduce_c<PoolType::MAX, ReduceDim::REDUCE_ROW, cb_qk_im, cb_identity_scale_in, cb_cur_max, Sq_chunk_t, Sk_chunk_t>();
+                    // unpack_reconfig_data_format(cb_qk_im, cb_identity_scale_in);
+                    // tensix_sync();
+                    // reduce_c<PoolType::MAX, ReduceDim::REDUCE_ROW, cb_qk_im, cb_identity_scale_in, cb_cur_max, Sq_chunk_t, Sk_chunk_t>();
 
                     if (k_chunk > 0) {
-                        max_block_inplace<cb_cur_max, cb_prev_max, Sq_chunk_t>();
+                        // tensix_sync();
+                        // max_block_inplace<cb_cur_max, cb_prev_max, Sq_chunk_t>();
                     }
 
                     /* QK -= cb_cur_max */
                     /* QK = exp(QK)*/
-                    sub_exp_block_bcast_cols_inplace<cb_qk_im, cb_cur_max, Sq_chunk_t, Sk_chunk_t>();
+                    // tensix_sync();
+                    // sub_exp_block_bcast_cols_inplace<cb_qk_im, cb_cur_max, Sq_chunk_t, Sk_chunk_t>();
 
                     /* cb_cur_sum = sum(cb_qk_im, dim=-1) */
+                    // tensix_sync();
                     reduce_c<PoolType::SUM, ReduceDim::REDUCE_ROW, cb_qk_im, cb_identity_scale_in, cb_cur_sum, Sq_chunk_t, Sk_chunk_t>();
 
                     /* OUT_IM = QK @ V_CHUNK */
+
+                    // UNPACK(tensix_sync());
+                    cb_wait_front(cb_qk_im, qk_chunk_tiles);
                     matmul_blocks(cb_qk_im, cb_v_in, cb_out_im, Sq_chunk_t, DHt, Sk_chunk_t, out_num_blocks, out_in0_num_subblocks, out_in1_num_subblocks, out_in0_block_w, out_subblock_h, out_subblock_w, false /*transpose*/);
                     unpack_reconfig_data_format_srca(cb_out_im);
                     cb_pop_front(cb_qk_im, qk_chunk_tiles);
+                    // tensix_sync();
 
                     /* OUT_ACC += OUT_IM */
                     if (k_chunk == 0) {
+                        // tensix_sync();
                         copy_block(cb_out_im, cb_out_accumulate_im, out_chunk_tiles);
                     } else {
+                        // tensix_sync();
                         /* cb_exp_max_diff = torch.exp(cb_prev_max - cb_cur_max) */
-                        sub_exp_block(cb_prev_max, cb_cur_max, cb_exp_max_diff, Sq_chunk_t);
-                        cb_pop_front(cb_prev_max, Sq_chunk_t);
+                        // sub_exp_block(cb_prev_max, cb_cur_max, cb_exp_max_diff, Sq_chunk_t);
+                        // cb_pop_front(cb_prev_max, Sq_chunk_t);
 
                         /* cb_prev_sum *= cb_exp_max_diff */
-                        mul_block_inplace(cb_prev_sum, cb_exp_max_diff, Sq_chunk_t);
+                        // tensix_sync();
+                        // mul_block_inplace(cb_prev_sum, cb_exp_max_diff, Sq_chunk_t);
 
                         /* cb_out_accumulate_im *= cb_exp_max_diff */
-                        mul_block_bcast_cols_inplace(cb_out_accumulate_im, cb_exp_max_diff, Sq_chunk_t, DHt);
+                        // tensix_sync();
+                        // mul_block_bcast_cols_inplace(cb_out_accumulate_im, cb_exp_max_diff, Sq_chunk_t, DHt);
 
                         /* cb_cur_sum += cb_prev_sum */
-                        add_block_inplace(cb_cur_sum, cb_prev_sum, Sq_chunk_t);
+                        // tensix_sync();
+                        // add_block_inplace(cb_cur_sum, cb_prev_sum, Sq_chunk_t);
 
                         /* cb_out_accumulate_im += cb_out_im */
+                        // tensix_sync();
                         add_block_inplace(cb_out_accumulate_im, cb_out_im, out_chunk_tiles);
                     }
 
                     // Set cb_prev_sum and cb_prev_max
-                    copy_block(cb_cur_max, cb_prev_max, Sq_chunk_t);
-                    copy_block(cb_cur_sum, cb_prev_sum, Sq_chunk_t);
+                    // tensix_sync();
+                    // copy_block(cb_cur_max, cb_prev_max, Sq_chunk_t);
+                    // tensix_sync();
+                    // copy_block(cb_cur_sum, cb_prev_sum, Sq_chunk_t);
+                    cb_pop_front(cb_cur_sum, Sq_chunk_t);
                 }
 
                 /* cb_cur_sum = 1.0 / cb_cur_sum */
-                cb_push_back(cb_cur_sum, Sq_chunk_t);
-                recip_block_inplace(cb_cur_sum, Sq_chunk_t);
+                // cb_push_back(cb_cur_sum, Sq_chunk_t);
+                // tensix_sync();
+                // recip_block_inplace(cb_cur_sum, Sq_chunk_t);
 
                 /* cb_out_accumulate_im *= cb_cur_sum */
-                mul_block_bcast_cols_inplace(cb_out_accumulate_im, cb_cur_sum, Sq_chunk_t, DHt);
+                // tensix_sync();
+                // mul_block_bcast_cols_inplace(cb_out_accumulate_im, cb_cur_sum, Sq_chunk_t, DHt);
                 pack_reconfig_data_format(cb_out);
+                // tensix_sync();
                 copy_block(cb_out_accumulate_im, cb_out, out_chunk_tiles);
 
                 cb_pop_front(cb_q_in, q_chunk_tiles);
                 // free up cb_prev_max after K chunks
-                cb_pop_front(cb_prev_max, Sq_chunk_t);
-                cb_pop_front(cb_prev_sum, Sq_chunk_t);
+                // cb_pop_front(cb_prev_max, Sq_chunk_t);
+                // cb_pop_front(cb_prev_sum, Sq_chunk_t);
             }
         }
     }
