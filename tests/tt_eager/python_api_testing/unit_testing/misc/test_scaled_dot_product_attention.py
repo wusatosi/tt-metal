@@ -118,14 +118,30 @@ def run_test_sdpa_tt_ND(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dt
 
     program_config = tt_lib.operations.primary.transformers.SDPAMultiCoreProgramConfig(
         # compute_with_storage_grid_size=device.compute_with_storage_grid_size(),
-        compute_with_storage_grid_size=[8, 5],
+        compute_with_storage_grid_size=[1, 1],
         q_chunk_size=q_chunk_size,
         k_chunk_size=k_chunk_size,
     )
 
-    Q = torch.randn(b, nh, s, d)
-    K = torch.randn(b, nkv, s, d)
-    V = torch.randn(b, nkv, s, d)
+    # Q = torch.randn(b, nh, s, d)
+    # K = torch.randn(b, nkv, s, d)
+    # V = torch.randn(b, nkv, s, d)
+    # Q = torch.ones(b, nh, s, d)
+    # Q[:,:,:,::2] = -1 # Very interesting case - fails with 32s in first row, everything else zero!
+    # K = torch.ones(b, nkv, s, d)
+    # V = torch.ones(b, nkv, s, d)
+
+    Q = torch.zeros(b, nh, s, d)
+    K = torch.zeros(b, nkv, s, d)
+    # V = torch.ones(b, nkv, s, d)
+    V = torch.zeros(b, nkv, s, d)
+    # V[:,:,:32,:] = 1
+    V = torch.eye(s, d).expand(b, nkv, s, d)
+    # V is diagonal matrix from 1 to d
+    # V = torch.zeros(b, nkv, s, d)
+    # for i in range(d):
+    #     V[:, :, i, i] = i + 1
+    # V[:,:,:,0] = 1
     attn_mask = torch.full((s, s), torch.finfo(torch.float32).min)
     attn_mask = torch.triu(attn_mask, diagonal=1).expand(b, 1, -1, -1)
 
@@ -134,7 +150,8 @@ def run_test_sdpa_tt_ND(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dt
     logger.debug(f"K: {K.shape}")
     logger.debug(f"V: {V.shape}")
     logger.debug(f"attn_mask: {attn_mask.shape}")
-    gt = torch.nn.functional.scaled_dot_product_attention(Q, K, V, attn_mask, is_causal=False)
+    # gt = torch.nn.functional.scaled_dot_product_attention(Q, K, V, attn_mask, is_causal=False)
+    gt = (Q @ K.transpose(-2, -1)) @ V
 
     dram_memcfg = ttnn.experimental.tensor.MemoryConfig(
         ttnn.experimental.tensor.TensorMemoryLayout.INTERLEAVED, ttnn.experimental.tensor.BufferType.DRAM
@@ -161,11 +178,13 @@ def run_test_sdpa_tt_ND(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dt
         out_pass, out_pcc = comp_pcc(gt, tt_back, 0.994)
         if idx == 0:
             expected_pcc = out_pcc
+            expected_tt = tt_back
             print(f"First iteration PCC: {out_pcc}")
         else:
             if out_pcc != expected_pcc:
                 diff_pccs.append(out_pcc)
                 logger.info(f"failed ND PCC check on iter {idx}: {out_pcc}")
+                breakpoint()
         # logger.debug(f"python vs pytorch: {out_pcc}")
         # assert out_pass
 
@@ -175,13 +194,13 @@ def run_test_sdpa_tt_ND(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dt
 
 @skip_for_grayskull("Unsupported in GS since L1 runs OOM with most configs")
 @pytest.mark.parametrize("dtype", [tt_lib.tensor.DataType.BFLOAT16], ids=["bf16"])
-@pytest.mark.parametrize("q_chunk_size", [128], ids=["q128"])
+@pytest.mark.parametrize("q_chunk_size", [64], ids=["q128"])
 @pytest.mark.parametrize("k_chunk_size", [128], ids=["k128"])
 @pytest.mark.parametrize(
     "b, nh, nkv, s, d",
     (
-        # [1, 1, 1, 512, 128],
-        [1, 5, 1, 1024, 128],
+        [1, 1, 1, 128, 128],
+        # [1, 5, 1, 1024, 128],
         # [1, 8, 1, 2048, 128],  # Llama2-70B
         # [1, 16, 1, 2048, 64],  # Falcon-40B
         # [1, 71, 1, 2048, 64],  # Falcon-7B

@@ -15,9 +15,55 @@
 #include "compute_kernel_api/tile_move_copy.h"
 #include "compute_kernel_api/matmul.h"
 #include "compute_kernel_api/reduce.h"
+#include "debug/dprint.h"
+#include "debug/assert.h"
 
 
 namespace NAMESPACE {
+
+
+float bfloat16_to_float32(uint16_t bfloat16_value) {
+    uint32_t sign = (bfloat16_value & 0x8000) << 16;
+    uint32_t exponent = (bfloat16_value & 0x7F80) << 16;
+    uint32_t mantissa = (bfloat16_value & 0x007F) << 16;
+    uint32_t float32_value = sign | exponent | mantissa;
+    union FloatIntUnion {
+        float f;
+        uint32_t i;
+    };
+    FloatIntUnion u;
+    u.i = float32_value;
+    return u.f;
+    // return *reinterpret_cast<float*>(&float32_value);
+}
+
+void print_tile_bfloat16(const uint32_t cb_id) {
+
+    // uint32_t read_addr = get_read_ptr(cb_id);
+    uint32_t read_addr = cb_interface[cb_id].fifo_rd_ptr << 4;
+    volatile tt_l1_ptr uint16_t* ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(read_addr);
+
+    // dprint("32x32 Tile (bfloat16 to float32):\n");
+
+    for (uint32_t i = 0; i < 32; ++i) {
+        for (uint32_t j = 0; j < 32; ++j) {
+            uint16_t bfloat16_value = ptr[i * 32 + j];
+            float float_value = bfloat16_to_float32(bfloat16_value);
+            // dprint("%.6f ", float_value);
+            DPRINT << float_value << " ";
+            if (j == 15) {
+                DPRINT << "  ";
+            }
+        }
+
+        DPRINT << ENDL();
+        if (i == 15) {
+            DPRINT << ENDL();
+        }
+    }
+}
+
+
 template<uint32_t in0, uint32_t in1, uint32_t num_tiles>
 void max_block_inplace() {
     // inputs come in full, outputs go out full
@@ -62,16 +108,18 @@ void reduce_c() {
     for (uint32_t i = 0; i < rows; i++) {
         acquire_dst(tt::DstMode::Half);
         for (uint32_t j = 0; j < cols; j++) {
-            // reduce_tile<pool_type, reduce_dim>(in0_cb, scale_cb, i*cols+j, 0, reduce_dst_idx);
+            reduce_tile<pool_type, reduce_dim>(in0_cb, scale_cb, i*cols+j, 0, reduce_dst_idx);
         }
 
         cb_reserve_back(out_cb, 1);
-        // pack_tile(reduce_dst_idx, out_cb);
+        pack_tile(reduce_dst_idx, out_cb);
         cb_push_back(out_cb, 1);
         release_dst(tt::DstMode::Half);
     }
+    // tensix_sync();
 
    reduce_revert_delta<reduce_dim>(out_cb);
+//    tensix_sync(); UNCOMMENT FOR DETERMINISM
 }
 
 void recip_block_inplace(uint32_t in_cb, uint32_t num_tiles) {
