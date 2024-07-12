@@ -55,13 +55,22 @@ class TransformerModel:
         self.average_sequence_length = input_sequence_length + output_sequence_length / 2
         self.total_sequence_length = input_sequence_length + output_sequence_length
 
-    def set_sequence_length(self, input_sequence_length, output_sequence_length):
-        self.input_sequence_length = input_sequence_length
-        self.output_sequence_length = output_sequence_length
-        self.average_sequence_length = input_sequence_length + output_sequence_length / 2
-        self.total_sequence_length = input_sequence_length + output_sequence_length
+    # TODO: move inside calculate
+    # helper functions
+    def dram_loading_mm_compute(self, row_size):
+        return self.num_parameters_B * row_size * 2
 
-    def model_size_B(self):
+    def attention_mm_compute(self, row_size):
+        return self.num_layers * self.num_q_heads * self.head_dim * row_size * row_size * 2 * 2 / 1024**3
+
+    def calculate_per_user(self, system):
+        estimates_per_user = {}
+
+        estimates_per_user["num_parameters(B)"] = self.num_parameters_B
+
+        ################
+        # model_size_B #
+        ################
         attention_params = (
             self.hidden_size * self.hidden_size * ((self.num_q_heads + self.num_kv_heads) / self.num_q_heads + 1)
         )
@@ -69,166 +78,251 @@ class TransformerModel:
         embedding_params = self.hidden_size * self.vocab_size
         if self.name.startswith("llama2") or self.name.startswith("llama3"):
             mlp_params = 3 * self.hidden_size * self.intermediate_size
-            return (self.num_layers * (attention_params + linear_params + mlp_params) + embedding_params) / 1e9
-        return 0
+            estimates_per_user["model_size(B)"] = (
+                self.num_layers * (attention_params + linear_params + mlp_params) + embedding_params
+            ) / 1e9
+        else:
+            estimates_per_user["model_size(B)"] = 0
 
-    def max_kv_cache_size_per_user_GB(self):
-        return self.num_layers * self.total_sequence_length * self.num_kv_heads * self.head_dim * 2 / 1024**3
-
-    def max_kv_cache_size_GB(self, num_users):
-        return self.max_kv_cache_size_per_user_GB() * num_users
-
-    def max_memory_size_GB(self, num_users):
-        return self.max_kv_cache_size_GB(num_users) + self.num_parameters_B
-
-    def avg_kv_cache_size_per_user_GB(self):
-        return self.num_layers * self.average_sequence_length * self.num_kv_heads * self.head_dim * 2 / 1024**3
-
-    def avg_kv_cache_size_GB(self, num_users):
-        return self.avg_kv_cache_size_per_user_GB() * num_users
-
-    def avg_memory_size_GB(self, num_users):
-        return self.avg_kv_cache_size_GB(num_users) + self.num_parameters_B
-
-    def max_num_users_that_fit_in_memory(self, system):
-        if self.max_memory_size_GB(1) > system.memory_capacity_gb:
-            return 0
-        return (system.memory_capacity_gb - self.num_parameters_B) // self.max_kv_cache_size_per_user_GB()
-
-    def dram_loading_mm_compute(self, row_size):
-        return self.num_parameters_B * row_size * 2
-
-    def attention_mm_compute(self, row_size):
-        return self.num_layers * self.num_q_heads * self.head_dim * row_size * row_size * 2 * 2 / 1024**3
-
-    # old version:
-    # def decode_compute_gflops(self, num_users):
-    #     return self.avg_memory_size_GB(1) * 2 * ceil(num_users / 32) * 32
-    # new version:
-    def decode_compute_gflops(self, num_users):
-        return self.dram_loading_mm_compute(ceil(num_users / 32) * 32) + self.attention_mm_compute(
-            self.average_sequence_length
+        #################################
+        # max_kv_cache_size_per_user(GB) #
+        #################################
+        estimates_per_user["max_kv_cache_size_per_user(GB)"] = (
+            self.num_layers * self.total_sequence_length * self.num_kv_heads * self.head_dim * 2 / 1024**3
         )
 
-    def decode_compute_latency_ms(self, num_users, system):
-        if self.max_num_users_that_fit_in_memory(system) < num_users:
-            return -1
-        return self.decode_compute_gflops(num_users) / system.effective_gflops * 1000
+        ############################
+        # avg_kv_cache_size_per_user(GB) #
+        ############################
+        estimates_per_user["avg_kv_cache_size_per_user(GB)"] = (
+            self.num_layers * self.average_sequence_length * self.num_kv_heads * self.head_dim * 2 / 1024**3
+        )
 
-    def decode_memory_latency_ms(self, num_users, system):
-        if self.max_num_users_that_fit_in_memory(system) < num_users:
-            return -1
-        return self.avg_memory_size_GB(num_users) / system.effective_memory_bandwidth_GBps * 1000
+        #################################
+        # max_num_users_that_fit_in_memory #
+        #################################
+        if system.memory_capacity_gb < self.num_parameters_B:
+            estimates_per_user["max_num_users_that_fit_in_memory"] = 0
+        else:
+            estimates_per_user["max_num_users_that_fit_in_memory"] = (
+                system.memory_capacity_gb - self.num_parameters_B
+            ) // estimates_per_user["max_kv_cache_size_per_user(GB)"]
 
-    def decode_latency_ms(self, num_users, system):
-        if self.max_num_users_that_fit_in_memory(system) < num_users:
-            return -1
-        return max(self.decode_compute_latency_ms(num_users, system), self.decode_memory_latency_ms(num_users, system))
-
-    def decode_throughput_tokens_per_second_per_user(self, num_users, system):
-        if self.max_num_users_that_fit_in_memory(system) < num_users:
-            return -1
-        return 1000 / self.decode_latency_ms(num_users, system)
-
-    def decode_throughput_tokens_per_second(self, num_users, system):
-        if self.max_num_users_that_fit_in_memory(system) < num_users:
-            return -1
-        return self.decode_throughput_tokens_per_second_per_user(num_users, system) * num_users
-
-    def decode_total_time_ms(self, num_users, system):
-        if self.max_num_users_that_fit_in_memory(system) < num_users:
-            return -1
-        return self.decode_latency_ms(num_users, system) * self.output_sequence_length
-
-    def prefill_compute_gflops(self):
-        return self.dram_loading_mm_compute(self.input_sequence_length) + self.attention_mm_compute(
+        ############################
+        # prefill_compute(GFLOPS) #
+        ############################
+        estimates_per_user["prefill_compute(GFLOPS)"] = self.dram_loading_mm_compute(
             self.input_sequence_length
+        ) + self.attention_mm_compute(self.input_sequence_length)
+
+        ############################
+        # prefill_compute_latency(ms) #
+        ############################
+        estimates_per_user["prefill_compute_latency(ms)"] = (
+            estimates_per_user["prefill_compute(GFLOPS)"] / system.effective_gflops * 1000
         )
 
-    def prefill_compute_latency_ms(self, system):
-        return self.prefill_compute_gflops() / system.effective_gflops * 1000
+        return estimates_per_user
 
-    def prefill_memory_latency_ms(self, num_users, system):
-        if self.max_num_users_that_fit_in_memory(system) < num_users:
-            return -1
-        return self.decode_memory_latency_ms(num_users, system)
+    def calculate_per_batch(self, estimates_per_user, num_users, system):
+        estimates_per_batch = {}
 
-    def prefill_latency_ms(self, num_users, system):
-        if self.max_num_users_that_fit_in_memory(system) < num_users:
-            return -1
-        return max(self.prefill_compute_latency_ms(system), self.prefill_memory_latency_ms(num_users, system))
+        ############################
+        # max_kv_cache_size(GB) #
+        ############################
+        estimates_per_batch["max_kv_cache_size(GB)"] = estimates_per_user["max_kv_cache_size_per_user(GB)"] * num_users
 
-    def prefill_throughput_users_per_second(self, num_users, system):
-        if self.max_num_users_that_fit_in_memory(system) < num_users:
-            return -1
-        return 1000 / self.prefill_latency_ms(num_users, system)
+        ############################
+        # max_memory_size(GB) #
+        ############################
+        estimates_per_batch["max_memory_size(GB)"] = (
+            estimates_per_batch["max_kv_cache_size(GB)"] + self.num_parameters_B
+        )
 
-    def prefill_throughput_tokens_per_second(self, num_users, system):
-        if self.max_num_users_that_fit_in_memory(system) < num_users:
-            return -1
-        return self.prefill_throughput_users_per_second(num_users, system) * self.input_sequence_length
+        ############################
+        # avg_kv_cache_size(GB) #
+        ############################
+        estimates_per_batch["avg_kv_cache_size(GB)"] = estimates_per_user["avg_kv_cache_size_per_user(GB)"] * num_users
 
-    def prefill_total_time_ms(self, num_users, system):
-        if self.max_num_users_that_fit_in_memory(system) < num_users:
-            return -1
-        return self.prefill_latency_ms(num_users, system) * num_users
+        ############################
+        # avg_memory_size(GB) #
+        ############################
+        estimates_per_batch["avg_memory_size(GB)"] = (
+            estimates_per_batch["avg_kv_cache_size(GB)"] + self.num_parameters_B
+        )
 
-    def time_to_first_token_ms(self, num_users, system):
-        if self.max_num_users_that_fit_in_memory(system) < num_users:
-            return -1
-        return self.decode_latency_ms(num_users, system) + self.prefill_latency_ms(num_users, system)
+        ############################
+        # decode_compute(GFLOPS) #
+        ############################
+        # old version:
+        # estimates_per_batch["decode_compute(GFLOPS)"] = self.avg_memory_size_GB(num_users=1) * 2 * ceil(num_users / 32) * 32
+        # new version:
+        estimates_per_batch["decode_compute(GFLOPS)"] = self.dram_loading_mm_compute(
+            ceil(num_users / 32) * 32
+        ) + self.attention_mm_compute(self.average_sequence_length)
 
-    def time_to_last_token_ms(self, num_users, system):
-        if self.max_num_users_that_fit_in_memory(system) < num_users:
-            return -1
-        return self.prefill_total_time_ms(num_users, system) + self.decode_total_time_ms(num_users, system)
+        ############################
+        # decode_compute_latency(ms) #
+        ############################
+        if estimates_per_user["max_num_users_that_fit_in_memory"] < num_users:
+            estimates_per_batch["decode_compute_latency(ms)"] = -1
+        else:
+            estimates_per_batch["decode_compute_latency(ms)"] = (
+                estimates_per_batch["decode_compute(GFLOPS)"] / system.effective_gflops * 1000
+            )
 
-    def overall_throughput_tokens_per_second_per_user(self, num_users, system):
-        if self.max_num_users_that_fit_in_memory(system) < num_users:
-            return -1
-        return self.output_sequence_length * 1000 / self.time_to_last_token_ms(num_users, system)
+        ############################
+        # decode_memory_latency(ms) #
+        ############################
+        if estimates_per_user["max_num_users_that_fit_in_memory"] < num_users:
+            estimates_per_batch["decode_memory_latency(ms)"] = -1
+        else:
+            estimates_per_batch["decode_memory_latency(ms)"] = (
+                estimates_per_batch["avg_memory_size(GB)"] / system.effective_memory_bandwidth_GBps * 1000
+            )
 
-    def overall_throughput_tokens_per_second(self, num_users, system):
-        if self.max_num_users_that_fit_in_memory(system) < num_users:
-            return -1
-        return self.overall_throughput_tokens_per_second_per_user(num_users, system) * num_users
+        ############################
+        # decode_latency(ms) #
+        ############################
+        if estimates_per_user["max_num_users_that_fit_in_memory"] < num_users:
+            estimates_per_batch["decode_latency(ms)"] = -1
+        else:
+            estimates_per_batch["decode_latency(ms)"] = max(
+                estimates_per_batch["decode_compute_latency(ms)"], estimates_per_batch["decode_memory_latency(ms)"]
+            )
 
-    def overall_throughput_at_max_num_users_tokens_per_second(self, system):
-        return self.overall_throughput_tokens_per_second(self.max_num_users_that_fit_in_memory(system), system)
+        ############################
+        # decode_throughput(t/s/u) #
+        ############################
+        if estimates_per_user["max_num_users_that_fit_in_memory"] < num_users:
+            estimates_per_batch["decode_throughput(t/s/u)"] = -1
+        else:
+            estimates_per_batch["decode_throughput(t/s/u)"] = 1000 / estimates_per_batch["decode_latency(ms)"]
 
-    def compute_all(self, num_users, system):
-        return {
-            "num_parameters(B)": self.num_parameters_B,
-            "model_size(B)": self.model_size_B(),
-            "max_kv_cache_size_per_user(GB)": self.max_kv_cache_size_per_user_GB(),
-            "max_kv_cache_size(GB)": self.max_kv_cache_size_GB(num_users),
-            "max_memory_size(GB)": self.max_memory_size_GB(num_users),
-            "avg_kv_cache_size_per_user(GB)": self.avg_kv_cache_size_per_user_GB(),
-            "avg_kv_cache_size(GB)": self.avg_kv_cache_size_GB(num_users),
-            "avg_memory_size(GB)": self.avg_memory_size_GB(num_users),
-            "max_num_users_that_fit_in_memory": self.max_num_users_that_fit_in_memory(system),
-            "decode_compute(GFLOPS)": self.decode_compute_gflops(num_users),
-            "decode_compute_latency(ms)": self.decode_compute_latency_ms(num_users, system),
-            "decode_memory_latency(ms)": self.decode_memory_latency_ms(num_users, system),
-            "decode_latency(ms)": self.decode_latency_ms(num_users, system),
-            "decode_throughput(t/s/u)": self.decode_throughput_tokens_per_second_per_user(num_users, system),
-            "decode_throughput(t/s)": self.decode_throughput_tokens_per_second(num_users, system),
-            "decode_total_time(ms)": self.decode_total_time_ms(num_users, system),
-            "prefill_compute(GFLOPS)": self.prefill_compute_gflops(),
-            "prefill_compute_latency(ms)": self.prefill_compute_latency_ms(system),
-            "prefill_memory_latency(ms)": self.prefill_memory_latency_ms(num_users, system),
-            "prefill_latency(ms)": self.prefill_latency_ms(num_users, system),
-            "prefill_throughput(u/s)": self.prefill_throughput_users_per_second(num_users, system),
-            "prefill_throughput(t/s)": self.prefill_throughput_tokens_per_second(num_users, system),
-            "prefill_total_time(ms)": self.prefill_total_time_ms(num_users, system),
-            "time_to_first_token(ms)": self.time_to_first_token_ms(num_users, system),
-            "time_to_last_token(ms)": self.time_to_last_token_ms(num_users, system),
-            "overall_throughput(t/s/u)": self.overall_throughput_tokens_per_second_per_user(num_users, system),
-            "overall_throughput(t/s)": self.overall_throughput_tokens_per_second(num_users, system),
-            "overall_throughput_at_max_num_users(t/s)": self.overall_throughput_at_max_num_users_tokens_per_second(
-                system
-            ),
-        }
+        ############################
+        # decode_throughput(t/s) #
+        ############################
+        if estimates_per_user["max_num_users_that_fit_in_memory"] < num_users:
+            estimates_per_batch["decode_throughput(t/s)"] = -1
+        else:
+            estimates_per_batch["decode_throughput(t/s)"] = estimates_per_batch["decode_throughput(t/s/u)"] * num_users
+
+        ############################
+        # decode_total_time(ms) #
+        ############################
+        if estimates_per_user["max_num_users_that_fit_in_memory"] < num_users:
+            estimates_per_batch["decode_total_time(ms)"] = -1
+        else:
+            estimates_per_batch["decode_total_time(ms)"] = (
+                estimates_per_batch["decode_latency(ms)"] * self.output_sequence_length
+            )
+
+        ############################
+        # prefill_memory_latency(ms) #
+        ############################
+        if estimates_per_user["max_num_users_that_fit_in_memory"] < num_users:
+            estimates_per_batch["prefill_memory_latency(ms)"] = -1
+        else:
+            estimates_per_batch["prefill_memory_latency(ms)"] = estimates_per_batch["decode_memory_latency(ms)"]
+
+        ############################
+        # prefill_latency(ms) #
+        ############################
+        if estimates_per_user["max_num_users_that_fit_in_memory"] < num_users:
+            estimates_per_batch["prefill_latency(ms)"] = -1
+        else:
+            estimates_per_batch["prefill_latency(ms)"] = max(
+                estimates_per_user["prefill_compute_latency(ms)"], estimates_per_batch["prefill_memory_latency(ms)"]
+            )
+
+        ############################
+        # prefill_throughput(u/s) #
+        ############################
+        if estimates_per_user["max_num_users_that_fit_in_memory"] < num_users:
+            estimates_per_batch["prefill_throughput(u/s)"] = -1
+        else:
+            estimates_per_batch["prefill_throughput(u/s)"] = 1000 / estimates_per_batch["prefill_latency(ms)"]
+
+        ############################
+        # prefill_throughput(t/s) #
+        ############################
+        if estimates_per_user["max_num_users_that_fit_in_memory"] < num_users:
+            estimates_per_batch["prefill_throughput(t/s)"] = -1
+        else:
+            estimates_per_batch["prefill_throughput(t/s)"] = (
+                estimates_per_batch["prefill_throughput(u/s)"] * self.input_sequence_length
+            )
+
+        ############################
+        # prefill_total_time(ms) #
+        ############################
+        if estimates_per_user["max_num_users_that_fit_in_memory"] < num_users:
+            estimates_per_batch["prefill_total_time(ms)"] = -1
+        else:
+            estimates_per_batch["prefill_total_time(ms)"] = estimates_per_batch["prefill_latency(ms)"] * num_users
+
+        ############################
+        # time_to_first_token(ms) #
+        ############################
+        if estimates_per_user["max_num_users_that_fit_in_memory"] < num_users:
+            estimates_per_batch["time_to_first_token(ms)"] = -1
+        else:
+            estimates_per_batch["time_to_first_token(ms)"] = (
+                estimates_per_batch["decode_latency(ms)"] + estimates_per_batch["prefill_latency(ms)"]
+            )
+
+        ############################
+        # time_to_last_token(ms) #
+        ############################
+        if estimates_per_user["max_num_users_that_fit_in_memory"] < num_users:
+            estimates_per_batch["time_to_last_token(ms)"] = -1
+        else:
+            estimates_per_batch["time_to_last_token(ms)"] = (
+                estimates_per_batch["prefill_total_time(ms)"] + estimates_per_batch["decode_total_time(ms)"]
+            )
+
+        ############################
+        # overall_throughput(t/s/u) #
+        ############################
+        if estimates_per_user["max_num_users_that_fit_in_memory"] < num_users:
+            estimates_per_batch["overall_throughput(t/s/u)"] = -1
+        else:
+            estimates_per_batch["overall_throughput(t/s/u)"] = (
+                self.output_sequence_length * 1000 / estimates_per_batch["time_to_last_token(ms)"]
+            )
+
+        ############################
+        # overall_throughput(t/s) #
+        ############################
+        if estimates_per_user["max_num_users_that_fit_in_memory"] < num_users:
+            estimates_per_batch["overall_throughput(t/s)"] = -1
+        else:
+            estimates_per_batch["overall_throughput(t/s)"] = (
+                estimates_per_batch["overall_throughput(t/s/u)"] * num_users
+            )
+
+        return estimates_per_batch
+
+    def calculate_misc(self, estimates_per_user, system):
+        estimates_misc = {}
+        estimates_per_batch = self.calculate_per_batch(
+            estimates_per_user, estimates_per_user["max_num_users_that_fit_in_memory"], system
+        )
+        estimates_misc["overall_throughput_at_max_num_users(t/s)"] = estimates_per_batch["overall_throughput(t/s)"]
+        return estimates_misc
+
+    def calculate(self, num_users, system):
+        estimates_per_user = self.calculate_per_user(system)
+        estimates_per_batch = self.calculate_per_batch(estimates_per_user, num_users, system)
+        estimates_misc = self.calculate_misc(estimates_per_user, system)
+        # merge dictionaries
+        return {**estimates_per_user, **estimates_per_batch, **estimates_misc}
+
+    def set_sequence_length(self, input_sequence_length, output_sequence_length):
+        self.input_sequence_length = input_sequence_length
+        self.output_sequence_length = output_sequence_length
+        self.average_sequence_length = input_sequence_length + output_sequence_length / 2
+        self.total_sequence_length = input_sequence_length + output_sequence_length
 
 
 def print_table(metric, column_names, row_names, table):
@@ -248,34 +342,34 @@ def print_table(metric, column_names, row_names, table):
 
 
 # convert
-# performance[model_name][system_name][input_sequence_length][output_sequence_length][metric] = value
+# estimates[model_name][system_name][input_sequence_length][output_sequence_length][metric] = value
 # to
-# new_performance[metric][system_name][model_name][input_sequence_length+output_sequence_length] = value
-def convert_performance_layout(performance):
-    new_performance = {}
-    for model_name, systems in performance.items():
+# new_estimates[metric][system_name][model_name][input_sequence_length+output_sequence_length] = value
+def convert_estimates_layout(estimates):
+    new_estimates = {}
+    for model_name, systems in estimates.items():
         for system_name, sequence_lengths in systems.items():
             for input_sequence_length, output_sequence_lengths in sequence_lengths.items():
-                for output_sequence_length, metrics in output_sequence_lengths.items():
+                for output_sequence_length, estimates in output_sequence_lengths.items():
                     sequence_length = str(input_sequence_length) + "+" + str(output_sequence_length)
-                    for metric, value in metrics.items():
-                        if metric not in new_performance:
-                            new_performance[metric] = {}
-                        if system_name not in new_performance[metric]:
-                            new_performance[metric][system_name] = {}
-                        if model_name not in new_performance[metric][system_name]:
-                            new_performance[metric][system_name][model_name] = {}
-                        assert sequence_length not in new_performance[metric][system_name][model_name]
-                        new_performance[metric][system_name][model_name][sequence_length] = value
-    return new_performance
+                    for metric, value in estimates.items():
+                        if metric not in new_estimates:
+                            new_estimates[metric] = {}
+                        if system_name not in new_estimates[metric]:
+                            new_estimates[metric][system_name] = {}
+                        if model_name not in new_estimates[metric][system_name]:
+                            new_estimates[metric][system_name][model_name] = {}
+                        assert sequence_length not in new_estimates[metric][system_name][model_name]
+                        new_estimates[metric][system_name][model_name][sequence_length] = value
+    return new_estimates
 
 
-def print_performance(num_users, performance, metrics_to_print=set()):
+def print_estimates(num_users, estimates, estimates_to_print=set()):
     print("+++++++++++++++++++++")
     print(f"+++ num_users: {num_users} +++")
     print("+++++++++++++++++++++")
-    for metric, systems in performance.items():
-        if len(metrics_to_print) > 0 and metric not in metrics_to_print:
+    for metric, systems in estimates.items():
+        if len(estimates_to_print) > 0 and metric not in estimates_to_print:
             continue
         column_names = []
         row_names = []
@@ -404,7 +498,7 @@ def main():
 
     # Build database for the performnace data
     num_users = 32
-    performance = {}
+    estimates = {}
     # for system in [WH_Galaxy_x1, BH_Galaxy_x1, BH_Galaxy_x2, BH_Galaxy_x3, BH_Galaxy_x4, BH_Galaxy_x6]:
     for system in [WH_Galaxy_x1, WH_Galaxy_x4]:
         # for model in [llama3_70B, llama3_212B, llama3_1TB]:
@@ -414,23 +508,23 @@ def main():
                 # output_sequence_length = 1024 if input_sequence_length > 100 else 100
                 output_sequence_length = 1
                 model.set_sequence_length(input_sequence_length, output_sequence_length)
-                if model.name not in performance:
-                    performance[model.name] = {}
-                if system.name not in performance[model.name]:
-                    performance[model.name][system.name] = {}
-                if input_sequence_length not in performance[model.name][system.name]:
-                    performance[model.name][system.name][input_sequence_length] = {}
-                performance[model.name][system.name][input_sequence_length][output_sequence_length] = model.compute_all(
+                if model.name not in estimates:
+                    estimates[model.name] = {}
+                if system.name not in estimates[model.name]:
+                    estimates[model.name][system.name] = {}
+                if input_sequence_length not in estimates[model.name][system.name]:
+                    estimates[model.name][system.name][input_sequence_length] = {}
+                estimates[model.name][system.name][input_sequence_length][output_sequence_length] = model.calculate(
                     num_users, system
                 )
 
-    new_performance = convert_performance_layout(performance)
+    new_estimates = convert_estimates_layout(estimates)
 
-    # Print the performance data to stdout
-    print_performance(
+    # Print the estimates data to stdout
+    print_estimates(
         num_users,
-        new_performance,
-        metrics_to_print={
+        new_estimates,
+        estimates_to_print={
             "prefill_latency(ms)",
             # 'decode_latency(ms)',
             "decode_throughput(t/s/u)",
