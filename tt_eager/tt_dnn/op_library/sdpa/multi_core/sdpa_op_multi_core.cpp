@@ -280,7 +280,8 @@ operation::ProgramWithCallbacks sdpa_multi_core(
     defines["LOG2_MUL_BCAST_GRANULARITY"] = std::to_string(log2_mul_bcast_granularity);
     defines["DHT_GRANULARITY"] = std::to_string(dht_granularity);
     defines["LOG2_DHT_GRANULARITY"] = std::to_string(log2_dht_granularity);
-    uint32_t balanced_q_parallel = (q_per_core*q_parallel_factor == q_num_chunks) && (q_per_core % 2 == 0);
+    // uint32_t balanced_q_parallel = (q_per_core*q_parallel_factor == q_num_chunks) && (q_per_core % 2 == 0);
+    uint32_t balanced_q_parallel = 0;
     if (balanced_q_parallel) {
         defines["BALANCED_Q_PARALLEL"] = "1";
     }

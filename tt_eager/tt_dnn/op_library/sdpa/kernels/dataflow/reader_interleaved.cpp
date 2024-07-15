@@ -99,18 +99,7 @@ void kernel_main() {
         const uint32_t mask_batch_offset = nb * St * St;
         for (uint32_t nq = local_nh_start; nq < local_nh_end; ++nq) {
             for (uint32_t q_iter = 0; q_iter < q_chunks_per_core; ++q_iter) {
-                uint32_t q_chunk;
-                #if defined BALANCED_Q_PARALLEL
-                uint32_t q_chunk_div_2 = q_chunks_per_core / 2;
-                if (q_iter < q_chunk_div_2) { // bottom half
-                    q_chunk = local_q_start + q_iter;
-                } else {
-                    uint32_t back_q_iter = q_iter - q_chunk_div_2; // Back half should start at 0
-                    q_chunk = q_num_chunks - 1 - (local_q_start + back_q_iter);
-                }
-                #else
-                q_chunk = local_q_start + q_iter;
-                #endif
+                uint32_t q_chunk = local_q_start + q_iter;
 
                 uint32_t q_head_offset = nq * St * DHt;
                 uint32_t q_chunk_offset = q_chunk * Sq_chunk_t * DHt;
@@ -126,10 +115,10 @@ void kernel_main() {
                     q_tile_id += 1;
                     q_write_ptr += q_tile_bytes;
 
-                    if (++barrier_count == barrier_threshold) {
-                        noc_async_read_barrier();
-                        barrier_count = 0;
-                    }
+                    // if (++barrier_count == barrier_threshold) {
+                    //     noc_async_read_barrier();
+                    //     barrier_count = 0;
+                    // }
                 }
                 noc_async_read_barrier();
 
@@ -155,10 +144,10 @@ void kernel_main() {
                             k_tile_id += DHt;
                             k_write_ptr += k_tile_bytes;
 
-                            if (++barrier_count == barrier_threshold) {
-                                noc_async_read_barrier();
-                                barrier_count = 0;
-                            }
+                            // if (++barrier_count == barrier_threshold) {
+                            //     noc_async_read_barrier();
+                            //     barrier_count = 0;
+                            // }
                         }
                     }
                     noc_async_read_barrier();
@@ -180,12 +169,13 @@ void kernel_main() {
                             for (uint32_t col = 0; col < Sk_chunk_t; ++col) {
                                 noc_async_read_tile(mask_tile_id, mask_reader, mask_write_ptr);
                                 mask_tile_id += 1;
-                                mask_write_ptr += mask_tile_bytes;
+                                // DEBUG: Don't increment mask_write_ptr to ensure no out of bounds writes
+                                // mask_write_ptr += mask_tile_bytes;
 
-                                if (++barrier_count == barrier_threshold) {
-                                    noc_async_read_barrier();
-                                    barrier_count = 0;
-                                }
+                                // if (++barrier_count == barrier_threshold) {
+                                //     noc_async_read_barrier();
+                                //     barrier_count = 0;
+                                // }
                             }
                             // Strid along columns to get to next row
                             mask_tile_id -= Sk_chunk_t;
@@ -207,10 +197,10 @@ void kernel_main() {
                         v_tile_id += 1;
                         v_write_ptr += v_tile_bytes;
 
-                        if (++barrier_count == barrier_threshold) {
-                            noc_async_read_barrier();
-                            barrier_count = 0;
-                        }
+                        // if (++barrier_count == barrier_threshold) {
+                        //     noc_async_read_barrier();
+                        //     barrier_count = 0;
+                        // }
                     }
                     noc_async_read_barrier();
                     cb_push_back(cb_v_in, k_chunk_tiles);

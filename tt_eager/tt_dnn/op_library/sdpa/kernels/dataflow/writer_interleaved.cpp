@@ -66,18 +66,7 @@ void kernel_main() {
         const uint32_t q_batch_offset = nb * NQH * St * DHt;
         for (uint32_t nq = local_nh_start; nq < local_nh_end; ++nq) {
             for (uint32_t q_iter = 0; q_iter < q_chunks_per_core; ++q_iter) {
-                uint32_t q_chunk;
-                #if defined BALANCED_Q_PARALLEL
-                uint32_t q_chunk_div_2 = q_chunks_per_core / 2;
-                if (q_iter < q_chunk_div_2) { // bottom half
-                    q_chunk = local_q_start + q_iter;
-                } else {
-                    uint32_t back_q_iter = q_iter - q_chunk_div_2; // Back half should start at 0
-                    q_chunk = q_num_chunks - 1 - (local_q_start + back_q_iter);
-                }
-                #else
-                q_chunk = local_q_start + q_iter;
-                #endif
+                uint32_t q_chunk = local_q_start + q_iter;
 
                 uint32_t q_head_offset = nq * St * DHt;
                 uint32_t q_chunk_offset = q_chunk * Sq_chunk_t * DHt;
@@ -92,10 +81,10 @@ void kernel_main() {
                     ++out_tile_id;
                     l1_read_addr += tile_bytes;
 
-                    if (++barrier_count == barrier_threshold) {
-                        noc_async_writes_flushed();
-                        barrier_count = 0;
-                    }
+                    // if (++barrier_count == barrier_threshold) {
+                    //     noc_async_writes_flushed();
+                    //     barrier_count = 0;
+                    // }
                 }
                 noc_async_write_barrier();
                 cb_pop_front(cb_out, out_chunk_tiles);
