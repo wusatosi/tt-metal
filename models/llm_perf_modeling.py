@@ -389,22 +389,22 @@ def print_estimates(num_users, estimates, estimates_to_print=set()):
         print_table(metric, column_names, row_names, table)
 
 
-def main():
-    # Define Chips
-    WH = Chip(
+def create_chips():
+    chips = {}
+    chips["WH"] = Chip(
         name="WH",
         peak_memory_bandwidth_gb=336,
         flops=8 * 16 * 16 * 64 * 2,
         freq=1e9,
         memory_capacity_gb=12,
-        # memory_efficiency=0.8928,
+        memory_efficiency=0.8928,
         # compute_efficiency=0.60
-        memory_efficiency=1.19,
-        compute_efficiency=0.8,
+        compute_efficiency=1,
+        # memory_efficiency=1.19,
+        # compute_efficiency=0.8,
     )
 
-    # Create a BH chip
-    BH = Chip(
+    chips["BH"] = Chip(
         name="BH",
         peak_memory_bandwidth_gb=512,
         flops=8 * 16 * 16 * 140 * 2,
@@ -416,17 +416,36 @@ def main():
         compute_efficiency=0.8,
     )
 
-    # Define Systems
-    WH_Galaxy_x1 = System(name="WH_Galaxy_x1", chip=WH, num_instances=32)
-    WH_Galaxy_x4 = System(name="WH_Galaxy_x4", chip=WH, num_instances=128)
-    BH_Galaxy_x1 = System(name="BH_Galaxy_x1", chip=BH, num_instances=32)
-    BH_Galaxy_x2 = System(name="BH_Galaxy_x2", chip=BH, num_instances=64)
-    BH_Galaxy_x3 = System(name="BH_Galaxy_x3", chip=BH, num_instances=96)
-    BH_Galaxy_x4 = System(name="BH_Galaxy_x4", chip=BH, num_instances=128)
-    BH_Galaxy_x6 = System(name="BH_Galaxy_x6", chip=BH, num_instances=192)
+    chips["H200"] = Chip(
+        name="H200",
+        peak_memory_bandwidth_gb=4.8 * 1024,
+        flops=4000000,
+        freq=1e9,
+        memory_capacity_gb=141,
+        memory_efficiency=1,
+        compute_efficiency=1,
+    )
 
-    # Define Models
-    llama3_8B = TransformerModel(
+    return chips
+
+
+def create_systems(chips):
+    systems = {}
+    systems["WH_Galaxy_x1"] = System(name="WH_Galaxy_x1", chip=chips["WH"], num_instances=32)
+    systems["WH_Galaxy_x2"] = System(name="WH_Galaxy_x2", chip=chips["WH"], num_instances=64)
+    systems["WH_Galaxy_x4"] = System(name="WH_Galaxy_x4", chip=chips["WH"], num_instances=128)
+    systems["BH_Galaxy_x1"] = System(name="BH_Galaxy_x1", chip=chips["BH"], num_instances=32)
+    systems["BH_Galaxy_x2"] = System(name="BH_Galaxy_x2", chip=chips["BH"], num_instances=64)
+    systems["BH_Galaxy_x3"] = System(name="BH_Galaxy_x3", chip=chips["BH"], num_instances=96)
+    systems["BH_Galaxy_x4"] = System(name="BH_Galaxy_x4", chip=chips["BH"], num_instances=128)
+    systems["BH_Galaxy_x6"] = System(name="BH_Galaxy_x6", chip=chips["BH"], num_instances=192)
+    systems["H200_DGX"] = System(name="H200_DGX", chip=chips["H200"], num_instances=8)
+    return systems
+
+
+def create_models():
+    models = {}
+    models["llama3_8B"] = TransformerModel(
         name="llama3_8B",
         num_parameters_B=8,
         input_sequence_length=1024,
@@ -439,7 +458,7 @@ def main():
         vocab_size=128256,
     )
 
-    llama3_70B = TransformerModel(
+    models["llama3_70B"] = TransformerModel(
         name="llama3_70B",
         num_parameters_B=70,
         input_sequence_length=1024,
@@ -452,7 +471,8 @@ def main():
         vocab_size=128256,
     )
 
-    llama3_400B = TransformerModel(
+    # old estimated model parameters used for some customer slides
+    models["llama3_400B"] = TransformerModel(
         name="llama3_400B",
         num_parameters_B=400,
         input_sequence_length=1024,
@@ -465,7 +485,20 @@ def main():
         vocab_size=128256,
     )
 
-    llama3_212B = TransformerModel(
+    models["llama3_405B"] = TransformerModel(
+        name="llama3_405B",
+        num_parameters_B=405,
+        input_sequence_length=2048,
+        output_sequence_length=128,
+        num_layers=126,
+        hidden_size=16384,
+        num_q_heads=128,
+        num_kv_heads=8,
+        intermediate_size=53248,
+        vocab_size=128256,
+    )
+
+    models["llama3_212B"] = TransformerModel(
         name="llama3_212B",
         num_parameters_B=212,
         input_sequence_length=1024,
@@ -478,7 +511,7 @@ def main():
         vocab_size=128256,
     )
 
-    llama3_1TB = TransformerModel(
+    models["llama3_1TB"] = TransformerModel(
         name="llama3_1TB",
         num_parameters_B=1024,
         input_sequence_length=1024,
@@ -491,8 +524,15 @@ def main():
         vocab_size=128256,
     )
 
+    return models
+
+
+def main():
+    chips = create_chips()
+    systems = create_systems(chips)
+    models = create_models()
+
     # TODO:
-    # 1. cache the computation between function calls
     # 2. remove sequence length from the model, add it to the calculation function
     # 3. add max_overall_thoughput_at_some_batch function (overall throughput drops sometimes due to prefill)
 
@@ -500,13 +540,14 @@ def main():
     num_users = 32
     estimates = {}
     # for system in [WH_Galaxy_x1, BH_Galaxy_x1, BH_Galaxy_x2, BH_Galaxy_x3, BH_Galaxy_x4, BH_Galaxy_x6]:
-    for system in [WH_Galaxy_x1, WH_Galaxy_x4]:
+    # for system in [WH_Galaxy_x1, WH_Galaxy_x4]:
+    for system in [systems["WH_Galaxy_x2"], systems["H200_DGX"]]:
         # for model in [llama3_70B, llama3_212B, llama3_1TB]:
-        for model in [llama3_8B, llama3_70B, llama3_400B]:
+        for model in [models["llama3_405B"]]:
             # for input_sequence_length in [100, 1024, 7*1024, 31*1024, 199*1024]:
-            for input_sequence_length in [128, 1024, 2048, 4096, 8192]:
+            for input_sequence_length in [2048]:
                 # output_sequence_length = 1024 if input_sequence_length > 100 else 100
-                output_sequence_length = 1
+                output_sequence_length = 128
                 model.set_sequence_length(input_sequence_length, output_sequence_length)
                 if model.name not in estimates:
                     estimates[model.name] = {}
@@ -525,14 +566,15 @@ def main():
         num_users,
         new_estimates,
         estimates_to_print={
+            "max_kv_cache_size_per_user(GB)",
             "prefill_latency(ms)",
-            # 'decode_latency(ms)',
+            "decode_latency(ms)",
             "decode_throughput(t/s/u)",
             "time_to_first_token(ms)",
             # 'time_to_last_token(ms)',
-            # 'overall_throughput(t/s/u)',
-            # 'overall_throughput(t/s)',
-            # 'max_num_users_that_fit_in_memory',
+            "overall_throughput(t/s/u)",
+            "overall_throughput(t/s)",
+            "max_num_users_that_fit_in_memory",
             # 'overall_throughput_at_max_num_users(t/s)'
         },
     )
