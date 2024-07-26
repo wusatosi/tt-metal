@@ -1,5 +1,6 @@
 from math import ceil
 import pandas as pd
+import argparse
 
 
 class Chip:
@@ -16,6 +17,19 @@ class Chip:
         self.effective_gflops = self.flops * self.freq * self.compute_efficiency / 1e9
         self.effective_memory_bandwidth_GBps = self.peak_memory_bandwidth_gb * self.memory_efficiency
 
+    def print(self):
+        print(
+            f"  {self.name}:\n"
+            f"\tpeak_memory_bandwidth:{self.peak_memory_bandwidth_gb} GB/s\n"
+            f"\tflops:{self.flops} GFLOPs\n"
+            f"\tfreq:{self.freq} Hz\n"
+            f"\tmemory_capacity:{self.memory_capacity_gb} GB\n"
+            f"\tmemory_efficiency:{self.memory_efficiency}\n"
+            f"\tcompute_efficiency:{self.compute_efficiency}\n"
+            f"\teffective_gflops:{self.effective_gflops} GFLOPs\n"
+            f"\teffective_memory_bandwidth_GBps:{self.effective_memory_bandwidth_GBps} GB/s\n"
+        )
+
 
 class System:
     def __init__(self, name, chip, num_instances) -> None:
@@ -25,6 +39,16 @@ class System:
         self.effective_gflops = self.chip.effective_gflops * self.num_instances
         self.effective_memory_bandwidth_GBps = self.chip.effective_memory_bandwidth_GBps * self.num_instances
         self.memory_capacity_gb = self.chip.memory_capacity_gb * self.num_instances
+
+    def print(self):
+        print(
+            f"  {self.name}:\n"
+            f"\tnum_instances:{self.num_instances}\n"
+            f"\tchip:{self.chip.name}\n"
+            f"\tcapacity:{self.chip.memory_capacity_gb} GB\n"
+            f"\tflops:{self.effective_gflops} GFLOPs\n"
+            f"\tbandwidth:{self.effective_memory_bandwidth_GBps} GB/s\n"
+        )
 
 
 class TransformerModel:
@@ -528,36 +552,80 @@ def create_models():
 
 
 def main():
-    chips = create_chips()
-    systems = create_systems(chips)
-    models = create_models()
+    chips_db = create_chips()
+    systems_db = create_systems(chips_db)
+    models_db = create_models()
+
+    # create argument parser
+    parser = argparse.ArgumentParser(description="Performance Modeling")
+
+    # add arguments
+    # parser.add_argument("-h", "--help", help="Show this help message and exit")
+    parser.add_argument("-m", "--models", nargs="+", help="List of model names")
+    parser.add_argument("-s", "--systems", nargs="+", help="List of system names")
+    parser.add_argument("-u", "--num_users", type=int, help="Number of users")
+    parser.add_argument("-i", "--input_length", type=int, help="Input sequence length")
+    parser.add_argument("-o", "--output_length", type=int, help="Output sequence length")
+    parser.add_argument("-p", "--print_all", help="Print all configs", action="store_true")
+
+    # parse arguments
+    args = parser.parse_args()
+
+    # access the parsed arguments
+    models = args.models
+    systems = args.systems
+    num_users = args.num_users
+    input_length = args.input_length
+    output_length = args.output_length
+    print_all = args.print_all
+
+    if print_all:
+        print("chips:")
+        for _, chip in chips_db.items():
+            chip.print()
+        print("systems:")
+        for _, system in systems_db.items():
+            system.print()
+        print("models:")
+        for _, model in models_db.items():
+            print(f"  {model.name}")
+        return
+
+    if models is None or systems is None or num_users is None or input_length is None or output_length is None:
+        print("Please provide all arguments")
+        return
+
+    # if args.help:
+    #     parser.print_help()
+    #     return
+
+    # TODO: Use the parsed arguments in your code
 
     # TODO:
     # 2. remove sequence length from the model, add it to the calculation function
     # 3. add max_overall_thoughput_at_some_batch function (overall throughput drops sometimes due to prefill)
 
     # Build database for the performnace data
-    num_users = 32
     estimates = {}
     # for system in [WH_Galaxy_x1, BH_Galaxy_x1, BH_Galaxy_x2, BH_Galaxy_x3, BH_Galaxy_x4, BH_Galaxy_x6]:
     # for system in [WH_Galaxy_x1, WH_Galaxy_x4]:
-    for system in [systems["WH_Galaxy_x2"], systems["H200_DGX"]]:
+    for system in [systems_db[system_name] for system_name in systems]:
         # for model in [llama3_70B, llama3_212B, llama3_1TB]:
-        for model in [models["llama3_405B"]]:
+        for model in [models_db[model_name] for model_name in models]:
             # for input_sequence_length in [100, 1024, 7*1024, 31*1024, 199*1024]:
-            for input_sequence_length in [2048]:
+            for input_sequence_length in [input_length]:
                 # output_sequence_length = 1024 if input_sequence_length > 100 else 100
-                output_sequence_length = 128
-                model.set_sequence_length(input_sequence_length, output_sequence_length)
-                if model.name not in estimates:
-                    estimates[model.name] = {}
-                if system.name not in estimates[model.name]:
-                    estimates[model.name][system.name] = {}
-                if input_sequence_length not in estimates[model.name][system.name]:
-                    estimates[model.name][system.name][input_sequence_length] = {}
-                estimates[model.name][system.name][input_sequence_length][output_sequence_length] = model.calculate(
-                    num_users, system
-                )
+                for output_sequence_length in [output_length]:
+                    model.set_sequence_length(input_sequence_length, output_sequence_length)
+                    if model.name not in estimates:
+                        estimates[model.name] = {}
+                    if system.name not in estimates[model.name]:
+                        estimates[model.name][system.name] = {}
+                    if input_sequence_length not in estimates[model.name][system.name]:
+                        estimates[model.name][system.name][input_sequence_length] = {}
+                    estimates[model.name][system.name][input_sequence_length][output_sequence_length] = model.calculate(
+                        num_users, system
+                    )
 
     new_estimates = convert_estimates_layout(estimates)
 
