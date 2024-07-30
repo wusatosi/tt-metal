@@ -440,6 +440,16 @@ def create_chips():
         compute_efficiency=0.8,
     )
 
+    chips["H100"] = Chip(
+        name="H100",
+        peak_memory_bandwidth_gb=3.35 * 1024,
+        flops=4000000,
+        freq=1e9,
+        memory_capacity_gb=80,
+        memory_efficiency=1,
+        compute_efficiency=1,
+    )
+
     chips["H200"] = Chip(
         name="H200",
         peak_memory_bandwidth_gb=4.8 * 1024,
@@ -463,6 +473,7 @@ def create_systems(chips):
     systems["BH_Galaxy_x3"] = System(name="BH_Galaxy_x3", chip=chips["BH"], num_instances=96)
     systems["BH_Galaxy_x4"] = System(name="BH_Galaxy_x4", chip=chips["BH"], num_instances=128)
     systems["BH_Galaxy_x6"] = System(name="BH_Galaxy_x6", chip=chips["BH"], num_instances=192)
+    systems["H100_DGX"] = System(name="H100_DGX", chip=chips["H100"], num_instances=8)
     systems["H200_DGX"] = System(name="H200_DGX", chip=chips["H200"], num_instances=8)
     return systems
 
@@ -636,8 +647,11 @@ def main():
         estimates_to_print={
             "max_kv_cache_size_per_user(GB)",
             "prefill_latency(ms)",
+            "decode_compute_latency(ms)",
+            "decode_memory_latency(ms)",
             "decode_latency(ms)",
             "decode_throughput(t/s/u)",
+            "decode_throughput(t/s)",
             "time_to_first_token(ms)",
             # 'time_to_last_token(ms)',
             "overall_throughput(t/s/u)",
