@@ -465,6 +465,8 @@ def create_chips():
 
 def create_systems(chips):
     systems = {}
+    systems["WH_N150"] = System(name="WH_N150", chip=chips["WH"], num_instances=1)
+    systems["WH_N300"] = System(name="WH_N300", chip=chips["WH"], num_instances=2)
     systems["WH_Galaxy_x1"] = System(name="WH_Galaxy_x1", chip=chips["WH"], num_instances=32)
     systems["WH_Galaxy_x2"] = System(name="WH_Galaxy_x2", chip=chips["WH"], num_instances=64)
     systems["WH_Galaxy_x4"] = System(name="WH_Galaxy_x4", chip=chips["WH"], num_instances=128)
