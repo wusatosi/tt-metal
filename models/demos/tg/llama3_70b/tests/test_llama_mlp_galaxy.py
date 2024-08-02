@@ -150,7 +150,7 @@ def run_test_LlamaMLP_inference(
 @pytest.mark.parametrize(
     "llama_version, pcc",
     (
-        # ("llama3", 0.9997),
+        ("llama3", 0.9997),
         ("llama3-405b", 0.9999),
     ),
 )
