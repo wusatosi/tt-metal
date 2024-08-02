@@ -44,10 +44,9 @@ def tt_llama_mlp_prepare_inputs(llama_mlp_model, x):
         num_users = 32
         M, K = num_users, llama_mlp_model.model_config["HIDDEN_SIZE"] // llama_mlp_model.cluster_shape[0]
 
-        core_grid = ttnn.CoreGrid(y=1, x=8)
         act_mem_config = ttnn.create_sharded_memory_config(
-            shape=(M // core_grid.y, K // core_grid.x),
-            core_grid=core_grid,
+            shape=(M // llama_mlp_model.mm_core_grid.y, K // llama_mlp_model.mm_core_grid.x),
+            core_grid=llama_mlp_model.mm_core_grid,
             strategy=ttnn.ShardStrategy.WIDTH,
             orientation=ttnn.ShardOrientation.ROW_MAJOR,
             use_height_and_width_as_shard_shape=True,
@@ -101,8 +100,8 @@ def run_test_LlamaMLP_inference(
     pt_inp = hugging_face_reference_model.tok_embeddings(pt_inp_ids)
     pt_inp_normed = hugging_face_reference_model.layers[UNIT_TEST_LAYER_NUM].ffn_norm(pt_inp)
     if model_config["LLM_MODE"] == "decode":
-        # shape should be (1, seq_len, batch, dim)
-        pt_inp_normed = pt_inp_normed.unsqueeze(1).permute(2, 1, 0, 3)
+        # (batch, seq_len, dim) -> (1, seq_len, batch, dim)
+        pt_inp_normed = pt_inp_normed.unsqueeze(0).permute(0, 2, 1, 3)
     else:
         pt_inp_normed = pt_inp_normed.unsqueeze(0)
 
@@ -149,16 +148,15 @@ def run_test_LlamaMLP_inference(
     "cluster_shape, device_mesh", [pytest.param((4, 8), (8, 4), id="4x8_grid")], indirect=["device_mesh"]
 )
 @pytest.mark.parametrize(
-    "llama_version",
+    "llama_version, pcc",
     (
-        # ("llama2"),
-        ("llama3"),
-        # ("llama3-405b"),
+        # ("llama3", 0.9997),
+        ("llama3-405b", 0.9999),
     ),
 )
 @pytest.mark.parametrize(
-    "batch, seq_len, pcc",
-    [(32, 1, 0.9997)],
+    "batch, seq_len",
+    [(32, 1)],
     ids=["decode"],
 )
 @pytest.mark.parametrize(

@@ -115,24 +115,26 @@ class TtLlamaMLP_galaxy:
                     full_grid,
                     [
                         32,
-                        nearest_32(56),
+                        nearest_32(self.model_config["FFN_EXPANDED_HIDDEN_SIZE"] // self.cluster_shape[1] // 64),
                     ],
                     ttnn.ShardOrientation.ROW_MAJOR,
                     False,
                 ),
             )
 
+            self.mm_core_grid = ttnn.CoreGrid(y=1, x=8)
+
             self.FF2_ACT_MEMCFG = ttnn.create_sharded_memory_config(
-                shape=(M, N // 8),
-                core_grid=ttnn.CoreGrid(y=1, x=8),
+                shape=(M, N // self.cluster_shape[1]),
+                core_grid=self.mm_core_grid,
                 strategy=ttnn.ShardStrategy.WIDTH,
                 orientation=ttnn.ShardOrientation.ROW_MAJOR,
                 use_height_and_width_as_shard_shape=True,
             )
 
             self.FF1_ACT_MEMCFG = ttnn.create_sharded_memory_config(
-                shape=(32, 2048 // 8),
-                core_grid=ttnn.CoreGrid(y=1, x=8),
+                shape=(32, K // self.cluster_shape[1]),
+                core_grid=self.mm_core_grid,
                 strategy=ttnn.ShardStrategy.WIDTH,
                 orientation=ttnn.ShardOrientation.ROW_MAJOR,
                 use_height_and_width_as_shard_shape=True,
@@ -212,7 +214,7 @@ class TtLlamaMLP_galaxy:
             x,
             self.w1,
             # program_config=self.FF1_DRAM_SHARDED_PROGCFG,
-            core_grid=ttnn.CoreGrid(y=1, x=8),
+            core_grid=self.mm_core_grid,
             compute_kernel_config=self.COMPUTE_KERNEL_LOFI,
             dtype=ttnn.bfloat16,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
@@ -222,7 +224,7 @@ class TtLlamaMLP_galaxy:
             x,
             self.w3,
             # program_config=self.FF1_DRAM_SHARDED_PROGCFG,  # TODO: Reenable when DRAM-SHARDED PCC issues resolves
-            core_grid=ttnn.CoreGrid(y=1, x=8),
+            core_grid=self.mm_core_grid,
             compute_kernel_config=self.COMPUTE_KERNEL_LOFI,
             dtype=ttnn.bfloat16,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
@@ -255,7 +257,7 @@ class TtLlamaMLP_galaxy:
             hidden_states,
             self.w2,
             # program_config=self.FF2_DRAM_SHARDED_PROGCFG,  # TODO: Reenable when DRAM-SHARDED PCC issues resolves
-            core_grid=ttnn.CoreGrid(y=1, x=8),
+            core_grid=self.mm_core_grid,
             compute_kernel_config=self.COMPUTE_KERNEL_LOFI,
             dtype=ttnn.bfloat16,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,

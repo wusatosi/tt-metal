@@ -39,6 +39,8 @@ def get_model_config(
     assert batch <= max_batch_size
     assert seq_len <= max_context_len
 
+    model_config_entries = all_model_config_entries[llama_version]
+
     seq_tiles = seq_len // 32
 
     DRAM_MEMCFG = ttl.tensor.MemoryConfig(ttl.tensor.TensorMemoryLayout.INTERLEAVED, ttl.tensor.BufferType.DRAM)
@@ -110,16 +112,12 @@ def get_model_config(
         "BLOCK_SHARDED_MEMCFG": BLOCK_SHARDED_MEMCFG,
         "MAX_MM_SEQ_LEN": 1024,  # Used to support seq len greater than 2k
         "HIDDEN_SIZE": model_config_entries["hidden_size"],
+        "FFN_EXPANDED_HIDDEN_SIZE": model_config_entries["mlp_dim"],
     }
     hidden_size = model_config_entries["hidden_size"]
     head_dim = model_config_entries["head_dim"]
     n_heads = model_config_entries["num_attention_heads"]
     n_kv_heads = model_config_entries["num_kv_heads"]
-
-    if llama_version == "llama3":
-        model_config["FFN_EXPANDED_HIDDEN_SIZE"] = 28 * 1024
-    elif llama_version == "llama3-405b":
-        model_config["FFN_EXPANDED_HIDDEN_SIZE"] = 52 * 1024
 
     shard_spec_64_cores_grid = ttl.tensor.CoreRangeSet(
         {
@@ -658,16 +656,31 @@ def get_model_config(
     return model_config
 
 
-model_config_entries = {
-    "hidden_size": 8192,
-    "head_dim": 128,
-    "num_attention_heads": 64,
-    "num_kv_heads": 8,
-    "num_layers": 80,
-    "weight_cache": True,
-    "vocab_size": 32000,
-    "padded_vocab_size": 32768,
-    "mlp_dim": 28672,
-    "padded_mlp_dim": 32768,
-    "layer_norm_epsilon": 1e-05,
+all_model_config_entries = {
+    "llama3": {
+        "hidden_size": 8192,
+        "head_dim": 128,
+        "num_attention_heads": 64,
+        "num_kv_heads": 8,
+        "num_layers": 80,
+        "weight_cache": True,
+        "vocab_size": 32000,
+        "padded_vocab_size": 32768,
+        "mlp_dim": 28672,
+        "padded_mlp_dim": 32768,
+        "layer_norm_epsilon": 1e-05,
+    },
+    "llama3-405b": {
+        "hidden_size": 16 * 1024,
+        "head_dim": 128,
+        "num_attention_heads": 128,
+        "num_kv_heads": 8,
+        "num_layers": 126,
+        "weight_cache": True,
+        "vocab_size": 32000,
+        "padded_vocab_size": 32768,
+        "mlp_dim": 52 * 1024,
+        "padded_mlp_dim": 64 * 1024,
+        "layer_norm_epsilon": 1e-05,
+    },
 }
