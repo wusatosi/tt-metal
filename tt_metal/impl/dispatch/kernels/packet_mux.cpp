@@ -137,7 +137,6 @@ constexpr uint32_t input_packetize_dest_endpoint[MAX_SWITCH_FAN_IN] =
         (get_compile_time_arg_val(24) >> 24) & 0xFF
     };
 
-
 void kernel_main() {
 
     write_test_results(test_results, PQ_TEST_STATUS_INDEX, PACKET_QUEUE_TEST_STARTED);
@@ -176,6 +175,7 @@ void kernel_main() {
     uint32_t progress_timestamp = start_timestamp & 0xFFFFFFFF;
     uint32_t heartbeat = 0;
     while (!dest_finished && !timeout) {
+	DeviceZoneScopedND("PACKET-MUX");
         IDLE_ERISC_HEARTBEAT_AND_RETURN(heartbeat);
         iter++;
         if (timeout_cycles > 0) {

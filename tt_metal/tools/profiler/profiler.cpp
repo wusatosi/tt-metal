@@ -23,12 +23,13 @@ namespace tt {
 namespace tt_metal {
 
 void DeviceProfiler::readRiscProfilerResults(
-        int device_id,
+        Device *device,
         const std::vector<std::uint32_t> &profile_buffer,
         const CoreCoord &worker_core
         ){
 
     ZoneScoped;
+    auto device_id = device->id();
 
     HalProgrammableCoreType CoreType;
     int riscCount;
@@ -36,15 +37,16 @@ void DeviceProfiler::readRiscProfilerResults(
 
     const metal_SocDescriptor& soc_d = tt::Cluster::instance().get_soc_desc(device_id);
     auto ethCores = soc_d.get_physical_ethernet_cores() ;
+
+    profiler_msg = device->get_dev_addr<profiler_msg_t *>(worker_core, HalL1MemAddrType::PROFILER);
+
     if (std::find(ethCores.begin(), ethCores.end(), worker_core) == ethCores.end())
     {
-        profiler_msg = hal.get_dev_addr<profiler_msg_t *>(HalProgrammableCoreType::TENSIX, HalL1MemAddrType::PROFILER);
         CoreType = HalProgrammableCoreType::TENSIX;
         riscCount = 5;
     }
     else
     {
-        profiler_msg = hal.get_dev_addr<profiler_msg_t *>(HalProgrammableCoreType::ACTIVE_ETH, HalL1MemAddrType::PROFILER);
         CoreType = HalProgrammableCoreType::ACTIVE_ETH;
         riscCount = 1;
     }
@@ -412,7 +414,7 @@ void DeviceProfiler::dumpResults (
 
         for (const auto &worker_core : worker_cores) {
             readRiscProfilerResults(
-                device_id,
+                device,
                 profile_buffer,
                 worker_core);
 

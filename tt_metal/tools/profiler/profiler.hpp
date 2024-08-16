@@ -80,7 +80,7 @@ class DeviceProfiler {
 
         // Helper function for reading risc profile results
         void readRiscProfilerResults(
-                int device_id,
+                Device *device,
                 const std::vector<std::uint32_t> &profile_buffer,
                 const CoreCoord &worker_core);
 

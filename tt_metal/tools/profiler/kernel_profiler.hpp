@@ -6,7 +6,7 @@
 
 #include <climits>
 
-#if defined(COMPILE_FOR_NCRISC) || defined(COMPILE_FOR_BRISC) || defined(COMPILE_FOR_ERISC) || defined (COMPILE_FOR_IDLE_ERISC)
+#if defined(COMPILE_FOR_NCRISC) || defined(COMPILE_FOR_BRISC) || defined(COMPILE_FOR_ERISC) || defined(COMPILE_FOR_IDLE_ERISC)
 #include "risc_common.h"
 #include "dataflow_api.h"
 #else
@@ -29,7 +29,7 @@
 
 #define SrcLocNameToHash( name ) DO_PRAGMA(message(PROFILER_MSG_NAME(name))); auto constexpr hash = kernel_profiler::Hash16_CT(PROFILER_MSG_NAME( name ));
 
-#if  defined(PROFILE_KERNEL) && ( !defined(DISPATCH_KERNEL) || (defined(DISPATCH_KERNEL) && defined(COMPILE_FOR_NCRISC) && (PROFILE_KERNEL == PROFILER_OPT_DO_DISPATCH_CORES)))
+#if  defined(PROFILE_KERNEL) && ( !defined(DISPATCH_KERNEL) || (defined(DISPATCH_KERNEL) && (defined(COMPILE_FOR_NCRISC) || defined(COMPILE_FOR_IDLE_ERISC) || defined(COMPILE_FOR_ERISC)) && (PROFILE_KERNEL == PROFILER_OPT_DO_DISPATCH_CORES)))
 namespace kernel_profiler{
 
     extern uint32_t wIndex;
@@ -71,6 +71,12 @@ namespace kernel_profiler{
         auto res = Hash32_CT( s, N - 1 );
         return ((res & 0xFFFF) ^ ((res & 0xFFFF0000) >> 16)) & 0xFFFF;
     }
+
+    enum class DoingDispatch
+    {
+        DISPATCH,
+        NOT_DISPATCH
+    };
 
     __attribute__((noinline)) void init_profiler(uint16_t briscKernelID = 0, uint16_t ncriscKernelID = 0, uint16_t triscsKernelID = 0)
     {
@@ -183,7 +189,7 @@ namespace kernel_profiler{
     __attribute__((noinline)) void finish_profiler()
     {
         risc_finished_profiling();
-#if defined(COMPILE_FOR_ERISC) || defined (COMPILE_FOR_IDLE_ERISC) || defined(COMPILE_FOR_BRISC)
+#if defined(COMPILE_FOR_ERISC) || defined(COMPILE_FOR_IDLE_ERISC) || defined(COMPILE_FOR_BRISC)
         if (profiler_control_buffer[PROFILER_DONE] == 1){
             return;
         }
@@ -259,9 +265,9 @@ namespace kernel_profiler{
 #endif
     }
 
-    inline __attribute__((always_inline)) void quick_push ()
+    __attribute__((noinline)) void quick_push ()
     {
-#if defined(DISPATCH_KERNEL) && defined(COMPILE_FOR_NCRISC) && (PROFILE_KERNEL == PROFILER_OPT_DO_DISPATCH_CORES)
+#if defined(DISPATCH_KERNEL) && (defined(COMPILE_FOR_NCRISC) || defined(COMPILE_FOR_ERISC) || defined(COMPILE_FOR_IDLE_ERISC)) && (PROFILE_KERNEL == PROFILER_OPT_DO_DISPATCH_CORES)
         SrcLocNameToHash("PROFILER-NOC-QUICK-SEND");
         mark_time_at_index_inlined(wIndex, hash);
         wIndex += PROFILER_L1_MARKER_UINT32_SIZE;
@@ -287,6 +293,10 @@ namespace kernel_profiler{
         mark_time_at_index_inlined(wIndex, get_end_timer_id(hash));
         wIndex += PROFILER_L1_MARKER_UINT32_SIZE;
 
+	for (uint32_t i = 0; i < (wIndex % NOC_ALIGNMENT_FACTOR); i++)
+	{
+	    mark_padding();
+	}
         uint32_t currEndIndex = profiler_control_buffer[HOST_BUFFER_END_INDEX_BR_ER + myRiscID] + wIndex;
 
         if ( currEndIndex <= PROFILER_FULL_HOST_VECTOR_SIZE_PER_RISC)
@@ -296,6 +306,7 @@ namespace kernel_profiler{
                     dram_bank_dst_noc_addr,
                     wIndex * sizeof(uint32_t));
 
+	    noc_async_write_barrier();
             profiler_control_buffer[HOST_BUFFER_END_INDEX_BR_ER + myRiscID] = currEndIndex;
 
         }
@@ -310,14 +321,15 @@ namespace kernel_profiler{
     }
 
 
-    template<uint32_t timer_id, bool dispatch = false>
+    template<uint32_t timer_id,
+        DoingDispatch dispatch = DoingDispatch::NOT_DISPATCH>
     struct profileScope
     {
         bool start_marked = false;
         inline __attribute__((always_inline)) profileScope ()
         {
             bool bufferHasRoom = false;
-            if constexpr (dispatch)
+            if constexpr (dispatch == DoingDispatch::DISPATCH)
             {
                 bufferHasRoom = wIndex < (PROFILER_L1_VECTOR_SIZE - stackSize - (QUICK_PUSH_MARKER_COUNT * PROFILER_L1_MARKER_UINT32_SIZE));
             }
@@ -345,7 +357,7 @@ namespace kernel_profiler{
                 stackSize -= PROFILER_L1_MARKER_UINT32_SIZE;
             }
 
-            if constexpr (dispatch)
+            if constexpr (dispatch == DoingDispatch::DISPATCH)
             {
                 if (wIndex >= (PROFILER_L1_VECTOR_SIZE - (QUICK_PUSH_MARKER_COUNT * PROFILER_L1_MARKER_UINT32_SIZE)))
                 {
@@ -403,9 +415,9 @@ namespace kernel_profiler{
 
 #define DeviceZoneScopedN( name ) DO_PRAGMA(message(PROFILER_MSG_NAME(name))); auto constexpr hash = kernel_profiler::Hash16_CT(PROFILER_MSG_NAME(name)); kernel_profiler::profileScope<hash> zone = kernel_profiler::profileScope<hash>();
 
-#if (defined(DISPATCH_KERNEL) && defined(COMPILE_FOR_NCRISC) && (PROFILE_KERNEL == PROFILER_OPT_DO_DISPATCH_CORES))
+#if (defined(DISPATCH_KERNEL) && (defined(COMPILE_FOR_NCRISC) || defined(COMPILE_FOR_IDLE_ERISC) || defined(COMPILE_FOR_ERISC)) && (PROFILE_KERNEL == PROFILER_OPT_DO_DISPATCH_CORES))
 
-#define DeviceZoneScopedND( name ) DO_PRAGMA(message(PROFILER_MSG_NAME(name))); auto constexpr hash = kernel_profiler::Hash16_CT(PROFILER_MSG_NAME(name)); kernel_profiler::profileScope<hash,true> zone = kernel_profiler::profileScope<hash,true>();
+#define DeviceZoneScopedND( name ) DO_PRAGMA(message(PROFILER_MSG_NAME(name))); auto constexpr hash = kernel_profiler::Hash16_CT(PROFILER_MSG_NAME(name)); kernel_profiler::profileScope<hash, kernel_profiler::DoingDispatch::DISPATCH> zone = kernel_profiler::profileScope<hash, kernel_profiler::DoingDispatch::DISPATCH>();
 
 #else
 
