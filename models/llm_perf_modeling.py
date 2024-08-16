@@ -291,9 +291,7 @@ class TransformerModel:
         if estimates_per_user["max_num_users_that_fit_in_memory"] < num_users:
             estimates_per_batch["time_to_first_token(ms)"] = -1
         else:
-            estimates_per_batch["time_to_first_token(ms)"] = (
-                estimates_per_batch["decode_latency(ms)"] + estimates_per_batch["prefill_latency(ms)"]
-            )
+            estimates_per_batch["time_to_first_token(ms)"] = estimates_per_batch["prefill_latency(ms)"]
 
         ############################
         # time_to_last_token(ms) #
@@ -648,7 +646,6 @@ def main():
         new_estimates,
         estimates_to_print={
             "max_kv_cache_size_per_user(GB)",
-            "prefill_latency(ms)",
             "decode_compute_latency(ms)",
             "decode_memory_latency(ms)",
             "decode_latency(ms)",
