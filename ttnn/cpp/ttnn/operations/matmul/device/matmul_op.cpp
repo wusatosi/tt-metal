@@ -863,10 +863,21 @@ void add_stagger_defines_if_needed(
     // Apply stagger delay on Wormhole B0 on odd rows, so that only half of cores start doing work at once.
     // This is done to mitigate di/dt issues, in case the environment var is set.
     // See issue #9857.
-    const bool enable_stagger = std::getenv("TT_ENABLE_MATMUL_STAGGER");
-    if (enable_stagger && arch == tt::ARCH::WORMHOLE_B0 && num_cores > WH_B0_MM_MAX_CORES_NO_STAGGER) {
-        mm_kernel_defines["MM_STAGGER_ODD_ROWS"] = "1";
-        log_warning(tt::LogOp, "Stagger enabled for matmul op using {} cores.", num_cores);
+    const char* stagger_type = std::getenv("TT_MATMUL_STAGGER_TYPE");
+    const char* stagger_value = std::getenv("TT_MATMUL_STAGGER_VALUE");
+    if (stagger_type && arch == tt::ARCH::WORMHOLE_B0 && num_cores > WH_B0_MM_MAX_CORES_NO_STAGGER) {
+        // TODO check range for stagger_type
+        mm_kernel_defines["MM_STAGGER_TYPE"] = stagger_type;
+
+        if(stagger_value == nullptr){
+            log_warning(tt::LogOp, "Using default stagger value: {}.", 0);
+            mm_kernel_defines["MM_STAGGER_VALUE"] = "0";
+        }
+        else {
+            log_warning(tt::LogOp, "Using stagger value: {}.", stagger_value);
+            mm_kernel_defines["MM_STAGGER_VALUE"] = stagger_value;
+        }
+        log_warning(tt::LogOp, "Stagger type {} enabled for matmul op using {} cores.", stagger_type, num_cores);
     }
 }
 
