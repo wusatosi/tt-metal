@@ -123,8 +123,10 @@ operation::ProgramWithCallbacks sdpa_multi_core(
         }
     }, program_config);
 
-    auto core_grid = CoreRange({0, 0}, {grid_size.x - 1, grid_size.y - 1});
-    uint32_t num_cores = grid_size.x * grid_size.y;
+    // auto core_grid = CoreRange({0, 0}, {grid_size.x - 1, grid_size.y - 1});
+    // uint32_t num_cores = grid_size.x * grid_size.y;
+    auto core_grid =  CoreRange({0, 0}, {0,0});
+    uint32_t num_cores = 1;
 
     TT_FATAL(num_cores <= device->compute_with_storage_grid_size().x * device->compute_with_storage_grid_size().y);
 

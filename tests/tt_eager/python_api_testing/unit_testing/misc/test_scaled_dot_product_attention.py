@@ -131,12 +131,10 @@ def run_test_sdpa_tt_ND(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dt
     # K = torch.ones(b, nkv, s, d)
     # V = torch.ones(b, nkv, s, d)
 
-    Q = torch.zeros(b, nh, s, d)
-    K = torch.zeros(b, nkv, s, d)
-    # V = torch.ones(b, nkv, s, d)
-    V = torch.zeros(b, nkv, s, d)
-    # V[:,:,:32,:] = 1
-    V = torch.eye(s, d).expand(b, nkv, s, d)
+    Q = torch.eye(s, d).expand(b, nh, s, d) * 5
+    K = torch.eye(s, d).expand(b, nkv, s, d) * 7
+    V = torch.eye(s, d).expand(b, nkv, s, d) * 9
+
     # V is diagonal matrix from 1 to d
     # V = torch.zeros(b, nkv, s, d)
     # for i in range(d):
@@ -169,21 +167,24 @@ def run_test_sdpa_tt_ND(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dt
     )
 
     diff_pccs = []
+    torch.set_printoptions(profile="full")
     for idx in tqdm(range(100000)):
         tt_back = tt_lib.operations.primary.transformers.scaled_dot_product_attention(
             tt_Q, tt_K, tt_V, tt_attn_mask, is_causal=True, program_config=program_config
         )
         tt_back = tt_back.cpu().to(tt_lib.tensor.Layout.ROW_MAJOR).to_torch()
-
         out_pass, out_pcc = comp_pcc(gt, tt_back, 0.994)
         if idx == 0:
+            print(tt_back)
             expected_pcc = out_pcc
             expected_tt = tt_back
             print(f"First iteration PCC: {out_pcc}")
         else:
             if out_pcc != expected_pcc:
+                print(tt_back)
                 diff_pccs.append(out_pcc)
                 logger.info(f"failed ND PCC check on iter {idx}: {out_pcc}")
+                assert False
                 breakpoint()
         # logger.debug(f"python vs pytorch: {out_pcc}")
         # assert out_pass

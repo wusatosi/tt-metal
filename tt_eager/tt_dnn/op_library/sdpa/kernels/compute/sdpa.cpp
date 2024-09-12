@@ -18,17 +18,16 @@
 #include "debug/dprint.h"
 #include "debug/assert.h"
 
+#define DEBUG 1
 
 namespace NAMESPACE {
-#define DEBUG 0
-#if DEBUG
 inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
-    PACK(( DPRINT << "======" << ENDL() ));
+    PACK( DPRINT << "======" << ENDL() );
     for (uint16_t r = 0; r < 32; ++ r) {
         SliceRange sr = SliceRange{.h0 = r, .h1 = (uint16_t)(r+1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
-        PACK(( DPRINT << (uint)r << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL() ));
+        PACK( DPRINT << (uint)r << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL() );
     }
-    PACK(( DPRINT << "++++++" << ENDL() ));
+    PACK( DPRINT << "++++++" << ENDL() );
 }
 
 inline void print_cb_details(uint32_t cb_id) {
@@ -41,7 +40,6 @@ inline void print_cb_details(uint32_t cb_id) {
             << "wr_ptr: " << cb_interface[cb_id].fifo_wr_ptr << ", "
             << "wr_tile_ptr: " << cb_interface[cb_id].fifo_wr_tile_ptr << " }" << ENDL());
 }
-#endif
 
 float bfloat16_to_float32(uint16_t bfloat16_value) {
     uint32_t sign = (bfloat16_value & 0x8000) << 16;
@@ -116,9 +114,10 @@ void reduce_c() {
     // Postcondition: in0_cb has rows*cols produced
     // Precondition: scale_cb has 1 produced
     // Postcondition: out_cb has rows produced
-
+    // DPRINT << "CALLED " << " r " << rows << " c " << cols;
+    // called 2 rows 2 col 4
     // reduce_init_delta<false, pool_type, reduce_dim>(pool_type, reduce_dim, in0_cb, scale_cb, out_cb);
-    MATH(( llk_math_eltwise_binary_init<ELWADD, NONE, MATH_FIDELITY>() ));
+    MATH(( llk_math_eltwise_binary_init<ELWMUL, NONE, MATH_FIDELITY>() ));
     UNPACK(( llk_unpack_AB_init<BroadcastType::NONE>(in0_cb, scale_cb) ));
     // MATH(( llk_math_eltwise_unary_datacopy_init<A2D>(0,0, scale_cb) ));
     // UNPACK(( llk_unpack_A_init(0,0, scale_cb) ));
@@ -137,7 +136,7 @@ void reduce_c() {
         for (uint32_t j = 0; j < cols; j++) {
 
             // MATH(( llk_math_reduce<pool_type, reduce_dim, MATH_FIDELITY, DST_ACCUM_MODE>(0) ));
-            MATH(( llk_math_eltwise_binary<ELWADD, NONE, MATH_FIDELITY, EltwiseBinaryReuseDestType::NONE, DST_ACCUM_MODE>(0, 0, 0) ));
+            MATH(( llk_math_eltwise_binary<ELWMUL, NONE, MATH_FIDELITY, EltwiseBinaryReuseDestType::NONE, DST_ACCUM_MODE>(0, 0, 0) ));
             // MATH(( llk_math_reduce<pool_type, reduce_dim, MATH_FIDELITY, DST_ACCUM_MODE>(0) ));
             UNPACK(( llk_unpack_AB(in0_cb, scale_cb, 0, 0) ));
             // reduce_tile<pool_type, reduce_dim>(in0_cb, scale_cb, 0, 0, 0);
@@ -148,8 +147,9 @@ void reduce_c() {
 
         cb_reserve_back(out_cb, 1);
         pack_tile(reduce_dst_idx, out_cb);
-        // cb_push_back(out_cb, 1);
+        cb_push_back(out_cb, 1);
         release_dst(tt::DstMode::Half);
+        //print_full_tile(out_cb,i);
     }
     // tensix_sync();
 

@@ -58,7 +58,9 @@ void kernel_main() {
 
     generate_bcast_unary_scalar(cb_scale_in, scale_val);
     // generate_reduce_scaler(cb_identity_scale_in, identity_scalar_packed);
-    generate_reduce_scaler(cb_identity_scale_in, 0x7F800000);
+    // generate_reduce_scaler(cb_identity_scale_in, 0x3F803F80);
+    // generate_reduce_scaler(cb_identity_scale_in, 0x00000000);
+    generate_reduce_scaler(cb_identity_scale_in, 0x40404040);
 
     uint32_t out_tile_id = 0;
 
