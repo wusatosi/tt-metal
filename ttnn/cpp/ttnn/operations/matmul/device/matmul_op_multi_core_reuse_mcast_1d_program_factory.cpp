@@ -349,6 +349,7 @@ operation::ProgramWithCallbacks create_program_mcast_in0(
     }
 
     bmm_op_utils::add_stagger_defines_if_needed(device->arch(), num_cores, mm_kernel_defines);
+    bmm_op_utils::add_mm_throttle_defines_if_needed(device->arch(), math_fidelity, mm_kernel_defines);
 
     if (output_is_sharded) {
         mm_kernel_in1_sender_writer_defines["OUT_SHARDED"] = "1";
@@ -1093,6 +1094,7 @@ operation::ProgramWithCallbacks create_program_mcast_in1(
     }
 
     bmm_op_utils::add_stagger_defines_if_needed(device->arch(), num_cores, mm_kernel_defines);
+    bmm_op_utils::add_mm_throttle_defines_if_needed(device->arch(), math_fidelity, mm_kernel_defines);
 
     if (in0_is_sharded) {
         mm_kernel_in0_sender_defines["IN0_SHARDED"] = "1";
