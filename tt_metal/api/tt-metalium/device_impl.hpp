@@ -203,6 +203,8 @@ public:
 
     bool is_mmio_capable() const override;
 
+    void allocate_dram_debug_buffer();
+
 private:
     static constexpr uint32_t DEFAULT_NUM_SUB_DEVICES = 1;
 
@@ -274,6 +276,8 @@ private:
     uint32_t trace_buffers_size_ = 0;
     bool uninitialized_error_fired_ =
         false;  // To avoid spam with warnings about calling Device methods when it's not initialized.
+
+    std::shared_ptr<Buffer> dram_debug_buffer_;
 };
 
 }  // namespace v0

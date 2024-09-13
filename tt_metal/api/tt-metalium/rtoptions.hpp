@@ -138,6 +138,8 @@ class RunTimeOptions {
     bool simulator_enabled = false;
     std::filesystem::path simulator_path = "";
 
+    uint32_t arc_debug_buffer_size = 0;
+
     RunTimeOptions();
 
 public:
@@ -316,6 +318,9 @@ public:
 
     inline bool get_simulator_enabled() { return simulator_enabled; }
     inline const std::filesystem::path& get_simulator_path() { return simulator_path; }
+
+    inline uint32_t get_arc_debug_buffer_size() { return arc_debug_buffer_size; }
+    inline void set_arc_debug_buffer_size(uint32_t size) { arc_debug_buffer_size = size; }
 
 private:
     // Helper functions to parse feature-specific environment vaiables.
