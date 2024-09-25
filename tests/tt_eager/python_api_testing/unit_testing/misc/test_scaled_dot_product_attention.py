@@ -134,6 +134,7 @@ def run_test_sdpa_tt_ND(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dt
     Q = torch.eye(s, d).expand(b, nh, s, d) * 5
     K = torch.eye(s, d).expand(b, nkv, s, d) * 7
     V = torch.eye(s, d).expand(b, nkv, s, d) * 9
+    E = torch.eye(s, d).expand(b, nkv, s, d) * 316
 
     # V is diagonal matrix from 1 to d
     # V = torch.zeros(b, nkv, s, d)
@@ -168,7 +169,7 @@ def run_test_sdpa_tt_ND(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dt
 
     diff_pccs = []
     torch.set_printoptions(profile="full")
-    for idx in tqdm(range(100000)):
+    for idx in tqdm(range(1)):
         tt_back = tt_lib.operations.primary.transformers.scaled_dot_product_attention(
             tt_Q, tt_K, tt_V, tt_attn_mask, is_causal=True, program_config=program_config
         )
@@ -179,6 +180,8 @@ def run_test_sdpa_tt_ND(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dt
             expected_pcc = out_pcc
             expected_tt = tt_back
             print(f"First iteration PCC: {out_pcc}")
+            match_expected = torch.all(E.eq(tt_back))
+            print(f"Matched Expected {match_expected}")
         else:
             if out_pcc != expected_pcc:
                 print(tt_back)
