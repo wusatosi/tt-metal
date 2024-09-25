@@ -16,6 +16,8 @@
 #include "tt_metal/detail/util.hpp"
 
 #include <optional>
+#include <cstdlib>
+#include <iostream>
 
 using namespace tt::constants;
 using namespace tt::tt_metal;
@@ -160,7 +162,7 @@ operation::ProgramWithCallbacks sdpa_multi_core(
     uint32_t mask_tiles = Sq_chunk_t * Sk_chunk_t * 2; // double buffer
     uint32_t qk_tiles = Sq_chunk_t * Sk_chunk_t;
     uint32_t out_im_tiles = Sq_chunk_t * DHt;
-    uint32_t out0_t = Sq_chunk_t * DHt;
+    uint32_t out0_t = Sq_chunk_t * DHt *2;
     uint32_t scale_tiles = 1;
     uint32_t statistics_tiles = Sq_chunk_t; // Single column of values in each iteration
 
@@ -274,6 +276,7 @@ operation::ProgramWithCallbacks sdpa_multi_core(
     };
 
     std::map<string, string> defines;
+    std::map<string, string> compute_defines;
     defines["STATS_GRANULARITY"] = std::to_string(stats_granularity);
     defines["LOG2_STATS_GRANULARITY"] = std::to_string(log2_stats_granularity);
     defines["SUB_EXP_GRANULARITY"] = std::to_string(sub_exp_granularity);
@@ -304,12 +307,20 @@ operation::ProgramWithCallbacks sdpa_multi_core(
             defines
     ));
 
+    const bool enable_nops = std::getenv("TT_NOP_INSERT");
+    if(enable_nops) {
+        const uint32_t num_nops = enable_nops ? std::stoi( std::getenv("TT_NOP_INSERT") ) : 0;
+        std::cout << "Should insert nops # " << num_nops << std::endl;
+	compute_defines["MM_ADD_NOPS"] = "1";
+	compute_defines["MM_NUM_NOPS"] = std::to_string(num_nops);
+    }
+
     auto compute_kernels_id = CreateKernel(
         program, "tt_eager/tt_dnn/op_library/sdpa/kernels/compute/sdpa.cpp", core_grid,
         tt_metal::ComputeConfig{
             .math_fidelity = math_fidelity, .fp32_dest_acc_en = fp32_dest_acc_en, .math_approx_mode = math_approx_mode,
             .compile_args = compute_compile_time_args,
-            .defines = defines
+            .defines = compute_defines
     });
 
     // Create circular buffers

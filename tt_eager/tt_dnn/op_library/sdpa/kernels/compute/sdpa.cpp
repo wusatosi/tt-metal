@@ -128,6 +128,12 @@ void reduce_c() {
 //    tensix_sync(); UNCOMMENT FOR DETERMINISM
 }
 
+inline void add_nops(const int num_nops) {
+	for(int i = 0; i < num_nops; i++) {
+		TTI_NOP;
+        }
+}
+
 void matmul_blocks(const uint32_t& in0_cb, const uint32_t& in1_cb, const uint32_t& out_cb, const uint32_t& M, const uint32_t& N, const uint32_t& K, const uint32_t& num_blocks, const uint32_t& in0_num_subblocks, const uint32_t& in1_num_subblocks,
                     const uint32_t& in0_block_w, const uint32_t& subblock_h, const uint32_t& subblock_w, const bool& transpose) {
     // precondition: in0_cb has M*K produced
@@ -139,6 +145,10 @@ void matmul_blocks(const uint32_t& in0_cb, const uint32_t& in1_cb, const uint32_
 
     unpack_reconfig_data_format(in1_cb, in0_cb);
     // cb_wait_front(in1_cb, K * N);
+    #ifdef MM_ADD_NOPS
+    UNPACK(DPRINT<<MM_NUM_NOPS << "\n");
+    UNPACK(add_nops(MM_NUM_NOPS));
+    #endif
 
     uint32_t output_num_tiles = M * N;
     uint32_t out_subblock_num_tiles = subblock_h * subblock_w;
