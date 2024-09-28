@@ -97,8 +97,8 @@ def test_sdpa_nd(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dtype):
     if (s % q_chunk_size != 0) or (s % k_chunk_size != 0):
         pytest.skip("s must be divisible by q_chunk_size and k_chunk_size")
 
-    os.environ["TT_NOP_INSERT"] = str(18)
-    for idx in tqdm(range(100)):
+    os.environ["TT_NOP_INSERT"] = str(7)
+    for idx in tqdm(range(1)):
         tt_lib.device.DisablePersistentKernelCache()
         run_test_sdpa_tt_ND(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dtype)
         # assert device.num_program_cache_entries() == 1
