@@ -37,6 +37,7 @@ set (TT_METAL_TESTS
     test_core_range_set
     test_compile_sets_kernel_binaries
     test_compile_program
+    test_sdpa_nd_bug
 )
 
 foreach (TEST ${TT_METAL_TESTS})
