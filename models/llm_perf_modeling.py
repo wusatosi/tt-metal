@@ -441,7 +441,7 @@ def create_chips():
     chips["H100"] = Chip(
         name="H100",
         peak_memory_bandwidth_gb=3.35 * 1024,
-        flops=4000000,
+        flops=2000000,
         freq=1e9,
         memory_capacity_gb=80,
         memory_efficiency=1,
@@ -451,7 +451,7 @@ def create_chips():
     chips["H200"] = Chip(
         name="H200",
         peak_memory_bandwidth_gb=4.8 * 1024,
-        flops=4000000,
+        flops=2000000,
         freq=1e9,
         memory_capacity_gb=141,
         memory_efficiency=1,
@@ -473,6 +473,8 @@ def create_systems(chips):
     systems["BH_Galaxy_x3"] = System(name="BH_Galaxy_x3", chip=chips["BH"], num_instances=96)
     systems["BH_Galaxy_x4"] = System(name="BH_Galaxy_x4", chip=chips["BH"], num_instances=128)
     systems["BH_Galaxy_x6"] = System(name="BH_Galaxy_x6", chip=chips["BH"], num_instances=192)
+    systems["H100_x1"] = System(name="H100_x1", chip=chips["H100"], num_instances=1)
+    systems["H100_x4"] = System(name="H100_x4", chip=chips["H100"], num_instances=4)
     systems["H100_DGX"] = System(name="H100_DGX", chip=chips["H100"], num_instances=8)
     systems["H200_DGX"] = System(name="H200_DGX", chip=chips["H200"], num_instances=8)
     return systems
