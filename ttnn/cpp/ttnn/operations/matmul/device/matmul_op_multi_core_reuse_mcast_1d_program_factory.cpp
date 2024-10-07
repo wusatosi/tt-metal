@@ -360,6 +360,8 @@ operation::ProgramWithCallbacks create_program_mcast_in0(
     }
 
     bmm_op_utils::add_stagger_defines_if_needed(device->arch(), num_cores, mm_kernel_defines);
+    bmm_op_utils::add_mm_throttle_defines_if_needed(device->arch(), math_fidelity, mm_kernel_defines);
+    bmm_op_utils::add_precision_defines_if_needed(device->arch(), mm_kernel_defines);
 
     if (in1_is_sharded) {
         mm_kernel_in1_sender_writer_defines["IN1_SHARDED"] = "1";
