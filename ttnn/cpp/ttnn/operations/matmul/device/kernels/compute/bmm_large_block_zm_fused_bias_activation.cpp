@@ -15,6 +15,9 @@
 
 #include "compute_kernel_api/eltwise_unary/sfpu_split_includes.h"
 
+#include "tools/profiler/kernel_profiler.hpp"
+#include "dprint.h"
+
 // Please update
 // tests/tt_metal/tt_metal/perf_microbenchmark/1_compute_mm/kernels/bmm_large_block_zm_fused_bias_activation_copy.cpp
 // when making any changes to this file.
@@ -115,6 +118,13 @@ void MAIN {
 
     constexpr uint32_t untilize_mode_out_cb_id = untilize_out ? mm_partials_cb_id : out_cb_id;
 
+    // DPRINT_PACK(DPRINT << "in0_block_w: " << in0_block_w << ENDL());
+    // DPRINT_PACK(DPRINT << "in0_num_subblocks: " << in0_num_subblocks << ENDL());
+    // DPRINT_PACK(DPRINT << "in1_num_subblocks: " << in1_num_subblocks << ENDL());
+    // DPRINT_PACK(DPRINT << "out_subblock_h: " << out_subblock_h << ENDL());
+    // DPRINT_PACK(DPRINT << "out_subblock_w: " << out_subblock_w << ENDL());
+    // DPRINT_PACK(DPRINT << "num_blocks: " << num_blocks << ENDL());
+
 #ifdef FUSE_BIAS
     constexpr uint32_t bias_cb_id = tt::CB::c_in3;
     constexpr uint32_t mm_out_cb_id = mm_partials_cb_id;
@@ -156,6 +166,10 @@ void MAIN {
 
             cb_wait_front(in0_cb_id, in0_block_num_tiles);
             cb_wait_front(in1_cb_id, in1_block_num_tiles);
+
+            {
+                DeviceZoneScopedN("MATH-BLOCK");
+
             int in0_index_subblock_offset = 0;
             for (uint32_t in0_subblock = 0; in0_subblock < in0_num_subblocks; in0_subblock++) {
                 int in1_index_subblock_offset = 0;
@@ -289,7 +303,7 @@ void MAIN {
                 enable_reload = true;
             }
 #endif
-
+            }
             cb_pop_front(in0_cb_id, in0_block_num_tiles);
             cb_pop_front(in1_cb_id, in1_block_num_tiles);
         }
