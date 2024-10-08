@@ -15,6 +15,7 @@
 
 #include "compute_kernel_api/eltwise_unary/sfpu_split_includes.h"
 
+#include "tools/profiler/kernel_profiler.hpp"
 
 // Please update
 // tests/tt_metal/tt_metal/perf_microbenchmark/1_compute_mm/kernels/bmm_large_block_zm_fused_bias_activation_copy.cpp
@@ -162,6 +163,9 @@ void MAIN {
             cb_wait_front(in0_cb_id, in0_block_num_tiles);
             cb_wait_front(in1_cb_id, in1_block_num_tiles);
 
+            {
+                DeviceZoneScopedN("MATH-BLOCK");
+
             int in0_index_subblock_offset = 0;
             for (uint32_t in0_subblock = 0; in0_subblock < in0_num_subblocks; in0_subblock++) {
                 int in1_index_subblock_offset = 0;
@@ -296,7 +300,7 @@ void MAIN {
                 enable_reload = true;
             }
 #endif
-
+            }
             cb_pop_front(in0_cb_id, in0_block_num_tiles);
             cb_pop_front(in1_cb_id, in1_block_num_tiles);
         }
