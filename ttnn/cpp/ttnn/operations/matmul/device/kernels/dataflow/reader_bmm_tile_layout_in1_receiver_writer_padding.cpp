@@ -7,6 +7,8 @@
 #include "dataflow_api.h"
 #include "hostdevcommon/common_values.hpp"
 
+#include "tools/profiler/kernel_profiler.hpp"
+
 void kernel_main() {
     // READER
     // in1 mcast args
@@ -95,6 +97,9 @@ void kernel_main() {
             // Operand 1
             cb_reserve_back(cb_id_in1, in1_block_num_tiles);
 
+            {
+            DeviceZoneScopedN("IN1_REC_WRI_PADD");
+
             // Set in1 semaphore value to INVALID
             noc_semaphore_set(in1_mcast_receiver_semaphore_addr_ptr, INVALID);
 
@@ -105,6 +110,7 @@ void kernel_main() {
             noc_semaphore_wait(in1_mcast_receiver_semaphore_addr_ptr, VALID);
 
             cb_push_back(cb_id_in1, in1_block_num_tiles);
+            }
         }
 
 #ifdef FUSE_BIAS

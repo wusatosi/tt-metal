@@ -10,6 +10,8 @@
 
 #include "ttnn/cpp/ttnn/operations/ccl/kernel_common/worker_sync_utils.hpp"
 
+#include "tools/profiler/kernel_profiler.hpp"
+
 void kernel_main() {
 
     uint32_t rt_args_idx = 0;
@@ -122,9 +124,12 @@ void kernel_main() {
                     in0_tensor_start_tile_id
                 );
             }
+
 #ifndef IN0_SHARDED
             // Operand 0
             cb_reserve_back(cb_id_in0, in0_block_num_tiles);
+            {
+                DeviceZoneScopedN("IN0_SENDER_PADDING");
             uint32_t l1_write_addr_in0 = get_write_ptr(cb_id_in0);
 
 #ifndef SKIP_MCAST
@@ -152,6 +157,8 @@ void kernel_main() {
             if constexpr (extract_shard_sub_blocks) {
                 // Operand 0
                 cb_reserve_back(cb_id_in0, in0_block_num_tiles);
+            {
+                DeviceZoneScopedN("IN0_SENDER_PADDING");
                 uint32_t l1_write_addr_in0 = get_write_ptr(cb_id_in0);
 
 #ifndef SKIP_MCAST
@@ -206,6 +213,7 @@ void kernel_main() {
                 cb_push_back(cb_id_in0, in0_block_num_tiles);
             }
 #endif
+            }
         }
         in0_tensor_start_tile_id += MtKt;
     }

@@ -8,6 +8,8 @@
 #include "hostdevcommon/common_values.hpp"
 #include "ttnn/cpp/ttnn/operations/ccl/kernel_common/worker_sync_utils.hpp"
 
+#include "tools/profiler/kernel_profiler.hpp"
+
 void kernel_main() {
     // READER
     uint32_t rt_args_idx = 0;
@@ -196,9 +198,12 @@ void kernel_main() {
                     in1_tensor_start_tile_id
                 );
             }
+
 #ifdef IN1_DRAM_SHARDED
             // Operand 1
             cb_reserve_back(cb_id_in1, in1_block_num_tiles);
+            {
+                DeviceZoneScopedN("IN1_SENDER_WRITER_PADDING");
 
             uint64_t in1_start_address =
                 get_write_ptr(cb_id_in1);  // copy start address of block, to be used for mcasting
@@ -240,6 +245,9 @@ void kernel_main() {
 #ifndef IN1_SHARDED
             // Operand 1
             cb_reserve_back(cb_id_in1, in1_block_num_tiles);
+
+            {
+                DeviceZoneScopedN("IN1_SENDER_WRITER_PADDING");
             l1_write_addr_in1 = get_write_ptr(cb_id_in1);
 
             uint64_t in1_start_address = l1_write_addr_in1;  // copy start address of block, to be used for mcasting
@@ -294,6 +302,7 @@ void kernel_main() {
 #ifndef IN1_SHARDED
             cb_push_back(cb_id_in1, in1_block_num_tiles);
 #endif
+        }
         }
 #ifdef FUSE_BIAS
         // Only read bias on first batch
