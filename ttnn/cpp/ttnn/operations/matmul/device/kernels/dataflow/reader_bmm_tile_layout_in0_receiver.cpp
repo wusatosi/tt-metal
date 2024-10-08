@@ -7,6 +7,8 @@
 #include "dataflow_api.h"
 #include "hostdevcommon/common_values.hpp"
 
+#include "tools/profiler/kernel_profiler.hpp"
+
 void kernel_main() {
     // in0 mcast args
     const uint32_t in0_mcast_sender_noc_x = get_arg_val<uint32_t>(0);
@@ -36,6 +38,9 @@ void kernel_main() {
             // Operand 0
             cb_reserve_back(cb_id_in0, in0_block_num_tiles);
 
+            {
+                DeviceZoneScopedN("IN0_RECEIVER");
+
             // Set in0 semaphore value to INVALID
             noc_semaphore_set(in0_mcast_receiver_semaphore_addr_ptr, INVALID);
 
@@ -46,6 +51,8 @@ void kernel_main() {
             noc_semaphore_wait(in0_mcast_receiver_semaphore_addr_ptr, VALID);
 
             cb_push_back(cb_id_in0, in0_block_num_tiles);
+
+            }
         }
     }
 }

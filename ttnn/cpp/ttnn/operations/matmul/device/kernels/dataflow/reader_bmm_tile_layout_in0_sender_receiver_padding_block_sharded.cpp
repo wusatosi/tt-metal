@@ -8,6 +8,8 @@
 #include "hostdevcommon/common_values.hpp"
 #include "ttnn/cpp/ttnn/operations/ccl/kernel_common/worker_sync_utils.hpp"
 
+#include "tools/profiler/kernel_profiler.hpp"
+
 void kernel_main() {
     constexpr bool core_has_output_block_work = (bool)get_compile_time_arg_val(0);
     constexpr bool core_in_in0_receiver_mcast_grid = (bool)get_compile_time_arg_val(1);
@@ -132,6 +134,9 @@ void kernel_main() {
             }
 
             cb_reserve_back(cb_id_in0, in0_block_num_tiles);
+
+            {
+                DeviceZoneScopedN("IN0_SE_RE_PA_BL_SH");
 
             // All cores in receiver grid need to participate in receiving regardless if they produce output work or
             // not. Otherwise, data corruption since we mcast from and to the same CB (eg. extract_shard_sub_blocks). If
@@ -259,6 +264,7 @@ void kernel_main() {
             if constexpr (!core_has_output_block_work) {
                 cb_pop_front(cb_id_in0, in0_block_num_tiles);
             }
+        }
         }
     }
 }
