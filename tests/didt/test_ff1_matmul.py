@@ -28,7 +28,21 @@ GELU_FIDELITY_PARAMETRIZATION_IDS = ["without_gelu", "with_gelu"]
     ],
     indirect=["mesh_device"],
 )
-def test_ff1_matmul(mesh_device, gelu, math_fidelity, iterations, determinism_check_iterations, use_program_cache):
+def test_ff1_matmul(
+    mesh_device, gelu, math_fidelity, iterations, determinism_check_iterations, use_program_cache, grid_size=(8, 8)
+):
+    seq_len = 1024
+    inner_dim = 4608
+    weights_n = 18432
+    per_core_M = 4
+    per_core_N = 72
+
+    # Adjust dimensions if grid size smaller than 8x8
+    if grid_size[0] < 8:
+        weights_n -= 32 * per_core_N * (8 - grid_size[0])
+    elif grid_size[1] < 8:
+        seq_len -= 32 * per_core_M * (8 - grid_size[1])
+
     # Initialize input configurations
     in0_block_shard_spec = ttnn.ShardSpec(
         ttnn.CoreRangeSet(
@@ -52,12 +66,12 @@ def test_ff1_matmul(mesh_device, gelu, math_fidelity, iterations, determinism_ch
 
     # Initialize matmul configurations
     program_config = ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
-        compute_with_storage_grid_size=(8, 8),
+        compute_with_storage_grid_size=grid_size,
         in0_block_w=3,
         out_subblock_h=1,
         out_subblock_w=8,
-        per_core_M=4,
-        per_core_N=72,
+        per_core_M=per_core_M,
+        per_core_N=per_core_N,
         transpose_mcast=False,
         fused_activation=[ttnn.UnaryOpType.GELU, True] if gelu else None,
     )
@@ -70,9 +84,9 @@ def test_ff1_matmul(mesh_device, gelu, math_fidelity, iterations, determinism_ch
 
     ff1_test = MatmulTestBase(
         mesh_device,
-        seq_len=1024,
-        inner_dim=4608,
-        weights_n=18432,
+        seq_len=seq_len,
+        inner_dim=inner_dim,
+        weights_n=weights_n,
         in0_mem_config=in0_mem_config,
         in1_mem_config=in1_mem_config,
         out_mem_config=out_mem_config,
@@ -136,3 +150,37 @@ def test_specific_board_ff1_matmul(
     board_mesh_device, gelu, math_fidelity, iterations, determinism_check_iterations, use_program_cache
 ):
     test_ff1_matmul(board_mesh_device, gelu, math_fidelity, iterations, determinism_check_iterations, use_program_cache)
+
+
+@pytest.mark.parametrize(
+    "grid_size",
+    [(i, 8) for i in range(1, 9)] + [(8, i) for i in range(1, 8)],
+    ids=[f"{i}x8" for i in range(1, 9)] + [f"8x{i}" for i in range(1, 8)],  # 1x8, 2x8 ... 8x1, 8x2...
+)
+@pytest.mark.parametrize(
+    "gelu, math_fidelity",
+    GELU_FIDELITY_PARAMETRIZATION,
+    ids=GELU_FIDELITY_PARAMETRIZATION_IDS,
+)
+@pytest.mark.parametrize(
+    "mesh_device",
+    [
+        pytest.param(1, id="1chips"),
+        pytest.param(2, id="2chips"),
+        pytest.param(8, id="8chips"),
+        pytest.param((8, 4), id="galaxy"),
+    ],
+    indirect=["mesh_device"],
+)
+def test_grid_size_ff1_matmul(
+    mesh_device, gelu, math_fidelity, grid_size, iterations, determinism_check_iterations, use_program_cache
+):
+    test_ff1_matmul(
+        mesh_device,
+        gelu,
+        math_fidelity,
+        iterations,
+        determinism_check_iterations,
+        use_program_cache,
+        grid_size=grid_size,
+    )

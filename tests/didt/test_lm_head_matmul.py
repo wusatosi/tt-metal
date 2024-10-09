@@ -61,7 +61,23 @@ class LMHeadTest(MatmulTestBase):
     ],
     indirect=["mesh_device"],
 )
-def test_lm_head_matmul(mesh_device, iterations, determinism_check_iterations, use_program_cache):
+def test_lm_head_matmul(mesh_device, iterations, determinism_check_iterations, use_program_cache, grid_size=(8, 8)):
+    seq_len = 32
+    inner_dim = 4544
+    weights_n = 65024
+    per_core_M = 1
+    per_core_N = 32
+
+    # Adjust dimensions if grid size smaller than 8x8;
+    # For matmul 1D regardless of whether we remove column or row,
+    # we need to reduce the weights width
+    if grid_size[0] != 8 or grid_size[1] != 8:
+        one_column_or_row = per_core_N * 8 * 32
+        if grid_size[0] != 8:
+            weights_n -= one_column_or_row * (8 - grid_size[0])
+        else:
+            weights_n -= one_column_or_row * (8 - grid_size[1])
+
     # Initialize input configurations
     in0_mem_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.L1)
     in1_mem_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM)
@@ -69,10 +85,10 @@ def test_lm_head_matmul(mesh_device, iterations, determinism_check_iterations, u
 
     # Initialize matmul configurations
     program_config = ttnn.MatmulMultiCoreReuseMultiCast1DProgramConfig(
-        compute_with_storage_grid_size=(8, 8),
+        compute_with_storage_grid_size=grid_size,
         in0_block_w=2,
-        per_core_M=1,
-        per_core_N=32,
+        per_core_M=per_core_M,
+        per_core_N=per_core_N,
         out_subblock_h=1,
         out_subblock_w=8,
         fuse_batch=True,
@@ -88,9 +104,9 @@ def test_lm_head_matmul(mesh_device, iterations, determinism_check_iterations, u
 
     lm_head_test = LMHeadTest(
         mesh_device,
-        seq_len=32,
-        inner_dim=4544,
-        weights_n=65024,
+        seq_len=seq_len,
+        inner_dim=inner_dim,
+        weights_n=weights_n,
         in0_mem_config=in0_mem_config,
         in1_mem_config=in1_mem_config,
         out_mem_config=out_mem_config,
@@ -137,3 +153,22 @@ def test_specific_chip_lm_head_matmul(
 )
 def test_specific_board_lm_head_matmul(board_mesh_device, iterations, determinism_check_iterations, use_program_cache):
     test_lm_head_matmul(board_mesh_device, iterations, determinism_check_iterations, use_program_cache)
+
+
+@pytest.mark.parametrize(
+    "grid_size",
+    [(i, 8) for i in range(1, 9)] + [(8, i) for i in range(1, 8)],
+    ids=[f"{i}x8" for i in range(1, 9)] + [f"8x{i}" for i in range(1, 8)],  # 1x8, 2x8 ... 8x1, 8x2...
+)
+@pytest.mark.parametrize(
+    "mesh_device",
+    [
+        pytest.param(1, id="1chips"),
+        pytest.param(2, id="2chips"),
+        pytest.param(8, id="8chips"),
+        pytest.param((8, 4), id="galaxy"),
+    ],
+    indirect=["mesh_device"],
+)
+def test_grid_size_lm_head_matmul(mesh_device, grid_size, iterations, determinism_check_iterations, use_program_cache):
+    test_lm_head_matmul(mesh_device, iterations, determinism_check_iterations, use_program_cache, grid_size=grid_size)
