@@ -54,6 +54,13 @@ By default the Blackhole workload compute grid is 13x10 (1 column is reserved fo
 
 `WH_ARCH_YAML` is not supported  but setting env var `TT_METAL_ETH_DISPATCH=1` will enable the unharvested workload to run on 14x10 compute grid. Running with `--simulate_bh_harvesting` is not supported with `TT_METAL_ETH_DISPATCH`
 
+### Grid size
+
+You can run matmul on grid size smaller than 8x8 which is the default option. When we decrease the grid size, we need to keep the compute same for all cores, so we just lower the outer input dimensions accordingly.
+To use smaller grid sizes, you need to target a different test in the file and add parametrization query for the specific grid size (ix8 or 8xi, where i is between [1,8]).
+
+`WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml pytest tests/didt/test_ff1_matmul.py::test_grid_size_ff1_matmul -k "without_gelu and 2chips and 6x8"`
+
 
 ## Legacy commands
 

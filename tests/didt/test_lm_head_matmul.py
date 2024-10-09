@@ -65,17 +65,24 @@ class LMHeadTest(OpTestBase):
     indirect=["mesh_device"],
 )
 def test_lm_head_matmul(
-    mesh_device, iterations, determinism_check_iterations, use_program_cache, simulate_bh_harvesting
+    mesh_device, iterations, determinism_check_iterations, use_program_cache, simulate_bh_harvesting, grid_size=(8, 8)
 ):
+    if is_blackhole() and mesh_device.get_num_devices() > 1:
+        pytest.skip("Multi-chip Blackhole has not been tested")
     if simulate_bh_harvesting and is_blackhole() == False:
         pytest.skip("Blackhole harvesting simulation is only supported for Blackhole devices")
+
     # Initialize input configurations
     in0_mem_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.L1)
     in1_mem_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM)
     out_mem_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.L1)
 
     # Initialize matmul configurations
-    compute_grid = get_blackhole_grid_size(simulate_bh_harvesting) if is_blackhole() else ttnn.CoreCoord(8, 8)
+    compute_grid = (
+        get_blackhole_grid_size(simulate_bh_harvesting)
+        if is_blackhole()
+        else ttnn.CoreCoord(grid_size[0], grid_size[1])
+    )
 
     seq_len = 32
     per_core_M = seq_len // 32
@@ -170,3 +177,25 @@ def test_specific_chip_lm_head_matmul(
 )
 def test_specific_board_lm_head_matmul(board_mesh_device, iterations, determinism_check_iterations, use_program_cache):
     test_lm_head_matmul(board_mesh_device, iterations, determinism_check_iterations, use_program_cache, False)
+
+
+@skip_for_blackhole("Grid size reduction for Blackhole has not been tested")
+@pytest.mark.parametrize(
+    "grid_size",
+    [(i, 8) for i in range(1, 9)] + [(8, i) for i in range(1, 8)],
+    ids=[f"{i}x8" for i in range(1, 9)] + [f"8x{i}" for i in range(1, 8)],  # 1x8, 2x8 ... 8x1, 8x2...
+)
+@pytest.mark.parametrize(
+    "mesh_device",
+    [
+        pytest.param(1, id="1chips"),
+        pytest.param(2, id="2chips"),
+        pytest.param(8, id="8chips"),
+        pytest.param((8, 4), id="galaxy"),
+    ],
+    indirect=["mesh_device"],
+)
+def test_grid_size_lm_head_matmul(mesh_device, grid_size, iterations, determinism_check_iterations, use_program_cache):
+    test_lm_head_matmul(
+        mesh_device, iterations, determinism_check_iterations, use_program_cache, False, grid_size=grid_size
+    )
