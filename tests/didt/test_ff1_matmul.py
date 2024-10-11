@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: © 2023 Tenstorrent Inc.
 
 # SPDX-License-Identifier: Apache-2.0
-
+import os
 from loguru import logger
 import pytest
 import torch
@@ -65,11 +65,19 @@ def test_ff1_matmul(
     out_mem_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.BLOCK_SHARDED, ttnn.BufferType.L1)
 
     # Initialize matmul configurations
+    out_subblock_h = 1
+    out_subblock_w = 8
+
+    subblock_1x1 = os.getenv("TT_USE_1X1_SUBBLOCK") == "1"
+    if subblock_1x1:
+        out_subblock_h = 1
+        out_subblock_w = 1
+
     program_config = ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
         compute_with_storage_grid_size=grid_size,
         in0_block_w=3,
-        out_subblock_h=1,
-        out_subblock_w=8,
+        out_subblock_h=out_subblock_h,
+        out_subblock_w=out_subblock_w,
         per_core_M=per_core_M,
         per_core_N=per_core_N,
         transpose_mcast=False,
