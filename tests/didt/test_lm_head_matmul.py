@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: © 2023 Tenstorrent Inc.
 
 # SPDX-License-Identifier: Apache-2.0
-
+import os
 from loguru import logger
 import pytest
 import torch
@@ -93,6 +93,11 @@ def test_lm_head_matmul(
     out_subblock_w = 8
     assert per_core_M % out_subblock_h == 0
     assert per_core_N % out_subblock_w == 0
+
+    subblock_1x1 = os.getenv("TT_USE_1X1_SUBBLOCK") == "1"
+    if subblock_1x1:
+        out_subblock_h = 1
+        out_subblock_w = 1
 
     program_config = ttnn.MatmulMultiCoreReuseMultiCast1DProgramConfig(
         compute_with_storage_grid_size=(compute_grid.x, compute_grid.y),
