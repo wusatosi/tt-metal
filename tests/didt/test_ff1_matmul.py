@@ -125,6 +125,14 @@ def test_ff1_matmul(
         out_subblock_h = 1
         out_subblock_w = 1
 
+    fidelity_env = os.getenv("TT_MATH_FIDELITY", default=1)
+    if fidelity_env == 2:
+        math_fidelity = ttnn.MathFidelity.HiFi2
+    elif fidelity_env == 3:
+        math_fidelity = ttnn.MathFidelity.HiFi3
+    elif fidelity_env == 4:
+        math_fidelity = ttnn.MathFidelity.HiFi4
+
     program_config = ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
         compute_with_storage_grid_size=(compute_grid.x, compute_grid.y),
         in0_block_w=3,

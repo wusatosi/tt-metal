@@ -99,6 +99,15 @@ def test_lm_head_matmul(
         out_subblock_h = 1
         out_subblock_w = 1
 
+    fidelity_env = os.getenv("TT_MATH_FIDELITY", default=1)
+    math_fidelity = ttnn.MathFidelity.LoFi
+    if fidelity_env == 2:
+        math_fidelity = ttnn.MathFidelity.HiFi2
+    elif fidelity_env == 3:
+        math_fidelity = ttnn.MathFidelity.HiFi3
+    elif fidelity_env == 4:
+        math_fidelity = ttnn.MathFidelity.HiFi4
+
     program_config = ttnn.MatmulMultiCoreReuseMultiCast1DProgramConfig(
         compute_with_storage_grid_size=(compute_grid.x, compute_grid.y),
         in0_block_w=2,
@@ -110,9 +119,10 @@ def test_lm_head_matmul(
         fused_activation=None,
         mcast_in0=True,
     )
+
     ComputeConfigClass = ttnn.types.BlackholeComputeKernelConfig if is_blackhole() else ttnn.WormholeComputeKernelConfig
     compute_config = ComputeConfigClass(
-        math_fidelity=ttnn.MathFidelity.LoFi,
+        math_fidelity=math_fidelity,
         math_approx_mode=True,
         fp32_dest_acc_en=False,
         packer_l1_acc=True,
