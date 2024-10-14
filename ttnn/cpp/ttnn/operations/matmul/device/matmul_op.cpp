@@ -988,6 +988,20 @@ void add_mm_throttle_defines_if_needed(const tt::ARCH arch, MathFidelity fidelit
         mm_kernel_defines["MM_THROTTLE_COMPUTE_NOP_COUNTS"] = std::to_string(num_nops_count);
     }
 
+void add_dram_skip_defines_if_needed(const tt::ARCH arch, std::map<string, string>& mm_in1_sender_writer_defines) {
+    const bool skip_in1_dram = std::getenv("TT_MATMUL_SKIP_IN1_DRAM");
+    if (skip_in1_dram && arch == tt::ARCH::WORMHOLE_B0) {
+        mm_in1_sender_writer_defines["SKIP_IN1_DRAM"] = "1";
+    }
+}
+
+bool should_sync_after_in1_dram(const tt::ARCH arch) {
+    const bool sync_in1_dram = std::getenv("TT_MATMUL_SYNC_AFTER_IN1_DRAM");
+    if (sync_in1_dram && arch == tt::ARCH::WORMHOLE_B0) {
+        return true;
+    }
+
+    return false;
 }
 
 }  // namespace bmm_op_utils
