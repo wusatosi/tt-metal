@@ -184,7 +184,7 @@ def all_devices(request, device_params):
 
 
 @pytest.fixture(scope="function")
-def mesh_device(request, silicon_arch_name, silicon_arch_wormhole_b0, device_params):
+def mesh_device(request, silicon_arch_name, device_params):
     """
     Pytest fixture to set up a device mesh for tests.
 
@@ -222,6 +222,7 @@ def mesh_device(request, silicon_arch_name, silicon_arch_wormhole_b0, device_par
         num_devices_requested = min(param, len(device_ids))
         mesh_shape = ttnn.MeshShape(1, num_devices_requested)
 
+    assert silicon_arch_name != "grayskull", "Mesh device is not supported for Grayskull."
     request.node.pci_ids = [ttnn.GetPCIeDeviceID(i) for i in device_ids[:num_devices_requested]]
 
     dispatch_core_config = get_dispatch_core_config(device_params)
