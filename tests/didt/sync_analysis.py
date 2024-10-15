@@ -17,19 +17,28 @@ file_name = Path(args.input_file).stem
 devices_data = import_device_profile_log(args.input_file)
 
 for device in devices_data["devices"].keys():
+    # Collect starting time of every core for every "MATH-BLOCK" in core data, remove cores with no block data
     start_time_per_core = []
-    cores = devices_data["devices"][device]["cores"].keys()
-
+    cores = list(devices_data["devices"][device]["cores"].keys())
+    cores_to_remove = []
     for key in cores:
-        core_data = devices_data["devices"][device]["cores"][key]["riscs"]["TRISC_0"]["timeseries"]
-        core_math = [i for i in core_data if (i[0]["zone_name"] == "MATH-BLOCK" and i[0]["zone_phase"] == "begin")]
+        # Use data for analysis only if data for analysis_core exist in devices_data
+        analysis_core = "TRISC_0"
+        if analysis_core in devices_data["devices"][device]["cores"][key]["riscs"].keys():
+            core_data = devices_data["devices"][device]["cores"][key]["riscs"]["TRISC_0"]["timeseries"]
+            core_math = [i for i in core_data if (i[0]["zone_name"] == "MATH-BLOCK" and i[0]["zone_phase"] == "begin")]
 
-        start_time_per_block = []
+            start_time_per_block = []
 
-        for i in range(71):
-            start_time_per_block.append(core_math[i][1])
+            for i in range(71):
+                start_time_per_block.append(core_math[i][1])
 
-        start_time_per_core.append(start_time_per_block)
+            start_time_per_core.append(start_time_per_block)
+        else:
+            cores_to_remove.append(key)
+
+    for key in cores_to_remove:
+        cores.remove(key)
 
     # Calculate sync between cores. Sync metric is based on number of cores that have start time diff less than abs(sync_thr) value
     # Since we have 64 cores [num_of_cores], we have (num_of_cores * (num_of_cores - 1) / 2) unique core pairs to check
@@ -43,7 +52,9 @@ for device in devices_data["devices"].keys():
         num_of_sync_cores = 0
         for core in range(num_of_cores):
             for compare in range(core + 1, num_of_cores):
-                if abs(start_time_per_core[core][block] - start_time_per_core[compare][block]) < sync_thr:
+                # Find block start time with smallest diff compared to current block start time (blocks are not always in sync)
+                # min([abs(start_time_per_core[core][block] - x) for x in start_time_per_core[compare]])
+                if min([abs(start_time_per_core[core][block] - x) for x in start_time_per_core[compare]]) < sync_thr:
                     num_of_sync_cores += 1
         num_of_sync_per_block.append(num_of_sync_cores)
 
