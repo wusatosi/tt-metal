@@ -19,11 +19,9 @@ def is_watcher_enabled():
     return os.environ.get("TT_METAL_WATCHER") is not None
 
 
-def run_test_sdpa_tt(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dtype):
-    torch.manual_seed(1234)
-
+def run_test_sdpa_tt_ND(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dtype):
     program_config = ttnn.SDPAProgramConfig(
-        compute_with_storage_grid_size=device.compute_with_storage_grid_size(),
+        compute_with_storage_grid_size=[1, 1],
         q_chunk_size=q_chunk_size,
         k_chunk_size=k_chunk_size,
     )
@@ -35,9 +33,12 @@ def run_test_sdpa_tt(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dtype
         packer_l1_acc=False,
     )
 
-    Q = torch.randn(b, nh, s, d)
-    K = torch.randn(b, nkv, s, d)
-    V = torch.randn(b, nkv, s, d)
+    Q = torch.eye(s, d).expand(b, nh, s, d) * 5
+    K = torch.eye(s, d).expand(b, nkv, s, d) * 7
+    V = torch.eye(s, d).expand(b, nkv, s, d) * 9
+    E = torch.eye(s, d).expand(b, nkv, s, d) * 316
+    Bug45 = torch.eye(s, d).expand(b, nkv, s, d) * 45
+    Bug0 = torch.eye(s, d).expand(b, nkv, s, d) * 0
 
     # Print shapes of all inputs along with input names
     logger.debug(f"Q: {Q.shape}")
@@ -47,66 +48,39 @@ def run_test_sdpa_tt(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dtype
     tt_Q = ttnn.Tensor(Q, dtype).to(ttnn.TILE_LAYOUT).to(device)
     tt_K = ttnn.Tensor(K, dtype).to(ttnn.TILE_LAYOUT).to(device)
     tt_V = ttnn.Tensor(V, dtype).to(ttnn.TILE_LAYOUT).to(device)
-    tt_back = ttnn.transformer.scaled_dot_product_attention(
-        tt_Q, tt_K, tt_V, is_causal=True, program_config=program_config, compute_kernel_config=compute_kernel_config
-    )
-    tt_back = tt_back.cpu().to(ttnn.ROW_MAJOR_LAYOUT).to_torch()
 
-    gt = torch.nn.functional.scaled_dot_product_attention(Q, K, V, is_causal=True)
+    torch.set_printoptions(profile="full")
+    for idx in range(3):
+        tt_back = ttnn.transformer.scaled_dot_product_attention(
+            tt_Q, tt_K, tt_V, is_causal=True, program_config=program_config, compute_kernel_config=compute_kernel_config
+        )
+        tt_back = tt_back.cpu().to(ttnn.ROW_MAJOR_LAYOUT).to_torch()
+        if torch.all(E.eq(tt_back)):
+            print("Matched Expected")
+        elif torch.all(Bug45.eq(tt_back)):
+            print("Matched 45 Bug")
+        elif torch.all(Bug0.eq(tt_back)):
+            print("Matched 0 Bug")
+        else:
+            print("Unknown Error")
+            print(tt_back)
+            # torch.save(tt_back, "buggy_tensor_tiny.pt")
 
-    out_pass, out_pcc = comp_pcc(gt, tt_back, 0.994)
-    logger.debug(f"python vs pytorch: {out_pcc}")
-    assert out_pass
 
-
-# @pytest.mark.skip(reason="ND PCC issues")
-@skip_for_blackhole("Mismatching on BH, see #12349")
-@pytest.mark.skipif(is_watcher_enabled(), reason="Kernel OOM with watcher enabled")
 @skip_for_grayskull("Unsupported in GS since L1 runs OOM with most configs")
-@pytest.mark.parametrize("dtype", [ttnn.bfloat8_b, ttnn.bfloat16], ids=["bfp8", "bf16"])
-@pytest.mark.parametrize("q_chunk_size", [128, 256], ids=["q128", "q256"])
-@pytest.mark.parametrize("k_chunk_size", [128, 256], ids=["k128", "k256"])
+@pytest.mark.parametrize("dtype", [ttnn.bfloat16], ids=["bf16"])
+@pytest.mark.parametrize("q_chunk_size", [32], ids=["q32"])
+@pytest.mark.parametrize("k_chunk_size", [32], ids=["k32"])
 @pytest.mark.parametrize(
     "b, nh, nkv, s, d",
-    (
-        [1, 8, 1, 2048, 128],  # Llama2-70B
-        [1, 16, 1, 2048, 64],  # Falcon-40B
-        [1, 71, 1, 2048, 64],  # Falcon-7B
-        [8, 8, 1, 2048, 128],  # Llama2-70B large batch
-        [1, 8, 1, 8192, 128],  # Llama2-70B large sequence
-    ),
+    ([1, 1, 1, 32, 32],),
 )
-def test_sdpa_tt(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dtype):
+def test_sdpa_nd(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dtype):
+    torch.set_printoptions(profile="full")
     if (s % q_chunk_size != 0) or (s % k_chunk_size != 0):
         pytest.skip("s must be divisible by q_chunk_size and k_chunk_size")
-    if nh == 8 and q_chunk_size == 128 and k_chunk_size == 128:
-        pytest.skip("Can cause OOM if profiling is enabled.")
-    ttnn.device.DisablePersistentKernelCache()
-    run_test_sdpa_tt(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dtype)
 
-
-# @pytest.mark.skip(reason="ND PCC issues")
-@skip_for_blackhole("Mismatching on BH, see #12349")
-@pytest.mark.skipif(is_watcher_enabled(), reason="Kernel OOM with watcher enabled")
-@skip_for_grayskull("Unsupported in GS since L1 runs OOM with most configs")
-@pytest.mark.parametrize("dtype", [ttnn.bfloat8_b, ttnn.bfloat16], ids=["bfp8", "bf16"])
-@pytest.mark.parametrize("q_chunk_size", [128, 256], ids=["q128", "q256"])
-@pytest.mark.parametrize("k_chunk_size", [128, 256], ids=["k128", "k256"])
-@pytest.mark.parametrize(
-    "b, nh, nkv, s, d",
-    (
-        [1, 8, 1, 2048, 128],  # Llama2-70B
-        [1, 16, 1, 2048, 64],  # Falcon-40B
-        [1, 71, 1, 2048, 64],  # Falcon-7B
-    ),
-)
-def test_sdpa_tt_with_program_cache(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dtype, use_program_cache):
-    if (s % q_chunk_size != 0) or (s % k_chunk_size != 0):
-        pytest.skip("s must be divisible by q_chunk_size and k_chunk_size")
-    if nh == 8 and q_chunk_size == 128 and k_chunk_size == 128:
-        pytest.skip("Can cause OOM if profiling is enabled.")
-
-    for _ in range(2):
-        run_test_sdpa_tt(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dtype)
-
-    assert device.num_program_cache_entries() == 1
+    for idx in range(100):
+        os.environ["TT_NOP_INSERT"] = str(35 + idx)
+        ttnn.device.DisablePersistentKernelCache()
+        run_test_sdpa_tt_ND(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dtype)

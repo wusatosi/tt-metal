@@ -50,11 +50,6 @@ operation::ProgramWithCallbacks sdpa_multi_core(
     uint32_t Sk_chunk_t = k_chunk_size / TILE_HEIGHT;
     uint32_t q_num_chunks = S / q_chunk_size;
     uint32_t k_num_chunks = S / k_chunk_size;
-    if (!is_causal) {
-        q_num_chunks = q_shape[2] / q_chunk_size;
-        TT_FATAL(q_num_chunks == 1, "Non-causal mode only supports one chunk");
-        k_num_chunks = valid_seq_len.value() / k_chunk_size;
-    }
 
     uint32_t NKH = k_shape[1];
 
@@ -91,8 +86,10 @@ operation::ProgramWithCallbacks sdpa_multi_core(
     CoreCoord grid_size = program_config.has_value() ? program_config->compute_with_storage_grid_size
                                                      : device->compute_with_storage_grid_size();
 
-    auto core_grid = CoreRange({0, 0}, {grid_size.x - 1, grid_size.y - 1});
-    uint32_t num_cores = grid_size.x * grid_size.y;
+    // auto core_grid = CoreRange({0, 0}, {grid_size.x - 1, grid_size.y - 1});
+    // uint32_t num_cores = grid_size.x * grid_size.y;
+    auto core_grid =  CoreRange({0, 0}, {0,0});
+    uint32_t num_cores = 1;
 
     TT_FATAL(num_cores <= device->compute_with_storage_grid_size().x * device->compute_with_storage_grid_size().y, "Error");
 
@@ -124,7 +121,7 @@ operation::ProgramWithCallbacks sdpa_multi_core(
     uint32_t v_tiles = Sk_chunk_t * DHt * 2;            // double buffer
     uint32_t mask_tiles = Sq_chunk_t * Sk_chunk_t * 2;  // double buffer
     uint32_t qk_tiles = Sq_chunk_t * Sk_chunk_t;
-    uint32_t out_im_tiles = Sq_chunk_t * DHt;
+    uint32_t out_im_tiles = Sq_chunk_t * DHt *2;
     uint32_t out0_t = Sq_chunk_t * DHt;
     uint32_t scale_tiles = 1;
     uint32_t statistics_tiles = Sq_chunk_t;  // Single column of values in each iteration
@@ -271,6 +268,7 @@ operation::ProgramWithCallbacks sdpa_multi_core(
                                                        num_cores};
 
     std::map<string, string> defines;
+    std::map<string, string> compute_defines;
     defines["STATS_GRANULARITY"] = std::to_string(stats_granularity);
     defines["LOG2_STATS_GRANULARITY"] = std::to_string(log2_stats_granularity);
     defines["SUB_EXP_GRANULARITY"] = std::to_string(sub_exp_granularity);
@@ -279,7 +277,8 @@ operation::ProgramWithCallbacks sdpa_multi_core(
     defines["LOG2_MUL_BCAST_GRANULARITY"] = std::to_string(log2_mul_bcast_granularity);
     defines["DHT_GRANULARITY"] = std::to_string(dht_granularity);
     defines["LOG2_DHT_GRANULARITY"] = std::to_string(log2_dht_granularity);
-    uint32_t balanced_q_parallel = (q_per_core * q_parallel_factor == q_num_chunks) && (q_per_core % 2 == 0);
+    // uint32_t balanced_q_parallel = (q_per_core * q_parallel_factor == q_num_chunks) && (q_per_core % 2 == 0);
+    uint32_t balanced_q_parallel = 0;
     if (balanced_q_parallel) {
         defines["BALANCED_Q_PARALLEL"] = "1";
     }
@@ -288,29 +287,33 @@ operation::ProgramWithCallbacks sdpa_multi_core(
 
     auto reader_kernels_id = CreateKernel(
         program,
-        is_causal ? "ttnn/cpp/ttnn/operations/transformer/sdpa/device/kernels/dataflow/reader_interleaved.cpp"
-                  : "ttnn/cpp/ttnn/operations/transformer/sdpa/device/kernels/dataflow/reader_noncausal_interleaved.cpp",
+        "tests/tt_metal/tt_metal/test_kernels/reader_interleaved.cpp",
         core_grid,
         tt::tt_metal::ReaderDataMovementConfig(reader_compile_time_args, defines));
 
     auto writer_kernels_id = CreateKernel(
         program,
-        is_causal ? "ttnn/cpp/ttnn/operations/transformer/sdpa/device/kernels/dataflow/writer_interleaved.cpp"
-                  : "ttnn/cpp/ttnn/operations/transformer/sdpa/device/kernels/dataflow/writer_noncausal_interleaved.cpp",
+        "tests/tt_metal/tt_metal/test_kernels/writer_interleaved.cpp",
         core_grid,
         tt::tt_metal::WriterDataMovementConfig(writer_compile_time_args, defines));
+    const bool enable_nops = std::getenv("TT_NOP_INSERT");
+    if(enable_nops) {
+        const uint32_t num_nops = enable_nops ? std::stoi( std::getenv("TT_NOP_INSERT") ) : 0;
+        std::cout << "Should insert nops # " << num_nops << std::endl;
+	compute_defines["MM_ADD_NOPS"] = "1";
+	compute_defines["MM_NUM_NOPS"] = std::to_string(num_nops);
+    }
 
     auto compute_kernels_id = CreateKernel(
         program,
-        is_causal ? "ttnn/cpp/ttnn/operations/transformer/sdpa/device/kernels/compute/sdpa.cpp"
-                  : "ttnn/cpp/ttnn/operations/transformer/sdpa/device/kernels/compute/sdpa_noncausal.cpp",
+        "tests/tt_metal/tt_metal/test_kernels/sdpa.cpp",
         core_grid,
         tt::tt_metal::ComputeConfig{
             .math_fidelity = math_fidelity,
             .fp32_dest_acc_en = fp32_dest_acc_en,
             .math_approx_mode = math_approx_mode,
             .compile_args = compute_compile_time_args,
-            .defines = defines});
+            .defines = compute_defines});
 
     // Create circular buffers
 
@@ -346,9 +349,6 @@ operation::ProgramWithCallbacks sdpa_multi_core(
     // Q input
     auto c_in0_config =
         CircularBufferConfig(q_tiles * q_tile_size, {{tt::CB::c_in0, q_df}}).set_page_size(tt::CB::c_in0, q_tile_size);
-    if (!is_causal) {
-        c_in0_config.set_globally_allocated_address(*q_buffer);
-    }
     auto cb_in0_id = CreateCircularBuffer(program, core_grid, c_in0_config);
     // K input
     auto c_in1_config =
@@ -417,9 +417,7 @@ operation::ProgramWithCallbacks sdpa_multi_core(
     // Output
     auto c_out0_config =
         CircularBufferConfig(out0_t * out_tile_size, {{tt::CB::c_out0, out_df}}).set_page_size(tt::CB::c_out0, out_tile_size);
-    if (!is_causal) {
-        c_out0_config.set_globally_allocated_address(*out0_buffer);
-    }
+
     auto cb_out0_id = CreateCircularBuffer(program, core_grid, c_out0_config);
 
     uint32_t q_addr = q_buffer->address();
@@ -568,11 +566,6 @@ operation::ProgramWithCallbacks sdpa_multi_core(
                 reader_args[3] = mask_addr;
 
                 writer_args[0] = out_addr;
-            }
-
-            if (!is_causal) {
-                UpdateDynamicCircularBufferAddress(program, cb_in0_id, *q_buffer);
-                UpdateDynamicCircularBufferAddress(program, cb_out0_id, *out0_buffer);
             }
         };
 
