@@ -44,6 +44,7 @@
 #include "llrt/hal.hpp"                                              // for Hal
 
 #include "third_party/tracy/public/tracy/Tracy.hpp"
+#include "third_party/umd/device/mockup/tt_mockup_device.hpp"
 #include "third_party/umd/device/simulation/tt_simulation_device.h"
 
 #include "tt_metal/impl/debug/sanitize_noc_host.hpp"
@@ -88,7 +89,12 @@ void Cluster::detect_arch_and_target() {
         auto arch_env = getenv("ARCH_NAME");
         TT_FATAL(arch_env, "ARCH_NAME env var needed for VCS");
         this->arch_ = tt::get_arch_from_string(arch_env);
-    }else {
+    } else if (std::getenv("TT_METAL_MOCKUP_EN")) {
+        this->target_type_ = TargetDevice::Mockup;
+        auto arch_env = getenv("ARCH_NAME");
+        TT_FATAL(arch_env, "ARCH_NAME env var needed for Mockup");
+        this->arch_ = tt::get_arch_from_string(arch_env);
+    } else {
         this->target_type_ = TargetDevice::Silicon;
         std::vector<chip_id_t> physical_mmio_device_ids = tt_SiliconDevice::detect_available_device_ids();
         this->arch_ = detect_arch(physical_mmio_device_ids.at(0));
@@ -123,7 +129,9 @@ void Cluster::detect_arch_and_target() {
 #endif
 
     TT_FATAL(
-        this->target_type_ == TargetDevice::Silicon or this->target_type_ == TargetDevice::Simulator,
+        this->target_type_ == TargetDevice::Silicon
+        || this->target_type_ == TargetDevice::Simulator
+        || this->target_type_ == TargetDevice::Mockup,
         "Target type={} is not supported",
         this->target_type_);
 }
@@ -153,7 +161,29 @@ void Cluster::generate_cluster_descriptor() {
         }
         this->cluster_desc_ =
             tt_ClusterDescriptor::create_for_grayskull_cluster(logical_mmio_device_ids, physical_mmio_device_ids);
-    } else {
+    } else if (this->target_type_ == TargetDevice::Mockup) {
+        // no card, no create_ethernet, no cluster descriptors
+        // to avoid having real cluster descriptor checked in,
+        // going with create_for_grayskull_cluster
+
+        std::vector<chip_id_t> physical_mmio_device_ids;
+        std::set<chip_id_t> logical_mmio_device_ids;
+        for (chip_id_t logical_mmio_device_id = 0;
+             logical_mmio_device_id < tt_MockupDevice::detect_available_device_ids().size();
+             logical_mmio_device_id++) {
+            logical_mmio_device_ids.insert(logical_mmio_device_id);
+        }
+
+        this->cluster_desc_ =
+            tt_ClusterDescriptor::create_for_grayskull_cluster(logical_mmio_device_ids, physical_mmio_device_ids);
+
+        std::set<chip_id_t> dummy_card = {0};
+        this->devices_grouped_by_assoc_mmio_device_[0] = dummy_card;
+        this->device_to_mmio_device_[0] = 0;
+
+        return;
+    }
+    else {
         this->cluster_desc_ = tt_ClusterDescriptor::create_from_yaml(this->cluster_desc_path_);
         for (const auto &chip_id : this->cluster_desc_->get_all_chips()) {
             if (this->cluster_desc_->get_board_type(chip_id) == BoardType::GALAXY) {
@@ -273,7 +303,10 @@ void Cluster::open_driver(const bool &skip_driver_allocs) {
         // TT_FATAL(device_driver->get_target_mmio_device_ids().size() == 1, "Only one target mmio device id allowed.");
     } else if (this->target_type_ == TargetDevice::Simulator) {
         device_driver = std::make_unique<tt_SimulationDevice>(sdesc_path);
+    } else if (this->target_type_ == TargetDevice::Mockup) {
+        device_driver = std::make_unique<tt_MockupDevice>(sdesc_path);
     }
+
     std::uint32_t dram_barrier_base = tt_metal::hal.get_dev_addr(tt_metal::HalDramMemAddrType::DRAM_BARRIER);
     device_driver->set_device_dram_address_params(tt_device_dram_address_params{dram_barrier_base});
 
@@ -338,7 +371,7 @@ const metal_SocDescriptor &Cluster::get_soc_desc(chip_id_t chip) const {
 }
 
 uint32_t Cluster::get_harvested_rows(chip_id_t chip) const {
-    if (this->target_type_ == TargetDevice::Simulator) {
+    if (this->target_type_ == TargetDevice::Simulator || this->target_type_ == TargetDevice::Mockup) {
         return 0;
     } else {
         return this->driver_->harvested_rows_per_target.at(chip);
