@@ -1124,15 +1124,15 @@ uint32_t process_exec_buf_cmd(
     return CQ_PREFETCH_CMD_BARE_MIN_SIZE;
 }
 
-template <bool cmddat_wrap_enable, bool exec_buf>
-bool process_cmd(
-    uint32_t& cmd_ptr,
-    uint32_t& downstream_data_ptr,
-    uint32_t& stride,
-    uint32_t* l1_cache,
-    PrefetchExecBufState& exec_buf_state) {
+template<bool cmddat_wrap_enable,
+         bool exec_buf>
+bool process_cmd(uint32_t& cmd_ptr,
+                 uint32_t& downstream_data_ptr,
+                 uint32_t& stride,
+                 uint32_t* l1_cache,
+                 PrefetchExecBufState& exec_buf_state) {
     DeviceZoneScopedN("PROCESS-CMD");
-    volatile CQPrefetchCmd tt_l1_ptr* cmd = (volatile CQPrefetchCmd tt_l1_ptr*)cmd_ptr;
+    volatile CQPrefetchCmd tt_l1_ptr *cmd = (volatile CQPrefetchCmd tt_l1_ptr *)cmd_ptr;
     bool done = false;
 
     switch (cmd->base.cmd_id) {

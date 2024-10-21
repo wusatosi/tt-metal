@@ -107,9 +107,17 @@ void DeviceProfiler::readRiscProfilerResults(
                     runCounterRead = profile_buffer[index + 1] & 0xFFFF;
                     runHostCounterRead = (profile_buffer[index + 1] >> 16) & 0xFFFF;
 
-                } else {
-                    uint32_t timer_id = (profile_buffer[index] >> 12) & 0x7FFFF;
-                    kernel_profiler::PacketTypes packet_type = get_packet_type(timer_id);
+                }
+                else
+                {
+                    uint32_t packet_type = (profile_buffer[index] >> 28) & 0x7;
+                    if ((packet_type == kernel_profiler::ZONE_START) || (packet_type == kernel_profiler::ZONE_END))
+                    {
+                        uint32_t time_H = profile_buffer[index] & 0xFFF;
+                        uint32_t marker = (profile_buffer[index] >> 12) & 0x7FFFF ;
+                        if (marker || time_H)
+                        {
+                            uint32_t time_L = profile_buffer[index + 1];
 
                     switch (packet_type) {
                         case kernel_profiler::ZONE_START:
@@ -152,10 +160,12 @@ void DeviceProfiler::readRiscProfilerResults(
                                     0,
                                     timer_id,
                                     (uint64_t(time_H) << 32) | time_L);
-                            }
-                        } break;
-                        case kernel_profiler::ZONE_TOTAL: {
-                            uint32_t sum = profile_buffer[index + 1];
+                        }
+                    }
+                    else if (packet_type == kernel_profiler::ZONE_TOTAL)
+                    {
+                        uint32_t marker = (profile_buffer[index] >> 12) & 0x7FFFF ;
+                        uint32_t sum = profile_buffer[index + 1];
 
                             uint32_t time_H = opTime_H;
                             uint32_t time_L = opTime_L;
@@ -204,6 +214,24 @@ void DeviceProfiler::readRiscProfilerResults(
                                 timer_id,
                                 (uint64_t(time_H) << 32) | time_L);
                         }
+                    }
+                    else if (packet_type == kernel_profiler::TS_DATA)
+                    {
+                        uint32_t marker = (profile_buffer[index] >> 12) & 0xFFFF ;
+                        uint32_t time_H = profile_buffer[index] & 0xFFF;
+                        uint32_t time_L = profile_buffer[index + 1];
+                        index += kernel_profiler::PROFILER_L1_MARKER_UINT32_SIZE;
+                        uint32_t data_H = profile_buffer[index];
+                        uint32_t data_L = profile_buffer[index + 1];
+                        std::cout << marker << "," << ((uint64_t(time_H) << 32) | time_L) << "," << ((uint64_t(data_H) << 32) | data_L) << std::endl;
+                        continue;
+                    }
+                    else if (packet_type == kernel_profiler::TS_EVENT)
+                    {
+                        uint32_t marker = (profile_buffer[index] >> 12) & 0xFFFF ;
+                        uint32_t time_H = profile_buffer[index] & 0xFFF;
+                        uint32_t time_L = profile_buffer[index + 1];
+                        std::cout << marker << "," << ((uint64_t(time_H) << 32) | time_L)  << std::endl;
                     }
                 }
             }
