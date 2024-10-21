@@ -9,6 +9,7 @@ import importlib
 import datetime
 import os
 import enlighten
+import json
 from tt_metal.tools.profiler.process_ops_logs import get_device_data_generate_report
 from tt_metal.tools.profiler.common import PROFILER_LOGS_DIR
 from multiprocessing import Process, Queue
@@ -16,8 +17,6 @@ from queue import Empty
 import subprocess
 from framework.statuses import TestStatus, VectorValidity, VectorStatus
 import framework.tt_smi_util
-from elasticsearch import Elasticsearch, NotFoundError
-from framework.elastic_config import *
 from framework.sweeps_logger import sweeps_logger as logger
 
 ARCH = os.getenv("ARCH_NAME")
@@ -241,6 +240,10 @@ def run_sweeps(module_name, suite_name, vector_id):
 
     sweeps_path = pathlib.Path(__file__).parent / "sweeps"
 
+    if READ_FILE:
+        # WIP
+        pass
+
     if not module_name:
         for file in sorted(sweeps_path.glob("**/*.py")):
             sweep_name = str(pathlib.Path(file).relative_to(sweeps_path))[:-3].replace("/", ".")
@@ -441,6 +444,7 @@ if __name__ == "__main__":
         default=os.getenv("USER"),
         help="Custom tag for the vectors you are running. This is to keep copies seperate from other people's test vectors. By default, this will be your username. You are able to specify a tag when generating tests using the generator.",
     )
+    parser.add_argument("--read-file", required=False, help="Read and execute test vectors from a specified file path.")
 
     args = parser.parse_args(sys.argv[1:])
     if not args.module_name and args.vector_id:
@@ -448,8 +452,15 @@ if __name__ == "__main__":
         logger.error("Module name is required if vector id is specified.")
         exit(1)
 
-    global ELASTIC_CONNECTION_STRING
-    ELASTIC_CONNECTION_STRING = get_elastic_url(args.elastic)
+    if not args.read_file:
+        from elasticsearch import Elasticsearch, NotFoundError
+        from framework.elastic_config import *
+
+        global ELASTIC_CONNECTION_STRING
+        ELASTIC_CONNECTION_STRING = get_elastic_url(args.elastic)
+    else:
+        global READ_FILE
+        READ_FILE = args.read_file
 
     global MEASURE_PERF
     MEASURE_PERF = args.perf
