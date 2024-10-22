@@ -41,11 +41,8 @@ private:
     // Output Dir for device Profile Logs
     std::filesystem::path output_dir;
 
-    // Device-Core tracy context
-    std::map<std::pair<uint16_t, CoreCoord>, TracyTTCtx> device_tracy_contexts;
-
-    // Device events
-    std::set<tracy::TTDeviceEvent> device_events;
+        // Device-Core tracy context
+        std::map<std::pair<uint16_t,CoreCoord>, TracyTTCtx> device_tracy_contexts;
 
     // Hash to zone source locations
     std::unordered_map<uint16_t, std::string> hash_to_zone_src_locations;
