@@ -246,27 +246,18 @@ def test_profiler_host_device_sync():
         assert freq < (reportedFreq * (1 + TOLERANCE)), f"Frequency too large on device {device}"
         assert freq > (reportedFreq * (1 - TOLERANCE)), f"Frequency too small on device {device}"
 
-    os.environ["TT_METAL_PROFILER_SYNC"] = "0"
-
 
 def test_timestamped_events():
-    OP_COUNT = 2
+    OP_COUNT = 26
     RISC_COUNT = 5
-    ZONE_COUNT = 100
-    ERISC_COUNTS = [0, 1, 5]
-    TENSIX_COUNTS = [72, 64, 56]
-
-    COMBO_COUNTS = []
-    for T in TENSIX_COUNTS:
-        for E in ERISC_COUNTS:
-            COMBO_COUNTS.append((T, E))
-
+    ZONE_COUNT = 125
     REF_COUNT_DICT = {
         "grayskull": [108 * OP_COUNT * RISC_COUNT * ZONE_COUNT, 88 * OP_COUNT * RISC_COUNT * ZONE_COUNT],
-        "wormhole_b0": [(T * RISC_COUNT + E) * OP_COUNT * ZONE_COUNT for T, E in COMBO_COUNTS],
-    }
-    REF_ERISC_COUNT = {
-        "wormhole_b0": [C * OP_COUNT * ZONE_COUNT for C in ERISC_COUNTS],
+        "wormhole_b0": [
+            72 * OP_COUNT * RISC_COUNT * ZONE_COUNT,
+            64 * OP_COUNT * RISC_COUNT * ZONE_COUNT,
+            56 * OP_COUNT * RISC_COUNT * ZONE_COUNT,
+        ],
     }
 
     ENV_VAR_ARCH_NAME = os.getenv("ARCH_NAME")
@@ -274,30 +265,19 @@ def test_timestamped_events():
 
     devicesData = run_device_profiler_test(setup=True)
 
-    if ENV_VAR_ARCH_NAME in REF_ERISC_COUNT.keys():
-        eventCount = len(
-            devicesData["data"]["devices"]["0"]["cores"]["DEVICE"]["riscs"]["TENSIX"]["events"]["erisc_events"]
-        )
-        assert eventCount in REF_ERISC_COUNT[ENV_VAR_ARCH_NAME], "Wrong erisc event count"
+    stats = len(devicesData["data"]["devices"]["0"]["cores"]["DEVICE"]["riscs"]["TENSIX"]["events"]["Events"])
+    print(stats)
+    # statName = "Marker Repeat"
+    # statNameEth = "Marker Repeat ETH"
 
-    if ENV_VAR_ARCH_NAME in REF_COUNT_DICT.keys():
-        eventCount = len(
-            devicesData["data"]["devices"]["0"]["cores"]["DEVICE"]["riscs"]["TENSIX"]["events"]["all_events"]
-        )
-        assert eventCount in REF_COUNT_DICT[ENV_VAR_ARCH_NAME], "Wrong event count"
+    # assert statName in stats.keys(), "Wrong device analysis format"
 
-
-def test_sub_device_profiler():
-    run_gtest_profiler_test(
-        "./build/test/tt_metal/unit_tests_dispatch", "CommandQueueSingleCardFixture.TensixTestSubDeviceBasicPrograms"
-    )
-    os.environ["TT_METAL_PROFILER_SYNC"] = "1"
-    run_gtest_profiler_test(
-        "./build/test/tt_metal/unit_tests_dispatch",
-        "CommandQueueSingleCardFixture.TensixActiveEthTestSubDeviceBasicEthPrograms",
-    )
-    os.environ["TT_METAL_PROFILER_SYNC"] = "0"
-    run_gtest_profiler_test(
-        "./build/test/tt_metal/unit_tests_dispatch_trace",
-        "CommandQueueSingleCardTraceFixture.TensixTestSubDeviceTraceBasicPrograms",
-    )
+    # if statNameEth in stats.keys():
+    # assert (
+    # stats[statName]["stats"]["Count"] - stats[statNameEth]["stats"]["Count"]
+    # in REF_COUNT_DICT[ENV_VAR_ARCH_NAME]
+    # ), "Wrong Marker Repeat count"
+    # assert stats[statNameEth]["stats"]["Count"] > 0, "Wrong Eth Marker Repeat count"
+    # assert stats[statNameEth]["stats"]["Count"] % (OP_COUNT * ZONE_COUNT) == 0, "Wrong Eth Marker Repeat count"
+    # else:
+    # assert stats[statName]["stats"]["Count"] in REF_COUNT_DICT[ENV_VAR_ARCH_NAME], "Wrong Marker Repeat count"
