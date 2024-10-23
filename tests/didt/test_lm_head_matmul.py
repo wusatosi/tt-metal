@@ -99,7 +99,7 @@ def test_lm_head_matmul(
         out_subblock_h = 1
         out_subblock_w = 1
 
-    fidelity_env = os.getenv("TT_MATH_FIDELITY", default=1)
+    fidelity_env = int(os.getenv("TT_MATH_FIDELITY", default=1))
     math_fidelity = ttnn.MathFidelity.LoFi
     if fidelity_env == 2:
         math_fidelity = ttnn.MathFidelity.HiFi2
