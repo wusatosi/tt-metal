@@ -54,7 +54,7 @@ def invalidate_vectors(test_module, vectors) -> None:
 
 
 def export_suite_vectors_json(module_name, suite_name, vectors):
-    EXPORT_DIR_PATH = SWEEPS_DIR / "export"
+    EXPORT_DIR_PATH = SWEEPS_DIR / "vectors_export"
     EXPORT_PATH = EXPORT_DIR_PATH / str(module_name + ".json")
     if not EXPORT_DIR_PATH.exists():
         EXPORT_DIR_PATH.mkdir()
