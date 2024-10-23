@@ -21,6 +21,152 @@ from typing import Tuple
 from models.utility_functions import nearest_32
 from pathlib import Path
 from tqdm import tqdm
+from models.demos.t3000.falcon40b.tt.model_utils import (
+    matmul_2d_config_from_tensor_shapes,
+    matmul_1d_config_from_tensor_shapes,
+)
+
+
+def set_mlp_config(model_config, cluster_shape):
+    decode_config = {}
+
+    decode_config["COMPUTE_KERNEL_LOFI"] = ttnn.WormholeComputeKernelConfig(
+        math_fidelity=ttnn.MathFidelity.LoFi,
+        math_approx_mode=True,
+        fp32_dest_acc_en=True,
+        packer_l1_acc=True,
+    )
+    model_config["HIDDEN_SIZE"] = 8192
+    model_config["FFN_EXPANDED_HIDDEN_SIZE"] = 28 * 1024
+    model_config["MAX_MM_SEQ_LEN"] = lambda seq_len: min(seq_len, 1024)
+    model_config["CORE_GRID_Y"] = lambda seq_len: 4 if min(seq_len, 1024) // 32 >= 4 else min(seq_len, 1024) // 32
+    M, K, N = 32, model_config["HIDDEN_SIZE"], model_config["FFN_EXPANDED_HIDDEN_SIZE"]
+    K = K // cluster_shape[0]
+    N = N // cluster_shape[1]
+    decode_config["W1_MEM_CONFIG"] = lambda mesh_device: ttnn.MemoryConfig(
+        ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        ttnn.BufferType.DRAM,
+        ttnn.ShardSpec(
+            setup_weight_grid(mesh_device),
+            (K, nearest_32(N // 12)),
+            ttnn.ShardOrientation.ROW_MAJOR,
+            False,
+        ),
+    )
+
+    decode_config["W2_MEM_CONFIG"] = lambda mesh_device: ttnn.MemoryConfig(
+        ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        ttnn.BufferType.DRAM,
+        ttnn.ShardSpec(
+            setup_weight_grid(mesh_device),
+            (N, nearest_32(K // 12)),
+            ttnn.ShardOrientation.ROW_MAJOR,
+            False,
+        ),
+    )
+
+    decode_config["FF1_DRAM_SHARDED_PROGCFG"] = ttnn.MatmulMultiCoreReuseMultiCastDRAMShardedProgramConfig(
+        in0_block_w=K // 8 // 32,  # K = 8192 / TILE_WIDTH=32 / Grid_Size is based on compute_with_storage_grid_size
+        per_core_M=M // 32,  # M / TILE_HEIGHT = 32 / 32
+        per_core_N=N // 8 // 32,  # N / TILE_WIDTH / Grid_Size is based on compute_with_storage_grid_size
+        fused_activation=None,
+    )
+
+    decode_config["FF2_DRAM_SHARDED_PROGCFG"] = ttnn.MatmulMultiCoreReuseMultiCastDRAMShardedProgramConfig(
+        in0_block_w=N // 8 // 32,  # K = 8192 / TILE_WIDTH=32 / Grid_Size is based on compute_with_storage_grid_size
+        per_core_M=M // 32,  # M / TILE_HEIGHT = 32 / 32
+        per_core_N=K // 8 // 32,  # N / TILE_WIDTH / Grid_Size is based on compute_with_storage_grid_size
+        fused_activation=None,
+    )
+
+    full_grid = ttnn.CoreRangeSet(
+        {
+            ttnn.CoreRange(
+                ttnn.CoreCoord(0, 0),
+                ttnn.CoreCoord(7, 7),
+            )
+        }
+    )
+    decode_config["FULL_GRID_MEMCFG"] = ttnn.MemoryConfig(
+        ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        ttnn.BufferType.L1,
+        ttnn.ShardSpec(
+            full_grid,
+            [
+                32,
+                nearest_32(56),
+            ],
+            ttnn.ShardOrientation.ROW_MAJOR,
+            False,
+        ),
+    )
+    decode_config["FF2_ACT_MEMCFG"] = ttnn.create_sharded_memory_config(
+        shape=(M, N // 8),
+        core_grid=ttnn.CoreGrid(y=1, x=8),
+        strategy=ttnn.ShardStrategy.WIDTH,
+        orientation=ttnn.ShardOrientation.ROW_MAJOR,
+        use_height_and_width_as_shard_shape=True,
+    )
+    decode_config["FF1_ACT_MEMCFG"] = ttnn.create_sharded_memory_config(
+        shape=(32, 2048 // 8),
+        core_grid=ttnn.CoreGrid(y=1, x=8),
+        strategy=ttnn.ShardStrategy.WIDTH,
+        orientation=ttnn.ShardOrientation.ROW_MAJOR,
+        use_height_and_width_as_shard_shape=True,
+    )
+    decode_config["FF1_OUT_GATHERED_MEMCFG"] = ttnn.create_sharded_memory_config(
+        shape=(M * cluster_shape[0], N // 8),
+        core_grid=ttnn.CoreGrid(y=1, x=8),
+        strategy=ttnn.ShardStrategy.WIDTH,
+        orientation=ttnn.ShardOrientation.ROW_MAJOR,
+        use_height_and_width_as_shard_shape=True,
+    )
+    decode_config["FF2_OUT_GATHERED_MEMCFG"] = ttnn.create_sharded_memory_config(
+        shape=(32 * cluster_shape[1], 2048 // 8),
+        core_grid=ttnn.CoreGrid(y=1, x=8),
+        strategy=ttnn.ShardStrategy.WIDTH,
+        orientation=ttnn.ShardOrientation.ROW_MAJOR,
+        use_height_and_width_as_shard_shape=True,
+    )
+
+    prefill_config = {}
+
+    prefill_config["COMPUTE_KERNEL_LOFI"] = ttnn.WormholeComputeKernelConfig(
+        math_fidelity=ttnn.MathFidelity.LoFi,
+        math_approx_mode=True,
+        fp32_dest_acc_en=True,
+        packer_l1_acc=True,
+    )
+    hidden_dim_per_chip = model_config["HIDDEN_SIZE"] // cluster_shape[0]  # 2048
+    ff_outer_dim_per_chip = model_config["FFN_EXPANDED_HIDDEN_SIZE"] // cluster_shape[1]  # 3584
+    prefill_config["FF1_PROGCFG"] = lambda seq_len: matmul_2d_config_from_tensor_shapes(
+        (
+            1,
+            1,
+            model_config["MAX_MM_SEQ_LEN"](seq_len),
+            hidden_dim_per_chip,
+        ),  # (1, 1, model_config["MAX_MM_SEQ_LEN"], 2048)
+        (1, 1, hidden_dim_per_chip, ff_outer_dim_per_chip),  # (1, 1, 2048, 3584)
+        grid=ttnn.CoreGrid(x=8, y=model_config["CORE_GRID_Y"](seq_len)),
+        overwrite_subblock_h=1,
+        overwrite_subblock_w=1,
+        fuse_batch=False,
+    )
+    prefill_config["FF2_PROGCFG"] = lambda seq_len: matmul_2d_config_from_tensor_shapes(
+        (
+            1,
+            1,
+            model_config["MAX_MM_SEQ_LEN"](seq_len),
+            ff_outer_dim_per_chip,
+        ),  # (1, 1, self.model_config["MAX_MM_SEQ_LEN"], 3584)
+        (1, 1, ff_outer_dim_per_chip, hidden_dim_per_chip),  # (1, 1, 3584, 2048)
+        grid=ttnn.CoreGrid(x=8, y=model_config["CORE_GRID_Y"](seq_len)),
+        overwrite_subblock_h=1,
+        overwrite_subblock_w=1,
+        fuse_batch=False,
+    )
+
+    return {"prefill": prefill_config, "decode": decode_config}
 
 
 class TtModelArgs:
@@ -76,25 +222,28 @@ class TtModelArgs:
         self.is_large_model = False
 
         LLAMA_DIR = os.getenv("LLAMA_DIR")
-        if LLAMA_DIR:
-            if any([os.getenv("LLAMA_CKPT_DIR"), os.getenv("LLAMA_TOKENIZER_PATH"), os.getenv("LLAMA_CACHE_PATH")]):
-                logger.warning(
-                    "LLAMA_DIR is set and will override LLAMA_CKPT_DIR, LLAMA_TOKENIZER_PATH, and LLAMA_CACHE_PATH"
-                )
-            self.DEFAULT_CKPT_DIR = LLAMA_DIR
-            self.DEFAULT_TOKENIZER_PATH = LLAMA_DIR
-            self.DEFAULT_CACHE_PATH = os.path.join(LLAMA_DIR, self.device_name)
-        else:
-            self.DEFAULT_CKPT_DIR = os.getenv(
-                "LLAMA_CKPT_DIR", "/mnt/MLPerf/tt_dnn-models/llama/Meta-Llama-3.1-8B-Instruct/"
-            )
-            self.DEFAULT_TOKENIZER_PATH = os.getenv(
-                "LLAMA_TOKENIZER_PATH", "/mnt/MLPerf/tt_dnn-models/llama/Meta-Llama-3.1-8B-Instruct/"
-            )
-            self.DEFAULT_CACHE_PATH = os.getenv(
-                "LLAMA_CACHE_PATH", f"/mnt/MLPerf/tt_dnn-models/llama/Meta-Llama-3.1-8B-Instruct/{self.device_name}/"
-            )
+        # if LLAMA_DIR:
+        #     if any([os.getenv("LLAMA_CKPT_DIR"), os.getenv("LLAMA_TOKENIZER_PATH"), os.getenv("LLAMA_CACHE_PATH")]):
+        #         logger.warning(
+        #             "LLAMA_DIR is set and will override LLAMA_CKPT_DIR, LLAMA_TOKENIZER_PATH, and LLAMA_CACHE_PATH"
+        #         )
+        #     self.DEFAULT_CKPT_DIR = LLAMA_DIR
+        #     self.DEFAULT_TOKENIZER_PATH = LLAMA_DIR
+        #     self.DEFAULT_CACHE_PATH = os.path.join(LLAMA_DIR, self.device_name)
+        # else:
+        #     self.DEFAULT_CKPT_DIR = os.getenv(
+        #         "LLAMA_CKPT_DIR", "/mnt/MLPerf/tt_dnn-models/llama/Meta-Llama-3.1-8B-Instruct/"
+        #     )
+        #     self.DEFAULT_TOKENIZER_PATH = os.getenv(
+        #         "LLAMA_TOKENIZER_PATH", "/mnt/MLPerf/tt_dnn-models/llama/Meta-Llama-3.1-8B-Instruct/"
+        #     )
+        #     self.DEFAULT_CACHE_PATH = os.getenv(
+        #         "LLAMA_CACHE_PATH", f"/mnt/MLPerf/tt_dnn-models/llama/Meta-Llama-3.1-8B-Instruct/{self.device_name}/"
+        #     )
 
+        self.DEFAULT_CKPT_DIR = "/proj_sw/user_dev/llama3-data-repacked/llama-3-70b/"
+        self.DEFAULT_TOKENIZER_PATH = "/proj_sw/user_dev/llama3-data-repacked/"
+        self.DEFAULT_CACHE_PATH = "/proj_sw/user_dev/llama3-data-cache/weights-cache-2"
         if not dummy_weights:
             # Assert if all folders and files exist
             assert os.path.exists(
@@ -337,7 +486,7 @@ class TtModelArgs:
                 fuse_batch=seq_len <= 2048,
             )
 
-            assert self.n_kv_heads % self.num_devices == 0, "n_kv_heads must be divisible by num_devices"
+            # assert self.n_kv_heads % self.num_devices == 0, "n_kv_heads must be divisible by num_devices"
             self.model_config["KV_PREFILL_MEM_CFG"] = lambda seq_len: ttnn.create_sharded_memory_config(
                 (((self.n_kv_heads // self.num_devices) * seq_len // 64), self.head_dim),
                 ttnn.CoreGrid(y=8, x=8),
@@ -605,8 +754,11 @@ class TtModelArgs:
                 ),
             )
 
+            self.model_config["mlp"] = set_mlp_config(self.model_config, (4, 8))
+
             self.is_2d_fracturing = all([dim > 1 for dim in self.mesh_device.shape]) if self.mesh_device else False
             self.is_multichip = self.num_devices > 1
+            self.is_galaxy = self.num_devices == 32
 
     def is_distributed_norm(self, mode):
         if not self.is_multichip:
@@ -712,7 +864,7 @@ class TtModelArgs:
         self.n_layers = params["n_layers"]
         self.norm_eps = params["norm_eps"]
         self.rope_theta = params["rope_theta"]
-        self.use_scaled_rope = params["use_scaled_rope"]
+        self.use_scaled_rope = True  # params["use_scaled_rope"]
         self.vocab_size = params["vocab_size"]
         self.head_dim = self.dim // self.n_heads
         self.hidden_dim = calculate_hidden_dim(self.dim, self.ffn_dim_multiplier, self.multiple_of)
