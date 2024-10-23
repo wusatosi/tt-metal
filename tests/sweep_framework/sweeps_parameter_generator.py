@@ -81,6 +81,7 @@ def export_suite_vectors_json(module_name, suite_name, vectors):
     else:
         with open(EXPORT_PATH, "w") as file:
             json.dump({suite_name: serialized_vectors}, file)
+    logger.info(f"SWEEPS: Generated {len(vectors)} test vectors for suite {suite_name}.")
 
 
 # Output the individual test vectors.
