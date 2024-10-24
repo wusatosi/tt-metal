@@ -18,6 +18,7 @@ from models.utility_functions import (
     comp_allclose,
 )
 from models.utility_functions import skip_for_grayskull
+from models.demos.t3000.llama2_70b.tt.llama_common import ShardTensor2dMesh, ConcatMesh2DToTensor
 
 
 @torch.no_grad()
@@ -96,18 +97,24 @@ def test_llama_attention_inference(mesh_device, use_program_cache, reset_seeds, 
 
         tt_out = tt_model(attention_input, current_pos_tensor, rot_mats=current_rot_mat, mode="decode")
         # multi-device attention module returns replicated output
-
-        tt_output_torch = (
-            ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))[0, :, :, : model_args.dim]
-            .view(1, -1, model_args.dim)
-            .permute(1, 0, 2)[: model_args.max_batch_size, :, :]
-        )  # [ batch, seq, hidden_dim]
+        if model_args.is_galaxy:
+            tt_out = ttnn.to_torch(
+                tt_out, mesh_composer=ConcatMesh2DToTensor(mesh_device, dims=(3, 1), cluster_shape=(4, 8))
+            )
+            tt_out = tt_out[:, 0:1, :, :]
+            tt_output_torch = tt_out.permute(2, 1, 0, 3).squeeze(1)[: model_args.max_batch_size, :, :]
+        else:
+            tt_output_torch = (
+                ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))[
+                    0, :, :, : model_args.dim
+                ]
+                .view(1, -1, model_args.dim)
+                .permute(1, 0, 2)[: model_args.max_batch_size, :, :]
+            )  # [ batch, seq, hidden_dim]
 
         freqs_cis_i = freqs_cis[current_pos, :].unsqueeze(0)
         # positions = torch.tensor([current_pos])
-
         reference_output = reference_model(pt_attention_input, current_pos, freqs_cis_i, mask=None)
-
         passing, pcc_message = comp_pcc(reference_output, tt_output_torch, pcc)
 
         logger.info(comp_allclose(reference_output, tt_output_torch))
@@ -130,7 +137,12 @@ def test_llama_attention_inference(mesh_device, use_program_cache, reset_seeds, 
             ]
             # TT hardware execution -------------------------------------------------------------
             tt_layer_present = [
-                ttnn.to_torch(cache, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1))
+                ttnn.to_torch(
+                    cache,
+                    mesh_composer=ConcatMesh2DToTensor(mesh_device, dims=(0, 1), cluster_shape=(4, 8))
+                    if model_args.is_galaxy
+                    else ttnn.ConcatMeshToTensor(mesh_device, dim=1),
+                )[:batch, :, :, :]
                 for cache in tt_model.layer_past
             ]
 

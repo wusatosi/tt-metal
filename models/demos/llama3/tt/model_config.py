@@ -25,6 +25,198 @@ from models.demos.t3000.falcon40b.tt.model_utils import (
     matmul_2d_config_from_tensor_shapes,
     matmul_1d_config_from_tensor_shapes,
 )
+from models.demos.t3000.llama2_70b.tt.llama_common import ShardTensor2dMesh, ConcatMesh2DToTensor
+
+
+def num_to_corerange(x):
+    assert x < 8 or x % 8 == 0
+    num_x = min(x, 8)
+    num_y = x // num_x
+    assert num_x * num_y == x
+    return ttnn.CoreRange(
+        ttnn.CoreCoord(0, 0),
+        ttnn.CoreCoord(num_x - 1, num_y - 1),
+    )
+
+
+def set_attention_config(model_config, max_batch_size):
+    # Set decode config first
+    decode_config = {}
+
+    model_config_entries = {
+        "hidden_size": 8192,
+        "head_dim": 128,
+        "num_attention_heads": 64,
+        "num_kv_heads": 8,
+        "num_layers": 80,
+        "weight_cache": True,
+        "vocab_size": 128256,
+        "padded_vocab_size": 128 * 1024,
+        "mlp_dim": 28672,
+        "padded_mlp_dim": 32768,
+        "layer_norm_epsilon": 1e-05,
+    }
+
+    model_config["MAX_MM_SEQ_LEN"] = lambda seq_len: min(seq_len, 1024)
+    model_config["CORE_GRID_Y"] = lambda seq_len: 4 if min(seq_len, 1024) // 32 >= 4 else min(seq_len, 1024) // 32
+
+    decode_config["ROT_MAT_MM_PROGCFG"] = lambda batch_size: ttnn.MatmulMultiCoreReuseProgramConfig(
+        compute_with_storage_grid_size=get_batch_grid_size(batch_size),
+        in0_block_w=4,  # 128 // TILE_SIZE (dynamic)
+        out_subblock_h=1,
+        out_subblock_w=4,
+        per_core_M=1,
+        per_core_N=4,
+    )
+
+    decode_config["FUSED_QKV_MM_PROGCFG"] = ttnn.MatmulMultiCoreReuseMultiCast1DProgramConfig(
+        compute_with_storage_grid_size=(8, 5),
+        in0_block_w=2,
+        out_subblock_h=1,
+        out_subblock_w=1,
+        per_core_M=1,
+        per_core_N=1,
+        fuse_batch=True,
+        fused_activation=None,
+        mcast_in0=True,
+    )
+
+    decode_config["COMPUTE_KERNEL_QKV"] = ttnn.WormholeComputeKernelConfig(
+        math_fidelity=ttnn.MathFidelity.HiFi2,
+        math_approx_mode=True,
+        fp32_dest_acc_en=True,
+        packer_l1_acc=True,
+    )
+
+    decode_config["COMPUTE_KERNEL_SELFOUT"] = decode_config["COMPUTE_KERNEL_QKV"]
+    n_local_heads = model_config_entries["num_attention_heads"] // model_config_entries["num_kv_heads"]
+    n_local_kv_heads = 1
+    head_dim = model_config_entries["head_dim"]
+    total_cores = (n_local_heads + n_local_kv_heads * 2) * head_dim // 32  # 1280 / 32 = 40
+    assert total_cores == 40, f"total_cores: {total_cores}"
+    shard_spec_n_cores_grid = ttnn.CoreRangeSet({num_to_corerange(total_cores)})
+
+    decode_config["CREATE_HEAD_INPUT_MEMCFG"] = ttnn.MemoryConfig(
+        ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        ttnn.BufferType.L1,
+        ttnn.ShardSpec(
+            shard_spec_n_cores_grid,
+            [
+                32,
+                32,
+            ],
+            ttnn.ShardOrientation.ROW_MAJOR,
+            False,
+        ),
+    )
+
+    decode_config["COMPUTE_KERNEL_ROTARY"] = ttnn.WormholeComputeKernelConfig(
+        math_fidelity=ttnn.MathFidelity.HiFi4,
+        math_approx_mode=False,
+        fp32_dest_acc_en=True,
+        packer_l1_acc=True,
+    )
+
+    decode_config["ROTARY_PROGCFG"] = ttnn.MatmulMultiCoreReuseProgramConfig(
+        compute_with_storage_grid_size=[8, 1],
+        in0_block_w=4,
+        out_subblock_h=1,
+        out_subblock_w=4,
+        per_core_M=1,
+        per_core_N=4,
+    )
+
+    decode_config["COMPUTE_KERNEL_SDPA"] = ttnn.WormholeComputeKernelConfig(
+        math_fidelity=ttnn.MathFidelity.HiFi4,
+        math_approx_mode=False,
+        fp32_dest_acc_en=False,
+        packer_l1_acc=False,
+    )
+    padded_local_heads = 32
+
+    decode_config["SDPA_HEIGHT_SHARDED_MEMCFG"] = lambda batch_size_per_device_group: ttnn.MemoryConfig(
+        ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+        ttnn.BufferType.L1,
+        ttnn.ShardSpec(
+            ttnn.CoreRangeSet({num_to_corerange(batch_size_per_device_group)}),
+            (padded_local_heads, head_dim),
+            ttnn.ShardOrientation.ROW_MAJOR,
+            False,
+        ),
+    )
+
+    decode_config["QKV_OUT_GATHERED_MEMCFG"] = lambda mesh_cols: ttnn.create_sharded_memory_config(
+        shape=(32 * mesh_cols, 1280 // 40),  # mesh_cols = 4
+        core_grid=ttnn.CoreGrid(y=5, x=8),
+        strategy=ttnn.ShardStrategy.WIDTH,
+        orientation=ttnn.ShardOrientation.ROW_MAJOR,
+        use_height_and_width_as_shard_shape=True,
+    )
+    decode_config["SELF_OUT_GATHERED_MEMCFG"] = lambda mesh_rows: ttnn.create_sharded_memory_config(
+        shape=(32 * mesh_rows, 2048 // 32),  # mesh_rows = 8
+        core_grid=ttnn.CoreGrid(y=4, x=8),
+        strategy=ttnn.ShardStrategy.WIDTH,
+        orientation=ttnn.ShardOrientation.ROW_MAJOR,
+        use_height_and_width_as_shard_shape=True,
+    )
+
+    decode_config["GATHER_USERS_MEMCFG"] = lambda mesh_cols: ttnn.create_sharded_memory_config(
+        shape=(32 * mesh_cols, 1024 // 32),  # mesh_cols = 4
+        core_grid=ttnn.CoreGrid(y=4, x=8),
+        strategy=ttnn.ShardStrategy.WIDTH,
+        orientation=ttnn.ShardOrientation.ROW_MAJOR,
+        use_height_and_width_as_shard_shape=True,
+    )
+
+    # Set prefill config
+    prefill_config = {}
+
+    prefill_config["COMPUTE_KERNEL_QKV"] = ttnn.WormholeComputeKernelConfig(
+        math_fidelity=ttnn.MathFidelity.HiFi2,
+        math_approx_mode=True,
+        fp32_dest_acc_en=True,
+        packer_l1_acc=True,
+    )
+    prefill_config["COMPUTE_KERNEL_SELFOUT"] = prefill_config["COMPUTE_KERNEL_QKV"]
+    prefill_config["COMPUTE_KERNEL_ROTARY"] = ttnn.WormholeComputeKernelConfig(
+        math_fidelity=ttnn.MathFidelity.HiFi4,
+        math_approx_mode=False,
+        fp32_dest_acc_en=True,
+        packer_l1_acc=True,
+    )
+
+    prefill_config["COMPUTE_KERNEL_SDPA"] = ttnn.WormholeComputeKernelConfig(
+        math_fidelity=ttnn.MathFidelity.HiFi4,
+        math_approx_mode=False,
+        fp32_dest_acc_en=False,
+        packer_l1_acc=False,
+    )
+
+    prefill_config["SDPA_PROG_CFG"] = lambda seq_len: ttnn.SDPAProgramConfig(
+        compute_with_storage_grid_size=[8, 7],
+        q_chunk_size=256 if seq_len % 256 == 0 else 32,
+        k_chunk_size=256 if seq_len % 256 == 0 else 32,
+    )
+
+    prefill_config["FUSED_QKV_MM_PROGCFG"] = lambda seq_len: matmul_2d_config_from_tensor_shapes(
+        (1, 1, model_config["MAX_MM_SEQ_LEN"](seq_len), 2048),
+        (1, 1, 2048, 1280),
+        grid=ttnn.CoreGrid(x=8, y=model_config["CORE_GRID_Y"](seq_len)),
+        overwrite_subblock_h=1,
+        overwrite_subblock_w=1,
+        fuse_batch=False,
+    )
+
+    prefill_config["SELFOUT_PROGCFG"] = lambda seq_len: matmul_2d_config_from_tensor_shapes(
+        (1, 1, model_config["MAX_MM_SEQ_LEN"](seq_len), 1024),
+        (1, 1, 1024, 2048),
+        grid=ttnn.CoreGrid(x=8, y=model_config["CORE_GRID_Y"](seq_len)),
+        overwrite_subblock_h=1,
+        overwrite_subblock_w=1,
+        fuse_batch=False,
+    )
+
+    return {"prefill": prefill_config, "decode": decode_config}
 
 
 def set_mlp_config(model_config, cluster_shape):
@@ -755,6 +947,7 @@ class TtModelArgs:
             )
 
             self.model_config["mlp"] = set_mlp_config(self.model_config, (4, 8))
+            self.model_config["attention"] = set_attention_config(self.model_config, self.max_batch_size)
 
             self.is_2d_fracturing = all([dim > 1 for dim in self.mesh_device.shape]) if self.mesh_device else False
             self.is_multichip = self.num_devices > 1
@@ -782,9 +975,13 @@ class TtModelArgs:
         x: (batch, seq, dim)
         """
         mesh_mapper = (
-            ttnn.ReplicateTensorToMesh(self.mesh_device)
-            if force_replicated
-            else ttnn.ShardTensorToMesh(self.mesh_device, dim=-1)
+            ShardTensor2dMesh(self.mesh_device, dims=(3, None), cluster_shape=(4, 8))
+            if self.is_galaxy
+            else (
+                ttnn.ReplicateTensorToMesh(self.mesh_device)
+                if force_replicated
+                else ttnn.ShardTensorToMesh(self.mesh_device, dim=-1)
+            )
         )
 
         if len(x.shape) == 3:
@@ -813,6 +1010,14 @@ class TtModelArgs:
         elif len(x.shape) == 4:
             pass  # already in [seq_len, 1, batch, dim]
 
+        tg_cfg = ttnn.create_sharded_memory_config(
+            shape=(x.shape[2], x.shape[3] // 32 // 4),
+            core_grid=ttnn.CoreGrid(y=4, x=8),
+            strategy=ttnn.ShardStrategy.WIDTH,
+            orientation=ttnn.ShardOrientation.ROW_MAJOR,
+            use_height_and_width_as_shard_shape=True,
+        )
+
         if torch.is_tensor(x):
             x = ttnn.from_torch(
                 x,
@@ -820,7 +1025,7 @@ class TtModelArgs:
                 dtype=ttnn.bfloat16,
                 layout=ttnn.TILE_LAYOUT,
                 mesh_mapper=mesh_mapper,
-                memory_config=input_mem_cfg,
+                memory_config=tg_cfg if self.is_galaxy else input_mem_cfg,
             )
         else:  # Convert the row major layout from embedding back to tile layout
             x = ttnn.to_layout(x, layout=ttnn.TILE_LAYOUT)
