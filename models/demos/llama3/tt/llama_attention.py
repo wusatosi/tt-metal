@@ -538,7 +538,9 @@ class TtLlamaAttention(LightweightModule):
         ###
         # QKV matmuls
         ###
-
+        TG = self.TG
+        if TG:
+            self.attention_config = self.model_config["attention"]["prefill"]
         # reshaping long sequence to matmul fit on device
         if seq_len > 2048:
             x_11SH = ttnn.reshape(x_11SH, [1, seq_len // 2048, 2048, -1])
@@ -549,8 +551,16 @@ class TtLlamaAttention(LightweightModule):
             dtype=ttnn.bfloat16,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
             compute_kernel_config=self.compute_kernel_config_hifi2,
-            program_config=self.model_config["XQKV_PREFILL_PROGCFG"](seq_len),
+            program_config=self.attention_config["FUSED_QKV_MM_PROGCFG"](seq_len)
+            if TG
+            else self.model_config["XQKV_PREFILL_PROGCFG"](seq_len),
         )
+
+        if TG:
+            xqkv_fused = tt_all_reduce(
+                xqkv_fused, self.mesh_device, cluster_axis=1, num_links=2, memory_config=ttnn.DRAM_MEMORY_CONFIG
+            )
+        print("done qkv matmul", xqkv_fused.shape)
 
         if seq_len > 2048:
             xqkv_fused = ttnn.reshape(xqkv_fused, [1, 1, seq_len, -1])
@@ -570,6 +580,8 @@ class TtLlamaAttention(LightweightModule):
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
         )
 
+        print("done qkv heads", q_heads_1QSD_pre_rot.shape, k_heads_1KSD_pre_rot.shape, v_heads_1VSD.shape)
+
         ttnn.deallocate(xqkv_fused)
 
         ###
@@ -585,14 +597,14 @@ class TtLlamaAttention(LightweightModule):
             k_heads_1KSD_pre_rot, rot_mats[0], rot_mats[1], transformation_mats
         )
         ttnn.deallocate(k_heads_1KSD_pre_rot)
-
+        print("done rotary embeddings", q_heads_1QSD.shape, k_heads_1KSD.shape)
         # Fill KV-Cache
         keys_BKSD, values_BKSD = self.layer_past[0], self.layer_past[1]
-
         k_heads_1KSD_8b = ttnn.typecast(k_heads_1KSD, dtype=ttnn.bfloat8_b)
         ttnn.deallocate(k_heads_1KSD)
+
         # sharding k_fill to deal with update_cache memory limitation
-        if seq_len > 256:
+        if seq_len > 256 and not TG:
             k_fill = ttnn.interleaved_to_sharded(k_heads_1KSD_8b, self.model_config["KV_PREFILL_MEM_CFG"](seq_len))
         else:
             k_fill = k_heads_1KSD_8b
@@ -601,11 +613,14 @@ class TtLlamaAttention(LightweightModule):
 
         ttnn.deallocate(v_heads_1VSD)
         # sharding v_fill to deal with update_cache memory limitation
-        if seq_len > 256:
+        if seq_len > 256 and not TG:
             v_fill = ttnn.interleaved_to_sharded(v_heads_1VSD_8b, self.model_config["KV_PREFILL_MEM_CFG"](seq_len))
         else:
             v_fill = v_heads_1VSD_8b
-
+        if TG:
+            k_fill = self.prefill_prepare_tensor_for_kv_cache(k_fill, user_id)
+            v_fill = self.prefill_prepare_tensor_for_kv_cache(v_fill, user_id)
+        print("done kv prep", k_fill.shape, v_fill.shape)
         if page_table:
             ttnn.experimental.paged_fill_cache(keys_BKSD, k_fill, page_table, batch_idx=user_id)
             ttnn.experimental.paged_fill_cache(values_BKSD, v_fill, page_table, batch_idx=user_id)
@@ -613,15 +628,15 @@ class TtLlamaAttention(LightweightModule):
             ttnn.fill_cache(
                 keys_BKSD,
                 k_fill,
-                user_id,
+                user_id % self.batch_size_per_device_group,
             )
             ttnn.fill_cache(
                 values_BKSD,
                 v_fill,
-                user_id,
+                user_id % self.batch_size_per_device_group,
             )
 
-        if seq_len > 256:
+        if seq_len > 256 and not TG:
             ttnn.deallocate(k_fill)
             ttnn.deallocate(v_fill)
 
@@ -646,8 +661,12 @@ class TtLlamaAttention(LightweightModule):
             v_heads_V1SD_8b,
             is_causal=True,
             scale=self.scale,
-            program_config=self.model_config["SDPA_PROGCFG"](seq_len),
+            program_config=self.attention_config["SDPA_PROG_CFG"](q_heads_84SD_8b.shape[-2])
+            if TG
+            else self.model_config["SDPA_PROGCFG"](seq_len),
         )
+
+        print("done attention", attn_output_84SD.shape)
 
         # deallocate keys and values
         ttnn.deallocate(q_heads_84SD_8b)
@@ -685,21 +704,35 @@ class TtLlamaAttention(LightweightModule):
             compute_kernel_config=self.compute_kernel_config_hifi2,
             dtype=ttnn.bfloat8_b,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
-            program_config=self.model_config["WO_PREFILL_PROGCFG"](seq_len),
+            program_config=self.attention_config["SELFOUT_PROGCFG"](seq_len)
+            if TG
+            else self.model_config["WO_PREFILL_PROGCFG"](seq_len),
         )
+
+        print("done output", output_11SH.shape)
         if seq_len > 2048:
             output_11SH = ttnn.reshape(output_11SH, [1, 1, seq_len, -1])
         ttnn.deallocate(attn_output_11SH)
 
         # Reduce-scatter
         if self.is_multichip and not self.use_fused_all_gather_matmul:
-            dense_out_reduced = ttnn.reduce_scatter(
-                output_11SH,
-                scatter_dim=3,
-                math_op=ttnn.ReduceType.Sum,
-                num_links=1,
-                memory_config=ttnn.DRAM_MEMORY_CONFIG,
-            )
+            if TG:
+                dense_out_reduced = tt_all_reduce(
+                    output_11SH,
+                    self.mesh_device,
+                    cluster_axis=0,
+                    num_links=2,
+                    memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                )
+                print("done all reduce", dense_out_reduced.shape)
+            else:
+                dense_out_reduced = ttnn.reduce_scatter(
+                    output_11SH,
+                    scatter_dim=3,
+                    math_op=ttnn.ReduceType.Sum,
+                    num_links=1,
+                    memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                )
             ttnn.deallocate(output_11SH)
             return dense_out_reduced
         else:
@@ -712,3 +745,15 @@ class TtLlamaAttention(LightweightModule):
             return self.forward_prefill(x, rot_mats, transformation_mats, user_id, page_table)
         else:
             return self.forward_decode(x, current_pos, rot_mats, page_table)
+
+    def prefill_prepare_tensor_for_kv_cache(self, key_or_value_layer, user_id):
+        tensor_copy = ttnn.clone(key_or_value_layer)
+        # Get all tensors from multi-device tensor
+        tensors = ttnn.get_device_tensors(tensor_copy)
+        # Get only tensors from specific column chips
+        # Get every 4th tensor starting from user_id // 8
+        single_column_tensors = tensors[user_id // self.batch_size_per_device_group :: 4]
+        # Create multi-device tensor
+        multi_device_tensor = ttnn.aggregate_as_tensor(single_column_tensors)
+
+        return multi_device_tensor

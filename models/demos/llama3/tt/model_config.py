@@ -188,7 +188,7 @@ def set_attention_config(model_config, max_batch_size):
     prefill_config["COMPUTE_KERNEL_SDPA"] = ttnn.WormholeComputeKernelConfig(
         math_fidelity=ttnn.MathFidelity.HiFi4,
         math_approx_mode=False,
-        fp32_dest_acc_en=False,
+        fp32_dest_acc_en=True,
         packer_l1_acc=False,
     )
 
@@ -197,9 +197,10 @@ def set_attention_config(model_config, max_batch_size):
         q_chunk_size=256 if seq_len % 256 == 0 else 32,
         k_chunk_size=256 if seq_len % 256 == 0 else 32,
     )
+    model_config["MAX_MM_SEQ_LEN_PREFILL"] = lambda seq_len: min(seq_len, 2048)
 
     prefill_config["FUSED_QKV_MM_PROGCFG"] = lambda seq_len: matmul_2d_config_from_tensor_shapes(
-        (1, 1, model_config["MAX_MM_SEQ_LEN"](seq_len), 2048),
+        (1, 1, model_config["MAX_MM_SEQ_LEN_PREFILL"](seq_len), 2048),
         (1, 1, 2048, 1280),
         grid=ttnn.CoreGrid(x=8, y=model_config["CORE_GRID_Y"](seq_len)),
         overwrite_subblock_h=1,
@@ -208,7 +209,7 @@ def set_attention_config(model_config, max_batch_size):
     )
 
     prefill_config["SELFOUT_PROGCFG"] = lambda seq_len: matmul_2d_config_from_tensor_shapes(
-        (1, 1, model_config["MAX_MM_SEQ_LEN"](seq_len), 1024),
+        (1, 1, model_config["MAX_MM_SEQ_LEN_PREFILL"](seq_len), 1024),
         (1, 1, 1024, 2048),
         grid=ttnn.CoreGrid(x=8, y=model_config["CORE_GRID_Y"](seq_len)),
         overwrite_subblock_h=1,
@@ -1041,11 +1042,14 @@ class TtModelArgs:
         """
 
         x_1BSH = x_bsh.unsqueeze(0)
-
         mesh_mapper = (
-            ttnn.ReplicateTensorToMesh(self.mesh_device)
-            if force_replicated
-            else ttnn.ShardTensorToMesh(self.mesh_device, dim=-1)
+            ShardTensor2dMesh(self.mesh_device, dims=(3, None), cluster_shape=(4, 8))
+            if self.is_galaxy
+            else (
+                ttnn.ReplicateTensorToMesh(self.mesh_device)
+                if force_replicated
+                else ttnn.ShardTensorToMesh(self.mesh_device, dim=-1)
+            )
         )
 
         # input goes to DRAM

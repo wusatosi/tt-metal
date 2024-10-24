@@ -18,13 +18,14 @@ from models.utility_functions import (
     comp_allclose,
 )
 from models.utility_functions import skip_for_grayskull
+from models.demos.t3000.llama2_70b.tt.llama_common import ShardTensor2dMesh, ConcatMesh2DToTensor
 
 
 @torch.no_grad()
 @skip_for_grayskull("Requires wormhole_b0 to run")
 @pytest.mark.parametrize(
     "seq_len",
-    (2048,),
+    (64 * 1024,),
 )
 @pytest.mark.parametrize(
     "mesh_device",
@@ -87,11 +88,20 @@ def test_llama_attention_inference(seq_len, mesh_device, use_program_cache, rese
     )
 
     tt_out = tt_model(attention_input, 0, rot_mats, transformation_mats, user_id=0, mode="prefill")
-    tt_output_torch = ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))[
-        0, :, :, : model_args.dim
-    ].view(
-        batch, seq_len, -1
-    )  # [ batch, seq, dim]
+
+    if model_args.is_galaxy:
+        tt_out = ttnn.to_torch(
+            tt_out, mesh_composer=ConcatMesh2DToTensor(mesh_device, dims=(3, 1), cluster_shape=(4, 8))
+        )
+        print(tt_out.shape)
+        tt_out = tt_out[:, 0:1, :, :]
+        tt_output_torch = tt_out.squeeze(1)[: model_args.max_batch_size, :, :]
+    else:
+        tt_output_torch = ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))[
+            0, :, :, : model_args.dim
+        ].view(
+            batch, seq_len, -1
+        )  # [ batch, seq, dim]
 
     positions = torch.LongTensor(range(seq_len))
     freqs_cis_i = precompute_freqs_cis(
@@ -100,6 +110,8 @@ def test_llama_attention_inference(seq_len, mesh_device, use_program_cache, rese
     attn_mask = torch.full((seq_len, seq_len), torch.finfo(torch.float32).min)
     attn_mask_torch = torch.triu(attn_mask, diagonal=1)
     reference_output = reference_model(pt_attention_input, positions[0], freqs_cis_i, mask=attn_mask_torch)
+
+    print("SHAPES: ", reference_output.shape, tt_output_torch.shape)
 
     passing, pcc_message = comp_pcc(reference_output, tt_output_torch, pcc)
 
@@ -118,12 +130,17 @@ def test_llama_attention_inference(seq_len, mesh_device, use_program_cache, rese
             reference_model.cache_k.clone().permute(0, 2, 1, 3),  # [batch, n_kv_heads, seq, head_dim]
             reference_model.cache_v.clone().permute(0, 2, 1, 3),  # [batch, n_kv_heads, seq, head_dim]
         ]
+
         # TT hardware execution -------------------------------------------------------------
         tt_layer_present = [
-            ttnn.to_torch(cache, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1))
+            ttnn.to_torch(
+                cache,
+                mesh_composer=ConcatMesh2DToTensor(mesh_device, dims=(0, 1), cluster_shape=(4, 8))
+                if model_args.is_galaxy
+                else ttnn.ConcatMeshToTensor(mesh_device, dim=1),
+            )[:batch, :, :, :]
             for cache in tt_model.layer_past
         ]
-
         for i, (cache_pt, cache_tt) in enumerate(zip(pytorch_layer_present, tt_layer_present)):
             cache_length_to_check = min(model_args.sliding_window, generation_start_pos + generation_length + 1)
             cache_pt = cache_pt[:, :, generation_start_pos:cache_length_to_check, :]
