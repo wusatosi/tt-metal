@@ -24,6 +24,20 @@ def tt_all_reduce(input_tensor, mesh_device, cluster_axis, dim=0, num_links=2, m
     return reduced_tensors
 
 
+def tt_all_gather(input_tensor, mesh_device, cluster_axis, dim, num_links=2, memory_config=None):
+    # Ensure the input tensor is in the correct memory configuration
+    input_tensor = ttnn.to_memory_config(input_tensor, ttnn.DRAM_MEMORY_CONFIG)
+
+    return ttnn.all_gather(
+        input_tensor,
+        dim,
+        num_links=num_links,
+        cluster_axis=cluster_axis,
+        mesh_device=mesh_device,
+        topology=ttnn.Topology.Linear,
+    )
+
+
 def tt_sharded_all_reduce(input_tensor, mesh_device, cluster_axis, dim=0, num_links=2, memory_config=None):
     gathered_tensor = ttnn.all_gather(
         input_tensor,

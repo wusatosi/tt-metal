@@ -18,6 +18,7 @@ from models.utility_functions import (
     comp_allclose,
 )
 from models.utility_functions import skip_for_grayskull
+from models.demos.t3000.llama2_70b.tt.llama_common import ShardTensor2dMesh, ConcatMesh2DToTensor
 
 
 @torch.no_grad()
@@ -97,13 +98,20 @@ def test_llama_decoder_inference(mesh_device, use_program_cache, reset_seeds, en
 
         # Run TT model
         tt_out = tt_model(decode_input, current_pos_tensor, rot_mat=current_rot_mat)
-        tt_output_torch = (
-            ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))[
-                :1, :, :, : model_args.dim
-            ]
-            .permute(2, 1, 0, 3)
-            .squeeze(1)[: model_args.max_batch_size, :, :]
-        )  # [seq, batch, dim]
+        if model_args.is_galaxy:
+            tt_out = ttnn.to_torch(
+                tt_out, mesh_composer=ConcatMesh2DToTensor(mesh_device, dims=(3, 1), cluster_shape=(4, 8))
+            )
+            tt_out = tt_out[:, 0:1, :, :]
+            tt_output_torch = tt_out.permute(2, 1, 0, 3).squeeze(1)[: model_args.max_batch_size, :, :]
+        else:
+            tt_output_torch = (
+                ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))[
+                    :1, :, :, : model_args.dim
+                ]
+                .permute(2, 1, 0, 3)
+                .squeeze(1)[: model_args.max_batch_size, :, :]
+            )  # [seq, batch, dim]
         print(f"{tt_output_torch.shape=}")
 
         freqs_cis_i = freqs_cis[current_pos, :].unsqueeze(0)
