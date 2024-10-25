@@ -413,6 +413,7 @@ class TtModelArgs:
         self.mesh_device = mesh_device
         self.device_name = {0: "CPU", 1: "N150", 2: "N300", 8: "T3K", 32: "TG"}[self.num_devices]
         self.is_large_model = False
+        self.model_name = "Unknown"  # Llama model name will be dependent on the checkpoint directory
 
         LLAMA_DIR = os.getenv("LLAMA_DIR")
         # if LLAMA_DIR:
@@ -459,25 +460,31 @@ class TtModelArgs:
         logger.info(f"Tokenizer file: {self.DEFAULT_TOKENIZER_PATH + '/tokenizer.model'}")
         logger.info(f"Cache directory: {self.DEFAULT_CACHE_PATH}")
 
+        # Set the model name based on the checkpoint directory being loaded
+        if "3.2-1B" in LLAMA_DIR:
+            local_params = "LLAMA3_2_1B_PARAMS"
+            self.model_name = "3.2-1B"
+        elif "3.2-3B" in LLAMA_DIR:
+            local_params = "LLAMA3_2_3B_PARAMS"
+            self.model_name = "3.2-3B"
+        elif "3.1-8B" in LLAMA_DIR:
+            local_params = "LLAMA3_1_8B_PARAMS"
+            self.model_name = "3.1-8B"
+        elif "3.2-11B" in LLAMA_DIR:
+            local_params = "LLAMA3_2_11B_PARAMS"
+            self.model_name = "3.2-11B"
+        elif "3.1-70B" in LLAMA_DIR:
+            local_params = "LLAMA3_1_70B_PARAMS"
+            self.model_name = "3.1-70B"
+            self.is_large_model = True
+        else:
+            raise ValueError(f"Unsupported LLAMA model: {LLAMA_DIR}")
+
+        # Load model params
         if not dummy_weights:
             self._set_llama_params(self.DEFAULT_CKPT_DIR)
         else:  # With Dummy weights, set the params from the local copy inside the model folder. This is required for CI pipeline that doesn't mount the external folders.
-            if "3.2-1B" in LLAMA_DIR:
-                local_params = "LLAMA3_2_1B_PARAMS"
-            elif "3.2-3B" in LLAMA_DIR:
-                local_params = "LLAMA3_2_3B_PARAMS"
-            elif "3.1-8B" in LLAMA_DIR:
-                local_params = "LLAMA3_1_8B_PARAMS"
-            elif "3.2-11B" in LLAMA_DIR:
-                local_params = "LLAMA3_2_11B_PARAMS"
-            elif "3.1-70B" in LLAMA_DIR:
-                local_params = "LLAMA3_1_70B_PARAMS"
-                self.is_large_model = True
-            else:
-                raise ValueError(f"Unsupported LLAMA model: {LLAMA_DIR}")
             self._set_llama_params(self.LOCAL_LLAMA_PARAMS[local_params])
-
-        self.n_local_heads = self.n_heads // self.num_devices
 
         # Reduce full 128k context length for combinations with memory constraints
         # Currently: n150 8b and t3k 70b with 8b/8b/8b MLPs
@@ -528,6 +535,8 @@ class TtModelArgs:
 
         device = mesh_device.get_devices()[0] if mesh_device is not None else None
         if device is not None:  # Avoid issue with test_llama_torch.py not having a device
+            self.n_local_heads = self.n_heads // self.num_devices
+
             grid = device.compute_with_storage_grid_size()
             self.max_grid_size = ttnn.CoreGrid(x=grid.x, y=grid.y)
 
@@ -578,9 +587,9 @@ class TtModelArgs:
 
             # nlp_concat_heads_decode will shard the data across this number of cores
             assert (
-                self.n_heads % self.num_devices == 0,
-                f"n_heads must be divisible by num_devices: {self.n_heads} % {self.num_devices}",
-            )
+                self.n_heads % self.num_devices == 0
+            ), f"n_heads must be divisible by num_devices: {self.n_heads} % {self.num_devices}"
+
             self.model_config["ATTN_OUTPUT_PROGCFG"] = self.dram_matmul_config(
                 m=self.tile_padded_batch_rows,
                 k=self.dim // self.num_devices,
@@ -909,27 +918,9 @@ class TtModelArgs:
             )
 
             # RMS NORM
-            self.model_config["SHARDED_NORM_ATTN_PRGM_CFG"] = ttnn.LayerNormShardedMultiCoreProgramConfig(
-                compute_with_storage_grid_size=[attn_input_grid.x, attn_input_grid.y],
-                subblock_w=self.dim // attn_input_grid.num_cores // self.tile_size,
-                block_h=self.tile_padded_batch_rows // self.tile_size,
-                block_w=self.dim // attn_input_grid.num_cores // self.tile_size,
-                inplace=False,
-            )
-            self.model_config["SHARDED_NORM_MLP_PRGM_CFG"] = ttnn.LayerNormShardedMultiCoreProgramConfig(
-                compute_with_storage_grid_size=[mlp_core_grid.x, mlp_core_grid.y],
-                subblock_w=self.dim // mlp_core_grid.num_cores // self.tile_size,
-                block_h=self.tile_padded_batch_rows // self.tile_size,
-                block_w=self.dim // mlp_core_grid.num_cores // self.tile_size,
-                inplace=False,
-            )
-            self.model_config["SHARDED_NORM_LM_HEAD_PRGM_CFG"] = ttnn.LayerNormShardedMultiCoreProgramConfig(
-                compute_with_storage_grid_size=[self.lm_head_core_grid.x, self.lm_head_core_grid.y],
-                subblock_w=self.dim // self.lm_head_core_grid.num_cores // self.tile_size,
-                block_h=self.tile_padded_batch_rows // self.tile_size,
-                block_w=self.dim // self.lm_head_core_grid.num_cores // self.tile_size,
-                inplace=False,
-            )
+            self.model_config["SHARDED_NORM_ATTN_PRGM_CFG"] = self.create_sharded_norm_config(attn_input_grid)
+            self.model_config["SHARDED_NORM_MLP_PRGM_CFG"] = self.create_sharded_norm_config(mlp_core_grid)
+            self.model_config["SHARDED_NORM_LM_HEAD_PRGM_CFG"] = self.create_sharded_norm_config(self.lm_head_core_grid)
 
             # All gather matmuls currently only supported on T3K
             # We need it sharded on num_cores = num_devices
@@ -1233,7 +1224,7 @@ class TtModelArgs:
         Raises:
             AssertionError: If it's not possible to find such a grid configuration.
         """
-        max_rows = 2
+        max_rows = 4
         max_cols = 8  # Maximum number of rows or columns
         max_cores = max_rows * max_cols  # Maximum number of cores (8x2 grid)
 
@@ -1268,6 +1259,27 @@ class TtModelArgs:
             per_core_M=math.ceil(m / self.tile_size),
             per_core_N=math.ceil(n / (self.tile_size * num_cores)),
             fused_activation=None,
+        )
+
+    def create_sharded_norm_config(self, grid):
+        """Helper function to create LayerNormShardedMultiCoreProgramConfig for RMS NORM.
+
+        Args:
+            grid (ttnn.CoreGrid): Grid specification for the norm operation
+        """
+        block_w = self.dim // grid.num_cores // self.tile_size
+        # Find largest value <= 4 that evenly divides block_w
+        subblock_w = 4
+        while subblock_w > 0:
+            if block_w % subblock_w == 0:
+                break
+            subblock_w -= 1
+        return ttnn.LayerNormShardedMultiCoreProgramConfig(
+            compute_with_storage_grid_size=[grid.x, grid.y],
+            subblock_w=subblock_w,
+            block_h=self.tile_padded_batch_rows // self.tile_size,
+            block_w=block_w,
+            inplace=False,
         )
 
 
