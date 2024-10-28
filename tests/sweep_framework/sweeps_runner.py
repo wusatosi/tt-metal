@@ -9,6 +9,7 @@ import importlib
 import datetime
 import os
 import enlighten
+import json
 from tt_metal.tools.profiler.process_ops_logs import get_device_data_generate_report
 from tt_metal.tools.profiler.common import PROFILER_LOGS_DIR
 from multiprocessing import Process, Queue
@@ -235,11 +236,66 @@ def get_suite_vectors(client, vector_index, suite):
     return header_info, test_vectors
 
 
+def export_test_results_json(header_info, results):
+    if len(results) == 0:
+        return
+    module_name = header_info[0]["sweep_name"]
+    EXPORT_DIR_PATH = pathlib.Path(__file__).parent / "results_export"
+    EXPORT_PATH = EXPORT_DIR_PATH / str(module_name + ".json")
+
+    if not EXPORT_DIR_PATH.exists():
+        EXPORT_DIR_PATH.mkdir()
+
+    curr_git_hash = git_hash()
+    for result in results:
+        result["git_hash"] = curr_git_hash
+
+    new_data = []
+
+    for i in range(len(results)):
+        result = header_info[i]
+        for elem in results[i].keys():
+            if elem == "device_perf":
+                result[elem] = results[i][elem]
+                continue
+            result[elem] = serialize(results[i][elem])
+        new_data.append(result)
+
+    if EXPORT_PATH.exists():
+        with open(EXPORT_PATH, "r") as file:
+            old_data = json.load(file)
+        new_data = old_data + new_data
+        with open(EXPORT_PATH, "w") as file:
+            json.dump(new_data, file)
+    else:
+        with open(EXPORT_PATH, "w") as file:
+            json.dump(new_data, file)
+
+
 def run_sweeps(module_name, suite_name, vector_id):
-    client = Elasticsearch(ELASTIC_CONNECTION_STRING, basic_auth=(ELASTIC_USERNAME, ELASTIC_PASSWORD))
     pbar_manager = enlighten.get_manager()
 
     sweeps_path = pathlib.Path(__file__).parent / "sweeps"
+
+    if READ_FILE:
+        with open(READ_FILE, "r") as file:
+            data = json.load(file)
+            for suite in data:
+                for input_hash in data[suite]:
+                    data[suite][input_hash]["vector_id"] = input_hash
+                vectors = [data[suite][input_hash] for input_hash in data[suite]]
+                module_name = vectors[0]["sweep_name"]
+                test_module = importlib.import_module("sweeps." + module_name)
+                header_info, test_vectors = sanitize_inputs(vectors)
+                logger.info(f"Executing tests for module {module_name}, suite {suite}")
+                results = execute_suite(test_module, test_vectors, pbar_manager, suite)
+                logger.info(f"Completed tests for module {module_name}, suite {suite}.")
+                logger.info(f"Tests Executed - {len(results)}")
+                logger.info("Dumping results to JSON file.")
+                export_test_results_json(header_info, results)
+        return
+
+    client = Elasticsearch(ELASTIC_CONNECTION_STRING, basic_auth=(ELASTIC_USERNAME, ELASTIC_PASSWORD))
 
     if not module_name:
         for file in sorted(sweeps_path.glob("**/*.py")):
@@ -441,6 +497,7 @@ if __name__ == "__main__":
         default=os.getenv("USER"),
         help="Custom tag for the vectors you are running. This is to keep copies seperate from other people's test vectors. By default, this will be your username. You are able to specify a tag when generating tests using the generator.",
     )
+    parser.add_argument("--read-file", required=False, help="Read and execute test vectors from a specified file path.")
 
     args = parser.parse_args(sys.argv[1:])
     if not args.module_name and args.vector_id:
@@ -448,8 +505,18 @@ if __name__ == "__main__":
         logger.error("Module name is required if vector id is specified.")
         exit(1)
 
-    global ELASTIC_CONNECTION_STRING
-    ELASTIC_CONNECTION_STRING = get_elastic_url(args.elastic)
+    if not args.read_file:
+        from elasticsearch import Elasticsearch, NotFoundError
+        from framework.elastic_config import *
+
+        global ELASTIC_CONNECTION_STRING
+        ELASTIC_CONNECTION_STRING = get_elastic_url(args.elastic)
+    else:
+        if not args.module_name:
+            logger.error("You must specify a module with a local file.")
+            exit(1)
+        global READ_FILE
+        READ_FILE = args.read_file
 
     global MEASURE_PERF
     MEASURE_PERF = args.perf
