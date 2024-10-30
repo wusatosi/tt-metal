@@ -97,3 +97,18 @@ CPMAddPackage(NAME pybind11 GITHUB_REPOSITORY pybind/pybind11 GIT_TAG b8f28551cc
 ############################################################################################################################
 
 CPMAddPackage(NAME json GITHUB_REPOSITORY nlohmann/json GIT_TAG v3.9.1)
+
+############################################################################################################################
+# flatbuffers : https://github.com/google/flatbuffers
+############################################################################################################################
+
+CPMAddPackage(
+    NAME flatbuffers
+    GITHUB_REPOSITORY google/flatbuffers
+    GIT_TAG v24.3.25
+    OPTIONS
+        "FLATBUFFERS_BUILD_FLATC ON"
+        "FLATBUFFERS_BUILD_TESTS OFF"
+        "FLATBUFFERS_SKIP_MONSTER_EXTRA ON"
+        "FLATBUFFERS_STRICT_MODE ON"
+)
