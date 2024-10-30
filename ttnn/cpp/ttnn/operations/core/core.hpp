@@ -69,6 +69,17 @@ void execute_trace(MeshDevice* device, const uint32_t tid, const uint8_t cq_id =
 
 void release_trace(MeshDevice* device, const uint32_t tid);
 
+// Light Metal Trace APIs
+void light_metal_configure(Device* device, const std::string& filename, const bool auto_serialize_metal_trace);
+
+void light_metal_begin_capture(Device* device);
+
+void light_metal_end_capture(Device* device);
+
+void light_metal_load_trace_id(Device* device, const uint32_t tid, const uint8_t cq_id);
+
+void light_metal_save_trace_id(Device* device, const uint32_t tid);
+
 }  // namespace core
 }  // namespace operations
 

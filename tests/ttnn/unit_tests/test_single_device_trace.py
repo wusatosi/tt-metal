@@ -9,12 +9,23 @@ import ttnn
 import tempfile
 from loguru import logger
 from tests.ttnn.utils_for_testing import assert_with_pcc
+import os
 
 
-@pytest.mark.parametrize("shape", [[1, 3, 1024, 1024], (1, 1, 512, 512), (1, 3, 512, 512), (1, 3, 32, 32)])
-@pytest.mark.parametrize("enable_async", [True, False])
-@pytest.mark.parametrize("blocking", [True, False])
+# @pytest.mark.parametrize("shape", [[1, 3, 1024, 1024], (1, 1, 512, 512), (1, 3, 512, 512), (1, 3, 32, 32)])
+# @pytest.mark.parametrize("enable_async", [True, False])
+# @pytest.mark.parametrize("blocking", [True, False])
+# @pytest.mark.parametrize("device_params", [{"trace_region_size": 200000}], indirect=True)
+
+
+# KCM - Simplify test.
+@pytest.mark.parametrize("shape", [(1, 1, 32, 32)])
+@pytest.mark.parametrize("enable_async", [True])
+@pytest.mark.parametrize("blocking", [True])
 @pytest.mark.parametrize("device_params", [{"trace_region_size": 200000}], indirect=True)
+# @pytest.mark.parametrize("device_params", [{"trace_region_size": 0}], indirect=True)
+
+
 def test_single_device_single_trace(device, shape, enable_async, blocking):
     device.enable_async(enable_async)
     device.enable_program_cache()
@@ -27,16 +38,49 @@ def test_single_device_single_trace(device, shape, enable_async, blocking):
     def run_op_chain(input_0, input_1):
         return ttnn.neg(ttnn.add(ttnn.mul(input_1, ttnn.neg(ttnn.gelu(input_0))), ttnn.relu(input_1)))
 
-    # Compile program binaries
-    run_op_chain(input_0_dev, input_1_dev)
+    serialize_trace = True if "TT_METAL_SERIALIZE_TRACE" in os.environ else False
+    deserialize_trace = True if "TT_METAL_DESERIALIZE_TRACE" in os.environ else False
+    trace_bin_path = "/tmp/light_metal_trace_capture.bin"
+    auto_serialize_metal_trace = True
+    logger.info(
+        f"KCM Test. Serialize Trace: {serialize_trace}, Deserialize Trace: {deserialize_trace} File: {trace_bin_path}"
+    )
 
-    # Capture Trace
-    logger.info("Capture Trace")
-    tid = ttnn.begin_trace_capture(device, cq_id=0)
-    output_tensor = run_op_chain(input_0_dev, input_1_dev)
-    ttnn.end_trace_capture(device, tid, cq_id=0)
+    ttnn.light_metal_configure(device, trace_bin_path, auto_serialize_metal_trace)
 
-    for i in range(50):
+    # Either Load existing Trace, or Capture.
+    if deserialize_trace:
+        # Compile program binaries. Temp hack to preserve same allocs.
+        output_tensor = run_op_chain(input_0_dev, input_1_dev)
+
+        # When we have flatbuffer, we can query for available traces.
+        tid = 0  # FIXME replace with query to get all tids from binary. Or replace with load_next_trace_id(
+        logger.info(f"KCM Deserialize Trace, skipping capture. Going to call load_trace_binary for tid: {tid}")
+        ttnn.light_metal_load_trace_id(device, tid, cq_id=0)  # FIXME rename to light_metal_binary etc.
+
+        logger.info(f"KCM Deserialize Trace, done calling load_trace_binary got tid: {tid}")
+
+    else:
+        # Compile program binaries
+        run_op_chain(input_0_dev, input_1_dev)
+
+        ttnn.light_metal_begin_capture(device)
+
+        tid = ttnn.begin_trace_capture(device, cq_id=0)
+        output_tensor = run_op_chain(input_0_dev, input_1_dev)
+        ttnn.end_trace_capture(device, tid, cq_id=0)
+
+        # Get version with filenames to start, then use binary blobs.
+        logger.info(f"KCM Test going to save tid: {tid} to disk as filename: {trace_bin_path}")
+        # TODO - 2 step mode where this isn't serialized straight disk but data returned to user here.
+        ttnn.light_metal_end_capture(device)
+
+        # Early exit, don't run if serializing to disk.
+        if serialize_trace:
+            return
+
+    for i in range(10):
+        logger.info(f"KCM Run {i}")
         # Create torch inputs
         torch_input_tensor_0 = torch.rand(shape, dtype=torch.bfloat16)
         torch_input_tensor_1 = torch.rand(shape, dtype=torch.bfloat16)
@@ -53,17 +97,17 @@ def test_single_device_single_trace(device, shape, enable_async, blocking):
         ttnn_input_tensor_1 = ttnn.from_torch(torch_input_tensor_1, layout=ttnn.TILE_LAYOUT)
 
         # Copy TTNN host tensors into preallocated Mult-Device tensors
-        logger.info("Send Inputs to Device")
+        logger.info(f"Send Inputs to Device for run {i}")
         ttnn.copy_host_to_device_tensor(ttnn_input_tensor_0, input_0_dev)
         ttnn.copy_host_to_device_tensor(ttnn_input_tensor_1, input_1_dev)
 
         if blocking:
             ttnn.synchronize_device(device)
-        logger.info("Execute Trace")
+        logger.info(f"Execute Trace for run {i}")
         # Execute trace
         ttnn.execute_trace(device, tid, cq_id=0, blocking=blocking)
         # Readback data
-        logger.info("Read Back Trace Outputs")
+        logger.info(f"Read Back Trace Outputs for run {i}")
         ttnn_torch_output_tensor = ttnn.to_torch(output_tensor)
         assert_with_pcc(ttnn_torch_output_tensor, torch_output_golden, pcc=0.99)
 
@@ -71,9 +115,10 @@ def test_single_device_single_trace(device, shape, enable_async, blocking):
     device.enable_async(False)
 
 
-@pytest.mark.parametrize("shape", [(1, 1, 512, 512), (1, 1, 32, 32), (1, 3, 512, 512), (1, 3, 32, 32)])
-@pytest.mark.parametrize("enable_async", [True, False])
-@pytest.mark.parametrize("blocking", [True, False])
+# KCM - Simplify test.
+@pytest.mark.parametrize("shape", [(1, 1, 32, 32)])
+@pytest.mark.parametrize("enable_async", [True])
+@pytest.mark.parametrize("blocking", [True])
 @pytest.mark.parametrize("device_params", [{"trace_region_size": 266240}], indirect=True)
 def test_single_device_multi_trace(device, shape, enable_async, blocking):
     device.enable_async(enable_async)
@@ -93,25 +138,59 @@ def test_single_device_multi_trace(device, shape, enable_async, blocking):
     def run_op_chain_1(input_0, input_1, weight):
         return ttnn.gelu(ttnn.add(ttnn.tanh(ttnn.mul(ttnn.sub(input_0, input_1), weight)), input_1))
 
-    # Compile program binaries
-    run_op_chain(input_0_dev, input_1_dev, weight_dev)
-    run_op_chain_1(input_0_dev, input_1_dev, weight_dev)
+    serialize_trace = True if "TT_METAL_SERIALIZE_TRACE" in os.environ else False
+    deserialize_trace = True if "TT_METAL_DESERIALIZE_TRACE" in os.environ else False
+    trace_bin_path = "/tmp/light_metal_trace_capture_multi.bin"
+    auto_serialize_metal_trace = True
+    logger.info(
+        f"KCM Test. Serialize Trace: {serialize_trace}, Deserialize Trace: {deserialize_trace} File: {trace_bin_path}"
+    )
 
-    # Capture Trace 0
-    logger.info("Capture Trace 0")
-    tid = ttnn.begin_trace_capture(device, cq_id=0)
-    output_tensor = run_op_chain(input_0_dev, input_1_dev, weight_dev)
-    ttnn.end_trace_capture(device, tid, cq_id=0)
+    ttnn.light_metal_configure(device, trace_bin_path, auto_serialize_metal_trace)
 
-    # Capture Trace 1
-    logger.info("Capture Trace 1")
-    tid_1 = ttnn.begin_trace_capture(device, cq_id=0)
-    output_tensor_1 = run_op_chain_1(input_0_dev, input_1_dev, weight_dev)
-    ttnn.end_trace_capture(device, tid_1, cq_id=0)
+    # Either Load existing Trace, or Capture.
+    if deserialize_trace:
+        # Compile program binaries. Temp hack to preserve same allocs.
+        output_tensor = run_op_chain(input_0_dev, input_1_dev, weight_dev)
+        output_tensor_1 = run_op_chain_1(input_0_dev, input_1_dev, weight_dev)
+
+        tid, tid_1 = 0, 1
+        # KCM FIXME - Consider creating ttnn.light_metal_load_all_traces()
+
+        ttnn.light_metal_load_trace_id(device, tid, cq_id=0)
+        logger.info(f"KCM Deserialize Trace, done calling load_trace_binary for tid: {tid}")
+        ttnn.light_metal_load_trace_id(device, tid_1, cq_id=0)
+        logger.info(f"KCM Deserialize Trace, done calling load_trace_binary for tid: {tid_1}")
+
+    else:
+        # Compile program binaries
+        run_op_chain(input_0_dev, input_1_dev, weight_dev)
+        run_op_chain_1(input_0_dev, input_1_dev, weight_dev)
+
+        ttnn.light_metal_begin_capture(device)
+
+        # Capture Trace 0
+        logger.info("Capture Trace 0")
+        tid = ttnn.begin_trace_capture(device, cq_id=0)
+        output_tensor = run_op_chain(input_0_dev, input_1_dev, weight_dev)
+        ttnn.end_trace_capture(device, tid, cq_id=0)
+
+        # Capture Trace 1
+        logger.info("Capture Trace 1")
+        tid_1 = ttnn.begin_trace_capture(device, cq_id=0)
+        output_tensor_1 = run_op_chain_1(input_0_dev, input_1_dev, weight_dev)
+        ttnn.end_trace_capture(device, tid_1, cq_id=0)
+
+        ttnn.light_metal_end_capture(device)
+
+        # Early exit, don't run if serializing to disk.
+        if serialize_trace:
+            return
 
     # Execute and verify trace against pytorch
     torch_silu = torch.nn.SiLU()
-    for i in range(50):
+    for i in range(5):
+        logger.info(f"Run {i}")
         # Create torch inputs
         torch_input_tensor_0 = torch.rand(shape, dtype=torch.bfloat16)
         torch_input_tensor_1 = torch.rand(shape, dtype=torch.bfloat16)

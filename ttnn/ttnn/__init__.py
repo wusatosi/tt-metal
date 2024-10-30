@@ -203,6 +203,12 @@ end_trace_capture = ttnn._ttnn.operations.core.end_trace_capture
 execute_trace = ttnn._ttnn.operations.core.execute_trace
 release_trace = ttnn._ttnn.operations.core.release_trace
 
+# New for Light-Metal
+light_metal_configure = ttnn._ttnn.operations.core.light_metal_configure
+light_metal_begin_capture = ttnn._ttnn.operations.core.light_metal_begin_capture
+light_metal_end_capture = ttnn._ttnn.operations.core.light_metal_end_capture
+light_metal_load_trace_id = ttnn._ttnn.operations.core.light_metal_load_trace_id
+light_metal_save_trace_id = ttnn._ttnn.operations.core.light_metal_save_trace_id
 
 from ttnn.decorators import (
     attach_golden_function,

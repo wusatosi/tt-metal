@@ -255,6 +255,37 @@ void py_module(py::module& module) {
         py::arg("trace_id"));
 
     module.def(
+        "light_metal_configure",
+        py::overload_cast<Device*, const std::string&, const bool>(&ttnn::operations::core::light_metal_configure),
+        py::arg("device"),
+        py::arg("filename"),
+        py::arg("auto_serialize_metal_trace"));
+
+    module.def(
+        "light_metal_begin_capture",
+        py::overload_cast<Device*>(&ttnn::operations::core::light_metal_begin_capture),
+        py::arg("device"));
+
+    module.def(
+        "light_metal_end_capture",
+        py::overload_cast<Device*>(&ttnn::operations::core::light_metal_end_capture),
+        py::arg("device"));
+
+    module.def(
+        "light_metal_load_trace_id",
+        py::overload_cast<Device*, const uint32_t, const uint8_t>(&ttnn::operations::core::light_metal_load_trace_id),
+        py::arg("device"),
+        py::arg("trace_id"),
+        py::kw_only(),
+        py::arg("cq_id") = ttnn::DefaultQueueId);
+
+    module.def(
+        "light_metal_save_trace_id",
+        py::overload_cast<Device*, const uint32_t>(&ttnn::operations::core::light_metal_save_trace_id),
+        py::arg("device"),
+        py::arg("trace_id"));
+
+    module.def(
         "begin_trace_capture",
         py::overload_cast<MeshDevice*, const uint8_t>(&ttnn::operations::core::begin_trace_capture),
         py::arg("mesh_device"),

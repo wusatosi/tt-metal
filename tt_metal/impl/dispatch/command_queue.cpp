@@ -2323,6 +2323,14 @@ void HWCommandQueue::enqueue_program(Program& program, bool blocking) {
         }
     }
 
+    if (this->manager.get_bypass_mode()) {
+        log_info(tt::LogMetal, "KCM {} bypass: {} workers: {} multicast: {} unicast: {}",
+                    __FUNCTION__, this->manager.get_bypass_mode(), this->trace_ctx->num_completion_worker_cores,
+                    this->trace_ctx->num_traced_programs_needing_go_signal_multicast,
+                    this->trace_ctx->num_traced_programs_needing_go_signal_unicast);
+    }
+
+
     auto command = EnqueueProgramCommand(
         this->id,
         this->device,
@@ -2436,9 +2444,15 @@ void HWCommandQueue::enqueue_trace(const uint32_t trace_id, bool blocking) {
     // TODO(jbauman): Reuse old state from the trace.
     this->config_buffer_mgr.mark_completely_full(this->expected_num_workers_completed);
 
+    log_info(tt::LogMetal, "KCM {} blocking: {} tid: {} workers: {} multicast: {} unicast: {}",
+                __FUNCTION__, blocking, trace_id, trace_inst->desc->num_completion_worker_cores,
+                trace_inst->desc->num_traced_programs_needing_go_signal_multicast,
+                trace_inst->desc->num_traced_programs_needing_go_signal_unicast);
+
     if (blocking) {
         this->finish();
     }
+    log_info(tt::LogMetal, "KCM {} Finished blocking", __FUNCTION__);
 }
 
 void HWCommandQueue::copy_into_user_space(

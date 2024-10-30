@@ -121,6 +121,28 @@ void release_trace(Device* device, const uint32_t tid) {
     device->push_work([device, tid]() mutable { device->release_trace(tid); });
 }
 
+// Light Metal Trace APIs
+void light_metal_configure(Device* device, const std::string& filename, const bool auto_serialize_metal_trace) {
+    device->push_work([device, filename, auto_serialize_metal_trace]() mutable { device->light_metal_configure(filename, auto_serialize_metal_trace); });
+}
+
+void light_metal_begin_capture(Device* device) {
+    device->push_work([device]() mutable { device->light_metal_begin_capture(); });
+}
+
+void light_metal_end_capture(Device* device) {
+    device->push_work([device]() mutable { device->light_metal_end_capture(); });
+}
+
+void light_metal_load_trace_id(Device* device, const uint32_t tid, const uint8_t cq_id) {
+    device->push_work([device, cq_id, tid]() mutable {device->light_metal_load_trace_id(tid, cq_id); });
+}
+
+void light_metal_save_trace_id(Device* device, const uint32_t tid) {
+    device->push_work([device, tid]() mutable { device->light_metal_save_trace_id(tid); });
+}
+
+
 // Trace APIs - Multi Device
 uint32_t begin_trace_capture(MeshDevice* device, const uint8_t cq_id) {
     ZoneScoped;

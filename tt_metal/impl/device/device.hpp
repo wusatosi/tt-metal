@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <sys/types.h>
 #include <memory>
 #include <mutex>
 #include <utility>
@@ -60,6 +61,19 @@ static constexpr float  INF_WHB0 = 1.7014e+38;
 static constexpr float  INF_BH = INF_WHB0;
 
 inline namespace v0 {
+
+// Create a struct called LightMetalTraceConfig with 3 booleans:
+// TODO - Move this to another file called light_metal_trace.hpp or something.
+struct LightMetalTraceConfig {
+    bool capture_enabled = false;
+    bool auto_serialize_metal_trace = true;
+    std::string filename = "/tmp/light_metal_trace.bin";
+};
+
+struct LightMetalTrace {
+    std::vector<std::pair<uint32_t, detail::TraceDescriptor>> traces;
+    LightMetalTraceConfig config;
+};
 
 // A physical PCIexpress Tenstorrent device
 class Device {
@@ -223,9 +237,21 @@ class Device {
     // Metal trace device capture mode
     void begin_trace(const uint8_t cq_id, const uint32_t tid);
     void end_trace(const uint8_t cq_id, const uint32_t tid);
+
     void replay_trace(const uint8_t cq_id, const uint32_t tid, const bool blocking);
     void release_trace(const uint32_t tid);
     std::shared_ptr<TraceBuffer> get_trace(const uint32_t tid);
+    std::vector<std::uint8_t> collect_trace(const uint32_t tid);
+
+    // Light Metal
+    void light_metal_configure(const std::string& filename, const bool auto_serialize_metal_trace);
+    void light_metal_begin_capture();
+    void light_metal_end_capture();
+    void light_metal_load_trace_id(const uint32_t tid, const uint8_t cq_id);
+    void light_metal_save_trace_id(const uint32_t tid);
+
+    std::vector<std::pair<uint32_t, detail::TraceDescriptor>> collect_traces(const std::vector<uint32_t>& tids);
+    void save_traces_to_disk(const std::vector<uint32_t>& tids, const std::string& filename);
 
     bool using_slow_dispatch() const;
     void check_allocator_is_initialized() const;
@@ -350,6 +376,8 @@ class Device {
     void MarkAllocationsSafe();
     std::unordered_map<uint32_t, std::shared_ptr<TraceBuffer>> trace_buffer_pool_;
     std::map<std::string, std::string> device_kernel_defines_;
+    LightMetalTrace light_metal_trace_;
+
 };
 
 }  // namespace v0
