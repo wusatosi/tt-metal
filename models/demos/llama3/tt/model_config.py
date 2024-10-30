@@ -660,6 +660,8 @@ class TtModelArgs:
                 assert (
                     lm_head_num_rows > 0
                 ), f"Could not find a lm_head_num_rows such that self.dim(={self.dim}) % (lm_head_num_rows * 8) == 0"
+            if self.num_devices == 32:
+                lm_head_num_rows = 4
             self.lm_head_core_grid = ttnn.CoreGrid(y=lm_head_num_rows, x=8)
 
             self.model_config["LM_HEAD_INPUT_MEMCFG"] = ttnn.create_sharded_memory_config(
@@ -672,7 +674,16 @@ class TtModelArgs:
                 ttnn.ShardOrientation.ROW_MAJOR,
                 use_height_and_width_as_shard_shape=True,
             )
-
+            self.model_config["LM_HEAD_INPUT_MEMCFG_TG"] = ttnn.create_sharded_memory_config(
+                (
+                    self.tile_padded_batch_rows,
+                    nearest_32(2048 // self.lm_head_core_grid.num_cores),
+                ),  # Shard shape: [32, 128] -> 1 shard per core
+                self.lm_head_core_grid,
+                ttnn.ShardStrategy.WIDTH,
+                ttnn.ShardOrientation.ROW_MAJOR,
+                use_height_and_width_as_shard_shape=True,
+            )
             self.qkv_size = self.head_dim * (2 * self.n_kv_heads + self.n_heads)
             self.model_config["XQKV_PREFILL_PROGCFG"] = lambda seq_len: ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
                 compute_with_storage_grid_size=(8, 8),
@@ -1066,6 +1077,7 @@ class TtModelArgs:
         self.rope_theta = params["rope_theta"]
         self.use_scaled_rope = True  # params["use_scaled_rope"]
         self.vocab_size = params["vocab_size"]
+        self.padded_vocab_size = 128 * 1024
         self.head_dim = self.dim // self.n_heads
         self.hidden_dim = calculate_hidden_dim(self.dim, self.ffn_dim_multiplier, self.multiple_of)
 

@@ -61,6 +61,7 @@ class TtTransformer(LightweightModule):
                 sharded_output_config=self.model_config["LM_HEAD_INPUT_MEMCFG"],
             ),
             args,
+            args.is_galaxy,
         )
 
         self.lm_head = LMHead(

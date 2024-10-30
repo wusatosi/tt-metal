@@ -61,19 +61,30 @@ def test_llama_lm_head_inference(mesh_device, seq_len, use_program_cache, reset_
 
     torch_input = torch.randn(1, 1, seq_len, model_args.dim)
     reference_output = reference_model(torch_input)
+    if mesh_device.shape[0] * mesh_device.shape[1] == 32:
+        mesh_mapper = ttnn.ShardTensor2dMesh(mesh_device, dims=(None, 3), mesh_shape=mesh_device.shape)
+        memory_config = model_args.model_config["LM_HEAD_INPUT_MEMCFG_TG"]
+    else:
+        mesh_mapper = ttnn.ReplicateTensorToMesh(mesh_device)
+        memory_config = model_args.model_config["LM_HEAD_INPUT_MEMCFG"]
     tt_input = ttnn.from_torch(
         torch_input,
         device=mesh_device,
-        mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+        mesh_mapper=mesh_mapper,
         dtype=ttnn.bfloat8_b,
-        memory_config=model_args.model_config["LM_HEAD_INPUT_MEMCFG"],
+        memory_config=memory_config,
         layout=ttnn.TILE_LAYOUT,
     )
 
     logger.info("Run Llama_LM_Head")
     tt_output = tt_model(tt_input)
-
-    tt_output_torch = ttnn.to_torch(tt_output, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))
+    if model_args.is_galaxy:
+        tt_output_torch = ttnn.to_torch(
+            tt_output, mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, mesh_device.shape, dims=(3, 1))
+        )
+        tt_output_torch = tt_output_torch[:, 0:1, :, : model_args.vocab_size]
+    else:
+        tt_output_torch = ttnn.to_torch(tt_output, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))
 
     print(f"{tt_output_torch.shape=}")
     print(f"{reference_output.shape=}")
