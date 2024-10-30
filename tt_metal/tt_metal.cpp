@@ -33,6 +33,7 @@
 #include "tracy/Tracy.hpp"
 
 #include "tt_metal/graph/graph_tracking.hpp"
+#include "tt_metal/impl/lightmetal/host_api_capture_helpers.hpp"
 
 namespace tt {
 
@@ -1362,13 +1363,31 @@ uint32_t BeginTraceCapture(Device* device, const uint8_t cq_id) {
     return tid;
 }
 
-void EndTraceCapture(Device* device, const uint8_t cq_id, const uint32_t tid) { device->end_trace(cq_id, tid); }
+void EndTraceCapture(Device* device, const uint8_t cq_id, const uint32_t tid) { 
+    device->end_trace(cq_id, tid); 
+    // When light metal tracing is enabled, TraceDescriptor will be serialized via end_trace() and this
+    // will serialize the LightMetalLoadTraceId call to be used during replay to load trace back to device.
+    TRACE_FUNCTION_CALL(captureLoadTrace, device, cq_id, tid);
+}
 
 void ReplayTrace(Device* device, const uint8_t cq_id, const uint32_t tid, const bool blocking) {
+    TRACE_FUNCTION_CALL(captureReplayTrace, device, cq_id, tid, blocking);
     device->replay_trace(cq_id, tid, blocking);
 }
 
 void ReleaseTrace(Device* device, const uint32_t tid) { device->release_trace(tid); }
+
+void LightMetalBeginCapture(Device *device) {
+    device->light_metal_begin_capture();
+}
+
+std::vector<uint8_t> LightMetalEndCapture(Device *device) {
+    return device->light_metal_end_capture();
+}
+
+void LoadTrace(Device *device, const uint8_t cq_id, const uint32_t trace_id, detail::TraceDescriptor &trace_desc) {
+    device->load_trace(cq_id, trace_id, trace_desc);
+}
 
 void Synchronize(Device* device, const std::optional<uint8_t> cq_id, tt::stl::Span<const SubDeviceId> sub_device_ids) {
     if (std::getenv("TT_METAL_SLOW_DISPATCH_MODE") == nullptr) {

@@ -811,6 +811,15 @@ void ReleaseTrace(Device* device, const uint32_t tid);
 // clang-format on
 void EnqueueTrace(CommandQueue& cq, uint32_t trace_id, bool blocking);
 
+// Starts Light Metal Binary capture
+// KCM - Do we want to remove Device and enable/disable capture for all devices?
+void LightMetalBeginCapture(Device *device);
+
+// Ends Light Metal Binary capture
+std::vector<uint8_t> LightMetalEndCapture(Device *device);
+
+void LoadTrace(Device *device, const uint8_t cq_id, const uint32_t trace_id, detail::TraceDescriptor &trace_desc);
+
 // clang-format off
 /**
  * Read device side profiler data and dump results into device side CSV log

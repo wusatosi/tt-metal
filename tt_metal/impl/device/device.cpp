@@ -9,6 +9,9 @@
 #include "tt_metal/host_api.hpp"
 #include "tt_metal/impl/device/device.hpp"
 #include "tt_metal/impl/trace/trace.hpp"
+#include "tt_metal/impl/lightmetal/lightmetal.hpp"
+#include "tt_metal/impl/lightmetal/lightmetal_replay.hpp"
+#include "tt_metal/impl/lightmetal/lightmetal_capture_context.hpp"
 #include "tt_metal/common/core_descriptor.hpp"
 #include "tracy/Tracy.hpp"
 #include "tt_metal/detail/tt_metal.hpp"
@@ -1606,6 +1609,7 @@ bool Device::using_fast_dispatch() const {
 void Device::begin_trace(const uint8_t cq_id, const uint32_t tid) {
     ZoneScoped;
     TracyTTMetalBeginTrace(this->id(), tid);
+    log_info(tt::LogMetal, "KCM Begin trace for tid {} on CQ {}", tid, (uint32_t)cq_id);
     TT_FATAL(!this->hw_command_queues_[cq_id]->tid.has_value(), "CQ {} is already being used for tracing tid {}", (uint32_t)cq_id, tid);
     this->mark_allocations_safe();
     // Create an empty trace buffer here. This will get initialized in end_trace
@@ -1614,15 +1618,59 @@ void Device::begin_trace(const uint8_t cq_id, const uint32_t tid) {
     this->hw_command_queues_[cq_id]->record_begin(tid, trace_buffer->desc);
 }
 
+void Device::light_metal_begin_capture() {
+    log_info(tt::LogMetal, "KCM Begin Light Metal Capture");
+    auto& lm_capture_ctx = LightMetalCaptureContext::getInstance();
+    TT_ASSERT(!lm_capture_ctx.isTracing(), "Light Metal Capture was already enabled.");
+    lm_capture_ctx.reset();            // Clear previous traces if any
+    lm_capture_ctx.setTracing(true);   // Enable tracing
+}
+
+// End Light Metal capture, and serialize to flatbuffer binary, return to caller.
+std::vector<uint8_t> Device::light_metal_end_capture() {
+    log_info(tt::LogMetal, "KCM End Light Metal Capture");
+    auto& lm_capture_ctx = LightMetalCaptureContext::getInstance();
+    TT_ASSERT(lm_capture_ctx.isTracing(), "Light Metal Capture was not enabled.");
+    lm_capture_ctx.setTracing(false); // Disable tracing
+    auto blob = lm_capture_ctx.createLightMetalBinary();
+    // Capture is done, reset the context in case fresh capture begins.
+    lm_capture_ctx.reset();
+    return blob;
+}
+
 void Device::end_trace(const uint8_t cq_id, const uint32_t tid) {
     ZoneScoped;
     TracyTTMetalEndTrace(this->id(), tid);
+    log_info(tt::LogMetal, "KCM End trace for tid {} on CQ {}", tid, (uint32_t)cq_id);
     TT_FATAL(this->hw_command_queues_[cq_id]->tid == tid, "CQ {} is not being used for tracing tid {}", (uint32_t)cq_id, tid);
     auto trace_buffer = this->active_sub_device_manager_->get_trace(tid);
     TT_FATAL(trace_buffer != nullptr, "Trace instance {} must exist on device {}'s active sub-device manager {}", tid, this->id_, this->active_sub_device_manager_id_);
     this->hw_command_queues_[cq_id]->record_end();
+
+    // Capture Trace if light metal trace capturing is enabled. Still write it to device because we will eventually
+    // want light-metal-binary capture to be pure observer and not change behavior.
+    auto& lm_capture_ctx = LightMetalCaptureContext::getInstance();
+    auto &trace_desc = trace_buffer->desc;
+    if (lm_capture_ctx.isTracing()) {
+        // KCM - Consider wrapping this in a function to hide details from user.
+        auto trace_desc_by_id = toFlatBuffer(lm_capture_ctx.getBuilder(), *trace_desc, tid);
+        lm_capture_ctx.getTraceDescsVector().emplace_back(trace_desc_by_id);
+    }
+
     Trace::initialize_buffer(this->command_queue(cq_id), trace_buffer);
     this->mark_allocations_unsafe();
+}
+
+// Load the TraceDescriptor for a given trace_id to the device.
+void Device::load_trace(const uint8_t cq_id, const uint32_t tid, detail::TraceDescriptor &trace_desc) {
+    this->mark_allocations_safe();
+    TT_FATAL(this->active_sub_device_manager_->get_trace(tid) == nullptr, "Trace already exists for tid {} on device {}'s active sub-device manager {}", tid, this->id_, this->active_sub_device_manager_id_);
+    auto &trace_buffer = this->active_sub_device_manager_->create_trace(tid);
+    TT_FATAL(trace_buffer != nullptr, "Trace instance {} must exist on device {}'s active sub-device manager {}", tid, this->id_, this->active_sub_device_manager_id_);
+    *trace_buffer->desc = trace_desc;
+    Trace::initialize_buffer(this->command_queue(cq_id), trace_buffer);
+    this->mark_allocations_unsafe();
+
 }
 
 void Device::replay_trace(const uint8_t cq_id, const uint32_t tid, const bool blocking) {

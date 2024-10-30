@@ -11,10 +11,14 @@
 #include <utility>
 #include <variant>
 
-#include "tt_metal/impl/buffers/buffer.hpp"
 #include "tt_metal/impl/sub_device/sub_device_types.hpp"
 
 namespace tt::tt_metal {
+
+// Forward decl to avoid including header
+inline namespace v0 {
+class Buffer;
+}
 
 namespace detail {
 struct TraceDescriptor {

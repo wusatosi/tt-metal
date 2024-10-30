@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <sys/types.h>
 #include <memory>
 #include <mutex>
 #include <utility>
@@ -12,6 +13,7 @@
 #include "impl/dispatch/work_executor.hpp"
 #include "tt_metal/impl/allocator/basic_allocator.hpp"
 #include "tt_metal/impl/allocator/l1_banking_allocator.hpp"
+#include "tt_metal/impl/lightmetal/lightmetal.hpp"
 #include "tt_metal/impl/kernels/data_types.hpp"
 #include "tt_metal/impl/program/program_device_map.hpp"
 #include "tt_metal/jit_build/build.hpp"
@@ -22,6 +24,7 @@
 #include "tt_metal/impl/sub_device/sub_device_types.hpp"
 #include "tt_metal/tt_stl/span.hpp"
 #include "program_cache.hpp"
+#include "tt_metal/impl/lightmetal/lightmetal_capture_context.hpp"
 
 namespace tt {
 
@@ -216,6 +219,11 @@ public:
     std::shared_ptr<TraceBuffer> get_trace(uint32_t tid);
     uint32_t get_trace_buffers_size() const { return trace_buffers_size_; }
     void set_trace_buffers_size(uint32_t size) { trace_buffers_size_ = size; }
+
+    // Light Metal
+    void light_metal_begin_capture();
+    std::vector<uint8_t> light_metal_end_capture();
+    void load_trace(const uint8_t cq_id, const uint32_t tid, detail::TraceDescriptor &trace_desc);
 
     bool using_slow_dispatch() const;
     bool using_fast_dispatch() const;
