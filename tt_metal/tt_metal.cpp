@@ -1279,6 +1279,15 @@ void ReplayTrace(Device *device, const uint8_t cq_id, const uint32_t tid, const 
 
 void ReleaseTrace(Device *device, const uint32_t tid) { device->release_trace(tid); }
 
+
+void LightMetalBeginCapture(Device *device) {
+    device->light_metal_begin_capture();
+}
+
+void LightMetalEndCapture(Device *device) {
+    device->light_metal_end_capture();
+}
+
 void Synchronize(Device *device, const std::optional<uint8_t> cq_id) {
     if (std::getenv("TT_METAL_SLOW_DISPATCH_MODE") == nullptr) {
         if (cq_id.has_value()) {

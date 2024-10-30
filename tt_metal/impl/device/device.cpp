@@ -8,6 +8,7 @@
 #include "tt_metal/jit_build/genfiles.hpp"
 #include "tt_metal/impl/device/device.hpp"
 #include "tt_metal/impl/trace/trace.hpp"
+#include "tt_metal/impl/lightmetal/lightmetal.hpp"
 #include "tt_metal/common/core_descriptor.hpp"
 #include "tt_metal/third_party/tracy/public/tracy/Tracy.hpp"
 #include "tt_metal/detail/tt_metal.hpp"
@@ -3341,6 +3342,7 @@ bool Device::using_slow_dispatch() const {
 void Device::begin_trace(const uint8_t cq_id, const uint32_t tid) {
     ZoneScoped;
     TracyTTMetalBeginTrace(this->id(), tid);
+    log_info(tt::LogMetal, "KCM Begin trace for tid {} on CQ {}", tid, (uint32_t)cq_id);
     TT_FATAL(this->trace_buffer_pool_.count(tid) == 0, "Trace already exists for tid {} on device", tid);
     TT_FATAL(!this->hw_command_queues_[cq_id]->tid.has_value(), "CQ {} is already being used for tracing tid {}", (uint32_t)cq_id, tid);
     this->MarkAllocationsSafe();
@@ -3349,13 +3351,39 @@ void Device::begin_trace(const uint8_t cq_id, const uint32_t tid) {
     this->hw_command_queues_[cq_id]->record_begin(tid, this->trace_buffer_pool_[tid]->desc);
 }
 
+void Device::light_metal_configure(const std::string& filename, const bool auto_serialize) {
+    this->light_metal_trace_.config.filename = filename;
+    this->light_metal_trace_.config.auto_serialize_metal_trace = auto_serialize;
+}
+
+void Device::light_metal_begin_capture() {
+    log_info(tt::LogMetal, "KCM Begin Light Metal Capture");
+    TT_ASSERT(!this->light_metal_trace_.config.capture_enabled, "Light Metal Capture was already enabled");
+    this->light_metal_trace_.config.capture_enabled = true;
+}
+
+void Device::light_metal_end_capture() {
+    log_info(tt::LogMetal, "KCM End Light Metal Capture");
+    TT_ASSERT(this->light_metal_trace_.config.capture_enabled, "Light Metal Capture was already disabled");
+    const auto &cfg = this->light_metal_trace_.config;
+    if (cfg.capture_enabled && cfg.auto_serialize_metal_trace) {
+        // FIXME - Return this to caller and let caller write to file.
+        auto trace_binary_data = createLightMetalBinary(this->light_metal_trace_);
+        writeBinaryBlobToFile(this->light_metal_trace_.config.filename, trace_binary_data);
+    }
+    this->light_metal_trace_.config.capture_enabled = false;
+}
+
 void Device::end_trace(const uint8_t cq_id, const uint32_t tid) {
     ZoneScoped;
     TracyTTMetalEndTrace(this->id(), tid);
+    log_info(tt::LogMetal, "KCM End trace for tid {} on CQ {}", tid, (uint32_t)cq_id);
     TT_FATAL(this->hw_command_queues_[cq_id]->tid == tid, "CQ {} is not being used for tracing tid {}", (uint32_t)cq_id, tid);
     TT_FATAL(this->trace_buffer_pool_.count(tid) > 0, "Trace instance {} must exist on device", tid);
     this->hw_command_queues_[cq_id]->record_end();
+    auto &trace_desc = this->trace_buffer_pool_[tid]->desc;
     auto &trace_data = this->trace_buffer_pool_[tid]->desc->data;
+
     trace_data = std::move(this->sysmem_manager().get_bypass_data());
     // Add command to terminate the trace buffer
     uint32_t cq_prefetch_cmd_bare_min_size = hal.get_alignment(HalMemType::HOST);
@@ -3364,9 +3392,67 @@ void Device::end_trace(const uint8_t cq_id, const uint32_t tid) {
     for (int i = 0; i < command_sequence.size_bytes() / sizeof(uint32_t); i++) {
         trace_data.push_back(((uint32_t*)command_sequence.data())[i]);
     }
+
+    // Capture Trace if light metal trace capturing is enabled. Still write it to device because we will eventually
+    // want light-metal-binary capture to be pure observer and not change behavior.
+    const auto &cfg = this->light_metal_trace_.config;
+    if (cfg.capture_enabled && cfg.auto_serialize_metal_trace) {
+        log_info(tt::LogMetal, "KCM {} Light Metal auto-capture tid: {} filename: ", __FUNCTION__, tid, cfg.filename);
+        this->light_metal_trace_.traces.emplace_back(tid, *trace_desc);
+    }
+
     Trace::initialize_buffer(this->command_queue(cq_id), this->trace_buffer_pool_[tid]);
     this->MarkAllocationsUnsafe();
 }
+
+// KCM - New API to load a trace binary from disk and write to device, simliar to what happens in end_trace() during capture.
+void Device::light_metal_load_trace_id(const uint32_t tid, const uint8_t cq_id) {
+
+    log_info(tt::LogMetal, "KCM Inside {} for cq: {} file: {} got tid: {}", __FUNCTION__, (uint32_t)cq_id, this->light_metal_trace_.config.filename, tid);
+
+    // FIXME - This is bringup hack to parse flatbuffer binary and extract TraceDescriptor by trace_id.
+    // would be replaced by updating this API to take TraceDescriptor directly.
+    auto traceDescOpt = getTraceByTraceId(this->light_metal_trace_.config.filename, tid);
+
+    if (traceDescOpt.has_value()) {
+        const auto& trace_desc = traceDescOpt.value();
+        // Load the trace binary (TraceDescriptor serialized) and write to device.
+        this->MarkAllocationsSafe(); // KCM - Copied from begin_trace
+        this->trace_buffer_pool_.insert({tid, Trace::create_empty_trace_buffer()});
+
+        // TT_FATAL(this->hw_command_queues_[cq_id]->tid == tid, "CQ {} is not being used for tracing tid {}", (uint32_t)cq_id, tid);
+        TT_FATAL(this->trace_buffer_pool_.count(tid) > 0, "Trace instance {} must exist on device", tid);
+        *this->trace_buffer_pool_[tid]->desc = trace_desc;
+        Trace::initialize_buffer(this->command_queue(cq_id), this->trace_buffer_pool_[tid]);
+        this->MarkAllocationsUnsafe(); // Copied from end_trace
+    } else {
+        std::cout << "Trace ID " << tid << " not found or an error occurred." << std::endl;
+    }
+}
+
+// Collect a trace for later use, return vector of binary data.
+std::vector<std::uint8_t> Device::collect_trace(const uint32_t tid) {
+    log_info(tt::LogMetal, "KCM Collect trace for tid {}", tid);
+    TT_FATAL(this->trace_buffer_pool_.count(tid) > 0, "Trace instance {} must exist on device", tid);
+    auto& trace_desc = this->trace_buffer_pool_[tid]->desc;
+    // auto trace_data = serialize_trace_desc_to_memory(*trace_desc, tid);
+    // FIXME - Figure out what to do with these functions. Are they really needed?
+    // Return empty vector:
+    std::vector<std::uint8_t> trace_data;
+    return trace_data;
+}
+
+// Wrapper to serialize a TraceDescriptor to a binary file and write to disk.
+void Device::light_metal_save_trace_id(const uint32_t tid) {
+    auto filename = this->light_metal_trace_.config.filename;
+    log_info(tt::LogMetal, "KCM Saving trace for tid {} filename: {}", tid, filename);
+    // auto trace_binary_data = collect_trace(tid);
+    // write_binary_data_to_file(trace_binary_data, filename);
+}
+
+// Nick does want ability to get binary data for a single trace.
+// These aren't actually needed when "auto serialize" is used to build up
+// traces vector during metal capture and serialize, write to file on light metal capture end.
 
 void Device::replay_trace(const uint8_t cq_id, const uint32_t tid, const bool blocking) {
     ZoneScoped;
