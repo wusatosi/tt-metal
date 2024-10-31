@@ -25,7 +25,7 @@ from models.demos.t3000.llama2_70b.tt.llama_common import ShardTensor2dMesh, Con
 @skip_for_grayskull("Requires wormhole_b0 to run")
 @pytest.mark.parametrize(
     "seq_len",
-    (64 * 1024,),
+    (8 * 1024, 16 * 1024, 512),
 )
 @pytest.mark.parametrize(
     "mesh_device",
@@ -84,25 +84,14 @@ def test_llama_attention_inference(seq_len, mesh_device, use_program_cache, rese
     tt_attention_input = pt_attention_input.clone()
     attention_input = model_args.prepare_inputs_ttnn_prefill(
         tt_attention_input,
-        force_replicated=True,
+        force_replicated=False if model_args.is_galaxy else True,
     )
 
     tt_out = tt_model(attention_input, 0, rot_mats, transformation_mats, user_id=0, mode="prefill")
-
-    if model_args.is_galaxy:
-        tt_out = ttnn.to_torch(
-            tt_out, mesh_composer=ConcatMesh2DToTensor(mesh_device, dims=(3, 1), cluster_shape=(4, 8))
-        )
-        print(tt_out.shape)
-        tt_out = tt_out[:, 0:1, :, :]
-        tt_output_torch = tt_out.squeeze(1)[: model_args.max_batch_size, :, :]
-    else:
-        tt_output_torch = ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))[
-            0, :, :, : model_args.dim
-        ].view(
-            batch, seq_len, -1
-        )  # [ batch, seq, dim]
-
+    tt_out = ttnn.to_torch(
+        tt_out, mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(1, 3), mesh_shape=model_args.cluster_shape)
+    )
+    tt_output_torch = tt_out[:, 0:1, :, : model_args.dim].view(batch, seq_len, -1)  # [ batch, seq, hidden_dim]
     positions = torch.LongTensor(range(seq_len))
     freqs_cis_i = precompute_freqs_cis(
         model_args.head_dim, model_args.max_seq_len * 2, model_args.rope_theta, model_args.use_scaled_rope
@@ -135,9 +124,9 @@ def test_llama_attention_inference(seq_len, mesh_device, use_program_cache, rese
         tt_layer_present = [
             ttnn.to_torch(
                 cache,
-                mesh_composer=ConcatMesh2DToTensor(mesh_device, dims=(0, 1), cluster_shape=(4, 8))
-                if model_args.is_galaxy
-                else ttnn.ConcatMeshToTensor(mesh_device, dim=1),
+                mesh_composer=ttnn.ConcatMesh2dToTensor(
+                    mesh_device, dims=(1, 0) if model_args.is_galaxy else (0, 1), cluster_shape=model_args.cluster_shape
+                ),
             )[:batch, :, :, :]
             for cache in tt_model.layer_past
         ]

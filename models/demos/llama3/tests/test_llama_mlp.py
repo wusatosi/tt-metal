@@ -15,7 +15,6 @@ from models.utility_functions import (
     comp_allclose,
 )
 from models.utility_functions import skip_for_grayskull
-from models.demos.t3000.llama2_70b.tt.llama_common import ShardTensor2dMesh, ConcatMesh2DToTensor
 
 
 @torch.no_grad()
@@ -23,10 +22,11 @@ from models.demos.t3000.llama2_70b.tt.llama_common import ShardTensor2dMesh, Con
 @pytest.mark.parametrize(
     "seq_len",
     (
-        # 64 * 1024,
-        # 32 * 1024,
-        512,
-        # 128,
+        128 * 1024,
+        32 * 1024,
+        16 * 1024,
+        8 * 1024,
+        4 * 1024,
         # 32,
     ),
 )
@@ -75,62 +75,36 @@ def test_llama_mlp_inference(mesh_device, seq_len, use_program_cache, reset_seed
     )
     torch_input = torch.randn(1, 1, seq_len, model_args.dim)
     reference_output = reference_model(torch_input)
-    TG = model_args.is_galaxy
-    if TG:
-        if mode == "decode":
-            num_users = 32
-            M, K = num_users, model_args.model_config["HIDDEN_SIZE"] // 4
-
-            core_grid = ttnn.CoreGrid(y=1, x=8)
-            act_mem_config = ttnn.create_sharded_memory_config(
-                shape=(M // core_grid.y, K // core_grid.x),
-                core_grid=core_grid,
-                strategy=ttnn.ShardStrategy.WIDTH,
-                orientation=ttnn.ShardOrientation.ROW_MAJOR,
-                use_height_and_width_as_shard_shape=True,
-            )
-
-            tt_input = ttnn.from_torch(
-                torch_input,
-                dtype=ttnn.bfloat16,
-                layout=ttnn.TILE_LAYOUT,
-                device=mesh_device,
-                memory_config=act_mem_config,
-                mesh_mapper=ShardTensor2dMesh(mesh_device, dims=(3, None), cluster_shape=(4, 8)),
-            )
-        else:
-            tt_input = ttnn.from_torch(
-                torch_input,
-                dtype=ttnn.bfloat16,
-                layout=ttnn.TILE_LAYOUT,
-                device=mesh_device,
-                memory_config=ttnn.DRAM_MEMORY_CONFIG,
-                mesh_mapper=ShardTensor2dMesh(mesh_device, dims=(3, None), cluster_shape=(4, 8)),
-            )
-    else:
-        tt_input = ttnn.from_torch(
-            torch_input,
-            device=mesh_device,
-            mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
-            dtype=ttnn.bfloat8_b,
-            memory_config=model_args.model_config["SHARDED_MLP_INPUT_MEMCFG"]
-            if mode == "decode"
-            else ttnn.DRAM_MEMORY_CONFIG,
-            layout=ttnn.TILE_LAYOUT,
+    tt_input = ttnn.from_torch(
+        torch_input,
+        device=mesh_device,
+        mesh_mapper=ttnn.ShardTensor2dMesh(
+            mesh_device, dims=(None, 3) if model_args.is_galaxy else (None, None), mesh_shape=model_args.cluster_shape
+        ),
+        dtype=ttnn.bfloat8_b,
+        memory_config=(
+            tt_model.model_config["FULL_GRID_MEMCFG"]
+            if model_args.is_galaxy
+            else model_args.model_config["SHARDED_MLP_INPUT_MEMCFG"]
         )
+        if mode == "decode"
+        else ttnn.DRAM_MEMORY_CONFIG,
+        layout=ttnn.TILE_LAYOUT,
+    )
 
     logger.info("Run Llama_MLP")
     tt_output = tt_model(tt_input, mode)
 
+    # print(f"{tt_output}")
     tt_output_torch = ttnn.to_torch(
         tt_output,
-        mesh_composer=ConcatMesh2DToTensor(mesh_device, dims=(3, 1), cluster_shape=(4, 8))
-        if TG
-        else ttnn.ConcatMeshToTensor(mesh_device, dim=-1),
+        mesh_composer=ttnn.ConcatMesh2dToTensor(
+            mesh_device, dims=(1, 3) if model_args.is_galaxy else (-2, -1), mesh_shape=model_args.cluster_shape
+        ),
     )
+    print(f"{tt_output_torch.shape}")
 
-    if TG:
-        tt_output_torch = tt_output_torch[:, :1, :, :]
+    tt_output_torch = tt_output_torch[:, :1, :, :]
 
     print(f"{tt_output_torch.shape=}")
     print(f"{reference_output.shape=}")

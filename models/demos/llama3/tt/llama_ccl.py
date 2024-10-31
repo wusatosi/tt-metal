@@ -5,10 +5,34 @@
 import ttnn
 
 
-def tt_all_reduce(input_tensor, mesh_device, cluster_axis, dim=0, num_links=2, memory_config=None):
-    # Ensure the input tensor is in the correct memory configuration
-    input_tensor = ttnn.to_memory_config(input_tensor, ttnn.DRAM_MEMORY_CONFIG)
+def tt_all_reduce(input_tensor, mesh_device, cluster_axis=0, dim=0, num_links=2, memory_config=None, sharded=False):
+    # N150
+    if mesh_device.shape == (1, 1) or (cluster_axis == 1 and 1 in mesh_device.shape):
+        return input_tensor
 
+    # Ensure dim 0 and 1 are 1
+    original_shape = input_tensor.shape
+    if original_shape[0] != 1 or original_shape[1] != 1:
+        input_tensor = ttnn.reshape(
+            input_tensor, (1, 1, original_shape[-4] * original_shape[-3] * original_shape[-2], original_shape[-1])
+        )
+
+    # N300 and T3K
+    if 1 in mesh_device.shape:
+        if input_tensor.is_sharded():
+            input_tensor = ttnn.sharded_to_interleaved(input_tensor, ttnn.L1_MEMORY_CONFIG)
+        return ttnn.reduce_scatter(
+            input_tensor,
+            scatter_dim=dim,
+            math_op=ttnn.ReduceType.Sum,
+            num_links=num_links,
+            memory_config=memory_config,
+        )
+    # TG
+
+    # Ensure the input tensor is in the correct memory configuration
+    if not sharded:
+        input_tensor = ttnn.to_memory_config(input_tensor, ttnn.DRAM_MEMORY_CONFIG)
     gathered_tensor = ttnn.all_gather(
         input_tensor,
         dim,
@@ -16,17 +40,54 @@ def tt_all_reduce(input_tensor, mesh_device, cluster_axis, dim=0, num_links=2, m
         cluster_axis=cluster_axis,
         mesh_device=mesh_device,
         topology=ttnn.Topology.Linear,
+        memory_config=ttnn.DRAM_MEMORY_CONFIG if not sharded else memory_config,
     )
+
+    # print(f"{gathered_tensor}")
+    if sharded:
+        gathered_tensor = ttnn.to_memory_config(gathered_tensor, ttnn.L1_MEMORY_CONFIG)
+
     reduced_tensors = ttnn.experimental.fast_reduce_nc(
-        gathered_tensor, dims=[dim], output=None, compute_kernel_config=None
+        gathered_tensor,
+        dims=[dim],
+        output=None,
+        compute_kernel_config=None,
+        memory_config=ttnn.L1_MEMORY_CONFIG if sharded else ttnn.DRAM_MEMORY_CONFIG,
     )
+
+    # Reshape the reduced tensor to the original shape
+    reduced_tensors = ttnn.reshape(reduced_tensors, original_shape)
 
     return reduced_tensors
 
 
-def tt_all_gather(input_tensor, mesh_device, cluster_axis, dim, num_links=2, memory_config=None):
+def tt_all_gather(
+    input_tensor,
+    mesh_device,
+    cluster_axis,
+    dim,
+    num_links=2,
+    memory_config=None,
+    sharded=False,
+    topology=ttnn.Topology.Linear,
+):
+    # N150
+    if mesh_device.shape == (1, 1) or (cluster_axis == 1 and 1 in mesh_device.shape):
+        return input_tensor
+
     # Ensure the input tensor is in the correct memory configuration
-    input_tensor = ttnn.to_memory_config(input_tensor, ttnn.DRAM_MEMORY_CONFIG)
+    if not sharded:
+        input_tensor = ttnn.to_memory_config(input_tensor, ttnn.DRAM_MEMORY_CONFIG)
+
+    if cluster_axis is None:
+        return ttnn.all_gather(
+            input_tensor,
+            dim,
+            num_links=num_links,
+            # mesh_device=mesh_device,
+            topology=topology,
+            memory_config=memory_config,
+        )
 
     return ttnn.all_gather(
         input_tensor,
@@ -34,39 +95,8 @@ def tt_all_gather(input_tensor, mesh_device, cluster_axis, dim, num_links=2, mem
         num_links=num_links,
         cluster_axis=cluster_axis,
         mesh_device=mesh_device,
-        topology=ttnn.Topology.Linear,
-    )
-
-
-def tt_sharded_all_reduce(input_tensor, mesh_device, cluster_axis, dim=0, num_links=2, memory_config=None):
-    gathered_tensor = ttnn.all_gather(
-        input_tensor,
-        dim,
-        num_links=num_links,
-        cluster_axis=cluster_axis,
-        mesh_device=mesh_device,
+        topology=topology,
         memory_config=memory_config,
-        topology=ttnn.Topology.Linear,
-    )
-    # Fast_reduce_nc does not support sharded memory configuration, convert to interleaved
-    gathered_tensor = ttnn.to_memory_config(gathered_tensor, ttnn.L1_MEMORY_CONFIG)
-    reduced_tensors = ttnn.experimental.fast_reduce_nc(
-        gathered_tensor, dims=[dim], output=None, compute_kernel_config=None, memory_config=ttnn.L1_MEMORY_CONFIG
-    )
-    return reduced_tensors
-
-
-def tt_sharded_all_gather(input_tensor, mesh_device, cluster_axis, dim, num_links=2, memory_config=None):
-    # Ensure the input tensor is in the correct memory configuration
-
-    return ttnn.all_gather(
-        input_tensor,
-        dim,
-        num_links=num_links,
-        cluster_axis=cluster_axis,
-        mesh_device=mesh_device,
-        memory_config=memory_config,
-        topology=ttnn.Topology.Linear,
     )
 
 

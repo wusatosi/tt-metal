@@ -61,8 +61,7 @@ class DistributedNorm(LightweightModule):
 
     def forward(self, x, mode):
         """Apply a norm, possibly gathering inputs if required."""
-        TG = self.TG
-        if TG:
+        if self.TG:
             if mode == "decode":
                 return tt_sharded_distributed_rmsnorm(
                     x,

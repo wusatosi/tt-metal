@@ -29,7 +29,6 @@ class TtTransformerBlock(LightweightModule):
         self.model_config = args.get_model_config()
 
         self.layer_num = layer_num
-        TG = args.is_galaxy
         self.attention = TtLlamaAttention(
             mesh_device=mesh_device,
             state_dict=state_dict,
@@ -59,10 +58,10 @@ class TtTransformerBlock(LightweightModule):
                 is_distributed=self.args.is_distributed_norm,
                 sharded_program_config=self.model_config["SHARDED_NORM_ATTN_PRGM_CFG"],
                 sharded_output_config=self.model_config["SHARDED_ATTN_INPUT_MEMCFG"],
-                TG=TG,
+                TG=args.is_galaxy,
             ),
             args,
-            TG=TG,
+            TG=args.is_galaxy,
         )
         self.ff_norm = DistributedNorm(
             RMSNorm(
@@ -76,11 +75,20 @@ class TtTransformerBlock(LightweightModule):
                 is_distributed=self.args.is_distributed_norm,
                 sharded_program_config=self.model_config["SHARDED_NORM_MLP_PRGM_CFG"],
                 sharded_output_config=self.model_config["SHARDED_MLP_INPUT_MEMCFG"],
-                TG=TG,
+                TG=args.is_galaxy,
             ),
             args,
-            TG=TG,
+            TG=args.is_galaxy,
         )
+
+        self.ATTN_ACT_MEMCFG = ttnn.create_sharded_memory_config(
+            shape=(32, 2048 // 32),
+            core_grid=ttnn.CoreGrid(y=4, x=8),
+            strategy=ttnn.ShardStrategy.WIDTH,
+            orientation=ttnn.ShardOrientation.ROW_MAJOR,
+            use_height_and_width_as_shard_shape=True,
+        )
+        self.MLP_ACT_MEMCFG = self.model_config["FULL_GRID_MEMCFG"]
 
     def forward(
         self,
@@ -117,14 +125,7 @@ class TtTransformerBlock(LightweightModule):
         )
 
         if TG and mode == "decode":
-            ATTN_ACT_MEMCFG = ttnn.create_sharded_memory_config(
-                shape=(32, 2048 // 32),
-                core_grid=ttnn.CoreGrid(y=4, x=8),
-                strategy=ttnn.ShardStrategy.WIDTH,
-                orientation=ttnn.ShardOrientation.ROW_MAJOR,
-                use_height_and_width_as_shard_shape=True,
-            )
-            attn_out = ttnn.to_memory_config(attn_out, memory_config=ATTN_ACT_MEMCFG)
+            attn_out = ttnn.to_memory_config(attn_out, memory_config=self.ATTN_ACT_MEMCFG)
 
         # Here x and attn_out are both fractured across devices
         h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg)
@@ -134,20 +135,13 @@ class TtTransformerBlock(LightweightModule):
         ff_in = self.ff_norm(h, mode)
 
         if TG and mode == "decode":
-            MLP_ACT_MEMCFG = ttnn.create_sharded_memory_config(
-                shape=(32, 2048 // 8),
-                core_grid=ttnn.CoreGrid(y=1, x=8),
-                strategy=ttnn.ShardStrategy.WIDTH,
-                orientation=ttnn.ShardOrientation.ROW_MAJOR,
-                use_height_and_width_as_shard_shape=True,
-            )
-            ff_in = ttnn.to_memory_config(ff_in, memory_config=MLP_ACT_MEMCFG)
+            ff_in = ttnn.to_memory_config(ff_in, memory_config=self.MLP_ACT_MEMCFG)
 
         # MLP takes replicated inputs and produces fractured outputs
         ff_out = self.feed_forward.forward(ff_in, mode)
 
         if TG and mode == "decode":
-            ff_out = ttnn.to_memory_config(ff_out, memory_config=ATTN_ACT_MEMCFG)
+            ff_out = ttnn.to_memory_config(ff_out, memory_config=self.ATTN_ACT_MEMCFG)
 
         # ff_out and h are both fractured across devices
         out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)

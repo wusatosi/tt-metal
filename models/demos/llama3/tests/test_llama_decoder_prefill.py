@@ -18,7 +18,6 @@ from models.utility_functions import (
     comp_allclose,
 )
 from models.utility_functions import skip_for_grayskull
-from models.demos.t3000.llama2_70b.tt.llama_common import ShardTensor2dMesh, ConcatMesh2DToTensor
 
 
 @torch.no_grad()
@@ -26,8 +25,15 @@ from models.demos.t3000.llama2_70b.tt.llama_common import ShardTensor2dMesh, Con
 @pytest.mark.parametrize(
     "seq_len",
     (
-        8 * 4096,
-        # 128,
+        128,
+        # 256,
+        # 512,
+        # 1024,
+        # 2*1024,
+        # 4*1024,
+        # 8*1024,
+        # 16 * 1024,
+        # 128*1024,
     ),
 )
 @pytest.mark.parametrize(
@@ -102,19 +108,11 @@ def test_llama_decoder_inference(mesh_device, seq_len, use_program_cache, reset_
         ref_output = reference_model(pt_decode_input, positions[0], freqs_cis_i, mask=attn_mask_torch)
         # Run TT model
         tt_out = tt_model(decode_input, None, rot_mats, transformation_mats, user_id=0, mode="prefill")
-        if model_args.is_galaxy:
-            tt_out = ttnn.to_torch(
-                tt_out, mesh_composer=ConcatMesh2DToTensor(mesh_device, dims=(3, 1), cluster_shape=(4, 8))
-            )
-            print(tt_out.shape)
-            tt_out = tt_out[:, 0:1, :, :]
-            tt_output_torch = tt_out.squeeze(1)[: model_args.max_batch_size, :, :]
-        else:
-            tt_output_torch = ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))[
-                0, :, :, : model_args.dim
-            ].view(
-                batch, seq_len, -1
-            )  # [ batch, seq, hidden_dim]
+        tt_out = ttnn.to_torch(
+            tt_out,
+            mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(1, 3), mesh_shape=model_args.cluster_shape),
+        )
+        tt_output_torch = tt_out[:, 0:1, :, : model_args.dim].view(batch, seq_len, -1)  # [ batch, seq, hidden_dim]
         passing, pcc_message = comp_pcc(ref_output, tt_output_torch)
 
         logger.info(comp_allclose(ref_output, tt_output_torch))
