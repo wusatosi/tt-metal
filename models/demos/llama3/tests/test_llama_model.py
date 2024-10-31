@@ -263,12 +263,21 @@ def test_llama_model_inference(mesh_device, weights, layers, use_program_cache, 
                         .attention.cache_v.clone()
                         .permute(0, 2, 1, 3),  # [batch, n_kv_heads, seq, head_dim]
                     ]
-
                     tt_layer_present = []
                     for layer_past in tt_model.layers[l].attention.layer_past:  # TODO: Add support for TG
-                        tt_layer_present.append(
-                            ttnn.to_torch(layer_past, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1))
-                        )
+                        if model_args.is_galaxy:
+                            tt_layer_present.append(
+                                ttnn.to_torch(
+                                    layer_past,
+                                    mesh_composer=ttnn.ConcatMesh2dToTensor(
+                                        mesh_device, dims=(1, 0), mesh_shape=mesh_device.shape
+                                    ),
+                                )[:batch, ...]
+                            )
+                        else:
+                            tt_layer_present.append(
+                                ttnn.to_torch(layer_past, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1))
+                            )
 
                     for kv_cache, (cache_pt, cache_tt) in enumerate(zip(pytorch_layer_present, tt_layer_present)):
                         cache_length_to_check = min(
