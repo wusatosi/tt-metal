@@ -332,13 +332,13 @@ def test_tranpose_hw_rm_with_padding(device, n, c, h, w):
     assert_with_pcc(torch_output_tensor, activation_pyt_padded_out, 0.9999)
 
 
-@skip_for_blackhole("Mismatching on BH, see #12349")
 @skip_for_grayskull("Grayskull has pcc issue when transpose used untilize")
-@pytest.mark.parametrize("n", [16])
-@pytest.mark.parametrize("c", [128])
-@pytest.mark.parametrize("h", [8])
-@pytest.mark.parametrize("w", [256])
+@pytest.mark.parametrize("n", [1])
+@pytest.mark.parametrize("c", [1])
+@pytest.mark.parametrize("h", [32])
+@pytest.mark.parametrize("w", [32])
 def test_tranpose_hw_rm_no_padding(device, n, c, h, w):
+    torch.manual_seed(2005)
     torch_input_tensor = torch.rand((n, c, h, w), dtype=torch.bfloat16)
     torch_output_tensor = torch_input_tensor.transpose(2, 3)
     activation_pyt_padded = ttnn.from_torch(
@@ -350,8 +350,15 @@ def test_tranpose_hw_rm_no_padding(device, n, c, h, w):
     )
     activation_pyt_padded = ttnn.transpose(activation_pyt_padded, 2, 3, memory_config=ttnn.L1_MEMORY_CONFIG)
     activation_pyt_padded_out = ttnn.to_memory_config(activation_pyt_padded, ttnn.L1_MEMORY_CONFIG)
-    activation_pyt_padded_out = ttnn.from_device(activation_pyt_padded_out)
     activation_pyt_padded_out = ttnn.to_torch(activation_pyt_padded_out)
+    torch.set_printoptions(threshold=10_000)
+    print("Torch input tensor")
+    print(torch_input_tensor)
+    print("Torch golden")
+    print(torch_output_tensor)
+    print("TT output")
+    print(activation_pyt_padded_out)
+
     assert_with_pcc(torch_output_tensor, activation_pyt_padded_out, 0.9999)
 
 

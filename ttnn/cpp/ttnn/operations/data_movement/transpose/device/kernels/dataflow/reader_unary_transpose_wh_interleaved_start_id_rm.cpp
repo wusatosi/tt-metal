@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 #include "dataflow_api.h"
+#include "debug/dprint.h"
 
 void kernel_main() {
 
@@ -44,6 +45,7 @@ void kernel_main() {
     #endif
 
     uint32_t i_stick = start_id;
+    // DPRINT << "stick_size_bytes: " << stick_size_bytes << "\n";
 
     // this reader will read a NHW tensor in NWH order
     for (uint32_t n = 0; n < num_hw_blocks_per_core; n++) {
@@ -53,7 +55,18 @@ void kernel_main() {
             uint32_t H_curr = h == Ht-1 ? H_per_tile_last : H_per_tile;
             for (uint32_t h_datum = 0; h_datum < H_curr; ++h_datum) {
                 uint64_t read_noc_addr = get_noc_addr(i_stick, s);
+                // DPRINT << "read_noc_addr: " << read_noc_addr << " alignment: " << read_noc_addr % 64 << " l1_write_addr " << l1_write_addr << " alignment " << l1_write_addr % 64 << "\n";
                 noc_async_read(read_noc_addr, l1_write_addr, stick_size_bytes);
+                volatile tt_l1_ptr uint16_t* Wt_ptr = (volatile tt_l1_ptr uint16_t*)l1_write_addr;
+                // if (h_datum == 16) {
+                    // for (uint32_t i = 0; i < 32; ++i) {
+                    //     if (i % 8 == 0) {
+                    //         DPRINT << "| ";
+                    //     }
+                    //     DPRINT << SETW(6) << SETPRECISION(4) << BF16(Wt_ptr[i]) << " ";
+                    // }
+                // }
+                DPRINT << "\n\n";
                 l1_write_addr += l1_write_offset_bytes;
                 i_stick += 1;
             }

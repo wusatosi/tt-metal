@@ -9,7 +9,7 @@
 #include "compute_kernel_api/tilize.h"
 #include "compute_kernel_api/untilize.h"
 #include "compute_kernel_api/pack_untilize.h"
-
+#include "debug/dprint.h"
 
 
 template<uint32_t Wt, uint32_t Ht, uint32_t HtWt>
@@ -139,7 +139,7 @@ void MAIN {
     #endif
 
     unary_op_init_common(cb_in, cb_out);
-
+    // DPRINT_UNPACK(DPRINT << "this is the unpack kernel" << ENDL());
     for (uint32_t n = 0; n < num_hw_blocks_per_core; n++) {
         // tilize input
         tilize_init_short(cb_in, Wt);
@@ -154,6 +154,8 @@ void MAIN {
 
         // transpose
         cb_wait_front(cb_tilize, HtWt);
+
+        // DPRINT_UNPACK({ DPRINT  << TSLICE(CB::cb_tilize, 0, SliceRange::hw0_32_16()) << ENDL(); });
         uint32_t tile_idx = 0;
         if constexpr(Ht > 8) { // temporary fix until pack_untilze is fully fixed
             transpose_with_untilize<Wt, Ht, HtWt>(cb_tilize, cb_untilize, cb_out);
