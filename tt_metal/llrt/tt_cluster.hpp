@@ -31,20 +31,20 @@ enum EthRouterMode : uint32_t {
 namespace tt {
 
 class Cluster {
-   public:
-    Cluster &operator=(const Cluster &) = delete;
-    Cluster &operator=(Cluster &&other) noexcept = delete;
-    Cluster(const Cluster &) = delete;
-    Cluster(Cluster &&other) noexcept = delete;
+public:
+    Cluster& operator=(const Cluster&) = delete;
+    Cluster& operator=(Cluster&& other) noexcept = delete;
+    Cluster(const Cluster&) = delete;
+    Cluster(Cluster&& other) noexcept = delete;
 
-    static const Cluster &instance();
+    static const Cluster& instance();
 
     // For TG Galaxy systems, mmio chips are gateway chips that are only used for dispatc, so user_devices are meant for
     // user facing host apis
     size_t number_of_user_devices() const {
         if (this->is_tg_cluster_) {
-            const auto &chips = this->cluster_desc_->get_all_chips();
-            return std::count_if(chips.begin(), chips.end(), [&](const auto &id) {
+            const auto& chips = this->cluster_desc_->get_all_chips();
+            return std::count_if(chips.begin(), chips.end(), [&](const auto& id) {
                 return this->cluster_desc_->get_board_type(id) == BoardType::GALAXY;
             });
         } else {
@@ -60,21 +60,22 @@ class Cluster {
 
     ARCH arch() const { return this->arch_; }
 
-    const metal_SocDescriptor &get_soc_desc(chip_id_t chip) const;
+    const metal_SocDescriptor& get_soc_desc(chip_id_t chip) const;
     uint32_t get_harvested_rows(chip_id_t chip) const;
     uint32_t get_harvesting_mask(chip_id_t chip) const {
         return this->driver_->get_harvesting_masks_for_soc_descriptors().at(chip);
     }
 
     //! device driver and misc apis
-    void verify_sw_fw_versions(int device_id, std::uint32_t sw_version, std::vector<std::uint32_t> &fw_versions) const;
+    void verify_sw_fw_versions(int device_id, std::uint32_t sw_version, std::vector<std::uint32_t>& fw_versions) const;
 
-    void deassert_risc_reset_at_core(const tt_cxy_pair &physical_chip_coord) const;
-    void assert_risc_reset_at_core(const tt_cxy_pair &physical_chip_coord) const;
+    void deassert_risc_reset_at_core(const tt_cxy_pair& physical_chip_coord) const;
+    void assert_risc_reset_at_core(const tt_cxy_pair& physical_chip_coord) const;
 
-    void write_dram_vec(std::vector<uint32_t> &vec, tt_target_dram dram, uint64_t addr, bool small_access = false) const;
+    void write_dram_vec(
+        std::vector<uint32_t>& vec, tt_target_dram dram, uint64_t addr, bool small_access = false) const;
     void read_dram_vec(
-        std::vector<uint32_t> &vec,
+        std::vector<uint32_t>& vec,
         uint32_t size_in_bytes,
         tt_target_dram dram,
         uint64_t addr,
@@ -82,50 +83,54 @@ class Cluster {
 
     // Accepts physical noc coordinates
     void write_core(
-        const void *mem_ptr, uint32_t sz_in_bytes, tt_cxy_pair core, uint64_t addr, bool small_access = false) const;
+        const void* mem_ptr, uint32_t sz_in_bytes, tt_cxy_pair core, uint64_t addr, bool small_access = false) const;
     void read_core(
-        void *mem_ptr, uint32_t sz_in_bytes, tt_cxy_pair core, uint64_t addr, bool small_access = false) const;
+        void* mem_ptr, uint32_t sz_in_bytes, tt_cxy_pair core, uint64_t addr, bool small_access = false) const;
     void read_core(
-        std::vector<uint32_t> &data, uint32_t sz_in_bytes, tt_cxy_pair core, uint64_t addr, bool small_access = false) const;
+        std::vector<uint32_t>& data,
+        uint32_t sz_in_bytes,
+        tt_cxy_pair core,
+        uint64_t addr,
+        bool small_access = false) const;
 
-    std::optional<std::tuple<uint32_t, uint32_t>> get_tlb_data(const tt_cxy_pair &target) const {
-        tt::umd::Cluster *device = dynamic_cast<tt::umd::Cluster *>(driver_.get());
-        const metal_SocDescriptor &soc_desc = this->get_soc_desc(target.chip);
+    std::optional<std::tuple<uint32_t, uint32_t>> get_tlb_data(const tt_cxy_pair& target) const {
+        tt::umd::Cluster* device = dynamic_cast<tt::umd::Cluster*>(driver_.get());
+        const metal_SocDescriptor& soc_desc = this->get_soc_desc(target.chip);
         tt_cxy_pair virtual_chip_coord = soc_desc.convert_to_umd_coordinates(target);
         return device->get_tlb_data_from_target(virtual_chip_coord);
     }
 
-    std::function<void(uint32_t, uint32_t, const uint8_t *)> get_fast_pcie_static_tlb_write_callable(
-        int chip_id) const {
+    std::function<void(uint32_t, uint32_t, const uint8_t*)> get_fast_pcie_static_tlb_write_callable(int chip_id) const {
         chip_id_t mmio_device_id = device_to_mmio_device_.at(chip_id);
-        tt::umd::Cluster *device = dynamic_cast<tt::umd::Cluster *>(driver_.get());
+        tt::umd::Cluster* device = dynamic_cast<tt::umd::Cluster*>(driver_.get());
         return device->get_fast_pcie_static_tlb_write_callable(mmio_device_id);
     }
 
     // Returns a writer object which holds a pointer to a static tlb
-    // Allows for fast writes when targeting same device core by only doing the lookup once and avoiding repeated stack traversals
+    // Allows for fast writes when targeting same device core by only doing the lookup once and avoiding repeated stack
+    // traversals
     tt::Writer get_static_tlb_writer(tt_cxy_pair target) const {
-        tt::umd::Cluster *device = dynamic_cast<tt::umd::Cluster *>(driver_.get());
-        const metal_SocDescriptor &soc_desc = this->get_soc_desc(target.chip);
+        tt::umd::Cluster* device = dynamic_cast<tt::umd::Cluster*>(driver_.get());
+        const metal_SocDescriptor& soc_desc = this->get_soc_desc(target.chip);
         tt_cxy_pair virtual_target = soc_desc.convert_to_umd_coordinates(target);
         return device->get_static_tlb_writer(virtual_target);
     }
 
     std::uint32_t get_numa_node_for_device(uint32_t device_id) const {
         uint32_t mmio_device_id = this->get_associated_mmio_device(device_id);
-        tt::umd::Cluster *device = dynamic_cast<tt::umd::Cluster *>(driver_.get());
+        tt::umd::Cluster* device = dynamic_cast<tt::umd::Cluster*>(driver_.get());
         return driver_->get_numa_node_for_pcie_device(mmio_device_id);
     }
 
-    void write_reg(const std::uint32_t *mem_ptr, tt_cxy_pair target, uint64_t addr) const;
-    void read_reg(std::uint32_t *mem_ptr, tt_cxy_pair target, uint64_t addr) const;
+    void write_reg(const std::uint32_t* mem_ptr, tt_cxy_pair target, uint64_t addr) const;
+    void read_reg(std::uint32_t* mem_ptr, tt_cxy_pair target, uint64_t addr) const;
 
     void write_sysmem(
-        const void *mem_ptr, uint32_t size_in_bytes, uint64_t addr, chip_id_t src_device_id, uint16_t channel) const;
+        const void* mem_ptr, uint32_t size_in_bytes, uint64_t addr, chip_id_t src_device_id, uint16_t channel) const;
     void read_sysmem(
-        void *mem_ptr, uint32_t size_in_bytes, uint64_t addr, chip_id_t src_device_id, uint16_t channel) const;
+        void* mem_ptr, uint32_t size_in_bytes, uint64_t addr, chip_id_t src_device_id, uint16_t channel) const;
 
-    int get_device_aiclk(const chip_id_t &chip_id) const;
+    int get_device_aiclk(const chip_id_t& chip_id) const;
 
     void dram_barrier(chip_id_t chip_id) const;
     void l1_barrier(chip_id_t chip_id) const;
@@ -133,7 +138,7 @@ class Cluster {
     uint32_t get_num_host_channels(chip_id_t device_id) const;
     uint32_t get_host_channel_size(chip_id_t device_id, uint32_t channel) const;
     // Returns address in host space
-    void *host_dma_address(uint64_t offset, chip_id_t src_device_id, uint16_t channel) const;
+    void* host_dma_address(uint64_t offset, chip_id_t src_device_id, uint16_t channel) const;
     uint64_t get_pcie_base_addr_from_device(chip_id_t chip_id) const;
 
     // Ethernet cluster api
@@ -156,7 +161,7 @@ class Cluster {
     // get_ethernet_sockets(a, b)[0] is connected to get_ethernet_sockets(b, a)[0]
     std::vector<CoreCoord> get_ethernet_sockets(chip_id_t local_chip, chip_id_t remote_chip) const;
     // Converts logical ethernet core coord to physical ethernet core coord
-    CoreCoord ethernet_core_from_logical_core(chip_id_t chip_id, const CoreCoord &logical_core) const;
+    CoreCoord ethernet_core_from_logical_core(chip_id_t chip_id, const CoreCoord& logical_core) const;
 
     // Bookkeeping for mmio device tunnels
     uint32_t get_mmio_device_max_tunnel_depth(chip_id_t mmio_device) const;
@@ -168,7 +173,8 @@ class Cluster {
     tt_cxy_pair get_eth_core_for_dispatch_core(
         tt_cxy_pair logical_dispatch_core, EthRouterMode mode, chip_id_t connected_chip_id) const;
 
-    std::tuple<tt_cxy_pair, tt_cxy_pair> get_eth_tunnel_core(chip_id_t upstream_chip_id, chip_id_t downstream_chip_id, EthRouterMode mode) const;
+    std::tuple<tt_cxy_pair, tt_cxy_pair> get_eth_tunnel_core(
+        chip_id_t upstream_chip_id, chip_id_t downstream_chip_id, EthRouterMode mode) const;
 
     // Internal routing for SD and FD enables launching user ethernet kernels and FD tunneling for all devices in the
     // cluster. When using multiple devices in a cluster, this should be the flow:
@@ -190,7 +196,7 @@ class Cluster {
     }
 
     // Returns collection of devices that are controlled by the specified MMIO device inclusive of the MMIO device
-    const std::set<chip_id_t> &get_devices_controlled_by_mmio_device(chip_id_t mmio_device_id) const {
+    const std::set<chip_id_t>& get_devices_controlled_by_mmio_device(chip_id_t mmio_device_id) const {
         TT_ASSERT(
             this->devices_grouped_by_assoc_mmio_device_.count(mmio_device_id),
             "Expected device {} to be an MMIO device!",
@@ -203,6 +209,10 @@ class Cluster {
     std::vector<std::vector<chip_id_t>> get_tunnels_from_mmio_device(chip_id_t mmio_chip_id) const {
         return this->tunnels_from_mmio_device.at(mmio_chip_id);
     }
+    std::unordered_map<chip_id_t, std::unordered_map<ethernet_channel_t, std::tuple<chip_id_t, ethernet_channel_t>>>
+    get_ethernet_connections() const {
+        return this->cluster_desc_->get_ethernet_connections();
+    }
 
     // Returns whether we are running on Galaxy.
     bool is_galaxy_cluster() const;
@@ -210,7 +220,7 @@ class Cluster {
     // Returns Wormhole chip board type.
     BoardType get_board_type(chip_id_t chip_id) const;
 
-   private:
+private:
     Cluster();
     ~Cluster();
 
@@ -218,15 +228,14 @@ class Cluster {
     void generate_cluster_descriptor();
     void initialize_device_drivers();
     void assert_risc_reset();
-    void assign_mem_channels_to_devices(chip_id_t mmio_device_id, const std::set<chip_id_t> &controlled_device_ids);
-    void open_driver(
-        const bool &skip_driver_allocs = false);
-    void start_driver(tt_device_params &device_params) const;
+    void assign_mem_channels_to_devices(chip_id_t mmio_device_id, const std::set<chip_id_t>& controlled_device_ids);
+    void open_driver(const bool& skip_driver_allocs = false);
+    void start_driver(tt_device_params& device_params) const;
 
     void get_metal_desc_from_tt_desc(
-        const std::unordered_map<chip_id_t, tt_SocDescriptor> &input,
-        const std::unordered_map<chip_id_t, uint32_t> &per_chip_id_harvesting_masks);
-    tt_cxy_pair convert_physical_cxy_to_virtual(const tt_cxy_pair &physical_cxy) const;
+        const std::unordered_map<chip_id_t, tt_SocDescriptor>& input,
+        const std::unordered_map<chip_id_t, uint32_t>& per_chip_id_harvesting_masks);
+    tt_cxy_pair convert_physical_cxy_to_virtual(const tt_cxy_pair& physical_cxy) const;
 
     // Reserves ethernet cores in cluster for tunneling
     void reserve_ethernet_cores_for_tunneling();
@@ -285,4 +294,4 @@ class Cluster {
 
 }  // namespace tt
 
-std::ostream &operator<<(std::ostream &os, tt_target_dram const &dram);
+std::ostream& operator<<(std::ostream& os, tt_target_dram const& dram);
