@@ -77,10 +77,10 @@ def export_suite_vectors_json(module_name, suite_name, vectors):
             data = json.load(file)
         with open(EXPORT_PATH, "w") as file:
             data[suite_name] = serialized_vectors
-            json.dump(data, file)
+            json.dump(data, file, indent=4)
     else:
         with open(EXPORT_PATH, "w") as file:
-            json.dump({suite_name: serialized_vectors}, file)
+            json.dump({suite_name: serialized_vectors}, file, indent=4)
     logger.info(f"SWEEPS: Generated {len(vectors)} test vectors for suite {suite_name}.")
 
 

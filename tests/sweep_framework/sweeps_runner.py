@@ -60,6 +60,7 @@ def gather_single_test_perf(device, test_passed):
         logger.error("No profiling data available. Ensure you are running with the profiler build.")
         return None
     elif len(opPerfData) > 1:
+        print(opPerfData)
         logger.info("Composite op detected in device perf measurement. Composite op perf is not supported. Failing.")
         return None
     else:
@@ -266,10 +267,10 @@ def export_test_results_json(header_info, results):
             old_data = json.load(file)
         new_data = old_data + new_data
         with open(EXPORT_PATH, "w") as file:
-            json.dump(new_data, file)
+            json.dump(new_data, file, indent=4)
     else:
         with open(EXPORT_PATH, "w") as file:
-            json.dump(new_data, file)
+            json.dump(new_data, file, indent=4)
 
 
 def run_sweeps(module_name, suite_name, vector_id):
