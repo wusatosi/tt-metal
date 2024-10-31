@@ -189,11 +189,19 @@ def test_llama_model_inference(mesh_device, weights, layers, use_program_cache, 
         # Run TT model
         tt_out = tt_model(decode_input, current_pos_tensor, rot_mat=current_rot_mat)
         # Convert ttnn tensor to torch tensor
-        tt_output_torch = (
-            ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))
-            .permute(2, 1, 0, 3)
-            .squeeze(1)[: model_args.max_batch_size, :, :]
-        )  # [seq, batch, hidden_dim]
+        if model_args.is_galaxy:
+            mesh_composer = ttnn.ConcatMesh2dToTensor(mesh_device, dims=(3, 1), mesh_shape=mesh_device.shape)
+            tt_output_torch = (
+                ttnn.to_torch(tt_out, mesh_composer=mesh_composer)
+                .permute(2, 1, 0, 3)
+                .squeeze(2)[: model_args.max_batch_size, 0:1, : model_args.vocab_size]
+            )
+        else:
+            tt_output_torch = (  # TODO: Add support for TG
+                ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))
+                .permute(2, 1, 0, 3)
+                .squeeze(1)[: model_args.max_batch_size, :, :]
+            )  # [seq, batch, hidden_dim]
 
         ttnn.deallocate(tt_out)
 
@@ -257,7 +265,7 @@ def test_llama_model_inference(mesh_device, weights, layers, use_program_cache, 
                     ]
 
                     tt_layer_present = []
-                    for layer_past in tt_model.layers[l].attention.layer_past:
+                    for layer_past in tt_model.layers[l].attention.layer_past:  # TODO: Add support for TG
                         tt_layer_present.append(
                             ttnn.to_torch(layer_past, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1))
                         )
