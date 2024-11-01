@@ -145,8 +145,19 @@ void MAIN {
         tilize_init_short(cb_in, Wt);
         for (uint32_t h = 0; h < Ht; ++h) {
             cb_wait_front(cb_in, Wt);
+            auto ptr = (volatile tt_l1_ptr uint16_t *) (cb_interface[cb_in].fifo_rd_ptr << 4);
+            for (uint8_t i = 0; i < 8; ++i) {
+                for (uint8_t j = 0; j < 32; ++j) {
+                    DPRINT_UNPACK({ DPRINT << BF16(ptr[i * 32 + j]) << " "; });
+                }
+                DPRINT_UNPACK(DPRINT << ENDL() << ENDL());
+            }
             cb_reserve_back(cb_tilize, Wt);
             tilize_block(cb_in, Wt, cb_tilize);
+            for (uint8_t i = 0; i < 8; ++i) {
+                uint8_t j = i + 1u;
+                DPRINT_PACK({ DPRINT  << TSLICE(cb_tilize, 0, SliceRange{ .h0 = i, .h1 = j, .hs = 1, .w0 = 0, .w1 = 32, .ws = 1 }) << ENDL(); });
+            }
             cb_push_back(cb_tilize, Wt);
             cb_pop_front(cb_in, Wt);
         }
@@ -154,8 +165,10 @@ void MAIN {
 
         // transpose
         cb_wait_front(cb_tilize, HtWt);
-
-        // DPRINT_UNPACK({ DPRINT  << TSLICE(CB::cb_tilize, 0, SliceRange::hw0_32_16()) << ENDL(); });
+        // for (uint8_t i = 0; i < 32; ++i) {
+        //     uint8_t j = i + 1u;
+        //     DPRINT_UNPACK({ DPRINT  << TSLICE(cb_tilize, 0, SliceRange{ .h0 = i, .h1 = j, .hs = 1, .w0 = 0, .w1 = 32, .ws = 1 }) << ENDL(); });
+        // }
         uint32_t tile_idx = 0;
         if constexpr(Ht > 8) { // temporary fix until pack_untilze is fully fixed
             transpose_with_untilize<Wt, Ht, HtWt>(cb_tilize, cb_untilize, cb_out);
