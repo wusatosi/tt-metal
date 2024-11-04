@@ -189,19 +189,14 @@ def test_llama_model_inference(mesh_device, weights, layers, use_program_cache, 
         # Run TT model
         tt_out = tt_model(decode_input, current_pos_tensor, rot_mat=current_rot_mat)
         # Convert ttnn tensor to torch tensor
-        if model_args.is_galaxy:
-            mesh_composer = ttnn.ConcatMesh2dToTensor(mesh_device, dims=(3, 1), mesh_shape=mesh_device.shape)
-            tt_output_torch = (
-                ttnn.to_torch(tt_out, mesh_composer=mesh_composer)
-                .permute(2, 1, 0, 3)
-                .squeeze(2)[: model_args.max_batch_size, 0:1, : model_args.vocab_size]
-            )
-        else:
-            tt_output_torch = (  # TODO: Add support for TG
-                ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))
-                .permute(2, 1, 0, 3)
-                .squeeze(1)[: model_args.max_batch_size, :, :]
-            )  # [seq, batch, hidden_dim]
+        mesh_composer = ttnn.ConcatMesh2dToTensor(
+            mesh_device, dims=(3, 1) if model_args.is_galaxy else (1, -1), mesh_shape=mesh_device.shape
+        )
+        tt_output_torch = (
+            ttnn.to_torch(tt_out, mesh_composer=mesh_composer)
+            .permute(2, 1, 0, 3)
+            .squeeze(2)[: model_args.max_batch_size, 0:1, : model_args.vocab_size]
+        )
 
         ttnn.deallocate(tt_out)
 
@@ -265,19 +260,16 @@ def test_llama_model_inference(mesh_device, weights, layers, use_program_cache, 
                     ]
                     tt_layer_present = []
                     for layer_past in tt_model.layers[l].attention.layer_past:  # TODO: Add support for TG
-                        if model_args.is_galaxy:
-                            tt_layer_present.append(
-                                ttnn.to_torch(
-                                    layer_past,
-                                    mesh_composer=ttnn.ConcatMesh2dToTensor(
-                                        mesh_device, dims=(1, 0), mesh_shape=mesh_device.shape
-                                    ),
-                                )[:batch, ...]
-                            )
-                        else:
-                            tt_layer_present.append(
-                                ttnn.to_torch(layer_past, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1))
-                            )
+                        tt_layer_present.append(
+                            ttnn.to_torch(
+                                cache,
+                                mesh_composer=ttnn.ConcatMesh2dToTensor(
+                                    mesh_device,
+                                    dims=(1, 0) if model_args.is_galaxy else (0, 1),
+                                    mesh_shape=model_args.cluster_shape,
+                                ),
+                            )[:batch, :, :, :]
+                        )
 
                     for kv_cache, (cache_pt, cache_tt) in enumerate(zip(pytorch_layer_present, tt_layer_present)):
                         cache_length_to_check = min(

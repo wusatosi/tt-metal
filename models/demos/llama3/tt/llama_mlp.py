@@ -41,8 +41,8 @@ class TtLlamaMLP(LightweightModule):
         )
 
         # Sharded weights
-        w1_dim = (-2, -1)
-        w2_dim = (-1, -2)
+        w1_dim = (-1, -2)
+        w2_dim = (-2, -1)
 
         self.w1 = as_sharded_tensor(
             "w1_sharded", ttnn.bfloat4_b if self.args.is_large_model else ttnn.bfloat8_b, dim=w1_dim

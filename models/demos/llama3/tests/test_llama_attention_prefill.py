@@ -100,8 +100,6 @@ def test_llama_attention_inference(seq_len, mesh_device, use_program_cache, rese
     attn_mask_torch = torch.triu(attn_mask, diagonal=1)
     reference_output = reference_model(pt_attention_input, positions[0], freqs_cis_i, mask=attn_mask_torch)
 
-    print("SHAPES: ", reference_output.shape, tt_output_torch.shape)
-
     passing, pcc_message = comp_pcc(reference_output, tt_output_torch, pcc)
 
     logger.info(comp_allclose(reference_output, tt_output_torch))
@@ -125,7 +123,7 @@ def test_llama_attention_inference(seq_len, mesh_device, use_program_cache, rese
             ttnn.to_torch(
                 cache,
                 mesh_composer=ttnn.ConcatMesh2dToTensor(
-                    mesh_device, dims=(1, 0) if model_args.is_galaxy else (0, 1), cluster_shape=model_args.cluster_shape
+                    mesh_device, dims=(1, 0) if model_args.is_galaxy else (0, 1), mesh_shape=model_args.cluster_shape
                 ),
             )[:batch, :, :, :]
             for cache in tt_model.layer_past

@@ -103,9 +103,7 @@ def test_llama_decoder_inference(mesh_device, use_program_cache, reset_seeds, en
             mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(1, 3), mesh_shape=model_args.cluster_shape),
         )
         tt_out = tt_out[:, 0:1, :, : model_args.dim].view(1, -1, model_args.dim)
-        tt_output_torch = tt_out[: model_args.max_batch_size, :, :]
-
-        print(f"{tt_output_torch.shape=}")
+        tt_output_torch = tt_out[:, : model_args.max_batch_size, :]
 
         freqs_cis_i = freqs_cis[current_pos, :].unsqueeze(0)
 
