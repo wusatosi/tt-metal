@@ -129,14 +129,16 @@ class LMHead(LightweightModule):
         # Concatenate the outputs
         output = ttnn.concat(outputs, dim=-1, memory_config=ttnn.L1_MEMORY_CONFIG)
 
-        if self.args.is_galaxy:
-            # do tt_all_reduce
-            output = tt_all_reduce(
-                output,
-                mesh_device=self.mesh_device,
-                cluster_axis=1,
-                num_links=2,
-                memory_config=ttnn.L1_MEMORY_CONFIG,
-            )
+        # do tt_all_reduce
+        output = tt_all_reduce(
+            output,
+            mesh_device=self.mesh_device,
+            cluster_axis=1,
+            num_links=2,
+            dim=3 if model_args.mode == "decode" else 0,
+            reduce_scatter_mem_cfg=self.core_model_config["LM_HEAD_OUT_REDUCE_SCATTER_MEMCFG"],
+            composite=True if model_args.mode == "decode" else False,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+        )
 
         return output

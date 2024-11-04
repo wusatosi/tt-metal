@@ -124,9 +124,6 @@ class TtTransformerBlock(LightweightModule):
             page_table,
         )
 
-        if TG and mode == "decode":
-            attn_out = ttnn.to_memory_config(attn_out, memory_config=self.ATTN_ACT_MEMCFG)
-
         # Here x and attn_out are both fractured across devices
         h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg)
         ttnn.deallocate(attn_out)
