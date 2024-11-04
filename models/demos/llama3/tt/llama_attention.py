@@ -498,11 +498,8 @@ class TtLlamaAttention(LightweightModule):
                 self.mesh_device,
                 cluster_axis=0,
                 num_links=2 if TG else 1,
-                dim=3,
-                composite=True if TG else False,
-                memory_config=self.attention_config["SELF_OUT_REDUCE_SCATTER_MEMCFG"](8)
-                if TG
-                else ttnn.L1_MEMORY_CONFIG,
+                dim=0 if TG else 3,
+                memory_config=self.attention_config["SELF_OUT_GATHERED_MEMCFG"](8) if TG else ttnn.L1_MEMORY_CONFIG,
                 sharded=True,
             )
 

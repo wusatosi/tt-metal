@@ -114,21 +114,17 @@ class TtLlamaMLP(LightweightModule):
             w1_out,
             self.mesh_device,
             cluster_axis=1,
-            num_links=1 if mode == "decode" else 2,
+            num_links=2,
             sharded=True if mode == "decode" else False,
-            composite=True if mode == "decode" else False,
-            dim=3 if mode == "decode" else 0,
-            memory_config=self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else None,
+            memory_config=self.model_config["FF1_OUT_GATHERED_MEMCFG"] if mode == "decode" else None,
         )
         w3_out = tt_all_reduce(
             w3_out,
             self.mesh_device,
             cluster_axis=1,
-            num_links=1 if mode == "decode" else 2,
+            num_links=2,
             sharded=True if mode == "decode" else False,
-            composite=True if mode == "decode" else False,
-            dim=3 if mode == "decode" else 0,
-            memory_config=self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else None,
+            memory_config=self.model_config["FF1_OUT_GATHERED_MEMCFG"] if mode == "decode" else None,
         )
 
         # w1_out = ttnn.to_memory_config(w1_out, self.model_config["FULL_GRID_MEMCFG"])
@@ -176,12 +172,11 @@ class TtLlamaMLP(LightweightModule):
             self.mesh_device,
             cluster_axis=0,
             num_links=1 if not TG else 2,
-            dim=3 if (mode == "decode" or not TG) else 0,
-            memory_config=(self.model_config["FF2_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else None)
+            dim=3 if not TG else 0,
+            memory_config=(self.model_config["FF2_OUT_GATHERED_MEMCFG"] if mode == "decode" else None)
             if TG
             else (ttnn.DRAM_MEMORY_CONFIG if mode == "prefill" else ttnn.L1_MEMORY_CONFIG),
             sharded=True if mode == "decode" else False,
-            composite=True if mode == "decode" else False,
         )
         # Ensure dim 0 and 1 are 1
         original_shape = w2_out_reduced.shape

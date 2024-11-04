@@ -63,9 +63,9 @@ def set_attention_config(model_config, max_batch_size):
         orientation=ttnn.ShardOrientation.ROW_MAJOR,
         use_height_and_width_as_shard_shape=True,
     )
-    decode_config["SELF_OUT_REDUCE_SCATTER_MEMCFG"] = lambda mesh_rows: ttnn.create_sharded_memory_config(
-        shape=(32, 2048 // 8 // mesh_rows),  # mesh_rows = 8
-        core_grid=ttnn.CoreGrid(y=1, x=8),
+    decode_config["SELF_OUT_GATHERED_MEMCFG"] = lambda mesh_rows: ttnn.create_sharded_memory_config(
+        shape=(32 * mesh_rows, 2048 // 32),  # mesh_rows = 8
+        core_grid=ttnn.CoreGrid(y=4, x=8),
         strategy=ttnn.ShardStrategy.WIDTH,
         orientation=ttnn.ShardOrientation.ROW_MAJOR,
         use_height_and_width_as_shard_shape=True,
