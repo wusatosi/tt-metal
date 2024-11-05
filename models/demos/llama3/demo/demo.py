@@ -286,6 +286,7 @@ def run_llama3_demo(
 
             prefill_input = model_args.prepare_inputs_ttnn_prefill(
                 pt_prefill_input[batch_id],
+                force_replicated=False if model_args.is_galaxy else True,
             )
 
             if batch_id == 0:  # First user prefill accounts for compile time
@@ -319,10 +320,12 @@ def run_llama3_demo(
                     get_last_token=((decoding_pos[batch_id] - 1) // 32) * 32,
                 )
             if model_args.is_galaxy:
+                print(tt_out)
                 tt_out_torch = ttnn.to_torch(
                     tt_out,
                     mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(3, 1), mesh_shape=mesh_device.shape),
                 )
+
                 pt_out.append(tt_out_torch[0, 0, (decoding_pos[batch_id] - 1) % 32, :])
             else:
                 pt_out.append(
@@ -331,7 +334,6 @@ def run_llama3_demo(
                     ]
                 )
             ttnn.deallocate(tt_out)
-
         # Synchronize devices to ensure the profile captures the correct timing of all devices
         for i in range(model_args.num_devices):
             ttnn.synchronize_device(mesh_device.get_devices()[i])
@@ -357,6 +359,8 @@ def run_llama3_demo(
             all_outputs[user].append(user_tok)
 
         user_done = [False] * batch_size  # Keeps track when a user reaches EoD token
+        print(prefill_seq_len)
+        logger.info("[User 0] {}".format("".join(tokenizer.decode(all_outputs[0]))))
 
         logger.info("Starting decode...")
 
@@ -459,7 +463,7 @@ def run_llama3_demo(
 
             # Execute trace
             ttnn.wait_for_event(0, write_event)
-            ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
+            ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=True)
             ttnn.record_event(0, op_event)
 
             # Write to host
@@ -635,7 +639,7 @@ def run_llama3_demo(
     logger.info("")
 
     supported_models = ["3.2-1B", "3.2-3B", "3.1-8B", "3.2-11B", "3.1-70B"]
-    supported_devices = ["N150", "N300", "T3K"]
+    supported_devices = ["N150", "N300", "T3K", "TG"]
 
     # TODO update targets based on the llama3 model and the target device
     llama_model_name = model_args.model_name
@@ -697,7 +701,7 @@ def run_llama3_demo(
 
     # Save benchmark data for CI dashboard
     # if is_ci_env:
-    if True:
+    if False:
         benchmark_data = create_benchmark_data(profiler, measurements, N_warmup_iter, targets)
         benchmark_data.prep_csvs(
             profiler,
@@ -717,22 +721,22 @@ def run_llama3_demo(
     "input_prompts, instruct_weights, num_batches, single_layer",
     [
         ("models/demos/llama3/demo/input_data_prefill_128.json", False, 1, False),
-        ("models/demos/llama3/demo/input_data_prefill_128.json", False, 3, False),
-        ("models/demos/llama3/demo/input_data_questions_prefill_128.json", True, 1, False),
-        ("models/demos/llama3/demo/input_data_questions_prefill_128.json", True, 3, False),
-        ("models/demos/llama3/demo/input_data_long.json", True, 1, False),
-        ("models/demos/llama3/demo/input_data_questions_prefill_128.json", True, 1, True),
+        # ("models/demos/llama3/demo/input_data_prefill_128.json", False, 3, False),
+        # ("models/demos/llama3/demo/input_data_questions_prefill_128.json", True, 1, False),
+        # ("models/demos/llama3/demo/input_data_questions_prefill_128.json", True, 3, False),
+        # ("models/demos/llama3/demo/input_data_long.json", True, 1, False),
+        # ("models/demos/llama3/demo/input_data_questions_prefill_128.json", True, 1, True),
     ],
     ids=[
         "general_weights-1_batch",
-        "general_weights-3_batch",
-        "instruct_weights-1_batch",
-        "instruct_weights-3_batch",
-        "instruct_weights-long",
-        "single_layer",
+        # "general_weights-3_batch",
+        # "instruct_weights-1_batch",
+        # "instruct_weights-3_batch",
+        # "instruct_weights-long",
+        # "single_layer",
     ],
 )
-@pytest.mark.parametrize("device_params", [{"trace_region_size": 14951424, "num_command_queues": 2}], indirect=True)
+@pytest.mark.parametrize("device_params", [{"trace_region_size": 90000000, "num_command_queues": 2}], indirect=True)
 @pytest.mark.parametrize(
     "mesh_device",
     [

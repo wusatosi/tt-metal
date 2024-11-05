@@ -99,6 +99,11 @@ class TtTransformer(LightweightModule):
         x = self.norm(x, mode=mode)
 
         if mode == "prefill":
-            x = ttnn.interleaved_to_sharded(x, self.model_config["LM_HEAD_INPUT_MEMCFG"])
+            x = ttnn.interleaved_to_sharded(
+                x,
+                self.model_config["LM_HEAD_INPUT_MEMCFG_TG"]
+                if self.args.is_galaxy
+                else self.model_config["LM_HEAD_INPUT_MEMCFG"],
+            )
 
         return self.lm_head(x)

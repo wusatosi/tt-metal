@@ -87,9 +87,9 @@ class TtModelArgs:
     # TODO Update these params. In init we update the max_seq_len to 32k if it's a single device
     max_batch_size = 1
     # Context length for Llama models (if single device, reduce to 32k in init)
-    max_seq_len = 8192 * 16  # 128k
-    kv_seq_len = 8192 * 16  # 128k
-    sliding_window = 8192 * 16  # 128k
+    max_seq_len = 8192 * 16 // 4  # 128k
+    kv_seq_len = 8192 * 16 // 4  # 128k
+    sliding_window = 8192 * 16 // 4  # 128k
 
     tile_size = 32
 
@@ -156,7 +156,7 @@ class TtModelArgs:
 
         self.DEFAULT_CKPT_DIR = "/proj_sw/user_dev/llama3-data-repacked/llama-3-70b/"
         self.DEFAULT_TOKENIZER_PATH = "/proj_sw/user_dev/llama3-data-repacked/"
-        self.DEFAULT_CACHE_PATH = "/proj_sw/user_dev/llama3-data-cache/weights-cache-2"
+        self.DEFAULT_CACHE_PATH = "/proj_sw/user_dev/weights-cache-TG"
         if not dummy_weights:
             # Assert if all folders and files exist
             assert os.path.exists(
@@ -920,7 +920,7 @@ class TtModelArgs:
 
     def weight_cache_path(self, dtype):
         # Keep the weight cache separate for generative and instruct weights
-        if self.instruct:
+        if False:  # self.instruct:
             return (
                 self.model_cache_path
                 / {ttnn.bfloat16: "tensor_cache_instruct_bf16", ttnn.bfloat8_b: "tensor_cache_instruct_bfp8"}[dtype]

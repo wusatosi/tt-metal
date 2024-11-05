@@ -204,7 +204,7 @@ class TtLlamaAttention(LightweightModule):
         if self.use_fused_all_gather_matmul or TG:
             pt_wo = self.state_dict[wo_str].transpose(-1, -2).unsqueeze(0).unsqueeze(0)
 
-            print(pt_wo.shape)
+            # print(pt_wo.shape)
             wo_ttnn = ttnn.as_tensor(
                 pt_wo,
                 dtype=ttnn.bfloat8_b,
@@ -217,7 +217,7 @@ class TtLlamaAttention(LightweightModule):
                 # cache_file_name=cache_name("wo_width_sharded_2d"),
             )
             self.wo = ttnn.to_device(wo_ttnn, self.mesh_device)
-            print(self.wo.shape)
+            # print(self.wo.shape)
         else:  # For line topology we can't do all gather matmul for now, but we can height shard and reduce scatter
             # wo: 2048 (2devices) x 4096: width-sharded on 12 banks, 4224 over 12 banks.
             wo_mem_config = configuration.create_dram_sharded_mem_config(
@@ -316,7 +316,7 @@ class TtLlamaAttention(LightweightModule):
             compute_kernel_config=self.compute_kernel_config_hifi2,
             dtype=ttnn.bfloat16,
         )
-        print(xqkv_fused_sharded.shape)
+        # print(xqkv_fused_sharded.shape)
         ttnn.deallocate(x)
 
         xqkv_fused = tt_all_reduce(
@@ -530,7 +530,7 @@ class TtLlamaAttention(LightweightModule):
         xqkv_fused = tt_all_reduce(
             xqkv_fused, self.mesh_device, cluster_axis=1, num_links=2, memory_config=ttnn.DRAM_MEMORY_CONFIG
         )
-        print("done qkv matmul", xqkv_fused.shape)
+        # print("done qkv matmul", xqkv_fused.shape)
 
         if seq_len > 2048:
             xqkv_fused = ttnn.reshape(xqkv_fused, [1, 1, seq_len, -1])
@@ -550,7 +550,7 @@ class TtLlamaAttention(LightweightModule):
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
         )
 
-        print("done qkv heads", q_heads_1QSD_pre_rot.shape, k_heads_1KSD_pre_rot.shape, v_heads_1VSD.shape)
+        # print("done qkv heads", q_heads_1QSD_pre_rot.shape, k_heads_1KSD_pre_rot.shape, v_heads_1VSD.shape)
 
         ttnn.deallocate(xqkv_fused)
 
@@ -567,7 +567,7 @@ class TtLlamaAttention(LightweightModule):
             k_heads_1KSD_pre_rot, rot_mats[0], rot_mats[1], transformation_mats
         )
         ttnn.deallocate(k_heads_1KSD_pre_rot)
-        print("done rotary embeddings", q_heads_1QSD.shape, k_heads_1KSD.shape)
+        # print("done rotary embeddings", q_heads_1QSD.shape, k_heads_1KSD.shape)
         # Fill KV-Cache
         keys_BKSD, values_BKSD = self.layer_past[0], self.layer_past[1]
         k_heads_1KSD_8b = ttnn.typecast(k_heads_1KSD, dtype=ttnn.bfloat8_b)
@@ -575,9 +575,9 @@ class TtLlamaAttention(LightweightModule):
 
         # sharding k_fill to deal with update_cache memory limitation
         if seq_len > 1024 and not TG:
-            print("sharding k_fill", self.model_config["KV_PREFILL_MEM_CFG"](seq_len))
+            # print("sharding k_fill", self.model_config["KV_PREFILL_MEM_CFG"](seq_len))
             k_fill = ttnn.interleaved_to_sharded(k_heads_1KSD_8b, self.model_config["KV_PREFILL_MEM_CFG"](seq_len))
-            print("done sharding", k_fill.shape)
+            # print("done sharding", k_fill.shape)
         else:
             k_fill = k_heads_1KSD_8b
 
@@ -592,7 +592,7 @@ class TtLlamaAttention(LightweightModule):
         if TG:
             k_fill = self.prefill_prepare_tensor_for_kv_cache(k_fill, user_id)
             v_fill = self.prefill_prepare_tensor_for_kv_cache(v_fill, user_id)
-        print("done kv prep", k_fill.shape, v_fill.shape)
+        # print("done kv prep", k_fill.shape, v_fill.shape)
         if page_table:
             ttnn.experimental.paged_fill_cache(keys_BKSD, k_fill, page_table, batch_idx=user_id)
             ttnn.experimental.paged_fill_cache(values_BKSD, v_fill, page_table, batch_idx=user_id)
@@ -636,7 +636,7 @@ class TtLlamaAttention(LightweightModule):
             program_config=self.model_config["SDPA_PROGCFG"](q_heads_84SD_8b.shape[-2]),
         )
 
-        print("done attention", attn_output_84SD.shape)
+        # print("done attention", attn_output_84SD.shape)
 
         # deallocate keys and values
         ttnn.deallocate(q_heads_84SD_8b)
@@ -668,7 +668,7 @@ class TtLlamaAttention(LightweightModule):
         #     topology=self.ccl_topology,
         #     memory_config=ttnn.DRAM_MEMORY_CONFIG,
         # )
-        print("pre matmul", attn_output_11SH.shape)
+        # print("pre matmul", attn_output_11SH.shape)
         output_11SH = ttnn.linear(
             attn_output_11SH,
             self.wo,
@@ -678,7 +678,7 @@ class TtLlamaAttention(LightweightModule):
             program_config=self.model_config["WO_PREFILL_PROGCFG"](seq_len),
         )
 
-        print("done output", output_11SH.shape)
+        # print("done output", output_11SH.shape)
         if seq_len > 1024:
             output_11SH = ttnn.reshape(output_11SH, [1, 1, seq_len, -1])
         ttnn.deallocate(attn_output_11SH)
@@ -692,7 +692,7 @@ class TtLlamaAttention(LightweightModule):
             num_links=2 if TG else 1,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
         )
-        print("done all reduce", dense_out_reduced.shape)
+        # print("done all reduce", dense_out_reduced.shape)
 
         ttnn.deallocate(output_11SH)
         return dense_out_reduced

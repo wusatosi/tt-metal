@@ -101,12 +101,14 @@ def test_llama_attention_inference(mesh_device, use_program_cache, reset_seeds, 
             tt_out,
             mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(1, 3), mesh_shape=model_args.cluster_shape),
         )
-        tt_out = tt_out[:, 0:1, :, : model_args.dim].view(1, -1, model_args.dim)
-        tt_output_torch = tt_out[: model_args.max_batch_size, :, :]
+        tt_output_torch = tt_out[:, 0:1, : model_args.max_batch_size, : model_args.dim].view(1, -1, model_args.dim)
 
         freqs_cis_i = freqs_cis[current_pos, :].unsqueeze(0)
         # positions = torch.tensor([current_pos])
         reference_output = reference_model(pt_attention_input, current_pos, freqs_cis_i, mask=None)
+
+        print(f"{tt_output_torch.shape=}")
+        print(f"{reference_output.shape=}")
         passing, pcc_message = comp_pcc(reference_output, tt_output_torch, pcc)
 
         logger.info(comp_allclose(reference_output, tt_output_torch))

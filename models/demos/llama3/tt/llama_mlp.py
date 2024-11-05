@@ -76,14 +76,14 @@ class TtLlamaMLP(LightweightModule):
                 # Reshape input to to fit on device and parallelize computation
                 x = ttnn.reshape(x, [1, seq_len // 1024, 1024, -1])
             pc_1 = self.model_config["PREFILL_MLP_W1_W3_PRG_CONFIG"](seq_len)
-            print("pc1", pc_1)
+            # print("pc1", pc_1)
             pc_2 = self.model_config["PREFILL_MLP_W2_PRG_CONFIG"](seq_len)
-            print("pc2", pc_2)
+            # print("pc2", pc_2)
             pc_3 = self.model_config["PREFILL_MLP_W1_W3_PRG_CONFIG"](seq_len)
 
         # In decode mode (seqlen <= 32) do DRAM sharded matmuls
         # These use HiFi2; this drops 1 bit of the activations but would be FLOP-bound on 12 cores with HiFi4
-        print("x", x.shape)
+        # print("x", x.shape)
         w1_out = ttnn.linear(
             x,
             self.w1,
@@ -94,7 +94,7 @@ class TtLlamaMLP(LightweightModule):
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
         )
 
-        print("w1_out", w1_out.shape)
+        # print("w1_out", w1_out.shape)
 
         w3_out = ttnn.linear(
             x,
@@ -106,7 +106,7 @@ class TtLlamaMLP(LightweightModule):
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
         )
 
-        print("w3_out", w3_out.shape)
+        # print("w3_out", w3_out.shape)
 
         ttnn.deallocate(x)
 
@@ -129,7 +129,7 @@ class TtLlamaMLP(LightweightModule):
 
         # w1_out = ttnn.to_memory_config(w1_out, self.model_config["FULL_GRID_MEMCFG"])
         # w3_out = ttnn.to_memory_config(w3_out, self.model_config["FULL_GRID_MEMCFG"])
-        print("w3 reduced", w3_out.shape)
+        # print("w3 reduced", w3_out.shape)
 
         w2_in = ttnn.multiply(
             w1_out,
@@ -143,7 +143,7 @@ class TtLlamaMLP(LightweightModule):
             dtype=ttnn.bfloat8_b,
         )
 
-        print("w2_in", w2_in.shape)
+        # print("w2_in", w2_in.shape)
         if (
             mode == "decode" and not TG
         ):  # TODO Add a check for a match between FF1/FF3 and FF2 memory configs. If they match avoid doing the reshard
@@ -152,8 +152,8 @@ class TtLlamaMLP(LightweightModule):
 
         ttnn.deallocate(w3_out)
         ttnn.deallocate(w1_out)
-        print("pc1", pc_1)
-        print("pc2", pc_2)
+        # print("pc1", pc_1)
+        # print("pc2", pc_2)
         # This uses HiFi2 for full precision as it is dram-bound and uses bfp8 inputs
         w2_out = ttnn.linear(
             w2_in,
@@ -164,7 +164,7 @@ class TtLlamaMLP(LightweightModule):
             program_config=pc_2,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
         )
-        print("w2_out", w2_out.shape)
+        # print("w2_out", w2_out.shape)
         ttnn.deallocate(w2_in)
 
         w2_out_reduced = tt_all_reduce(
@@ -184,7 +184,7 @@ class TtLlamaMLP(LightweightModule):
             w2_out_reduced, (1, 1, original_shape[-4] * original_shape[-3] * original_shape[-2], original_shape[-1])
         )
 
-        print("w2_out_reduced", w2_out_reduced.shape)
+        # print("w2_out_reduced", w2_out_reduced.shape)
 
         ttnn.deallocate(w2_out)
         return w2_out_reduced

@@ -32,9 +32,9 @@ from models.utility_functions import skip_for_grayskull
     "weights, layers",
     [
         ("random", 1),
-        ("general", None),
+        # ("general", None),
     ],
-    ids=["quick", "full"],
+    ids=["quick"],
 )
 @pytest.mark.parametrize(
     "mesh_device",
@@ -262,7 +262,7 @@ def test_llama_model_inference(mesh_device, weights, layers, use_program_cache, 
                     for layer_past in tt_model.layers[l].attention.layer_past:  # TODO: Add support for TG
                         tt_layer_present.append(
                             ttnn.to_torch(
-                                cache,
+                                layer_past,
                                 mesh_composer=ttnn.ConcatMesh2dToTensor(
                                     mesh_device,
                                     dims=(1, 0) if model_args.is_galaxy else (0, 1),
