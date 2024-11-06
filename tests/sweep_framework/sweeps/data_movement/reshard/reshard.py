@@ -16,54 +16,189 @@ from models.utility_functions import torch_random
 TIMEOUT = 15
 
 parameters = {
-    "nightly": {
-        "shape": [
-            # [1, 1, 64, 64],
-            # [1, 1, 128, 128],
-            # [1, 1, 192, 192],
-            # [1, 1, 256, 256],
-            # [1, 1, 320, 320],
-            # [1, 1, 384, 384],
-            # [1, 1, 448, 448],
-            # [1, 1, 512, 512],
-            # [1, 1, 576, 576],
-            # [1, 1, 640, 640],
-        ],
+    "down-square-0": {
+        "shape": [],
         "layout": [ttnn.TILE_LAYOUT],
         "dtype": [ttnn.bfloat16],
-        "input_core_grid": [ttnn.CoreGrid(x=1, y=1)],
+        "input_core_grid": [ttnn.CoreGrid(x=4, y=4)],
         "input_shard_strategy": [ttnn.ShardStrategy.BLOCK],
-        "output_core_grid": [ttnn.CoreGrid(x=2, y=2), ttnn.CoreGrid(x=1, y=4), ttnn.CoreGrid(x=4, y=1)],
+        "output_core_grid": [ttnn.CoreGrid(x=2, y=2)],
         "output_shard_strategy": [ttnn.ShardStrategy.BLOCK],
-    }
+    },
+    "down-square-1": {
+        "shape": [],
+        "layout": [ttnn.TILE_LAYOUT],
+        "dtype": [ttnn.bfloat16],
+        "input_core_grid": [ttnn.CoreGrid(x=4, y=4)],
+        "input_shard_strategy": [ttnn.ShardStrategy.BLOCK],
+        "output_core_grid": [ttnn.CoreGrid(x=3, y=3)],
+        "output_shard_strategy": [ttnn.ShardStrategy.BLOCK],
+    },
+    "down-rect-0": {
+        "shape": [],
+        "layout": [ttnn.TILE_LAYOUT],
+        "dtype": [ttnn.bfloat16],
+        "input_core_grid": [ttnn.CoreGrid(x=4, y=4)],
+        "input_shard_strategy": [ttnn.ShardStrategy.BLOCK],
+        "output_core_grid": [
+            ttnn.CoreGrid(x=1, y=4),
+            ttnn.CoreGrid(x=4, y=1),
+        ],
+        "output_shard_strategy": [ttnn.ShardStrategy.BLOCK],
+    },
+    "down-rect-1": {
+        "shape": [],
+        "layout": [ttnn.TILE_LAYOUT],
+        "dtype": [ttnn.bfloat16],
+        "input_core_grid": [ttnn.CoreGrid(x=4, y=4)],
+        "input_shard_strategy": [ttnn.ShardStrategy.BLOCK],
+        "output_core_grid": [
+            ttnn.CoreGrid(x=2, y=4),
+            ttnn.CoreGrid(x=4, y=2),
+        ],
+        "output_shard_strategy": [ttnn.ShardStrategy.BLOCK],
+    },
+    "down-rect-2": {
+        "shape": [],
+        "layout": [ttnn.TILE_LAYOUT],
+        "dtype": [ttnn.bfloat16],
+        "input_core_grid": [ttnn.CoreGrid(x=4, y=4)],
+        "input_shard_strategy": [ttnn.ShardStrategy.BLOCK],
+        "output_core_grid": [
+            ttnn.CoreGrid(x=3, y=4),
+            ttnn.CoreGrid(x=4, y=3),
+        ],
+        "output_shard_strategy": [ttnn.ShardStrategy.BLOCK],
+    },
+    "up-square-0": {
+        "shape": [],
+        "layout": [ttnn.TILE_LAYOUT],
+        "dtype": [ttnn.bfloat16],
+        "input_core_grid": [ttnn.CoreGrid(x=4, y=4)],
+        "input_shard_strategy": [ttnn.ShardStrategy.BLOCK],
+        "output_core_grid": [
+            ttnn.CoreGrid(x=5, y=5),
+        ],
+        "output_shard_strategy": [ttnn.ShardStrategy.BLOCK],
+    },
+    "up-square-1": {
+        "shape": [],
+        "layout": [ttnn.TILE_LAYOUT],
+        "dtype": [ttnn.bfloat16],
+        "input_core_grid": [ttnn.CoreGrid(x=4, y=4)],
+        "input_shard_strategy": [ttnn.ShardStrategy.BLOCK],
+        "output_core_grid": [ttnn.CoreGrid(x=6, y=6)],
+        "output_shard_strategy": [ttnn.ShardStrategy.BLOCK],
+    },
+    "up-square-2": {
+        "shape": [],
+        "layout": [ttnn.TILE_LAYOUT],
+        "dtype": [ttnn.bfloat16],
+        "input_core_grid": [ttnn.CoreGrid(x=4, y=4)],
+        "input_shard_strategy": [ttnn.ShardStrategy.BLOCK],
+        "output_core_grid": [ttnn.CoreGrid(x=7, y=7)],
+        "output_shard_strategy": [ttnn.ShardStrategy.BLOCK],
+    },
+    "up-square-3": {
+        "shape": [],
+        "layout": [ttnn.TILE_LAYOUT],
+        "dtype": [ttnn.bfloat16],
+        "input_core_grid": [ttnn.CoreGrid(x=4, y=4)],
+        "input_shard_strategy": [ttnn.ShardStrategy.BLOCK],
+        "output_core_grid": [ttnn.CoreGrid(x=8, y=8)],
+        "output_shard_strategy": [ttnn.ShardStrategy.BLOCK],
+    },
+    "up-rect-0": {
+        "shape": [],
+        "layout": [ttnn.TILE_LAYOUT],
+        "dtype": [ttnn.bfloat16],
+        "input_core_grid": [ttnn.CoreGrid(x=4, y=4)],
+        "input_shard_strategy": [ttnn.ShardStrategy.BLOCK],
+        "output_core_grid": [
+            ttnn.CoreGrid(x=5, y=4),
+            ttnn.CoreGrid(x=4, y=5),
+        ],
+        "output_shard_strategy": [ttnn.ShardStrategy.BLOCK],
+    },
+    "up-rect-1": {
+        "shape": [],
+        "layout": [ttnn.TILE_LAYOUT],
+        "dtype": [ttnn.bfloat16],
+        "input_core_grid": [ttnn.CoreGrid(x=4, y=4)],
+        "input_shard_strategy": [ttnn.ShardStrategy.BLOCK],
+        "output_core_grid": [
+            ttnn.CoreGrid(x=6, y=4),
+            ttnn.CoreGrid(x=4, y=6),
+        ],
+        "output_shard_strategy": [ttnn.ShardStrategy.BLOCK],
+    },
+    "up-rect-2": {
+        "shape": [],
+        "layout": [ttnn.TILE_LAYOUT],
+        "dtype": [ttnn.bfloat16],
+        "input_core_grid": [ttnn.CoreGrid(x=4, y=4)],
+        "input_shard_strategy": [ttnn.ShardStrategy.BLOCK],
+        "output_core_grid": [
+            ttnn.CoreGrid(x=7, y=4),
+            ttnn.CoreGrid(x=4, y=7),
+        ],
+        "output_shard_strategy": [ttnn.ShardStrategy.BLOCK],
+    },
+    "up-rect-3": {
+        "shape": [],
+        "layout": [ttnn.TILE_LAYOUT],
+        "dtype": [ttnn.bfloat16],
+        "input_core_grid": [ttnn.CoreGrid(x=4, y=4)],
+        "input_shard_strategy": [ttnn.ShardStrategy.BLOCK],
+        "output_core_grid": [
+            ttnn.CoreGrid(x=8, y=4),
+            ttnn.CoreGrid(x=4, y=8),
+        ],
+        "output_shard_strategy": [ttnn.ShardStrategy.BLOCK],
+    },
 }
 
-for i in range(1, 20):
-    for j in range(1, 20):
-        parameters["nightly"]["shape"].append([1, 1, i * 64, j * 64])
+TILE_SIZE = 32
+
+for s, p in parameters.items():
+    for i in range(p["input_core_grid"][0].x, 200, p["input_core_grid"][0].x):
+        for j in range(p["input_core_grid"][0].y, 200, p["input_core_grid"][0].y):
+            p["shape"].append([1, 1, j * TILE_SIZE, i * TILE_SIZE])
 
 
 def invalidate_vector(test_vector) -> Tuple[bool, Optional[str]]:
-    if (test_vector["shape"][3] // test_vector["input_core_grid"].x) % 32 != 0:
+    if (test_vector["shape"][3] // test_vector["input_core_grid"].x) % TILE_SIZE != 0:
         return (
             True,
             f"shape: {test_vector['shape']} cannot be mapped to input core grid {test_vector['input_core_grid']}",
         )
-    if (test_vector["shape"][3] // test_vector["output_core_grid"].x) % 32 != 0:
+    if (test_vector["shape"][3] // test_vector["output_core_grid"].x) % TILE_SIZE != 0:
         return (
             True,
             f"shape: {test_vector['shape']} cannot be mapped to output core grid {test_vector['output_core_grid']}",
         )
-    if (test_vector["shape"][2] // test_vector["input_core_grid"].y) % 32 != 0:
+    if (test_vector["shape"][2] // test_vector["input_core_grid"].y) % TILE_SIZE != 0:
         return (
             True,
             f"shape: {test_vector['shape']} cannot be mapped to input core grid {test_vector['input_core_grid']}",
         )
-    if (test_vector["shape"][2] // test_vector["output_core_grid"].y) % 32 != 0:
+    if (test_vector["shape"][2] // test_vector["output_core_grid"].y) % TILE_SIZE != 0:
         return (
             True,
             f"shape: {test_vector['shape']} cannot be mapped to output core grid {test_vector['output_core_grid']}",
         )
+
+    datum_size = {ttnn.bfloat16: 2}
+    if (
+        datum_size[test_vector["dtype"]] * test_vector["shape"][3] * test_vector["shape"][2]
+        > 1024 * 1024 * test_vector["input_core_grid"].x * test_vector["input_core_grid"].y
+    ):
+        return True, "Insufficient memory in input core grid"
+    if (
+        datum_size[test_vector["dtype"]] * test_vector["shape"][3] * test_vector["shape"][2]
+        > 1024 * 1024 * test_vector["output_core_grid"].x * test_vector["output_core_grid"].y
+    ):
+        return True, "Insufficient memory in output core grid"
     return False, None
 
 

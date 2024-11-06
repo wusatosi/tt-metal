@@ -185,9 +185,13 @@ def execute_suite(test_module, test_vectors, pbar_manager, suite_name):
                 logger.warning(f"TEST TIMED OUT, Killing child process {p.pid} and running tt-smi...")
                 p.terminate()
                 p = None
-                tt_smi_util.run_tt_smi(ARCH)
                 result["status"], result["exception"] = TestStatus.FAIL_CRASH_HANG, "TEST TIMED OUT (CRASH / HANG)"
                 result["e2e_perf"] = None
+                try:
+                    tt_smi_util.run_tt_smi(ARCH)
+                except:
+                    logger.warning("tt-smi failed... exiting")
+                    break
         result["timestamp"] = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         result["host"] = get_hostname()
         result["user"] = get_username()
@@ -282,6 +286,9 @@ def run_sweeps(module_name, suite_name, vector_id):
         with open(READ_FILE, "r") as file:
             data = json.load(file)
             for suite in data:
+                if suite_name and suite_name != suite:
+                    continue
+
                 for input_hash in data[suite]:
                     data[suite][input_hash]["vector_id"] = input_hash
                 vectors = [data[suite][input_hash] for input_hash in data[suite]]
