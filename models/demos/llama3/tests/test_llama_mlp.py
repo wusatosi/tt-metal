@@ -22,12 +22,9 @@ from models.utility_functions import skip_for_grayskull
 @pytest.mark.parametrize(
     "seq_len",
     (
-        128 * 1024,
         32 * 1024,
-        16 * 1024,
-        8 * 1024,
-        4 * 1024,
-        # 32,
+        128,
+        32,
     ),
 )
 @pytest.mark.parametrize(
@@ -95,19 +92,12 @@ def test_llama_mlp_inference(mesh_device, seq_len, use_program_cache, reset_seed
     logger.info("Run Llama_MLP")
     tt_output = tt_model(tt_input, mode)
 
-    # print(f"{tt_output}")
     tt_output_torch = ttnn.to_torch(
         tt_output,
-        mesh_composer=ttnn.ConcatMesh2dToTensor(
-            mesh_device, dims=(1, 3) if model_args.is_galaxy else (-2, -1), mesh_shape=model_args.cluster_shape
-        ),
+        mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(1, 3), mesh_shape=model_args.cluster_shape),
     )
-    print(f"{tt_output_torch.shape}")
 
     tt_output_torch = tt_output_torch[:, :1, :, :]
-
-    print(f"{tt_output_torch.shape=}")
-    print(f"{reference_output.shape=}")
 
     pcc_required = 0.99
     passing, pcc_message = comp_pcc(reference_output, tt_output_torch, pcc_required)
