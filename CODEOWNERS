@@ -74,6 +74,7 @@ tt_metal/hw/firmware/src/*erisc* @aliuTT @ubcheema
 tt_metal/hw/inc/ethernet/ @aliuTT @ubcheema
 tt_metal/hw/inc/wormhole/eth_l1_address_map.h @aliuTT @ubcheema
 tt_metal/third_party/tt_llk_* @rtawfik01 @ttmtrajkovic @rdjogoTT
+tt_metal/tt_stl/ @patrickroberts @yan-zaretskiy @eyonland @ayerofieiev-tt @dmakoviichuk-tt @sminakov-tt
 
 sfpi/ @pgkeller
 
@@ -105,7 +106,7 @@ ttnn/cpp/ttnn/operations/ccl/ @SeanNijjar @cfjchu
 ttnn/cpp/ttnn/operations/pool/ @mywoodstock @shwetankTT @sankarmanoj-tt @pavlejosipovic
 ttnn/cpp/ttnn/operations/conv/ @mywoodstock @shwetankTT @sankarmanoj-tt @pavlejosipovic @bbradelTT
 ttnn/cpp/ttnn/operations/sliding_window/ @mywoodstock @sankarmanoj-tt @pavlejosipovic
-ttnn/cpp/ttnn/operations/data_movement/ @ntarafdar @sjameelTT @yan-zaretskiy @jaykru-tt
+ttnn/cpp/ttnn/operations/data_movement/ @ntarafdar @sjameelTT @jaykru-tt @yugi957
 ttnn/cpp/ttnn/operations/matmul/ @TT-BrianLiu @bbradelTT @yugaoTT
 ttnn/cpp/ttnn/operations/experimental/matmul/ @TT-BrianLiu @bbradelTT @yugaoTT
 ttnn/cpp/ttnn/operations/eltwise/ @patrickroberts @yan-zaretskiy @eyonland
@@ -115,11 +116,13 @@ ttnn/cpp/ttnn/operations/embedding/ @ntarafdar @tt-aho @TT-BrianLiu
 ttnn/cpp/ttnn/operations/embedding_backward/ @TT-BrianLiu @yan-zaretskiy
 ttnn/ttnn/operations/eltwise @patrickroberts @yan-zaretskiy @eyonland
 tests/ttnn/ @ayerofieiev-tt @dmakoviichuk-tt @rfurko-tt @cfjchu @TT-BrianLiu @razorback3 @dongjin-na
+tests/ttnn/unit_tests/operations/ccl/ @SeanNijjar @jvegaTT
 tests/ttnn/unit_tests/operations/eltwise/ @patrickroberts @yan-zaretskiy @eyonland
 tests/sweep_framework/ @xanderchin @jdesousa-TT @sjameelTT
 tests/sweep_framework/sweeps
 tests/sweep_framework/sweeps/eltwise/ @patrickroberts @yan-zaretskiy @eyonland
 tests/sweep_framework/sweeps/conv2d/  @nkpatel-tt @mywoodstock @shwetankTT @sankarmanoj-tt @pavlejosipovic
+tests/sweep_framework/sweeps/data_movement/  @sjameelTT @ntarafdar @jaykru-tt @yugi957
 
 # TTNN Distributed
 ttnn/cpp/ttnn/distributed/ @cfjchu @ayerofieiev-tt @dmakoviichuk-tt
@@ -140,7 +143,6 @@ models/demos/falcon7b_common @skhorasganiTT @djordje-tt @uaydonat
 models/demos/wormhole/mamba @esmalTT @uaydonat @kpaigwar
 models/demos/wormhole/falcon7b @skhorasganiTT @djordje-tt @uaydonat
 models/demos/wormhole/mistral7b @yieldthought @uaydonat @mtairum
-models/demos/wormhole/llama31_8b @yieldthought @mtairum @uaydonat
 models/demos/wormhole/stable_diffusion @esmalTT @uaydonat @mywoodstock
 models/demos/t3000/falcon40b @uaydonat @djordje-tt @johanna-rock-tt
 models/demos/t3000/falcon7b @skhorasganiTT @djordje-tt @uaydonat

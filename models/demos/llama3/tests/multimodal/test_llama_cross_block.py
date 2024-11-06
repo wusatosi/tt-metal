@@ -6,25 +6,15 @@ import pytest
 from loguru import logger
 import os
 import ttnn
-import importlib
 
-llama_reference_mod = importlib.import_module(
-    "models.demos.t3000.llama2_70b.reference.llama-models.models.llama3.reference_impl.multimodal.model"
-)
+import llama_models.llama3.reference_impl.multimodal.model as llama_reference_mod
 from models.demos.llama3.tt.multimodal.llama_cross_block import TtLlamaCrossAttentionTransformerBlock
 from models.demos.llama3.tt.model_config import TtModelArgs
-from models.utility_functions import (
-    comp_pcc,
-    comp_allclose,
-)
+from models.utility_functions import comp_pcc, comp_allclose, nearest_32
 from models.utility_functions import skip_for_grayskull
 
 
 @skip_for_grayskull("Requires wormhole_b0 to run")
-@pytest.mark.parametrize(
-    "vision_seq_len",
-    (4224,),
-)
 @pytest.mark.parametrize(
     "text_seq_len",
     (2048,),
@@ -39,10 +29,10 @@ from models.utility_functions import skip_for_grayskull
     indirect=True,
 )
 def test_llama_cross_attention_transformer_block_inference(
-    vision_seq_len, text_seq_len, mesh_device, use_program_cache, reset_seeds, ensure_gc
+    text_seq_len, mesh_device, use_program_cache, reset_seeds, ensure_gc
 ):
     dtype = ttnn.bfloat16
-    pcc = 0.99
+    pcc_required = 0.99
 
     mesh_device.enable_async(True)
 
@@ -64,6 +54,8 @@ def test_llama_cross_attention_transformer_block_inference(
     reference_model.load_state_dict(partial_state_dict)
 
     batch = 1
+    num_chunks = 4
+    vision_seq_len = num_chunks * nearest_32(model_args.vision_chunk_ntok)
 
     all_tests_pass = True
 
@@ -81,6 +73,7 @@ def test_llama_cross_attention_transformer_block_inference(
     tt_xattn_tokens = pt_xattn_tokens.clone()
     tt_xattn_tokens = model_args.prepare_inputs_ttnn_prefill(
         tt_xattn_tokens,
+        force_replicated=True,
     )
 
     """
@@ -88,20 +81,21 @@ def test_llama_cross_attention_transformer_block_inference(
     """
     pt_xattn_cache = reference_model.compute_xattn_kv_cache(pt_xattn_tokens)
     pt_xattn_cache_chunks = torch.chunk(pt_xattn_cache, 2, dim=0)
-    pt_xattn_cache_chunks = [
-        x.view(batch, n_heads, vision_seq_len, head_dim)[:, :: n_heads // n_kv_heads] for x in pt_xattn_cache
-    ]
+    pt_xattn_cache_chunks = [x.view(batch, n_heads, vision_seq_len, head_dim) for x in pt_xattn_cache]
 
     tt_xattn_cache = tt_model.compute_xattn_kv_cache(tt_xattn_tokens)
     tt_xattn_cache_torch = [
         ttnn.to_torch(x, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1)).view(
-            batch, n_kv_heads, vision_seq_len, head_dim
+            batch,
+            n_heads,
+            vision_seq_len,
+            head_dim,
         )
         for x in tt_xattn_cache
     ]
 
     for pt, tt in zip(pt_xattn_cache_chunks, tt_xattn_cache_torch):
-        passing, pcc_message = comp_pcc(pt, tt, pcc)
+        passing, pcc_message = comp_pcc(pt, tt, pcc_required)
 
         logger.info(comp_allclose(pt, tt))
         logger.info(f"PCC: {pcc_message}")
@@ -110,6 +104,8 @@ def test_llama_cross_attention_transformer_block_inference(
         else:
             logger.warning(f"compute_xattn_kv_cache Failed!")
             all_tests_pass = False
+
+    assert all_tests_pass, f"PCC value is lower than {pcc_required} for some of the outputs. Check Warnings!"
 
     """
     Test forward, prefill and decode!
@@ -126,7 +122,7 @@ def test_llama_cross_attention_transformer_block_inference(
         else:
             tt_x = model_args.prepare_inputs_ttnn_decode(
                 tt_x,
-                ttnn.DRAM_MEMORY_CONFIG,
+                ttnn.DRAM_MEMORY_CONFIG,  # TODO for the current configuration the decode input needs to be on DRAM
             )
 
         xattn_mask = torch.bernoulli(
@@ -195,7 +191,7 @@ def test_llama_cross_attention_transformer_block_inference(
             dtype=ttnn.bfloat8_b,
             layout=ttnn.TILE_LAYOUT,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
-            mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+            mesh_mapper=ttnn.ShardTensorToMesh(mesh_device, dim=-1),
         )
         if mode == "decode":
             tt_full_text_mask_expand_11SD = ttnn.reshape(
@@ -219,19 +215,15 @@ def test_llama_cross_attention_transformer_block_inference(
             mode=mode,
         )
 
-        tt_output_torch = ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=0))
+        tt_output_torch = ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))
 
         if mode == "prefill":
             tt_output_torch = tt_output_torch[0, ..., :seq_len, :].view(batch, seq_len, dim)
         else:
             tt_output_torch = tt_output_torch[0, ..., :batch, :].transpose(0, 1).view(batch, seq_len, dim)
-        passing, pcc_message = comp_pcc(pt_out, tt_output_torch, pcc)
+        passing, pcc_message = comp_pcc(pt_out, tt_output_torch, pcc_required)
         logger.info(comp_allclose(pt_out, tt_output_torch))
         logger.info(f"PCC: {pcc_message}")
         all_tests_pass = all_tests_pass and passing
 
-    if all_tests_pass:
-        logger.info("Llama Attention output Passed!")
-    else:
-        logger.warning("Llama Attention output Failed!")
-        assert all_tests_pass, f"PCC value is lower than {pcc} for some of the outputs. Check Warnings!"
+    assert all_tests_pass, f"PCC value is lower than {pcc_required} for some of the outputs. Check Warnings!"

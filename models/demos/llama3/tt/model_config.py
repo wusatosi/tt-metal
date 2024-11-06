@@ -17,6 +17,13 @@ from models.demos.llama3.tt.llama_common import (
     calculate_hidden_dim,
     get_out_subblock_w,
 )
+from models.demos.llama3.tt.llama_common import (
+    precompute_freqs,
+    freqs_to_rotation_matrix,
+    num_to_core_range_set,
+    calculate_hidden_dim,
+    get_out_subblock_w,
+)
 from typing import Tuple
 from models.utility_functions import nearest_32
 from pathlib import Path
@@ -134,25 +141,17 @@ class TtModelArgs:
         self.is_large_model = False
         self.model_name = "Unknown"  # Llama model name will be dependent on the checkpoint directory
 
-        LLAMA_DIR = "3.1-70B"  # os.getenv("LLAMA_DIR")
-        # if LLAMA_DIR:
-        #     if any([os.getenv("LLAMA_CKPT_DIR"), os.getenv("LLAMA_TOKENIZER_PATH"), os.getenv("LLAMA_CACHE_PATH")]):
-        #         logger.warning(
-        #             "LLAMA_DIR is set and will override LLAMA_CKPT_DIR, LLAMA_TOKENIZER_PATH, and LLAMA_CACHE_PATH"
-        #         )
-        #     self.DEFAULT_CKPT_DIR = LLAMA_DIR
-        #     self.DEFAULT_TOKENIZER_PATH = LLAMA_DIR
-        #     self.DEFAULT_CACHE_PATH = os.path.join(LLAMA_DIR, self.device_name)
-        # else:
-        #     self.DEFAULT_CKPT_DIR = os.getenv(
-        #         "LLAMA_CKPT_DIR", "/mnt/MLPerf/tt_dnn-models/llama/Meta-Llama-3.1-8B-Instruct/"
-        #     )
-        #     self.DEFAULT_TOKENIZER_PATH = os.getenv(
-        #         "LLAMA_TOKENIZER_PATH", "/mnt/MLPerf/tt_dnn-models/llama/Meta-Llama-3.1-8B-Instruct/"
-        #     )
-        #     self.DEFAULT_CACHE_PATH = os.getenv(
-        #         "LLAMA_CACHE_PATH", f"/mnt/MLPerf/tt_dnn-models/llama/Meta-Llama-3.1-8B-Instruct/{self.device_name}/"
-        #     )
+        LLAMA_DIR = os.getenv("LLAMA_DIR")
+        if LLAMA_DIR:
+            if any([os.getenv("LLAMA_CKPT_DIR"), os.getenv("LLAMA_TOKENIZER_PATH"), os.getenv("LLAMA_CACHE_PATH")]):
+                logger.warning(
+                    "LLAMA_DIR is set and will override LLAMA_CKPT_DIR, LLAMA_TOKENIZER_PATH, and LLAMA_CACHE_PATH"
+                )
+            self.DEFAULT_CKPT_DIR = LLAMA_DIR
+            self.DEFAULT_TOKENIZER_PATH = LLAMA_DIR
+            self.DEFAULT_CACHE_PATH = os.path.join(LLAMA_DIR, self.device_name)
+        else:
+            assert "Please set $LLAMA_DIR to a valid checkpoint directory"
 
         self.DEFAULT_CKPT_DIR = "/proj_sw/user_dev/llama3-data-repacked/llama-3-70b/"
         self.DEFAULT_TOKENIZER_PATH = "/proj_sw/user_dev/llama3-data-repacked/"
@@ -291,7 +290,7 @@ class TtModelArgs:
             self.compute_kernel_config_sdpa = ttnn.WormholeComputeKernelConfig(
                 math_fidelity=ttnn.MathFidelity.HiFi4,
                 math_approx_mode=False,
-                fp32_dest_acc_en=False,
+                fp32_dest_acc_en=True,
                 packer_l1_acc=False,
             )
 
@@ -689,7 +688,7 @@ class TtModelArgs:
                 k=cache_seq_len,
                 n=self.head_dim,
                 grid_size=(8, 8),
-                in0_block_w=1,
+                # in0_block_w=1, # TODO: Remove this when we get non-causal FlashDecode
                 fuse_batch=False,
             )
             self.model_config["VISION_XATTN_DENSE_PROGCFG"] = lambda seq_len: self.matmul_config(
@@ -713,9 +712,7 @@ class TtModelArgs:
             self.model_config["CROSS_TRANSFORMER_TEXT_OUTPUT_PROGCFG"] = lambda seq_len, max_seq: self.matmul_config(
                 m=min(seq_len, max_seq),
                 k=self.dim,
-                n=self.vocab_size
-                // 4
-                // self.num_devices,  # TODO: Remove magic number 8 from cross attention transformer text
+                n=self.vocab_size // 8,  # Magic number. LM Head always contains 8 splits
                 grid_size=(8, 8),
                 in0_block_w=1,
                 fuse_batch=seq_len <= max_seq,
@@ -871,12 +868,19 @@ class TtModelArgs:
         self.vision_act_layer = ttnn.UnaryOpType.GELU
         self.vision_dropout = 0.0
         self.vision_attn_n_heads = 16
-        self.vision_head_dim = self.vision_hidden_dim // self.vision_attn_n_heads
+        self.vision_head_dim = self.vision_dim // self.vision_attn_n_heads
         self.vision_n_layers = 32
         self.vision_n_global_layers = 8
         self.vision_max_num_tiles = 4
         self.vision_patch_size = 14
         self.vision_in_channels = 3
+
+    @property
+    def vision_chunk_ntok(self):
+        """
+        Returns the number of tokens per chunk, accounting for the extra class token
+        """
+        return (self.vision_chunk_size // self.vision_patch_size) ** 2 + 1
 
     def _set_llama_params(self, checkpoint_dir):
         params_file = os.path.join(checkpoint_dir, "params.json")

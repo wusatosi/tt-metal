@@ -414,7 +414,6 @@ class TtLlamaAttention(LightweightModule):
                 values,
                 cur_pos_tensor=current_pos,
                 page_table_tensor=page_table,
-                transpose_q=False,
                 scale=self.scale,
                 program_config=self.model_config["SDPA_DECODE_PROGCFG"],
                 compute_kernel_config=self.model_config["SDPA_DECODE_COMPUTE_PROGCFG"],

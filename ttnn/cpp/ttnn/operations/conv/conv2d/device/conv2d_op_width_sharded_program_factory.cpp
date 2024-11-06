@@ -19,19 +19,6 @@ namespace conv2d {
 
 using namespace tt;
 
-const uint32_t act_cb = CB::c_in0;
-const uint32_t weight_cb = CB::c_in1;
-const uint32_t bias_cb = CB::c_in2;
-const uint32_t sharded_act_cb = CB::c_in3;
-const uint32_t cb_for_reader_indices = CB::c_in4;
-const uint32_t cb_for_l1_array = CB::c_in5;
-const uint32_t act_cb_row_major_bfloat16 = CB::c_in6;
-const uint32_t act_cb_second_reader = CB::c_in7;
-const uint32_t matmul_partials_cb = CB::c_intermed0;
-const uint32_t tilize_mode_tilized_act_cb = CB::c_intermed1;
-const uint32_t untilize_mode_reblock_cb = CB::c_intermed2;
-const uint32_t out0_cb = CB::c_out0;
-
 operation::ProgramWithCallbacks multi_core_optimized_conv_width_sharded_v2_impl(
     tt_metal::Program& program,
     const Tensor& a,
@@ -54,6 +41,20 @@ operation::ProgramWithCallbacks multi_core_optimized_conv_width_sharded_v2_impl(
     bool enable_act_double_buffer,
     bool enable_split_reader,
     bool enable_subblock_padding) {
+
+    const uint32_t act_cb = CB::c_in0;
+    const uint32_t weight_cb = CB::c_in1;
+    const uint32_t bias_cb = CB::c_in2;
+    const uint32_t sharded_act_cb = CB::c_in3;
+    const uint32_t cb_for_reader_indices = CB::c_in4;
+    const uint32_t cb_for_l1_array = CB::c_in5;
+    const uint32_t act_cb_row_major_bfloat16 = CB::c_in6;
+    const uint32_t act_cb_second_reader = CB::c_in7;
+    const uint32_t matmul_partials_cb = CB::c_intermed0;
+    const uint32_t tilize_mode_tilized_act_cb = CB::c_intermed1;
+    const uint32_t untilize_mode_reblock_cb = CB::c_intermed2;
+    const uint32_t out0_cb = CB::c_out0;
+
     bool pass = true;
     enable_split_reader = false;
     tt_metal::Device* device = a.device();
@@ -183,7 +184,7 @@ operation::ProgramWithCallbacks multi_core_optimized_conv_width_sharded_v2_impl(
             "Out_block_h must be divisible by out_subblock_h!");
     }
 
-    ttnn::Shape ashape_with_channels_padded(std::vector<uint32_t>{ashape[0], ashape[1], ashape[2], input_channels_padded});
+    ttnn::Shape ashape_with_channels_padded({ashape[0], ashape[1], ashape[2], input_channels_padded});
 
     uint32_t conv_act_size_h = ashape_with_channels_padded[1];
     uint32_t conv_act_size_w = ashape_with_channels_padded[2];
@@ -575,7 +576,8 @@ operation::ProgramWithCallbacks multi_core_optimized_conv_width_sharded_v2_impl(
     if (packer_l1_acc) {
         compute_defines["PACKER_L1_ACC"] = "1";
     }
-
+    uint32_t num_output_tiles = per_core_out_matrix_height_ntiles*per_core_out_matrix_width_ntiles;
+    uint32_t use_non_tile_height = false;
     compute_kernel_args = {
         act_block_w_ntiles,           //in0_block_w
         act_num_subblocks,            //in0_num_sublocks
@@ -601,6 +603,9 @@ operation::ProgramWithCallbacks multi_core_optimized_conv_width_sharded_v2_impl(
         untilize_out,                 //untilize_out
 
         bias_ntiles_per_core,
+
+        num_output_tiles,
+        use_non_tile_height,
 
         total_num_cores,              //in0_nblocks_w_tilize. Repeat tilize after all cores have done one round of MCAST.
     };
@@ -676,7 +681,6 @@ operation::ProgramWithCallbacks multi_core_optimized_conv_width_sharded_v2_impl(
 
     uint32_t out_tile_size = tt_metal::detail::TileSize(out_df);
     uint32_t interm0_single_tile_size = tt_metal::detail::TileSize(interm0_df);
-    uint32_t num_output_tiles = per_core_out_matrix_height_ntiles*per_core_out_matrix_width_ntiles;
 
 
         // Share buffer if same data format

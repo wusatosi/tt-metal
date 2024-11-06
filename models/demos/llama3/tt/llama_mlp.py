@@ -86,6 +86,7 @@ class TtLlamaMLP(LightweightModule):
         # print("x", x.shape)
         w1_out = ttnn.linear(
             x,
+            x,
             self.w1,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
             core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_1 else None,
@@ -97,6 +98,7 @@ class TtLlamaMLP(LightweightModule):
         # print("w1_out", w1_out.shape)
 
         w3_out = ttnn.linear(
+            x,
             x,
             self.w3,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
@@ -152,6 +154,7 @@ class TtLlamaMLP(LightweightModule):
 
         ttnn.deallocate(w3_out)
         ttnn.deallocate(w1_out)
+
         # print("pc1", pc_1)
         # print("pc2", pc_2)
         # This uses HiFi2 for full precision as it is dram-bound and uses bfp8 inputs

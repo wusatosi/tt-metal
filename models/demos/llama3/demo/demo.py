@@ -639,7 +639,7 @@ def run_llama3_demo(
     logger.info("")
 
     supported_models = ["3.2-1B", "3.2-3B", "3.1-8B", "3.2-11B", "3.1-70B"]
-    supported_devices = ["N150", "N300", "T3K", "TG"]
+    supported_devices = ["N150", "N300", "T3K"]
 
     # TODO update targets based on the llama3 model and the target device
     llama_model_name = model_args.model_name
@@ -701,7 +701,7 @@ def run_llama3_demo(
 
     # Save benchmark data for CI dashboard
     # if is_ci_env:
-    if False:
+    if True:
         benchmark_data = create_benchmark_data(profiler, measurements, N_warmup_iter, targets)
         benchmark_data.prep_csvs(
             profiler,
@@ -721,22 +721,22 @@ def run_llama3_demo(
     "input_prompts, instruct_weights, num_batches, single_layer",
     [
         ("models/demos/llama3/demo/input_data_prefill_128.json", False, 1, False),
-        # ("models/demos/llama3/demo/input_data_prefill_128.json", False, 3, False),
-        # ("models/demos/llama3/demo/input_data_questions_prefill_128.json", True, 1, False),
-        # ("models/demos/llama3/demo/input_data_questions_prefill_128.json", True, 3, False),
-        # ("models/demos/llama3/demo/input_data_long.json", True, 1, False),
-        # ("models/demos/llama3/demo/input_data_questions_prefill_128.json", True, 1, True),
+        ("models/demos/llama3/demo/input_data_prefill_128.json", False, 2, False),
+        ("models/demos/llama3/demo/input_data_questions_prefill_128.json", True, 1, False),
+        ("models/demos/llama3/demo/input_data_questions_prefill_128.json", True, 2, False),
+        ("models/demos/llama3/demo/input_data_long.json", True, 1, False),
+        ("models/demos/llama3/demo/input_data_questions_prefill_128.json", True, 1, True),
     ],
     ids=[
         "general_weights-1_batch",
-        # "general_weights-3_batch",
-        # "instruct_weights-1_batch",
-        # "instruct_weights-3_batch",
-        # "instruct_weights-long",
-        # "single_layer",
+        "general_weights-2_batch",
+        "instruct_weights-1_batch",
+        "instruct_weights-2_batch",
+        "instruct_weights-long",
+        "single_layer",
     ],
 )
-@pytest.mark.parametrize("device_params", [{"trace_region_size": 90000000, "num_command_queues": 2}], indirect=True)
+@pytest.mark.parametrize("device_params", [{"trace_region_size": 14951424, "num_command_queues": 2}], indirect=True)
 @pytest.mark.parametrize(
     "mesh_device",
     [
@@ -747,14 +747,10 @@ def run_llama3_demo(
     indirect=True,
 )
 def test_llama_demo(
-    mesh_device, use_program_cache, input_prompts, instruct_weights, is_ci_env, num_batches, single_layer
+    mesh_device, use_program_cache, input_prompts, instruct_weights, is_ci_env, num_batches, single_layer, reset_seeds
 ):
-    if is_ci_env and instruct_weights == False:
+    if is_ci_env and (instruct_weights == False or "long" in input_prompts or single_layer == True):
         pytest.skip("CI demo test only runs instruct weights to reduce CI pipeline load (both are supported)")
-    if is_ci_env and "long" in input_prompts:
-        pytest.skip("CI demo test does not run the long prompt to reduce CI pipeline load")
-    if is_ci_env and single_layer:
-        pytest.skip("CI demo test does not run the single layer to reduce CI pipeline load")
 
     mesh_device.enable_async(True)
 

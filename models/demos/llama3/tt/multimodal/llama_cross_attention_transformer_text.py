@@ -10,6 +10,7 @@ import torch.nn as nn
 from models.demos.llama3.tt.llama_decoder import TtTransformerBlock
 from models.demos.llama3.tt.multimodal.llama_cross_block import TtLlamaCrossAttentionTransformerBlock
 from models.demos.llama3.tt.llama_model import LMHead
+from models.demos.llama3.tt.distributed_norm import DistributedNorm
 from models.common.rmsnorm import RMSNorm
 import ttnn
 from typing import Optional
@@ -55,13 +56,6 @@ class TtLlamaCrossAttentionTransformerText(LightweightModule):
         self.model_config = configuration.get_model_config()
         self.state_dict = state_dict
 
-        # self.tok_embeddings = TtLlamaEmbedding(
-        #     mesh_device=mesh_device,
-        #     args=configuration,
-        #     weight_cache_path=configuration.weight_cache_path(dtype),
-        #     state_dict=state_dict,
-        #     dtype=ttnn.bfloat16,  # Row major layout requires bfloat16
-        # )
         # NOTE: Running all embeddings in torch for now since learnable embeddings use complex indexing ops which must be in torch
         self.tok_embeddings = torch.nn.Embedding(configuration.vocab_size, configuration.dim)
         tok_embedding_prefix = f"{state_dict_prefix}tok_embeddings."
@@ -69,33 +63,26 @@ class TtLlamaCrossAttentionTransformerText(LightweightModule):
             {k[len(tok_embedding_prefix) :]: v for k, v in state_dict.items() if k.startswith(tok_embedding_prefix)}
         )
 
-        self.norm = RMSNorm(
-            device=mesh_device,
-            dim=configuration.dim,
-            state_dict=state_dict,
-            state_dict_prefix=configuration.get_state_dict_prefix("", None),
-            weight_cache_path=weight_cache_path,
-            weight_dtype=dtype,
-            weight_key="norm",
+        self.norm = DistributedNorm(
+            RMSNorm(
+                device=mesh_device,
+                dim=configuration.dim,
+                state_dict=state_dict,
+                state_dict_prefix=configuration.get_state_dict_prefix("", None),
+                weight_cache_path=weight_cache_path,
+                weight_dtype=ttnn.bfloat16,
+                weight_key="norm",
+                is_distributed=configuration.is_distributed_norm,
+                sharded_program_config=self.model_config["SHARDED_NORM_LM_HEAD_PRGM_CFG"],
+                sharded_output_config=self.model_config["LM_HEAD_INPUT_MEMCFG"],
+            ),
+            configuration,
         )
 
-        # # self.output layer weight
         # TODO: Generalize LMHead, maybe use llama_model's single-tile-sequence LMHead
-        # self.output = LMHead(
-        #     configuration,
-        #     mesh_device,
-        #     ttnn.bfloat8_b,
-        #     state_dict,
-        #     state_dict_prefix,
-        #     weight_cache_path,
-        # )
-
-        # torch_weight = lambda name, suffix: torch.transpose(
-        #     self.state_dict[f"{state_dict_prefix}{name}.{suffix}"], -2, -1
-        # )
-
         lm_head_torch = self.state_dict[f"{state_dict_prefix}output.weight"].transpose(-1, -2)
-        num_splits = 4  # arbitrary, reasonable number
+        total_splits = 8  # Arbitrary value which allows whole-tile splits in LM Head
+        num_splits = total_splits // self.configuration.num_devices
         lm_head_torch = torch.chunk(lm_head_torch, num_splits, dim=-1)
 
         cache_name = lambda name, suffix, split: weight_cache_path / (state_dict_prefix + f"{name}{suffix}{split}")
@@ -113,7 +100,6 @@ class TtLlamaCrossAttentionTransformerText(LightweightModule):
         self.outputs = [
             as_interleaved_tensor("output", "weight", idx, ttnn.bfloat8_b, dim=-1) for idx in range(len(lm_head_torch))
         ]
-        # self.output = as_interleaved_tensor("output", "weight", ttnn.bfloat8_b, dim=-1)
 
         self.n_llama_layers = configuration.n_layers
         self.model_dim = configuration.dim
@@ -271,7 +257,10 @@ class TtLlamaCrossAttentionTransformerText(LightweightModule):
                 mode=mode,
             )
 
-        h = self.norm(h)
+        h = self.norm(h, mode=mode)
+
+        if mode == "decode":  # h is expected to be interleaved for the lm head
+            h = ttnn.sharded_to_interleaved(h)
 
         seq_len = h.shape[2]
         MAX_MM_SEQ_LEN = 1024

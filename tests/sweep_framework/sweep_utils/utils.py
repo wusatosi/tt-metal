@@ -8,12 +8,50 @@ from loguru import logger
 from itertools import product
 import torch
 import ttnn
+import math
+import itertools
+from typing import Optional, List
+import copy
 
 
 def sanitize_shape_rm(input_shape):
     if input_shape[-1] % 2 != 0:
-        input_shape[-1] = input_shape[-1] + input_shape[-1] % 2
+        input_shape[-1] = input_shape[-1] + 1
     return input_shape
+
+
+def sanitize_shape(shape, method, **kwargs):
+    if method == "topk":
+        num_dims = len(shape)
+        last_dim = shape[num_dims - 1]
+        if not (last_dim & (last_dim - 1) == 0) and last_dim != 0:
+            last_dim = 2 ** math.ceil(math.log2(last_dim))
+            if last_dim < 64:
+                last_dim = 64
+        shape[num_dims - 1] = last_dim
+
+    if method == "split_query_key_value_and_split_heads":
+        assert len(shape) == 3
+
+        hidden_size = shape[2]
+        num_heads = kwargs.pop("num_heads")
+        num_kv_heads = kwargs.pop("num_kv_heads")
+
+        if num_kv_heads is None:
+            min_sum_heads_size = 32 * (3 * num_heads)
+        else:
+            min_sum_heads_size = 32 * (num_heads + 2 * num_kv_heads)
+            hidden_size = 4672
+
+        if hidden_size % min_sum_heads_size != 0:
+            if hidden_size < min_sum_heads_size:
+                hidden_size = min_sum_heads_size
+            else:
+                hidden_size = (hidden_size // min_sum_heads_size) * min_sum_heads_size
+
+        shape[2] = hidden_size
+
+    return shape
 
 
 def tensor_to_dtype(x, dtype):
@@ -128,6 +166,8 @@ def gen_rand_bitwise_left_shift(size, shift_bits=None, low=-2147483647, high=214
 
 def gen_with_zeroes(size, probabilityzeroes=0.5, low=-100, high=100, dtype=torch.bfloat16):
     element_count = 1
+    if probabilityzeroes == "random":
+        probabilityzeroes = random.uniform(0.0, 0.9)
     for i in size:
         element_count = element_count * i
     raw = torch.zeros(element_count).to(dtype)
@@ -137,3 +177,40 @@ def gen_with_zeroes(size, probabilityzeroes=0.5, low=-100, high=100, dtype=torch
     ridx = torch.randperm(element_count)  # a random permutation of the entries
     mask = torch.reshape(raw[ridx], size)
     return mask
+
+
+def gen_rand_integers(low, high, num_samples):
+    for i in range(num_samples):
+        yield random.randint(low, high)
+
+
+def gen_split_qkv_heads_spec(
+    input_shape_list: List[int],
+    transpose_key_list: List[bool],
+    num_heads_list: List[int],
+    num_kv_heads_list: List[int] = [None],
+    kv_input_tensor_list: List[bool] = [False],
+    use_invalid_hidden_size=False,
+):
+    for input_shape, num_heads, num_kv_heads, kv_input_tensor, transpose_key in itertools.product(
+        input_shape_list, num_heads_list, num_kv_heads_list, kv_input_tensor_list, transpose_key_list
+    ):
+        input_shape_ = input_shape.copy()
+
+        if use_invalid_hidden_size is False:
+            input_shape_ = sanitize_shape(
+                input_shape_,
+                "split_query_key_value_and_split_heads",
+                num_heads=num_heads,
+                num_kv_heads=num_kv_heads,
+            )
+
+        yield {
+            "batch_size": input_shape_[0],
+            "sequence_size": input_shape_[1],
+            "hidden_size": input_shape_[2],
+            "num_heads": num_heads,
+            "num_kv_heads": num_kv_heads,
+            "kv_input_tensor": kv_input_tensor,
+            "transpose_key": transpose_key,
+        }
