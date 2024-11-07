@@ -172,5 +172,8 @@ class TtLlamaMLP(LightweightModule):
             w2_out_reduced, (1, 1, original_shape[-4] * original_shape[-3] * original_shape[-2], original_shape[-1])
         )
 
+        if mode == "decode" and TG:
+            w2_out_reduced = ttnn.to_memory_config(w2_out_reduced, self.model_config["SHARDED_ATTN_INPUT_MEMCFG"])
+
         ttnn.deallocate(w2_out)
         return w2_out_reduced

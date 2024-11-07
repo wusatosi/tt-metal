@@ -81,13 +81,7 @@ class TtTransformerBlock(LightweightModule):
             TG=args.is_galaxy,
         )
 
-        self.ATTN_ACT_MEMCFG = ttnn.create_sharded_memory_config(
-            shape=(32, 2048 // 32),
-            core_grid=ttnn.CoreGrid(y=4, x=8),
-            strategy=ttnn.ShardStrategy.WIDTH,
-            orientation=ttnn.ShardOrientation.ROW_MAJOR,
-            use_height_and_width_as_shard_shape=True,
-        )
+        self.ATTN_ACT_MEMCFG = self.model_config["SHARDED_ATTN_INPUT_MEMCFG"]
         self.MLP_ACT_MEMCFG = self.model_config["FULL_GRID_MEMCFG"]
 
     def forward(
@@ -104,15 +98,11 @@ class TtTransformerBlock(LightweightModule):
         # FIXME: move to sharded residuals once support for this is added
         # FIXME: Currently, for decode mode, we are using DRAM intereleaved as L1 interleaved results in h being corrupted in MLP
         TG = self.args.is_galaxy
-        skip_mem_cfg = (
-            ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG
-            if (TG and mode == "decode")
-            else ttnn.DRAM_MEMORY_CONFIG
-            # self.model_config["DEC_SKIP_OUTPUT_MEMCFG"] if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG
-        )
+        skip_mem_cfg = ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if (TG and mode == "decode") else ttnn.DRAM_MEMORY_CONFIG
 
         # Norms take fractured inputs and output replicated across devices
         attn_in = self.attention_norm(x, mode)
+
         # Attention takes replicated inputs and produces fractured outputs
         attn_out = self.attention.forward(
             attn_in,
@@ -123,9 +113,6 @@ class TtTransformerBlock(LightweightModule):
             mode,
             page_table,
         )
-
-        if TG and mode == "decode":
-            attn_out = ttnn.to_memory_config(attn_out, memory_config=self.ATTN_ACT_MEMCFG)
 
         # Here x and attn_out are both fractured across devices
         h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg)
@@ -139,9 +126,6 @@ class TtTransformerBlock(LightweightModule):
 
         # MLP takes replicated inputs and produces fractured outputs
         ff_out = self.feed_forward.forward(ff_in, mode)
-
-        if TG and mode == "decode":
-            ff_out = ttnn.to_memory_config(ff_out, memory_config=self.ATTN_ACT_MEMCFG)
 
         # ff_out and h are both fractured across devices
         out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)

@@ -45,7 +45,7 @@ class TtLlamaAttention(LightweightModule):
         self.n_local_heads = self.n_heads // self.num_devices_per_group
         self.n_local_kv_heads = self.n_kv_heads // self.num_devices_per_group
 
-        #TODO: Fix this once all-gather supports < tile_size 
+        # TODO: Fix this once all-gather supports < tile_size
         if self.TG:
             weight = torch.zeros(1, 32, 8, 32)
             for i in range(32):
@@ -148,7 +148,9 @@ class TtLlamaAttention(LightweightModule):
             device=self.mesh_device,
             memory_config=ttnn.DRAM_MEMORY_CONFIG if (self.use_fused_all_gather_matmul or self.TG) else wo_mem_config,
             mesh_mapper=ttnn.ShardTensor2dMesh(
-                self.mesh_device, dims=(2, 3) if (self.use_fused_all_gather_matmul or self.TG) else (3, 2), mesh_shape=configuration.cluster_shape
+                self.mesh_device,
+                dims=(2, 3) if (self.use_fused_all_gather_matmul or self.TG) else (3, 2),
+                mesh_shape=configuration.cluster_shape,
             ),
             cache_file_name=cache_name("wo_sharded"),
         )
@@ -342,11 +344,12 @@ class TtLlamaAttention(LightweightModule):
                 scale=self.scale,
                 program_config=self.model_config["SDPA_DECODE_PROGCFG"],
                 compute_kernel_config=self.model_config["SDPA_DECODE_COMPUTE_PROGCFG"],
-                memory_config=ttnn.DRAM_MEMORY_CONFIG
+                memory_config=ttnn.DRAM_MEMORY_CONFIG,
             )
 
         attn_output_11BH = ttnn.to_memory_config(
-            attn_output_11BH, memory_config=self.model_config["SCORES_BATCHED_MM_OUTPUT_MEMCFG"](self.batch_size_per_device_group)
+            attn_output_11BH,
+            memory_config=self.model_config["SCORES_BATCHED_MM_OUTPUT_MEMCFG"](self.batch_size_per_device_group),
         )
         ttnn.deallocate(q_heads_1BQD)
 
@@ -415,9 +418,16 @@ class TtLlamaAttention(LightweightModule):
                 cluster_axis=0,
                 num_links=2 if TG else 1,
                 dim=0 if TG else 3,
-                memory_config=self.model_config["SELF_OUT_GATHERED_MEMCFG"](self.mesh_device.shape[0]) if TG else ttnn.L1_MEMORY_CONFIG,
+                memory_config=self.model_config["SELF_OUT_GATHERED_MEMCFG"](self.mesh_device.shape[0])
+                if TG
+                else ttnn.L1_MEMORY_CONFIG,
                 sharded=True,
             )
+
+            if TG:
+                dense_out_reduced = ttnn.to_memory_config(
+                    dense_out_reduced, self.model_config["SHARDED_ATTN_INPUT_MEMCFG"]
+                )
 
             return dense_out_reduced
 
@@ -479,7 +489,7 @@ class TtLlamaAttention(LightweightModule):
             k_heads_1KSD_pre_rot, rot_mats[0], rot_mats[1], transformation_mats
         )
         ttnn.deallocate(k_heads_1KSD_pre_rot)
-        
+
         # Fill KV-Cache
         keys_BKSD, values_BKSD = self.layer_past[0], self.layer_past[1]
         k_heads_1KSD_8b = ttnn.typecast(k_heads_1KSD, dtype=ttnn.bfloat8_b)

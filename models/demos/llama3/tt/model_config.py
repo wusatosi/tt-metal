@@ -138,7 +138,7 @@ class TtModelArgs:
         self.is_large_model = False
         self.model_name = "Unknown"  # Llama model name will be dependent on the checkpoint directory
 
-        LLAMA_DIR = "3.1-70B" #os.getenv("LLAMA_DIR")
+        LLAMA_DIR = "3.1-70B"  # os.getenv("LLAMA_DIR")
         # if LLAMA_DIR:
         #     if any([os.getenv("LLAMA_CKPT_DIR"), os.getenv("LLAMA_TOKENIZER_PATH"), os.getenv("LLAMA_CACHE_PATH")]):
         #         logger.warning(
@@ -151,8 +151,12 @@ class TtModelArgs:
         #     assert "Please set $LLAMA_DIR to a valid checkpoint directory"
         self.DEFAULT_CKPT_DIR = "/proj_sw/user_dev/llama3-data-repacked/llama-3-70b/"
         self.DEFAULT_TOKENIZER_PATH = "/proj_sw/user_dev/llama3-data-repacked/"
-        self.DEFAULT_CACHE_PATH = "/proj_sw/user_dev/weights-cache-TG" if self.num_devices == 32 else "/proj_sw/user_dev/llama3-data-cache/weights-cache-2"
-        if self.num_devices <8:
+        self.DEFAULT_CACHE_PATH = (
+            "/proj_sw/user_dev/weights-cache-TG"
+            if self.num_devices == 32
+            else "/proj_sw/user_dev/llama3-data-cache/weights-cache-2"
+        )
+        if self.num_devices < 8:
             LLAMA_DIR = "/proj_sw/user_dev/llama31-8b-data/Meta-Llama-3.1-8B-Instruct/"
             self.DEFAULT_CKPT_DIR = LLAMA_DIR
             self.DEFAULT_TOKENIZER_PATH = LLAMA_DIR
@@ -505,15 +509,25 @@ class TtModelArgs:
             )
 
             attn_input_grid = self.dram_shard_core_grid_for_k(self.dim)
-            self.model_config["SHARDED_ATTN_INPUT_MEMCFG"] = ttnn.create_sharded_memory_config(
-                (
-                    self.tile_padded_batch_rows,
-                    self.dim // attn_input_grid.num_cores,
-                ),  # Shard shape: [32, 128] -> 1 shard per core
-                attn_input_grid,
-                ttnn.ShardStrategy.WIDTH,
-                ttnn.ShardOrientation.ROW_MAJOR,
-                use_height_and_width_as_shard_shape=True,
+            self.model_config["SHARDED_ATTN_INPUT_MEMCFG"] = (
+                ttnn.create_sharded_memory_config(
+                    shape=(32, 8192 // 32 // 4),
+                    core_grid=ttnn.CoreGrid(y=4, x=8),
+                    strategy=ttnn.ShardStrategy.WIDTH,
+                    orientation=ttnn.ShardOrientation.ROW_MAJOR,
+                    use_height_and_width_as_shard_shape=True,
+                )
+                if self.is_galaxy
+                else ttnn.create_sharded_memory_config(
+                    (
+                        self.tile_padded_batch_rows,
+                        self.dim // attn_input_grid.num_cores,
+                    ),  # Shard shape: [32, 128] -> 1 shard per core
+                    attn_input_grid,
+                    ttnn.ShardStrategy.WIDTH,
+                    ttnn.ShardOrientation.ROW_MAJOR,
+                    use_height_and_width_as_shard_shape=True,
+                )
             )
 
             # glx doesn't support DRAM sharded matmuls yet
@@ -795,14 +809,6 @@ class TtModelArgs:
         elif len(x.shape) == 4:
             pass  # already in [seq_len, 1, batch, dim]
 
-        tg_cfg = ttnn.create_sharded_memory_config(
-            shape=(x.shape[2], x.shape[3] // 32 // 4),
-            core_grid=ttnn.CoreGrid(y=4, x=8),
-            strategy=ttnn.ShardStrategy.WIDTH,
-            orientation=ttnn.ShardOrientation.ROW_MAJOR,
-            use_height_and_width_as_shard_shape=True,
-        )
-
         if torch.is_tensor(x):
             x = ttnn.from_torch(
                 x,
@@ -810,7 +816,7 @@ class TtModelArgs:
                 dtype=ttnn.bfloat16,
                 layout=ttnn.TILE_LAYOUT,
                 mesh_mapper=mesh_mapper,
-                memory_config=tg_cfg if self.is_galaxy else input_mem_cfg,
+                memory_config=input_mem_cfg,
             )
         else:  # Convert the row major layout from embedding back to tile layout
             x = ttnn.to_layout(x, layout=ttnn.TILE_LAYOUT)
