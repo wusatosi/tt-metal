@@ -758,7 +758,10 @@ class TtModelArgs:
             self.model_config = set_tg_attention_config(self.model_config)
 
             self.is_multichip = self.num_devices > 1
-            self.num_ccl_links = 2 if self.ccl_topology() == ttnn.Topology.Ring else 1
+            self.num_reduce_scatter_links = 1
+            self.num_all_gather_links = (
+                2 if self.is_galaxy else 1
+            )  # TODO: try out 3 for short axis and 4 for long axis (TG only) <- should work but untested in model
 
     def is_distributed_norm(self, mode):
         if not self.is_multichip:
@@ -989,7 +992,9 @@ class TtModelArgs:
         per_core_N = math.ceil(n / (self.tile_size * grid_size[0]))
 
         out_subblock_h = 1
-        out_subblock_w = get_out_subblock_w(per_core_N, out_subblock_h)
+        out_subblock_w = (
+            get_out_subblock_w(per_core_N, out_subblock_h) if not self.is_galaxy else 1
+        )  # TODO: Needed for TG hang workaround
 
         if in0_block_w is None:
             in0_block_w = min(4, max(1, k // (self.tile_size * grid_size[0])))
