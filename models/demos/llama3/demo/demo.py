@@ -393,7 +393,7 @@ def run_llama3_demo(
             tt_out_gathered = ttnn.all_gather(
                 tt_out,
                 dim=3,
-                num_links=tt_model.args.num_ccl_links,
+                num_links=tt_model.args.num_all_gather_links,
                 cluster_axis=0,
                 mesh_device=mesh_device,
                 topology=tt_model.args.ccl_topology(),
@@ -421,7 +421,7 @@ def run_llama3_demo(
             tt_out_gathered = ttnn.all_gather(
                 tt_out,
                 dim=3,
-                num_links=tt_model.args.num_ccl_links,
+                num_links=tt_model.args.num_all_gather_links,
                 cluster_axis=0,
                 mesh_device=mesh_device,
                 topology=tt_model.args.ccl_topology(),
