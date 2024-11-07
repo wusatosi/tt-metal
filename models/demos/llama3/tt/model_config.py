@@ -43,13 +43,10 @@ def num_to_corerange(x):
     )
 
 
-def set_attention_config(model_config, max_batch_size):
-    # Set decode config first
-    decode_config = {}
-
+def set_tg_attention_config(model_config):
     shard_spec_n_cores_grid = ttnn.CoreRangeSet({num_to_corerange(40)})
 
-    decode_config["CREATE_HEAD_INPUT_MEMCFG"] = ttnn.MemoryConfig(
+    model_config["CREATE_HEAD_INPUT_MEMCFG"] = ttnn.MemoryConfig(
         ttnn.TensorMemoryLayout.WIDTH_SHARDED,
         ttnn.BufferType.L1,
         ttnn.ShardSpec(
@@ -63,14 +60,14 @@ def set_attention_config(model_config, max_batch_size):
         ),
     )
 
-    decode_config["QKV_OUT_GATHERED_MEMCFG"] = lambda mesh_cols: ttnn.create_sharded_memory_config(
+    model_config["QKV_OUT_GATHERED_MEMCFG"] = lambda mesh_cols: ttnn.create_sharded_memory_config(
         shape=(32 * mesh_cols, 1280 // 40),  # mesh_cols = 4
         core_grid=ttnn.CoreGrid(y=5, x=8),
         strategy=ttnn.ShardStrategy.WIDTH,
         orientation=ttnn.ShardOrientation.ROW_MAJOR,
         use_height_and_width_as_shard_shape=True,
     )
-    decode_config["SELF_OUT_GATHERED_MEMCFG"] = lambda mesh_rows: ttnn.create_sharded_memory_config(
+    model_config["SELF_OUT_GATHERED_MEMCFG"] = lambda mesh_rows: ttnn.create_sharded_memory_config(
         shape=(32 * mesh_rows, 2048 // 32),  # mesh_rows = 8
         core_grid=ttnn.CoreGrid(y=4, x=8),
         strategy=ttnn.ShardStrategy.WIDTH,
@@ -78,14 +75,14 @@ def set_attention_config(model_config, max_batch_size):
         use_height_and_width_as_shard_shape=True,
     )
 
-    decode_config["GATHER_USERS_MEMCFG"] = lambda mesh_cols: ttnn.create_sharded_memory_config(
+    model_config["GATHER_USERS_MEMCFG"] = lambda mesh_cols: ttnn.create_sharded_memory_config(
         shape=(32 * mesh_cols, 1024 // 32),  # mesh_cols = 4
         core_grid=ttnn.CoreGrid(y=4, x=8),
         strategy=ttnn.ShardStrategy.WIDTH,
         orientation=ttnn.ShardOrientation.ROW_MAJOR,
         use_height_and_width_as_shard_shape=True,
     )
-    return {"decode": decode_config}
+    return model_config
 
 
 class TtModelArgs:
@@ -141,21 +138,25 @@ class TtModelArgs:
         self.is_large_model = False
         self.model_name = "Unknown"  # Llama model name will be dependent on the checkpoint directory
 
-        LLAMA_DIR = os.getenv("LLAMA_DIR")
-        if LLAMA_DIR:
-            if any([os.getenv("LLAMA_CKPT_DIR"), os.getenv("LLAMA_TOKENIZER_PATH"), os.getenv("LLAMA_CACHE_PATH")]):
-                logger.warning(
-                    "LLAMA_DIR is set and will override LLAMA_CKPT_DIR, LLAMA_TOKENIZER_PATH, and LLAMA_CACHE_PATH"
-                )
+        LLAMA_DIR = "3.1-70B" #os.getenv("LLAMA_DIR")
+        # if LLAMA_DIR:
+        #     if any([os.getenv("LLAMA_CKPT_DIR"), os.getenv("LLAMA_TOKENIZER_PATH"), os.getenv("LLAMA_CACHE_PATH")]):
+        #         logger.warning(
+        #             "LLAMA_DIR is set and will override LLAMA_CKPT_DIR, LLAMA_TOKENIZER_PATH, and LLAMA_CACHE_PATH"
+        #         )
+        #     self.DEFAULT_CKPT_DIR = LLAMA_DIR
+        #     self.DEFAULT_TOKENIZER_PATH = LLAMA_DIR
+        #     self.DEFAULT_CACHE_PATH = os.path.join(LLAMA_DIR, self.device_name)
+        # else:
+        #     assert "Please set $LLAMA_DIR to a valid checkpoint directory"
+        self.DEFAULT_CKPT_DIR = "/proj_sw/user_dev/llama3-data-repacked/llama-3-70b/"
+        self.DEFAULT_TOKENIZER_PATH = "/proj_sw/user_dev/llama3-data-repacked/"
+        self.DEFAULT_CACHE_PATH = "/proj_sw/user_dev/weights-cache-TG" if self.num_devices == 32 else "/proj_sw/user_dev/llama3-data-cache/weights-cache-2"
+        if self.num_devices <8:
+            LLAMA_DIR = "/proj_sw/user_dev/llama31-8b-data/Meta-Llama-3.1-8B-Instruct/"
             self.DEFAULT_CKPT_DIR = LLAMA_DIR
             self.DEFAULT_TOKENIZER_PATH = LLAMA_DIR
             self.DEFAULT_CACHE_PATH = os.path.join(LLAMA_DIR, self.device_name)
-        else:
-            assert "Please set $LLAMA_DIR to a valid checkpoint directory"
-
-        self.DEFAULT_CKPT_DIR = "/proj_sw/user_dev/llama3-data-repacked/llama-3-70b/"
-        self.DEFAULT_TOKENIZER_PATH = "/proj_sw/user_dev/llama3-data-repacked/"
-        self.DEFAULT_CACHE_PATH = "/proj_sw/user_dev/weights-cache-TG"
         if not dummy_weights:
             # Assert if all folders and files exist
             assert os.path.exists(
@@ -406,6 +407,7 @@ class TtModelArgs:
                 use_height_and_width_as_shard_shape=True,
             )
             self.qkv_size = self.head_dim * (2 * self.n_kv_heads + self.n_heads)
+            self.min_kv_prefill_shard_seqlen = (self.tile_size * 8 * 8) / (self.n_kv_heads // self.cluster_shape[1])
             self.model_config["XQKV_PREFILL_PROGCFG"] = lambda seq_len: ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
                 compute_with_storage_grid_size=(8, 8),
                 in0_block_w=1,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
@@ -739,7 +741,7 @@ class TtModelArgs:
                 ),
             )
 
-            self.model_config["attention"] = set_attention_config(self.model_config, self.max_batch_size)
+            self.model_config = set_tg_attention_config(self.model_config)
 
             self.is_multichip = self.num_devices > 1
 
@@ -812,7 +814,6 @@ class TtModelArgs:
             )
         else:  # Convert the row major layout from embedding back to tile layout
             x = ttnn.to_layout(x, layout=ttnn.TILE_LAYOUT)
-        print("x shape", x.shape)
         return x
 
     def prepare_inputs_ttnn_prefill(self, x_bsh, force_replicated=False):

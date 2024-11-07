@@ -106,9 +106,6 @@ def test_llama_attention_inference(mesh_device, use_program_cache, reset_seeds, 
         freqs_cis_i = freqs_cis[current_pos, :].unsqueeze(0)
         # positions = torch.tensor([current_pos])
         reference_output = reference_model(pt_attention_input, current_pos, freqs_cis_i, mask=None)
-
-        print(f"{tt_output_torch.shape=}")
-        print(f"{reference_output.shape=}")
         passing, pcc_message = comp_pcc(reference_output, tt_output_torch, pcc)
 
         logger.info(comp_allclose(reference_output, tt_output_torch))
