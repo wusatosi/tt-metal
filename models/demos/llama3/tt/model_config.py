@@ -758,6 +758,7 @@ class TtModelArgs:
             self.model_config = set_tg_attention_config(self.model_config)
 
             self.is_multichip = self.num_devices > 1
+            self.num_ccl_links = 2 if self.ccl_topology() == ttnn.Topology.Ring else 1
 
     def is_distributed_norm(self, mode):
         if not self.is_multichip:

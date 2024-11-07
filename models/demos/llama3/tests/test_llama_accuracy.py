@@ -167,7 +167,14 @@ def test_tt_model_accuracy(mesh_device, prefill_len, decode_len, use_program_cac
         tt_out = tt_model(decode_input, current_pos, rot_mat=current_rot_mat)
 
         if tt_model.args.num_devices > 1:
-            tt_out_gathered = ttnn.all_gather(tt_out, dim=3, num_links=1, topology=ttnn.Topology.Linear)
+            tt_out_gathered = ttnn.all_gather(
+                tt_out,
+                dim=3,
+                num_links=tt_model.args.num_ccl_links,
+                cluster_axis=0,
+                mesh_device=mesh_device,
+                topology=tt_model.args.ccl_topology(),
+            )
             ttnn.deallocate(tt_out)
         else:
             tt_out_gathered = tt_out
