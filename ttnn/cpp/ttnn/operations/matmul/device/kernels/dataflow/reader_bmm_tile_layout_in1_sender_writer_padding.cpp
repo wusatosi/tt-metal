@@ -27,6 +27,8 @@ void kernel_main() {
     const uint32_t in1_sync_dest_noc_start_y = get_arg_val<uint32_t>(rt_args_idx++);
     const uint32_t in1_sync_dest_noc_end_x = get_arg_val<uint32_t>(rt_args_idx++);
     const uint32_t in1_sync_dest_noc_end_y = get_arg_val<uint32_t>(rt_args_idx++);
+    const uint32_t in1_sync_leader_noc_x = get_arg_val<uint32_t>(rt_args_idx++);
+    const uint32_t in1_sync_leader_noc_y = get_arg_val<uint32_t>(rt_args_idx++);
     const uint32_t in1_sync_core_id = get_arg_val<uint32_t>(rt_args_idx++);
     const uint32_t in1_sync_wait_time = get_arg_val<uint32_t>(rt_args_idx++);
 
@@ -208,7 +210,7 @@ void kernel_main() {
         in1_sync_receiver_semaphore_addr);
 
     const uint64_t in1_sync_sender_semaphore_addr_counter =
-        get_noc_addr(1, 1, in1_sync_sender_semaphore_addr);
+        get_noc_addr(in1_sync_leader_noc_x, in1_sync_leader_noc_y, in1_sync_sender_semaphore_addr);
 #endif
 
 #ifdef IN1_DRAM_SHARDED

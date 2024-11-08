@@ -23,16 +23,18 @@ void kernel_main() {
     uint32_t out_tensor_start_tile_id = get_arg_val<uint32_t>(3);
 
     // in1 sync args
-    const uint32_t in1_sync_wait_time = get_arg_val<uint32_t>(4);
+    const uint32_t in1_sync_leader_noc_x = get_arg_val<uint32_t>(4);
+    const uint32_t in1_sync_leader_noc_y = get_arg_val<uint32_t>(5);
+    const uint32_t in1_sync_wait_time = get_arg_val<uint32_t>(6);
 
     // padding args (WRITER)
-    const uint32_t out_num_nonzero_subblocks_h = get_arg_val<uint32_t>(5);
-    const uint32_t out_last_subblock_h = get_arg_val<uint32_t>(6);
-    const uint32_t padded_block_tiles_h_skip = get_arg_val<uint32_t>(7);
-    const uint32_t out_num_nonzero_subblocks_w = get_arg_val<uint32_t>(8);
-    const uint32_t out_last_subblock_w = get_arg_val<uint32_t>(9);
-    const uint32_t padded_subblock_tiles_addr_skip = get_arg_val<uint32_t>(10);
-    const uint32_t padded_block_tiles_w_skip = get_arg_val<uint32_t>(11);
+    const uint32_t out_num_nonzero_subblocks_h = get_arg_val<uint32_t>(7);
+    const uint32_t out_last_subblock_h = get_arg_val<uint32_t>(8);
+    const uint32_t padded_block_tiles_h_skip = get_arg_val<uint32_t>(9);
+    const uint32_t out_num_nonzero_subblocks_w = get_arg_val<uint32_t>(10);
+    const uint32_t out_last_subblock_w = get_arg_val<uint32_t>(11);
+    const uint32_t padded_subblock_tiles_addr_skip = get_arg_val<uint32_t>(12);
+    const uint32_t padded_block_tiles_w_skip = get_arg_val<uint32_t>(13);
 
     // COMPILE TIME ARGS
     // interleaved accessor args
@@ -83,7 +85,7 @@ void kernel_main() {
     *(in1_sync_receiver_semaphore_addr_ptr) = VALID;
 
     const uint64_t in1_sync_sender_semaphore_addr_counter =
-        get_noc_addr(1, 1, in1_sync_sender_semaphore_addr);
+        get_noc_addr(in1_sync_leader_noc_x, in1_sync_leader_noc_y, in1_sync_sender_semaphore_addr);
 #endif
 
     // WRITER
