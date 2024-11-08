@@ -755,6 +755,8 @@ operation::ProgramWithCallbacks create_program_mcast_in0(
                 (std::uint32_t)in1_sync_start.y,
                 (std::uint32_t)in1_sync_end.x,
                 (std::uint32_t)in1_sync_end.y,
+                (std::uint32_t)top_left_core_physical.x, // leader core
+                (std::uint32_t)top_left_core_physical.y, // leader core
                 (std::uint32_t)i, // core id
                 (std::uint32_t)in1_sync_wait_time,
 
@@ -857,7 +859,7 @@ operation::ProgramWithCallbacks create_program_mcast_in0(
 
                 // in1 sender
                 writer_runtime_args[0] = src_buffer_b->address();
-                writer_runtime_args[12] = dst_buffer->address();
+                writer_runtime_args[14] = dst_buffer->address();
                 if (bias_tensor.has_value()) {
                     writer_runtime_args[16] = (*bias_buffer)->address();
                 }

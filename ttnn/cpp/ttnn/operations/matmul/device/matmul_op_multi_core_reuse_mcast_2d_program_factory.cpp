@@ -1018,6 +1018,8 @@ operation::ProgramWithCallbacks create_program_mcast_in0_in1(
                     (std::uint32_t)in1_sync_start.y,
                     (std::uint32_t)in1_sync_end.x,
                     (std::uint32_t)in1_sync_end.y,
+                    (std::uint32_t)top_left_core_physical.x, // leader core
+                    (std::uint32_t)top_left_core_physical.y, // leader core
                     (std::uint32_t)core_id,
                     (std::uint32_t)in1_sync_wait_time,
 
@@ -1141,6 +1143,8 @@ operation::ProgramWithCallbacks create_program_mcast_in0_in1(
                     // out tensor args
                     (std::uint32_t)out_buffer->address(),                           // out_tensor_addr
                     (std::uint32_t)in1_idx * per_core_N + in0_idx * per_core_M * N,  // out_tensor_start_tile_id
+                    (std::uint32_t)top_left_core_physical.x, // leader core
+                    (std::uint32_t)top_left_core_physical.y, // leader core
                     (std::uint32_t)in1_sync_wait_time,
                 };
 
@@ -1251,7 +1255,7 @@ operation::ProgramWithCallbacks create_program_mcast_in0_in1(
             for (const auto& core : in1_sender_cores) {
                 auto& writer_runtime_args = sender_writer_runtime_args_by_core[core.x][core.y];
                 writer_runtime_args[0] = src_buffer_b->address();
-                writer_runtime_args[12] = dst_buffer->address();
+                writer_runtime_args[14] = dst_buffer->address();
                 if (bias_tensor.has_value()) {
                     writer_runtime_args[16] = (*bias_buffer)->address();
                 }
