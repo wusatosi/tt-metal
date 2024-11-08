@@ -35,15 +35,25 @@ def generate_vectors(module_name):
             v["status"] = VectorStatus.CURRENT
             v["sweep_name"] = module_name
 
-        invalidate_vectors(test_module, suite_vectors)
+        suite_vectors = invalidate_vectors(test_module, suite_vectors)
+        suite_vectors = downsample(suite, suite_vectors)
         if DUMP_FILE:
             export_suite_vectors_json(module_name, suite, suite_vectors)
         else:
             export_suite_vectors(module_name, suite, suite_vectors)
 
 
+def downsample(suite, suite_vectors, min_desired=2000):
+    starting_vecs = len(suite_vectors)
+    while len(suite_vectors) > 2 * min_desired:
+        del suite_vectors[::2]
+    if starting_vecs != len(suite_vectors):
+        logger.info(f"Downsampled suite {suite} vectors from {starting_vecs} to {len(suite_vectors)}")
+    return suite_vectors
+
+
 # Perform any post-gen validation to the resulting vectors.
-def invalidate_vectors(test_module, vectors) -> None:
+def invalidate_vectors(test_module, vectors, delete_invalid_vec=True):
     if "invalidate_vector" not in dir(test_module):
         return
     for vector in vectors:
@@ -52,12 +62,22 @@ def invalidate_vectors(test_module, vectors) -> None:
             vector["validity"] = VectorValidity.INVALID
             vector["invalid_reason"] = reason
 
+    if delete_invalid_vec:
+        logger.info(f"SWEEPS: Skipping writing out invalid test vectors.")
+        starting_vecs = len(vectors)
+        vectors = [v for v in vectors if v["validity"] == VectorValidity.VALID]
+        logger.info(f"SWEEPS: {len(vectors)} of {starting_vecs} generated vectors were valid")
+
+    return vectors
+
 
 def export_suite_vectors_json(module_name, suite_name, vectors):
-    EXPORT_DIR_PATH = SWEEPS_DIR / "vectors_export"
-    EXPORT_PATH = EXPORT_DIR_PATH / str(module_name + ".json")
+    input_grid = suite_name.split("-")[0]
+    output_grid = suite_name.split("-")[1]
+    EXPORT_DIR_PATH = SWEEPS_DIR / "vectors_export" / input_grid
+    EXPORT_PATH = EXPORT_DIR_PATH / str(f"reshard-{input_grid}-{output_grid}.json")
     if not EXPORT_DIR_PATH.exists():
-        EXPORT_DIR_PATH.mkdir()
+        os.makedirs(EXPORT_DIR_PATH)
 
     current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     serialized_vectors = dict()
