@@ -4,7 +4,7 @@
 
 from typing import List, Optional
 import torch
-
+from loguru import logger
 import ttnn
 from models.common.lightweightmodule import LightweightModule
 from models.demos.llama3.tt.llama_ccl import tt_all_reduce, tt_all_gather
@@ -442,7 +442,7 @@ class TtLlamaAttention(LightweightModule):
         # reshaping long sequence to matmul fit on device
         if seq_len > 2048:
             x_11SH = ttnn.reshape(x_11SH, [1, seq_len // 2048, 2048, -1])
-
+        logger.info(f"before qkv matmuls")
         xqkv_fused = ttnn.linear(
             x_11SH,
             self.wqkv,
@@ -451,7 +451,7 @@ class TtLlamaAttention(LightweightModule):
             compute_kernel_config=self.compute_kernel_config_hifi2,
             program_config=self.model_config["XQKV_PREFILL_PROGCFG"](seq_len),
         )
-
+        logger.info(f"before all reduce")
         xqkv_fused = tt_all_reduce(
             xqkv_fused, self.mesh_device, cluster_axis=1, num_links=2, memory_config=ttnn.DRAM_MEMORY_CONFIG
         )
@@ -460,7 +460,7 @@ class TtLlamaAttention(LightweightModule):
             xqkv_fused = ttnn.reshape(xqkv_fused, [1, 1, seq_len, -1])
 
         ttnn.deallocate(x_11SH)
-
+        logger.info(f"before create qkv heads")
         # split qkv into heads
         (
             q_heads_1QSD_pre_rot,
@@ -479,28 +479,28 @@ class TtLlamaAttention(LightweightModule):
         ###
         # Rotary embeddings
         ###
-
+        logger.info(f"before rotary embeddings q")
         q_heads_1QSD = ttnn.experimental.rotary_embedding_llama(
             q_heads_1QSD_pre_rot, rot_mats[0], rot_mats[1], transformation_mats
         )
         ttnn.deallocate(q_heads_1QSD_pre_rot)
-
+        logger.info(f"before rotary embeddings k")
         k_heads_1KSD = ttnn.experimental.rotary_embedding_llama(
             k_heads_1KSD_pre_rot, rot_mats[0], rot_mats[1], transformation_mats
         )
         ttnn.deallocate(k_heads_1KSD_pre_rot)
-
+        logger.info(f"before typecast")
         # Fill KV-Cache
         keys_BKSD, values_BKSD = self.layer_past[0], self.layer_past[1]
         k_heads_1KSD_8b = ttnn.typecast(k_heads_1KSD, dtype=ttnn.bfloat8_b)
         ttnn.deallocate(k_heads_1KSD)
-
+        logger.info(f"before sharding")
         # sharding k_fill to deal with update_cache memory limitation
         if seq_len > self.min_kv_prefill_shard_seqlen and not TG:
             k_fill = ttnn.interleaved_to_sharded(k_heads_1KSD_8b, self.model_config["KV_PREFILL_MEM_CFG"](seq_len))
         else:
             k_fill = k_heads_1KSD_8b
-
+        logger.info(f"before typecast")
         v_heads_1VSD_8b = ttnn.typecast(v_heads_1VSD, dtype=ttnn.bfloat8_b)
 
         ttnn.deallocate(v_heads_1VSD)
@@ -510,10 +510,11 @@ class TtLlamaAttention(LightweightModule):
             v_fill = ttnn.interleaved_to_sharded(v_heads_1VSD_8b, self.model_config["KV_PREFILL_MEM_CFG"](seq_len))
         else:
             v_fill = v_heads_1VSD_8b
+        logger.info(f"before prefill_cache")
         if TG:
             k_fill = self.prefill_prepare_tensor_for_kv_cache(k_fill, user_id)
             v_fill = self.prefill_prepare_tensor_for_kv_cache(v_fill, user_id)
-
+        logger.info(f"before fill_cache")
         if page_table:
             ttnn.experimental.paged_fill_cache(keys_BKSD, k_fill, page_table, batch_idx=user_id)
             ttnn.experimental.paged_fill_cache(values_BKSD, v_fill, page_table, batch_idx=user_id)
@@ -547,7 +548,7 @@ class TtLlamaAttention(LightweightModule):
         q_heads_84SD_8b = ttnn.reshape(
             q_heads_1QSD_8b, [self.n_local_kv_heads, self.n_local_heads // self.n_local_kv_heads, -1, self.head_dim]
         )
-
+        logger.info(f"before sdpa")
         attn_output_84SD = ttnn.transformer.scaled_dot_product_attention(
             q_heads_84SD_8b,
             k_heads_K1SD_8b,
@@ -563,7 +564,7 @@ class TtLlamaAttention(LightweightModule):
         ttnn.deallocate(v_heads_V1SD_8b)
 
         attn_output_1QSD = ttnn.reshape(attn_output_84SD, [1, self.n_local_heads, -1, self.head_dim])
-
+        logger.info(f"nlp_concat_heads")
         ###
         # Output matmul
         ###
@@ -576,7 +577,7 @@ class TtLlamaAttention(LightweightModule):
         # reshaping long sequence to matmul fit on device
         if seq_len > 1024:
             attn_output_11SH = ttnn.reshape(attn_output_11SH, [1, seq_len // 1024, 1024, -1])
-
+        logger.info(f"all_gather")
         # Non fused All Gather Matmul
         if self.use_fused_all_gather_matmul:
             attn_output_11SH = ttnn.all_gather(
@@ -586,7 +587,7 @@ class TtLlamaAttention(LightweightModule):
                 topology=self.ccl_topology,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
             )
-
+        logger.info(f"selfout")
         output_11SH = ttnn.linear(
             attn_output_11SH,
             self.wo,
@@ -602,6 +603,7 @@ class TtLlamaAttention(LightweightModule):
 
         # Reduce-scatter
         if not self.use_fused_all_gather_matmul:
+            logger.info(f"all reduce")
             output_11SH = tt_all_reduce(
                 output_11SH,
                 self.mesh_device,
@@ -622,13 +624,20 @@ class TtLlamaAttention(LightweightModule):
             return self.forward_decode(x, current_pos, rot_mats, page_table)
 
     def prefill_prepare_tensor_for_kv_cache(self, key_or_value_layer, user_id):
+        logger.info(f"before clone")
         tensor_copy = ttnn.clone(key_or_value_layer)
         # Get all tensors from multi-device tensor
+        from time import time, sleep
+
+        sleep(5)
+        logger.info(f"before get_device_tensors")
         tensors = ttnn.get_device_tensors(tensor_copy)
         # Get only tensors from specific column chips
         # Get every 4th tensor starting from user_id // 8
+        logger.info(f"get tensors")
         single_column_tensors = tensors[user_id // self.batch_size_per_device_group :: 4]
         # Create multi-device tensor
+        logger.info("before aggregate_as_tensor")
         multi_device_tensor = ttnn.aggregate_as_tensor(single_column_tensors)
 
         return multi_device_tensor

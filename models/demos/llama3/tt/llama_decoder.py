@@ -7,6 +7,7 @@ from models.demos.llama3.tt.llama_mlp import TtLlamaMLP
 from models.common.rmsnorm import RMSNorm
 from models.common.lightweightmodule import LightweightModule
 from models.demos.llama3.tt.distributed_norm import DistributedNorm
+from loguru import logger
 
 
 class TtTransformerBlock(LightweightModule):
@@ -99,10 +100,10 @@ class TtTransformerBlock(LightweightModule):
         # FIXME: Currently, for decode mode, we are using DRAM intereleaved as L1 interleaved results in h being corrupted in MLP
         TG = self.args.is_galaxy
         skip_mem_cfg = ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if (TG and mode == "decode") else ttnn.DRAM_MEMORY_CONFIG
-
+        logger.info("before attention_norm")
         # Norms take fractured inputs and output replicated across devices
         attn_in = self.attention_norm(x, mode)
-
+        logger.info("before attention")
         # Attention takes replicated inputs and produces fractured outputs
         attn_out = self.attention.forward(
             attn_in,
@@ -117,13 +118,13 @@ class TtTransformerBlock(LightweightModule):
         # Here x and attn_out are both fractured across devices
         h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg)
         ttnn.deallocate(attn_out)
-
+        logger.info("before ff_norm")
         # Norms take fractured inputs and output replicated across devices
         ff_in = self.ff_norm(h, mode)
 
         if TG and mode == "decode":
             ff_in = ttnn.to_memory_config(ff_in, memory_config=self.MLP_ACT_MEMCFG)
-
+        logger.info("before ff")
         # MLP takes replicated inputs and produces fractured outputs
         ff_out = self.feed_forward.forward(ff_in, mode)
 

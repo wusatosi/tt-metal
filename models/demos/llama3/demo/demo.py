@@ -154,6 +154,7 @@ def preprocess_inputs_prefill(
 def run_llama3_demo(
     user_input, batch_size, single_layer, mesh_device, instruct_mode, is_ci_env, num_batches, print_to_file
 ):
+    print(f"{mesh_device=}")
     # Creat batch output file
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     output_directory = "models/demos/llama3/demo/output"
@@ -267,7 +268,7 @@ def run_llama3_demo(
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
         )
         profiler.end(f"prepare_rot_mat_for_prefill", iteration=batch_idx)
-
+        logger.info("prepare_rot_mat_for_prefill")
         # Do not count the first user for prefill time and instead log it as compile time
         num_users_generated_prefill = batch_size - 1 if batch_size > 1 else 1
 
@@ -291,7 +292,9 @@ def run_llama3_demo(
 
             if batch_id == 0:  # First user prefill accounts for compile time
                 profiler.start(f"compile_prefill", iteration=batch_idx)
-
+            # for device in mesh_device.get_devices():
+            #     ttnn.DumpDeviceProfiler(device)
+            logger.info("before tt_model")
             tt_out = tt_model(
                 prefill_input,
                 None,  # Current position
@@ -301,7 +304,7 @@ def run_llama3_demo(
                 mode="prefill",
                 get_last_token=((decoding_pos[batch_id] - 1) // 32) * 32,
             )
-
+            logger.info("after tt_model")
             if (
                 batch_id == 0
             ):  # First user prefill accounts for compile time (which will be removed from the full prefill inference time)
@@ -309,7 +312,12 @@ def run_llama3_demo(
 
             # [PROFILER-ONLY] In runs where there is only one user, run the prefill twice to measure compile and inference prefill times
             if batch_size == 1:
+                logger.info("profiler-only")
                 ttnn.deallocate(tt_out)
+                logger.info(f"begin of dump")
+                for device in mesh_device.get_devices():
+                    ttnn.DumpDeviceProfiler(device)
+                logger.info(f"end of dump")
                 tt_out = tt_model(
                     prefill_input,
                     None,  # Current position
@@ -320,7 +328,7 @@ def run_llama3_demo(
                     get_last_token=((decoding_pos[batch_id] - 1) // 32) * 32,
                 )
             if model_args.is_galaxy:
-                print(tt_out)
+                logger.info(tt_out)
                 tt_out_torch = ttnn.to_torch(
                     tt_out,
                     mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(3, 1), mesh_shape=mesh_device.shape),
@@ -334,6 +342,7 @@ def run_llama3_demo(
                     ]
                 )
             ttnn.deallocate(tt_out)
+            logger.info("after concat2d")
         # Synchronize devices to ensure the profile captures the correct timing of all devices
         for i in range(model_args.num_devices):
             ttnn.synchronize_device(mesh_device.get_devices()[i])
@@ -359,7 +368,7 @@ def run_llama3_demo(
             all_outputs[user].append(user_tok)
 
         user_done = [False] * batch_size  # Keeps track when a user reaches EoD token
-        print(prefill_seq_len)
+        logger.info(prefill_seq_len)
         logger.info("[User 0] {}".format("".join(tokenizer.decode(all_outputs[0]))))
 
         logger.info("Starting decode...")
@@ -388,6 +397,8 @@ def run_llama3_demo(
         # Compile
         logger.info(f"Compiling model trace...")
         decode_input = ttnn.unsqueeze_to_4D(tt_embd(tt_out_tok))
+        # for device in mesh_device.get_devices():
+        #     ttnn.DumpDeviceProfiler(device)
         tt_out = tt_model(decode_input, current_pos, rot_mat=current_rot_mat)
         if tt_model.args.num_devices > 1:
             tt_out_gathered = ttnn.all_gather(
@@ -416,6 +427,8 @@ def run_llama3_demo(
         trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
 
         decode_input = ttnn.unsqueeze_to_4D(tt_embd(tt_out_tok))
+        # for device in mesh_device.get_devices():
+        #     ttnn.DumpDeviceProfiler(device)
         tt_out = tt_model(decode_input, current_pos, rot_mat=current_rot_mat)
         if tt_model.args.num_devices > 1:
             tt_out_gathered = ttnn.all_gather(
@@ -466,7 +479,7 @@ def run_llama3_demo(
         profiler.start(f"inference_decode", iteration=batch_idx)
 
         ttnn.record_event(1, write_event)
-        while users_decoding:
+        while users_decoding and iteration < 2:  # run decoding twice for compile and inference time
             if iteration == 0:  # First iteration also accounts for compile time
                 profiler.start(f"compile_decode", iteration=batch_idx)
             iteration_time_start = time()
@@ -480,12 +493,12 @@ def run_llama3_demo(
             ttnn.wait_for_event(1, op_event)
             if tt_model.args.is_galaxy:
                 tt_output_torch = ttnn.to_torch(
-                    tt_out_tok.cpu(blocking=False, cq_id=1),
+                    tt_out_tok.cpu(blocking=True, cq_id=1),
                     mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(3, 1), mesh_shape=mesh_device.shape),
                 )[0, 0, 0, :batch_size]
             else:
                 tt_output_torch = ttnn.to_torch(  # TODO: Apply changes to support TG
-                    tt_out_tok.cpu(blocking=False, cq_id=1), mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1)
+                    tt_out_tok.cpu(blocking=True, cq_id=1), mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1)
                 )[0, 0, 0, :batch_size]
             ttnn.record_event(1, write_event)
 
@@ -548,7 +561,7 @@ def run_llama3_demo(
             profiler.end(f"reset_rot_mat_{iteration-1}", iteration=batch_idx)
 
             # Upper limit of generated tokens for each user (to avoid infinite generation in case eos is not seen)
-            if iteration >= max_generated_tokens:
+            if iteration >= max_generated_tokens or iteration >= 1:
                 users_decoding = False
 
             if not users_decoding:
@@ -649,7 +662,7 @@ def run_llama3_demo(
     logger.info("")
 
     supported_models = ["3.2-1B", "3.2-3B", "3.1-8B", "3.2-11B", "3.1-70B"]
-    supported_devices = ["N150", "N300", "T3K"]
+    supported_devices = ["N150", "N300", "T3K", "TG"]
 
     # TODO update targets based on the llama3 model and the target device
     llama_model_name = model_args.model_name
@@ -679,6 +692,8 @@ def run_llama3_demo(
         "N150_3.1-70B": 1050,  # TODO Update target
         "N300_3.1-70B": 1050,  # TODO Update target
         "T3K_3.1-70B": 1050,  # TODO Update target
+        "TG_3.1-70B": 1050,  # TODO Update target
+        "TG_3.1-70B": 1050,  # TODO Update target
     }[f"{tt_device_name}_{llama_model_name}"]
 
     # Set the target decode timesfor every combination of device and model
@@ -700,6 +715,7 @@ def run_llama3_demo(
         "T3K_3.2-11B": 45,  # TODO Update target
         #
         "T3K_3.1-70B": 20,  # TODO Update target
+        "TG_3.1-70B": 10,  # TODO Update target
     }[f"{tt_device_name}_{llama_model_name}"]
 
     target_decode_tok_s = target_decode_tok_s_u * batch_size
@@ -746,6 +762,8 @@ def run_llama3_demo(
         "single_layer",
     ],
 )
+
+# x^2 + 8x + 7 > 0  3x^2 + 8x + (4/sqrt(3))^2  + 9 - 16/3
 @pytest.mark.parametrize("device_params", [{"trace_region_size": 19010000, "num_command_queues": 2}], indirect=True)
 @pytest.mark.parametrize(
     "mesh_device",

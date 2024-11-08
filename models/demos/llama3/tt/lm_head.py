@@ -3,6 +3,7 @@ import torch
 import ttnn
 from models.common.lightweightmodule import LightweightModule
 from models.demos.llama3.tt.llama_ccl import tt_all_reduce
+from loguru import logger
 
 
 class LMHead(LightweightModule):
@@ -115,6 +116,7 @@ class LMHead(LightweightModule):
 
     def forward(self, x: ttnn.Tensor):
         outputs = []
+        logger.info("lm_head forward")
         for weight, pc in zip(self.output_weights, self.program_configs):
             output = ttnn.linear(
                 x,
@@ -125,7 +127,7 @@ class LMHead(LightweightModule):
                 dtype=ttnn.bfloat8_b,
             )
             outputs.append(ttnn.sharded_to_interleaved(output, memory_config=ttnn.L1_MEMORY_CONFIG))
-
+        logger.info("after lm_head matmul")
         # Concatenate the outputs
         output = ttnn.concat(outputs, dim=-1, memory_config=ttnn.L1_MEMORY_CONFIG)
 
@@ -138,5 +140,6 @@ class LMHead(LightweightModule):
                 num_links=2,
                 memory_config=ttnn.L1_MEMORY_CONFIG,
             )
-
+            logger.info("lm_head after all_reduce")
+        logger.info("lm_head done")
         return output
