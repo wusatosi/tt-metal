@@ -21,9 +21,9 @@ SWEEP_SOURCES_DIR = SWEEPS_DIR / "sweeps"
 
 
 # Generate vectors from module parameters
-def generate_vectors(module_name):
+def generate_vectors(module_name, start_x=1, end_x=9, start_y=1):
     test_module = importlib.import_module("sweeps." + module_name)
-    parameters = test_module.parameters
+    parameters = test_module.get_parameters(start_x, end_x, start_y)
 
     for suite in parameters:
         logger.info(f"Generating test vectors for suite {suite}.")
@@ -43,7 +43,7 @@ def generate_vectors(module_name):
             export_suite_vectors(module_name, suite, suite_vectors)
 
 
-def downsample(suite, suite_vectors, min_desired=2000):
+def downsample(suite, suite_vectors, min_desired=3000):
     starting_vecs = len(suite_vectors)
     while len(suite_vectors) > 2 * min_desired:
         del suite_vectors[::2]
@@ -97,10 +97,10 @@ def export_suite_vectors_json(module_name, suite_name, vectors):
             data = json.load(file)
         with open(EXPORT_PATH, "w") as file:
             data[suite_name] = serialized_vectors
-            json.dump(data, file, indent=4)
+            json.dump(data, file, indent=2)
     else:
         with open(EXPORT_PATH, "w") as file:
-            json.dump({suite_name: serialized_vectors}, file, indent=4)
+            json.dump({suite_name: serialized_vectors}, file, indent=2)
     logger.info(f"SWEEPS: Generated {len(vectors)} test vectors for suite {suite_name}.")
 
 
@@ -173,16 +173,16 @@ def export_suite_vectors(module_name, suite_name, vectors):
 
 
 # Generate one or more sets of test vectors depending on module_name
-def generate_tests(module_name):
+def generate_tests(module_name, start_x, end_x, start_y):
     if not module_name:
         for file_name in sorted(SWEEP_SOURCES_DIR.glob("**/*.py")):
             module_name = str(pathlib.Path(file_name).relative_to(SWEEP_SOURCES_DIR))[:-3].replace("/", ".")
             logger.info(f"Generating test vectors for module {module_name}.")
-            generate_vectors(module_name)
+            generate_vectors(module_name, start_x, end_x, start_y)
             logger.info(f"Finished generating test vectors for module {module_name}.\n\n")
     else:
         logger.info(f"Generating test vectors for module {module_name}.")
-        generate_vectors(module_name)
+        generate_vectors(module_name, start_x, end_x, start_y)
 
 
 def clean_module(module_name):
@@ -237,6 +237,8 @@ if __name__ == "__main__":
         action="store_true",
         help="If set, this will not use the ES database, and will instead dump tests to JSON.",
     )
+    parser.add_argument("-x", type=int)
+    parser.add_argument("-y", type=int)
 
     args = parser.parse_args(sys.argv[1:])
 
@@ -266,4 +268,4 @@ if __name__ == "__main__":
     elif args.clean:
         clean_module(args.module_name)
 
-    generate_tests(args.module_name)
+    generate_tests(args.module_name, args.x, args.x + 1, args.y)
