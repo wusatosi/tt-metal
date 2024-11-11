@@ -137,6 +137,7 @@ class LMHead(LightweightModule):
                 cluster_axis=1,
                 num_links=2,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                dtype=self.args.ccl_dtype,
             )
 
         return output
