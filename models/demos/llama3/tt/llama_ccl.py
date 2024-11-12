@@ -28,7 +28,6 @@ def tt_all_reduce(
     # Ensure dim 0 and 1 are 1
     original_shape = input_tensor.shape
     if original_shape[0] != 1 or original_shape[1] != 1:
-        print("Reshaping input tensor")
         input_tensor = ttnn.reshape(
             input_tensor, (1, 1, original_shape[-4] * original_shape[-3] * original_shape[-2], original_shape[-1])
         )
