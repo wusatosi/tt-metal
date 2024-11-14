@@ -137,6 +137,13 @@ AdamW::AdamW(autograd::NamedParameters parameters, const AdamWConfig& config) :
                 autograd::create_tensor(
                     core::zeros_like(tensor_ptr->get_value(autograd::PreferredPrecision::FULL)),
                     /* requires_grad */ false));
+            if (m_config.use_kahan_summation) {
+                m_kahan_compensation.emplace(
+                    key,
+                    autograd::create_tensor(
+                        core::zeros_like(tensor_ptr->get_value(autograd::PreferredPrecision::FULL)),
+                        /* requires_grad */ false));
+            }
         }
     }
 }
@@ -188,11 +195,29 @@ void AdamW::step() {
         // weights -= lr * first_moment_hat / (sqrt(second_moment_hat) + epsilon)
         first_moment_ptr->set_value(first_moment);
         second_moment_ptr->set_value(second_moment);
-        tensor_ptr->set_value(ttnn::subtract(
-            tensor_ptr->get_value(autograd::PreferredPrecision::FULL),
-            ttnn_fixed::divide(
-                ttnn::multiply(first_moment_hat, m_config.lr),
-                ttnn::add(ttnn::sqrt(second_moment_hat), m_config.epsilon))));
+
+        auto update_tensor = ttnn_fixed::divide(
+            ttnn::multiply(first_moment_hat, -m_config.lr), ttnn::add(ttnn::sqrt(second_moment_hat), m_config.epsilon));
+
+        if (!m_config.use_kahan_summation) {
+            tensor_ptr->set_value(ttnn::add(tensor_ptr->get_value(autograd::PreferredPrecision::FULL), update_tensor));
+        } else {
+            auto value_tensor = tensor_ptr->get_value(autograd::PreferredPrecision::FULL);
+
+            const auto& kahan_compensation_ptr = m_kahan_compensation.at(key);
+            // A running compensation for lost low-order bits
+            auto compensation_tensor = kahan_compensation_ptr->get_value(autograd::PreferredPrecision::FULL);
+            // Adjust the update with the compensation
+            auto adjusted_update = ttnn::subtract(update_tensor, compensation_tensor);
+            // Update the value with the adjusted update
+            auto result = ttnn::add(value_tensor, adjusted_update);
+            // (result - value_tensor) cancels the high-order part of adjusted_update;
+            // subtracting adjusted_update recovers negative (low part of adjusted_update)
+            compensation_tensor = ttnn::subtract(ttnn::subtract(result, value_tensor), adjusted_update);
+
+            tensor_ptr->set_value(result);
+            kahan_compensation_ptr->set_value(compensation_tensor);
+        }
     }
 }
 

@@ -293,6 +293,7 @@ int main(int argc, char **argv) {
     auto adamw_params = ttml::optimizers::AdamWConfig();
     adamw_params.lr = config.learning_rate;
     adamw_params.weight_decay = config.weight_decay;
+    adamw_params.use_kahan_summation = true;
     fmt::print("AdamW configuration:\n");
     fmt::print("    Learning rate: {}\n", adamw_params.lr);
     fmt::print("    Weight decay: {}\n", adamw_params.weight_decay);
