@@ -150,7 +150,7 @@ void Cluster::generate_cluster_descriptor() {
                                    : "";
 
     // Cluster descriptor yaml not available for Blackhole bring up
-    if (this->target_type_ == TargetDevice::Simulator) {
+    if ((this->target_type_ == TargetDevice::Simulator) || (this->target_type_ == TargetDevice::Mockup)) {
         // Cannot use tt_SiliconDevice::detect_available_device_ids because that returns physical device IDs
         std::vector<chip_id_t> physical_mmio_device_ids;
         std::set<chip_id_t> logical_mmio_device_ids;
@@ -161,29 +161,7 @@ void Cluster::generate_cluster_descriptor() {
         }
         this->cluster_desc_ =
             tt_ClusterDescriptor::create_for_grayskull_cluster(logical_mmio_device_ids, physical_mmio_device_ids);
-    } else if (this->target_type_ == TargetDevice::Mockup) {
-        // no card, no create_ethernet, no cluster descriptors
-        // to avoid having real cluster descriptor checked in,
-        // going with create_for_grayskull_cluster
-
-        std::vector<chip_id_t> physical_mmio_device_ids;
-        std::set<chip_id_t> logical_mmio_device_ids;
-        for (chip_id_t logical_mmio_device_id = 0;
-             logical_mmio_device_id < tt_MockupDevice::detect_available_device_ids().size();
-             logical_mmio_device_id++) {
-            logical_mmio_device_ids.insert(logical_mmio_device_id);
-        }
-
-        this->cluster_desc_ =
-            tt_ClusterDescriptor::create_for_grayskull_cluster(logical_mmio_device_ids, physical_mmio_device_ids);
-
-        std::set<chip_id_t> dummy_card = {0};
-        this->devices_grouped_by_assoc_mmio_device_[0] = dummy_card;
-        this->device_to_mmio_device_[0] = 0;
-
-        return;
-    }
-    else {
+    } else {
         this->cluster_desc_ = tt_ClusterDescriptor::create_from_yaml(this->cluster_desc_path_);
         for (const auto &chip_id : this->cluster_desc_->get_all_chips()) {
             if (this->cluster_desc_->get_board_type(chip_id) == BoardType::GALAXY) {
@@ -194,7 +172,7 @@ void Cluster::generate_cluster_descriptor() {
     }
 
     // Use cluster descriptor to map MMIO device id to all devices on the same card (including the MMIO device)
-    if (this->target_type_ == TargetDevice::Simulator) {
+    if ((this->target_type_ == TargetDevice::Simulator) || (this->target_type_ == TargetDevice::Mockup)) {
         std::set<chip_id_t> dummy_card = {0};
         this->devices_grouped_by_assoc_mmio_device_[0] = dummy_card;
         this->device_to_mmio_device_[0] = 0;
@@ -217,7 +195,7 @@ void Cluster::generate_cluster_descriptor() {
             this->cluster_desc_->get_all_chips().size()/4,
             this->cluster_desc_->get_all_chips().size(),
             total_num_hugepages);
-    } else if (this->target_type_ != TargetDevice::Simulator){
+    } else if ((this->target_type_ != TargetDevice::Simulator) && (this->target_type_ != TargetDevice::Mockup)) {
     // TODO (abhullar): ignore hugepage set up for BH bringup
         TT_FATAL(
             this->arch_ == tt::ARCH::BLACKHOLE or total_num_hugepages >= this->cluster_desc_->get_all_chips().size(),
