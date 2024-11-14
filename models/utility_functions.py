@@ -582,7 +582,7 @@ def comp_allclose(golden, calculated, rtol=1e-05, atol=1e-08):
     )
 
 
-def comp_pcc(golden, calculated, pcc=0.99):
+def comp_pcc(golden, calculated, pcc=0.999):
     golden = torch.Tensor(golden)
     calculated = torch.Tensor(calculated)
 
