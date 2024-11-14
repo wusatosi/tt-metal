@@ -92,8 +92,6 @@ class TtModelArgs:
     max_batch_size = 1
     # Context length for Llama models (if single device, reduce to 32k in init)
     max_seq_len = 8192 * 16 // 4  # 128k
-    kv_seq_len = 8192 * 16 // 4  # 128k
-    sliding_window = 8192 * 16 // 4  # 128k
 
     tile_size = 32
 
@@ -282,9 +280,9 @@ class TtModelArgs:
             )
             self.compute_kernel_config_hifi2_fp16 = ttnn.WormholeComputeKernelConfig(
                 math_fidelity=ttnn.MathFidelity.HiFi2,
-                math_approx_mode=True,
+                math_approx_mode=False,
                 fp32_dest_acc_en=False,
-                packer_l1_acc=False,
+                packer_l1_acc=True,
             )
             self.compute_kernel_config_hifi4 = ttnn.WormholeComputeKernelConfig(
                 math_fidelity=ttnn.MathFidelity.HiFi4,

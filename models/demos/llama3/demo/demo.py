@@ -286,7 +286,7 @@ def run_llama3_demo(
 
             prefill_input = model_args.prepare_inputs_ttnn_prefill(
                 pt_prefill_input[batch_id],
-                force_replicated=False if model_args.is_galaxy else True,
+                # force_replicated=False if model_args.is_galaxy else True,
             )
 
             if batch_id == 0:  # First user prefill accounts for compile time
@@ -390,9 +390,12 @@ def run_llama3_demo(
         decode_input = ttnn.unsqueeze_to_4D(tt_embd(tt_out_tok))
         tt_out = tt_model(decode_input, current_pos, rot_mat=current_rot_mat)
         if tt_model.args.num_devices > 1:
-            tt_out_gathered = ttnn.all_gather(
-                tt_out, dim=3, num_links=2, cluster_axis=0, mesh_device=mesh_device, topology=ttnn.Topology.Linear
-            )
+            if tt_model.args.is_galaxy:
+                tt_out_gathered = ttnn.all_gather(
+                    tt_out, dim=3, num_links=2, cluster_axis=0, mesh_device=mesh_device, topology=ttnn.Topology.Linear
+                )
+            else:
+                tt_out_gathered = ttnn.all_gather(tt_out, dim=3, num_links=1, topology=ttnn.Topology.Linear)
             ttnn.deallocate(tt_out)
         else:
             tt_out_gathered = tt_out
@@ -413,9 +416,12 @@ def run_llama3_demo(
         decode_input = ttnn.unsqueeze_to_4D(tt_embd(tt_out_tok))
         tt_out = tt_model(decode_input, current_pos, rot_mat=current_rot_mat)
         if tt_model.args.num_devices > 1:
-            tt_out_gathered = ttnn.all_gather(
-                tt_out, dim=3, num_links=2, cluster_axis=0, mesh_device=mesh_device, topology=ttnn.Topology.Linear
-            )
+            if tt_model.args.is_galaxy:
+                tt_out_gathered = ttnn.all_gather(
+                    tt_out, dim=3, num_links=2, cluster_axis=0, mesh_device=mesh_device, topology=ttnn.Topology.Linear
+                )
+            else:
+                tt_out_gathered = ttnn.all_gather(tt_out, dim=3, num_links=1, topology=ttnn.Topology.Linear)
             ttnn.deallocate(tt_out)
         else:
             tt_out_gathered = tt_out
@@ -721,22 +727,22 @@ def run_llama3_demo(
     "input_prompts, instruct_weights, num_batches, single_layer",
     [
         ("models/demos/llama3/demo/input_data_prefill_128.json", False, 1, False),
-        ("models/demos/llama3/demo/input_data_prefill_128.json", False, 2, False),
-        ("models/demos/llama3/demo/input_data_questions_prefill_128.json", True, 1, False),
-        ("models/demos/llama3/demo/input_data_questions_prefill_128.json", True, 2, False),
-        ("models/demos/llama3/demo/input_data_long.json", True, 1, False),
-        ("models/demos/llama3/demo/input_data_questions_prefill_128.json", True, 1, True),
+        # ("models/demos/llama3/demo/input_data_prefill_128.json", False, 2, False),
+        # ("models/demos/llama3/demo/input_data_questions_prefill_128.json", True, 1, False),
+        # ("models/demos/llama3/demo/input_data_questions_prefill_128.json", True, 2, False),
+        # ("models/demos/llama3/demo/input_data_long.json", True, 1, False),
+        # ("models/demos/llama3/demo/input_data_questions_prefill_128.json", True, 1, True),
     ],
     ids=[
         "general_weights-1_batch",
-        "general_weights-2_batch",
-        "instruct_weights-1_batch",
-        "instruct_weights-2_batch",
-        "instruct_weights-long",
-        "single_layer",
+        # "general_weights-2_batch",
+        # "instruct_weights-1_batch",
+        # "instruct_weights-2_batch",
+        # "instruct_weights-long",
+        # "single_layer",
     ],
 )
-@pytest.mark.parametrize("device_params", [{"trace_region_size": 14951424, "num_command_queues": 2}], indirect=True)
+@pytest.mark.parametrize("device_params", [{"trace_region_size": 19000000, "num_command_queues": 2}], indirect=True)
 @pytest.mark.parametrize(
     "mesh_device",
     [

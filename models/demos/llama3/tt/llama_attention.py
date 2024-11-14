@@ -420,7 +420,7 @@ class TtLlamaAttention(LightweightModule):
                 dim=0 if TG else 3,
                 memory_config=self.model_config["SELF_OUT_GATHERED_MEMCFG"](self.mesh_device.shape[0])
                 if TG
-                else ttnn.L1_MEMORY_CONFIG,
+                else ttnn.DRAM_MEMORY_CONFIG,
                 sharded=True,
             )
 

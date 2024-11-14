@@ -32,8 +32,8 @@ from models.utility_functions import skip_for_grayskull
 @pytest.mark.parametrize(
     "seq_len",
     (
-        # 128,
         256,
+        # 32,
         # 512,
         # 1024,
         # 2048,
@@ -61,9 +61,10 @@ def test_llama_model_inference(mesh_device, seq_len, use_program_cache, reset_se
     mesh_device.enable_async(True)
 
     # Use instruct weights instead of general weights
-    instruct = True
+    instruct = False
 
     model_args = TtModelArgs(mesh_device, instruct=instruct)
+    # model_args.n_layers = 1
     tokenizer = Tokenizer(model_args.tokenizer_path)
 
     logger.info("Loading weights...")
@@ -133,16 +134,17 @@ def test_llama_model_inference(mesh_device, seq_len, use_program_cache, reset_se
 
     # Select the first token from the prompts for initial decoding
     encoded_prompts_tensor = torch.tensor(encoded_prompts)  # [:,0]
+
     pt_decode_input = embd(encoded_prompts_tensor).view(batch, seq_len, -1)
 
     tt_decode_input = pt_decode_input
-
     decode_input = model_args.prepare_inputs_ttnn_prefill(
         tt_decode_input,
-        force_replicated=False if model_args.is_galaxy else True,
+        # force_replicated=False if model_args.is_galaxy else True,
     )
     for i in range(1):
         start_pos = 0
+
         # Run TT model
         tt_out = tt_model(
             decode_input, None, rot_mats, transformation_mats, user_id=i, mode="prefill", get_last_token=seq_len - 32
@@ -151,7 +153,9 @@ def test_llama_model_inference(mesh_device, seq_len, use_program_cache, reset_se
         print(tt_out)
         tt_out = ttnn.to_torch(
             tt_out,
-            mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(3, 1), mesh_shape=model_args.cluster_shape),
+            mesh_composer=ttnn.ConcatMesh2dToTensor(
+                mesh_device, dims=(3, 1) if model_args.is_galaxy else (1, 3), mesh_shape=model_args.cluster_shape
+            ),
         )
         print(tt_out.shape)
         tt_output_torch = tt_out[:, 0:1, -1, : model_args.vocab_size].view(batch, -1)  # [ batch, seq, hidden_dim]

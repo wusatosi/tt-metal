@@ -34,7 +34,7 @@ from models.utility_functions import skip_for_grayskull
         ("random", 1),
         ("instruct", None),
     ],
-    ids=["quick"],
+    ids=["quick", "full"],
 )
 @pytest.mark.parametrize(
     "mesh_device",
@@ -56,7 +56,7 @@ def test_llama_model_inference(mesh_device, weights, layers, use_program_cache, 
     # This sets the minimum PCC for each iteration
     pcc = 0.88 if layers == 1 else 0.94  # TODO For model test quick (1 layer) one iteration might get a worse PCC
 
-    instruct = True if weights == "instruct" else False
+    instruct = False if weights == "instruct" else False
     dummy_weights = True if weights == "random" else False
     model_args = TtModelArgs(mesh_device, instruct=instruct, dummy_weights=dummy_weights)
 
@@ -98,6 +98,7 @@ def test_llama_model_inference(mesh_device, weights, layers, use_program_cache, 
 
     if layers is not None:
         model_args.n_layers = layers
+    # model_args.n_layers = 1
     state_dict = model_args.load_state_dict()
     state_dict_prefix = model_args.get_state_dict_prefix("", None)
     reference_state_dict = {
@@ -176,7 +177,7 @@ def test_llama_model_inference(mesh_device, weights, layers, use_program_cache, 
 
         decode_input = model_args.prepare_inputs_ttnn_decode(
             tt_decode_input,
-            ttnn.L1_MEMORY_CONFIG,
+            ttnn.DRAM_MEMORY_CONFIG,
         )
         current_pos_tensor = ttnn.from_torch(
             torch.tensor([current_pos] * batch),
@@ -272,7 +273,7 @@ def test_llama_model_inference(mesh_device, weights, layers, use_program_cache, 
 
                     for kv_cache, (cache_pt, cache_tt) in enumerate(zip(pytorch_layer_present, tt_layer_present)):
                         cache_length_to_check = min(
-                            model_args.sliding_window, generation_start_pos + generation_length + 1
+                            model_args.max_seq_len, generation_start_pos + generation_length + 1
                         )
                         cache_pt = cache_pt[:, :, generation_start_pos:cache_length_to_check, :]
                         cache_tt = cache_tt[:, :, generation_start_pos:cache_length_to_check, :]

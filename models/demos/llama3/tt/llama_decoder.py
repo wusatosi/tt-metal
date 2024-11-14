@@ -25,7 +25,6 @@ class TtTransformerBlock(LightweightModule):
         self.max_batch_size = args.max_batch_size
         self.n_kv_heads = args.n_kv_heads
         self.current = 0
-        self.sliding_window = args.sliding_window
         self.model_config = args.get_model_config()
 
         self.layer_num = layer_num
@@ -116,18 +115,13 @@ class TtTransformerBlock(LightweightModule):
 
         # Here x and attn_out are both fractured across devices
         h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg)
-        ttnn.deallocate(attn_out)
-
+        # ttnn.deallocate(attn_out)
         # Norms take fractured inputs and output replicated across devices
         ff_in = self.ff_norm(h, mode)
-
         if TG and mode == "decode":
             ff_in = ttnn.to_memory_config(ff_in, memory_config=self.MLP_ACT_MEMCFG)
-
         # MLP takes replicated inputs and produces fractured outputs
         ff_out = self.feed_forward.forward(ff_in, mode)
-
         # ff_out and h are both fractured across devices
         out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)
-
         return out  # fractured across devices
