@@ -26,6 +26,7 @@ set(IMPL_SRC
 
 add_library(impl OBJECT ${IMPL_SRC})
 add_library(Metalium::Metal::Impl ALIAS impl)
+add_subdirectory(lightmetal)
 
 target_link_libraries(
     impl
@@ -35,6 +36,7 @@ target_link_libraries(
     PRIVATE
         Boost::smart_ptr
         range-v3::range-v3
+        lightmetal
 )
 
 target_include_directories(

@@ -1,0 +1,8 @@
+namespace tt.target.lightmetal;
+
+table LightMetalBinary {
+  id: int;
+  text: string;
+}
+
+root_type LightMetalBinary;
