@@ -36,6 +36,8 @@ class TtLlamaAttention(LightweightModule):
         self.paged_attention_config = configuration.paged_attention_config
         self.min_kv_prefill_shard_seqlen = configuration.min_kv_prefill_shard_seqlen
         self.ccl_dtype = configuration.ccl_dtype
+        self.num_reduce_scatter_links = configuration.num_reduce_scatter_links
+        self.num_all_gather_links = configuration.num_all_gather_links
 
         self.num_device_groups = self.num_devices // self.n_kv_heads
         self.num_devices_per_group = self.n_kv_heads if self.TG else self.num_devices
@@ -240,7 +242,8 @@ class TtLlamaAttention(LightweightModule):
             xqkv_fused_sharded,
             self.mesh_device,
             cluster_axis=1,
-            num_links=2,
+            num_reduce_scatter_links=self.num_reduce_scatter_links,
+            num_all_gather_links=self.num_all_gather_links,
             memory_config=self.model_config["QKV_OUT_GATHERED_MEMCFG"](self.mesh_device.shape[1]),
             sharded=True,
             dtype=self.ccl_dtype,
@@ -419,13 +422,13 @@ class TtLlamaAttention(LightweightModule):
                 dense_out_sharded,
                 self.mesh_device,
                 cluster_axis=0,
-                num_links=2 if TG else 1,
-                dim=0 if TG else 3,
-                memory_config=self.model_config["SELF_OUT_GATHERED_MEMCFG"](self.mesh_device.shape[0])
-                if TG
-                else ttnn.DRAM_MEMORY_CONFIG,
+                num_reduce_scatter_links=self.num_reduce_scatter_links,
+                num_all_gather_links=self.num_all_gather_links,
+                dim=3,
+                memory_config=self.model_config["SELF_OUT_REDUCE_SCATTER_MEMCFG"] if TG else ttnn.L1_MEMORY_CONFIG,
                 sharded=True,
                 dtype=self.ccl_dtype,
+                use_composite=True,
             )
 
             if TG:
@@ -460,7 +463,8 @@ class TtLlamaAttention(LightweightModule):
             xqkv_fused,
             self.mesh_device,
             cluster_axis=1,
-            num_links=2,
+            num_reduce_scatter_links=self.num_reduce_scatter_links,
+            num_all_gather_links=self.num_all_gather_links,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
             dtype=self.ccl_dtype,
         )
@@ -632,7 +636,8 @@ class TtLlamaAttention(LightweightModule):
                 self.mesh_device,
                 cluster_axis=0,
                 dim=0 if TG else 3,
-                num_links=2 if TG else 1,
+                num_reduce_scatter_links=self.num_reduce_scatter_links,
+                num_all_gather_links=self.num_all_gather_links,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
                 dtype=self.ccl_dtype,
             )

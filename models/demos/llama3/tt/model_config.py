@@ -67,13 +67,6 @@ def set_tg_attention_config(model_config):
         orientation=ttnn.ShardOrientation.ROW_MAJOR,
         use_height_and_width_as_shard_shape=True,
     )
-    model_config["SELF_OUT_GATHERED_MEMCFG"] = lambda mesh_rows: ttnn.create_sharded_memory_config(
-        shape=(32 * mesh_rows, 2048 // 32),  # mesh_rows = 8
-        core_grid=ttnn.CoreGrid(y=4, x=8),
-        strategy=ttnn.ShardStrategy.WIDTH,
-        orientation=ttnn.ShardOrientation.ROW_MAJOR,
-        use_height_and_width_as_shard_shape=True,
-    )
 
     model_config["GATHER_USERS_MEMCFG"] = lambda mesh_cols: ttnn.create_sharded_memory_config(
         shape=(32 * mesh_cols, 1024 // 32),  # mesh_cols = 4
@@ -616,23 +609,40 @@ class TtModelArgs:
                 ),
             )
 
-            self.model_config["FF1_ACT_MEMCFG"] = ttnn.create_sharded_memory_config(
-                shape=(32, 2048 // 8),
+            self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] = ttnn.create_sharded_memory_config(
+                shape=(32, self.hidden_dim // 28 // 8),  # shard_grid_cores = 28, num_devices=8
+                core_grid=ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(6, 3))}),
+                strategy=ttnn.ShardStrategy.WIDTH,
+                orientation=ttnn.ShardOrientation.ROW_MAJOR,
+                use_height_and_width_as_shard_shape=True,
+            )
+
+            self.model_config["FF2_OUT_REDUCE_SCATTER_MEMCFG"] = ttnn.create_sharded_memory_config(
+                shape=(32, self.hidden_dim // 8 // 4),  # shard_grid_cores = 8, num_devices=4
+                core_grid=ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 0))}),
+                strategy=ttnn.ShardStrategy.WIDTH,
+                orientation=ttnn.ShardOrientation.ROW_MAJOR,
+                use_height_and_width_as_shard_shape=True,
+            )
+
+            self.model_config["SELF_OUT_REDUCE_SCATTER_MEMCFG"] = ttnn.create_sharded_memory_config(
+                shape=(32, 2048 // 8 // 8),  # mesh_rows = 8, num_cores=8
                 core_grid=ttnn.CoreGrid(y=1, x=8),
                 strategy=ttnn.ShardStrategy.WIDTH,
                 orientation=ttnn.ShardOrientation.ROW_MAJOR,
                 use_height_and_width_as_shard_shape=True,
             )
 
-            self.model_config["FF1_OUT_GATHERED_MEMCFG"] = ttnn.create_sharded_memory_config(
-                shape=(32 * 4, self.hidden_dim // 8 // 8),
-                core_grid=ttnn.CoreGrid(y=1, x=8),
+            self.model_config["LM_HEAD_OUT_REDUCE_SCATTER_MEMCFG"] = ttnn.create_sharded_memory_config(
+                shape=(32, self.padded_vocab_size // 4 // 32),  # shard_grid_cores=32, num_devices=4
+                core_grid=ttnn.CoreGrid(y=4, x=8),
                 strategy=ttnn.ShardStrategy.WIDTH,
                 orientation=ttnn.ShardOrientation.ROW_MAJOR,
                 use_height_and_width_as_shard_shape=True,
             )
-            self.model_config["FF2_OUT_GATHERED_MEMCFG"] = ttnn.create_sharded_memory_config(
-                shape=(32 * 8, 2048 // 8),
+
+            self.model_config["FF1_OUT_MEMCFG"] = ttnn.create_sharded_memory_config(
+                shape=(32, self.hidden_dim // 8 // 8),
                 core_grid=ttnn.CoreGrid(y=1, x=8),
                 strategy=ttnn.ShardStrategy.WIDTH,
                 orientation=ttnn.ShardOrientation.ROW_MAJOR,

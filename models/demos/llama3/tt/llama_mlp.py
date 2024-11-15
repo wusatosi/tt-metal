@@ -110,17 +110,23 @@ class TtLlamaMLP(LightweightModule):
             w1_out,
             self.mesh_device,
             cluster_axis=1,
-            num_links=2,
+            dim=3 if TG else 0,
+            num_reduce_scatter_links=self.args.num_reduce_scatter_links,
+            num_all_gather_links=self.args.num_all_gather_links,
             sharded=True if mode == "decode" else False,
-            memory_config=self.model_config["FF1_OUT_GATHERED_MEMCFG"] if mode == "decode" else None,
+            memory_config=self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else None,
+            use_composite=True,
         )
         w3_out = tt_all_reduce(
             w3_out,
             self.mesh_device,
             cluster_axis=1,
-            num_links=2,
+            dim=3 if TG else 0,
+            num_reduce_scatter_links=self.args.num_reduce_scatter_links,
+            num_all_gather_links=self.args.num_all_gather_links,
             sharded=True if mode == "decode" else False,
-            memory_config=self.model_config["FF1_OUT_GATHERED_MEMCFG"] if mode == "decode" else None,
+            memory_config=self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else None,
+            use_composite=True,
         )
 
         w2_in = ttnn.multiply(
@@ -161,13 +167,12 @@ class TtLlamaMLP(LightweightModule):
             w2_out,
             self.mesh_device,
             cluster_axis=0,
-            num_links=1 if not TG else 2,
-            dim=3 if not TG else 0,
-            memory_config=(self.model_config["FF2_OUT_GATHERED_MEMCFG"] if TG else ttnn.L1_MEMORY_CONFIG)
-            if mode == "decode"
-            else ttnn.DRAM_MEMORY_CONFIG,
-            sharded=(mode == "decode"),
-            dtype=self.args.ccl_dtype,
+            dim=3,
+            num_reduce_scatter_links=self.args.num_reduce_scatter_links,
+            num_all_gather_links=self.args.num_all_gather_links,
+            sharded=True if mode == "decode" else False,
+            memory_config=self.model_config["FF2_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else None,
+            use_composite=True,
         )
         # Ensure dim 0 and 1 are 1
         original_shape = w2_out_reduced.shape
