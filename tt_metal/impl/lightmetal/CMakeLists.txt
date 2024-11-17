@@ -34,7 +34,13 @@ set_source_files_properties(
         LANGUAGE
             CXX
 )
-target_sources(lightmetal PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/dummy.cpp)
+
+target_sources(
+    lightmetal
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/dummy.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/lightmetal.hpp
+)
 
 # Generate headers for each FlatBuffer schema and add to the target
 foreach(FBS_FILE ${LIGHTMETAL_SCHEMAS})
