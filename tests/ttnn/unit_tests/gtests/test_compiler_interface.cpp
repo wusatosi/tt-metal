@@ -52,9 +52,7 @@ struct OperandShapeTestParam {
     std::vector<uint32_t> expected_cbs_per_core;
     std::vector<std::tuple<uint32_t, uint32_t>> expected_internal_tensors_per_core;
 
-    size_t expected_peak_cbs_per_core;
-    size_t expected_peak_l1_tensors_per_core;
-    size_t expected_output_l1_tensor_per_core;
+    ttnn::compiler_interface::ResourceUsage expected_resource_usage;
 };
 
 namespace detail {
@@ -101,15 +99,13 @@ TEST_P(EltwiseUnaryOpInterfaceTestFixture, Unary) {
         // auto constraint = compiler_interface::matumul_op_constraints(
         //     device, l1_input, l1_input, l1_output);  // TODO(mbezulj): create matmul tests
 
-        bool constraint_valid = std::get<0>(constraint);
-        size_t peak_cbs_per_core = std::get<1>(constraint);
-        size_t peak_l1_tensors_per_core = std::get<2>(constraint);
-        size_t output_l1_tensor_per_core = std::get<3>(constraint);
-
-        EXPECT_EQ(constraint_valid, true);
-        EXPECT_EQ(peak_cbs_per_core, input.expected_peak_cbs_per_core);
-        EXPECT_EQ(peak_l1_tensors_per_core, input.expected_peak_l1_tensors_per_core);
-        EXPECT_EQ(output_l1_tensor_per_core, input.expected_output_l1_tensor_per_core);
+        EXPECT_EQ(constraint.status, ttnn::compiler_interface::ExecutionStatus::Success);
+        EXPECT_EQ(constraint.resource_usage.cb_peak_size_per_core, input.expected_resource_usage.cb_peak_size_per_core);
+        EXPECT_EQ(
+            constraint.resource_usage.l1_buffers_peak_per_core, input.expected_resource_usage.l1_buffers_peak_per_core);
+        EXPECT_EQ(
+            constraint.resource_usage.l1_output_buffer_per_core,
+            input.expected_resource_usage.l1_output_buffer_per_core);
     }
 }
 
@@ -127,16 +123,18 @@ INSTANTIATE_TEST_SUITE_P(
                          CoreRangeSet{std::set<CoreRange>{CoreRange{CoreCoord{0, 0}, CoreCoord{3, 3}}}},
                          {6 * 32, 32 * 32},
                          ShardOrientation::COL_MAJOR}},
-            .expected_peak_cbs_per_core = 0,
-            .expected_peak_l1_tensors_per_core = 2 * (3 * 32 * 32 * 32 * 32) / 16,
-            .expected_output_l1_tensor_per_core = 2 * (3 * 32 * 32 * 32 * 32) / 16,
+            .expected_resource_usage =
+                {.cb_peak_size_per_core = 0,
+                 .l1_buffers_peak_per_core = 2 * (3 * 32 * 32 * 32 * 32) / 16,
+                 .l1_output_buffer_per_core = 2 * (3 * 32 * 32 * 32 * 32) / 16},
         },
         OperandShapeTestParam{
             .shape = ttnn::SimpleShape(tt::tt_metal::Array4D{4, 2, 5 * 32, 7 * 32}),
             .memory_config = ttnn::L1_MEMORY_CONFIG,
-            .expected_peak_cbs_per_core = 2 * 4096,
-            .expected_peak_l1_tensors_per_core = 10240,
-            .expected_output_l1_tensor_per_core = 10240,
+            .expected_resource_usage =
+                {.cb_peak_size_per_core = 2 * 4096,
+                 .l1_buffers_peak_per_core = 10240,
+                 .l1_output_buffer_per_core = 10240},
         }),
     [](const testing::TestParamInfo<OperandShapeTestParam> &info) {
         std::stringstream ss;

@@ -16,7 +16,7 @@
 namespace ttnn::compiler_interface {
 
 template <auto BinaryFunction>
-std::tuple<bool, size_t, size_t, size_t> binary_op_constraints(
+QueryResponse binary_op_constraints(
     Device* device, const OperandParams& input_a, const OperandParams& input_b, const OperandParams& output) {
     // get_op_trace is a lambda that prepares input and output tensors, capturing graph trace of the op without
     // inputs allocation.
@@ -69,9 +69,8 @@ std::tuple<bool, size_t, size_t, size_t> binary_op_constraints(
         return extract_data_from_trace(op_trace, interleaved_storage_cores);
     } catch (const std::exception& e) {
         tt::log_debug(tt::LogOp, "compiler_interface - error: {}", e.what());
+        return QueryResponse{ExecutionStatus::Error, {0, 0, 0}, e.what()};
     }
-
-    return std::make_tuple(false, 0, 0, 0);
 }
 
 }  // namespace ttnn::compiler_interface

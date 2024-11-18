@@ -18,7 +18,7 @@
 
 namespace ttnn::compiler_interface {
 
-std::tuple<bool, size_t, size_t, size_t> matumul_op_constraints(
+QueryResponse matumul_op_constraints(
     Device* device,
     const OperandParams& input_a,
     const OperandParams& input_b,
@@ -85,9 +85,8 @@ std::tuple<bool, size_t, size_t, size_t> matumul_op_constraints(
         return extract_data_from_trace(op_trace, interleaved_storage_cores);
     } catch (const std::exception& e) {
         tt::log_debug(tt::LogOp, "compiler_interface - error: {}", e.what());
+        return QueryResponse{ExecutionStatus::Error, {0, 0, 0}, e.what()};
     }
-
-    return std::make_tuple(false, 0, 0, 0);
 }
 
 }  // namespace ttnn::compiler_interface
