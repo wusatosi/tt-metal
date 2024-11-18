@@ -4,11 +4,11 @@
 
 #pragma once
 
-#include <cstddef>
 #include <optional>
+#include <string>
 
-#include "ttnn/cpp/ttnn/tensor/enum_types.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "third_party/json/json.hpp"
+#include "ttnn/graph/graph_trace_utils.hpp"
 
 namespace ttnn::compiler_interface {
 
@@ -25,9 +25,6 @@ struct QueryResponse {
     ResourceUsage resource_usage;
     std::optional<std::string> error_message;
 };
-
-using OperandParams =
-    std::tuple<ttnn::SimpleShape, tt::tt_metal::DataType, tt::tt_metal::Layout, tt::tt_metal::MemoryConfig>;
 
 QueryResponse extract_data_from_trace(const nlohmann::json &trace, size_t interleaved_storage_cores) {
     size_t cb_peak_size_per_core = graph::extract_circular_buffers_peak_size_per_core(trace);

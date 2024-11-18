@@ -10,32 +10,28 @@
 #include "third_party/json/json.hpp"
 #include "tt_metal/common/logger.hpp"
 #include "ttnn/compiler_interface/compiler_interface.hpp"
+#include "ttnn/cpp/ttnn/tensor/tensor.hpp"
 #include "ttnn/graph/graph_processor.hpp"
 #include "ttnn/graph/graph_trace_utils.hpp"
 
 namespace ttnn::compiler_interface {
 
 template <auto UnaryFunction>
-QueryResponse unary_op_constraints(Device* device, const OperandParams& input, const OperandParams& output) {
+QueryResponse unary_op_constraints(Device* device, const TensorSpec& input, const TensorSpec& output) {
     // get_op_trace is a lambda that prepares input and output tensors, capturing graph trace of the op without
     // inputs allocation.
-    auto get_op_trace = [](Device* device, const OperandParams& input, const OperandParams& output) {
+    auto get_op_trace = [](Device* device, const TensorSpec& input, const TensorSpec& output) {
         nlohmann::json op_trace;
 
         // outer graph capture is used to avoid capturing and dispatching of dummy input tensor(s) creation
         {
             ttnn::graph::GraphProcessor::begin_graph_capture(ttnn::graph::GraphProcessor::RunMode::NO_DISPATCH);
-            const auto input_tensor = create_device_tensor(
-                std::get<ttnn::SimpleShape>(input),
-                std::get<tt::tt_metal::DataType>(input),
-                std::get<tt::tt_metal::Layout>(input),
-                device,
-                std::get<tt::tt_metal::MemoryConfig>(input));
+            const auto input_tensor = create_device_tensor(input.first, input.second, device);
 
             // output tensor is created in the inner graph capture to capture its allocation
             {
                 ttnn::graph::GraphProcessor::begin_graph_capture(ttnn::graph::GraphProcessor::RunMode::NO_DISPATCH);
-                auto output_tensor = UnaryFunction(input_tensor, std::get<tt::tt_metal::MemoryConfig>(output));
+                auto output_tensor = UnaryFunction(input_tensor, output.second.get_memory_config());
                 // close inner graph capture, before output buffer is deallocated
                 op_trace = ttnn::graph::GraphProcessor::end_graph_capture();
             }

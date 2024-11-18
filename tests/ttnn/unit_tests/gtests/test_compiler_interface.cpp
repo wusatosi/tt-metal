@@ -88,10 +88,14 @@ TEST_P(EltwiseUnaryOpInterfaceTestFixture, Unary) {
     {
         tt::Device *device = &getDevice();
 
-        const auto &l1_input = std::make_tuple(input.shape, input.data_type, input.layout, input.memory_config);
-        const auto &l1_output = std::make_tuple(input.shape, input.data_type, input.layout, input.memory_config);
+        const auto &l1_input_spec = std::make_pair(
+            input.shape,
+            tt::tt_metal::TensorLayout(input.data_type, tt::tt_metal::PageConfig(input.layout), input.memory_config));
+        const auto &l1_output_spec = std::make_pair(
+            input.shape,
+            tt::tt_metal::TensorLayout(input.data_type, tt::tt_metal::PageConfig(input.layout), input.memory_config));
 
-        auto constraint = compiler_interface::unary_op_constraints<ttnn::relu>(device, l1_input, l1_output);
+        auto constraint = compiler_interface::unary_op_constraints<ttnn::relu>(device, l1_input_spec, l1_output_spec);
         // auto constraint = compiler_interface::softmax_op_constraints(
         //     device, l1_input, 1, l1_output);  // TODO(mbezulj): create softmax tests
         // auto constraint = compiler_interface::binary_op_constraints<ttnn::add>(

@@ -17,50 +17,38 @@ namespace ttnn::compiler_interface {
 
 template <auto BinaryFunction>
 QueryResponse binary_op_constraints(
-    Device* device, const OperandParams& input_a, const OperandParams& input_b, const OperandParams& output) {
+    Device* device, const TensorSpec& input_a, const TensorSpec& input_b, const TensorSpec& output) {
     // get_op_trace is a lambda that prepares input and output tensors, capturing graph trace of the op without
     // inputs allocation.
-    auto get_op_trace =
-        [](Device* device, const OperandParams& input_a, const OperandParams& input_b, const OperandParams& output) {
-            nlohmann::json op_trace;
+    auto get_op_trace = [](Device* device,
+                           const TensorSpec& input_a,
+                           const TensorSpec& input_b,
+                           const TensorSpec& output) {
+        nlohmann::json op_trace;
 
-            // outer graph capture is used to avoid capturing and dispatching of dummy input tensor(s) creation
+        // outer graph capture is used to avoid capturing and dispatching of dummy input tensor(s) creation
+        {
+            ttnn::graph::GraphProcessor::begin_graph_capture(ttnn::graph::GraphProcessor::RunMode::NO_DISPATCH);
+            const auto input_tensor_a = create_device_tensor(input_a.first, input_b.second, device);
+            const auto input_tensor_b = create_device_tensor(input_a.first, input_b.second, device);
+
+            // output tensor is created in the inner graph capture to capture its allocation
             {
                 ttnn::graph::GraphProcessor::begin_graph_capture(ttnn::graph::GraphProcessor::RunMode::NO_DISPATCH);
-                const auto input_tensor_a = create_device_tensor(
-                    std::get<ttnn::SimpleShape>(input_a),
-                    std::get<tt::tt_metal::DataType>(input_a),
-                    std::get<tt::tt_metal::Layout>(input_a),
-                    device,
-                    std::get<tt::tt_metal::MemoryConfig>(input_a));
-
-                const auto input_tensor_b = create_device_tensor(
-                    std::get<ttnn::SimpleShape>(input_b),
-                    std::get<tt::tt_metal::DataType>(input_b),
-                    std::get<tt::tt_metal::Layout>(input_b),
-                    device,
-                    std::get<tt::tt_metal::MemoryConfig>(input_b));
-
-                // output tensor is created in the inner graph capture to capture its allocation
-                {
-                    ttnn::graph::GraphProcessor::begin_graph_capture(ttnn::graph::GraphProcessor::RunMode::NO_DISPATCH);
-                    auto output_tensor = BinaryFunction(
-                        input_tensor_a,
-                        input_tensor_b,
-                        std::get<tt::tt_metal::DataType>(output),
-                        std::get<tt::tt_metal::MemoryConfig>(output));
-                    // close inner graph capture, before output buffer is deallocated
-                    op_trace = ttnn::graph::GraphProcessor::end_graph_capture();
-                }
-                // close outer graph capture
-                ttnn::graph::GraphProcessor::end_graph_capture();
+                auto output_tensor = BinaryFunction(
+                    input_tensor_a, input_tensor_b, output.second.get_data_type(), output.second.get_memory_config());
+                // close inner graph capture, before output buffer is deallocated
+                op_trace = ttnn::graph::GraphProcessor::end_graph_capture();
             }
+            // close outer graph capture
+            ttnn::graph::GraphProcessor::end_graph_capture();
+        }
 
-            // TODO(mbezulj) remove this debug print
-            std::cout << graph::to_graphviz(op_trace) << std::endl;
+        // TODO(mbezulj) remove this debug print
+        std::cout << graph::to_graphviz(op_trace) << std::endl;
 
-            return op_trace;
-        };
+        return op_trace;
+    };
 
     try {
         auto op_trace = get_op_trace(device, input_a, input_b, output);

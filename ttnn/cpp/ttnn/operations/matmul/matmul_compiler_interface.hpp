@@ -20,18 +20,18 @@ namespace ttnn::compiler_interface {
 
 QueryResponse matumul_op_constraints(
     Device* device,
-    const OperandParams& input_a,
-    const OperandParams& input_b,
-    const OperandParams& output,
+    const TensorSpec& input_a,
+    const TensorSpec& input_b,
+    const TensorSpec& output,
     bool transpose_a = false,
     bool transpose_b = false,
     const std::optional<ttnn::operations::matmul::MatmulProgramConfig>& program_config = std::nullopt) {
     // get_op_trace is a lambda that prepares input and output tensors, capturing graph trace of the op without
     // inputs allocation.
     auto get_op_trace = [](Device* device,
-                           const OperandParams& input_a,
-                           const OperandParams& input_b,
-                           const OperandParams& output,
+                           const TensorSpec& input_a,
+                           const TensorSpec& input_b,
+                           const TensorSpec& output,
                            bool transpose_a,
                            bool transpose_b,
                            const std::optional<ttnn::operations::matmul::MatmulProgramConfig>& program_config) {
@@ -40,19 +40,8 @@ QueryResponse matumul_op_constraints(
         // outer graph capture is used to avoid capturing and dispatching of dummy input tensor(s) creation
         {
             ttnn::graph::GraphProcessor::begin_graph_capture(ttnn::graph::GraphProcessor::RunMode::NO_DISPATCH);
-            const auto input_tensor_a = create_device_tensor(
-                std::get<ttnn::SimpleShape>(input_a),
-                std::get<tt::tt_metal::DataType>(input_a),
-                std::get<tt::tt_metal::Layout>(input_a),
-                device,
-                std::get<tt::tt_metal::MemoryConfig>(input_a));
-
-            const auto input_tensor_b = create_device_tensor(
-                std::get<ttnn::SimpleShape>(input_b),
-                std::get<tt::tt_metal::DataType>(input_b),
-                std::get<tt::tt_metal::Layout>(input_b),
-                device,
-                std::get<tt::tt_metal::MemoryConfig>(input_b));
+            const auto input_tensor_a = create_device_tensor(input_a.first, input_b.second, device);
+            const auto input_tensor_b = create_device_tensor(input_a.first, input_b.second, device);
 
             // output tensor is created in the inner graph capture to capture its allocation
             {
@@ -62,8 +51,8 @@ QueryResponse matumul_op_constraints(
                     input_tensor_b,
                     transpose_a,
                     transpose_b,
-                    std::get<tt::tt_metal::MemoryConfig>(output),
-                    std::get<tt::tt_metal::DataType>(output),
+                    output.second.get_memory_config(),
+                    output.second.get_data_type(),
                     program_config);
                 // close inner graph capture, before output buffer is deallocated
                 op_trace = ttnn::graph::GraphProcessor::end_graph_capture();

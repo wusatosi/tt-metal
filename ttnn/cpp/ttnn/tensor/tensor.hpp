@@ -15,22 +15,21 @@
 #include "common/bfloat8.hpp"
 #include "common/test_tiles.hpp"
 #include "common/tt_backend_api_types.hpp"
-#include "ttnn/common/constants.hpp"
-#include "ttnn/tensor/types.hpp"
-#include "ttnn/tensor/layout/tensor_layout.hpp"
 #include "tt_metal/impl/buffers/buffer.hpp"
-#include "tt_metal/impl/tile/tile.hpp"
 #include "tt_metal/impl/device/device.hpp"
+#include "tt_metal/impl/tile/tile.hpp"
 #include "tt_metal/tt_stl/reflection.hpp"
+#include "ttnn/common/constants.hpp"
+#include "ttnn/tensor/layout/tensor_layout.hpp"
+#include "ttnn/tensor/types.hpp"
 #include "types.hpp"
 
 namespace tt {
 
 namespace tt_metal {
 
-
 namespace distributed {
-    class MeshDevice;
+class MeshDevice;
 }
 struct Tensor {
     struct TensorAttributes : public std::enable_shared_from_this<TensorAttributes> {
@@ -48,10 +47,18 @@ struct Tensor {
         bool deallocated = false;      // Set to true if device side storage was deallocated
         bool dynamic_storage = false;  // Storage type can change, depending on op behaviour
         bool track_ref_count = false;
-        TensorAttributes(const Storage storage, const ttnn::Shape shape, DataType dtype, Layout layout, Tile tile = std::array<uint32_t, 2>{32, 32}) :
+        TensorAttributes(
+            const Storage storage,
+            const ttnn::Shape shape,
+            DataType dtype,
+            Layout layout,
+            Tile tile = std::array<uint32_t, 2>{32, 32}) :
             storage(storage), shape(shape), dtype(dtype), layout(layout), tile(tile) {}
         TensorAttributes() :
-            shape(std::array<uint32_t, 4>{0xff, 0xff, 0xff, 0xff}), dtype(DataType::INVALID), layout(Layout::INVALID), tile(std::array<uint32_t, 2>{32, 32}) {}
+            shape(std::array<uint32_t, 4>{0xff, 0xff, 0xff, 0xff}),
+            dtype(DataType::INVALID),
+            layout(Layout::INVALID),
+            tile(std::array<uint32_t, 2>{32, 32}) {}
         ~TensorAttributes() = default;
 
         // Use these functions to manage the main_thread_ref_count for a tensor attr instance.
@@ -92,13 +99,23 @@ struct Tensor {
         workers(std::vector<Device *>{}),
         deallocate_through_destructor(false) {}
 
-    Tensor(const Storage storage, const ttnn::Shape shape, DataType dtype, Layout layout, const std::optional<Tile>& tile = std::nullopt);
-    Tensor(const Storage storage, const ttnn::SimpleShape& shape, DataType dtype, Layout layout, const std::optional<Tile>& tile = std::nullopt);
+    Tensor(
+        const Storage storage,
+        const ttnn::Shape shape,
+        DataType dtype,
+        Layout layout,
+        const std::optional<Tile> &tile = std::nullopt);
+    Tensor(
+        const Storage storage,
+        const ttnn::SimpleShape &shape,
+        DataType dtype,
+        Layout layout,
+        const std::optional<Tile> &tile = std::nullopt);
 
     // Constructor to initialize unpopulated tensor with workers and storage specified. Use this when creating tensor
     // handles in async mode.
     Tensor(
-        const std::vector<Device *>& workers,
+        const std::vector<Device *> &workers,
         uint32_t num_buffers = 0,
         std::optional<DistributedTensorConfig> distributed_tensor_config = std::nullopt);
 
@@ -155,7 +172,10 @@ struct Tensor {
 
     Tensor to(Layout target_layout, distributed::MeshDevice *mesh_device) const;
 
-    Tensor pad(const tt::tt_metal::LegacyShape &output_tensor_shape, const ttnn::SimpleShape &input_tensor_start, float pad_value) const;
+    Tensor pad(
+        const tt::tt_metal::LegacyShape &output_tensor_shape,
+        const ttnn::SimpleShape &input_tensor_start,
+        float pad_value) const;
 
     Tensor cpu(bool blocking = true, uint8_t cq_id = ttnn::DefaultQueueId) const;
 
@@ -275,7 +295,12 @@ struct Tensor {
 
     static constexpr auto attribute_names = std::forward_as_tuple("storage", "shape", "dtype", "layout", "tile");
     const auto attribute_values() const {
-        return std::forward_as_tuple(this->tensor_attributes->storage, this->tensor_attributes->shape, this->tensor_attributes->dtype, this->tensor_attributes->layout, this->tensor_attributes->tile);
+        return std::forward_as_tuple(
+            this->tensor_attributes->storage,
+            this->tensor_attributes->shape,
+            this->tensor_attributes->dtype,
+            this->tensor_attributes->layout,
+            this->tensor_attributes->tile);
     }
 
     std::vector<uint32_t> host_page_ordering();
@@ -297,29 +322,25 @@ struct Tensor {
     }
 };
 
-Tensor create_device_tensor(
-    const ttnn::SimpleShape &logical_shape,
-    const TensorLayout& layout,
-    Device *device);
+Tensor create_device_tensor(const ttnn::SimpleShape &logical_shape, const TensorLayout &layout, Device *device);
 
-[[deprecated]]
-Tensor create_device_tensor(
+[[deprecated]] Tensor create_device_tensor(
     const ttnn::SimpleShape &shape,
     DataType dtype,
     Layout layout,
     Device *device,
     const MemoryConfig &memory_config = {.memory_layout = tt::tt_metal::TensorMemoryLayout::INTERLEAVED},
-    const std::optional<Tile>& tile = std::nullopt);
+    const std::optional<Tile> &tile = std::nullopt);
 
 // TODO: Remove once ALL ops switch over to return ttnn::SimpleShape in compute_output_shapes
-[[deprecated("Use create_device_tensor(const ttnn::SimpleShape&, const TensorLayout&, Device*) instead")]]
-Tensor create_device_tensor(
+[[deprecated("Use create_device_tensor(const ttnn::SimpleShape&, const TensorLayout&, Device*) instead")]] Tensor
+create_device_tensor(
     const ttnn::Shape &shape,
     DataType dtype,
     Layout layout,
     Device *device,
     const MemoryConfig &memory_config = {.memory_layout = tt::tt_metal::TensorMemoryLayout::INTERLEAVED},
-    const std::optional<Tile>& tile = std::nullopt);
+    const std::optional<Tile> &tile = std::nullopt);
 
 // template<typename Buffer>
 // void *get_host_buffer(const Tensor &tensor);
@@ -347,14 +368,14 @@ Tensor allocate_tensor_on_device(
     Layout layout,
     Device *device,
     const MemoryConfig &memory_config = {.memory_layout = tt::tt_metal::TensorMemoryLayout::INTERLEAVED},
-    const std::optional<Tile>& tile = std::nullopt);
+    const std::optional<Tile> &tile = std::nullopt);
 Tensor allocate_tensor_on_device(
     const ttnn::Shape &shape,
     DataType data_type,
     Layout layout,
     distributed::MeshDevice *mesh_device,
     const MemoryConfig &memory_config = {.memory_layout = tt::tt_metal::TensorMemoryLayout::INTERLEAVED},
-    const std::optional<Tile>& tile = std::nullopt);
+    const std::optional<Tile> &tile = std::nullopt);
 void write_tensor(Tensor host_tensor, Tensor device_tensor, uint8_t cq_id = ttnn::DefaultQueueId);
 
 Tensor set_tensor_id(const Tensor &tensor);
