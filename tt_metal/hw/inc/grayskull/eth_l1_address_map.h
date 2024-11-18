@@ -37,6 +37,8 @@ struct address_map {
   static constexpr std::int32_t MAX_L1_LOADING_SIZE = 1;
 
   static constexpr std::int32_t ERISC_L1_UNRESERVED_SIZE = 0;
+  static constexpr std::int32_t ERISC_MEM_BANK_TO_NOC_SCRATCH = 0;
+  static constexpr std::int32_t ERISC_MEM_BANK_TO_NOC_SIZE = 0;
   static constexpr std::int32_t ERISC_L1_TUNNEL_BUFFER_SIZE = 0;
 
   static constexpr std::uint32_t RETRAIN_COUNT_ADDR = 0x1EDC;
