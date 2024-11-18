@@ -22,7 +22,6 @@
 #include "ttnn/graph/graph_operation_queries.hpp"
 #include "ttnn/graph/graph_processor.hpp"
 #include "ttnn/graph/graph_trace_utils.hpp"
-
 #include "ttnn/operations/core/core.hpp"
 #include "ttnn/operations/creation.hpp"
 #include "ttnn/operations/eltwise/binary/binary.hpp"
@@ -34,7 +33,6 @@
 #include "ttnn/operations/matmul/matmul_compiler_interface.hpp"
 #include "ttnn/operations/normalization/softmax/softmax.hpp"
 #include "ttnn/operations/normalization/softmax/softmax_compiler_interface.hpp"
-
 #include "ttnn/tensor/tensor.hpp"
 #include "ttnn/tensor/tensor_utils.hpp"
 #include "ttnn/tensor/types.hpp"
@@ -90,13 +88,18 @@ TEST_P(EltwiseUnaryOpInterfaceTestFixture, Unary) {
 
     // Run the test
     {
+        tt::Device *device = &getDevice();
+
         const auto &l1_input = std::make_tuple(input.shape, input.data_type, input.layout, input.memory_config);
         const auto &l1_output = std::make_tuple(input.shape, input.data_type, input.layout, input.memory_config);
 
-        auto constraint = compiler_interface::unary_op_constraints<ttnn::relu>(l1_input, l1_output);
-        // auto constraint = compiler_interface::softmax_op_constraints(l1_input, 1, l1_output); // TODO(mbezulj): create softmax tests
-        // auto constraint = compiler_interface::binary_op_constraints<ttnn::add>(l1_input, l1_input, l1_output); // TODO(mbezulj): create binary tests
-        // auto constraint = compiler_interface::matumul_op_constraints(l1_input, l1_input, l1_output); // TODO(mbezulj): create matmul tests
+        auto constraint = compiler_interface::unary_op_constraints<ttnn::relu>(device, l1_input, l1_output);
+        // auto constraint = compiler_interface::softmax_op_constraints(
+        //     device, l1_input, 1, l1_output);  // TODO(mbezulj): create softmax tests
+        // auto constraint = compiler_interface::binary_op_constraints<ttnn::add>(
+        //     device, l1_input, l1_input, l1_output);  // TODO(mbezulj): create binary tests
+        // auto constraint = compiler_interface::matumul_op_constraints(
+        //     device, l1_input, l1_input, l1_output);  // TODO(mbezulj): create matmul tests
 
         bool constraint_valid = std::get<0>(constraint);
         size_t peak_cbs_per_core = std::get<1>(constraint);

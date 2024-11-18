@@ -10,17 +10,17 @@
 #include "third_party/json/json.hpp"
 #include "tt_metal/common/logger.hpp"
 #include "ttnn/compiler_interface/compiler_interface.hpp"
-#include "ttnn/compiler_interface/singleton_device_context.hpp"
 #include "ttnn/graph/graph_processor.hpp"
 #include "ttnn/graph/graph_trace_utils.hpp"
 
 namespace ttnn::compiler_interface {
 
 template <auto UnaryFunction>
-std::tuple<bool, size_t, size_t, size_t> unary_op_constraints(const OperandParams& input, const OperandParams& output) {
+std::tuple<bool, size_t, size_t, size_t> unary_op_constraints(
+    Device* device, const OperandParams& input, const OperandParams& output) {
     // get_op_trace is a lambda that prepares input and output tensors, capturing graph trace of the op without
     // inputs allocation.
-    auto get_op_trace = [](const OperandParams& input, const OperandParams& output) {
+    auto get_op_trace = [](Device* device, const OperandParams& input, const OperandParams& output) {
         nlohmann::json op_trace;
 
         // outer graph capture is used to avoid capturing and dispatching of dummy input tensor(s) creation
@@ -30,7 +30,7 @@ std::tuple<bool, size_t, size_t, size_t> unary_op_constraints(const OperandParam
                 std::get<ttnn::SimpleShape>(input),
                 std::get<tt::tt_metal::DataType>(input),
                 std::get<tt::tt_metal::Layout>(input),
-                SingletonDeviceContext::get_instance().get_device(),
+                device,
                 std::get<tt::tt_metal::MemoryConfig>(input));
 
             // output tensor is created in the inner graph capture to capture its allocation
@@ -51,8 +51,10 @@ std::tuple<bool, size_t, size_t, size_t> unary_op_constraints(const OperandParam
     };
 
     try {
-        auto op_trace = get_op_trace(input, output);
-        return extract_data_from_trace(op_trace);
+        auto op_trace = get_op_trace(device, input, output);
+        auto interleaved_storage_cores =
+            device->compute_with_storage_grid_size().x * device->compute_with_storage_grid_size().y;
+        return extract_data_from_trace(op_trace, interleaved_storage_cores);
     } catch (const std::exception& e) {
         tt::log_debug(tt::LogOp, "compiler_interface - error: {}", e.what());
     }

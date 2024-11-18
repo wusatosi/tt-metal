@@ -17,10 +17,10 @@
 namespace ttnn::compiler_interface {
 
 std::tuple<bool, size_t, size_t, size_t> softmax_op_constraints(
-    const OperandParams& input, const int dim_arg, const OperandParams& output) {
+    Device* device, const OperandParams& input, const int dim_arg, const OperandParams& output) {
     // get_op_trace is a lambda that prepares input and output tensors, capturing graph trace of the op without
     // inputs allocation.
-    auto get_op_trace = [](const OperandParams& input, const int dim_arg, const OperandParams& output) {
+    auto get_op_trace = [](Device* device, const OperandParams& input, const int dim_arg, const OperandParams& output) {
         nlohmann::json op_trace;
 
         // outer graph capture is used to avoid capturing and dispatching of dummy input tensor(s) creation
@@ -30,7 +30,7 @@ std::tuple<bool, size_t, size_t, size_t> softmax_op_constraints(
                 std::get<ttnn::SimpleShape>(input),
                 std::get<tt::tt_metal::DataType>(input),
                 std::get<tt::tt_metal::Layout>(input),
-                SingletonDeviceContext::get_instance().get_device(),
+                device,
                 std::get<tt::tt_metal::MemoryConfig>(input));
 
             // output tensor is created in the inner graph capture to capture its allocation
@@ -51,8 +51,10 @@ std::tuple<bool, size_t, size_t, size_t> softmax_op_constraints(
     };
 
     try {
-        auto op_trace = get_op_trace(input, dim_arg, output);
-        return extract_data_from_trace(op_trace);
+        auto op_trace = get_op_trace(device, input, dim_arg, output);
+        auto interleaved_storage_cores =
+            device->compute_with_storage_grid_size().x * device->compute_with_storage_grid_size().y;
+        return extract_data_from_trace(op_trace, interleaved_storage_cores);
     } catch (const std::exception& e) {
         tt::log_debug(tt::LogOp, "compiler_interface - error: {}", e.what());
     }
