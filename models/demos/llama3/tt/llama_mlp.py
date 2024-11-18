@@ -106,6 +106,7 @@ class TtLlamaMLP(LightweightModule):
 
         ttnn.deallocate(x)
 
+        # -->
         w1_out = tt_all_reduce(
             w1_out,
             self.mesh_device,
@@ -140,6 +141,60 @@ class TtLlamaMLP(LightweightModule):
             input_tensor_a_activation=ttnn.UnaryOpType.SILU,
             dtype=ttnn.bfloat8_b,
         )
+
+        # if TG:
+        #     input_mem_cfg = w1_out.memory_config()
+        #     w1_out = ttnn.reduce_scatter(
+        #         w1_out,
+        #         scatter_dim=3,
+        #         math_op=ttnn.ReduceType.Sum,
+        #         num_links=self.args.num_reduce_scatter_links,
+        #         cluster_axis=1,
+        #         mesh_device=self.mesh_device,
+        #         topology=ttnn.Topology.Linear,
+        #         memory_config=self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else None,
+        #         # memory_config=self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else None,
+        #     )
+        #     w3_out = ttnn.reduce_scatter(
+        #         w3_out,
+        #         scatter_dim=3,
+        #         math_op=ttnn.ReduceType.Sum,
+        #         num_links=1,
+        #         cluster_axis=1,
+        #         mesh_device=self.mesh_device,
+        #         topology=ttnn.Topology.Linear,
+        #         memory_config=self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else None,
+        #     )
+
+        #     # w1_out = ttnn.to_memory_config(w1_out, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat16)
+        #     # w1_out = ttnn.to_memory_config(w1_out, self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG, dtype=ttnn.bfloat16)
+
+        #     # w3_out = ttnn.to_memory_config(w3_out, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat16)
+        #     # w3_out = ttnn.to_memory_config(w3_out, self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG, dtype=ttnn.bfloat16)
+
+        # w2_in = ttnn.mul(
+        #     w1_out,
+        #     w3_out,
+        #     memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
+        #     input_tensor_a_activation=ttnn.UnaryOpType.SILU,
+        #     dtype=ttnn.bfloat16,
+        # )
+
+        # if TG:
+        #     # w2_in = ttnn.to_memory_config(w2_in, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b)
+        #     # w2_in = ttnn.to_memory_config(w2_in, self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG, dtype=ttnn.bfloat8_b)
+
+        #     w2_in = ttnn.all_gather(
+        #         w2_in,
+        #         3,
+        #         num_links=2,
+        #         cluster_axis=1,
+        #         mesh_device=self.mesh_device,
+        #         topology=ttnn.Topology.Linear,
+        #         memory_config=input_mem_cfg,
+        #     )
+        #     if mode == "decode":
+        #         w2_in = ttnn.to_memory_config(w2_in, ttnn.L1_MEMORY_CONFIG)
 
         # Tg is already correctly sharded within all_reduce
         if mode == "decode" and not TG:

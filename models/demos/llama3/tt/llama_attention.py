@@ -597,24 +597,25 @@ class TtLlamaAttention(LightweightModule):
             attn_output_11SH = ttnn.reshape(attn_output_11SH, [1, seq_len // 1024, 1024, -1])
 
         # Non fused All Gather Matmul
-        if self.use_fused_all_gather_matmul:
-            attn_output_11SH = tt_all_gather(
-                attn_output_11SH,
-                self.mesh_device,
-                dim=3,
-                cluster_axis=1,
-                num_links=2,
-                memory_config=ttnn.DRAM_MEMORY_CONFIG,
-                sharded=False,
-                dtype=self.ccl_dtype,
-            )
-            # attn_output_11SH = ttnn.all_gather(
+        if self.use_fused_all_gather_matmul:  # is true for Ring topology
+            # attn_output_11SH = tt_all_gather(
             #     attn_output_11SH,
+            #     self.mesh_device,
             #     dim=3,
-            #     num_links=1,
-            #     topology=self.ccl_topology,
+            #     cluster_axis=1,
+            #     num_links=2,
             #     memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            #     sharded=False,
+            #     dtype=self.ccl_dtype,
+            #     topology=self.ccl_topology,
             # )
+            attn_output_11SH = ttnn.all_gather(
+                attn_output_11SH,
+                dim=3,
+                num_links=1,
+                topology=self.ccl_topology,
+                memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            )
 
         output_11SH = ttnn.linear(
             attn_output_11SH,
