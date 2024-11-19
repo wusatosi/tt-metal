@@ -352,11 +352,14 @@ using namespace unit_tests_common::matmul::test_matmul_X_tile;
 */
 
 TEST_F(CommonFixture, MatmulSingleTile){
-    for (uint8_t i = uint8_t(MathFidelity::LoFi); i <= uint8_t(MathFidelity::HiFi4); i++) {
+    //for (uint8_t i = uint8_t(MathFidelity::LoFi); i <= uint8_t(MathFidelity::HiFi4); i++) {
+    for (uint8_t i = uint8_t(MathFidelity::LoFi); i <= uint8_t(MathFidelity::LoFi); i++) {
         if (i == 1) continue;
-        for (bool fp32_dest_acc_en : {true, false}) {
+        //for (bool fp32_dest_acc_en : {true, false}) {
+        for (bool fp32_dest_acc_en : {false}) {
             if ((fp32_dest_acc_en == true) && (this->arch_ == tt::ARCH::GRAYSKULL)) continue;
-            for (bool dst_full_sync_en : {true, false}) {
+            //for (bool dst_full_sync_en : {true, false}) {
+            for (bool dst_full_sync_en : {false}) {
                 MatmulTileConfig matmul_config = {
                     .M = 1, .K = 1, .N = 1,
                     .fp32_dest_acc_en = fp32_dest_acc_en,

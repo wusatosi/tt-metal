@@ -6,7 +6,7 @@
 
 #include "compute_kernel_api/tile_move_copy.h"
 #include "compute_kernel_api/matmul.h"
-
+#include "debug/dprint_tensix.h"
 namespace NAMESPACE {
 void MAIN {
 
@@ -21,6 +21,7 @@ void MAIN {
     mm_init();
 
     acquire_dst();
+    dprint_tensix_dest_reg(0);
     for(uint32_t b=0;b<block_cnt;++b)
     {
         cb_wait_front(tt::CB::c_in0, in0_block_tile_cnt);
