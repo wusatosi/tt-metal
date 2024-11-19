@@ -16,6 +16,7 @@
 #include "debug/dprint.h"
 #include "tt_metal/impl/dispatch/cq_commands.hpp"
 #include "tt_metal/impl/dispatch/kernels/cq_common.hpp"
+#include "debug/ring_buffer.h"
 
 // dispatch_s has a customized command buffer allocation for NOC 1.
 // Cmd Buf 0 is used for regular writes.
@@ -146,8 +147,11 @@ void cb_release_pages_dispatch_s(uint32_t n) {
     dispatch_s_noc_semaphore_inc(get_noc_addr_helper(noc_xy, get_semaphore<fd_core_type>(sem_id)), n, my_noc_index);
 }
 
+uint8_t go_count;
+
 FORCE_INLINE
 void process_go_signal_mcast_cmd() {
+    ++go_count;
     volatile CQDispatchCmd tt_l1_ptr *cmd = (volatile CQDispatchCmd tt_l1_ptr *)cmd_ptr;
     // Get semaphore that will be update by dispatch_d, signalling that it's safe to send a go signal
     volatile tt_l1_ptr uint32_t* sync_sem_addr =
@@ -158,6 +162,7 @@ void process_go_signal_mcast_cmd() {
     // can guarantee that copying the go signal does not corrupt any other command fields, which is true (see CQDispatchGoSignalMcastCmd).
     volatile uint32_t tt_l1_ptr* aligned_go_signal_storage = (volatile uint32_t tt_l1_ptr*)cmd_ptr;
     *aligned_go_signal_storage = cmd->mcast.go_signal;
+    *aligned_go_signal_storage = (*aligned_go_signal_storage & ~0xff) | go_count;
 
     // Wait for notification from dispatch_d, signalling that it's safe to send the go signal
     while (wrap_ge(num_mcasts_sent, *sync_sem_addr)) {
@@ -173,6 +178,8 @@ void process_go_signal_mcast_cmd() {
         noc_async_write_multicast_one_packet((uint32_t)(aligned_go_signal_storage), dst, sizeof(uint32_t), num_worker_cores_to_mcast);
     }
     if (cmd->mcast.mcast_flag & GoSignalMcastSettings::SEND_UNICAST) {
+        WATCHER_RING_BUFFER_PUSH(unicast_go_signal_addr);
+
         // If dispatch_s needs to unicast the go signal to specific cores, num_unicast_cores
         // must be set using set_go_signal_unicast_only_cores
         ASSERT(num_unicast_cores > 0);
@@ -180,6 +187,9 @@ void process_go_signal_mcast_cmd() {
             uint64_t dst = get_noc_addr_helper(unicast_only_cores[core_idx], unicast_go_signal_addr);
             noc_async_write_one_packet((uint32_t)(aligned_go_signal_storage), dst, sizeof(uint32_t));
         }
+    }
+    if (cmd->mcast.mcast_flag & GoSignalMcastSettings::SEND_UNICAST)  {
+        WATCHER_RING_BUFFER_PUSH(go_count);
     }
     update_worker_completion_count_on_dispatch_d();
     cmd_ptr += sizeof(CQDispatchCmd);

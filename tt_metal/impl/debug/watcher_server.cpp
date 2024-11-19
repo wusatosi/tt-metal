@@ -208,6 +208,9 @@ static void watcher_loop(int sleep_usecs) {
 }  // namespace watcher
 
 void watcher_init(Device *device) {
+   // if (device->id() >= 4) {
+   //     return;
+  //  }
     std::vector<uint32_t> watcher_init_val;
     watcher_init_val.resize(sizeof(watcher_msg_t) / sizeof(uint32_t), 0);
     watcher_msg_t *data = reinterpret_cast<watcher_msg_t *>(&(watcher_init_val[0]));
@@ -391,6 +394,11 @@ void watcher_attach(Device *device) {
         std::thread watcher_thread = std::thread(&watcher::watcher_loop, sleep_usecs);
         watcher_thread.detach();
     }
+
+ //   if (device->id() >= 4) {
+
+//        return;
+  //  }
 
     if (watcher::logfile != nullptr) {
         fprintf(watcher::logfile, "At %.3lfs attach device %d\n", watcher::get_elapsed_secs(), device->id());

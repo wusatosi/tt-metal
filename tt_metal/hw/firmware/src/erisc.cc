@@ -10,6 +10,7 @@
 #include "risc_attribs.h"
 #include "tools/profiler/kernel_profiler.hpp"
 #include "debug/watcher_common.h"
+#include "debug/ring_buffer.h"
 
 #if defined(PROFILE_KERNEL)
 namespace kernel_profiler {
@@ -67,6 +68,9 @@ void __attribute__((noinline)) Application(void) {
         // FD: assume that no more host -> remote writes are pending
         uint8_t go_message_signal = mailboxes->go_message.signal;
         if (go_message_signal == RUN_MSG_GO) {
+            WAYPOINT("BGP1");
+            uint8_t go_pad = mailboxes->go_message.pad;
+
             // Only include this iteration in the device profile if the launch message is valid. This is because all workers get a go signal regardless of whether
             // they're running a kernel or not. We don't want to profile "invalid" iterations.
             DeviceZoneScopedMainN("ERISC-FW");
@@ -76,6 +80,19 @@ void __attribute__((noinline)) Application(void) {
             DeviceZoneSetCounter(launch_msg_address->kernel_config.host_assigned_id);
             // Note that a core may get "GO" w/ enable false to keep its launch_msg's in sync
             enum dispatch_core_processor_masks enables = (enum dispatch_core_processor_masks)launch_msg_address->kernel_config.enables;
+
+#if 0
+            {
+                volatile uint32_t *ptr = (volatile uint32_t *)0xffb2010c;
+                ptr[0] = mailboxes->go_message.pad;
+                ptr[1] = enables;
+            }
+            #endif
+            WAYPOINT("BGP2");
+            WATCHER_RING_BUFFER_PUSH(go_pad);
+            WAYPOINT("BGP3");
+            WATCHER_RING_BUFFER_PUSH(enables);
+            WAYPOINT("BGP4");
             if (enables & DISPATCH_CLASS_MASK_ETH_DM0) {
                 WAYPOINT("R");
                 firmware_config_init(mailboxes, ProgrammableCoreType::ACTIVE_ETH, DISPATCH_CLASS_ETH_DM0);
