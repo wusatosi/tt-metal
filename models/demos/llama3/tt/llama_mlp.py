@@ -89,7 +89,7 @@ class TtLlamaMLP(LightweightModule):
             self.w1,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
             core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_1 else None,
-            dtype=ttnn.bfloat8_b,  # Need bf16 for accuracy
+            dtype=ttnn.bfloat8_b,
             program_config=pc_1,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
         )
@@ -99,7 +99,7 @@ class TtLlamaMLP(LightweightModule):
             self.w3,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
             core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_3 else None,
-            dtype=ttnn.bfloat8_b,  # Need bf16 for accuracy
+            dtype=ttnn.bfloat8_b,
             program_config=pc_3,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
         )
@@ -129,12 +129,6 @@ class TtLlamaMLP(LightweightModule):
                 memory_config=self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else None,
             )
 
-            # w1_out = ttnn.to_memory_config(w1_out, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat16)
-            # w1_out = ttnn.to_memory_config(w1_out, self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG, dtype=ttnn.bfloat16)
-
-            # w3_out = ttnn.to_memory_config(w3_out, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat16)
-            # w3_out = ttnn.to_memory_config(w3_out, self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG, dtype=ttnn.bfloat16)
-
         w2_in = ttnn.mul(
             w1_out,
             w3_out,
@@ -144,9 +138,6 @@ class TtLlamaMLP(LightweightModule):
         )
 
         if TG:
-            # w2_in = ttnn.to_memory_config(w2_in, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b)
-            # w2_in = ttnn.to_memory_config(w2_in, self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG, dtype=ttnn.bfloat8_b)
-
             w2_in = ttnn.all_gather(
                 w2_in,
                 3,
