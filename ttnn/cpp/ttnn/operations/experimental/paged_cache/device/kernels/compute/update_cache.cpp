@@ -7,6 +7,7 @@
 #include "compute_kernel_api/common.h"
 #include "compute_kernel_api/pack_untilize.h"
 #include "compute_kernel_api/tilize.h"
+#include "debug/dprint.h"
 
 
 namespace NAMESPACE {
@@ -19,14 +20,19 @@ void MAIN {
     constexpr uint32_t out_cb = get_compile_time_arg_val(5);
     constexpr uint32_t Wt = get_compile_time_arg_val(6);
     constexpr uint32_t num_heads = get_compile_time_arg_val(7);
+    uint32_t core_id = cache_cb==0 ? 0 : 1;
+    DPRINT << "core idx: " << core_id << " cache_cb: " << cache_cb << " in_cb: " << in_cb << " untilized_cache_cb: " << untilized_cache_cb << " untilized_cache2_cb: " << untilized_cache2_cb << " untilized_in_cb: " << untilized_in_cb << " out_cb: " << out_cb << " Wt: " << Wt << " num_heads: " << num_heads << ENDL();
 
     pack_untilize_init<Wt>(in_cb, untilized_in_cb);
 
 
     cb_wait_front(in_cb, Wt);
+    UNPACK(DPRINT << "in_cb data : " << TSLICE(in_cb, 0, SliceRange::h0_w0_32()) << ENDL(););
     cb_reserve_back(untilized_in_cb, Wt);
     pack_untilize_block<Wt>(in_cb, 1, untilized_in_cb);
     cb_push_back(untilized_in_cb, Wt);
+    cb_wait_front(untilized_in_cb, Wt);
+    UNPACK(DPRINT << "untilized_in_cb data : " << TSLICE(untilized_in_cb, 0, SliceRange::h0_w0_32()) << ENDL(););
     cb_pop_front(in_cb, Wt);
 
     reconfig_data_format_srca(in_cb, cache_cb);
@@ -37,6 +43,7 @@ void MAIN {
 
         // Untilize a block from the cache
         cb_wait_front(cache_cb, Wt);
+        UNPACK(DPRINT << "cache_cb data : " << TSLICE(cache_cb, 0, SliceRange::h0_w0_32()) << ENDL(););
         cb_reserve_back(untilized_cache_cb, Wt);
 
         pack_untilize_block<Wt>(cache_cb, 1, untilized_cache_cb);
@@ -44,6 +51,8 @@ void MAIN {
 
 
         cb_push_back(untilized_cache_cb, Wt);
+        cb_wait_front(untilized_cache_cb, Wt);
+        UNPACK(DPRINT << "untilized_cache_cb data : " << TSLICE(untilized_cache_cb, 0, SliceRange::h0_w0_32()) << ENDL());
         cb_pop_front(cache_cb, Wt);
 
         pack_untilize_uninit(untilized_cache_cb);
@@ -56,12 +65,15 @@ void MAIN {
 
         // Wait on writer to update block. Tilize.
         cb_wait_front(untilized_cache2_cb, Wt);
+        UNPACK(DPRINT << "untilized_cache2_cb data : " << TSLICE(untilized_cache2_cb, 0, SliceRange::h0_w0_32()) << ENDL(););
 
         cb_reserve_back(out_cb, Wt);
 
         tilize_block(untilized_cache2_cb, Wt, out_cb);
 
         cb_push_back(out_cb, Wt);
+        cb_wait_front(out_cb, Wt);
+        UNPACK(DPRINT << "out_cb data : " << TSLICE(out_cb, 0, SliceRange::h0_w0_32()) << ENDL(););
         cb_pop_front(untilized_cache2_cb, Wt);
         tilize_uninit_with_dt(untilized_cache2_cb, out_cb);
         reconfig_data_format_srca(untilized_cache2_cb, untilized_cache_cb);
