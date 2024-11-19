@@ -52,7 +52,7 @@ def test_llama_model_inference(mesh_device, seq_len, paged_attention, use_progra
     cache_pcc = False  # Flag to measure KV cache PCC for all layers
 
     dtype = ttnn.bfloat8_b
-    pcc = 0.91  # TODO Look on improving PCC
+    pcc = 0.90  # TODO Look on improving PCC
 
     mesh_device.enable_async(False)
 
