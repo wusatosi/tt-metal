@@ -110,7 +110,7 @@ ParallelConfig determine_parallel_config(
         grid = CoreRangeSet({core_range});
     } else if (shard_layout == TensorMemoryLayout::WIDTH_SHARDED) {
         num_cores_nhw = 1;
-        uint32_t num_cores_c = find_closest_common_largest_divisor(out_c_ntiles, std::ceil((float)input_channels / effective_tile_width), max_num_cores);
+        uint32_t num_cores_c = find_closest_largest_divisor(std::ceil((float)input_channels / effective_tile_width), max_num_cores);
         grid = num_cores_to_corerangeset(num_cores_c, compute_grid_size, true);
     } else {
         TT_THROW("Conv2d supports Height, Block or Width Sharded Layouts but got {}", shard_layout);
@@ -195,6 +195,7 @@ MemoryConfig create_sharded_memory_config_from_parallel_config(
     TT_ASSERT(channels % num_cores_channels == 0, "Channels: {}, num core channels: {}", channels, num_cores_channels);
     uint32_t channel_shard = channels / num_cores_channels;
     auto shard_spec = ShardSpec{parallel_config.grid, {nhw_shard, channel_shard}, shard_orientation};
+    log_debug("Calculated Shard Spec = {}", shard_spec);
     return MemoryConfig{shard_scheme, BufferType::L1, shard_spec};
 }
 
@@ -266,10 +267,14 @@ OptimizedConvBlockConfig determine_per_core_conv_block_config(
     }
     auto grid_size = parallel_config.grid.bounding_box().grid_size();
     uint32_t act_block_h_ntiles = conv_op_parallel_config.per_core_out_matrix_height_ntiles;
-    if (parallel_config.shard_scheme != TensorMemoryLayout::WIDTH_SHARDED && act_block_h_override > 0 ) {
-        log_debug(LogOp, "act_block_h_override is set, but ignored when Width Sharding is used");
-        act_block_h_ntiles = act_block_h_override / constants::TILE_HEIGHT;
+    if(act_block_h_override > 0) {
+        if (parallel_config.shard_scheme == TensorMemoryLayout::WIDTH_SHARDED) {
+            log_info(LogOp, "act_block_h_override is set, but ignored when Width Sharding is used");
+        } else {
+            act_block_h_ntiles = act_block_h_override / constants::TILE_HEIGHT;
+        }
     }
+
     uint32_t act_block_w = parallel_config.shard_scheme == TensorMemoryLayout::HEIGHT_SHARDED
                                ? round_up(padded_in_channels * window_w, 32)
                                : padded_in_channels;
@@ -640,6 +645,8 @@ ttnn::operations::matmul::MatmulProgramConfig determine_matmul_op_config_from_co
             .in0_block_w = conv_blocking_config.act_block_w_ntiles / grid_size_along_c,
             .out_subblock_h = conv_blocking_config.out_subblock_h_ntiles,
             .out_subblock_w = conv_blocking_config.out_subblock_w_ntiles,
+            .out_block_h = conv_parallelization_config.per_core_out_matrix_height_ntiles,
+            .out_block_w = conv_parallelization_config.per_core_out_matrix_width_ntiles,
             .per_core_M = conv_parallelization_config.per_core_out_matrix_height_ntiles,
             .per_core_N = conv_parallelization_config.per_core_out_matrix_width_ntiles,
             .transpose_mcast = transpose_mcast};
