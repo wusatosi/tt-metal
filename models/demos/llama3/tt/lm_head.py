@@ -139,6 +139,7 @@ class LMHead(LightweightModule):
                 num_all_gather_links=self.args.num_all_gather_links,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
                 dtype=self.args.ccl_dtype,
+                sharded=False,
                 use_composite=True,
             )
 
