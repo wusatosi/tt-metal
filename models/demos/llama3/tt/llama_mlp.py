@@ -89,7 +89,7 @@ class TtLlamaMLP(LightweightModule):
             self.w1,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
             core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_1 else None,
-            dtype=ttnn.bfloat16,  # Need bf16 for accuracy
+            dtype=ttnn.bfloat8_b,  # Need bf16 for accuracy
             program_config=pc_1,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
         )
@@ -99,48 +99,12 @@ class TtLlamaMLP(LightweightModule):
             self.w3,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
             core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_3 else None,
-            dtype=ttnn.bfloat16,  # Need bf16 for accuracy
+            dtype=ttnn.bfloat8_b,  # Need bf16 for accuracy
             program_config=pc_3,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
         )
 
         ttnn.deallocate(x)
-
-        # # -->
-        # w1_out = tt_all_reduce(
-        #     w1_out,
-        #     self.mesh_device,
-        #     cluster_axis=1,
-        #     dim=3 if TG else 0,
-        #     num_reduce_scatter_links=self.args.num_reduce_scatter_links,
-        #     num_all_gather_links=self.args.num_all_gather_links,
-        #     sharded=True if mode == "decode" else False,
-        #     memory_config=self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else None,
-        #     use_composite=True,
-        # )
-        # w3_out = tt_all_reduce(
-        #     w3_out,
-        #     self.mesh_device,
-        #     cluster_axis=1,
-        #     dim=3 if TG else 0,
-        #     num_reduce_scatter_links=self.args.num_reduce_scatter_links,
-        #     num_all_gather_links=self.args.num_all_gather_links,
-        #     sharded=True if mode == "decode" else False,
-        #     memory_config=self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else None,
-        #     use_composite=True,
-        # )
-
-        # w2_in = ttnn.multiply(
-        #     w1_out,
-        #     w3_out,
-        #     memory_config=(
-        #         self.model_config["SHARDED_MLP2_INPUT_MEMCFG"] if TG else ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG
-        #     )
-        #     if mode == "decode"
-        #     else ttnn.DRAM_MEMORY_CONFIG,
-        #     input_tensor_a_activation=ttnn.UnaryOpType.SILU,
-        #     dtype=ttnn.bfloat8_b,
-        # )
 
         if TG:
             input_mem_cfg = w1_out.memory_config()
@@ -176,7 +140,7 @@ class TtLlamaMLP(LightweightModule):
             w3_out,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
             input_tensor_a_activation=ttnn.UnaryOpType.SILU,
-            dtype=ttnn.bfloat16,
+            dtype=ttnn.bfloat8_b,
         )
 
         if TG:
