@@ -84,6 +84,7 @@ std::vector<ttnn::SimpleShape> AllGatherV2::compute_output_shapes(const std::vec
 std::vector<Tensor> AllGatherV2::create_output_tensors(const std::vector<Tensor> &input_tensors) const {
     const auto& input_tensor = input_tensors[0];
     auto output_tensors = std::vector<Tensor>();
+    auto tile = input_tensor.get_tensor_spec().tile();
     output_tensors.reserve(1);
     if(this->output_mem_config.is_sharded()) {
         output_tensors.push_back(create_device_tensor(
@@ -92,17 +93,17 @@ std::vector<Tensor> AllGatherV2::create_output_tensors(const std::vector<Tensor>
             input_tensor.get_layout(),
             input_tensor.device(),
             this->output_mem_config,
-            input_tensor.get_tile()
+            tile
             ));
     } else {
-        output_tensors = operation::generic_create_output_tensors(*this, input_tensors, input_tensor.get_dtype(), input_tensor.get_layout(), this->output_mem_config, input_tensor.get_tile());
+        output_tensors = operation::generic_create_output_tensors(*this, input_tensors, input_tensor.get_dtype(), input_tensor.get_layout(), this->output_mem_config, tile);
     }
-    log_info(tt::LogOp, "DEBUG: output_tensors[0] address: {}", output_tensors.at(0).buffer()->address());
+    log_debug(tt::LogOp, "DEBUG: output_tensors[0] address: {}", output_tensors.at(0).buffer()->address());
     return output_tensors;
 }
 
 operation::ProgramWithCallbacks AllGatherV2::create_program(const std::vector<Tensor> & input_tensors, std::vector<Tensor> &output_tensors) const {
-    tt::log_info(tt::LogOp, "DEBUG: create_program is called");
+    tt::log_debug(tt::LogOp, "DEBUG: create_program is called");
     return all_gather_multi_core_with_workers_new(input_tensors[0], this->forward_device, this->backward_device, output_tensors[0], this->dim, this->num_links, this->ring_size, this->ring_index, this->topology);
 }
 
@@ -150,9 +151,8 @@ Tensor all_gather_v2(
     //         program = tt::tt_metal::Program{}; // Initialize each Program
     //         return &program;
     //     });
-    TT_FATAL(num_links == 1, "all_gather op is only supported for num_links == 1, but has {}", num_links);
-    tt::log_info(tt::LogOp, "DEBUG: creating line_fabric with num devices: {}, num links: {}", devices.size(), num_links);
-    tt::log_info(tt::LogOp, "DEBUG: line_fabric is created");
+    tt::log_debug(tt::LogOp, "DEBUG: creating line_fabric with num devices: {}, num links: {}", devices.size(), num_links);
+    tt::log_debug(tt::LogOp, "DEBUG: line_fabric is created");
 
     operation::launch_op(
         [dim, num_links, num_devices, memory_config, devices, ccl_topology](
@@ -218,9 +218,9 @@ Tensor all_gather_v2(
             return &program;
         });
     TT_FATAL(num_links == 1, "all_gather op is only supported for num_links == 1, but has {}", num_links);
-    tt::log_info(tt::LogOp, "DEBUG: creating line_fabric with num devices: {}, num links: {}", num_devices, num_links);
+    tt::log_debug(tt::LogOp, "DEBUG: creating line_fabric with num devices: {}, num links: {}", num_devices, num_links);
     auto line_fabric = ttnn::ccl::EdmLineFabricOpInterface(devices, program_ptrs, num_links);
-    tt::log_info(tt::LogOp, "DEBUG: line_fabric is created");
+    tt::log_debug(tt::LogOp, "DEBUG: line_fabric is created");
 
     operation::launch_op(
         [dim, num_links, memory_config, mesh_view, cluster_axis, num_devices, topology, devices, program_ptrs, line_fabric](
