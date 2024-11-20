@@ -169,7 +169,7 @@ int main(int argc, char **argv) {
         int device_id = 0;
         tt_metal::Device *device = tt_metal::CreateDevice(device_id);
 
-        CommandQueue& cq = device->command_queue();
+        // CommandQueue& cq = device->command_queue();
 
         tt_metal::Program program = tt_metal::CreateProgram();
 
@@ -278,8 +278,21 @@ int main(int argc, char **argv) {
             {"MCAST_NOC_END_ADDR_X", std::to_string(mcast_noc_addr_end_x)},
             {"MCAST_NOC_END_ADDR_Y", std::to_string(mcast_noc_addr_end_y)}
         };
+        std::cout << "iterations " << iterations_g
+                  << " page count " << page_count_g
+                  << " latency " << latency_g
+                  << " noc " << noc_addr_x << " , " << noc_addr_y
+                  << " mem addr " << noc_mem_addr
+                  << " read one packet " << read_one_packet_g
+                  << " dram banked " << dram_banked
+                  << " issue mcast " << issue_mcast
+                  << " test write " << test_write
+                  << " linked " << linked
+                  << " num mcast dsts " << num_mcast_dests
+                  << " mcast_noc_addr " << mcast_noc_addr_end_x << " , " << mcast_noc_addr_end_y << std::endl;
         if (!page_size_as_runtime_arg_g) {
             defines.insert(std::pair<string, string>("PAGE_SIZE", std::to_string(page_size_g)));
+            std::cout << "page size " << page_size_g << std::endl;
         }
 
         tt_metal::CircularBufferConfig cb_config = tt_metal::CircularBufferConfig(page_size_g * page_count_g, {{0, tt::DataFormat::Float32}})
@@ -295,7 +308,7 @@ int main(int argc, char **argv) {
             tt_metal::SetRuntimeArgs(program, dm0, worker_g.start_coord, {page_size_g});
         }
 
-        std::shared_ptr<Event> sync_event = std::make_shared<Event>();
+        // std::shared_ptr<Event> sync_event = std::make_shared<Event>();
 
         CoreCoord w = device->physical_core_from_logical_core(worker_g.start_coord, CoreType::WORKER);
         log_info(LogTest, "Master core: {}", w.str());
@@ -338,55 +351,56 @@ int main(int argc, char **argv) {
         if (source_mem_g < 4 || source_mem_g == 6) {
             // Cache stuff
             for (int i = 0; i < warmup_iterations_g; i++) {
-                EnqueueProgram(cq, program, false);
+                detail::LaunchProgram(device, program);
             }
-            Finish(cq);
+            // Finish(cq);
 
-            if (lazy_g) {
-                tt_metal::detail::SetLazyCommandQueueMode(true);
-            }
+            // if (lazy_g) {
+            //     tt_metal::detail::SetLazyCommandQueueMode(true);
+            // }
 
             auto start = std::chrono::system_clock::now();
-            EnqueueProgram(cq, program, false);
+            std::cout << "LAUNCHING" << std::endl;
+            detail::LaunchProgram(device, program);
             if (time_just_finish_g) {
                 start = std::chrono::system_clock::now();
             }
-            if (hammer_write_reg_g || hammer_pcie_g) {
-                EnqueueRecordEvent(cq, sync_event);
+            // if (hammer_write_reg_g || hammer_pcie_g) {
+            //     EnqueueRecordEvent(cq, sync_event);
 
-                bool done = false;
-                uint32_t addr = 0xfafafafa;
-                uint32_t offset = 0;
-                uint32_t page = 0;
-                uint32_t * pcie_base = (uint32_t *)host_pcie_base + pcie_offset / sizeof(uint32_t);
-                uint32_t l1_unreserved_base = device->get_base_allocator_addr(HalMemType::L1);
-                while (!done) {
-                    if (hammer_write_reg_g) {
-                        tt::Cluster::instance().write_reg(&addr, tt_cxy_pair(device->id(), w), l1_unreserved_base);
-                    }
-                    if (hammer_pcie_g) {
-                        if (page == page_count_g) {
-                            page = 0;
-                            offset = 0;
-                        }
+            //     bool done = false;
+            //     uint32_t addr = 0xfafafafa;
+            //     uint32_t offset = 0;
+            //     uint32_t page = 0;
+            //     uint32_t * pcie_base = (uint32_t *)host_pcie_base + pcie_offset / sizeof(uint32_t);
+            //     uint32_t l1_unreserved_base = device->get_base_allocator_addr(HalMemType::L1);
+            //     while (!done) {
+            //         if (hammer_write_reg_g) {
+            //             tt::Cluster::instance().write_reg(&addr, tt_cxy_pair(device->id(), w), l1_unreserved_base);
+            //         }
+            //         if (hammer_pcie_g) {
+            //             if (page == page_count_g) {
+            //                 page = 0;
+            //                 offset = 0;
+            //             }
 
-                        if (hammer_pcie_type_g == 0) {
-                            for (int i = 0; i < page_size_g / sizeof(uint32_t); i++) {
-                                pcie_base[offset++] = 0;
-                            }
-                        } else {
-                            uint32_t *pcie_addr = ((uint32_t *)pcie_base) + offset;
-                            nt_memcpy((uint8_t *)pcie_addr, (uint8_t *)&blank[0], page_size_g);
-                        }
-                        page++;
-                    }
-                    if (EventQuery(sync_event)) {
-                        done = true;
-                    }
-                }
-            }
+            //             if (hammer_pcie_type_g == 0) {
+            //                 for (int i = 0; i < page_size_g / sizeof(uint32_t); i++) {
+            //                     pcie_base[offset++] = 0;
+            //                 }
+            //             } else {
+            //                 uint32_t *pcie_addr = ((uint32_t *)pcie_base) + offset;
+            //                 nt_memcpy((uint8_t *)pcie_addr, (uint8_t *)&blank[0], page_size_g);
+            //             }
+            //             page++;
+            //         }
+            //         if (EventQuery(sync_event)) {
+            //             done = true;
+            //         }
+            //     }
+            // }
 
-            Finish(cq);
+            // Finish(cq);
             auto end = std::chrono::system_clock::now();
             elapsed_seconds = (end-start);
         } else if (source_mem_g == 4 || source_mem_g == 5) {
