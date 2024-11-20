@@ -32,4 +32,10 @@ void kernel_launch(uint32_t kernel_base_addr) {
     noc_local_state_init(NOC_INDEX);
 
     kernel_main();
+
+#if defined(WATCHER_ENABLED)
+    noc_async_write_barrier();
+    noc_async_atomic_barrier();
+    noc_async_read_barrier();
+#endif
 }

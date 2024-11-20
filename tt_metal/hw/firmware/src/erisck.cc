@@ -28,4 +28,10 @@ void kernel_launch(uint32_t) {
     rtos_context_switch_ptr = (void (*)())RtosTable[0];
 
     kernel_main();
+
+#if defined(WATCHER_ENABLED)
+    noc_async_write_barrier();
+    noc_async_atomic_barrier();
+    noc_async_read_barrier();
+#endif
 }

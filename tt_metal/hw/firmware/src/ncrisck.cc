@@ -48,5 +48,13 @@ void kernel_launch(uint32_t kernel_base_addr) {
     }
 
     kernel_main();
+
+#if defined(WATCHER_ENABLED)
+    if constexpr (NOC_MODE == DM_DEDICATED_NOC) {
+        noc_async_write_barrier();
+        noc_async_atomic_barrier();
+        noc_async_read_barrier();
+    }
+#endif
 #endif
 }
