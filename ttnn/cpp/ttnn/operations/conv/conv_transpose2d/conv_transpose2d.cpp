@@ -255,7 +255,7 @@ Result conv_transpose2d(
         //         input_width);
 
             // prepare weights in desired layout and move to device
-            weight_tensor_on_device = prepare_conv_weights(
+            tie(weight_tensor_on_device, bias_tensor_on_device)  = prepare_conv_weights(
                 transform_weights_for_conv_transpose2d(weight_tensor),
                 input_tensor_post_tm.memory_config(),
                 input_tensor_post_tm.layout(),
@@ -271,31 +271,35 @@ Result conv_transpose2d(
                 dilation,
                 groups,
                 device,
+                bias_tensor,
                 conv_config
             );
             weight_tensor_on_device = ttnn::operations::core::to_device(weight_tensor_on_device, device, std::nullopt);
+            if(bias_tensor.has_value()){
+                bias_tensor_on_device = ttnn::operations::core::to_device(bias_tensor_on_device.value(), device, std::nullopt);
+            }
         }
 
-        if (bias_tensor.has_value() && !ttnn::is_tensor_on_device_or_multidevice(bias_tensor.value())) {
-            bias_tensor_on_device = prepare_conv_bias(
-                bias_tensor.value(),
-                input_tensor_post_tm.memory_config(),
-                input_tensor_post_tm.layout(),
-                in_channels,
-                out_channels,
-                batch_size,
-                input_height,
-                input_width,
-                kernel_size,
-                stride,
-                padding,
-                dilation,
-                groups,
-                device,
-                conv_config
-            );
-            bias_tensor_on_device = ttnn::operations::core::to_device(bias_tensor_on_device.value(), device, std::nullopt);
-        }
+        // if (bias_tensor.has_value() && !ttnn::is_tensor_on_device_or_multidevice(bias_tensor.value())) {
+        //     bias_tensor_on_device = prepare_conv_bias(
+        //         bias_tensor.value(),
+        //         input_tensor_post_tm.memory_config(),
+        //         input_tensor_post_tm.layout(),
+        //         in_channels,
+        //         out_channels,
+        //         batch_size,
+        //         input_height,
+        //         input_width,
+        //         kernel_size,
+        //         stride,
+        //         padding,
+        //         dilation,
+        //         groups,
+        //         device,
+        //         conv_config
+        //     );
+        //     bias_tensor_on_device = ttnn::operations::core::to_device(bias_tensor_on_device.value(), device, std::nullopt);
+        // }
         // call conv micro op
         auto conv_output = optimized_conv_new(
             halo_output,

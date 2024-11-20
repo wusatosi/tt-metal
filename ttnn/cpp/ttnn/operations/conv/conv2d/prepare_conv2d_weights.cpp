@@ -107,7 +107,7 @@ OptimizedConvBlockConfig get_opt_block_config(
 }
 
 template <typename T>
-ttnn::Tensor prepare_conv_weights(
+std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights(
     const ttnn::Tensor& weight_tensor,
     const ttnn::MemoryConfig &input_memory_config,
     Layout input_tensor_layout,
@@ -123,8 +123,9 @@ ttnn::Tensor prepare_conv_weights(
     std::array<uint32_t, 2> dilation,
     uint32_t groups,
     T *device,
+    std::optional<const ttnn::Tensor>& bias_tensor,
     std::optional<const Conv2dConfig> conv_config_) {
-
+    ttnn::Tensor bias_tensor_;
     TT_FATAL(!ttnn::is_tensor_on_device_or_multidevice(weight_tensor), "Error: weight tensor must be on host for preparation.");
 
     const bool mm_conv = use_matmul_for_1x1_conv(kernel_size, stride, padding, dilation, groups);
@@ -223,7 +224,24 @@ ttnn::Tensor prepare_conv_weights(
             std::array<uint32_t, 2>{0, weight_matrix_height_padding},
             std::array<uint32_t, 2>{0, out_channel_padding}
     }));
-    return weight_tensor_;
+
+    if (bias_tensor.has_value()) {
+        bias_tensor_ = bias_tensor.value();
+        auto bias_shape = bias_tensor_.get_shape();
+        TT_ASSERT(bias_shape[3] == out_channels && bias_shape[0] == 1 && bias_shape[1] == 1 && bias_shape[2] == 1);
+        tt::tt_metal::LegacyShape bias_channels_padded_shape = tt::tt_metal::LegacyShape(
+            std::array<uint32_t, 4>({1, 1, 32, tt::round_up(out_channels, weight_block_w_ntiles * 32)}));
+        bias_tensor_ = ttnn::pad(bias_tensor_, bias_channels_padded_shape.to_array_4D(), tt::tt_metal::Array4D({0, 0, 0, 0}), 0);
+        bias_tensor_ = ttnn::to_layout(
+            bias_tensor_, Layout::TILE, std::nullopt, std::nullopt, (T*)nullptr);
+        if (bias_tensor_.get_dtype() != conv_config.weights_dtype) {
+            bias_tensor_ = ttnn::to_dtype(bias_tensor_, conv_config.weights_dtype);
+        }
+        //bias_tensor_ = ttnn::operations::core::to_device(bias_tensor_, device, std::nullopt);
+    }
+
+    return {weight_tensor_, bias_tensor.has_value() ? bias_tensor_ : std::optional<ttnn::Tensor>()};
+    //return weight_tensor_;
 }
 
 template <typename T>
@@ -316,7 +334,7 @@ template OptimizedConvBlockConfig get_opt_block_config<MeshDevice>(
     Layout input_tensor_layout,
     const ttnn::MemoryConfig& input_memory_config);
 
-template ttnn::Tensor prepare_conv_weights<Device>(
+template std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights<Device>(
     const ttnn::Tensor& weight_tensor,
     const ttnn::MemoryConfig& input_memory_config,
     Layout input_tensor_layout,
@@ -332,9 +350,10 @@ template ttnn::Tensor prepare_conv_weights<Device>(
     std::array<uint32_t, 2> dilation,
     uint32_t groups,
     Device *device,
+    std::optional<const ttnn::Tensor>& bias_tensor,
     std::optional<const Conv2dConfig> conv_config_);
 
-template ttnn::Tensor prepare_conv_weights<MeshDevice>(
+template std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights<MeshDevice>(
     const ttnn::Tensor& weight_tensor,
     const ttnn::MemoryConfig& input_memory_config,
     Layout input_tensor_layout,
@@ -350,6 +369,7 @@ template ttnn::Tensor prepare_conv_weights<MeshDevice>(
     std::array<uint32_t, 2> dilation,
     uint32_t groups,
     MeshDevice *device,
+    std::optional<const ttnn::Tensor>& bias_tensor,
     std::optional<const Conv2dConfig> conv_config_);
 
 template ttnn::Tensor prepare_conv_bias<Device>(

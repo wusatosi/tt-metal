@@ -142,6 +142,7 @@ void py_bind_conv2d(py::module& module) {
         py::arg("dilation"),
         py::arg("groups"),
         py::arg("device"),
+        py::arg("bias_tensor") = std::nullopt,
         py::arg("conv_config") = std::nullopt);
 
 
@@ -164,6 +165,7 @@ void py_bind_conv2d(py::module& module) {
         py::arg("dilation"),
         py::arg("groups"),
         py::arg("device"),
+        py::arg("bias_tensor") = std::nullopt,
         py::arg("conv_config") = std::nullopt);
 
     module.def(

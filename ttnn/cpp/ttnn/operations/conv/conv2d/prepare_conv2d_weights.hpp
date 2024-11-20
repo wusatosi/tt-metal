@@ -26,7 +26,7 @@ namespace ttnn {
 namespace operations::conv {
 namespace conv2d {
 template <typename T>
-ttnn::Tensor prepare_conv_weights(
+std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights(
     const ttnn::Tensor& weight_tensor,
     const ttnn::MemoryConfig& input_memory_config,
     Layout input_tensor_layout,
@@ -42,6 +42,7 @@ ttnn::Tensor prepare_conv_weights(
     std::array<uint32_t, 2> dilation,
     uint32_t groups,
     T *device,
+    std::optional<const ttnn::Tensor>& bias_tensor,
     std::optional<const Conv2dConfig> conv_config_);
 
 template <typename T>

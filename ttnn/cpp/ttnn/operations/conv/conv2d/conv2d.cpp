@@ -106,7 +106,7 @@ Result conv2d(
     std::optional<ttnn::Tensor> bias_tensor_on_device = bias_tensor;
     if (!weight_is_on_device) {
         // prepare weights in desired layout and move to device
-        weight_tensor_on_device = prepare_conv_weights(
+        tie(weight_tensor_on_device, bias_tensor_on_device) = prepare_conv_weights(
             weight_tensor,
             input_tensor_post_tm.memory_config(),
             input_tensor_post_tm.layout(),
@@ -122,32 +122,35 @@ Result conv2d(
             dilation,
             groups,
             device,
+            bias_tensor,
             conv_config
         );
         weight_tensor_on_device = ttnn::operations::core::to_device(weight_tensor_on_device, device, std::nullopt);
-
-    }
-
-    if (bias_tensor.has_value() && !ttnn::is_tensor_on_device_or_multidevice(bias_tensor.value())) {
-            bias_tensor_on_device = prepare_conv_bias(
-                bias_tensor.value(),
-                input_tensor_post_tm.memory_config(),
-                input_tensor_post_tm.layout(),
-                in_channels,
-                out_channels,
-                batch_size,
-                input_height,
-                input_width,
-                kernel_size,
-                stride,
-                padding,
-                dilation,
-                groups,
-                device,
-                conv_config
-            );
+        if(bias_tensor.has_value()){
             bias_tensor_on_device = ttnn::operations::core::to_device(bias_tensor_on_device.value(), device, std::nullopt);
+        }
     }
+
+    // if (bias_tensor.has_value() && !ttnn::is_tensor_on_device_or_multidevice(bias_tensor.value())) {
+    //         bias_tensor_on_device = prepare_conv_bias(
+    //             bias_tensor.value(),
+    //             input_tensor_post_tm.memory_config(),
+    //             input_tensor_post_tm.layout(),
+    //             in_channels,
+    //             out_channels,
+    //             batch_size,
+    //             input_height,
+    //             input_width,
+    //             kernel_size,
+    //             stride,
+    //             padding,
+    //             dilation,
+    //             groups,
+    //             device,
+    //             conv_config
+    //         );
+    //         bias_tensor_on_device = ttnn::operations::core::to_device(bias_tensor_on_device.value(), device, std::nullopt);
+    // }
     // if 1x1 conv w/ stride 1, convert input tensor to tile layout if required
     Tensor input_tensor_post_tm_out;
     if (mm_conv) {
