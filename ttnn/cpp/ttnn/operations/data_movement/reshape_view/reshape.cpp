@@ -51,6 +51,65 @@ ttnn::Tensor host_reshape(const ttnn::Tensor& tensor, const ttnn::Shape& shape) 
 
 ttnn::Tensor convert_tensor_to_rm_reshape_convert_back_to_orig_layout(const ttnn::Tensor& tensor, const ttnn::Shape& shape) {
     const auto layout = tensor.get_layout();
+    const auto tensor_shape = tensor.get_shape();
+    TT_FATAL((tensor_shape.rank()!=0), "can't do reshape from rank 0 tensor");
+    if(layout == ttnn::ROW_MAJOR_LAYOUT)
+    {
+        //Collapse into the second last dimension
+        uint32_t second_dim = 1;
+        for (int i=0; i <tensor_shape.rank()-1; i++)
+        {
+            second_dim = second_dim * tensor_shape[i];
+        }
+        return fix_shape_and_perform_reshape_on_2D_RM(PerformView(tensor,ttnn::Shape{second_dim,tensor_shape[-1]}),shape);
+    }
+    else if (layout == ttnn::Layout::TILE)
+    {
+        uint32_t third_dim = 1;
+        //Collapse into the third last dimension
+        for (int i=0; i <tensor_shape.rank()-2; i++)
+        {
+            third_dim = third_dim * tensor_shape[i];
+        }
+        //Figure out the second last dimension
+        const uint32_t second_dim = tensor_shape.rank() > 1 ? tensor_shape[-2] : 1;
+        return fix_shape_and_perform_reshape_on_3D_TILE(PerformView(tensor,ttnn::Shape{third_dim,second_dim,tensor_shape[-1]}),shape);
+    }
+    TT_FATAL(false, "layout is neither tile nor row major");
+
+}
+ttnn::Tensor fix_shape_and_perform_reshape_on_2D_RM(const ttnn::Tensor& tensor, const ttnn::Shape& shape)
+{
+    TT_FATAL((shape.rank()!=0), "can't do reshape to rank 0 tensor");
+    //Collapse into the second last dimension
+    uint32_t second_dim = 1;
+    for (int i=0; i <shape.rank()-1; i++)
+    {
+        second_dim = second_dim * shape[i];
+    }
+    return PerformView(perform_reshape_on_2D_RM(tensor,ttnn::Shape{second_dim,shape[-1]}),shape);
+}
+ttnn::Tensor fix_shape_and_perform_reshape_on_3D_TILE(const ttnn::Tensor& tensor, const ttnn::Shape& shape)
+{
+    //Collapse into the third last dimension
+    uint32_t third_dim = 1;
+    for (int i=0; i <shape.rank()-2; i++)
+    {
+        third_dim = third_dim * shape[i];
+    }
+    //Figure out the second last dimension
+    const uint32_t second_dim = shape.rank() > 1 ? shape[-2] : 1;
+    return PerformView(perform_reshape_on_3D_TILE(tensor,ttnn::Shape{third_dim,second_dim,shape[-1]}),shape);
+}
+
+ttnn::Tensor perform_reshape_on_2D_RM(const ttnn::Tensor& tensor, const ttnn::Shape& shape) {
+    //We will be splitting here between RM and Tile implementation. However we are just going to fallback
+    //on the old code while we implement
+    return perform_reshape_on_3D_TILE(tensor,shape);
+}
+
+ttnn::Tensor perform_reshape_on_3D_TILE(const ttnn::Tensor& tensor, const ttnn::Shape& shape) {
+    const auto layout = tensor.get_layout();
     auto shape_with_padding = shape.padded_shape();
     auto tensor_shape = tensor.get_shape();
     auto tensor_shape_with_padding = tensor_shape.padded_shape();
@@ -86,6 +145,9 @@ ttnn::Tensor convert_tensor_to_rm_reshape_convert_back_to_orig_layout(const ttnn
                 tensor_shape_with_padding[-1] == shape_with_padding[-1] and
                 tensor_shape_with_padding[-2] == shape_with_padding[-2]) {
                 reshaped_rm_tensor = rm_tensor.reshape(shape);
+            }
+            else {
+                reshaped_rm_tensor = host_reshape(tensor, shape);
             }
         } else {
             reshaped_rm_tensor = host_reshape(tensor, shape);
@@ -134,6 +196,9 @@ ttnn::Shape tiling_reshape_corrector(const ttnn::Shape& shape) {
 }
 
 ttnn::Tensor PerformView(const ttnn::Tensor& tensor, const ttnn::Shape& shape) {
+    if (tensor.get_shape() == shape) {
+        return tensor;
+    }
     if (tensor.get_layout() == ttnn::TILE_LAYOUT &&(shape[-1]%ttnn::types::TILE_SIZE!=0 || shape[-2]%ttnn::types::TILE_SIZE!=0 ))
     {
         //Correct the output shape to add padding metadata before reshape (view)
@@ -187,16 +252,6 @@ ttnn::Tensor ReshapeViewOperation::invoke(const ttnn::Tensor& tensor, const ttnn
     }
     if (!(ttnn::has_storage_type_of(tensor, ttnn::StorageType::DEVICE)) or this_is_view) {
         return PerformView(tensor,shape);
-    }
-    if (tensor_shape.rank() >3)
-    {
-        uint32_t mult_factor = 1;
-        for (int i=0; i <tensor_shape.rank()-3; i++)
-        {
-            mult_factor = mult_factor * tensor_shape[i];
-        }
-        const ttnn::Tensor temp_tensor = PerformView(tensor,ttnn::Shape{tensor_shape[-3]*mult_factor,tensor_shape[-2],tensor_shape[-1]});
-        return detail::convert_tensor_to_rm_reshape_convert_back_to_orig_layout(temp_tensor, shape);
     }
     // Catch-all
     // Do the reshape in row-major
