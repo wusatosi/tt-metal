@@ -4,18 +4,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-# from mmcv.cnn import
 from torch.nn import Conv2d, Linear
 
-# from mmdet.models.dense_heads.anchor_free_head import AnchorFreeHead
-# from mmdet.models.layers import NormedLinear
-# from mmdet.models.layers.transformer import inverse_sigmoid
-# from mmdet.models.utils import multi_apply
-# from mmengine.model.weight_init import bias_init_with_prob
-# from mmengine.structures import InstanceData
-
-# from mmdet3d.registry import MODELS, TASK_UTILS
 from models.experimental.functional_petr.reference.utils import inverse_sigmoid
 from models.experimental.functional_petr.reference.positional_encoding import SinePositionalEncoding3D
 from models.experimental.functional_petr.reference.petr_transformer import PETRTransformer
@@ -37,7 +27,6 @@ def pos2posemb3d(pos, num_pos_feats=128, temperature=10000):
     return posemb
 
 
-# @MODELS.register_module()
 class PETRHead(nn.Module):
     """Implements the DETR transformer head. See `paper: End-to-End Object
     Detection with Transformers.
@@ -77,16 +66,9 @@ class PETRHead(nn.Module):
         in_channels,
         num_query=100,
         num_reg_fcs=2,
-        transformer=None,
         sync_cls_avg_factor=False,
         positional_encoding=dict(type="SinePositionalEncoding3D", num_feats=128, normalize=True),
         code_weights=None,
-        bbox_coder=None,
-        # loss_cls=dict(type="CrossEntropyLoss", bg_cls_weight=0.1, use_sigmoid=False, loss_weight=1.0, class_weight=1.0),
-        loss_bbox=dict(type="L1Loss", loss_weight=5.0),
-        loss_iou=dict(type="GIoULoss", loss_weight=2.0),
-        train_cfg=None,
-        test_cfg=dict(max_per_img=100),
         with_position=True,
         with_multiview=False,
         depth_step=0.8,
@@ -94,17 +76,13 @@ class PETRHead(nn.Module):
         LID=False,
         depth_start=1,
         position_range=[-65, -65, -8.0, 65, 65, 8.0],
-        init_cfg=None,
-        # normedlinear=False,
         **kwargs,
     ):
         # NOTE here use `AnchorFreeHead` instead of `TransformerHead`,
         # since it brings inconvenience when the initialization of
         # `AnchorFreeHead` is called.
-        if "code_size" in kwargs:
-            self.code_size = kwargs["code_size"]
-        else:
-            self.code_size = 10
+
+        self.code_size = 10
         if code_weights is not None:
             self.code_weights = code_weights
         else:
@@ -112,31 +90,10 @@ class PETRHead(nn.Module):
         self.code_weights = self.code_weights[: self.code_size]
         self.bg_cls_weight = 0
         self.sync_cls_avg_factor = sync_cls_avg_factor
-        # class_weight = loss_cls.get("class_weight", None)
-        # if class_weight is not None and (self.__class__ is PETRHead):
-        #     assert isinstance(class_weight, float), (
-        #         "Expected " "class_weight to have type float. Found " f"{type(class_weight)}."
-        #     )
-        #     # NOTE following the official DETR rep0, bg_cls_weight means
-        #     # relative classification weight of the no-object class.
-        #     bg_cls_weight = loss_cls.get("bg_cls_weight", class_weight)
-        #     assert isinstance(bg_cls_weight, float), (
-        #         "Expected " "bg_cls_weight to have type float. Found " f"{type(bg_cls_weight)}."
-        #     )
-        #     class_weight = torch.ones(num_classes + 1) * class_weight
-        #     # set background class as the last indice
-        #     class_weight[num_classes] = bg_cls_weight
-        #     loss_cls.update({"class_weight": class_weight})
-        #     if "bg_cls_weight" in loss_cls:
-        #         loss_cls.pop("bg_cls_weight")
-        #     self.bg_cls_weight = bg_cls_weight
-
         self.num_query = num_query
         self.num_classes = num_classes
         self.in_channels = in_channels
         self.num_reg_fcs = num_reg_fcs
-        self.train_cfg = train_cfg
-        self.test_cfg = test_cfg
         self.fp16_enabled = False
         self.embed_dims = 256
         self.depth_step = depth_step
@@ -153,37 +110,13 @@ class PETRHead(nn.Module):
         assert num_feats * 2 == self.embed_dims, (
             "embed_dims should" f" be exactly 2 times of num_feats. Found {self.embed_dims}" f" and {num_feats}."
         )
-        # self.act_cfg = transformer.get("act_cfg", dict(type="ReLU", inplace=True))
         self.num_pred = 6
-        # self.normedlinear = normedlinear
         super(PETRHead, self).__init__()
-        # super(PETRHead, self).__init__(
-        #     num_classes=num_classes,
-        #     in_channels=in_channels,
-        #     # loss_cls=loss_cls,
-        #     # loss_bbox=loss_bbox,
-        #     bbox_coder=bbox_coder,
-        #     init_cfg=init_cfg,
-        # )
-
-        # self.loss_cls = MODELS.build(loss_cls)
-        # self.loss_bbox = MODELS.build(loss_bbox)
-        # self.loss_iou = MODELS.build(loss_iou)
-
         self.cls_out_channels = num_classes
-        # else:
-        # self.cls_out_channels = num_classes + 1
-        # self.activate = build_activation_layer(self.act_cfg)
-        # if self.with_multiview or not self.with_position:
-        #     self.positional_encoding = build_positional_encoding(
-        #         positional_encoding)
         self._init_layers()
-        self.positional_encoding = SinePositionalEncoding3D(
-            num_feats=128, normalize=True
-        )  # TASK_UTILS.build(positional_encoding)
+        self.positional_encoding = SinePositionalEncoding3D(num_feats=128, normalize=True)
         self.transformer = PETRTransformer()
         self.code_weights = nn.Parameter(torch.tensor(self.code_weights, requires_grad=False), requires_grad=False)
-        # self.bbox_coder = TASK_UTILS.build(bbox_coder)
         self.bbox_coder = NMSFreeCoder(
             post_center_range=[-61.2, -61.2, -10.0, 61.2, 61.2, 10.0],
             pc_range=[-51.2, -51.2, -5.0, 51.2, 51.2, 3.0],  # self.point_cloud_range,
@@ -205,9 +138,7 @@ class PETRHead(nn.Module):
             cls_branch.append(Linear(self.embed_dims, self.embed_dims))
             cls_branch.append(nn.LayerNorm(self.embed_dims))
             cls_branch.append(nn.ReLU(inplace=True))
-        # if self.normedlinear:
-        #     cls_branch.append(NormedLinear(self.embed_dims, self.cls_out_channels))
-        # else:
+
         cls_branch.append(Linear(self.embed_dims, self.cls_out_channels))
         fc_cls = nn.Sequential(*cls_branch)
 

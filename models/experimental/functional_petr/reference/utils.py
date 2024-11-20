@@ -28,25 +28,6 @@ def limit_period(
     return limited_val
 
 
-# def normalize_bbox(bboxes, pc_range):
-#     cx = bboxes[..., 0:1]
-#     cy = bboxes[..., 1:2]
-#     cz = bboxes[..., 2:3]
-#     length = bboxes[..., 3:4].log()
-#     width = bboxes[..., 4:5].log()
-#     height = bboxes[..., 5:6].log()
-
-#     rot = -bboxes[..., 6:7] - np.pi / 2
-#     rot = limit_period(rot, period=np.pi * 2)
-#     if bboxes.size(-1) > 7:
-#         vx = bboxes[..., 7:8]
-#         vy = bboxes[..., 8:9]
-#         normalized_bboxes = torch.cat((cx, cy, length, width, cz, height, rot.sin(), rot.cos(), vx, vy), dim=-1)
-#     else:
-#         normalized_bboxes = torch.cat((cx, cy, length, width, cz, height, rot.sin(), rot.cos()), dim=-1)
-#     return normalized_bboxes
-
-
 def denormalize_bbox(normalized_bboxes, pc_range):
     # rotation
     rot_sine = normalized_bboxes[..., 6:7]

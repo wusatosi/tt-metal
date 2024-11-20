@@ -1,36 +1,20 @@
+# SPDX-FileCopyrightText: © 2023 Tenstorrent Inc.
+
+# SPDX-License-Identifier: Apache-2.0
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as f
 import torch
-
-# from torchview import draw_graph
+import math
 
 
 class PETRMultiheadAttention(nn.Module):
-    """ "
-    This module implements MultiheadAttention with identity connection,
-    and positional encoding  is also passed as input.
-    Args:
-        embed_dims (int): The embedding dimension.
-        num_heads (int): Parallel attention heads.
-        attn_drop (float): A Dropout layer on attn_output_weights.
-            Default: 0.0.
-        proj_drop (float): A Dropout layer after `nn.MultiheadAttention`.
-            Default: 0.0.
-        dropout_layer (obj:`ConfigDict`): The dropout_layer used
-            when adding the shortcut.
-        init_cfg (obj:`mmcv.ConfigDict`): The Config for initialization.
-            Default: None.
-        batch_first (bool): When it is True,  Key, Query and Value are shape of
-            (batch, n, embed_dim), otherwise (n, batch, embed_dim).
-             Default to False.
-    """
-
     def __init__(
         self,
         embed_dims,
         num_heads,
-        attn_drop=0.0,
+        attn_drop=0.1,
         proj_drop=0.0,
         batch_first=False,
         **kwargs,
@@ -53,45 +37,9 @@ class PETRMultiheadAttention(nn.Module):
         key_pos=None,
         attn_mask=None,
         key_padding_mask=None,
+        dropout_p=0.1,
         **kwargs,
     ):
-        """Forward function for `MultiheadAttention`.
-        **kwargs allow passing a more general data flow when combining
-        with other operations in `transformerlayer`.
-        Args:
-            query (Tensor): The input query with shape [num_queries, bs,
-                embed_dims] if self.batch_first is False, else
-                [bs, num_queries embed_dims].
-            key (Tensor): The key tensor with shape [num_keys, bs,
-                embed_dims] if self.batch_first is False, else
-                [bs, num_keys, embed_dims] .
-                If None, the ``query`` will be used. Defaults to None.
-            value (Tensor): The value tensor with same shape as `key`.
-                Same in `nn.MultiheadAttention.forward`. Defaults to None.
-                If None, the `key` will be used.
-            identity (Tensor): This tensor, with the same shape as x,
-                will be used for the identity link.
-                If None, `x` will be used. Defaults to None.
-            query_pos (Tensor): The positional encoding for query, with
-                the same shape as `x`. If not None, it will
-                be added to `x` before forward function. Defaults to None.
-            key_pos (Tensor): The positional encoding for `key`, with the
-                same shape as `key`. Defaults to None. If not None, it will
-                be added to `key` before forward function. If None, and
-                `query_pos` has the same shape as `key`, then `query_pos`
-                will be used for `key_pos`. Defaults to None.
-            attn_mask (Tensor): ByteTensor mask with shape [num_queries,
-                num_keys]. Same in `nn.MultiheadAttention.forward`.
-                Defaults to None.
-            key_padding_mask (Tensor): ByteTensor with shape [bs, num_keys].
-                Defaults to None.
-        Returns:
-            Tensor: forwarded results with shape
-            [num_queries, bs, embed_dims]
-            if self.batch_first is False, else
-            [bs, num_queries embed_dims].
-        """
-
         if key is None:
             key = query
         if value is None:
@@ -114,12 +62,61 @@ class PETRMultiheadAttention(nn.Module):
             key = key.transpose(0, 1)
             value = value.transpose(0, 1)
 
-        out = self.attn(query=query, key=key, value=value, attn_mask=attn_mask, key_padding_mask=key_padding_mask)[0]
+        in_proj_bias = self.attn.in_proj_bias
+        in_proj_weight = self.attn.in_proj_weight
 
-        if self.batch_first:
-            out = out.transpose(0, 1)
+        tgt_len, bsz, embed_dim = query.shape
+        src_len, _, _ = key.shape
 
-        return identity + out
+        q_weight = in_proj_weight[: self.embed_dims, :]  # Query weights
+        k_weight = in_proj_weight[self.embed_dims : 2 * self.embed_dims, :]  # Key weights
+        v_weight = in_proj_weight[2 * self.embed_dims :, :]  # Value weights
+
+        q_bias = in_proj_bias[: self.embed_dims]  # Query biases
+        k_bias = in_proj_bias[self.embed_dims : 2 * self.embed_dims]  # Key biases
+        v_bias = in_proj_bias[2 * self.embed_dims :]  # Value biases
+
+        q_batch_size, q_sequence_size, q_hidden_size = query.shape
+        q_head_size = q_hidden_size // self.num_heads
+
+        k_batch_size, k_sequence_size, k_hidden_size = key.shape
+        k_head_size = k_hidden_size // self.num_heads
+
+        v_batch_size, v_sequence_size, v_hidden_size = value.shape
+        v_head_size = v_hidden_size // self.num_heads
+
+        query = torch.nn.functional.linear(query, q_weight, bias=q_bias)
+        key = torch.nn.functional.linear(key, k_weight, bias=k_bias)
+        value = torch.nn.functional.linear(value, v_weight, bias=v_bias)
+
+        query = torch.reshape(query, (tgt_len, bsz * self.num_heads, q_head_size)).transpose(0, 1)
+
+        key = torch.reshape(key, (k_batch_size, bsz * self.num_heads, q_head_size)).transpose(0, 1)
+
+        value = torch.reshape(value, (v_batch_size, bsz * self.num_heads, q_head_size)).transpose(0, 1)
+
+        src_len = key.size(1)
+
+        B, Nt, E = query.shape
+        q_scaled = query * math.sqrt(1.0 / float(E))
+
+        if attn_mask is not None:
+            attn_output_weights = torch.baddbmm(attn_mask, q_scaled, key.transpose(-2, -1))
+        else:
+            attn_output_weights = torch.bmm(q_scaled, key.transpose(-2, -1))
+
+        attn_output_weights = torch.nn.functional.softmax(attn_output_weights, dim=-1)
+
+        attn_output = torch.bmm(attn_output_weights, value)
+        attn_output = attn_output.transpose(0, 1).contiguous().view(tgt_len * bsz, embed_dim)
+        attn_output = torch.nn.functional.linear(attn_output, self.attn.out_proj.weight, self.attn.out_proj.bias)
+        attn_output = attn_output.view(tgt_len, bsz, attn_output.size(1))
+
+        # optionally average attention weights over heads
+        attn_output_weights = torch.reshape(attn_output_weights, (bsz, self.num_heads, tgt_len, src_len))
+        attn_output_weights = attn_output_weights.mean(dim=1)
+
+        return attn_output + identity, attn_output_weights
 
 
 class FFN(nn.Module):
@@ -176,10 +173,12 @@ class PETRTransformerDecoderLayer(nn.Module):
         )
 
     def forward(self, query, key, value, key_pos, query_pos, key_padding_mask):
-        x = self.attentions[0](query, query, query, query_pos=query_pos, key_pos=query_pos)
+        x, weight = self.attentions[0](query, query, query, query_pos=query_pos, key_pos=query_pos)
         x = self.norms[0](x)
 
-        x = self.attentions[1](x, key, value, query_pos=query_pos, key_pos=key_pos, key_padding_mask=key_padding_mask)
+        x, weight = self.attentions[1](
+            x, key, value, query_pos=query_pos, key_pos=key_pos, key_padding_mask=key_padding_mask
+        )
         x = self.norms[1](x)
 
         x = self.ffns[0](x)
