@@ -14,6 +14,7 @@ import re
 import time
 import signal
 import psutil
+import json
 
 
 def ensure_less_installed():
@@ -45,7 +46,10 @@ def ensure_ttsmi_installed():
     config_file = os.path.join(config_dir, f"reset_config_{hostname}.json")
 
     try:
-        subprocess.run(["tt-smi", "-g", config_file], check=True)
+        if "glx" in hostname:
+            generate_tg_config_file()
+        else:
+            subprocess.run(["tt-smi", "-g", config_file], check=True)
         print(f"Generated reset config file: {config_file}")
     except subprocess.CalledProcessError as e:
         print(f"Error generating reset config file: {e}")
@@ -66,7 +70,7 @@ def main(stdscr):
     input_fields = [
         {"label": "Command [demo]", "value": "", "x": 0, "y": 0},
         {"label": "Model (1b, 3b, 8b, 11b, 70b) [all]", "value": "", "x": 0, "y": 1},
-        {"label": "Device (n150, n300, t3k) [all]", "value": "", "x": 0, "y": 2},
+        {"label": "Device (n150, n300, t3k, tg) [all]", "value": "", "x": 0, "y": 2},
     ]
 
     output_entries = []
@@ -176,7 +180,7 @@ def main(stdscr):
                         # Submit command
                         command_input = input_fields[0]["value"] or "demo"
                         model_input = input_fields[1]["value"] or "1b,3b,8b,11b,70b"
-                        device_input = input_fields[2]["value"] or "n150,n300,t3k"
+                        device_input = input_fields[2]["value"] or "n150,n300,t3k,tg"
 
                         if command_input == "modules":
                             command_input = "rmsnorm,attention,attention-prefill,mlp,lm-head"
@@ -586,6 +590,10 @@ def run_entry_command(entry, screen_lock, output_entries, screen_needs_update):
         entry["log_file"].flush()
         return
 
+    # Write the command to the log file
+    entry["log_file"].write(f"FAKE_DEVICE={entry['device']} LLAMA_DIR={get_llama_dir(entry['model'])} {command_input}")
+    entry["log_file"].flush()
+
     # Start the subprocess
     entry["process"] = subprocess.Popen(
         cmd_list, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, text=True, preexec_fn=os.setsid
@@ -797,10 +805,40 @@ def terminate_process_tree(pid):
         pass  # Process already terminated
 
 
+def generate_tg_config_file():
+    hostname = os.environ.get("HOSTNAME", "unknown")
+    host_name_config = hostname.split("-special-")[0]  # e.g. aus-glx-NR
+    mobo_name_config = (
+        host_name_config.split("-")[0]
+        + "-"
+        + host_name_config.split("-")[1]
+        + "-mgmt-"
+        + host_name_config.split("-")[2]
+    )  # e.g. aus-glx-mgmt-NR
+    config_file = os.path.expanduser(f"~/.config/tenstorrent/reset_config_{hostname}.json")
+    config = {
+        "time": "",
+        "host_name": host_name_config,
+        "wh_link_reset": {"pci_index": [0, 1, 2, 3]},
+        "re_init_devices": True,
+        "wh_mobo_reset": [
+            {
+                "nb_host_pci_idx": [0, 1, 2, 3],
+                "mobo": mobo_name_config,
+                "disabled_ports": ["0:0", "0:1", "0:2", "1:0", "1:1", "1:2", "6:2", "7:2"],
+            }
+        ],
+    }
+    with open(config_file, "w") as f:
+        json.dump(config, f)
+        f.close()
+
+
 def reset_device_async(entry, screen_lock, screen_needs_update):
     def reset_thread():
         hostname = os.environ.get("HOSTNAME", "unknown")
         config_file = os.path.expanduser(f"~/.config/tenstorrent/reset_config_{hostname}.json")
+        # config_file = os.path.expanduser(f"/proj_sw/user_dev/jrock/reset-06.json")
         reset_cmd = ["tt-smi", "-r", config_file]
         try:
             result = subprocess.run(reset_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
