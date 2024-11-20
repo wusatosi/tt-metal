@@ -142,6 +142,9 @@ def run_conv(
             16 if use_shallow_conv_variant or (input_channels == 16 and input_height == 115) else 32
         ),
         deallocate_activation=deallocate_activation,
+        reallocate_halo_output=True,
+        fp32_dest_acc_enabled=fp32_accum,
+        packer_l1_accum_enabled=packer_l1_acc,
         enable_act_double_buffer=False,
         enable_split_reader=False,
         enable_subblock_padding=False,
