@@ -180,7 +180,9 @@ class TtLlamaMLP(LightweightModule):
             num_reduce_scatter_links=self.args.num_reduce_scatter_links,
             num_all_gather_links=self.args.num_all_gather_links,
             sharded=True if mode == "decode" else False,
-            memory_config=self.model_config["FF2_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else None,
+            memory_config=(self.model_config["FF2_OUT_REDUCE_SCATTER_MEMCFG"] if TG else ttnn.L1_MEMORY_CONFIG)
+            if mode == "decode"
+            else ttnn.DRAM_MEMORY_CONFIG,
             dtype=self.args.ccl_dtype,
             use_composite=True,
         )

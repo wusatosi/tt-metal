@@ -258,7 +258,9 @@ class TtLlamaAttention(LightweightModule):
                 memory_config=self.model_config["CREATE_HEAD_INPUT_MEMCFG"],
             )
         else:
-            xqkv_fused = ttnn.sharded_to_interleaved(xqkv_fused_sharded, ttnn.L1_MEMORY_CONFIG)
+            xqkv_fused = ttnn.to_memory_config(
+                xqkv_fused_sharded, memory_config=ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat16
+            )
 
         ttnn.deallocate(xqkv_fused_sharded)
 
@@ -389,11 +391,9 @@ class TtLlamaAttention(LightweightModule):
                 num_links=2,
                 memory_config=self.model_config["GATHER_USERS_MEMCFG"](self.mesh_device.shape[1]),
                 sharded=True,
-                dtype=self.ccl_dtype,
+                # dtype=self.ccl_dtype,  # Running bf16 until we have SDPA output bfp8 df; otherwise we have two sharded to interleaved/interleaved to sharded conversions
             )
             if TG:
-                attn_output = ttnn.to_memory_config(attn_output, ttnn.L1_MEMORY_CONFIG)
-
                 # user_selection_matrix = [1, 1, 32, 128]
                 # user_selection_matrix @ activation -> [1, 1, 32, 128] * [1, 1, 128, 2048] -> [1, 1, 32, 2048]
                 attn_output = ttnn.matmul(
@@ -430,11 +430,6 @@ class TtLlamaAttention(LightweightModule):
                 dtype=self.ccl_dtype,
                 use_composite=True,
             )
-
-            if TG:
-                dense_out_reduced = ttnn.to_memory_config(
-                    dense_out_reduced, self.model_config["SHARDED_ATTN_INPUT_MEMCFG"]
-                )
 
             return dense_out_reduced
 

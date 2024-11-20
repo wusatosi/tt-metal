@@ -838,7 +838,6 @@ def reset_device_async(entry, screen_lock, screen_needs_update):
     def reset_thread():
         hostname = os.environ.get("HOSTNAME", "unknown")
         config_file = os.path.expanduser(f"~/.config/tenstorrent/reset_config_{hostname}.json")
-        # config_file = os.path.expanduser(f"/proj_sw/user_dev/jrock/reset-06.json")
         reset_cmd = ["tt-smi", "-r", config_file]
         try:
             result = subprocess.run(reset_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)

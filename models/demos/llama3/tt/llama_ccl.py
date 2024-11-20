@@ -97,9 +97,6 @@ def tt_all_reduce(
             memory_config=input_mem_cfg,
         )
 
-        if sharded:
-            reduced_tensor = ttnn.to_memory_config(reduced_tensor, ttnn.L1_MEMORY_CONFIG)
-
     # Reshape the reduced tensor to the original shape
     reduced_tensor = ttnn.reshape(reduced_tensor, original_shape)
 
