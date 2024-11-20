@@ -125,6 +125,7 @@ operation::ProgramWithCallbacks sdpa_decode_multi_core(
     // balance the number of cores to use based on batch
     uint32_t max_num_cores_for_compute = program_config->max_cores_per_head_batch*B*num_kv_heads;
     uint32_t num_cores_per_batch = std::min(num_cores_available,max_num_cores_for_compute) / B;
+    TT_FATAL(num_cores_per_batch > 0, "Number of cores per batch must be greater than 0");
     uint32_t num_active_cores = num_cores_per_batch * B;
     //// for core assignment, it is the same whether there's 1 core for head or 1 core for many heads
     uint32_t num_cores_per_head = std::max((uint32_t) 1, num_cores_per_batch / num_kv_heads);
@@ -447,7 +448,7 @@ operation::ProgramWithCallbacks sdpa_decode_multi_core(
     reduce_core_physical_ys.reserve(num_reducer_cores);
 
     for (uint32_t i = 0; i < num_active_cores; ++i) {
-        CoreCoord core = core_group[i];
+        CoreCoord core = core_group.at(i);
         uint32_t worker_id_for_reduce = i % num_cores_per_head - 1;
         bool do_reduce = (worker_id_for_reduce == -1);
         if (do_reduce) {
@@ -473,7 +474,7 @@ operation::ProgramWithCallbacks sdpa_decode_multi_core(
     output_core_physical_ys.reserve(num_output_cores);
 
     for (uint32_t i = 0; i < num_active_cores; ++i) {
-        CoreCoord core = core_group[i];
+        CoreCoord core = core_group.at(i);
         uint32_t worker_id_for_output = i % num_cores_per_batch - 1;
         bool do_output = (worker_id_for_output == -1);
         if (do_output) {
@@ -581,7 +582,9 @@ operation::ProgramWithCallbacks sdpa_decode_multi_core(
 
     // Set rt args
     for (uint32_t i = 0; i < num_active_cores; ++i) {
-        CoreCoord core = core_group[i];
+        log_info("i: {}", i);
+        CoreCoord core = core_group.at(i);
+        log_info("core: {}", core);
         uint32_t worker_id_for_reduce = i % num_cores_per_head - 1;
         uint32_t worker_id_for_output = i % num_cores_per_batch - 1;
         bool do_reduce = (worker_id_for_reduce == -1);
@@ -609,6 +612,9 @@ operation::ProgramWithCallbacks sdpa_decode_multi_core(
         std::vector<uint32_t> reader_rt_args = { q_addr, k_addr, v_addr, pos_addr, page_table_addr, attn_mask_addr, page_table_stick_size, do_reduce, do_output, cur_head, cur_batch, core_num_in_reduce, core_num_in_output, cur_pos};
         reader_rt_args.insert(reader_rt_args.end(), output_core_physical_xs.begin(), output_core_physical_xs.end());
         reader_rt_args.insert(reader_rt_args.end(), output_core_physical_ys.begin(), output_core_physical_ys.end());
+        // Insert 6 zeros at the end
+        // reader_rt_args.insert(reader_rt_args.end(), 6, 0);
+        // log_info("reader_rt_args size: {}", reader_rt_args.size());
 
         // writer runtime args
         std::vector<uint32_t> writer_rt_args = { out_addr, worker_id_for_reduce, worker_id_for_output, do_reduce, do_output, cur_head, cur_batch, core_num_in_reduce, core_num_in_output, cur_pos};
@@ -616,19 +622,24 @@ operation::ProgramWithCallbacks sdpa_decode_multi_core(
         writer_rt_args.insert(writer_rt_args.end(), reduce_core_physical_ys.begin(), reduce_core_physical_ys.end());
         writer_rt_args.insert(writer_rt_args.end(), output_core_physical_xs.begin(), output_core_physical_xs.end());
         writer_rt_args.insert(writer_rt_args.end(), output_core_physical_ys.begin(), output_core_physical_ys.end());
-
+        // writer_rt_args.insert(writer_rt_args.end(), 5, 0);
+        // log_info("writer_rt_args size: {}", writer_rt_args.size());
         // compute runtime args
         std::vector<uint32_t> compute_rt_args = {do_reduce, do_output, cur_head, cur_batch, core_num_in_reduce, core_num_in_output, cur_pos};
-
+        compute_rt_args.insert(compute_rt_args.end(), 20, 0);
+        // log_info("compute_rt_args size: {}", compute_rt_args.size());
         SetRuntimeArgs(program, reader_kernels_id, core, reader_rt_args);
         SetRuntimeArgs(program, writer_kernels_id, core, writer_rt_args);
         SetRuntimeArgs(program, compute_kernels_id, core, compute_rt_args);
+
+        // log total number of runtime args
+        log_info("total number of runtime args: {}", reader_rt_args.size() + writer_rt_args.size() + compute_rt_args.size());
     }
     if (num_active_cores < num_cores_available) {
         log_debug("idle cores {}", core_group_idle.size());
         // Set the rest of the cores to idle
         for (uint32_t i = 0; i < core_group_idle.size(); ++i) {
-            CoreCoord core = core_group_idle[i];
+            CoreCoord core = core_group_idle.at(i);
             log_debug("Setting core {} to idle", core);
             // reader runtime args
             std::vector<uint32_t> reader_rt_args = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -641,6 +652,27 @@ operation::ProgramWithCallbacks sdpa_decode_multi_core(
             SetRuntimeArgs(program, compute_kernels_id, core, { 65, 0, 0, 0, 0, 0, 0});
         }
     }
+
+    auto& reader_args_by_core = GetRuntimeArgs(program, reader_kernels_id);
+    auto& writer_args_by_core = GetRuntimeArgs(program, writer_kernels_id);
+    auto& compute_args_by_core = GetRuntimeArgs(program, compute_kernels_id);
+    // for each core in the active core group, log the memory addresses where each runtime ags vector is stored
+    for (uint32_t i = 0; i < num_active_cores; ++i) {
+        CoreCoord core = core_group.at(i);
+        // log_info("core: {}, reader_args: {}, writer_args: {}, compute_args: {}", core, reader_args_by_core.at(core.x).at(core.y), writer_args_by_core.at(core.x).at(core.y), compute_args_by_core.at(core.x).at(core.y));
+        // log the memory address of the rt args vectors and their sizes. Assert that there is no overlap
+        log_info("core: {}, reader_args: {}, writer_args: {}, compute_args: {}", core, reader_args_by_core.at(core.x).at(core.y), writer_args_by_core.at(core.x).at(core.y), compute_args_by_core.at(core.x).at(core.y));
+        // assert that no vector overruns into another
+        // auto reader_start = reader_args_by_core.at(core.x).at(core.y).data();
+        // auto writer_start = writer_args_by_core.at(core.x).at(core.y).data();
+        // auto compute_start = compute_args_by_core.at(core.x).at(core.y).data();
+        // TT_FATAL(reader_start + reader_args_by_core.at(core.x).at(core.y).size() * sizeof(uint32_t) <= writer_start, "reader_args overruns into writer_args");
+        // TT_FATAL(writer_start + writer_args_by_core.at(core.x).at(core.y).size() * sizeof(uint32_t) <= compute_start, "writer_args overruns into compute_args");
+        // TT_FATAL(compute_start + compute_args_by_core.at(core.x).at(core.y).size() * sizeof(uint32_t) <= reader_start + reader_args_by_core.at(core.x).at(core.y).size() * sizeof(uint32_t), "compute_args overruns into reader_args");
+    }
+
+    // the order of arguments in memory is reader, writer, compute.
+
 
     auto override_runtime_arguments_callback = [
         num_active_cores,
@@ -687,69 +719,94 @@ operation::ProgramWithCallbacks sdpa_decode_multi_core(
         auto& reader_args_by_core = GetRuntimeArgs(program, reader_kernels_id);
         auto& writer_args_by_core = GetRuntimeArgs(program, writer_kernels_id);
         auto& compute_args_by_core = GetRuntimeArgs(program, compute_kernels_id);
+        for (uint32_t i = 0; i < num_active_cores; ++i) {
+            CoreCoord core = core_group.at(i);
+            // log_info("core: {}, reader_args: {}, writer_args: {}, compute_args: {}", core, reader_args_by_core.at(core.x).at(core.y), writer_args_by_core.at(core.x).at(core.y), compute_args_by_core.at(core.x).at(core.y));
+            // log the memory address of the rt args vectors and their sizes. Assert that there is no overlap
+            log_info("core: {}, reader_args: {}, writer_args: {}, compute_args: {}", core, reader_args_by_core.at(core.x).at(core.y), writer_args_by_core.at(core.x).at(core.y), compute_args_by_core.at(core.x).at(core.y));
+            // assert that no vector overruns into another
+            // auto reader_start = reader_args_by_core.at(core.x).at(core.y).data();
+            // auto writer_start = writer_args_by_core.at(core.x).at(core.y).data();
+            // auto compute_start = compute_args_by_core.at(core.x).at(core.y).data();
+            // TT_FATAL(reader_start + reader_args_by_core.at(core.x).at(core.y).size() * sizeof(uint32_t) <= writer_start, "reader_args overruns into writer_args");
+            // TT_FATAL(writer_start + writer_args_by_core.at(core.x).at(core.y).size() * sizeof(uint32_t) <= compute_start, "writer_args overruns into compute_args");
+            // TT_FATAL(compute_start + compute_args_by_core.at(core.x).at(core.y).size() * sizeof(uint32_t) <= reader_start + reader_args_by_core.at(core.x).at(core.y).size() * sizeof(uint32_t), "compute_args overruns into reader_args");
+        }
+
 
         // Set rt args
+        log_info("core_group: {}", core_group);
         for (uint32_t i = 0; i < num_active_cores; ++i) {
-            CoreCoord core = core_group[i];
-            uint32_t worker_id_for_reduce = (num_cores_per_head == 0) ? -1 : i % num_cores_per_head - 1;
+            log_info("i: {}", i);
+            CoreCoord core = core_group.at(i);
+            log_info("core: {}", core);
+            uint32_t worker_id_for_reduce = i % num_cores_per_head - 1;
             uint32_t worker_id_for_output = i % num_cores_per_batch - 1;
             bool do_reduce = (worker_id_for_reduce == -1);
             bool do_output = (worker_id_for_output == -1);
-            uint32_t cur_head = (num_cores_per_head == 0) ? 0 : (i % num_cores_per_batch) / num_cores_per_head;
+            uint32_t cur_head = (i % num_cores_per_batch) / num_cores_per_head;
             uint32_t cur_batch = i / num_cores_per_batch;
             uint32_t core_num_in_reduce = (num_cores_per_head == 0) ? 0 : i % num_cores_per_head;
             uint32_t core_num_in_output = i % num_cores_per_batch;
             uint32_t cur_pos = (use_cur_pos_tensor || ! is_causal) ? -1 : cur_pos_ids.at(cur_batch);
 
-            auto& reader_args = reader_args_by_core[core.x][core.y];
-            auto& writer_args = writer_args_by_core[core.x][core.y];
-            auto& compute_args = compute_args_by_core[core.x][core.y];
+            auto& reader_args = reader_args_by_core.at(core.x).at(core.y);
+            auto& writer_args = writer_args_by_core.at(core.x).at(core.y);
+            auto& compute_args = compute_args_by_core.at(core.x).at(core.y);
+            // log_info("reader_args size: {}", reader_args.size());
+            // log_info("writer_args size: {}", writer_args.size());
+            // log_info("compute_args size: {}", compute_args.size());
+            // // log total number of runtime args
+            // log_info("total number of runtime args: {}", reader_args.size() + writer_args.size() + compute_args.size());
 
             // reader runtime args
             uint32_t arg_idx = 0;
-            reader_args[arg_idx++] = q_addr;
-            reader_args[arg_idx++] = k_addr;
-            reader_args[arg_idx++] = v_addr;
-            reader_args[arg_idx++] = pos_addr;
-            reader_args[arg_idx++] = page_table_addr;
-            reader_args[arg_idx++] = attn_mask_addr;
-            reader_args[arg_idx++] = page_table_stick_size;
-            reader_args[arg_idx++] = do_reduce;
-            reader_args[arg_idx++] = do_output;
-            reader_args[arg_idx++] = cur_head;
-            reader_args[arg_idx++] = cur_batch;
-            reader_args[arg_idx++] = core_num_in_reduce;
-            reader_args[arg_idx++] = core_num_in_output;
-            reader_args[arg_idx++] = cur_pos;
+            reader_args.at(arg_idx++) = q_addr;
+            reader_args.at(arg_idx++) = k_addr;
+            reader_args.at(arg_idx++) = v_addr;
+            reader_args.at(arg_idx++) = pos_addr;
+            reader_args.at(arg_idx++) = page_table_addr;
+            reader_args.at(arg_idx++) = attn_mask_addr;
+            reader_args.at(arg_idx++) = page_table_stick_size;
+            reader_args.at(arg_idx++) = do_reduce;
+            reader_args.at(arg_idx++) = do_output;
+            reader_args.at(arg_idx++) = cur_head;
+            reader_args.at(arg_idx++) = cur_batch;
+            reader_args.at(arg_idx++) = core_num_in_reduce;
+            reader_args.at(arg_idx++) = core_num_in_output;
+            reader_args.at(arg_idx++) = cur_pos;
 
             // writer runtime args
             arg_idx = 0;
-            writer_args[arg_idx++] = out_addr;
-            writer_args[arg_idx++] = worker_id_for_reduce;
-            writer_args[arg_idx++] = worker_id_for_output;
-            writer_args[arg_idx++] = do_reduce;
-            writer_args[arg_idx++] = do_output;
-            writer_args[arg_idx++] = cur_head;
-            writer_args[arg_idx++] = cur_batch;
-            writer_args[arg_idx++] = core_num_in_reduce;
-            writer_args[arg_idx++] = core_num_in_output;
-            writer_args[arg_idx++] = cur_pos;
+            writer_args.at(arg_idx++) = out_addr;
+            writer_args.at(arg_idx++) = worker_id_for_reduce;
+            writer_args.at(arg_idx++) = worker_id_for_output;
+            writer_args.at(arg_idx++) = do_reduce;
+            writer_args.at(arg_idx++) = do_output;
+            writer_args.at(arg_idx++) = cur_head;
+            writer_args.at(arg_idx++) = cur_batch;
+            writer_args.at(arg_idx++) = core_num_in_reduce;
+            writer_args.at(arg_idx++) = core_num_in_output;
+            writer_args.at(arg_idx++) = cur_pos;
 
 
-            // compute runtime args
+            // // compute runtime args
             arg_idx = 0;
-            compute_args[arg_idx++] = do_reduce;
-            compute_args[arg_idx++] = do_output;
-            compute_args[arg_idx++] = cur_head;
-            compute_args[arg_idx++] = cur_batch;
-            compute_args[arg_idx++] = core_num_in_reduce;
-            compute_args[arg_idx++] = core_num_in_output;
-            compute_args[arg_idx++] = cur_pos;
+            compute_args.at(arg_idx++) = do_reduce;
+            compute_args.at(arg_idx++) = do_output;
+            compute_args.at(arg_idx++) = cur_head;
+            compute_args.at(arg_idx++) = cur_batch;
+            compute_args.at(arg_idx++) = core_num_in_reduce;
+            compute_args.at(arg_idx++) = core_num_in_output;
+            compute_args.at(arg_idx++) = cur_pos;
         }
+
+        log_info("here3");
 
         if (is_output_sharded) {
             UpdateDynamicCircularBufferAddress(program, cb_out4_id, *out0_buffer);
         }
+        log_info("here4");
     };
 
     return {.program = std::move(program), .override_runtime_arguments_callback = override_runtime_arguments_callback};
