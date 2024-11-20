@@ -255,7 +255,7 @@ ttnn::Tensor ReshapeViewOperation::invoke(const ttnn::Tensor& tensor, const ttnn
     }
     // Catch-all
     // Do the reshape in row-major
-
+    Validate_transform(tensor_shape, shape);
     return detail::convert_tensor_to_rm_reshape_convert_back_to_orig_layout(tensor, shape);
 }
 
