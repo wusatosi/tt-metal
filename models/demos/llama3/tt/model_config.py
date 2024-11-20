@@ -782,7 +782,7 @@ class TtModelArgs:
         return False
 
     def ccl_topology(self):
-        if self.num_devices == 8:  # T3K
+        if self.num_devices == 8 and os.getenv("ACTUAL_DEVICE", "") != "TG":  # T3K
             return ttnn.Topology.Ring
         elif self.num_devices > 1:  # All other multi chip devices
             return ttnn.Topology.Linear

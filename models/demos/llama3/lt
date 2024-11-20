@@ -531,6 +531,10 @@ def run_entry_command(entry, screen_lock, output_entries, screen_needs_update):
     env["FAKE_DEVICE"] = entry["device"]
     env["LLAMA_DIR"] = get_llama_dir(entry["model"])
 
+    hostname = os.environ.get("HOSTNAME", "unknown")
+    actual_device = "TG" if "glx" in hostname else ""
+    env["ACTUAL_DEVICE"] = actual_device
+
     # Define command shortcuts
     command_shortcuts = {
         "demo": "pytest models/demos/llama3/demo/demo.py -k instruct_weights-1",
@@ -591,7 +595,9 @@ def run_entry_command(entry, screen_lock, output_entries, screen_needs_update):
         return
 
     # Write the command to the log file
-    entry["log_file"].write(f"FAKE_DEVICE={entry['device']} LLAMA_DIR={get_llama_dir(entry['model'])} {command_input}")
+    entry["log_file"].write(
+        f"FAKE_DEVICE={entry['device']} LLAMA_DIR={get_llama_dir(entry['model'])} ACTUAL_DEVICE={actual_device} {command_input}/n"
+    )
     entry["log_file"].flush()
 
     # Start the subprocess
