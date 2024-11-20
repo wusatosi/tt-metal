@@ -167,6 +167,132 @@ def scaled_dot_product_attention_simulated(
     return output_tensor
 
 
+@pytest.mark.parametrize(
+    "n_devices",
+    [
+        1,
+        # 8,
+    ],
+)
+def test_fail(
+    n_devices,
+    # t3k_mesh_device
+    device,
+):
+    # device = t3k_mesh_device
+    # if n_devices == 1:
+    # device = device.get_devices()[0]
+    device.enable_async(False)
+    device.enable_program_cache()
+    compute_grid_size = device.compute_with_storage_grid_size()
+
+    b, nqh, nkv, s, d = 32, 2, 2, 6528, 128
+    dtype = ttnn.bfloat16
+
+    compute_kernel_config = ttnn.WormholeComputeKernelConfig(
+        math_fidelity=ttnn.MathFidelity.HiFi4,
+        math_approx_mode=False,
+        fp32_dest_acc_en=False,
+        packer_l1_acc=False,
+    )
+    dram_memcfg = ttnn.DRAM_MEMORY_CONFIG
+
+    K = fa_rand(b, nkv, s, d)
+    V = fa_rand(b, nkv, s, d)
+
+    tt_K = ttnn.as_tensor(
+        K,
+        device=device,
+        dtype=dtype,
+        layout=ttnn.TILE_LAYOUT,
+        memory_config=dram_memcfg,
+        mesh_mapper=ttnn.ReplicateTensorToMesh(device) if n_devices > 1 else None,
+    )
+    tt_V = ttnn.as_tensor(
+        V,
+        device=device,
+        dtype=dtype,
+        layout=ttnn.TILE_LAYOUT,
+        memory_config=dram_memcfg,
+        mesh_mapper=ttnn.ReplicateTensorToMesh(device) if n_devices > 1 else None,
+    )
+
+    max_start_idx = 0
+
+    for _ in range(2):
+        scale = d**-0.5
+        start_indices = np.linspace(0, 100, b, dtype=np.int32).tolist() if b > 1 else [max_start_idx]
+        tt_start_indices = ttnn.as_tensor(
+            torch.tensor(start_indices),
+            device=device,
+            dtype=ttnn.int32,
+            layout=ttnn.ROW_MAJOR_LAYOUT,
+            memory_config=dram_memcfg,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(device) if n_devices > 1 else None,
+        )
+
+        k_chunk_size = get_chunk_size(max_start_idx + 1, s)
+        program_config = ttnn.SDPAProgramConfig(
+            compute_with_storage_grid_size=(8, 8),  # device.compute_with_storage_grid_size(),
+            q_chunk_size=32,
+            k_chunk_size=128,
+            exp_approx_mode=False,
+        )
+
+        # Test various sequence lengths
+        logger.info(f"Testing with sequence length: {max_start_idx}")
+        logger.info(f"Using chunk size: {k_chunk_size}")
+
+        attn_mask = torch.zeros((1, b, nqh, s))
+
+        Q = fa_rand(1, b, nqh, d)
+
+        tt_Q = ttnn.as_tensor(
+            Q,
+            device=device,
+            dtype=dtype,
+            layout=ttnn.TILE_LAYOUT,
+            memory_config=dram_memcfg,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(device) if n_devices > 1 else None,
+        )
+        tt_mask = ttnn.as_tensor(
+            attn_mask,
+            device=device,
+            dtype=dtype,
+            layout=ttnn.TILE_LAYOUT,
+            memory_config=dram_memcfg,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(device) if n_devices > 1 else None,
+        )
+
+        tt_back = ttnn.transformer.scaled_dot_product_attention_decode(
+            tt_Q,
+            tt_K,
+            tt_V,
+            # is_causal=False,
+            is_causal=True,
+            cur_pos_tensor=tt_start_indices,
+            scale=scale,
+            program_config=program_config,
+            compute_kernel_config=compute_kernel_config,
+            # attn_mask=tt_mask,
+        )
+
+        ttnn.synchronize_device(device)
+        print(f"finished sdpa", flush=True)
+        tt_Q = ttnn.exp(tt_Q)
+        ttnn.synchronize_device(device)
+        print(f"finished exp", flush=True)
+
+        # output = ttnn.exp(tt_back)
+        # output = ttnn.multiply(tt_back, tt_back)
+        # output = ttnn.add(tt_back, tt_back)
+
+        # Synchronize devices
+        # for dev in device.get_devices():
+        #     ttnn.synchronize_device(dev)
+        # ttnn.synchronize_device(device)
+
+
 def run_test_sdpa_decode_multi_pos(
     device,
     b,
