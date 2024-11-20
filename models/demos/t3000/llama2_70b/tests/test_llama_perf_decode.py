@@ -77,6 +77,7 @@ def run_test_LlamaModel_end_to_end(
     ckpt_dir,
     tokenizer_path,
     cache_path,
+    outer_loops,
 ):
     # Prepare paths and devices
     skip_model_load = should_skip_model_load()
@@ -156,9 +157,18 @@ def run_test_LlamaModel_end_to_end(
     ##### Execute Trace #####
     logger.info("Executing trace")
     profiler.start(f"end_to_end_inference")
-    for i in range(n_iters):
-        ttnn.execute_trace(mesh_device, trace_id, blocking=False)
-        logits = ttnn.to_torch(logits_rm)
+    from datetime import datetime
+
+    start_time = datetime.now()
+    for o in range(outer_loops):
+        elapsed = datetime.now() - start_time
+        hours = elapsed.total_seconds() // 3600
+        minutes = (elapsed.total_seconds() % 3600) // 60
+        seconds = elapsed.total_seconds() % 60
+        logger.info(f"Outer loop {o}/{outer_loops} (Elapsed: {int(hours)}h {int(minutes)}m {int(seconds)}s)")
+        for i in range(n_iters):
+            ttnn.execute_trace(mesh_device, trace_id, blocking=False)
+            logits = ttnn.to_torch(logits_rm)
     profiler.end(f"end_to_end_inference")
     ttnn.release_trace(mesh_device, trace_id)
 
@@ -208,6 +218,7 @@ def run_test_LlamaModel_end_to_end(
     ),
     ids=["gen32", "gen128", "gen2k", "gen8k", "gen128k"],
 )
+@pytest.mark.parametrize("outer_loops", [1, 12000], ids=["single_iter", "24_hour"])
 @pytest.mark.parametrize("device_params", [{"trace_region_size": 20000000}], indirect=True)
 def test_Llama_perf_host(
     generation_length,
@@ -219,6 +230,7 @@ def test_Llama_perf_host(
     t3k_mesh_device,
     llama_version,
     use_program_cache,
+    outer_loops,
     n_layers=80,
     n_devices=8,
 ):
@@ -249,6 +261,7 @@ def test_Llama_perf_host(
         ckpt_dir,
         tokenizer_path,
         cache_path,
+        outer_loops,
     )
 
 
