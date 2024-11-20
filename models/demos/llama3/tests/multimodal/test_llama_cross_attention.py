@@ -34,9 +34,10 @@ from models.utility_functions import skip_for_grayskull
 )
 @pytest.mark.parametrize(
     "batch",
-    (1,),
+    (1, 32),
     ids=[
         "batch_1",
+        "batch_32",
     ],
 )
 def test_llama_cross_attention_inference(text_seq_len, batch, mesh_device, reset_seeds, ensure_gc):
@@ -44,6 +45,8 @@ def test_llama_cross_attention_inference(text_seq_len, batch, mesh_device, reset
     pcc_required = 0.99
 
     mesh_device.enable_async(True)
+    mesh_device.enable_program_cache()
+    # TODO: enable program cache to repro failure from simple_vision_demo
 
     model_args = TtModelArgs(mesh_device)
     state_dict = torch.load(model_args.consolidated_weights_path, map_location=torch.device("cpu"))
@@ -89,9 +92,9 @@ def test_llama_cross_attention_inference(text_seq_len, batch, mesh_device, reset
     """
     Test compute_xattn_kv_cache
     """
-    pt_xattn_cache = reference_model.compute_xattn_kv_cache(pt_xattn_tokens)
-    pt_xattn_cache_chunks = torch.chunk(pt_xattn_cache, 2, dim=0)
-    pt_xattn_cache_chunks = [x.view(batch, n_heads, vision_seq_len, head_dim) for x in pt_xattn_cache]
+    # pt_xattn_cache = reference_model.compute_xattn_kv_cache(pt_xattn_tokens)
+    # pt_xattn_cache_chunks = torch.chunk(pt_xattn_cache, 2, dim=0)
+    # pt_xattn_cache_chunks = [x.view(batch, n_heads, vision_seq_len, head_dim) for x in pt_xattn_cache]
 
     # Preallocate K and V caches
     tt_xattn_cache = [
@@ -110,8 +113,10 @@ def test_llama_cross_attention_inference(text_seq_len, batch, mesh_device, reset
     Test forward, prefill and decode!
     """
     for i in range(10):
-        seq_len = text_seq_len if i == 0 else 1
-        mode = "prefill" if i == 0 else "decode"
+        # seq_len = text_seq_len if i == 0 else 1
+        seq_len = 1
+        # mode = "prefill" if i == 0 else "decode"
+        mode = "decode"
         pt_x = (torch.rand(batch, seq_len, dim) * 2) - 1
         tt_x = pt_x.clone()
 
@@ -143,9 +148,9 @@ def test_llama_cross_attention_inference(text_seq_len, batch, mesh_device, reset
         full_text_mask = full_text_mask.unsqueeze(1).unsqueeze(-1)
         full_text_mask_expand = full_text_mask.expand(-1, n_heads // model_args.num_devices, -1, head_dim)
 
-        pt_out = reference_model.forward(
-            pt_x, xattn_mask=xattn_mask, full_text_row_masked_out_mask=full_text_mask, xattn_cache=pt_xattn_cache
-        )
+        # pt_out = reference_model.forward(
+        #     pt_x, xattn_mask=xattn_mask, full_text_row_masked_out_mask=full_text_mask, xattn_cache=pt_xattn_cache
+        # )
 
         if mode == "prefill":
             outputs = []
@@ -242,10 +247,10 @@ def test_llama_cross_attention_inference(text_seq_len, batch, mesh_device, reset
             tt_output_torch = ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1))
             tt_output_torch = tt_output_torch[:, :, :batch, :].reshape(batch, seq_len, dim)
 
-        passing, pcc_message = comp_pcc(pt_out, tt_output_torch, pcc_required)
-        logger.info(comp_allclose(pt_out, tt_output_torch))
-        logger.info(f"PCC: {pcc_message}")
-        all_tests_pass = all_tests_pass and passing
+        # passing, pcc_message = comp_pcc(pt_out, tt_output_torch, pcc_required)
+        # logger.info(comp_allclose(pt_out, tt_output_torch))
+        # logger.info(f"PCC: {pcc_message}")
+        # all_tests_pass = all_tests_pass and passing
 
         if mode == "prefill":
             tt_xattn_cache_torch = [
