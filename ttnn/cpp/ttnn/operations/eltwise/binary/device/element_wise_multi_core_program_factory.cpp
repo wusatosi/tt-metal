@@ -117,21 +117,29 @@ inline __attribute__((always_inline)) void set_eltwise_binary_runtime_args(
     uint32_t g1_numcores = core_group_1.num_cores();
     uint32_t g2_numcores = core_group_2.num_cores();
 
+    const auto num_extra_args = 200;
+
     std::vector<std::vector<uint32_t>> binary_reader_args;
     std::vector<std::vector<uint32_t>> eltwise_binary_args;
     std::vector<std::vector<uint32_t>> unary_writer_args;
     if constexpr (initialize_args) {
-        binary_reader_args = {cores.size(), std::vector<uint32_t>(7)};
-        eltwise_binary_args = {cores.size(), std::vector<uint32_t>(2)};
+        binary_reader_args = {cores.size(), std::vector<uint32_t>(7+num_extra_args)};
+        eltwise_binary_args = {cores.size(), std::vector<uint32_t>(2+num_extra_args)};
         if (block_or_width_sharded and not out_sharded)
             unary_writer_args = {cores.size(), std::vector<uint32_t>(7)};
         else
             unary_writer_args = {cores.size(), std::vector<uint32_t>(3)};
     }
 
+    if (initialize_args) {
+        log_info("num_total_args: {}", num_cores_total * (binary_reader_args.at(0).size() + eltwise_binary_args.at(0).size() + unary_writer_args.at(0).size()));
+    }
+
     auto& cached_reader_args = GetRuntimeArgs(program, binary_reader_kernel_id);
     auto& cached_eltwise_args = GetRuntimeArgs(program, eltwise_binary_kernel_id);
     auto& cached_writer_args = GetRuntimeArgs(program, unary_writer_kernel_id);
+
+    log_info("num_cores_total: {}", num_cores_total);
 
     for (uint32_t i = 0, num_tiles_read = 0; i < num_cores_total; ++i) {
         const CoreCoord& core = cores.at(i);
