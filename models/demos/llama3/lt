@@ -55,6 +55,20 @@ def ensure_ttsmi_installed():
         print(f"Error generating reset config file: {e}")
         sys.exit(1)
 
+    print("Resetting device on program start...")
+    reset_device_sync(config_file)
+
+
+def reset_device_sync(config_file):
+    reset_cmd = ["tt-smi", "-r", config_file]
+    try:
+        print(f"Resetting device using config file: {config_file}")
+        result = subprocess.run(reset_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        print(f"Device reset successfully: {result.stdout}")
+    except subprocess.CalledProcessError as e:
+        print(f"Error during device reset: {e.stderr}")
+        sys.exit(1)
+
 
 def main(stdscr):
     curses.curs_set(0)  # Hide cursor
