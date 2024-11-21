@@ -81,7 +81,7 @@ class TtTransformerBlock(LightweightModule):
         )
 
         self.ATTN_ACT_MEMCFG = self.model_config["SHARDED_ATTN_INPUT_MEMCFG"]
-        self.MLP_ACT_MEMCFG = self.model_config["FULL_GRID_MEMCFG"]
+        self.MLP_ACT_MEMCFG = self.model_config["MLP_ACT_MEMCFG"]
 
     def forward(
         self,

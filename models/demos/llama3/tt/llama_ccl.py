@@ -36,7 +36,7 @@ def tt_all_reduce(
         )
 
     # N300 and T3K: reduce_scatter
-    if 1 in mesh_device.shape:  # TODO: use reducescatter and all gather for all models
+    if 1 in mesh_device.shape:
         if input_tensor.is_sharded():
             input_tensor = ttnn.sharded_to_interleaved(input_tensor, ttnn.L1_MEMORY_CONFIG)
         return ttnn.reduce_scatter(
@@ -128,12 +128,11 @@ def tt_all_gather(
         if sharded and memory_config is not None:
             input_tensor = ttnn.to_memory_config(input_tensor, memory_config, dtype)  # to sharded
 
-    if cluster_axis is None:  # TODO: is this ever called?
+    if cluster_axis is None:
         return ttnn.all_gather(
             input_tensor,
             dim,
             num_links=num_links,
-            # mesh_device=mesh_device,
             topology=topology,
             memory_config=memory_config,
         )

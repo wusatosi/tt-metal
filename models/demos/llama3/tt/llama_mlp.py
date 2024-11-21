@@ -67,9 +67,9 @@ class TtLlamaMLP(LightweightModule):
 
         if mode == "decode":  # Sharded config
             if TG:  # TODO: Fix this when TG supports DRAM sharded matmuls
-                pc_1 = None
-                pc_2 = None
-                pc_3 = None
+                pc_1 = self.model_config["FF1_3_TG_PROGCFG"]
+                pc_2 = self.model_config["FF2_TG_PROGCFG"]
+                pc_3 = self.model_config["FF1_3_TG_PROGCFG"]
             else:
                 pc_1 = self.model_config["DECODE_MLP_W1_W3_PRG_CONFIG"]
                 pc_2 = self.model_config["DECODE_MLP_W2_PRG_CONFIG"]
@@ -88,7 +88,6 @@ class TtLlamaMLP(LightweightModule):
             x,
             self.w1,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
-            core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_1 else None,
             dtype=ttnn.bfloat8_b,
             program_config=pc_1,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
@@ -98,7 +97,6 @@ class TtLlamaMLP(LightweightModule):
             x,
             self.w3,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
-            core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_3 else None,
             dtype=ttnn.bfloat8_b,
             program_config=pc_3,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
@@ -163,7 +161,6 @@ class TtLlamaMLP(LightweightModule):
             w2_in,
             self.w2,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
-            core_grid=ttnn.CoreGrid(y=1, x=8) if not pc_2 else None,
             dtype=self.args.ccl_dtype if self.args.is_multichip else ttnn.bfloat16,
             program_config=pc_2,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
