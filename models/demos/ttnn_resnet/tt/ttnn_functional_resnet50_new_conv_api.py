@@ -8,6 +8,7 @@ from models.demos.ttnn_resnet.tt.ttnn_functional_resnet50_model_utils import get
 from models.utility_functions import (
     is_grayskull,
     is_wormhole_b0,
+    is_blackhole,
     _nearest_y,
 )
 from typing import List
@@ -625,7 +626,7 @@ class resnet50:
             if is_grayskull():
                 num_cores_x = 10
                 num_cores_y = 8
-            elif is_wormhole_b0():  # untested due to unsupported batch20 on WH
+            elif is_wormhole_b0() or is_blackhole():
                 num_cores_x = 8
                 num_cores_y = 5
         self.fold_compute_grid_size = (num_cores_x, num_cores_y)
