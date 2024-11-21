@@ -609,16 +609,8 @@ class TtModelArgs:
                 ),
             )
 
-            # self.model_config["MLP_ACT_MEMCFG"] = ttnn.create_sharded_memory_config(
-            #     shape=(32, self.dim // 4 // 8), # dim / num devices / 8 cores
-            #     core_grid=ttnn.CoreGrid(y=1, x=8),
-            #     strategy=ttnn.ShardStrategy.WIDTH,
-            #     orientation=ttnn.ShardOrientation.ROW_MAJOR,
-            #     use_height_and_width_as_shard_shape=True,
-            # )
-
             self.model_config["MLP_ACT_MEMCFG"] = ttnn.create_sharded_memory_config(
-                shape=(32, self.dim // 4 // 16),  # dim / num devices / 8 cores
+                shape=(32, self.dim // 4 // 16),  # dim / num devices / 16 cores
                 core_grid=ttnn.CoreGrid(x=8, y=2),
                 strategy=ttnn.ShardStrategy.WIDTH,
                 orientation=ttnn.ShardOrientation.ROW_MAJOR,
@@ -642,8 +634,6 @@ class TtModelArgs:
                 overwrite_subblock_h=1,
                 overwrite_subblock_w=1,
             )
-            print(self.model_config["MLP_ACT_MEMCFG"])
-            print(self.model_config["FF1_3_TG_PROGCFG"])
 
             self.model_config["FF2_TG_PROGCFG"] = self.matmul_1d_config_from_tensor_shapes(
                 (
