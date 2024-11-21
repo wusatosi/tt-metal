@@ -24,6 +24,11 @@ CHIP_ID_TO_COORDINATES_T3K[7] = (3, 0)
 NUM_ITERATIONS = 100000
 
 
+def test_on_galaxy_riser(device, use_program_cache):
+    devices = [device]
+    test_reproduce_lm_head_nd_32(devices, 1, use_program_cache)
+
+
 @pytest.mark.parametrize("num_devices", [1, 2, 8], ids=["1chips", "2chips", "8chips"])
 def test_reproduce_lm_head_nd_32(
     all_devices, num_devices, use_program_cache, determinism_check_enabled=False, determinism_check_iterations=1
@@ -36,17 +41,15 @@ def test_reproduce_lm_head_nd_32(
 
     logger.info(f"Running on: {num_devices} devices.")
 
-    dram_interleaved_memory_config = ttl.tensor.MemoryConfig(
-        ttl.tensor.TensorMemoryLayout.INTERLEAVED, ttl.tensor.BufferType.DRAM
-    )
+    dram_interleaved_memory_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM)
 
-    in0_mem_config = ttl.tensor.MemoryConfig(ttl.tensor.TensorMemoryLayout.INTERLEAVED, ttl.tensor.BufferType.L1)
+    in0_mem_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.L1)
     in1_mem_config = dram_interleaved_memory_config
-    out_mem_config = ttl.tensor.MemoryConfig(ttl.tensor.TensorMemoryLayout.INTERLEAVED, ttl.tensor.BufferType.L1)
+    out_mem_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.L1)
 
-    in0_dtype = ttl.tensor.DataType.BFLOAT8_B
-    in1_dtype = ttl.tensor.DataType.BFLOAT8_B
-    out_dtype = ttl.tensor.DataType.BFLOAT8_B
+    in0_dtype = ttnn.DataType.BFLOAT8_B
+    in1_dtype = ttnn.DataType.BFLOAT8_B
+    out_dtype = ttnn.DataType.BFLOAT8_B
 
     torch.manual_seed(1234)
 
@@ -72,9 +75,9 @@ def test_reproduce_lm_head_nd_32(
     for device_idx in range(num_devices):
         for act in range(num_activation_tensors):
             a_t[act][device_idx] = torch2tt_tensor(
-                A[act], devices[device_idx], ttl.tensor.Layout.TILE, dram_interleaved_memory_config, in0_dtype
+                A[act], devices[device_idx], ttnn.Layout.TILE, dram_interleaved_memory_config, in0_dtype
             )
-        b_t.append(ttl.tensor.Tensor(B, in1_dtype).to(ttl.tensor.Layout.TILE).to(devices[device_idx], in1_mem_config))
+        b_t.append(ttnn.Tensor(B, in1_dtype).to(ttnn.Layout.TILE).to(devices[device_idx], in1_mem_config))
 
     bias_t = None
 
@@ -91,7 +94,7 @@ def test_reproduce_lm_head_nd_32(
     )
 
     wh_compute_kernel_config = ttnn.WormholeComputeKernelConfig(
-        math_fidelity=ttnn.experimental.tensor.MathFidelity.LoFi,
+        math_fidelity=ttnn.MathFidelity.LoFi,
         math_approx_mode=True,
         fp32_dest_acc_en=False,
         packer_l1_acc=True,

@@ -26,6 +26,11 @@ CHIP_ID_TO_COORDINATES_T3K[6] = (3, 1)
 CHIP_ID_TO_COORDINATES_T3K[7] = (3, 0)
 
 
+def test_on_galaxy_riser(device, use_program_cache):
+    devices = [device]
+    test_reproduce_matmul_2d_hang(1, devices, 1024, 4608, 18432, 4, 72, 3, 1, 8, NUM_ITERATIONS, use_program_cache)
+
+
 @pytest.mark.parametrize(
     "seq_len, inner_dim, weights_n, per_core_M, per_core_N, in_block_w, out_subblock_h, out_subblock_w, loop_count",
     (FF1_HANG_PARAMETRIZATION,),
@@ -57,13 +62,13 @@ def test_reproduce_matmul_2d_hang(
     logger.info(f"Running on {num_devices} devices")
     torch.manual_seed(1234)
 
-    in0_block_shard_spec = ttl.tensor.ShardSpec(
-        ttl.tensor.CoreRangeSet(
+    in0_block_shard_spec = ttnn.ShardSpec(
+        ttnn.CoreRangeSet(
             {
-                ttl.tensor.CoreRange(
+                ttnn.CoreRange(
                     # Volume must match batch size
-                    ttl.tensor.CoreCoord(0, 0),
-                    ttl.tensor.CoreCoord(7, 7),
+                    ttnn.CoreCoord(0, 0),
+                    ttnn.CoreCoord(7, 7),
                 ),
             }
         ),
@@ -71,23 +76,21 @@ def test_reproduce_matmul_2d_hang(
             128,
             576,
         ],
-        ttl.tensor.ShardOrientation.ROW_MAJOR,
+        ttnn.ShardOrientation.ROW_MAJOR,
         False,
     )
-    in0_block_sharded_mem_config = ttl.tensor.MemoryConfig(
-        ttl.tensor.TensorMemoryLayout.BLOCK_SHARDED, ttl.tensor.BufferType.L1, in0_block_shard_spec
+    in0_block_sharded_mem_config = ttnn.MemoryConfig(
+        ttnn.TensorMemoryLayout.BLOCK_SHARDED, ttnn.BufferType.L1, in0_block_shard_spec
     )
 
-    dram_interleaved_mem_config = ttl.tensor.MemoryConfig(
-        ttl.tensor.TensorMemoryLayout.INTERLEAVED, ttl.tensor.BufferType.DRAM
-    )
+    dram_interleaved_mem_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM)
 
     in1_mem_config = dram_interleaved_mem_config
-    out_mem_config = ttl.tensor.MemoryConfig(ttl.tensor.TensorMemoryLayout.BLOCK_SHARDED, ttl.tensor.BufferType.L1)
+    out_mem_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.BLOCK_SHARDED, ttnn.BufferType.L1)
 
-    in0_dtype = ttl.tensor.DataType.BFLOAT16
-    in1_dtype = ttl.tensor.DataType.BFLOAT8_B
-    out_dtype = ttl.tensor.DataType.BFLOAT16
+    in0_dtype = ttnn.DataType.BFLOAT16
+    in1_dtype = ttnn.DataType.BFLOAT8_B
+    out_dtype = ttnn.DataType.BFLOAT16
 
     a_shape = [1, 1, seq_len, inner_dim]
     b_shape = [1, 1, inner_dim, weights_n]
@@ -110,9 +113,9 @@ def test_reproduce_matmul_2d_hang(
     for device_idx in range(num_devices):
         for act in range(num_activation_tensors):
             a_t[act][device_idx] = torch2tt_tensor(
-                A[act], devices[device_idx], ttl.tensor.Layout.TILE, dram_interleaved_mem_config, in0_dtype
+                A[act], devices[device_idx], ttnn.Layout.TILE, dram_interleaved_mem_config, in0_dtype
             )
-        b_t.append(torch2tt_tensor(B, devices[device_idx], ttl.tensor.Layout.TILE, in1_mem_config, in1_dtype))
+        b_t.append(torch2tt_tensor(B, devices[device_idx], ttnn.Layout.TILE, in1_mem_config, in1_dtype))
 
     program_config = ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
         compute_with_storage_grid_size=(8, 8),
@@ -126,7 +129,7 @@ def test_reproduce_matmul_2d_hang(
     )
 
     compute_config = ttnn.WormholeComputeKernelConfig(
-        math_fidelity=ttl.tensor.MathFidelity.HiFi2,
+        math_fidelity=ttnn.MathFidelity.HiFi2,
         math_approx_mode=False,
         fp32_dest_acc_en=False,
         packer_l1_acc=True,
