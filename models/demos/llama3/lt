@@ -277,6 +277,9 @@ def main(stdscr):
                             entry["stop_event"].set()
                             terminate_process_tree(entry["process"].pid)
                             entry["status"] = "Terminating"
+                            # Reset the device after cancellation
+                            reset_device_async(entry, screen_lock, screen_needs_update)
+                            entry["status"] = "Resetting"
                         elif entry["status"] != "Resetting":
                             # Remove the entry if it's already cancelled
                             output_entries.pop(entry_index)
