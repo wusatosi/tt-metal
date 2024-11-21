@@ -183,13 +183,14 @@ def conv2d(
     return_output_size=False,
     return_prepared_device_weights=False,
 ) -> Tuple[ttnn.Tensor, int, int, ttnn.Tensor, ttnn.Tensor]:
-    (
-        conv_output,
-        output_height,
-        output_width,
-        prepared_device_weight,
-        prepared_device_bias,
-    ) = ttnn._ttnn.operations.conv.conv2d(
+    # (
+    #     conv_output,
+    #     output_height,
+    #     output_width,
+    #     prepared_device_weight,
+    #     prepared_device_bias,
+    # ) =
+    return ttnn._ttnn.operations.conv.conv2d(
         input_tensor=input_tensor,
         weight_tensor=weight_tensor,
         device=device,
@@ -208,14 +209,14 @@ def conv2d(
         memory_config=memory_config,
     )
 
-    if return_output_size and return_prepared_device_weights:
-        return conv_output, output_height, output_width, prepared_device_weight, prepared_device_bias
-    elif return_prepared_device_weights:
-        return conv_output, prepared_device_weight, prepared_device_bias
-    elif return_output_size:
-        return conv_output, output_height, output_width
-    else:
-        return conv_output
+    # if return_output_size and return_prepared_device_weights:
+    #     return conv_output, output_height, output_width, prepared_device_weight, prepared_device_bias
+    # elif return_prepared_device_weights:
+    #     return conv_output, prepared_device_weight, prepared_device_bias
+    # elif return_output_size:
+    #     return conv_output, output_height, output_width
+    # else:
+    #     return conv_output
 
 
 __all__ = []
