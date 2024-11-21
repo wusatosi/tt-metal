@@ -19,7 +19,7 @@ from models.utility_functions import (
     divup,
 )
 
-from tests.ttnn.utils_for_testing import assert_with_pcc
+from tests.ttnn.utils_for_testing import assert_with_pcc, check_with_pcc
 from models.demos.ttnn_resnet.tt.custom_preprocessing import create_custom_mesh_preprocessor
 
 if is_blackhole():
@@ -337,11 +337,14 @@ class ResNet50TestInfra:
                     valid_pcc = 0.93
                 else:
                     valid_pcc = 0.982
-        self.pcc_passed, self.pcc_message = assert_with_pcc(self.torch_output_tensor, output_tensor, pcc=valid_pcc)
+        # self.pcc_passed, self.pcc_message = assert_with_pcc(self.torch_output_tensor, output_tensor, pcc=valid_pcc)
+        self.pcc_passed, self.pcc_message = check_with_pcc(self.torch_output_tensor, output_tensor, pcc=valid_pcc)
 
         logger.info(
             f"ResNet50 batch_size={batch_size}, act_dtype={self.act_dtype}, weight_dtype={self.weight_dtype}, math_fidelity={self.math_fidelity}, PCC={self.pcc_message}"
         )
+
+        return self.pcc_passed, self.pcc_message
 
 
 def create_test_infra(
