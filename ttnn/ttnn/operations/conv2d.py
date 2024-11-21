@@ -180,8 +180,8 @@ def conv2d(
     memory_config: ttnn.MemoryConfig = None,  # memory config overrides by user
     conv_op_cache={},  # basic conv object caching in python needed for intermediate refactoring. Not needed after full op refactoring in C++.
     debug=False,  # ignored
-    return_output_size=False,
-    return_prepared_device_weights=False,
+    return_output_size=True,
+    return_prepared_device_weights=True,
 ) -> Tuple[ttnn.Tensor, int, int, ttnn.Tensor, ttnn.Tensor]:
     # (
     #     conv_output,
