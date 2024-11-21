@@ -10,7 +10,7 @@ from models.demos.llama3.tt.distributed_norm import DistributedNorm
 
 
 class TtTransformerBlock(LightweightModule):
-    def __init__(self, args, mesh_device, dtype, state_dict, layer_num, weight_cache_path):
+    def __init__(self, args, mesh_device, dtype, state_dict, layer_num, weight_cache_path, transformation_mats=None):
         super().__init__()
 
         self.state_dict = state_dict
@@ -35,6 +35,7 @@ class TtTransformerBlock(LightweightModule):
             layer_num=layer_num,
             dtype=dtype,
             configuration=args,
+            transformation_mats=transformation_mats,
         )
         self.feed_forward = TtLlamaMLP(
             mesh_device=mesh_device,
@@ -101,7 +102,6 @@ class TtTransformerBlock(LightweightModule):
 
         # Norms take fractured inputs and output replicated across devices
         attn_in = self.attention_norm(x, mode)
-
         # Attention takes replicated inputs and produces fractured outputs
         attn_out = self.attention.forward(
             attn_in,
@@ -112,16 +112,22 @@ class TtTransformerBlock(LightweightModule):
             mode,
             page_table,
         )
-
+        # print("done with attention")
         # Here x and attn_out are both fractured across devices
         h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg)
-        # ttnn.deallocate(attn_out)
+        if mode == "prefill":
+            x.deallocate(True)
+            attn_out.deallocate(True)
         # Norms take fractured inputs and output replicated across devices
         ff_in = self.ff_norm(h, mode)
         if TG and mode == "decode":
             ff_in = ttnn.to_memory_config(ff_in, memory_config=self.MLP_ACT_MEMCFG)
+
+        # print("done with ff norm")
         # MLP takes replicated inputs and produces fractured outputs
         ff_out = self.feed_forward.forward(ff_in, mode)
+
+        # print("done with feed forward")
         # ff_out and h are both fractured across devices
         out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)
         return out  # fractured across devices

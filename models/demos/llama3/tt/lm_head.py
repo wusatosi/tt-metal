@@ -41,7 +41,7 @@ class LMHead(LightweightModule):
             cache_file_name = (
                 None if args.dummy_weights else weight_cache_path / f"output_lm_head_{num_splits}_split_shard_0"
             )
-            padded_lm_head = torch.zeros(1, 1, 8 * 1024, self.padded_vocab_size)
+            padded_lm_head = torch.zeros(1, 1, args.dim, self.padded_vocab_size)
             padded_lm_head[:, :, :, : self.vocab_size] = torch_output_weights
 
             memory_config = args.create_dram_sharded_mem_config(k=args.dim // 4, n=self.padded_vocab_size // 8)

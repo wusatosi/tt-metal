@@ -11,7 +11,7 @@ class DistributedNorm(LightweightModule):
         if TG:
             core_grid_ln = (4, 8)
             num_cores_ln = core_grid_ln[0] * core_grid_ln[1]
-            hidden_size_per_device_distributed_ln = 8192 // 4
+            hidden_size_per_device_distributed_ln = args.dim // 4
             self.gather_in_mem_cfg = ttnn.create_sharded_memory_config(
                 shape=(1, 1, 32, hidden_size_per_device_distributed_ln),
                 core_grid=ttnn.CoreGrid(y=core_grid_ln[0], x=core_grid_ln[1]),
@@ -87,22 +87,21 @@ class DistributedNorm(LightweightModule):
         if self.args.is_multichip and not self.args.is_distributed_norm(mode):
             if mode == "decode":
                 x = ttnn.interleaved_to_sharded(x, self.gather_in_mem_cfg)
-                x = ttnn.all_gather(
-                    x, dim=3, num_links=1, topology=self.args.ccl_topology(), memory_config=input_mem_cfg
-                )
-            else:
-                x = ttnn.all_gather(
-                    x, dim=3, num_links=1, topology=self.args.ccl_topology(), memory_config=input_mem_cfg
-                )
+
+            x = ttnn.all_gather(x, dim=3, num_links=1, topology=self.args.ccl_topology(), memory_config=input_mem_cfg)
         elif mode == "decode":
             # Gathered norms will be sharded for decode mode, so single-chip should be too
             x = ttnn.interleaved_to_sharded(x, input_mem_cfg)
 
         # x sharded in decode mode here
-        x = self.norm(x, mode=mode, in_sharded=(mode == "decode"), out_sharded=(mode == "decode"))
+        x_pre_norm = x
+        x = self.norm(x_pre_norm, mode=mode, in_sharded=(mode == "decode"), out_sharded=(mode == "decode"))
+        if mode == "decode":
+            x_pre_norm.deallocate(True)
 
         # Distributed norm requires a gather
         if self.args.is_distributed_norm(mode):
-            x = ttnn.all_gather(x, dim=3, num_links=1, topology=self.args.ccl_topology())
-
+            x_prev = x
+            x = ttnn.all_gather(x_prev, dim=3, num_links=1, topology=self.args.ccl_topology())
+            x_prev.deallocate(True)
         return x

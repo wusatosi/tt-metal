@@ -12,6 +12,7 @@ from models.demos.llama3.tt.llama_common import (
     precompute_freqs,
     get_single_rot_mat,
 )
+from models.demos.llama3.tt.llama_rope import TtLlamaRotarySetup
 from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import Attention
 from models.utility_functions import (
     comp_pcc,
@@ -53,18 +54,29 @@ def test_llama_attention_inference(mesh_device, use_program_cache, reset_seeds, 
     batch = model_args.max_batch_size
     seq_len = 1
 
-    generation_start_pos = 0
-    generation_length = 10
+    generation_start_pos = 75 * 1024
+    generation_length = 3
     all_tests_pass = True
 
     # pre-compute the rotational embedding matrix and send to device
-    current_rot_mat, rot_matrix = get_single_rot_mat(
-        model_args.head_dim,
+    # current_rot_mat, rot_matrix = get_single_rot_mat(
+    #     model_args.head_dim,
+    #     mesh_device,
+    #     model_args.num_devices,
+    #     start_pos=generation_start_pos,
+    # )
+    # Setup RoPE transformation matrices
+    rope_setup = TtLlamaRotarySetup(
         mesh_device,
-        model_args.num_devices,
-        start_pos=0,
+        batch,
+        model_args.head_dim,
+        model_args.max_seq_len,
+        model_args.rope_theta,
+        model_args.use_scaled_rope,
     )
 
+    transformation_mats = rope_setup.get_trans_mats()
+    transformation_mats = {"decode": transformation_mats}
     tt_model = TtLlamaAttention(
         mesh_device,
         state_dict,
@@ -72,6 +84,7 @@ def test_llama_attention_inference(mesh_device, use_program_cache, reset_seeds, 
         layer_num=0,
         dtype=dtype,
         configuration=model_args,
+        transformation_mats=transformation_mats,
     )
 
     cos, sin = precompute_freqs(model_args.head_dim, model_args.max_seq_len * 2)
@@ -94,8 +107,8 @@ def test_llama_attention_inference(mesh_device, use_program_cache, reset_seeds, 
             model_args.model_config["SHARDED_ATTN_INPUT_MEMCFG"],
             force_replicated=False if model_args.is_galaxy else True,
         )
-
-        tt_out = tt_model(attention_input, current_pos_tensor, rot_mats=current_rot_mat, mode="decode")
+        rot_mats = rope_setup.get_rot_mats(torch.tensor([current_pos for _ in range(batch)]))
+        tt_out = tt_model(attention_input, current_pos_tensor, rot_mats=rot_mats, mode="decode")
         # multi-device attention module returns replicated output
         tt_out = ttnn.to_torch(
             tt_out,
@@ -117,7 +130,7 @@ def test_llama_attention_inference(mesh_device, use_program_cache, reset_seeds, 
             all_tests_pass = False
 
         # Update rotation matrix for next iteration
-        current_rot_mat = ttnn.linear(rot_matrix, current_rot_mat)
+        # current_rot_mat = ttnn.linear(rot_matrix, current_rot_mat)
 
         check_kv_cache = True
         if check_kv_cache:

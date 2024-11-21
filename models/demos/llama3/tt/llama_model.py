@@ -14,6 +14,7 @@ from typing import Optional
 from models.common.lightweightmodule import LightweightModule
 from models.demos.llama3.tt.distributed_norm import DistributedNorm
 from models.demos.llama3.tt.lm_head import LMHead
+from models.demos.llama3.tt.llama_rope import TtLlamaRotarySetup
 
 
 class TtTransformer(LightweightModule):
@@ -35,7 +36,13 @@ class TtTransformer(LightweightModule):
         self.model_config = args.get_model_config()
         self.grid_size = self.args.max_grid_size
         state_dict_prefix = args.get_state_dict_prefix("", None)
+        # Setup RoPE transformation matrices
+        self.rope_setup = TtLlamaRotarySetup(
+            mesh_device, args.max_batch_size, args.head_dim, args.max_seq_len, args.rope_theta, args.use_scaled_rope
+        )
 
+        transformation_mats = self.rope_setup.get_trans_mats()
+        transformation_mats = {"decode": transformation_mats}
         self.layers = [
             TtTransformerBlock(
                 args=args,
@@ -44,6 +51,7 @@ class TtTransformer(LightweightModule):
                 state_dict=state_dict,
                 weight_cache_path=weight_cache_path,
                 layer_num=i,
+                transformation_mats=transformation_mats,
             )
             for i in range(self.n_layers)
         ]
@@ -85,9 +93,8 @@ class TtTransformer(LightweightModule):
         page_table=None,
         get_last_token=-1,
     ):
-        for layer in self.layers:
+        for lid, layer in enumerate(self.layers):
             x = layer(x, current_pos, rot_mat, transformation_mats, user_id, mode, page_table)
-
         if mode == "prefill" and get_last_token == -1:
             return x
 

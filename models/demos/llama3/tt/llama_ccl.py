@@ -20,19 +20,25 @@ def tt_all_reduce(input_tensor, mesh_device, cluster_axis=0, dim=0, num_links=2,
     # N300 and T3K
     if 1 in mesh_device.shape:
         if input_tensor.is_sharded():
-            input_tensor = ttnn.sharded_to_interleaved(input_tensor, ttnn.L1_MEMORY_CONFIG)
-        return ttnn.reduce_scatter(
+            input_tensor_sharded = input_tensor
+            input_tensor = ttnn.sharded_to_interleaved(input_tensor_sharded, ttnn.L1_MEMORY_CONFIG)
+            input_tensor_sharded.deallocate(True)
+        reduced = ttnn.reduce_scatter(
             input_tensor,
             scatter_dim=dim,
             math_op=ttnn.ReduceType.Sum,
             num_links=num_links,
             memory_config=memory_config,
         )
+        input_tensor.deallocate(True)
+        return reduced
     # TG
 
     # Ensure the input tensor is in the correct memory configuration
     if not sharded:
-        input_tensor = ttnn.to_memory_config(input_tensor, ttnn.DRAM_MEMORY_CONFIG)
+        input_tensor_interleaved = input_tensor
+        input_tensor = ttnn.to_memory_config(input_tensor_interleaved, ttnn.DRAM_MEMORY_CONFIG)
+        # input_tensor_interleaved.deallocate(True)
     gathered_tensor = ttnn.all_gather(
         input_tensor,
         dim,
@@ -42,6 +48,8 @@ def tt_all_reduce(input_tensor, mesh_device, cluster_axis=0, dim=0, num_links=2,
         topology=ttnn.Topology.Linear,
         memory_config=ttnn.DRAM_MEMORY_CONFIG if not sharded else memory_config,
     )
+
+    input_tensor.deallocate(True)
 
     # print(f"{gathered_tensor}")
     if sharded:
@@ -54,6 +62,8 @@ def tt_all_reduce(input_tensor, mesh_device, cluster_axis=0, dim=0, num_links=2,
         compute_kernel_config=None,
         memory_config=ttnn.L1_MEMORY_CONFIG if sharded else ttnn.DRAM_MEMORY_CONFIG,
     )
+
+    gathered_tensor.deallocate(True)
 
     # Reshape the reduced tensor to the original shape
     reduced_tensors = ttnn.reshape(reduced_tensors, original_shape)
@@ -80,7 +90,7 @@ def tt_all_gather(
         input_tensor = ttnn.to_memory_config(input_tensor, ttnn.DRAM_MEMORY_CONFIG)
 
     if cluster_axis is None:
-        return ttnn.all_gather(
+        gathered = ttnn.all_gather(
             input_tensor,
             dim,
             num_links=num_links,
@@ -88,25 +98,26 @@ def tt_all_gather(
             topology=topology,
             memory_config=memory_config,
         )
-
-    return ttnn.all_gather(
-        input_tensor,
-        dim,
-        num_links=num_links,
-        cluster_axis=cluster_axis,
-        mesh_device=mesh_device,
-        topology=topology,
-        memory_config=memory_config,
-    )
+    else:
+        gathered = ttnn.all_gather(
+            input_tensor,
+            dim,
+            num_links=num_links,
+            cluster_axis=cluster_axis,
+            mesh_device=mesh_device,
+            topology=topology,
+            memory_config=memory_config,
+        )
+    input_tensor.deallocate(True)
+    return gathered
 
 
 def tt_distributed_rmsnorm(inp, epsilon, gamma, mesh_device, compute_kernel_config):
     # Run distributed rmsnorm part 1
     tt_stats = ttnn.rms_norm_pre_all_gather(inp, compute_kernel_config=compute_kernel_config, dtype=ttnn.bfloat16)
-
     padded_shape = (1, 1, inp.shape[-2], 32)
     tt_stats = ttnn.reshape(tt_stats, ttnn.Shape(padded_shape, padded_shape))  # TODO: Figure out why we need this
-    tt_stats = tt_all_gather(
+    tt_stats_gathered = tt_all_gather(
         tt_stats,
         mesh_device=mesh_device,
         dim=3,
@@ -115,12 +126,15 @@ def tt_distributed_rmsnorm(inp, epsilon, gamma, mesh_device, compute_kernel_conf
         memory_config=ttnn.DRAM_MEMORY_CONFIG,
     )
 
+    tt_stats.deallocate(True)
+
     # Run distributed rmsnorm part 2
     tt_out = ttnn.rms_norm_post_all_gather(
-        inp, tt_stats, epsilon=epsilon, weight=gamma, compute_kernel_config=compute_kernel_config
+        inp, tt_stats_gathered, epsilon=epsilon, weight=gamma, compute_kernel_config=compute_kernel_config
     )
 
-    tt_stats.deallocate(True)
+    tt_stats_gathered.deallocate(True)
+    # inp.deallocate(True)
 
     return tt_out
 
