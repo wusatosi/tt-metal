@@ -182,10 +182,8 @@ def run_conv(
         groups=groups,
         memory_config=memory_config,
     )
-
     tt_output_tensor = ttnn.from_device(tt_output_tensor_on_device)
     torch_output_tensor = ttnn.to_torch(tt_output_tensor, mesh_composer=output_mesh_composer)
-
     # torch_output_tensor is in row major layout and NHWC shape
     # NHWC to NCHW
     torch_output_tensor = torch_output_tensor.reshape(
@@ -341,6 +339,117 @@ def run_conv_with_split(
     else:
         pcc = 0.998
     assert_with_pcc(torch_output_tensor, torch_out_golden_tensor, pcc=pcc)
+
+
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 2 * 16384}], indirect=True)
+@pytest.mark.parametrize(
+    "batch_size, input_channels, output_channels, input_height, input_width, filter_height, filter_width, stride_h, stride_w, pad_h, pad_w, groups, use_1d_systolic_array, config_override, use_shallow_conv_variant,conv_number",
+    (
+        # issue (a) - (shape mismatch with torch conv)
+        # issue (b) - (stick_size_unpadded == stick_size_padded)
+        # 1st conv
+        (1, 3, 96, 224, 224, 7, 7, 2, 2, 0, 0, 1, True, None, True, 1),  # -p
+        # 3
+        (1, 96, 16, 54, 54, 1, 1, 1, 1, 0, 0, 1, True, None, False, 2),  # -a
+        (1, 16, 64, 54, 54, 1, 1, 1, 1, 0, 0, 1, True, None, False, 3),  # -b
+        (1, 16, 64, 54, 54, 3, 3, 1, 1, 1, 1, 1, True, None, False, 4),  # -p
+        # 4
+        (1, 128, 16, 54, 54, 1, 1, 1, 1, 0, 0, 1, True, None, False, 5),  # -a
+        (1, 16, 64, 54, 54, 1, 1, 1, 1, 0, 0, 1, True, None, False, 6),  # -b
+        (1, 16, 64, 54, 54, 3, 3, 1, 1, 1, 1, 1, True, None, False, 7),  # ,-p
+        # #5
+        (1, 128, 32, 54, 54, 1, 1, 1, 1, 0, 0, 1, True, None, False, 8),  #  -a
+        (1, 32, 128, 54, 54, 1, 1, 1, 1, 0, 0, 1, True, None, False, 9),  #  -a
+        (1, 32, 128, 54, 54, 3, 3, 1, 1, 1, 1, 1, True, None, False, 10),  # -p
+        # #7
+        (1, 256, 32, 27, 27, 1, 1, 1, 1, 0, 0, 1, True, None, False, 11),  #  -a
+        (1, 32, 128, 27, 27, 1, 1, 1, 1, 0, 0, 1, True, None, False, 12),  #  -a
+        (1, 32, 128, 27, 27, 3, 3, 1, 1, 1, 1, 1, True, None, False, 13),  # -p
+        # #8
+        (1, 256, 48, 27, 27, 1, 1, 1, 1, 0, 0, 1, True, None, False, 14),  # -a
+        (1, 48, 192, 27, 27, 1, 1, 1, 1, 0, 0, 1, True, None, False, 15),  # -b
+        (1, 48, 192, 27, 27, 3, 3, 1, 1, 1, 1, 1, True, None, False, 16),  # -p
+        # #9
+        (1, 384, 48, 27, 27, 1, 1, 1, 1, 0, 0, 1, True, None, False, 17),  # -a,
+        (1, 48, 192, 27, 27, 1, 1, 1, 1, 0, 0, 1, True, None, False, 18),  # -b
+        (1, 48, 192, 27, 27, 3, 3, 1, 1, 1, 1, 1, True, None, False, 19),  # -p
+        # #10
+        (1, 384, 64, 27, 27, 1, 1, 1, 1, 0, 0, 1, True, None, False, 20),  #  -a
+        (1, 64, 256, 27, 27, 1, 1, 1, 1, 0, 0, 1, True, None, False, 21),  # -a
+        (1, 64, 256, 27, 27, 3, 3, 1, 1, 1, 1, 1, True, None, False, 22),  # -p
+        # #12
+        (1, 512, 64, 13, 13, 1, 1, 1, 1, 0, 0, 1, True, None, False, 23),  # -p
+        (1, 64, 256, 13, 13, 1, 1, 1, 1, 0, 0, 1, True, None, False, 24),  # -p
+        (1, 64, 256, 13, 13, 3, 3, 1, 1, 1, 1, 1, True, None, False, 25),  # -p
+        # #final
+        (1, 512, 1000, 13, 13, 1, 1, 1, 1, 0, 0, 1, True, None, False, 26),  #  -p
+    ),
+)
+@pytest.mark.parametrize(
+    "weights_dtype",
+    [ttnn.bfloat16],
+)
+@pytest.mark.parametrize(
+    "activations_dtype",
+    [ttnn.bfloat16],
+)
+@pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
+@pytest.mark.parametrize("output_layout", [ttnn.TILE_LAYOUT])
+@pytest.mark.parametrize("auto_shard", [True], ids=["auto_shard"])
+@skip_for_grayskull()
+def test_conv_for_squeezenet_data_parallel(
+    conv_number,
+    mesh_device,
+    math_fidelity,
+    activations_dtype,
+    weights_dtype,
+    batch_size,
+    output_channels,
+    input_channels,
+    input_height,
+    input_width,
+    filter_height,
+    filter_width,
+    stride_h,
+    stride_w,
+    pad_h,
+    pad_w,
+    use_1d_systolic_array,
+    config_override,
+    use_shallow_conv_variant,
+    groups,
+    output_layout,
+    auto_shard,
+):
+    input_mesh_mapper = ttnn.ShardTensorToMesh(mesh_device, dim=0)
+    weight_mesh_mapper = ttnn.ReplicateTensorToMesh(mesh_device)
+    output_mesh_composer = ttnn.ConcatMeshToTensor(mesh_device, dim=0)
+    run_conv(
+        device=mesh_device,
+        math_fidelity=math_fidelity,
+        activations_dtype=activations_dtype,
+        weights_dtype=weights_dtype,
+        batch_size=batch_size,
+        output_channels=output_channels,
+        input_channels=input_channels,
+        input_height=input_height,
+        input_width=input_width,
+        filter_height=filter_height,
+        filter_width=filter_height,
+        stride_h=stride_h,
+        stride_w=stride_w,
+        pad_h=pad_h,
+        pad_w=pad_w,
+        use_1d_systolic_array=use_1d_systolic_array,
+        config_override=config_override,
+        use_shallow_conv_variant=use_shallow_conv_variant,
+        groups=groups,
+        output_layout=output_layout,
+        auto_shard=auto_shard,
+        input_mesh_mapper=input_mesh_mapper,
+        weight_mesh_mapper=weight_mesh_mapper,
+        output_mesh_composer=output_mesh_composer,
+    )
 
 
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
