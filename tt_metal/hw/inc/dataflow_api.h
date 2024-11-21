@@ -1601,10 +1601,10 @@ void noc_async_read_barrier(uint8_t noc = noc_index) {
  */
 FORCE_INLINE
 void noc_async_write_barrier(uint8_t noc = noc_index) {
-    WAYPOINT("NWBW");
+    // WAYPOINT("NWBW");
     while (!ncrisc_noc_nonposted_writes_flushed(noc))
         ;
-    WAYPOINT("NWBD");
+    // WAYPOINT("NWBD");
 }
 
 /**
