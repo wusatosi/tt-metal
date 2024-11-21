@@ -51,7 +51,7 @@ OptimizedConvBlockConfig get_opt_block_config(
     Conv2dConfig& conv_config,
     Layout input_tensor_layout,
     const MemoryConfig& input_memory_config) {
-
+    auto compute_grid_size = device->compute_with_storage_grid_size();
 
     adjust_conv_op_config_for_auto_shard_if_necessary(
         mm_conv,
@@ -85,13 +85,24 @@ OptimizedConvBlockConfig get_opt_block_config(
         shard_orientation,
         !use_non_tile_height);
 
+    auto output_parallel_config = parallel_config;
+    if(conv_config.shard_layout.value() == ttnn::TensorMemoryLayout::WIDTH_SHARDED && !mm_conv) {
+        uint32_t max_num_cores = compute_grid_size.x * compute_grid_size.y;
+        output_parallel_config = {
+            .grid = num_cores_to_corerangeset( find_closest_largest_divisor(tt::div_up(out_channels, tt::constants::TILE_WIDTH),max_num_cores), compute_grid_size, true),
+            .shard_scheme = ttnn::TensorMemoryLayout::WIDTH_SHARDED,
+            .shard_orientation = parallel_config.shard_orientation
+        };
+        log_debug(tt::LogOp, "Changing width sharded output grid to  {}",output_parallel_config.grid);
+    }
 
     uint32_t round_up_size = !use_non_tile_height ? tt::constants::TILE_HEIGHT : 1;
     auto conv_out_memory_config = create_sharded_memory_config_from_parallel_config(
         ttnn::Shape(std::array<uint32_t, 4>{1, 1, batch_size * output_height * output_width, tt::round_up(out_channels, 32)}),
-        parallel_config, round_up_size);
+        output_parallel_config, round_up_size);
+    auto largest_parallel_config = output_parallel_config.grid.num_cores() > parallel_config.grid.num_cores() ? output_parallel_config : parallel_config;
     auto opt_conv_op_parallel_config = determine_conv_op_parallel_config_from_conv_output_mem_config(
-        conv_out_memory_config, get_num_cores_nhw_from_parallel_config(parallel_config),
+        conv_out_memory_config, get_num_cores_nhw_from_parallel_config(largest_parallel_config),
         get_num_cores_channels_from_parallel_config(parallel_config));
 
     return determine_per_core_conv_block_config(

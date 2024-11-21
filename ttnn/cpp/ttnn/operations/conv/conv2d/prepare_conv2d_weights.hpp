@@ -20,6 +20,7 @@
 #include "ttnn/tensor/tensor.hpp"
 #include "ttnn/operations/sliding_window/sliding_window.hpp"
 #include "ttnn/operations/sliding_window/halo/halo.hpp"
+#include "tt_metal/common/work_split.hpp"
 
 namespace ttnn {
 
