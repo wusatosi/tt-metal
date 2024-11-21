@@ -334,7 +334,7 @@ def test_tranpose_hw_rm_with_padding(device, n, c, h, w):
 
 @skip_for_grayskull("Grayskull has pcc issue when transpose used untilize")
 @pytest.mark.parametrize("n", [1])
-@pytest.mark.parametrize("c", [1])
+@pytest.mark.parametrize("c", [2])
 @pytest.mark.parametrize("h", [8])
 @pytest.mark.parametrize("w", [32])
 def test_tranpose_hw_rm_no_padding(device, n, c, h, w):

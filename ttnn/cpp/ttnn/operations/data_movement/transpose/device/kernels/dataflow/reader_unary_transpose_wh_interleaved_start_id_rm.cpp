@@ -48,6 +48,7 @@ void kernel_main() {
     // DPRINT << "stick_size_bytes: " << stick_size_bytes << "\n";
 
     // this reader will read a NHW tensor in NWH order
+    DPRINT << "Number of HW blocks per core: " << num_hw_blocks_per_core << "\n";
     for (uint32_t n = 0; n < num_hw_blocks_per_core; n++) {
         for (uint32_t h = 0; h < Ht; ++h) {
             cb_reserve_back(cb_in0, Wt);
@@ -66,7 +67,7 @@ void kernel_main() {
                     //     DPRINT << SETW(6) << SETPRECISION(4) << BF16(Wt_ptr[i]) << " ";
                     // }
                 // }
-                DPRINT << "\n\n";
+                // DPRINT << "\n\n";
                 l1_write_addr += l1_write_offset_bytes;
                 i_stick += 1;
             }
