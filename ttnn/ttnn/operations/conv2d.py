@@ -50,9 +50,10 @@ def prepare_conv_weights(
     dilation,
     groups,
     device,
+    bias_tensor=None,
     conv_config=None,
 ):
-    return ttnn._ttnn.operations.conv2d.prepare_conv_weights(
+    return ttnn._ttnn.operations.conv.prepare_conv_weights(
         weight_tensor=weight_tensor,
         input_memory_config=input_memory_config,
         input_tensor_layout=input_layout,
@@ -68,6 +69,7 @@ def prepare_conv_weights(
         dilation=list(dilation),
         groups=groups,
         device=device,
+        bias_tensor=bias_tensor,
         conv_config=conv_config,
     )
 
@@ -90,7 +92,7 @@ def prepare_conv_bias(
     device,
     conv_config=None,
 ):
-    return ttnn._ttnn.operations.conv2d.prepare_conv_bias(
+    return ttnn._ttnn.operations.conv.prepare_conv_bias(
         bias_tensor=bias_tensor,
         input_memory_config=input_memory_config,
         input_tensor_layout=input_layout,
