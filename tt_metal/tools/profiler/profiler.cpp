@@ -58,6 +58,14 @@ void DeviceProfiler::readRiscProfilerResults(
         reinterpret_cast<uint64_t>(profiler_msg->control_vector),
         kernel_profiler::PROFILER_L1_CONTROL_BUFFER_SIZE);
 
+    int i = 0;
+    for (auto d  : control_buffer)
+    {
+        std::cout << fmt::format(" YO id:{}, x:{}, y:{}, i:{}, d:{}", device_id, worker_core.x, worker_core.y,i,d) << std::endl;
+        i++;
+    }
+    return;
+    std::cout <<  std::endl;
     if ((control_buffer[kernel_profiler::HOST_BUFFER_END_INDEX_BR_ER] == 0) &&
         (control_buffer[kernel_profiler::HOST_BUFFER_END_INDEX_NC] == 0))
     {

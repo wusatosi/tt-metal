@@ -365,6 +365,7 @@ void DumpDeviceProfileResults(Device *device, std::vector<CoreCoord> &worker_cor
 
     std::scoped_lock<std::mutex> lock(device_mutex);
     auto dispatch_core_type = dispatch_core_manager::instance().get_dispatch_core_type(device->id());
+    worker_cores = {};
     if (tt::llrt::OptionsG.get_profiler_do_dispatch_cores()) {
         auto device_id = device->id();
         auto device_num_hw_cqs = device->num_hw_cqs();
@@ -372,9 +373,9 @@ void DumpDeviceProfileResults(Device *device, std::vector<CoreCoord> &worker_cor
             const auto curr_core = device->physical_core_from_logical_core(core, dispatch_core_type);
             worker_cores.push_back(curr_core);
         }
-        for (const CoreCoord& core : tt::Cluster::instance().get_soc_desc(device_id).physical_ethernet_cores){
-            worker_cores.push_back(core);
-        }
+        //for (const CoreCoord& core : tt::Cluster::instance().get_soc_desc(device_id).physical_ethernet_cores){
+            //worker_cores.push_back(core);
+        //}
     }
     if (getDeviceProfilerState())
     {
