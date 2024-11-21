@@ -30,6 +30,16 @@ from models.perf.perf_utils import prep_perf_report
 
 from collections import defaultdict
 
+import os
+from datetime import datetime
+
+
+def update_heartbeat():
+    """Write current timestamp to a heartbeat file"""
+    heartbeat_file = f"/tmp/heartbeat.txt"
+    with open(heartbeat_file, "w") as f:
+        f.write(str(datetime.now().timestamp()))
+
 
 def get_decode_time(profiler, start_token, end_token):
     total_time = 0
@@ -157,7 +167,6 @@ def run_test_LlamaModel_end_to_end(
     ##### Execute Trace #####
     logger.info("Executing trace")
     profiler.start(f"end_to_end_inference")
-    from datetime import datetime
 
     start_time = datetime.now()
     for o in range(outer_loops):
@@ -169,6 +178,7 @@ def run_test_LlamaModel_end_to_end(
         for i in range(n_iters):
             ttnn.execute_trace(mesh_device, trace_id, blocking=False)
             logits = ttnn.to_torch(logits_rm)
+        update_heartbeat()
     profiler.end(f"end_to_end_inference")
     ttnn.release_trace(mesh_device, trace_id)
 
