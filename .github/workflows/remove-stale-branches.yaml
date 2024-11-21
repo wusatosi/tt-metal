@@ -15,4 +15,4 @@ jobs:
           days-before-branch-stale: 180 # Branches stale for ~6 months
           ignore-unknown-authors: true
           default-recipient: "blozano-tt"
-          operations-per-run: 30
+          operations-per-run: 3000
