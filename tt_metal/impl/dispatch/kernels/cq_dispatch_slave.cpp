@@ -57,6 +57,13 @@ static uint32_t go_signal_noc_data[max_num_go_signal_noc_data_entries] = {0};
 
 static uint32_t num_worker_sems = 1;
 
+static uint32_t num_go_signals_sent = 0;
+
+inline void RISC_POST_STATUS_TO_RB(uint32_t status, uint32_t offset) {
+    volatile uint32_t *ptr  = (volatile uint32_t *)(0x21d0);
+    ptr[offset] = status;
+}
+
 FORCE_INLINE
 void dispatch_s_wr_reg_cmd_buf_init() {
     uint64_t xy_local_addr = get_noc_addr_helper(my_noc_xy, 0);
@@ -103,7 +110,9 @@ FORCE_INLINE
 void wait_for_workers(volatile CQDispatchCmd tt_l1_ptr *cmd) {
     uint8_t dispatch_message_offset = *((uint8_t *)&cmd->mcast.go_signal + offsetof(go_msg_t, dispatch_message_offset));
     volatile tt_l1_ptr uint32_t* worker_sem = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(worker_sem_base_addr + dispatch_message_offset);
-    while (wrap_gt(cmd->mcast.wait_count, *worker_sem));
+    while (wrap_gt(cmd->mcast.wait_count, *worker_sem)) {
+        RISC_POST_STATUS_TO_RB(0xccc000000 | cmd->mcast.wait_count, 1);
+    }
 }
 
 template<bool flush_write = false>
@@ -161,21 +170,32 @@ void process_go_signal_mcast_cmd() {
 
     // Wait for notification from dispatch_d, signalling that it's safe to send the go signal
     uint32_t& mcasts_sent = num_mcasts_sent[(cmd->mcast.wait_addr - worker_sem_base_addr) / L1_ALIGNMENT];
+    RISC_POST_STATUS_TO_RB(0xaaaa000000 | mcasts_sent, 1);
     while (wrap_ge(mcasts_sent, *sync_sem_addr)) {
         // Update dispatch_d with the latest num_workers
         update_worker_completion_count_on_dispatch_d();
     }
+    RISC_POST_STATUS_TO_RB(0xbbb, 1);
     mcasts_sent++; // Go signal sent -> update counter
     // Wait until workers have completed before sending go signal
+    RISC_POST_STATUS_TO_RB(0xccc, 1);
     wait_for_workers(cmd);
-
+    RISC_POST_STATUS_TO_RB(0xddd, 1);
     // The location of the go signal embedded in the command does not meet NOC alignment requirements.
     // cmd_ptr is guaranteed to meet the alignment requirements, since it is written to by prefetcher over NOC.
     // Copy the go signal from an unaligned location to an aligned (cmd_ptr) location. This is safe as long as we
     // can guarantee that copying the go signal does not corrupt any other command fields, which is true (see CQDispatchGoSignalMcastCmd).
     volatile uint32_t tt_l1_ptr* aligned_go_signal_storage = (volatile uint32_t tt_l1_ptr*)cmd_ptr;
     *aligned_go_signal_storage = cmd->mcast.go_signal;
+    if ((cmd->mcast.go_signal & 0xff000000) == 0xc0000000) {
+        num_go_signals_sent = 0;
+    } else if ((cmd->mcast.go_signal & 0xff000000) == 0x80000000) {
+        num_go_signals_sent++;
+    }
 
+    RISC_POST_STATUS_TO_RB(num_go_signals_sent, 0);
+    RISC_POST_STATUS_TO_RB(cmd->mcast.go_signal, 2);
+    RISC_POST_STATUS_TO_RB((cmd->mcast.go_signal) & 0xff000000, 3);
     uint8_t go_signal_noc_data_idx = cmd->mcast.noc_data_start_index;
     // send go signal update here
     for (uint32_t i = 0, num_mcasts = cmd->mcast.num_mcast_txns; i < num_mcasts; ++i) {

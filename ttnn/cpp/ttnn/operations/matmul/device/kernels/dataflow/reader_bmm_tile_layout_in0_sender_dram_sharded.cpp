@@ -124,9 +124,6 @@ void kernel_main() {
 #ifndef SKIP_MCAST
                 noc_async_write_multicast_loopback_src(
                     local_read_addr, in0_multicast_data_addr, in0_block_size_bytes, in0_mcast_num_cores, true, true);
-                WAYPOINT("BWW");
-                noc_async_write_barrier();
-                WAYPOINT("BWD");
 #endif
                 noc_semaphore_set_multicast_loopback_src(
                     in0_mcast_sender_valid_semaphore, in0_mcast_receiver_semaphore_noc_addr, in0_mcast_num_cores);
