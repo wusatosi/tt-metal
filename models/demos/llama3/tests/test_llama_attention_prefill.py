@@ -25,7 +25,7 @@ from models.demos.t3000.llama2_70b.tt.llama_common import ShardTensor2dMesh, Con
 @skip_for_grayskull("Requires wormhole_b0 to run")
 @pytest.mark.parametrize(
     "seq_len",
-    (8 * 1024, 16 * 1024, 512),
+    (32 * 1024,),
 )
 @pytest.mark.parametrize(
     "mesh_device",
@@ -44,6 +44,7 @@ def test_llama_attention_inference(seq_len, mesh_device, use_program_cache, rese
 
     model_args = TtModelArgs(mesh_device)
     model_args.n_layers = 1
+    model_args.max_seq_len = seq_len
     state_dict = model_args.load_state_dict()
 
     # Ref model needs partial state dict, but our models use full state dict keys as cached weight names
@@ -78,6 +79,7 @@ def test_llama_attention_inference(seq_len, mesh_device, use_program_cache, rese
         layer_num=0,
         dtype=dtype,
         configuration=model_args,
+        transformation_mats=None,
     )
 
     pt_attention_input = (torch.rand(batch, seq_len, model_args.dim) * 2) - 1
@@ -129,7 +131,7 @@ def test_llama_attention_inference(seq_len, mesh_device, use_program_cache, rese
             for cache in tt_model.layer_past
         ]
         for i, (cache_pt, cache_tt) in enumerate(zip(pytorch_layer_present, tt_layer_present)):
-            cache_length_to_check = min(model_args.sliding_window, generation_start_pos + generation_length + 1)
+            cache_length_to_check = min(model_args.max_seq_len, generation_start_pos + generation_length + 1)
             cache_pt = cache_pt[:, :, generation_start_pos:cache_length_to_check, :]
             cache_tt = cache_tt[:, :, generation_start_pos:cache_length_to_check, :]
             does_pass, output_pcc = comp_pcc(cache_pt, cache_tt, pcc)
