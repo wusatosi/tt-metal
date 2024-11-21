@@ -272,12 +272,25 @@ def test_decode_ff2_matmul(model_config, mesh_device, use_program_cache):
 def test_decode_lm_head_matmul(model_config, mesh_device, use_program_cache):
     mesh_device.enable_async(True)
     # Test the LM head matmul
+    memory_config = ttnn.MemoryConfig(
+        ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        ttnn.BufferType.L1,
+        ttnn.ShardSpec(
+            num_to_corerange_set(32),
+            [
+                32,
+                8192 // 32,
+            ],
+            ttnn.ShardOrientation.ROW_MAJOR,
+            False,
+        ),
+    )
     xs = ttnn.as_tensor(
         torch.randn(1, 1, 32, 8192),  # seqlen=1, batch=1, batch_size=32, hidden_size
         device=mesh_device,
         dtype=ttnn.bfloat16,
         layout=ttnn.TILE_LAYOUT,
-        memory_config=model_config["FINAL_ALL_GATHER_OUTPUT_MEMCFG"],
+        memory_config=memory_config,
         mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
     )
 
@@ -290,11 +303,23 @@ def test_decode_lm_head_matmul(model_config, mesh_device, use_program_cache):
         mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
     )
 
+    program_config = ttnn.MatmulMultiCoreReuseMultiCast1DProgramConfig(
+        compute_with_storage_grid_size=(8, 4),
+        in0_block_w=8,
+        out_subblock_h=1,
+        out_subblock_w=4,
+        per_core_M=1,
+        per_core_N=16,
+        fuse_batch=True,
+        fused_activation=None,
+        mcast_in0=True,
+    )
+
     def run_lm_head():
         ttnn.matmul(
             xs,
             lm_head,
-            program_config=model_config["LLAMA3_LM_HEAD_MM_PROGCFG"],
+            program_config=program_config,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
             dtype=ttnn.bfloat16,
             compute_kernel_config=model_config["COMPUTE_KERNEL_CONFIG"],
@@ -317,14 +342,15 @@ def loopit(name, callable, mesh_device):
     every 10 iterations, log the name and the time elapsed
     """
     # Compile it
-    callable()
-    trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
-    callable()
-    ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
+    # callable()
+    # trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
+    # callable()
+    # ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
 
     print(f"loopit {name}")
-    for i in tqdm(range(500_000)):
-        ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=True)
+    for i in tqdm(range(5_000_000)):
+        # ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
+        callable()
         if i % 100 == 0:
             for dev in mesh_device.get_devices():
                 ttnn.synchronize_device(dev)
