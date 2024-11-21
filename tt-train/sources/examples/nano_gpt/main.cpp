@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <CLI/CLI.hpp>
+// #include <boost/stacktrace/safe_dump_to.hpp>
 #include <chrono>
 #include <core/ttnn_all_includes.hpp>
 #include <csignal>
@@ -44,19 +45,35 @@ using DataLoader = ttml::datasets::DataLoader<
 
 struct DemoConfig {
     // training
-    uint32_t batch_size = 64;
-    uint32_t sequence_length = 256;
+    uint32_t batch_size = 4;          // 64;
+    uint32_t sequence_length = 1024;  // 256;
     uint32_t num_epochs = 1;
     uint32_t max_steps = 5000;
     float dropout_prob = 0.2F;
     // model
-    uint32_t num_heads = 6;
-    uint32_t embedding_dim = 384;
-    uint32_t num_blocks = 6;
+    uint32_t num_heads = 12;       // 6;
+    uint32_t embedding_dim = 768;  // 384;
+    uint32_t num_blocks = 12;      // 6;
     // optimizer
     float learning_rate = 3e-4F;
     float weight_decay = 1e-2F;
 };
+
+// struct DemoConfig {
+//     // training
+//     uint32_t batch_size = 64;
+//     uint32_t sequence_length = 256;
+//     uint32_t num_epochs = 1;
+//     uint32_t max_steps = 5000;
+//     float dropout_prob = 0.2F;
+//     // model
+//     uint32_t num_heads = 6;
+//     uint32_t embedding_dim = 384;
+//     uint32_t num_blocks = 6;
+//     // optimizer
+//     float learning_rate = 3e-4F;
+//     float weight_decay = 1e-2F;
+// };
 const DemoConfig config;
 
 uint32_t sample(std::span<const float> log_softmax) {
@@ -149,24 +166,24 @@ void generate(
 }
 
 int main(int argc, char **argv) {
-    auto result = signal(SIGINT, signal_handler);
-    if (result == SIG_ERR) {
-        std::cerr << "Failed to set signal handler\n";
-        return -1;
-    }
-    wandbcpp::init({.project = "tt_train_nano_gpt"});
-    wandbcpp::update_config({
-        {"model", "transformer"},
-        {"num_heads", static_cast<int>(config.num_heads)},
-        {"embedding_dim", static_cast<int>(config.embedding_dim)},
-        {"num_blocks", static_cast<int>(config.num_blocks)},
-        {"dropout_prob", config.dropout_prob},
-        {"learning_rate", config.learning_rate},
-        {"weight_decay", config.weight_decay},
-        {"batch_size", static_cast<int>(config.batch_size)},
-        {"sequence_length", static_cast<int>(config.sequence_length)},
-        {"max_steps", static_cast<int>(config.max_steps)},
-    });
+    // auto result = signal(SIGINT, signal_handler);
+    // if (result == SIG_ERR) {
+    //     std::cerr << "Failed to set signal handler\n";
+    //     return -1;
+    // }
+    // wandbcpp::init({.project = "tt_train_nano_gpt"});
+    // wandbcpp::update_config({
+    //     {"model", "transformer"},
+    //     {"num_heads", static_cast<int>(config.num_heads)},
+    //     {"embedding_dim", static_cast<int>(config.embedding_dim)},
+    //     {"num_blocks", static_cast<int>(config.num_blocks)},
+    //     {"dropout_prob", config.dropout_prob},
+    //     {"learning_rate", config.learning_rate},
+    //     {"weight_decay", config.weight_decay},
+    //     {"batch_size", static_cast<int>(config.batch_size)},
+    //     {"sequence_length", static_cast<int>(config.sequence_length)},
+    //     {"max_steps", static_cast<int>(config.max_steps)},
+    // });
 
     auto start_timer = std::chrono::high_resolution_clock::now();
     CLI::App app{"NanoGPT Example"};
@@ -278,7 +295,6 @@ int main(int argc, char **argv) {
             return std::make_tuple(data_tensor, targets_tensor, cached_data.masks_tensor, cached_data.positions_tensor);
         };
 
-    LossAverageMeter loss_meter;
     auto train_dataloader = DataLoader(dataset, /* batch_size */ batch_size, /* shuffle */ true, collate_fn);
 
     auto transformer_config = TransformerConfig();
@@ -314,45 +330,73 @@ int main(int argc, char **argv) {
         return 0;
     }
 
+    const uint32_t accumulation_steps = std::max(1U, 32U / batch_size);
+
     const uint32_t num_epochs = config.num_epochs;
-    for (uint32_t epoch = 0; epoch < num_epochs; ++epoch) {
-        for (auto [features, target, masks, positions] : train_dataloader) {
-            auto start_timer = std::chrono::high_resolution_clock::now();
-            optimizer.zero_grad();
-            auto output = (*model)(features, positions, masks);
-            auto loss = ttml::ops::nll_loss(output, target);
-            auto loss_float = ttml::core::to_vector(loss->get_value())[0];
-            loss_meter.update(loss_float, features->get_value().get_shape()[0]);
-            loss->backward();
-            optimizer.step();
-            ttml::autograd::ctx().reset_graph();
-            auto global_step = optimizer.get_steps();
-            fmt::print("Step: {}, Loss: {}\n", global_step, loss_float);
+    uint32_t accumulation_step_counter = 0;
+    float accumulated_loss = 0.0F;
+    uint32_t accumulated_samples = 0;
+    uint32_t total_samples_during_training = 0;
 
-            if (global_step % 10 == 0) {
-                wandbcpp::log({{"Step", (int)global_step}, {"Loss", loss_float}});
-            }
-            if (!model_path.empty() && global_step % model_save_interval == 0) {
-                save_model_and_optimizer(model_path, model, optimizer, "transformer", "adamw");
-            }
+    // solution for the issue when training throws exception and wandb is not finished
+    // catch exception and proceed to finish wandb
+    try {
+        for (uint32_t epoch = 0; epoch < num_epochs; ++epoch) {
+            for (auto [features, target, masks, positions] : train_dataloader) {
+                auto start_timer = std::chrono::high_resolution_clock::now();
+                if (accumulation_step_counter == 0) {
+                    optimizer.zero_grad();
+                }
+                auto output = (*model)(features, positions, masks);
+                auto loss = ttml::ops::nll_loss(output, target);
+                if (accumulation_steps > 1) {
+                    loss->set_value(ttnn::multiply(loss->get_value(), 1.F / static_cast<float>(accumulation_steps)));
+                }
+                auto loss_float = ttml::core::to_vector(loss->get_value())[0];
+                accumulated_loss += loss_float;
+                accumulated_samples += features->get_value().get_shape()[0];
+                loss->backward();
+                ttml::autograd::ctx().reset_graph();
 
-            if (global_step >= max_steps) {
+                if (++accumulation_step_counter == accumulation_steps) {
+                    optimizer.step();
+
+                    auto global_step = optimizer.get_steps();
+                    fmt::print("Step: {}, Loss: {}\n", global_step, accumulated_loss);
+
+                    total_samples_during_training += accumulated_samples;
+                    // if (global_step % 10 == 0) {
+                    //     wandbcpp::log({{"Samples", (int)total_samples_during_training}, {"Loss", accumulated_loss}});
+                    // }
+                    if (!model_path.empty() && global_step % model_save_interval == 0) {
+                        save_model_and_optimizer(model_path, model, optimizer, "transformer", "adamw");
+                    }
+
+                    if (global_step >= max_steps) {
+                        break;
+                    }
+
+                    accumulated_loss = 0.0F;
+                    accumulated_samples = 0;
+                    accumulation_step_counter = 0;
+                }
+
+                auto end_timer = std::chrono::high_resolution_clock::now();
+                auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_timer - start_timer).count();
+                fmt::print(
+                    "Full step time {} ms, cache entries: {}\n",
+                    (double)duration / 1000,
+                    device->num_program_cache_entries());
+            }
+            if (optimizer.get_steps() >= max_steps) {
                 break;
             }
-            auto end_timer = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_timer - start_timer).count();
-            fmt::print(
-                "Full step time {} ms, cache entries: {}\n",
-                (double)duration / 1000,
-                device->num_program_cache_entries());
         }
-        if (optimizer.get_steps() >= max_steps) {
-            break;
+        if (!model_path.empty()) {
+            save_model_and_optimizer(model_path, model, optimizer, "transformer", "adamw");
         }
-    }
-
-    if (!model_path.empty()) {
-        save_model_and_optimizer(model_path, model, optimizer, "transformer", "adamw");
+    } catch (const std::exception &e) {
+        fmt::print("Exception thrown during training: {}\n", e.what());
     }
 
     auto end_timer = std::chrono::high_resolution_clock::now();
@@ -362,6 +406,6 @@ int main(int argc, char **argv) {
         max_steps,
         (double)duration / 1000000.,
         device->num_program_cache_entries());
-    wandbcpp::finish();
+    // wandbcpp::finish();
     return 0;
 }

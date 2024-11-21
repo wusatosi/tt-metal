@@ -22,6 +22,27 @@
                     "ignoreFailures": true
                 }
             ]
+        },
+        {
+            "name": "(gdb) Attach to nanogpt",
+            "type": "cppdbg",
+            "request": "attach",
+            "program": "${workspaceFolder}/build/sources/examples/nano_gpt/nano_gpt",
+            "processId": "${command:pickProcess}",
+            "MIMode": "gdb",
+            "miDebuggerPath": "gdb-14.2",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                // {
+                //     "description": "Set Disassembly Flavor to Intel",
+                //     "text": "-gdb-set disassembly-flavor intel",
+                //     "ignoreFailures": true
+                // }
+            ]
         }
     ]
 }
