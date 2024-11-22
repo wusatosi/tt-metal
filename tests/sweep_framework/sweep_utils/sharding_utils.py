@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: © 2024 Tenstorrent Inc.
+
+# SPDX-License-Identifier: Apache-2.0
+
+
 import torch
 import random
 import ttnn
@@ -17,9 +22,9 @@ Y, X = get_device_grid_size()
 def gen_unary_sharded_spec(
     num_shapes, num_core_samples, shard_orientation, sharding_strategy, max_tensor_size_per_core=480 * 480
 ):
-    assert sharding_strategy in ["block", "width", "height", "tensor_hw"]
+    assert sharding_strategy in ["BLOCK", "WIDTH", "HEIGHT", "TENSOR_HW"]
 
-    assert shard_orientation in ["col_major", "row_major"]
+    assert shard_orientation in ["COL_MAJOR", "ROW_MAJOR"]
 
     for i in range(num_core_samples):
         y = random.randint(1, Y)
@@ -27,7 +32,7 @@ def gen_unary_sharded_spec(
         max_tensor_size = y * x * max_tensor_size_per_core
         for j in range(num_shapes):
             for rank in [2, 3, 4]:
-                if sharding_strategy == "tensor_hw":
+                if sharding_strategy == "TENSOR_HW":
                     min_tensor_height = 32
                     min_tensor_width = 32
                     mul_height = random.randint(1, 10)
@@ -41,14 +46,14 @@ def gen_unary_sharded_spec(
                         rest_dims = list(rest_dims["reshape_dims"])
                         input_shape = rest_dims + input_shape
 
-                elif sharding_strategy == "block":
+                elif sharding_strategy == "BLOCK":
                     min_pre_sharded_height = 32 * y
                     min_pre_sharded_width = 32 * x
 
                     mul_1 = random.randint(1, y * 2)
                     mul_2 = random.randint(1, x * 2)
 
-                    if shard_orientation == "row_major":
+                    if shard_orientation == "ROW_MAJOR":
                         pre_sharded_width = mul_1 * min_pre_sharded_width
                         pre_sharded_height = mul_2 * min_pre_sharded_height
                     else:
@@ -61,7 +66,7 @@ def gen_unary_sharded_spec(
                     input_shape = list(input_shape["reshape_dims"])
                     input_shape.append(pre_sharded_width)
 
-                elif sharding_strategy == "height":
+                elif sharding_strategy == "HEIGHT":
                     min_pre_sharded_height = 32 * y * x
                     min_pre_sharded_width = 32
 
