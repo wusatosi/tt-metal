@@ -44,7 +44,8 @@ std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights(
     uint32_t groups,
     T *device,
     std::optional<const ttnn::Tensor>& bias_tensor,
-    std::optional<const Conv2dConfig> conv_config_);
+    std::optional<const Conv2dConfig> conv_config_,
+    std::optional<const WeightConfig> weight_config_);
 
 template <typename T>
 ttnn::Tensor prepare_conv_bias(

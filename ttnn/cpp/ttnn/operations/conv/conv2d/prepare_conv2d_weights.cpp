@@ -71,7 +71,7 @@ OptimizedConvBlockConfig get_opt_block_config(
         conv_config.transpose_shards ? ShardOrientation::COL_MAJOR : ShardOrientation::ROW_MAJOR;
 
     bool use_non_tile_height = conv_config.shard_layout.value() == TensorMemoryLayout::HEIGHT_SHARDED && out_channels <= 256 && conv_config.act_block_h_override == 0 &&
-        conv_config.dtype == DataType::BFLOAT16 && conv_config.output_layout == Layout::ROW_MAJOR;
+        (conv_config.dtype == DataType::BFLOAT16 || conv_config.dtype == DataType::FLOAT32) && conv_config.output_layout == Layout::ROW_MAJOR;
     use_non_tile_height = use_non_tile_height && conv_config.input_channels_alignment != 16;
 
     ParallelConfig parallel_config = determine_parallel_config(
@@ -135,7 +135,8 @@ std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights(
     uint32_t groups,
     T *device,
     std::optional<const ttnn::Tensor>& bias_tensor,
-    std::optional<const Conv2dConfig> conv_config_) {
+    std::optional<const Conv2dConfig> conv_config_,
+    std::optional<const WeightConfig> weight_config_) {
     ttnn::Tensor bias_tensor_;
     TT_FATAL(!ttnn::is_tensor_on_device_or_multidevice(weight_tensor), "Error: weight tensor must be on host for preparation.");
 
@@ -143,27 +144,36 @@ std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights(
     const uint32_t output_height = ((input_height - kernel_size[0] - ((kernel_size[0] - 1 ) * (dilation[0] - 1)) + 2 * padding[0]) / stride[0]) + 1;
     const uint32_t output_width =
         ((input_width - kernel_size[1] - ((kernel_size[0] - 1) * (dilation[0] - 1)) + 2 * padding[1]) / stride[1]) + 1;
-
+    uint32_t weight_block_h_ntiles=0, weight_block_w_ntiles=0, act_block_h_ntiles=0;
     Conv2dConfig conv_config = conv_config_.value_or(Conv2dConfig());
-    auto opt_conv_op_block_config = get_opt_block_config(
-        mm_conv,
-        in_channels,
-        out_channels,
-        output_height,
-        output_width,
-        batch_size,
-        input_width,
-        kernel_size,
-        stride,
-        device,
-        conv_config,
-        input_tensor_layout,
-        input_memory_config
-    );
-
-    uint32_t weight_block_h_ntiles = opt_conv_op_block_config.act_block_w_ntiles;
-    uint32_t weight_block_w_ntiles = opt_conv_op_block_config.out_subblock_w_ntiles;
-    uint32_t act_block_h_ntiles = opt_conv_op_block_config.act_block_h_ntiles;
+    TensorMemoryLayout tensor_layout;
+    if(conv_config_.has_value() && weight_config_.has_value()) {
+        WeightConfig weight_config = weight_config_.value();
+        weight_block_h_ntiles = weight_config.act_block_w_ntiles;
+        weight_block_w_ntiles = weight_config.out_subblock_w_ntiles;
+        act_block_h_ntiles = weight_config.act_block_h_ntiles;
+        tensor_layout = weight_config.shard_layout;
+    }else{
+        auto opt_conv_op_block_config = get_opt_block_config(
+            mm_conv,
+            in_channels,
+            out_channels,
+            output_height,
+            output_width,
+            batch_size,
+            input_width,
+            kernel_size,
+            stride,
+            device,
+            conv_config,
+            input_tensor_layout,
+            input_memory_config
+        );
+        weight_block_h_ntiles = opt_conv_op_block_config.act_block_w_ntiles;
+        weight_block_w_ntiles = opt_conv_op_block_config.out_subblock_w_ntiles;
+        act_block_h_ntiles = opt_conv_op_block_config.act_block_h_ntiles;
+        tensor_layout = conv_config.shard_layout.value();
+    }
 
     validate_weight_tensor(weight_tensor);
     ttnn::Tensor weight_tensor_ = weight_tensor;  // tensor to return
@@ -213,7 +223,7 @@ std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights(
     weight_tensor_ = ttnn::pad(weight_tensor_, weights_channels_padded_shape.to_array_4D(), tt::tt_metal::Array4D({0, 0, 0, 0}), 0);
 
     // for conv op, pad the weights to block shape
-    if (conv_config.shard_layout.value() == TensorMemoryLayout::HEIGHT_SHARDED) {
+    if (tensor_layout == TensorMemoryLayout::HEIGHT_SHARDED) {
         weight_tensor_ = tt::tt_metal::convert_conv_weight_tensor_to_special_padding_tiled_layout(
             weight_tensor_, weight_block_h_ntiles, weight_block_w_ntiles, conv_config.weights_dtype);
     } else {
@@ -362,7 +372,8 @@ template std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weigh
     uint32_t groups,
     Device *device,
     std::optional<const ttnn::Tensor>& bias_tensor,
-    std::optional<const Conv2dConfig> conv_config_);
+    std::optional<const Conv2dConfig> conv_config_,
+    std::optional<const WeightConfig> weight_config);
 
 template std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights<MeshDevice>(
     const ttnn::Tensor& weight_tensor,
@@ -381,7 +392,8 @@ template std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weigh
     uint32_t groups,
     MeshDevice *device,
     std::optional<const ttnn::Tensor>& bias_tensor,
-    std::optional<const Conv2dConfig> conv_config_);
+    std::optional<const Conv2dConfig> conv_config_,
+    std::optional<const WeightConfig> weight_config);
 
 template ttnn::Tensor prepare_conv_bias<Device>(
     const ttnn::Tensor& bias_tensor,

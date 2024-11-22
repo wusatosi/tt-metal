@@ -103,6 +103,13 @@ struct Conv2dConfig {
     }
 };
 
+struct WeightConfig{
+    uint32_t act_block_w_ntiles;
+    uint32_t out_subblock_w_ntiles;
+    uint32_t act_block_h_ntiles;
+    TensorMemoryLayout shard_layout;
+};
+
 uint32_t find_closest_largest_divisor(uint32_t num, uint32_t start_divisor);
 
 uint32_t find_closest_largest_divisor_with_num_padding(uint32_t num, uint32_t start_divisor);

@@ -106,6 +106,12 @@ Result conv2d(
     std::optional<ttnn::Tensor> bias_tensor_on_device = bias_tensor;
     if (!weight_is_on_device) {
         // prepare weights in desired layout and move to device
+        WeightConfig weight_config = WeightConfig{
+            .act_block_w_ntiles = opt_conv_op_block_config.act_block_w_ntiles,
+            .out_subblock_w_ntiles = opt_conv_op_block_config.out_subblock_w_ntiles,
+            .act_block_h_ntiles = opt_conv_op_block_config.act_block_h_ntiles,
+            .shard_layout = parallel_config.shard_scheme,
+        };
         tie(weight_tensor_on_device, bias_tensor_on_device) = prepare_conv_weights(
             weight_tensor,
             input_tensor_post_tm.memory_config(),
@@ -123,7 +129,8 @@ Result conv2d(
             groups,
             device,
             bias_tensor,
-            conv_config
+            conv_config,
+            weight_config
         );
         weight_tensor_on_device = ttnn::operations::core::to_device(weight_tensor_on_device, device, std::nullopt);
         if(bias_tensor.has_value()){

@@ -143,7 +143,8 @@ void py_bind_conv2d(py::module& module) {
         py::arg("groups"),
         py::arg("device"),
         py::arg("bias_tensor") = std::nullopt,
-        py::arg("conv_config") = std::nullopt);
+        py::arg("conv_config") = std::nullopt,
+        py::arg("weight_config") = std::nullopt);
 
 
     module.def(
@@ -166,7 +167,8 @@ void py_bind_conv2d(py::module& module) {
         py::arg("groups"),
         py::arg("device"),
         py::arg("bias_tensor") = std::nullopt,
-        py::arg("conv_config") = std::nullopt);
+        py::arg("conv_config") = std::nullopt,
+        py::arg("weight_config") = std::nullopt);
 
     module.def(
         "prepare_conv_bias",
