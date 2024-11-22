@@ -9,6 +9,7 @@ import importlib
 import datetime
 import os
 import enlighten
+import numpy as np
 import json
 from tt_metal.tools.profiler.process_ops_logs import get_device_data_generate_report
 from tt_metal.tools.profiler.common import PROFILER_LOGS_DIR
@@ -46,7 +47,7 @@ def get_devices(test_module):
         return default_device()
 
 
-def gather_single_test_perf(device, test_passed):
+def gather_single_test_perf(device, test_passed, chunk_size=1):
     if not isinstance(device, ttnn.Device):
         logger.error("Multi-device perf is not supported. Failing.")
         return None
@@ -56,15 +57,45 @@ def gather_single_test_perf(device, test_passed):
     )
     if not test_passed:
         return None
-    elif opPerfData == []:
-        logger.error("No profiling data available. Ensure you are running with the profiler build.")
-        return None
-    elif len(opPerfData) > 1:
-        print(opPerfData)
-        logger.info("Composite op detected in device perf measurement. Composite op perf is not supported. Failing.")
-        return None
+    if chunk_size == 1:
+        if opPerfData == []:
+            logger.error("No profiling data available. Ensure you are running with the profiler build.")
+            return None
+        elif len(opPerfData) > 1:
+            keys = [
+                "DEVICE KERNEL DURATION [ns]",
+                "DEVICE BRISC KERNEL DURATION [ns]",
+                "DEVICE NCRISC KERNEL DURATION [ns]",
+                "DEVICE FW DURATION [ns]",
+            ]
+            avg_data = {}
+            for key in keys:
+                data = np.asarray([int(op[key]) for op in opPerfData])
+                avg_data[key] = np.mean(data)
+                avg_data[f"{key}_std"] = np.std(data)
+            avg_data["runs"] = len(opPerfData)
+            return avg_data
+        else:
+            return opPerfData[0]
     else:
-        return opPerfData[0]
+        assert len(opPerfData) % chunk_size == 0
+        keys = [
+            "DEVICE KERNEL DURATION [ns]",
+            "DEVICE BRISC KERNEL DURATION [ns]",
+            "DEVICE NCRISC KERNEL DURATION [ns]",
+            "DEVICE FW DURATION [ns]",
+        ]
+        runs_per_item = len(opPerfData) // chunk_size
+        results = []
+        for i in range(0, len(opPerfData), runs_per_item):
+            avg_data = {}
+            for key in keys:
+                data = np.asarray([int(op[key]) for op in opPerfData[i : i + runs_per_item]])
+                avg_data[key] = np.mean(data)
+                avg_data[f"{key}_std"] = np.std(data)
+            avg_data["runs"] = runs_per_item
+            results.append(avg_data)
+        return results
 
 
 def run(test_module, input_queue, output_queue):
@@ -73,28 +104,33 @@ def run(test_module, input_queue, output_queue):
         device, device_name = next(device_generator)
         logger.info(f"Opened device configuration, {device_name}.")
     except AssertionError as e:
-        output_queue.put([False, "DEVICE EXCEPTION: " + str(e), None, None])
+        output_queue.put([[False, "DEVICE EXCEPTION: " + str(e), None, None]])
         return
     try:
         while True:
-            test_vector = input_queue.get(block=True, timeout=1)
-            test_vector = deserialize_vector(test_vector)
+            test_vectors = input_queue.get(block=True, timeout=1)
+            test_vectors = [deserialize_vector(vec) for vec in test_vectors]
             try:
-                results = test_module.run(**test_vector, device=device)
-                if type(results) == list:
-                    status, message = results[0]
-                    e2e_perf = results[1] / 1000000  # Nanoseconds to milliseconds
-                else:
-                    status, message = results
-                    e2e_perf = None
-            except Exception as e:
-                status, message = False, str(e)
+                # try chunked first:
+                results = test_module.run_chunk(test_vectors, device)
+                perf_results = gather_single_test_perf(device, True, len(test_vectors))
                 e2e_perf = None
-            if MEASURE_DEVICE_PERF:
-                perf_result = gather_single_test_perf(device, status)
-                output_queue.put([status, message, e2e_perf, perf_result])
-            else:
-                output_queue.put([status, message, e2e_perf, None])
+                results = [result + [e2e_perf, perf_result] for result, perf_result in zip(results, perf_results)]
+                print("Batched run passed")
+            except Exception as e:
+                print("Batched run failed. Trying one by one")
+                # retry one by one:
+                _ = gather_single_test_perf(device, False, len(test_vectors))  # clean up the previous profiles
+                results = []
+                for test_vector in test_vectors:
+                    try:
+                        status, message = test_module.run(**test_vector, device=device)
+                    except Exception as e:
+                        status, message = False, str(e)
+                    e2e_perf = None
+                    perf_result = gather_single_test_perf(device, status, chunk_size=1)
+                    results.append([status, message, e2e_perf, perf_result])
+            output_queue.put(results)
     except Empty as e:
         try:
             # Run teardown in mesh_device_fixture
@@ -117,40 +153,39 @@ def execute_suite(test_module, test_vectors, pbar_manager, suite_name):
     output_queue = Queue()
     p = None
     timeout = get_timeout(test_module)
+    # result tabulation code doesn't work if chunk is set to 1
+    chunk_size = 5
     suite_pbar = pbar_manager.counter(total=len(test_vectors), desc=f"Suite: {suite_name}", leave=False)
-    for test_vector in test_vectors:
-        if DRY_RUN:
-            print(f"Would have executed test for vector {test_vector}")
-            continue
-        result = dict()
-        if deserialize(test_vector["validity"]) == VectorValidity.INVALID:
-            result["status"] = TestStatus.NOT_RUN
-            result["exception"] = "INVALID VECTOR: " + test_vector["invalid_reason"]
-            result["e2e_perf"] = None
+    for i in range(0, len(test_vectors), chunk_size):
+        if i + chunk_size < len(test_vectors):
+            actual_chunk_size = chunk_size
         else:
-            test_vector.pop("invalid_reason")
-            test_vector.pop("status")
-            test_vector.pop("validity")
-            if p is None and len(test_vectors) > 1:
-                p = Process(target=run, args=(test_module, input_queue, output_queue))
-                p.start()
-            try:
-                if MEASURE_PERF:
-                    # Run one time before capturing result to deal with compile-time slowdown of perf measurement
-                    input_queue.put(test_vector)
-                    if len(test_vectors) == 1:
-                        logger.info(
-                            "Executing test (first run, e2e perf is enabled) on parent process (to allow debugger support) because there is only one test vector. Hang detection is disabled."
-                        )
-                        run(test_module, input_queue, output_queue)
-                    output_queue.get(block=True, timeout=timeout)
-                input_queue.put(test_vector)
-                if len(test_vectors) == 1:
-                    logger.info(
-                        "Executing test on parent process (to allow debugger support) because there is only one test vector. Hang detection is disabled."
-                    )
-                    run(test_module, input_queue, output_queue)
-                response = output_queue.get(block=True, timeout=timeout)
+            actual_chunk_size = len(test_vectors) - i
+        vec_chunk = test_vectors[i : i + actual_chunk_size]
+        if DRY_RUN:
+            print(f"Would have executed test for vectors {json.dumps(vec_chunk, indent=2)}")
+            continue
+        result_chunk = [{} for v in vec_chunk]
+        for test_vector, result in zip(vec_chunk, result_chunk):
+            if deserialize(test_vector["validity"]) == VectorValidity.INVALID:
+                result["status"] = TestStatus.NOT_RUN
+                result["exception"] = "INVALID VECTOR: " + test_vector["invalid_reason"]
+                result["e2e_perf"] = None
+            else:
+                test_vector.pop("invalid_reason")
+                test_vector.pop("status")
+                test_vector.pop("validity")
+
+        if p is None and len(test_vectors) > 1:
+            p = Process(target=run, args=(test_module, input_queue, output_queue))
+            p.start()
+        try:
+            if MEASURE_PERF:
+                # E2E performance is not meaningful when we have batched execution
+                raise NotImplementedError
+            input_queue.put(vec_chunk)
+            responses = output_queue.get(block=True, timeout=timeout * len(vec_chunk))
+            for response, result in zip(responses, result_chunk):
                 status, message, e2e_perf, device_perf = response[0], response[1], response[2], response[3]
                 if status and MEASURE_DEVICE_PERF and device_perf is None:
                     result["status"] = TestStatus.FAIL_UNSUPPORTED_DEVICE_PERF
@@ -177,27 +212,25 @@ def execute_suite(test_module, test_vectors, pbar_manager, suite_name):
                     else:
                         result["status"] = TestStatus.FAIL_ASSERT_EXCEPTION
                     result["exception"] = message
-                if e2e_perf and MEASURE_PERF:
-                    result["e2e_perf"] = e2e_perf
-                else:
-                    result["e2e_perf"] = None
-            except Empty as e:
-                logger.warning(f"TEST TIMED OUT, Killing child process {p.pid} and running tt-smi...")
-                p.terminate()
-                p = None
-                result["status"], result["exception"] = TestStatus.FAIL_CRASH_HANG, "TEST TIMED OUT (CRASH / HANG)"
                 result["e2e_perf"] = None
-                try:
-                    tt_smi_util.run_tt_smi(ARCH)
-                except:
-                    logger.warning("tt-smi failed... exiting")
-                    break
-        result["timestamp"] = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        result["host"] = get_hostname()
-        result["user"] = get_username()
+                result["timestamp"] = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                result["host"] = get_hostname()
+                result["user"] = get_username()
+        except Empty as e:
+            logger.warning(f"TEST TIMED OUT, Killing child process {p.pid} and running tt-smi...")
+            p.terminate()
+            p = None
+            result["status"], result["exception"] = TestStatus.FAIL_CRASH_HANG, "TEST TIMED OUT (CRASH / HANG)"
+            result["e2e_perf"] = None
+            try:
+                tt_smi_util.run_tt_smi(ARCH)
+            except:
+                logger.warning("tt-smi failed... exiting")
+                break
 
-        suite_pbar.update()
-        results.append(result)
+        for i in range(actual_chunk_size):
+            suite_pbar.update()
+        results.extend(result_chunk)
 
     if p is not None:
         p.join()
@@ -241,15 +274,17 @@ def get_suite_vectors(client, vector_index, suite):
     return header_info, test_vectors
 
 
-def export_test_results_json(header_info, results):
+def export_test_results_json(header_info, results, result_file=None):
     if len(results) == 0:
         return
-    module_name = header_info[0]["sweep_name"]
-    EXPORT_DIR_PATH = pathlib.Path(__file__).parent / "results_export"
-    EXPORT_PATH = EXPORT_DIR_PATH / str(module_name + ".json")
-
-    if not EXPORT_DIR_PATH.exists():
-        EXPORT_DIR_PATH.mkdir()
+    if not result_file:
+        module_name = header_info[0]["sweep_name"]
+        EXPORT_DIR_PATH = pathlib.Path(__file__).parent / "results_export"
+        EXPORT_PATH = EXPORT_DIR_PATH / str(module_name + ".json")
+        if not EXPORT_DIR_PATH.exists():
+            EXPORT_DIR_PATH.mkdir()
+    else:
+        EXPORT_PATH = pathlib.Path(result_file)
 
     curr_git_hash = git_hash()
     for result in results:
@@ -300,7 +335,7 @@ def run_sweeps(module_name, suite_name, vector_id):
                 logger.info(f"Completed tests for module {module_name}, suite {suite}.")
                 logger.info(f"Tests Executed - {len(results)}")
                 logger.info("Dumping results to JSON file.")
-                export_test_results_json(header_info, results)
+                export_test_results_json(header_info, results, RESULT_FILE)
         return
 
     client = Elasticsearch(ELASTIC_CONNECTION_STRING, basic_auth=(ELASTIC_USERNAME, ELASTIC_PASSWORD))
@@ -506,6 +541,7 @@ if __name__ == "__main__":
         help="Custom tag for the vectors you are running. This is to keep copies seperate from other people's test vectors. By default, this will be your username. You are able to specify a tag when generating tests using the generator.",
     )
     parser.add_argument("--read-file", required=False, help="Read and execute test vectors from a specified file path.")
+    parser.add_argument("--result-file")
 
     args = parser.parse_args(sys.argv[1:])
     if not args.module_name and args.vector_id:
@@ -525,6 +561,9 @@ if __name__ == "__main__":
             exit(1)
         global READ_FILE
         READ_FILE = args.read_file
+
+    global RESULT_FILE
+    RESULT_FILE = args.result_file
 
     global MEASURE_PERF
     MEASURE_PERF = args.perf
