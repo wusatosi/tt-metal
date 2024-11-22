@@ -12,6 +12,7 @@ import cv2
 import numpy as np
 import torch
 import time
+import os
 
 app = FastAPI(
     title="YOLOv4 object detection",
@@ -25,11 +26,40 @@ async def root():
     return {"message": "Hello World"}
 
 
+def get_dispatch_core_type():
+    # TODO: 11059 move dispatch_core_type to device_params when all tests are updated to not use WH_ARCH_YAML env flag
+    dispatch_core_type = ttnn.device.DispatchCoreType.WORKER
+    # if ("WH_ARCH_YAML" in os.environ) and os.environ["WH_ARCH_YAML"] == "wormhole_b0_80_arch_eth_dispatch.yaml":
+    if os.environ["WH_ARCH_YAML"] == "wormhole_b0_80_arch_eth_dispatch.yaml":
+        dispatch_core_type = ttnn.device.DispatchCoreType.ETH
+    return dispatch_core_type
+
+
 @app.on_event("startup")
 async def startup():
+    # Set the environment variable
+    # os.environ['WH_ARCH_YAML'] = 'wormhole_b0_80_arch_eth_dispatch.yaml'
+    # Verify that it's set
+    print("WH_ARCH_YAML:", os.environ.get("WH_ARCH_YAML"))
+
     device_id = 0
-    device = ttnn.CreateDevice(device_id, l1_small_size=24576, trace_region_size=1617920, num_command_queues=2)
+    print()
+    print("\n\n\n\ndevice_id is set to: ", device_id)
+    # device = ttnn.open_device(device_id=device_id)
+    # ttnn.enable_program_cache(device)
+    # device = ttnn.CreateDevice(device_id, dispatch_core_type=get_dispatch_core_type(), l1_small_size=24576, trace_region_size=1617920, num_command_queues=2)
+    device = ttnn.CreateDevice(
+        device_id,
+        dispatch_core_type=get_dispatch_core_type(),
+        l1_small_size=24576,
+        trace_region_size=1622016,
+        num_command_queues=2,
+    )
     ttnn.enable_program_cache(device)
+    print()
+    print("\n\n\nDevice is created!")
+    # ttnn.enable_program_cache(device)
+    print("\n\n\n\nwe do reach the point after enabling program cache!\n\n\n\n")
     global model
     model = Yolov4Trace2CQ()
     model.initialize_yolov4_trace_2cqs_inference(device)
