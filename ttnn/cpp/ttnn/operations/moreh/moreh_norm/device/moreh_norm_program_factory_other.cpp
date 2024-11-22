@@ -95,17 +95,17 @@ MorehNormOperation::ProgramFactoryOther::cached_program_t MorehNormOperation::Pr
         all_cores,
         cb_data_format,
         {
-            {tt::CB::c_in0, in0_t},    // input
-            {tt::CB::c_in1, in1_t},    // one
-            {tt::CB::c_in2, in2_t},    // decimal
-            {tt::CB::c_in3, in3_t},    // recip_p_decimal
-            {tt::CB::c_out0, out0_t},  // output
-            {tt::CB::c_intermed0, im0_t, intermed_data_format},
-            {tt::CB::c_intermed1, im1_t, intermed_data_format},
-            {tt::CB::c_intermed2, im2_t, intermed_data_format},
-            {tt::CB::c_intermed3, im3_t, intermed_data_format},
-            {tt::CB::c_intermed4, im4_t, intermed_data_format},
-            {tt::CB::c_intermed5, im5_t, intermed_data_format},
+            {tt::CBIndex::c_0, in0_t},    // input
+            {tt::CBIndex::c_1, in1_t},    // one
+            {tt::CBIndex::c_2, in2_t},    // decimal
+            {tt::CBIndex::c_3, in3_t},    // recip_p_decimal
+            {tt::CBIndex::c_16, out0_t},  // output
+            {tt::CBIndex::c_24, im0_t, intermed_data_format},
+            {tt::CBIndex::c_25, im1_t, intermed_data_format},
+            {tt::CBIndex::c_26, im2_t, intermed_data_format},
+            {tt::CBIndex::c_27, im3_t, intermed_data_format},
+            {tt::CBIndex::c_28, im4_t, intermed_data_format},
+            {tt::CBIndex::c_29, im5_t, intermed_data_format},
         });
 
     ////////////////////////////////////////////////////////////////////////////
