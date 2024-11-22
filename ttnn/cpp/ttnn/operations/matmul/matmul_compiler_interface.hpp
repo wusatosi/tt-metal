@@ -40,8 +40,8 @@ QueryResponse matumul_op_constraints(
         // outer graph capture is used to avoid capturing and dispatching of dummy input tensor(s) creation
         {
             ttnn::graph::GraphProcessor::begin_graph_capture(ttnn::graph::GraphProcessor::RunMode::NO_DISPATCH);
-            const auto input_tensor_a = create_device_tensor(input_a.first, input_b.second, device);
-            const auto input_tensor_b = create_device_tensor(input_a.first, input_b.second, device);
+            const auto input_tensor_a = create_device_tensor(input_a.first, input_a.second, device);
+            const auto input_tensor_b = create_device_tensor(input_b.first, input_b.second, device);
 
             // output tensor is created in the inner graph capture to capture its allocation
             {
