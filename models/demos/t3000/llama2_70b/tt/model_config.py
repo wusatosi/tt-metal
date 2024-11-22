@@ -221,7 +221,7 @@ def get_model_config(llama_version="llama3", max_batch_size=32, max_context_len=
         compute_with_storage_grid_size=(8, 4),
         in0_block_w=8,
         out_subblock_h=1,
-        out_subblock_w=4,
+        out_subblock_w=1,
         per_core_M=1,
         per_core_N=16,
         fuse_batch=True,
