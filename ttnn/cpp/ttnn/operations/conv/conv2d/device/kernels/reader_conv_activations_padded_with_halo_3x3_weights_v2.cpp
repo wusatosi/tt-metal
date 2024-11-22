@@ -154,7 +154,7 @@ void kernel_main() {
             }
             noc_async_read_barrier();
 
-            // print_pages(get_read_ptr(cb_id_act), coalesced_read_bytes / 2, act_block_h_datums_read_curr);
+            // print_pages(get_read_ptr(cb_id_act), coalesced_read_bytes / 2, 10);
 
             cb_push_back(cb_id_act, act_block_num_tiles_read);
 

@@ -93,10 +93,10 @@ def run_conv(
     conv_bias_shape = [1, 1, 1, output_channels]
 
     # torch_input_tensor_nchw = torch.randn(conv_input_shape, dtype=torch.bfloat16).float()
-    torch_input_tensor_nchw = torch.rand(conv_input_shape, dtype=torch.bfloat16)
+    torch_input_tensor_nchw = torch.randn(conv_input_shape, dtype=torch.bfloat16)
     torch_input_tensor = torch.permute(torch_input_tensor_nchw, (0, 2, 3, 1))
 
-    torch_weight_tensor = torch.rand(conv_weight_shape, dtype=torch.bfloat16)
+    torch_weight_tensor = torch.randn(conv_weight_shape, dtype=torch.bfloat16)
 
     torch_bias_tensor = torch.randn(conv_bias_shape, dtype=torch.bfloat16) if has_bias else None
 
@@ -131,7 +131,11 @@ def run_conv(
             mesh_mapper=weight_mesh_mapper,
         )
 
-    tt_input_tensor = ttnn.from_torch(torch_input_tensor, ttnn.bfloat16, mesh_mapper=input_mesh_mapper)
+    tt_input_tensor = ttnn.from_torch(
+        torch_input_tensor,
+        activations_dtype if activations_dtype != ttnn.bfloat8_b else ttnn.float32,
+        mesh_mapper=input_mesh_mapper,
+    )
 
     if shard_layout is None and not auto_shard:
         shard_layout = (
@@ -191,7 +195,7 @@ def run_conv(
         memory_config=memory_config,
     )
 
-    # tt_output_tensor_on_device = ttnn.to_memory_config(tt_output_tensor_on_device, ttnn.L1_MEMORY_CONFIG)
+    tt_output_tensor_on_device = ttnn.to_memory_config(tt_output_tensor_on_device, ttnn.L1_MEMORY_CONFIG)
     tt_output_tensor = tt_output_tensor_on_device.cpu()
     # tt_output_tensor = ttnn.from_device(tt_output_tensor_on_device)
 

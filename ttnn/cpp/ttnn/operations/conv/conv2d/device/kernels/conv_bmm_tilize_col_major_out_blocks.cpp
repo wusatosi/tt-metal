@@ -297,6 +297,10 @@ void MAIN {
                         matmul_pack_tile(start_dst_index, curr_matmul_out_cb, out_subblock_num_tiles);
 
                         tile_regs_release();
+
+                        SliceRange sr = SliceRange{ .h0 = 0, .h1 = 4, .hs = 1, .w0 = 0, .w1 = 32, .ws = 4 };
+                        UNPACK(( DPRINT << TSLICE(curr_matmul_out_cb, 0, sr) ));
+
                         cb_push_back(curr_matmul_out_cb, out_subblock_num_tiles);
 
                         in1_index_subblock_offset += out_subblock_w;
