@@ -129,29 +129,30 @@ class TtModelArgs:
         self.is_large_model = False
         self.model_name = "Unknown"  # Llama model name will be dependent on the checkpoint directory
 
-        LLAMA_DIR = "3.1-70B"  # os.getenv("LLAMA_DIR")
-        # if LLAMA_DIR:
-        #     if any([os.getenv("LLAMA_CKPT_DIR"), os.getenv("LLAMA_TOKENIZER_PATH"), os.getenv("LLAMA_CACHE_PATH")]):
-        #         logger.warning(
-        #             "LLAMA_DIR is set and will override LLAMA_CKPT_DIR, LLAMA_TOKENIZER_PATH, and LLAMA_CACHE_PATH"
-        #         )
-        #     self.DEFAULT_CKPT_DIR = LLAMA_DIR
-        #     self.DEFAULT_TOKENIZER_PATH = LLAMA_DIR
-        #     self.DEFAULT_CACHE_PATH = os.path.join(LLAMA_DIR, self.device_name)
-        # else:
-        #     assert "Please set $LLAMA_DIR to a valid checkpoint directory"
-        self.DEFAULT_CKPT_DIR = "/proj_sw/user_dev/llama3-data-repacked/llama-3-70b/"
-        self.DEFAULT_TOKENIZER_PATH = "/proj_sw/user_dev/llama3-data-repacked/"
-        self.DEFAULT_CACHE_PATH = (
-            "/proj_sw/user_dev/weights-cache-TG"
-            if self.num_devices == 32
-            else "/proj_sw/user_dev/llama3-data-cache/weights-cache-2"
-        )
-        if self.num_devices < 8:
-            LLAMA_DIR = "/proj_sw/user_dev/llama31-8b-data/Meta-Llama-3.1-8B-Instruct/"
+        # LLAMA_DIR = "3.1-70B"  # os.getenv("LLAMA_DIR")
+        LLAMA_DIR = os.getenv("LLAMA_DIR")
+        if LLAMA_DIR:
+            if any([os.getenv("LLAMA_CKPT_DIR"), os.getenv("LLAMA_TOKENIZER_PATH"), os.getenv("LLAMA_CACHE_PATH")]):
+                logger.warning(
+                    "LLAMA_DIR is set and will override LLAMA_CKPT_DIR, LLAMA_TOKENIZER_PATH, and LLAMA_CACHE_PATH"
+                )
             self.DEFAULT_CKPT_DIR = LLAMA_DIR
             self.DEFAULT_TOKENIZER_PATH = LLAMA_DIR
             self.DEFAULT_CACHE_PATH = os.path.join(LLAMA_DIR, self.device_name)
+        else:
+            assert "Please set $LLAMA_DIR to a valid checkpoint directory"
+        # self.DEFAULT_CKPT_DIR = "/proj_sw/user_dev/llama3-data-repacked/llama-3-70b/"
+        # self.DEFAULT_TOKENIZER_PATH = "/proj_sw/user_dev/llama3-data-repacked/"
+        # self.DEFAULT_CACHE_PATH = (
+        #     "/proj_sw/user_dev/weights-cache-TG"
+        #     if self.num_devices == 32
+        #     else "/proj_sw/user_dev/llama3-data-cache/weights-cache-2"
+        # )
+        # if self.num_devices < 8:
+        #     LLAMA_DIR = "/proj_sw/user_dev/llama31-8b-data/Meta-Llama-3.1-8B-Instruct/"
+        #     self.DEFAULT_CKPT_DIR = LLAMA_DIR
+        #     self.DEFAULT_TOKENIZER_PATH = LLAMA_DIR
+        #     self.DEFAULT_CACHE_PATH = os.path.join(LLAMA_DIR, self.device_name)
         if not dummy_weights:
             # Assert if all folders and files exist
             assert os.path.exists(
