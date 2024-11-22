@@ -91,12 +91,15 @@ def run_conv(
     conv_input_shape = [total_batch_size, input_channels, input_height, input_width]
     conv_weight_shape = [output_channels, input_channels // groups, filter_height, filter_width]
     conv_bias_shape = [1, 1, 1, output_channels]
-    torch_input_tensor_nchw = torch.randn(conv_input_shape, dtype=torch.bfloat16).float()
 
+    # torch_input_tensor_nchw = torch.randn(conv_input_shape, dtype=torch.bfloat16).float()
+    torch_input_tensor_nchw = torch.rand(conv_input_shape, dtype=torch.bfloat16)
     torch_input_tensor = torch.permute(torch_input_tensor_nchw, (0, 2, 3, 1))
-    torch_weight_tensor = torch.randn(conv_weight_shape, dtype=torch.bfloat16).float()
 
-    torch_bias_tensor = torch.randn(conv_bias_shape, dtype=torch.bfloat16).float() if has_bias else None
+    torch_weight_tensor = torch.rand(conv_weight_shape, dtype=torch.bfloat16)
+
+    torch_bias_tensor = torch.randn(conv_bias_shape, dtype=torch.bfloat16) if has_bias else None
+
     torch_out_golden_tensor = torch.nn.functional.conv2d(
         torch_input_tensor_nchw,
         torch_weight_tensor,
@@ -138,7 +141,8 @@ def run_conv(
         dtype=activations_dtype,
         weights_dtype=weights_dtype,
         math_fidelity=math_fidelity,
-        shard_layout=shard_layout,
+        # shard_layout=shard_layout,
+        shard_layout=ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
         input_channels_alignment=(
             16 if use_shallow_conv_variant or (input_channels == 16 and input_height == 115) else 32
         ),
@@ -162,6 +166,9 @@ def run_conv(
             conv_config.core_grid = ttnn.CoreRangeSet({ttnn.CoreRange((0, 0), (11, 7)), ttnn.CoreRange((0, 8), (1, 8))})
             conv_config.override_sharding_config = True
             print("Setting num_cores_nhw to 98")
+        else:
+            conv_config.core_grid = get_shard_grid_from_num_cores(config_override["num_cores_nhw"], device)
+            conv_config.override_sharding_config = True
 
     [tt_output_tensor_on_device, out_height, out_width, weights_device, bias_device] = ttnn.conv2d(
         input_tensor=tt_input_tensor,
@@ -184,7 +191,10 @@ def run_conv(
         memory_config=memory_config,
     )
 
-    tt_output_tensor = ttnn.from_device(tt_output_tensor_on_device)
+    # tt_output_tensor_on_device = ttnn.to_memory_config(tt_output_tensor_on_device, ttnn.L1_MEMORY_CONFIG)
+    tt_output_tensor = tt_output_tensor_on_device.cpu()
+    # tt_output_tensor = ttnn.from_device(tt_output_tensor_on_device)
+
     torch_output_tensor = ttnn.to_torch(tt_output_tensor, mesh_composer=output_mesh_composer)
 
     # torch_output_tensor is in row major layout and NHWC shape
@@ -196,6 +206,9 @@ def run_conv(
 
     torch_output_tensor = torch.permute(torch_output_tensor, (0, 3, 1, 2))
     reader_patterns_cache.clear()
+
+    torch.save(torch_output_tensor, "output_tensor.pt")
+    torch.save(torch_out_golden_tensor, "golden_tensor.pt")
 
     if not fp32_accum:
         pcc = 0.985
@@ -902,6 +915,7 @@ def test_resnet50_conv_gs(
         (20, 512, 512, 7, 7, 3, 3, 1, 1, 1, 1, False, None),
         ## small test
         (1, 64, 64, 8, 8, 3, 3, 1, 1, 1, 1, False, {"num_cores_nhw": 2, "grid_size": (2, 2)}),
+        (1, 32, 32, 4, 4, 3, 3, 1, 1, 0, 0, False, {"num_cores_nhw": 1}),  ## <<------------ my test case
         (1, 64, 64, 16, 16, 3, 3, 1, 1, 1, 1, False, {"num_cores_nhw": 4, "grid_size": (2, 4)}),
         # (1, 160, 160, 7, 7, 3, 3, 1, 1, 1, 1, False, None), sliding_window_op_infra/sliding_window.cpp:341: indices_length_last_core <= indices_length_per_core
         (8, 256, 256, 7, 7, 3, 3, 1, 1, 1, 1, False, None),

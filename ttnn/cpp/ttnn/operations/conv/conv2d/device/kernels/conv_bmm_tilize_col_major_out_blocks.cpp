@@ -19,6 +19,8 @@
 
 #define DEBUG_PRINT 0
 
+#include "debug/dprint_tensix.h"
+
 // #include "debug_macros.h"
 
 // SliceRange srt = SliceRange{.h0 = 0, .h1 = 4, .hs = 1, .w0 = 0, .w1 = 8, .ws = 1};
@@ -73,6 +75,9 @@ inline void reblock_and_untilize(
             tile_regs_commit();
             tile_regs_wait();
             pack_untilize_dst<out_subblock_w, out_block_w>(out_cb_id, 1, n, rows_to_copy);
+
+            // dprint_tensix_dest_reg();
+
             tile_regs_release();
             block_offset += out_subblock_num_tiles;
         }
@@ -264,6 +269,9 @@ void MAIN {
                         }
                         #endif
                         tile_regs_commit();
+
+                        dprint_tensix_dest_reg();
+
                         cb_reserve_back(curr_matmul_out_cb, out_subblock_num_tiles);
                         tile_regs_wait();
 

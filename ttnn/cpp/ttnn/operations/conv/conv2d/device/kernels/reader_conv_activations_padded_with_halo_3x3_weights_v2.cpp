@@ -6,6 +6,24 @@
 #include "dataflow_api.h"
 #include "firmware_common.h"
 
+
+#define ENABLE_DEBUG_PRINT 1
+
+#if ENABLE_DEBUG_PRINT == 1
+    #include "debug/dprint.h"
+
+    inline void print_pages(uint32_t l1_addr, uint32_t pagelen, uint32_t npages, uint32_t start = 0) {
+        volatile tt_l1_ptr uint16_t* ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(l1_addr) + start * pagelen;
+        for (uint32_t page = 0; page < npages; ++ page) {
+            DPRINT << start + page << ": ";
+            for (uint32_t j = 0; j < pagelen; ++ j, ++ ptr) {
+                DPRINT << BF16(*ptr) << " ";
+            }
+            DPRINT << ENDL();
+        }
+    }
+#endif
+
 #define DILATION_W get_compile_time_arg_val(4)
 void kernel_main() {
     constexpr bool act_in_dram                        = get_compile_time_arg_val(0)== 1;
@@ -135,6 +153,8 @@ void kernel_main() {
                 reader_idx++;
             }
             noc_async_read_barrier();
+
+            // print_pages(get_read_ptr(cb_id_act), coalesced_read_bytes / 2, act_block_h_datums_read_curr);
 
             cb_push_back(cb_id_act, act_block_num_tiles_read);
 
