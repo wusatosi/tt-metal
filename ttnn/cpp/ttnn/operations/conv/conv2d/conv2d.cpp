@@ -696,17 +696,14 @@ std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights_biases
     int32_t weight_matrix_height_padding = weight_tensor_.shape()[2] - weight_matrix_height;
     TT_FATAL(weight_matrix_height_padding >= 0," Matrix Height Padding can't be negative");
 
-    // convert_conv_weight_tensor adds the padding to the base shape.
-    // Reshape the weights to remove padding from the base shape.
-    weight_tensor_.set_shape(
-        ttnn::Shape(std::array<uint32_t,4>{1, 1, weight_matrix_height, out_channels},
+    auto target_shape = ttnn::Shape(std::array<uint32_t,4>{1, 1, weight_matrix_height, out_channels},
         std::array<std::array<uint32_t, 2>, 4>{
             std::array<uint32_t, 2>{0, 0},
             std::array<uint32_t, 2>{0, 0},
             std::array<uint32_t, 2>{0, weight_matrix_height_padding},
             std::array<uint32_t, 2>{0, out_channel_padding}
-    }));
-
+    });
+    weight_tensor_ = ttnn::reshape(weight_tensor_, target_shape);
     weight_tensor_ = ttnn::operations::core::to_device(weight_tensor_, device, std::nullopt);
     if (bias_tensor.has_value()) {
         bias_tensor_ = bias_tensor.value();
@@ -754,6 +751,8 @@ ttnn::operations::matmul::MatmulProgramConfig determine_matmul_op_config_from_co
             .in0_block_w = conv_blocking_config.act_block_w_ntiles / grid_size_along_c,
             .out_subblock_h = conv_blocking_config.out_subblock_h_ntiles,
             .out_subblock_w = conv_blocking_config.out_subblock_w_ntiles,
+            .out_block_h = conv_parallelization_config.per_core_out_matrix_height_ntiles,
+            .out_block_w = conv_parallelization_config.per_core_out_matrix_width_ntiles,
             .per_core_M = conv_parallelization_config.per_core_out_matrix_height_ntiles,
             .per_core_N = conv_parallelization_config.per_core_out_matrix_width_ntiles,
             .transpose_mcast = transpose_mcast};

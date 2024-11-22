@@ -124,6 +124,7 @@ from ttnn.types import (
     L1_WIDTH_SHARDED_MEMORY_CONFIG,
     ShardStrategy,
     ShardOrientation,
+    ShardMode,
     ShardSpec,
     CoreRangeSet,
     CoreRange,
@@ -241,10 +242,6 @@ sub = ttnn.subtract
 sub_ = ttnn.subtract_
 mul = ttnn.multiply
 mul_ = ttnn.multiply_
-
-
-def prelu(*args, **kwargs):  # Alias for leaky_relu. TODO(#8544): implement PReLU properly
-    return ttnn.leaky_relu(*args, **kwargs)
 
 
 # TODO: pybind the overloaded operators below

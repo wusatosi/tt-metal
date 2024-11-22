@@ -15,6 +15,7 @@
 #include "tt_metal/llrt/hal.hpp"
 #include "tt_metal/llrt/llrt.hpp"
 
+// FIXME: Don't do this in header files
 using namespace tt::tt_metal;
 
 namespace tt::tt_metal {
@@ -174,13 +175,14 @@ struct dispatch_constants {
             dispatch_s_buffer_size_ = 32 * 1024; // dispatch_s only sends Go Signals -> CB can be small
             base_device_command_queue_addr = tt::tt_metal::hal.get_dev_addr(tt::tt_metal::HalProgrammableCoreType::IDLE_ETH, tt::tt_metal::HalL1MemAddrType::UNRESERVED);
         }
+        uint32_t pcie_alignment = tt::tt_metal::hal.get_alignment(tt::tt_metal::HalMemType::HOST);
+        uint32_t l1_alignment = tt::tt_metal::hal.get_alignment(tt::tt_metal::HalMemType::L1);
+
         TT_ASSERT(cmddat_q_size_ >= 2 * max_prefetch_command_size_);
         TT_ASSERT(scratch_db_size_ % 2 == 0);
         TT_ASSERT((dispatch_buffer_block_size & (dispatch_buffer_block_size - 1)) == 0);
-        TT_ASSERT(DISPATCH_MESSAGE_ENTRIES <= DISPATCH_MESSAGES_MAX_OFFSET / L1_ALIGNMENT + 1, "Number of dispatch message entries exceeds max representable offset");
+        TT_ASSERT(DISPATCH_MESSAGE_ENTRIES <= DISPATCH_MESSAGES_MAX_OFFSET / l1_alignment + 1, "Number of dispatch message entries exceeds max representable offset");
 
-        uint32_t pcie_alignment = tt::tt_metal::hal.get_alignment(tt::tt_metal::HalMemType::HOST);
-        uint32_t l1_alignment = tt::tt_metal::hal.get_alignment(tt::tt_metal::HalMemType::L1);
         uint8_t num_dev_cq_addrs = magic_enum::enum_count<CommandQueueDeviceAddrType>();
         std::vector<uint32_t> device_cq_addr_sizes_(num_dev_cq_addrs, 0);
         for (auto dev_addr_idx = 0; dev_addr_idx < num_dev_cq_addrs; dev_addr_idx++) {
@@ -212,7 +214,7 @@ struct dispatch_constants {
         uint32_t prefetch_dispatch_unreserved_base = device_cq_addrs_[tt::utils::underlying_type<CommandQueueDeviceAddrType>(CommandQueueDeviceAddrType::UNRESERVED)];
         cmddat_q_base_ = prefetch_dispatch_unreserved_base + ((prefetch_q_size_ + pcie_alignment - 1) / pcie_alignment * pcie_alignment);
         scratch_db_base_ = cmddat_q_base_ + ((cmddat_q_size_ + pcie_alignment - 1) / pcie_alignment * pcie_alignment);
-        const uint32_t l1_size = core_type == CoreType::WORKER ? MEM_L1_SIZE : MEM_ETH_SIZE;
+        const uint32_t l1_size = core_type == CoreType::WORKER ? HAL_MEM_L1_SIZE : HAL_MEM_ETH_SIZE;
         TT_ASSERT(scratch_db_base_ + scratch_db_size_ < l1_size);
         dispatch_buffer_base_ = ((prefetch_dispatch_unreserved_base - 1) | ((1 << DISPATCH_BUFFER_LOG_PAGE_SIZE) - 1)) + 1;
         dispatch_buffer_block_size_pages_ =

@@ -56,7 +56,7 @@ void Tensor::add_grad(const tt::tt_metal::Tensor& grad) {
     m_grad = ttnn::add(m_grad, grad);
 }
 
-void Tensor::backward() {
+void Tensor::backward(bool retain_graph) {
     if (!m_node_id.has_value()) {
         return;
     }
@@ -70,7 +70,14 @@ void Tensor::backward() {
     try_init_grad(/* init_ones */ true);
     for (const auto& node_id : sorted_nodes) {
         graph_nodes[node_id].grad_function();
-        graph_nodes[node_id].grad_function = nullptr;
+        if (!retain_graph) {
+            graph_nodes[node_id].grad_function = [] {
+                throw std::runtime_error(
+                    "[Tensor::backward] This backward function should not be called! Memory from the node is released! "
+                    "Please consider tweaking the retain_graph parameter if you need to call backward twice on the "
+                    "same graph nodes.");
+            };
+        }
     }
 }
 

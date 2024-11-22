@@ -72,6 +72,7 @@ void tensor_mem_config_module_types(py::module& m_tensor) {
     export_enum<MathFidelity>(m_tensor);
     export_enum<TensorMemoryLayout>(m_tensor);
     export_enum<ShardOrientation>(m_tensor);
+    export_enum<ShardMode>(m_tensor);
 
     py::enum_<tt::tt_metal::BufferType>(m_tensor, "BufferType")
         .value("DRAM", BufferType::DRAM)
@@ -255,6 +256,7 @@ void tensor_mem_config_module(py::module& m_tensor) {
 
     auto pyCoreRangeSet = static_cast<py::class_<CoreRangeSet>>(m_tensor.attr("CoreRangeSet"));
     pyCoreRangeSet.def(py::init<>([](const std::set<CoreRange>& core_ranges) { return CoreRangeSet(core_ranges); }))
+        .def(py::init<>([](const std::vector<CoreRange>& core_ranges) { return CoreRangeSet(tt::stl::Span<const CoreRange>(core_ranges)); }))
         .def(
             "bounding_box",
             &CoreRangeSet::bounding_box,
@@ -266,10 +268,13 @@ void tensor_mem_config_module(py::module& m_tensor) {
         .def(py::init<>([](const CoreRangeSet& core_sets,
                            const std::array<uint32_t, 2>& shard_shape,
                            const ShardOrientation& shard_orientation,
-                           const bool& halo) { return ShardSpec(core_sets, shard_shape, shard_orientation, halo); }))
+                           const bool& halo,
+                           const ShardMode& shard_mode) { return ShardSpec(core_sets, shard_shape, shard_orientation, halo, shard_mode); }),
+            py::arg("grid"), py::arg("shard_shape"), py::arg("shard_orientation"), py::arg("halo"), py::arg("shard_mode") = ShardMode::PHYSICAL)
         .def_readwrite("shape", &ShardSpec::shape, "Shape of shard.")
         .def_readwrite("grid", &ShardSpec::grid, "Grid to layout shards.")
         .def_readwrite("orientation", &ShardSpec::orientation, "Orientation of cores to read shards")
+        .def_readwrite("mode", &ShardSpec::mode, "Treat shard shape as physical (default) or logical")
         .def("num_cores", &ShardSpec::num_cores, "Number of cores")
         .def(py::self == py::self)
         .def(py::self != py::self);
