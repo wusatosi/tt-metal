@@ -259,9 +259,7 @@ namespace kernel_profiler{
 	    }
 	}
 
-#if !defined(COMPILE_FOR_IDLE_ERISC)
         noc_async_write_barrier();
-#endif
         profiler_control_buffer[RUN_COUNTER] ++;
         profiler_control_buffer[PROFILER_DONE] = 1;
 #endif

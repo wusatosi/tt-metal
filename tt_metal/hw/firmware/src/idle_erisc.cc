@@ -108,6 +108,9 @@ int main() {
     //device_setup();
 
     noc_init(MEM_NOC_ATOMIC_RET_VAL_ADDR);
+    for (uint32_t n = 0; n < NUM_NOCS; n++) {
+        noc_local_state_init(n);
+    }
 
     deassert_all_reset(); // Bring all riscs on eth cores out of reset
     mailboxes->go_message.signal = RUN_MSG_DONE;
