@@ -36,6 +36,7 @@ class TtLlamaAttention(LightweightModule):
         self.paged_attention_config = configuration.paged_attention_config
         self.min_kv_prefill_shard_seqlen = configuration.min_kv_prefill_shard_seqlen
         self.ccl_dtype = configuration.ccl_dtype
+        self.activation_dtype = configuration.activation_dtype
         self.num_reduce_scatter_links = configuration.num_reduce_scatter_links
         self.num_all_gather_links = configuration.num_all_gather_links
 
@@ -234,7 +235,7 @@ class TtLlamaAttention(LightweightModule):
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
             program_config=self.model_config["XQKV_DECODE_PROGCFG"],
             compute_kernel_config=self.compute_kernel_config_hifi2,
-            dtype=self.ccl_dtype if self.is_multichip else ttnn.bfloat16,
+            dtype=self.ccl_dtype if self.is_multichip else self.activation_dtype,
         )
         ttnn.deallocate(x)
 
@@ -254,12 +255,14 @@ class TtLlamaAttention(LightweightModule):
             xqkv_fused = ttnn.matmul(
                 self.slice_mat,
                 xqkv_fused,
-                dtype=ttnn.bfloat16,
+                dtype=ttnn.bfloat16,  # Create heads only supports bfloat16
                 memory_config=self.model_config["CREATE_HEAD_INPUT_MEMCFG"],
             )
         else:
             xqkv_fused = ttnn.to_memory_config(
-                xqkv_fused_sharded, memory_config=ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat16
+                xqkv_fused_sharded,
+                memory_config=ttnn.L1_MEMORY_CONFIG,
+                dtype=ttnn.bfloat16,  # Create heads only supports bfloat16
             )
 
         ttnn.deallocate(xqkv_fused_sharded)
@@ -294,7 +297,7 @@ class TtLlamaAttention(LightweightModule):
             ),
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
             compute_kernel_config=self.compute_kernel_config_hifi2,
-            dtype=ttnn.bfloat16,
+            dtype=self.activation_dtype,
         )
 
         k_heads_1BKD = ttnn.linear(
@@ -305,7 +308,7 @@ class TtLlamaAttention(LightweightModule):
             ),
             memory_config=k_heads_pre_rot_1BKD.memory_config(),
             compute_kernel_config=self.compute_kernel_config_hifi2,
-            dtype=ttnn.bfloat16,
+            dtype=self.activation_dtype,
         )
 
         ttnn.deallocate(q_heads_pre_rot_1BQD)
@@ -400,7 +403,7 @@ class TtLlamaAttention(LightweightModule):
                     self.user_selection_matrix,
                     attn_output,
                     core_grid=ttnn.CoreGrid(y=4, x=8),
-                    dtype=ttnn.bfloat16,
+                    dtype=self.activation_dtype,
                     memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
                 )
 
@@ -411,7 +414,7 @@ class TtLlamaAttention(LightweightModule):
                 core_grid=ttnn.CoreGrid(y=4, x=8) if TG else None,
                 program_config=self.model_config["ATTN_OUTPUT_PROGCFG"] if not TG else None,
                 memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
-                dtype=ttnn.bfloat8_b,
+                dtype=self.ccl_dtype,
                 compute_kernel_config=self.compute_kernel_config_hifi2,
             )
 
@@ -448,7 +451,7 @@ class TtLlamaAttention(LightweightModule):
         xqkv_fused = ttnn.linear(
             x_11SH,
             self.wqkv,
-            dtype=self.ccl_dtype if self.is_multichip else ttnn.bfloat16,
+            dtype=self.ccl_dtype if self.is_multichip else self.activation_dtype,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
             compute_kernel_config=self.compute_kernel_config_hifi2,
             program_config=self.model_config["XQKV_PREFILL_PROGCFG"](seq_len),
@@ -506,7 +509,10 @@ class TtLlamaAttention(LightweightModule):
 
         # Fill KV-Cache
         keys_BKSD, values_BKSD = self.layer_past[0], self.layer_past[1]
-        k_heads_1KSD_8b = ttnn.typecast(k_heads_1KSD, dtype=ttnn.bfloat8_b)
+        if k_heads_1KSD.dtype != ttnn.bfloat8_b:
+            k_heads_1KSD_8b = ttnn.typecast(k_heads_1KSD, dtype=ttnn.bfloat8_b)
+        else:
+            k_heads_1KSD_8b = k_heads_1KSD
         ttnn.deallocate(k_heads_1KSD)
 
         # sharding k_fill to deal with update_cache memory limitation
@@ -515,7 +521,10 @@ class TtLlamaAttention(LightweightModule):
         else:
             k_fill = k_heads_1KSD_8b
 
-        v_heads_1VSD_8b = ttnn.typecast(v_heads_1VSD, dtype=ttnn.bfloat8_b)
+        if v_heads_1VSD.dtype != ttnn.bfloat8_b:
+            v_heads_1VSD_8b = ttnn.typecast(v_heads_1VSD, dtype=ttnn.bfloat8_b)
+        else:
+            v_heads_1VSD_8b = v_heads_1VSD
 
         ttnn.deallocate(v_heads_1VSD)
 
@@ -555,7 +564,10 @@ class TtLlamaAttention(LightweightModule):
         k_heads_K1SD_8b = ttnn.reshape(k_heads_1KSD_8b, [self.n_local_kv_heads, 1, -1, self.head_dim])
         v_heads_V1SD_8b = ttnn.reshape(v_heads_1VSD_8b, [self.n_local_kv_heads, 1, -1, self.head_dim])
 
-        q_heads_1QSD_8b = ttnn.typecast(q_heads_1QSD, dtype=ttnn.bfloat8_b)
+        if q_heads_1QSD.dtype != ttnn.bfloat8_b:
+            q_heads_1QSD_8b = ttnn.typecast(q_heads_1QSD, dtype=ttnn.bfloat8_b)
+        else:
+            q_heads_1QSD_8b = q_heads_1QSD
         ttnn.deallocate(q_heads_1QSD)
 
         q_heads_84SD_8b = ttnn.reshape(
@@ -616,7 +628,7 @@ class TtLlamaAttention(LightweightModule):
             attn_output_11SH,
             self.wo,
             compute_kernel_config=self.compute_kernel_config_hifi2,
-            dtype=ttnn.bfloat8_b,
+            dtype=self.ccl_dtype,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
             program_config=self.model_config["WO_PREFILL_PROGCFG"](seq_len),
         )

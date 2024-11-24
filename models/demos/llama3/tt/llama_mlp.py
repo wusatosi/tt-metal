@@ -88,7 +88,7 @@ class TtLlamaMLP(LightweightModule):
             x,
             self.w1,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
-            dtype=ttnn.bfloat8_b,
+            dtype=self.args.ccl_dtype,
             program_config=pc_1,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
         )
@@ -97,7 +97,7 @@ class TtLlamaMLP(LightweightModule):
             x,
             self.w3,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
-            dtype=ttnn.bfloat8_b,
+            dtype=self.args.ccl_dtype,
             program_config=pc_3,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
         )
@@ -132,7 +132,7 @@ class TtLlamaMLP(LightweightModule):
             w3_out,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
             input_tensor_a_activation=ttnn.UnaryOpType.SILU,
-            dtype=ttnn.bfloat8_b,
+            dtype=self.args.ccl_dtype,
         )
 
         if TG:
@@ -161,7 +161,7 @@ class TtLlamaMLP(LightweightModule):
             w2_in,
             self.w2,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
-            dtype=self.args.ccl_dtype if self.args.is_multichip else ttnn.bfloat16,
+            dtype=self.args.ccl_dtype if self.args.is_multichip else self.args.activation_dtype,
             program_config=pc_2,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
         )

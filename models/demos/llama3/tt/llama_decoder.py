@@ -130,6 +130,6 @@ class TtTransformerBlock(LightweightModule):
             memory_config=skip_mem_cfg,
             dtype=self.args.ccl_dtype
             if self.args.is_multichip and not self.args.is_distributed_norm(mode)
-            else ttnn.bfloat16,
+            else self.args.activation_dtype,
         )
         return out  # fractured across devices
