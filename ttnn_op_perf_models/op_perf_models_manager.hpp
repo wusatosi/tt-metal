@@ -56,13 +56,18 @@ public:
         @arg[op]: The ttnn operation
         @arg[op_params]: Parameter list of the operation. May be different for each op
         @arg[version]: For ops with multiple model versions, select the model. Defaults to the latest
-        @arg[tensor_args]: Variadic pack of parameters for the tensor operand(s).
+        @arg[tensor_args]: vector of metadata for tensor operand(s).
 
         @return: Expected kernel duration in nanoseconds. std::nullopt if the model is not implemented
     */
-    template<typename... T>
-    typename std::enable_if<(std::is_same<TENSOR_PARAMS, T>::value && ...), std::optional<uint32_t>>::type
-    get_op_duration(OP_T op, const std::unordered_map<std::string, std::string>& op_params, std::string version = LATEST_VERSION, T... tensor_args);
+    std::optional<uint32_t>
+    get_op_duration(
+        OP_T op,
+        const std::unordered_map<std::string,
+        std::string>& op_params,
+        std::vector<TENSOR_PARAMS> tensor_args,
+        std::string version = LATEST_VERSION
+    );
 
 private:
     DEVICE_T m_device;

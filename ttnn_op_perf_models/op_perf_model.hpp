@@ -25,13 +25,7 @@ public:
     virtual void load(std::string path) = 0;
 
     virtual std::optional<uint32_t>
-    get_op_duration(const std::unordered_map<std::string, std::string>& op_params, TENSOR_PARAMS arg) = 0;
-
-    virtual std::optional<uint32_t>
-    get_op_duration(const std::unordered_map<std::string, std::string>& op_params, TENSOR_PARAMS arg1, TENSOR_PARAMS arg2) = 0;
-
-    virtual std::optional<uint32_t>
-    get_op_duration(const std::unordered_map<std::string, std::string>& op_params, TENSOR_PARAMS arg1, TENSOR_PARAMS arg2, TENSOR_PARAMS arg3) = 0;
+    get_op_duration(const std::unordered_map<std::string, std::string>& op_params, const std::vector<TENSOR_PARAMS>& args) = 0;
 
     virtual ~OP_PERF_MODEL() = default;
 
@@ -44,22 +38,15 @@ class RESHARD_OP_PERF_MODEL_V1 : public OP_PERF_MODEL {
     };
 
     virtual std::optional<uint32_t>
-    get_op_duration(const std::unordered_map<std::string, std::string>& op_params, TENSOR_PARAMS arg) override {
-        // log(reshard requires input and output tensor args)
-        return std::nullopt;
-    };
+    get_op_duration(const std::unordered_map<std::string, std::string>& op_params, const std::vector<TENSOR_PARAMS>& args) override {
+        if (args.size() != 2) {
+            // invalid for reshard
+            return std::nullopt;
+        }
 
-    virtual std::optional<uint32_t>
-    get_op_duration(const std::unordered_map<std::string, std::string>& op_params, TENSOR_PARAMS arg1, TENSOR_PARAMS arg2) override {
         // actual model
         return 123;
-    };
-
-    virtual std::optional<uint32_t>
-    get_op_duration(const std::unordered_map<std::string, std::string>& op_params, TENSOR_PARAMS arg1, TENSOR_PARAMS arg2, TENSOR_PARAMS arg3) override {
-        // log(N/A to reshard)
-        return std::nullopt;
-    };
+    }
 };
 
 class RESHARD_OP_PERF_MODEL_V2 : public OP_PERF_MODEL {

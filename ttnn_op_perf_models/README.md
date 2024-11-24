@@ -47,7 +47,7 @@ Indicates the desired version for the op model. Defaults to the latest version
 A key-value pair. Greatly limits static analysis, but allows for maximum flexibility with low development overhead
 
 ### Tensor operand(s): `TENSOR_PARAMS`
-A struct that encapsulates all potentially relevant information about one tensor operand of an op. Ops with multiple operands will have multiple `TENSOR_PARAMS` objects passed to them. Ideally, there will be utility functions in `ttnn` to create this struct given a tensor object.
+A struct that encapsulates all potentially relevant information about one tensor operand of an op. Ops with multiple operands will have multiple `TENSOR_PARAMS` objects passed to them. Ideally, there will be utility functions to create this struct given a tensor object.
 
 ```
 struct TENSOR_PARAMS {
