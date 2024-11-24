@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace TTNN_OP_MODELS {
+namespace TTNN_OP_PERF_MODELS {
 
 /*
     @brief: Encapsulate all (potentially) relevant aspects of an operand tensor
@@ -20,7 +20,7 @@ struct TENSOR_PARAMS {
     // layout
 };
 
-class OP_MODEL {
+class OP_PERF_MODEL {
 public:
     virtual void load(std::string path) = 0;
 
@@ -33,12 +33,12 @@ public:
     virtual std::optional<uint32_t>
     get_op_duration(const std::unordered_map<std::string, std::string>& op_params, TENSOR_PARAMS arg1, TENSOR_PARAMS arg2, TENSOR_PARAMS arg3) = 0;
 
-    virtual ~OP_MODEL() = default;
+    virtual ~OP_PERF_MODEL() = default;
 
     bool m_is_loaded = false;
 };
 
-class RESHARD_OP_MODEL_V1 : public OP_MODEL {
+class RESHARD_OP_PERF_MODEL_V1 : public OP_PERF_MODEL {
     virtual void load(std::string path) override {
         //read large file from disk
     };
@@ -62,11 +62,11 @@ class RESHARD_OP_MODEL_V1 : public OP_MODEL {
     };
 };
 
-class RESHARD_OP_MODEL_V2 : public OP_MODEL {
+class RESHARD_OP_PERF_MODEL_V2 : public OP_PERF_MODEL {
 
 };
 
-class ELTWISE_MAX_OP_MODEL : public OP_MODEL {
+class ELTWISE_MAX_OP_PERF_MODEL : public OP_PERF_MODEL {
     virtual void load(std::string path) override {
         // parameters directly in the model, so ignore the path
     };

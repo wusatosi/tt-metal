@@ -10,27 +10,27 @@
 
 # Proposed High-Level Structure
 ## Organization
-- A new top level folder in the `tt-metal` repo, named `ttnn_op_models`
+- A new top level folder in the `tt-metal` repo, named `ttnn_op_perf_models`
 - "Real" code in C++, python bindings to be written if required
-- A new namespace `TTNN_OP_MODELS`
+- A new namespace `TTNN_OP_PERF_MODELS`
 - Model parameters to be stored on github
   - For models with few parameters, this may be directly in code
   - For models with many parameters, it will be up to the model to serialize/deserialize the parameters as desired
 - No linking to `ttnn` or `tt-metal`. Model API will be callable from outside the compiler
 
-## `OP_MODELS_MANAGER`
-An RAII resource manager. The manager creates and maintains a mapping, `m_models`, of op -> version -> `OP_MODEL` object.
+## `OP_PERF_MODELS_MANAGER`
+An RAII resource manager. The manager creates and maintains a mapping, `m_models`, of op -> version -> `OP_PERF_MODEL` object.
 
-The `OP_MODELS_MANAGER` will:
+The `OP_PERF_MODELS_MANAGER` will:
 - load all or a set of models on construction
 - provide the query entry point for external callers
-- determine the `OP_MODEL` object to service a particular query
+- determine the `OP_PERF_MODEL` object to service a particular query
 
-The `OP_MODELS_MANAGER` will **not**:
+The `OP_PERF_MODELS_MANAGER` will **not**:
 - have any knowledge of how a model is loaded/initialized
-- perform any validation on a query beyond matching it to an `OP_MODEL`
+- perform any validation on a query beyond matching it to an `OP_PERF_MODEL`
 
-## `OP_MODEL`
+## `OP_PERF_MODEL`
 A pure virtual base class that describes the interface of a model. Any model will be requied to implement:
 1. a `load()` function that initializes the model by handling any parameter serialization/deserialization
 2. a `get_op_duration()` function that responds to a particular query

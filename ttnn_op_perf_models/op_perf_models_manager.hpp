@@ -7,11 +7,11 @@
 #include <unordered_map>
 #include <vector>
 
-#include <ttnn_op_models/op_model.hpp>
+#include <ttnn_op_perf_models/op_perf_model.hpp>
 
 
 
-namespace TTNN_OP_MODELS {
+namespace TTNN_OP_PERF_MODELS {
 
 enum class OP_T {
     ELTWISE_MAX,
@@ -35,7 +35,7 @@ static const std::unordered_map<OP_T, std::unordered_map<std::string, std::strin
 /*
     @brief: RAII manager for all op models. Responsible for loading all models and providing query access
 */
-class OP_MODELS_MANAGER {
+class OP_PERF_MODELS_MANAGER {
 public:
     /*
         @brief: Constructor
@@ -43,7 +43,7 @@ public:
         @arg[device]: Load models for this device
         @arg[ops]: Optional. If specified, only load models for these ops. Otherwise, load all models
     */
-    OP_MODELS_MANAGER(DEVICE_T device, std::optional<std::vector<OP_T>> ops = std::nullopt) {
+    OP_PERF_MODELS_MANAGER(DEVICE_T device, std::optional<std::vector<OP_T>> ops = std::nullopt) {
         // Based on device:
         //    1. Create the m_models mapping by constructing the model objects but *not* loading them.
         //          Likely ugly code
@@ -68,7 +68,7 @@ private:
     DEVICE_T m_device;
 
     // mapping of OP -> model version -> model implementation
-    std::unordered_map<OP_T, std::unordered_map<std::string, std::unique_ptr<OP_MODEL>>> m_models;
+    std::unordered_map<OP_T, std::unordered_map<std::string, std::unique_ptr<OP_PERF_MODEL>>> m_models;
 
     /*
         @brief: Load op models from disk
