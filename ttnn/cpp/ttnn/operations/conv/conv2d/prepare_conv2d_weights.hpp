@@ -65,6 +65,20 @@ ttnn::Tensor prepare_conv_bias(
     T *device,
     std::optional<const Conv2dConfig> conv_config_);
 
+template <typename T>
+std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights_biases_and_move_to_device(
+    const ttnn::Tensor& weight_tensor,
+    std::optional<const ttnn::Tensor>& bias_tensor,
+    uint32_t input_channels_alignment,
+    DataType weights_bias_dtype,
+    uint32_t weight_block_h_ntiles,
+    uint32_t weight_block_w_ntiles,
+    const sliding_window::ParallelConfig& parallel_config,
+    T * device,
+    uint32_t groups,
+    uint32_t act_block_h_ntiles,
+    uint32_t input_width);
+
 } // namespace conv2d
 } // namespace operations::conv
 } // namespace ttnn
