@@ -16,7 +16,6 @@
 - Model parameters to be stored on github
   - For models with few parameters, this may be directly in code
   - For models with many parameters, it will be up to the model to serialize/deserialize the parameters as desired
-- No linking to `ttnn` or `tt-metal`. Model API will be callable from outside the compiler
 
 ## `OP_PERF_MODELS_MANAGER`
 An RAII resource manager. The manager creates and maintains a mapping, `m_models`, of op -> version -> `OP_PERF_MODEL` object.
@@ -47,7 +46,7 @@ Indicates the desired version for the op model. Defaults to the latest version
 A key-value pair. Greatly limits static analysis, but allows for maximum flexibility with low development overhead
 
 ### Tensor operand(s): `TENSOR_PARAMS`
-A struct that encapsulates all potentially relevant information about one tensor operand of an op. Ops with multiple operands will have multiple `TENSOR_PARAMS` objects passed to them. Ideally, there will be utility functions to create this struct given a tensor object.
+A struct that encapsulates all potentially relevant information about one tensor operand of an op. Ops with multiple operands will have a vector of `TENSOR_PARAMS` objects passed to them. There will be utility functions to create this struct given a tensor object.
 
 ```
 struct TENSOR_PARAMS {
@@ -60,3 +59,19 @@ struct TENSOR_PARAMS {
     // layout
 };
 ```
+## Why not allow callers to directly pass in a ttnn op object?
+Short answer: I think we can have a cleaner and more stable code base this way. I am very open to feedback on this question.
+
+Long answer:
+`ttnn` operations are handled using incredibly generic code. For example, see [decorators.hpp](../ttnn/cpp/ttnn/decorators.hpp). My current understanding is that:
+- there is no common interface for an op
+- there is no common structure for op parameters and operands
+  - New ops will follow [this](https://docs.tenstorrent.com/tt-metal/latest/ttnn/ttnn/adding_new_ttnn_operation.html) structure that *does* provide a common grouping of tensor vs non-tensor args, but existing ops broadly do *not*. Furthermore, this is *not* enforced programatically
+- each op is its own type
+
+If we wanted to directly accept a ttnn op object, the high level `get_op_duration()` API will need to:
+- completely erase the type of the op (so it can accept any op), but still pick the right model for each op
+  - I think this is possible but potentially very complicated templated code
+- take a variadic pack of op args and pass them directly to each `op_perf_model`. Then, the `op_perf_model` for each op must unpack the parameters *exactly* identical to how the op does it
+  - Any changes to an op's interface will require updates to it's `op_perf_model` code, even if there are no functional changes or performance impacts
+  - E.g. if someone wants to modify the [reshard op](../ttnn/cpp/ttnn/operations/data_movement/sharded/reshard/reshard.hpp) to accept arguments in a different order or to modify/change the `MemoryConfig` struct, they will also need to modify the implementation of any `op_perf_model`s for this op. This appears to negate most of the abstraction of having an API for the perf models
