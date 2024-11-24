@@ -8,9 +8,11 @@
 #include <core/ttnn_all_includes.hpp>
 #include <csignal>
 #include <cstdint>
+#include <fstream>
 #include <ttnn/tensor/tensor.hpp>
 #include <wandbcpp.hpp>
 
+#include "autograd/module_base.hpp"
 #include "autograd/tensor.hpp"
 #include "core/tt_tensor_utils.hpp"
 #include "datasets/dataloader.hpp"
@@ -42,6 +44,68 @@ using DataLoader = ttml::datasets::DataLoader<
     ttml::datasets::InMemoryTokenDataset,
     std::function<BatchType(std::vector<DatasetSample> &&samples)>,
     BatchType>;
+
+class ModelDataCapturer {
+    float get_median(std::vector<float> &vec) {
+        assert(!vec.empty());
+        std::nth_element(vec.begin(), vec.begin() + vec.size() / 2, vec.end());
+        if (vec.size() & 1U) {
+            return vec[vec.size() / 2];
+        }
+        auto neighbor = *std::max_element(vec.begin(), vec.begin() + vec.size() / 2);
+        return std::midpoint(neighbor, vec[vec.size() / 2]);
+    };
+
+    void print_tensor_stats(const tt::tt_metal::Tensor &tensor, const std::string &name, const uint32_t step) {
+        auto tensor_shape = tensor.get_shape();
+        auto tensor_vec = ttml::core::to_vector<float>(tensor);
+
+        auto median = get_median(tensor_vec);
+        auto mean = std::accumulate(tensor_vec.begin(), tensor_vec.end(), 0.F) / static_cast<float>(tensor_vec.size());
+        auto mean_sq =
+            std::accumulate(
+                tensor_vec.begin(), tensor_vec.end(), 0.F, [](float acc, float val) { return acc + val * val; }) /
+            static_cast<float>(tensor_vec.size());
+        auto variance = mean_sq - mean * mean;
+
+        m_output_file << fmt::format(
+            "{}: step: {} shape: {} min: {} max: {} median: {} mean: {} variance: {}\n",
+            name,
+            step,
+            tensor_shape,
+            *std::min_element(tensor_vec.begin(), tensor_vec.end()),
+            *std::max_element(tensor_vec.begin(), tensor_vec.end()),
+            median,
+            mean,
+            variance);
+    }
+
+public:
+    ModelDataCapturer(const std::shared_ptr<Transformer> &model) :
+        m_output_file("capture.txt"), m_named_parameters(model->parameters()) {
+    }
+
+    void dump(uint32_t step) {
+        for (auto &[name, parameter] : m_named_parameters) {
+            auto tensor = parameter->get_value();
+            auto gradient = parameter->get_grad();
+
+            if (ttml::core::is_tensor_initialized(gradient)) {
+                print_tensor_stats(gradient, "gradient/" + name, step);
+            }
+
+            print_tensor_stats(tensor, "value/" + name, step);
+        }
+    }
+
+    ~ModelDataCapturer() {
+        m_output_file.close();
+    }
+
+private:
+    std::ofstream m_output_file;
+    ttml::autograd::NamedParameters m_named_parameters;
+};
 
 struct DemoConfig {
     // training
@@ -338,6 +402,8 @@ int main(int argc, char **argv) {
     uint32_t accumulated_samples = 0;
     uint32_t total_samples_during_training = 0;
 
+    auto model_capturer = ModelDataCapturer(model);
+
     // solution for the issue when training throws exception and wandb is not finished
     // catch exception and proceed to finish wandb
     try {
@@ -359,6 +425,8 @@ int main(int argc, char **argv) {
                 ttml::autograd::ctx().reset_graph();
 
                 if (++accumulation_step_counter == accumulation_steps) {
+                    model_capturer.dump(optimizer.get_steps());
+
                     optimizer.step();
 
                     auto global_step = optimizer.get_steps();
