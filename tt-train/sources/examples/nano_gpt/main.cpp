@@ -85,7 +85,8 @@ public:
         m_output_file("capture.txt"), m_named_parameters(model->parameters()) {
     }
 
-    void dump(uint32_t step) {
+    void dump(uint32_t step, float loss) {
+        m_output_file << fmt::format("Loss: {} step: {}\n", loss, step);
         for (auto &[name, parameter] : m_named_parameters) {
             auto tensor = parameter->get_value();
             auto gradient = parameter->get_grad();
@@ -425,7 +426,7 @@ int main(int argc, char **argv) {
                 ttml::autograd::ctx().reset_graph();
 
                 if (++accumulation_step_counter == accumulation_steps) {
-                    model_capturer.dump(optimizer.get_steps());
+                    model_capturer.dump(optimizer.get_steps(), accumulated_loss);
 
                     optimizer.step();
 
