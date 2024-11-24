@@ -71,6 +71,7 @@ class DistributedNorm(LightweightModule):
                     ln_sharded_input_memcfg=self.gather_in_mem_cfg,
                     ln_sharded_progcfg=self.ln_prg_cfg,
                     ln_sharded_stats_memcfg=self.ln_sharded_stats_memcfg,
+                    dtype=self.args.activation_dtype,
                 )
             else:
                 return tt_distributed_rmsnorm(

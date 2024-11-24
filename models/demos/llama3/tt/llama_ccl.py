@@ -174,9 +174,20 @@ def tt_distributed_rmsnorm(inp, epsilon, gamma, mesh_device, compute_kernel_conf
 
 
 def tt_sharded_distributed_rmsnorm(
-    inp, epsilon, gamma, mesh_device, ln_sharded_input_memcfg, ln_sharded_progcfg, ln_sharded_stats_memcfg
+    inp,
+    epsilon,
+    gamma,
+    mesh_device,
+    ln_sharded_input_memcfg,
+    ln_sharded_progcfg,
+    ln_sharded_stats_memcfg,
+    dtype=ttnn.bfloat16,
 ):
-    inp = ttnn.to_memory_config(inp, memory_config=ln_sharded_input_memcfg)
+    if (
+        inp.memory_config() != ttnn.L1_MEMORY_CONFIG
+    ):  # Need to convert to interleaved first to typecast to different dtype
+        inp = ttnn.to_memory_config(inp, memory_config=ttnn.L1_MEMORY_CONFIG, dtype=dtype)
+    inp = ttnn.to_memory_config(inp, memory_config=ln_sharded_input_memcfg, dtype=dtype)
 
     # Run distributed rmsnorm part 1
     tt_stats = ttnn.rms_norm_pre_all_gather(inp, program_config=ln_sharded_progcfg)

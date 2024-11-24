@@ -297,7 +297,7 @@ class TtLlamaAttention(LightweightModule):
             ),
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
             compute_kernel_config=self.compute_kernel_config_hifi2,
-            dtype=self.activation_dtype,
+            dtype=ttnn.bfloat16,  # nlp_concat_heads_decode only supports bfloat16 and float32
         )
 
         k_heads_1BKD = ttnn.linear(
@@ -308,7 +308,7 @@ class TtLlamaAttention(LightweightModule):
             ),
             memory_config=k_heads_pre_rot_1BKD.memory_config(),
             compute_kernel_config=self.compute_kernel_config_hifi2,
-            dtype=self.activation_dtype,
+            dtype=ttnn.bfloat16,  # paged update cache only supports bfloat16 and float32
         )
 
         ttnn.deallocate(q_heads_pre_rot_1BQD)
@@ -511,9 +511,9 @@ class TtLlamaAttention(LightweightModule):
         keys_BKSD, values_BKSD = self.layer_past[0], self.layer_past[1]
         if k_heads_1KSD.dtype != ttnn.bfloat8_b:
             k_heads_1KSD_8b = ttnn.typecast(k_heads_1KSD, dtype=ttnn.bfloat8_b)
+            ttnn.deallocate(k_heads_1KSD)
         else:
             k_heads_1KSD_8b = k_heads_1KSD
-        ttnn.deallocate(k_heads_1KSD)
 
         # sharding k_fill to deal with update_cache memory limitation
         if seq_len > self.min_kv_prefill_shard_seqlen and not TG:
@@ -523,10 +523,9 @@ class TtLlamaAttention(LightweightModule):
 
         if v_heads_1VSD.dtype != ttnn.bfloat8_b:
             v_heads_1VSD_8b = ttnn.typecast(v_heads_1VSD, dtype=ttnn.bfloat8_b)
+            ttnn.deallocate(v_heads_1VSD)
         else:
             v_heads_1VSD_8b = v_heads_1VSD
-
-        ttnn.deallocate(v_heads_1VSD)
 
         # sharding v_fill to deal with update_cache memory limitation
         if seq_len > self.min_kv_prefill_shard_seqlen and not TG:
@@ -566,9 +565,9 @@ class TtLlamaAttention(LightweightModule):
 
         if q_heads_1QSD.dtype != ttnn.bfloat8_b:
             q_heads_1QSD_8b = ttnn.typecast(q_heads_1QSD, dtype=ttnn.bfloat8_b)
+            ttnn.deallocate(q_heads_1QSD)
         else:
             q_heads_1QSD_8b = q_heads_1QSD
-        ttnn.deallocate(q_heads_1QSD)
 
         q_heads_84SD_8b = ttnn.reshape(
             q_heads_1QSD_8b, [self.n_local_kv_heads, self.n_local_heads // self.n_local_kv_heads, -1, self.head_dim]
