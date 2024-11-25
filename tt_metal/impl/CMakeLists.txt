@@ -29,6 +29,7 @@ set(IMPL_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/event/event.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/lightmetal/lightmetal.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/lightmetal/lightmetal_replay.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/lightmetal/lightmetal_capture_context.cpp
 )
 
 # Include helper functions and generate headers from flatbuffer schemas

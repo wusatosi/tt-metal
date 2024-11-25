@@ -24,6 +24,7 @@
 #include "tt_metal/impl/sub_device/sub_device_types.hpp"
 #include "tt_metal/tt_stl/span.hpp"
 #include "program_cache.hpp"
+#include "tt_metal/impl/lightmetal/lightmetal_capture_context.hpp"
 
 namespace tt {
 
@@ -428,6 +429,10 @@ class Device {
     std::vector<uint16_t> l1_bank_to_noc_xy_;
 
     LightMetalTrace light_metal_trace_;
+
+    // An idea, could be used instead of getInstance, but does this make
+    // sense here on Device? Maybe not, where else could it go?
+    // LightMetalCaptureContext* lightMetalCaptureCtx;
 
 };
 
