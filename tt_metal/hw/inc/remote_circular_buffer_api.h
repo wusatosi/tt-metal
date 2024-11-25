@@ -32,27 +32,29 @@ FORCE_INLINE void resize_remote_sender_cb_interface(
         fifo_wr_ptr = fifo_start_addr;
     } else {
         uint32_t next_fifo_wr_ptr = fifo_start_addr + align(fifo_wr_ptr - fifo_start_addr, page_size);
+        if (next_fifo_wr_ptr != fifo_wr_ptr) {
 #ifndef COMPILE_FOR_TRISC
-        if constexpr (update_remote_over_noc) {
-            uint32_t aligned_page_adjustment =
-                (next_fifo_wr_ptr - fifo_wr_ptr) / REMOTE_CIRCULAR_BUFFER_ALIGNED_PAGE_SIZE;
-            // increment the aligned pages sent because we skipped to next aligned page location
-            volatile tt_l1_ptr uint32_t* pages_sent_ptr =
-                reinterpret_cast<volatile tt_l1_ptr uint32_t*>(aligned_pages_sent_addr);
-            volatile tt_l1_ptr uint32_t* remote_noc_xy_ptr =
-                reinterpret_cast<volatile tt_l1_ptr uint32_t*>(remote_noc_xy_addr);
-            for (uint32_t i = 0; i < num_receivers; ++i) {
-                uint32_t remote_noc_xy = uint32_t(NOC_XY_ENCODING(
-                    DYNAMIC_NOC_X(noc, remote_noc_xy_ptr[0]), DYNAMIC_NOC_Y(noc, remote_noc_xy_ptr[1])));
-                *pages_sent_ptr += aligned_page_adjustment;
-                uint64_t remote_ack_ptr_addr = get_noc_addr_helper(remote_noc_xy, (uint32_t)pages_sent_ptr);
-                noc_semaphore_inc(remote_ack_ptr_addr, aligned_page_adjustment, noc);
-                pages_sent_ptr += L1_ALIGNMENT / sizeof(uint32_t);
-                remote_noc_xy_ptr += 2;
+            if constexpr (update_remote_over_noc) {
+                uint32_t aligned_page_adjustment =
+                    (next_fifo_wr_ptr - fifo_wr_ptr) / REMOTE_CIRCULAR_BUFFER_ALIGNED_PAGE_SIZE;
+                // increment the aligned pages sent because we skipped to next aligned page location
+                volatile tt_l1_ptr uint32_t* pages_sent_ptr =
+                    reinterpret_cast<volatile tt_l1_ptr uint32_t*>(aligned_pages_sent_addr);
+                volatile tt_l1_ptr uint32_t* remote_noc_xy_ptr =
+                    reinterpret_cast<volatile tt_l1_ptr uint32_t*>(remote_noc_xy_addr);
+                for (uint32_t i = 0; i < num_receivers; ++i) {
+                    uint32_t remote_noc_xy = uint32_t(NOC_XY_ENCODING(
+                        DYNAMIC_NOC_X(noc, remote_noc_xy_ptr[0]), DYNAMIC_NOC_Y(noc, remote_noc_xy_ptr[1])));
+                    *pages_sent_ptr += aligned_page_adjustment;
+                    uint64_t remote_ack_ptr_addr = get_noc_addr_helper(remote_noc_xy, (uint32_t)pages_sent_ptr);
+                    noc_semaphore_inc(remote_ack_ptr_addr, aligned_page_adjustment, noc);
+                    pages_sent_ptr += L1_ALIGNMENT / sizeof(uint32_t);
+                    remote_noc_xy_ptr += 2;
+                }
             }
-        }
 #endif
-        fifo_wr_ptr = next_fifo_wr_ptr;
+            fifo_wr_ptr = next_fifo_wr_ptr;
+        }
     }
     RemoteSenderCBInterface& sender_cb_interface = get_remote_sender_cb_interface(cb_id);
     sender_cb_interface.fifo_wr_ptr = fifo_wr_ptr;
@@ -80,19 +82,21 @@ FORCE_INLINE void resize_remote_receiver_cb_interface(
         fifo_rd_ptr = fifo_start_addr;
     } else {
         uint32_t next_fifo_rd_ptr = fifo_start_addr + align(fifo_rd_ptr - fifo_start_addr, page_size);
+        if (next_fifo_rd_ptr != fifo_rd_ptr) {
 #ifndef COMPILE_FOR_TRISC
-        if constexpr (update_remote_over_noc) {
-            uint32_t aligned_page_adjustment =
-                (next_fifo_rd_ptr - fifo_rd_ptr) / REMOTE_CIRCULAR_BUFFER_ALIGNED_PAGE_SIZE;
-            // increment the aligned pages acked because we skipped to next aligned page location
-            volatile tt_l1_ptr uint32_t* pages_acked_ptr =
-                reinterpret_cast<volatile tt_l1_ptr uint32_t*>(aligned_pages_acked_addr);
-            *pages_acked_ptr += aligned_page_adjustment;
-            uint64_t remote_ack_ptr_addr = get_noc_addr(sender_noc_x, sender_noc_y, (uint32_t)pages_acked_ptr, noc);
-            noc_semaphore_inc(remote_ack_ptr_addr, aligned_page_adjustment, noc);
-        }
+            if constexpr (update_remote_over_noc) {
+                uint32_t aligned_page_adjustment =
+                    (next_fifo_rd_ptr - fifo_rd_ptr) / REMOTE_CIRCULAR_BUFFER_ALIGNED_PAGE_SIZE;
+                // increment the aligned pages acked because we skipped to next aligned page location
+                volatile tt_l1_ptr uint32_t* pages_acked_ptr =
+                    reinterpret_cast<volatile tt_l1_ptr uint32_t*>(aligned_pages_acked_addr);
+                *pages_acked_ptr += aligned_page_adjustment;
+                uint64_t remote_ack_ptr_addr = get_noc_addr(sender_noc_x, sender_noc_y, (uint32_t)pages_acked_ptr, noc);
+                noc_semaphore_inc(remote_ack_ptr_addr, aligned_page_adjustment, noc);
+            }
 #endif
-        fifo_rd_ptr = next_fifo_rd_ptr;
+            fifo_rd_ptr = next_fifo_rd_ptr;
+        }
     }
     RemoteReceiverCBInterface& receiver_cb_interface = get_remote_receiver_cb_interface(cb_id);
     receiver_cb_interface.fifo_rd_ptr = fifo_rd_ptr;
