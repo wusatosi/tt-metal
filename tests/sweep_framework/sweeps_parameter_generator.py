@@ -9,6 +9,7 @@ import pathlib
 import datetime
 import os
 import hashlib
+import json
 
 from framework.permutations import *
 from framework.serialize import serialize
@@ -22,9 +23,9 @@ SWEEP_SOURCES_DIR = SWEEPS_DIR / "sweeps"
 
 
 # Generate vectors from module parameters
-def generate_vectors(module_name):
+def generate_vectors(module_name, start_x=1, end_x=9, start_y=1):
     test_module = importlib.import_module("sweeps." + module_name)
-    parameters = test_module.parameters
+    parameters = test_module.get_parameters(start_x, end_x, start_y)
 
     for suite in parameters:
         logger.info(f"Generating test vectors for suite {suite}.")
@@ -36,12 +37,25 @@ def generate_vectors(module_name):
             v["status"] = VectorStatus.CURRENT
             v["sweep_name"] = module_name
 
-        invalidate_vectors(test_module, suite_vectors)
-        export_suite_vectors(module_name, suite, suite_vectors)
+        suite_vectors = invalidate_vectors(test_module, suite_vectors)
+        suite_vectors = downsample(suite, suite_vectors)
+        if DUMP_FILE:
+            export_suite_vectors_json(module_name, suite, suite_vectors)
+        else:
+            export_suite_vectors(module_name, suite, suite_vectors)
+
+
+def downsample(suite, suite_vectors, min_desired=3000):
+    starting_vecs = len(suite_vectors)
+    while len(suite_vectors) > 2 * min_desired:
+        del suite_vectors[::2]
+    if starting_vecs != len(suite_vectors):
+        logger.info(f"Downsampled suite {suite} vectors from {starting_vecs} to {len(suite_vectors)}")
+    return suite_vectors
 
 
 # Perform any post-gen validation to the resulting vectors.
-def invalidate_vectors(test_module, vectors) -> None:
+def invalidate_vectors(test_module, vectors, delete_invalid_vec=True):
     if "invalidate_vector" not in dir(test_module):
         return
     for vector in vectors:
@@ -49,6 +63,47 @@ def invalidate_vectors(test_module, vectors) -> None:
         if invalid:
             vector["validity"] = VectorValidity.INVALID
             vector["invalid_reason"] = reason
+
+    if delete_invalid_vec:
+        logger.info(f"SWEEPS: Skipping writing out invalid test vectors.")
+        starting_vecs = len(vectors)
+        vectors = [v for v in vectors if v["validity"] == VectorValidity.VALID]
+        logger.info(f"SWEEPS: {len(vectors)} of {starting_vecs} generated vectors were valid")
+
+    return vectors
+
+
+def export_suite_vectors_json(module_name, suite_name, vectors):
+    input_grid = suite_name.split("-")[0]
+    output_grid = suite_name.split("-")[1]
+    EXPORT_DIR_PATH = SWEEPS_DIR / "vectors_export" / input_grid
+    EXPORT_PATH = EXPORT_DIR_PATH / str(f"reshard-{input_grid}-{output_grid}.json")
+    if not EXPORT_DIR_PATH.exists():
+        os.makedirs(EXPORT_DIR_PATH)
+
+    current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    serialized_vectors = dict()
+    warnings = []
+    for i in range(len(vectors)):
+        vector = dict()
+        for elem in vectors[i].keys():
+            vector[elem] = serialize(vectors[i][elem], warnings)
+        input_hash = hashlib.sha224(str(vector).encode("utf-8")).hexdigest()
+        vector["timestamp"] = current_time
+        vector["input_hash"] = input_hash
+        vector["tag"] = SWEEPS_TAG
+        serialized_vectors[input_hash] = vector
+
+    if EXPORT_PATH.exists():
+        with open(EXPORT_PATH, "r") as file:
+            data = json.load(file)
+        with open(EXPORT_PATH, "w") as file:
+            data[suite_name] = serialized_vectors
+            json.dump(data, file, indent=2)
+    else:
+        with open(EXPORT_PATH, "w") as file:
+            json.dump({suite_name: serialized_vectors}, file, indent=2)
+    logger.info(f"SWEEPS: Generated {len(vectors)} test vectors for suite {suite_name}.")
 
 
 # Output the individual test vectors.
@@ -120,16 +175,16 @@ def export_suite_vectors(module_name, suite_name, vectors):
 
 
 # Generate one or more sets of test vectors depending on module_name
-def generate_tests(module_name):
+def generate_tests(module_name, start_x, end_x, start_y):
     if not module_name:
         for file_name in sorted(SWEEP_SOURCES_DIR.glob("**/*.py")):
             module_name = str(pathlib.Path(file_name).relative_to(SWEEP_SOURCES_DIR))[:-3].replace("/", ".")
             logger.info(f"Generating test vectors for module {module_name}.")
-            generate_vectors(module_name)
+            generate_vectors(module_name, start_x, end_x, start_y)
             logger.info(f"Finished generating test vectors for module {module_name}.\n\n")
     else:
         logger.info(f"Generating test vectors for module {module_name}.")
-        generate_vectors(module_name)
+        generate_vectors(module_name, start_x, end_x, start_y)
 
 
 def clean_module(module_name):
@@ -178,11 +233,27 @@ if __name__ == "__main__":
         help="Custom tag for the vectors you are generating. This is to keep copies seperate from other people's test vectors. By default, this will be your username. You are able to specify a tag when running tests using the runner.",
     )
     parser.add_argument("--explicit", required=False, action="store_true")
+    parser.add_argument(
+        "--dump-file",
+        required=False,
+        action="store_true",
+        help="If set, this will not use the ES database, and will instead dump tests to JSON.",
+    )
+    parser.add_argument("-x", type=int)
+    parser.add_argument("-y", type=int)
 
     args = parser.parse_args(sys.argv[1:])
 
-    global ELASTIC_CONNECTION_STRING
-    ELASTIC_CONNECTION_STRING = get_elastic_url(args.elastic)
+    global DUMP_FILE
+    if not args.dump_file:
+        from elasticsearch import Elasticsearch, NotFoundError
+        from framework.elastic_config import *
+
+        global ELASTIC_CONNECTION_STRING
+        ELASTIC_CONNECTION_STRING = get_elastic_url(args.elastic)
+        DUMP_FILE = False
+    else:
+        DUMP_FILE = True
 
     global SWEEPS_TAG
     SWEEPS_TAG = args.tag
@@ -199,4 +270,4 @@ if __name__ == "__main__":
     elif args.clean:
         clean_module(args.module_name)
 
-    generate_tests(args.module_name)
+    generate_tests(args.module_name, args.x, args.x + 1, args.y)
