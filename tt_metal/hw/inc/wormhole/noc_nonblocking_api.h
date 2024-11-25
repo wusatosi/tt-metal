@@ -8,6 +8,7 @@
 
 #include "noc_parameters.h"
 #include "dev_msgs.h"
+#include "noc_non_blocking_api_common.h"
 
 // Helper functions to convert NoC coordinates to NoC-0 coordinates, used in metal as "physical" coordinates.
 #define NOC_0_X(noc_index, noc_size_x, x) (noc_index == 0 ? (x) : (noc_size_x-1-(x)))
@@ -120,6 +121,30 @@ inline __attribute__((always_inline)) void ncrisc_noc_fast_write(uint32_t noc, u
   }
 }
 
+template<uint32_t risc_type>
+inline __attribute__((always_inline)) void ncrisc_noc_fast_write_stream_reg(uint32_t noc, uint32_t cmd_buf, uint32_t src_addr, uint64_t dest_addr, uint32_t len_bytes, uint32_t vc, bool mcast, bool linked, uint32_t num_dests, bool multicast_path_reserve, bool posted = false) {
+  uint32_t noc_cmd_field =
+    NOC_CMD_CPY | NOC_CMD_WR |
+    NOC_CMD_VC_STATIC  |
+    NOC_CMD_STATIC_VC(vc) |
+    (linked ? NOC_CMD_VC_LINKED : 0x0) |
+    (mcast ? ((multicast_path_reserve ? NOC_CMD_PATH_RESERVE : 0) | NOC_CMD_BRCST_PACKET) : 0x0) |
+    (posted ? 0 : NOC_CMD_RESP_MARKED);
+
+  NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_CTRL, noc_cmd_field);
+  NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_TARG_ADDR_LO, src_addr);
+  NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_RET_ADDR_LO, (uint32_t)dest_addr);
+  NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_RET_ADDR_COORDINATE, (uint32_t)(dest_addr >> NOC_ADDR_COORD_SHIFT));
+  NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_AT_LEN_BE, len_bytes);
+  NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
+  if (posted) {
+    inc_noc_posted_writes_num_issued<risc_type>(noc);
+  } else {
+    inc_noc_nonposted_writes_num_issued<risc_type>(noc);
+    inc_noc_nonposted_writes_acked<risc_type>(noc, num_dests);
+  }
+}
+
 inline __attribute__((always_inline)) void ncrisc_noc_fast_write_loopback_src(uint32_t noc, uint32_t cmd_buf, uint32_t src_addr, uint64_t dest_addr, uint32_t len_bytes, uint32_t vc, bool mcast, bool linked, uint32_t num_dests, bool multicast_path_reserve) {
   uint32_t noc_cmd_field =
     NOC_CMD_CPY | NOC_CMD_WR |
@@ -157,6 +182,11 @@ inline __attribute__((always_inline)) void ncrisc_noc_blitz_write_setup(uint32_t
 
 inline __attribute__((always_inline)) bool ncrisc_noc_nonposted_writes_sent(uint32_t noc) {
   return (NOC_STATUS_READ_REG(noc, NIU_MST_NONPOSTED_WR_REQ_SENT) == noc_nonposted_writes_num_issued[noc]);
+}
+
+template<uint32_t risc_type>
+inline __attribute__((always_inline)) bool ncrisc_noc_nonposted_writes_sent_stream_reg(uint32_t noc) {
+  return (NOC_STATUS_READ_REG(noc, NIU_MST_NONPOSTED_WR_REQ_SENT) == get_noc_nonposted_writes_num_issued<risc_type>(noc));
 }
 
 inline __attribute__((always_inline)) bool ncrisc_noc_posted_writes_sent(uint32_t noc) {
@@ -228,6 +258,15 @@ inline __attribute__((always_inline)) void noc_local_state_init(int noc) {
     noc_posted_writes_num_issued[noc] = NOC_STATUS_READ_REG(noc, NIU_MST_POSTED_WR_REQ_SENT);
 }
 
+template<uint32_t risc_type>
+inline __attribute__((always_inline)) void noc_local_state_init_stream_reg(int noc) {
+    set_noc_reads_num_issued<risc_type>(noc, NOC_STATUS_READ_REG(noc, NIU_MST_RD_RESP_RECEIVED));
+    set_noc_nonposted_writes_num_issued<risc_type>(noc, NOC_STATUS_READ_REG(noc, NIU_MST_NONPOSTED_WR_REQ_SENT));
+    set_noc_nonposted_writes_acked<risc_type>(noc, NOC_STATUS_READ_REG(noc, NIU_MST_WR_ACK_RECEIVED));
+    set_noc_nonposted_atomics_acked<risc_type>(noc, NOC_STATUS_READ_REG(noc, NIU_MST_ATOMIC_RESP_RECEIVED));
+    set_noc_posted_writes_num_issued<risc_type>(noc, NOC_STATUS_READ_REG(noc, NIU_MST_POSTED_WR_REQ_SENT));
+}
+
 inline __attribute__((always_inline)) void ncrisc_noc_counters_init() {
   for (int noc = 0; noc < NUM_NOCS; noc++) {
     noc_reads_num_issued[noc] = NOC_STATUS_READ_REG(noc, NIU_MST_RD_RESP_RECEIVED);
@@ -270,6 +309,19 @@ inline __attribute__((always_inline)) void ncrisc_noc_fast_write_any_len(uint32_
   }
   while (!noc_cmd_buf_ready(noc, cmd_buf));
   ncrisc_noc_fast_write(noc, cmd_buf, src_addr, dest_addr, len_bytes, vc, mcast, linked, num_dests, multicast_path_reserve, posted);
+}
+
+template<uint32_t risc_type>
+inline __attribute__((always_inline)) void ncrisc_noc_fast_write_any_len_stream_reg(uint32_t noc, uint32_t cmd_buf, uint32_t src_addr, uint64_t dest_addr, uint32_t len_bytes, uint32_t vc, bool mcast, bool linked, uint32_t num_dests, bool multicast_path_reserve, bool posted = false) {
+  while (len_bytes > NOC_MAX_BURST_SIZE) {
+    while (!noc_cmd_buf_ready(noc, cmd_buf));
+    ncrisc_noc_fast_write_stream_reg<risc_type>(noc, cmd_buf, src_addr, dest_addr, NOC_MAX_BURST_SIZE, vc, mcast, linked, num_dests, multicast_path_reserve, posted);
+    src_addr += NOC_MAX_BURST_SIZE;
+    dest_addr += NOC_MAX_BURST_SIZE;
+    len_bytes -= NOC_MAX_BURST_SIZE;
+  }
+  while (!noc_cmd_buf_ready(noc, cmd_buf));
+  ncrisc_noc_fast_write_stream_reg<risc_type>(noc, cmd_buf, src_addr, dest_addr, len_bytes, vc, mcast, linked, num_dests, multicast_path_reserve, posted);
 }
 
 inline __attribute__((always_inline)) void ncrisc_noc_fast_write_any_len_loopback_src(uint32_t noc, uint32_t cmd_buf, uint32_t src_addr, uint64_t dest_addr, uint32_t len_bytes, uint32_t vc, bool mcast, bool linked, uint32_t num_dests, bool multicast_path_reserve) {

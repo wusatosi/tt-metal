@@ -38,6 +38,12 @@ extern uint32_t tt_l1_ptr *rta_l1_base;
 extern uint32_t tt_l1_ptr *crta_l1_base;
 extern uint32_t tt_l1_ptr *sem_l1_base[];
 
+#if defined(COMPILE_FOR_BRISC)
+constexpr uint8_t risc_type = static_cast<std::underlying_type_t<TensixProcessorTypes>>(TensixProcessorTypes::DM0);
+#else
+constexpr uint8_t risc_type = static_cast<std::underlying_type_t<TensixProcessorTypes>>(TensixProcessorTypes::DM1);
+#endif
+
 #if defined(KERNEL_BUILD)
 #if defined(COMPILE_FOR_BRISC)
 constexpr uint32_t read_cmd_buf = NOC_MODE == DM_DEDICATED_NOC ? BRISC_RD_CMD_BUF : DYNAMIC_NOC_BRISC_RD_CMD_BUF;
@@ -1398,6 +1404,36 @@ void noc_async_write_multicast(
     }
 }
 
+template<uint32_t max_page_size=NOC_MAX_BURST_SIZE + 1>
+inline
+void noc_async_write_multicast_stream_reg(
+    std::uint32_t src_local_l1_addr,
+    std::uint64_t dst_noc_addr_multicast,
+    std::uint32_t size,
+    std::uint32_t num_dests,
+    bool linked = false,
+    bool multicast_path_reserve = true,
+    uint8_t noc = noc_index) {
+    if constexpr (max_page_size <= NOC_MAX_BURST_SIZE) {
+        noc_async_write_multicast_one_packet(src_local_l1_addr, dst_noc_addr_multicast, size, num_dests, linked, multicast_path_reserve);
+    } else {
+        WAYPOINT("NMWW");
+        DEBUG_SANITIZE_NOC_MULTI_WRITE_TRANSACTION(noc, dst_noc_addr_multicast, src_local_l1_addr,size);
+        ncrisc_noc_fast_write_any_len_stream_reg<risc_type>(
+            noc,
+            write_cmd_buf,
+            src_local_l1_addr,
+            dst_noc_addr_multicast,
+            size,
+            NOC_MULTICAST_WRITE_VC,
+            true,
+            linked,
+            num_dests,
+            multicast_path_reserve);
+        WAYPOINT("NMWD");
+    }
+}
+
 /**
  * Initiates an asynchronous write from a source address in L1 memory on the
  * Tensix core executing this function call to a rectangular destination grid.
@@ -1428,6 +1464,25 @@ void noc_semaphore_set_multicast(
     WAYPOINT("NSMW");
     DEBUG_SANITIZE_NOC_MULTI_WRITE_TRANSACTION(noc, dst_noc_addr_multicast, src_local_l1_addr, 4);
     ncrisc_noc_fast_write_any_len(
+        noc,
+        write_reg_cmd_buf,
+        src_local_l1_addr,
+        dst_noc_addr_multicast,
+        4 /*size in bytes*/,
+        NOC_MULTICAST_WRITE_VC,
+        true,
+        linked,
+        num_dests,
+        multicast_path_reserve);
+    WAYPOINT("NSMD");
+}
+
+inline
+void noc_semaphore_set_multicast_stream_reg(
+    std::uint32_t src_local_l1_addr, std::uint64_t dst_noc_addr_multicast, std::uint32_t num_dests, bool linked = false, bool multicast_path_reserve = true, uint8_t noc = noc_index) {
+    WAYPOINT("NSMW");
+    DEBUG_SANITIZE_NOC_MULTI_WRITE_TRANSACTION(noc, dst_noc_addr_multicast, src_local_l1_addr, 4);
+    ncrisc_noc_fast_write_any_len_stream_reg<risc_type>(
         noc,
         write_reg_cmd_buf,
         src_local_l1_addr,
@@ -1618,6 +1673,14 @@ void noc_async_writes_flushed(uint8_t noc = noc_index) {
     while (!ncrisc_noc_nonposted_writes_sent(noc))
         ;
     WAYPOINT("NWFD");
+}
+
+FORCE_INLINE
+void noc_async_writes_flushed_stream_reg(uint8_t noc = noc_index) {
+    WAYPOINT("FSRW");
+    while (!ncrisc_noc_nonposted_writes_sent_stream_reg<risc_type>(noc))
+        ;
+    WAYPOINT("FSRD");
 }
 
 /**

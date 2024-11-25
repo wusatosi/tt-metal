@@ -33,6 +33,7 @@ void kernel_launch(uint32_t kernel_base_addr) {
 
     if constexpr (NOC_MODE == DM_DEDICATED_NOC) {
         noc_local_state_init(NOC_INDEX);
+        noc_local_state_init_stream_reg<risc_type>(NOC_INDEX);
     } else {
         noc_local_state_init(NOC_0);
         noc_local_state_init(NOC_1);
