@@ -349,7 +349,8 @@ void cb_block_release_pages(uint32_t& block_noc_writes_to_clear) {
     } else {
         prev_block = true;
     }
-    block_noc_writes_to_clear = noc_nonposted_writes_num_issued[noc_index];
+    // block_noc_writes_to_clear = noc_nonposted_writes_num_issued[noc_index];
+    block_noc_writes_to_clear = get_noc_nonposted_writes_num_issued<risc_type>(noc_index);
 }
 
 template<uint32_t cb_blocks>

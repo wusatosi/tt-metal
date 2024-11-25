@@ -43,12 +43,12 @@ void kernel_launch(uint32_t kernel_base_addr) {
       uint32_t tt_l1_ptr *)(kernel_base_addr + (uint32_t)__kernel_init_local_l1_base - (uint32_t)__fw_export_end_text));
 
   if constexpr (NOC_MODE == DM_DEDICATED_NOC) {
-      noc_local_state_init(NOC_INDEX);
-      noc_local_state_init_stream_reg<risc_type>(NOC_INDEX);
+      // noc_local_state_init(NOC_INDEX);
+      noc_local_state_init<risc_type>(NOC_INDEX);
 
     } else {
-        noc_local_state_init(NOC_0);
-        noc_local_state_init(NOC_1);
+        noc_local_state_init<risc_type>(NOC_0);
+        noc_local_state_init<risc_type>(NOC_1);
     }
 
     kernel_main();

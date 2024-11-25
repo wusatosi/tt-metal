@@ -365,7 +365,7 @@ int main() {
     // ex. Immediately after starting, we send a RUN_MSG_RESET_READ_PTR signal
     uint8_t noc_mode;
     noc_init(MEM_NOC_ATOMIC_RET_VAL_ADDR);
-    noc_local_state_init(noc_index);
+    noc_local_state_init<risc_type>(noc_index);
     uint8_t prev_noc_mode = DM_DEDICATED_NOC;
 
     while (1) {
@@ -456,7 +456,7 @@ int main() {
             } else {
                 // This was not initialized in the kernel
                 if (noc_mode == DM_DEDICATED_NOC) {
-                    noc_local_state_init(noc_index);
+                    noc_local_state_init<risc_type>(noc_index);
                 }
             }
             WAYPOINT("D");

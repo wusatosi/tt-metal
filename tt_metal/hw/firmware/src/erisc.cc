@@ -49,7 +49,7 @@ void __attribute__((noinline)) Application(void) {
     noc_init(MEM_NOC_ATOMIC_RET_VAL_ADDR);
 
     for (uint32_t n = 0; n < NUM_NOCS; n++) {
-        noc_local_state_init(n);
+        noc_local_state_init<risc_type>(n);
     }
     ncrisc_noc_full_sync();
     WAYPOINT("REW");

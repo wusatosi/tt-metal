@@ -254,7 +254,7 @@ void kernel_main() {
                         next_bank_id_and_dram_stride_index += 2;
                     }
                     l1_read_addr_in1_offset += in1_dram_block_size_bytes;
-                    noc_async_read_barrier();
+                    // noc_async_read_barrier();
 #else
 #ifndef IN1_SHARDED
                     // Operand 1
@@ -278,7 +278,7 @@ void kernel_main() {
                     in1_tensor_current_inner_dim_block_start_tile_id += in1_tensor_next_block_stride;
 
                     // Barrier! make sure the reads are done
-                    noc_async_read_barrier();
+                    // noc_async_read_barrier();
 #endif
 #endif  // IN1_DRAM_SHARDED
 
@@ -352,7 +352,7 @@ void kernel_main() {
                         l1_write_addr_in3_offset += in1_block_w_dram_stride_bytes[next_bank_id_and_dram_stride_index];
                         next_bank_id_and_dram_stride_index += 2;
                     }
-                    noc_async_read_barrier();
+                    // noc_async_read_barrier();
 #else
                     // Copy in1 block into CB, as the default kernel
                     uint32_t in3_tensor_tile_id = in3_tensor_current_w_dim_block_tile_id;
@@ -365,7 +365,7 @@ void kernel_main() {
                         in3_block_size_bytes += bias_single_tile_size_bytes;
                     }
                     // Barrier! make sure the reads are done
-                    noc_async_read_barrier();
+                    // noc_async_read_barrier();
 #endif
 
 #ifndef SKIP_MCAST
@@ -447,7 +447,7 @@ void kernel_main() {
                             out_tensor_sb_row_start_tile_id += out_tensor_stride_h;
                         }
 
-                        noc_async_write_barrier();
+                        // noc_async_write_barrier();
                         cb_pop_front(cb_id_out0, out_subblock_tile_count);
                         out_tensor_sbw_start_tile_id += out_tensor_next_subblock_stride_w;
                     }
