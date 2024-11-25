@@ -39,6 +39,7 @@ class TtLlamaAttention(LightweightModule):
         self.activation_dtype = configuration.activation_dtype
         self.num_reduce_scatter_links = configuration.num_reduce_scatter_links
         self.num_all_gather_links = configuration.num_all_gather_links
+        self.transpose_weights = configuration.transpose_weights
 
         self.num_device_groups = self.num_devices // self.n_kv_heads
         self.num_devices_per_group = self.n_kv_heads if self.TG else self.num_devices
@@ -125,38 +126,52 @@ class TtLlamaAttention(LightweightModule):
 
         qkv_cat = torch.cat(qkv_list, dim=-1).unsqueeze(0).unsqueeze(0)
 
+        qkv_dims = (3, 2) if self.TG else (2, 3)
+        if self.transpose_weights:
+            qkv_cat = qkv_cat.transpose(-1, -2)
+            qkv_dims = (2, 3) if self.TG else (3, 2)
+
         self.wqkv = ttnn.as_tensor(
             qkv_cat,
             dtype=ttnn.bfloat8_b,
+            # dtype=ttnn.bfloat4_b, # TODO: run
             layout=ttnn.TILE_LAYOUT,
             device=self.mesh_device,
             memory_config=ttnn.DRAM_MEMORY_CONFIG if self.TG else wqkv_mem_config,
-            mesh_mapper=ttnn.ShardTensor2dMesh(
-                self.mesh_device, dims=(3, 2) if self.TG else (2, 3), mesh_shape=configuration.cluster_shape
-            ),
-            cache_file_name=cache_name("wqkv_sharded_2d"),
+            mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=qkv_dims, mesh_shape=configuration.cluster_shape),
+            cache_file_name=cache_name("wqkv_sharded_2d")
+            if not self.transpose_weights
+            else cache_name("wqkv_sharded_2d_transposed"),
         )
 
         # For ring topology we can use all gather matmul for wo
         self.use_fused_all_gather_matmul = self.model_config["USE_FUSED_ALL_GATHER_MATMUL"]
-        pt_wo = self.state_dict[wo_str].transpose(-1, -2).unsqueeze(0).unsqueeze(0)
+        pt_wo = self.state_dict[wo_str].transpose(-1, -2) if not self.transpose_weights else self.state_dict[wo_str]
+        pt_wo = pt_wo.unsqueeze(0).unsqueeze(0)
 
         wo_mem_config = configuration.create_dram_sharded_mem_config(
             configuration.dim // configuration.num_devices, configuration.dim
         )
 
+        wo_dims = (2, 3) if (self.use_fused_all_gather_matmul or self.TG) else (3, 2)
+        if self.transpose_weights:
+            wo_dims = (3, 2) if (self.use_fused_all_gather_matmul or self.TG) else (3, 2)
         wo_ttnn = ttnn.as_tensor(
             pt_wo,
             dtype=ttnn.bfloat8_b,
+            # dtype=ttnn.bfloat4_b, # TODO: run
             layout=ttnn.TILE_LAYOUT,
             device=self.mesh_device,
             memory_config=ttnn.DRAM_MEMORY_CONFIG if (self.use_fused_all_gather_matmul or self.TG) else wo_mem_config,
             mesh_mapper=ttnn.ShardTensor2dMesh(
                 self.mesh_device,
-                dims=(2, 3) if (self.use_fused_all_gather_matmul or self.TG) else (3, 2),
+                # dims=(2, 3) if (self.use_fused_all_gather_matmul or self.TG) else (3, 2),
+                dims=wo_dims,
                 mesh_shape=configuration.cluster_shape,
             ),
-            # cache_file_name=cache_name("wo_sharded"),
+            cache_file_name=cache_name("wo_sharded_2d")
+            if not self.transpose_weights
+            else cache_name("wo_sharded_2d_transposed"),
         )
         self.wo = ttnn.to_device(wo_ttnn, self.mesh_device)
 
@@ -236,6 +251,7 @@ class TtLlamaAttention(LightweightModule):
             program_config=self.model_config["XQKV_DECODE_PROGCFG"],
             compute_kernel_config=self.compute_kernel_config_hifi2,
             dtype=self.ccl_dtype if self.is_multichip else self.activation_dtype,
+            transpose_b=self.transpose_weights,
         )
         ttnn.deallocate(x)
 
@@ -416,6 +432,7 @@ class TtLlamaAttention(LightweightModule):
                 memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
                 dtype=self.ccl_dtype,
                 compute_kernel_config=self.compute_kernel_config_hifi2,
+                transpose_b=self.transpose_weights,
             )
 
             ttnn.deallocate(attn_output_cat)
@@ -455,6 +472,7 @@ class TtLlamaAttention(LightweightModule):
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
             compute_kernel_config=self.compute_kernel_config_hifi2,
             program_config=self.model_config["XQKV_PREFILL_PROGCFG"](seq_len),
+            transpose_b=self.transpose_weights,
         )
 
         xqkv_fused = tt_all_reduce(
@@ -630,6 +648,7 @@ class TtLlamaAttention(LightweightModule):
             dtype=self.ccl_dtype,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
             program_config=self.model_config["WO_PREFILL_PROGCFG"](seq_len),
+            transpose_b=self.transpose_weights,
         )
 
         if seq_len > 1024:
