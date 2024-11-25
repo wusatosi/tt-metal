@@ -693,7 +693,7 @@ class TtModelArgs:
             )
 
             self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] = ttnn.create_sharded_memory_config(
-                shape=(32, self.hidden_dim // 28 // 8),  # shard_grid_cores = 28, num_devices=8
+                shape=(32, self.hidden_dim // 28 // 8 // 4),  # shard_grid_cores = 28, num_devices=8
                 core_grid=ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(6, 3))}),
                 strategy=ttnn.ShardStrategy.WIDTH,
                 orientation=ttnn.ShardOrientation.ROW_MAJOR,
