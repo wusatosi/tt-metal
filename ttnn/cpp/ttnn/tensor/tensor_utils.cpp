@@ -480,6 +480,16 @@ const ttnn::SimpleShape infer_dims_for_reshape(const Tensor& tensor, tt::stl::Sp
     ttnn::SmallVector<uint32_t> new_shape(shape.size());
     std::copy(shape.begin(), shape.end(), new_shape.begin());
     if (index_of_negative_1 == -1) {
+        if (new_volume != old_volume)
+        {
+            // print old and new volume
+            std::string error_msg = "Old volume: " + std::to_string(old_volume) + " New volume: " + std::to_string(new_volume);
+            std::cout<<error_msg<<std::endl;
+            std::cout<<" tensor shape: "<<tensor.shape()<<std::endl;
+            std::cout<<" tensor logical shape: "<<tensor.get_logical_shape()<<std::endl;
+            std::cout<<" tensor logical volume: "<<tensor.get_logical_volume()<<std::endl;
+            std::cout<<"tensor padded shape: "<<tensor.get_padded_shape()<<std::endl;
+        }
         TT_FATAL(new_volume == old_volume, "Invalid arguments to reshape");
     } else {
         TT_FATAL(old_volume % new_volume == 0, "Invalid arguments to reshape");

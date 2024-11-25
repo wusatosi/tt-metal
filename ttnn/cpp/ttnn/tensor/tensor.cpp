@@ -77,6 +77,7 @@ void Tensor::TensorAttributes::update_main_thread_ref_count(Device *worker, uint
 Tensor::Tensor(const Storage storage, const ttnn::Shape shape, DataType dtype, Layout layout, const std::optional<Tile>& tile) :
     tensor_id{std::nullopt},
     deallocate_through_destructor(false) {
+    // std::cout<<"Used constructor 1 for Tensor"<<std::endl;
 
     if (tile.has_value()) {
         tensor_attributes = std::make_shared<TensorAttributes>(storage, shape, dtype, layout, tile.value());
@@ -145,6 +146,7 @@ Tensor::Tensor(
     tensor_attributes(std::make_shared<TensorAttributes>()),
     workers(workers),
     deallocate_through_destructor(false) {
+    // std::cout<<"Used constructor 2 for Tensor"<<std::endl;
     // When creating a device tensor, specify workers.
     // When creating a host tensor, specify num_buffers.
     // If neither are specified, a dummy tensor is being created. Do nothing.
@@ -210,6 +212,7 @@ Tensor::Tensor(const Tensor &other) :
     workers(other.workers),
     tensor_attributes(other.tensor_attributes),
     deallocate_through_destructor(other.deallocate_through_destructor) {
+    // std::cout<<"Used constructor 3 for Tensor"<<std::endl;
     if (this->workers.size()) {
         if (not tt::tt_metal::detail::InWorkerThread()) {
             this->tensor_attributes->increment_main_thread_ref_count(this->workers.at(0));
