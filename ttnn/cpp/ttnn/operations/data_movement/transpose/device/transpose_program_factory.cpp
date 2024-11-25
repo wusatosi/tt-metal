@@ -855,6 +855,7 @@ std::vector<std::pair<std::vector<uint32_t>, std::vector<uint32_t> > > get_runti
                                                                                         uint32_t num_cores_x,
                                                                                         uint32_t num_cores_y
                                                                                         ){
+    std::cout << "Transpose RTAs" << std::endl;
     auto input_buffer = input_tensor.buffer();
     auto output_buffer = output_tensor.buffer();
     auto input_shape = input_tensor.get_legacy_shape();
@@ -874,12 +875,12 @@ std::vector<std::pair<std::vector<uint32_t>, std::vector<uint32_t> > > get_runti
 
     std::vector<uint32_t> shard_grid_x_map;
     for (uint32_t i = 0; i < num_cores_x; ++i) {
-        auto physical_core = device->worker_core_from_logical_core(CoreCoord(i, 0));
+        auto physical_core = device->translated_worker_core_from_logical_core(CoreCoord(i, 0));
         shard_grid_x_map.push_back(physical_core.x);
     }
     std::vector<uint32_t> shard_grid_y_map;
     for (uint32_t i = 0; i < num_cores_y; ++i) {
-        auto physical_core = device->worker_core_from_logical_core(CoreCoord(0, i));
+        auto physical_core = device->translated_worker_core_from_logical_core(CoreCoord(0, i));
         shard_grid_y_map.push_back(physical_core.y);
     }
 
@@ -1048,7 +1049,7 @@ std::vector<std::pair<std::vector<uint32_t>, std::vector<uint32_t> > > get_runti
             uint32_t worker_x_logical = row_major ? shard_grid_inner_dim_id : shard_grid_outer_dim_id;
 
             if (worker_x_logical < num_cores_x and worker_y_logical < num_cores_y) {
-                auto core_physical = device->worker_core_from_logical_core(CoreCoord{worker_x_logical, worker_y_logical});
+                auto core_physical = device->translated_worker_core_from_logical_core(CoreCoord{worker_x_logical, worker_y_logical});
 
                 read_cores_indices.push_back(shard_id);
                 read_stick_offset.push_back(stick_id_in_shard * stick_size_bytes);

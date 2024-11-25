@@ -484,7 +484,7 @@ inline std::vector<std::pair<std::vector<uint32_t>, std::vector<uint32_t>>> get_
             uint32_t worker_x_logical = row_major ? shard_grid_inner_dim_id : shard_grid_outer_dim_id;
 
             if (worker_x_logical < num_cores_x_padded and worker_y_logical < num_cores_y_padded) {
-                auto core_physical = device->worker_core_from_logical_core(CoreCoord{worker_x_logical, worker_y_logical});
+                auto core_physical = device->translated_worker_core_from_logical_core(CoreCoord{worker_x_logical, worker_y_logical});
                 // save stick id in a shard, and core coord into a map
                 std::pair<uint32_t, uint32_t> xy_pair = row_major ? std::make_pair(core_physical.y, core_physical.x)
                                                                     : std::make_pair(core_physical.x, core_physical.y);

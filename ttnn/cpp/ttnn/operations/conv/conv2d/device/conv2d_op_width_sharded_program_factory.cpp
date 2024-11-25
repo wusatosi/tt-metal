@@ -41,7 +41,7 @@ operation::ProgramWithCallbacks multi_core_optimized_conv_width_sharded_v2_impl(
     bool enable_act_double_buffer,
     bool enable_split_reader,
     bool enable_subblock_padding) {
-
+    std::cout << "Running conv1" << std::endl;
     const uint32_t act_cb = CB::c_in0;
     const uint32_t weight_cb = CB::c_in1;
     const uint32_t bias_cb = CB::c_in2;
@@ -505,8 +505,8 @@ operation::ProgramWithCallbacks multi_core_optimized_conv_width_sharded_v2_impl(
 
     CoreCoord act_mcast_start_core_logical(0,0);
     CoreCoord act_mcast_end_core_logical(all_cores.bounding_box().end_coord.x, all_cores.bounding_box().end_coord.y);
-    auto act_mcast_start = device->worker_core_from_logical_core(act_mcast_start_core_logical);
-    auto act_mcast_end = device->worker_core_from_logical_core(act_mcast_end_core_logical);
+    auto act_mcast_start = device->translated_worker_core_from_logical_core(act_mcast_start_core_logical);
+    auto act_mcast_end = device->translated_worker_core_from_logical_core(act_mcast_end_core_logical);
     TT_FATAL(act_block_h_datums % 2 == 0, "2 Indices are packed in one uint32_t word.");
 
     activation_kernel_compile_args = {
@@ -763,11 +763,11 @@ operation::ProgramWithCallbacks multi_core_optimized_conv_width_sharded_v2_impl(
     std::vector<uint32_t> act_mcast_noc_x;
 
     for(uint32_t core_index = 0; core_index < full_core_grid.x; core_index++) {
-        act_mcast_noc_x.push_back( device->worker_core_from_logical_core( CoreCoord(core_index, 0)).x );
+        act_mcast_noc_x.push_back( device->translated_worker_core_from_logical_core( CoreCoord(core_index, 0)).x );
     }
 
     for(uint32_t core_index = 0; core_index < full_core_grid.y; core_index++) {
-        act_mcast_noc_y.push_back( device->worker_core_from_logical_core( CoreCoord(0,core_index) ).y );
+        act_mcast_noc_y.push_back( device->translated_worker_core_from_logical_core( CoreCoord(0,core_index) ).y );
     }
 
     uint32_t bias_base_address = 0;

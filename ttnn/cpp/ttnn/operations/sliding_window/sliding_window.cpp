@@ -262,7 +262,7 @@ std::tuple<std::vector<std::vector<uint16_t>>, std::vector<std::vector<uint16_t>
     auto core_id_to_noc_coords = [is_block_sharded, transpose_mcast, device](uint32_t core_id) -> CoreCoord {
         auto num_cores_x = device->compute_with_storage_grid_size().x;
         auto core_coord = is_block_sharded ? (transpose_mcast ? CoreCoord(core_id, 0) : CoreCoord(0, core_id)) : CoreCoord(core_id % num_cores_x, core_id / num_cores_x);
-        return device->worker_core_from_logical_core(core_coord);
+        return device->translated_worker_core_from_logical_core(core_coord);
     };
 
     const uint16_t pad_local = 0xFFFF;
