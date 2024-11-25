@@ -449,7 +449,8 @@ def run_llama3_demo(user_input, single_layer, mesh_device, instruct_mode, is_ci_
         logger.info(f"Compiling model trace...")
         decode_input = ttnn.unsqueeze_to_4D(tt_embd(tt_out_tok))
         decode_input = ttnn.to_memory_config(decode_input, tt_model.args.model_config["DECODE_RESIDUAL_MEMCFG"])
-        tt_out = tt_model(decode_input, current_pos, rot_mat=current_rot_mat, mode="decode", page_table=page_table_tt)
+        rot_mats = rope_setup.get_rot_mats(rot_mat_idxs)
+        tt_out = tt_model(decode_input, current_pos_tensor, rot_mats=rot_mats, mode="decode", page_table=page_table_tt)
         if tt_model.args.num_devices > 1:
             tt_out_gathered = ttnn.all_gather(tt_out, dim=3, num_links=1, topology=ttnn.Topology.Linear)
             ttnn.deallocate(tt_out)
@@ -467,7 +468,8 @@ def run_llama3_demo(user_input, single_layer, mesh_device, instruct_mode, is_ci_
 
         decode_input = ttnn.unsqueeze_to_4D(tt_embd(tt_out_tok))
         decode_input = ttnn.to_memory_config(decode_input, tt_model.args.model_config["DECODE_RESIDUAL_MEMCFG"])
-        tt_out = tt_model(decode_input, current_pos, rot_mat=current_rot_mat, mode="decode", page_table=page_table_tt)
+        rot_mats = rope_setup.get_rot_mats(rot_mat_idxs)
+        tt_out = tt_model(decode_input, current_pos_tensor, rot_mats=rot_mats, mode="decode", page_table=page_table_tt)
         if tt_model.args.num_devices > 1:
             tt_out_gathered = ttnn.all_gather(tt_out, dim=3, num_links=1, topology=ttnn.Topology.Linear)
             ttnn.deallocate(tt_out)

@@ -111,7 +111,7 @@ def test_llama_model_inference(
         model_name
     ]
 
-    iterations = quick_iterations if layers == 1 else 150
+    iterations = 150  # quick_iterations if layers == 1 else 150
 
     if layers is not None:
         model_args.n_layers = layers
@@ -224,6 +224,8 @@ def test_llama_model_inference(
         dtype=ttnn.int32,
         mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
     )
+
+    bad_idxs = []
 
     for i in range(generation_length):
         logger.info(f"[Llama3 Model] Generating token {i}")
@@ -387,6 +389,10 @@ def test_llama_model_inference(
                         else:
                             logger.warning(f"V Cache Failed! PCC value is lower than {pcc}")
                             all_tests_pass = False
+                            passing = False
+
+        if not passing:
+            bad_idxs.append(i)
 
         if not dummy_weights:
             logger.info("[ttnn generation User 0] " + tokenizer.decode(all_outputs).replace("\n", "\\n"))
@@ -398,4 +404,5 @@ def test_llama_model_inference(
             logger.info(f"All {generation_length} Llama decode iterations Passed!")
         else:
             logger.warning("One or more iterations of Llama decode had bad PCC")
+            logger.warning(f"Bad indices: {bad_idxs}")
             assert all_tests_pass, f"PCC value is lower than {pcc} for some of the outputs. Check Warnings!"
