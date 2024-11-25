@@ -96,6 +96,7 @@ def test_vgg(
 
     durations = []
     for i in range(2):
+        print(f"Running iteration {i}")
         tt_input_tensor = ttnn.from_torch(torch_input_tensor, ttnn.bfloat16)
         start = time.time()
         ttnn_output = ttnn_model(device, tt_batched_input_tensor, parameters, batch_size, model_config)

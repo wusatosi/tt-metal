@@ -261,21 +261,23 @@ std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights(
     std::array<uint32_t, 2> dilation,
     uint32_t groups,
     T *device,
+    const Conv2dConfig& conv_config,
     std::optional<const ttnn::Tensor>& bias_tensor,
-    std::optional<const Conv2dConfig> conv_config_,
+    //std::optional<const Conv2dConfig> conv_config_,
     std::optional<const WeightConfig> weight_config_) {
     ttnn::Tensor bias_tensor_;
     //TT_FATAL(!ttnn::is_tensor_on_device_or_multidevice(weight_tensor), "Error: weight tensor must be on host for preparation.");
     uint32_t weight_block_h_ntiles=0, weight_block_w_ntiles=0, act_block_h_ntiles=0;
-    Conv2dConfig conv_config = conv_config_.value_or(Conv2dConfig());
+    //Conv2dConfig conv_config = conv_config_.value_or(Conv2dConfig());
     TensorMemoryLayout tensor_layout;
-    if(conv_config_.has_value() && weight_config_.has_value()) {
-        WeightConfig weight_config = weight_config_.value();
+    //if(conv_config_.has_value() && weight_config_.has_value()) {
+        //WeightConfig weight_config = weight_config_.value();
+        WeightConfig weight_config =weight_config_.value_or(WeightConfig());
         weight_block_h_ntiles = weight_config.act_block_w_ntiles;
         weight_block_w_ntiles = weight_config.out_subblock_w_ntiles;
         act_block_h_ntiles = weight_config.act_block_h_ntiles;
         tensor_layout = weight_config.shard_layout;
-    }else{
+    /*}else{
         const bool mm_conv = use_matmul_for_1x1_conv(kernel_size, stride, padding, dilation, groups);
         const uint32_t output_height = ((input_height - kernel_size[0] - ((kernel_size[0] - 1 ) * (dilation[0] - 1)) + 2 * padding[0]) / stride[0]) + 1;
         const uint32_t output_width =
@@ -299,7 +301,7 @@ std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights(
         weight_block_w_ntiles = opt_conv_op_block_config.out_subblock_w_ntiles;
         act_block_h_ntiles = opt_conv_op_block_config.act_block_h_ntiles;
         tensor_layout = conv_config.shard_layout.value();
-    }
+    }*/
 
     // std::cout << "Weight Block H TILES: " << weight_block_h_ntiles << " weight_block_w_ntiles: " << weight_block_w_ntiles << "act_block_h_ntiles: " << act_block_h_ntiles
     // << " act_block_h_ntiles: " <<  act_block_h_ntiles << " tensor_layout: "<< (int)tensor_layout << std::endl;
@@ -321,18 +323,19 @@ std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights(
     bool is_depthwise_conv = groups == original_weights_out_channels && original_weights_in_channels == 1;
 
     weight_tensor_ = weight_tensor;
+    DataType weights_bias_dtype = conv_config.weights_dtype;
 
     // Convert weight tensor to 0 padded shape if groups > 1
     if (!is_conv1d and groups > 1) {
-        weight_tensor_ = tt::tt_metal::convert_conv_weight_tensor_to_grouped_layout(weight_tensor_, groups, conv_config.weights_dtype);
+        weight_tensor_ = tt::tt_metal::convert_conv_weight_tensor_to_grouped_layout(weight_tensor_, groups, weights_bias_dtype);
     }
     else if (is_conv1d and groups > 1) {
         if (is_depthwise_conv) {
-            weight_tensor_ = convert_conv_weight_tensor_to_depthwise_layout(weight_tensor_, act_block_h_ntiles, conv_config.weights_dtype);
+            weight_tensor_ = convert_conv_weight_tensor_to_depthwise_layout(weight_tensor_, act_block_h_ntiles, weights_bias_dtype);
             weight_block_h_ntiles = act_block_h_ntiles;
         }
         else{
-           weight_tensor_ = tt::tt_metal::convert_conv_weight_tensor_to_grouped_layout(weight_tensor_, groups, conv_config.weights_dtype);
+           weight_tensor_ = tt::tt_metal::convert_conv_weight_tensor_to_grouped_layout(weight_tensor_, groups, weights_bias_dtype);
         }
     }
 
@@ -344,21 +347,21 @@ std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights(
     uint32_t out_channel_padding = tt::round_up(out_channels, 32) - out_channels;
     tt::tt_metal::LegacyShape weights_channels_padded_shape = tt::tt_metal::LegacyShape(std::array<uint32_t, 4>(
         {tt::round_up(out_channels, 32), tt::round_up(in_channels, conv_config.input_channels_alignment), window_h, window_w}));
-    if (conv_config.weights_dtype == DataType::BFLOAT8_B) {
+    if (weights_bias_dtype == DataType::BFLOAT8_B) {
         TT_ASSERT(weight_tensor_.get_dtype() == DataType::FLOAT32);
     } else {
         // TODO: fix the need to check this. We should be able to accept any datatype and convert
-        TT_ASSERT(weight_tensor_.get_dtype() == conv_config.weights_dtype);
+        TT_ASSERT(weight_tensor_.get_dtype() == weights_bias_dtype);
     }
     weight_tensor_ = ttnn::pad(weight_tensor_, weights_channels_padded_shape.to_array_4D(), tt::tt_metal::Array4D({0, 0, 0, 0}), 0);
 
     // for conv op, pad the weights to block shape
     if (tensor_layout == TensorMemoryLayout::HEIGHT_SHARDED) {
         weight_tensor_ = tt::tt_metal::convert_conv_weight_tensor_to_special_padding_tiled_layout(
-            weight_tensor_, weight_block_h_ntiles, weight_block_w_ntiles, conv_config.weights_dtype);
+            weight_tensor_, weight_block_h_ntiles, weight_block_w_ntiles, weights_bias_dtype);
     } else {
         weight_tensor_ = tt::tt_metal::convert_conv_weight_tensor_to_tiled_layout(
-            weight_tensor_, weight_block_h_ntiles, weight_block_w_ntiles, conv_config.weights_dtype);
+            weight_tensor_, weight_block_h_ntiles, weight_block_w_ntiles, weights_bias_dtype);
     }
 
     uint32_t weight_matrix_height = in_channels * window_h * window_w;
@@ -385,11 +388,13 @@ std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights(
         bias_tensor_ = ttnn::pad(bias_tensor_, bias_channels_padded_shape.to_array_4D(), tt::tt_metal::Array4D({0, 0, 0, 0}), 0);
         bias_tensor_ = ttnn::to_layout(
             bias_tensor_, Layout::TILE, std::nullopt, std::nullopt, (T*)nullptr);
-        if (bias_tensor_.get_dtype() != conv_config.weights_dtype) {
-            bias_tensor_ = ttnn::to_dtype(bias_tensor_, conv_config.weights_dtype);
+        if (bias_tensor_.get_dtype() != weights_bias_dtype) {
+            bias_tensor_ = ttnn::to_dtype(bias_tensor_, weights_bias_dtype);
         }
-        //bias_tensor_ = ttnn::operations::core::to_device(bias_tensor_, device, std::nullopt);
+        bias_tensor_ = ttnn::operations::core::to_device(bias_tensor_, device, std::nullopt);
     }
+    weight_tensor_ = ttnn::operations::core::to_device(weight_tensor_, device, std::nullopt);
+
 
     return {weight_tensor_, bias_tensor.has_value() ? bias_tensor_ : std::optional<ttnn::Tensor>()};
     //return weight_tensor_;
@@ -501,8 +506,9 @@ template std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weigh
     std::array<uint32_t, 2> dilation,
     uint32_t groups,
     Device *device,
+    const Conv2dConfig& conv_config,
     std::optional<const ttnn::Tensor>& bias_tensor,
-    std::optional<const Conv2dConfig> conv_config_,
+    //std::optional<const Conv2dConfig> conv_config_,
     std::optional<const WeightConfig> weight_config);
 
 template std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights<MeshDevice>(
@@ -521,9 +527,36 @@ template std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weigh
     std::array<uint32_t, 2> dilation,
     uint32_t groups,
     MeshDevice *device,
+    const Conv2dConfig& conv_config,
     std::optional<const ttnn::Tensor>& bias_tensor,
-    std::optional<const Conv2dConfig> conv_config_,
+    //std::optional<const Conv2dConfig> conv_config_,
     std::optional<const WeightConfig> weight_config);
+
+template std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights_biases_and_move_to_device<Device>(
+    const ttnn::Tensor& weight_tensor,
+    std::optional<const ttnn::Tensor>& bias_tensor,
+    uint32_t input_channels_alignment,
+    DataType weights_bias_dtype,
+    uint32_t weight_block_h_ntiles,
+    uint32_t weight_block_w_ntiles,
+    const ParallelConfig& parallel_config,
+    Device* device,
+    uint32_t groups,
+    uint32_t act_block_h_ntiles,
+    uint32_t input_width);
+
+template std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights_biases_and_move_to_device<MeshDevice>(
+    const ttnn::Tensor& weight_tensor,
+    std::optional<const ttnn::Tensor>& bias_tensor,
+    uint32_t input_channels_alignment,
+    DataType weights_bias_dtype,
+    uint32_t weight_block_h_ntiles,
+    uint32_t weight_block_w_ntiles,
+    const ParallelConfig& parallel_config,
+    MeshDevice* device,
+    uint32_t groups,
+    uint32_t act_block_h_ntiles,
+    uint32_t input_width);
 
 template ttnn::Tensor prepare_conv_bias<Device>(
     const ttnn::Tensor& bias_tensor,

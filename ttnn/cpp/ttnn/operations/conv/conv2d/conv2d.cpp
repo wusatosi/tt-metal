@@ -128,8 +128,9 @@ Result conv2d(
             dilation,
             groups,
             device,
-            bias_tensor,
             conv_config,
+            bias_tensor,
+            //conv_config,
             weight_config
         );
 
@@ -145,10 +146,10 @@ Result conv2d(
         //     groups,
         //     opt_conv_op_block_config.act_block_h_ntiles,
         //     input_width);
-        weight_tensor_on_device = ttnn::operations::core::to_device(weight_tensor_on_device, device, std::nullopt);
-        if(bias_tensor.has_value()){
-            bias_tensor_on_device = ttnn::operations::core::to_device(bias_tensor_on_device.value(), device, std::nullopt);
-        }
+        // weight_tensor_on_device = ttnn::operations::core::to_device(weight_tensor_on_device, device, std::nullopt);
+        // if(bias_tensor.has_value()){
+        //     bias_tensor_on_device = ttnn::operations::core::to_device(bias_tensor_on_device.value(), device, std::nullopt);
+        // }
     }
 
     // if (bias_tensor.has_value() && !ttnn::is_tensor_on_device_or_multidevice(bias_tensor.value())) {

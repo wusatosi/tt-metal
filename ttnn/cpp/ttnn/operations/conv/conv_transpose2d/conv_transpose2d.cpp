@@ -277,8 +277,9 @@ Result conv_transpose2d(
                 dilation,
                 groups,
                 device,
-                bias_tensor,
                 conv_config,
+                bias_tensor,
+                //conv_config,
                 weight_config
             );
             weight_tensor_on_device = ttnn::operations::core::to_device(weight_tensor_on_device, device, std::nullopt);
