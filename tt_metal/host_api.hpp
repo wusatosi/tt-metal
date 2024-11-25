@@ -238,6 +238,18 @@ void UpdateCircularBufferPageSize(Program &program, CBHandle cb_handle, uint8_t 
  */
 void UpdateDynamicCircularBufferAddress(Program &program, CBHandle cb_handle, const Buffer &buffer);
 
+namespace experimental {
+
+CBHandle CreateCircularBuffer(
+    Program &program,
+    const std::variant<CoreCoord, CoreRange, CoreRangeSet> &core_spec,
+    const CircularBufferConfig &config,
+    const GlobalCircularBuffer &global_circular_buffer);
+
+void UpdateDynamicCircularBufferAddress(Program &program, CBHandle cb_handle, const GlobalCircularBuffer &global_circular_buffer);
+
+}  // namespace experimental
+
 /**
  * Initializes semaphore on all cores within core range (inclusive). Each core can have up to eight 4B semaphores aligned to L1_ALIGNMENT.
  *

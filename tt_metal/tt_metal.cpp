@@ -716,26 +716,31 @@ bool ConfigureDeviceWithProgram(Device *device, Program &program, bool fd_bootlo
             ConfigureKernelGroup(program, index, kernel_group, device, logical_core);
             // TODO: add support for CB for ethernet cores
             if (core_type == CoreType::WORKER) {
-                // CircularBufferConfigVec -- common across all kernels, so written once to the core
-                std::vector<uint32_t> circular_buffer_config_vec(program.get_program_config(index).cb_size / sizeof(uint32_t));
-
-                auto cbs_on_core = program.circular_buffers_on_core(logical_core);
-                for (const auto& circular_buffer : cbs_on_core) {
-                    for (uint32_t buffer_index : circular_buffer->buffer_indices()) {
-                        uint32_t addr_in_bytes = circular_buffer->address();
-                        uint32_t size_in_bytes = circular_buffer->size();
-                        uint32_t num_pages = circular_buffer->num_pages(buffer_index);
-                        uint32_t page_size = size_in_bytes / num_pages;
-                        circular_buffer_config_vec.at(UINT32_WORDS_PER_CIRCULAR_BUFFER_CONFIG * buffer_index) =
-                            addr_in_bytes >> CIRCULAR_BUFFER_LOG2_WORD_SIZE_BYTES;  // convert to addr in 16B words
-                        circular_buffer_config_vec.at(UINT32_WORDS_PER_CIRCULAR_BUFFER_CONFIG * buffer_index + 1) =
-                            size_in_bytes >> CIRCULAR_BUFFER_LOG2_WORD_SIZE_BYTES;  // convert to addr in 16B words
-                        circular_buffer_config_vec.at(UINT32_WORDS_PER_CIRCULAR_BUFFER_CONFIG * buffer_index + 2) = num_pages;
-                        circular_buffer_config_vec.at(UINT32_WORDS_PER_CIRCULAR_BUFFER_CONFIG * buffer_index + 3) = page_size >> CIRCULAR_BUFFER_LOG2_WORD_SIZE_BYTES;
-                    }
-                }  // PROF_END("CBS")
-
+                const auto &cbs_on_core = program.circular_buffers_on_core(logical_core);
                 if (cbs_on_core.size()) {
+                    // CircularBufferConfigVec -- common across all kernels, so written once to the core
+                    std::vector<uint32_t> circular_buffer_config_vec(program.get_program_config(index).cb_size / sizeof(uint32_t));
+
+                    uint32_t remote_offset_index = program.get_program_config(index).local_cb_size / sizeof(uint32_t);
+                    for (const auto& circular_buffer : cbs_on_core) {
+                        for (uint32_t buffer_index : circular_buffer->local_buffer_indices()) {
+                            uint32_t base_index = buffer_index * UINT32_WORDS_PER_LOCAL_CIRCULAR_BUFFER_CONFIG;
+                            uint32_t addr_in_bytes = circular_buffer->address();
+                            uint32_t size_in_bytes = circular_buffer->size();
+                            uint32_t num_pages = circular_buffer->num_pages(buffer_index);
+                            uint32_t page_size = size_in_bytes / num_pages;
+                            circular_buffer_config_vec[base_index] = addr_in_bytes >> CIRCULAR_BUFFER_LOG2_WORD_SIZE_BYTES;  // convert to addr in 16B words
+                            circular_buffer_config_vec[base_index + 1] = size_in_bytes >> CIRCULAR_BUFFER_LOG2_WORD_SIZE_BYTES;  // convert to addr in 16B words
+                            circular_buffer_config_vec[base_index + 2] = num_pages;
+                            circular_buffer_config_vec[base_index + 3] = page_size >> CIRCULAR_BUFFER_LOG2_WORD_SIZE_BYTES;
+                        }
+                        for (uint32_t buffer_index : circular_buffer->remote_buffer_indices()) {
+                            uint32_t base_index = remote_offset_index + (NUM_CIRCULAR_BUFFERS - 1 - buffer_index) * UINT32_WORDS_PER_REMOTE_CIRCULAR_BUFFER_CONFIG;
+                            uint32_t config_address = circular_buffer->config_address();
+                            circular_buffer_config_vec[base_index] = config_address;
+                            circular_buffer_config_vec[base_index + 1] = circular_buffer->page_size(buffer_index);
+                        }
+                    }  // PROF_END("CBS")
                     uint64_t kernel_config_base = hal.get_dev_addr(index, HalL1MemAddrType::KERNEL_CONFIG);
                     uint64_t addr = kernel_config_base + program.get_program_config(index).cb_offset;
                     llrt::write_hex_vec_to_core(device_id, physical_core, circular_buffer_config_vec, addr);
@@ -1081,9 +1086,30 @@ void UpdateCircularBufferPageSize(Program &program, CBHandle cb_handle, uint8_t 
 
 void UpdateDynamicCircularBufferAddress(Program &program, CBHandle cb_handle, const Buffer &buffer) {
     auto circular_buffer = detail::GetCircularBuffer(program, cb_handle);
+    TT_FATAL(circular_buffer->globally_allocated(), "CircularBuffer must be globally allocated to update address!");
+    TT_FATAL(!circular_buffer->is_global_circular_buffer(), "CircularBuffer must not be a GlobalCircularBuffer!");
     circular_buffer->config().set_globally_allocated_address(buffer);
     circular_buffer->assign_global_address();
 }
+
+namespace experimental {
+
+CBHandle CreateCircularBuffer(
+    Program &program,
+    const std::variant<CoreCoord, CoreRange, CoreRangeSet> &core_spec,
+    const CircularBufferConfig &config,
+    const GlobalCircularBuffer &global_circular_buffer) {
+    CoreRangeSet core_ranges = GetCoreRangeSet(core_spec);
+    return program.add_circular_buffer(core_ranges, config, global_circular_buffer);
+}
+
+void UpdateDynamicCircularBufferAddress(Program &program, CBHandle cb_handle, const GlobalCircularBuffer &global_circular_buffer) {
+    auto circular_buffer = detail::GetCircularBuffer(program, cb_handle);
+    TT_FATAL(circular_buffer->is_global_circular_buffer(), "CircularBuffer must be linked to a GlobalCircularBuffer!");
+    circular_buffer->set_global_circular_buffer(global_circular_buffer);
+}
+
+}  // namespace experimental
 
 uint32_t CreateSemaphore(
     Program &program,

@@ -50,7 +50,7 @@ inline void llk_pack_hw_configure(const llk_pack_params_t *pack_params) {
     const bool partial_face = get_output_partial_face(output_id);
     const bool narrow_tile = get_output_narrow_tile(output_id);
 
-    const std::uint32_t tile_size = cb_interface[output_id].fifo_page_size;
+    const std::uint32_t tile_size = get_local_cb_interface(output_id).fifo_page_size;
 
     _llk_pack_hw_configure_<untilize, is_fp32_dest_acc_en>(
         pack_src_format[output_id],
@@ -84,7 +84,7 @@ inline void llk_pack_reduce_hw_configure(const llk_pack_params_t *pack_params) {
     const bool partial_face = get_output_partial_face(output_id);
     const bool narrow_tile = get_output_narrow_tile(output_id);
 
-    const std::uint32_t tile_size = cb_interface[output_id].fifo_page_size;
+    const std::uint32_t tile_size = get_local_cb_interface(output_id).fifo_page_size;
 
     _llk_pack_reduce_hw_configure_<untilize, type, dim, is_fp32_dest_acc_en>(
         pack_src_format[output_id],
@@ -140,25 +140,25 @@ inline std::uint32_t get_output_tile_address(std::uint8_t output_id, std::uint32
 
     std::uint32_t pack_tile_addr;
     if constexpr (out_of_order_output) {
-        pack_tile_addr = cb_interface[output_id].fifo_wr_ptr +
-                        (std::uint32_t)(cb_interface[output_id].fifo_page_size)*output_tile_index - 1;
+        pack_tile_addr = get_local_cb_interface(output_id).fifo_wr_ptr +
+                        (std::uint32_t)(get_local_cb_interface(output_id).fifo_page_size)*output_tile_index - 1;
     } else {
         if constexpr (untilize) {
             // FIXME: Need to support pack-untilize?
-            // std::uint16_t out_tile_index = (cb_interface[output_id].ublock_tile_cnt/cb_interface[output_id].ublock_ct)*cb_interface[output_id].row_tile_dim +
-            //                                 cb_interface[output_id].ublock_tile_cnt%cb_interface[output_id].ublock_ct; //FIXME: optimize perf
-            // pack_tile_addr = cb_interface[output_id].fifo_wr_ptr + cb_interface[output_id].fifo_wr_tile_ptr - 1;
-            // pack_tile_addr += out_tile_index*(std::uint32_t)(cb_interface[output_id].fifo_page_size);
+            // std::uint16_t out_tile_index = (get_local_cb_interface(output_id).ublock_tile_cnt/get_local_cb_interface(output_id).ublock_ct)*get_local_cb_interface(output_id).row_tile_dim +
+            //                                 get_local_cb_interface(output_id).ublock_tile_cnt%get_local_cb_interface(output_id).ublock_ct; //FIXME: optimize perf
+            // pack_tile_addr = get_local_cb_interface(output_id).fifo_wr_ptr + get_local_cb_interface(output_id).fifo_wr_tile_ptr - 1;
+            // pack_tile_addr += out_tile_index*(std::uint32_t)(get_local_cb_interface(output_id).fifo_page_size);
 
-            // cb_interface[output_id].ublock_tile_cnt++;
+            // get_local_cb_interface(output_id).ublock_tile_cnt++;
 
-            // if (cb_interface[output_id].ublock_tile_cnt == cb_interface[output_id].ublock_tile_dim) {
-            //    cb_interface[output_id].ublock_tile_cnt=0;
-            //    cb_interface[output_id].fifo_wr_tile_ptr += (std::uint32_t)(cb_interface[output_id].fifo_page_size)*cb_interface[output_id].ublock_ct;
+            // if (get_local_cb_interface(output_id).ublock_tile_cnt == get_local_cb_interface(output_id).ublock_tile_dim) {
+            //    get_local_cb_interface(output_id).ublock_tile_cnt=0;
+            //    get_local_cb_interface(output_id).fifo_wr_tile_ptr += (std::uint32_t)(get_local_cb_interface(output_id).fifo_page_size)*get_local_cb_interface(output_id).ublock_ct;
             // }
         } else {
-            pack_tile_addr = cb_interface[output_id].fifo_wr_ptr + cb_interface[output_id].fifo_wr_tile_ptr - 1;
-            cb_interface[output_id].fifo_wr_tile_ptr += cb_interface[output_id].fifo_page_size;
+            pack_tile_addr = get_local_cb_interface(output_id).fifo_wr_ptr + get_local_cb_interface(output_id).fifo_wr_tile_ptr - 1;
+            get_local_cb_interface(output_id).fifo_wr_tile_ptr += get_local_cb_interface(output_id).fifo_page_size;
         }
     }
     return pack_tile_addr;
@@ -206,7 +206,7 @@ template <std::uint32_t block_ct_dim = 8, std::uint32_t full_ct_dim = block_ct_d
 inline void llk_pack_untilize(std::uint32_t block_rt_dim, std::uint32_t output, const std::uint32_t face_r_dim = FACE_R_DIM, const std::uint32_t num_faces = 4, const std::uint32_t block_c_index = 0) {
 
     const std::uint32_t output_id = get_output_id(output);
-    std::uint32_t pack_tile_addr = cb_interface[output_id].fifo_wr_ptr - 1 + SCALE_DATUM_SIZE(pack_dst_format[output_id], (block_c_index * ((num_faces>2) ? num_faces/2 : num_faces) * block_ct_dim * FACE_C_DIM))/16;
+    std::uint32_t pack_tile_addr = get_local_cb_interface(output_id).fifo_wr_ptr - 1 + SCALE_DATUM_SIZE(pack_dst_format[output_id], (block_c_index * ((num_faces>2) ? num_faces/2 : num_faces) * block_ct_dim * FACE_C_DIM))/16;
 
     for (std::uint32_t block_rt=0; block_rt<block_rt_dim; block_rt++) {
 
@@ -218,7 +218,7 @@ inline void llk_pack_untilize(std::uint32_t block_rt_dim, std::uint32_t output, 
             block_rt*block_ct_dim
         );
 
-        pack_tile_addr += full_ct_dim*cb_interface[output_id].fifo_page_size;
+        pack_tile_addr += full_ct_dim*get_local_cb_interface(output_id).fifo_page_size;
     }
 }
 
@@ -312,7 +312,7 @@ inline void llk_pack_reconfig_data_format(const std::uint32_t new_output) {
     _llk_pack_reconfig_data_format_<is_fp32_dest_acc_en, is_tile_dim_reconfig_en, DstTileFaceLayout::RowMajor>(
         pack_src_format[output_id],
         pack_dst_format[output_id],
-        cb_interface[output_id].fifo_page_size,
+        get_local_cb_interface(output_id).fifo_page_size,
         face_r_dim,
         num_faces,
         partial_face,
@@ -364,7 +364,7 @@ inline void llk_pack_reduce_config_v2(uint32_t icb_out) {
         const std::uint32_t num_faces = get_output_num_faces(output_id);
         const bool partial_face = get_output_partial_face(output_id);
         const bool narrow_tile = get_output_narrow_tile(output_id);
-        const std::uint32_t tile_size = cb_interface[output_id].fifo_page_size;
+        const std::uint32_t tile_size = get_local_cb_interface(output_id).fifo_page_size;
         const llk_relu_config_u relu_config = {.f = {.ApplyRelu = (std::uint32_t)ReluType::NO_RELU, .Threshold = 0,}};
 
         _llk_pack_hw_configure_<untilize, is_fp32_dest_acc_en>(

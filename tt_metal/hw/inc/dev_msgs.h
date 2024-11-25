@@ -104,7 +104,8 @@ struct kernel_config_msg_t {
     // Ring buffer of kernel configuration data
     volatile uint32_t kernel_config_base[static_cast<int>(ProgrammableCoreType::COUNT)];
     volatile uint16_t sem_offset[static_cast<int>(ProgrammableCoreType::COUNT)];
-    volatile uint16_t cb_offset;
+    volatile uint16_t local_cb_offset;
+    volatile uint16_t remote_cb_offset;
     rta_offset_t rta_offset[DISPATCH_CLASS_MAX];
     volatile uint32_t kernel_text_offset[MaxProcessorsPerCoreType];
 
@@ -113,10 +114,11 @@ struct kernel_config_msg_t {
     volatile uint8_t mode;                   // dispatch mode host/dev
     volatile uint8_t brisc_noc_id;
     volatile uint8_t brisc_noc_mode;
-    volatile uint8_t max_cb_index;
+    volatile uint8_t max_local_cb_end_index;
+    volatile uint8_t min_remote_cb_start_index;
     volatile uint8_t exit_erisc_kernel;
     volatile uint8_t enables;
-    volatile uint8_t pad2[12];
+    volatile uint8_t pad2[9];
 } __attribute__((packed));
 
 struct go_msg_t {

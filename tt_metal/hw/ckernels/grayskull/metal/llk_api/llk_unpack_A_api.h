@@ -67,7 +67,7 @@ inline void llk_unpack_A(
     // note: unpacker is programmed to automatically skip the tile header (+1)
     // since there is no tile header, we need to -1 the address (in terms of 16B words), to offet unpacker's automatic +1
     std::uint32_t operand_id = get_operand_id(operand);
-    std::uint32_t base_address = cb_interface[operand_id].fifo_rd_ptr - 1;
+    std::uint32_t base_address = get_local_cb_interface(operand_id).fifo_rd_ptr - 1;
     std::uint32_t offset_address = MUL_TILE_SIZE_AND_INDEX<true>((uint)unpack_src_format[operand_id], tile_index);
     std::uint32_t address = base_address + offset_address;
 
@@ -87,7 +87,7 @@ inline void llk_unpack_A_block(
     // note: unpacker is programmed to automatically skip the tile header (+1)
     // since there is no tile header, we need to -1 the address (in terms of 16B words), to offet unpacker's automatic +1
     std::uint32_t operand_id = get_operand_id(operand);
-    std::uint32_t base_address = cb_interface[operand_id].fifo_rd_ptr - 1;
+    std::uint32_t base_address = get_local_cb_interface(operand_id).fifo_rd_ptr - 1;
     std::uint32_t offset_address = MUL_TILE_SIZE_AND_INDEX<true>((uint)unpack_src_format[operand_id], 1);
     std::uint32_t address = base_address;
 
