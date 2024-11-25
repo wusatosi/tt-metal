@@ -126,6 +126,8 @@ def run_test_rotary_embedding_llama(
     max_seq_len,
     datatype=ttnn.bfloat16,
     fuse_qk=False,
+    custom_inputs=None,
+    return_output=False,
 ):
     # Prepare input
     torch.manual_seed(0)
@@ -134,10 +136,14 @@ def run_test_rotary_embedding_llama(
     if mode == "decode":
         max_seq_len = MAX_SEQ_LEN
 
-    inp = [
-        (torch.rand(batch, n_heads, seq_len, head_dim) * 2) - 1,
-        (torch.rand(batch, n_kv_heads, seq_len, head_dim) * 2) - 1,
-    ]
+    inp = (
+        [
+            (torch.rand(batch, n_heads, seq_len, head_dim) * 2) - 1,
+            (torch.rand(batch, n_kv_heads, seq_len, head_dim) * 2) - 1,
+        ]
+        if custom_inputs is None
+        else custom_inputs
+    )
 
     # To test with different position ids, assume that batch
     # dimension is the seq len dimension when passing inputs to torch
@@ -292,6 +298,9 @@ def run_test_rotary_embedding_llama(
     else:
         logger.warning("Llama QKV output Failed!")
         assert does_pass, f"PCC value is lower than {pcc}"
+
+    if return_output:
+        return tt_out
 
 
 @skip_for_blackhole("Requires eth connected devices to run, only single chip BH available. See #12349")
@@ -463,3 +472,92 @@ def test_rotary_embedding_llama_with_program_cache(
             num_ops += 1  # slice
 
     assert device.num_program_cache_entries() == num_ops
+
+
+# Write a test that calls run_test_rotary_embedding_llama with return_output=True and runs it with 2 different batch values, but the same seq_len=1. Then it compares the PCC for these outputs. It also passes custom_inputs to run_test_rotary_embedding_llama to ensure that the outputs are the same for both batch sizes.
+
+
+@skip_for_blackhole("Requires eth connected devices to run, only single chip BH available. See #12349")
+@skip_for_grayskull("Requires eth connected devices to run")
+@pytest.mark.parametrize(
+    "batches",
+    ((1, 4, 8, 16, 32),),
+)
+@pytest.mark.parametrize(
+    "n_heads, n_kv_heads, head_dim",
+    ((8, 1, 256),),
+)
+@pytest.mark.parametrize("datatype", (ttnn.bfloat16,))
+def test_rotary_embedding_llama_batch_pcc(
+    batches,
+    n_heads,
+    n_kv_heads,
+    head_dim,
+    datatype,
+    device,
+):
+    compute_grid_size = device.compute_with_storage_grid_size()
+    if compute_grid_size.x < 8 or compute_grid_size.y < 8:
+        pytest.skip(f"Requires grid size of at least {(8, 8)} to run")
+
+    max_seq_len = 128 * 1024
+
+    seq_len = 1
+
+    # Prepare input
+    torch.manual_seed(0)
+
+    custom_inputs = [
+        (torch.rand(1, n_heads, seq_len, head_dim) * 2) - 1,
+        (torch.rand(1, n_kv_heads, seq_len, head_dim) * 2) - 1,
+    ]
+
+    outs = []
+
+    for batch in batches:
+        # Repeat the input on batch dim to match the values in batches
+        inputs = [x.repeat(batch, 1, 1, 1) for x in custom_inputs]
+
+        # Now call run_test_rotary_embedding_llama with return_output=True, and custom_inputs
+        out = run_test_rotary_embedding_llama(
+            device,
+            batch,
+            seq_len,
+            0.9997,
+            n_heads,
+            n_kv_heads,
+            head_dim,
+            max_seq_len,
+            datatype,
+            custom_inputs=inputs,
+            return_output=True,
+        )
+
+        outs.append(out)
+
+    logger.info("Comparing PCC values for different batch sizes")
+
+    for i in range(len(outs) - 1):
+        logger.info(f"Comparing batch sizes: {batches[i]} and {batches[i + 1]}")
+
+        out1, out2 = outs[i], outs[i + 1]
+        out1_q, out1_k = out1
+        out2_q, out2_k = out2
+
+        # Slice to only 1 batch (last batch)
+        out1_q = out1_q[..., -1:, :]
+        out1_k = out1_k[..., -1:, :]
+
+        out2_q = out2_q[..., -1:, :]
+        out2_k = out2_k[..., -1:, :]
+
+        pcc_q, output_pcc_q = comp_pcc(out1_q, out2_q, 1.0)
+        pcc_k, output_pcc_k = comp_pcc(out1_k, out2_k, 1.0)
+
+        logger.info(f"PCC values: Q: {output_pcc_q}")
+        logger.info(f"PCC values: K: {output_pcc_k}")
+
+        assert pcc_q > 0.9997, f"PCC value is lower than 1.0: {pcc_q}"
+        assert pcc_k > 0.9997, f"PCC value is lower than 1.0: {pcc_k}"
+
+        logger.info(f"PCC values: Q: {pcc_q}, K: {pcc_k}")

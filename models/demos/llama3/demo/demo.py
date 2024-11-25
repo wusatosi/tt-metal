@@ -156,6 +156,28 @@ def preprocess_inputs_prefill(
     )
 
 
+def argmax_host(tt_input, mesh_device, on_host=True):
+    vocab_size = tt_input.shape[-1]
+
+    pt_input = ttnn.to_torch(
+        tt_input.cpu(blocking=True, cq_id=1), mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1)
+    )[..., :vocab_size]
+    pt_out = torch.argmax(pt_input, dim=3, keepdim=True).transpose(-1, -2)
+
+    if on_host:
+        return pt_out
+    else:
+        return (
+            ttnn.from_torch(
+                pt_out,
+                layout=ttnn.ROW_MAJOR_LAYOUT,
+                dtype=ttnn.uint32,
+                mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+            ),
+            pt_out,
+        )
+
+
 def run_llama3_demo(user_input, single_layer, mesh_device, instruct_mode, is_ci_env, num_batches, print_to_file):
     # Creat batch output file
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -169,7 +191,7 @@ def run_llama3_demo(user_input, single_layer, mesh_device, instruct_mode, is_ci_
 
     dtype = ttnn.bfloat8_b
     # Miguel - parametrize this
-    paged_attention = True
+    paged_attention = False
     batch_size = 32
     assert batch_size <= 32, "Batch size cannot be greater than 32"  # FIXME
 
@@ -278,7 +300,7 @@ def run_llama3_demo(user_input, single_layer, mesh_device, instruct_mode, is_ci_
     logger.info("Finished loading weights to device.")
 
     # TODO Change this back to 100
-    max_generated_tokens = 20  # Maximum number of tokens to generate per user
+    max_generated_tokens = 150  # Maximum number of tokens to generate per user
     num_tokens_generated_decode = []
 
     logger.info("Starting inference...")
@@ -433,12 +455,8 @@ def run_llama3_demo(user_input, single_layer, mesh_device, instruct_mode, is_ci_
             ttnn.deallocate(tt_out)
         else:
             tt_out_gathered = tt_out
-        tt_out_rm = ttnn.untilize(tt_out_gathered, use_multicore=True)
-        ttnn.deallocate(tt_out_gathered)
-        tt_out_tok = ttnn.argmax(
-            tt_out_rm, dim=3, use_multicore=False if batch_size > 1 else True, output_tensor=tt_out_tok
-        )
-        ttnn.deallocate(tt_out_rm)
+        tt_out_tok_reset, _ = argmax_host(tt_out_gathered, mesh_device, on_host=False)
+        ttnn.copy_host_to_device_tensor(tt_out_tok_reset, tt_out_tok)
         ttnn.plus_one(current_pos_tensor)
         profiler.end(f"compile_trace_{batch_idx}")
 
@@ -455,12 +473,6 @@ def run_llama3_demo(user_input, single_layer, mesh_device, instruct_mode, is_ci_
             ttnn.deallocate(tt_out)
         else:
             tt_out_gathered = tt_out
-        tt_out_rm = ttnn.untilize(tt_out_gathered, use_multicore=True)
-        ttnn.deallocate(tt_out_gathered)
-        tt_out_tok = ttnn.argmax(
-            tt_out_rm, dim=3, use_multicore=False if batch_size > 1 else True, output_tensor=tt_out_tok
-        )  # TODO Multicore is not compatible with batch > 1
-        ttnn.deallocate(tt_out_rm)
         ttnn.plus_one(current_pos_tensor)
         # ttnn.plus_one(rot_mat_idxs)  # TODO <- This won't work since embedding requires uint32 and plus_one only works for int32
 
@@ -519,10 +531,11 @@ def run_llama3_demo(user_input, single_layer, mesh_device, instruct_mode, is_ci_
 
             # Write to host
             ttnn.wait_for_event(1, op_event)
-            tt_output_torch = ttnn.to_torch(
-                tt_out_tok.cpu(blocking=True, cq_id=1), mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1)
-            )[0, 0, 0, :batch_size]
+            tt_out_tok_reset, tt_output_torch = argmax_host(tt_out_gathered, mesh_device, on_host=False)
+            tt_output_torch = tt_output_torch[0, 0, 0, :batch_size]
             ttnn.record_event(1, write_event)
+
+            ttnn.copy_host_to_device_tensor(tt_out_tok_reset, tt_out_tok)
 
             # Save output token to print out later
             for user in range(batch_size):

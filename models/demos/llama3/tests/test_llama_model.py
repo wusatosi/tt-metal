@@ -6,6 +6,7 @@ import pytest
 from loguru import logger
 import os
 import ttnn
+from models.utility_functions import nearest_32
 from models.demos.llama3.tt.llama_common import (
     precompute_freqs,
     sample,
@@ -60,7 +61,7 @@ def test_llama_model_inference(
 
     mesh_device.enable_async(True)
 
-    max_batch_size = 32
+    max_batch_size = 1
     # This sets the minimum PCC for each iteration
 
     if max_batch_size == 1:
@@ -73,7 +74,7 @@ def test_llama_model_inference(
     model_args = TtModelArgs(mesh_device, instruct=instruct, dummy_weights=dummy_weights, max_batch_size=max_batch_size)
 
     # Reduce max seq len and KV cache seq_len params to speed up the test
-    model_args.max_seq_len = 128
+    model_args.max_seq_len = 256
     model_args.kv_seq_len = model_args.max_seq_len
 
     model_name = {
@@ -110,7 +111,7 @@ def test_llama_model_inference(
         model_name
     ]
 
-    iterations = quick_iterations if layers == 1 else 9
+    iterations = quick_iterations if layers == 1 else 150
 
     if layers is not None:
         model_args.n_layers = layers
@@ -228,12 +229,14 @@ def test_llama_model_inference(
         logger.info(f"[Llama3 Model] Generating token {i}")
 
         decode_input = model_args.prepare_inputs_ttnn_decode(
-            tt_decode_input,
+            pt_decode_input,
             model_args.model_config["DECODE_RESIDUAL_MEMCFG"],
         )
 
+        pad_size = nearest_32(batch) - batch
+        current_pos_padded = torch.nn.functional.pad(current_pos, (0, pad_size), "constant", 0)
         # Get cos/sin matrices for the current position of each user
-        rot_mats = rope_setup.get_rot_mats(current_pos)
+        rot_mats = rope_setup.get_rot_mats(current_pos_padded)
 
         # Run TT model
         tt_out = tt_model(
