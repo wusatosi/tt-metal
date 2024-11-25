@@ -22,16 +22,43 @@ def test_base_case(device):
     assert_with_pcc(expected_embeddings, embeddings)
 
 
-@pytest.mark.parametrize("batch_size", [1, 8, 9])
-@pytest.mark.parametrize("sentence_size", [32, 256, 512])
-@pytest.mark.parametrize("hidden_embedding_dim", [768, 4096])  # Bert_Num_Cols_768, Llama_Num_Cols
+@pytest.mark.parametrize("b", [1])
+@pytest.mark.parametrize("h", [2])
+@pytest.mark.parametrize("w", [4])
+@pytest.mark.parametrize("dim0", [-1])
+@pytest.mark.parametrize("dim1", [-2])
+def test_transpose(device, b, h, w, dim0, dim1):
+    torch.manual_seed(1234)
+
+    torch_input_tensor = torch_random((1, b, h, w), -0.1, 0.1, dtype=torch.bfloat16)
+    torch_output_tensor = torch_input_tensor.transpose(dim0, dim1)
+
+    input_tensor = ttnn.to_device(ttnn.from_torch(torch_input_tensor), device, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+    input_tensor = ttnn.to_layout(input_tensor, layout=ttnn.TILE_LAYOUT)
+    output_tensor = ttnn.transpose(input_tensor, dim0, dim1, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+    output_tensor = ttnn.from_device(output_tensor)
+    output_tensor = ttnn.to_layout(output_tensor, layout=ttnn.ROW_MAJOR_LAYOUT)
+    output_tensor = ttnn.to_torch(output_tensor)
+    print("torch_input_tensor: ")
+    print(torch_input_tensor)
+    print("output_tensor: ")
+    print(output_tensor)
+    print("torch_output_tensor: ")
+    print(torch_output_tensor)
+
+    assert_with_pcc(torch_output_tensor, output_tensor)
+
+
+@pytest.mark.parametrize("batch_size", [1])
+@pytest.mark.parametrize("sentence_size", [12])
+@pytest.mark.parametrize("hidden_embedding_dim", [3200])  # Bert_Num_Cols_768, Llama_Num_Cols
 @pytest.mark.parametrize(
-    "vocabulary_size", [512, 30522, 2048]
+    "vocabulary_size", [32000]
 )  # Bert_Position_Embeddings_512, Bert_Word_Embeddings_30528, Llama_Position_Embeddings,
 @pytest.mark.parametrize("dtype", [ttnn.bfloat16])
 @pytest.mark.parametrize("input_mem_config", [ttnn.DRAM_MEMORY_CONFIG])
 @pytest.mark.parametrize("output_mem_config", [ttnn.DRAM_MEMORY_CONFIG])
-@pytest.mark.parametrize("layout", [ttnn.TILE_LAYOUT, ttnn.ROW_MAJOR_LAYOUT])
+@pytest.mark.parametrize("layout", [ttnn.ROW_MAJOR_LAYOUT])
 def test_embedding(
     device,
     batch_size,
@@ -118,6 +145,59 @@ def test_moe_embedding(
     weights = ttnn.to_device(ttnn.from_torch(torch_weights, dtype=dtype), device, memory_config=input_mem_config)
 
     output_tensor = ttnn.embedding(input_tensor, weights, memory_config=output_mem_config, layout=ttnn.ROW_MAJOR_LAYOUT)
+    output_tensor = ttnn.to_torch(output_tensor)
+
+    assert_with_pcc(torch_output_tensor, output_tensor)
+
+
+@pytest.mark.parametrize("batch_size", [1, 8, 9])
+@pytest.mark.parametrize("sentence_size", [32, 256, 512])
+@pytest.mark.parametrize("hidden_embedding_dim", [768, 4096])  # Bert_Num_Cols_768, Llama_Num_Cols
+@pytest.mark.parametrize(
+    "vocabulary_size", [512, 30522, 2048]
+)  # Bert_Position_Embeddings_512, Bert_Word_Embeddings_30528, Llama_Position_Embeddings,
+@pytest.mark.parametrize("input_mem_config", [ttnn.DRAM_MEMORY_CONFIG])
+@pytest.mark.parametrize("output_mem_config", [ttnn.DRAM_MEMORY_CONFIG])
+@pytest.mark.parametrize("layout", [ttnn.TILE_LAYOUT, ttnn.ROW_MAJOR_LAYOUT])
+def test_embedding_tiled_input(
+    device,
+    batch_size,
+    sentence_size,
+    hidden_embedding_dim,
+    vocabulary_size,
+    input_mem_config,
+    output_mem_config,
+    layout,
+):
+    torch.manual_seed(1234)
+
+    torch_input_tensor = torch.randint(0, vocabulary_size - 1, (batch_size, sentence_size))
+    torch_weights = torch_random((vocabulary_size, hidden_embedding_dim), -0.1, 0.1, dtype=torch.bfloat16)
+    # torch_output_tensor = torch.nn.functional.embedding(torch_input_tensor, torch_weights)
+    torch_embedding = torch.nn.Embedding.from_pretrained(torch_weights)
+    torch_output_tensor = torch_embedding(torch_input_tensor)
+
+    input_tensor = ttnn.to_device(
+        ttnn.from_torch(torch_input_tensor, dtype=ttnn.uint32, layout=ttnn.ROW_MAJOR_LAYOUT),
+        device,
+        memory_config=input_mem_config,
+    )
+    weights = ttnn.to_device(
+        ttnn.from_torch(torch_weights, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT),
+        device,
+        memory_config=input_mem_config,
+    )
+
+    # output_tensor = ttnn.embedding(input_tensor, weights, memory_config=output_mem_config, layout=ttnn.ROW_MAJOR_LAYOUT)
+    output_tensor = ttnn.embedding(
+        input_tensor,
+        weights,
+        embeddings_type=ttnn.EmbeddingsType.GENERIC,  # Default embeddings type
+        dtype=ttnn.bfloat16,
+        memory_config=output_mem_config,  # Default memory config
+        queue_id=0,  # Default queue id
+        layout=layout,
+    )
     output_tensor = ttnn.to_torch(output_tensor)
 
     assert_with_pcc(torch_output_tensor, output_tensor)
