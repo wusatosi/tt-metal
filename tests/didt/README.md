@@ -10,6 +10,8 @@ LM head: `WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml pytest tests/didt/t
 
 Resnet Convolution: `WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml pytest tests/didt/test_resnet_conv.py::test_resnet_conv -k "2chips"`
 
+LLama matmul: `WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml pytest tests/didt/test_llama_matmul.py::test_llama_matmul -k "2chips"`
+
 ## Variations
 
 ### Supported systems
