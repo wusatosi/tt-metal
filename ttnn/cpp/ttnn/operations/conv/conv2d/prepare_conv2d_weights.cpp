@@ -391,9 +391,9 @@ std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights(
         if (bias_tensor_.get_dtype() != weights_bias_dtype) {
             bias_tensor_ = ttnn::to_dtype(bias_tensor_, weights_bias_dtype);
         }
-        bias_tensor_ = ttnn::operations::core::to_device(bias_tensor_, device, std::nullopt);
+        //bias_tensor_ = ttnn::operations::core::to_device(bias_tensor_, device, std::nullopt);
     }
-    weight_tensor_ = ttnn::operations::core::to_device(weight_tensor_, device, std::nullopt);
+    //weight_tensor_ = ttnn::operations::core::to_device(weight_tensor_, device, std::nullopt);
 
 
     return {weight_tensor_, bias_tensor.has_value() ? bias_tensor_ : std::optional<ttnn::Tensor>()};
