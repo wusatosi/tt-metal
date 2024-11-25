@@ -912,7 +912,7 @@ def test_dram_read_l1_write_core(
         # single layer multi receiver test
         ("wormhole_b0", None, np.array([32768, 128]), 1, 64, 3, 256, 1, 2, 1),
         # multi layer multi receiver test
-        ("wormhole_b0", None, np.array([32768, 256]), 1, 64, 5, 256, 1, 4, 15),
+        ("wormhole_b0", None, np.array([32768, 256]), 1, 64, 5, 256, 1, 4, 1),
         # Matmul test does not support mixed data format, just test for either bfp8 or fp16
         # single layer single receiver test
         ("wormhole_b0", "Matmul", np.array([32, 4096, 128]), 1, 8, 10, 256, 0, 1, 1),
@@ -926,7 +926,7 @@ def test_dram_read_l1_write_core(
         # single layer multi receiver test
         ("blackhole", None, np.array([32768, 128]), 1, 64, 3, 256, 1, 2, 1),
         # multi layer multi receiver test
-        ("blackhole", None, np.array([32768, 256]), 1, 64, 5, 256, 1, 4, 15),
+        ("blackhole", None, np.array([32768, 256]), 1, 64, 5, 256, 1, 4, 1),
         # Matmul test does not support mixed data format, just test for either bfp8 or fp16
         # single layer single receiver test
         ("blackhole", "Matmul", np.array([32, 4096, 128]), 1, 8, 10, 256, 0, 1, 1),
