@@ -32,9 +32,14 @@ from models.utility_functions import skip_for_grayskull
 @pytest.mark.parametrize(
     "seq_len",
     (
-        # 128,
+        256,
+        # 32,
+        # 512,
         # 1024,
-        4096,
+        # 2048,
+        # 1024 * 8,
+        # 1024 * 16,
+        # 4096,
     ),
 )
 @pytest.mark.parametrize(
@@ -56,9 +61,10 @@ def test_llama_model_inference(mesh_device, seq_len, use_program_cache, reset_se
     mesh_device.enable_async(True)
 
     # Use instruct weights instead of general weights
-    instruct = True
+    instruct = False
 
-    model_args = TtModelArgs(mesh_device, instruct=instruct, max_batch_size=1)
+    model_args = TtModelArgs(mesh_device, instruct=instruct)
+    # model_args.n_layers = 1
     tokenizer = Tokenizer(model_args.tokenizer_path)
 
     logger.info("Loading weights...")
@@ -84,12 +90,12 @@ def test_llama_model_inference(mesh_device, seq_len, use_program_cache, reset_se
     prompt_file = os.path.join(current_file_dir, "tale-of-two-cities.txt.bz2")
 
     with bz2.open(prompt_file, "rt", encoding="utf-8") as f:
-        prompt = f.read()
+        prompts = f.read()
 
     if instruct:
-        encoded_prompt = encode_prompt_llama_instruct(tokenizer, prompt)[:seq_len]
+        encoded_prompts = [encode_prompt_llama_instruct(tokenizer, prompt) for prompt in prompts]
     else:
-        encoded_prompt = tokenizer.encode(prompt, bos=True, eos=False)[:seq_len]
+        encoded_prompts = tokenizer.encode(prompts, bos=True, eos=False)[:seq_len]
 
     if run_ref_pt:
         reference_model = Transformer(model_args)
@@ -126,28 +132,45 @@ def test_llama_model_inference(mesh_device, seq_len, use_program_cache, reset_se
 
     batch = 1
 
-    # Select the first token from the prompt for initial decoding
-    encoded_prompt_tensor = torch.tensor(encoded_prompt)  # [:,0]
-    pt_decode_input = embd(encoded_prompt_tensor).view(batch, seq_len, -1)
+    # Select the first token from the prompts for initial decoding
+    encoded_prompts_tensor = torch.tensor(encoded_prompts)  # [:,0]
+
+    pt_decode_input = embd(encoded_prompts_tensor).view(batch, seq_len, -1)
 
     tt_decode_input = pt_decode_input
-
     decode_input = model_args.prepare_inputs_ttnn_prefill(
         tt_decode_input,
+        # force_replicated=False if model_args.is_galaxy else True,
     )
     for i in range(1):
         start_pos = 0
+
         # Run TT model
-        tt_out = tt_model(decode_input, None, rot_mats, transformation_mats, user_id=i, mode="prefill")
+        tt_out = tt_model(
+            decode_input, None, rot_mats, transformation_mats, user_id=i, mode="prefill", get_last_token=seq_len - 32
+        )
         # Convert ttnn tensor to torch tensor
-        tt_output_torch = ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))[
-            :, 0, :, :
-        ].view(
-            batch, seq_len, -1
-        )  # [ batch, seq, hidden_dim]
+        print(tt_out)
+        tt_out = ttnn.to_torch(
+            tt_out,
+            mesh_composer=ttnn.ConcatMesh2dToTensor(
+                mesh_device, dims=(3, 1) if model_args.is_galaxy else (1, 3), mesh_shape=model_args.cluster_shape
+            ),
+        )
+        print(tt_out.shape)
+        tt_output_torch = tt_out[:, 0:1, -1, : model_args.vocab_size].view(batch, -1)  # [ batch, seq, hidden_dim]
 
         if run_ref_pt:  # Run reference model
-            ref_output = reference_model(pt_decode_input, start_pos, mode="prefill")
+            ref_output = reference_model(pt_decode_input, start_pos, mode="prefill")[:, -1, :]
+
+        print(f"{ref_output.shape=}")
+        print(f"{tt_output_torch.shape=}")
+
+        print(torch.argmax(tt_output_torch, dim=-1))
+        print(torch.argmax(ref_output, dim=-1))
+
+        print(torch.topk(tt_output_torch, 5, dim=-1))
+        print(torch.topk(ref_output, 5, dim=-1))
 
         # Measure PCC if also running reference model
         if run_ref_pt:
@@ -178,7 +201,14 @@ def test_llama_model_inference(mesh_device, seq_len, use_program_cache, reset_se
                     tt_layer_present = []
                     for layer_past in tt_model.layers[i].attention.layer_past_list[0]:
                         tt_layer_present.append(
-                            ttnn.to_torch(layer_past, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1))
+                            ttnn.to_torch(
+                                layer_past,
+                                mesh_composer=ttnn.ConcatMesh2dToTensor(
+                                    mesh_device,
+                                    dims=(1, 0) if model_args.is_galaxy else (0, 1),
+                                    mesh_shape=model_args.cluster_shape,
+                                ),
+                            )[:batch, :, :, :]
                         )
 
                     for i, (cache_pt, cache_tt) in enumerate(zip(pytorch_layer_present, tt_layer_present)):

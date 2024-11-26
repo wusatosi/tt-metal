@@ -40,7 +40,7 @@ def test_llama_rms_norm_inference(mesh_device, use_program_cache, reset_seeds, e
     state_dict_prefix = model_args.get_state_dict_prefix("", 0)
     first_layer_prefix = state_dict_prefix + "attention_norm."
 
-    # Create the inner RMSNormxw
+    # Create the inner RMSNorm
     tt_inner_norm = TtRMSNorm(
         device=mesh_device,
         dim=model_args.dim,
@@ -73,9 +73,7 @@ def test_llama_rms_norm_inference(mesh_device, use_program_cache, reset_seeds, e
         dtype=dtype,
         layout=ttnn.TILE_LAYOUT,
         mesh_mapper=ttnn.ShardTensorToMesh(mesh_device, dim=-1),
-        memory_config=model_args.get_model_config()["DECODE_RESIDUAL_MEMCFG"]
-        if mode == "decode"
-        else ttnn.DRAM_MEMORY_CONFIG,
+        memory_config=ttnn.L1_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
     )
 
     tt_output = tt_model(tt_input, mode=mode)

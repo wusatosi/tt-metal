@@ -18,13 +18,14 @@ from models.utility_functions import (
     comp_allclose,
 )
 from models.utility_functions import skip_for_grayskull
+from models.demos.t3000.llama2_70b.tt.llama_common import ShardTensor2dMesh, ConcatMesh2DToTensor
 
 
 @torch.no_grad()
 @skip_for_grayskull("Requires wormhole_b0 to run")
 @pytest.mark.parametrize(
     "seq_len",
-    (2048,),
+    (32 * 1024,),
 )
 @pytest.mark.parametrize(
     "mesh_device",
@@ -43,6 +44,7 @@ def test_llama_attention_inference(seq_len, mesh_device, use_program_cache, rese
 
     model_args = TtModelArgs(mesh_device)
     model_args.n_layers = 1
+    model_args.max_seq_len = seq_len
     state_dict = model_args.load_state_dict()
 
     # Ref model needs partial state dict, but our models use full state dict keys as cached weight names
@@ -77,22 +79,21 @@ def test_llama_attention_inference(seq_len, mesh_device, use_program_cache, rese
         layer_num=0,
         dtype=dtype,
         configuration=model_args,
+        transformation_mats=None,
     )
 
     pt_attention_input = (torch.rand(batch, seq_len, model_args.dim) * 2) - 1
     tt_attention_input = pt_attention_input.clone()
     attention_input = model_args.prepare_inputs_ttnn_prefill(
         tt_attention_input,
-        force_replicated=True,
+        force_replicated=False if model_args.is_galaxy else True,
     )
 
     tt_out = tt_model(attention_input, 0, rot_mats, transformation_mats, user_id=0, mode="prefill")
-    tt_output_torch = ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))[
-        0, :, :, : model_args.dim
-    ].view(
-        batch, seq_len, -1
-    )  # [ batch, seq, dim]
-
+    tt_out = ttnn.to_torch(
+        tt_out, mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(1, 3), mesh_shape=model_args.cluster_shape)
+    )
+    tt_output_torch = tt_out[:, 0:1, :, : model_args.dim].view(batch, seq_len, -1)  # [ batch, seq, hidden_dim]
     positions = torch.LongTensor(range(seq_len))
     freqs_cis_i = precompute_freqs_cis(
         model_args.head_dim, model_args.max_seq_len * 2, model_args.rope_theta, model_args.use_scaled_rope
@@ -118,14 +119,19 @@ def test_llama_attention_inference(seq_len, mesh_device, use_program_cache, rese
             reference_model.cache_k.clone().permute(0, 2, 1, 3),  # [batch, n_kv_heads, seq, head_dim]
             reference_model.cache_v.clone().permute(0, 2, 1, 3),  # [batch, n_kv_heads, seq, head_dim]
         ]
+
         # TT hardware execution -------------------------------------------------------------
         tt_layer_present = [
-            ttnn.to_torch(cache, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1))
+            ttnn.to_torch(
+                cache,
+                mesh_composer=ttnn.ConcatMesh2dToTensor(
+                    mesh_device, dims=(1, 0) if model_args.is_galaxy else (0, 1), mesh_shape=model_args.cluster_shape
+                ),
+            )[:batch, :, :, :]
             for cache in tt_model.layer_past
         ]
-
         for i, (cache_pt, cache_tt) in enumerate(zip(pytorch_layer_present, tt_layer_present)):
-            cache_length_to_check = min(model_args.sliding_window, generation_start_pos + generation_length + 1)
+            cache_length_to_check = min(model_args.max_seq_len, generation_start_pos + generation_length + 1)
             cache_pt = cache_pt[:, :, generation_start_pos:cache_length_to_check, :]
             cache_tt = cache_tt[:, :, generation_start_pos:cache_length_to_check, :]
             does_pass, output_pcc = comp_pcc(cache_pt, cache_tt, pcc)

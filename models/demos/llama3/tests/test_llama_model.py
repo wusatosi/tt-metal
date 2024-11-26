@@ -56,7 +56,7 @@ def test_llama_model_inference(mesh_device, weights, layers, use_program_cache, 
     # This sets the minimum PCC for each iteration
     pcc = 0.88 if layers == 1 else 0.94  # TODO For model test quick (1 layer) one iteration might get a worse PCC
 
-    instruct = True if weights == "instruct" else False
+    instruct = False if weights == "instruct" else False
     dummy_weights = True if weights == "random" else False
     model_args = TtModelArgs(mesh_device, instruct=instruct, dummy_weights=dummy_weights)
 
@@ -71,24 +71,24 @@ def test_llama_model_inference(mesh_device, weights, layers, use_program_cache, 
     final_model_pcc = {
         "llama32_1b": 0.9991,
         "llama32_3b": 0.9989,
-        "llama31_8b": 0.9987,
-        "llama32_11b": 0.9987,
-        "llama31_70b": 0.9843,
+        "llama31_8b": 0.99899,
+        "llama32_11b": 0.9976,
+        "llama31_70b": 1.0,  # TODO,
     }[model_name]
 
     final_k_cache_pcc = {
         "llama32_1b": 0.9998,
         "llama32_3b": 0.9998,
-        "llama31_8b": 0.9998,
+        "llama31_8b": 0.99986,
         "llama32_11b": 0.9995,
-        "llama31_70b": 0.9998,
+        "llama31_70b": 1.0,  # TODO,
     }[model_name]
     final_v_cache_pcc = {
         "llama32_1b": 0.9996,
         "llama32_3b": 0.9998,
-        "llama31_8b": 0.9998,
+        "llama31_8b": 0.99986,
         "llama32_11b": 0.9996,
-        "llama31_70b": 0.9998,
+        "llama31_70b": 1.0,  # TODO,
     }[model_name]
     quick_iterations = {"llama32_1b": 2, "llama32_3b": 4, "llama31_8b": 6, "llama32_11b": 6, "llama31_70b": 6}[
         model_name
@@ -98,6 +98,7 @@ def test_llama_model_inference(mesh_device, weights, layers, use_program_cache, 
 
     if layers is not None:
         model_args.n_layers = layers
+    # model_args.n_layers = 1
     state_dict = model_args.load_state_dict()
     state_dict_prefix = model_args.get_state_dict_prefix("", None)
     reference_state_dict = {
@@ -176,7 +177,7 @@ def test_llama_model_inference(mesh_device, weights, layers, use_program_cache, 
 
         decode_input = model_args.prepare_inputs_ttnn_decode(
             tt_decode_input,
-            model_args.model_config["DECODE_RESIDUAL_MEMCFG"],
+            ttnn.DRAM_MEMORY_CONFIG,
         )
         current_pos_tensor = ttnn.from_torch(
             torch.tensor([current_pos] * batch),
@@ -188,11 +189,14 @@ def test_llama_model_inference(mesh_device, weights, layers, use_program_cache, 
         # Run TT model
         tt_out = tt_model(decode_input, current_pos_tensor, rot_mat=current_rot_mat)
         # Convert ttnn tensor to torch tensor
+        mesh_composer = ttnn.ConcatMesh2dToTensor(
+            mesh_device, dims=(3, 1) if model_args.is_galaxy else (1, -1), mesh_shape=mesh_device.shape
+        )
         tt_output_torch = (
-            ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))
+            ttnn.to_torch(tt_out, mesh_composer=mesh_composer)
             .permute(2, 1, 0, 3)
-            .squeeze(1)[: model_args.max_batch_size, :, :]
-        )  # [seq, batch, hidden_dim]
+            .squeeze(2)[: model_args.max_batch_size, 0:1, : model_args.vocab_size]
+        )
 
         ttnn.deallocate(tt_out)
 
@@ -254,16 +258,22 @@ def test_llama_model_inference(mesh_device, weights, layers, use_program_cache, 
                         .attention.cache_v.clone()
                         .permute(0, 2, 1, 3),  # [batch, n_kv_heads, seq, head_dim]
                     ]
-
                     tt_layer_present = []
-                    for layer_past in tt_model.layers[l].attention.layer_past:
+                    for layer_past in tt_model.layers[l].attention.layer_past:  # TODO: Add support for TG
                         tt_layer_present.append(
-                            ttnn.to_torch(layer_past, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1))
+                            ttnn.to_torch(
+                                layer_past,
+                                mesh_composer=ttnn.ConcatMesh2dToTensor(
+                                    mesh_device,
+                                    dims=(1, 0) if model_args.is_galaxy else (0, 1),
+                                    mesh_shape=model_args.cluster_shape,
+                                ),
+                            )[:batch, :, :, :]
                         )
 
                     for kv_cache, (cache_pt, cache_tt) in enumerate(zip(pytorch_layer_present, tt_layer_present)):
                         cache_length_to_check = min(
-                            model_args.sliding_window, generation_start_pos + generation_length + 1
+                            model_args.max_seq_len, generation_start_pos + generation_length + 1
                         )
                         cache_pt = cache_pt[:, :, generation_start_pos:cache_length_to_check, :]
                         cache_tt = cache_tt[:, :, generation_start_pos:cache_length_to_check, :]

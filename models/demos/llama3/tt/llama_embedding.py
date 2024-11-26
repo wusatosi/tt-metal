@@ -24,17 +24,28 @@ class TtLlamaEmbedding(LightweightModule):
         base_name = args.get_state_dict_prefix("", None) + "tok_embeddings.weight"
         torch_weight = self.state_dict[base_name].unsqueeze(0).unsqueeze(0)
         cache_name = weight_cache_path / base_name
+        if args.is_galaxy:
+            mesh_mapper = ttnn.ShardTensor2dMesh(mesh_device=mesh_device, dims=(None, 3), mesh_shape=mesh_device.shape)
+        else:
+            mesh_mapper = ttnn.ShardTensorToMesh(mesh_device, dim=3)
         self.weights = ttnn.as_tensor(
             torch_weight,
             dtype=dtype,
             device=self.mesh_device,
-            mesh_mapper=ttnn.ShardTensorToMesh(self.mesh_device, dim=3),
+            mesh_mapper=mesh_mapper,
             layout=ttnn.ROW_MAJOR_LAYOUT,
             memory_config=args.get_model_config()["EMB_WEIGHTS_MEMCFG"],
-            cache_file_name=cache_name,
+            # cache_file_name=cache_name,
         )
 
-    def forward(self, x: ttnn.Tensor) -> ttnn.Tensor:
-        x = ttnn.embedding(x, self.weights, layout=ttnn.TILE_LAYOUT, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+    def forward(self, x: ttnn.Tensor, mode="decode") -> ttnn.Tensor:
+        x = ttnn.embedding(
+            x,
+            self.weights,
+            layout=ttnn.TILE_LAYOUT,
+            memory_config=ttnn.L1_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
+        )
         x = ttnn.reshape(x, [x.shape[0], 1, x.shape[1], x.shape[2]])
+        # x = ttnn.pad(x, padding=((0, 0), (0, 0), (0, 32-x.shape[2]), (0, 0)), value=0)
+        # x = ttnn.tilize(x, use_multicore=True)
         return x

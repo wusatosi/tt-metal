@@ -31,9 +31,16 @@ if not os.getenv("CI") == "true":  # Enable tracy signpost support in local runs
 @pytest.mark.parametrize(
     "kv_cache_len, expected_compile_time",
     (
-        (32, 30),
-        (128, 30),
-        (1024, 30),
+        (32, 20),
+        (128, 20),
+        (1024, 20),
+    ),
+)
+@pytest.mark.parametrize(
+    "mode",
+    (
+        "1_layer",
+        "full",
     ),
 )
 @pytest.mark.parametrize(
@@ -45,7 +52,9 @@ if not os.getenv("CI") == "true":  # Enable tracy signpost support in local runs
     ],
     indirect=True,
 )
-def test_llama_model_perf(mesh_device, kv_cache_len, expected_compile_time, use_program_cache, reset_seeds, ensure_gc):
+def test_llama_model_perf(
+    mesh_device, kv_cache_len, expected_compile_time, use_program_cache, reset_seeds, ensure_gc, mode
+):
     dtype = ttnn.bfloat8_b
 
     mesh_device.enable_async(True)
@@ -53,20 +62,22 @@ def test_llama_model_perf(mesh_device, kv_cache_len, expected_compile_time, use_
     model_args = TtModelArgs(mesh_device)
     tokenizer = Tokenizer(model_args.tokenizer_path)
 
-    if "3.2-1B" in model_args.DEFAULT_CACHE_PATH:
-        expected_inference_time = 0.045
-    elif "3.2-3B" in model_args.DEFAULT_CACHE_PATH:
+    if "3.2-1B" in model_args.model_name:
+        expected_inference_time = 0.04
+    elif "3.2-3B" in model_args.model_name:
         expected_inference_time = 0.065
-    elif "3.1-8B" in model_args.DEFAULT_CACHE_PATH:
+    elif "3.1-8B" in model_args.model_name:
         expected_inference_time = 0.08
-    elif "3.2-11B" in model_args.DEFAULT_CACHE_PATH:
+    elif "3.2-11B" in model_args.model_name:
         expected_inference_time = 0.085
-    elif "3.1-70B" in model_args.DEFAULT_CACHE_PATH:
+    elif "3.1-70B" in model_args.model_name:
         expected_inference_time = 0.15
     else:
         assert False, f"Llama model not found. Supported Llama models: [3.2-1B, 3.2-3B, 3.1-8B, 3.2-11B, 3.1-70B]"
 
-    # model_args.n_layers = 1
+    if mode == "1_layer":
+        model_args.n_layers = 1
+
     # Clear global profiler state before starting measurements
     profiler.clear()
 
@@ -127,11 +138,11 @@ def test_llama_model_perf(mesh_device, kv_cache_len, expected_compile_time, use_
     comment = f"kv_cache_len={kv_cache_len}_num_layers={model_args.n_layers}"
 
     # Extract the version, number of weights and device name from the cache folder
-    if "3.1" in model_args.DEFAULT_CACHE_PATH:
+    if "3.1" in model_args.model_name:
         llama_version = "3.1"
     else:
         llama_version = "3.2"
-    llama_weight = re.search(r"(\d+)B", model_args.DEFAULT_CACHE_PATH).group(1)
+    llama_weight = re.search(r"(\d+)B", model_args.model_name).group(1)
     llama_device = model_args.device_name
 
     prep_perf_report(
@@ -171,7 +182,15 @@ def run_inference(tt_model, tt_embd, embd, encoded_prompts, generation_start_pos
         dtype=ttnn.uint32,
     )
 
+    # Generate first input on host
+    pt_decode_input = embd(encoded_prompts_tensor[:, 0]).view(batch, seqlen, -1)
     # Send first input to device
+    tt_decode_input = pt_decode_input
+    decode_input = tt_model.args.prepare_inputs_ttnn_decode(
+        tt_decode_input,
+        ttnn.L1_MEMORY_CONFIG,
+    )
+
     current_pos = ttnn.from_torch(
         torch.tensor([generation_start_pos] * batch),
         device=mesh_device,
@@ -184,7 +203,6 @@ def run_inference(tt_model, tt_embd, embd, encoded_prompts, generation_start_pos
         profiler.start(f"model_run_for_inference_{i}")
 
         decode_input = ttnn.unsqueeze_to_4D(tt_embd(tt_out_tok))
-        decode_input = ttnn.to_memory_config(decode_input, tt_model.args.model_config["DECODE_RESIDUAL_MEMCFG"])
         tt_out = tt_model(decode_input, current_pos, rot_mat=current_rot_mat)
         tt_out_rm = ttnn.untilize(tt_out, use_multicore=True)
         ttnn.deallocate(tt_out)
