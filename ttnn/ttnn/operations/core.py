@@ -497,6 +497,7 @@ def as_tensor(
     tensor: Union["torch.Tensor"],  # TODO: add support for numpy.ndarray and other tensor types
     dtype: Optional[ttnn.DataType] = None,
     *,
+    tile: Optional[ttnn.Tile] = None,
     layout: Optional[ttnn.Layout] = ttnn.ROW_MAJOR_LAYOUT,
     device: Optional[ttnn.Device] = None,
     memory_config: Optional[ttnn.MemoryConfig] = None,
@@ -513,6 +514,7 @@ def as_tensor(
         dtype (ttnn.DataType, optional): The `ttnn` data type.
 
     Keyword args:
+        tile (ttnn.Tile, optional): the desired tiling configuration for the tensor. Defaults to `None`.
         layout (ttnn.Layout, optional): The `ttnn` layout. Defaults to `ttnn.ROW_MAJOR_LAYOUT`.
         device (ttnn.Device, optional): The `ttnn` device. Defaults to `None`.
         memory_config (ttnn.MemoryConfig, optional): The `ttnn` memory configuration. Defaults to `None`.
@@ -550,6 +552,7 @@ def as_tensor(
 
     def torch_to_ttnn(
         tensor: torch.Tensor,
+        tile: Optional[ttnn.Tile],
         dtype: Optional[ttnn.DataType],
         layout: Optional[ttnn.Layout],
         device: Optional[ttnn.Device],
@@ -561,6 +564,7 @@ def as_tensor(
         if use_device_tilizer:
             tensor = ttnn.from_torch(
                 tensor,
+                tile=tile,
                 layout=ttnn.ROW_MAJOR_LAYOUT,
                 mesh_mapper=mesh_mapper,
                 device=device,
@@ -570,6 +574,7 @@ def as_tensor(
         else:
             tensor = ttnn.from_torch(
                 tensor,
+                tile=tile,
                 dtype=dtype,
                 layout=layout,
                 mesh_mapper=mesh_mapper,
@@ -579,19 +584,20 @@ def as_tensor(
         return tensor
 
     if cache_file_name is None:
-        return torch_to_ttnn(tensor, dtype, layout, device, memory_config, mesh_mapper)
+        return torch_to_ttnn(tensor, tile, dtype, layout, device, memory_config, mesh_mapper)
     else:
 
         def from_torch_and_dump(
             tensor: torch.Tensor,
+            tile: Optional[ttnn.Tile],
             dtype: Optional[ttnn.DataType],
             layout: Optional[ttnn.Layout],
             cache_file_name: str,
             mesh_mapper: Optional[ttnn.TensorToMesh],
         ):
-            tensor = torch_to_ttnn(tensor, dtype, layout, device, memory_config, mesh_mapper)
+            tensor = torch_to_ttnn(tensor, tile, dtype, layout, device, memory_config, mesh_mapper)
             logger.debug(
-                f"Generating cache for {cache_file_name} of shape {tensor.shape}, dtype {dtype_name}, layout {layout_name}"
+                f"Generating cache for {cache_file_name} of shape {tensor.shape}, dtype {dtype_name}, layout {layout_name}, tile {tile}"
             )
             pathlib.Path(cache_file_name).parent.mkdir(parents=True, exist_ok=True)
             distributed_config = mesh_mapper.config() if mesh_mapper else dict()
@@ -613,10 +619,10 @@ def as_tensor(
                 logger.warning(
                     f"Cached file {cache_file_name} has shape {tensor.shape}, expected {tensor.shape}, regenerating cache"
                 )
-                tensor = from_torch_and_dump(tensor, dtype, layout, cache_file_name, mesh_mapper)
+                tensor = from_torch_and_dump(tensor, tile, dtype, layout, cache_file_name, mesh_mapper)
             logger.debug(f"Loaded cache for {cache_file_name} of shape {tensor.shape}")
         except (FileNotFoundError, RuntimeError):
-            tensor = from_torch_and_dump(tensor, dtype, layout, cache_file_name, mesh_mapper)
+            tensor = from_torch_and_dump(tensor, tile, dtype, layout, cache_file_name, mesh_mapper)
         return tensor
 
 
