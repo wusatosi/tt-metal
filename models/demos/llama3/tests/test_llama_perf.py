@@ -162,12 +162,12 @@ def run_inference(tt_model, tt_embd, embd, encoded_prompts, generation_start_pos
     mesh_device = tt_model.mesh_device
 
     # pre-compute the rotational embedding matrix and send to device
-    current_rot_mat, rot_matrix = get_single_rot_mat(
-        tt_model.args.head_dim,
-        tt_model.mesh_device,
-        tt_model.args.num_devices,
-        start_pos=0,
-    )
+    # current_rot_mat, rot_matrix = get_single_rot_mat(
+    #     tt_model.args.head_dim,
+    #     tt_model.mesh_device,
+    #     tt_model.args.num_devices,
+    #     start_pos=0,
+    # )
 
     # Select the first token from the prompts for initial decoding
     encoded_prompts_tensor = torch.tensor(encoded_prompts)  # [:,0]
@@ -202,6 +202,8 @@ def run_inference(tt_model, tt_embd, embd, encoded_prompts, generation_start_pos
         # Run TT model
         profiler.start(f"model_run_for_inference_{i}")
 
+        current_pos_torch = torch.tensor([0] * batch)
+        current_rot_mat = tt_model.rope_setup.get_rot_mats(current_pos_torch)
         decode_input = ttnn.unsqueeze_to_4D(tt_embd(tt_out_tok))
         tt_out = tt_model(decode_input, current_pos, rot_mat=current_rot_mat)
         tt_out_rm = ttnn.untilize(tt_out, use_multicore=True)
@@ -209,9 +211,9 @@ def run_inference(tt_model, tt_embd, embd, encoded_prompts, generation_start_pos
         tt_out_tok = ttnn.argmax(tt_out_rm, dim=3, use_multicore=True, output_tensor=tt_out_tok)
         ttnn.deallocate(tt_out_rm)
 
-        # Update the rotation matrix for the next iteration
-        new_rot_mat = ttnn.linear(rot_matrix, current_rot_mat)
-        current_rot_mat = ttnn.copy(new_rot_mat, current_rot_mat)
+        # # Update the rotation matrix for the next iteration
+        # new_rot_mat = ttnn.linear(rot_matrix, current_rot_mat)
+        # current_rot_mat = ttnn.copy(new_rot_mat, current_rot_mat)
         ttnn.plus_one(current_pos)
 
         profiler.end(f"model_run_for_inference_{i}")
