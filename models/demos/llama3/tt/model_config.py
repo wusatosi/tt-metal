@@ -648,16 +648,68 @@ class TtModelArgs:
                 ),
             )
 
-            self.model_config["FF1_ACT_MEMCFG"] = ttnn.create_sharded_memory_config(
-                shape=(32, 2048 // 8),
-                core_grid=ttnn.CoreGrid(y=1, x=8),
+            self.model_config["MLP_ACT_MEMCFG"] = ttnn.create_sharded_memory_config(
+                shape=(32, self.dim // 4 // 16),  # dim / num devices / 16 cores
+                core_grid=ttnn.CoreGrid(x=8, y=2),
                 strategy=ttnn.ShardStrategy.WIDTH,
                 orientation=ttnn.ShardOrientation.ROW_MAJOR,
                 use_height_and_width_as_shard_shape=True,
             )
 
-            self.model_config["FF1_OUT_GATHERED_MEMCFG"] = ttnn.create_sharded_memory_config(
-                shape=(32 * 4, self.hidden_dim // 8 // 8),
+            self.model_config["FF1_3_TG_PROGCFG"] = self.matmul_1d_config_from_tensor_shapes(
+                (
+                    1,
+                    1,
+                    32,
+                    self.dim // 4,
+                ),
+                (
+                    1,
+                    1,
+                    self.dim // 4,
+                    self.hidden_dim // 8,
+                ),
+                grid=ttnn.CoreGrid(x=8, y=2),
+                overwrite_subblock_h=1,
+                overwrite_subblock_w=1,
+            )
+
+            self.model_config["FF2_TG_PROGCFG"] = self.matmul_1d_config_from_tensor_shapes(
+                (
+                    1,
+                    1,
+                    32,
+                    self.hidden_dim // 8,
+                ),
+                (
+                    1,
+                    1,
+                    self.hidden_dim // 8,
+                    self.dim // 4,
+                ),
+                grid=ttnn.CoreGrid(x=8, y=2),
+                overwrite_subblock_h=1,
+                overwrite_subblock_w=1,
+            )
+
+            self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] = ttnn.create_sharded_memory_config(
+                shape=(32, self.hidden_dim // 28 // 8),  # shard_grid_cores = 28, num_devices=8
+                core_grid=ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(6, 3))}),
+                strategy=ttnn.ShardStrategy.WIDTH,
+                orientation=ttnn.ShardOrientation.ROW_MAJOR,
+                use_height_and_width_as_shard_shape=True,
+            )
+
+            self.model_config["FF2_OUT_REDUCE_SCATTER_MEMCFG"] = ttnn.create_sharded_memory_config(
+                shape=(32, self.hidden_dim // 8 // 4),  # shard_grid_cores = 8, num_devices=4
+                core_grid=ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 0))}),
+                strategy=ttnn.ShardStrategy.WIDTH,
+                orientation=ttnn.ShardOrientation.ROW_MAJOR,
+                use_height_and_width_as_shard_shape=True,
+            )
+
+            self.model_config["SELF_OUT_REDUCE_SCATTER_MEMCFG"] = ttnn.create_sharded_memory_config(
+                shape=(32, 2048 // 8 // 8),  # mesh_rows = 8, num_cores=8
                 core_grid=ttnn.CoreGrid(y=1, x=8),
                 strategy=ttnn.ShardStrategy.WIDTH,
                 orientation=ttnn.ShardOrientation.ROW_MAJOR,
@@ -792,6 +844,7 @@ class TtModelArgs:
             self.num_all_gather_links = (
                 2 if self.is_galaxy else 1
             )  # TODO: try out 3 for short axis and 4 for long axis (TG only) <- should work but untested in model
+            self.ccl_dtype = ttnn.bfloat8_b
 
     def is_distributed_norm(self, mode):
         if not self.is_multichip:
@@ -803,7 +856,7 @@ class TtModelArgs:
         return False
 
     def ccl_topology(self):
-        if self.num_devices == 8:  # T3K
+        if self.num_devices == 8 and os.getenv("ACTUAL_DEVICE", "") != "TG":  # T3K
             return ttnn.Topology.Ring
         elif self.num_devices > 1:  # All other multi chip devices
             return ttnn.Topology.Linear
@@ -1096,6 +1149,94 @@ class TtModelArgs:
             per_core_M=math.ceil(m / self.tile_size),
             per_core_N=math.ceil(n / (self.tile_size * num_cores)),
             fused_activation=None,
+        )
+
+    def matmul_1d_config(
+        self,
+        m,
+        k,
+        n,
+        grid=ttnn.CoreGrid(x=8, y=8),
+        act=None,
+        is_fp32_accumulate=False,
+        overwrite_per_core_k=None,
+        overwrite_subblock_w=None,
+        overwrite_subblock_h=None,
+    ):
+        tile_width = 32
+        tile_height = 32
+
+        if (
+            n // tile_width // grid.num_cores < 1
+        ):  # use less number of cores in case we have more N num tiles than cores
+            # assert (n // tile_width) % grid.x == 0
+            grid_y = n // tile_width // grid.x
+            grid = ttnn.CoreGrid(x=grid.x, y=grid_y)
+
+        per_core_m = m // tile_height
+        per_core_k = math.ceil(k / tile_width / grid.num_cores)
+        per_core_n = math.ceil(n / tile_width / grid.num_cores)
+
+        if is_fp32_accumulate:
+            max_subblock_w_h = 4
+        else:
+            max_subblock_w_h = 8
+
+        # find the largest value between 1 and 8 that is a factor of per_core_n
+        # e.g. if per_core_n is 14, then out_subblock_w = 7
+        out_subblock_w = max([i for i in range(1, max_subblock_w_h + 1) if per_core_n % i == 0])
+
+        # find the largest value that is a factor of per_core_m such that
+        # out_subblock_w * out_subblock_h <= 8
+        out_subblock_h = max(
+            [
+                i
+                for i in range(1, max_subblock_w_h + 1)
+                if per_core_m % i == 0 and i * out_subblock_w <= max_subblock_w_h
+            ]
+        )
+
+        if overwrite_per_core_k is not None:
+            per_core_k = overwrite_per_core_k
+
+        if overwrite_subblock_w is not None:
+            out_subblock_w = overwrite_subblock_w
+
+        if overwrite_subblock_h is not None:
+            out_subblock_h = overwrite_subblock_h
+
+        return ttnn.MatmulMultiCoreReuseMultiCast1DProgramConfig(
+            compute_with_storage_grid_size=(grid.x, grid.y),
+            in0_block_w=per_core_k,
+            out_subblock_h=out_subblock_h,
+            out_subblock_w=out_subblock_w,
+            per_core_M=per_core_m,
+            per_core_N=per_core_n,
+            fuse_batch=True,
+            fused_activation=act,
+            mcast_in0=True,
+        )
+
+    def matmul_1d_config_from_tensor_shapes(
+        self,
+        in0_shape,
+        in1_shape,
+        grid=ttnn.CoreGrid(x=8, y=8),
+        act=None,
+        is_fp32_accumulate=False,
+        overwrite_subblock_w=None,
+        overwrite_subblock_h=None,
+    ):
+        m, k, n = in0_shape[0] * in0_shape[1] * in0_shape[2], in0_shape[3], in1_shape[3]
+        return self.matmul_1d_config(
+            m,
+            k,
+            n,
+            grid,
+            act,
+            is_fp32_accumulate,
+            overwrite_subblock_w=overwrite_subblock_w,
+            overwrite_subblock_h=overwrite_subblock_h,
         )
 
     def create_sharded_norm_config(self, grid):

@@ -29,6 +29,9 @@ class TtLlamaAttention(LightweightModule):
         self.n_kv_heads = configuration.n_kv_heads
         self.paged_attention_config = configuration.paged_attention_config
         self.min_kv_prefill_shard_seqlen = configuration.min_kv_prefill_shard_seqlen
+        self.ccl_dtype = configuration.ccl_dtype
+        self.num_reduce_scatter_links = configuration.num_reduce_scatter_links
+        self.num_all_gather_links = configuration.num_all_gather_links
 
         self.num_device_groups = self.num_devices // self.n_kv_heads
         self.num_devices_per_group = self.n_kv_heads if self.TG else self.num_devices
@@ -227,16 +230,18 @@ class TtLlamaAttention(LightweightModule):
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
             program_config=self.model_config["XQKV_DECODE_PROGCFG"],
             compute_kernel_config=self.compute_kernel_config_hifi2,
-            dtype=ttnn.bfloat16,
+            dtype=self.ccl_dtype if self.is_multichip else ttnn.bfloat16,
         )
         ttnn.deallocate(x)
         xqkv_fused = tt_all_reduce(
             xqkv_fused_sharded,
             self.mesh_device,
             cluster_axis=1,
-            num_links=2,
+            num_reduce_scatter_links=self.num_reduce_scatter_links,
+            num_all_gather_links=self.num_all_gather_links,
             memory_config=self.model_config["QKV_OUT_GATHERED_MEMCFG"](self.mesh_device.shape[1]),
             sharded=True,
+            dtype=self.ccl_dtype,
         )
 
         if TG:
@@ -248,7 +253,9 @@ class TtLlamaAttention(LightweightModule):
                 memory_config=self.model_config["CREATE_HEAD_INPUT_MEMCFG"],
             )
         else:
-            xqkv_fused = ttnn.sharded_to_interleaved(xqkv_fused_sharded, ttnn.L1_MEMORY_CONFIG)
+            xqkv_fused = ttnn.to_memory_config(
+                xqkv_fused_sharded, memory_config=ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat16
+            )
 
         ttnn.deallocate(xqkv_fused_sharded)
 
@@ -393,10 +400,9 @@ class TtLlamaAttention(LightweightModule):
                 num_links=2,
                 memory_config=self.model_config["GATHER_USERS_MEMCFG"](self.mesh_device.shape[1]),
                 sharded=True,
+                # dtype=self.ccl_dtype,  # Running bf16 until we have SDPA output bfp8 df; otherwise we have two sharded to interleaved/interleaved to sharded conversions
             )
             if TG:
-                attn_output = ttnn.to_memory_config(attn_output, ttnn.L1_MEMORY_CONFIG)
-
                 # user_selection_matrix = [1, 1, 32, 128]
                 # user_selection_matrix @ activation -> [1, 1, 32, 128] * [1, 1, 128, 2048] -> [1, 1, 32, 2048]
                 attn_output = ttnn.matmul(
@@ -425,18 +431,14 @@ class TtLlamaAttention(LightweightModule):
                 dense_out_sharded,
                 self.mesh_device,
                 cluster_axis=0,
-                num_links=2 if TG else 1,
-                dim=0 if TG else 3,
-                memory_config=self.model_config["SELF_OUT_GATHERED_MEMCFG"](self.mesh_device.shape[0])
-                if TG
-                else ttnn.DRAM_MEMORY_CONFIG,
+                num_reduce_scatter_links=self.num_reduce_scatter_links,
+                num_all_gather_links=self.num_all_gather_links,
+                dim=3,
+                memory_config=self.model_config["SELF_OUT_REDUCE_SCATTER_MEMCFG"] if TG else ttnn.L1_MEMORY_CONFIG,
                 sharded=True,
+                dtype=self.ccl_dtype,
+                use_composite=True,
             )
-
-            if TG:
-                dense_out_reduced = ttnn.to_memory_config(
-                    dense_out_reduced, self.model_config["SHARDED_ATTN_INPUT_MEMCFG"]
-                )
 
             return dense_out_reduced
 
@@ -455,7 +457,7 @@ class TtLlamaAttention(LightweightModule):
         xqkv_fused = ttnn.linear(
             x_11SH,
             self.wqkv,
-            dtype=ttnn.bfloat16,
+            dtype=self.ccl_dtype if self.is_multichip else ttnn.bfloat16,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
             compute_kernel_config=self.compute_kernel_config_hifi2,
             program_config=self.model_config["XQKV_PREFILL_PROGCFG"](seq_len),
@@ -464,7 +466,13 @@ class TtLlamaAttention(LightweightModule):
         x_11SH.deallocate(True)
 
         xqkv_fused = tt_all_reduce(
-            xqkv_fused, self.mesh_device, cluster_axis=1, num_links=2, memory_config=ttnn.DRAM_MEMORY_CONFIG
+            xqkv_fused,
+            self.mesh_device,
+            cluster_axis=1,
+            num_reduce_scatter_links=self.num_reduce_scatter_links,
+            num_all_gather_links=self.num_all_gather_links,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            dtype=self.ccl_dtype,
         )
 
         if seq_len > 2048:
@@ -491,10 +499,16 @@ class TtLlamaAttention(LightweightModule):
         # Rotary embeddings
         ###
 
+        if q_heads_1QSD_pre_rot.dtype != ttnn.bfloat16:  # Rotary embeddings require bfloat16 inputs
+            q_heads_1QSD_pre_rot = ttnn.typecast(q_heads_1QSD_pre_rot, dtype=ttnn.bfloat16)
+
         q_heads_1QSD = ttnn.experimental.rotary_embedding_llama(
             q_heads_1QSD_pre_rot, rot_mats[0], rot_mats[1], transformation_mats
         )
         ttnn.deallocate(q_heads_1QSD_pre_rot)
+
+        if k_heads_1KSD_pre_rot.dtype != ttnn.bfloat16:  # Rotary embeddings require bfloat16 inputs
+            k_heads_1KSD_pre_rot = ttnn.typecast(k_heads_1KSD_pre_rot, dtype=ttnn.bfloat16)
 
         k_heads_1KSD = ttnn.experimental.rotary_embedding_llama(
             k_heads_1KSD_pre_rot, rot_mats[0], rot_mats[1], transformation_mats
@@ -594,7 +608,18 @@ class TtLlamaAttention(LightweightModule):
             attn_output_11SH = ttnn.reshape(attn_output_11SH, [1, seq_len // 1024, 1024, -1])
 
         # Non fused All Gather Matmul
-        if self.use_fused_all_gather_matmul:
+        if self.use_fused_all_gather_matmul:  # is true for Ring topology
+            # attn_output_11SH = tt_all_gather(
+            #     attn_output_11SH,
+            #     self.mesh_device,
+            #     dim=3,
+            #     cluster_axis=1,
+            #     num_links=2,
+            #     memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            #     sharded=False,
+            #     dtype=self.ccl_dtype,
+            #     topology=self.ccl_topology,
+            # )
             attn_output_11SH = ttnn.all_gather(
                 attn_output_11SH,
                 dim=3,
@@ -623,8 +648,10 @@ class TtLlamaAttention(LightweightModule):
                 self.mesh_device,
                 cluster_axis=0,
                 dim=0 if TG else 3,
-                num_links=2 if TG else 1,
+                num_reduce_scatter_links=self.num_reduce_scatter_links,
+                num_all_gather_links=self.num_all_gather_links,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                dtype=self.ccl_dtype,
             )
 
         return output_11SH

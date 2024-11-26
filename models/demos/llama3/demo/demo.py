@@ -676,7 +676,7 @@ def run_llama3_demo(
     logger.info("")
 
     supported_models = ["3.2-1B", "3.2-3B", "3.1-8B", "3.2-11B", "3.1-70B"]
-    supported_devices = ["N150", "N300", "T3K"]
+    supported_devices = ["N150", "N300", "T3K", "TG"]
 
     # TODO update targets based on the llama3 model and the target device
     llama_model_name = model_args.model_name
@@ -690,22 +690,27 @@ def run_llama3_demo(
         "N150_3.2-1B": 1050,  # TODO Update target
         "N300_3.2-1B": 1050,  # TODO Update target
         "T3K_3.2-1B": 1050,  # TODO Update target
+        "TG_3.2-1B": 1050,  # TODO Update target
         #
         "N150_3.2-3B": 1050,  # TODO Update target
         "N300_3.2-3B": 1050,  # TODO Update target
         "T3K_3.2-3B": 1050,  # TODO Update target
+        "TG_3.2-3B": 1050,  # TODO Update target
         #
         "N150_3.1-8B": 1050,
         "N300_3.1-8B": 1050,
         "T3K_3.1-8B": 1050,
+        "TG_3.1-8B": 1050,
         #
         "N150_3.2-11B": 1050,  # TODO Update target
         "N300_3.2-11B": 1050,  # TODO Update target
         "T3K_3.2-11B": 1050,  # TODO Update target
+        "TG_3.2-11B": 1050,  # TODO Update target
         #
         "N150_3.1-70B": 1050,  # TODO Update target
         "N300_3.1-70B": 1050,  # TODO Update target
         "T3K_3.1-70B": 1050,  # TODO Update target
+        "TG_3.1-70B": 1050,  # TODO Update target
     }[f"{tt_device_name}_{llama_model_name}"]
 
     # Set the target decode timesfor every combination of device and model
@@ -713,20 +718,25 @@ def run_llama3_demo(
         "N150_3.2-1B": 160,  # TODO Update target
         "N300_3.2-1B": 250,  # TODO Update target
         "T3K_3.2-1B": 300,  # TODO Update target
+        "TG_3.2-1B": 300,  # TODO Update target
         #
         "N150_3.2-3B": 60,  # TODO Update target
         "N300_3.2-3B": 100,  # TODO Update target
         "T3K_3.2-3B": 150,  # TODO Update target
+        "TG_3.2-3B": 150,  # TODO Update target
         #
         "N150_3.1-8B": 23,  # TODO Update target
         "N300_3.1-8B": 38,
         "T3K_3.1-8B": 45,
+        "TG_3.1-8B": 45,  # TODO Update target
         #
         "N150_3.2-11B": 23,
         "N300_3.2-11B": 38,  # TODO Update target
         "T3K_3.2-11B": 45,  # TODO Update target
+        "TG_3.2-11B": 45,  # TODO Update target
         #
         "T3K_3.1-70B": 20,  # TODO Update target
+        "TG_3.1-70B": 20,  # TODO Update target
     }[f"{tt_device_name}_{llama_model_name}"]
 
     target_decode_tok_s = target_decode_tok_s_u * batch_size
@@ -773,7 +783,7 @@ def run_llama3_demo(
         # "single_layer",
     ],
 )
-@pytest.mark.parametrize("device_params", [{"trace_region_size": 19010000, "num_command_queues": 2}], indirect=True)
+@pytest.mark.parametrize("device_params", [{"trace_region_size": 20177472, "num_command_queues": 2}], indirect=True)
 @pytest.mark.parametrize(
     "mesh_device",
     [

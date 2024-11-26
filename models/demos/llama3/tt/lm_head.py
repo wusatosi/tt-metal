@@ -120,7 +120,7 @@ class LMHead(LightweightModule):
                 for split_size in split_sizes
             ]
 
-    def forward(self, x: ttnn.Tensor):
+    def forward(self, x: ttnn.Tensor) -> ttnn.Tensor:
         outputs = []
         for weight, pc in zip(self.output_weights, self.program_configs):
             output = ttnn.linear(
@@ -137,13 +137,17 @@ class LMHead(LightweightModule):
         output = ttnn.concat(outputs, dim=-1, memory_config=ttnn.DRAM_MEMORY_CONFIG)
 
         if self.args.is_galaxy:
-            # do tt_all_reduce
             output = tt_all_reduce(
                 output,
                 mesh_device=self.mesh_device,
                 cluster_axis=1,
-                num_links=2,
+                dim=3 if self.args.is_galaxy else 0,
+                num_reduce_scatter_links=self.args.num_reduce_scatter_links,
+                num_all_gather_links=self.args.num_all_gather_links,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                dtype=self.args.ccl_dtype,
+                sharded=False,
+                use_composite=True,
             )
 
         return output

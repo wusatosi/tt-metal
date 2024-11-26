@@ -67,9 +67,9 @@ class TtLlamaMLP(LightweightModule):
 
         if mode == "decode":  # Sharded config
             if TG:  # TODO: Fix this when TG supports DRAM sharded matmuls
-                pc_1 = None
-                pc_2 = None
-                pc_3 = None
+                pc_1 = self.model_config["FF1_3_TG_PROGCFG"]
+                pc_2 = self.model_config["FF2_TG_PROGCFG"]
+                pc_3 = self.model_config["FF1_3_TG_PROGCFG"]
             else:
                 pc_1 = self.model_config["DECODE_MLP_W1_W3_PRG_CONFIG"]
                 pc_2 = self.model_config["DECODE_MLP_W2_PRG_CONFIG"]
@@ -88,8 +88,7 @@ class TtLlamaMLP(LightweightModule):
             x,
             self.w1,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
-            core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_1 else None,
-            dtype=ttnn.bfloat16,
+            dtype=ttnn.bfloat8_b,
             program_config=pc_1,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
         )
@@ -106,34 +105,56 @@ class TtLlamaMLP(LightweightModule):
             x,
             self.w3,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
-            core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_3 else None,
-            dtype=ttnn.bfloat16,
+            dtype=ttnn.bfloat8_b,
             program_config=pc_3,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
         )
         ttnn.deallocate(x)
 
-        w3_out = tt_all_reduce(
-            w3_out,
-            self.mesh_device,
-            cluster_axis=1,
-            num_links=2,
-            sharded=True if mode == "decode" else False,
-            memory_config=self.model_config["FF1_OUT_GATHERED_MEMCFG"] if mode == "decode" else None,
-        )
-        w2_in = ttnn.multiply(
+        if TG:
+            input_mem_cfg = w1_out.memory_config()
+            w1_out = ttnn.reduce_scatter(
+                w1_out,
+                scatter_dim=3,
+                math_op=ttnn.ReduceType.Sum,
+                num_links=self.args.num_reduce_scatter_links,
+                cluster_axis=1,
+                mesh_device=self.mesh_device,
+                topology=ttnn.Topology.Linear,
+                memory_config=self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else None,
+            )
+            w3_out = ttnn.reduce_scatter(
+                w3_out,
+                scatter_dim=3,
+                math_op=ttnn.ReduceType.Sum,
+                num_links=1,
+                cluster_axis=1,
+                mesh_device=self.mesh_device,
+                topology=ttnn.Topology.Linear,
+                memory_config=self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else None,
+            )
+
+        w2_in = ttnn.mul(
             w1_out,
             w3_out,
-            memory_config=(
-                self.model_config["SHARDED_MLP2_INPUT_MEMCFG"] if TG else ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG
-            )
-            if mode == "decode"
-            else ttnn.DRAM_MEMORY_CONFIG,
+            memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
             input_tensor_a_activation=ttnn.UnaryOpType.SILU,
             dtype=ttnn.bfloat8_b,
         )
-        ttnn.deallocate(w3_out)
-        ttnn.deallocate(w1_out)
+
+        if TG:
+            w2_in = ttnn.all_gather(
+                w2_in,
+                3,
+                num_links=2,
+                cluster_axis=1,
+                mesh_device=self.mesh_device,
+                topology=ttnn.Topology.Linear,
+                memory_config=input_mem_cfg,
+            )
+            if mode == "decode":
+                w2_in = ttnn.to_memory_config(w2_in, ttnn.L1_MEMORY_CONFIG)
+
         # Tg is already correctly sharded within all_reduce
         if mode == "decode" and not TG:
             # Reshard w2_in to a different core_grid configuration. Avoid using ttnn.reshard() due to incompatibility with trace mode
@@ -146,8 +167,7 @@ class TtLlamaMLP(LightweightModule):
             w2_in,
             self.w2,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
-            core_grid=ttnn.CoreGrid(y=1, x=8) if not pc_2 else None,
-            dtype=ttnn.bfloat16,
+            dtype=self.args.ccl_dtype if self.args.is_multichip else ttnn.bfloat16,
             program_config=pc_2,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
         )
@@ -159,12 +179,15 @@ class TtLlamaMLP(LightweightModule):
             w2_out,
             self.mesh_device,
             cluster_axis=0,
-            num_links=1 if not TG else 2,
-            dim=3 if not TG else 0,
-            memory_config=(self.model_config["FF2_OUT_GATHERED_MEMCFG"] if TG else ttnn.L1_MEMORY_CONFIG)
+            dim=3,
+            num_reduce_scatter_links=self.args.num_reduce_scatter_links,
+            num_all_gather_links=self.args.num_all_gather_links,
+            sharded=True if mode == "decode" else False,
+            memory_config=(self.model_config["FF2_OUT_REDUCE_SCATTER_MEMCFG"] if TG else ttnn.L1_MEMORY_CONFIG)
             if mode == "decode"
             else ttnn.DRAM_MEMORY_CONFIG,
-            sharded=(mode == "decode"),
+            dtype=self.args.ccl_dtype,
+            use_composite=True,
         )
 
         # Ensure dim 0 and 1 are 1

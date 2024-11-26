@@ -82,7 +82,7 @@ class TtTransformerBlock(LightweightModule):
         )
 
         self.ATTN_ACT_MEMCFG = self.model_config["SHARDED_ATTN_INPUT_MEMCFG"]
-        self.MLP_ACT_MEMCFG = self.model_config["FULL_GRID_MEMCFG"]
+        self.MLP_ACT_MEMCFG = self.model_config["MLP_ACT_MEMCFG"]
 
     def forward(
         self,
@@ -114,10 +114,11 @@ class TtTransformerBlock(LightweightModule):
         )
         # print("done with attention")
         # Here x and attn_out are both fractured across devices
-        h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg)
+        h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg, dtype=ttnn.bfloat16)
         if mode == "prefill":
             x.deallocate(True)
             attn_out.deallocate(True)
+
         # Norms take fractured inputs and output replicated across devices
         ff_in = self.ff_norm(h, mode)
         if TG and mode == "decode":
@@ -129,5 +130,12 @@ class TtTransformerBlock(LightweightModule):
 
         # print("done with feed forward")
         # ff_out and h are both fractured across devices
-        out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)
+        out = ttnn.add(
+            h,
+            ff_out,
+            memory_config=skip_mem_cfg,
+            dtype=self.args.ccl_dtype
+            if self.args.is_multichip and not self.args.is_distributed_norm(mode)
+            else ttnn.bfloat16,
+        )
         return out  # fractured across devices
