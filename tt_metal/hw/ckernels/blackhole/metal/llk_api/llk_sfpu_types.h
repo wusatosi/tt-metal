@@ -89,4 +89,5 @@ enum SfpuType {
     cumsum,
     fill,
     prelu,
+    reshuffle_rows,
 };
