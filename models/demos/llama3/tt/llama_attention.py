@@ -52,6 +52,7 @@ class TtLlamaAttention(LightweightModule):
         self.model_config = configuration.get_model_config()
         self.ccl_topology = configuration.ccl_topology()
         self.is_multichip = configuration.is_multichip
+        self.transpose_weights = configuration.transpose_weights
 
         layer_name = configuration.get_state_dict_prefix(self.__class__.__name__, layer_num)
         if configuration.dummy_weights or (weight_cache_path is None):
@@ -101,6 +102,7 @@ class TtLlamaAttention(LightweightModule):
                 ],
                 dim=-1,
             ),
+            tile=ttnn.Tile((32, 32), transpose_tile=self.transpose_weights),
             device=self.mesh_device,
             mesh_mapper=ttnn.ShardTensorToMesh(self.mesh_device, dim=-1),
             dtype=self.dtype,
@@ -115,6 +117,7 @@ class TtLlamaAttention(LightweightModule):
             pt_wo = self.state_dict[wo_str].transpose(-1, -2).unsqueeze(0).unsqueeze(0)
             wo_ttnn = ttnn.as_tensor(
                 pt_wo,
+                tile=ttnn.Tile((32, 32), transpose_tile=self.transpose_weights),
                 dtype=ttnn.bfloat8_b,
                 layout=ttnn.TILE_LAYOUT,
                 device=self.mesh_device,
@@ -134,6 +137,7 @@ class TtLlamaAttention(LightweightModule):
                     -2,
                     -1,
                 ),
+                tile=ttnn.Tile((32, 32), transpose_tile=self.transpose_weights),
                 device=self.mesh_device,
                 mesh_mapper=ttnn.ShardTensorToMesh(self.mesh_device, dim=-2),
                 memory_config=wo_mem_config,
