@@ -348,7 +348,7 @@ def loopit(name, callable, mesh_device):
     # ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
 
     print(f"loopit {name}")
-    for i in tqdm(range(5_000_000)):
+    for i in tqdm(range(20_000_000)):
         # ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
         callable()
         if i % 100 == 0:

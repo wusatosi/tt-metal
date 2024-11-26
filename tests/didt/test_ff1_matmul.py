@@ -74,10 +74,10 @@ def test_ff1_matmul(
     mesh_device,
     gelu,
     math_fidelity,
-    iterations,
-    determinism_check_iterations,
     use_program_cache,
-    simulate_bh_harvesting,
+    simulate_bh_harvesting=False,
+    determinism_check_iterations=0,
+    iterations=5000000,
 ):
     if is_blackhole() and mesh_device.get_num_devices() > 1:
         pytest.skip("Multi-chip Blackhole has not been tested")

@@ -367,7 +367,7 @@ def get_model_config(llama_version="llama3", max_batch_size=32, max_context_len=
         compute_with_storage_grid_size=batch_grid_size,
         in0_block_w=4,  # 128 // TILE_SIZE (dynamic)
         out_subblock_h=1,
-        out_subblock_w=4,
+        out_subblock_w=1,
         per_core_M=1,
         per_core_N=4,
     )
@@ -401,7 +401,7 @@ def get_model_config(llama_version="llama3", max_batch_size=32, max_context_len=
         compute_with_storage_grid_size=(8, 2),
         in0_block_w=32,  # (32 x 8k) x (8k x 1k) = (32 x 1k)
         out_subblock_h=1,
-        out_subblock_w=2,  # TODO: Maximize
+        out_subblock_w=1,  # TODO: Maximize
         per_core_M=shard_height // 32,
         per_core_N=2,
         fuse_batch=True,
