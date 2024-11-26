@@ -48,6 +48,8 @@ def tt_all_reduce(
             num_links=num_reduce_scatter_links,
             memory_config=memory_config,
         )
+        input_tensor.deallocate(True)
+        return reduced
 
     # TG: all_reduce
 
@@ -76,6 +78,7 @@ def tt_all_reduce(
             compute_kernel_config=None,
             memory_config=ttnn.L1_MEMORY_CONFIG if sharded else ttnn.DRAM_MEMORY_CONFIG,
         )
+        gathered_tensor.deallocate(True)
     else:
         input_mem_cfg = input_tensor.memory_config()
         reduced_tensor = ttnn.reduce_scatter(
@@ -98,8 +101,6 @@ def tt_all_reduce(
             topology=ttnn.Topology.Linear,
             memory_config=input_mem_cfg,
         )
-
-    gathered_tensor.deallocate(True)
 
     # Reshape the reduced tensor to the original shape
     reduced_tensor = ttnn.reshape(reduced_tensor, original_shape)

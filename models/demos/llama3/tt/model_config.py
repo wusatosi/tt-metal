@@ -171,9 +171,9 @@ class TtModelArgs:
         #     else "/proj_sw/user_dev/llama3-data-cache/weights-cache-2"
         # )
         # if self.num_devices < 8:
-        LLAMA_DIR = "/proj_sw/user_dev/llama32-data/Llama3.2-1B-Instruct"  #
+        # LLAMA_DIR = "/proj_sw/user_dev/llama32-data/Llama3.2-3B-Instruct"  #
         # LLAMA_DIR = "/proj_sw/user_dev/llama31-8b-data/Meta-Llama-3.1-8B-Instruct/"
-        # LLAMA_DIR = "/proj_sw/user_dev/llama31-70b-data/Meta-Llama-3.1-70B"
+        LLAMA_DIR = "/proj_sw/user_dev/llama31-70b-data/Meta-Llama-3.1-70B"
         self.DEFAULT_CKPT_DIR = LLAMA_DIR
         self.DEFAULT_TOKENIZER_PATH = LLAMA_DIR
         self.DEFAULT_CACHE_PATH = os.path.join(LLAMA_DIR, self.device_name)
@@ -693,7 +693,7 @@ class TtModelArgs:
             )
 
             self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] = ttnn.create_sharded_memory_config(
-                shape=(32, self.hidden_dim // 28 // 8 // 4),  # shard_grid_cores = 28, num_devices=8
+                shape=(32, self.hidden_dim // 28 // 8),  # shard_grid_cores = 28, num_devices=8
                 core_grid=ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(6, 3))}),
                 strategy=ttnn.ShardStrategy.WIDTH,
                 orientation=ttnn.ShardOrientation.ROW_MAJOR,
