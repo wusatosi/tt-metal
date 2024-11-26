@@ -19,11 +19,7 @@ class TtLlamaMLP(LightweightModule):
         self.args = args
         self.model_config = model_config
         state_dict_prefix = state_dict_prefix or args.get_state_dict_prefix(self.__class__.__name__, layer_num)
-        torch_weight = (
-            lambda name: torch.transpose(self.state_dict[f"{state_dict_prefix}.{name}.weight"], -2, -1)
-            if not args.transpose_weights
-            else self.state_dict[f"{state_dict_prefix}.{name}.weight"]
-        )
+        torch_weight = lambda name: torch.transpose(self.state_dict[f"{state_dict_prefix}.{name}.weight"], -2, -1)
         if args.dummy_weights:
             cache_name = lambda _: None
         else:
@@ -44,21 +40,17 @@ class TtLlamaMLP(LightweightModule):
             else w2_mem_config
             if "w2" in name
             else w1_w3_mem_config,
-            cache_file_name=cache_name(name) if not self.args.transpose_weights else cache_name(name + "_transposed"),
+            cache_file_name=cache_name(name),
         )
 
         # Sharded weights
         w1_dim = (-1, -2) if args.is_galaxy else (-2, -1)
         w2_dim = (-2, -1) if args.is_galaxy else (-1, -2)
-        if args.transpose_weights:
-            w1_dim = (-2, -1) if args.is_galaxy else (-1, -2)
-            w2_dim = (-1, -2) if args.is_galaxy else (-2, -1)
 
         self.w1 = as_sharded_tensor(
             "w1_sharded", ttnn.bfloat4_b if self.args.is_large_model else ttnn.bfloat8_b, dim=w1_dim
         )  # bfp4 normally ok here but sub .99 pcc for llama 3.1 weights
         self.w2 = as_sharded_tensor("w2_sharded", ttnn.bfloat8_b, dim=w2_dim)
-        # self.w2 = as_sharded_tensor("w2_sharded", ttnn.bfloat4_b, dim=w2_dim) # TODO: run
         self.w3 = as_sharded_tensor(
             "w3_sharded", ttnn.bfloat4_b if self.args.is_large_model else ttnn.bfloat8_b, dim=w1_dim
         )
@@ -99,7 +91,6 @@ class TtLlamaMLP(LightweightModule):
             dtype=self.args.ccl_dtype,
             program_config=pc_1,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
-            transpose_b=self.args.transpose_weights,
         )
 
         w3_out = ttnn.linear(
@@ -109,7 +100,6 @@ class TtLlamaMLP(LightweightModule):
             dtype=self.args.ccl_dtype,
             program_config=pc_3,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
-            transpose_b=self.args.transpose_weights,
         )
 
         ttnn.deallocate(x)
@@ -174,7 +164,6 @@ class TtLlamaMLP(LightweightModule):
             dtype=self.args.ccl_dtype if self.args.is_multichip else self.args.activation_dtype,
             program_config=pc_2,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
-            transpose_b=self.args.transpose_weights,
         )
         ttnn.deallocate(w2_in)
 

@@ -804,7 +804,6 @@ class TtModelArgs:
             )  # TODO: try out 3 for short axis and 4 for long axis (TG only) <- should work but untested in model
             self.ccl_dtype = ttnn.bfloat8_b
             self.activation_dtype = ttnn.bfloat8_b
-            self.transpose_weights = True if self.is_galaxy else False  # Don't transpose with dram sharded matmuls
 
     def is_distributed_norm(self, mode):
         if not self.is_multichip:
@@ -982,11 +981,6 @@ class TtModelArgs:
             return (
                 self.model_cache_path
                 / {ttnn.bfloat16: "tensor_cache_instruct_bf16", ttnn.bfloat8_b: "tensor_cache_instruct_bfp8"}[dtype]
-            )
-        elif self.transpose_weights:
-            return (
-                self.model_cache_path
-                / {ttnn.bfloat16: "tensor_cache_bf16_transposed", ttnn.bfloat8_b: "tensor_cache_bfp8_transposed"}[dtype]
             )
         else:
             return (
