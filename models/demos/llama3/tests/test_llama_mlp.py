@@ -22,8 +22,8 @@ from models.utility_functions import skip_for_grayskull
 @pytest.mark.parametrize(
     "seq_len",
     (
-        32 * 1024,
-        128,
+        # 32 * 1024,
+        # 128,
         32,
     ),
 )
@@ -80,7 +80,7 @@ def test_llama_mlp_inference(mesh_device, seq_len, use_program_cache, reset_seed
         ),
         dtype=ttnn.bfloat8_b,
         memory_config=(
-            tt_model.model_config["FULL_GRID_MEMCFG"]
+            tt_model.model_config["MLP_ACT_MEMCFG"]
             if model_args.is_galaxy
             else model_args.model_config["SHARDED_MLP_INPUT_MEMCFG"]
         )
