@@ -27,6 +27,7 @@ memory::memory(std::string const& path, Loading loading) : loading_(loading) {
     elf.ReadImage(path);
     if (loading == Loading::CONTIGUOUS_XIP) {
         elf.MakeExecuteInPlace();
+        elf.WriteImage(path + ".xip");
     }
 
     auto const& segments = elf.GetSegments();
