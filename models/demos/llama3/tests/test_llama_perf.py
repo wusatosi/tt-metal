@@ -37,6 +37,13 @@ if not os.getenv("CI") == "true":  # Enable tracy signpost support in local runs
     ),
 )
 @pytest.mark.parametrize(
+    "mode",
+    (
+        "1_layer",
+        "full",
+    ),
+)
+@pytest.mark.parametrize(
     "mesh_device",
     [
         {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
@@ -45,7 +52,9 @@ if not os.getenv("CI") == "true":  # Enable tracy signpost support in local runs
     ],
     indirect=True,
 )
-def test_llama_model_perf(mesh_device, kv_cache_len, expected_compile_time, use_program_cache, reset_seeds, ensure_gc):
+def test_llama_model_perf(
+    mesh_device, kv_cache_len, expected_compile_time, use_program_cache, reset_seeds, ensure_gc, mode
+):
     dtype = ttnn.bfloat8_b
 
     mesh_device.enable_async(True)
@@ -66,7 +75,9 @@ def test_llama_model_perf(mesh_device, kv_cache_len, expected_compile_time, use_
     else:
         assert False, f"Llama model not found. Supported Llama models: [3.2-1B, 3.2-3B, 3.1-8B, 3.2-11B, 3.1-70B]"
 
-    # model_args.n_layers = 1
+    if mode == "1_layer":
+        model_args.n_layers = 1
+
     # Clear global profiler state before starting measurements
     profiler.clear()
 
