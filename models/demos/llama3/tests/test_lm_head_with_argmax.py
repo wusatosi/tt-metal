@@ -78,9 +78,29 @@ def test_llama_lm_head_inference(mesh_device, seq_len, use_program_cache, reset_
 
     logger.info("Run Llama_LM_Head")
     tt_output = tt_model(tt_input)
+    # Apply topK before all_gather
+    tt_output_new, tt_output_indices = ttnn.topk(
+        tt_output,
+        k=32,
+        dim=3,
+        largest=True,
+        out=None,
+        # memory_config=memory_config,
+    )
+    # Apply all_gather to the tt_output
+    tt_output_gathered = ttnn.all_gather(
+        tt_output_new,
+        dim=3,
+        num_links=2,  # galaxy=2, else=1
+        cluster_axis=0,
+        mesh_device=mesh_device,
+        topology=ttnn.Topology.Linear,
+    )
+    ttnn.deallocate(tt_output_new)
+
     if model_args.is_galaxy:
         tt_output_torch = ttnn.to_torch(
-            tt_output, mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, mesh_device.shape, dims=(3, 1))
+            tt_output_gathered, mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, mesh_device.shape, dims=(3, 1))
         )
         tt_output_torch = tt_output_torch[:, 0:1, :, : model_args.vocab_size]
     else:

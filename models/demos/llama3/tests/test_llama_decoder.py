@@ -18,6 +18,7 @@ from models.utility_functions import (
     comp_allclose,
 )
 from models.utility_functions import skip_for_grayskull
+from models.demos.t3000.llama2_70b.tt.llama_common import ShardTensor2dMesh, ConcatMesh2DToTensor
 
 
 @torch.no_grad()
@@ -92,18 +93,17 @@ def test_llama_decoder_inference(mesh_device, use_program_cache, reset_seeds, en
 
         decode_input = model_args.prepare_inputs_ttnn_decode(
             tt_decode_input,
-            ttnn.DRAM_MEMORY_CONFIG,
+            ttnn.L1_MEMORY_CONFIG,
         )
 
         # Run TT model
         tt_out = tt_model(decode_input, current_pos_tensor, rot_mat=current_rot_mat)
-        tt_output_torch = (
-            ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))[
-                :1, :, :, : model_args.dim
-            ]
-            .permute(2, 1, 0, 3)
-            .squeeze(1)[: model_args.max_batch_size, :, :]
-        )  # [seq, batch, dim]
+        tt_out = ttnn.to_torch(
+            tt_out,
+            mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(1, 3), mesh_shape=model_args.cluster_shape),
+        )
+        tt_out = tt_out[:, 0:1, :, : model_args.dim].view(1, -1, model_args.dim)
+        tt_output_torch = tt_out[:, : model_args.max_batch_size, :]
 
         freqs_cis_i = freqs_cis[current_pos, :].unsqueeze(0)
 

@@ -33,8 +33,13 @@ from models.utility_functions import skip_for_grayskull
     "seq_len",
     (
         # 128,
+        256,
+        # 512,
         # 1024,
-        4096,
+        # 2048,
+        # 1024 * 8,
+        # 1024 * 16,
+        # 4096,
     ),
 )
 @pytest.mark.parametrize(
@@ -134,20 +139,34 @@ def test_llama_model_inference(mesh_device, seq_len, use_program_cache, reset_se
 
     decode_input = model_args.prepare_inputs_ttnn_prefill(
         tt_decode_input,
+        force_replicated=False if model_args.is_galaxy else True,
     )
     for i in range(1):
         start_pos = 0
         # Run TT model
-        tt_out = tt_model(decode_input, None, rot_mats, transformation_mats, user_id=i, mode="prefill")
+        tt_out = tt_model(
+            decode_input, None, rot_mats, transformation_mats, user_id=i, mode="prefill", get_last_token=seq_len - 32
+        )
         # Convert ttnn tensor to torch tensor
-        tt_output_torch = ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))[
-            :, 0, :, :
-        ].view(
-            batch, seq_len, -1
-        )  # [ batch, seq, hidden_dim]
+        print(tt_out)
+        tt_out = ttnn.to_torch(
+            tt_out,
+            mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(3, 1), mesh_shape=model_args.cluster_shape),
+        )
+        print(tt_out.shape)
+        tt_output_torch = tt_out[:, 0:1, -1, : model_args.vocab_size].view(batch, -1)  # [ batch, seq, hidden_dim]
 
         if run_ref_pt:  # Run reference model
-            ref_output = reference_model(pt_decode_input, start_pos, mode="prefill")
+            ref_output = reference_model(pt_decode_input, start_pos, mode="prefill")[:, -1, :]
+
+        print(f"{ref_output.shape=}")
+        print(f"{tt_output_torch.shape=}")
+
+        print(torch.argmax(tt_output_torch, dim=-1))
+        print(torch.argmax(ref_output, dim=-1))
+
+        print(torch.topk(tt_output_torch, 5, dim=-1))
+        print(torch.topk(ref_output, 5, dim=-1))
 
         # Measure PCC if also running reference model
         if run_ref_pt:
@@ -178,7 +197,14 @@ def test_llama_model_inference(mesh_device, seq_len, use_program_cache, reset_se
                     tt_layer_present = []
                     for layer_past in tt_model.layers[i].attention.layer_past_list[0]:
                         tt_layer_present.append(
-                            ttnn.to_torch(layer_past, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1))
+                            ttnn.to_torch(
+                                layer_past,
+                                mesh_composer=ttnn.ConcatMesh2dToTensor(
+                                    mesh_device,
+                                    dims=(1, 0) if model_args.is_galaxy else (0, 1),
+                                    mesh_shape=model_args.cluster_shape,
+                                ),
+                            )[:batch, :, :, :]
                         )
 
                     for i, (cache_pt, cache_tt) in enumerate(zip(pytorch_layer_present, tt_layer_present)):

@@ -14,6 +14,7 @@ from typing import Optional
 from models.common.lightweightmodule import LightweightModule
 from models.demos.llama3.tt.distributed_norm import DistributedNorm
 from models.demos.llama3.tt.lm_head import LMHead
+from loguru import logger
 
 
 class TtTransformer(LightweightModule):
@@ -59,8 +60,10 @@ class TtTransformer(LightweightModule):
                 is_distributed=self.args.is_distributed_norm,
                 sharded_program_config=self.model_config["SHARDED_NORM_LM_HEAD_PRGM_CFG"],
                 sharded_output_config=self.model_config["LM_HEAD_INPUT_MEMCFG"],
+                TG=args.is_galaxy,
             ),
             args,
+            args.is_galaxy,
         )
 
         self.lm_head = LMHead(
@@ -85,6 +88,7 @@ class TtTransformer(LightweightModule):
     ):
         for layer in self.layers:
             x = layer(x, current_pos, rot_mat, transformation_mats, user_id, mode, page_table)
+            logger.info(f"layer executed")
 
         if mode == "prefill" and get_last_token == -1:
             return x
@@ -92,11 +96,17 @@ class TtTransformer(LightweightModule):
         # Slicing the tensor to the nearest ceiling/floor multiples of 32 for the prefill_len, to get the last token
         if get_last_token != -1:
             x = ttnn.slice(x, (0, 0, get_last_token, 0), (1, 1, get_last_token + 32, x.shape[-1]))
-
+            logger.info("slice")
         # Output norm
         x = self.norm(x, mode=mode)
-
+        logger.info("after model norm")
         if mode == "prefill":
-            x = ttnn.interleaved_to_sharded(x, self.model_config["LM_HEAD_INPUT_MEMCFG"])
+            x = ttnn.interleaved_to_sharded(
+                x,
+                self.model_config["LM_HEAD_INPUT_MEMCFG_TG"]
+                if self.args.is_galaxy
+                else self.model_config["LM_HEAD_INPUT_MEMCFG"],
+            )
+            logger.info("model interleaved_to_sharded")
 
         return self.lm_head(x)

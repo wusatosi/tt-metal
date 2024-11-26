@@ -36,6 +36,15 @@ if not os.getenv("CI") == "true":  # Enable tracy signpost support in local runs
         (1024, 20),
     ),
 )
+@pytest.mark.parametrize(
+    "mesh_device",
+    [
+        {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
+            os.environ.get("FAKE_DEVICE"), len(ttnn.get_device_ids())
+        )
+    ],
+    indirect=True,
+)
 def test_llama_model_perf(mesh_device, kv_cache_len, expected_compile_time, use_program_cache, reset_seeds, ensure_gc):
     dtype = ttnn.bfloat8_b
 
@@ -44,15 +53,15 @@ def test_llama_model_perf(mesh_device, kv_cache_len, expected_compile_time, use_
     model_args = TtModelArgs(mesh_device)
     tokenizer = Tokenizer(model_args.tokenizer_path)
 
-    if "3.2-1B" in model_args.DEFAULT_CACHE_PATH:
-        expected_inference_time = 0.045
-    elif "3.2-3B" in model_args.DEFAULT_CACHE_PATH:
+    if "3.2-1B" in model_args.model_name:
+        expected_inference_time = 0.04
+    elif "3.2-3B" in model_args.model_name:
         expected_inference_time = 0.065
-    elif "3.1-8B" in model_args.DEFAULT_CACHE_PATH:
+    elif "3.1-8B" in model_args.model_name:
         expected_inference_time = 0.08
-    elif "3.2-11B" in model_args.DEFAULT_CACHE_PATH:
+    elif "3.2-11B" in model_args.model_name:
         expected_inference_time = 0.085
-    elif "3.1-70B" in model_args.DEFAULT_CACHE_PATH:
+    elif "3.1-70B" in model_args.model_name:
         expected_inference_time = 0.15
     else:
         assert False, f"Llama model not found. Supported Llama models: [3.2-1B, 3.2-3B, 3.1-8B, 3.2-11B, 3.1-70B]"
@@ -118,11 +127,11 @@ def test_llama_model_perf(mesh_device, kv_cache_len, expected_compile_time, use_
     comment = f"kv_cache_len={kv_cache_len}_num_layers={model_args.n_layers}"
 
     # Extract the version, number of weights and device name from the cache folder
-    if "3.1" in model_args.DEFAULT_CACHE_PATH:
+    if "3.1" in model_args.model_name:
         llama_version = "3.1"
     else:
         llama_version = "3.2"
-    llama_weight = re.search(r"(\d+)B", model_args.DEFAULT_CACHE_PATH).group(1)
+    llama_weight = re.search(r"(\d+)B", model_args.model_name).group(1)
     llama_device = model_args.device_name
 
     prep_perf_report(
@@ -168,7 +177,7 @@ def run_inference(tt_model, tt_embd, embd, encoded_prompts, generation_start_pos
     tt_decode_input = pt_decode_input
     decode_input = tt_model.args.prepare_inputs_ttnn_decode(
         tt_decode_input,
-        ttnn.DRAM_MEMORY_CONFIG,
+        ttnn.L1_MEMORY_CONFIG,
     )
 
     current_pos = ttnn.from_torch(

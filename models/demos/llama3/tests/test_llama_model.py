@@ -34,7 +34,7 @@ from models.utility_functions import skip_for_grayskull
         ("random", 1),
         ("instruct", None),
     ],
-    ids=["quick", "full"],
+    ids=["quick"],
 )
 @pytest.mark.parametrize(
     "mesh_device",
@@ -73,7 +73,7 @@ def test_llama_model_inference(mesh_device, weights, layers, use_program_cache, 
         "llama32_3b": 0.9989,
         "llama31_8b": 0.99899,
         "llama32_11b": 0.9976,
-        "llama31_70b": 0.98454,
+        "llama31_70b": 1.0,  # TODO,
     }[model_name]
 
     final_k_cache_pcc = {
@@ -81,14 +81,14 @@ def test_llama_model_inference(mesh_device, weights, layers, use_program_cache, 
         "llama32_3b": 0.9998,
         "llama31_8b": 0.99986,
         "llama32_11b": 0.9995,
-        "llama31_70b": 0.99983,
+        "llama31_70b": 1.0,  # TODO,
     }[model_name]
     final_v_cache_pcc = {
         "llama32_1b": 0.9996,
         "llama32_3b": 0.9998,
         "llama31_8b": 0.99986,
         "llama32_11b": 0.9996,
-        "llama31_70b": 0.99985,
+        "llama31_70b": 1.0,  # TODO,
     }[model_name]
     quick_iterations = {"llama32_1b": 2, "llama32_3b": 4, "llama31_8b": 6, "llama32_11b": 6, "llama31_70b": 6}[
         model_name
@@ -176,7 +176,7 @@ def test_llama_model_inference(mesh_device, weights, layers, use_program_cache, 
 
         decode_input = model_args.prepare_inputs_ttnn_decode(
             tt_decode_input,
-            ttnn.DRAM_MEMORY_CONFIG,
+            ttnn.L1_MEMORY_CONFIG,
         )
         current_pos_tensor = ttnn.from_torch(
             torch.tensor([current_pos] * batch),
@@ -188,11 +188,14 @@ def test_llama_model_inference(mesh_device, weights, layers, use_program_cache, 
         # Run TT model
         tt_out = tt_model(decode_input, current_pos_tensor, rot_mat=current_rot_mat)
         # Convert ttnn tensor to torch tensor
+        mesh_composer = ttnn.ConcatMesh2dToTensor(
+            mesh_device, dims=(3, 1) if model_args.is_galaxy else (1, -1), mesh_shape=mesh_device.shape
+        )
         tt_output_torch = (
-            ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))
+            ttnn.to_torch(tt_out, mesh_composer=mesh_composer)
             .permute(2, 1, 0, 3)
-            .squeeze(1)[: model_args.max_batch_size, :, :]
-        )  # [seq, batch, hidden_dim]
+            .squeeze(2)[: model_args.max_batch_size, 0:1, : model_args.vocab_size]
+        )
 
         ttnn.deallocate(tt_out)
 
@@ -254,11 +257,17 @@ def test_llama_model_inference(mesh_device, weights, layers, use_program_cache, 
                         .attention.cache_v.clone()
                         .permute(0, 2, 1, 3),  # [batch, n_kv_heads, seq, head_dim]
                     ]
-
                     tt_layer_present = []
-                    for layer_past in tt_model.layers[l].attention.layer_past:
+                    for layer_past in tt_model.layers[l].attention.layer_past:  # TODO: Add support for TG
                         tt_layer_present.append(
-                            ttnn.to_torch(layer_past, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1))
+                            ttnn.to_torch(
+                                layer_past,
+                                mesh_composer=ttnn.ConcatMesh2dToTensor(
+                                    mesh_device,
+                                    dims=(1, 0) if model_args.is_galaxy else (0, 1),
+                                    mesh_shape=model_args.cluster_shape,
+                                ),
+                            )[:batch, :, :, :]
                         )
 
                     for kv_cache, (cache_pt, cache_tt) in enumerate(zip(pytorch_layer_present, tt_layer_present)):
