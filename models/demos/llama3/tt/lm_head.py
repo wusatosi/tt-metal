@@ -44,7 +44,11 @@ class LMHead(LightweightModule):
             padded_lm_head = torch.zeros(1, 1, args.dim, self.padded_vocab_size)
             padded_lm_head[:, :, :, : self.vocab_size] = torch_output_weights
 
-            memory_config = args.create_dram_sharded_mem_config(k=args.dim // 4, n=self.padded_vocab_size // 8)
+            memory_config = (
+                ttnn.DRAM_MEMORY_CONFIG
+                if args.dim == 2048
+                else args.create_dram_sharded_mem_config(k=args.dim // 4, n=self.padded_vocab_size // 8)
+            )
             self.output_weights.append(  # (2k, 16k) 128* 1024
                 ttnn.as_tensor(
                     padded_lm_head,
@@ -95,13 +99,16 @@ class LMHead(LightweightModule):
         )
         if args.is_galaxy:
             self.program_configs = [
-                args.dram_matmul_config(
+                None
+                if args.dim == 2048
+                else args.dram_matmul_config(
                     args.tile_padded_batch_rows,  # (8k, 128k) -> (2k, 16k)
                     args.dim // 4,
                     16 * 1024,
                     args.lm_head_core_grid.num_cores,
                 )
             ]
+
         else:
             self.program_configs = [
                 args.dram_matmul_config(

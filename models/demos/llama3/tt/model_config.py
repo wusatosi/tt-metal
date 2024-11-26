@@ -43,45 +43,61 @@ def num_to_corerange(x):
     )
 
 
-def set_tg_attention_config(model_config, dim, is_8b):
+def num_to_coregrid(x):
+    if x % 8 == 0:
+        return ttnn.CoreGrid(y=x // 8, x=8)
+    if x == 12:
+        return ttnn.CoreGrid(y=2, x=6)
+    if x == 20:
+        return ttnn.CoreGrid(y=4, x=5)
+
+
+def set_tg_attention_config(model_config, dim):
     shard_spec_n_cores_grid = ttnn.CoreRangeSet({num_to_corerange(24 if is_8b else 40)})
 
-    model_config["CREATE_HEAD_INPUT_MEMCFG"] = ttnn.MemoryConfig(
-        ttnn.TensorMemoryLayout.WIDTH_SHARDED,
-        ttnn.BufferType.L1,
-        ttnn.ShardSpec(
-            shard_spec_n_cores_grid,
-            [
-                32,
-                32,
-            ],
-            ttnn.ShardOrientation.ROW_MAJOR,
-            False,
-        ),
+    model_config["CREATE_HEAD_INPUT_MEMCFG"] = (
+        None
+        if dim < 4096
+        else ttnn.MemoryConfig(
+            ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+            ttnn.BufferType.L1,
+            ttnn.ShardSpec(
+                shard_spec_n_cores_grid,
+                [
+                    32,
+                    32,
+                ],
+                ttnn.ShardOrientation.ROW_MAJOR,
+                False,
+            ),
+        )
     )
+
+    num_cores = 40 if dim == 8192 else (24 if dim == 4096 else (20 if dim == 3072 else 12))
 
     model_config["QKV_OUT_GATHERED_MEMCFG"] = lambda mesh_cols: ttnn.create_sharded_memory_config(
-        shape=(32 * mesh_cols, 768 // 24 if is_8b else 1280 // 40),  # mesh_cols = 4
-        core_grid=ttnn.CoreGrid(y=3 if is_8b else 5, x=8),
-        strategy=ttnn.ShardStrategy.WIDTH,
-        orientation=ttnn.ShardOrientation.ROW_MAJOR,
-        use_height_and_width_as_shard_shape=True,
-    )
-    model_config["SELF_OUT_GATHERED_MEMCFG"] = lambda mesh_rows: ttnn.create_sharded_memory_config(
-        shape=(32 * mesh_rows, dim // 4 // 32),  # mesh_rows = 8
-        core_grid=ttnn.CoreGrid(y=4, x=8),
+        shape=(32 * mesh_cols, 32),  # mesh_cols = 4
+        core_grid=num_to_coregrid(num_cores),
         strategy=ttnn.ShardStrategy.WIDTH,
         orientation=ttnn.ShardOrientation.ROW_MAJOR,
         use_height_and_width_as_shard_shape=True,
     )
 
-    model_config["GATHER_USERS_MEMCFG"] = lambda mesh_cols: ttnn.create_sharded_memory_config(
-        shape=(32 * mesh_cols, 1024 // 32),  # mesh_cols = 4
-        core_grid=ttnn.CoreGrid(y=2 if is_8b else 4, x=8),
+    model_config["SELF_OUT_GATHERED_MEMCFG"] = lambda mesh_rows: ttnn.create_sharded_memory_config(
+        shape=(32 * mesh_rows, dim // 4 // min(32, dim // 4 // 32)),
+        core_grid=num_to_coregrid(min(32, dim // 4 // 32)),
         strategy=ttnn.ShardStrategy.WIDTH,
         orientation=ttnn.ShardOrientation.ROW_MAJOR,
         use_height_and_width_as_shard_shape=True,
     )
+    model_config["GATHER_USERS_MEMCFG"] = lambda mesh_cols: ttnn.create_sharded_memory_config(
+        shape=(32 * mesh_cols, 32),  # mesh_cols = 4
+        core_grid=num_to_coregrid(min(32, dim // 8 // 32)),
+        strategy=ttnn.ShardStrategy.WIDTH,
+        orientation=ttnn.ShardOrientation.ROW_MAJOR,
+        use_height_and_width_as_shard_shape=True,
+    )
+
     return model_config
 
 
@@ -147,16 +163,17 @@ class TtModelArgs:
         #     self.DEFAULT_CACHE_PATH = os.path.join(LLAMA_DIR, self.device_name)
         # else:
         #     assert "Please set $LLAMA_DIR to a valid checkpoint directory"
-        self.DEFAULT_CKPT_DIR = "/proj_sw/user_dev/llama3-data-repacked/llama-3-70b/"
-        self.DEFAULT_TOKENIZER_PATH = "/proj_sw/user_dev/llama3-data-repacked/"
-        self.DEFAULT_CACHE_PATH = (
-            "/proj_sw/user_dev/weights-cache-TG"
-            if self.num_devices == 32
-            else "/proj_sw/user_dev/llama3-data-cache/weights-cache-2"
-        )
+        # self.DEFAULT_CKPT_DIR = "/proj_sw/user_dev/llama3-data-repacked/llama-3-70b/"
+        # self.DEFAULT_TOKENIZER_PATH = "/proj_sw/user_dev/llama3-data-repacked/"
+        # self.DEFAULT_CACHE_PATH = (
+        #     "/proj_sw/user_dev/weights-cache-TG"
+        #     if self.num_devices == 32
+        #     else "/proj_sw/user_dev/llama3-data-cache/weights-cache-2"
+        # )
         # if self.num_devices < 8:
-        # LLAMA_DIR = "/proj_sw/user_dev/llama32-data/Llama3.2-3B-Instruct" #
-        LLAMA_DIR = "/proj_sw/user_dev/llama31-8b-data/Meta-Llama-3.1-8B-Instruct/"
+        LLAMA_DIR = "/proj_sw/user_dev/llama32-data/Llama3.2-1B-Instruct"  #
+        # LLAMA_DIR = "/proj_sw/user_dev/llama31-8b-data/Meta-Llama-3.1-8B-Instruct/"
+        # LLAMA_DIR = "/proj_sw/user_dev/llama31-70b-data/Meta-Llama-3.1-70B"
         self.DEFAULT_CKPT_DIR = LLAMA_DIR
         self.DEFAULT_TOKENIZER_PATH = LLAMA_DIR
         self.DEFAULT_CACHE_PATH = os.path.join(LLAMA_DIR, self.device_name)
@@ -217,6 +234,7 @@ class TtModelArgs:
         if self.num_devices == 1 and is_8b:
             self.max_seq_len = 8192 * 4  # 32k
         self.is_8b = is_8b
+        self.is_70b = is_70b
 
         # Some consumers like SentencePiece only accept str not Path for files
         self.model_base_path = Path(self.DEFAULT_CKPT_DIR)
@@ -314,11 +332,15 @@ class TtModelArgs:
                 self.n_heads % self.cluster_shape[1] == 0
             ), f"n_heads must be divisible by num_devices: {self.n_heads} % {self.cluster_shape[1]}"
 
-            self.model_config["ATTN_OUTPUT_PROGCFG"] = self.dram_matmul_config(
-                m=self.tile_padded_batch_rows,
-                k=self.dim // self.num_devices,
-                n=self.dim,
-                num_cores=self.n_heads // self.num_devices,
+            self.model_config["ATTN_OUTPUT_PROGCFG"] = (
+                None
+                if self.is_galaxy
+                else self.dram_matmul_config(
+                    m=self.tile_padded_batch_rows,
+                    k=self.dim // self.num_devices,
+                    n=self.dim,
+                    num_cores=self.n_heads // self.num_devices,
+                )
             )
 
             # All Gather Matmul for Dense Out (DO)
@@ -389,6 +411,12 @@ class TtModelArgs:
                 ), f"Could not find a lm_head_num_rows such that self.dim(={self.dim}) % (lm_head_num_rows * 8) == 0"
             if self.num_devices == 32:
                 lm_head_num_rows = 4
+                while self.dim % (32 * 32 * lm_head_num_rows) != 0:
+                    lm_head_num_rows -= 1
+                assert (
+                    lm_head_num_rows > 0
+                ), f"Could not find a lm_head_num_rows such that self.dim(={self.dim}) % (lm_head_num_rows * 4) == 0"
+                print(f"Using lm_head_num_rows={lm_head_num_rows}")
             self.lm_head_core_grid = ttnn.CoreGrid(y=lm_head_num_rows, x=8)
 
             self.model_config["LM_HEAD_INPUT_MEMCFG"] = ttnn.create_sharded_memory_config(
@@ -513,8 +541,8 @@ class TtModelArgs:
             attn_input_grid = self.dram_shard_core_grid_for_k(self.dim)
             self.model_config["SHARDED_ATTN_INPUT_MEMCFG"] = (
                 ttnn.create_sharded_memory_config(
-                    shape=(32, self.dim // 32 // 4),
-                    core_grid=ttnn.CoreGrid(y=4, x=8),
+                    shape=(32, nearest_32(self.dim // (8 * lm_head_num_rows) // 4)),
+                    core_grid=ttnn.CoreGrid(y=lm_head_num_rows, x=8),
                     strategy=ttnn.ShardStrategy.WIDTH,
                     orientation=ttnn.ShardOrientation.ROW_MAJOR,
                     use_height_and_width_as_shard_shape=True,
@@ -535,8 +563,8 @@ class TtModelArgs:
             # glx doesn't support DRAM sharded matmuls yet
             self.model_config["XQKV_DECODE_PROGCFG"] = (
                 ttnn.MatmulMultiCoreReuseMultiCast1DProgramConfig(
-                    compute_with_storage_grid_size=(8, 5),
-                    in0_block_w=1 if self.is_8b else 2,
+                    compute_with_storage_grid_size=(8, 5 if self.is_70b else lm_head_num_rows),
+                    in0_block_w=2 if self.is_70b else 1,
                     out_subblock_h=1,
                     out_subblock_w=1,
                     per_core_M=1,
@@ -757,7 +785,7 @@ class TtModelArgs:
                 ),
             )
 
-            self.model_config = set_tg_attention_config(self.model_config, self.dim, self.is_8b)
+            self.model_config = set_tg_attention_config(self.model_config, self.dim)
 
             self.is_multichip = self.num_devices > 1
             self.num_reduce_scatter_links = 1

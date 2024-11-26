@@ -385,7 +385,6 @@ class TtLlamaAttention(LightweightModule):
             return dense_out_sharded
 
         else:
-            print("done with attn_output_cat", attn_output_cat.shape)
             attn_output = tt_all_gather(
                 attn_output_cat,
                 self.mesh_device,

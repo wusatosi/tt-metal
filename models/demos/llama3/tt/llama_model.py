@@ -105,7 +105,7 @@ class TtTransformer(LightweightModule):
         # Output norm
         x = self.norm(x, mode=mode)
 
-        if mode == "prefill":
+        if mode == "prefill" and self.model_config["LM_HEAD_INPUT_MEMCFG_TG"].is_sharded():
             x = ttnn.interleaved_to_sharded(
                 x,
                 self.model_config["LM_HEAD_INPUT_MEMCFG_TG"]

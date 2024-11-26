@@ -9,7 +9,7 @@ class DistributedNorm(LightweightModule):
         self.args = args
 
         if TG:
-            core_grid_ln = (4, 8)
+            core_grid_ln = (min(4, args.dim // 4 // 32 // 8), 8)
             num_cores_ln = core_grid_ln[0] * core_grid_ln[1]
             hidden_size_per_device_distributed_ln = args.dim // 4
             self.gather_in_mem_cfg = ttnn.create_sharded_memory_config(
