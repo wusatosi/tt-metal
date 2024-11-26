@@ -52,7 +52,7 @@ def num_to_coregrid(x):
         return ttnn.CoreGrid(y=4, x=5)
 
 
-def set_tg_attention_config(model_config, dim):
+def set_tg_attention_config(model_config, dim, is_8b):
     shard_spec_n_cores_grid = ttnn.CoreRangeSet({num_to_corerange(24 if is_8b else 40)})
 
     model_config["CREATE_HEAD_INPUT_MEMCFG"] = (
@@ -837,7 +837,7 @@ class TtModelArgs:
                 ),
             )
 
-            self.model_config = set_tg_attention_config(self.model_config, self.dim)
+            self.model_config = set_tg_attention_config(self.model_config, self.dim, self.is_8b)
 
             self.is_multichip = self.num_devices > 1
             self.num_reduce_scatter_links = 1
