@@ -145,11 +145,13 @@ void execute_trace(MeshDevice* device, const uint32_t tid, const uint8_t cq_id, 
     auto workers = device->get_devices();
     // If blocking, ensure that each worker thread blocks until device-local trace is completed
     for (auto& worker : workers) {
+        ZoneScopedN("Push Worker");
         worker->push_work([worker, cq_id, tid, blocking]() mutable { worker->replay_trace(cq_id, tid, blocking); });
     }
     // If blocking, wait until worker threads have completed
     if (blocking) {
         for (auto& worker : workers) {
+            ZoneScopedN("Sync Worker");
             worker->synchronize();
         }
     }

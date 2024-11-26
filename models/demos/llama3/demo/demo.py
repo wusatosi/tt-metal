@@ -315,8 +315,8 @@ def run_llama3_demo(
                 logger.info("profiler-only")
                 ttnn.deallocate(tt_out)
                 logger.info(f"begin of dump")
-                for device in mesh_device.get_devices():
-                    ttnn.DumpDeviceProfiler(device)
+                # for device in mesh_device.get_devices():
+                #     ttnn.DumpDeviceProfiler(device)
                 logger.info(f"end of dump")
                 tt_out = tt_model(
                     prefill_input,
@@ -492,10 +492,9 @@ def run_llama3_demo(
             # Write to host
             ttnn.wait_for_event(1, op_event)
             if tt_model.args.is_galaxy:
-                tt_output_torch = ttnn.to_torch(
-                    tt_out_tok.cpu(blocking=True, cq_id=1),
-                    mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(3, 1), mesh_shape=mesh_device.shape),
-                )[0, 0, 0, :batch_size]
+                # Get only one tensor since they are all the same
+                tt_out_tok_cpu = ttnn.get_device_tensors(tt_out_tok)[0].cpu(blocking=True, cq_id=1)
+                tt_output_torch = tt_out_tok_cpu.to_torch()[0, 0, 0, :batch_size]
             else:
                 tt_output_torch = ttnn.to_torch(  # TODO: Apply changes to support TG
                     tt_out_tok.cpu(blocking=True, cq_id=1), mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1)
@@ -610,7 +609,9 @@ def run_llama3_demo(
     compile_decode_time = profiler.get_duration("compile_decode")
     inference_prefill_time = profiler.get_duration("inference_prefill")
     inference_decode_time = profiler.get_duration("inference_decode")
-    log_printing_time = sum(profiler.get_duration(f"log_printing_iter_{i}") for i in range(max_generated_tokens))
+    log_printing_time = sum(
+        profiler.get_duration(f"log_printing_iter_{i}") for i in range(min(iteration, max_generated_tokens))
+    )
     log_saving_file_time = profiler.get_duration(f"log_saving_file")
 
     # Correct the inference decode time to remove the time spent on compile (1st iteration) and log_printing (at the end of every iteration)
@@ -640,7 +641,9 @@ def run_llama3_demo(
         "prepare_rot_mat_for_prefill": profiler.get_duration("prepare_rot_mat_for_prefill"),
         "compile_trace": profiler.get_duration("compile_trace_0"),  # Only for batch 0
         "capture_trace": profiler.get_duration("capture_trace_0"),  # Only for batch 0
-        "reset_rot_mat": sum(profiler.get_duration(f"reset_rot_mat_{i}") for i in range(max_generated_tokens)),
+        "reset_rot_mat": sum(
+            profiler.get_duration(f"reset_rot_mat_{i}") for i in range(min(iteration, max_generated_tokens))
+        ),
         "Total compile time": compile_prefill_time + compile_decode_time,
         "Full demo runtime": profiler.get_duration("run"),
     }
@@ -762,8 +765,6 @@ def run_llama3_demo(
         "single_layer",
     ],
 )
-
-# x^2 + 8x + 7 > 0  3x^2 + 8x + (4/sqrt(3))^2  + 9 - 16/3
 @pytest.mark.parametrize("device_params", [{"trace_region_size": 19010000, "num_command_queues": 2}], indirect=True)
 @pytest.mark.parametrize(
     "mesh_device",
