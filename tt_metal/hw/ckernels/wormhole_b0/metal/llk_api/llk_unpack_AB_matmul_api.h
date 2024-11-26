@@ -40,6 +40,7 @@ inline void llk_unpack_AB_matmul_hw_configure(const llk_unpack_AB_matmul_params_
         unpB_num_faces,
         cb_interface[unpA_operand_id].fifo_page_size,
         cb_interface[unpB_operand_id].fifo_page_size);
+    // NOTE_TT: see the fifo_page_sizes are used as tile size in the called function. It must match the actual tile size.
 }
 
 template <bool is_fp32_dest_acc_en = false, StochRndType stoch_rnd_mode = StochRndType::None>
@@ -80,6 +81,10 @@ __attribute__((always_inline)) inline void llk_unpack_AB_matmul_init(
     const bool reuse_a = ct_dim >= rt_dim;
     const bool partial_face_a = get_operand_partial_face(operandA_id);
     const bool partial_face_b = get_operand_partial_face(operandB_id);
+
+    // NOTE_TT: If for 8x32, partial_face_ should be 1 but then should num_faces be 1 ?
+    // This code may be problematic. Or is it just referring to the fact only one face
+    // should be unpacked at a time, as the comment suggests ? Same comment in BUDA.
 
     const uint32_t unpA_num_faces = partial_face_a ? 1 : get_operand_num_faces(operandA_id);
     const uint32_t unpB_num_faces = partial_face_b ? 1 : get_operand_num_faces(operandB_id);  // if partial face -> unpack face by face
