@@ -57,9 +57,9 @@ MaxPool2D::shape_return_value_t MaxPool2D::compute_output_shapes(const operation
 
     bool is_out_tiled = output_dtype == DataType::BFLOAT8_B;
 
-    // need to pad the last dim to TILE_WIDTH
+    // need to pad the last dim to 16 bytes
     uint32_t out_c = input_shape[3];
-    uint32_t out_c_padded = ceil_multiple_of(out_c, (out_c <= 16) ? 16 : tt::constants::TILE_WIDTH);
+    uint32_t out_c_padded = ceil_multiple_of(out_c, (out_c <= 16) ? 16 : 16 / sizeof(output_dtype));
     uint32_t out_pagesize = out_c_padded * datum_size(datatype_to_dataformat_converter(input.get_dtype()));
     uint32_t out_nhw = sliding_window_config.batch_size * out_h * out_w;
 
@@ -94,6 +94,11 @@ MaxPool2D::tensor_return_value_t MaxPool2D::create_output_tensors(const operatio
         std::array<uint32_t, 2> shard_shape = {out_nhw_per_core, input.get_legacy_shape()[-1]};
         mem_config.shard_spec = ShardSpec{shard_grid, shard_shape, ShardOrientation::ROW_MAJOR, false};
     }
+
+    printf("CREATE OUTPUT TENSOR\n");
+    printf("shard shape: %d %d\n", mem_config.shard_spec->shape[0], mem_config.shard_spec->shape[1]);
+    printf("tensor shape: %d %d %d %d\n", output_shape[0], output_shape[1], output_shape[2], output_shape[3]);
+    printf("has tile padding: %d\n", output_shape.has_tile_padding());
 
     // return create_device_tensor(output_shape, input.get_dtype(), input.get_layout(), input.device(), mem_config);
     return create_device_tensor(output_shape, output_dtype, input.get_layout(), input.device(), mem_config);

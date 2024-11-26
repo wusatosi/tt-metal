@@ -66,6 +66,7 @@ Tensor MaxPool2DOp::invoke(uint8_t queue_id,
                                             false);
         num_cores_nhw = conv::conv2d::get_num_cores_nhw_from_parallel_config(parallel_config);
         num_cores_c = conv::conv2d::get_num_cores_channels_from_parallel_config(parallel_config);
+        printf("entering sharding\n");
         auto sharded_mem_config = conv::conv2d::create_sharded_memory_config_from_parallel_config(input_tensor_sharded.shape(), parallel_config, is_in_tiled ? tt::constants::TILE_HEIGHT : 1);
         input_tensor_sharded = ttnn::to_memory_config(input_tensor_sharded, sharded_mem_config, std::nullopt); // this converts interleaved to sharded
         out_memory_config = input_tensor_sharded.memory_config();
@@ -85,6 +86,13 @@ Tensor MaxPool2DOp::invoke(uint8_t queue_id,
 
     // update the shard spec to match the output shape
     auto shard_spec = out_memory_config.shard_spec.value();
+    /* uint32_t output_shard_width_padded;
+    if (input_tensor.dtype() == DataType::BFLOAT8_B) {
+        output_shard_width_padded = tt::round_up(channels / num_cores_c, tt::constants::TILE_WIDTH);
+    } else {
+        uint32_t data_format_size = tt::datum_size(tt::tt_metal::datatype_to_dataformat_converter(input_tensor.dtype()));
+        output_shard_width_padded = tt::round_up(channels / num_cores_c * data_format_size, 16 / data_format_size);
+    } */
     uint32_t output_shard_width_padded = input_tensor.dtype() == DataType::BFLOAT8_B ? tt::round_up(channels / num_cores_c, tt::constants::TILE_WIDTH) : tt::round_up(channels / num_cores_c * tt::datum_size(tt::tt_metal::datatype_to_dataformat_converter(input_tensor.dtype())), tt::constants::TILE_WIDTH);
     uint32_t output_nhw = output_shape[0] * output_shape[1] * output_shape[2];
     uint32_t output_nhw_padded = tt::round_up(output_nhw, num_cores_nhw * (is_out_tiled ? tt::constants::TILE_HEIGHT : 1));
