@@ -896,7 +896,8 @@ void noc_async_write_one_packet(std::uint32_t src_local_l1_addr, std::uint64_t d
     NOC_CMD_BUF_WRITE_REG(noc, write_cmd_buf, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
     // noc_nonposted_writes_num_issued[noc] += 1;
     inc_noc_nonposted_writes_num_issued<risc_type>(noc);
-    noc_nonposted_writes_acked[noc] += 1;  // num_dests
+    inc_noc_nonposted_writes_acked<risc_type>(noc);
+    // noc_nonposted_writes_acked[noc] += 1;  // num_dests
 }
 
 // TODO: write docs
@@ -935,7 +936,8 @@ void noc_async_write_multicast_one_packet(
     NOC_CMD_BUF_WRITE_REG(noc, write_cmd_buf, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
     // noc_nonposted_writes_num_issued[noc] += 1;
     inc_noc_nonposted_writes_num_issued<risc_type>(noc);
-    noc_nonposted_writes_acked[noc] += num_dests;
+    // noc_nonposted_writes_acked[noc] += num_dests;
+    inc_noc_nonposted_writes_acked<risc_type>(noc, num_dests);
 }
 
 // TODO: write docs
@@ -982,7 +984,8 @@ void noc_async_write_one_packet_with_state(std::uint32_t src_local_l1_addr, std:
     if constexpr (non_posted) {
         // noc_nonposted_writes_num_issued[noc] += 1;
         inc_noc_nonposted_writes_num_issued<risc_type>(noc);
-        noc_nonposted_writes_acked[noc] += 1;  // num_dests
+        inc_noc_nonposted_writes_acked<risc_type>(noc);
+        // noc_nonposted_writes_acked[noc] += 1;  // num_dests
     }
 }
 
@@ -1108,7 +1111,8 @@ struct InterleavedAddrGenFast {
         NOC_CMD_BUF_WRITE_REG(noc, write_cmd_buf, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
         // noc_nonposted_writes_num_issued[noc] += 1;
         inc_noc_nonposted_writes_num_issued<risc_type>(noc);
-        noc_nonposted_writes_acked[noc] += 1;  // num_dests
+        inc_noc_nonposted_writes_acked<risc_type>(noc);
+        // noc_nonposted_writes_acked[noc] += 1;  // num_dests
     }
 };
 
@@ -1204,7 +1208,8 @@ struct InterleavedPow2AddrGenFast {
         NOC_CMD_BUF_WRITE_REG(noc, write_cmd_buf, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
         // noc_nonposted_writes_num_issued[noc] += 1;
         inc_noc_nonposted_writes_num_issued<risc_type>(noc);
-        noc_nonposted_writes_acked[noc] += 1;  // num_dests
+        inc_noc_nonposted_writes_acked<risc_type>(noc);
+        // noc_nonposted_writes_acked[noc] += 1;  // num_dests
     }
 };
 
@@ -1662,7 +1667,7 @@ void noc_async_read_barrier(uint8_t noc = noc_index) {
 FORCE_INLINE
 void noc_async_write_barrier(uint8_t noc = noc_index) {
     WAYPOINT("NWBW");
-    while (!ncrisc_noc_nonposted_writes_flushed(noc))
+    while (!ncrisc_noc_nonposted_writes_flushed<risc_type>(noc))
         ;
     WAYPOINT("NWBD");
 }
