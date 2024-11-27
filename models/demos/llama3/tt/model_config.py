@@ -485,8 +485,8 @@ class TtModelArgs:
             self.model_config["SDPA_DECODE_PROGCFG"] = ttnn.SDPAProgramConfig(
                 compute_with_storage_grid_size=(8, 8),
                 exp_approx_mode=False,
-                q_chunk_size=32,
-                k_chunk_size=32,
+                q_chunk_size=256,
+                k_chunk_size=256,
             )
 
             self.model_config["SDPA_DECODE_COMPUTE_PROGCFG"] = ttnn.WormholeComputeKernelConfig(
