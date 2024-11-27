@@ -169,11 +169,12 @@ class TtLlamaMLP(LightweightModule):
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
             dtype=self.args.ccl_dtype if self.args.is_multichip else ttnn.bfloat16,
             program_config=pc_2,
-            memory_config=w2_in.memory_config(),
+            memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
         )
         ttnn.deallocate(w2_in)
         if mode == "decode" and not TG:
             w2_out = ttnn.sharded_to_interleaved(w2_out, ttnn.DRAM_MEMORY_CONFIG)
+
         w2_out_reduced = tt_all_reduce(
             w2_out,
             self.mesh_device,
