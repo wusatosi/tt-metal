@@ -55,6 +55,229 @@ def ensure_ttsmi_installed():
         print(f"Error generating reset config file: {e}")
         sys.exit(1)
 
+    print("Resetting device on program start...")
+    reset_device_sync(config_file)
+
+
+def reset_device_sync(config_file):
+    reset_cmd = ["tt-smi", "-r", config_file]
+    try:
+        print(f"Resetting device using config file: {config_file}")
+        result = subprocess.run(reset_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        print(f"Device reset successfully: {result.stdout}")
+    except subprocess.CalledProcessError as e:
+        print(f"Error during device reset: {e.stderr}")
+        sys.exit(1)
+
+
+def get_host_device():
+    hostname = os.environ.get("HOSTNAME", "unknown")
+    host_device = ""
+    if "t30" in hostname:
+        host_device = "T3K"
+    elif "glx" in hostname:
+        host_device = "TG"
+    return host_device
+
+
+class OutputEntryList:
+    def __init__(self):
+        self._entries = []
+        # Create logs directory
+        os.makedirs("logs", exist_ok=True)
+        # Load existing state
+        self._load_state()
+
+    def _load_state(self):
+        try:
+            with open("logs/state.json", "r") as f:
+                state = json.load(f)
+                for entry_data in state:
+                    entry = Entry(
+                        entry_data["command_name"],
+                        entry_data["model"],
+                        entry_data["device"],
+                        entry_data["command_input"],
+                    )
+                    # Restore saved attributes
+                    entry.status = (
+                        "Cancelled"
+                        if entry_data["status"]
+                        in [
+                            "Waiting",
+                            "Running",
+                            "Resetting",
+                            "Initializing device",
+                            "Starting",
+                            "Prefill",
+                            "Decode",
+                            "Terminating",
+                            "Exiting",
+                        ]
+                        else entry_data["status"]
+                    )
+                    entry.output = entry_data["output"]
+                    entry.log_id = entry_data["log_id"]
+                    entry.speed = entry_data["speed"]
+                    entry.pcc = entry_data["pcc"]
+                    self._entries.append(entry)
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+
+    def save_state(self):
+        state = []
+        for entry in self._entries:
+            entry_data = {
+                "command_name": entry.command_name,
+                "model": entry.model,
+                "device": entry.device,
+                "command_input": entry.command_input,
+                "status": entry.status,
+                "output": entry.output,
+                "log_id": entry.log_id,
+            }
+            if hasattr(entry, "speed"):
+                entry_data["speed"] = entry.speed
+            if hasattr(entry, "pcc"):
+                entry_data["pcc"] = entry.pcc
+            state.append(entry_data)
+
+        with open("logs/state.json", "w") as f:
+            json.dump(state, f, indent=2)
+
+    def __len__(self):
+        return len(self._entries)
+
+    def __getitem__(self, index):
+        return self._entries[index]
+
+    def __iter__(self):
+        return iter(self._entries)
+
+    def append(self, entry):
+        if entry.log_id is None:
+            entry.log_id = self.next_log_id()
+
+        # Remove any existing logs with same ID
+        for existing_file in os.listdir("logs"):
+            if existing_file.startswith(entry.log_prefix):
+                os.remove(os.path.join("logs", existing_file))
+
+        # Set parent list reference before appending
+        entry.set_parent_list(self)
+        self._entries.append(entry)
+        self.save_state()
+
+    def pop(self, index):
+        result = self._entries.pop(index)
+
+        try:
+            os.remove(result.get_log_filename())
+        except (OSError, FileNotFoundError):
+            pass
+
+        # Mark all subsequent entries as changed
+        for entry in self._entries[index:]:
+            entry.mark_changed()
+
+        self.save_state()
+        return result
+
+    def index(self, entry):
+        return self._entries.index(entry)
+
+    def get_entries(self):
+        return self._entries
+
+    def next_log_id(self):
+        # Fix potential issue with list comprehension on dictionary access
+        max_id = 0
+        for entry in self._entries:
+            if entry.log_id > max_id:
+                max_id = entry.log_id
+        return max_id + 1
+
+
+class Entry:
+    def __init__(self, command_name, model, device, command_input):
+        self.command_name = command_name
+        self.model = model
+        self.device = device.upper()
+        self.command_input = command_input
+        self.status = "Waiting"
+        self.output = ""
+        self.process = None
+        self.log_file = None
+        self.stop_event = threading.Event()
+        self.lock = threading.Lock()
+        self.log_id = None  # Will be set by OutputEntryList
+        self.speed = None
+        self.pcc = None
+        self.thread = None
+        self.changed = True  # Initialize as changed to ensure first draw
+        self._parent_list = None  # Reference to parent OutputEntryList
+
+    @property
+    def log_prefix(self):
+        """Generate the log file prefix based on the entry's log ID"""
+        return f"{self.log_id:04d}-"
+
+    def mark_changed(self):
+        self.changed = True
+
+    def mark_drawn(self):
+        self.changed = False
+
+    def __setattr__(self, name, value):
+        super().__setattr__(name, value)
+        # Mark as changed whenever any attribute is modified
+        # (except for 'changed' itself to avoid recursion)
+        if name != "changed" and hasattr(self, "changed"):
+            self.changed = True
+        # Save state if we have a parent list and this isn't an unpersisted attribute
+        if (
+            hasattr(self, "_parent_list")
+            and self._parent_list
+            and name not in ["process", "log_file", "stop_event", "lock", "thread"]
+        ):
+            self._parent_list.save_state()
+
+    def __getitem__(self, key):
+        # Support dictionary-style access for backward compatibility
+        return getattr(self, key)
+
+    def __setitem__(self, key, value):
+        # Support dictionary-style assignment for backward compatibility
+        setattr(self, key, value)
+
+    def get(self, key, default=None):
+        # Support dictionary-style get() for backward compatibility
+        return getattr(self, key, default)
+
+    def get_log_filename(self):
+        """Generate log filename based on entry properties"""
+        command_name = self._get_command_name()
+        filename = f"{self.log_prefix}{self.device}-{self.model}-{command_name}.log"
+        return os.path.join("logs", filename.replace("/", "_"))
+
+    def _get_command_name(self):
+        """Extract command name from command input"""
+        if "pytest" in self.command_input:
+            match = re.search(r"pytest\s+([\S]+)", self.command_input)
+            if match:
+                test_file = match.group(1)
+                return os.path.basename(test_file).split(".")[0]
+            return "pytest"
+        return os.path.basename(shlex.split(self.command_input)[0])
+
+    def open_log_file(self):
+        """Open and return log file for writing"""
+        self.log_file = open(self.get_log_filename(), "w")
+        return self.log_file
+
+    def set_parent_list(self, parent_list):
+        self._parent_list = parent_list
+
 
 def main(stdscr):
     curses.curs_set(0)  # Hide cursor
@@ -71,8 +294,13 @@ def main(stdscr):
     # Input fields positions (reordered)
     input_fields = [
         {"label": "Command [demo]", "value": "", "x": 0, "y": 0},
-        {"label": "Model (1b, 3b, 8b, 11b) [all]", "value": "", "x": 0, "y": 1},
-        {"label": "Device (n150, n300, t3k) [all]", "value": "", "x": 0, "y": 2},
+        {"label": "Model (1b, 3b, 8b, 11b, 70b) [all]", "value": "", "x": 0, "y": 1},
+        {
+            "label": "Device (n150, n300, t3k, tg) [all]" if host_device == "TG" else "Device (n150, n300, t3k) [all]",
+            "value": "",
+            "x": 0,
+            "y": 2,
+        },
     ]
 
     output_entries = OutputEntryList()
@@ -180,8 +408,10 @@ def main(stdscr):
                     if current_field == len(input_fields) - 1:
                         # Submit command
                         command_input = input_fields[0]["value"] or "demo"
-                        model_input = input_fields[1]["value"] or "1b,3b,8b,11b"
-                        device_input = input_fields[2]["value"] or "n150,n300,t3k"
+                        model_input = input_fields[1]["value"] or "1b,3b,8b,11b,70b"
+                        device_input = (
+                            input_fields[2]["value"] or "n150,n300,t3k,tg" if host_device == "TG" else "n150,n300,t3k"
+                        )
 
                         if command_input == "modules":
                             command_input = "rmsnorm,attention,attention-prefill,mlp,lm-head"
@@ -246,22 +476,13 @@ def main(stdscr):
                 entry_index = current_line - len(input_fields)
                 if entry_index < len(output_entries):
                     entry = output_entries[entry_index]
-                    with entry["lock"]:
-                        if entry["process"] and entry["process"].poll() is None:
-                            # Cancel the running process
-                            entry["stop_event"].set()
-                            terminate_process_tree(entry["process"].pid)
-                            entry["status"] = "Terminating"
-                        elif entry["status"] in ["Waiting", "Cancelled", "Error", "Finished"]:
-                            # Remove the entry if it's already cancelled or not started
-                            output_entries.pop(entry_index)
-                            total_lines -= 1
-                            if current_line >= total_lines:
-                                current_line = total_lines - 1
-                        else:
-                            # Set to cancelled if not running and not already cancelled
-                            entry["status"] = "Cancelled"
-                            current_line = (current_line + 1) % total_lines
+                    if cancel_entry(entry):
+                        output_entries.pop(entry_index)
+                        total_lines = len(input_fields) + len(output_entries)
+                        if current_line >= total_lines:
+                            current_line = total_lines - 1
+                        #  # Reset the device after cancellation
+                        # reset_device_async(entry, screen_lock, screen_needs_update)
                     screen_needs_update.set()
         elif c == ord("X") and current_line >= len(input_fields):  # Shift-X to clear all entries
             to_remove = []
@@ -279,6 +500,21 @@ def main(stdscr):
             total_lines = len(input_fields) + len(output_entries)
             current_line = (current_line + 1) % total_lines
             screen_needs_update.set()
+        elif c == ord("r") and current_line >= len(input_fields):
+            entry_index = current_line - len(input_fields)
+            if entry_index < len(output_entries):
+                entry = output_entries[entry_index]
+                with entry["lock"]:
+                    if entry["status"] in ["Finished", "Error", "Cancelled"]:
+                        # Reset the entry to "Waiting" status
+                        entry["status"] = "Waiting"
+                        entry["output"] = ""
+                        entry["speed"] = None
+                        entry["pcc"] = None
+                        entry["process"] = None
+                        entry["log_file"] = None
+                        entry["stop_event"].clear()
+                        screen_needs_update.set()
         else:
             if current_line < len(input_fields) and not exiting:
                 current_field = current_line
@@ -516,9 +752,15 @@ def run_entry_command(entry, screen_lock, output_entries, screen_needs_update):
     env["FAKE_DEVICE"] = entry["device"]
     env["LLAMA_DIR"] = get_llama_dir(entry["model"])
 
+    # Open log file
+    entry.open_log_file()
+
+    env["ACTUAL_DEVICE"] = get_host_device()
+
     # Define command shortcuts
     command_shortcuts = {
-        "demo": "pytest models/demos/llama3/demo/demo.py::test_llama_demo[wormhole_b0-True-mesh_device0-device_params0-instruct_weights-1_batch]",
+        "demo": "pytest models/demos/llama3/demo/demo.py -k instruct_weights-1",
+        "demo-1layer": "pytest models/demos/llama3/demo/demo.py -k single_layer",
         "attention": "pytest models/demos/llama3/tests/test_llama_attention.py",
         "attention-prefill": "pytest models/demos/llama3/tests/test_llama_attention_prefill.py",
         "mlp": "pytest models/demos/llama3/tests/test_llama_mlp.py",
@@ -543,6 +785,8 @@ def run_entry_command(entry, screen_lock, output_entries, screen_needs_update):
         "vision-encoder": "pytest models/demos/llama3/tests/multimodal/test_llama_vision_encoder.py",
         "vision-text-xfmr": "pytest models/demos/llama3/tests/multimodal/test_llama_cross_attention_transformer_text.py",
         "vision-vision-xfmr": "pytest models/demos/llama3/tests/multimodal/test_llama_cross_attention_transformer_vision.py",
+        "perf": "pytest models/demos/llama3/tests/test_llama_perf.py -k 1024",
+        "accuracy": "pytest models/demos/llama3/tests/test_llama_accuracy.py",
     }
 
     # Check if the command is a shortcut and replace it if necessary
@@ -561,10 +805,17 @@ def run_entry_command(entry, screen_lock, output_entries, screen_needs_update):
     # Prepare the command
     cmd_list = shlex.split(command_input)
 
-    # Open log file
-    log_filename = get_log_filename(entry["device"], entry["model"], command_input)
-    os.makedirs("logs", exist_ok=True)
-    entry["log_file"] = open(os.path.join("logs", log_filename), "w")
+    # If the command is invalid, write the output to the log file and return before trying to run the bad command
+    if entry["status"] == "Error":
+        entry["log_file"].write(entry["output"] + "\n")
+        entry["log_file"].flush()
+        return
+
+    # Write the command to the log file
+    entry["log_file"].write(
+        f"FAKE_DEVICE={entry['device']} LLAMA_DIR={get_llama_dir(entry['model'])} ACTUAL_DEVICE={get_host_device()} {command_input}"
+        + "\n"
+    )
 
     # Start the subprocess
     entry["process"] = subprocess.Popen(
@@ -590,11 +841,7 @@ def process_output(entry, screen_lock, output_entries, screen_needs_update):
             log_file.flush()
 
             # Update status and output based on output
-            status, output, speed, pcc = parse_output_line(line, previous_line, entry["status"])
-            # Append input and output of parse_output_line to a log file
-            with open("parse_output_log.txt", "a") as parse_log:
-                parse_log.write(f"Input: {line.strip()}, Previous status: {entry['status']}\n")
-                parse_log.write(f"Output: Status: {status}, Output: {output}, Speed: {speed}, PCC: {pcc}\n\n")
+            status, output, speed, pcc = parse_output_line(line, previous_line, entry.status)
             previous_line = line.strip()
             with entry.lock:
                 if status != entry.status or output or speed is not None or pcc is not None:
@@ -618,21 +865,16 @@ def process_output(entry, screen_lock, output_entries, screen_needs_update):
         # Wait for the process to fully terminate
         process.wait()
 
-        with entry["lock"]:
-            if entry["status"] == "Terminating":
-                entry["status"] = "Resetting"
-                screen_needs_update.set()
-                reset_device(entry)
-                entry["status"] = "Cancelled"
-            elif process.returncode != 0:
-                entry["status"] = "Resetting"
-                screen_needs_update.set()
-                reset_device(entry)
-                entry["status"] = "Error"
-                # Try to find exception name in the log
-                exception_name = find_exception_in_log(entry["log_file"].name)
-                if exception_name:
-                    entry["output"] = exception_name
+        with entry.lock:
+            if process.returncode != 0:
+                if entry.stop_event.is_set():
+                    entry.status = "Cancelled"
+                else:
+                    exception_name = find_exception_in_log(entry.log_file.name)
+                    entry.status = "Error"
+                    if exception_name:
+                        entry.output = exception_name
+                    reset_device_async(entry, screen_lock, screen_needs_update)
             else:
                 entry.status = "Finished"
         entry.process = None
@@ -783,14 +1025,54 @@ def terminate_process_tree(pid):
         pass  # Process already terminated
 
 
-def reset_device(entry):
+def generate_tg_config_file():
     hostname = os.environ.get("HOSTNAME", "unknown")
+    host_name_config = hostname.split("-special-")[0]  # e.g. aus-glx-NR
+    mobo_name_config = (
+        host_name_config.split("-")[0]
+        + "-"
+        + host_name_config.split("-")[1]
+        + "-mgmt-"
+        + host_name_config.split("-")[2]
+    )  # e.g. aus-glx-mgmt-NR
     config_file = os.path.expanduser(f"~/.config/tenstorrent/reset_config_{hostname}.json")
-    reset_cmd = ["tt-smi", "-r", config_file]
-    try:
-        subprocess.run(reset_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    except subprocess.CalledProcessError as e:
-        entry["output"] = f"Reset failed: {e.stderr.strip()}"
+    config = {
+        "time": "",
+        "host_name": host_name_config,
+        "wh_link_reset": {"pci_index": [0, 1, 2, 3]},
+        "re_init_devices": True,
+        "wh_mobo_reset": [
+            {
+                "nb_host_pci_idx": [0, 1, 2, 3],
+                "mobo": mobo_name_config,
+                "disabled_ports": ["0:0", "0:1", "0:2", "1:0", "1:1", "1:2", "6:2", "7:2"],
+            }
+        ],
+    }
+    with open(config_file, "w") as f:
+        json.dump(config, f)
+        f.close()
+
+
+def reset_device_async(entry, screen_lock, screen_needs_update):
+    def reset_thread():
+        hostname = os.environ.get("HOSTNAME", "unknown")
+        config_file = os.path.expanduser(f"~/.config/tenstorrent/reset_config_{hostname}.json")
+        reset_cmd = ["tt-smi", "-r", config_file]
+        try:
+            result = subprocess.run(reset_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        except subprocess.CalledProcessError as e:
+            pass
+        finally:
+            with entry.lock:
+                entry.status = previous_status
+            screen_needs_update.set()
+
+    previous_status = entry.status
+    entry.status = "Resetting"
+    reset_thread = threading.Thread(target=reset_thread)
+    reset_thread.daemon = True
+    reset_thread.start()
 
 
 def draw_help_bar(stdscr, current_line, num_input_fields, num_output_entries):
@@ -806,7 +1088,24 @@ def get_help_text(current_line, num_input_fields, num_output_entries):
     elif current_line <= num_input_fields - 1:
         return "Enter: Next field | ↑↓: Navigate fields | Esc: Exit"
     else:
-        return "Enter: View log | Backspace/x: Cancel/remove entry | ↑↓: Navigate entries | Esc: Exit"
+        return "Enter: View log | Backspace/x: Cancel entry | X: Cancel all | r: Restart entry | ↑↓: Navigate entries | Esc: Exit"
+
+
+def cancel_entry(entry):
+    """Handle removal of a single entry, returning True if entry was removed"""
+    with entry["lock"]:
+        if entry["process"] and entry["process"].poll() is None:
+            # Cancel the running process
+            entry["stop_event"].set()
+            terminate_process_tree(entry["process"].pid)
+            entry["status"] = "Terminating"
+            # Entry is still running, so don't remove it
+            return False
+        elif entry["status"] != "Resetting":
+            # Safe to remove the entry if it's already cancelled
+            return True
+    # Entry is running/resetting, so don't remove it
+    return False
 
 
 if __name__ == "__main__":
