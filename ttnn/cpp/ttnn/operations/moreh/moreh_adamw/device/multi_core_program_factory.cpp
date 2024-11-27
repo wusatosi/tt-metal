@@ -6,6 +6,8 @@
 
 #include "moreh_adamw_device_operation.hpp"
 #include "tt_metal/common/work_split.hpp"
+#include "tt_metal/hostdevcommon/profiler_common.h"
+#include "tt_metal/impl/device/device.hpp"
 #include "ttnn/operations/moreh/moreh_helper_functions.hpp"
 
 namespace ttnn::operations::moreh::moreh_adamw {
@@ -230,6 +232,8 @@ MorehAdamWDeviceOperation::MultiCore::cached_program_t MorehAdamWDeviceOperation
 
         tile_offset += num_tiles_per_core;
     }
+
+    tt::tt_metal::detail::DumpDeviceProfileResults(device);
 
     return {
         std::move(program),
