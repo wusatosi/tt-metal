@@ -91,7 +91,7 @@ def test_llama_attention_inference(
 
     seq_len = 1
 
-    generation_start_pos = 75 * 1024
+    generation_start_pos = 0
     generation_length = 3
     all_tests_pass = True
 

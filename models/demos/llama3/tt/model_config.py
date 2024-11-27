@@ -635,12 +635,6 @@ class TtModelArgs:
                 ttnn.ShardOrientation.ROW_MAJOR,
                 use_height_and_width_as_shard_shape=True,
             )
-            self.model_config["XQKV_DECODE_PROGCFG"] = self.dram_matmul_config(
-                m=self.tile_padded_batch_rows,
-                k=self.dim,
-                n=self.qkv_size // self.num_devices,
-                num_cores=attn_input_grid.num_cores,
-            )
 
             full_grid = ttnn.CoreRangeSet(
                 {
