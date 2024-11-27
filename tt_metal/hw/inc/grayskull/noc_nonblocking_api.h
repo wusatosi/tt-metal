@@ -43,7 +43,7 @@ const uint32_t NOC_RET_ADDR_COORDINATE = NOC_RET_ADDR_MID;
 const uint32_t NOC_COORDINATE_MASK = 0xFFFFFFFF;
 
 extern uint32_t noc_reads_num_issued[NUM_NOCS];
-extern uint32_t noc_nonposted_writes_acked[NUM_NOCS];
+// extern uint32_t noc_nonposted_writes_acked[NUM_NOCS];
 extern uint32_t noc_nonposted_atomics_acked[NUM_NOCS];
 extern uint32_t noc_posted_writes_num_issued[NUM_NOCS];
 
@@ -108,7 +108,7 @@ inline __attribute__((always_inline)) void ncrisc_noc_fast_write(uint32_t noc, u
     noc_posted_writes_num_issued[noc] += 1;
   } else {
     inc_noc_nonposted_writes_num_issued<risc_type>(noc);
-    inc_noc_nonposted_writes_acked<risc_type>(noc);
+    inc_noc_nonposted_writes_acked<risc_type>(noc, num_dests);
     // noc_nonposted_writes_acked[noc] += num_dests;
   }
 }
@@ -133,7 +133,7 @@ inline __attribute__((always_inline)) void ncrisc_noc_fast_write_loopback_src(ui
   NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
   // noc_nonposted_writes_num_issued[noc] += 1;
   inc_noc_nonposted_writes_num_issued<risc_type>(noc);
-  inc_noc_nonposted_writes_acked<risc_type>(noc);
+  inc_noc_nonposted_writes_acked<risc_type>(noc, num_dests);
   // noc_nonposted_writes_acked[noc] += num_dests;
 }
 
@@ -167,7 +167,7 @@ inline __attribute__((always_inline)) bool ncrisc_noc_posted_writes_sent(uint32_
 template<uint32_t risc_type>
 inline __attribute__((always_inline)) bool ncrisc_noc_nonposted_writes_flushed(uint32_t noc) {
   // return (NOC_STATUS_READ_REG(noc, NIU_MST_WR_ACK_RECEIVED) == noc_nonposted_writes_acked[noc]);
-  return (NOC_STATUS_READ_REG(noc, NIU_MST_NONPOSTED_WR_REQ_SENT) == get_noc_nonposted_writes_acked<risc_type>(noc));
+  return (NOC_STATUS_READ_REG(noc, NIU_MST_WR_ACK_RECEIVED) == get_noc_nonposted_writes_acked<risc_type>(noc));
 }
 
 inline __attribute__((always_inline)) bool ncrisc_noc_nonposted_atomics_flushed(uint32_t noc) {

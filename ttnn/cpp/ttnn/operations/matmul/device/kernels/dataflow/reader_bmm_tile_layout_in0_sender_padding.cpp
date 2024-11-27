@@ -215,6 +215,7 @@ void kernel_main() {
                     //     in0_mcast_num_cores);
 
                     noc_async_writes_flushed();
+                    noc_async_write_barrier();
                     // noc_async_writes_flushed_stream_reg();
 
 
