@@ -707,7 +707,7 @@ void noc_async_read(std::uint64_t src_noc_addr, std::uint32_t dst_local_l1_addr,
     */
     WAYPOINT("NARW");
     DEBUG_SANITIZE_NOC_READ_TRANSACTION(noc, src_noc_addr, dst_local_l1_addr, size);
-    ncrisc_noc_fast_read_any_len(noc, read_cmd_buf, src_noc_addr, dst_local_l1_addr, size);
+    ncrisc_noc_fast_read_any_len<risc_type>(noc, read_cmd_buf, src_noc_addr, dst_local_l1_addr, size);
     WAYPOINT("NARD");
 }
 
@@ -736,7 +736,8 @@ void noc_async_read_one_packet(std::uint64_t src_noc_addr, std::uint32_t dst_loc
     NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_TARG_ADDR_COORDINATE, (uint32_t)(src_noc_addr >> NOC_ADDR_COORD_SHIFT) & NOC_COORDINATE_MASK);
     NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_AT_LEN_BE, size);
     NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
-    noc_reads_num_issued[noc] += 1;
+    inc_noc_reads_num_issued<risc_type>(noc);
+    // noc_reads_num_issued[noc] += 1;
 
     WAYPOINT("NARD");
 }
@@ -790,7 +791,8 @@ void noc_async_read_one_packet_with_state(std::uint32_t src_noc_addr, std::uint3
     NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
 
     if constexpr (inc_num_issued) {
-        noc_reads_num_issued[noc] += 1;
+        inc_noc_reads_num_issued<risc_type>(noc);
+        // noc_reads_num_issued[noc] += 1;
     }
 
     WAYPOINT("NARD");
@@ -844,7 +846,8 @@ void noc_async_read_with_state(std::uint32_t src_noc_addr, std::uint32_t dst_loc
         src_noc_addr += NOC_MAX_BURST_SIZE;
         dst_local_l1_addr += NOC_MAX_BURST_SIZE;
         if constexpr (inc_num_issued) {
-            noc_reads_num_issued[noc] += 1;
+            inc_noc_reads_num_issued<risc_type>(noc);
+            // noc_reads_num_issued[noc] += 1;
         }
     }
 
@@ -858,7 +861,8 @@ void noc_async_read_with_state(std::uint32_t src_noc_addr, std::uint32_t dst_loc
     NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_AT_LEN_BE, size);
     NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
     if constexpr (inc_num_issued) {
-        noc_reads_num_issued[noc] += 1;
+        inc_noc_reads_num_issued<risc_type>(noc);
+        // noc_reads_num_issued[noc] += 1;
     }
 
     WAYPOINT("NARD");
@@ -866,7 +870,8 @@ void noc_async_read_with_state(std::uint32_t src_noc_addr, std::uint32_t dst_loc
 
 FORCE_INLINE
 void noc_async_read_inc_num_issued(std::uint32_t num_issued_reads_inc, uint8_t noc = noc_index) {
-    noc_reads_num_issued[noc] += num_issued_reads_inc;
+    inc_noc_reads_num_issued<risc_type>(noc, num_issued_reads_inc);
+    // noc_reads_num_issued[noc] += num_issued_reads_inc;
 }
 
 // TODO: write docs
@@ -1083,7 +1088,8 @@ struct InterleavedAddrGenFast {
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_TARG_ADDR_COORDINATE, src_noc_xy);   // src_addr >> 32
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_AT_LEN_BE, this->page_size);  // len_bytes
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
-        noc_reads_num_issued[noc] += 1;
+        inc_noc_reads_num_issued<risc_type>(noc);
+        // noc_reads_num_issued[noc] += 1;
     }
 
     FORCE_INLINE
@@ -1160,7 +1166,8 @@ struct InterleavedPow2AddrGenFast {
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_TARG_ADDR_COORDINATE, src_noc_xy);   // src_addr >> 32
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_AT_LEN_BE, 1 << this->aligned_log_base_2_of_page_size);  // len_bytes
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
-        noc_reads_num_issued[noc] += 1;
+        inc_noc_reads_num_issued<risc_type>(noc);
+        // noc_reads_num_issued[noc] += 1;
     }
 
     FORCE_INLINE
@@ -1180,7 +1187,8 @@ struct InterleavedPow2AddrGenFast {
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_TARG_ADDR_COORDINATE, src_noc_xy);   // src_addr >> 32
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_AT_LEN_BE, size);  // len_bytes
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
-        noc_reads_num_issued[noc] += 1;
+        inc_noc_reads_num_issued<risc_type>(noc);
+        // noc_reads_num_issued[noc] += 1;
     }
 
     FORCE_INLINE
@@ -1652,7 +1660,7 @@ void noc_async_read_barrier(uint8_t noc = noc_index) {
     // BH cache is write-through so reader must invalidate if reading any address that was previously read
     do {
         invalidate_l1_cache();
-    } while (!ncrisc_noc_reads_flushed(noc));
+    } while (!ncrisc_noc_reads_flushed<risc_type>(noc));
     WAYPOINT("NRBD");
 }
 
@@ -1886,7 +1894,8 @@ void noc_async_read_tile_dram_sharded_with_state(uint32_t src_base_addr, uint32_
     NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_RET_ADDR_LO, dest_addr);
     NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_TARG_ADDR_LO, src_addr_);      // (uint32_t)src_addr
     NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
-    noc_reads_num_issued[noc] += 1;
+    inc_noc_reads_num_issued<risc_type>(noc);
+    // noc_reads_num_issued[noc] += 1;
 }
 
 FORCE_INLINE
