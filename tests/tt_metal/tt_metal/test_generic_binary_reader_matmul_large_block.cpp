@@ -205,7 +205,7 @@ int main(int argc, char **argv) {
             .set_page_size(src1_cb_index, single_tile_size);
         auto cb_src1 = tt_metal::CreateCircularBuffer(program, core, cb_src1_config);
 
-        uint32_t ouput_cb_index = 16; // output operands start at index 16
+        uint32_t ouput_cb_index = tt::CBIndex::c_16;
         uint32_t interm0_cb_index = 24;
         uint32_t num_output_tiles = M * N;
         CoreRangeSet cores(std::set<CoreRange>{CoreRange(core, core)});
@@ -332,7 +332,7 @@ int main(int argc, char **argv) {
         //                      Execute Application
         ////////////////////////////////////////////////////////////////////////////
         SHAPE shape = {1, 1, M * 32, K * 32};
-        tt::deprecated::Tensor<bfloat16> tensor = tt::deprecated::initialize_tensor<bfloat16>(shape, tt::deprecated::Initialize::RANDOM, 100, std::chrono::system_clock::now().time_since_epoch().count());
+        tt::deprecated::Tensor<bfloat16> tensor = tt::deprecated::initialize_tensor<bfloat16>(shape, tt::deprecated::Initialize::RANDOM, 0, 100, std::chrono::system_clock::now().time_since_epoch().count());
         auto activations_tilized = tilize(tensor.get_values(), M * 32, K * 32);
         auto activations_tile_layout = convert_to_tile_layout(activations_tilized);
         auto activations = pack_bfloat16_vec_into_uint32_vec(activations_tile_layout);

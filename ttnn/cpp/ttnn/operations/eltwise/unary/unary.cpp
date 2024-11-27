@@ -23,17 +23,18 @@ inline Tensor unary_impl(
     const std::optional<MemoryConfig>& memory_config = std::nullopt,
     const std::optional<Tensor>& optional_output_tensor = std::nullopt) {
     DataType output_dtype = (op_chain[0].op_type == UnaryOpType::TYPECAST) ? static_cast<DataType>(op_chain[0].params[1]) : input_tensor.get_dtype();
-    bool preserve_fp32_precision = (op_chain[0].op_type == UnaryOpType::TYPECAST) and (input_tensor.get_dtype() == DataType::FLOAT32);
+    auto arch = input_tensor.device()->arch();
+    bool preserve_fp32_precision = (arch != tt::ARCH::GRAYSKULL) and (input_tensor.get_dtype() == DataType::FLOAT32);
     bool fp32_dest_acc_en = preserve_fp32_precision or
                             output_dtype == DataType::UINT32 or
                             output_dtype == DataType::INT32 or
                             output_dtype == DataType::FLOAT32 or
                             input_tensor.get_dtype() == DataType::UINT32 or
-                            input_tensor.get_dtype() == DataType::INT32;  // MT: Currently only uint32/int32 is moved to
-                                                                          // DST directly, fp32 is converted to fp16b
+                            input_tensor.get_dtype() == DataType::INT32;
+    bool bfp8_pack_precise = (op_chain[0].op_type == UnaryOpType::TYPECAST && output_dtype == DataType::BFLOAT8_B);
 
     auto output_memory_config = optional_output_tensor.has_value() ? optional_output_tensor.value().memory_config() : memory_config.value_or(input_tensor.memory_config());
-    return prim::unary(queue_id, input_tensor, op_chain, output_dtype, output_memory_config, fp32_dest_acc_en, preserve_fp32_precision, optional_output_tensor);
+    return prim::unary(queue_id, input_tensor, op_chain, output_dtype, output_memory_config, fp32_dest_acc_en, preserve_fp32_precision, bfp8_pack_precise, optional_output_tensor);
 }
 
 }  // namespace detail
@@ -276,6 +277,33 @@ Tensor Softplus::invoke(
         DefaultQueueId,
         input,
         {UnaryWithParam{UnaryOpType::SOFTPLUS, {beta, threshold}}},
+        memory_config,
+        optional_output_tensor);
+}
+
+Tensor Prelu::invoke(
+    uint8_t queue_id,
+    const Tensor& input,
+    float value,
+    const std::optional<MemoryConfig>& memory_config,
+    const std::optional<Tensor>& optional_output_tensor) {
+    return detail::unary_impl(
+        queue_id,
+        input,
+        {UnaryWithParam{UnaryOpType::PRELU_SFPU, value}},
+        memory_config,
+        optional_output_tensor);
+}
+
+Tensor Prelu::invoke(
+    const Tensor& input,
+    float value,
+    const std::optional<MemoryConfig>& memory_config,
+    const std::optional<Tensor>& optional_output_tensor) {
+    return detail::unary_impl(
+        DefaultQueueId,
+        input,
+        {UnaryWithParam{UnaryOpType::PRELU_SFPU, value}},
         memory_config,
         optional_output_tensor);
 }

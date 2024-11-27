@@ -122,8 +122,8 @@ std::tuple<tt_metal::Program, tt_metal::KernelHandle, tt_metal::KernelHandle, tt
         {(std::size_t)start_core_x, (std::size_t)start_core_y + 1},
         {(std::size_t)start_core_x + num_cores_c - 1, (std::size_t)start_core_y + num_cores_r - 1});
 
-    uint32_t ouput_cb_index = 16; // output operands start at index 16
-    uint32_t interm0_cb_index = 24;
+    uint32_t ouput_cb_index = tt::CBIndex::c_16;
+    uint32_t interm0_cb_index = tt::CBIndex::c_24;
     std::map<uint8_t, tt::DataFormat> partials_and_out_data_format_spec = {
         {ouput_cb_index, tt::DataFormat::Float16_b},
         {interm0_cb_index, tt::DataFormat::Float16_b}
@@ -392,7 +392,7 @@ int main(int argc, char **argv) {
         log_info(LogTest, "Activation block = {}x{}, #blocks = {}, #sub-blocks = {}", per_core_M, in0_block_w, K / in0_block_w, per_core_M / out_subblock_h);
         log_info(LogTest, "Weights block = {}x{}, #blocks = {}, #sub-blocks = {}", in0_block_w, per_core_N, K / in0_block_w, per_core_N / out_subblock_w);
         SHAPE shape = {1, 1, M * 32, K * 32};
-        tt::deprecated::Tensor<bfloat16> tensor = tt::deprecated::initialize_tensor<bfloat16>(shape, tt::deprecated::Initialize::RANDOM, 100, std::chrono::system_clock::now().time_since_epoch().count());
+        tt::deprecated::Tensor<bfloat16> tensor = tt::deprecated::initialize_tensor<bfloat16>(shape, tt::deprecated::Initialize::RANDOM, 0, 100, std::chrono::system_clock::now().time_since_epoch().count());
         auto identity = create_identity_matrix(K * 32, N * 32, std::min(K, N) * 32); //bflaot16 identity
         auto golden = select_columns(tensor.get_values(), M, K, N);
 

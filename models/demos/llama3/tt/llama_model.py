@@ -25,6 +25,8 @@ class TtTransformer(LightweightModule):
         mesh_device,
         state_dict,
         weight_cache_path,
+        transformation_mats,
+        paged_attention_config=None,
     ):
         super().__init__()
         self.args = args
@@ -52,6 +54,7 @@ class TtTransformer(LightweightModule):
                 weight_cache_path=weight_cache_path,
                 layer_num=i,
                 transformation_mats=transformation_mats,
+                paged_attention_config=paged_attention_config,
             )
             for i in range(self.n_layers)
         ]
@@ -86,15 +89,19 @@ class TtTransformer(LightweightModule):
         self,
         x: ttnn.Tensor,
         current_pos,
-        rot_mat=None,
-        transformation_mats=None,
+        rot_mats=None,
         user_id=0,
         mode="decode",
         page_table=None,
         get_last_token=-1,
     ):
-        for lid, layer in enumerate(self.layers):
-            x = layer(x, current_pos, rot_mat, transformation_mats, user_id, mode, page_table)
+        # No-op if callers already provide the right memory config
+        if mode == "decode":
+            x = ttnn.to_memory_config(x, self.model_config["DECODE_RESIDUAL_MEMCFG"])
+
+        for layer in self.layers:
+            x = layer(x, current_pos, rot_mats, user_id, mode, page_table)
+
         if mode == "prefill" and get_last_token == -1:
             return x
 

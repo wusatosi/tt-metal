@@ -102,15 +102,6 @@ def set_tg_attention_config(model_config, dim, is_8b):
 
 
 class TtModelArgs:
-    paged_attention_config = None
-
-    # TODO Update these params. In init we update the max_seq_len to 32k if it's a single device
-    max_batch_size = 1
-    # Context length for Llama models (if single device, reduce to 32k in init)
-    max_seq_len = 8192 * 16  # 128k
-
-    tile_size = 32
-
     OP_KEYS = (
         # Embedding
         "EMB_WEIGHTS",
@@ -132,7 +123,7 @@ class TtModelArgs:
         "ATTN_OUTPUT",
         "ATTN_W_LAYOUT",
         # Decoder
-        "DEC_SKIP_OUTPUT",
+        "DECODE_RESIDUAL",
         "OUTPUT_MM",
     )
 
@@ -144,52 +135,42 @@ class TtModelArgs:
         "LLAMA3_1_70B_PARAMS": "models/demos/llama3/model_params/Llama3.1-70B-Instruct",
     }
 
-    def __init__(self, mesh_device, instruct=False, dummy_weights=False, max_batch_size=1):
+    def __init__(self, mesh_device, instruct=False, dummy_weights=False, max_batch_size=1, max_seq_len=1024 * 128):
         # Add this near the top of the class, with other class attributes
         self.num_devices = mesh_device.get_num_devices() if mesh_device else 0
         self.mesh_device = mesh_device
         self.device_name = {0: "CPU", 1: "N150", 2: "N300", 8: "T3K", 32: "TG"}[self.num_devices]
         self.is_large_model = False
         self.model_name = "Unknown"  # Llama model name will be dependent on the checkpoint directory
+        self.max_seq_len = max_seq_len
+        self.max_batch_size = max_batch_size
+        self.tile_size = 32
 
-        LLAMA_DIR = "3.1-70B"  # os.getenv("LLAMA_DIR")
-        # if LLAMA_DIR:
-        #     if any([os.getenv("LLAMA_CKPT_DIR"), os.getenv("LLAMA_TOKENIZER_PATH"), os.getenv("LLAMA_CACHE_PATH")]):
-        #         logger.warning(
-        #             "LLAMA_DIR is set and will override LLAMA_CKPT_DIR, LLAMA_TOKENIZER_PATH, and LLAMA_CACHE_PATH"
-        #         )
-        #     self.DEFAULT_CKPT_DIR = LLAMA_DIR
-        #     self.DEFAULT_TOKENIZER_PATH = LLAMA_DIR
-        #     self.DEFAULT_CACHE_PATH = os.path.join(LLAMA_DIR, self.device_name)
-        # else:
-        #     assert "Please set $LLAMA_DIR to a valid checkpoint directory"
-        # self.DEFAULT_CKPT_DIR = "/proj_sw/user_dev/llama3-data-repacked/llama-3-70b/"
-        # self.DEFAULT_TOKENIZER_PATH = "/proj_sw/user_dev/llama3-data-repacked/"
-        # self.DEFAULT_CACHE_PATH = (
-        #     "/proj_sw/user_dev/weights-cache-TG"
-        #     if self.num_devices == 32
-        #     else "/proj_sw/user_dev/llama3-data-cache/weights-cache-2"
-        # )
-        # if self.num_devices < 8:
-        # LLAMA_DIR = "/proj_sw/user_dev/llama32-data/Llama3.2-3B-Instruct"  #
-        # LLAMA_DIR = "/proj_sw/user_dev/llama31-8b-data/Meta-Llama-3.1-8B-Instruct/"
-        LLAMA_DIR = "/proj_sw/user_dev/llama31-70b-data/Meta-Llama-3.1-70B"
-        self.DEFAULT_CKPT_DIR = LLAMA_DIR
-        self.DEFAULT_TOKENIZER_PATH = LLAMA_DIR
-        self.DEFAULT_CACHE_PATH = os.path.join(LLAMA_DIR, self.device_name)
+        LLAMA_DIR = os.getenv("LLAMA_DIR")
+        if LLAMA_DIR:
+            if any([os.getenv("LLAMA_CKPT_DIR"), os.getenv("LLAMA_TOKENIZER_PATH"), os.getenv("LLAMA_CACHE_PATH")]):
+                logger.warning(
+                    "LLAMA_DIR is set and will override LLAMA_CKPT_DIR, LLAMA_TOKENIZER_PATH, and LLAMA_CACHE_PATH"
+                )
+            self.DEFAULT_CKPT_DIR = LLAMA_DIR
+            self.DEFAULT_TOKENIZER_PATH = LLAMA_DIR
+            self.DEFAULT_CACHE_PATH = os.path.join(LLAMA_DIR, self.device_name)
+        else:
+            assert "Please set $LLAMA_DIR to a valid checkpoint directory"
+
         if not dummy_weights:
             # Assert if all folders and files exist
             assert os.path.exists(
                 self.DEFAULT_CKPT_DIR
-            ), f"Checkpoint directory {self.DEFAULT_CKPT_DIR} does not exist, please use export LLAMA_CKPT_DIR=..."
+            ), f"Checkpoint directory {self.DEFAULT_CKPT_DIR} does not exist, please set LLAMA_DIR=... or LLAMA_CKPT_DIR=..."
             assert os.path.isfile(
                 self.DEFAULT_TOKENIZER_PATH + "/tokenizer.model"
-            ), f"Tokenizer file {self.DEFAULT_TOKENIZER_PATH + '/tokenizer.model'} does not exist, please use export LLAMA_TOKENIZER_PATH=..."
+            ), f"Tokenizer file {self.DEFAULT_TOKENIZER_PATH + '/tokenizer.model'} does not exist, please set LLAMA_TOKENIZER_PATH=..."
             if not os.path.exists(self.DEFAULT_CACHE_PATH):
                 os.makedirs(self.DEFAULT_CACHE_PATH)
             assert os.path.exists(
                 self.DEFAULT_CACHE_PATH
-            ), f"Cache directory {self.DEFAULT_CACHE_PATH} does not exist, please use export LLAMA_CACHE_PATH=..."
+            ), f"Cache directory {self.DEFAULT_CACHE_PATH} does not exist, please set LLAMA_CACHE_PATH=..."
             # Check if weights exist in the specified folder. If not warn the user to run the download and untar script.
         #            assert os.path.isfile(
         #                self.DEFAULT_CKPT_DIR + "/consolidated.00.pth"
@@ -235,6 +216,16 @@ class TtModelArgs:
             self.max_seq_len = 8192 * 4  # 32k
         self.is_8b = is_8b
         self.is_70b = is_70b
+        # FIXME: Setup the max cache size accordingly depending on the target model, architecture and test type.
+        if (
+            self.num_devices <= 2
+        ):  # for 1-chip or 2-chip devices limit the seqlen to 4K (to avoid OoO on N150/N300 CI tests)
+            self.max_seq_len = 1024 * 4
+
+        if (
+            self.n_layers == 1
+        ):  # When running a single layer just reduce the seq len to 128, since we won't be decoding that many iterations
+            self.max_seq_len = 128
 
         # Some consumers like SentencePiece only accept str not Path for files
         self.model_base_path = Path(self.DEFAULT_CKPT_DIR)
@@ -249,7 +240,6 @@ class TtModelArgs:
         if "instruct" in self.DEFAULT_CACHE_PATH.lower():
             self.instruct = True
         self.dummy_weights = dummy_weights
-        self.max_batch_size = max_batch_size
         self.tile_padded_batch_rows = self.tile_size * int(math.ceil(self.max_batch_size / self.tile_size))
 
         # Enable workarounds by default until di/dt issues are fixed
@@ -292,6 +282,12 @@ class TtModelArgs:
             )
 
             # Compute kernels. FP32 acc does not appear to be needed for accuracy in model tests or demo runs.
+            self.compute_kernel_config_lofi = ttnn.WormholeComputeKernelConfig(
+                math_fidelity=ttnn.MathFidelity.LoFi,
+                math_approx_mode=False,
+                fp32_dest_acc_en=False,
+                packer_l1_acc=True,
+            )
             self.compute_kernel_config_hifi2 = ttnn.WormholeComputeKernelConfig(
                 math_fidelity=ttnn.MathFidelity.HiFi2,
                 math_approx_mode=True,
@@ -319,6 +315,22 @@ class TtModelArgs:
 
             self.model_config["COMPUTE_KERNEL_CONFIG_HIFI2"] = self.compute_kernel_config_hifi2
 
+            residual_grid = self.dram_shard_core_grid_for_k(self.dim // self.num_devices)
+            self.model_config["DECODE_RESIDUAL_MEMCFG"] = (
+                ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG
+                if TG
+                else ttnn.create_sharded_memory_config(
+                    (
+                        self.tile_padded_batch_rows,
+                        self.dim // residual_grid.num_cores // self.num_devices,
+                    ),
+                    residual_grid,
+                    ttnn.ShardStrategy.WIDTH,
+                    ttnn.ShardOrientation.ROW_MAJOR,
+                    use_height_and_width_as_shard_shape=True,
+                )
+            )
+
             # Chunk values based on what works best empirically
             self.model_config["SDPA_PROGCFG"] = lambda seqlen: ttnn.SDPAProgramConfig(
                 compute_with_storage_grid_size=(8, 8),
@@ -326,6 +338,12 @@ class TtModelArgs:
                 q_chunk_size=256 if seqlen >= 2048 else 64,
                 k_chunk_size=256 if seqlen >= 2048 else 64,
             )
+
+            def find_largest_divisor(n, max_divisor=8):
+                for i in range(max_divisor, 0, -1):
+                    if n % i == 0:
+                        return i
+                return 1  # Fallback to 1 if no divisor found
 
             # nlp_concat_heads_decode will shard the data across this number of cores
             assert (
@@ -477,9 +495,6 @@ class TtModelArgs:
                 fp32_dest_acc_en=False,
                 packer_l1_acc=False,
             )
-            self.model_config["HEIGHT_SHARDED_MEMCFG"] = ttnn.MemoryConfig(
-                ttnn.TensorMemoryLayout.HEIGHT_SHARDED, ttnn.BufferType.L1
-            )
 
             # Useful core grid based on batch size
             if self.max_batch_size == 32:
@@ -514,15 +529,6 @@ class TtModelArgs:
                 strategy=ttnn.ShardStrategy.HEIGHT,
                 orientation=ttnn.ShardOrientation.ROW_MAJOR,
                 use_height_and_width_as_shard_shape=True,
-            )
-
-            self.model_config["ROT_MAT_BMM_PROGCFG"] = lambda m, k, n: ttnn.MatmulMultiCoreReuseProgramConfig(
-                compute_with_storage_grid_size=grid_by_batch,
-                in0_block_w=math.ceil(k / 32),
-                out_subblock_h=1,
-                out_subblock_w=1,  # TODO How to choose this subblock size?
-                per_core_M=math.ceil(m / 32),
-                per_core_N=math.ceil(n / 32),
             )
             self.model_config["ROT_MAT_MEMCONFIG"] = ttnn.MemoryConfig(
                 ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
@@ -583,7 +589,11 @@ class TtModelArgs:
             )
 
             # MLP configs
-            mlp_core_grid = self.dram_shard_core_grid_for_k(self.dim)
+            mlp_core_grid = (
+                self.dram_shard_core_grid_for_k(self.dim)
+                if TG
+                else self.dram_shard_core_grid_for_k_and_n(self.dim, self.hidden_dim // self.num_devices)
+            )
 
             self.model_config["SHARDED_MLP_INPUT_MEMCFG"] = ttnn.create_sharded_memory_config(
                 (
@@ -606,7 +616,7 @@ class TtModelArgs:
             mlp2_core_grid = (
                 ttnn.CoreGrid(y=1, x=8)
                 if self.is_galaxy
-                else self.dram_shard_core_grid_for_k(self.hidden_dim // self.num_devices)
+                else self.dram_shard_core_grid_for_k_and_n(self.hidden_dim // self.num_devices, self.dim)
             )
             self.model_config["DECODE_MLP_W2_PRG_CONFIG"] = self.dram_matmul_config(
                 m=self.tile_padded_batch_rows,
@@ -624,6 +634,12 @@ class TtModelArgs:
                 ttnn.ShardStrategy.WIDTH,
                 ttnn.ShardOrientation.ROW_MAJOR,
                 use_height_and_width_as_shard_shape=True,
+            )
+            self.model_config["XQKV_DECODE_PROGCFG"] = self.dram_matmul_config(
+                m=self.tile_padded_batch_rows,
+                k=self.dim,
+                n=self.qkv_size // self.num_devices,
+                num_cores=attn_input_grid.num_cores,
             )
 
             full_grid = ttnn.CoreRangeSet(
@@ -816,6 +832,25 @@ class TtModelArgs:
                 fuse_batch=seq_len <= max_seq,
             )
 
+            xattn_cache_y_cores = (
+                16 // self.num_devices
+            )  # Based on seqlen, this formula gives us a valid number of y cores
+            xattn_cache_x_cores = 8
+            self.model_config["XATTN_KV_PREFILL_MEM_CFG"] = lambda seq_len: ttnn.create_sharded_memory_config(
+                # using n_heads since xattn repeats KV to match Q
+                (
+                    nearest_32(
+                        (self.n_heads // self.num_devices) * seq_len // (xattn_cache_y_cores * xattn_cache_x_cores)
+                    ),
+                    self.head_dim,
+                ),
+                ttnn.CoreGrid(y=xattn_cache_y_cores, x=xattn_cache_x_cores),
+                ttnn.ShardStrategy.HEIGHT,
+                ttnn.ShardOrientation.ROW_MAJOR,
+                use_height_and_width_as_shard_shape=True,
+            )
+
+            self.VISION_MAX_MM_SEQ = nearest_32(self.vision_chunk_ntok)
             # RMS NORM
             self.model_config["SHARDED_NORM_ATTN_PRGM_CFG"] = self.create_sharded_norm_config(attn_input_grid)
             self.model_config["SHARDED_NORM_MLP_PRGM_CFG"] = self.create_sharded_norm_config(mlp_core_grid)
@@ -862,7 +897,7 @@ class TtModelArgs:
             return ttnn.Topology.Linear
         return None
 
-    def prepare_inputs_ttnn_decode(self, x, input_mem_cfg, force_replicated=False):
+    def prepare_inputs_ttnn_decode(self, x, input_mem_cfg, force_replicated=False, on_host=False):
         """
         Prepare inputs for decode mode.
         x: (batch, seq, dim)
@@ -899,11 +934,11 @@ class TtModelArgs:
         if torch.is_tensor(x):
             x = ttnn.from_torch(
                 x,
-                device=self.mesh_device,
+                device=self.mesh_device if not on_host else None,
                 dtype=ttnn.bfloat16,
                 layout=ttnn.TILE_LAYOUT,
                 mesh_mapper=mesh_mapper,
-                memory_config=input_mem_cfg,
+                memory_config=input_mem_cfg if not on_host else None,
             )
         else:  # Convert the row major layout from embedding back to tile layout
             x = ttnn.to_layout(x, layout=ttnn.TILE_LAYOUT)
@@ -1114,13 +1149,14 @@ class TtModelArgs:
         Raises:
             AssertionError: If it's not possible to find such a grid configuration.
         """
-        max_rows = 4
-        max_cols = 8  # Maximum number of rows or columns
-        max_cores = max_rows * max_cols  # Maximum number of cores (8x2 grid)
+        max_rows = 8
+        max_cols = 8
+        max_cores = max_rows * max_cols
 
         # Find all possible numbers of cores that divide N and are less than or equal to max_cores
+        target = 32
         possible_cores = [k for k in range(1, max_cores + 1) if N % k == 0]
-        possible_cores.sort(reverse=True)  # Start checking from the largest number of cores
+        possible_cores.sort(key=lambda x: abs(x - target))  # Sort by closest to target
 
         for cores in possible_cores:
             # Try to find a grid configuration with the current number of cores
@@ -1135,15 +1171,58 @@ class TtModelArgs:
             f"Cannot find a grid configuration for {N} tiles that evenly divides into {max_cores} cores of max size {max_rows}x{max_cols}."
         )
 
+    def dram_shard_core_grid_for_k_and_n(self, k: int, n: int) -> Tuple[int, int]:
+        rows, cols = self.find_grid_k_n(k // self.tile_size, n // self.tile_size)
+        return ttnn.CoreGrid(x=cols, y=rows)
+
+    def find_grid_k_n(self, K, N):
+        """
+        Find the number of rows and columns for a grid of cores such that
+        the total number of tiles N can be evenly divided among the cores.
+        Each core will have the same integer number of tiles.
+        The grid size is limited to a maximum of 2 rows and 8 columns.
+
+        Parameters:
+            N (int): Total number of tiles to be distributed.
+
+        Returns:
+            tuple: A tuple (rows, cols) representing the grid dimensions.
+
+        Raises:
+            AssertionError: If it's not possible to find such a grid configuration.
+        """
+        max_rows = 4
+        max_cols = 8  # Maximum number of rows or columns
+        max_cores = max_rows * max_cols  # Maximum number of cores (8x2 grid)
+
+        # Find all possible numbers of cores that divide N and are less than or equal to max_cores
+        possible_cores = [c for c in range(1, max_cores + 1) if K % c == 0 and N % c == 0]
+        possible_cores.sort(reverse=True)  # Start checking from the largest number of cores
+
+        for cores in possible_cores:
+            # Try to find a grid configuration with the current number of cores
+            for rows in range(1, max_rows + 1):
+                if cores % rows == 0:
+                    cols = cores // rows
+                    if cols <= max_cols:
+                        return rows, cols
+
+        # If no configuration is found, assert an error
+        raise AssertionError(
+            f"Cannot find a grid configuration such that both {K} and {N} tiles evenly divide into cores of max size {max_rows}x{max_cols}."
+        )
+
     def dram_matmul_config(
         self, m: int, k: int, n: int, num_cores=None
     ) -> ttnn.MatmulMultiCoreReuseMultiCastDRAMShardedProgramConfig:
         # in0_block_w must evenly divide k and be no larger than tile_size * num_cores
         if num_cores is None:
-            # Default to using 2 rows of 8 cores as this is fastest, but use 1 row if K is too small
-            # Warning: this does not handle the case in which K is too large for 2 rows of 8 cores
-            # In that case override grid_size or update this logic to do so
-            num_cores = self.dram_shard_core_grid_for_k(k).num_cores
+            # num_cores = self.dram_shard_core_grid_for_k_and_n(k).num_cores
+            num_cores = self.dram_shard_core_grid_for_k_and_n(k, n).num_cores
+            assert (
+                k % (self.tile_size * num_cores) == 0
+            ), f"k must be divisible by tile_size * num_cores: {k} % {self.tile_size * num_cores} != 0"
+            # assert n % (self.tile_size * num_cores) == 0, f"n must be divisible by tile_size * num_cores: {n} % {self.tile_size * num_cores} != 0"
         return ttnn.MatmulMultiCoreReuseMultiCastDRAMShardedProgramConfig(
             in0_block_w=math.ceil(k / (self.tile_size * num_cores)),
             per_core_M=math.ceil(m / self.tile_size),

@@ -80,10 +80,10 @@ MorehNllLossStep1DeviceOperation::Factory::cached_program_t MorehNllLossStep1Dev
             all_cores,
             data_format,
             {
-                {CB::c_in0, 1, tt::DataFormat::Int32},       // target
-                {CB::c_in1, 1},                              // weight
-                {CB::c_intermed0, 1, intermed_data_format},  // tmp_weight
-                {CB::c_out0, 1},                             // output
+                {CBIndex::c_0, 1, tt::DataFormat::Int32},       // target
+                {CBIndex::c_1, 1},                              // weight
+                {CBIndex::c_24, 1, intermed_data_format},  // tmp_weight
+                {CBIndex::c_16, 1},                             // output
             });
     } else {
         CreateCircularBuffer(
@@ -91,10 +91,10 @@ MorehNllLossStep1DeviceOperation::Factory::cached_program_t MorehNllLossStep1Dev
             all_cores,
             data_format,
             {
-                {CB::c_in0, 1, tt::DataFormat::Int32},       // target
-                {CB::c_in1, weight_num_tile},                // weight
-                {CB::c_intermed0, 1, intermed_data_format},  // tmp_weight
-                {CB::c_out0, 1},                             // output
+                {CBIndex::c_0, 1, tt::DataFormat::Int32},       // target
+                {CBIndex::c_1, weight_num_tile},                // weight
+                {CBIndex::c_24, 1, intermed_data_format},  // tmp_weight
+                {CBIndex::c_16, 1},                             // output
             });
     }
 
@@ -139,9 +139,9 @@ MorehNllLossStep1DeviceOperation::Factory::cached_program_t MorehNllLossStep1Dev
     for (uint32_t i = 0, tile_offset = 0; i < num_cores; i++) {
         CoreCoord core = {i / core_h, i % core_h};
         uint32_t num_units_per_core;
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             num_units_per_core = units_per_core_group_1;
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             num_units_per_core = units_per_core_group_2;
         } else {
             TT_THROW("Core not in specified core ranges");

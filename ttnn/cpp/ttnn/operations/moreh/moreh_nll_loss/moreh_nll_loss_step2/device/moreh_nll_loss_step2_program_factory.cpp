@@ -61,16 +61,16 @@ MorehNllLossStep2DeviceOperation::Factory::cached_program_t moreh_nll_loss_step2
         all_cores,
         data_format,
         {
-            {CB::c_in0, 1},                                                 // input
-            {CB::c_in1, 1, tt::DataFormat::Int32},                          // target
-            {CB::c_in2, static_cast<uint32_t>(weight_has_value ? 1 : 0)},   // weight
-            {CB::c_in3, static_cast<uint32_t>(divisor_has_value ? 1 : 0)},  // divisor
-            {CB::c_intermed0, 1, fp32_dest_acc_en_data_format},             // tmp_weight to reduce
-            {CB::c_intermed1, 1, fp32_dest_acc_en_data_format},             // tmp_input to reduce
-            {CB::c_intermed2, 1, fp32_dest_acc_en_data_format},             // tmp1
-            {CB::c_intermed3, 1, fp32_dest_acc_en_data_format},             // tmp2
-            {CB::c_intermed4, 1, fp32_dest_acc_en_data_format},             // tmp3
-            {CB::c_out0, 1},                                                // output
+            {CBIndex::c_0, 1},                                                 // input
+            {CBIndex::c_1, 1, tt::DataFormat::Int32},                          // target
+            {CBIndex::c_2, static_cast<uint32_t>(weight_has_value ? 1 : 0)},   // weight
+            {CBIndex::c_3, static_cast<uint32_t>(divisor_has_value ? 1 : 0)},  // divisor
+            {CBIndex::c_24, 1, fp32_dest_acc_en_data_format},             // tmp_weight to reduce
+            {CBIndex::c_25, 1, fp32_dest_acc_en_data_format},             // tmp_input to reduce
+            {CBIndex::c_26, 1, fp32_dest_acc_en_data_format},             // tmp1
+            {CBIndex::c_27, 1, fp32_dest_acc_en_data_format},             // tmp2
+            {CBIndex::c_28, 1, fp32_dest_acc_en_data_format},             // tmp3
+            {CBIndex::c_16, 1},                                                // output
         });
 
     // create read/wrtie kernel
@@ -140,9 +140,9 @@ MorehNllLossStep2DeviceOperation::Factory::cached_program_t moreh_nll_loss_step2
     for (uint32_t i = 0, tile_offset = 0; i < num_cores; i++) {
         CoreCoord core = {i / core_h, i % core_h};
         uint32_t units_per_core;
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             units_per_core = units_per_core_group_1;
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             units_per_core = units_per_core_group_2;
         } else {
             TT_THROW("Core not in specified core ranges");
@@ -174,9 +174,9 @@ MorehNllLossStep2DeviceOperation::Factory::cached_program_t moreh_nll_loss_step2
         // compute
         const std::vector<uint32_t> compute_runtime_args{units_per_core};
 
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             SetRuntimeArgs(program, compute_kernel_ids[0], core, compute_runtime_args);
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             SetRuntimeArgs(program, compute_kernel_ids[1], core, compute_runtime_args);
         } else {
             TT_FATAL(false, "Core not in specified core ranges.");
@@ -240,16 +240,16 @@ MorehNllLossStep2DeviceOperation::Factory::cached_program_t moreh_nll_loss_step2
         all_cores,
         data_format,
         {
-            {CB::c_in0, 1},                                                 // input
-            {CB::c_in1, 1, tt::DataFormat::Int32},                          // target
-            {CB::c_in2, static_cast<uint32_t>(weight_has_value ? 1 : 0)},   // weight
-            {CB::c_in3, static_cast<uint32_t>(divisor_has_value ? 1 : 0)},  // divisor
-            {CB::c_intermed0, 1, fp32_dest_acc_en_data_format},             // tmp_weight to reduce
-            {CB::c_intermed1, 1, fp32_dest_acc_en_data_format},             // tmp_input to reduce
-            {CB::c_intermed2, 1, fp32_dest_acc_en_data_format},             // tmp1
-            {CB::c_intermed3, 1, fp32_dest_acc_en_data_format},             // tmp2
-            {CB::c_intermed4, 1, fp32_dest_acc_en_data_format},             // tmp3
-            {CB::c_out0, 1},                                                // output
+            {CBIndex::c_0, 1},                                                 // input
+            {CBIndex::c_1, 1, tt::DataFormat::Int32},                          // target
+            {CBIndex::c_2, static_cast<uint32_t>(weight_has_value ? 1 : 0)},   // weight
+            {CBIndex::c_3, static_cast<uint32_t>(divisor_has_value ? 1 : 0)},  // divisor
+            {CBIndex::c_24, 1, fp32_dest_acc_en_data_format},             // tmp_weight to reduce
+            {CBIndex::c_25, 1, fp32_dest_acc_en_data_format},             // tmp_input to reduce
+            {CBIndex::c_26, 1, fp32_dest_acc_en_data_format},             // tmp1
+            {CBIndex::c_27, 1, fp32_dest_acc_en_data_format},             // tmp2
+            {CBIndex::c_28, 1, fp32_dest_acc_en_data_format},             // tmp3
+            {CBIndex::c_16, 1},                                                // output
         });
 
     // create read/wrtie kernel
@@ -319,9 +319,9 @@ MorehNllLossStep2DeviceOperation::Factory::cached_program_t moreh_nll_loss_step2
     for (uint32_t i = 0, tile_offset = 0; i < num_cores; i++) {
         CoreCoord core = {i / core_h, i % core_h};
         uint32_t units_per_core;
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             units_per_core = units_per_core_group_1;
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             units_per_core = units_per_core_group_2;
         } else {
             TT_THROW("Core not in specified core ranges");
@@ -355,9 +355,9 @@ MorehNllLossStep2DeviceOperation::Factory::cached_program_t moreh_nll_loss_step2
         // compute
         const std::vector<uint32_t> compute_runtime_args{units_per_core};
 
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             SetRuntimeArgs(program, compute_kernel_ids[0], core, compute_runtime_args);
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             SetRuntimeArgs(program, compute_kernel_ids[1], core, compute_runtime_args);
         } else {
             TT_FATAL(false, "Core not in specified core ranges.");
@@ -429,16 +429,16 @@ MorehNllLossStep2DeviceOperation::Factory::cached_program_t moreh_nll_loss_step2
         all_cores,
         data_format,
         {
-            {CB::c_in0, 1},                                                              // input
-            {CB::c_in1, 1, tt::DataFormat::Int32},                                       // target
-            {CB::c_in2, static_cast<uint32_t>(weight_has_value ? weight_num_tile : 0)},  // weight
-            {CB::c_in3, static_cast<uint32_t>(divisor_has_value ? 1 : 0)},               // divisor
-            {CB::c_intermed0, 1, fp32_dest_acc_en_data_format},                          // tmp_weight to reduce
-            {CB::c_intermed1, 1, fp32_dest_acc_en_data_format},                          // tmp_input to reduce
-            {CB::c_intermed2, 1, fp32_dest_acc_en_data_format},                          // tmp1
-            {CB::c_intermed3, 1, fp32_dest_acc_en_data_format},                          // tmp2
-            {CB::c_intermed4, 1, fp32_dest_acc_en_data_format},                          // tmp3
-            {CB::c_out0, 1},                                                             // output
+            {CBIndex::c_0, 1},                                                              // input
+            {CBIndex::c_1, 1, tt::DataFormat::Int32},                                       // target
+            {CBIndex::c_2, static_cast<uint32_t>(weight_has_value ? weight_num_tile : 0)},  // weight
+            {CBIndex::c_3, static_cast<uint32_t>(divisor_has_value ? 1 : 0)},               // divisor
+            {CBIndex::c_24, 1, fp32_dest_acc_en_data_format},                          // tmp_weight to reduce
+            {CBIndex::c_25, 1, fp32_dest_acc_en_data_format},                          // tmp_input to reduce
+            {CBIndex::c_26, 1, fp32_dest_acc_en_data_format},                          // tmp1
+            {CBIndex::c_27, 1, fp32_dest_acc_en_data_format},                          // tmp2
+            {CBIndex::c_28, 1, fp32_dest_acc_en_data_format},                          // tmp3
+            {CBIndex::c_16, 1},                                                             // output
         });
 
     // create read/wrtie kernel
@@ -508,9 +508,9 @@ MorehNllLossStep2DeviceOperation::Factory::cached_program_t moreh_nll_loss_step2
     for (uint32_t i = 0, tile_offset = 0; i < num_cores; i++) {
         CoreCoord core = {i / core_h, i % core_h};
         uint32_t units_per_core;
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             units_per_core = units_per_core_group_1;
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             units_per_core = units_per_core_group_2;
         } else {
             TT_THROW("Core not in specified core ranges");
@@ -544,9 +544,9 @@ MorehNllLossStep2DeviceOperation::Factory::cached_program_t moreh_nll_loss_step2
         // compute
         const std::vector<uint32_t> compute_runtime_args{units_per_core};
 
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             SetRuntimeArgs(program, compute_kernel_ids[0], core, compute_runtime_args);
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             SetRuntimeArgs(program, compute_kernel_ids[1], core, compute_runtime_args);
         } else {
             TT_FATAL(false, "Core not in specified core ranges.");

@@ -50,7 +50,7 @@ std::tuple<tt_metal::Program, tt_metal::KernelHandle, tt_metal::KernelHandle> se
         .set_page_size(src1_cb_index, single_tile_size);
     auto cb_src1 = tt_metal::CreateCircularBuffer(program, core, cb_src1_config);
 
-    uint32_t ouput_cb_index = 16; // output operands start at index 16
+    uint32_t ouput_cb_index = tt::CBIndex::c_16;
     uint32_t num_output_tiles = 2;
     tt_metal::CircularBufferConfig cb_output_config = tt_metal::CircularBufferConfig(num_output_tiles * single_tile_size, {{ouput_cb_index, tt::DataFormat::Float16_b}})
         .set_page_size(ouput_cb_index, single_tile_size);
@@ -103,7 +103,7 @@ std::tuple<tt_metal::Program, tt_metal::KernelHandle, tt_metal::KernelHandle> se
         .set_page_size(src1_cb_index, single_tile_size);
     auto cb_src1 = tt_metal::CreateCircularBuffer(program, core, cb_src1_config);
 
-    uint32_t ouput_cb_index = 16; // output operands start at index 16
+    uint32_t ouput_cb_index = tt::CBIndex::c_16;
     uint32_t num_output_tiles = 2;
     tt_metal::CircularBufferConfig cb_output_config = tt_metal::CircularBufferConfig(num_output_tiles * single_tile_size, {{ouput_cb_index, tt::DataFormat::Float16_b}})
         .set_page_size(ouput_cb_index, single_tile_size);
@@ -238,12 +238,12 @@ int main(int argc, char **argv) {
         //                      Execute Program One
         ////////////////////////////////////////////////////////////////////////////
         SHAPE shape = {1, 1, 32, 32};
-        tt::deprecated::Tensor<bfloat16> src0_tensor = tt::deprecated::initialize_tensor<bfloat16>(shape, tt::deprecated::Initialize::RANDOM, 100, std::chrono::system_clock::now().time_since_epoch().count());
+        tt::deprecated::Tensor<bfloat16> src0_tensor = tt::deprecated::initialize_tensor<bfloat16>(shape, tt::deprecated::Initialize::RANDOM, 0, 100, std::chrono::system_clock::now().time_since_epoch().count());
         auto src0_activations_tile_layout = convert_to_tile_layout(src0_tensor.get_values());
         auto src0_activations = pack_bfloat16_vec_into_uint32_vec(src0_activations_tile_layout);
         tt_metal::detail::WriteToBuffer(src0_dram_buffer, src0_activations);
 
-        tt::deprecated::Tensor<bfloat16> src1_tensor = tt::deprecated::initialize_tensor<bfloat16>(shape, tt::deprecated::Initialize::ZEROS, 100, std::chrono::system_clock::now().time_since_epoch().count());
+        tt::deprecated::Tensor<bfloat16> src1_tensor = tt::deprecated::initialize_tensor<bfloat16>(shape, tt::deprecated::Initialize::ZEROS, 0, 100, std::chrono::system_clock::now().time_since_epoch().count());
         auto src1_activations_tile_layout = convert_to_tile_layout(src1_tensor.get_values());
         auto src1_activations = pack_bfloat16_vec_into_uint32_vec(src1_activations_tile_layout);
         tt_metal::detail::WriteToBuffer(src1_dram_buffer, src1_activations);

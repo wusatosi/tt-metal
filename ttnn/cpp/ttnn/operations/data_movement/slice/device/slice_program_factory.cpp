@@ -11,6 +11,7 @@
 
 #include "slice_op.hpp"
 using namespace tt::constants;
+using namespace tt::tt_metal;
 
 
 namespace ttnn::operations::data_movement::detail {
@@ -82,9 +83,9 @@ inline std::vector<std::pair<std::vector<uint32_t>, std::vector<uint32_t>>> get_
     for (uint32_t i = 0, num_sticks_written = 0; i < num_cores_total; i++) {
         CoreCoord core = {i / num_cores_y, i % num_cores_y};
         uint32_t num_sticks_per_core;
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             num_sticks_per_core = num_sticks_per_core_group_1;
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             num_sticks_per_core = num_sticks_per_core_group_2;
         } else {
             // no-op
@@ -277,12 +278,12 @@ operation::ProgramWithCallbacks slice_rm_strided_single_core_n_dims(const Tensor
 
 
     tt::tt_metal::CircularBufferConfig cb_src0_config =
-    tt::tt_metal::CircularBufferConfig(1*page_size_input, {{tt::CB::c_in0, cb_data_format}})
-        .set_page_size(tt::CB::c_in0, page_size_input);
+    tt::tt_metal::CircularBufferConfig(1*page_size_input, {{tt::CBIndex::c_0, cb_data_format}})
+        .set_page_size(tt::CBIndex::c_0, page_size_input);
 
     tt::tt_metal::CircularBufferConfig cb_dst0_config =
-    tt::tt_metal::CircularBufferConfig(2*page_size_output, {{tt::CB::c_intermed0, cb_data_format}})
-        .set_page_size(tt::CB::c_intermed0, page_size_output);
+    tt::tt_metal::CircularBufferConfig(2*page_size_output, {{tt::CBIndex::c_24, cb_data_format}})
+        .set_page_size(tt::CBIndex::c_24, page_size_output);
 
     CoreRange core({0, 0}, {0, 0});
     auto cb_input_tensor = tt::tt_metal::CreateCircularBuffer(program, core, cb_src0_config);
@@ -498,7 +499,7 @@ inline std::vector<std::pair<std::vector<uint32_t>, std::vector<uint32_t>>> get_
 
         tt::log_debug("num_cores: {}", core_stick_map.size());
 
-        for (auto core_stick_pair : core_stick_map) {
+        for (const auto& core_stick_pair : core_stick_map) {
             auto xy_pair = core_stick_pair.first;
             if (row_major) {
                 reader_kernel_args.push_back(xy_pair.second); // noc x
@@ -521,7 +522,7 @@ inline std::vector<std::pair<std::vector<uint32_t>, std::vector<uint32_t>>> get_
             reader_kernel_args.push_back(stick_chunks.size()); // num_chunks for current core
             tt::log_debug("chunk_size: {}", stick_chunks.size());
         }
-        for (auto stick_chunks : stick_chunks_per_core) {
+        for (const auto& stick_chunks : stick_chunks_per_core) {
             for (auto chunk : stick_chunks) {
                 reader_kernel_args.push_back(chunk[0]); // start id of a chunk
                 tt::log_debug("chunk_start_id: {}", chunk[0]);
@@ -609,7 +610,7 @@ operation::ProgramWithCallbacks slice_rm_multi_core_sharded(
         .set_page_size(src0_cb_index, stick_size_padded).set_globally_allocated_address(*a.buffer());
     auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, total_cores, cb_src0_config);
 
-    uint32_t output_cb_index = tt::CB::c_out0; // output operands start at index 16
+    uint32_t output_cb_index = tt::CBIndex::c_16;
     tt::tt_metal::CircularBufferConfig cb_output_config = tt::tt_metal::CircularBufferConfig(shard_height_unpadded * stick_size_unpadded, {{output_cb_index, dst_cb_data_format}})
         .set_page_size(output_cb_index, stick_size_unpadded).set_globally_allocated_address(*output.buffer());
     auto cb_output = tt::tt_metal::CreateCircularBuffer(program, total_cores, cb_output_config);

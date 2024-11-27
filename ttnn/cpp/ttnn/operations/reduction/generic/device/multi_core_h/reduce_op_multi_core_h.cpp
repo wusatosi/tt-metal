@@ -62,9 +62,9 @@ operation::ProgramWithCallbacks reduce_multi_core_h(
         num_cols_per_core_group_2 = 0;
     }
 
-    uint32_t src0_cb_index = CB::c_in0;
+    uint32_t src0_cb_index = CBIndex::c_0;
     CBHandle cb_src0;
-    uint32_t src1_cb_index = CB::c_in1;
+    uint32_t src1_cb_index = CBIndex::c_1;
     CBHandle cb_src1 = 0;
     if (in_sharded) {
         uint32_t num_shard_tiles = a.shard_spec().value().numel() / TILE_HW;
@@ -90,13 +90,13 @@ operation::ProgramWithCallbacks reduce_multi_core_h(
         cb_src0 = tt_metal::CreateCircularBuffer(program, all_cores, cb_src0_config);
     }
 
-    uint32_t scaler_cb_index = CB::c_in2;
+    uint32_t scaler_cb_index = CBIndex::c_2;
     tt_metal::CircularBufferConfig cb_scaler_config =
         tt_metal::CircularBufferConfig(1 * scaler_single_tile_size, {{scaler_cb_index, scaler_cb_data_format}})
             .set_page_size(scaler_cb_index, scaler_single_tile_size);
     auto cb_scaler = tt_metal::CreateCircularBuffer(program, all_cores, cb_scaler_config);
 
-    uint32_t output_cb_index = CB::c_out0;  // output operands start at index 16
+    uint32_t output_cb_index = CBIndex::c_16;  // output operands start at index 16
     CBHandle cb_output;
     if (out_sharded) {
         uint32_t num_output_tiles = output.shard_spec().value().numel() / TILE_HW;
@@ -218,9 +218,9 @@ operation::ProgramWithCallbacks reduce_multi_core_h(
         for (uint32_t i = 0, num_cols_read = 0; i < num_cores; i++) {
             const CoreCoord &core = cores[i];
             uint32_t num_cols_per_core = 0;
-            if (core_group_1.core_coord_in_core_ranges(core)) {
+            if (core_group_1.contains(core)) {
                 num_cols_per_core = num_cols_per_core_group_1;
-            } else if (core_group_2.core_coord_in_core_ranges(core)) {
+            } else if (core_group_2.contains(core)) {
                 num_cols_per_core = num_cols_per_core_group_2;
             } else {
                 TT_ASSERT(false, "Core not in specified core ranges");

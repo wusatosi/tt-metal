@@ -57,7 +57,7 @@ class SystemMesh {
     // to keep track of this but DevicePool seems to open all devices associated with an MMIO device id
     std::unordered_map<MeshDeviceID, std::map<chip_id_t, Device*>> opened_devices;
     std::unordered_map<MeshDeviceID, std::vector<chip_id_t>> assigned_devices;
-    std::unordered_map<MeshDeviceID, std::shared_ptr<MeshDevice>> assigned_mesh_device_devices;
+    std::unordered_map<MeshDeviceID, std::weak_ptr<MeshDevice>> assigned_mesh_device_devices;
     std::unordered_map<chip_id_t, Device *> assigned_physical_id_to_device;
 
     // Logical mesh shape and coordinates
@@ -174,6 +174,8 @@ class MeshDevice : public std::enable_shared_from_this<MeshDevice> {
     std::vector<std::shared_ptr<MeshDevice>> create_submeshes(
         const MeshShape &submesh_shape,
         MeshType type = MeshType::RowMajor);
+
+    size_t num_program_cache_entries() const;
 
     static std::shared_ptr<MeshDevice> fetch_mesh_device(const std::vector<Device*>& devices);
     static std::shared_ptr<MeshDevice> create(

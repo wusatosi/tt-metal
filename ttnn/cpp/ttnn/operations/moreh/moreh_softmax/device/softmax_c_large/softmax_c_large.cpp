@@ -51,13 +51,13 @@ MorehSoftmaxOperation::MorehSoftmaxCLargeFactory::create(
         all_cores,
         data_format,
         {
-            {tt::CB::c_in0, 2},                              // input
-            {tt::CB::c_out0, 2},                             // output
-            {tt::CB::c_intermed0, 1, intermed_data_format},  // exp(x)
-            {tt::CB::c_intermed1, 1, intermed_data_format},  // recips
-            {tt::CB::c_intermed2, 2, intermed_data_format},  // add
-            {tt::CB::c_intermed3, 1},                        // max
-            {tt::CB::c_intermed4, 1, intermed_data_format},  // tmp
+            {tt::CBIndex::c_0, 2},                              // input
+            {tt::CBIndex::c_16, 2},                             // output
+            {tt::CBIndex::c_24, 1, intermed_data_format},  // exp(x)
+            {tt::CBIndex::c_25, 1, intermed_data_format},  // recips
+            {tt::CBIndex::c_26, 2, intermed_data_format},  // add
+            {tt::CBIndex::c_27, 1},                        // max
+            {tt::CBIndex::c_28, 1, intermed_data_format},  // tmp
         });
 
     // create read/wrtie kernel
@@ -120,9 +120,9 @@ MorehSoftmaxOperation::MorehSoftmaxCLargeFactory::create(
     for (uint32_t i = 0, tile_offset = 0; i < num_cores; i++) {
         CoreCoord core = {i / core_h + core_x_offset, i % core_h + core_y_offset};
         uint32_t num_tiles_per_core;
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             num_tiles_per_core = num_tiles_per_core_group_1;
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             num_tiles_per_core = num_tiles_per_core_group_2;
         } else {
             TT_THROW("Core not in specified core ranges");

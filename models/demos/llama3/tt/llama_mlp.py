@@ -43,17 +43,17 @@ class TtLlamaMLP(LightweightModule):
             cache_file_name=cache_name(name),
         )
 
+        self.four_bit_mlp = self.args.is_large_model
+
         # Sharded weights
         w1_dim = (-1, -2) if args.is_galaxy else (-2, -1)
         w2_dim = (-2, -1) if args.is_galaxy else (-1, -2)
 
         self.w1 = as_sharded_tensor(
-            "w1_sharded", ttnn.bfloat4_b if self.args.is_large_model else ttnn.bfloat8_b, dim=w1_dim
+            "w1_sharded", ttnn.bfloat4_b if self.four_bit_mlp else ttnn.bfloat8_b, dim=w1_dim
         )  # bfp4 normally ok here but sub .99 pcc for llama 3.1 weights
         self.w2 = as_sharded_tensor("w2_sharded", ttnn.bfloat8_b, dim=w2_dim)
-        self.w3 = as_sharded_tensor(
-            "w3_sharded", ttnn.bfloat4_b if self.args.is_large_model else ttnn.bfloat8_b, dim=w1_dim
-        )
+        self.w3 = as_sharded_tensor("w3_sharded", ttnn.bfloat4_b if self.four_bit_mlp else ttnn.bfloat8_b, dim=w1_dim)
 
     def forward(self, x: ttnn.Tensor, mode) -> ttnn.Tensor:
         """
@@ -87,19 +87,25 @@ class TtLlamaMLP(LightweightModule):
         w1_out = ttnn.linear(
             x,
             self.w1,
-            compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
-            dtype=ttnn.bfloat8_b,
+            compute_kernel_config=self.args.compute_kernel_config_lofi
+            if self.four_bit_mlp
+            else self.args.compute_kernel_config_hifi2_fp16,
+            core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_1 else None,
+            dtype=ttnn.bfloat8_b if TG else ttnn.bfloat16,
             program_config=pc_1,
-            memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
+            memory_config=x.memory_config(),
         )
 
         w3_out = ttnn.linear(
             x,
             self.w3,
-            compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
-            dtype=ttnn.bfloat8_b,
+            compute_kernel_config=self.args.compute_kernel_config_lofi
+            if self.four_bit_mlp
+            else self.args.compute_kernel_config_hifi2_fp16,
+            core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_3 else None,
+            dtype=ttnn.bfloat8_b if TG else ttnn.bfloat16,
             program_config=pc_3,
-            memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
+            memory_config=x.memory_config(),
         )
         ttnn.deallocate(x)
 
@@ -129,9 +135,9 @@ class TtLlamaMLP(LightweightModule):
         w2_in = ttnn.mul(
             w1_out,
             w3_out,
-            memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
             input_tensor_a_activation=ttnn.UnaryOpType.SILU,
             dtype=ttnn.bfloat8_b,
+            memory_config=w1_out.memory_config(),
         )
         if TG:
             w2_in = ttnn.all_gather(
@@ -152,6 +158,10 @@ class TtLlamaMLP(LightweightModule):
             w2_in_prev_shard = w2_in
             w2_in = ttnn.to_memory_config(w2_in_prev_shard, self.model_config["SHARDED_MLP2_INPUT_MEMCFG"])
             w2_in_prev_shard.deallocate(True)
+
+        ttnn.deallocate(w3_out)
+        ttnn.deallocate(w1_out)
+
         # This uses HiFi2 for full precision as it is dram-bound and uses bfp8 inputs
         w2_out = ttnn.linear(
             w2_in,
@@ -159,7 +169,7 @@ class TtLlamaMLP(LightweightModule):
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
             dtype=self.args.ccl_dtype if self.args.is_multichip else ttnn.bfloat16,
             program_config=pc_2,
-            memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
+            memory_config=w2_in.memory_config(),
         )
         ttnn.deallocate(w2_in)
         if mode == "decode" and not TG:
@@ -185,8 +195,11 @@ class TtLlamaMLP(LightweightModule):
             w2_out_reduced, (1, 1, original_shape[-4] * original_shape[-3] * original_shape[-2], original_shape[-1])
         )
 
-        if mode == "decode" and TG:
-            w2_out_reduced = ttnn.to_memory_config(w2_out_reduced, self.model_config["SHARDED_ATTN_INPUT_MEMCFG"])
+        if mode == "decode":
+            w2_out_reduced = ttnn.to_memory_config(
+                w2_out_reduced,
+                self.model_config["SHARDED_ATTN_INPUT_MEMCFG"] if TG else self.model_config["DECODE_RESIDUAL_MEMCFG"],
+            )
 
         # ttnn.deallocate(w2_out)
         return w2_out_reduced

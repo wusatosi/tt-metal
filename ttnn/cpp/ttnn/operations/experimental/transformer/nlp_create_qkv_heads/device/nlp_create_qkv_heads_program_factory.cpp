@@ -198,9 +198,9 @@ NlpCreateHeadsDeviceOperation::Interleaved::cached_program_t NlpCreateHeadsDevic
     for (uint32_t i = 0, num_blocks_written = 0; i < num_cores; i++){
         CoreCoord core = {i / num_cores_y, i % num_cores_y};
         uint32_t num_blocks_per_core = 0;
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             num_blocks_per_core = num_blocks_per_core_group_1;
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             num_blocks_per_core = num_blocks_per_core_group_2;
         } else {
             TT_ASSERT(false, "Core not in specified core ranges");
@@ -358,7 +358,7 @@ NlpCreateHeadsDeviceOperation::Sharded::cached_program_t NlpCreateHeadsDeviceOpe
     uint32_t per_risc1_out_q_heads = per_core_out_q_heads / 2;
     uint32_t per_core_in_q_heads = num_q_heads / input_tensor.shard_spec().value().num_cores();
 
-    uint32_t q_output_cb_index = CB::c_out0;
+    uint32_t q_output_cb_index = CBIndex::c_16;
     tt_metal::CircularBufferConfig cb_q_output_config =
         tt_metal::CircularBufferConfig(
             q_num_tiles * single_tile_size, {{q_output_cb_index, cb_data_format}})
@@ -369,7 +369,7 @@ NlpCreateHeadsDeviceOperation::Sharded::cached_program_t NlpCreateHeadsDeviceOpe
     auto k_cores = k_shard_spec.grid;
     auto k_num_tiles = k_shard_spec.shape[0] * k_shard_spec.shape[1] / TILE_HW;
 
-    uint32_t k_output_cb_index = CB::c_out1;
+    uint32_t k_output_cb_index = CBIndex::c_17;
     tt_metal::CircularBufferConfig cb_k_output_config =
         tt_metal::CircularBufferConfig(
             k_num_tiles * single_tile_size, {{k_output_cb_index, cb_data_format}})
@@ -380,7 +380,7 @@ NlpCreateHeadsDeviceOperation::Sharded::cached_program_t NlpCreateHeadsDeviceOpe
     auto v_cores = q_shard_spec.grid;
     auto v_num_tiles = v_shard_spec.shape[0] * v_shard_spec.shape[1] / TILE_HW;
 
-    uint32_t v_output_cb_index = CB::c_out2;
+    uint32_t v_output_cb_index = CBIndex::c_18;
     tt_metal::CircularBufferConfig cb_v_output_config =
         tt_metal::CircularBufferConfig(
             v_num_tiles * single_tile_size, {{v_output_cb_index, cb_data_format}})

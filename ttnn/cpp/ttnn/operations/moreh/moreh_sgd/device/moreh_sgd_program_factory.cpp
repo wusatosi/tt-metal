@@ -68,19 +68,19 @@ MorehSgdOperation::ProgramFactory::cached_program_t MorehSgdOperation::ProgramFa
         all_cores,
         data_format,
         {
-            {tt::CB::c_in0, 2},   // param_in
-            {tt::CB::c_in1, 2},   // grad
-            {tt::CB::c_in2, 2},   // momentum_in
-            {tt::CB::c_out0, 2},  // param_out
-            {tt::CB::c_out1, 2},  // momentum_out
+            {tt::CBIndex::c_0, 2},   // param_in
+            {tt::CBIndex::c_1, 2},   // grad
+            {tt::CBIndex::c_2, 2},   // momentum_in
+            {tt::CBIndex::c_16, 2},  // param_out
+            {tt::CBIndex::c_17, 2},  // momentum_out
 
-            {tt::CB::c_intermed0,
+            {tt::CBIndex::c_24,
              5,
              intermed_cb_format},  // cb_scalar_args (lr, momentum, dampening, weight_decay, one)
-            {tt::CB::c_intermed1, 1, intermed_cb_format},  //
-            {tt::CB::c_intermed2, 1, intermed_cb_format},  //
-            {tt::CB::c_intermed3, 1, intermed_cb_format},  //
-            {tt::CB::c_intermed4, 1, intermed_cb_format},  //
+            {tt::CBIndex::c_25, 1, intermed_cb_format},  //
+            {tt::CBIndex::c_26, 1, intermed_cb_format},  //
+            {tt::CBIndex::c_27, 1, intermed_cb_format},  //
+            {tt::CBIndex::c_28, 1, intermed_cb_format},  //
         });
 
     ////////////////////////////////////////////////////////////////////////////
@@ -182,9 +182,9 @@ MorehSgdOperation::ProgramFactory::cached_program_t MorehSgdOperation::ProgramFa
     for (uint32_t i = 0, tile_offset = 0; i < num_cores; i++) {
         CoreCoord core = {i / core_h + core_x_offset, i % core_h + core_y_offset};
         uint32_t num_tiles_per_core;
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             num_tiles_per_core = num_tiles_per_core_group_1;
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             num_tiles_per_core = num_tiles_per_core_group_2;
         } else {
             TT_FATAL(false, "Core not in specified core ranges");

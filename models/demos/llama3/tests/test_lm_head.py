@@ -24,6 +24,10 @@ from models.utility_functions import skip_for_grayskull
     (32,),
 )
 @pytest.mark.parametrize(
+    "batch_size",
+    (1,),
+)
+@pytest.mark.parametrize(
     "mesh_device",
     [
         {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
@@ -32,12 +36,12 @@ from models.utility_functions import skip_for_grayskull
     ],
     indirect=True,
 )
-def test_llama_lm_head_inference(mesh_device, seq_len, use_program_cache, reset_seeds):
+def test_llama_lm_head_inference(seq_len, batch_size, mesh_device, use_program_cache, reset_seeds):
     dtype = ttnn.bfloat8_b
 
     mesh_device.enable_async(True)
 
-    model_args = TtModelArgs(mesh_device)
+    model_args = TtModelArgs(mesh_device, max_batch_size=batch_size, max_seq_len=seq_len)
     model_args.n_layers = 1
     state_dict = model_args.load_state_dict()
 
@@ -85,9 +89,6 @@ def test_llama_lm_head_inference(mesh_device, seq_len, use_program_cache, reset_
         tt_output_torch = tt_output_torch[:, 0:1, :, : model_args.vocab_size]
     else:
         tt_output_torch = ttnn.to_torch(tt_output, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))
-
-    print(f"{tt_output_torch.shape=}")
-    print(f"{reference_output.shape=}")
 
     pcc_required = 0.99
     passing, pcc_message = comp_pcc(reference_output, tt_output_torch, pcc_required)

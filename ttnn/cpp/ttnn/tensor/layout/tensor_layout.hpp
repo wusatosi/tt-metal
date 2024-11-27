@@ -28,7 +28,7 @@ public:
     [[deprecated("Use of Legacy Padded Shape is deprecated")]]
     static TensorLayout fromLegacyPaddedShape(DataType dtype, const PageConfig& page_config, const MemoryConfig& memory_config, const ttnn::Shape& legacy_shape);
 
-    Layout get_layout() const { return page_config_.is_row_major() ? Layout::ROW_MAJOR : Layout::TILE; }
+    Layout get_layout() const { return page_config_.get_layout(); }
     PageConfig get_page_config() const { return page_config_; }
     DataType get_data_type() const { return dtype_; }
     const MemoryConfig& get_memory_config() const { return memory_config_; }
@@ -51,6 +51,20 @@ public:
     //  H is all dimensions except W multiplied and aligned to tile and shard height
     Size compute_physical_shape(const ttnn::SimpleShape& shape) const;
 
+    TensorLayout with_memory_config(MemoryConfig memory_config) const {
+        TensorLayout result = *this;
+        result.memory_config_ = std::move(memory_config);
+        return result;
+    }
+
+    bool operator==(const TensorLayout&) const = default;
+    bool operator!=(const TensorLayout&) const = default;
+
+    static constexpr auto attribute_names = std::forward_as_tuple("dtype", "page_config", "memory_config", "alignment");
+    const auto attribute_values() const {
+        return std::forward_as_tuple(dtype_, page_config_, memory_config_, alignment_);
+    }
+
 private:
     // Private to not expose alignment parameter to the public API
     TensorLayout(DataType dtype, const PageConfig& page_config, const MemoryConfig& memory_config, const Alignment& alignment);
@@ -60,6 +74,7 @@ private:
 
     Size compute_page_shape(const Size& physical_size) const;
     size_t compute_page_size_bytes(const Size& page_size) const;
+    Size compute_physical_shard_shape(const Size& logical_shard_shape) const;
 
     DataType dtype_ = DataType::BFLOAT16;
     PageConfig page_config_;

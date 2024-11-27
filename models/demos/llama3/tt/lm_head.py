@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: © 2023 Tenstorrent Inc.
+
+# SPDX-License-Identifier: Apache-2.0
+
 import math
 import torch
 import ttnn
@@ -131,10 +135,10 @@ class LMHead(LightweightModule):
                 memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
                 dtype=ttnn.bfloat8_b,
             )
-            outputs.append(ttnn.sharded_to_interleaved(output, memory_config=ttnn.DRAM_MEMORY_CONFIG))
+            outputs.append(ttnn.sharded_to_interleaved(output, memory_config=ttnn.L1_MEMORY_CONFIG))
 
         # Concatenate the outputs
-        output = ttnn.concat(outputs, dim=-1, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+        output = ttnn.concat(outputs, dim=-1, memory_config=ttnn.L1_MEMORY_CONFIG)
 
         if self.args.is_galaxy:
             output = tt_all_reduce(
@@ -144,7 +148,7 @@ class LMHead(LightweightModule):
                 dim=3 if self.args.is_galaxy else 0,
                 num_reduce_scatter_links=self.args.num_reduce_scatter_links,
                 num_all_gather_links=self.args.num_all_gather_links,
-                memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                memory_config=ttnn.L1_MEMORY_CONFIG,
                 dtype=self.args.ccl_dtype,
                 sharded=False,
                 use_composite=True,

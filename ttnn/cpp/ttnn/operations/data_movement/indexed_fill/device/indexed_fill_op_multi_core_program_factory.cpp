@@ -11,6 +11,8 @@
 #include "tt_metal/host_api.hpp"
 #include "tt_metal/detail/util.hpp"
 
+using namespace tt::tt_metal;
+
 namespace ttnn::operations::data_movement {
 
 operation::ProgramWithCallbacks indexed_fill_multi_core(const Tensor &batch_ids, const Tensor &input_a, const Tensor & input_b, const Tensor &output) {
@@ -20,7 +22,7 @@ operation::ProgramWithCallbacks indexed_fill_multi_core(const Tensor &batch_ids,
     auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
     uint32_t num_cores_x = compute_with_storage_grid_size.x;
     uint32_t num_cores_y = compute_with_storage_grid_size.y;
-    auto set_of_core_ranges = tt::tt_metal::num_cores_to_corerange_set(num_cores_x*num_cores_y, compute_with_storage_grid_size);
+    auto set_of_core_ranges = tt::tt_metal::num_cores_to_corerangeset(num_cores_x*num_cores_y, compute_with_storage_grid_size);
     CoreRangeSet all_cores(set_of_core_ranges);
 
 

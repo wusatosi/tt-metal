@@ -13,6 +13,7 @@
 #include <algorithm>
 
 using namespace tt::constants;
+using namespace tt::tt_metal;
 
 namespace ttnn::operations::data_movement {
 
@@ -124,9 +125,9 @@ operation::ProgramWithCallbacks move_multi_core_with_overlap(const Tensor &input
     for (uint32_t i = 0, pages_handled_per_core = 0; i < num_cores; i++) {
         CoreCoord core = {i / num_cores_y, i % num_cores_y};
         uint32_t num_pages_per_core = 0;
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             num_pages_per_core = num_pages_per_core_group_1;
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             num_pages_per_core = num_pages_per_core_group_2;
         } else {
             TT_THROW("Core not in specified core ranges");
@@ -200,8 +201,8 @@ operation::ProgramWithCallbacks move_multi_core_sharded(const Tensor& input, Ten
     TT_FATAL(
         input_layout == output.get_layout() && input_dtype == output.get_dtype() &&
         shard_shape == output.shard_spec().value().shape && input_shape == output.get_legacy_shape(), "Error");
-    const uint32_t src_cb_sharded = tt::CB::c_in0;
-    const uint32_t dst_cb_sharded = tt::CB::c_in1;
+    const uint32_t src_cb_sharded = tt::CBIndex::c_0;
+    const uint32_t dst_cb_sharded = tt::CBIndex::c_1;
     uint32_t tile_size_bytes = tile_size(cb_data_format);
     uint32_t shard_shape_num_tiles = tt::div_up(shard_shape[0] * shard_shape[1], TILE_HEIGHT * TILE_WIDTH);
     uint32_t total_size_bytes = 0;

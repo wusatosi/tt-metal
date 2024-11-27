@@ -16,6 +16,13 @@ class HostEmbedding(torch.nn.Module):
         return self.emb(x)
 
 
+# Default configuration for Paged Attention
+class PagedAttentionConfig:
+    def __init__(self, block_size=32, max_num_blocks=1024):
+        self.block_size = block_size
+        self.max_num_blocks = max_num_blocks
+
+
 def encode_prompt_llama_instruct(tokenizer, prompt_text, system_prompt_text=None):
     """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
     {{ system_prompt }}<|eot_id|><|start_header_id|>user<|end_header_id|>
@@ -185,7 +192,13 @@ def get_rot_transformation_mat(dhead):
 
 
 def get_single_rot_mat(
-    dhead, mesh_device, num_devices, start_pos=0, theta: float = 500000.0, use_scaled=True, on_host=False
+    dhead,
+    mesh_device,
+    num_devices,
+    start_pos=0,
+    theta: float = 500000.0,
+    use_scaled=True,
+    on_host=False,
 ):
     freqs_unscaled = 1.0 / (theta ** (torch.arange(0, dhead, 2)[: (dhead // 2)].float() / dhead))
     if use_scaled:

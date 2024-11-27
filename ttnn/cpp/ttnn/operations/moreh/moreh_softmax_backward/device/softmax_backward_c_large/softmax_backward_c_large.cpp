@@ -51,12 +51,12 @@ MorehSoftmaxBackwardOperation::MorehSoftmaxBackwardCLargeFactory::create(
         all_cores,
         data_format,
         {
-            {tt::CB::c_in0, 2},                                                                  // y
-            {tt::CB::c_in1, 2},                                                                  // dy
-            {tt::CB::c_out0, 2},                                                                 // dx
-            {tt::CB::c_intermed0, 1, fp32_dest_acc_en ? tt::DataFormat::Float32 : data_format},  // y * dy
-            {tt::CB::c_intermed1, 2, fp32_dest_acc_en ? tt::DataFormat::Float32 : data_format},  // sum(y * dy)
-            {tt::CB::c_intermed2, 1, fp32_dest_acc_en ? tt::DataFormat::Float32 : data_format},  // dy - sum
+            {tt::CBIndex::c_0, 2},                                                                  // y
+            {tt::CBIndex::c_1, 2},                                                                  // dy
+            {tt::CBIndex::c_16, 2},                                                                 // dx
+            {tt::CBIndex::c_24, 1, fp32_dest_acc_en ? tt::DataFormat::Float32 : data_format},  // y * dy
+            {tt::CBIndex::c_25, 2, fp32_dest_acc_en ? tt::DataFormat::Float32 : data_format},  // sum(y * dy)
+            {tt::CBIndex::c_26, 1, fp32_dest_acc_en ? tt::DataFormat::Float32 : data_format},  // dy - sum
         });
 
     // create read/wrtie kernel
@@ -122,9 +122,9 @@ MorehSoftmaxBackwardOperation::MorehSoftmaxBackwardCLargeFactory::create(
     for (uint32_t i = 0, tile_offset = 0; i < num_cores; i++) {
         CoreCoord core = {i / core_h + core_x_offset, i % core_h + core_y_offset};
         uint32_t num_tiles_per_core;
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             num_tiles_per_core = num_tiles_per_core_group_1;
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             num_tiles_per_core = num_tiles_per_core_group_2;
         } else {
             TT_THROW("Core not in specified core ranges");

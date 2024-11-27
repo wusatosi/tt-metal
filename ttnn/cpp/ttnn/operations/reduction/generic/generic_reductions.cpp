@@ -44,7 +44,20 @@ static Tensor reduce_impl(
         }
     }
 
-    if (dim.size() == 1) {
+    for (int i = 0; i < dim.size(); i++) {
+        if (dim[i] < 0) {
+            dim[i] += rank;
+        }
+        int dim_i = dim[i];
+        TT_FATAL(
+            dim_i >= 0 && dim_i < rank,
+            "Unsupported dim {} at index {}. After possible adjustment, needs to be at least 0 and less than rank {}",
+            dim_i,
+            i,
+            rank);
+    }
+
+    if (dim.size() == 1 && rank == 4) {
         if (dim[0] == rank - 3) {
             // Pad before running the op to only pay cost of formatting once
             auto input_tensor_pad_shape = AutoFormat::pad_to_tile_shape(input_tensor_arg.get_legacy_shape(), true);
@@ -83,14 +96,6 @@ static Tensor reduce_impl(
         }
     }
 
-    for (int& axis : dim) {
-        if (axis < 0) {
-            axis += rank;
-        }
-        if (axis >= rank) {
-            TT_THROW("Invalid dim");
-        }
-    }
     std::sort(dim.begin(), dim.end());
 
     ttnn::SmallVector<uint32_t> output_shape;
@@ -123,8 +128,8 @@ static Tensor reduce_impl(
             for (int rank = input_tensor.get_legacy_shape().rank() - 1; rank >= 0; rank--) {
                 output_tensor = reduce_impl<ReduceType::Sum>(output_tensor, rank, true, memory_config, compute_kernel_config, scalar, false);
             }
-            float inv_volume = 1.0f/input_tensor.volume();
-            return ttnn::mul_sfpu(inv_volume, output_tensor, memory_config);
+            float inv_volume = 1.0f/input_tensor.get_logical_volume();
+            output_tensor = ttnn::mul_sfpu(inv_volume, output_tensor, memory_config);
         } else {
             TT_THROW("Unsupported reduction operation");
         }

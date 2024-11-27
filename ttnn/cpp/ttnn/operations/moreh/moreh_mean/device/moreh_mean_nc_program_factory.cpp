@@ -83,11 +83,11 @@ MorehMeanOperation::MorehMeanNCFactory::cached_program_t MorehMeanOperation::Mor
         all_cores,
         cb_data_format,
         {
-            {CB::c_in0, 2},        // input
-            {CB::c_in1, 1},        // zero
-            {CB::c_in2, 1},        // scaler
-            {CB::c_intermed0, 1},  // accumulated mean
-            {CB::c_out0, 2},       // output
+            {CBIndex::c_0, 2},        // input
+            {CBIndex::c_1, 1},        // zero
+            {CBIndex::c_2, 1},        // scaler
+            {CBIndex::c_24, 1},  // accumulated mean
+            {CBIndex::c_16, 2},       // output
         });
 
     ////////////////////////////////////////////////////////////////////////////
@@ -133,10 +133,10 @@ MorehMeanOperation::MorehMeanNCFactory::cached_program_t MorehMeanOperation::Mor
         CoreCoord core = {i / core_h, i % core_h};
 
         uint32_t units_per_core;
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             units_per_core = units_per_core_group_1;
             SetRuntimeArgs(program, compute_kernel_ids[0], core, {num_reduce_input_tile, units_per_core});
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             units_per_core = units_per_core_group_2;
             SetRuntimeArgs(program, compute_kernel_ids[1], core, {num_reduce_input_tile, units_per_core});
         } else {

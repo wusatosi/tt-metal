@@ -53,7 +53,7 @@ FullLikeOperation::ProgramFactory::cached_program_t FullLikeOperation::ProgramFa
     auto [num_cores, all_cores, core_group_1, core_group_2, num_tiles_per_core_group_1, num_tiles_per_core_group_2] =
         tt_metal::split_work_to_cores(compute_with_storage_grid_size, num_tiles);
 
-    constexpr CB cb_fill_value_id = CB::c_intermed0;
+    constexpr CBIndex cb_fill_value_id = CBIndex::c_24;
 
     CircularBufferConfig cb_value_config = CircularBufferConfig(single_tile_size, {{cb_fill_value_id, data_format}})
                                                .set_page_size(cb_fill_value_id, single_tile_size);
@@ -80,9 +80,9 @@ FullLikeOperation::ProgramFactory::cached_program_t FullLikeOperation::ProgramFa
         const CoreCoord core(i / num_cores_y, i % num_cores_y);
 
         uint32_t num_tiles_per_core = 0;
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             num_tiles_per_core = num_tiles_per_core_group_1;
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             num_tiles_per_core = num_tiles_per_core_group_2;
         } else {
             TT_ASSERT(false, "Core not in specified core ranges");

@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <array>
 #include <string>
 #include <tuple>
 #include <fmt/core.h>
@@ -14,8 +15,8 @@ namespace ttnn::operations::sliding_window {
 
 struct ParallelConfig {
     CoreRangeSet grid = {};
-    TensorMemoryLayout shard_scheme;
-    ShardOrientation shard_orientation;
+    tt::tt_metal::TensorMemoryLayout shard_scheme;
+    tt::tt_metal::ShardOrientation shard_orientation;
 
     bool operator==(const ParallelConfig &other) {
         return (grid == other.grid && shard_scheme == other.shard_scheme && shard_orientation == other.shard_orientation);
@@ -40,7 +41,8 @@ struct SlidingWindowConfig {
     // windowing parameters
     uint32_pair_t window_hw  = {1, 1};
     uint32_pair_t stride_hw  = {1, 1};
-    uint32_pair_t pad_hw = {0, 0} ;
+    uint32_pair_t pad_hw = {0, 0};
+    uint32_pair_t output_pad_hw = {0, 0};
     uint32_pair_t dilation_hw = {1, 1};
 
     // parallel configuration
@@ -50,6 +52,7 @@ struct SlidingWindowConfig {
 
     bool snap_to_tile = false;
     bool is_bilinear = false;
+    bool is_transpose = false;
 
     std::string to_string() const;
     bool has_parallel_config() const;
@@ -68,6 +71,9 @@ struct SlidingWindowConfig {
         */
     Shape get_output_shape() const;
 
+    Shape get_transposed_full_input_shape() const;
+
+    std::array<uint32_pair_t, 2> get_transposed_real_padding() const;
     /**
         * Calculate output tensor shard height
         */
@@ -80,11 +86,11 @@ std::vector<uint32_t> generate_op_trace_metadata(const SlidingWindowConfig& conf
 std::vector<std::pair<uint32_pair_t, uint32_pair_t>> generate_shard_boundaries(const SlidingWindowConfig& config, const std::vector<uint32_t>& op_trace_metadata);
 std::vector<std::pair<bool, uint32_pair_t>> generate_tensor_metadata(const std::vector<bool>& pad_metadata, const SlidingWindowConfig& config, uint32_t reshard_num_cores_nhw = 0, bool is_in_tiled = true);
 uint32_t generate_max_out_nsticks_per_core(const std::vector<std::pair<uint32_pair_t, uint32_pair_t>>& shard_boundaries);
-std::tuple<std::vector<std::vector<uint16_t>>, std::vector<std::vector<uint16_t>>, std::vector<std::vector<uint16_t>>> generate_halo_kernel_config_tensors(const std::vector<std::pair<bool, uint32_pair_t>>& tensor_metadata, const std::vector<std::pair<uint32_pair_t, uint32_pair_t>>& shard_boundaries, bool is_block_sharded, bool transpose_mcast, bool remote_read, Device* device);
+std::tuple<std::vector<std::vector<uint16_t>>, std::vector<std::vector<uint16_t>>, std::vector<std::vector<uint16_t>>> generate_halo_kernel_config_tensors(const std::vector<std::pair<bool, uint32_pair_t>>& tensor_metadata, const std::vector<std::pair<uint32_pair_t, uint32_pair_t>>& shard_boundaries, bool is_block_sharded, bool transpose_mcast, bool remote_read, tt::tt_metal::Device* device);
 std::vector<std::vector<uint16_t>> generate_sliding_window_op_config(const std::vector<uint32_t>& op_trace_metadata, const std::vector<std::pair<uint32_pair_t, uint32_pair_t>>& shard_boundaries, bool pad_tile = false, bool pad_cores = false);
 std::vector<uint16_t> flatten(const std::vector<std::vector<uint16_t>>& input);
 Tensor construct_on_host_config_tensor(const std::vector<std::vector<uint16_t>>& config, const SlidingWindowConfig& sw_config, const ParallelConfig& p_config);
-Tensor move_config_tensor_to_device(const Tensor& config_tensor, const ParallelConfig& p_config, bool is_block_sharded, Device* device);
+Tensor move_config_tensor_to_device(const Tensor& config_tensor, const ParallelConfig& p_config, bool is_block_sharded, tt::tt_metal::Device* device);
 
 } // namespace ttnn::operations::sliding_window
 

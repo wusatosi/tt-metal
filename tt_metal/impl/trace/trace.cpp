@@ -5,15 +5,14 @@
 #include "impl/trace/trace.hpp"
 
 #include <memory>
-#include <string>
 
-#include "dispatch/device_command.hpp"
 #include "tt_metal/common/logger.hpp"
 #include "tt_metal/detail/tt_metal.hpp"
 #include "tt_metal/host_api.hpp"
 #include "tt_metal/impl/device/device.hpp"
 #include "tt_metal/impl/dispatch/command_queue.hpp"
 #include "tt_metal/impl/trace/trace.hpp"
+#include "tt_metal/trace.hpp"
 
 namespace {
 // Labels to make the code more readable
@@ -81,9 +80,10 @@ void Trace::initialize_buffer(CommandQueue& cq, std::shared_ptr<TraceBuffer> tra
         trace_data.resize(trace_data.size() + numel_padding, 0 /*padding value*/);
     }
     cq.device()->trace_buffers_size += padded_size;
+    auto trace_region_size = cq.device()->get_initialized_allocator()->config.trace_region_size;
     TT_FATAL(
-        cq.device()->trace_buffers_size <= cq.device()->allocator_->config.trace_region_size,
-        "Creating trace buffers of size {}B on device {}, but only {}B is allocated for trace region.",  cq.device()->trace_buffers_size, cq.device()->id(),  cq.device()->allocator_->config.trace_region_size);
+        cq.device()->trace_buffers_size <= trace_region_size,
+        "Creating trace buffers of size {}B on device {}, but only {}B is allocated for trace region.",  cq.device()->trace_buffers_size, cq.device()->id(),  trace_region_size);
     // Commit trace to device DRAM
     trace_buffer->buffer = Buffer::create(
                             cq.device(), padded_size, page_size, BufferType::TRACE, TensorMemoryLayout::INTERLEAVED);
@@ -105,6 +105,33 @@ void Trace::validate_instance(const TraceBuffer& trace_buffer) {
         log_info(LogMetalTrace, "Trace buffer observed: {}", backdoor_data);
     }
     // add more checks
+}
+
+v1::CommandQueueHandle v1::GetCommandQueue(TraceHandle trace) { return trace.cq; }
+
+v1::TraceHandle v1::BeginTraceCapture(CommandQueueHandle cq) {
+    const auto tid = v0::BeginTraceCapture(GetDevice(cq), GetId(cq));
+    return v1::TraceHandle{cq, tid};
+}
+
+void v1::EndTraceCapture(TraceHandle trace) {
+    const auto cq = GetCommandQueue(trace);
+    v0::EndTraceCapture(GetDevice(cq), GetId(cq), static_cast<std::uint32_t>(trace));
+}
+
+void v1::ReplayTrace(TraceHandle trace, bool blocking) {
+    const auto cq = GetCommandQueue(trace);
+    v0::ReplayTrace(GetDevice(cq), GetId(cq), static_cast<std::uint32_t>(trace), blocking);
+}
+
+void v1::ReleaseTrace(TraceHandle trace) {
+    const auto cq = GetCommandQueue(trace);
+    v0::ReleaseTrace(GetDevice(cq), static_cast<std::uint32_t>(trace));
+}
+
+void v1::EnqueueTrace(TraceHandle trace, bool blocking) {
+    const auto cq = GetCommandQueue(trace);
+    v0::EnqueueTrace(GetDevice(cq)->command_queue(GetId(cq)), static_cast<std::uint32_t>(trace), blocking);
 }
 
 }  // namespace tt::tt_metal

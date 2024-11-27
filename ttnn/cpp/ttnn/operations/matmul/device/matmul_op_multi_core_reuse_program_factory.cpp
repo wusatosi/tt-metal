@@ -84,7 +84,7 @@ tt_metal::operation::ProgramWithCallbacks create_program(
     uint32_t num_blocks_y = M / per_core_M;
     uint32_t num_blocks_x = N / per_core_N;
 
-    CoreRangeSet all_cores(num_cores_to_corerange_set(
+    CoreRangeSet all_cores(num_cores_to_corerangeset(
         num_blocks_x * num_blocks_y, device->compute_with_storage_grid_size(), true));
 
     // Create circular buffers
@@ -100,7 +100,7 @@ tt_metal::operation::ProgramWithCallbacks create_program(
             .set_page_size(src1_cb_index, in1_single_tile_size);
     auto cb_src1 = tt_metal::CreateCircularBuffer(program, all_cores, src1_cb_config);
 
-    uint32_t output_cb_index = 16;  // output operands start at index 16
+    uint32_t output_cb_index = tt::CBIndex::c_16;
     uint32_t interm0_cb_index = 24;
     std::map<uint8_t, tt::DataFormat> output_cb_data_format_spec{
         {output_cb_index, out_cb_data_format}, {interm0_cb_index, out_cb_data_format}};

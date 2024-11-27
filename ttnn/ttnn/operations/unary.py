@@ -66,7 +66,6 @@ def register_ttnn_cpp_unary_function(unary_function):
             "gelu": torch.nn.functional.gelu,
             "rsqrt": torch.rsqrt,
             # Unaries with float parameter
-            # "prelu": torch_prelu, # Alias for leaky_relu. TODO(#8544): implement PReLU properly
             # Other unaries (composite operations)
             "softplus": torch.nn.functional.softplus,
             "sigmoid_accurate": torch.sigmoid,
@@ -78,7 +77,6 @@ def register_ttnn_cpp_unary_function(unary_function):
             "digamma": torch.digamma,
             "hardswish": torch.nn.functional.hardswish,
             "hardsigmoid": torch.nn.functional.hardsigmoid,
-            "hardtanh": torch.nn.functional.hardtanh,
             "lgamma": torch.lgamma,
             "log1p": torch.log1p,
             "mish": lambda _x: torch.nn.functional.mish(_x.to(torch.float)),
@@ -149,7 +147,6 @@ TTNN_ELTWISE_UNARY_CPP_FUNCTIONS = [
     ttnn.gelu,
     ttnn.rsqrt,
     # Unaries with float parameter
-    # ttnn.prelu,  # Alias for leaky_relu. TODO(#8544): implement PReLU properly
     # Unaries using op_chain
     ttnn.log_sigmoid,
     ttnn.softplus,
@@ -163,7 +160,6 @@ TTNN_ELTWISE_UNARY_CPP_FUNCTIONS = [
     ttnn.digamma,
     ttnn.hardswish,
     ttnn.hardsigmoid,
-    ttnn.hardtanh,
     ttnn.lgamma,
     ttnn.log1p,
     ttnn.mish,
@@ -239,6 +235,15 @@ def _golden_function_elu(input_tensor_a, *args, alpha=1.0, **kwargs):
 
 
 ttnn.attach_golden_function(ttnn.elu, golden_function=_golden_function_elu)
+
+
+def _golden_function_hardtanh(input_tensor_a, min_val=-1.0, max_val=1.0, *args, **kwargs):
+    import torch
+
+    return torch.nn.functional.hardtanh(input_tensor_a, min_val, max_val)
+
+
+ttnn.attach_golden_function(ttnn.hardtanh, golden_function=_golden_function_hardtanh)
 
 
 def _golden_function_leaky_relu(input_tensor_a, *args, negative_slope=0.01, **kwargs):
@@ -712,9 +717,6 @@ ttnn.attach_golden_function(ttnn.frac, golden_function=_golden_function_frac)
 
 def _golden_function_rdiv(input_tensor_a, value, *args, round_mode=None, **kwargs):
     import torch
-
-    if round_mode == "None":
-        round_mode = None
 
     return torch.div(torch.full_like(input_tensor_a, value), input_tensor_a, rounding_mode=round_mode)
 

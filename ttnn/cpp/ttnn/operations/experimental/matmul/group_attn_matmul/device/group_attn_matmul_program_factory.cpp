@@ -11,8 +11,9 @@
 
 namespace ttnn::operations::experimental::matmul {
 
-using namespace tt::constants;
 using namespace tt;
+using namespace tt::constants;
+using namespace tt::tt_metal;
 
 operation::ProgramWithCallbacks multi_core_group_attn_matmul(const Tensor &a, const Tensor &b, Tensor& output, std::optional<const uint32_t> num_tokens, std::optional<const bool> transpose_hw, const uint32_t out_subblock_w, CoreCoord compute_with_storage_grid_size, const bool row_major, ttnn::DeviceComputeKernelConfig compute_kernel_config) {
 
@@ -91,7 +92,7 @@ operation::ProgramWithCallbacks multi_core_group_attn_matmul(const Tensor &a, co
 
     // Only first 32 of cores mcast KV heads to match num_rows_in_one_tile in reader kernel, so these coordinates are static if we cache on compute_with_storage_grid_size
     // TODO: If this is not the case, then we should set reader_runtime_args to max possible size and update sender noc coordinates based on input
-    CoreCoord mcast_sender_grid = ((CoreRangeSet) num_cores_to_corerange_set(TILE_HEIGHT, compute_with_storage_grid_size, row_major)).bounding_box().grid_size();
+    CoreCoord mcast_sender_grid = ((CoreRangeSet) num_cores_to_corerangeset(TILE_HEIGHT, compute_with_storage_grid_size, row_major)).bounding_box().grid_size();
     std::vector<uint32_t> in1_mcast_sender_noc_x(mcast_sender_grid.x);
     std::vector<uint32_t> in1_mcast_sender_noc_y(mcast_sender_grid.y);
     for(uint32_t core_idx_x = 0; core_idx_x < mcast_sender_grid.x; ++core_idx_x) {
@@ -107,7 +108,7 @@ operation::ProgramWithCallbacks multi_core_group_attn_matmul(const Tensor &a, co
     const bool output_is_sharded = output.is_sharded();
 
     // CB for in0 (ie. q_heads)
-    uint32_t src0_cb_index = tt::CB::c_in0;
+    uint32_t src0_cb_index = tt::CBIndex::c_0;
     CBHandle cb_src0;
     if (in0_is_sharded) {
         uint32_t cb0_num_input_tiles = a.shard_spec().value().numel() / TILE_HW; // Should be full MtKt and C should be 1
@@ -123,7 +124,7 @@ operation::ProgramWithCallbacks multi_core_group_attn_matmul(const Tensor &a, co
 
     // CB for interleaved/sharded KV heads for mcasting; mcasts to same CB
     // Then, push all KV_HEADS to compute and compute chooses which head to use for matmul
-    uint32_t src1_cb_index = tt::CB::c_in1;
+    uint32_t src1_cb_index = tt::CBIndex::c_1;
     uint32_t cb1_num_input_tiles = 2 * in1_block_num_tiles;
     tt::tt_metal::CircularBufferConfig cb_src1_config = tt::tt_metal::CircularBufferConfig(cb1_num_input_tiles * in1_single_tile_size, {{src1_cb_index, in1_data_format}})
 		.set_page_size(src1_cb_index, in1_single_tile_size);
@@ -132,7 +133,7 @@ operation::ProgramWithCallbacks multi_core_group_attn_matmul(const Tensor &a, co
     // CB for sharded KV heads
     CBHandle cb_src2 = 0;  // unused if KV heads is interleaved
     if (in1_is_sharded) {
-        uint32_t src2_cb_index = tt::CB::c_in2;
+        uint32_t src2_cb_index = tt::CBIndex::c_2;
         uint32_t cb2_num_input_tiles = b.shard_spec().value().numel() / TILE_HW; // Should be full CKtNt and batch must be 32
         tt::tt_metal::CircularBufferConfig cb_src2_config = tt::tt_metal::CircularBufferConfig(cb2_num_input_tiles * in1_single_tile_size, {{src2_cb_index, in1_data_format}})
 		    .set_page_size(src2_cb_index, in1_single_tile_size).set_globally_allocated_address(*src1_buffer);
@@ -141,18 +142,18 @@ operation::ProgramWithCallbacks multi_core_group_attn_matmul(const Tensor &a, co
 
     // Intermediate CBs for handling untilizing, copying rows, and tilizing to output CB
     uint32_t interm_cb_num_tiles = 2 * intermediate_num_tiles; // TODO: Generalize; double buffering should help when we are not reader bound
-    uint32_t cb_intermed0_index = tt::CB::c_intermed0;
+    uint32_t cb_intermed0_index = tt::CBIndex::c_24;
     tt::tt_metal::CircularBufferConfig cb_interm0_config = tt::tt_metal::CircularBufferConfig(interm_cb_num_tiles * interm_single_tile_size, {{cb_intermed0_index, interm_data_format}})
 		.set_page_size(cb_intermed0_index, interm_single_tile_size);
     auto cb_interm0 = tt::tt_metal::CreateCircularBuffer(program, all_device_cores, cb_interm0_config);
 
-    uint32_t cb_intermed1_index = tt::CB::c_intermed1;
+    uint32_t cb_intermed1_index = tt::CBIndex::c_25;
     tt::tt_metal::CircularBufferConfig cb_interm1_config = tt::tt_metal::CircularBufferConfig(MtNt * interm_single_tile_size, {{cb_intermed1_index, interm_data_format}})
 		.set_page_size(cb_intermed1_index, interm_single_tile_size);
     auto cb_interm1 = tt::tt_metal::CreateCircularBuffer(program, all_device_cores, cb_interm1_config);
 
     // CB for output (if sharded, full num tiles per core)
-    uint32_t output_cb_index = tt::CB::c_out0; // output operands start at index 16
+    uint32_t output_cb_index = tt::CBIndex::c_16;
     CBHandle cb_output;
     if (output_is_sharded) {
         uint32_t num_output_tiles = output.shard_spec().value().numel() / TILE_HW; // Should be full MtNt and C should be 1
@@ -341,7 +342,7 @@ operation::ProgramWithCallbacks multi_core_group_attn_matmul(const Tensor &a, co
         // Mcast receiver args
         // NOTE: If Q_HEADS < 32, have all cores in mcast grid participate in semaphore syncing because we mcast KV_HEADS from/to the same CB
         // Otherwise, data corruption if sender is in mcast grid and it starts populating its mcast CB as other senders are sending
-        CoreRangeSet mcast_receiver_cores = num_cores_to_corerange_set(Q_HEADS, compute_with_storage_grid_size, row_major);
+        CoreRangeSet mcast_receiver_cores = num_cores_to_corerangeset(Q_HEADS, compute_with_storage_grid_size, row_major);
         CoreRange mcast_receiver_cores_bounding_box = mcast_receiver_cores.bounding_box();
         uint32_t mcast_num_dests = mcast_receiver_cores.num_cores(); // same as num_active_cores if Q_HEADS >= 32; also, always same as Q_HEADS
         uint32_t mcast_num_cores = mcast_receiver_cores_bounding_box.size();

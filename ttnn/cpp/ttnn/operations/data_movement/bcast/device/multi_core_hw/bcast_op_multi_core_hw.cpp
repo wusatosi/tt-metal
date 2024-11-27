@@ -14,7 +14,7 @@
 
 using namespace	tt;
 using namespace constants;
-
+using namespace tt::tt_metal;
 
 namespace ttnn::operations::data_movement {
 operation::ProgramWithCallbacks bcast_multi_core_hw(const Tensor &a, const Tensor &b, const Tensor& output, BcastOpMath bcast_math, bool inplace) {
@@ -98,7 +98,7 @@ operation::ProgramWithCallbacks bcast_multi_core_hw(const Tensor &a, const Tenso
         .set_page_size(src1_cb_index, src1_single_tile_size);
     auto cb_src1 = tt_metal::CreateCircularBuffer(program, all_device_cores, src1_cb_config);
 
-    uint32_t output_cb_index = 16; // output operands start at index 16
+    uint32_t output_cb_index = tt::CBIndex::c_16;
     uint32_t num_output_tiles = output_sharded ? num_tiles_per_shard : 2;
     tt_metal::CircularBufferConfig output_cb_config = tt_metal::CircularBufferConfig(num_output_tiles * dst_single_tile_size, {{output_cb_index, dst_cb_data_format}})
         .set_page_size(output_cb_index, dst_single_tile_size);
@@ -152,9 +152,9 @@ operation::ProgramWithCallbacks bcast_multi_core_hw(const Tensor &a, const Tenso
     for (uint32_t i = 0, num_tiles_read = 0; i < num_cores_y * num_cores_x; i++){
         CoreCoord core = {i / num_cores_y, i % num_cores_y};
         uint32_t num_tensor_tiles_per_core;
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             num_tensor_tiles_per_core = num_tiles_per_core_group_1;
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             num_tensor_tiles_per_core = num_tiles_per_core_group_2;
         } else {
             constexpr std::array<uint32_t, 7> binary_reader_kernel_args{0};
@@ -285,9 +285,9 @@ operation::ProgramWithCallbacks bcast_multi_core_hw(const Tensor &a, const Tenso
 			auto& bcast_kernel_args = cached_eltwise_args.at(core.x).at(core.y);
 			auto& unary_writer_args = cached_writer_args.at(core.x).at(core.y);
 
-            if (core_group_1.core_coord_in_core_ranges(core)) {
+            if (core_group_1.contains(core)) {
                 num_tensor_tiles_per_core = num_tiles_per_core_group_1;
-            } else if (core_group_2.core_coord_in_core_ranges(core)) {
+            } else if (core_group_2.contains(core)) {
                 num_tensor_tiles_per_core = num_tiles_per_core_group_2;
             } else {
                 binary_reader_args[2] = 0;

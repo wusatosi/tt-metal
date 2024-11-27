@@ -9,6 +9,7 @@
 
 namespace tt::tt_metal {
 
+namespace {
 namespace CMAKE_UNIQUE_NAMESPACE {
 
 int32_t normalized_index(int32_t index, size_t original_size, size_t container_size) {
@@ -23,12 +24,13 @@ int32_t normalized_index(int32_t index, size_t original_size, size_t container_s
     }
 
     if (fixed_index < 0 || fixed_index >= full_size) {
-        TT_THROW("ShapeBase[] index out of range. {} not in [{}, {})", index, -full_size, full_size);
+        TT_THROW("ShapeBase[] index out of range. {} not in [{}, {})", index, -full_size, orig_size);
     }
 
     return fixed_index;
 }
 } // namespace CMAKE_UNIQUE_NAMESPACE
+}
 
 void ShapeBase::init() {
     original_size_ = value_.size();

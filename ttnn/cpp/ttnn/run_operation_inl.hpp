@@ -211,15 +211,11 @@ void launch_op(
                     for (int i = 0; i < local_tensors.size(); i++) {
                         auto output_tensor = get_tensor(outputs[i]);
                         auto local_tensor = get_tensor(local_tensors[i]);
+
                         // not sure if it the case but in my opinion it should not happen
                         // both output and local tensor should be presented or absent
                         TT_ASSERT((output_tensor != nullptr && local_tensor != nullptr) || (local_tensor == nullptr && output_tensor == nullptr));
                         if (!output_tensor || !local_tensor) {
-                            continue;
-                        }
-
-                        // The return type is vector<optional<Tensor>>, and this refers to the case where the i-th value is nullopt.
-                        if (output_tensor->tensor_attributes.use_count() != 0 && local_tensor->tensor_attributes.use_count() == 0) {
                             continue;
                         }
 
@@ -236,11 +232,7 @@ void launch_op(
                         insert_buffer_and_shape_for_device(target_device, *local_tensor, *output_tensor);
                         int num_workers_completed = (output_tensor->tensor_attributes->num_workers_completed)++;
                         if (not num_workers_completed) {
-                            output_tensor->tensor_attributes->shape = local_tensor->tensor_attributes->shape;
-                            output_tensor->tensor_attributes->dtype = local_tensor->tensor_attributes->dtype;
-                            output_tensor->tensor_attributes->layout = local_tensor->tensor_attributes->layout;
-                            output_tensor->tensor_attributes->tile = local_tensor->tensor_attributes->tile;
-                            output_tensor->tensor_attributes->metadata_populated = true;
+                            output_tensor->set_tensor_spec(local_tensor->tensor_spec());
                         }
                     }
                 }

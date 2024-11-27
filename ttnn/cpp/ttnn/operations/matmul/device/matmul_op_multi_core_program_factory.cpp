@@ -82,7 +82,7 @@ operation::ProgramWithCallbacks matmul_multi_core(const Tensor &a, const Tensor 
             .set_page_size(src1_cb_index, in1_single_tile_size);
     auto cb_src1 = tt_metal::CreateCircularBuffer(program, all_cores, src1_cb_config);
 
-    uint32_t output_cb_index = 16;  // output operands start at index 16
+    uint32_t output_cb_index = tt::CBIndex::c_16;
     uint32_t num_output_tiles = 2;
     tt_metal::CircularBufferConfig output_cb_config =
         tt_metal::CircularBufferConfig(
@@ -149,9 +149,9 @@ operation::ProgramWithCallbacks matmul_multi_core(const Tensor &a, const Tensor 
         CoreCoord core = {i / num_cores_y, i % num_cores_y};
 
         uint32_t num_output_tiles_per_core = 0;
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             num_output_tiles_per_core = num_output_tiles_per_core_group_1;
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             num_output_tiles_per_core = num_output_tiles_per_core_group_2;
         } else {
             TT_THROW("Core not in specified core ranges");

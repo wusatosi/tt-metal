@@ -41,7 +41,7 @@ void set_edm_runtime_args(
     ccl::EriscDatamoverBuilder const& edm_builder,
     CoreCoord const& eth_core
 ) {
-    std::vector<uint32_t> const& edm_clockwise_kernel_rt_args = edm_builder.emit_runtime_args();
+    std::vector<uint32_t> const& edm_clockwise_kernel_rt_args = edm_builder.get_runtime_args();
     tt_metal::SetRuntimeArgs(program, edm_kernel_handle, eth_core, edm_clockwise_kernel_rt_args);
 
     std::stringstream ss;
@@ -126,7 +126,7 @@ void generate_receiver_worker_kernels(
     ttnn::ccl::EriscDataMoverTerminationMode edm_termination_mode
 ) {
     // Just want a dummy DF
-    uint32_t src0_cb_index = CB::c_in0;
+    uint32_t src0_cb_index = CBIndex::c_0;
     tt::DataFormat df = page_size == 1024 ? tt::DataFormat::Bfp8 :
                         page_size == 2048 ? tt::DataFormat::Float16 :
                                                          tt::DataFormat::Float32;
@@ -248,7 +248,7 @@ void generate_sender_worker_kernels(
         (uint32_t)device->ethernet_core_from_logical_core(edm_core).y,
         num_buffers_per_edm_channel
     };
-    uint32_t src0_cb_index = CB::c_in0;
+    uint32_t src0_cb_index = CBIndex::c_0;
     log_info(tt::LogTest, "\tSenderWriter CT Args");
     for (auto const& arg : sender_worker_writer_compile_args) {
         log_info(tt::LogTest, "\t\t{}", arg);
@@ -395,10 +395,10 @@ bool RunWriteBWTest(
     }
 
     bool output_is_dram = test_config.output_buffer_type == BufferType::DRAM;
-    for (auto buffer_id : local_output_buffers) {
+    for (const auto& buffer_id : local_output_buffers) {
         tt_metal::detail::WriteToBuffer(buffer_id, all_zeros);
     }
-    for (auto buffer_id : remote_output_buffers) {
+    for (const auto& buffer_id : remote_output_buffers) {
         tt_metal::detail::WriteToBuffer(buffer_id, all_zeros);
     }
 

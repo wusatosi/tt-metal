@@ -15,6 +15,8 @@
 #include <unordered_map>
 #include "ttnn/core.hpp"
 
+using namespace tt::tt_metal;
+
 namespace {
 std::string demangle(const char* name) {
 
@@ -102,7 +104,9 @@ void GraphProcessor::track_allocate(const tt::tt_metal::Buffer* buffer) {
             {kSize, std::to_string(buffer->size())},
             {kAddress, std::to_string(buffer->address())},
             {kType, buffer->is_dram() ? "DRAM" : "L1"},
-            {kLayout, tensorMemoryLayoutToString(buffer->buffer_layout())}
+            {kLayout, tensorMemoryLayoutToString(buffer->buffer_layout())},
+            {kPageSize, std::to_string(buffer->page_size())},
+            {kNumCores, std::to_string(buffer->num_cores().value_or(0))} // use 0 for interleaved
     };
     {
         graph.push_back(Vertex{
@@ -122,7 +126,9 @@ void GraphProcessor::track_deallocate(tt::tt_metal::Buffer* buffer) {
     std::unordered_map<std::string, std::string> params = {
             {kSize, std::to_string(buffer->size())},
             {kType, buffer->is_dram() ? "DRAM" : "L1"},
-            {kLayout, tensorMemoryLayoutToString(buffer->buffer_layout())}
+            {kLayout, tensorMemoryLayoutToString(buffer->buffer_layout())},
+            {kPageSize, std::to_string(buffer->page_size())},
+            {kNumCores, std::to_string(buffer->num_cores().value_or(0))} // use 0 for interleaved
     };
     {
         graph.push_back(Vertex{
@@ -141,8 +147,8 @@ void GraphProcessor::track_allocate_cb(const CoreRangeSet &core_range_set, uint6
     std::unordered_map<std::string, std::string> params = {
         {kSize, std::to_string(size)},
         {kAddress, std::to_string(addr)},
-        {"core_range_set", core_range_set.str()},
-        {"globally_allocated", std::to_string(is_globally_allocated)}
+        {kCoreRangeSet, core_range_set.str()},
+        {kGloballyAllocated, std::to_string(is_globally_allocated)}
     };
     auto counter = graph.size();
     {

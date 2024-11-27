@@ -178,8 +178,8 @@ bool run_matmul(const tt::ARCH& arch, const bool with_bias) {
         }
 
         // NOTE: intermediate and output CB share same address space since we operate it on it sequentially, not in parallel
-        uint32_t ouput_cb_index = 16; // output operands start at index 16
-        uint32_t intermediate_cb_index = 24;
+        uint32_t ouput_cb_index = tt::CBIndex::c_16;
+        uint32_t intermediate_cb_index = tt::CBIndex::c_24;
         std::map<uint8_t, tt::DataFormat> partials_and_out_data_format_spec = {
             {ouput_cb_index, tt::DataFormat::Float16_b},
             {intermediate_cb_index, tt::DataFormat::Float16_b}
@@ -236,7 +236,7 @@ bool run_matmul(const tt::ARCH& arch, const bool with_bias) {
         //                      Execute Application
         ////////////////////////////////////////////////////////////////////////////
         SHAPE shape = {1, 1, M * 32, K * 32};
-        tt::deprecated::Tensor<bfloat16> tensor = tt::deprecated::initialize_tensor<bfloat16>(shape, tt::deprecated::Initialize::RANDOM, 100, std::chrono::system_clock::now().time_since_epoch().count());
+        tt::deprecated::Tensor<bfloat16> tensor = tt::deprecated::initialize_tensor<bfloat16>(shape, tt::deprecated::Initialize::RANDOM, 0, 100, std::chrono::system_clock::now().time_since_epoch().count());
         auto activations_tilized = tilize(tensor.get_values(), M * 32, K * 32);
         auto activations_tile_layout = convert_to_tile_layout(activations_tilized);
         auto activations = pack_bfloat16_vec_into_uint32_vec(activations_tile_layout);

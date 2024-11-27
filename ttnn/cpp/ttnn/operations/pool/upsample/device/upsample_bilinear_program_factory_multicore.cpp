@@ -36,17 +36,18 @@ Tensor HaloTensorCreation(const Tensor &input){
     int num_cores_c = 1;
 
     ttnn::Tensor input_tensor = input;  // tensor to return
-    SlidingWindowConfig sliding_window_config = SlidingWindowConfig(
-            batch_size,
-            {input_height, input_width},
-            {2, 2}, //kernel size
-            {1, 1}, // stride
-            {1, 0}, //padding
-            {1, 1}, //dilation
-            num_cores_nhw,
-            num_cores_c,
-            input_tensor.memory_config().shard_spec.value().grid,
-            false, true);
+    SlidingWindowConfig sliding_window_config = SlidingWindowConfig{
+            .batch_size = batch_size,
+            .input_hw = {input_height, input_width},
+            .window_hw = {2, 2}, //kernel size
+            .stride_hw = {1, 1}, // stride
+            .pad_hw = {1, 0}, //padding
+            .dilation_hw = {1, 1}, //dilation
+            .num_cores_nhw = num_cores_nhw,
+            .num_cores_c = num_cores_c,
+            .core_range_set = input_tensor.memory_config().shard_spec.value().grid,
+            .snap_to_tile = false,
+            .is_bilinear =  true};
 
     input_tensor = ttnn::reshape(
         input_tensor,
@@ -129,7 +130,7 @@ operation::ProgramWithCallbacks bilinear_multi_core(const Tensor &input, Tensor&
     uint32_t buffering_factor = 1;  // data is already fully buffered in the CBs since its sharded
 
     // input data is in a sharded CB
-    uint32_t in_cb_id = CB::c_in0;
+    uint32_t in_cb_id = CBIndex::c_0;
     uint32_t aligned_input_stick_nbytes = round_up_to_mul32(input_stick_nbytes);
     uint32_t in_cb_pagesize = aligned_input_stick_nbytes;
     uint32_t in_cb_npages = halo_shard_shape[0] * buffering_factor;
@@ -141,7 +142,7 @@ operation::ProgramWithCallbacks bilinear_multi_core(const Tensor &input, Tensor&
     auto cb_src0 = tt_metal::CreateCircularBuffer(program, all_cores, cb_src0_config);
 
     //intermediate tensor CB
-    uint32_t in1_cb_id = CB::c_in1;
+    uint32_t in1_cb_id = CBIndex::c_1;
     CircularBufferConfig cb_src1_config = CircularBufferConfig(
                                             4 * in_cb_pagesize,  //since 4 pixels per page are needed for intermediate tensor.
                                             {{in1_cb_id, input_cb_data_format}})
@@ -149,7 +150,7 @@ operation::ProgramWithCallbacks bilinear_multi_core(const Tensor &input, Tensor&
     auto cb_src1 = tt_metal::CreateCircularBuffer(program, all_cores, cb_src1_config);
 
     //scaler CB
-    uint32_t in_scalar_cb_id = CB::c_in4;
+    uint32_t in_scalar_cb_id = CBIndex::c_4;
     uint32_t in_scalar_cb_pagesize = tile_size(input_cb_data_format);
     uint32_t in_scalar_cb_npages = 1;
     CircularBufferConfig in_scalar_cb_config =
@@ -160,7 +161,7 @@ operation::ProgramWithCallbacks bilinear_multi_core(const Tensor &input, Tensor&
     auto in_scalar_cb = tt_metal::CreateCircularBuffer(program, all_cores, in_scalar_cb_config);
 
     // output sharded CB with upsampled data
-    uint32_t out_cb_id = CB::c_out0;
+    uint32_t out_cb_id = CBIndex::c_16;
     uint32_t aligned_output_stick_nbytes = round_up_to_mul32(output_stick_nbytes);
     uint32_t out_cb_pagesize = aligned_output_stick_nbytes;
     uint32_t out_cb_npages = output_nsticks_per_core * buffering_factor;

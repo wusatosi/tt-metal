@@ -40,14 +40,14 @@ BernoulliDeviceOperation::ProgramFactory::cached_program_t BernoulliDeviceOperat
     constexpr uint32_t num_tiles = 2;
     auto in_data_format = datatype_to_dataformat_converter(input.dtype());
     const uint32_t in_dtype_tile_size = tile_size(in_data_format);
-    constexpr uint32_t in_cb_id = CB::c_in0;
+    constexpr uint32_t in_cb_id = CBIndex::c_0;
     CircularBufferConfig cb_in_config =
         CircularBufferConfig(num_tiles * in_dtype_tile_size, {{in_cb_id, in_data_format}})
             .set_page_size(in_cb_id, in_dtype_tile_size);
     CBHandle cb_input = tt_metal::CreateCircularBuffer(program, all_cores, cb_in_config);
 
     const uint32_t float32_tile_size = tile_size(tt::DataFormat::Float32);
-    constexpr uint32_t intermed_cb_id = CB::c_intermed0;
+    constexpr uint32_t intermed_cb_id = CBIndex::c_24;
     CircularBufferConfig cb_intermed_config =
         CircularBufferConfig(num_tiles * float32_tile_size, {{intermed_cb_id, tt::DataFormat::Float32}})
             .set_page_size(intermed_cb_id, float32_tile_size);
@@ -55,7 +55,7 @@ BernoulliDeviceOperation::ProgramFactory::cached_program_t BernoulliDeviceOperat
 
     auto out_data_format = datatype_to_dataformat_converter(output.dtype());
     const uint32_t out_dtype_tile_size = tile_size(out_data_format);
-    constexpr uint32_t intermed1_cb_id = CB::c_intermed1;
+    constexpr uint32_t intermed1_cb_id = CBIndex::c_25;
     CircularBufferConfig cb_intermed1_config =
         CircularBufferConfig(1 * out_dtype_tile_size, {{intermed1_cb_id, out_data_format}})
             .set_page_size(intermed1_cb_id, out_dtype_tile_size);
@@ -105,9 +105,9 @@ BernoulliDeviceOperation::ProgramFactory::cached_program_t BernoulliDeviceOperat
     uint32_t tile_offset = 0;
     for (const auto& core : cores) {
         uint32_t units_per_core;
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             units_per_core = units_per_core_group_1;
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             units_per_core = units_per_core_group_2;
         } else {
             TT_THROW("Core not in specified core ranges");

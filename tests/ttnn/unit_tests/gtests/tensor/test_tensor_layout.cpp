@@ -79,9 +79,9 @@ INSTANTIATE_TEST_SUITE_P(
                 .layout = Layout::ROW_MAJOR
             },
             Expected{
-                .physical_size = {6*5*4, 4},
-                .alignment = Alignment({2}),
-                .strides = Strides({5*4*4, 4*4, 4, 1})
+                .physical_size = {6*5*4, 3},
+                .alignment = Alignment({1}),
+                .strides = Strides({5*4*3, 4*3, 3, 1})
             }
         },
 
@@ -108,7 +108,7 @@ INSTANTIATE_TEST_SUITE_P(
             },
             Expected{
                 .physical_size = {6*5*4, 8},
-                .alignment = Alignment({2}),
+                .alignment = Alignment({1}),
                 .strides = Strides({5*4*8, 4*8, 8, 1})
             }
         },
@@ -135,9 +135,9 @@ INSTANTIATE_TEST_SUITE_P(
                 .layout = Layout::ROW_MAJOR
             },
             Expected{
-                .physical_size = {1, 2},
-                .alignment = Alignment({2}),
-                .strides = Strides({2, 2, 2, 1})
+                .physical_size = {1, 1},
+                .alignment = Alignment({1}),
+                .strides = Strides({1, 1, 1, 1})
             }
         },
 
@@ -163,8 +163,8 @@ INSTANTIATE_TEST_SUITE_P(
                 .layout = Layout::ROW_MAJOR
             },
             Expected{
-                .physical_size = {1, 2},
-                .alignment = Alignment({2}),
+                .physical_size = {1, 1},
+                .alignment = Alignment({1}),
                 .strides = Strides({}),
                 .tensor_creation_works = false
             }
@@ -208,8 +208,8 @@ INSTANTIATE_TEST_SUITE_P(
                 .layout = Layout::ROW_MAJOR
             },
             Expected{
-                .physical_size = {1, 2},
-                .alignment = Alignment({2}),
+                .physical_size = {1, 1},
+                .alignment = Alignment({1}),
                 .strides = Strides({1}),
                 .tensor_creation_works = false
             }
@@ -256,7 +256,7 @@ class TensorLayoutLegacyPaddingRoundtipTests : public ::testing::TestWithParam<L
 
 TEST_P(TensorLayoutLegacyPaddingRoundtipTests, Tensor_LagacyPaddingRoundtrip) {
     const auto& params = GetParam();
-    TensorLayout layout = TensorLayout::fromLegacyPaddedShape(DataType::BFLOAT16, Layout::ROW_MAJOR, DefaultMemoryConfig, params.padded_shape);
+    TensorLayout layout = TensorLayout::fromLegacyPaddedShape(DataType::BFLOAT16, Layout::ROW_MAJOR, DefaultMemoryConfig, Shape(params.shape.view(), params.padded_shape.view()));
     EXPECT_EQ(layout.compute_padded_shape(params.shape), params.padded_shape);
 
     test_utils::test_tensor_on_device(params.shape, layout);

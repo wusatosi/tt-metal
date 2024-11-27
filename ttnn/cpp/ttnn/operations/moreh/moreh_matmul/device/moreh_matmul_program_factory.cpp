@@ -288,16 +288,16 @@ MorehMatmulOperation::MultiCoreProgramFactory::cached_program_t MorehMatmulOpera
         all_cores,
         cb_data_format,
         {
-            {tt::CB::c_in0, in0_t},
-            {tt::CB::c_in1, in1_t},
-            {tt::CB::c_in2, in2_t},
-            {tt::CB::c_in3, in3_t},
-            {tt::CB::c_in4, in4_t},
-            {tt::CB::c_intermed0, im0_t, (fp32_dest_acc_en) ? tt::DataFormat::Float32 : cb_data_format},
-            {tt::CB::c_intermed1, im1_t},
-            {tt::CB::c_intermed2, im2_t},
-            {tt::CB::c_intermed3, im3_t, (fp32_dest_acc_en) ? tt::DataFormat::Float32 : cb_data_format},
-            {tt::CB::c_out0, out0_t},
+            {tt::CBIndex::c_0, in0_t},
+            {tt::CBIndex::c_1, in1_t},
+            {tt::CBIndex::c_2, in2_t},
+            {tt::CBIndex::c_3, in3_t},
+            {tt::CBIndex::c_4, in4_t},
+            {tt::CBIndex::c_24, im0_t, (fp32_dest_acc_en) ? tt::DataFormat::Float32 : cb_data_format},
+            {tt::CBIndex::c_25, im1_t},
+            {tt::CBIndex::c_26, im2_t},
+            {tt::CBIndex::c_27, im3_t, (fp32_dest_acc_en) ? tt::DataFormat::Float32 : cb_data_format},
+            {tt::CBIndex::c_16, out0_t},
         });
 
     ////////////////////////////////////////////////////////////////////////////
@@ -375,7 +375,7 @@ MorehMatmulOperation::MultiCoreProgramFactory::cached_program_t MorehMatmulOpera
     std::vector<UnpackToDestMode> unpack_to_dest_mode(NUM_CIRCULAR_BUFFERS, UnpackToDestMode::Default);
     if (fp32_dest_acc_en) {
         compute_defines["FP32_DEST_ACC_EN"] = "1";
-        unpack_to_dest_mode[tt::CB::c_intermed0] = UnpackToDestMode::UnpackToDestFp32;
+        unpack_to_dest_mode[tt::CBIndex::c_24] = UnpackToDestMode::UnpackToDestFp32;
     }
 
     const auto compute_kernel_1_id = CreateComputeKernel(
@@ -430,13 +430,13 @@ MorehMatmulOperation::MultiCoreProgramFactory::cached_program_t MorehMatmulOpera
     for (uint32_t i = 0, num_tiles_written = 0; i < num_cores; i++) {
         CoreCoord core = {i / num_cores_y, i % num_cores_y};
         uint32_t num_output_tiles_per_core;
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             num_output_tiles_per_core = num_output_tiles_per_core_group_1;
             std::vector<uint32_t> compute_rt_args;
             compute_rt_args.push_back(num_tiles_written);
             compute_rt_args.insert(compute_rt_args.end(), output_stride.begin(), output_stride.end());
             tt::tt_metal::SetRuntimeArgs(program, compute_kernel_1_id, core, compute_rt_args);
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             TT_FATAL(compute_kernel_2_id.has_value(), "Core not in specified core ranges");
             num_output_tiles_per_core = num_output_tiles_per_core_group_2;
             std::vector<uint32_t> compute_rt_args;

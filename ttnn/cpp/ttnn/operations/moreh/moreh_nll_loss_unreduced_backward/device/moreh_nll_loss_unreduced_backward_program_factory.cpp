@@ -55,10 +55,10 @@ MorehNllLossUnreducedBackwardDeviceOperation::Factory::cached_program_t moreh_nl
         all_cores,
         data_format,
         {
-            {tt::CB::c_in0, 1, tt::DataFormat::Int32},                          // target
-            {tt::CB::c_in1, Nt},                                                // output_grad
-            {tt::CB::c_in2, static_cast<uint32_t>(weight_has_value ? Ct : 0)},  // weight
-            {tt::CB::c_out0, 1},                                                // input_grad
+            {tt::CBIndex::c_0, 1, tt::DataFormat::Int32},                          // target
+            {tt::CBIndex::c_1, Nt},                                                // output_grad
+            {tt::CBIndex::c_2, static_cast<uint32_t>(weight_has_value ? Ct : 0)},  // weight
+            {tt::CBIndex::c_16, 1},                                                // input_grad
         });
 
     // create read/wrtie kernel
@@ -102,9 +102,9 @@ MorehNllLossUnreducedBackwardDeviceOperation::Factory::cached_program_t moreh_nl
     for (uint32_t i = 0, tile_offset = 0; i < num_cores; i++) {
         CoreCoord core = {i / core_h, i % core_h};
         uint32_t units_per_core;
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             units_per_core = units_per_core_group_1;
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             units_per_core = units_per_core_group_2;
         } else {
             TT_THROW("Core not in specified core ranges");
@@ -183,10 +183,10 @@ MorehNllLossUnreducedBackwardDeviceOperation::Factory::cached_program_t moreh_nl
         all_cores,
         data_format,
         {
-            {tt::CB::c_in0, 1, tt::DataFormat::Int32},                          // target
-            {tt::CB::c_in1, 1},                                                 // output_grad
-            {tt::CB::c_in2, static_cast<uint32_t>(weight_has_value ? Ct : 0)},  // weight
-            {tt::CB::c_out0, 1},                                                // input_grad
+            {tt::CBIndex::c_0, 1, tt::DataFormat::Int32},                          // target
+            {tt::CBIndex::c_1, 1},                                                 // output_grad
+            {tt::CBIndex::c_2, static_cast<uint32_t>(weight_has_value ? Ct : 0)},  // weight
+            {tt::CBIndex::c_16, 1},                                                // input_grad
         });
 
     // create read/wrtie kernel
@@ -230,9 +230,9 @@ MorehNllLossUnreducedBackwardDeviceOperation::Factory::cached_program_t moreh_nl
     for (uint32_t i = 0, tile_offset = 0; i < num_cores; i++) {
         CoreCoord core = {i / core_h, i % core_h};
         uint32_t units_per_core;
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             units_per_core = units_per_core_group_1;
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             units_per_core = units_per_core_group_2;
         } else {
             TT_THROW("Core not in specified core ranges");
@@ -310,10 +310,10 @@ MorehNllLossUnreducedBackwardDeviceOperation::Factory::cached_program_t moreh_nl
         all_cores,
         data_format,
         {
-            {tt::CB::c_in0, 1, tt::DataFormat::Int32},                          // target
-            {tt::CB::c_in1, 1},                                                 // output_grad
-            {tt::CB::c_in2, static_cast<uint32_t>(weight_has_value ? Ct : 0)},  // weight
-            {tt::CB::c_out0, 1},                                                // input_grad
+            {tt::CBIndex::c_0, 1, tt::DataFormat::Int32},                          // target
+            {tt::CBIndex::c_1, 1},                                                 // output_grad
+            {tt::CBIndex::c_2, static_cast<uint32_t>(weight_has_value ? Ct : 0)},  // weight
+            {tt::CBIndex::c_16, 1},                                                // input_grad
         });
 
     // create read/wrtie kernel
@@ -357,9 +357,9 @@ MorehNllLossUnreducedBackwardDeviceOperation::Factory::cached_program_t moreh_nl
     for (uint32_t i = 0, tile_offset = 0; i < num_cores; i++) {
         CoreCoord core = {i / core_h, i % core_h};
         uint32_t units_per_core;
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             units_per_core = units_per_core_group_1;
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             units_per_core = units_per_core_group_2;
         } else {
             TT_THROW("Core not in specified core ranges");

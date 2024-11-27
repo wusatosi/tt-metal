@@ -9,6 +9,8 @@
 #include "tt_metal/host_api.hpp"
 #include "ttnn/operation.hpp"
 
+using namespace tt::tt_metal;
+
 namespace tt {
 using namespace constants;
 namespace operations {
@@ -78,10 +80,10 @@ operation::ProgramWithCallbacks prod_nc_format(const Tensor &input, const Tensor
         all_cores,
         cb_data_format,
         {
-            {CB::c_in0, in0_t},              // input
-            {CB::c_in1, in1_t},              // zero
-            {CB::c_intermed0, intermed0_t},  // accumulated sum
-            {CB::c_out0, out0_t},            // output
+            {CBIndex::c_0, in0_t},              // input
+            {CBIndex::c_1, in1_t},              // zero
+            {CBIndex::c_24, intermed0_t},  // accumulated sum
+            {CBIndex::c_16, out0_t},            // output
         });
 
     ////////////////////////////////////////////////////////////////////////////
@@ -93,7 +95,7 @@ operation::ProgramWithCallbacks prod_nc_format(const Tensor &input, const Tensor
     std::vector<uint32_t> reader_compile_time_args = {(std::uint32_t) input_is_dram, static_cast<uint32_t>(dim)};
 
     tt_metal::Buffer *output_buffer_type = output.buffer();
-    constexpr uint32_t cb_id_out = 16;
+    constexpr uint32_t cb_id_out = CBIndex::c_16;
     bool output_is_dram = output_buffer_type->buffer_type() == tt_metal::BufferType::DRAM ? 1 : 0;
     std::vector<uint32_t> writer_compile_time_args = {(std::uint32_t) cb_id_out, (std::uint32_t) output_is_dram};
 
@@ -129,9 +131,9 @@ operation::ProgramWithCallbacks prod_nc_format(const Tensor &input, const Tensor
         CoreCoord core = {i / num_cores_y, i % num_cores_y};
 
         uint32_t num_tiles_per_core;
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             num_tiles_per_core = num_cols_per_core_group_1;
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             num_tiles_per_core = num_cols_per_core_group_2;
         } else {
             TT_THROW("Core not in specified core ranges.");
@@ -158,9 +160,9 @@ operation::ProgramWithCallbacks prod_nc_format(const Tensor &input, const Tensor
             core,
             {output.buffer()->address(), num_tiles_per_core, tile_offset, static_cast<uint32_t>(ttnn::operations::is_dram(output))});
 
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             SetRuntimeArgs(program, compute_kernel_1_id, core, {num_reduce_input_tile, num_tiles_per_core});
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             TT_ASSERT(compute_kernel_2_id.has_value());
             SetRuntimeArgs(program, compute_kernel_2_id.value(), core, {num_reduce_input_tile, num_tiles_per_core});
         } else {

@@ -51,16 +51,16 @@ MorehSoftmaxBackwardOperation::MorehSoftmaxBackwardWSmallFactory::create(
         all_cores,
         data_format,
         {
-            {tt::CB::c_in0, Wt},  // output
-            {tt::CB::c_in1, Wt},  // output_grad
-            {tt::CB::c_in2, 1},   // scaler
-            {tt::CB::c_in3, 1},   // mask
-            {tt::CB::c_out0, 2},  // input_grad
-            {tt::CB::c_intermed0,
+            {tt::CBIndex::c_0, Wt},  // output
+            {tt::CBIndex::c_1, Wt},  // output_grad
+            {tt::CBIndex::c_2, 1},   // scaler
+            {tt::CBIndex::c_3, 1},   // mask
+            {tt::CBIndex::c_16, 2},  // input_grad
+            {tt::CBIndex::c_24,
              Wt,
              fp32_dest_acc_en ? tt::DataFormat::Float32 : data_format},                          // output * output_grad
-            {tt::CB::c_intermed1, 1, fp32_dest_acc_en ? tt::DataFormat::Float32 : data_format},  // reduce
-            {tt::CB::c_intermed2, 1, fp32_dest_acc_en ? tt::DataFormat::Float32 : data_format},  // dy - sum
+            {tt::CBIndex::c_25, 1, fp32_dest_acc_en ? tt::DataFormat::Float32 : data_format},  // reduce
+            {tt::CBIndex::c_26, 1, fp32_dest_acc_en ? tt::DataFormat::Float32 : data_format},  // dy - sum
         });
     // create read/wrtie kernel
     bool y_is_dram = output.buffer()->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0;
@@ -115,9 +115,9 @@ MorehSoftmaxBackwardOperation::MorehSoftmaxBackwardWSmallFactory::create(
     for (uint32_t i = 0, tile_offset = 0; i < num_cores; i++) {
         CoreCoord core = {i / core_h + core_x_offset, i % core_h + core_y_offset};
         uint32_t num_tiles_per_core;
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             num_tiles_per_core = num_tiles_per_core_group_1;
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             num_tiles_per_core = num_tiles_per_core_group_2;
         } else {
             TT_THROW("Core not in specified core ranges");

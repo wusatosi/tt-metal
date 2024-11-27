@@ -54,7 +54,6 @@ class RMSNorm(LightweightModule):
         super().__init__()
         self.eps = eps
         self.is_distributed = is_distributed
-        self.is_distributed = is_distributed
 
         if state_dict_prefix:
             weight_name = f"{state_dict_prefix}{weight_key}.weight"

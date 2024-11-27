@@ -41,7 +41,7 @@ static std::string get_string_aliased_arch_lowercase(tt::ARCH arch) {
 
 JitBuildEnv::JitBuildEnv() {}
 
-void JitBuildEnv::init(uint32_t build_key, tt::ARCH arch) {
+void JitBuildEnv::init(uint32_t build_key, tt::ARCH arch, const std::map<std::string, std::string> &device_kernel_defines) {
     // Paths
     this->root_ = llrt::OptionsG.get_root_dir();
     this->out_root_ = this->root_ + "built/";
@@ -53,14 +53,14 @@ void JitBuildEnv::init(uint32_t build_key, tt::ARCH arch) {
     this->out_kernel_root_ = this->out_root_ + to_string(build_key) + "/kernels/";
 
     // Tools
-    this->gpp_ = this->root_ + "tt_metal/third_party/sfpi/compiler/bin/riscv32-unknown-elf-g++ ";
+    this->gpp_ = this->root_ + "runtime/sfpi/compiler/bin/riscv32-unknown-elf-g++ ";
 
     // Flags
     string common_flags;
     switch (arch) {
-        case ARCH::GRAYSKULL: common_flags = "-mgrayskull -march=rv32iy -mtune=rvtt-b1 -mabi=ilp32 "; break;
-        case ARCH::WORMHOLE_B0: common_flags = "-mwormhole -march=rv32imw -mtune=rvtt-b1 -mabi=ilp32 "; break;
-        case ARCH::BLACKHOLE: common_flags = "-mblackhole -march=rv32iml -mtune=rvtt-b1 -mabi=ilp32 "; break;
+        case ARCH::GRAYSKULL: common_flags = "-mcpu=tt-gs "; break;
+        case ARCH::WORMHOLE_B0: common_flags = "-mcpu=tt-wh "; break;
+        case ARCH::BLACKHOLE: common_flags = "-mcpu=tt-bh "; break;
         default: TT_ASSERT(false, "Invalid arch"); break;
     }
     common_flags += "-std=c++17 -flto -ffast-math ";
@@ -73,6 +73,7 @@ void JitBuildEnv::init(uint32_t build_key, tt::ARCH arch) {
     this->cflags_ +=
         "-fno-use-cxa-atexit -fno-exceptions "
         "-Wall -Werror -Wno-unknown-pragmas "
+        "-Wno-deprecated-declarations "
         "-Wno-error=multistatement-macros -Wno-error=parentheses "
         "-Wno-error=unused-but-set-variable -Wno-unused-variable "
         "-Wno-unused-function ";
@@ -83,6 +84,9 @@ void JitBuildEnv::init(uint32_t build_key, tt::ARCH arch) {
         case ARCH::WORMHOLE_B0: this->defines_ = "-DARCH_WORMHOLE "; break;
         case ARCH::BLACKHOLE: this->defines_ = "-DARCH_BLACKHOLE "; break;
         default: break;
+    }
+    for (auto it = device_kernel_defines.begin(); it != device_kernel_defines.end(); ++it) {
+        this->defines_ += "-D" + it->first + "=" + it->second + " ";
     }
     this->defines_ += "-DTENSIX_FIRMWARE -DLOCAL_MEM_EN=0 ";
 
@@ -153,7 +157,7 @@ void JitBuildState::finish_init() {
     this->defines_ += "-DDISPATCH_MESSAGE_ADDR=" + to_string(this->dispatch_message_addr_) + " ";
 
     // Create the objs from the srcs
-    for (string src : srcs_) {
+    for (const string& src : srcs_) {
         // Lop off the right side from the last "."
         string stub = src.substr(0, src.find_last_of("."));
         // Lop off the leading path
@@ -185,7 +189,9 @@ void JitBuildState::finish_init() {
             this->link_objs_ += build_dir + "ncrisc-halt.o ";
         }
     } else {
-        this->link_objs_ += build_dir + "tmu-crt0k.o ";
+        if (this->target_name_ != "erisc") {
+            this->link_objs_ += build_dir + "tmu-crt0k.o ";
+        }
     }
     if (this->target_name_ == "brisc" or this->target_name_ == "idle_erisc") {
         this->link_objs_ += build_dir + "noc.o ";
@@ -291,8 +297,8 @@ JitBuildCompute::JitBuildCompute(const JitBuildEnv& env, const JitBuiltStateConf
                       env_.root_ + "tt_metal/hw/ckernels/" + env.arch_name_ + "/metal/common " + "-I" + env_.root_ +
                       "tt_metal/hw/ckernels/" + env.arch_name_ + "/metal/llk_io " + "-I" + env_.root_ +
                       "tt_metal/hw/ckernels/" + env.arch_name_ + "/metal/llk_api " + "-I" + env_.root_ +
-                      "tt_metal/hw/ckernels/" + env.arch_name_ + "/metal/llk_api/llk_sfpu " + "-I" + env_.root_ +
-                      "tt_metal/third_party/sfpi/include " + "-I" + env_.root_ + "tt_metal/hw/firmware/src " + "-I" +
+                      "tt_metal/hw/ckernels/" + env.arch_name_ + "/metal/llk_api/llk_sfpu " + "-I" +
+                      env_.root_ + "runtime/sfpi/include " + "-I" + env_.root_ + "tt_metal/hw/firmware/src " + "-I" +
                       env_.root_ + "tt_metal/third_party/tt_llk_" + env.arch_name_ + "/llk_lib ";
 
     if (this->is_fw_) {
@@ -597,7 +603,7 @@ void JitBuildState::weaken(const string& log_file, const string& out_dir) const 
 
     ll_api::ElfFile elf;
     elf.ReadImage(pathname_in);
-    static std::string_view const strong_names[] = {"__fw_export_*"};
+    static std::string_view const strong_names[] = {"__fw_export_*", "__global_pointer$"};
     elf.WeakenDataSymbols(strong_names);
     elf.WriteImage(pathname_out);
 }

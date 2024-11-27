@@ -7,6 +7,8 @@
 #include "sdpa_decode_program_factory.hpp"
 #include "ttnn/run_operation.hpp"
 
+using namespace tt::tt_metal;
+
 namespace ttnn::operations::transformer {
 
 void ScaledDotProductAttentionDecode::validate(const std::vector<Tensor>& input_tensors, const std::vector<std::optional<const Tensor>>& optional_input_tensors) const {
@@ -52,7 +54,7 @@ void ScaledDotProductAttentionDecode::validate(const std::vector<Tensor>& input_
             const auto mask_shape_unpadded = mask_tensor.get_logical_shape();
 
             TT_FATAL(mask_shape[2] == q_shape[2], "Expect same number of padded heads in mask as in Q, got {} and {}", mask_shape[2], q_shape[2]);
-            TT_FATAL(mask_shape_unpadded[2] == q_shape_unpadded[2], "Expect same number of heads in mask as in Q, got {} and {}", mask_shape_unpadded[3], q_shape_unpadded[2]);
+            TT_FATAL(mask_shape_unpadded[2] == q_shape_unpadded[2], "Expect same number of heads in mask as in Q, got {} and {}", mask_shape_unpadded[2], q_shape_unpadded[2]);
             if (! this->paged_attention) TT_FATAL(mask_shape[3] == k_shape[2], "Expect same sequence length in mask as in K, got {} and {}", mask_shape[3], k_shape[2]);
             TT_FATAL(mask_shape[3] % k_chunk_size == 0, "Mask sequence length must be multiple of chunk size, got: {} and {}", mask_shape[3], k_chunk_size);
 
@@ -151,7 +153,7 @@ void ScaledDotProductAttentionDecode::validate(const std::vector<Tensor>& input_
 
 std::vector<ttnn::SimpleShape> ScaledDotProductAttentionDecode::compute_output_shapes(
     const std::vector<Tensor>& input_tensors) const {
-    return {input_tensors.at(0).get_padded_shape()};
+    return {input_tensors.at(0).get_logical_shape()};
 }
 
 std::vector<Tensor> ScaledDotProductAttentionDecode::create_output_tensors(

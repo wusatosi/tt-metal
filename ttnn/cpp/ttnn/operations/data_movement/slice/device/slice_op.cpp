@@ -6,6 +6,8 @@
 #include "slice_op.hpp"
 #include "slice_program_factory.hpp"
 
+using namespace tt::tt_metal;
+
 namespace ttnn::operations::data_movement {
 
 inline __attribute__((always_inline)) uint32_t get_upper_dims_compressed(const tt::tt_metal::LegacyShape& shape) {
@@ -82,11 +84,11 @@ void SliceDeviceOperation::validate_with_output_tensors(
         TT_FATAL(this->slice_start[i] <= this->slice_end[i], "Error");
     }
     if(!output_tensors.empty() && output_tensors[0].has_value()){
-        const auto output_shape_required = this->compute_output_shapes(input_tensors)[0];
+        const auto output_shape_required = compute_output_specs(input_tensors)[0].logical_shape();
         const auto& out_tensor = output_tensors[0].value();
-        TT_FATAL(out_tensor.get_legacy_shape() == output_shape_required, "The input tensors need a shape of {}, however the output tensor is only {}", output_shape_required,  out_tensor.get_legacy_shape());
+        TT_FATAL(out_tensor.get_padded_shape() == output_shape_required, "The input tensors need a shape of {}, however the output tensor is only {}", output_shape_required,  out_tensor.get_padded_shape());
     }
-    auto output_tensor_shape = this->compute_output_shapes(input_tensors)[0];
+    auto output_tensor_shape = this->compute_output_specs(input_tensors)[0].logical_shape();
     if (has_step) { // if all ones modify before passing in to function
         TT_FATAL(input_tensor_a.get_layout() == Layout::ROW_MAJOR, "Strided slice is only supported for row major layout");
         TT_FATAL(!input_tensor_a.is_sharded(), "Strided slice is not supported for sharded tensor");
@@ -102,55 +104,26 @@ void SliceDeviceOperation::validate_with_output_tensors(
             (output_tensor_shape[-1] % TILE_WIDTH == 0) && (this->slice_start[-1] % TILE_WIDTH == 0),
             "Can only unpad tilized tensor with full tiles");
     } else if (input_tensor_a.get_layout() == Layout::ROW_MAJOR) {
-        TT_FATAL(
-            (output_tensor_shape[-1] * input_tensor_a.element_size() % sizeof(uint32_t) == 0),
-            "An unpadding slice operations for a RowMajor layout on the output tensor requires the last dimension to be on a 32 bit boundary. For example, the final dimension needs to be divisible by 2 for bfloat16. The resulting tensor shape is {}, which is not 4B aligned as the last dimension is {}",
-                        output_tensor_shape[-1], input_tensor_a.element_size());
         if (has_step) {
             for (uint32_t i = 0; i < input_tensor_a.get_legacy_shape().rank(); i++) {
                 TT_FATAL(step[i] > 0, "Step({}) = {} should be positive", i, step[i]);
             }
         }
-        else {
-            TT_FATAL(this->slice_start[-1] * input_tensor_a.element_size() % sizeof(uint32_t) == 0, "Slice needs to start at an aligned position");
-        }
     }
 }
 
-std::vector<tt::tt_metal::LegacyShape> SliceDeviceOperation::compute_output_shapes(const std::vector<Tensor> &input_tensors) const {
-    SmallVector<uint32_t> out_shape;
-    auto rank = input_tensors[0].get_legacy_shape().rank();
-    out_shape.reserve(rank);
+std::vector<ttnn::TensorSpec> SliceDeviceOperation::compute_output_specs(const std::vector<Tensor> &input_tensors) const {
+    const auto& input_tensor = input_tensors[0];
+    SmallVector<uint32_t> out_shape(input_tensor.get_logical_shape().rank());
 
     auto output_dim_i = [this] (size_t i) {
         return (this->slice_end[i] - this->slice_start[i] + this->step[i] - 1) / this->step[i];
     };
-    for (uint32_t i = 0; i < rank; i++) {
-        out_shape.push_back(output_dim_i(i));
+    for (uint32_t i = 0; i < out_shape.size(); i++) {
+        out_shape[i] = output_dim_i(i);
     }
-    tt::tt_metal::LegacyShape output_tensor_shape(out_shape);
-    return {output_tensor_shape};
-}
-
-std::vector<Tensor> SliceDeviceOperation::create_output_tensors(
-    const std::vector<Tensor> &input_tensors, const std::vector<std::optional<Tensor>> &output_tensors) const {
-    if (!output_tensors.empty() && output_tensors[0].has_value()) {
-        return {output_tensors[0].value()};
-    }
-    const auto &input_tensor_a = input_tensors.at(0);
-    const auto shapes = compute_output_shapes(input_tensors);
-
-    if (input_tensor_a.is_sharded()) {
-        return {create_device_tensor(
-            shapes[0],
-            input_tensor_a.get_dtype(),
-            input_tensor_a.get_layout(),
-            input_tensor_a.device(),
-            this->output_mem_config)};
-    } else {
-        return operation::generic_create_output_tensors(
-            *this, input_tensors, input_tensor_a.get_dtype(), input_tensor_a.get_layout(), this->output_mem_config);
-    }
+    ttnn::SimpleShape output_tensor_shape(std::move(out_shape));
+    return {ttnn::TensorSpec(output_tensor_shape, tt::tt_metal::TensorLayout(input_tensor.get_dtype(), PageConfig(input_tensor.get_layout()), this->output_mem_config))};
 }
 
 operation::ProgramWithCallbacks SliceDeviceOperation::create_program(

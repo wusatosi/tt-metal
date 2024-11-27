@@ -10,7 +10,17 @@ from models.demos.llama3.tt.distributed_norm import DistributedNorm
 
 
 class TtTransformerBlock(LightweightModule):
-    def __init__(self, args, mesh_device, dtype, state_dict, layer_num, weight_cache_path, transformation_mats=None):
+    def __init__(
+        self,
+        args,
+        mesh_device,
+        dtype,
+        state_dict,
+        layer_num,
+        weight_cache_path,
+        transformation_mats,
+        paged_attention_config=None,
+    ):
         super().__init__()
 
         self.state_dict = state_dict
@@ -34,8 +44,9 @@ class TtTransformerBlock(LightweightModule):
             weight_cache_path=weight_cache_path,
             layer_num=layer_num,
             dtype=dtype,
-            configuration=args,
             transformation_mats=transformation_mats,
+            configuration=args,
+            paged_attention_config=paged_attention_config,
         )
         self.feed_forward = TtLlamaMLP(
             mesh_device=mesh_device,
@@ -88,26 +99,24 @@ class TtTransformerBlock(LightweightModule):
         self,
         x: ttnn.Tensor,
         current_pos,
-        rot_mat=None,
-        transformation_mats=None,
+        rot_mats=None,
         user_id=0,
         mode="decode",
         page_table=None,
     ) -> ttnn.Tensor:
-        # x is fractured across devices and interleaved in DRAM (for prefill) and L1 (for decode)
-        # FIXME: move to sharded residuals once support for this is added
-        # FIXME: Currently, for decode mode, we are using DRAM intereleaved as L1 interleaved results in h being corrupted in MLP
         TG = self.args.is_galaxy
-        skip_mem_cfg = ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if (TG and mode == "decode") else ttnn.DRAM_MEMORY_CONFIG
-
+        # x is fractured across devices and interleaved in DRAM (for prefill) and sharded in L1 (for decode)
+        skip_mem_cfg = self.model_config["DECODE_RESIDUAL_MEMCFG"] if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG
+        assert (
+            x.memory_config() == skip_mem_cfg
+        ), f"decoder input memcfg mismatch: {x.memory_config()} != {skip_mem_cfg}"
         # Norms take fractured inputs and output replicated across devices
         attn_in = self.attention_norm(x, mode)
         # Attention takes replicated inputs and produces fractured outputs
         attn_out = self.attention.forward(
             attn_in,
             current_pos,
-            rot_mat,
-            transformation_mats,
+            rot_mats,
             user_id,
             mode,
             page_table,

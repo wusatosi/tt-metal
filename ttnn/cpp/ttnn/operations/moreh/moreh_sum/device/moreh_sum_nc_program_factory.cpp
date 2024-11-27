@@ -74,10 +74,10 @@ MorehSumOperation::MorehSumNCFactory::cached_program_t MorehSumOperation::MorehS
         all_cores,
         cb_data_format,
         {
-            {tt::CB::c_in0, in0_t},  // input
-            {tt::CB::c_in1, in1_t},  // zero
-            {tt::CB::c_intermed0, intermed0_t, (fp32_dest_acc_en) ? tt::DataFormat::Float32 : cb_data_format},
-            {tt::CB::c_out0, out0_t},  // output
+            {tt::CBIndex::c_0, in0_t},  // input
+            {tt::CBIndex::c_1, in1_t},  // zero
+            {tt::CBIndex::c_24, intermed0_t, (fp32_dest_acc_en) ? tt::DataFormat::Float32 : cb_data_format},
+            {tt::CBIndex::c_16, out0_t},  // output
         });
     ////////////////////////////////////////////////////////////////////////////
     //                      DataMovementKernel SetUp
@@ -142,9 +142,9 @@ MorehSumOperation::MorehSumNCFactory::cached_program_t MorehSumOperation::MorehS
         CoreCoord core = {i / num_cores_y, i % num_cores_y};
 
         uint32_t num_tiles_per_core;
-        if (core_group_1.core_coord_in_core_ranges(core)) {
+        if (core_group_1.contains(core)) {
             num_tiles_per_core = num_cols_per_core_group_1;
-        } else if (core_group_2.core_coord_in_core_ranges(core)) {
+        } else if (core_group_2.contains(core)) {
             num_tiles_per_core = num_cols_per_core_group_2;
         } else {
             TT_THROW("Core not in specified core ranges.");
