@@ -15,6 +15,7 @@ from models.common.lightweightmodule import LightweightModule
 from models.demos.llama3.tt.distributed_norm import DistributedNorm
 from models.demos.llama3.tt.lm_head import LMHead
 from models.demos.llama3.tt.llama_rope import TtLlamaRotarySetup
+from models.demos.llama3.tt.llama_common import get_rot_transformation_mat
 
 
 class TtTransformer(LightweightModule):
@@ -44,7 +45,17 @@ class TtTransformer(LightweightModule):
         )
 
         transformation_mats = self.rope_setup.get_trans_mats()
-        transformation_mats = {"decode": transformation_mats}
+
+        transformation_mats_prefill_torch = get_rot_transformation_mat(args.head_dim)
+        transformation_mats_prefill = ttnn.from_torch(
+            transformation_mats_prefill_torch,
+            dtype=ttnn.bfloat16,
+            layout=ttnn.TILE_LAYOUT,
+            device=mesh_device,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+        )
+        transformation_mats = {"decode": transformation_mats, "prefill": transformation_mats_prefill}
         self.layers = [
             TtTransformerBlock(
                 args=args,
@@ -96,7 +107,7 @@ class TtTransformer(LightweightModule):
         get_last_token=-1,
     ):
         # No-op if callers already provide the right memory config
-        if mode == "decode":
+        if mode == "decode" and not self.args.is_galaxy:
             x = ttnn.to_memory_config(x, self.model_config["DECODE_RESIDUAL_MEMCFG"])
 
         for layer in self.layers:

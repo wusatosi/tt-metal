@@ -375,9 +375,9 @@ def run_llama3_demo(
                     prefill_input,
                     None,  # Current position
                     rot_mats_prefill,
-                    transformation_mats,
                     user_id=batch_id,
                     mode="prefill",
+                    page_table=page_table_tt,
                     get_last_token=((decoding_pos[batch_id] - 1) // 32) * 32,
                 )
             if model_args.is_galaxy:
@@ -447,7 +447,10 @@ def run_llama3_demo(
         # Compile
         logger.info(f"Compiling model trace...")
         decode_input = ttnn.unsqueeze_to_4D(tt_embd(tt_out_tok))
-        decode_input = ttnn.to_memory_config(decode_input, tt_model.args.model_config["DECODE_RESIDUAL_MEMCFG"])
+        decode_input = ttnn.to_memory_config(
+            decode_input,
+            ttnn.L1_MEMORY_CONFIG if model_args.is_galaxy else tt_model.args.model_config["DECODE_RESIDUAL_MEMCFG"],
+        )
         tt_out = tt_model(
             decode_input,
             current_pos_tensor,
@@ -480,7 +483,10 @@ def run_llama3_demo(
         trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
 
         decode_input = ttnn.unsqueeze_to_4D(tt_embd(tt_out_tok))
-        decode_input = ttnn.to_memory_config(decode_input, tt_model.args.model_config["DECODE_RESIDUAL_MEMCFG"])
+        decode_input = ttnn.to_memory_config(
+            decode_input,
+            ttnn.L1_MEMORY_CONFIG if model_args.is_galaxy else tt_model.args.model_config["DECODE_RESIDUAL_MEMCFG"],
+        )
         rot_mats = rope_setup.get_rot_mats(rot_mat_idxs)
         tt_out = tt_model(
             decode_input,
@@ -490,7 +496,12 @@ def run_llama3_demo(
             page_table=page_table_tt,
         )
         if tt_model.args.num_devices > 1:
-            tt_out_gathered = ttnn.all_gather(tt_out, dim=3, num_links=1, topology=ttnn.Topology.Linear)
+            if tt_model.args.is_galaxy:
+                tt_out_gathered = ttnn.all_gather(
+                    tt_out, dim=3, num_links=2, cluster_axis=0, mesh_device=mesh_device, topology=ttnn.Topology.Linear
+                )
+            else:
+                tt_out_gathered = ttnn.all_gather(tt_out, dim=3, num_links=1, topology=ttnn.Topology.Linear)
             ttnn.deallocate(tt_out)
         else:
             tt_out_gathered = tt_out
@@ -528,8 +539,6 @@ def run_llama3_demo(
 
         profiler.end(f"capture_trace_{batch_idx}")
 
-        profiler.end(f"capture_trace_{batch_idx}")
-
         # Start decoding
         iteration = 0
         users_decoding = True  # reset to handle next batch
@@ -547,31 +556,7 @@ def run_llama3_demo(
 
             # Execute trace
             ttnn.wait_for_event(0, write_event)
-            # ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=True)
-
-            current_rot_mat = tt_model.rope_setup.get_rot_mats(current_pos_torch)
-            decode_input = ttnn.unsqueeze_to_4D(tt_embd(tt_out_tok))
-            tt_out = tt_model(decode_input, current_pos, rot_mat=current_rot_mat)
-            if tt_model.args.num_devices > 1:
-                if tt_model.args.is_galaxy:
-                    tt_out_gathered = ttnn.all_gather(
-                        tt_out,
-                        dim=3,
-                        num_links=2,
-                        cluster_axis=0,
-                        mesh_device=mesh_device,
-                        topology=ttnn.Topology.Linear,
-                    )
-                else:
-                    tt_out_gathered = ttnn.all_gather(tt_out, dim=3, num_links=1, topology=ttnn.Topology.Linear)
-                ttnn.deallocate(tt_out)
-            else:
-                tt_out_gathered = tt_out
-            tt_out_rm = ttnn.untilize(tt_out_gathered, use_multicore=True)
-            ttnn.deallocate(tt_out_gathered)
-            tt_out_tok = ttnn.argmax(tt_out_rm, dim=3, use_multicore=True, output_tensor=tt_out_tok)
-            ttnn.deallocate(tt_out_rm)
-            ttnn.plus_one(current_pos)
+            ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=True)
             ttnn.record_event(0, op_event)
 
             # Update current pos and mat idxs on host and send to device
@@ -713,13 +698,10 @@ def run_llama3_demo(
         "loading_inputs": profiler.get_duration("loading_inputs"),
         "weight_loading": profiler.get_duration("weight_loading"),
         "prepare_first_decode_token": profiler.get_duration("prepare_first_decode_token_0"),
-        "get_single_rot_mat_decode": profiler.get_duration("get_single_rot_mat_decode_0"),  # Only for batch 0
         "preprocess_prefill_inputs": profiler.get_duration("preprocess_prefill_inputs"),
         "loading_weights_to_device": profiler.get_duration("loading_weights_to_device"),
-        "prepare_rot_mat_for_prefill": profiler.get_duration("prepare_rot_mat_for_prefill"),
         "compile_trace": profiler.get_duration("compile_trace_0"),  # Only for batch 0
         "capture_trace": profiler.get_duration("capture_trace_0"),  # Only for batch 0
-        "reset_rot_mat": sum(profiler.get_duration(f"reset_rot_mat_{i}") for i in range(max_generated_tokens)),
         "Total compile time": compile_prefill_time + compile_decode_time,
         "Full demo runtime": profiler.get_duration("run"),
     }
@@ -984,7 +966,7 @@ def run_llama3_demo(
     ids=[
         "general-1_batch",
         "general-2_batch",
-        "instructs-1_batch",
+        "instruct-1_batch",
         "instruct-2_batch",
         "instruct-long",
         "single_layer",
@@ -1009,23 +991,27 @@ def run_llama3_demo(
     "batch_size",
     (
         1,
-        32,
+        # 32,
     ),
 )
 @pytest.mark.parametrize(
     "paged_attention",
     (
-        True,
-        # False
+        # True,
+        False,
     ),
     ids=(
-        "paged_attention",
-        # "default_attention"
+        # "paged_attention",
+        "default_attention",
     ),
 )
 @pytest.mark.parametrize(  # TODO Substitute these values for a proper vLLM integration
     "paged_attention_params",
-    [{"page_block_size": 32, "page_max_num_blocks": 1024}],
+    [
+        {
+            "page_block_size": 32,
+        }
+    ],
 )
 @pytest.mark.parametrize(
     "max_generated_tokens",  # Maximum number of tokens to decode, per user

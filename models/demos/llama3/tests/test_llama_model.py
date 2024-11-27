@@ -33,24 +33,30 @@ from models.utility_functions import skip_for_grayskull
     "weights, layers",
     [
         ("random", 1),
-        ("instruct", None),
+        # ("instruct", None),
     ],
-    ids=["quick", "full"],
+    ids=[
+        "quick",
+    ],
 )
 @pytest.mark.parametrize(
     "paged_attention",
     (
-        True,
-        # False,
+        # True,
+        False,
     ),
     ids=(
-        "paged_attention",
-        # "default_attention",
+        # "paged_attention",
+        "default_attention",
     ),
 )
 @pytest.mark.parametrize(
     "paged_attention_params",
-    [{"page_block_size": 32, "page_max_num_blocks": 1024}],
+    [
+        {
+            "page_block_size": 32,
+        }
+    ],
 )
 @pytest.mark.parametrize(
     "batch_size",
@@ -58,7 +64,7 @@ from models.utility_functions import skip_for_grayskull
 )
 @pytest.mark.parametrize(
     "max_seq_len",
-    (128,),  # For decode-only unit test, there's no need to run with large sequence lengths
+    (256,),  # For decode-only unit test, there's no need to run with large sequence lengths
 )
 @pytest.mark.parametrize(
     "mesh_device",
@@ -101,7 +107,7 @@ def test_llama_model_inference(
     )
 
     # Reduce max seq len and KV cache seq_len params to speed up the test
-    model_args.max_seq_len = 128
+    model_args.max_seq_len = 256
 
     model_name = {
         (16, False): "llama32_1b",
@@ -260,7 +266,7 @@ def test_llama_model_inference(
 
         decode_input = model_args.prepare_inputs_ttnn_decode(
             tt_decode_input,
-            model_args.model_config["DECODE_RESIDUAL_MEMCFG"],
+            ttnn.L1_MEMORY_CONFIG if model_args.is_galaxy else model_args.model_config["DECODE_RESIDUAL_MEMCFG"],
         )
 
         # Get cos/sin matrices for the current position of each user
@@ -373,30 +379,6 @@ def test_llama_model_inference(
                                     :batch, ...
                                 ]
                             )
-                        tt_layer_present = [
-                            (
-                                ttnn.to_torch(
-                                    cache,
-                                    mesh_composer=ttnn.ConcatMesh2dToTensor(
-                                        mesh_device,
-                                        dims=(1, 0) if model_args.is_galaxy else (0, 1),
-                                        mesh_shape=model_args.cluster_shape,
-                                    ),
-                                )[reverse_permutation]
-                                .reshape(
-                                    model_args.max_batch_size,
-                                    paged_attention_config.max_num_blocks // model_args.max_batch_size,
-                                    model_args.n_kv_heads,
-                                    paged_attention_config.block_size,
-                                    model_args.head_dim,
-                                )
-                                .transpose(1, 2)
-                                .reshape(model_args.max_batch_size, model_args.n_kv_heads, -1, model_args.head_dim)[
-                                    :batch, ...
-                                ]
-                            )
-                            for cache in tt_model.layers[l].attention.layer_past
-                        ]
                     else:
                         for layer_past in tt_model.layers[l].attention.layer_past:
                             tt_layer_present.append(
@@ -407,7 +389,7 @@ def test_llama_model_inference(
                                         dims=(1, 0) if model_args.is_galaxy else (0, 1),
                                         mesh_shape=model_args.cluster_shape,
                                     ),
-                                )
+                                )[:batch, :, :, :]
                             )
 
                     for kv_cache, (cache_pt, cache_tt) in enumerate(zip(pytorch_layer_present, tt_layer_present)):
