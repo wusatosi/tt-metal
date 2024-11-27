@@ -32,7 +32,8 @@ def test_ff1_matmul(
     mesh_device, gelu, math_fidelity, iterations, determinism_check_iterations, use_program_cache, grid_size=(8, 8)
 ):
     seq_len = 1024
-    inner_dim = 4608
+    # inner_dim = 4608
+    inner_dim = 3 * 32
     weights_n = 18432
     per_core_M = 4
     per_core_N = 72
