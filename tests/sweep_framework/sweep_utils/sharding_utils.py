@@ -20,7 +20,11 @@ Y, X = get_device_grid_size()
 
 
 def gen_unary_sharded_spec(
-    num_shapes, num_core_samples, shard_orientation, sharding_strategy, max_tensor_size_per_core=480 * 480
+    num_shapes,
+    num_core_samples,
+    shard_orientation,
+    sharding_strategy,
+    max_tensor_size_per_core=480 * 480,
 ):
     assert sharding_strategy in ["BLOCK", "WIDTH", "HEIGHT", "TENSOR_HW"]
 
@@ -44,7 +48,6 @@ def gen_unary_sharded_spec(
                         rest_volume = random.randint(1, max_tensor_size // (tensor_height * tensor_width))
                         rest_dims = random.choice(_gen_reshape_args_from_volume(rest_volume, step=1, out_dims=rank - 2))
                         rest_dims = list(rest_dims["reshape_dims"])
-                        input_shape = rest_dims + input_shape
 
                 elif sharding_strategy == "BLOCK":
                     min_pre_sharded_height = 32 * y
