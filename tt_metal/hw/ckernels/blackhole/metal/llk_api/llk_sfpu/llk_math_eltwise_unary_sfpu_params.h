@@ -5,6 +5,7 @@
 #pragma once
 #include "llk_sfpu_types.h"
 #include "llk_math_eltwise_unary_sfpu.h"
+#include "debug/dprint.h"
 
 template <bool APPROXIMATE, class F, class ... ARGS>
 inline void llk_math_eltwise_unary_sfpu_params(
