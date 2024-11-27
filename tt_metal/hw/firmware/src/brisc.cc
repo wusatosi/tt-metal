@@ -389,7 +389,7 @@ int main() {
                 mailboxes->go_message.signal = RUN_MSG_DONE;
                 // Notify dispatcher that this has been done
                 DEBUG_SANITIZE_NOC_ADDR(noc_index, dispatch_addr, 4);
-                noc_fast_atomic_increment(
+                noc_fast_atomic_increment<risc_type>(
                     noc_index,
                     NCRISC_AT_CMD_BUF,
                     dispatch_addr,
@@ -477,7 +477,7 @@ int main() {
                 // messages in the ring buffer. Must be executed before the atomic increment, as after that the launch
                 // message is no longer owned by us.
                 CLEAR_PREVIOUS_LAUNCH_MESSAGE_ENTRY_FOR_WATCHER();
-                noc_fast_atomic_increment(
+                noc_fast_atomic_increment<risc_type>(
                     noc_index,
                     NCRISC_AT_CMD_BUF,
                     dispatch_addr,

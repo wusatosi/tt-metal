@@ -44,7 +44,7 @@ const uint32_t NOC_COORDINATE_MASK = 0xFFFFFFFF;
 
 // extern uint32_t noc_reads_num_issued[NUM_NOCS];
 // extern uint32_t noc_nonposted_writes_acked[NUM_NOCS];
-extern uint32_t noc_nonposted_atomics_acked[NUM_NOCS];
+// extern uint32_t noc_nonposted_atomics_acked[NUM_NOCS];
 // extern uint32_t noc_posted_writes_num_issued[NUM_NOCS];
 
 
@@ -177,8 +177,10 @@ inline __attribute__((always_inline)) bool ncrisc_noc_nonposted_writes_flushed(u
   return (NOC_STATUS_READ_REG(noc, NIU_MST_WR_ACK_RECEIVED) == get_noc_nonposted_writes_acked<risc_type>(noc));
 }
 
+template<uint32_t risc_type>
 inline __attribute__((always_inline)) bool ncrisc_noc_nonposted_atomics_flushed(uint32_t noc) {
-  return (NOC_STATUS_READ_REG(noc, NIU_MST_ATOMIC_RESP_RECEIVED) == noc_nonposted_atomics_acked[noc]);
+  // return (NOC_STATUS_READ_REG(noc, NIU_MST_ATOMIC_RESP_RECEIVED) == noc_nonposted_atomics_acked[noc]);
+  return (NOC_STATUS_READ_REG(noc, NIU_MST_ATOMIC_RESP_RECEIVED) == get_noc_nonposted_atomics_acked<risc_type>(noc));
 }
 
 inline __attribute__((always_inline)) void noc_init(uint32_t atomic_ret_val) {
@@ -236,7 +238,8 @@ inline __attribute__((always_inline)) void noc_local_state_init(int noc) {
     set_noc_nonposted_writes_num_issued<risc_type>(noc, NOC_STATUS_READ_REG(noc, NIU_MST_NONPOSTED_WR_REQ_SENT));
     set_noc_nonposted_writes_acked<risc_type>(noc, NOC_STATUS_READ_REG(noc, NIU_MST_WR_ACK_RECEIVED));
     // noc_nonposted_writes_acked[noc] = NOC_STATUS_READ_REG(noc, NIU_MST_WR_ACK_RECEIVED);
-    noc_nonposted_atomics_acked[noc] = NOC_STATUS_READ_REG(noc, NIU_MST_ATOMIC_RESP_RECEIVED);
+    set_noc_nonposted_atomics_acked<risc_type>(noc, NOC_STATUS_READ_REG(noc, NIU_MST_ATOMIC_RESP_RECEIVED));
+    // noc_nonposted_atomics_acked[noc] = NOC_STATUS_READ_REG(noc, NIU_MST_ATOMIC_RESP_RECEIVED);
     set_noc_posted_writes_num_issued<risc_type>(noc, NOC_STATUS_READ_REG(noc, NIU_MST_POSTED_WR_REQ_SENT));
     // noc_posted_writes_num_issued[noc] = NOC_STATUS_READ_REG(noc, NIU_MST_POSTED_WR_REQ_SENT);
 }
@@ -249,7 +252,8 @@ inline __attribute__((always_inline)) void ncrisc_noc_counters_init() {
     set_noc_nonposted_writes_num_issued<risc_type>(noc, NOC_STATUS_READ_REG(noc, NIU_MST_NONPOSTED_WR_REQ_SENT));
     set_noc_nonposted_writes_acked<risc_type>(noc, NOC_STATUS_READ_REG(noc, NIU_MST_WR_ACK_RECEIVED));
     // noc_nonposted_writes_acked[noc] = NOC_STATUS_READ_REG(noc, NIU_MST_WR_ACK_RECEIVED);
-    noc_nonposted_atomics_acked[noc] = NOC_STATUS_READ_REG(noc, NIU_MST_ATOMIC_RESP_RECEIVED);
+    set_noc_nonposted_atomics_acked<risc_type>(noc, NOC_STATUS_READ_REG(noc, NIU_MST_ATOMIC_RESP_RECEIVED));
+    // noc_nonposted_atomics_acked[noc] = NOC_STATUS_READ_REG(noc, NIU_MST_ATOMIC_RESP_RECEIVED);
     set_noc_posted_writes_num_issued<risc_type>(noc, NOC_STATUS_READ_REG(noc, NIU_MST_POSTED_WR_REQ_SENT));
     // noc_posted_writes_num_issued[noc] = NOC_STATUS_READ_REG(noc, NIU_MST_POSTED_WR_REQ_SENT);
   }
@@ -261,7 +265,7 @@ inline __attribute__((always_inline)) void ncrisc_noc_full_sync() {
     while (!ncrisc_noc_reads_flushed<risc_type>(n));
     while (!ncrisc_noc_nonposted_writes_sent<risc_type>(n));
     while (!ncrisc_noc_nonposted_writes_flushed<risc_type>(n));
-    while (!ncrisc_noc_nonposted_atomics_flushed(n));
+    while (!ncrisc_noc_nonposted_atomics_flushed<risc_type>(n));
     while (!ncrisc_noc_posted_writes_sent<risc_type>(n));
   }
 }
@@ -350,7 +354,7 @@ inline __attribute__((always_inline)) void noc_fast_write_dw_inline(uint32_t noc
   }
 }
 
-template<uint8_t noc_mode = DM_DEDICATED_NOC>
+template<uint32_t risc_type, uint8_t noc_mode = DM_DEDICATED_NOC>
 inline __attribute__((always_inline)) void noc_fast_atomic_increment(uint32_t noc, uint32_t cmd_buf, uint64_t addr, uint32_t vc, uint32_t incr, uint32_t wrap, bool linked, bool posted = false, uint32_t atomic_ret_val = 0) {
   while (!noc_cmd_buf_ready(noc, cmd_buf));
   if constexpr (noc_mode == DM_DYNAMIC_NOC) {
@@ -372,6 +376,7 @@ inline __attribute__((always_inline)) void noc_fast_atomic_increment(uint32_t no
   NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_AT_DATA, incr);
   NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_CMD_CTRL, 0x1);
   if (!posted) {
-    noc_nonposted_atomics_acked[noc] += 1;
+    inc_noc_nonposted_atomics_acked<risc_type>(noc);
+    // noc_nonposted_atomics_acked[noc] += 1;
   }
 }
