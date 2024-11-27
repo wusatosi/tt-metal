@@ -12,6 +12,8 @@ from models.utility_functions import comp_pcc
 from tests.ttnn.utils_for_testing import assert_with_pcc
 from models.utility_functions import skip_for_grayskull, is_wormhole_b0, is_grayskull, is_blackhole, run_for_wormhole_b0
 
+import os
+
 
 def find_max_subblock(out_block_h, out_block_w):
     max_product = 0
@@ -143,13 +145,22 @@ def test_matmul_reuse_config_sharded_tiny_tile(
         )
     else:
         in1_memory_config = ttnn.L1_MEMORY_CONFIG
-    in1_t = ttnn.from_torch(
+    # in1_t = ttnn.from_torch(
+    #     in1,
+    #     tile=ttnn.Tile((32, tile_w), transpose_tile=transpose_tile),
+    #     dtype=in1_dtype,
+    #     layout=ttnn.TILE_LAYOUT,
+    #     device=device,
+    #     memory_config=in1_memory_config,
+    # )
+    in1_t = ttnn.as_tensor(
         in1,
         tile=ttnn.Tile((32, tile_w), transpose_tile=transpose_tile),
         dtype=in1_dtype,
         layout=ttnn.TILE_LAYOUT,
         device=device,
         memory_config=in1_memory_config,
+        cache_file_name=f"/home/{os.getenv('USER')}/test_matmul_in1.bin",
     )
 
     out_block_h = m // tile_h
