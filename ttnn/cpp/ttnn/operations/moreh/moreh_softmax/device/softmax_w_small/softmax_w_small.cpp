@@ -46,20 +46,16 @@ MorehSoftmaxOperation::MorehSoftmaxWSmallFactory::create(
     auto data_format = tt::tt_metal::datatype_to_dataformat_converter(input.get_dtype());
     auto intermed_data_format = fp32_dest_acc_en ? tt::DataFormat::Float32 : data_format;
 
+    std::cout << "fp32_dest_acc_en " << fp32_dest_acc_en << "\n";
+    std::cout << "intermed_data_format " << intermed_data_format << "\n";
+
     CreateCircularBuffer(
         program,
         all_cores,
         data_format,
         {
-            {tt::CBIndex::c_0, Wt},                              // input
-            {tt::CBIndex::c_1, 1},                               // mask
-            {tt::CBIndex::c_2, 1},                               // scaler
-            {tt::CBIndex::c_16, Wt},                             // output
-            {tt::CBIndex::c_24, Wt, intermed_data_format},  // exp(x)
-            {tt::CBIndex::c_25, 1, intermed_data_format},   // reduce
-            {tt::CBIndex::c_26, 1, intermed_data_format},   // max
-            {tt::CBIndex::c_27, Wt, intermed_data_format},  // x - max
-            {tt::CBIndex::c_28, 1, intermed_data_format}    // tmp
+            {tt::CBIndex::c_2, 2, intermed_data_format},    // scaler
+            {tt::CBIndex::c_3, 1, intermed_data_format},    // scaler
         });
 
     // create read/wrtie kernel
@@ -83,10 +79,11 @@ MorehSoftmaxOperation::MorehSoftmaxWSmallFactory::create(
         writer_defines);
 
     std::map<string, string> compute_defines;
-    if (op == MorehSoftmaxOp::SOFTMAX || op == MorehSoftmaxOp::LOGSOFTMAX)
+    if (op == MorehSoftmaxOp::SOFTMAX || op == MorehSoftmaxOp::LOGSOFTMAX) {
         compute_defines["SOFTMAX"] = "1";
-    else
+    } else {
         compute_defines["SOFTMIN"] = "1";
+    }
     if (op == MorehSoftmaxOp::LOGSOFTMAX) {
         compute_defines["LOG"] = "1";
     }
@@ -95,18 +92,20 @@ MorehSoftmaxOperation::MorehSoftmaxWSmallFactory::create(
         compute_defines["FP32_DEST_ACC_EN"] = "1";
     }
 
-    // create compute kernel
-    CreateComputeKernel(
+    std::vector<UnpackToDestMode> unpack_to_dest_mode(NUM_CIRCULAR_BUFFERS, UnpackToDestMode::Default);
+    auto compute_kernel_ids = CreateComputeKernel(
         program,
         "ttnn/cpp/ttnn/operations/moreh/moreh_softmax/device/kernels/moreh_softmax_w.cpp",
         {
             {core_group_1, num_tiles_per_core_group_1, {num_tiles_per_core_group_1, Wt}},
             {core_group_2, num_tiles_per_core_group_2, {num_tiles_per_core_group_2, Wt}},
         },
-        compute_defines,
-        math_fidelity,
-        fp32_dest_acc_en,
-        math_approx_mode);
+        ComputeKernelConfig{
+            .math_fidelity = math_fidelity,
+            .fp32_dest_acc_en = fp32_dest_acc_en,
+            .unpack_to_dest_mode = unpack_to_dest_mode,
+            .math_approx_mode = math_approx_mode,
+            .defines = compute_defines});
 
     // Set Runtime Args
     auto core_x_offset = core_range.start_coord.x;
@@ -125,8 +124,9 @@ MorehSoftmaxOperation::MorehSoftmaxWSmallFactory::create(
 
         float scaler = 1.0f;
         uint32_t mask_w = shape.without_padding()[-1] % tt::constants::TILE_WIDTH;
-        if (mask_w == 0)
+        if (mask_w == 0) {
             mask_w = tt::constants::TILE_WIDTH;
+        }
         std::vector<uint32_t> reader_args = {
             input.buffer()->address(),
             num_tiles_per_core,
