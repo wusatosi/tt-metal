@@ -146,7 +146,7 @@ class TtModelArgs:
         self.max_batch_size = max_batch_size
         self.tile_size = 32
 
-        LLAMA_DIR = os.getenv("LLAMA_DIR")
+        LLAMA_DIR = "/proj_sw/user_dev/llama31-70b-data/Meta-Llama-3.1-70B"
         if LLAMA_DIR:
             if any([os.getenv("LLAMA_CKPT_DIR"), os.getenv("LLAMA_TOKENIZER_PATH"), os.getenv("LLAMA_CACHE_PATH")]):
                 logger.warning(
@@ -318,7 +318,7 @@ class TtModelArgs:
             residual_grid = self.dram_shard_core_grid_for_k(self.dim // self.num_devices)
             self.model_config["DECODE_RESIDUAL_MEMCFG"] = (
                 ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG
-                if TG
+                if self.is_galaxy
                 else ttnn.create_sharded_memory_config(
                     (
                         self.tile_padded_batch_rows,
@@ -591,7 +591,7 @@ class TtModelArgs:
             # MLP configs
             mlp_core_grid = (
                 self.dram_shard_core_grid_for_k(self.dim)
-                if TG
+                if self.is_galaxy
                 else self.dram_shard_core_grid_for_k_and_n(self.dim, self.hidden_dim // self.num_devices)
             )
 

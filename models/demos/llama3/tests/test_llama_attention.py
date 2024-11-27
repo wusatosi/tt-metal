@@ -36,17 +36,21 @@ from models.utility_functions import skip_for_grayskull
 @pytest.mark.parametrize(
     "paged_attention",
     (
-        True,
-        # False,
+        # True,
+        False,
     ),
     ids=(
-        "paged_attention",
-        # "default_attention",
+        # "paged_attention",
+        "default_attention",
     ),
 )
 @pytest.mark.parametrize(
     "paged_attention_params",
-    [{"page_block_size": 32, "page_max_num_blocks": 1024}],
+    [
+        {
+            "page_block_size": 32,
+        }
+    ],
 )
 @pytest.mark.parametrize(
     "batch_size",

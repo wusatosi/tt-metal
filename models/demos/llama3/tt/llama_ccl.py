@@ -43,7 +43,7 @@ def tt_all_reduce(
             input_tensor_sharded.deallocate(True)
         reduced = ttnn.reduce_scatter(
             input_tensor,
-            scatter_dim=dim,
+            dim=dim,
             math_op=ttnn.ReduceType.Sum,
             num_links=num_reduce_scatter_links,
             memory_config=memory_config,
@@ -83,7 +83,7 @@ def tt_all_reduce(
         input_mem_cfg = input_tensor.memory_config()
         reduced_tensor = ttnn.reduce_scatter(
             input_tensor,
-            scatter_dim=dim,
+            dim=dim,
             num_links=num_reduce_scatter_links,
             cluster_axis=cluster_axis,
             mesh_device=mesh_device,
