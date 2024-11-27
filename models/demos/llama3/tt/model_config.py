@@ -630,7 +630,6 @@ class TtModelArgs:
 
             self.is_2d_fracturing = all([dim > 1 for dim in self.mesh_device.shape]) if self.mesh_device else False
             self.is_multichip = self.num_devices > 1
-            self.transpose_weights = True
 
     def is_distributed_norm(self, mode):
         if not self.is_multichip:
@@ -809,27 +808,14 @@ class TtModelArgs:
 
     def weight_cache_path(self, dtype):
         # Keep the weight cache separate for generative and instruct weights
-        if self.instruct and not self.transpose_weights:
+        if self.instruct:
             return (
                 self.model_cache_path
                 / {ttnn.bfloat16: "tensor_cache_instruct_bf16", ttnn.bfloat8_b: "tensor_cache_instruct_bfp8"}[dtype]
             )
-        elif not self.instruct and not self.transpose_weights:
+        else:
             return (
                 self.model_cache_path / {ttnn.bfloat16: "tensor_cache_bf16", ttnn.bfloat8_b: "tensor_cache_bfp8"}[dtype]
-            )
-        elif self.instruct and self.transpose_weights:
-            return (
-                self.model_cache_path
-                / {
-                    ttnn.bfloat16: "tensor_cache_instruct_bf16_transposed",
-                    ttnn.bfloat8_b: "tensor_cache_instruct_bfp8_transposed",
-                }[dtype]
-            )
-        else:  # not instruct and transpose weights
-            return (
-                self.model_cache_path
-                / {ttnn.bfloat16: "tensor_cache_bf16_transposed", ttnn.bfloat8_b: "tensor_cache_bfp8_transposed"}[dtype]
             )
 
     def get_model_config(self):

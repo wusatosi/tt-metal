@@ -126,23 +126,6 @@ struct Tile {
 
     static constexpr auto attribute_names = std::forward_as_tuple("tile_shape", "face_shape", "num_faces");
     const auto attribute_values() const { return std::forward_as_tuple(tile_shape, face_shape, num_faces); }
-
-    // Add serialization helper methods
-    static constexpr auto serialization_fields = std::forward_as_tuple(
-        "tile_shape",
-        "face_shape",
-        "transpose_within_face",
-        "transpose_of_faces"
-    );
-
-    auto serialization_values() const {
-        return std::forward_as_tuple(
-            tile_shape,
-            face_shape,
-            transpose_within_face,
-            transpose_of_faces
-        );
-    }
 };
 
 }  // namespace tt_metal

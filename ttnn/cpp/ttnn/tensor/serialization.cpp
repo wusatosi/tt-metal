@@ -206,7 +206,6 @@ void dump_tensor(const std::string& file_name, const Tensor& tensor, const std::
     auto data_type = tensor.get_dtype();
     auto layout = tensor.get_layout();
     auto storage_type = tensor.storage_type();
-    auto tile = tensor.get_tensor_spec().tile();
 
     output_stream.write(reinterpret_cast<const char*>(&detail::SENTINEL_VALUE), sizeof(std::size_t));
     output_stream.write(reinterpret_cast<const char*>(&VERSION_ID), sizeof(std::uint8_t));
@@ -214,12 +213,6 @@ void dump_tensor(const std::string& file_name, const Tensor& tensor, const std::
     output_stream.write(reinterpret_cast<const char*>(&data_type), sizeof(DataType));
     output_stream.write(reinterpret_cast<const char*>(&layout), sizeof(Layout));
     output_stream.write(reinterpret_cast<const char*>(&storage_type), sizeof(StorageType));
-
-    // Write tile data
-    output_stream.write(reinterpret_cast<const char*>(&tile.tile_shape), sizeof(std::array<uint32_t, 2>));
-    output_stream.write(reinterpret_cast<const char*>(&tile.face_shape), sizeof(std::array<uint32_t, 2>));
-    output_stream.write(reinterpret_cast<const char*>(&tile.transpose_within_face), sizeof(bool));
-    output_stream.write(reinterpret_cast<const char*>(&tile.transpose_of_faces), sizeof(bool));
 
     bool is_on_device = is_tensor_on_device_or_multidevice(tensor);
     bool has_memory_config = is_on_device;
@@ -287,20 +280,6 @@ Tensor load_tensor_helper(const std::string& file_name, T device) {
         input_stream.read(reinterpret_cast<char*>(&data_type), sizeof(DataType));
         input_stream.read(reinterpret_cast<char*>(&layout), sizeof(Layout));
         input_stream.read(reinterpret_cast<char*>(&storage_type), sizeof(StorageType));
-
-        // Read tile data
-        std::array<uint32_t, 2> tile_shape, face_shape;
-        bool transpose_within_face, transpose_of_faces;
-
-        input_stream.read(reinterpret_cast<char*>(&tile_shape), sizeof(std::array<uint32_t, 2>));
-        input_stream.read(reinterpret_cast<char*>(&face_shape), sizeof(std::array<uint32_t, 2>));
-        input_stream.read(reinterpret_cast<char*>(&transpose_within_face), sizeof(bool));
-        input_stream.read(reinterpret_cast<char*>(&transpose_of_faces), sizeof(bool));
-
-        Tile tile(tile_shape);
-        tile.face_shape = face_shape;
-        tile.transpose_within_face = transpose_within_face;
-        tile.transpose_of_faces = transpose_of_faces;
 
         bool has_memory_config = false;
         MemoryConfig memory_config = MemoryConfig{
