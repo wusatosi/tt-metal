@@ -37,7 +37,7 @@ template <
     bool tilize = false /*unused*/>
 inline void llk_pack_hw_configure(const llk_pack_params_t* pack_params) {
     const std::uint32_t output_id = get_output_id(pack_params->pack_output);
-    const std::uint32_t tile_size = cb_interface[output_id].fifo_page_size;
+    const std::uint32_t tile_size = get_local_cb_interface(output_id).fifo_page_size;
 
     _llk_pack_hw_configure_<untilize>(
         pack_src_format[output_id], pack_dst_format[output_id], tile_size, pack_params->relu_config.val);
@@ -63,7 +63,7 @@ inline void llk_pack_hw_configure_disaggregated(std::uint32_t pack_output) {
 template <bool untilize = false, PoolType type, ReduceDim dim, bool is_fp32_dest_acc_en = false /*not used*/>
 inline void llk_pack_reduce_hw_configure(const llk_pack_params_t* pack_params) {
     const std::uint32_t output_id = get_output_id(pack_params->pack_output);
-    const std::uint32_t tile_size = cb_interface[output_id].fifo_page_size;
+    const std::uint32_t tile_size = get_local_cb_interface(output_id).fifo_page_size;
 
     _llk_pack_reduce_hw_configure_<untilize, type, dim>(
         pack_src_format[output_id], pack_dst_format[output_id], tile_size, pack_params->relu_config.val);
@@ -96,15 +96,16 @@ inline std::uint32_t get_output_tile_address(std::uint8_t output_id, std::uint32
     std::uint16_t pack_tile_addr;
     if constexpr (out_of_order_output) {
         pack_tile_addr =
-            cb_interface[output_id].fifo_wr_ptr +
+            get_local_cb_interface(output_id).fifo_wr_ptr +
             MUL_TILE_SIZE_AND_INDEX<true>((std::uint8_t)pack_dst_format[output_id], (std::uint16_t)output_tile_index) -
             1;
     } else {
         if constexpr (untilize) {
             // TODO: uplift this option from BBE
         } else {
-            pack_tile_addr = cb_interface[output_id].fifo_wr_ptr + cb_interface[output_id].fifo_wr_tile_ptr - 1;
-            cb_interface[output_id].fifo_wr_tile_ptr +=
+            pack_tile_addr =
+                get_local_cb_interface(output_id).fifo_wr_ptr + get_local_cb_interface(output_id).fifo_wr_tile_ptr - 1;
+            get_local_cb_interface(output_id).fifo_wr_tile_ptr +=
                 GET_L1_TILE_SIZE<true>((std::uint8_t)pack_dst_format[output_id]);
         }
     }
@@ -163,20 +164,22 @@ inline void llk_pack_untilize(
     const std::uint32_t block_c_index = 0) {
     const std::uint32_t output_id = get_output_id(output);
     std::uint32_t pack_tile_addr =
-        cb_interface[output_id].fifo_wr_ptr - 1 +
+        get_local_cb_interface(output_id).fifo_wr_ptr - 1 +
         SCALE_DATUM_SIZE(
             pack_dst_format[output_id],
             (block_c_index * ((num_faces > 2) ? num_faces / 2 : num_faces) * block_ct_dim * FACE_C_DIM)) /
             16;
 
     for (std::uint32_t block_rt = 0; block_rt < block_rt_dim; block_rt++) {
-        _llk_pack_untilize_<block_ct_dim, full_ct_dim, diagonal, narrow_row, row_num_datums>(
-            pack_tile_addr, pack_dst_format[output_id], face_r_dim, num_faces, block_rt * block_ct_dim);
+        for (std::uint32_t block_rt = 0; block_rt < block_rt_dim; block_rt++) {
+            _llk_pack_untilize_<block_ct_dim, full_ct_dim, diagonal, narrow_row, row_num_datums>(
+                pack_tile_addr, pack_dst_format[output_id], face_r_dim, num_faces, block_rt * block_ct_dim);
 
-        pack_tile_addr += full_ct_dim * ((std::uint32_t)SCALE_DATUM_SIZE(
-                                            pack_dst_format[output_id], (num_faces * face_r_dim * FACE_C_DIM) / 16));
+            pack_tile_addr +=
+                full_ct_dim * ((std::uint32_t)SCALE_DATUM_SIZE(
+                                  pack_dst_format[output_id], (num_faces * face_r_dim * FACE_C_DIM) / 16));
+        }
     }
-}
 
 /*************************************************************************
  * LLK PACK COMMON
@@ -222,7 +225,7 @@ inline void llk_pack_reconfig_data_format(const std::uint32_t new_output) {
     std::uint32_t output_id = get_output_id(new_output);
 
     _llk_pack_reconfig_data_format_<is_fp32_dest_acc_en, is_tile_dim_reconfig_en, DstTileFaceLayout::RowMajor>(
-        pack_dst_format[output_id], cb_interface[output_id].fifo_page_size);
+        pack_dst_format[output_id], get_local_cb_interface(output_id).fifo_page_size);
 }
 
 template <bool is_fp32_dest_acc_en = false /*unused*/, bool is_tile_dim_reconfig_en = false /*unused*/>
@@ -253,7 +256,7 @@ inline void llk_pack_reduce_config_v2(uint32_t output) {
     const bool untilize = false;
     if constexpr (at_kernel_start) {
         const std::uint32_t output_id = get_output_id(output);
-        const std::uint32_t tile_size = cb_interface[output_id].fifo_page_size;
+        const std::uint32_t tile_size = get_local_cb_interface(output_id).fifo_page_size;
         const llk_relu_config_u relu_config = {
             .f = {
                 .ApplyRelu = (std::uint32_t)ReluType::NO_RELU,

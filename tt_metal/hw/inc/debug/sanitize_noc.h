@@ -414,7 +414,7 @@ void debug_sanitize_noc_and_worker_addr(
          << NOC_ADDR_COORD_SHIFT) |                                                                             \
             ((uint64_t)NOC_CMD_BUF_READ_REG(noc_id, NCRISC_WR_CMD_BUF, NOC_TARG_ADDR_MID) << 32) | noc_a_lower, \
         worker_a,                                                                                               \
-        NOC_CMD_BUF_READ_REG(noc_id, NCRISC_WR_CMD_BUF, NOC_AT_LEN_BE));
+        1);
 #define DEBUG_INSERT_DELAY(transaction_type) debug_insert_delay(transaction_type)
 
 // Delay for debugging purposes
