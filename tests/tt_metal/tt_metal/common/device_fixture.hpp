@@ -100,3 +100,14 @@ class BlackholeSingleCardFixture : public DeviceSingleCardFixture {
         this->create_devices();
     }
 };
+
+class ArchFixture : public ::testing::Test {
+   protected:
+    tt::ARCH arch_;
+
+    void SetUp() override {
+        this->arch_ = tt::get_arch_from_string(tt::test_utils::get_umd_arch_name());
+    }
+
+    void TearDown() override {}
+};

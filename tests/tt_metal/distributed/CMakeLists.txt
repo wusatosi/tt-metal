@@ -12,6 +12,9 @@ target_include_directories(
     distributed_unit_tests
     PRIVATE
         ${PROJECT_SOURCE_DIR}/tt_metal
+        ${PROJECT_SOURCE_DIR}/tests
+        ${PROJECT_SOURCE_DIR}/tests/tt_metal/tt_metal/test_utils
+        ${PROJECT_SOURCE_DIR}/tests/tt_metal/tt_metal/common
         ${PROJECT_SOURCE_DIR}/tt_metal/distributed
 )
 

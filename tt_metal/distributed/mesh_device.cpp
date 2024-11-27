@@ -93,8 +93,17 @@ SystemMesh& SystemMesh::instance() {
 }
 void SystemMesh::initialize() {
     this->physical_device_id_to_coordinate = tt::Cluster::instance().get_user_chip_ethernet_coordinates();
-    for (const auto& [chip_id, physical_coordinate] : this->physical_device_id_to_coordinate) {
-        this->physical_coordinate_to_device_id.emplace(physical_coordinate, chip_id);
+    if (this->physical_device_id_to_coordinate.empty()) {
+        // Only WH has ethernet coordinates. Fabric will assign chip ids for BH
+        for (auto chip_id = 0; chip_id < tt::umd::Cluster::detect_available_device_ids().size(); chip_id++) {
+            PhysicalCoordinate coord{0, chip_id, 0, 0, 0};
+            this->physical_device_id_to_coordinate.emplace(chip_id, coord);
+            this->physical_coordinate_to_device_id.emplace(coord, chip_id);
+        }
+    } else {
+        for (const auto& [chip_id, physical_coordinate] : this->physical_device_id_to_coordinate) {
+            this->physical_coordinate_to_device_id.emplace(physical_coordinate, chip_id);
+        }
     }
 
     // Initialize the system mesh shape and translation map
