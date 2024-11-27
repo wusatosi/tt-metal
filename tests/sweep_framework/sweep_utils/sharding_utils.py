@@ -117,6 +117,8 @@ def parse_sharding_spec(input_spec):
     shard_orientation = input_spec["shard_orientation"]
     core_grid_size = input_spec["core_grid_size"]
 
+    assert sharding_strategy in ["HEIGHT", "WIDTH", "BLOCK", "TENSOR_HW"]
+
     tensor_hw_as_shard_shape = False
 
     if sharding_strategy == "HEIGHT":
