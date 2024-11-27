@@ -36,17 +36,21 @@ from models.demos.t3000.llama2_70b.tt.llama_common import ShardTensor2dMesh, Con
 @pytest.mark.parametrize(
     "paged_attention",
     (
-        True,
-        # False
+        # True,
+        False,
     ),
     ids=(
-        "paged_attention",
-        # "default_attention"
+        # "paged_attention",
+        "default_attention",
     ),
 )
 @pytest.mark.parametrize(
     "paged_attention_params",
-    [{"page_block_size": 32, "page_max_num_blocks": 1024}],
+    [
+        {
+            "page_block_size": 32,
+        }
+    ],
 )
 @pytest.mark.parametrize(
     "batch_size",
@@ -54,7 +58,7 @@ from models.demos.t3000.llama2_70b.tt.llama_common import ShardTensor2dMesh, Con
 )
 @pytest.mark.parametrize(
     "max_seq_len",
-    (128,),  # For decode-only unit test, there's no need to run with large sequence lengths
+    (256,),  # For decode-only unit test, there's no need to run with large sequence lengths
 )
 def test_llama_decoder_inference(
     max_seq_len,
@@ -158,8 +162,7 @@ def test_llama_decoder_inference(
 
         decode_input = model_args.prepare_inputs_ttnn_decode(
             tt_decode_input,
-            # ttnn.DRAM_MEMORY_CONFIG,
-            model_args.model_config["DECODE_RESIDUAL_MEMCFG"],
+            ttnn.L1_MEMORY_CONFIG if model_args.is_galaxy else model_args.model_config["DECODE_RESIDUAL_MEMCFG"],
         )
 
         # Get cos/sin matrices for the current position of each user
