@@ -114,8 +114,7 @@ void eth_noc_semaphore_wait_min(volatile tt_l1_ptr uint32_t* sem_addr, uint32_t 
 FORCE_INLINE
 void eth_noc_async_read_barrier() {
     while (
-        !ncrisc_noc_reads_flushed<static_cast<std::underlying_type_t<TensixProcessorTypes>>(TensixProcessorTypes::DM0)>(
-            noc_index)) {
+        !ncrisc_noc_reads_flushed<risc_type>(noc_index)) {
         run_routing();
     }
 }
@@ -130,8 +129,7 @@ void eth_noc_async_read_barrier() {
  */
 FORCE_INLINE
 void eth_noc_async_write_barrier() {
-    while (!ncrisc_noc_nonposted_writes_flushed<static_cast<std::underlying_type_t<TensixProcessorTypes>>(
-               TensixProcessorTypes::DM0)>(noc_index)) {
+    while (!ncrisc_noc_nonposted_writes_flushed<risc_type>(noc_index)) {
         run_routing();
     }
 }
