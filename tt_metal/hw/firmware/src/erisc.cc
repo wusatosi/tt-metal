@@ -24,11 +24,11 @@ uint8_t noc_index = 0;  // TODO: remove hardcoding
 uint8_t my_x[NUM_NOCS] __attribute__((used));
 uint8_t my_y[NUM_NOCS] __attribute__((used));
 
-uint32_t noc_reads_num_issued[NUM_NOCS] __attribute__((used));
-uint32_t noc_nonposted_writes_num_issued[NUM_NOCS] __attribute__((used));
-uint32_t noc_nonposted_writes_acked[NUM_NOCS] __attribute__((used));
-uint32_t noc_nonposted_atomics_acked[NUM_NOCS] __attribute__((used));
-uint32_t noc_posted_writes_num_issued[NUM_NOCS] __attribute__((used));
+// uint32_t noc_reads_num_issued[NUM_NOCS] __attribute__((used));
+// uint32_t noc_nonposted_writes_num_issued[NUM_NOCS] __attribute__((used));
+// uint32_t noc_nonposted_writes_acked[NUM_NOCS] __attribute__((used));
+// uint32_t noc_nonposted_atomics_acked[NUM_NOCS] __attribute__((used));
+// uint32_t noc_posted_writes_num_issued[NUM_NOCS] __attribute__((used));
 
 uint32_t tt_l1_ptr *rta_l1_base __attribute__((used));
 uint32_t tt_l1_ptr *crta_l1_base __attribute__((used));
@@ -47,9 +47,9 @@ void __attribute__((noinline)) Application(void) {
     noc_init(MEM_NOC_ATOMIC_RET_VAL_ADDR);
 
     for (uint32_t n = 0; n < NUM_NOCS; n++) {
-        noc_local_state_init(n);
+        noc_local_state_init<static_cast<std::underlying_type_t<TensixProcessorTypes>>(TensixProcessorTypes::DM0)>(n);
     }
-    ncrisc_noc_full_sync();
+    ncrisc_noc_full_sync<static_cast<std::underlying_type_t<TensixProcessorTypes>>(TensixProcessorTypes::DM0)>();
     WAYPOINT("REW");
     uint32_t count = 0;
     while (routing_info->routing_enabled != 1) {

@@ -29,11 +29,11 @@
 
 uint8_t noc_index;
 
-uint32_t noc_reads_num_issued[NUM_NOCS] __attribute__((used));
-uint32_t noc_nonposted_writes_num_issued[NUM_NOCS] __attribute__((used));
-uint32_t noc_nonposted_writes_acked[NUM_NOCS] __attribute__((used));
-uint32_t noc_nonposted_atomics_acked[NUM_NOCS] __attribute__((used));
-uint32_t noc_posted_writes_num_issued[NUM_NOCS] __attribute__((used));
+// uint32_t noc_reads_num_issued[NUM_NOCS] __attribute__((used));
+// uint32_t noc_nonposted_writes_num_issued[NUM_NOCS] __attribute__((used));
+// uint32_t noc_nonposted_writes_acked[NUM_NOCS] __attribute__((used));
+// uint32_t noc_nonposted_atomics_acked[NUM_NOCS] __attribute__((used));
+// uint32_t noc_posted_writes_num_issued[NUM_NOCS] __attribute__((used));
 
 uint32_t tt_l1_ptr *rta_l1_base __attribute__((used));
 uint32_t tt_l1_ptr *crta_l1_base __attribute__((used));
@@ -167,7 +167,15 @@ int main() {
                         NOC_Y(mailboxes->go_message.master_x), DISPATCH_MESSAGE_ADDR + mailboxes->go_message.dispatch_message_offset);
                 DEBUG_SANITIZE_NOC_ADDR(noc_index, dispatch_addr, 4);
                 CLEAR_PREVIOUS_LAUNCH_MESSAGE_ENTRY_FOR_WATCHER();
-                noc_fast_atomic_increment(noc_index, NCRISC_AT_CMD_BUF, dispatch_addr, NOC_UNICAST_WRITE_VC, 1, 31 /*wrap*/, false /*linked*/);
+                noc_fast_atomic_increment<static_cast<std::underlying_type_t<TensixProcessorTypes>>(
+                    TensixProcessorTypes::DM0)>(
+                    noc_index,
+                    NCRISC_AT_CMD_BUF,
+                    dispatch_addr,
+                    NOC_UNICAST_WRITE_VC,
+                    1,
+                    31 /*wrap*/,
+                    false /*linked*/);
                 mailboxes->launch_msg_rd_ptr = (launch_msg_rd_ptr + 1) & (launch_msg_buffer_num_entries - 1);
             }
 

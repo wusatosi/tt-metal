@@ -26,11 +26,11 @@ uint8_t noc_index = 0;  // TODO: hardcoding needed for profiler
 uint8_t my_x[NUM_NOCS] __attribute__((used));
 uint8_t my_y[NUM_NOCS] __attribute__((used));
 
-uint32_t noc_reads_num_issued[NUM_NOCS] __attribute__((used));
-uint32_t noc_nonposted_writes_num_issued[NUM_NOCS] __attribute__((used));
-uint32_t noc_nonposted_writes_acked[NUM_NOCS] __attribute__((used));
-uint32_t noc_nonposted_atomics_acked[NUM_NOCS] __attribute__((used));
-uint32_t noc_posted_writes_num_issued[NUM_NOCS] __attribute__((used));
+// uint32_t noc_reads_num_issued[NUM_NOCS] __attribute__((used));
+// uint32_t noc_nonposted_writes_num_issued[NUM_NOCS] __attribute__((used));
+// uint32_t noc_nonposted_writes_acked[NUM_NOCS] __attribute__((used));
+// uint32_t noc_nonposted_atomics_acked[NUM_NOCS] __attribute__((used));
+// uint32_t noc_posted_writes_num_issued[NUM_NOCS] __attribute__((used));
 
 CBInterface cb_interface[NUM_CIRCULAR_BUFFERS] __attribute__((used));
 

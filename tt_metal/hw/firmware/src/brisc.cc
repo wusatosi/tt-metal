@@ -54,11 +54,11 @@ volatile tt_l1_ptr uint32_t* mailbox[MAX_THREADS];
 uint8_t my_x[NUM_NOCS] __attribute__((used));
 uint8_t my_y[NUM_NOCS] __attribute__((used));
 
-uint32_t noc_reads_num_issued[NUM_NOCS] __attribute__((used));
-uint32_t noc_nonposted_writes_num_issued[NUM_NOCS] __attribute__((used));
-uint32_t noc_nonposted_writes_acked[NUM_NOCS] __attribute__((used));
-uint32_t noc_nonposted_atomics_acked[NUM_NOCS] __attribute__((used));
-uint32_t noc_posted_writes_num_issued[NUM_NOCS] __attribute__((used));
+// uint32_t noc_reads_num_issued[NUM_NOCS] __attribute__((used));
+// uint32_t noc_nonposted_writes_num_issued[NUM_NOCS] __attribute__((used));
+// uint32_t noc_nonposted_writes_acked[NUM_NOCS] __attribute__((used));
+// uint32_t noc_nonposted_atomics_acked[NUM_NOCS] __attribute__((used));
+// uint32_t noc_posted_writes_num_issued[NUM_NOCS] __attribute__((used));
 
 CBInterface cb_interface[NUM_CIRCULAR_BUFFERS] __attribute__((used));
 
@@ -365,7 +365,8 @@ int main() {
     // ex. Immediately after starting, we send a RUN_MSG_RESET_READ_PTR signal
     uint8_t noc_mode;
     noc_init(MEM_NOC_ATOMIC_RET_VAL_ADDR);
-    noc_local_state_init(noc_index);
+    noc_local_state_init<static_cast<std::underlying_type_t<TensixProcessorTypes>>(TensixProcessorTypes::DM0)>(
+        noc_index);
     uint8_t prev_noc_mode = DM_DEDICATED_NOC;
 
     while (1) {
@@ -389,7 +390,8 @@ int main() {
                 mailboxes->go_message.signal = RUN_MSG_DONE;
                 // Notify dispatcher that this has been done
                 DEBUG_SANITIZE_NOC_ADDR(noc_index, dispatch_addr, 4);
-                noc_fast_atomic_increment(
+                noc_fast_atomic_increment<static_cast<std::underlying_type_t<TensixProcessorTypes>>(
+                    TensixProcessorTypes::DM0)>(
                     noc_index,
                     NCRISC_AT_CMD_BUF,
                     dispatch_addr,
@@ -456,7 +458,8 @@ int main() {
             } else {
                 // This was not initialized in the kernel
                 if (noc_mode == DM_DEDICATED_NOC) {
-                    noc_local_state_init(noc_index);
+                    noc_local_state_init<static_cast<std::underlying_type_t<TensixProcessorTypes>>(
+                        TensixProcessorTypes::DM0)>(noc_index);
                 }
             }
             WAYPOINT("D");
@@ -477,7 +480,8 @@ int main() {
                 // messages in the ring buffer. Must be executed before the atomic increment, as after that the launch
                 // message is no longer owned by us.
                 CLEAR_PREVIOUS_LAUNCH_MESSAGE_ENTRY_FOR_WATCHER();
-                noc_fast_atomic_increment(
+                noc_fast_atomic_increment<static_cast<std::underlying_type_t<TensixProcessorTypes>>(
+                    TensixProcessorTypes::DM0)>(
                     noc_index,
                     NCRISC_AT_CMD_BUF,
                     dispatch_addr,

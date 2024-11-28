@@ -19,12 +19,11 @@
 
 #include "kernel_includes.hpp"
 
-
-uint32_t noc_reads_num_issued[NUM_NOCS];
-uint32_t noc_nonposted_writes_num_issued[NUM_NOCS];
-uint32_t noc_nonposted_writes_acked[NUM_NOCS];
-uint32_t noc_nonposted_atomics_acked[NUM_NOCS];
-uint32_t noc_posted_writes_num_issued[NUM_NOCS];
+// uint32_t noc_reads_num_issued[NUM_NOCS];
+// uint32_t noc_nonposted_writes_num_issued[NUM_NOCS];
+// uint32_t noc_nonposted_writes_acked[NUM_NOCS];
+// uint32_t noc_nonposted_atomics_acked[NUM_NOCS];
+// uint32_t noc_posted_writes_num_issued[NUM_NOCS];
 
 void kernel_launch(uint32_t kernel_base_addr) {
 
@@ -41,10 +40,13 @@ void kernel_launch(uint32_t kernel_base_addr) {
       uint32_t tt_l1_ptr *)(kernel_base_addr + (uint32_t)__kernel_init_local_l1_base - (uint32_t)__fw_export_end_text));
 
   if constexpr (NOC_MODE == DM_DEDICATED_NOC) {
-      noc_local_state_init(NOC_INDEX);
+      noc_local_state_init<static_cast<std::underlying_type_t<TensixProcessorTypes>>(TensixProcessorTypes::DM1)>(
+          NOC_INDEX);
     } else {
-        noc_local_state_init(NOC_0);
-        noc_local_state_init(NOC_1);
+        noc_local_state_init<static_cast<std::underlying_type_t<TensixProcessorTypes>>(TensixProcessorTypes::DM1)>(
+            NOC_0);
+        noc_local_state_init<static_cast<std::underlying_type_t<TensixProcessorTypes>>(TensixProcessorTypes::DM1)>(
+            NOC_1);
     }
 
     kernel_main();

@@ -11,9 +11,9 @@ volatile inline uint32_t* flag_disable = (uint32_t*)(eth_l1_mem::address_map::LA
 
 namespace internal_ {
 inline __attribute__((always_inline)) void risc_context_switch() {
-    ncrisc_noc_full_sync();
+    ncrisc_noc_full_sync<static_cast<std::underlying_type_t<TensixProcessorTypes>>(TensixProcessorTypes::DM0)>();
     rtos_context_switch_ptr();
-    ncrisc_noc_counters_init();
+    ncrisc_noc_counters_init<static_cast<std::underlying_type_t<TensixProcessorTypes>>(TensixProcessorTypes::DM0)>();
 }
 
 inline __attribute__((always_inline)) void disable_erisc_app() { flag_disable[0] = 0; }
