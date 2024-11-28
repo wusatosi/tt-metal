@@ -39,7 +39,6 @@ MorehSoftmaxOperation::MorehSoftmaxWSmallFactory::create(
     auto arch = input.device()->arch();
     auto [math_fidelity, math_approx_mode, fp32_dest_acc_en, packer_l1_acc, dst_full_sync_en] =
         get_compute_kernel_config_args(arch, compute_kernel_config);
-
     Program program = Program();
 
     // create circular buffers
@@ -52,7 +51,7 @@ MorehSoftmaxOperation::MorehSoftmaxWSmallFactory::create(
         data_format,
         {
             {tt::CBIndex::c_0, Wt},                         // input
-            {tt::CBIndex::c_1, 1},                          // mask
+            {tt::CBIndex::c_1, 1, tt::DataFormat::Float16_b}, // mask
             {tt::CBIndex::c_2, 1},                          // scaler
             {tt::CBIndex::c_16, Wt},                        // output
             {tt::CBIndex::c_24, Wt, intermed_data_format},  // exp(x)
