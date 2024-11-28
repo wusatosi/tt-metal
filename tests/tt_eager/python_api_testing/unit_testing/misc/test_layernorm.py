@@ -21,11 +21,22 @@ def ref_rmsnorm(x, gamma, beta, eps):
     return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + eps) * gamma + beta
 
 
+# Function to print a 32x32 tile
+def print_tile(tensor, tile_row, tile_col):
+    start_row = tile_row * 32
+    start_col = tile_col * 32
+    tile = tensor[0, 0, start_row : start_row + 32, start_col : start_col + 32]
+
+    for row in tile:
+        print(" ".join(f"{val.item():.4f}" for val in row))
+    print("\n")
+
+
 def run_layernorm_mix_precision_tests(test_id, in_dtype, gamma_dtype, in0_mem_config, out_mem_config, device):
     epsf = 1e-2
 
     test_dims = (
-        (1, 1, 64, 64),
+        (1, 1, 32, 128),
         # (1, 1, 32, 128),  # W <= 4 because max 4 fp32 tiles can fit in half of a DEST
         # (130, 1, 32, 128),
         # (512, 1, 32, 64),
@@ -194,6 +205,16 @@ def run_layernorm_mix_precision_tests(test_id, in_dtype, gamma_dtype, in0_mem_co
             ref_fn = ref_rmsnorm
 
         ref_lnorm = ref_fn(pt_in, gamma.flatten(), beta.flatten(), epsf)
+
+        # Iterate over tiles (adjust tile dimensions as necessary)
+        num_rows = tt_got_back.size(2) // 32
+        num_cols = tt_got_back.size(3) // 32
+
+        for tile_row in range(num_rows):
+            for tile_col in range(num_cols):
+                print(f"Tile ({tile_row}, {tile_col}):")
+                print_tile(tt_got_back, tile_row, tile_col)
+                print_tile(ref_lnorm, tile_row, tile_col)
 
         passing, output = comp_pcc(ref_lnorm, tt_got_back)
 
