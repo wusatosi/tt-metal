@@ -208,8 +208,8 @@ CBHandle CreateCircularBuffer(
 const CircularBufferConfig& GetCircularBufferConfig(Program& program, CBHandle cb_handle);
 
 /**
- * Update the total size of the circular buffer at the given circular buffer handle. Updating a program-local circular
- * buffer requires all circular buffers in the program to be reallocated.
+ * Update the total size of the circular buffer at the given circular buffer handle. Updating a program-local circular buffer requires all circular buffers in the program to be reallocated.
+ * If it is required to update the address and total size of a dynamic circular buffer, use `UpdateDynamicCircularBufferAddressAndTotalSize`.
  *
  * Return value: void
  *
@@ -241,6 +241,7 @@ void UpdateCircularBufferPageSize(Program& program, CBHandle cb_handle, uint8_t 
 
 /**
  * Update the address of a dynamic circular buffer. Dynamic circular buffers share the same address space as L1 buffers.
+ * If it is required to update the address and total size of a dynamic circular buffer, use `UpdateDynamicCircularBufferAddressAndTotalSize`.
  *
  * Return value: void
  *
@@ -253,6 +254,20 @@ void UpdateCircularBufferPageSize(Program& program, CBHandle cb_handle, uint8_t 
  * address space of circular buffer `cb_handle` | const Buffer &               | L1 buffer   | Yes      |
  */
 void UpdateDynamicCircularBufferAddress(Program& program, CBHandle cb_handle, const Buffer& buffer);
+
+/**
+ * Update the address and total size of a dynamic circular buffer. Dynamic circular buffers share the same address space as L1 buffers.
+ *
+ * Return value: void
+ *
+ * | Argument   | Description                                                                              | Type                         | Valid Range | Required |
+ * |------------|------------------------------------------------------------------------------------------|------------------------------|-------------|----------|
+ * | program    | The program containing the circular buffer                                               | Program &                    |             | Yes      |
+ * | cb_handle  | ID of the circular buffer, returned by `CreateCircularBuffers`                           | CBHandle (uintptr_t) |       | Yes         |          |
+ * | buffer     | Dynamically allocated L1 buffer that shares address space of circular buffer `cb_handle` | const Buffer &               | L1 buffer   | Yes      |
+ * | total_size | New size of the circular buffer in bytes                                                 | uint32_t                     |             | Yes      |
+ */
+void UpdateDynamicCircularBufferAddressAndTotalSize(Program& program, CBHandle cb_handle, const Buffer& buffer, uint32_t total_size);
 
 /**
  * Initializes semaphore on all cores within core range (inclusive). Each core can have up to eight 4B semaphores
