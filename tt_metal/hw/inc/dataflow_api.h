@@ -26,6 +26,7 @@
 #include "umd/device/tt_silicon_driver_common.hpp"
 #include "debug/assert.h"
 #include "dev_msgs.h"
+#include "common_defines.h"
 
 #if defined(KERNEL_BUILD)
 constexpr uint8_t noc_index = NOC_INDEX;
@@ -37,16 +38,6 @@ constexpr uint8_t noc_mode = DM_DEDICATED_NOC;
 extern uint32_t tt_l1_ptr* rta_l1_base;
 extern uint32_t tt_l1_ptr* crta_l1_base;
 extern uint32_t tt_l1_ptr* sem_l1_base[];
-
-#if defined(COMPILE_FOR_BRISC)
-constexpr uint8_t risc_type = static_cast<std::underlying_type_t<TensixProcessorTypes>>(TensixProcessorTypes::DM0);
-#elif defined(COMPILE_FOR_NCRISC)
-constexpr uint8_t risc_type = static_cast<std::underlying_type_t<TensixProcessorTypes>>(TensixProcessorTypes::DM1);
-#elif defined(COMPILE_FOR_IDLE_ERISC)
-constexpr uint8_t risc_type = static_cast<std::underlying_type_t<TensixProcessorTypes>>(TensixProcessorTypes::DM0);
-#elif defined(COMPILE_FOR_ERISC)
-constexpr uint8_t risc_type = static_cast<std::underlying_type_t<TensixProcessorTypes>>(TensixProcessorTypes::DM0);
-#endif
 
 #if defined(KERNEL_BUILD)
 #if defined(COMPILE_FOR_BRISC)

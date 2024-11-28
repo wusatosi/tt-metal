@@ -365,7 +365,7 @@ int main() {
     // ex. Immediately after starting, we send a RUN_MSG_RESET_READ_PTR signal
     uint8_t noc_mode;
     noc_init(MEM_NOC_ATOMIC_RET_VAL_ADDR);
-    noc_local_state_init<static_cast<std::underlying_type_t<TensixProcessorTypes>>(TensixProcessorTypes::DM0)>(
+    noc_local_state_init<risc_type>(
         noc_index);
     uint8_t prev_noc_mode = DM_DEDICATED_NOC;
 
@@ -390,8 +390,7 @@ int main() {
                 mailboxes->go_message.signal = RUN_MSG_DONE;
                 // Notify dispatcher that this has been done
                 DEBUG_SANITIZE_NOC_ADDR(noc_index, dispatch_addr, 4);
-                noc_fast_atomic_increment<static_cast<std::underlying_type_t<TensixProcessorTypes>>(
-                    TensixProcessorTypes::DM0)>(
+                noc_fast_atomic_increment<risc_type>(
                     noc_index,
                     NCRISC_AT_CMD_BUF,
                     dispatch_addr,
@@ -458,8 +457,7 @@ int main() {
             } else {
                 // This was not initialized in the kernel
                 if (noc_mode == DM_DEDICATED_NOC) {
-                    noc_local_state_init<static_cast<std::underlying_type_t<TensixProcessorTypes>>(
-                        TensixProcessorTypes::DM0)>(noc_index);
+                    noc_local_state_init<risc_type>(noc_index);
                 }
             }
             WAYPOINT("D");
@@ -480,8 +478,7 @@ int main() {
                 // messages in the ring buffer. Must be executed before the atomic increment, as after that the launch
                 // message is no longer owned by us.
                 CLEAR_PREVIOUS_LAUNCH_MESSAGE_ENTRY_FOR_WATCHER();
-                noc_fast_atomic_increment<static_cast<std::underlying_type_t<TensixProcessorTypes>>(
-                    TensixProcessorTypes::DM0)>(
+                noc_fast_atomic_increment<risc_type>(
                     noc_index,
                     NCRISC_AT_CMD_BUF,
                     dispatch_addr,

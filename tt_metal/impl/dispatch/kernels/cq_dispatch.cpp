@@ -732,7 +732,7 @@ void process_write_packed_large(
                     }
                     // Block completion - account for all writes issued for this block before moving to next
                     // noc_nonposted_writes_num_issued[noc_index] += writes;
-                    uint32_t mcasts = get_noc_nonposted_writes_acked<risc_type>(noc_index);
+                    inc_noc_nonposted_writes_num_issued<risc_type>(noc_index, writes);
                     mcasts += num_dests * writes;
                     writes = 0;
                     move_rd_to_next_block_and_release_pages<
