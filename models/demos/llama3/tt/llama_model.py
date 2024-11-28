@@ -15,7 +15,6 @@ from models.common.lightweightmodule import LightweightModule
 from models.demos.llama3.tt.distributed_norm import DistributedNorm
 from models.demos.llama3.tt.lm_head import LMHead
 from models.demos.llama3.tt.llama_rope import TtLlamaRotarySetup
-from models.demos.llama3.tt.llama_common import get_rot_transformation_mat
 
 
 class TtTransformer(LightweightModule):
@@ -44,18 +43,7 @@ class TtTransformer(LightweightModule):
             mesh_device, args.max_batch_size, args.head_dim, args.max_seq_len, args.rope_theta, args.use_scaled_rope
         )
 
-        transformation_mats = self.rope_setup.get_trans_mats()
-
-        transformation_mats_prefill_torch = get_rot_transformation_mat(args.head_dim)
-        transformation_mats_prefill = ttnn.from_torch(
-            transformation_mats_prefill_torch,
-            dtype=ttnn.bfloat16,
-            layout=ttnn.TILE_LAYOUT,
-            device=mesh_device,
-            memory_config=ttnn.DRAM_MEMORY_CONFIG,
-            mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
-        )
-        transformation_mats = {"decode": transformation_mats, "prefill": transformation_mats_prefill}
+        transformation_mats = transformation_mats
         self.layers = [
             TtTransformerBlock(
                 args=args,
