@@ -36,6 +36,6 @@ std::vector<Tensor> TILE_RESHAPE_STRUCT::create_output_tensors(const std::vector
 
 operation::ProgramWithCallbacks TILE_RESHAPE_STRUCT::create_program( const std::vector<Tensor>& input_tensors, std::vector<Tensor>& output_tensors) const
 {
-    return ttnn::operations::data_movement::tile_reshape::tile_reshape_preparer(input_tensors.at(0), output_tensors.at(0));
+    return ttnn::operations::data_movement::tile_reshape::tile_reshape_preparer(input_tensors.at(0), output_tensors.at(0),this->pad_value);
 }
 } // namespace ttnn

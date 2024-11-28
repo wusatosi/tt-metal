@@ -14,7 +14,7 @@ namespace ttnn {
 struct TILE_RESHAPE_STRUCT {
     const ttnn::Shape output_shape;
     MemoryConfig output_mem_config;
-    const PadValue pad_value;
+    uint32_t pad_value;
 
 
     //Required functions to all tensor op functions
@@ -26,10 +26,11 @@ struct TILE_RESHAPE_STRUCT {
         const std::vector<Tensor> &input_tensors, std::vector<Tensor> &output_tensors) const;
 };
 
-namespace operations::data_movement::tile_reshape {
-operation::ProgramWithCallbacks tile_reshape_preparer(
-    const Tensor& input_tensor,
-    const Tensor& output_tensor);
-}; // namespace operations::data_movement::rm_reshape
+
 
 }// namespace ttnn
+
+namespace ttnn::operations::data_movement::tile_reshape{
+
+operation::ProgramWithCallbacks tile_reshape_preparer(const Tensor& input, const Tensor& output, uint32_t pad_value);
+}

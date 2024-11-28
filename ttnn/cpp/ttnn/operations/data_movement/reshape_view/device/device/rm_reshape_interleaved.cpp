@@ -29,35 +29,39 @@ Runtime arguments
 */
 #include <stdint.h>
 #include "dataflow_api.h"
+#include <stdio.h>
+#include <cstring>
+#include "debug/dprint.h"  // required in all kernels using DPRINT
 
-#define MASK_64      0xFFFFFFC0
-#define OFFSET_64    0x0000003F
-#define MASK_16      0xFFFFFFF0
-#define OFFSET_16    0x0000000F
+#define MASK_64      0xFFFFFFFFFFFFFFC0
+#define OFFSET_64    0x000000000000003F
+#define MASK_16      0xFFFFFFFFFFFFFFF0
+#define OFFSET_16    0x000000000000000F
+
 
 template <bool guaranteed_16B_alligned, bool read_async>
 FORCE_INLINE
 void tt_memmove (
     const uint32_t dst_l1_addr,
-    const uint32_t src_l1_addr,
+    const uint64_t src_l1_addr,
     const uint32_t bytes)
 {
     //Uses noc_async_read when possible to copy the data over
     if constexpr (guaranteed_16B_alligned)
     {
-        noc_async_read(src_l1_addr, get_noc_add(source_buffer), bytes);
-        if constexpr (!read_async) {noc_async_read_barrier();}
+        noc_async_read(get_noc_addr(src_l1_addr),dst_l1_addr, bytes);
+        noc_async_read_barrier();
     }
     else
     {
         if ((dst_l1_addr&OFFSET_16) == (src_l1_addr&OFFSET_16))
         {
-            noc_async_read(src_l1_addr, get_noc_add(source_buffer), bytes);
-            if constexpr (!read_async) {noc_async_read_barrier();}
+            noc_async_read(get_noc_addr(src_l1_addr),dst_l1_addr, bytes);
+            noc_async_read_barrier();
         }
         else
         {
-            memmove(dst_l1_addr, src_l1_addr, bytes);
+            memmove((void *)(dst_l1_addr), (void *)(src_l1_addr), (size_t) (bytes));
         }
     }
 }
@@ -83,41 +87,20 @@ void kernel_main() {
 
 
     constexpr bool tensor_is_dram                   = get_compile_time_arg_val(0) == 1;
-    #define read_size_is_pow2                       get_compile_time_arg_val(1) == 1
-    #define write_size_is_pow2                      get_compile_time_arg_val(2) == 1
-    #define src_aligned_to_64                       get_compile_time_arg_val<uint32_t>(3) == 1;
-    #define src_aligned_to_16                       get_compile_time_arg_val<uint32_t>(4) == 1;
-    #define dst_aligned_to_16                       get_compile_time_arg_val<uint32_t>(5) == 1;
+    #define src_aligned_to_64                       get_compile_time_arg_val<uint32_t>(1) == 1
+    #define src_aligned_to_16                       get_compile_time_arg_val<uint32_t>(2) == 1
+    #define dst_aligned_to_16                       get_compile_time_arg_val<uint32_t>(3) == 1
 
 
-
-    #if (read_size_is_pow2)
-    #define NEXT_CTV 8
-    constexpr uint32_t log_base_2_of_rx_page_size   = get_compile_time_arg_val(7);
-    const InterleavedPow2AddrGen<src0_is_dram> s = {
-        .bank_base_address = src_addr,
-        .log_base_2_of_page_size = log_base_2_of_rx_page_size // TODO(AP): refactor
-    };
-    #else
-    #define NEXT_CTV 7
-    const InterleavedAddrGen<src0_is_dram> s = {
+    const InterleavedAddrGen<tensor_is_dram> s = {
         .bank_base_address = src_addr,
         .page_size = source_page_size_bytes
     };
-    #endif
 
-    #if (write_size_is_pow2)
-    constexpr uint32_t log_base_2_of_tx_page_size   = get_compile_time_arg_val(NEXT_CTV);
-    const InterleavedPow2AddrGen<src0_is_dram> d = {
-        .bank_base_address = dst_addr,
-        .log_base_2_of_page_size = log_base_2_of_tx_page_size // TODO(AP): refactor
-    };
-    #else
-    const InterleavedAddrGen<src0_is_dram> d = {
+    const InterleavedAddrGen<tensor_is_dram> d = {
         .bank_base_address = dst_addr,
         .page_size = dest_page_size_bytes
     };
-    #endif
 
 
     uint32_t read_offset = 0;
@@ -139,9 +122,9 @@ void kernel_main() {
     uint32_t write_offset = dst_noc_addr&OFFSET_16;
     uint32_t begin_write_offset = write_offset;
 #endif
-    for (int i = read_start_page; i <= read_end_page; i++) {
+    for (uint32_t i = read_start_page; i <= read_end_page; i++) {
         //Read from source
-        uint64_t src_noc_addr = get_noc_addr(i, s);
+        uint64_t src_noc_addr = s.get_noc_addr(i,0);
 
 #if (src_aligned_to_64 || ((!tensor_is_dram) && src_aligned_to_16))
         //Aligned to 64 bytes or 16 bytes but L1
@@ -165,21 +148,20 @@ void kernel_main() {
             noc_async_write_barrier();
             if (readable < writable)
             {
-                tt_memmove<false,true>(dest_buffer+write_offset, src_buffer + read_offset, readable);
-                writable -= readable;
-                write_offset += readable;
+                tt_memmove<false,true>(dest_buffer+write_offset, source_buffer + read_offset, readable);
+                writable = writable -readable;
+                write_offset = write_offset + readable;
                 readable = 0;
             }
             else if (readable == writable)
             {
-                tt_memmove<false,false>(dest_buffer+write_offset, src_buffer + read_offset, readable);
-#if (dst_aligned_to_16)
+                tt_memmove<false,false>(dest_buffer+write_offset, source_buffer + read_offset, readable);
+#if ((dst_aligned_to_16))
                 noc_async_write(dest_buffer,dst_noc_addr, dest_page_size_bytes);
 #else
                 noc_async_write(dest_buffer+begin_write_offset,dst_noc_addr, dest_page_size_bytes);
 #endif
                 writable = dest_page_size_bytes;
-                write_page++;
                 readable = 0;
                 if (i == read_end_page-1)
                 {
@@ -187,8 +169,9 @@ void kernel_main() {
                     cb_push_back(cb_id_in1, 1);
                     return;
                 }
+                write_page++;
                 dst_noc_addr = get_noc_addr(write_page, d);
-#if (dst_aligned_to_16)
+#if ((dst_aligned_to_16))
                 write_offset=0;
 #else
                 write_offset = dst_noc_addr&OFFSET_16;
@@ -199,25 +182,27 @@ void kernel_main() {
             {
                 //writable < readable
 
-                tt_memmove<false,false>(dest_buffer+write_offset, src_buffer + read_offset, writable);
-#if (dst_aligned_to_16)
+                tt_memmove<false,false>(dest_buffer+write_offset, source_buffer + read_offset, writable);
+#if ((dst_aligned_to_16))
                 noc_async_write(dest_buffer,dst_noc_addr, dest_page_size_bytes);
 #else
                 noc_async_write(dest_buffer+begin_write_offset,dst_noc_addr, dest_page_size_bytes);
 #endif
-                readable -= writable;
-                read_offset += writable;
+                readable = readable - writable;
+                read_offset = read_offset + writable;
+                write_page++;
                 dst_noc_addr = get_noc_addr(write_page, d);
-#if (dst_aligned_to_16)
+#if ((dst_aligned_to_16))
                 write_offset=0;
 #else
                 write_offset = dst_noc_addr&OFFSET_16;
                 begin_write_offset = write_offset;
 #endif
                 writable = dest_page_size_bytes;
-                write_page++;
             }
         }
     }
-    //This should never be reached
+    cb_push_back(cb_id_in0, 1);
+    cb_push_back(cb_id_in1, 1);
+    return;
 }

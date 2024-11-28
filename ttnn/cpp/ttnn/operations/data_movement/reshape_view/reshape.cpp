@@ -18,10 +18,10 @@
 #include "ttnn/operations/core/core.hpp"
 #include "device/reshape_rm_op.hpp"
 #include "device/reshape_ti_op.hpp"
-
-
-
-typedef std::variant<uint32_t, float> PadValue;
+#include "ttnn/operations/data_movement/sharded/sharded_to_interleaved/sharded_to_interleaved.hpp"
+#include "ttnn/operations/data_movement/sharded/interleaved_to_sharded/interleaved_to_sharded.hpp"
+#include "ttnn/operations/data_movement/untilize_with_unpadding/untilize_with_unpadding.hpp"
+#include "ttnn/operations/data_movement/tilize_with_val_padding/tilize_with_val_padding.hpp"
 
 namespace ttnn::operations::data_movement {
 
@@ -29,6 +29,36 @@ namespace ttnn::operations::data_movement {
 namespace detail {
 
 //Wrapper to turn the ND-> MD problem into 3D->3D for tiled and 2D->2D for Row Major
+
+ttnn::Tensor host_reshape(const ttnn::Tensor& tensor, const ttnn::Shape& shape) {
+    //Challenge is to get rid of this
+    if (!ttnn::has_storage_type_of(tensor, ttnn::StorageType::DEVICE)) {
+        return tensor.reshape(shape);
+    }
+    auto tensor_shape = tensor.shape();
+    auto layout = tensor.layout();
+    auto device = tensor.device();
+    auto memory_config = tensor.memory_config();
+    auto host_tensor = tensor.cpu();
+    auto rm_tensor = ttnn::to_layout(host_tensor, ttnn::ROW_MAJOR_LAYOUT, std::nullopt, std::nullopt, (Device*)nullptr);
+
+    if (tensor_shape.has_tile_padding()) {
+        ttnn::Tensor slice_input;
+        auto host_tensor_4d = unsqueeze_to_4D(rm_tensor);
+        auto tensor_shape_4d = host_tensor_4d.shape();
+        ttnn::SmallVector<uint32_t> begins({0, 0, 0, 0});
+        ttnn::SmallVector<uint32_t> ends(
+            {tensor_shape_4d[0], tensor_shape_4d[1], tensor_shape_4d[2], tensor_shape_4d[3]});
+        ttnn::SmallVector<uint32_t> step({1, 1, 1, 1});
+        host_tensor_4d = ttnn::slice(host_tensor_4d, begins, ends, step, std::nullopt);
+        host_tensor = squeeze_from_4D(host_tensor_4d, tensor_shape.rank());
+    }
+    auto host_reshape_tensor = rm_tensor.reshape(shape);
+    auto final_layout_tensor =
+        ttnn::to_layout(host_reshape_tensor, layout, std::nullopt, std::nullopt, (Device*)nullptr);
+    auto device_tensor = ttnn::data_transfer_to_device(final_layout_tensor, device, memory_config);
+    return device_tensor;
+}
 
 ttnn::Tensor convert_tensor_to_rm_reshape_convert_back_to_orig_layout(
     const ttnn::Tensor& tensor,
@@ -43,6 +73,11 @@ ttnn::Tensor convert_tensor_to_rm_reshape_convert_back_to_orig_layout(
     //This function turns ND -> MD into 2D->MD for row major and 3D->MD for tiled using a 0 cost view
     const auto layout = tensor.get_layout();
     const auto tensor_shape = tensor.get_shape();
+    if (tensor_shape[-1]%2 != 0 || shape[-1]%2 != 0)
+    {
+        //We can't handle odd page sizes currently
+        return host_reshape(tensor, shape);
+    }
     TT_FATAL((tensor_shape.rank()!=0), "can't do reshape from rank 0 tensor");
     if(layout == ttnn::ROW_MAJOR_LAYOUT)
     {
@@ -69,6 +104,18 @@ ttnn::Tensor convert_tensor_to_rm_reshape_convert_back_to_orig_layout(
     }
     else if (layout == ttnn::Layout::TILE)
     {
+        auto rm_tensor = ttnn::to_layout(tensor, ttnn::ROW_MAJOR_LAYOUT, std::nullopt, std::nullopt, (Device*)nullptr);
+        rm_tensor = convert_tensor_to_rm_reshape_convert_back_to_orig_layout(
+            rm_tensor,
+            shape,
+            tile_first_dim,
+            tile_second_dim,
+            memory_config,
+            queue_id,
+            pad_value
+        );
+        rm_tensor = ttnn::to_layout(rm_tensor, ttnn::Layout::TILE, std::nullopt, std::nullopt, (Device*)nullptr);
+        return rm_tensor;
         uint32_t third_dim = 1;
         //Collapse into the third last dimension
         for (int i=0; i <tensor_shape.rank()-2; i++)
@@ -154,8 +201,7 @@ ttnn::Tensor fix_shape_and_perform_reshape_on_3D_TILE(
             tensor,
             ttnn::Shape{third_dim,second_dim,shape[-1]},
             memory_config,
-            queue_id,
-            pad_value
+            queue_id
         ),
         shape,
         tile_first_dim,
@@ -172,19 +218,25 @@ ttnn::Tensor perform_reshape_on_2D_RM(
     )
 {
     auto temp_tensor = tensor;
-    if tensor.memory_config().is_sharded()
+    auto intermediate_mem_config = tensor.memory_config();
+    auto intermediate_out_memory_config = memory_config;
+    if(tensor.memory_config().is_sharded())
     {
         auto temp_memory_config = tensor.memory_config();
-        temp_memory_config.TensorMemoryLayout = TensorMemoryLayout::INTERLEAVED;
-        temp_tensor = ttnn::sharded_to_interleaved(queue_id, tensor, temp_memory_config, std::nullopt)
+        temp_memory_config.memory_layout = TensorMemoryLayout::INTERLEAVED;
+        temp_tensor = ttnn::sharded_to_interleaved(queue_id, tensor, temp_memory_config, std::nullopt);
+    }
+    if (memory_config.is_sharded())
+    {
+        intermediate_out_memory_config.memory_layout = TensorMemoryLayout::INTERLEAVED;
     }
     //Guaranteed to be interleaved
     //We are guaranteed to be working 2D->2D in this function
-    return operation::run(
+    auto temp_tensor2 =  operation::run(
         RM_RESHAPE_STRUCT
         {
             shape,
-            memory_config
+            intermediate_out_memory_config
         },
         {temp_tensor},
         {},
@@ -193,11 +245,11 @@ ttnn::Tensor perform_reshape_on_2D_RM(
     ).at(0);
     if(memory_config.is_sharded())
     {
-        return ttnn::interleaved_to_sharded(queue_id,temp_tensor, memory_config,std::nullopt);
+        return ttnn::interleaved_to_sharded(queue_id,temp_tensor2, memory_config,std::nullopt);
     }
     else
     {
-        return temp_tensor;
+        return temp_tensor2;
     }
 }
 
@@ -205,26 +257,32 @@ ttnn::Tensor perform_reshape_on_3D_TILE(
     const ttnn::Tensor& tensor,
     const ttnn::Shape& shape,
     const MemoryConfig &memory_config,
-    const uint8_t queue_id,
-    const PadValue &pad_value
+    const uint8_t queue_id
 )
 {
+    auto old_mem_config = tensor.memory_config();
     //We are guaranteed to be working 3D->3D in this function
     auto temp_tensor = tensor;
-    if tensor.memory_config().is_sharded()
+    auto intermediate_mem_config = tensor.memory_config();
+    auto intermediate_out_memory_config = memory_config;
+    if(tensor.memory_config().is_sharded())
     {
         auto temp_memory_config = tensor.memory_config();
-        temp_memory_config.TensorMemoryLayout = TensorMemoryLayout::INTERLEAVED;
-        temp_tensor = ttnn::sharded_to_interleaved(queue_id, tensor, temp_memory_config, std::nullopt)
+        temp_memory_config.memory_layout = TensorMemoryLayout::INTERLEAVED;
+        temp_tensor = ttnn::sharded_to_interleaved(queue_id, tensor, temp_memory_config, std::nullopt);
+    }
+    if (memory_config.is_sharded())
+    {
+        intermediate_out_memory_config.memory_layout = TensorMemoryLayout::INTERLEAVED;
     }
     //Guaranteed to be interleaved
-    temp_tensor = operation::run
+    auto temp_tensor2 = operation::run
     (
         TILE_RESHAPE_STRUCT
         {
             shape,
-            memory_config,
-            pad_value
+            intermediate_out_memory_config,
+            0 // fix this later
         },
         {temp_tensor},
         {},
@@ -233,11 +291,11 @@ ttnn::Tensor perform_reshape_on_3D_TILE(
     ).at(0);
     if(memory_config.is_sharded())
     {
-        return ttnn::sharded_to_interleaved(queue_id,temp_tensor, memory_config,std::nullopt);
+        return ttnn::interleaved_to_sharded(queue_id,temp_tensor2, memory_config,std::nullopt);
     }
     else
     {
-        return temp_tensor;
+        return temp_tensor2;
     }
 }
 
@@ -319,8 +377,8 @@ ttnn::Tensor ReshapeViewOperation::invoke(
         return tensor.reshape(shape);
     }
 
-    TT_ASSERT(shape.logical_shape().volume() == tensor.get_logical_volume(),
-            "Required shape volume ({}) must match old shape volume ({})", shape.logical_shape().volume(), input_tensor.get_logical_volume());
+    TT_FATAL(shape.logical_shape().volume() == tensor.get_logical_volume(),
+            "Required shape volume ({}) must match old shape volume ({})", shape.logical_shape().volume(), tensor.get_logical_volume());
 
 
     const uint32_t shape_second_last_dim = shape.rank() >= 2 ? shape[-2]:1;
@@ -336,7 +394,6 @@ ttnn::Tensor ReshapeViewOperation::invoke(
     }
     // Catch-all
     // Do the reshape in row-major
-
     return detail::convert_tensor_to_rm_reshape_convert_back_to_orig_layout(
         tensor,
         shape,

@@ -2,14 +2,15 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-
 #include <stdint.h>
 #include "dataflow_api.h"
+#include <stdio.h>
+#include <cstring>
 
-#define MASK_64      0xFFFFFFC0
-#define OFFSET_64    0x0000003F
-#define MASK_16      0xFFFFFFF0
-#define OFFSET_16    0x0000000F
+#define MASK_64      0xFFFFFFFFFFFFFFC0
+#define OFFSET_64    0x000000000000003F
+#define MASK_16      0xFFFFFFFFFFFFFFF0
+#define OFFSET_16    0x000000000000000F
 
 //Note for the future:
 //I am assuming the size of a tile is at least 64 bytes for DDR or 16 bytes for L1 and at the tile dimensions are multiples of 2 (e.g, 2x4, 6x8 ...)
@@ -24,19 +25,19 @@ void tt_memmove (
     //Uses noc_async_read when possible to copy the data over
     if constexpr (guaranteed_16B_alligned)
     {
-        noc_async_read(src_l1_addr, get_noc_add(source_buffer), bytes);
+        noc_async_read(get_noc_addr(src_l1_addr),dst_l1_addr, bytes);
         if constexpr (!read_async) {noc_async_read_barrier();}
     }
     else
     {
         if ((dst_l1_addr&OFFSET_16) == (src_l1_addr&OFFSET_16))
         {
-            noc_async_read(src_l1_addr, get_noc_add(source_buffer), bytes);
+            noc_async_read(get_noc_addr(src_l1_addr),dst_l1_addr, bytes);
             if constexpr (!read_async) {noc_async_read_barrier();}
         }
         else
         {
-            memmove(dst_l1_addr, src_l1_addr, bytes);
+            memmove((char *)(dst_l1_addr), (char *)(src_l1_addr), bytes);
         }
     }
 }
@@ -106,10 +107,10 @@ void kernel_main() {
     //Compile time arguments
     constexpr bool src0_is_dram                     = (get_compile_time_arg_val(0) == 1);
     constexpr bool tensor_is_l1                     = (get_compile_time_arg_val(0) == 0);
-    constexpr uint32_t datum_size                   = get_compile_time_arg_val<uint32_t>(1);
-    constexpr uint32_t tile_width                   = get_compile_time_arg_val<uint32_t>(2);
-    constexpr uint32_t tile_height                  = get_compile_time_arg_val<uint32_t>(3);
-    constexpr uint32_t src_w_tiles                  = get_compile_time_arg_val<uint32_t>(4);
+    constexpr uint32_t datum_size                   = get_compile_time_arg_val(1);
+    constexpr uint32_t tile_width                   = get_compile_time_arg_val(2);
+    constexpr uint32_t tile_height                  = get_compile_time_arg_val(3);
+    constexpr uint32_t src_w_tiles                  = get_compile_time_arg_val(4);
 
     //Constant expressions
 
@@ -129,15 +130,15 @@ void kernel_main() {
     const uint32_t row_pad_size = rows_to_pad * (face_width_bytes * 2 * src_w_tiles);
     constexpr uint32_t side_pad_size = tile_width * datum_size;
     //Actual readsize + one face to overread. We make it 64 aligned and add 64 in case the alignment shrunk the size
-    const uint32_t min_line_size = ((src_w_tiles) * (face_width_bytes) * 2 +face_width_bytes)&MASK_64 + 64;
+    const uint32_t min_line_size = (((src_w_tiles) * (face_width_bytes) * 2 +face_width_bytes)&MASK_64 )+ 64;
     //Get CB
     cb_reserve_back(cb_id_in0, 1);
     const uint32_t buffer_base = get_write_ptr(cb_id_in0);
 
     //Subdivide CB into our scratchpad buffers
-    const uint32_t buffer_start = buffer_base&MASK_64+64;
+    const uint32_t buffer_start =           (buffer_base&MASK_64)+64;
     const uint32_t tiling_buffer          = buffer_start; //Alligned buffer enough to hold dst_w_tiles
-    const uint32_t padding_buffer         = tiling_buffer + (dst_w_tiles*tile_size_bytes)&MASK_64+64; //Alligned buffer enough to hold one line (min_line_size)
+    const uint32_t padding_buffer         = tiling_buffer + ((dst_w_tiles*tile_size_bytes)&MASK_64)+64; //Alligned buffer enough to hold one line (min_line_size)
     const uint32_t line_buffer            = padding_buffer + min_line_size; //Alligned buffer enough to hold one line (min_line_size)
     const uint32_t async_scratch_buffer   = line_buffer + min_line_size; //scratch_buffer needs to be face_width_bytes +64 bytes in size as per unaligned_noc_async_read requirements
 
@@ -151,12 +152,12 @@ void kernel_main() {
         .page_size = tile_size_bytes
     };
     //Prepare_the_pad_buffer
-    auto* ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(padding_buffer);
+    uint32_t *ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(padding_buffer);
     ptr[0] = pad_high;
     ptr[1] = pad_low;
     ptr[2] = pad_high;
     ptr[3] = pad_low;
-    num_written = 4;
+    uint32_t num_written = 4;
     while (num_written < min_line_size)
     {
         //Each time double the amount in the pad buffer until it is filled

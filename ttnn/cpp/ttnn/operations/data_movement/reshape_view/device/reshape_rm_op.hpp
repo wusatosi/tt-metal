@@ -23,11 +23,9 @@ struct RM_RESHAPE_STRUCT {
         const std::vector<Tensor> &input_tensors, std::vector<Tensor> &output_tensors) const;
 };
 
-namespace operations::data_movement::rm_reshape {
-operation::ProgramWithCallbacks rm_reshape_preparer(
-    const Tensor& input_tensor,
-    const Tensor& output_tensor);
-}; // namespace operations::data_movement::rm_reshape
-
 
 }// namespace ttnn
+namespace ttnn::operations::data_movement::rm_reshape{
+
+operation::ProgramWithCallbacks rm_reshape_preparer(const Tensor& input, const Tensor& output);
+}
