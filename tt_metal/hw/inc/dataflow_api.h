@@ -40,8 +40,12 @@ extern uint32_t tt_l1_ptr* sem_l1_base[];
 
 #if defined(COMPILE_FOR_BRISC)
 constexpr uint8_t risc_type = static_cast<std::underlying_type_t<TensixProcessorTypes>>(TensixProcessorTypes::DM0);
-#else
+#elif defined(COMPILE_FOR_NCRISC)
 constexpr uint8_t risc_type = static_cast<std::underlying_type_t<TensixProcessorTypes>>(TensixProcessorTypes::DM1);
+#elif defined(COMPILE_FOR_IDLE_ERISC)
+constexpr uint8_t risc_type = static_cast<std::underlying_type_t<TensixProcessorTypes>>(TensixProcessorTypes::DM0);
+#elif defined(COMPILE_FOR_ERISC)
+constexpr uint8_t risc_type = static_cast<std::underlying_type_t<TensixProcessorTypes>>(TensixProcessorTypes::DM0);
 #endif
 
 #if defined(KERNEL_BUILD)

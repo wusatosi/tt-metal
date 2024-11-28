@@ -63,7 +63,7 @@ class DeviceSingleCardFixture : public DispatchFixture {
 
     void TearDown() override { tt::tt_metal::detail::CloseDevices(reserved_devices_); }
 
-    void validate_dispatch_mode() {
+    virtual void validate_dispatch_mode() {
         this->slow_dispatch_ = true;
         auto slow_dispatch = getenv("TT_METAL_SLOW_DISPATCH_MODE");
         if (!slow_dispatch) {
@@ -85,6 +85,17 @@ class DeviceSingleCardFixture : public DispatchFixture {
     tt::tt_metal::Device *device_;
     std::map<chip_id_t, tt::tt_metal::Device*> reserved_devices_;
     size_t num_devices_;
+};
+
+class DeviceSingleCardFastSlowDispatchFixture : public DeviceSingleCardFixture {
+   protected:
+    void validate_dispatch_mode() override {
+        this->slow_dispatch_ = true;
+        auto slow_dispatch = getenv("TT_METAL_SLOW_DISPATCH_MODE");
+        if (!slow_dispatch) {
+            this->slow_dispatch_ = false;
+        }
+    }
 };
 
 class DeviceSingleCardBufferFixture : public DeviceSingleCardFixture {};

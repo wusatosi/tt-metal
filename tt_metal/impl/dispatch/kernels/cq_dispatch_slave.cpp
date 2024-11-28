@@ -90,7 +90,7 @@ void dispatch_s_noc_semaphore_inc(uint64_t addr, uint32_t incr, uint8_t noc_id) 
     WAYPOINT("NSIW");
     DEBUG_SANITIZE_NOC_ADDR(noc_id, addr, 4);
     DEBUG_INSERT_DELAY(TransactionAtomic);
-    noc_fast_atomic_increment(
+    noc_fast_atomic_increment<risc_type>(
         noc_id,
         DISPATCH_S_ATOMIC_CMD_BUF,
         addr,
@@ -106,7 +106,7 @@ FORCE_INLINE
 void dispatch_s_noc_inline_dw_write(uint64_t addr, uint32_t val, uint8_t noc_id, uint8_t be = 0xF) {
     WAYPOINT("NWIW");
     DEBUG_SANITIZE_NOC_ADDR(noc_id, addr, 4);
-    noc_fast_write_dw_inline(
+    noc_fast_write_dw_inline<risc_type>(
         noc_id,
         DISPATCH_S_WR_REG_CMD_BUF,
         val,

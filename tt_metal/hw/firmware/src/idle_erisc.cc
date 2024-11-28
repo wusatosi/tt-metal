@@ -167,8 +167,7 @@ int main() {
                         NOC_Y(mailboxes->go_message.master_x), DISPATCH_MESSAGE_ADDR + mailboxes->go_message.dispatch_message_offset);
                 DEBUG_SANITIZE_NOC_ADDR(noc_index, dispatch_addr, 4);
                 CLEAR_PREVIOUS_LAUNCH_MESSAGE_ENTRY_FOR_WATCHER();
-                noc_fast_atomic_increment<static_cast<std::underlying_type_t<TensixProcessorTypes>>(
-                    TensixProcessorTypes::DM0)>(
+                noc_fast_atomic_increment<risc_type>(
                     noc_index,
                     NCRISC_AT_CMD_BUF,
                     dispatch_addr,

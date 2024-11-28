@@ -29,7 +29,7 @@ void kernel_launch(uint32_t kernel_base_addr) {
     do_crt1((uint32_t tt_l1_ptr
                  *)(kernel_base_addr + (uint32_t)__kernel_init_local_l1_base - (uint32_t)__fw_export_end_text));
 
-    noc_local_state_init<static_cast<std::underlying_type_t<TensixProcessorTypes>>(TensixProcessorTypes::DM0)>(
+    noc_local_state_init<risc_type>(
         NOC_INDEX);
 
     kernel_main();

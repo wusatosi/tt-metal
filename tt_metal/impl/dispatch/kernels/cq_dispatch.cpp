@@ -230,8 +230,10 @@ void process_write_host_h(uint32_t& block_noc_writes_to_clear, uint32_t block_ne
             length -= last_chunk_size;
             xfer_size -= last_chunk_size;
             uint32_t num_noc_packets_written = div_up(last_chunk_size, NOC_MAX_BURST_SIZE);
-            noc_nonposted_writes_num_issued[noc_index] += num_noc_packets_written;
-            noc_nonposted_writes_acked[noc_index] += num_noc_packets_written;
+            // noc_nonposted_writes_num_issued[noc_index] += num_noc_packets_written;
+            // noc_nonposted_writes_acked[noc_index] += num_noc_packets_written;
+            inc_noc_nonposted_writes_num_issued<risc_type>(noc_index, num_noc_packets_written);
+            inc_noc_nonposted_writes_acked<risc_type>(noc_index, num_noc_packets_written);
         }
         cq_noc_async_write_with_state_any_len(data_ptr, completion_queue_write_addr, xfer_size);
 
@@ -240,8 +242,10 @@ void process_write_host_h(uint32_t& block_noc_writes_to_clear, uint32_t block_ne
         completion_queue_push_back(npages);
         // completion_queue_push_back will do a write to host, so we add 1 to the number of data packets written
         uint32_t num_noc_packets_written = div_up(xfer_size, NOC_MAX_BURST_SIZE) + 1;
-        noc_nonposted_writes_num_issued[noc_index] += num_noc_packets_written;
-        noc_nonposted_writes_acked[noc_index] += num_noc_packets_written;
+        // noc_nonposted_writes_num_issued[noc_index] += num_noc_packets_written;
+        // noc_nonposted_writes_acked[noc_index] += num_noc_packets_written;
+        inc_noc_nonposted_writes_num_issued<risc_type>(noc_index, num_noc_packets_written);
+        inc_noc_nonposted_writes_acked<risc_type>(noc_index, num_noc_packets_written);
 
         length -= xfer_size;
         data_ptr += xfer_size;
@@ -305,8 +309,10 @@ void relay_to_next_cb(
             uint32_t flag;
             cq_noc_inline_dw_write_with_state<CQ_NOC_INLINE_nDVB>(
                 downstream_cb_data_ptr, xfer_size + preamble_size + not_end_of_cmd);
-            noc_nonposted_writes_num_issued[noc_index]++;
-            noc_nonposted_writes_acked[noc_index]++;
+            // noc_nonposted_writes_num_issued[noc_index]++;
+            // noc_nonposted_writes_acked[noc_index]++;
+            inc_noc_nonposted_writes_num_issued<risc_type>(noc_index);
+            inc_noc_nonposted_writes_acked<risc_type>(noc_index);
             downstream_cb_data_ptr += preamble_size;
             ASSERT(downstream_cb_data_ptr < downstream_cb_end);
         }
@@ -322,8 +328,10 @@ void relay_to_next_cb(
                     ASSERT(cb_fence == dispatch_cb_end);
                     if (orphan_size != 0) {
                         cq_noc_async_write_with_state<CQ_NOC_SnDL>(data_ptr, downstream_cb_data_ptr, orphan_size);
-                        noc_nonposted_writes_num_issued[noc_index]++;
-                        noc_nonposted_writes_acked[noc_index]++;
+                        // noc_nonposted_writes_num_issued[noc_index]++;
+                        // noc_nonposted_writes_acked[noc_index]++;
+                        inc_noc_nonposted_writes_num_issued<risc_type>(noc_index);
+                        inc_noc_nonposted_writes_acked<risc_type>(noc_index);
                         length -= orphan_size;
                         xfer_size -= orphan_size;
                         downstream_cb_data_ptr += orphan_size;
@@ -352,8 +360,10 @@ void relay_to_next_cb(
         }
 
         cq_noc_async_write_with_state<CQ_NOC_SnDL>(data_ptr, downstream_cb_data_ptr, xfer_size);
-        noc_nonposted_writes_num_issued[noc_index]++;
-        noc_nonposted_writes_acked[noc_index]++;
+        // noc_nonposted_writes_num_issued[noc_index]++;
+        // noc_nonposted_writes_acked[noc_index]++;
+        inc_noc_nonposted_writes_num_issued<risc_type>(noc_index);
+        inc_noc_nonposted_writes_acked<risc_type>(noc_index);
         cb_release_pages<my_noc_index, downstream_noc_xy, downstream_cb_sem_id>(1);
 
         length -= xfer_size;
@@ -443,8 +453,10 @@ void process_write_linear(
         }
         // Increment counters based on the number of packets that were written
         uint32_t num_noc_packets_written = div_up(xfer_size, NOC_MAX_BURST_SIZE);
-        noc_nonposted_writes_num_issued[noc_index] += num_noc_packets_written;
-        noc_nonposted_writes_acked[noc_index] += num_mcast_dests * num_noc_packets_written;
+        // noc_nonposted_writes_num_issued[noc_index] += num_noc_packets_written;
+        // noc_nonposted_writes_acked[noc_index] += num_mcast_dests * num_noc_packets_written;
+        inc_noc_nonposted_writes_num_issued<risc_type>(noc_index, num_noc_packets_written);
+        inc_noc_nonposted_writes_acked<risc_type>(noc_index, num_mcast_dests * num_noc_packets_written);
         length -= xfer_size;
         data_ptr += xfer_size;
         dst_addr += xfer_size;
@@ -600,8 +612,10 @@ void process_write_packed(
                 } else {
                     data_ptr += orphan_size;
                 }
-                noc_nonposted_writes_num_issued[noc_index] += writes;
-                noc_nonposted_writes_acked[noc_index] += mcasts;
+                // noc_nonposted_writes_num_issued[noc_index] += writes;
+                // noc_nonposted_writes_acked[noc_index] += mcasts;
+                inc_noc_nonposted_writes_num_issued<risc_type>(noc_index, writes);
+                inc_noc_nonposted_writes_acked<risc_type>(noc_index, mcasts);
                 writes = 0;
                 mcasts = 0;
                 move_rd_to_next_block_and_release_pages<
@@ -644,8 +658,10 @@ void process_write_packed(
         data_ptr += stride;
     }
 
-    noc_nonposted_writes_num_issued[noc_index] += writes;
-    noc_nonposted_writes_acked[noc_index] += mcasts;
+    // noc_nonposted_writes_num_issued[noc_index] += writes;
+    // noc_nonposted_writes_acked[noc_index] += mcasts;
+    inc_noc_nonposted_writes_num_issued<risc_type>(noc_index, writes);
+    inc_noc_nonposted_writes_acked<risc_type>(noc_index, mcasts);
 
     cmd_ptr = data_ptr;
 }
@@ -682,7 +698,8 @@ void process_write_packed_large(
         l1_cache);
 
     uint32_t writes = 0;
-    uint32_t mcasts = noc_nonposted_writes_acked[noc_index];
+    // uint32_t mcasts = noc_nonposted_writes_acked[noc_index];
+    uint32_t mcasts = get_noc_nonposted_writes_acked<risc_type>(noc_index);
     CQDispatchWritePackedLargeSubCmd* sub_cmd_ptr = (CQDispatchWritePackedLargeSubCmd*)l1_cache;
 
     bool init_state = true;
@@ -714,7 +731,8 @@ void process_write_packed_large(
                         data_ptr = dispatch_cb_base;
                     }
                     // Block completion - account for all writes issued for this block before moving to next
-                    noc_nonposted_writes_num_issued[noc_index] += writes;
+                    // noc_nonposted_writes_num_issued[noc_index] += writes;
+                    uint32_t mcasts = get_noc_nonposted_writes_acked<risc_type>(noc_index);
                     mcasts += num_dests * writes;
                     writes = 0;
                     move_rd_to_next_block_and_release_pages<
@@ -756,7 +774,8 @@ void process_write_packed_large(
 
         init_state = unlink;
 
-        noc_nonposted_writes_num_issued[noc_index] += writes;
+        // noc_nonposted_writes_num_issued[noc_index] += writes;
+        inc_noc_nonposted_writes_num_issued<risc_type>(noc_index, writes);
         mcasts += num_dests * writes;
         writes = 0;
 
@@ -789,7 +808,8 @@ void process_write_packed_large(
 
         count--;
     }
-    noc_nonposted_writes_acked[noc_index] = mcasts;
+    // noc_nonposted_writes_acked[noc_index] = mcasts;
+    set_noc_nonposted_writes_acked<risc_type>(noc_index, mcasts);
 
     cmd_ptr = data_ptr;
 }
@@ -1128,7 +1148,7 @@ void kernel_main() {
     // Initialize local state of any additional nocs used instead of the default
     static_assert(my_noc_index != upstream_noc_index);
     if constexpr (my_noc_index != upstream_noc_index) {
-        noc_local_state_init(upstream_noc_index);
+        noc_local_state_init<risc_type>(upstream_noc_index);
     }
 
     static_assert(is_d_variant || split_dispatch_page_preamble_size == 0);
@@ -1146,7 +1166,8 @@ void kernel_main() {
 
     cb_fence = dispatch_cb_base;
     rd_block_idx = 0;
-    uint32_t block_noc_writes_to_clear = noc_nonposted_writes_num_issued[noc_index];
+    // uint32_t block_noc_writes_to_clear = noc_nonposted_writes_num_issued[noc_index];
+    uint32_t block_noc_writes_to_clear = get_noc_nonposted_writes_num_issued<risc_type>(noc_index);
     cmd_ptr = dispatch_cb_base;
     write_offset[0] = 0;
     write_offset[1] = 0;
