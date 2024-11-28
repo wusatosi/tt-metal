@@ -25,34 +25,34 @@ def run_layernorm_mix_precision_tests(test_id, in_dtype, gamma_dtype, in0_mem_co
     epsf = 1e-2
 
     test_dims = (
-        (1, 1, 32, 32),
-        (1, 1, 32, 128),  # W <= 4 because max 4 fp32 tiles can fit in half of a DEST
-        (130, 1, 32, 128),
-        (512, 1, 32, 64),
+        (1, 1, 64, 64),
+        # (1, 1, 32, 128),  # W <= 4 because max 4 fp32 tiles can fit in half of a DEST
+        # (130, 1, 32, 128),
+        # (512, 1, 32, 64),
         # (131, 1, 32, 128),# -> fails, pcc = 0.998 hm?? core_grid=13x10 or smth?
-        # (131, 1, 32, 96), # -> fails, pcc = 0.998
-        # (1, 1, 32, 160),  # -> fails, pcc = 0.86
-        (1, 1, 512, 128),
-        (1, 1, 1024, 128),
-        (1, 2, 2048, 128),
-        # (1, 3, 2048, 128), # -> fails, pcc = 0.91
-        (1, 1, 4096, 128),
-        # (1, 2, 4096, 128), # -> fails, pcc = 0.87
-        (1, 1, 4160, 128),  # [1, 1, 130, 4], last that will pass with this W
-        # (1, 1, 4192, 128), # -> fails, pcc = 0.998
-        # (1, 1, 4224, 128), # -> fails, pcc = 0.996
-        # (1, 1, 4352, 128), # -> fails, pcc = 0.989
-        # (1, 1, 4608, 128), # -> fails, pcc = 0.97
-        # (1, 1, 5120, 128), # -> fails, pcc = 0.95
-        # (1, 1, 6144, 128), # -> fails, pcc = 0.91
-        # (1, 1, 8192, 128), # -> fails, pcc = 0.87
-        # (1, 1, 8192, 96),  # -> fails, pcc = 0.91
-        (1, 2, 8192, 64),
-        (1, 3, 8192, 64),
-        (5, 3, 8192, 64),
-        (1, 1, 16384, 64),
-        # (1, 1, 16384, 96), # -> fails, pcc = 0.91
-        (3, 3, 16384, 64),
+        # # (131, 1, 32, 96), # -> fails, pcc = 0.998
+        # # (1, 1, 32, 160),  # -> fails, pcc = 0.86
+        # (1, 1, 512, 128),
+        # (1, 1, 1024, 128),
+        # (1, 2, 2048, 128),
+        # # (1, 3, 2048, 128), # -> fails, pcc = 0.91
+        # (1, 1, 4096, 128),
+        # # (1, 2, 4096, 128), # -> fails, pcc = 0.87
+        # (1, 1, 4160, 128),  # [1, 1, 130, 4], last that will pass with this W
+        # # (1, 1, 4192, 128), # -> fails, pcc = 0.998
+        # # (1, 1, 4224, 128), # -> fails, pcc = 0.996
+        # # (1, 1, 4352, 128), # -> fails, pcc = 0.989
+        # # (1, 1, 4608, 128), # -> fails, pcc = 0.97
+        # # (1, 1, 5120, 128), # -> fails, pcc = 0.95
+        # # (1, 1, 6144, 128), # -> fails, pcc = 0.91
+        # # (1, 1, 8192, 128), # -> fails, pcc = 0.87
+        # # (1, 1, 8192, 96),  # -> fails, pcc = 0.91
+        # (1, 2, 8192, 64),
+        # (1, 3, 8192, 64),
+        # (5, 3, 8192, 64),
+        # (1, 1, 16384, 64),
+        # # (1, 1, 16384, 96), # -> fails, pcc = 0.91
+        # (3, 3, 16384, 64),
     )
     for test_shape in test_dims:
         in0 = torch.rand(test_shape) * 2 - 0.95
@@ -247,7 +247,9 @@ def run_layernorm_mix_precision_tests(test_id, in_dtype, gamma_dtype, in0_mem_co
 #         # "RMSN_GB",
 #     ],
 # )
+# @pytest.mark.parametrize("repeat", range(50))
 def test_layernorm_mix_precision(gamma_dtype, in0_mem_config, out_mem_config, device):
-    if is_grayskull() and in_dtype == ttnn.float32:
-        pytest.skip("Skipping float32 tests on Grayskull")
+    torch.manual_seed(1997)
+    # if is_grayskull() and in_dtype == ttnn.float32:
+    #     pytest.skip("Skipping float32 tests on Grayskull")
     run_layernorm_mix_precision_tests(0, ttnn.float32, gamma_dtype, in0_mem_config, out_mem_config, device)

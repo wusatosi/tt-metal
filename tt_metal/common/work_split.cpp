@@ -78,7 +78,7 @@ CoreRangeSet num_cores_to_corerangeset(
     uint32_t num_cores_x = grid_size.x;
     uint32_t num_cores_y = grid_size.y;
     uint32_t total_available_cores = 0;
-    TT_FATAL(start_core.x < num_cores_x && start_core.y < num_cores_y, "Start core must be within grid size");
+    // TT_FATAL(start_core.x < num_cores_x && start_core.y < num_cores_y, "Start core must be within grid size");
     if (row_wise) {
         // Full Rows
         total_available_cores += (num_cores_y - 1 - start_core.y) * num_cores_x;

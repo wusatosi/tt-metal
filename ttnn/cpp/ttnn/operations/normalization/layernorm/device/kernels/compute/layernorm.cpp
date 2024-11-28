@@ -14,6 +14,7 @@
 #include "compute_kernel_api/bcast.h"
 #include "compute_kernel_api/eltwise_binary.h"
 #include "compute_kernel_api/layernorm.h"
+#include "debug/dprint.h"
 
 
 ALWI void ACQ() { acquire_dst(); }
@@ -23,11 +24,17 @@ ALWI void REL() { release_dst(); }
 namespace NAMESPACE {
 void MAIN {
     uint32_t NCHt = get_arg_val<uint32_t>(0);
+    MATH((DPRINT << "NCHt = " << NCHt << ENDL()));
     constexpr uint32_t Wt = get_compile_time_arg_val(0);
+    MATH((DPRINT << "Wt = " << Wt << ENDL()));
     constexpr uint32_t blk = get_compile_time_arg_val(1);
+    MATH((DPRINT << "blk = " << blk << ENDL()));
     constexpr uint32_t do_gamma = get_compile_time_arg_val(2);
+    MATH((DPRINT << "do_gamma = " << do_gamma << ENDL()));
     constexpr uint32_t do_beta = get_compile_time_arg_val(3);
+    MATH((DPRINT << "do_beta = " << do_beta << ENDL()));
     constexpr bool FLOAT32_DTYPE = get_compile_time_arg_val(4) == 1;
+    MATH((DPRINT << "FLOAT32_DTYPE = " << (uint32_t)FLOAT32_DTYPE << ENDL()));
 
     constexpr uint32_t onetile = 1;
     // reserve one tile for zeros on cb_in2
@@ -76,7 +83,11 @@ void MAIN {
 
 
     for (uint32_t ncht = 0; ncht < NCHt; ncht++) {
-
+// #ifdef TRISC_MATH
+//         for (auto i = 0; i < 1000; i++) {
+//             TTI_NOP;
+//         }
+// #endif
         constexpr int onetile = 1;
         constexpr int dst0 = 0;
 
