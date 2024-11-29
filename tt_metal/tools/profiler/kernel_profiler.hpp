@@ -255,7 +255,79 @@ struct profileScopeGuaranteed {
         if constexpr (index == 0) {
             init_profiler();
         }
-        mark_time_at_index_inlined(start_index, timer_id);
+        while (!profiler_control_buffer[DRAM_PROFILER_ADDRESS]);
+        uint32_t core_flat_id = profiler_control_buffer[FLAT_ID];
+        uint32_t profiler_core_count_per_dram = profiler_control_buffer[CORE_COUNT_PER_DRAM];
+
+        uint32_t pageSize =
+            PROFILER_FULL_HOST_BUFFER_SIZE_PER_RISC * MAX_RISCV_PER_CORE * profiler_core_count_per_dram;
+
+        for (uint32_t riscID = 0; riscID < PROFILER_RISC_COUNT; riscID ++)
+	{
+            profiler_data_buffer[riscID][ID_LH] = ((core_flat_id & 0xFF) << 3) | riscID;
+            int hostIndex = riscID;
+            int deviceIndex = kernel_profiler::DEVICE_BUFFER_END_INDEX_BR_ER + riscID;
+	    if (profiler_control_buffer[deviceIndex])
+	    {
+		uint32_t currEndIndex =
+		    profiler_control_buffer[deviceIndex] +
+		    profiler_control_buffer[hostIndex];
+
+                bool do_noc = false;
+                uint32_t dram_offset = 0 ;
+                uint32_t send_size = 0;
+		if (currEndIndex <= PROFILER_FULL_HOST_VECTOR_SIZE_PER_RISC)
+		{
+		    dram_offset =
+			(core_flat_id % profiler_core_count_per_dram) * MAX_RISCV_PER_CORE * PROFILER_FULL_HOST_BUFFER_SIZE_PER_RISC +
+			hostIndex * PROFILER_FULL_HOST_BUFFER_SIZE_PER_RISC +
+			profiler_control_buffer[hostIndex] * sizeof(uint32_t);
+
+                    send_size = profiler_control_buffer[deviceIndex] * sizeof(uint32_t);
+
+                    do_noc = true;
+		    profiler_control_buffer[hostIndex] = currEndIndex;
+		}
+		else if (profiler_control_buffer[RUN_COUNTER] < 1)
+		{
+                    dram_offset =
+                        (core_flat_id % profiler_core_count_per_dram) *
+                        MAX_RISCV_PER_CORE * PROFILER_FULL_HOST_BUFFER_SIZE_PER_RISC +
+                        hostIndex * PROFILER_FULL_HOST_BUFFER_SIZE_PER_RISC;
+
+                    send_size = CUSTOM_MARKERS * sizeof(uint32_t);
+
+                    do_noc = true;
+                    mark_dropped_timestamps(hostIndex);
+		}
+        else{
+            mark_dropped_timestamps(hostIndex);
+        }
+
+        if (do_noc) {
+            const InterleavedAddrGen<true> s = {
+            .bank_base_address = profiler_control_buffer[DRAM_PROFILER_ADDRESS],
+            .page_size = pageSize
+            };
+
+            uint64_t dram_bank_dst_noc_addr = s.get_noc_addr(core_flat_id / profiler_core_count_per_dram, dram_offset);
+
+            // template arg here strips out noc tracing (if enabled) for
+            // profiler-related NoC writes to avoid a circular dependency
+            noc_async_write<NOC_MAX_BURST_SIZE + 1, false>(
+                reinterpret_cast<uint32_t>(profiler_data_buffer[hostIndex]),
+                dram_bank_dst_noc_addr,
+                send_size);
+        }
+
+		profiler_control_buffer[deviceIndex] = 0;
+	    }
+	}
+
+        noc_async_write_barrier();
+        profiler_control_buffer[RUN_COUNTER] ++;
+        profiler_control_buffer[PROFILER_DONE] = 1;
+#endif
     }
     inline __attribute__((always_inline)) ~profileScopeGuaranteed() {
         mark_time_at_index_inlined(end_index, get_const_id(timer_id, ZONE_END));
@@ -265,24 +337,12 @@ struct profileScopeGuaranteed {
     }
 };
 
-template <uint32_t timer_id, uint32_t index>
-struct profileScopeAccumulate {
-    uint64_t start_time = 0;
-    volatile tt_reg_ptr uint32_t* p_reg = reinterpret_cast<volatile tt_reg_ptr uint32_t*>(RISCV_DEBUG_REG_WALL_CLOCK_L);
-
-    inline __attribute__((always_inline)) profileScopeAccumulate() {
-        start_time = ((uint64_t)p_reg[WALL_CLOCK_HIGH_INDEX] << 32) | p_reg[WALL_CLOCK_LOW_INDEX];
-    }
-    inline __attribute__((always_inline)) ~profileScopeAccumulate() {
-        sumIDs[index] = timer_id;
-        sums[index] += (((uint64_t)p_reg[WALL_CLOCK_HIGH_INDEX] << 32) | p_reg[WALL_CLOCK_LOW_INDEX]) - start_time;
-    }
-};
-
-template <uint32_t data_id, bool dispatch = false>
-inline __attribute__((always_inline)) void timeStampedData(uint64_t data) {
-    if (bufferHasRoom<dispatch>()) {
-        mark_time_at_index_inlined(wIndex, get_const_id(data_id, TS_DATA));
+    inline __attribute__((always_inline)) void quick_push ()
+    {
+        // allow compiling quick_push for both NCRISC and BRISC
+#if defined(COMPILE_FOR_NCRISC) || defined(COMPILE_FOR_BRISC)
+        SrcLocNameToHash("PROFILER-NOC-QUICK-SEND");
+        mark_time_at_index_inlined(wIndex, hash);
         wIndex += PROFILER_L1_MARKER_UINT32_SIZE;
 
         while (!profiler_control_buffer[DRAM_PROFILER_ADDRESS]);
@@ -310,7 +370,9 @@ inline __attribute__((always_inline)) void timeStampedData(uint64_t data) {
 
         if ( currEndIndex <= PROFILER_FULL_HOST_VECTOR_SIZE_PER_RISC)
         {
-            noc_async_write(
+            // template arg here strips out noc tracing (if enabled) for
+            // profiler-related NoC writes to avoid a circular dependency
+            noc_async_write<NOC_MAX_BURST_SIZE + 1,false>(
                     reinterpret_cast<uint32_t>(profiler_data_buffer[myRiscID]),
                     dram_bank_dst_noc_addr,
                     wIndex * sizeof(uint32_t));
@@ -410,6 +472,12 @@ inline __attribute__((always_inline)) void timeStampedData(uint64_t data) {
     template<uint32_t data_id, bool dispatch=false>
     inline __attribute__((always_inline)) void timeStampedData(uint64_t data)
     {
+        // if buffer is full, push all data resident in L1 buffer to host
+        if (not bufferHasRoom<dispatch>())
+        {
+            quick_push();
+        }
+        // Don't assume quick_push() can free up buffer space
         if (bufferHasRoom<dispatch>())
         {
             mark_time_at_index_inlined(wIndex, get_const_id(data_id, TS_DATA));
