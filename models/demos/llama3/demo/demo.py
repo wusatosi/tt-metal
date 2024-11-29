@@ -854,8 +854,8 @@ def run_llama3_demo(
 @pytest.mark.parametrize(
     "batch_size",
     (
-        # 1,
-        32,
+        1,
+        # 32,
     ),
 )
 @pytest.mark.parametrize(
