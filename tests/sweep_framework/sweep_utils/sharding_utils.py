@@ -41,8 +41,8 @@ def gen_unary_sharded_spec(
                     min_tensor_width = 32
                     mul_height = random.randint(1, 10)
                     mul_width = random.randint(1, 10)
-                    tensor_height = min_tensor_height * mul_height
-                    tensor_width = min_tensor_width * mul_width
+                    tensor_height = min(min_tensor_height * mul_height, int(math.sqrt(max_tensor_size_per_core)))
+                    tensor_width = min(min_tensor_width * mul_width, int(math.sqrt(max_tensor_size_per_core)))
                     input_shape = [tensor_height, tensor_width]
                     if rank != 2:
                         rest_volume = random.randint(1, max_tensor_size // (tensor_height * tensor_width))
@@ -57,11 +57,11 @@ def gen_unary_sharded_spec(
                     mul_2 = random.randint(1, x * 2)
 
                     if shard_orientation == "ROW_MAJOR":
-                        pre_sharded_width = mul_1 * min_pre_sharded_width
-                        pre_sharded_height = mul_2 * min_pre_sharded_height
+                        pre_sharded_width = min(mul_1 * min_pre_sharded_width, int(math.sqrt(max_tensor_size)))
+                        pre_sharded_height = min(mul_2 * min_pre_sharded_height, int(math.sqrt(max_tensor_size)))
                     else:
-                        pre_sharded_width = mul_1 * min_pre_sharded_height
-                        pre_sharded_height = mul_2 * min_pre_sharded_width
+                        pre_sharded_width = min(mul_1 * min_pre_sharded_height, int(math.sqrt(max_tensor_size)))
+                        pre_sharded_height = min(mul_2 * min_pre_sharded_width, int(math.sqrt(max_tensor_size)))
 
                     input_shape = random.choice(
                         _gen_reshape_args_from_volume(pre_sharded_height, step=1, out_dims=rank - 1)
@@ -75,10 +75,14 @@ def gen_unary_sharded_spec(
 
                     mul_1 = random.randint(1, 16)
 
-                    pre_sharded_width = mul_1 * min_pre_sharded_width
-                    pre_sharded_height = random.randrange(
-                        min_pre_sharded_height, max_tensor_size // pre_sharded_width + 1, 32 * y * x
-                    )
+                    pre_sharded_width = min(mul_1 * min_pre_sharded_width, int(math.sqrt(max_tensor_size)))
+
+                    if min_pre_sharded_height >= max_tensor_size // pre_sharded_width:
+                        pre_sharded_height = min_pre_sharded_height
+                    else:
+                        pre_sharded_height = random.randrange(
+                            min_pre_sharded_height, max_tensor_size // pre_sharded_width + 1, 32 * y * x
+                        )
 
                     input_shape = random.choice(
                         _gen_reshape_args_from_volume(pre_sharded_height, step=1, out_dims=rank - 1)
@@ -92,10 +96,14 @@ def gen_unary_sharded_spec(
 
                     mul_1 = random.randint(1, 16)
 
-                    pre_sharded_height = mul_1 * min_pre_sharded_height
-                    pre_sharded_width = random.randrange(
-                        min_pre_sharded_width, max_tensor_size // pre_sharded_height + 1, 32 * y * x
-                    )
+                    pre_sharded_height = min(mul_1 * min_pre_sharded_height, int(math.sqrt(max_tensor_size)))
+
+                    if min_pre_sharded_width >= max_tensor_size // pre_sharded_height:
+                        pre_sharded_width = min_pre_sharded_width
+                    else:
+                        pre_sharded_width = random.randrange(
+                            min_pre_sharded_width, max_tensor_size // pre_sharded_height + 1, 32 * y * x
+                        )
 
                     input_shape = random.choice(
                         _gen_reshape_args_from_volume(pre_sharded_height, step=1, out_dims=rank - 1)
@@ -137,3 +145,74 @@ def parse_sharding_spec(input_spec):
         shard_orientation = ttnn.ShardOrientation.ROW_MAJOR
 
     return input_shape, core_grid_size, shard_orientation, sharding_strategy, tensor_hw_as_shard_shape
+
+
+def invalidate_vector_sharding(
+    input_shape, input_layout, core_grid_size, sharding_strategy, shard_orientation, tensor_hw_as_shard_shape
+):
+    y, x = core_grid_size
+    pre_sharded_height = math.prod(input_shape[:-1])
+    pre_sharded_width = input_shape[-1]
+
+    if not tensor_hw_as_shard_shape:
+        if sharding_strategy == ttnn.ShardStrategy.BLOCK:
+            if shard_orientation == ttnn.ShardOrientation.ROW_MAJOR:
+                if pre_sharded_height % y != 0:
+                    return (
+                        True,
+                        "Prod of all dimensions except the innermost must be divisible by the y coordinate of coregrid when using block sharding",
+                    )
+                if pre_sharded_width % x != 0:
+                    return (
+                        True,
+                        "Innermost dimension must be divisible by the x coordinate of coregrid when using block sharding",
+                    )
+                if (pre_sharded_height // y) % 32 != 0:
+                    return True, "Shard height must be a multiple of input tile size"
+                if (pre_sharded_width // x) % 32 != 0:
+                    return True, "Shard width must be a multiple of input tile size"
+            else:
+                if pre_sharded_height % x != 0:
+                    return (
+                        True,
+                        "Prod of all dimensions except the innermost must be divisible by the x coordinate of coregrid when using block sharding",
+                    )
+                if pre_sharded_width % y != 0:
+                    return (
+                        True,
+                        "Innermost dimension must be divisible by the y coordinate of coregrid when using block sharding",
+                    )
+                if (pre_sharded_height // x) % 32 != 0:
+                    return True, "Shard height must be a multiple of input tile size"
+                if (pre_sharded_width // y) % 32 != 0:
+                    return True, "Shard width must be a multiple of input tile size"
+
+        elif sharding_strategy == ttnn.ShardStrategy.WIDTH:
+            if pre_sharded_width % (y * x) != 0:
+                return True, "Last dimension must be divisible by a total number of cores when using width sharding"
+            if pre_sharded_height % 32 != 0:
+                return True, "Shard height must be a multiple of input tile size"
+            if (pre_sharded_width // (x * y)) % 32 != 0:
+                return True, "Shard width must be a multiple of input tile size"
+
+        else:
+            if pre_sharded_height % (y * x) != 0:
+                return (
+                    True,
+                    "Prod of all dimensions except the innermost must be divisible by a total number of cores when using width sharding",
+                )
+            if (pre_sharded_height // (x * y)) % 32 != 0:
+                return True, "Shard height must be a multiple of input tile size"
+            if pre_sharded_width % 32 != 0:
+                return True, "Shard width must be a multiple of input tile size"
+
+    else:
+        if input_shape[-2] % 32 != 0 or input_shape[-1] % 32 != 0:
+            return (
+                True,
+                "Last two dimensions must be multiples of tile size when using tensor heght and width as shard shape",
+            )
+        if input_layout == ttnn.ROW_MAJOR_LAYOUT and (input_shape[-1] % input_shape[-2] != 0):
+            return True, "Physical size <width, height> must be a multuple of page size <1, width>"
+
+    return False, ""
