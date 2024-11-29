@@ -3654,6 +3654,19 @@ void Device::end_trace(const uint8_t cq_id, const uint32_t tid) {
 //     }
 // }
 
+
+// Load the TraceDescriptor for a given trace_id to the device.
+void Device::load_trace(const uint8_t cq_id, const uint32_t tid, detail::TraceDescriptor &trace_desc) {
+    this->MarkAllocationsSafe();
+    TT_FATAL(this->active_sub_device_manager_->get_trace(tid) == nullptr, "Trace already exists for tid {} on device {}'s active sub-device manager {}", tid, this->id_, this->active_sub_device_manager_id_);
+    auto &trace_buffer = this->active_sub_device_manager_->create_trace(tid);
+    TT_FATAL(trace_buffer != nullptr, "Trace instance {} must exist on device {}'s active sub-device manager {}", tid, this->id_, this->active_sub_device_manager_id_);
+    *trace_buffer->desc = trace_desc;
+    Trace::initialize_buffer(this->command_queue(cq_id), trace_buffer);
+    this->MarkAllocationsUnsafe();
+
+}
+
 // Collect a trace for later use, return vector of binary data.
 // std::vector<std::uint8_t> Device::collect_trace(const uint32_t tid) {
 //     log_info(tt::LogMetal, "KCM Collect trace for tid {}", tid);

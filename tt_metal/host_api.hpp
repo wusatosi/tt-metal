@@ -818,6 +818,8 @@ void LightMetalBeginCapture(Device *device);
 // Ends Light Metal Binary capture
 void LightMetalEndCapture(Device *device);
 
+void LoadTrace(Device *device, const uint8_t cq_id, const uint32_t trace_id, detail::TraceDescriptor &trace_desc);
+
 // clang-format off
 /**
  * Read device side profiler data and dump results into device side CSV log
