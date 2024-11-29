@@ -1276,7 +1276,7 @@ void EndTraceCapture(Device *device, const uint8_t cq_id, const uint32_t tid) {
     device->end_trace(cq_id, tid);
     // When light metal tracing is enabled, TraceDescriptor will be serialized via end_trace() and this
     // will serialize the LightMetalLoadTraceId call to be used during replay to load trace back to device.
-    TRACE_FUNCTION_CALL(captureLightMetalLoadTraceId, device, tid, cq_id);
+    TRACE_FUNCTION_CALL(captureLoadTrace, device, cq_id, tid);
 }
 
 void ReplayTrace(Device *device, const uint8_t cq_id, const uint32_t tid, const bool blocking) {
@@ -1293,6 +1293,10 @@ void LightMetalBeginCapture(Device *device) {
 
 void LightMetalEndCapture(Device *device) {
     device->light_metal_end_capture();
+}
+
+void LoadTrace(Device *device, const uint8_t cq_id, const uint32_t trace_id, detail::TraceDescriptor &trace_desc) {
+    device->load_trace(cq_id, trace_id, trace_desc);
 }
 
 void Synchronize(Device *device, const std::optional<uint8_t> cq_id) {
