@@ -83,11 +83,11 @@ void MAIN {
 
 
     for (uint32_t ncht = 0; ncht < NCHt; ncht++) {
-// #ifdef TRISC_MATH
-//         for (auto i = 0; i < 1000; i++) {
-//             TTI_NOP;
-//         }
-// #endif
+#ifdef TRISC_MATH
+        for (auto i = 0; i < 1000; i++) {
+            TTI_NOP;
+        }
+#endif
         constexpr int onetile = 1;
         constexpr int dst0 = 0;
 
@@ -97,7 +97,7 @@ void MAIN {
         #ifdef FUSE_PRE_ADD
             reconfig_data_format(cb_in, cb_inb);
             pack_reconfig_data_format(cb_x);
-            add_tiles_init();
+            add_tiles_init(cb_in, cb_inb);
             for (uint32_t wt = 0; wt < Wt; wt += blk) {
                 ACQ();
                         //UNPACK(( { DPRINT  << "Waiting on cb_x" << ENDL(); } ));
@@ -106,20 +106,14 @@ void MAIN {
                 cb_wait_front(cb_inb, blk);
                         //UNPACK(( { DPRINT  << "Done Waiting on cb_inb" << ENDL(); } ));
                 cb_reserve_back(cb_x, blk);
-                for (uint32_t j = 0; j < blk; j++) {
-                    add_tiles(cb_in, cb_inb, j, j, j);
-                    pack_tile(j, cb_x);
-                }
+                add_tiles(cb_in, cb_inb, 0, 0, 0);
+                pack_tile(0, cb_x);
                 REL();
                 cb_push_back(cb_x, blk); // push the sum into the same buffer
                 cb_pop_front(cb_in, blk);
                 cb_pop_front(cb_inb, blk);
             }
-            #ifndef RMSNORM
             reconfig_data_format(cb_in, cb_x, cb_inb, cb_scaler);
-            #else
-            reconfig_data_format(cb_in, cb_x, cb_inb, cb_x);
-            #endif
             // by the end of this loop we should end up with Wt tiles in cb_x
         #else
         #ifndef RMSNORM
@@ -138,16 +132,14 @@ void MAIN {
          */
         ACQ();
         cb_reserve_back(cb_ex, onetile);
-        reduce_init_delta<false>();
+        reduce_init_delta<false>(cb_ex, cb_x, cb_scaler);
         for (uint32_t wt = 0; wt < Wt; wt += blk) {
             cb_wait_front(cb_x, wt+blk);
-            for (uint32_t j = 0; j < blk; j++) {
-                reduce_tile(cb_x, cb_scaler, wt+j, scaler0, dst0);
-            }
+            reduce_tile(cb_x, cb_scaler, wt, scaler0, dst0);
             // we don't pop cb_x until we compute Ex
         }
         pack_tile(dst0, cb_ex);
-        reduce_revert_delta();
+        reduce_revert_delta(cb_ex);
         REL();
 
         cb_push_back(cb_ex, 1);
@@ -161,13 +153,11 @@ void MAIN {
         }
         cb_wait_front(cb_ex, 1); // should have 1 tile
         cb_reserve_back(cb_xmm, Wt);
-        sub_bcast_cols_init_short();
+        sub_bcast_cols_init_short(cb_x, cb_ex);
         for (uint32_t wt = 0; wt < Wt; wt += blk) {
             ACQ();
-            for (uint32_t wtr = 0; wtr<blk; wtr++) {
-                sub_tiles_bcast_cols(cb_x, cb_ex, wt+wtr, 0, wtr); // tile *= 1/(sum(exp(x)))
-                pack_tile(wtr, cb_xmm);
-            }
+            sub_tiles_bcast_cols(cb_x, cb_ex, wt, 0, 0); // tile *= 1/(sum(exp(x)))
+            pack_tile(0, cb_xmm);
             cb_push_back(cb_xmm, blk);
             REL();
         }
@@ -182,16 +172,13 @@ void MAIN {
         /* (x - E[x])^2
          * compute temp = xmm*xmm = (x-E[x])^2
          */
-        mul_tiles_init();
+        mul_tiles_init(cb_xmm, cb_xmm);
         for (uint32_t wt = 0; wt < Wt; wt += blk) {
             cb_wait_front(cb_xmm, wt+blk); // cumulative wait
             cb_reserve_back(cb_xmm2, blk); // can probably use less space for this if we block
             ACQ();
-            for (uint32_t wtr = 0; wtr<blk; wtr++) {
-                mul_tiles(cb_xmm, cb_xmm, wt+wtr, wt+wtr, wtr);
-                //mul_tiles(cb_xmm, cb_col1, wt+wtr, wt+wtr, wtr);
-                pack_tile(wtr, cb_xmm2);
-            }
+            mul_tiles(cb_xmm, cb_xmm, wt, wt, 0);
+            pack_tile(0, cb_xmm2);
             cb_push_back(cb_xmm2, blk);
             REL();
         }
@@ -209,19 +196,17 @@ void MAIN {
             reconfig_data_format(cb_xmm2, cb_scaler);
         }
         cb_reserve_back(cb_ex2, 1);
-        reduce_init_delta<false>();
+        reduce_init_delta<false>(cb_ex2, cb_xmm2, cb_scaler);
         ACQ();
         cb_wait_front(cb_xmm2, Wt);
         //cb_wait_front(cb_xmm, Wt);
         for (uint32_t wt = 0; wt < Wt; wt += blk) {
             // reduce
-            for (uint32_t wtr = 0; wtr<blk; wtr++)
-                reduce_tile(cb_xmm2, cb_scaler, wt+wtr, scaler0, dst0);
-                //reduce_tile(cb_xmm, cb_scaler, wt+wtr, scaler0, dst0);
+            reduce_tile(cb_xmm2, cb_scaler, wt, scaler0, dst0);
         }
         cb_pop_front(cb_xmm2, Wt);
         pack_tile(dst0, cb_ex2);
-        reduce_revert_delta();
+        reduce_revert_delta(cb_ex2);
         REL();
 
         cb_push_back(cb_ex2, 1);
@@ -234,7 +219,7 @@ void MAIN {
             reconfig_data_format(cb_ex2, cb_eps);
         }
         ACQ();
-        add_tiles_init();
+        add_tiles_init(cb_ex2, cb_eps);
         add_tiles(cb_ex2, cb_eps, 0, 0, dst0);
 
         cb_reserve_back(cb_ex2pe, 1); // 1
@@ -252,77 +237,23 @@ void MAIN {
          * we have 1.0/sqrt( E[(x-E[x])^2] + eps) in cb_ex2pe
          * just need to bcast_mul xmm with cb_ex2pe
          */
-        cb_wait_front(cb_ex2pe, 1);
         for (uint32_t wt = 0; wt < Wt; wt += blk) {
                         //if (ht == 1) UNPACK(( DPRINT << "wt_2=" << wt << " " ));
                         //if (ht == 1) UNPACK(( DPRINT << "rem_2=" << rem << ENDL() ));
             reconfig_data_format(cb_xmm, cb_ex2pe);
-            if constexpr(do_gamma == 0 && do_beta == 0) {
-                pack_reconfig_data_format(cb_out);
-            } else {
-                pack_reconfig_data_format(cb_fusion);
-            }
+            pack_reconfig_data_format(cb_out);
             cb_reserve_back(cb_im_or_out, blk);
             #if defined RMSNORM and not defined FUSE_PRE_ADD
             reconfig_data_format_srca(cb_fusion, cb_xmm);
             #endif
             ACQ();
-            mul_bcast_cols_init_short();
-            for (uint32_t wtr = 0; wtr < blk; wtr++) {
-                // cb_xmm[wt+wtr] since we pop Wt from cb_xmm after the entire loop
-                mul_tiles_bcast_cols(cb_xmm, cb_ex2pe, wt+wtr, 0, wtr); // tile *= 1/(sum(exp(x)))
-                pack_tile(wtr, cb_im_or_out); // pack either to intermediate (cb_fusion or out0)
-            }
+            mul_bcast_cols_init_short(cb_xmm, cb_ex2pe);
+            cb_wait_front(cb_ex2pe, 1);
+            // cb_xmm[wt+wtr] since we pop Wt from cb_xmm after the entire loop
+            mul_tiles_bcast_cols(cb_xmm, cb_ex2pe, wt, 0, 0); // tile *= 1/(sum(exp(x)))
+            pack_tile(0, cb_im_or_out); // pack either to intermediate (cb_fusion or out0)
             cb_push_back(cb_im_or_out, blk); // if no gamma/beta are provided, this will be passed on to the writer
             REL();
-
-            if constexpr(!(do_gamma == 0 && do_beta == 0)) {
-                #if defined RMSNORM and not defined FUSE_PRE_ADD
-                reconfig_data_format_srca(cb_xmm, cb_fusion);
-                #endif
-            }
-            if constexpr (do_gamma) {
-                if constexpr(do_beta == 0) {
-                    pack_reconfig_data_format(cb_out);
-                }
-                reconfig_data_format_srcb(cb_ex2pe, cb_gamma);
-                ACQ();
-                uint32_t cb_outg = do_beta ? cb_fusion : cb_out;
-                mul_bcast_rows_init_short();
-                cb_reserve_back(cb_outg, blk);
-                cb_wait_front(cb_gamma, wt+blk); // we don't pop, TODO: only wait on first ht
-                cb_wait_front(cb_fusion, blk);
-                for (uint32_t wtr = 0; wtr < blk; wtr++) {
-                    mul_tiles_bcast_rows(cb_fusion, cb_gamma, wtr, wt+wtr, wtr); // tile *= 1/(sum(exp(x)))
-                    pack_tile(wtr, cb_outg); // pack either to intermediate (cb_fusion or out0)
-                }
-                cb_pop_front(cb_fusion, blk);
-                // we don't pop gamma
-                cb_push_back(cb_outg, blk);
-                // We don't pop gamma since it's 1,1,1,Wt and we reuse it for all NCHt
-                REL();
-            }
-            if constexpr (do_beta) {
-                pack_reconfig_data_format(cb_out);
-                if constexpr(do_gamma) {
-                    reconfig_data_format_srcb(cb_gamma, cb_beta);
-                } else {
-                    reconfig_data_format_srcb(cb_ex2pe, cb_beta);
-                }
-                ACQ();
-                add_bcast_rows_init_short();
-                cb_reserve_back(cb_out, blk);
-                cb_wait_front(cb_beta, wt+blk); // TODO: optimization - only wait on first ht
-                cb_wait_front(cb_fusion, blk);
-                for (uint32_t wtr = 0; wtr < blk; wtr++) {
-                    add_tiles_bcast_rows(cb_fusion, cb_beta, wtr, wt+wtr, wtr); // tile *= 1/(sum(exp(x)))
-                    pack_tile(wtr, cb_out); // pack either to intermediate (cb_fusion or out0)
-                }
-                cb_pop_front(cb_fusion, blk);
-                // We don't pop beta since it's 1,1,1,Wt and we reuse it for all NCHt
-                cb_push_back(cb_out, blk);
-                REL();
-            }
         }
         cb_pop_front(cb_ex2pe, 1);
         cb_pop_front(cb_xmm, Wt);
