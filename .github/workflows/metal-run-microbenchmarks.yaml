@@ -19,6 +19,7 @@ jobs:
           # {arch: wormhole_b0, runs-on: ["pipeline-perf", "N150", "bare-metal", "in-service"]},
           # N300
           {arch: wormhole_b0, runs-on: ["N300", "pipeline-perf", "bare-metal", "in-service"]},
+          {arch: wormhole_b0, runs-on: ["N300", "pipeline-perf", "bare-metal", "in-service"]},
         ]
     env:
       TT_METAL_ENV: ${{ vars.TT_METAL_ENV }}
