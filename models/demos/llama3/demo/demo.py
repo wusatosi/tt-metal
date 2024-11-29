@@ -479,14 +479,20 @@ def run_llama3_demo(
         profiler.start(f"inference_decode", iteration=batch_idx)
 
         ttnn.record_event(1, write_event)
-        while users_decoding and iteration < 2:  # run decoding twice for compile and inference time
+        from tracy import signpost
+        from time import sleep
+
+        sleep(5)
+        signpost("tracy_perf_run")
+        while users_decoding and iteration < 3:  # run decoding twice for compile and inference time
             if iteration == 0:  # First iteration also accounts for compile time
                 profiler.start(f"compile_decode", iteration=batch_idx)
+
             iteration_time_start = time()
 
             # Execute trace
             ttnn.wait_for_event(0, write_event)
-            ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=True)
+            ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
             ttnn.record_event(0, op_event)
 
             # Write to host
@@ -516,9 +522,9 @@ def run_llama3_demo(
             iteration_time = time() - iteration_time_start
 
             # Ignore the first iteration for average speed calculation
-            if iteration > 0:
-                total_decoding_time += iteration_time
-                total_tokens_generated += 1
+            # if iteration > 0:
+            total_decoding_time += iteration_time
+            total_tokens_generated += 1
 
             tokens_per_second_per_user = 1 / iteration_time
 
@@ -560,7 +566,7 @@ def run_llama3_demo(
             profiler.end(f"reset_rot_mat_{iteration-1}", iteration=batch_idx)
 
             # Upper limit of generated tokens for each user (to avoid infinite generation in case eos is not seen)
-            if iteration >= max_generated_tokens or iteration >= 1:
+            if iteration >= max_generated_tokens or iteration >= 2:
                 users_decoding = False
 
             if not users_decoding:

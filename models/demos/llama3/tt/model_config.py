@@ -141,7 +141,7 @@ class TtModelArgs:
         LLAMA_DIR = "3.1-70B"  # os.getenv("LLAMA_DIR")
         # if LLAMA_DIR:
         #     if any([os.getenv("LLAMA_CKPT_DIR"), os.getenv("LLAMA_TOKENIZER_PATH"), os.getenv("LLAMA_CACHE_PATH")]):
-        #         logger.warning(
+        #         # logger.warning(
         #             "LLAMA_DIR is set and will override LLAMA_CKPT_DIR, LLAMA_TOKENIZER_PATH, and LLAMA_CACHE_PATH"
         #         )
         #     self.DEFAULT_CKPT_DIR = LLAMA_DIR
@@ -179,9 +179,9 @@ class TtModelArgs:
         #                self.DEFAULT_CKPT_DIR + "/consolidated.00.pth"
         #            ), f"weights consolidated.00.pth file does not exist. Please use the script `models/demos/llama3/scripts/get_weights.py` to download and untar the weights."
 
-        logger.info(f"Checkpoint directory: {self.DEFAULT_CKPT_DIR}")
-        logger.info(f"Tokenizer file: {self.DEFAULT_TOKENIZER_PATH + '/tokenizer.model'}")
-        logger.info(f"Cache directory: {self.DEFAULT_CACHE_PATH}")
+        # logger.info(f"Checkpoint directory: {self.DEFAULT_CKPT_DIR}")
+        # logger.info(f"Tokenizer file: {self.DEFAULT_TOKENIZER_PATH + '/tokenizer.model'}")
+        # logger.info(f"Cache directory: {self.DEFAULT_CACHE_PATH}")
 
         # Set the model name based on the checkpoint directory being loaded
         if "3.2-1B" in LLAMA_DIR:
@@ -1123,7 +1123,7 @@ def load_chunked_checkpoints(checkpoints, n_layers, start_layer_idx):
 
 def load_sharded_checkpoints(checkpoints, n_layers):
     checkpoint = {}
-    logger.info(f"Loading {len(checkpoints)} checkpoint files")
+    # logger.info(f"Loading {len(checkpoints)} checkpoint files")
     for ckpt in tqdm(checkpoints):
         loaded_ckpt = torch.load(ckpt, map_location="cpu")
         for (
