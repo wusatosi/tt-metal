@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: © 2024 Tenstorrent AI ULC
-4//
+//
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 #ifndef CKERNEL_PERF_COUNTERS_H
@@ -15,31 +15,31 @@
  *
  * Example:
  *
-   // Initialize the FPU performance counter in continuous mode
-   MATH(FPU_PerformanceCounter::init(PerfCounterMode::Continuous));
+    // Initialize the FPU performance counter in continuous mode
+    MATH(FPU_PerformanceCounter::init(PerfCounterMode::Continuous));
 
-   // Select the FPU counter to monitor
-   MATH(FPU_PerformanceCounter::select_counter(FPU_PerformanceCounter::Counter::FPU));
+    // Select the FPU counter to monitor
+    MATH(FPU_PerformanceCounter::select_counter(FPU_PerformanceCounter::Counter::FPU));
 
-   // Start the performance counter
-   MATH(FPU_PerformanceCounter::start());
+    // Start the performance counter
+    MATH(FPU_PerformanceCounter::start());
 
-   // Perform operations to be measured
-   // ... (your code here)
+    // Perform operations to be measured
+    // ... (your code here)
 
-   // Stop the performance counter
-   MATH(FPU_PerformanceCounter::stop());
+    // Stop the performance counter
+    MATH(FPU_PerformanceCounter::stop());
 
-   // Read the cycle count and counter value
-   MATH(uint32_t cycles = FPU_PerformanceCounter::read_cycle_count());
-   MATH(uint32_t value = FPU_PerformanceCounter::read_counter_value());
+    // Read the cycle count and counter value
+    MATH(uint32_t cycles = FPU_PerformanceCounter::read_cycle_count());
+    MATH(uint32_t value = FPU_PerformanceCounter::read_counter_value());
 
-   // Or using predefined API
-   init_fpu_perf_counters();
-   start_fpu_perf_counters();
-   ...
-   stop_fpu_perf_counters();
-   uint32_t fpu_value = get_fpu_perf_counter();
+    // Or using predefined API
+    init_fpu_perf_counters();
+    start_fpu_perf_counters();
+    ...
+    stop_fpu_perf_counters();
+    uint32_t fpu_value = get_fpu_perf_counter();
 
  * Note:
  *    - DEVNOTE: If you want to call read_counter_value() immediately after select_counter, you need to add wait(1).
@@ -48,6 +48,14 @@
 
 #ifndef ALWI
 #define ALWI
+#endif
+
+#ifndef GET_DEBUG_REG_VALUE
+#define GET_DEBUG_REG_VALUE(REG_ADDR) (return *reinterpret_cast<volatile uint32_t*>(REG_ADDR))
+#endif
+
+#ifndef SET_DEBUG_REG_VALUE
+#define SET_DEBUG_REG_VALUE(REG_ADDR, VALUE) (*reinterpret_cast<volatile uint32_t*>(REG_ADDR) = VALUE)
 #endif
 
 namespace ckernel
@@ -87,14 +95,14 @@ namespace perf
 
 enum PerfCounterMode : uint8_t
 {
-   Continuous = 0, // Continuous mode, controlled by start/stop
-   AutoStop   = 1, // Auto-stop after reference period
+    Continuous = 0, // Continuous mode, controlled by start/stop
+    AutoStop   = 1, // Auto-stop after reference period
 };
 
 enum PerfCounterSignal : uint8_t
 {
-   Request = 0,
-   Grant   = 1,
+    Request = 0,
+    Grant   = 1,
 };
 
 // Define Start/Stop Bits
@@ -123,12 +131,12 @@ class PerformanceCounterBase
 private:
     static inline uint32_t get_reg_value(uintptr_t reg_addr)
     {
-        return *reinterpret_cast<volatile uint32_t*>(reg_addr);
+        GET_DEBUG_REG_VALUE(reg_addr);
     }
 
     static inline void set_reg_value(uintptr_t reg_addr, uint32_t value)
     {
-        *reinterpret_cast<volatile uint32_t*>(reg_addr) = value;
+        SET_DEBUG_REG_VALUE(reg_addr, value);
     }
 
 protected:
@@ -182,13 +190,13 @@ public:
     // Initialize the performance counter
     static inline void init(PerfCounterMode mode = PerfCounterMode::Continuous, uint32_t period = 0xFFFFFFFF)
     {
-            PerfCounterConfig config;
+        PerfCounterConfig config;
 
-            config.value = 0;
-            config.fields.mode = mode & 0x1;
-            set_config(config.value);
+        config.value = 0;
+        config.fields.mode = mode & 0x1;
+        set_config(config.value);
 
-            set_period(period);
+        set_period(period);
     }
 
     // Start the performance counter
@@ -222,27 +230,27 @@ public:
 class FPU_PerformanceCounter : public PerformanceCounterBase<FPU_PerformanceCounter>
 {
 public:
-   // Define the register addresses specific to FPU
-   static constexpr uintptr_t reference_period_reg_addr = DEBUG_REG_PERF_CNT_FPU0;
-   static constexpr uintptr_t config_reg_addr           = DEBUG_REG_PERF_CNT_FPU1;
-   static constexpr uintptr_t start_stop_reg_addr       = DEBUG_REG_PERF_CNT_FPU2;
-   static constexpr uintptr_t cycle_count_reg_addr      = DEBUG_REG_PERF_CNT_OUT_L_FPU;
-   static constexpr uintptr_t counter_value_reg_addr    = DEBUG_REG_PERF_CNT_OUT_H_FPU;
+    // Define the register addresses specific to FPU
+    static constexpr uintptr_t reference_period_reg_addr = DEBUG_REG_PERF_CNT_FPU0;
+    static constexpr uintptr_t config_reg_addr           = DEBUG_REG_PERF_CNT_FPU1;
+    static constexpr uintptr_t start_stop_reg_addr       = DEBUG_REG_PERF_CNT_FPU2;
+    static constexpr uintptr_t cycle_count_reg_addr      = DEBUG_REG_PERF_CNT_OUT_L_FPU;
+    static constexpr uintptr_t counter_value_reg_addr    = DEBUG_REG_PERF_CNT_OUT_H_FPU;
 
-   // Enum class for FPU counters
-   enum class Counter : uint8_t
-   {
-      FPU      = 0,
-      SFPU     = 1,
-      COUNT    = 2,
-   };
+    // Enum class for FPU counters
+    enum class Counter : uint8_t
+    {
+        FPU      = 0,
+        SFPU     = 1,
+        COUNT    = 2,
+    };
 
-   // Public method to select counter, specific to FPU
-   static inline void select_counter(Counter counter, PerfCounterSignal signal = PerfCounterSignal::Request)
-   {
-      // Call the base class's select_counter method
-      select_counter_base(static_cast<uint8_t>(counter), signal);
-   }
+    // Public method to select counter, specific to FPU
+    static inline void select_counter(Counter counter, PerfCounterSignal signal = PerfCounterSignal::Request)
+    {
+        // Call the base class's select_counter method
+        select_counter_base(static_cast<uint8_t>(counter), signal);
+    }
 };
 
 // Derived class for L1 Performance Counter
