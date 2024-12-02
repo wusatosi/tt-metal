@@ -57,8 +57,12 @@ ALWI void tile_regs_wait() {
  * How the destination register will be shared and synchronized between TRISC threads will depend on the compute kernel configuration.
  */
 ALWI void release_dst() {
+// #ifdef TRISC_MATH
+                // for (auto i = 0; i < 40; i++) {
+                //     TTI_NOP;
+                // }
+// #endif
     MATH(( llk_math_dest_section_done()  ));
-
     PACK(( llk_pack_dest_section_done()  ));
 }
 

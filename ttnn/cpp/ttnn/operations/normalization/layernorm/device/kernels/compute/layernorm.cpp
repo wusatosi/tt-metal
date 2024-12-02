@@ -237,24 +237,38 @@ void MAIN {
          * we have 1.0/sqrt( E[(x-E[x])^2] + eps) in cb_ex2pe
          * just need to bcast_mul xmm with cb_ex2pe
          */
-        for (uint32_t wt = 0; wt < Wt; wt += blk) {
+        reconfig_data_format(cb_xmm, cb_ex2pe);
+        pack_reconfig_data_format(cb_im_or_out);
+        mul_bcast_cols_init_short(cb_xmm, cb_ex2pe);
+        cb_wait_front(cb_ex2pe, 1);
+        // for (uint32_t wt = 0; wt < Wt; wt += blk) {
                         //if (ht == 1) UNPACK(( DPRINT << "wt_2=" << wt << " " ));
                         //if (ht == 1) UNPACK(( DPRINT << "rem_2=" << rem << ENDL() ));
-            reconfig_data_format(cb_xmm, cb_ex2pe);
-            pack_reconfig_data_format(cb_out);
             cb_reserve_back(cb_im_or_out, blk);
-            #if defined RMSNORM and not defined FUSE_PRE_ADD
-            reconfig_data_format_srca(cb_fusion, cb_xmm);
-            #endif
             ACQ();
-            mul_bcast_cols_init_short(cb_xmm, cb_ex2pe);
-            cb_wait_front(cb_ex2pe, 1);
             // cb_xmm[wt+wtr] since we pop Wt from cb_xmm after the entire loop
-            mul_tiles_bcast_cols(cb_xmm, cb_ex2pe, wt, 0, 0); // tile *= 1/(sum(exp(x)))
+            mul_tiles_bcast_cols(cb_xmm, cb_ex2pe, 0, 0, 0); // tile *= 1/(sum(exp(x)))
             pack_tile(0, cb_im_or_out); // pack either to intermediate (cb_fusion or out0)
             cb_push_back(cb_im_or_out, blk); // if no gamma/beta are provided, this will be passed on to the writer
             REL();
-        }
+
+            cb_reserve_back(cb_im_or_out, blk);
+            ACQ();
+            // cb_xmm[wt+wtr] since we pop Wt from cb_xmm after the entire loop
+            mul_tiles_bcast_cols(cb_xmm, cb_ex2pe, 1, 0, 0); // tile *= 1/(sum(exp(x)))
+            pack_tile(0, cb_im_or_out); // pack either to intermediate (cb_fusion or out0)
+            cb_push_back(cb_im_or_out, blk); // if no gamma/beta are provided, this will be passed on to the writer
+            REL();
+
+
+            cb_reserve_back(cb_im_or_out, blk);
+            ACQ();
+            // cb_xmm[wt+wtr] since we pop Wt from cb_xmm after the entire loop
+            mul_tiles_bcast_cols(cb_xmm, cb_ex2pe, 2, 0, 0); // tile *= 1/(sum(exp(x)))
+            pack_tile(0, cb_im_or_out); // pack either to intermediate (cb_fusion or out0)
+            cb_push_back(cb_im_or_out, blk); // if no gamma/beta are provided, this will be passed on to the writer
+            REL();
+        // }
         cb_pop_front(cb_ex2pe, 1);
         cb_pop_front(cb_xmm, Wt);
 
@@ -264,3 +278,8 @@ void MAIN {
     //cb_pop_front(cb_col1, 1); // optional for correctness
 }
 }
+// In tt_metal/third_party/tt_llk_blackhole/common/inc/ckernel.h place:
+// for (auto i = 0; i < 40; i++) {
+//         TTI_NOP;
+//     }
+// after TTI_SEMPOST

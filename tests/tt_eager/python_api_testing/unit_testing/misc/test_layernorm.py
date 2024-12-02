@@ -27,8 +27,8 @@ def print_tile(tensor, tile_row, tile_col):
     start_col = tile_col * 32
     tile = tensor[0, 0, start_row : start_row + 32, start_col : start_col + 32]
 
-    for row in tile:
-        print(" ".join(f"{val.item():.4f}" for val in row))
+    for idx, row in enumerate(tile):
+        print(f"{idx:2}: " + " ".join(f"{val.item():.4f}" for val in row))
     print("\n")
 
 
@@ -66,22 +66,27 @@ def run_layernorm_mix_precision_tests(test_id, in_dtype, gamma_dtype, in0_mem_co
         # (3, 3, 16384, 64),
     )
     for test_shape in test_dims:
-        in0 = torch.rand(test_shape) * 2 - 0.95
+        # in0 = torch.rand(test_shape) * 2 - 0.95
+        in0 = torch.full(test_shape, 10.5)
         in0_t = torch2tt_tensor(in0, device, tt_memory_config=in0_mem_config, tt_dtype=in_dtype)
 
         if test_id <= 5:
-            in1 = torch.rand(test_shape) * 2 - 0.8
+            # in1 = torch.rand(test_shape) * 2 - 0.8
+            in1 = torch.full(test_shape, 20.0)
             in1_t = torch2tt_tensor(in1, device, tt_memory_config=in0_mem_config, tt_dtype=in_dtype)
 
         if test_id % 3 == 0:
             gamma = torch.ones(test_shape[3])
             beta = torch.zeros(test_shape[3])
         if test_id % 3 == 1:
-            gamma = torch.rand(test_shape[3]) * 2 - 1
+            # gamma = torch.rand(test_shap[3]e) * 2 - 1
+            gamma = torch.full(test_shape[3], 0.25)
             beta = torch.zeros(test_shape[3])
         if test_id % 3 == 2:
-            gamma = torch.rand(test_shape[3]) * 2 - 1
-            beta = torch.rand(test_shape[3]) * 2.0 - 1.1
+            # gamma = torch.rand(test_shape[3]) * 2 - 1
+            # beta = torch.rand(test_shape[3]) * 2.0 - 1.1
+            gamma = torch.full(test_shape[3], 0.125) * 2 - 1
+            beta = torch.full(test_shape[3], 0.06125) * 2.0 - 1.1
 
         gamma_t = pad_by_zero(gamma, device, in0_mem_config, gamma_dtype)[0]
         beta_t = pad_by_zero(beta, device, in0_mem_config, gamma_dtype)[0]
@@ -215,7 +220,7 @@ def run_layernorm_mix_precision_tests(test_id, in_dtype, gamma_dtype, in0_mem_co
                 for tile_col in range(num_cols):
                     print(f"Tile ({tile_row}, {tile_col}):")
                     print_tile(tt_got_back, tile_row, tile_col)
-                    print_tile(ref_lnorm, tile_row, tile_col)
+                    # print_tile(ref_lnorm, tile_row, tile_col)
 
         passing, output = comp_pcc(ref_lnorm, tt_got_back)
 
