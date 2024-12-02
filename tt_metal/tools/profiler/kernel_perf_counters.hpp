@@ -43,14 +43,6 @@
 #define ALWI
 #endif
 
-#ifndef GET_DEBUG_REG_VALUE
-#define GET_DEBUG_REG_VALUE(REG_ADDR) (return *reinterpret_cast<volatile uint32_t*>(REG_ADDR))
-#endif
-
-#ifndef SET_DEBUG_REG_VALUE
-#define SET_DEBUG_REG_VALUE(REG_ADDR, VALUE) (*reinterpret_cast<volatile uint32_t*>(REG_ADDR) = VALUE)
-#endif
-
 namespace ckernel
 {
 
@@ -117,19 +109,32 @@ union PerfCounterConfig
     } fields;
 };
 
+class DirectMemoryAccess {
+public:
+    static inline uint32_t get_value(uintptr_t addr)
+    {
+        return *reinterpret_cast<volatile uint32_t*>(addr);
+    }
+
+    static inline void set_value(uintptr_t addr, uint32_t value)
+    {
+        *reinterpret_cast<volatile uint32_t*>(addr) = value;
+    }
+};
+
 // Template class for Performance Counter
-template <typename Derived>
+template <typename Derived, typename Platform>
 class PerformanceCounterBase
 {
 private:
     static inline uint32_t get_reg_value(uintptr_t reg_addr)
     {
-        GET_DEBUG_REG_VALUE(reg_addr);
+        return Platform::get_value(reg_addr);
     }
 
     static inline void set_reg_value(uintptr_t reg_addr, uint32_t value)
     {
-        SET_DEBUG_REG_VALUE(reg_addr, value);
+        Platform::set_value(reg_addr, value);
     }
 
 protected:
@@ -220,7 +225,8 @@ public:
 };
 
 // Derived class for FPU Performance Counter
-class FPU_PerformanceCounter : public PerformanceCounterBase<FPU_PerformanceCounter>
+template<typename Platform = DirectMemoryAccess>
+class FPU_PerformanceCounter : public PerformanceCounterBase<FPU_PerformanceCounter, Platform>
 {
 public:
     // Define the register addresses specific to FPU
@@ -247,7 +253,8 @@ public:
 };
 
 // Derived class for L1 Performance Counter
-class L1_PerformanceCounter : public PerformanceCounterBase<L1_PerformanceCounter>
+template<typename Platform = DirectMemoryAccess>
+class L1_PerformanceCounter : public PerformanceCounterBase<L1_PerformanceCounter, Platform>
 {
 public:
     // Define the register addresses specific to FPU
@@ -309,7 +316,8 @@ private:
     }
 };
 
-class InstrnThread_PerformanceCounter : public PerformanceCounterBase<InstrnThread_PerformanceCounter>
+template<typename Platform = DirectMemoryAccess>
+class InstrnThread_PerformanceCounter : public PerformanceCounterBase<InstrnThread_PerformanceCounter, Platform>
 {
 public:
     // Register addresses specific to Instruction Thread
@@ -362,7 +370,8 @@ public:
     }
 };
 
-class TDMAPack_PerformanceCounter : public PerformanceCounterBase<TDMAPack_PerformanceCounter>
+template<typename Platform = DirectMemoryAccess>
+class TDMAPack_PerformanceCounter : public PerformanceCounterBase<TDMAPack_PerformanceCounter, Platform>
 {
 public:
     // Register addresses specific to TDMA Pack
@@ -394,7 +403,8 @@ public:
     }
 };
 
-class TDMAUnpack_PerformanceCounter : public PerformanceCounterBase<TDMAUnpack_PerformanceCounter>
+template<typename Platform = DirectMemoryAccess>
+class TDMAUnpack_PerformanceCounter : public PerformanceCounterBase<TDMAUnpack_PerformanceCounter, Platform>
 {
 public:
     // Register addresses specific to TDMA Unpack
