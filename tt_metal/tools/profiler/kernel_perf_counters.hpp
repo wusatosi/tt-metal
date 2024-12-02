@@ -5,8 +5,6 @@
 #ifndef CKERNEL_PERF_COUNTERS_H
 #define CKERNEL_PERF_COUNTERS_H
 
-#include "tensix.h"
-
 /**
  * @file kernel_perf_counters.h
  * @brief Provides template-based performance counter classes for hardware performance counters.
