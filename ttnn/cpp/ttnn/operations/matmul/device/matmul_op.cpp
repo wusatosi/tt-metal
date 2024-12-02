@@ -1203,9 +1203,19 @@ void Matmul::validate(
                     TT_FATAL(
                         this->output_mem_config.shard_spec.has_value(),
                         "Output shard spec must be provided when using gather_in0.");
-                    TT_FATAL(
-                        input_tensor_a.shard_spec().value().grid == this->output_mem_config.shard_spec.value().grid,
-                        "Output tensor must be sharded on the same cores as the input when using gather_in0.");
+
+                    if (program_config.num_reducer_partials == 1) {
+                        TT_FATAL(
+                            input_tensor_a.shard_spec().value().grid == this->output_mem_config.shard_spec.value().grid,
+                            "Output tensor must be sharded on the same cores as the input when using gather_in0.");
+                    } else {
+                        TT_FATAL(
+                            this->output_mem_config.shard_spec.value().grid.num_cores() ==
+                                input_tensor_a.shard_spec().value().grid.num_cores() /
+                                    program_config.num_reducer_partials,
+                            "Output tensor must be sharded on the same number of cores as the input num cores divided "
+                            "by the number of reducer partials when using gather_in0.");
+                    }
 
                     TT_FATAL(!optional_bias.has_value(), "Bias is not supported when using gather_in0.");
                 }
@@ -1261,10 +1271,17 @@ void Matmul::validate(
                         TT_FATAL(
                             input_tensor_b.memory_config().memory_layout == TensorMemoryLayout::WIDTH_SHARDED,
                             "Operand B can only be interleaved or L1 width sharded.");
-                        TT_FATAL(
-                            program_config.per_core_N ==
-                                (input_tensor_b.shard_spec().value().shape[1] / in1_tile_shape[1]),
-                            "Shard width must match per core N.");
+                        if (program_config.gather_in0) {
+                            TT_FATAL(
+                                program_config.per_core_N * program_config.n_chunks ==
+                                    (input_tensor_b.shard_spec().value().shape[1] / in1_tile_shape[1]),
+                                "Shard width must match per core N.");
+                        } else {
+                            TT_FATAL(
+                                program_config.per_core_N ==
+                                    (input_tensor_b.shard_spec().value().shape[1] / in1_tile_shape[1]),
+                                "Shard width must match per core N.");
+                        }
                         if (optional_bias.has_value()) {
                             TT_FATAL(
                                 input_tensor_b.shard_spec().value().shape[1] ==
@@ -1812,6 +1829,8 @@ operation::ProgramWithCallbacks Matmul::create_program(
                     program_config.fused_activation,
                     program_config.mcast_in0,
                     program_config.gather_in0,
+                    program_config.num_reducer_partials,
+                    program_config.n_chunks,
                     this->untilize_out);
             } else if constexpr (std::is_same_v<
                                      ProgramConfigType,
