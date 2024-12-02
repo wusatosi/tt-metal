@@ -121,6 +121,9 @@ operation::ProgramWithCallbacks HaloDeviceOperation::create_program(
     tt::tt_metal::detail::AddConfigBuffer(program, local_config_device_tensor.device_buffer());
     tt::tt_metal::detail::AddConfigBuffer(program, remote_config_device_tensor.device_buffer());
 
+    printf("HALO TOTAL SIZE: %ld\n", pad_config_device_tensor.buffer()->size());
+    printf("HALO MAX SIZE: %ld\n", pad_config_device_tensor.buffer()->aligned_size_per_bank());
+
     return {data_movement::detail::untilize_with_halo_multi_core_v2(
         program,
         input_tensor,

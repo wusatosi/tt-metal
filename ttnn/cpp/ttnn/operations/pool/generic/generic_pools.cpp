@@ -63,6 +63,8 @@ Tensor Pool2DOp<pool_type>::invoke(
     uint32_t num_cores_nhw = 0;
     uint32_t num_cores_c = 0;
 
+    printf("SHARDING\n");
+
     TensorMemoryLayout shard_layout = TensorMemoryLayout::HEIGHT_SHARDED; // default to height sharding
     if (!out_memory_config.shard_spec.has_value()) {
         // Input is not sharded. Perform sharding.
@@ -84,10 +86,13 @@ Tensor Pool2DOp<pool_type>::invoke(
             ShardOrientation::ROW_MAJOR,
             false,
             false);
+        printf("hit 1\n");
         num_cores_nhw = conv::conv2d::get_num_cores_nhw_from_parallel_config(parallel_config);
         num_cores_c = conv::conv2d::get_num_cores_channels_from_parallel_config(parallel_config);
         auto sharded_mem_config = conv::conv2d::create_sharded_memory_config_from_parallel_config(input_tensor_sharded.shape(), parallel_config, is_in_tiled ? tt::constants::TILE_HEIGHT : 1);
+        printf("hit 2\n");
         input_tensor_sharded = ttnn::to_memory_config(input_tensor_sharded, sharded_mem_config, std::nullopt); // this converts interleaved to sharded
+        printf("hit 3\n");
         out_memory_config = input_tensor_sharded.memory_config();
     } else {
         // input is already sharded, use it as is
@@ -111,6 +116,8 @@ Tensor Pool2DOp<pool_type>::invoke(
     uint32_t output_shard_height_padded = output_nhw_padded / num_cores_nhw;
     log_debug(tt::LogOp, "output_nhw: {}, output_nhw_padded: {}, output_shard_height_padded: {}, output_shard_width_padded: {}", output_nhw, output_nhw_padded, output_shard_height_padded, output_shard_width_padded);
     out_memory_config.shard_spec = ShardSpec{shard_spec.grid, {output_shard_height_padded, output_shard_width_padded}, ShardOrientation::ROW_MAJOR, false};
+
+    printf("SLIDING WINDOW CONFIG\n");
 
     sliding_window_config = sliding_window::SlidingWindowConfig{
             .batch_size = batch_size,

@@ -143,25 +143,49 @@ operation::ProgramWithCallbacks untilize_with_halo_multi_core_v2(
     TT_ASSERT(local_config.get_dtype() == DataType::UINT16);
     TT_ASSERT(remote_config.get_dtype() == DataType::UINT16);
 
+    auto ceil_multiple_of = [](uint32_t n, uint32_t m) { return (uint32_t)std::ceil((float)n / m) * m; };
+
     Buffer* padding_config_buffer = padding_config.buffer();
-    const uint32_t num_cores = all_cores.num_cores();
+    uint32_t total_cores = (all_cores.ranges()[0].end_coord.x + 1 - all_cores.ranges()[0].start_coord.x) *
+                           (all_cores.ranges()[0].end_coord.y + 1 - all_cores.ranges()[0].start_coord.y);
+    printf("total_cores: %d\n", total_cores);
+    printf("buffer.num_cores(): %d\n", padding_config_buffer->num_cores().value());
+    // uint32_t padding_config_tot_size = ceil_multiple_of(padding_config_buffer->size() / total_cores,
+    // padding_config_buffer->page_size());
+    uint32_t padding_config_tot_size =
+        padding_config_buffer->aligned_size() / padding_config_buffer->num_cores().value();
+    printf("padding buffer size: %ld\n", padding_config_buffer->aligned_size());
+    printf("padding buffer page size: %ld\n", padding_config_buffer->aligned_page_size());
+    printf("padding_config_tot_size: %d\n", padding_config_tot_size);
     auto padding_config_cb_config =
-        CircularBufferConfig(padding_config_buffer->size() / num_cores, {{padding_config_cb_id, kernel_config_df}})
-            .set_page_size(padding_config_cb_id, padding_config_buffer->page_size())
+        // padding_config_buffer should have num_cores
+        CircularBufferConfig(padding_config_tot_size, {{padding_config_cb_id, kernel_config_df}})
+            .set_page_size(padding_config_cb_id, padding_config_buffer->aligned_page_size())
             .set_globally_allocated_address(*padding_config_buffer);
     CBHandle padding_config_cb = CreateCircularBuffer(program, all_cores, padding_config_cb_config);
 
     Buffer* local_config_buffer = local_config.buffer();
-    auto local_config_cb_config =
-        CircularBufferConfig(local_config_buffer->size() / num_cores, {{local_config_cb_id, kernel_config_df}})
-            .set_page_size(local_config_cb_id, local_config_buffer->page_size())
-            .set_globally_allocated_address(*local_config_buffer);
+    // uint32_t local_config_tot_size = ceil_multiple_of(local_config_buffer->size() / total_cores,
+    // local_config_buffer->page_size());
+    uint32_t local_config_tot_size = local_config_buffer->aligned_size() / local_config_buffer->num_cores().value();
+    printf("local config buffer size: %ld\n", local_config_buffer->aligned_size());
+    printf("local config buffer page size: %ld\n", local_config_buffer->aligned_page_size());
+    printf("local_config_tot_size: %d\n", local_config_tot_size);
+    auto local_config_cb_config = CircularBufferConfig(local_config_tot_size, {{local_config_cb_id, kernel_config_df}})
+                                      .set_page_size(local_config_cb_id, local_config_buffer->aligned_page_size())
+                                      .set_globally_allocated_address(*local_config_buffer);
     CBHandle local_config_cb = CreateCircularBuffer(program, all_cores, local_config_cb_config);
 
     Buffer* remote_config_buffer = remote_config.buffer();
+    // uint32_t remote_config_tot_size = ceil_multiple_of(remote_config_buffer->size() / total_cores,
+    // remote_config_buffer->page_size());
+    uint32_t remote_config_tot_size = remote_config_buffer->aligned_size() / remote_config_buffer->num_cores().value();
+    printf("remote config buffer size: %ld\n", remote_config_buffer->aligned_size());
+    printf("remote config buffer page size: %ld\n", remote_config_buffer->aligned_page_size());
+    printf("remote_config_tot_size: %d\n", remote_config_tot_size);
     auto remote_config_cb_config =
-        CircularBufferConfig(remote_config_buffer->size() / num_cores, {{remote_config_cb_id, kernel_config_df}})
-            .set_page_size(remote_config_cb_id, remote_config_buffer->page_size())
+        CircularBufferConfig(remote_config_tot_size, {{remote_config_cb_id, kernel_config_df}})
+            .set_page_size(remote_config_cb_id, remote_config_buffer->aligned_page_size())
             .set_globally_allocated_address(*remote_config_buffer);
     CBHandle remote_config_cb = CreateCircularBuffer(program, all_cores, remote_config_cb_config);
 

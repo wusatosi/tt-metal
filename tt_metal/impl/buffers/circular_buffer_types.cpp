@@ -11,6 +11,7 @@ inline namespace v0 {
 CircularBufferConfig::CircularBufferConfig(
     uint32_t total_size, const std::map<uint8_t, tt::DataFormat>& data_format_spec) :
     total_size_(total_size), globally_allocated_address_(std::nullopt), dynamic_cb_(false) {
+    printf("CONSTRUCTOR TOTAL SIZE: %d\n", total_size_);
     this->set_config(data_format_spec);
 }
 
@@ -99,6 +100,8 @@ CircularBufferConfig& CircularBufferConfig::set_globally_allocated_address_and_t
     this->max_size_ = buffer.aligned_size_per_bank();
     this->buffer_size_ = buffer.aligned_size();
     this->shadow_global_buffer = &buffer;
+    printf("CHECK TOTAL SIZE: %d\n", this->total_size_);
+    printf("CHECK MAX SIZE: %d\n", this->max_size_);
     if (total_size > this->max_size_) {
         TT_ASSERT(
             false,
