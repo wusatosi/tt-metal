@@ -4,6 +4,7 @@
 
 #include <cstdint>
 
+#include "compute_kernel_api/eltwise_binary.h"
 #include "compute_kernel_api/matmul.h"
 #include "compute_kernel_api/pack_untilize.h"
 #include "compute_kernel_api/tile_move_copy.h"
@@ -41,6 +42,7 @@ void MAIN {
     // Runtime args
     uint32_t rt_args_idx = 0;
     uint32_t ring_idx = get_arg_val<uint32_t>(rt_args_idx++);
+    bool master_reducer = (bool)get_arg_val<uint32_t>(rt_args_idx++);
 
     constexpr uint32_t in0_block_w = get_compile_time_arg_val(0);        // inner block size in tiles
     constexpr uint32_t in0_num_subblocks = get_compile_time_arg_val(1);  // outer row block size (in inner row blocks)
@@ -59,16 +61,23 @@ void MAIN {
     constexpr uint32_t batch = get_compile_time_arg_val(11);                   // batch dim
     constexpr uint32_t out_block_num_tiles = get_compile_time_arg_val(12);     // number of tiles in out_block
     constexpr bool untilize_out = get_compile_time_arg_val(13);                // untilize output
+    constexpr uint32_t num_reducer_partials = get_compile_time_arg_val(14);
 
     constexpr uint32_t out_block_w = out_subblock_w * in1_num_subblocks;
+    constexpr uint32_t in1_width_in_tiles = in1_per_core_w * batch;
 
     constexpr uint32_t in0_cb_id = tt::CB::c_in0;
     constexpr uint32_t in1_cb_id = tt::CB::c_in1;
     constexpr uint32_t in2_cb_id = tt::CB::c_in2;
     constexpr uint32_t out_cb_id = tt::CB::c_out0;
     constexpr uint32_t mm_partials_cb_id = tt::CB::c_intermed0;
+    constexpr uint32_t reducer_cb_id = tt::CB::c_intermed1;
+    constexpr uint32_t partial_cb_id = tt::CB::c_intermed2;
 
-    constexpr uint32_t mm_out_cb_id = untilize_out ? mm_partials_cb_id : out_cb_id;
+    const uint32_t mm_out_cb_id = num_reducer_partials > 1 ? partial_cb_id : out_cb_id;
+    // The only case where we don't want to pack_out is when the master
+    // reducer partial can stay in dst and can be accumulated on top of
+    const bool pack_out = num_reducer_partials == 1 || num_reducer_partials % 2 == 0 || !master_reducer;
 
 #ifdef SFPU_OP_INIT_ACTIVATION
     SFPU_OP_INIT_ACTIVATION
@@ -84,6 +93,9 @@ void MAIN {
 
     mm_block_init(
         in0_cb_id, in1_cb_id, mm_partials_cb_id, in1_transpose_tile, out_subblock_w, out_subblock_h, in0_block_w);
+
+    // Wait for the entire local shard
+    cb_wait_front(in1_cb_id, in1_block_num_tiles * num_blocks * batch);
     for (uint32_t b = 0; b < batch; b++) {
         bool enable_reload = false;
         uint32_t out_num_tiles_to_wait = out_subblock_num_tiles;
@@ -99,7 +111,6 @@ void MAIN {
             PACK((pack_reconfig_data_format(mm_partials_cb_id)));
         }
 
-        cb_wait_front(in1_cb_id, in1_block_num_tiles * num_blocks);
         for (uint32_t block = 0; block < num_blocks; block++) {
             const uint32_t input_cb_id = block == 0 ? in0_cb_id : in2_cb_id;
             bool last_out = block == (num_blocks - 1);
@@ -113,9 +124,14 @@ void MAIN {
 
             cb_wait_front(input_cb_id, in0_block_num_tiles);
 
+            // Offset used to select the correct shard in K and N dimension,
+            // Based on the ring_idx and chunk number, respectively
+            uint32_t in1_batch_offset = in1_per_core_w * b;
+            uint32_t in1_ring_offset = in0_block_w * ((ring_idx + block) % num_blocks);
+
             int in0_index_subblock_offset = 0;
             for (uint32_t in0_subblock = 0; in0_subblock < in0_num_subblocks; in0_subblock++) {
-                int in1_index_subblock_offset = in1_block_num_tiles * ((ring_idx + block) % num_blocks);
+                int in1_index_subblock_offset = in1_batch_offset + (in1_ring_offset * in1_width_in_tiles);
                 for (uint32_t in1_subblock = 0; in1_subblock < in1_num_subblocks; in1_subblock++) {
                     tile_regs_acquire();
                     if (enable_reload) {
@@ -151,8 +167,8 @@ void MAIN {
                             out_subblock_h,
                             in0_block_w);
                         in0_index++;                  // stride right by 1
-                        in1_index += in1_per_core_w;  // to stride down by 1 need to stride by in_per_core_w (should be
-                                                      // called in1_block_w)
+                        in1_index += in1_width_in_tiles;  // to stride down by 1 need to stride by in_per_core_w (should
+                                                          // be called in1_block_w)
                     }
 
 #endif  // SKIP_COMPUTE
@@ -165,11 +181,12 @@ void MAIN {
                         }
 #endif
 
-                        tile_regs_commit();
                         // Pack out to output buffer
                         cb_reserve_back(mm_out_cb_id, out_subblock_num_tiles);
-                        tile_regs_wait();
-
+                        if (pack_out) {
+                            tile_regs_commit();
+                            tile_regs_wait();
+                        }
 #if defined FP32_DEST_ACC_EN or defined PACKER_L1_ACC
                         PACK((pack_reconfig_data_format(mm_out_cb_id)));
 #endif
@@ -180,9 +197,11 @@ void MAIN {
 #endif
 
                         uint32_t start_dst_index = 0;
-                        matmul_pack_tile(start_dst_index, mm_out_cb_id, out_subblock_num_tiles);
 
-                        tile_regs_release();
+                        if (pack_out) {
+                            matmul_pack_tile(start_dst_index, mm_out_cb_id, out_subblock_num_tiles);
+                            tile_regs_release();
+                        }
                         cb_push_back(mm_out_cb_id, out_subblock_num_tiles);
 
                     } else if (spill) {
@@ -234,7 +253,71 @@ void MAIN {
 
             cb_pop_front(input_cb_id, in0_block_num_tiles);
         }
-        cb_pop_front(in1_cb_id, in1_block_num_tiles * num_blocks);
+
+        if (master_reducer && num_reducer_partials > 1) {
+            /*
+            1. wait front on the reducer cb for output_size * reducer_factor
+            2. Perform reduction
+            3. push back to output cb
+
+            Assumptions:
+                - out_block_num_tiles fits fully in dst
+            */
+
+            // The only required call from binary_op_init_common, that doesn't lead to packer overflow, is:
+            UNPACK((llk_unpack_AB_hw_configure_disaggregated<DST_ACCUM_MODE>(reducer_cb_id, reducer_cb_id)));
+            cb_reserve_back(out_cb_id, out_block_num_tiles);
+            bool acc_to_dst = true;
+
+            // Copy the local shard to dst
+            cb_wait_front(partial_cb_id, out_block_num_tiles);  // wait for the local partial
+            if (pack_out) {
+                // Acquire lock when master partial needs to be added, instead of accumulated on top of
+                tile_regs_acquire();
+            }
+
+            cb_wait_front(
+                reducer_cb_id, out_block_num_tiles * (num_reducer_partials - 1));  // wait for the remote partials
+            add_tiles_init(reducer_cb_id, reducer_cb_id, acc_to_dst);
+
+            for (uint32_t t = 0; t < out_block_num_tiles; t++) {
+                for (uint32_t p = 0; p < num_reducer_partials; p++) {
+                    uint32_t cb_a = 0;
+                    uint32_t cb_b = 0;
+
+                    uint32_t idx_a = 0;
+                    uint32_t idx_b = 0;
+
+                    if (p == 0) {
+                        if (!pack_out) {
+                            // already in dst
+                            continue;  // Skip the addition step
+                        } else {
+                            cb_a = partial_cb_id;
+                            cb_b = reducer_cb_id;
+                            idx_a = t;
+                            idx_b = t;
+                        }
+                    } else {
+                        cb_a = reducer_cb_id;
+                        cb_b = reducer_cb_id;
+                        idx_a = (out_block_num_tiles * (p - 1)) + t;
+                        idx_b = (out_block_num_tiles * p) + t;
+                    }
+
+                    add_tiles(cb_a, cb_b, idx_a, idx_b, t);
+                    p++;  // Skip the next partial, as it was already added
+                }
+            }
+            tile_regs_commit();
+
+            // Pack out
+            tile_regs_wait();
+            matmul_pack_tile(0, out_cb_id, out_block_num_tiles);
+            tile_regs_release();
+            cb_push_back(out_cb_id, out_block_num_tiles);
+            cb_pop_front(partial_cb_id, out_block_num_tiles);  // Done with the local partial
+        }
 
         if constexpr (batch > 1) {
             // reconfigure init for matmul
@@ -244,5 +327,6 @@ void MAIN {
             reconfig_data_format_srca(mm_partials_cb_id, in1_cb_id);
         }
     }
+    cb_pop_front(in1_cb_id, in1_block_num_tiles * num_blocks * batch);
 }
 }  // namespace NAMESPACE

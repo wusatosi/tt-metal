@@ -98,13 +98,17 @@ def run_multi_core_matmul_1d(
     num_iters,
     max_dst_tiles=8,
     pcc_threshold=0.98,
+    num_reducer_partials=1,
+    n_chunks=1,
 ):
     assert not has_bias, "Bias not supported for gather_in0 mode."
     if not isinstance(grid, tuple) and not use_arbitrary_cores:
         pytest.skip("Grid is not a tuple and not using arbitrary cores")
 
+    N = N // n_chunks
+
     in0_shape = [1, B, M, K]
-    in1_shape = [1, 1, K, N]
+    in1_shape = [1, n_chunks, K, N]
     num_cores = grid[0] * grid[1] if isinstance(grid, tuple) else len(grid)
 
     storage_grid = num_cores_to_rectangle_grid(num_cores, device)
@@ -116,14 +120,14 @@ def run_multi_core_matmul_1d(
     in0_block_h = M // ttnn.TILE_SIZE
     in0_block_w = K // num_cores // ttnn.TILE_SIZE
     out_block_h = M // ttnn.TILE_SIZE
-    out_block_w = N // num_cores // ttnn.TILE_SIZE
+    out_block_w = N // (num_cores // num_reducer_partials) // ttnn.TILE_SIZE
 
     num_blocks_y = (M // ttnn.TILE_SIZE - 1) // out_block_h + 1
     num_blocks_x = (N // ttnn.TILE_SIZE - 1) // out_block_w + 1
     num_blocks_total = num_blocks_y * num_blocks_x
 
-    if num_blocks_total != num_cores:
-        pytest.skip(f"num_blocks_total {num_blocks_total} != num_cores {num_cores}")
+    if num_blocks_total != (num_cores // num_reducer_partials):
+        pytest.skip(f"num_blocks_total {num_blocks_total} != num_cores {num_cores // num_reducer_partials}")
 
     out_subblock_h = 1
     out_subblock_w = max_dst_tiles if (out_block_h == 1 and out_block_w <= max_dst_tiles) else 4
@@ -153,15 +157,23 @@ def run_multi_core_matmul_1d(
                 for x, y in CORE_RANGE
             ]
         )
-    else:
-        core_range_set = ttnn.CoreRangeSet(
-            {
+
+        output_core_range_set = ttnn.CoreRangeSet(
+            [
                 ttnn.CoreRange(
-                    ttnn.CoreCoord(0, 0),
-                    ttnn.CoreCoord(storage_grid[0] - 1, storage_grid[1] - 1),
-                ),
-            }
+                    ttnn.CoreCoord(x, y),
+                    ttnn.CoreCoord(x, y),
+                )
+                for x, y in CORE_RANGE[: num_cores // num_reducer_partials]
+            ]
         )
+    else:
+        core_range_set = ttnn.num_cores_to_corerangeset(num_cores, storage_grid, row_wise=True)
+        output_core_range_set = ttnn.num_cores_to_corerangeset(
+            num_cores // num_reducer_partials, storage_grid, row_wise=True
+        )
+
+    N_shard = N // (num_cores // num_reducer_partials) * n_chunks
 
     in0_sharded_mem_config = ttnn.MemoryConfig(
         ttnn.TensorMemoryLayout.WIDTH_SHARDED,
@@ -179,7 +191,7 @@ def run_multi_core_matmul_1d(
         ttnn.BufferType.L1,
         ttnn.ShardSpec(
             core_range_set,
-            [K, N // num_cores],
+            [K // num_reducer_partials, N_shard],
             ttnn.ShardOrientation.ROW_MAJOR,
             False,
         ),
@@ -189,8 +201,8 @@ def run_multi_core_matmul_1d(
         ttnn.TensorMemoryLayout.WIDTH_SHARDED,
         ttnn.BufferType.L1,
         ttnn.ShardSpec(
-            core_range_set,
-            [M, N // num_cores],
+            output_core_range_set,
+            [M, N_shard],
             ttnn.ShardOrientation.ROW_MAJOR,
             False,
         ),
@@ -198,6 +210,21 @@ def run_multi_core_matmul_1d(
 
     in0 = torch.randn(in0_shape)
     in1 = torch.randn(in1_shape)
+
+    """
+    Since the n_chunks will be folded over each other in the matmul,
+    we need to interleave the n_chunks dimension with the N dimension.
+    x = torch.tensor([[[0, 1, 2, 3, 4],
+                     [5, 6, 7, 8, 9]],
+                    [[10, 11, 12, 13, 14],
+                     [15, 16, 17, 18, 19]]])
+    Turns into:
+    y = tensor([[[[ 0, 10,  1, 11,  2, 12,  3, 13,  4, 14],
+                  [ 5, 15,  6, 16,  7, 17,  8, 18,  9, 19]]]])
+    Because there are N cores in the matmul, and each core will concat the n_chunks dimension.
+    And the final output returned will be a concatenation of all the cores
+    """
+    in1 = in1.permute(0, 2, 3, 1).reshape(1, 1, K, N * n_chunks)
 
     in0_t = ttnn.from_torch(
         in0,
@@ -225,6 +252,8 @@ def run_multi_core_matmul_1d(
         fused_activation=activation,
         mcast_in0=False,
         gather_in0=True,
+        num_reducer_partials=num_reducer_partials,
+        n_chunks=n_chunks,
     )
 
     compute_kernel_config = ttnn.WormholeComputeKernelConfig(
@@ -257,6 +286,142 @@ def run_multi_core_matmul_1d(
 
     # Check program cache
     assert device.num_program_cache_entries() == 1  # Only 1 op
+
+
+@pytest.mark.skipif(is_grayskull(), reason="GS does not support fp32")
+@pytest.mark.parametrize("has_bias", [False], ids=["no_bias"])
+@pytest.mark.parametrize(
+    "B, M, K, N, in0_dtype, in1_dtype, fidelity, packer_l1_acc, fp32_acc_mode, grid, num_reducer_partials, n_chunks",
+    [
+        # 6 partials on 24 cores
+        (1, 32, 2304 // 6, 3584 // 4, ttnn.bfloat16, ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, True, True, (4, 1), 1, 1),
+        (
+            1,
+            32,
+            2304,
+            3584 // 4,
+            ttnn.bfloat16,
+            ttnn.bfloat4_b,
+            ttnn.MathFidelity.LoFi,
+            True,
+            True,
+            (8, 3),
+            6,
+            1,
+        ),  # fails b/c out_block_w > 4
+        # 3 partials on 24 cores
+        (
+            1,
+            32,
+            2304 // 3,
+            (3584 + 512) // 4,
+            ttnn.bfloat16,
+            ttnn.bfloat4_b,
+            ttnn.MathFidelity.LoFi,
+            True,
+            True,
+            (8, 1),
+            1,
+            1,
+        ),
+        (
+            1,
+            32,
+            2304,
+            (3584 + 512) // 4,
+            ttnn.bfloat16,
+            ttnn.bfloat4_b,
+            ttnn.MathFidelity.LoFi,
+            True,
+            True,
+            (8, 3),
+            3,
+            1,
+        ),
+        # TG prefetch case
+        (1, 32, 2304, (3584 + 512), ttnn.bfloat16, ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, True, True, (8, 3), 3, 4),
+        (1, 32, 2304, (3584 + 1024), ttnn.bfloat16, ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, True, True, (8, 3), 2, 4),
+        (
+            1,
+            32,
+            2304,
+            (3584 + 256),
+            ttnn.bfloat16,
+            ttnn.bfloat4_b,
+            ttnn.MathFidelity.LoFi,
+            True,
+            True,
+            (8, 3),
+            3,
+            3,
+        ),  # fails b/c out_block_w > 4
+        # Check if multi-batch works
+        (
+            1,
+            32,
+            2304,
+            (3584 + 2048 + 512),
+            ttnn.bfloat16,
+            ttnn.bfloat4_b,
+            ttnn.MathFidelity.LoFi,
+            True,
+            True,
+            (8, 3),
+            1,
+            4,
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "activation",
+    [
+        None,
+        # ttnn.UnaryOpType.SILU,
+    ],
+)
+@pytest.mark.parametrize(
+    "use_arbitrary_cores",
+    [False],
+)
+def test_multi_core_matmul_1d_reduce_wh(
+    device,
+    in0_dtype,
+    in1_dtype,
+    fidelity,
+    has_bias,
+    fp32_acc_mode,
+    packer_l1_acc,
+    B,
+    M,
+    K,
+    N,
+    activation,
+    grid,
+    num_reducer_partials,
+    n_chunks,
+    use_arbitrary_cores,
+    use_program_cache,
+    function_level_defaults,
+):
+    run_multi_core_matmul_1d(
+        device,
+        in0_dtype,
+        in1_dtype,
+        fidelity,
+        has_bias,
+        fp32_acc_mode,
+        packer_l1_acc,
+        B,
+        M,
+        K,
+        N,
+        activation,
+        grid,
+        use_arbitrary_cores,
+        num_iters=1,
+        num_reducer_partials=num_reducer_partials,
+        n_chunks=n_chunks,
+    )
 
 
 @pytest.mark.skipif(is_grayskull(), reason="GS does not support fp32")

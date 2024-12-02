@@ -1673,6 +1673,8 @@ operation::ProgramWithCallbacks create_program_gather_in0(
     uint32_t per_core_M,
     uint32_t per_core_N,
     std::optional<UnaryWithParam> fused_activation,
+    uint32_t num_reducer_partials,
+    uint32_t n_chunks,
     tt_metal::Buffer* in0_buffer,
     tt_metal::Buffer* in1_buffer,
     tt_metal::Buffer* out_buffer,
@@ -1683,7 +1685,7 @@ operation::ProgramWithCallbacks create_program_gather_in0(
     tt::DataFormat in1_data_format,
     tt::DataFormat output_data_format,
     bool untilize_out) {
-    uint32_t num_blocks = K / in0_block_w;
+    uint32_t num_blocks = K / in0_block_w / num_reducer_partials;
     // Only enable packer l1 accumulation when there are spills, otherwise
     // unnecessary overhead for reconfigs are added
     bool packer_l1_acc_en = packer_l1_acc && num_blocks > 1;
@@ -1702,7 +1704,7 @@ operation::ProgramWithCallbacks create_program_gather_in0(
     constexpr bool row_major = true;
     CoreRangeSet all_cores = a.shard_spec().value().grid;
     const uint32_t num_cores = all_cores.num_cores();
-    const uint32_t ring_size = num_cores;
+    const uint32_t ring_size = num_cores / num_reducer_partials;
 
     /* in0 */
     uint32_t in0_shard_width_in_tiles = in0_buffer->shard_spec().shape()[1] / in0_tile.get_tile_shape()[1];
@@ -1722,12 +1724,13 @@ operation::ProgramWithCallbacks create_program_gather_in0(
 
     /* out */
     uint32_t out_block_tiles = per_core_M * per_core_N;
-    uint32_t out_CB_tiles = out_block_tiles;  // No double buffer
+    uint32_t out_CB_tiles = out_block_tiles * n_chunks;  // No double buffer
     uint32_t out_CB_size = out_CB_tiles * output_single_tile_size;
     uint32_t interm0_CB_size = out_CB_tiles * interm0_single_tile_size;
 
     /* semaphores */
     auto in0_signal_semaphore_id = tt_metal::CreateSemaphore(program, all_cores, INVALID);
+    auto reducer_signal_semaphore_id = tt_metal::CreateSemaphore(program, all_cores, INVALID);
 
     uint32_t in0_num_subblocks = (per_core_M / out_subblock_h);
     uint32_t in0_block_num_tiles = out_subblock_h * in0_block_w * in0_num_subblocks;
@@ -1735,16 +1738,19 @@ operation::ProgramWithCallbacks create_program_gather_in0(
     /* Compile time args */
     std::vector<uint32_t> in0_sender_compile_time_args = {
         (std::uint32_t)in0_shard_width_in_tiles,
-        (std::uint32_t)per_core_M,  // in0_shard_height_in_tiles
-        (std::uint32_t)B,           // batch
-        (std::uint32_t)ring_size,   // ring_size
+        (std::uint32_t)per_core_M,    // in0_shard_height_in_tiles
+        (std::uint32_t)B * n_chunks,  // batch
+        (std::uint32_t)ring_size,     // ring_size
         (std::uint32_t)in0_signal_semaphore_id,
     };
 
     std::vector<uint32_t> in1_sender_writer_compile_time_args = {
         (std::uint32_t)in1_shard_width_in_tiles,  // in1_shard_width_in_tiles
         (std::uint32_t)in1_shard_height_in_tiles,
-        (std::uint32_t)B,  // batch
+        (std::uint32_t)B * n_chunks,          // batch
+        (std::uint32_t)num_reducer_partials,  // num_reducers
+        (std::uint32_t)out_block_tiles,       // out_block_num_tiles
+        (std::uint32_t)reducer_signal_semaphore_id,
     };
 
     uint32_t in0_subblock_num_tiles = out_subblock_h * in0_block_w;
@@ -1768,10 +1774,12 @@ operation::ProgramWithCallbacks create_program_gather_in0(
         out_subblock_h,          // out_subblock_h
         out_subblock_w,          // out_subblock_w
         out_subblock_num_tiles,  // out_subblock_num_tiles
-        B,                       // batch
+        B * n_chunks,            // batch
         out_block_tiles,         // out_block_num_tiles
 
-        untilize_out  // untilize_out
+        untilize_out,  // untilize_out
+
+        num_reducer_partials,  // num_reducer_partials
     };
 
     /* Kernel defines */
@@ -1890,31 +1898,83 @@ operation::ProgramWithCallbacks create_program_gather_in0(
                                .set_tile_dims(interm0_cb_index, output_tile)
                                .set_globally_allocated_address(*out_buffer);
     }
+    /* TODO: Update output cores to only be on the cores that will have the final reduction. */
     auto cb_output = tt_metal::CreateCircularBuffer(program, all_cores, output_cb_config);
+
+    uint32_t reducer_cb_index = CB::c_intermed1;
+    tt_metal::CircularBufferConfig reducer_cb_config =
+        tt_metal::CircularBufferConfig(
+            out_CB_size / n_chunks * (num_reducer_partials - 1), {{reducer_cb_index, output_data_format}})
+            .set_page_size(reducer_cb_index, output_single_tile_size)
+            .set_tile_dims(reducer_cb_index, output_tile);
+    auto cb_reducer = tt_metal::CreateCircularBuffer(program, all_cores, reducer_cb_config);
+
+    uint32_t partial_cb_index = CB::c_intermed2;
+    tt_metal::CircularBufferConfig partial_cb_config =
+        tt_metal::CircularBufferConfig(out_CB_size / n_chunks, {{partial_cb_index, output_data_format}})
+            .set_page_size(partial_cb_index, output_single_tile_size)
+            .set_tile_dims(partial_cb_index, output_tile);
+    auto cb_partial = tt_metal::CreateCircularBuffer(program, all_cores, partial_cb_config);
 
     /* Runtime args */
     const auto& cores = corerange_to_cores(all_cores, std::nullopt, row_major);
     for (uint32_t i = 0; i < num_cores; ++i) {
+        bool master_reducer = i < ring_size;
+        uint32_t reducer_idx = i / ring_size;
+        uint32_t ring_idx = i % ring_size;
+
         const auto& core = cores[i];
         const auto& core_noc = device->worker_core_from_logical_core(core);
 
         /* in0 */
         uint32_t next_i = i == 0 ? num_cores - 1 : i - 1;
-        const auto& next_core = cores[next_i % num_cores];
+        const auto& next_core = cores[reducer_idx * ring_size + next_i % ring_size];
         const auto& next_core_noc = device->worker_core_from_logical_core(next_core);
         uint32_t noc = get_preferred_noc(core_noc, next_core_noc, device);
 
         std::vector<uint32_t> mm_in0_args = {
-            i,                // ring_index
+            ring_idx,         // ring_index
             next_core_noc.x,  // next_core_noc_x
             next_core_noc.y,  // next_core_noc_y
             noc,
         };
         tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, mm_in0_args);
 
+        /* in1 */
+        std::vector<uint32_t> mm_in1_args = {
+            noc,                            // noc
+            (std::uint32_t)master_reducer,  // master_reducer
+            reducer_idx,                    // reducer_idx
+        };
+
+        if (master_reducer) {
+            mm_in1_args.push_back(0);  // Placeholder for master reducer coords
+            mm_in1_args.push_back(0);  // Placeholder for master reducer coords
+            mm_in1_args.push_back(0);  // Placeholder for master reducer noc
+
+            for (uint32_t p = 1; p < num_reducer_partials; ++p) {
+                const auto& slave_reducer_core = cores[p * ring_size + ring_idx];
+                const auto& slave_reducer_core_noc = device->worker_core_from_logical_core(slave_reducer_core);
+
+                mm_in1_args.push_back(slave_reducer_core_noc.x);
+                mm_in1_args.push_back(slave_reducer_core_noc.y);
+                mm_in1_args.push_back(get_preferred_noc(core_noc, slave_reducer_core_noc, device));
+            }
+
+        } else {
+            const auto& master_reducer_core = cores[ring_idx];
+            const auto& master_reducer_core_noc = device->worker_core_from_logical_core(master_reducer_core);
+
+            mm_in1_args.push_back(master_reducer_core_noc.x);
+            mm_in1_args.push_back(master_reducer_core_noc.y);
+            mm_in1_args.push_back(get_preferred_noc(core_noc, master_reducer_core_noc, device));
+        }
+        tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, mm_in1_args);
+
         /* compute */
         std::vector<uint32_t> mm_kernel_compute_args = {
-            i,  // ring_idx
+            ring_idx,                       // ring_idx
+            (std::uint32_t)master_reducer,  // master_reducer
         };
 
         tt_metal::SetRuntimeArgs(program, mm_kernel, core, mm_kernel_compute_args);
@@ -1979,6 +2039,8 @@ operation::ProgramWithCallbacks matmul_multi_core_reuse_mcast_1d_optimized_(
     const std::optional<UnaryWithParam>& fused_activation,
     bool mcast_in0,
     bool gather_in0,
+    uint32_t num_reducer_partials,
+    uint32_t n_chunks,
     bool untilize_out,
     std::optional<ttnn::experimental::ccl::MatmulFusedOpSignaler>& fused_op_signaler) {
     const auto &ashape = a.get_legacy_shape(), bshape = b.get_legacy_shape();
@@ -2035,7 +2097,7 @@ operation::ProgramWithCallbacks matmul_multi_core_reuse_mcast_1d_optimized_(
     uint32_t B = get_batch_size(ashape);
     uint32_t Mt = ashape[-2] / in0_tile_shape[0];
     uint32_t Kt = ashape[-1] / in0_tile_shape[1];
-    uint32_t Nt = bshape[-1] / in1_tile_shape[1];
+    uint32_t Nt = bshape[-1] / in1_tile_shape[1] / n_chunks;
 
     if (fuse_batch) {
         Mt = B * Mt;
@@ -2055,14 +2117,14 @@ operation::ProgramWithCallbacks matmul_multi_core_reuse_mcast_1d_optimized_(
     // TODO: Max used grid can actually exceed mcast receiver grid if in0 is sharded
     // TODO: Move these validates to op validate and properly check for this
     TT_FATAL(
-        num_blocks_total <= num_cores_x * num_cores_y,
+        num_blocks_total <= num_cores_x * num_cores_y / num_reducer_partials,
         "Number of blocks exceeds number of cores: {} blocks > {} cores",
         num_blocks_total,
-        num_cores_x * num_cores_y);
+        num_cores_x * num_cores_y / num_reducer_partials);
 
     if (gather_in0) {
         TT_FATAL(
-            num_blocks_total == num_cores_x * num_cores_y,
+            num_blocks_total == num_cores_x * num_cores_y / num_reducer_partials,
             "Number of blocks must equal number of cores for gather_in0 mode: {} blocks != {} cores",
             num_blocks_total,
             num_cores_x * num_cores_y);
@@ -2101,6 +2163,8 @@ operation::ProgramWithCallbacks matmul_multi_core_reuse_mcast_1d_optimized_(
             per_core_M,
             per_core_N,
             fused_activation,
+            num_reducer_partials,
+            n_chunks,
             in0_buffer,
             in1_buffer,
             out_buffer,
@@ -2206,6 +2270,8 @@ operation::ProgramWithCallbacks matmul_multi_core_reuse_mcast_1d_optimized(
     const std::optional<UnaryWithParam>& fused_activation,
     bool mcast_in0,
     bool gather_in0,
+    uint32_t num_reducer_partials,
+    uint32_t n_chunks,
     bool untilize_out) {
     tt_metal::Program program{}; /* Create a program */
     std::optional<ttnn::experimental::ccl::MatmulFusedOpSignaler> empty_fused_op_signaler;
@@ -2228,6 +2294,8 @@ operation::ProgramWithCallbacks matmul_multi_core_reuse_mcast_1d_optimized(
         std::move(fused_activation),
         mcast_in0,
         gather_in0,
+        num_reducer_partials,
+        n_chunks,
         untilize_out,
         empty_fused_op_signaler);
 }
@@ -2264,6 +2332,8 @@ operation::ProgramWithCallbacks matmul_multi_core_reuse_mcast_1d_optimized_helpe
         config.fused_activation,
         config.mcast_in0,
         config.gather_in0,
+        config.num_reducer_partials,
+        config.n_chunks,
         untilize_out,
         fused_op_signaler);
 }
