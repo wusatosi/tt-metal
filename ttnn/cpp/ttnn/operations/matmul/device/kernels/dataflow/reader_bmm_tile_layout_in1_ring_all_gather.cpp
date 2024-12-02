@@ -13,6 +13,7 @@ void kernel_main() {
     uint32_t rt_args_idx = 0;
     uint32_t noc = get_arg_val<uint32_t>(rt_args_idx++);
     bool master_reducer = (bool)get_arg_val<uint32_t>(rt_args_idx++);
+    uint32_t master_reducer_idx = get_arg_val<uint32_t>(rt_args_idx++);
     uint32_t reducer_idx = get_arg_val<uint32_t>(rt_args_idx++);
     uint32_t master_reducer_core_noc_x = get_arg_val<uint32_t>(rt_args_idx++);
     uint32_t master_reducer_core_noc_y = get_arg_val<uint32_t>(rt_args_idx++);
@@ -53,10 +54,9 @@ void kernel_main() {
             uint64_t remote_reducer_semaphore_addr = get_noc_addr(
                 master_reducer_core_noc_x, master_reducer_core_noc_y, reducer_semaphore_addr, master_reducer_core_noc);
             // NOTE: Using read ptr as address to the start of the buffer is needed
-            uint32_t local_l1_write_addr =
-                get_write_ptr(reducer_cb_id) +
-                out_block_size_in_bytes *
-                    (reducer_idx - 1);  // reducer_idx is 1-indexed for slave reducers, but the buffer is 0-indexed
+
+            uint32_t write_idx = reducer_idx < master_reducer_idx ? reducer_idx : reducer_idx - 1;
+            uint32_t local_l1_write_addr = get_write_ptr(reducer_cb_id) + out_block_size_in_bytes * write_idx;
             uint64_t remote_l1_write_addr = get_noc_addr(
                 master_reducer_core_noc_x, master_reducer_core_noc_y, local_l1_write_addr, master_reducer_core_noc);
 

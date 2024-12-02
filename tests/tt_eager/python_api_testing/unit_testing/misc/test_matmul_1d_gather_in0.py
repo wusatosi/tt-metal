@@ -110,6 +110,7 @@ def run_multi_core_matmul_1d(
     in0_shape = [1, B, M, K]
     in1_shape = [1, n_chunks, K, N]
     num_cores = grid[0] * grid[1] if isinstance(grid, tuple) else len(grid)
+    ring_size = num_cores // num_reducer_partials
 
     storage_grid = num_cores_to_rectangle_grid(num_cores, device)
     if storage_grid is None:
@@ -120,14 +121,14 @@ def run_multi_core_matmul_1d(
     in0_block_h = M // ttnn.TILE_SIZE
     in0_block_w = K // num_cores // ttnn.TILE_SIZE
     out_block_h = M // ttnn.TILE_SIZE
-    out_block_w = N // (num_cores // num_reducer_partials) // ttnn.TILE_SIZE
+    out_block_w = N // ring_size // ttnn.TILE_SIZE
 
     num_blocks_y = (M // ttnn.TILE_SIZE - 1) // out_block_h + 1
     num_blocks_x = (N // ttnn.TILE_SIZE - 1) // out_block_w + 1
     num_blocks_total = num_blocks_y * num_blocks_x
 
-    if num_blocks_total != (num_cores // num_reducer_partials):
-        pytest.skip(f"num_blocks_total {num_blocks_total} != num_cores {num_cores // num_reducer_partials}")
+    if num_blocks_total != ring_size:
+        pytest.skip(f"num_blocks_total {num_blocks_total} != num_cores {ring_size}")
 
     out_subblock_h = 1
     out_subblock_w = max_dst_tiles if (out_block_h == 1 and out_block_w <= max_dst_tiles) else 4
@@ -139,6 +140,10 @@ def run_multi_core_matmul_1d(
     logger.debug("out block h w " + str(out_block_h) + " " + str(out_block_w))
     logger.debug("out subblock h w " + str(out_subblock_h) + " " + str(out_subblock_w))
 
+    output_partial_idx = (
+        num_reducer_partials // 2,
+        num_reducer_partials // 2 + 1,
+    )  # idx range for the master reducer cores
     if use_arbitrary_cores:
         # x, y
         if isinstance(grid, tuple):  # Generate random grid
@@ -158,22 +163,32 @@ def run_multi_core_matmul_1d(
             ]
         )
 
+        output_grid = CORE_RANGE[ring_size * output_partial_idx[0] : ring_size * output_partial_idx[1]]
         output_core_range_set = ttnn.CoreRangeSet(
             [
                 ttnn.CoreRange(
                     ttnn.CoreCoord(x, y),
                     ttnn.CoreCoord(x, y),
                 )
-                for x, y in CORE_RANGE[: num_cores // num_reducer_partials]
+                for x, y in output_grid
             ]
         )
     else:
         core_range_set = ttnn.num_cores_to_corerangeset(num_cores, storage_grid, row_wise=True)
-        output_core_range_set = ttnn.num_cores_to_corerangeset(
-            num_cores // num_reducer_partials, storage_grid, row_wise=True
+
+        output_grid = [(x, y) for y in range(storage_grid[1]) for x in range(storage_grid[0])]
+        output_grid = output_grid[ring_size * output_partial_idx[0] : ring_size * output_partial_idx[1]]
+        output_core_range_set = ttnn.CoreRangeSet(
+            [
+                ttnn.CoreRange(
+                    ttnn.CoreCoord(x, y),
+                    ttnn.CoreCoord(x, y),
+                )
+                for x, y in output_grid
+            ]
         )
 
-    N_shard = N // (num_cores // num_reducer_partials) * n_chunks
+    N_shard = N // ring_size * n_chunks
 
     in0_sharded_mem_config = ttnn.MemoryConfig(
         ttnn.TensorMemoryLayout.WIDTH_SHARDED,
@@ -381,7 +396,7 @@ def run_multi_core_matmul_1d(
 )
 @pytest.mark.parametrize(
     "use_arbitrary_cores",
-    [False],
+    [False, True],
 )
 def test_multi_core_matmul_1d_reduce_wh(
     device,

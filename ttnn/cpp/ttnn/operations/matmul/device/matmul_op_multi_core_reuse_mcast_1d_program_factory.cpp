@@ -1919,9 +1919,10 @@ operation::ProgramWithCallbacks create_program_gather_in0(
     /* Runtime args */
     const auto& cores = corerange_to_cores(all_cores, std::nullopt, row_major);
     for (uint32_t i = 0; i < num_cores; ++i) {
-        bool master_reducer = i < ring_size;
-        uint32_t reducer_idx = i / ring_size;
         uint32_t ring_idx = i % ring_size;
+        uint32_t master_reducer_idx = num_reducer_partials / 2;
+        uint32_t reducer_idx = i / ring_size;
+        bool master_reducer = reducer_idx == master_reducer_idx;
 
         const auto& core = cores[i];
         const auto& core_noc = device->worker_core_from_logical_core(core);
@@ -1944,6 +1945,7 @@ operation::ProgramWithCallbacks create_program_gather_in0(
         std::vector<uint32_t> mm_in1_args = {
             noc,                            // noc
             (std::uint32_t)master_reducer,  // master_reducer
+            master_reducer_idx,             // master_reducer_idx
             reducer_idx,                    // reducer_idx
         };
 
@@ -1952,7 +1954,11 @@ operation::ProgramWithCallbacks create_program_gather_in0(
             mm_in1_args.push_back(0);  // Placeholder for master reducer coords
             mm_in1_args.push_back(0);  // Placeholder for master reducer noc
 
-            for (uint32_t p = 1; p < num_reducer_partials; ++p) {
+            for (uint32_t p = 0; p < num_reducer_partials; ++p) {
+                if (p == reducer_idx) {
+                    continue;
+                }
+
                 const auto& slave_reducer_core = cores[p * ring_size + ring_idx];
                 const auto& slave_reducer_core_noc = device->worker_core_from_logical_core(slave_reducer_core);
 
@@ -1962,7 +1968,7 @@ operation::ProgramWithCallbacks create_program_gather_in0(
             }
 
         } else {
-            const auto& master_reducer_core = cores[ring_idx];
+            const auto& master_reducer_core = cores[master_reducer_idx * ring_size + ring_idx];
             const auto& master_reducer_core_noc = device->worker_core_from_logical_core(master_reducer_core);
 
             mm_in1_args.push_back(master_reducer_core_noc.x);

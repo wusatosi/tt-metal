@@ -1206,7 +1206,8 @@ void Matmul::validate(
 
                     if (program_config.num_reducer_partials == 1) {
                         TT_FATAL(
-                            input_tensor_a.shard_spec().value().grid == this->output_mem_config.shard_spec.value().grid,
+                            input_tensor_a.shard_spec().value().grid.num_cores() ==
+                                this->output_mem_config.shard_spec.value().grid.num_cores(),
                             "Output tensor must be sharded on the same cores as the input when using gather_in0.");
                     } else {
                         TT_FATAL(
