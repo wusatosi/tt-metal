@@ -54,7 +54,8 @@ jobs:
         run: echo "TT_FROM_PRECOMPILED_DIR=${{ github.workspace }}" >> $GITHUB_ENV
       - name: Build Python package distribution
         run: |
-          sleep 6000
+          ls -lart
+          find . -name "libnng.so" || true
           python -m build
       - name: Upload distribution as artifact
         uses: actions/upload-artifact@v4
