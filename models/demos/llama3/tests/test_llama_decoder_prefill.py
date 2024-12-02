@@ -18,6 +18,7 @@ from models.utility_functions import (
     comp_allclose,
 )
 from models.utility_functions import skip_for_grayskull
+from models.demos.llama3.tt.llama_rope import TtLlamaRotarySetup
 
 
 @torch.no_grad()
@@ -25,8 +26,10 @@ from models.utility_functions import skip_for_grayskull
 @pytest.mark.parametrize(
     "seq_len",
     (
-        4096,
-        128,
+        # 4096,
+        # 128,
+        12
+        * 1024,
     ),
 )
 @pytest.mark.parametrize(
@@ -41,7 +44,7 @@ from models.utility_functions import skip_for_grayskull
 def test_llama_decoder_inference(mesh_device, seq_len, use_program_cache, reset_seeds, ensure_gc):
     dtype = ttnn.bfloat8_b
 
-    mesh_device.enable_async(True)
+    # mesh_device.enable_async(True)
 
     model_args = TtModelArgs(mesh_device)
     model_args.n_layers = 1
@@ -57,20 +60,29 @@ def test_llama_decoder_inference(mesh_device, seq_len, use_program_cache, reset_
     reference_model.load_state_dict(partial_state_dict)
 
     generation_start_pos = 0
-    generation_length = 1
+    generation_length = 100
     all_tests_pass = True
 
     # pre-compute the rotational embedding matrix and send to device
-    rot_mats = get_prefill_rot_mat(model_args.head_dim, model_args.max_seq_len, mesh_device, seq_len=seq_len)
-    transformation_mat_torch = get_rot_transformation_mat(model_args.head_dim)
-    transformation_mats = ttnn.as_tensor(
-        transformation_mat_torch,
-        dtype=ttnn.bfloat16,
-        layout=ttnn.TILE_LAYOUT,
-        device=mesh_device,
-        mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
-        memory_config=ttnn.DRAM_MEMORY_CONFIG,
+    rope_setup = TtLlamaRotarySetup(
+        mesh_device,
+        model_args.max_batch_size,
+        model_args.head_dim,
+        model_args.max_seq_len,
+        model_args.rope_theta,
+        model_args.use_scaled_rope,
     )
+    trans_mats_dict = rope_setup.get_both_trans_mats()
+    rot_mats = get_prefill_rot_mat(model_args.head_dim, model_args.max_seq_len, mesh_device, seq_len=seq_len)
+    # transformation_mat_torch = get_rot_transformation_mat(model_args.head_dim)
+    # transformation_mats = ttnn.as_tensor(
+    #     transformation_mat_torch,
+    #     dtype=ttnn.bfloat16,
+    #     layout=ttnn.TILE_LAYOUT,
+    #     device=mesh_device,
+    #     mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+    #     memory_config=ttnn.DRAM_MEMORY_CONFIG,
+    # )
 
     # Initialize TT model
     tt_model = TtTransformerBlock(
@@ -80,6 +92,7 @@ def test_llama_decoder_inference(mesh_device, seq_len, use_program_cache, reset_
         state_dict=state_dict,
         layer_num=0,
         weight_cache_path=model_args.weight_cache_path(dtype),
+        transformation_mats=trans_mats_dict,
     )
 
     # TODO Update start_pos (check llama test for reference)
@@ -100,7 +113,7 @@ def test_llama_decoder_inference(mesh_device, seq_len, use_program_cache, reset_
         attn_mask_torch = torch.triu(attn_mask, diagonal=1)
         ref_output = reference_model(pt_decode_input, positions[0], freqs_cis_i, mask=attn_mask_torch)
         # Run TT model
-        tt_out = tt_model(decode_input, None, rot_mats, transformation_mats, user_id=0, mode="prefill")
+        tt_out = tt_model(decode_input, None, rot_mats, None, user_id=0, mode="prefill")
         tt_output_torch = ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))[
             0, :, :, : model_args.dim
         ].view(
