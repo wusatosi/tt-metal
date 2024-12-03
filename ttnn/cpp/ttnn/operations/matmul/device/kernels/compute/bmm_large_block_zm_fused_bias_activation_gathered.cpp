@@ -267,20 +267,16 @@ void MAIN {
             */
 
             // The only required call from binary_op_init_common, that doesn't lead to packer overflow, is:
-            binary_op_init_common(reducer_cb_id, reducer_cb_id, out_cb_id);
-            // UNPACK((llk_unpack_AB_hw_configure_disaggregated<DST_ACCUM_MODE>(reducer_cb_id, reducer_cb_id)));
+            if (!pack_out) {
+                UNPACK((llk_unpack_AB_hw_configure_disaggregated<DST_ACCUM_MODE>(reducer_cb_id, reducer_cb_id)));
+            }
 
             cb_wait_front(partial_cb_id, out_block_num_tiles);  // wait for the local partial
             cb_wait_front(
                 reducer_cb_id, out_block_num_tiles * (num_reducer_partials - 1));  // wait for the remote partials
-            add_tiles_init(reducer_cb_id, reducer_cb_id, !pack_out);
 
             uint32_t num_pack_iters = (out_block_num_tiles + max_dst_tiles - 1) / max_dst_tiles;  // ceil division
             uint32_t out_block_tile_cnt = 0;
-
-            UNPACK(DPRINT << "num_pack_iters: " << num_pack_iters << ENDL());
-            UNPACK(DPRINT << "out_block_num_tiles: " << out_block_num_tiles << ENDL());
-            UNPACK(DPRINT << "max_dst_tiles: " << max_dst_tiles << ENDL());
 
             for (uint32_t i = 0; i < num_pack_iters; i++) {
                 uint32_t num_tiles_to_pack = std::min(max_dst_tiles, out_block_num_tiles - out_block_tile_cnt);
@@ -290,43 +286,43 @@ void MAIN {
                     tile_regs_acquire();
                 }
 
-                for (uint32_t t = 0; t < num_tiles_to_pack; t++) {
-                    for (uint32_t p = 0; p < num_reducer_partials; p++) {
-                        uint32_t cb_a = 0;
-                        uint32_t cb_b = 0;
+                uint32_t cb_a = reducer_cb_id;
+                uint32_t cb_b = reducer_cb_id;
 
-                        uint32_t idx_a = out_block_tile_cnt;
-                        uint32_t idx_b = out_block_tile_cnt;
+                uint32_t idx_a = out_block_tile_cnt;
+                uint32_t idx_b = out_block_tile_cnt;
 
-                        if (p == 0) {
-                            if (!pack_out) {
-                                // already in dst
-                                continue;  // Skip the addition step
-                            } else {
-                                // TODO: when out_block_num_tiles > max_dst_tiles (ie packed out), need to copy when
-                                // num_reducer_partials % 2 != 0
-                                cb_a = partial_cb_id;
-                                cb_b = reducer_cb_id;
-                                idx_a += t;
-                                idx_b += t;
+                uint32_t p = 0;
 
-                                // if (i > 0 && num_reducer_partials % 2 != 0) {
-                                //     PACK((llk_pack_dest_init<false, false>()));
-                                // }
-                            }
-                        } else {
-                            cb_a = reducer_cb_id;
-                            cb_b = reducer_cb_id;
-                            idx_a += (out_block_num_tiles * (p - 1)) + t;
-                            idx_b += (out_block_num_tiles * p) + t;
+                if (pack_out) {  // local partial in CB
+                    cb_a = partial_cb_id;
+                    if (num_reducer_partials % 2 == 0) {
+                        // Add the local partial
+                        add_tiles_init(reducer_cb_id, reducer_cb_id, false);
+                        for (uint32_t t = 0; t < num_tiles_to_pack; t++) {
+                            add_tiles(cb_a, cb_b, idx_a + t, idx_b + t, t);
                         }
+                    } else {
+                        // Copy to dst
+                        copy_tile_to_dst_init_short(reducer_cb_id);
+                        for (uint32_t t = 0; t < num_tiles_to_pack; t++) {
+                            copy_tile(cb_a, idx_a + t, t);
+                        }
+                    }
+                    cb_a = reducer_cb_id;
 
-                        add_tiles(cb_a, cb_b, idx_a, idx_b, t);
-                        p++;  // Skip the next partial, as it was already added
+                    p = 1;  // Already done with the first partial in reducer cb
+                }
 
-                        // if (i > 0 && num_reducer_partials % 2 != 0) {
-                        //     PACK((llk_pack_dest_init<false, true>()));
-                        // }
+                if (num_reducer_partials > 2) {  // More than 2 partials
+                    add_tiles_init(reducer_cb_id, reducer_cb_id, true);
+                }
+                for (; p < num_reducer_partials - 1; p += 2) {
+                    uint32_t partial_idx_a = idx_a + out_block_num_tiles * p;
+                    uint32_t partial_idx_b = idx_b + out_block_num_tiles * (p + 1);
+
+                    for (uint32_t t = 0; t < num_tiles_to_pack; t++) {
+                        add_tiles(cb_a, cb_b, partial_idx_a + t, partial_idx_b + t, t);
                     }
                 }
                 tile_regs_commit();
