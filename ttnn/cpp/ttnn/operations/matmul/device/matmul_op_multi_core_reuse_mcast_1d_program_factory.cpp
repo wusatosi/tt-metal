@@ -1661,6 +1661,7 @@ operation::ProgramWithCallbacks create_program_gather_in0(
     bool fp32_dest_acc_en,
     bool math_approx_mode,
     bool packer_l1_acc,
+    bool dst_full_sync_en,
     CoreCoord compute_with_storage_grid_size,
     uint32_t B,
     uint32_t M,
@@ -1834,6 +1835,7 @@ operation::ProgramWithCallbacks create_program_gather_in0(
         tt_metal::ComputeConfig{
             .math_fidelity = math_fidelity,
             .fp32_dest_acc_en = fp32_dest_acc_en,
+            .dst_full_sync_en = dst_full_sync_en,
             .math_approx_mode = math_approx_mode,
             .compile_args = compute_kernel_args,
             .defines = mm_kernel_defines});
@@ -2157,6 +2159,7 @@ operation::ProgramWithCallbacks matmul_multi_core_reuse_mcast_1d_optimized_(
             fp32_dest_acc_en,
             math_approx_mode,
             packer_l1_acc,
+            dst_full_sync_en,
             compute_with_storage_grid_size,
             B,
             Mt,

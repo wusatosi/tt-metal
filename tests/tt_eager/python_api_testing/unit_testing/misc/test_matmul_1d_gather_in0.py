@@ -223,8 +223,8 @@ def run_multi_core_matmul_1d(
         ),
     )
 
-    in0 = torch.ones(in0_shape)
-    in1 = torch.ones(in1_shape)
+    in0 = torch.randn(in0_shape)
+    in1 = torch.randn(in1_shape)
 
     """
     Since the n_chunks will be folded over each other in the matmul,
@@ -323,7 +323,7 @@ def run_multi_core_matmul_1d(
             (8, 3),
             6,
             1,
-        ),  # fails
+        ),
         # 3 partials on 24 cores
         (
             1,
@@ -368,7 +368,7 @@ def run_multi_core_matmul_1d(
             (8, 3),
             4,
             4,
-        ),  # fails
+        ),  # fails (might be an issue with a bunch of partials, need to investigate)
         (
             1,
             32,
@@ -382,7 +382,7 @@ def run_multi_core_matmul_1d(
             (8, 3),
             4,
             1,
-        ),  # fails
+        ),
         (
             1,
             32,
@@ -411,6 +411,20 @@ def run_multi_core_matmul_1d(
             3,
             1,
         ),  # fails
+        (
+            1,
+            32,
+            32 * 2,
+            5 * 32 * 2,
+            ttnn.bfloat16,
+            ttnn.bfloat4_b,
+            ttnn.MathFidelity.LoFi,
+            True,
+            True,
+            (2, 1),
+            2,
+            2,
+        ),
         (
             1,
             32,

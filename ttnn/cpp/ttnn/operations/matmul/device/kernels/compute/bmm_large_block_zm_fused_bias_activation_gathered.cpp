@@ -267,9 +267,7 @@ void MAIN {
             */
 
             // The only required call from binary_op_init_common, that doesn't lead to packer overflow, is:
-            if (!pack_out) {
-                UNPACK((llk_unpack_AB_hw_configure_disaggregated<DST_ACCUM_MODE>(reducer_cb_id, reducer_cb_id)));
-            }
+            UNPACK((llk_unpack_AB_hw_configure_disaggregated<DST_ACCUM_MODE>(reducer_cb_id, reducer_cb_id)));
 
             cb_wait_front(partial_cb_id, out_block_num_tiles);  // wait for the local partial
             cb_wait_front(
