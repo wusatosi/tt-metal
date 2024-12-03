@@ -697,6 +697,8 @@ Tensor create_device_tensor(const TensorSpec& tensor_spec, Device* device) {
         device,
         tensor_spec.tensor_layout().get_memory_config());
 
+    std::cout << "create_device_tensor logical shape:" << tensor_spec.logical_shape() << std::endl;
+
     auto device_buffer = tensor_impl::allocate_buffer_on_device(device, tensor_spec);
     auto output = Tensor(DeviceStorage{device_buffer}, tensor_spec);
     output = tt::tt_metal::set_tensor_id(output);

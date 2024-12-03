@@ -123,6 +123,10 @@ Size TilePageConfig::get_page_shape(
 size_t TilePageConfig::get_page_size_bytes(const Size& page_shape, DataType dtype) const {
     const auto tiles_count = page_shape.height() / tile_.get_height() * page_shape.width() / tile_.get_width();
     const auto size = tiles_count * tile_.get_tile_size(datatype_to_dataformat_converter(dtype));
+    printf(
+        "TilePageConfig::get_page_size_bytes tiles_count: %ld, tile size: %d\n",
+        tiles_count,
+        tile_.get_tile_size(datatype_to_dataformat_converter(dtype)));
     return size;
 }
 

@@ -162,9 +162,15 @@ std::optional<ShardSpecBuffer> TensorLayout::compute_shard_spec_buffer(const ttn
 
 size_t TensorLayout::compute_packed_buffer_size_bytes(const ttnn::SimpleShape& shape) const {
     const Size physical_size = compute_physical_shape(shape);
+    printf("compute_packed_buffer_size_bytes physical size: %ld, %ld\n", physical_size.height(), physical_size.width());
     const Size page_shape = compute_page_shape(physical_size);
+    printf("compute_packed_buffer_size_bytes page shape: %ld, %ld\n", page_shape.height(), page_shape.width());
     const auto width_remainder = physical_size.width() % page_shape.width();
     const auto height_remainder = physical_size.height() % page_shape.height();
+    printf(
+        "compute_packed_buffer_size_bytes width remainder: %ld, height remainder: %ld\n",
+        width_remainder,
+        height_remainder);
     TT_FATAL(
         width_remainder == 0 && height_remainder == 0,
         "Physical size {} must be multiple of page size {}",
@@ -176,6 +182,8 @@ size_t TensorLayout::compute_packed_buffer_size_bytes(const ttnn::SimpleShape& s
 
     const size_t page_count = physical_area / page_area;
     const size_t page_size_bytes = compute_page_size_bytes(page_shape);
+
+    printf("compute_packed_buffer_size_bytes page count: %ld, page size bytes: %ld\n", page_count, page_size_bytes);
 
     return page_count * page_size_bytes;
 }

@@ -41,9 +41,11 @@ operation::ProgramWithCallbacks interleaved_to_sharded_multi_core(
     bool is_blackhole = (input.device()->arch() == tt::ARCH::BLACKHOLE);
 
     if (input.get_layout() == Layout::TILE) {
+        printf("HIT TILE\n");
         num_units = input.volume() / TILE_HW;
         input_unit_size = tt::tt_metal::detail::TileSize(input_cb_data_format);
         output_unit_size = tt::tt_metal::detail::TileSize(output_cb_data_format);
+        printf("i2s shard spec shape %d, %d\n", shard_spec.shape[0], shard_spec.shape[1]);
         num_units_per_shard_height = shard_spec.shape[0] / TILE_HEIGHT;
         num_units_per_shard_width = shard_spec.shape[1] / TILE_WIDTH;
         num_units_per_shard = num_units_per_shard_height * num_units_per_shard_width;
@@ -61,6 +63,7 @@ operation::ProgramWithCallbacks interleaved_to_sharded_multi_core(
         input_unit_size = shard_spec.shape[1] * input.element_size();
         output_unit_size = shard_spec.shape[1] * output.element_size();
         num_units_per_shard_height = shard_spec.shape[0];
+        printf("i2s shard spec shape %d, %d\n", shard_spec.shape[0], shard_spec.shape[1]);
         num_units_per_shard_width = 1;
         num_units_per_shard = num_units_per_shard_height * num_units_per_shard_width;
         num_units_per_row = input.get_legacy_shape()[-1] * input.element_size();
@@ -89,6 +92,7 @@ operation::ProgramWithCallbacks interleaved_to_sharded_multi_core(
                 .set_page_size(input_cb_index, input_page_size);
         auto cb_input = tt::tt_metal::CreateCircularBuffer(program, all_cores, input_cb_out_config);
     }
+    printf("i2s output_page_size: %d\n", output_page_size);
     tt::tt_metal::CircularBufferConfig output_cb_out_config =
         tt::tt_metal::CircularBufferConfig(num_input_units * output_page_size, {{out_cb_index, output_cb_data_format}})
             .set_page_size(out_cb_index, output_page_size)
