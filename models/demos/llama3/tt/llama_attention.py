@@ -241,19 +241,15 @@ class TtLlamaAttention(LightweightModule):
             xqkv_fused,
             num_heads=self.n_local_heads,
             num_kv_heads=self.n_local_kv_heads,
+            overlap_qk_coregrid=False,
             memory_config=ttnn.L1_HEIGHT_SHARDED_MEMORY_CONFIG,
         )
 
         ttnn.deallocate(xqkv_fused)
 
-        # Q Rotary Embeddings
-        q_heads_1BQD = ttnn.experimental.rotary_embedding_llama(
-            q_heads_pre_rot_1BQD, rot_mats[0], rot_mats[1], self.transformation_mats["decode"], is_decode_mode=True
-        )
-
-        # K Rotary Embeddings
-        k_heads_1BKD = ttnn.experimental.rotary_embedding_llama(
-            k_heads_pre_rot_1BKD, rot_mats[0], rot_mats[1], self.transformation_mats["decode"], is_decode_mode=True
+        # Q, K Rotary Embeddings
+        q_heads_1BQD, k_heads_1BKD = ttnn.experimental.rotary_embedding_llama_fused_qk(
+            q_heads_pre_rot_1BQD, k_heads_pre_rot_1BKD, rot_mats[0], rot_mats[1], self.transformation_mats["decode"]
         )
 
         ttnn.deallocate(q_heads_pre_rot_1BQD)
@@ -267,9 +263,8 @@ class TtLlamaAttention(LightweightModule):
         # k_heads, [seqlen, n_kv_heads, bsz, head_dim]
         # v_heads [seqlen, n_kv_heads, bsz, head_dim]
         # keys, [max_batch_size, n_kv_heads // configuration.num_devices, max_seq_len, head_dim]
-        ttnn.experimental.paged_update_cache(keys, k_heads_1BKD, update_idxs_tensor=current_pos, page_table=page_table)
-        ttnn.experimental.paged_update_cache(
-            values, v_heads_1BKD, update_idxs_tensor=current_pos, page_table=page_table
+        ttnn.experimental.paged_fused_update_cache(
+            keys, k_heads_1BKD, values, v_heads_1BKD, update_idxs_tensor=current_pos, page_table=page_table
         )
 
         self.layer_past[0] = keys

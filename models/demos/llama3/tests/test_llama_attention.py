@@ -93,7 +93,7 @@ def test_llama_attention_inference(
     # Setup RoPE transformation matrices
     rope_setup = TtLlamaRotarySetup(
         mesh_device,
-        batch_size,
+        2 * batch_size,
         model_args.head_dim,
         model_args.max_seq_len,
         model_args.rope_theta,
@@ -165,7 +165,7 @@ def test_llama_attention_inference(
         )
 
         # Get cos/sin matrices for the current position of each user
-        rot_mats = rope_setup.get_rot_mats(current_pos)
+        rot_mats = rope_setup.get_rot_mats(current_pos.repeat(2))
 
         tt_out = tt_model(
             attention_input,
