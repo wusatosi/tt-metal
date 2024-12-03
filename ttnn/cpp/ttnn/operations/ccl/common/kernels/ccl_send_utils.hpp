@@ -93,7 +93,7 @@ void mcast_contig_pages_to_noc_address(
     // Local chip write
     noc_async_write(
         payload_l1_address,
-        get_noc_addr(dest_noc_xy.x, dest_noc_xy.y, dest_addr, 1), // use noc_id = 1 for local writes on writer
+        get_noc_addr(dest_noc_xy.x, dest_noc_xy.y, dest_addr, noc_index), // use noc_id = noc_index for local writes on writer
         payload_size_bytes
     );
 
@@ -303,11 +303,14 @@ void mcast_sync_signal_to_addr(
     DPRINT << "num_sync_signals: " << (uint32_t)num_sync_signals << "\n";
 
     for (size_t i = 0; i < num_sync_signals; ++i) {
-        auto dest_sem_addr = get_semaphore(get_arg_val<uint32_t>(sync_details_arg_idx++));
+        // uint32_t semaphore_id = get_arg_val<uint32_t>(sync_details_arg_idx++);
+        // auto dest_sem_addr = get_semaphore(semaphore_id);
+        auto dest_sem_addr = get_arg_val<uint32_t>(sync_details_arg_idx++); // hack, we pass in the address instead of the semaphore id
         auto dest_noc_x = get_arg_val<uint32_t>(sync_details_arg_idx++);
         auto dest_noc_y = get_arg_val<uint32_t>(sync_details_arg_idx++);
 
         // tt::fabric::nop(); // (1) no hang here
+        // DPRINT << "semaphore_id: " << (uint32_t)semaphore_id << "\n";
         DPRINT << "dest_sem_addr: " << (uint32_t)dest_sem_addr << "\n";
         DPRINT << "dest_noc_x: " << (uint32_t)dest_noc_x << "\n";
         DPRINT << "dest_noc_y: " << (uint32_t)dest_noc_y << "\n";
