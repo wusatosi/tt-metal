@@ -727,14 +727,14 @@ def filter_by_id_range(rows, id_range):
     return rows
 
 
-def main(csv_file, signpost, ignore_signposts, min_percentage, id_range, csv_output, no_advice):
+def main(csv_file, signpost, ignore_signposts, min_percentage, id_range, csv_output, no_advice, tracing_mode):
     df = pd.read_csv(csv_file, low_memory=False)
 
     # Add a column for original row numbers
     df["ORIGINAL_ROW"] = df.index + 2  # +2 to match Excel row numbers (1-based + header)
 
     # Sort the DataFrame by "HOST START TS" column
-    if "HOST START TS" in df.columns:
+    if "HOST START TS" in df.columns and not tracing_mode:
         print(colored("Sorting CSV by 'HOST START TS' column...", "cyan"))
         df = df.sort_values(by="HOST START TS")
     else:
@@ -830,6 +830,8 @@ if __name__ == "__main__":
     parser.add_argument("--no-color", action="store_true", help="Force output without color")
     parser.add_argument("--csv", action="store_true", help="Output in CSV format")
     parser.add_argument("--no-advice", action="store_true", help="Only show the table section of the report")
+    # Sorting by HOST START TS is incorrect when using tracing mode since the tracing ops timestamps are the ones when captured and not executed
+    parser.add_argument("--tracing-mode", action="store_true", help="Do not sort when in tracing mode")
     args = parser.parse_args()
 
     # Set the global color_output variable
@@ -842,4 +844,13 @@ if __name__ == "__main__":
         print(colored("Invalid --id-range format. Please use 'START-END', 'START-', or '-END'.", "red"))
         exit(1)
 
-    main(args.csv_file, args.signpost, args.ignore_signposts, args.min_percentage, id_range, args.csv, args.no_advice)
+    main(
+        args.csv_file,
+        args.signpost,
+        args.ignore_signposts,
+        args.min_percentage,
+        id_range,
+        args.csv,
+        args.no_advice,
+        args.tracing_mode,
+    )

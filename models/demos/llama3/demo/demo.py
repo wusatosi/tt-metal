@@ -549,7 +549,12 @@ def run_llama3_demo(
         profiler.start(f"inference_decode", iteration=batch_idx)
 
         ttnn.record_event(1, write_event)
-        while users_decoding:
+        from tracy import signpost
+        from time import sleep
+
+        sleep(5)
+        signpost("tracy_perf_run")
+        while users_decoding and iteration < 2:  # run decoding twice for compile and inference time
             if iteration == 0:  # First iteration also accounts for compile time
                 profiler.start(f"compile_decode", iteration=batch_idx)
             iteration_time_start = time()
@@ -569,10 +574,9 @@ def run_llama3_demo(
             # Write to host
             ttnn.wait_for_event(1, op_event)
             if tt_model.args.is_galaxy:
-                tt_output_torch = ttnn.to_torch(
-                    tt_out_tok.cpu(blocking=True, cq_id=1),
-                    mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(3, 1), mesh_shape=mesh_device.shape),
-                )[0, 0, 0, :batch_size]
+                # Get only one tensor since they are all the same
+                tt_out_tok_cpu = ttnn.get_device_tensors(tt_out_tok)[0].cpu(blocking=True, cq_id=1)
+                tt_output_torch = tt_out_tok_cpu.to_torch()[0, 0, 0, :batch_size]
             else:
                 tt_output_torch = ttnn.to_torch(  # TODO: Apply changes to support TG
                     tt_out_tok.cpu(blocking=True, cq_id=1), mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1)
@@ -594,9 +598,9 @@ def run_llama3_demo(
             iteration_time = time() - iteration_time_start
 
             # Ignore the first iteration for average speed calculation
-            if iteration > 0:
-                total_decoding_time += iteration_time
-                total_tokens_generated += 1
+            # if iteration > 0:
+            total_decoding_time += iteration_time
+            total_tokens_generated += 1
 
             tokens_per_second_per_user = 1 / iteration_time
 
@@ -625,7 +629,7 @@ def run_llama3_demo(
             iteration += 1
 
             # Upper limit of generated tokens for each user (to avoid infinite generation in case eos is not seen)
-            if iteration >= max_generated_tokens:
+            if iteration >= max_generated_tokens or iteration >= 1:
                 users_decoding = False
 
             if not users_decoding:
@@ -674,7 +678,9 @@ def run_llama3_demo(
     compile_decode_time = profiler.get_duration("compile_decode")
     inference_prefill_time = profiler.get_duration("inference_prefill")
     inference_decode_time = profiler.get_duration("inference_decode")
-    log_printing_time = sum(profiler.get_duration(f"log_printing_iter_{i}") for i in range(max_generated_tokens))
+    log_printing_time = sum(
+        profiler.get_duration(f"log_printing_iter_{i}") for i in range(min(iteration, max_generated_tokens))
+    )
     log_saving_file_time = profiler.get_duration(f"log_saving_file")
 
     # Correct the inference decode time to remove the time spent on compile (1st iteration) and log_printing (at the end of every iteration)
@@ -713,7 +719,7 @@ def run_llama3_demo(
     logger.info(f"Decode compile time: {round(measurements['compile_decode'], 4)}s")
     logger.info(f"Prefill inference time per user: {round(inference_prefill_time/num_users_generated_prefill, 4)}s")
     logger.info(
-        f"Total Decode inference time ({max_generated_tokens-1} iterations): {round(measurements['inference_decode'], 4)}s"
+        f"Total Decode inference time ({min(max_generated_tokens, iteration)-1} iterations): {round(measurements['inference_decode'], 4)}s"
     )
     logger.info("")
     logger.info(f"Time to first token: {round(measurements['prefill_time_to_token']* 1000, 2)}ms")
