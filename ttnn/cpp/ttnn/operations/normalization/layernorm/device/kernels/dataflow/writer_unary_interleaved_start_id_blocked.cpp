@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "dataflow_api.h"
+#include "debug/dprint.h"
 
 void kernel_main() {
     uint32_t dst_addr  = get_arg_val<uint32_t>(0);
@@ -23,18 +24,19 @@ void kernel_main() {
         .page_size = tile_bytes,
         .data_format = data_format
     };
-
+    // DPRINT << "WRITER: num_tiles = " << (uint16_t)num_tiles << ENDL();
     uint32_t tile_id = tile_offset;
-    for (uint32_t i = 0; i<num_tiles; i += blk) {
-        cb_wait_front(cb_id_out0, blk);
+    // for (uint32_t i = 0; i<num_tiles; i += blk) {
+        // DPRINT << "WRITER: waiting for this many tiles: "<< (uint16_t)blk << ENDL();
+        cb_wait_front(cb_id_out0, num_tiles);
         uint32_t l1_read_addr = get_read_ptr(cb_id_out0);
-        for (uint32_t j = 0; j<blk; j++) {
+        for (uint32_t j = 0; j<num_tiles; j++) {
             noc_async_write_tile(tile_id, s, l1_read_addr);
             tile_id++;
             l1_read_addr += tile_bytes;
         }
         noc_async_write_barrier();
-        cb_pop_front(cb_id_out0, blk);
+        cb_pop_front(cb_id_out0, num_tiles);
 
-    }
+    // }
 }

@@ -143,7 +143,7 @@ operation::ProgramWithCallbacks layernorm_multi_core(
     uint32_t WtB    =  tt::div_up(Wt, block_size)*block_size; // Wt padded to be divisible by block size
     uint32_t in0_t  =  WtB; // cb_x for no pre-add variant, x=a+b for fused pre-add, extra space for some buffering
     uint32_t in1_t  =  block_size*2; // buffer for fused pre-add b tensor
-    uint32_t out0_t =  block_size*2;
+    uint32_t out0_t =  Wt;
     uint32_t im0_t  =  WtB; // buffer for saving xmm
     uint32_t im3_t  =  WtB; // buffer for xmm^2
     uint32_t in5_t  =  WtB; // buffer for gamma
