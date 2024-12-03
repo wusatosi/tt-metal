@@ -65,13 +65,20 @@ std::mutex device_mutex;
 
 constexpr CoreCoord SYNC_CORE = {0, 0};
 
-std::set<tracy::TTDeviceEvent> ret = {};
-std::set<tracy::TTDeviceEvent>& getSyncDeviceData(int device_id) {
+std::vector<tracy::TTDeviceEvent> getSyncDeviceData(int device_id) {
+    std::vector<tracy::TTDeviceEvent> sync_data;
     if (tt_metal_device_profiler_map.find(device_id) != tt_metal_device_profiler_map.end()) {
-        return tt_metal_device_profiler_map.at(device_id).device_sync_events;
+        ZoneScopedN("Fetching_device_sync_event");
+        for (auto event : tt_metal_device_profiler_map.at(device_id).device_sync_events) {
+            if (event.zone_name.find("SYNC-ZONE") != std::string::npos) {
+                sync_data.push_back(event);
+            }
+        }
+        // tt_metal_device_profiler_map.at(device_id).device_sync_events.clear();
     }
-    return ret;
+    return sync_data;
 }
+
 void setControlBuffer(chip_id_t device_id, std::vector<uint32_t>& control_buffer) {
 #if defined(TRACY_ENABLE)
     const metal_SocDescriptor& soc_d = tt::Cluster::instance().get_soc_desc(device_id);
@@ -388,18 +395,19 @@ void ProfilerSync() {
     std::vector<std::pair<chip_id_t, chip_id_t>> ping_pairs;
     for (const auto& device : ethernet_connections) {
         for (const auto& connection : device.second) {
+            chip_id_t sender_device = device.first;
             chip_id_t receiver_device = std::get<0>(connection.second);
 
-            if (visited_devices.find(device.first) == visited_devices.end() or
+            if (visited_devices.find(sender_device) == visited_devices.end() or
                 visited_devices.find(receiver_device) == visited_devices.end()) {
-                visited_devices.insert(device.first);
+                visited_devices.insert(sender_device);
                 visited_devices.insert(receiver_device);
-                std::pair<chip_id_t, chip_id_t> ping_pair = {device.first, receiver_device};
+                std::pair<chip_id_t, chip_id_t> ping_pair = {sender_device, receiver_device};
                 ping_pairs.push_back(ping_pair);
 
                 deviceDeviceTimePair.emplace(
-                    device.first, (std::unordered_map<chip_id_t, std::vector<std::pair<uint64_t, uint64_t>>>){});
-                deviceDeviceTimePair.at(device.first)
+                    sender_device, (std::unordered_map<chip_id_t, std::vector<std::pair<uint64_t, uint64_t>>>){});
+                deviceDeviceTimePair.at(sender_device)
                     .emplace(receiver_device, (std::vector<std::pair<uint64_t, uint64_t>>){});
             }
         }
@@ -480,7 +488,6 @@ void DumpDeviceProfileResults(Device* device, bool lastDump) {
     std::vector<CoreCoord> workerCores;
     auto device_id = device->id();
     if (device_id == 1 and !device_sync_done) {
-        // detail::syncDeviceDevice (1,0);
         device_sync_done = true;
     }
     auto device_num_hw_cqs = device->num_hw_cqs();
@@ -494,9 +501,46 @@ void DumpDeviceProfileResults(Device* device, bool lastDump) {
         workerCores.push_back(physicalCore);
     }
     device->push_work([device, workerCores, lastDump]() mutable {
+        if (deviceDeviceTimePair.find(device->id()) != deviceDeviceTimePair.end() and !lastDump) {
+            for (auto& connected_device : deviceDeviceTimePair.at(device->id())) {
+                std::cout << "CON DEV:" << device->id() << "->" << connected_device.first << std::endl;
+                if (tt::DevicePool::instance().is_device_active(device->id())) {
+                    detail::syncDeviceDevice(device->id(), connected_device.first);
+                    Device* device_receiver = tt::DevicePool::instance().get_active_device(connected_device.first);
+                    DumpDeviceProfileResults(device_receiver);
+                    std::vector<tracy::TTDeviceEvent> sync_data_receiver = getSyncDeviceData(device_receiver->id());
+                    // detail::syncDeviceDevice (device->id(),connected_device.first);
+                    // Device* device_receiver = tt::DevicePool::instance().get_active_device(connected_device.first);
+                    // DumpDeviceProfileResults(device_receiver);
+                    // DumpDeviceProfileResults(device, workerCores, lastDump);
+
+                    // TT_ASSERT (tt_metal_device_profiler_map.find(device_receiver->id()) !=
+                    // tt_metal_device_profiler_map.end()) TT_ASSERT (tt_metal_device_profiler_map.find(device->id()) !=
+                    // tt_metal_device_profiler_map.end())
+                    // TT_ASSERT(tt_metal_device_profiler_map.at(device->id()).device_sync_events.size() == \
+                            //tt_metal_device_profiler_map.at(device_receiver).device_sync_events.size())
+
+                    // auto event_receiver =
+                    // tt_metal_device_profiler_map.at(device_receiver->id()).device_sync_events.begin(); for (auto
+                    // event_sender = tt_metal_device_profiler_map.at(device->id()).device_sync_events.begin();
+                    // event_sender != tt_metal_device_profiler_map.at(device->id()).device_sync_events.end();
+                    // event_sender ++){
+                    // TT_ASSERT(event_receiver !=
+                    // tt_metal_device_profiler_map.at(device_receiver->id()).device_sync_events.end());
+
+                    ////std::cout << device->id() <<  "," << device_receiver->id() << std::endl;
+
+                    // event_receiver ++;
+                    //}
+
+                    // tt_metal_device_profiler_map.at(device->id()).device_sync_events.clear();
+                    // tt_metal_device_profiler_map.at(device_receiver->id()).device_sync_events.clear();
+                }
+            }
+        }
         DumpDeviceProfileResults(device, workerCores, lastDump);
+        std::vector<tracy::TTDeviceEvent> sync_data_sender = getSyncDeviceData(device->id());
         // auto device_id = device->id();
-        // if (device_id == 1 and !lastDump)
         //{
         // auto device_0 = tt::DevicePool::instance().get_active_device(0);
         // DumpDeviceProfileResults(device_0);
