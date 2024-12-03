@@ -31,10 +31,10 @@ void kernel_main() {
     volatile tt_l1_ptr uint32_t* l1_reducer_sem_addr =
         reinterpret_cast<volatile tt_l1_ptr uint32_t*>(reducer_semaphore_addr);
 
-    constexpr uint32_t cb_id_in1 = 1;
-    constexpr uint32_t out_cb_id = tt::CB::c_out0;
-    constexpr uint32_t reducer_cb_id = tt::CB::c_intermed1;
-    constexpr uint32_t partial_cb_id = tt::CB::c_intermed2;
+    constexpr uint32_t cb_id_in1 = tt::CB::c_in1;
+    constexpr uint32_t out_cb_id = tt::CB::c_in3;
+    constexpr uint32_t reducer_cb_id = tt::CB::c_in5;
+    constexpr uint32_t partial_cb_id = tt::CB::c_in6;
 
     constexpr uint32_t shard_size_in_tiles = shard_width_in_tiles * shard_height_in_tiles;
     constexpr uint32_t out_block_size_in_bytes = out_block_num_tiles * get_tile_size(reducer_cb_id);

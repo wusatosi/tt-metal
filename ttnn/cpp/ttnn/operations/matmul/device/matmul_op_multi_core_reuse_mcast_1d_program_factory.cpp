@@ -1862,8 +1862,8 @@ operation::ProgramWithCallbacks create_program_gather_in0(
             .set_tile_dims(src2_cb_index, in0_tile);
     auto cb_src2 = tt_metal::CreateCircularBuffer(program, all_cores, src2_cb_config);
 
-    uint32_t output_cb_index = CB::c_out0;  // output operands start at index 16
-    uint32_t interm0_cb_index = CB::c_intermed0;
+    uint32_t output_cb_index = CB::c_in3;  // output operands start at index 16
+    uint32_t interm0_cb_index = CB::c_in4;
     tt_metal::CircularBufferConfig interm0_cb_config =
         tt_metal::CircularBufferConfig(0, {{interm0_cb_index, interm0_data_format}});
     tt_metal::CircularBufferConfig output_cb_config =
@@ -1901,7 +1901,7 @@ operation::ProgramWithCallbacks create_program_gather_in0(
     /* TODO: Update output cores to only be on the cores that will have the final reduction. */
     auto cb_output = tt_metal::CreateCircularBuffer(program, all_cores, output_cb_config);
 
-    uint32_t reducer_cb_index = CB::c_intermed1;
+    uint32_t reducer_cb_index = CB::c_in5;
     tt_metal::CircularBufferConfig reducer_cb_config =
         tt_metal::CircularBufferConfig(
             out_CB_size / n_chunks * (num_reducer_partials - 1), {{reducer_cb_index, output_data_format}})
@@ -1909,7 +1909,7 @@ operation::ProgramWithCallbacks create_program_gather_in0(
             .set_tile_dims(reducer_cb_index, output_tile);
     auto cb_reducer = tt_metal::CreateCircularBuffer(program, all_cores, reducer_cb_config);
 
-    uint32_t partial_cb_index = CB::c_intermed2;
+    uint32_t partial_cb_index = CB::c_in6;
     tt_metal::CircularBufferConfig partial_cb_config =
         tt_metal::CircularBufferConfig(out_CB_size / n_chunks, {{partial_cb_index, output_data_format}})
             .set_page_size(partial_cb_index, output_single_tile_size)

@@ -69,10 +69,10 @@ void MAIN {
     constexpr uint32_t in0_cb_id = tt::CB::c_in0;
     constexpr uint32_t in1_cb_id = tt::CB::c_in1;
     constexpr uint32_t in2_cb_id = tt::CB::c_in2;
-    constexpr uint32_t out_cb_id = tt::CB::c_out0;
-    constexpr uint32_t mm_partials_cb_id = tt::CB::c_intermed0;
-    constexpr uint32_t reducer_cb_id = tt::CB::c_intermed1;
-    constexpr uint32_t partial_cb_id = tt::CB::c_intermed2;
+    constexpr uint32_t out_cb_id = tt::CB::c_in3;
+    constexpr uint32_t mm_partials_cb_id = tt::CB::c_in4;
+    constexpr uint32_t reducer_cb_id = tt::CB::c_in5;
+    constexpr uint32_t partial_cb_id = tt::CB::c_in6;
 
     const uint32_t mm_out_cb_id = num_reducer_partials > 1 ? partial_cb_id : out_cb_id;
     // The only case where we don't want to pack_out is when the master
