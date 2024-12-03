@@ -45,10 +45,12 @@ operation::ProgramWithCallbacks all_gather_multi_core_with_workers_new(
     const uint32_t num_links,
     const uint32_t ring_size,
     const uint32_t ring_index,
-    ccl::Topology topology)//,
+    ccl::Topology topology,
+    const GlobalSemaphore semaphore_handle)//,
     // std::optional<ccl::SyncModeSpec> sync_details)
      {
     tt::tt_metal::Program program{};
+    auto global_semaphore_addr = semaphore_handle.address();
 
     // // Sleep for ring_index * 5 seconds to stagger startup
     // std::this_thread::sleep_for(std::chrono::seconds(ring_index * 5));
@@ -57,8 +59,9 @@ operation::ProgramWithCallbacks all_gather_multi_core_with_workers_new(
     std::optional<ccl::SyncModeSpec> sync_details = ttnn::ccl::SyncModeSpec {
         1, // num_device
         drain_sync_core,
-        {CreateSemaphore(program, {drain_sync_core}, 0)},
+        // {CreateSemaphore(program, {drain_sync_core}, 0)},
         // {CreateGlobalSemaphore(input_tensor.device(), {drain_sync_core}, 0)},
+        {global_semaphore_addr},
         {ring_size * num_links}
     };
     log_debug(tt::LogOp, "DEBUG: device: {}", input_tensor.device()->id());
@@ -227,6 +230,7 @@ operation::ProgramWithCallbacks all_gather_multi_core_with_workers_new(
     auto override_runtime_arguments_callback =
         [worker_sender_reader_kernel_id,
          worker_sender_writer_kernel_id,
+         semaphore_handle,
          sender_worker_cores] (
         const void* operation,
         Program& program,
