@@ -11,7 +11,7 @@
 #include "mod_div_lib.h"
 
 #include "compute_kernel_api/eltwise_unary/sfpu_split_includes.h"
-// #include "debug/dprint.h"
+#include "debug/dprint.h"
 
 namespace NAMESPACE {
 
@@ -77,7 +77,9 @@ void MAIN {
     const uint32_t mm_out_cb_id = num_reducer_partials > 1 ? partial_cb_id : out_cb_id;
     // The only case where we don't want to pack_out is when the master
     // reducer partial can stay in dst and can be accumulated on top of
-    const bool pack_out = num_reducer_partials == 1 || num_reducer_partials % 2 == 0 || !master_reducer;
+    uint32_t max_dst_tiles = 4;  // TODO: Make this dynamic
+    const bool pack_out = num_reducer_partials == 1 || num_reducer_partials % 2 == 0 || !master_reducer ||
+                          out_block_num_tiles > max_dst_tiles;
 
 #ifdef SFPU_OP_INIT_ACTIVATION
     SFPU_OP_INIT_ACTIVATION
@@ -265,25 +267,30 @@ void MAIN {
             */
 
             // The only required call from binary_op_init_common, that doesn't lead to packer overflow, is:
-            UNPACK((llk_unpack_AB_hw_configure_disaggregated<DST_ACCUM_MODE>(reducer_cb_id, reducer_cb_id)));
-            cb_reserve_back(out_cb_id, out_block_num_tiles);
-            bool acc_to_dst = true;
+            binary_op_init_common(reducer_cb_id, reducer_cb_id, out_cb_id);
+            // UNPACK((llk_unpack_AB_hw_configure_disaggregated<DST_ACCUM_MODE>(reducer_cb_id, reducer_cb_id)));
 
             cb_wait_front(partial_cb_id, out_block_num_tiles);  // wait for the local partial
             cb_wait_front(
                 reducer_cb_id, out_block_num_tiles * (num_reducer_partials - 1));  // wait for the remote partials
-            add_tiles_init(reducer_cb_id, reducer_cb_id, acc_to_dst);
+            add_tiles_init(reducer_cb_id, reducer_cb_id, !pack_out);
 
-            uint32_t max_dst_tiles = 4;  // TODO: Make this dynamic
             uint32_t num_pack_iters = (out_block_num_tiles + max_dst_tiles - 1) / max_dst_tiles;  // ceil division
             uint32_t out_block_tile_cnt = 0;
 
+            UNPACK(DPRINT << "num_pack_iters: " << num_pack_iters << ENDL());
+            UNPACK(DPRINT << "out_block_num_tiles: " << out_block_num_tiles << ENDL());
+            UNPACK(DPRINT << "max_dst_tiles: " << max_dst_tiles << ENDL());
+
             for (uint32_t i = 0; i < num_pack_iters; i++) {
+                uint32_t num_tiles_to_pack = std::min(max_dst_tiles, out_block_num_tiles - out_block_tile_cnt);
+                cb_reserve_back(out_cb_id, num_tiles_to_pack);
+
                 if (pack_out || i > 0) {
                     tile_regs_acquire();
                 }
 
-                for (uint32_t t = 0; t < max_dst_tiles && (out_block_tile_cnt + t) < out_block_num_tiles; t++) {
+                for (uint32_t t = 0; t < num_tiles_to_pack; t++) {
                     for (uint32_t p = 0; p < num_reducer_partials; p++) {
                         uint32_t cb_a = 0;
                         uint32_t cb_b = 0;
@@ -296,10 +303,16 @@ void MAIN {
                                 // already in dst
                                 continue;  // Skip the addition step
                             } else {
+                                // TODO: when out_block_num_tiles > max_dst_tiles (ie packed out), need to copy when
+                                // num_reducer_partials % 2 != 0
                                 cb_a = partial_cb_id;
                                 cb_b = reducer_cb_id;
                                 idx_a += t;
                                 idx_b += t;
+
+                                // if (i > 0 && num_reducer_partials % 2 != 0) {
+                                //     PACK((llk_pack_dest_init<false, false>()));
+                                // }
                             }
                         } else {
                             cb_a = reducer_cb_id;
@@ -310,11 +323,13 @@ void MAIN {
 
                         add_tiles(cb_a, cb_b, idx_a, idx_b, t);
                         p++;  // Skip the next partial, as it was already added
+
+                        // if (i > 0 && num_reducer_partials % 2 != 0) {
+                        //     PACK((llk_pack_dest_init<false, true>()));
+                        // }
                     }
                 }
                 tile_regs_commit();
-
-                uint32_t num_tiles_to_pack = std::min(max_dst_tiles, out_block_num_tiles - out_block_tile_cnt);
 
                 // Pack out
                 tile_regs_wait();
