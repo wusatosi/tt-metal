@@ -60,20 +60,18 @@ class TtLlamaRotarySetup(LightweightModule):
         )
 
         batch_grid = (
-            ttnn.CoreRangeSet(ttnn.num_cores_to_corerange_set(batch_size, self.core_grid, row_wise=True))
-            .bounding_box()
-            .grid_size()
+            ttnn.num_cores_to_corerangeset(2 * batch_size, self.core_grid, row_wise=True).bounding_box().grid_size()
         )
         # Generate the transformation matrix
         trans_mat = get_rot_transformation_mat(dhead=ttnn.TILE_SIZE).repeat(
             1,
             1,
-            batch_size,
+            2 * batch_size,
             1
             # 1, 1, num_cores, 1
         )  # Repeat across all cores on device
         trans_mat_mem_config = ttnn.create_sharded_memory_config(
-            shape=(1, 1, ttnn.TILE_SIZE * batch_size, ttnn.TILE_SIZE),
+            shape=(1, 1, ttnn.TILE_SIZE * 2 * batch_size, ttnn.TILE_SIZE),
             # shape=(1, 1, ttnn.TILE_SIZE * num_cores, ttnn.TILE_SIZE),
             # core_grid=ttnn.CoreGrid(y=self.core_grid.y, x=self.core_grid.x),
             core_grid=ttnn.CoreGrid(y=batch_grid.y, x=batch_grid.x),
@@ -150,11 +148,7 @@ class TtLlamaRotarySetup(LightweightModule):
         cos = ttnn.transpose(cos, 1, 2)  # [1, batch, 1[32], head_dim]
         sin = ttnn.transpose(sin, 1, 2)  # [1, batch, 1[32], head_dim]
 
-        grid = (
-            ttnn.CoreRangeSet(ttnn.num_cores_to_corerange_set(batch, self.core_grid, row_wise=True))
-            .bounding_box()
-            .grid_size()
-        )
+        grid = ttnn.num_cores_to_corerangeset(batch, self.core_grid, row_wise=True).bounding_box().grid_size()
         mem_config = ttnn.create_sharded_memory_config(
             shape=(1, batch, ttnn.TILE_SIZE, self.head_dim),
             core_grid=ttnn.CoreGrid(y=grid.y, x=grid.x),

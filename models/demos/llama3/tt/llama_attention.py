@@ -213,6 +213,7 @@ class TtLlamaAttention(LightweightModule):
         current_pos,
         rot_mat=None,
         page_table=None,
+        fused_updates=True,
     ) -> ttnn.Tensor:
         """
         x: (seq_len, 1, batch, dim)
@@ -277,6 +278,7 @@ class TtLlamaAttention(LightweightModule):
             num_heads=self.n_local_heads,
             num_kv_heads=self.n_local_kv_heads,
             memory_config=self.model_config["HEIGHT_SHARDED_MEMCFG"],
+            overlap_qk_coregrid=not fused_updates,
         )
 
         ttnn.deallocate(xqkv_fused)
@@ -305,33 +307,48 @@ class TtLlamaAttention(LightweightModule):
 
         # ttnn.deallocate(q_heads_pre_rot_1BQD)
         # ttnn.deallocate(k_heads_pre_rot_1BKD)
+        if not fused_updates:
+            q_heads_1BQD = ttnn.experimental.rotary_embedding_llama(
+                q_heads_pre_rot_1BQD, rot_mat[0], rot_mat[1], self.transformation_mats["decode"], is_decode_mode=True
+            )
 
-        q_heads_1BQD = ttnn.experimental.rotary_embedding_llama(
-            q_heads_pre_rot_1BQD, rot_mat[0], rot_mat[1], self.transformation_mats["decode"], is_decode_mode=True
-        )
+            # K Rotary Embeddings
+            k_heads_1BKD = ttnn.experimental.rotary_embedding_llama(
+                k_heads_pre_rot_1BKD, rot_mat[0], rot_mat[1], self.transformation_mats["decode"], is_decode_mode=True
+            )
 
-        # K Rotary Embeddings
-        k_heads_1BKD = ttnn.experimental.rotary_embedding_llama(
-            k_heads_pre_rot_1BKD, rot_mat[0], rot_mat[1], self.transformation_mats["decode"], is_decode_mode=True
-        )
+            ###
+            # KV update
+            ###
+            keys = self.layer_past[0]
+            values = self.layer_past[1]
+
+            # k_heads, [seqlen, n_kv_heads, bsz, head_dim]
+            # v_heads [seqlen, n_kv_heads, bsz, head_dim]
+            # keys, [max_batch_size, n_kv_heads // configuration.num_devices, kv_len, head_dim]
+            ttnn.experimental.paged_update_cache(
+                keys, k_heads_1BKD, update_idxs_tensor=current_pos, page_table=page_table
+            )
+            ttnn.experimental.paged_update_cache(
+                values, v_heads_1BKD, update_idxs_tensor=current_pos, page_table=page_table
+            )
+        else:
+            q_heads_1BQD, k_heads_1BKD = ttnn.experimental.rotary_embedding_llama_fused_qk(
+                q_heads_pre_rot_1BQD, k_heads_pre_rot_1BKD, rot_mat[0], rot_mat[1], self.transformation_mats["decode"]
+            )
+            ###
+            # KV update
+            ###
+            keys = self.layer_past[0]
+            values = self.layer_past[1]
+
+            ttnn.experimental.paged_fused_update_cache(
+                keys, k_heads_1BKD, values, v_heads_1BKD, update_idxs_tensor=current_pos, page_table=page_table
+            )
 
         q_heads_1BQD = ttnn.to_memory_config(
             q_heads_1BQD,
             ttnn.DRAM_MEMORY_CONFIG,
-        )
-
-        ###
-        # KV update
-        ###
-        keys = self.layer_past[0]
-        values = self.layer_past[1]
-
-        # k_heads, [seqlen, n_kv_heads, bsz, head_dim]
-        # v_heads [seqlen, n_kv_heads, bsz, head_dim]
-        # keys, [max_batch_size, n_kv_heads // configuration.num_devices, kv_len, head_dim]
-        ttnn.experimental.paged_update_cache(keys, k_heads_1BKD, update_idxs_tensor=current_pos, page_table=page_table)
-        ttnn.experimental.paged_update_cache(
-            values, v_heads_1BKD, update_idxs_tensor=current_pos, page_table=page_table
         )
         self.layer_past[0] = keys
         self.layer_past[1] = values

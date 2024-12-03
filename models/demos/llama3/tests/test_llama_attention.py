@@ -107,7 +107,7 @@ def test_llama_attention_inference(mesh_device, use_program_cache, reset_seeds, 
             model_args.model_config["SHARDED_ATTN_INPUT_MEMCFG"],
             force_replicated=False if model_args.is_galaxy else True,
         )
-        rot_mats = rope_setup.get_rot_mats(torch.tensor([current_pos for _ in range(batch)]))
+        rot_mats = rope_setup.get_rot_mats(torch.tensor([current_pos for _ in range(2 * batch)]))
         tt_out = tt_model(attention_input, current_pos_tensor, rot_mats=rot_mats, mode="decode")
         # multi-device attention module returns replicated output
         tt_out = ttnn.to_torch(

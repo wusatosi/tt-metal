@@ -107,7 +107,7 @@ class TtLlamaMLP(LightweightModule):
             input_mem_cfg = w1_out.memory_config()
             w1_out = ttnn.reduce_scatter(
                 w1_out,
-                scatter_dim=3,
+                dim=3,
                 math_op=ttnn.ReduceType.Sum,
                 num_links=self.args.num_reduce_scatter_links,
                 cluster_axis=1,
@@ -117,7 +117,7 @@ class TtLlamaMLP(LightweightModule):
             )
             w3_out = ttnn.reduce_scatter(
                 w3_out,
-                scatter_dim=3,
+                dim=3,
                 math_op=ttnn.ReduceType.Sum,
                 num_links=1,
                 cluster_axis=1,

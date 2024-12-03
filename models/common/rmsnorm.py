@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import ttnn
 from models.common.lightweightmodule import LightweightModule
-
+from models.demos.t3000.llama2_70b.tt.llama_common import ShardTensor2dMesh, ConcatMesh2DToTensor
 
 TILE = 32
 SHARD_HEIGHT = TILE  # Current ttnn.rms_norm implementation requires shard height to be a single tile
@@ -49,9 +49,11 @@ class RMSNorm(LightweightModule):
         eps: float = 1e-05,
         sharded_program_config=None,
         sharded_output_config=None,
+        TG=False,
     ):
         super().__init__()
         self.eps = eps
+        self.is_distributed = is_distributed
         self.is_distributed = is_distributed
 
         if state_dict_prefix:
@@ -61,6 +63,10 @@ class RMSNorm(LightweightModule):
                 weight_name = f"{weight_key}.weight"
             else:
                 weight_name = f"layers.{layer_num}.{weight_key}.weight"
+
+        torch_weight = (
+            state_dict[weight_name].unsqueeze(0).view(1, 1, dim).reshape([1, 1, dim // SHARD_HEIGHT, SHARD_HEIGHT])
+        )
 
         torch_weight = (
             state_dict[weight_name].unsqueeze(0).view(1, 1, dim).reshape([1, 1, dim // SHARD_HEIGHT, SHARD_HEIGHT])
@@ -78,7 +84,7 @@ class RMSNorm(LightweightModule):
             layout=ttnn.ROW_MAJOR_LAYOUT,
             memory_config=weight_memory_config,
             cache_file_name=cache_name,
-            mesh_mapper=ttnn.ReplicateTensorToMesh(device) if is_mesh_device else None,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(device),
         )
 
         self.weight_distributed = ttnn.as_tensor(
@@ -88,7 +94,7 @@ class RMSNorm(LightweightModule):
             layout=ttnn.ROW_MAJOR_LAYOUT,
             memory_config=weight_memory_config,
             cache_file_name=cache_name,
-            mesh_mapper=ttnn.ShardTensorToMesh(device, dim=2) if is_mesh_device else None,
+            mesh_mapper=ShardTensor2dMesh(device, (2, None), (4, 8)) if TG else ttnn.ShardTensorToMesh(device, dim=2),
         )
 
         self.sharded_output_config = sharded_output_config
