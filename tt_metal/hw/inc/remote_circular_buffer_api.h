@@ -10,6 +10,8 @@
 #include "dataflow_api.h"
 #endif
 
+#include "debug/dprint.h"
+
 namespace experimental {
 
 template <bool update_remote_over_noc = false>
