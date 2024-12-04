@@ -439,6 +439,20 @@ def run_multi_core_matmul_1d(
             3,
             1,
         ),
+        (
+            1,
+            32,
+            32 * 4,
+            3 * 32 * 2,
+            ttnn.bfloat16,
+            ttnn.bfloat4_b,
+            ttnn.MathFidelity.LoFi,
+            True,
+            True,
+            (4, 1),
+            4,
+            2,
+        ),  # fails
         # Check if multi-batch works
         (
             1,

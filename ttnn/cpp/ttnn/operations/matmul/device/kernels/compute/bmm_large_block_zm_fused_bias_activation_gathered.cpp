@@ -296,7 +296,7 @@ void MAIN {
                     cb_a = partial_cb_id;
                     if (num_reducer_partials % 2 == 0) {
                         // Add the local partial
-                        add_tiles_init(reducer_cb_id, reducer_cb_id, false);
+                        add_tiles_init(cb_a, cb_b, false);
                         for (uint32_t t = 0; t < num_tiles_to_pack; t++) {
                             add_tiles(cb_a, cb_b, idx_a + t, idx_b + t, t);
                         }
@@ -312,7 +312,7 @@ void MAIN {
                 }
 
                 if (num_reducer_partials > 2) {  // More than 2 partials
-                    add_tiles_init(reducer_cb_id, reducer_cb_id, true);
+                    add_tiles_init(cb_a, cb_b, true);
                 }
                 for (; p < num_reducer_partials - 1; p += 2) {
                     uint32_t partial_idx_a = idx_a + out_block_num_tiles * p;
