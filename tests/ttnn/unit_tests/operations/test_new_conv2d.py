@@ -128,7 +128,10 @@ def run_conv(
             mesh_mapper=weight_mesh_mapper,
         )
 
-    tt_input_tensor = ttnn.from_torch(torch_input_tensor, ttnn.bfloat16, mesh_mapper=input_mesh_mapper)
+    # tt_input_tensor = ttnn.from_torch(torch_input_tensor, ttnn.bfloat16, mesh_mapper=input_mesh_mapper)
+    tt_input_tensor = ttnn.from_torch(
+        torch_input_tensor, activations_dtype, mesh_mapper=input_mesh_mapper, layout=ttnn.TILE_LAYOUT
+    )
 
     # if shard_layout is None and not auto_shard:
     #     shard_layout = (
@@ -161,15 +164,17 @@ def run_conv(
         if config_override["num_cores_nhw"] == 98:
             conv_config.core_grid = ttnn.CoreRangeSet({ttnn.CoreRange((0, 0), (11, 7)), ttnn.CoreRange((0, 8), (1, 8))})
             conv_config.override_sharding_config = True
-            print("Setting num_cores_nhw to 98")
+            logger.info("Setting num_cores_nhw to 98")
         elif config_override["num_cores_nhw"] == 1:
             conv_config.core_grid = ttnn.CoreRangeSet({ttnn.CoreRange((0, 0), (0, 0))})
             conv_config.override_sharding_config = True
-            print("Setting num_cores_nhw to 1")
+            logger.info("Setting num_cores_nhw to 1")
         elif config_override["num_cores_nhw"] == 2:
             conv_config.core_grid = ttnn.CoreRangeSet({ttnn.CoreRange((0, 0), (0, 1))})
             conv_config.override_sharding_config = True
-            print("Setting num_cores_nhw to 2")
+            logger.info("Setting num_cores_nhw to 2")
+        else:
+            logger.warning("Not overriding num_cores_nhw")
 
     [tt_output_tensor_on_device, out_height, out_width, weights_device, bias_device] = ttnn.conv2d(
         input_tensor=tt_input_tensor,
@@ -911,7 +916,7 @@ def test_resnet50_conv_gs(
         # ## small test
         # (1, 64, 64, 8, 8, 3, 3, 1, 1, 1, 1, False, {"num_cores_nhw": 2, "grid_size": (2, 2)}),
         # (1, 64, 64, 16, 16, 3, 3, 1, 1, 1, 1, False, {"num_cores_nhw": 4, "grid_size": (2, 4)}),
-        (1, 32, 32, 4, 4, 3, 3, 1, 1, 0, 0, False, {"num_cores_nhw": 1}),  ## <<------------ my test case
+        (1, 32, 32, 8, 8, 3, 3, 1, 1, 0, 0, False, {"num_cores_nhw": 1}),  ## <<------------ my test case
         # # (1, 160, 160, 7, 7, 3, 3, 1, 1, 1, 1, False, None), sliding_window_op_infra/sliding_window.cpp:341: indices_length_last_core <= indices_length_per_core
         # (8, 256, 256, 7, 7, 3, 3, 1, 1, 1, 1, False, None),
         # # r50 1x1s2 shapes

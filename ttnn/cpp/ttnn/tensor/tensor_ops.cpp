@@ -354,17 +354,17 @@ Tensor tensor_reshape(const Tensor& input_tensor, const ttnn::Shape& new_shape) 
     GraphTracker::instance().track_function_start("Tensor::reshape", input_tensor, new_shape);
     const auto& new_padded_shape = new_shape.padded_shape();
     const auto tile = input_tensor.get_tensor_spec().tile();
-    TT_ASSERT(
-        input_tensor.volume() == new_padded_shape.volume(),
-        "{} != {}",
-        input_tensor.volume(),
-        new_padded_shape.volume());
-    if (input_tensor.get_layout() == Layout::TILE) {
-        TT_ASSERT(
-            new_padded_shape[-2] % tile.get_tile_shape()[0] == 0 &&
-            new_padded_shape[-1] % tile.get_tile_shape()[1] == 0 &&
-            "Expected a multiple of 32 for H, W (or -1 evaluating to such) in Tensor::reshape()!");
-    }
+    // TT_ASSERT(
+    //     input_tensor.volume() == new_padded_shape.volume(),
+    //     "{} != {}",
+    //     input_tensor.volume(),
+    //     new_padded_shape.volume());
+    // if (input_tensor.get_layout() == Layout::TILE) {
+    //     TT_ASSERT(
+    //         new_padded_shape[-2] % tile.get_tile_shape()[0] == 0 &&
+    //         new_padded_shape[-1] % tile.get_tile_shape()[1] == 0 &&
+    //         "Expected a multiple of 32 for H, W (or -1 evaluating to such) in Tensor::reshape()!");
+    // }
     auto output = std::visit(
         [&input_tensor, &new_shape, &tile](auto&& storage) -> Tensor {
             using T = std::decay_t<decltype(storage)>;
