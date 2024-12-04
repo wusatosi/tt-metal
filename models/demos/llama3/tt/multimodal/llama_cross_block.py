@@ -136,7 +136,7 @@ class TtLlamaCrossAttentionTransformerBlock(LightweightModule):
             vision_tokens=vision_tokens,
         )
         # FIXME: DRAM workaround for No circular buffer with id error
-        attn_out = ttnn.to_memory_config(attn_out, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+        # attn_out = ttnn.to_memory_config(attn_out, memory_config=ttnn.DRAM_MEMORY_CONFIG)
         attn_out = ttnn.mul(attn_out, ttnn.tanh(self.gate_attn))
 
         res = ttnn.add(x_11SH, attn_out)
