@@ -3148,6 +3148,7 @@ void EnqueueWriteBuffer(
     HostDataType src,
     bool blocking,
     tt::stl::Span<const SubDeviceId> sub_device_ids) {
+    TRACE_FUNCTION_CALL(captureEnqueueWriteBuffer, cq, buffer, src, blocking); // KCM_FIXME sub_device_ids added recently
     detail::DispatchStateCheck(true);
     cq.run_command(CommandInterface{
         .type = EnqueueCommandType::ENQUEUE_WRITE_BUFFER, .blocking = blocking, .buffer = buffer, .src = std::move(src), .sub_device_ids = sub_device_ids});
