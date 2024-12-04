@@ -1191,9 +1191,16 @@ void Matmul::validate(
                     TT_FATAL(
                         input_tensor_a.memory_config().memory_layout == TensorMemoryLayout::WIDTH_SHARDED,
                         "Input tensor A must be width sharded when using gather_in0.");
-                    TT_FATAL(
-                        input_tensor_b.memory_config().memory_layout == TensorMemoryLayout::WIDTH_SHARDED,
-                        "Input tensor B must be width sharded when using gather_in0.");
+
+                    if (program_config.num_reducer_partials == 1) {
+                        TT_FATAL(
+                            input_tensor_b.memory_config().memory_layout == TensorMemoryLayout::WIDTH_SHARDED,
+                            "Input tensor B must be width sharded when using gather_in0.");
+                    } else {
+                        TT_FATAL(
+                            input_tensor_b.memory_config().memory_layout == TensorMemoryLayout::BLOCK_SHARDED,
+                            "Input tensor B must be block sharded when using gather_in0 with multiple partials.");
+                    }
                     TT_FATAL(
                         input_tensor_a.shard_spec().value().grid == input_tensor_b.shard_spec().value().grid,
                         "Input tensor A and B must be sharded on the same cores when using gather_in0.");
@@ -1269,15 +1276,15 @@ void Matmul::validate(
                     }
                     if (input_tensor_b.buffer()->buffer_type() == tt_metal::BufferType::L1 &&
                         input_tensor_b.memory_config().is_sharded()) {
-                        TT_FATAL(
-                            input_tensor_b.memory_config().memory_layout == TensorMemoryLayout::WIDTH_SHARDED,
-                            "Operand B can only be interleaved or L1 width sharded.");
                         if (program_config.gather_in0) {
                             TT_FATAL(
                                 program_config.per_core_N * program_config.n_chunks ==
                                     (input_tensor_b.shard_spec().value().shape[1] / in1_tile_shape[1]),
                                 "Shard width must match per core N.");
                         } else {
+                            TT_FATAL(
+                                input_tensor_b.memory_config().memory_layout == TensorMemoryLayout::WIDTH_SHARDED,
+                                "Operand B can only be interleaved or L1 width sharded.");
                             TT_FATAL(
                                 program_config.per_core_N ==
                                     (input_tensor_b.shard_spec().value().shape[1] / in1_tile_shape[1]),

@@ -202,7 +202,7 @@ def run_multi_core_matmul_1d(
     )
 
     in1_sharded_mem_config = ttnn.MemoryConfig(
-        ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        ttnn.TensorMemoryLayout.BLOCK_SHARDED if num_reducer_partials > 1 else ttnn.TensorMemoryLayout.WIDTH_SHARDED,
         ttnn.BufferType.L1,
         ttnn.ShardSpec(
             core_range_set,
@@ -224,22 +224,7 @@ def run_multi_core_matmul_1d(
     )
 
     in0 = torch.randn(in0_shape)
-    in1 = torch.randn(in1_shape)
-
-    """
-    Since the n_chunks will be folded over each other in the matmul,
-    we need to interleave the n_chunks dimension with the N dimension.
-    x = torch.tensor([[[0, 1, 2, 3, 4],
-                     [5, 6, 7, 8, 9]],
-                    [[10, 11, 12, 13, 14],
-                     [15, 16, 17, 18, 19]]])
-    Turns into:
-    y = tensor([[[[ 0, 10,  1, 11,  2, 12,  3, 13,  4, 14],
-                  [ 5, 15,  6, 16,  7, 17,  8, 18,  9, 19]]]])
-    Because there are N cores in the matmul, and each core will concat the n_chunks dimension.
-    And the final output returned will be a concatenation of all the cores
-    """
-    in1 = in1.permute(0, 2, 3, 1).reshape(1, 1, K, N * n_chunks)
+    in1 = torch.randn(in1_shape).reshape(1, 1, K, N * n_chunks)
 
     in0_t = ttnn.from_torch(
         in0,
