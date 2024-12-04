@@ -110,7 +110,8 @@ Tensor MatmulOperation::invoke(
     const std::optional<const std::string>& activation,
     const std::optional<const DeviceComputeKernelConfig> compute_kernel_config,
     const std::optional<const CoreGrid> core_grid,
-    const std::optional<const tt::tt_metal::Tile>& output_tile) {
+    const std::optional<const tt::tt_metal::Tile>& output_tile,
+    const std::optional<const tt::tt_metal::v1::experimental::GlobalCircularBuffer>& global_cb) {
     std::optional<CoreCoord> user_core_coord;
     if (core_grid.has_value()) {
         user_core_coord = CoreCoord(core_grid->x, core_grid->y);
@@ -132,7 +133,8 @@ Tensor MatmulOperation::invoke(
             user_run_batched,
             transpose_a,
             transpose_b,
-            output_tile},
+            output_tile,
+            global_cb},
         /*queue_id=*/0);
 }
 
@@ -148,7 +150,8 @@ Tensor LinearOperation::invoke(
     const std::optional<const std::string>& activation,
     const std::optional<const DeviceComputeKernelConfig> compute_kernel_config,
     const std::optional<const CoreGrid> core_grid,
-    const std::optional<const tt::tt_metal::Tile>& output_tile) {
+    const std::optional<const tt::tt_metal::Tile>& output_tile,
+    const std::optional<const tt::tt_metal::v1::experimental::GlobalCircularBuffer>& global_cb) {
     std::optional<CoreCoord> user_core_coord;
     if (core_grid.has_value()) {
         user_core_coord = CoreCoord(core_grid->x, core_grid->y);
@@ -172,7 +175,8 @@ Tensor LinearOperation::invoke(
             /*user_run_batched=*/false,
             transpose_a,
             transpose_b,
-            output_tile},
+            output_tile,
+            global_cb},
         /*queue_id=*/0);
 }
 

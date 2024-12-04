@@ -307,7 +307,9 @@ void py_module(py::module& module) {
                const std::optional<const std::string>& activation,
                const std::optional<const DeviceComputeKernelConfig> compute_kernel_config,
                const std::optional<const ttnn::CoreGrid> core_grid,
-               const std::optional<const Tile>& output_tile) -> ttnn::Tensor {
+               const std::optional<const Tile>& output_tile,
+               const std::optional<const tt::tt_metal::v1::experimental::GlobalCircularBuffer>& global_cb)
+                -> ttnn::Tensor {
                 return self(
                     input_tensor_a,
                     input_tensor_b,
@@ -319,7 +321,8 @@ void py_module(py::module& module) {
                     activation,
                     compute_kernel_config,
                     core_grid,
-                    output_tile);
+                    output_tile,
+                    global_cb);
             },
             py::arg("input_tensor_a"),
             py::arg("input_tensor_b"),
@@ -333,6 +336,7 @@ void py_module(py::module& module) {
             py::arg("compute_kernel_config") = std::nullopt,
             py::arg("core_grid") = std::nullopt,
             py::arg("output_tile") = std::nullopt,
+            py::arg("global_cb") = std::nullopt,
         });
 
     bind_registered_operation(
@@ -384,7 +388,9 @@ void py_module(py::module& module) {
                const std::optional<const std::string>& activation,
                const std::optional<const DeviceComputeKernelConfig> compute_kernel_config,
                const std::optional<const ttnn::CoreGrid> core_grid,
-               const std::optional<const Tile>& output_tile) -> ttnn::Tensor {
+               const std::optional<const Tile>& output_tile,
+               const std::optional<const tt::tt_metal::v1::experimental::GlobalCircularBuffer>& global_cb)
+                -> ttnn::Tensor {
                 return self(
                     input_tensor_a,
                     input_tensor_b,
@@ -397,7 +403,8 @@ void py_module(py::module& module) {
                     activation,
                     compute_kernel_config,
                     core_grid,
-                    output_tile);
+                    output_tile,
+                    global_cb);
             },
             py::arg("input_tensor_a"),
             py::arg("input_tensor_b"),
@@ -412,6 +419,7 @@ void py_module(py::module& module) {
             py::arg("compute_kernel_config") = std::nullopt,
             py::arg("core_grid") = std::nullopt,
             py::arg("output_tile") = std::nullopt,
+            py::arg("global_cb") = std::nullopt,
         });
 }
 

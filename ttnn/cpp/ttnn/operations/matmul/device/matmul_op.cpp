@@ -1033,7 +1033,8 @@ Matmul create_matmul_struct(
         parameters.user_run_batched,
         parameters.transpose_a,
         parameters.transpose_b,
-        output_tile};
+        output_tile,
+        parameters.global_cb};
 }
 
 Tensor matmul(
@@ -1044,6 +1045,7 @@ Tensor matmul(
     const uint8_t queue_id) {
     std::vector<std::optional<const Tensor>> optional_input_tensors = {};
     std::vector<Tensor> output_tensors;
+
     if (bias.has_value()) {
         optional_input_tensors.push_back(bias.value());
         output_tensors = {
@@ -1812,7 +1814,8 @@ operation::ProgramWithCallbacks Matmul::create_program(
                     program_config.fused_activation,
                     program_config.mcast_in0,
                     program_config.gather_in0,
-                    this->untilize_out);
+                    this->untilize_out,
+                    this->global_cb);
             } else if constexpr (std::is_same_v<
                                      ProgramConfigType,
                                      MatmulMultiCoreReuseMultiCastDRAMShardedProgramConfig>) {
