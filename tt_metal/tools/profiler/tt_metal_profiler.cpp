@@ -504,12 +504,12 @@ void DumpDeviceProfileResults(Device* device, bool lastDump) {
         if (deviceDeviceTimePair.find(device->id()) != deviceDeviceTimePair.end() and !lastDump) {
             for (auto& connected_device : deviceDeviceTimePair.at(device->id())) {
                 std::cout << "CON DEV:" << device->id() << "->" << connected_device.first << std::endl;
-                if (tt::DevicePool::instance().is_device_active(device->id())) {
-                    detail::syncDeviceDevice(device->id(), connected_device.first);
+                if (tt::DevicePool::instance().is_device_active(connected_device.first)) {
+                    // detail::syncDeviceDevice(device->id(), connected_device.first);
                     Device* device_receiver = tt::DevicePool::instance().get_active_device(connected_device.first);
-                    DumpDeviceProfileResults(device_receiver);
-                    std::vector<tracy::TTDeviceEvent> sync_data_receiver = getSyncDeviceData(device_receiver->id());
-                    // detail::syncDeviceDevice (device->id(),connected_device.first);
+                    // DumpDeviceProfileResults(device_receiver);
+                    // DumpDeviceProfileResults(device, workerCores, lastDump);
+                    //  detail::syncDeviceDevice (device->id(),connected_device.first);
                     // Device* device_receiver = tt::DevicePool::instance().get_active_device(connected_device.first);
                     // DumpDeviceProfileResults(device_receiver);
                     // DumpDeviceProfileResults(device, workerCores, lastDump);
@@ -517,7 +517,7 @@ void DumpDeviceProfileResults(Device* device, bool lastDump) {
                     // TT_ASSERT (tt_metal_device_profiler_map.find(device_receiver->id()) !=
                     // tt_metal_device_profiler_map.end()) TT_ASSERT (tt_metal_device_profiler_map.find(device->id()) !=
                     // tt_metal_device_profiler_map.end())
-                    // TT_ASSERT(tt_metal_device_profiler_map.at(device->id()).device_sync_events.size() == \
+                    //      TT_ASSERT(tt_metal_device_profiler_map.at(device->id()).device_sync_events.size() == \
                             //tt_metal_device_profiler_map.at(device_receiver).device_sync_events.size())
 
                     // auto event_receiver =
@@ -538,28 +538,27 @@ void DumpDeviceProfileResults(Device* device, bool lastDump) {
                 }
             }
         }
-        DumpDeviceProfileResults(device, workerCores, lastDump);
-        std::vector<tracy::TTDeviceEvent> sync_data_sender = getSyncDeviceData(device->id());
-        // auto device_id = device->id();
+        // std::vector<tracy::TTDeviceEvent> sync_data_sender = getSyncDeviceData(device->id());
+        //  auto device_id = device->id();
         //{
-        // auto device_0 = tt::DevicePool::instance().get_active_device(0);
-        // DumpDeviceProfileResults(device_0);
-        // std::vector<tracy::TTDeviceEvent> sync_data_sender;
-        // std::vector<tracy::TTDeviceEvent> sync_data_receiver;
-        // for (int dev_id = 0; dev_id < 2; dev_id ++) {
-        // ZoneScopedN("Fetching_device_sync_event");
-        // std::set<tracy::TTDeviceEvent>& sync_data = detail::getSyncDeviceData (dev_id);
-        // for (auto& event: sync_data){
-        // if (event.zone_name.find("SENDER") != std::string::npos)
+        //  auto device_0 = tt::DevicePool::instance().get_active_device(0);
+        //  DumpDeviceProfileResults(device_0);
+        //  std::vector<tracy::TTDeviceEvent> sync_data_sender;
+        //  std::vector<tracy::TTDeviceEvent> sync_data_receiver;
+        //  for (int dev_id = 0; dev_id < 2; dev_id ++) {
+        //  ZoneScopedN("Fetching_device_sync_event");
+        //  std::set<tracy::TTDeviceEvent>& sync_data = detail::getSyncDeviceData (dev_id);
+        //  for (auto& event: sync_data){
+        //  if (event.zone_name.find("SENDER") != std::string::npos)
         //{
-        // sync_data_sender.push_back(event);
-        //}
-        // else if (event.zone_name.find("RECEIVER") != std::string::npos)
+        //  sync_data_sender.push_back(event);
+        // }
+        //  else if (event.zone_name.find("RECEIVER") != std::string::npos)
         //{
-        // sync_data_receiver.push_back(event);
-        //}
-        //}
-        //}
+        //  sync_data_receiver.push_back(event);
+        // }
+        // }
+        // }
 
         // TT_ASSERT (sync_data_sender.size () == 120 * 2 * 2, "Wrong sync data sample count.");
         // TT_ASSERT (sync_data_receiver.size () == 120 * 2 * 2, "Wrong sync data sample count.");
