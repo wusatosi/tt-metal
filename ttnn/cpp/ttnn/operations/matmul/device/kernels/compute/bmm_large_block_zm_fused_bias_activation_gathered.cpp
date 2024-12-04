@@ -300,16 +300,15 @@ void MAIN {
                         for (uint32_t t = 0; t < num_tiles_to_pack; t++) {
                             add_tiles(cb_a, cb_b, idx_a + t, idx_b + t, t);
                         }
+                        p = 1;  // Already done with the first partial in reducer cb
                     } else {
                         // Copy to dst
-                        copy_tile_to_dst_init_short(reducer_cb_id);
+                        copy_tile_to_dst_init_short(cb_a);
                         for (uint32_t t = 0; t < num_tiles_to_pack; t++) {
                             copy_tile(cb_a, idx_a + t, t);
                         }
                     }
                     cb_a = reducer_cb_id;
-
-                    p = 1;  // Already done with the first partial in reducer cb
                 }
 
                 if (num_reducer_partials > 2) {  // More than 2 partials

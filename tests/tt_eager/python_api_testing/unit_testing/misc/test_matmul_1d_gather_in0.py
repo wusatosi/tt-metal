@@ -410,7 +410,7 @@ def run_multi_core_matmul_1d(
             (8, 3),
             3,
             1,
-        ),  # fails
+        ),
         (
             1,
             32,
@@ -438,7 +438,7 @@ def run_multi_core_matmul_1d(
             (3, 1),
             3,
             1,
-        ),  # fails
+        ),
         # Check if multi-batch works
         (
             1,
