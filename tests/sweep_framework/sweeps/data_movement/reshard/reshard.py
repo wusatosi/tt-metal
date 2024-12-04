@@ -125,16 +125,19 @@ def run(
         orientation=output_shard_orientation,
     )
 
-    torch_input_tensor = torch.zeros(shape, dtype=torch_dtype)
-    # reshard
-    sharded_input_tensor = ttnn.from_torch(
-        torch_input_tensor, layout=ttnn.TILE_LAYOUT, device=device, memory_config=input_shard_memory_config, dtype=dtype
+    sharded_input_tensor = ttnn.zeros(
+        shape, layout=ttnn.TILE_LAYOUT, device=device, memory_config=input_shard_memory_config, dtype=dtype
     )
-    for i in range(10):
-        sharded_output_tensor = ttnn.to_memory_config(sharded_input_tensor, output_shard_memory_config)
-        ttnn.deallocate(sharded_output_tensor)
-    ttnn.deallocate(sharded_input_tensor)
 
-    # output_tensor = ttnn.to_torch(sharded_output_tensor)
+    # reshard
+    for i in range(10):
+        try:
+            sharded_output_tensor = ttnn.to_memory_config(sharded_input_tensor, output_shard_memory_config)
+        except Exception as e:
+            ttnn.deallocate(sharded_input_tensor)
+            raise e
+        ttnn.deallocate(sharded_output_tensor)
+
+    ttnn.deallocate(sharded_input_tensor)
 
     return [True, ""]

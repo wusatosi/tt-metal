@@ -40,7 +40,7 @@ if __name__ == "__main__":
             out_x, out_y = get_out_grid(vec_file)
             results_path = get_results_path(args.x, in_y, out_x, out_y)
             print(f"({args.x}, {in_y}) -> ({out_x}, {out_y}) : {vec_file} -> {results_path}")
-            cmd = f"python tests/sweep_framework/sweeps_runner.py --module-name data_movement.reshard.reshard --read-file {vec_file} --device-perf --result-file {results_path}"
+            cmd = f"python tests/sweep_framework/sweeps_runner.py --module-name data_movement.reshard.reshard --read-file {vec_file} --device-perf --result-file {results_path} --card 6"
             print(f"Running: {cmd}")
             for i in range(args.runs):
                 print(f"{i+1} of {args.runs}")

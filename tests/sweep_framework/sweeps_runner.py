@@ -68,12 +68,13 @@ def gather_single_test_perf(device, test_passed, chunk_size=1):
                 "DEVICE NCRISC KERNEL DURATION [ns]",
             ]
             avg_data = {}
+
             for key in keys:
                 data = np.asarray([int(op[key]) for op in opPerfData])
                 avg_data[key] = np.mean(data)
                 avg_data[f"{key}_std"] = np.std(data)
             avg_data["runs"] = len(opPerfData)
-            return avg_data
+            return [avg_data]
         else:
             return opPerfData[0]
     else:
@@ -108,17 +109,28 @@ def run(test_module, input_queue, output_queue):
         while True:
             test_vectors = input_queue.get(block=True, timeout=1)
             test_vectors = [deserialize_vector(vec) for vec in test_vectors]
-            try:
-                # try chunked first:
-                results = test_module.run_chunk(test_vectors, device)
-                perf_results = gather_single_test_perf(device, True, len(test_vectors))
-                e2e_perf = None
-                results = [result + [e2e_perf, perf_result] for result, perf_result in zip(results, perf_results)]
-                print("Batched run passed")
-            except Exception as e:
-                print("Batched run failed. Trying one by one")
-                # retry one by one:
-                _ = gather_single_test_perf(device, False, len(test_vectors))  # clean up the previous profiles
+            if len(test_vectors) > 1:
+                try:
+                    # try chunked first:
+                    results = test_module.run_chunk(test_vectors, device)
+                    perf_results = gather_single_test_perf(device, True, len(test_vectors))
+                    e2e_perf = None
+                    results = [result + [e2e_perf, perf_result] for result, perf_result in zip(results, perf_results)]
+                    print("Batched run passed")
+                except Exception as e:
+                    print("Batched run failed. Trying one by one")
+                    # retry one by one:
+                    _ = gather_single_test_perf(device, False, len(test_vectors))  # clean up the previous profiles
+                    results = [None] * len(test_vectors)
+                    for i, test_vector in enumerate(test_vectors):
+                        try:
+                            status, message = test_module.run(**test_vector, device=device)
+                        except Exception as e:
+                            status, message = False, str(e)
+                        e2e_perf = None
+                        perf_result = gather_single_test_perf(device, status, chunk_size=1)
+                        results[i] = [status, message, e2e_perf, perf_result]
+            else:
                 results = [None] * len(test_vectors)
                 for i, test_vector in enumerate(test_vectors):
                     try:
@@ -146,13 +158,13 @@ def get_timeout(test_module):
 
 
 def execute_suite(test_module, test_vectors, pbar_manager, suite_name):
-    results = [None] * len(test_vectors)
+    results = []
     input_queue = Queue()
     output_queue = Queue()
     p = None
     timeout = get_timeout(test_module)
     # result tabulation code doesn't work if chunk is set to 1
-    chunk_size = 10
+    chunk_size = 1
     suite_pbar = pbar_manager.counter(total=len(test_vectors), desc=f"Suite: {suite_name}", leave=False)
     for i in range(0, len(test_vectors), chunk_size):
         if i + chunk_size < len(test_vectors):
@@ -182,7 +194,7 @@ def execute_suite(test_module, test_vectors, pbar_manager, suite_name):
                 # E2E performance is not meaningful when we have batched execution
                 raise NotImplementedError
             input_queue.put(vec_chunk)
-            responses = output_queue.get(block=True, timeout=timeout * len(vec_chunk))
+            responses = output_queue.get(block=True, timeout=timeout)
             for response, result in zip(responses, result_chunk):
                 status, message, e2e_perf, device_perf = response[0], response[1], response[2], response[3]
                 if status and MEASURE_DEVICE_PERF and device_perf is None:
@@ -221,14 +233,14 @@ def execute_suite(test_module, test_vectors, pbar_manager, suite_name):
             result["status"], result["exception"] = TestStatus.FAIL_CRASH_HANG, "TEST TIMED OUT (CRASH / HANG)"
             result["e2e_perf"] = None
             try:
-                tt_smi_util.run_tt_smi(ARCH)
+                tt_smi_util.run_tt_smi(ARCH, CARD_ID)
             except:
                 logger.warning("tt-smi failed... exiting")
                 break
 
         for _ in range(actual_chunk_size):
             suite_pbar.update()
-        results[i : i + actual_chunk_size] = result_chunk
+        results.extend(result_chunk)
 
     if p is not None:
         p.join()
@@ -321,7 +333,7 @@ def run_sweeps(module_name, suite_name, vector_id):
             for suite in data:
                 if suite_name and suite_name != suite:
                     continue
-                if suite.endswith("BFLOAT8_B"):
+                if suite.endswith("BFLOAT8_B") or suite.endswith("FLOAT32"):
                     print("Skipping float8")
                     continue
                 for input_hash in data[suite]:
@@ -542,6 +554,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--read-file", required=False, help="Read and execute test vectors from a specified file path.")
     parser.add_argument("--result-file")
+    parser.add_argument("--card", type=int)
 
     args = parser.parse_args(sys.argv[1:])
     if not args.module_name and args.vector_id:
@@ -576,6 +589,9 @@ if __name__ == "__main__":
 
     global SWEEPS_TAG
     SWEEPS_TAG = args.tag
+
+    global CARD_ID
+    CARD_ID = args.card
 
     logger.info(f"Running current sweeps with tag: {SWEEPS_TAG}.")
 
