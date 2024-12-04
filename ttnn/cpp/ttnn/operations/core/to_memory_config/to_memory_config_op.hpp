@@ -75,14 +75,9 @@ struct ToMemoryConfig {
             } else {
                 auto bbox = memory_config.shard_spec.value().grid.bounding_box();
                 CoreCoord grid_size(bbox.end_coord.x + 1, bbox.end_coord.y + 1);
-                printf("hit\n");
-                printf("hit\n");
-                printf("hit\n");
                 return operation::run(
                            data_movement::InterleavedToShardedDeviceOperation{
-                               .output_mem_config = memory_config,
-                               .output_dtype = dtype.value_or(tensor.get_dtype()),
-                               .keep_l1_aligned = true},
+                               .output_mem_config = memory_config, .output_dtype = dtype.value_or(tensor.get_dtype())},
                            {tensor})
                     .at(0);
             }
