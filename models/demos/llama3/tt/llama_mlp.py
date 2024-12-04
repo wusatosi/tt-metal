@@ -17,6 +17,7 @@ class TtLlamaMLP(LightweightModule):
         self.state_dict = state_dict
         self.mesh_device = mesh_device
         self.args = args
+        self.dim = args.dim
         self.model_config = model_config
         state_dict_prefix = state_dict_prefix or args.get_state_dict_prefix(self.__class__.__name__, layer_num)
         torch_weight = lambda name: torch.transpose(self.state_dict[f"{state_dict_prefix}.{name}.weight"], -2, -1)
@@ -111,27 +112,49 @@ class TtLlamaMLP(LightweightModule):
         ttnn.deallocate(x)
 
         if TG:
-            input_mem_cfg = w1_out.memory_config()
-            w1_out = ttnn.reduce_scatter(
-                w1_out,
-                dim=3,
-                math_op=ttnn.ReduceType.Sum,
-                num_links=self.args.num_reduce_scatter_links,
-                cluster_axis=1,
-                mesh_device=self.mesh_device,
-                topology=ttnn.Topology.Linear,
-                memory_config=self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else None,
-            )
-            w3_out = ttnn.reduce_scatter(
-                w3_out,
-                dim=3,
-                math_op=ttnn.ReduceType.Sum,
-                num_links=1,
-                cluster_axis=1,
-                mesh_device=self.mesh_device,
-                topology=ttnn.Topology.Linear,
-                memory_config=self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else None,
-            )
+            # if mode == "decode" and self.dim!=8192:
+            #     w1_out = ttnn.to_memory_config(w1_out, ttnn.DRAM_MEMORY_CONFIG)
+            #     w3_out = ttnn.to_memory_config(w3_out, ttnn.DRAM_MEMORY_CONFIG)
+            if self.dim == 8192 or mode == "prefill":
+                input_mem_cfg = w1_out.memory_config()
+                w1_out = ttnn.reduce_scatter(
+                    w1_out,
+                    dim=3,
+                    math_op=ttnn.ReduceType.Sum,
+                    num_links=self.args.num_reduce_scatter_links,
+                    cluster_axis=1,
+                    mesh_device=self.mesh_device,
+                    topology=ttnn.Topology.Linear,
+                    memory_config=self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else None,
+                )
+                w3_out = ttnn.reduce_scatter(
+                    w3_out,
+                    dim=3,
+                    math_op=ttnn.ReduceType.Sum,
+                    num_links=1,
+                    cluster_axis=1,
+                    mesh_device=self.mesh_device,
+                    topology=ttnn.Topology.Linear,
+                    memory_config=self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else None,
+                )
+            else:
+                print("start", w1_out.memory_config(), w3_out.memory_config())
+                w1_out = tt_all_reduce(
+                    w1_out,
+                    self.mesh_device,
+                    cluster_axis=1,
+                    num_all_gather_links=2,
+                    sharded=True if mode == "decode" else False,
+                    memory_config=self.model_config["FF1_OUT_GATHERED_MEMCFG"] if mode == "decode" else None,
+                )
+                w3_out = tt_all_reduce(
+                    w3_out,
+                    self.mesh_device,
+                    cluster_axis=1,
+                    num_all_gather_links=2,
+                    sharded=True if mode == "decode" else False,
+                    memory_config=self.model_config["FF1_OUT_GATHERED_MEMCFG"] if mode == "decode" else None,
+                )
 
         w2_in = ttnn.mul(
             w1_out,
@@ -147,6 +170,19 @@ class TtLlamaMLP(LightweightModule):
         ttnn.deallocate(w3_out)
         ttnn.deallocate(w1_out)
 
+        if TG and (self.dim == 8192 or mode == "prefill"):
+            w2_in = ttnn.all_gather(
+                w2_in,
+                3,
+                num_links=2,
+                cluster_axis=1,
+                mesh_device=self.mesh_device,
+                topology=ttnn.Topology.Linear,
+                memory_config=input_mem_cfg,
+            )
+            if mode == "decode":
+                w2_in = ttnn.to_memory_config(w2_in, ttnn.L1_MEMORY_CONFIG)
+
         w2_out = ttnn.linear(
             w2_in,
             self.w2,
@@ -158,22 +194,21 @@ class TtLlamaMLP(LightweightModule):
             else w2_in.memory_config(),
         )
         ttnn.deallocate(w2_in)
-        if mode == "decode" and not TG:
-            w2_out = ttnn.sharded_to_interleaved(w2_out, ttnn.DRAM_MEMORY_CONFIG)
-
+        # if mode == "decode" and not TG:
+        #     w2_out = ttnn.sharded_to_interleaved(w2_out, ttnn.DRAM_MEMORY_CONFIG)
         w2_out_reduced = tt_all_reduce(
             w2_out,
             self.mesh_device,
             cluster_axis=0,
-            dim=3,
+            dim=0 if (TG and self.dim < 8192) else 3,
             num_reduce_scatter_links=self.args.num_reduce_scatter_links,
             num_all_gather_links=self.args.num_all_gather_links,
-            sharded=True if mode == "decode" else False,
+            sharded=(mode == "decode"),
             memory_config=(self.model_config["FF2_OUT_REDUCE_SCATTER_MEMCFG"] if TG else w2_out.memory_config())
             if mode == "decode"
             else ttnn.DRAM_MEMORY_CONFIG,
             dtype=self.args.ccl_dtype,
-            use_composite=True,
+            use_composite=True if self.dim == 8192 else False,
         )
 
         # Ensure dim 0 and 1 are 1
@@ -181,7 +216,6 @@ class TtLlamaMLP(LightweightModule):
         w2_out_reduced = ttnn.reshape(
             w2_out_reduced, (1, 1, original_shape[-4] * original_shape[-3] * original_shape[-2], original_shape[-1])
         )
-
         if mode == "decode":
             w2_out_reduced = ttnn.to_memory_config(
                 w2_out_reduced,

@@ -22,12 +22,6 @@ def tt_all_reduce(
     if mesh_device.shape == (1, 1) or (cluster_axis == 1 and 1 in mesh_device.shape):
         return input_tensor
 
-    # Cast to CCL dtype
-    if input_tensor.dtype != dtype:
-        input_tensor = ttnn.to_memory_config(input_tensor, ttnn.L1_MEMORY_CONFIG, dtype)  # typecast and to interleaved
-        if sharded and memory_config is not None:
-            input_tensor = ttnn.to_memory_config(input_tensor, memory_config, dtype)  # to sharded
-
     # Ensure dim 0 and 1 are 1
     original_shape = input_tensor.shape
     if original_shape[0] != 1 or original_shape[1] != 1:
@@ -37,7 +31,7 @@ def tt_all_reduce(
 
     # N300 and T3K: reduce_scatter
     if 1 in mesh_device.shape:
-        if input_tensor.is_sharded():
+        if input_tensor.is_sharded() and not sharded:
             input_tensor_sharded = input_tensor
             input_tensor = ttnn.sharded_to_interleaved(input_tensor_sharded, ttnn.L1_MEMORY_CONFIG)
             input_tensor_sharded.deallocate(True)
@@ -52,6 +46,11 @@ def tt_all_reduce(
         return reduced
 
     # TG: all_reduce
+    # Cast to CCL dtype
+    if input_tensor.dtype != dtype:
+        input_tensor = ttnn.to_memory_config(input_tensor, ttnn.L1_MEMORY_CONFIG, dtype)  # typecast and to interleaved
+        if sharded and memory_config is not None:
+            input_tensor = ttnn.to_memory_config(input_tensor, memory_config, dtype)  # to sharded
 
     # Ensure the input tensor is in the correct memory configuration
     if not sharded:  # prefill

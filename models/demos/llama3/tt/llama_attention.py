@@ -81,6 +81,8 @@ class TtLlamaAttention(LightweightModule):
         self.grid_size = configuration.max_grid_size
 
         self.compute_kernel_config_hifi2 = configuration.compute_kernel_config_hifi2
+        self.compute_kernel_config_hifi2_fp16 = configuration.compute_kernel_config_hifi2_fp16
+
         self.compute_kernel_config_hifi4 = configuration.compute_kernel_config_hifi4
 
         self.transformation_mats = transformation_mats
@@ -148,7 +150,7 @@ class TtLlamaAttention(LightweightModule):
             configuration.dim // configuration.num_devices, configuration.dim
         )
 
-        wo_ttnn = ttnn.as_tensor(
+        self.wo = ttnn.as_tensor(
             pt_wo,
             dtype=ttnn.bfloat8_b,
             layout=ttnn.TILE_LAYOUT,
@@ -159,12 +161,10 @@ class TtLlamaAttention(LightweightModule):
                 dims=(2, 3) if (self.use_fused_all_gather_matmul or self.TG) else (3, 2),
                 mesh_shape=configuration.cluster_shape,
             ),
-            cache_file_name=cache_name("wo_width_sharded_2d")
-            if (self.use_fused_all_gather_matmul or self.TG)
-            else cache_name("wo"),
+            # cache_file_name=cache_name("wo_width_sharded_2d")
+            # if (self.use_fused_all_gather_matmul or self.TG)
+            # else cache_name("wo"),
         )
-        self.wo = ttnn.to_device(wo_ttnn, self.mesh_device)
-
         if self.paged_attention_config:
             cache_k = torch.zeros(
                 (
@@ -408,7 +408,7 @@ class TtLlamaAttention(LightweightModule):
                 self.wo,
                 core_grid=ttnn.CoreGrid(y=4, x=8) if TG else None,
                 program_config=self.model_config["ATTN_OUTPUT_PROGCFG"] if not TG else None,
-                memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if TG else attn_output.memory_config(),
+                memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if TG else attn_output_cat.memory_config(),
                 dtype=ttnn.bfloat8_b if TG else None,
                 compute_kernel_config=self.compute_kernel_config_hifi2,
             )
@@ -422,13 +422,13 @@ class TtLlamaAttention(LightweightModule):
                 cluster_axis=0,
                 num_reduce_scatter_links=self.num_reduce_scatter_links,
                 num_all_gather_links=self.num_all_gather_links,
-                dim=3,
+                dim=0 if (TG and self.hidden_size < 8192) else 3,
                 memory_config=self.model_config["SELF_OUT_REDUCE_SCATTER_MEMCFG"]
                 if TG
                 else self.model_config["DECODE_RESIDUAL_MEMCFG"],
                 sharded=True,
                 dtype=self.ccl_dtype,
-                use_composite=True,
+                use_composite=True if self.hidden_size == 8192 else False,
             )
 
             if self.num_devices == 1:
@@ -625,20 +625,10 @@ class TtLlamaAttention(LightweightModule):
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
             )
 
-        # Non fused All Gather Matmul
-        if self.is_multichip and self.use_fused_all_gather_matmul:
-            attn_output_11SH = ttnn.all_gather(
-                attn_output_11SH,
-                dim=3,
-                num_links=1,
-                topology=self.ccl_topology,
-                memory_config=ttnn.DRAM_MEMORY_CONFIG,
-            )
-
         output_11SH = ttnn.linear(
             attn_output_11SH,
             self.wo,
-            compute_kernel_config=self.compute_kernel_config_hifi2,
+            compute_kernel_config=self.compute_kernel_config_hifi2_fp16,
             dtype=ttnn.bfloat8_b,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
             program_config=self.model_config["WO_PREFILL_PROGCFG"](seq_len),

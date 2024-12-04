@@ -98,7 +98,8 @@ class TtModelArgs:
         self.max_batch_size = max_batch_size
         self.tile_size = 32
 
-        LLAMA_DIR = "/proj_sw/user_dev/llama31-70b-data/Meta-Llama-3.1-70B"
+        # LLAMA_DIR = "/proj_sw/user_dev/llama31-70b-data/Meta-Llama-3.1-70B"
+        LLAMA_DIR = "/proj_sw/user_dev/llama31-8b-data/Meta-Llama-3.1-8B-Instruct/"
         if LLAMA_DIR:
             if any([os.getenv("LLAMA_CKPT_DIR"), os.getenv("LLAMA_TOKENIZER_PATH"), os.getenv("LLAMA_CACHE_PATH")]):
                 logger.warning(
@@ -317,6 +318,7 @@ class TtModelArgs:
             self.model_config["USE_FUSED_ALL_GATHER_MATMUL"] = (
                 self.ccl_topology() == ttnn.Topology.Ring
                 and (self.dim // self.tile_size // self.num_devices) % self.num_devices == 0
+                and self.num_devices > 1
             )
 
             if self.model_config["USE_FUSED_ALL_GATHER_MATMUL"]:
@@ -365,7 +367,7 @@ class TtModelArgs:
                 n=self.dim // self.cluster_shape[1] if self.is_galaxy else self.dim,
                 grid_size=(8, 8),
                 in0_block_w=1,
-                fuse_batch=seq_len <= 1024 if self.is_galaxy else 2048,
+                fuse_batch=seq_len <= 1024,  # if self.is_galaxy else 2048),
             )
 
             # Calculate largest number of lm_head_num_rows such that self.dim % (lm_head_num_rows * 8) == 0
@@ -385,7 +387,7 @@ class TtModelArgs:
             self.model_config["LM_HEAD_INPUT_MEMCFG"] = ttnn.create_sharded_memory_config(
                 (
                     self.tile_padded_batch_rows,
-                    nearest_32((self.dim // 4 if self.is_galaxy else 1) // self.lm_head_core_grid.num_cores),
+                    nearest_32((self.dim // (4 if self.is_galaxy else 1)) // self.lm_head_core_grid.num_cores),
                 ),  # Shard shape: [32, 128] -> 1 shard per core
                 self.lm_head_core_grid,
                 ttnn.ShardStrategy.WIDTH,
@@ -641,23 +643,51 @@ class TtModelArgs:
                 strategy=ttnn.ShardStrategy.WIDTH,
                 orientation=ttnn.ShardOrientation.ROW_MAJOR,
                 use_height_and_width_as_shard_shape=True,
-            )
+            )  # if self.dim==8192 else ttnn.DRAM_MEMORY_CONFIG
 
-            self.model_config["FF2_OUT_REDUCE_SCATTER_MEMCFG"] = ttnn.create_sharded_memory_config(
-                shape=(32, self.dim // 8 // 4),  # shard_grid_cores = 8, num_devices=4
-                core_grid=ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 0))}),
-                strategy=ttnn.ShardStrategy.WIDTH,
-                orientation=ttnn.ShardOrientation.ROW_MAJOR,
-                use_height_and_width_as_shard_shape=True,
-            )
-
-            self.model_config["SELF_OUT_REDUCE_SCATTER_MEMCFG"] = ttnn.create_sharded_memory_config(
-                shape=(32, 2048 // 8 // 8),  # mesh_rows = 8, num_cores=8
+            self.model_config["FF1_OUT_GATHERED_MEMCFG"] = ttnn.create_sharded_memory_config(
+                shape=(32 * 4, self.hidden_dim // 8 // 8),
                 core_grid=ttnn.CoreGrid(y=1, x=8),
                 strategy=ttnn.ShardStrategy.WIDTH,
                 orientation=ttnn.ShardOrientation.ROW_MAJOR,
                 use_height_and_width_as_shard_shape=True,
             )
+            self.model_config["FF2_OUT_REDUCE_SCATTER_MEMCFG"] = (
+                ttnn.create_sharded_memory_config(
+                    shape=(32, self.dim // 8 // 4),  # shard_grid_cores = 8, num_devices=4
+                    core_grid=ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 0))}),
+                    strategy=ttnn.ShardStrategy.WIDTH,
+                    orientation=ttnn.ShardOrientation.ROW_MAJOR,
+                    use_height_and_width_as_shard_shape=True,
+                )
+                if self.dim == 8192
+                else ttnn.create_sharded_memory_config(
+                    shape=(32 * 8, self.dim // 4 // 8),
+                    core_grid=ttnn.CoreGrid(y=1, x=8),
+                    strategy=ttnn.ShardStrategy.WIDTH,
+                    orientation=ttnn.ShardOrientation.ROW_MAJOR,
+                    use_height_and_width_as_shard_shape=True,
+                )
+            )
+
+            self.model_config["SELF_OUT_REDUCE_SCATTER_MEMCFG"] = (
+                ttnn.create_sharded_memory_config(
+                    shape=(32, 2048 // 8 // 8),  # mesh_rows = 8, num_cores=8
+                    core_grid=ttnn.CoreGrid(y=1, x=8),
+                    strategy=ttnn.ShardStrategy.WIDTH,
+                    orientation=ttnn.ShardOrientation.ROW_MAJOR,
+                    use_height_and_width_as_shard_shape=True,
+                )
+                if self.dim == 8192
+                else ttnn.create_sharded_memory_config(
+                    shape=(32 * 8, self.dim // 4 // 32),  # mesh_rows = 8
+                    core_grid=ttnn.CoreGrid(y=4, x=8),
+                    strategy=ttnn.ShardStrategy.WIDTH,
+                    orientation=ttnn.ShardOrientation.ROW_MAJOR,
+                    use_height_and_width_as_shard_shape=True,
+                )
+            )
+
             self.model_config["FF2_OUT_GATHERED_MEMCFG"] = ttnn.create_sharded_memory_config(
                 shape=(32 * 8, self.dim // 4 // 8),
                 core_grid=ttnn.CoreGrid(y=1, x=8),
@@ -799,7 +829,7 @@ class TtModelArgs:
                 ),
             )
 
-            self.model_config = set_tg_attention_config(self.model_config, self.dim, self.is_8b)
+            self.model_config = set_tg_attention_config(self.model_config, self.dim)
 
             self.is_multichip = self.num_devices > 1
             self.num_reduce_scatter_links = 1
@@ -1354,8 +1384,8 @@ def num_to_coregrid(x):
         return ttnn.CoreGrid(y=4, x=5)
 
 
-def set_tg_attention_config(model_config, dim, is_8b):
-    shard_spec_n_cores_grid = ttnn.CoreRangeSet({num_to_corerange(24 if is_8b else 40)})
+def set_tg_attention_config(model_config, dim):
+    shard_spec_n_cores_grid = ttnn.CoreRangeSet({num_to_corerange(40)})
 
     model_config["CREATE_HEAD_INPUT_MEMCFG"] = (
         None
