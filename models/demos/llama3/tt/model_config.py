@@ -99,7 +99,8 @@ class TtModelArgs:
         self.tile_size = 32
 
         # LLAMA_DIR = "/proj_sw/user_dev/llama31-70b-data/Meta-Llama-3.1-70B"
-        LLAMA_DIR = "/proj_sw/user_dev/llama31-8b-data/Meta-Llama-3.1-8B-Instruct/"
+        # LLAMA_DIR = "/proj_sw/user_dev/llama31-8b-data/Meta-Llama-3.1-8B-Instruct/"
+        LLAMA_DIR = "/proj_sw/user_dev/llama32-data/Llama3.2-1B-Instruct"
         if LLAMA_DIR:
             if any([os.getenv("LLAMA_CKPT_DIR"), os.getenv("LLAMA_TOKENIZER_PATH"), os.getenv("LLAMA_CACHE_PATH")]):
                 logger.warning(
@@ -593,12 +594,16 @@ class TtModelArgs:
                 ),
             )
 
-            self.model_config["MLP_ACT_MEMCFG"] = ttnn.create_sharded_memory_config(
-                shape=(32, self.dim // 4 // 16),  # dim / num devices / 16 cores
-                core_grid=ttnn.CoreGrid(x=8, y=2),
-                strategy=ttnn.ShardStrategy.WIDTH,
-                orientation=ttnn.ShardOrientation.ROW_MAJOR,
-                use_height_and_width_as_shard_shape=True,
+            self.model_config["MLP_ACT_MEMCFG"] = (
+                ttnn.create_sharded_memory_config(
+                    shape=(32, self.dim // 4 // 16),  # dim / num devices / 16 cores
+                    core_grid=ttnn.CoreGrid(x=8, y=2),
+                    strategy=ttnn.ShardStrategy.WIDTH,
+                    orientation=ttnn.ShardOrientation.ROW_MAJOR,
+                    use_height_and_width_as_shard_shape=True,
+                )
+                if self.dim >= 4096
+                else self.model_config["FULL_GRID_MEMCFG"]
             )
 
             self.model_config["FF1_3_TG_PROGCFG"] = self.matmul_1d_config_from_tensor_shapes(
@@ -680,7 +685,7 @@ class TtModelArgs:
                 )
                 if self.dim == 8192
                 else ttnn.create_sharded_memory_config(
-                    shape=(32 * 8, self.dim // 4 // 32),  # mesh_rows = 8
+                    shape=(32 * 8, nearest_32(self.dim // 4 // 32)),  # mesh_rows = 8
                     core_grid=ttnn.CoreGrid(y=4, x=8),
                     strategy=ttnn.ShardStrategy.WIDTH,
                     orientation=ttnn.ShardOrientation.ROW_MAJOR,

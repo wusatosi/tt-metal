@@ -69,9 +69,9 @@ class TtLlamaMLP(LightweightModule):
 
         if mode == "decode":  # Sharded config
             if TG:  # TODO: Fix this when TG supports DRAM sharded matmuls
-                pc_1 = self.model_config["FF1_3_TG_PROGCFG"]
-                pc_2 = self.model_config["FF2_TG_PROGCFG"]
-                pc_3 = self.model_config["FF1_3_TG_PROGCFG"]
+                pc_1 = self.model_config["FF1_3_TG_PROGCFG"] if self.dim >= 4096 else None
+                pc_2 = self.model_config["FF2_TG_PROGCFG"] if self.dim >= 4096 else None
+                pc_3 = self.model_config["FF1_3_TG_PROGCFG"] if self.dim >= 4096 else None
             else:
                 pc_1 = self.model_config["DECODE_MLP_W1_W3_PRG_CONFIG"]
                 pc_2 = self.model_config["DECODE_MLP_W2_PRG_CONFIG"]
@@ -138,7 +138,6 @@ class TtLlamaMLP(LightweightModule):
                     memory_config=self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else None,
                 )
             else:
-                print("start", w1_out.memory_config(), w3_out.memory_config())
                 w1_out = tt_all_reduce(
                     w1_out,
                     self.mesh_device,
@@ -192,6 +191,7 @@ class TtLlamaMLP(LightweightModule):
             memory_config=(ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG)
             if TG
             else w2_in.memory_config(),
+            core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_2 else None,
         )
         ttnn.deallocate(w2_in)
         # if mode == "decode" and not TG:

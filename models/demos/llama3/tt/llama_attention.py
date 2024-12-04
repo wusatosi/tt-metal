@@ -393,6 +393,7 @@ class TtLlamaAttention(LightweightModule):
                 # dtype=self.ccl_dtype,  # Running bf16 until we have SDPA output bfp8 df; otherwise we have two sharded to interleaved/interleaved to sharded conversions
             )
             if TG:
+                attn_output = ttnn.to_memory_config(attn_output, ttnn.L1_MEMORY_CONFIG)
                 # user_selection_matrix = [1, 1, 32, 128]
                 # user_selection_matrix @ activation -> [1, 1, 32, 128] * [1, 1, 128, 2048] -> [1, 1, 32, 2048]
                 attn_output = ttnn.matmul(
@@ -424,7 +425,11 @@ class TtLlamaAttention(LightweightModule):
                 num_reduce_scatter_links=self.num_reduce_scatter_links,
                 num_all_gather_links=self.num_all_gather_links,
                 dim=0 if (TG and self.hidden_size < 8192) else 3,
-                memory_config=self.model_config["SELF_OUT_REDUCE_SCATTER_MEMCFG"]
+                memory_config=(
+                    self.model_config["SELF_OUT_REDUCE_SCATTER_MEMCFG"]
+                    if self.hidden_size == 8192
+                    else self.model_config["SELF_OUT_GATHERED_MEMCFG"](self.mesh_device.shape[0])
+                )
                 if TG
                 else self.model_config["DECODE_RESIDUAL_MEMCFG"],
                 sharded=True,
