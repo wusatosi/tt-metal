@@ -62,6 +62,7 @@ void kernel_main() {
     constexpr uint32_t bf16_one_u32 = get_compile_time_arg_val(11);
 
     constexpr uint32_t in_nblocks_c = get_compile_time_arg_val(12);
+    constexpr uint32_t in_cb_sz = get_compile_time_arg_val(13);
 
     constexpr uint32_t TILE_WIDTH = 32;
 
@@ -72,6 +73,8 @@ void kernel_main() {
 
     constexpr uint32_t ROW_HW = 64;
 
+    // minus infinity for bfp16
+    uint16_t minus_inf = 63487;
     // Reduce scalar = 1
     if (reader_id == 0) {
         cb_reserve_back(in_scalar_cb_id, 1);
@@ -98,6 +101,7 @@ void kernel_main() {
     while (counter < reader_nindices) {
         cb_reserve_back(in_cb_id, npages_to_reserve);
         uint32_t out_l1_write_addr_base = get_write_ptr(in_cb_id);
+        fill_with_val(out_l1_write_addr_base, in_cb_sz, minus_inf);
         uint32_t out_l1_write_addr = out_l1_write_addr_base;
         uint16_t top_left_local_index = reader_indices_ptr[counter++];
         if (reader_id == 0) {
