@@ -85,13 +85,31 @@ Tensor aggregate_as_tensor(std::vector<Tensor>& tensor_shards)
 std::vector<int> get_t3k_physical_device_ids_ring() {
     using namespace tt::tt_metal::distributed;
     auto& instance = SystemMesh::instance();
-    auto num_devices = instance.get_num_devices();
+    auto num_devices = instance.num_devices();
     TT_FATAL(num_devices == 8, "T3000 ring topology only works with 8 devices");
 
     auto physical_device_ids = instance.get_mapped_physical_device_ids(
         MeshDeviceConfig(MeshShape{1, 8}, MeshOffset{0, 0}));
     return physical_device_ids;
 }
+
+uint32_t num_buffers_in_tensor(const Tensor& tensor) {
+    if (std::holds_alternative<MultiDeviceStorage>(tensor.get_storage())) {
+        auto device_storage = std::get<tt::tt_metal::MultiDeviceStorage>(tensor.get_storage());
+        return device_storage.num_buffers();
+    } else if (std::holds_alternative<MultiDeviceHostStorage>(tensor.get_storage())) {
+        auto host_storage = std::get<tt::tt_metal::MultiDeviceHostStorage>(tensor.get_storage());
+        return host_storage.num_buffers();
+    } else if (
+        std::holds_alternative<DeviceStorage>(tensor.get_storage()) ||
+        std::holds_alternative<OwnedStorage>(tensor.get_storage()) ||
+        std::holds_alternative<BorrowedStorage>(tensor.get_storage())) {
+        return 1;
+    } else {
+        TT_THROW("num_buffers_in_tensor only supports multi-device or device tensors");
+    }
+}
+
 
 std::vector<Device*> distribute_tensor_to_mesh(const Tensor& tensor, MeshDevice& mesh_device) {
     auto get_multi_device_workers = [&](const std::vector<Device*>& workers) {

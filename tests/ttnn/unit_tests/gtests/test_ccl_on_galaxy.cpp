@@ -200,7 +200,7 @@ TEST(GalaxyTests, TestReduceScatterDeadlock) {
     // first tunnel (forward path).
     auto view = ttnn::MeshDeviceView(*mesh);
     std::vector<Device*> ring_devices = view.get_devices_on_row(0); // Tunnel 0
-    std::vector<Device*> ring_devices_1 = view.get_devices_on_column(mesh_shape.second - 1); // Orthogonal to tunnel .. no deadlocks
+    std::vector<Device*> ring_devices_1 = view.get_devices_on_column(mesh_shape[-1] - 1); // Orthogonal to tunnel .. no deadlocks
     ring_devices_1 = std::vector<Device*>(ring_devices_1.begin() + 1, ring_devices_1.end());
     std::vector<Device*> ring_devices_2 = view.get_devices_on_row(7); // Tunnel 7 .. potential deadlocks with lack of buffering
     std::reverse(ring_devices_2.begin(), ring_devices_2.end());

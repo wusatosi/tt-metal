@@ -44,22 +44,11 @@ struct MeshDeviceConfig {
         mesh_type(mesh_type) {}
 };
 
-// SystemMesh creates a virtualization over the physical devices in the system.
-// It creates a logical 2D-mesh of devices and manages the mapping between logical and physical device coordinates.
-// It is responsible for the assignment of devices in a MeshDevice to physical devices, and the creation and deletion of
-// device resources.
+// Logical Mesh over physically connected devices.
 class SystemMesh {
-   private:
+private:
     using LogicalCoordinate = Coordinate;
     using PhysicalCoordinate = eth_coord_t;
-
-    // Keep track of the devices that were opened so we can close them later. We shouldn't
-    // to keep track of this but DevicePool seems to open all devices associated with an MMIO device id
-    std::unordered_map<MeshDeviceID, std::map<chip_id_t, Device*>> opened_devices;
-    std::unordered_map<MeshDeviceID, std::vector<chip_id_t>> assigned_devices;
-    std::unordered_map<MeshDeviceID, std::shared_ptr<MeshDevice>> assigned_mesh_device_devices;
-    std::unordered_map<chip_id_t, Device *> assigned_physical_id_to_device;
-
     // Logical mesh shape and coordinates
     MeshShape logical_mesh_shape;
     std::unordered_map<LogicalCoordinate, PhysicalCoordinate> logical_to_physical_coordinates;
@@ -74,38 +63,17 @@ class SystemMesh {
     SystemMesh(SystemMesh &&) = delete;
     SystemMesh &operator=(SystemMesh &&) = delete;
 
-    static MeshShape get_system_mesh_shape(size_t system_num_devices);
-    static std::unordered_map<LogicalCoordinate, PhysicalCoordinate> get_system_mesh_translation_map(
-        size_t system_num_devices);
-
-    bool is_system_mesh_initialized() const;
+    bool is_initialized() const;
+    void initialize();
 
    public:
     static SystemMesh &instance();
 
-    void initialize();
-
-    // Return the shape of the logical mesh
-    const MeshShape &get_shape() const;
-    size_t get_num_devices() const;
-
-    // Get the physical device IDs mapped to a MeshDevice
-    std::vector<chip_id_t> get_mapped_physical_device_ids(const MeshDeviceConfig &config) const;
-    void register_mesh_device(const std::shared_ptr<MeshDevice> &mesh_device, const std::vector<Device*>& devices);
-
-    // Map MeshDevice to physical devices
-    std::vector<Device *> map_mesh_device(
-        std::shared_ptr<MeshDevice> mesh_device,
-        size_t num_command_queues,
-        size_t l1_small_size,
-        size_t trace_region_size,
-        DispatchCoreType dispatch_core_type,
-        const MeshDeviceConfig &config);
-
-    // Unmap MeshDevice, releasing the associated physical devices.
-    void unmap_mesh_device(const MeshDevice* mesh_device);
-    std::shared_ptr<MeshDevice> get_mesh_device(const std::vector<chip_id_t>& physical_device_ids);
-    Device* get_device(const chip_id_t physical_device_id) const;
+    const MeshShape& shape() const;
+    size_t num_devices() const;
+    chip_id_t get_physical_device_id(const LogicalCoordinate& logical_coordinate) const;
+    std::vector<chip_id_t> get_mapped_physical_device_ids(const MeshDeviceConfig& config) const;
+    std::vector<chip_id_t> get_mapped_physical_device_ids(const MeshShape& mesh_shape, const MeshOffset& offset = MeshOffset{0, 0}) const;
 };
 
 class MeshDevice : public std::enable_shared_from_this<MeshDevice> {
@@ -175,7 +143,6 @@ class MeshDevice : public std::enable_shared_from_this<MeshDevice> {
         const MeshShape &submesh_shape,
         MeshType type = MeshType::RowMajor);
 
-    static std::shared_ptr<MeshDevice> fetch_mesh_device(const std::vector<Device*>& devices);
     static std::shared_ptr<MeshDevice> create(
         const MeshDeviceConfig &config,
         size_t l1_small_size = DEFAULT_L1_SMALL_SIZE,

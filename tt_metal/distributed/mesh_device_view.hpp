@@ -8,6 +8,7 @@
 #include <tuple>
 #include <vector>
 #include <unordered_map>
+#include <span>
 #include <optional>
 #include <functional>
 
@@ -17,7 +18,39 @@ namespace tt::tt_metal::distributed {
 
 // Forward declaration of MeshDevice
 class MeshDevice;
-using MeshShape = std::pair<size_t, size_t>;
+
+class MeshShape {
+public:
+    static constexpr size_t MAX_RANK = 10;
+
+    MeshShape();
+    explicit MeshShape(std::initializer_list<uint32_t> ilist);
+    MeshShape(const std::span<const uint32_t>& span);
+
+    // Support std::pair initialization for backwards compatibility
+    template <typename T>
+    MeshShape(const std::pair<T, T>& shape) :
+        MeshShape({static_cast<uint32_t>(shape.first), static_cast<uint32_t>(shape.second)}) {}
+
+    MeshShape& operator=(std::initializer_list<uint32_t> ilist);
+    MeshShape& operator=(const std::span<const uint32_t>& span);
+    bool operator==(const MeshShape &other) const;
+    uint32_t operator[](int32_t index) const;
+    uint32_t& operator[](int32_t index);
+
+    size_t rank() const;
+    uint64_t volume() const;
+
+    auto cbegin() const;
+    auto cend() const;
+
+    static constexpr auto attribute_names = std::forward_as_tuple("dims", "rank");
+    constexpr auto attribute_values() const { return std::forward_as_tuple(dims, rank_size); }
+
+private:
+    std::array<uint32_t, MAX_RANK> dims;
+    size_t rank_size;
+};
 
 struct Coordinate {
     size_t row;
@@ -122,11 +155,6 @@ private:
     void initialize_from_devices(const std::vector<device_pointer>& devices, CoordinateMapper mapper);
     void validate_coordinates() const;
 };
-
-// Helper function to create a MeshDeviceView
-inline MeshDeviceView make_mesh_device_view(std::vector<Device*> devices, MeshDeviceView::CoordinateMapper mapper) {
-    return MeshDeviceView(std::move(devices), std::move(mapper));
-}
 
 } // namespace tt::tt_metal::distributed
 

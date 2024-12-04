@@ -115,8 +115,6 @@ void apply(const Tensor& tensor, std::function<void(const Tensor&)> callable);
 // Given a multi-device tensor, return all the devices it is mapped to.
 std::vector<Device*> get_devices(const Tensor& multi_device_tensor);
 
-uint32_t num_buffers_in_tensor(const Tensor& tensor);
-
 Tensor get_shard_for_device(
     const Tensor& tensor, Device* target_device, std::optional<int> buffer_index = std::nullopt);
 

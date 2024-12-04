@@ -26,7 +26,7 @@ class MeshDevice_T3000 : public ::testing::Test {
    protected:
     void SetUp() override {
         skip_test_if_not_t3000();
-        this->mesh_device_ = MeshDevice::create(MeshDeviceConfig(MeshShape(2, 4)));
+        this->mesh_device_ = MeshDevice::create(MeshDeviceConfig(MeshShape{2, 4}));
     }
 
     void TearDown() override {
@@ -40,6 +40,25 @@ TEST_F(MeshDevice_T3000, SimpleMeshDeviceTest) {
     EXPECT_EQ(mesh_device_->num_devices(), 8);
     EXPECT_EQ(mesh_device_->num_rows(), 2);
     EXPECT_EQ(mesh_device_->num_cols(), 4);
+}
+
+TEST(SystemMeshTest, SimpleSystemMeshTest) {
+    auto mesh_device_a = MeshDevice::create(MeshDeviceConfig(MeshShape{1, 1}));
+
+    std::cout << "Mesh Device A Devices: " << std::endl;
+    for (auto device : mesh_device_a->get_devices()) {
+        std::cout << "Device ID: " << device->id() << std::endl;
+    }
+/*
+    auto mesh_device_b = MeshDevice::create(MeshDeviceConfig(MeshShape(1, 1)));
+    std::cout << "Mesh Device B Devices: " << std::endl;
+    for (auto device : mesh_device_b->get_devices()) {
+        std::cout << "Device ID: " << device->id() << std::endl;
+    }
+*/
+    mesh_device_a->close_devices();
+    //mesh_device_b->close_devices();
+
 }
 
 }  // namespace tt::tt_metal::distributed::test

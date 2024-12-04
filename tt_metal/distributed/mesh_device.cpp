@@ -19,6 +19,8 @@ namespace tt::tt_metal::distributed {
 using LogicalCoordinate = Coordinate;
 using PhysicalCoordinate = eth_coord_t;
 
+namespace detail {
+
 static std::string get_config_path(const std::string& filename) {
     std::string root_path = getenv("TT_METAL_HOME") ? getenv("TT_METAL_HOME") : "./";
     return root_path + "/tt_metal/distributed/mesh_configurations/" + filename;
@@ -52,7 +54,7 @@ static std::unordered_map<LogicalCoordinate, PhysicalCoordinate> load_translatio
     return result;
 }
 
-MeshShape SystemMesh::get_system_mesh_shape(size_t system_num_devices) {
+MeshShape get_system_mesh_shape(size_t system_num_devices) {
     const std::unordered_map<size_t, MeshShape> system_mesh_to_shape = {
         {1, MeshShape{1, 1}},   // single-device
         {2, MeshShape{1, 2}},   // N300
@@ -62,11 +64,11 @@ MeshShape SystemMesh::get_system_mesh_shape(size_t system_num_devices) {
     };
     TT_FATAL(system_mesh_to_shape.contains(system_num_devices), "Unsupported number of devices: {}", system_num_devices);
     auto shape = system_mesh_to_shape.at(system_num_devices);
-    log_debug(LogMetal, "Logical SystemMesh Shape: {}x{}", shape.first, shape.second);
+    log_debug(LogMetal, "Logical SystemMesh Shape: {}", shape);
     return shape;
 }
 
-std::unordered_map<LogicalCoordinate, PhysicalCoordinate> SystemMesh::get_system_mesh_translation_map(size_t system_num_devices) {
+std::unordered_map<LogicalCoordinate, PhysicalCoordinate> get_system_mesh_translation_map(size_t system_num_devices) {
     const std::unordered_map<size_t, std::string> system_mesh_translation_map = {
         {1, "device.json"},
         {2, "N300.json"},
@@ -78,14 +80,24 @@ std::unordered_map<LogicalCoordinate, PhysicalCoordinate> SystemMesh::get_system
     auto translation_config_file = get_config_path(system_mesh_translation_map.at(system_num_devices));
     return load_translation_map(translation_config_file, "logical_to_physical_coordinates");
 }
+} // namespace detail
 
-bool SystemMesh::is_system_mesh_initialized() const {
-    return this->physical_coordinate_to_device_id.size() > 0;
+bool SystemMesh::is_initialized() const {
+    return this->physical_device_id_to_coordinate.size() > 0;
+}
+
+chip_id_t SystemMesh::get_physical_device_id(const LogicalCoordinate& logical_coordinate) const {
+    auto it = this->logical_to_physical_coordinates.find(logical_coordinate);
+    if (it == this->logical_to_physical_coordinates.end()) {
+        TT_THROW("Logical coordinate {} not found in system mesh", logical_coordinate);
+    }
+    auto physical_coordinate = it->second;
+    return this->physical_coordinate_to_device_id.at(physical_coordinate);
 }
 
 SystemMesh& SystemMesh::instance() {
     static SystemMesh instance;
-    if (!instance.is_system_mesh_initialized()) {
+    if (!instance.is_initialized()) {
         instance.initialize();
     }
     return instance;
@@ -98,21 +110,23 @@ void SystemMesh::initialize() {
 
     // Initialize the system mesh shape and translation map
     auto num_devices = physical_coordinate_to_device_id.size();
-    this->logical_mesh_shape = SystemMesh::get_system_mesh_shape(num_devices);
-    this->logical_to_physical_coordinates = SystemMesh::get_system_mesh_translation_map(num_devices);
+    this->logical_mesh_shape = detail::get_system_mesh_shape(num_devices);
+    this->logical_to_physical_coordinates = detail::get_system_mesh_translation_map(num_devices);
 }
 
-const MeshShape& SystemMesh::get_shape() const { return this->logical_mesh_shape; }
-size_t SystemMesh::get_num_devices() const {
-    auto [num_rows, num_cols] = this->get_shape();
-    return num_rows * num_cols;
-}
+const MeshShape& SystemMesh::shape() const { return this->logical_mesh_shape; }
+size_t SystemMesh::num_devices() const { return this->shape().volume(); }
 
-std::vector<chip_id_t> SystemMesh::get_mapped_physical_device_ids(const MeshDeviceConfig& config) const {
+std::vector<chip_id_t> SystemMesh::get_mapped_physical_device_ids(const MeshShape& mesh_shape, const MeshOffset& offset) const {
     std::vector<chip_id_t> physical_device_ids;
-    auto [system_mesh_rows, system_mesh_cols] = this->get_shape();
-    auto [requested_rows, requested_cols] = config.mesh_shape;
-    auto [row_offset, col_offset] = config.offset;
+    auto system_mesh_rows = this->shape()[-2];
+    auto system_mesh_cols = this->shape()[-1];
+    auto requested_rows = mesh_shape[-2];
+    auto requested_cols = mesh_shape[-1];
+    auto [row_offset, col_offset] = offset;
+
+    TT_FATAL(row_offset + requested_rows <= system_mesh_rows, "Row offset + requested rows is out of bounds");
+    TT_FATAL(col_offset + requested_cols <= system_mesh_cols, "Column offset + requested columns is out of bounds");
 
     if (requested_rows == 1) {
         TT_FATAL(row_offset == 0 and col_offset == 0, "Row and column offsets unsupported for single row mesh");
@@ -141,16 +155,176 @@ std::vector<chip_id_t> SystemMesh::get_mapped_physical_device_ids(const MeshDevi
     }
     return physical_device_ids;
 }
-void SystemMesh::register_mesh_device(const std::shared_ptr<MeshDevice> &mesh_device, const std::vector<Device*>& devices) {
+
+std::vector<chip_id_t> SystemMesh::get_mapped_physical_device_ids(const MeshDeviceConfig& config) const {
+    return this->get_mapped_physical_device_ids(config.mesh_shape, config.offset);
+}
+
+enum class DeviceStatus {
+    OPENED,
+    CLOSED,
+    ASSIGNED
+};
+
+// Initialize logical_coordinate_to_status with all available devices
+// next, open device and mark in the logical_coordinate_to_status but
+// we need a way to map physical_device_id to the logical_coordinate
+// allocated-block -> mesh-ids
+// figure out the close semantics
+
+class MeshDeviceManager {
+   private:
+    std::unordered_map<LogicalCoordinate, DeviceStatus> logical_coordinate_to_status;
+    std::unordered_map<MeshDeviceID, std::map<chip_id_t, Device*>> opened_devices;
+    std::unordered_map<MeshDeviceID, std::shared_ptr<MeshDevice>> mesh_id_to_mesh;
+    std::unordered_map<chip_id_t, Device*> assigned_physical_id_to_device;
+
+    MeshDeviceManager() = default;
+    MeshDeviceManager(const MeshDeviceManager &) = delete;
+    MeshDeviceManager &operator=(const MeshDeviceManager &) = delete;
+    MeshDeviceManager(MeshDeviceManager &&) = delete;
+    MeshDeviceManager &operator=(MeshDeviceManager &&) = delete;
+
+    void initialize();
+
+   public:
+    static MeshDeviceManager &instance();
+    void register_mesh_device(const std::shared_ptr<MeshDevice> &mesh_device, const std::vector<Device*>& devices);
+    Device* get_device(const chip_id_t physical_device_id) const;
+
+    std::vector<Device *> map_mesh_device(
+        std::shared_ptr<MeshDevice> mesh_device,
+        size_t num_command_queues,
+        size_t l1_small_size,
+        size_t trace_region_size,
+        DispatchCoreType dispatch_core_type,
+        const MeshDeviceConfig &config);
+
+    void unmap_mesh_device(const MeshDevice* mesh_device);
+};
+
+MeshDeviceManager& MeshDeviceManager::instance() {
+    static MeshDeviceManager instance;
+    return instance;
+}
+
+void MeshDeviceManager::initialize() {
+    auto system_mesh_shape = SystemMesh::instance().shape();
+    for (int row = 0; row < system_mesh_shape[-2]; row++) {
+        for (int col = 0; col < system_mesh_shape[-1]; col++) {
+            this->logical_coordinate_to_status.insert({Coordinate{row, col}, DeviceStatus::CLOSED});
+        }
+    }
+}
+
+static MeshShape get_minimum_mesh_open_granularity(const MeshShape& requested_shape) {
+    auto mmio_device_id = tt::Cluster::instance().get_associated_mmio_device(0);
+    auto tunnel_depth = tt::Cluster::instance().get_mmio_device_max_tunnel_depth(mmio_device_id);
+    auto tunnel_count = tt::Cluster::instance().get_mmio_device_tunnel_count(mmio_device_id);
+
+    // Round up to the nearest multiple of tunnel_depth and tunnel_count
+    size_t rows = ((requested_shape[-2] + tunnel_count - 1) / tunnel_count) * tunnel_count;
+    size_t cols = ((requested_shape[-1] + tunnel_depth - 1) / tunnel_depth) * tunnel_depth;
+    return MeshShape{rows, cols};
+}
+
+void MeshDeviceManager::register_mesh_device(const std::shared_ptr<MeshDevice> &mesh_device, const std::vector<Device*>& devices) {
     std::vector<chip_id_t> physical_device_ids;
     for (auto device : devices) {
         physical_device_ids.push_back(device->id());
     }
-    this->assigned_mesh_device_devices.insert({mesh_device->get_mesh_id(), mesh_device});
-    this->assigned_devices.insert({mesh_device->get_mesh_id(), physical_device_ids});
+    this->mesh_id_to_mesh.insert({mesh_device->get_mesh_id(), mesh_device});
 }
 
-std::vector<Device*> SystemMesh::map_mesh_device(
+bool is_valid_mesh_offset(const MeshShape& requested_shape, const MeshOffset& user_offset) {
+    auto system_mesh_shape = SystemMesh::instance().shape();
+    bool are_devices_closed = false;
+    bool are_devices_opened = false;
+    if (user_offset.first >= requested_shape[-2] || user_offset.second >= requested_shape[-1]) {
+        //TT_FATAL("Invalid offset: ({}, {}) for mesh shape: {}", user_offset.first, user_offset.second, requested_shape);
+        return false;
+    }
+    if (user_offset.first + requested_shape[-2] > system_mesh_shape[-2] || user_offset.second + requested_shape[-1] > system_mesh_shape[-1]) {
+        //TT_FATAL("Offset + requested shape is out of bounds for the system mesh shape");
+        return false;
+    }
+
+    for (uint32_t row = user_offset.first; row < user_offset.first + requested_shape[-2]; row++) {
+        for (uint32_t col = user_offset.second; col < user_offset.second + requested_shape[-1]; col++) {
+            if (this->logical_coordinate_to_status.find(Coordinate{row, col}) == this->logical_coordinate_to_status.end()) {
+                //TT_FATAL("Logical coordinate {} not found in system mesh", Coordinate{row, col});
+                return false;
+            }
+            if (this->logical_coordinate_to_status.at(Coordinate{row, col}) == DeviceStatus::ASSIGNED) {
+                TT_FATAL("Logical coordinate {} already assigned", Coordinate{row, col});
+            } else if (this->logical_coordinate_to_status.at(Coordinate{row, col}) == DeviceStatus::CLOSED) {
+                are_devices_closed = true;
+            } else if (this->logical_coordinate_to_status.at(Coordinate{row, col}) == DeviceStatus::OPENED) {
+                are_devices_opened = true;
+            }
+        }
+    }
+}
+
+std::pair<MeshOffset, bool> find_valid_mesh_offset(const MeshShape& requested_shape, const MeshOffset& user_offset) {
+    auto system_mesh_shape = SystemMesh::instance().shape();
+    auto requested_shape = config.mesh_shape;
+
+    if (requested_shape[-2] > system_mesh_shape[-2] || requested_shape[-1] > system_mesh_shape[-1]) {
+        TT_FATAL("Requested mesh shape is larger than the system mesh shape");
+    }
+
+    if (user_offset.first >= 0 || user_offset.second >= 0) {
+        if (user_offset.first >= requested_shape[-2] || user_offset.second >= requested_shape[-1]) {
+            TT_FATAL("Invalid offset: ({}, {}) for mesh shape: {}", config.offset.first, config.offset.second, requested_shape);
+        }
+        if (user_offset.first + requested_shape[-2] > system_mesh_shape[-2] || user_offset.second + requested_shape[-1] > system_mesh_shape[-1]) {
+            TT_FATAL("Offset + requested shape is out of bounds for the system mesh shape");
+        }
+        bool are_devices_closed = false;
+        bool are_devices_opened = false;
+        for (uint32_t row = user_offset.first; row < user_offset.first + requested_shape[-2]; row++) {
+            for (uint32_t col = user_offset.second; col < user_offset.second + requested_shape[-1]; col++) {
+                if (this->logical_coordinate_to_status.find(Coordinate{row, col}) == this->logical_coordinate_to_status.end()) {
+                    TT_FATAL("Logical coordinate {} not found in system mesh", Coordinate{row, col});
+                }
+                if (this->logical_coordinate_to_status.at(Coordinate{row, col}) == DeviceStatus::ASSIGNED) {
+                    TT_FATAL("Logical coordinate {} already assigned", Coordinate{row, col});
+                } else if (this->logical_coordinate_to_status.at(Coordinate{row, col}) == DeviceStatus::CLOSED) {
+                    are_devices_closed = true;
+                } else if (this->logical_coordinate_to_status.at(Coordinate{row, col}) == DeviceStatus::OPENED) {
+                    are_devices_opened = true;
+                }
+            }
+        }
+        bool is_valid = are_devices_closed ^ are_devices_opened;
+        if (!is_valid) {
+            TT_FATAL("Devices must be either all closed or all opened");
+        }
+        return std::make_pair(config.offset, are_devices_closed);
+    } else {
+        for (uint32_t row = 0; row < system_mesh_shape[-2] - requested_shape[-2] + 1; ++row) {
+            for (uint32_t col = 0; col < system_mesh_shape[-1] - requested_shape[-1] + 1; ++col) {
+                bool is_valid = true;
+                for (uint32_t r = row; r < row + requested_shape[-2] && is_valid; ++r) {
+                    for (uint32_t c = col; c < col + requested_shape[-1] && is_valid; ++c) {
+                        if (this->logical_coordinate_to_status.at(Coordinate{r, c}) == DeviceStatus::ASSIGNED) {
+                            is_valid = false;
+                        }
+                    }
+                }
+                if (is_valid) {
+                    found_offset = MeshOffset{row, col};
+                    break;
+                }
+            }
+            if (found_offset) break;
+        }
+    }
+    return found_offset.value();
+}
+
+std::vector<Device*> MeshDeviceManager::map_mesh_device(
     std::shared_ptr<MeshDevice> mesh_device,
     size_t num_command_queues,
     size_t l1_small_size,
@@ -158,17 +332,12 @@ std::vector<Device*> SystemMesh::map_mesh_device(
     DispatchCoreType dispatch_core_type,
     const MeshDeviceConfig& config) {
 
-    auto [requested_num_rows, requested_num_cols] = mesh_device->shape();
-    auto [max_num_rows, max_num_cols] = this->logical_mesh_shape;
-    auto [row_offset, col_offset] = config.offset;
-
-    log_debug(LogMetal, "Mapping MeshDevice ({}x{}) with offset: {}, {}", requested_num_rows, requested_num_cols, row_offset, col_offset);
-    TT_FATAL(requested_num_rows <= max_num_rows, "Requested too many rows: {} > {}", requested_num_rows, max_num_rows);
-    TT_FATAL(requested_num_rows*requested_num_cols <= max_num_rows*max_num_cols, "Requested submesh is too big: {}x{}", requested_num_rows, requested_num_cols);
-
+    MeshOffset offset = find_valid_mesh_offset(config.mesh_shape, config.offset);
+    MeshShape minimum_mesh_open_granularity = get_minimum_mesh_open_granularity(config.mesh_shape);
+    log_info(LogMetal, "Minimum mesh open granularity: {}", minimum_mesh_open_granularity);
 
     auto physical_device_ids = config.physical_device_ids.empty() ?
-        this->get_mapped_physical_device_ids(config) :
+        SystemMesh::instance().get_mapped_physical_device_ids(config.mesh_shape, config.offset) :
         config.physical_device_ids;
 
     this->opened_devices[mesh_device->get_mesh_id()] = tt::tt_metal::detail::CreateDevices(
@@ -181,32 +350,32 @@ std::vector<Device*> SystemMesh::map_mesh_device(
         this->assigned_physical_id_to_device.insert({physical_device_id, mapped_device});
     }
 
-    this->register_mesh_device(mesh_device, mapped_devices); // here
+    this->register_mesh_device(mesh_device, mapped_devices);
     return mapped_devices;
 }
 
-void SystemMesh::unmap_mesh_device(const MeshDevice* mesh_device) {
+void MeshDeviceManager::unmap_mesh_device(const MeshDevice* mesh_device) {
     auto mesh_id = mesh_device->get_mesh_id();
-    this->assigned_mesh_device_devices.erase(mesh_id);
+    this->mesh_id_to_mesh.erase(mesh_id);
 
     // Close the devices
     if (mesh_device->is_parent_mesh()) {
-        for (auto physical_id : this->assigned_devices.at(mesh_id)) {
-            this->assigned_physical_id_to_device.erase(physical_id);
+        for (auto device : mesh_device->get_devices()) {
+            this->assigned_physical_id_to_device.erase(device->id());
         }
         tt::tt_metal::detail::CloseDevices(this->opened_devices.at(mesh_id));
         this->opened_devices.erase(mesh_id);
     }
-    this->assigned_devices.erase(mesh_id);
 }
 
-Device* SystemMesh::get_device(const chip_id_t physical_device_id) const {
+Device* MeshDeviceManager::get_device(const chip_id_t physical_device_id) const {
     auto it = this->assigned_physical_id_to_device.find(physical_device_id);
     if (it == this->assigned_physical_id_to_device.end()) {
         TT_THROW("Physical Device ID: {} not found in assigned devices", physical_device_id);
     }
     return it->second;
 }
+
 
 static MeshDeviceID generate_unique_mesh_id() {
     static std::atomic<MeshDeviceID> next_id{0};
@@ -234,30 +403,30 @@ std::shared_ptr<MeshDevice> MeshDevice::create_submesh(
     const MeshOffset &offset,
     MeshType type)
 {
-    if (submesh_shape.first <= 0 || submesh_shape.second <= 0) {
-        TT_THROW("Invalid submesh shape: ({}, {}). Both dimensions must be positive.", submesh_shape.first, submesh_shape.second);
+    if (submesh_shape[-2] <= 0 || submesh_shape[-1] <= 0) {
+        TT_THROW("Invalid submesh shape: {}. Both dimensions must be positive.", submesh_shape);
     }
 
     if (offset.first < 0 || offset.second < 0) {
         TT_THROW("Invalid offset: ({}, {}). Offset must be non-negative.", offset.first, offset.second);
     }
 
-    if (offset.first + submesh_shape.first > this->mesh_device_shape.first ||
-        offset.second + submesh_shape.second > this->mesh_device_shape.second) {
-        TT_THROW("Submesh ({}x{}) with offset ({}, {}) does not fit within parent mesh ({}x{}).",
-                 submesh_shape.first, submesh_shape.second,
+    if (offset.first + submesh_shape[-2] > this->mesh_device_shape[-2] ||
+        offset.second + submesh_shape[-1] > this->mesh_device_shape[-1]) {
+        TT_THROW("Submesh {} with offset ({}, {}) does not fit within parent mesh ({}).",
+                 submesh_shape,
                  offset.first, offset.second,
-                 this->mesh_device_shape.first, this->mesh_device_shape.second);
+                 this->mesh_device_shape);
     }
 
     auto submesh = std::make_shared<MeshDevice>(submesh_shape, type, shared_from_this());
     auto start_coordinate = Coordinate{offset.first, offset.second};
-    auto end_coordinate = Coordinate{offset.first + submesh_shape.first - 1, offset.second + submesh_shape.second - 1};
+    auto end_coordinate = Coordinate{offset.first + submesh_shape[-2] - 1, offset.second + submesh_shape[-1] - 1};
     submesh->primary_view = std::make_shared<MeshDeviceView>(*this, start_coordinate, end_coordinate);
     submesh->devices = submesh->primary_view->get_devices();
-    SystemMesh::instance().register_mesh_device(submesh, submesh->devices);
+    MeshDeviceManager::instance().register_mesh_device(submesh, submesh->devices);
     this->submeshes.push_back(submesh);
-    log_trace(LogMetal, "Instantiating submesh {}: {}x{} with offset: {} {}", submesh->get_mesh_id(), submesh_shape.first, submesh_shape.second, offset.first, offset.second);
+    log_trace(LogMetal, "Instantiating submesh {}: {} with offset: {} {}", submesh->get_mesh_id(), submesh_shape, offset.first, offset.second);
     log_trace(LogMetal, "Submesh {} instantiated with {} devices", submesh->get_mesh_id(), submesh->devices);
 
     return submesh;
@@ -268,8 +437,8 @@ std::vector<std::shared_ptr<MeshDevice>> MeshDevice::create_submeshes(
     MeshType type)
 {
     std::vector<std::shared_ptr<MeshDevice>> submeshes;
-    for (int row = 0; row < this->num_rows(); row += submesh_shape.first) {
-        for (int col = 0; col < this->num_cols(); col += submesh_shape.second) {
+    for (int row = 0; row < this->num_rows(); row += submesh_shape[-2]) {
+        for (int col = 0; col < this->num_cols(); col += submesh_shape[-1]) {
             auto submesh = this->create_submesh(submesh_shape, MeshOffset{row, col}, type);
             submeshes.push_back(submesh);
         }
@@ -284,16 +453,15 @@ void MeshDevice::initialize(
     DispatchCoreType dispatch_core_type,
     const MeshDeviceConfig& config)
 {
-    auto [num_rows, num_cols] = this->shape();
-    auto num_requested_devices = num_rows * num_cols;
+    auto num_requested_devices = this->shape().volume();
     auto num_available_devices = tt::tt_metal::GetNumAvailableDevices();
     TT_FATAL(
         num_requested_devices <= num_available_devices,
         "User has requested more devices than available: {} requested, {} available",
         num_requested_devices, num_available_devices);
 
-    auto& instance = SystemMesh::instance();
-    this->devices = instance.map_mesh_device(
+    auto& device_manager = MeshDeviceManager::instance();
+    this->devices = device_manager.map_mesh_device(
         shared_from_this(), num_command_queues, l1_small_size, trace_region_size, dispatch_core_type, config);
     this->primary_view = std::make_shared<MeshDeviceView>(*this);
 }
@@ -308,7 +476,7 @@ Device* MeshDevice::get_device_index(size_t logical_device_id) const {
 }
 
 Device* MeshDevice::get_device(chip_id_t physical_device_id) const {
-    return SystemMesh::instance().get_device(physical_device_id);
+    return MeshDeviceManager::instance().get_device(physical_device_id);
 }
 
 std::vector<Device*> MeshDevice::get_devices() const { return this->primary_view->get_devices(this->type); }
@@ -333,9 +501,9 @@ CoreCoord MeshDevice::dram_grid_size() const { return get_device_index(0)->dram_
 
 tt::ARCH MeshDevice::arch() const { return get_device_index(0)->arch(); }
 
-size_t MeshDevice::num_rows() const { return this->mesh_device_shape.first; }
+size_t MeshDevice::num_rows() const { return this->mesh_device_shape[-2]; }
 
-size_t MeshDevice::num_cols() const { return this->mesh_device_shape.second; }
+size_t MeshDevice::num_cols() const { return this->mesh_device_shape[-1]; }
 
 MeshShape MeshDevice::shape() const { return this->mesh_device_shape; }
 
@@ -344,7 +512,7 @@ void MeshDevice::close_devices() {
         submesh->close_devices();
     }
     if (not this->devices.empty()) {
-        SystemMesh::instance().unmap_mesh_device(this);
+        MeshDeviceManager::instance().unmap_mesh_device(this);
     }
     this->parent_mesh.reset();
     this->devices.clear();
@@ -362,32 +530,6 @@ std::shared_ptr<MeshDeviceView> MeshDevice::get_view() { return this->primary_vi
 MeshDeviceID MeshDevice::get_mesh_id() const { return this->mesh_id; }
 
 bool MeshDevice::is_parent_mesh() const { return this->parent_mesh.expired(); }
-
-std::shared_ptr<MeshDevice> SystemMesh::get_mesh_device(const std::vector<chip_id_t>& physical_device_ids) {
-    log_trace(LogMetal, "Getting mesh device for {} physical devices: {}", physical_device_ids.size(), physical_device_ids);
-    std::unordered_set<chip_id_t> input_set(physical_device_ids.begin(), physical_device_ids.end());
-
-    for (const auto& [mesh_id, mesh_device] : this->assigned_mesh_device_devices) {
-        const auto& assigned_devices = this->assigned_devices.at(mesh_id);
-        std::unordered_set<chip_id_t> assigned_set(assigned_devices.begin(), assigned_devices.end());
-        log_trace(LogMetal, "Assigned devices: {}", assigned_devices);
-
-        if (input_set == assigned_set) {
-            return mesh_device;
-        }
-    }
-    TT_THROW("No mesh device found for the provided devices");
-}
-
-std::shared_ptr<MeshDevice> MeshDevice::fetch_mesh_device(const std::vector<Device*>& devices) {
-    TT_FATAL(devices.size() > 0, "No devices provided");
-    auto& instance = SystemMesh::instance();
-    std::vector<chip_id_t> physical_device_ids;
-    for (auto device : devices) {
-        physical_device_ids.push_back(device->id());
-    }
-    return instance.get_mesh_device(physical_device_ids);
-}
 
 std::vector<std::shared_ptr<MeshDevice>> MeshDevice::get_submeshes() const { return this->submeshes; }
 

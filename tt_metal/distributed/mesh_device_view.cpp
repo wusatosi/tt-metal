@@ -11,6 +11,60 @@
 
 namespace tt::tt_metal::distributed {
 
+MeshShape::MeshShape() : rank_size(0) {}
+
+MeshShape::MeshShape(const std::span<const uint32_t>& span)
+    : rank_size(std::min(span.size(), MAX_RANK)) {
+    std::copy_n(span.begin(), rank_size, dims.begin());
+}
+
+MeshShape::MeshShape(std::initializer_list<uint32_t> ilist)
+    : rank_size(std::min(ilist.size(), MAX_RANK)) {
+    std::copy_n(ilist.begin(), rank_size, dims.begin());
+}
+
+MeshShape& MeshShape::operator=(std::initializer_list<uint32_t> ilist) {
+    rank_size = std::min(ilist.size(), MAX_RANK);
+    std::copy_n(ilist.begin(), rank_size, dims.begin());
+    return *this;
+}
+
+MeshShape& MeshShape::operator=(const std::span<const uint32_t>& span) {
+    rank_size = std::min(span.size(), MAX_RANK);
+    std::copy_n(span.begin(), rank_size, dims.begin());
+    return *this;
+}
+
+bool MeshShape::operator==(const MeshShape &other) const {
+    return rank_size == other.rank_size &&
+           std::equal(dims.begin(), dims.begin() + rank_size, other.dims.begin());
+}
+
+uint32_t MeshShape::operator[](int32_t index) const {
+    if (index < 0) index += rank_size;
+    if (index < 0 || static_cast<size_t>(index) >= rank_size) {
+        throw std::out_of_range("Index out of range");
+    }
+    return (index >= 0 && static_cast<size_t>(index) < rank_size) ? dims[index] : 0;
+}
+
+uint32_t& MeshShape::operator[](int32_t index) {
+    if (index < 0) index += rank_size;
+    if (index < 0 || static_cast<size_t>(index) >= rank_size) {
+        throw std::out_of_range("Index out of range");
+    }
+    return dims[index];
+}
+
+size_t MeshShape::rank() const { return rank_size; }
+
+uint64_t MeshShape::volume() const {
+    return std::accumulate(dims.begin(), dims.begin() + rank_size, 1ULL, std::multiplies<uint64_t>());
+}
+
+auto MeshShape::cbegin() const { return dims.cbegin(); }
+auto MeshShape::cend() const { return dims.cbegin() + rank_size; }
+
 static std::vector<MeshDeviceView::device_pointer> get_devices_from_coordinates(MeshDeviceView& mesh, const std::vector<Coordinate>& coords) {
     std::vector<MeshDeviceView::device_pointer> devices;
     for (const auto& coord : coords) {
@@ -22,16 +76,7 @@ static std::vector<MeshDeviceView::device_pointer> get_devices_from_coordinates(
 }
 
 MeshDeviceView::MeshDeviceView(const MeshDevice& mesh)
-    : top_left_(0, 0), bottom_right_(mesh.num_rows() - 1, mesh.num_cols() - 1) {
-    for (size_t row = 0; row < mesh.num_rows(); ++row) {
-        for (size_t col = 0; col < mesh.num_cols(); ++col) {
-            if (auto device = mesh.get_device(row, col)) {
-                devices_.push_back(device);
-                device_coordinates_[(device)->id()] = {row, col};
-            }
-        }
-    }
-}
+    : MeshDeviceView(mesh, Coordinate{0, 0}, Coordinate{mesh.num_rows() - 1, mesh.num_cols() - 1}) {}
 
 MeshDeviceView::MeshDeviceView(const MeshDevice& mesh, Coordinate top_left, Coordinate bottom_right)
     : top_left_(0, 0), bottom_right_(Coordinate{bottom_right.row - top_left.row, bottom_right.col - top_left.col}) {
@@ -82,7 +127,7 @@ MeshDeviceView::DeviceView MeshDeviceView::get_devices(const Coordinate& start, 
 }
 
 MeshDeviceView::DeviceView MeshDeviceView::get_devices(const MeshShape& shape) {
-    return get_devices({0, 0}, {shape.first - 1, shape.second - 1});
+    return get_devices({0, 0}, {shape[-2] - 1, shape[-1] - 1});
 }
 
 std::vector<MeshDeviceView::device_pointer> MeshDeviceView::get_devices_on_row(size_t row) const {
@@ -131,8 +176,8 @@ size_t MeshDeviceView::size() const noexcept {
     return devices_.size();
 }
 
-std::pair<size_t, size_t> MeshDeviceView::shape() const noexcept {
-    return {num_rows(), num_cols()};
+MeshShape MeshDeviceView::shape() const noexcept {
+    return MeshShape{num_rows(), num_cols()};
 }
 
 bool MeshDeviceView::contains(const Coordinate& coord) const noexcept {
@@ -219,7 +264,8 @@ std::vector<Coordinate> MeshDeviceView::get_line_coordinates(
 
 std::vector<Coordinate> MeshDeviceView::get_ring_coordinates(const MeshShape& ring_shape, const Coordinate& offset, size_t num_rows, size_t num_cols) {
     auto [start_row, start_col] = offset;
-    auto [ring_rows, ring_cols] = ring_shape;
+    auto ring_rows = ring_shape[-2];
+    auto ring_cols = ring_shape[-1];
     auto end_row = start_row + ring_rows - 1;
     auto end_col = start_col + ring_cols - 1;
 
