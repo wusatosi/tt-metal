@@ -52,6 +52,7 @@ public:
     DeviceAddr buffer_address() const;
     DeviceAddr config_address() const;
     uint32_t size() const;
+    const std::unordered_map<CoreCoord, CoreRangeSet>& sender_receiver_core_mapping() const;
 
     static constexpr auto attribute_names = std::forward_as_tuple("sender_receiver_core_mapping", "size");
     const auto attribute_values() const { return std::make_tuple(this->sender_receiver_core_mapping_, this->size_); }
@@ -76,3 +77,42 @@ private:
 }  // namespace v1
 
 }  // namespace tt::tt_metal
+
+template <>
+struct fmt::formatter<std::unordered_map<CoreCoord, CoreRangeSet>> {
+    constexpr auto parse(format_parse_context& ctx) -> format_parse_context::iterator { return ctx.end(); }
+
+    auto format(const std::unordered_map<CoreCoord, CoreRangeSet>& map, format_context& ctx) const
+        -> format_context::iterator {
+        using tt::stl::reflection::operator<<;
+        std::stringstream ss;
+        ss << map;
+        return fmt::format_to(ctx.out(), "{}", ss.str());
+    }
+};
+
+namespace std {
+
+template <>
+struct hash<std::unordered_map<CoreCoord, CoreRangeSet>> {
+    std::size_t operator()(const std::unordered_map<CoreCoord, CoreRangeSet>& map) const {
+        std::size_t seed = 0;
+        for (const auto& kv : map) {
+            tt::utils::hash_combine(seed, kv.first);
+            tt::utils::hash_combine(seed, kv.second);
+        }
+        return seed;
+    }
+};
+
+template <>
+struct hash<tt::tt_metal::v1::experimental::GlobalCircularBuffer> {
+    std::size_t operator()(const tt::tt_metal::v1::experimental::GlobalCircularBuffer& obj) const {
+        std::size_t seed = 0;
+        tt::utils::hash_combine(seed, obj.sender_receiver_core_mapping());
+        tt::utils::hash_combine(seed, obj.size());
+        return seed;
+    }
+};
+
+}  // namespace std
