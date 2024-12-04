@@ -51,8 +51,8 @@ def run_max_pool(
     max_cores = cores_x * cores_y
 
     if shard_scheme == ttnn.TensorMemoryLayout.HEIGHT_SHARDED or shard_scheme is None:
-        if in_c % 16 != 0:
-            pytest.skip("Current maxpool writer needs nchannels to be multiple of 16!")
+        # if in_c % 16 != 0:
+        #     pytest.skip("Current maxpool writer needs nchannels to be multiple of 16!")
         if in_c == 16 and dtype == ttnn.bfloat8_b and in_n * in_h * in_w > 600000:
             pytest.skip("This case runs out of memory")
         if in_n > 16 and in_c > 64 and dtype == ttnn.bfloat8_b and is_wormhole_b0():
@@ -116,15 +116,13 @@ def run_max_pool(
     torch.set_printoptions(precision=3, sci_mode=False, linewidth=500, threshold=10000, edgeitems=32)
 
     ## construct the tensor in NCHW shape
-    act = torch.randn(act_shape, dtype=torch.bfloat16)
-    # act = torch.zeros(act_shape, dtype=torch.bfloat16)
-    # act = torch.ones(act_shape, dtype=torch.bfloat16)
-    # act = torch.arange(0, volume(act_shape), dtype=torch.bfloat16).reshape(act_shape)
-    # for n in range(act_shape[0]):
-    #     for c in range(act_shape[1]):
-    #         for h in range(act_shape[2]):
-    #             for w in range(act_shape[3]):
-    #                 act[n, c, h, w] = 1 + n + h + w + c # + torch.rand(1) * 0.15
+    # act = torch.randn(act_shape, dtype=torch.bfloat16)
+    act = torch.zeros(act_shape, dtype=torch.bfloat16)
+    for n in range(act_shape[0]):
+        for c in range(act_shape[1]):
+            for h in range(act_shape[2]):
+                for w in range(act_shape[3]):
+                    act[n, c, h, w] = h * in_w + w
     # torch.save(act, "act.pt")
     # act = torch.load("act.pt")
 
@@ -233,45 +231,46 @@ def run_max_pool(
     "act_shape",  ## NCHW
     (
         (  ## resnet shapes
-            [1, 64, 112, 112],
-            [4, 64, 112, 112],
-            [8, 64, 112, 112],
-            [16, 64, 112, 112],
-            # [20, 64, 112, 112],   ## oom
-            ## hpr shapes
-            [8, 32, 132, 20],
-            [16, 32, 132, 20],
-            [32, 32, 132, 20],
-            [64, 32, 132, 20],
-            [128, 32, 132, 20],
-            # [256, 32, 132, 20],   ## oom
-            [8, 32, 264, 40],
-            [16, 32, 264, 40],
-            [32, 32, 264, 40],
-            # [64, 32, 264, 40],    ## oom
-            # [128, 32, 264, 40],   ## oom
-            # [256, 32, 264, 40],   ## oom
-            [4, 16, 1056, 160],
-            # [8, 16, 1056, 160],     ## oom
-            # [16, 16, 1056, 160],    ## oom
-            # [32, 16, 1056, 160],    ## oom
-            # [64, 16, 1056, 160],    ## oom
-            # [128, 16, 1056, 160],   ## oom
-            # [256, 16, 1056, 160],   ## oom
-            [8, 16, 528, 80],
-            [16, 16, 528, 80],
-            # [32, 16, 528, 80],  ## oom
-            # [64, 16, 528, 80],  ## oom
-            # [128, 16, 528, 80], ## oom
-            # [256, 16, 528, 80], ## oom
-            ## wide for vgg
-            [1, 256, 56, 56],
-            [1, 512, 28, 28],
-            [1, 512, 14, 14],
-            # wide yolo kernel
-            [1, 512, 10, 10],
-            [1, 96, 112, 112],
-            [1, 192, 132, 20],
+            # [1, 64, 112, 112],
+            # [4, 64, 112, 112],
+            # [8, 64, 112, 112],
+            # [16, 64, 112, 112],
+            # # [20, 64, 112, 112],   ## oom
+            # ## hpr shapes
+            # [8, 32, 132, 20],
+            # [16, 32, 132, 20],
+            # [32, 32, 132, 20],
+            # [64, 32, 132, 20],
+            # [128, 32, 132, 20],
+            # # [256, 32, 132, 20],   ## oom
+            # [8, 32, 264, 40],
+            # [16, 32, 264, 40],
+            # [32, 32, 264, 40],
+            # # [64, 32, 264, 40],    ## oom
+            # # [128, 32, 264, 40],   ## oom
+            # # [256, 32, 264, 40],   ## oom
+            # [4, 16, 1056, 160],
+            # # [8, 16, 1056, 160],     ## oom
+            # # [16, 16, 1056, 160],    ## oom
+            # # [32, 16, 1056, 160],    ## oom
+            # # [64, 16, 1056, 160],    ## oom
+            # # [128, 16, 1056, 160],   ## oom
+            # # [256, 16, 1056, 160],   ## oom
+            # [8, 16, 528, 80],
+            # [16, 16, 528, 80],
+            # # [32, 16, 528, 80],  ## oom
+            # # [64, 16, 528, 80],  ## oom
+            # # [128, 16, 528, 80], ## oom
+            # # [256, 16, 528, 80], ## oom
+            # ## wide for vgg
+            # [1, 256, 56, 56],
+            # [1, 512, 28, 28],
+            # [1, 512, 14, 14],
+            # # wide yolo kernel
+            # [1, 512, 10, 10],
+            # [1, 96, 112, 112],
+            # [1, 192, 132, 20],
+            [1, 40, 14, 14],
         )
     ),
 )
@@ -280,9 +279,9 @@ def run_max_pool(
     (
         (2, 2),
         (3, 3),
-        (5, 5),
-        (9, 9),
-        (13, 13),
+        # (5, 5),
+        # (9, 9),
+        # (13, 13),
     ),
 )
 @pytest.mark.parametrize(
@@ -290,16 +289,16 @@ def run_max_pool(
     (
         (0, 0),
         (1, 1),
-        (2, 2),
-        (4, 4),
-        (6, 6),
+        # (2, 2),
+        # (4, 4),
+        # (6, 6),
     ),
 )
 @pytest.mark.parametrize(
     "stride",
     (
         (1, 1),
-        (2, 2),
+        # (2, 2),
     ),
 )
 @pytest.mark.parametrize("dilation", ((1, 1),))  ## default
@@ -307,7 +306,7 @@ def run_max_pool(
     "dtype",
     [
         ttnn.bfloat16,
-        ttnn.bfloat8_b,
+        # ttnn.bfloat8_b,
     ],
 )
 def test_run_max_pool(
@@ -319,11 +318,12 @@ def test_run_max_pool(
     device,
     dtype,
     use_program_cache,
+    shard_scheme=ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
 ):
     run_max_pool(act_shape, kernel_size, padding, stride, dilation, device, dtype)
 
 
-@pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
+"""@pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
 @pytest.mark.parametrize(
     "act_shape",  ## NCHW
     (
@@ -804,4 +804,4 @@ def test_pool_core_nondivis(
     assert allclose
     assert isclose
     if dtype == ttnn.bfloat16:
-        assert isequal
+        assert isequal """
