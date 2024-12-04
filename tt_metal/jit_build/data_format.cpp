@@ -196,8 +196,10 @@ void check_valid_in_out_data_formats(DataFormat input_formats[NUM_OPERANDS], Dat
 
 std::vector<DataFormat> get_unpack_src_formats(DataFormat input_formats[NUM_OPERANDS], DataFormat param_formats[NUM_OPERANDS], DataFormat intermed_formats[NUM_OPERANDS]) {
     std::vector<DataFormat> unpack_src_format;
+    std::cout << "input format: ";
     for (int i=0 ; i<NUM_OPERANDS ; i++) {
         DataFormat src_format = input_formats[i];
+        std::cout << src_format << ", ";
         if (src_format == DataFormat::RawUInt32 || src_format == DataFormat::RawUInt16 || src_format == DataFormat::RawUInt8) {
             switch (src_format) {
                case DataFormat::RawUInt32: src_format = DataFormat::Float32; break;
@@ -207,12 +209,15 @@ std::vector<DataFormat> get_unpack_src_formats(DataFormat input_formats[NUM_OPER
         }
         unpack_src_format.push_back(src_format);
     }
+    std::cout << std::endl;
     for (int i=0 ; i<NUM_OPERANDS ; i++) {
         DataFormat src_format = param_formats[i];
+        //std::cout << "param format: " << src_format << std::endl;
         unpack_src_format.push_back(src_format);
     }
     for (int i=0 ; i<NUM_OPERANDS ; i++) {
         DataFormat src_format = intermed_formats[i];
+        //std::cout << "intermed format: " << src_format << std::endl;
         unpack_src_format.push_back(src_format);
     }
     return unpack_src_format;

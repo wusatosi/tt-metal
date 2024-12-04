@@ -240,7 +240,7 @@ inline void llk_pack_untilize(
     }
 }
 
-
+#include "debug/dprint.h"
 template <bool out_of_order_output = false, bool untilize = false, bool is_fp32_dest_acc_en = false>
 inline void llk_matmul_pack(
     std::uint32_t start_tile_index, std::uint32_t output, uint32_t ntiles, std::uint32_t output_tile_index = 0) {

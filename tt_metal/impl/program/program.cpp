@@ -840,10 +840,13 @@ void detail::Program_::set_cb_data_fmt(Device *device, const std::vector<CoreRan
     for (auto logical_cr : crs) {
         auto cbs_on_core = this->circular_buffers_on_corerange(logical_cr);
         for (const auto& circular_buffer : cbs_on_core) {
+            //std::cout << "DataFormat: ";
             for (auto buffer_index : circular_buffer->buffer_indices()) {
                 build_options.set_cb_dataformat_all_cores(
                     static_cast<CB>(buffer_index), circular_buffer->data_format(buffer_index));
+                    //std::cout << circular_buffer->data_format(buffer_index) << ", ";
             }
+            //std::cout << std::endl;
         }
     }
 }

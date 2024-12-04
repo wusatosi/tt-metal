@@ -60,6 +60,7 @@ namespace tt::tt_metal
         static_assert(HlkOperand::out7 == int(HlkOperand::intermed0)-1);
         if (op_id <= HlkOperand::in7) {
             hlk_desc.set_input_buf_dataformat((int)op_id, data_format);
+            std::cout << "OP ID:" << (uint)op_id << ", format: " << data_format << std::endl;
         } else if (op_id <= HlkOperand::param7) {
             hlk_desc.set_param_buf_dataformat((int)op_id - ((int)HlkOperand::in7+1), data_format);
         } else if (op_id <= HlkOperand::out7) {
