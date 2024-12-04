@@ -362,7 +362,7 @@ class TtLlamaAttention(LightweightModule):
         ttnn.deallocate(attn_output_11BH)
         ttnn.deallocate(attn_output_1G4D)
 
-        if self.is_multichip and self.use_fused_all_gather_matmul:
+        if self.use_fused_all_gather_matmul:
             attn_output_cat = ttnn.to_memory_config(
                 attn_output_cat, self.model_config["ATTN_ALL_GATHER_MATMUL_OUTPUT_MEMCFG"]
             )
@@ -378,6 +378,7 @@ class TtLlamaAttention(LightweightModule):
                 memory_config_mm=self.model_config["DECODE_RESIDUAL_MEMCFG"],
             )
             ttnn.deallocate(attn_output_cat)
+            dense_out_sharded = ttnn.to_memory_config(dense_out_sharded, self.model_config["DECODE_RESIDUAL_MEMCFG"])
             return dense_out_sharded
 
         else:
@@ -431,7 +432,7 @@ class TtLlamaAttention(LightweightModule):
                 use_composite=True if self.hidden_size == 8192 else False,
             )
 
-            if self.num_devices == 1:
+            if not TG:
                 dense_out_reduced = ttnn.to_memory_config(
                     dense_out_reduced, self.model_config["DECODE_RESIDUAL_MEMCFG"]
                 )

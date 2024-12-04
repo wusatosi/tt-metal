@@ -221,7 +221,7 @@ def test_llama_model_inference(
                 mesh_device, dims=(3, 1) if model_args.is_galaxy else (1, 3), mesh_shape=model_args.cluster_shape
             ),
         )
-        tt_output_torch = tt_out[:, 0:1, -1, : model_args.vocab_size].view(batch, -1)  # [ batch, seq, hidden_dim]
+        tt_output_torch = tt_out[:, 0:1, -1, : model_args.vocab_size].view(batch_size, -1)  # [ batch, seq, hidden_dim]
 
         if run_ref_pt:  # Run reference model
             ref_output = reference_model(pt_prefill_input, start_pos, mode="prefill")[:, -1, :]
@@ -273,7 +273,7 @@ def test_llama_model_inference(
                                 )
                                 .transpose(1, 2)
                                 .reshape(model_args.max_batch_size, model_args.n_kv_heads, -1, model_args.head_dim)[
-                                    :batch, ...
+                                    :batch_size, ...
                                 ]
                             )
                         tt_layer_present = [
