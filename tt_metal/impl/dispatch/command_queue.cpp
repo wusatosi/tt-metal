@@ -3137,6 +3137,7 @@ void EnqueueReadBuffer(
     void* dst,
     bool blocking,
     tt::stl::Span<const SubDeviceId> sub_device_ids) {
+    TRACE_FUNCTION_CALL(captureEnqueueReadBuffer, cq, buffer, dst, blocking); // KCM_FIXME sub_device_ids added recently
     detail::DispatchStateCheck(true);
     cq.run_command(CommandInterface{
         .type = EnqueueCommandType::ENQUEUE_READ_BUFFER, .blocking = blocking, .buffer = buffer, .dst = dst, .sub_device_ids = sub_device_ids});
