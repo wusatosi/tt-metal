@@ -816,7 +816,7 @@ void EnqueueTrace(CommandQueue& cq, uint32_t trace_id, bool blocking);
 void LightMetalBeginCapture(Device *device);
 
 // Ends Light Metal Binary capture
-void LightMetalEndCapture(Device *device);
+std::vector<uint8_t> LightMetalEndCapture(Device *device);
 
 void LoadTrace(Device *device, const uint8_t cq_id, const uint32_t trace_id, detail::TraceDescriptor &trace_desc);
 
