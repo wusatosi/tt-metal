@@ -661,7 +661,12 @@ Tensor create_device_tensor(
     ZoneScoped;
     GraphTracker::instance().track_function_start("tt::tt_metal::create_device_tensor", padded_shape, data_type, layout, device, memory_config);
 
+    printf("CREATE DEVICE TENSOR\n");
+    printf("logical_shape: %d, %d, %d, %d\n", logical_shape[0], logical_shape[1], logical_shape[2], logical_shape[3]);
+    printf("padded_shape: %d, %d, %d, %d\n", padded_shape[0], padded_shape[1], padded_shape[2], padded_shape[3]);
+
     if (memory_config.is_sharded()) {
+        printf("HIT PATH 1\n");
         TT_ASSERT(memory_config.shard_spec.has_value());
 
         auto& shard_spec = memory_config.shard_spec.value();
@@ -687,6 +692,7 @@ Tensor create_device_tensor(
         GraphTracker::instance().track_function_end(output);
         return output;
     } else {
+        printf("HIT PATH 2\n");
         size_t packed_size_in_bytes =
             tensor_impl::packed_buffer_size_bytes_wrapper(data_type, compute_buffer_size(padded_shape, data_type));
         auto device_buffer = tensor_impl::allocate_buffer_on_device(

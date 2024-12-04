@@ -5,6 +5,7 @@
 
 
 
+#include "common/constants.hpp"
 #include "impl/buffers/buffer_constants.hpp"
 #include "max_pool2d_device_op.hpp"
 // #include "max_pool2d_multi_core_program_factory.hpp"
@@ -52,11 +53,8 @@ MaxPool2D::MultiCore::cached_program_t max_pool_2d_multi_core_sharded_with_halo_
     uint32_t in_nbytes = datum_size(in_df);
     uint32_t out_nbytes = datum_size(out_df);
 
-    uint32_t in_nbytes_c = input_shape[3] / num_shards_c * in_nbytes;                                      // row of input (channels)
-    uint32_t out_nbytes_c = output_shape[3] / num_shards_c * out_nbytes;                                // row of output (channels)
-    TT_ASSERT((in_nbytes_c & (in_nbytes_c - 1)) == 0, "in_nbytes_c should be power of 2");  // in_nbytes_c is power of 2
-    TT_ASSERT(
-        (out_nbytes_c & (out_nbytes_c - 1)) == 0, "out_nbytes_c should be power of 2");  // out_nbytes_c is power of 2
+    uint32_t in_nbytes_c = ceil_multiple_of(input_shape[3] / num_shards_c, tt::constants::TILE_WIDTH) * in_nbytes;                                      // row of input (channels)
+    uint32_t out_nbytes_c = ceil_multiple_of(output_shape[3] / num_shards_c * out_nbytes, tt::constants::TILE_WIDTH) * out_nbytes;                              // row of output (channels)
 
     tt::DataFormat indices_df = tt::DataFormat::RawUInt16;  // datatype_to_dataformat_converter(reader_indices.get_dtype());
     uint32_t indices_nbytes = datum_size(indices_df);
@@ -170,7 +168,6 @@ MaxPool2D::MultiCore::cached_program_t max_pool_2d_multi_core_sharded_with_halo_
         tt::constants::TILE_HW);  // NOTE: ceil to tile size since triscs work with tilesize instead of pagesize
     uint32_t in_cb_pagesize = in_nbytes * in_cb_page_padded;
     uint32_t in_cb_npages = multi_buffering_factor * nblocks;
-
     CircularBufferConfig in_cb_config_0 = CircularBufferConfig(in_cb_npages * in_cb_pagesize, {{in_cb_id_0, in_df}})
                                               .set_page_size(in_cb_id_0, in_cb_pagesize);
     auto in_cb_0 = tt::tt_metal::CreateCircularBuffer(program, all_cores, in_cb_config_0);
@@ -284,7 +281,7 @@ MaxPool2D::MultiCore::cached_program_t max_pool_2d_multi_core_sharded_with_halo_
         kernel_size_w,
         pad_w,
         in_nbytes_c,
-        in_nbytes_c_log2,
+        in_nbytes_c_log2,   // not used
         in_w,
         in_cb_page_padded * in_cb_npages / tile_w,
         input_shape[3] / num_shards_c,
@@ -300,7 +297,7 @@ MaxPool2D::MultiCore::cached_program_t max_pool_2d_multi_core_sharded_with_halo_
         kernel_size_w,
         pad_w,
         in_nbytes_c,
-        in_nbytes_c_log2,
+        in_nbytes_c_log2,   // not used
         in_w,
         in_cb_page_padded * in_cb_npages / tile_w,
         input_shape[3] / num_shards_c,
@@ -403,8 +400,10 @@ MaxPool2D::MultiCore::cached_program_t MaxPool2D::MultiCore::create(const operat
     auto pad_metadata = sliding_window::generate_pad_metadata(sliding_window_config);
     auto op_trace_metadata = sliding_window::generate_op_trace_metadata(sliding_window_config);
     auto shard_boundaries = sliding_window::generate_shard_boundaries(sliding_window_config, op_trace_metadata);
+
+    bool pad_cores = is_block_sharded;
     auto top_left_indices =
-        sliding_window::generate_sliding_window_op_config(op_trace_metadata, shard_boundaries, false, is_block_sharded); // only pad the indices for block sharding
+        sliding_window::generate_sliding_window_op_config(op_trace_metadata, shard_boundaries, false, pad_cores);
     auto reader_indices =
         sliding_window::construct_on_host_config_tensor(top_left_indices, sliding_window_config, parallel_config);
     log_debug(tt::LogOp, "reader_indices shape: {}", reader_indices.shape());
