@@ -121,9 +121,15 @@ enum CQNocSend {
     CQ_NOC_SEND = 1,
 };
 
+uint32_t last_src_addr;
+uint32_t last_dst_addr;
+uint32_t last_noc_addr;
+uint32_t last_size;
+uint32_t last_noc_cmd_field;
 template <enum CQNocFlags flags, enum CQNocWait wait = CQ_NOC_WAIT, enum CQNocSend send = CQ_NOC_SEND>
 FORCE_INLINE void cq_noc_async_write_with_state(
     uint32_t src_addr, uint64_t dst_addr, uint32_t size = 0, uint32_t ndests = 1) {
+
     if constexpr (wait) {
         WAYPOINT("CNSW");
         while (!noc_cmd_buf_ready(noc_index, NCRISC_WR_CMD_BUF));
@@ -132,26 +138,35 @@ FORCE_INLINE void cq_noc_async_write_with_state(
 
     if constexpr (flags & CQ_NOC_FLAG_SRC) {
         NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_TARG_ADDR_LO, src_addr);
+        last_src_addr = src_addr;
+    } else {
+        NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_TARG_ADDR_LO, last_src_addr);
     }
     if constexpr (flags & CQ_NOC_FLAG_DST) {
         NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_RET_ADDR_LO, (uint32_t)dst_addr);
+        last_dst_addr = (uint32_t)dst_addr;
+    } else {
+        NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_RET_ADDR_LO, last_dst_addr);
     }
     if constexpr (flags & CQ_NOC_FLAG_NOC) {
 #ifdef ARCH_BLACKHOLE
         // Handles writing to PCIe
         NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_RET_ADDR_MID, (uint32_t)(dst_addr >> 32) & 0x1000000F);
 #endif
-        NOC_CMD_BUF_WRITE_REG(
-            noc_index,
-            NCRISC_WR_CMD_BUF,
-            NOC_RET_ADDR_COORDINATE,
-            (uint32_t)(dst_addr >> NOC_ADDR_COORD_SHIFT) & NOC_COORDINATE_MASK);
+        NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_RET_ADDR_COORDINATE, (uint32_t)(dst_addr >> NOC_ADDR_COORD_SHIFT) & NOC_COORDINATE_MASK);
+        last_noc_addr =  (uint32_t)(dst_addr >> NOC_ADDR_COORD_SHIFT) & NOC_COORDINATE_MASK;
+    } else {
+        NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_RET_ADDR_COORDINATE, last_noc_addr);
     }
     if constexpr (flags & CQ_NOC_FLAG_LEN) {
         ASSERT(size <= NOC_MAX_BURST_SIZE);
         NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_AT_LEN_BE, size);
-    }
+        last_size = size;
+     } else {
+        NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_AT_LEN_BE, last_size);
+     }
     if constexpr (send) {
+        NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_CTRL, last_noc_cmd_field);
         DEBUG_SANITIZE_NOC_WRITE_TRANSACTION_FROM_STATE(noc_index);
         NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
     }
@@ -201,12 +216,22 @@ FORCE_INLINE void cq_noc_async_write_init_state(uint32_t src_addr, uint64_t dst_
         (posted ? 0 : NOC_CMD_RESP_MARKED);
 
     NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_CTRL, noc_cmd_field);
+    last_noc_cmd_field = noc_cmd_field;
+
 
     cq_noc_async_write_with_state<flags, CQ_NOC_wait, CQ_NOC_send>(src_addr, dst_addr, size);
 }
 
-template <enum CQNocInlineFlags flags, enum CQNocWait wait = CQ_NOC_WAIT, enum CQNocSend send = CQ_NOC_SEND>
-FORCE_INLINE void cq_noc_inline_dw_write_with_state(uint64_t dst_addr, uint32_t val = 0, uint8_t be = 0xF) {
+uint32_t last_dw_noc_val;
+uint32_t last_dw_dst_addr;
+uint32_t last_dw_noc_addr;
+uint32_t last_dw_inline_flag_be;
+uint32_t last_dw_noc_cmd_field;
+
+template<enum CQNocInlineFlags flags, enum CQNocWait wait = CQ_NOC_WAIT, enum CQNocSend send = CQ_NOC_SEND>
+FORCE_INLINE
+void cq_noc_inline_dw_write_with_state(uint64_t dst_addr, uint32_t val = 0, uint8_t be = 0xF) {
+
     if constexpr (wait) {
         WAYPOINT("NISW");
         while (!noc_cmd_buf_ready(noc_index, NCRISC_WR_REG_CMD_BUF));
@@ -215,29 +240,34 @@ FORCE_INLINE void cq_noc_inline_dw_write_with_state(uint64_t dst_addr, uint32_t 
 
     if constexpr (flags & CQ_NOC_INLINE_FLAG_VAL) {
         NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_REG_CMD_BUF, NOC_AT_DATA, val);
+        last_dw_noc_val = val;
     }
     if constexpr (flags & CQ_NOC_FLAG_DST) {
         NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_REG_CMD_BUF, NOC_TARG_ADDR_LO, (uint32_t)(dst_addr));
+        last_dw_dst_addr = (uint32_t)(dst_addr);
     }
     if constexpr (flags & CQ_NOC_FLAG_NOC) {
 #ifdef ARCH_BLACKHOLE
         NOC_CMD_BUF_WRITE_REG(
             noc_index, NCRISC_WR_REG_CMD_BUF, NOC_TARG_ADDR_MID, (uint32_t)(dst_addr >> 32) & 0x1000000F);
 #endif
-        NOC_CMD_BUF_WRITE_REG(
-            noc_index,
-            NCRISC_WR_REG_CMD_BUF,
-            NOC_TARG_ADDR_COORDINATE,
-            (uint32_t)(dst_addr >> NOC_ADDR_COORD_SHIFT) & NOC_COORDINATE_MASK);
+        NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_REG_CMD_BUF, NOC_TARG_ADDR_COORDINATE, (uint32_t)(dst_addr >> NOC_ADDR_COORD_SHIFT) & NOC_COORDINATE_MASK);
+        last_dw_noc_addr = (uint32_t)(dst_addr >> NOC_ADDR_COORD_SHIFT) & NOC_COORDINATE_MASK;
     }
     if constexpr (flags & CQ_NOC_INLINE_FLAG_BE) {
         uint32_t be32 = be;
         uint32_t be_shift = (dst_addr & (NOC_WORD_BYTES - 1));
         be32 = (be32 << be_shift);
         NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_REG_CMD_BUF, NOC_AT_LEN_BE, be32);
+        last_dw_inline_flag_be = be32;
     }
     if constexpr (send) {
+        NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_REG_CMD_BUF, NOC_CTRL, last_dw_noc_cmd_field);
         DEBUG_SANITIZE_NOC_ADDR_FROM_STATE(noc_index, NCRISC_WR_REG_CMD_BUF);
+        NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_REG_CMD_BUF, NOC_AT_DATA, last_dw_noc_val);
+        NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_REG_CMD_BUF, NOC_TARG_ADDR_LO, last_dw_dst_addr);
+        NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_REG_CMD_BUF, NOC_TARG_ADDR_COORDINATE, last_dw_noc_addr);
+        NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_REG_CMD_BUF, NOC_AT_LEN_BE, last_dw_inline_flag_be);
         NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_REG_CMD_BUF, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
     }
 }
@@ -264,6 +294,7 @@ FORCE_INLINE void cq_noc_inline_dw_write_init_state(uint64_t dst_addr, uint32_t 
                                        (posted ? 0x0 : NOC_CMD_RESP_MARKED);
 
     NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_REG_CMD_BUF, NOC_CTRL, noc_cmd_field);
+    last_dw_noc_cmd_field = noc_cmd_field;
 
     cq_noc_inline_dw_write_with_state<flags, CQ_NOC_wait, CQ_NOC_send>(dst_addr, val, be);
 }
