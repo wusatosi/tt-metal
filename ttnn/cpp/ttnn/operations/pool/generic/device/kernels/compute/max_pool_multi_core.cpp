@@ -54,10 +54,14 @@ inline void reduce_h_fused(
     constexpr uint32_t num_faces_in_tile = is_partial_tile ? 1 : 2;
     constexpr uint32_t num_out_rows = 1;
     for (uint32_t b_i = 0; b_i < in_nblocks_c; ++b_i) {
+        UNPACK((DPRINT << "00000" << ENDL()));
         cb_reserve_back(out_cb_id, 1);
         const uint32_t curr_in_cb_id = split_reader ? (in_cb_id + (in_stick_index & 0x1)) : in_cb_id;
+        UNPACK((DPRINT << "11111" << ENDL()));
         cb_wait_front(curr_in_cb_id, 1);
+        UNPACK((DPRINT << "22222" << ENDL()));
         tile_regs_acquire();
+        UNPACK((DPRINT << "33333" << ENDL()));
         unpack_tilizeA_B_block(
             curr_in_cb_id,
             in_scalar_cb_id,
@@ -65,16 +69,23 @@ inline void reduce_h_fused(
             0 /*tile idx for Src b is 0 because only 1 tile of constants is loaded*/,
             num_faces_in_tile /* unpack 1 or 2 faces ) */,
             unpA_face_r_dim);
+        UNPACK((DPRINT << "44444" << ENDL()));
         for (uint32_t c_i = 0; c_i < num_output_tiles; ++c_i) {
             reduce_tile_math(c_i, num_faces_in_tile /* reduce 1 or 2 faces */);
         }
+        UNPACK((DPRINT << "55555" << ENDL()));
         cb_pop_front(curr_in_cb_id, 1);
+        UNPACK((DPRINT << "66666" << ENDL()));
         tile_regs_wait();
         tile_regs_commit();
+        UNPACK((DPRINT << "77777" << ENDL()));
         pack_untilize_dst<num_output_tiles>(
             out_cb_id, 1 /*out_subblock_h*/, 0, num_out_rows, num_faces_in_tile); /* pack 1 row (1x16 or 1x32) */
+        UNPACK((DPRINT << "88888" << ENDL()));
         tile_regs_release();
+        UNPACK((DPRINT << "99999" << ENDL()));
         cb_push_back(out_cb_id, 1);
+        UNPACK((DPRINT << "in the end" << ENDL()));
     }
 }
 
