@@ -269,11 +269,13 @@ def run_decode(
         start = time()
         input_tokens = tokens[:, prev_pos:cur_pos]
         if trace_mode and input_tokens.shape[1] == 1:
-            logits = model.decode_forward_trace(
-                input_tokens, prev_pos, trace_id, tt_inp_emb, rot_idxs_tt, cache_idxs_tt, tt_logits
-            )
+            for x in range(100):
+                logits = model.decode_forward_trace(
+                    input_tokens, prev_pos, trace_id, tt_inp_emb, rot_idxs_tt, cache_idxs_tt, tt_logits
+                )
         else:
-            logits = model.forward(input_tokens, prev_pos)
+            for x in range(100):
+                logits = model.forward(input_tokens, prev_pos)
 
         next_logits = logits[:, -1, :]  # batch, vocab of last token
         next_token = sampling_func(next_logits)
