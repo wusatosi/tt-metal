@@ -7,7 +7,7 @@
 
 #include "dataflow_api.h"
 
-#define ENABLE_DEBUG 0
+#define ENABLE_DEBUG 1
 
 #if ENABLE_DEBUG
 #include "debug/dprint.h"
@@ -157,4 +157,9 @@ void kernel_main() {
 
     noc_async_read_barrier();
     noc_async_write_barrier();
+
+    /* if (local_config_cb_id == 0) {
+        DPRINT << "HALO OUTPUT:" << ENDL();
+        print_pages(out_base_l1_addr, 40, 16);
+    } */
 }

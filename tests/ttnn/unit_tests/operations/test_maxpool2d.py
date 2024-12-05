@@ -318,9 +318,17 @@ def test_run_max_pool(
     device,
     dtype,
     use_program_cache,
-    shard_scheme=ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
 ):
-    run_max_pool(act_shape, kernel_size, padding, stride, dilation, device, dtype)
+    run_max_pool(
+        act_shape,
+        kernel_size,
+        padding,
+        stride,
+        dilation,
+        device,
+        dtype,
+        shard_scheme=ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+    )
 
 
 """@pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)

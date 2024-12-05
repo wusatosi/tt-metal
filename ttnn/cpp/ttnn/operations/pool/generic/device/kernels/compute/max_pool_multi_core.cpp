@@ -8,39 +8,53 @@
 #include "compute_kernel_api/reduce.h"
 #include "compute_kernel_api/pack_untilize.h"
 
-#define DEBUG_PRINT 0
+#define DEBUG_PRINT 1
 
 #if DEBUG_PRINT == 1
 #include "debug/dprint.h"
+#include "tt_metal/hw/inc/debug/dprint_tensix.h"
 
 inline void print_tile_rows(uint32_t cb_id, uint32_t rows = 32, uint32_t tile_id = 0, bool untilize = false) {
     // UNPACK(( DPRINT << "======" << ENDL() ));
     for (uint16_t r = 0; r < rows; ++r) {
-        SliceRange sr = SliceRange{.h0 = r, .h1 = (uint16_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
-        UNPACK((DPRINT << (uint)r << " :: " << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL()));
+        UNPACK(
+            (DPRINT << (uint)r << " :: "
+                    << TileSlice(
+                           cb_id,
+                           tile_id,
+                           SliceRange{
+                               .h0 = (uint8_t)r,
+                               .h1 = (uint8_t)(r + 1),
+                               .hs = (uint8_t)1,
+                               .w0 = (uint8_t)0,
+                               .w1 = (uint8_t)32,
+                               .ws = (uint8_t)1},
+                           true,
+                           untilize)
+                    << ENDL()));
     }
     // UNPACK(( DPRINT << "++++++" << ENDL() ));
 }
 
-inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
-    UNPACK((DPRINT << "======" << ENDL()));
-    for (uint16_t r = 0; r < 32; ++r) {
-        SliceRange sr = SliceRange{.h0 = r, .h1 = (uint16_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
-        UNPACK((DPRINT << (uint)r << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL()));
-    }
-    UNPACK((DPRINT << "++++++" << ENDL()));
-}
+// inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
+//     UNPACK((DPRINT << "======" << ENDL()));
+//     for (uint16_t r = 0; r < 32; ++r) {
+//         SliceRange sr = SliceRange{.h0 = r, .h1 = (uint16_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
+//         UNPACK((DPRINT << (uint)r << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL()));
+//     }
+//     UNPACK((DPRINT << "++++++" << ENDL()));
+// }
 
-inline void print_cb_details(uint32_t cb_id) {
-    DPRINT << "cb_id " << cb_id << ": { "
-           << "size: " << get_local_cb_interface(cb_id).fifo_size << ", "
-           << "limit: " << get_local_cb_interface(cb_id).fifo_limit << ", "
-           << "page_size: " << get_local_cb_interface(cb_id).fifo_page_size << ", "
-           << "num_pages: " << get_local_cb_interface(cb_id).fifo_num_pages << ", "
-           << "rd_ptr: " << get_local_cb_interface(cb_id).fifo_rd_ptr << ", "
-           << "wr_ptr: " << get_local_cb_interface(cb_id).fifo_wr_ptr << ", "
-           << "wr_tile_ptr: " << get_local_cb_interface(cb_id).fifo_wr_tile_ptr << " }" << ENDL();
-}
+// inline void print_cb_details(uint32_t cb_id) {
+//     DPRINT << "cb_id " << cb_id << ": { "
+//            << "size: " << get_local_cb_interface(cb_id).fifo_size << ", "
+//            << "limit: " << get_local_cb_interface(cb_id).fifo_limit << ", "
+//            << "page_size: " << get_local_cb_interface(cb_id).fifo_page_size << ", "
+//            << "num_pages: " << get_local_cb_interface(cb_id).fifo_num_pages << ", "
+//            << "rd_ptr: " << get_local_cb_interface(cb_id).fifo_rd_ptr << ", "
+//            << "wr_ptr: " << get_local_cb_interface(cb_id).fifo_wr_ptr << ", "
+//            << "wr_tile_ptr: " << get_local_cb_interface(cb_id).fifo_wr_tile_ptr << " }" << ENDL();
+// }
 #endif
 
 template <
@@ -68,12 +82,21 @@ inline void reduce_h_fused(
         for (uint32_t c_i = 0; c_i < num_output_tiles; ++c_i) {
             reduce_tile_math(c_i, num_faces_in_tile /* reduce 1 or 2 faces */);
         }
+
+        dprint_tensix_dest_reg(0);
+
         cb_pop_front(curr_in_cb_id, 1);
         tile_regs_wait();
         tile_regs_commit();
         pack_untilize_dst<num_output_tiles>(
             out_cb_id, 1 /*out_subblock_h*/, 0, num_out_rows, num_faces_in_tile); /* pack 1 row (1x16 or 1x32) */
         tile_regs_release();
+
+        // if (curr_in_cb_id == in_cb_id) {
+        //    print_tile_rows(out_cb_id, 32, 0, false);
+        //    print_tile_rows(out_cb_id, 32, 1, false);
+        // }
+
         cb_push_back(out_cb_id, 1);
     }
 }
@@ -84,6 +107,7 @@ void MAIN {
     // NOTE: here it is assumed that in_ntiles_hw == 1. General cases not handled yet.
     constexpr uint32_t in_ntiles_hw = get_compile_time_arg_val(0);
     constexpr uint32_t in_ntiles_c = get_compile_time_arg_val(1);
+    DPRINT << "COMPUTE in_ntiles_hw: " << in_ntiles_hw << ", in_ntiles_c: " << in_ntiles_c << ENDL();
     constexpr uint32_t window_size_hw = get_compile_time_arg_val(3);
     constexpr uint32_t out_h = get_compile_time_arg_val(4);
     constexpr uint32_t out_w = get_compile_time_arg_val(5);
@@ -93,6 +117,7 @@ void MAIN {
     constexpr uint32_t nsticks_per_core = get_compile_time_arg_val(13);
     constexpr uint32_t in_c = get_compile_time_arg_val(14);
     constexpr uint32_t in_nblocks_c = get_compile_time_arg_val(15);
+    DPRINT << "COMPUTE in_c: " << in_c << ", in_nblocks_c: " << in_nblocks_c << ENDL();
 
     constexpr uint32_t in_cb_id = tt::CBIndex::c_0;  // and tt::CBIndex::c_1 for split reader
     constexpr uint32_t in_scalar_cb_id = tt::CBIndex::c_4;
@@ -105,6 +130,7 @@ void MAIN {
     constexpr uint32_t num_out_rows = 1;
 
     constexpr uint32_t num_output_tiles = in_ntiles_c / in_nblocks_c;
+    DPRINT << "COMPUTE num_output_tiles: " << num_output_tiles << ENDL();
     tilizeA_B_reduce_init<true>(
         in_cb_id, in_scalar_cb_id, num_output_tiles, out_cb_id, num_faces_in_tile, window_size_hw);
     pack_untilize_dst_init_short<in_ntiles_c>(

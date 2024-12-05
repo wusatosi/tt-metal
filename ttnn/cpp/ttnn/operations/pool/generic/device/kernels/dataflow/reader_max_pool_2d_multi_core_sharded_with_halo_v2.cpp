@@ -92,7 +92,8 @@ void kernel_main() {
 
     uint32_t in_w_padded = in_w + 2 * pad_w;
 
-    if (reader_id == 0) {
+    uint32_t print_id = 2;
+    if (reader_id == print_id) {
         print_pages(in_l1_read_base_addr, 40, 16);
     }
 
@@ -104,15 +105,16 @@ void kernel_main() {
         fill_with_val(out_l1_write_addr_base, in_cb_sz, minus_inf);
         uint32_t out_l1_write_addr = out_l1_write_addr_base;
         uint16_t top_left_local_index = reader_indices_ptr[counter++];
-        if (reader_id == 0) {
+        DPRINT << "top_left_local_index: " << top_left_local_index << ENDL();
+        if (reader_id == print_id) {
             DPRINT << "top_left_local_index: " << top_left_local_index << ENDL();
+            DPRINT << "INPUT" << ENDL();
         }
-        DPRINT << "INPUT" << ENDL();
         for (uint32_t h = 0; h < window_h; ++h) {
             for (uint32_t w = 0; w < window_w; ++w) {
                 uint32_t stick_offset = top_left_local_index + h * in_w_padded + w;
                 uint32_t read_offset = in_l1_read_base_addr + (stick_offset * 80);
-                if (reader_id == 0) {
+                if (reader_id == print_id) {
                     print_pages(read_offset, 40, 1);
                 }
                 noc_async_read_one_packet(get_noc_addr(read_offset), out_l1_write_addr, 80);
@@ -123,8 +125,8 @@ void kernel_main() {
             counter++;  // interleave the indices
         }
         noc_async_read_barrier();
-        DPRINT << "OUTPUT" << ENDL();
-        if (reader_id == 0) {
+        if (reader_id == print_id) {
+            DPRINT << "OUTPUT" << ENDL();
             print_pages(out_l1_write_addr_base, 64, 4);
         }
         cb_push_back(in_cb_id, npages_to_reserve);
