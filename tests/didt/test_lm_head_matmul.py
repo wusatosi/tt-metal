@@ -103,8 +103,18 @@ def test_lm_head_matmul(mesh_device, iterations, determinism_check_iterations, u
         fused_activation=None,
         mcast_in0=True,
     )
+
+    fidelity_env = int(os.getenv("TT_MATH_FIDELITY", default=1))
+    math_fidelity = ttnn.MathFidelity.LoFi
+    if fidelity_env == 2:
+        math_fidelity = ttnn.MathFidelity.HiFi2
+    elif fidelity_env == 3:
+        math_fidelity = ttnn.MathFidelity.HiFi3
+    elif fidelity_env == 4:
+        math_fidelity = ttnn.MathFidelity.HiFi4
+
     compute_config = ttnn.WormholeComputeKernelConfig(
-        math_fidelity=ttnn.experimental.tensor.MathFidelity.LoFi,
+        math_fidelity=math_fidelity,
         math_approx_mode=True,
         fp32_dest_acc_en=False,
         packer_l1_acc=True,
