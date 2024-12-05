@@ -21,7 +21,7 @@ int main(int argc, char** argv) {
     Program program = CreateProgram();
 
     // initialize source data - vector with shape (16, 1)
-    constexpr uint32_t M = 16;
+    constexpr uint32_t M = 16384;
     constexpr uint32_t N = 1;
     uint32_t num_values = M * N;
     tt::DataFormat cb_data_format = tt::DataFormat::Float16_b;
@@ -34,8 +34,8 @@ int main(int argc, char** argv) {
 
     // designate 4 cores for utilization - cores (0,0), (0,1), (0,2), (0,3)
     CoreCoord start_core = {0, 0};
-    CoreCoord end_core = {0, 3};
-    uint32_t num_cores = 4;
+    CoreCoord end_core = {7, 7};
+    uint32_t num_cores = 64;
     CoreRange cores(start_core, end_core);
 
     // define shard specs - 16 values total and 4 cores -> 4 values per core
@@ -56,6 +56,11 @@ int main(int argc, char** argv) {
         .buffer_type = tt_metal::BufferType::DRAM};
     std::shared_ptr<tt::tt_metal::Buffer> src_buffer = CreateBuffer(input_dram_config);
     uint32_t src_addr = src_buffer->address();
+
+    tt_metal::InterleavedBufferConfig l1_config{
+        .device = device, .size = 256 * 4096, .page_size = 4096, .buffer_type = tt_metal::BufferType::L1};
+
+    std::shared_ptr<tt_metal::Buffer> l1_buffer = CreateBuffer(l1_config);
 
     // configure and create circular buffers with the same address on each of the designated cores
     bool src_is_dram = src_buffer->buffer_type() == tt_metal::BufferType::DRAM ? 1 : 0;
@@ -79,25 +84,41 @@ int main(int argc, char** argv) {
     // set runtime arguments for each core
     uint32_t curr_idx_h = 0;
     uint32_t curr_idx_w = 0;
+    CoreRange physical_cores{
+        device->worker_core_from_logical_core(start_core), device->worker_core_from_logical_core(end_core)};
     for (uint32_t i = 0; i < num_cores; i++) {
-        CoreCoord core = {0, i};
+        CoreCoord core = {i % 8, i / 8};
+
+        bool is_multicast = ((core.x == 2) && (core.y == 6)) || ((core.x == 2) && (core.y == 7));
         tt_metal::SetRuntimeArgs(
             program,
             reader_id,
             core,
-            {src_addr, input_unit_size, shard_height, shard_width_bytes, padded_offset_bytes, curr_idx_h, i});
+            {src_addr,
+             input_unit_size,
+             shard_height,
+             shard_width_bytes,
+             padded_offset_bytes,
+             curr_idx_h,
+             i,
+             is_multicast,
+             l1_buffer->address(),
+             /* mcast address */ device->get_noc_multicast_encoding(NOC::RISCV_0_default, physical_cores),
+             63});
         curr_idx_w += input_unit_size;
         if (curr_idx_w >= num_units_per_row) {
             curr_idx_w = 0;
             curr_idx_h += shard_height;
         }
     }
+#if 0
 
     printf("Original tensor values: ");
     for (uint32_t src_vec_idx = 0; src_vec_idx < src_vec.size(); src_vec_idx++) {
         printf("%0.f ", src_vec[src_vec_idx].to_float());
     }
     printf("\n");
+#endif
 
     // start/finish program and close device
     EnqueueWriteBuffer(cq, src_buffer, src_vec.data(), false);
