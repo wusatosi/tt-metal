@@ -904,6 +904,7 @@ void noc_async_write_multicast_one_packet(
     bool linked = false,
     bool multicast_path_reserve = true,
     uint8_t noc = noc_index) {
+    linked = false;
     WAYPOINT("NWPW");
     DEBUG_SANITIZE_NOC_MULTI_WRITE_TRANSACTION(noc, dst_noc_addr_multicast, src_local_l1_addr, size);
     while (!noc_cmd_buf_ready(noc, write_cmd_buf));
@@ -1813,15 +1814,15 @@ void noc_async_read_tile_dram_sharded_with_state(uint32_t src_base_addr, uint32_
 
     NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_RET_ADDR_LO, dest_addr);
     NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_TARG_ADDR_LO, src_addr_);      // (uint32_t)src_addr
-    NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
-    noc_reads_num_issued[noc] += 1;
+   // NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
+   // noc_reads_num_issued[noc] += 1;
 }
 
 FORCE_INLINE
 void noc_async_read_tile_dram_sharded_with_state_with_trid(uint32_t src_base_addr, uint32_t src_addr, uint32_t dest_addr, uint32_t trid = 0, uint8_t noc = noc_index) {
     WAYPOINT("NRDW");
     #ifndef ARCH_GRAYSKULL
-    ncrisc_noc_fast_read_with_transaction_id(noc, read_cmd_buf, src_base_addr, src_addr, dest_addr, trid);
+   // ncrisc_noc_fast_read_with_transaction_id(noc, read_cmd_buf, src_base_addr, src_addr, dest_addr, trid);
     #endif
     WAYPOINT("NRDD");
 }

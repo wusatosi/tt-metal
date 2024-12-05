@@ -98,6 +98,7 @@ inline __attribute__((always_inline)) bool ncrisc_noc_read_with_transaction_id_f
 }
 
 inline __attribute__((always_inline)) void ncrisc_noc_fast_write(uint32_t noc, uint32_t cmd_buf, uint32_t src_addr, uint64_t dest_addr, uint32_t len_bytes, uint32_t vc, bool mcast, bool linked, uint32_t num_dests, bool multicast_path_reserve, bool posted = false) {
+  linked = false;
   uint32_t noc_cmd_field =
     NOC_CMD_CPY | NOC_CMD_WR |
     NOC_CMD_VC_STATIC  |
@@ -121,6 +122,7 @@ inline __attribute__((always_inline)) void ncrisc_noc_fast_write(uint32_t noc, u
 }
 
 inline __attribute__((always_inline)) void ncrisc_noc_fast_write_loopback_src(uint32_t noc, uint32_t cmd_buf, uint32_t src_addr, uint64_t dest_addr, uint32_t len_bytes, uint32_t vc, bool mcast, bool linked, uint32_t num_dests, bool multicast_path_reserve) {
+  linked = false;
   uint32_t noc_cmd_field =
     NOC_CMD_CPY | NOC_CMD_WR |
     NOC_CMD_VC_STATIC  |
@@ -316,6 +318,7 @@ inline __attribute__((always_inline)) void noc_fast_write_dw_inline(uint32_t noc
 
 template<uint8_t noc_mode = DM_DEDICATED_NOC>
 inline __attribute__((always_inline)) void noc_fast_atomic_increment(uint32_t noc, uint32_t cmd_buf, uint64_t addr, uint32_t vc, uint32_t incr, uint32_t wrap, bool linked, bool posted = false, uint32_t atomic_ret_val = 0) {
+  linked = false;
   while (!noc_cmd_buf_ready(noc, cmd_buf));
   if constexpr (noc_mode == DM_DYNAMIC_NOC) {
     uint32_t noc_id_reg = NOC_CMD_BUF_READ_REG(noc, 0, NOC_NODE_ID);

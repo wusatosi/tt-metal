@@ -154,7 +154,7 @@ void kernel_main() {
                     noc_shard_read_start_addr += shard_read_width;
 
                     for (uint32_t i = 0; i < shard_height_in_tiles; i++) {
-                        noc_async_read(noc_shard_read_addr, l1_write_extract_shard_in0, shard_read_width);
+                   //     noc_async_read(noc_shard_read_addr, l1_write_extract_shard_in0, shard_read_width);
 
                         l1_write_extract_shard_in0 += shard_read_width;
                         noc_shard_read_addr += shard_read_stride;
