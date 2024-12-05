@@ -11,6 +11,7 @@
 #include "mod_div_lib.h"
 
 #include "compute_kernel_api/eltwise_unary/sfpu_split_includes.h"
+#include "tools/profiler/kernel_profiler.hpp"
 #include "debug/dprint.h"
 
 namespace NAMESPACE {
@@ -98,13 +99,14 @@ void MAIN {
 
     // Wait for the entire local shard
     cb_wait_front(in1_cb_id, in1_block_num_tiles * num_blocks * batch);
+    // PACK(DPRINT << "in1 " << "\n" << TSLICE(in1_cb_id, 0, SliceRange::hw041()) << ENDL());
     for (uint32_t b = 0; b < batch; b++) {
         bool enable_reload = false;
         uint32_t out_num_tiles_to_wait = out_subblock_num_tiles;
-
+        DeviceZoneScopedN("batch")
 #ifdef PACK_RELU
-        // for each batch we start we relu disabled so that intermediate results are not relu'd
-        if constexpr (batch > 1) {
+            // for each batch we start we relu disabled so that intermediate results are not relu'd
+            if constexpr (batch > 1) {
             PACK((llk_pack_relu_config(ReluType::NO_RELU)));
         }
 #endif
@@ -113,7 +115,9 @@ void MAIN {
             PACK((pack_reconfig_data_format(mm_partials_cb_id)));
         }
 
+        // PACK(DPRINT << "out_block_num_tiles * b: " << out_block_num_tiles * b << ENDL());
         for (uint32_t block = 0; block < num_blocks; block++) {
+            // DeviceZoneScopedN("block")
             const uint32_t input_cb_id = block == 0 ? in0_cb_id : in2_cb_id;
             bool last_out = block == (num_blocks - 1);
 // Configure packer once for pack out without Bias
@@ -147,6 +151,7 @@ void MAIN {
                             out_subblock_h,
                             in0_block_w);
                     }
+                    // {DeviceZoneScopedN("start compute")};
 
 #ifndef SKIP_COMPUTE
                     // Compute output sub-block
@@ -172,6 +177,7 @@ void MAIN {
                         in1_index += in1_width_in_tiles;  // to stride down by 1 need to stride by in_per_core_w (should
                                                           // be called in1_block_w)
                     }
+                    // {DeviceZoneScopedN("end compute")};
 
 #endif  // SKIP_COMPUTE
 
@@ -257,6 +263,7 @@ void MAIN {
         }
 
         if (master_reducer && num_reducer_partials > 1) {
+            // DeviceZoneScopedN("reduce");
             /*
             1. wait front on the reducer cb for output_size * reducer_factor
             2. Perform reduction
@@ -267,7 +274,8 @@ void MAIN {
             */
 
             // The only required call from binary_op_init_common, that doesn't lead to packer overflow, is:
-            UNPACK((llk_unpack_AB_hw_configure_disaggregated<DST_ACCUM_MODE>(reducer_cb_id, reducer_cb_id)));
+            // UNPACK((llk_unpack_AB_hw_configure_disaggregated<DST_ACCUM_MODE>(reducer_cb_id, reducer_cb_id)));
+            binary_op_init_common(reducer_cb_id, reducer_cb_id, out_cb_id);
 
             cb_wait_front(partial_cb_id, out_block_num_tiles);  // wait for the local partial
             cb_wait_front(
@@ -278,7 +286,6 @@ void MAIN {
 
             for (uint32_t i = 0; i < num_pack_iters; i++) {
                 uint32_t num_tiles_to_pack = std::min(max_dst_tiles, out_block_num_tiles - out_block_tile_cnt);
-                cb_reserve_back(out_cb_id, num_tiles_to_pack);
 
                 if (pack_out || i > 0) {
                     tile_regs_acquire();
@@ -323,16 +330,21 @@ void MAIN {
                     }
                 }
                 tile_regs_commit();
+                cb_reserve_back(out_cb_id, num_tiles_to_pack);
+                // {DeviceZoneScopedN("commit")};
 
                 // Pack out
                 tile_regs_wait();
+                // {DeviceZoneScopedN("wait")};
                 matmul_pack_tile(0, out_cb_id, num_tiles_to_pack);
                 tile_regs_release();
                 cb_push_back(out_cb_id, num_tiles_to_pack);
+                // {DeviceZoneScopedN("pushed")};
 
                 out_block_tile_cnt += num_tiles_to_pack;
             }
             cb_pop_front(partial_cb_id, out_block_num_tiles);  // Done with the local partial
+            // (DPRINT << "b: " << b  << "\n" << TSLICE(out_cb_id, out_block_num_tiles, SliceRange::hw041()) << ENDL());
         }
 
         if constexpr (batch > 1) {
