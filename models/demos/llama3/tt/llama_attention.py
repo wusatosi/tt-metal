@@ -115,7 +115,7 @@ class TtLlamaAttention(LightweightModule):
         )
 
         # For ring topology we can use all gather matmul for wo
-        self.use_fused_all_gather_matmul = self.model_config["USE_FUSED_ALL_GATHER_MATMUL"]
+        self.use_fused_all_gather_matmul = False  # self.model_config["USE_FUSED_ALL_GATHER_MATMUL"]
         if self.is_multichip and self.use_fused_all_gather_matmul:
             pt_wo = self.state_dict[wo_str].transpose(-1, -2).unsqueeze(0).unsqueeze(0)
             self.wo = ttnn.as_tensor(
@@ -370,6 +370,14 @@ class TtLlamaAttention(LightweightModule):
                 ],  # Unlike matmuls, CCL ops can reshard to any valid output sharding for free
             )
             ttnn.deallocate(dense_out_sharded)
+            # print (f"Tensor properties {dense_out_reduced.dtype} {dense_out_reduced.shape} {dense_out_reduced.layout}")
+            # DataType.BFLOAT16 ttnn.Shape([1, 1, 32, 512]) Layout.TILE
+            # dense_out_reduced = ttnn.empty(
+            #    shape=ttnn.Shape([1, 1, 32, 512]),
+            #    layout=ttnn.TILE_LAYOUT,
+            #    memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"],
+            #    device=self.mesh_device,
+            # )
             return dense_out_reduced
         else:
             dense_out_sharded = ttnn.to_memory_config(dense_out_sharded, self.model_config["DECODE_RESIDUAL_MEMCFG"])

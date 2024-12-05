@@ -517,7 +517,7 @@ def run_llama3_demo(
                 tt_out_rm, dim=3, use_multicore=False if batch_size > 1 else True, output_tensor=tt_out_tok
             )  # FIXME Multicore is not compatible with batch > 1
             ttnn.deallocate(tt_out_rm)
-        ttnn.plus_one(current_pos_tensor)
+        #       ttnn.plus_one(current_pos_tensor)
         # ttnn.plus_one(rot_mat_idxs)  # FIXME <- This won't work since embedding requires uint32 and plus_one only works for int32
 
         ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
@@ -562,15 +562,20 @@ def run_llama3_demo(
 
             # Execute trace
             ttnn.wait_for_event(0, write_event)
-            ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=True)
+            for i in range(1000):
+                if i % 100 == 0:
+                    logger.info(f"Iteration {i}")
+                #    ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
+                ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=True)
+            # ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=True)
             ttnn.record_event(0, op_event)
 
             # Update current pos and mat idxs on host and send to device
             # TODO This is required for now since we cannot ttnn.plus_one(rot_mat_idxs) while it being uint32.
             # If this tensor is int32, it won't be supported by ttnn.embedding
-            current_pos += 1
-            rot_mat_idxs_updated = tt_model.rope_setup.get_rot_idxs(current_pos, on_host=True)
-            ttnn.copy_host_to_device_tensor(rot_mat_idxs_updated, rot_mat_idxs)
+            # current_pos += 1
+            # rot_mat_idxs_updated = tt_model.rope_setup.get_rot_idxs(current_pos, on_host=True)
+            # ttnn.copy_host_to_device_tensor(rot_mat_idxs_updated, rot_mat_idxs)
 
             # Write to host
             ttnn.wait_for_event(1, op_event)
@@ -615,7 +620,7 @@ def run_llama3_demo(
 
             profiler.start(f"log_printing_iter_{iteration}", iteration=batch_idx)
             # Print out generated outputs for each user at the end of every iteration
-            if not is_ci_env:
+            if False:  # not is_ci_env:
                 if len(user_input) == 1:
                     logger.info("[User 0] {}".format("".join(tokenizer.decode(all_outputs[0]))))
                 else:
@@ -627,9 +632,9 @@ def run_llama3_demo(
                         logger.info("[User {}] {}".format(user, text))
 
             # Always print perf at every iteration
-            logger.info(
-                f"Iteration {iteration}: {1000*iteration_time:.0f}ms @ {tokens_per_second_per_user:.1f} tok/s/user ({batch_size*tokens_per_second_per_user:.1f} tok/s throughput)"
-            )
+            # logger.info(
+            #     f"Iteration {iteration}: {1000*iteration_time:.0f}ms @ {tokens_per_second_per_user:.1f} tok/s/user ({batch_size*tokens_per_second_per_user:.1f} tok/s throughput)"
+            # )
             profiler.end(f"log_printing_iter_{iteration}", iteration=batch_idx)
 
             if iteration == 0:  # First iteration also accounts for compile time
