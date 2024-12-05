@@ -199,37 +199,44 @@ class TtLlamaMLP_optimized:
 
         x.deallocate(True)
 
-        hidden_states = ttnn.mul(w1_out, w3_out, dtype=ttnn.bfloat8_b, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+        #hidden_states = ttnn.mul(w1_out, w3_out, dtype=ttnn.bfloat8_b, memory_config=ttnn.DRAM_MEMORY_CONFIG)
         w1_out.deallocate(True)
         w3_out.deallocate(True)
 
-        hidden_states_mm = ttnn.linear(
-            hidden_states,
-            self.w2,
-            compute_kernel_config=self.model_config["COMPUTE_KERNEL_CONFIG"],
-            core_grid=ttnn.CoreGrid(y=8, x=8) if not pc2 else None,
-            dtype=ttnn.bfloat8_b,
-            program_config=pc2,
-        )
-        hidden_states.deallocate(True)
+        # hidden_states_mm = ttnn.linear(
+        #     hidden_states,
+        #     self.w2,
+        #     compute_kernel_config=self.model_config["COMPUTE_KERNEL_CONFIG"],
+        #     core_grid=ttnn.CoreGrid(y=8, x=8) if not pc2 else None,
+        #     dtype=ttnn.bfloat8_b,
+        #     program_config=pc2,
+        # )
+        #hidden_states.deallocate(True)
 
-        if seq_len >= max_mm_seq_len:
-            # Prefill Reshape fix (reverse)
-            hidden_states_mm = ttnn.reshape(hidden_states_mm, (1, 1, seq_len, self.hidden_size))
+        #        if seq_len >= max_mm_seq_len:
+        # Prefill Reshape fix (reverse)
+        #           hidden_states_mm = ttnn.reshape(hidden_states_mm, (1, 1, seq_len, self.hidden_size))
 
-        hidden_states_reduced = ttnn.reduce_scatter(
-            hidden_states_mm,
-            dim=3,
-            math_op=ttnn.ReduceType.Sum,
-            num_links=1,
-            memory_config=ttnn.DRAM_MEMORY_CONFIG,
-        )
+        # hidden_states_reduced = ttnn.reduce_scatter(
+        #    hidden_states_mm,
+        #    dim=3,
+        #    math_op=ttnn.ReduceType.Sum,
+        #    num_links=1,
+        #    memory_config=ttnn.DRAM_MEMORY_CONFIG,
+        # )
+        hidden_states_reduced = None
 
-        hidden_states_mm.deallocate(True)
+        #        hidden_states_mm.deallocate(True)
 
         return hidden_states_reduced
 
     def decode_forward(self, x: List[ttnn.Tensor]) -> List[ttnn.Tensor]:
+        print (f"X properties  {x.dtype} {x.shape}, {x.layout}")
+        print (f"W1 properties  {self.w1.dtype} {self.w1.shape}, {self.w1.layout}")
+        print (f"W3 properties  {self.w3.dtype} {self.w3.shape}, {self.w3.layout}")
+        print(f"Program config {self.model_config['PADDED_FF3_MM_PROGCFG']}")
+        print(f"Sharded memory config {ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG}")
+        print(f"Compute kernel config {self.model_config['COMPUTE_KERNEL_CONFIG_LOFI']}")
         w1_out = ttnn.matmul(
             x,
             self.w1,
@@ -245,6 +252,13 @@ class TtLlamaMLP_optimized:
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
             compute_kernel_config=self.model_config["COMPUTE_KERNEL_CONFIG_LOFI"],
         )
+      #  w4_out = ttnn.matmul(
+      #      x,
+      #      self.w3,
+      #      program_config=self.model_config["PADDED_FF3_MM_PROGCFG"],
+      #      memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
+      #      compute_kernel_config=self.model_config["COMPUTE_KERNEL_CONFIG_LOFI"],
+      #  )
         x.deallocate(True)
 
         hidden_states = ttnn.mul(
@@ -257,21 +271,22 @@ class TtLlamaMLP_optimized:
 
         w1_out.deallocate(True)
         w3_out.deallocate(True)
+        #w4_out.deallocate(True)
 
-        hidden_states = ttnn.matmul(
-            hidden_states,
-            self.w2,
-            program_config=self.model_config["PADDED_FF2_MM_PROGCFG"],
-            memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
-            compute_kernel_config=self.model_config["COMPUTE_KERNEL_CONFIG"],
-        )
+        #hidden_states = ttnn.matmul(
+        #    hidden_states,
+        #    self.w2,
+        #    program_config=self.model_config["PADDED_FF2_MM_PROGCFG"],
+        #    memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
+        #    compute_kernel_config=self.model_config["COMPUTE_KERNEL_CONFIG"],
+        #)
 
-        hidden_states_reduced = ttnn.reduce_scatter(
-            hidden_states,
-            dim=3,
-            math_op=ttnn.ReduceType.Sum,
-            num_links=1,
-            memory_config=self.model_config["RESIDUAL_16_CORES_OUTPUT_MEMCFG"],
-        )
-        hidden_states.deallocate(True)
-        return hidden_states_reduced
+        #hidden_states_reduced = ttnn.reduce_scatter(
+        #    hidden_states,
+        #    dim=3,
+        #    math_op=ttnn.ReduceType.Sum,
+        #    num_links=1,
+        #    memory_config=self.model_config["RESIDUAL_16_CORES_OUTPUT_MEMCFG"],
+        #)
+        #hidden_states.deallocate(True)
+        return None #hidden_states_reduced

@@ -341,7 +341,8 @@ EnqueueProgramCommand::EnqueueProgramCommand(
     uint32_t expected_num_workers_completed,
     uint32_t multicast_cores_launch_message_wptr,
     uint32_t unicast_cores_launch_message_wptr,
-    SubDeviceId sub_device_id) :
+    SubDeviceId sub_device_id,
+    bool force_sync) :
     command_queue_id(command_queue_id),
     noc_index(noc_index),
     manager(manager),
@@ -351,7 +352,8 @@ EnqueueProgramCommand::EnqueueProgramCommand(
     dispatch_core(dispatch_core),
     multicast_cores_launch_message_wptr(multicast_cores_launch_message_wptr),
     unicast_cores_launch_message_wptr(unicast_cores_launch_message_wptr),
-    sub_device_id(sub_device_id) {
+    sub_device_id(sub_device_id),
+    force_sync_(force_sync) {
     this->device = device;
     this->dispatch_core_type = dispatch_core_manager::instance().get_dispatch_core_type(device->id());
     this->packed_write_max_unicast_sub_cmds = get_packed_write_max_unicast_sub_cmds(this->device);
@@ -1559,7 +1561,7 @@ void EnqueueProgramCommand::process() {
     uint32_t sync_count = 0;
     bool stall_first = reservation.first.need_sync;
     bool stall_before_program = false;
-    if (!program.kernel_binary_always_stored_in_ringbuffer()) {
+    if (!program.kernel_binary_always_stored_in_ringbuffer() || force_sync_) {
         // Wait for all existing commands to run before writing out the kernel binary.
         sync_count = this->expected_num_workers_completed;
         stall_before_program = !stall_first;
@@ -2519,6 +2521,21 @@ void HWCommandQueue::enqueue_program(Program& program, bool blocking) {
             this->trace_ctx->descriptors[sub_device_id].num_traced_programs_needing_go_signal_unicast++;
             this->trace_ctx->descriptors[sub_device_id].num_completion_worker_cores += device->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id);
         }
+        #if 0
+        static std::mutex mtx;
+        if (device->id() == 0) {
+            std::scoped_lock<std::mutex> lck(mtx);
+            std::cout << "{" << std::endl;
+            std::cout << " device: " << device->id() << std::endl;
+            for (size_t kernel_id = 0; kernel_id < program.num_kernels(); kernel_id++) {
+                auto kernel = detail::GetKernel(program, kernel_id);
+                std::cout << "  " <<  kernel->get_full_kernel_name() << " id " << program.get_runtime_id() << std::endl;
+            }
+            std::cout << "  Expected Num Workers: " << std::dec << this->trace_ctx->descriptors[sub_device_id].num_completion_worker_cores << std::dec << std::endl;
+            std::cout << "  Num ops: " << this->trace_ctx->descriptors[sub_device_id].num_traced_programs_needing_go_signal_multicast << std::endl;
+            std::cout << "}" << std::endl;
+        }
+        #endif
     } else {
         if (program.runs_on_noc_multicast_only_cores()) {
             this->expected_num_workers_completed[sub_device_index] += device->num_worker_cores(HalProgrammableCoreType::TENSIX, sub_device_id);
@@ -2541,7 +2558,8 @@ void HWCommandQueue::enqueue_program(Program& program, bool blocking) {
         // The assembled program command will encode the location of the launch messages in the ring buffer
         worker_launch_message_buffer_state.get_mcast_wptr(),
         worker_launch_message_buffer_state.get_unicast_wptr(),
-        sub_device_id);
+        sub_device_id,
+        last_kernel_eltwise_);
     // Update wptrs for tensix and eth launch message in the device class
     if (program.runs_on_noc_multicast_only_cores()) {
         worker_launch_message_buffer_state.inc_mcast_wptr(1);
@@ -2570,6 +2588,14 @@ void HWCommandQueue::enqueue_program(Program& program, bool blocking) {
         program.get_program_transfer_info().num_active_cores,
         this->manager.get_bypass_mode(),
         expected_workers_completed);
+    last_kernel_eltwise_ = false;
+    for (size_t kernel_id = 0; kernel_id < program.num_kernels(); kernel_id++) {
+        auto kernel = detail::GetKernel(program, kernel_id);
+        if (kernel->get_full_kernel_name().find("eltwise_binary_kernel") != std::string::npos) {
+            fprintf(stderr, "Got eltwise kernel\n");
+           // last_kernel_eltwise_ = true;
+        }
+    }
 }
 
 void HWCommandQueue::enqueue_record_event(const std::shared_ptr<Event>& event, bool clear_count, tt::stl::Span<const SubDeviceId> sub_device_ids) {
@@ -3050,7 +3076,7 @@ void HWCommandQueue::reset_config_buffer_mgr(const uint32_t num_entries) {
         // Subtract 1 from the number of entries, so the watcher can read information (e.g. fired asserts) from the
         // previous launch message.
         // TODO(jbauman): Give correct number once async bug is fixed.
-        this->config_buffer_mgr[i].init_add_buffer(0, 1);
+        this->config_buffer_mgr[i].init_add_buffer(0, 3);
     }
 }
 

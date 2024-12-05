@@ -316,6 +316,7 @@ class EnqueueProgramCommand : public Command {
     uint32_t unicast_cores_launch_message_wptr = 0;
     // TODO: There will be multiple ids once programs support spanning multiple sub_devices
     SubDeviceId sub_device_id = SubDeviceId{0};
+    bool force_sync_;
 
    public:
     EnqueueProgramCommand(
@@ -329,7 +330,8 @@ class EnqueueProgramCommand : public Command {
         uint32_t expected_num_workers_completed,
         uint32_t multicast_cores_launch_message_wptr,
         uint32_t unicast_cores_launch_message_wptr,
-        SubDeviceId sub_device_id);
+        SubDeviceId sub_device_id,
+        bool force_sync);
 
     void assemble_preamble_commands(
         ProgramCommandSequence& program_command_sequence, const tt::stl::Span<ConfigBufferEntry> kernel_config_addrs);
@@ -562,6 +564,7 @@ class HWCommandQueue {
 
     std::condition_variable reads_processed_cv;
     std::mutex reads_processed_cv_mutex;
+    bool last_kernel_eltwise_ = false;
     CoreType get_dispatch_core_type();
 
     void copy_into_user_space(
