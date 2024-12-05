@@ -265,39 +265,47 @@ def run_decode(
             tokens[:, prev_pos : prev_pos + 1], prev_pos
         )
 
-    for cur_pos in range(min_prompt_len, total_len):
-        start = time()
-        input_tokens = tokens[:, prev_pos:cur_pos]
-        if trace_mode and input_tokens.shape[1] == 1:
-            for x in range(100):
-                logits = model.decode_forward_trace(
-                    input_tokens, prev_pos, trace_id, tt_inp_emb, rot_idxs_tt, cache_idxs_tt, tt_logits
-                )
-        else:
-            for x in range(100):
-                logits = model.forward(input_tokens, prev_pos)
-
-        next_logits = logits[:, -1, :]  # batch, vocab of last token
-        next_token = sampling_func(next_logits)
-
-        tokens, eos_reached, prev_pos = prepare_next_input(
-            tokenizer, tokens, input_text_mask, finished_mask, prompt_lens, cur_pos, next_token
+    input_tokens = tokens[:, prev_pos:min_prompt_len]
+    for x in range(100 * 200):
+        if x % 100 == 0:
+            logger.info(f"Iteration {x}")
+        logits = model.decode_forward_trace(
+            input_tokens, prev_pos, trace_id, tt_inp_emb, rot_idxs_tt, cache_idxs_tt, tt_logits
         )
-        latencies.append(time() - start)
 
-        if all(eos_reached):
-            break
+    # for cur_pos in range(min_prompt_len, total_len):
+    #     start = time()
+    #     input_tokens = tokens[:, prev_pos:cur_pos]
+    #     if trace_mode and input_tokens.shape[1] == 1:
+    #         for x in range(100):
+    #             logits = model.decode_forward_trace(
+    #                 input_tokens, prev_pos, trace_id, tt_inp_emb, rot_idxs_tt, cache_idxs_tt, tt_logits
+    #             )
+    #     else:
+    #         for x in range(100):
+    #             logits = model.forward(input_tokens, prev_pos)
 
-        # Decode the entire sequence generated so far and log it
-        for user_id in range(max(0, bsz - 3), bsz):
-            text = tokenizer.decode(tokens[user_id, : cur_pos + 1].tolist())
-            logger.info(f"Loop {cur_pos} user {user_id}: {text}\n")
+    #     next_logits = logits[:, -1, :]  # batch, vocab of last token
+    #     next_token = sampling_func(next_logits)
 
-        if return_full_logits:
-            full_logits.append(logits.clone().detach())
+    #     tokens, eos_reached, prev_pos = prepare_next_input(
+    #         tokenizer, tokens, input_text_mask, finished_mask, prompt_lens, cur_pos, next_token
+    #     )
+    #     latencies.append(time() - start)
+
+    #     if all(eos_reached):
+    #         break
+
+    #     # Decode the entire sequence generated so far and log it
+    #     for user_id in range(max(0, bsz - 3), bsz):
+    #         text = tokenizer.decode(tokens[user_id, : cur_pos + 1].tolist())
+    #         logger.info(f"Loop {cur_pos} user {user_id}: {text}\n")
+
+    #     if return_full_logits:
+    #         full_logits.append(logits.clone().detach())
 
     latency_printout(latencies, model_args, total_len - min_prompt_len)
-    output = get_all_text(tokenizer, tokens, prompt_tokens, output_tokens)
+    output = ""  # get_all_text(tokenizer, tokens, prompt_tokens, output_tokens)
 
     if return_logits:
         output = (output, logits)
