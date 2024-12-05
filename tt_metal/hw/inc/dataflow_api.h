@@ -1949,6 +1949,19 @@ FORCE_INLINE uint32_t noc_async_read_tile_dram_sharded_set_state(
     return src_addr_;
 }
 
+template <bool use_vc>
+FORCE_INLINE void noc_async_read_tile_dram_sharded_reset_vc(uint8_t noc = noc_index) {
+    WAYPOINT("NRTW");
+    while (!noc_cmd_buf_ready(noc, read_cmd_buf));
+    WAYPOINT("NRTD");
+
+    if constexpr (use_vc) {
+        uint32_t noc_rd_cmd_field =
+            NOC_CMD_CPY | NOC_CMD_RD | NOC_CMD_RESP_MARKED | NOC_CMD_VC_STATIC | NOC_CMD_STATIC_VC(1);
+        NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_CTRL, noc_rd_cmd_field);
+    }
+}
+
 FORCE_INLINE
 void noc_async_read_tile_dram_sharded_with_state(
     uint32_t src_base_addr, uint32_t src_addr, uint32_t dest_addr, uint32_t trid = 0, uint8_t noc = noc_index) {

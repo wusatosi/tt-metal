@@ -90,7 +90,7 @@ void kernel_main() {
     uint32_t l1_write_addr_in1_start = get_write_ptr(cb_id_in1);
     l1_write_addr_in1 = l1_write_addr_in1_start;
     for (uint32_t block = 0; block < num_blocks; ++block) {
-        noc_async_read_tile_dram_sharded_set_trid(curr_block_trid);
+        // noc_async_read_tile_dram_sharded_set_trid(curr_block_trid);
 
         for (uint32_t h = 0; h < in1_num_pages; ++h) {
             noc_async_read_tile_dram_sharded_with_state_with_trid(
@@ -173,4 +173,6 @@ void kernel_main() {
     }
     noc_async_write_barrier();
 #endif
+
+    noc_async_read_tile_dram_sharded_reset_vc<true>();
 }
