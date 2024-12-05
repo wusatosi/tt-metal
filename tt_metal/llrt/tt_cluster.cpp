@@ -333,16 +333,16 @@ int Cluster::get_device_aiclk(const chip_id_t &chip_id) const {
     return 0;
 }
 
-void Cluster::deassert_risc_reset_at_core(const tt_cxy_pair &physical_chip_coord) const {
+void Cluster::deassert_risc_reset_at_core(const tt_cxy_pair &physical_chip_coord, const TensixSoftResetOptions &soft_resets) const {
     const metal_SocDescriptor &soc_desc = this->get_soc_desc(physical_chip_coord.chip);
     tt_cxy_pair virtual_chip_coord = soc_desc.convert_to_umd_coordinates(physical_chip_coord);
-    this->driver_->deassert_risc_reset_at_core(virtual_chip_coord);
+    this->driver_->deassert_risc_reset_at_core(virtual_chip_coord, soft_resets);
 }
 
-void Cluster::assert_risc_reset_at_core(const tt_cxy_pair &physical_chip_coord) const {
+void Cluster::assert_risc_reset_at_core(const tt_cxy_pair &physical_chip_coord, const TensixSoftResetOptions &soft_resets) const {
     const metal_SocDescriptor &soc_desc = this->get_soc_desc(physical_chip_coord.chip);
     tt_cxy_pair virtual_chip_coord = soc_desc.convert_to_umd_coordinates(physical_chip_coord);
-    this->driver_->assert_risc_reset_at_core(virtual_chip_coord);
+    this->driver_->assert_risc_reset_at_core(virtual_chip_coord, soft_resets);
 }
 
 void Cluster::write_dram_vec(std::vector<uint32_t> &vec, tt_target_dram dram, uint64_t addr, bool small_access) const {
@@ -743,14 +743,58 @@ std::unordered_set<chip_id_t> Cluster::get_ethernet_connected_device_ids(chip_id
 std::unordered_set<CoreCoord> Cluster::get_active_ethernet_cores(
     chip_id_t chip_id, bool skip_reserved_tunnel_cores) const {
     std::unordered_set<CoreCoord> active_ethernet_cores;
-    const auto &connected_chips = this->get_ethernet_cores_grouped_by_connected_chips(chip_id);
-    for (const auto &[other_chip_id, eth_cores] : connected_chips) {
-        for (const auto &eth_core : eth_cores) {
-            if (this->device_eth_routing_info_.at(chip_id).at(eth_core) == EthRouterMode::BI_DIR_TUNNELING and
-                skip_reserved_tunnel_cores) {
-                continue;
+    if (this->arch_ == ARCH::BLACKHOLE) {
+        auto soc_desc = this->get_soc_desc(chip_id);
+        uint32_t eth_status_addr = 0x7CC04;
+        auto physical_eth_cores = soc_desc.physical_ethernet_cores;
+        static bool printed = false;
+        const int timeout_ms = 60000; // 60 seconds for now
+
+        for (const CoreCoord &physical_eth_core : physical_eth_cores) {
+            // Port status indicates whether eth is active/idle
+            // typedef enum {
+            //      PORT_UNKNOWN,
+            //          Unknown port can occur when eth is training/after running tt-smi reset which fills L1 with random values.
+            //          We need to ensure that eth is done training before reading out the port status.
+            //          This is done implicitly today because create-eth-map runs on Cluster initialization which waits for eth training.
+            //      PORT_UP,
+            //          Active eth successfully trained
+            //      PORT_DOWN,
+            //          Active eth but failed training
+            //      PORT_UNUSED,
+            //          Idle eth
+            // } port_status_e;
+            uint32_t port_status;
+            read_reg(&port_status, tt_cxy_pair(chip_id, physical_eth_core), eth_status_addr);
+            CoreCoord logical_eth = soc_desc.get_logical_ethernet_core_from_physical(physical_eth_core);
+            auto start = std::chrono::high_resolution_clock::now();
+            while (port_status == 0) {
+                auto now = std::chrono::high_resolution_clock::now();
+                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
+                if (elapsed > timeout_ms) {
+                    TT_THROW("Device {}: Timeout ({} ms) waiting for logical ethernet core {} to finish training", chip_id, timeout_ms, logical_eth.str());
+                }
+                read_reg(&port_status, tt_cxy_pair(chip_id, physical_eth_core), eth_status_addr);
             }
-            active_ethernet_cores.insert(eth_core);
+            if (port_status == 1 or port_status == 2) {
+                active_ethernet_cores.insert(logical_eth);
+            }
+            if (not printed) {
+                std::cout << "Physical eth core " << physical_eth_core.str() << " logical " << logical_eth.str() << " port status " << std::hex << port_status << std::dec
+                          << " active? " << (port_status == 1 or port_status == 2) << std::endl;
+            }
+        }
+        printed = true;
+    } else {
+        const auto &connected_chips = this->get_ethernet_cores_grouped_by_connected_chips(chip_id);
+        for (const auto &[other_chip_id, eth_cores] : connected_chips) {
+            for (const auto &eth_core : eth_cores) {
+                if (this->device_eth_routing_info_.at(chip_id).at(eth_core) == EthRouterMode::BI_DIR_TUNNELING and
+                    skip_reserved_tunnel_cores) {
+                    continue;
+                }
+                active_ethernet_cores.insert(eth_core);
+            }
         }
     }
     return active_ethernet_cores;
@@ -841,6 +885,9 @@ std::tuple<tt_cxy_pair, tt_cxy_pair> Cluster::get_eth_tunnel_core(
 
 // TODO: ALLAN Can change to write one bit
 void Cluster::set_internal_routing_info_for_ethernet_cores(bool enable_internal_routing) const {
+    if (arch_ == ARCH::BLACKHOLE) {
+        return;
+    }
     log_debug(tt::LogDevice, "Set internal routing bit {}", enable_internal_routing);
     const uint32_t routing_info_addr = eth_l1_mem::address_map::ERISC_APP_ROUTING_INFO_BASE;
     // TODO: initialize devices if user does not
