@@ -17,6 +17,9 @@ from models.demos.llama3.tt.llama_common import (
     get_rot_transformation_mat,
 )
 from models.demos.llama3.tt.llama_rope import TtLlamaRotarySetup
+from tests.tt_eager.python_api_testing.unit_testing.llama_dram_prefetcher.test_sharded_activation import (
+    get_compact_core_range_set,
+)
 
 MAX_SEQ_LEN = 128 * 1024
 
@@ -126,6 +129,7 @@ def run_test_rotary_embedding_llama(
     max_seq_len,
     datatype=ttnn.bfloat16,
     fuse_qk=False,
+    subcoregrids=None,
 ):
     # Prepare input
     torch.manual_seed(0)
@@ -218,11 +222,13 @@ def run_test_rotary_embedding_llama(
 
         else:
             # Set up rope with batch size
-            rope_setup_decode = TtLlamaRotarySetup(device, batch, head_dim, max_seq_len)
+            rope_setup_decode = TtLlamaRotarySetup(device, batch, head_dim, max_seq_len, subcoregrids=subcoregrids)
             tt_model.transformation_mat = rope_setup_decode.transformation_mat
             cos, sin = rope_setup_decode.get_rot_mats(position_ids)
-
-            grid = ttnn.num_cores_to_corerangeset(batch, rope_setup_decode.core_grid, row_wise=True)
+            if subcoregrids is None:
+                grid = ttnn.num_cores_to_corerangeset(batch, rope_setup_decode.core_grid, row_wise=True)
+            else:
+                grid = get_compact_core_range_set(batch, subcoregrids, row_wise=True)
             input_mem_configs = [
                 ttnn.create_sharded_memory_config(
                     shape=(ttnn.TILE_SIZE, head_dim),
@@ -453,3 +459,82 @@ def test_rotary_embedding_llama_with_program_cache(
             num_ops += 1  # slice
 
     assert device.num_program_cache_entries() == num_ops
+
+
+@pytest.mark.parametrize("device_params", [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL}], indirect=True)
+@skip_for_blackhole("Requires eth connected devices to run, only single chip BH available. See #12349")
+@skip_for_grayskull("Requires eth connected devices to run")
+@pytest.mark.parametrize(
+    "batch, seq_len",
+    (
+        (32, 1),
+        (15, 1),
+        (8, 1),
+        (1, 1),
+    ),
+    ids=(
+        "decode_32",
+        "decode_15",
+        "decode_8",
+        "decode_1",
+    ),
+)
+@pytest.mark.parametrize(
+    "n_heads, n_kv_heads, head_dim",
+    (
+        (8, 1, 64),
+        (8, 1, 128),
+        (11, 3, 128),
+        (71, 32, 64),
+    ),
+)
+@pytest.mark.parametrize("datatype", (ttnn.bfloat16,))
+@pytest.mark.parametrize("subcoregrids", ([((1, 0), (3, 9)), ((5, 0), (6, 9))],))
+@pytest.mark.parametrize("pcc", (0.9997,))
+def test_rotary_embedding_llama_subcoregrids(
+    batch,
+    seq_len,
+    n_heads,
+    n_kv_heads,
+    head_dim,
+    datatype,
+    pcc,
+    subcoregrids,
+    device,
+):
+    compute_grid_size = device.compute_with_storage_grid_size()
+
+    if seq_len == 128 * 1024 and (n_heads, n_kv_heads, head_dim) != (8, 1, 128):
+        pytest.skip("Only testing for (8, 1, 128) due to time constraints")
+
+    if seq_len == 1 and (n_heads > ttnn.TILE_SIZE or n_kv_heads > ttnn.TILE_SIZE):
+        pytest.skip("n_heads or n_kv_heads cannot be greater than ttnn.TILE_SIZE for decode mode")
+
+    max_seq_len = max(4096, seq_len)
+
+    run_test_rotary_embedding_llama(
+        device,
+        batch,
+        seq_len,
+        pcc,
+        n_heads,
+        n_kv_heads,
+        head_dim,
+        max_seq_len,
+        datatype,
+        fuse_qk=False,
+        subcoregrids=subcoregrids,
+    )
+
+    # shift input/output tensor by creating very small tensor between loop
+    inp = torch.randn(1, 1, 32, 32)
+    test_tensor = (
+        ttnn.Tensor(
+            inp.reshape(-1).tolist(),
+            inp.shape,
+            ttnn.bfloat16,
+            ttnn.ROW_MAJOR_LAYOUT,
+        )
+        .to(ttnn.TILE_LAYOUT)
+        .to(device)
+    )

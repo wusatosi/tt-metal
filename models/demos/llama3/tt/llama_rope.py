@@ -9,6 +9,9 @@ from models.common.lightweightmodule import LightweightModule
 from models.demos.llama3.tt.llama_common import precompute_freqs, get_rot_transformation_mat, gather_cos_sin
 from models.utility_functions import nearest_32
 from loguru import logger
+from tests.tt_eager.python_api_testing.unit_testing.llama_dram_prefetcher.test_sharded_activation import (
+    get_compact_core_range_set,
+)
 
 
 def compute_gather_cos_sin(dhead, end, theta, position_ids, use_scaled_rope):
@@ -26,6 +29,7 @@ class TtLlamaRotarySetup(LightweightModule):
         rope_theta: float = 10000,
         use_scaled_rope: bool = False,
         datatype=ttnn.bfloat16,
+        subcoregrids=None,
     ):
         super().__init__()
 
@@ -37,6 +41,8 @@ class TtLlamaRotarySetup(LightweightModule):
 
         self.core_grid = device.compute_with_storage_grid_size()
         num_cores = self.core_grid.x * self.core_grid.y
+
+        self.subcoregrids = subcoregrids
 
         # Generate the cos/sin matrices needed for ttnn.embedding op
         cos_matrix, sin_matrix = compute_gather_cos_sin(
@@ -61,8 +67,10 @@ class TtLlamaRotarySetup(LightweightModule):
             dtype=datatype,
             mesh_mapper=ReplicateTensorToMesh(device) if self.is_mesh_device else None,
         )
-
-        batch_grid = ttnn.num_cores_to_corerangeset(batch_size, self.core_grid, row_wise=True)
+        if self.subcoregrids is None:
+            batch_grid = ttnn.num_cores_to_corerangeset(batch_size, self.core_grid, row_wise=True)
+        else:
+            batch_grid = get_compact_core_range_set(batch_size, self.subcoregrids, row_wise=True)
         # Generate the transformation matrix
         trans_mat = get_rot_transformation_mat(dhead=ttnn.TILE_SIZE).repeat(
             1,
@@ -151,7 +159,11 @@ class TtLlamaRotarySetup(LightweightModule):
             cos = cos[:, : self.batch_size, :, :]
             sin = sin[:, : self.batch_size, :, :]
 
-        grid = ttnn.num_cores_to_corerangeset(self.batch_size, self.core_grid, row_wise=True)
+        if self.subcoregrids is None:
+            grid = ttnn.num_cores_to_corerangeset(self.batch_size, self.core_grid, row_wise=True)
+        else:
+            grid = get_compact_core_range_set(self.batch_size, self.subcoregrids, row_wise=True)
+
         mem_config = ttnn.create_sharded_memory_config(
             shape=(ttnn.TILE_SIZE, self.head_dim),
             core_grid=grid,
