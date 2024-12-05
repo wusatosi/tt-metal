@@ -47,3 +47,23 @@ def test_mean_without_dim(device, batch_size, h, w):
     if not close_passed:
         print(f"Found mismatch: torch_output_tensor {torch_output_tensor}\n output_tensor {output_tensor}")
     assert close_passed, construct_pcc_assert_message(close_message, torch_output_tensor, output_tensor)
+
+
+@pytest.mark.parametrize(
+    "input_shape",
+    [
+        (1, 12, 3200),
+        (1, 1, 3200),
+        (1, 128, 3200),
+        (1, 2048, 3200),
+    ],
+)
+def test_large_tensor_mean(device, input_shape):
+    reduce_dim = -1
+    torch_input_tensor = torch.rand(input_shape, dtype=torch.float32)
+    torch_output_tensor = torch.mean(torch_input_tensor, dim=reduce_dim, keepdim=True, dtype=torch.float32)
+
+    input_tensor = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)
+    output_tensor = ttnn.mean(input_tensor, dim=reduce_dim)
+    output_tensor = ttnn.to_torch(output_tensor)
+    assert_with_pcc(torch_output_tensor, output_tensor)
