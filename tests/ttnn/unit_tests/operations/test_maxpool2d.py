@@ -149,6 +149,8 @@ def run_max_pool(
 
     ttact_device = ttnn.to_device(ttact, device)
     if pre_shard:
+        grid_size = device.compute_with_storage_grid_size()
+        grid_size = ttnn.CoreCoord(4, 4)
         parallel_config = ttnn._ttnn.operations.conv.determine_parallel_config(
             shard_layout=ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
             batch_size=in_n,
@@ -156,7 +158,7 @@ def run_max_pool(
             output_height=out_h,
             output_width=out_w,
             output_channels=in_c,
-            compute_grid_size=device.compute_with_storage_grid_size(),
+            compute_grid_size=grid_size,
             block_shard_orientation=ttnn.ShardOrientation.ROW_MAJOR,
             enable_channels_padding=False,
             is_out_tiled=False,
