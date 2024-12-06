@@ -15,10 +15,12 @@ namespace tt::target::lightmetal {
 }
 
 namespace tt::tt_metal { // KCM Consider adding lightmetal namespace.
+
 inline namespace v0 {
 
 class Buffer;
 class Program;
+class Kernel;
 
 class LightMetalCaptureContext {
 public:
@@ -42,6 +44,11 @@ public:
     uint32_t addToMap(const Program* obj);
     void removeFromMap(const Program* obj);
     uint32_t getGlobalId(const Program* obj);
+    // Public Object Maps Accessors - Kernels
+    bool isInMap(const Kernel* obj);
+    uint32_t addToMap(const Kernel* obj);
+    void removeFromMap(const Kernel* obj);
+    uint32_t getGlobalId(const Kernel* obj);
 
     void reset();
 
@@ -57,6 +64,7 @@ private:
     uint32_t nextGlobalId_ = 0; // Shared across all object types.
     std::unordered_map<Buffer*, uint32_t> bufferToGlobalIdMap_;
     std::unordered_map<const Program*, uint32_t> programToGlobalIdMap_;
+    std::unordered_map<const Kernel*, uint32_t> kernelToGlobalIdMap_;
     // FIXME - Add one for CommandQueue object.
 
     // Delete copy constructor and assignment operator
