@@ -32,6 +32,7 @@
 #include "ttnn/operations/matmul/device/matmul_op.hpp"
 #include "ttnn/operations/matmul/matmul.hpp"
 #include "ttnn/operations/normalization/softmax/softmax.hpp"
+#include "ttnn/operations/reduction/generic/generic_reductions.hpp"
 #include "ttnn/tensor/tensor.hpp"
 #include "ttnn/tensor/tensor_utils.hpp"
 #include "ttnn/tensor/types.hpp"
@@ -598,6 +599,75 @@ INSTANTIATE_TEST_SUITE_P(
                      .l1_buffers_peak_per_core = 26624,
                      .l1_output_buffer_per_core = 26624}}})));
 
+// ============================================================================
+// Conv tests
+// ============================================================================
+
+// ============================================================================
+// Reduce tests
+// ============================================================================
+
+class ReductionOpIfTest : public TTNNFixtureWithDevice,
+                          public testing::WithParamInterface<std::tuple<ttnn::TensorSpec, int, ResourceUsageMap>> {};
+
+TEST_P(ReductionOpIfTest, ReductionStd) {
+    const auto& input_spec = std::get<ttnn::TensorSpec>(GetParam());
+    const auto& dim_arg = std::get<int>(GetParam());
+    const auto& expected_resource_usage_map = std::get<ResourceUsageMap>(GetParam());
+    const BoardType board_type = tt::Cluster::instance().get_board_type(0);
+    if (expected_resource_usage_map.count(board_type) == 0) {
+        GTEST_SKIP();
+    }
+    const auto& expected_resource_usage = expected_resource_usage_map.at(board_type);
+
+    // Run the test
+    {
+        tt::Device* device = &getDevice();
+        const auto& output_spec = input_spec;
+        const bool keep_dim = true;
+        auto query = ttnn::graph::query_op_constraints(
+            ttnn::std, device, input_spec, dim_arg, keep_dim, output_spec.tensor_layout().get_memory_config());
+
+        EXPECT_EQ(query.status, ttnn::graph::ExecutionStatus::Success);
+        EXPECT_EQ(query.resource_usage.cb_peak_size_per_core, expected_resource_usage.cb_peak_size_per_core);
+        EXPECT_EQ(query.resource_usage.l1_buffers_peak_per_core, expected_resource_usage.l1_buffers_peak_per_core);
+        EXPECT_EQ(query.resource_usage.l1_output_buffer_per_core, expected_resource_usage.l1_output_buffer_per_core);
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    QueryOpConstraints,  // Prefix for the instantiated test suite
+    ReductionOpIfTest,   // Test suite name
+    ::testing::Values(std::make_tuple(
+        g_interleave_4_2_160_244_tiled,
+        -1,
+        ResourceUsageMap{
+            {BoardType::N300,
+             ttnn::graph::ResourceUsage{
+                 .cb_peak_size_per_core = 3 * (2 * 2 * 32 * 32),
+                 .l1_buffers_peak_per_core = 14336,
+                 .l1_output_buffer_per_core = 2048}},
+            {BoardType::E150,
+             ttnn::graph::ResourceUsage{
+                 .cb_peak_size_per_core = 3 * (2 * 2 * 32 * 32),  // to fix
+                 .l1_buffers_peak_per_core = 6144,                // to fix
+                 .l1_output_buffer_per_core = 2048}}})),          // to fix
+    [](const testing::TestParamInfo<std::tuple<ttnn::TensorSpec, int, ResourceUsageMap>>& info) {
+        std::stringstream ss;
+
+        // print unique id for each test case
+        static int uid = 0;
+        ss << uid++;
+
+        // print tensor layout
+        using detail::operator<<;
+        ss << "_" << std::get<ttnn::TensorSpec>(info.param).tensor_layout();
+
+        // print tensor shape; operator<< exists but is too long to be used here
+        ss << "_";
+        detail::operator<<(ss, std::get<ttnn::TensorSpec>(info.param).logical_shape());
+        return ss.str();
+    });
 }  // namespace test
 }  // namespace binary
 }  // namespace operations
