@@ -5,6 +5,7 @@
 #include "unary_device_operation.hpp"
 
 #include <magic_enum.hpp>
+#include "ttnn/operations/eltwise/unary/common/unary_op_types.hpp"
 #include "tt_metal/common/constants.hpp"
 #include "tt_metal/host_api.hpp"
 #include "tt_metal/tools/profiler/op_profiler.hpp"
@@ -90,11 +91,97 @@ void UnaryDeviceOperation::validate_on_program_cache_hit(
     validate_on_program_cache_miss(args, tensor_args);
 }
 
+std::string UnaryOpTypeToString(UnaryOpType op_type) {
+    static const std::unordered_map<UnaryOpType, std::string> op_type_to_string = {
+        {UnaryOpType::EXP, "EXP"},
+        {UnaryOpType::RECIP, "RECIP"},
+        {UnaryOpType::GELU, "GELU"},
+        {UnaryOpType::RELU, "RELU"},
+        {UnaryOpType::SQRT, "SQRT"},
+        {UnaryOpType::SIGMOID, "SIGMOID"},
+        {UnaryOpType::LOG, "LOG"},
+        {UnaryOpType::TANH, "TANH"},
+        {UnaryOpType::LOG2, "LOG2"},
+        {UnaryOpType::LOG10, "LOG10"},
+        {UnaryOpType::SIN, "SIN"},
+        {UnaryOpType::COS, "COS"},
+        {UnaryOpType::ABS, "ABS"},
+        {UnaryOpType::SIGN, "SIGN"},
+        {UnaryOpType::SQUARE, "SQUARE"},
+        {UnaryOpType::EQZ, "EQZ"},
+        {UnaryOpType::NEZ, "NEZ"},
+        {UnaryOpType::GTZ, "GTZ"},
+        {UnaryOpType::LTZ, "LTZ"},
+        {UnaryOpType::GEZ, "GEZ"},
+        {UnaryOpType::LEZ, "LEZ"},
+        {UnaryOpType::RELU_MAX, "RELU_MAX"},
+        {UnaryOpType::RELU_MIN, "RELU_MIN"},
+        {UnaryOpType::POWER, "POWER"},
+        {UnaryOpType::LEAKY_RELU, "LEAKY_RELU"},
+        {UnaryOpType::ELU, "ELU"},
+        {UnaryOpType::EXP2, "EXP2"},
+        {UnaryOpType::HEAVISIDE, "HEAVISIDE"},
+        {UnaryOpType::EXPM1, "EXPM1"},
+        {UnaryOpType::SIGNBIT, "SIGNBIT"},
+        {UnaryOpType::ASIN, "ASIN"},
+        {UnaryOpType::ACOS, "ACOS"},
+        {UnaryOpType::RSQRT, "RSQRT"},
+        {UnaryOpType::RELU6, "RELU6"},
+        {UnaryOpType::ATAN, "ATAN"},
+        {UnaryOpType::ERF, "ERF"},
+        {UnaryOpType::ERFC, "ERFC"},
+        {UnaryOpType::ISINF, "ISINF"},
+        {UnaryOpType::ISPOSINF, "ISPOSINF"},
+        {UnaryOpType::ISNEGINF, "ISNEGINF"},
+        {UnaryOpType::ISNAN, "ISNAN"},
+        {UnaryOpType::LOGICAL_NOT_UNARY, "LOGICAL_NOT_UNARY"},
+        {UnaryOpType::ISFINITE, "ISFINITE"},
+        {UnaryOpType::ERFINV, "ERFINV"},
+        {UnaryOpType::I0, "I0"},
+        {UnaryOpType::I1, "I1"},
+        {UnaryOpType::TAN, "TAN"},
+        {UnaryOpType::RSUB, "RSUB"},
+        {UnaryOpType::RDIV, "RDIV"},
+        {UnaryOpType::SILU, "SILU"},
+        {UnaryOpType::SOFTPLUS, "SOFTPLUS"},
+        {UnaryOpType::IDENTITY, "IDENTITY"},
+        {UnaryOpType::NEG, "NEG"},
+        {UnaryOpType::ADD_UNARY_SFPU, "ADD_UNARY_SFPU"},
+        {UnaryOpType::SUB_UNARY_SFPU, "SUB_UNARY_SFPU"},
+        {UnaryOpType::MUL_UNARY_SFPU, "MUL_UNARY_SFPU"},
+        {UnaryOpType::DIV_UNARY_SFPU, "DIV_UNARY_SFPU"},
+        {UnaryOpType::IDENTITY_UINT32, "IDENTITY_UINT32"},
+        {UnaryOpType::UNARY_NE, "UNARY_NE"},
+        {UnaryOpType::UNARY_GT, "UNARY_GT"},
+        {UnaryOpType::UNARY_LT, "UNARY_LT"},
+        {UnaryOpType::TILED_PROD, "TILED_PROD"},
+        {UnaryOpType::TYPECAST, "TYPECAST"},
+        {UnaryOpType::BITWISE_XOR, "BITWISE_XOR"},
+        {UnaryOpType::BITWISE_NOT, "BITWISE_NOT"},
+        {UnaryOpType::BITWISE_AND, "BITWISE_AND"},
+        {UnaryOpType::BITWISE_OR, "BITWISE_OR"},
+        {UnaryOpType::RIGHT_SHIFT, "RIGHT_SHIFT"},
+        {UnaryOpType::FLOOR, "FLOOR"},
+        {UnaryOpType::CEIL, "CEIL"},
+        {UnaryOpType::LEFT_SHIFT, "LEFT_SHIFT"},
+        {UnaryOpType::REMAINDER, "REMAINDER"},
+        {UnaryOpType::FMOD, "FMOD"},
+        {UnaryOpType::DROPOUT, "DROPOUT"},
+        {UnaryOpType::FILL, "FILL"},
+        {UnaryOpType::PRELU_SFPU, "PRELU_SFPU"},
+    };
+
+    // Find the corresponding string, return "UNKNOWN" if not found
+    auto it = op_type_to_string.find(op_type);
+    return (it != op_type_to_string.end()) ? it->second : "UNKNOWN";
+}
+
 void UnaryDeviceOperation::validate_on_program_cache_miss(
     const operation_attributes_t& args, const tensor_args_t& tensor_args) {
     const auto& input_tensor = tensor_args.input;
     const auto& preallocated_output_tensor = tensor_args.preallocated_output;
-
+    UnaryOpType op_type = args.op_chain[0].op_type;
+    std::cout << "****** UnaryOpType: " << UnaryOpTypeToString(op_type) << std::endl;
     auto out_memory_config = args.output_memory_config;
     auto output_datatype = args.output_dtype;
     if (preallocated_output_tensor.has_value()) {
