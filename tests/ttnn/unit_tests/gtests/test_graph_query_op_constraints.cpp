@@ -649,9 +649,9 @@ INSTANTIATE_TEST_SUITE_P(
                  .l1_output_buffer_per_core = 2048}},
             {BoardType::E150,
              ttnn::graph::ResourceUsage{
-                 .cb_peak_size_per_core = 3 * (2 * 2 * 32 * 32),  // to fix
-                 .l1_buffers_peak_per_core = 6144,                // to fix
-                 .l1_output_buffer_per_core = 2048}}})),          // to fix
+                 .cb_peak_size_per_core = 3 * (2 * 2 * 32 * 32),
+                 .l1_buffers_peak_per_core = 10240,
+                 .l1_output_buffer_per_core = 2048}}})),
     [](const testing::TestParamInfo<std::tuple<ttnn::TensorSpec, int, ResourceUsageMap>>& info) {
         std::stringstream ss;
 
