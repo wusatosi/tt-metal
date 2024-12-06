@@ -5,6 +5,7 @@
 #include "binary_generated.h"
 #include "tt_metal/impl/buffers/buffer.hpp"
 #include "tt_metal/impl/program/program.hpp"
+#include "tt_metal/impl/kernels/kernel.hpp"
 
 #include <iostream>
 #include <fstream>
@@ -60,6 +61,7 @@ void LightMetalCaptureContext::reset() {
     traceDescsVector_.clear();
     bufferToGlobalIdMap_.clear();
     programToGlobalIdMap_.clear();
+    kernelToGlobalIdMap_.clear();
 }
 
 // Public Object Maps Accessors - Buffers
@@ -116,6 +118,32 @@ uint32_t LightMetalCaptureContext::getGlobalId(const Program* obj) {
     }
 }
 
+// Public Object Maps Accessors - Kernel
+
+bool LightMetalCaptureContext::isInMap(const Kernel* obj) {
+    return kernelToGlobalIdMap_.find(obj) != kernelToGlobalIdMap_.end();
+}
+
+uint32_t LightMetalCaptureContext::addToMap(const Kernel* obj) {
+    if (isInMap(obj)) log_warning(tt::LogMetalTrace, "Kernel already exists in global_id map.");
+    uint32_t global_id = nextGlobalId_++;
+    kernelToGlobalIdMap_[obj] = global_id;
+    return global_id;
+}
+
+void LightMetalCaptureContext::removeFromMap(const Kernel* obj) {
+    if (!isInMap(obj)) log_warning(tt::LogMetalTrace, "Kernel not found in global_id map.");
+    kernelToGlobalIdMap_.erase(obj);
+}
+
+uint32_t LightMetalCaptureContext::getGlobalId(const Kernel* obj) {
+    auto it = kernelToGlobalIdMap_.find(obj);
+    if (it != kernelToGlobalIdMap_.end()) {
+        return it->second;
+    } else {
+        throw std::runtime_error("Kernel not found in global_id map.");
+    }
+}
 
 ////////////////////////////////////////////
 // Non-Class Helper Functions             //
