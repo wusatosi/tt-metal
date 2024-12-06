@@ -13,48 +13,18 @@
 #if DEBUG_PRINT == 1
 #include "debug/dprint.h"
 #include "tt_metal/hw/inc/debug/dprint_tensix.h"
+#include "tt_metal/hw/inc/circular_buffer.h"
 
-inline void print_tile_rows(uint32_t cb_id, uint32_t rows = 32, uint32_t tile_id = 0, bool untilize = false) {
-    // UNPACK(( DPRINT << "======" << ENDL() ));
-    for (uint16_t r = 0; r < rows; ++r) {
-        UNPACK(
-            (DPRINT << (uint)r << " :: "
-                    << TileSlice(
-                           cb_id,
-                           tile_id,
-                           SliceRange{
-                               .h0 = (uint8_t)r,
-                               .h1 = (uint8_t)(r + 1),
-                               .hs = (uint8_t)1,
-                               .w0 = (uint8_t)0,
-                               .w1 = (uint8_t)32,
-                               .ws = (uint8_t)1},
-                           true,
-                           untilize)
-                    << ENDL()));
+inline void print_pages(uint32_t l1_addr, uint32_t pagelen, uint32_t npages, uint32_t start = 0) {
+    volatile tt_l1_ptr uint16_t* ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(l1_addr) + start * pagelen;
+    for (uint32_t page = 0; page < npages; ++page) {
+        DPRINT << start + page << ": ";
+        for (uint32_t j = 0; j < pagelen; ++j, ++ptr) {
+            DPRINT << BF16(*ptr) << " ";
+        }
+        DPRINT << ENDL();
     }
-    // UNPACK(( DPRINT << "++++++" << ENDL() ));
 }
-
-// inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
-//     UNPACK((DPRINT << "======" << ENDL()));
-//     for (uint16_t r = 0; r < 32; ++r) {
-//         SliceRange sr = SliceRange{.h0 = r, .h1 = (uint16_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
-//         UNPACK((DPRINT << (uint)r << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL()));
-//     }
-//     UNPACK((DPRINT << "++++++" << ENDL()));
-// }
-
-// inline void print_cb_details(uint32_t cb_id) {
-//     DPRINT << "cb_id " << cb_id << ": { "
-//            << "size: " << get_local_cb_interface(cb_id).fifo_size << ", "
-//            << "limit: " << get_local_cb_interface(cb_id).fifo_limit << ", "
-//            << "page_size: " << get_local_cb_interface(cb_id).fifo_page_size << ", "
-//            << "num_pages: " << get_local_cb_interface(cb_id).fifo_num_pages << ", "
-//            << "rd_ptr: " << get_local_cb_interface(cb_id).fifo_rd_ptr << ", "
-//            << "wr_ptr: " << get_local_cb_interface(cb_id).fifo_wr_ptr << ", "
-//            << "wr_tile_ptr: " << get_local_cb_interface(cb_id).fifo_wr_tile_ptr << " }" << ENDL();
-// }
 #endif
 
 template <
@@ -83,7 +53,7 @@ inline void reduce_h_fused(
             reduce_tile_math(c_i, num_faces_in_tile /* reduce 1 or 2 faces */);
         }
 
-        dprint_tensix_dest_reg(0);
+        // dprint_tensix_dest_reg(0);
 
         cb_pop_front(curr_in_cb_id, 1);
         tile_regs_wait();
@@ -92,10 +62,10 @@ inline void reduce_h_fused(
             out_cb_id, 1 /*out_subblock_h*/, 0, num_out_rows, num_faces_in_tile); /* pack 1 row (1x16 or 1x32) */
         tile_regs_release();
 
-        // if (curr_in_cb_id == in_cb_id) {
-        //    print_tile_rows(out_cb_id, 32, 0, false);
-        //    print_tile_rows(out_cb_id, 32, 1, false);
-        // }
+        if (curr_in_cb_id == in_cb_id) {
+            PACK(uint32_t ptr = get_local_cb_interface(out_cb_id).fifo_rd_ptr;);
+            PACK(print_pages(ptr, 64, 1););
+        }
 
         cb_push_back(out_cb_id, 1);
     }

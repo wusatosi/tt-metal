@@ -209,9 +209,11 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
     // output of reduce == writer to write
     uint32_t out_cb_id = tt::CBIndex::c_16;  // output rows in RM
     // after reduction
-    uint32_t out_cb_pagesize = output.shard_spec().value().shape[1] * out_nbytes /
-                               in_nblocks_c;  // there is just one row of channels after each reduction (or 1 block of c
-                                              // if its greater than 8 tiles)
+    printf("shard spec: %d, %d\n", output.shard_spec().value().shape[0], output.shard_spec().value().shape[1]);
+    uint32_t shard_width_padded = tt::round_up(output.shard_spec().value().shape[1], tt::constants::TILE_WIDTH);
+    uint32_t out_cb_pagesize =
+        shard_width_padded * out_nbytes / in_nblocks_c;  // there is just one row of channels after each reduction (or 1
+                                                         // block of c if its greater than 8 tiles)
     uint32_t out_cb_npages = output.shard_spec().value().shape[0] * in_nblocks_c;
     CircularBufferConfig cb_out_config = CircularBufferConfig(out_cb_npages * out_cb_pagesize, {{out_cb_id, out_df}})
                                              .set_page_size(out_cb_id, out_cb_pagesize)

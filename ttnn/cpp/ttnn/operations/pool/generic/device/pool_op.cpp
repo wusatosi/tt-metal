@@ -71,6 +71,7 @@ Pool2D::spec_return_value_t Pool2D::compute_output_specs(
     // need to pad the last dim to TILE_WIDTH
     uint32_t out_c = input_shape[3];
     uint32_t out_c_padded = tt::round_up(out_c, (out_c <= 16) ? 16 : tt::constants::TILE_WIDTH);
+    printf("out_c_padded: %d\n", out_c_padded);
     // uint32_t out_c_padded = tt::round_up(out_c, (out_c <= 16) ? 16 : 16 / sizeof(output_dtype));
     uint32_t out_nhw = sliding_window_config.batch_size * out_h * out_w;
 
@@ -79,9 +80,11 @@ Pool2D::spec_return_value_t Pool2D::compute_output_specs(
 
     // {1, 1, N * H * W, C}
     const ttnn::SmallVector<uint32_t> out_dims({1, 1, out_nhw_padded, out_c_padded});
-    const auto padding = Padding(
-        {{0, 0}, {0, 0}, {0, out_nhw_padded - out_nhw}, {0, out_c_padded - out_c}},
-        Padding::PadValue::NegativeInfinity);
+    // const auto padding = Padding(
+    //     {{0, 0}, {0, 0}, {0, out_nhw_padded - out_nhw}, {0, out_c_padded - out_c}},
+    //     Padding::PadValue::NegativeInfinity);
+    const auto padding =
+        Padding({{0, 0}, {0, 0}, {0, out_nhw_padded - out_nhw}, {0, 0}}, Padding::PadValue::NegativeInfinity);
     auto output_shape = Shape(tt::tt_metal::LegacyShape(out_dims, padding));
 
     auto mem_config = out_mem_config;
@@ -95,6 +98,8 @@ Pool2D::spec_return_value_t Pool2D::compute_output_specs(
         std::array<uint32_t, 2> shard_shape = {out_nhw_per_core, input.get_legacy_shape()[-1]};
         mem_config.shard_spec = ShardSpec{shard_grid, shard_shape, ShardOrientation::ROW_MAJOR, false};
     }
+
+    printf("output shape: %d, %d, %d, %d\n", output_shape[0], output_shape[1], output_shape[2], output_shape[3]);
 
     return TensorSpec(
         output_shape.logical_shape(),
