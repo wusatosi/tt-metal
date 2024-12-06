@@ -21,6 +21,7 @@
 #include "optimizers/adamw.hpp"
 #include "optimizers/sgd.hpp"
 #include "tokenizers/char_tokenizer.hpp"
+#include "ttnn/graph/graph_operation_queries.hpp"
 #include "ttnn_fixed/trivial_ttnn_ops.hpp"
 #include "utils.hpp"
 
@@ -329,49 +330,61 @@ int main(int argc, char **argv) {
     for (uint32_t epoch = 0; epoch < num_epochs; ++epoch) {
         for (auto [features, target, masks] : train_dataloader) {
             auto start_timer = std::chrono::high_resolution_clock::now();
-            if (gradient_accumulator_helper.should_zero_grad()) {
-                optimizer.zero_grad();
-            }
-            auto output = (*model)(features, masks);
-            auto loss = ttml::ops::nll_loss(output, target);
-            loss = gradient_accumulator_helper.scale(loss);
-            auto loss_float = ttml::core::to_vector(loss->get_value())[0];
 
-            loss->backward();
-            ttml::autograd::ctx().reset_graph();
-
-            auto samples = features->get_value().get_shape()[0];
-            gradient_accumulator_helper.update(loss_float, samples);
-
-            if (gradient_accumulator_helper.should_step()) {
-                optimizer.step();
-                auto global_step = optimizer.get_steps();
-                fmt::print("Step: {}, Loss: {}\n", global_step, gradient_accumulator_helper.average_loss());
-                loss_meter.update(gradient_accumulator_helper.average_loss());
-
-                if (global_step % 10 == 0) {
-                    wandbcpp::log(
-                        {{"Step", (int)global_step},
-                         {"Samples", (int)get_samples_count(global_step)},
-                         {"Loss", loss_meter.average()}});
-                    loss_meter.reset();
+            auto callable = [&]() {
+                if (gradient_accumulator_helper.should_zero_grad()) {
+                    optimizer.zero_grad();
                 }
-                if (!config.model_path.empty() && global_step % config.model_save_interval == 0) {
-                    save_model_and_optimizer(config.model_path, model, optimizer, "transformer", "adamw");
+                auto output = (*model)(features, masks);
+                auto loss = ttml::ops::nll_loss(output, target);
+                loss = gradient_accumulator_helper.scale(loss);
+                auto loss_float = ttml::core::to_vector(loss->get_value())[0];
+
+                loss->backward();
+                ttml::autograd::ctx().reset_graph();
+
+                auto samples = features->get_value().get_shape()[0];
+                gradient_accumulator_helper.update(loss_float, samples);
+
+                if (gradient_accumulator_helper.should_step()) {
+                    optimizer.step();
+                    auto global_step = optimizer.get_steps();
+                    fmt::print("Step: {}, Loss: {}\n", global_step, gradient_accumulator_helper.average_loss());
+                    loss_meter.update(gradient_accumulator_helper.average_loss());
+
+                    if (global_step % 10 == 0) {
+                        wandbcpp::log(
+                            {{"Step", (int)global_step},
+                             {"Samples", (int)get_samples_count(global_step)},
+                             {"Loss", loss_meter.average()}});
+                        loss_meter.reset();
+                    }
+                    if (!config.model_path.empty() && global_step % config.model_save_interval == 0) {
+                        save_model_and_optimizer(config.model_path, model, optimizer, "transformer", "adamw");
+                    }
+
+                    // if (global_step >= config.max_steps) {
+                    //     break;
+                    // }
+
+                    gradient_accumulator_helper.reset();
                 }
 
-                if (global_step >= config.max_steps) {
-                    break;
-                }
+                // auto end_timer = std::chrono::high_resolution_clock::now();
+                // auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_timer -
+                // start_timer).count(); fmt::print(
+                //     "Full step time {} ms, cache entries: {}\n",
+                //     (double)duration / 1000,
+                //     device->num_program_cache_entries());
+                return 0;
+            };
 
-                gradient_accumulator_helper.reset();
-            }
-            auto end_timer = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_timer - start_timer).count();
-            fmt::print(
-                "Full step time {} ms, cache entries: {}\n",
-                (double)duration / 1000,
-                device->num_program_cache_entries());
+            auto json_trace = ttnn::graph::query_trace(callable);
+            auto pretty_trace = json_trace.dump(4);
+            std::ofstream trace_file("trace.json");
+            trace_file << pretty_trace;
+            trace_file.close();
+            exit(0);
         }
         if (optimizer.get_steps() >= config.max_steps) {
             break;
