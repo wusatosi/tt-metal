@@ -9,6 +9,7 @@
 
 namespace ttnn::operations::moreh::moreh_group_norm {
 void bind_moreh_group_norm_operation(py::module& module) {
+    std::cout << "        Inside pybind.cpp file" << std::endl;
     bind_registered_operation(
         module,
         ttnn::moreh_group_norm,

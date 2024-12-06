@@ -22,6 +22,7 @@ MorehGroupNormOperation::MorehGroupNormFactory::cached_program_t MorehGroupNormO
     const operation_attributes_t& operation_attributes,
     const tensor_args_t& tensor_args,
     tensor_return_value_t& outputs) {
+    std::cout << std::endl << "           Inside program factory file - create" << std::endl;
     using namespace tt;
     using namespace tt::constants;
 
@@ -100,14 +101,15 @@ MorehGroupNormOperation::MorehGroupNormFactory::cached_program_t MorehGroupNormO
          num_rows_per_core_group_1,
          num_rows_per_core_group_2] = tt_metal::split_work_to_cores(grid, num_rows);
 
-    log_debug(LogTest, "num_cores_to_be_used: {}", num_cores_to_be_used);
-    log_debug(LogTest, "num_rows_per_core_group_1: {}", num_rows_per_core_group_1);
-    log_debug(LogTest, "num_rows_per_core_group_2: {}", num_rows_per_core_group_2);
-    log_debug(LogTest, "block_size: {}", block_size);
+    log_info(LogTest, "num_cores_to_be_used: {}", num_cores_to_be_used);
+    log_info(LogTest, "num_rows_per_core_group_1: {}", num_rows_per_core_group_1);
+    log_info(LogTest, "num_rows_per_core_group_2: {}", num_rows_per_core_group_2);
+    log_info(LogTest, "block_size: {}", block_size);
 
     ////////////////////////////////////////////////////////////////////////////
     //                         CircularBuffer Setup
     ////////////////////////////////////////////////////////////////////////////
+    std::cout << std::endl << "           --> CircularBuffer Setup" << std::endl;
     uint32_t in0_t = num_inner_tiles;                         // input
     const uint32_t in1_t = 1;                                 // scaler
     const uint32_t in2_t = 1;                                 // epsilon

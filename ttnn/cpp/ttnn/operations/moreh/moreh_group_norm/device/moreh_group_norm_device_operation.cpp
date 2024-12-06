@@ -10,6 +10,8 @@
 namespace ttnn::operations::moreh::moreh_group_norm {
 void MorehGroupNormOperation::validate_tensors(
     const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
+    std::cout << std::endl
+              << "            Inside moreh_group_norm_device_operation.cpp - validate_tensors" << std::endl;
     const auto& input = tensor_args.input;
 
     auto& output = tensor_args.output;
@@ -30,33 +32,40 @@ void MorehGroupNormOperation::validate_tensors(
     check_tensor(gamma, "moreh_group_norm", "gamma");
     check_tensor(beta, "moreh_group_norm", "beta");
 
+    std::cout << "            checking c dimension for all tensors" << std::endl;
+
     // input (N, C, H, W)
     auto C = input.get_shape().value[1];
     TT_FATAL(C % num_groups == 0, "input_shape[1] must be divisible by num_groups.");
     // output (N, C, H, W)
     if (output.has_value()) {
         C = output.value().get_shape().value[1];
+        std::cout << "                output.has_value() = " << C << std::endl;
         TT_FATAL(C % num_groups == 0, "output_shape[1] must be divisible by num_groups.");
     }
     // gamma (1, 1, 1, C)
     if (gamma.has_value()) {
         C = gamma.value().get_shape().value.without_padding()[-1];
+        std::cout << "                gamma.has_value() = " << C << std::endl;
         TT_FATAL(C % num_groups == 0, "gamma_shape[-1] must be divisible by num_groups.");
     }
     // beta (1, 1, 1, C)
     if (beta.has_value()) {
         C = beta.value().get_shape().value.without_padding()[-1];
+        std::cout << "                beta.has_value() = " << C << std::endl;
         TT_FATAL(C % num_groups == 0, "beta_shape[-1] must be divisible by num_groups.");
     }
 
     // mean (1, 1, N, num_groups)
     if (mean.has_value()) {
+        std::cout << "                mean (1, 1, N, num_groups) " << std::endl;
         TT_FATAL(
             mean.value().get_shape().value.without_padding()[-1] == num_groups,
             "mean_shape[-1] must match num_groups.");
     }
     // rstd (1, 1, N, num_groups)
     if (rstd.has_value()) {
+        std::cout << "                rstd (1, 1, N, num_groups)" << C << std::endl;
         TT_FATAL(
             rstd.value().get_shape().value.without_padding()[-1] == num_groups,
             "rstd_shape[-1] must match num_groups.");
@@ -65,6 +74,10 @@ void MorehGroupNormOperation::validate_tensors(
 
 MorehGroupNormOperation::program_factory_t MorehGroupNormOperation::select_program_factory(
     const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
+    std::cout
+        << std::endl
+        << "           Inside moreh_group_norm_device_operation.cpp - select_program_factory :  MorehGroupNormFactory"
+        << std::endl;
     return MorehGroupNormFactory();
 }
 
@@ -80,9 +93,14 @@ void MorehGroupNormOperation::validate_on_program_cache_hit(
 
 MorehGroupNormOperation::shape_return_value_t MorehGroupNormOperation::compute_output_shapes(
     const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
+    std::cout << std::endl
+              << "           --> Inside moreh_group_norm_device_operation.cpp - compute_output_shapes" << std::endl;
     using namespace tt::constants;
     // mean, rstd (1, 1, N, num_groups)
     const auto output_shape = tensor_args.input.get_logical_shape();
+    std::cout << "             --> Set output hspae same as input shape and return other sahoes that needs to be "
+                 "return as output"
+              << std::endl;
     const auto N = output_shape[0];
     const auto num_groups = operation_attributes.num_groups;
     SmallVector<uint32_t> mean_rstd_origin_shape{1, 1, N, num_groups};
@@ -93,6 +111,8 @@ MorehGroupNormOperation::shape_return_value_t MorehGroupNormOperation::compute_o
 
 MorehGroupNormOperation::tensor_return_value_t MorehGroupNormOperation::create_output_tensors(
     const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
+    std::cout << std::endl
+              << "           Inside moreh_group_norm_device_operation.cpp - create_output_tensors" << std::endl;
     const auto output_shapes = compute_output_shapes(operation_attributes, tensor_args);
     auto dtype = tensor_args.input.get_dtype();
     Layout layout{Layout::TILE};
@@ -102,6 +122,7 @@ MorehGroupNormOperation::tensor_return_value_t MorehGroupNormOperation::create_o
     result.reserve(3);
 
     // output
+    std::cout << "           --> tensor_args.output.has_value() : " << tensor_args.output.has_value() << std::endl;
     if (tensor_args.output.has_value()) {
         result.push_back(tensor_args.output.value());
     } else {
@@ -110,6 +131,7 @@ MorehGroupNormOperation::tensor_return_value_t MorehGroupNormOperation::create_o
     }
 
     // mean
+    std::cout << "           --> tensor_args.mean.has_value() : " << tensor_args.mean.has_value() << std::endl;
     if (tensor_args.mean.has_value()) {
         result.push_back(tensor_args.mean.value());
     } else if (operation_attributes.are_required_outputs[1]) {
@@ -120,6 +142,7 @@ MorehGroupNormOperation::tensor_return_value_t MorehGroupNormOperation::create_o
     }
 
     // rstd
+    std::cout << "           --> tensor_args.rstd.has_value() : " << tensor_args.rstd.has_value() << std::endl;
     if (tensor_args.rstd.has_value()) {
         result.push_back(tensor_args.rstd.value());
     } else if (operation_attributes.are_required_outputs[2]) {
@@ -146,6 +169,7 @@ MorehGroupNormOperation::invoke(
     const std::optional<MemoryConfig>& mean_memory_config,
     const std::optional<MemoryConfig>& rstd_memory_config,
     const std::optional<DeviceComputeKernelConfig>& compute_kernel_config) {
+    std::cout << std::endl << "           Inside moreh_group_norm_device_operation.cpp - invoke function" << std::endl;
     operation_attributes_t operation_attributes{
         num_groups,
         eps,

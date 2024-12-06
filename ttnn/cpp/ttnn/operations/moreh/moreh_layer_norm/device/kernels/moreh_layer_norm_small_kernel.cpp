@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "ttnn/cpp/ttnn/deprecated/tt_dnn/kernels/compute/moreh_common.hpp"
+#include "debug/dprint.h"
 
 ALWI bool need_to_do_mask_h(uint32_t w_idx, uint32_t origin_num_h_tiles, uint32_t origin_num_w_tiles) {
     return ((w_idx / origin_num_w_tiles) + 1) % origin_num_h_tiles == 0;
@@ -21,6 +22,18 @@ void MAIN {
     constexpr bool rstd_has_value = get_compile_time_arg_val(8) == 1;
     constexpr bool is_lastdim_layernorm = get_compile_time_arg_val(9) == 1;
     constexpr bool is_groupnorm = get_compile_time_arg_val(10) == 1;
+
+    DPRINT << "num_rows_per_core: " << num_rows_per_core << ENDL();
+    DPRINT << "origin_H: " << origin_H << ENDL();
+    DPRINT << "origin_W: " << origin_W << ENDL();
+    DPRINT << "num_inner: " << num_inner << ENDL();
+    DPRINT << "block_size: " << block_size << ENDL();
+    DPRINT << "gamma_has_value: " << (gamma_has_value ? "true" : "false") << ENDL();
+    DPRINT << "beta_has_value: " << (beta_has_value ? "true" : "false") << ENDL();
+    DPRINT << "mean_has_value: " << (mean_has_value ? "true" : "false") << ENDL();
+    DPRINT << "rstd_has_value: " << (rstd_has_value ? "true" : "false") << ENDL();
+    DPRINT << "is_lastdim_layernorm: " << (is_lastdim_layernorm ? "true" : "false") << ENDL();
+    DPRINT << "is_groupnorm: " << (is_groupnorm ? "true" : "false") << ENDL();
 
     binary_op_init_common(tt::CBIndex::c_0, tt::CBIndex::c_0);
 

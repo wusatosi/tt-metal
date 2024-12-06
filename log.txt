@@ -1,0 +1,198 @@
+prefetcher_11: start
+dispatch_11: start
+dispatch_s : start
+cmd_wait
+ DISPATCH WAIT 183b0 count 0
+cmd_write_paged is_dram: 1
+cmd_wait
+ DISPATCH WAIT 183b0 count 0
+cmd_write_paged is_dram: 1
+cmd_wait
+ DISPATCH WAIT 183b0 count 0
+cmd_write_paged is_dram: 1
+cmd_wait
+ DISPATCH WAIT 183b0 count 0
+cmd_write_paged is_dram: 1
+write offset: 0 28240 102096
+cmd_wait
+ DISPATCH BARRIER
+ DISPATCH WAIT 183b0 count 0
+num_rows_per_core: 1
+origin_H: 23
+origin_W: 23
+num_inner: 2
+block_size: 2
+gamma_has_value: true
+beta_has_value: true
+num_rows_per_core: 1
+origin_H: 23
+origin_W: 23
+num_inner: 2
+block_size: 2
+gamma_has_value: true
+beta_has_value: true
+num_rows_per_core: 1
+origin_H: 23
+origin_W: 23
+num_inner: 2
+block_size: 2
+gamma_has_value: true
+beta_has_value: true
+num_rows_per_core: 1
+origin_H: 23
+origin_W: 23
+num_inner: 2
+block_size: 2
+gamma_has_value: true
+beta_has_value: true
+num_rows_per_core: 1
+origin_H: 23
+origin_W: 23
+num_inner: 2
+block_size: 2
+gamma_has_value: true
+beta_has_value: true
+num_rows_per_core: 1
+origin_H: 23
+origin_W: 23
+num_inner: 2
+block_size: 2
+gamma_has_value: true
+beta_has_value: true
+num_rows_per_core: 1
+origin_H: 23
+origin_W: 23
+num_inner: 2
+block_size: 2
+gamma_has_value: true
+beta_has_value: true
+num_rows_per_core: 1
+origin_H: 23
+origin_W: 23
+num_inner: 2
+block_size: 2
+gamma_has_value: true
+beta_has_value: true
+num_rows_per_core: 1
+origin_H: 23
+origin_W: 23
+num_inner: 2
+block_size: 2
+gamma_has_value: true
+beta_has_value: true
+num_rows_per_core: 1
+origin_H: 23
+origin_W: 23
+num_inner: 2
+block_size: 2
+gamma_has_value: true
+beta_has_value: true
+num_rows_per_core: 1
+origin_H: 23
+origin_W: 23
+num_inner: 2
+block_size: 2
+gamma_has_value: true
+beta_has_value: true
+num_rows_per_core: 1
+origin_H: 23
+origin_W: 23
+num_inner: 2
+block_size: 2
+gamma_has_value: true
+beta_has_value: true
+cmd_write_packed
+cmd_write_packed
+cmd_write_packed_large
+cmd_write_packed
+cmd_notify_dispatch_s_go_signal
+ DISPATCH_S_NOTIFY BARRIER
+cmd_wait
+mean_has_value: true
+rstd_has_value: true
+is_lastdim_layernorm: false
+is_groupnorm: true
+mean_has_value: true
+rstd_has_value: true
+is_lastdim_layernorm: false
+is_groupnorm: true
+mean_has_value: true
+rstd_has_value: true
+is_lastdim_layernorm: false
+is_groupnorm: true
+mean_has_value: true
+rstd_has_value: true
+is_lastdim_layernorm: false
+is_groupnorm: true
+mean_has_value: true
+rstd_has_value: true
+is_lastdim_layernorm: false
+is_groupnorm: true
+mean_has_value: true
+rstd_has_value: true
+is_lastdim_layernorm: false
+is_groupnorm: true
+mean_has_value: true
+rstd_has_value: true
+is_lastdim_layernorm: false
+is_groupnorm: true
+mean_has_value: true
+rstd_has_value: true
+is_lastdim_layernorm: false
+is_groupnorm: true
+mean_has_value: true
+rstd_has_value: true
+is_lastdim_layernorm: false
+is_groupnorm: true
+mean_has_value: true
+rstd_has_value: true
+is_lastdim_layernorm: false
+is_groupnorm: true
+mean_has_value: true
+rstd_has_value: true
+is_lastdim_layernorm: false
+is_groupnorm: true
+mean_has_value: true
+rstd_has_value: true
+is_lastdim_layernorm: false
+is_groupnorm: true
+ DISPATCH BARRIER
+ DISPATCH WAIT 183b0 count 56
+cmd_write_linear_h_host
+cmd_wait
+ DISPATCH BARRIER
+ DISPATCH WAIT 183b0 count 56
+cmd_write_packed
+cmd_write_linear_h_host
+cmd_wait
+ DISPATCH BARRIER
+ DISPATCH WAIT 183b0 count 56
+cmd_write_linear_h_host
+cmd_wait
+ DISPATCH BARRIER
+ DISPATCH WAIT 183b0 count 56
+cmd_write_packed
+cmd_write_linear_h_host
+cmd_wait
+ DISPATCH BARRIER
+ DISPATCH WAIT 183b0 count 56
+cmd_write_linear_h_host
+cmd_wait
+ DISPATCH BARRIER
+ DISPATCH WAIT 183b0 count 56
+cmd_write_packed
+cmd_write_linear_h_host
+cmd_wait
+ DISPATCH BARRIER
+ DISPATCH WAIT 183b0 count 56
+cmd_write_packed
+cmd_write_linear_h_host
+cmd_wait
+ DISPATCH BARRIER
+prefetcher_11: out
+ DISPATCH WAIT 183b0 count 56
+cmd_write_packed
+cmd_write_linear_h_host
+dispatch terminate
+dispatch_11: out
+dispatch_s : done
