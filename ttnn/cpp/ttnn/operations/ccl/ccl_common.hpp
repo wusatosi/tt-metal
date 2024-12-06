@@ -15,6 +15,7 @@
 #include "tt_metal/impl/program/program.hpp"
 #include "ttnn/tensor/types.hpp"
 #include "ttnn/operations/ccl/erisc_datamover_builder.hpp"
+#include "ttnn/cpp/ttnn/operations/ccl/common/host/ccl_command_stream_builders.hpp"
 
 namespace ttnn {
 namespace ccl {
@@ -588,6 +589,8 @@ public:
         uint32_t half_cb_n_pages);
 
     ccl::InterleavedTensorWorkerSlice get_worker_slice(std::size_t global_worker_index);
+
+    ttnn::ccl::v2::TensorSlice get_worker_slice_v2(std::size_t global_worker_index);
 
     // method to compute offsets in a wrapped layout
     std::vector<tt_xy_pair> compute_worker_slice_offsets(

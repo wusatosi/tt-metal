@@ -18,6 +18,7 @@
 #include "tt_metal/detail/util.hpp"
 #include "tt_metal/host_api.hpp"
 #include "ttnn/cpp/ttnn/operations/ccl/common/types/ccl_types_args_emitters.hpp"
+#include "ttnn/cpp/ttnn/operations/ccl/common/host/ccl_command_stream_builders.hpp"
 
 #include <sstream>
 #include <type_traits>
@@ -52,8 +53,8 @@ operation::ProgramWithCallbacks all_gather_multi_core_with_workers_new(
     tt::tt_metal::Program program{};
     auto global_semaphore_addr = semaphore_handle.address();
 
-    // // Sleep for ring_index * 5 seconds to stagger startup
-    // std::this_thread::sleep_for(std::chrono::seconds(ring_index * 5));
+    // Sleep for ring_index * 5 seconds to stagger startup
+    std::this_thread::sleep_for(std::chrono::seconds(ring_index * 5));
 
     auto drain_sync_core = CoreCoord(4,4);
     std::optional<ccl::SyncModeSpec> sync_details = ttnn::ccl::SyncModeSpec {
@@ -64,7 +65,7 @@ operation::ProgramWithCallbacks all_gather_multi_core_with_workers_new(
         {global_semaphore_addr},
         {ring_size * num_links}
     };
-    log_debug(tt::LogOp, "DEBUG: device: {}", input_tensor.device()->id());
+    log_info(tt::LogOp, "DEBUG: device: {}", input_tensor.device()->id());
 
     Device *device = input_tensor.device();
     auto local_device_fabric_interface = ccl::EdmLineFabricOpInterface (
@@ -141,11 +142,19 @@ operation::ProgramWithCallbacks all_gather_multi_core_with_workers_new(
     static std::string const& sender_kernel_reader_path = "ttnn/cpp/ttnn/operations/ccl/common/kernels/ccl_send_reader.cpp";
     static std::string const& sender_kernel_writer_path = "ttnn/cpp/ttnn/operations/ccl/common/kernels/ccl_send_writer.cpp";
 
-    KernelHandle worker_sender_reader_kernel_id = tt::tt_metal::CreateKernel(
+    // KernelHandle worker_sender_reader_kernel_id = tt::tt_metal::CreateKernel(
+    //     program,
+    //     sender_kernel_reader_path,
+    //     sender_worker_core_range,
+    //     tt::tt_metal::ReaderDataMovementConfig(worker_arg_builder.generate_sender_reader_kernel_ct_args(), worker_defines));
+    KernelHandle worker_sender_reader_kernel_id = ttnn::ccl::worker_detail::generate_multi_command_stream_kernel_ct_args(
         program,
-        sender_kernel_reader_path,
+        {src0_cb_index},
+        {&input_tensor},
         sender_worker_core_range,
-        tt::tt_metal::ReaderDataMovementConfig(worker_arg_builder.generate_sender_reader_kernel_ct_args(), worker_defines));
+        tt::tt_metal::ReaderDataMovementConfig{},
+        1 // num_command_streams
+    );
 
     KernelHandle worker_sender_writer_kernel_id = tt::tt_metal::CreateKernel(
         program,
@@ -156,14 +165,16 @@ operation::ProgramWithCallbacks all_gather_multi_core_with_workers_new(
     const size_t forward_direction_distance_to_end_of_line = line_topology.get_distance_to_end_of_line(ttnn::ccl::EdmLineFabricOpInterface::Direction::FORWARD);
     const size_t backward_direction_distance_to_end_of_line = line_topology.get_distance_to_end_of_line(ttnn::ccl::EdmLineFabricOpInterface::Direction::BACKWARD);
     // RT Args
-    log_debug(tt::LogOp, "DEBUG: CreateSemaphore: {}, &program: {}", input_tensor.device()->id(), (void*)&program);
+    log_info(tt::LogOp, "DEBUG: CreateSemaphore: {}, &program: {}", input_tensor.device()->id(), (void*)&program);
     size_t sender_worker_forward_flow_control_semaphore_id = CreateSemaphore(program, sender_worker_core_range,0);
-    log_debug(tt::LogOp, "DEBUG: CreateSemaphore: {}, &program: {}", input_tensor.device()->id(), (void*)&program);
     size_t sender_worker_forward_buffer_index_semaphore_id = CreateSemaphore(program, sender_worker_core_range,0);
-    log_debug(tt::LogOp, "DEBUG: CreateSemaphore: {}, &program: {}", input_tensor.device()->id(), (void*)&program);
     size_t sender_worker_backward_flow_control_semaphore_id = CreateSemaphore(program, sender_worker_core_range,0);
-    log_debug(tt::LogOp, "DEBUG: CreateSemaphore: {}, &program: {}", input_tensor.device()->id(), (void*)&program);
     size_t sender_worker_backward_buffer_index_semaphore_id = CreateSemaphore(program, sender_worker_core_range,0);
+
+    auto reader_tensor_slices = ttnn::ccl::cmd::builder::generate_worker_tensor_slices(
+        1, input_tensor, num_workers_per_link*num_links, dim);
+    log_info(tt::LogOp, "reader_tensor_slices size: {}", reader_tensor_slices.size());
+    log_info(tt::LogOp, "reader_tensor_slices[0] size: {}", reader_tensor_slices[0].size());
 
     for (std::size_t link = 0; link < num_links; link++) {
         CoreCoord core = {num_workers_per_link-1, link};
@@ -178,15 +189,55 @@ operation::ProgramWithCallbacks all_gather_multi_core_with_workers_new(
             dim);
 
         // tt::log_info("Creating RT Args for worker core ({},{})", core.x, core.y);
-        // input_worker_slice.print();
-        // output_worker_slice.print();
+        log_info(tt::LogOp, "reference input worker slice");
+        input_worker_slice.print();
+        log_info(tt::LogOp, "reference output worker slice");
+        output_worker_slice.print();
 
-        auto const sender_reader_rt_args = worker_arg_builder.generate_sender_reader_kernel_rt_args(input_worker_slice, worker_arg_builder.operating_dim, num_pages_per_packet, worker_tensor_slice_index);
-        tt::tt_metal::SetRuntimeArgs(
+        // auto const sender_reader_rt_args = worker_arg_builder.generate_sender_reader_kernel_rt_args(input_worker_slice, worker_arg_builder.operating_dim, num_pages_per_packet, worker_tensor_slice_index);
+        // tt::tt_metal::SetRuntimeArgs(
+        //     program,
+        //     worker_sender_reader_kernel_id,
+        //     core,
+        //     sender_reader_rt_args);
+        std::vector<ttnn::ccl::cmd::CclHostLowLevelWorkerCommand> reader_cmd_stream;
+        // reader_cmd_stream.push_back(
+        // ttnn::ccl::cmd::uops::read_tensor_slice_to_cb_for_eventual_fabric_write(reader_tensor_slices[link][0], src0_cb_index));
+        auto const& input_worker_slice_v2 = input_tensor_slicer.get_worker_slice_v2(worker_tensor_slice_index);
+        reader_cmd_stream.push_back( // use the reader_tensor_slices after the bug is fixed
+        ttnn::ccl::cmd::uops::read_tensor_slice_to_cb_for_eventual_fabric_write(input_worker_slice_v2, src0_cb_index));
+
+        // void print(ttnn::ccl::v2::TensorSlice const& slice_v2) const {
+        //     log_info("TensorSlice:");
+        //     log_info("  tensor_shape:        [w=%u, z=%u, y=%u, x=%u]",
+        //         slice_v2.tensor_shape.w, slice_v2.tensor_shape.z, slice_v2.tensor_shape.y, slice_v2.tensor_shape.x);
+        //     log_info("  tensor_slice_shape:  [w=%u, z=%u, y=%u, x=%u]",
+        //         slice_v2.tensor_slice_shape.w, slice_v2.tensor_slice_shape.z, slice_v2.tensor_slice_shape.y, slice_v2.tensor_slice_shape.x);
+        //     log_info("  tensor_slice_offset: [w=%u, z=%u, y=%u, x=%u]",
+        //         slice_v2.tensor_slice_offset.w, slice_v2.tensor_slice_offset.z, slice_v2.tensor_slice_offset.y, slice_v2.tensor_slice_offset.x);
+        //     log_info("  worker_slice_shape:  [w=%u, z=%u, y=%u, x=%u]",
+        //         slice_v2.worker_slice_shape.w, slice_v2.worker_slice_shape.z, slice_v2.worker_slice_shape.y, slice_v2.worker_slice_shape.x);
+        //     log_info("  worker_slice_offset: [w=%u, z=%u, y=%u, x=%u]",
+        //         slice_v2.worker_slice_offset.w, slice_v2.worker_slice_offset.z, slice_v2.worker_slice_offset.y, slice_v2.worker_slice_offset.x);
+        // }
+        // log_info(tt::LogOp, "DEBUG: tensor slice v2 new:");
+        // reader_tensor_slices[link][0].print();
+        // log_info(tt::LogOp, "DEBUG: tensor slice v2 old:");
+        // input_worker_slice_v2.print();
+
+        ttnn::ccl::worker_detail::generate_multi_input_command_stream_kernel_rt_args(
             program,
             worker_sender_reader_kernel_id,
-            core,
-            sender_reader_rt_args);
+            {&input_tensor},
+            {op_config.get_page_size()},
+            input_tensor.device(),
+            num_pages_per_packet, // num_pages_per_edm_buffer
+            {core},
+            reader_cmd_stream,
+            std::nullopt,
+            std::nullopt,
+            std::nullopt
+        );
 
         std::optional<ttnn::ccl::SenderWorkerAdapterSpec> forward_fabric_connection =
             line_topology.is_first_device_in_line(ttnn::ccl::EdmLineFabricOpInterface::Direction::BACKWARD) ?
@@ -197,8 +248,8 @@ operation::ProgramWithCallbacks all_gather_multi_core_with_workers_new(
             std::nullopt :
             std::optional<ttnn::ccl::SenderWorkerAdapterSpec>(local_device_fabric_interface.uniquely_connect_worker(device, ttnn::ccl::EdmLineFabricOpInterface::BACKWARD));
 
-        log_debug(tt::LogOp, "DEBUG: line_index: {}, line_size: {}, forward_fabric_connection: {}", line_topology.line_index(), line_topology.line_size(), forward_fabric_connection.has_value());
-        log_debug(tt::LogOp, "DEBUG: line_index: {}, line_size: {}, backward_fabric_connection: {}", line_topology.line_index(), line_topology.line_size(), backward_fabric_connection.has_value());
+        log_info(tt::LogOp, "DEBUG: line_index: {}, line_size: {}, forward_fabric_connection: {}", line_topology.line_index(), line_topology.line_size(), forward_fabric_connection.has_value());
+        log_info(tt::LogOp, "DEBUG: line_index: {}, line_size: {}, backward_fabric_connection: {}", line_topology.line_index(), line_topology.line_size(), backward_fabric_connection.has_value());
 
         auto const sender_writer_rt_args = worker_arg_builder.generate_sender_writer_kernel_rt_args(
             forward_fabric_connection,
