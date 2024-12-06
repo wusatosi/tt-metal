@@ -1084,6 +1084,18 @@ ccl::InterleavedTensorWorkerSlice GenericWrappedTensorSlicer::get_worker_slice(s
     );
 }
 
+ttnn::ccl::v2::TensorSlice GenericWrappedTensorSlicer::get_worker_slice_v2(std::size_t global_worker_index) {
+    assert(global_worker_index < this->worker_slice_shapes.size());
+    assert(global_worker_index < this->worker_slice_offsets.size());
+    return ttnn::ccl::v2::TensorSlice(
+        Shape4D<uint32_t>(1, 1, flattened_tensor_shape.y, flattened_tensor_shape.x),
+        Shape4D<uint32_t>(1, 1, tensor_slice_shape.y, tensor_slice_shape.x),
+        Shape4D<uint32_t>(0, 0, this->partition_index * tensor_slice_shape.y, this->partition_index * tensor_slice_shape.x),  // tensor_slice_offset is 0 since we're using worker_slice_offset
+        Shape4D<uint32_t>(1, 1, worker_slice_shapes[global_worker_index].y, worker_slice_shapes[global_worker_index].x),
+        Shape4D<uint32_t>(0, 0, worker_slice_offsets[global_worker_index].y, worker_slice_offsets[global_worker_index].x)
+    );
+}
+
 std::vector<tt_xy_pair> GenericWrappedTensorSlicer::compute_worker_slice_offsets(
     std::vector<tt_xy_pair> const& worker_slice_shapes, tt_xy_pair const& tensor_slice_shape) {
         return compute_worker_slice_offsets_for_wrapped_tensor_slicer(worker_slice_shapes, tensor_slice_shape);
