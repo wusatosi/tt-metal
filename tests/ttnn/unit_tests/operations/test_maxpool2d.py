@@ -324,6 +324,18 @@ def test_run_max_pool(
 
 
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
+def test_run_max_pool_fp32(device, use_program_cache):
+    act_shape = [1, 64, 112, 112]
+    kernel_size = (2, 2)
+    padding = (0, 0)
+    stride = (1, 1)
+    dilation = (1, 1)
+    dtype = ttnn.float32
+
+    run_max_pool(act_shape, kernel_size, padding, stride, dilation, device, dtype)
+
+
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
 @pytest.mark.parametrize(
     "act_shape",  ## NCHW
     (
