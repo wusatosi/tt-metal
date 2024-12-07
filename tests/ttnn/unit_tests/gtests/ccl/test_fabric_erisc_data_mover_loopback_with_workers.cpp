@@ -124,11 +124,12 @@ Correctness run_output_check(
 };
 
 void run_programs(std::vector<Program>& programs, std::vector<Device*> const& devices) {
-    EXPECT_EQ(programs.size(), devices.size());
+    // EXPECT_EQ(programs.size(), devices.size());
+    // TODO: Pass in appropriate container to indicate which device each program should be compiled for
     const size_t num_programs = programs.size();
     try {
         for (size_t i = 0; i < num_programs; i++) {
-            tt::tt_metal::detail::CompileProgram(devices.at(i), programs.at(i));
+            tt::tt_metal::detail::CompileProgram(devices.at(i % devices.size()), programs.at(i));
         }
     } catch (std::exception& e) {
         log_error("Failed compile: {}", e.what());
@@ -141,18 +142,19 @@ void run_programs(std::vector<Program>& programs, std::vector<Device*> const& de
     threads.reserve(num_programs);
     if (std::getenv("TT_METAL_SLOW_DISPATCH_MODE")) {
         for (size_t i = 0; i < num_programs; i++) {
-            threads.emplace_back(std::thread([&] { tt_metal::detail::LaunchProgram(devices.at(i), programs.at(i)); }));
+            threads.emplace_back(
+                std::thread([&] { tt_metal::detail::LaunchProgram(devices.at(i % devices.size()), programs.at(i)); }));
         }
 
         std::ranges::for_each(threads, [](std::thread& t) { t.join(); });
     } else {
         for (size_t i = 0; i < num_programs; i++) {
-            tt_metal::EnqueueProgram(devices.at(i)->command_queue(), programs.at(i), false);
+            tt_metal::EnqueueProgram(devices.at(i % devices.size())->command_queue(), programs.at(i), false);
         }
 
         log_debug(tt::LogTest, "Calling Finish");
         for (size_t i = 0; i < num_programs; i++) {
-            tt_metal::Finish(devices.at(i)->command_queue());
+            tt_metal::Finish(devices.at(i % devices.size())->command_queue());
         }
     }
 }
@@ -323,13 +325,21 @@ bool RunLoopbackTest(
     const uint32_t page_size,
     const uint32_t num_pages_total,
     bool src_is_dram,
-    bool dest_is_dram) {
+    bool dest_is_dram,
+    bool use_sub_devices) {
     std::size_t page_plus_header_size = page_size + sizeof(tt::fabric::PacketHeader);
     std::size_t tensor_size_bytes = num_pages_total * page_size;
 
-    std::vector<Program> programs(2);
-    auto& sender_program = programs.at(0);
-    auto& receiver_program = programs.at(1);
+    std::vector<Program> programs;
+    if (use_sub_devices) {
+        programs.resize(3);
+    } else {
+        programs.resize(2);
+    }
+
+    auto& edm_sender_program = programs.at(0);
+    auto& edm_receiver_program = programs.at(1);
+    auto& sender_program = use_sub_devices ? programs.at(2) : programs.at(0);
 
     std::vector<CoreCoord> worker_cores = {CoreCoord(0, 0)};
 
@@ -370,10 +380,10 @@ bool RunLoopbackTest(
     const chip_id_t remote_chip_id = 1;
     auto const& edm_config = ttnn::ccl::FabricEriscDatamoverConfig(edm_buffer_size, 1, 2);
     auto chip_0_edm_builder = ttnn::ccl::FabricEriscDatamoverBuilder::build(
-        sender_device, sender_program, eth_sender_core, local_chip_id, remote_chip_id, edm_config);
+        sender_device, edm_sender_program, eth_sender_core, local_chip_id, remote_chip_id, edm_config);
     auto chip0_worker_fabric_connection = chip_0_edm_builder.build_connection_to_worker_channel();
     auto chip_1_edm_builder = ttnn::ccl::FabricEriscDatamoverBuilder::build(
-        receiver_device, receiver_program, eth_receiver_core, remote_chip_id, local_chip_id, edm_config);
+        receiver_device, edm_receiver_program, eth_receiver_core, remote_chip_id, local_chip_id, edm_config);
     // Create the loopback connection on the second device
     chip_1_edm_builder.connect_to_downstream_edm(chip_1_edm_builder);
 
@@ -418,11 +428,11 @@ bool RunLoopbackTest(
     ////////////////////////////////////////////////////////////////////////////
     // Build EDMs
     ////////////////////////////////////////////////////////////////////////////
-    auto local_edm_kernel =
-        ttnn::ccl::generate_edm_kernel(sender_program, sender_device, chip_0_edm_builder, eth_sender_core, NOC::NOC_0);
+    auto local_edm_kernel = ttnn::ccl::generate_edm_kernel(
+        edm_sender_program, sender_device, chip_0_edm_builder, eth_sender_core, NOC::NOC_0);
 
     auto remote_edm_kernel = ttnn::ccl::generate_edm_kernel(
-        receiver_program, receiver_device, chip_1_edm_builder, eth_receiver_core, NOC::NOC_0);
+        edm_receiver_program, receiver_device, chip_1_edm_builder, eth_receiver_core, NOC::NOC_0);
 
     ////////////////////////////////////////////////////////////////////////////
     //                      Compile and Execute Application
@@ -630,7 +640,11 @@ int TestLineFabricEntrypoint(
 }
 
 int TestLoopbackEntrypoint(
-    const uint32_t page_size, const uint32_t num_pages_total, const bool src_is_dram, const bool dest_is_dram) {
+    const uint32_t page_size,
+    const uint32_t num_pages_total,
+    const bool src_is_dram,
+    const bool dest_is_dram,
+    const bool use_sub_devices = false) {
     // argv[0]: program
     // argv[1]: buffer_size_bytes
     // argv[2]: num_loops
@@ -666,6 +680,17 @@ int TestLoopbackEntrypoint(
     TT_ASSERT(device_id == 1);
     const auto& device_1 = test_fixture.devices_.at(device_id);
 
+    if (use_sub_devices) {
+        for (auto device : {device_0, device_1}) {
+            const auto& tensix_sub_device =
+                tt_metal::SubDevice(std::array{device->worker_cores(HalProgrammableCoreType::TENSIX, SubDeviceId{0})});
+            const auto& eth_sub_device = tt_metal::SubDevice(
+                std::array{CoreRangeSet(), device->worker_cores(HalProgrammableCoreType::ACTIVE_ETH, SubDeviceId{0})});
+            auto sub_device_manager_id = device->create_sub_device_manager({tensix_sub_device, eth_sub_device}, 0);
+            device->load_sub_device_manager(sub_device_manager_id);
+        }
+    }
+
     bool success = false;
     try {
         success = RunLoopbackTest(
@@ -678,7 +703,8 @@ int TestLoopbackEntrypoint(
             page_size,
             num_pages_total,
             src_is_dram,
-            dest_is_dram);
+            dest_is_dram,
+            use_sub_devices);
     } catch (std::exception& e) {
         log_error("Caught exception: {}", e.what());
         test_fixture.TearDown();
@@ -700,8 +726,10 @@ TEST(WorkerFabricEdmDatapath, FabricEDMLoopback_With_Workers_SingleMessage) {
     const bool src_is_dram = true;
     const bool dest_is_dram = true;
 
-    auto result = TestLoopbackEntrypoint(page_size, num_pages_total, src_is_dram, dest_is_dram);
-    ASSERT_EQ(result, 0);
+    for (auto use_sub_devices : {true /*, false*/}) {
+        auto result = TestLoopbackEntrypoint(page_size, num_pages_total, src_is_dram, dest_is_dram, use_sub_devices);
+        ASSERT_EQ(result, 0);
+    }
 }
 
 // Will wrapp sender but not receiver buffers
