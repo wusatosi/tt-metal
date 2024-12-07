@@ -1280,7 +1280,9 @@ uint32_t detail::Program_::finalize_sems(uint32_t programmable_core_type_index, 
             max_id = sem.id();
         }
     }
-
+    if (programmable_core_type_index == 1) {
+        base_offset = 64;
+    }
     uint32_t sem_size = (max_id + 1) * hal.get_alignment(HalMemType::L1);
 
     this->program_configs_[programmable_core_type_index].sem_offset = base_offset;
