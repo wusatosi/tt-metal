@@ -465,6 +465,10 @@ void LightMetalReplay::execute(tt::target::Command const *command) {
     execute(command->cmd_as_CreateKernelCommand());
     break;
   }
+  case ::tt::target::CommandType::SetRuntimeArgsCommand: {
+    execute(command->cmd_as_SetRuntimeArgsCommand());
+    break;
+  }
   default:
     throw std::runtime_error("Unsupported type: " + std::string(EnumNameCommandType(command->cmd_type())));
     break;
@@ -604,6 +608,21 @@ void LightMetalReplay::execute(tt::target::CreateKernelCommand const *cmd) {
     // Some APIs use Kernel, so convert to and store Kernel.
     std::shared_ptr<Kernel> kernel = program->get_kernel(kernel_id);
     addKernelToMap(cmd->global_id(), kernel);
+}
+
+void LightMetalReplay::execute(tt::target::SetRuntimeArgsCommand const *cmd) {
+    log_info(tt::LogMetalTrace, "LightMetalReplay SetRuntimeArgsCommand(). program_global_id: {} kernel_global_id: {}", cmd->program_global_id(), cmd->kernel_global_id());
+    auto program = getProgramFromMap(cmd->program_global_id());
+    auto kernel_id = getKernelHandleFromMap(cmd->kernel_global_id());
+
+    if (!program) {
+        throw std::runtime_error("Program with global_id: " + std::to_string(cmd->program_global_id()) + " not previously created");
+    }
+
+    // API expects a span so create from flatbuffer vector.
+    stl::Span<const uint32_t> args_span(cmd->args()->data(), cmd->args()->size());
+    auto core_spec = fromFlatbuffer(cmd->core_spec_type(), cmd->core_spec());
+    SetRuntimeArgs(*program, kernel_id, core_spec, args_span);
 }
 
 
