@@ -566,6 +566,10 @@ FORCE_INLINE void try_advance_atomic_inc(command_context_t<Addrgen> &cmd_ctx) {
     const uint8_t dest_noc0_x = cmd_ctx.core_desc_type == ttnn::ccl::cmd::CclCommandCoreDescriptorType::LOCAL ? my_x[0] : cmd_ctx.core_desc_info.core_desc_args.noc_unicast.x;
     const uint8_t dest_noc0_y = cmd_ctx.core_desc_type == ttnn::ccl::cmd::CclCommandCoreDescriptorType::LOCAL ? my_y[0] : cmd_ctx.core_desc_info.core_desc_args.noc_unicast.y;
 
+    DPRINT << "dest_noc0_y, dest_noc0_x: " << (uint32_t)dest_noc0_y << ", " << (uint32_t)dest_noc0_x << "\n";
+    DPRINT << "dest_bank_addr: " << (uint64_t)dest_bank_addr << "\n";
+    DPRINT << "increment_value: " << (uint32_t)increment_value << "\n";
+
     // PROBLEM: this is local atomic increment but we are implementing the fabric
     // atomic increment too. Should it be here - or should it be separate
     if (is_remote_atomic_inc_over_fabric) {
@@ -598,7 +602,7 @@ FORCE_INLINE void try_advance_atomic_inc(command_context_t<Addrgen> &cmd_ctx) {
                     cmd_ctx.fabric_connection.get_forward_connection().wait_for_empty_write_slot();
                     pkt_hdr.to_chip_multicast(tt::fabric::MulticastRoutingCommandHeader{
                         1, static_cast<uint8_t>(mcast_args.num_targets_forward_direction)});
-
+                    cmd_ctx.fabric_connection.get_forward_connection().wait_for_empty_write_slot();
                     cmd_ctx.fabric_connection.get_forward_connection().send_payload_flush_blocking_from_address(
                         cmd_ctx.packet_header_buffer_addr, sizeof(tt::fabric::PacketHeader));
                 }
@@ -659,6 +663,7 @@ FORCE_INLINE void try_advance_read_tensor_to_cb(command_context_t<Addrgen> &cmd_
 
     wrapped_worker_slice_read_context &cmd_specific_ctx = cmd_ctx.cmd_specific_ctx.wrapped_worker_slice_read_ctx;
     const uint16_t max_pages_readable = std::min<size_t>(cmd_ctx.packet_size_in_pages, cmd_ctx.command_tensor.worker_pages_per_slice - cmd_specific_ctx.offset_into_worker_slice);
+    DPRINT << "max_pages_readable: " << (uint32_t)max_pages_readable << "\n";
 
     uint16_t contig_pages_advanced = 1;
     cb_reserve_back(cmd_ctx.cb_id, cmd_ctx.packet_size_in_pages);
@@ -695,14 +700,14 @@ FORCE_INLINE void try_advance_read_tensor_to_cb(command_context_t<Addrgen> &cmd_
             contig_pages_advanced
         );
 
-        // DPRINT <<"DWS:" <<(uint32_t)done_worker_slice << "\n";
+        DPRINT <<"DWS:" <<(uint32_t)done_worker_slice << "\n";
 
-        // DPRINT << "\tWrote " << (uint32_t)contig_pages_advanced << " pages\n";
+        DPRINT << "\tWrote " << (uint32_t)contig_pages_advanced << " pages\n";
     }
 
     noc_async_read_barrier();
     // TODO: Move to tagged reads so we don't need to block here
-    // DPRINT << "Pushing pgs: " << (uint32_t)cmd_ctx.packet_size_in_pages << "\n";
+    DPRINT << "Pushing pgs: " << (uint32_t)cmd_ctx.packet_size_in_pages << "\n";
     cb_push_back(cmd_ctx.cb_id, cmd_ctx.packet_size_in_pages);
 }
 #endif
@@ -967,7 +972,7 @@ void kernel_main() {
     arg_idx_t command1_start_offset = get_arg_val<address_t>(arg_idx++);
     #endif
 
-    DPRINT << "ncmds: " << (uint32_t)((num_commands0 << 16) | num_commands1) << "\n";
+    // DPRINT << "ncmds: " << (uint32_t)((num_commands0 << 16) | num_commands1) << "\n";
 
     // Assuming whole page transmissions (which is the only mode we support at the moment)
     // -> however, wanted to call it out here to make it clear that we need to pull this
