@@ -63,6 +63,7 @@ class Cluster {
     const metal_SocDescriptor &get_soc_desc(chip_id_t chip) const;
     CoreCoord get_virtual_coordinate_from_logical_coordinates(chip_id_t chip_id, CoreCoord logical_coord, const CoreType& core_type) const;
     CoreCoord get_virtual_coordinate_from_physical_coordinates(chip_id_t chip_id, CoreCoord physical_coord, const CoreType& core_type) const;
+    tt_cxy_pair get_virtual_coordinate_from_logical_coordinates(tt_cxy_pair logical_coordinate, const CoreType& core_type) const;
     const std::unordered_set<CoreCoord>& get_virtual_worker_cores(chip_id_t chip_id) const;
     const std::unordered_set<CoreCoord>& get_virtual_eth_cores(chip_id_t chip_id) const;
 
@@ -216,9 +217,9 @@ class Cluster {
     bool is_worker_core(const CoreCoord &core, chip_id_t chip_id) const;
     bool is_ethernet_core(const CoreCoord &core, chip_id_t chip_id) const;
     CoreCoord get_logical_ethernet_core_from_virtual(chip_id_t chip, CoreCoord core) const;
-    const std::unordered_map<int, int>& get_worker_logical_to_virtual_x() const { return this->worker_logical_to_virtual_x_; };
-    const std::unordered_map<int, int>& get_worker_logical_to_virtual_y() const { return this->worker_logical_to_virtual_y_; };
-    const std::unordered_map<CoreCoord, int32_t>& get_virtual_routing_to_profiler_flat_id() const;
+    const std::unordered_map<int, int>& get_worker_logical_to_virtual_x(chip_id_t chip_id) const { return this->worker_logical_to_virtual_x_.at(this->get_board_type(chip_id)); };
+    const std::unordered_map<int, int>& get_worker_logical_to_virtual_y(chip_id_t chip_id) const { return this->worker_logical_to_virtual_y_.at(this->get_board_type(chip_id)); };
+    const std::unordered_map<CoreCoord, int32_t>& get_virtual_routing_to_profiler_flat_id(chip_id_t chip_id) const;
    private:
     Cluster();
     ~Cluster();
@@ -267,14 +268,14 @@ class Cluster {
     std::unordered_map<chip_id_t, std::set<chip_id_t>> devices_grouped_by_assoc_mmio_device_;
     // Save mapping of device id to associated MMIO device id for fast lookup
     std::unordered_map<chip_id_t, chip_id_t> device_to_mmio_device_;
-
+    // Data Structures Tracking Virtual Coordinates
     std::unordered_map<tt_cxy_pair, tt_cxy_pair> virtual_to_umd_coord_mapping_;
     std::unordered_map<chip_id_t, std::unordered_set<CoreCoord>> virtual_worker_cores_;
     std::unordered_map<chip_id_t, std::unordered_set<CoreCoord>> virtual_eth_cores_;
-    std::unordered_map<int, int> worker_logical_to_virtual_x_;
-    std::unordered_map<int, int> worker_logical_to_virtual_y_;
-    std::unordered_map<CoreCoord, CoreCoord> eth_logical_to_virtual_;
-    std::unordered_map<CoreCoord, int32_t> virtual_routing_to_profiler_flat_id_;
+    std::unordered_map<BoardType, std::unordered_map<int, int>> worker_logical_to_virtual_x_;
+    std::unordered_map<BoardType, std::unordered_map<int, int>> worker_logical_to_virtual_y_;
+    std::unordered_map<BoardType, std::unordered_map<CoreCoord, CoreCoord>> eth_logical_to_virtual_;
+    std::unordered_map<BoardType, std::unordered_map<CoreCoord, int32_t>> virtual_routing_to_profiler_flat_id_;
     // Flag to tell whether we are on a TG type of system.
     // If any device has to board type of GALAXY, we are on a TG cluster.
     bool is_tg_cluster_;

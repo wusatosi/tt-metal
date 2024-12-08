@@ -239,8 +239,8 @@ std::unique_ptr<Allocator> Device::initialize_allocator(size_t l1_small_size, si
          .l1_small_size = align(l1_small_size, hal.get_alignment(HalMemType::L1)),
          .trace_region_size = align(trace_region_size, hal.get_alignment(HalMemType::DRAM)),
          .core_type_from_noc_coord_table = {},  // Populated later
-         .worker_log_to_physical_routing_x = tt::Cluster::instance().get_worker_logical_to_virtual_x(),
-         .worker_log_to_physical_routing_y = tt::Cluster::instance().get_worker_logical_to_virtual_y(),
+         .worker_log_to_physical_routing_x = tt::Cluster::instance().get_worker_logical_to_virtual_x(this->id()),
+         .worker_log_to_physical_routing_y = tt::Cluster::instance().get_worker_logical_to_virtual_y(this->id()),
          .l1_bank_remap = {l1_bank_remap.begin(), l1_bank_remap.end()},
          .compute_grid = CoreRangeSet(CoreRange(CoreCoord(0, 0), CoreCoord(compute_size.x - 1, compute_size.y - 1))),
          .alignment = std::max(hal.get_alignment(HalMemType::DRAM), hal.get_alignment(HalMemType::L1)),
@@ -2017,7 +2017,7 @@ void Device::setup_tunnel_for_remote_devices() {
             settings.dispatch_core_type = dispatch_core_type;
 
             tt_cxy_pair mux_d_location = dispatch_core_manager::instance().mux_d_core(device_id, channel, cq_id);
-            settings.worker_virtual_core = tt_cxy_pair(mux_d_location.chip, this->virtual_core_from_logical_core(mux_d_location, dispatch_core_type));
+            settings.worker_virtual_core = tt::Cluster::instance().get_virtual_coordinate_from_logical_coordinates(mux_d_location, dispatch_core_type);
             settings.kernel_file = "tt_metal/impl/dispatch/kernels/packet_mux.cpp";
             settings.semaphores = std::vector<uint32_t>(num_hw_cqs);
             settings.consumer_semaphore_id = 0;
@@ -2029,7 +2029,7 @@ void Device::setup_tunnel_for_remote_devices() {
 
             uint32_t demux_vcs = settings.vc_count - 1;
             tt_cxy_pair demux_d_location = dispatch_core_manager::instance().demux_d_core(device_id, channel, 0);
-            settings.worker_virtual_core = tt_cxy_pair(demux_d_location.chip, this->virtual_core_from_logical_core(demux_d_location, dispatch_core_type));
+            settings.worker_virtual_core = tt::Cluster::instance().get_virtual_coordinate_from_logical_coordinates(demux_d_location, dispatch_core_type);
             settings.kernel_file = "tt_metal/impl/dispatch/kernels/vc_packet_router.cpp";
             settings.producer_semaphore_id = 0;
             settings.cb_start_address = hal.get_dev_addr(HalProgrammableCoreType::TENSIX, HalL1MemAddrType::UNRESERVED);
@@ -2041,7 +2041,7 @@ void Device::setup_tunnel_for_remote_devices() {
             if (tunnel.size() > 2 && demux_vcs > 1) {
                 //TG/TGG 1-2 CQs
                 demux_d_location = dispatch_core_manager::instance().demux_d_core(device_id, channel, 1);
-                settings.worker_virtual_core = tt_cxy_pair(demux_d_location.chip, this->virtual_core_from_logical_core(demux_d_location, dispatch_core_type));
+                settings.worker_virtual_core = tt::Cluster::instance().get_virtual_coordinate_from_logical_coordinates(demux_d_location, dispatch_core_type);
                 settings.kernel_file = "tt_metal/impl/dispatch/kernels/vc_packet_router.cpp";
                 settings.producer_semaphore_id = 0;
                 settings.cb_start_address = hal.get_dev_addr(HalProgrammableCoreType::TENSIX, HalL1MemAddrType::UNRESERVED);
@@ -2059,7 +2059,7 @@ void Device::setup_tunnel_for_remote_devices() {
                 settings.producer_semaphore_id = 2;
                 settings.consumer_slave_semaphore_id = 3;
                 tt_cxy_pair prefetch_d_location = dispatch_core_manager::instance().prefetcher_d_core(device_id, channel, cq_id);
-                settings.worker_virtual_core = tt_cxy_pair(prefetch_d_location.chip, this->virtual_core_from_logical_core(prefetch_d_location, dispatch_core_type));
+                settings.worker_virtual_core = tt::Cluster::instance().get_virtual_coordinate_from_logical_coordinates(prefetch_d_location, dispatch_core_type);
                 settings.kernel_file = "tt_metal/impl/dispatch/kernels/cq_prefetch.cpp";
                 settings.cb_start_address = dispatch_constants::get(dispatch_core_type).dispatch_buffer_base();
                 settings.cb_size_bytes = dispatch_constants::get(dispatch_core_type).prefetch_d_buffer_size();
@@ -2080,7 +2080,7 @@ void Device::setup_tunnel_for_remote_devices() {
                 CoreCoord compute_grid_size = this->compute_with_storage_grid_size();
                 settings.num_compute_cores = uint32_t(compute_grid_size.x * compute_grid_size.y);
                 tt_cxy_pair dispatch_d_location = dispatch_core_manager::instance().dispatcher_d_core(device_id, channel, cq_id);
-                settings.worker_virtual_core = tt_cxy_pair(dispatch_d_location.chip, this->virtual_core_from_logical_core(dispatch_d_location, dispatch_core_type));
+                settings.worker_virtual_core = tt::Cluster::instance().get_virtual_coordinate_from_logical_coordinates(dispatch_d_location, dispatch_core_type);
                 settings.kernel_file = "tt_metal/impl/dispatch/kernels/cq_dispatch.cpp";
                 tunnel_core_allocations[DISPATCH_D].push_back(std::make_tuple(dispatch_d_location, settings));
                 settings.semaphores.clear();
@@ -2103,7 +2103,8 @@ void Device::setup_tunnel_for_remote_devices() {
                         settings.producer_semaphore_id = 0; // sync with producer (prefetcher)
                     }
                     tt_cxy_pair dispatch_s_location = dispatch_core_manager::instance().dispatcher_s_core(device_id, channel, cq_id);
-                    settings.worker_virtual_core = tt_cxy_pair(dispatch_s_location.chip, this->virtual_core_from_logical_core(dispatch_s_location, dispatch_core_type));
+                    auto dispatch_s_virtual_coords = tt::Cluster::instance().get_virtual_coordinate_from_logical_coordinates(dispatch_s_location.chip, dispatch_s_location, dispatch_core_type);
+                    settings.worker_virtual_core = tt::Cluster::instance().get_virtual_coordinate_from_logical_coordinates(dispatch_s_location, dispatch_core_type);
                     settings.kernel_file = "tt_metal/impl/dispatch/kernels/cq_dispatch_slave.cpp";
                     tunnel_core_allocations[DISPATCH_S].push_back(std::make_tuple(dispatch_s_location, settings));
                     settings.semaphores.clear();
