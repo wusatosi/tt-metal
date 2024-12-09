@@ -102,6 +102,16 @@ from ttnn._ttnn.multi_device import (
 
 from ttnn._ttnn.events import create_event, record_event, wait_for_event
 
+from ttnn._ttnn.global_circular_buffer import (
+    create_global_circular_buffer,
+)
+
+from ttnn._ttnn.global_semaphore import (
+    create_global_semaphore,
+    get_global_semaphore_address,
+    reset_global_semaphore_value,
+)
+
 from ttnn.types import (
     TILE_SIZE,
     DataType,
@@ -124,6 +134,7 @@ from ttnn.types import (
     L1_WIDTH_SHARDED_MEMORY_CONFIG,
     ShardStrategy,
     ShardOrientation,
+    ShardMode,
     ShardSpec,
     CoreRangeSet,
     CoreRange,
@@ -152,6 +163,8 @@ from ttnn.types import (
 from ttnn.device import (
     Device,
     DispatchCoreType,
+    DispatchCoreAxis,
+    DispatchCoreConfig,
     open_device,
     close_device,
     enable_program_cache,
@@ -172,6 +185,9 @@ from ttnn.device import (
     format_input_tensor,
     format_output_tensor,
     pad_to_tile_shape,
+    SubDevice,
+    SubDeviceManagerId,
+    init_device_compute_kernel_config,
 )
 
 from ttnn.profiler import start_tracy_zone, stop_tracy_zone, tracy_message, tracy_frame
@@ -243,10 +259,6 @@ mul = ttnn.multiply
 mul_ = ttnn.multiply_
 
 
-def prelu(*args, **kwargs):  # Alias for leaky_relu. TODO(#8544): implement PReLU properly
-    return ttnn.leaky_relu(*args, **kwargs)
-
-
 # TODO: pybind the overloaded operators below
 ttnn.Tensor.__add__ = lambda self, *args, **kwargs: ttnn.add(self, *args, **kwargs)
 ttnn.Tensor.__radd__ = lambda self, *args, **kwargs: ttnn.add(self, *args, **kwargs)
@@ -295,8 +307,12 @@ from ttnn.operations.ccl import (
     Topology,
 )
 
-from ttnn.operations.conv2d import Conv2dConfig, get_conv_padded_input_shape_and_mem_config, get_conv_output_dim
-from ttnn.operations.pool import avg_pool2d
+from ttnn.operations.conv2d import (
+    Conv2dConfig,
+    get_conv_output_dim,
+    prepare_conv_weights,
+    prepare_conv_bias,
+)
 from ttnn.operations.conv1d import Conv1d, Conv1dConfig
 
 from ttnn.operations.transformer import SDPAProgramConfig

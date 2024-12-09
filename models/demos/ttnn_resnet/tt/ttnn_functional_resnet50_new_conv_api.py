@@ -4,11 +4,11 @@
 
 import ttnn
 import torch
+from models.demos.ttnn_resnet.tt.ttnn_functional_resnet50_model_utils import get_conv_input_memory_config
 from models.utility_functions import (
     is_grayskull,
     is_wormhole_b0,
     _nearest_y,
-    pad_and_fold_conv_activation_for_unity_stride,
 )
 from typing import List
 from loguru import logger
@@ -176,7 +176,6 @@ class resnet50Bottleneck:
                 conv_config=ttnn.Conv2dConfig(
                     dtype=self.model_config["ACTIVATIONS_DTYPE"],
                     weights_dtype=self.model_config["WEIGHTS_DTYPE"],
-                    math_fidelity=self.model_config["MATH_FIDELITY"],
                     shard_layout=ttnn.TensorMemoryLayout.HEIGHT_SHARDED
                     if height_sharding
                     else ttnn.TensorMemoryLayout.BLOCK_SHARDED,
@@ -184,7 +183,6 @@ class resnet50Bottleneck:
                     reallocate_halo_output=not (is_wormhole_b0() and batch_size == 16),
                     reshard_if_not_optimal=reshard_if_not_optimal,
                     transpose_shards=transpose_shards,
-                    packer_l1_accum_enabled=packer_l1_accum_enabled,
                     enable_act_double_buffer=enable_act_double_buffer
                     if height_sharding
                     else True
@@ -193,6 +191,11 @@ class resnet50Bottleneck:
                     enable_weights_double_buffer=True if input_width < 56 else False,
                     enable_split_reader=enable_split_reader,
                     enable_subblock_padding=enable_subblock_padding,
+                ),
+                compute_config=ttnn.init_device_compute_kernel_config(
+                    device.arch(),
+                    math_fidelity=self.model_config["MATH_FIDELITY"],
+                    packer_l1_acc=packer_l1_accum_enabled,
                 ),
                 conv_op_cache=conv_op_cache,
             )
@@ -242,14 +245,17 @@ class resnet50Bottleneck:
             conv_config=ttnn.Conv2dConfig(
                 dtype=self.model_config["ACTIVATIONS_DTYPE"],
                 weights_dtype=self.model_config["WEIGHTS_DTYPE"],
-                math_fidelity=self.model_config["MATH_FIDELITY"],
                 activation="relu",
                 shard_layout=ttnn.TensorMemoryLayout.HEIGHT_SHARDED
                 if height_sharding
                 else ttnn.TensorMemoryLayout.BLOCK_SHARDED,
                 reshard_if_not_optimal=reshard_if_not_optimal,
                 transpose_shards=transpose_shards,
-                packer_l1_accum_enabled=packer_l1_acc,
+            ),
+            compute_config=ttnn.init_device_compute_kernel_config(
+                device.arch(),
+                math_fidelity=self.model_config["MATH_FIDELITY"],
+                packer_l1_acc=packer_l1_acc,
             ),
             conv_op_cache=conv_op_cache,
         )
@@ -323,7 +329,6 @@ class resnet50Bottleneck:
             conv_config=ttnn.Conv2dConfig(
                 dtype=self.model_config["ACTIVATIONS_DTYPE"],
                 weights_dtype=self.model_config["WEIGHTS_DTYPE"],
-                math_fidelity=self.model_config["MATH_FIDELITY"],
                 activation="relu",
                 deallocate_activation=True,
                 reallocate_halo_output=reallocate_halo_output,
@@ -333,11 +338,15 @@ class resnet50Bottleneck:
                 else ttnn.TensorMemoryLayout.BLOCK_SHARDED,
                 reshard_if_not_optimal=reshard_if_not_optimal,
                 transpose_shards=transpose_shards,
-                packer_l1_accum_enabled=packer_l1_acc,
                 enable_act_double_buffer=enable_act_double_buffer,
                 enable_weights_double_buffer=True,
                 enable_split_reader=enable_split_reader,
                 enable_subblock_padding=enable_subblock_padding,
+            ),
+            compute_config=ttnn.init_device_compute_kernel_config(
+                device.arch(),
+                math_fidelity=self.model_config["MATH_FIDELITY"],
+                packer_l1_acc=packer_l1_acc,
             ),
             conv_op_cache=conv_op_cache,
         )
@@ -374,13 +383,16 @@ class resnet50Bottleneck:
             conv_config=ttnn.Conv2dConfig(
                 dtype=self.model_config["ACTIVATIONS_DTYPE"],
                 weights_dtype=self.model_config["WEIGHTS_DTYPE"],
-                math_fidelity=self.model_config["MATH_FIDELITY"],
                 shard_layout=ttnn.TensorMemoryLayout.HEIGHT_SHARDED
                 if height_sharding
                 else ttnn.TensorMemoryLayout.BLOCK_SHARDED,
                 reshard_if_not_optimal=reshard_if_not_optimal,
                 transpose_shards=transpose_shards,
-                packer_l1_accum_enabled=packer_l1_acc,
+            ),
+            compute_config=ttnn.init_device_compute_kernel_config(
+                device.arch(),
+                math_fidelity=self.model_config["MATH_FIDELITY"],
+                packer_l1_acc=packer_l1_acc,
             ),
             conv_op_cache=conv_op_cache,
         )
@@ -569,18 +581,21 @@ class resnet50:
         self.conv1_config = ttnn.Conv2dConfig(
             dtype=self.model_config["ACTIVATIONS_DTYPE"],
             weights_dtype=self.model_config["WEIGHTS_DTYPE"],
-            math_fidelity=self.model_config["MATH_FIDELITY"],
             activation="relu",
             deallocate_activation=dealloc_input,
             input_channels_alignment=input_channels_alignment,
             act_block_h_override=act_block_h_override,
             transpose_shards=self.transpose_shards,
-            packer_l1_accum_enabled=True if whb0_and_b16 else False,
             enable_act_double_buffer=True if whb0_and_b16 else False,
             enable_split_reader=True if whb0_and_b16 or not is_wormhole_b0() else False,
             enable_subblock_padding=False,
             shard_layout=ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
             reshard_if_not_optimal=False,
+        )
+        self.conv1_compute_config = ttnn.init_device_compute_kernel_config(
+            device.arch(),
+            math_fidelity=self.model_config["MATH_FIDELITY"],
+            packer_l1_acc=True if whb0_and_b16 else False,
         )
         if whb0_and_b16:
             # Issue #13145: Temp workaround for Galaxy to avoid hangs
@@ -632,15 +647,18 @@ class resnet50:
 
         conv_dummy_tensor = torch.rand((self.fold_output_shape), dtype=torch.bfloat16)
         conv_dummy_tensor = ttnn.from_torch(conv_dummy_tensor, layout=ttnn.ROW_MAJOR_LAYOUT)
-        _, self.override_fold_mem_config, _, _ = ttnn.get_conv_padded_input_shape_and_mem_config(
-            device=device,
-            input_tensor=conv_dummy_tensor,
-            conv_config=self.conv1_config,
-            batch_size=self.batch_size,
-            height=self.conv1_output_height,
-            width=self.conv1_output_width,
-            in_channels=self.conv1_input_channels,
-            out_channels=self.conv1_output_channels,
+
+        self.override_fold_mem_config = get_conv_input_memory_config(
+            self.batch_size,
+            self.conv1_input_channels,
+            self.conv1_input_height,
+            self.conv1_input_width,
+            self.conv1_output_channels,
+            self.conv1_output_height,
+            self.conv1_output_width,
+            device.compute_with_storage_grid_size(),
+            self.conv1_config.input_channels_alignment,
+            is_grayskull(),
         )
 
     def __del__(self):
@@ -730,6 +748,7 @@ class resnet50:
             input_height=self.conv1_input_height,
             input_width=self.conv1_input_width,
             conv_config=self.conv1_config,
+            compute_config=self.conv1_compute_config,
             conv_op_cache=conv_op_cache,
         )
         # Relu is fused with conv1

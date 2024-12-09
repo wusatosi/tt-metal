@@ -22,6 +22,7 @@
 #include "risc_attribs.h"
 #include "generated_bank_to_noc_coord_mapping.h"
 #include "circular_buffer.h"
+#include "circular_buffer_init.h"
 #include "dataflow_api.h"
 #include "dev_mem_map.h"
 
@@ -305,9 +306,9 @@ inline __attribute__((always_inline)) void reset_ncrisc_with_iram() {
 inline void set_ncrisc_kernel_resume_deassert_address() {
 #ifdef NCRISC_HAS_IRAM
     volatile tt_reg_ptr uint32_t* cfg_regs = core.cfg_regs_base(0);
-    WAYPOINT("INW");
+    WAYPOINT("INRW");
     while (mailboxes->ncrisc_halt.resume_addr == 0);
-    WAYPOINT("IND");
+    WAYPOINT("INRD");
     cfg_regs[NCRISC_RESET_PC_PC_ADDR32] = mailboxes->ncrisc_halt.resume_addr;
 #endif
 }
@@ -340,8 +341,7 @@ int main() {
     DIRTY_STACK_MEMORY();
     WAYPOINT("I");
 
-    int32_t num_words = ((uint)__ldm_data_end - (uint)__ldm_data_start) >> 2;
-    l1_to_local_mem_copy((uint*)__ldm_data_start, (uint tt_l1_ptr*)MEM_BRISC_INIT_LOCAL_L1_BASE_SCRATCH, num_words);
+    do_crt1((uint32_t*)MEM_BRISC_INIT_LOCAL_L1_BASE_SCRATCH);
 
     mailboxes->launch_msg_rd_ptr = 0; // Initialize the rdptr to 0
     noc_index = 0;
@@ -361,8 +361,14 @@ int main() {
 
     mailboxes->go_message.signal = RUN_MSG_DONE;
 
+    // Initialize the NoCs to a safe state
+    // This ensures if we send any noc txns without running a kernel setup are valid
+    // ex. Immediately after starting, we send a RUN_MSG_RESET_READ_PTR signal
     uint8_t noc_mode;
-    uint8_t prev_noc_mode = DM_INVALID_NOC;
+    noc_init(MEM_NOC_ATOMIC_RET_VAL_ADDR);
+    noc_local_state_init(noc_index);
+    uint8_t prev_noc_mode = DM_DEDICATED_NOC;
+
     while (1) {
         init_sync_registers();
         reset_ncrisc_with_iram();
@@ -380,7 +386,7 @@ int main() {
                 // For future proofing, the noc_index value is initialized to 0, to ensure an invalid NOC txn is not issued.
                 uint64_t dispatch_addr =
                     NOC_XY_ADDR(NOC_X(mailboxes->go_message.master_x),
-                    NOC_Y(mailboxes->go_message.master_y), DISPATCH_MESSAGE_ADDR);
+                    NOC_Y(mailboxes->go_message.master_y), DISPATCH_MESSAGE_ADDR + mailboxes->go_message.dispatch_message_offset);
                 mailboxes->go_message.signal = RUN_MSG_DONE;
                 // Notify dispatcher that this has been done
                 DEBUG_SANITIZE_NOC_ADDR(noc_index, dispatch_addr, 4);
@@ -425,38 +431,72 @@ int main() {
             noc_mode = launch_msg_address->kernel_config.brisc_noc_mode;
 
             // re-initialize the NoCs
-            if (prev_noc_mode != noc_mode) {
-                if (noc_mode == DM_DEDICATED_NOC) {
+            if (noc_mode == DM_DEDICATED_NOC) {
+                if (prev_noc_mode != noc_mode) {
                     noc_init(MEM_NOC_ATOMIC_RET_VAL_ADDR);
-                } else {
+                }
+            } else {
+                if (prev_noc_mode != noc_mode) {
                     dynamic_noc_init();
                 }
+                dynamic_noc_local_state_init();
             }
             prev_noc_mode = noc_mode;
 
-            uint32_t tt_l1_ptr *cb_l1_base = (uint32_t tt_l1_ptr *)(kernel_config_base +
-                launch_msg_address->kernel_config.cb_offset);
-            setup_cb_read_write_interfaces(cb_l1_base, 0, num_cbs_to_early_init, true, true, false);
+            uint32_t tt_l1_ptr* cb_l1_base =
+                (uint32_t tt_l1_ptr*)(kernel_config_base + launch_msg_address->kernel_config.local_cb_offset);
+            setup_local_cb_read_write_interfaces(cb_l1_base, 0, num_cbs_to_early_init, true, true, false);
             finish_ncrisc_copy_and_run(enables);
 
             // Run the BRISC kernel
             WAYPOINT("R");
             if (enables & DISPATCH_CLASS_MASK_TENSIX_ENABLE_DM0) {
-                setup_cb_read_write_interfaces(cb_l1_base, num_cbs_to_early_init, launch_msg_address->kernel_config.max_cb_index, true, true, false);
+                uint32_t end_cb_index = launch_msg_address->kernel_config.max_local_cb_end_index;
+                setup_local_cb_read_write_interfaces(
+                    cb_l1_base, num_cbs_to_early_init, end_cb_index, true, true, false);
+
+                cb_l1_base =
+                    (uint32_t tt_l1_ptr*)(kernel_config_base + launch_msg_address->kernel_config.remote_cb_offset);
+                end_cb_index = launch_msg_address->kernel_config.min_remote_cb_start_index;
+                experimental::setup_remote_cb_interfaces<true>(cb_l1_base, end_cb_index);
                 int index = static_cast<std::underlying_type<TensixProcessorTypes>::type>(TensixProcessorTypes::DM0);
                 void (*kernel_address)(uint32_t) = (void (*)(uint32_t))
                     (kernel_config_base + launch_msg_address->kernel_config.kernel_text_offset[index]);
                 (*kernel_address)((uint32_t)kernel_address);
                 RECORD_STACK_USAGE();
             } else {
+#if defined(PROFILE_KERNEL)
                 // This was not initialized in the kernel
+                // Currently FW does not issue a barrier except when using profiler
                 if (noc_mode == DM_DEDICATED_NOC) {
                     noc_local_state_init(noc_index);
+                }
+#endif
+                // Brisc is responsible for issuing any noc cmds needed when initializing remote cbs
+                // So have brisc setup remote cb interfaces even when brisc is not in use
+                if (launch_msg_address->kernel_config.enables) {
+                    cb_l1_base =
+                        (uint32_t tt_l1_ptr*)(kernel_config_base + launch_msg_address->kernel_config.remote_cb_offset);
+                    uint32_t end_cb_index = launch_msg_address->kernel_config.min_remote_cb_start_index;
+                    experimental::setup_remote_cb_interfaces<true>(cb_l1_base, end_cb_index);
                 }
             }
             WAYPOINT("D");
 
             wait_ncrisc_trisc();
+
+            if (noc_mode == DM_DYNAMIC_NOC) {
+                // barrier to make sure all writes are finished
+                while (!ncrisc_dynamic_noc_nonposted_writes_flushed<proc_type>(noc_index));
+                while (!ncrisc_dynamic_noc_nonposted_writes_flushed<proc_type>(1 - noc_index));
+            }
+
+#if defined(PROFILE_KERNEL)
+            if (noc_mode == DM_DYNAMIC_NOC) {
+                // re-init for profiler to able to run barrier in dedicated noc mode
+                noc_local_state_init(noc_index);
+            }
+#endif
 
             mailboxes->go_message.signal = RUN_MSG_DONE;
 
@@ -466,8 +506,12 @@ int main() {
                 launch_msg_address->kernel_config.enables = 0;
                 uint64_t dispatch_addr =
                     NOC_XY_ADDR(NOC_X(mailboxes->go_message.master_x),
-                        NOC_Y(mailboxes->go_message.master_y), DISPATCH_MESSAGE_ADDR);
+                        NOC_Y(mailboxes->go_message.master_y), DISPATCH_MESSAGE_ADDR + mailboxes->go_message.dispatch_message_offset);
                 DEBUG_SANITIZE_NOC_ADDR(noc_index, dispatch_addr, 4);
+                // Only executed if watcher is enabled. Ensures that we don't report stale data due to invalid launch
+                // messages in the ring buffer. Must be executed before the atomic increment, as after that the launch
+                // message is no longer owned by us.
+                CLEAR_PREVIOUS_LAUNCH_MESSAGE_ENTRY_FOR_WATCHER();
                 noc_fast_atomic_increment(
                     noc_index,
                     NCRISC_AT_CMD_BUF,
@@ -477,8 +521,6 @@ int main() {
                     31 /*wrap*/,
                     false /*linked*/);
                 mailboxes->launch_msg_rd_ptr = (launch_msg_rd_ptr + 1) & (launch_msg_buffer_num_entries - 1);
-                // Only executed if watcher is enabled. Ensures that we don't report stale data due to invalid launch messages in the ring buffer
-                CLEAR_PREVIOUS_LAUNCH_MESSAGE_ENTRY_FOR_WATCHER();
             }
         }
     }

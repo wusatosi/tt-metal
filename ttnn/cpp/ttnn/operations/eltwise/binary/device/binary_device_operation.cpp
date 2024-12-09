@@ -4,6 +4,8 @@
 
 #include "binary_device_operation.hpp"
 
+#include <utility>
+
 #include "tt_metal/common/constants.hpp"
 #include "tt_metal/common/work_split.hpp"
 #include "tt_metal/host_api.hpp"
@@ -14,13 +16,13 @@ namespace ttnn::operations::binary {
 BinaryDeviceOperation::program_factory_t BinaryDeviceOperation::select_program_factory(
     const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
     ZoneScopedN("BinaryDeviceOperation::select_program_factory");
-    const auto& input_shape_a = tensor_args.input_tensor_a.tensor_attributes->shape;
+    const auto input_shape_a = tensor_args.input_tensor_a.get_logical_shape();
 
     if (operation_attributes.scalar.has_value()) {
         return BroadcastHeightAndWidthMultiCore{};
     }
 
-    const auto& input_shape_b = tensor_args.input_tensor_b->tensor_attributes->shape;
+    const auto input_shape_b = tensor_args.input_tensor_b->get_logical_shape();
 
     auto height_a = input_shape_a[-2];
     auto width_a = input_shape_a[-1];
@@ -120,7 +122,7 @@ void BinaryDeviceOperation::validate_on_program_cache_hit(
     const auto& input_tensor_a = tensor_args.input_tensor_a;
     const auto& output_tensor = tensor_args.output_tensor;
 
-    const auto& input_shape_a = input_tensor_a.get_shape();
+    const auto& input_shape_a = input_tensor_a.get_logical_shape();
 
     auto batch_size_0_a = input_shape_a.rank() >= 4 ? input_shape_a[-4] : 1;
     auto batch_size_1_a = input_shape_a.rank() >= 3 ? input_shape_a[-3] : 1;
@@ -128,7 +130,7 @@ void BinaryDeviceOperation::validate_on_program_cache_hit(
     auto width_a = input_shape_a[-1];
 
     const auto input_shape_b =
-        tensor_args.input_tensor_b.has_value() ? tensor_args.input_tensor_b->get_shape() : ttnn::Shape{1, 1};
+        tensor_args.input_tensor_b.has_value() ? tensor_args.input_tensor_b->get_logical_shape() : ttnn::SimpleShape{1, 1};
     auto batch_size_0_b = input_shape_b.rank() >= 4 ? input_shape_b[-4] : 1;
     auto batch_size_1_b = input_shape_b.rank() >= 3 ? input_shape_b[-3] : 1;
     auto height_b = input_shape_b[-2];
@@ -145,78 +147,49 @@ void BinaryDeviceOperation::validate_on_program_cache_hit(
             batch_size_1_a > batch_size_1_b and batch_size_1_b == 1,
             "ttnn::operations::binary::BinaryDeviceOperation: batch size mismatch");
     }
-    if (height_a != height_b) {
-        TT_ASSERT(
-            height_a > height_b and height_b == 1, "ttnn::operations::binary::BinaryDeviceOperation: height mismatch");
-    }
-    if (width_a != width_b) {
-        TT_ASSERT(
-            width_a > width_b and width_b == 1, "ttnn::operations::binary::BinaryDeviceOperation: width mismatch");
-    }
+
+    TT_FATAL(height_a == height_b || height_a == 1 || height_b == 1, "ttnn::operations::binary::BinaryDeviceOperation: height mismatch");
+    TT_FATAL(width_a == width_b || width_a == 1 || width_b == 1, "ttnn::operations::binary::BinaryDeviceOperation: width mismatch");
 }
 
-BinaryDeviceOperation::shape_return_value_t BinaryDeviceOperation::compute_output_shapes(
-    const operation_attributes_t&, const tensor_args_t& tensor_args) {
-    const auto input_shape_a = tensor_args.input_tensor_a.tensor_attributes->shape;
+BinaryDeviceOperation::spec_return_value_t BinaryDeviceOperation::compute_output_specs(
+    const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
+    const auto& output_tensor = tensor_args.output_tensor;
+    if (output_tensor.has_value()) {
+        return output_tensor->get_tensor_spec();
+    }
+
+    const auto& input_tensor_a = tensor_args.input_tensor_a;
+    const auto input_shape_a = input_tensor_a.logical_shape();
     const auto& tensor_b = tensor_args.input_tensor_b;
-    const auto input_shape_b = tensor_b.has_value() ? tensor_b->tensor_attributes->shape : ttnn::Shape{1, 1};
+    const auto input_shape_b = tensor_b.has_value() ? tensor_b->logical_shape() : ttnn::SimpleShape{};
 
     const int rank_a = input_shape_a.rank();
     const int rank_b = input_shape_b.rank();
     const int larger_rank = std::max(rank_a, rank_b);
 
-    // -------------------------------------------------------------------------
-    // This lambda function computes the broadcasted output shape between two tensors.
-    // It follows the broadcasting rules to determine the shape of the result
-    // when performing binary operations on tensors of potentially different shapes and ranks.
-    //
     // Broadcasting Rules Overview:
     // - If the two tensors have different ranks, we virtually pad the smaller-rank tensor's shape
     //   with ones on the left (i.e., higher-order dimensions) until both shapes have the same length.
     // - For each dimension (starting from the rightmost), the sizes are compatible if:
     //     - They are equal, or
     //     - One of them is 1 (the dimension can be broadcast to match the other size).
-    // - The result dimension is the maximum of the two sizes.
-    //
-    // Key Points:
-    // - Negative indexing simplifies dimension alignment from the right (least significant dimensions),
-    //   thats essential for correct broadcasting.
-    // - By defaulting to 1 for missing dimensions, we correctly handle tensors of different ranks.
-    // - The use of 'std::max' ensures that when one of the dimensions is 1, the other dimension size
-    //   is used, adhering to broadcasting rules. Important! Code assumes that shapes are validated beforehand.
-    // - The lambda is reused for both logical shapes and padded shapes, ensuring consistency.
-    // -------------------------------------------------------------------------
     auto compute_broadcasted_output = [rank_a, rank_b, larger_rank](const auto& shape_a, const auto& shape_b) {
         SmallVector<uint32_t> output_shape(larger_rank, 1);
         for (int i = -1; i >= -larger_rank; --i) {
             auto dim_a = (i >= -rank_a) ? shape_a[i] : 1;
             auto dim_b = (i >= -rank_b) ? shape_b[i] : 1;
-            output_shape[i + larger_rank] = std::max(dim_a, dim_b);
+            if (dim_a != 1 && dim_b != 1) {
+                TT_FATAL(dim_a == dim_b, "Incompatible dimensions {} and {}", dim_a, dim_b);
+                output_shape[i + larger_rank] = dim_a;
+            } else {
+                // One of the dimension is one, calculating the other one
+                output_shape[i + larger_rank] = dim_a + dim_b - 1;
+            }
         }
-        return output_shape;
+        return ttnn::SimpleShape(output_shape);
     };
-
-    const auto logical_shape_a = input_shape_a.logical_shape();
-    const auto logical_shape_b = input_shape_b.logical_shape();
-    const auto output_shape = compute_broadcasted_output(logical_shape_a, logical_shape_b);
-
-    const auto padded_shape_a = input_shape_a.padded_shape();
-    const auto padded_shape_b = input_shape_b.padded_shape();
-    const auto output_shape_with_tile_padding = compute_broadcasted_output(padded_shape_a, padded_shape_b);
-
-    return ttnn::Shape(output_shape, output_shape_with_tile_padding);
-}
-
-BinaryDeviceOperation::tensor_return_value_t BinaryDeviceOperation::create_output_tensors(
-    const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
-    using namespace tt::constants;
-    auto output_shape = compute_output_shapes(operation_attributes, tensor_args);
-    const auto& input_tensor_a = tensor_args.input_tensor_a;
-    const auto& output_tensor = tensor_args.output_tensor;
-
-    if (output_tensor.has_value()) {
-        return output_tensor.value();
-    }
+    auto output_shape = compute_broadcasted_output(input_shape_a, input_shape_b);
 
     auto program_factory = select_program_factory(operation_attributes, tensor_args);
     if (std::holds_alternative<ElementWiseMultiCore>(program_factory)) {
@@ -232,8 +205,7 @@ BinaryDeviceOperation::tensor_return_value_t BinaryDeviceOperation::create_outpu
             }
             auto memory_config = operation_attributes.memory_config;
             memory_config.shard_spec = shard_spec;
-            return create_device_tensor(
-                output_shape, operation_attributes.dtype, Layout::TILE, input_tensor_a.device(), memory_config);
+            return TensorSpec(output_shape, TensorLayout(operation_attributes.dtype, PageConfig(Layout::TILE), memory_config));
         }
     } else {
         if (operation_attributes.memory_config.is_sharded()) {
@@ -244,16 +216,18 @@ BinaryDeviceOperation::tensor_return_value_t BinaryDeviceOperation::create_outpu
             }
             auto memory_config = operation_attributes.memory_config;
             memory_config.shard_spec = shard_spec;
-            return create_device_tensor(
-                output_shape, operation_attributes.dtype, Layout::TILE, input_tensor_a.device(), memory_config);
+            return TensorSpec(output_shape, TensorLayout(operation_attributes.dtype, PageConfig(Layout::TILE), memory_config));
         }
     }
-    return create_device_tensor(
-        output_shape,
-        operation_attributes.dtype,
-        Layout::TILE,
-        input_tensor_a.device(),
-        operation_attributes.memory_config);
+    return TensorSpec(output_shape, TensorLayout(operation_attributes.dtype, PageConfig(Layout::TILE), operation_attributes.memory_config));
+}
+
+BinaryDeviceOperation::tensor_return_value_t BinaryDeviceOperation::create_output_tensors(
+    const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
+    if (tensor_args.output_tensor.has_value()) {
+        return *tensor_args.output_tensor;
+    }
+    return create_device_tensor(compute_output_specs(operation_attributes, tensor_args), tensor_args.input_tensor_a.device());
 }
 
 tt::stl::hash::hash_t BinaryDeviceOperation::compute_program_hash(
@@ -339,8 +313,8 @@ BinaryDeviceOperation::invoke(
     return {
         operation_attributes_t{
             binary_op_type,
-            activations,
-            input_tensor_a_activation,
+            std::move(activations),
+            std::move(input_tensor_a_activation),
             std::nullopt,
             memory_config.value_or(input_tensor_a_arg.memory_config()),
             output_dtype.value_or(input_tensor_a_arg.get_dtype()),
@@ -367,8 +341,8 @@ BinaryDeviceOperation::invoke(
     return {
         operation_attributes_t{
             binary_op_type,
-            activations,
-            input_tensor_a_activation,
+            std::move(activations),
+            std::move(input_tensor_a_activation),
             scalar,
             memory_config.value_or(input_tensor_a_arg.memory_config()),
             output_dtype.value_or(input_tensor_a_arg.get_dtype()),

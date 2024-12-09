@@ -11,12 +11,15 @@
 #include "tt_metal/impl/dispatch/command_queue.hpp"
 #include "pybind11/stl.h"
 
+using namespace tt::tt_metal;
+
 namespace ttnn::distributed {
 
 namespace py = pybind11;
 
 void py_module_types(py::module& module) {
     py::class_<MeshDevice, std::shared_ptr<MeshDevice>>(module, "MeshDevice");
+    py::class_<MeshSubDeviceManagerId>(module, "MeshSubDeviceManagerId");
 }
 
 void py_module(py::module& module) {
@@ -32,7 +35,7 @@ void py_module(py::module& module) {
                         size_t l1_small_size,
                         size_t trace_region_size,
                         size_t num_command_queues,
-                        DispatchCoreType dispatch_core_type,
+                        const DispatchCoreConfig& dispatch_core_config,
                         const std::pair<size_t, size_t>& offset,
                         const std::vector<chip_id_t>& physical_device_ids,
                         MeshType mesh_type) {
@@ -41,14 +44,14 @@ void py_module(py::module& module) {
                     l1_small_size,
                     trace_region_size,
                     num_command_queues,
-                    dispatch_core_type);
+                    dispatch_core_config);
             }),
             py::kw_only(),
             py::arg("mesh_shape"),
             py::arg("l1_small_size"),
             py::arg("trace_region_size"),
             py::arg("num_command_queues"),
-            py::arg("dispatch_core_type"),
+            py::arg("dispatch_core_config"),
             py::arg("offset"),
             py::arg("physical_device_ids"),
             py::arg("mesh_type"))
@@ -69,11 +72,18 @@ void py_module(py::module& module) {
             Returns:
                 List[Device]: The devices in the device mesh.
         )doc")
-        .def("create_submesh", &MeshDevice::create_submesh,
-            py::arg("submesh_shape"), py::arg("offset"), py::arg("mesh_type"),
+        .def(
+            "create_submesh",
+            &MeshDevice::create_submesh,
+            py::arg("submesh_shape"),
+            py::arg("offset"),
+            py::arg("mesh_type"),
             py::keep_alive<1, 0>())  // Keep MeshDevice alive as long as SubmeshDevice is alive
-        .def("create_submeshes", &MeshDevice::create_submeshes,
-            py::arg("submesh_shape"), py::arg("mesh_type"),
+        .def(
+            "create_submeshes",
+            &MeshDevice::create_submeshes,
+            py::arg("submesh_shape"),
+            py::arg("mesh_type"),
             py::keep_alive<1, 0>())  // Keep MeshDevice alive as long as SubmeshDevices are alive
         .def(
             "compute_with_storage_grid_size",
@@ -130,7 +140,50 @@ void py_module(py::module& module) {
             Returns:
                 Tuple[int, int]: The shape of the device mesh as (num_rows, num_cols).
         )doc")
-        .def("__repr__", &MeshDevice::to_string);
+        .def("__repr__", &MeshDevice::to_string)
+        .def(
+            "create_sub_device_manager",
+            [](MeshDevice& self, const std::vector<SubDevice>& sub_devices, DeviceAddr local_l1_size) {
+                return self.create_sub_device_manager(sub_devices, local_l1_size);
+            },
+            py::arg("sub_devices"),
+            py::arg("local_l1_size"),
+            R"doc(
+                Creates a sub-device manager for the given mesh device.
+
+                Args:
+                    sub_devices (List[ttnn.SubDevice]): The sub-devices to include in the sub-device manager.
+                    local_l1_size (int): The size of the local allocators of each sub-device. The global allocator will be shrunk by this amount.
+
+                Returns:
+                    MeshSubDeviceManagerId: The ID of the created sub-device manager.
+            )doc")
+        .def(
+            "load_sub_device_manager",
+            &MeshDevice::load_sub_device_manager,
+            py::arg("mesh_sub_device_manager_id"),
+            R"doc(
+                Loads the sub-device manager with the given ID.
+
+                Args:
+                    mesh_sub_device_manager_id (MeshSubDeviceManagerId): The ID of the sub-device manager to load.
+            )doc")
+        .def(
+            "clear_loaded_sub_device_manager",
+            &MeshDevice::clear_loaded_sub_device_manager,
+            R"doc(
+                Clears the loaded sub-device manager for the given mesh device.
+            )doc")
+        .def(
+            "remove_sub_device_manager",
+            &MeshDevice::remove_sub_device_manager,
+            py::arg("mesh_sub_device_manager_id"),
+            R"doc(
+                Removes the sub-device manager with the given ID.
+
+                Args:
+                    mesh_sub_device_manager_id (MeshSubDeviceManagerId): The ID of the sub-device manager to remove.
+            )doc");
 
     module.def(
         "open_mesh_device",
@@ -140,10 +193,11 @@ void py_module(py::module& module) {
         py::arg("l1_small_size"),
         py::arg("trace_region_size"),
         py::arg("num_command_queues"),
-        py::arg("dispatch_core_type"),
+
         py::arg("offset"),
         py::arg("physical_device_ids"),
-        py::arg("mesh_type"));
+        py::arg("mesh_type"),
+        py::arg("dispatch_core_config"));
 
     module.def("close_mesh_device", &close_mesh_device, py::arg("mesh_device"), py::kw_only());
     module.def(

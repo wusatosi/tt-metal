@@ -18,17 +18,19 @@ using MeshDevice = tt::tt_metal::distributed::MeshDevice;
 using MeshDeviceView = tt::tt_metal::distributed::MeshDeviceView;
 using MeshType = tt::tt_metal::distributed::MeshType;
 using MeshDeviceConfig = tt::tt_metal::distributed::MeshDeviceConfig;
+using MeshSubDeviceManagerId = tt::tt_metal::distributed::MeshSubDeviceManagerId;
 
 }  // namespace ttnn::distributed
 
 namespace ttnn {
 
 // These types are exported to the ttnn namespace for convenience.
-using ttnn::distributed::MeshShape;
 using ttnn::distributed::DeviceIds;
 using ttnn::distributed::MeshDevice;
-using ttnn::distributed::MeshDeviceView;
-using ttnn::distributed::MeshType;
 using ttnn::distributed::MeshDeviceConfig;
+using ttnn::distributed::MeshDeviceView;
+using ttnn::distributed::MeshShape;
+using ttnn::distributed::MeshSubDeviceManagerId;
+using ttnn::distributed::MeshType;
 
 }  // namespace ttnn

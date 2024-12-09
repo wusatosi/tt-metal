@@ -26,30 +26,31 @@
 #include "tt_metal/common/metal_soc_descriptor.h"
 #include "tt_metal/common/test_common.hpp"
 #include "tt_metal/common/tt_backend_api_types.hpp"
-#include "third_party/umd/device/tt_arch_types.h"
-#include "third_party/umd/device/tt_cluster_descriptor.h"
-#include "third_party/umd/device/tt_cluster_descriptor_types.h"
-#include "third_party/umd/device/tt_device.h"
-#include "third_party/umd/device/tt_soc_descriptor.h"
-#include "third_party/umd/device/tt_xy_pair.h"
-#include "third_party/umd/device/xy_pair.h"
-#include "third_party/umd/device/hugepage.h"
+#include "umd/device/types/arch.h"
+#include "umd/device/tt_cluster_descriptor.h"
+#include "umd/device/types/cluster_descriptor_types.h"
+#include "umd/device/cluster.h"
+#include "umd/device/tt_soc_descriptor.h"
+#include "umd/device/tt_xy_pair.h"
+#include "umd/device/types/xy_pair.h"
+#include "umd/device/hugepage.h"
 
 // TODO: ARCH_NAME specific, must remove
 #include "eth_l1_address_map.h"
+
 #include "dev_msgs.h"
-#include "tensix.h"
-//
-//
-#include "llrt/hal.hpp"                                              // for Hal
+
+#include "llrt/hal.hpp"
 
 #include "third_party/tracy/public/tracy/Tracy.hpp"
-#include "third_party/umd/device/simulation/tt_simulation_device.h"
+#include "umd/device/tt_simulation_device.h"
 
 #include "tt_metal/impl/debug/sanitize_noc_host.hpp"
 #include "tt_metal/llrt/rtoptions.hpp"
 #include "tt_metal/llrt/tlb_config.hpp"
 #include "tt_metal/common/core_coord.hpp"
+
+#include "get_platform_architecture.hpp"
 
 static constexpr uint32_t HOST_MEM_CHANNELS = 4;
 static constexpr uint32_t HOST_MEM_CHANNELS_MASK = HOST_MEM_CHANNELS - 1;
@@ -67,8 +68,6 @@ Cluster::Cluster() {
 
     this->detect_arch_and_target();
 
-    tt_metal::hal.initialize(arch_);
-
     this->generate_cluster_descriptor();
 
     this->initialize_device_drivers();
@@ -83,26 +82,11 @@ Cluster::Cluster() {
 }
 
 void Cluster::detect_arch_and_target() {
-    if(std::getenv("TT_METAL_SIMULATOR_EN")) {
-        this->target_type_ = TargetDevice::Simulator;
-        auto arch_env = getenv("ARCH_NAME");
-        TT_FATAL(arch_env, "ARCH_NAME env var needed for VCS");
-        this->arch_ = tt::get_arch_from_string(arch_env);
-    }else {
-        this->target_type_ = TargetDevice::Silicon;
-        std::vector<chip_id_t> physical_mmio_device_ids = tt_SiliconDevice::detect_available_device_ids();
-        this->arch_ = detect_arch(physical_mmio_device_ids.at(0));
-        for (int dev_index = 1; dev_index < physical_mmio_device_ids.size(); dev_index++) {
-            chip_id_t device_id = physical_mmio_device_ids.at(dev_index);
-            tt::ARCH detected_arch = detect_arch(device_id);
-            TT_FATAL(
-                this->arch_ == detected_arch,
-                "Expected all devices to be {} but device {} is {}",
-                get_arch_str(this->arch_),
-                device_id,
-                get_arch_str(detected_arch));
-        }
-    }
+
+    this->target_type_ = (std::getenv("TT_METAL_SIMULATOR_EN")) ? TargetDevice::Simulator : TargetDevice::Silicon;
+
+    this->arch_ = tt_metal::get_platform_architecture();
+
 #ifdef ARCH_GRAYSKULL
     TT_FATAL(
         this->arch_ == tt::ARCH::GRAYSKULL,
@@ -137,28 +121,12 @@ BoardType Cluster::get_board_type(chip_id_t chip_id) const {
 }
 
 void Cluster::generate_cluster_descriptor() {
-    this->cluster_desc_path_ = (this->target_type_ == TargetDevice::Silicon and this->arch_ == tt::ARCH::WORMHOLE_B0)
-                                   ? tt_ClusterDescriptor::get_cluster_descriptor_file_path()
-                                   : "";
-
     // Cluster descriptor yaml not available for Blackhole bring up
-    if (this->arch_ == tt::ARCH::GRAYSKULL or this->arch_ == tt::ARCH::BLACKHOLE or this->target_type_ == TargetDevice::Simulator) {
-        // Cannot use tt_SiliconDevice::detect_available_device_ids because that returns physical device IDs
-        std::vector<chip_id_t> physical_mmio_device_ids;
-        std::set<chip_id_t> logical_mmio_device_ids;
-        if (this->target_type_ == TargetDevice::Simulator) {
-            physical_mmio_device_ids = tt_SimulationDevice::detect_available_device_ids();
-        } else{
-            physical_mmio_device_ids = tt_SiliconDevice::detect_available_device_ids();
-        }
-        for (chip_id_t logical_mmio_device_id = 0; logical_mmio_device_id < physical_mmio_device_ids.size();
-             logical_mmio_device_id++) {
-            logical_mmio_device_ids.insert(logical_mmio_device_id);
-        }
-        this->cluster_desc_ =
-            tt_ClusterDescriptor::create_for_grayskull_cluster(logical_mmio_device_ids, physical_mmio_device_ids);
+    if (this->target_type_ == TargetDevice::Simulator) {
+        // Passing simulator reported physical devices as logical devices.
+        this->cluster_desc_ = tt_ClusterDescriptor::create_mock_cluster(tt_SimulationDevice::detect_available_device_ids(), this->arch_);
     } else {
-        this->cluster_desc_ = tt_ClusterDescriptor::create_from_yaml(this->cluster_desc_path_);
+        this->cluster_desc_ = tt_ClusterDescriptor::create_from_yaml(tt_ClusterDescriptor::get_cluster_descriptor_file_path());
         for (const auto &chip_id : this->cluster_desc_->get_all_chips()) {
             if (this->cluster_desc_->get_board_type(chip_id) == BoardType::GALAXY) {
                 this->is_tg_cluster_ = true;
@@ -219,7 +187,7 @@ void Cluster::assert_risc_reset() {
 
 void Cluster::assign_mem_channels_to_devices(
     chip_id_t mmio_device_id, const std::set<chip_id_t> &controlled_device_ids) {
-    // g_MAX_HOST_MEM_CHANNELS (4) is defined in tt_SiliconDevice and denotes the max number of host memory channels per
+    // g_MAX_HOST_MEM_CHANNELS (4) is defined in tt::umd::Cluster and denotes the max number of host memory channels per
     // MMIO device Metal currently assigns 1 channel per device. See https://github.com/tenstorrent/tt-metal/issues/4087
     // One WH gateway should have 8 remote deivces in its control group.
     TT_ASSERT(controlled_device_ids.size() <= 9, "Unable to assign each device to its own host memory channel!");
@@ -237,9 +205,9 @@ void Cluster::assign_mem_channels_to_devices(
 void Cluster::get_metal_desc_from_tt_desc(
     const std::unordered_map<chip_id_t, tt_SocDescriptor> &input,
     const std::unordered_map<chip_id_t, uint32_t> &per_chip_id_harvesting_masks) {
-    for (const auto it : input) {
+    for (const auto& it : input) {
         chip_id_t id = it.first;
-        this->sdesc_per_chip_.emplace(id, metal_SocDescriptor(it.second, per_chip_id_harvesting_masks.at(id)));
+        this->sdesc_per_chip_.emplace(id, metal_SocDescriptor(it.second, per_chip_id_harvesting_masks.at(id), this->cluster_desc_->get_board_type(id)));
     }
 }
 
@@ -257,9 +225,8 @@ void Cluster::open_driver(const bool &skip_driver_allocs) {
         // This will remove harvested rows from the soc descriptor
         const bool perform_harvesting = true;
         const bool clean_system_resources = true;
-        device_driver = std::make_unique<tt_SiliconDevice>(
+        device_driver = std::make_unique<tt::umd::Cluster>(
             sdesc_path,
-            this->cluster_desc_path_,
             all_chips_set,
             num_host_mem_ch_per_mmio_device,
             skip_driver_allocs,
@@ -271,7 +238,6 @@ void Cluster::open_driver(const bool &skip_driver_allocs) {
                 device_driver->configure_active_ethernet_cores_for_mmio_device(mmio_device_id, {});
             }
         }
-        device_driver->set_driver_eth_interface_params(eth_interface_params);
 
         // Adding this check is a workaround for current UMD bug that only uses this getter to populate private metadata
         // that is later expected to be populated by unrelated APIs
@@ -281,6 +247,12 @@ void Cluster::open_driver(const bool &skip_driver_allocs) {
     }
     std::uint32_t dram_barrier_base = tt_metal::hal.get_dev_addr(tt_metal::HalDramMemAddrType::DRAM_BARRIER);
     device_driver->set_device_dram_address_params(tt_device_dram_address_params{dram_barrier_base});
+
+    l1_address_params.tensix_l1_barrier_base = tt_metal::hal.get_dev_addr(tt_metal::HalProgrammableCoreType::TENSIX, tt_metal::HalL1MemAddrType::BARRIER);
+    if (tt_metal::hal.get_arch() != tt::ARCH::GRAYSKULL) {
+        l1_address_params.eth_l1_barrier_base = tt_metal::hal.get_dev_addr(tt_metal::HalProgrammableCoreType::ACTIVE_ETH, tt_metal::HalL1MemAddrType::BARRIER);
+        l1_address_params.fw_version_addr = tt_metal::hal.get_dev_addr(tt_metal::HalProgrammableCoreType::ACTIVE_ETH, tt_metal::HalL1MemAddrType::FW_VERSION_ADDR);
+    }
     device_driver->set_device_l1_address_params(l1_address_params);
 
     this->get_metal_desc_from_tt_desc(
@@ -344,18 +316,6 @@ uint32_t Cluster::get_harvested_rows(chip_id_t chip) const {
     }
 }
 
-void Cluster::verify_eth_fw() const {
-    for (const auto &[chip, mmio_device_id] : this->device_to_mmio_device_) {
-        std::vector<uint32_t> fw_versions;
-        for (const CoreCoord &eth_core : get_soc_desc(chip).ethernet_cores) {
-            uint32_t val;
-            read_core(&val, sizeof(uint32_t), tt_cxy_pair(chip, eth_core), eth_l1_mem::address_map::FW_VERSION_ADDR);
-            fw_versions.push_back(val);
-        }
-        verify_sw_fw_versions(chip, SW_VERSION, fw_versions);
-    }
-}
-
 int Cluster::get_device_aiclk(const chip_id_t &chip_id) const {
     if (this->arch_ == tt::ARCH::BLACKHOLE) {
         // For Blackhole bring up remove AICLK query due to lack of ARC message support
@@ -382,20 +342,6 @@ void Cluster::assert_risc_reset_at_core(const tt_cxy_pair &physical_chip_coord) 
     const metal_SocDescriptor &soc_desc = this->get_soc_desc(physical_chip_coord.chip);
     tt_cxy_pair virtual_chip_coord = soc_desc.convert_to_umd_coordinates(physical_chip_coord);
     this->driver_->assert_risc_reset_at_core(virtual_chip_coord);
-}
-
-inline uint64_t get_sys_addr(uint32_t chip_x, uint32_t chip_y, uint32_t noc_x, uint32_t noc_y, uint64_t offset) {
-    uint64_t result = chip_y;
-    uint64_t noc_addr_local_bits_mask = (1UL << NOC_ADDR_LOCAL_BITS) - 1;
-    result <<= NOC_ADDR_NODE_ID_BITS;
-    result |= chip_x;
-    result <<= NOC_ADDR_NODE_ID_BITS;
-    result |= noc_y;
-    result <<= NOC_ADDR_NODE_ID_BITS;
-    result |= noc_x;
-    result <<= NOC_ADDR_LOCAL_BITS;
-    result |= (noc_addr_local_bits_mask & offset);
-    return result;
 }
 
 void Cluster::write_dram_vec(std::vector<uint32_t> &vec, tt_target_dram dram, uint64_t addr, bool small_access) const {
@@ -963,6 +909,9 @@ uint32_t Cluster::get_mmio_device_max_tunnel_depth(chip_id_t mmio_device) const 
     uint32_t depth = 0;
     for (const auto &[assoc_mmio_device, devices] : this->devices_grouped_by_assoc_mmio_device_) {
         for (const auto &chip_id : devices) {
+            if (chip_id == assoc_mmio_device) {
+                continue;
+            }
             depth =
                 std::max(depth, uint32_t(this->cluster_desc_->get_ethernet_link_distance(chip_id, assoc_mmio_device)));
         }
@@ -981,7 +930,8 @@ uint32_t Cluster::get_mmio_device_tunnel_count(chip_id_t mmio_device) const {
 }
 
 uint32_t Cluster::get_device_tunnel_depth(chip_id_t chip_id) const {
-    return this->cluster_desc_->get_ethernet_link_distance(chip_id, this->get_associated_mmio_device(chip_id));
+    chip_id_t mmio_device_id = this->get_associated_mmio_device(chip_id);
+    return (mmio_device_id == chip_id) ? 0 : this->cluster_desc_->get_ethernet_link_distance(chip_id, mmio_device_id);
 }
 
 }  // namespace tt

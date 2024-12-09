@@ -6,7 +6,9 @@
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include <optional>
 
+#include "pybind11/cast.h"
 #include "ttnn/cpp/pybind11/decorators.hpp"
 #include "ttnn/operations/core/core.hpp"
 #include "tt_metal/common/work_split.hpp"
@@ -22,28 +24,43 @@ void py_module_types(py::module& module) {
 
     py::class_<GrayskullComputeKernelConfig>(module, "GrayskullComputeKernelConfig")
         .def(
-            py::init<MathFidelity, bool>(),
+            py::init<MathFidelity, bool, bool>(),
             py::kw_only(),
             py::arg("math_fidelity") = MathFidelity::Invalid,
-            py::arg("math_approx_mode") = true)
+            py::arg("math_approx_mode") = true,
+            py::arg("dst_full_sync_en") = false)
         .def_readwrite("math_fidelity", &GrayskullComputeKernelConfig::math_fidelity)
-        .def_readwrite("math_approx_mode", &GrayskullComputeKernelConfig::math_approx_mode);
+        .def_readwrite("math_approx_mode", &GrayskullComputeKernelConfig::math_approx_mode)
+        .def_readwrite("dst_full_sync_en", &GrayskullComputeKernelConfig::dst_full_sync_en);
 
     py::class_<WormholeComputeKernelConfig>(module, "WormholeComputeKernelConfig")
         .def(
-            py::init<MathFidelity, bool, bool, bool>(),
+            py::init<MathFidelity, bool, bool, bool, bool>(),
             py::kw_only(),
             py::arg("math_fidelity") = MathFidelity::Invalid,
             py::arg("math_approx_mode") = true,
             py::arg("fp32_dest_acc_en") = false,
-            py::arg("packer_l1_acc") = false)
+            py::arg("packer_l1_acc") = false,
+            py::arg("dst_full_sync_en") = false)
         .def_readwrite("math_fidelity", &WormholeComputeKernelConfig::math_fidelity)
         .def_readwrite("math_approx_mode", &WormholeComputeKernelConfig::math_approx_mode)
         .def_readwrite("fp32_dest_acc_en", &WormholeComputeKernelConfig::fp32_dest_acc_en)
-        .def_readwrite("packer_l1_acc", &WormholeComputeKernelConfig::packer_l1_acc);
+        .def_readwrite("packer_l1_acc", &WormholeComputeKernelConfig::packer_l1_acc)
+        .def_readwrite("dst_full_sync_en", &WormholeComputeKernelConfig::dst_full_sync_en);
 }
 
 void py_module(py::module& module) {
+
+    module.def("init_device_compute_kernel_config", &ttnn::init_device_compute_kernel_config,
+            py::arg("arch"),
+            py::arg("device_kernel_config") = std::nullopt,
+            py::kw_only(),
+            py::arg("math_fidelity") = MathFidelity::LoFi,
+            py::arg("math_approx_mode") = true,
+            py::arg("fp32_dest_acc_en") = false,
+            py::arg("packer_l1_acc") = false,
+            py::arg("dst_full_sync_en") = false
+        );
     module.def("unsqueeze_to_4D", &ttnn::unsqueeze_to_4D, py::arg("tensor"));
 
     module.def(
@@ -107,8 +124,12 @@ void py_module(py::module& module) {
                 >>> host_tensor = ttnn.from_device(tensor=device_tensor, blocking=False)
         )doc");
 
-    module.def("deallocate", &ttnn::operations::core::deallocate, py::arg("tensor"), py::arg("force") = true,
-    R"doc(
+    module.def(
+        "deallocate",
+        &ttnn::operations::core::deallocate,
+        py::arg("tensor"),
+        py::arg("force") = true,
+        R"doc(
         Deallocates device tensor. Releases the resources for `ttnn.Tensor` :attr:`tensor` explicitly.
 
         Args:
@@ -342,7 +363,6 @@ void py_module(py::module& module) {
         "num_cores_to_corerangeset",
         py::overload_cast<const uint32_t, const CoreCoord, const bool>(&tt::tt_metal::num_cores_to_corerangeset),
         R"doc(Create a CoreRangeSet containing the specified number of cores)doc");
-
 }
 
 }  // namespace core

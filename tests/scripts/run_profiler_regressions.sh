@@ -40,10 +40,21 @@ run_tracing_async_mode_T3000_test(){
         else
             echo "Verifying test results"
             runDate=$(ls $PROFILER_OUTPUT_DIR/)
+            echo $runDate
             LINE_COUNT=4100 # Smoke test to see at least 4100 ops are reported
             res=$(verify_perf_line_count_floor "$PROFILER_OUTPUT_DIR/$runDate/ops_perf_results_$runDate.csv" "$LINE_COUNT")
             echo $res
         fi
+
+        #Testing device only report on the same artifacts
+        rm -rf $PROFILER_OUTPUT_DIR/
+        ./tt_metal/tools/profiler/process_ops_logs.py --device-only --date
+        echo "Verifying device-only results"
+        runDate=$(ls $PROFILER_OUTPUT_DIR/)
+        echo $runDate
+        LINE_COUNT=3600 # Smoke test to see at least 4100 ops are reported
+        res=$(verify_perf_line_count_floor "$PROFILER_OUTPUT_DIR/$runDate/ops_perf_results_$runDate.csv" "$LINE_COUNT")
+        echo $res
     fi
 }
 
@@ -113,13 +124,6 @@ run_profiling_no_reset_test(){
     remove_default_log_locations
 }
 
-run_post_proc_test(){
-    source python_env/bin/activate
-    export PYTHONPATH=$TT_METAL_HOME
-
-    pytest $PROFILER_TEST_SCRIPTS_ROOT/test_device_logs.py -vvv
-}
-
 cd $TT_METAL_HOME
 
 #
@@ -129,9 +133,6 @@ if [[ $1 == "PROFILER" ]]; then
     run_profiling_test
 elif [[ $1 == "PROFILER_NO_RESET" ]]; then
     run_profiling_no_reset_test
-elif [[ $1 == "POST_PROC" ]]; then
-    run_post_proc_test
 else
     run_profiling_test
-    run_post_proc_test
 fi
