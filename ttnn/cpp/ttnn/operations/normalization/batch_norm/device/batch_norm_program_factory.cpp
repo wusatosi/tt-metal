@@ -4,6 +4,7 @@
 
 #include "batch_norm_device_operation.hpp"
 #include "tt_metal/common/work_split.hpp"
+#include "ttnn/tensor/tensor.hpp"
 #include "ttnn/operations/moreh/moreh_helper_functions.hpp"
 #include <cmath>
 
@@ -17,6 +18,124 @@ inline uint32_t get_block_size(uint32_t num_tiles, uint32_t max_block_size) {
     }
     return block_size;
 }
+
+namespace {
+namespace CMAKE_UNIQUE_NAMESPACE {
+
+std::tuple<uint32_t, uint32_t, uint32_t, uint32_t> extract_shape_dims(const Tensor& x) {
+    const auto& shape = x.padded_shape();
+    const auto& tile = x.tensor_spec().tile();
+    return {shape[-4], shape[-3], shape[-2] / tile.get_height(), shape[-1] / tile.get_width()};
+}
+
+template <typename F>
+void set_or_update_runtime_arguments(
+    Program& program,
+    KernelHandle reader_kernel_id,
+    KernelHandle writer_kernel_id,
+    KernelHandle compute_kernel_id,
+    CoreCoord compute_with_storage_grid_size,
+    const ttnn::operations::normalization::BatchNormOperation::operation_attributes_t& operation_attributes,
+    const ttnn::operations::normalization::BatchNormOperation::tensor_args_t& tensor_args,
+    ttnn::operations::normalization::BatchNormOperation::tensor_return_value_t& c,
+    F handle_args) {
+    const auto& a = tensor_args.input;
+    const auto& b = tensor_args.running_mean;
+
+    const auto ashape = a.get_padded_shape();
+    const auto bshape = b.has_value() ? b->get_padded_shape() : SimpleShape{1, 1};
+    const auto cshape = c[0]->get_padded_shape();
+
+    const auto [aN, aC, aHt, aWt] = extract_shape_dims(a);
+    const auto [bN, bC, bHt, bWt] = b.has_value() ? extract_shape_dims(*b) : std::tuple{1u, 1u, 1u, 1u};
+    const auto [cN, cC, cHt, cWt] = extract_shape_dims(c[0].value());
+
+    uint32_t num_output_tiles = c[0].value().volume() / c[0].value().tensor_spec().tile().get_tile_hw();
+
+    constexpr bool row_major = true;
+    uint32_t num_cores_x = compute_with_storage_grid_size.x;
+    uint32_t num_cores_y = compute_with_storage_grid_size.y;
+    uint32_t num_cores_total = num_cores_x * num_cores_y;
+    auto all_device_cores = CoreRange({0, 0}, {num_cores_x - 1, num_cores_y - 1});
+    auto [num_cores, all_cores, core_group_1, core_group_2, num_tiles_per_core_group_1, num_tiles_per_core_group_2] =
+        tt::tt_metal::split_work_to_cores(compute_with_storage_grid_size, num_output_tiles, row_major);
+
+    auto cores = grid_to_cores(num_cores_total, num_cores_x, num_cores_y, row_major);
+    for (uint32_t i = 0, start_tile_id = 0; i < num_cores_total; i++) {
+        const auto& core = cores[i];
+
+        uint32_t num_tiles_per_core;
+        if (core_group_1.contains(core)) {
+            num_tiles_per_core = num_tiles_per_core_group_1;
+        } else if (core_group_2.contains(core)) {
+            num_tiles_per_core = num_tiles_per_core_group_2;
+        } else {
+            handle_args(program, reader_kernel_id, core, std::array<uint32_t, 10>{0});
+            handle_args(program, writer_kernel_id, core, std::array<uint32_t, 11>{0});
+            handle_args(program, compute_kernel_id, core, std::array<uint32_t, 3>{0});
+            continue;
+        }
+
+        uint32_t cHtWt = cHt * cWt;
+        std::array reader_runtime_args = {
+            a.buffer()->address(),
+            start_tile_id,
+            num_tiles_per_core,
+            cHtWt,
+            aHt * aWt * aC * (aN > 1),
+            aHt * aWt * (aC > 1),
+            cN,
+            cC,
+            cHt,
+            cWt};
+        handle_args(program, reader_kernel_id, core, reader_runtime_args);
+
+        if (b.has_value()) {
+            std::array writer_runtime_args = {
+                b->buffer()->address(),
+                c[0].value().buffer()->address(),
+                start_tile_id,
+                num_tiles_per_core,
+                cHtWt,
+                bHt * bWt * bC * (bN > 1),
+                bHt * bWt * (bC > 1),
+                cN,
+                cC,
+                cHt,
+                cWt};
+            handle_args(program, writer_kernel_id, core, writer_runtime_args);
+
+            auto [freq, counter] = calculate_compute_kernel_args(
+                ttnn::operations::binary_ng::SubtileBroadcastType::SCALAR_B, start_tile_id, cHtWt, cWt);
+            std::array compute_runtime_args = {num_tiles_per_core, freq, counter};
+            handle_args(program, compute_kernel_id, core, compute_runtime_args);
+        } else {
+            class bfloat16 bfloat_scalar(*operation_attributes.scalar);
+            uint32_t packed_scalar = pack_two_bfloat16_into_uint32({bfloat_scalar, bfloat_scalar});
+            std::array writer_runtime_args = {
+                packed_scalar,
+                c[0].value().buffer()->address(),
+                start_tile_id,
+                num_tiles_per_core,
+                cHtWt,
+                cN,
+                cC,
+                cHt,
+                cWt,
+                0u,
+                0u};
+            handle_args(program, writer_kernel_id, core, writer_runtime_args);
+
+            std::array compute_runtime_args = {num_tiles_per_core, 0u, 0u};
+            handle_args(program, compute_kernel_id, core, compute_runtime_args);
+        }
+
+        start_tile_id += num_tiles_per_core;
+    }
+}
+
+}  // namespace CMAKE_UNIQUE_NAMESPACE
+}  // namespace
 
 namespace ttnn::operations::normalization {
 BatchNormOperation::BatchNormFactory::cached_program_t BatchNormOperation::BatchNormFactory::create(
@@ -302,6 +421,164 @@ BatchNormOperation::BatchNormFactory::cached_program_t BatchNormOperation::Batch
     }
 
     return {std::move(program), {reader_kernels_id, writer_kernels_id, num_cores_to_be_used, num_cores_y}};
+}
+
+void BatchNormOperation::BatchNormFactory::override_runtime_arguments(
+    cached_program_t& cached_program,
+    const operation_attributes_t& operation_attributes,
+    const tensor_args_t& tensor_args,
+    tensor_return_value_t& tensor_return_value) {
+    auto input_buffer = tensor_args.input.buffer();
+    auto gamma_buffer = tensor_args.gamma.has_value() ? tensor_args.gamma.value().buffer() : nullptr;
+    auto beta_buffer = tensor_args.beta.has_value() ? tensor_args.beta.value().buffer() : nullptr;
+
+    auto ouput_buffer = tensor_return_value[0]->buffer();
+    auto mean_buffer = tensor_return_value[1]->buffer();
+    auto rstd_buffer = tensor_return_value[2]->buffer();
+
+    auto reader_kernels_id = cached_program.shared_variables.reader_kernels_id;
+    auto writer_kernels_id = cached_program.shared_variables.writer_kernels_id;
+    auto num_cores_to_be_used = cached_program.shared_variables.num_cores_to_be_used;
+    auto num_cores_y = cached_program.shared_variables.num_cores_y;
+
+    for (uint32_t i = 0; i < num_cores_to_be_used; ++i) {
+        CoreCoord core = {i / num_cores_y, i % num_cores_y};
+
+        {
+            auto& runtime_args = GetRuntimeArgs(cached_program.program, reader_kernels_id, core);
+            runtime_args[0] = input_buffer->address();
+            if (gamma_buffer != nullptr) {
+                runtime_args[2] = gamma_buffer->address();
+            }
+            if (beta_buffer != nullptr) {
+                runtime_args[5] = beta_buffer->address();
+            }
+        }
+
+        {
+            auto& runtime_args = GetRuntimeArgs(cached_program.program, writer_kernels_id, core);
+            runtime_args[0] = ouput_buffer->address();
+            if (mean_buffer != nullptr) {
+                runtime_args[2] = mean_buffer->address();
+            }
+            if (rstd_buffer != nullptr) {
+                runtime_args[5] = rstd_buffer->address();
+            }
+        }
+    }
+}
+
+// inference mode
+
+BatchNormOperation::BatchNormFactory_Inference::cached_program_t BatchNormOperation::BatchNormFactory_Inference::create(
+    const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args, tensor_return_value_t& c) {
+    // replicate bcast only
+    using namespace tt;
+    using namespace tt::constants;
+
+    const auto& input = tensor_args.input;  // a
+    // auto gamma = tensor_args.gamma;
+    // auto beta = tensor_args.beta;
+    const auto& running_mean = tensor_args.running_mean;  // b
+
+    auto& output = c[0].value();
+
+    // auto eps = operation_attributes.eps;
+
+    ////////////////////////////////////////////////////////////////////////////
+    //                      Device Setup
+    ////////////////////////////////////////////////////////////////////////////
+    auto device = input.device();
+    auto program = CreateProgram();
+    auto a_data_format = datatype_to_dataformat_converter(input.get_dtype());
+    auto b_data_format =
+        running_mean.has_value() ? datatype_to_dataformat_converter(running_mean->get_dtype()) : DataFormat::Float16_b;
+    auto c_data_format = datatype_to_dataformat_converter(output.get_dtype());
+
+    ////////////////////////////////////////////////////////////////////////////
+    //                         Parameters Setup
+    ////////////////////////////////////////////////////////////////////////////
+
+    uint32_t a_single_tile_size = tt_metal::detail::TileSize(a_data_format);
+    uint32_t b_single_tile_size = tt_metal::detail::TileSize(b_data_format);
+    uint32_t c_single_tile_size = tt_metal::detail::TileSize(c_data_format);
+
+    uint32_t num_output_tiles = output.volume() / output.tensor_spec().tile().get_tile_hw();
+
+    // we parallelize the computation across the output tiles
+    constexpr bool row_major = true;
+    auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
+    uint32_t num_cores_x = compute_with_storage_grid_size.x;
+    uint32_t num_cores_y = compute_with_storage_grid_size.y;
+    auto all_device_cores = CoreRange({0, 0}, {num_cores_x - 1, num_cores_y - 1});
+
+    Buffer* a_buffer = input.buffer();
+    Buffer* b_buffer = nullptr;
+    Buffer* c_buffer = output.buffer();
+
+    // How many tiles to store per input CB (double buffer)
+    constexpr uint32_t num_tiles_per_cb = 2;
+    auto [a_cb, a_cb_handle] =
+        create_cb(tt::CB::c_in0, program, all_device_cores, a_single_tile_size, num_tiles_per_cb, a_data_format);
+    auto [c_cb, c_cb_handle] =
+        create_cb(tt::CB::c_out0, program, all_device_cores, c_single_tile_size, num_tiles_per_cb, c_data_format);
+
+    // If b is a scalar, we only need one tile in the CB
+    uint32_t b_num_tiles_per_cb = b_buffer != nullptr ? num_tiles_per_cb : 1;
+    auto [b_cb, b_cb_handle] =
+        create_cb(tt::CB::c_in1, program, all_device_cores, b_single_tile_size, b_num_tiles_per_cb, b_data_format);
+
+    auto a_is_dram = static_cast<uint32_t>(a_buffer->buffer_type() == tt_metal::BufferType::DRAM);
+    bool b_is_dram = false;
+    auto c_is_dram = static_cast<uint32_t>(c_buffer->buffer_type() == tt_metal::BufferType::DRAM);
+
+    auto kernel_config =
+        CMAKE_UNIQUE_NAMESPACE::BinaryNgKernelConfig(ttnn::operations::binary_ng::SubtileBroadcastType::NONE);
+
+    const std::string reader_kernel_file =
+        "ttnn/cpp/ttnn/operations/eltwise/binary_ng/device/kernels/dataflow/reader_interleaved_no_bcast.cpp";
+    const std::string writer_kernel_file =
+        "ttnn/cpp/ttnn/operations/eltwise/binary_ng/device/kernels/dataflow/writer_interleaved_scalar_bcast.cpp";
+
+    auto reader_kernel_id = tt_metal::CreateKernel(
+        program, reader_kernel_file, all_device_cores, tt_metal::ReaderDataMovementConfig({a_is_dram}));
+
+    b_buffer = running_mean->buffer();
+    b_is_dram = static_cast<uint32_t>(b_buffer->buffer_type() == tt_metal::BufferType::DRAM);
+
+    auto writer_kernel_id = tt_metal::CreateKernel(
+        program, writer_kernel_file, all_device_cores, tt_metal::WriterDataMovementConfig({b_is_dram, c_is_dram}));
+
+    // COMPUTE KERNEL
+    bool fp32_dest_acc_en = c_data_format == tt::DataFormat::UInt32 || c_data_format == tt::DataFormat::Int32 ||
+                            c_data_format == tt::DataFormat::Float32;
+
+    auto kernel_config = ttnn::operations::binary_ng::SubtileBroadcastType::SCALAR_B;
+
+    auto compute_kernel_id = tt_metal::CreateKernel(
+        program,
+        "ttnn/cpp/ttnn/operations/normalization/batch_norm/device/kernels/compute/batch_norm_inference_calculation.cpp",
+        all_device_cores,
+        tt_metal::ComputeConfig{
+            .fp32_dest_acc_en = fp32_dest_acc_en, .defines = {{"BCAST_INPUT", kernel_config.bcast_input_str()}}});
+
+    auto set_runtime_args = [](Program& program, KernelHandle kernel_id, CoreCoord core, auto&& args) {
+        tt_metal::SetRuntimeArgs(program, kernel_id, core, args);
+    };
+
+    CMAKE_UNIQUE_NAMESPACE::set_or_update_runtime_arguments(
+        program,
+        reader_kernel_id,
+        writer_kernel_id,
+        compute_kernel_id,
+        compute_with_storage_grid_size,
+        operation_attributes,
+        tensor_args,
+        output,
+        set_runtime_args);
+
+    return {
+        std::move(program), {reader_kernel_id, writer_kernel_id, compute_kernel_id, compute_with_storage_grid_size}};
 }
 
 void BatchNormOperation::BatchNormFactory::override_runtime_arguments(

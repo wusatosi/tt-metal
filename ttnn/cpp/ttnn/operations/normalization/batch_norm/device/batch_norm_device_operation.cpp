@@ -11,7 +11,7 @@ namespace ttnn::operations::normalization {
 void BatchNormOperation::validate_tensors(
     const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
     const auto& input = tensor_args.input;
-
+    auto& running_mean = tensor_args.running_mean;
     auto& output = tensor_args.output;
     auto& mean = tensor_args.mean;
     auto& rstd = tensor_args.rstd;
@@ -62,7 +62,11 @@ void BatchNormOperation::validate_tensors(
 
 BatchNormOperation::program_factory_t BatchNormOperation::select_program_factory(
     const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
-    return BatchNormFactory();
+    if (operation_attributes.training == false) {
+        return BatchNormFactory();
+    } else {
+        return BatchNormFactory_Inference();
+    }
 }
 
 void BatchNormOperation::validate_on_program_cache_miss(
@@ -132,6 +136,8 @@ std::tuple<BatchNormOperation::operation_attributes_t, BatchNormOperation::tenso
     const float eps,
     const std::optional<const Tensor>& gamma,
     const std::optional<const Tensor>& beta,
+    std::optional<Tensor> running_mean,
+    const bool training,
     const std::vector<bool>& are_required_outputs,
     const std::optional<const Tensor>& output,
     const std::optional<const Tensor>& mean,
@@ -142,12 +148,13 @@ std::tuple<BatchNormOperation::operation_attributes_t, BatchNormOperation::tenso
     const std::optional<DeviceComputeKernelConfig>& compute_kernel_config) {
     operation_attributes_t operation_attributes{
         eps,
+        training,
         are_required_outputs,
         memory_config.value_or(input.memory_config()),
         mean_memory_config.value_or(input.memory_config()),
         rstd_memory_config.value_or(input.memory_config()),
         init_device_compute_kernel_config(input.device()->arch(), compute_kernel_config, MathFidelity::HiFi4)};
-    tensor_args_t tensor_args{input, gamma, beta, output, mean, rstd};
+    tensor_args_t tensor_args{input, gamma, beta, running_mean, output, mean, rstd};
     return {operation_attributes, tensor_args};
 }
 }  // namespace ttnn::operations::normalization
