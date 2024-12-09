@@ -38,3 +38,23 @@ def test_run_average_pool2d(
     output_tensor = torch.permute(output_tensor, (0, 3, 1, 2))
 
     assert_with_pcc(torch_output_tensor, output_tensor)
+
+
+@pytest.mark.parametrize(
+    "dtype",
+    (ttnn.bfloat16,),
+)
+def test_run_average_pool2d_squeezenet(
+    dtype,
+    device,
+):
+    torch.manual_seed(0)
+    torch_input_tensor = torch.randn(1, 1000, 13, 13)
+    torch_output_tensor = torch.nn.functional.adaptive_avg_pool2d(torch_input_tensor, (1, 1))
+    input_tensor = torch.permute(torch_input_tensor, (0, 2, 3, 1))  # ttnn operates on channels-last tensors
+    input_tensor = ttnn.from_torch(input_tensor, dtype=dtype, layout=ttnn.TILE_LAYOUT, device=device)
+    output_tensor = ttnn.global_avg_pool2d(input_tensor)
+    output_tensor = ttnn.to_torch(output_tensor)
+    output_tensor = torch.permute(output_tensor, (0, 3, 2, 1))
+    print("their shapes are ", output_tensor.shape, torch_output_tensor.shape)
+    assert_with_pcc(torch_output_tensor.squeeze(2).squeeze(2), output_tensor.squeeze(2).squeeze(2))
