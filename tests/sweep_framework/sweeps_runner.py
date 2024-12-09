@@ -98,7 +98,7 @@ def gather_single_test_perf(device, test_passed, chunk_size=1):
 
 def run(test_module, input_queue, output_queue):
     device_generator = get_devices(test_module)
-    chunk_size = 100
+    chunk_size = 50
     try:
         device, device_name = next(device_generator)
         logger.info(f"Opened device configuration, {device_name}.")

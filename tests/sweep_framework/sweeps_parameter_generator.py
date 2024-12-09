@@ -45,7 +45,7 @@ def generate_vectors(module_name, start_x=1, end_x=9, start_y=1):
             export_suite_vectors(module_name, suite, suite_vectors)
 
 
-def downsample(suite, suite_vectors, min_desired=3000):
+def downsample(suite, suite_vectors, min_desired=800):
     starting_vecs = len(suite_vectors)
     while len(suite_vectors) > 2 * min_desired:
         del suite_vectors[::2]

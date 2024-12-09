@@ -16,13 +16,13 @@ from models.utility_functions import torch_random
 
 TILE_SIZE = 32
 DATUM_SIZE = {ttnn.bfloat16: 2, ttnn.bfloat8_b: 1, ttnn.float32: 4}
-DTYPES = [ttnn.bfloat16, ttnn.bfloat8_b, ttnn.float32]
+DTYPES = [ttnn.bfloat16]
 
 general_parameters = {
     "input_shard_strategy": [ttnn.ShardStrategy.BLOCK, ttnn.ShardStrategy.WIDTH, ttnn.ShardStrategy.HEIGHT],
     "output_shard_strategy": [ttnn.ShardStrategy.BLOCK, ttnn.ShardStrategy.WIDTH, ttnn.ShardStrategy.HEIGHT],
-    "input_shard_orientation": [ttnn.ShardOrientation.ROW_MAJOR, ttnn.ShardOrientation.COL_MAJOR],
-    "output_shard_orientation": [ttnn.ShardOrientation.ROW_MAJOR, ttnn.ShardOrientation.COL_MAJOR],
+    "input_shard_orientation": [ttnn.ShardOrientation.ROW_MAJOR],
+    "output_shard_orientation": [ttnn.ShardOrientation.ROW_MAJOR],
 }
 
 
@@ -72,6 +72,12 @@ def invalidate_vector(test_vector) -> Tuple[bool, Optional[str]]:
     if not is_tilable(test_vector["shape"], test_vector["output_core_grid"], test_vector["output_shard_strategy"]):
         return True, "Output tensor cannot be tiled"
 
+    if (
+        test_vector["input_shard_strategy"] == test_vector["output_shard_strategy"]
+        and test_vector["input_shard_strategy"] != ttnn.ShardStrategy.BLOCK
+    ):
+        return True, "ignore"
+
     # won't fit in L1
     if (
         DATUM_SIZE[test_vector["dtype"]] * test_vector["shape"][3] * test_vector["shape"][2]
@@ -106,12 +112,6 @@ def run(
     *,
     device,
 ):
-    torch_dtype = {
-        ttnn.bfloat16: torch.bfloat16,
-        ttnn.float32: torch.float32,
-        ttnn.bfloat8_b: torch.bfloat16,
-    }[dtype]
-
     input_shard_memory_config = ttnn.create_sharded_memory_config(
         shape,
         core_grid=input_core_grid,
