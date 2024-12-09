@@ -617,10 +617,12 @@ private:
         uint32_t half_cb_n_pages);
 
     tt_xy_pair calculate_tensor_slice_shape(const Tensor& input_tensor, int slice_dim, uint32_t partition_size);
+    Shape4D<uint32_t> calculate_tensor_slice_offset(const Tensor& input_tensor, int slice_dim, uint32_t partition_index);
 
     // Class member variables
     tt_xy_pair flattened_tensor_shape;
     tt_xy_pair tensor_slice_shape;
+    Shape4D<uint32_t> tensor_slice_offset;
     std::vector<tt_xy_pair> worker_slice_shapes;
     std::vector<tt_xy_pair> worker_slice_offsets;
     uint32_t input_page_size;
