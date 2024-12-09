@@ -495,6 +495,19 @@ def create_models():
         vocab_size=128256,
     )
 
+    models["llama3_3B"] = TransformerModel(
+        name="llama3_3B",
+        num_parameters_B=3,
+        input_sequence_length=1024,
+        output_sequence_length=1024,
+        num_layers=28,
+        hidden_size=3072,
+        num_q_heads=24,
+        num_kv_heads=8,
+        intermediate_size=8192,
+        vocab_size=128256,
+    )
+
     models["llama3_70B"] = TransformerModel(
         name="llama3_70B",
         num_parameters_B=70,
