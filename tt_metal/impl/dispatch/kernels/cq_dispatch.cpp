@@ -948,41 +948,46 @@ re_run_command:
     volatile CQDispatchCmd tt_l1_ptr* cmd = (volatile CQDispatchCmd tt_l1_ptr*)cmd_ptr;
 
     switch (cmd->base.cmd_id) {
-        case CQ_DISPATCH_CMD_WRITE_LINEAR:
+        case CQ_DISPATCH_CMD_WRITE_LINEAR: {
+            DeviceZoneScopedN("CQ_DISPATCH_CMD_WRITE_LINEAR");
             WAYPOINT("DWB");
             DPRINT << "cmd_write\n";
             process_write(block_noc_writes_to_clear, block_next_start_addr);
             WAYPOINT("DWD");
-            break;
+        } break;
 
-        case CQ_DISPATCH_CMD_WRITE_LINEAR_H:
+        case CQ_DISPATCH_CMD_WRITE_LINEAR_H: {
+            DeviceZoneScopedN("CQ_DISPATCH_CMD_WRITE_LINEAR_H");
             DPRINT << "cmd_write_linear_h\n";
             if (is_h_variant) {
                 process_write(block_noc_writes_to_clear, block_next_start_addr);
             } else {
                 relay_write_h(block_noc_writes_to_clear, block_next_start_addr);
             }
-            break;
+        } break;
 
-        case CQ_DISPATCH_CMD_WRITE_LINEAR_H_HOST:
+        case CQ_DISPATCH_CMD_WRITE_LINEAR_H_HOST: {
+            DeviceZoneScopedN("CQ_DISPATCH_CMD_WRITE_LINEAR_H_HOST");
             DPRINT << "cmd_write_linear_h_host\n";
             if (is_h_variant) {
                 process_write_host_h(block_noc_writes_to_clear, block_next_start_addr);
             } else {
                 process_write_host_d(block_noc_writes_to_clear, block_next_start_addr);
             }
-            break;
+        } break;
 
-        case CQ_DISPATCH_CMD_WRITE_PAGED:
+        case CQ_DISPATCH_CMD_WRITE_PAGED: {
+            DeviceZoneScopedN("CQ_DISPATCH_CMD_WRITE_PAGED");
             DPRINT << "cmd_write_paged is_dram: " << (uint32_t)cmd->write_paged.is_dram << ENDL();
             if (cmd->write_paged.is_dram) {
                 process_write_paged<true>(block_noc_writes_to_clear, block_next_start_addr);
             } else {
                 process_write_paged<false>(block_noc_writes_to_clear, block_next_start_addr);
             }
-            break;
+        } break;
 
         case CQ_DISPATCH_CMD_WRITE_PACKED: {
+            DeviceZoneScopedN("CQ_DISPATCH_CMD_WRITE_PACKED");
             DPRINT << "cmd_write_packed" << ENDL();
             uint32_t flags = cmd->write_packed.flags;
             if (flags & CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_MCAST) {
@@ -994,20 +999,23 @@ re_run_command:
             }
         } break;
 
-        case CQ_DISPATCH_NOTIFY_SLAVE_GO_SIGNAL:
+        case CQ_DISPATCH_NOTIFY_SLAVE_GO_SIGNAL: {
+            DeviceZoneScopedN("CQ_DISPATCH_NOTIFY_SLAVE_GO_SIGNAL");
             DPRINT << "cmd_notify_dispatch_s_go_signal" << ENDL();
             process_notify_dispatch_s_go_signal_cmd();
-            break;
+        } break;
 
-        case CQ_DISPATCH_CMD_WRITE_PACKED_LARGE:
+        case CQ_DISPATCH_CMD_WRITE_PACKED_LARGE: {
+            DeviceZoneScopedN("CQ_DISPATCH_CMD_WRITE_PACKED_LARGE");
             DPRINT << "cmd_write_packed_large" << ENDL();
             process_write_packed_large(l1_cache, block_noc_writes_to_clear, block_next_start_addr);
-            break;
+        } break;
 
-        case CQ_DISPATCH_CMD_WAIT:
+        case CQ_DISPATCH_CMD_WAIT: {
+            DeviceZoneScopedN("CQ_DISPATCH_CMD_WAIT");
             DPRINT << "cmd_wait" << ENDL();
             process_wait();
-            break;
+        } break;
 
         case CQ_DISPATCH_CMD_GO: DPRINT << "cmd_go" << ENDL(); break;
 
@@ -1088,15 +1096,17 @@ static inline bool process_cmd_h(
     volatile CQDispatchCmd tt_l1_ptr* cmd = (volatile CQDispatchCmd tt_l1_ptr*)cmd_ptr;
 
     switch (cmd->base.cmd_id) {
-        case CQ_DISPATCH_CMD_WRITE_LINEAR_H:
+        case CQ_DISPATCH_CMD_WRITE_LINEAR_H: {
+            DeviceZoneScopedN("CQ_DISPATCH_CMD_WRITE_LINEAR_H");
             DPRINT << "dispatch_h write_linear_h\n";
             process_write(block_noc_writes_to_clear, block_next_start_addr);
-            break;
+        } break;
 
-        case CQ_DISPATCH_CMD_WRITE_LINEAR_H_HOST:
+        case CQ_DISPATCH_CMD_WRITE_LINEAR_H_HOST: {
+            DeviceZoneScopedN("CQ_DISPATCH_CMD_WRITE_LINEAR_H_HOST");
             DPRINT << "dispatch_h linear_h_host\n";
             process_write_host_h(block_noc_writes_to_clear, block_next_start_addr);
-            break;
+        } break;
 
         case CQ_DISPATCH_CMD_EXEC_BUF_END:
             DPRINT << "dispatch_h exec_buf_end\n";

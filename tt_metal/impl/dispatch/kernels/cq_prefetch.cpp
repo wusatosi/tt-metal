@@ -1137,14 +1137,16 @@ bool process_cmd(
     bool done = false;
 
     switch (cmd->base.cmd_id) {
-        case CQ_PREFETCH_CMD_RELAY_LINEAR:
+        case CQ_PREFETCH_CMD_RELAY_LINEAR: {
+            DeviceZoneScopedN("CQ_PREFETCH_CMD_RELAY_LINEAR");
             // DPRINT << "relay linear: " << cmd_ptr << ENDL();
             stride = process_relay_linear_cmd(cmd_ptr, downstream_data_ptr);
-            break;
+        } break;
 
         case CQ_PREFETCH_CMD_RELAY_PAGED:
             // DPRINT << "relay dram page: " << cmd_ptr << ENDL();
             {
+                DeviceZoneScopedN("CQ-PREFETCH-CMD-RELAY-PAGED");
                 uint32_t packed_page_flags = cmd->relay_paged.packed_page_flags;
                 uint32_t is_dram = packed_page_flags & (1 << CQ_PREFETCH_RELAY_PAGED_IS_DRAM_SHIFT);
                 uint32_t start_page = (packed_page_flags >> CQ_PREFETCH_RELAY_PAGED_START_PAGE_SHIFT) &
@@ -1157,17 +1159,19 @@ bool process_cmd(
             }
             break;
 
-        case CQ_PREFETCH_CMD_RELAY_PAGED_PACKED:
+        case CQ_PREFETCH_CMD_RELAY_PAGED_PACKED: {
             // DPRINT << "relay paged packed" << ENDL();
+            DeviceZoneScopedN("CQ_PREFETCH_CMD_RELAY_PAGED_PACKED");
             if (exec_buf) {
                 stride =
                     process_exec_buf_relay_paged_packed_cmd(cmd_ptr, downstream_data_ptr, l1_cache, exec_buf_state);
             } else {
                 stride = process_relay_paged_packed_cmd<cmddat_wrap_enable>(cmd_ptr, downstream_data_ptr, l1_cache);
             }
-            break;
+        } break;
 
-        case CQ_PREFETCH_CMD_RELAY_INLINE:
+        case CQ_PREFETCH_CMD_RELAY_INLINE: {
+            DeviceZoneScopedN("CQ_PREFETCH_CMD_RELAY_INLINE");
             // DPRINT << "relay inline" << ENDL();
             if constexpr (exec_buf) {
                 if (cmd->relay_inline.dispatcher_type == DispatcherSelect::DISPATCH_MASTER) {
@@ -1186,18 +1190,20 @@ bool process_cmd(
                         cmd_ptr, downstream_data_ptr_s);
                 }
             }
-            break;
+        } break;
 
-        case CQ_PREFETCH_CMD_RELAY_INLINE_NOFLUSH:
+        case CQ_PREFETCH_CMD_RELAY_INLINE_NOFLUSH: {
+            DeviceZoneScopedN("CQ_PREFETCH_CMD_RELAY_INLINE_NOFLUSH");
             // DPRINT << "inline no flush" << ENDL();
             if (exec_buf) {
                 stride = process_exec_buf_relay_inline_noflush_cmd(cmd_ptr, downstream_data_ptr, exec_buf_state);
             } else {
                 stride = process_relay_inline_noflush_cmd<cmddat_wrap_enable>(cmd_ptr, downstream_data_ptr);
             }
-            break;
+        } break;
 
-        case CQ_PREFETCH_CMD_EXEC_BUF:
+        case CQ_PREFETCH_CMD_EXEC_BUF: {
+            DeviceZoneScopedN("CQ_PREFETCH_CMD_EXEC_BUF");
             // DPRINT << "exec buf: " << cmd_ptr << ENDL();
             ASSERT(!exec_buf);
             if (is_h_variant) {
@@ -1205,35 +1211,36 @@ bool process_cmd(
             }
             stride = process_exec_buf_cmd(cmd_ptr, downstream_data_ptr, l1_cache, exec_buf_state);
             stall_state = NOT_STALLED;  // Stall is no longer required after ExecBuf finished.
-            break;
+        } break;
 
-        case CQ_PREFETCH_CMD_EXEC_BUF_END:
+        case CQ_PREFETCH_CMD_EXEC_BUF_END: {
+            DeviceZoneScopedN("CQ_PREFETCH_CMD_EXEC_BUF_END");
             // DPRINT << "exec buf end: " << cmd_ptr << ENDL();
             ASSERT(exec_buf);
             stride = process_exec_buf_relay_inline_cmd<DispatchRelayInlineState>(
                 cmd_ptr, downstream_data_ptr, exec_buf_state);
             done = true;
-            break;
+        } break;
 
-        case CQ_PREFETCH_CMD_STALL:
+        case CQ_PREFETCH_CMD_STALL: {
             // DPRINT << "stall" << ENDL();
             stride = process_stall(cmd_ptr);
-            break;
+        } break;
 
-        case CQ_PREFETCH_CMD_DEBUG:
+        case CQ_PREFETCH_CMD_DEBUG: {
             // DPRINT << "debug" << ENDL();
             //  Splitting debug cmds not implemented for exec_bufs (yet)
             if (exec_buf) {
                 ASSERT(0);
             }
             stride = process_debug_cmd(cmd_ptr);
-            break;
+        } break;
 
-        case CQ_PREFETCH_CMD_TERMINATE:
+        case CQ_PREFETCH_CMD_TERMINATE: {
             // DPRINT << "prefetch terminating_" << is_h_variant << is_d_variant << ENDL();
             ASSERT(!exec_buf);
             done = true;
-            break;
+        } break;
 
         default:
             // DPRINT << "prefetch invalid command:" << (uint32_t)cmd->base.cmd_id << " " << cmd_ptr << " " <<
