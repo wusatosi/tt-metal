@@ -242,6 +242,8 @@ class Cluster {
     // Set tunnels from mmio
     void set_tunnels_from_mmio_device();
 
+    void initialize_blackhole_eth_connectivity();
+
     ARCH arch_;
     TargetDevice target_type_;
 
@@ -285,6 +287,20 @@ class Cluster {
     tt_device_l1_address_params l1_address_params;
 
     std::unordered_map<chip_id_t, std::unordered_map<chip_id_t, std::vector<CoreCoord>>> ethernet_sockets_;
+
+    // Blackhole ethernet related data structures
+    // TODO: this should be moved into UMD and exported to Metal
+    struct chip_identifier_t {
+        uint8_t chip_location;
+        uint64_t board_id;
+    };
+    std::vector<chip_identifier_t> chip_to_location; // one entry for each chips
+
+    std::vector<std::vector<CoreCoord>> chip_to_logical_active_eths;
+
+    using chip_id_and_eth_channel = std::pair<chip_id_t, uint32_t>;
+    // For each chip has a logical eth chanel sized vector where each index specifies which chip/eth that channel is connected too
+    std::vector<std::vector<std::optional<chip_id_and_eth_channel>>> chip_to_eth_connected_chips;
 };
 
 }  // namespace tt
