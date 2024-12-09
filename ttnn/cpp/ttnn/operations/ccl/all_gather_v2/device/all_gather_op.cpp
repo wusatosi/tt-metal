@@ -158,10 +158,13 @@ Tensor all_gather_v2(
     tt::log_debug(tt::LogOp, "DEBUG: creating line_fabric with num devices: {}, num links: {}", devices.size(), num_links);
     tt::log_debug(tt::LogOp, "DEBUG: line_fabric is created");
 
-    auto drain_sync_core = CoreCoord(4,4);
+    // create this semaphore for all cores since we don't know which core will be used for teardown draining
+    CoreCoord grid_size = devices[0]->compute_with_storage_grid_size();
+    auto core_grid = CoreRange({0, 0}, {grid_size.x - 1, grid_size.y - 1});
+
     std::vector<GlobalSemaphore> semaphore_handles;
     for (const auto& device : devices) {
-        auto handle = GlobalSemaphore::create(device, {drain_sync_core}, 0);
+        auto handle = GlobalSemaphore::create(device, core_grid, 0);
         tt::log_info(tt::LogOp, "Created semaphore handle at address {} for device {}",
             handle->address(), device->id());
         semaphore_handles.push_back(std::move(*handle));
@@ -177,14 +180,6 @@ Tensor all_gather_v2(
             const std::vector<Tensor>& input_tensors,
             const std::vector<std::optional<const Tensor>>& optional_input_tensors,
             const std::vector<std::optional<Tensor>>& optional_output_tensors) mutable -> std::vector<Tensor> {
-
-            // auto drain_sync_core = CoreCoord(8,8);
-            // ttnn::ccl::SyncModeSpec {
-            //     num_devices,
-            //     drain_sync_core,
-            //     {CreateGlobalSemaphore(input_tensor.device(), {drain_sync_core}, 0)},
-            //     {num_devices}
-            // };
 
             const auto& input_tensor = input_tensors.at(0);
 
