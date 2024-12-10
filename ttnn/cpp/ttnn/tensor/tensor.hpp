@@ -389,6 +389,7 @@ Tensor create_device_tensor(
 // void *get_host_buffer(const Tensor &tensor);
 void* get_raw_host_data_ptr(const Tensor& tensor);
 
+void memcpy(CommandQueue& queue, void* dst, const Tensor& src, const bool blocking = true);
 void memcpy(
     CommandQueue& queue,
     void* dst,

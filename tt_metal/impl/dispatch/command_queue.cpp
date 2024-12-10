@@ -1599,6 +1599,7 @@ void HWCommandQueue::copy_into_user_space(
 
         remaining_bytes_to_read -= bytes_xfered;
 
+        // interleaved case + height sharded case
         if (buffer_page_mapping == nullptr) {
             void* contiguous_dst = (void*)(uint64_t(dst) + contig_dst_offset);
             if (page_size == padded_page_size) {

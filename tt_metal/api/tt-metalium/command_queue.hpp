@@ -652,12 +652,6 @@ struct CommandInterface {
     std::optional<uint32_t> trace_id;
     std::optional<BufferRegion> region;
     tt::stl::Span<const SubDeviceId> sub_device_ids;
-};
-
-inline namespace v0 {
-
-class CommandQueue {
-    friend class Trace;
 
 public:
     enum class CommandQueueMode {
