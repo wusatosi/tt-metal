@@ -69,7 +69,7 @@ protected:
 class CommandQueueSingleCardFixture : virtual public DispatchFixture {
 protected:
     void SetUp() override {
-        this->validate_dispatch_mode();
+        // this->validate_dispatch_mode();
         this->arch_ = tt::get_arch_from_string(tt::test_utils::get_umd_arch_name());
         this->create_devices();
     }
@@ -91,8 +91,9 @@ protected:
         const auto& dispatch_core_config = tt::llrt::OptionsG.get_dispatch_core_config();
         const chip_id_t mmio_device_id = 0;
         this->reserved_devices_ = tt::tt_metal::detail::CreateDevices(
-            {mmio_device_id}, 1, DEFAULT_L1_SMALL_SIZE, trace_region_size, dispatch_core_config);
+            {0, 1, 4, 5, 2, 6, 3, 7}, 1, DEFAULT_L1_SMALL_SIZE, trace_region_size, dispatch_core_config);
         auto enable_remote_chip = getenv("TT_METAL_ENABLE_REMOTE_CHIP");
+        // std::cout << enable_remote_chip << std::endl;
         if (enable_remote_chip) {
             for (const auto& [id, device] : this->reserved_devices_) {
                 this->devices_.push_back(device);

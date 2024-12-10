@@ -793,6 +793,232 @@ TEST_F(CommandQueueSingleCardProgramFixture, TensixTestMultiCbSeqConfigCorrectly
     }
 }
 
+std::shared_ptr<Program> create_program_multi_core_rta(
+    const DummyProgramConfig& rta_program_config,
+    const DummyProgramConfig& sem_program_config,
+    const std::vector<uint32_t>& dummy_cr0_args,
+    const std::vector<uint32_t>& dummy_cr1_args,
+    const std::vector<uint32_t>& sem_values,
+    const DummyProgramMultiCBConfig& cb_configs,
+    uint32_t base_addr) {
+    std::shared_ptr<Program> program = std::make_shared<Program>();
+    CoreRangeSet rta_cr_set = rta_program_config.cr_set;
+    uint32_t rta_base_dm0 = base_addr;
+    uint32_t rta_base_dm1 = rta_base_dm0 + 1024 * sizeof(uint32_t);
+    uint32_t rta_base_compute = rta_base_dm1 + 2048 * sizeof(uint32_t);
+    std::map<string, string> dm_defines0 = {
+        {"DATA_MOVEMENT", "1"},
+        {"NUM_RUNTIME_ARGS", std::to_string(256)},
+        {"RESULTS_ADDR", std::to_string(rta_base_dm0)}};
+    std::map<string, string> dm_defines1 = {
+        {"DATA_MOVEMENT", "1"},
+        {"NUM_RUNTIME_ARGS", std::to_string(256)},
+        {"RESULTS_ADDR", std::to_string(rta_base_dm1)}};
+    std::map<string, string> compute_defines = {
+        {"COMPUTE", "1"},
+        {"NUM_RUNTIME_ARGS", std::to_string(256)},
+        {"RESULTS_ADDR", std::to_string(rta_base_compute)}};
+
+    auto dummy_kernel0 = CreateKernel(
+        *program,
+        "tests/tt_metal/tt_metal/test_kernels/misc/runtime_args_kernel.cpp",
+        rta_cr_set,
+        DataMovementConfig{
+            .processor = DataMovementProcessor::RISCV_0, .noc = NOC::RISCV_0_default, .defines = dm_defines0});
+
+    auto dummy_kernel1 = CreateKernel(
+        *program,
+        "tests/tt_metal/tt_metal/test_kernels/misc/runtime_args_kernel.cpp",
+        rta_cr_set,
+        DataMovementConfig{
+            .processor = DataMovementProcessor::RISCV_1, .noc = NOC::RISCV_1_default, .defines = dm_defines1});
+
+    auto dummy_compute_kernel = CreateKernel(
+        *program,
+        "tests/tt_metal/tt_metal/test_kernels/misc/runtime_args_kernel.cpp",
+        rta_cr_set,
+        ComputeConfig{.defines = compute_defines});
+
+    auto it = rta_program_config.cr_set.ranges().begin();
+    CoreRange core_range_0 = *it;
+    std::advance(it, 1);
+    CoreRange core_range_1 = *it;
+
+    for (const CoreCoord& core_coord : core_range_0) {
+        SetRuntimeArgs(*program, dummy_kernel0, core_coord, dummy_cr0_args);
+        SetRuntimeArgs(*program, dummy_kernel1, core_coord, dummy_cr0_args);
+        SetRuntimeArgs(*program, dummy_compute_kernel, core_coord, dummy_cr0_args);
+    }
+
+    for (const CoreCoord& core_coord : core_range_1) {
+        SetRuntimeArgs(*program, dummy_kernel0, core_coord, dummy_cr1_args);
+        SetRuntimeArgs(*program, dummy_kernel1, core_coord, dummy_cr1_args);
+        SetRuntimeArgs(*program, dummy_compute_kernel, core_coord, dummy_cr1_args);
+    }
+    for (auto sem_value : sem_values) {
+        CreateSemaphore(*program, sem_program_config.cr_set, sem_value);
+    }
+    for (auto cb_config : cb_configs.cb_config_vector) {
+        const uint32_t cb_id = cb_config.cb_id;
+        const uint32_t cb_num_pages = cb_config.num_pages;
+        const uint32_t page_size = cb_config.page_size;
+        const uint32_t cb_size = cb_num_pages * page_size;
+        const tt::DataFormat data_format = cb_config.data_format;
+        const CircularBufferConfig circular_buffer_config =
+            CircularBufferConfig(cb_size, {{cb_id, data_format}}).set_page_size(cb_id, page_size);
+        const CBHandle cb_handle = CreateCircularBuffer(*program, cb_configs.cr_set, circular_buffer_config);
+    }
+
+    return program;
+}
+
+TEST_F(CommandQueueSingleCardFixture, TestSameProgramMultiDevice) {
+    CoreCoord worker_grid_size = devices_[0]->compute_with_storage_grid_size();
+    CoreRange cr0({0, 0}, {worker_grid_size.x - 1, 3});
+    CoreRange cr1({0, 4}, {worker_grid_size.x - 1, worker_grid_size.y - 1});
+    CoreRangeSet rta_cr_set(std::vector{cr0, cr1});
+    DummyProgramConfig rta_program_config = {.cr_set = rta_cr_set};
+    CoreRange sem_cr_range({0, 0}, {worker_grid_size.x - 1, worker_grid_size.y - 1});
+    CoreRangeSet sem_cr_set = CoreRangeSet(sem_cr_range);
+    DummyProgramConfig sem_program_config = {.cr_set = sem_cr_set};
+
+    vector<uint32_t> dummy_cr0_args;
+    vector<uint32_t> dummy_cr1_args;
+    vector<uint32_t> dummy_sems;
+    uint32_t num_runtime_args_for_cr0 = 32;
+    uint32_t num_runtime_args_for_cr1 = 35;
+    // Initialize RTA data across core_ranges
+    uint32_t start_idx = 25;
+    for (uint32_t i = 0; i < num_runtime_args_for_cr0; i++) {
+        dummy_cr0_args.push_back(start_idx++);
+    }
+    for (uint32_t i = 0; i < num_runtime_args_for_cr1; i++) {
+        dummy_cr1_args.push_back(start_idx++);
+    }
+    // Initialize Semaphore values
+    for (uint32_t i = 0; i < NUM_SEMAPHORES; i++) {
+        dummy_sems.push_back(i + 1);
+    }
+
+    // Initialize CB Configs
+    CBConfig cb_config_0 = {.cb_id = 0, .num_pages = 1, .page_size = 2048, .data_format = tt::DataFormat::Float16_b};
+    CBConfig cb_config_1 = {.cb_id = 1, .num_pages = 2, .page_size = 4096, .data_format = tt::DataFormat::Float16_b};
+    CBConfig cb_config_2 = {.cb_id = 2, .num_pages = 2, .page_size = 2048, .data_format = tt::DataFormat::Float16_b};
+    CBConfig cb_config_3 = {.cb_id = 3, .num_pages = 4, .page_size = 2048, .data_format = tt::DataFormat::Float16_b};
+
+    DummyProgramMultiCBConfig cb_config = {
+        .cr_set = sem_cr_set, .cb_config_vector = {cb_config_0, cb_config_1, cb_config_2, cb_config_3}};
+
+    uint32_t rta_base_addr = devices_[0]->get_base_allocator_addr(HalMemType::L1);
+    auto program = create_program_multi_core_rta(
+        rta_program_config, sem_program_config, dummy_cr0_args, dummy_cr1_args, dummy_sems, cb_config, rta_base_addr);
+
+    uint32_t rta_base_dm0 = rta_base_addr;
+    uint32_t rta_base_dm1 = rta_base_dm0 + 1024 * sizeof(uint32_t);
+    uint32_t rta_base_compute = rta_base_dm1 + 2048 * sizeof(uint32_t);
+    uint32_t semaphore_buffer_size = dummy_sems.size() * hal.get_alignment(HalMemType::L1);
+    uint32_t cb_config_buffer_size =
+        NUM_CIRCULAR_BUFFERS * UINT32_WORDS_PER_LOCAL_CIRCULAR_BUFFER_CONFIG * sizeof(uint32_t);
+    bool pass = true;
+    for (auto device : devices_) {
+        std::cout << "Running test on " << device->id() << std::endl;
+        EnqueueProgram(device->command_queue(), *program, false);
+        Finish(device->command_queue());
+
+        for (const CoreCoord& core_coord : cr0) {
+            vector<uint32_t> dummy_kernel0_args_readback;
+            tt::tt_metal::detail::ReadFromDeviceL1(
+                device,
+                core_coord,
+                rta_base_dm0,
+                num_runtime_args_for_cr0 * sizeof(uint32_t),
+                dummy_kernel0_args_readback);
+            pass &= (dummy_cr0_args == dummy_kernel0_args_readback);
+
+            vector<uint32_t> dummy_kernel1_args_readback;
+            tt::tt_metal::detail::ReadFromDeviceL1(
+                device,
+                core_coord,
+                rta_base_dm1,
+                num_runtime_args_for_cr0 * sizeof(uint32_t),
+                dummy_kernel1_args_readback);
+            pass &= (dummy_cr0_args == dummy_kernel1_args_readback);
+
+            vector<uint32_t> dummy_compute_args_readback;
+            tt::tt_metal::detail::ReadFromDeviceL1(
+                device,
+                core_coord,
+                rta_base_compute,
+                num_runtime_args_for_cr0 * sizeof(uint32_t),
+                dummy_compute_args_readback);
+            pass &= (dummy_cr0_args == dummy_compute_args_readback);
+        }
+
+        for (const CoreCoord& core_coord : cr1) {
+            vector<uint32_t> dummy_kernel0_args_readback;
+            tt::tt_metal::detail::ReadFromDeviceL1(
+                device,
+                core_coord,
+                rta_base_dm0,
+                num_runtime_args_for_cr1 * sizeof(uint32_t),
+                dummy_kernel0_args_readback);
+            pass &= (dummy_cr1_args == dummy_kernel0_args_readback);
+
+            vector<uint32_t> dummy_kernel1_args_readback;
+            tt::tt_metal::detail::ReadFromDeviceL1(
+                device,
+                core_coord,
+                rta_base_dm1,
+                num_runtime_args_for_cr1 * sizeof(uint32_t),
+                dummy_kernel1_args_readback);
+            pass &= (dummy_cr1_args == dummy_kernel1_args_readback);
+
+            vector<uint32_t> dummy_compute_args_readback;
+            tt::tt_metal::detail::ReadFromDeviceL1(
+                device,
+                core_coord,
+                rta_base_compute,
+                num_runtime_args_for_cr1 * sizeof(uint32_t),
+                dummy_compute_args_readback);
+            pass &= (dummy_cr1_args == dummy_compute_args_readback);
+        }
+        vector<uint32_t> semaphore_vals;
+        for (const CoreCoord& core_coord : sem_cr_range) {
+            uint32_t expected_sem_idx = 0;
+            uint32_t sem_base_addr = program->get_sem_base_addr(devices_[0], core_coord, CoreType::WORKER);
+            tt::tt_metal::detail::ReadFromDeviceL1(
+                device, core_coord, sem_base_addr, semaphore_buffer_size, semaphore_vals);
+            for (uint32_t i = 0; i < semaphore_vals.size();
+                 i += (hal.get_alignment(HalMemType::L1) / sizeof(uint32_t))) {
+                pass &= (semaphore_vals[i] == dummy_sems[expected_sem_idx]);
+                expected_sem_idx++;
+            }
+        }
+        vector<uint32_t> cb_config_vector;
+        for (const CoreCoord& core_coord : sem_cr_range) {
+            tt::tt_metal::detail::ReadFromDeviceL1(
+                device,
+                core_coord,
+                program->get_cb_base_addr(device, core_coord, CoreType::WORKER),
+                cb_config_buffer_size,
+                cb_config_vector);
+            uint32_t cb_addr = device->get_base_allocator_addr(HalMemType::L1);
+            for (uint32_t i = 0; i < cb_config.cb_config_vector.size(); i++) {
+                const uint32_t index = cb_config.cb_config_vector[i].cb_id * sizeof(uint32_t);
+                const uint32_t cb_num_pages = cb_config.cb_config_vector[i].num_pages;
+                const uint32_t cb_size = cb_num_pages * cb_config.cb_config_vector[i].page_size;
+                const bool addr_match = cb_config_vector.at(index) == cb_addr;
+                const bool size_match = cb_config_vector.at(index + 1) == cb_size;
+                const bool num_pages_match = cb_config_vector.at(index + 2) == cb_num_pages;
+                pass &= (addr_match and size_match and num_pages_match);
+
+                cb_addr += cb_size;
+            }
+        }
+    }
+    EXPECT_TRUE(pass);
+}
+
 TEST_F(CommandQueueSingleCardProgramFixture, TensixTestMultiCbRandomConfigCorrectlySentSingleCore) {
     CoreRange cr({0, 0}, {0, 0});
     CoreRangeSet cr_set({cr});

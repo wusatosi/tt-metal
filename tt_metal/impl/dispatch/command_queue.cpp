@@ -1583,8 +1583,8 @@ void EnqueueProgramCommand::process() {
     // Currently this is mapped by device, but will be mapped by multiple values in the future
     auto& cached_program_command_sequences = program.get_cached_program_command_sequences();
     uint64_t command_hash = this->device->id();
-    auto cached_cmd_iter = cached_program_command_sequences.find(command_hash);
-    bool is_cached = program.is_cached() && cached_cmd_iter != cached_program_command_sequences.end();
+    bool is_cached = program.is_cached(); // && cached_cmd_iter != cached_program_command_sequences.end();
+    auto cached_cmd_iter = cached_program_command_sequences.find(0);
     if (!is_cached) {
         // assemble_stall_commands is hardcoded to always wait for everything for now.
         this->config_buffer_mgr.free(this->expected_num_workers_completed);
@@ -1613,6 +1613,7 @@ void EnqueueProgramCommand::process() {
     // Preamble, some waits and stalls
     // can be written directly to the issue queue
     if (!is_cached) {
+        std::cout << "Program is not cached" << std::endl;
         ProgramCommandSequence program_command_sequence;
         this->assemble_preamble_commands(program_command_sequence, kernel_config_addrs);
         this->assemble_stall_commands(program_command_sequence, true);
@@ -1628,10 +1629,11 @@ void EnqueueProgramCommand::process() {
         // Stall first for simplicity, because we don't use `sync_count` in assemble_stall_commands.
         this->write_program_command_sequence(
             program_command_sequence, /*stall_first=*/true, /*stall_before_program=*/false);
-        this->assemble_stall_commands(program_command_sequence, false);
+        this->assemble_stall_commands(program_command_sequence, true);
         cached_program_command_sequences.insert({command_hash, std::move(program_command_sequence)});
         program.set_cached();
     } else {
+        std::cout << "Program is cached" << std::endl;
         static constexpr uint32_t wait_count_offset = (sizeof(CQPrefetchCmd) + offsetof(CQDispatchCmd, wait.count));
         static constexpr uint32_t tensix_l1_write_offset_offset =
             (sizeof(CQPrefetchCmd) + offsetof(CQDispatchCmd, set_write_offset.offset1));
@@ -2478,14 +2480,12 @@ void HWCommandQueue::enqueue_program(Program& program, bool blocking) {
     std::vector<SubDeviceId> sub_device_ids = {program.determine_sub_device_ids(device)};
     TT_FATAL(sub_device_ids.size() == 1, "Programs must be executed on a single sub-device");
     if (not program.is_finalized()) {
+        std::cout << "Finalizing program" << std::endl;
         program.finalize(device);
-        TT_FATAL(!this->manager.get_bypass_mode(), "Tracing should only be used when programs have been cached");
-        if (const auto &kernels_buffer = program.get_kernels_buffer()) {
-            // Only stall for used sub-devices
-            this->enqueue_write_buffer(
-                *kernels_buffer, program.get_program_transfer_info().binary_data.data(), false, sub_device_ids);
-        }
     }
+    program.get_kernels_buffer() = Buffer::create(device, program.get_program_transfer_info().binary_data.size() * sizeof(uint32_t), HostMemDeviceCommand::PROGRAM_PAGE_SIZE, BufferType::DRAM, TensorMemoryLayout::INTERLEAVED, std::nullopt, false);
+    this->enqueue_write_buffer(
+        *program.get_kernels_buffer(), program.get_program_transfer_info().binary_data.data(), false, sub_device_ids);
 
     program.set_last_used_command_queue_for_testing(this);
 

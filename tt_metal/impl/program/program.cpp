@@ -50,15 +50,14 @@ void GenerateBinaries(Device *device, JitBuildOptions &build_options, const std:
 #include <fstream>
 #endif
 
-size_t KernelCompileHash(const std::shared_ptr<Kernel>& kernel, JitBuildOptions &build_options, uint32_t build_key, size_t device_kernel_defines_hash) {
+size_t KernelCompileHash(const std::shared_ptr<Kernel>& kernel, JitBuildOptions &build_options, size_t device_kernel_defines_hash) {
     // Account for device id in hash because generated headers are dependent on harvesting config, which can differ per
     // device This can be removed with https://github.com/tenstorrent/tt-metal/issues/3381
 
     // Also account for watcher/dprint enabled in hash because they enable additional code to
     // be compiled into the kernel.
     string compile_hash_str = fmt::format(
-        "{}_{}_{}_{}_{}",
-        build_key,
+        "{}_{}_{}_{}",
         std::to_string(std::hash<tt_hlk_desc>{}(build_options.hlk_desc)),
         kernel->compute_hash(),
         device_kernel_defines_hash,
@@ -75,7 +74,7 @@ size_t KernelCompileHash(const std::shared_ptr<Kernel>& kernel, JitBuildOptions 
     static std::mutex mutex_;
     {
         unique_lock<mutex> lock;
-        f << kernel->name() << " :: " << build_key << "::" << std::hash<tt_hlk_desc>{}(build_options.hlk_desc)
+        f << kernel->name() << "::" << std::hash<tt_hlk_desc>{}(build_options.hlk_desc)
           << " :: " << kernel->compute_hash() << " :: " << device_kernel_defines_hash << " :: " << compile_hash_str << " " << compile_hash << std::endl
           << std::flush;
     }
@@ -247,11 +246,11 @@ class Program_ {
     // Ensures that statically allocated circular buffers do not grow into L1 buffer space
     void validate_circular_buffer_region(const Device *device);
 
-    void set_remote_circular_buffer_init(Device* device, const std::shared_ptr<Kernel>& kernel) const;
+    void set_remote_circular_buffer_init(const std::shared_ptr<Kernel>& kernel) const;
 
-    void set_cb_data_fmt( Device *device, const std::vector<CoreRange> & crs, JitBuildOptions& build_options) const;
+    void set_cb_data_fmt(const std::vector<CoreRange> & crs, JitBuildOptions& build_options) const;
 
-    void set_cb_tile_dims( Device *device, const std::vector<CoreRange> & crs, JitBuildOptions& build_options) const;
+    void set_cb_tile_dims(const std::vector<CoreRange> & crs, JitBuildOptions& build_options) const;
 
     void update_kernel_groups(uint32_t programmable_core_type_index);
 
@@ -584,6 +583,7 @@ void detail::Program_::update_kernel_groups(uint32_t programmable_core_type_inde
             index++;
         }
     }
+
 }
 
 void detail::Program_::CircularBufferAllocator::mark_address(uint64_t address, uint64_t size, uint64_t base_address) {
@@ -888,7 +888,7 @@ std::vector<std::vector<CoreCoord>> detail::Program_::logical_cores() const {
 
 std::vector<std::vector<CoreCoord>> Program::logical_cores() const { return pimpl_->logical_cores(); }
 
-void detail::Program_::set_remote_circular_buffer_init(Device* device, const std::shared_ptr<Kernel>& kernel) const {
+void detail::Program_::set_remote_circular_buffer_init(const std::shared_ptr<Kernel>& kernel) const {
     const auto& kernel_defines = kernel->defines();
     const std::string reserved_defines[] = {"ALIGN_LOCAL_CBS_TO_REMOTE_CBS", "UPDATE_REMOTE_CB_CONFIGS_IN_L1"};
     for (const auto& str : reserved_defines) {
@@ -939,7 +939,7 @@ void detail::Program_::set_remote_circular_buffer_init(Device* device, const std
     }
 }
 
-void detail::Program_::set_cb_data_fmt(Device *device, const std::vector<CoreRange> &crs, JitBuildOptions &build_options) const {
+void detail::Program_::set_cb_data_fmt(const std::vector<CoreRange> &crs, JitBuildOptions &build_options) const {
     //ZoneScoped;
     for (const auto& logical_cr : crs) {
         const auto& cbs_on_core = this->circular_buffers_on_corerange(logical_cr);
@@ -952,7 +952,7 @@ void detail::Program_::set_cb_data_fmt(Device *device, const std::vector<CoreRan
     }
 }
 
-void detail::Program_::set_cb_tile_dims(Device *device, const std::vector<CoreRange> &crs, JitBuildOptions &build_options) const {
+void detail::Program_::set_cb_tile_dims(const std::vector<CoreRange> &crs, JitBuildOptions &build_options) const {
     //ZoneScoped;
     for (const auto &logical_cr : crs) {
         const auto& cbs_on_core = this->circular_buffers_on_corerange(logical_cr);
@@ -1007,6 +1007,11 @@ void detail::Program_::populate_dispatch_data(Device *device) {
         // TODO: use semaphore.core_type from main
         if (semaphore.core_type() == CoreType::WORKER) {
             uint32_t index = hal.get_programmable_core_type_index(HalProgrammableCoreType::TENSIX);
+            std::cout << "Sem ranges: " << semaphore.core_range_set().ranges().size() <<  std::endl;
+            std::cout << semaphore.core_range_set().ranges()[0].start_coord.str() << " " << semaphore.core_range_set().ranges()[0].end_coord.str() << std::endl;
+            for (auto range : semaphore.core_range_set().ranges()) {
+                std::cout << range.start_coord.str() << " " << range.end_coord.str() << std::endl;
+            }
             std::vector<std::pair<transfer_info_cores, uint32_t>> dst_noc_multicast_info =
                 device->extract_dst_noc_multicast_info<std::vector<CoreRange>>(
                     semaphore.core_range_set().ranges(), CoreType::WORKER);
@@ -1094,8 +1099,8 @@ void detail::Program_::populate_dispatch_data(Device *device) {
 
     if (binaries_data.size() > 0) {
         // We allocate program binaries top down to minimize fragmentation with other buffers in DRAM, which are typically allocated bottom up
-        this->kernels_buffer = Buffer::create(
-            device, binaries_data.size() * sizeof(uint32_t), HostMemDeviceCommand::PROGRAM_PAGE_SIZE, BufferType::DRAM, TensorMemoryLayout::INTERLEAVED, std::nullopt, false);
+        // this->kernels_buffer = Buffer::create(
+        //     device, binaries_data.size() * sizeof(uint32_t), HostMemDeviceCommand::PROGRAM_PAGE_SIZE, BufferType::DRAM, TensorMemoryLayout::INTERLEAVED, std::nullopt, false);
 
         this->program_transfer_info.binary_data = binaries_data;
     }
@@ -1109,7 +1114,10 @@ void detail::Program_::populate_dispatch_data(Device *device) {
                 std::vector<std::pair<transfer_info_cores, uint32_t>> dst_noc_multicast_info =
                     device->extract_dst_noc_multicast_info<std::vector<CoreRange>>(
                         kernel_group.core_ranges.ranges(), core_type);
-
+                std::cout << "Kernel ranges: " << std::endl;
+                for (auto range : kernel_group.core_ranges.ranges()) {
+                    std::cout << range.start_coord.str() << " " << range.end_coord.str() << std::endl;
+                }
                 std::vector<KernelHandle> kernel_ids;
                 for (int dispatch_class = 0; dispatch_class < kernel_group.kernel_ids.size(); dispatch_class++) {
                     auto &optional_id = kernel_group.kernel_ids[dispatch_class];
@@ -1506,9 +1514,10 @@ void Program::finalize(Device *device) { pimpl_->finalize(device); }
 
 void detail::Program_::compile(Device *device, bool fd_bootloader_mode) {
     //ZoneScoped;
-    if (compiled_.contains(device->id())) {
+    if (not compiled_.empty()) {
         return;
     }
+    std::cout << "Compiling program" << std::endl;
     // Clear the determined sub_device_ids when we compile the program for the first time
     // This way, determine_sub_device_ids is forced to recalculate with the finalized information on the used cores
     if (compiled_.empty()) {
@@ -1567,12 +1576,12 @@ void detail::Program_::compile(Device *device, bool fd_bootloader_mode) {
                     JitBuildOptions build_options(device->build_env());
                     kernel->set_build_options(build_options);
                     if (this->compiled_.empty()) {
-                        this->set_remote_circular_buffer_init(device, kernel);
+                        this->set_remote_circular_buffer_init(kernel);
                     }
-                    this->set_cb_data_fmt(device, kernel->logical_coreranges(), build_options);
-                    this->set_cb_tile_dims(device, kernel->logical_coreranges(), build_options);
+                    this->set_cb_data_fmt(kernel->logical_coreranges(), build_options);
+                    this->set_cb_tile_dims(kernel->logical_coreranges(), build_options);
 
-                    auto kernel_hash = KernelCompileHash(kernel, build_options, device->build_key(), device->get_device_kernel_defines_hash());
+                    auto kernel_hash = KernelCompileHash(kernel, build_options, device->get_device_kernel_defines_hash());
                     std::string kernel_path_suffix = kernel->name() + "/" + std::to_string(kernel_hash) + "/";
                     kernel->set_full_name(kernel_path_suffix);
                     build_options.set_name(kernel_path_suffix);
@@ -1775,7 +1784,7 @@ void Program::release_buffers() { pimpl_->release_buffers(); }
 std::vector<std::reference_wrapper<const Semaphore>> detail::Program_::semaphores_on_core(const CoreCoord &core) const {
     std::vector<std::reference_wrapper<const Semaphore>> semaphores;
     for (const Semaphore &s : this->semaphores_) {
-        if (s.initialized_on_logical_core(core)) {
+        if (s.initialized_on_logical_core(core)) {\
             semaphores.emplace_back(std::cref(s));
         }
     }
@@ -1796,7 +1805,7 @@ const std::vector<SubDeviceId> &Program::determine_sub_device_ids(const Device *
 
 const ProgramTransferInfo &Program::get_program_transfer_info() const noexcept { return pimpl_->program_transfer_info; }
 
-const std::shared_ptr<Buffer> &Program::get_kernels_buffer() const noexcept { return pimpl_->kernels_buffer; }
+std::shared_ptr<Buffer> &Program::get_kernels_buffer() const noexcept { return pimpl_->kernels_buffer; }
 
 const std::vector<uint32_t> &Program::get_program_config_sizes() const noexcept { return pimpl_->program_config_sizes_; }
 

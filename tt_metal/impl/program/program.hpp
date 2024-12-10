@@ -202,7 +202,7 @@ class Program {
     friend detail::Internal_;
 
     const ProgramTransferInfo &get_program_transfer_info() const noexcept;
-    const std::shared_ptr<Buffer> &get_kernels_buffer() const noexcept;
+    std::shared_ptr<Buffer> &get_kernels_buffer() const noexcept;
     const std::vector<uint32_t> &get_program_config_sizes() const noexcept;
     std::unordered_map<uint64_t, ProgramCommandSequence> &get_cached_program_command_sequences() noexcept;
 };
