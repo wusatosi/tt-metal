@@ -47,6 +47,185 @@ def pad_to_dram_banks(num, lcm=32 * 12):
     return padded_number
 
 
+def create_in0_tensor(M, K, grid_size, in0_dtype, device):
+    in0_shape = [1, 1, M, K]
+    num_cores = grid_size[0] * grid_size[1]
+
+    in0 = torch.zeros(in0_shape).bfloat16().float()
+
+    in0_memory_config = ttnn.create_sharded_memory_config(
+        in0_shape,
+        core_grid=ttnn.CoreGrid(y=grid_size[1], x=grid_size[0]),
+        strategy=ttnn.ShardStrategy.WIDTH,
+        orientation=ttnn.ShardOrientation.ROW_MAJOR,
+    )
+    in0_t = ttnn.from_torch(
+        in0,
+        dtype=in0_dtype,
+        layout=ttnn.TILE_LAYOUT,
+        device=device,
+        memory_config=in0_memory_config,
+    )
+    return in0, in0_t
+
+
+def create_in1_tensor(K, N, in1_dtype, device):
+    if is_grayskull() or is_blackhole():
+        N_padded = N
+        num_banks = 8
+    else:
+        N_padded = pad_to_dram_banks(N)
+        num_banks = 12
+
+    in1_shape = [1, 1, K, N]
+    in1_shard_shape = [K, N_padded // num_banks]
+
+    in1_shard_grid = ttnn.CoreCoord(device.dram_grid_size().x - 1, device.dram_grid_size().y - 1)
+    in1_shard_grid = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), in1_shard_grid)})
+    in1_shard_spec = ttnn.ShardSpec(in1_shard_grid, in1_shard_shape, ttnn.ShardOrientation.ROW_MAJOR, False)
+    in1_mem_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.WIDTH_SHARDED, ttnn.BufferType.DRAM, in1_shard_spec)
+
+    in1 = torch.zeros(in1_shape).bfloat16().float()
+
+    in1_t = torch2tt_tensor(in1, device, tt_memory_config=in1_mem_config, tt_dtype=in1_dtype)
+    return in1, in1_t
+
+
+def get_program_config(in0_block_w, out_block_h, out_block_w):
+    return ttnn.MatmulMultiCoreReuseMultiCastDRAMShardedProgramConfig(
+        in0_block_w=in0_block_w,
+        per_core_M=out_block_h,
+        per_core_N=out_block_w,
+        fused_activation=None,
+    )
+
+
+def get_kernel_config(fidelity):
+    if is_grayskull():
+        return ttnn.GrayskullComputeKernelConfig(
+            math_fidelity=fidelity,
+            math_approx_mode=True,
+        )
+    else:
+        return ttnn.WormholeComputeKernelConfig(
+            math_fidelity=fidelity,
+            math_approx_mode=True,
+            fp32_dest_acc_en=False,
+            packer_l1_acc=True,
+        )
+
+
+def run_matmul_no_bias(in0_t, in1_t, program_config, sharded_mem_config, out_dtype, compute_kernel_config):
+    return ttnn.matmul(
+        in0_t,
+        in1_t,
+        program_config=program_config,
+        memory_config=sharded_mem_config,
+        dtype=out_dtype,
+        compute_kernel_config=compute_kernel_config,
+    )
+
+
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 24576, "trace_region_size": 698241024}], indirect=True)
+@pytest.mark.parametrize(
+    "fidelity",
+    [
+        ttnn.MathFidelity.LoFi,
+    ],
+    ids=["LoFi"],
+)
+@pytest.mark.parametrize(
+    "in0_dtype, in1_dtype, out_dtype",
+    [
+        (ttnn.bfloat16, ttnn.bfloat8_b, ttnn.bfloat8_b),
+    ],
+)
+def test_matmul_in1_dram_sharded(
+    device,
+    fidelity,
+    in0_dtype,
+    in1_dtype,
+    out_dtype,
+    function_level_defaults,
+    use_program_cache,
+):
+    grid_size = [8, 1]
+    num_cores = grid_size[0] * grid_size[1]
+
+    sharded_mem_config = ttnn.MemoryConfig(
+        memory_layout=ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        buffer_type=ttnn.BufferType.L1,
+    )
+
+    M = 32
+    K = 4096
+    N = 1792
+    in0, in0_t = create_in0_tensor(M, K, grid_size, in0_dtype, device)
+    in1, in1_t = create_in1_tensor(K, N, in1_dtype, device)
+
+    in0_block_w = 16
+    out_block_h = 1
+    out_block_w = 7
+    program_config = get_program_config(in0_block_w, out_block_h, out_block_w)
+    compute_kernel_config = get_kernel_config(fidelity)
+
+    in1_2, in1_t_2 = create_in1_tensor(K, N, in1_dtype, device)
+    program_config_2 = get_program_config(in0_block_w, out_block_h, out_block_w)
+
+    print("start first run")
+
+    output_t1 = run_matmul_no_bias(in0_t, in1_t, program_config, sharded_mem_config, out_dtype, compute_kernel_config)
+    output_t2 = run_matmul_no_bias(
+        in0_t, in1_t_2, program_config_2, sharded_mem_config, out_dtype, compute_kernel_config
+    )
+    output_t3 = ttnn.mul(
+        output_t1,
+        output_t2,
+        memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
+        input_tensor_a_activation=ttnn.UnaryOpType.SILU,
+        dtype=ttnn.bfloat8_b,
+    )
+
+    print("start")
+    import time
+
+    start = time.time()
+    tid = ttnn.begin_trace_capture(device, cq_id=0)
+    for i in range(1):
+        print(i)
+        output_t1 = run_matmul_no_bias(
+            in0_t, in1_t, program_config, sharded_mem_config, out_dtype, compute_kernel_config
+        )
+        output_t2 = run_matmul_no_bias(
+            in0_t, in1_t_2, program_config_2, sharded_mem_config, out_dtype, compute_kernel_config
+        )
+        in0_t.deallocate(True)
+        output_t3 = ttnn.mul(
+            output_t1,
+            output_t2,
+            memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
+            input_tensor_a_activation=ttnn.UnaryOpType.SILU,
+            dtype=ttnn.bfloat8_b,
+        )
+        output_t1.deallocate(True)
+        output_t2.deallocate(True)
+    ttnn.end_trace_capture(device, tid, cq_id=0)
+
+    end = time.time()
+    elapsed = end - start
+    print(f"Elapsed time no trace: {elapsed} seconds")
+
+    start = time.time()
+    for _ in range(1000000):
+        ttnn.execute_trace(device, tid, cq_id=0, blocking=False)
+    ttnn.synchronize_device(device)
+    ttnn.release_trace(device, tid)
+    end = time.time()
+    elapsed = end - start
+    print(f"Elapsed time trace: {elapsed} seconds")
+    tt_out = ttnn.to_torch(output_t3)
+
+
 def run_test_matmul_in1_dram_sharded(
     device,
     in0_sharded,
