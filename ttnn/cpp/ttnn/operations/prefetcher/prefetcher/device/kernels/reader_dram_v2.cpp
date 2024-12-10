@@ -26,8 +26,6 @@ void get_tensor_addrs_l1(
     }
 }
 
-// [t1_1, t1_2, ..., t1_80, t2_1, t2_2, ..., t2_80, ..., t5_1, t5_2, ..., t5_80]
-
 void kernel_main() {
     constexpr uint32_t num_layers = get_compile_time_arg_val(0);
     constexpr uint32_t num_tensors = get_compile_time_arg_val(1);
