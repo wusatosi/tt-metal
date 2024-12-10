@@ -180,8 +180,12 @@ def run_max_pool(
     )
 
     output_host = output.cpu()
+    print("PYTHON output shape", output_host.shape)
     output_pytorch_padded = torch.Tensor(ttnn.to_torch(output_host))
+    # print("output_pytorch_padded", output_pytorch_padded[0][0][0])
     output_pytorch = output_pytorch_padded[:, :, :, :in_c]
+    # print("output_pytorch shape", output_pytorch.shape)
+    # print("output_pytorch", output_pytorch_padded[0][0])
 
     ## reference
     golden_pytorch = torch.nn.MaxPool2d(

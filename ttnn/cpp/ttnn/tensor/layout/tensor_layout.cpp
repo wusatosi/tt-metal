@@ -19,6 +19,8 @@ size_t round_up(size_t value, size_t multiple) {
 
 Alignment legacyShapeToAlignment(
     const ttnn::Shape& shape, const PageConfig& page_config, const MemoryConfig& memory_config) {
+    printf("HIT LEGACY SHAPE TO ALIGNMENT\n");
+
     const auto& logical_shape = shape.logical_shape();
     const auto& legacy_padded_shape = shape.padded_shape();
     if (logical_shape == legacy_padded_shape) {
@@ -40,9 +42,11 @@ Alignment legacyShapeToAlignment(
         if (page_config.get_layout() == Layout::ROW_MAJOR) {
             const auto& shard_spec = memory_config.shard_spec.value();
             if (shard_spec.physical_shard_shape.has_value()) {
-                return Alignment{shard_spec.physical_shard_shape.value()[1]};
+                printf("hit 0 return\n");
+                return Alignment{tt::round_up(shard_spec.physical_shard_shape.value()[1], tt::constants::TILE_WIDTH)};
             }
-            return Alignment{shard_spec.shape[1]};
+            printf("hit 1 return\n");
+            return Alignment{tt::round_up(shard_spec.shape[1], tt::constants::TILE_WIDTH)};
         }
         return Alignment{};
     }
@@ -58,6 +62,7 @@ Alignment legacyShapeToAlignment(
             values[alignment_size - 2] = legacy_padded_shape[-2];
         }
         Alignment result(std::move(values));
+        printf("hit 2 return\n");
         return result;
     }
 
@@ -78,6 +83,7 @@ Alignment legacyShapeToAlignment(
     }
 
     Alignment result(std::move(values));
+    printf("hit 3 return\n");
     return result;
 }
 
@@ -339,6 +345,12 @@ ttnn::SimpleShape TensorLayout::compute_padded_shape(const ttnn::SimpleShape& sh
         if (rank_index != static_cast<int>(shape.rank()) - 1) {
             accum_alignment *= padded_shape[rank_index];
         }
+
+        printf(
+            "shape[rank_index]: %d, alignment_[alignment_index]: %d, padded_shape[rank_index]: %d\n",
+            shape[rank_index],
+            alignment_[alignment_index],
+            padded_shape[rank_index]);
     }
     for (; rank_index >= 0; rank_index--) {
         padded_shape[rank_index] = shape[rank_index];

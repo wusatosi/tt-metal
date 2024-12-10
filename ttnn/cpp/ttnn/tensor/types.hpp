@@ -252,6 +252,7 @@ class LegacyShape {
 };
 
 inline std::ostream &operator<<(std::ostream &os, const tt::tt_metal::LegacyShape &shape) {
+    printf("LegShape << operator called\n");
     const auto shape_without_padding = shape.without_padding();
     const auto &padding = shape.padding();
     os << "Shape([";
@@ -541,6 +542,7 @@ struct Shape {
 };
 
 static std::ostream &operator<<(std::ostream &os, const Shape &shape) {
+    printf("Shape << operator called\n");
     const auto shape_with_tile_padding = shape.with_tile_padding();
     const auto &padding = shape.value.padding();
     os << "ttnn.Shape([";

@@ -62,10 +62,10 @@ inline void reduce_h_fused(
             out_cb_id, 1 /*out_subblock_h*/, 0, num_out_rows, num_faces_in_tile); /* pack 1 row (1x16 or 1x32) */
         tile_regs_release();
 
-        if (curr_in_cb_id == in_cb_id) {
-            PACK(uint32_t ptr = get_local_cb_interface(out_cb_id).fifo_rd_ptr;);
-            PACK(print_pages(ptr, 64, 1););
-        }
+        // if (curr_in_cb_id == in_cb_id) {
+        //     PACK(uint32_t ptr = get_local_cb_interface(out_cb_id).fifo_wr_ptr;);
+        //     PACK(print_pages(ptr, 64, 1););
+        // }
 
         cb_push_back(out_cb_id, 1);
     }
