@@ -100,6 +100,10 @@ void JitBuildEnv::init(
         }
     }
 
+    if (getenv("TT_METAL_ENABLE_L1_DATA_CACHE") != nullptr) {
+        this->defines_ += "-DENABLE_L1_DATA_CACHE ";
+    }
+
     if (tt::llrt::OptionsG.get_watcher_enabled()) {
         this->defines_ += "-DWATCHER_ENABLED ";
     }
@@ -228,9 +232,6 @@ JitBuildDataMovement::JitBuildDataMovement(const JitBuildEnv& env, const JitBuil
 
     this->defines_ = env_.defines_;
 
-    uint32_t l1_cache_disable_mask =
-        tt::llrt::OptionsG.get_feature_riscv_mask(tt::llrt::RunTimeDebugFeatureDisableL1DataCache);
-
     this->lflags_ = env_.lflags_ + "-Os ";
 
     switch (this->core_id_) {
@@ -238,9 +239,6 @@ JitBuildDataMovement::JitBuildDataMovement(const JitBuildEnv& env, const JitBuil
             this->target_name_ = "brisc";
 
             this->defines_ += "-DCOMPILE_FOR_BRISC ";
-            if ((l1_cache_disable_mask & tt::llrt::DebugHartFlags::RISCV_BR) == tt::llrt::DebugHartFlags::RISCV_BR) {
-                this->defines_ += "-DDISABLE_L1_DATA_CACHE ";
-            }
             if (this->is_fw_) {
                 this->srcs_.push_back("tt_metal/hw/firmware/src/brisc.cc");
             } else {
@@ -261,9 +259,6 @@ JitBuildDataMovement::JitBuildDataMovement(const JitBuildEnv& env, const JitBuil
             this->target_name_ = "ncrisc";
 
             this->defines_ += "-DCOMPILE_FOR_NCRISC ";
-            if ((l1_cache_disable_mask & tt::llrt::DebugHartFlags::RISCV_NC) == tt::llrt::DebugHartFlags::RISCV_NC) {
-                this->defines_ += "-DDISABLE_L1_DATA_CACHE ";
-            }
 
             if (this->is_fw_) {
                 this->srcs_.push_back("tt_metal/hw/firmware/src/ncrisc.cc");
@@ -296,14 +291,9 @@ JitBuildCompute::JitBuildCompute(const JitBuildEnv& env, const JitBuiltStateConf
     this->cflags_ = env_.cflags_ + "-O3 ";
 
     this->defines_ = env_.defines_;
-    uint32_t l1_cache_disable_mask =
-        tt::llrt::OptionsG.get_feature_riscv_mask(tt::llrt::RunTimeDebugFeatureDisableL1DataCache);
     uint32_t debug_compute_mask =
         (tt::llrt::DebugHartFlags::RISCV_TR0 | tt::llrt::DebugHartFlags::RISCV_TR1 |
          tt::llrt::DebugHartFlags::RISCV_TR2);
-    if ((l1_cache_disable_mask & debug_compute_mask) == debug_compute_mask) {
-        this->defines_ += "-DDISABLE_L1_DATA_CACHE ";
-    }
 
     this->includes_ = env_.includes_ + "-I" + env_.root_ + "tt_metal/hw/ckernels/" + env.arch_name_ + "/inc " + "-I" +
                       env_.root_ + "tt_metal/hw/ckernels/" + env.arch_name_ + "/metal/common " + "-I" + env_.root_ +
@@ -389,11 +379,6 @@ JitBuildActiveEthernet::JitBuildActiveEthernet(const JitBuildEnv& env, const Jit
                       "/metal/llk_io ";
 
     this->defines_ = env_.defines_;
-    uint32_t l1_cache_disable_mask =
-        tt::llrt::OptionsG.get_feature_riscv_mask(tt::llrt::RunTimeDebugFeatureDisableL1DataCache);
-    if ((l1_cache_disable_mask & tt::llrt::DebugHartFlags::RISCV_ER) == tt::llrt::DebugHartFlags::RISCV_ER) {
-        this->defines_ += "-DDISABLE_L1_DATA_CACHE ";
-    }
 
     switch (this->core_id_) {
         case 0: {
@@ -449,11 +434,6 @@ JitBuildIdleEthernet::JitBuildIdleEthernet(const JitBuildEnv& env, const JitBuil
                       "/metal/llk_io ";
 
     this->defines_ = env_.defines_;
-    uint32_t l1_cache_disable_mask =
-        tt::llrt::OptionsG.get_feature_riscv_mask(tt::llrt::RunTimeDebugFeatureDisableL1DataCache);
-    if ((l1_cache_disable_mask & tt::llrt::DebugHartFlags::RISCV_ER) == tt::llrt::DebugHartFlags::RISCV_ER) {
-        this->defines_ += "-DDISABLE_L1_DATA_CACHE ";
-    }
 
     switch (this->core_id_) {
         case 0: {

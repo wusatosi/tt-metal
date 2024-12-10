@@ -24,7 +24,6 @@ const char *RunTimeDebugFeatureNames[RunTimeDebugFeatureCount] = {
     "READ_DEBUG_DELAY",
     "WRITE_DEBUG_DELAY",
     "ATOMIC_DEBUG_DELAY",
-    "DISABLE_L1_DATA_CACHE",
 };
 
 const char *RunTimeDebugClassNames[RunTimeDebugClassCount] = {"N/A", "worker", "dispatch", "all"};
@@ -334,8 +333,7 @@ void RunTimeOptions::ParseFeatureRiscvMask(RunTimeDebugFeatures feature, const s
         }
     } else {
         // Default is all RISCVs enabled.
-        bool default_disabled = (feature == RunTimeDebugFeatures::RunTimeDebugFeatureDisableL1DataCache);
-        riscv_mask = default_disabled ? 0 : (RISCV_ER | RISCV_BR | RISCV_TR0 | RISCV_TR1 | RISCV_TR2 | RISCV_NC);
+        riscv_mask = (RISCV_ER | RISCV_BR | RISCV_TR0 | RISCV_TR1 | RISCV_TR2 | RISCV_NC);
     }
 
     feature_targets[feature].riscv_mask = riscv_mask;

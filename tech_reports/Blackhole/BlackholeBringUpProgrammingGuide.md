@@ -70,16 +70,14 @@ Blackhole added a data cache in L1. Writing an address on one core and reading i
 
 Invalidating the cache can be done via calls to `invalidate_l1_cache()`
 
-The cache can be disabled through an env var:
+The cache is disabled by default but can be enabled through an env var:
 ```
-export TT_METAL_DISABLE_L1_DATA_CACHE_RISCVS=<BR,NC,TR,ER>
+export TT_METAL_ENABLE_L1_DATA_CACHE_RISCVS=1
 ```
 
 ### Ethernet Cores
 
-Runtime has not enabled access to second RISC-V on the ethernet cores yet.
-
-Fast dispatch can be run out of ethernet cores.
+Targeting ethernet cores is currently disabled for BH. Enabling ethernet cores is waiting on FW drop from Syseng to be flashed onto all BH chips.
 
 ### DRAM
 
@@ -87,17 +85,13 @@ Runtime has not enabled access to program RISC-V on DRAM yet.
 
 ### NoC
 
-Non-rectangular multicast shapes have not been tested yet.
+Non-rectangular multicast shapes and strided multicast have been tested but not used by TTNN ops.
 
 On previous architectures there are instances in kernels where NoC commands are issued without explicit flushes. These were causing ND mismatches or hangs on BH because data and semaphore signals were getting updated faster than NoC has a chance to service the command and are resolved by adding flushes. Previous architectures did not need this because of higher RISC to L1 latency compared to NoC latency.
 
 ## Debug
 
 Debug tools are functional on BH and it is reccomended to use Watcher when triaging Op failures to catch potential alignment issues. Disabling the L1 cache can be helpful to identify missed cache invalidations.
-
-## Resetting
-
-Depending on the firmware, reset via `tt-smi -r 0` may not work and the board will need to be rebooted.
 
 ## CI
 
