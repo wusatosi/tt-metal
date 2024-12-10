@@ -2,6 +2,7 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
+import os
 from loguru import logger
 import pytest
 import torch
@@ -46,6 +47,7 @@ class ResnetConvTest(OpTestBase):
         loop_count=1000,
         determinism_check_enabled=False,
         determinism_check_iterations=False,
+        compute_with_storage_grid_size=(8, 8),
     ):
         super().__init__(
             mesh_device,
@@ -65,6 +67,7 @@ class ResnetConvTest(OpTestBase):
             determinism_check_enabled,
             determinism_check_iterations,
         )
+        self.compute_with_storage_grid_size = compute_with_storage_grid_size
         self.input_channels = input_channels
         self.out_channels = out_channels
         self.filter_height = filter_height
@@ -136,6 +139,7 @@ class ResnetConvTest(OpTestBase):
             conv_op_cache=self.reader_patterns_cache,
             debug=False,
             groups=self.groups,
+            grid_opt=ttnn.CoreCoord(self.compute_with_storage_grid_size[0], self.compute_with_storage_grid_size[1]),
         )
         self.reader_patterns_cache.clear()
         return tt_output_tensor_on_device
@@ -169,6 +173,13 @@ def test_resnet_conv(mesh_device, iterations, determinism_check_iterations, use_
     input_height = 115
     input_width = 115
     batch_size = 16
+    compute_with_storage_grid_size = (8, 8)
+
+    if os.getenv("TT_CONV_6x8") == "1":
+        batch_size = 12
+        compute_with_storage_grid_size = (6, 8)
+        logger.info("Using batch size 12 for TT_CONV_6x8=1")
+
     output_channels = 64
     input_channels = 16
     torch.manual_seed(0)
@@ -239,6 +250,7 @@ def test_resnet_conv(mesh_device, iterations, determinism_check_iterations, use_
         loop_count=iterations,
         determinism_check_enabled=True if determinism_check_iterations > 0 else False,
         determinism_check_iterations=determinism_check_iterations,
+        compute_with_storage_grid_size=compute_with_storage_grid_size,
     )
 
     resnetConvTest.run_op_test()

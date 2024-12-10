@@ -84,16 +84,25 @@ def test_lm_head_matmul(
         else ttnn.CoreCoord(grid_size[0], grid_size[1])
     )
 
+    in1_dtype = ttnn.DataType.BFLOAT8_B
     seq_len = 32
     per_core_M = seq_len // 32
     per_core_N = 32
     weights_n = (per_core_N * (compute_grid.x * compute_grid.y) * 32) - 512
+
+    sync_short_pause = os.getenv("TT_SYNC_SHORT_PAUSE") == "1"
+    if sync_short_pause:
+        per_core_N = 8
+        weights_n = (per_core_N * (compute_grid.x * compute_grid.y) * 32) - 128
+        in1_dtype = ttnn.DataType.BFLOAT4_B
 
     out_subblock_h = 1
     out_subblock_w = 8
     assert per_core_M % out_subblock_h == 0
     assert per_core_N % out_subblock_w == 0
 
+    print("weights_n", weights_n)
+    print("in1_dtype", in1_dtype)
     subblock_1x1 = os.getenv("TT_USE_1X1_SUBBLOCK") == "1"
     if subblock_1x1:
         out_subblock_h = 1
@@ -139,7 +148,7 @@ def test_lm_head_matmul(
         in1_mem_config=in1_mem_config,
         out_mem_config=out_mem_config,
         in0_dtype=ttnn.DataType.BFLOAT8_B,
-        in1_dtype=ttnn.DataType.BFLOAT8_B,
+        in1_dtype=in1_dtype,
         out_dtype=ttnn.DataType.BFLOAT8_B,
         in0_layout=ttnn.TILE_LAYOUT,
         in1_layout=ttnn.TILE_LAYOUT,

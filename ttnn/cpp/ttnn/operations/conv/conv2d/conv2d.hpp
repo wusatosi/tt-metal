@@ -6,6 +6,7 @@
 #include <optional>
 #include <unordered_set>
 
+#include "common/core_coord.h"
 #include "ttnn/core.hpp"
 #include "ttnn/operations/core/core.hpp"
 #include "ttnn/operations/matmul/matmul.hpp"
@@ -111,7 +112,8 @@ sliding_window::ParallelConfig determine_parallel_config(
     uint32_t output_channels,
     T * device,
     ShardOrientation block_shard_orientation,
-    bool is_out_tiled=true);
+    bool is_out_tiled=true,
+    std::optional<const CoreCoord> grid_opt = std::nullopt);
 
 uint32_t get_num_cores_nhw_from_parallel_config(const sliding_window::ParallelConfig& pconfig);
 
@@ -136,7 +138,8 @@ std::tuple<ttnn::Shape, ttnn::MemoryConfig, bool> get_conv_padded_input_shape_an
     uint32_t in_channels,
     uint32_t out_channels,
     std::array<uint32_t, 2> kernel_size,
-    std::array<uint32_t, 2> stride);
+    std::array<uint32_t, 2> stride,
+    std::optional<const CoreCoord> grid_opt = std::nullopt);
 
 template<typename T>
 std::tuple<ttnn::Tensor, sliding_window::ParallelConfig, bool> shard_or_reshard_tensor_if_required(
@@ -149,7 +152,8 @@ std::tuple<ttnn::Tensor, sliding_window::ParallelConfig, bool> shard_or_reshard_
     uint32_t in_channels,
     uint32_t out_channels,
     std::array<uint32_t, 2> kernel_size,
-    std::array<uint32_t, 2> stride);
+    std::array<uint32_t, 2> stride,
+    std::optional<const CoreCoord> grid_opt = std::nullopt);
 
 void validate_weight_and_bias_tensors(const ttnn::Tensor& weight_tensor, std::optional<const ttnn::Tensor>& bias_tensor);
 
@@ -191,7 +195,8 @@ std::tuple<ttnn::Tensor, uint32_t, uint32_t, ttnn::Tensor, std::optional<ttnn::T
     std::array<uint32_t, 2> dilation,
     uint32_t groups,
     std::optional<const ttnn::Tensor> bias_tensor = std::nullopt,
-    std::optional<const Conv2dConfig> conv_config_ = std::nullopt);
+    std::optional<const Conv2dConfig> conv_config_ = std::nullopt,
+    std::optional<const CoreCoord> grid_opt = std::nullopt);
 
 
 struct Conv2dOperation{
@@ -211,8 +216,9 @@ struct Conv2dOperation{
         std::array<uint32_t, 2> dilation,
         uint32_t groups,
         std::optional<const ttnn::Tensor> bias_tensor = std::nullopt,
-        std::optional<const Conv2dConfig> conv_config_ = std::nullopt){
-        return conv2d(input_tensor, weight_tensor, device, in_channels, out_channels, batch_size, input_height, input_width, kernel_size, stride, padding, dilation, groups, bias_tensor, conv_config_);
+        std::optional<const Conv2dConfig> conv_config_ = std::nullopt,
+        std::optional<const CoreCoord> grid_opt = std::nullopt){
+        return conv2d(input_tensor, weight_tensor, device, in_channels, out_channels, batch_size, input_height, input_width, kernel_size, stride, padding, dilation, groups, bias_tensor, conv_config_, grid_opt);
     }
 
     static std::tuple<ttnn::Tensor, uint32_t, uint32_t, ttnn::Tensor, std::optional<ttnn::Tensor>> invoke(
@@ -231,8 +237,9 @@ struct Conv2dOperation{
         std::array<uint32_t, 2> dilation,
         uint32_t groups,
         std::optional<const ttnn::Tensor> bias_tensor = std::nullopt,
-        std::optional<const Conv2dConfig> conv_config_ = std::nullopt){
-        return conv2d(input_tensor, weight_tensor, device, in_channels, out_channels, batch_size, input_height, input_width, kernel_size, stride, padding, dilation, groups, bias_tensor, conv_config_);
+        std::optional<const Conv2dConfig> conv_config_ = std::nullopt,
+        std::optional<const CoreCoord> grid_opt = std::nullopt){
+        return conv2d(input_tensor, weight_tensor, device, in_channels, out_channels, batch_size, input_height, input_width, kernel_size, stride, padding, dilation, groups, bias_tensor, conv_config_, grid_opt);
     }
 };
 

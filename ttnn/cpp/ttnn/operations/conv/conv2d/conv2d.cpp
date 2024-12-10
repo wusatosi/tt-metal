@@ -5,7 +5,9 @@
 #include "conv2d.hpp"
 #include <sys/types.h>
 #include <cstdint>
+#include <optional>
 
+#include "common/core_coord.h"
 #include "impl/buffers/buffer_constants.hpp"
 #include "ttnn/operations/core/compute_kernel/compute_kernel_config.hpp"
 #include "ttnn/operations/pool/downsample/device/downsample_op.hpp"
@@ -80,7 +82,8 @@ ParallelConfig determine_parallel_config(
     uint32_t output_channels,
     T * device,
     ShardOrientation block_shard_orientation,
-    bool is_out_tiled) {
+    bool is_out_tiled,
+    std::optional<const CoreCoord> grid_opt) {
 
     uint32_t conv_out_2d_matrix_height = batch_size * output_height * output_width;
     // pad height to 32
@@ -95,12 +98,21 @@ ParallelConfig determine_parallel_config(
         conv_out_2d_matrix_width_ntiles = output_channels;
     }
     auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
+    if (grid_opt.has_value()) {
+        log_info(LogOp, "Using grid size from input");
+        compute_with_storage_grid_size = grid_opt.value();
+    }
+    // if (std::getenv("TT_CONV_6x8") != nullptr) {
+    //     log_info(LogOp, "Using 6x8 grid for conv2d");
+    //     compute_with_storage_grid_size = {6, 8};
+    // }
     std::vector<uint32_t> device_grid_size = {
         (uint32_t)compute_with_storage_grid_size.x, (uint32_t)compute_with_storage_grid_size.y};
     CoreCoord device_grid_size_coord = {
         (std::size_t)compute_with_storage_grid_size.x, (std::size_t)compute_with_storage_grid_size.y};
     uint32_t max_num_cores = device_grid_size[0] * device_grid_size[1];
 
+    log_info(LogOp, "Max num cores determined: {}", max_num_cores);
     auto calculate_num_cores_nhw = [&]() {
 
         if(shard_layout == TensorMemoryLayout::HEIGHT_SHARDED) {
@@ -371,7 +383,8 @@ std::tuple<ttnn::Shape, ttnn::MemoryConfig, bool> get_conv_padded_input_shape_an
     uint32_t in_channels,
     uint32_t out_channels,
     std::array<uint32_t, 2> kernel_size,
-    std::array<uint32_t, 2> stride) {
+    std::array<uint32_t, 2> stride,
+    std::optional<const CoreCoord> grid_opt) {
     ttnn::Tensor input_tensor = input_tensor_;  // tensor to return
     bool input_tensor_on_device = ttnn::is_tensor_on_device_or_multidevice(input_tensor_);
     bool needs_shard_or_reshard = false;
@@ -433,7 +446,7 @@ std::tuple<ttnn::Shape, ttnn::MemoryConfig, bool> get_conv_padded_input_shape_an
         auto block_shard_orientation =
             conv_config.transpose_shards ? ShardOrientation::COL_MAJOR : ShardOrientation::ROW_MAJOR;
         const ParallelConfig& optimal_parallel_config = determine_parallel_config(
-            shard_layout, batch_size, in_channels, height, width, out_channels, device, block_shard_orientation);
+            shard_layout, batch_size, in_channels, height, width, out_channels, device, block_shard_orientation, true, grid_opt);
 
         if (conv_config.override_sharding_config) {
             TT_FATAL(conv_config.core_grid.has_value(), "Error");
@@ -491,13 +504,14 @@ std::tuple<ttnn::Tensor, ParallelConfig, bool> shard_or_reshard_tensor_if_requir
     uint32_t in_channels,
     uint32_t out_channels,
     std::array<uint32_t, 2> kernel_size,
-    std::array<uint32_t, 2> stride) {
+    std::array<uint32_t, 2> stride,
+    std::optional<const CoreCoord> grid_opt) {
     ttnn::Tensor input_tensor = input_tensor_;  // tensor to return
     bool input_tensor_on_device = ttnn::is_tensor_on_device_or_multidevice(input_tensor_);
 
     auto [input_padded_shape, input_tensor_sharded_memory_config, needs_shard_or_reshard] =
         get_conv_padded_input_shape_and_mem_config(
-            device, input_tensor_, conv_config, batch_size, height, width, in_channels, out_channels, kernel_size, stride);
+            device, input_tensor_, conv_config, batch_size, height, width, in_channels, out_channels, kernel_size, stride, grid_opt);
     ParallelConfig parallel_config = {
         .grid = input_tensor_sharded_memory_config.shard_spec.value().grid,
         .shard_scheme = input_tensor_sharded_memory_config.memory_layout,
@@ -725,13 +739,14 @@ std::tuple<ttnn::Tensor, uint32_t, uint32_t, ttnn::Tensor, std::optional<ttnn::T
     std::array<uint32_t, 2> dilation,
     uint32_t groups,
     std::optional<const ttnn::Tensor> bias_tensor,
-    std::optional<const Conv2dConfig> conv_config_) {
+    std::optional<const Conv2dConfig> conv_config_,
+    std::optional<const CoreCoord> grid_opt) {
 
     Conv2dConfig conv_config = conv_config_.value_or(Conv2dConfig());
     uint32_t output_height = ((input_height - kernel_size[0] - ((kernel_size[0] - 1 ) * (dilation[0] - 1)) + 2 * padding[0]) / stride[0]) + 1;
     uint32_t output_width = ((input_width - kernel_size[1] - ((kernel_size[0] - 1 ) * (dilation[0] - 1)) + 2 * padding[1]) / stride[1]) + 1;
     auto [input_tensor_post_tm, parallel_config, tensor_manipulated] = shard_or_reshard_tensor_if_required(
-        device, input_tensor, conv_config, batch_size, output_height, output_width, in_channels, out_channels, kernel_size, stride);
+        device, input_tensor, conv_config, batch_size, output_height, output_width, in_channels, out_channels, kernel_size, stride, grid_opt);
     if (tensor_manipulated) {
         if (conv_config.deallocate_activation) {
             ttnn::Tensor input_tensor_ = input_tensor;  // TODO: allow in place modification of inputs to the op
@@ -933,7 +948,8 @@ template ParallelConfig determine_parallel_config<Device>(
     uint32_t output_channels,
     Device * device,
     ShardOrientation block_shard_orientation,
-    bool is_out_tiled);
+    bool is_out_tiled,
+    std::optional<const CoreCoord> grid_opt);
 
 template ParallelConfig determine_parallel_config<MeshDevice>(
     const TensorMemoryLayout shard_layout,
@@ -944,7 +960,8 @@ template ParallelConfig determine_parallel_config<MeshDevice>(
     uint32_t output_channels,
     MeshDevice * device,
     ShardOrientation block_shard_orientation,
-    bool is_out_tiled);
+    bool is_out_tiled,
+    std::optional<const CoreCoord> grid_opt);
 
 template std::tuple<ttnn::Shape, ttnn::MemoryConfig, bool> get_conv_padded_input_shape_and_mem_config<Device>(
     Device* device,
@@ -956,7 +973,8 @@ template std::tuple<ttnn::Shape, ttnn::MemoryConfig, bool> get_conv_padded_input
     uint32_t in_channels,
     uint32_t out_channels,
     std::array<uint32_t, 2> kernel_size,
-    std::array<uint32_t, 2> stride);
+    std::array<uint32_t, 2> stride,
+    std::optional<const CoreCoord> grid_opt);
 
 template std::tuple<ttnn::Shape, ttnn::MemoryConfig, bool> get_conv_padded_input_shape_and_mem_config<MeshDevice>(
     MeshDevice * device,
@@ -968,7 +986,8 @@ template std::tuple<ttnn::Shape, ttnn::MemoryConfig, bool> get_conv_padded_input
     uint32_t in_channels,
     uint32_t out_channels,
     std::array<uint32_t, 2> kernel_size,
-    std::array<uint32_t, 2> stride);
+    std::array<uint32_t, 2> stride,
+    std::optional<const CoreCoord> grid_opt);
 
 template std::tuple<ttnn::Tensor, ParallelConfig, bool> shard_or_reshard_tensor_if_required<Device>(
     Device* device,
@@ -980,7 +999,8 @@ template std::tuple<ttnn::Tensor, ParallelConfig, bool> shard_or_reshard_tensor_
     uint32_t in_channels,
     uint32_t out_channels,
     std::array<uint32_t, 2> kernel_size,
-    std::array<uint32_t, 2> stride);
+    std::array<uint32_t, 2> stride,
+    std::optional<const CoreCoord> grid_opt);
 
 template std::tuple<ttnn::Tensor, ParallelConfig, bool> shard_or_reshard_tensor_if_required<MeshDevice>(
     MeshDevice * device,
@@ -992,7 +1012,8 @@ template std::tuple<ttnn::Tensor, ParallelConfig, bool> shard_or_reshard_tensor_
     uint32_t in_channels,
     uint32_t out_channels,
     std::array<uint32_t, 2> kernel_size,
-    std::array<uint32_t, 2> stride);
+    std::array<uint32_t, 2> stride,
+    std::optional<const CoreCoord> grid_opt);
 
 template std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights_biases_and_move_to_device<Device>(
     const ttnn::Tensor& weight_tensor,
@@ -1031,7 +1052,8 @@ template std::tuple<ttnn::Tensor, uint32_t, uint32_t, ttnn::Tensor, std::optiona
     std::array<uint32_t, 2> dilation,
     uint32_t groups,
     std::optional<const ttnn::Tensor> bias_tensor,
-    std::optional<const Conv2dConfig> conv_config_);
+    std::optional<const Conv2dConfig> conv_config_,
+    std::optional<const CoreCoord> grid_opt);
 
 template std::tuple<ttnn::Tensor, uint32_t, uint32_t, ttnn::Tensor, std::optional<ttnn::Tensor>> conv2d<MeshDevice>(
     const ttnn::Tensor& input_tensor,
@@ -1048,7 +1070,8 @@ template std::tuple<ttnn::Tensor, uint32_t, uint32_t, ttnn::Tensor, std::optiona
     std::array<uint32_t, 2> dilation,
     uint32_t groups,
     std::optional<const ttnn::Tensor> bias_tensor,
-    std::optional<const Conv2dConfig> conv_config_);
+    std::optional<const Conv2dConfig> conv_config_,
+    std::optional<const CoreCoord> grid_opt);
 
 }  // namespace conv2d
 }  // namespace operations
