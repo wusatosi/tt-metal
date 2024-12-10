@@ -115,7 +115,7 @@ class TtLlamaAttention(LightweightModule):
         )
 
         # For ring topology we can use all gather matmul for wo
-        self.use_fused_all_gather_matmul = False  # self.model_config["USE_FUSED_ALL_GATHER_MATMUL"]
+        self.use_fused_all_gather_matmul = self.model_config["USE_FUSED_ALL_GATHER_MATMUL"]
         if self.is_multichip and self.use_fused_all_gather_matmul:
             pt_wo = self.state_dict[wo_str].transpose(-1, -2).unsqueeze(0).unsqueeze(0)
             self.wo = ttnn.as_tensor(

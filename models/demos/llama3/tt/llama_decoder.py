@@ -101,31 +101,70 @@ class TtTransformerBlock(LightweightModule):
         page_table=None,
         kv_cache=None,
     ) -> ttnn.Tensor:
-        # x is fractured across devices and interleaved in DRAM (for prefill) and sharded in L1 (for decode)
-        skip_mem_cfg = self.model_config["DECODE_RESIDUAL_MEMCFG"] if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG
-        assert (
-            x.memory_config() == skip_mem_cfg
-        ), f"decoder input memcfg mismatch: {x.memory_config()} != {skip_mem_cfg}"
-        # Norms take fractured inputs and output replicated across devices
-        attn_in = self.attention_norm(x, mode)
-        # Attention takes replicated inputs and produces fractured outputs
-        attn_out = self.attention.forward(
-            attn_in,
-            current_pos,
-            rot_mats,
-            user_id,
-            mode,
-            page_table=page_table,
-            kv_cache=kv_cache,
-        )
-        # Here x and attn_out are both fractured across devices
-        h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg)
-        ttnn.deallocate(attn_out)
+        if mode == "decode":
+            # x is fractured across devices and interleaved in DRAM (for prefill) and sharded in L1 (for decode)
+            skip_mem_cfg = self.model_config["DECODE_RESIDUAL_MEMCFG"] if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG
+            assert (
+                x.memory_config() == skip_mem_cfg
+            ), f"decoder input memcfg mismatch: {x.memory_config()} != {skip_mem_cfg}"
+            # Norms take fractured inputs and output replicated across devices
+            # attn_in = self.attention_norm(x, mode)
+            # Attention takes replicated inputs and produces fractured outputs
+            # attn_out = self.attention.forward(
+            #    attn_in,
+            #    current_pos,
+            #    rot_mats,
+            #    user_id,
+            #    mode,
+            #    page_table=page_table,
+            #    kv_cache=kv_cache,
+            # )
+            # Here x and attn_out are both fractured across devices
+            # h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg)
+            #  ttnn.deallocate(attn_out)
 
-        # Norms take fractured inputs and output replicated across devices
-        ff_in = self.ff_norm(h, mode)
-        # MLP takes replicated inputs and produces fractured outputs
-        ff_out = self.feed_forward.forward(ff_in, mode)
-        # ff_out and h are both fractured across devices
-        out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)
-        return out  # fractured across devices
+            # Norms take fractured inputs and output replicated across devices
+            # ff_in = self.ff_norm(h, mode)
+            ff_in = ttnn.empty(
+                shape=[1, 1, 32, 4096],
+                layout=ttnn.TILE_LAYOUT,
+                device=self.mesh_device,
+                memory_config=self.model_config["SHARDED_MLP_INPUT_MEMCFG"],
+            )
+
+            # MLP takes replicated inputs and produces fractured outputs
+            ff_out = self.feed_forward.forward(ff_in, mode)
+            #       ttnn.deallocate(ff_in)
+            # ff_out and h are both fractured across devices
+            # out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)
+            return ff_out  # fractured across devices
+        else:
+            # x is fractured across devices and interleaved in DRAM (for prefill) and sharded in L1 (for decode)
+            skip_mem_cfg = self.model_config["DECODE_RESIDUAL_MEMCFG"] if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG
+            assert (
+                x.memory_config() == skip_mem_cfg
+            ), f"decoder input memcfg mismatch: {x.memory_config()} != {skip_mem_cfg}"
+            # Norms take fractured inputs and output replicated across devices
+            attn_in = self.attention_norm(x, mode)
+            # Attention takes replicated inputs and produces fractured outputs
+            attn_out = self.attention.forward(
+                attn_in,
+                current_pos,
+                rot_mats,
+                user_id,
+                mode,
+                page_table=page_table,
+                kv_cache=kv_cache,
+            )
+            # Here x and attn_out are both fractured across devices
+            h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg)
+            ttnn.deallocate(attn_out)
+
+            # Norms take fractured inputs and output replicated across devices
+            ff_in = self.ff_norm(h, mode)
+
+            # MLP takes replicated inputs and produces fractured outputs
+            ff_out = self.feed_forward.forward(ff_in, mode)
+            # ff_out and h are both fractured across devices
+            out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)
+            return out  # fractured across devices

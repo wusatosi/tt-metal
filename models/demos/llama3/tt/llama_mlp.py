@@ -72,7 +72,19 @@ class TtLlamaMLP(LightweightModule):
                 pc_1 = self.model_config["PREFILL_MLP_W1_W3_PRG_CONFIG_128"](seq_len)
                 pc_2 = self.model_config["PREFILL_MLP_W2_PRG_CONFIG_128"](seq_len)
                 pc_3 = self.model_config["PREFILL_MLP_W1_W3_PRG_CONFIG_128"](seq_len)
-
+        core_grid = (ttnn.CoreGrid(y=8, x=8) if not pc_1 else None,)
+        print(f"X viz {ttnn.visualize_mesh_device(self.mesh_device, tensor=x)}")
+        print(f"W1 viz {ttnn.visualize_mesh_device(self.mesh_device, tensor=self.w1)}")
+        print(f"W3 viz {ttnn.visualize_mesh_device(self.mesh_device, tensor=self.w3)}")
+        print(f"X properties  {x.dtype} {x.shape}, {x.layout}")
+        print(f"W1 properties  {self.w1.dtype} {self.w1.shape}, {self.w1.layout}")
+        print(f"W3 properties  {self.w3.dtype} {self.w3.shape}, {self.w3.layout}")
+        print(
+            f"Core grid {core_grid}",
+        )
+        print(f"Program config {pc_1}")
+        print(f"Sharded memory config {x.memory_config()}")
+        print(f"Compute kernel config {self.args.compute_kernel_config_lofi}")
         # In decode mode (seqlen <= 32) do DRAM sharded matmuls
         # These use HiFi2; this drops 1 bit of the activations but would be FLOP-bound on 12 cores with HiFi4
         w1_out = ttnn.linear(
