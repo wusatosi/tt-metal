@@ -32,6 +32,7 @@ namespace tt::target {
     struct EnqueueProgramCommand;
     struct CreateKernelCommand;
     struct SetRuntimeArgsCommand;
+    struct CreateCircularBufferCommand;
 
     // Forward decl for binary_generated.h
     namespace lightmetal {
@@ -76,6 +77,7 @@ public:
     void execute(tt::target::EnqueueProgramCommand const *command);
     void execute(tt::target::CreateKernelCommand const *command);
     void execute(tt::target::SetRuntimeArgsCommand const *command);
+    void execute(tt::target::CreateCircularBufferCommand const *command);
 
     // Object maps public accessors
     void addBufferToMap(uint32_t global_id, std::shared_ptr<::tt::tt_metal::Buffer> buffer);
@@ -93,6 +95,10 @@ public:
     void addKernelToMap(uint32_t global_id, std::shared_ptr<::tt::tt_metal::Kernel> kernel);
     std::shared_ptr<::tt::tt_metal::Kernel> getKernelFromMap(uint32_t global_id) const;
     void removeKernelFromMap(uint32_t global_id);
+
+    void addCBHandleToMap(uint32_t global_id, ::tt::tt_metal::CBHandle cb_handle);
+    ::tt::tt_metal::CBHandle getCBHandleFromMap(uint32_t global_id) const;
+    void removeCBHandleFromMap(uint32_t global_id);
 
 private:
 
@@ -113,6 +119,7 @@ private:
     std::unordered_map<uint32_t, std::shared_ptr<::tt::tt_metal::Program>> programMap_;
     std::unordered_map<uint32_t, tt::tt_metal::KernelHandle> kernelHandleMap_;
     std::unordered_map<uint32_t, std::shared_ptr<::tt::tt_metal::Kernel>> kernelMap_;
+    std::unordered_map<uint32_t, tt::tt_metal::CBHandle> cbHandleMap_;
 };
 
 }  // namespace v0
