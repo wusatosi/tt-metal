@@ -28,6 +28,7 @@ namespace tt {
 namespace tt_metal {
 
 enum class ProfilerDumpState { NORMAL, CLOSE_DEVICE_SYNC, LAST_CLOSE_DEVICE };
+enum class ProfilerSyncState { INIT, CLOSE_DEVICE };
 
 class DeviceProfiler {
 private:

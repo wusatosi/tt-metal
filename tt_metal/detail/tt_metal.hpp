@@ -192,7 +192,6 @@ void ClearProfilerControlBuffer(Device* device);
  * */
 void InitDeviceProfiler(Device* device);
 
-enum class ProfilerSyncState { INIT, CLOSE_DEVICE };
 /**
  * Sync TT devices with host
  *
