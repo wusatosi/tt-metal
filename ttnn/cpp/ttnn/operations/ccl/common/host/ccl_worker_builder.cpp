@@ -1031,10 +1031,10 @@ void generate_multi_input_command_stream_kernel_rt_args(
         generate_ccl_command_stream_to_kernel_args((*command_streams[i]), rt_args);
     }
 
-    log_trace(tt::LogOp, "\tMulti-input command processor RT Args");
+    // log_info(tt::LogOp, "\tMulti-input command processor RT Args");
     for (size_t i = 0; i < rt_args.size(); i++) {
         auto const& arg = rt_args[i];
-        log_trace(tt::LogOp, "\t\t{}: {}", i, arg);
+        // log_info(tt::LogOp, "\t\t{}: {}", i, arg);
     }
     tt::tt_metal::SetRuntimeArgs(program, kernel_id, worker_core_range, rt_args);
 }
