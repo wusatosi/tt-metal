@@ -53,7 +53,7 @@ inline void reduce_h_fused(
             reduce_tile_math(c_i, num_faces_in_tile /* reduce 1 or 2 faces */);
         }
 
-        // dprint_tensix_dest_reg(0);
+        dprint_tensix_dest_reg(1);
 
         cb_pop_front(curr_in_cb_id, 1);
         tile_regs_wait();

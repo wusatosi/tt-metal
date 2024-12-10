@@ -180,6 +180,9 @@ def run_max_pool(
     )
 
     output_host = output.cpu()
+
+    # can we print the sharded tensor here with cpu_sharded or sharded_cpu etc.
+
     print("PYTHON output shape", output_host.shape)
     output_pytorch_padded = torch.Tensor(ttnn.to_torch(output_host))
     # print("output_pytorch_padded", output_pytorch_padded[0][0][0])

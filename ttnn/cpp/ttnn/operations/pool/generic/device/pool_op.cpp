@@ -87,25 +87,6 @@ Pool2D::spec_return_value_t Pool2D::compute_output_specs(
         {{0, 0}, {0, 0}, {0, out_nhw_padded - out_nhw}, {0, out_c_padded - out_c}},
         Padding::PadValue::NegativeInfinity);
     auto output_shape = Shape(tt::tt_metal::LegacyShape(out_dims, padding));
-    printf("padding: %ld, %ld, %ld, %ld\n", padding[0].front, padding[1].front, padding[2].front, padding[3].front);
-    printf(
-        "output legacy shape: %d, %d, %d, %d\n",
-        output_shape.value[0],
-        output_shape.value[1],
-        output_shape.value[2],
-        output_shape.value[3]);
-    printf(
-        "with_tile_padding: %d, %d, %d, %d\n",
-        output_shape.with_tile_padding()[0],
-        output_shape.with_tile_padding()[1],
-        output_shape.with_tile_padding()[2],
-        output_shape.with_tile_padding()[3]);
-    printf(
-        "without_padding: %d, %d, %d, %d\n",
-        output_shape.value.without_padding()[0],
-        output_shape.value.without_padding()[1],
-        output_shape.value.without_padding()[2],
-        output_shape.value.without_padding()[3]);
 
     auto mem_config = out_mem_config;
     if (mem_config.shard_spec.has_value()) {
@@ -119,22 +100,9 @@ Pool2D::spec_return_value_t Pool2D::compute_output_specs(
         mem_config.shard_spec = ShardSpec{shard_grid, shard_shape, ShardOrientation::ROW_MAJOR, false};
     }
 
-    printf("output shape: %d, %d, %d, %d\n", output_shape[0], output_shape[1], output_shape[2], output_shape[3]);
-    printf(
-        "logical shape: %d, %d, %d, %d\n",
-        output_shape.logical_shape()[0],
-        output_shape.logical_shape()[1],
-        output_shape.logical_shape()[2],
-        output_shape.logical_shape()[3]);
-
-    std::cout << "output shape COUT: " << output_shape << std::endl;
-
     TensorSpec spec = TensorSpec(
         output_shape.logical_shape(),
         TensorLayout::fromLegacyPaddedShape(output_dtype, PageConfig(input.get_layout()), mem_config, output_shape));
-
-    printf("spec shape: %d, %d, %d, %d\n", spec.shape()[0], spec.shape()[1], spec.shape()[2], spec.shape()[3]);
-    std::cout << "spec alginment: " << spec.tensor_layout().get_alignment() << std::endl;
 
     return std::move(spec);
 }
