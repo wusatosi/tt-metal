@@ -570,7 +570,7 @@ FORCE_INLINE void try_advance_inline_write_or_atomic_inc(command_context_t<Addrg
 
     DPRINT << "dest_noc0_y, dest_noc0_x: " << (uint32_t)dest_noc0_y << ", " << (uint32_t)dest_noc0_x << "\n";
     DPRINT << "dest_bank_addr: " << (uint64_t)dest_bank_addr << "\n";
-    DPRINT << "increment_value: " << (uint32_t)increment_value << "\n";
+    DPRINT << "value: " << (uint32_t)value << "\n";
 
     // PROBLEM: this is local atomic increment but we are implementing the fabric
     // atomic increment too. Should it be here - or should it be separate
@@ -957,6 +957,10 @@ FORCE_INLINE void try_advance(command_context_t<Addrgen> &cmd_ctx) {
                 cmd_ctx.complete_current_command();
             break;
         case ttnn::ccl::cmd::CclCommandCode::WAIT_VALUE:
+            // DPRINT << "waitval\n";
+            // DPRINT << "src_addr: " << (uint64_t)cmd_ctx.src_addr_info.address << "\n";
+            // DPRINT << "src_addr val: " << (uint64_t)*reinterpret_cast<volatile uint32_t *>(cmd_ctx.src_addr_info.address) << "\n";
+            // DPRINT << "value: " << (uint32_t)cmd_ctx.cmd_specific_ctx.inline_value_ctx.value << "\n";
             if (*reinterpret_cast<volatile uint32_t *>(cmd_ctx.src_addr_info.address) == cmd_ctx.cmd_specific_ctx.inline_value_ctx.value) {
                 // DPRINT << "Completing waitval command\n";
                 cmd_ctx.complete_current_command();
