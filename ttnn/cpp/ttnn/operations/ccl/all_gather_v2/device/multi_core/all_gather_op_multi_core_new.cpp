@@ -259,25 +259,25 @@ operation::ProgramWithCallbacks all_gather_multi_core_with_workers_new(
             drain_sync_core.y,
             mcast_dest_args
         ));
-        // 3, wait for n_chip*num_links number of semaphore at teardown semaphore address for first chip, and n_chip*num_links+1 for other chips
-        writer_cmd_stream.push_back(
-        ttnn::ccl::cmd::uops::local_semaphore_wait(
-            semaphore_handle,
-            is_first_chip ? ring_size * num_links : ring_size * num_links + 1
-        ));
-        // 4, send semaphore unicast to forward device except for the last chip
-        if (!is_last_chip) {
-            writer_cmd_stream.push_back(
-            ttnn::ccl::cmd::uops::fabric_unicast_semaphore_inc(
-                semaphore_handle,
-                ttnn::ccl::cmd::CclCommandAtomicInc{1},
-                drain_sync_core.x,
-                drain_sync_core.y,
-                ttnn::ccl::cmd::UnicastCommandDestArgs {1, true}
-            ));
-        }
-        // 5, increment the termination semaphore for local device for local teardown only for the drain sync core
         if (link == 0) {
+            // 3, wait for n_chip*num_links number of semaphore at teardown semaphore address for first chip, and n_chip*num_links+1 for other chips
+            writer_cmd_stream.push_back(
+            ttnn::ccl::cmd::uops::local_semaphore_wait(
+                semaphore_handle,
+                is_first_chip ? ring_size * num_links : ring_size * num_links + 1
+            ));
+            // 4, send semaphore unicast to forward device except for the last chip
+            if (!is_last_chip) {
+                writer_cmd_stream.push_back(
+                ttnn::ccl::cmd::uops::fabric_unicast_semaphore_inc(
+                    semaphore_handle,
+                    ttnn::ccl::cmd::CclCommandAtomicInc{1},
+                    drain_sync_core.x,
+                    drain_sync_core.y,
+                    ttnn::ccl::cmd::UnicastCommandDestArgs {1, true}
+                ));
+            }
+            // 5, increment the termination semaphore for local device for local teardown only for the drain sync core
             auto termination_infos = local_device_fabric_interface.generate_local_chip_fabric_termination_infos(device);
             for (auto& info : termination_infos) {
                 if (info.distance != 0) {
@@ -291,14 +291,11 @@ operation::ProgramWithCallbacks all_gather_multi_core_with_workers_new(
                     1
                 ));
             }
-        }
-        // 6. HACK: (drain sync core) reset semaphore to 0 by doing a hacky semaphore inc
-        if (link == 0) {
-            uint32_t current_sem_val = is_first_chip ? ring_size * num_links : ring_size * num_links + 1;
+            // 6. (drain sync core) reset semaphore to 0
             writer_cmd_stream.push_back(
-            ttnn::ccl::cmd::uops::local_core_semaphore_inc(
+            ttnn::ccl::cmd::uops::local_core_semaphore_set(
                 semaphore_handle,
-                std::numeric_limits<uint8_t>::max() - current_sem_val
+                0
             ));
         }
 
