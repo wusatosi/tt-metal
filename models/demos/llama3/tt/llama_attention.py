@@ -351,7 +351,7 @@ class TtLlamaAttention(LightweightModule):
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
             )
         else:
-            attn_output_1G4D = ttnn.transformer.scaled_dot_product_attention_decode(
+            attn_output_11BH = ttnn.transformer.scaled_dot_product_attention_decode(
                 q_heads_1BQD,
                 keys,
                 values,
@@ -359,15 +359,17 @@ class TtLlamaAttention(LightweightModule):
                 scale=self.scale,
                 program_config=self.model_config["SDPA_DECODE_PROGCFG"],
                 compute_kernel_config=self.model_config["SDPA_DECODE_COMPUTE_PROGCFG"],
-                memory_config=ttnn.DRAM_MEMORY_CONFIG,  # FIXME: why not L1 height sharded e.g. SCORES_BATCHED_MM_OUTPUT_MEMCFG?
+                memory_config=self.model_config["SCORES_BATCHED_MM_OUTPUT_MEMCFG"](
+                    self.batch_size_per_device_group
+                ),  # FIXME: why not L1 height sharded e.g. SCORES_BATCHED_MM_OUTPUT_MEMCFG?
             )
 
         ttnn.deallocate(q_heads_1BQD)
 
-        attn_output_11BH = ttnn.to_memory_config(
-            attn_output_1G4D,
-            memory_config=self.model_config["SCORES_BATCHED_MM_OUTPUT_MEMCFG"](self.batch_size_per_device_group),
-        )
+        # attn_output_11BH = ttnn.to_memory_config(
+        #     attn_output_1G4D,
+        #     memory_config=self.model_config["SCORES_BATCHED_MM_OUTPUT_MEMCFG"](self.batch_size_per_device_group),
+        # )
         attn_output_cat = ttnn.experimental.nlp_concat_heads_decode(
             attn_output_11BH,
             num_heads=self.n_local_heads,
@@ -406,7 +408,7 @@ class TtLlamaAttention(LightweightModule):
                 # dtype=self.ccl_dtype,  # Running bf16 until we have SDPA output bfp8 df; otherwise we have two sharded to interleaved/interleaved to sharded conversions
             )
             if TG:
-                attn_output = ttnn.to_memory_config(attn_output, ttnn.L1_MEMORY_CONFIG)
+                # attn_output = ttnn.to_memory_config(attn_output, ttnn.L1_MEMORY_CONFIG)
                 # user_selection_matrix = [1, 1, 32, 128]
                 # user_selection_matrix @ activation -> [1, 1, 32, 128] * [1, 1, 128, 2048] -> [1, 1, 32, 2048]
                 attn_output = ttnn.matmul(

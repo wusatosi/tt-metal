@@ -180,7 +180,7 @@ class TtLlamaMLP(LightweightModule):
                 memory_config=input_mem_cfg,
             )
             if mode == "decode":
-                w2_in = ttnn.to_memory_config(w2_in, ttnn.L1_MEMORY_CONFIG)
+                w2_in = ttnn.to_memory_config(w2_in, ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG)
 
         w2_out = ttnn.linear(
             w2_in,

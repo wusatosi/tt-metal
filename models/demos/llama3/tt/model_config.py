@@ -253,7 +253,7 @@ class TtModelArgs:
 
             residual_grid = self.dram_shard_core_grid_for_k(self.dim // self.num_devices)
             self.model_config["DECODE_RESIDUAL_MEMCFG"] = (
-                ttnn.L1_MEMORY_CONFIG  # FIXME: when residual add support typecasting for sharded tensors
+                ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG  # FIXME: when residual add support typecasting for sharded tensors
                 if self.is_galaxy
                 else ttnn.create_sharded_memory_config(
                     (
