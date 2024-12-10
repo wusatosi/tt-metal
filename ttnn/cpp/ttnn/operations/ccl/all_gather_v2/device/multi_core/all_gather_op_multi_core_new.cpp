@@ -66,7 +66,7 @@ operation::ProgramWithCallbacks all_gather_multi_core_with_workers_new(
     tt::tt_metal::Program program{};
 
     // Sleep for ring_index * 5 seconds to stagger startup
-    std::this_thread::sleep_for(std::chrono::seconds(ring_index * 5));
+    // std::this_thread::sleep_for(std::chrono::seconds(ring_index * 5));
 
     Device *device = input_tensor.device();
     bool is_first_chip = ring_index == 0;
