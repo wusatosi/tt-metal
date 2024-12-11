@@ -4,8 +4,22 @@
 
 #include <stdint.h>
 #include "dataflow_api.h"
+#include "debug/dprint.h"
+
+inline void print_pages(uint32_t l1_addr, uint32_t pagelen, uint32_t npages, uint32_t start = 0) {
+    volatile tt_l1_ptr uint16_t* ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(l1_addr) + start * pagelen;
+    for (uint32_t page = 0; page < npages; ++page) {
+        DPRINT << start + page << ": ";
+        for (uint32_t j = 0; j < pagelen; ++j, ++ptr) {
+            DPRINT << BF16(*ptr) << " ";
+        }
+        DPRINT << ENDL();
+    }
+}
 
 void kernel_main() {
+    DPRINT << "HIT S2I 1" << ENDL();
+
     const uint32_t dst_addr = get_arg_val<uint32_t>(0);
     const uint32_t stick_size = get_arg_val<uint32_t>(1);
     const uint32_t block_height = get_arg_val<uint32_t>(2);
@@ -30,7 +44,8 @@ void kernel_main() {
 #endif
     uint32_t stick_id = start_id;
     cb_wait_front(cb_id_out0, block_height);
-    uint32_t l1_read_addr = get_read_ptr(cb_id_out0);
+    uint32_t l1_read_addr_base = get_read_ptr(cb_id_out0);
+    uint32_t l1_read_addr = l1_read_addr_base;
     for (uint32_t h = 0; h < block_height; ++h) {
         uint64_t dst_noc_addr = get_noc_addr(stick_id, s0);
         noc_async_write(l1_read_addr, dst_noc_addr, block_width_bytes);
@@ -38,5 +53,9 @@ void kernel_main() {
         l1_read_addr += padded_block_width_bytes;
         noc_async_write_barrier();
     }
+
+    uint32_t ptr = get_read_ptr(cb_id_out0);
+    print_pages(l1_read_addr_base, 64, 3);
+
     cb_pop_front(cb_id_out0, block_height);
 }

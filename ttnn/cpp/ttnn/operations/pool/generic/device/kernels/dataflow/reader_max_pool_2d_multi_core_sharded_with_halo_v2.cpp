@@ -66,6 +66,8 @@ void kernel_main() {
 
     const uint32_t out_nbytes_c = get_compile_time_arg_val(15);
 
+    DPRINT << "in_bytes_c: " << in_nbytes_c << ", out_bytes_c: " << out_nbytes_c << ENDL();
+
     constexpr uint32_t TILE_WIDTH = 32;
 
     constexpr uint32_t in_cb_id = (reader_id == 1) ? tt::CBIndex::c_1 : tt::CBIndex::c_0;
@@ -107,7 +109,7 @@ void kernel_main() {
         fill_with_val(out_l1_write_addr_base, in_cb_sz, minus_inf);
         uint32_t out_l1_write_addr = out_l1_write_addr_base;
         uint16_t top_left_local_index = reader_indices_ptr[counter++];
-        DPRINT << "top_left_local_index: " << top_left_local_index << ENDL();
+        // DPRINT << "top_left_local_index: " << top_left_local_index << ENDL();
         if (reader_id == print_id) {
             DPRINT << "top_left_local_index: " << top_left_local_index << ENDL();
             DPRINT << "INPUT" << ENDL();

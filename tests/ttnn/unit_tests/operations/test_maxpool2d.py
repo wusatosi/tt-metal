@@ -179,6 +179,7 @@ def run_max_pool(
         applied_shard_scheme=shard_scheme,
     )
 
+    output = ttnn.to_memory_config(output, ttnn.L1_MEMORY_CONFIG)
     output_host = output.cpu()
 
     # can we print the sharded tensor here with cpu_sharded or sharded_cpu etc.
