@@ -25,7 +25,7 @@ LayerNormLayer::LayerNormLayer(uint32_t features, bool use_composite_op) : m_use
 
 autograd::TensorPtr LayerNormLayer::operator()(const autograd::TensorPtr& tensor) {
     if (m_use_composite_op) {
-        return ops::composite_layernorm(tensor, m_gamma, m_beta);
+        return ops::composite_layernorm_xtensor(tensor, m_gamma, m_beta);
     }
     return ops::layernorm(tensor, m_gamma, m_beta);
 }

@@ -131,7 +131,7 @@ TEST(LayerNormOpTest, CompositeLayerNormOp_0) {
     auto beta =
         autograd::create_tensor(core::zeros(core::create_shape({1, 1, 1, features}), &autograd::ctx().get_device()));
 
-    auto result = ops::composite_layernorm(tensor, gamma, beta);
+    auto result = ops::composite_layernorm_xtensor(tensor, gamma, beta);
 
     auto result_tensor = result->get_value();
     auto result_data = core::to_vector(result_tensor);
@@ -171,7 +171,7 @@ TEST(LayerNormOpTest, CompositeLayerNormOp_backward) {
     auto beta =
         autograd::create_tensor(core::zeros(core::create_shape({1, 1, 1, features}), &autograd::ctx().get_device()));
 
-    auto result = ops::composite_layernorm(tensor, gamma, beta);
+    auto result = ops::composite_layernorm_xtensor(tensor, gamma, beta);
     auto target = autograd::create_tensor(core::zeros_like(tensor->get_value()));
     result = ops::mse_loss(result, target);
     result->backward();

@@ -15,6 +15,8 @@
 #include "autograd/tensor.hpp"
 #include "core/compute_kernel_config.hpp"
 #include "core/tt_tensor_utils.hpp"
+#include "xtensor/xmath.hpp"
+#include "xtensor/xreducer.hpp"
 
 namespace ttml::ops {
 
@@ -169,6 +171,78 @@ autograd::TensorPtr composite_layernorm(
         tensor->add_grad(dtensor);
         gamma->add_grad(dgamma);
         beta->add_grad(dbeta);
+    };
+
+    auto links = autograd::get_links(tensor);
+    out->set_node(autograd::ctx().add_backward_node(std::move(grad), links));
+
+    return out;
+}
+
+autograd::TensorPtr composite_layernorm_xtensor(
+    const autograd::TensorPtr& tensor, const autograd::TensorPtr& gamma, const autograd::TensorPtr& beta) {
+    // Convert input tensors to xtensor
+    auto device = &autograd::ctx().get_device();
+    auto xt_tensor = core::to_xtensor(tensor->get_value());  // shape: [N, C, D, M]
+    auto xt_gamma = core::to_xtensor(gamma->get_value());    // shape broadcastable: [N, C, D, 1] or compatible
+    auto xt_beta = core::to_xtensor(beta->get_value());      // same shape as gamma
+
+    // Compute mean over the last dimension (dim=3), keeping dims
+    // mean shape: [N, C, D, 1]
+    xt::xarray<float> mean = xt::mean(xt_tensor, {3}, xt::keep_dims);
+
+    xt::xarray<float> variance = xt::variance(xt_tensor, {3});
+    variance = xt::view(variance, xt::all(), xt::all(), xt::all(), xt::newaxis());
+
+    const float eps = 1e-6F;
+    xt::xarray<float> rstd = 1.0f / xt::sqrt(variance + eps);  // reciprocal of std
+
+    // Normalize
+    auto normalized_tensor = (xt_tensor - mean) * rstd;
+
+    // Apply gamma and beta
+    xt::xarray<float> output = normalized_tensor * xt_gamma + xt_beta;
+
+    // Create output autograd::TensorPtr
+    auto out = autograd::create_tensor(core::from_xtensor(output, device));
+
+    // Define backward pass
+    autograd::GradFunction grad = [tensor, out, gamma, beta, mean, rstd]() {
+        auto device = &autograd::ctx().get_device();
+        // Convert needed values back to xtensor for backward
+        auto xt_dout = core::to_xtensor(out->get_grad());
+        auto xt_tensor = core::to_xtensor(tensor->get_value());
+        auto xt_gamma = core::to_xtensor(gamma->get_value());
+
+        // Recompute normalized_tensor
+        auto normalized_tensor = (xt_tensor - mean) * rstd;
+
+        // dbeta = sum of dout over [0,1,2], keep dims
+        xt::xarray<float> dbeta = xt::sum(xt_dout, {0, 1, 2}, xt::keep_dims);
+        // dgamma = sum of (dout * normalized_tensor) over [0,1,2], keep dims
+        xt::xarray<float> dgamma = xt::sum(xt_dout * normalized_tensor, {0, 1, 2}, xt::keep_dims);
+
+        // dtensor_normalized = dout * gamma
+        auto dtensor_normalized = xt_dout * xt_gamma;
+
+        // dnorm_mean = mean(dtensor_normalized along last dim), keep dims
+        xt::xarray<float> dnorm_mean = xt::mean(dtensor_normalized, {3}, xt::keep_dims);
+
+        // dnorm_norm_mean = mean(dtensor_normalized * normalized_tensor along last dim), keep dims
+        xt::xarray<float> dnorm_norm = dtensor_normalized * normalized_tensor;
+        xt::xarray<float> dnorm_norm_mean = xt::mean(dnorm_norm, {3}, xt::keep_dims);
+
+        // norm * (dnorm * norm).mean(-1, keepdim=True)
+        auto norm_dnorm_norm_mean = normalized_tensor * dnorm_norm_mean;
+        // auto dtensor = ttnn::subtract(ttnn::subtract(dtensor_normalized, dnorm_mean), norm_dnorm_norm_mean);
+
+        xt::xarray<float> dtensor = dtensor_normalized - dnorm_mean;
+        dtensor = dtensor - norm_dnorm_norm_mean;
+        dtensor = dtensor * rstd;
+        // Add gradients back to the original tensors
+        tensor->add_grad(core::from_xtensor(dtensor, device));
+        gamma->add_grad(core::from_xtensor(dgamma, device));
+        beta->add_grad(core::from_xtensor(dbeta, device));
     };
 
     auto links = autograd::get_links(tensor);
