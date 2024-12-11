@@ -223,8 +223,9 @@ Tensor ExecuteDiv::invoke(
         "Incorrect rounding mode (expected None, 'trunc', or 'floor')");
     output_tensor = output_tensor.value_or(ttnn::empty_like(input_a));
     auto arch = input_a.device()->arch();
-    if (arch == tt::ARCH::WORMHOLE_B0) {
+    if (arch != tt::ARCH::GRAYSKULL) {
         DataType input_dtype = input_a.get_dtype();
+
         Tensor a = typecast(queue_id, input_a, DataType::FLOAT32);
         Tensor b = typecast(queue_id, input_b, DataType::FLOAT32);
         Tensor result = ttnn::divide(queue_id, a, b);
@@ -233,6 +234,10 @@ Tensor ExecuteDiv::invoke(
             result = ttnn::trunc(queue_id, result);
         } else if (round_mode == "floor") {
             result = ttnn::floor(queue_id, result);
+        }
+
+        if (input_dtype == DataType::FLOAT32 && input_b.get_dtype() == DataType::FLOAT32) {
+            return result;
         }
 
         if (accurate_mode == false) {  // If input_b is non-zero tensor
@@ -503,15 +508,19 @@ Tensor ExecuteGCD::invoke(
     Tensor min = ttnn::where(a_gt_b, input_b_abs, input_a_abs);
     Tensor max = ttnn::where(a_gt_b, input_a_abs, input_b_abs);
     a_gt_b.deallocate();
+
     // https://en.wikipedia.org/wiki/Lam%C3%A9%27s_theorem
     // While 186 is the theoretical maximum iterations for numbers within the floating point range according to Lame's
     // theorem, in practice when evaluating gcd of consecutive Fibonacci numbers coerced to floating point, the
     // maximum number of iterations reached is only 14 because the remainder converges to 0 much more quickly. In
     // addition, limited precision in bfloat16 format decreases support for input to the range [-1024, 1024]
+
     constexpr std::size_t max_iterations = 14;
     for (std::size_t iteration = 0; iteration < max_iterations; ++iteration) {
         Tensor isz = ttnn::eqz(min);
-        Tensor rem = ttnn::remainder(max, ttnn::where(isz, isz, min));
+        Tensor non_zero_min =
+            ttnn::where(isz, isz, min);  // when isz=1, true_val=1, else min; 0's in min are replaced with 1
+        Tensor rem = ttnn::remainder(max, non_zero_min);
         max = ttnn::where(isz, max, min);
         min = rem;
     }

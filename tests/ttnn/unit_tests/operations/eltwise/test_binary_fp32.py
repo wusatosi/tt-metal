@@ -75,7 +75,6 @@ def test_add_fp32(device, ttnn_function):
     assert status
 
 
-@pytest.mark.skip(reason="skipped because add_int32 works for positive inputs only, will enable once it is fixed")
 @skip_for_grayskull("Unsupported dtype for Grayskull")
 @pytest.mark.parametrize(
     "ttnn_function",
@@ -120,7 +119,7 @@ def test_mul_fp32(device, ttnn_function):
     assert status
 
 
-@pytest.mark.skip(reason="This test will be enabled after #15780 is resolved")
+# @pytest.mark.skip(reason="This test will be enabled after #15780 is resolved")
 @skip_for_grayskull("Unsupported dtype for Grayskull")
 @pytest.mark.parametrize(
     "ttnn_function",
@@ -131,8 +130,8 @@ def test_mul_fp32(device, ttnn_function):
 # Torch num/ 0 = inf and 0/0  nan; TT num/ 0 = inf and 0/0=nan; in fp32  tile
 # Torch num/ 0 = inf and 0/0  nan; TT num/ 0 = inf and 0/0=0; in chained (mul * recip) div op
 def test_div_fp32(device, ttnn_function):
-    x_torch = torch.tensor([[1.00030171126, -3, 16, -5, 14, -12, 0, 0, 1]], dtype=torch.float32)
-    y_torch = torch.tensor([[2, 3, -4, -5, 0, 0, 0, 1, 0]], dtype=torch.float32)
+    x_torch = torch.tensor([[1.00030171126, -3, 16, -5, 14, -12, 0, 0, 1, 15]], dtype=torch.float32)
+    y_torch = torch.tensor([[2, 3, -4, -5, 0, 0, 0, 1, 0, 10]], dtype=torch.float32)
     golden_fn = ttnn.get_golden_function(ttnn_function)
     z_torch = golden_fn(x_torch, y_torch)
     x_tt = ttnn.from_torch(x_torch, dtype=ttnn.float32, layout=ttnn.TILE_LAYOUT, device=device)
@@ -141,6 +140,8 @@ def test_div_fp32(device, ttnn_function):
     z_tt_div = ttnn.divide(x_tt, y_tt)
     tt_out = ttnn.to_torch(z_tt_div)
 
+    print("torch out in ttnn", ttnn.to_torch(z_tt))
+    print("tt out in torch", tt_out)
     status = ttnn.pearson_correlation_coefficient(z_torch, tt_out) >= 0.999
     assert status
 
