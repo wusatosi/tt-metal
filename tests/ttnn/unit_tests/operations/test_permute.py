@@ -260,3 +260,23 @@ def test_permute_3D(shape, perm, layout, memory_config, dtype, device):
     torch_output = torch.permute(torch_tensor, perm)
     assert torch_output.shape == output_tensor.shape
     assert_with_pcc(torch_output, output_tensor, 0.9999)
+
+
+@pytest.mark.parametrize("shape", [(1, 1, 2, 32, 32)])
+@pytest.mark.parametrize("perm", [(0, 1, 2, 4, 3)])
+@pytest.mark.parametrize("memory_config", [ttnn.DRAM_MEMORY_CONFIG])
+@pytest.mark.parametrize("dtype", [ttnn.bfloat16])
+def test_permute_5d_no_init(shape, perm, memory_config, dtype, device):
+    torch.manual_seed(520)
+    input_a = torch.randn(shape)
+
+    torch_output = torch.permute(input_a, perm)
+
+    tt_input = ttnn.from_torch(
+        input_a, device=device, layout=ttnn.ROW_MAJOR_LAYOUT, dtype=dtype, memory_config=memory_config
+    )
+
+    tt_output = ttnn.permute(tt_input, perm)
+    tt_output = ttnn.to_torch(tt_output)
+
+    assert_with_pcc(torch_output, tt_output, 0.9999)

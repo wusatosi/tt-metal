@@ -9,6 +9,19 @@
 #include "compute_kernel_api/tilize.h"
 #include "compute_kernel_api/untilize.h"
 #include "compute_kernel_api/pack_untilize.h"
+#include "debug/dprint.h"
+
+inline void print_pages(uint32_t l1_addr, uint32_t pagelen, uint32_t npages, uint32_t start = 0) {
+    volatile tt_l1_ptr uint16_t* ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(l1_addr) + start * pagelen;
+    for (uint32_t page = 0; page < npages; ++page) {
+        DPRINT << start + page << ": ";
+        for (uint32_t j = 0; j < pagelen; ++j, ++ptr) {
+            DPRINT << BF16(*ptr) << " ";
+        }
+        DPRINT << ENDL();
+    }
+    DPRINT << ENDL();
+}
 
 namespace NAMESPACE {
 void MAIN {
@@ -26,16 +39,25 @@ void MAIN {
     for (uint32_t n = 0; n < num_blocks; n++) {
         // have to global init here, otherwise pcc is bad
         // if n > 0, then some register isn't cleared and the output of tilize_block is garbage
-        unary_op_init_common(cb_in, cb_out);
+        // unary_op_init_common(cb_in, cb_out);
         // tilize input via unpack and then pack
         tilize_init_short(cb_in, 1);
 
         cb_wait_front(cb_in, x_block_size);
         // results are correct according to unpacker here
+        DPRINT << "block: " << n << ENDL();
+        UNPACK(print_pages((uint32_t)(get_local_cb_interface(cb_in).fifo_rd_ptr << 4), x_block_size, 32));
         cb_reserve_back(cb_tilize, 1);
 
         // removing this line causes the output of tilize_block to be garbage in the second iteration
         tilize_block(cb_in, 1, cb_tilize);  // tilize and pack into cb_tilize
+
+        for (uint8_t i = 0; i < 32; ++i) {
+            uint8_t j = i + 1u;
+            DPRINT_PACK(
+                { DPRINT << TSLICE(cb_tilize, 0, SliceRange{.h0 = i, .h1 = j, .hs = 1, .w0 = 0, .w1 = 32, .ws = 1}); });
+        }
+        DPRINT_PACK({ DPRINT << ENDL() << ENDL(); });
 
         // tile slice according to unpacker is garbage after tilize_block in the second iteration, missing an uninit?
         cb_push_back(cb_tilize, 1);
