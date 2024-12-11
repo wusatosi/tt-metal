@@ -30,6 +30,7 @@ set(TT_METAL_TESTS_SRCS
     # test_l1_to_l1_multi_core.cpp                <- test borked
     test_dram_copy_sticks_multi_core.cpp
     test_untilize_eltwise_binary.cpp
+    test_bfp8.cpp
     test_bfp8_conversion.cpp
     # test_bfp4_conversion.cpp        <- not tested in run_tt_metal.py
     test_core_range_set.cpp
