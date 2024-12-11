@@ -116,33 +116,22 @@ operation::ProgramWithCallbacks all_gather_multi_core_with_workers_new(
     // Create Tensor slicer
     // read the entire input tensor (partition size = 1, partition index = 0)
     // write to the output tensor on its corresponding partition (partition size = ring_size, partition index = ring_index)
-    auto input_tensor_slicer = ttnn::ccl::GenericWrappedTensorSlicer (
-        input_tensor,
+    auto input_tensor_slicer = ttnn::ccl::GenericWrappedTensorSlicerV2 (
         input_tensor,
         dim,
         0, // partition index
         1, // partition size
-        num_links, // num_workers_per_slicer, set 1 per link for now
-        UINT32_MAX, // max_worker_slice_in_bytes, set as infinite for now
-        cb_num_pages / 2);
-    auto output_tensor_slicer = ttnn::ccl::GenericWrappedTensorSlicer (
-        output_tensor,
+        num_links // num_workers_per_slicer, set 1 per link for now
+    );
+    auto output_tensor_slicer = ttnn::ccl::GenericWrappedTensorSlicerV2 (
         output_tensor,
         dim,
         ring_index, // partition index
         ring_size, // partition size
-        num_links, // num_workers_per_slicer, set 1 per link for now
-        UINT32_MAX, // max_worker_slice_in_bytes, set as infinite for now
-        cb_num_pages / 2);
+        num_links // num_workers_per_slicer, set 1 per link for now
+    );
 
     // KERNEL CREATION
-    auto worker_arg_builder = ccl::worker_detail::CCLWorkerArgBuilder(
-        device,
-        op_config,
-        input_tensor_partition,
-        output_tensor_partition,
-        dim);
-
     auto const& worker_defines = op_config.emit_worker_defines();
     static std::string const& sender_kernel_reader_path = "ttnn/cpp/ttnn/operations/ccl/common/kernels/ccl_send_reader.cpp";
     static std::string const& sender_kernel_writer_path = "ttnn/cpp/ttnn/operations/ccl/common/kernels/ccl_send_writer.cpp";
@@ -184,20 +173,6 @@ operation::ProgramWithCallbacks all_gather_multi_core_with_workers_new(
             drain_sync_core = device->worker_core_from_logical_core(core);
         }
         std::size_t worker_tensor_slice_index = link;
-        auto const& input_worker_slice = input_tensor_slicer.get_worker_slice(worker_tensor_slice_index);
-        auto const& output_worker_slice = output_tensor_slicer.get_worker_slice(worker_tensor_slice_index);
-        auto worker_arg_builder = ccl::worker_detail::CCLWorkerArgBuilder(
-            device,
-            op_config,
-            input_tensor_partition,
-            output_tensor_partition,
-            dim);
-
-        // tt::log_info("Creating RT Args for worker core ({},{})", core.x, core.y);
-        log_info(tt::LogOp, "reference input worker slice");
-        input_worker_slice.print();
-        log_info(tt::LogOp, "reference output worker slice");
-        output_worker_slice.print();
 
         auto const& input_worker_slice_v2 = input_tensor_slicer.get_worker_slice_v2(worker_tensor_slice_index);
         auto const& output_worker_slice_v2 = output_tensor_slicer.get_worker_slice_v2(worker_tensor_slice_index);
