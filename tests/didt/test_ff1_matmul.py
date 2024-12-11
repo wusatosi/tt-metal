@@ -153,7 +153,7 @@ def test_ff1_matmul(
     )
 
     in0_shape = [1, 1, 32 * per_core_M * compute_grid.y, 576 * compute_grid.x]
-    in1_shape = [1, 1, 576 * compute_grid.x, 32 * N * compute_grid.x]
+    in1_shape = [1, 1, 576 * compute_grid.x, 32 * per_core_N * compute_grid.x]
 
     ff1_test = FF1Test(
         mesh_device,

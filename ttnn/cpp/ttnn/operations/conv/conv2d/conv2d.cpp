@@ -99,20 +99,14 @@ ParallelConfig determine_parallel_config(
     }
     auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
     if (grid_opt.has_value()) {
-        log_info(LogOp, "Using grid size from input");
         compute_with_storage_grid_size = grid_opt.value();
     }
-    // if (std::getenv("TT_CONV_6x8") != nullptr) {
-    //     log_info(LogOp, "Using 6x8 grid for conv2d");
-    //     compute_with_storage_grid_size = {6, 8};
-    // }
     std::vector<uint32_t> device_grid_size = {
         (uint32_t)compute_with_storage_grid_size.x, (uint32_t)compute_with_storage_grid_size.y};
     CoreCoord device_grid_size_coord = {
         (std::size_t)compute_with_storage_grid_size.x, (std::size_t)compute_with_storage_grid_size.y};
     uint32_t max_num_cores = device_grid_size[0] * device_grid_size[1];
 
-    log_info(LogOp, "Max num cores determined: {}", max_num_cores);
     auto calculate_num_cores_nhw = [&]() {
 
         if(shard_layout == TensorMemoryLayout::HEIGHT_SHARDED) {

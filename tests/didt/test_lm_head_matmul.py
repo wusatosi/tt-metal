@@ -101,8 +101,6 @@ def test_lm_head_matmul(
     assert per_core_M % out_subblock_h == 0
     assert per_core_N % out_subblock_w == 0
 
-    print("weights_n", weights_n)
-    print("in1_dtype", in1_dtype)
     subblock_1x1 = os.getenv("TT_USE_1X1_SUBBLOCK") == "1"
     if subblock_1x1:
         out_subblock_h = 1
