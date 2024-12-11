@@ -375,7 +375,7 @@ class TtLlamaAttention(LightweightModule):
             num_heads=self.n_local_heads,
         )
         ttnn.deallocate(attn_output_11BH)
-        ttnn.deallocate(attn_output_1G4D)
+        # ttnn.deallocate(attn_output_1G4D)
 
         if self.use_fused_all_gather_matmul:
             attn_output_cat = ttnn.to_memory_config(
@@ -426,7 +426,6 @@ class TtLlamaAttention(LightweightModule):
                 core_grid=ttnn.CoreGrid(y=4, x=8) if TG else None,
                 program_config=self.model_config["ATTN_OUTPUT_PROGCFG"] if not TG else None,
                 memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if TG else attn_output_cat.memory_config(),
-                dtype=ttnn.bfloat8_b if TG else None,
                 compute_kernel_config=self.compute_kernel_config_hifi2,
             )
 
@@ -452,10 +451,8 @@ class TtLlamaAttention(LightweightModule):
                 use_composite=True if self.hidden_size == 8192 else False,
             )
 
-            if not TG:
-                dense_out_reduced = ttnn.to_memory_config(
-                    dense_out_reduced, self.model_config["DECODE_RESIDUAL_MEMCFG"]
-                )
+            # if not TG:
+            dense_out_reduced = ttnn.to_memory_config(dense_out_reduced, self.model_config["DECODE_RESIDUAL_MEMCFG"])
 
             return dense_out_reduced
 

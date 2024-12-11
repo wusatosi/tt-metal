@@ -179,8 +179,8 @@ class TtLlamaMLP(LightweightModule):
                 topology=ttnn.Topology.Linear,
                 memory_config=input_mem_cfg,
             )
-            if mode == "decode":
-                w2_in = ttnn.to_memory_config(w2_in, ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG)
+            # if mode == "decode":
+            #     w2_in = ttnn.to_memory_config(w2_in, ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG)
 
         w2_out = ttnn.linear(
             w2_in,
@@ -219,7 +219,7 @@ class TtLlamaMLP(LightweightModule):
         if mode == "decode":
             w2_out_reduced = ttnn.to_memory_config(
                 w2_out_reduced,
-                self.model_config["SHARDED_ATTN_INPUT_MEMCFG"] if TG else self.model_config["DECODE_RESIDUAL_MEMCFG"],
+                self.model_config["DECODE_RESIDUAL_MEMCFG"],
             )
 
         # ttnn.deallocate(w2_out)

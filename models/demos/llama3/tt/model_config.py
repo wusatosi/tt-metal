@@ -251,9 +251,32 @@ class TtModelArgs:
 
             self.model_config["COMPUTE_KERNEL_CONFIG_HIFI2"] = self.compute_kernel_config_hifi2
 
+            half_grid = ttnn.CoreRangeSet(
+                {
+                    ttnn.CoreRange(
+                        ttnn.CoreCoord(0, 0),
+                        ttnn.CoreCoord(7, 7),
+                    )
+                }
+            )
+            self.model_config["HALF_GRID_MEMCFG"] = ttnn.MemoryConfig(
+                ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+                ttnn.BufferType.L1,
+                ttnn.ShardSpec(
+                    half_grid,
+                    [
+                        32,
+                        64,
+                    ],
+                    ttnn.ShardOrientation.ROW_MAJOR,
+                    False,
+                ),
+            )
             residual_grid = self.dram_shard_core_grid_for_k(self.dim // self.num_devices)
             self.model_config["DECODE_RESIDUAL_MEMCFG"] = (
-                ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG  # FIXME: when residual add support typecasting for sharded tensors
+                self.model_config[
+                    "HALF_GRID_MEMCFG"
+                ]  # FIXME: when residual add support typecasting for sharded tensors
                 if self.is_galaxy
                 else ttnn.create_sharded_memory_config(
                     (
@@ -823,7 +846,7 @@ class TtModelArgs:
             self.num_all_gather_links = (
                 2 if self.is_galaxy else 1
             )  # TODO: try out 3 for short axis and 4 for long axis (TG only) <- should work but untested in model
-            self.ccl_dtype = ttnn.bfloat8_b
+            self.ccl_dtype = ttnn.bfloat16
 
     def is_distributed_norm(self, mode):
         if not self.is_multichip:
