@@ -84,6 +84,11 @@ private:
     std::vector<Device*> devices;
     std::vector<std::shared_ptr<MeshDevice>> submeshes;  // Parent owns submeshes and responsible fortheir destruction
     std::weak_ptr<MeshDevice> parent_mesh;               // Submesh created with reference to parent mesh
+    // these backups are only used for remapping mesh
+    size_t l1_small_size_;
+    size_t trace_region_size_;
+    size_t num_command_queues_;
+    DispatchCoreConfig dispatch_core_config_;
 
     void initialize(
         size_t l1_small_size,
@@ -149,6 +154,8 @@ public:
         size_t trace_region_size = DEFAULT_TRACE_REGION_SIZE,
         size_t num_command_queues = 1,
         const DispatchCoreConfig& dispatch_core_config = DispatchCoreConfig{});
+
+    void remap_mesh(MeshShape shape);
 
     // Device API Queries (API contract with Device class to be supported in future)
     CoreCoord compute_with_storage_grid_size() const;

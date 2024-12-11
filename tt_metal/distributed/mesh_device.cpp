@@ -368,11 +368,36 @@ void MeshDevice::initialize(
     this->opened_devices = tt::tt_metal::detail::CreateDevices(
         physical_device_ids, num_command_queues, l1_small_size, trace_region_size, dispatch_core_config);
 
+    // for potential remap_mesh operation
+    l1_small_size_ = l1_small_size;
+    trace_region_size_ = trace_region_size;
+    num_command_queues_ = num_command_queues;
+    dispatch_core_config_ = dispatch_core_config;
+
     for (auto physical_device_id : physical_device_ids) {
         this->devices.push_back(this->opened_devices.at(physical_device_id));
     }
     this->primary_view = std::make_shared<MeshDeviceView>(*this);
     system_mesh.register_mesh_device(shared_from_this(), this->devices);
+}
+
+void MeshDevice::remap_mesh(MeshShape mesh_shape) {
+    TT_FATAL(!this->opened_devices.empty(), "Remap mesh shape can be done after MeshDevice is opened");
+    TT_FATAL(this->submeshes.size() == 0, "Remap mesh shape cannot be done with any exising submeshes");
+    auto [org_num_rows, org_num_cols] = this->shape();
+    auto [num_rows, num_cols] = mesh_shape;
+    if (org_num_rows == num_rows && org_num_cols == num_cols) {
+        return;
+    }
+
+    tt::tt_metal::detail::CloseDevices(this->opened_devices);
+    this->opened_devices.clear();
+    this->devices.clear();
+    this->primary_view.reset();
+
+    auto config = MeshDeviceConfig(mesh_shape, MeshOffset{0, 0});
+    this->mesh_device_shape = mesh_shape;
+    this->initialize(l1_small_size_, trace_region_size_, num_command_queues_, dispatch_core_config_, config);
 }
 
 MeshDevice::~MeshDevice() { close_devices(); }
