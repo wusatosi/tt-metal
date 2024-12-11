@@ -1,5 +1,9 @@
 set(CCL_EXPERIMENTAL_TTNN_SRCS
     #Experimental Ops
+    ${CMAKE_CURRENT_SOURCE_DIR}/reduce_scatter_async/device/reduce_scatter_async_op.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/reduce_scatter_async/device/reduce_scatter_async_program.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/reduce_scatter_async/reduce_scatter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/reduce_scatter_async/reduce_scatter_pybind.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/all_gather_matmul/all_gather_matmul.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/all_gather_matmul/all_gather_matmul_pybind.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/all_gather_matmul/device/all_gather_matmul_op.cpp
