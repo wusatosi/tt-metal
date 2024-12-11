@@ -314,8 +314,7 @@ def test_reshape_tile_with_padding(input_shape, output_shape, layout, device):
 
 
 # issue 15851
-def test_issue_15851():
-    device = ttnn.open_device(device_id=0)
+def test_issue_15851(device):
     x = ttnn.from_torch(torch.ones(1024), layout=ttnn.TILE_LAYOUT).to(device)
     y = ttnn.reshape(x, (32, 32))
 
