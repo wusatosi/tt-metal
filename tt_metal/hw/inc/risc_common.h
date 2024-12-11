@@ -178,10 +178,6 @@ inline __attribute__((always_inline)) void invalidate_l1_cache() {
 // L1 cache can be disabled by setting `TT_METAL_DISABLE_L1_DATA_CACHE_RISCVS` env var
 // export TT_METAL_DISABLE_L1_DATA_CACHE_RISCVS=<BR,NC,TR,ER>
 inline __attribute__((always_inline)) void conditionally_disable_l1_cache() {
-#if defined(ARCH_BLACKHOLE) && defined(DISABLE_L1_DATA_CACHE)
-    // asm(R"ASM(
-    //         csrrsi zero, 0x7c0, 0x8
-    //       )ASM");
     asm(R"ASM(
         .option push
         lui   t1, 0xC020
@@ -190,6 +186,10 @@ inline __attribute__((always_inline)) void conditionally_disable_l1_cache() {
          )ASM" ::
         : "t1");
 
+#if defined(ARCH_BLACKHOLE) && defined(DISABLE_L1_DATA_CACHE)
+    // asm(R"ASM(
+    //         csrrsi zero, 0x7c0, 0x8
+    //       )ASM");
     asm(R"ASM(
         .option push
         li   t1, 0x1
