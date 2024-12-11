@@ -64,6 +64,8 @@ void kernel_main() {
     constexpr uint32_t in_nblocks_c = get_compile_time_arg_val(12);
     constexpr uint32_t in_cb_sz = get_compile_time_arg_val(13);
 
+    const uint32_t out_nbytes_c = get_compile_time_arg_val(15);
+
     constexpr uint32_t TILE_WIDTH = 32;
 
     constexpr uint32_t in_cb_id = (reader_id == 1) ? tt::CBIndex::c_1 : tt::CBIndex::c_0;
@@ -113,12 +115,12 @@ void kernel_main() {
         for (uint32_t h = 0; h < window_h; ++h) {
             for (uint32_t w = 0; w < window_w; ++w) {
                 uint32_t stick_offset = top_left_local_index + h * in_w_padded + w;
-                uint32_t read_offset = in_l1_read_base_addr + (stick_offset * 80);
+                uint32_t read_offset = in_l1_read_base_addr + (stick_offset * in_nbytes_c);
                 if (reader_id == print_id) {
                     print_pages(read_offset, 40, 1);
                 }
-                noc_async_read_one_packet(get_noc_addr(read_offset), out_l1_write_addr, 80);
-                out_l1_write_addr += 128;
+                noc_async_read_one_packet(get_noc_addr(read_offset), out_l1_write_addr, in_nbytes_c);
+                out_l1_write_addr += out_nbytes_c;
             }
         }
         if (split_reader) {

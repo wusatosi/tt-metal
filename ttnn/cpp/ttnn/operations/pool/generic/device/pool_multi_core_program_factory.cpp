@@ -52,7 +52,8 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
     uint32_t out_nbytes = datum_size(out_df);
 
     uint32_t in_nbytes_c = input_shape[3] / num_shards_c * in_nbytes;     // row of input (channels)
-    uint32_t out_nbytes_c = output_shape[3] / num_shards_c * out_nbytes;  // row of output (channels)
+    uint32_t out_nbytes_c = tt::round_up(output_shape[3] / num_shards_c, tt::constants::TILE_WIDTH) *
+                            out_nbytes;  // row of output (channels)
     // uint32_t in_nbytes_c = ceil_multiple_of(input_shape[3] / num_shards_c, tt::constants::TILE_WIDTH) * in_nbytes; //
     // row of input (channels) uint32_t out_nbytes_c = ceil_multiple_of(output_shape[3] / num_shards_c * out_nbytes,
     // tt::constants::TILE_WIDTH) * out_nbytes; // row of output (channels)
@@ -309,7 +310,8 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
         bf16_one_u32,
         in_nblocks_c,
         in_cb_sz,
-        max_rows_for_reduction};
+        max_rows_for_reduction,
+        out_nbytes_c};
 
     std::vector<uint32_t> reader1_ct_args = {
         out_nhw_per_core,
@@ -326,7 +328,8 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
         bf16_one_u32,
         in_nblocks_c,
         in_cb_sz,
-        max_rows_for_reduction};
+        max_rows_for_reduction,
+        out_nbytes_c};
 
     std::string reader_kernel_fname;
     if (is_large_kernel) {
