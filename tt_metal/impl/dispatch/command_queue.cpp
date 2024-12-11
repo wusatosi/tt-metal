@@ -2521,7 +2521,7 @@ void HWCommandQueue::enqueue_program(Program& program, bool blocking) {
             this->trace_ctx->descriptors[sub_device_id].num_traced_programs_needing_go_signal_unicast++;
             this->trace_ctx->descriptors[sub_device_id].num_completion_worker_cores += device->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id);
         }
-        #if 0
+        #if 1
         static std::mutex mtx;
         if (device->id() == 0) {
             std::scoped_lock<std::mutex> lck(mtx);

@@ -137,7 +137,7 @@ class TtTransformerBlock(LightweightModule):
             #       ttnn.deallocate(ff_in)
             # ff_out and h are both fractured across devices
             # out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)
-            return ff_out  # fractured across devices
+            return x  # fractured across devices
         else:
             # x is fractured across devices and interleaved in DRAM (for prefill) and sharded in L1 (for decode)
             skip_mem_cfg = self.model_config["DECODE_RESIDUAL_MEMCFG"] if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG

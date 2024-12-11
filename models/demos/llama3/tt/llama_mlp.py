@@ -142,7 +142,7 @@ class TtLlamaMLP(LightweightModule):
             w2_out = ttnn.reshape(w2_out, [1, 1, seq_len, -1])
 
         # All reduce
-        if self.args.is_multichip:
+        if self.args.is_multichip and mode != "decode":
             w2_out_reduced = ttnn.reduce_scatter(
                 w2_out,
                 dim=3,

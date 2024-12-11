@@ -178,6 +178,8 @@ def get_model_config(llama_version="llama3", max_batch_size=32, max_context_len=
             False,
         ),
     )
+
+    logger.info(f"shard info {shard_height}, {num_to_corerange_set(16)} {shard_width_hidden_dim_across_16_cores} ")
     model_config["HIDDEN_WIDTH_16_CORES_MEMCFG"] = ttnn.MemoryConfig(
         ttnn.TensorMemoryLayout.WIDTH_SHARDED,
         ttnn.BufferType.L1,

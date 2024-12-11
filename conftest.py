@@ -208,6 +208,8 @@ def mesh_device(request, silicon_arch_name, silicon_arch_wormhole_b0, device_par
     except (ValueError, AttributeError):
         param = len(device_ids)  # Default to using all available devices
 
+    # param = (1,4)
+
     if isinstance(param, tuple):
         grid_dims = param
         assert len(grid_dims) == 2, "Device mesh grid shape should have exactly two elements."
@@ -220,6 +222,8 @@ def mesh_device(request, silicon_arch_name, silicon_arch_wormhole_b0, device_par
         num_devices_requested = min(param, len(device_ids))
         mesh_shape = ttnn.MeshShape(1, num_devices_requested)
 
+    # mesh_shape = ttnn.MeshShape(1, 1)
+    # num_devices_requested = 1
     request.node.pci_ids = [ttnn.GetPCIeDeviceID(i) for i in device_ids[:num_devices_requested]]
 
     dispatch_core_config = get_dispatch_core_config(device_params)
