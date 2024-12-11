@@ -184,6 +184,14 @@ inline __attribute__((always_inline)) void conditionally_disable_l1_cache() {
     //       )ASM");
     asm(R"ASM(
         .option push
+        lui   t1, 0xC020
+        csrrs zero, 0x7c0, t1
+        .option pop
+         )ASM" ::
+        : "t1");
+
+    asm(R"ASM(
+        .option push
         li   t1, 0x1
         slli t1, t1, 3
         csrrs zero, 0x7c0, t1
