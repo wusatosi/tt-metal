@@ -53,7 +53,7 @@ enum TwoInputReaderKernelWriteMode {
 };
 
 static constexpr size_t TEST_WORKERS_SUBDEVICE_INDEX = 0;
-static constexpr size_t TEST_EDM_FABRIC_SUBDEVICE_INDEX = 0;
+static constexpr size_t TEST_EDM_FABRIC_SUBDEVICE_INDEX = 1;
 
 using subdevice_managers_t = std::unordered_map<chip_id_t, SubDeviceManagerId>;
 struct SubdeviceInfo {
@@ -168,15 +168,13 @@ static SubdeviceInfo create_subdevices(std::vector<Device*> const& devices) {
     for (auto device : devices) {
         const auto& tensix_sub_device =
             tt_metal::SubDevice(std::array{device->worker_cores(HalProgrammableCoreType::TENSIX, SubDeviceId{0})});
-        const auto& eth_sub_device = tt_metal::SubDevice(
-            std::array{CoreRangeSet(), device->worker_cores(HalProgrammableCoreType::ACTIVE_ETH, SubDeviceId{0})});
-        subdevice_info.sub_device_managers.insert(
-            {device->id(), device->create_sub_device_manager({tensix_sub_device, eth_sub_device}, 0)});
+        auto [sub_device_manager_id, fabric_sub_device_id] =
+            device->create_sub_device_manager_with_fabric({tensix_sub_device}, 0);
+        subdevice_info.sub_device_managers.insert({device->id(), sub_device_manager_id});
         device->load_sub_device_manager(subdevice_info.sub_device_managers.at(device->id()));
         subdevice_info.worker_subdevice_id.insert(
             {device->id(), device->get_sub_device_ids().at(TEST_WORKERS_SUBDEVICE_INDEX)});
-        subdevice_info.fabric_subdevice_id.insert(
-            {device->id(), device->get_sub_device_ids().at(TEST_EDM_FABRIC_SUBDEVICE_INDEX)});
+        subdevice_info.fabric_subdevice_id.insert({device->id(), fabric_sub_device_id});
     }
 
     return subdevice_info;
@@ -541,7 +539,8 @@ void generate_multi_input_test_worker_reader_kernel(
     bool fabric_enabled = std::holds_alternative<ttnn::ccl::cmd::UnicastCommandDestArgs>(dest_args) || std::holds_alternative<ttnn::ccl::cmd::MulticastCommandDestArgs>(dest_args);
     using namespace ttnn::ccl::cmd::uops;
     using namespace ttnn::ccl::cmd;
-    tt::log_trace(tt::LogTest, "Generating multi input test worker reader kernel for command type: {}", static_cast<uint32_t>(command_type));
+    // tt::log_trace(tt::LogTest, "Generating multi input test worker reader kernel for command type: {}",
+    // static_cast<uint32_t>(command_type));
 
     TT_FATAL(command_type == ttnn::ccl::cmd::CclCommandCode::STREAM_TENSOR_TO_CB || command_type == ttnn::ccl::cmd::CclCommandCode::STREAM_CB_TO_TENSOR, "Unsupported tensor IO command type");
 
@@ -1363,10 +1362,10 @@ int TestLoopbackEntrypoint(
         }
         // Wait for worker programs to finish
 
-        auto d0_worker_subdevice = device_0->get_sub_device_ids()[TEST_WORKERS_SUBDEVICE_INDEX];
-        auto d1_worker_subdevice = device_1->get_sub_device_ids()[TEST_WORKERS_SUBDEVICE_INDEX];
-        auto d0_fabric_subdevice = device_0->get_sub_device_ids()[TEST_EDM_FABRIC_SUBDEVICE_INDEX];
-        auto d1_fabric_subdevice = device_1->get_sub_device_ids()[TEST_EDM_FABRIC_SUBDEVICE_INDEX];
+        auto d0_worker_subdevice = subdevice_managers->worker_subdevice_id.at(device_0->id());
+        auto d1_worker_subdevice = subdevice_managers->worker_subdevice_id.at(device_1->id());
+        auto d0_fabric_subdevice = subdevice_managers->fabric_subdevice_id.at(device_0->id());
+        auto d1_fabric_subdevice = subdevice_managers->fabric_subdevice_id.at(device_1->id());
         // Teardown the fabric
         tt_metal::Finish(sender_device->command_queue(), {d0_worker_subdevice});
         // tt_metal::Finish(receiver_device->command_queue(), {d1_worker_subdevice});

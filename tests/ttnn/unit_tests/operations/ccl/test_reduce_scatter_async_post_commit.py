@@ -11,6 +11,25 @@ from models.utility_functions import skip_for_grayskull
 from tests.ttnn.unit_tests.operations.ccl.test_reduce_scatter_post_commit import is_unsupported_case
 
 
+def create_and_load_sub_device_manager_with_fabric_interface(
+    mesh_device, worker_sub_devices, ccl_worker_sub_device_id, local_allocator_size
+):
+    assert ccl_worker_sub_device_id < len(worker_sub_devices)
+    mesh_sub_device_manager_id, fabric_sub_device_id = mesh_device.create_sub_device_manager_with_fabric(
+        worker_sub_devices, local_allocator_size
+    )
+    mesh_device.load_sub_device_manager(mesh_sub_device_manager_id)
+    # fabric sub-device id can also be queried from device, no need to explicitly pass it in
+    fabric_interface = ttnn.initialize_edm_fabric(mesh_device, ccl_worker_sub_device_id, fabric_sub_device_id)
+    return mesh_sub_device_manager_id, fabric_interface, fabric_sub_device_id
+
+
+def teardown_fabric_interface(mesh_device):
+    for device_id in mesh_device.get_device_ids():
+        ttnn.teardown_fabric_interface(mesh_device.get_device(device_id))
+        ttnn.synchronize_device(mesh_device.get_device(device_id))
+
+
 def run_reduce_scatter_test(
     mesh_device,
     num_devices,
@@ -69,6 +88,19 @@ def run_reduce_scatter_test(
     assert len(tt_input_tensors) == num_devices
 
     input_tensor_mesh = ttnn.aggregate_as_tensor(tt_input_tensors)
+
+    compute_grid_size = mesh_device.compute_with_storage_grid_size()
+    worker_sub_device = ttnn.SubDevice(
+        [
+            ttnn.CoreRangeSet(
+                ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(compute_grid_size.x - 1, compute_grid_size.y - 1))
+            )
+        ]
+    )
+    worker_sub_device_id = ttnn.SubDeviceId(0)
+    mesh_sub_device_manager_id, fabric_interface, fabric_sub_device_id = create_fabric_sub_device_manager_and_interface(
+        mesh_device, [worker_sub_device], 0
+    )
     # Run the op
     if trace_mode:
         output_tensor_mesh = run_with_trace(
@@ -90,10 +122,12 @@ def run_reduce_scatter_test(
                 memory_config=mem_config,
                 topology=topology,
                 num_links=num_links,
+                fabric_interface=fabric_interface,
+                worker_sub_device_id=worker_sub_device_id,
             )
 
-            for device_id in mesh_device.get_device_ids():
-                ttnn.synchronize_device(mesh_device.get_device(device_id))
+            teardown_fabric_interface(mesh_device)
+
             logger.info(f"Done iteration {i}")
 
     # ttnn.visualize_mesh_device(t3k_mesh_device, tensor=output_tensor_mesh)
