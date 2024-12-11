@@ -68,6 +68,8 @@ public:
     bool has_allocations() const;
     DeviceAddr local_l1_size() const;
 
+    std::optional<SubDeviceId> fabric_sub_device_id() const;
+
 private:
     void validate_sub_devices() const;
     uint8_t get_sub_device_index(SubDeviceId sub_device_id) const;
@@ -76,6 +78,10 @@ private:
     void populate_sub_allocators();
     void populate_noc_data();
     void populate_worker_launch_message_buffer_state();
+
+    // Temporary until migration to actual fabric is complete
+    friend class tt::tt_metal::v0::Device;
+    void set_fabric_sub_device_id(SubDeviceId sub_device_id);
 
     // TODO: We have a max number of sub-devices, so we can use a fixed size array
     std::vector<SubDevice> sub_devices_;
@@ -97,6 +103,9 @@ private:
     std::unordered_map<uint32_t, std::shared_ptr<TraceBuffer>> trace_buffer_pool_;
 
     std::vector<LaunchMessageRingBufferState> worker_launch_message_buffer_state_;
+
+    // Temporary until migration to actual fabric is complete
+    std::optional<SubDeviceId> fabric_sub_device_id_ = std::nullopt;
 };
 
 }  // namespace detail
