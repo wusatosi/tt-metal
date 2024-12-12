@@ -672,7 +672,7 @@ void process_write_packed(
 void process_write_packed_large(
     uint32_t* l1_cache, uint32_t& block_noc_writes_to_clear, uint32_t block_next_start_addr[]) {
     volatile CQDispatchCmd tt_l1_ptr* cmd = (volatile CQDispatchCmd tt_l1_ptr*)cmd_ptr;
-
+    bool barrier = cmd->write_packed_large.barrier;
     uint32_t count = cmd->write_packed_large.count;
     uint32_t alignment = cmd->write_packed_large.alignment;
     uint32_t write_offset_index = cmd->write_packed_large.write_offset_index;
@@ -702,12 +702,11 @@ void process_write_packed_large(
         // Otherwise we assume NOC coord hasn't changed
         // TODO: If we are able to send 0 length txn to unset link, we don't need a flag and can compare dst_noc to prev
         // to determine linking
-        if (init_state) {
-            uint32_t dst_noc = sub_cmd_ptr->noc_xy_addr;
-            WATCHER_RING_BUFFER_PUSH(0x01000000 | dst_noc);
-            // TODO: Linking should be set to true once atomic txn is handled properly
-            cq_noc_async_write_init_state<CQ_NOC_sNdl, true, true>(0, get_noc_addr_helper(dst_noc, dst_addr));
-        }
+        // if (init_state) {
+        uint32_t dst_noc = sub_cmd_ptr->noc_xy_addr;
+        // // TODO: Linking should be set to true once atomic txn is handled properly
+        // cq_noc_async_write_init_state<CQ_NOC_sNdl, true, true>(0, get_noc_addr_helper(dst_noc, dst_addr));
+        // }
 
         sub_cmd_ptr++;
 
@@ -720,7 +719,7 @@ void process_write_packed_large(
                         data_ptr = dispatch_cb_base;
                     }
                     // Block completion - account for all writes issued for this block before moving to next
-                    noc_nonposted_writes_num_issued[noc_index] += writes;
+                    // noc_nonposted_writes_num_issued[noc_index] += writes;
                     mcasts += num_dests * writes;
                     writes = 0;
                     move_rd_to_next_block_and_release_pages<
@@ -739,26 +738,12 @@ void process_write_packed_large(
             uint32_t xfer_size;
             if (length > available_data) {
                 xfer_size = available_data;
-                WATCHER_RING_BUFFER_PUSH(0x02000000 | xfer_size);
-                WATCHER_RING_BUFFER_PUSH(0x03000000 | dst_addr);
-                cq_noc_async_write_with_state_any_len(data_ptr, dst_addr, xfer_size, num_dests);
+                noc_async_write_multicast_dispatch(
+                    data_ptr, get_noc_addr_helper(dst_noc, dst_addr), xfer_size, num_dests, barrier);
             } else {
                 xfer_size = length;
-                if (unlink) {
-                    uint32_t rem_xfer_size =
-                        cq_noc_async_write_with_state_any_len<false>(data_ptr, dst_addr, xfer_size, num_dests);
-                    // Unset Link flag
-                    cq_noc_async_write_init_state<CQ_NOC_sndl, true, false>(0, 0, 0);
-                    uint32_t data_offset = xfer_size - rem_xfer_size;
-                    WATCHER_RING_BUFFER_PUSH(0x04000000 | rem_xfer_size);
-                    WATCHER_RING_BUFFER_PUSH(0x05000000 | (dst_addr + data_offset));
-                    cq_noc_async_write_with_state<CQ_NOC_SnDL, CQ_NOC_wait>(
-                        data_ptr + data_offset, dst_addr + data_offset, rem_xfer_size, num_dests);
-                } else {
-                    WATCHER_RING_BUFFER_PUSH(0x06000000 | xfer_size);
-                    WATCHER_RING_BUFFER_PUSH(0x07000000 | dst_addr);
-                    cq_noc_async_write_with_state_any_len(data_ptr, dst_addr, xfer_size, num_dests);
-                }
+                noc_async_write_multicast_dispatch(
+                    data_ptr, get_noc_addr_helper(dst_noc, dst_addr), xfer_size, num_dests, barrier);
             }
             writes += div_up(xfer_size, NOC_MAX_BURST_SIZE);
             length -= xfer_size;
@@ -768,7 +753,7 @@ void process_write_packed_large(
 
         init_state = unlink;
 
-        noc_nonposted_writes_num_issued[noc_index] += writes;
+        // noc_nonposted_writes_num_issued[noc_index] += writes;
         mcasts += num_dests * writes;
         writes = 0;
 
@@ -801,11 +786,10 @@ void process_write_packed_large(
 
         count--;
     }
-    noc_nonposted_writes_acked[noc_index] = mcasts;
-
+    // noc_async_write_barrier();
+    // noc_nonposted_writes_acked[noc_index] = mcasts;
     cmd_ptr = data_ptr;
 }
-
 static uint32_t process_debug_cmd(uint32_t cmd_ptr) {
     volatile CQDispatchCmd tt_l1_ptr* cmd = (volatile CQDispatchCmd tt_l1_ptr*)cmd_ptr;
     uint32_t checksum = 0;

@@ -20,6 +20,11 @@ namespace kernel_profiler {
 }
 #endif
 
+inline void RISC_POST_STATUS_TO_RB(uint32_t status, uint32_t offset) {
+    volatile uint32_t* ptr = (volatile uint32_t*)(0x21d0);
+    ptr[offset] = status;
+}
+
 uint8_t noc_index = 0;  // TODO: remove hardcoding
 uint8_t my_x[NUM_NOCS] __attribute__((used));
 uint8_t my_y[NUM_NOCS] __attribute__((used));
@@ -64,6 +69,7 @@ void __attribute__((noinline)) Application(void) {
     while (routing_info->routing_enabled) {
         // FD: assume that no more host -> remote writes are pending
         uint8_t go_message_signal = mailboxes->go_message.signal;
+        RISC_POST_STATUS_TO_RB(0xaaa, 0);
         if (go_message_signal == RUN_MSG_GO) {
             // Only include this iteration in the device profile if the launch message is valid. This is because all workers get a go signal regardless of whether
             // they're running a kernel or not. We don't want to profile "invalid" iterations.
@@ -75,9 +81,11 @@ void __attribute__((noinline)) Application(void) {
             // Note that a core may get "GO" w/ enable false to keep its launch_msg's in sync
             enum dispatch_core_processor_masks enables = (enum dispatch_core_processor_masks)launch_msg_address->kernel_config.enables;
             if (enables & DISPATCH_CLASS_MASK_ETH_DM0) {
+                RISC_POST_STATUS_TO_RB(0xbbb, 0);
                 WAYPOINT("R");
                 firmware_config_init(mailboxes, ProgrammableCoreType::ACTIVE_ETH, DISPATCH_CLASS_ETH_DM0);
                 kernel_init(0);
+                RISC_POST_STATUS_TO_RB(0xddd, 0);
                 WAYPOINT("D");
             }
             mailboxes->go_message.signal = RUN_MSG_DONE;

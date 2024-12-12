@@ -483,7 +483,7 @@ uint32_t process_relay_paged_cmd_large(
     uint32_t pages,
     uint32_t length_adjust) {
 #if ENABLE_PREFETCH_DPRINTS
-    DPRINT << "relay_paged_cmd_large: " << page_size << " " << pages << " " << length_adjust << ENDL();
+    // DPRINT << "relay_paged_cmd_large: " << page_size << " " << pages << " " << length_adjust << ENDL();
 #endif
 
     InterleavedAddrGen<is_dram> addr_gen{.bank_base_address = base_addr, .page_size = page_size};
@@ -1443,8 +1443,9 @@ void kernel_main_hd() {
 }
 
 void kernel_main() {
-    DPRINT << "prefetcher_" << is_h_variant << is_d_variant << ": start" << ENDL();
-
+    // DPRINT << "prefetcher_" << is_h_variant << is_d_variant << ": start" << ENDL();
+    // DPRINT << (uint32_t)(GET_MAILBOX_ADDRESS_DEV(dprint_buf.data[DPRINT_RISCV_INDEX_NC])) << " " <<
+    // (uint32_t)(GET_MAILBOX_ADDRESS_DEV(dprint_buf.data[DPRINT_RISCV_INDEX_BR])) << ENDL();
     if (is_h_variant and is_d_variant) {
         kernel_main_hd();
     } else if (is_h_variant) {
@@ -1459,5 +1460,5 @@ void kernel_main() {
     // Confirm expected number of pages, spinning here is a leak
     cb_wait_all_pages<my_downstream_cb_sem_id>(downstream_cb_pages);
 
-    DPRINT << "prefetcher_" << is_h_variant << is_d_variant << ": out" << ENDL();
+    // DPRINT << "prefetcher_" << is_h_variant << is_d_variant << ": out" << ENDL();
 }

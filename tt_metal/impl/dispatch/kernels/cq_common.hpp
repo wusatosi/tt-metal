@@ -139,14 +139,10 @@ FORCE_INLINE void cq_noc_async_write_with_state(
     if constexpr (flags & CQ_NOC_FLAG_SRC) {
         NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_TARG_ADDR_LO, src_addr);
         last_src_addr = src_addr;
-    } else {
-        NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_TARG_ADDR_LO, last_src_addr);
     }
     if constexpr (flags & CQ_NOC_FLAG_DST) {
         NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_RET_ADDR_LO, (uint32_t)dst_addr);
         last_dst_addr = (uint32_t)dst_addr;
-    } else {
-        NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_RET_ADDR_LO, last_dst_addr);
     }
     if constexpr (flags & CQ_NOC_FLAG_NOC) {
 #ifdef ARCH_BLACKHOLE
@@ -154,19 +150,15 @@ FORCE_INLINE void cq_noc_async_write_with_state(
         NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_RET_ADDR_MID, (uint32_t)(dst_addr >> 32) & 0x1000000F);
 #endif
         NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_RET_ADDR_COORDINATE, (uint32_t)(dst_addr >> NOC_ADDR_COORD_SHIFT) & NOC_COORDINATE_MASK);
-        last_noc_addr =  (uint32_t)(dst_addr >> NOC_ADDR_COORD_SHIFT) & NOC_COORDINATE_MASK;
-    } else {
-        NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_RET_ADDR_COORDINATE, last_noc_addr);
+        last_noc_addr = (uint32_t)(dst_addr >> NOC_ADDR_COORD_SHIFT) & NOC_COORDINATE_MASK;
     }
     if constexpr (flags & CQ_NOC_FLAG_LEN) {
         ASSERT(size <= NOC_MAX_BURST_SIZE);
         NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_AT_LEN_BE, size);
         last_size = size;
-     } else {
-        NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_AT_LEN_BE, last_size);
      }
     if constexpr (send) {
-        NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_CTRL, last_noc_cmd_field);
+        // NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_CTRL, last_noc_cmd_field);
         DEBUG_SANITIZE_NOC_WRITE_TRANSACTION_FROM_STATE(noc_index);
         NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
     }

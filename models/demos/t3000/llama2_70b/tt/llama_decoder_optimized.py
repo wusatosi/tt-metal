@@ -172,45 +172,44 @@ class TtLlamaDecoder_optimized:
         kv_cache=None,
     ) -> List[ttnn.Tensor]:
         ### xs (residual stream) is fractured on all chips
-        # xs_replicated = ttnn.all_gather(
-        #    xs,
-        #    dim=3,
-        #    num_links=self.model_config["ALL_GATHER_NUM_LINKS"],
-        #    memory_config=self.model_config["HIDDEN_WIDTH_16_CORES_MEMCFG"],
-        # )
+        xs_replicated = ttnn.all_gather(
+            xs,
+            dim=3,
+            num_links=self.model_config["ALL_GATHER_NUM_LINKS"],
+            memory_config=self.model_config["HIDDEN_WIDTH_16_CORES_MEMCFG"],
+        )
 
         # In-place RMSNorm
-        # attn_norm_replicated = ttnn.rms_norm(
-        #     xs_replicated,
-        #     epsilon=self.norm_eps,
-        #     weight=self.attn_norm,
-        #     program_config=self.model_config["LN_16_CORES_PROGCFG"],
-        #     memory_config=self.model_config["HIDDEN_WIDTH_16_CORES_MEMCFG"],
-        #     compute_kernel_config=self.model_config["LN_COMPUTE_KERNEL_CONFIG"],
-        # )
+        attn_norm_replicated = ttnn.rms_norm(
+            xs_replicated,
+            epsilon=self.norm_eps,
+            weight=self.attn_norm,
+            program_config=self.model_config["LN_16_CORES_PROGCFG"],
+            memory_config=self.model_config["HIDDEN_WIDTH_16_CORES_MEMCFG"],
+            compute_kernel_config=self.model_config["LN_COMPUTE_KERNEL_CONFIG"],
+        )
         # attn_norm_replicated is sharded
 
         # attn_outs is fractured
-        # attn_outs = self.attention(
-        #    attn_norm_replicated,
-        #    rot_mats,
-        #    start_pos,
-        #    cache_idxs=cache_idxs,
-        #    page_table=page_table,
-        #    kv_cache=kv_cache,
-        #    mode="decode",
-        # )
-        # print (f"Tensor properties {attm_out.dtype} {dense_out_reduced.shape} {dense_out_reduced.layout}")
+        attn_outs = self.attention(
+            attn_norm_replicated,
+            rot_mats,
+            start_pos,
+            cache_idxs=cache_idxs,
+            page_table=page_table,
+            kv_cache=kv_cache,
+            mode="decode",
+        )
 
         ### Fractured residual add
         # Add attn output to residiual first in place to save memory
         output = xs
-        # output = ttnn.add(
-        #    output,
-        #    attn_outs,
-        #    memory_config=self.model_config["RESIDUAL_16_CORES_OUTPUT_MEMCFG"],
-        # )
-        # attn_outs.deallocate(True)
+        output = ttnn.add(
+            output,
+            attn_outs,
+            memory_config=self.model_config["RESIDUAL_16_CORES_OUTPUT_MEMCFG"],
+        )
+        attn_outs.deallocate(True)
 
         attn_resid_replicated = ttnn.all_gather(
             output,
@@ -218,28 +217,27 @@ class TtLlamaDecoder_optimized:
             num_links=self.model_config["ALL_GATHER_NUM_LINKS"],
             memory_config=self.model_config["HIDDEN_WIDTH_16_CORES_MEMCFG"],
         )
-        print (f"Tensor properties {attn_resid_replicated.dtype} {attn_resid_replicated.shape} {attn_resid_replicated.layout}")
 
         # In-place RMSNorm
-        # ffn_norm_replicated = ttnn.rms_norm(
-        #    attn_resid_replicated,
-        #    epsilon=self.norm_eps,
-        #    weight=self.ffn_norm,
-        #    program_config=self.model_config["LN_16_CORES_PROGCFG"],
-        #    memory_config=self.model_config["HIDDEN_WIDTH_16_CORES_MEMCFG"],
-        #    compute_kernel_config=self.model_config["LN_COMPUTE_KERNEL_CONFIG"],
-        # )
+        ffn_norm_replicated = ttnn.rms_norm(
+            attn_resid_replicated,
+            epsilon=self.norm_eps,
+            weight=self.ffn_norm,
+            program_config=self.model_config["LN_16_CORES_PROGCFG"],
+            memory_config=self.model_config["HIDDEN_WIDTH_16_CORES_MEMCFG"],
+            compute_kernel_config=self.model_config["LN_COMPUTE_KERNEL_CONFIG"],
+        )
         # ffn_norm_replicated is sharded
 
-        ffn_out = self.mlp(attn_resid_replicated, mode="decode")
+        ffn_out = self.mlp(ffn_norm_replicated, mode="decode")
 
         ### residual in place
-        # output = ttnn.add(
-        #    output,
-        #    ffn_out,
-        #    memory_config=self.model_config["RESIDUAL_16_CORES_OUTPUT_MEMCFG"],
-        # )
-        #        ffn_out.deallocate(True)
+        output = ttnn.add(
+            output,
+            ffn_out,
+            memory_config=self.model_config["RESIDUAL_16_CORES_OUTPUT_MEMCFG"],
+        )
+        ffn_out.deallocate(True)
 
         return output
 

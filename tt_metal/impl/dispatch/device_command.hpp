@@ -702,7 +702,8 @@ public:
         uint16_t num_sub_cmds,
         const std::vector<CQDispatchWritePackedLargeSubCmd>& sub_cmds,
         const uint32_t offset_idx = 0,
-        uint32_t write_offset_index = 0) {
+        uint32_t write_offset_index = 0,
+        bool barrier = false) {
         TT_ASSERT(
             num_sub_cmds <= CQ_DISPATCH_CMD_PACKED_WRITE_LARGE_MAX_SUB_CMDS,
             "Cannot fit {} sub cmds in one CQDispatchWritePackedLargeCmd",
@@ -718,6 +719,7 @@ public:
             write_packed_large_cmd->write_packed_large.count = num_sub_cmds;
             write_packed_large_cmd->write_packed_large.alignment = alignment;
             write_packed_large_cmd->write_packed_large.write_offset_index = write_offset_index;
+            write_packed_large_cmd->write_packed_large.barrier = barrier;
         };
         uint32_t payload_dst_size =
             align(sizeof(CQPrefetchCmd) + payload_size, this->pcie_alignment) - sizeof(CQPrefetchCmd);

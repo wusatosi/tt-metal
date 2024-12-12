@@ -42,6 +42,9 @@ Device::Device(
     ZoneScoped;
     tunnel_device_dispatch_workers_ = {};
     this->initialize(num_hw_cqs, l1_small_size, trace_region_size, l1_bank_remap, minimal);
+    dprint_buf_msg_t* buf = this->get_dev_addr<dprint_buf_msg_t*>(CoreCoord{1, 1}, tt::tt_metal::HalL1MemAddrType::DPRINT);
+    for (int i = 0; i < 5; i++) std::cout << reinterpret_cast<uint64_t>(&(buf->data[i])) << std::endl;
+
 }
 
 std::unordered_set<CoreCoord> Device::get_active_ethernet_cores(bool skip_reserved_tunnel_cores) const {
@@ -2251,10 +2254,10 @@ void Device::compile_command_queue_programs() {
                 dispatch_s_sem = tt::tt_metal::CreateSemaphore(*command_queue_program_ptr, dispatch_s_core, 0, dispatch_core_type); // used by dispatch_s to sync with prefetch
             }
 
-            log_debug(LogDevice, "Dispatching out of {} cores",  magic_enum::enum_name(dispatch_core_type));
-            log_debug(LogDevice, "Prefetch HD logical location: {} physical core: {}", prefetch_core.str(), prefetch_physical_core.str());
-            log_debug(LogDevice, "Dispatch HD logical location: {} physical core {}", dispatch_core.str(), dispatch_physical_core.str());
-            log_debug(LogDevice, "Dispatch S logical location: {} physical core {}", dispatch_s_core.str(), dispatch_s_physical_core.str());
+            log_info(LogDevice, "Dispatching out of {} cores",  magic_enum::enum_name(dispatch_core_type));
+            log_info(LogDevice, "Prefetch HD logical location: {} physical core: {}", prefetch_core.str(), prefetch_physical_core.str());
+            log_info(LogDevice, "Dispatch HD logical location: {} physical core {}", dispatch_core.str(), dispatch_physical_core.str());
+            log_info(LogDevice, "Dispatch S logical location: {} physical core {}", dispatch_s_core.str(), dispatch_s_physical_core.str());
 
             std::vector<uint32_t> prefetch_compile_args = {
                 dispatch_constants::get(dispatch_core_type).dispatch_buffer_base(),
@@ -2619,6 +2622,7 @@ void Device::compile_command_queue_programs() {
         }
         uint32_t cq_id = 0;
         for (auto [prefetch_d_core, prefetch_d_settings] : device_worker_variants[DispatchWorkerType::PREFETCH_D]) {
+            std::cout << "Prefetch_d " <<  prefetch_d_core.str() << " " << prefetch_d_settings.worker_physical_core.str() << std::endl;
             for (auto sem : prefetch_d_settings.semaphores) {
                 //size of semaphores vector is number of needed semaphores on the core.
                 //Value of each vector entry is the initialization value for the semaphore.
@@ -2647,6 +2651,7 @@ void Device::compile_command_queue_programs() {
         }
         cq_id = 0;
         for (auto [dispatch_d_core, dispatch_d_settings] : device_worker_variants[DispatchWorkerType::DISPATCH_D]) {
+            std::cout << "Dispatch_d " <<  dispatch_d_core.str() << " " << dispatch_d_settings.worker_physical_core.str() << std::endl;
             for (auto sem : dispatch_d_settings.semaphores) {
                 //size of semaphores vector is number of needed semaphores on the core.
                 //Value of each vector entry is the initialization value for the semaphore.
@@ -2672,6 +2677,7 @@ void Device::compile_command_queue_programs() {
         cq_id = 0;
         if (this->dispatch_s_enabled()) {
             for (auto [dispatch_s_core, dispatch_s_settings] : device_worker_variants[DispatchWorkerType::DISPATCH_S]) {
+                std::cout << "Dispatch_s " <<  dispatch_s_core.str() << " " << dispatch_s_settings.worker_physical_core.str() << std::endl;
                 for (auto sem : dispatch_s_settings.semaphores) {
                     tt::tt_metal::CreateSemaphore(*command_queue_program_ptr, dispatch_s_core, sem, dispatch_s_settings.dispatch_core_type);
                 }

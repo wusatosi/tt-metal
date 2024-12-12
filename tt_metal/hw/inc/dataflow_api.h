@@ -710,6 +710,35 @@ std::uint64_t get_noc_addr(std::uint32_t addr, uint8_t noc = noc_index) {
 }
 
 /**
+ * This blocking call waits for all the outstanding enqueued *noc_async_read*
+ * calls issued on the current Tensix core to complete. After returning from
+ * this call the *noc_async_read* queue will be empty for the current Tensix
+ * core.
+ *
+ * Return value: None
+ */
+void noc_async_read_barrier(uint8_t noc = noc_index) {
+    WAYPOINT("NRBW");
+    // BH cache is write-through so reader must invalidate if reading any address that was previously read
+    do {
+        invalidate_l1_cache();
+    } while (!ncrisc_noc_reads_flushed(noc));
+    WAYPOINT("NRBD");
+}
+
+/**
+ * This blocking call waits for all outstanding enqueued *noc_async_write*
+ * calls issued on the current Tensix core to depart, but will not wait
+ * for them to complete
+ */
+FORCE_INLINE
+void noc_async_writes_flushed(uint8_t noc = noc_index) {
+    WAYPOINT("NWFW");
+    while (!ncrisc_noc_nonposted_writes_sent(noc));
+    WAYPOINT("NWFD");
+}
+
+/**
  * Initiates an asynchronous read from a specified source node located at NOC
  * coordinates (x,y) at a local address (encoded as a uint64_t using \a
  * get_noc_addr function). The destination is in L1 memory on the Tensix core
@@ -907,6 +936,25 @@ FORCE_INLINE void noc_async_read_with_state(
 FORCE_INLINE
 void noc_async_read_inc_num_issued(std::uint32_t num_issued_reads_inc, uint8_t noc = noc_index) {
     noc_reads_num_issued[noc] += num_issued_reads_inc;
+}
+
+/**
+ * This blocking call waits for all the outstanding enqueued *noc_async_write*
+ * calls issued on the current Tensix core to complete. After returning from
+ * this call the *noc_async_write* queue will be empty for the current Tensix
+ * core.
+ *
+ * Return value: None
+ */
+FORCE_INLINE
+void noc_async_write_barrier(uint8_t noc = noc_index) {
+    WAYPOINT("NWBW");
+    if constexpr (noc_mode == DM_DYNAMIC_NOC) {
+        while (!ncrisc_dynamic_noc_nonposted_writes_flushed<proc_type>(noc));
+    } else {
+        while (!ncrisc_noc_nonposted_writes_flushed(noc));
+    }
+    WAYPOINT("NWBD");
 }
 
 // TODO: write docs
@@ -1145,7 +1193,8 @@ struct InterleavedAddrGenFast {
         uint32_t src_noc_xy = interleaved_addr_gen::get_noc_xy<DRAM>(bank_index, noc);
 
         WAYPOINT("NRTW");
-        DEBUG_SANITIZE_NOC_READ_TRANSACTION(noc, get_noc_addr_helper(src_noc_xy, src_addr), dest_addr, this->page_size);
+        // DEBUG_SANITIZE_NOC_READ_TRANSACTION(noc, get_noc_addr_helper(src_noc_xy, src_addr), dest_addr,
+        // this->page_size);
         while (!noc_cmd_buf_ready(noc, read_cmd_buf));
         WAYPOINT("NRTD");
 
@@ -1231,8 +1280,8 @@ struct InterleavedPow2AddrGenFast {
         uint32_t src_noc_xy = interleaved_addr_gen::get_noc_xy<DRAM>(bank_index, noc);
 
         WAYPOINT("NRPW");
-        DEBUG_SANITIZE_NOC_READ_TRANSACTION(
-            noc, get_noc_addr_helper(src_noc_xy, src_addr), dest_addr, 1 << this->aligned_log_base_2_of_page_size);
+        // DEBUG_SANITIZE_NOC_READ_TRANSACTION(
+        //     noc, get_noc_addr_helper(src_noc_xy, src_addr), dest_addr, 1 << this->aligned_log_base_2_of_page_size);
         while (!noc_cmd_buf_ready(noc, read_cmd_buf));
         WAYPOINT("NRPD");
 
@@ -1260,7 +1309,7 @@ struct InterleavedPow2AddrGenFast {
         WAYPOINT("RP1W");
         while (!noc_cmd_buf_ready(noc, read_cmd_buf));
         WAYPOINT("RP1D");
-        DEBUG_SANITIZE_NOC_READ_TRANSACTION(noc, get_noc_addr_helper(src_noc_xy, src_addr), dest_addr, size);
+        // DEBUG_SANITIZE_NOC_READ_TRANSACTION(noc, get_noc_addr_helper(src_noc_xy, src_addr), dest_addr, size);
 
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_RET_ADDR_LO, dest_addr);
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_TARG_ADDR_LO, src_addr);            // (uint32_t)src_addr
@@ -1519,6 +1568,39 @@ inline void noc_async_write_multicast(
     }
 }
 
+template <uint32_t max_page_size = NOC_MAX_BURST_SIZE + 1>
+inline void noc_async_write_multicast_dispatch(
+    std::uint32_t src_local_l1_addr,
+    std::uint64_t dst_noc_addr_multicast,
+    std::uint32_t size,
+    std::uint32_t num_dests,
+    bool barrier,
+    bool linked = false,
+    bool multicast_path_reserve = true,
+    uint8_t noc = noc_index) {
+    if constexpr (max_page_size <= NOC_MAX_BURST_SIZE) {
+        noc_async_write_multicast_one_packet(
+            src_local_l1_addr, dst_noc_addr_multicast, size, num_dests, linked, multicast_path_reserve);
+    } else {
+        WAYPOINT("NMWW");
+        DEBUG_SANITIZE_NOC_MULTI_WRITE_TRANSACTION(noc, dst_noc_addr_multicast, src_local_l1_addr, size);
+        ncrisc_noc_fast_write_any_len<proc_type, noc_mode>(
+            noc,
+            write_cmd_buf,
+            src_local_l1_addr,
+            dst_noc_addr_multicast,
+            size,
+            NOC_DISPATCH_MULTICAST_WRITE_VC,
+            true,
+            linked,
+            num_dests,
+            multicast_path_reserve);
+        WAYPOINT("NMWD");
+    }
+    if (barrier) {
+        noc_async_write_barrier();
+    }
+}
 /**
  * Initiates an asynchronous write from a source address in L1 memory on the
  * Tensix core executing this function call to a rectangular destination grid.
@@ -1710,54 +1792,6 @@ inline void noc_async_write_multicast_exclude_region(
     WAYPOINT("NMED");
 }
 #endif
-
-/**
- * This blocking call waits for all the outstanding enqueued *noc_async_read*
- * calls issued on the current Tensix core to complete. After returning from
- * this call the *noc_async_read* queue will be empty for the current Tensix
- * core.
- *
- * Return value: None
- */
-void noc_async_read_barrier(uint8_t noc = noc_index) {
-    WAYPOINT("NRBW");
-    // BH cache is write-through so reader must invalidate if reading any address that was previously read
-    do {
-        invalidate_l1_cache();
-    } while (!ncrisc_noc_reads_flushed(noc));
-    WAYPOINT("NRBD");
-}
-
-/**
- * This blocking call waits for all the outstanding enqueued *noc_async_write*
- * calls issued on the current Tensix core to complete. After returning from
- * this call the *noc_async_write* queue will be empty for the current Tensix
- * core.
- *
- * Return value: None
- */
-FORCE_INLINE
-void noc_async_write_barrier(uint8_t noc = noc_index) {
-    WAYPOINT("NWBW");
-    if constexpr (noc_mode == DM_DYNAMIC_NOC) {
-        while (!ncrisc_dynamic_noc_nonposted_writes_flushed<proc_type>(noc));
-    } else {
-        while (!ncrisc_noc_nonposted_writes_flushed(noc));
-    }
-    WAYPOINT("NWBD");
-}
-
-/**
- * This blocking call waits for all outstanding enqueued *noc_async_write*
- * calls issued on the current Tensix core to depart, but will not wait
- * for them to complete
- */
-FORCE_INLINE
-void noc_async_writes_flushed(uint8_t noc = noc_index) {
-    WAYPOINT("NWFW");
-    while (!ncrisc_noc_nonposted_writes_sent(noc));
-    WAYPOINT("NWFD");
-}
 
 /**
  * This blocking call waits for all the outstanding enqueued *noc_async_write*

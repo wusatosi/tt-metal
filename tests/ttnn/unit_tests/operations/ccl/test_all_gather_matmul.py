@@ -34,7 +34,7 @@ def run_all_gather_matmul_on_t3000_impl(
     mem_config_ag,
     mem_config_mm,
     mem_config_weights=None,
-    num_iters=1,
+    num_iters=100,
     enable_trace=False,
     tile=(32, 32),
 ):
@@ -156,14 +156,15 @@ def run_all_gather_matmul_on_t3000_impl(
 
         # Capture the trace
         trace_id = ttnn.begin_trace_capture(t3k_mesh_device, cq_id=0)
-        for i in range(num_iters):
-            tt_all_gather_out_tensor, tt_matmul_out_tensor, tt_datacopy_out_tensor = run_op()
+        tt_all_gather_out_tensor, tt_matmul_out_tensor, tt_datacopy_out_tensor = run_op()
         ttnn.end_trace_capture(t3k_mesh_device, trace_id, cq_id=0)
 
         logger.info(f"Done capturing trace")
 
-        # Execute trace
-        ttnn.execute_trace(t3k_mesh_device, trace_id, cq_id=0, blocking=False)
+        for i in range(num_iters):
+            # Execute trace
+            ttnn.execute_trace(t3k_mesh_device, trace_id, cq_id=0, blocking=False)
+
         logger.info(f"Done executing trace")
 
         # Synchronize the devices

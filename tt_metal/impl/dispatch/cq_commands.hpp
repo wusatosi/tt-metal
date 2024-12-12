@@ -227,7 +227,7 @@ constexpr uint32_t CQ_DISPATCH_CMD_PACKED_WRITE_LARGE_MAX_SUB_CMDS = 35;
 // Removes size constraints
 // Implicitly mcast
 struct CQDispatchWritePackedLargeCmd {
-    uint8_t pad1;
+    uint8_t barrier;
     uint16_t count;  // number of sub-cmds
     uint16_t alignment;
     uint16_t write_offset_index;

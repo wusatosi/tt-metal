@@ -165,7 +165,7 @@ class Program {
     void set_last_used_command_queue_for_testing(HWCommandQueue *queue);
 
     const std::vector<SubDeviceId> &determine_sub_device_ids(const Device *device);
-
+    bool mcast_barrier = false;
    private:
     std::unique_ptr<detail::Program_> pimpl_;
 

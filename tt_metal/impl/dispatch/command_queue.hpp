@@ -556,7 +556,7 @@ class HWCommandQueue {
     std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES> multicast_cores_launch_message_wptr_reset;
     std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES> unicast_cores_launch_message_wptr_reset;
     Device* device;
-
+    uint32_t num_programs = 0;
     std::condition_variable reader_thread_cv;
     std::mutex reader_thread_cv_mutex;
 
