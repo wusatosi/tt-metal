@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <random>
 
@@ -87,6 +88,7 @@ int main(int argc, char** argv) {
         }
     }
     for (int iter = 0; iter < 2; iter++) {
+        std::cout << "Run for iter: " << iter << std::endl;
         if (iter) {
             auto& rtas = GetRuntimeArgs(program, reader_writer_kernel);
             for (auto core : first_col) {
@@ -105,10 +107,12 @@ int main(int argc, char** argv) {
                 std::vector<bfloat16> dst_vec = {};
                 EnqueueReadBuffer(dev->command_queue(), output_buffers.at(buffer_idx), dst_vec, true);
                 buffer_idx++;
-
-                for (auto i : dst_vec) {
-                    // TT_ASSERT(i.to_float() )
-                    std::cout << i.to_float() << " ";
+                for (int i = 0; i < dst_vec.size(); i++) {
+                    float ref_val = std::pow(2, iter + 1);
+                    if (i >= 512) {
+                        ref_val = std::pow(2, 2 * (iter + 1));
+                    }
+                    TT_FATAL(dst_vec[i].to_float() == ref_val, "Mismatch {} {}", ref_val, dst_vec[i].to_float());
                 }
             }
         }

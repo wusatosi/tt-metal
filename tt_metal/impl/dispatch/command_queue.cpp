@@ -2483,9 +2483,14 @@ void HWCommandQueue::enqueue_program(Program& program, bool blocking) {
         std::cout << "Finalizing program" << std::endl;
         program.finalize(device);
     }
-    program.get_kernels_buffer() = Buffer::create(device, program.get_program_transfer_info().binary_data.size() * sizeof(uint32_t), HostMemDeviceCommand::PROGRAM_PAGE_SIZE, BufferType::DRAM, TensorMemoryLayout::INTERLEAVED, std::nullopt, false);
-    this->enqueue_write_buffer(
-        *program.get_kernels_buffer(), program.get_program_transfer_info().binary_data.data(), false, sub_device_ids);
+    if (not program.is_on_device(device->id())) {
+        // Write program binaries to device
+        std::cout << "Load binaries on: " << device->id() << std::endl;
+        program.get_kernels_buffer() = Buffer::create(device, program.get_program_transfer_info().binary_data.size() * sizeof(uint32_t), HostMemDeviceCommand::PROGRAM_PAGE_SIZE, BufferType::DRAM, TensorMemoryLayout::INTERLEAVED, std::nullopt, false);
+        this->enqueue_write_buffer(
+            *program.get_kernels_buffer(), program.get_program_transfer_info().binary_data.data(), false, sub_device_ids);
+        program.set_on_device(device->id());
+    }
 
     program.set_last_used_command_queue_for_testing(this);
 

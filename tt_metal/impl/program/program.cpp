@@ -132,7 +132,9 @@ class Program_ {
     bool is_finalized() const;
     void finalize(Device *device);
     bool is_cached() const { return this->cached_; }
+    bool is_on_device(std::size_t device_id) const { return this->on_device_.find(device_id) != this->on_device_.end(); }
     void set_cached() { this->cached_ = true; }
+    void set_on_device(std::size_t device_id) { this->on_device_.insert(device_id); }
     std::shared_ptr<Kernel> get_kernel(KernelHandle kernel_id) const;
 
     ProgramConfig& get_program_config(uint32_t programmable_core_type_index);
@@ -201,12 +203,13 @@ class Program_ {
     std::unordered_map<CoreCoord, std::bitset<NUM_CIRCULAR_BUFFERS>> per_core_cb_indices_;
     std::unordered_map<CoreCoord, std::bitset<NUM_CIRCULAR_BUFFERS>> per_core_local_cb_indices_;
     std::unordered_map<CoreCoord, std::bitset<NUM_CIRCULAR_BUFFERS>> per_core_remote_cb_indices_;
+    std::unordered_set<std::size_t> on_device_;
     // Used to generate circular buffer addresses. There is one CircularBufferAllocator per unique CoreRange
     std::vector<CircularBufferAllocator> cb_allocators_;
 
     std::vector<Semaphore> semaphores_;
 
-    std::unordered_set<chip_id_t> compiled_;
+    std::unordered_set<uint32_t> compiled_;
     bool local_circular_buffer_allocation_needed_;
 
     static constexpr uint8_t core_to_kernel_group_invalid_index = 0xff;
@@ -1007,11 +1010,6 @@ void detail::Program_::populate_dispatch_data(Device *device) {
         // TODO: use semaphore.core_type from main
         if (semaphore.core_type() == CoreType::WORKER) {
             uint32_t index = hal.get_programmable_core_type_index(HalProgrammableCoreType::TENSIX);
-            std::cout << "Sem ranges: " << semaphore.core_range_set().ranges().size() <<  std::endl;
-            std::cout << semaphore.core_range_set().ranges()[0].start_coord.str() << " " << semaphore.core_range_set().ranges()[0].end_coord.str() << std::endl;
-            for (auto range : semaphore.core_range_set().ranges()) {
-                std::cout << range.start_coord.str() << " " << range.end_coord.str() << std::endl;
-            }
             std::vector<std::pair<transfer_info_cores, uint32_t>> dst_noc_multicast_info =
                 device->extract_dst_noc_multicast_info<std::vector<CoreRange>>(
                     semaphore.core_range_set().ranges(), CoreType::WORKER);
@@ -1114,10 +1112,6 @@ void detail::Program_::populate_dispatch_data(Device *device) {
                 std::vector<std::pair<transfer_info_cores, uint32_t>> dst_noc_multicast_info =
                     device->extract_dst_noc_multicast_info<std::vector<CoreRange>>(
                         kernel_group.core_ranges.ranges(), core_type);
-                std::cout << "Kernel ranges: " << std::endl;
-                for (auto range : kernel_group.core_ranges.ranges()) {
-                    std::cout << range.start_coord.str() << " " << range.end_coord.str() << std::endl;
-                }
                 std::vector<KernelHandle> kernel_ids;
                 for (int dispatch_class = 0; dispatch_class < kernel_group.kernel_ids.size(); dispatch_class++) {
                     auto &optional_id = kernel_group.kernel_ids[dispatch_class];
@@ -1514,7 +1508,7 @@ void Program::finalize(Device *device) { pimpl_->finalize(device); }
 
 void detail::Program_::compile(Device *device, bool fd_bootloader_mode) {
     //ZoneScoped;
-    if (not compiled_.empty()) {
+    if (compiled_.contains(device->build_key())) {
         return;
     }
     std::cout << "Compiling program" << std::endl;
@@ -1800,6 +1794,9 @@ bool detail::Program_::is_finalized() const { return this->finalized_; }
 bool Program::is_finalized() const { return pimpl_->is_finalized(); }
 bool Program::is_cached() const { return pimpl_->is_cached(); }
 void Program::set_cached() { pimpl_->set_cached(); }
+
+bool Program::is_on_device(std::size_t device_id) const { return pimpl_->is_on_device(device_id); }
+void Program::set_on_device(std::size_t device_id) { return pimpl_->set_on_device(device_id); }
 
 const std::vector<SubDeviceId> &Program::determine_sub_device_ids(const Device *device) { return pimpl_->determine_sub_device_ids(device); }
 

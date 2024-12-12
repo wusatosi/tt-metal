@@ -151,7 +151,9 @@ class Program {
 
     bool is_finalized() const;
     bool is_cached() const;
+    bool is_on_device(std::size_t device_id) const;
     void set_cached();
+    void set_on_device(std::size_t device_id);
     void finalize(Device *device);
     std::shared_ptr<Kernel> get_kernel(KernelHandle kernel_id) const;
 
