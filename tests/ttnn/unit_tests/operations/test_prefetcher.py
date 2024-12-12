@@ -37,7 +37,7 @@ Testing for writer side:
 """
 
 
-def get_core_ranges(num_reader_cores):
+def get_core_ranges(num_reader_cores, num_receiver_cores=2):
     all_dram_cores = [
         ttnn.CoreCoord(0, 0),
         ttnn.CoreCoord(1, 0),
@@ -191,6 +191,33 @@ def get_core_ranges(num_reader_cores):
         ),
     ]
 
+    mm_optimised_ring_cores = [
+        (6, 9),
+        (6, 8),
+        (6, 3),
+        (6, 5),
+        (6, 4),
+        (6, 2),
+        (6, 1),
+        (6, 0),
+        (5, 0),
+        (5, 1),
+        (5, 2),
+        (5, 4),
+        (5, 5),
+        (5, 3),
+        (5, 8),
+        (5, 9),
+        (2, 9),
+        (2, 5),
+        (2, 4),
+        (2, 0),
+        (1, 0),
+        (1, 4),
+        (1, 5),
+        (1, 9),
+    ]
+
     worker_cores_range_set = ttnn.CoreRangeSet(
         [
             ttnn.CoreRange(ttnn.CoreCoord(1, 0), ttnn.CoreCoord(3, 9)),
@@ -200,10 +227,20 @@ def get_core_ranges(num_reader_cores):
 
     dram_cores = all_dram_cores[:num_reader_cores]
     sender_cores = all_sender_cores[:num_reader_cores]
-    receiver_cores_list = all_receiver_cores_list[: num_reader_cores * 2]
+    receiver_cores_list = all_receiver_cores_list[: num_reader_cores * num_receiver_cores]
     receiver_cores = all_receiver_cores[:num_reader_cores]
+    mm_optimised_ring_cores = mm_optimised_ring_cores[
+        : num_reader_cores * num_receiver_cores
+    ]  # Works only with all 24 cores!
 
-    return dram_cores, sender_cores, receiver_cores_list, receiver_cores, worker_cores_range_set
+    return (
+        dram_cores,
+        sender_cores,
+        receiver_cores_list,
+        receiver_cores,
+        worker_cores_range_set,
+        mm_optimised_ring_cores,
+    )
 
 
 @pytest.mark.parametrize(
@@ -219,9 +256,9 @@ def get_core_ranges(num_reader_cores):
             [(2304, 3840), (2304, 3840)],
             1,
         ),  # FF1/3 = 72 tiles x 120 tiles = 8640 tiles / 24 cores = 720 tiles per receiver core
-        # (12, 2, [(7680, 2304), (7680, 2304)], 1),  # FF2
-        # (12, 2, [(2304, 1536), (2304, 1536)], 1),  # QKV
-        # (12, 2, [(2304, 2304), (2304, 2304)], 1),  # DO
+        # (12, 2, [(7680, 2304), (7680, 2304)], 1),  # FF2: hangs
+        (12, 2, [(2304, 1536), (2304, 1536)], 1),  # QKV
+        # (12, 2, [(2304, 2304), (2304, 2304)], 1),  # DO: bad pcc
     ],
 )
 @pytest.mark.parametrize(
@@ -253,9 +290,16 @@ def test_run_prefetcher(
     logger.info(f"Running test_run_prefetcher with num_tensors={num_tensors}, input_shape={input_shapes[0]}")
     K, N = input_shapes[0]
 
-    dram_cores, sender_cores, receiver_cores_list, receiver_cores, worker_cores_range_set = get_core_ranges(
-        num_reader_cores
-    )
+    (
+        dram_cores,
+        sender_cores,
+        receiver_cores_list,
+        receiver_cores,
+        worker_cores_range_set,
+        mm_optimised_ring_cores,
+    ) = get_core_ranges(num_reader_cores)
+    if num_reader_cores < 12:  # Just for testing; using perf optimised ring only for all 24 receiver cores
+        mm_optimised_ring_cores = receiver_cores_list
 
     receiver_core_range_set = ttnn.CoreRangeSet(
         [
@@ -393,7 +437,8 @@ def test_run_prefetcher(
             K=K,
             N=N,
             activation=None,
-            grid=receiver_cores_list,
+            input_grid=mm_optimised_ring_cores,
+            output_grid=receiver_cores_list,
             use_arbitrary_cores=True,
             num_iters=1,
             max_dst_tiles=8,

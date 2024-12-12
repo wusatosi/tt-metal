@@ -93,7 +93,8 @@ def run_multi_core_matmul_1d(
     K,
     N,
     activation,
-    grid,
+    input_grid,
+    output_grid,
     use_arbitrary_cores,
     num_iters,
     max_dst_tiles=8,
@@ -104,12 +105,12 @@ def run_multi_core_matmul_1d(
     prefetched_weights_pt=None,
 ):
     assert not has_bias, "Bias not supported for gather_in0 mode."
-    if not isinstance(grid, tuple) and not use_arbitrary_cores:
+    if not isinstance(input_grid, tuple) and not use_arbitrary_cores:
         pytest.skip("Grid is not a tuple and not using arbitrary cores")
 
     in0_shape = [1, B, M, K]
     in1_shape = [1, 1, K, N]
-    num_cores = grid[0] * grid[1] if isinstance(grid, tuple) else len(grid)
+    num_cores = input_grid[0] * input_grid[1] if isinstance(input_grid, tuple) else len(input_grid)
 
     storage_grid = num_cores_to_rectangle_grid(num_cores, device)
     if storage_grid is None:
@@ -141,27 +142,39 @@ def run_multi_core_matmul_1d(
 
     if use_arbitrary_cores:
         # x, y
-        if isinstance(grid, tuple):  # Generate random grid
-            CORE_RANGE = [(x, y) for y in range(storage_grid[1]) for x in range(storage_grid[0])]
-            random.shuffle(CORE_RANGE)
+        if isinstance(input_grid, tuple):  # Generate random grid
+            INPUT_CORE_RANGE = [(x, y) for y in range(storage_grid[1]) for x in range(storage_grid[0])]
+            random.shuffle(INPUT_CORE_RANGE)
+            OUTPUT_CORE_RANGE = INPUT_CORE_RANGE
         else:  # Use custom grid
             if use_physical_to_logical_mapping:
                 mapping = get_physical_to_logical_core_mapping(device)
-                CORE_RANGE = [mapping[physical_coord] for physical_coord in grid]
+                INPUT_CORE_RANGE = [mapping[physical_coord] for physical_coord in input_grid]
+                OUTPUT_CORE_RANGE = [mapping[physical_coord] for physical_coord in output_grid]
             else:
-                CORE_RANGE = grid
+                INPUT_CORE_RANGE = input_grid
+                OUTPUT_CORE_RANGE = output_grid
 
-        core_range_set = ttnn.CoreRangeSet(
+        input_core_range_set = ttnn.CoreRangeSet(
             [
                 ttnn.CoreRange(
                     ttnn.CoreCoord(x, y),
                     ttnn.CoreCoord(x, y),
                 )
-                for x, y in CORE_RANGE
+                for x, y in INPUT_CORE_RANGE
+            ]
+        )
+        output_core_range_set = ttnn.CoreRangeSet(
+            [
+                ttnn.CoreRange(
+                    ttnn.CoreCoord(x, y),
+                    ttnn.CoreCoord(x, y),
+                )
+                for x, y in OUTPUT_CORE_RANGE
             ]
         )
     else:
-        core_range_set = ttnn.CoreRangeSet(
+        input_core_range_set = ttnn.CoreRangeSet(
             {
                 ttnn.CoreRange(
                     ttnn.CoreCoord(0, 0),
@@ -169,15 +182,7 @@ def run_multi_core_matmul_1d(
                 ),
             }
         )
-
-    # core_range_set = ttnn.CoreRangeSet(
-    #     {
-    #         ttnn.CoreRange(
-    #             ttnn.CoreCoord(1, 1),
-    #             ttnn.CoreCoord(1, 1),
-    #         ),
-    #     }
-    # )
+        output_core_range_set = input_core_range_set
 
     print(f"num_cores: {num_cores}")
 
@@ -185,7 +190,7 @@ def run_multi_core_matmul_1d(
         ttnn.TensorMemoryLayout.WIDTH_SHARDED,
         ttnn.BufferType.L1,
         ttnn.ShardSpec(
-            core_range_set,
+            input_core_range_set,
             [M, K // num_cores],
             ttnn.ShardOrientation.ROW_MAJOR,
             False,
@@ -196,7 +201,7 @@ def run_multi_core_matmul_1d(
         ttnn.TensorMemoryLayout.WIDTH_SHARDED,
         ttnn.BufferType.L1,
         ttnn.ShardSpec(
-            core_range_set,
+            input_core_range_set,
             [K, N // num_cores],
             ttnn.ShardOrientation.ROW_MAJOR,
             False,
@@ -207,7 +212,7 @@ def run_multi_core_matmul_1d(
         ttnn.TensorMemoryLayout.WIDTH_SHARDED,
         ttnn.BufferType.L1,
         ttnn.ShardSpec(
-            core_range_set,
+            output_core_range_set,
             [M, N // num_cores],
             ttnn.ShardOrientation.ROW_MAJOR,
             False,
@@ -429,6 +434,7 @@ def test_multi_core_matmul_1d_wh(
         N,
         activation,
         grid,
+        grid,
         use_arbitrary_cores,
         num_iters,
     )
@@ -571,6 +577,7 @@ def test_multi_core_matmul_1d_gs(
         K,
         N,
         activation,
+        grid,
         grid,
         use_arbitrary_cores,
         num_iters,
