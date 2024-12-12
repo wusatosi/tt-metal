@@ -593,6 +593,68 @@ inline void captureSetRuntimeArgs(
     captureCommand(tt::target::CommandType::SetRuntimeArgsCommand, cmd_offset.Union());
 }
 
+
+inline flatbuffers::Offset<tt::target::RuntimeArg> createRuntimeArg(
+    flatbuffers::FlatBufferBuilder &builder,
+    const std::variant<Buffer *, uint32_t> &arg)
+{
+    flatbuffers::Offset<void> value_offset;
+    tt::target::RuntimeArgValue value_type;
+
+    if (std::holds_alternative<uint32_t>(arg)) {
+        // Create UInt32Value table
+        uint32_t value = std::get<uint32_t>(arg);
+        auto uint32_offset = tt::target::CreateUInt32Value(builder, value);
+        value_offset = uint32_offset.Union();
+        value_type = tt::target::RuntimeArgValue::UInt32Value;
+    } else if (std::holds_alternative<Buffer *>(arg)) {
+        // Create BufferGlobalId table
+        Buffer *buffer = std::get<Buffer *>(arg);
+        auto& ctx = LightMetalCaptureContext::getInstance();
+        uint32_t buffer_global_id = ctx.getGlobalId(buffer);
+        auto buffer_offset = tt::target::CreateBufferGlobalId(builder, buffer_global_id);
+        value_offset = buffer_offset.Union();
+        value_type = tt::target::RuntimeArgValue::BufferGlobalId;
+    } else {
+        throw std::runtime_error("Unexpected variant type in createRuntimeArg");
+    }
+
+    // Create RuntimeArg
+    return tt::target::CreateRuntimeArg(builder, value_type, value_offset);
+}
+
+inline flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tt::target::RuntimeArg>>>
+toFlatBuffer(flatbuffers::FlatBufferBuilder &builder, const std::shared_ptr<RuntimeArgs> &runtime_args) {
+    std::vector<flatbuffers::Offset<tt::target::RuntimeArg>> arg_offsets;
+
+    for (const auto &arg : *runtime_args) {
+        auto runtime_arg_offset = createRuntimeArg(builder, arg);
+        arg_offsets.push_back(runtime_arg_offset);
+    }
+
+    return builder.CreateVector(arg_offsets);
+}
+
+
+inline void captureSetRuntimeArgs1(
+    Device *device,
+    const std::shared_ptr<Kernel> kernel,
+    const std::variant<CoreCoord, CoreRange, CoreRangeSet> &core_spec,
+    std::shared_ptr<RuntimeArgs> runtime_args)
+{
+    auto& ctx = LightMetalCaptureContext::getInstance();
+    if (!ctx.isTracing()) return;
+
+    auto& fbb = ctx.getBuilder();
+    uint32_t kernel_global_id = ctx.getGlobalId(kernel.get());
+    auto [core_spec_type, core_spec_offset] = toFlatbuffer(fbb, core_spec);
+    auto rt_args_offset = toFlatBuffer(fbb, runtime_args);
+    log_info(tt::LogMetalTrace, "captureSetRuntimeArgs1: kernel_global_id: {} rt_args_size: {}", kernel_global_id, runtime_args->size());
+
+    auto cmd_offset = tt::target::CreateSetRuntimeArgs1Command(fbb, kernel_global_id, core_spec_type, core_spec_offset, rt_args_offset);
+    captureCommand(tt::target::CommandType::SetRuntimeArgs1Command, cmd_offset.Union());
+}
+
 inline void captureCreateCircularBuffer(
     CBHandle &cb_handle,
     Program &program,

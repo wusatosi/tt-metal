@@ -163,3 +163,22 @@ table CircularBufferConfig {
   dynamic_cb: bool;
   max_size: uint32;
 }
+
+// Runtime Args
+
+table UInt32Value {
+    value: uint32;
+}
+
+table BufferGlobalId {
+    id: uint32;
+}
+
+union RuntimeArgValue {
+    UInt32Value,
+    BufferGlobalId,
+}
+
+table RuntimeArg {
+    value: RuntimeArgValue;
+}

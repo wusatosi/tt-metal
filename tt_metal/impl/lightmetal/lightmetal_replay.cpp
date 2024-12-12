@@ -319,6 +319,50 @@ inline CircularBufferConfig fromFlatBuffer(const tt::target::CircularBufferConfi
     return config;
 }
 
+// Needs access to BufferMap, so part of LightMetalReplay class
+std::shared_ptr<RuntimeArgs> LightMetalReplay::fromFlatBufferRtArgs(const FlatbufferRuntimeArgVector flatbuffer_args) {
+    auto runtime_args = std::make_shared<RuntimeArgs>();
+
+    for (const auto &flatbuffer_arg : *flatbuffer_args) {
+        const auto *runtime_arg = flatbuffer_arg;
+        if (!runtime_arg) {
+            throw std::runtime_error("Null RuntimeArg in FlatBuffer vector");
+        }
+
+        // Determine the type of the RuntimeArg
+        switch (runtime_arg->value_type()) {
+            case tt::target::RuntimeArgValue::UInt32Value: {
+                // Extract UInt32Value
+                const auto *uint32_value = runtime_arg->value_as_UInt32Value();
+                if (!uint32_value) {
+                    throw std::runtime_error("Failed to read UInt32Value");
+                }
+                runtime_args->emplace_back(uint32_value->value());
+                break;
+            }
+            case tt::target::RuntimeArgValue::BufferGlobalId: {
+                // Extract BufferGlobalId
+                const auto *buffer_global_id = runtime_arg->value_as_BufferGlobalId();
+                if (!buffer_global_id) {
+                    throw std::runtime_error("Failed to read BufferGlobalId");
+                }
+                uint32_t global_id = buffer_global_id->id();
+                auto buffer = getBufferFromMap(global_id);
+                if (!buffer) {
+                    throw std::runtime_error("Buffer w/ global_id: " + std::to_string(global_id) + " not previously created");
+                }
+                runtime_args->emplace_back(buffer.get());
+                break;
+            }
+            default:
+                throw std::runtime_error("Unknown RuntimeArgValue type in FlatBuffer");
+        }
+    }
+
+    return runtime_args;
+}
+
+
 //////////////////////////////////////
 // LightMetalReplay Class           //
 //////////////////////////////////////
@@ -543,6 +587,10 @@ void LightMetalReplay::execute(tt::target::Command const *command) {
     execute(command->cmd_as_SetRuntimeArgsCommand());
     break;
   }
+  case ::tt::target::CommandType::SetRuntimeArgs1Command: {
+    execute(command->cmd_as_SetRuntimeArgs1Command());
+    break;
+  }
   case ::tt::target::CommandType::CreateCircularBufferCommand: {
     execute(command->cmd_as_CreateCircularBufferCommand());
     break;
@@ -701,6 +749,17 @@ void LightMetalReplay::execute(tt::target::SetRuntimeArgsCommand const *cmd) {
     stl::Span<const uint32_t> args_span(cmd->args()->data(), cmd->args()->size());
     auto core_spec = fromFlatbuffer(cmd->core_spec_type(), cmd->core_spec());
     SetRuntimeArgs(*program, kernel_id, core_spec, args_span);
+}
+
+void LightMetalReplay::execute(tt::target::SetRuntimeArgs1Command const *cmd) {
+    log_info(tt::LogMetalTrace, "LightMetalReplay SetRuntimeArgs1Command(). kernel_global_id: {} rt_args_size: {}", cmd->kernel_global_id(), cmd->args()->size());
+    auto core_spec = fromFlatbuffer(cmd->core_spec_type(), cmd->core_spec());
+    auto runtime_args = fromFlatBufferRtArgs(cmd->args());
+    auto kernel = getKernelFromMap(cmd->kernel_global_id());
+    if (!kernel) {
+        throw std::runtime_error("Kernel with global_id: " + std::to_string(cmd->kernel_global_id()) + " not previously created");
+    }
+    SetRuntimeArgs(this->device_, kernel, core_spec, runtime_args);
 }
 
 void LightMetalReplay::execute(tt::target::CreateCircularBufferCommand const *cmd) {
