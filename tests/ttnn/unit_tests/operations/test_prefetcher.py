@@ -100,7 +100,10 @@ def test_run_prefetcher(
     )
 
     sender_receiver_mapping = dict(zip(sender_cores, receiver_cores))
-    global_circular_buffer = ttnn.create_global_circular_buffer(device, sender_receiver_mapping, 1024 * (512))
+    # NOTE: the size of the global cb must be at least the size of the lagest tensor shard on a reader core. If not, the op will hang
+    global_circular_buffer = ttnn.create_global_circular_buffer(
+        device, sender_receiver_mapping, 1024 * (512 + 128 + 64)
+    )
 
     ##### Set up the input tensors #####
     dram_core_range_set = ttnn.CoreRangeSet([ttnn.CoreRange(core_coord, core_coord) for core_coord in dram_cores])

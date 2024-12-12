@@ -127,17 +127,6 @@ operation::ProgramWithCallbacks dram_prefetcher_multi_core(
     auto remote_cb =
         tt::tt_metal::v1::experimental::CreateCircularBuffer(program, reader_core_range, remote_cb_config, *global_cb);
 
-    /* output buffer (based on reader_cb) */
-    uint32_t reader_output_single_tile_size = reader_cb_single_tile_size;
-    uint32_t reader_output_cb_size = num_tensors * tensor_block_num_tiles[0] * num_blocks * tensor_tile_sizes[0];
-
-    uint32_t reader_output_cb_index = tt::CB::c_in2;
-    CircularBufferConfig reader_output_cb_config =
-        CircularBufferConfig(reader_output_cb_size, {{reader_output_cb_index, tensor_data_formats[0]}})
-            .set_page_size(reader_output_cb_index, reader_output_single_tile_size)
-            .set_globally_allocated_address(*reader_output_buffer);
-    auto reader_output_cb = CreateCircularBuffer(program, reader_core_range, reader_output_cb_config);
-
     /* output buffer (based on writer_cb) */
     // uint32_t writer_output_single_tile_size = reader_cb_single_tile_size;
     // uint32_t writer_output_cb_size =
