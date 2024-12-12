@@ -255,7 +255,7 @@ class TtModelArgs:
                 {
                     ttnn.CoreRange(
                         ttnn.CoreCoord(0, 0),
-                        ttnn.CoreCoord(7, 7),
+                        ttnn.CoreCoord(7, 3),
                     )
                 }
             )
