@@ -179,17 +179,15 @@ def run_max_pool(
         applied_shard_scheme=shard_scheme,
     )
 
-    output = ttnn.to_memory_config(output, ttnn.L1_MEMORY_CONFIG)
+    output_padded = ttnn.to_memory_config(output, ttnn.L1_MEMORY_CONFIG)
+    print("output_padded_shape", output_padded.shape)
+    print("in_n, in_h, in_w, in_c", in_n, in_h, in_w, in_c)
+    print("out_h, out_w", out_h, out_w)
+    output = ttnn.slice(output_padded, [0, 0, 0, 0], [1, 1, in_n * out_h * out_w, in_c])
+    print("output_shape", output.shape)
     output_host = output.cpu()
-
-    # can we print the sharded tensor here with cpu_sharded or sharded_cpu etc.
-
-    print("PYTHON output shape", output_host.shape)
     output_pytorch_padded = torch.Tensor(ttnn.to_torch(output_host))
-    # print("output_pytorch_padded", output_pytorch_padded[0][0][0])
     output_pytorch = output_pytorch_padded[:, :, :, :in_c]
-    # print("output_pytorch shape", output_pytorch.shape)
-    # print("output_pytorch", output_pytorch_padded[0][0])
 
     ## reference
     golden_pytorch = torch.nn.MaxPool2d(
