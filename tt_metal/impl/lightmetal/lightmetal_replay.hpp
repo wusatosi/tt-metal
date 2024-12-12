@@ -32,7 +32,9 @@ namespace tt::target {
     struct EnqueueProgramCommand;
     struct CreateKernelCommand;
     struct SetRuntimeArgsCommand;
+    struct SetRuntimeArgs1Command;
     struct CreateCircularBufferCommand;
+    struct RuntimeArg;
 
     // Forward decl for binary_generated.h
     namespace lightmetal {
@@ -41,6 +43,9 @@ namespace tt::target {
         struct LightMetalBinary;
     }
 }
+
+using FlatbufferRuntimeArgVector = const flatbuffers::Vector<flatbuffers::Offset<tt::target::RuntimeArg>>*;
+using RuntimeArgs = std::vector<std::variant<Buffer *, uint32_t>>;
 
 namespace tt::tt_metal {
 inline namespace v0 {
@@ -58,6 +63,9 @@ public:
 
     // Return the TraceDescriptor for a given trace_id from flatbuffer.
     std::optional<detail::TraceDescriptor> getTraceByTraceId(uint32_t target_trace_id);
+
+    // fromFlatBuffer that need class state
+    std::shared_ptr<RuntimeArgs> fromFlatBufferRtArgs(const FlatbufferRuntimeArgVector flatbuffer_args);
 
     // Execute the stored LightMetal binary
     bool executeLightMetalBinary();
@@ -77,6 +85,7 @@ public:
     void execute(tt::target::EnqueueProgramCommand const *command);
     void execute(tt::target::CreateKernelCommand const *command);
     void execute(tt::target::SetRuntimeArgsCommand const *command);
+    void execute(tt::target::SetRuntimeArgs1Command const *command);
     void execute(tt::target::CreateCircularBufferCommand const *command);
 
     // Object maps public accessors

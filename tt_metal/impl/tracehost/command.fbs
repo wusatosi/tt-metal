@@ -80,6 +80,12 @@ table SetRuntimeArgsCommand {
     args: [uint32];             // Arguments to be passed to kernel
 }
 
+table SetRuntimeArgs1Command {
+    kernel_global_id: uint32;   // Reference to Kernel
+    core_spec: CoreSpec;
+    args: [RuntimeArg];         // Arguments to be passed to kernel
+}
+
 table CreateCircularBufferCommand {
     global_id: uint32;          // Reference to CBHandle
     program_global_id: uint32;  // Reference to Program
@@ -101,6 +107,7 @@ union CommandType {
     EnqueueProgramCommand,
     CreateKernelCommand,
     SetRuntimeArgsCommand,
+    SetRuntimeArgs1Command,
     CreateCircularBufferCommand,
 }
 

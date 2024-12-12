@@ -1322,6 +1322,7 @@ void SetRuntimeArgs(
     const std::variant<CoreCoord, CoreRange, CoreRangeSet>& core_spec,
     std::shared_ptr<RuntimeArgs> runtime_args) {
     detail::DispatchStateCheck(not device->using_slow_dispatch());
+    TRACE_FUNCTION_CALL(captureSetRuntimeArgs1, device, kernel, core_spec, runtime_args);
     SetRuntimeArgsImpl(device->command_queue(), kernel, core_spec, std::move(runtime_args), false);
 }
 
