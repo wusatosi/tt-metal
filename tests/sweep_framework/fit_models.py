@@ -130,8 +130,8 @@ if __name__ == "__main__":
                         | stats
                     )
     # print(json.dumps(results, indent=2))
-
-    with open("models.csv", "w") as file:
-        writer = csv.DictWriter(file, fieldnames=results[0].keys())
-        writer.writeheader()
-        writer.writerows(results)
+    for i in range(12):
+        with open(f"models.csv.{i}", "w") as file:
+            writer = csv.DictWriter(file, fieldnames=results[0].keys())
+            writer.writeheader()
+            writer.writerows(results[i * len(results) // 12 : (i + 1) * len(results) // 12])
