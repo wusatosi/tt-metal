@@ -273,8 +273,10 @@ int main(int argc, char **argv) {
                 tx_pkt_dest_size_choice,                          // 15: pkt_dest_size_choice
                 tx_data_sent_per_iter_low,                        // 16: data_sent_per_iter_low
                 tx_data_sent_per_iter_high,                       // 17: data_sent_per_iter_high
-                fabric_command,                                   // 18: fabric command
-                (dev_r_mesh_id << 16 | dev_r_chip_id),            // 19: receiver/dest device/mesh id
+                fabric_command,                                   // 18: fabric_command
+                target_address,                                   // 19: target_address
+                atomic_increment                                  // 20: atomic_increment
+                (dev_r_mesh_id << 16 | dev_r_chip_id),            // 21: receiver/dest device/mesh id
 
             };
 

@@ -44,7 +44,13 @@ constexpr pkt_dest_size_choices_t pkt_dest_size_choice =
 constexpr uint32_t data_sent_per_iter_low = get_compile_time_arg_val(16);
 constexpr uint32_t data_sent_per_iter_high = get_compile_time_arg_val(17);
 constexpr uint32_t test_command = get_compile_time_arg_val(18);
-constexpr uint32_t dest_device = get_compile_time_arg_val(19);
+
+constexpr uint32_t base_target_address = get_compile_time_arg_val(19);
+uint32_t target_address = base_target_address;
+
+// atomic increment for the ATOMIC_INC command
+constexpr uint32_t atomic_increment = get_compile_time_arg_val(20);
+constexpr uint32_t dest_device = get_compile_time_arg_val(21);
 
 constexpr uint32_t base_target_address = get_compile_time_arg_val(19);
 uint32_t target_address = base_target_address;
