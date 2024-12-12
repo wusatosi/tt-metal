@@ -124,6 +124,14 @@ class LMHead(LightweightModule):
                 for split_size in split_sizes
             ]
 
+        self.out_memory_config = ttnn.create_sharded_memory_config(
+            shape=(32, self.padded_vocab_size // self.args.cluster_shape[0] // 32),
+            core_grid=ttnn.CoreGrid(y=4, x=8),
+            strategy=ttnn.ShardStrategy.WIDTH,
+            orientation=ttnn.ShardOrientation.ROW_MAJOR,
+            use_height_and_width_as_shard_shape=True,
+        )
+
     def forward(self, x: ttnn.Tensor):
         outputs = []
         for weight, pc in zip(self.output_weights, self.program_configs):
@@ -147,9 +155,9 @@ class LMHead(LightweightModule):
             dim=3 if self.args.is_galaxy else 0,
             num_reduce_scatter_links=self.args.num_reduce_scatter_links,
             num_all_gather_links=self.args.num_all_gather_links,
-            memory_config=ttnn.L1_MEMORY_CONFIG,
+            memory_config=self.out_memory_config,
             dtype=self.args.ccl_dtype,
-            sharded=False,
+            sharded=True,
             use_composite=True,
         )
 
