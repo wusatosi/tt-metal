@@ -80,17 +80,6 @@ void kernel_main() {
                 // }
             }
 
-            // Copy from reader to output
-            auto l1_read_addr = l1_write_addr_start;
-            for (uint32_t block = 0; block < num_blocks; ++block) {
-                cb_reserve_back(out_cb_id, curr_block_num_tiles);
-                auto l1_out_write_addr = get_noc_addr(get_write_ptr(out_cb_id));
-
-                noc_async_write(l1_read_addr, l1_out_write_addr, curr_block_size_bytes);
-                l1_read_addr += curr_block_size_bytes;
-                cb_push_back(out_cb_id, curr_block_num_tiles);
-            }
-
             // // TODO: Bring back optimized version of reading from DRAM (@yugao)
             // for (uint32_t block = 0; block < num_blocks; block++) {
             //     noc_async_read_tile_dram_sharded_set_trid(curr_block_trid);
