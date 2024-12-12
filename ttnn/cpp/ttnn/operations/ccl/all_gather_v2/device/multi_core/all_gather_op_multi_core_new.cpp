@@ -90,8 +90,7 @@ operation::ProgramWithCallbacks all_gather_multi_core_with_workers_new(
     bool persistent_fabric_mode = fabric_handle.has_value();
     tt::tt_metal::Program program{};
 
-    // Sleep for ring_index * 5 seconds to stagger startup
-    std::this_thread::sleep_for(std::chrono::seconds(ring_index * 5));
+    bool async_output_tensor_mode = false;
 
     Device* device = input_tensor.device();
     bool is_first_chip = ring_index == 0;
@@ -231,6 +230,19 @@ operation::ProgramWithCallbacks all_gather_multi_core_with_workers_new(
                 : std::optional<ttnn::ccl::SenderWorkerAdapterSpec>(
                       fabric_handle->uniquely_connect_worker(device, ttnn::ccl::EdmLineFabricOpInterface::FORWARD));
         std::optional<ttnn::ccl::SenderWorkerAdapterSpec> backward_fabric_connection =
+            line_topology.is_last_device_in_line(ttnn::ccl::EdmLineFabricOpInterface::Direction::BACKWARD)
+                ? std::nullopt
+                : std::optional<ttnn::ccl::SenderWorkerAdapterSpec>(
+                      fabric_handle->uniquely_connect_worker(device, ttnn::ccl::EdmLineFabricOpInterface::BACKWARD));
+
+        log_trace(
+            tt::LogOp,
+            "DEBUG: line_index: {}, line_size: {}, forward_fabric_connection: {}",
+            line_topology.line_index(),
+            line_topology.line_size(),
+            forward_fabric_connection.has_value());
+        log_trace(
+            tt::LogOp,
             "DEBUG: line_index: {}, line_size: {}, backward_fabric_connection: {}",
             line_topology.line_index(),
             line_topology.line_size(),
@@ -262,7 +274,10 @@ operation::ProgramWithCallbacks all_gather_multi_core_with_workers_new(
             output_worker_slice_v2, src0_cb_index, mcast_dest_args));
         // 2, mcast the semaphore to all dest for teardown
         bool generate_teardown_commands = !persistent_fabric_mode && link == 0;
-        if (generate_teardown_commands) {
+
+        // For non-async-tensor mode, the consumer op expects all of its input tensors to be fully populated by the time it is launched.
+        // -> we must wait for all messages from other chips to arrive before we can safely exit/terminate this all-gather op
+        if (generate_teardown_commands || !async_output_tensor_mode) {
             TT_FATAL(
                 semaphore_handle.has_value(),
                 "Internal error during all-=gather fatcory. Global semaphore for fabric teardown not properly "
@@ -276,7 +291,9 @@ operation::ProgramWithCallbacks all_gather_multi_core_with_workers_new(
             // 3, wait for n_chip*num_links number of semaphore at teardown semaphore address for first chip, and
             // n_chip*num_links+1 for other chips
             writer_cmd_stream.push_back(ttnn::ccl::cmd::uops::local_semaphore_wait(
-                semaphore_handle.value(), is_first_chip ? ring_size * num_links : ring_size * num_links + 1));
+                semaphore_handle.value(), is_first_chip ? ring_size * num_links : ring_size * num_links + generate_teardown_commands));
+        }
+        if (generate_teardown_commands) {
             // 4, send semaphore unicast to forward device except for the last chip
             if (!is_last_chip) {
                 writer_cmd_stream.push_back(ttnn::ccl::cmd::uops::fabric_unicast_semaphore_inc(
