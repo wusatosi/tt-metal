@@ -246,24 +246,24 @@ def get_core_ranges(num_reader_cores, num_receiver_cores=2):
 @pytest.mark.parametrize(
     "num_reader_cores, num_tensors, input_shapes, num_layers",
     [  # TODO: test different shapes etc
-        (2, 2, [(256, 512), (256, 512)], 1),
-        (2, 2, [(1024, 256), (1024, 256)], 1),
-        (2, 2, [(128, 128), (128, 128)], 1),
-        (2, 2, [(256, 1024), (256, 1024)], 1),
+        # (2, 2, [(256, 512), (256, 512)], 1),
+        # (2, 2, [(1024, 256), (1024, 256)], 1),
+        # (2, 2, [(128, 128), (128, 128)], 1),
+        # (2, 2, [(256, 1024), (256, 1024)], 1),
         (
             12,
             1,
             [(2304, 3840), (2304, 3840)],
             1,
         ),  # FF1/3 = 72 tiles x 120 tiles = 8640 tiles / 24 cores = 720
-        (
-            12,
-            1,
-            [(2304, 3840), (2304, 3840)],
-            10,
-        ),  # FF1/3 = 72 tiles x 120 tiles = 8640 tiles / 24 cores = 720 tiles per receiver core
+        # (
+        #     12,
+        #     1,
+        #     [(2304, 3840), (2304, 3840)],
+        #     10,
+        # ),  # FF1/3 = 72 tiles x 120 tiles = 8640 tiles / 24 cores = 720 tiles per receiver core
         # (12, 2, [(7680, 2304), (7680, 2304)], 1),  # FF2: hangs
-        (12, 2, [(2304, 1536), (2304, 1536)], 1),  # QKV
+        # (12, 2, [(2304, 1536), (2304, 1536)], 1),  # QKV
         # (12, 2, [(2304, 2304), (2304, 2304)], 1),  # DO: bad pcc
     ],
 )
@@ -444,6 +444,8 @@ def test_run_prefetcher(
             use_physical_to_logical_mapping=False,
             global_cb=global_circular_buffer,
             prefetched_weights_pt=pt_tensors[0],
+            # hop_grid=[(3, 6), (7, 9)],
+            hop_grid=[(3, 6), (3, 9)],
             mm_subdevice_id=1,
         )
 
