@@ -1,5 +1,4 @@
 #pragma once
-<<<<<<< HEAD
 
 #include <pybind11/pybind11.h>
 #include "pybind11/decorators.hpp"
@@ -34,13 +33,4 @@ inline void bind_multiplyadd_operation(pybind11::module& module) {
 }
 
 inline void py_module(pybind11::module& module) { bind_multiplyadd_operation(module); };
-=======
-#include <pybind11/pybind11.h>
-namespace py = pybind11;
-
-namespace ttnn::operations::multiplyadd {
-void bind_multiplyadd_operation(py::module& module);
-
-void py_module(py::module& module);
->>>>>>> Initializing py module properly
 }  // namespace ttnn::operations::multiplyadd
