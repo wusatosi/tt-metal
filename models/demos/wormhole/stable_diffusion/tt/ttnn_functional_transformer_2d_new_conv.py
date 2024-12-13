@@ -13,18 +13,12 @@ from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_basic_transformer
 from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_utility_functions import (
     pre_process_input,
     pad_group_norm_weight,
-    permute_conv_parameters,
     dealloc_input,
+    get_mesh_mappers,
 )
 from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_utility_functions import conv_cache
 
 from loguru import logger
-
-
-def ttnn_to_torch(input):
-    input = ttnn.from_device(input)
-    input = ttnn.to_torch(input)
-    return input
 
 
 class transformer_2d_model:
@@ -33,15 +27,12 @@ class transformer_2d_model:
     ):
         self.device = device
         self.compute_kernel_config = compute_kernel_config
-        parameters.proj_in.weight, parameters.proj_in.bias = permute_conv_parameters(
-            parameters.proj_in.weight, parameters.proj_in.bias
-        )
+
         self.batch_size = batch_size
         self.input_height = input_height
         self.input_width = input_width
-        parameters.proj_in.bias = torch.reshape(parameters.proj_in.bias, (1, 1, 1, parameters.proj_in.bias.shape[-1]))
-        self.proj_in_conv_weights = ttnn.from_torch(parameters.proj_in.weight, ttnn.float32)
-        self.proj_in_conv_bias = ttnn.from_torch(parameters.proj_in.bias, ttnn.float32)
+        self.proj_in_conv_weights = parameters.proj_in.weight
+        self.proj_in_conv_bias = parameters.proj_in.bias
         out_channels = parameters.proj_in.weight.shape[0]
         in_channels = parameters.proj_in.weight.shape[1]
 
@@ -49,6 +40,7 @@ class transformer_2d_model:
 
         self.proj_in_in_channels = in_channels
         self.proj_in_out_channels = out_channels
+        self.inputs_mesh_mapper, self.weights_mesh_mapper, self.output_mesh_composer = get_mesh_mappers(self.device)
         norm_num_groups = 32
         (
             self.gn_expected_input_sharded_memory_config,
@@ -69,11 +61,22 @@ class transformer_2d_model:
             else:
                 num_cores_across_channel = int(self.group_norm_core_grid.x * self.group_norm_core_grid.y)
 
+            parameters.norm.weight = ttnn.to_torch(parameters.norm.weight, mesh_composer=self.output_mesh_composer)
+            if self.output_mesh_composer:
+                parameters.norm.weight = torch.split(
+                    parameters.norm.weight, parameters.norm.weight.shape[0] // 2, dim=0
+                )[0]
+
             parameters.norm.weight = ttnn.create_group_norm_weight_bias_rm(
-                ttnn.to_torch(parameters.norm.weight), in_channels, num_cores_across_channel
+                parameters.norm.weight, in_channels, num_cores_across_channel
             )
+
+            parameters.norm.bias = ttnn.to_torch(parameters.norm.bias, mesh_composer=self.output_mesh_composer)
+            if self.output_mesh_composer:
+                parameters.norm.bias = torch.split(parameters.norm.bias, parameters.norm.bias.shape[0] // 2, dim=0)[0]
+
             parameters.norm.bias = ttnn.create_group_norm_weight_bias_rm(
-                ttnn.to_torch(parameters.norm.bias), in_channels, num_cores_across_channel
+                parameters.norm.bias, in_channels, num_cores_across_channel
             )
             parameters.norm.weight = ttnn.from_torch(
                 parameters.norm.weight,
@@ -81,6 +84,7 @@ class transformer_2d_model:
                 layout=ttnn.ROW_MAJOR_LAYOUT,
                 device=device,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                mesh_mapper=self.weights_mesh_mapper,
             )
             parameters.norm.bias = ttnn.from_torch(
                 parameters.norm.bias,
@@ -88,6 +92,7 @@ class transformer_2d_model:
                 layout=ttnn.ROW_MAJOR_LAYOUT,
                 device=device,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                mesh_mapper=self.weights_mesh_mapper,
             )
 
             self.norm_input_mask_torch_tensor = ttnn.create_group_norm_input_mask(
@@ -99,16 +104,11 @@ class transformer_2d_model:
                 layout=ttnn.TILE_LAYOUT,
                 device=device,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                mesh_mapper=self.inputs_mesh_mapper,
             )
 
-        parameters.proj_out.weight, parameters.proj_out.bias = permute_conv_parameters(
-            parameters.proj_out.weight, parameters.proj_out.bias
-        )
-        parameters.proj_out.bias = torch.reshape(
-            parameters.proj_out.bias, (1, 1, 1, parameters.proj_out.bias.shape[-1])
-        )
-        self.proj_out_conv_weights = ttnn.from_torch(parameters.proj_out.weight, ttnn.float32)
-        self.proj_out_conv_bias = ttnn.from_torch(parameters.proj_out.bias, ttnn.float32)
+        self.proj_out_conv_weights = parameters.proj_out.weight
+        self.proj_out_conv_bias = parameters.proj_out.bias
         out_channels = parameters.proj_out.weight.shape[0]
         in_channels = parameters.proj_out.weight.shape[1]
 
@@ -211,7 +211,7 @@ class transformer_2d_model:
 
         else:
             hidden_states = ttnn.reshape(
-                hidden_states, (self.batch_size, 1, self.input_height * self.input_width, in_channels)
+                hidden_states, (1, 1, self.batch_size * hidden_states.shape[1] * hidden_states.shape[2], in_channels)
             )
             if ttnn.get_memory_config(hidden_states) != self.gn_expected_input_sharded_memory_config:
                 # hidden_states = ttnn.reshard(hidden_states, self.gn_expected_input_sharded_memory_config)
@@ -227,9 +227,9 @@ class transformer_2d_model:
                 memory_config=hidden_states.memory_config(),
                 core_grid=self.group_norm_core_grid,
             )
-        hidden_states = ttnn.reshape(
-            hidden_states, (1, 1, self.batch_size * self.input_height * self.input_width, in_channels)
-        )
+        # hidden_states = ttnn.reshape(
+        #     hidden_states, (1, 1, self.batch_size * hidden_states.shape * self.input_width, in_channels)
+        # )
         hidden_states = ttnn.to_memory_config(
             hidden_states, ttnn.L1_MEMORY_CONFIG
         )  # sharded to interleaved since we can't tilize block sharded
@@ -238,7 +238,6 @@ class transformer_2d_model:
             memory_config=hidden_states.memory_config(),
             dtype=ttnn.bfloat8_b,
         )
-
         conv_config = ttnn.Conv2dConfig(
             dtype=ttnn.bfloat8_b,
             weights_dtype=ttnn.bfloat8_b,
@@ -252,7 +251,12 @@ class transformer_2d_model:
             math_fidelity=ttnn.MathFidelity.LoFi,
             fp32_dest_acc_en=self.compute_kernel_config.fp32_dest_acc_en,
         )
-        [hidden_states, [self.proj_in_conv_weights, self.proj_in_conv_bias]] = ttnn.conv2d(
+
+        hidden_states = ttnn.from_device(hidden_states)
+        self.proj_in_conv_weights = ttnn.from_device(self.proj_in_conv_weights)
+        self.proj_in_conv_bias = ttnn.from_device(self.proj_in_conv_bias)
+
+        hidden_states = ttnn.conv2d(
             input_tensor=hidden_states,
             in_channels=self.proj_in_in_channels,
             out_channels=self.proj_in_out_channels,
@@ -269,7 +273,7 @@ class transformer_2d_model:
             compute_config=compute_config,
             conv_op_cache=conv_cache,
             return_output_dim=False,
-            return_weights_and_bias=True,
+            return_weights_and_bias=False,
         )
 
         inner_dim = hidden_states.shape[-1]
@@ -296,12 +300,11 @@ class transformer_2d_model:
         out_channels = in_channels if out_channels is None else out_channels
         if is_input_continuous:
             if not use_linear_projection:
-                # hidden_states = ttnn.to_memory_config(hidden_states, self.proj_out.conv.input_sharded_memory_config)
-                [
-                    hidden_states,
-                    [_out_height, _out_width],
-                    [self.proj_out_conv_weights, self.proj_out_conv_bias],
-                ] = ttnn.conv2d(
+                hidden_states = ttnn.from_device(hidden_states)
+                self.proj_out_conv_weights = ttnn.from_device(self.proj_out_conv_weights)
+                self.proj_out_conv_bias = ttnn.from_device(self.proj_out_conv_bias)
+
+                hidden_states = ttnn.conv2d(
                     input_tensor=hidden_states,
                     in_channels=self.proj_out_in_channels,
                     out_channels=self.proj_out_out_channels,
@@ -316,25 +319,25 @@ class transformer_2d_model:
                     bias_tensor=self.proj_out_conv_bias,
                     conv_config=conv_config,
                     conv_op_cache=conv_cache,
-                    return_output_dim=True,
-                    return_weights_and_bias=True,
+                    return_output_dim=False,
+                    return_weights_and_bias=False,
                 )
 
-                if output_bfloat16:
-                    hidden_states = dealloc_input(
-                        ttnn.add,
-                        hidden_states,
-                        residual,
-                        dtype=ttnn.bfloat16,
-                        memory_config=hidden_states.memory_config(),
-                    )
-                else:
-                    hidden_states = dealloc_input(
-                        ttnn.add,
-                        hidden_states,
-                        residual,
-                        memory_config=hidden_states.memory_config(),
-                    )
+                # if output_bfloat16:
+                #     hidden_states = dealloc_input(
+                #         ttnn.add,
+                #         hidden_states,
+                #         residual,
+                #         dtype=ttnn.bfloat16,
+                #         memory_config=hidden_states.memory_config(),
+                #     )
+                # else:
+                #     hidden_states = dealloc_input(
+                #         ttnn.add,
+                #         hidden_states,
+                #         residual,
+                #         memory_config=hidden_states.memory_config(),
+                #     )
             else:
                 hidden_states = ttnn.to_device(hidden_states, self.device)
                 hidden_states = ttnn.matmul(hidden_states, self.parameters.proj_out.weight)

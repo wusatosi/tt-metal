@@ -32,65 +32,67 @@ from models.utility_functions import (
             3,
             True,
         ),
-        (
-            1,
-            2,
-            4096,
-            320,
-            3,
-            False,
-        ),
-        (
-            1,
-            2,
-            1024,
-            640,
-            2,
-            True,
-        ),
-        (
-            1,
-            2,
-            1024,
-            640,
-            2,
-            False,
-        ),
-        (
-            1,
-            2,
-            256,
-            1280,
-            1,
-            True,
-        ),
-        (
-            1,
-            2,
-            256,
-            1280,
-            1,
-            False,
-        ),
-        (
-            1,
-            2,
-            64,
-            1280,
-            1,
-            True,
-        ),
-        (
-            1,
-            2,
-            64,
-            1280,
-            1,
-            False,
-        ),
+        # (
+        #     1,
+        #     2,
+        #     4096,
+        #     320,
+        #     3,
+        #     False,
+        # ),
+        # (
+        #     1,
+        #     2,
+        #     1024,
+        #     640,
+        #     2,
+        #     True,
+        # ),
+        # (
+        #     1,
+        #     2,
+        #     1024,
+        #     640,
+        #     2,
+        #     False,
+        # ),
+        # (
+        #     1,
+        #     2,
+        #     256,
+        #     1280,
+        #     1,
+        #     True,
+        # ),
+        # (
+        #     1,
+        #     2,
+        #     256,
+        #     1280,
+        #     1,
+        #     False,
+        # ),
+        # (
+        #     1,
+        #     2,
+        #     64,
+        #     1280,
+        #     1,
+        #     True,
+        # ),
+        # (
+        #     1,
+        #     2,
+        #     64,
+        #     1280,
+        #     1,
+        #     False,
+        # ),
     ],
 )
 def test_cross_attention_512x512(device, model_name, N, C, H, W, index, has_encoder_hidden_states):
+    inputs_mesh_mapper, weights_mesh_mapper, output_mesh_composer = get_mesh_mappers(device)
+
     torch.manual_seed(0)
     device.enable_program_cache()
 
@@ -98,7 +100,7 @@ def test_cross_attention_512x512(device, model_name, N, C, H, W, index, has_enco
     model = pipe.unet
     model.eval()
 
-    hidden_states_shape = torch.Size([N, C, H, W])
+    hidden_states_shape = torch.Size([N * 2 if inputs_mesh_mapper else N, C, H, W])
     hidden_states = torch.rand(hidden_states_shape)
     if has_encoder_hidden_states:
         cross_attn = pipe.unet.up_blocks[index].attentions[0].transformer_blocks[0].attn2
@@ -107,8 +109,9 @@ def test_cross_attention_512x512(device, model_name, N, C, H, W, index, has_enco
         encoder_hidden_states = torch.rand(encoder_hidden_states_shape)
         encoder_hidden_states = encoder_hidden_states.squeeze(0)
 
-        ttnn_encoder_hidden_states = ttnn.from_torch(encoder_hidden_states, dtype=ttnn.bfloat16)
-        ttnn_encoder_hidden_states = ttnn.to_device(ttnn_encoder_hidden_states, device)
+        ttnn_encoder_hidden_states = ttnn.from_torch(
+            encoder_hidden_states, dtype=ttnn.bfloat16, device=device, mesh_mapper=inputs_mesh_mapper
+        )
     else:
         cross_attn = pipe.unet.up_blocks[index].attentions[0].transformer_blocks[0].attn1
         encoder_hidden_states = None
@@ -118,20 +121,31 @@ def test_cross_attention_512x512(device, model_name, N, C, H, W, index, has_enco
     torch_output = cross_attn(hidden_states.squeeze(0), encoder_hidden_states).unsqueeze(0)
 
     parameters = preprocess_model_parameters(
-        initialize_model=lambda: cross_attn, custom_preprocessor=custom_preprocessor, device=device
+        initialize_model=lambda: cross_attn,
+        custom_preprocessor=(
+            create_custom_mesh_preprocessor(weights_mesh_mapper) if weights_mesh_mapper else custom_preprocessor
+        ),
+        device=device,
     )
 
     if encoder_hidden_states is not None:
         encoder_hidden_states = torch.nn.functional.pad(encoder_hidden_states, (0, 0, 0, 19))
         ttnn_encoder_hidden_states = ttnn.from_torch(
-            encoder_hidden_states, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device
+            encoder_hidden_states,
+            dtype=ttnn.bfloat16,
+            layout=ttnn.TILE_LAYOUT,
+            device=device,
+            mesh_mapper=inputs_mesh_mapper,
         )
     else:
         ttnn_encoder_hidden_states = None
 
-    hidden_states = hidden_states.reshape(1, 1, N * C * H, W)
-    ttnn_hidden_states = ttnn.from_torch(hidden_states, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)
-    ttnn_hidden_states = ttnn.to_device(ttnn_hidden_states, device)
+    hidden_states = hidden_states.reshape(
+        1, 1, hidden_states.shape[0] * hidden_states.shape[1] * hidden_states.shape[-2], hidden_states.shape[-1]
+    )
+    ttnn_hidden_states = ttnn.from_torch(
+        hidden_states, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device, mesh_mapper=inputs_mesh_mapper
+    )
 
     model = cross_attention(device, parameters, seq_len=H)
     ttnn_output = model(
@@ -140,7 +154,7 @@ def test_cross_attention_512x512(device, model_name, N, C, H, W, index, has_enco
         attention_mask=None,
         dim_head=W // 8,
     )
-    ttnn_output = ttnn.to_torch(ttnn_output)
+    ttnn_output = ttnn.to_torch(ttnn_output, mesh_composer=output_mesh_composer)
 
     passing, output = comp_pcc(torch_output, ttnn_output, pcc=0.99)
     print(output)

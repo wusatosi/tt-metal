@@ -11,17 +11,10 @@ from tt_lib.fallback_ops import fallback_ops
 from models.utility_functions import torch_to_tt_tensor_rm, tt_to_torch_tensor
 from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_utility_functions import (
     run_ttnn_conv_with_pre_and_post_tensor_formatting,
+    conv_cache,
 )
-from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_utility_functions import conv_cache
 
 import math
-
-
-def permute_conv_parameters(weight, bias):
-    weight = ttnn.to_torch(weight)
-    weight = torch.permute(weight, (2, 3, 0, 1))
-    bias = ttnn.to_torch(bias)
-    return weight, bias
 
 
 config_override = {
@@ -52,13 +45,9 @@ class downsample_2d:
     ):
         self.device = device
         self.parameters = parameters
-        parameters.conv.weight, parameters.conv.bias = permute_conv_parameters(
-            parameters.conv.weight, parameters.conv.bias
-        )
-        parameters.conv.bias = torch.reshape(parameters.conv.bias, (1, 1, 1, parameters.conv.bias.shape[-1]))
 
-        self.conv_weights = ttnn.from_torch(parameters.conv.weight, ttnn.float32)
-        self.conv_bias = ttnn.from_torch(parameters.conv.bias, ttnn.float32)
+        self.conv_weights = parameters.conv.weight
+        self.conv_bias = parameters.conv.bias
         self.input_height = input_height
         self.input_width = input_width
         self.batch_size = batch_size
@@ -146,7 +135,10 @@ class downsample_2d:
         if self.conv_config_override and "act_block_h" in self.conv_config_override:
             conv_config.act_block_h_override = self.conv_config_override["act_block_h"]
 
-        [hidden_states, [self.conv_weights, self.conv_bias]] = ttnn.conv2d(
+        hidden_states = ttnn.from_device(hidden_states)
+        self.conv_weights = ttnn.from_device(self.conv_weights)
+        self.conv_bias = ttnn.from_device(self.conv_bias)
+        hidden_states = ttnn.conv2d(
             input_tensor=hidden_states,
             in_channels=self.in_channels,
             out_channels=self.out_channels,
@@ -163,7 +155,7 @@ class downsample_2d:
             compute_config=compute_config,
             conv_op_cache=conv_cache,
             return_output_dim=False,
-            return_weights_and_bias=True,
+            return_weights_and_bias=False,
         )
         # hidden_states = run_ttnn_conv_with_pre_and_post_tensor_formatting(
         #     self.device,

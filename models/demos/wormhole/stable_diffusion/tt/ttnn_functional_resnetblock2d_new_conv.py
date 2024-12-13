@@ -13,25 +13,13 @@ from typing import Optional, Dict
 from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_utility_functions import (
     pre_process_input,
     post_process_output,
-    permute_conv_parameters,
     weight_to_bfp8,
     dealloc_input,
+    get_mesh_mappers,
 )
 from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_utility_functions import conv_cache
 from loguru import logger
-
-
-def torch_to_ttnn(input, device, layout=ttnn.TILE_LAYOUT):
-    input = ttnn.from_torch(input, ttnn.bfloat16)
-    input = ttnn.to_layout(input, layout)
-    input = ttnn.to_device(input, device, memory_config=ttnn.DRAM_MEMORY_CONFIG)
-    return input
-
-
-def ttnn_to_torch(input):
-    input = ttnn.from_device(input)
-    input = ttnn.to_torch(input)
-    return input
+from tests.ttnn.ttnn_utility_fuction import get_shard_grid_from_num_cores
 
 
 config_override = {
@@ -80,15 +68,13 @@ class resnetBlock2D:
         self.conv1s = []
         self.conv1s_weights = []
         self.conv1s_bias = []
+        self.inputs_mesh_mapper, self.weights_mesh_mapper, self.output_mesh_composer = get_mesh_mappers(self.device)
 
         self.fallback_on_groupnorm = os.environ.get("FALLBACK_ON_GROUPNORM", "0") == "1"
-        parameters.conv1.weight, parameters.conv1.bias = permute_conv_parameters(
-            parameters.conv1.weight, parameters.conv1.bias
-        )
+
         out_channels = parameters.conv1.bias.shape[-1]
         in_channels = parameters.conv1.weight.shape[1]
 
-        parameters.conv1.bias = torch.reshape(parameters.conv1.bias, (1, 1, 1, out_channels))
         conv1_split_chunks = 1
         if (out_channels, in_channels, input_height, input_width) in split_chunks:
             conv1_split_chunks = split_chunks[(out_channels, in_channels, input_height, input_width)]
@@ -100,7 +86,17 @@ class resnetBlock2D:
         if conv1_split_chunks == 1:
             split_weight_tensors = [parameters.conv1.weight]
         else:
-            split_weight_tensors = torch.split(parameters.conv1.weight, split_input_channels, 1)
+            parameters.conv1.weight = ttnn.to_torch(parameters.conv1.weight, mesh_composer=self.output_mesh_composer)
+            if self.output_mesh_composer:
+                parameters.conv1.weight = torch.split(
+                    parameters.conv1.weight, parameters.conv1.weight.shape[0] // 2, dim=0
+                )[0]
+
+            split_weight_tensors = list(torch.split(parameters.conv1.weight, split_input_channels, dim=1))
+            for i in range(conv1_split_chunks):
+                split_weight_tensors[i] = ttnn.from_torch(
+                    split_weight_tensors[i], ttnn.float32, mesh_mapper=self.weights_mesh_mapper
+                )
 
         self.conv1_input_height = input_height
         self.conv1_input_width = input_width
@@ -135,13 +131,21 @@ class resnetBlock2D:
         )
 
         for i in range(conv1_split_chunks):
-            self.conv1s_weights.append(ttnn.from_torch(split_weight_tensors[i], ttnn.float32))
+            self.conv1s_weights.append(split_weight_tensors[i])
             if i == 0:
-                self.conv1s_bias.append(ttnn.from_torch(parameters.conv1.bias, ttnn.float32))
+                self.conv1s_bias.append(parameters.conv1.bias)
             else:
                 # TODO: fix no bias in conv error
+                parameters.conv1.bias = ttnn.to_torch(parameters.conv1.bias, mesh_composer=self.output_mesh_composer)
+                if self.output_mesh_composer:
+                    parameters.conv1.bias = torch.split(
+                        parameters.conv1.bias, parameters.conv1.bias.shape[0] // 2, dim=0
+                    )[0]
                 torch_bias_zeros_tensor = torch.zeros(parameters.conv1.bias.shape, dtype=torch.bfloat16).float()
-                self.conv1s_bias.append(ttnn.from_torch(torch_bias_zeros_tensor, ttnn.float32))
+
+                self.conv1s_bias.append(
+                    ttnn.from_torch(torch_bias_zeros_tensor, ttnn.float32, mesh_mapper=self.weights_mesh_mapper)
+                )
             self.conv1_config_override = {}
             if (out_channels, in_channels, input_height, input_width) in config_override:
                 self.conv1_config_override = config_override[(out_channels, in_channels, input_height, input_width)]
@@ -152,17 +156,16 @@ class resnetBlock2D:
                 }
             )
 
+        for i in range(conv1_split_chunks):
+            self.conv1s_weights[i] = ttnn.from_device(self.conv1s_weights[i])
+            self.conv1s_bias[i] = ttnn.from_device(self.conv1s_bias[i])
+
         use_in_shortcut = True if "conv_shortcut" in parameters else False
         if use_in_shortcut:
-            parameters.conv_shortcut.weight, parameters.conv_shortcut.bias = permute_conv_parameters(
-                parameters.conv_shortcut.weight, parameters.conv_shortcut.bias
-            )
-
             convs_input_height = input_height
             convs_input_width = input_width
-            parameters.conv_shortcut.bias = torch.reshape(parameters.conv_shortcut.bias, (1, 1, 1, out_channels))
-            self.conv_shortcut_weights = ttnn.from_torch(parameters.conv_shortcut.weight, ttnn.float32)
-            self.conv_shortcut_bias = ttnn.from_torch(parameters.conv_shortcut.bias, ttnn.float32)
+            self.conv_shortcut_weights = ttnn.from_device(parameters.conv_shortcut.weight)
+            self.conv_shortcut_bias = ttnn.from_device(parameters.conv_shortcut.bias)
             self.conv_shortcut_in_channels = parameters.conv_shortcut.weight.shape[1]
             self.conv_shortcut_out_channels = parameters.conv_shortcut.weight.shape[0]
             self.conv_shortcut_input_height = convs_input_height
@@ -173,12 +176,10 @@ class resnetBlock2D:
 
         conv2_input_height = input_height
         conv2_input_width = input_width
-        parameters.conv2.weight, parameters.conv2.bias = permute_conv_parameters(
-            parameters.conv2.weight, parameters.conv2.bias
-        )
-        parameters.conv2.bias = torch.reshape(parameters.conv2.bias, (1, 1, 1, out_channels))
-        self.conv2_weights = ttnn.from_torch(parameters.conv2.weight, ttnn.float32)
-        self.conv2_bias = ttnn.from_torch(parameters.conv2.bias, ttnn.float32)
+
+        self.conv2_weights = ttnn.from_device(parameters.conv2.weight)
+        self.conv2_bias = ttnn.from_device(parameters.conv2.bias)
+
         self.conv2_config_override = {}
         if (out_channels, out_channels, input_height, input_width) in config_override:
             self.conv2_config_override = config_override[(out_channels, out_channels, input_height, input_width)]
@@ -245,6 +246,7 @@ class resnetBlock2D:
         self.output_width = self.conv2_input_width
         assert self.input_height == self.output_height
         assert self.input_width == self.output_width
+
         out_channels = parameters.conv1.bias.shape[-1]
         in_channels = parameters.conv1.weight.shape[1]
 
@@ -262,11 +264,27 @@ class resnetBlock2D:
             else:
                 num_cores_across_channel = int(self.first_group_norm_core_grid.x * self.first_group_norm_core_grid.y)
 
-            self.parameters.norm1.weight = ttnn.create_group_norm_weight_bias_rm(
-                ttnn.to_torch(self.parameters.norm1.weight), in_channels, num_cores_across_channel
+            self.parameters.norm1.weight = ttnn.to_torch(
+                self.parameters.norm1.weight, mesh_composer=self.output_mesh_composer
             )
+            if self.output_mesh_composer:
+                self.parameters.norm1.weight = torch.split(
+                    self.parameters.norm1.weight, self.parameters.norm1.weight.shape[0] // 2, dim=0
+                )[0]
+
+            self.parameters.norm1.weight = ttnn.create_group_norm_weight_bias_rm(
+                self.parameters.norm1.weight, in_channels, num_cores_across_channel
+            )
+            self.parameters.norm1.bias = ttnn.to_torch(
+                self.parameters.norm1.bias, mesh_composer=self.output_mesh_composer
+            )
+            if self.output_mesh_composer:
+                self.parameters.norm1.bias = torch.split(
+                    self.parameters.norm1.bias, self.parameters.norm1.bias.shape[0] // 2, 0
+                )[0]
+
             self.parameters.norm1.bias = ttnn.create_group_norm_weight_bias_rm(
-                ttnn.to_torch(self.parameters.norm1.bias), in_channels, num_cores_across_channel
+                self.parameters.norm1.bias, in_channels, num_cores_across_channel
             )
 
             self.norm1_input_mask_torch_tensor = ttnn.create_group_norm_input_mask(
@@ -279,6 +297,7 @@ class resnetBlock2D:
                 layout=ttnn.TILE_LAYOUT,
                 device=device,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                mesh_mapper=self.inputs_mesh_mapper,
             )
 
             self.parameters.norm1.weight = ttnn.from_torch(
@@ -287,6 +306,7 @@ class resnetBlock2D:
                 layout=ttnn.ROW_MAJOR_LAYOUT,
                 device=device,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                mesh_mapper=self.weights_mesh_mapper,
             )
             self.parameters.norm1.bias = ttnn.from_torch(
                 self.parameters.norm1.bias,
@@ -294,6 +314,7 @@ class resnetBlock2D:
                 layout=ttnn.ROW_MAJOR_LAYOUT,
                 device=device,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                mesh_mapper=self.weights_mesh_mapper,
             )
             if (
                 self.second_gn_expected_input_sharded_memory_config.memory_layout
@@ -308,18 +329,37 @@ class resnetBlock2D:
             else:
                 num_cores_across_channel = int(self.second_group_norm_core_grid.x * self.second_group_norm_core_grid.y)
 
+            self.parameters.norm2.weight = ttnn.to_torch(
+                self.parameters.norm2.weight, mesh_composer=self.output_mesh_composer
+            )
+            if self.output_mesh_composer:
+                self.parameters.norm2.weight = torch.split(
+                    self.parameters.norm2.weight, self.parameters.norm2.weight.shape[0] // 2, dim=0
+                )[0]
+
             self.parameters.norm2.weight = ttnn.create_group_norm_weight_bias_rm(
-                ttnn.to_torch(self.parameters.norm2.weight), out_channels, num_cores_across_channel
+                self.parameters.norm2.weight, out_channels, num_cores_across_channel
             )
+
+            self.parameters.norm2.bias = ttnn.to_torch(
+                self.parameters.norm2.bias, mesh_composer=self.output_mesh_composer
+            )
+            if self.output_mesh_composer:
+                self.parameters.norm2.bias = torch.split(
+                    self.parameters.norm2.bias, self.parameters.norm2.bias.shape[0] // 2, 0
+                )[0]
+
             self.parameters.norm2.bias = ttnn.create_group_norm_weight_bias_rm(
-                ttnn.to_torch(self.parameters.norm2.bias), out_channels, num_cores_across_channel
+                self.parameters.norm2.bias, out_channels, num_cores_across_channel
             )
+
             self.parameters.norm2.weight = ttnn.from_torch(
                 self.parameters.norm2.weight,
                 dtype=ttnn.bfloat16,
                 layout=ttnn.ROW_MAJOR_LAYOUT,
                 device=device,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                mesh_mapper=self.weights_mesh_mapper,
             )
             self.parameters.norm2.bias = ttnn.from_torch(
                 self.parameters.norm2.bias,
@@ -327,6 +367,7 @@ class resnetBlock2D:
                 layout=ttnn.ROW_MAJOR_LAYOUT,
                 device=device,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                mesh_mapper=self.weights_mesh_mapper,
             )
 
             self.norm2_input_mask_torch_tensor = ttnn.create_group_norm_input_mask(
@@ -338,9 +379,10 @@ class resnetBlock2D:
                 layout=ttnn.TILE_LAYOUT,
                 device=device,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                mesh_mapper=self.inputs_mesh_mapper,
             )
-            self.parameters.time_emb_proj.weight = weight_to_bfp8(self.parameters.time_emb_proj.weight)
-            self.parameters.time_emb_proj.bias = weight_to_bfp8(self.parameters.time_emb_proj.bias)
+            self.parameters.time_emb_proj.weight = weight_to_bfp8(device, self.parameters.time_emb_proj.weight)
+            self.parameters.time_emb_proj.bias = weight_to_bfp8(device, self.parameters.time_emb_proj.bias)
 
     def reshard_to(self, tensor, grid_size, layout):
         if layout == ttnn.TensorMemoryLayout.BLOCK_SHARDED:
@@ -407,16 +449,23 @@ class resnetBlock2D:
             assert False, "Mish is not implemented!"
         else:
             nonlinearity = ttnn.silu
+        print(f" hidden_states b4 reshape --------> : {input_tensor.shape}")
 
         out_channels = in_channels if out_channels is None else out_channels
         hidden_states = ttnn.to_layout(input_tensor, ttnn.ROW_MAJOR_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG)
+        print(f" hidden_states b4 reshape -------->  1: {hidden_states.shape}")
+
         if ttnn.get_memory_config(hidden_states) != self.first_gn_expected_input_sharded_memory_config:
             hidden_states = ttnn.to_memory_config(hidden_states, self.first_gn_expected_input_sharded_memory_config)
 
         hidden_states = ttnn.reshape(
-            hidden_states, (self.batch_size, 1, self.conv2_input_height * self.conv2_input_width, in_channels)
+            hidden_states,
+            (1, 1, hidden_states.shape[0] * hidden_states.shape[1] * hidden_states.shape[-2], hidden_states.shape[-1]),
         )
+        print(f" hidden_states b4 reshape -------->  2: {hidden_states.shape}")
+
         hidden_states = ttnn.reallocate(hidden_states)
+        print(f" hidden_states b4 reshape -------->  3: {hidden_states.shape}")
 
         hidden_states = ttnn.group_norm(
             hidden_states,
@@ -429,10 +478,18 @@ class resnetBlock2D:
             core_grid=self.first_group_norm_core_grid,
             dtype=ttnn.bfloat8_b,
         )
+        print(f" hidden_states b4 reshape -------->  4: {hidden_states.shape}")
+
+        # hidden_states = ttnn.reshape(
+        #     hidden_states,
+        #     (1, 1, self.batch_size * self.conv2_input_height * self.conv2_input_width, in_channels),
+        # )
         hidden_states = ttnn.reshape(
             hidden_states,
-            (1, 1, self.batch_size * self.conv2_input_height * self.conv2_input_width, in_channels),
+            (1, 1, hidden_states.shape[0] * hidden_states.shape[1] * hidden_states.shape[-2], hidden_states.shape[-1]),
         )
+        print(f" hidden_states b4 reshape -------->  5: {hidden_states.shape}")
+
         if up:
             assert False, "Up block within residual block is not implemented!"
         elif down:
@@ -446,7 +503,7 @@ class resnetBlock2D:
             # )
             hidden_states = nonlinearity(hidden_states, memory_config=ttnn.get_memory_config(hidden_states))
             hidden_states = ttnn.sharded_to_interleaved(hidden_states, ttnn.L1_MEMORY_CONFIG, hidden_states.dtype)
-            hidden_states = ttnn.reallocate(hidden_states)
+            # hidden_states = ttnn.reallocate(hidden_states)
             # hidden_states = ttnn.to_layout(hidden_states, ttnn.TILE_LAYOUT)
 
             # hidden_states = self.conv1s[0](hidden_states)
@@ -455,6 +512,7 @@ class resnetBlock2D:
             # hidden_states = self.conv1s[0](hidden_states)
 
             hidden_states = ttnn.to_memory_config(hidden_states, self.conv1_input_memory_config)
+            print(f" hidden_states b4 reshape -------->  6: {hidden_states.shape}")
 
             conv_config = ttnn.Conv2dConfig(
                 dtype=ttnn.bfloat8_b,
@@ -474,6 +532,9 @@ class resnetBlock2D:
             )
             if self.conv1_config_override and "act_block_h" in self.conv2_config_override:
                 conv_config.act_block_h_override = self.conv1_config_override["act_block_h"]
+
+            hidden_states = ttnn.from_device(ttnn.to_layout(hidden_states, layout=ttnn.ROW_MAJOR_LAYOUT))
+            print(f" hidden_states b4 reshape -------->  7: {hidden_states.shape}")
             [hidden_states, [self.conv1s_weights[0], self.conv1s_bias[0]]] = ttnn.conv2d(
                 input_tensor=hidden_states,
                 weight_tensor=self.conv1s_weights[0],
@@ -493,16 +554,18 @@ class resnetBlock2D:
                 return_output_dim=False,
                 return_weights_and_bias=True,
             )
+            print(f" hidden_states b4 reshape -------->  8: {hidden_states.shape}")
 
         else:
             split_hidden_states = []
             output_tensor_start_width_dim = 0
             in_channels = self.parameters.conv1.weight.shape[1]
             split_input_channels = in_channels // conv1_split_chunks
-
             # unpad sharded causes output mismatch
             hidden_states = ttnn.sharded_to_interleaved(hidden_states, ttnn.L1_MEMORY_CONFIG, hidden_states.dtype)
+            print(f"hidden_states: {hidden_states.shape}")
             output_tensor_end_width_dim = split_input_channels
+
             for i in range(conv1_split_chunks):
                 # TODO: Can we replace this with interleaved_to_sharded_partial
                 split_hidden_states.append(
@@ -518,20 +581,22 @@ class resnetBlock2D:
                         memory_config=ttnn.L1_MEMORY_CONFIG,
                     )
                 )
+                print(f"split_hidden_states: {split_hidden_states[i].shape}")
                 output_tensor_start_width_dim += split_input_channels
                 output_tensor_end_width_dim += split_input_channels
 
                 split_hidden_states[i] = ttnn.to_layout(split_hidden_states[i], ttnn.TILE_LAYOUT)
+                print(f"split_hidden_states[i] 2 : {split_hidden_states[i].shape}")
                 # split_hidden_states[i] = ttnn.interleaved_to_sharded(
                 #     split_hidden_states[i],
                 #     self.conv1s[i].conv.input_sharded_memory_config,
                 #     split_hidden_states[i].dtype,
                 # )
+
                 split_hidden_states[i] = nonlinearity(
                     split_hidden_states[i], memory_config=ttnn.get_memory_config(split_hidden_states[i])
                 )
-                # split_hidden_states[i] = self.conv1s[i](split_hidden_states[i])
-
+                print(f"split_hidden_states[i] 3: {split_hidden_states[i].shape}")
                 conv_config = ttnn.Conv2dConfig(
                     dtype=ttnn.bfloat8_b,
                     weights_dtype=ttnn.bfloat8_b,
@@ -551,6 +616,10 @@ class resnetBlock2D:
                 if self.conv1_config_override and "act_block_h" in self.conv2_config_override:
                     conv_config.act_block_h_override = self.conv1_config_override["act_block_h"]
 
+                split_hidden_states[i] = ttnn.from_device(split_hidden_states[i])
+                # self.conv1s_weights[i] = ttnn.from_device(self.conv1s_weights[i])
+                # self.conv1s_bias[i] = ttnn.from_device(self.conv1s_bias[i])
+                print(f"split_hidden_states[i] 4 : {split_hidden_states[i].shape}")
                 [
                     split_hidden_states[i],
                     [_out_height, _out_width],
@@ -574,6 +643,7 @@ class resnetBlock2D:
                     return_output_dim=True,
                     return_weights_and_bias=True,
                 )
+                print(f"split_hidden_states[i] 5 : {split_hidden_states[i].shape}")
                 if i != 0:
                     split_hidden_states[i] = ttnn.add(
                         split_hidden_states[i],
@@ -582,7 +652,9 @@ class resnetBlock2D:
                     )
                     ttnn.deallocate(split_hidden_states[i - 1])
             hidden_states = split_hidden_states[-1]
+            print(f"hidden_states 99 : {hidden_states.shape}")
             split_hidden_states = []
+        print(f" hidden_states b4 reshape -------->  9: {hidden_states.shape}")
 
         if temb is not None:
             grid_size = (2, 5)  # 5 is the Magic Number!
@@ -634,6 +706,7 @@ class resnetBlock2D:
 
         hidden_states = ttnn.to_layout(hidden_states, ttnn.ROW_MAJOR_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG)
         hidden_states = ttnn.to_memory_config(hidden_states, self.second_gn_expected_input_sharded_memory_config)
+
         hidden_states = ttnn.group_norm(
             hidden_states,
             num_groups=groups,
@@ -645,24 +718,29 @@ class resnetBlock2D:
             core_grid=self.second_group_norm_core_grid,
             dtype=ttnn.bfloat8_b,
         )
+        # hidden_states = ttnn.reshape(
+        #     hidden_states,
+        #     (1, 1, self.batch_size * self.conv2_input_height * self.conv2_input_width, out_channels),
+        # )
+        print(f" hidden_states b4 reshape: {hidden_states.shape}")
+
         hidden_states = ttnn.reshape(
             hidden_states,
-            (1, 1, self.batch_size * self.conv2_input_height * self.conv2_input_width, out_channels),
+            (1, 1, hidden_states.shape[0] * hidden_states.shape[1] * hidden_states.shape[-2], hidden_states.shape[-1]),
         )
-
         # hidden_states = ttnn.sharded_to_interleaved(
         #     hidden_states, ttnn.L1_MEMORY_CONFIG, hidden_states.dtype
         # )
         # hidden_states = ttnn.interleaved_to_sharded(
         #     hidden_states, self.conv2.conv.input_sharded_memory_config, hidden_states.dtype
         # )
+        print(f" hidden_states b4 non lienar after reshape: {hidden_states.shape}")
 
         hidden_states = nonlinearity(hidden_states, memory_config=ttnn.get_memory_config(hidden_states))
-        # hidden_states = ttnn.to_layout(hidden_states, ttnn.ROW_MAJOR_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG)
         hidden_states = ttnn.sharded_to_interleaved(hidden_states, ttnn.L1_MEMORY_CONFIG, hidden_states.dtype)
 
         hidden_states = ttnn.to_memory_config(hidden_states, self.conv2_input_memory_config)
-        # hidden_states = self.conv2(hidden_states)
+        print(f" hidden_states nonlinear: {hidden_states.shape}")
 
         conv_config = ttnn.Conv2dConfig(
             dtype=ttnn.bfloat8_b,
@@ -682,6 +760,13 @@ class resnetBlock2D:
         )
         if self.conv2_config_override and "act_block_h" in self.conv2_config_override:
             conv_config.act_block_h_override = self.conv2_config_override["act_block_h"]
+
+        hidden_states = ttnn.from_device(ttnn.to_layout(hidden_states, layout=ttnn.ROW_MAJOR_LAYOUT))
+
+        # self.conv2_weights = ttnn.from_device(self.conv2_weights)
+        # self.conv2_bias = ttnn.from_device(self.conv2_bias)
+        print(f"conv2 b4 hidden_states: {hidden_states.shape}")
+
         [hidden_states, [_out_height, _out_width], [self.conv2_weights, self.conv2_bias]] = ttnn.conv2d(
             input_tensor=hidden_states,
             weight_tensor=self.conv2_weights,
@@ -702,6 +787,7 @@ class resnetBlock2D:
             return_weights_and_bias=True,
         )
         use_in_shortcut = in_channels != out_channels if use_in_shortcut is None else use_in_shortcut
+        print(f"conv2 hidden_states after : {hidden_states.shape}")
 
         if use_in_shortcut:
             # if ttnn.get_memory_config(input_tensor) != self.conv_shortcut.conv.input_sharded_memory_config:
@@ -718,7 +804,6 @@ class resnetBlock2D:
                 dtype=ttnn.bfloat8_b,
                 weights_dtype=ttnn.bfloat8_b,
                 activation="",
-                shard_layout=ttnn.TensorMemoryLayout.BLOCK_SHARDED,
                 input_channels_alignment=32,
                 transpose_shards=False,
                 reshard_if_not_optimal=False,
@@ -756,6 +841,9 @@ class resnetBlock2D:
 
         if ttnn.get_memory_config(input_tensor) != ttnn.get_memory_config(hidden_states):
             input_tensor = ttnn.to_memory_config(input_tensor, ttnn.get_memory_config(hidden_states))
+
+        print(f"conv sc put[input_tensor: {input_tensor.shape}")
+        print(f"conv2 hidden_states: {hidden_states.shape}")
         output_tensor = ttnn.add(input_tensor, hidden_states, memory_config=hidden_states.memory_config())
 
         ttnn.deallocate(hidden_states)

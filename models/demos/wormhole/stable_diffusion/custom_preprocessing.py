@@ -13,7 +13,7 @@ def preprocess_groupnorm_parameter(parameter, *, dtype):
 
 
 def preprocess_conv_parameter(parameter, *, dtype):
-    parameter = ttnn.from_torch(parameter, dtype=dtype, layout=ttnn.TILE_LAYOUT)
+    parameter = ttnn.from_torch(parameter, dtype=dtype)
     return parameter
 
 
@@ -24,9 +24,13 @@ def custom_preprocessor(model, name):
         parameters["bias"] = preprocess_groupnorm_parameter(model.bias, dtype=ttnn.bfloat16)
 
     if isinstance(model, nn.Conv2d):
-        weight = torch.permute(model.weight, (2, 3, 0, 1))
-        parameters["weight"] = preprocess_conv_parameter(weight, dtype=ttnn.bfloat16)
-        parameters["bias"] = preprocess_conv_parameter(model.bias, dtype=ttnn.bfloat16)
+        # weight = torch.permute(model.weight, (2, 3, 0, 1))
+        parameters["weight"] = preprocess_conv_parameter(model.weight, dtype=ttnn.float32)
+        if model.bias is not None:
+            bias = model.bias
+            while len(bias.shape) < 4:
+                bias = bias.unsqueeze(0)
+            parameters["bias"] = preprocess_conv_parameter(bias, dtype=ttnn.float32)
 
     if isinstance(model, (nn.Linear, nn.LayerNorm)):
         weight = model.weight.T.contiguous()

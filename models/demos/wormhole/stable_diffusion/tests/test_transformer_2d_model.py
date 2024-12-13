@@ -18,7 +18,9 @@ from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_transformer_2d_ne
 from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_utility_functions import (
     pre_process_input,
     post_process_output,
+    get_mesh_mappers,
 )
+from models.demos.wormhole.stable_diffusion_dp.tests.custom_preprocessing import create_custom_mesh_preprocessor
 
 
 @skip_for_grayskull()
@@ -59,7 +61,9 @@ from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_utility_functions
 def test_transformer_2d_model_256x256(
     input_shape, index1, index2, block, attention_head_dim, model_name, device, reset_seeds
 ):
-    pytest.skip()
+    # pytest.skip()
+    inputs_mesh_mapper, weights_mesh_mapper, output_mesh_composer = get_mesh_mappers(device)
+
     encoder_hidden_states = [1, 2, 77, 768]
     timestep = (None,)
     class_labels = (None,)
@@ -85,7 +89,12 @@ def test_transformer_2d_model_256x256(
     transformer = pipe.unet.mid_block.attentions[0]
 
     parameters = preprocess_model_parameters(
-        model_name=model_name, initialize_model=lambda: unet, custom_preprocessor=custom_preprocessor, device=device
+        model_name=model_name,
+        initialize_model=lambda: unet,
+        custom_preprocessor=(
+            create_custom_mesh_preprocessor(weights_mesh_mapper) if weights_mesh_mapper else custom_preprocessor
+        ),
+        device=device,
     )
 
     if block == "up":
@@ -100,13 +109,27 @@ def test_transformer_2d_model_256x256(
 
     torch_output = transformer(input, encoder_hidden_states.squeeze(0)).sample
 
-    ttnn_hidden_state = ttnn.from_torch(input, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)
-
-    ttnn_encoder_hidden_states = ttnn.from_torch(
-        encoder_hidden_states, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device
+    ttnn_hidden_state = ttnn.from_torch(
+        input, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device, mesh_mapper=inputs_mesh_mapper
     )
 
-    ttnn_transformer = transformer_2d_model(
+    ttnn_encoder_hidden_states = ttnn.from_torch(
+        encoder_hidden_states,
+        dtype=ttnn.bfloat16,
+        layout=ttnn.TILE_LAYOUT,
+        device=device,
+        mesh_mapper=inputs_mesh_mapper,
+    )
+    compute_kernel_config = ttnn.WormholeComputeKernelConfig(
+        math_fidelity=ttnn.MathFidelity.LoFi,
+        math_approx_mode=True,
+        fp32_dest_acc_en=True,
+        packer_l1_acc=False,
+    )
+    model = transformer_2d_model(
+        device, parameters, {}, input_shape[0], input_shape[2], input_shape[3], compute_kernel_config
+    )
+    ttnn_transformer = model(
         hidden_states=ttnn_hidden_state,
         parameters=parameters,
         config=config,
@@ -122,18 +145,18 @@ def test_transformer_2d_model_256x256(
         num_layers=num_layers,
         norm_num_groups=norm_num_groups,
         norm_type=norm_type,
-        device=device,
+        device=device,  #
         cross_attention_dim=cross_attention_dim,
         upcast_attention=upcast_attention,
     )
 
-    ttnn_output_torch = ttnn.to_torch(ttnn.to_layout(ttnn.from_device(ttnn_transformer), layout=ttnn.ROW_MAJOR_LAYOUT))
+    ttnn_output_torch = ttnn.to_torch(ttnn_transformer, mesh_composer=output_mesh_composer)
 
     assert_with_pcc(torch_output, ttnn_output_torch, 0.99)
 
 
 @skip_for_grayskull()
-@pytest.mark.skip(reason="#9599: Tests are failing.")
+# @pytest.mark.skip(reason="#9599: Tests are failing.")
 @pytest.mark.parametrize(
     "input_shape, index1, index2, attention_head_dim, block ",
     [
@@ -172,6 +195,9 @@ def test_transformer_2d_model_256x256(
 def test_transformer_2d_model_512x512(
     input_shape, index1, index2, block, attention_head_dim, model_name, device, reset_seeds
 ):
+    # device = mesh_device
+    inputs_mesh_mapper, weights_mesh_mapper, output_mesh_composer = get_mesh_mappers(device)
+
     # TODO
     torch.manual_seed(0)
     encoder_hidden_states = [1, 2, 77, 768]
@@ -187,7 +213,8 @@ def test_transformer_2d_model_512x512(
     cross_attention_dim = 768
     upcast_attention = False
 
-    _, in_channels, _, _ = input_shape
+    N, in_channels, H, W = input_shape
+    input_shape = (input_shape[0] * 2 if inputs_mesh_mapper else input_shape[0], *input_shape[1:])
 
     input = torch.randn(input_shape) * 0.01
     encoder_hidden_states = torch.rand(encoder_hidden_states)
@@ -198,7 +225,12 @@ def test_transformer_2d_model_512x512(
     config = unet.config
 
     parameters = preprocess_model_parameters(
-        model_name=model_name, initialize_model=lambda: unet, custom_preprocessor=custom_preprocessor, device=device
+        model_name=model_name,
+        initialize_model=lambda: unet,
+        custom_preprocessor=(
+            create_custom_mesh_preprocessor(weights_mesh_mapper) if weights_mesh_mapper else custom_preprocessor
+        ),
+        device=device,
     )
 
     if block == "up":
@@ -213,11 +245,17 @@ def test_transformer_2d_model_512x512(
 
     torch_output = transformer(input, encoder_hidden_states.squeeze(0)).sample
 
-    ttnn_hidden_state = ttnn.from_torch(input, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)
+    ttnn_hidden_state = ttnn.from_torch(
+        input, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device, mesh_mapper=inputs_mesh_mapper
+    )
 
     encoder_hidden_states = torch.nn.functional.pad(encoder_hidden_states, (0, 0, 0, 19))
     ttnn_encoder_hidden_states = ttnn.from_torch(
-        encoder_hidden_states, dtype=ttnn.bfloat8_b, layout=ttnn.TILE_LAYOUT, device=device
+        encoder_hidden_states,
+        dtype=ttnn.bfloat8_b,
+        layout=ttnn.TILE_LAYOUT,
+        device=device,
+        mesh_mapper=inputs_mesh_mapper,
     )
 
     compute_kernel_config = ttnn.WormholeComputeKernelConfig(
@@ -226,6 +264,7 @@ def test_transformer_2d_model_512x512(
         fp32_dest_acc_en=True,
         packer_l1_acc=False,
     )
+
     model = transformer_2d_model(
         device, parameters, {}, input_shape[0], input_shape[2], input_shape[3], compute_kernel_config
     )
@@ -249,14 +288,15 @@ def test_transformer_2d_model_512x512(
         upcast_attention=upcast_attention,
     )
 
-    output = post_process_output(
-        model.device,
-        output,
-        model.batch_size,
-        model.input_height,
-        model.input_width,
-        model.proj_out_out_channels,
-    )
-    ttnn_output_torch = ttnn.to_torch(ttnn.to_layout(ttnn.from_device(output), layout=ttnn.ROW_MAJOR_LAYOUT))
-
+    # output = post_process_output(
+    #     model.device,
+    #     output,
+    #     model.batch_size,
+    #     model.input_height,
+    #     model.input_width,
+    #     model.proj_out_out_channels,
+    # )
+    ttnn_output_torch = ttnn.to_torch(output, mesh_composer=output_mesh_composer)
+    ttnn_output_torch = ttnn_output_torch.reshape(input_shape[0], H, W, in_channels)
+    ttnn_output_torch = ttnn_output_torch.permute(0, 3, 1, 2)
     assert_with_pcc(torch_output, ttnn_output_torch, 0.99)

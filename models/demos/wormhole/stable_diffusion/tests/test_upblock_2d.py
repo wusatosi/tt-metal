@@ -21,7 +21,9 @@ from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_utility_functions
     pre_process_input,
     post_process_output,
     weight_to_bfp8,
+    get_mesh_mappers,
 )
+from models.demos.wormhole.stable_diffusion_dp.tests.custom_preprocessing import create_custom_mesh_preprocessor
 
 
 @skip_for_grayskull()
@@ -29,8 +31,10 @@ from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_utility_functions
 @pytest.mark.parametrize("res_hidden_states_tuple", [([2, 1280, 8, 8], [2, 1280, 8, 8], [2, 1280, 8, 8])])
 @pytest.mark.parametrize("hidden_states", [[2, 1280, 8, 8]])
 @pytest.mark.parametrize("temb", [[1, 1, 2, 1280]])
-@pytest.mark.skip(reason="#15931: Fails, need to investigate")
 def test_upblock_512x512(reset_seeds, device, res_hidden_states_tuple, hidden_states, temb):
+    # device = mesh_device
+    inputs_mesh_mapper, weights_mesh_mapper, output_mesh_composer = get_mesh_mappers(device)
+
     # TODO
     # setup pytorch model
     pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float32)
@@ -39,13 +43,17 @@ def test_upblock_512x512(reset_seeds, device, res_hidden_states_tuple, hidden_st
     state_dict = unet.state_dict()
     unet_upblock = pipe.unet.up_blocks[0]
     reader_patterns_cache = {}
-
-    parameters = preprocess_model_parameters(
-        initialize_model=lambda: unet, custom_preprocessor=custom_preprocessor, device=device
-    )
-    parameters = parameters.up_blocks[0]
     N, _, H, W = hidden_states
 
+    parameters = preprocess_model_parameters(
+        initialize_model=lambda: unet,
+        custom_preprocessor=(
+            create_custom_mesh_preprocessor(weights_mesh_mapper) if weights_mesh_mapper else custom_preprocessor
+        ),
+        device=device,
+    )
+    parameters = parameters.up_blocks[0]
+    hidden_states = (hidden_states[0] * 2 if inputs_mesh_mapper else hidden_states[0], *hidden_states[1:])
     compute_kernel_config = ttnn.WormholeComputeKernelConfig(
         math_fidelity=ttnn.MathFidelity.LoFi,
         math_approx_mode=True,
@@ -62,26 +70,43 @@ def test_upblock_512x512(reset_seeds, device, res_hidden_states_tuple, hidden_st
     input_shape = hidden_states
     hidden_state = torch_random(input_shape, -0.1, 0.1, dtype=torch.float32)
     res_hidden_states_tuple = (hidden_state, hidden_state, hidden_state)
+    temb = (1, 1, temb[0] * temb[1] * temb[-2], temb[-1])
     temb = torch_random(temb, -0.1, 0.1, dtype=torch.float32)
 
     # execute pytorch
     torch_output = unet_upblock(hidden_state, res_hidden_states_tuple, None, None)
 
-    hidden_state = ttnn.from_torch(hidden_state, ttnn.bfloat16)
-    hidden_state = ttnn.to_device(hidden_state, device, memory_config=ttnn.L1_MEMORY_CONFIG)
-    hidden_state = ttnn.permute(hidden_state, (0, 2, 3, 1))
+    hidden_state = torch.permute(hidden_state, (0, 2, 3, 1))
+    hidden_state = torch.reshape(
+        hidden_state,
+        (1, 1, hidden_state.shape[0] * hidden_state.shape[1] * hidden_state.shape[-2], hidden_state.shape[-1]),
+    )
 
-    hidden_state = ttnn.reshape(hidden_state, (1, 1, N * H * W, in_channels))
+    hidden_state = ttnn.from_torch(
+        hidden_state,
+        ttnn.bfloat8_b,
+        device=device,
+        layout=ttnn.TILE_LAYOUT,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+        mesh_mapper=inputs_mesh_mapper,
+    )
 
-    hidden_state = ttnn.to_layout(hidden_state, ttnn.TILE_LAYOUT, ttnn.bfloat8_b)
+    # hidden_state = ttnn.permute(hidden_state, (0, 2, 3, 1))
+    # hidden_state = ttnn.reshape(hidden_state, (1, 1, hidden_state.shape[0] * hidden_state.shape[1] * hidden_state.shape[-2], hidden_state.shape[-1]))
+    # hidden_state = ttnn.to_layout(hidden_state, ttnn.TILE_LAYOUT, ttnn.bfloat8_b)
 
     temb = temb.permute(2, 0, 1, 3)  # pre-permute temb
-    temb = ttnn.from_torch(temb, ttnn.bfloat16)
-    temb = ttnn.to_device(temb, device, memory_config=ttnn.DRAM_MEMORY_CONFIG)
-    temb = ttnn.to_layout(temb, ttnn.TILE_LAYOUT, ttnn.bfloat8_b)
+    temb = ttnn.from_torch(
+        temb,
+        ttnn.bfloat8_b,
+        device=device,
+        layout=ttnn.TILE_LAYOUT,
+        mesh_mapper=inputs_mesh_mapper,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+    )
 
-    # hidden_state = pre_process_input(device, hidden_state)
-    res_hidden_states_tuple = (weight_to_bfp8(hidden_state), weight_to_bfp8(hidden_state), weight_to_bfp8(hidden_state))
+    res_hidden_states_tuple = (hidden_state, hidden_state, hidden_state)
+    # res_hidden_states_tuple = (weight_to_bfp8(device, hidden_state), weight_to_bfp8(device, hidden_state), weight_to_bfp8(device, hidden_state))
     op = model(
         hidden_state,
         res_hidden_states_tuple,
@@ -101,6 +126,8 @@ def test_upblock_512x512(reset_seeds, device, res_hidden_states_tuple, hidden_st
         upsample_size=None,
     )
 
-    op = post_process_output(device, op, N, H * 2, W * 2, in_channels)
-    op = ttnn.to_torch(op)
+    op = ttnn.to_torch(op, mesh_composer=output_mesh_composer)
+    print(f"op: {op.shape} torch_output: {torch_output.shape}")
+    op = op.reshape(input_shape[0], H * 2, W * 2, in_channels)
+    op = op.permute(0, 3, 1, 2)
     assert_with_pcc(torch_output, op, 0.95)

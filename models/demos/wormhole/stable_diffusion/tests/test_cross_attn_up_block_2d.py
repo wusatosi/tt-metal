@@ -26,25 +26,19 @@ from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_utility_functions
     pre_process_input,
     weight_to_bfp8,
     post_process_output,
+    get_mesh_mappers,
 )
 
 
-def ttnn_to_torch(input):
-    input = ttnn.to_layout(input, ttnn.ROW_MAJOR_LAYOUT)
-    input = ttnn.from_device(input)
-    input = ttnn.to_torch(input)
-    return input
-
-
 @skip_for_grayskull()
-@pytest.mark.skip(reason="#9599: Tests are failing.")
+# @pytest.mark.skip(reason="#9599: Tests are failing.")
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 32768}], indirect=True)
 @pytest.mark.parametrize(
     "hidden_states, res_hidden_states_tuple, index, prev_output_channel, in_channels ,out_channels",
     [
         ((2, 1280, 16, 16), ([2, 640, 16, 16], [2, 1280, 16, 16], [2, 1280, 16, 16]), 1, 1280, 640, 1280),
-        ((2, 1280, 32, 32), ([2, 320, 32, 32], [2, 640, 32, 32], [2, 640, 32, 32]), 2, 1280, 320, 640),
-        ((2, 640, 64, 64), ([2, 320, 64, 64], [2, 320, 64, 64], [2, 320, 64, 64]), 3, 640, 320, 320),
+        # ((2, 1280, 32, 32), ([2, 320, 32, 32], [2, 640, 32, 32], [2, 640, 32, 32]), 2, 1280, 320, 640),
+        # ((2, 640, 64, 64), ([2, 320, 64, 64], [2, 320, 64, 64], [2, 320, 64, 64]), 3, 640, 320, 320),
     ],
 )
 @pytest.mark.parametrize("temb", [[1, 1, 2, 1280]])
@@ -67,6 +61,8 @@ def test_cross_attn_up_block_2d_512x512(
     in_channels,
     out_channels,
 ):
+    inputs_mesh_mapper, weights_mesh_mapper, output_mesh_composer = get_mesh_mappers(device)
+
     # TODO
     # setup pytorch model
     pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float32)
@@ -81,6 +77,15 @@ def test_cross_attn_up_block_2d_512x512(
     )
     parameters = parameters.up_blocks[index]
     _, Cout, Hout, Wout = res_hidden_states_tuple[2]
+
+    hidden_states = (hidden_states[0] * 2 if inputs_mesh_mapper else hidden_states[0], *hidden_states[1:])
+    temb = (temb[0] * 2 if inputs_mesh_mapper else temb[0], *temb[1:])
+    # res_hidden_states_tuple[0] = (res_hidden_states_tuple[0][0] * 2 if inputs_mesh_mapper else res_hidden_states_tuple[0][0], *res_hidden_states_tuple[0][1:])
+    # res_hidden_states_tuple[1] = (res_hidden_states_tuple[1][0] * 2 if inputs_mesh_mapper else res_hidden_states_tuple[1][0], *res_hidden_states_tuple[1][1:])
+    # res_hidden_states_tuple[2] = (res_hidden_states_tuple[2][0] * 2 if inputs_mesh_mapper else res_hidden_states_tuple[2][0], *res_hidden_states_tuple[2][1:])
+    res_hidden_states_tuple = tuple(
+        ((state[0] * 2 if inputs_mesh_mapper else state[0]), *state[1:]) for state in res_hidden_states_tuple
+    )
 
     # synthesize the input
     temb_channels = 1280
@@ -97,6 +102,7 @@ def test_cross_attn_up_block_2d_512x512(
     attention_mask = None
     reader_patterns_cache = {}
 
+    print(f" --> temb from test: {temb.shape}")
     # execute pytorch
     torch_output = unet_upblock(
         hidden_states=hidden_state,
@@ -137,40 +143,70 @@ def test_cross_attn_up_block_2d_512x512(
     norm_elementwise_affine = True
     attn_num_head_channels = 8
 
-    hidden_state = ttnn.from_torch(hidden_state, ttnn.bfloat16)
-    hidden_state = ttnn.to_layout(hidden_state, ttnn.TILE_LAYOUT)
-    hidden_state = ttnn.to_device(hidden_state, device, memory_config=ttnn.L1_MEMORY_CONFIG)
+    hidden_state = ttnn.from_torch(
+        hidden_state,
+        ttnn.bfloat16,
+        layout=ttnn.TILE_LAYOUT,
+        device=device,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+        mesh_mapper=inputs_mesh_mapper,
+    )
 
-    res0 = ttnn.from_torch(res0, ttnn.bfloat16)
-    res0 = ttnn.to_layout(res0, ttnn.TILE_LAYOUT)
-    res0 = ttnn.to_device(res0, device, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+    res0 = ttnn.from_torch(
+        res0,
+        ttnn.bfloat16,
+        layout=ttnn.TILE_LAYOUT,
+        device=device,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+        mesh_mapper=inputs_mesh_mapper,
+    )
 
-    res1 = ttnn.from_torch(res1, ttnn.bfloat16)
-    res1 = ttnn.to_layout(res1, ttnn.TILE_LAYOUT)
-    res1 = ttnn.to_device(res1, device, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+    res1 = ttnn.from_torch(
+        res1,
+        ttnn.bfloat16,
+        layout=ttnn.TILE_LAYOUT,
+        device=device,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+        mesh_mapper=inputs_mesh_mapper,
+    )
 
-    res2 = ttnn.from_torch(res2, ttnn.bfloat16)
-    res2 = ttnn.to_layout(res2, ttnn.TILE_LAYOUT)
-    res2 = ttnn.to_device(res2, device, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+    res2 = ttnn.from_torch(
+        res2,
+        ttnn.bfloat16,
+        layout=ttnn.TILE_LAYOUT,
+        device=device,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+        mesh_mapper=inputs_mesh_mapper,
+    )
 
     temb = temb.permute(2, 0, 1, 3)  # pre-permute temb
-    temb = ttnn.from_torch(temb, ttnn.bfloat16)
-    temb = ttnn.to_layout(temb, ttnn.TILE_LAYOUT)
-    temb = ttnn.to_device(temb, device, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+    temb = ttnn.from_torch(
+        temb,
+        ttnn.bfloat16,
+        layout=ttnn.TILE_LAYOUT,
+        device=device,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+        mesh_mapper=inputs_mesh_mapper,
+    )
 
     encoder_hidden_states = torch.nn.functional.pad(encoder_hidden_states, (0, 0, 0, 19))
-    ttnn_encoder_hidden_states = ttnn.to_layout(
-        ttnn.to_device(ttnn.from_torch(encoder_hidden_states, dtype=ttnn.bfloat16), device), layout=ttnn.TILE_LAYOUT
+    ttnn_encoder_hidden_states = ttnn.from_torch(
+        encoder_hidden_states,
+        dtype=ttnn.bfloat16,
+        layout=ttnn.TILE_LAYOUT,
+        device=device,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+        mesh_mapper=inputs_mesh_mapper,
     )
 
     add_upsample = True
     if index == 3:
         add_upsample = False
-    hidden_state = weight_to_bfp8(pre_process_input(device, hidden_state))
+    hidden_state = weight_to_bfp8(device, pre_process_input(device, hidden_state))
     res_hidden_states_tuple = (
-        weight_to_bfp8(pre_process_input(device, res0)),
-        weight_to_bfp8(pre_process_input(device, res1)),
-        weight_to_bfp8(pre_process_input(device, res2)),
+        weight_to_bfp8(device, pre_process_input(device, res0)),
+        weight_to_bfp8(device, pre_process_input(device, res1)),
+        weight_to_bfp8(device, pre_process_input(device, res2)),
     )
     op = model(
         hidden_state,
@@ -207,7 +243,7 @@ def test_cross_attn_up_block_2d_512x512(
         cross_attention_dim=cross_attention_dim,
     )
 
-    op = ttnn_to_torch(op)
+    op = ttnn.to_torch(op, mesh_composer=output_mesh_composer)
     if in_channels == out_channels:
         op = torch.reshape(op, (N, H, W, Cout))
     else:

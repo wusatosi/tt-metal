@@ -5,19 +5,12 @@
 import torch
 import ttnn
 
-from models.utility_functions import (
-    torch_to_tt_tensor_rm,
-    tt_to_torch_tensor,
-)
-
 from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_upsample_nearest_2d import upsample_nearest2d
 from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_utility_functions import (
     run_ttnn_conv_with_pre_and_post_tensor_formatting,
     conv_cache,
 )
-from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_utility_functions import (
-    permute_conv_parameters,
-)
+
 from loguru import logger
 
 
@@ -43,9 +36,6 @@ class upsample2d:
         self.input_width = input_width
         self.device = device
         self.parameters = parameters
-        parameters.conv.weight, parameters.conv.bias = permute_conv_parameters(
-            parameters.conv.weight, parameters.conv.bias
-        )
         self.batch_size = batch_size
         self.scale_factor = 2
 
@@ -56,12 +46,9 @@ class upsample2d:
         input_height = input_height * self.scale_factor
         input_width = input_width * self.scale_factor
 
-        out_channels = parameters.conv.weight.shape[0]
-        in_channels = parameters.conv.weight.shape[1]
         # breakpoint()
-        parameters.conv.bias = torch.reshape(parameters.conv.bias, (1, 1, 1, out_channels))
-        tt_weight_tensor = ttnn.from_torch(parameters.conv.weight, ttnn.float32)
-        tt_bias_tensor = ttnn.from_torch(parameters.conv.bias, ttnn.float32)
+        tt_weight_tensor = parameters.conv.weight
+        tt_bias_tensor = parameters.conv.bias
         self.conv_config_override = {}
         if (out_channels, in_channels, input_height, input_width) in config_override:
             self.conv_config_override = config_override[(out_channels, in_channels, input_height, input_width)]
@@ -81,7 +68,7 @@ class upsample2d:
         if input.layout == ttnn.TILE_LAYOUT:
             input = ttnn.to_layout(input, ttnn.ROW_MAJOR_LAYOUT)
         # # slice out batch
-        input = ttnn.reshape(input, (2, self.input_height, self.input_width, input.shape[3]))
+        input = ttnn.reshape(input, (self.batch_size, self.input_height, self.input_width, input.shape[3]))
         tt_out = self.upsample_nearest2d(input)
         del input
         tt_out = ttnn.reshape(tt_out, (1, 1, tt_out.shape[0] * tt_out.shape[1] * tt_out.shape[2], tt_out.shape[3]))
@@ -106,7 +93,12 @@ class upsample2d:
         )
         if self.conv_config_override and "act_block_h" in self.conv_config_override:
             conv_config.act_block_h_override = self.conv_config_override["act_block_h"]
-        [tt_out, [self.conv_weight_tensor, self.conv_bias_tensor]] = ttnn.conv2d(
+
+        tt_out = ttnn.from_device(tt_out)
+        self.conv_weight_tensor = ttnn.from_device(self.conv_weight_tensor)
+        self.conv_bias_tensor = ttnn.from_device(self.conv_bias_tensor)
+
+        tt_out = ttnn.conv2d(
             input_tensor=tt_out,
             in_channels=self.conv_in_channels,
             out_channels=self.conv_out_channels,
@@ -123,6 +115,6 @@ class upsample2d:
             compute_config=compute_config,
             conv_op_cache=conv_cache,
             return_output_dim=False,
-            return_weights_and_bias=True,
+            return_weights_and_bias=False,
         )
         return tt_out
