@@ -1194,7 +1194,7 @@ std::shared_ptr<GlobalSemaphore> CreateGlobalSemaphore(
 }
 
 std::shared_ptr<Buffer> CreateBuffer(const InterleavedBufferConfig& config) {
-    return Buffer::create(
+    auto buffer = Buffer::create(
         config.device,
         config.size,
         config.page_size,
@@ -1203,6 +1203,9 @@ std::shared_ptr<Buffer> CreateBuffer(const InterleavedBufferConfig& config) {
         std::nullopt,
         std::nullopt,
         std::nullopt);
+
+    TRACE_FUNCTION_CALL(captureCreateBuffer, buffer, config);
+    return buffer;
 }
 std::shared_ptr<Buffer> CreateBuffer(const InterleavedBufferConfig& config, DeviceAddr address) {
     return Buffer::create(

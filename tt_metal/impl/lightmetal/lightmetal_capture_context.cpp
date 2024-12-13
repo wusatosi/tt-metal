@@ -3,6 +3,7 @@
 #include "flatbuffers/flatbuffers.h"
 #include "command_generated.h"
 #include "binary_generated.h"
+#include "tt_metal/impl/buffers/buffer.hpp"
 
 #include <iostream>
 #include <fstream>
@@ -53,8 +54,39 @@ std::vector<uint8_t> LightMetalCaptureContext::createLightMetalBinary() {
 
 void LightMetalCaptureContext::reset() {
     builder_.Clear();
+    nextGlobalId_ = 0;
     cmdsVector_.clear();
+    traceDescsVector_.clear();
+    bufferToGlobalIdMap_.clear();
 }
+
+// Public Object Maps Accessors - Buffers
+
+bool LightMetalCaptureContext::isInMap(Buffer* obj) {
+    return bufferToGlobalIdMap_.find(obj) != bufferToGlobalIdMap_.end();
+}
+
+uint32_t LightMetalCaptureContext::addToMap(Buffer* obj) {
+    if (isInMap(obj)) log_warning(tt::LogMetalTrace, "Buffer already exists in global_id map.");
+    uint32_t global_id = nextGlobalId_++;
+    bufferToGlobalIdMap_[obj] = global_id;
+    return global_id;
+}
+
+void LightMetalCaptureContext::removeFromMap(Buffer* obj) {
+    if (!isInMap(obj)) log_warning(tt::LogMetalTrace, "Buffer not found in global_id map.");
+    bufferToGlobalIdMap_.erase(obj);
+}
+
+uint32_t LightMetalCaptureContext::getGlobalId(Buffer* obj) {
+    auto it = bufferToGlobalIdMap_.find(obj);
+    if (it != bufferToGlobalIdMap_.end()) {
+        return it->second;
+    } else {
+        throw std::runtime_error("Buffer not found in global_id global_id map");
+    }
+}
+
 
 ////////////////////////////////////////////
 // Non-Class Helper Functions             //
