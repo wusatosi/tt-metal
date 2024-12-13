@@ -42,26 +42,45 @@ def test_multiplyadd(device, h, w):
         dtype=ttnn.bfloat16,
         layout=ttnn.TILE_LAYOUT,
         device=device,
+<<<<<<< HEAD
         memory_config=tensor_memory_config,
     )
 
+=======
+        memory_config=ttnn.DRAM_MEMORY_CONFIG,
+    )
+>>>>>>> Adding multiply add operation for two tensors.
     input_tensor2 = ttnn.from_torch(
         torch_input_tensor2,
         dtype=ttnn.bfloat16,
         layout=ttnn.TILE_LAYOUT,
         device=device,
+<<<<<<< HEAD
         memory_config=tensor_memory_config,
     )
 
+=======
+        memory_config=ttnn.DRAM_MEMORY_CONFIG,
+    )
+>>>>>>> Adding multiply add operation for two tensors.
     input_tensor3 = ttnn.from_torch(
         torch_input_tensor3,
         dtype=ttnn.bfloat16,
         layout=ttnn.TILE_LAYOUT,
         device=device,
+<<<<<<< HEAD
         memory_config=tensor_memory_config,
     )
 
     output_tensor = ttnn.multiplyadd(input_tensor1, input_tensor2, input_tensor3)
     output_tensor = ttnn.to_torch(output_tensor)
+=======
+        memory_config=ttnn.DRAM_MEMORY_CONFIG,
+    )
+
+    output_tensor = ttnn.multiplyadd(input_tensor1, input_tensor2, input_tensor3)
+    output_tensor = ttnn.to_layout(output_tensor, ttnn.TILE_LAYOUT)
+    output_tensor = ttnn.from_device(output_tensor)
+>>>>>>> Adding multiply add operation for two tensors.
 
     assert_with_pcc(torch_output_tensor, output_tensor, pcc=0.99)
