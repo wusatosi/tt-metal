@@ -3,6 +3,9 @@
 #include "flatbuffers/flatbuffers.h"
 #include "command_generated.h"
 #include "binary_generated.h"
+#include "tt_metal/impl/buffers/buffer.hpp"
+#include "tt_metal/impl/program/program.hpp"
+#include "tt_metal/impl/kernels/kernel.hpp"
 
 #include <iostream>
 #include <fstream>
@@ -53,7 +56,121 @@ std::vector<uint8_t> LightMetalCaptureContext::createLightMetalBinary() {
 
 void LightMetalCaptureContext::reset() {
     builder_.Clear();
+    nextGlobalId_ = 0;
     cmdsVector_.clear();
+    traceDescsVector_.clear();
+    bufferToGlobalIdMap_.clear();
+    programToGlobalIdMap_.clear();
+    kernelToGlobalIdMap_.clear();
+    cbHandleToGlobalIdMap_.clear();
+}
+
+// Public Object Maps Accessors - Buffers
+
+bool LightMetalCaptureContext::isInMap(Buffer* obj) {
+    return bufferToGlobalIdMap_.find(obj) != bufferToGlobalIdMap_.end();
+}
+
+uint32_t LightMetalCaptureContext::addToMap(Buffer* obj) {
+    if (isInMap(obj)) log_warning(tt::LogMetalTrace, "Buffer already exists in global_id map.");
+    uint32_t global_id = nextGlobalId_++;
+    bufferToGlobalIdMap_[obj] = global_id;
+    return global_id;
+}
+
+void LightMetalCaptureContext::removeFromMap(Buffer* obj) {
+    if (!isInMap(obj)) log_warning(tt::LogMetalTrace, "Buffer not found in global_id map.");
+    bufferToGlobalIdMap_.erase(obj);
+}
+
+uint32_t LightMetalCaptureContext::getGlobalId(Buffer* obj) {
+    auto it = bufferToGlobalIdMap_.find(obj);
+    if (it != bufferToGlobalIdMap_.end()) {
+        return it->second;
+    } else {
+        throw std::runtime_error("Buffer not found in global_id global_id map");
+    }
+}
+
+// Public Object Maps Accessors - Programs
+
+bool LightMetalCaptureContext::isInMap(const Program* obj) {
+    return programToGlobalIdMap_.find(obj) != programToGlobalIdMap_.end();
+}
+
+uint32_t LightMetalCaptureContext::addToMap(const Program* obj) {
+    if (isInMap(obj)) log_warning(tt::LogMetalTrace, "Program already exists in global_id map.");
+    uint32_t global_id = nextGlobalId_++;
+    programToGlobalIdMap_[obj] = global_id;
+    return global_id;
+}
+
+void LightMetalCaptureContext::removeFromMap(const Program* obj) {
+    if (!isInMap(obj)) log_warning(tt::LogMetalTrace, "Program not found in global_id map.");
+    programToGlobalIdMap_.erase(obj);
+}
+
+uint32_t LightMetalCaptureContext::getGlobalId(const Program* obj) {
+    auto it = programToGlobalIdMap_.find(obj);
+    if (it != programToGlobalIdMap_.end()) {
+        return it->second;
+    } else {
+        throw std::runtime_error("Program not found in global_id map.");
+    }
+}
+
+// Public Object Maps Accessors - Kernel
+
+bool LightMetalCaptureContext::isInMap(const Kernel* obj) {
+    return kernelToGlobalIdMap_.find(obj) != kernelToGlobalIdMap_.end();
+}
+
+uint32_t LightMetalCaptureContext::addToMap(const Kernel* obj) {
+    if (isInMap(obj)) log_warning(tt::LogMetalTrace, "Kernel already exists in global_id map.");
+    uint32_t global_id = nextGlobalId_++;
+    kernelToGlobalIdMap_[obj] = global_id;
+    return global_id;
+}
+
+void LightMetalCaptureContext::removeFromMap(const Kernel* obj) {
+    if (!isInMap(obj)) log_warning(tt::LogMetalTrace, "Kernel not found in global_id map.");
+    kernelToGlobalIdMap_.erase(obj);
+}
+
+uint32_t LightMetalCaptureContext::getGlobalId(const Kernel* obj) {
+    auto it = kernelToGlobalIdMap_.find(obj);
+    if (it != kernelToGlobalIdMap_.end()) {
+        return it->second;
+    } else {
+        throw std::runtime_error("Kernel not found in global_id map.");
+    }
+}
+
+// Public Object Maps Accessors - CBHandle
+
+bool LightMetalCaptureContext::isInMap(const CBHandle handle) {
+    return cbHandleToGlobalIdMap_.find(handle) != cbHandleToGlobalIdMap_.end();
+}
+
+uint32_t LightMetalCaptureContext::addToMap(const CBHandle handle) {
+    if (isInMap(handle)) log_warning(tt::LogMetalTrace, "CBHandle already exists in global_id map.");
+    uint32_t global_id = nextGlobalId_++;
+    cbHandleToGlobalIdMap_[handle] = global_id;
+    return global_id;
+}
+
+void LightMetalCaptureContext::removeFromMap(const CBHandle handle) {
+    if (!isInMap(handle)) log_warning(tt::LogMetalTrace, "CBHandle not found in global_id map.");
+    cbHandleToGlobalIdMap_.erase(handle);
+}
+
+uint32_t LightMetalCaptureContext::getGlobalId(const CBHandle handle) {
+    auto it = cbHandleToGlobalIdMap_.find(handle);
+    if (it != cbHandleToGlobalIdMap_.end()) {
+        return it->second;
+    } else {
+        throw std::runtime_error("CBHandle not found in global_id map.");
+    }
 }
 
 ////////////////////////////////////////////

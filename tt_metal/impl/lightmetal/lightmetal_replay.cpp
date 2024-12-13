@@ -81,6 +81,322 @@ detail::TraceDescriptor fromFlatBuffer(const tt::target::lightmetal::TraceDescri
     return traceDesc;
 }
 
+inline BufferType fromFlatbuffer(tt::target::BufferType type) {
+    switch (type) {
+        case tt::target::BufferType::DRAM: return BufferType::DRAM;
+        case tt::target::BufferType::L1: return BufferType::L1;
+        case tt::target::BufferType::SystemMemory: return BufferType::SYSTEM_MEMORY;
+        case tt::target::BufferType::L1Small: return BufferType::L1_SMALL;
+        case tt::target::BufferType::Trace: return BufferType::TRACE;
+        default: throw std::invalid_argument("Unknown BufferType value in fromFlatbuffer()");
+    }
+}
+
+inline tt::tt_metal::DataMovementProcessor fromFlatbuffer(tt::target::DataMovementProcessor in) {
+    switch(in) {
+        case tt::target::DataMovementProcessor::RISCV_0: return tt::tt_metal::DataMovementProcessor::RISCV_0;
+        case tt::target::DataMovementProcessor::RISCV_1: return tt::tt_metal::DataMovementProcessor::RISCV_1;
+        default: throw std::invalid_argument("Unknown DataMovementProcessor value in fromFlatbuffer()");
+    }
+}
+
+inline tt::tt_metal::NOC fromFlatbuffer(tt::target::NOC in) {
+    switch (in) {
+        case tt::target::NOC::NOC_0: return tt::tt_metal::NOC::NOC_0;
+        case tt::target::NOC::NOC_1: return tt::tt_metal::NOC::NOC_1;
+        default: throw std::invalid_argument("Invalid NOC value passed to fromFlatbuffer");
+    }
+}
+
+inline tt::tt_metal::NOC_MODE fromFlatbuffer(tt::target::NOC_MODE in) {
+    switch(in) {
+        case tt::target::NOC_MODE::DM_DEDICATED_NOC: return tt::tt_metal::NOC_MODE::DM_DEDICATED_NOC;
+        case tt::target::NOC_MODE::DM_DYNAMIC_NOC: return tt::tt_metal::NOC_MODE::DM_DYNAMIC_NOC;
+        default: throw std::invalid_argument("Unknown NOC_MODE value in fromFlatbuffer()");
+    }
+}
+
+inline tt::tt_metal::Eth fromFlatbuffer(tt::target::Eth in) {
+    switch(in) {
+        case tt::target::Eth::SENDER: return tt::tt_metal::Eth::SENDER;
+        case tt::target::Eth::RECEIVER: return tt::tt_metal::Eth::RECEIVER;
+        case tt::target::Eth::IDLE: return tt::tt_metal::Eth::IDLE;
+        default: throw std::invalid_argument("Unknown Eth value in fromFlatbuffer()");
+    }
+}
+
+inline MathFidelity fromFlatbuffer(tt::target::MathFidelity input) {
+    switch (input) {
+        case tt::target::MathFidelity::LoFi: return MathFidelity::LoFi;
+        case tt::target::MathFidelity::HiFi2: return MathFidelity::HiFi2;
+        case tt::target::MathFidelity::HiFi3: return MathFidelity::HiFi3;
+        case tt::target::MathFidelity::HiFi4: return MathFidelity::HiFi4;
+        case tt::target::MathFidelity::Invalid: return MathFidelity::Invalid;
+        default: throw std::invalid_argument("Unknown MathFidelity value in fromFlatbuffer()");
+    }
+}
+
+inline UnpackToDestMode fromFlatbuffer(tt::target::UnpackToDestMode input) {
+    switch (input) {
+        case tt::target::UnpackToDestMode::UnpackToDestFp32: return UnpackToDestMode::UnpackToDestFp32;
+        case tt::target::UnpackToDestMode::Default: return UnpackToDestMode::Default;
+        default: throw std::invalid_argument("Invalid UnpackToDestMode value passed to fromFlatbuffer");
+    }
+}
+
+inline std::variant<CoreCoord, CoreRange, CoreRangeSet> fromFlatbuffer(
+    const tt::target::CoreSpec core_spec, const void *flatbuffer_union) {
+
+    switch (core_spec) {
+        case tt::target::CoreSpec::CoreCoord: {
+            auto core_coord = static_cast<const tt::target::CoreCoord *>(flatbuffer_union);
+            if (!core_coord) throw std::runtime_error("Invalid CoreCoord data");
+            return CoreCoord{core_coord->x(), core_coord->y()};
+        }
+        case tt::target::CoreSpec::CoreRange: {
+            auto core_range = static_cast<const tt::target::CoreRange *>(flatbuffer_union);
+            if (!core_range) throw std::runtime_error("Invalid CoreRange data");
+            return CoreRange{
+                {core_range->start()->x(), core_range->start()->y()},
+                {core_range->end()->x(), core_range->end()->y()}
+            };
+        }
+        case tt::target::CoreSpec::CoreRangeSet: {
+            auto core_range_set = static_cast<const tt::target::CoreRangeSet *>(flatbuffer_union);
+            if (!core_range_set) throw std::runtime_error("Invalid CoreRangeSet data");
+            std::vector<CoreRange> ranges;
+            for (const auto range : *core_range_set->ranges()) {
+                ranges.emplace_back(
+                    CoreCoord{range->start()->x(), range->start()->y()},
+                    CoreCoord{range->end()->x(), range->end()->y()}
+                );
+            }
+            return CoreRangeSet{ranges};
+        }
+        default:
+            throw std::runtime_error("Unhandled CoreSpec type in fromFlatbuffer");
+    }
+}
+
+inline DataMovementConfig fromFlatbuffer(const tt::target::DataMovementConfig *fb_config) {
+    DataMovementConfig config;
+
+    // Extract processor, noc, and noc_mode
+    config.processor = fromFlatbuffer(fb_config->processor());
+    config.noc = fromFlatbuffer(fb_config->noc());
+    config.noc_mode = fromFlatbuffer(fb_config->noc_mode());
+
+    // Extract compile_args
+    auto fb_compile_args = fb_config->compile_args();
+    config.compile_args.assign(fb_compile_args->begin(), fb_compile_args->end());
+
+    // Extract defines
+    auto fb_defines = fb_config->defines();
+    for (auto fb_define : *fb_defines) {
+        config.defines.emplace(fb_define->key()->str(), fb_define->value()->str());
+    }
+
+    return config;
+}
+
+inline ComputeConfig fromFlatbuffer(const tt::target::ComputeConfig *fb_config) {
+    ComputeConfig config;
+
+    // Extract math_fidelity and boolean flags
+    config.math_fidelity = fromFlatbuffer(fb_config->math_fidelity());
+    config.fp32_dest_acc_en = fb_config->fp32_dest_acc_en();
+    config.dst_full_sync_en = fb_config->dst_full_sync_en();
+    config.bfp8_pack_precise = fb_config->bfp8_pack_precise();
+    config.math_approx_mode = fb_config->math_approx_mode();
+
+    // Extract unpack_to_dest_mode
+    auto fb_unpack_modes = fb_config->unpack_to_dest_mode();
+    config.unpack_to_dest_mode.reserve(fb_unpack_modes->size());
+    for (auto fb_mode : *fb_unpack_modes) {
+        config.unpack_to_dest_mode.push_back(fromFlatbuffer(fb_mode));
+    }
+
+    // Extract compile_args
+    auto fb_compile_args = fb_config->compile_args();
+    config.compile_args.assign(fb_compile_args->begin(), fb_compile_args->end());
+
+    // Extract defines
+    auto fb_defines = fb_config->defines();
+    for (auto fb_define : *fb_defines) {
+        config.defines.emplace(fb_define->key()->str(), fb_define->value()->str());
+    }
+
+    return config;
+}
+
+inline EthernetConfig fromFlatbuffer(const tt::target::EthernetConfig *fb_config) {
+    EthernetConfig config;
+
+    // Extract eth_mode, noc, and processor
+    config.eth_mode = fromFlatbuffer(fb_config->eth_mode());
+    config.noc = fromFlatbuffer(fb_config->noc());
+    config.processor = fromFlatbuffer(fb_config->processor());
+
+    // Extract compile_args
+    auto fb_compile_args = fb_config->compile_args();
+    config.compile_args.assign(fb_compile_args->begin(), fb_compile_args->end());
+
+    // Extract defines
+    auto fb_defines = fb_config->defines();
+    for (auto fb_define : *fb_defines) {
+        config.defines.emplace(fb_define->key()->str(), fb_define->value()->str());
+    }
+
+    return config;
+}
+
+inline std::variant<DataMovementConfig, ComputeConfig, EthernetConfig> fromFlatbuffer(
+    const tt::target::KernelConfig config_type, const void *flatbuffer_union) {
+
+    switch (config_type) {
+        case tt::target::KernelConfig::DataMovementConfig:
+            return fromFlatbuffer(static_cast<const tt::target::DataMovementConfig *>(flatbuffer_union));
+        case tt::target::KernelConfig::ComputeConfig:
+            return fromFlatbuffer(static_cast<const tt::target::ComputeConfig *>(flatbuffer_union));
+        case tt::target::KernelConfig::EthernetConfig:
+            return fromFlatbuffer(static_cast<const tt::target::EthernetConfig *>(flatbuffer_union));
+        default:
+            throw std::runtime_error("Unhandled KernelConfig type in fromFlatbuffer.");
+    }
+}
+
+inline Tile fromFlatBuffer(const tt::target::Tile *tile_fb) {
+    if (!tile_fb) {
+        throw std::runtime_error("Invalid Tile FlatBuffer object");
+    }
+
+    // Convert FlatBuffer vectors to std::array
+    std::array<uint32_t, 2> tile_shape = {tile_fb->tile_shape()->Get(0), tile_fb->tile_shape()->Get(1)};
+    std::array<uint32_t, 2> face_shape = {tile_fb->face_shape()->Get(0), tile_fb->face_shape()->Get(1)};
+
+    // Create and return the Tile object, explicitly initializing the members
+    Tile tile;
+    tile.tile_shape = tile_shape;
+    tile.face_shape = face_shape;
+    tile.tile_hw = tile_fb->tile_hw();
+    tile.face_hw = tile_fb->face_hw();
+    tile.num_faces = tile_fb->num_faces();
+    tile.partial_face = tile_fb->partial_face();
+    tile.narrow_tile = tile_fb->narrow_tile();
+    tile.transpose_within_face = tile_fb->transpose_within_face();
+    tile.transpose_of_faces = tile_fb->transpose_of_faces();
+
+    return tile;
+}
+
+
+inline std::array<std::optional<Tile>, NUM_CIRCULAR_BUFFERS> fromFlatBuffer(
+    const flatbuffers::Vector<flatbuffers::Offset<tt::target::Tile>> *tiles_fb) {
+
+    std::array<std::optional<Tile>, NUM_CIRCULAR_BUFFERS> tiles = {};
+    if (tiles_fb) {
+        for (size_t i = 0; i < tiles_fb->size() && i < NUM_CIRCULAR_BUFFERS; ++i) {
+            tiles[i] = fromFlatBuffer(tiles_fb->Get(i));
+        }
+    }
+
+    return tiles;
+}
+
+inline CircularBufferConfig fromFlatBuffer(const tt::target::CircularBufferConfig *config_fb) {
+    if (!config_fb) {
+        throw std::runtime_error("Invalid CircularBufferConfig FlatBuffer object");
+    }
+
+    // Create a CircularBufferConfig. Constructor doesn't matter much, since we serialized all
+    // members, will deserialize them here to get fully formed object.
+    CircularBufferConfig config(0, {});
+    config.total_size_ = config_fb->total_size();
+
+    // Note: std::optional is not supported by FlatBuffers, so nullopt was serialized as value 0 in FlatBuffer.
+    config.globally_allocated_address_ = config_fb->globally_allocated_address() == 0 ? std::nullopt : std::optional<uint32_t>(config_fb->globally_allocated_address());
+
+    if (config_fb->data_formats()) {
+        for (auto entry : *config_fb->data_formats()) {
+            log_info(tt::LogMetalTrace, "KCM DF index: {}, Format: {}", entry->index(), entry->format());
+            config.data_formats_[entry->index()] = static_cast<tt::DataFormat>(entry->format());
+        }
+    }
+
+    if (config_fb->page_sizes()) {
+        for (auto entry : *config_fb->page_sizes()) {
+            log_info(tt::LogMetalTrace, "KCM Buffer index: {}, Page size: {}", entry->index(), entry->size());
+            config.page_sizes_[entry->index()] = entry->size();
+        }
+    }
+
+    config.tiles_ = fromFlatBuffer(config_fb->tiles());
+
+    if (config_fb->buffer_indices()) {
+        config.buffer_indices_.insert(config_fb->buffer_indices()->begin(), config_fb->buffer_indices()->end());
+    }
+
+    if (config_fb->local_buffer_indices()) {
+        config.local_buffer_indices_.insert(
+            config_fb->local_buffer_indices()->begin(), config_fb->local_buffer_indices()->end());
+    }
+
+    if (config_fb->remote_buffer_indices()) {
+        config.remote_buffer_indices_.insert(
+            config_fb->remote_buffer_indices()->begin(), config_fb->remote_buffer_indices()->end());
+    }
+
+    config.dynamic_cb_ = config_fb->dynamic_cb();
+    config.max_size_ = config_fb->max_size();
+    config.buffer_size_ = config_fb->buffer_size();
+
+    return config;
+}
+
+// Needs access to BufferMap, so part of LightMetalReplay class
+std::shared_ptr<RuntimeArgs> LightMetalReplay::fromFlatBufferRtArgs(const FlatbufferRuntimeArgVector flatbuffer_args) {
+    auto runtime_args = std::make_shared<RuntimeArgs>();
+
+    for (const auto &flatbuffer_arg : *flatbuffer_args) {
+        const auto *runtime_arg = flatbuffer_arg;
+        if (!runtime_arg) {
+            throw std::runtime_error("Null RuntimeArg in FlatBuffer vector");
+        }
+
+        // Determine the type of the RuntimeArg
+        switch (runtime_arg->value_type()) {
+            case tt::target::RuntimeArgValue::UInt32Value: {
+                // Extract UInt32Value
+                const auto *uint32_value = runtime_arg->value_as_UInt32Value();
+                if (!uint32_value) {
+                    throw std::runtime_error("Failed to read UInt32Value");
+                }
+                runtime_args->emplace_back(uint32_value->value());
+                break;
+            }
+            case tt::target::RuntimeArgValue::BufferGlobalId: {
+                // Extract BufferGlobalId
+                const auto *buffer_global_id = runtime_arg->value_as_BufferGlobalId();
+                if (!buffer_global_id) {
+                    throw std::runtime_error("Failed to read BufferGlobalId");
+                }
+                uint32_t global_id = buffer_global_id->id();
+                auto buffer = getBufferFromMap(global_id);
+                if (!buffer) {
+                    throw std::runtime_error("Buffer w/ global_id: " + std::to_string(global_id) + " not previously created");
+                }
+                runtime_args->emplace_back(buffer.get());
+                break;
+            }
+            default:
+                throw std::runtime_error("Unknown RuntimeArgValue type in FlatBuffer");
+        }
+    }
+
+    return runtime_args;
+}
+
+
 //////////////////////////////////////
 // LightMetalReplay Class           //
 //////////////////////////////////////
@@ -128,6 +444,104 @@ std::optional<detail::TraceDescriptor> LightMetalReplay::getTraceByTraceId(uint3
 }
 
 
+// Object maps public accessors
+void LightMetalReplay::addBufferToMap(uint32_t global_id, std::shared_ptr<::tt::tt_metal::Buffer> buffer) {
+    if (bufferMap_.find(global_id) != bufferMap_.end()) {
+        log_warning(tt::LogMetalTrace, "Buffer with global_id: {} already exists in map.", global_id);
+    }
+    bufferMap_[global_id] = buffer; // Shared ownership
+}
+
+std::shared_ptr<::tt::tt_metal::Buffer> LightMetalReplay::getBufferFromMap(uint32_t global_id) const {
+    auto it = bufferMap_.find(global_id);
+    if (it != bufferMap_.end()) {
+        return it->second; // Return shared_ptr
+    }
+    return nullptr; // If not found
+}
+
+void LightMetalReplay::removeBufferFromMap(uint32_t global_id) {
+    bufferMap_.erase(global_id);
+}
+
+void LightMetalReplay::addProgramToMap(uint32_t global_id, std::shared_ptr<::tt::tt_metal::Program> program) {
+    if (programMap_.find(global_id) != programMap_.end()) {
+        log_warning(tt::LogMetalTrace, "Program with global_id: {} already exists in map.", global_id);
+    }
+    programMap_[global_id] = program; // Shared ownership
+}
+
+std::shared_ptr<::tt::tt_metal::Program> LightMetalReplay::getProgramFromMap(uint32_t global_id) const {
+    auto it = programMap_.find(global_id);
+    if (it != programMap_.end()) {
+        return it->second; // Return shared_ptr
+    }
+    return nullptr; // If not found
+}
+
+void LightMetalReplay::removeProgramFromMap(uint32_t global_id) {
+    programMap_.erase(global_id);
+}
+
+// Public Object Maps Accessors - KernelHandle
+
+void LightMetalReplay::addKernelHandleToMap(uint32_t global_id, ::tt::tt_metal::KernelHandle kernel_id) {
+    if (kernelHandleMap_.find(global_id) != kernelHandleMap_.end()) {
+        log_warning(tt::LogMetalTrace, "KernelHandle with global_id: {} already exists in map.", global_id);
+    }
+    kernelHandleMap_[global_id] = kernel_id; // Shared ownership
+}
+
+::tt::tt_metal::KernelHandle LightMetalReplay::getKernelHandleFromMap(uint32_t global_id) const {
+    if (auto it = kernelHandleMap_.find(global_id); it != kernelHandleMap_.end()) {
+        return it->second; // Return KernelHandle.
+    }
+    throw std::runtime_error(fmt::format("KernelHandle with global_id: {} used but doesn't exist.", global_id));
+}
+
+void LightMetalReplay::removeKernelHandleFromMap(uint32_t global_id) {
+    kernelHandleMap_.erase(global_id);
+}
+
+// Public Object Maps Accessors - Kernel
+
+void LightMetalReplay::addKernelToMap(uint32_t global_id, std::shared_ptr<::tt::tt_metal::Kernel> kernel) {
+    if (kernelMap_.find(global_id) != kernelMap_.end()) {
+        log_warning(tt::LogMetalTrace, "Kernel with global_id: {} already exists in map.", global_id);
+    }
+    kernelMap_[global_id] = kernel; // Shared ownership
+}
+
+std::shared_ptr<::tt::tt_metal::Kernel> LightMetalReplay::getKernelFromMap(uint32_t global_id) const {
+    if (auto it = kernelMap_.find(global_id); it != kernelMap_.end()) {
+        return it->second; // Return Kernel.
+    }
+    throw std::runtime_error(fmt::format("Kernel with global_id: {} used but doesn't exist.", global_id));
+}
+
+void LightMetalReplay::removeKernelFromMap(uint32_t global_id) {
+    kernelMap_.erase(global_id);
+}
+
+// Public Object Maps Accessors - CBHandle
+
+void LightMetalReplay::addCBHandleToMap(uint32_t global_id, ::tt::tt_metal::CBHandle cb_handle) {
+    if (cbHandleMap_.find(global_id) != cbHandleMap_.end()) {
+        log_warning(tt::LogMetalTrace, "CBHandle with global_id: {} already exists in map.", global_id);
+    }
+    cbHandleMap_[global_id] = cb_handle; // Shared ownership
+}
+
+::tt::tt_metal::CBHandle LightMetalReplay::getCBHandleFromMap(uint32_t global_id) const {
+    if (auto it = cbHandleMap_.find(global_id); it != cbHandleMap_.end()) {
+        return it->second; // Return CBHandle.
+    }
+    throw std::runtime_error(fmt::format("CBHandle with global_id: {} used but doesn't exist.", global_id));
+}
+
+void LightMetalReplay::removeCBHandleFromMap(uint32_t global_id) {
+    cbHandleMap_.erase(global_id);
+}
 
 void LightMetalReplay::setupDevices() {
     log_info(tt::LogMetalTrace, "Setting up system now...");
@@ -167,6 +581,54 @@ void LightMetalReplay::execute(tt::target::Command const *command) {
     execute(command->cmd_as_LoadTraceCommand());
     break;
   }
+  case ::tt::target::CommandType::ReleaseTraceCommand: {
+    execute(command->cmd_as_ReleaseTraceCommand());
+    break;
+  }
+  case ::tt::target::CommandType::CreateBufferCommand: {
+    execute(command->cmd_as_CreateBufferCommand());
+    break;
+  }
+  case ::tt::target::CommandType::DeallocateBufferCommand: {
+    execute(command->cmd_as_DeallocateBufferCommand());
+    break;
+  }
+  case ::tt::target::CommandType::EnqueueWriteBufferCommand: {
+    execute(command->cmd_as_EnqueueWriteBufferCommand());
+    break;
+  }
+  case ::tt::target::CommandType::EnqueueReadBufferCommand: {
+    execute(command->cmd_as_EnqueueReadBufferCommand());
+    break;
+  }
+  case ::tt::target::CommandType::FinishCommand: {
+    execute(command->cmd_as_FinishCommand());
+    break;
+  }
+  case ::tt::target::CommandType::CreateProgramCommand: {
+    execute(command->cmd_as_CreateProgramCommand());
+    break;
+  }
+  case ::tt::target::CommandType::EnqueueProgramCommand: {
+    execute(command->cmd_as_EnqueueProgramCommand());
+    break;
+  }
+  case ::tt::target::CommandType::CreateKernelCommand: {
+    execute(command->cmd_as_CreateKernelCommand());
+    break;
+  }
+  case ::tt::target::CommandType::SetRuntimeArgsCommand: {
+    execute(command->cmd_as_SetRuntimeArgsCommand());
+    break;
+  }
+  case ::tt::target::CommandType::SetRuntimeArgs1Command: {
+    execute(command->cmd_as_SetRuntimeArgs1Command());
+    break;
+  }
+  case ::tt::target::CommandType::CreateCircularBufferCommand: {
+    execute(command->cmd_as_CreateCircularBufferCommand());
+    break;
+  }
   default:
     throw std::runtime_error("Unsupported type: " + std::string(EnumNameCommandType(command->cmd_type())));
     break;
@@ -175,23 +637,178 @@ void LightMetalReplay::execute(tt::target::Command const *command) {
 
 // Per API command handlers.
 void LightMetalReplay::execute(tt::target::EnqueueTraceCommand const *cmd) {
-    log_info(tt::LogMetalTrace, "KCM LightMetalReplay EnqueueTrace(). cq_id: {} tid: {} blocking: {}", cmd->cq_id(), cmd->tid(), cmd->blocking());
+    log_info(tt::LogMetalTrace, "LightMetalReplay EnqueueTrace(). cq_id: {} tid: {} blocking: {}", cmd->cq_id(), cmd->tid(), cmd->blocking());
     // FIXME - Needs some tweaking, since API takes CQ should binarize cq_id and device_id.
     CommandQueue &cq = this->device_->command_queue(cmd->cq_id());
     EnqueueTrace(cq, cmd->tid(), cmd->blocking());
 }
 
 void LightMetalReplay::execute(tt::target::ReplayTraceCommand const *cmd) {
-    log_info(tt::LogMetalTrace, "KCM LightMetalReplay ReplayTrace(). cq_id: {} tid: {} blocking: {}", cmd->cq_id(), cmd->tid(), cmd->blocking());
+    log_info(tt::LogMetalTrace, "LightMetalReplay ReplayTrace(). cq_id: {} tid: {} blocking: {}", cmd->cq_id(), cmd->tid(), cmd->blocking());
     ReplayTrace(this->device_, cmd->cq_id(), cmd->tid(), cmd->blocking());
 }
 
 void LightMetalReplay::execute(tt::target::LoadTraceCommand const *cmd) {
-    log_info(tt::LogMetalTrace, "KCM LightMetalReplay LoadTrace(). cq_id: {} tid: {}", cmd->cq_id(), cmd->tid());
+    log_info(tt::LogMetalTrace, "LightMetalReplay LoadTrace(). cq_id: {} tid: {}", cmd->cq_id(), cmd->tid());
     // Get the trace descriptor from flatbuffer and load it to device.
     auto trace_desc = getTraceByTraceId(cmd->tid());
     LoadTrace(this->device_, cmd->cq_id(), cmd->tid(), trace_desc.value());
 }
+
+void LightMetalReplay::execute(tt::target::ReleaseTraceCommand const *cmd) {
+    log_info(tt::LogMetalTrace, "LightMetalReplay ReleaseTrace(). tid: {}", cmd->tid());
+    ReleaseTrace(this->device_, cmd->tid());
+}
+
+void LightMetalReplay::execute(tt::target::CreateBufferCommand const *cmd) {
+    log_info(tt::LogMetalTrace, "LightMetalReplay CreateBufferCommand(). global_id: {} size: {} page_size: {} layout: {} buffer_type: {}",
+        cmd->global_id(), cmd->config()->size(), cmd->config()->page_size(),
+        EnumNameTensorMemoryLayout(cmd->config()->buffer_layout()), EnumNameBufferType(cmd->config()->buffer_type()));
+
+    switch (cmd->config()->buffer_layout()) {
+    case tt::target::TensorMemoryLayout::Interleaved: {
+        tt::tt_metal::InterleavedBufferConfig config{
+            .device = this->device_,
+            .size = cmd->config()->size(),
+            .page_size = cmd->config()->page_size(),
+            .buffer_type = fromFlatbuffer(cmd->config()->buffer_type())};
+
+        auto buffer = CreateBuffer(config);
+        addBufferToMap(cmd->global_id(), buffer);
+        break;
+    }
+    default:
+        throw std::runtime_error("Unsupported buffer_layout: " + std::string(EnumNameTensorMemoryLayout(cmd->config()->buffer_layout())));
+    }
+}
+
+void LightMetalReplay::execute(tt::target::DeallocateBufferCommand const *cmd) {
+    auto buffer = getBufferFromMap(cmd->global_id());
+    if (!buffer) {
+        throw std::runtime_error("Buffer w/ global_id: " + std::to_string(cmd->global_id()) + " not previously created");
+    }
+    DeallocateBuffer(*buffer); // Buffer& expected.
+    removeBufferFromMap(cmd->global_id());
+}
+
+void LightMetalReplay::execute(tt::target::EnqueueWriteBufferCommand const *cmd) {
+    auto buffer = getBufferFromMap(cmd->buffer_global_id());
+    if (!buffer) {
+        throw std::runtime_error("Buffer w/ global_id: " + std::to_string(cmd->buffer_global_id()) + " not previously created");
+    }
+
+    log_info(tt::LogMetalTrace, "LightMetalReplay EnqueueWriteBufferCommand(). cq_global_id: {} buffer_global_id: {} addr: 0x{:x}",
+        cmd->cq_global_id(), cmd->buffer_global_id(), buffer->address());
+
+    // FIXME - get cq object from global CQ map instead.
+    CommandQueue &cq = this->device_->command_queue(cmd->cq_global_id());
+    EnqueueWriteBuffer(cq, buffer, cmd->src()->data(), cmd->blocking());
+}
+
+void LightMetalReplay::execute(tt::target::EnqueueReadBufferCommand const *cmd) {
+    auto buffer = getBufferFromMap(cmd->buffer_global_id());
+    if (!buffer) {
+        throw std::runtime_error("Buffer w/ global_id: " + std::to_string(cmd->buffer_global_id()) + " not previously created");
+    }
+
+    log_info(tt::LogMetalTrace, "LightMetalReplay EnqueueReadBufferCommand(). cq_global_id: {} buffer_global_id: {} addr: 0x{:x} buf_size: {}",
+        cmd->cq_global_id(), cmd->buffer_global_id(), buffer->address(), buffer->size());
+
+    // FIXME - get cq object from global CQ map instead.
+    CommandQueue &cq = this->device_->command_queue(cmd->cq_global_id());
+    std::vector<uint32_t> readback_data(buffer->size() / sizeof(uint32_t), 0);
+    EnqueueReadBuffer(cq, buffer, readback_data.data(), cmd->blocking());
+
+    // FIXME - What should we do with readback data? For not just print.
+    // One idea is to store in map by global_read_id that caller can access.
+    bool show_reads = std::getenv("SHOW_READS");
+    if (show_reads) {
+        for (size_t i = 0; i < readback_data.size(); i++) {
+            log_info(tt::LogMetalTrace, " rd_data i: {:3d} => data: {} ({:x})", i, readback_data[i], readback_data[i]);
+        }
+    }
+}
+
+void LightMetalReplay::execute(tt::target::FinishCommand const *cmd) {
+    log_info(tt::LogMetalTrace, "LightMetalReplay FinishCommand(). cq_global_id: {}", cmd->cq_global_id());
+    CommandQueue &cq = this->device_->command_queue(cmd->cq_global_id());
+    Finish(cq);
+}
+
+void LightMetalReplay::execute(tt::target::CreateProgramCommand const *cmd) {
+    log_info(tt::LogMetalTrace, "LightMetalReplay CreateProgramCommand(). global_id: {} ", cmd->global_id());
+    auto program = CreateProgram();
+    addProgramToMap(cmd->global_id(), std::make_shared<Program>(std::move(program)));
+}
+
+void LightMetalReplay::execute(tt::target::EnqueueProgramCommand const *cmd) {
+    auto program = getProgramFromMap(cmd->program_global_id());
+    if (!program) {
+        throw std::runtime_error("Program with global_id: " + std::to_string(cmd->program_global_id()) + " not previously created");
+    }
+
+    log_info(tt::LogMetalTrace, "LightMetalReplay EnqueueProgramCommand(). program_global_id: {} cq_global_id: {}", cmd->program_global_id(), cmd->cq_global_id());
+
+    // FIXME - get cq object from global CQ map instead.
+    CommandQueue &cq = this->device_->command_queue(cmd->cq_global_id());
+    EnqueueProgram(cq, *program, cmd->blocking());
+}
+
+void LightMetalReplay::execute(tt::target::CreateKernelCommand const *cmd) {
+    log_info(tt::LogMetalTrace, "LightMetalReplay CreateKernelCommand(). global_id: {} program_global_id: {}", cmd->global_id(), cmd->program_global_id());
+    auto program = getProgramFromMap(cmd->program_global_id());
+    if (!program) {
+        throw std::runtime_error("Program with global_id: " + std::to_string(cmd->program_global_id()) + " not previously created");
+    }
+
+    auto core_spec = fromFlatbuffer(cmd->core_spec_type(), cmd->core_spec());
+    auto kernel_config = fromFlatbuffer(cmd->config_type(), cmd->config());
+    auto kernel_id = CreateKernel(*program, cmd->file_name()->c_str(), core_spec, kernel_config);
+    addKernelHandleToMap(cmd->global_id(), kernel_id);
+    // Some APIs use Kernel, so convert to and store Kernel.
+    std::shared_ptr<Kernel> kernel = program->get_kernel(kernel_id);
+    addKernelToMap(cmd->global_id(), kernel);
+}
+
+void LightMetalReplay::execute(tt::target::SetRuntimeArgsCommand const *cmd) {
+    log_info(tt::LogMetalTrace, "LightMetalReplay SetRuntimeArgsCommand(). program_global_id: {} kernel_global_id: {}", cmd->program_global_id(), cmd->kernel_global_id());
+    auto program = getProgramFromMap(cmd->program_global_id());
+    auto kernel_id = getKernelHandleFromMap(cmd->kernel_global_id());
+
+    if (!program) {
+        throw std::runtime_error("Program with global_id: " + std::to_string(cmd->program_global_id()) + " not previously created");
+    }
+
+    // API expects a span so create from flatbuffer vector.
+    stl::Span<const uint32_t> args_span(cmd->args()->data(), cmd->args()->size());
+    auto core_spec = fromFlatbuffer(cmd->core_spec_type(), cmd->core_spec());
+    SetRuntimeArgs(*program, kernel_id, core_spec, args_span);
+}
+
+void LightMetalReplay::execute(tt::target::SetRuntimeArgs1Command const *cmd) {
+    log_info(tt::LogMetalTrace, "LightMetalReplay SetRuntimeArgs1Command(). kernel_global_id: {} rt_args_size: {}", cmd->kernel_global_id(), cmd->args()->size());
+    auto core_spec = fromFlatbuffer(cmd->core_spec_type(), cmd->core_spec());
+    auto runtime_args = fromFlatBufferRtArgs(cmd->args());
+    auto kernel = getKernelFromMap(cmd->kernel_global_id());
+    if (!kernel) {
+        throw std::runtime_error("Kernel with global_id: " + std::to_string(cmd->kernel_global_id()) + " not previously created");
+    }
+    SetRuntimeArgs(this->device_, kernel, core_spec, runtime_args);
+}
+
+void LightMetalReplay::execute(tt::target::CreateCircularBufferCommand const *cmd) {
+    log_info(tt::LogMetalTrace, "LightMetalReplay CreateCircularBufferCommand(). global_id: {} program_global_id: {}", cmd->global_id(), cmd->program_global_id());
+    auto program = getProgramFromMap(cmd->program_global_id());
+    if (!program) {
+        throw std::runtime_error("Program with global_id: " + std::to_string(cmd->program_global_id()) + " not previously created");
+    }
+
+    auto core_spec = fromFlatbuffer(cmd->core_spec_type(), cmd->core_spec());
+    auto config = fromFlatBuffer(cmd->config());
+    auto cb_handle = CreateCircularBuffer(*program, core_spec, config);
+    addCBHandleToMap(cmd->global_id(), cb_handle);
+}
+
 
 // Main entry point to execute a light metal binary blob, return true if pass.
 bool LightMetalReplay::executeLightMetalBinary() {

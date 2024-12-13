@@ -15,7 +15,13 @@ namespace tt::target::lightmetal {
 }
 
 namespace tt::tt_metal { // KCM Consider adding lightmetal namespace.
+
 inline namespace v0 {
+
+class Buffer;
+class Program;
+class Kernel;
+using CBHandle = uintptr_t;
 
 class LightMetalCaptureContext {
 public:
@@ -29,6 +35,27 @@ public:
     std::vector<flatbuffers::Offset<tt::target::lightmetal::TraceDescriptorByTraceId>>& getTraceDescsVector();
     std::vector<uint8_t> createLightMetalBinary();
 
+    // Public Object Maps Accessors - Buffers
+    bool isInMap(Buffer* obj);
+    uint32_t addToMap(Buffer* obj);
+    void removeFromMap(Buffer* obj);
+    uint32_t getGlobalId(Buffer* obj);
+    // Public Object Maps Accessors - Programs
+    bool isInMap(const Program* obj);
+    uint32_t addToMap(const Program* obj);
+    void removeFromMap(const Program* obj);
+    uint32_t getGlobalId(const Program* obj);
+    // Public Object Maps Accessors - Kernels
+    bool isInMap(const Kernel* obj);
+    uint32_t addToMap(const Kernel* obj);
+    void removeFromMap(const Kernel* obj);
+    uint32_t getGlobalId(const Kernel* obj);
+    // Public Object Maps Accessors - CBHandles
+    bool isInMap(const CBHandle handle);
+    uint32_t addToMap(const CBHandle handle);
+    void removeFromMap(const CBHandle handle);
+    uint32_t getGlobalId(const CBHandle handle);
+
     void reset();
 
 private:
@@ -38,6 +65,14 @@ private:
     flatbuffers::FlatBufferBuilder builder_;
     std::vector<flatbuffers::Offset<tt::target::Command>> cmdsVector_;
     std::vector<flatbuffers::Offset<tt::target::lightmetal::TraceDescriptorByTraceId>> traceDescsVector_;
+
+    // Object maps for associating each object with a global_id
+    uint32_t nextGlobalId_ = 0; // Shared across all object types.
+    std::unordered_map<Buffer*, uint32_t> bufferToGlobalIdMap_;
+    std::unordered_map<const Program*, uint32_t> programToGlobalIdMap_;
+    std::unordered_map<const Kernel*, uint32_t> kernelToGlobalIdMap_;
+    std::unordered_map<CBHandle, uint32_t> cbHandleToGlobalIdMap_;
+    // FIXME - Add one for CommandQueue object.
 
     // Delete copy constructor and assignment operator
     LightMetalCaptureContext(const LightMetalCaptureContext&) = delete;

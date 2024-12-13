@@ -2041,6 +2041,7 @@ void EnqueueReadBuffer(
     void* dst,
     bool blocking,
     tt::stl::Span<const SubDeviceId> sub_device_ids) {
+    TRACE_FUNCTION_CALL(captureEnqueueReadBuffer, cq, buffer, dst, blocking); // KCM_FIXME sub_device_ids added recently
     detail::DispatchStateCheck(true);
     cq.run_command(CommandInterface{
         .type = EnqueueCommandType::ENQUEUE_READ_BUFFER, .blocking = blocking, .buffer = buffer, .dst = dst, .sub_device_ids = sub_device_ids});
@@ -2052,6 +2053,7 @@ void EnqueueWriteBuffer(
     HostDataType src,
     bool blocking,
     tt::stl::Span<const SubDeviceId> sub_device_ids) {
+    TRACE_FUNCTION_CALL(captureEnqueueWriteBuffer, cq, buffer, src, blocking); // KCM_FIXME sub_device_ids added recently
     detail::DispatchStateCheck(true);
     cq.run_command(CommandInterface{
         .type = EnqueueCommandType::ENQUEUE_WRITE_BUFFER, .blocking = blocking, .buffer = buffer, .src = std::move(src), .sub_device_ids = sub_device_ids});
@@ -2059,6 +2061,7 @@ void EnqueueWriteBuffer(
 
 void EnqueueProgram(
     CommandQueue& cq, Program& program, bool blocking) {
+    TRACE_FUNCTION_CALL(captureEnqueueProgram, cq, program, blocking);
     detail::DispatchStateCheck(true);
     cq.run_command(
         CommandInterface{.type = EnqueueCommandType::ENQUEUE_PROGRAM, .blocking = blocking, .program = &program});
@@ -2120,6 +2123,7 @@ bool EventQuery(const std::shared_ptr<Event>& event) {
 }
 
 void Finish(CommandQueue& cq, tt::stl::Span<const SubDeviceId> sub_device_ids) {
+    TRACE_FUNCTION_CALL(captureFinish, cq); // KCM_FIXME sub_device_ids added recently
     detail::DispatchStateCheck(true);
     cq.run_command(CommandInterface{.type = EnqueueCommandType::FINISH, .blocking = true, .sub_device_ids = sub_device_ids});
     TT_ASSERT(

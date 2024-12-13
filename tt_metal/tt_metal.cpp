@@ -897,6 +897,7 @@ DeviceAddr AllocateBuffer(Buffer* buffer) {
 }
 
 void DeallocateBuffer(Buffer* buffer) {
+    TRACE_FUNCTION_CALL(captureDeallocateBuffer, buffer);
     GraphTracker::instance().track_deallocate(buffer);
     if (GraphTracker::instance().hook_deallocate(buffer)) {
         return;
@@ -979,7 +980,11 @@ bool CloseDevice(Device* device) {
     return tt::DevicePool::instance().close_device(device_id);
 }
 
-Program CreateProgram() { return Program(); }
+Program CreateProgram() {
+    auto program = Program();
+    TRACE_FUNCTION_CALL(captureCreateProgram, program);
+    return program;
+}
 
 KernelHandle CreateDataMovementKernel(
     Program& program,
@@ -1065,7 +1070,7 @@ KernelHandle CreateKernel(
     const std::string& file_name,
     const std::variant<CoreCoord, CoreRange, CoreRangeSet>& core_spec,
     const std::variant<DataMovementConfig, ComputeConfig, EthernetConfig>& config) {
-    return std::visit(
+    KernelHandle kernel = std::visit(
         [&](auto&& cfg) -> KernelHandle {
             CoreRangeSet core_ranges = GetCoreRangeSet(core_spec);
             KernelSource kernel_src(file_name, KernelSource::FILE_PATH);
@@ -1079,6 +1084,9 @@ KernelHandle CreateKernel(
             }
         },
         config);
+
+    TRACE_FUNCTION_CALL(captureCreateKernel, kernel, program, file_name, core_spec, config);
+    return kernel;
 }
 
 KernelHandle CreateKernelFromString(
@@ -1107,7 +1115,9 @@ CBHandle CreateCircularBuffer(
     const std::variant<CoreCoord, CoreRange, CoreRangeSet>& core_spec,
     const CircularBufferConfig& config) {
     CoreRangeSet core_ranges = GetCoreRangeSet(core_spec);
-    return program.add_circular_buffer(core_ranges, config);
+    auto cb_handle = program.add_circular_buffer(core_ranges, config);
+    TRACE_FUNCTION_CALL(captureCreateCircularBuffer, cb_handle, program, core_spec, config);
+    return cb_handle;
 }
 
 const CircularBufferConfig& GetCircularBufferConfig(Program& program, CBHandle cb_handle) {
@@ -1194,7 +1204,7 @@ GlobalSemaphore CreateGlobalSemaphore(
 }
 
 std::shared_ptr<Buffer> CreateBuffer(const InterleavedBufferConfig& config) {
-    return Buffer::create(
+    auto buffer = Buffer::create(
         config.device,
         config.size,
         config.page_size,
@@ -1203,6 +1213,9 @@ std::shared_ptr<Buffer> CreateBuffer(const InterleavedBufferConfig& config) {
         std::nullopt,
         std::nullopt,
         std::nullopt);
+
+    TRACE_FUNCTION_CALL(captureCreateBuffer, buffer, config);
+    return buffer;
 }
 std::shared_ptr<Buffer> CreateBuffer(const InterleavedBufferConfig& config, DeviceAddr address) {
     return Buffer::create(
@@ -1273,6 +1286,7 @@ void SetRuntimeArgs(
     KernelHandle kernel_id,
     const std::variant<CoreCoord, CoreRange, CoreRangeSet>& core_spec,
     stl::Span<const uint32_t> runtime_args) {
+    TRACE_FUNCTION_CALL(captureSetRuntimeArgs, program, kernel_id, core_spec, runtime_args);
     ZoneScoped;
     TT_FATAL(
         not CommandQueue::async_mode_set(),
@@ -1308,6 +1322,7 @@ void SetRuntimeArgs(
     const std::variant<CoreCoord, CoreRange, CoreRangeSet>& core_spec,
     std::shared_ptr<RuntimeArgs> runtime_args) {
     detail::DispatchStateCheck(not device->using_slow_dispatch());
+    TRACE_FUNCTION_CALL(captureSetRuntimeArgs1, device, kernel, core_spec, runtime_args);
     SetRuntimeArgsImpl(device->command_queue(), kernel, core_spec, std::move(runtime_args), false);
 }
 
@@ -1368,6 +1383,7 @@ void EndTraceCapture(Device* device, const uint8_t cq_id, const uint32_t tid) {
     // When light metal tracing is enabled, TraceDescriptor will be serialized via end_trace() and this
     // will serialize the LightMetalLoadTraceId call to be used during replay to load trace back to device.
     TRACE_FUNCTION_CALL(captureLoadTrace, device, cq_id, tid);
+    TRACE_FUNCTION_CALL(captureReplayTrace, device, cq_id, tid, true); // blocking=true
 }
 
 void ReplayTrace(Device* device, const uint8_t cq_id, const uint32_t tid, const bool blocking) {
@@ -1375,7 +1391,10 @@ void ReplayTrace(Device* device, const uint8_t cq_id, const uint32_t tid, const 
     device->replay_trace(cq_id, tid, blocking);
 }
 
-void ReleaseTrace(Device* device, const uint32_t tid) { device->release_trace(tid); }
+void ReleaseTrace(Device* device, const uint32_t tid) {
+    TRACE_FUNCTION_CALL(captureReleaseTrace, device, tid);
+    device->release_trace(tid);
+}
 
 void LightMetalBeginCapture(Device *device) {
     device->light_metal_begin_capture();
