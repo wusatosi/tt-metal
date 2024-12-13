@@ -270,3 +270,27 @@ def test_nil_volume_permute(device):
     torch_output = torch.permute(torch_tensor, (0, 1, 3, 2))
     assert torch_output.shape == output_tensor.shape
     assert_with_pcc(torch_output, output_tensor, 0.9999)
+
+
+def test_permute_attn_matmul(device):
+    device.enable_async(True)
+    for i in range(2):
+        query_layer = torch.rand([1, 71, 32, 64], dtype=torch.bfloat16)
+        key_layer = torch.rand([32, 1, 160, 64], dtype=torch.bfloat16)
+
+        query_layer = ttnn.from_torch(query_layer, layout=ttnn.TILE_LAYOUT, device=device)
+        key_layer = ttnn.from_torch(key_layer, layout=ttnn.TILE_LAYOUT, device=device)
+
+        key_layer_transposed = ttnn.permute(
+            key_layer,
+            (0, 1, 3, 2),
+            # memory_config=self.model_config["K_TRANSPOSED_OUTPUT_MEMCFG"], TODO(cfjchu)
+        )
+
+        attn_weights = ttnn.experimental.attn_matmul(
+            query_layer,
+            key_layer_transposed,
+            compute_with_storage_grid_size=ttnn.CoreCoord(device.core_grid.x, device.core_grid.y),
+            memory_config=ttnn.L1_MEMORY_CONFIG,
+            dtype=ttnn.bfloat16,  # Must be BFLOAT16
+        )

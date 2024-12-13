@@ -34,12 +34,7 @@ ttnn::Tensor permute_impl(
     Device* device;
 
     // Get the device
-    if (a.storage_type() != StorageType::DEVICE) {
-        device = AutoFormat::GetDefaultDevice();
-        TT_ASSERT(device != nullptr, "Requires setting default device if no inputs to op are on device");
-    } else {
-        device = a.device();
-    }
+    device = a.device();
 
     if (a.get_shape().rank() > 4) {
         auto input = a.get_layout() == Layout::TILE
@@ -55,9 +50,6 @@ ttnn::Tensor permute_impl(
 
     TT_FATAL(dims.size() == 4, "Only 4D tensor are supported for permute.");
     uint32_t N = dims[0], C = dims[1], H = dims[2], W = dims[3];
-
-    // Convert tensor back to original
-    auto input_shape = a.get_logical_shape();
 
     auto formatted_input_tensor = a;
     // WH and CN should be supported without typecast

@@ -24,6 +24,7 @@ ttnn::Tensor AttnMatmulOperation::invoke(
                     ? input_tensor_a.device()->arch()
                     : ttnn::operations::experimental::auto_format::AutoFormat::GetDefaultDevice()->arch();
     auto kernel_config_val = init_device_compute_kernel_config(arch, compute_kernel_config);
+    std::cout << "AttnMatmulOperation::invoke " << tt::tt_metal::detail::InWorkerThread() << std::endl;
     return operation::run(
                AttnMatmulDeviceOperation{
                    std::nullopt,

@@ -140,6 +140,8 @@ class TtFalconAttention:
         ######################
         ### PRE-SOFTMAX MM ###
         ######################
+        print(key_layer)
+        print(key_layer.memory_config())
         key_layer_transposed = ttnn.permute(
             key_layer,
             (0, 1, 3, 2),

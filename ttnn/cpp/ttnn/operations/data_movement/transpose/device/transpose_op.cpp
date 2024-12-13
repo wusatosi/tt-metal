@@ -122,7 +122,6 @@ std::vector<ttnn::TensorSpec> Transpose::compute_output_specs(const std::vector<
     // - Get shard spec from output strides (logical shape + alignment)?
     auto output_shape = input_tensor.get_logical_shape();
     auto output_padded_shape = input_tensor.get_padded_shape();
-
     switch (this->dim) {
         case TransposeOpDim::CN:
             std::swap(output_shape[0], output_shape[1]);
