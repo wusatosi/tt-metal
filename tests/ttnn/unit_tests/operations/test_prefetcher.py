@@ -194,18 +194,18 @@ def get_core_ranges(num_reader_cores, num_receiver_cores=2):
     mm_optimised_ring_cores = [
         (6, 9),
         (6, 8),
-        (6, 3),
         (6, 5),
         (6, 4),
+        (6, 3),
         (6, 2),
         (6, 1),
         (6, 0),
         (5, 0),
         (5, 1),
         (5, 2),
+        (5, 3),
         (5, 4),
         (5, 5),
-        (5, 3),
         (5, 8),
         (5, 9),
         (2, 9),
@@ -255,6 +255,12 @@ def get_core_ranges(num_reader_cores, num_receiver_cores=2):
             1,
             [(2304, 3840), (2304, 3840)],
             1,
+        ),  # FF1/3 = 72 tiles x 120 tiles = 8640 tiles / 24 cores = 720
+        (
+            12,
+            1,
+            [(2304, 3840), (2304, 3840)],
+            10,
         ),  # FF1/3 = 72 tiles x 120 tiles = 8640 tiles / 24 cores = 720 tiles per receiver core
         # (12, 2, [(7680, 2304), (7680, 2304)], 1),  # FF2: hangs
         (12, 2, [(2304, 1536), (2304, 1536)], 1),  # QKV
@@ -326,7 +332,10 @@ def test_run_prefetcher(
     dram_core_range_set = ttnn.CoreRangeSet([ttnn.CoreRange(core_coord, core_coord) for core_coord in dram_cores])
     sender_core_range_set = ttnn.CoreRangeSet([ttnn.CoreRange(core_coord, core_coord) for core_coord in sender_cores])
 
-    pt_tensors = [torch.randn(input_shapes[tid]) for tid in range(num_tensors) for _ in range(num_layers)]
+    pt_tensors = []
+    for t in range(num_tensors):
+        for l in range(num_layers):
+            pt_tensors.append(torch.randn(input_shapes[t]))
     tt_tensors = []
 
     for tid in range(num_tensors):
@@ -409,18 +418,6 @@ def test_run_prefetcher(
         reader_output_mem_config,
         writer_output_mem_config,
     )
-    tt_outs_pt = ttnn.to_torch(tt_outs)
-    tt_outs_pt = torch.chunk(tt_outs_pt, num_tensors, dim=0)
-
-    # Check the output of DRAM Prefetcher
-    all_passing = True
-    for i in range(num_tensors):
-        pt_out = ttnn.to_torch(tt_tensors[i])
-        tt_out = tt_outs_pt[i]
-        passing, output = comp_pcc(pt_out, tt_out, pcc_threshold)
-        logger.info(output)
-
-        all_passing = all_passing and passing
 
     # Run matmul
     for i in range(num_tensors):
@@ -428,7 +425,7 @@ def test_run_prefetcher(
             device,
             ttnn.bfloat16,
             dtype,
-            ttnn.MathFidelity.HiFi4,
+            ttnn.MathFidelity.LoFi,
             False,
             True,
             True,
@@ -440,14 +437,29 @@ def test_run_prefetcher(
             input_grid=mm_optimised_ring_cores,
             output_grid=receiver_cores_list,
             use_arbitrary_cores=True,
-            num_iters=1,
+            num_iters=num_layers,
             max_dst_tiles=8,
             pcc_threshold=0.98,
             mm_chain=False,
             use_physical_to_logical_mapping=False,
             global_cb=global_circular_buffer,
             prefetched_weights_pt=pt_tensors[0],
+            mm_subdevice_id=1,
         )
+
+    tt_outs_pt = ttnn.to_torch(tt_outs)
+    tt_outs_pt = torch.chunk(tt_outs_pt, num_tensors, dim=0)
+
+    # Check the output of DRAM Prefetcher
+    all_passing = True
+    for i in range(num_tensors):
+        # pt_out = ttnn.to_torch(tt_tensors[-1])
+        pt_out = pt_tensors[-1]
+        tt_out = tt_outs_pt[i]
+        passing, output = comp_pcc(pt_out, tt_out, pcc_threshold)
+        logger.info(output)
+
+        all_passing = all_passing and passing
 
     device.clear_loaded_sub_device_manager()
     device.remove_sub_device_manager(sub_device_manager)
