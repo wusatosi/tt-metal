@@ -16,12 +16,20 @@ from models.demos.llama3.tt.llama_common import (
     num_to_core_range_set,
     calculate_hidden_dim,
     get_out_subblock_w,
+    encode_prompt_llama_instruct,
+    encode_prompt_hf,
 )
 from typing import Tuple
 from models.utility_functions import nearest_32
 from pathlib import Path
-from tqdm import tqdm
 from dataclasses import dataclass
+from enum import Enum, auto
+from models.demos.llama3.tt.load_checkpoints import (
+    load_meta_state_dict,
+    load_hf_state_dict,
+    convert_hf_to_meta,
+    convert_meta_to_hf,
+)
 
 
 @dataclass
@@ -45,6 +53,11 @@ class LlamaOptimizations:
         All models use bfp4 MLPs in this configuration
         """
         return cls(bfp4_mlp=True)
+
+
+class CheckpointType(Enum):
+    Meta = auto()
+    HuggingFace = auto()
 
 
 class TtModelArgs:
@@ -115,14 +128,7 @@ class TtModelArgs:
             assert os.path.exists(
                 self.DEFAULT_CKPT_DIR
             ), f"Checkpoint directory {self.DEFAULT_CKPT_DIR} does not exist, please set LLAMA_DIR=... or LLAMA_CKPT_DIR=..."
-            assert os.path.isfile(
-                self.DEFAULT_TOKENIZER_PATH + "/tokenizer.model"
-            ), f"Tokenizer file {self.DEFAULT_TOKENIZER_PATH + '/tokenizer.model'} does not exist, please set LLAMA_TOKENIZER_PATH=..."
-            if not os.path.exists(self.DEFAULT_CACHE_PATH):
-                os.makedirs(self.DEFAULT_CACHE_PATH)
-            assert os.path.exists(
-                self.DEFAULT_CACHE_PATH
-            ), f"Cache directory {self.DEFAULT_CACHE_PATH} does not exist, please set LLAMA_CACHE_PATH=..."
+            os.makedirs(self.DEFAULT_CACHE_PATH, exist_ok=True)
             # Check if weights exist in the specified folder. If not warn the user to run the download and untar script.
         #            assert os.path.isfile(
         #                self.DEFAULT_CKPT_DIR + "/consolidated.00.pth"
@@ -133,6 +139,7 @@ class TtModelArgs:
         logger.info(f"Cache directory: {self.DEFAULT_CACHE_PATH}")
 
         # Set the model name based on the checkpoint directory being loaded
+        # FIXME: add a llama prefix to all llama-specific models and names
         if "3.2-1B" in LLAMA_DIR:
             local_params = "LLAMA3_2_1B_PARAMS"
             self.model_name = "3.2-1B"
@@ -148,8 +155,11 @@ class TtModelArgs:
         elif "3.1-70B" in LLAMA_DIR:
             local_params = "LLAMA3_1_70B_PARAMS"
             self.model_name = "3.1-70B"
+        elif "Qwen2.5-0.5B" in LLAMA_DIR:
+            local_params = "QWEN2_5_0_5B_PARAMS"
+            self.model_name = "Qwen2.5-0.5B"
         else:
-            raise ValueError(f"Unsupported LLAMA model: {LLAMA_DIR}")
+            raise ValueError(f"Unsupported model: {LLAMA_DIR}")
 
         if callable(optimizations):
             self.optimizations = optimizations(self.model_name)
@@ -158,9 +168,11 @@ class TtModelArgs:
 
         # Load model params
         if not dummy_weights:
-            self._set_llama_params(self.DEFAULT_CKPT_DIR)
+            self.checkpoint_type = self.detect_checkpoint_type()
+            self._set_model_params(self.DEFAULT_CKPT_DIR)
         else:  # With Dummy weights, set the params from the local copy inside the model folder. This is required for CI pipeline that doesn't mount the external folders.
-            self._set_llama_params(self.LOCAL_LLAMA_PARAMS[local_params])
+            self.checkpoint_type = CheckpointType.Meta
+            self._set_model_params(self.LOCAL_LLAMA_PARAMS[local_params])
 
         # Some consumers like SentencePiece only accept str not Path for files
         self.model_base_path = Path(self.DEFAULT_CKPT_DIR)
@@ -196,6 +208,8 @@ class TtModelArgs:
             self.head_dim, self.max_seq_len * 2, self.rope_theta, self.use_scaled_rope
         )  # for prefill
         self.rot_emb = freqs_to_rotation_matrix(self.cos, self.sin)  # for decode
+
+        self.tokenizer = self.create_tokenizer()
 
         device = mesh_device.get_devices()[0] if mesh_device is not None else None
         if device is not None:  # Avoid issue with test_llama_torch.py not having a device
@@ -311,37 +325,44 @@ class TtModelArgs:
             else:
                 self.model_config["ATTN_ALL_GATHER_MATMUL_PROGCFG"] = None
 
+            mlp1_3_grid = self.find_grid(self.dim // self.tile_size)
+            mlp2_grid = self.find_grid(self.hidden_dim // self.tile_size)
             self.model_config["PREFILL_MLP_W1_W3_PRG_CONFIG"] = self.matmul_config(
-                m=1024, k=self.dim, n=self.hidden_dim // self.num_devices, grid_size=(8, 8)
+                m=1024, k=self.dim, n=self.hidden_dim // self.num_devices, grid_size=mlp1_3_grid
             )
             self.model_config["PREFILL_MLP_W2_PRG_CONFIG"] = self.matmul_config(
-                m=1024, k=self.hidden_dim, n=self.dim, grid_size=(8, 8)
+                m=1024, k=self.hidden_dim, n=self.dim, grid_size=mlp2_grid
             )
 
             self.model_config["PREFILL_MLP_W1_W3_PRG_CONFIG_128"] = lambda seq_len: self.matmul_config(
-                m=seq_len, k=self.dim, n=self.hidden_dim // self.num_devices, grid_size=(8, 4)
+                m=seq_len, k=self.dim, n=self.hidden_dim // self.num_devices, grid_size=mlp1_3_grid
             )
             self.model_config["PREFILL_MLP_W2_PRG_CONFIG_128"] = lambda seq_len: self.matmul_config(
-                m=seq_len, k=self.hidden_dim, n=self.dim, grid_size=(8, 4)
+                m=seq_len, k=self.hidden_dim, n=self.dim, grid_size=mlp2_grid
             )
 
             self.model_config["WO_PREFILL_PROGCFG"] = lambda seq_len: self.matmul_config(
                 m=min(seq_len, 2048),
                 k=self.dim,
                 n=self.dim,
-                grid_size=(8, 8),
+                grid_size=self.find_grid(self.dim // self.tile_size),
                 in0_block_w=1,
                 fuse_batch=seq_len <= 2048,
             )
 
-            # Calculate largest number of lm_head_num_rows such that self.dim % (lm_head_num_rows * 8) == 0
+            # Calculate largest number of lm_head_num_rows such that self.dim % (lm_head_num_rows * lm_head_cores_per_row) == 0
             lm_head_num_rows = 8
-            while self.dim % (32 * lm_head_num_rows * 8) != 0:
+            lm_head_cores_per_row = 8
+            while self.dim % (32 * lm_head_num_rows * lm_head_cores_per_row) != 0:
                 lm_head_num_rows -= 1
-                assert (
-                    lm_head_num_rows > 0
-                ), f"Could not find a lm_head_num_rows such that self.dim(={self.dim}) % (lm_head_num_rows * 8) == 0"
-            self.lm_head_core_grid = ttnn.CoreGrid(y=lm_head_num_rows, x=8)
+                if lm_head_num_rows == 0:
+                    lm_head_cores_per_row -= 1
+                    if lm_head_cores_per_row == 0:
+                        raise ValueError(
+                            f"Could not find a lm_head_num_rows such that self.dim(={self.dim}) % (lm_head_num_rows * 8) == 0"
+                        )
+                    lm_head_num_rows = 8
+            self.lm_head_core_grid = ttnn.CoreGrid(y=lm_head_num_rows, x=lm_head_cores_per_row)
 
             self.model_config["LM_HEAD_INPUT_MEMCFG"] = ttnn.create_sharded_memory_config(
                 (
@@ -724,22 +745,32 @@ class TtModelArgs:
         )
         return xs_1BSH
 
-    def _set_llama_params_from_dict(self, params):
-        # Text params
-        self.dim = params["dim"]
-        self.ffn_dim_multiplier = params["ffn_dim_multiplier"]
-        self.multiple_of = params["multiple_of"]
-        self.n_heads = params["n_heads"]
-        self.n_kv_heads = params["n_kv_heads"]
-        self.n_layers = params["n_layers"]
-        self.norm_eps = params["norm_eps"]
-        self.rope_theta = params["rope_theta"]
-        self.use_scaled_rope = params["use_scaled_rope"]
+    def _set_params_from_dict(self, params):
+        # Common params with different names between Meta and HF
+        self.dim = params.get("dim", params.get("hidden_size"))
+        self.n_heads = params.get("n_heads", params.get("num_attention_heads"))
+        self.n_kv_heads = params.get("n_kv_heads", params.get("num_key_value_heads"))
+        self.n_layers = params.get("n_layers", params.get("num_hidden_layers"))
+        self.full_model_n_layers = self.n_layers
+        self.norm_eps = params.get("norm_eps", params.get("rms_norm_eps"))
         self.vocab_size = params["vocab_size"]
         self.head_dim = self.dim // self.n_heads
-        self.hidden_dim = calculate_hidden_dim(self.dim, self.ffn_dim_multiplier, self.multiple_of)
 
-        # Vision params
+        # Handle different MLP dimension specifications
+        if "intermediate_size" in params:
+            self.hidden_dim = params["intermediate_size"]
+            self.ffn_dim_multiplier = None
+            self.multiple_of = None
+        else:
+            self.ffn_dim_multiplier = params["ffn_dim_multiplier"]
+            self.multiple_of = params["multiple_of"]
+            self.hidden_dim = calculate_hidden_dim(self.dim, self.ffn_dim_multiplier, self.multiple_of)
+
+        # RoPE params
+        self.rope_theta = params.get("rope_theta", 10000.0)
+        self.use_scaled_rope = params.get("use_scaled_rope", True)
+
+        # Vision params (Meta-specific)
         self.vision_chunk_size = params.get("vision_chunk_size", -1)
         self.vision_max_num_chunks = params.get("vision_max_num_chunks", 4)
         self.vision_num_cross_attention_layers = params.get("vision_num_cross_attention_layers", -1)
@@ -765,12 +796,27 @@ class TtModelArgs:
         """
         return (self.vision_chunk_size // self.vision_patch_size) ** 2 + 1
 
+    def _set_model_params(self, checkpoint_dir):
+        if self.checkpoint_type == CheckpointType.Meta:
+            self._set_llama_params(checkpoint_dir)
+        elif self.checkpoint_type == CheckpointType.HuggingFace:
+            self._set_hf_params(checkpoint_dir)
+        else:
+            raise ValueError(f"Unsupported checkpoint type: {self.checkpoint_type}")
+
     def _set_llama_params(self, checkpoint_dir):
         params_file = os.path.join(checkpoint_dir, "params.json")
         assert os.path.exists(params_file), f"params.json file not found at {params_file}"
         with open(params_file, "r") as f:
             params = json.load(f)
-        self._set_llama_params_from_dict(params)
+        self._set_params_from_dict(params)
+
+    def _set_hf_params(self, checkpoint_dir):
+        config_file = os.path.join(checkpoint_dir, "config.json")
+        assert os.path.exists(config_file), f"config.json file not found at {config_file}"
+        with open(config_file, "r") as f:
+            config = json.load(f)
+        self._set_params_from_dict(config)
 
     def __repr__(self):
         return f"""ModelArgs(
@@ -822,19 +868,19 @@ class TtModelArgs:
 
     # TODO Update function for large models: For 1 layer tests we only want to load 1 checkpoint file, instead of all.
     def load_state_dict(self):
-        """Generate or load state_dict for n_layers of the model"""
         if self.dummy_weights:
             reference_model = Transformer(self)
             state_dict = reference_model.state_dict()
             state_dict_prefix = self.get_state_dict_prefix("", None)
             state_dict = {f"{state_dict_prefix}{k}": torch.randn_like(v) for k, v in state_dict.items()}
+        elif self.checkpoint_type == CheckpointType.Meta:
+            state_dict = load_meta_state_dict(self.DEFAULT_CKPT_DIR, self.n_layers)
         else:
-            state_dict = load_llama_state_dict(self.DEFAULT_CKPT_DIR, self.n_layers)
-
+            assert self.checkpoint_type == CheckpointType.HuggingFace
+            state_dict = load_hf_state_dict(self.DEFAULT_CKPT_DIR)
+            state_dict = convert_hf_to_meta(state_dict)
         keys_dict = list(state_dict.keys())[:]
-        remv = [
-            f"layers.{i}." for i in list(range(self.n_layers, 32))
-        ]  # TODO, this is not generalized to all models. it assumes max layers = 32
+        remv = [f"layers.{i}." for i in list(range(self.n_layers, self.full_model_n_layers))]
         for k in keys_dict:
             if any([r in k for r in remv]):
                 state_dict.pop(k)
@@ -932,7 +978,6 @@ class TtModelArgs:
         Find the number of rows and columns for a grid of cores such that
         the total number of tiles N can be evenly divided among the cores.
         Each core will have the same integer number of tiles.
-        The grid size is limited to a maximum of 2 rows and 8 columns.
 
         Parameters:
             N (int): Total number of tiles to be distributed.
@@ -943,9 +988,9 @@ class TtModelArgs:
         Raises:
             AssertionError: If it's not possible to find such a grid configuration.
         """
-        max_rows = 4
+        max_rows = 8
         max_cols = 8  # Maximum number of rows or columns
-        max_cores = max_rows * max_cols  # Maximum number of cores (8x2 grid)
+        max_cores = max_rows * max_cols  # Maximum number of cores
 
         # Find all possible numbers of cores that divide N and are less than or equal to max_cores
         possible_cores = [c for c in range(1, max_cores + 1) if K % c == 0 and N % c == 0]
@@ -969,7 +1014,7 @@ class TtModelArgs:
     ) -> ttnn.MatmulMultiCoreReuseMultiCastDRAMShardedProgramConfig:
         # in0_block_w must evenly divide k and be no larger than tile_size * num_cores
         if num_cores is None:
-            # num_cores = self.dram_shard_core_grid_for_k_and_n(k).num_cores
+            # num_cores = self.dram_shard_core_grid_for_k(k).num_cores
             num_cores = self.dram_shard_core_grid_for_k_and_n(k, n).num_cores
             assert (
                 k % (self.tile_size * num_cores) == 0
@@ -1003,69 +1048,132 @@ class TtModelArgs:
             inplace=False,
         )
 
+    def detect_checkpoint_type(self) -> CheckpointType:
+        """Detect if checkpoint directory contains Meta or HuggingFace format weights.
 
-def load_llama_state_dict(ckpt_dir, n_layers=None, start_layer_idx=0):
-    checkpoints = sorted(Path(ckpt_dir).glob("*.pth"))
-    assert len(checkpoints) > 0, f"no checkpoint files found in {ckpt_dir}"
-    is_chunked = "layers_" in str(checkpoints[0])
-    if is_chunked:
-        checkpoint = load_chunked_checkpoints(checkpoints, n_layers, start_layer_idx)
-    else:
-        checkpoint = load_sharded_checkpoints(checkpoints, n_layers)
+        Returns:
+            CheckpointType: Meta or HuggingFace enum value
 
-    return checkpoint
+        Raises:
+            ValueError: If neither Meta nor HuggingFace checkpoint format is detected
+        """
+        config_path = os.path.join(self.DEFAULT_CKPT_DIR, "config.json")
+        params_path = os.path.join(self.DEFAULT_CKPT_DIR, "params.json")
 
+        if os.path.exists(config_path):
+            with open(config_path) as f:
+                config = json.load(f)
+                if "transformers_version" in config:
+                    return CheckpointType.HuggingFace
 
-def load_chunked_checkpoints(checkpoints, n_layers, start_layer_idx):
-    checkpoint = {}
+        if os.path.exists(params_path):
+            return CheckpointType.Meta
 
-    (f"Loading {len(checkpoints)} checkpoint files")
-    for ckpt in tqdm(checkpoints):
-        if n_layers:
-            # Layer range is in the file name, like layers_start-end.pth
-            layer_range = ckpt.stem.split("_")[1]
-            start_layer, end_layer = map(int, layer_range.split("-"))
-            if start_layer > n_layers + start_layer_idx:
-                continue
-            if end_layer < start_layer_idx:
-                continue
+        raise ValueError(
+            f"Could not detect Meta or HuggingFace checkpoint format in {self.DEFAULT_CKPT_DIR}. "
+            "Directory should contain either config.json (HuggingFace) or params.json (Meta)."
+        )
 
-        loaded_ckpt = torch.load(ckpt, map_location="cpu")
-        checkpoint.update(loaded_ckpt)
-    return checkpoint
+    def create_tokenizer(self):
+        """Create and return a Tokenizer instance based on the checkpoint type."""
+        if self.checkpoint_type == CheckpointType.Meta:
+            # Use the Meta Tokenizer
+            from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.tokenizer import Tokenizer
 
-
-def load_sharded_checkpoints(checkpoints, n_layers):
-    checkpoint = {}
-    logger.info(f"Loading {len(checkpoints)} checkpoint files")
-    for ckpt in tqdm(checkpoints):
-        loaded_ckpt = torch.load(ckpt, map_location="cpu")
-        for (
-            key,
-            value,
-        ) in loaded_ckpt.items():
-            if "layers." in key:
-                layer_num = int(key.split("layers.")[1].split(".")[0])
-                if n_layers and layer_num >= n_layers:
-                    continue
-            if key in checkpoint:
-                checkpoint[key] += [value]
-            else:
-                checkpoint[key] = [value]
-        del loaded_ckpt
-
-    # concat checkpoint values
-    for key, value in checkpoint.items():
-        if len(value) == 1 or "norm" in key:
-            checkpoint[key] = value[0]
+            return Tokenizer(self.tokenizer_path)
         else:
-            if key == "tok_embeddings.weight" or key == "output.weight":
-                assert value[0].shape[1] == 8192  # FIXME: do we need this hardcoded shape?
-                # Concatenate along dimension 0 for llama3 token embeddings weight and lm head
-                checkpoint[key] = torch.cat(value, dim=0)
-            else:
-                # cat_dim is index of the smallest dimension in value[0].shape
-                cat_dim = torch.argmin(torch.tensor(value[0].shape))
-                checkpoint[key] = torch.cat(value, dim=cat_dim)
+            # Create a HuggingFace AutoTokenizer
+            from transformers import AutoTokenizer
 
-    return checkpoint
+            return AutoTokenizer.from_pretrained(self.DEFAULT_TOKENIZER_PATH)
+
+    def encode_prompt(self, prompt_text, system_prompt_text=None):
+        if self.checkpoint_type == CheckpointType.Meta:
+            return encode_prompt_llama_instruct(self.tokenizer, prompt_text, system_prompt_text)
+        else:
+            return encode_prompt_hf(self.tokenizer, prompt_text, system_prompt_text)
+
+    def reference_lm_head(self):
+        if self.checkpoint_type == CheckpointType.Meta:
+            from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import ColumnParallelLinear
+
+            return ColumnParallelLinear(self.dim, self.vocab_size, bias=False, init_method=lambda x: x)
+        else:
+            model = self.reference_transformer()
+            layer = model.lm_head
+            layer._load_state_dict = layer.load_state_dict
+            layer.load_state_dict = lambda x: layer._load_state_dict(convert_meta_to_hf(x))
+            return layer
+
+    def reference_transformer(self):
+        if self.checkpoint_type == CheckpointType.Meta:
+            from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import Transformer
+
+            return Transformer(self)
+        else:
+            from transformers import AutoConfig, AutoModelForCausalLM
+
+            config = AutoConfig.from_pretrained(self.DEFAULT_CKPT_DIR)
+            config.num_layers = self.n_layers
+            model = AutoModelForCausalLM.from_config(config)
+            return model
+
+    def reference_rms_norm(self):
+        if self.checkpoint_type == CheckpointType.Meta:
+            from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import RMSNorm
+
+            return RMSNorm(self.dim, self.norm_eps)
+        else:
+            model = self.reference_transformer()
+            layer = model.model.norm
+            layer._load_state_dict = layer.load_state_dict
+            layer.load_state_dict = lambda x: layer._load_state_dict(convert_meta_to_hf(x))
+            return layer
+
+    def reference_mlp(self):
+        if self.checkpoint_type == CheckpointType.Meta:
+            from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import FeedForward
+
+            return FeedForward(self.dim, 4 * self.dim, self.multiple_of, self.ffn_dim_multiplier)
+        else:
+            model = self.reference_transformer()
+            layer = model.model.layers[0].mlp
+            layer._load_state_dict = layer.load_state_dict
+            layer.load_state_dict = lambda x: layer._load_state_dict(convert_meta_to_hf(x))
+            return layer
+
+    def reference_embedding(self):
+        if self.checkpoint_type == CheckpointType.Meta:
+            from models.demos.llama3.tt.llama_common import HostEmbedding
+
+            return HostEmbedding(self)
+        else:
+            model = self.reference_transformer()
+            layer = model.model.embed_tokens
+            layer._load_state_dict = layer.load_state_dict
+            layer.load_state_dict = lambda x: layer._load_state_dict(convert_meta_to_hf(x))
+            return layer
+
+    def reference_decoder(self):
+        if self.checkpoint_type == CheckpointType.Meta:
+            from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import TransformerBlock
+
+            return TransformerBlock(layer_id=0, args=self)
+        else:
+            model = self.reference_transformer()
+            layer = model.model.layers[0]
+            layer._load_state_dict = layer.load_state_dict
+            layer.load_state_dict = lambda x: layer._load_state_dict(convert_meta_to_hf(x))
+            return layer
+
+    def reference_attention(self):
+        if self.checkpoint_type == CheckpointType.Meta:
+            from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import Attention
+
+            return Attention(self)
+        else:
+            model = self.reference_transformer()
+            layer = model.model.layers[0].self_attn
+            layer._load_state_dict = layer.load_state_dict
+            layer.load_state_dict = lambda x: layer._load_state_dict(convert_meta_to_hf(x))
+            return layer

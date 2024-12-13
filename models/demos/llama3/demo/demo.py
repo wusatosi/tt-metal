@@ -15,22 +15,17 @@ import requests
 from pathlib import Path
 import hashlib
 
-from models.utility_functions import nearest_32
 from models.demos.llama3.tt.llama_common import (
     get_prefill_rot_mat,
-    get_rot_transformation_mat,
-    HostEmbedding,
-    encode_prompt_llama_instruct,
     PagedAttentionConfig,
     sample_host,
 )
 from models.demos.llama3.tt.llama_model import TtTransformer
 from models.demos.llama3.tt.llama_embedding import TtLlamaEmbedding
-from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.tokenizer import Tokenizer
 from models.demos.llama3.tt.model_config import TtModelArgs
 
 from models.perf.benchmarking_utils import BenchmarkProfiler
-from models.demos.utils.llm_demo_utils import create_benchmark_data, verify_perf
+from models.demos.utils.llm_demo_utils import create_benchmark_data
 from models.demos.llama3.tt.model_config import LlamaOptimizations
 
 
@@ -109,7 +104,7 @@ def preprocess_inputs_prefill(
         max_prefill_len = 128 * 1024 - max_generated_tokens
 
     if instruct:
-        encoded_prompts = [encode_prompt_llama_instruct(tokenizer, prompt) for prompt in input_prompts]
+        encoded_prompts = [model_args.encode_prompt(prompt) for prompt in input_prompts]
     else:
         encoded_prompts = [tokenizer.encode(prompt, bos=True, eos=False) for prompt in input_prompts]
 
@@ -230,7 +225,7 @@ def run_llama3_demo(
     if model_args.model_name == "3.1-70B" and max_seq_len >= 64 * 1024:
         pytest.skip("Llama3.1-70B will run out of memory for max_seq_len >= 64k tokens")
 
-    tokenizer = Tokenizer(model_args.tokenizer_path)
+    tokenizer = model_args.tokenizer
 
     # Check max sequence length compatibility with model and architecture. Refer to README for more information
     llama_model_name = model_args.model_name  # ["3.2-1B", "3.2-3B", "3.1-8B", "3.2-11B", "3.1-70B"]
@@ -304,9 +299,10 @@ def run_llama3_demo(
         state_dict=state_dict,
         dtype=ttnn.bfloat16,  # Row major layout requires bfloat16
     )
-    embd = HostEmbedding(model_args)
+    embd = model_args.reference_embedding()
     state_dict_prefix = model_args.get_state_dict_prefix("", None)
-    embd.load_state_dict({"emb.weight": state_dict[f"{state_dict_prefix}tok_embeddings.weight"]})
+    # FIXME: LLAMA wants emb.weight vs QWEN2.5 does not. Load state_dict in reference_embedding()
+    embd.load_state_dict({"weight": state_dict[f"{state_dict_prefix}tok_embeddings.weight"]})
     profiler.end("loading_weights_to_device")
     logger.info("Finished loading weights to device.")
 

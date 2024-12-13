@@ -13,7 +13,6 @@ from models.demos.llama3.tt.llama_common import (
     precompute_freqs,
     PagedAttentionConfig,
 )
-from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import Attention
 from models.utility_functions import (
     comp_pcc,
     comp_allclose,
@@ -81,7 +80,7 @@ def test_llama_attention_inference(
         k[len(first_layer_prefix) :]: v for k, v in state_dict.items() if (k.startswith(first_layer_prefix))
     }
 
-    reference_model = Attention(args=model_args)
+    reference_model = model_args.reference_attention()
     reference_model.load_state_dict(partial_state_dict)
 
     seq_len = 1
@@ -184,7 +183,7 @@ def test_llama_attention_inference(
         # In this test all users have the same position
         freqs_cis_i = freqs_cis[current_pos[0], :].unsqueeze(0)
 
-        reference_output = reference_model(pt_attention_input, current_pos[0], freqs_cis_i, mask=None)
+        reference_output = reference_model(pt_attention_input, current_pos[0], freqs_cis_i)
 
         passing, pcc_message = comp_pcc(reference_output, tt_output_torch, pcc)
 

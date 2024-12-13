@@ -9,12 +9,10 @@ import os
 import ttnn
 from models.demos.llama3.tt.llama_common import (
     get_prefill_rot_mat,
-    HostEmbedding,
     PagedAttentionConfig,
 )
 from models.demos.llama3.tt.llama_model import TtTransformer
 from models.demos.llama3.tt.model_config import TtModelArgs, LlamaOptimizations
-from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.tokenizer import Tokenizer
 from models.demos.llama3.demo.demo import preprocess_inputs_prefill
 from pathlib import Path
 
@@ -118,7 +116,7 @@ def test_tt_model_accuracy(
         mesh_device, optimizations=optimizations, max_batch_size=batch_size, max_seq_len=max_seq_len
     )
 
-    tokenizer = Tokenizer(model_args.tokenizer_path)
+    tokenizer = model_args.tokenizer
 
     # Load state_dict for TT model
     logger.info("Loading weights...")
@@ -172,7 +170,7 @@ def test_tt_model_accuracy(
         paged_attention_config=paged_attention_config,
     )
     # Initialize embedding
-    embd = HostEmbedding(model_args)
+    embd = model_args.reference_embedding()
     state_dict_prefix = model_args.get_state_dict_prefix("", None)
     embd.load_state_dict({"emb.weight": state_dict[f"{state_dict_prefix}tok_embeddings.weight"]})
 

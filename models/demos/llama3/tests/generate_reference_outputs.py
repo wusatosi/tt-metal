@@ -5,18 +5,14 @@ import torch
 import bz2
 import os
 import argparse
-import time
-from models.demos.llama3.tt.llama_common import HostEmbedding
-from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import Transformer
 from models.demos.llama3.tt.model_config import TtModelArgs
-from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.tokenizer import Tokenizer
 from loguru import logger
 
 
 def generate_reference_outputs(total_length, output_file):
     # Load the model arguments
     model_args = TtModelArgs(mesh_device=None)
-    tokenizer = Tokenizer(model_args.tokenizer_path)
+    tokenizer = model_args.tokenizer
 
     # Load the model state dict
     state_dict = model_args.load_state_dict()
@@ -36,12 +32,11 @@ def generate_reference_outputs(total_length, output_file):
             )
         )
     }
-    reference_model = Transformer(model_args)
+    reference_model = model_args.reference_transformer()
     reference_model.load_state_dict(reference_state_dict)
     reference_model.eval()  # Set to evaluation mode
 
-    # Initialize HostEmbedding
-    embd = HostEmbedding(model_args)
+    embd = model_args.reference_embedding()
     embd.load_state_dict({"emb.weight": state_dict[f"{state_dict_prefix}tok_embeddings.weight"]})
 
     # Load the book text and encode tokens

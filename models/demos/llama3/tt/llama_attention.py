@@ -64,10 +64,52 @@ class TtLlamaAttention(LightweightModule):
         else:
             cache_name = lambda name: weight_cache_path / (f"{layer_name}.{name}")
 
-        wq_str = f"{layer_name}.wq.weight"
-        wk_str = f"{layer_name}.wk.weight"
-        wv_str = f"{layer_name}.wv.weight"
-        wo_str = f"{layer_name}.wo.weight"
+        wq_str = f"{layer_name}.wq"
+        wk_str = f"{layer_name}.wk"
+        wv_str = f"{layer_name}.wv"
+        wo_str = f"{layer_name}.wo"
+
+        # Initialize bias tensors as None
+        self.wqkv_bias = None
+        self.wo_bias = None
+
+        # Create combined QKV bias if present in state dict
+        if f"{wq_str}.bias" in self.state_dict:
+            qkv_bias = torch.concat(
+                [
+                    torch.concat(
+                        [
+                            torch.chunk(self.state_dict[f"{wq_str}.bias"], configuration.num_devices)[i],
+                            torch.chunk(self.state_dict[f"{wk_str}.bias"], configuration.num_devices)[i],
+                            torch.chunk(self.state_dict[f"{wv_str}.bias"], configuration.num_devices)[i],
+                        ],
+                        dim=-1,
+                    )
+                    for i in range(configuration.num_devices)
+                ],
+                dim=-1,
+            )
+            self.wqkv_bias = ttnn.as_tensor(
+                qkv_bias,
+                device=self.mesh_device,
+                mesh_mapper=ttnn.ShardTensorToMesh(self.mesh_device, dim=-1),
+                dtype=self.dtype,
+                memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                layout=ttnn.TILE_LAYOUT,
+                cache_file_name=cache_name("wqkv_bias_sharded"),
+            )
+
+        # Create output bias if present
+        if f"{wo_str}.bias" in self.state_dict:
+            self.wo_bias = ttnn.as_tensor(
+                self.state_dict[f"{wo_str}.bias"],
+                device=self.mesh_device,
+                mesh_mapper=ttnn.ShardTensorToMesh(self.mesh_device, dim=-1),
+                dtype=self.dtype,
+                memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                layout=ttnn.TILE_LAYOUT,
+                cache_file_name=cache_name("wo_bias_height_sharded"),
+            )
 
         # when splitting the devices, we need to make sure that the number of heads is divisible by the number of devices
         assert self.n_heads % configuration.num_devices == 0
@@ -85,17 +127,17 @@ class TtLlamaAttention(LightweightModule):
                     torch.concat(
                         [
                             torch.transpose(
-                                torch.chunk(self.state_dict[wq_str], configuration.num_devices)[i],
+                                torch.chunk(self.state_dict[f"{wq_str}.weight"], configuration.num_devices)[i],
                                 -2,
                                 -1,
                             ),
                             torch.transpose(
-                                torch.chunk(self.state_dict[wk_str], configuration.num_devices)[i],
+                                torch.chunk(self.state_dict[f"{wk_str}.weight"], configuration.num_devices)[i],
                                 -2,
                                 -1,
                             ),
                             torch.transpose(
-                                torch.chunk(self.state_dict[wv_str], configuration.num_devices)[i],
+                                torch.chunk(self.state_dict[f"{wv_str}.weight"], configuration.num_devices)[i],
                                 -2,
                                 -1,
                             ),
@@ -117,7 +159,7 @@ class TtLlamaAttention(LightweightModule):
         # For ring topology we can use all gather matmul for wo
         self.use_fused_all_gather_matmul = self.model_config["USE_FUSED_ALL_GATHER_MATMUL"]
         if self.is_multichip and self.use_fused_all_gather_matmul:
-            pt_wo = self.state_dict[wo_str].transpose(-1, -2).unsqueeze(0).unsqueeze(0)
+            pt_wo = self.state_dict[f"{wo_str}.weight"].transpose(-1, -2).unsqueeze(0).unsqueeze(0)
             self.wo = ttnn.as_tensor(
                 pt_wo,
                 dtype=ttnn.bfloat8_b,
@@ -134,7 +176,7 @@ class TtLlamaAttention(LightweightModule):
             )
             self.wo = ttnn.as_tensor(
                 torch.transpose(
-                    self.state_dict[wo_str],
+                    self.state_dict[f"{wo_str}.weight"],
                     -2,
                     -1,
                 ),
@@ -226,6 +268,7 @@ class TtLlamaAttention(LightweightModule):
         xqkv_fused_sharded = ttnn.linear(
             x,
             self.wqkv,
+            bias=self.wqkv_bias,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
             program_config=self.model_config["XQKV_DECODE_PROGCFG"],
             compute_kernel_config=self.compute_kernel_config_hifi2,
@@ -338,6 +381,7 @@ class TtLlamaAttention(LightweightModule):
             _, dense_out_sharded, _ = ttnn.experimental.all_gather_matmul(
                 attn_output_cat,
                 self.wo,
+                bias=self.wo_bias,
                 dim=3,
                 all_gather_core_grid_offset=(0, 4),
                 num_links=1,
@@ -351,6 +395,7 @@ class TtLlamaAttention(LightweightModule):
             dense_out_sharded = ttnn.linear(
                 attn_output_cat,
                 self.wo,
+                bias=self.wo_bias,
                 program_config=self.model_config["ATTN_OUTPUT_PROGCFG"],
                 compute_kernel_config=self.compute_kernel_config_hifi2,
                 memory_config=attn_output_cat.memory_config(),
@@ -389,6 +434,7 @@ class TtLlamaAttention(LightweightModule):
         xqkv_fused = ttnn.linear(
             x_11SH,
             self.wqkv,
+            bias=self.wqkv_bias,
             dtype=ttnn.bfloat16,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
             compute_kernel_config=self.compute_kernel_config_hifi2,
@@ -547,6 +593,7 @@ class TtLlamaAttention(LightweightModule):
         output_11SH = ttnn.linear(
             attn_output_11SH,
             self.wo,
+            bias=self.wo_bias,
             compute_kernel_config=self.compute_kernel_config_hifi2,
             dtype=ttnn.bfloat8_b,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,

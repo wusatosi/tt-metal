@@ -9,30 +9,15 @@ from datetime import datetime
 from loguru import logger
 import os
 import ttnn
-import math
 import pytest
 import requests
 from pathlib import Path
 import hashlib
 
-from models.demos.llama3.tt.llama_common import (
-    get_prefill_rot_mat,
-    get_rot_transformation_mat,
-    HostEmbedding,
-    encode_prompt_llama_instruct,
-    copy_host_to_device,
-)
 from models.demos.llama3.tt.llama_model import TtTransformer
-from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.tokenizer import Tokenizer
-
 from models.perf.benchmarking_utils import BenchmarkProfiler
-from models.demos.utils.llm_demo_utils import create_benchmark_data, verify_perf
-
-from models.utility_functions import (
-    comp_pcc,
-)
-
 from models.demos.llama3.tt.generator import LlamaGenerator
+from models.demos.utils.llm_demo_utils import create_benchmark_data
 
 
 def load_and_cache_context(context_url, cache_dir):
@@ -95,7 +80,7 @@ def preprocess_inputs_prefill(
         max_prefill_len = 128 * 1024 - max_generated_tokens
 
     if instruct:
-        encoded_prompts = [encode_prompt_llama_instruct(tokenizer, prompt) for prompt in input_prompts]
+        encoded_prompts = [model_args.encode_prompt(prompt) for prompt in input_prompts]
     else:
         encoded_prompts = [tokenizer.encode(prompt, bos=True, eos=False) for prompt in input_prompts]
 
@@ -185,7 +170,7 @@ def run_llama3_demo(user_input, single_layer, mesh_device, instruct_mode, is_ci_
 
     # Load model args, weights, and tokenizer
     model_args = TtModelArgs(mesh_device, instruct=instruct_mode, max_batch_size=batch_size)
-    tokenizer = Tokenizer(model_args.tokenizer_path)
+    tokenizer = model_args.tokenizer
 
     # TODO Miguel: Setup max sequence length depending on the model being used to actually fit on device
     # Reduce max seq len and KV cache seq_len params to speed up the test

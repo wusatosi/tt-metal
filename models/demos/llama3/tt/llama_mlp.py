@@ -81,7 +81,7 @@ class TtLlamaMLP(LightweightModule):
             compute_kernel_config=self.args.compute_kernel_config_lofi
             if self.four_bit_mlp
             else self.args.compute_kernel_config_hifi2,
-            core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_1 else None,
+            core_grid=None,
             dtype=ttnn.bfloat16,
             program_config=pc_1,
             memory_config=x.memory_config(),
@@ -93,7 +93,7 @@ class TtLlamaMLP(LightweightModule):
             compute_kernel_config=self.args.compute_kernel_config_lofi
             if self.four_bit_mlp
             else self.args.compute_kernel_config_hifi2,
-            core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_3 else None,
+            core_grid=None,
             dtype=ttnn.bfloat16,
             program_config=pc_3,
             memory_config=x.memory_config(),
@@ -118,7 +118,7 @@ class TtLlamaMLP(LightweightModule):
             w2_in,
             self.w2,
             compute_kernel_config=self.args.compute_kernel_config_hifi2,
-            core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_2 else None,
+            core_grid=None,
             dtype=ttnn.bfloat16,
             program_config=pc_2,
             memory_config=w2_in.memory_config(),

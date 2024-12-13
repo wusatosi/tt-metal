@@ -13,7 +13,7 @@ from models.demos.llama3.tt.llama_common import (
     get_rot_transformation_mat,
     PagedAttentionConfig,
 )
-from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import Attention, precompute_freqs_cis
+from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import precompute_freqs_cis
 from models.utility_functions import (
     comp_pcc,
     comp_allclose,
@@ -84,7 +84,7 @@ def test_llama_attention_inference(
     partial_state_dict = {
         k[len(first_layer_prefix) :]: v for k, v in state_dict.items() if (k.startswith(first_layer_prefix))
     }
-    reference_model = Attention(args=model_args)
+    reference_model = model_args.reference_attention()
     reference_model.load_state_dict(partial_state_dict)
 
     # pre-compute the rotational embedding matrix and send to device

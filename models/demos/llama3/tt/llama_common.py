@@ -44,6 +44,16 @@ def encode_prompt_llama_instruct(tokenizer, prompt_text, system_prompt_text=None
     return begin_of_text + system_prompt + user_prompt + assistant_reply
 
 
+def encode_prompt_hf(tokenizer, prompt_text, system_prompt_text=None):
+    """See https://huggingface.co/docs/transformers/main/en/chat_templating"""
+    chat = []
+    if system_prompt_text:
+        chat.append({"role": "system", "content": system_prompt_text})
+    if prompt_text:
+        chat.append({"role": "user", "content": prompt_text})
+    return tokenizer.apply_chat_template(chat, tokenize=True)
+
+
 def apply_scaling(freqs: torch.Tensor):
     # Llama-3.1 specific scaling
     # Values obtained from grid search
