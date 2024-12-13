@@ -23,15 +23,15 @@ namespace conv2d {
 
 void validate_weight_and_bias_tensors(
     const ttnn::Tensor& weight_tensor, std::optional<const ttnn::Tensor>& bias_tensor) {
-    TT_ASSERT(!ttnn::has_storage_type_of(weight_tensor, ttnn::DEVICE_STORAGE_TYPE));
-    TT_ASSERT(weight_tensor.get_layout() == Layout::ROW_MAJOR);
-    TT_ASSERT(weight_tensor.get_shape().rank() == 4);
+    TT_FATAL(!ttnn::has_storage_type_of(weight_tensor, ttnn::DEVICE_STORAGE_TYPE), "Error");
+    TT_FATAL(weight_tensor.get_layout() == Layout::ROW_MAJOR, "Error");
+    TT_FATAL(weight_tensor.get_shape().rank() == 4, "Error");
     // TODO: enable this assert
     // TT_ASSERT(weight_tensor.get_shape() == weight_tensor.get_legacy_shape());
     if (bias_tensor.has_value()) {
-        TT_ASSERT(!ttnn::has_storage_type_of(bias_tensor.value(), ttnn::DEVICE_STORAGE_TYPE));
-        TT_ASSERT(bias_tensor.value().get_shape().rank() == 4);
-        TT_ASSERT(bias_tensor.value().get_layout() == Layout::ROW_MAJOR);
+        TT_FATAL(!ttnn::has_storage_type_of(bias_tensor.value(), ttnn::DEVICE_STORAGE_TYPE), "Error");
+        TT_FATAL(bias_tensor.value().get_shape().rank() == 4, "Error");
+        TT_FATAL(bias_tensor.value().get_layout() == Layout::ROW_MAJOR, "Error");
         // TODO: enable this assert
         // TT_ASSERT(bias_tensor.value().get_shape() == bias_tensor.value().get_legacy_shape());
     }
