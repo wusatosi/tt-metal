@@ -34,7 +34,7 @@ namespace datamover {
  */
 namespace handshake {
 
-static constexpr uint32_t A_LONG_TIMEOUT_BEFORE_CONTEXT_SWITCH = 1000000000;
+static constexpr uint32_t A_LONG_TIMEOUT_BEFORE_CONTEXT_SWITCH = 1000;
 
 /*
  * Initialize base datastructures and values which are common to master and slave EDM cores.

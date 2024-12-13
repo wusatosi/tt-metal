@@ -2521,19 +2521,19 @@ void HWCommandQueue::enqueue_program(Program& program, bool blocking) {
             this->trace_ctx->descriptors[sub_device_id].num_completion_worker_cores += device->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id);
         }
         static std::mutex mtx;
-        if (device->id() == 0 || device->id() == 4) {
-            std::scoped_lock<std::mutex> lck(mtx);
-            std::cout << "{" << std::endl;
-            std::cout << " device: " << device->id() << std::endl;
-            for (size_t kernel_id = 0; kernel_id < program.num_kernels(); kernel_id++) {
-                auto kernel = detail::GetKernel(program, kernel_id);
-                std::cout << "  " <<  kernel->get_full_kernel_name() << std::endl;
-            }
+        // if (device->id() == 0 || device->id() == 4) {
+        //     std::scoped_lock<std::mutex> lck(mtx);
+        //     std::cout << "{" << std::endl;
+        //     std::cout << " device: " << device->id() << std::endl;
+        //     for (size_t kernel_id = 0; kernel_id < program.num_kernels(); kernel_id++) {
+        //         auto kernel = detail::GetKernel(program, kernel_id);
+        //         std::cout << "  " <<  kernel->get_full_kernel_name() << std::endl;
+        //     }
 
-            std::cout << "  Expected Num Workers: " << std::dec << this->trace_ctx->descriptors[sub_device_id].num_completion_worker_cores << std::dec << std::endl;
-            std::cout << "  Num ops: " << this->trace_ctx->descriptors[sub_device_id].num_traced_programs_needing_go_signal_multicast << std::endl;
-            std::cout << "}" << std::endl;
-        }
+        //     std::cout << "  Expected Num Workers: " << std::dec << this->trace_ctx->descriptors[sub_device_id].num_completion_worker_cores << std::dec << std::endl;
+        //     std::cout << "  Num ops: " << this->trace_ctx->descriptors[sub_device_id].num_traced_programs_needing_go_signal_multicast << std::endl;
+        //     std::cout << "}" << std::endl;
+        // }
     } else {
         if (program.runs_on_noc_multicast_only_cores()) {
             this->expected_num_workers_completed[sub_device_index] += device->num_worker_cores(HalProgrammableCoreType::TENSIX, sub_device_id);

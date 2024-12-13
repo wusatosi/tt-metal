@@ -223,7 +223,7 @@ void kernel_main() {
                             in1_tensor_addr,
                             in1_single_tile_size_bytes,
                             current_dram_bank_id[next_bank_id_and_dram_stride_index],
-                            vc);
+                            1);
 
                         if (i == 0) {
                             in1_base_addr += dram_tensor_start_offset;
@@ -339,7 +339,7 @@ void kernel_main() {
                             in3_tensor_addr,
                             bias_single_tile_size_bytes,
                             current_dram_bank_id[next_bank_id_and_dram_stride_index],
-                            vc);
+                            1);
 
                         if (i == 0) {
                             in3_base_addr += dram_tensor_start_offset;

@@ -687,18 +687,18 @@ uint64_t get_l1_noc_addr(
     return noc_addr;
 }
 
-uint64_t get_system_memory_noc_addr(
-    const uint32_t id,
-    const uint32_t page_size,
-    const uint32_t base_addr,
-    const uint32_t offset = 0,
-    uint8_t noc = noc_index) {
-    uint64_t pcie_core_noc_encoding =
-        uint64_t(NOC_XY_PCIE_ENCODING(DYNAMIC_NOC_X(noc, PCIE_NOC_X), DYNAMIC_NOC_Y(noc, PCIE_NOC_Y), noc));
-    uint32_t addr = base_addr + page_size * id + offset;
-    uint64_t noc_addr = pcie_core_noc_encoding | addr;
-    return noc_addr;
-}
+// uint64_t get_system_memory_noc_addr(
+//     const uint32_t id,
+//     const uint32_t page_size,
+//     const uint32_t base_addr,
+//     const uint32_t offset = 0,
+//     uint8_t noc = noc_index) {
+//     uint64_t pcie_core_noc_encoding =
+//         uint64_t(NOC_XY_PCIE_ENCODING(DYNAMIC_NOC_X(noc, PCIE_NOC_X), DYNAMIC_NOC_Y(noc, PCIE_NOC_Y), noc));
+//     uint32_t addr = base_addr + page_size * id + offset;
+//     uint64_t noc_addr = pcie_core_noc_encoding | addr;
+//     return noc_addr;
+// }
 
 FORCE_INLINE
 std::uint64_t get_noc_addr(std::uint32_t addr, uint8_t noc = noc_index) {
@@ -1193,8 +1193,7 @@ struct InterleavedAddrGenFast {
         uint32_t src_noc_xy = interleaved_addr_gen::get_noc_xy<DRAM>(bank_index, noc);
 
         WAYPOINT("NRTW");
-        // DEBUG_SANITIZE_NOC_READ_TRANSACTION(noc, get_noc_addr_helper(src_noc_xy, src_addr), dest_addr,
-        // this->page_size);
+        DEBUG_SANITIZE_NOC_READ_TRANSACTION(noc, get_noc_addr_helper(src_noc_xy, src_addr), dest_addr, this->page_size);
         while (!noc_cmd_buf_ready(noc, read_cmd_buf));
         WAYPOINT("NRTD");
 
@@ -1280,8 +1279,8 @@ struct InterleavedPow2AddrGenFast {
         uint32_t src_noc_xy = interleaved_addr_gen::get_noc_xy<DRAM>(bank_index, noc);
 
         WAYPOINT("NRPW");
-        // DEBUG_SANITIZE_NOC_READ_TRANSACTION(
-        //     noc, get_noc_addr_helper(src_noc_xy, src_addr), dest_addr, 1 << this->aligned_log_base_2_of_page_size);
+        DEBUG_SANITIZE_NOC_READ_TRANSACTION(
+            noc, get_noc_addr_helper(src_noc_xy, src_addr), dest_addr, 1 << this->aligned_log_base_2_of_page_size);
         while (!noc_cmd_buf_ready(noc, read_cmd_buf));
         WAYPOINT("NRPD");
 
@@ -1309,7 +1308,7 @@ struct InterleavedPow2AddrGenFast {
         WAYPOINT("RP1W");
         while (!noc_cmd_buf_ready(noc, read_cmd_buf));
         WAYPOINT("RP1D");
-        // DEBUG_SANITIZE_NOC_READ_TRANSACTION(noc, get_noc_addr_helper(src_noc_xy, src_addr), dest_addr, size);
+        DEBUG_SANITIZE_NOC_READ_TRANSACTION(noc, get_noc_addr_helper(src_noc_xy, src_addr), dest_addr, size);
 
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_RET_ADDR_LO, dest_addr);
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_TARG_ADDR_LO, src_addr);            // (uint32_t)src_addr
@@ -1568,39 +1567,6 @@ inline void noc_async_write_multicast(
     }
 }
 
-template <uint32_t max_page_size = NOC_MAX_BURST_SIZE + 1>
-inline void noc_async_write_multicast_dispatch(
-    std::uint32_t src_local_l1_addr,
-    std::uint64_t dst_noc_addr_multicast,
-    std::uint32_t size,
-    std::uint32_t num_dests,
-    bool barrier,
-    bool linked = false,
-    bool multicast_path_reserve = true,
-    uint8_t noc = noc_index) {
-    if constexpr (max_page_size <= NOC_MAX_BURST_SIZE) {
-        noc_async_write_multicast_one_packet(
-            src_local_l1_addr, dst_noc_addr_multicast, size, num_dests, linked, multicast_path_reserve);
-    } else {
-        WAYPOINT("NMWW");
-        DEBUG_SANITIZE_NOC_MULTI_WRITE_TRANSACTION(noc, dst_noc_addr_multicast, src_local_l1_addr, size);
-        ncrisc_noc_fast_write_any_len<proc_type, noc_mode>(
-            noc,
-            write_cmd_buf,
-            src_local_l1_addr,
-            dst_noc_addr_multicast,
-            size,
-            NOC_DISPATCH_MULTICAST_WRITE_VC,
-            true,
-            linked,
-            num_dests,
-            multicast_path_reserve);
-        WAYPOINT("NMWD");
-    }
-    if (barrier) {
-        noc_async_write_barrier();
-    }
-}
 /**
  * Initiates an asynchronous write from a source address in L1 memory on the
  * Tensix core executing this function call to a rectangular destination grid.

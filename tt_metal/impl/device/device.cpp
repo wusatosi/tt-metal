@@ -1292,7 +1292,7 @@ void Device::update_workers_build_settings(std::vector<std::vector<std::tuple<tt
                         compile_args[13] = 0; // unused: remote ds semaphore
                         compile_args[14] = 0; // preamble size
                         compile_args[15] = true,    // split_prefetcher
-                        compile_args[16] = tt::tt_metal::hal.noc_xy_encoding(prefetch_physical_core.x, prefetch_physical_core.y),
+                        compile_args[16] = this->get_noc_unicast_encoding(NOC::NOC_1, prefetch_physical_core),
                         compile_args[17] = prefetch_h_settings.producer_semaphore_id, // sem_id on prefetch_h that dispatch_d is meant to increment, to resume sending of cmds post exec_buf stall
                         compile_args[18] = dispatch_constants::get(dispatch_core_type).mux_buffer_pages(num_hw_cqs), // XXXX should this be mux pages?
                         compile_args[19] = settings.num_compute_cores;
@@ -1347,7 +1347,7 @@ void Device::update_workers_build_settings(std::vector<std::vector<std::tuple<tt
                             compile_args[13] = 0; // unused: remote ds semaphore
                             compile_args[14] = 0; // preamble size
                             compile_args[15] = true,    // split_prefetcher
-                            compile_args[16] = tt::tt_metal::hal.noc_xy_encoding(prefetch_physical_core.x, prefetch_physical_core.y),
+                            compile_args[16] = this->get_noc_unicast_encoding(NOC::NOC_1, prefetch_physical_core),
                             compile_args[17] = prefetch_h_settings.producer_semaphore_id, // sem_id on prefetch_h that dispatch_d is meant to increment, to resume sending of cmds post exec_buf stall
                             compile_args[18] = mux_settings.cb_pages,
                             compile_args[19] = settings.num_compute_cores;
@@ -1802,9 +1802,6 @@ void Device::update_workers_build_settings(std::vector<std::vector<std::tuple<tt
 
 void Device::setup_tunnel_for_remote_devices() {
     chip_id_t mmio_device_id = this->id_;
-    constexpr NOC dispatch_d_noc_index = NOC::NOC_0;
-    constexpr NOC dispatch_s_noc_index = NOC::NOC_1; // Use NOC_1, since when dispatch_s and dispatch_d are on the same tensix, we want to distribute resources
-    static_assert(dispatch_d_noc_index != dispatch_s_noc_index, "Dispatch_s NOC must be different from Dispatch_d NOC");
     uint32_t num_tunnels = tt::Cluster::instance().get_mmio_device_tunnel_count(mmio_device_id);
     if (num_tunnels == 0) {
         //no remote device conected to this mmio device.
@@ -2191,10 +2188,11 @@ void Device::compile_command_queue_programs() {
 
     // TODO: this->hw_command_queues_[cq_id]->noc_index is also hardcoded to NOC_0 elsewhere, should have one definition and remove assertion
     constexpr NOC my_noc_index = NOC::NOC_0;
-    constexpr NOC dispatch_upstream_noc_index = NOC::NOC_1;
-    constexpr NOC dispatch_s_noc_index = NOC::NOC_1;
-    static_assert(my_noc_index != dispatch_upstream_noc_index, "Dispatch NOC used to communicate with upstream must be different from NOC used for other transactions");
-    static_assert(my_noc_index != dispatch_s_noc_index, "Dispatch_s NOC must be different from Dispatch_d NOC");
+    constexpr NOC dispatch_noc_index = NOC::NOC_1;
+    constexpr NOC dispatch_upstream_noc_index = NOC::NOC_0;
+    constexpr NOC dispatch_s_noc_index = NOC::NOC_0;
+    static_assert(dispatch_noc_index != dispatch_upstream_noc_index, "Dispatch NOC used to communicate with upstream must be different from NOC used for other transactions");
+    static_assert(dispatch_noc_index != dispatch_s_noc_index, "Dispatch_s NOC must be different from Dispatch_d NOC");
     for (uint8_t cq_id = 0; cq_id < this->num_hw_cqs(); cq_id++) {
         TT_ASSERT(this->hw_command_queues_[cq_id]->noc_index == my_noc_index, "Command Queue NOC index must match");
     }
@@ -2233,8 +2231,8 @@ void Device::compile_command_queue_programs() {
             const uint32_t dispatch_sem = tt::tt_metal::CreateSemaphore(*command_queue_program_ptr, dispatch_core, 0, dispatch_core_type);
 
             // dispatch_s location and flow control vars initialized as invalid. Will be set if dispatch_s is enabled for the given configuration.
-            tt_cxy_pair dispatch_s_core = tt_cxy_pair(0xff, 0xff, 0xff);
-            CoreCoord dispatch_s_physical_core = {0xff, 0xff};
+            tt_cxy_pair dispatch_s_core = tt_cxy_pair(0, 0, 0);
+            CoreCoord dispatch_s_physical_core = {0, 0};
             uint32_t dispatch_s_buffer_base = 0xff;
             uint32_t dispatch_s_sem = 0xff; // used by dispatch_s to sync with prefetch
             uint32_t dispatch_s_sync_sem_base_addr = dispatch_constants::get(dispatch_core_type).get_device_command_queue_addr(CommandQueueDeviceAddrType::DISPATCH_S_SYNC_SEM);; // used by dispatch_d to signal that dispatch_s can send go signal
@@ -2301,9 +2299,9 @@ void Device::compile_command_queue_programs() {
                 dispatch_physical_core,
                 dispatch_s_physical_core,
                 std::map<string, string> {},
-                my_noc_index,
-                my_noc_index,
-                my_noc_index,
+                dispatch_noc_index,
+                dispatch_noc_index,
+                dispatch_noc_index,
                 false,
                 false,
                 // TEMP: Disable function inlining on Prefetcher when watcher is enabled but no_inline is not specified to respect code space
@@ -2360,9 +2358,9 @@ void Device::compile_command_queue_programs() {
                 CoreCoord{0, 0},
                 dispatch_s_physical_core,
                 std::map<string, string> {},
-                my_noc_index,
+                dispatch_noc_index,
                 dispatch_upstream_noc_index,
-                my_noc_index
+                dispatch_noc_index
             );
             if (this->dispatch_s_enabled()) {
                 std::vector<uint32_t> dispatch_s_compile_args = {
@@ -2457,9 +2455,9 @@ void Device::compile_command_queue_programs() {
                     prefetch_settings.downstream_cores[0],
                     CoreCoord{0, 0},
                     std::map<string, string> {},
-                    my_noc_index,
-                    my_noc_index,
-                    my_noc_index,
+                    dispatch_noc_index,
+                    dispatch_noc_index,
+                    dispatch_noc_index,
                     false,
                     false,
                     // TEMP: Disable function inlining on Prefetcher when watcher is enabled but no_inline is not specified to respect code space
@@ -2546,12 +2544,12 @@ void Device::compile_command_queue_programs() {
                     dispatch_settings.worker_physical_core,
                     dispatch_settings.dispatch_core_type,
                     dispatch_settings.upstream_cores[0],
-                    CoreCoord{0xffffffff, 0xffffffff},
+                    CoreCoord{0, 0},
                     CoreCoord{0, 0},
                     std::map<string, string> {},
-                    my_noc_index,
+                    dispatch_noc_index,
                     dispatch_upstream_noc_index,
-                    my_noc_index
+                    dispatch_noc_index
                 );
                 cq_id = (cq_id + 1) % num_hw_cqs;
             }
@@ -2639,9 +2637,9 @@ void Device::compile_command_queue_programs() {
                 prefetch_d_settings.downstream_cores[0],
                 prefetch_d_settings.downstream_cores[1], // need to update
                 std::map<string, string> {},
-                my_noc_index,
-                my_noc_index,
-                my_noc_index,
+                dispatch_noc_index,
+                dispatch_noc_index,
+                dispatch_noc_index,
                 false,
                 false,
                 // TEMP: Disable function inlining on Prefetcher when watcher is enabled but no_inline is not specified to respect code space
@@ -2668,9 +2666,9 @@ void Device::compile_command_queue_programs() {
                 dispatch_d_settings.downstream_cores[0],
                 dispatch_d_settings.downstream_cores[1], // need to update
                 std::map<string, string> {},
-                my_noc_index,
+                dispatch_noc_index,
                 dispatch_upstream_noc_index,
-                my_noc_index
+                dispatch_noc_index
             );
             cq_id = (cq_id + 1) % num_hw_cqs;
         }
@@ -2874,7 +2872,7 @@ void Device::init_command_queue_host() {
     this->sysmem_manager_ = std::make_unique<SystemMemoryManager>(this->id_, this->num_hw_cqs());
     hw_command_queues_.resize(num_hw_cqs());
     for (size_t cq_id = 0; cq_id < num_hw_cqs(); cq_id++) {
-        hw_command_queues_[cq_id] = std::make_unique<HWCommandQueue>(this, cq_id, NOC::NOC_0);
+        hw_command_queues_[cq_id] = std::make_unique<HWCommandQueue>(this, cq_id, NOC::NOC_1);
         // Need to do this since CommandQueue constructor is private
         sw_command_queues_.push_back(std::unique_ptr<CommandQueue>(new CommandQueue(this, cq_id)));
     }
@@ -2999,9 +2997,9 @@ bool Device::close() {
 
     auto mmio_device_id = tt::Cluster::instance().get_associated_mmio_device(this->id_);
     std::unordered_set<CoreCoord> wait_for_cores = not_done_dispatch_cores[mmio_device_id];
-
+    std::cout << "Wait for cores" << std::endl;
     llrt::internal_::wait_until_cores_done(mmio_device_id, RUN_MSG_GO, wait_for_cores);
-
+    std::cout << "Done Wait for cores" << std::endl;
     DprintServerDetach(this);
     watcher_detach(this);
 
@@ -3624,7 +3622,7 @@ LaunchMessageRingBufferState& Device::get_worker_launch_message_buffer_state(Sub
 }
 
 NOC Device::dispatch_go_signal_noc() const {
-    return this->dispatch_s_enabled() ? NOC::NOC_1 : NOC::NOC_0;
+    return this->dispatch_s_enabled() ? NOC::NOC_0 : NOC::NOC_1;
 }
 
 SubDeviceManagerId Device::get_next_sub_device_manager_id() {
