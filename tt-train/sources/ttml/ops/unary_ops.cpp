@@ -78,7 +78,13 @@ autograd::TensorPtr mean(const autograd::TensorPtr& tensor) {
     autograd::GradFunction grad = [tensor, out]() {
         auto resulting_shape = tensor->get_value().get_shape();
         auto res = ttnn::moreh_mean_backward(
-            out->get_grad(), std::nullopt, false, resulting_shape, std::nullopt, std::nullopt, std::nullopt);
+            out->get_grad(),
+            std::nullopt,
+            false,
+            resulting_shape,
+            std::nullopt,
+            std::nullopt,
+            core::ComputeKernelConfig::precise());
         tensor->add_grad(res);
     };
     auto links = autograd::get_links(tensor);

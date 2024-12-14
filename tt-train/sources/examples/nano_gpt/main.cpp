@@ -15,6 +15,7 @@
 #include "datasets/dataloader.hpp"
 #include "datasets/in_memory_token_dataset.hpp"
 #include "datasets/utils.hpp"
+#include "fmt/base.h"
 #include "models/gpt2.hpp"
 #include "ops/binary_ops.hpp"
 #include "ops/losses.hpp"
@@ -328,7 +329,7 @@ int main(int argc, char **argv) {
     fmt::print("    Learning rate: {}\n", adamw_params.lr);
     fmt::print("    Weight decay: {}\n", adamw_params.weight_decay);
     fmt::print("    Use Kahan summation: {}\n", adamw_params.use_kahan_summation);
-    auto optimizer = ttml::optimizers::AdamW(model->parameters(), adamw_params);
+    auto optimizer = ttml::optimizers::MorehAdamW(model->parameters(), adamw_params);
     auto scheduler = schedule_func(&optimizer, config.max_steps);
     if (!config.model_path.empty() && std::filesystem::exists(config.model_path)) {
         fmt::print("Loading model from {}\n", config.model_path);
@@ -384,7 +385,8 @@ int main(int argc, char **argv) {
                     loss_meter.reset();
                 }
                 if (!config.model_path.empty() && global_step % config.model_save_interval == 0) {
-                    save_training_state(config.model_path, model, scheduler, "transformer", "adamw");
+                    auto path = config.model_path + std::to_string(global_step);
+                    save_training_state(path, model, scheduler, "transformer", "adamw");
                 }
 
                 if (global_step >= config.max_steps) {

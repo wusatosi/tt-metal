@@ -28,7 +28,12 @@ tt::tt_metal::Tensor sum_over_batch(const tt::tt_metal::Tensor& t) {
 
 // Stable log-softmax implementation
 tt::tt_metal::Tensor log_softmax(const tt::tt_metal::Tensor& t, int dim) {
-    auto t_max = ttnn::max(t, dim, /* keepdim */ true);
+    auto t_max = ttnn::max(
+        t,
+        dim,
+        /* keepdim */ true,
+        /* mem_config*/ std::nullopt, /*compute_kernel_config */
+        core::ComputeKernelConfig::precise());
     auto t_sub_max = ttnn::subtract(t, t_max);
 
     auto t_sub_max_exp = ttnn::exp(t_sub_max);
@@ -37,7 +42,6 @@ tt::tt_metal::Tensor log_softmax(const tt::tt_metal::Tensor& t, int dim) {
     auto log_t_sum_over_dim = ttnn::log(t_sum_over_dim);
     return ttnn::subtract(t_sub_max, log_t_sum_over_dim);
 }
-
 // Stable softmax implementation
 // ttnn::softmax also exists, but it is not stable (even after max subtraction optimization)
 tt::tt_metal::Tensor softmax(const tt::tt_metal::Tensor& t, int dim) {
@@ -45,7 +49,7 @@ tt::tt_metal::Tensor softmax(const tt::tt_metal::Tensor& t, int dim) {
         t,
         /* dim */ dim,
         /*memory_config */ std::nullopt,
-        ttml::core::ComputeKernelConfig::softmax(),
+        ttml::core::ComputeKernelConfig::precise(),
         /*stable*/ true);
 }
 

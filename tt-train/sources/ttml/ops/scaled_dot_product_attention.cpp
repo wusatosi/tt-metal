@@ -70,14 +70,14 @@ autograd::TensorPtr scaled_dot_product_attention(
             key->get_value(),
             /* transpose_a */ false,
             /* transpose_b */ false);
-        grad_q = ttnn::multiply(grad_q, scale);
+        grad_q = ttnn::multiply(grad_q, 1.0F / scale);
 
         auto grad_k = matmul(
             grad_scaled_dot,
             query->get_value(),
             /* transpose_a */ true,
             /* transpose_b */ false);
-        grad_k = ttnn::multiply(grad_k, scale);
+        grad_k = ttnn::multiply(grad_k, 1.0F / scale);
 
         query->add_grad(grad_q);
         key->add_grad(grad_k);
