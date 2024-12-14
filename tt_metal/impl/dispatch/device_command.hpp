@@ -561,6 +561,7 @@ public:
         const uint32_t offset_idx = 0,
         const bool no_stride = false,
         uint32_t write_offset_index = 0) {
+        std::cout << "calling adwp" << std::endl;
         static_assert(
             std::is_same<PackedSubCmd, CQDispatchWritePackedUnicastSubCmd>::value or
             std::is_same<PackedSubCmd, CQDispatchWritePackedMulticastSubCmd>::value);
@@ -589,6 +590,8 @@ public:
             write_packed_cmd->write_packed.write_offset_index = write_offset_index;
             write_packed_cmd->write_packed.addr = common_addr;
             write_packed_cmd->write_packed.size = packed_data_sizeB;
+            std::cout << "\t\tDWP 592: " << write_packed_cmd->write_packed.write_offset_index << " "
+                      << write_packed_cmd->write_packed.addr << " " << write_packed_cmd->write_packed.size << std::endl;
         };
         CQDispatchCmd* write_packed_cmd_dst = this->reserve_space<CQDispatchCmd*>(sizeof(CQDispatchCmd));
 
@@ -662,6 +665,8 @@ public:
             write_packed_cmd->write_packed.write_offset_index = write_offset_index;
             write_packed_cmd->write_packed.addr = common_addr;
             write_packed_cmd->write_packed.size = packed_data_sizeB;
+            std::cout << "\t\tDWP 667: " << write_packed_cmd->write_packed.write_offset_index
+                      << write_packed_cmd->write_packed.addr << write_packed_cmd->write_packed.size << std::endl;
         };
         CQDispatchCmd* write_packed_cmd_dst = this->reserve_space<CQDispatchCmd*>(sizeof(CQDispatchCmd));
 
@@ -711,6 +716,8 @@ public:
         uint32_t sub_cmds_sizeB = num_sub_cmds * sizeof(CQDispatchWritePackedLargeSubCmd);
         constexpr bool flush_prefetch = false;
         uint32_t payload_size = align(sizeof(CQDispatchCmd) + sub_cmds_sizeB, this->l1_alignment);
+        std::cout << "ADD DISPATCH WRITE PACKED LARGE sub_cmds_sizeB " << sub_cmds_sizeB << " payload size "
+                  << payload_size << std::endl;
         this->add_prefetch_relay_inline(flush_prefetch, payload_size);
 
         auto initialize_write_packed_large_cmd = [&](CQDispatchCmd* write_packed_large_cmd) {

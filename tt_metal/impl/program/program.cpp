@@ -1033,7 +1033,10 @@ void detail::Program_::populate_dispatch_data(Device *device) {
 
                 std::vector<KernelHandle> kernel_ids;
                 if (kernel_group.kernel_ids[DISPATCH_CLASS_ETH_DM0]) {
+                    std::cout << "Erisc has a kernel" << std::endl;
                     kernel_ids.push_back(kernel_group.kernel_ids[DISPATCH_CLASS_ETH_DM0].value());
+                } else {
+                    std::cout << "NO erisc kernel" << std::endl;
                 }
 
                 for (const auto &[cores, num_mcast_dsts] : dst_noc_unicast_info) {

@@ -643,7 +643,9 @@ void Cluster::initialize_blackhole_eth_connectivity() {
             bool is_active_and_trained = port_status == 1;
 
             std::cout << "Physical eth " << physical_eth_core.str() << " Logical " << logical_eth.str()
-                      << " channel " << eth_channel << " is active and trained " << is_active_and_trained << std::endl;
+                      << " channel " << eth_channel
+                      << " port status " << port_status
+                      << " is active and trained " << is_active_and_trained << std::endl;
 
             if (is_active_and_trained) {
                 read_core(remote_chip_info.data(), chip_infot_num_dwords * sizeof(uint32_t), tt_cxy_pair(chip_id, physical_eth_core), remote_info_base_addr);
@@ -657,7 +659,7 @@ void Cluster::initialize_blackhole_eth_connectivity() {
 
                 // TODO: find a better way to map board and asic location to chip
                 chip_id_t connected_chip_id;
-                std::cout << "chip to location size " << this->chip_to_location.size() << std::endl;
+                // std::cout << "chip to location size " << this->chip_to_location.size() << std::endl;
                 for (connected_chip_id = 0; connected_chip_id < this->chip_to_location.size(); connected_chip_id++) {
                     const auto &chip_identifier = this->chip_to_location[connected_chip_id];
                     if (chip_identifier.chip_location == remote_asic_location and chip_identifier.board_id == remote_board_id) {
@@ -1073,9 +1075,6 @@ std::tuple<tt_cxy_pair, tt_cxy_pair> Cluster::get_eth_tunnel_core(
 
 // TODO: ALLAN Can change to write one bit
 void Cluster::set_internal_routing_info_for_ethernet_cores(bool enable_internal_routing) const {
-    if (arch_ == ARCH::BLACKHOLE) {
-        return;
-    }
     log_debug(tt::LogDevice, "Set internal routing bit {}", enable_internal_routing);
     const uint32_t routing_info_addr = eth_l1_mem::address_map::ERISC_APP_ROUTING_INFO_BASE;
     // TODO: initialize devices if user does not

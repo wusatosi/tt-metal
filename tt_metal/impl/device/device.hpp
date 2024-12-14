@@ -130,6 +130,7 @@ class Device {
         return tt::Cluster::instance().get_ethernet_connected_device_ids(this->id_);
     }
 
+    // `skip_reserved_tunnel_cores` is ignored on BH because there are no ethernet cores used for Fast Dispatch tunneling
     std::unordered_set<CoreCoord> get_active_ethernet_cores(bool skip_reserved_tunnel_cores=false) const;
 
     bool is_active_ethernet_core(CoreCoord logical_core, bool skip_reserved_tunnel_cores=false) const;
