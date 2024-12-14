@@ -349,6 +349,8 @@ void EthernetKernel::generate_binaries(Device *device, JitBuildOptions &build_op
     uint32_t erisc_core_type = hal.get_programmable_core_type_index(this->get_kernel_programmable_core_type());
     uint32_t dm_class_idx = magic_enum::enum_integer(HalProcessorClassType::DM);
     int erisc_id = magic_enum::enum_integer(this->config_.processor);
+    std::cout << "Generating binaries for eth kernel core type " << erisc_core_type
+              << " dm class idx " << dm_class_idx << " erisc id " << erisc_id << std::endl;
     jit_build(device->build_kernel_state(erisc_core_type, dm_class_idx, erisc_id), this);
 }
 
@@ -401,7 +403,6 @@ void EthernetKernel::read_binaries(Device *device) {
     uint32_t dm_class_idx = magic_enum::enum_integer(HalProcessorClassType::DM);
     int erisc_id = magic_enum::enum_integer(this->config_.processor);
     const JitBuildState &build_state = device->build_kernel_state(erisc_core_type, dm_class_idx, erisc_id);
-    int risc_id = erisc_id + (this->config_.eth_mode == Eth::IDLE ? 6 : 5); // TODO (abhullar): clean this up when llrt helpers use HAL
     // TODO: fix when active eth supports relo
     auto load_type = (this->config_.eth_mode == Eth::IDLE) ?
         ll_api::memory::Loading::CONTIGUOUS_XIP : ll_api::memory::Loading::DISCRETE;
