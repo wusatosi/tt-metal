@@ -132,7 +132,7 @@ ttnn::Tensor permute_impl(
 
 ttnn::Tensor permute_launch(
     const ttnn::Tensor& a,
-    tt::stl::Span<const uint32_t> dims,
+    ttnn::SmallVector<uint32_t>& dims,
     const MemoryConfig& output_mem_config,
     const std::optional<float>& pad_value) {
     std::vector<ttnn::Tensor> output_tensors = {ttnn::Tensor(operation::get_workers_for_op_output({a}))};
