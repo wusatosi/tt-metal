@@ -98,7 +98,7 @@ void kernel_main() {
             resize_local_cb_interface(cb_id, curr_block_size_bytes, fifo_start_address, fifo_start_size);
 
             // Address setup
-            uint32_t tensor_base_address = tensor_addrs_l1[t * num_layers + layer];  // tensor_addrs_l1[t][layer];
+            uint32_t tensor_base_address = tensor_addrs_l1[layer * num_tensors + t];  // tensor_addrs_l1[t][layer];
             uint32_t src_base_addr =
                 noc_async_read_tile_dram_sharded_set_state<true>(tensor_base_address, curr_page_size, bank_id, vc);
             uint32_t src_read_addr = 0;
