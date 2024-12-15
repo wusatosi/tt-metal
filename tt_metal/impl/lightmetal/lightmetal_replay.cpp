@@ -690,7 +690,7 @@ void LightMetalReplay::execute(tt::target::EnqueueReadBufferCommand const *cmd) 
     bool show_reads = std::getenv("SHOW_READS");
     if (show_reads) {
         for (size_t i = 0; i < readback_data.size(); i++) {
-            log_info(tt::LogMetalTrace, " rd_data i: {:3d} => data: {}", i, readback_data[i]);
+            log_info(tt::LogMetalTrace, " rd_data i: {:3d} => data: {} ({:x})", i, readback_data[i], readback_data[i]);
         }
     }
 }
