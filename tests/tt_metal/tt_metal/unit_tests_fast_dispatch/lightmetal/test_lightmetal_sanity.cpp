@@ -252,4 +252,149 @@ TEST_F(SingleDeviceLightMetalFixture, ThreeRISCDataMovementComputeSanity) {
     Finish(command_queue);
 }
 
+// Test simple compute test with metal trace, but no explicit trace replay (added automatically by light metal trace).
+TEST_F(SingleDeviceLightMetalFixture, SingleProgramTraceCapture) {
+    Setup(2048);
+
+    // Must use CreateBuffer not Buffer::create()
+    uint32_t size_bytes = 64; // 16 elements. Was 2048 in original test.
+    auto input = CreateBuffer(InterleavedBufferConfig{this->device_, size_bytes, size_bytes, BufferType::DRAM});
+    auto output = CreateBuffer(InterleavedBufferConfig{this->device_, size_bytes, size_bytes, BufferType::DRAM});
+
+    CommandQueue& command_queue = this->device_->command_queue();
+
+    Program simple_program = lightmetal_test_helpers::create_simple_unary_program(*input, *output);
+
+    // Setup input data for program with some simple values.
+    vector<uint32_t> input_data(input->size() / sizeof(uint32_t), 0);
+    for (uint32_t i = 0; i < input_data.size(); i++) {
+        input_data[i] = i;
+    }
+
+    vector<uint32_t> eager_output_data, trace_output_data;
+    eager_output_data.resize(input_data.size());
+    trace_output_data.resize(input_data.size());
+
+    // Initial run w/o trace. Preloads binary cache, and captures golden output.
+    EnqueueWriteBuffer(command_queue, *input, input_data.data(), true);
+    EnqueueProgram(command_queue, simple_program, true);
+    EnqueueReadBuffer(command_queue, *output, eager_output_data.data(), true);
+
+    // Write junk to output buffer to help make sure trace run from standalone binary works.
+    bool debug_write_junk_to_output_buffer = true;
+    if (debug_write_junk_to_output_buffer) {
+        vector<uint32_t> dummy_data(input->size() / sizeof(uint32_t), 0xDEADBEEF);
+        EnqueueWriteBuffer(command_queue, *output, dummy_data.data(), true);
+        EnqueueReadBuffer(command_queue, *output, trace_output_data.data(), true);
+        for (size_t i = 0; i < trace_output_data.size(); i++) {
+            log_info(tt::LogMetalTrace, "i: {:3d} input: {:x} output: {:x} after writing dummy data", i, input_data[i], trace_output_data[i]);
+        }
+    }
+
+    // Now enable Metal Trace and run program again for capture.
+    uint32_t tid = BeginTraceCapture(this->device_, command_queue.id());
+    EnqueueProgram(command_queue, simple_program, false);
+    EndTraceCapture(this->device_, command_queue.id(), tid);
+
+    // Note: Purposely avoiding EnqueueTrace/ReplayTrace here. The trace will be
+    // automatically be replayed from LightMetal Binary w/ LoadTrace+ReplayTrace.
+    const bool debug_run_trace_during_capture = parse_env<bool>("RUN_TRACE_DURING_CAPTURE", false);
+    if (debug_run_trace_during_capture) {
+        EnqueueTrace(command_queue, tid, true);
+    }
+
+    // Read the output buffer. Without actually enqueue/replaying the trace in this test during
+    // capture, cannot compare to eager/golde output, only visual check during standalone playback.
+    EnqueueReadBuffer(command_queue, *output, trace_output_data.data(), true);
+    if (debug_run_trace_during_capture) {
+        log_info(tt::LogTest, "Comparing eager_output_data == trace_output_data");
+        EXPECT_TRUE(eager_output_data == trace_output_data);
+    }
+
+    // For dev/debug go ahead and print the results
+    for (size_t i = 0; i < trace_output_data.size(); i++) {
+        log_info(tt::LogMetalTrace, "i: {:3d} input: {:x} trace_output: {:x}", i, input_data[i], trace_output_data[i]);
+    }
+
+    // Done
+    Finish(command_queue);
+    ReleaseTrace(this->device_, tid);
+}
+
+
+// Test simple compute test with metal trace, but no explicit trace replay (added automatically by light metal trace).
+TEST_F(SingleDeviceLightMetalFixture, TwoProgramTraceCapture) {
+    Setup(2048);
+
+    // Must use CreateBuffer not Buffer::create()
+    uint32_t size_bytes = 64; // 16 elements. Was 2048 in original test.
+    auto input = CreateBuffer(InterleavedBufferConfig{this->device_, size_bytes, size_bytes, BufferType::DRAM});
+    auto interm = CreateBuffer(InterleavedBufferConfig{this->device_, size_bytes, size_bytes, BufferType::DRAM});
+    auto output = CreateBuffer(InterleavedBufferConfig{this->device_, size_bytes, size_bytes, BufferType::DRAM});
+
+    CommandQueue& command_queue = this->device_->command_queue();
+
+    Program op0 = lightmetal_test_helpers::create_simple_unary_program(*input, *interm);
+    Program op1 = lightmetal_test_helpers::create_simple_unary_program(*interm, *output);
+
+    // Setup input data for program with some simple values.
+    vector<uint32_t> input_data(input->size() / sizeof(uint32_t), 0);
+    for (uint32_t i = 0; i < input_data.size(); i++) {
+        input_data[i] = i;
+    }
+
+    vector<uint32_t> eager_output_data, trace_output_data;
+    eager_output_data.resize(input_data.size());
+    trace_output_data.resize(input_data.size());
+
+    // Initial run w/o trace. Preloads binary cache, and captures golden output.
+    EnqueueWriteBuffer(command_queue, *input, input_data.data(), true);
+    EnqueueProgram(command_queue, op0, true);
+    EnqueueProgram(command_queue, op1, true);
+    EnqueueReadBuffer(command_queue, *output, eager_output_data.data(), true);
+    Finish(command_queue); // KCM NEW
+
+    // Write junk to output buffer to help make sure trace run from standalone binary works.
+    bool debug_write_junk_to_output_buffer = true;
+    if (debug_write_junk_to_output_buffer) {
+        vector<uint32_t> dummy_data(input->size() / sizeof(uint32_t), 0xDEADBEEF);
+        EnqueueWriteBuffer(command_queue, *output, dummy_data.data(), true);
+        EnqueueReadBuffer(command_queue, *output, trace_output_data.data(), true);
+        for (size_t i = 0; i < trace_output_data.size(); i++) {
+            log_info(tt::LogMetalTrace, "i: {:3d} input: {:x} output: {:x} after writing dummy data", i, input_data[i], trace_output_data[i]);
+        }
+    }
+
+    // Now enable Metal Trace and run program again for capture.
+    uint32_t tid = BeginTraceCapture(this->device_, command_queue.id());
+    EnqueueProgram(command_queue, op0, false);
+    EnqueueProgram(command_queue, op1, false);
+    EndTraceCapture(this->device_, command_queue.id(), tid);
+
+    // Note: Purposely avoiding EnqueueTrace/ReplayTrace here. The trace will be
+    // automatically be replayed from LightMetal Binary w/ LoadTrace+ReplayTrace.
+    const bool debug_run_trace_during_capture = parse_env<bool>("RUN_TRACE_DURING_CAPTURE", false);
+    if (debug_run_trace_during_capture) {
+        EnqueueTrace(command_queue, tid, true);
+    }
+
+    // Read the output buffer. Without actually enqueue/replaying the trace in this test during
+    // capture, cannot compare to eager/golde output, only visual check during standalone playback.
+    EnqueueReadBuffer(command_queue, *output, trace_output_data.data(), true);
+    if (debug_run_trace_during_capture) {
+        log_info(tt::LogTest, "Comparing eager_output_data == trace_output_data");
+        EXPECT_TRUE(eager_output_data == trace_output_data);
+    }
+
+    // For dev/debug go ahead and print the results
+    for (size_t i = 0; i < trace_output_data.size(); i++) {
+        log_info(tt::LogMetalTrace, "i: {:3d} input: {:x} eager_output_data: {:x} trace_output: {:x}", i, input_data[i], eager_output_data[i], trace_output_data[i]);
+    }
+
+    // Done
+    Finish(command_queue);
+    ReleaseTrace(this->device_, tid);
+}
+
+
 } // end namespace basic_tests
