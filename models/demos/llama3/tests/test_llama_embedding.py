@@ -60,7 +60,7 @@ def test_llama_embedding(max_seq_len, batch_size, mesh_device, use_program_cache
     )
 
     prompts = ["Joy"] * 32
-    pt_input = torch.tensor([tokenizer.encode(prompt, bos=False, eos=False) for prompt in prompts])
+    pt_input = torch.tensor([model_args.encode_prompt(prompt, instruct=False) for prompt in prompts])
     reference_output = reference_emb(pt_input)
     logger.info(f"reference_output: {reference_output.shape}")
 

@@ -59,7 +59,6 @@ def map_hf_to_meta_keys(loaded_weights):
         "model.layers.{layer}.self_attn.q_proj.bias": "layers.{layer}.attention.wq.bias",
         "model.layers.{layer}.self_attn.k_proj.bias": "layers.{layer}.attention.wk.bias",
         "model.layers.{layer}.self_attn.v_proj.bias": "layers.{layer}.attention.wv.bias",
-        "model.layers.{layer}.self_attn.o_proj.bias": "layers.{layer}.attention.wo.bias",
         "model.layers.{layer}.mlp.gate_proj.weight": "layers.{layer}.feed_forward.w1.weight",
         "model.layers.{layer}.mlp.up_proj.weight": "layers.{layer}.feed_forward.w3.weight",
         "model.layers.{layer}.mlp.down_proj.weight": "layers.{layer}.feed_forward.w2.weight",
@@ -203,7 +202,6 @@ def map_meta_to_hf_keys(loaded_weights):
         "attention.wq.bias": "self_attn.q_proj.bias",
         "attention.wk.bias": "self_attn.k_proj.bias",
         "attention.wv.bias": "self_attn.v_proj.bias",
-        "attention.wo.bias": "self_attn.o_proj.bias",
         # Feed forward module
         "feed_forward.w1.weight": "mlp.gate_proj.weight",
         "feed_forward.w3.weight": "mlp.up_proj.weight",
@@ -219,7 +217,8 @@ def map_meta_to_hf_keys(loaded_weights):
         "wq.bias": "q_proj.bias",
         "wk.bias": "k_proj.bias",
         "wv.bias": "v_proj.bias",
-        "wo.bias": "o_proj.bias",
+        # Host embeddings
+        "emb.weight": "weight",
     }
 
     hf_state_dict = {}

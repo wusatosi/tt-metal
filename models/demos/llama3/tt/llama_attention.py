@@ -71,7 +71,6 @@ class TtLlamaAttention(LightweightModule):
 
         # Initialize bias tensors as None
         self.wqkv_bias = None
-        self.wo_bias = None
 
         # Create combined QKV bias if present in state dict
         if f"{wq_str}.bias" in self.state_dict:
@@ -97,18 +96,6 @@ class TtLlamaAttention(LightweightModule):
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
                 layout=ttnn.TILE_LAYOUT,
                 cache_file_name=cache_name("wqkv_bias_sharded"),
-            )
-
-        # Create output bias if present
-        if f"{wo_str}.bias" in self.state_dict:
-            self.wo_bias = ttnn.as_tensor(
-                self.state_dict[f"{wo_str}.bias"],
-                device=self.mesh_device,
-                mesh_mapper=ttnn.ShardTensorToMesh(self.mesh_device, dim=-1),
-                dtype=self.dtype,
-                memory_config=ttnn.DRAM_MEMORY_CONFIG,
-                layout=ttnn.TILE_LAYOUT,
-                cache_file_name=cache_name("wo_bias_height_sharded"),
             )
 
         # when splitting the devices, we need to make sure that the number of heads is divisible by the number of devices
@@ -381,7 +368,6 @@ class TtLlamaAttention(LightweightModule):
             _, dense_out_sharded, _ = ttnn.experimental.all_gather_matmul(
                 attn_output_cat,
                 self.wo,
-                bias=self.wo_bias,
                 dim=3,
                 all_gather_core_grid_offset=(0, 4),
                 num_links=1,
@@ -395,7 +381,6 @@ class TtLlamaAttention(LightweightModule):
             dense_out_sharded = ttnn.linear(
                 attn_output_cat,
                 self.wo,
-                bias=self.wo_bias,
                 program_config=self.model_config["ATTN_OUTPUT_PROGCFG"],
                 compute_kernel_config=self.compute_kernel_config_hifi2,
                 memory_config=attn_output_cat.memory_config(),
@@ -593,7 +578,6 @@ class TtLlamaAttention(LightweightModule):
         output_11SH = ttnn.linear(
             attn_output_11SH,
             self.wo,
-            bias=self.wo_bias,
             compute_kernel_config=self.compute_kernel_config_hifi2,
             dtype=ttnn.bfloat8_b,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,

@@ -1087,11 +1087,17 @@ class TtModelArgs:
 
             return AutoTokenizer.from_pretrained(self.DEFAULT_TOKENIZER_PATH)
 
-    def encode_prompt(self, prompt_text, system_prompt_text=None):
+    def encode_prompt(self, prompt_text, system_prompt_text=None, instruct=True):
         if self.checkpoint_type == CheckpointType.Meta:
-            return encode_prompt_llama_instruct(self.tokenizer, prompt_text, system_prompt_text)
+            if instruct:
+                return encode_prompt_llama_instruct(self.tokenizer, prompt_text, system_prompt_text)
+            else:
+                return self.tokenizer.encode(prompt_text, bos=False, eos=False)
         else:
-            return encode_prompt_hf(self.tokenizer, prompt_text, system_prompt_text)
+            if instruct:
+                return encode_prompt_hf(self.tokenizer, prompt_text, system_prompt_text)
+            else:
+                return self.tokenizer.encode(prompt_text, add_special_tokens=False)
 
     def reference_lm_head(self):
         if self.checkpoint_type == CheckpointType.Meta:
@@ -1174,6 +1180,40 @@ class TtModelArgs:
         else:
             model = self.reference_transformer()
             layer = model.model.layers[0].self_attn
-            layer._load_state_dict = layer.load_state_dict
-            layer.load_state_dict = lambda x: layer._load_state_dict(convert_meta_to_hf(x))
-            return layer
+            wrapper = HfAttentionWrapper(layer)
+            return wrapper
+
+
+class HfAttentionWrapper:
+    def __init__(self, attention):
+        from transformers import DynamicCache
+
+        super().__init__()
+        self.attention = attention
+        self.past_key_value = DynamicCache()
+
+    def forward(self, x, start_pos, freqs_cis_i, mask=None):
+        output, _, self.past_key_value = self.attention(
+            x,
+            past_key_value=self.past_key_value,
+            use_cache=True,
+            position_ids=torch.tensor([[start_pos]] * x.shape[0]),
+            attention_mask=mask,
+        )
+        return output
+
+    def __call__(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)
+
+    def load_state_dict(self, state_dict):
+        return self.attention.load_state_dict(convert_meta_to_hf(state_dict))
+
+    @property
+    def cache_k(self):
+        [(k, v)] = self.past_key_value.to_legacy_cache()
+        return k.permute(0, 2, 1, 3)  # match meta-style reference which uses (batch_size, seq, n_kv_heads, head_dim)
+
+    @property
+    def cache_v(self):
+        [(k, v)] = self.past_key_value.to_legacy_cache()
+        return v.permute(0, 2, 1, 3)  # match meta-style reference which uses (batch_size, seq, n_kv_heads, head_dim)

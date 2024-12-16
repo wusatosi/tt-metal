@@ -183,7 +183,7 @@ def test_llama_attention_inference(
         # In this test all users have the same position
         freqs_cis_i = freqs_cis[current_pos[0], :].unsqueeze(0)
 
-        reference_output = reference_model(pt_attention_input, current_pos[0], freqs_cis_i)
+        reference_output = reference_model(pt_attention_input, current_pos[0], freqs_cis_i, mask=None)
 
         passing, pcc_message = comp_pcc(reference_output, tt_output_torch, pcc)
 
@@ -237,21 +237,16 @@ def test_llama_attention_inference(
                     ttnn.to_torch(cache, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1))
                     for cache in tt_model.layer_past
                 ]
-
-            for i, (cache_pt, cache_tt) in enumerate(zip(pytorch_layer_present, tt_layer_present)):
-                cache_length_to_check = min(model_args.max_seq_len, generation_start_pos + generation_length + 1)
+            for label, cache_pt, cache_tt in zip(["K", "V"], pytorch_layer_present, tt_layer_present):
+                cache_length_to_check = min(model_args.max_seq_len, generation_start_pos + i + 1)
                 cache_pt = cache_pt[:, :, generation_start_pos:cache_length_to_check, :]
                 cache_tt = cache_tt[:, :, generation_start_pos:cache_length_to_check, :]
                 does_pass, output_pcc = comp_pcc(cache_pt, cache_tt, pcc)
-                if i == 0:
-                    logger.info(f"K cache output: {output_pcc}")
-                else:
-                    logger.info(f"V cache output: {output_pcc}")
-
+                logger.info(f"{label} cache output: {output_pcc}")
                 if does_pass:
-                    logger.info(f"KV Cache Passed!")
+                    logger.info(f"{label} cache Passed!")
                 else:
-                    logger.warning(f"KV Cache Failed! PCC value is lower than {pcc}")
+                    logger.warning(f"{label} Cache Failed! PCC value is lower than {pcc}")
                     all_tests_pass = False
 
     if all_tests_pass:
