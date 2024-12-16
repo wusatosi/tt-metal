@@ -189,7 +189,7 @@ int main(int argc, char **argv) {
     CLI::App app{"NanoGPT Example"};
     argv = app.ensure_utf8(argv);
 
-    std::string config_name = std::string(CONFIGS_FOLDER) + "/training_shakespear_nanogpt.yaml";
+    std::string config_name = std::string(CONFIGS_FOLDER) + "/training_shakespear_gpt2s_best.yaml";
     bool is_eval = false;
     bool add_time_to_name = true;
     app.add_option("-c,--config", config_name, "Yaml Config name")->default_val(config_name);
@@ -359,7 +359,8 @@ int main(int argc, char **argv) {
                 optimizer.zero_grad();
             }
             auto output = (*model)(features, masks);
-            auto loss = ttml::ops::nll_loss(output, target);
+            auto loss = ttml::ops::cross_entropy_loss_xtensor(output, target);
+            fmt::print("Loss shape: {}\n", loss->get_value().shape());
             loss = gradient_accumulator_helper.scale(loss);
             auto loss_float = ttml::core::to_vector(loss->get_value())[0];
 

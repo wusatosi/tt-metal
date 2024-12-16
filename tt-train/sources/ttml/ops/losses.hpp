@@ -16,6 +16,9 @@ autograd::TensorPtr mse_loss(
 autograd::TensorPtr cross_entropy_loss(
     const autograd::TensorPtr& prediction, const autograd::TensorPtr& target, ReduceType reduce = ReduceType::MEAN);
 
+autograd::TensorPtr cross_entropy_loss_xtensor(
+    const autograd::TensorPtr& prediction, const autograd::TensorPtr& target, ReduceType reduce = ReduceType::MEAN);
+
 autograd::TensorPtr nll_loss(
     const autograd::TensorPtr& prediction, const autograd::TensorPtr& target, ReduceType reduce = ReduceType::MEAN);
 
