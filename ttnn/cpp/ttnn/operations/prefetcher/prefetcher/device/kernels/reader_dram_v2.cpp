@@ -107,6 +107,8 @@ void kernel_main() {
             uint32_t num_free_blocks_in_buffer = total_num_blocks_in_buffer;
             uint32_t curr_block_trid = 1;
             uint32_t block_trid_to_wait = 1;
+            // Reserve two blocks of spcae to issue multiple block reads in parallel
+            cb_reserve_back(cb_id, max_block_num_tiles * 2);
 
             uint32_t l1_write_addr_offset = 0;
             uint32_t l1_write_addr_start = get_write_ptr(cb_id);
@@ -115,23 +117,6 @@ void kernel_main() {
                 l1_write_addr_start = l1_buffer_start_addr;
             }
             uint32_t l1_write_addr = l1_write_addr_start;
-
-            // for (uint32_t block = 0; block < num_blocks; ++block) {
-            //     cb_reserve_back(cb_id, max_block_num_tiles);
-            //     auto l1_write_addr = get_write_ptr(cb_id);
-
-            //     DPRINT << "reader max_block_num_tiles " << max_block_num_tiles << ENDL();
-
-            //     for (uint32_t h = 0; h < curr_block_num_pages; ++h) {
-            //         noc_async_read_tile_dram_sharded_with_state(src_base_addr, src_read_addr, l1_write_addr);
-            //         src_read_addr += curr_page_size;
-            //         l1_write_addr += curr_page_size;
-            //     }
-
-            //     noc_async_read_barrier();
-
-            //     cb_push_back(cb_id, max_block_num_tiles);
-            // }
 
             for (uint32_t block = 0; block < num_blocks; block++) {
                 // Set trid for current block
@@ -154,8 +139,9 @@ void kernel_main() {
                     block_trid_to_wait =
                         block_trid_to_wait == total_num_blocks_in_buffer ? 1 : (block_trid_to_wait + 1);
                     cb_reserve_back(
-                        cb_id, max_block_num_tiles * 2);  // Already wrote max_block_num_tiles into cb, need to make
-                                                          // sure there's space for another max_block_num_tiles
+                        cb_id,
+                        max_block_num_tiles *
+                            2);  // Reserve two blocks of spcae to issue multiple block reads in parallel
                 }
 
                 // Increment block_trid, wrap around to 1 if it reaches total_num_blocks_in_buffer
