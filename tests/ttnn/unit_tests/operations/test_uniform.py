@@ -53,7 +53,9 @@ def benchmark_uniform(cpu_input, npu_input, rand_from, rand_to):
 
 
 def validate_uniform(npu_input, shape, rand_from, rand_to, dtype, compute_kernel_config):
+    print(npu_input)
     ttnn.uniform(npu_input, rand_from, rand_to, compute_kernel_config=compute_kernel_config)
+    print(npu_input)
     tt_input = ttnn.to_torch(npu_input).reshape(shape)
     elem_cnt = Counter(tt_input.flatten().tolist())
 
@@ -61,18 +63,25 @@ def validate_uniform(npu_input, shape, rand_from, rand_to, dtype, compute_kernel
     npu_mean, npu_var = torch.mean(tt_input).item(), torch.var(tt_input).item()
     min_val, max_val = torch.min(tt_input).item(), torch.max(tt_input).item()
 
-    logger.info(f"Distinct elements: {len(elem_cnt.keys())}")
+    print(f"Distinct elements: {len(elem_cnt.keys())}")
     if max_val == rand_to:
-        logger.info(f"Count max_val: {elem_cnt[max_val]}")
-    logger.info(f"Min val: {min_val}, Max val: {max_val}")
-    logger.info(f"Expected mean: {expected_mean}, NPU mean: {npu_mean}")
-    logger.info(f"Expected var: {expected_var}, NPU var: {npu_var}")
+        print(f"Count max_val: {elem_cnt[max_val]}")
+    print(f"Min val: {min_val}, Max val: {max_val}")
+    print(f"Expected mean: {expected_mean}, NPU mean: {npu_mean}")
+    print(f"Expected var: {expected_var}, NPU var: {npu_var}")
+
+    print("Diff mean: ", abs(expected_mean - npu_mean))
+    print("Diff var: ", abs(expected_var - npu_var))
 
     assert torch.tensor(rand_from, dtype=get_lib_dtype(torch, dtype)) <= min_val and max_val < torch.tensor(
         rand_to, dtype=get_lib_dtype(torch, dtype)
     )
-    assert np.allclose(npu_mean, expected_mean, rtol=0.5)
-    assert np.allclose(npu_var, expected_var, rtol=0.5)
+    assert np.allclose(
+        npu_mean, expected_mean, rtol=0.5
+    ), f"Assertion failed: npu_mean={npu_mean}, expected_mean={expected_mean}"
+    assert np.allclose(
+        npu_var, expected_var, rtol=0.5
+    ), f"Assertion failed: npu_var={npu_var}, expected_var={expected_var}"
 
 
 def run_uniform(shape, rand_range, dtype, device, compute_kernel_options=None, mode=TestMode.VALIDATE):
@@ -108,8 +117,9 @@ def run_uniform(shape, rand_range, dtype, device, compute_kernel_options=None, m
 @pytest.mark.parametrize("rand_range", [[0, 1], [2.1, 9], [-5.1, 1.2]])
 @pytest.mark.parametrize("dtype", ["bfloat16", "float32"])
 def test_uniform(shape, rand_range, dtype, device):
-    torch.manual_seed(0)
-    run_uniform(shape, rand_range, dtype, device)
+    for i in range(300):
+        torch.manual_seed(0)
+        run_uniform(shape, rand_range, dtype, device)
 
 
 @skip_for_grayskull("Requires wormhole_b0 to run")
