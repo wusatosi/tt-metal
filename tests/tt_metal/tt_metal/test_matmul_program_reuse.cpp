@@ -87,7 +87,7 @@ int main(int argc, char** argv) {
             buffer_idx++;
         }
     }
-    for (int iter = 0; iter < 2; iter++) {
+    for (int iter = 0; iter < 100; iter++) {
         std::cout << "Run for iter: " << iter << std::endl;
         if (iter) {
             auto& rtas = GetRuntimeArgs(program, reader_writer_kernel);

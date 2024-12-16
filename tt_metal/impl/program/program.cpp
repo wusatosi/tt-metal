@@ -130,11 +130,22 @@ class Program_ {
     void allocate_circular_buffers(const Device *device);
 
     bool is_finalized() const;
+    void allocate_kernel_bin_buf_on_device(Device* device);
     void finalize(Device *device);
     bool is_cached() const { return this->cached_; }
-    bool is_on_device(std::size_t device_id) const { return this->on_device_.find(device_id) != this->on_device_.end(); }
+    ProgramBinaryStatus binaries_on_device_status(std::size_t device_id) const {
+        if (this->binaries_on_device_.find(device_id) != this->binaries_on_device_.end()) {
+            return this->binaries_on_device_.at(device_id);
+        }
+        return ProgramBinaryStatus::NotSent;
+    }
     void set_cached() { this->cached_ = true; }
-    void set_on_device(std::size_t device_id) { this->on_device_.insert(device_id); }
+    void set_binaries_on_device_status(std::size_t device_id, ProgramBinaryStatus status) {
+        if (this->binaries_on_device_.find(device_id) != this->binaries_on_device_.end()) {
+            this->binaries_on_device_.at(device_id) = status;
+        }
+        this->binaries_on_device_.insert({device_id, status});
+    }
     std::shared_ptr<Kernel> get_kernel(KernelHandle kernel_id) const;
 
     ProgramConfig& get_program_config(uint32_t programmable_core_type_index);
@@ -157,7 +168,7 @@ class Program_ {
     std::vector<std::shared_ptr<Buffer>> owned_buffer_pool = {};
 
     // The buffer that holds the kernel/binaries/etc for this program
-    std::shared_ptr<Buffer> kernels_buffer = nullptr;
+    std::unordered_map<std::size_t, std::shared_ptr<Buffer>> kernels_buffer = {};
     ProgramTransferInfo program_transfer_info;
 
     bool finalized_;
@@ -203,7 +214,7 @@ class Program_ {
     std::unordered_map<CoreCoord, std::bitset<NUM_CIRCULAR_BUFFERS>> per_core_cb_indices_;
     std::unordered_map<CoreCoord, std::bitset<NUM_CIRCULAR_BUFFERS>> per_core_local_cb_indices_;
     std::unordered_map<CoreCoord, std::bitset<NUM_CIRCULAR_BUFFERS>> per_core_remote_cb_indices_;
-    std::unordered_set<std::size_t> on_device_;
+    std::unordered_map<std::size_t, ProgramBinaryStatus> binaries_on_device_;
     // Used to generate circular buffer addresses. There is one CircularBufferAllocator per unique CoreRange
     std::vector<CircularBufferAllocator> cb_allocators_;
 
@@ -1096,10 +1107,6 @@ void detail::Program_::populate_dispatch_data(Device *device) {
     }
 
     if (binaries_data.size() > 0) {
-        // We allocate program binaries top down to minimize fragmentation with other buffers in DRAM, which are typically allocated bottom up
-        // this->kernels_buffer = Buffer::create(
-        //     device, binaries_data.size() * sizeof(uint32_t), HostMemDeviceCommand::PROGRAM_PAGE_SIZE, BufferType::DRAM, TensorMemoryLayout::INTERLEAVED, std::nullopt, false);
-
         this->program_transfer_info.binary_data = binaries_data;
     }
 
@@ -1455,6 +1462,16 @@ const std::vector<SubDeviceId> &detail::Program_::determine_sub_device_ids(const
     return sub_device_ids->second;
 }
 
+void detail::Program_::allocate_kernel_bin_buf_on_device(Device *device) {
+    // Allocate the DRAM kernel binary buffer for this program on the specified device, if not previously allocated.
+    // We allocate program binaries top down to minimize fragmentation with other buffers in DRAM, which are typically allocated bottom up
+    std::size_t binary_data_size_bytes = this->program_transfer_info.binary_data.size() * sizeof(uint32_t);
+    if (this->kernels_buffer.find(device->id()) == this->kernels_buffer.end() and binary_data_size_bytes) {
+        std::shared_ptr<Buffer> kernel_bin_buf = Buffer::create(device, binary_data_size_bytes, HostMemDeviceCommand::PROGRAM_PAGE_SIZE, BufferType::DRAM, TensorMemoryLayout::INTERLEAVED, std::nullopt, false);
+        this->kernels_buffer.insert({device->id(), kernel_bin_buf});
+    }
+}
+
 void detail::Program_::finalize(Device *device) {
     // Store the number of tensix "go signals" for use by CQ
     // CQ iterates over these to update runtime addresses, needs to know when eth begins (after tensix)
@@ -1504,6 +1521,8 @@ void detail::Program_::finalize(Device *device) {
     finalized_ = true;
 }
 
+void Program::allocate_kernel_bin_buf_on_device(Device* device) { pimpl_->allocate_kernel_bin_buf_on_device(device); }
+
 void Program::finalize(Device *device) { pimpl_->finalize(device); }
 
 void detail::Program_::compile(Device *device, bool fd_bootloader_mode) {
@@ -1511,7 +1530,6 @@ void detail::Program_::compile(Device *device, bool fd_bootloader_mode) {
     if (compiled_.contains(device->build_key())) {
         return;
     }
-    std::cout << "Compiling program" << std::endl;
     // Clear the determined sub_device_ids when we compile the program for the first time
     // This way, determine_sub_device_ids is forced to recalculate with the finalized information on the used cores
     if (compiled_.empty()) {
@@ -1620,7 +1638,7 @@ void detail::Program_::compile(Device *device, bool fd_bootloader_mode) {
     if (detail::MemoryReporter::enabled()) {
         detail::MemoryReporter::inst().flush_program_memory_usage(get_id(), device);
     }
-    compiled_.insert(device->id());
+    compiled_.insert(device->build_key());
 }
 
 void Program::compile(Device *device, bool fd_bootloader_mode) { pimpl_->compile(device, fd_bootloader_mode); }
@@ -1778,7 +1796,7 @@ void Program::release_buffers() { pimpl_->release_buffers(); }
 std::vector<std::reference_wrapper<const Semaphore>> detail::Program_::semaphores_on_core(const CoreCoord &core) const {
     std::vector<std::reference_wrapper<const Semaphore>> semaphores;
     for (const Semaphore &s : this->semaphores_) {
-        if (s.initialized_on_logical_core(core)) {\
+        if (s.initialized_on_logical_core(core)) {
             semaphores.emplace_back(std::cref(s));
         }
     }
@@ -1795,14 +1813,19 @@ bool Program::is_finalized() const { return pimpl_->is_finalized(); }
 bool Program::is_cached() const { return pimpl_->is_cached(); }
 void Program::set_cached() { pimpl_->set_cached(); }
 
-bool Program::is_on_device(std::size_t device_id) const { return pimpl_->is_on_device(device_id); }
-void Program::set_on_device(std::size_t device_id) { return pimpl_->set_on_device(device_id); }
+ProgramBinaryStatus Program::binaries_on_device_status(std::size_t device_id) const { return pimpl_->binaries_on_device_status(device_id); }
+void Program::set_binaries_on_device_status(std::size_t device_id, ProgramBinaryStatus status) { pimpl_->set_binaries_on_device_status(device_id, status); }
 
 const std::vector<SubDeviceId> &Program::determine_sub_device_ids(const Device *device) { return pimpl_->determine_sub_device_ids(device); }
 
 const ProgramTransferInfo &Program::get_program_transfer_info() const noexcept { return pimpl_->program_transfer_info; }
 
-std::shared_ptr<Buffer> &Program::get_kernels_buffer() const noexcept { return pimpl_->kernels_buffer; }
+const std::shared_ptr<Buffer> Program::get_kernels_buffer(Device* device) const noexcept {
+    if (pimpl_->kernels_buffer.find(device->id()) != pimpl_->kernels_buffer.end()) {
+        return pimpl_->kernels_buffer.at(device->id());
+    }
+    return nullptr;
+}
 
 const std::vector<uint32_t> &Program::get_program_config_sizes() const noexcept { return pimpl_->program_config_sizes_; }
 

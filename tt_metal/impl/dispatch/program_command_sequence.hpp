@@ -22,7 +22,9 @@ class CircularBuffer;
 
 struct ProgramCommandSequence {
     HostMemDeviceCommand preamble_command_sequence;
-    HostMemDeviceCommand stall_command_sequence;
+    HostMemDeviceCommand* stall_command_sequence_ptr;
+    HostMemDeviceCommand uncached_bin_stall_command_sequence;
+    HostMemDeviceCommand cached_bin_stall_command_sequence;
     std::vector<HostMemDeviceCommand> runtime_args_command_sequences;
     uint32_t runtime_args_fetch_size_bytes;
     HostMemDeviceCommand device_command_sequence;

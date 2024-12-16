@@ -101,6 +101,12 @@ struct ProgramConfig {
 
 inline namespace v0 {
 
+enum class ProgramBinaryStatus : uint8_t {
+    NotSent = 0,
+    InFlight = 1,
+    Committed = 2,
+};
+
 class Program {
    public:
     Program();
@@ -151,9 +157,10 @@ class Program {
 
     bool is_finalized() const;
     bool is_cached() const;
-    bool is_on_device(std::size_t device_id) const;
+    ProgramBinaryStatus binaries_on_device_status(std::size_t device_id) const;
     void set_cached();
-    void set_on_device(std::size_t device_id);
+    void set_binaries_on_device_status(std::size_t device_id, ProgramBinaryStatus status);
+    void allocate_kernel_bin_buf_on_device(Device* device);
     void finalize(Device *device);
     std::shared_ptr<Kernel> get_kernel(KernelHandle kernel_id) const;
 
@@ -204,7 +211,7 @@ class Program {
     friend detail::Internal_;
 
     const ProgramTransferInfo &get_program_transfer_info() const noexcept;
-    std::shared_ptr<Buffer> &get_kernels_buffer() const noexcept;
+    const std::shared_ptr<Buffer> get_kernels_buffer(Device* device) const noexcept;
     const std::vector<uint32_t> &get_program_config_sizes() const noexcept;
     std::unordered_map<uint64_t, ProgramCommandSequence> &get_cached_program_command_sequences() noexcept;
 };
