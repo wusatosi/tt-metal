@@ -36,6 +36,7 @@ inline __attribute__((__always_inline__)) void apply_mm_stagger(int operand) {
 }
 
 // Wait for N tiles available in the incoming stream
+template <uint32_t workload_delay = 0>
 inline void llk_wait_tiles(int operand, std::int32_t num_tiles) {
     // TODO(MO): Manually uncomment until issue #6619 is resolved
     // DeviceZoneScopedSumN1("CB-COMPUTE-WAIT-FRONT");
@@ -52,9 +53,14 @@ inline void llk_wait_tiles(int operand, std::int32_t num_tiles) {
     } while (num_tiles_recv < num_tiles_u);
 
     apply_mm_stagger(operand);
+
+    if constexpr (workload_delay) {
+        stall_kernel<workload_delay>(start_clk_l);
+    }
 }
 
 // Pop N tiles from the incoming stream
+template <uint32_t workload_delay = 0>
 inline void llk_pop_tiles(
     const std::int32_t operand, const std::int32_t num_tiles, const std::int32_t block_c_dim = 0) {
     std::uint32_t input = operand;
@@ -70,6 +76,10 @@ inline void llk_pop_tiles(
 
     if (get_local_cb_interface(input).fifo_rd_ptr >= get_local_cb_interface(input).fifo_limit) {
         get_local_cb_interface(input).fifo_rd_ptr -= get_local_cb_interface(input).fifo_size;
+    }
+
+    if constexpr (workload_delay) {
+        start_clk_l = reg_read(RISCV_DEBUG_REG_WALL_CLOCK_L);
     }
 }
 

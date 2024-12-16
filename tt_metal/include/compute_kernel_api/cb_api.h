@@ -37,7 +37,10 @@ namespace ckernel {
  * tiles to wait for      | uint32_t | It must be less or equal than the size of the CB (the total number of tiles that
  * fit into the CB) | True     |
  * */
-ALWI void cb_wait_front(uint32_t cbid, uint32_t ntiles) { UNPACK((llk_wait_tiles(cbid, ntiles))); }
+template <uint32_t workload_delay = 0>
+ALWI void cb_wait_front(uint32_t cbid, uint32_t ntiles) {
+    UNPACK(( llk_wait_tiles<workload_delay>(cbid, ntiles) ));
+}
 
 /**
  * Pops a specified number of tiles from the front of the specified CB. This
@@ -68,7 +71,10 @@ ALWI void cb_wait_front(uint32_t cbid, uint32_t ntiles) { UNPACK((llk_wait_tiles
  * tiles to be popped     | uint32_t | It must be less or equal than the size of the CB (the total number of tiles that
  * fit into the CB) | True     |
  */
-ALWI void cb_pop_front(uint32_t cbid, uint32_t ntiles) { UNPACK((llk_pop_tiles(cbid, ntiles))); }
+template <uint32_t workload_delay = 0>
+ALWI void cb_pop_front(uint32_t cbid, uint32_t ntiles) {
+    UNPACK(( llk_pop_tiles<workload_delay>(cbid, ntiles) ));
+}
 
 /**
  * A blocking call that waits for the specified number of tiles to be free in the specified circular buffer. This call
