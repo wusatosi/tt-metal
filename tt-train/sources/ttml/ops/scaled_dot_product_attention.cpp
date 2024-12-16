@@ -4,6 +4,8 @@
 
 #include "scaled_dot_product_attention.hpp"
 
+#include <ttnn/operations/eltwise/binary/binary.hpp>
+
 #include "autograd/auto_context.hpp"
 #include "autograd/graph_utils.hpp"
 #include "core/compute_kernel_config.hpp"
@@ -35,9 +37,9 @@ autograd::TensorPtr scaled_dot_product_attention(
     const std::optional<autograd::TensorPtr>& mask) {
     const float scale = 1.0F / std::sqrtf(static_cast<float>(query->get_value().get_shape()[-1]));
     // (B, H, S, E) x (B, H, E, S) -> (B, H, S, S)
-    auto qk_t = matmul(query->get_value(), key->get_value(), /* transpose_a */ false, /* transpose_b */ true);
+    auto q_scaled = ttnn::multiply(query->get_value(), scale);
+    auto qk_scaled = matmul(q_scaled, key->get_value(), /* transpose_a */ false, /* transpose_b */ true);
     // (B, H, S, S) * scale
-    auto qk_scaled = ttnn::multiply(qk_t, scale);
     if (mask.has_value()) {
         qk_scaled = ttnn::where(mask.value()->get_value(), qk_scaled, /* other */ -1e9F);
     }
@@ -61,23 +63,19 @@ autograd::TensorPtr scaled_dot_product_attention(
             ttnn::subtract(
                 grad_attention_weights,
                 ttnn_fixed::sum_over_dim(ttnn::multiply(attention_weights, grad_attention_weights), 3)));
-        if (mask.has_value()) {
-            grad_scaled_dot = ttnn::multiply(grad_scaled_dot, mask.value()->get_value());
-        }
 
+        grad_scaled_dot = ttnn::multiply(grad_scaled_dot, scale);
         auto grad_q = matmul(
             grad_scaled_dot,
             key->get_value(),
             /* transpose_a */ false,
             /* transpose_b */ false);
-        grad_q = ttnn::multiply(grad_q, scale);
 
         auto grad_k = matmul(
             grad_scaled_dot,
             query->get_value(),
             /* transpose_a */ true,
             /* transpose_b */ false);
-        grad_k = ttnn::multiply(grad_k, scale);
 
         query->add_grad(grad_q);
         key->add_grad(grad_k);
