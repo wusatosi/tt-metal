@@ -255,14 +255,14 @@ inline void llk_unpack_tilizeA_B(
         */
         std::uint32_t address_face_a = (n % 2 == 0) ? address_a : (address_a + (SCALE_DATUM_SIZE(unpack_src_format[operandA_id], FACE_C_DIM) >> 4));
         address_face_a += (n >= 2) ? ((SCALE_DATUM_SIZE(unpack_src_format[operandA_id], block_c_dim)) >> 4) : 0;
-
+        DPRINT << "IIIIIII" << ENDL();
         // Wait for free context
         wait_for_next_context(2);
-
+        DPRINT << "KKKKKKK" << ENDL();
         if constexpr (neginf_srcA) {
             TTI_UNPACR_NOP(SrcA,0,0,0,0,0,0,p_unpacr::UNP_CLRSRC_NEGINF, p_unpacr::UNP_CLRSRC);
         }
-
+        DPRINT << "LLLLLLLL" << ENDL();
         // Get tile address
         if (0 == unp_cfg_context) {
             cfg[THCON_SEC0_REG3_Base_address_ADDR32] = address_face_a;
@@ -271,33 +271,35 @@ inline void llk_unpack_tilizeA_B(
             cfg[THCON_SEC0_REG3_Base_cntx1_address_ADDR32] = address_face_a;
             cfg[THCON_SEC1_REG3_Base_cntx1_address_ADDR32] = address_b;
         }
-
+        DPRINT << "FFFFFFF" << ENDL();
         // Trisc::SEMPOST for context acquire
         semaphore_post(semaphore::UNPACK_SYNC);
-
+        DPRINT << "GGGGG" << ENDL();
         // Stall unpacker until pending CFG writes from Trisc have completed
         TTI_STALLWAIT(p_stall::STALL_UNPACK, p_stall::TRISC_CFG);
 
         //Reset Y counters for SrcA
         TTI_SETADCXY(p_setadc::UNP_A, 0, 0, 0, 0, 0b1010);
         //Unpack SrcB 16x16 face & Set Data Valid
-
+        DPRINT << "HHHHHHH" << ENDL();
         //If reload_srcB, only first face needs to be loaded, otherwise CH0_Z+=1
         TTI_UNPACR(SrcB, reload_srcB ? 0b0 : 0b1, 0, 0, 0, 1, 1, p_unpacr::RAREFYB_DISABLE, 0, 0, 0, 0, 1);
 
+        DPRINT << "AAAAAAAA" << ENDL();
         //Unpacks face_r_dim-1 rows of 1x16 datums to SrcA
         if (run_r_dim_loop) {
             ckernel_unpack_template::run(instrn_buffer, face_r_dim-1, unp_cfg_context == 0 ? 0 : 0xffff);
         }
-
+        DPRINT << "BBBBBBB" << ENDL();
         //Unpack last SrcA row of a 16x16 face and SetDvalid
         TTI_UNPACR(SrcA, 0b0, 0, 0, 0, 1, 1 /*Set Dvalid*/, p_unpacr::RAREFYB_DISABLE, 0, 0, 0, 0, 1);
-
+        DPRINT << "CCCCCCC" << ENDL();
         // T6::SEMGET for context release
         t6_semaphore_get(semaphore::UNPACK_SYNC);
-
+        DPRINT << "DDDDDDD" << ENDL();
         // Switch unpacker config context
         switch_config_context(unp_cfg_context);
+        DPRINT << "EEEEEEE" << ENDL();
     }
 
     WAYPOINT("UPTD");

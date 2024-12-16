@@ -53,6 +53,7 @@ inline void reduce_h_fused(
     const uint32_t in_cb_id, const uint32_t in_scalar_cb_id, const uint32_t in_stick_index, const uint32_t out_cb_id) {
     constexpr uint32_t num_faces_in_tile = is_partial_tile ? 1 : 2;
     constexpr uint32_t num_out_rows = 1;
+    UNPACK((DPRINT << "in_nblocks_c: " << in_nblocks_c << ENDL()));
     for (uint32_t b_i = 0; b_i < in_nblocks_c; ++b_i) {
         UNPACK((DPRINT << "00000" << ENDL()));
         cb_reserve_back(out_cb_id, 1);
@@ -61,7 +62,8 @@ inline void reduce_h_fused(
         cb_wait_front(curr_in_cb_id, 1);
         UNPACK((DPRINT << "22222" << ENDL()));
         tile_regs_acquire();
-        UNPACK((DPRINT << "33333" << ENDL()));
+        tensix_sync();
+        UNPACK((DPRINT << "33333" << ", curr_in_cb_id: " << curr_in_cb_id << ", in_scalar_cb_id: " << in_scalar_cb_id << ", num_output_tiles: " << num_output_tiles << ", num_faces_in_tile: " << num_faces_in_tile << ENDL()));
         unpack_tilizeA_B_block(
             curr_in_cb_id,
             in_scalar_cb_id,
