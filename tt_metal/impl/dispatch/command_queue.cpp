@@ -261,6 +261,7 @@ void EnqueueWriteInterleavedBufferCommand::add_buffer_data(HugepageDeviceCommand
             command_sequence.add_data((char*)this->src + src_address_offset, page_size_to_copy, this->padded_page_size);
             src_address_offset += page_size_to_copy;
         }
+        // try passing in second parameter - pass in start addr or start idx?
     } else {
         if (this->buffer.page_size() % this->buffer.alignment() != 0 and
             this->buffer.page_size() != this->buffer.size()) {
@@ -335,6 +336,7 @@ void EnqueueWriteBufferCommand::process() {
         cmd_sequence_sizeB += hal.get_alignment(HalMemType::HOST) * num_worker_counters;  // CQ_PREFETCH_CMD_RELAY_INLINE + CQ_DISPATCH_CMD_WAIT
     }
 
+    // const uint32_t offset_size_bytes = this->dst_page_index * this->padded_page_size;
     void* cmd_region = this->manager.issue_queue_reserve(cmd_sequence_sizeB, this->command_queue_id);
 
     HugepageDeviceCommand command_sequence(cmd_region, cmd_sequence_sizeB);
@@ -1349,6 +1351,7 @@ void HWCommandQueue::enqueue_write_buffer(
                 bank_base_address,
                 page_size_to_write,
                 dst_page_index,
+                orig_dst_page_index,
                 num_pages_to_write);
             this->enqueue_command(
                 command, false, sub_device_ids);  // don't block until the entire src data is enqueued in the issue queue
