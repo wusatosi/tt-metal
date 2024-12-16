@@ -1583,8 +1583,11 @@ void EnqueueProgramCommand::process() {
     // Currently this is mapped by device, but will be mapped by multiple values in the future
     auto& cached_program_command_sequences = program.get_cached_program_command_sequences();
     uint64_t command_hash = device->build_key();
-    bool is_cached = program.is_cached(); // && cached_cmd_iter != cached_program_command_sequences.end();
+    bool is_cached = program.is_cached();
     auto cached_cmd_iter = cached_program_command_sequences.find(command_hash);
+    if (is_cached and cached_cmd_iter == cached_program_command_sequences.end()) {
+        TT_FATAL(false, "Enqueueing a Program across devices with different cores harvested is not supported, unless coordinate virtualization is enabled (only enabled on Wormhole and above).");
+    }
     if (program.binaries_on_device_status(device->id()) == ProgramBinaryStatus::InFlight) {
         // assemble_stall_commands is hardcoded to always wait for everything for now.
         this->config_buffer_mgr.free(this->expected_num_workers_completed);

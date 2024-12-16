@@ -21,7 +21,8 @@ using namespace tt;
 int main(int argc, char** argv) {
     bool pass = true;
 
-    std::map<chip_id_t, tt_metal::Device*> devices_ = tt::tt_metal::detail::CreateDevices({0, 4, 1, 5, 2, 6, 3, 7});
+    std::map<chip_id_t, tt_metal::Device*> devices_ =
+        tt::tt_metal::detail::CreateDevices({0, 1});  // 4, 1, 5, 2, 6, 3, 7});
 
     CoreCoord worker_grid_size = devices_[0]->compute_with_storage_grid_size();
     std::vector<std::shared_ptr<Buffer>> input_buffers = {};
@@ -60,6 +61,7 @@ int main(int argc, char** argv) {
         CircularBufferConfig(dram_buffer_size, {{src0_cb_index, tt::DataFormat::Float16_b}})
             .set_page_size(src0_cb_index, single_tile_size);
 
+    uint32_t add_factor = 64;
     for (std::size_t row_idx = 0; row_idx < worker_grid_size.y; row_idx++) {
         CoreCoord curr_core = {0, row_idx};
         tt_metal::SetRuntimeArgs(
@@ -70,7 +72,7 @@ int main(int argc, char** argv) {
              output_buffers.at(row_idx)->address(),
              0, /* src_bank_id */
              0, /* dst_bank_id */
-             64,
+             add_factor,
              32,
              32,
              0,
@@ -92,7 +94,7 @@ int main(int argc, char** argv) {
         if (iter) {
             auto& rtas = GetRuntimeArgs(program, reader_writer_kernel);
             for (auto core : first_col) {
-                rtas[core.x][core.y].at(4) = 2 * rtas[core.x][core.y].at(4);
+                rtas[core.x][core.y].at(4) = ((iter % 2) + 1) * add_factor;
             }
         }
         for (auto device : devices_) {
@@ -108,9 +110,9 @@ int main(int argc, char** argv) {
                 EnqueueReadBuffer(dev->command_queue(), output_buffers.at(buffer_idx), dst_vec, true);
                 buffer_idx++;
                 for (int i = 0; i < dst_vec.size(); i++) {
-                    float ref_val = std::pow(2, iter + 1);
+                    float ref_val = std::pow(2, (iter % 2) + 1);
                     if (i >= 512) {
-                        ref_val = std::pow(2, 2 * (iter + 1));
+                        ref_val = std::pow(2, 2 * ((iter % 2) + 1));
                     }
                     TT_FATAL(dst_vec[i].to_float() == ref_val, "Mismatch {} {}", ref_val, dst_vec[i].to_float());
                 }
