@@ -221,7 +221,7 @@ int main(int argc, char** argv) {
                             get_latest_kernel_binary_path(mask, riscv1_kernel));
                         auto load_type =
                             (device->arch() == tt::ARCH::GRAYSKULL || device->arch() == tt::ARCH::WORMHOLE_B0)
-                                ? ll_api::memory::Loading::CONTIGUOUS
+                                ? ll_api::memory::Loading::CONTIGUOUS_XIP
                                 : ll_api::memory::Loading::CONTIGUOUS_XIP;
                         ll_api::memory const& ncrisc_binary = llrt::get_risc_binary(ncrisc_hex_path, load_type);
                         TT_FATAL(
