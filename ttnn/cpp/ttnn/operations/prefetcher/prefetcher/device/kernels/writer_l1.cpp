@@ -44,7 +44,7 @@ void kernel_main() {
 
     for (uint32_t layer = 0; layer < num_layers; layer++) {
         for (uint32_t t = 0; t < num_tensors; t++) {
-            uint32_t curr_coalesced_page_size = coalesced_page_sizes[t];
+            DeviceZoneScopedN("write") uint32_t curr_coalesced_page_size = coalesced_page_sizes[t];
             uint32_t curr_coalesced_num_pages = coalesced_num_pages[t];
             uint32_t curr_block_num_tiles = block_num_tiles[t];
             uint32_t curr_single_tile_sizes = single_tile_sizes[t];

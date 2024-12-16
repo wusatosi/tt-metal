@@ -76,6 +76,7 @@ operation::ProgramWithCallbacks dram_prefetcher_multi_core(
     std::vector<uint32_t> tensor_block_num_tiles;
     std::vector<std::vector<uint32_t>> tensor_shapes;
     std::vector<uint32_t> tensor_tile_sizes;
+    uint32_t max_block_size_in_bytes = 0;
     for (uint32_t t = 0; t < num_tensors; t++) {
         uint32_t height_in_tiles = tensor_buffers[t]->shard_spec().shape()[0] / tensor_tiles[t].get_tile_shape()[0];
         uint32_t width_in_tiles = tensor_buffers[t]->shard_spec().shape()[1] / tensor_tiles[t].get_tile_shape()[1];
@@ -83,6 +84,14 @@ operation::ProgramWithCallbacks dram_prefetcher_multi_core(
         tensor_shapes.push_back({height_in_tiles, width_in_tiles});
         tensor_block_num_tiles.push_back(height_in_tiles * width_in_tiles / num_blocks);
         tensor_tile_sizes.push_back(tensor_tiles[t].get_tile_size(tensor_data_formats[t]));
+        max_block_size_in_bytes = std::max(max_block_size_in_bytes, tensor_block_num_tiles[t] * tensor_tile_sizes[t]);
+
+        // std::cout << "height_in_tiles: " << height_in_tiles << std::endl;
+        // std::cout << "width_in_tiles: " << width_in_tiles << std::endl;
+        // std::cout << "num_blocks: " << num_blocks << std::endl;
+        // std::cout << "tensor_block_num_tiles: " << tensor_block_num_tiles[t] << std::endl;
+        // std::cout << "tensor_tile_sizes: " << tensor_tile_sizes[t] << std::endl;
+        // std::cout << "max_block_size_in_bytes: " << max_block_size_in_bytes << std::endl;
     }
 
     /* Cores setup */
@@ -90,10 +99,13 @@ operation::ProgramWithCallbacks dram_prefetcher_multi_core(
     auto receiver_core_range = global_cb->receiver_cores();
 
     /* read cb setup */
-    uint32_t reader_cb_size = global_cb->size();
+    const uint32_t total_num_blocks_in_buffer = 3;
+    uint32_t reader_cb_size = max_block_size_in_bytes * total_num_blocks_in_buffer;
+    // uint32_t reader_cb_size = global_cb->size();
     // uint32_t reader_cb_single_tile_size = 2048;  // bfloat16 tile size
     // uint32_t reader_cb_single_tile_size = 1088;  // bfp8_b tile size
     uint32_t reader_cb_single_tile_size = 576;  // bfp4_b tile size
+    // uint32_t reader_cb_single_tile_size = *std::max_element(tensor_tile_sizes.begin(), tensor_tile_sizes.end());
 
     uint32_t reader_cb_index = tt::CB::c_in0;
     CircularBufferConfig reader_cb_config =
@@ -195,7 +207,7 @@ operation::ProgramWithCallbacks dram_prefetcher_multi_core(
         coalesced_num_pages.push_back(coalesced_num_page);
     }
 
-    uint32_t total_num_blocks_in_buffer = 3;  // TODO: how big should reader CB be? here it's triple buffered
+    // uint32_t total_num_blocks_in_buffer = 3;  // TODO: how big should reader CB be? here it's triple buffered
     uint32_t bank_start_id = 1;               // TODO: What is this for?
     std::vector<uint32_t> bank_ids;
     const auto& reader_cores = corerange_to_cores(reader_core_range, std::nullopt, true);  // TODO: fix order??
@@ -218,8 +230,6 @@ operation::ProgramWithCallbacks dram_prefetcher_multi_core(
                 break;
             }
         }
-
-        const uint32_t total_num_blocks_in_buffer = 3;  // TODO: parametrize this
 
         std::vector<uint32_t> reader_rt_args = {bank_id, vc, total_num_blocks_in_buffer};
         reader_rt_args.insert(reader_rt_args.end(), page_sizes.begin(), page_sizes.end());

@@ -46,7 +46,7 @@ void kernel_main() {
     uint32_t l1_write_addr_in0 = get_write_ptr(cb_id_in2);
 
     for (uint32_t b = 0; b < batch; ++b) {
-        for (uint32_t shard_cnt = 0; shard_cnt < ring_size; shard_cnt++) {
+        DeviceZoneScopedN("read") for (uint32_t shard_cnt = 0; shard_cnt < ring_size; shard_cnt++) {
             uint32_t curr_shard_write_addr = l1_write_addr_in0 + shard_size_bytes * shard_cnt;
             uint64_t remote_curr_shard_write_addr =
                 get_noc_addr(next_core_noc_x, next_core_noc_y, curr_shard_write_addr, noc);

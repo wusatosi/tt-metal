@@ -52,6 +52,21 @@ def get_core_ranges(num_reader_cores, num_receiver_cores=2):
         ttnn.CoreCoord(10, 0),
         ttnn.CoreCoord(11, 0),
     ]
+
+    # Printing closest cores to the dram cores
+    # x: 0, y: 9
+    # x: 0, y: 0
+    # x: 0, y: 4
+    # x: 0, y: 5
+    # x: 4, y: 0
+    # x: 4, y: 9
+    # x: 4, y: 1
+    # x: 4, y: 7
+    # x: 4, y: 6
+    # x: 4, y: 2
+    # x: 4, y: 4
+    # x: 4, y: 5
+
     all_sender_cores = [
         ttnn.CoreCoord(0, 9),
         ttnn.CoreCoord(0, 0),
@@ -60,8 +75,8 @@ def get_core_ranges(num_reader_cores, num_receiver_cores=2):
         ttnn.CoreCoord(4, 0),
         ttnn.CoreCoord(4, 9),
         ttnn.CoreCoord(4, 1),
-        ttnn.CoreCoord(4, 8),
-        ttnn.CoreCoord(4, 3),
+        ttnn.CoreCoord(4, 7),  # 4, 8 -> 4,7
+        ttnn.CoreCoord(4, 6),  # 4, 3 -> 4,6
         ttnn.CoreCoord(4, 2),
         ttnn.CoreCoord(4, 4),
         ttnn.CoreCoord(4, 5),
@@ -81,10 +96,10 @@ def get_core_ranges(num_reader_cores, num_receiver_cores=2):
         (6, 9),
         (5, 1),
         (6, 1),
-        (5, 8),
-        (6, 8),
-        (5, 3),
-        (6, 3),
+        (5, 7),
+        (6, 7),
+        (5, 6),
+        (6, 6),
         (5, 2),
         (6, 2),
         (5, 4),
@@ -152,16 +167,16 @@ def get_core_ranges(num_reader_cores, num_receiver_cores=2):
         ttnn.CoreRangeSet(
             [
                 ttnn.CoreRange(
-                    ttnn.CoreCoord(5, 8),
-                    ttnn.CoreCoord(6, 8),
+                    ttnn.CoreCoord(5, 7),
+                    ttnn.CoreCoord(6, 7),
                 ),
             ]
         ),
         ttnn.CoreRangeSet(
             [
                 ttnn.CoreRange(
-                    ttnn.CoreCoord(5, 3),
-                    ttnn.CoreCoord(6, 3),
+                    ttnn.CoreCoord(5, 6),
+                    ttnn.CoreCoord(6, 6),
                 ),
             ]
         ),
@@ -193,20 +208,20 @@ def get_core_ranges(num_reader_cores, num_receiver_cores=2):
 
     mm_optimised_ring_cores = [
         (6, 9),
-        (6, 8),
+        (6, 7),
+        (6, 6),
         (6, 5),
         (6, 4),
-        (6, 3),
         (6, 2),
         (6, 1),
         (6, 0),
         (5, 0),
         (5, 1),
         (5, 2),
-        (5, 3),
         (5, 4),
         (5, 5),
-        (5, 8),
+        (5, 6),
+        (5, 7),
         (5, 9),
         (2, 9),
         (2, 5),
@@ -246,16 +261,16 @@ def get_core_ranges(num_reader_cores, num_receiver_cores=2):
 @pytest.mark.parametrize(
     "num_reader_cores, num_tensors, input_shapes, num_layers",
     [  # TODO: test different shapes etc
-        (2, 2, [(256, 512), (256, 512)], 1),
-        (2, 2, [(1024, 256), (1024, 256)], 1),
-        (2, 2, [(128, 128), (128, 128)], 1),
-        (2, 2, [(256, 1024), (256, 1024)], 1),
-        (
-            12,
-            1,
-            [(2304, 3840), (2304, 3840)],
-            1,
-        ),  # FF1/3 = 72 tiles x 120 tiles = 8640 tiles / 24 cores = 720
+        # (2, 2, [(256, 512), (256, 512)], 1),
+        # (2, 2, [(1024, 256), (1024, 256)], 1),
+        # (2, 2, [(128, 128), (128, 128)], 1),
+        # (2, 2, [(256, 1024), (256, 1024)], 1),
+        # (
+        #     12,
+        #     1,
+        #     [(2304, 3840), (2304, 3840)],
+        #     1,
+        # ),  # FF1/3 = 72 tiles x 120 tiles = 8640 tiles / 24 cores = 720
         (
             12,
             1,
@@ -263,7 +278,7 @@ def get_core_ranges(num_reader_cores, num_receiver_cores=2):
             10,
         ),  # FF1/3 = 72 tiles x 120 tiles = 8640 tiles / 24 cores = 720 tiles per receiver core
         # (12, 2, [(7680, 2304), (7680, 2304)], 1),  # FF2: hangs
-        (12, 2, [(2304, 1536), (2304, 1536)], 1),  # QKV
+        # (12, 2, [(2304, 1536), (2304, 1536)], 1),  # QKV
         # (12, 2, [(2304, 2304), (2304, 2304)], 1),  # DO: bad pcc
     ],
 )

@@ -35,11 +35,19 @@ void kernel_main() {
         reinterpret_cast<volatile tt_l1_ptr uint32_t*>(get_read_ptr(addrs_cb_id));
 
     for (uint32_t layer = 0; layer < num_layers; layer++) {
+        // DPRINT << "layer: " << layer << ENDL();
         for (uint32_t t = 0; t < num_tensors; t++) {
-            uint32_t curr_page_size = page_sizes[t];
+            DeviceZoneScopedN("read")
+                // DPRINT << "t: " << t << ENDL();
+                uint32_t curr_page_size = page_sizes[t];
             uint32_t curr_block_num_pages = block_num_pages[t];
             uint32_t curr_block_num_tiles = block_num_tiles[t];
             uint32_t curr_block_size_bytes = curr_block_num_pages * curr_page_size;
+
+            // DPRINT << "curr_page_size: " << curr_page_size << ENDL();
+            // DPRINT << "curr_block_num_pages: " << curr_block_num_pages << ENDL();
+            // DPRINT << "curr_block_num_tiles: " << curr_block_num_tiles << ENDL();
+            // DPRINT << "curr_block_size_bytes: " << curr_block_size_bytes << ENDL();
 
             // Address setup
             uint32_t tensor_base_address = tensor_addrs_l1[t * num_layers + layer];  // tensor_addrs_l1[t][layer];
@@ -61,65 +69,76 @@ void kernel_main() {
             }
             uint32_t l1_write_addr = l1_write_addr_start;
 
-            for (uint32_t block = 0; block < num_blocks; ++block) {
-                // TODO: Fix granularity of the CB
-                cb_reserve_back(cb_id, curr_block_num_tiles);
-                for (uint32_t h = 0; h < curr_block_num_pages; ++h) {
-                    noc_async_read_tile_dram_sharded_with_state(src_base_addr, src_read_addr, l1_write_addr);
-                    src_read_addr += curr_page_size;
-                    l1_write_addr += curr_page_size;
-                }
-
-                noc_async_read_barrier();
-                cb_push_back(cb_id, curr_block_num_tiles);
-
-                // // Dprint a tile from the buffer
-                // for (uint32_t i = 0; i < 4; i++) {
-                //     uint32_t value = *(volatile uint32_t*)(l1_write_addr_start + i);
-                //     DPRINT << "tile[" << i << "]: " << value << ENDL();
-                // }
-            }
-
-            // // TODO: Bring back optimized version of reading from DRAM (@yugao)
-            // for (uint32_t block = 0; block < num_blocks; block++) {
-            //     noc_async_read_tile_dram_sharded_set_trid(curr_block_trid);
-
-            //     uint32_t temp_l1_write_addr = l1_write_addr;
+            // for (uint32_t block = 0; block < num_blocks; ++block) {
+            //     // TODO: Fix granularity of the CB
+            //     cb_reserve_back(cb_id, curr_block_num_tiles);
             //     for (uint32_t h = 0; h < curr_block_num_pages; ++h) {
-            //         noc_async_read_tile_dram_sharded_with_state_with_trid(
-            //             src_base_addr, src_read_addr, temp_l1_write_addr, curr_block_trid);
+            //         noc_async_read_tile_dram_sharded_with_state(src_base_addr, src_read_addr, l1_write_addr);
             //         src_read_addr += curr_page_size;
-            //         temp_l1_write_addr += curr_page_size;
+            //         l1_write_addr += curr_page_size;
             //     }
 
-            //     // TODO: Write comments here explaining what's going on
-            //     if (num_free_blocks_in_buffer == 2) {
-            //         noc_async_read_barrier_with_trid(block_trid_to_wait);
-            //         cb_push_back(cb_id, curr_block_num_pages);
-            //         // wait for next block trid
-            //         block_trid_to_wait = block_trid_to_wait == 3 ? 1 : (block_trid_to_wait + 1);
-            //         // reserve for next block
-            //         cb_reserve_back(cb_id, curr_block_num_pages * 2);
-            //     } else {
-            //         num_free_blocks_in_buffer -= 1;
-            //     }
+            //     noc_async_read_barrier();
+            //     cb_push_back(cb_id, curr_block_num_tiles);
 
-            //     if (curr_block_trid == total_num_blocks_in_buffer) {
-            //         curr_block_trid = 1;
-            //     } else {
-            //         curr_block_trid += 1;
-            //     }
-
-            //     // Is this needed? shouldn't the CB internally handle overflow?
-            //     l1_write_addr += curr_block_size_bytes;
-            //     if (l1_write_addr >= l1_buffer_end_addr) {
-            //         l1_write_addr = l1_buffer_start_addr;
-            //     }
+            //     // // Dprint a tile from the buffer
+            //     // for (uint32_t i = 0; i < 4; i++) {
+            //     //     uint32_t value = *(volatile uint32_t*)(l1_write_addr_start + i);
+            //     //     DPRINT << "tile[" << i << "]: " << value << ENDL();
+            //     // }
             // }
 
-            // // last block to wait
-            // noc_async_read_barrier_with_trid(block_trid_to_wait);
-            // cb_push_back(cb_id, curr_block_num_pages);
+            for (uint32_t block = 0; block < num_blocks; block++) {
+                DPRINT << "block: " << block << ENDL();
+                noc_async_read_tile_dram_sharded_set_trid(curr_block_trid);
+
+                // Issue noc async read commands for first block, one page at a time
+                uint32_t temp_l1_write_addr = l1_write_addr;
+                for (uint32_t h = 0; h < curr_block_num_pages; ++h) {
+                    noc_async_read_tile_dram_sharded_with_state_with_trid(
+                        src_base_addr, src_read_addr, temp_l1_write_addr, curr_block_trid);
+                    src_read_addr += curr_page_size;
+                    temp_l1_write_addr += curr_page_size;
+                }
+
+                // TODO: Write comments here explaining what's going on
+                if (num_free_blocks_in_buffer == 2) {  // while first block is being written, wait for next block
+                    // DPRINT << "num_free_blocks_in_buffer == 2; noc async read barrier with trid: " <<
+                    // block_trid_to_wait << ENDL();
+                    noc_async_read_barrier_with_trid(block_trid_to_wait);
+                    // cb_push_back(cb_id, curr_block_num_pages);
+                    // DPRINT << "cb_push_back(cb_id, curr_block_num_tiles); " << curr_block_num_tiles << ENDL();
+                    cb_push_back(cb_id, curr_block_num_tiles);
+                    // Increase block_trid_to_wait, but wrap around to 1 if it reaches 3 (max blocks in buffer)
+                    block_trid_to_wait = block_trid_to_wait == 3 ? 1 : (block_trid_to_wait + 1);
+                    // reserve for next block
+                    // cb_reserve_back(cb_id, curr_block_num_pages * 2);  // TODO: why is this curr_block_num_pages * 2
+                    // and not curr_block_num_tiles?? DPRINT << "cb_reserve_back(cb_id, curr_block_num_tiles * 2); " <<
+                    // curr_block_num_tiles * 2 << ENDL();
+                    cb_reserve_back(cb_id, curr_block_num_tiles * 2);
+                } else {  // decrement num_free_blocks_in_buffer if it was the first block
+                    num_free_blocks_in_buffer -= 1;
+                }
+
+                // Increment block_trid, wrap around to 1 if it reaches total_num_blocks_in_buffer
+                if (curr_block_trid == total_num_blocks_in_buffer) {
+                    curr_block_trid = 1;
+                } else {
+                    curr_block_trid += 1;
+                }
+
+                // Wrap around l1_write_addr if it reaches l1_buffer_end_addr
+                l1_write_addr += curr_block_size_bytes;
+                if (l1_write_addr >= l1_buffer_end_addr) {
+                    l1_write_addr = l1_buffer_start_addr;
+                }
+            }
+
+            // last block to wait
+            // DPRINT << "last block to wait; noc async read barrier with trid: " << block_trid_to_wait << ENDL();
+            noc_async_read_barrier_with_trid(block_trid_to_wait);
+            // DPRINT << "cb_push_back(cb_id, curr_block_num_pages); " << curr_block_num_pages << ENDL();
+            cb_push_back(cb_id, curr_block_num_tiles);
         }
     }
 }
