@@ -6,6 +6,7 @@
 #include <thread>
 #include "tt_metal/device.hpp"
 #include "common/core_assignment.hpp"
+#include "llrt/rtoptions.hpp"
 #include "tt_metal/host_api.hpp"
 #include "tt_metal/impl/device/device.hpp"
 #include "tt_metal/impl/trace/trace.hpp"
@@ -2978,7 +2979,7 @@ void Device::initialize_synchronous_sw_cmd_queue() {
 // Controlled by env var TT_METAL_ARC_DEBUG_BUFFER_SIZE=<size_bytes>
 // Allocates a buffer for debugging purposes
 void Device::allocate_dram_debug_buffer() {
-    uint32_t arc_debug_buffer_size = llrt::OptionsG.get_arc_debug_buffer_size();
+    uint32_t arc_debug_buffer_size = llrt::RunTimeOptions::get_instance().get_arc_debug_buffer_size();
     if (arc_debug_buffer_size) {
         tt::tt_metal::InterleavedBufferConfig dram_config{
             .device = this,
