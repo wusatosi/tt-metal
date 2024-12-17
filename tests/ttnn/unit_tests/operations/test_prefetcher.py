@@ -273,6 +273,7 @@ def get_core_ranges(num_reader_cores, num_global_cb_receivers):
     dram_cores = all_dram_cores[:num_reader_cores]
     sender_cores = all_sender_cores[:num_reader_cores]
     receiver_cores_list = all_receiver_cores_list[: num_reader_cores * num_global_cb_receivers]
+    # receiver_cores_list = all_receiver_cores_list[:num_reader_cores]
     receiver_cores = all_receiver_cores[:num_reader_cores]
 
     return (
