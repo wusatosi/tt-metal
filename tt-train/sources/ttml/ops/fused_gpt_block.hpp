@@ -11,6 +11,7 @@ namespace ttml::ops {
 
 typedef std::unordered_map<std::string, serialization::SerializableType> Parameters;
 
-autograd::TensorPtr fused_gpt_block(const autograd::TensorPtr& input, Parameters& parameters);
+autograd::TensorPtr fused_gpt_block(
+    const autograd::TensorPtr& input, const autograd::TensorPtr& mask, Parameters& parameters);
 
 }  // namespace ttml::ops
