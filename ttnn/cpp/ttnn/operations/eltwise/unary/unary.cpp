@@ -35,6 +35,7 @@ inline Tensor unary_impl(
     auto output_memory_config = optional_output_tensor.has_value()
                                     ? optional_output_tensor.value().memory_config()
                                     : memory_config.value_or(input_tensor.memory_config());
+    input_tensor.print();
     return prim::unary(
         queue_id,
         input_tensor,
