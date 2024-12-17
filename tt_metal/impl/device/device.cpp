@@ -3724,6 +3724,19 @@ SubDeviceManagerId Device::create_sub_device_manager(tt::stl::Span<const SubDevi
     return sub_device_manager->first;
 }
 
+/*
+*/
+std::tuple<SubDeviceManagerId, SubDeviceId> Device::create_sub_device_manager_with_fabric(tt::stl::Span<const SubDevice> sub_devices, DeviceAddr local_l1_size) {
+    auto merged_subdevice = SubDevice(std::array<CoreRangeSet, NumHalProgrammableCoreTypes>{
+        sub_devices.front().cores(HalProgrammableCoreType::TENSIX),
+        this->default_sub_device_manager_->sub_device(SubDeviceId{0}).cores(HalProgrammableCoreType::ACTIVE_ETH),
+        {}});
+    auto new_sub_devices = {merged_subdevice};
+    auto sub_device_manager_id = this->create_sub_device_manager(new_sub_devices, local_l1_size);
+    return {sub_device_manager_id, SubDeviceId{0}};
+}
+
+/*
 std::tuple<SubDeviceManagerId, SubDeviceId> Device::create_sub_device_manager_with_fabric(tt::stl::Span<const SubDevice> sub_devices, DeviceAddr local_l1_size) {
     auto fabric_sub_device = SubDevice(std::array{CoreRangeSet(), this->default_sub_device_manager_->sub_device(SubDeviceId{0}).cores(HalProgrammableCoreType::ACTIVE_ETH)});
     auto new_sub_devices = std::vector<SubDevice>(sub_devices.begin(), sub_devices.end());
@@ -3733,6 +3746,7 @@ std::tuple<SubDeviceManagerId, SubDeviceId> Device::create_sub_device_manager_wi
     this->sub_device_managers_[sub_device_manager_id]->set_fabric_sub_device_id(fabric_sub_device_id);
     return {sub_device_manager_id, fabric_sub_device_id};
 }
+*/
 
 std::optional<SubDeviceId> Device::get_fabric_sub_device_id() const {
     return this->active_sub_device_manager_->fabric_sub_device_id();
