@@ -47,10 +47,10 @@ def tt_all_reduce(
 
     # TG: all_reduce
     # Cast to CCL dtype
-    if input_tensor.dtype != dtype:
-        input_tensor = ttnn.to_memory_config(input_tensor, ttnn.L1_MEMORY_CONFIG, dtype)  # typecast and to interleaved
-        if sharded and memory_config is not None:
-            input_tensor = ttnn.to_memory_config(input_tensor, memory_config, dtype)  # to sharded
+    # if input_tensor.dtype != dtype:
+    #     input_tensor = ttnn.to_memory_config(input_tensor, ttnn.L1_MEMORY_CONFIG, dtype)  # typecast and to interleaved
+    #     if sharded and memory_config is not None:
+    #         input_tensor = ttnn.to_memory_config(input_tensor, memory_config, dtype)  # to sharded
 
     # Ensure the input tensor is in the correct memory configuration
     if not sharded:  # prefill
