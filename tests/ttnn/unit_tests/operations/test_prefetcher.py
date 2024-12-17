@@ -296,7 +296,7 @@ def get_core_ranges(num_reader_cores, num_global_cb_receivers):
         (2, 2, [(256, 1024), (256, 1024)], [ttnn.bfloat4_b] * 2, 5),
         (
             12,
-            1,
+            5,
             [(2304, 3840)] * 5,
             [ttnn.bfloat4_b] * 5,
             2,
