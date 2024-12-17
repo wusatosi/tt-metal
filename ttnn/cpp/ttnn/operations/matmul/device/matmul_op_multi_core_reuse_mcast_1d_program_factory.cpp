@@ -1772,7 +1772,7 @@ operation::ProgramWithCallbacks create_program_gather_in0(
     uint32_t interm0_CB_size = out_CB_tiles * interm0_single_tile_size;
 
     /* semaphores */
-    auto in0_signal_semaphore_id = tt_metal::CreateSemaphore(program, all_cores, INVALID);
+    auto in0_signal_semaphore_id = tt_metal::CreateSemaphore(program, all_cores.merge(hop_cores), INVALID);
 
     uint32_t in0_num_subblocks = (per_core_M / out_subblock_h);
     uint32_t in0_block_num_tiles = out_subblock_h * in0_block_w * in0_num_subblocks;
