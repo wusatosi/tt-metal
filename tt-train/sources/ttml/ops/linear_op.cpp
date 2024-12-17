@@ -5,6 +5,9 @@
 #include "linear_op.hpp"
 
 #include <core/ttnn_all_includes.hpp>
+#include <ttnn/tensor/enum_types.hpp>
+#include <ttnn/tensor/tensor.hpp>
+#include <ttnn/tensor/types.hpp>
 
 #include "autograd/auto_context.hpp"
 #include "autograd/graph_utils.hpp"
@@ -13,25 +16,48 @@
 
 namespace {
 
+// tt::tt_metal::Tensor matmul(
+//     const tt::tt_metal::Tensor& a,
+//     const tt::tt_metal::Tensor& b,
+//     bool transpose_a,
+//     bool transpose_b,
+//     const ttnn::WormholeComputeKernelConfig& config) {
+//     return ttnn::matmul(
+//         a,
+//         b,
+//         transpose_a,
+//         transpose_b,
+//         /* memory_config */ std::nullopt,
+//         /* dtype */ std::nullopt,
+//         /* program_config */ std::nullopt,
+//         /* activation */ std::nullopt,
+//         /* compute_kernel_config */
+//         config,
+//         /* core_grid */ ttnn::CoreGrid{7, 8},
+//         /* output_tile */ std::nullopt);
+// }
+
+// fake matmul
 tt::tt_metal::Tensor matmul(
     const tt::tt_metal::Tensor& a,
     const tt::tt_metal::Tensor& b,
     bool transpose_a,
     bool transpose_b,
     const ttnn::WormholeComputeKernelConfig& config) {
-    return ttnn::matmul(
-        a,
-        b,
-        transpose_a,
-        transpose_b,
-        /* memory_config */ std::nullopt,
-        /* dtype */ std::nullopt,
-        /* program_config */ std::nullopt,
-        /* activation */ std::nullopt,
-        /* compute_kernel_config */
-        config,
-        /* core_grid */ ttnn::CoreGrid{7, 8},
-        /* output_tile */ std::nullopt);
+    auto shape_a = a.get_logical_shape();
+    auto shape_b = b.get_logical_shape();
+
+    if (transpose_a) {
+        std::swap(shape_a[-1], shape_a[-2]);
+    }
+
+    if (transpose_b) {
+        std::swap(shape_b[-1], shape_b[-2]);
+    }
+
+    shape_a[-1] = shape_b[-1];
+    auto* device = &ttml::autograd::ctx().get_device();
+    return ttml::core::empty(shape_a, device, a.memory_config());
 }
 
 }  // namespace
@@ -72,56 +98,69 @@ void moreh_linear_backward(
     const autograd::TensorPtr& bias,
     const autograd::TensorPtr& out,
     const ttnn::WormholeComputeKernelConfig& config) {
-    auto bias_grad = ttnn::empty_like(bias->get_value());
-    auto tensor_grad = ttnn::empty_like(tensor->get_value());
-    auto weight_grad = ttnn::empty_like(weight->get_value());
+    throw std::runtime_error("Not implemented");
+    // auto bias_grad = ttnn::empty_like(bias->get_value());
+    // auto tensor_grad = ttnn::empty_like(tensor->get_value());
+    // auto weight_grad = ttnn::empty_like(weight->get_value());
 
-    auto res = ttnn::moreh_linear_backward(
-        out->get_grad(),
-        tensor->get_value(),
-        weight->get_value(),
-        /* are required outputs */ std::vector<bool>{true, true, true},
-        bias->get_value(),
-        tensor_grad,
-        weight_grad,
-        bias_grad,
-        /* input_grad_mem_config */ std::nullopt,
-        /* weight_grad_mem_config */ std::nullopt,
-        /* bias_grad_mem_config */ std::nullopt,
-        /* compute_kernel_config */ config);
+    // auto res = ttnn::moreh_linear_backward(
+    //     out->get_grad(),
+    //     tensor->get_value(),
+    //     weight->get_value(),
+    //     /* are required outputs */ std::vector<bool>{true, true, true},
+    //     bias->get_value(),
+    //     tensor_grad,
+    //     weight_grad,
+    //     bias_grad,
+    //     /* input_grad_mem_config */ std::nullopt,
+    //     /* weight_grad_mem_config */ std::nullopt,
+    //     /* bias_grad_mem_config */ std::nullopt,
+    //     /* compute_kernel_config */ config);
 
-    if (!res[0].has_value()) {
-        throw std::runtime_error("Tensor gradient is not available");
-    }
-    tensor->add_grad(res[0].value());
+    // if (!res[0].has_value()) {
+    //     throw std::runtime_error("Tensor gradient is not available");
+    // }
+    // tensor->add_grad(res[0].value());
 
-    if (!res[1].has_value()) {
-        throw std::runtime_error("Weight gradient is not available");
-    }
-    weight->add_grad(res[1].value());
+    // if (!res[1].has_value()) {
+    //     throw std::runtime_error("Weight gradient is not available");
+    // }
+    // weight->add_grad(res[1].value());
 
-    if (!res[2].has_value()) {
-        throw std::runtime_error("Bias gradient is not available");
-    }
-    bias->add_grad(res[2].value());
+    // if (!res[2].has_value()) {
+    //     throw std::runtime_error("Bias gradient is not available");
+    // }
+    // bias->add_grad(res[2].value());
+}
+
+ttnn::Tensor fake_linear(const ttnn::Tensor& tensor, const ttnn::Tensor& weight, const ttnn::Tensor& bias) {
+    auto shape_a = tensor.get_logical_shape();
+    auto shape_b = weight.get_logical_shape();
+    std::swap(shape_b[-1], shape_b[-2]);
+    shape_a[-1] = shape_b[-1];
+    auto* device = &ttml::autograd::ctx().get_device();
+    return ttml::core::empty(shape_a, device, tensor.memory_config());
 }
 
 autograd::TensorPtr linear_op(
     const autograd::TensorPtr& tensor, const autograd::TensorPtr& weight, const autograd::TensorPtr& bias) {
     auto out = autograd::create_tensor();
 
-    out->set_value(ttnn::linear(
-        tensor->get_value(),
-        weight->get_value(),
-        bias->get_value(),
-        /* transpose_a */ false,
-        /* tranpose_b */ true,
-        /* memory_config */ std::nullopt,
-        /* dtype */ std::nullopt,
-        /* program_config */ std::nullopt,
-        /* activation */ std::nullopt,
-        /* compute_kernel_config */ core::ComputeKernelConfig::matmul(),
-        /* core_grid */ ttnn::CoreGrid{7, 8}));
+    // out->set_value(ttnn::linear(
+    //     tensor->get_value(),
+    //     weight->get_value(),
+    //     bias->get_value(),
+    //     /* transpose_a */ false,
+    //     /* tranpose_b */ true,
+    //     /* memory_config */ std::nullopt,
+    //     /* dtype */ std::nullopt,
+    //     /* program_config */ std::nullopt,
+    //     /* activation */ std::nullopt,
+    //     /* compute_kernel_config */ core::ComputeKernelConfig::matmul(),
+    //     /* core_grid */ ttnn::CoreGrid{7, 8}));
+
+    auto linear_result = fake_linear(tensor->get_value(), weight->get_value(), bias->get_value());
+    out->set_value(linear_result);
 
     autograd::GradFunction grad = [weight, bias, tensor, out]() {
         auto tensor_shape = tensor->get_value().get_shape();

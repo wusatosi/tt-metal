@@ -12,20 +12,39 @@
 
 namespace ttml::ops {
 
+// tt::tt_metal::Tensor matmul(
+//     const tt::tt_metal::Tensor& a, const tt::tt_metal::Tensor& b, bool transpose_a, bool transpose_b) {
+//     return ttnn::matmul(
+//         a,
+//         b,
+//         transpose_a,
+//         transpose_b,
+//         /* memory_config */ std::nullopt,
+//         /* dtype */ std::nullopt,
+//         /* program_config */ std::nullopt,
+//         /* activation */ std::nullopt,
+//         /* compute_kernel_config */ core::ComputeKernelConfig::matmul(),
+//         /* core_grid */ ttnn::CoreGrid{7, 8},
+//         /* output_tile */ std::nullopt);
+// }
+
+// fake matmul
 tt::tt_metal::Tensor matmul(
     const tt::tt_metal::Tensor& a, const tt::tt_metal::Tensor& b, bool transpose_a, bool transpose_b) {
-    return ttnn::matmul(
-        a,
-        b,
-        transpose_a,
-        transpose_b,
-        /* memory_config */ std::nullopt,
-        /* dtype */ std::nullopt,
-        /* program_config */ std::nullopt,
-        /* activation */ std::nullopt,
-        /* compute_kernel_config */ core::ComputeKernelConfig::matmul(),
-        /* core_grid */ ttnn::CoreGrid{7, 8},
-        /* output_tile */ std::nullopt);
+    auto shape_a = a.get_logical_shape();
+    auto shape_b = b.get_logical_shape();
+
+    if (transpose_a) {
+        std::swap(shape_a[-1], shape_a[-2]);
+    }
+
+    if (transpose_b) {
+        std::swap(shape_b[-1], shape_b[-2]);
+    }
+
+    shape_a[-1] = shape_b[-1];
+    auto* device = &ttml::autograd::ctx().get_device();
+    return ttml::core::empty(shape_a, device, a.memory_config());
 }
 
 autograd::TensorPtr scaled_dot_product_attention(
@@ -56,11 +75,12 @@ autograd::TensorPtr scaled_dot_product_attention(
         auto grad_v = matmul(attention_weights, grad_output, /* transpose_a */ true, /* transpose_b */ false);
         auto grad_attention_weights =
             matmul(grad_output, value->get_value(), /* transpose_a */ false, /* transpose_b */ true);
-        auto grad_scaled_dot = ttnn::multiply(
-            attention_weights,
-            ttnn::subtract(
-                grad_attention_weights,
-                ttnn_fixed::sum_over_dim(ttnn::multiply(attention_weights, grad_attention_weights), 3)));
+        auto grad_scaled_dot = attention_weights;
+        // auto grad_scaled_dot = ttnn::multiply(
+        //     attention_weights,
+        //     ttnn::subtract(
+        //         grad_attention_weights,
+        //         ttnn_fixed::sum_over_dim(ttnn::multiply(attention_weights, grad_attention_weights), 3)));
         if (mask.has_value()) {
             grad_scaled_dot = ttnn::multiply(grad_scaled_dot, mask.value()->get_value());
         }
