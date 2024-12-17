@@ -65,7 +65,6 @@ SECTIONS
     *(.text .stub .text.* .gnu.linkonce.t.*)
     /* .gnu.warning sections are handled specially by elf32.em.  */
     *(.gnu.warning)
-    . = ALIGN(4);
   } > REGION_CODE :text
   .init.fini :
   {
@@ -74,30 +73,23 @@ SECTIONS
     ASSERT(SIZEOF(.init.fini) == 0, ".init/.fini sections have contents");
   } > REGION_CODE :text
 
-#if defined(TYPE_KERNEL)
-   __kernel_data_lma = .;
-#endif
-  . = ALIGN(ABSOLUTE(.) + MEM_PAD, MEM_ALIGN);
+  . = ALIGN(. + MEM_PAD, MEM_ALIGN);
 
 #if defined(TYPE_FIRMWARE)
-  __fw_export_end_text = ABSOLUTE(.);
+  __fw_export_end_text = .;
 #if defined(TARGET_NCRISC)
-  PROVIDE (KERNEL_ENTRY_SYMBOL = ABSOLUTE(__fw_export_end_text));
+  PROVIDE (KERNEL_ENTRY_SYMBOL = __fw_export_end_text);
 #endif
 #endif
 
 #if defined(TYPE_KERNEL)
-  __kernel_init_local_l1_base = ABSOLUTE(.);
+  __kernel_init_local_l1_base = .;
 #endif
 
 #if defined(TYPE_FIRMWARE)
   PROVIDE(__global_pointer$ = ORIGIN(REGION_DATA) + 0x7f0);
 #endif
-  .data DATA_START :
-#if defined (TYPE_KERNEL)
-        AT(__kernel_data_lma)
-#endif
-	ALIGN(4)
+  .data DATA_START : ALIGN(4)
   {
      . = .; /* Force section emission.  */
      __ldm_data_start = .;
@@ -149,8 +141,8 @@ SECTIONS
   } > REGION_DATA :data
 
 #ifdef TYPE_FIRMWARE
-  . = ALIGN(ABSOLUTE(.), MEM_ALIGN);
-  __fw_export_ldm_end = ABSOLUTE(.);
+  . = ALIGN(MEM_ALIGN);
+  __fw_export_ldm_end = .;
 #endif
 
 #ifdef TYPE_FIRMWARE

@@ -378,12 +378,17 @@ void DataMovementKernel::read_binaries(Device *device) {
     int riscv_id = static_cast<std::underlying_type<DataMovementProcessor>::type>(this->config_.processor);
     const JitBuildState &build_state = device->build_kernel_state(tensix_core_type, dm_class_idx, riscv_id);
     // TODO: from HAL
-    auto load_type =
+    ll_api::memory::Relocate relo_type =
         (riscv_id == 1 && (device->arch() == tt::ARCH::GRAYSKULL || device->arch() == tt::ARCH::WORMHOLE_B0)) ?
-        ll_api::memory::Loading::CONTIGUOUS : ll_api::memory::Loading::CONTIGUOUS_XIP;
+        ll_api::memory::Relocate::NONE : ll_api::memory::Relocate::XIP;
     ll_api::memory const& binary_mem = llrt::get_risc_binary(
         build_state.get_target_out_path(this->kernel_full_name_),
-        load_type);
+        // processor class is BRISC/NCRISC and each have one data movement processor type
+        tensix_core_type,
+        riscv_id,
+        dm_class_idx,
+        ll_api::memory::PackSpans::PACK,
+        relo_type);
     binaries.push_back(&binary_mem);
     uint32_t binary_size = binary_mem.get_packed_size();
     log_debug(LogLoader, "RISC {} kernel binary size: {} in bytes", riscv_id, binary_size);
@@ -400,11 +405,15 @@ void EthernetKernel::read_binaries(Device *device) {
     const JitBuildState &build_state = device->build_kernel_state(erisc_core_type, dm_class_idx, erisc_id);
     int risc_id = erisc_id + (this->config_.eth_mode == Eth::IDLE ? 6 : 5); // TODO (abhullar): clean this up when llrt helpers use HAL
     // TODO: fix when active eth supports relo
-    auto load_type = (this->config_.eth_mode == Eth::IDLE) ?
-        ll_api::memory::Loading::CONTIGUOUS_XIP : ll_api::memory::Loading::DISCRETE;
+    ll_api::memory::Relocate relo_type = (this->config_.eth_mode == Eth::IDLE) ?
+        ll_api::memory::Relocate::XIP : ll_api::memory::Relocate::NONE;
     ll_api::memory const& binary_mem = llrt::get_risc_binary(
         build_state.get_target_out_path(this->kernel_full_name_),
-        load_type);
+        erisc_core_type,
+        erisc_id,
+        dm_class_idx,
+        ll_api::memory::PackSpans::PACK,
+        relo_type);
     binaries.push_back(&binary_mem);
     uint32_t binary_size = binary_mem.get_packed_size();
     log_debug(LogLoader, "ERISC {} kernel binary size: {} in bytes", erisc_id, binary_size);
@@ -420,7 +429,11 @@ void ComputeKernel::read_binaries(Device *device) {
         const JitBuildState &build_state = device->build_kernel_state(tensix_core_type, compute_class_idx, trisc_id);
         ll_api::memory const& binary_mem = llrt::get_risc_binary(
             build_state.get_target_out_path(this->kernel_full_name_),
-            ll_api::memory::Loading::CONTIGUOUS_XIP);
+            tensix_core_type,
+            compute_class_idx,
+            trisc_id,
+            ll_api::memory::PackSpans::PACK,
+            ll_api::memory::Relocate::XIP);
         binaries.push_back(&binary_mem);
         uint32_t binary_size = binary_mem.get_packed_size();
         log_debug(LogLoader, "RISC {} kernel binary size: {} in bytes", trisc_id + 2, binary_size);
