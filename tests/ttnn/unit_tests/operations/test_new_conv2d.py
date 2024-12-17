@@ -2446,6 +2446,8 @@ def test_model_k_256x256(
     "batch_size, output_channels,input_channels, input_height, input_width, filter_height, filter_width, stride_h, stride_w, pad_h, pad_w, use_1d_systolic_array, config_override, use_shallow_conv_variant",
     (
         (1, 32, 64, 480, 640, 3, 3, 1, 1, 1, 1, True, None, False),
+        (1, 32, 32, 480, 640, 3, 3, 1, 1, 1, 1, True, None, False),
+        (1, 32, 64, 240, 320, 3, 3, 1, 1, 1, 1, True, None, False),
         # (1, 32, 3, 480, 640, 3, 3, 1, 1, 1, 1, True, {"act_block_h": 64}, True),
         # (1, 32, 32, 480, 640, 3, 3, 1, 1, 1, 1, True, {"act_block_h": 32}, False),
         # (1, 64, 32, 240, 320, 3, 3, 1, 1, 1, 1, True, None, False),
