@@ -23,7 +23,13 @@ SWEEP_SOURCES_DIR = SWEEPS_DIR / "sweeps"
 # Generate vectors from module parameters
 def generate_vectors(module_name):
     test_module = importlib.import_module("sweeps." + module_name)
-    parameters = test_module.parameters
+    try:
+        parameters = test_module.parameters
+    except AttributeError:
+        logger.warning(
+            f"module {module_name} has no attribute named 'parameters'. Attempting to call {module_name}.get_parameters()"
+        )
+        parameters = test_module.get_parameters()
 
     for suite in parameters:
         logger.info(f"Generating test vectors for suite {suite}.")
