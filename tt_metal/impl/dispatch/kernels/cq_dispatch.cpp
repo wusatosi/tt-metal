@@ -788,8 +788,10 @@ void process_write_packed_large(
         data_ptr += pad_size;
 
         count--;
+        noc_nonposted_writes_acked[noc_index] = mcasts;
+        noc_async_write_barrier();
     }
-    noc_nonposted_writes_acked[noc_index] = mcasts;
+    // noc_nonposted_writes_acked[noc_index] = mcasts;
 
     cmd_ptr = data_ptr;
 }
