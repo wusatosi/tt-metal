@@ -248,9 +248,7 @@ void EnqueueWriteShardedBufferCommand::add_dispatch_write(HugepageDeviceCommand&
     uint32_t data_size_bytes = this->pages_to_write * this->padded_page_size;
     const CoreCoord physical_core =
         this->buffer.device()->physical_core_from_logical_core(this->core, this->buffer.core_type());
-    bool flush_prefetch = true;
     command_sequence.add_dispatch_write_linear(
-        flush_prefetch,
         0,
         this->device->get_noc_unicast_encoding(this->noc_index, physical_core),
         this->bank_base_address,
@@ -987,10 +985,12 @@ void EnqueueProgramCommand::assemble_device_commands(
             cores);
         for (uint32_t kernel_idx = 0; kernel_idx < kg_transfer_info.dst_base_addrs.size(); kernel_idx++) {
             if (write_linear) {
-                kernel_bins_unicast_cmds.emplace_back(2 * (sizeof(CQPrefetchCmd) + sizeof(CQDispatchCmd)));
-                cmd_sequence_sizeB += (2 * (sizeof(CQPrefetchCmd) + sizeof(CQDispatchCmd)));
-                kernel_bins_unicast_cmds.back().add_dispatch_write_linear(
-                    false,            // flush_prefetch
+                kernel_bins_unicast_cmds.emplace_back(2 * CQ_PREFETCH_CMD_BARE_MIN_SIZE);
+                cmd_sequence_sizeB += (2 * CQ_PREFETCH_CMD_BARE_MIN_SIZE);
+                std::cout << "Adding dispatch write linear that does not flush prefetch data size " << kg_transfer_info.lengths[kernel_idx]
+                          << " kg_transfer_info.dst_base_addrs[kernel_idx] " << kg_transfer_info.dst_base_addrs[kernel_idx] << std::endl;
+                constexpr bool flush_prefetch = false;
+                kernel_bins_unicast_cmds.back().add_dispatch_write_linear<flush_prefetch>(
                     num_mcast_dests,  // num_mcast_dests
                     noc_encoding,     // noc_xy_addr
                     kg_transfer_info.dst_base_addrs[kernel_idx],

@@ -219,9 +219,8 @@ public:
         this->memcpy((char*)relay_paged_cmd_dst + sizeof(CQPrefetchCmd), &sub_cmds[offset_idx], sub_cmds_sizeB);
     }
 
-    template <bool inline_data = false>
+    template <bool flush_prefetch = true, bool inline_data = false>
     void add_dispatch_write_linear(
-        bool flush_prefetch,
         uint8_t num_mcast_dests,
         uint32_t noc_xy_addr,
         uint32_t addr,
@@ -253,6 +252,10 @@ public:
             TT_ASSERT(data != nullptr);  // compiled out?
             uint32_t increment_sizeB = align(data_sizeB, this->pcie_alignment);
             this->add_data(data, data_sizeB, increment_sizeB);
+        } else if constexpr (not flush_prefetch) {
+            constexpr uint32_t cmd_sizes = sizeof(CQPrefetchCmd) + sizeof(CQDispatchCmd);
+            uint32_t increment_sizeB = align(cmd_sizes, this->pcie_alignment) - cmd_sizes;
+            this->cmd_write_offsetB += increment_sizeB;
         }
     }
 

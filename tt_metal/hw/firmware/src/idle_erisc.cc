@@ -140,16 +140,15 @@ int main() {
             enum dispatch_core_processor_masks enables = (enum dispatch_core_processor_masks)launch_msg_address->kernel_config.enables;
             run_slave_eriscs(enables);
 
-            uint32_t kernel_config_base = firmware_config_init(mailboxes, ProgrammableCoreType::IDLE_ETH, DISPATCH_CLASS_ETH_DM0);
-            uint32_t tt_l1_ptr *cb_l1_base = (uint32_t tt_l1_ptr *)(kernel_config_base +
-                launch_msg_address->kernel_config.cb_offset);
+            uint32_t kernel_config_base =
+                firmware_config_init(mailboxes, ProgrammableCoreType::IDLE_ETH, DISPATCH_CLASS_ETH_DM0);
 
             // Run the ERISC kernel
             if (enables & DISPATCH_CLASS_MASK_ETH_DM0) {
                 WAYPOINT("R");
                 int index = static_cast<std::underlying_type<EthProcessorTypes>::type>(EthProcessorTypes::DM0);
-                void (*kernel_address)(uint32_t) = (void (*)(uint32_t))
-                    (kernel_config_base + mailboxes->launch[mailboxes->launch_msg_rd_ptr].kernel_config.kernel_text_offset[index]);
+                void (*kernel_address)(uint32_t) = (void (*)(uint32_t))(
+                    kernel_config_base + launch_msg_address->kernel_config.kernel_text_offset[index]);
                 (*kernel_address)((uint32_t)kernel_address);
                 RECORD_STACK_USAGE();
                 WAYPOINT("D");

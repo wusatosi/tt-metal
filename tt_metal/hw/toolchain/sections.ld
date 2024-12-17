@@ -77,7 +77,7 @@ SECTIONS
 
 #if defined(TYPE_FIRMWARE)
   __fw_export_end_text = .;
-#if defined(TARGET_NCRISC)
+#if defined(TARGET_NCRISC) || defined(TARGET_AERISC)
   PROVIDE (KERNEL_ENTRY_SYMBOL = __fw_export_end_text);
 #endif
 #endif
