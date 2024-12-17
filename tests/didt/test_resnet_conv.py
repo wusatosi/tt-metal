@@ -118,7 +118,7 @@ class ResnetConvTest(OpTestBase):
         pass
 
     def run_device_operation(self):
-        [tt_output_tensor_on_device, _, _, _, _] = ttnn.conv2d(
+        tt_output_tensor_on_device = ttnn.conv2d(
             input_tensor=self.activations,
             weight_tensor=self.weights,
             in_channels=self.input_channels,
@@ -133,6 +133,7 @@ class ResnetConvTest(OpTestBase):
             input_height=self.input_height,
             input_width=self.input_width,
             conv_config=self.program_config,
+            compute_config=self.compute_config,
             conv_op_cache=self.reader_patterns_cache,
             debug=False,
             groups=self.groups,
@@ -193,18 +194,22 @@ def test_resnet_conv(mesh_device, iterations, determinism_check_iterations, use_
     conv_config = ttnn.Conv2dConfig(
         dtype=activations_dtype,
         weights_dtype=weights_dtype,
-        math_fidelity=ttnn.MathFidelity.LoFi,
         shard_layout=shard_layout,
         input_channels_alignment=(16),
         deallocate_activation=False,
-        fp32_dest_acc_enabled=False,
-        packer_l1_accum_enabled=True,
         enable_act_double_buffer=True,
         enable_split_reader=True,
         enable_subblock_padding=False,
     )
     # This sets subblocks to [2, 4] in underlying matmul
     conv_config.act_block_h_override = 256
+
+    compute_kernel_config = ttnn.WormholeComputeKernelConfig(
+        math_fidelity=ttnn.MathFidelity.LoFi,
+        math_approx_mode=False,
+        fp32_dest_acc_en=False,
+        packer_l1_acc=True,
+    )
 
     resnetConvTest = ResnetConvTest(
         mesh_device,
@@ -219,7 +224,7 @@ def test_resnet_conv(mesh_device, iterations, determinism_check_iterations, use_
         ttnn.ROW_MAJOR_LAYOUT,
         ttnn.ROW_MAJOR_LAYOUT,
         conv_config,  # program config
-        None,  # compute config
+        compute_kernel_config,  # compute config
         input_channels,
         output_channels,
         filter_height,

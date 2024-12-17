@@ -9,6 +9,7 @@
 #include <tt_align.hpp>
 #include "tt_metal/deprecated/device.hpp"
 #include "common/core_assignment.hpp"
+#include <rtoptions.hpp>
 #include <host_api.hpp>
 #include <trace.hpp>
 #include <core_descriptor.hpp>
@@ -969,7 +970,7 @@ void Device::init_fabric() {
 // Controlled by env var TT_METAL_ARC_DEBUG_BUFFER_SIZE=<size_bytes>
 // Allocates a buffer for debugging purposes
 void Device::allocate_dram_debug_buffer() {
-    uint32_t arc_debug_buffer_size = llrt::OptionsG.get_arc_debug_buffer_size();
+    uint32_t arc_debug_buffer_size = llrt::RunTimeOptions::get_instance().get_arc_debug_buffer_size();
     if (arc_debug_buffer_size) {
         tt::tt_metal::InterleavedBufferConfig dram_config{
             .device = this,
