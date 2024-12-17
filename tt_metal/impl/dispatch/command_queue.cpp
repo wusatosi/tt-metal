@@ -991,6 +991,8 @@ void EnqueueProgramCommand::assemble_device_commands(
             if (write_linear) {
                 kernel_bins_unicast_cmds.emplace_back(2 * CQ_PREFETCH_CMD_BARE_MIN_SIZE);
                 cmd_sequence_sizeB += 2 * CQ_PREFETCH_CMD_BARE_MIN_SIZE;
+                std::cout << "Adding dispatch write linear that does not flush prefetch data size " << kg_transfer_info.lengths[kernel_idx]
+                          << " kg_transfer_info.dst_base_addrs[kernel_idx] " << kg_transfer_info.dst_base_addrs[kernel_idx] << std::endl;
                 constexpr bool flush_prefetch = false;
                 kernel_bins_unicast_cmds.back().add_dispatch_write_linear<flush_prefetch>(
                     num_mcast_dests,  // num_mcast_dests
