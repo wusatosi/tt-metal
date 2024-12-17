@@ -7,6 +7,7 @@
 #include "ttnn/decorators.hpp"
 #include "device/transpose_op.hpp"
 #include "ttnn/operations/data_movement/permute/permute.hpp"
+#include "ttnn/operations/data_movement/permute/device/permute_device_operation.hpp"
 #include "ttnn/operations/data_movement/transpose/transpose.hpp"
 #include "ttnn/cpp/ttnn/operations/copy.hpp"
 #include "ttnn/cpp/ttnn/operations/data_movement/pad/pad.hpp"
@@ -22,8 +23,14 @@ namespace detail {
 inline uint32_t get_estimated_size_of_cbs(const Tensor& input_tensor_a) {
     // Circular Buffer sizes:
     uint32_t element_size = input_tensor_a.element_size();
-    uint32_t Wt = input_tensor_a.get_padded_shape()[-1] / tt::constants::TILE_WIDTH;
-    uint32_t Ht = input_tensor_a.get_padded_shape()[-2] / tt::constants::TILE_HEIGHT;
+
+    uint32_t W = input_tensor_a.shape()[3], H = input_tensor_a.shape()[2], C = input_tensor_a.shape()[1],
+             N = input_tensor_a.shape()[0], NC = input_tensor_a.shape()[1] * input_tensor_a.shape()[0];
+    bool row_major = input_tensor_a.get_layout() == Layout::ROW_MAJOR;
+
+    uint32_t Ht = (H + tt::constants::TILE_HEIGHT - 1) / tt::constants::TILE_HEIGHT;
+    uint32_t Wt = (W + tt::constants::TILE_WIDTH - 1) / tt::constants::TILE_WIDTH;
+
     uint32_t HtWt = Ht * Wt;
     auto data_format = tt::tt_metal::datatype_to_dataformat_converter(input_tensor_a.get_dtype());
     uint32_t tile_size = tt::tt_metal::detail::TileSize(data_format);
@@ -86,16 +93,14 @@ inline Tensor transpose_(
             tiled_only = true;  // CN only has a tiled implementation at the moment
             break;
         case TransposeOpDim::WH:  // THIS NEEDS TO BE FIXED
-            if (((W * a.element_size()) % FACE_WIDTH != 0) || ((H * a.element_size()) % FACE_WIDTH != 0)) {
-                tiled_only = true;
-            } else if (a.device()->arch() == tt::ARCH::GRAYSKULL) {
+            if (a.device()->arch() == tt::ARCH::GRAYSKULL) {
                 tiled_only = a.shape()[-2] > 256;  // hangs right now past this dimension, #13660 will turn it from a
                                                    // hang into a PCC issue for GS and improve perf for WH
-            } else if (
-                !a.is_sharded() && a.layout() == Layout::ROW_MAJOR &&
-                !rm_enough_available_space(
-                    a)) {  // rm is L1 intensive, if it overflows we can do tiled which allocates much smaller CBs
-                tiled_only = true;
+            } else if (!a.is_sharded() && a.layout() == Layout::ROW_MAJOR) {  // rm is L1 intensive, if it overflows we
+                                                                              // can do tiled which allocates much
+                                                                              // smaller CBs
+                return ttnn::prim::permute(
+                    a, ttnn::SmallVector<uint32_t>({0, 1, 3, 2}), output_mem_config, std::nullopt);
             }
             break;
         default: break;
