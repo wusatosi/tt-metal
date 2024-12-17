@@ -51,7 +51,7 @@ uint32_t get_preferred_noc(const ttnn::CoreCoord src, const ttnn::CoreCoord dst,
     // std::cout << "src: (" << src_x << ", " << src_y << "), dst: (" << dst_x << ", " << dst_y << "), noc: " << noc <<
     // std::endl;
 
-    return noc;
+    return 1;
 }
 
 operation::ProgramWithCallbacks create_program_mcast_in0(

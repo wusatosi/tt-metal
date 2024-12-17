@@ -79,6 +79,33 @@ PREFETCHER_GRID = [
     (2, 11),
 ]
 
+PREFETCHER_NOC1_GRID = [
+    (2, 9),
+    (2, 5),
+    (2, 4),
+    (2, 0),
+    (1, 0),
+    (1, 9),
+    (1, 5),
+    (1, 4),
+    (5, 4),
+    (5, 2),
+    (5, 1),
+    (5, 0),
+    (5, 9),
+    (5, 7),
+    (5, 6),
+    (5, 5),
+    (6, 5),
+    (6, 4),
+    (6, 2),
+    (6, 1),
+    (6, 0),
+    (6, 9),
+    (6, 7),
+    (6, 6),
+]
+
 
 def run_multi_core_matmul_1d(
     device,
@@ -144,7 +171,9 @@ def run_multi_core_matmul_1d(
             random.shuffle(CORE_RANGE)
         else:  # Use custom grid
             mapping = get_physical_to_logical_core_mapping(device)
-            CORE_RANGE = [mapping[physical_coord] for physical_coord in grid]
+            print(mapping)
+            # CORE_RANGE = [mapping[physical_coord] for physical_coord in grid]
+            CORE_RANGE = PREFETCHER_NOC1_GRID[::-1]
 
         core_range_set = ttnn.CoreRangeSet(
             [
@@ -409,13 +438,14 @@ def test_multi_core_matmul_1d_wh(
 @pytest.mark.parametrize(
     "B, M, K, N, in0_dtype, in1_dtype, fidelity, packer_l1_acc, fp32_acc_mode, grid",
     [
-        (1, 32, 2304, 3840, ttnn.bfloat16, ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, True, True, (8, 3)),
+        (1, 32, 2304, 3840, ttnn.bfloat16, ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, True, True, PREFETCHER_NOC1_GRID),
     ],
 )
 @pytest.mark.parametrize(
     "hop_grid",
     [
-        [(7, 3), (7, 4)],
+        # [(7, 3), (7, 4)],
+        [(3, 6), (3, 9)],
     ],
 )
 @pytest.mark.parametrize(
@@ -426,12 +456,13 @@ def test_multi_core_matmul_1d_wh(
 )
 @pytest.mark.parametrize(
     "use_arbitrary_cores",
-    [False],
+    [True],
 )
 @pytest.mark.parametrize(
     "num_iters",
     [1],
 )
+@pytest.mark.parametrize("device_params", [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL}], indirect=True)
 def test_multi_core_matmul_1d_ring_hop_wh(
     device,
     in0_dtype,
