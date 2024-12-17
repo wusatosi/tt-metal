@@ -700,7 +700,7 @@ void process_write_packed_large(
         if (init_state) {
             uint32_t dst_noc = sub_cmd_ptr->noc_xy_addr;
             // TODO: Linking should be set to true once atomic txn is handled properly
-            cq_noc_async_write_init_state<CQ_NOC_sNdl, true, true>(0, get_noc_addr_helper(dst_noc, dst_addr));
+            cq_noc_async_write_init_state<CQ_NOC_sNdl, true, false>(0, get_noc_addr_helper(dst_noc, dst_addr));
         }
 
         sub_cmd_ptr++;
@@ -736,17 +736,17 @@ void process_write_packed_large(
                 cq_noc_async_write_with_state_any_len(data_ptr, dst_addr, xfer_size, num_dests);
             } else {
                 xfer_size = length;
-                if (unlink) {
-                    uint32_t rem_xfer_size =
-                        cq_noc_async_write_with_state_any_len<false>(data_ptr, dst_addr, xfer_size, num_dests);
-                    // Unset Link flag
-                    cq_noc_async_write_init_state<CQ_NOC_sndl, true, false>(0, 0, 0);
-                    uint32_t data_offset = xfer_size - rem_xfer_size;
-                    cq_noc_async_write_with_state<CQ_NOC_SnDL, CQ_NOC_wait>(
-                        data_ptr + data_offset, dst_addr + data_offset, rem_xfer_size, num_dests);
-                } else {
-                    cq_noc_async_write_with_state_any_len(data_ptr, dst_addr, xfer_size, num_dests);
-                }
+                // if (unlink) {
+                //     uint32_t rem_xfer_size =
+                //         cq_noc_async_write_with_state_any_len<false>(data_ptr, dst_addr, xfer_size, num_dests);
+                //     // Unset Link flag
+                //     cq_noc_async_write_init_state<CQ_NOC_sndl, true, false>(0, 0, 0);
+                //     uint32_t data_offset = xfer_size - rem_xfer_size;
+                //     cq_noc_async_write_with_state<CQ_NOC_SnDL, CQ_NOC_wait>(
+                //         data_ptr + data_offset, dst_addr + data_offset, rem_xfer_size, num_dests);
+                // } else {
+                cq_noc_async_write_with_state_any_len(data_ptr, dst_addr, xfer_size, num_dests);
+                // }
             }
             writes += div_up(xfer_size, NOC_MAX_BURST_SIZE);
             length -= xfer_size;
