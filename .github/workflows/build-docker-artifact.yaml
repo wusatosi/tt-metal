@@ -26,12 +26,11 @@ jobs:
       TT_METAL_DOCKER_IMAGE: ${{ inputs.os }}
       IMAGE: tt-metalium/ubuntu-20.04-amd64
       DOCKERFILE: ubuntu-20.04-amd64
-    environment: dev
     runs-on:
       - build-docker
       - in-service
     steps:
-      - uses: tenstorrent-metal/metal-workflows/.github/actions/checkout-with-submodule-lfs@v2.0.0
+      - uses: tenstorrent/tt-metal/.github/actions/checkout-with-submodule-lfs@main
         with:
           fetch-depth: 0
       - name: Login to GitHub Container Registry
@@ -54,7 +53,7 @@ jobs:
       - name: Determine docker image tag
         uses: ./.github/actions/generate-docker-tag
         with:
-          image: ${{ inputs.os }}
+          image: tt-metalium/${{ inputs.os }}
       - name: Build Docker image and push to GHCR
         if: steps.changed-files-specific.outputs.any_changed == 'true'
         uses: docker/build-push-action@v6

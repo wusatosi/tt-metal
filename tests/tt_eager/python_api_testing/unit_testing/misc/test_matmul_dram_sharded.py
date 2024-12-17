@@ -4,7 +4,7 @@
 
 import pytest
 from loguru import logger
-from models.utility_functions import is_wormhole_b0, is_grayskull, skip_for_wormhole_b0
+from models.utility_functions import is_wormhole_b0, is_grayskull, is_blackhole, skip_for_wormhole_b0
 from models.utility_functions import torch2tt_tensor, tt2torch_tensor, pad_by_zero, roundup32
 import torch
 import ttnn
@@ -18,7 +18,6 @@ from tt_lib.utils import (
     untilize,
     is_close,
 )
-from models.utility_functions import skip_for_blackhole
 
 
 def find_max_subblock(out_block_h, out_block_w):
@@ -69,7 +68,7 @@ def run_test_matmul_in1_dram_sharded(
     if is_grayskull() and (N == 4096 or K == 32768):
         pytest.skip("Skipping too large tensor test on Grayskull")
 
-    if is_grayskull():
+    if is_grayskull() or is_blackhole():
         N_padded = N
         num_banks = 8
     else:
@@ -191,7 +190,6 @@ def run_test_matmul_in1_dram_sharded(
     assert passing
 
 
-@skip_for_blackhole("Segfault on BH, see #12349")
 @pytest.mark.parametrize(
     "fidelity",
     [
@@ -297,7 +295,7 @@ def run_test_matmul_in1_dram_sharded_mm_chain(
     if is_grayskull() and (N == 4096 or K == 32768):
         pytest.skip("Skipping too large tensor test on Grayskull")
 
-    if is_grayskull():
+    if is_grayskull() or is_blackhole():
         N_padded = N
         num_banks = 8
     else:
@@ -397,7 +395,6 @@ def run_test_matmul_in1_dram_sharded_mm_chain(
     assert True
 
 
-@skip_for_blackhole("Segfaulting on BH, see #12349")
 @pytest.mark.parametrize(
     "fidelity",
     [
@@ -454,7 +451,6 @@ def test_matmul_in1_dram_sharded_with_mm_chain(
     )
 
 
-@skip_for_blackhole("Mismatching on BH, see #12349")
 @pytest.mark.parametrize("packer_l1_acc", [True, False], ids=["pack_l1", "no_pack_l1"])
 @pytest.mark.parametrize(
     "fp32_acc_mode",
@@ -492,7 +488,7 @@ def test_matmul_2d_in1_dram_sharded(
     fuse_batch,
     function_level_defaults,
 ):
-    if is_grayskull():
+    if is_grayskull() or is_blackhole():
         N_padded = N
         num_banks = 8
     else:

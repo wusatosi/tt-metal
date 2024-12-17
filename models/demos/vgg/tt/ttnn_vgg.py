@@ -50,7 +50,7 @@ conv_ttnn_params = [
 ]
 conv_feature_ids = [0, 2, 5, 7, 10, 12, 14, 17, 19, 21, 24, 26, 28]
 classifier_ids = [0, 3, 6]
-h_override = [128, 128, 128, 64, 32, 32, 32, 32, 32, 32, 32, 32, 32]
+h_override = [None, None, None, None, None, 256, 256, None, None, None, None, None, None]
 
 
 def ttnn_vgg16(
@@ -78,7 +78,6 @@ def ttnn_vgg16(
                 stride=[2, 2],
                 padding=[0, 0],
                 dilation=[1, 1],
-                device=device,
             )
             ttnn.deallocate(ttact_d)
             tt_x = ttnn.from_device(tt_x)
@@ -91,20 +90,25 @@ def ttnn_vgg16(
             conv_config = ttnn.Conv2dConfig(
                 dtype=model_config["ACTIVATIONS_DTYPE"],
                 weights_dtype=model_config["WEIGHTS_DTYPE"],
-                math_fidelity=model_config["MATH_FIDELITY"],
-                math_approx_mode_enabled=True,
-                fp32_dest_acc_enabled=False,
-                packer_l1_accum_enabled=False,
                 activation="relu",
                 deallocate_activation=False,
                 input_channels_alignment=32,
                 reallocate_halo_output=False,
-                act_block_h_override=h_override[iter_conv_id],
                 transpose_shards=True,
                 shard_layout=(
                     ttnn.TensorMemoryLayout.HEIGHT_SHARDED if h_sharding else ttnn.TensorMemoryLayout.BLOCK_SHARDED
                 ),
                 reshard_if_not_optimal=True,
+                enable_weights_double_buffer=True,
+            )
+            if h_override[iter_conv_id] is not None:
+                conv_config.act_block_h_override = h_override[iter_conv_id]
+            compute_config = ttnn.init_device_compute_kernel_config(
+                device.arch(),
+                math_fidelity=model_config["MATH_FIDELITY"],
+                math_approx_mode=True,
+                fp32_dest_acc_en=False,
+                packer_l1_acc=False,
             )
 
             tt_weight = parameters.features[conv_feature_ids[iter_conv_id]].weight
@@ -112,7 +116,7 @@ def ttnn_vgg16(
             tt_bias = parameters.features[conv_feature_ids[iter_conv_id]].bias
             # Call ttnn.conv
             conv_op_cache = {}
-            [tt_output_tensor_on_device, out_height, out_width, weights_device, bias_device] = ttnn.conv2d(
+            [tt_output_tensor_on_device, [out_height, out_width], [weights_device, bias_device]] = ttnn.conv2d(
                 input_tensor=tt_x,
                 weight_tensor=tt_weight,
                 in_channels=conv_ttnn_params[iter_conv_id][0],
@@ -126,7 +130,10 @@ def ttnn_vgg16(
                 input_height=conv_ttnn_params[iter_conv_id][2],
                 input_width=conv_ttnn_params[iter_conv_id][3],
                 conv_config=conv_config,
+                compute_config=compute_config,
                 conv_op_cache=conv_op_cache,
+                return_output_dim=True,
+                return_weights_and_bias=True,
             )
             tt_x = ttnn.from_device(tt_output_tensor_on_device)
             ttnn.deallocate(tt_output_tensor_on_device)
@@ -135,11 +142,7 @@ def ttnn_vgg16(
     tt_x = ttnn.to_device(tt_x, device)
     tt_x = ttnn.to_layout(tt_x, ttnn.TILE_LAYOUT)
     tt_x = ttnn.permute(tt_x, (0, 3, 1, 2))
-    tt_x = ttnn.from_device(tt_x)
-    tt_x = ttnn.to_layout(tt_x, ttnn.ROW_MAJOR_LAYOUT)
     tt_x = ttnn.reshape(tt_x, (batch_size, 1, 1, -1))
-    tt_x = ttnn.to_layout(tt_x, layout=ttnn.TILE_LAYOUT)
-    tt_x = ttnn.to_device(tt_x, device)
 
     # Linear 1
     tt_x = ttnn.linear(
@@ -177,7 +180,7 @@ conv_ttnn_params_2 = [
     [512, 512, 14, 14],
     [512, 512, 14, 14],
 ]
-height_override_11 = [128, 128, 32, 32, 32, 32, 32, 32]
+height_override_11 = [None, None, None, 256, None, None, None, None]
 
 
 def ttnn_vgg11(
@@ -206,7 +209,6 @@ def ttnn_vgg11(
                 stride=[2, 2],
                 padding=[0, 0],
                 dilation=[1, 1],
-                device=device,
             )
             tt_x = ttnn.from_device(tt_x)
             ttnn.deallocate(ttact_d)
@@ -218,27 +220,32 @@ def ttnn_vgg11(
             conv_config = ttnn.Conv2dConfig(
                 dtype=model_config["ACTIVATIONS_DTYPE"],
                 weights_dtype=model_config["WEIGHTS_DTYPE"],
-                math_fidelity=model_config["MATH_FIDELITY"],
-                math_approx_mode_enabled=True,
-                fp32_dest_acc_enabled=True,
                 activation="relu",
                 deallocate_activation=False,
                 input_channels_alignment=32,
                 reallocate_halo_output=False,
-                act_block_h_override=height_override_11[iter_conv_id],
                 transpose_shards=True,
                 shard_layout=(
                     ttnn.TensorMemoryLayout.HEIGHT_SHARDED if h_sharding else ttnn.TensorMemoryLayout.BLOCK_SHARDED
                 ),
+                enable_weights_double_buffer=True,
             )
+            if height_override_11[iter_conv_id] is not None:
+                conv_config.act_block_h_override = height_override_11[iter_conv_id]
 
+            compute_config = ttnn.init_device_compute_kernel_config(
+                device.arch(),
+                math_fidelity=model_config["MATH_FIDELITY"],
+                math_approx_mode=True,
+                fp32_dest_acc_en=True,
+            )
             tt_weight = parameters.features[conv_feature_ids_2[iter_conv_id]].weight
             tt_weight = ttnn.to_layout(ttnn.from_device(tt_weight), layout=ttnn.ROW_MAJOR_LAYOUT)
             tt_bias = parameters.features[conv_feature_ids_2[iter_conv_id]].bias
 
             # Call ttnn.conv
             conv_op_cache = {}
-            [tt_output_tensor_on_device, out_height, out_width, weights_device, bias_device] = ttnn.conv2d(
+            [tt_output_tensor_on_device, [out_height, out_width], [weights_device, bias_device]] = ttnn.conv2d(
                 input_tensor=tt_x,
                 weight_tensor=tt_weight,
                 in_channels=conv_ttnn_params_2[iter_conv_id][0],
@@ -252,7 +259,10 @@ def ttnn_vgg11(
                 input_height=conv_ttnn_params_2[iter_conv_id][2],
                 input_width=conv_ttnn_params_2[iter_conv_id][3],
                 conv_config=conv_config,
+                compute_config=compute_config,
                 conv_op_cache=conv_op_cache,
+                return_output_dim=True,
+                return_weights_and_bias=True,
             )
             tt_x = ttnn.from_device(tt_output_tensor_on_device)
             ttnn.deallocate(tt_output_tensor_on_device)
@@ -261,11 +271,7 @@ def ttnn_vgg11(
     tt_x = ttnn.to_device(tt_x, device)
     tt_x = ttnn.to_layout(tt_x, ttnn.TILE_LAYOUT)
     tt_x = ttnn.permute(tt_x, (0, 3, 1, 2))
-    tt_x = ttnn.from_device(tt_x)
-    tt_x = ttnn.to_layout(tt_x, ttnn.ROW_MAJOR_LAYOUT)
     tt_x = ttnn.reshape(tt_x, (batch_size, 1, 1, -1))
-    tt_x = ttnn.to_layout(tt_x, layout=ttnn.TILE_LAYOUT)
-    tt_x = ttnn.to_device(tt_x, device)
 
     # Linear 1
     tt_x = ttnn.linear(

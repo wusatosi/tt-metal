@@ -44,7 +44,7 @@ def is_sharded(tensor) -> bool:
 get_memory_config = ttnn._ttnn.core.get_memory_config
 
 
-def num_cores_to_corerange_set(
+def num_cores_to_corerangeset(
     target_num_cores: int,
     grid_size: ttnn.CoreCoord,
     row_wise: bool = False,
@@ -52,9 +52,26 @@ def num_cores_to_corerange_set(
     """
     Create a CoreRangeSet containing the specified number of cores
     """
-    return ttnn._ttnn.operations.core.num_cores_to_corerange_set(
+    return ttnn._ttnn.operations.core.num_cores_to_corerangeset(
         target_num_cores,
         grid_size,
+        row_wise,
+    )
+
+
+def num_cores_to_corerangeset_in_subcoregrids(
+    start_core: ttnn.CoreCoord,
+    target_num_cores: int,
+    sub_core_grids: ttnn.CoreRangeSet,
+    row_wise: bool = False,
+):
+    """
+    Create a CoreRangeSet containing the specified number of cores starting from start_core in given subcoregrids
+    """
+    return ttnn._ttnn.operations.core.num_cores_to_corerangeset_in_subcoregrids(
+        start_core,
+        target_num_cores,
+        sub_core_grids,
         row_wise,
     )
 
@@ -98,11 +115,15 @@ def create_sharded_memory_config(
         halo (bool, optional): if the shards have overlapping values. Defaults to `False`.
         use_height_and_width_as_shard_shape (bool, optional): if True, the height and width of the tensor will be used as the shard shape. Defaults to `False`. If is False, the shard shape will be calculated based on the core_grid and the tensor shape where tensor shape is seen as [math.prod(dims), width]
 
-    Example:
-        >>> tensor = ttnn.create_sharded_memory_config((5, 8), (320,64), ttnn.ShardStrategy.BLOCK, ttnn.ShardOrientation.ROW_MAJOR, False)
+    Returns:
+        ttnn.MemoryConfig: the MemoryConfig object.
 
     Note:
         Currently sharding only supports L1 tensors.
+
+    Example:
+        >>> tensor = ttnn.create_sharded_memory_config((5, 8), (320,64), ttnn.ShardStrategy.BLOCK, ttnn.ShardOrientation.ROW_MAJOR, False)
+
     """
 
     if not isinstance(shape, (list, tuple, ttnn.Shape)):

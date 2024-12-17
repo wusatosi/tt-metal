@@ -28,6 +28,12 @@ Author: Joseph Chu
   - [6.1 Data Parallel Programming Example](#61-data-parallel-programming-example)
 - [7. Programming Mesh of Devices Using Tensor Parallel](#7-programming-mesh-of-devices-using-tensor-parallel)
   - [7.1 Tensor Parallel Programming Example](#71-tensor-parallel-programming-example)
+- [8. Programming Mesh of Devices Using Hybrid Tensor and Data Parallel](#8-programming-mesh-of-devices-using-hybrid-tensor-and-data-parallel)
+  - [8.1 Llama-3.1 70B Hybrid Tensor and Data Parallel](#81-llama-31-70b-hybrid-tensor-and-data-parallel)
+  - [8.2 Llama-3.1 70B Performance Scaling](#82-llama-31-70b-performance-scaling)
+  - [8.3 Hybrid Tensor and Data Parallel Programming Example](#83-hybrid-tensor-and-data-parallel-programming-example)
+    - [8.3.1 Overview of Changes](#831-overview-of-changes)
+    - [8.3.2 Key Components](#832-key-components)
 
 ## 1. Overview
 
@@ -35,7 +41,7 @@ TT-NN library natively supports multi-device operations, enabling users to scale
 
 - **MeshDevice**: This "virtual device" abstraction defines a logical 2-D mesh of connected physical devices. Operations that "run on device" are distributed through SPMD across all devices captured in the mesh.
 
-- **Input Data Distribution**: Defines how input data resident in host-memory is distributed to DeviceMesh on-device memory. When operations are distributed to MeshDevice, the operation within a single-device scope works on its local input data.
+- **Input Data Distribution**: Defines how input data resident in host-memory is distributed to MeshDevice on-device memory. When operations are distributed to MeshDevice, the operation within a single-device scope works on its local input data.
 
 - **Tensor**: Defines a N-dimensional matrix containing elements of a single data type. In a MeshDevice context, a Tensor, or colloquially referred to as MeshTensor, represents a collection of tensor shards distributed across devices in a 2D Mesh.
 
@@ -51,12 +57,12 @@ A MeshDevice can be instantiated over a collection of physically connected devic
 With the N300 form-factor, it houses two wormhole chips. The host is connected to the "left" chip via PCIe and the "left" chip is connected to the "right" chip via two ethernet links. Each ethernet link has a 200 Gbps bi-directional bandwidth. For N300, one of the ethernet links connecting the "left" chip to the "right" chip is reserved for fast-dispatch. At the user-level, this means only a single ethernet link is made available for use. The N300 represents the smallest multi-device configuration that we can instantiate a MeshDevice over.
 
 <!-- ![image1](images/image1.png){width=15 height=15} -->
-<img src="../CCL/images/t3000.png" style="width:500px;"/>
+<img src="../EthernetMultichip/images/t3000.png" style="width:500px;"/>
 
 *Figure 1: T3000 System Topology. T3000 is composed of 4x N300 wormhole cards, totalling 8 wormhole chips, connected in a 2x4 mesh configuration. Each pair of wormhole-chips are connected via two ethernet links.*
 
 
-<img src="../CCL/images/TG.png" style="width:500px;"/>
+<img src="../EthernetMultichip/images/TG.png" style="width:500px;"/>
 
 *Figure 2: TG System Topology. TG is composed of 16x N300 wormhole cards, totalling 32 wormhole chips, connected in a 8x4 mesh configuration. Each pair of wormhole-chips are connected via four ethernet links.*
 
@@ -121,6 +127,7 @@ Let's see how to split our data across two devices:
 
 ```py
 import ttnn
+import torch
 
 # Open our 1x2 MeshDevice
 mesh_device = ttnn.open_mesh_device(ttnn.MeshShape(1, 2))
@@ -131,9 +138,9 @@ torch_tensor[..., 0:32] = 1.0
 torch_tensor[..., 32:64] = 2.0
 
 # Convert to ttnn.Tensor; MeshTensor holds buffers to two shards in host-memory
-mesh_tensor: ttnn.Tensor = ttnn.from_torch(
+mesh_tensor = ttnn.from_torch(
     torch_tensor,
-    mesh_mapper=ttnn.ShardTensorToMesh(device_mesh, dim=3),
+    mesh_mapper=ttnn.ShardTensorToMesh(mesh_device, dim=3),
     layout=ttnn.TILE_LAYOUT,
 )
 ```
@@ -158,7 +165,7 @@ ttnn.Tensor([[[[ 2.00000,  2.00000,  ...,  2.00000,  2.00000],
 Let's now transfer to device:
 
 ```py
-> mesh_tensor = ttnn.to_device(mesh_tensor, device_mesh)
+> mesh_tensor = ttnn.to_device(mesh_tensor, mesh_device)
 > mesh_tensor
 
 device_id:0
@@ -178,8 +185,8 @@ ttnn.Tensor([[[[ 2.00000,  2.00000,  ...,  2.00000,  2.00000],
 
 We now see that the following:
 
-- 32x32 chunk with elements of 1.0 is residing in Device 11 DRAM
-- 32x32 chunk with elements of 2.0 is residing in Device 10 DRAM
+- 32x32 chunk with elements of 1.0 is residing in Device 0 DRAM
+- 32x32 chunk with elements of 2.0 is residing in Device 1 DRAM
 
 We can also visualize this tensor distributed across our MeshDevice. The visualization will color devices that have shards resident to the device.
 
@@ -187,9 +194,9 @@ We can also visualize this tensor distributed across our MeshDevice. The visuali
 ttnn.visualize_mesh_device(mesh_device, tensor=mesh_tensor)
 
 >
-                  DeviceMesh(rows=1, cols=2):
+                  MeshDevice(rows=1, cols=2):
 ┌──────────────────────────────┬──────────────────────────────┐
-│         Dev. ID: 11          │         Dev. ID: 10          │
+│         Dev. ID: 0           │         Dev. ID: 1           │
 │            (0, 0)            │            (0, 1)            │
 │  ttnn.Shape([1, 1, 32, 32])  │  ttnn.Shape([1, 1, 32, 32])  │
 └──────────────────────────────┴──────────────────────────────┘
@@ -256,7 +263,7 @@ output_tensor = ttnn.gelu(ttnn_tensor)
 
 ## 5. MeshDevice and Collective Communication Library (CCL)
 
-The Collective Communication Library (CCL) provides a set of operations for efficient device-to-device communication in a MeshDevice. See the [CCL Developer Guide](../CCL/CclDeveloperGuide.md) for more comprehensive coverage. These operations are used as building blocks for implementing tensor-parallel and other distributed computing strategies.
+The Collective Communication Library (CCL) provides a set of operations for efficient device-to-device communication in a MeshDevice. See the [CCL Developer Guide](../EthernetMultichip/CclDeveloperGuide.md) for more comprehensive coverage. These operations are used as building blocks for implementing tensor-parallel and other distributed computing strategies.
 
 ### 5.1 CCL Operations
 
@@ -267,7 +274,7 @@ CCL supports several collective operations, including:
 3. All-Reduce (planned)
 4. Send/Receive (planned)
 
-Our library of supported operations can be found [here](../CCL/CclDeveloperGuide.md#op-list-op-list).
+Our library of supported operations can be found [here](../EthernetMultichip/CclDeveloperGuide.md#op-list-op-list).
 
 ### 5.2 All-Gather
 
@@ -289,14 +296,14 @@ Let's see an example of how to use the Ring All-Gather operation:
 ```py
 import ttnn
 
-mesh_device = ttnn.open_mesh_device(ttnn.MeshShape(2, 4))
+mesh_device = ttnn.open_mesh_device(ttnn.MeshShape(2, 4), mesh_type=ttnn.MeshType.Ring)
 
 # Construct test tensor of data; 8 chunks of 32x32
-torch_tensor = torch.rand((1,1,32,128), dtype=torch.bfloat16)
+torch_tensor = torch.rand((1,1,32,256), dtype=torch.bfloat16)
 
 # Convert to ttnn.Tensor, tilize and move onto devices across mesh DRAM
 mesh_tensor = ttnn.from_torch(
-    torch_input_tensor,
+    torch_tensor,
     layout=ttnn.TILE_LAYOUT,
     device=mesh_device,
     mesh_mapper=ttnn.ShardTensorToMesh(mesh_device, dim=3),
@@ -309,19 +316,22 @@ output_tensor = ttnn.all_gather(mesh_tensor, dim=3, num_links=1)
 
 #### 5.2.2 Programming Example: All-Gather (Line)
 
-This time, we'll issue the CCL Line All-Gather operation along the cluster y-axis:
+Here we issue a Line All-Gather operation along the cluster-axis 0 (y-dimension), where the y-dimension is the height of the cluster.
+This kicks off four parallel CCL Line All-Gather operations, one for each column in the cluster. Each "line" is a list of two devices.
 
 <img src="images/image5_line_all_gather.png" style="width:500px;"/>
 
-*Figure 6: Line All-Gather execution on 2x4 MeshDevice *
+*Figure 6: Line All-Gather execution on 2x4 MeshDevice*
+
+The result tensor for each device in the column is the concatenation in `dim=3` for each device in the column. The per-device tensor shape is `[1, 1, 32, 32]` before the operation and `[1, 1, 32, 64]` after the operation.
 
 ```py
 import ttnn
 
-mesh_device = ttnn.open_mesh_device(ttnn.MeshShape(2, 4))
+mesh_device = ttnn.open_mesh_device(ttnn.MeshShape(2, 4), mesh_type=ttnn.MeshType.Ring)
 
 # Construct test tensor of data; 8 chunks of 32x32
-torch_tensor = torch.rand((1,1,32,128), dtype=torch.bfloat16)
+torch_tensor = torch.rand((1,1,32,256), dtype=torch.bfloat16)
 
 # Convert to ttnn.Tensor, tilize and move onto devices across mesh DRAM
 mesh_tensor = ttnn.from_torch(
@@ -332,7 +342,15 @@ mesh_tensor = ttnn.from_torch(
 )
 
 # Execute Line All-Gather on the tensor
-output_tensor = ttnn.line_all_gather(mesh_tensor, dim=3, cluster_axis=0, mesh_device=mesh_device)
+output_tensor = ttnn.all_gather(
+    mesh_tensor,
+    dim=3,
+    cluster_axis=0,
+    mesh_device=mesh_device,
+    topology=ttnn.Topology.Linear,
+)
+
+ttnn.close_mesh_device(mesh_device)
 ```
 
 
@@ -418,7 +436,7 @@ ttnn.close_device(device)
 
 4. **Executing TT-NN Falcon-7B MLP Module on MeshDevice with Data Parallel**
 
-Full code example can be found in `tests/ttnn/multichip_unit_tests/test_data_parallel_example_TG.py`
+Full code example can be found in `tests/ttnn/distributed/test_data_parallel_example_TG.py`
 
 ```py
 # Load Falcon MLP model from huggingface
@@ -507,7 +525,7 @@ model = transformers.models.falcon.modeling_falcon.FalconMLP(config).eval()
 
 3. **Executing TT-NN Falcon-7B MLP Module on MeshDevice with Tensor Parallel**
 
-See full code example in `tests/ttnn/multichip_unit_tests/test_tensor_parallel_example_T3000.py`
+See full code example in `tests/ttnn/distributed/test_tensor_parallel_example_T3000.py`
 
 ```py
 # Initialize hidden states
@@ -516,7 +534,7 @@ torch_hidden_states = (torch.rand(batch_size, 1, sequence_length, config.hidden_
 torch_output = model.forward(torch_hidden_states)
 
 # Device Initialization
-mesh_device = ttnn.open_mesh_device(ttnn.MeshShape(2,4))
+mesh_device = ttnn.open_mesh_device(ttnn.MeshShape(2,4), mesh_type=ttnn.MeshType.Ring)
 
 # Initialize input activations on all devices in the mesh
 # Alternatively, we can shard the input activations on the height dimension and
@@ -545,3 +563,73 @@ ttnn_output = ttnn_model(hidden_states)
 with ttnn.distribute(ttnn.ConcatMeshToTensor(mesh_device, dim=3)):
     assert_with_pcc(torch_output, ttnn.to_torch(ttnn_output), 0.98)
 ```
+## 8. Programming Mesh of Devices Using Hybrid Tensor and Data Parallel
+
+### 8.1 Llama-3.1 70B Hybrid Tensor and Data Parallel
+
+<img src="images/llama-3.1-70b-hybrid-dp-tp.png" style="width:500px;"/>
+
+*Figure 7: Llama-3.1 70B model mapped onto T3000 and Galaxy systems.*
+
+
+### 8.2 Llama-3.1 70B Performance Scaling
+
+| System  | Batch Size | tok/s/u | tok/s  |
+|---------|------------|---------|--------|
+| T3000   | 32         | 15.1    | 483.2  |
+| Galaxy  | 128        | 14.3    | 1835.5 |
+
+*Table 1: Llama-3.1 70B model scaling from T3000 to Galaxy. Tokens per second (toks/s) throughput scales near-linear (3.8x) as we tile our model replicas across the Galaxy mesh.*
+
+
+### 8.3 Hybrid Tensor and Data Parallel Programming Example
+
+This sections explains how to employ hybrid tensor and data parallelism by tiling a submesh across a larger mesh.
+
+#### 8.3.1 Overview of Changes
+
+The main changes involve:
+
+1. Creating multiple submeshes from the main mesh
+2. Running the model on each submesh
+3. Capturing and replaying a trace across all submeshes in parallel
+
+#### 8.3.2 Key Components
+
+These three components are used to achieve linear scaling of performance as we tile our model replicas across the mesh.
+See `models/demos/t3000/llama2_70b/tests/test_llama_perf_decode.py::test_Llama_perf_hybrid_data_tensor_parallel` for full example.
+
+1. Submesh Creation
+
+```py
+    submesh_devices: List[ttnn.MeshDevice] = mesh_device.create_submeshes((2, 4), ttnn.MeshType.Ring)
+```
+
+2. Compile & Run the Model on Each Submesh
+
+```python
+    for submesh_device in submesh_devices:
+        model.forward(activations, device=submesh_device, ...)
+```
+
+3. Capture Model Trace: See [Advanced Performance Optimizations For Models](../AdvancedPerformanceOptimizationsForModels/AdvancedPerformanceOptimizationsForModels.md) guide for more details on how to capture and replay a trace.
+
+```python
+    trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
+
+    # Run the existing model on each submesh
+    for submesh_device in submesh_devices:
+        model.forward(activations, device=submesh_device, ...)
+
+    ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
+```
+
+4. Execute Model Trace:
+
+```python
+    # Execute Model Trace across all submeshes in parallel
+    ttnn.execute_trace(mesh_device, trace_id, blocking=False)
+    ttnn.release_trace(mesh_device, trace_id)
+```
+
+APIs will be further refined in future releases. A proposal for refined set of APIs can be found [here](https://github.com/tenstorrent/tt-metal/issues/13852).

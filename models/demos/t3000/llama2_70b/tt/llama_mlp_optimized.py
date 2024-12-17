@@ -70,12 +70,11 @@ class TtLlamaMLP_optimized:
             padded_w3 = self.state_dict[w3_str].transpose(-2, -1).view(1, 1, H, H4)
 
         # w1: 8k x 4k. width-sharded on 12 banks, 4224 over 12 banks.
-        device = self.mesh_device.get_device(0)
         weight_grid = ttnn.CoreRangeSet(
             {
                 ttnn.CoreRange(
                     ttnn.CoreCoord(0, 0),
-                    ttnn.CoreCoord(device.dram_grid_size().x - 1, device.dram_grid_size().y - 1),
+                    ttnn.CoreCoord(self.mesh_device.dram_grid_size().x - 1, self.mesh_device.dram_grid_size().y - 1),
                 )
             }
         )
@@ -220,7 +219,7 @@ class TtLlamaMLP_optimized:
 
         hidden_states_reduced = ttnn.reduce_scatter(
             hidden_states_mm,
-            scatter_dim=3,
+            dim=3,
             math_op=ttnn.ReduceType.Sum,
             num_links=1,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
@@ -269,7 +268,7 @@ class TtLlamaMLP_optimized:
 
         hidden_states_reduced = ttnn.reduce_scatter(
             hidden_states,
-            scatter_dim=3,
+            dim=3,
             math_op=ttnn.ReduceType.Sum,
             num_links=1,
             memory_config=self.model_config["RESIDUAL_16_CORES_OUTPUT_MEMCFG"],

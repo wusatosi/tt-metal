@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+#pragma once
+
 #include "ttnn/decorators.hpp"
 #include "ttnn/operations/core/compute_kernel/compute_kernel_config.hpp"
 
@@ -35,8 +37,8 @@ struct MorehSoftmaxOperation {
     };
 
     struct tensor_args_t {
-        const Tensor& input_tensor;
-        const std::optional<Tensor>& output_tensor;
+        const Tensor& input;
+        const std::optional<Tensor>& output;
     };
 
     using shape_return_value_t = Shape;

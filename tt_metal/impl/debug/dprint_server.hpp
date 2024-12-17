@@ -3,16 +3,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /*
-* Implements host-side debug print server interface.
-*/
+ * Implements host-side debug print server interface.
+ */
 
 #pragma once
 
 namespace tt {
 
 namespace tt_metal {
-    class Device;
-}
+inline namespace v0 {
+class Device;
+}  // namespace v0
+}  // namespace tt_metal
 
 /*
 @brief Attaches a device to be monitored by the print server. If no devices were present on the
@@ -87,4 +89,9 @@ void DPrintServerClearLogFile();
 */
 void DPrintServerClearSignals();
 
-} // namespace tt
+/**
+@brief Returns true if the DPRINT server reads any dispatch cores on a given device.
+*/
+bool DPrintServerReadsDispatchCores(tt::tt_metal::Device* device);
+
+}  // namespace tt

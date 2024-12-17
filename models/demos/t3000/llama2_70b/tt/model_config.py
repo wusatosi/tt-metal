@@ -69,6 +69,7 @@ def get_model_config(llama_version="llama3", max_batch_size=32, max_context_len=
         "ALL_GATHER_NUM_LINKS": 1,
         "MAX_BATCH_SIZE": max_batch_size,
         "MAX_CONTEXT_LEN": max_context_len,
+        "MAX_PREFILL_SEQ_LEN": 32768,  # TODO: remove once larger seq lens can be prefilled via decode in TtLlamaModelForGeneration
         "NUM_DEVICES": num_devices,
         "llama3-tg": MAX_SEQ_LEN_LLAMA3,
         "llama3.1-tg": MAX_SEQ_LEN_LLAMA3_1,
@@ -387,7 +388,8 @@ def get_model_config(llama_version="llama3", max_batch_size=32, max_context_len=
     model_config["SDPA_DECODE_PROGRAM_CONFIG"] = ttnn.SDPAProgramConfig(
         compute_with_storage_grid_size=[8, 4],  # Can be increased, but could result in di/dt?
         q_chunk_size=0,  # unused
-        k_chunk_size=0,  # unused
+        k_chunk_size=256,  # unused
+        exp_approx_mode=False,
     )
 
     model_config["SDPA_OUTPUT_MEMCFG"] = ttnn.MemoryConfig(

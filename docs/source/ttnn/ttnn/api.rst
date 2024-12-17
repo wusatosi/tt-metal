@@ -93,19 +93,16 @@ Pointwise Unary
 
    ttnn.abs
    ttnn.acos
-   ttnn.logical_not_
    ttnn.acosh
    ttnn.asin
    ttnn.asinh
    ttnn.atan
    ttnn.atanh
-   ttnn.bitwise_and
-   ttnn.bitwise_or
-   ttnn.bitwise_xor
    ttnn.bitwise_not
    ttnn.bitwise_left_shift
    ttnn.bitwise_right_shift
    ttnn.cbrt
+   ttnn.ceil
    ttnn.celu
    ttnn.clamp
    ttnn.clip
@@ -114,25 +111,28 @@ Pointwise Unary
    ttnn.cosh
    ttnn.deg2rad
    ttnn.digamma
+   ttnn.dropout
    ttnn.elu
+   ttnn.eqz
    ttnn.erf
    ttnn.erfc
    ttnn.erfinv
    ttnn.exp
    ttnn.exp2
    ttnn.expm1
+   ttnn.fill
    ttnn.floor
-   ttnn.ceil
+   ttnn.frac
    ttnn.geglu
    ttnn.gelu
    ttnn.glu
+   ttnn.gez
+   ttnn.gtz
    ttnn.hardshrink
-   ttnn.normalize_global
    ttnn.hardsigmoid
    ttnn.hardswish
    ttnn.hardtanh
    ttnn.heaviside
-   ttnn.hypot
    ttnn.i0
    ttnn.identity
    ttnn.isfinite
@@ -141,7 +141,7 @@ Pointwise Unary
    ttnn.isneginf
    ttnn.isposinf
    ttnn.leaky_relu
-   ttnn.lerp
+   ttnn.lez
    ttnn.lgamma
    ttnn.log
    ttnn.log10
@@ -149,26 +149,33 @@ Pointwise Unary
    ttnn.log2
    ttnn.log_sigmoid
    ttnn.logical_not
-   ttnn.frac
+   ttnn.logical_not_
    ttnn.logit
+   ttnn.ltz
    ttnn.mish
    ttnn.multigammaln
    ttnn.neg
+   ttnn.nez
+   ttnn.normalize_global
    ttnn.normalize_hw
+   ttnn.polygamma
    ttnn.prelu
+   ttnn.rad2deg
+   ttnn.rdiv
+   ttnn.reciprocal
    ttnn.reglu
    ttnn.relu
    ttnn.relu_max
    ttnn.relu_min
    ttnn.relu6
    ttnn.remainder
+   ttnn.round
    ttnn.rsqrt
-   ttnn.rdiv
-   ttnn.rsub
    ttnn.selu
    ttnn.sigmoid
    ttnn.sigmoid_accurate
    ttnn.sign
+   ttnn.signbit
    ttnn.silu
    ttnn.sin
    ttnn.sinh
@@ -176,37 +183,29 @@ Pointwise Unary
    ttnn.softplus
    ttnn.softshrink
    ttnn.softsign
-   ttnn.swish
-   ttnn.tan
-   ttnn.tanh
-   ttnn.signbit
-   ttnn.polygamma
-   ttnn.rad2deg
-   ttnn.reciprocal
-   ttnn.round
    ttnn.sqrt
    ttnn.square
    ttnn.swiglu
-   ttnn.tril
-   ttnn.triu
+   ttnn.swish
+   ttnn.tan
+   ttnn.tanh
    ttnn.tanhshrink
    ttnn.threshold
+   ttnn.tril
+   ttnn.triu
    ttnn.trunc
-   ttnn.mul_bw
+   ttnn.unary_chain
    ttnn.clamp_bw
+   ttnn.clip_bw
    ttnn.hardtanh_bw
    ttnn.threshold_bw
    ttnn.softplus_bw
-   ttnn.div_bw
    ttnn.rdiv_bw
-   ttnn.bias_gelu_bw
    ttnn.pow_bw
    ttnn.exp_bw
    ttnn.tanh_bw
    ttnn.sqrt_bw
-   ttnn.assign_bw
    ttnn.multigammaln_bw
-   ttnn.add_bw
    ttnn.lgamma_bw
    ttnn.fill_bw
    ttnn.hardsigmoid_bw
@@ -215,7 +214,6 @@ Pointwise Unary
    ttnn.acos_bw
    ttnn.atan_bw
    ttnn.rad2deg_bw
-   ttnn.sub_bw
    ttnn.frac_bw
    ttnn.trunc_bw
    ttnn.log_sigmoid_bw
@@ -258,8 +256,6 @@ Pointwise Unary
    ttnn.logiteps_bw
    ttnn.log2_bw
    ttnn.sign_bw
-   ttnn.fmod_bw
-   ttnn.remainder_bw
    ttnn.div_no_nan_bw
    ttnn.exp2_bw
    ttnn.expm1_bw
@@ -307,22 +303,20 @@ Pointwise Binary
    ttnn.logical_and_
    ttnn.logical_or_
    ttnn.logical_xor_
-   ttnn.pow
    ttnn.rpow
+   ttnn.rsub
    ttnn.ldexp
    ttnn.logical_and
    ttnn.logical_or
    ttnn.logical_xor
+   ttnn.bitwise_and
+   ttnn.bitwise_or
+   ttnn.bitwise_xor
    ttnn.logaddexp
    ttnn.logaddexp2
+   ttnn.hypot
    ttnn.xlogy
    ttnn.squared_difference
-   ttnn.gtz
-   ttnn.ltz
-   ttnn.gez
-   ttnn.lez
-   ttnn.nez
-   ttnn.eqz
    ttnn.gt
    ttnn.gt_
    ttnn.lt_
@@ -340,11 +334,18 @@ Pointwise Binary
    ttnn.maximum
    ttnn.minimum
    ttnn.outer
+   ttnn.pow
    ttnn.polyval
    ttnn.scatter
    ttnn.atan2
+   ttnn.add_bw
+   ttnn.assign_bw
    ttnn.atan2_bw
+   ttnn.bias_gelu_bw
+   ttnn.div_bw
    ttnn.embedding_bw
+   ttnn.fmod_bw
+   ttnn.remainder_bw
    ttnn.addalpha_bw
    ttnn.subalpha_bw
    ttnn.xlogy_bw
@@ -352,12 +353,13 @@ Pointwise Binary
    ttnn.ldexp_bw
    ttnn.logaddexp_bw
    ttnn.logaddexp2_bw
+   ttnn.mul_bw
+   ttnn.sub_bw
    ttnn.squared_difference_bw
    ttnn.concat_bw
    ttnn.rsub_bw
    ttnn.min_bw
    ttnn.max_bw
-   ttnn.lerp_bw
 
 Pointwise Ternary
 =================
@@ -371,9 +373,11 @@ Pointwise Ternary
    ttnn.addcmul
    ttnn.mac
    ttnn.where
+   ttnn.lerp
    ttnn.addcmul_bw
    ttnn.addcdiv_bw
    ttnn.where_bw
+   ttnn.lerp_bw
 
 Losses
 ======
@@ -419,6 +423,7 @@ Data Movement
    ttnn.reshape
    ttnn.repeat
    ttnn.repeat_interleave
+   ttnn.slice
    ttnn.tilize
    ttnn.tilize_with_val_padding
    ttnn.fill_rm
@@ -440,6 +445,17 @@ Normalization
    ttnn.layer_norm
    ttnn.rms_norm
 
+
+Moreh Operations
+================
+
+.. autosummary::
+   :toctree: api
+   :nosignatures:
+   :template: function.rst
+
+   ttnn.moreh_sum
+
 Transformer
 ===========
 
@@ -455,7 +471,19 @@ Transformer
    ttnn.experimental.rotary_embedding
    ttnn.transformer.scaled_dot_product_attention
    ttnn.transformer.scaled_dot_product_attention_decode
-   ttnn.transformer.scaled_dot_product_attention_decode_gqa
+
+CCL
+===
+
+.. autosummary::
+   :toctree: api
+   :nosignatures:
+   :template: function.rst
+
+   ttnn.all_gather
+   ttnn.reduce_scatter
+   ttnn.experimental.all_reduce
+
 
 Embedding
 =========

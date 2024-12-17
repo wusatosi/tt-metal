@@ -8,11 +8,10 @@ import torch
 
 import ttnn
 
-from tests.ttnn.utils_for_testing import check_with_pcc, start_measuring_time, stop_measuring_time
+from tests.ttnn.utils_for_testing import start_measuring_time, stop_measuring_time
 from loguru import logger
-import ttnn
 from tests.tt_eager.python_api_testing.sweep_tests.comparison_funcs import comp_equal, comp_pcc
-from tests.ttnn.unit_tests.operations.test_all_gather import is_unsupported_case
+from tests.ttnn.unit_tests.operations.ccl.test_all_gather import is_unsupported_case
 from ttnn import ShardTensorToMesh
 
 # Override the default timeout in seconds for hang detection.
@@ -40,6 +39,7 @@ parameters = {
         "mem_config": [ttnn.MemoryConfig(buffer_type=ttnn.BufferType.DRAM)],
         "enable_async": [True, False],
         "num_iters": [1],
+        "tile": [(32, 32)],
     },
 }
 
@@ -53,6 +53,7 @@ def invalidate_vector(test_vector) -> Tuple[bool, Optional[str]]:
         test_vector["num_links"],
         test_vector["input_dtype"],
         test_vector["layout"],
+        test_vector["tile"],
     )
     if is_known_failure:
         return True, f"Skipping unsupported case {message}."
@@ -65,7 +66,7 @@ def mesh_device_fixture():
     assert ttnn.get_num_devices() >= 8, "Not T3000!"
     device_ids = ttnn.get_t3k_physical_device_ids_ring()
     num_devices_requested = len(device_ids)
-    mesh_device = ttnn.open_mesh_device(ttnn.MeshShape(1, num_devices_requested), device_ids[:num_devices_requested])
+    mesh_device = ttnn.open_mesh_device(ttnn.MeshShape(1, num_devices_requested), mesh_type=ttnn.MeshType.Line)
     print("ALL GATHER: Opened device mesh")
 
     yield (mesh_device, "T3000 Mesh")
@@ -90,24 +91,28 @@ def run(
     mem_config,
     enable_async,
     num_iters,
+    tile,
     *,
     device,
 ) -> list:
     t3k_mesh_device = device
-    for device in t3k_mesh_device.get_devices():
-        device.enable_async(enable_async)
+    t3k_mesh_device.enable_async(enable_async)
 
     logger.info(f"Input shape: {input_shape}")
     logger.info(f"dim: {dim}")
 
     input_tensor = torch.rand(input_shape).bfloat16()
 
-    ttnn_tensor = ttnn.from_torch(input_tensor, mesh_mapper=ShardTensorToMesh(t3k_mesh_device, dim=dim))
+    ttnn_tensor = ttnn.from_torch(
+        input_tensor, tile=ttnn.Tile(tile), mesh_mapper=ShardTensorToMesh(t3k_mesh_device, dim=dim)
+    )
     input_tensor_mesh = ttnn.to_device(ttnn_tensor, t3k_mesh_device)
 
     for i in range(num_iters):
         start_time = start_measuring_time()
-        tt_out_tensor = ttnn.line_all_gather(input_tensor_mesh, dim, num_links=num_links, memory_config=mem_config)
+        tt_out_tensor = ttnn.all_gather(
+            input_tensor_mesh, dim, num_links=num_links, memory_config=mem_config, topology=ttnn.Topology.Linear
+        )
         e2e_perf = stop_measuring_time(start_time)
 
         logger.info(f"Done iteration {i}")

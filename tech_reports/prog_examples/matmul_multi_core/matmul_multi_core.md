@@ -16,7 +16,7 @@ To build and execute, you may use the following commands. Note that we include t
 ```bash
     export ARCH_NAME=<arch name>
     export TT_METAL_HOME=<this repo dir>
-    ./build_metal.sh
+    ./build_metal.sh --build-tests
     ./build/programming_examples/matmul_multi_core
 ```
 ## Accessing all the cores
@@ -118,9 +118,9 @@ for (uint32_t i = 0, num_tiles_written = 0; i < num_cores; i++){
     CoreCoord core = {i / num_cores_y, i % num_cores_y};
 
     uint32_t num_output_tiles_per_core;
-    if (core_group_1.core_coord_in_core_ranges(core)) {
+    if (core_group_1.contains(core)) {
         num_output_tiles_per_core = num_output_tiles_per_core_group_1;
-    } else if (core_group_2.core_coord_in_core_ranges(core)) {
+    } else if (core_group_2.contains(core)) {
         num_output_tiles_per_core = num_output_tiles_per_core_group_2;
     } else {
         TT_ASSERT(false, "Core not in specified core ranges");
