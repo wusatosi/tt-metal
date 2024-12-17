@@ -633,5 +633,7 @@ def test_run_prefetcher(
             logger.info(output)
             all_passing = passing and all_passing
 
+    assert all_passing
+
     device.clear_loaded_sub_device_manager()
     device.remove_sub_device_manager(sub_device_manager)
