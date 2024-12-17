@@ -191,7 +191,7 @@ FORCE_INLINE void cq_noc_async_write_init_state(uint32_t src_addr, uint64_t dst_
     }
     WAYPOINT("CNID");
 
-    constexpr bool multicast_path_reserve = true;
+    constexpr bool multicast_path_reserve = false;
     constexpr bool posted = false;
     constexpr uint32_t vc = mcast ? NOC_DISPATCH_MULTICAST_WRITE_VC : NOC_UNICAST_WRITE_VC;
 
