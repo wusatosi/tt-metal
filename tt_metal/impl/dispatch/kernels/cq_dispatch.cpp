@@ -409,7 +409,6 @@ void process_write_linear(
     uint32_t dst_addr = cmd->write_linear.addr + write_offset[write_offset_index];
     uint32_t length = cmd->write_linear.length;
     uint32_t data_ptr = cmd_ptr + sizeof(CQDispatchCmd);
-    cq_noc_async_write_init_state<CQ_NOC_sNdl, multicast>(0, get_noc_addr_helper(dst_noc, dst_addr));
 
     while (length != 0) {
         // More data needs to be written, but we've exhausted the CB. Acquire more pages.
@@ -437,14 +436,11 @@ void process_write_linear(
         uint32_t xfer_size = length > available_data ? available_data : length;
 
         if constexpr (multicast) {
-            cq_noc_async_write_with_state_any_len(data_ptr, dst_addr, xfer_size, num_mcast_dests);
+            noc_async_write_multicast_dispatch(
+                data_ptr, get_noc_addr_helper(dst_noc, dst_addr), xfer_size, num_mcast_dests, false, false);
         } else {
-            cq_noc_async_write_with_state_any_len(data_ptr, dst_addr, xfer_size);
+            noc_async_write(data_ptr, get_noc_addr_helper(dst_noc, dst_addr), xfer_size);
         }
-        // Increment counters based on the number of packets that were written
-        uint32_t num_noc_packets_written = div_up(xfer_size, NOC_MAX_BURST_SIZE);
-        noc_nonposted_writes_num_issued[noc_index] += num_noc_packets_written;
-        noc_nonposted_writes_acked[noc_index] += num_mcast_dests * num_noc_packets_written;
         length -= xfer_size;
         data_ptr += xfer_size;
         dst_addr += xfer_size;
@@ -569,12 +565,9 @@ void process_write_packed(
     ASSERT(stride != 0 || data_ptr - cmd_ptr + xfer_size <= dispatch_cb_page_size);
 
     volatile uint32_t tt_l1_ptr* l1_addr = (uint32_t*)(cmd_ptr + sizeof(CQDispatchCmd));
-    cq_noc_async_write_init_state<CQ_NOC_snDL, mcast>(0, dst_addr, xfer_size);
 
     // DPRINT << "dispatch_write_packed: " << xfer_size << " " << stride << " " << data_ptr << " " << count << " " <<
     // dst_addr << " " << ENDL();
-    uint32_t writes = 0;
-    uint32_t mcasts = 0;
     WritePackedSubCmd* sub_cmd_ptr = (WritePackedSubCmd*)l1_cache;
     while (count != 0) {
         uint32_t dst_noc = sub_cmd_ptr->noc_xy_addr;
@@ -589,9 +582,11 @@ void process_write_packed(
             if (cb_fence == block_next_start_addr[rd_block_idx]) {
                 orphan_size = cb_fence - data_ptr;
                 if (orphan_size != 0) {
-                    cq_noc_async_write_with_state<CQ_NOC_SNdL>(data_ptr, dst, orphan_size, num_dests);
-                    writes++;
-                    mcasts += num_dests;
+                    if constexpr (mcast) {
+                        noc_async_write_multicast_dispatch(data_ptr, dst, orphan_size, num_dests, false, false);
+                    } else {
+                        noc_async_write(data_ptr, dst, orphan_size);
+                    }
                 }
                 // Handle wrapping on dispatch cb
                 if (rd_block_idx == dispatch_cb_blocks - 1) {
@@ -600,10 +595,6 @@ void process_write_packed(
                 } else {
                     data_ptr += orphan_size;
                 }
-                noc_nonposted_writes_num_issued[noc_index] += writes;
-                noc_nonposted_writes_acked[noc_index] += mcasts;
-                writes = 0;
-                mcasts = 0;
                 move_rd_to_next_block_and_release_pages<
                     upstream_noc_index,
                     upstream_noc_xy,
@@ -622,12 +613,17 @@ void process_write_packed(
                 uint32_t remainder_xfer_size = xfer_size - orphan_size;
                 // Creating full NOC addr not needed as we are not programming the noc coords
                 uint32_t remainder_dst_addr = dst_addr + orphan_size;
-                cq_noc_async_write_with_state<CQ_NOC_SnDL>(
-                    data_ptr, remainder_dst_addr, remainder_xfer_size, num_dests);
-                // Reset values expected below
-                cq_noc_async_write_with_state<CQ_NOC_snDL, CQ_NOC_WAIT, CQ_NOC_send>(0, dst, xfer_size);
-                writes++;
-                mcasts += num_dests;
+                if constexpr (mcast) {
+                    noc_async_write_multicast_dispatch(
+                        data_ptr,
+                        get_noc_addr_helper(dst_noc, remainder_dst_addr),
+                        remainder_xfer_size,
+                        num_dests,
+                        false,
+                        false);
+                } else {
+                    noc_async_write(data_ptr, get_noc_addr_helper(dst_noc, remainder_dst_addr), remainder_xfer_size);
+                }
 
                 count--;
                 data_ptr += stride - orphan_size;
@@ -635,17 +631,15 @@ void process_write_packed(
                 continue;
             }
         }
-
-        cq_noc_async_write_with_state<CQ_NOC_SNdl>(data_ptr, dst, xfer_size, num_dests);
-        writes++;
-        mcasts += num_dests;
+        if constexpr (mcast) {
+            noc_async_write_multicast_dispatch(data_ptr, dst, xfer_size, num_dests, false, false);
+        } else {
+            noc_async_write(data_ptr, dst, xfer_size);
+        }
 
         count--;
         data_ptr += stride;
     }
-
-    noc_nonposted_writes_num_issued[noc_index] += writes;
-    noc_nonposted_writes_acked[noc_index] += mcasts;
 
     cmd_ptr = data_ptr;
 }
@@ -681,8 +675,6 @@ void process_write_packed_large(
         count * sub_cmd_size / sizeof(uint32_t),
         l1_cache);
 
-    uint32_t writes = 0;
-    uint32_t mcasts = noc_nonposted_writes_acked[noc_index];
     CQDispatchWritePackedLargeSubCmd* sub_cmd_ptr = (CQDispatchWritePackedLargeSubCmd*)l1_cache;
 
     bool init_state = true;
@@ -697,11 +689,7 @@ void process_write_packed_large(
         // Otherwise we assume NOC coord hasn't changed
         // TODO: If we are able to send 0 length txn to unset link, we don't need a flag and can compare dst_noc to prev
         // to determine linking
-        if (init_state) {
-            uint32_t dst_noc = sub_cmd_ptr->noc_xy_addr;
-            // TODO: Linking should be set to true once atomic txn is handled properly
-            cq_noc_async_write_init_state<CQ_NOC_sNdl, true, true>(0, get_noc_addr_helper(dst_noc, dst_addr));
-        }
+        uint32_t dst_noc = sub_cmd_ptr->noc_xy_addr;
 
         sub_cmd_ptr++;
 
@@ -714,9 +702,6 @@ void process_write_packed_large(
                         data_ptr = dispatch_cb_base;
                     }
                     // Block completion - account for all writes issued for this block before moving to next
-                    noc_nonposted_writes_num_issued[noc_index] += writes;
-                    mcasts += num_dests * writes;
-                    writes = 0;
                     move_rd_to_next_block_and_release_pages<
                         upstream_noc_index,
                         upstream_noc_xy,
@@ -733,32 +718,19 @@ void process_write_packed_large(
             uint32_t xfer_size;
             if (length > available_data) {
                 xfer_size = available_data;
-                cq_noc_async_write_with_state_any_len(data_ptr, dst_addr, xfer_size, num_dests);
+                noc_async_write_multicast_dispatch(
+                    data_ptr, get_noc_addr_helper(dst_noc, dst_addr), xfer_size, num_dests, false, false);
             } else {
                 xfer_size = length;
-                if (unlink) {
-                    uint32_t rem_xfer_size =
-                        cq_noc_async_write_with_state_any_len<false>(data_ptr, dst_addr, xfer_size, num_dests);
-                    // Unset Link flag
-                    cq_noc_async_write_init_state<CQ_NOC_sndl, true, false>(0, 0, 0);
-                    uint32_t data_offset = xfer_size - rem_xfer_size;
-                    cq_noc_async_write_with_state<CQ_NOC_SnDL, CQ_NOC_wait>(
-                        data_ptr + data_offset, dst_addr + data_offset, rem_xfer_size, num_dests);
-                } else {
-                    cq_noc_async_write_with_state_any_len(data_ptr, dst_addr, xfer_size, num_dests);
-                }
+                noc_async_write_multicast_dispatch(
+                    data_ptr, get_noc_addr_helper(dst_noc, dst_addr), xfer_size, num_dests, false, false);
             }
-            writes += div_up(xfer_size, NOC_MAX_BURST_SIZE);
             length -= xfer_size;
             data_ptr += xfer_size;
             dst_addr += xfer_size;
         }
 
         init_state = unlink;
-
-        noc_nonposted_writes_num_issued[noc_index] += writes;
-        mcasts += num_dests * writes;
-        writes = 0;
 
         // Handle padded size and potential wrap
         if (data_ptr + pad_size > cb_fence) {
@@ -789,7 +761,6 @@ void process_write_packed_large(
 
         count--;
     }
-    noc_nonposted_writes_acked[noc_index] = mcasts;
 
     cmd_ptr = data_ptr;
 }

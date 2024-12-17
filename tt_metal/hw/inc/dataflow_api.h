@@ -1518,6 +1518,76 @@ inline void noc_async_write_multicast(
     }
 }
 
+FORCE_INLINE
+void noc_async_write_multicast_one_packet_dispatch(
+    std::uint32_t src_local_l1_addr,
+    std::uint64_t dst_noc_addr_multicast,
+    std::uint32_t size,
+    std::uint32_t num_dests,
+    bool linked = false,
+    bool multicast_path_reserve = true,
+    uint8_t noc = noc_index) {
+    WAYPOINT("NWPW");
+    DEBUG_SANITIZE_NOC_MULTI_WRITE_TRANSACTION(noc, dst_noc_addr_multicast, src_local_l1_addr, size);
+    while (!noc_cmd_buf_ready(noc, write_cmd_buf));
+    WAYPOINT("NWPD");
+
+    uint32_t noc_cmd_field = NOC_CMD_CPY | NOC_CMD_WR | NOC_CMD_VC_STATIC |
+                             NOC_CMD_STATIC_VC(NOC_DISPATCH_MULTICAST_WRITE_VC) | (linked ? NOC_CMD_VC_LINKED : 0x0) |
+                             ((multicast_path_reserve ? NOC_CMD_PATH_RESERVE : 0) | NOC_CMD_BRCST_PACKET) |
+                             NOC_CMD_RESP_MARKED;
+
+    NOC_CMD_BUF_WRITE_REG(noc, write_cmd_buf, NOC_CTRL, noc_cmd_field);
+    NOC_CMD_BUF_WRITE_REG(noc, write_cmd_buf, NOC_TARG_ADDR_LO, src_local_l1_addr);
+    NOC_CMD_BUF_WRITE_REG(noc, write_cmd_buf, NOC_RET_ADDR_LO, (uint32_t)dst_noc_addr_multicast);
+#ifdef ARCH_BLACKHOLE
+    // Handles writing to PCIe
+    NOC_CMD_BUF_WRITE_REG(noc, write_cmd_buf, NOC_RET_ADDR_MID, (uint32_t)(dst_noc_addr_multicast >> 32) & 0x1000000F);
+#endif
+    NOC_CMD_BUF_WRITE_REG(
+        noc,
+        write_cmd_buf,
+        NOC_RET_ADDR_COORDINATE,
+        (uint32_t)(dst_noc_addr_multicast >> NOC_ADDR_COORD_SHIFT) & NOC_COORDINATE_MASK);
+    NOC_CMD_BUF_WRITE_REG(noc, write_cmd_buf, NOC_AT_LEN_BE, size);
+    NOC_CMD_BUF_WRITE_REG(noc, write_cmd_buf, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
+    if constexpr (noc_mode == DM_DYNAMIC_NOC) {
+        inc_noc_nonposted_writes_acked<proc_type>(noc, num_dests);
+    } else {
+        noc_nonposted_writes_num_issued[noc] += 1;
+        noc_nonposted_writes_acked[noc] += num_dests;
+    }
+}
+
+template <uint32_t max_page_size = NOC_MAX_BURST_SIZE + 1>
+inline void noc_async_write_multicast_dispatch(
+    std::uint32_t src_local_l1_addr,
+    std::uint64_t dst_noc_addr_multicast,
+    std::uint32_t size,
+    std::uint32_t num_dests,
+    bool linked = false,
+    bool multicast_path_reserve = true,
+    uint8_t noc = noc_index) {
+    if constexpr (max_page_size <= NOC_MAX_BURST_SIZE) {
+        noc_async_write_multicast_one_packet(
+            src_local_l1_addr, dst_noc_addr_multicast, size, num_dests, linked, multicast_path_reserve);
+    } else {
+        WAYPOINT("NMWW");
+        DEBUG_SANITIZE_NOC_MULTI_WRITE_TRANSACTION(noc, dst_noc_addr_multicast, src_local_l1_addr, size);
+        ncrisc_noc_fast_write_any_len<proc_type, noc_mode>(
+            noc,
+            write_cmd_buf,
+            src_local_l1_addr,
+            dst_noc_addr_multicast,
+            size,
+            NOC_DISPATCH_MULTICAST_WRITE_VC,
+            true,
+            linked,
+            num_dests,
+            multicast_path_reserve);
+        WAYPOINT("NMWD");
+    }
+}
 /**
  * Initiates an asynchronous write from a source address in L1 memory on the
  * Tensix core executing this function call to a rectangular destination grid.
