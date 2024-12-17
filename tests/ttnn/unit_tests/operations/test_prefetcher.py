@@ -296,9 +296,9 @@ def get_core_ranges(num_reader_cores, num_global_cb_receivers):
         # (2, 2, [(256, 1024), (256, 1024)], 5),
         (
             12,
-            5,
-            [(2304, 3840)] * 5,
             2,
+            [(2304, 3840)] * 5,
+            5,
         ),  # FF1/3 = 72 tiles x 120 tiles = 8640 tiles / 24 cores = 720 tiles per receiver core
         # (
         #     1,

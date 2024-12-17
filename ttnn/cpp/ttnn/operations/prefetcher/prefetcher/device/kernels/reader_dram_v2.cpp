@@ -104,22 +104,59 @@ void kernel_main() {
                 noc_async_read_tile_dram_sharded_set_state<true>(tensor_base_address, curr_page_size, bank_id, vc);
             uint32_t src_read_addr = 0;
 
-            for (uint32_t block = 0; block < num_blocks; ++block) {
-                cb_reserve_back(cb_id, max_block_num_tiles);
-                auto l1_write_addr = get_write_ptr(cb_id);
+            uint32_t num_free_blocks_in_buffer = total_num_blocks_in_buffer;
+            uint32_t curr_block_trid = 1;
+            uint32_t block_trid_to_wait = 1;
+            // Reserve two blocks of spcae to issue multiple block reads in parallel
+            cb_reserve_back(cb_id, max_block_num_tiles * 2);
 
-                DPRINT << "reader max_block_num_tiles " << max_block_num_tiles << ENDL();
+            uint32_t l1_write_addr_offset = 0;
+            uint32_t l1_write_addr_start = get_write_ptr(cb_id);
+            // Wrap around l1_write_addr if it reaches l1_buffer_end_addr
+            if (l1_write_addr_start >= l1_buffer_end_addr) {
+                l1_write_addr_start = l1_buffer_start_addr;
+            }
+            uint32_t l1_write_addr = l1_write_addr_start;
 
+            for (uint32_t block = 0; block < num_blocks; block++) {
+                // Set trid for current block
+                noc_async_read_tile_dram_sharded_set_trid(curr_block_trid);
+
+                // Issue noc async read commands for current block
+                uint32_t temp_l1_write_addr = l1_write_addr;
                 for (uint32_t h = 0; h < curr_block_num_pages; ++h) {
-                    noc_async_read_tile_dram_sharded_with_state(src_base_addr, src_read_addr, l1_write_addr);
+                    noc_async_read_tile_dram_sharded_with_state_with_trid(
+                        src_base_addr, src_read_addr, temp_l1_write_addr, curr_block_trid);
                     src_read_addr += curr_page_size;
-                    l1_write_addr += curr_page_size;
+                    temp_l1_write_addr += curr_page_size;
                 }
 
-                noc_async_read_barrier();
+                if (num_free_blocks_in_buffer == 3) {  // After first block we don't block but continue issuing reads
+                    num_free_blocks_in_buffer -= 1;
+                } else {
+                    noc_async_read_barrier_with_trid(block_trid_to_wait);
+                    cb_push_back(cb_id, max_block_num_tiles);
+                    block_trid_to_wait =
+                        block_trid_to_wait == total_num_blocks_in_buffer ? 1 : (block_trid_to_wait + 1);
+                    cb_reserve_back(
+                        cb_id,
+                        max_block_num_tiles *
+                            2);  // Reserve two blocks of spcae to issue multiple block reads in parallel
+                }
 
-                cb_push_back(cb_id, max_block_num_tiles);
+                // Increment block_trid, wrap around to 1 if it reaches total_num_blocks_in_buffer
+                curr_block_trid = curr_block_trid == total_num_blocks_in_buffer ? 1 : (curr_block_trid + 1);
+
+                // Wrap around l1_write_addr if it reaches l1_buffer_end_addr
+                l1_write_addr += curr_block_size_bytes;
+                if (l1_write_addr >= l1_buffer_end_addr) {
+                    l1_write_addr = l1_buffer_start_addr;
+                }
             }
+
+            // last block to wait
+            noc_async_read_barrier_with_trid(block_trid_to_wait);
+            cb_push_back(cb_id, max_block_num_tiles);
         }
     }
 }
