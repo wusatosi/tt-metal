@@ -86,8 +86,12 @@ function(ParseGitDescribe)
 
     message(STATUS "Version: ${VERSION_FULL}")
 
+    # Debian uses ~ to indicate a pre-version
+    string(REPLACE "-" "~" VERSION_DEBIAN "${VERSION_FULL}")
+
     # Output variables
     set(VERSION_FULL "${VERSION_FULL}" PARENT_SCOPE)
+    set(VERSION_DEBIAN "${VERSION_DEBIAN}" PARENT_SCOPE)
     set(VERSION_NUMERIC "${VERSION_NUMERIC}" PARENT_SCOPE)
     set(VERSION_HASH "${VERSION_HASH}" PARENT_SCOPE)
 endfunction()

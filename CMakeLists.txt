@@ -259,6 +259,12 @@ if(ENABLE_TRACY)
     add_link_options(-rdynamic)
 endif()
 
+# Install for build artifacts that will upload build/lib
+include(GNUInstallDirs)
+# GNUInstallDirs takes PROJECT_DIR verbatim, but directories should always be lowercase
+string(TOLOWER ${PROJECT_NAME} PROJECT_NAME_LOWER)
+string(REPLACE ${PROJECT_NAME} ${PROJECT_NAME_LOWER} CMAKE_INSTALL_DOCDIR ${CMAKE_INSTALL_DOCDIR})
+
 ############################################################################################################################
 # Build subdirectories
 ############################################################################################################################
@@ -279,7 +285,6 @@ endif()
 # For top level install: cmake --build build --target install  or  make/ninja install -C build
 ############################################################################################################################
 # Install for build artifacts that will upload build/lib
-include(GNUInstallDirs)
 
 install(
     TARGETS
@@ -319,8 +324,8 @@ add_custom_target(
     COMMENT "Cleaning `built` directory"
 )
 
-include(packaging)
-
 if(BUILD_TT_TRAIN)
     add_subdirectory(tt-train)
 endif()
+
+include(packaging)

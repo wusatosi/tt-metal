@@ -1,32 +1,38 @@
-set(COMMON_SRCS
-    ${CMAKE_CURRENT_SOURCE_DIR}/core_assignment.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/core_coord.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/core_descriptor.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/metal_soc_descriptor.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/tt_backend_api_types.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/utils.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/work_split.cpp
-)
-
 add_library(common STATIC ${COMMON_SRCS}) # FIXME(14541): Should be OBJECT, but can't handle circular deps between Object libs
 add_library(Metalium::Metal::Common ALIAS common)
 
-target_link_libraries(common PRIVATE yaml-cpp::yaml-cpp)
-target_link_libraries(
+target_sources(
     common
-    PUBLIC
-        nlohmann_json::nlohmann_json
-        magic_enum
-        fmt::fmt-header-only
-        span
-        Metalium::Metal::STL
-        Metalium::Metal::LLRT
-        umd::Firmware
+    PRIVATE
+        core_assignment.cpp
+        core_coord.cpp
+        core_descriptor.cpp
+        metal_soc_descriptor.cpp
+        tt_backend_api_types.cpp
+        utils.cpp
+        work_split.cpp
 )
 
 target_include_directories(
     common
     PUBLIC
-        ${PROJECT_SOURCE_DIR}
-        ${PROJECT_SOURCE_DIR}/tt_metal
+        "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>"
+        "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/tt_metal>"
 )
+
+target_link_libraries(
+    common
+    PUBLIC
+        fmt::fmt-header-only
+        nlohmann_json::nlohmann_json
+        umd::device
+        umd::Firmware
+    PRIVATE
+        magic_enum
+        span
+        Metalium::Metal::STL
+        Metalium::Metal::LLRT
+        yaml-cpp::yaml-cpp
+)
+
+# install(TARGETS common EXPORT Metal COMPONENT metalium-dev)

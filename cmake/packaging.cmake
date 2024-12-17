@@ -1,5 +1,66 @@
-set(CPACK_GENERATOR "DEB")
-set(CPACK_DEBIAN_PACKAGE_MAINTAINER "support@tenstorrent.com")
+set(CPACK_GENERATOR DEB)
+set(CPACK_PACKAGE_CONTACT "support@tenstorrent.com")
+set(CMAKE_PROJECT_HOMEPAGE_URL "https://tenstorrent.com")
+#set(CPACK_DEBIAN_PACKAGE_MAINTAINER "support@tenstorrent.com")
+# string(TOLOWER ${PROJECT_NAME} CPACK_PACKAGE_NAME)
+set(CPACK_PACKAGE_NAME tt)
+
+set(CPACK_COMPONENT_sdk_DESCRIPTION "For building apps")
+set(CPACK_DEBIAN_sdk_PACKAGE_SECTION "libdevel")
+set(CPACK_COMPONENT_runtime_DESCRIPTION "For using apps")
+set(CPACK_DEBIAN_runtime_PACKAGE_SECTION "libs")
+
+set(CPACK_COMPONENT_examples_DESCRIPTION "Some examples")
+set(CPACK_DEBIAN_doc_PACKAGE_SECTION "doc")
+set(CPACK_DEBIAN_sdk_PACKAGE_SECTION "libdevel")
+
+set(CPACK_DEB_COMPONENT_INSTALL TRUE)
+set(CPACK_DEBIAN_PACKAGE_VERSION "${VERSION_DEBIAN}")
+set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+
+set(CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION TRUE)
+# CPACK_DEBIAN_PACKAGE_SOURCE
+# CPACK_DEBIAN_<COMPONENT>_PACKAGE_MULTIARCH
+
+# Cross-package dependencies
+set(CPACK_DEBIAN_ENABLE_COMPONENT_DEPENDS TRUE)
+set(CPACK_COMPONENT_METAL-DEV_DEPENDS "metal")
+set(CPACK_COMPONENT_METAL-EXAMPLES_DEPENDS "metal-dev")
+set(CPACK_COMPONENT_METALIUM-EXAMPLES_DEPENDS "metalium-dev")
+
+#set(CPACK_DEBIAN_PACKAGE_NAME ${CPACK_PACKAGE_NAME})$
 #set(CPACK_DEBIAN_PACKAGE_DEPENDS "")
+#set(CPACK_DEBIAN_ENABLE_COMPONENT_DEPENDS ...)
+# TODO set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS TRUE)
+# CPACK_DEBIAN_<COMPONENT>_PACKAGE_CONFLICTS
+# CPACK_DEBIAN_PACKAGE_GENERATE_SHLIBS
 
 include(CPack)
+
+# install(EXPORT ${PROJECT_NAME}Targets
+#     FILE ${PROJECT_NAME}Targets.cmake
+#     NAMESPACE ${PROJECT_NAME}::
+#     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}
+# )
+
+include(CMakePackageConfigHelpers)
+
+write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/metalium-config-version.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
+configure_package_config_file(
+    ${CMAKE_CURRENT_LIST_DIR}/packaging.d/metalium-config.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/metalium-config.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/metalium
+)
+
+install(
+    FILES
+        ${CMAKE_CURRENT_BINARY_DIR}/metalium-config.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/metalium-config-version.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/metalium
+    COMPONENT metal-dev
+)

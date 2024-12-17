@@ -99,3 +99,5 @@ target_link_libraries(
         HAL::blackhole
 )
 target_compile_options(llrt PRIVATE -Wno-int-to-pointer-cast)
+
+# install(TARGETS llrt EXPORT Metal COMPONENT metalium-dev)
