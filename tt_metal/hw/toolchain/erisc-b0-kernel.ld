@@ -48,7 +48,7 @@ SECTIONS
   } > REGION_APP_KERNEL_CODE :text
    __kernel_data_lma = .;
 
-  .data : AT(__kernel_data_lma) ALIGN(16) {
+  .data : {
     __ldm_data_start = .;
     *(.rodata .rodata.* .gnu.linkonce.r.*)
     *(.rodata1)
