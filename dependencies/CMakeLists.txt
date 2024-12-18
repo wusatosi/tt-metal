@@ -111,3 +111,9 @@ CPMAddPackage(
     OPTIONS
         "XTENSOR_ENABLE_TESTS OFF"
 )
+
+# TODO(afuller): Move this to CPM and use upstream's CMake file, AFTER we move to Ubuntu 22.04 and drop 20.04 and bump
+#                our minimum CMake version accordingly.  Taskflow's CMake wants v3.18+
+add_library(Taskflow INTERFACE)
+add_library(Taskflow::Taskflow ALIAS Taskflow)
+target_include_directories(Taskflow SYSTEM INTERFACE ${PROJECT_SOURCE_DIR}/tt_metal/third_party/taskflow)
