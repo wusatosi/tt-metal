@@ -12,6 +12,8 @@
 #include "debug/assert.h"
 #include "debug/dprint.h"
 
+#include "tools/profiler/kernel_profiler.hpp"
+
 #include <cstdint>
 
 namespace tt::fabric {
@@ -97,6 +99,7 @@ struct WorkerToFabricEdmSender {
     [[nodiscard]] FORCE_INLINE bool consumer_has_space() const { return *this->worker_sem_addr == 1; }
     FORCE_INLINE void clear_flow_control_semaphore() const { noc_semaphore_set(this->worker_sem_addr, 0); }
     FORCE_INLINE void wait_for_empty_write_slot() const {
+        DeviceZoneScopedN("WAIT-FOR-EMPTY-WRITE-SLOT");
         DPRINT << "Wait for write slot @ " << (uint32_t)this->worker_sem_addr << "\n";
         noc_semaphore_wait(this->worker_sem_addr, 1);
     }

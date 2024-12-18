@@ -379,7 +379,7 @@ EdmLineFabricOpInterface::EdmLineFabricOpInterface(
     bool enable_persistent_mode,
     std::optional<size_t> desired_num_links) :
     device_sequence(device_sequence), programs(program_sequence) {
-    static constexpr std::size_t edm_buffer_size = 4096 + sizeof(tt::fabric::PacketHeader);
+    static constexpr std::size_t edm_buffer_size = 2*4096 + sizeof(tt::fabric::PacketHeader);
     auto const config = FabricEriscDatamoverConfig(edm_buffer_size, 1, 2);
     TT_ASSERT(device_sequence.size() == program_sequence.size());
 
@@ -456,7 +456,7 @@ EdmLineFabricOpInterface::EdmLineFabricOpInterface(
     bool enable_persistent_mode,
     std::optional<size_t> desired_num_links) :
     device_sequence({local_device}), programs({program}) {
-    static constexpr std::size_t edm_buffer_size = 4096 + sizeof(tt::fabric::PacketHeader);
+    static constexpr std::size_t edm_buffer_size = 2*4096 + sizeof(tt::fabric::PacketHeader);
     auto const config = FabricEriscDatamoverConfig(edm_buffer_size, 1, 2);
 
     log_trace(tt::LogOp, "device id={}", local_device->id());

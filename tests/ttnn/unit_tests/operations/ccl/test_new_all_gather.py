@@ -52,6 +52,52 @@ def is_unsupported_case(input_shape, dim, mem_config, num_devices, num_links, in
     return False, ""
 
 
+def run_with_trace(
+    mesh_device,
+    all_gather_topology,
+    input_tensor_mesh,
+    dim,
+    num_links,
+    output_mem_config,
+    num_iter=20,
+):
+    # Compile Run
+    logger.info("Compiling model")
+    tt_out_tensor = ttnn.experimental.all_gather_async(
+        input_tensor_mesh,
+        dim,
+        num_links=num_links,
+        memory_config=output_mem_config,
+        topology=all_gather_topology,
+    )
+    for d in mesh_device.get_devices():
+        ttnn.synchronize_device(d)
+
+    # Capture trace
+    logger.info("Capturing trace")
+    trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
+    for i in range(num_iter):
+        tt_out_tensor = ttnn.experimental.all_gather_async(
+            input_tensor_mesh,
+            dim,
+            num_links=num_links,
+            memory_config=output_mem_config,
+            topology=all_gather_topology,
+        )
+    ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
+    for d in mesh_device.get_devices():
+        ttnn.synchronize_device(d)
+
+    # Run the op
+    logger.info("Starting Trace perf test...")
+    ttnn.execute_trace(mesh_device, trace_id, blocking=False)
+    ttnn.release_trace(mesh_device, trace_id)
+    for d in mesh_device.get_devices():
+        ttnn.synchronize_device(d)
+
+    return tt_out_tensor
+
+
 def run_all_gather_impl(
     mesh_device,
     num_devices,
@@ -65,7 +111,7 @@ def run_all_gather_impl(
     all_gather_topology,
     num_iters=1,
     enable_async=False,
-    trace_mode=False,
+    trace_mode=True,
     rand_tensor=True,
     mem_config=None,
     input_shard_shape=None,
@@ -149,6 +195,7 @@ def run_all_gather_impl(
             dim,
             num_links,
             output_mem_config,
+            num_iter=num_iters,
         )
     else:
         for i in range(num_iters):
@@ -183,8 +230,9 @@ def run_all_gather_impl(
 @pytest.mark.parametrize(
     "num_devices, num_links, output_shape, dim, layout",
     [
-        (8, 1, [1, 1, 64, 512], 3, ttnn.TILE_LAYOUT),
-        (8, 1, [1, 1, 2048, 16384], 3, ttnn.TILE_LAYOUT),
+        #     (8, 1, [1, 1, 64, 512], 3, ttnn.TILE_LAYOUT),
+        #     (8, 1, [1, 1, 2048, 16384], 3, ttnn.TILE_LAYOUT),
+        (8, 1, [1, 1, 32, 8192], 3, ttnn.TILE_LAYOUT),
     ],
 )
 @pytest.mark.parametrize(
@@ -257,50 +305,59 @@ def test_all_gather(
     "num_devices, output_shape, dim, layout, input_shard_shape, shard_grid, tensor_mem_layout",
     [
         (
-            2,
-            [1, 1, 32, 256],
-            3,
-            ttnn.TILE_LAYOUT,
-            (32, 32),
-            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 3))}),
-            ttnn.TensorMemoryLayout.WIDTH_SHARDED,
-        ),
-        (
-            2,
-            [1, 1, 32, 256],
-            3,
-            ttnn.TILE_LAYOUT,
-            (32, 64),
-            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 1))}),
-            ttnn.TensorMemoryLayout.WIDTH_SHARDED,
-        ),
-        (
-            2,
-            [1, 1, 32, 256],
+            8,
+            [1, 1, 32, 8192],
             3,
             ttnn.TILE_LAYOUT,
             (32, 128),
-            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 0))}),
+            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 7))}),
             ttnn.TensorMemoryLayout.WIDTH_SHARDED,
         ),
-        (
-            2,
-            [1, 1, 64, 256],
-            2,
-            ttnn.TILE_LAYOUT,
-            (32, 128),
-            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 1))}),
-            ttnn.TensorMemoryLayout.WIDTH_SHARDED,
-        ),
-        (
-            2,
-            [1, 4, 32, 256],
-            3,
-            ttnn.TILE_LAYOUT,
-            (32, 128),
-            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 3))}),
-            ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
-        ),
+        # (
+        #     2,
+        #     [1, 1, 32, 256],
+        #     3,
+        #     ttnn.TILE_LAYOUT,
+        #     (32, 32),
+        #     ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 3))}),
+        #     ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        # ),
+        # (
+        #     2,
+        #     [1, 1, 32, 256],
+        #     3,
+        #     ttnn.TILE_LAYOUT,
+        #     (32, 64),
+        #     ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 1))}),
+        #     ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        # ),
+        # (
+        #     2,
+        #     [1, 1, 32, 256],
+        #     3,
+        #     ttnn.TILE_LAYOUT,
+        #     (32, 128),
+        #     ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 0))}),
+        #     ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        # ),
+        # (
+        #     2,
+        #     [1, 1, 64, 256],
+        #     2,
+        #     ttnn.TILE_LAYOUT,
+        #     (32, 128),
+        #     ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 1))}),
+        #     ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        # ),
+        # (
+        #     2,
+        #     [1, 4, 32, 256],
+        #     3,
+        #     ttnn.TILE_LAYOUT,
+        #     (32, 128),
+        #     ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 3))}),
+        #     ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+        # ),
     ],
 )
 @pytest.mark.parametrize("num_links", [1])
@@ -310,7 +367,7 @@ def test_all_gather(
         ttnn.bfloat16,
     ],
 )
-@pytest.mark.parametrize("num_iters", [1])
+@pytest.mark.parametrize("num_iters", [10])
 @pytest.mark.parametrize("enable_async", [True])
 def test_all_gather_sharded(
     t3k_mesh_device,

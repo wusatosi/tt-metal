@@ -21,6 +21,8 @@
 #include <cstdint>
 #include <utility>
 
+#include "tools/profiler/kernel_profiler.hpp"
+
 using arg_idx_t = uint16_t;
 
 ///////////////////////////////////////////////////
@@ -522,6 +524,7 @@ void update_ccl_command(
 
 template <typename Addrgen>
 FORCE_INLINE void try_advance_inline_write_or_atomic_inc(command_context_t<Addrgen>& cmd_ctx) {
+    DeviceZoneScopedN("TRY-ADV-AT-INC");
     const size_t value = cmd_ctx.cmd_specific_ctx.inline_value_ctx.value;
     const size_t dest_bank_addr = cmd_ctx.dest_addr_info.address;
     bool is_remote_atomic_inc_over_fabric = cmd_ctx.command_requires_fabric();
@@ -624,6 +627,8 @@ FORCE_INLINE void try_advance_read_tensor_to_cb(command_context_t<Addrgen>& cmd_
     if (!cb_pages_reservable_at_back(cmd_ctx.cb_id, cmd_ctx.packet_size_in_pages)) {
         return;
     }
+    {
+    DeviceZoneScopedN("TRY-ADV-R-TENS");
     // Hack for now - we will eventually move to having a packet header buffer that will render this pointless
     uint16_t header_padding =
         cmd_ctx.command_requires_fabric()
@@ -672,6 +677,7 @@ FORCE_INLINE void try_advance_read_tensor_to_cb(command_context_t<Addrgen>& cmd_
 
     noc_async_read_barrier();
     cb_push_back(cmd_ctx.cb_id, cmd_ctx.packet_size_in_pages);
+    }
 }
 #endif
 
@@ -775,6 +781,8 @@ FORCE_INLINE void try_advance_write_tensor_from_cb(command_context_t<Addrgen>& c
     if (!cb_pages_available_at_front(cmd_ctx.cb_id, cmd_ctx.packet_size_in_pages)) {
         return;
     }
+    {
+    DeviceZoneScopedN("TRY-ADV-W-TENS");
     DPRINT << "CB -> tensor: " << (uint32_t)cmd_ctx.cb_id << "\n";
     size_t header_padding = cmd_ctx.command_requires_fabric() ? sizeof(tt::fabric::PacketHeader) : 0;
 
@@ -821,6 +829,7 @@ FORCE_INLINE void try_advance_write_tensor_from_cb(command_context_t<Addrgen>& c
     noc_async_writes_flushed();
 
     cb_pop_front(cmd_ctx.cb_id, cmd_ctx.packet_size_in_pages);
+    }
 }
 #endif
 
@@ -849,6 +858,8 @@ FORCE_INLINE void try_advance(command_context_t<Addrgen>& cmd_ctx) {
     };
 
     // Advance to next command index
+    {
+    DeviceZoneScopedN("ADV-NEXT-CMD");
     switch (cmd_ctx.current_cmd_header.code) {
         case ttnn::ccl::cmd::CclCommandCode::STREAM_TENSOR_TO_EDM:  // STREAM TENSOR TO CB
         case ttnn::ccl::cmd::CclCommandCode::STREAM_CB_TO_TENSOR:
@@ -874,6 +885,7 @@ FORCE_INLINE void try_advance(command_context_t<Addrgen>& cmd_ctx) {
             break;
         default: ASSERT(false); break;
     };
+    }
 }
 
 /*

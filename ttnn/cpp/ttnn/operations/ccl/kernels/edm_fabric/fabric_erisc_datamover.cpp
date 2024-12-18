@@ -16,6 +16,8 @@
 #include "ttnn/cpp/ttnn/operations/ccl/kernels/edm_fabric/fabric_erisc_datamover_channels.hpp"
 #include "ttnn/cpp/ttnn/operations/ccl/shared_with_host/hetergeneous_data_structs.hpp"
 
+#include "tools/profiler/kernel_profiler.hpp"
+
 using ttnn::ccl::WorkerXY;
 
 /*
@@ -258,7 +260,7 @@ enum PacketLocalForwardType : uint8_t {
     PACKET_FORWARD_LOCAL_AND_REMOTE = 0x3
 };
 
-static constexpr uint32_t SWITCH_INTERVAL = 0;
+static constexpr uint32_t SWITCH_INTERVAL = 200000;
 static constexpr size_t ETH_BYTES_TO_WORDS_SHIFT = 4;
 static constexpr size_t NUM_SENDER_CHANNELS = 2;
 static constexpr size_t num_workers_ctor = 1;
@@ -512,31 +514,37 @@ bool run_sender_channel_state_machine_step(
     bool graceful_termination_mode,
     SenderState *const sender_state_out,
     uint8_t sender_channel_index) {
+    // DeviceZoneScopedN("SENDER-STATE-MACHINE");
     bool incr_sender_channel_index = true;
     switch (*sender_state_out) {
         case SenderState::SENDER_WAITING_FOR_WORKER: {
-            bool able_to_send = local_sender_channel_worker_interface.has_payload() && !eth_txq_is_busy() &&
-                                local_sender_channel.eth_is_receiver_channel_send_done();
-            if (able_to_send) {
-                DPRINT << "EDMS " << (uint32_t)sender_channel_index << "\n";
-                DPRINT << "\taddress: " << (uint32_t)local_sender_channel.get_current_buffer_address() << "\n";
-                DPRINT << "\t1st 8B: " << (uint64_t)*reinterpret_cast<volatile uint64_t*>(local_sender_channel.get_current_buffer_address()) << "\n";
-                DPRINT << "\tsend to " << (uint32_t)remote_receiver_channel.get_current_buffer_address() << "\n";
-                auto send_status = send_next_data(local_sender_channel, remote_receiver_channel);
-                // TODO: align the enums and state values so I can just do
-                // sender_states[sender_channel_index] += send_status :)
-                ASSERT(send_status != tt::fabric::SendStatus::ERROR);
-                *sender_state_out =
-                    send_status == tt::fabric::SendStatus::NOT_SENT            ? SenderState::SENDER_WAITING_FOR_WORKER
-                    : send_status == tt::fabric::SendStatus::SENT_PAYLOAD_ONLY ? SenderState::SENDER_SEND_CHANNEL_SYNC
-                                                                               : SenderState::SENDER_WAITING_FOR_ETH;
-                // Avoid any sort of starvation/bubbles so we only advance if we've sent the packet and channel sync
-                // otherwise what can happen is we could start sending another large payload from the other channel
-                // and not be able to send the channel sync for the packet we just sent, which overall negatively
-                // impact latency
-                incr_sender_channel_index = send_status != tt::fabric::SendStatus::SENT_PAYLOAD_ONLY;
+            DeviceZoneScopedN("SENDERSM-WAITING_FOR_WORKER_BRANCH");
+            bool has_payload = local_sender_channel_worker_interface.has_payload();
+            if (has_payload) {
+                // DeviceZoneScopedN("SENDERSM-SENDER_WAITING_FOR_WORKER-HAS_PAYLOAD");
+                bool able_to_send = local_sender_channel.eth_is_receiver_channel_send_done() && !eth_txq_is_busy() ;
+                if (able_to_send) {
+                    DPRINT << "EDMS " << (uint32_t)sender_channel_index << "\n";
+                    DPRINT << "\taddress: " << (uint32_t)local_sender_channel.get_current_buffer_address() << "\n";
+                    DPRINT << "\t1st 8B: " << (uint64_t)*reinterpret_cast<volatile uint64_t*>(local_sender_channel.get_current_buffer_address()) << "\n";
+                    DPRINT << "\tsend to " << (uint32_t)remote_receiver_channel.get_current_buffer_address() << "\n";
+                    auto send_status = send_next_data(local_sender_channel, remote_receiver_channel);
+                    // TODO: align the enums and state values so I can just do
+                    // sender_states[sender_channel_index] += send_status :)
+                    ASSERT(send_status != tt::fabric::SendStatus::ERROR);
+                    *sender_state_out =
+                        send_status == tt::fabric::SendStatus::NOT_SENT            ? SenderState::SENDER_WAITING_FOR_WORKER
+                        : send_status == tt::fabric::SendStatus::SENT_PAYLOAD_ONLY ? SenderState::SENDER_SEND_CHANNEL_SYNC
+                                                                                : SenderState::SENDER_WAITING_FOR_ETH;
+                    // Avoid any sort of starvation/bubbles so we only advance if we've sent the packet and channel sync
+                    // otherwise what can happen is we could start sending another large payload from the other channel
+                    // and not be able to send the channel sync for the packet we just sent, which overall negatively
+                    // impact latency
+                    incr_sender_channel_index = send_status != tt::fabric::SendStatus::SENT_PAYLOAD_ONLY;
+                }
             } else if (!graceful_termination_mode) {
-                if (!local_sender_channel_worker_interface.has_payload() && local_sender_channel_worker_interface.has_worker_teardown_request()) {
+                // DeviceZoneScopedN("SENDERSM-If-NOT-GRACEFUL-TERMINATION");
+                if (local_sender_channel_worker_interface.has_worker_teardown_request()) {
                     local_sender_channel_worker_interface.teardown_connection();
                     *sender_state_out = SenderState::SENDER_WAIT_WORKER_HANDSHAKE;
                 }
@@ -548,6 +556,7 @@ bool run_sender_channel_state_machine_step(
                 bool is_safe_to_receive_next_message = local_sender_channel.eth_is_receiver_channel_send_acked() ||
                                                        local_sender_channel.eth_is_receiver_channel_send_done();
                 if (is_safe_to_receive_next_message) {
+                    DeviceZoneScopedN("SENDERSM-WAIT_WORKER_HANDSHAKE");
                     DPRINT << "EDM ch " << (uint32_t)sender_channel_index << " wkr con ntfy wrkr\n";
                     DPRINT << "\tl1 worker info ptr: " << (uint32_t)local_sender_channel_worker_interface.worker_location_info_ptr << "\n";
                     DPRINT << "\tworker.x=" << (uint32_t)local_sender_channel_worker_interface.worker_location_info_ptr->worker_xy.x << ", .y=" << (uint32_t)local_sender_channel_worker_interface.worker_location_info_ptr->worker_xy.y << ", sem_addr=" << (uint32_t)local_sender_channel_worker_interface.worker_location_info_ptr->worker_semaphore_address << "\n";
@@ -562,6 +571,7 @@ bool run_sender_channel_state_machine_step(
         case SenderState::SENDER_SEND_CHANNEL_SYNC: {
             bool can_send_channel_sync_without_blocking = !eth_txq_is_busy();
             if (can_send_channel_sync_without_blocking) {
+                DeviceZoneScopedN("SENDERSM-SEND_CHANNEL_SYNC");
                 DPRINT << "EDMS send channel sync\n";
                 send_channel_sync(local_sender_channel, remote_receiver_channel);
                 local_sender_channel.advance_buffer_index();
@@ -574,6 +584,7 @@ bool run_sender_channel_state_machine_step(
             bool is_safe_to_receive_next_message = local_sender_channel.eth_is_receiver_channel_send_acked() ||
                                                    local_sender_channel.eth_is_receiver_channel_send_done();
             if (is_safe_to_receive_next_message) {
+                // DeviceZoneScopedN("SENDERSM-WAITING_FOR_ETH");
                 // This also notifies workers in the same call
                 DPRINT << "EDMS:\n";
                 sender_eth_check_receiver_ack_sequence(local_sender_channel, local_sender_channel_worker_interface);
@@ -593,10 +604,12 @@ void run_receiver_channel_state_machine_step(
     std::array<tt::fabric::EthChannelBuffer<SENDER_NUM_BUFFERS>, NUM_SENDER_CHANNELS> &remote_sender_channnels,
     tt::fabric::WorkerToFabricEdmSender &downstream_edm_interface,
     ReceiverState *const receiver_state_out) {
+    // DeviceZoneScopedN("RECEIVER-STATE-MACHINE");
     switch (*receiver_state_out) {
         case ReceiverState::RECEIVER_WAITING_FOR_ETH: {
             bool got_payload = local_receiver_channel.eth_bytes_are_available_on_channel();
             if (got_payload) {
+                DeviceZoneScopedN("RECEIVERSM-RECEIVER_WAITING_FOR_ETH");
                 bool can_ack = !eth_txq_is_busy();
                 if (can_ack) {
                     DPRINT << "EDMR got pkt @: " << (uint32_t)reinterpret_cast<volatile uint64_t *>(local_receiver_channel.get_current_packet_header()) << "\n";
@@ -623,6 +636,7 @@ void run_receiver_channel_state_machine_step(
             bool can_send_to_all_local_chip_receivers =
                 can_forward_packet_completely(packet_header, downstream_edm_interface);
             if (can_send_to_all_local_chip_receivers) {
+                DeviceZoneScopedN("RECEIVERSM-RECEIVER_SENDING_PAYLOAD");
                 DPRINT << "EDMR writing pkt\n";
                 receiver_forward_packet(local_receiver_channel.get_current_packet_header(), downstream_edm_interface);
                 *receiver_state_out = ReceiverState::RECEIVER_WAITING_FOR_WRITE_FLUSH;
@@ -634,6 +648,7 @@ void run_receiver_channel_state_machine_step(
             if (writes_flushed) {
                 bool can_send_ack_without_blocking = !eth_txq_is_busy();
                 if (can_send_ack_without_blocking) {
+                    DeviceZoneScopedN("RECEIVERSM-RECEIVER_WAITING_FOR_WRITE_FLUSH");
                     receiver_send_completion_ack(remote_sender_channnels, local_receiver_channel);
                     *receiver_state_out = ReceiverState::RECEIVER_WAITING_FOR_ETH;
                 }
@@ -692,9 +707,13 @@ void run_fabric_edm_main_loop(
     size_t did_nothing_count = 0;
     *termination_signal_ptr = tt::fabric::TerminationSignal::KEEP_RUNNING;
 
+    // DeviceZoneScopedN("EDM-MAIN-LOOP");
+
     while (!got_immediate_termination_signal(termination_signal_ptr)) {
+        // DeviceZoneScopedN("EDM-MAIN-LOOP-BODY");
         bool got_graceful_termination = got_graceful_termination_signal(termination_signal_ptr);
         if (got_graceful_termination) {
+            // DeviceZoneScopedN("GOT-GRACEFUL-TERMINATION");
             DPRINT << "EDM Graceful termination\n";
             DPRINT << "EDMS0 ST: " << (uint32_t)sender_states[0] << "\n";
             bool all_drained = all_channels_drained<RECEIVER_NUM_BUFFERS, SENDER_NUM_BUFFERS, NUM_SENDER_CHANNELS>(
@@ -723,6 +742,7 @@ void run_fabric_edm_main_loop(
         bool did_something_sender = old_send_state != sender_states[sender_channel_index];
         if (incr_sender_channel_index) {
             // TODO: this can probably be optimized
+            // DeviceZoneScopedN("INC-SENDER-CHANNEL-INDEX");
             sender_channel_index = 1 - sender_channel_index;
         }
 
@@ -735,6 +755,7 @@ void run_fabric_edm_main_loop(
             did_nothing_count = 0;
         } else {
             if (did_nothing_count++ > SWITCH_INTERVAL) {
+                // DeviceZoneScopedN("RUN-ROUTING");
                 did_nothing_count = 0;
                 run_routing();
             }

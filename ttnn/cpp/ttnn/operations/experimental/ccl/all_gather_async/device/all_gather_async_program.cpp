@@ -133,7 +133,7 @@ operation::ProgramWithCallbacks all_gather_async_multi_core_with_workers(
     const auto& sender_worker_cores = corerange_to_cores(sender_worker_core_range, std::nullopt, true);
 
     // L1 Scratch CB Creation
-    uint32_t num_pages_per_packet = 1;                 // we assume 1 page per packet for now
+    uint32_t num_pages_per_packet = 4;                 // we assume 4 page per packet for now
     uint32_t cb_num_pages = 3 * num_pages_per_packet;  // tripple buffering
     uint32_t src0_cb_index = tt::CB::c_in0;
     uint32_t l1_scratch_cb_page_size_bytes = op_config.get_page_size() + sizeof(tt::fabric::PacketHeader);
