@@ -18,7 +18,7 @@ def test_llama_torch_inference(ensure_gc):
     tokenizer = model_args.tokenizer
 
     prompts = ["1 2 3 4 "] * model_args.max_batch_size
-    encoded_prompts = [tokenizer.encode(prompt, bos=True, eos=False) for prompt in prompts]
+    encoded_prompts = [model_args.encode_prompt(prompt, instruct=False) for prompt in prompts]
 
     reference_model = model_args.reference_transformer()
     reference_model.load_state_dict(state_dict)
@@ -63,4 +63,4 @@ def test_llama_torch_inference(ensure_gc):
             all_outputs_ref.append(pt_out_tok.squeeze(1).tolist()[0])  # Update generated token to list of ref outputs
 
         # TODO print all 32 users
-        logger.info("[User 0] Ref generation: ", "".join(tokenizer.decode(all_outputs_ref)))
+        logger.info("[User 0] Ref generation: '" + "".join(tokenizer.decode(all_outputs_ref)) + "'")

@@ -70,7 +70,7 @@ def test_llama_attention_inference(
     mesh_device.enable_async(True)
 
     model_args = TtModelArgs(mesh_device, max_batch_size=batch_size, max_seq_len=max_seq_len)
-    model_args.n_layers = 1  # For the unit test, just run a sigle layer
+    model_args.n_layers = 1  # For the unit test, just run a single layer
 
     state_dict = model_args.load_state_dict()
 

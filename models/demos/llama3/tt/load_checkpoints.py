@@ -40,16 +40,46 @@ def load_hf_state_dict(ckpt_dir):
     return loaded_weights
 
 
-def convert_hf_to_meta(state_dict):
-    state_dict = convert_hf_qkv_to_meta_format(state_dict)
+def convert_hf_to_meta(state_dict, head_dim):
+    state_dict = convert_hf_qkv_to_meta_format(state_dict, head_dim)
     state_dict = map_hf_to_meta_keys(state_dict)
     return state_dict
 
 
 def map_hf_to_meta_keys(loaded_weights):
     hf_to_meta = {
+        # Top level mappings
         "model.embed_tokens.weight": "tok_embeddings.weight",
         "model.norm.weight": "norm.weight",
+        "lm_head.weight": "output.weight",
+        # Layer level mappings
+        "input_layernorm.weight": "attention_norm.weight",
+        "post_attention_layernorm.weight": "ffn_norm.weight",
+        # Attention module mappings
+        "self_attn.q_proj.weight": "attention.wq.weight",
+        "self_attn.k_proj.weight": "attention.wk.weight",
+        "self_attn.v_proj.weight": "attention.wv.weight",
+        "self_attn.o_proj.weight": "attention.wo.weight",
+        "self_attn.q_proj.bias": "attention.wq.bias",
+        "self_attn.k_proj.bias": "attention.wk.bias",
+        "self_attn.v_proj.bias": "attention.wv.bias",
+        # Feed forward module mappings
+        "mlp.gate_proj.weight": "feed_forward.w1.weight",
+        "mlp.up_proj.weight": "feed_forward.w3.weight",
+        "mlp.down_proj.weight": "feed_forward.w2.weight",
+        # Direct module mappings
+        "gate_proj.weight": "w1.weight",
+        "down_proj.weight": "w2.weight",
+        "up_proj.weight": "w3.weight",
+        "q_proj.weight": "wq.weight",
+        "k_proj.weight": "wk.weight",
+        "v_proj.weight": "wv.weight",
+        "o_proj.weight": "wo.weight",
+        "q_proj.bias": "wq.bias",
+        "k_proj.bias": "wk.bias",
+        "v_proj.bias": "wv.bias",
+        "weight": "emb.weight",  # For host embeddings
+        # Full path layer mappings
         "model.layers.{layer}.input_layernorm.weight": "layers.{layer}.attention_norm.weight",
         "model.layers.{layer}.post_attention_layernorm.weight": "layers.{layer}.ffn_norm.weight",
         "model.layers.{layer}.self_attn.q_proj.weight": "layers.{layer}.attention.wq.weight",
@@ -62,7 +92,6 @@ def map_hf_to_meta_keys(loaded_weights):
         "model.layers.{layer}.mlp.gate_proj.weight": "layers.{layer}.feed_forward.w1.weight",
         "model.layers.{layer}.mlp.up_proj.weight": "layers.{layer}.feed_forward.w3.weight",
         "model.layers.{layer}.mlp.down_proj.weight": "layers.{layer}.feed_forward.w2.weight",
-        "lm_head.weight": "output.weight",
     }
 
     meta_state_dict = {}
@@ -148,38 +177,26 @@ def load_sharded_checkpoints(checkpoints, n_layers):
     return checkpoint
 
 
-def convert_hf_qkv_to_meta_format(loaded_weights):
-    """Convert HuggingFace QKV weights to Meta format for RoPE compatibility.
-    For each attention layer's Q and K weights/biases:
-    - First half and second half dimensions are interleaved
-    - V weights/biases remain unchanged
-    """
+def convert_hf_qkv_to_meta_format(loaded_weights, head_dim):
+    """Convert HuggingFace QKV weights to Meta format for RoPE compatibility."""
     converted_weights = {}
     for key, tensor in loaded_weights.items():
-        if key.endswith(("q_proj.weight", "q_proj.bias", "k_proj.weight", "k_proj.bias")):
-            # Get head dimension size
-            head_dim = tensor.shape[-1]
-            half_dim = head_dim // 2
-
-            # Split into halves
-            first_half = tensor[..., :half_dim]
-            second_half = tensor[..., half_dim:]
-
-            # Interleave the halves
-            converted = torch.empty_like(tensor)
-            converted[..., 0::2] = first_half
-            converted[..., 1::2] = second_half
-
-            converted_weights[key] = converted
+        if "q_proj.weight" in key or "k_proj.weight" in key:
+            # For weights: n_heads = tensor.shape[0] // head_dim
+            n_heads = tensor.shape[0] // head_dim
+            converted_weights[key] = reverse_permute(tensor, n_heads, tensor.shape[0], tensor.shape[1])
+        elif "q_proj.bias" in key or "k_proj.bias" in key:
+            # For biases: n_heads = tensor.shape[0] // head_dim
+            n_heads = tensor.shape[0] // head_dim
+            converted_weights[key] = reverse_permute(tensor, n_heads, tensor.shape[0], 1).squeeze(-1)
         else:
             # Keep all other weights unchanged
             converted_weights[key] = tensor
-
     return converted_weights
 
 
-def convert_meta_to_hf(state_dict):
-    state_dict = convert_meta_qkv_to_hf_format(state_dict)
+def convert_meta_to_hf(state_dict, head_dim):
+    state_dict = convert_meta_qkv_to_hf_format(state_dict, head_dim)
     state_dict = map_meta_to_hf_keys(state_dict)
     return state_dict
 
@@ -256,27 +273,27 @@ def map_meta_to_hf_keys(loaded_weights):
     return hf_state_dict
 
 
-def convert_meta_qkv_to_hf_format(loaded_weights):
-    """Convert Meta QKV weights back to HuggingFace format.
-    For each attention layer's Q and K weights/biases:
-    - De-interleave the dimensions back to concatenated halves
-    - V weights/biases remain unchanged
-    """
+def convert_meta_qkv_to_hf_format(loaded_weights, head_dim):
+    """Convert Meta QKV weights back to HuggingFace format."""
     converted_weights = {}
     for key, tensor in loaded_weights.items():
-        if any(pattern in key for pattern in ["wq.", "wk."]):  # Matches wq.weight, wq.bias, wk.weight, wk.bias
-            # Get head dimension size
-            head_dim = tensor.shape[-1]
-
-            # De-interleave the dimensions
-            even_indices = tensor[..., 0::2]  # First half
-            odd_indices = tensor[..., 1::2]  # Second half
-
-            # Concatenate back to HF format
-            converted = torch.cat([even_indices, odd_indices], dim=-1)
-            converted_weights[key] = converted
+        if "wq.weight" in key or "wk.weight" in key:
+            # For weights: n_heads = tensor.shape[0] // head_dim
+            n_heads = tensor.shape[0] // head_dim
+            converted_weights[key] = permute(tensor, n_heads, tensor.shape[0], tensor.shape[1])
+        elif "wq.bias" in key or "wk.bias" in key:
+            # For biases: n_heads = tensor.shape[0] // head_dim
+            n_heads = tensor.shape[0] // head_dim
+            converted_weights[key] = permute(tensor.unsqueeze(-1), n_heads, tensor.shape[0], 1).squeeze(-1)
         else:
             # Keep all other weights unchanged
             converted_weights[key] = tensor
-
     return converted_weights
+
+
+def reverse_permute(tensor, n_heads, dim1, dim2):
+    return tensor.view(n_heads, 2, dim1 // n_heads // 2, dim2).transpose(1, 2).reshape(dim1, dim2)
+
+
+def permute(tensor, n_heads, dim1, dim2):
+    return tensor.view(n_heads, dim1 // n_heads // 2, 2, dim2).transpose(1, 2).reshape(dim1, dim2)

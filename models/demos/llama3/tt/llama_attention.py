@@ -2,14 +2,12 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import List, Optional
 import torch
 
 import ttnn
-from models.utility_functions import (
-    nearest_32,
-)
 from models.common.lightweightmodule import LightweightModule
+from models.demos.llama3.tt.llama_common import first_five
+from models.demos.llama3.tt.load_checkpoints import permute
 
 
 class TtLlamaAttention(LightweightModule):
@@ -104,37 +102,43 @@ class TtLlamaAttention(LightweightModule):
         assert configuration.qkv_size % configuration.num_devices == 0
         assert configuration.dim % configuration.num_devices == 0
 
+        # print(f'self.state_dict[f"{wq_str}.weight"].shape: {self.state_dict[f"{wq_str}.weight"].shape}')
+        # print(f'self.state_dict[f"{wk_str}.weight"].shape: {self.state_dict[f"{wk_str}.weight"].shape}')
+        # print(f'self.state_dict[f"{wv_str}.weight"].shape: {self.state_dict[f"{wv_str}.weight"].shape}')
+
+        torch_qkv = torch.concat(
+            [
+                torch.concat(
+                    [
+                        torch.transpose(
+                            torch.chunk(self.state_dict[f"{wq_str}.weight"], configuration.num_devices)[i],
+                            -2,
+                            -1,
+                        ),
+                        torch.transpose(
+                            torch.chunk(self.state_dict[f"{wk_str}.weight"], configuration.num_devices)[i],
+                            -2,
+                            -1,
+                        ),
+                        torch.transpose(
+                            torch.chunk(self.state_dict[f"{wv_str}.weight"], configuration.num_devices)[i],
+                            -2,
+                            -1,
+                        ),
+                    ],
+                    dim=-1,
+                )
+                for i in range(configuration.num_devices)
+            ],
+            dim=-1,
+        )
+
         # wqkv: 4096 x 3072 (2 devices): width-sharded on 12 banks, 3072 over 12 banks.
         wqkv_mem_config = configuration.create_dram_sharded_mem_config(
             configuration.dim, configuration.qkv_size // configuration.num_devices
         )
         self.wqkv = ttnn.as_tensor(
-            torch.concat(
-                [
-                    torch.concat(
-                        [
-                            torch.transpose(
-                                torch.chunk(self.state_dict[f"{wq_str}.weight"], configuration.num_devices)[i],
-                                -2,
-                                -1,
-                            ),
-                            torch.transpose(
-                                torch.chunk(self.state_dict[f"{wk_str}.weight"], configuration.num_devices)[i],
-                                -2,
-                                -1,
-                            ),
-                            torch.transpose(
-                                torch.chunk(self.state_dict[f"{wv_str}.weight"], configuration.num_devices)[i],
-                                -2,
-                                -1,
-                            ),
-                        ],
-                        dim=-1,
-                    )
-                    for i in range(configuration.num_devices)
-                ],
-                dim=-1,
-            ),
+            torch_qkv,
             device=self.mesh_device,
             mesh_mapper=ttnn.ShardTensorToMesh(self.mesh_device, dim=-1),
             dtype=self.dtype,
@@ -252,19 +256,47 @@ class TtLlamaAttention(LightweightModule):
         # QKV matmuls
         # Use HiFi2 for DRAM-sharded matmuls as they are otherwise flop-bound. Loses 1 bit of activation precision.
         ###
+        # print(f'x.shape: {x.shape}')
+        # print(f'x: {first_five(x, self.mesh_device)}')
+        # print(f'self.wqkv.shape: {self.wqkv.shape}')
+        # print(f'self.wqkv: {first_five(self.wqkv, self.mesh_device)}')
+
+        as_torch = lambda tensor: torch.Tensor(
+            ttnn.to_torch(tensor, mesh_composer=ttnn.ConcatMeshToTensor(self.mesh_device, dim=-1))
+        )
+
+        # print(f"our x:", " ".join(f'{t:+3.1f}' for t in as_torch(x)[0, 0, 0].flatten()))
         xqkv_fused_sharded = ttnn.linear(
             x,
             self.wqkv,
-            bias=self.wqkv_bias,
+            # bias=self.wqkv_bias,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
             program_config=self.model_config["XQKV_DECODE_PROGCFG"],
             compute_kernel_config=self.compute_kernel_config_hifi2,
             dtype=ttnn.bfloat16,
         )
+        # FIXME: File bug against dram-sharded matmuls with bias
+        xqkv_fused_sharded = xqkv_fused_sharded + self.wqkv_bias
+
+        # torch_xqkv = as_torch(xqkv_fused_sharded)[0, 0, 0]
+        # torch_q = torch_xqkv[:self.head_dim * self.n_local_heads]
+        # torch_k = torch_xqkv[self.head_dim * self.n_local_heads:self.head_dim * (self.n_local_heads + self.n_local_kv_heads)]
+        # torch_v = torch_xqkv[self.head_dim * (self.n_local_heads + self.n_local_kv_heads):]
+        # to_hf = lambda t: permute(t.unsqueeze(-1), t.shape[0] // self.head_dim, t.shape[0], 1).squeeze(-1)
+        # torch_q = to_hf(torch_q)
+        # torch_k = to_hf(torch_k)
+        # torch_v = torch_v
+
+        # # print("our q:", " ".join(f'{t:+3.1f}' for t in torch_q.flatten()))
+        # print("our k:", " ".join(f'{t:+3.1f}' for t in torch_k.flatten()))
+        # print("our v:", " ".join(f'{t:+3.1f}' for t in torch_v.flatten()))
+
         ttnn.deallocate(x)
 
         xqkv_fused = ttnn.sharded_to_interleaved(xqkv_fused_sharded, ttnn.L1_MEMORY_CONFIG)
         ttnn.deallocate(xqkv_fused_sharded)
+        # print(f'xqkv_fused: {xqkv_fused.shape}')
+        # print(f'xqkv_fused: {first_five(xqkv_fused, self.mesh_device)}')
 
         # Reshape such that true unpadded batch is tracked in shape
         fqkv_shape = xqkv_fused.shape
@@ -297,6 +329,9 @@ class TtLlamaAttention(LightweightModule):
         k_heads_1BKD = ttnn.experimental.rotary_embedding_llama(
             k_heads_pre_rot_1BKD, rot_mats[0], rot_mats[1], self.transformation_mats["decode"], is_decode_mode=True
         )
+
+        # q_heads_1BQD = q_heads_pre_rot_1BQD
+        # k_heads_1BKD = k_heads_pre_rot_1BKD
 
         ttnn.deallocate(q_heads_pre_rot_1BQD)
         ttnn.deallocate(k_heads_pre_rot_1BKD)

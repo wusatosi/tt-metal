@@ -29,6 +29,7 @@ from models.demos.llama3.tt.load_checkpoints import (
     load_hf_state_dict,
     convert_hf_to_meta,
     convert_meta_to_hf,
+    reverse_permute,
 )
 
 
@@ -878,7 +879,7 @@ class TtModelArgs:
         else:
             assert self.checkpoint_type == CheckpointType.HuggingFace
             state_dict = load_hf_state_dict(self.DEFAULT_CKPT_DIR)
-            state_dict = convert_hf_to_meta(state_dict)
+            state_dict = convert_hf_to_meta(state_dict, self.head_dim)
         keys_dict = list(state_dict.keys())[:]
         remv = [f"layers.{i}." for i in list(range(self.n_layers, self.full_model_n_layers))]
         for k in keys_dict:
@@ -1105,13 +1106,13 @@ class TtModelArgs:
 
             return ColumnParallelLinear(self.dim, self.vocab_size, bias=False, init_method=lambda x: x)
         else:
-            model = self.reference_transformer()
+            model = self.reference_transformer(wrap=False)
             layer = model.lm_head
             layer._load_state_dict = layer.load_state_dict
-            layer.load_state_dict = lambda x: layer._load_state_dict(convert_meta_to_hf(x))
+            layer.load_state_dict = lambda x: layer._load_state_dict(convert_meta_to_hf(x, self.head_dim))
             return layer
 
-    def reference_transformer(self):
+    def reference_transformer(self, wrap=True):
         if self.checkpoint_type == CheckpointType.Meta:
             from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import Transformer
 
@@ -1122,7 +1123,13 @@ class TtModelArgs:
             config = AutoConfig.from_pretrained(self.DEFAULT_CKPT_DIR)
             config.num_layers = self.n_layers
             model = AutoModelForCausalLM.from_config(config)
-            return model
+            # model._load_state_dict = model.load_state_dict
+            # model.load_state_dict = lambda x: model._load_state_dict(convert_meta_to_hf(x, self.head_dim))
+            if wrap:
+                wrapper = HfModelWrapper(model, self.head_dim)
+                return wrapper
+            else:
+                return model
 
     def reference_rms_norm(self):
         if self.checkpoint_type == CheckpointType.Meta:
@@ -1130,10 +1137,10 @@ class TtModelArgs:
 
             return RMSNorm(self.dim, self.norm_eps)
         else:
-            model = self.reference_transformer()
+            model = self.reference_transformer(wrap=False)
             layer = model.model.norm
             layer._load_state_dict = layer.load_state_dict
-            layer.load_state_dict = lambda x: layer._load_state_dict(convert_meta_to_hf(x))
+            layer.load_state_dict = lambda x: layer._load_state_dict(convert_meta_to_hf(x, self.head_dim))
             return layer
 
     def reference_mlp(self):
@@ -1142,10 +1149,10 @@ class TtModelArgs:
 
             return FeedForward(self.dim, 4 * self.dim, self.multiple_of, self.ffn_dim_multiplier)
         else:
-            model = self.reference_transformer()
+            model = self.reference_transformer(wrap=False)
             layer = model.model.layers[0].mlp
             layer._load_state_dict = layer.load_state_dict
-            layer.load_state_dict = lambda x: layer._load_state_dict(convert_meta_to_hf(x))
+            layer.load_state_dict = lambda x: layer._load_state_dict(convert_meta_to_hf(x, self.head_dim))
             return layer
 
     def reference_embedding(self):
@@ -1154,10 +1161,10 @@ class TtModelArgs:
 
             return HostEmbedding(self)
         else:
-            model = self.reference_transformer()
+            model = self.reference_transformer(wrap=False)
             layer = model.model.embed_tokens
             layer._load_state_dict = layer.load_state_dict
-            layer.load_state_dict = lambda x: layer._load_state_dict(convert_meta_to_hf(x))
+            layer.load_state_dict = lambda x: layer._load_state_dict(convert_meta_to_hf(x, self.head_dim))
             return layer
 
     def reference_decoder(self):
@@ -1166,10 +1173,10 @@ class TtModelArgs:
 
             return TransformerBlock(layer_id=0, args=self)
         else:
-            model = self.reference_transformer()
+            model = self.reference_transformer(wrap=False)
             layer = model.model.layers[0]
             layer._load_state_dict = layer.load_state_dict
-            layer.load_state_dict = lambda x: layer._load_state_dict(convert_meta_to_hf(x))
+            layer.load_state_dict = lambda x: layer._load_state_dict(convert_meta_to_hf(x, self.head_dim))
             return layer
 
     def reference_attention(self):
@@ -1178,19 +1185,20 @@ class TtModelArgs:
 
             return Attention(self)
         else:
-            model = self.reference_transformer()
+            model = self.reference_transformer(wrap=False)
             layer = model.model.layers[0].self_attn
-            wrapper = HfAttentionWrapper(layer)
+            wrapper = HfAttentionWrapper(layer, self.head_dim)
             return wrapper
 
 
 class HfAttentionWrapper:
-    def __init__(self, attention):
+    def __init__(self, attention, head_dim):
         from transformers import DynamicCache
 
         super().__init__()
         self.attention = attention
         self.past_key_value = DynamicCache()
+        self.head_dim = head_dim
 
     def forward(self, x, start_pos, freqs_cis_i, mask=None):
         output, _, self.past_key_value = self.attention(
@@ -1206,14 +1214,53 @@ class HfAttentionWrapper:
         return self.forward(*args, **kwargs)
 
     def load_state_dict(self, state_dict):
-        return self.attention.load_state_dict(convert_meta_to_hf(state_dict))
+        return self.attention.load_state_dict(convert_meta_to_hf(state_dict, self.head_dim))
 
     @property
     def cache_k(self):
         [(k, v)] = self.past_key_value.to_legacy_cache()
-        return k.permute(0, 2, 1, 3)  # match meta-style reference which uses (batch_size, seq, n_kv_heads, head_dim)
+        hf_k = k.permute(0, 2, 1, 3)  # match meta-style reference which uses (batch_size, seq, n_kv_heads, head_dim)
+        batch_size, seq_len, n_heads, head_dim = hf_k.shape
+
+        meta_k = torch.zeros_like(hf_k)
+        for b in range(batch_size):
+            for s in range(seq_len):
+                # Flatten just heads and head_dim
+                flat = hf_k[b, s].flatten()
+                # Apply reverse_permute
+                transformed = reverse_permute(flat.unsqueeze(-1), n_heads, flat.shape[0], 1).squeeze(-1)
+                # Restore heads and head_dim shape
+                meta_k[b, s] = transformed.reshape(n_heads, head_dim)
+
+        return meta_k
 
     @property
     def cache_v(self):
         [(k, v)] = self.past_key_value.to_legacy_cache()
         return v.permute(0, 2, 1, 3)  # match meta-style reference which uses (batch_size, seq, n_kv_heads, head_dim)
+
+
+class HfModelWrapper:
+    def __init__(self, model, head_dim):
+        from transformers import DynamicCache
+
+        self.model = model
+        self.head_dim = head_dim
+        self.past_key_values = DynamicCache()
+
+    def forward(self, inputs_embeds, start_pos):
+        logits, new_cache = self.model.forward(
+            inputs_embeds=inputs_embeds,
+            position_ids=torch.tensor([[start_pos]] * inputs_embeds.shape[0]),
+            use_cache=True,
+            past_key_values=self.past_key_values,
+            return_dict=False,
+        )
+        self.past_key_values = new_cache
+        return logits
+
+    def __call__(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)
+
+    def load_state_dict(self, state_dict):
+        return self.model.load_state_dict(convert_meta_to_hf(state_dict, self.head_dim))
