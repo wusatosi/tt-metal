@@ -8,7 +8,7 @@ training_config:
   max_steps: 5000
   learning_rate: 0.0003
   weight_decay: 0.01
-  use_kahan_summation: false
+  use_kahan_summation: true
   gradient_accumulation_steps: 16
   scheduler_type: "identity"
   transformer_config:
