@@ -70,7 +70,7 @@ autograd::TensorPtr layernorm(
         beta->add_grad(res[2].value());
     };
 
-    auto links = autograd::get_links(tensor);
+    auto links = autograd::get_links(tensor, gamma, beta);
     out->set_node(autograd::ctx().add_backward_node(std::move(grad), links));
 
     return out;
@@ -171,7 +171,7 @@ autograd::TensorPtr composite_layernorm(
         beta->add_grad(dbeta);
     };
 
-    auto links = autograd::get_links(tensor);
+    auto links = autograd::get_links(tensor, gamma, beta);
     out->set_node(autograd::ctx().add_backward_node(std::move(grad), links));
 
     return out;

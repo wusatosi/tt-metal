@@ -87,8 +87,8 @@ ttml::autograd::TensorPtr Transformer::operator()(
     }
     out = (*ln_fc)(out);
     auto logits = (*fc)(out);
-    // auto log_softmax = ttml::ops::log_softmax(logits, 3);
-    return logits;
+    auto log_softmax = ttml::ops::log_softmax(logits, 3);
+    return log_softmax;
 }
 
 PositionalEmbeddingType read_positional_embedding_type(const YAML::Node& config) {

@@ -359,7 +359,8 @@ int main(int argc, char **argv) {
                 optimizer.zero_grad();
             }
             auto output = (*model)(features, masks);
-            auto loss = ttml::ops::cross_entropy_loss_xtensor(output, target);
+            auto loss = ttml::ops::nll_loss(output, target);
+            // auto loss = ttml::ops::cross_entropy_loss_xtensor(output, target);
             fmt::print("Loss shape: {}\n", loss->get_value().shape());
             loss = gradient_accumulator_helper.scale(loss);
             auto loss_float = ttml::core::to_vector(loss->get_value())[0];
