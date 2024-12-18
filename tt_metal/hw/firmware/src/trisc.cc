@@ -124,7 +124,10 @@ int main(int argc, char *argv[]) {
         WAYPOINT("D");
 
         // Signal completion
-        tensix_sync();
+        {
+            DeviceZoneScopedN("sync");
+            tensix_sync();
+        }
         *trisc_run = RUN_SYNC_MSG_DONE;
     }
 }

@@ -419,9 +419,14 @@ int main() {
             uint32_t launch_msg_rd_ptr = mailboxes->launch_msg_rd_ptr;
             launch_msg_t* launch_msg_address = &(mailboxes->launch[launch_msg_rd_ptr]);
             DeviceValidateProfiler(launch_msg_address->kernel_config.enables);
-            DeviceZoneSetCounter(launch_msg_address->kernel_config.host_assigned_id);
+            {
+                // DeviceZoneScopedN("counter");
+                DeviceZoneSetCounter(launch_msg_address->kernel_config.host_assigned_id);
+            }
+
             // Copies from L1 to IRAM on chips where NCRISC has IRAM
             uint32_t kernel_config_base = firmware_config_init(mailboxes, ProgrammableCoreType::TENSIX, DISPATCH_CLASS_TENSIX_DM0);
+
             int ncrisc_index = static_cast<std::underlying_type<TensixProcessorTypes>::type>(TensixProcessorTypes::DM1);
             uint32_t ncrisc_kernel_src_address =
                 kernel_config_base + launch_msg_address->kernel_config.kernel_text_offset[ncrisc_index];
@@ -434,45 +439,65 @@ int main() {
 
             enum dispatch_core_processor_masks enables = (enum dispatch_core_processor_masks)launch_msg_address->kernel_config.enables;
 
-            run_triscs(enables);
+            {
+                // DeviceZoneScopedN("run_trisc");
+                run_triscs(enables);
+            }
 
             noc_index = launch_msg_address->kernel_config.brisc_noc_id;
             noc_mode = launch_msg_address->kernel_config.brisc_noc_mode;
-
-            // re-initialize the NoCs
-            if (noc_mode == DM_DEDICATED_NOC) {
-                if (prev_noc_mode != noc_mode) {
-                    noc_init(MEM_NOC_ATOMIC_RET_VAL_ADDR);
+            {
+                // DeviceZoneScopedN("noc_init");
+                // re-initialize the NoCs
+                if (noc_mode == DM_DEDICATED_NOC) {
+                    if (prev_noc_mode != noc_mode) {
+                        noc_init(MEM_NOC_ATOMIC_RET_VAL_ADDR);
+                    }
+                } else {
+                    if (prev_noc_mode != noc_mode) {
+                        dynamic_noc_init();
+                    }
+                    dynamic_noc_local_state_init();
                 }
-            } else {
-                if (prev_noc_mode != noc_mode) {
-                    dynamic_noc_init();
-                }
-                dynamic_noc_local_state_init();
+                prev_noc_mode = noc_mode;
             }
-            prev_noc_mode = noc_mode;
 
             uint32_t tt_l1_ptr* cb_l1_base =
                 (uint32_t tt_l1_ptr*)(kernel_config_base + launch_msg_address->kernel_config.local_cb_offset);
-            setup_local_cb_read_write_interfaces(cb_l1_base, 0, num_cbs_to_early_init, true, true, false);
-            finish_ncrisc_copy_and_run(enables);
+            {
+                DeviceZoneScopedN("early_setup_lcbrw");
+                setup_local_cb_read_write_interfaces(cb_l1_base, 0, num_cbs_to_early_init, true, true, false);
+            }
+            {
+                DeviceZoneScopedN("finish_ncrisc_copy_and_run");
+                finish_ncrisc_copy_and_run(enables);
+            }
 
             // Run the BRISC kernel
             WAYPOINT("R");
             if (enables & DISPATCH_CLASS_MASK_TENSIX_ENABLE_DM0) {
                 uint32_t end_cb_index = launch_msg_address->kernel_config.max_local_cb_end_index;
-                setup_local_cb_read_write_interfaces(
-                    cb_l1_base, num_cbs_to_early_init, end_cb_index, true, true, false);
+                {
+                    DeviceZoneScopedN("setup_lcbrw");
+                    setup_local_cb_read_write_interfaces(
+                        cb_l1_base, num_cbs_to_early_init, end_cb_index, true, true, false);
 
-                cb_l1_base =
-                    (uint32_t tt_l1_ptr*)(kernel_config_base + launch_msg_address->kernel_config.remote_cb_offset);
+                    cb_l1_base =
+                        (uint32_t tt_l1_ptr*)(kernel_config_base + launch_msg_address->kernel_config.remote_cb_offset);
+                }
                 end_cb_index = launch_msg_address->kernel_config.min_remote_cb_start_index;
 
-                experimental::setup_remote_cb_interfaces<true>(cb_l1_base, end_cb_index);
+                {
+                    DeviceZoneScopedN("setup_remote");
+                    experimental::setup_remote_cb_interfaces<true>(cb_l1_base, end_cb_index);
+                }
                 int index = static_cast<std::underlying_type<TensixProcessorTypes>::type>(TensixProcessorTypes::DM0);
                 void (*kernel_address)(uint32_t) = (void (*)(uint32_t))
                     (kernel_config_base + launch_msg_address->kernel_config.kernel_text_offset[index]);
-                (*kernel_address)((uint32_t)kernel_address);
+                {
+                    DeviceZoneScopedN("main");
+                    (*kernel_address)((uint32_t)kernel_address);
+                }
                 RECORD_STACK_USAGE();
             } else {
 #if defined(PROFILE_KERNEL)
@@ -503,8 +528,9 @@ int main() {
 
 #if defined(PROFILE_KERNEL)
             if (noc_mode == DM_DYNAMIC_NOC) {
-                // re-init for profiler to able to run barrier in dedicated noc mode
-                noc_local_state_init(noc_index);
+                DeviceZoneScopedN("noc_index")
+                    // re-init for profiler to able to run barrier in dedicated noc mode
+                    noc_local_state_init(noc_index);
             }
 #endif
 

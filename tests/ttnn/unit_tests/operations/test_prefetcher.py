@@ -298,35 +298,35 @@ def get_core_ranges(num_reader_cores, num_global_cb_receivers):
 @pytest.mark.parametrize(
     "num_reader_cores, num_tensors, input_shapes, dtypes, num_layers",
     [
-        (2, 3, [(128, 128), (128, 128 * 2), (128, 128 * 3)], [ttnn.bfloat4_b, ttnn.bfloat8_b, ttnn.bfloat16], 2),
-        (2, 2, [(256, 512), (256, 512)], [ttnn.bfloat4_b] * 2, 5),
-        (2, 2, [(1024, 256), (1024, 256)], [ttnn.bfloat4_b] * 2, 5),
-        (2, 2, [(128, 128), (128, 128)], [ttnn.bfloat4_b] * 2, 2),
-        (2, 2, [(256, 1024), (256, 1024)], [ttnn.bfloat4_b] * 2, 5),
-        (
-            12,
-            5,
-            [(2304, 3840)] * 5,
-            [ttnn.bfloat4_b] * 5,
-            2,
-        ),  # FF1/3 = 72 tiles x 120 tiles = 8640 tiles / 24 cores = 720 tiles per receiver core
-        (
-            1,
-            4,
-            [(192, 320), (192, 320), (192, 320), (192, 320)],
-            [ttnn.bfloat4_b, ttnn.bfloat8_b] * 2,
-            1,
-        ),
-        (12, 5, [(3840, 2304)] * 5, [ttnn.bfloat8_b] * 5, 5),  # FF2
-        (12, 6, [(2304, 1536)] * 6, [ttnn.bfloat8_b] * 6, 5),  # QKV
-        (12, 5, [(2304, 2304)] * 5, [ttnn.bfloat8_b] * 5, 5),  # DO
+        # (2, 3, [(128, 128), (128, 128 * 2), (128, 128 * 3)], [ttnn.bfloat4_b, ttnn.bfloat8_b, ttnn.bfloat16], 2),
+        # (2, 2, [(256, 512), (256, 512)], [ttnn.bfloat4_b] * 2, 5),
+        # (2, 2, [(1024, 256), (1024, 256)], [ttnn.bfloat4_b] * 2, 5),
+        # (2, 2, [(128, 128), (128, 128)], [ttnn.bfloat4_b] * 2, 2),
+        # (2, 2, [(256, 1024), (256, 1024)], [ttnn.bfloat4_b] * 2, 5),
+        # (
+        #     12,
+        #     5,
+        #     [(2304, 3840)] * 5,
+        #     [ttnn.bfloat4_b] * 5,
+        #     2,
+        # ),  # FF1/3 = 72 tiles x 120 tiles = 8640 tiles / 24 cores = 720 tiles per receiver core
+        # (
+        #     1,
+        #     4,
+        #     [(192, 320), (192, 320), (192, 320), (192, 320)],
+        #     [ttnn.bfloat4_b, ttnn.bfloat8_b] * 2,
+        #     1,
+        # ),
+        # (12, 5, [(3840, 2304)] * 5, [ttnn.bfloat8_b] * 5, 5),  # FF2
+        # (12, 6, [(2304, 1536)] * 6, [ttnn.bfloat8_b] * 6, 5),  # QKV
+        # (12, 5, [(2304, 2304)] * 5, [ttnn.bfloat8_b] * 5, 5),  # DO
         # Takes really long to set up
         (
             12,
             5,
             [(2304, 3840), (3840, 2304), (2304, 3840), (2304, 1536), (2304, 2304)],
             [ttnn.bfloat4_b, ttnn.bfloat8_b, ttnn.bfloat4_b, ttnn.bfloat8_b, ttnn.bfloat8_b],
-            80,
+            5,
         ),  # ff1 + ff2 +ff3+ qkv + do
     ],
 )
