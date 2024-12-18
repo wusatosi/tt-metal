@@ -149,6 +149,8 @@ struct DeviceWidthShardSpec : public device_shard_spec_t<DeviceWidthShardSpec> {
     uint16_t pages_per_shard_y;
     uint16_t pages_per_shard_x;
 
+    uint32_t grid_inner_dim = transposed_grid ? shard_grid_height : shard_grid_width;
+    uint32_t grid_outer_dim = transposed_grid ? shard_grid_width : shard_grid_height;
     constexpr uint32_t get_pages_per_shard_x() const {
         return pages_per_shard_x;
     }
@@ -163,10 +165,10 @@ struct DeviceWidthShardSpec : public device_shard_spec_t<DeviceWidthShardSpec> {
     }
 
     constexpr uint32_t get_shard_grid_inner_dim() const {
-        return (!transposed_grid * shard_grid_width) + (transposed_grid * shard_grid_height);
+        return grid_inner_dim;
     }
     constexpr uint32_t get_shard_grid_outer_dim() const {
-        return (!transposed_grid * shard_grid_height) + (transposed_grid * shard_grid_width);
+        return grid_outer_dim;
     }
 };
 
@@ -230,12 +232,12 @@ struct WidthShardedAddressGenerator {
 
         auto [shard_grid_inner_dim_index, shard_grid_outer_dim_index] = flat_index_to_2d<std::uint32_t>(global_shard_index, tensor_shard_spec.get_shard_grid_inner_dim());
 
-        std::uint32_t worker_y_offset = (!tensor_shard_spec.transposed_grid * shard_grid_outer_dim_index) + (tensor_shard_spec.transposed_grid * shard_grid_inner_dim_index);
-        std::uint32_t worker_x_offset = (!tensor_shard_spec.transposed_grid * shard_grid_inner_dim_index) + (tensor_shard_spec.transposed_grid * shard_grid_outer_dim_index);
+        std::uint32_t worker_x_offset = tensor_shard_spec.transposed_grid ? shard_grid_outer_dim_index : shard_grid_inner_dim_index;
+        std::uint32_t worker_y_offset = tensor_shard_spec.transposed_grid ? shard_grid_inner_dim_index : shard_grid_outer_dim_index;
 
         std::uint32_t page_in_shard_x = page_global_inner_dim - (global_shard_index * tensor_shard_spec.get_pages_per_shard_x());
         std::uint32_t page_in_shard_y = page_global_outer_dim;
-        std::uint32_t page_offset_in_shard = (page_global_outer_dim * tensor_shard_spec.get_pages_per_shard_x()) + page_in_shard_x;
+        std::uint32_t page_offset_in_shard = (page_in_shard_y * tensor_shard_spec.get_pages_per_shard_x()) + page_in_shard_x;
 
         std::uint32_t worker_x_logical = tensor_shard_spec.shard_grid_start_x_logical + worker_x_offset;
         std::uint32_t worker_y_logical = tensor_shard_spec.shard_grid_start_y_logical + worker_y_offset;
@@ -286,6 +288,9 @@ struct DeviceHeightShardSpec : public device_shard_spec_t<DeviceHeightShardSpec>
 
     uint16_t pages_per_shard_y;
     uint16_t pages_per_shard_x;
+    uint32_t grid_inner_dim = transposed_grid ?  shard_grid_width : shard_grid_height;
+    uint32_t grid_outer_dim = transposed_grid ?  shard_grid_height : shard_grid_width;
+
 
     constexpr uint32_t get_pages_per_shard_x() const {
         return pages_per_shard_x;
@@ -300,10 +305,10 @@ struct DeviceHeightShardSpec : public device_shard_spec_t<DeviceHeightShardSpec>
         return pages_per_shard_y * get_shard_grid_num_cores();
     }
     constexpr uint32_t get_shard_grid_inner_dim() const {
-        return (!transposed_grid * shard_grid_height) + (transposed_grid * shard_grid_width);
+        return grid_inner_dim;
     }
     constexpr uint32_t get_shard_grid_outer_dim() const {
-        return (!transposed_grid * shard_grid_width) + (transposed_grid * shard_grid_height);
+        return grid_outer_dim;
     }
 };
 
@@ -358,8 +363,8 @@ struct HeightShardedAddressGenerator {
         // single divide for the full function
         auto [shard_grid_inner_dim_index, shard_grid_outer_dim_index] = flat_index_to_2d<std::uint32_t>(global_shard_index, tensor_shard_spec.get_shard_grid_inner_dim());
 
-        std::uint32_t worker_y_offset = (!tensor_shard_spec.transposed_grid * shard_grid_inner_dim_index) + (tensor_shard_spec.transposed_grid * shard_grid_outer_dim_index);
-        std::uint32_t worker_x_offset = (!tensor_shard_spec.transposed_grid * shard_grid_outer_dim_index) + (tensor_shard_spec.transposed_grid * shard_grid_inner_dim_index);
+        std::uint32_t worker_x_offset = tensor_shard_spec.transposed_grid ? shard_grid_inner_dim_index : shard_grid_outer_dim_index;
+        std::uint32_t worker_y_offset = tensor_shard_spec.transposed_grid ? shard_grid_outer_dim_index : shard_grid_inner_dim_index;
 
         std::uint32_t worker_x_logical = tensor_shard_spec.shard_grid_start_x_logical + worker_x_offset;
         std::uint32_t worker_y_logical = tensor_shard_spec.shard_grid_start_y_logical + worker_y_offset;
@@ -411,6 +416,8 @@ struct DeviceBlockShardSpec : public device_shard_spec_t<DeviceBlockShardSpec> {
 
     uint16_t pages_per_shard_y;
     uint16_t pages_per_shard_x;
+    uint32_t grid_inner_dim = transposed_grid ? shard_grid_height : shard_grid_width;
+    uint32_t grid_outer_dim = transposed_grid ? shard_grid_width : shard_grid_height;
 
     constexpr uint32_t get_pages_per_shard_x() const {
         return pages_per_shard_x;
@@ -425,10 +432,10 @@ struct DeviceBlockShardSpec : public device_shard_spec_t<DeviceBlockShardSpec> {
         return pages_per_shard_y * get_shard_grid_height();
     }
     constexpr uint32_t get_shard_grid_inner_dim() const {
-        return (!transposed_grid * shard_grid_width) + (transposed_grid * shard_grid_height);
+        return grid_inner_dim;
     }
     constexpr uint32_t get_shard_grid_outer_dim() const {
-        return (!transposed_grid * shard_grid_height) + (transposed_grid * shard_grid_width);
+        return grid_outer_dim;
     }
 };
 
@@ -490,8 +497,8 @@ struct BlockShardedAddressGenerator {
         // likewise maybe we can also take it a step further and do the same sort of thing above too to get away with a
         // single divide for the full function
 
-        std::uint32_t worker_y_offset = (!tensor_shard_spec.transposed_grid * shard_grid_outer_dim_index) + (tensor_shard_spec.transposed_grid * shard_grid_inner_dim_index);
-        std::uint32_t worker_x_offset = (!tensor_shard_spec.transposed_grid * shard_grid_inner_dim_index) + (tensor_shard_spec.transposed_grid * shard_grid_outer_dim_index);
+        std::uint32_t worker_y_offset = tensor_shard_spec.transposed_grid ? shard_grid_inner_dim_index : shard_grid_outer_dim_index;
+        std::uint32_t worker_x_offset = tensor_shard_spec.transposed_grid ? shard_grid_outer_dim_index : shard_grid_inner_dim_index;
 
         std::uint32_t worker_x_logical = tensor_shard_spec.shard_grid_start_x_logical + worker_x_offset;
         std::uint32_t worker_y_logical = tensor_shard_spec.shard_grid_start_y_logical + worker_y_offset;
