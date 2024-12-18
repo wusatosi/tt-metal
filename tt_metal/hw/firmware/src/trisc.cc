@@ -15,6 +15,7 @@
 #include "debug/waypoint.h"
 #include "debug/dprint.h"
 #include "debug/stack_usage.h"
+#include "noc_overlay_parameters.h"
 #if !defined(UCK_CHLKC_MATH)
 #include "circular_buffer.h"
 #include "circular_buffer_init.h"
@@ -49,6 +50,7 @@ uint32_t dest_offset_id __attribute__((used)) = 0;  // Flip between 0 and 1 to k
 uint32_t op_info_offset __attribute__((used)) = 0;
 
 const uint8_t thread_id = COMPILE_FOR_TRISC;
+const uint8_t done_value = 1 << thread_id;
 
 #define GET_TRISC_RUN_EVAL(x, t) x##t
 #define GET_TRISC_RUN(x, t) GET_TRISC_RUN_EVAL(x, t)
@@ -76,6 +78,8 @@ constexpr bool cb_init_write = false;
 using namespace ckernel;
 
 int main(int argc, char *argv[]) {
+    volatile uint32_t* noc_register = reinterpret_cast<volatile uint32_t*>(
+        STREAM_REG_ADDR(STREAM_CHANNEL, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_REG_INDEX));
     conditionally_disable_l1_cache();
     DIRTY_STACK_MEMORY();
     WAYPOINT("I");
@@ -91,7 +95,10 @@ int main(int argc, char *argv[]) {
     // Cleanup profiler buffer incase we never get the go message
     while (1) {
         WAYPOINT("W");
-        while (*trisc_run != RUN_SYNC_MSG_GO);
+
+        while ((*noc_register & 0x10) != 0x10);
+        // while (*trisc_run != RUN_SYNC_MSG_GO);
+
         DeviceZoneScopedMainN("TRISC-FW");
 
         uint32_t launch_msg_rd_ptr = mailboxes->launch_msg_rd_ptr;
@@ -104,12 +111,12 @@ int main(int argc, char *argv[]) {
             (uint32_t tt_l1_ptr*)(kernel_config_base + launch_msg->kernel_config.local_cb_offset);
         uint32_t end_cb_index = launch_msg->kernel_config.max_local_cb_end_index;
         setup_local_cb_read_write_interfaces(cb_l1_base, 0, end_cb_index, cb_init_read, cb_init_write, cb_init_write);
-
+        WAYPOINT("TEST");
         cb_l1_base = (uint32_t tt_l1_ptr*)(kernel_config_base + launch_msg->kernel_config.remote_cb_offset);
         end_cb_index = launch_msg->kernel_config.min_remote_cb_start_index;
         experimental::setup_remote_cb_interfaces(cb_l1_base, end_cb_index);
 #endif
-
+        WAYPOINT("ARIK");
         rta_l1_base = (uint32_t tt_l1_ptr *)(kernel_config_base +
             launch_msg->kernel_config.rta_offset[DISPATCH_CLASS_TENSIX_COMPUTE].rta_offset);
         crta_l1_base = (uint32_t tt_l1_ptr *)(kernel_config_base +
@@ -126,5 +133,8 @@ int main(int argc, char *argv[]) {
         // Signal completion
         tensix_sync();
         *trisc_run = RUN_SYNC_MSG_DONE;
+        *(reinterpret_cast<volatile uint32_t*>(
+            STREAM_REG_ADDR(STREAM_CHANNEL, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_UPDATE_REG_INDEX))) =
+            done_value << REMOTE_DEST_BUF_WORDS_FREE_INC;
     }
 }
