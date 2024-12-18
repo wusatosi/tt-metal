@@ -20,7 +20,7 @@
 // when making any changes to this file.
 // Have to keep a copy because cannot import ttnn into tests/tt_metal.
 
-volatile uint32_t* pmon_mem = (volatile uint32_t*)(0x00015200);
+// volatile uint32_t* pmon_mem = (volatile uint32_t*)(0x00015200);
 
 namespace NAMESPACE {
 
@@ -91,7 +91,7 @@ void MAIN {
     }
 #endif
 
-    *pmon_mem = 0x12345678;
+    // *pmon_mem = 0x12345678;
 
     constexpr uint32_t in0_block_w = get_compile_time_arg_val(0);        // inner block size in tiles
     constexpr uint32_t in0_num_subblocks = get_compile_time_arg_val(1);  // outer row block size (in inner row blocks)
