@@ -17,7 +17,11 @@ from ttnn import ReplicateTensorToMesh
 
 from models.demos.t3000.llama2_70b.reference.llama.llama import Llama
 from transformers.generation.utils import top_k_top_p_filtering
-from models.demos.t3000.llama2_70b.tt.llama_generation import TtLlamaModelForGeneration
+from models.demos.t3000.llama2_70b.tt.llama_generation import (
+    TtLlamaModelForGeneration,
+    num_blocks_in_seq,
+    get_padded_prefill_len,
+)
 from models.demos.t3000.llama2_70b.tt.llama_common import load_llama_state_dict
 from models.demos.t3000.llama2_70b.reference.llama.llama.tokenizer3 import ChatFormat
 from models.demos.t3000.llama2_70b.tt.llama_common import (
@@ -144,7 +148,16 @@ def get_sampling_func(top_k, top_p, temperature):
 
 def load_prompts_file(model_args, data_args, tokenizer):
     # Load prompts from json
-    prompts = json.load(open(data_args.prompts_file))
+    # prompts = json.load(open(data_args.prompts_file))
+    # DEBUG: Try various prompt lengths
+    prompts = [
+        [
+            {
+                "role": "user",
+                "content": "What is the next number in this sequence? " + " ".join(str(i) for i in range(28 * 1024)),
+            }
+        ]
+    ]
     # Encode the prompt
     if data_args.chat:
         formatter = ChatFormat(tokenizer)
@@ -152,12 +165,13 @@ def load_prompts_file(model_args, data_args, tokenizer):
     else:
         tokenized = [tokenizer.encode(x, bos=True, eos=False) for x in prompts]
 
-    logger.info(f"Loaded {len(tokenized)} prompts from {data_args.prompts_file}")
+    # logger.info(f"Loaded {len(tokenized)} prompts from {data_args.prompts_file}")
     return tokenized, prompts
 
 
 def initialize_prefill_input(tokenizer, prompt_tokens):
-    padded_len = 128 if len(prompt_tokens) <= 128 else 2048
+    # padded_len = 128 if len(prompt_tokens) <= 128 else 2048
+    padded_len = get_padded_prefill_len(len(prompt_tokens))
     assert padded_len >= len(prompt_tokens)
 
     tokens = torch.full((1, padded_len), tokenizer.pad_id, dtype=torch.long, device="cpu")
@@ -226,7 +240,8 @@ def run_decode(
     batch_token_outputs = [None for _ in range(model_args.max_batch_size)]
     batch_user_ids = [None for _ in range(model_args.max_batch_size)]
 
-    MAX_GEN_LENGTH = 180
+    # MAX_GEN_LENGTH = 180
+    MAX_GEN_LENGTH = len(prompt_tokens[0]) + 200
 
     """
     Paged Attention
@@ -247,6 +262,8 @@ def run_decode(
     )
     page_table_tt = ttnn.to_device(page_table_tt, model.mesh_device, memory_config=ttnn.DRAM_MEMORY_CONFIG)
 
+    kv_cache = [l.attention.layer_past for l in model.tt_model.layers]
+
     while True:
         logger.info(f"Current batch valid: {batch_valid}")
         logger.info(f"Current batch token indices: {batch_token_indices}")
@@ -263,7 +280,12 @@ def run_decode(
             batch_token_outputs[batch_idx] = prompt_tokens
             prompt_tokens, prompt_len = initialize_prefill_input(tokenizer, prompt_tokens)
 
-            logits = model.prefill_forward_single_user(prompt_tokens, 0, batch_idx, page_table=page_table_tt)
+            num_blocks = num_blocks_in_seq(prompt_len, paged_attention_config.block_size)
+            user_page_table = static_page_table[:, :num_blocks]
+
+            logits = model.prefill_forward_single_user(
+                prompt_tokens, 0, batch_idx, page_table=user_page_table, kv_cache=kv_cache
+            )
             next_logits = logits[:, prompt_len - 1, :]  # 1, seq_len, vocab -> 1, vocab
             next_token = sampling_func(next_logits).item()  # shape = (1,)
 
@@ -376,10 +398,12 @@ def top_pk_logits_efficient(logits, p=0.9, k=10, temperature=1.0, return_probs=F
     (
         (32, 2048),
         # (16, 8192),
+        (1, 128 * 1024),
     ),
     ids=(
         "short_context",
         # "long_context"
+        "long_context",
     ),
 )
 def test_LlamaModel_demo(
@@ -424,6 +448,7 @@ def test_LlamaModel_demo(
         num_layers=num_layers,
         max_batch_size=max_batch_size,
         max_kv_context_len=max_context_len,
+        max_seq_len=max_context_len,
         max_output_tokens=max_output_tokens,
         prompts_file=prompts_file,
         output_at_end=output_at_end,
