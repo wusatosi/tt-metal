@@ -88,6 +88,13 @@ static uint32_t cmd_ptr;   // walks through pages in cb cmd by cmd
 static uint32_t downstream_cb_data_ptr = downstream_cb_base;
 static uint32_t write_offset[3];  // added to write address on non-host writes
 
+// Due to a bug in path reservation, we must ensure there's a barrier after
+// every mcast before the next mcast, if the two mcasts aren't linked
+// together. Otherwise path reservation may hang. All mcasts on VC 5 come from
+// an instance of cq_dispatch.cpp, and each instance does a barrier before the
+// other is allowed to send an mcast.
+static bool must_barrier_before_mcast = false;
+
 static uint32_t upstream_total_acquired_page_count;
 
 constexpr uint32_t packed_write_max_multicast_sub_cmds =
@@ -435,7 +442,11 @@ void process_write_linear(
         uint32_t xfer_size = length > available_data ? available_data : length;
 
         if constexpr (multicast) {
+            if (must_barrier_before_mcast) {
+                noc_async_write_barrier();
+            }
             cq_noc_async_write_with_state_any_len(data_ptr, dst_addr, xfer_size, num_mcast_dests);
+            must_barrier_before_mcast = true;
         } else {
             cq_noc_async_write_with_state_any_len(data_ptr, dst_addr, xfer_size);
         }
@@ -577,6 +588,9 @@ void process_write_packed(
         if (!mcast) {
             return;
         }
+        if (!must_barrier_before_mcast) {
+            return;
+        }
         noc_nonposted_writes_num_issued[noc_index] += writes;
         noc_nonposted_writes_acked[noc_index] += mcasts;
         writes = 0;
@@ -584,6 +598,7 @@ void process_write_packed(
         // Workaround mcast path reservation hangs by always waiting for a write
         // barrier before doing an mcast that isn't linked to a previous mcast.
         noc_async_write_barrier();
+        must_barrier_before_mcast = false;
     };
     WritePackedSubCmd* sub_cmd_ptr = (WritePackedSubCmd*)l1_cache;
     while (count != 0) {
@@ -601,6 +616,7 @@ void process_write_packed(
                 if (orphan_size != 0) {
                     wait_for_barrier();
                     cq_noc_async_write_with_state<CQ_NOC_SNdL>(data_ptr, dst, orphan_size, num_dests);
+                    must_barrier_before_mcast = true;
                     writes++;
                     mcasts += num_dests;
                 }
@@ -636,6 +652,7 @@ void process_write_packed(
                 wait_for_barrier();
                 cq_noc_async_write_with_state<CQ_NOC_SnDL>(
                     data_ptr, remainder_dst_addr, remainder_xfer_size, num_dests);
+                must_barrier_before_mcast = true;
                 // Reset values expected below
                 cq_noc_async_write_with_state<CQ_NOC_snDL, CQ_NOC_WAIT, CQ_NOC_send>(0, dst, xfer_size);
                 writes++;
@@ -650,6 +667,7 @@ void process_write_packed(
 
         wait_for_barrier();
         cq_noc_async_write_with_state<CQ_NOC_SNdl>(data_ptr, dst, xfer_size, num_dests);
+        must_barrier_before_mcast = true;
         writes++;
         mcasts += num_dests;
 
@@ -699,7 +717,6 @@ void process_write_packed_large(
     CQDispatchWritePackedLargeSubCmd* sub_cmd_ptr = (CQDispatchWritePackedLargeSubCmd*)l1_cache;
 
     bool init_state = true;
-    bool must_barrier = true;
     while (count != 0) {
         uint32_t dst_addr = sub_cmd_ptr->addr + local_write_offset;
         uint32_t length = sub_cmd_ptr->length;
@@ -707,7 +724,7 @@ void process_write_packed_large(
         uint32_t pad_size = align(length, alignment) - length;
         uint32_t unlink = sub_cmd_ptr->flags & CQ_DISPATCH_CMD_PACKED_WRITE_LARGE_FLAG_UNLINK;
         auto wait_for_barrier = [&]() {
-            if (!must_barrier) {
+            if (!must_barrier_before_mcast) {
                 return;
             }
             noc_nonposted_writes_num_issued[noc_index] += writes;
@@ -718,6 +735,7 @@ void process_write_packed_large(
             // Workaround mcast path reservation hangs by always waiting for a write
             // barrier before doing an mcast that isn't linked to a previous mcast.
             noc_async_write_barrier();
+            must_barrier_before_mcast = false;
         };
 
         // Only re-init state after we have unlinked the last transaction
@@ -727,7 +745,6 @@ void process_write_packed_large(
         if (init_state) {
             uint32_t dst_noc = sub_cmd_ptr->noc_xy_addr;
             cq_noc_async_write_init_state<CQ_NOC_sNdl, true, true>(0, get_noc_addr_helper(dst_noc, dst_addr));
-            must_barrier = true;
         }
 
         sub_cmd_ptr++;
@@ -762,7 +779,7 @@ void process_write_packed_large(
                 xfer_size = available_data;
                 wait_for_barrier();
                 cq_noc_async_write_with_state_any_len(data_ptr, dst_addr, xfer_size, num_dests);
-                must_barrier = false;
+                // No barrier needed because the next write is linked.
             } else {
                 xfer_size = length;
                 if (unlink) {
@@ -774,12 +791,11 @@ void process_write_packed_large(
                     uint32_t data_offset = xfer_size - rem_xfer_size;
                     cq_noc_async_write_with_state<CQ_NOC_SnDL, CQ_NOC_wait>(
                         data_ptr + data_offset, dst_addr + data_offset, rem_xfer_size, num_dests);
-                    // Later writes must barrier, but the `must_barrier = true` in the `if (init_state)` block above
-                    // will see to that.
+                    must_barrier_before_mcast = true;
                 } else {
                     wait_for_barrier();
                     cq_noc_async_write_with_state_any_len(data_ptr, dst_addr, xfer_size, num_dests);
-                    must_barrier = false;
+                    // No barrier needed because the next write is linked.
                 }
             }
             writes += div_up(xfer_size, NOC_MAX_BURST_SIZE);
@@ -867,6 +883,7 @@ static void process_wait() {
     if (barrier) {
         DPRINT << " DISPATCH BARRIER\n";
         noc_async_write_barrier();
+        must_barrier_before_mcast = false;
     }
 
     WAYPOINT("PWW");
@@ -940,6 +957,7 @@ void process_notify_dispatch_s_go_signal_cmd() {
     if (wait) {
         DPRINT << " DISPATCH_S_NOTIFY BARRIER\n";
         noc_async_write_barrier();
+        must_barrier_before_mcast = false;
     }
     uint16_t index_bitmask = cmd->notify_dispatch_s_go_signal.index_bitmask;
 
@@ -1223,6 +1241,7 @@ void kernel_main() {
     }
 
     noc_async_write_barrier();
+    must_barrier_before_mcast = false;
 
     if (is_h_variant && !is_d_variant) {
         // Set upstream semaphore MSB to signal completion and path teardown
