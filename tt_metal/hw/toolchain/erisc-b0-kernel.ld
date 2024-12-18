@@ -38,6 +38,7 @@ SECTIONS
     *(.text .stub .text.* .gnu.linkonce.t.*)
     /* .gnu.warning sections are handled specially by elf32.em.  */
     *(.gnu.warning)
+    . = ALIGN(4);
   } > REGION_APP_KERNEL_CODE :text
   .init.fini :
   {
@@ -45,8 +46,10 @@ SECTIONS
     KEEP (*(.init .fini))
     ASSERT(SIZEOF(.init.fini) == 0, ".init/.fini sections present");
   } > REGION_APP_KERNEL_CODE :text
+   __kernel_data_lma = .;
 
-  .data : ALIGN(16) {
+  .data : AT(__kernel_data_lma) ALIGN(16) {
+    __ldm_data_start = .;
     *(.rodata .rodata.* .gnu.linkonce.r.*)
     *(.rodata1)
 
@@ -62,7 +65,8 @@ SECTIONS
 
     *(.got.plt) *(.igot.plt) *(.got) *(.igot)
     . = ALIGN(4);
-  } > REGION_APP_KERNEL_DATA :data
+    __ldm_data_end = .;
+  } > REGION_APP_KERNEL_DATA AT>REGION_APP_KERNEL_CODE :data
   .ctors.dtors :
   {
     /* We don't use .ctors/.dtors either (this still isn't the '90s), make sure there aren't any.  */
