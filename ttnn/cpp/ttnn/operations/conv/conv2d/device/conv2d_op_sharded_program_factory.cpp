@@ -625,8 +625,12 @@ operation::ProgramWithCallbacks multi_core_optimized_conv_sharded_v2_impl(
 
     // matrix multiplication shape check valid for all convs except depthwise conv1d
     if (!is_conv1d and !is_depthwise_conv) {
+        // log_debug(LogOp, "act_matrix_width: {},  weight_matrix_height: {} ", act_matrix_width, weight_matrix_height);
         TT_FATAL(
-            act_matrix_width == weight_matrix_height, "The width of tensor a needs to match the height of tensor b");
+            act_matrix_width == weight_matrix_height,
+            "The width of tensor a: {} needs to match the height of tensor b: {}",
+            act_matrix_width,
+            weight_matrix_height);
     }
     // Tile size divisibility checks
     TT_FATAL(act_matrix_height % TILE_HEIGHT == 0, "Height of activation matrix needs to be divisible by 32");
