@@ -17,7 +17,7 @@ All the above llama models (with the exception of 70B due to its large size) are
 
 Below is an updated table with max prefill context-length support for our demo. These were tested on both accuracy and performance mode.
 
-The main reason for a long context length not fitting on device is lack of memory memory. Any exceptions are marked in the table in appendix.
+The main reason for a long context length not fitting on device is lack of memory. Any exceptions are marked in the table in appendix.
 
 |              |      N150     |      N300     |      T3K       |      TG     |
 |--------------|---------------|---------------|----------------|-------------|
