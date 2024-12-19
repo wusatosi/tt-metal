@@ -285,6 +285,6 @@ def plot_full_grid_steps(
 
 if __name__ == "__main__":
     # usage example:
-    df = load_csv_data("perf_estimates/reduction/interleaved/example_non_full_grid.csv")
+    df = load_csv_data("perf_modeling/reduction/interleaved/example_non_full_grid.csv")
     df = prepare_df(df)
-    plot_df(df, "perf_estimates/reduction/interleaved/plots", False)
+    plot_df(df, "perf_modeling/reduction/interleaved/plots", False)

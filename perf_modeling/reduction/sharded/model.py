@@ -37,7 +37,7 @@ def prepare_df(data):
 #   - Derived feature is tile/core * input datatype
 #   - Ridge regression is used for modeling, hyperparameter alpha is 0.1
 # ---------------------------------------------------------------------------------------------------------------------
-data = pd.read_csv("perf_estimates/reduction/sharded/example.csv")
+data = pd.read_csv("perf_modeling/reduction/sharded/example.csv")
 data = prepare_df(data)
 
 X = data[["TILE / CORE"] + [col for col in data.columns if "INPUT_0_DATATYPE" in col]].copy()

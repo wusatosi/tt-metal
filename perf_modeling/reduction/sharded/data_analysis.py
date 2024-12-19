@@ -194,6 +194,6 @@ def prepare_df(df):
 
 if __name__ == "__main__":
     # usage example:
-    df = load_csv_data("perf_estimates/reduction/sharded/example.csv")
+    df = load_csv_data("perf_modeling/reduction/sharded/example.csv")
     df = prepare_df(df)
-    plot_tile_per_core(df, "perf_estimates/reduction/sharded/plots")
+    plot_tile_per_core(df, "perf_modeling/reduction/sharded/plots")

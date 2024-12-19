@@ -1,2 +1,3 @@
 /cmake/version.cmake export-subst
 perf_estimates/reduction/interleaved/example_non_full_grid.csv.gz filter=lfs diff=lfs merge=lfs -text
+perf_modeling/reduction/interleaved/example_non_full_grid.csv.gz filter=lfs diff=lfs merge=lfs -text

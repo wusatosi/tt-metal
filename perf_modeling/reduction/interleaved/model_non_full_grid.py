@@ -84,7 +84,7 @@ def prepare_df(data):
 # ---------------------------------------------------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    data = pd.read_csv("perf_estimates/reduction/interleaved/example_non_full_grid.csv")
+    data = pd.read_csv("perf_modeling/reduction/interleaved/example_non_full_grid.csv")
     data = prepare_df(data)
 
     # optional exclusion of data with core count less than 16, this data may require a separate model

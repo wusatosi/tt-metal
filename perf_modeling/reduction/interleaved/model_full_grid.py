@@ -92,7 +92,7 @@ def prepare_df(data):
 # ---------------------------------------------------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    data = pd.read_csv("perf_estimates/reduction/interleaved/example_full_grid.csv")
+    data = pd.read_csv("perf_modeling/reduction/interleaved/example_full_grid.csv")
     data = prepare_df(data)
 
     # optinal exclusion of data with work unit less than 8, this data may require a separate model
