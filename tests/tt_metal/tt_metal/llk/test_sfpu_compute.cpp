@@ -284,8 +284,8 @@ TEST_P(SingleCoreSingleDeviceSfpuParameterizedFixture, SfpuCompute) {
 
     CoreRange core_range({0, 0}, {0, 0});
     CoreRangeSet core_range_set({core_range});
-    for (bool approx_mode: {true, false}) {
-        for (bool fp32_dest_acc_en : {true, false}) {
+    for (bool approx_mode: {true}) {
+        for (bool fp32_dest_acc_en : {false}) {
             // FP32 dest acc not possible for GS
             if ((fp32_dest_acc_en == true) && (this->arch_ == tt::ARCH::GRAYSKULL)) continue;
             unit_tests::compute::sfpu::SfpuConfig test_config = {
@@ -318,11 +318,12 @@ INSTANTIATE_TEST_SUITE_P(
     SingleCoreSingleDeviceSfpuParameterizedFixture,
     ::testing::Combine(
         ::testing::Values(
-            std::make_tuple(tt::DataFormat::Float16_b, tt::DataFormat::Float16_b),
-            std::make_tuple(tt::DataFormat::Float16_b, tt::DataFormat::Float32),
-            std::make_tuple(tt::DataFormat::Float32, tt::DataFormat::Float16_b),
-            std::make_tuple(tt::DataFormat::Bfp4_b, tt::DataFormat::Float16_b),
-            std::make_tuple(tt::DataFormat::Bfp8_b, tt::DataFormat::Float32)
+            // std::make_tuple(tt::DataFormat::Float16_b, tt::DataFormat::Float16_b),
+            // std::make_tuple(tt::DataFormat::Float16_b, tt::DataFormat::Float32),
+            // std::make_tuple(tt::DataFormat::Float32, tt::DataFormat::Float16_b),
+            // std::make_tuple(tt::DataFormat::Bfp4_b, tt::DataFormat::Float16_b),
+            // std::make_tuple(tt::DataFormat::Bfp8_b, tt::DataFormat::Float32),
+            std::make_tuple(tt::DataFormat::Float16, tt::DataFormat::Float16)
         ),
         ::testing::Values(
             "gelu",

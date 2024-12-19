@@ -283,6 +283,12 @@ vector<uint32_t> generate_random_vector_generalized(
                 return create_random_vector_of_bfloat16(num_bytes, max_float, seed, offset);
             };
             break;
+        case tt::DataFormat::Float16:
+            vector_generator = [&](uint32_t num_bytes, bool is_exp_a, int max_float, int seed, float offset) {
+                return create_random_vector_of_float16(num_bytes, max_float, seed, offset);
+            };
+            break;
+
         case tt::DataFormat::Float32:
             vector_generator = [&](uint32_t num_bytes, bool is_exp_a, int max_float, int seed, float offset) {
                 auto rand_float = std::bind(std::uniform_real_distribution<float>(0, max_float), std::mt19937(seed));
@@ -348,6 +354,16 @@ vector<float> unpack_generalized(const tt::DataFormat data_format, const vector<
         case tt::DataFormat::Float16_b:
             unpacker_function = [&](const vector<uint32_t> &packed_input, bool row_major_output, bool is_exp_a) {
                 vector<bfloat16> vec = unpack_uint32_vec_into_bfloat16_vec(packed_input);
+                vector<float> vec_float(vec.size());
+                for (int i = 0; i < vec.size(); i++) {
+                    vec_float[i] = vec[i].to_float();
+                }
+                return vec_float;
+            };
+            break;
+        case tt::DataFormat::Float16:
+            unpacker_function = [&](const vector<uint32_t> &packed_input, bool row_major_output, bool is_exp_a) {
+                vector<float16> vec = unpack_uint32_vec_into_float16_vec(packed_input);
                 vector<float> vec_float(vec.size());
                 for (int i = 0; i < vec.size(); i++) {
                     vec_float[i] = vec[i].to_float();
