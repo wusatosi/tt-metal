@@ -15,53 +15,6 @@ TIMEOUT = 10
 # seed for random
 random.seed(0)
 
-
-def extract_brackets_content(line):
-    # Function to extract the content inside brackets
-    brackets_content = []
-    open_brackets = 0
-    current_content = ""
-
-    for char in line:
-        if char == "[":
-            open_brackets += 1
-            if open_brackets > 0:
-                current_content = ""  # Reset content inside the brackets
-        elif char == "]":
-            if open_brackets > 0:
-                brackets_content.append(current_content.strip())
-            open_brackets -= 1
-        elif open_brackets > 0:
-            current_content += char
-
-    return brackets_content
-
-
-def parse_md_file_simple_no_regex(file_path):
-    view_specs = []
-    i = 0
-    with open(file_path, "r") as file:
-        for line in file:
-            # Extract all sets of content inside brackets
-            brackets_content = extract_brackets_content(line)
-
-            if len(brackets_content) >= 3:  # Ensure we have both shape and size
-                shape_str = brackets_content[0]  # First set of brackets for shape
-                size_str = brackets_content[2]  # Third set of brackets for size
-
-                # Convert the shape and size strings to lists of integers
-                if "s" in shape_str or "s" in size_str:
-                    continue
-                shape = list(map(int, shape_str.split(",")))
-                size = list(map(int, size_str.split(",")))
-
-                # Append the dictionary to the list
-                view_specs.append({"shape": shape, "size": size})
-            i += 1
-
-    return view_specs
-
-
 parameters = {
     "nightly": {
         "embedding_specs": [
