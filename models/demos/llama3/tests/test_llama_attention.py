@@ -152,7 +152,7 @@ def test_llama_attention_inference(
 
     for i in range(generation_length):
         # 70B attention block typically sees tensors with mean 0 and std 0.03 - 0.05 in layer 1
-        pt_attention_input = torch.randn(batch_size, seq_len, model_args.dim) * 0.05
+        pt_attention_input = torch.randn(batch_size, seq_len, model_args.dim)  # Qwen2.5 0.5B sees 0.1 to 2.1
 
         tt_attention_input = pt_attention_input.clone()
 
@@ -196,7 +196,7 @@ def test_llama_attention_inference(
             all_tests_pass = False
 
         # Increment position
-        current_pos = torch.tensor([generation_start_pos + i for _ in range(batch_size)])
+        current_pos = torch.tensor([generation_start_pos + i + 1 for _ in range(batch_size)])
         current_pos_tensor = ttnn.from_torch(
             current_pos,
             device=mesh_device,

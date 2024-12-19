@@ -78,7 +78,7 @@ def apply_scaling(freqs: torch.Tensor):
     return torch.tensor(new_freqs, dtype=freqs.dtype, device=freqs.device)
 
 
-def precompute_freqs(dim: int, end: int, theta: float = 500000.0, use_scaled: bool = True):
+def precompute_freqs(dim: int, end: int, theta: float, use_scaled: bool):
     """
     Precompute the frequency tensor for sine and cosine values with given dimensions.
 
@@ -123,8 +123,8 @@ def gather_cos_sin(position_ids, cos, sin):
     return cos, sin
 
 
-def get_prefill_rot_mat(head_dim, max_seq_len, mesh_device, seq_len):
-    cos, sin = precompute_freqs(head_dim, max_seq_len * 2)
+def get_prefill_rot_mat(head_dim, max_seq_len, mesh_device, seq_len, theta, use_scaled_rope):
+    cos, sin = precompute_freqs(head_dim, max_seq_len * 2, theta, use_scaled_rope)
     cos_gathered, sin_gathered = gather_cos_sin(torch.arange(0, seq_len), cos, sin)
     assert cos_gathered.size() == (1, 1, seq_len, head_dim)
     assert sin_gathered.size() == (1, 1, seq_len, head_dim)

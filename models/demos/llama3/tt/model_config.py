@@ -768,8 +768,8 @@ class TtModelArgs:
             self.hidden_dim = calculate_hidden_dim(self.dim, self.ffn_dim_multiplier, self.multiple_of)
 
         # RoPE params
-        self.rope_theta = params.get("rope_theta", 10000.0)
-        self.use_scaled_rope = params.get("use_scaled_rope", True)
+        self.rope_theta = params.get("rope_theta")
+        self.use_scaled_rope = params.get("use_scaled_rope", False)
 
         # Vision params (Meta-specific)
         self.vision_chunk_size = params.get("vision_chunk_size", -1)
@@ -1175,9 +1175,8 @@ class TtModelArgs:
         else:
             model = self.reference_transformer(wrap=False)
             layer = model.model.layers[0]
-            layer._load_state_dict = layer.load_state_dict
-            layer.load_state_dict = lambda x: layer._load_state_dict(convert_meta_to_hf(x, self.head_dim))
-            return layer
+            wrapper = HfDecoderWrapper(layer, self.head_dim)
+            return wrapper
 
     def reference_attention(self):
         if self.checkpoint_type == CheckpointType.Meta:
@@ -1201,11 +1200,15 @@ class HfAttentionWrapper:
         self.head_dim = head_dim
 
     def forward(self, x, start_pos, freqs_cis_i, mask=None):
+        position_ids = torch.tensor([list(range(start_pos, start_pos + x.shape[1]))] * x.shape[0])
+        if mask is not None:
+            while len(mask.shape) < 4:
+                mask = mask.unsqueeze(0)
         output, _, self.past_key_value = self.attention(
             x,
             past_key_value=self.past_key_value,
             use_cache=True,
-            position_ids=torch.tensor([[start_pos]] * x.shape[0]),
+            position_ids=position_ids,
             attention_mask=mask,
         )
         return output
@@ -1240,6 +1243,35 @@ class HfAttentionWrapper:
         return v.permute(0, 2, 1, 3)  # match meta-style reference which uses (batch_size, seq, n_kv_heads, head_dim)
 
 
+class HfDecoderWrapper:
+    def __init__(self, decoder, head_dim):
+        from transformers import DynamicCache
+
+        self.decoder = decoder
+        self.head_dim = head_dim
+        self.past_key_values = DynamicCache()
+
+    def forward(self, x, start_pos, freqs_cis_i, mask=None):
+        position_ids = torch.tensor([list(range(start_pos, start_pos + x.shape[1]))] * x.shape[0])
+        if mask is not None:
+            while len(mask.shape) < 4:
+                mask = mask.unsqueeze(0)
+        output, self.past_key_values = self.decoder.forward(
+            x,
+            past_key_value=self.past_key_values,
+            use_cache=True,
+            position_ids=position_ids,
+            attention_mask=mask,
+        )
+        return output
+
+    def __call__(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)
+
+    def load_state_dict(self, state_dict):
+        return self.decoder.load_state_dict(convert_meta_to_hf(state_dict, self.head_dim))
+
+
 class HfModelWrapper:
     def __init__(self, model, head_dim):
         from transformers import DynamicCache
@@ -1248,16 +1280,22 @@ class HfModelWrapper:
         self.head_dim = head_dim
         self.past_key_values = DynamicCache()
 
-    def forward(self, inputs_embeds, start_pos):
-        logits, new_cache = self.model.forward(
+    def forward(self, inputs_embeds, start_pos, mode="decode"):
+        position_ids = torch.tensor(
+            [list(range(start_pos, start_pos + inputs_embeds.shape[1]))] * inputs_embeds.shape[0]
+        )
+        print(f"{inputs_embeds.shape=}")
+        print(f"our position_ids: {position_ids}")
+        logits, new_cache, hidden_states = self.model.forward(
             inputs_embeds=inputs_embeds,
-            position_ids=torch.tensor([[start_pos]] * inputs_embeds.shape[0]),
+            position_ids=position_ids,
             use_cache=True,
             past_key_values=self.past_key_values,
             return_dict=False,
+            output_hidden_states=True,
         )
         self.past_key_values = new_cache
-        return logits
+        return logits if mode == "decode" else hidden_states[-2]  # last hidden state is final norm
 
     def __call__(self, *args, **kwargs):
         return self.forward(*args, **kwargs)

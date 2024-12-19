@@ -333,7 +333,12 @@ class CrossAttentionTransformer(torch.nn.Module):
             h,
         )
         rot_mats = get_prefill_rot_mat(
-            self.configuration.head_dim, self.configuration.max_seq_len, self.mesh_device, seq_len=S
+            self.configuration.head_dim,
+            self.configuration.max_seq_len,
+            self.mesh_device,
+            S,
+            self.configuration.rope_theta,
+            self.configuration.use_scaled_rope,
         )
 
         full_text_mask_expand_11SD = full_text_mask.expand(-1, -1, -1, self.configuration.dim)

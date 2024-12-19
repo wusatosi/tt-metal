@@ -196,7 +196,12 @@ def test_tt_model_accuracy(
 
         # Pre-compute the rotational embedding matrix and send to device
         rot_mats_prefill = get_prefill_rot_mat(
-            model_args.head_dim, model_args.max_seq_len, mesh_device, seq_len=prefill_lens[0]
+            model_args.head_dim,
+            model_args.max_seq_len,
+            mesh_device,
+            prefill_lens[0],
+            model_args.rope_theta,
+            model_args.use_scaled_rope,
         )
 
         prefill_input = model_args.prepare_residual_tensor_prefill(

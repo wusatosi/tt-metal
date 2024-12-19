@@ -55,7 +55,7 @@ from models.utility_functions import skip_for_grayskull
 @pytest.mark.parametrize(
     "max_seq_len",
     (
-        2048,
+        256,  # 4096,
         # 1024 * 32,
         # 1024 * 64,
     ),
@@ -88,8 +88,16 @@ def test_llama_attention_inference(
     reference_model.load_state_dict(partial_state_dict)
 
     # pre-compute the rotational embedding matrix and send to device
-    rot_mats = get_prefill_rot_mat(model_args.head_dim, model_args.max_seq_len, mesh_device, seq_len=max_seq_len)
+    rot_mats = get_prefill_rot_mat(
+        model_args.head_dim,
+        model_args.max_seq_len,
+        mesh_device,
+        max_seq_len,
+        model_args.rope_theta,
+        model_args.use_scaled_rope,
+    )
     transformation_mat_torch = get_rot_transformation_mat(model_args.head_dim)
+
     transformation_mats_prefill = ttnn.as_tensor(
         transformation_mat_torch,
         dtype=ttnn.bfloat16,

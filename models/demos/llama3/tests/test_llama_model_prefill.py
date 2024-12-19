@@ -137,7 +137,14 @@ def test_llama_model_inference(
     embd.load_state_dict({"emb.weight": state_dict[f"{state_dict_prefix}tok_embeddings.weight"]})
 
     # pre-compute the rotational embedding matrix and send to device
-    rot_mats = get_prefill_rot_mat(model_args.head_dim, model_args.max_seq_len, mesh_device, seq_len=seq_len)
+    rot_mats = get_prefill_rot_mat(
+        model_args.head_dim,
+        model_args.max_seq_len,
+        mesh_device,
+        seq_len,
+        model_args.rope_theta,
+        model_args.use_scaled_rope,
+    )
     # Setup page table
     page_table_tt = None
     paged_attention_config = None

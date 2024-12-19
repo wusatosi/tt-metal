@@ -353,7 +353,12 @@ def run_llama3_demo(
         for batch_id in range(batch_size):
             prefill_seq_len = prefill_lens[batch_id]
             rot_mats_prefill = get_prefill_rot_mat(
-                model_args.head_dim, model_args.max_seq_len, mesh_device, seq_len=prefill_seq_len
+                model_args.head_dim,
+                model_args.max_seq_len,
+                mesh_device,
+                prefill_seq_len,
+                model_args.rope_theta,
+                model_args.use_scaled_rope,
             )
             if decoding_pos[batch_id] < prefill_seq_len:
                 pt_prefill_input[batch_id][

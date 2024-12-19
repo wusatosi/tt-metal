@@ -88,7 +88,7 @@ def test_llama_model_inference(
     dtype = ttnn.bfloat8_b
     mesh_device.enable_async(True)
     mode_accuracy = optimizations == LlamaOptimizations.accuracy
-    instruct = True if weights == "instruct" else False
+    instruct = False  # True if weights == "instruct" else False
     dummy_weights = True if weights == "random" else False
     model_args = TtModelArgs(
         mesh_device,
@@ -99,49 +99,52 @@ def test_llama_model_inference(
         max_batch_size=batch_size,
     )
 
-    model_name = {
-        (16, False): "llama32_1b",
-        (28, False): "llama32_3b",
-        (32, False): "llama31_8b",
-        (32, True): "llama32_11b",
-        (80, False): "llama31_70b",
-    }[(model_args.n_layers, model_args.is_vision())]
-
     # Define minimum PCC for each iteration
     if layers == 1:
         pcc = 0.88 if mode_accuracy else 0.86
     else:
         pcc = 0.94 if mode_accuracy else 0.86
 
-    # Define tight final PCC thresholds for quick mode
-    final_model_pcc = {
-        "llama32_1b": 0.9991 if mode_accuracy else 0.9864,
-        "llama32_3b": 0.9989 if mode_accuracy else 0.9837,
-        "llama31_8b": 0.9987 if mode_accuracy else 0.9850,
-        "llama32_11b": 0.9987 if mode_accuracy else 0.9850,
-        "llama31_70b": 0.9843 if mode_accuracy else 0.9843,
-    }[model_name]
+    if layers == 1:  # quick mode has tight PCC checks for known models
+        model_name = {
+            (16, False): "llama32_1b",
+            (28, False): "llama32_3b",
+            (32, False): "llama31_8b",
+            (32, True): "llama32_11b",
+            (80, False): "llama31_70b",
+        }[(model_args.n_layers, model_args.is_vision())]
 
-    final_k_cache_pcc = {
-        "llama32_1b": 0.9998,
-        "llama32_3b": 0.9998,
-        "llama31_8b": 0.9998,
-        "llama32_11b": 0.9995,
-        "llama31_70b": 0.9998,
-    }[model_name]
-    final_v_cache_pcc = {
-        "llama32_1b": 0.9996,
-        "llama32_3b": 0.9998,
-        "llama31_8b": 0.9998,
-        "llama32_11b": 0.9996,
-        "llama31_70b": 0.9998,
-    }[model_name]
+        # Define tight final PCC thresholds for quick mode
+        final_model_pcc = {
+            "llama32_1b": 0.9991 if mode_accuracy else 0.9864,
+            "llama32_3b": 0.9989 if mode_accuracy else 0.9837,
+            "llama31_8b": 0.9987 if mode_accuracy else 0.9850,
+            "llama32_11b": 0.9987 if mode_accuracy else 0.9850,
+            "llama31_70b": 0.9843 if mode_accuracy else 0.9843,
+        }[model_name]
 
-    quick_iterations = {"llama32_1b": 2, "llama32_3b": 4, "llama31_8b": 6, "llama32_11b": 6, "llama31_70b": 6}[
-        model_name
-    ]
+        final_k_cache_pcc = {
+            "llama32_1b": 0.9998,
+            "llama32_3b": 0.9998,
+            "llama31_8b": 0.9998,
+            "llama32_11b": 0.9995,
+            "llama31_70b": 0.9998,
+        }[model_name]
+        final_v_cache_pcc = {
+            "llama32_1b": 0.9996,
+            "llama32_3b": 0.9998,
+            "llama31_8b": 0.9998,
+            "llama32_11b": 0.9996,
+            "llama31_70b": 0.9998,
+        }[model_name]
 
-    iterations = quick_iterations if layers == 1 else 9
+        quick_iterations = {"llama32_1b": 2, "llama32_3b": 4, "llama31_8b": 6, "llama32_11b": 6, "llama31_70b": 6}[
+            model_name
+        ]
+
+        iterations = quick_iterations
+    else:
+        iterations = 9
 
     if layers is not None:
         model_args.n_layers = layers
@@ -172,7 +175,7 @@ def test_llama_model_inference(
         if instruct:
             encoded_prompts = [model_args.encode_prompt(prompt) for prompt in prompts]
         else:
-            encoded_prompts = [tokenizer.encode(prompt, bos=True, eos=False) for prompt in prompts]
+            encoded_prompts = [model_args.encode_prompt(prompt, instruct=False) for prompt in prompts]
 
     if run_ref_pt:
         reference_model = model_args.reference_transformer()

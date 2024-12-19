@@ -112,7 +112,12 @@ class TtTransformer(LightweightModule):
         tokens_embd = self.embd(tokens)
 
         tt_rot_mats_prefill = get_prefill_rot_mat(
-            self.args.head_dim, self.args.max_seq_len, self.mesh_device, seq_len=S
+            self.args.head_dim,
+            self.args.max_seq_len,
+            self.mesh_device,
+            S,
+            self.args.rope_theta,
+            self.args.use_scaled_rope,
         )
 
         if page_table is not None:
