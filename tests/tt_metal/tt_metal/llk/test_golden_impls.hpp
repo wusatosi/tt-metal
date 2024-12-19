@@ -13,6 +13,7 @@
 
 #include "common/test_tiles.hpp"
 #include "tt_metal/common/bfloat16.hpp"
+#include "tt_metal/common/float16.hpp"
 #include "tt_metal/common/bfloat8.hpp"
 #include "tt_metal/common/bfloat4.hpp"
 #include "tt_metal/host_api.hpp"
