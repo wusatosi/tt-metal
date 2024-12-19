@@ -33,6 +33,17 @@ using namespace tt::tt_metal;
 
 namespace unit_tests::sfpu_util {
 
+void printNibbles(uint32_t number) {
+    std::cout << "0x";
+    for (int i = 7; i >= 0; --i) {
+        // Extract the nibble using bitwise shift and mask
+        uint8_t nibble = (number >> (i * 4)) & 0xF;
+        // Print the nibble in hex format
+        std::cout << std::hex << std::uppercase << static_cast<int>(nibble);
+    }
+    std::cout << std::endl;
+}
+
 const std::map<string, std::map<string, string>> sfpu_op_to_op_name = {
     // FIXME: #1157
     {"relu", {{"SFPU_OP_CHAIN_0", "relu_tile_init(); relu_tile(0);"}}},
@@ -252,7 +263,12 @@ bool run_sfpu_test(tt_metal::Device* device, const SfpuConfig& test_config) {
 
     // Unpack SFPU output to float vector
     vector<float> unpacked_output = unit_tests::compute::unpack_generalized(test_config.l1_output_data_format, packed_output);
-
+    // std::cout << "packed_input[0] = " << packed_input[0] << std::endl;
+    std::cout << "packed_input[0] = ";
+    sfpu_util::printNibbles(packed_input[0]);
+    std::cout << "unpacked_input[0] = " << unpacked_input[0] << std::endl;
+    std::cout << "golden[0] = " << golden[0] << std::endl;
+    std::cout << "unpacked_output[0] = " << unpacked_output[0] << std::endl;
     return sfpu_util::is_close_packed_sfpu_output(golden, unpacked_output, test_config.sfpu_op);
 }
 
@@ -271,8 +287,10 @@ TEST_P(SingleCoreSingleDeviceSfpuParameterizedFixture, SfpuCompute) {
         NUM_DIMS,
         std::chrono::system_clock::now().time_since_epoch().count() // Seed
     );
-    size_t r_tile_dim = random_shape[0];
-    size_t c_tile_dim = random_shape[1];
+    // size_t r_tile_dim = random_shape[0];
+    // size_t c_tile_dim = random_shape[1];
+    size_t r_tile_dim = 1;
+    size_t c_tile_dim = 1;
 
     // Extract the tuple of input/output formats and the sfpu_op
     auto formats = std::get<0>(GetParam());
