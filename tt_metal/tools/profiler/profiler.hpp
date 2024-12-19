@@ -47,9 +47,6 @@ private:
     // Device-Core tracy context
     std::map<std::pair<uint16_t, CoreCoord>, TracyTTCtx> device_tracy_contexts;
 
-    // Device events
-    std::set<tracy::TTDeviceEvent> device_events;
-
     // Device aggregates
     std::map<uint32_t, std::map<uint32_t, std::set<tracy::TTDeviceEvent>>> device_aggregates;
 
