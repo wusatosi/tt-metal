@@ -21,28 +21,8 @@ parameters = {
         "shard_specs": [
             {
                 "shape": [1, 32, 128],
-                "shard_shape": [32, 128],
-                "output_mem_config": {
-                    "layout": "TensorMemoryLayout::HEIGHT_SHARDED",
-                    "buffer_type": "BufferType::L1",
-                    "shard_spec": {
-                        "grid": [[{"x": 0, "y": 0}, {"x": 0, "y": 0}]],
-                        "shape": [32, 128],
-                        "orientation": "ShardOrientation::ROW_MAJOR",
-                        "halo": 0,
-                        "mode": "ShardMode::PHYSICAL",
-                        "physical_shard_shape": None,
-                    },
-                },
-            },
+            }
         ],
-        "strategy": [ttnn.ShardStrategy.HEIGHT],
-        "orientation": [ttnn.ShardOrientation.ROW_MAJOR],
-        "core_grid": [ttnn.CoreGrid(y=1, x=1)],
-        "dtype": [ttnn.bfloat16],
-        "layout": [ttnn.ROW_MAJOR_LAYOUT],
-        "input_buffer_type": [ttnn.L1_MEMORY_CONFIG],
-        "output_buffer_type": [ttnn.L1_MEMORY_CONFIG],
     }
 }
 
@@ -73,24 +53,26 @@ def run(
     device.enable_async(False)
 
     shape = shard_specs["shape"]
-    shard_shape = shard_specs["shard_shape"]
-    output_mem_config = shard_specs["output_mem_config"]
 
-    # Parse memory configuration parameters
-    mem_layout = output_mem_config["layout"]
-    buffer_type = output_mem_config["buffer_type"]
-    shard_spec = output_mem_config["shard_spec"]
-    shard_grid = shard_spec["grid"]
-    shard_shape = shard_spec["shape"]
-    shard_orientation = shard_spec["orientation"]
+    core_range = ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 0))  # Define ranges
+    grid = ttnn.CoreRangeSet({core_range})
 
-    # Create the memory config using pybind-defined function
-    shard_config = ttnn.create_sharded_memory_config(
-        shape=shard_shape,
-        core_grid=core_grid,
-        strategy=strategy,
-        orientation=orientation,
-        use_height_and_width_as_shard_shape=True,
+    shard_spec = ttnn.ShardSpec(
+        grid,  # Grid of shards
+        shape[-2:],  # Shape of each shard
+        ttnn.ShardOrientation.ROW_MAJOR,  # Shard orientation (ROW_MAJOR, COL_MAJOR)
+        0,  # Halo size (set to 0 if unused)
+        ttnn.ShardMode.PHYSICAL,  # Mode of sharding
+    )
+    output_mem_config = ttnn.MemoryConfig(
+        ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+        ttnn.BufferType.L1,
+        shard_spec,
+    )
+    input_mem_config = ttnn.MemoryConfig(
+        ttnn.TensorMemoryLayout.INTERLEAVED,
+        ttnn.BufferType.L1,
+        None,
     )
 
     # Create a random tensor of the specified shape
@@ -99,8 +81,8 @@ def run(
     interleaved_data = ttnn.from_torch(
         input_data,
         device=device,
-        layout=layout,
-        memory_config=input_buffer_type,
+        layout=ttnn.TILE_LAYOUT,
+        memory_config=input_mem_config,
         dtype=ttnn.bfloat16,
     )
 
@@ -108,23 +90,23 @@ def run(
     start_time = start_measuring_time()
 
     # Use the pybind-defined function to convert interleaved to sharded
-    sharded_data = ttnn.operations.data_movement.interleaved_to_sharded(
+    sharded_data = ttnn.interleaved_to_sharded(
         input_tensor=interleaved_data,
-        grid=ttnn.CoreGrid(*shard_grid[0][0].values()),
-        shard_shape=shard_shape,
-        shard_scheme=mem_layout,
-        shard_orientation=shard_orientation,
-        output_dtype=dtype,
+        grid=grid,
+        shard_shape=shape[-2:],
+        shard_scheme=ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+        shard_orientation=ttnn.ShardOrientation.ROW_MAJOR,
+        output_dtype=ttnn.bfloat16,
         queue_id=0,
         keep_l1_aligned=False,
     )
 
     # Convert back to interleaved for validation
-    interleaved_output = ttnn.to_memory_config(sharded_data, output_buffer_type)
+    # interleaved_output = ttnn.to_memory_config(sharded_data, output_buffer_type)
 
     e2e_perf = stop_measuring_time(start_time)
 
-    output_data = ttnn.from_device(interleaved_output)
+    output_data = ttnn.from_device(sharded_data)
     output_data = ttnn.to_torch(output_data)
 
     # Compare the concatenated tensors and return performance and accuracy check

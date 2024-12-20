@@ -22,27 +22,48 @@ parameters = {
             {
                 "shape": [1, 32, 1280],
                 "output_mem_config": {
-                    "layout": "TensorMemoryLayout::INTERLEAVED",
-                    "buffer_type": "BufferType::L1",
+                    "layout": ttnn.TensorMemoryLayout.INTERLEAVED,
+                    "buffer_type": ttnn.BufferType.L1,
                     "shard_spec": None,
                 },
-                "output_dtype": "DataType::BFLOAT16",
+                "dtype": ttnn.bfloat16,
+            },
+            {
+                "shape": [1, 1, 32, 32064],
+                "output_mem_config": {
+                    "layout": ttnn.TensorMemoryLayout.INTERLEAVED,
+                    "buffer_type": ttnn.BufferType.L1,
+                    "shard_spec": None,
+                },
+                "dtype": ttnn.bfloat8_b,
+            },
+            {
+                "shape": [1, 1, 32, 6144],
+                "output_mem_config": {
+                    "layout": ttnn.TensorMemoryLayout.INTERLEAVED,
+                    "buffer_type": ttnn.BufferType.L1,
+                    "shard_spec": None,
+                },
+                "dtype": ttnn.bfloat16,
+            },
+            {
+                "shape": [1, 1, 32, 16032],
+                "output_mem_config": {
+                    "layout": ttnn.TensorMemoryLayout.INTERLEAVED,
+                    "buffer_type": ttnn.BufferType.L1,
+                    "shard_spec": None,
+                },
+                "dtype": ttnn.bfloat8_b,
             },
         ],
-        "dtype": [ttnn.bfloat16],
         "layout": [ttnn.TILE_LAYOUT],
-        "input_buffer_type": [ttnn.L1_MEMORY_CONFIG],
-        "output_buffer_type": [ttnn.L1_MEMORY_CONFIG],
     }
 }
 
 
 def run(
     shard_specs,
-    dtype,
     layout,
-    input_buffer_type,
-    output_buffer_type,
     *,
     device,
 ):
@@ -55,13 +76,27 @@ def run(
     mem_layout = output_mem_config["layout"]
     buffer_type = output_mem_config["buffer_type"]
     shard_spec = output_mem_config["shard_spec"]
-    output_dtype = shard_specs.get("output_dtype", ttnn.bfloat16)
 
     # Create the memory config
-    memory_config = ttnn.create_interleaved_memory_config(
-        layout=mem_layout,
-        buffer_type=buffer_type,
-        shard_spec=shard_spec,
+    memory_config = ttnn.MemoryConfig(
+        mem_layout,
+        buffer_type,
+        shard_spec,
+    )
+    core_range = ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(1, 1))  # Define ranges
+    grid = ttnn.CoreRangeSet({core_range})
+
+    shard_spec = ttnn.ShardSpec(
+        grid,  # Grid of shards
+        shape[-2:],  # Shape of each shard
+        ttnn.ShardOrientation.ROW_MAJOR,  # Shard orientation (ROW_MAJOR, COL_MAJOR)
+        0,  # Halo size (set to 0 if unused)
+        ttnn.ShardMode.PHYSICAL,  # Mode of sharding
+    )
+    input_mem_config = ttnn.MemoryConfig(
+        ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        ttnn.BufferType.L1,
+        shard_spec,
     )
 
     # Create a random tensor of the specified shape
@@ -70,19 +105,19 @@ def run(
     sharded_data = ttnn.from_torch(
         input_data,
         device=device,
-        layout=layout,
-        memory_config=input_buffer_type,
-        dtype=ttnn.bfloat16,
+        layout=ttnn.TILE_LAYOUT,
+        memory_config=input_mem_config,
+        dtype=ttnn.bfloat8_b,
     )
 
     # Measure performance of the sharded-to-interleaved operation
     start_time = start_measuring_time()
 
     # Use the pybind-defined function to convert sharded to interleaved
-    interleaved_data = ttnn.operations.data_movement.sharded_to_interleaved(
+    interleaved_data = ttnn.sharded_to_interleaved(
         input_tensor=sharded_data,
         memory_config=memory_config,
-        output_dtype=output_dtype,
+        output_dtype=dtype,
         queue_id=0,
         is_l1_aligned=False,
     )

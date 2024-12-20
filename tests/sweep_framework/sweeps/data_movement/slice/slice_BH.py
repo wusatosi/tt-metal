@@ -17,7 +17,7 @@ random.seed(0)
 parameters = {
     "nightly": {
         "slice_specs": [
-            {"dims": [1, 4], "dim": 1, "start": 0, "end": -1, "step": 4},
+            {"dims": [1, 32, 32, 128], "dim": 1, "start": [0, 0, 0, 0], "end": [1, 1, 32, 128], "step": [1, 1, 1, 1]},
         ],
         "dtype": [ttnn.bfloat16],
         "layout": [ttnn.TILE_LAYOUT],
