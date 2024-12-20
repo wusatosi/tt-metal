@@ -189,8 +189,6 @@ def run_max_pool(
     output_pytorch_padded = torch.Tensor(ttnn.to_torch(output_host))
     output_pytorch = output_pytorch_padded[:, :, :, :in_c]
 
-    print("output_pytorch", output_pytorch)
-
     ## reference
     golden_pytorch = torch.nn.MaxPool2d(
         kernel_size,
@@ -201,13 +199,14 @@ def run_max_pool(
         ceil_mode=False,
     )(act)
 
-    print("golden_pytorch", golden_pytorch)
-
     ## test for equivalance
     golden_shape = golden_pytorch.shape
     output_pytorch = output_pytorch.reshape(golden_shape[0], golden_shape[2], golden_shape[3], golden_shape[1])
 
     output_pytorch = torch.permute(output_pytorch, (0, 3, 1, 2))  ## N, C, H, W
+
+    print("output_pytorch", output_pytorch[0][0])
+    print("golden_pytorch", golden_pytorch[0][0])
 
     pcc_thresh = 1.0
     if dtype == ttnn.bfloat8_b:
