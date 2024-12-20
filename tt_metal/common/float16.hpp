@@ -127,8 +127,8 @@ inline std::vector<std::uint32_t> create_random_vector_of_float16(
         float num_1_float = rand_float() + offset;
         float num_2_float = rand_float() + offset;
 
-        float16 num_1_float16 = float16(5.125f);
-        float16 num_2_float16 = float16(5.125f);
+        float16 num_1_float16 = float16(4.75f);
+        float16 num_2_float16 = float16(4.75f);
         if (i == 0) {
             std::cout << "num_1_float16 = " << num_1_float16.to_float() << std::endl;
             std::cout << "num_2_float16 = " << num_2_float16.to_float() << std::endl;

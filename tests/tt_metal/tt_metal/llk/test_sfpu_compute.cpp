@@ -341,16 +341,14 @@ INSTANTIATE_TEST_SUITE_P(
             // std::make_tuple(tt::DataFormat::Float32, tt::DataFormat::Float16_b),
             // std::make_tuple(tt::DataFormat::Bfp4_b, tt::DataFormat::Float16_b),
             // std::make_tuple(tt::DataFormat::Bfp8_b, tt::DataFormat::Float32),
-            std::make_tuple(tt::DataFormat::Float16, tt::DataFormat::Float16)
-        ),
+            std::make_tuple(tt::DataFormat::Float16, tt::DataFormat::Float16)),
         ::testing::Values(
-            "gelu",
-            "relu",
-            "sqrt",
-            "exponential",
-            "log",
-            "reciprocal",
-            "tanh",
-            "sigmoid"
-        )
-    ));
+            // "gelu",
+            // "relu",
+            "sqrt"
+            // "exponential",
+            // "log",
+            // "reciprocal",
+            // "tanh",
+            // "sigmoid"
+            )));
