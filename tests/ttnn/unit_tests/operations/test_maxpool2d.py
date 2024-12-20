@@ -122,7 +122,7 @@ def run_max_pool(
         for c in range(act_shape[1]):
             for h in range(act_shape[2]):
                 for w in range(act_shape[3]):
-                    act[n, c, h, w] = 4  # h * in_w + w
+                    act[n, c, h, w] = h * in_w + w
     # act = torch.zeros(act_shape, dtype=torch.bfloat16)
     # act = torch.ones(act_shape, dtype=torch.bfloat16)
     # act = torch.arange(0, volume(act_shape), dtype=torch.bfloat16).reshape(act_shape)
