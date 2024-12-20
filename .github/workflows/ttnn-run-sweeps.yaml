@@ -230,6 +230,7 @@ on:
           - eltwise.binary.subtract.subtract
           - eltwise.binary.subtract.subtract_tensor_pytorch2
           - eltwise.binary.multiply.multiply
+          - eltwise.binary.multiply.multiply_sharded
           - eltwise.binary.multiply.multiply_unary
           - eltwise.binary.multiply.multiply_unary_sharded
           - eltwise.binary.multiply.mul_tensor_pytorch2
