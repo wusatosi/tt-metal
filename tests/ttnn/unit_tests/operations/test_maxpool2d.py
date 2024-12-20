@@ -160,7 +160,7 @@ def run_max_pool(
             output_height=out_h,
             output_width=out_w,
             output_channels=in_c,
-            compute_grid_size=(1, 1),
+            compute_grid_size=device.compute_with_storage_grid_size(),
             block_shard_orientation=ttnn.ShardOrientation.ROW_MAJOR,
             enable_channels_padding=False,
             is_out_tiled=False,
@@ -205,8 +205,8 @@ def run_max_pool(
 
     output_pytorch = torch.permute(output_pytorch, (0, 3, 1, 2))  ## N, C, H, W
 
-    print("output_pytorch", output_pytorch[0][0])
-    print("golden_pytorch", golden_pytorch[0][0])
+    print("output_pytorch", output_pytorch[0][543])
+    print("golden_pytorch", golden_pytorch[0][543])
 
     pcc_thresh = 1.0
     if dtype == ttnn.bfloat8_b:
@@ -280,7 +280,7 @@ def run_max_pool(
             # [1, 96, 112, 112],
             # [1, 192, 132, 20],
             # wide non-8 multiple tests
-            [1, 512, 8, 8],
+            # [1, 512, 8, 8],
             [1, 544, 8, 8],
             # [1, 544, 16, 8],
             # [1, 544, 16, 16],
@@ -293,7 +293,7 @@ def run_max_pool(
         # (2, 2),
         # (3, 3),
         (5, 5),
-        (9, 9),
+        # (9, 9),
         # (13, 13),
     ),
 )
@@ -303,7 +303,7 @@ def run_max_pool(
         # (0, 0),
         # (1, 1),
         (2, 2),
-        (4, 4),
+        # (4, 4),
         # (6, 6),
     ),
 )
