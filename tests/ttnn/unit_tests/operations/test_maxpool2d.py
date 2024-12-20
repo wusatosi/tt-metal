@@ -189,6 +189,8 @@ def run_max_pool(
     output_pytorch_padded = torch.Tensor(ttnn.to_torch(output_host))
     output_pytorch = output_pytorch_padded[:, :, :, :in_c]
 
+    print("output_pytorch", output_pytorch)
+
     ## reference
     golden_pytorch = torch.nn.MaxPool2d(
         kernel_size,
@@ -198,6 +200,8 @@ def run_max_pool(
         return_indices=False,
         ceil_mode=False,
     )(act)
+
+    print("golden_pytorch", golden_pytorch)
 
     ## test for equivalance
     golden_shape = golden_pytorch.shape
