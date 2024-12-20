@@ -20,9 +20,9 @@ struct GrayskullComputeKernelConfig {
 };
 
 struct WormholeComputeKernelConfig {
-    MathFidelity math_fidelity = MathFidelity::LoFi;
-    bool math_approx_mode = true;
-    bool fp32_dest_acc_en = false;
+    MathFidelity math_fidelity = MathFidelity::HiFi4;
+    bool math_approx_mode = false;
+    bool fp32_dest_acc_en = true;
     bool packer_l1_acc = false;
     bool dst_full_sync_en = false;
 };
@@ -34,9 +34,9 @@ using DeviceComputeKernelConfig = std::variant<GrayskullComputeKernelConfig, Wor
 DeviceComputeKernelConfig init_device_compute_kernel_config(
     tt::ARCH arch,
     const std::optional<const DeviceComputeKernelConfig>& device_kernel_config,
-    const MathFidelity default_fidelity = MathFidelity::LoFi,
-    bool default_approx_mode = true,
-    bool default_fp32_acc = false,
+    const MathFidelity default_fidelity = MathFidelity::HiFi4,
+    bool default_approx_mode = false,
+    bool default_fp32_acc = true,
     bool default_l1_acc = false,
     bool default_dst_full_sync_en = false);
 
