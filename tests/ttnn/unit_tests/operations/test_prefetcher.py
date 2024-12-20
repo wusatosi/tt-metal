@@ -403,7 +403,7 @@ def test_run_prefetcher(
     # Total: 1470
 
     # global_cb_size = 1000 * max_tile_size # works without profiler, fails with profiler, 900 doesn't provide tracy info
-    global_cb_size = 750 * max_tile_size
+    global_cb_size = 1470 * max_tile_size
     global_circular_buffer = ttnn.create_global_circular_buffer(device, sender_receiver_mapping, global_cb_size)
     print(f"global cb size {global_cb_size}")
 

@@ -107,9 +107,9 @@ void kernel_main() {
             }
 
             // // To simulate interference
-            // if (layer == 1 && t == 1) {
+            // if (layer == 1 && t == 0) {
             //     DeviceZoneScopedN("space");
-            //     for (volatile int i=0 ; i<16500; ++i);
+            //     for (volatile int i=0 ; i<1300; ++i);
             // }
 
             for (uint32_t block = 0; block < num_blocks; ++block) {
