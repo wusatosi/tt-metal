@@ -103,15 +103,16 @@ void kernel_main() {
     uint32_t in_w_padded = in_w + 2 * pad_w;
 
     uint32_t npages_to_reserve = 1;
-    uint32_t read_bytes = in_nbytes_c;
-    if (in_nbytes_c > MAX_ELE_PER_REDUCTION) {
-        read_bytes = MAX_ELE_PER_REDUCTION;  // for now, pow of 2 channels are only supported.
-    }
     uint32_t counter = reader_id;
     uint32_t total_elems_to_reduce = window_h * window_w;
     uint32_t remaining_elems = total_elems_to_reduce % max_rows_for_reduction;
     while (counter < reader_nindices) {
         for (uint32_t c_i = 0; c_i < in_nblocks_c; c_i++) {
+            uint32_t read_bytes = MAX_ELE_PER_REDUCTION;
+            if (c_i == in_nblocks_c - 1) {
+                read_bytes =
+                    in_nbytes_c - c_i * MAX_ELE_PER_REDUCTION;  // do we need this?  still seems to work without it
+            }
             uint16_t top_left_local_index = reader_indices_ptr[counter];
             uint32_t processed_rows = 0;
             cb_reserve_back(in_cb_id, npages_to_reserve);
@@ -125,7 +126,7 @@ void kernel_main() {
                     uint32_t read_offset =
                         in_l1_read_base_addr + (stick_offset * in_nbytes_c + c_i * MAX_ELE_PER_REDUCTION);
                     noc_async_read_one_packet(get_noc_addr(read_offset), out_l1_write_addr, read_bytes);
-                    out_l1_write_addr += read_bytes;
+                    out_l1_write_addr += MAX_ELE_PER_REDUCTION;
                     processed_rows++;
                     if ((processed_rows % max_rows_for_reduction) == 0) {
                         noc_async_read_barrier();
