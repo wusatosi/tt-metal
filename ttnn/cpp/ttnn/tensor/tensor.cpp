@@ -8,10 +8,10 @@
 #include <memory>
 #include <utility>
 
-#include "common/bfloat16.hpp"
+#include "tt_metal/common/bfloat16.hpp"
 #include "impl/buffers/buffer_constants.hpp"
 #include "tt_metal/tt_stl/overloaded.hpp"
-#include "tensor_ops.hpp"
+#include "ttnn/tensor/tensor_ops.hpp"
 #include "ttnn/tensor/tensor_impl.hpp"
 #include "ttnn/tensor/tensor_impl_wrapper.hpp"
 #include "ttnn/tensor/tensor_utils.hpp"
@@ -28,25 +28,8 @@
 #include "ttnn/tensor/layout/tensor_layout.hpp"
 #include "ttnn/distributed/api.hpp"
 
-using namespace tt::constants;
-
 namespace tt::tt_metal {
 namespace {
-
-MemoryConfig extract_memory_config(const Storage& storage) {
-    return std::visit(
-        [](const auto& storage) -> MemoryConfig {
-            using T = std::decay_t<decltype(storage)>;
-            if constexpr (std::is_same_v<T, DeviceStorage>) {
-                return storage.memory_config();
-            } else if constexpr (std::is_same_v<T, MultiDeviceStorage>) {
-                return storage.memory_config();
-            } else {
-                return MemoryConfig{};
-            }
-        },
-        storage);
-}
 
 template <typename T>
 Tensor create_owned_tensor_from_span(tt::stl::Span<const T> data, const TensorSpec& spec) {
@@ -154,14 +137,22 @@ void Tensor::TensorAttributes::update_main_thread_ref_count(Device* worker, uint
 
 Tensor::Tensor(
     Storage storage, const ttnn::Shape& shape, DataType dtype, Layout layout, const std::optional<Tile>& tile) {
-    if (tile.has_value()) {
-        if (tile->get_tile_shape()[0] != TILE_WIDTH or tile->get_tile_shape()[1] != TILE_HEIGHT) {
-            tt::log_warning(
-                "only matmul op and ccl all-gather currently supports the customized tile shape: {}",
-                tile->get_tile_shape());
-        }
+    using namespace tt::constants;
+
+    if (tile.has_value() and  //
+        (tile->get_tile_shape()[0] != TILE_WIDTH or tile->get_tile_shape()[1] != TILE_HEIGHT)) {
+        tt::log_warning(
+            "only matmul op and ccl all-gather currently supports the customized tile shape: {}",
+            tile->get_tile_shape());
     }
-    auto memory_config = extract_memory_config(storage);
+
+    const auto memory_config = std::visit(
+        tt::stl::overloaded{
+            [](const DeviceStorage& s) { return s.memory_config(); },
+            [](const MultiDeviceStorage& s) { return s.memory_config(); },
+            []<typename Other>(const Other&) { return MemoryConfig{}; }},
+        storage);
+
     init(
         std::move(storage),
         TensorSpec(
@@ -663,12 +654,18 @@ template std::vector<bfloat16> Tensor::to_vector<bfloat16>() const;
 template std::vector<uint32_t> Tensor::to_vector<uint32_t>() const;
 template std::vector<int32_t> Tensor::to_vector<int32_t>() const;
 
-Tensor Tensor::to(Device* target_device, const MemoryConfig& mem_config,uint8_t cq_id,
+Tensor Tensor::to(
+    Device* target_device,
+    const MemoryConfig& mem_config,
+    uint8_t cq_id,
     const std::vector<SubDeviceId>& sub_device_ids) const {
     return tensor_ops::tensor_to(*this, target_device, mem_config, cq_id, sub_device_ids);
 }
 
-Tensor Tensor::to(distributed::MeshDevice* mesh_device, const MemoryConfig& mem_config,uint8_t cq_id,
+Tensor Tensor::to(
+    distributed::MeshDevice* mesh_device,
+    const MemoryConfig& mem_config,
+    uint8_t cq_id,
     const std::vector<SubDeviceId>& sub_device_ids) const {
     std::vector<Device*> workers_to_use = ttnn::distributed::get_mapped_devices(*this, *mesh_device);
     return tensor_ops::tensor_to(*this, workers_to_use, mem_config, cq_id, sub_device_ids);
@@ -996,7 +993,8 @@ void write_tensor(
                 "Error");
             std::visit(
                 tt::stl::overloaded{
-                    [worker, worker_index, cq_id, &async_safe_tensor, sub_device_ids](const DeviceStorage& device_storage) {
+                    [worker, worker_index, cq_id, &async_safe_tensor, sub_device_ids](
+                        const DeviceStorage& device_storage) {
                         // Copying from host to a single device.
                         void* host_data = std::visit(
                             tt::stl::overloaded{
@@ -1023,7 +1021,8 @@ void write_tensor(
                             /*blocking=*/false,
                             sub_device_ids);
                     },
-                    [worker, worker_index, cq_id, &async_safe_tensor, sub_device_ids](const MultiDeviceStorage& device_storage) {
+                    [worker, worker_index, cq_id, &async_safe_tensor, sub_device_ids](
+                        const MultiDeviceStorage& device_storage) {
                         // Copying from host to multi-device.
                         TT_ASSERT(
                             std::holds_alternative<MultiDeviceHostStorage>(async_safe_tensor.get_storage()),
