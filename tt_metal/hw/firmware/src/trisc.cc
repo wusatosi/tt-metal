@@ -96,7 +96,7 @@ int main(int argc, char *argv[]) {
     while (1) {
         WAYPOINT("W");
 
-        while ((*noc_register & 0x10) != 0x10);
+        while ((*noc_register & done_value) != done_value);
         // while (*trisc_run != RUN_SYNC_MSG_GO);
 
         DeviceZoneScopedMainN("TRISC-FW");
@@ -133,8 +133,9 @@ int main(int argc, char *argv[]) {
         // Signal completion
         tensix_sync();
         *trisc_run = RUN_SYNC_MSG_DONE;
-        *(reinterpret_cast<volatile uint32_t*>(
-            STREAM_REG_ADDR(STREAM_CHANNEL, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_UPDATE_REG_INDEX))) =
-            done_value << REMOTE_DEST_BUF_WORDS_FREE_INC;
+        NOC_STREAM_WRITE_REG(
+            STREAM_CHANNEL,
+            STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_UPDATE_REG_INDEX,
+            (-done_value) << REMOTE_DEST_BUF_WORDS_FREE_INC);
     }
 }

@@ -321,12 +321,14 @@ inline void set_ncrisc_kernel_resume_deassert_address() {
 }
 
 inline void run_triscs(dispatch_core_processor_masks enables) {
-    *reinterpret_cast<volatile uint32_t*>(STREAM_REG_ADDR(STREAM_CHANNEL, STREAM_REMOTE_DEST_BUF_SIZE_REG_INDEX)) = 0;
+    //*reinterpret_cast<volatile uint32_t*>(STREAM_REG_ADDR(STREAM_CHANNEL, STREAM_REMOTE_DEST_BUF_SIZE_REG_INDEX)) = 0;
+    // NOC_STREAM_WRITE_REG(STREAM_CHANNEL, STREAM_REMOTE_DEST_BUF_SIZE_REG_INDEX, 0);
     if (enables & DISPATCH_CLASS_MASK_TENSIX_ENABLE_COMPUTE) {
         mailboxes->slave_sync.all = RUN_SYNC_MSG_ALL_TRISCS_GO;
-        *(reinterpret_cast<volatile uint32_t*>(
-            STREAM_REG_ADDR(STREAM_CHANNEL, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_UPDATE_REG_INDEX))) =
-            (16 << REMOTE_DEST_BUF_WORDS_FREE_INC);
+        NOC_STREAM_WRITE_REG(
+            STREAM_CHANNEL,
+            STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_UPDATE_REG_INDEX,
+            RUN_ALL_TRISCS << REMOTE_DEST_BUF_WORDS_FREE_INC);
     }
 }
 
@@ -348,7 +350,7 @@ inline void wait_ncrisc_trisc() {
 }
 
 int main() {
-    *reinterpret_cast<volatile uint32_t*>(STREAM_REG_ADDR(STREAM_CHANNEL, STREAM_REMOTE_DEST_BUF_SIZE_REG_INDEX)) = 0;
+    NOC_STREAM_WRITE_REG(STREAM_CHANNEL, STREAM_REMOTE_DEST_BUF_SIZE_REG_INDEX, 0);
     conditionally_disable_l1_cache();
     DIRTY_STACK_MEMORY();
     WAYPOINT("I");
