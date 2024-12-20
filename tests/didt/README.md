@@ -14,7 +14,7 @@ Resnet Convolution: `WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml pytest t
 
 ### Supported systems
 
-We support N150, N300, T3000, Galaxy (TG) systems, and single chip Blackhole. To choose the system, pass in the following parametrization ids (as shown in the example commands):
+We support N150, N300, T3000, Galaxy (QG) systems, and single chip Blackhole. To choose the system, pass in the following parametrization ids (as shown in the example commands):
 - 1chips
 - 2chips
 - 8chips
@@ -27,6 +27,9 @@ NOTE: If running on Galaxy system, remove the WH_ARCH_YAML env variable from the
 On all multi-device systems, you can target a specific device using its ID in the parametrization `logical_chip_{id}_`:
 
 `WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml pytest tests/didt/test_ff1_matmul.py::test_specific_chip_ff1_matmul -k "without_gelu and 8chips and logical_chip_3_"`
+
+Galaxy (QG) example
+`pytest tests/didt/test_ff1_matmul.py::test_specific_chip_ff1_matmul -k "without_gelu and galaxy and logical_chip_3_"`
 
 ### Targetting specific board
 
