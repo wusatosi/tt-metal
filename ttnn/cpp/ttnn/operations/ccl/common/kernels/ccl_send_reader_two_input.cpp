@@ -23,6 +23,9 @@
 
 using arg_idx_t = uint16_t;
 
+static constexpr bool enable_deferred_read_barrier_optimization = false;
+static constexpr bool enable_noc_async_write_packet_optimization = true;
+
 ///////////////////////////////////////////////////
 // COMPILE TIME ARGS
 ///////////////////////////////////////////////////
@@ -170,6 +173,8 @@ FORCE_INLINE auto build_source_address_generator(
     std::size_t page_size,
     sharded_addrgen_fields const& tensor_sharded_addrgen_fields,
     uint32_t cb_id_in) -> typename source_tensor_addrgen<tensor_layout, buffer_type, page_layout>::type {
+
+    DeviceZoneScopedN("AddrgenBuilder");
     constexpr bool is_sharded = is_sharded_tensor_layout(tensor_layout);
     constexpr bool is_interleaved = tensor_layout == tt::tt_metal::TensorMemoryLayout::INTERLEAVED;
     constexpr bool is_tile_page_layout = page_layout == tt::tt_metal::Layout::TILE;
@@ -223,6 +228,7 @@ FORCE_INLINE auto build_source_address_generator(
 struct wrapped_worker_slice_read_context {
     uint32_t curr_tile_id = 0;
     uint32_t offset_into_worker_slice = 0;
+    bool read_open = false;
 };
 struct inline_value_context {
     uint32_t value = 0;
@@ -269,27 +275,28 @@ public:
     }
 
     static FabricConnectionManager build_from_args(std::size_t& arg_idx) {
+        DeviceZoneScopedN("BuildFabricConnectionManager");
         FabricConnectionManager connection_manager;
         connection_manager.connection_flags = static_cast<uint8_t>(get_arg_val<uint32_t>(arg_idx++) != 0)
                                               << FORWARD_CONNECTION_FLAG_OFFSET;
         if (connection_manager.has_forward_connection()) {
             connection_manager.forward_fabric_sender =
-                tt::fabric::WorkerToFabricEdmSender::build_from_args<ProgrammableCoreType::TENSIX>(arg_idx);
+                tt::fabric::WorkerToFabricEdmSender<enable_noc_async_write_packet_optimization>::build_from_args<ProgrammableCoreType::TENSIX>(arg_idx);
         }
         connection_manager.connection_flags |= static_cast<uint8_t>(get_arg_val<uint32_t>(arg_idx++) != 0)
                                                << BACKWARD_CONNECTION_FLAG_OFFSET;
         if (connection_manager.has_backward_connection()) {
             connection_manager.backward_fabric_sender =
-                tt::fabric::WorkerToFabricEdmSender::build_from_args<ProgrammableCoreType::TENSIX>(arg_idx);
+                tt::fabric::WorkerToFabricEdmSender<enable_noc_async_write_packet_optimization>::build_from_args<ProgrammableCoreType::TENSIX>(arg_idx);
         }
         return connection_manager;
     }
 
-    tt::fabric::WorkerToFabricEdmSender& get_forward_connection() {
+    tt::fabric::WorkerToFabricEdmSender<enable_noc_async_write_packet_optimization>& get_forward_connection() {
         ASSERT(has_forward_connection());
         return forward_fabric_sender;
     }
-    tt::fabric::WorkerToFabricEdmSender& get_backward_connection() {
+    tt::fabric::WorkerToFabricEdmSender<enable_noc_async_write_packet_optimization>& get_backward_connection() {
         ASSERT(has_backward_connection());
         return backward_fabric_sender;
     }
@@ -299,8 +306,8 @@ private:
     static constexpr uint8_t BACKWARD_CONNECTION_FLAG_MASK = 0x02;
     static constexpr uint8_t FORWARD_CONNECTION_FLAG_OFFSET = 0x0;
     static constexpr uint8_t BACKWARD_CONNECTION_FLAG_OFFSET = 0x1;
-    tt::fabric::WorkerToFabricEdmSender forward_fabric_sender;
-    tt::fabric::WorkerToFabricEdmSender backward_fabric_sender;
+    tt::fabric::WorkerToFabricEdmSender<enable_noc_async_write_packet_optimization> forward_fabric_sender;
+    tt::fabric::WorkerToFabricEdmSender<enable_noc_async_write_packet_optimization> backward_fabric_sender;
     uint8_t connection_flags;
 };
 
@@ -344,6 +351,7 @@ struct command_context_t final {
         cb_id(cb_id),
         packet_size_in_pages(packet_size_in_pages),
         stream_id(stream_id) {
+
         ASSERT(num_commands == 0 || arg_idx > 4);
     }
     FabricConnectionManager& fabric_connection;
@@ -398,12 +406,16 @@ struct command_context_t final {
             case ttnn::ccl::cmd::CclCommandCode::STREAM_CB_TO_TENSOR:
             case ttnn::ccl::cmd::CclCommandCode::STREAM_TENSOR_TO_EDM: {
 #ifndef NO_TENSOR_MODE
+                DeviceZoneScopedN("FetchPostProcess");
                 shape_t const worker_start_offset_global = v2::worker_wrapped_offset_to_coord(
                     command_tensor.tensor_slice_shape, command_tensor.worker_start_offset_in_slice);
                 shape_t const global_offset = command_tensor.tensor_slice_offset + worker_start_offset_global;
 
                 size_t const curr_tile_id = get_flat_index_from_shape(command_tensor.tensor_shape, global_offset);
                 cmd_specific_ctx.wrapped_worker_slice_read_ctx = wrapped_worker_slice_read_context{curr_tile_id};
+                if constexpr (enable_deferred_read_barrier_optimization) {
+                    cmd_specific_ctx.wrapped_worker_slice_read_ctx.read_open = false;
+                }
 #endif
             } break;
             case ttnn::ccl::cmd::CclCommandCode::WAIT_VALUE:
@@ -417,6 +429,7 @@ struct command_context_t final {
 template <typename Addrgen>
 void update_ccl_command(
     arg_idx_t& arg_idx, command_context_t<Addrgen>& cmd_ctx, ttnn::ccl::cmd::CclCommandHeader const& cmd_header) {
+    DeviceZoneScopedN("update_ccl_command");
     using namespace ttnn::ccl::cmd;
 
     arg_idx_t arg_idx_old = arg_idx;
@@ -636,8 +649,19 @@ FORCE_INLINE void try_advance_read_tensor_to_cb(command_context_t<Addrgen>& cmd_
         cmd_ctx.packet_size_in_pages,
         cmd_ctx.command_tensor.worker_pages_per_slice - cmd_specific_ctx.offset_into_worker_slice);
 
+    if constexpr (enable_deferred_read_barrier_optimization) {
+        if (cmd_ctx.cmd_specific_ctx.wrapped_worker_slice_read_ctx.read_open) {
+            DeviceZoneScopedN("ReadBarrier");
+            noc_async_read_barrier(); // ~170ns for 32x1280 x 4 chip (fp16)
+            cb_push_back(cmd_ctx.cb_id, cmd_ctx.packet_size_in_pages);
+            cmd_ctx.cmd_specific_ctx.wrapped_worker_slice_read_ctx.read_open = false;
+        }
+    }
     uint16_t contig_pages_advanced = 1;
-    cb_reserve_back(cmd_ctx.cb_id, cmd_ctx.packet_size_in_pages);
+    {
+        DeviceZoneScopedN("ReserveBack");
+        cb_reserve_back(cmd_ctx.cb_id, cmd_ctx.packet_size_in_pages);
+    }
     const uint32_t l1_write_addr_base = get_write_ptr(cmd_ctx.cb_id);
     uint32_t l1_write_addr = l1_write_addr_base;
 
@@ -655,7 +679,11 @@ FORCE_INLINE void try_advance_read_tensor_to_cb(command_context_t<Addrgen>& cmd_
             contig_pages_advanced = std::min<uint16_t>(cmd_ctx.packet_size_in_pages - i, contig_pages_);
             ASSERT(contig_pages_advanced > 0);
             ASSERT(contig_pages_advanced <= cmd_ctx.packet_size_in_pages);
-            noc_async_read(noc_addr, l1_write_addr, cmd_ctx.page_size * contig_pages_advanced);
+            if constexpr (enable_noc_async_write_packet_optimization) {
+                noc_async_read_one_packet(noc_addr, l1_write_addr, cmd_ctx.page_size * contig_pages_advanced);
+            } else {
+                noc_async_read(noc_addr, l1_write_addr, cmd_ctx.page_size * contig_pages_advanced);
+            }
         }
         l1_write_addr += cmd_ctx.page_size * contig_pages_advanced;
 
@@ -671,9 +699,13 @@ FORCE_INLINE void try_advance_read_tensor_to_cb(command_context_t<Addrgen>& cmd_
             contig_pages_advanced);
     }
 
-    noc_async_read_barrier(); // ~170ns for 32x1280 x 4 chip (fp16)
-
-    cb_push_back(cmd_ctx.cb_id, cmd_ctx.packet_size_in_pages);
+    if constexpr (!enable_deferred_read_barrier_optimization) {
+        DeviceZoneScopedN("ReadBarrier");
+        noc_async_read_barrier(); // ~170ns for 32x1280 x 4 chip (fp16)
+        cb_push_back(cmd_ctx.cb_id, cmd_ctx.packet_size_in_pages);
+    } else {
+        cmd_ctx.cmd_specific_ctx.wrapped_worker_slice_read_ctx.read_open = true;
+    }
 }
 #endif
 
@@ -684,7 +716,6 @@ FORCE_INLINE void write_and_advance_local_read_address_for_fabric_write(
     wrapped_worker_slice_read_context& cmd_specific_ctx,
     size_t& l1_read_addr,
     uint16_t contig_pages_advanced) {
-    DeviceZoneScopedN("Write");
     // All fabric writes have noc0 coordinates specified in the header. Therefore, we need to regenerate the noc
     // address noc_index coordinates
     const size_t payload_size_bytes = static_cast<size_t>(contig_pages_advanced) * cmd_ctx.page_size;
@@ -714,7 +745,11 @@ FORCE_INLINE void write_and_advance_local_read_address_for_fabric_write(
                     (uint32_t)pkt_hdr, sizeof(tt::fabric::PacketHeader));
         } break;
         case ttnn::ccl::cmd::CclCommandDestType::CHIP_MULTICAST: {
-            noc_async_write(payload_l1_address, safe_get_noc_addr(dest_noc_xy.x, dest_noc_xy.y, dest_addr), payload_size_bytes);
+            if constexpr (enable_noc_async_write_packet_optimization) {
+                noc_async_write_one_packet(payload_l1_address, safe_get_noc_addr(dest_noc_xy.x, dest_noc_xy.y, dest_addr), payload_size_bytes);
+            } else {
+                noc_async_write(payload_l1_address, safe_get_noc_addr(dest_noc_xy.x, dest_noc_xy.y, dest_addr), payload_size_bytes);
+            }
             const auto& mcast_args = cmd_ctx.current_cmd_header.get_multicast_dest_args();
             bool send_forward = cmd_ctx.fabric_connection.has_forward_connection();
             bool send_backward = cmd_ctx.fabric_connection.has_backward_connection();
@@ -787,7 +822,11 @@ FORCE_INLINE void write_payload_then_advance_read_address(
         case ttnn::ccl::cmd::CclCommandDestType::CHIP_LOCAL_ONLY: {
             auto const [dest_noc_xy, dest_addr] = get_noc_address_components(noc0_dest_noc_addr);
             // Conver to our local noc_index based address
-            noc_async_write(l1_read_addr, safe_get_noc_addr(dest_noc_xy.x, dest_noc_xy.y, dest_addr), cmd_ctx.page_size * contig_pages_advanced);
+            if constexpr (enable_noc_async_write_packet_optimization) {
+                noc_async_write_one_packet(l1_read_addr, safe_get_noc_addr(dest_noc_xy.x, dest_noc_xy.y, dest_addr), cmd_ctx.page_size * contig_pages_advanced);
+            } else {
+                noc_async_write(l1_read_addr, safe_get_noc_addr(dest_noc_xy.x, dest_noc_xy.y, dest_addr), cmd_ctx.page_size * contig_pages_advanced);
+            }
             l1_read_addr += cmd_ctx.page_size * contig_pages_advanced;
         } break;
     }
@@ -860,47 +899,46 @@ FORCE_INLINE void try_advance(command_context_t<Addrgen>& cmd_ctx) {
         case ttnn::ccl::cmd::CclCommandCode::STREAM_TENSOR_TO_EDM:  // STREAM TENSOR TO CB
 #ifndef NO_TENSOR_MODE
             try_advance_read_tensor_to_cb<TENSOR_LAYOUT, MEM_LAYOUT>(cmd_ctx);
+            if (cmd_ctx.cmd_specific_ctx.wrapped_worker_slice_read_ctx.offset_into_worker_slice >=
+                cmd_ctx.command_tensor.worker_pages_per_slice) {
+
+                DPRINT << "t_stream cmd cmpl\n";
+                cmd_ctx.complete_current_command();
+                // DeviceZoneScopedN("ReadBarrier");
+                if constexpr (enable_deferred_read_barrier_optimization) {
+                    noc_async_read_barrier(); // ~170ns for 32x1280 x 4 chip (fp16)
+                    cb_push_back(cmd_ctx.cb_id, cmd_ctx.packet_size_in_pages);
+                }
+            }
 #endif
             break;
         case ttnn::ccl::cmd::CclCommandCode::STREAM_CB_TO_TENSOR:
 #ifndef NO_TENSOR_MODE
             try_advance_write_tensor_from_cb<TENSOR_LAYOUT, MEM_LAYOUT>(cmd_ctx);
+            // check if done
+            if (cmd_ctx.cmd_specific_ctx.wrapped_worker_slice_read_ctx.offset_into_worker_slice >=
+                cmd_ctx.command_tensor.worker_pages_per_slice) {
+                DPRINT << "t_stream cmd cmpl\n";
+                cmd_ctx.complete_current_command();
+                // DeviceZoneScopedN("ReadBarrier");
+                noc_async_writes_flushed(); // ~170ns for 32x1280 x 4 chip (fp16)
+                cb_push_back(cmd_ctx.cb_id, cmd_ctx.packet_size_in_pages);
+            }
 #endif
             break;
 
         case ttnn::ccl::cmd::CclCommandCode::ATOMIC_INC: [[fallthrough]];
         case ttnn::ccl::cmd::CclCommandCode::RAW_INLINE_WRITE_BYTES:
             try_advance_inline_write_or_atomic_inc(cmd_ctx);
-            break;
-        case ttnn::ccl::cmd::CclCommandCode::WAIT_VALUE:
-            // Nothing to actively do to advance - just needs to wait for completion
-            break;
-        default: ASSERT(false); break;
-    };
-
-    // Advance to next command index
-    switch (cmd_ctx.current_cmd_header.code) {
-        case ttnn::ccl::cmd::CclCommandCode::STREAM_TENSOR_TO_EDM:  // STREAM TENSOR TO CB
-        case ttnn::ccl::cmd::CclCommandCode::STREAM_CB_TO_TENSOR:
-            if (cmd_ctx.cmd_specific_ctx.wrapped_worker_slice_read_ctx.offset_into_worker_slice >=
-                cmd_ctx.command_tensor.worker_pages_per_slice) {
-                DPRINT << "t_stream cmd cmpl\n";
-                cmd_ctx.complete_current_command();
-            }
-            break;
-
-        case ttnn::ccl::cmd::CclCommandCode::ATOMIC_INC: [[fallthrough]];
-        case ttnn::ccl::cmd::CclCommandCode::RAW_INLINE_WRITE_BYTES:
-            DPRINT << "at_inc cmd cmpl\n";
             cmd_ctx.complete_current_command();
             break;
         case ttnn::ccl::cmd::CclCommandCode::WAIT_VALUE:
-            // Technically we are implementating semaphore wait as WAIT_MIN. FUTURE work to make separate commands
             if (*reinterpret_cast<volatile uint32_t*>(cmd_ctx.src_addr_info.address) >=
                 cmd_ctx.cmd_specific_ctx.inline_value_ctx.value) {
                 DPRINT << "Completing waitval command\n";
                 cmd_ctx.complete_current_command();
             }
+            // Nothing to actively do to advance - just needs to wait for completion
             break;
         default: ASSERT(false); break;
     };
@@ -915,6 +953,7 @@ void kernel_main() {
     // ARGS
     ///////////////////////////////////////////////////
 
+
     size_t arg_idx = 0;
 #ifndef NO_TENSOR_MODE
     // Load the input tensor spec
@@ -923,12 +962,12 @@ void kernel_main() {
     address_t tensor_address1 = get_arg_val<address_t>(arg_idx++);
 #endif
 #endif
-    uint8_t num_commands0 = get_arg_val<address_t>(arg_idx++);
-    arg_idx_t command0_start_offset = get_arg_val<address_t>(arg_idx++);
+    uint8_t num_commands0 = get_arg_val<uint32_t>(arg_idx++);
+    arg_idx_t command0_start_offset = get_arg_val<uint32_t>(arg_idx++);
 
 #ifndef SINGLE_INPUT_MODE
-    uint8_t num_commands1 = get_arg_val<address_t>(arg_idx++);
-    arg_idx_t command1_start_offset = get_arg_val<address_t>(arg_idx++);
+    uint8_t num_commands1 = get_arg_val<uint32_t>(arg_idx++);
+    arg_idx_t command1_start_offset = get_arg_val<uint32_t>(arg_idx++);
 #endif
 
     // Assuming whole page transmissions (which is the only mode we support at the moment)
@@ -971,9 +1010,6 @@ void kernel_main() {
 
     cb_reserve_back(reserved_packet_header_cb_id, num_packet_headers_storable);
     auto packet_header_buffer_addr0 = get_write_ptr(reserved_packet_header_cb_id);
-    auto packet_header_buffer_addr1 =
-        packet_header_buffer_addr0 + (num_packet_headers_storable >> 2) * sizeof(tt::fabric::PacketHeader);
-
     auto operand_0_cmd_ctx = command_context_t(
         fabric_connection,
         tensor0_addrgen,
@@ -986,15 +1022,17 @@ void kernel_main() {
         0);
 
     // enabling either of the writes will cause the issue
-    static_assert(sizeof(command_context_t<decltype(tensor0_addrgen)>) <= 120, "command_context_t is too big");
+    static_assert(sizeof(command_context_t<decltype(tensor0_addrgen)>) <= 124, "command_context_t is too big");
     uint8_t stream_done_mask =
 #ifndef SINGLE_INPUT_MODE
         (static_cast<uint8_t>(num_commands1 == 0) << 1) |
 #endif
         static_cast<uint8_t>(num_commands0 == 0);
 #ifndef SINGLE_INPUT_MODE
+    auto packet_header_buffer_addr1 =
+        packet_header_buffer_addr0 + (num_packet_headers_storable >> 2) * sizeof(tt::fabric::PacketHeader);
     const uint8_t finish_value = 0x3;
-    static_assert(sizeof(command_context_t<decltype(tensor1_addrgen)>) <= 120, "command_context_t is too big");
+    static_assert(sizeof(command_context_t<decltype(tensor1_addrgen)>) <= 124, "command_context_t is too big");
     auto operand_1_cmd_ctx = command_context_t(
         fabric_connection,
         tensor1_addrgen,
@@ -1010,16 +1048,21 @@ void kernel_main() {
 #endif
 
     if (fabric_connection.is_logically_connected()) {
+        DeviceZoneScopedN("ConnectionOpen");
         fabric_connection.open();
     }
     while (stream_done_mask != finish_value) {
+#ifdef SINGLE_INPUT_MODE
         if ((stream_done_mask & 0x1) == 0) {
+#endif
             if (!operand_0_cmd_ctx.current_command_active()) {
                 DPRINT << "get_cmd0\n";
                 operand_0_cmd_ctx.fetch_next_command();
             };
             try_advance<tensor0_layout, tensor0_page_layout>(operand_0_cmd_ctx);
+#ifdef SINGLE_INPUT_MODE
         }
+#endif
         stream_done_mask |= static_cast<uint8_t>(operand_0_cmd_ctx.is_complete());
 #ifndef SINGLE_INPUT_MODE
         if ((stream_done_mask & 0x2) == 0) {
