@@ -308,7 +308,7 @@ struct command_context_t final {
     uint8_t cb_id = 0;
     uint8_t packet_size_in_pages = 0;
     uint8_t stream_id;
-
+    bool use_cached_packet_headers = false;
     bool populated = false;
 
     bool command_requires_fabric() const {
@@ -319,6 +319,7 @@ struct command_context_t final {
 
     FORCE_INLINE void complete_current_command() {
         command_idx++;
+        use_cached_packet_headers = false;
         populated = false;
     }
 
@@ -497,7 +498,7 @@ FORCE_INLINE void try_advance_inline_write_or_atomic_inc(command_context_t<Addrg
         }
 
         ASSERT(cmd_ctx.packet_header_buffer_addr != 0);
-        auto* pkt_hdr = reinterpret_cast<tt::fabric::PacketHeader*>(cmd_ctx.packet_header_buffer_addr);
+        auto* pkt_hdr = reinterpret_cast<volatile tt::fabric::PacketHeader*>(cmd_ctx.packet_header_buffer_addr + 2 * sizeof(tt::fabric::PacketHeader));
         if (cmd_ctx.current_cmd_header.code == ttnn::ccl::cmd::CclCommandCode::ATOMIC_INC) {
             pkt_hdr->to_atomic_inc();
         } else {
@@ -522,8 +523,8 @@ FORCE_INLINE void try_advance_inline_write_or_atomic_inc(command_context_t<Addrg
                                               ? cmd_ctx.fabric_connection.get_forward_connection()
                                               : cmd_ctx.fabric_connection.get_backward_connection();
                 fabric_connection.wait_for_empty_write_slot();
-                fabric_connection.send_payload_flush_blocking_from_address(
-                    cmd_ctx.packet_header_buffer_addr, sizeof(tt::fabric::PacketHeader));
+                fabric_connection.send_payload_non_blocking_from_address(
+                    (uint32_t)pkt_hdr, sizeof(tt::fabric::PacketHeader));
             } break;
             case ttnn::ccl::cmd::CclCommandDestType::CHIP_MULTICAST: {
                 const auto& mcast_args = cmd_ctx.current_cmd_header.get_multicast_dest_args();
@@ -532,7 +533,7 @@ FORCE_INLINE void try_advance_inline_write_or_atomic_inc(command_context_t<Addrg
                     pkt_hdr->to_chip_multicast(tt::fabric::MulticastRoutingCommandHeader{
                         1, static_cast<uint8_t>(mcast_args.num_targets_forward_direction)});
                     cmd_ctx.fabric_connection.get_forward_connection().send_payload_flush_blocking_from_address(
-                        cmd_ctx.packet_header_buffer_addr, sizeof(tt::fabric::PacketHeader));
+                        (uint32_t)pkt_hdr, sizeof(tt::fabric::PacketHeader));
                 }
 
                 // Write the mcast packet (backward)
@@ -541,7 +542,7 @@ FORCE_INLINE void try_advance_inline_write_or_atomic_inc(command_context_t<Addrg
                         1, static_cast<uint8_t>(mcast_args.num_targets_backward_direction)});
                     cmd_ctx.fabric_connection.get_backward_connection().wait_for_empty_write_slot();
                     cmd_ctx.fabric_connection.get_backward_connection().send_payload_non_blocking_from_address(
-                        cmd_ctx.packet_header_buffer_addr, sizeof(tt::fabric::PacketHeader));
+                        (uint32_t)pkt_hdr, sizeof(tt::fabric::PacketHeader));
                 }
 
                 uint64_t dest_noc_addr = safe_get_noc_addr(dest_noc0_x, dest_noc0_y, dest_bank_addr);
@@ -550,6 +551,8 @@ FORCE_INLINE void try_advance_inline_write_or_atomic_inc(command_context_t<Addrg
                 } else if (cmd_ctx.current_cmd_header.code == ttnn::ccl::cmd::CclCommandCode::RAW_INLINE_WRITE_BYTES) {
                     noc_inline_dw_write(dest_noc_addr, value);
                 }
+
+                noc_async_writes_flushed();
 
             } break;
 
@@ -615,7 +618,7 @@ FORCE_INLINE void try_advance_read_tensor_to_cb(command_context_t<Addrgen>& cmd_
             contig_pages_advanced);
     }
 
-    noc_async_read_barrier();
+    noc_async_read_barrier(); // ~170ns for 32x1280 x 4 chip (fp16)
 
     cb_push_back(cmd_ctx.cb_id, cmd_ctx.packet_size_in_pages);
 }
@@ -637,42 +640,68 @@ FORCE_INLINE void write_and_advance_local_read_address_for_fabric_write(
 #endif
 
     size_t packet_send_size_bytes = payload_size_bytes + sizeof(tt::fabric::PacketHeader);
-    pkt_hdr->to_write()->to_noc_unicast(tt::fabric::NocUnicastCommandHeader{
-        dest_addr, packet_send_size_bytes, static_cast<uint8_t>(dest_noc_xy.x), static_cast<uint8_t>(dest_noc_xy.y)});
-
-    switch (current_cmd_header.dest_type) {
+    const auto noc_write_packet_spec = tt::fabric::NocUnicastCommandHeader{
+            dest_addr, packet_send_size_bytes, static_cast<uint8_t>(dest_noc_xy.x), static_cast<uint8_t>(dest_noc_xy.y)};
+    switch (cmd_ctx.current_cmd_header.dest_type) {
         case ttnn::ccl::cmd::CclCommandDestType::CHIP_UNICAST: {
-            const auto& unicast_args = current_cmd_header.get_unicast_dest_args();
-            auto& fabric_conn = unicast_args.is_forward_direction ? fabric_connection.get_forward_connection()
-                                                                  : fabric_connection.get_backward_connection();
+            const auto& unicast_args = cmd_ctx.current_cmd_header.get_unicast_dest_args();
+            auto& fabric_connection = unicast_args.is_forward_direction
+                                          ? cmd_ctx.fabric_connection.get_forward_connection()
+                                          : cmd_ctx.fabric_connection.get_backward_connection();
+            auto pkt_hdr = reinterpret_cast<volatile tt::fabric::PacketHeader*>((unicast_args.is_forward_direction ? 0 : sizeof(tt::fabric::PacketHeader)) + cmd_ctx.packet_header_buffer_addr);
+            if (!cmd_ctx.use_cached_packet_headers) {
+                pkt_hdr->to_write()->to_chip_unicast(tt::fabric::UnicastRoutingCommandHeader{unicast_args.distance_in_hops});
+            }
+            pkt_hdr->to_noc_unicast(noc_write_packet_spec);
 
-            pkt_hdr->to_chip_unicast(tt::fabric::UnicastRoutingCommandHeader{unicast_args.distance_in_hops});
-            fabric_conn.wait_for_empty_write_slot();
-            fabric_conn.send_payload_without_header_non_blocking_from_address(l1_read_addr, payload_size_bytes);
-            fabric_conn.send_payload_flush_blocking_from_address((uint32_t)pkt_hdr, sizeof(tt::fabric::PacketHeader));
+            fabric_connection.wait_for_empty_write_slot();
+            fabric_connection.send_payload_without_header_non_blocking_from_address(l1_read_addr, payload_size_bytes);
+            fabric_connection.send_payload_non_blocking_from_address(
+                    (uint32_t)pkt_hdr, sizeof(tt::fabric::PacketHeader));
         } break;
         case ttnn::ccl::cmd::CclCommandDestType::CHIP_MULTICAST: {
-            noc_async_write(
-                payload_l1_address, safe_get_noc_addr(dest_noc_xy.x, dest_noc_xy.y, dest_addr), payload_size_bytes);
-            const auto& mcast_args = current_cmd_header.get_multicast_dest_args();
-            if (fabric_connection.has_forward_connection()) {
-                pkt_hdr->to_chip_multicast(tt::fabric::MulticastRoutingCommandHeader{
-                    1, static_cast<uint8_t>(mcast_args.num_targets_forward_direction)});
-                fabric_connection.get_forward_connection().wait_for_empty_write_slot();
-                fabric_connection.get_forward_connection().send_payload_without_header_non_blocking_from_address(
-                    l1_read_addr, payload_size_bytes);
-                fabric_connection.get_forward_connection().send_payload_flush_blocking_from_address(
-                    (uint32_t)pkt_hdr, sizeof(tt::fabric::PacketHeader));
-            }
+            noc_async_write(payload_l1_address, safe_get_noc_addr(dest_noc_xy.x, dest_noc_xy.y, dest_addr), payload_size_bytes);
+            const auto& mcast_args = cmd_ctx.current_cmd_header.get_multicast_dest_args();
+            bool send_forward = cmd_ctx.fabric_connection.has_forward_connection();
+            bool send_backward = cmd_ctx.fabric_connection.has_backward_connection();
 
-            if (fabric_connection.has_backward_connection()) {
-                pkt_hdr->to_chip_multicast(tt::fabric::MulticastRoutingCommandHeader{
-                    1, static_cast<uint8_t>(mcast_args.num_targets_backward_direction)});
-                fabric_connection.get_backward_connection().wait_for_empty_write_slot();
-                fabric_connection.get_backward_connection().send_payload_without_header_non_blocking_from_address(
-                    l1_read_addr, payload_size_bytes);
-                fabric_connection.get_backward_connection().send_payload_flush_blocking_from_address(
-                    (uint32_t)pkt_hdr, sizeof(tt::fabric::PacketHeader));
+            auto pkt_hdr = reinterpret_cast<volatile tt::fabric::PacketHeader*>(cmd_ctx.packet_header_buffer_addr);
+            auto pkt_hdr2 = reinterpret_cast<volatile tt::fabric::PacketHeader*>(cmd_ctx.packet_header_buffer_addr + sizeof(tt::fabric::PacketHeader));
+            if (!cmd_ctx.use_cached_packet_headers) {
+                if (send_forward) {
+                    pkt_hdr->to_write()->to_chip_multicast(tt::fabric::MulticastRoutingCommandHeader{
+                        1, static_cast<uint8_t>(mcast_args.num_targets_forward_direction)});
+                }
+                if (send_backward) {
+                    pkt_hdr2->to_write()->to_chip_multicast(tt::fabric::MulticastRoutingCommandHeader{
+                        1, static_cast<uint8_t>(mcast_args.num_targets_backward_direction)});
+                }
+            }
+            if (send_backward && send_forward) {
+                auto &forward_connection = cmd_ctx.fabric_connection.get_forward_connection();
+                auto &backward_connection = cmd_ctx.fabric_connection.get_backward_connection();
+                forward_connection.wait_for_empty_write_slot();
+                forward_connection.send_payload_without_header_non_blocking_from_address(l1_read_addr, payload_size_bytes);
+
+                backward_connection.wait_for_empty_write_slot();
+                backward_connection.send_payload_without_header_non_blocking_from_address(l1_read_addr, payload_size_bytes);
+
+                pkt_hdr->to_noc_unicast(noc_write_packet_spec);
+                forward_connection.send_payload_non_blocking_from_address(
+                        (uint32_t)pkt_hdr, sizeof(tt::fabric::PacketHeader));
+
+                pkt_hdr2->to_noc_unicast(noc_write_packet_spec);
+                backward_connection.send_payload_non_blocking_from_address(
+                        (uint32_t)pkt_hdr2, sizeof(tt::fabric::PacketHeader));
+            } else  {
+                auto &fabric_connection = send_forward ? cmd_ctx.fabric_connection.get_forward_connection() : cmd_ctx.fabric_connection.get_backward_connection();
+                fabric_connection.wait_for_empty_write_slot();
+                fabric_connection.send_payload_without_header_non_blocking_from_address(l1_read_addr, payload_size_bytes);
+
+                auto packet_header = send_forward ? pkt_hdr : pkt_hdr2;
+                packet_header->to_noc_unicast(noc_write_packet_spec);
+                fabric_connection.send_payload_non_blocking_from_address(
+                        (uint32_t)packet_header, sizeof(tt::fabric::PacketHeader));
             }
         } break;
         default: {
@@ -680,7 +709,9 @@ FORCE_INLINE void write_and_advance_local_read_address_for_fabric_write(
             ASSERT(false);
         } break;
     }
-
+    cmd_ctx.use_cached_packet_headers = true;
+    // Don't advance (payload + header) because we want to make sure we keep sizeof(tt::fabric::PacketHeader) space
+    // that's safe to use, preceeding the next hypothetical packet in L1.
     l1_read_addr += payload_size_bytes;
 }
 
