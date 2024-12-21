@@ -14,6 +14,8 @@
 
 #include <cstdint>
 
+static constexpr bool defer_connection_open_read_barrier = false; // saves ~150ns during kernel startup
+
 namespace tt::fabric {
 
 template<bool enable_noc_async_write_packet_optimization>
@@ -154,7 +156,9 @@ struct WorkerToFabricEdmSender {
 
         const uint64_t edm_connection_handshake_noc_addr = dest_noc_addr_coord_only | edm_connection_handshake_l1_addr;
         noc_inline_dw_write(edm_connection_handshake_noc_addr, open_connection_value);
-        noc_async_read_barrier();
+        if constexpr (!defer_connection_open_read_barrier) {
+            noc_async_read_barrier();
+        }
         ASSERT(*this->buffer_index_ptr < 20);
     }
 
