@@ -9,6 +9,7 @@
 #include "compute_kernel_api/reduce.h"
 #include "compute_kernel_api/tilize.h"
 // #include "tools/profiler/kernel_profiler.hpp"
+#include "tt_metal/hw/inc/debug/dprint_tensix.h"
 
 #define DEBUG_PRINT 1
 
@@ -141,6 +142,9 @@ void MAIN {
 
                     reduce_h_fused<partial_iter_output_tiles, is_partial_tile, split_reader>(
                         in_cb_id, in_scalar_cb_id, i, max_rows_for_reduction);
+
+                    dprint_tensix_dest_reg(0);
+
                     tile_regs_wait();
                     tile_regs_commit();
                     pack_untilize_dst<partial_iter_output_tiles>(
@@ -170,6 +174,8 @@ void MAIN {
                     reduce_tile_math(c_i, num_faces_in_input_tile /* reduce 1 or 2 faces */);
                 }
 
+                // dprint_tensix_dest_reg(0);
+
                 tile_regs_wait();
                 tile_regs_commit();
 
@@ -195,6 +201,9 @@ void MAIN {
 
                     reduce_h_fused<max_tiles_per_iter, is_partial_tile, split_reader>(
                         in_cb_id, in_scalar_cb_id, i, max_rows_for_reduction);
+
+                    dprint_tensix_dest_reg(0);
+
                     tile_regs_wait();
                     tile_regs_commit();
                     pack_untilize_dst<max_tiles_per_iter>(
@@ -222,6 +231,8 @@ void MAIN {
                 for (uint32_t c_i = 0; c_i < max_tiles_per_iter; ++c_i) {
                     reduce_tile_math(c_i, num_faces_in_input_tile /* reduce 1 or 2 faces */);
                 }
+
+                // dprint_tensix_dest_reg(0);
 
                 tile_regs_wait();
                 tile_regs_commit();
