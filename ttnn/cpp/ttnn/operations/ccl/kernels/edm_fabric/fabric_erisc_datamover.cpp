@@ -17,7 +17,7 @@
 #include "ttnn/cpp/ttnn/operations/ccl/shared_with_host/hetergeneous_data_structs.hpp"
 
 using ttnn::ccl::WorkerXY;
-
+static constexpr bool enable_noc_async_write_packet_optimization = true;
 /*
 
 The fabric Erisc Data Mover (EDM) is a component that can be used to build *very* simple linear topology fabrics.
@@ -258,7 +258,7 @@ enum PacketLocalForwardType : uint8_t {
     PACKET_FORWARD_LOCAL_AND_REMOTE = 0x3
 };
 
-static constexpr uint32_t SWITCH_INTERVAL = 0;
+static constexpr uint32_t SWITCH_INTERVAL = 100000;
 static constexpr size_t ETH_BYTES_TO_WORDS_SHIFT = 4;
 static constexpr size_t NUM_SENDER_CHANNELS = 2;
 static constexpr size_t num_workers_ctor = 1;
@@ -456,7 +456,7 @@ PacketLocalForwardType get_packet_local_forward_type(const volatile tt::fabric::
 }
 
 FORCE_INLINE bool can_forward_packet_completely(
-    const volatile tt::fabric::PacketHeader &packet_header, tt::fabric::WorkerToFabricEdmSender &downstream_edm_interface) {
+    const volatile tt::fabric::PacketHeader &packet_header, tt::fabric::WorkerToFabricEdmSender<enable_noc_async_write_packet_optimization> &downstream_edm_interface) {
     auto forward_status = get_packet_local_forward_type(packet_header);
 
     switch (forward_status) {
@@ -471,7 +471,7 @@ FORCE_INLINE bool can_forward_packet_completely(
 
 // template <uint8_t NUM_BUFFERS>
 tt::fabric::SendStatus receiver_forward_packet(
-    volatile tt::fabric::PacketHeader *packet_start, tt::fabric::WorkerToFabricEdmSender &downstream_edm_interface) {
+    volatile tt::fabric::PacketHeader *packet_start, tt::fabric::WorkerToFabricEdmSender<enable_noc_async_write_packet_optimization> &downstream_edm_interface) {
     // Just cache the packet_header - we don't really expect (or care) if contents change during this function.
     tt::fabric::PacketHeader const &packet_header = *const_cast<tt::fabric::PacketHeader *const>(packet_start);
     ASSERT(tt::fabric::is_valid(packet_header));
@@ -591,7 +591,7 @@ template <size_t RECEIVER_NUM_BUFFERS, size_t SENDER_NUM_BUFFERS, size_t NUM_SEN
 void run_receiver_channel_state_machine_step(
     tt::fabric::EthChannelBuffer<RECEIVER_NUM_BUFFERS> &local_receiver_channel,
     std::array<tt::fabric::EthChannelBuffer<SENDER_NUM_BUFFERS>, NUM_SENDER_CHANNELS> &remote_sender_channnels,
-    tt::fabric::WorkerToFabricEdmSender &downstream_edm_interface,
+    tt::fabric::WorkerToFabricEdmSender<enable_noc_async_write_packet_optimization> &downstream_edm_interface,
     ReceiverState *const receiver_state_out) {
     switch (*receiver_state_out) {
         case ReceiverState::RECEIVER_WAITING_FOR_ETH: {
@@ -681,7 +681,7 @@ void run_fabric_edm_main_loop(
     tt::fabric::EthChannelBuffer<RECEIVER_NUM_BUFFERS> &local_receiver_channel,
     std::array<tt::fabric::EthChannelBuffer<SENDER_NUM_BUFFERS>, NUM_SENDER_CHANNELS> &local_sender_channels,
     std::array<tt::fabric::EdmChannelWorkerInterface, NUM_SENDER_CHANNELS> &local_sender_channel_worker_interfaces,
-    tt::fabric::WorkerToFabricEdmSender &downstream_edm_noc_interface,
+    tt::fabric::WorkerToFabricEdmSender<enable_noc_async_write_packet_optimization> &downstream_edm_noc_interface,
     std::array<tt::fabric::EthChannelBuffer<SENDER_NUM_BUFFERS>, NUM_SENDER_CHANNELS> &remote_sender_channels,
     tt::fabric::EthChannelBuffer<RECEIVER_NUM_BUFFERS> &remote_receiver_channel,
     volatile tt::fabric::TerminationSignal *termination_signal_ptr) {
@@ -861,7 +861,7 @@ void kernel_main() {
         local_sender_channel_0_connection_info_addr, local_sender_channel_1_connection_info_addr};
     auto downstream_edm_noc_interface =
         has_downstream_edm_buffer_connection
-            ? tt::fabric::WorkerToFabricEdmSender(
+            ? tt::fabric::WorkerToFabricEdmSender<enable_noc_async_write_packet_optimization>(
                  //persistent_mode -> hardcode to false because for EDM -> EDM
                  // connections we must always use semaphore lookup
                   false,
@@ -876,7 +876,7 @@ void kernel_main() {
                   local_sender_channel_1_connection_buffer_index_id,
                   reinterpret_cast<volatile uint32_t *const>(edm_forwarding_semaphore_address),
                   downstream_noc_interface_buffer_index_local_addr)
-            : tt::fabric::WorkerToFabricEdmSender();
+            : tt::fabric::WorkerToFabricEdmSender<enable_noc_async_write_packet_optimization>();
 
     auto local_receiver_channel = tt::fabric::EthChannelBuffer<RECEIVER_NUM_BUFFERS>(
         local_receiver_channel_buffer_address,

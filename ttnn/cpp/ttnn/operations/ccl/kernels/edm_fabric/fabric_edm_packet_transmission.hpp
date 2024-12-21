@@ -179,9 +179,10 @@ void update_packet_header_for_next_hop(volatile tt::fabric::PacketHeader * packe
 // !!!WARNING!!!
 // !!!WARNING!!! do NOT call before determining if the packet should be consumed locally or forwarded
 // !!!WARNING!!!
+template <bool enable_noc_async_write_packet_optimization>
 tt::fabric::SendStatus forward_payload_to_downstream_edm(
     volatile tt::fabric::PacketHeader *packet_header,
-    tt::fabric::WorkerToFabricEdmSender &downstream_edm_interface
+    tt::fabric::WorkerToFabricEdmSender<enable_noc_async_write_packet_optimization> &downstream_edm_interface
     ) {
     DPRINT << "Fwding pkt to downstream\n";
     // TODO: PERF - this should already be getting checked by the caller so this should be redundant make it an ASSERT

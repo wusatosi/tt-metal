@@ -16,6 +16,7 @@
 
 namespace tt::fabric {
 
+template<bool enable_noc_async_write_packet_optimization>
 struct WorkerToFabricEdmSender {
     static constexpr uint32_t open_connection_value = 1;
     static constexpr uint32_t close_connection_value = 0;
@@ -97,6 +98,7 @@ struct WorkerToFabricEdmSender {
     [[nodiscard]] FORCE_INLINE bool consumer_has_space() const { return *this->worker_sem_addr == 1; }
     FORCE_INLINE void clear_flow_control_semaphore() const { noc_semaphore_set(this->worker_sem_addr, 0); }
     FORCE_INLINE void wait_for_empty_write_slot() const {
+        // DeviceZoneScopedN("WaitFabric");
         DPRINT << "Wait for write slot @ " << (uint32_t)this->worker_sem_addr << "\n";
         noc_semaphore_wait(this->worker_sem_addr, 1);
     }
@@ -194,8 +196,11 @@ private:
         this->clear_flow_control_semaphore();
         uint64_t buffer_address = get_noc_addr(this->edm_noc_x, this->edm_noc_y, this->edm_buffer_addr) +
                                   (*this->buffer_index_ptr * (this->buffer_size_bytes + sizeof(eth_channel_sync_t)));
-
-        send_chunk_from_address<blocking_mode>(source_address, 1, sizeof(tt::fabric::PacketHeader), buffer_address);
+        if constexpr (enable_noc_async_write_packet_optimization) {
+            send_one_packet_from_address<blocking_mode>(source_address, 1, sizeof(tt::fabric::PacketHeader), buffer_address);
+        } else {
+            send_chunk_from_address<blocking_mode>(source_address, 1, sizeof(tt::fabric::PacketHeader), buffer_address);
+        }
         auto const noc_sem_addr = get_noc_addr(this->edm_noc_x, this->edm_noc_y, this->edm_semaphore_addr);
         noc_semaphore_inc(noc_sem_addr, 1);
         *this->buffer_index_ptr =
@@ -207,7 +212,11 @@ private:
                                   (*this->buffer_index_ptr * (this->buffer_size_bytes + sizeof(eth_channel_sync_t)));
 
         // skip past the first part of the buffer which will be occupied by the packet header
-        send_chunk_from_address<blocking_mode>(source_address, 1, size_bytes, buffer_address + sizeof(tt::fabric::PacketHeader));
+        if constexpr (enable_noc_async_write_packet_optimization) {
+            send_one_packet_from_address<blocking_mode>(source_address, 1, size_bytes, buffer_address + sizeof(tt::fabric::PacketHeader));
+        } else {
+            send_chunk_from_address<blocking_mode>(source_address, 1, size_bytes, buffer_address + sizeof(tt::fabric::PacketHeader));
+        }
     }
 
     template <ttnn::ccl::EDM_IO_BLOCKING_MODE blocking_mode>
@@ -221,7 +230,12 @@ private:
         DPRINT << "SND PKT TO @ " << (uint64_t)buffer_address << "\n";
         ASSERT(tt::fabric::is_valid(*const_cast<tt::fabric::PacketHeader*>(
             reinterpret_cast<volatile tt::fabric::PacketHeader*>(source_address))));
-        send_chunk_from_address<blocking_mode>(source_address, 1, size_bytes, buffer_address);
+
+        if constexpr (enable_noc_async_write_packet_optimization) {
+            send_one_packet_from_address<blocking_mode>(source_address, 1, size_bytes, buffer_address);
+        } else {
+            send_chunk_from_address<blocking_mode>(source_address, 1, size_bytes, buffer_address);
+        }
         auto const noc_sem_addr = get_noc_addr(this->edm_noc_x, this->edm_noc_y, this->edm_semaphore_addr);
         DPRINT << "\tSEMINC TO @ " << (uint64_t)noc_sem_addr << "\n";
         noc_semaphore_inc(noc_sem_addr, 1);
@@ -236,7 +250,11 @@ private:
         uint64_t buffer_address = get_noc_addr(this->edm_noc_x, this->edm_noc_y, this->edm_buffer_addr) +
                                   (*this->buffer_index_ptr * (this->buffer_size_bytes + sizeof(eth_channel_sync_t)));
         ASSERT(num_pages * page_size <= this->buffer_size_bytes);
-        send_chunk<blocking_mode>(cb_id, num_pages, page_size, buffer_address);
+        if constexpr (enable_noc_async_write_packet_optimization) {
+            send_one_packet_from_address<blocking_mode>(cb_id, num_pages, page_size, buffer_address);
+        } else {
+            send_chunk<blocking_mode>(cb_id, num_pages, page_size, buffer_address);
+        }
         noc_semaphore_inc(get_noc_addr(this->edm_noc_x, this->edm_noc_y, this->edm_semaphore_addr), 1);
         *this->buffer_index_ptr =
             (*this->buffer_index_ptr == this->last_buffer_index) ? 0 : *this->buffer_index_ptr + 1;
