@@ -302,7 +302,7 @@ TEST_P(SingleCoreSingleDeviceSfpuParameterizedFixture, SfpuCompute) {
 
     CoreRange core_range({0, 0}, {0, 0});
     CoreRangeSet core_range_set({core_range});
-    for (bool approx_mode: {true}) {
+    for (bool approx_mode : {false}) {
         for (bool fp32_dest_acc_en : {false}) {
             // FP32 dest acc not possible for GS
             if ((fp32_dest_acc_en == true) && (this->arch_ == tt::ARCH::GRAYSKULL)) continue;

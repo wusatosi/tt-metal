@@ -7,6 +7,7 @@
 #include "compute_kernel_api/tile_move_copy.h"
 #include "compute_kernel_api/eltwise_unary/eltwise_unary.h"
 #include "compute_kernel_api/eltwise_unary/sfpu_split_includes.h"
+#include "debug/dprint_tensix.h"
 
 inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
     DPRINT << "======" << ENDL();
@@ -32,13 +33,14 @@ void MAIN {
             // Pop tile after tile, copy to DST and pack
             cb_wait_front(tt::CBIndex::c_0, 1);
             copy_tile(tt::CBIndex::c_0, 0, 0);
+            dprint_tensix_dest_reg(0);
 
 #ifdef SFPU_OP_CHAIN_0
             SFPU_OP_CHAIN_0
 #endif
-
             pack_tile(0, tt::CBIndex::c_16);
-            PACK((print_full_tile(tt::CBIndex::c_16, 0, true)));
+            // PACK((print_full_tile(tt::CBIndex::c_16, 0, true)));
+            dprint_tensix_dest_reg(0);
 
             cb_pop_front(tt::CBIndex::c_0, 1);
 
