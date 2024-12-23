@@ -129,6 +129,9 @@ class RunTimeOptions {
 
     bool skip_deleting_built_cache = false;
 
+    uint32_t arc_debug_buffer_size = 0;
+
+   public:
     RunTimeOptions();
 
 public:
@@ -301,7 +304,10 @@ public:
 
     inline bool get_skip_deleting_built_cache() { return skip_deleting_built_cache; }
 
-private:
+    inline uint32_t get_arc_debug_buffer_size() { return arc_debug_buffer_size; }
+    inline void set_arc_debug_buffer_size(uint32_t size) { arc_debug_buffer_size = size; }
+
+   private:
     // Helper functions to parse feature-specific environment vaiables.
     void ParseFeatureEnv(RunTimeDebugFeatures feature);
     void ParseFeatureCoreRange(RunTimeDebugFeatures feature, const std::string &env_var, CoreType core_type);

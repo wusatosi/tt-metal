@@ -274,6 +274,7 @@ class Device {
     void initialize_synchronous_sw_cmd_queue();
     void configure_kernel_variant(Program& program, const string& path, const std::vector<uint32_t>& compile_args, CoreCoord kernel_core, CoreCoord kernel_virtual_core,
                                   CoreType dispatch_core_type, CoreCoord upstream_virtual_core, CoreCoord downstream_virtual_core, CoreCoord downstream_slave_virtual_core, std::map<string, string> defines_in, NOC my_noc_index, NOC upstream_noc_index, NOC downstream_noc_index, bool is_active_eth_core = false, bool send_to_brisc = false, bool force_watcher_no_inline = false);
+    void allocate_dram_debug_buffer();
     void compile_command_queue_programs();
     void configure_command_queue_programs();
     void clear_l1_state();
@@ -413,6 +414,7 @@ class Device {
     std::vector<int32_t> l1_bank_offset_map_;
     std::vector<uint16_t> dram_bank_to_noc_xy_;
     std::vector<uint16_t> l1_bank_to_noc_xy_;
+    std::shared_ptr<Buffer> dram_debug_buffer_;
 };
 
 }  // namespace v0

@@ -250,6 +250,8 @@ void DevicePool::initialize_device(v1::DeviceHandle handle) const {
 
     watcher_attach(dev);
 
+    dev->allocate_dram_debug_buffer();
+
     // Set up HW command queues on device for FD
     if (using_fast_dispatch) {
         dev->init_command_queue_device();
