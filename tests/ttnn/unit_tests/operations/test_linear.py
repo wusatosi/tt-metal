@@ -10,6 +10,63 @@ from tests.ttnn.utils_for_testing import assert_with_pcc
 from models.utility_functions import torch_random, is_wormhole_b0
 
 
+@pytest.mark.parametrize("batch_sizes", [(2,)])
+@pytest.mark.parametrize("m_size", [4096])
+@pytest.mark.parametrize("k_size", [1536])
+@pytest.mark.parametrize("n_size", [6144])
+@pytest.mark.parametrize("use_bias", [True])
+def test_linear_sd35(
+    batch_sizes,
+    m_size,
+    k_size,
+    n_size,
+    use_bias,
+    *,
+    device,
+):
+    input_shape_a = (*batch_sizes, m_size, k_size)
+    input_shape_b = (k_size, n_size)
+
+    torch_input_tensor_a = torch_random(input_shape_a, -0.1, 0.1, dtype=torch.float32)
+    torch_input_tensor_b = torch_random(input_shape_b, -0.1, 0.1, dtype=torch.float32)
+    if use_bias:
+        torch_bias = torch_random((n_size,), -0.1, 0.1, dtype=torch.float32)
+    else:
+        torch_bias = None
+    torch_output_tensor = torch.nn.functional.linear(
+        torch_input_tensor_a, torch_input_tensor_b.T.contiguous(), bias=torch_bias
+    )
+
+    input_tensor_a = ttnn.from_torch(
+        torch_input_tensor_a,
+        dtype=ttnn.bfloat8_b,
+        device=device,
+        layout=ttnn.TILE_LAYOUT,
+    )
+    input_tensor_b = ttnn.from_torch(
+        torch_input_tensor_b,
+        dtype=ttnn.bfloat8_b,
+        device=device,
+        layout=ttnn.TILE_LAYOUT,
+    )
+    if use_bias:
+        bias = ttnn.from_torch(
+            torch_bias.reshape((1, n_size)),
+            device=device,
+            dtype=ttnn.bfloat8_b,
+            layout=ttnn.TILE_LAYOUT,
+        )
+    else:
+        bias = None
+
+    output_tensor = ttnn.linear(
+        input_tensor_a, input_tensor_b, bias=bias, memory_config=ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b
+    )
+    output_tensor = ttnn.to_torch(output_tensor)
+
+    assert_with_pcc(torch_output_tensor, output_tensor, 0.999)
+
+
 @pytest.mark.parametrize("batch_sizes", [(1,)])
 @pytest.mark.parametrize("m_size", [384])
 @pytest.mark.parametrize("k_size", [1024])
