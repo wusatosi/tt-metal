@@ -8,6 +8,16 @@
 #include "compute_kernel_api/eltwise_unary/eltwise_unary.h"
 #include "compute_kernel_api/eltwise_unary/sfpu_split_includes.h"
 
+inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
+    DPRINT << "======" << ENDL();
+    for (uint8_t r = 0; r < 32; ++r) {
+        SliceRange sr_left = SliceRange{.h0 = r, .h1 = (uint8_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
+        // Note: TileSlice has different parameters on reader/writer kernels and these are not quite accurate. That may
+        // cause issues in terms of where data appears. But trying proper parameters caused errors in the dprint server.
+        DPRINT << (uint)r << ": " << TileSlice(cb_id, tile_id, sr_left, true, untilize);
+    }
+    DPRINT << "++++++" << ENDL();
+}
 namespace NAMESPACE {
 void MAIN {
     uint32_t per_core_block_cnt = get_compile_time_arg_val(0);
@@ -21,7 +31,6 @@ void MAIN {
 
             // Pop tile after tile, copy to DST and pack
             cb_wait_front(tt::CBIndex::c_0, 1);
-
             copy_tile(tt::CBIndex::c_0, 0, 0);
 
 #ifdef SFPU_OP_CHAIN_0
@@ -29,6 +38,7 @@ void MAIN {
 #endif
 
             pack_tile(0, tt::CBIndex::c_16);
+            PACK((print_full_tile(tt::CBIndex::c_16, 0, true)));
 
             cb_pop_front(tt::CBIndex::c_0, 1);
 

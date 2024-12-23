@@ -57,6 +57,34 @@ static inline float bfloat16_to_float(uint16_t bfloat_val) {
     return f;
 }
 
+float float16_to_float(uint16_t half) {
+    uint32_t sign = (half & 0x8000) << 16;
+    uint32_t exponent = (half & 0x7C00) >> 10;
+    uint32_t fraction = (half & 0x03FF);
+
+    if (exponent == 0x1F) {  // NaN or Infinity
+        exponent = 0xFF;
+        if (fraction) {
+            fraction = 0x200;  // Set MSB for NaN
+        }
+    } else if (exponent == 0) {  // Denormalized
+        if (fraction) {
+            fraction <<= 1;
+            while ((fraction & 0x400) == 0) {
+                fraction <<= 1;
+                exponent--;
+            }
+            fraction &= 0x3FF;
+        }
+        exponent = (exponent + 127 - 15);
+    } else {
+        exponent += (127 - 15);
+    }
+
+    uint32_t result = sign | (exponent << 23) | (fraction << 13);
+    return *reinterpret_cast<float*>(&result);
+}
+
 static string GetRiscName(CoreType core_type, int hart_id, bool abbreviated = false) {
     if (core_type == CoreType::ETH) {
         switch (hart_id) {
@@ -297,6 +325,11 @@ static void PrintTileSlice(ostringstream* stream, uint8_t* ptr) {
             }
             tt::DataFormat data_format = static_cast<tt::DataFormat>(ts->data_format);
             switch (data_format) {
+                case tt::DataFormat::Float16: {
+                    uint16_t* float16_ptr = reinterpret_cast<uint16_t*>(data);
+                    *stream << float16_to_float(float16_ptr[i]);
+                    break;
+                }
                 case tt::DataFormat::Float16_b: {
                     uint16_t* float16_b_ptr = reinterpret_cast<uint16_t*>(data);
                     *stream << bfloat16_to_float(float16_b_ptr[i]);

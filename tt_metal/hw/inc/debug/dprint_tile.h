@@ -196,10 +196,10 @@ struct TileSlice : TileSliceHostDev<MAX_BYTES> {
         this->data_format = tile_info.data_format;
 
         // If the data format is unsupported or corrupted, don't continue
-        if (!is_supported_format(static_cast<DataFormat>(this->data_format))) {
-            this->return_code = DPrintErrorUnsupportedFormat;
-            return;  // Unsupported type, return
-        }
+        // if (!is_supported_format(static_cast<DataFormat>(this->data_format))) {
+        //     this->return_code = DPrintErrorUnsupportedFormat;
+        //     return;  // Unsupported type, return
+        // }
 
         // Move the pointer to the tile at index requested by user
         uint32_t bytes_per_datum = dprint_datum_size(static_cast<DataFormat>(this->data_format));
