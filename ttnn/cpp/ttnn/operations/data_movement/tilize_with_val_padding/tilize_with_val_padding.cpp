@@ -173,8 +173,8 @@ ttnn::Tensor ExecuteTilizeWithValPadding::invoke(
     auto input_shape = input_tensor.get_shape();
     shape[0] = input_shape[0];
     shape[1] = input_shape[1];
-    shape[2] = tt::round_up(shape[2], tt::constants::TILE_HEIGHT);
-    shape[3] = tt::round_up(shape[3], tt::constants::TILE_WIDTH);
+    shape[2] = tt::round_up(input_shape[2], tt::constants::TILE_HEIGHT);
+    shape[3] = tt::round_up(input_shape[3], tt::constants::TILE_WIDTH);
 
     return invoke(
         queue_id, input_tensor, ttnn::SimpleShape(shape), pad_value, memory_config, output_dtype, use_multicore);
@@ -200,8 +200,8 @@ ttnn::Tensor ExecuteTilizeWithZeroPadding::invoke(
     auto input_shape = input_tensor.get_shape();
     shape[0] = input_shape[0];
     shape[1] = input_shape[1];
-    shape[2] = tt::round_up(shape[2], tt::constants::TILE_HEIGHT);
-    shape[3] = tt::round_up(shape[3], tt::constants::TILE_WIDTH);
+    shape[2] = tt::round_up(input_shape[2], tt::constants::TILE_HEIGHT);
+    shape[3] = tt::round_up(input_shape[3], tt::constants::TILE_WIDTH);
 
     PadValue pad_value;
     if (input_tensor.get_dtype() == DataType::BFLOAT16 or input_tensor.get_dtype() == DataType::FLOAT32) {
