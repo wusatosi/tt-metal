@@ -154,6 +154,7 @@ public:
     void init_command_queue_host() override;
     void init_command_queue_device() override;
 
+    void allocate_dram_debug_buffer() override;
     void init_fabric() override;
 
     // Puts device into reset
@@ -268,6 +269,7 @@ private:
     std::vector<int32_t> l1_bank_offset_map_;
     std::vector<uint16_t> dram_bank_to_noc_xy_;
     std::vector<uint16_t> l1_bank_to_noc_xy_;
+    std::shared_ptr<Buffer> dram_debug_buffer_;
 
     program_cache::detail::ProgramCache program_cache_;
 

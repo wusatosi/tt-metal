@@ -295,6 +295,7 @@ void DevicePool::initialize_device(IDevice* dev) const {
     if (this->fabric_setting == detail::FabricSetting::FABRIC) {
         dev->init_fabric();
     }
+    dev->allocate_dram_debug_buffer();
 
     // Set up HW command queues on device for FD
     if (this->using_fast_dispatch) {

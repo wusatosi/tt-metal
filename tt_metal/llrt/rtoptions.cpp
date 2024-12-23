@@ -132,6 +132,10 @@ RunTimeOptions::RunTimeOptions() {
         this->simulator_enabled = true;
         this->simulator_path = std::getenv("TT_METAL_SIMULATOR");
     }
+    const char *arc_debug_enabled_str = std::getenv("TT_METAL_ARC_DEBUG_BUFFER_SIZE");
+    if (arc_debug_enabled_str != nullptr) {
+        sscanf(arc_debug_enabled_str, "%u", &arc_debug_buffer_size);
+    }
 }
 
 const std::string& RunTimeOptions::get_root_dir() {

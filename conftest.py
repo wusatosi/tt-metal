@@ -98,7 +98,9 @@ def get_dispatch_core_type():
 
     # TODO: 11059 move dispatch_core_type to device_params when all tests are updated to not use WH_ARCH_YAML env flag
     dispatch_core_type = ttnn.device.DispatchCoreType.WORKER
-    if ("WH_ARCH_YAML" in os.environ) and os.environ["WH_ARCH_YAML"] == "wormhole_b0_80_arch_eth_dispatch.yaml":
+    if (("WH_ARCH_YAML" in os.environ) and os.environ["WH_ARCH_YAML"] == "wormhole_b0_80_arch_eth_dispatch.yaml") or (
+        "TT_METAL_ETH_DISPATCH" in os.environ
+    ):
         dispatch_core_type = ttnn.device.DispatchCoreType.ETH
     return dispatch_core_type
 
@@ -184,7 +186,7 @@ def all_devices(request, device_params):
 
 
 @pytest.fixture(scope="function")
-def mesh_device(request, silicon_arch_name, silicon_arch_wormhole_b0, device_params):
+def mesh_device(request, silicon_arch_name, device_params):
     """
     Pytest fixture to set up a device mesh for tests.
 
@@ -222,10 +224,43 @@ def mesh_device(request, silicon_arch_name, silicon_arch_wormhole_b0, device_par
         num_devices_requested = min(param, len(device_ids))
         mesh_shape = ttnn.MeshShape(1, num_devices_requested)
 
+    assert silicon_arch_name != "grayskull", "Mesh device is not supported for Grayskull."
     request.node.pci_ids = [ttnn.GetPCIeDeviceID(i) for i in device_ids[:num_devices_requested]]
 
     updated_device_params = get_updated_device_params(device_params)
     mesh_device = ttnn.open_mesh_device(mesh_shape=mesh_shape, **updated_device_params)
+
+    logger.debug(f"multidevice with {mesh_device.get_num_devices()} devices is created")
+    assert mesh_device.get_num_devices() == param, "Failed to create requested number of devices"
+    yield mesh_device
+
+    for device in mesh_device.get_devices():
+        ttnn.DumpDeviceProfiler(device)
+
+    ttnn.close_mesh_device(mesh_device)
+    del mesh_device
+
+
+@pytest.fixture(scope="function")
+def board_mesh_device(request, silicon_arch_name, silicon_arch_wormhole_b0, device_params):
+    import ttnn
+
+    device_ids = ttnn.get_device_ids()
+
+    assert len(device_ids) == 8, "This fixture is only applicable for T3K systems"
+
+    try:
+        pcie_id = request.param
+    except (ValueError, AttributeError):
+        pcie_id = 0  # Default to using first board
+
+    assert pcie_id < 4, "Requested board id is out of range"
+
+    mesh_device_ids = [device_ids[pcie_id], device_ids[pcie_id + 4]]
+    mesh_shape = ttnn.MeshShape(1, 2)
+    mesh_device = ttnn.open_mesh_device(
+        mesh_shape, mesh_device_ids, dispatch_core_type=get_dispatch_core_type(), **device_params
+    )
 
     logger.debug(f"multidevice with {mesh_device.get_num_devices()} devices is created")
     yield mesh_device
@@ -349,6 +384,8 @@ def get_devices(request):
         devices = [request.getfixturevalue("t3k_mesh_device")]
     elif "pcie_mesh_device" in request.fixturenames:
         devices = [request.getfixturevalue("pcie_mesh_device")]
+    elif "board_mesh_device" in request.fixturenames:
+        devices = request.getfixturevalue("board_mesh_device").get_devices()
     else:
         devices = []
     return devices
@@ -393,12 +430,7 @@ def tracy_profile():
 ###############################
 # Modifying pytest hooks
 ###############################
-ALL_ARCHS = set(
-    [
-        "grayskull",
-        "wormhole_b0",
-    ]
-)
+ALL_ARCHS = set(["grayskull", "wormhole_b0", "blackhole"])
 
 
 def pytest_addoption(parser):
@@ -408,7 +440,7 @@ def pytest_addoption(parser):
         "--tt-arch",
         choices=[*ALL_ARCHS],
         default=ttnn.get_arch_name(),
-        help="Target arch, ex. grayskull, wormhole_b0",
+        help="Target arch, ex. grayskull, wormhole_b0, blackhole",
     )
     parser.addoption(
         "--pipeline-type",
@@ -441,6 +473,51 @@ def pytest_addoption(parser):
         default=None,
         help="Enable process timeout",
     )
+    parser.addoption(
+        "--iterations",
+        action="store",
+        default=None,
+        help="Number of iterations to run",
+    )
+
+    parser.addoption(
+        "--simulate-bh-harvesting",
+        action="store_true",
+        default=False,
+        help="Simulate BH harvesting",
+    )
+
+    parser.addoption(
+        "--determinism-check-iterations",
+        action="store",
+        default=None,
+        help="Check determinism every nth iteration",
+    )
+
+
+@pytest.fixture
+def determinism_check_iterations(request):
+    iterations = request.config.getoption("--determinism-check-iterations")
+    if iterations is not None:
+        # this will throw an error if bad value is passed
+        return int(iterations)
+    return -1
+
+
+@pytest.fixture
+def iterations(request):
+    iterations = request.config.getoption("--iterations")
+    if iterations is not None:
+        # this will throw an error if bad value is passed
+        return int(iterations)
+    # default is 100000
+    return 100000
+
+
+@pytest.fixture
+def simulate_bh_harvesting(request):
+    simulate_bh_harvesting = request.config.getoption("--simulate-bh-harvesting")
+    return simulate_bh_harvesting
 
 
 @pytest.fixture
@@ -511,6 +588,11 @@ def pytest_generate_tests(metafunc):
         "silicon_arch_wormhole_b0": set(
             [
                 "wormhole_b0",
+            ]
+        ),
+        "silicon_arch_blackhole": set(
+            [
+                "blackhole",
             ]
         ),
     }

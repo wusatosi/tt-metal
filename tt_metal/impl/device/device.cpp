@@ -16,6 +16,7 @@
 #include "tracy/Tracy.hpp"
 #include <tt_metal.hpp>
 #include "dprint_server.hpp"
+#include "llrt/rtoptions.hpp"
 #include "impl/debug/watcher_server.hpp"
 #include "tt_metal/impl/dispatch/kernels/packet_queue_ctrl.hpp"
 #include <utils.hpp>
@@ -963,6 +964,25 @@ void Device::init_fabric() {
             tt::llrt::write_launch_msg_to_core(
                 this->id(), physical_core, msg, go_msg, this->get_dev_addr(physical_core, HalL1MemAddrType::LAUNCH));
         }
+    }
+}
+
+// Controlled by env var TT_METAL_ARC_DEBUG_BUFFER_SIZE=<size_bytes>
+// Allocates a buffer for debugging purposes
+void Device::allocate_dram_debug_buffer() {
+    uint32_t arc_debug_buffer_size = llrt::RunTimeOptions::get_instance().get_arc_debug_buffer_size();
+    if (arc_debug_buffer_size) {
+        tt::tt_metal::InterleavedBufferConfig dram_config{
+            .device = this,
+            .size = arc_debug_buffer_size,
+            .page_size =  arc_debug_buffer_size,
+            .buffer_type = tt::tt_metal::BufferType::DRAM
+            };
+
+        dram_debug_buffer_ = tt_metal::CreateBuffer(dram_config);
+        log_info(tt::LogMetal, "ARC_DEBUG_BUFFER allocated at address: {} of size: {}", dram_debug_buffer_->address(), dram_debug_buffer_->size());
+    } else {
+        log_debug(tt::LogMetal, "Did not allocate allocate_dram_debug_buffer");
     }
 }
 
