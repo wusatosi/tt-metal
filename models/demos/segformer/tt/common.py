@@ -48,22 +48,23 @@ class Conv:
             transpose_shards=False,
             reshard_if_not_optimal=self.reshard,
             deallocate_activation=self.deallocate,
-            reallocate_halo_output=True,
-            enable_act_double_buffer=True,
+            reallocate_halo_output=False,
+            enable_act_double_buffer=False,
             enable_split_reader=False,
             output_layout=self.output_layout,
         )
         compute_config = ttnn.init_device_compute_kernel_config(
             device.arch(),
             math_fidelity=ttnn.MathFidelity.LoFi,
-            math_approx_mode=True,
+            math_approx_mode=False,
             fp32_dest_acc_en=False,
             packer_l1_acc=False,
         )
         if self.act_block_h is not None:
             conv_config.act_block_h_override = self.act_block_h
 
-        [output_tensor, [_out_height, _out_width]] = ttnn.conv2d(
+        # [output_tensor, [_out_height, _out_width]] = ttnn.conv2d(
+        output_tensor = ttnn.conv2d(
             input_tensor=input_tensor,
             weight_tensor=self.weights,
             bias_tensor=self.bias,
@@ -79,8 +80,8 @@ class Conv:
             conv_config=conv_config,
             compute_config=compute_config,
             groups=self.groups,
-            return_output_dim=True,
+            return_output_dim=False,
             return_weights_and_bias=False,
         )
 
-        return output_tensor, _out_height, _out_width
+        return output_tensor  # , _out_height, _out_width
