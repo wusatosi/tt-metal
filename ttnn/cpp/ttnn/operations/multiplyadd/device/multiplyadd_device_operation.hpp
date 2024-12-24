@@ -1,5 +1,4 @@
 #pragma once
-<<<<<<< HEAD
 #include <cstdint>
 #include <cstdio>
 #include "buffers/circular_buffer_types.hpp"
