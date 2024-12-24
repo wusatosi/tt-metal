@@ -28,9 +28,11 @@ parameters = {
         "exclude_range": [[-1, 1]],
         "grad_dtype": [ttnn.bfloat8_b],
         "input_a_dtype": [ttnn.bfloat8_b],
-        "input_layout": [ttnn.TILE_LAYOUT, ttnn.ROW_MAJOR_LAYOUT],
+        "input_b_dtype": [ttnn.bfloat8_b],
+        "input_layout": [ttnn.TILE_LAYOUT],
         "grad_memory_config": [ttnn.DRAM_MEMORY_CONFIG, ttnn.L1_MEMORY_CONFIG],
         "input_a_memory_config": [ttnn.DRAM_MEMORY_CONFIG, ttnn.L1_MEMORY_CONFIG],
+        "input_b_memory_config": [ttnn.DRAM_MEMORY_CONFIG, ttnn.L1_MEMORY_CONFIG],
         "output_memory_config": [ttnn.DRAM_MEMORY_CONFIG, ttnn.L1_MEMORY_CONFIG],
     },
 }
@@ -43,7 +45,7 @@ def invalidate_vector(test_vector) -> Tuple[bool, Optional[str]]:
     if test_vector["input_layout"] == ttnn.ROW_MAJOR_LAYOUT:
         return True, "Unary operation requires tensor to be in Tile layout when working with non-sharded input tensor"
     if test_vector["input_layout"] == ttnn.ROW_MAJOR_LAYOUT and (
-        test_vector["grad_dtype"] == ttnn.bfloat8_b or test_vector["input_a_dtype"] == ttnn.bfloat8_b
+        test_vector["input_dtype"] == ttnn.bfloat8_b or test_vector["input_dtype"] == ttnn.bfloat8_b
     ):
         return True, "bfloat8_b is only supported on tiled layout"
     return False, None
@@ -58,9 +60,11 @@ def run(
     exclude_range,
     grad_dtype,
     input_a_dtype,
+    input_b_dtype,
     input_layout,
     grad_memory_config,
     input_a_memory_config,
+    input_b_memory_config,
     output_memory_config,
     *,
     device,
@@ -76,18 +80,31 @@ def run(
     torch_input_tensor_a = gen_func_with_cast_tt(
         partial(gen_rand_exclude_range, excluderange=exclude_range, low=-100, high=100), input_a_dtype
     )(input_shape)
+    torch_input_tensor_b = gen_func_with_cast_tt(
+        partial(gen_rand_exclude_range, excluderange=exclude_range, low=-100, high=100), input_b_dtype
+    )(input_shape)
     torch_input_tensor_a.requires_grad = True
+    torch_input_tensor_b.requires_grad = True
 
-    factor = torch.tensor(1, dtype=torch.bfloat16).uniform_(-100, 100).item()
-    while (factor > exclude_range[0]) & (factor < exclude_range[1]):
-        factor = torch.tensor(1, dtype=torch.bfloat16).uniform_(-100, 100).item()
+    # while torch.any(torch_grad_tensor == 0.0):
+    #   torch_grad_tensor = torch.where(torch_grad_tensor == 0.0,
+    #                                  torch_grad_tensor.flatten()[random.choice(torch.where(torch_grad_tensor.flatten() != 0.0)[0])].item(),
+    #                                  torch_grad_tensor)
+    # while torch.any(torch_input_tensor_a == 0.0):
+    #   torch_input_tensor_a = torch.where(torch_input_tensor_a == 0.0,
+    #                                 torch_input_tensor_a.flatten()[random.choice(torch.where(torch_input_tensor_a.flatten() != 0.0)[0])].item(),
+    #                                 torch_input_tensor_a)
+    # while torch.any(torch_input_tensor_b == 0.0):
+    #   torch_input_tensor_b = torch.where(torch_input_tensor_b == 0.0,
+    #                                 torch_input_tensor_b.flatten()[random.choice(torch.where(torch_input_tensor_b.flatten() != 0.0)[0])].item(),
+    #                                 torch_input_tensor_b)
 
-    assert not torch.any(torch_grad_tensor == 0)
-    assert not torch.any(torch_input_tensor_a == 0)
-    assert not factor == 0.0
+    assert not torch.any(torch_grad_tensor == 0.0)
+    assert not torch.any(torch_input_tensor_a == 0.0)
+    assert not torch.any(torch_input_tensor_b == 0.0)
 
-    golden_function = ttnn.get_golden_function(ttnn.rdiv_bw)
-    torch_output_tensor = golden_function(torch_grad_tensor, torch_input_tensor_a, factor)[0]
+    golden_function = ttnn.get_golden_function(ttnn.hypot_bw)
+    torch_output_tensors = golden_function(torch_grad_tensor, torch_input_tensor_a, torch_input_tensor_b)
 
     grad_tensor = ttnn.from_torch(
         torch_grad_tensor,
@@ -96,7 +113,6 @@ def run(
         device=device,
         memory_config=grad_memory_config,
     )
-
     input_tensor_a = ttnn.from_torch(
         torch_input_tensor_a,
         dtype=input_a_dtype,
@@ -104,11 +120,31 @@ def run(
         device=device,
         memory_config=input_a_memory_config,
     )
+    input_tensor_b = ttnn.from_torch(
+        torch_input_tensor_b,
+        dtype=input_b_dtype,
+        layout=input_layout,
+        device=device,
+        memory_config=input_b_memory_config,
+    )
 
     start_time = start_measuring_time()
-    output_tensor = ttnn.rdiv_bw(grad_tensor, input_tensor_a, scalar=factor, memory_config=output_memory_config)[0]
+    output_tensors = ttnn.hypot_bw(grad_tensor, input_tensor_a, input_tensor_b, memory_config=output_memory_config)
     e2e_perf = stop_measuring_time(start_time)
 
-    output_tensor = ttnn.to_torch(output_tensor)
+    passed = []
+    output_string = ""
+    for i in range(len(torch_output_tensors)):
+        output_tensor = ttnn.to_torch(output_tensors[i])
+        passed_, output_string_ = check_with_pcc(torch_output_tensors[i], output_tensor, 0.999)
+        passed.append(passed_)
+        output_string += output_string_ + ", "
 
-    return [check_with_pcc(torch_output_tensor, output_tensor, 0.999), e2e_perf]
+    if all(passed):
+        passed = True
+    else:
+        passed = False
+
+    output_string = output_string[:-2]
+
+    return [(passed, output_string), e2e_perf]

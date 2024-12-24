@@ -279,7 +279,6 @@ on:
           - eltwise.binary.ne.ne_scalar_pytorch2
           - eltwise.binary.ne.ne_forge
           - eltwise.binary.hypot.hypot
-          - eltwise.binary.hypot.hypot_nonzero
           - eltwise.binary.xlogy.xlogy
           - eltwise.binary_backward.ldexp_bw.ldexp_bw
           - eltwise.binary_backward.logaddexp_bw
@@ -288,10 +287,12 @@ on:
           - eltwise.binary_backward.subalpha_bw.subalpha_bw
           - eltwise.binary_backward.xlogy_bw.xlogy_bw
           - eltwise.binary_backward.hypot_bw.hypot_bw
+          - eltwise.binary_backward.hypot_bw.hypot_bw_nonzero
           - eltwise.binary_backward.add_bw.add_bw
           - eltwise.binary_backward.sub_bw.sub_bw
           - eltwise.binary_backward.mul_bw.mul_bw
           - eltwise.binary_backward.div_bw.div_bw
+          - eltwise.binary_backward.div_bw.div_bw_nonzero
           - eltwise.binary_backward.fmod_bw.fmod_bw
           - eltwise.binary_backward.remainder_bw.remainder_bw
           - eltwise.binary_backward.rsub_bw.rsub_bw
