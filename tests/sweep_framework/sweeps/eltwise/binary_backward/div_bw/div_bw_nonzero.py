@@ -22,14 +22,14 @@ from models.utility_functions import torch_random
 # Developers can create their own generator functions and pass them to the parameters as inputs.
 parameters = {
     "nightly": {
-        "input_shape": gen_shapes([1, 1, 1, 1], [6, 12, 256, 256], [1, 1, 1, 1], 8)
-        + gen_shapes([1, 1, 1], [12, 256, 256], [1, 1, 1], 8)
-        + gen_shapes([1, 1], [256, 256], [1, 1], 8),
+        "input_shape": gen_shapes([1, 1, 1, 1], [6, 12, 256, 256], [1, 1, 1, 1], 4)
+        + gen_shapes([1, 1, 1], [12, 256, 256], [1, 1, 1], 4)
+        + gen_shapes([1, 1], [256, 256], [1, 1], 4),
         "exclude_range": [[-1, 1]],
         "round_mode": [None, "floor", "trunc"],
-        "grad_dtype": [ttnn.bfloat8_b],
-        "input_a_dtype": [ttnn.bfloat8_b],
-        "input_b_dtype": [ttnn.bfloat8_b],
+        "grad_dtype": [ttnn.bfloat16, ttnn.bfloat8_b],
+        "input_a_dtype": [ttnn.bfloat16, ttnn.bfloat8_b],
+        "input_b_dtype": [ttnn.bfloat16, ttnn.bfloat8_b],
         "input_layout": [ttnn.TILE_LAYOUT],
         "grad_memory_config": [ttnn.DRAM_MEMORY_CONFIG, ttnn.L1_MEMORY_CONFIG],
         "input_a_memory_config": [ttnn.DRAM_MEMORY_CONFIG, ttnn.L1_MEMORY_CONFIG],
