@@ -57,13 +57,13 @@ inline tt::ARCH get_platform_architecture() {
         TT_FATAL(arch_env, "ARCH_NAME env var needed for VCS");
         arch = tt::get_arch_from_string(arch_env);
     } else {
-
         // Issue tt_umd#361: tt_ClusterDescriptor::create() won't work here.
         // This map holds PCI info for each mmio chip.
         auto devices_info = PCIDevice::enumerate_devices_info();
+        TT_FATAL(devices_info.size() == 0, "PciDeviceInfo not enumerated");
         if (devices_info.size() > 0) {
             arch = devices_info.begin()->second.get_arch();
-            for (auto &[device_id, device_info] : devices_info) {
+            for (auto& [device_id, device_info] : devices_info) {
                 tt::ARCH detected_arch = device_info.get_arch();
                 TT_FATAL(
                     arch == detected_arch,
