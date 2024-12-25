@@ -53,6 +53,12 @@ inline void reduce_h_fused(
     const uint32_t in_cb_id, const uint32_t in_scalar_cb_id, const uint32_t in_stick_index, const uint32_t out_cb_id) {
     constexpr uint32_t num_faces_in_tile = is_partial_tile ? 1 : 2;
     constexpr uint32_t num_out_rows = 1;
+    // UNPACK (DPRINT << "in_stick_index = " << (uint16_t)in_stick_index << ENDL() );
+    // UNPACK (DPRINT << "num_output_tiles = " << (uint16_t)num_output_tiles << ENDL() );
+    // UNPACK (DPRINT << "is_partial_tile = " << (uint16_t)is_partial_tile << ENDL() );
+    // UNPACK (DPRINT << "split_reader = " << (uint16_t)split_reader << ENDL() );
+    // UNPACK (DPRINT << "unpA_face_r_dim = " << (uint16_t)unpA_face_r_dim << ENDL() );
+    // UNPACK (DPRINT << "in_nblocks_c = " << (uint16_t)in_nblocks_c << ENDL() );
     for (uint32_t b_i = 0; b_i < in_nblocks_c; ++b_i) {
         cb_reserve_back(out_cb_id, 1);
         const uint32_t curr_in_cb_id = split_reader ? (in_cb_id + (in_stick_index & 0x1)) : in_cb_id;

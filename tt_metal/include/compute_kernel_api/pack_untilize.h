@@ -11,6 +11,7 @@
 #ifdef TRISC_UNPACK
 #include "llk_unpack_A_api.h"
 #endif
+#include "debug/dprint.h"
 
 namespace ckernel {
 
@@ -76,6 +77,11 @@ template <
     bool narrow_row = false,
     std::uint32_t row_num_datums = TILE_C_DIM>
 ALWI void pack_untilize_dst_init_short(uint32_t ocb, uint32_t face_r_dim = 16, uint32_t num_faces = 4) {
+    // PACK ( DPRINT << "block_ct_dim = " << (uint16_t)block_ct_dim << ENDL() );
+    // PACK ( DPRINT << "face_r_dim = " << (uint16_t)face_r_dim << ENDL() );
+    // PACK ( DPRINT << "num_faces = " << (uint16_t)num_faces << ENDL() );
+    // PACK ( DPRINT << "diagonal = " << (uint16_t)diagonal << ENDL() );
+    // PACK ( DPRINT << "narrow_row = " << (uint16_t)narrow_row << ENDL() );
     PACK((llk_pack_untilize_init<block_ct_dim, full_ct_dim, diagonal, narrow_row, row_num_datums>(
         ocb, face_r_dim, num_faces)));
     PACK((llk_init_packer_dest_offset_registers<true, diagonal>()));
