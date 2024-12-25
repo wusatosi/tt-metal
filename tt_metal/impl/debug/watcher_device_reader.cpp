@@ -89,7 +89,7 @@ static string get_noc_target_str(
             case CoreType::DRAM: return {"DRAM", "DRAM"};
             case CoreType::ETH: return {"Ethernet", "L1"};
             case CoreType::PCIE: return {"PCIe", "PCIE"};
-            case CoreType::WORKER: return {"Tensix", "L1"};
+            case CoreType::TENSIX: return {"Tensix", "L1"};
             default: return {"Unknown", ""};
         }
     };
@@ -197,7 +197,7 @@ void WatcherDeviceReader::Dump(FILE* file) {
     CoreCoord grid_size = device->logical_grid_size();
     for (uint32_t y = 0; y < grid_size.y; y++) {
         for (uint32_t x = 0; x < grid_size.x; x++) {
-            CoreDescriptor logical_core = {{x, y}, CoreType::WORKER};
+            CoreDescriptor logical_core = {{x, y}, CoreType::TENSIX};
             if (device->storage_only_cores().find(logical_core.coord) == device->storage_only_cores().end()) {
                 DumpCore(logical_core, false);
             }

@@ -103,7 +103,7 @@ void FDKernel::configure_kernel_variant(
     bool force_watcher_no_inline) {
     // TODO: just pass in the programmable index
     uint32_t programmable_core_type_index =
-        (GetCoreType() == CoreType::WORKER) ? hal.get_programmable_core_type_index(HalProgrammableCoreType::TENSIX)
+        (GetCoreType() == CoreType::TENSIX) ? hal.get_programmable_core_type_index(HalProgrammableCoreType::TENSIX)
         : is_active_eth_core                ? hal.get_programmable_core_type_index(HalProgrammableCoreType::ACTIVE_ETH)
                                             : hal.get_programmable_core_type_index(HalProgrammableCoreType::IDLE_ETH);
 
@@ -122,7 +122,7 @@ void FDKernel::configure_kernel_variant(
     }
     defines.insert(defines_in.begin(), defines_in.end());
 
-    if (GetCoreType() == CoreType::WORKER) {
+    if (GetCoreType() == CoreType::TENSIX) {
         tt::tt_metal::CreateKernel(
             *program_,
             path,

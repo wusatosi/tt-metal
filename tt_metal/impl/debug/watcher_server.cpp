@@ -277,7 +277,7 @@ void watcher_init(Device* device) {
                 default: break;
             }
 
-            for (CoreType core_type : {CoreType::WORKER, CoreType::ETH}) {
+            for (CoreType core_type : {CoreType::TENSIX, CoreType::ETH}) {
                 std::vector<CoreCoord> delayed_cores =
                     tt::llrt::RunTimeOptions::get_instance().get_feature_cores(delay_feature)[core_type];
                 for (tt_xy_pair logical_core : delayed_cores) {

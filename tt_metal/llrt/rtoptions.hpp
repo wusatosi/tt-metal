@@ -29,7 +29,7 @@ static inline const char* get_core_type_name(CoreType ct) {
         case CoreType::DRAM: return "DRAM";
         case CoreType::ETH: return "ethernet";
         case CoreType::PCIE: return "PCIE";
-        case CoreType::WORKER: return "worker";
+        case CoreType::TENSIX: return "worker";
         case CoreType::HARVESTED: return "harvested";
         case CoreType::ROUTER_ONLY: return "router_only";
         default: return "UNKNOWN";

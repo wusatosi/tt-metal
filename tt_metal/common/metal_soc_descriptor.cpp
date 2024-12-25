@@ -134,7 +134,7 @@ CoreCoord metal_SocDescriptor::get_physical_core_from_logical_core(
     const CoreCoord& logical_coord, const CoreType& core_type) const {
     switch (core_type) {
         case CoreType::ETH: return this->get_physical_ethernet_core_from_logical(logical_coord);
-        case CoreType::WORKER: return this->get_physical_tensix_core_from_logical(logical_coord);
+        case CoreType::TENSIX: return this->get_physical_tensix_core_from_logical(logical_coord);
         case CoreType::DRAM: return this->get_physical_dram_core_from_logical(logical_coord);
         default: TT_THROW("Undefined conversion for core type.");
     }
@@ -208,7 +208,7 @@ tt_cxy_pair metal_SocDescriptor::convert_to_umd_coordinates(const tt_cxy_pair& p
     CoreCoord physical_coord({physical_cxy.x, physical_cxy.y});
     const CoreDescriptor& core_desc = this->physical_cores.at(physical_coord);
     CoreCoord virtual_coord = physical_coord;
-    if (core_desc.type == CoreType::WORKER or core_desc.type == CoreType::HARVESTED) {
+    if (core_desc.type == CoreType::TENSIX or core_desc.type == CoreType::HARVESTED) {
         virtual_coord.x = static_cast<size_t>(this->physical_routing_to_virtual_routing_x.at(physical_cxy.x));
         virtual_coord.y = static_cast<size_t>(this->physical_routing_to_virtual_routing_y.at(physical_cxy.y));
     }
@@ -226,7 +226,7 @@ void metal_SocDescriptor::generate_physical_descriptors_from_virtual(uint32_t ha
         this->physical_harvested_workers = this->harvested_workers;
 
         for (const auto& [virtual_noc_core, core_desc] : this->cores) {
-            if (core_desc.type == CoreType::WORKER or core_desc.type == CoreType::HARVESTED) {
+            if (core_desc.type == CoreType::TENSIX or core_desc.type == CoreType::HARVESTED) {
                 this->physical_routing_to_virtual_routing_x.insert({virtual_noc_core.x, virtual_noc_core.x});
                 this->physical_routing_to_virtual_routing_y.insert({virtual_noc_core.y, virtual_noc_core.y});
             }
@@ -262,7 +262,7 @@ void metal_SocDescriptor::generate_physical_descriptors_from_virtual(uint32_t ha
     // Columns are not harvested so virtual x == physical x
     std::set<int> virtual_y_coords;
     for (const auto& [virtual_noc_core, core_desc] : this->cores) {
-        if (core_desc.type == CoreType::WORKER or core_desc.type == CoreType::HARVESTED) {
+        if (core_desc.type == CoreType::TENSIX or core_desc.type == CoreType::HARVESTED) {
             virtual_y_coords.insert(virtual_noc_core.y);
             this->physical_routing_to_virtual_routing_x.insert({virtual_noc_core.x, virtual_noc_core.x});
         }
@@ -296,14 +296,14 @@ void metal_SocDescriptor::generate_physical_descriptors_from_virtual(uint32_t ha
     for (const auto& [virtual_noc_core, core_desc] : this->cores) {
         CoreCoord physical_noc_core = virtual_noc_core;
         CoreDescriptor phys_core_desc = core_desc;
-        if (core_desc.type == CoreType::WORKER or core_desc.type == CoreType::HARVESTED) {
+        if (core_desc.type == CoreType::TENSIX or core_desc.type == CoreType::HARVESTED) {
             physical_noc_core.y = virtual_routing_to_physical_routing_y.at(virtual_noc_core.y);
             phys_core_desc.coord = physical_noc_core;
             if (row_coordinates_to_remove.find(physical_noc_core.y) != row_coordinates_to_remove.end()) {
                 phys_core_desc.type = CoreType::HARVESTED;
                 this->physical_harvested_workers.push_back(physical_noc_core);
             } else {
-                phys_core_desc.type = CoreType::WORKER;
+                phys_core_desc.type = CoreType::TENSIX;
                 this->physical_workers.push_back(physical_noc_core);
             }
         }

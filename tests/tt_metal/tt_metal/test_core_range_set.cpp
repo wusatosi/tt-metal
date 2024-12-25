@@ -62,8 +62,8 @@ void check_semaphores_are_initialized(
                 tt_metal::detail::ReadFromDeviceL1(
                     device,
                     logical_core,
-                    program.get_sem_base_addr(device, logical_core, CoreType::WORKER),
-                    program.get_sem_size(device, logical_core, CoreType::WORKER),
+                    program.get_sem_base_addr(device, logical_core, CoreType::TENSIX),
+                    program.get_sem_size(device, logical_core, CoreType::TENSIX),
                     res);
                 std::vector<uint32_t> filtered_res;
                 static uint32_t num_u32_to_skip =
@@ -177,7 +177,7 @@ bool test_program_specified_with_core_range_set(
 
         auto bank_id = 0;
         auto l1_dst_noc_xy =
-            device->virtual_core_from_logical_core(dst_l1_buffer->logical_core_from_bank_id(0), CoreType::WORKER);
+            device->virtual_core_from_logical_core(dst_l1_buffer->logical_core_from_bank_id(0), CoreType::TENSIX);
 
         tt_metal::SetRuntimeArgs(
             program,

@@ -122,7 +122,7 @@ protected:
     std::vector<uint32_t> generate_semaphores(
         Program& program,
         const CoreRangeSet& cores,
-        const CoreType core_type = CoreType::WORKER,
+        const CoreType core_type = CoreType::TENSIX,
         const uint32_t min = MIN_NUM_SEMS,
         const uint32_t max = MAX_NUM_SEMS) {
         const uint32_t num_sems = this->generate_random_num(min, max);
@@ -301,7 +301,7 @@ private:
 
     CoreRangeSet get_cores(const CoreType core_type) {
         CoreRangeSet all_cores;
-        if (core_type == CoreType::WORKER) {
+        if (core_type == CoreType::TENSIX) {
             CoreCoord worker_grid_size = device_->compute_with_storage_grid_size();
             all_cores = CoreRangeSet({CoreRange({0, 0}, {worker_grid_size.x - 1, worker_grid_size.y - 1})});
         } else {

@@ -107,7 +107,7 @@ HalCoreInfoType create_tensix_mem_map() {
         processor_classes[processor_class_idx] = processor_types;
     }
 
-    return {HalProgrammableCoreType::TENSIX, CoreType::WORKER, processor_classes, mem_map_bases, mem_map_sizes, true};
+    return {HalProgrammableCoreType::TENSIX, CoreType::TENSIX, processor_classes, mem_map_bases, mem_map_sizes, true};
 }
 
 }  // namespace tt::tt_metal::wormhole

@@ -101,7 +101,7 @@ bool cb_config_successful(Device* device, Program& program, const DummyProgramMu
             tt::tt_metal::detail::ReadFromDeviceL1(
                 device,
                 core_coord,
-                program.get_cb_base_addr(device, core_coord, CoreType::WORKER),
+                program.get_cb_base_addr(device, core_coord, CoreType::TENSIX),
                 cb_config_buffer_size,
                 cb_config_vector);
 
@@ -221,7 +221,7 @@ bool test_dummy_EnqueueProgram_with_sems(
             vector<uint32_t> semaphore_vals;
             uint32_t expected_semaphore_vals_for_core_idx = 0;
             const uint32_t semaphore_buffer_size = program_config.num_sems * hal.get_alignment(HalMemType::L1);
-            uint32_t semaphore_base = program.get_sem_base_addr(device, core_coord, CoreType::WORKER);
+            uint32_t semaphore_base = program.get_sem_base_addr(device, core_coord, CoreType::TENSIX);
             tt::tt_metal::detail::ReadFromDeviceL1(
                 device, core_coord, semaphore_base, semaphore_buffer_size, semaphore_vals);
             for (uint32_t i = 0; i < semaphore_vals.size();
@@ -845,7 +845,7 @@ TEST_F(CommandQueueSingleCardProgramFixture, TensixTestMultiCBSharedAddressSpace
         tt::tt_metal::detail::ReadFromDeviceL1(
             device,
             core_coord,
-            program.get_cb_base_addr(device, core_coord, CoreType::WORKER),
+            program.get_cb_base_addr(device, core_coord, CoreType::TENSIX),
             cb_config_buffer_size,
             cb_config_vector);
         uint32_t cb_addr = device->get_base_allocator_addr(HalMemType::L1);
@@ -1846,7 +1846,7 @@ TEST_F(RandomProgramFixture, TensixTestSimplePrograms) {
             log_info(tt::LogTest, "Creating Program {}", i);
         }
         Program program = CreateProgram();
-        this->create_kernel(program, CoreType::WORKER, true);
+        this->create_kernel(program, CoreType::TENSIX, true);
         EnqueueProgram(device_->command_queue(), program, false);
     }
 
@@ -1887,7 +1887,7 @@ TEST_F(RandomProgramFixture, TensixActiveEthTestSimplePrograms) {
             eth_kernel_added_to_program = true;
         }
         if (rand() % 2 == 0 || !eth_kernel_added_to_program) {
-            this->create_kernel(program, CoreType::WORKER, true);
+            this->create_kernel(program, CoreType::TENSIX, true);
         }
 
         EnqueueProgram(device_->command_queue(), program, false);
@@ -1902,7 +1902,7 @@ TEST_F(RandomProgramFixture, TensixTestPrograms) {
             log_info(tt::LogTest, "Creating Program {}", i);
         }
         Program program = CreateProgram();
-        this->create_kernel(program, CoreType::WORKER);
+        this->create_kernel(program, CoreType::TENSIX);
         EnqueueProgram(device_->command_queue(), program, false);
     }
 
@@ -1956,7 +1956,7 @@ TEST_F(RandomProgramFixture, TensixActiveEthTestPrograms) {
         if (rand() % 2 == 0 || !eth_kernel_added_to_program) {
             KernelProperties kernel_properties;
             kernel_properties.max_num_sems = MAX_NUM_SEMS / 2;
-            this->create_kernel(program, CoreType::WORKER, false, kernel_properties);
+            this->create_kernel(program, CoreType::TENSIX, false, kernel_properties);
         }
 
         EnqueueProgram(device_->command_queue(), program, false);
@@ -1979,7 +1979,7 @@ TEST_F(RandomProgramFixture, TensixTestAlternatingLargeAndSmallPrograms) {
             kernel_properties = this->get_small_kernel_properties();
         }
 
-        this->create_kernel(program, CoreType::WORKER, false, kernel_properties);
+        this->create_kernel(program, CoreType::TENSIX, false, kernel_properties);
         EnqueueProgram(device_->command_queue(), program, false);
     }
 
@@ -2000,7 +2000,7 @@ TEST_F(RandomProgramFixture, TensixTestLargeProgramFollowedBySmallPrograms) {
             kernel_properties = this->get_small_kernel_properties();
         }
 
-        this->create_kernel(program, CoreType::WORKER, false, kernel_properties);
+        this->create_kernel(program, CoreType::TENSIX, false, kernel_properties);
         EnqueueProgram(device_->command_queue(), program, false);
     }
 
@@ -2021,7 +2021,7 @@ TEST_F(RandomProgramFixture, TensixTestLargeProgramInBetweenFiveSmallPrograms) {
             kernel_properties = this->get_small_kernel_properties();
         }
 
-        this->create_kernel(program, CoreType::WORKER, false, kernel_properties);
+        this->create_kernel(program, CoreType::TENSIX, false, kernel_properties);
         EnqueueProgram(device_->command_queue(), program, false);
     }
 

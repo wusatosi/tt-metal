@@ -29,7 +29,7 @@ void DumpDeviceProfileResults(Device* device, const Program& program) {
 
     std::vector<std::vector<CoreCoord>> logical_cores = program.logical_cores();
     for (uint32_t index = 0; index < hal.get_programmable_core_type_count(); index++) {
-        if (hal.get_core_type(index) == CoreType::WORKER) {
+        if (hal.get_core_type(index) == CoreType::TENSIX) {
             worker_cores_in_program = device->worker_cores_from_logical_cores(logical_cores[index]);
         }
         if (hal.get_core_type(index) == CoreType::ETH) {

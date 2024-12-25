@@ -9,7 +9,7 @@ namespace tt {
 namespace tt_metal {
 
 Semaphore::Semaphore(const CoreRangeSet& core_range_set, uint32_t id, uint32_t initial_value) :
-    core_range_set_(core_range_set), id_(id), initial_value_(initial_value), core_type_(CoreType::WORKER) {}
+    core_range_set_(core_range_set), id_(id), initial_value_(initial_value), core_type_(CoreType::TENSIX) {}
 
 Semaphore::Semaphore(const CoreRangeSet& core_range_set, uint32_t id, uint32_t initial_value, CoreType core_type) :
     core_range_set_(core_range_set), id_(id), initial_value_(initial_value), core_type_(core_type) {}

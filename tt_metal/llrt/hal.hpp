@@ -17,7 +17,7 @@
 #include "tt_metal/common/assert.hpp"
 #include "tt_metal/common/utils.hpp"
 
-enum class CoreType;
+enum class CoreType : uint8_t;
 
 namespace tt {
 

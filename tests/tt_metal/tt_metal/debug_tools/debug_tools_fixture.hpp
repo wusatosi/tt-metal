@@ -49,7 +49,7 @@ protected:
         tt::llrt::RunTimeOptions::get_instance().set_feature_prepend_device_core_risc(
             tt::llrt::RunTimeDebugFeatureDprint, false);
         tt::llrt::RunTimeOptions::get_instance().set_feature_all_cores(
-            tt::llrt::RunTimeDebugFeatureDprint, CoreType::WORKER, tt::llrt::RunTimeDebugClassWorker);
+            tt::llrt::RunTimeDebugFeatureDprint, CoreType::TENSIX, tt::llrt::RunTimeDebugClassWorker);
         tt::llrt::RunTimeOptions::get_instance().set_feature_all_cores(
             tt::llrt::RunTimeDebugFeatureDprint, CoreType::ETH, tt::llrt::RunTimeDebugClassWorker);
         tt::llrt::RunTimeOptions::get_instance().set_feature_all_chips(tt::llrt::RunTimeDebugFeatureDprint, true);
@@ -76,7 +76,7 @@ protected:
         tt::llrt::RunTimeOptions::get_instance().set_feature_cores(tt::llrt::RunTimeDebugFeatureDprint, {});
         tt::llrt::RunTimeOptions::get_instance().set_feature_enabled(tt::llrt::RunTimeDebugFeatureDprint, false);
         tt::llrt::RunTimeOptions::get_instance().set_feature_all_cores(
-            tt::llrt::RunTimeDebugFeatureDprint, CoreType::WORKER, tt::llrt::RunTimeDebugClassNoneSpecified);
+            tt::llrt::RunTimeDebugFeatureDprint, CoreType::TENSIX, tt::llrt::RunTimeDebugClassNoneSpecified);
         tt::llrt::RunTimeOptions::get_instance().set_feature_all_cores(
             tt::llrt::RunTimeDebugFeatureDprint, CoreType::ETH, tt::llrt::RunTimeDebugClassNoneSpecified);
         tt::llrt::RunTimeOptions::get_instance().set_feature_all_chips(tt::llrt::RunTimeDebugFeatureDprint, false);
@@ -193,7 +193,7 @@ public:
 
     void SetUp() override {
         tt::llrt::RunTimeOptions::get_instance().set_watcher_debug_delay(5000000);
-        delayed_cores[CoreType::WORKER] = {{0, 0}, {1, 1}};
+        delayed_cores[CoreType::TENSIX] = {{0, 0}, {1, 1}};
 
         // Store the previous state of the watcher features
         saved_target_selection[tt::llrt::RunTimeDebugFeatureReadDebugDelay] = tt::llrt::RunTimeOptions::get_instance().get_feature_targets(tt::llrt::RunTimeDebugFeatureReadDebugDelay);

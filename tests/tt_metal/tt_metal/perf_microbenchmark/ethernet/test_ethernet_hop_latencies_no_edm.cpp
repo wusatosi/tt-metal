@@ -207,8 +207,8 @@ void build_and_run_roundtrip_latency_test(
 
         CoreCoord init_worker_core = CoreCoord{0, device_visits[device]++};
 
-        uint32_t worker_sem0 = CreateSemaphore(program, init_worker_core, 0, CoreType::WORKER);
-        uint32_t worker_sem1 = CreateSemaphore(program, init_worker_core, 0, CoreType::WORKER);
+        uint32_t worker_sem0 = CreateSemaphore(program, init_worker_core, 0, CoreType::TENSIX);
+        uint32_t worker_sem1 = CreateSemaphore(program, init_worker_core, 0, CoreType::TENSIX);
 
         std::vector<uint32_t> const& receiver_eth_ct_args = {};
         std::vector<uint32_t> const& sender_eth_ct_args = {};
@@ -216,7 +216,7 @@ void build_and_run_roundtrip_latency_test(
         uint32_t receiver_start_semaphore = eth_l1_mem::address_map::ERISC_L1_UNRESERVED_BASE +
                                             16;  // CreateSemaphore(program, eth_receiver_core, 0, CoreType::ETH);
         log_trace(tt::LogTest, "is_starting_core: {}", (is_starting_core ? 1 : 0));
-        std::vector<uint32_t> const& receiver_eth_rt_args = get_eth_receiver_rt_args(
+        const std::vector<uint32_t>& receiver_eth_rt_args = get_eth_receiver_rt_args(
             device,
             is_starting_core,
             num_samples,
@@ -224,17 +224,17 @@ void build_and_run_roundtrip_latency_test(
             sample_page_size,
             eth_sender_core,
             receiver_start_semaphore,
-            device->virtual_core_from_logical_core(init_worker_core, CoreType::WORKER).x,
-            device->virtual_core_from_logical_core(init_worker_core, CoreType::WORKER).y,
+            device->virtual_core_from_logical_core(init_worker_core, CoreType::TENSIX).x,
+            device->virtual_core_from_logical_core(init_worker_core, CoreType::TENSIX).y,
             worker_sem0);
-        std::vector<uint32_t> const& sender_eth_rt_args = get_eth_sender_rt_args(
+        const std::vector<uint32_t>& sender_eth_rt_args = get_eth_sender_rt_args(
             device,
             is_starting_core,
             num_samples,
             max_concurrent_samples,
             sample_page_size,
-            device->virtual_core_from_logical_core(init_worker_core, CoreType::WORKER).x,
-            device->virtual_core_from_logical_core(init_worker_core, CoreType::WORKER).y,
+            device->virtual_core_from_logical_core(init_worker_core, CoreType::TENSIX).x,
+            device->virtual_core_from_logical_core(init_worker_core, CoreType::TENSIX).y,
             worker_sem1);
 
         std::vector<uint32_t> worker_init_rt_args = {

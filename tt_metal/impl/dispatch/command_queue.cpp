@@ -672,7 +672,7 @@ void EnqueueProgramCommand::assemble_runtime_args_commands(ProgramCommandSequenc
                     max_prefetch_command_size,
                     packed_write_max_unicast_sub_cmds,
                     false,
-                    core_type == CoreType::WORKER ? DISPATCH_WRITE_OFFSET_TENSIX_L1_CONFIG_BASE
+                    core_type == CoreType::TENSIX ? DISPATCH_WRITE_OFFSET_TENSIX_L1_CONFIG_BASE
                                                   : DISPATCH_WRITE_OFFSET_ETH_L1_CONFIG_BASE);
                 for (auto& data_per_kernel : unique_rt_data_and_sizes) {
                     for (auto& data_and_sizes : data_per_kernel) {
@@ -757,7 +757,7 @@ void EnqueueProgramCommand::assemble_runtime_args_commands(ProgramCommandSequenc
                         max_prefetch_command_size,
                         packed_write_max_unicast_sub_cmds,
                         true,
-                        core_type == CoreType::WORKER ? DISPATCH_WRITE_OFFSET_TENSIX_L1_CONFIG_BASE
+                        core_type == CoreType::TENSIX ? DISPATCH_WRITE_OFFSET_TENSIX_L1_CONFIG_BASE
                                                         : DISPATCH_WRITE_OFFSET_ETH_L1_CONFIG_BASE);
                     sub_cmds.clear();
                 },
@@ -888,8 +888,8 @@ void EnqueueProgramCommand::assemble_device_commands(
         uint32_t max_overall_index = 0;
         uint32_t remote_offset_index = program.get_program_config(index).local_cb_size / sizeof(uint32_t);
         for (const CoreRange& core_range : circular_buffers_unique_coreranges) {
-            const CoreCoord virtual_start = device->virtual_core_from_logical_core(core_range.start_coord, CoreType::WORKER);
-            const CoreCoord virtual_end = device->virtual_core_from_logical_core(core_range.end_coord, CoreType::WORKER);
+            const CoreCoord virtual_start = device->virtual_core_from_logical_core(core_range.start_coord, CoreType::TENSIX);
+            const CoreCoord virtual_end = device->virtual_core_from_logical_core(core_range.end_coord, CoreType::TENSIX);
 
             const uint32_t num_receivers = core_range.size();
             auto& cb_config_payload = cb_config_payloads[i];
@@ -1991,7 +1991,7 @@ HWCommandQueue::HWCommandQueue(Device* device, uint32_t id, NOC noc_index) :
 
     CoreCoord enqueue_program_dispatch_core;
     CoreType core_type = dispatch_core_manager::instance().get_dispatch_core_type(device->id());
-    if (this->device->num_hw_cqs() == 1 or core_type == CoreType::WORKER) {
+    if (this->device->num_hw_cqs() == 1 or core_type == CoreType::TENSIX) {
         // dispatch_s exists with this configuration. Workers write to dispatch_s
         enqueue_program_dispatch_core = dispatch_core_manager::instance().dispatcher_s_core(device->id(), channel, id);
     }

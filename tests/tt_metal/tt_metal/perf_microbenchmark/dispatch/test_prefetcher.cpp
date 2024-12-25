@@ -138,7 +138,7 @@ void init(int argc, char** argv) {
         log_info(
             LogTest,
             "-pdcs: prefetch_d cmddat cb size (default {})",
-            dispatch_constants::get(CoreType::WORKER, 1).prefetch_d_buffer_size());
+            dispatch_constants::get(CoreType::TENSIX, 1).prefetch_d_buffer_size());
         log_info(LogTest, "  -ss: scratch cb size (default {})", DEFAULT_SCRATCH_DB_SIZE);
         log_info(
             LogTest,
@@ -172,7 +172,7 @@ void init(int argc, char** argv) {
     dram_page_size_g = test_args::get_command_option_uint32(input_args, "-dpgs", DRAM_PAGE_SIZE_DEFAULT);
     dram_pages_to_read_g = test_args::get_command_option_uint32(input_args, "-dpgr", DRAM_PAGES_TO_READ_DEFAULT);
     prefetch_d_buffer_size_g = test_args::get_command_option_uint32(
-        input_args, "-pdcs", dispatch_constants::get(CoreType::WORKER, 1).prefetch_d_buffer_size());
+        input_args, "-pdcs", dispatch_constants::get(CoreType::TENSIX, 1).prefetch_d_buffer_size());
 
     test_type_g = test_args::get_command_option_uint32(input_args, "-t", DEFAULT_TEST_TYPE);
     all_workers_g.end_coord.x = test_args::get_command_option_uint32(input_args, "-wx", all_workers_g.end_coord.x);
@@ -849,7 +849,7 @@ void gen_rnd_linear_cmd(
     size &= ~(sizeof(uint32_t) - 1);
     uint32_t offset = std::rand() % dispatch_buffer_page_size_g;
     offset = (offset >> 2) << 2;
-    device_data.relevel(CoreType::WORKER);  // XXXXX shouldn't be needed
+    device_data.relevel(CoreType::TENSIX);  // XXXXX shouldn't be needed
     if (device_data.size_at(worker_core, 0) * sizeof(uint32_t) < max_linear_cmd_read_size + offset) {
         // Not enough data yet, just bail on this cmd
         return;
@@ -1698,7 +1698,7 @@ void configure_for_single_chip(
     uint32_t& packetized_path_test_results_addr,
     uint32_t packetized_path_test_results_size,
     uint32_t dev_hugepage_base_g) {
-    const CoreType dispatch_core_type = CoreType::WORKER;
+    const CoreType dispatch_core_type = CoreType::TENSIX;
     uint32_t dispatch_buffer_pages = dispatch_constants::get(dispatch_core_type, 1).dispatch_buffer_block_size_pages() *
                                      dispatch_constants::DISPATCH_BUFFER_SIZE_BLOCKS;
     uint32_t num_compute_cores =
@@ -2104,13 +2104,13 @@ void configure_for_single_chip(
             my_noc_index);
     }
 
-    uint32_t host_completion_queue_wr_ptr = dispatch_constants::get(CoreType::WORKER)
+    uint32_t host_completion_queue_wr_ptr = dispatch_constants::get(CoreType::TENSIX)
                                                 .get_host_command_queue_addr(CommandQueueHostAddrType::COMPLETION_Q_WR);
     uint32_t dev_completion_queue_wr_ptr =
-        dispatch_constants::get(CoreType::WORKER)
+        dispatch_constants::get(CoreType::TENSIX)
             .get_device_command_queue_addr(CommandQueueDeviceAddrType::COMPLETION_Q_WR);
     uint32_t dev_completion_queue_rd_ptr =
-        dispatch_constants::get(CoreType::WORKER)
+        dispatch_constants::get(CoreType::TENSIX)
             .get_device_command_queue_addr(CommandQueueDeviceAddrType::COMPLETION_Q_RD);
 
     std::vector<uint32_t> dispatch_compile_args = {
@@ -2395,7 +2395,7 @@ void configure_for_multi_chip(
     uint32_t& packetized_path_test_results_addr,
     uint32_t packetized_path_test_results_size,
     uint32_t dev_hugepage_base_g) {
-    const CoreType dispatch_core_type = CoreType::WORKER;
+    const CoreType dispatch_core_type = CoreType::TENSIX;
     uint32_t dispatch_buffer_pages = dispatch_constants::get(dispatch_core_type, 1).dispatch_buffer_block_size_pages() *
                                      dispatch_constants::DISPATCH_BUFFER_SIZE_BLOCKS;
     uint32_t num_compute_cores =
@@ -2905,13 +2905,13 @@ void configure_for_multi_chip(
             my_noc_index);
     }
 
-    uint32_t host_completion_queue_wr_ptr = dispatch_constants::get(CoreType::WORKER)
+    uint32_t host_completion_queue_wr_ptr = dispatch_constants::get(CoreType::TENSIX)
                                                 .get_host_command_queue_addr(CommandQueueHostAddrType::COMPLETION_Q_WR);
     uint32_t dev_completion_queue_wr_ptr =
-        dispatch_constants::get(CoreType::WORKER)
+        dispatch_constants::get(CoreType::TENSIX)
             .get_device_command_queue_addr(CommandQueueDeviceAddrType::COMPLETION_Q_WR);
     uint32_t dev_completion_queue_rd_ptr =
-        dispatch_constants::get(CoreType::WORKER)
+        dispatch_constants::get(CoreType::TENSIX)
             .get_device_command_queue_addr(CommandQueueDeviceAddrType::COMPLETION_Q_RD);
     std::vector<uint32_t> dispatch_compile_args = {
         dispatch_buffer_base,
@@ -3255,7 +3255,7 @@ int main(int argc, char** argv) {
         CoreCoord phys_dispatch_relay_demux_core;
         uint32_t packetized_path_test_results_addr;
         uint32_t cq_start =
-            dispatch_constants::get(CoreType::WORKER).get_host_command_queue_addr(CommandQueueHostAddrType::UNRESERVED);
+            dispatch_constants::get(CoreType::TENSIX).get_host_command_queue_addr(CommandQueueHostAddrType::UNRESERVED);
         uint32_t dev_hugepage_base_g = 2 * (cq_start * sizeof(uint32_t));  // HOST_CQ uses some at the start address
 
         if (test_device_id_g == 0) {

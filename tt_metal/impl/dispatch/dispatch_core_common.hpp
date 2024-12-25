@@ -58,7 +58,7 @@ public:
 
     CoreType get_core_type() const {
         switch (type_) {
-            case DispatchCoreType::WORKER: return CoreType::WORKER;
+            case DispatchCoreType::WORKER: return CoreType::TENSIX;
             case DispatchCoreType::ETH: return CoreType::ETH;
             default: TT_THROW("invalid dispatch core type");
         }

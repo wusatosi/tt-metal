@@ -313,8 +313,8 @@ void SubDeviceManager::populate_noc_data() {
         num_noc_mcast_txns_[i] = tensix_cores.size();
         noc_mcast_unicast_data_.resize(idx + num_noc_mcast_txns_[i] * 2);
         for (const auto& core_range : tensix_cores.ranges()) {
-            auto virtual_start = device_->virtual_core_from_logical_core(core_range.start_coord, CoreType::WORKER);
-            auto virtual_end = device_->virtual_core_from_logical_core(core_range.end_coord, CoreType::WORKER);
+            auto virtual_start = device_->virtual_core_from_logical_core(core_range.start_coord, CoreType::TENSIX);
+            auto virtual_end = device_->virtual_core_from_logical_core(core_range.end_coord, CoreType::TENSIX);
             auto virtual_core_range = CoreRange(virtual_start, virtual_end);
             noc_mcast_unicast_data_[idx++] = device_->get_noc_multicast_encoding(noc_index, virtual_core_range);
             noc_mcast_unicast_data_[idx++] = core_range.size();

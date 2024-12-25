@@ -75,14 +75,14 @@ KernelHandle CreateKernel(
  * @param program The program to which the semaphore will be added.
  * @param core_spec Range of cores using the semaphore.
  * @param initial_value Initial value of the semaphore.
- * @param core_type Core type on which to create the semaphore (default: CoreType::WORKER).
+ * @param core_type Core type on which to create the semaphore (default: CoreType::TENSIX).
  * @return Semaphore address as a uint32_t.
  */
 uint32_t CreateSemaphore(
     ProgramHandle& program,
     const CoreRangeSet& core_spec,
     std::uint32_t initial_value,
-    CoreType core_type = CoreType::WORKER);
+    CoreType core_type = CoreType::TENSIX);
 
 /**
  * @brief Creates a Circular Buffer in L1 memory of specified cores and adds it to the program.

@@ -28,7 +28,7 @@ static CoreDescriptorSet GetAllCores(tt::tt_metal::Device* device) {
     CoreCoord logical_grid_size = device->logical_grid_size();
     for (uint32_t x = 0; x < logical_grid_size.x; x++) {
         for (uint32_t y = 0; y < logical_grid_size.y; y++) {
-            all_cores.insert({{x, y}, CoreType::WORKER});
+            all_cores.insert({{x, y}, CoreType::TENSIX});
         }
     }
     for (const auto& logical_core : device->get_active_ethernet_cores()) {

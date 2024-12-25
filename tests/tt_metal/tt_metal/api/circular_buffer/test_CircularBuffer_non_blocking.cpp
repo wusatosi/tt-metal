@@ -65,8 +65,8 @@ TEST_F(DeviceFixture, TensixTestCircularBufferNonBlockingAPIs) {
     Program program;
     Device* device = devices_.at(0);
 
-    auto const master_semaphore = CreateSemaphore(program, worker_core, 0, CoreType::WORKER);
-    auto const slave_semaphore = CreateSemaphore(program, worker_core, 0, CoreType::WORKER);
+    const auto master_semaphore = CreateSemaphore(program, worker_core, 0, CoreType::TENSIX);
+    const auto slave_semaphore = CreateSemaphore(program, worker_core, 0, CoreType::TENSIX);
 
     std::vector<CBHandle> cbs;
     cbs.reserve(n_cbs);

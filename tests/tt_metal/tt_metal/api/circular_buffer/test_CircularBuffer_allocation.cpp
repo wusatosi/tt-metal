@@ -33,7 +33,7 @@ void validate_cb_address(
                 tt::tt_metal::detail::ReadFromDeviceL1(
                     device,
                     core_coord,
-                    program.get_cb_base_addr(device, core_coord, CoreType::WORKER),
+                    program.get_cb_base_addr(device, core_coord, CoreType::TENSIX),
                     cb_config_buffer_size,
                     cb_config_vector);
 
@@ -348,7 +348,7 @@ TEST_F(DeviceFixture, TensixTestUpdateCircularBufferPageSize) {
                     tt::tt_metal::detail::ReadFromDeviceL1(
                         device,
                         core_coord,
-                        program.get_cb_base_addr(device, core_coord, CoreType::WORKER),
+                        program.get_cb_base_addr(device, core_coord, CoreType::TENSIX),
                         cb_config_buffer_size,
                         cb_config_vector);
 
@@ -380,7 +380,7 @@ TEST_F(DeviceFixture, TensixTestUpdateCircularBufferPageSize) {
                     tt::tt_metal::detail::ReadFromDeviceL1(
                         device,
                         core_coord,
-                        program.get_cb_base_addr(device, core_coord, CoreType::WORKER),
+                        program.get_cb_base_addr(device, core_coord, CoreType::TENSIX),
                         cb_config_buffer_size,
                         cb_config_vector);
 

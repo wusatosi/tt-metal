@@ -163,7 +163,7 @@ void DataCollector::RecordProgramRun(Program& program) {
 
 string DispatchClassToString(enum dispatch_core_processor_classes proc_class, CoreType core_type) {
     switch (core_type) {
-        case CoreType::WORKER:
+        case CoreType::TENSIX:
             switch (proc_class) {
                 case DISPATCH_CLASS_TENSIX_DM0: return "brisc:";
                 case DISPATCH_CLASS_TENSIX_DM1: return "ncrisc:";

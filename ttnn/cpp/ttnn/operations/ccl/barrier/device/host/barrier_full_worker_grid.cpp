@@ -49,8 +49,8 @@ static std::tuple<std::array<uint32_t, 7>, std::array<uint32_t, 10>, std::array<
     CoreCoord const& eth_sender_core,
     CoreCoord const& eth_receiver_core,
     CoreCoord const& sem_init_core) {
-    const uint32_t worker_sem0 = CreateSemaphore(program, sem_init_core, 0, CoreType::WORKER);
-    const uint32_t worker_sem1 = CreateSemaphore(program, sem_init_core, 0, CoreType::WORKER);
+    const uint32_t worker_sem0 = CreateSemaphore(program, sem_init_core, 0, CoreType::TENSIX);
+    const uint32_t worker_sem1 = CreateSemaphore(program, sem_init_core, 0, CoreType::TENSIX);
     constexpr uint32_t start_semaphore_address =
         eth_l1_mem::address_map::ERISC_L1_UNRESERVED_BASE + EriscDatamoverConfig::eth_word_size_bytes;
     constexpr uint32_t erisc_semaphore_address =
@@ -66,16 +66,16 @@ static std::tuple<std::array<uint32_t, 7>, std::array<uint32_t, 10>, std::array<
         erisc_semaphore_address,
         start_semaphore_address,
         erisc_buffer_address,
-        static_cast<uint32_t>(device->virtual_core_from_logical_core(sem_init_core, CoreType::WORKER).x),
-        static_cast<uint32_t>(device->virtual_core_from_logical_core(sem_init_core, CoreType::WORKER).y),
+        static_cast<uint32_t>(device->virtual_core_from_logical_core(sem_init_core, CoreType::TENSIX).x),
+        static_cast<uint32_t>(device->virtual_core_from_logical_core(sem_init_core, CoreType::TENSIX).y),
         worker_sem0};
     const std::array<uint32_t, 7> sender_rt_args = {
         static_cast<uint32_t>(is_starting_core ? 1 : 0),    // is_ring_start
         eth_l1_mem::address_map::ERISC_L1_UNRESERVED_BASE,  // handshake_addr
         erisc_buffer_address,
         erisc_semaphore_address,
-        static_cast<uint32_t>(device->virtual_core_from_logical_core(sem_init_core, CoreType::WORKER).x),
-        static_cast<uint32_t>(device->virtual_core_from_logical_core(sem_init_core, CoreType::WORKER).y),
+        static_cast<uint32_t>(device->virtual_core_from_logical_core(sem_init_core, CoreType::TENSIX).x),
+        static_cast<uint32_t>(device->virtual_core_from_logical_core(sem_init_core, CoreType::TENSIX).y),
         worker_sem1};  // sample size
     const std::array<uint32_t, 5> sem_id_args = {
         worker_sem0,

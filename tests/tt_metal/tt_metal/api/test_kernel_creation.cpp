@@ -64,7 +64,7 @@ TEST_F(DispatchFixture, DISABLED_TensixIdleEthCreateKernelsOnDispatchCores) {
             dispatch_core_ranges.emplace(core);
         }
         CoreRangeSet dispatch_core_range_set(dispatch_core_ranges);
-        if (dispatch_core_type == CoreType::WORKER) {
+        if (dispatch_core_type == CoreType::TENSIX) {
             EXPECT_ANY_THROW(auto test_kernel = tt_metal::CreateKernel(
                                  program,
                                  "tests/tt_metal/tt_metal/test_kernels/dataflow/dram_copy.cpp",

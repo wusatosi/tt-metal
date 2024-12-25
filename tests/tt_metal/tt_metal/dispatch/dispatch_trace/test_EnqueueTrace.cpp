@@ -542,7 +542,7 @@ TEST_F(RandomProgramTraceFixture, TensixTestSimpleProgramsTrace) {
         }
         this->programs[i] = CreateProgram();
         Program& program = this->programs[i];
-        this->create_kernel(program, CoreType::WORKER, true);
+        this->create_kernel(program, CoreType::TENSIX, true);
         EnqueueProgram(this->device_->command_queue(), program, false);
     }
 
@@ -593,7 +593,7 @@ TEST_F(RandomProgramTraceFixture, TensixActiveEthTestSimpleProgramsTrace) {
             eth_kernel_added_to_program = true;
         }
         if (rand() % 2 == 0 || !eth_kernel_added_to_program) {
-            this->create_kernel(program, CoreType::WORKER, true);
+            this->create_kernel(program, CoreType::TENSIX, true);
         }
 
         EnqueueProgram(this->device_->command_queue(), program, false);
@@ -612,7 +612,7 @@ TEST_F(RandomProgramTraceFixture, TensixTestProgramsTrace) {
         }
         this->programs[i] = CreateProgram();
         Program& program = this->programs[i];
-        this->create_kernel(program, CoreType::WORKER);
+        this->create_kernel(program, CoreType::TENSIX);
         EnqueueProgram(this->device_->command_queue(), program, false);
     }
 
@@ -676,7 +676,7 @@ TEST_F(RandomProgramTraceFixture, TensixActiveEthTestProgramsTrace) {
         if (rand() % 2 == 0 || !eth_kernel_added_to_program) {
             KernelProperties kernel_properties;
             kernel_properties.max_num_sems = MAX_NUM_SEMS / 2;
-            this->create_kernel(program, CoreType::WORKER, false, kernel_properties);
+            this->create_kernel(program, CoreType::TENSIX, false, kernel_properties);
         }
 
         EnqueueProgram(this->device_->command_queue(), program, false);
@@ -703,7 +703,7 @@ TEST_F(RandomProgramTraceFixture, TensixTestAlternatingLargeAndSmallProgramsTrac
             kernel_properties = this->get_small_kernel_properties();
         }
 
-        this->create_kernel(program, CoreType::WORKER, false, kernel_properties);
+        this->create_kernel(program, CoreType::TENSIX, false, kernel_properties);
         EnqueueProgram(this->device_->command_queue(), program, false);
     }
 
@@ -728,7 +728,7 @@ TEST_F(RandomProgramTraceFixture, TensixTestLargeProgramFollowedBySmallProgramsT
             kernel_properties = this->get_small_kernel_properties();
         }
 
-        this->create_kernel(program, CoreType::WORKER, false, kernel_properties);
+        this->create_kernel(program, CoreType::TENSIX, false, kernel_properties);
         EnqueueProgram(this->device_->command_queue(), program, false);
     }
 
@@ -753,7 +753,7 @@ TEST_F(RandomProgramTraceFixture, TensixTestLargeProgramInBetweenFiveSmallProgra
             kernel_properties = this->get_small_kernel_properties();
         }
 
-        this->create_kernel(program, CoreType::WORKER, false, kernel_properties);
+        this->create_kernel(program, CoreType::TENSIX, false, kernel_properties);
         EnqueueProgram(this->device_->command_queue(), program, false);
     }
 
@@ -772,7 +772,7 @@ TEST_F(RandomProgramTraceFixture, TensixTestProgramsTraceAndNoTrace) {
         }
         this->programs[i] = CreateProgram();
         Program& program = this->programs[i];
-        this->create_kernel(program, CoreType::WORKER);
+        this->create_kernel(program, CoreType::TENSIX);
 
         const bool use_trace = (rand() % 2) == 0;
         if (use_trace) {
@@ -880,7 +880,7 @@ TEST_F(RandomProgramTraceFixture, TensixActiveEthTestProgramsTraceAndNoTrace) {
         if (rand() % 2 == 0 || !eth_kernel_added_to_program) {
             KernelProperties kernel_properties;
             kernel_properties.max_num_sems = MAX_NUM_SEMS / 2;
-            this->create_kernel(program, CoreType::WORKER, false, kernel_properties);
+            this->create_kernel(program, CoreType::TENSIX, false, kernel_properties);
         }
 
         const bool use_trace = (rand() % 2) == 0;

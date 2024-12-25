@@ -154,11 +154,11 @@ public:
 
 private:
     dispatch_constants(const CoreType& core_type, const uint32_t num_hw_cqs) {
-        TT_ASSERT(core_type == CoreType::WORKER or core_type == CoreType::ETH);
+        TT_ASSERT(core_type == CoreType::TENSIX or core_type == CoreType::ETH);
         // make this 2^N as required by the packetized stages
         uint32_t dispatch_buffer_block_size;
         uint32_t base_device_command_queue_addr;
-        if (core_type == CoreType::WORKER) {
+        if (core_type == CoreType::TENSIX) {
             if (tt::Cluster::instance().is_galaxy_cluster()) {
                 prefetch_q_entries_ = 1532 / num_hw_cqs;
             } else {
@@ -229,7 +229,7 @@ private:
         cmddat_q_base_ = prefetch_dispatch_unreserved_base +
                          ((prefetch_q_size_ + pcie_alignment - 1) / pcie_alignment * pcie_alignment);
         scratch_db_base_ = cmddat_q_base_ + ((cmddat_q_size_ + pcie_alignment - 1) / pcie_alignment * pcie_alignment);
-        const uint32_t l1_size = core_type == CoreType::WORKER ? HAL_MEM_L1_SIZE : HAL_MEM_ETH_SIZE;
+        const uint32_t l1_size = core_type == CoreType::TENSIX ? HAL_MEM_L1_SIZE : HAL_MEM_ETH_SIZE;
         TT_ASSERT(scratch_db_base_ + scratch_db_size_ < l1_size);
         dispatch_buffer_base_ =
             ((prefetch_dispatch_unreserved_base - 1) | ((1 << DISPATCH_BUFFER_LOG_PAGE_SIZE) - 1)) + 1;
@@ -258,7 +258,7 @@ private:
     std::vector<uint32_t> device_cq_addrs_;
     static inline std::unique_ptr<dispatch_constants> inst;
     static inline uint32_t hw_cqs;
-    static inline CoreType last_core_type = CoreType::WORKER;
+    static inline CoreType last_core_type = CoreType::TENSIX;
 };
 
 /// @brief Get offset of the command queue relative to its channel

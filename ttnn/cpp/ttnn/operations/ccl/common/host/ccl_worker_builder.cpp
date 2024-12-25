@@ -1508,7 +1508,7 @@ std::vector<uint32_t> CCLWorkerArgBuilder::generate_sender_writer_kernel_rt_args
         args.push_back(sync_details.value().num_signals);
         for (size_t i = 0; i < sync_details.value().num_signals; ++i) {
             auto const noc_coord =
-                this->device->virtual_core_from_logical_core(sync_details.value().core, CoreType::WORKER);
+                this->device->virtual_core_from_logical_core(sync_details.value().core, CoreType::TENSIX);
             log_trace(
                 tt::LogOp,
                 "ccl_send_writer on device {} adding sync signal dest to (y={},x={},id={})",

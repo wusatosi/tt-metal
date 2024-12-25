@@ -97,11 +97,11 @@ CoreType Kernel::get_kernel_core_type() const {
     switch (riscv_processor) {
         case RISCV::BRISC:
         case RISCV::NCRISC:
-        case RISCV::COMPUTE: return CoreType::WORKER;
+        case RISCV::COMPUTE: return CoreType::TENSIX;
         case RISCV::ERISC: return CoreType::ETH;
         default: TT_ASSERT(false, "Unsupported kernel processor!");
     }
-    return CoreType::WORKER;
+    return CoreType::TENSIX;
 }
 
 const string &Kernel::get_full_kernel_name() const { return this->kernel_full_name_; }

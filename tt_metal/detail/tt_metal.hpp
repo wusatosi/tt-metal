@@ -317,7 +317,7 @@ bool WriteToDeviceL1(
     const CoreCoord& logical_core,
     uint32_t address,
     std::vector<uint32_t>& host_buffer,
-    CoreType core_type = CoreType::WORKER);
+    CoreType core_type = CoreType::TENSIX);
 
 bool WriteRegToDevice(Device* device, const CoreCoord& logical_core, uint32_t address, const uint32_t& regval);
 

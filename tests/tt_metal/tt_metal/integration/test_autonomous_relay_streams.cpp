@@ -244,23 +244,23 @@ void build_and_run_autonomous_stream_test(
     log_trace(
         tt::LogTest,
         "sender_core: x={}, y={}",
-        device->virtual_core_from_logical_core(sender_core, CoreType::WORKER).x,
-        device->virtual_core_from_logical_core(sender_core, CoreType::WORKER).y);
+        device->virtual_core_from_logical_core(sender_core, CoreType::TENSIX).x,
+        device->virtual_core_from_logical_core(sender_core, CoreType::TENSIX).y);
     log_trace(
         tt::LogTest,
         "first_relay_core: x={}, y={}",
-        device->virtual_core_from_logical_core(first_relay_core, CoreType::WORKER).x,
-        device->virtual_core_from_logical_core(first_relay_core, CoreType::WORKER).y);
+        device->virtual_core_from_logical_core(first_relay_core, CoreType::TENSIX).x,
+        device->virtual_core_from_logical_core(first_relay_core, CoreType::TENSIX).y);
     log_trace(
         tt::LogTest,
         "second_relay_core: x={}, y={}",
-        device->virtual_core_from_logical_core(second_relay_core, CoreType::WORKER).x,
-        device->virtual_core_from_logical_core(second_relay_core, CoreType::WORKER).y);
+        device->virtual_core_from_logical_core(second_relay_core, CoreType::TENSIX).x,
+        device->virtual_core_from_logical_core(second_relay_core, CoreType::TENSIX).y);
     log_trace(
         tt::LogTest,
         "receiver_core: x={}, y={}",
-        device->virtual_core_from_logical_core(receiver_core, CoreType::WORKER).x,
-        device->virtual_core_from_logical_core(receiver_core, CoreType::WORKER).y);
+        device->virtual_core_from_logical_core(receiver_core, CoreType::TENSIX).x,
+        device->virtual_core_from_logical_core(receiver_core, CoreType::TENSIX).y);
 
     // Input DRAM buffer creation
     uint32_t buffer_size_bytes = num_messages * page_size;
@@ -390,14 +390,14 @@ void build_and_run_autonomous_stream_test(
         stream_tile_header_buffer_size_bytes};
 
     // TODO: CreateSemaphore api was updated to return an id. Kernels used in this test have not been updated
-    uint32_t sender_receiver_semaphore_sender_id = CreateSemaphore(program, sender_core, 0, CoreType::WORKER);
-    uint32_t remote_sender_hang_toggle_semaphore_id = CreateSemaphore(program, sender_core, 0, CoreType::WORKER);
-    uint32_t first_relay_done_semaphore_id = CreateSemaphore(program, first_relay_core, 0, CoreType::WORKER);
-    uint32_t second_relay_done_semaphore_id = CreateSemaphore(program, second_relay_core, 0, CoreType::WORKER);
+    uint32_t sender_receiver_semaphore_sender_id = CreateSemaphore(program, sender_core, 0, CoreType::TENSIX);
+    uint32_t remote_sender_hang_toggle_semaphore_id = CreateSemaphore(program, sender_core, 0, CoreType::TENSIX);
+    uint32_t first_relay_done_semaphore_id = CreateSemaphore(program, first_relay_core, 0, CoreType::TENSIX);
+    uint32_t second_relay_done_semaphore_id = CreateSemaphore(program, second_relay_core, 0, CoreType::TENSIX);
 
-    uint32_t first_relay_remote_src_start_phase_id = CreateSemaphore(program, first_relay_core, 0, CoreType::WORKER);
-    uint32_t second_relay_remote_src_start_phase_id = CreateSemaphore(program, second_relay_core, 0, CoreType::WORKER);
-    uint32_t receiver_remote_src_start_phase_id = CreateSemaphore(program, receiver_core, 0, CoreType::WORKER);
+    uint32_t first_relay_remote_src_start_phase_id = CreateSemaphore(program, first_relay_core, 0, CoreType::TENSIX);
+    uint32_t second_relay_remote_src_start_phase_id = CreateSemaphore(program, second_relay_core, 0, CoreType::TENSIX);
+    uint32_t receiver_remote_src_start_phase_id = CreateSemaphore(program, receiver_core, 0, CoreType::TENSIX);
 
     auto sender_noc_id = tt_metal::NOC::NOC_0;
     auto relay_to_relay_data_noc_id = tt_metal::NOC::NOC_0;

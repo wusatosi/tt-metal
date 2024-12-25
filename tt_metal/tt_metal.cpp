@@ -752,7 +752,7 @@ bool ConfigureDeviceWithProgram(Device* device, Program& program, bool fd_bootlo
             CoreCoord physical_core = device->virtual_core_from_logical_core(logical_core, core_type);
             ConfigureKernelGroup(program, index, kernel_group, device, logical_core);
             // TODO: add support for CB for ethernet cores
-            if (core_type == CoreType::WORKER) {
+            if (core_type == CoreType::TENSIX) {
                 const auto& cbs_on_core = program.circular_buffers_on_core(logical_core);
                 if (cbs_on_core.size()) {
                     // CircularBufferConfigVec -- common across all kernels, so written once to the core

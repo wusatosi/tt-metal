@@ -51,7 +51,7 @@ static void test_sems_across_core_types(
 
             CoreCoord tensix_core(0, 0);
             CoreCoord phys_tensix_core = device->worker_core_from_logical_core(tensix_core);
-            uint32_t tensix_sem_id = CreateSemaphore(program, tensix_core, tensix_sem_init_val, CoreType::WORKER);
+            uint32_t tensix_sem_id = CreateSemaphore(program, tensix_core, tensix_sem_init_val, CoreType::TENSIX);
             auto tensix_kernel = CreateKernel(
                 program,
                 "tests/tt_metal/tt_metal/test_kernels/dataflow/semaphore_across_core_types.cpp",
@@ -240,7 +240,7 @@ TEST_F(DispatchFixture, TensixActiveEthTestCBsAcrossDifferentCoreTypes) {
         tt::tt_metal::detail::ReadFromDeviceL1(
             device,
             core_coord,
-            program.get_cb_base_addr(device, core_coord, CoreType::WORKER),
+            program.get_cb_base_addr(device, core_coord, CoreType::TENSIX),
             cb_config_buffer_size,
             cb_config_vector);
 

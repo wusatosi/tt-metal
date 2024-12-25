@@ -59,7 +59,7 @@ int main(int argc, char** argv) {
         auto dst_l1_buffer = CreateBuffer(l1_config);
 
         auto l1_dst_noc_xy =
-            device->virtual_core_from_logical_core(dst_l1_buffer->logical_core_from_bank_id(0), CoreType::WORKER);
+            device->virtual_core_from_logical_core(dst_l1_buffer->logical_core_from_bank_id(0), CoreType::TENSIX);
         ;
 
         uint32_t src0_cb_index = 0;

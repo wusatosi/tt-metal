@@ -350,7 +350,7 @@ class dispatch_core_manager {
             return assignment.dispatcher_s.value();
         }
         CoreCoord dispatcher_s_coord;
-        if (this->get_dispatch_core_type(device_id) == CoreType::WORKER) {
+        if (this->get_dispatch_core_type(device_id) == CoreType::TENSIX) {
             chip_id_t mmio_device_id = tt::Cluster::instance().get_associated_mmio_device(device_id);
             if (mmio_device_id == device_id) {
                 // dispatch_s is on the same tensix core as dispatch_hd

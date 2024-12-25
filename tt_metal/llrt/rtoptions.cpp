@@ -210,7 +210,7 @@ void RunTimeOptions::ParseFeatureEnv(RunTimeDebugFeatures feature) {
     std::string feature_env_prefix("TT_METAL_");
     feature_env_prefix += RunTimeDebugFeatureNames[feature];
 
-    ParseFeatureCoreRange(feature, feature_env_prefix + "_CORES", CoreType::WORKER);
+    ParseFeatureCoreRange(feature, feature_env_prefix + "_CORES", CoreType::TENSIX);
     ParseFeatureCoreRange(feature, feature_env_prefix + "_ETH_CORES", CoreType::ETH);
     ParseFeatureChipIds(feature, feature_env_prefix + "_CHIPS");
     ParseFeatureRiscvMask(feature, feature_env_prefix + "_RISCVS");

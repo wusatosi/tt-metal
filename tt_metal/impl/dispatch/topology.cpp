@@ -419,7 +419,7 @@ std::vector<dispatch_kernel_node_t> get_nodes(const std::set<chip_id_t>& device_
         } else {
             // TODO: determine whether dispatch_s is inserted at this level, instead of inside
             // Device::dispatch_s_enabled().
-            if (dispatch_core_manager::instance().get_dispatch_core_type(0) == CoreType::WORKER) {
+            if (dispatch_core_manager::instance().get_dispatch_core_type(0) == CoreType::TENSIX) {
                 return single_chip_arch_2cq_dispatch_s;
             } else {
                 return single_chip_arch_2cq;

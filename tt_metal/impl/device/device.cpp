@@ -482,7 +482,7 @@ void Device::initialize_firmware(const HalProgrammableCoreType &core_type, CoreC
                 launch_msg->kernel_config.mode = DISPATCH_MODE_HOST;
             } else {
                 std::vector<CoreCoord> physical_dispatch_cores = {};
-                if (dispatch_core_manager::instance().get_dispatch_core_type(this->id()) == CoreType::WORKER) {
+                if (dispatch_core_manager::instance().get_dispatch_core_type(this->id()) == CoreType::TENSIX) {
                     physical_dispatch_cores = this->worker_cores_from_logical_cores(dispatch_core_manager::instance().get_all_logical_dispatch_cores(this->id()));
                 }
                 if (std::find(physical_dispatch_cores.begin(), physical_dispatch_cores.end(), virtual_core) != physical_dispatch_cores.end()) {
@@ -855,7 +855,7 @@ void Device::configure_kernel_variant(
     bool force_watcher_no_inline) {
 
     // TODO: just pass in the programmable index
-    uint32_t programmable_core_type_index = (dispatch_core_type == CoreType::WORKER) ?
+    uint32_t programmable_core_type_index = (dispatch_core_type == CoreType::TENSIX) ?
         hal.get_programmable_core_type_index(HalProgrammableCoreType::TENSIX) :
         is_active_eth_core ? hal.get_programmable_core_type_index(HalProgrammableCoreType::ACTIVE_ETH) :
         hal.get_programmable_core_type_index(HalProgrammableCoreType::IDLE_ETH);
@@ -889,7 +889,7 @@ void Device::configure_kernel_variant(
     }
     defines.insert(defines_in.begin(), defines_in.end());
 
-    if (dispatch_core_type == CoreType::WORKER) {
+    if (dispatch_core_type == CoreType::TENSIX) {
         tt::tt_metal::CreateKernel(
             program,
             path,
@@ -1639,10 +1639,10 @@ void Device::update_workers_build_settings(std::vector<std::vector<std::tuple<tt
                     uint32_t pcie_alignment = hal.get_alignment(HalMemType::HOST);
                     uint32_t scratch_db_base = (prefetch_d_settings.cb_start_address + prefetch_d_settings.cb_size_bytes + pcie_alignment - 1) & (~(pcie_alignment - 1));
                     uint32_t scratch_db_size = dispatch_constants::get(dispatch_core_type).scratch_db_size();
-                    const uint32_t l1_size = dispatch_core_type == CoreType::WORKER ? HAL_MEM_L1_SIZE : HAL_MEM_ETH_SIZE;
+                    const uint32_t l1_size = dispatch_core_type == CoreType::TENSIX ? HAL_MEM_L1_SIZE : HAL_MEM_ETH_SIZE;
                     uint32_t dispatch_s_buffer_base;
                     uint32_t dispatch_buffer_base = dispatch_constants::get(dispatch_core_type).dispatch_buffer_base();
-                    if (dispatch_core_type == CoreType::WORKER) {
+                    if (dispatch_core_type == CoreType::TENSIX) {
                         dispatch_s_buffer_base = dispatch_buffer_base + (1 << dispatch_constants::DISPATCH_BUFFER_LOG_PAGE_SIZE) *  dispatch_constants::get(dispatch_core_type).dispatch_buffer_pages();
                     }
                     else {
@@ -2139,7 +2139,7 @@ void Device::setup_tunnel_for_remote_devices() {
                     settings.cb_log_page_size = dispatch_constants::DISPATCH_S_BUFFER_LOG_PAGE_SIZE;
                     settings.semaphores.push_back(0); // used by dispatch_s to sync with prefetch_d
                     uint32_t dispatch_buffer_base = dispatch_constants::get(dispatch_core_type).dispatch_buffer_base();
-                    if (dispatch_core_type == CoreType::WORKER) {
+                    if (dispatch_core_type == CoreType::TENSIX) {
                         // dispatch_s is on the same Tensix core as dispatch_d. Shared resources. Offset CB start and sem idx.
                         settings.cb_start_address = dispatch_buffer_base + (1 << dispatch_constants::DISPATCH_BUFFER_LOG_PAGE_SIZE) *  dispatch_constants::get(dispatch_core_type).dispatch_buffer_pages();
                         settings.producer_semaphore_id = 2; // sync with producer (prefetcher)
@@ -2231,7 +2231,7 @@ bool Device::dispatch_s_enabled() const {
     // Dispatch_s is always enabled for Tensix Dispatch
     // Conditionally enabled for Ethernet Dispatch - If a single CQ is being used
     // This condition may be modified for BH
-    return (this->num_hw_cqs() == 1 or dispatch_core_manager::instance().get_dispatch_core_type(this->id()) == CoreType::WORKER);
+    return (this->num_hw_cqs() == 1 or dispatch_core_manager::instance().get_dispatch_core_type(this->id()) == CoreType::TENSIX);
 }
 
 bool Device::distributed_dispatcher() const {
@@ -2318,7 +2318,7 @@ void Device::compile_command_queue_programs() {
                 dispatch_s_core = dispatch_core_manager::instance().dispatcher_s_core(device_id, channel, cq_id);
                 dispatch_s_virtual_core = this->virtual_core_from_logical_core(dispatch_s_core, dispatch_core_type);
                 uint32_t dispatch_buffer_base = dispatch_constants::get(dispatch_core_type).dispatch_buffer_base();
-                if (dispatch_core_type == CoreType::WORKER) {
+                if (dispatch_core_type == CoreType::TENSIX) {
                     // dispatch_s is on the same Tensix core as dispatch_d. Shared resources. Offset CB start idx.
                     dispatch_s_buffer_base = dispatch_buffer_base + (1 << dispatch_constants::DISPATCH_BUFFER_LOG_PAGE_SIZE) *  dispatch_constants::get(dispatch_core_type).dispatch_buffer_pages();
                 }
@@ -3254,7 +3254,7 @@ CoreType Device::core_type_from_physical_core(const CoreCoord &physical_coord) c
 
 CoreType Device::core_type_from_virtual_core(const CoreCoord &virtual_coord) const {
     if (tt::Cluster::instance().is_worker_core(virtual_coord, this->id_)) {
-        return CoreType::WORKER;
+        return CoreType::TENSIX;
     } else if (tt::Cluster::instance().is_ethernet_core(virtual_coord, this->id_)) {
         return CoreType::ETH;
     }
@@ -3325,7 +3325,7 @@ CoreCoord Device::virtual_core_from_physical_core(const CoreCoord &physical_coor
 }
 
 CoreCoord Device::worker_core_from_logical_core(const CoreCoord &logical_core) const {
-    return this->virtual_core_from_logical_core(logical_core, CoreType::WORKER);
+    return this->virtual_core_from_logical_core(logical_core, CoreType::TENSIX);
 }
 
 CoreCoord Device::ethernet_core_from_logical_core(const CoreCoord &logical_core) const {

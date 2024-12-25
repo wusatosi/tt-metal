@@ -16,7 +16,7 @@ void DispatchSKernel::GenerateStaticConfigs() {
     uint32_t dispatch_s_buffer_base = 0xff;
     if (device_->dispatch_s_enabled()) {
         uint32_t dispatch_buffer_base = my_dispatch_constants.dispatch_buffer_base();
-        if (GetCoreType() == CoreType::WORKER) {
+        if (GetCoreType() == CoreType::TENSIX) {
             // dispatch_s is on the same Tensix core as dispatch_d. Shared resources. Offset CB start idx.
             dispatch_s_buffer_base = dispatch_buffer_base + (1 << dispatch_constants::DISPATCH_BUFFER_LOG_PAGE_SIZE) *
                                                                 my_dispatch_constants.dispatch_buffer_pages();

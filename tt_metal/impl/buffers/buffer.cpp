@@ -398,7 +398,7 @@ CoreType Buffer::core_type() const {
             return CoreType::DRAM;
         case BufferType::L1:
         case BufferType::L1_SMALL:
-            return CoreType::WORKER;
+            return CoreType::TENSIX;
         default:
             TT_THROW("Unknown CoreType {} for buffer", this->buffer_type_);
     }

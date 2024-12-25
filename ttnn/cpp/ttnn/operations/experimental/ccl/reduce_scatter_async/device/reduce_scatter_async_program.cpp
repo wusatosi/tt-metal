@@ -1695,7 +1695,7 @@ static void initialize_op_internal_tensor_syncs(
     auto all_partial_reducer_cores = worker_cores.partial_reducers[LineDirection::FORWARD];
     all_partial_reducer_cores = all_partial_reducer_cores.merge(worker_cores.partial_reducers[LineDirection::BACKWARD]);
 
-    auto partial_reducers_in1_sem_id = CreateSemaphore(program, all_partial_reducer_cores, 0, CoreType::WORKER);
+    auto partial_reducers_in1_sem_id = CreateSemaphore(program, all_partial_reducer_cores, 0, CoreType::TENSIX);
     for (auto direction : {LineDirection::FORWARD, LineDirection::BACKWARD}) {
         all_tensors.input_tensor_from_remote_sync[direction] = TensorSyncSpec{};
         for (auto const& worker_core : partial_reducer_cores[direction]) {
@@ -1725,8 +1725,8 @@ static void initialize_op_internal_tensor_syncs(
 
     auto final_reducer_cores = corerange_to_cores(worker_cores.final_reducers, std::nullopt, true);
     std::array<uint32_t, 2> final_reducer_partial_input_sem_ids = {
-        CreateSemaphore(program, worker_cores.final_reducers, 0, CoreType::WORKER),
-        CreateSemaphore(program, worker_cores.final_reducers, 0, CoreType::WORKER)};
+        CreateSemaphore(program, worker_cores.final_reducers, 0, CoreType::TENSIX),
+        CreateSemaphore(program, worker_cores.final_reducers, 0, CoreType::TENSIX)};
     for (auto const& worker_core : final_reducer_cores) {
         auto worker_target = TensorSyncSpec::target_rect{
             device->worker_core_from_logical_core(worker_core).x,

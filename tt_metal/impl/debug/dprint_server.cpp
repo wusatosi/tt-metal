@@ -584,7 +584,7 @@ void DebugPrintServerContext::AttachDevice(Device* device) {
 
     // Core range depends on whether dprint_all_cores flag is set.
     std::vector<CoreDescriptor> print_cores_sanitized;
-    for (CoreType core_type : {CoreType::WORKER, CoreType::ETH}) {
+    for (CoreType core_type : {CoreType::TENSIX, CoreType::ETH}) {
         if (tt::llrt::RunTimeOptions::get_instance().get_feature_all_cores(
                 tt::llrt::RunTimeDebugFeatureDprint, core_type) == tt::llrt::RunTimeDebugClassAll) {
             // Print from all cores of the given type, cores returned here are guaranteed to be valid.

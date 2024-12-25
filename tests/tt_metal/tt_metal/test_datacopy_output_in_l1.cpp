@@ -61,7 +61,7 @@ int main(int argc, char** argv) {
         auto dst_l1_buffer = CreateBuffer(l1_config);
 
         auto l1_dst_noc_xy =
-            device->virtual_core_from_logical_core(dst_l1_buffer->logical_core_from_bank_id(0), CoreType::WORKER);
+            device->virtual_core_from_logical_core(dst_l1_buffer->logical_core_from_bank_id(0), CoreType::TENSIX);
 
         // input CB is larger than the output CB, to test the backpressure from the output CB all the way into the input
         // CB CB_out size = 1 forces the serialization of packer and writer kernel, generating backpressure to math

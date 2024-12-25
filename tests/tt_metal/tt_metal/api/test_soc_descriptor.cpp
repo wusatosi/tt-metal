@@ -79,7 +79,7 @@ TEST_F(DeviceFixture, TensixValidateMetalSocDescriptors) {
 
         // Ensure that only tensix workers are remapped to virtual coordinates
         for (const auto& [physical_core, core_desc] : soc_desc.physical_cores) {
-            if (core_desc.type != CoreType::WORKER and core_desc.type != CoreType::HARVESTED) {
+            if (core_desc.type != CoreType::TENSIX and core_desc.type != CoreType::HARVESTED) {
                 ASSERT_TRUE(soc_desc.cores.find(physical_core) != soc_desc.cores.end());
                 EXPECT_EQ(core_desc.type, soc_desc.cores.at(physical_core).type);
                 tt_cxy_pair physical_chip_core(device_id, physical_core);
@@ -112,8 +112,8 @@ TEST_F(DeviceFixture, TensixValidateMetalSocDescriptors) {
             bool found_worker_core =
                 std::find(soc_desc.workers.begin(), soc_desc.workers.end(), umd_worker_core) != soc_desc.workers.end();
             ASSERT_TRUE(found_worker_core);
-            EXPECT_EQ(soc_desc.physical_cores.at(physical_worker_core).type, CoreType::WORKER);
-            EXPECT_EQ(soc_desc.cores.at(umd_worker_core).type, CoreType::WORKER);
+            EXPECT_EQ(soc_desc.physical_cores.at(physical_worker_core).type, CoreType::TENSIX);
+            EXPECT_EQ(soc_desc.cores.at(umd_worker_core).type, CoreType::TENSIX);
         }
     }
 }
