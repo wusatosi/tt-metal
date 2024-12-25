@@ -255,17 +255,14 @@ inline void llk_unpack_tilizeA_B(
         */
         std::uint32_t address_face_a = (n % 2 == 0) ? address_a : (address_a + (SCALE_DATUM_SIZE(unpack_src_format[operandA_id], FACE_C_DIM) >> 4));
         address_face_a += (n >= 2) ? ((SCALE_DATUM_SIZE(unpack_src_format[operandA_id], block_c_dim)) >> 4) : 0;
-        tensix_sync();
-        DPRINT << "IIIIIII" << ENDL();
+
         // Wait for free context
         wait_for_next_context(2);
-        tensix_sync();
-        DPRINT << "KKKKKKK" << ENDL();
+
         if constexpr (neginf_srcA) {
             TTI_UNPACR_NOP(SrcA,0,0,0,0,0,0,p_unpacr::UNP_CLRSRC_NEGINF, p_unpacr::UNP_CLRSRC);
         }
-        tensix_sync();
-        DPRINT << "LLLLLLLL" << ENDL();
+
         // Get tile address
         if (0 == unp_cfg_context) {
             cfg[THCON_SEC0_REG3_Base_address_ADDR32] = address_face_a;

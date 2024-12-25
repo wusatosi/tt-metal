@@ -427,6 +427,7 @@ CoreCoord Buffer::logical_core_from_bank_id(uint32_t bank_id) const {
 
 DeviceAddr Buffer::page_address(uint32_t bank_id, uint32_t page_index) const {
     uint32_t num_banks = allocator::num_banks(*this->allocator_, this->buffer_type_);
+    log_info("Bank ID: {}, Num banks: {}", bank_id, num_banks);
     TT_FATAL(bank_id < num_banks, "Invalid Bank ID: {} exceeds total numbers of banks ({})!", bank_id, num_banks);
     int pages_offset_within_bank = (int)page_index / num_banks;
     auto offset = (round_up(this->page_size(), this->alignment()) * pages_offset_within_bank);
@@ -435,6 +436,7 @@ DeviceAddr Buffer::page_address(uint32_t bank_id, uint32_t page_index) const {
 
 DeviceAddr Buffer::bank_local_page_address(uint32_t bank_id, uint32_t page_index) const {
     uint32_t num_banks = allocator::num_banks(*this->allocator_, this->buffer_type_);
+    log_info("Bank ID: {}, Num banks: {}", bank_id, num_banks);
     TT_FATAL(bank_id < num_banks, "Invalid Bank ID: {} exceeds total numbers of banks ({})!", bank_id, num_banks);
     uint32_t offset;
     if (is_sharded(this->buffer_layout())) {

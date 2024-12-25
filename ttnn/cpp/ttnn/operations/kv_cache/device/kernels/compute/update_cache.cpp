@@ -26,6 +26,7 @@ void MAIN {
     for (uint32_t h = 0; h < num_batched_heads; ++h) {
         cb_wait_front(in_cb, Wt);
         cb_reserve_back(untilized_in_cb, Wt);
+        DPRINT << "Point AAAAAA" << ENDL();
         pack_untilize_block<Wt>(in_cb, 1, untilized_in_cb);
         cb_push_back(untilized_in_cb, Wt);
         cb_pop_front(in_cb, Wt);

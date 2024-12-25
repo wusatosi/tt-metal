@@ -648,7 +648,7 @@ Tensor move_config_tensor_to_device(
                                                                                       : ShardOrientation::COL_MAJOR)
                          : ShardOrientation::ROW_MAJOR;
     ShardSpec shard_spec(p_config.grid, shard_shape, config_shard_orientation, false);
-    MemoryConfig memory_config{TensorMemoryLayout::HEIGHT_SHARDED, BufferType::L1_SMALL, shard_spec};
+    MemoryConfig memory_config{TensorMemoryLayout::HEIGHT_SHARDED, BufferType::L1, shard_spec};
     return config_tensor.to(device, memory_config);
 }
 

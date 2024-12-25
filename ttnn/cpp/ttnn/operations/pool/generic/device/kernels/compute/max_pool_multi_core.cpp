@@ -53,14 +53,12 @@ inline void reduce_h_fused(
     const uint32_t in_cb_id, const uint32_t in_scalar_cb_id, const uint32_t in_stick_index, const uint32_t out_cb_id) {
     constexpr uint32_t num_faces_in_tile = is_partial_tile ? 1 : 2;
     constexpr uint32_t num_out_rows = 1;
-    //UNPACK((DPRINT << "in_nblocks_c: " << in_nblocks_c << ENDL()));
+
     for (uint32_t b_i = 0; b_i < in_nblocks_c; ++b_i) {
-        //UNPACK((DPRINT << "00000" << ENDL()));
         cb_reserve_back(out_cb_id, 1);
         const uint32_t curr_in_cb_id = split_reader ? (in_cb_id + (in_stick_index & 0x1)) : in_cb_id;
-        //UNPACK((DPRINT << "11111" << ENDL()));
+
         cb_wait_front(curr_in_cb_id, 1);
-        //UNPACK((DPRINT << "22222" << ENDL()));
         tile_regs_acquire();
         tensix_sync();
         UNPACK((DPRINT << "33333" << ", iter: " << in_stick_index << ", curr_in_cb_id: " << curr_in_cb_id << ", in_scalar_cb_id: " << in_scalar_cb_id << ", num_output_tiles: " << num_output_tiles << ", num_faces_in_tile: " << num_faces_in_tile << ENDL()));
@@ -71,23 +69,21 @@ inline void reduce_h_fused(
             0 /*tile idx for Src b is 0 because only 1 tile of constants is loaded*/,
             num_faces_in_tile /* unpack 1 or 2 faces ) */,
             unpA_face_r_dim);
-        UNPACK((DPRINT << "44444" << ENDL()));
+
         for (uint32_t c_i = 0; c_i < num_output_tiles; ++c_i) {
             reduce_tile_math(c_i, num_faces_in_tile /* reduce 1 or 2 faces */);
         }
-        //UNPACK((DPRINT << "55555" << ENDL()));
+
         cb_pop_front(curr_in_cb_id, 1);
-        //UNPACK((DPRINT << "66666" << ENDL()));
+
         tile_regs_wait();
         tile_regs_commit();
-        //UNPACK((DPRINT << "77777" << ENDL()));
+
         pack_untilize_dst<num_output_tiles>(
             out_cb_id, 1 /*out_subblock_h*/, 0, num_out_rows, num_faces_in_tile); /* pack 1 row (1x16 or 1x32) */
-        //UNPACK((DPRINT << "88888" << ENDL()));
+
         tile_regs_release();
-        //UNPACK((DPRINT << "99999" << ENDL()));
         cb_push_back(out_cb_id, 1);
-        //UNPACK((DPRINT << "in the end" << ENDL()));
     }
 }
 
@@ -124,6 +120,7 @@ void MAIN {
         out_cb_id, num_out_rows, num_faces_in_tile); /* pack 1 row (1x16 or 1x32) */
 
     cb_wait_front(in_scalar_cb_id, 1);
+    DPRINT << "n sticks per core: " << nsticks_per_core << ", in blocks c: " << in_nblocks_c << ", window size hw: " << window_size_hw << ENDL();
     for (uint32_t i = 0; i < nsticks_per_core; ++i) {
         reduce_h_fused<num_output_tiles, is_partial_tile, split_reader, window_size_hw, in_nblocks_c>(
             in_cb_id, in_scalar_cb_id, i, out_cb_id);

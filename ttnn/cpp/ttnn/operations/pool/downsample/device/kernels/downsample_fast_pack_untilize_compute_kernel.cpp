@@ -7,7 +7,7 @@
 #include "compute_kernel_api/untilize.h"
 #include "compute_kernel_api/pack_untilize.h"
 #include "compute_kernel_api/tilize.h"
-
+#include "debug/dprint.h"
 namespace NAMESPACE {
 void MAIN {
     uint32_t i = 0;
@@ -55,6 +55,7 @@ void MAIN {
             cb_wait_front(halo_prev_input_cb_index, num_input_tiles_in_row);
             cb_reserve_back(untilize_cb_index, num_input_tiles_in_row);
 
+            DPRINT << "Point 11111111" << ENDL();
             pack_untilize_block<num_input_tiles_in_row>(halo_prev_input_cb_index, 1, untilize_cb_index);
 
             cb_push_back(untilize_cb_index, num_input_tiles_in_row);
@@ -70,6 +71,7 @@ void MAIN {
     for (uint32_t b = 0; b < local_input_num_rows_of_tiles; ++b) {
         cb_reserve_back(untilize_cb_index, num_input_tiles_in_row);
 
+        DPRINT << "Point 22222222" << ENDL();
         pack_untilize_block<num_input_tiles_in_row>(input_cb_index, 1, untilize_cb_index);
 
         cb_push_back(untilize_cb_index, num_input_tiles_in_row);
@@ -85,6 +87,7 @@ void MAIN {
             cb_wait_front(halo_next_input_cb_index, num_input_tiles_in_row);
             cb_reserve_back(untilize_cb_index, num_input_tiles_in_row);
 
+            DPRINT << "Point 33333" << ENDL();
             pack_untilize_block<num_input_tiles_in_row>(halo_next_input_cb_index, 1, untilize_cb_index);
 
             cb_push_back(untilize_cb_index, num_input_tiles_in_row);

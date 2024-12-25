@@ -150,7 +150,7 @@ def run_max_pool(
     ttact_device = ttnn.to_device(ttact, device)
     if pre_shard:
         grid_size = device.compute_with_storage_grid_size()
-        grid_size = ttnn.CoreCoord(2, 1)
+        grid_size = ttnn.CoreCoord(8, 8)
         parallel_config = ttnn._ttnn.operations.conv.determine_parallel_config(
             shard_layout=ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
             batch_size=in_n,
@@ -241,7 +241,9 @@ def run_max_pool(
     "act_shape",  ## NCHW
     (
         (  ## resnet shapes
-            [1, 32, 112, 112],
+            [1, 16, 48, 2],
+            [1, 16, 64, 1],
+            [1, 64, 112, 112],
             [4, 64, 112, 112],
             [8, 64, 112, 112],
             [16, 64, 112, 112],
@@ -278,6 +280,7 @@ def run_max_pool(
             [1, 512, 14, 14],
             # wide yolo kernel
             [1, 512, 10, 10],
+            [1, 16, 32, 32],
             [1, 96, 112, 112],
             [1, 192, 132, 20],
         )

@@ -92,9 +92,9 @@ void kernel_main() {
     uint32_t npages_to_reserve = 1;
     uint32_t counter = reader_id;
     while (counter < reader_nindices) {
-        DPRINT << "counter start: " << counter << ENDL();
+        //DPRINT << "counter start: " << counter << ENDL();
         cb_reserve_back(in_cb_id, npages_to_reserve);
-        DPRINT << "hehe 0" << ENDL();
+        //DPRINT << "hehe 0" << ENDL();
         uint32_t out_l1_write_addr_base = get_write_ptr(in_cb_id);
         uint32_t out_l1_write_addr = out_l1_write_addr_base;
         uint16_t top_left_local_index = reader_indices_ptr[counter++];
@@ -108,10 +108,10 @@ void kernel_main() {
         if (split_reader) {
             counter++;  // interleave the indices
         }
-        DPRINT << "hehe 1" << ENDL();
+        //DPRINT << "hehe 1" << ENDL();
         noc_async_read_barrier();
-        DPRINT << "hehe 2" << ENDL();
+        //DPRINT << "hehe 2" << ENDL();
         cb_push_back(in_cb_id, npages_to_reserve);
-        DPRINT << "end" << ENDL();
+        //DPRINT << "end" << ENDL();
     }
 }  // kernel_main()
