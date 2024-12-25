@@ -37,6 +37,13 @@ def test_multiplyadd(device, h, w):
     golden_function = ttnn.get_golden_function(ttnn.multiplyadd)
     torch_output_tensor = golden_function(torch_input_tensor1, torch_input_tensor2, torch_input_tensor3)
 
+    tensor_memory_config = ttnn.create_sharded_memory_config(
+        (1, 1),
+        ttnn.CoreGrid(y=1, x=1),
+        strategy=ttnn.ShardStrategy.HEIGHT,
+        orientation=ttnn.ShardOrientation.ROW_MAJOR,
+    )   
+
     input_tensor1 = ttnn.from_torch(
         torch_input_tensor1,
         dtype=ttnn.bfloat16,
@@ -44,7 +51,6 @@ def test_multiplyadd(device, h, w):
         device=device,
         memory_config=tensor_memory_config,
     )
-
     input_tensor2 = ttnn.from_torch(
         torch_input_tensor2,
         dtype=ttnn.bfloat16,
@@ -52,7 +58,6 @@ def test_multiplyadd(device, h, w):
         device=device,
         memory_config=tensor_memory_config,
     )
-
     input_tensor3 = ttnn.from_torch(
         torch_input_tensor3,
         dtype=ttnn.bfloat16,
@@ -60,7 +65,8 @@ def test_multiplyadd(device, h, w):
         device=device,
         memory_config=tensor_memory_config,
     )
-
+    print("3\n")
+    print(input_tensor3)
     output_tensor = ttnn.multiplyadd(input_tensor1, input_tensor2, input_tensor3)
     output_tensor = ttnn.to_torch(output_tensor)
 
