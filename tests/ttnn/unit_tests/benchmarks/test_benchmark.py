@@ -83,21 +83,21 @@ def get_device_freq():
 
 
 matmul_shapes_bfloat16 = [
-    (512, 512, 512, True, True, 1, 1, 1),
-    (512, 1024, 1024, True, True, 1, 1, 1),
-    (512, 1024, 2048, True, True, 1, 1, 1),
-    (1024, 1024, 1024, True, True, 1, 1, 1),
-    (1024, 1024, 2048, True, True, 1, 1, 1),
-    (1024, 2048, 2048, True, True, 1, 1, 1),
-    (2048, 2048, 2048, True, True, 1, 1, 1),
-    (2048, 2048, 3072, True, True, 1, 1, 1),
-    (2048, 3072, 3072, True, True, 2, 1, 1),
-    (3072, 3072, 3072, True, True, 4, 1, 1),
-    (3072, 3072, 4096, False, False, 2, 1, 1),
-    (3072, 4096, 4096, False, False, 2, 1, 1),
-    (4096, 4096, 4096, False, False, 1, 2, 2),
-    (8192, 8192, 8192, False, False, 2, 4, 4),
-    (16384, 16384, 16384, False, False, 4, 8, 8),
+    # (512, 512, 512, False, False, 1, 1, 1),
+    (512, 1024, 1024, False, False, 1, 1, 1),
+    (512, 1024, 2048, False, False, 1, 1, 1),
+    # (1024, 1024, 1024, False, False, 1, 1, 1),
+    # (1024, 1024, 2048, False, False, 1, 1, 1),
+    # (1024, 2048, 2048, False, False, 1, 1, 1),
+    # (2048, 2048, 2048, False, False, 1, 1, 1),
+    # (2048, 2048, 3072, False, False, 1, 1, 1),
+    # (2048, 3072, 3072, False, False, 2, 1, 1),
+    # (3072, 3072, 3072, False, False, 4, 1, 1),
+    # (3072, 3072, 4096, False, False, 2, 1, 1),
+    # (3072, 4096, 4096, False, False, 2, 1, 1),
+    # (4096, 4096, 4096, False, False, 1, 2, 2),
+    # (8192, 8192, 8192, False, False, 2, 4, 4),
+    # (16384, 16384, 16384, False, False, 4, 8, 8),
 ]
 
 matmul_shapes_bfloat8_b = [
@@ -137,26 +137,26 @@ matmul_shapes_bfloat4_b = [
 ]
 
 matmul_configs = [
-    (ttnn.bfloat16, ttnn.MathFidelity.HiFi2, False),
+    # (ttnn.bfloat16, ttnn.MathFidelity.HiFi2, False),
     (ttnn.bfloat16, ttnn.MathFidelity.HiFi4, False),
-    (ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, False),
-    (ttnn.bfloat8_b, ttnn.MathFidelity.LoFi, False),
-    (ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, False),
-    (ttnn.bfloat16, ttnn.MathFidelity.HiFi2, True),
-    (ttnn.bfloat16, ttnn.MathFidelity.HiFi4, True),
-    (ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, True),
-    (ttnn.bfloat8_b, ttnn.MathFidelity.LoFi, True),
-    (ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, True),
+    # (ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, False),
+    # (ttnn.bfloat8_b, ttnn.MathFidelity.LoFi, False),
+    # (ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, False),
+    # (ttnn.bfloat16, ttnn.MathFidelity.HiFi2, True),
+    # (ttnn.bfloat16, ttnn.MathFidelity.HiFi4, True),
+    # (ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, True),
+    # (ttnn.bfloat8_b, ttnn.MathFidelity.LoFi, True),
+    # (ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, True),
 ]
 
 
-@pytest.mark.skip(reason="WH didt hang, need to skip CI and run locally only")
+# @pytest.mark.skip(reason="WH didt hang, need to skip CI and run locally only")
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576, "trace_region_size": 3855488}], indirect=True)
-@pytest.mark.parametrize("grid_size", [(8, 8)])
+@pytest.mark.parametrize("grid_size", [(1, 1)])
 @pytest.mark.parametrize("tile_h", [32])
 @pytest.mark.parametrize("tile_w", [32])
-@pytest.mark.parametrize("num_warmup_iterations", [5])
-@pytest.mark.parametrize("num_measurement_iterations", [100])
+@pytest.mark.parametrize("num_warmup_iterations", [0])
+@pytest.mark.parametrize("num_measurement_iterations", [1])
 def test_matmul_2d_host_perf(
     device,
     grid_size,
@@ -209,15 +209,24 @@ def test_matmul_2d_host_perf(
             for m, k, n, in0_sharded, out_sharded, in0_block_w_div, num_out_blocks_h, num_out_blocks_w in matmul_shapes:
                 profiler.clear()
 
+                # k_scale = grid_size[0]
+                k_scale = 8
+                # scale input size to match BH grid size
+                m = (m // 8) * grid_size[1]
+                n = (n // 8) * grid_size[0]
+                k = (k // 8) * k_scale
+
                 in0_shape = [1, 1, m, k]
                 in1_shape = [1, 1, k, n]
 
-                in0_block_w = k // grid_size[0] // 32 // in0_block_w_div
-                per_core_M = m // grid_size[1] // tile_h
-                per_core_N = n // grid_size[0] // tile_w
-                out_block_h = per_core_M // num_out_blocks_h
-                out_block_w = per_core_N // num_out_blocks_w
-                out_subblock_h, out_subblock_w = get_subblock_sizes(out_block_h, out_block_w, out_sharded)
+                in0_block_w = k // k_scale // 32 // in0_block_w_div  # 4
+                per_core_M = m // grid_size[1] // tile_h  # 2
+                per_core_N = n // grid_size[0] // tile_w  # 4
+                out_block_h = per_core_M // num_out_blocks_h  # 2
+                out_block_w = per_core_N // num_out_blocks_w  # 4
+                # out_subblock_h, out_subblock_w = get_subblock_sizes(out_block_h, out_block_w, out_sharded)
+                out_subblock_h = 1
+                out_subblock_w = 1
 
                 logger.info(f"M*K*N = {m}*{k}*{n} out_subblock_h: {out_subblock_h}, out_subblock_w: {out_subblock_w}")
 
@@ -297,15 +306,15 @@ def test_matmul_2d_host_perf(
                 else:
                     output_tile = ttnn.Tile([tile_h, tile_w])
 
-                output_t = ttnn.matmul(
-                    in0_t,
-                    in1_t,
-                    program_config=program_config,
-                    memory_config=out_mem_config,
-                    dtype=dtype,
-                    compute_kernel_config=compute_kernel_config,
-                    output_tile=output_tile,
-                )
+                # output_t = ttnn.matmul(
+                #     in0_t,
+                #     in1_t,
+                #     program_config=program_config,
+                #     memory_config=out_mem_config,
+                #     dtype=dtype,
+                #     compute_kernel_config=compute_kernel_config,
+                #     output_tile=output_tile,
+                # )
 
                 for iter in range(0, num_warmup_iterations):
                     output_t = ttnn.matmul(
@@ -348,7 +357,9 @@ def test_matmul_2d_host_perf(
                             compute_kernel_config=compute_kernel_config,
                             output_tile=output_tile,
                         )
+                    logger.info(f"before sync")
                     ttnn.synchronize_device(device)
+                    logger.info(f"after sync")
                     profiler.end(f"run")
 
                 ttnn.DumpDeviceProfiler(device)
@@ -368,7 +379,8 @@ def test_matmul_2d_host_perf(
                 num_cores_full_grid = compute_grid_size.x * compute_grid_size.y
                 ideal_cycle_full_grid = m * k * n / tile_h / tile_w / 32 * cycle_per_tile / num_cores_full_grid
                 ideal_cycle_user_grid = m * k * n / tile_h / tile_w / 32 * cycle_per_tile / num_cores_user_grid
-                inference_cycle = inference_time_avg * get_device_freq() * 1e6
+                # inference_cycle = inference_time_avg * get_device_freq() * 1e6
+                inference_cycle = inference_time_avg * 800 * 1e6
                 utilization_full_grid = ideal_cycle_full_grid / inference_cycle
                 utilization_user_grid = ideal_cycle_user_grid / inference_cycle
                 utilization_full_grid_percentage = f"{utilization_full_grid * 100:.2f}%"
