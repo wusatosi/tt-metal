@@ -17,7 +17,7 @@ ttnn::WormholeComputeKernelConfig ComputeKernelConfig::precise() {
 
 ttnn::WormholeComputeKernelConfig ComputeKernelConfig::softmax() {
     ttnn::WormholeComputeKernelConfig config;
-    config.fp32_dest_acc_en = false;
+    config.fp32_dest_acc_en = true;
     config.math_approx_mode = false;
     config.math_fidelity = MathFidelity::HiFi2;
     config.packer_l1_acc = true;

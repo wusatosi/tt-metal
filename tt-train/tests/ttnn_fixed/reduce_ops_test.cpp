@@ -131,3 +131,35 @@ TEST_F(ReduceOpTest, TestMeanLargeDim3) {
     EXPECT_TRUE(xt::allclose(mean_xtensor, mean_ttnn, /*rtol=*/1e-3, /*atol=*/1e-2));
     EXPECT_TRUE(xt::allclose(mean_xtensor, mean_moreh, /*rtol=*/1e-3, /*atol=*/1e-2));
 }
+
+TEST_F(ReduceOpTest, TestMeanNonTile) {
+    xt::random::seed(42);
+    int dim = 64 * 256;
+    auto* device = &ttml::autograd::ctx().get_device();
+    xt::xarray<float> xtensor_a = xt::random::rand({dim}, 0.0F, 10.5F).reshape({1, 1, 1, dim});
+
+    auto xtensor_a_tensor = ttml::core::from_xtensor(xtensor_a, device);
+
+    auto ttnn_mean_dim3 = ttml::ttnn_fixed::mean_ttnn(xtensor_a_tensor, 3, true);
+    auto ttnn_mean_dim2 = ttml::ttnn_fixed::mean_ttnn(xtensor_a_tensor, 2, true);
+    auto ttnn_mean_dim23 = ttnn::mean(xtensor_a_tensor, ttnn::SmallVector<int>{2, 3}, true);
+    xt::xarray<float> mean_xtensor3 = xt::mean(xtensor_a, {3}, xt::evaluation_strategy::immediate);
+    mean_xtensor3.reshape({1, 1, 1, 1});
+
+    auto mean_ttnn3 = ttml::core::to_xtensor(ttnn_mean_dim3);
+    auto mean_ttnn23 = ttml::core::to_xtensor(ttnn_mean_dim23);
+    std::cout << mean_xtensor3 << std::endl;
+    std::cout << "-------------" << std::endl;
+    std::cout << mean_ttnn3 << std::endl;
+    std::cout << "-------------" << std::endl;
+    std::cout << mean_ttnn23 << std::endl;
+    EXPECT_TRUE(xt::allclose(mean_xtensor3, mean_ttnn3, /*rtol=*/1e-3, /*atol=*/1e-2));
+    EXPECT_TRUE(xt::allclose(mean_xtensor3, mean_ttnn23, /*rtol=*/1e-3, /*atol=*/1e-2));
+    xt::xarray<float> mean_xtensor2 = xt::mean(xtensor_a, {2}, xt::evaluation_strategy::immediate);
+    mean_xtensor2.reshape({1, 1, 1, dim});
+    xt::xarray<float> mean_ttnn2 = ttml::core::to_xtensor(ttnn_mean_dim2);
+    std::cout << mean_xtensor2 << std::endl;
+    std::cout << "-------------" << std::endl;
+    std::cout << mean_ttnn2 << std::endl;
+    EXPECT_TRUE(xt::allclose(mean_xtensor2, mean_ttnn2, /*rtol=*/1e-3, /*atol=*/1e-2));
+}

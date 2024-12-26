@@ -8,7 +8,9 @@
 
 #include <core/ttnn_all_includes.hpp>
 #include <memory>
+#include <optional>
 #include <ttnn/operations/core/compute_kernel/compute_kernel_config.hpp>
+#include <ttnn/operations/normalization/softmax/softmax.hpp>
 #include <vector>
 
 #include "autograd/auto_context.hpp"
@@ -16,6 +18,7 @@
 #include "core/device.hpp"
 #include "core/tt_tensor_utils.hpp"
 #include "ttnn_fixed/trivial_ttnn_ops.hpp"
+#include "xtensor/xarray.hpp"
 
 class TrivialTnnFixedTest : public ::testing::Test {
 protected:
@@ -238,4 +241,44 @@ TEST_F(TrivialTnnFixedTest, TestSumOverBatch_1) {
 
         EXPECT_NEAR(expected_value, resulting_vector[i], eps);
     }
+}
+
+TEST_F(TrivialTnnFixedTest, TestOriginalStableSoftmaxMasked) {
+    xt::random::seed(42);
+
+    std::size_t N = 64;
+    std::size_t HEADS = 6;
+    std::size_t BATCH = 64;
+    auto i = xt::arange<std::size_t>(N);  // i = [0, 1, 2, 3, 4]
+    auto j = xt::arange<std::size_t>(N);  // j = [0, 1, 2, 3, 4]
+
+    // Reshape for broadcasting: i -> (N,1), j -> (1,N)
+    auto ii = xt::expand_dims(i, 1);
+    auto jj = xt::expand_dims(j, 0);
+
+    // Causal mask: true if i >= j
+    xt::xarray<float> causal_mask = (ii >= jj);
+    causal_mask.reshape({1, 1, N, N});
+    auto* device = &ttml::autograd::ctx().get_device();
+    xt::xarray<float> xtensor_a = xt::random::rand({BATCH * HEADS * N * N}, -0.5F, 0.5F).reshape({BATCH, HEADS, N, N});
+    auto tensor = ttml::core::from_xtensor(xtensor_a, device);
+    auto tensor_inplace = ttml::core::from_xtensor(xtensor_a, device);
+    auto mask = ttml::core::from_xtensor(causal_mask, device);
+
+    float scale = 1.0F;
+    auto res_default = ttml::ttnn_fixed::softmax(ttnn::multiply(tensor, mask), /* dim */ 3);
+    fmt::println("tensor_inplace shape: {}", tensor_inplace.get_legacy_shape());
+    fmt::println("mask shape: {}", mask.get_legacy_shape());
+    auto res = ttnn::scale_mask_softmax_in_place(
+        tensor_inplace,
+        /* scale */ scale,
+        /*mask */ mask,
+        /*config */ ttnn::operations::normalization::SoftmaxDefaultProgramConfig{},
+        /*is_causal_mask */ true,
+        ttml::core::ComputeKernelConfig::softmax(),
+        /*stable*/ true);
+
+    auto res_default_xtensor = ttml::core::to_xtensor(res_default);
+    auto res_xtensor = ttml::core::to_xtensor(res);
+    EXPECT_TRUE(xt::allclose(res_default_xtensor, res_xtensor, /*rtol*/ 1e-2F, /*atol*/ 1e-2F));
 }
