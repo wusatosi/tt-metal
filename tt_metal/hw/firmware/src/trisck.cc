@@ -26,6 +26,9 @@ uint32_t math_sync_tile_dst_index = 0;
 uint32_t gl_alu_format_spec_reg = 0;
 uint32_t op_info_offset = 0;
 
+#define DUMMY_COMPUTE_SYNC_ADDR 0x15260
+#define DUMMY_COMPUTE_SYNC_POST_CODE 0x15260+8
+
 namespace ckernel
 {
 volatile tt_reg_ptr uint * regfile = reinterpret_cast<volatile uint *>(REGFILE_BASE);
@@ -35,6 +38,9 @@ volatile tt_reg_ptr uint * mailbox_base[4] = {
     reinterpret_cast<volatile uint tt_reg_ptr *>(TENSIX_MAILBOX0_BASE), reinterpret_cast<volatile uint tt_reg_ptr *>(TENSIX_MAILBOX1_BASE),
     reinterpret_cast<volatile uint tt_reg_ptr *>(TENSIX_MAILBOX2_BASE), reinterpret_cast<volatile uint tt_reg_ptr *>(TENSIX_MAILBOX3_BASE)
 };
+volatile tt_l1_ptr uint * dummy_compute_sync_addr_data_arrived = reinterpret_cast<volatile uint *>(DUMMY_COMPUTE_SYNC_ADDR);
+volatile tt_l1_ptr uint * dummy_compute_sync_addr_math_ack = reinterpret_cast<volatile uint *>(DUMMY_COMPUTE_SYNC_ADDR+4);
+volatile tt_l1_ptr uint * dummy_compute_sync_post_code = reinterpret_cast<volatile uint *>(DUMMY_COMPUTE_SYNC_POST_CODE);
 }
 
 void kernel_launch(uint32_t kernel_base_addr)
@@ -53,6 +59,13 @@ void kernel_launch(uint32_t kernel_base_addr)
 #if defined(UCK_CHLKC_UNPACK)
     // Make sure DBG_FEATURE_DISABLE register is cleared before every kernel is executed
     memory_write(RISCV_DEBUG_REG_DBG_FEATURE_DISABLE, 0);
+
+    // Initialize dummy compute sync locations
+    *dummy_compute_sync_addr_data_arrived = 0;
+    *dummy_compute_sync_addr_math_ack = 0;
+    dummy_compute_sync_post_code[0] = 0xdada00;
+    dummy_compute_sync_post_code[1] = 0xdada00;
+
 #endif
 #if !defined(UCK_CHLKC_MATH) and defined ALIGN_LOCAL_CBS_TO_REMOTE_CBS
     ALIGN_LOCAL_CBS_TO_REMOTE_CBS

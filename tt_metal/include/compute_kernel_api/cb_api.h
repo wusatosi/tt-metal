@@ -8,6 +8,9 @@
 #ifdef TRISC_PACK
 #include "llk_io_pack.h"
 #endif
+#ifdef TRISC_MATH
+#include "llk_math_matmul_api.h"
+#endif
 #ifdef TRISC_UNPACK
 #include "llk_io_unpack.h"
 #endif
@@ -38,6 +41,12 @@ namespace ckernel {
  * fit into the CB) | True     |
  * */
 ALWI void cb_wait_front(uint32_t cbid, uint32_t ntiles) { UNPACK((llk_wait_tiles(cbid, ntiles))); }
+
+ALWI void cb_wait_front_w_dummy(uint32_t cbid, uint32_t ntiles) {
+    UNPACK(( llk_wait_tiles_w_dummy(cbid, ntiles)  ));
+    MATH(( llk_dummy_math() ));
+}
+
 
 /**
  * Pops a specified number of tiles from the front of the specified CB. This

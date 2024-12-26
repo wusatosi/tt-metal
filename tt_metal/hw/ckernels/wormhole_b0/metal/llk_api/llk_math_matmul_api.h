@@ -51,3 +51,10 @@ inline void llk_math_matmul(
     const std::uint32_t kt_dim = 1) {
     _llk_math_matmul_<NUM_FIDELITY_PHASES, DstTileFaceLayout::RowMajor>(dst_index, transpose, ct_dim, rt_dim, kt_dim);
 }
+
+inline void llk_dummy_math() {
+    tensix_sync();
+    _llk_math_dummy_matmul_init_();
+    _llk_math_dummy_matmul_continous();
+    tensix_sync();
+}

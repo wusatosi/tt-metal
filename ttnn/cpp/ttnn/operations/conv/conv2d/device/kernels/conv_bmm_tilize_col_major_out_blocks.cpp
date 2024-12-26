@@ -16,8 +16,10 @@
 #endif
 
 #include "compute_kernel_api/eltwise_unary/sfpu_split_includes.h"
+#include "debug/dprint.h"
 
 #define DEBUG_PRINT 0
+#define ADD_DUMMY_COMPUTE 1
 
 // #include "debug_macros.h"
 
@@ -33,7 +35,13 @@ inline void tilize_in(
     tilize_init_short(in_cb_id, in_block_w);
     for (uint32_t in_subblock = 0; in_subblock < in_num_subblocks; ++in_subblock) {
         for (uint32_t h = 0; h < in_subblock_h; ++h) {
-            cb_wait_front(in_cb_id, in_block_w);
+            if (ADD_DUMMY_COMPUTE) {
+                cb_wait_front_w_dummy(in_cb_id, in_block_w);
+                tilize_init_math(in_cb_id, in_block_w);
+            } else {
+                cb_wait_front(in_cb_id, in_block_w);
+            }
+
             cb_reserve_back(out_cb_id, in_block_w);
             tilize_block(in_cb_id, in_block_w, out_cb_id);
             cb_push_back(out_cb_id, in_block_w);
@@ -155,7 +163,7 @@ void MAIN {
 #ifdef PRE_TILIZE
             reconfig_data_format_srca(in1_cb_id, in0_pretilize_cb_id);
 
-            tilize_in(in0_pretilize_cb_id, in0_subblock_h, in0_block_w, in0_num_subblocks, tilized_in0_cb_id);
+            // tilize_in(in0_pretilize_cb_id, in0_subblock_h, in0_block_w, in0_num_subblocks, tilized_in0_cb_id);
 
             mm_block_init_short_with_dt(
                 in0_cb_id, in1_cb_id, in0_pretilize_cb_id, false, out_subblock_w, out_subblock_h, in0_block_w);
@@ -176,8 +184,8 @@ void MAIN {
                 if (in0_block_w_i % in0_nblocks_w_tilize == 0) {
                     reconfig_data_format_srca(in1_cb_id, in0_pretilize_cb_id);
 
-                    // DPRINT_MATH(DPRINT<<"Tilize Loop "<<in0_block_h_i<<" "<<in0_block_w_i<<"\n";)
-                    tilize_in(in0_pretilize_cb_id, in0_subblock_h, in0_block_w, in0_num_subblocks, tilized_in0_cb_id);
+                //     // DPRINT_MATH(DPRINT<<"Tilize Loop "<<in0_block_h_i<<" "<<in0_block_w_i<<"\n";)
+                //     tilize_in(in0_pretilize_cb_id, in0_subblock_h, in0_block_w, in0_num_subblocks, tilized_in0_cb_id);
 
                     mm_block_init_short_with_dt(
                         in0_cb_id, in1_cb_id, in0_pretilize_cb_id, false, out_subblock_w, out_subblock_h, in0_block_w);

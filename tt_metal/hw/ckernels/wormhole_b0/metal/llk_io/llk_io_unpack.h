@@ -54,6 +54,21 @@ inline void llk_wait_tiles(int operand, std::int32_t num_tiles) {
     apply_mm_stagger(operand);
 }
 
+inline void llk_wait_tiles_w_dummy(int operand, std::int32_t num_tiles) {
+
+    dummy_compute_sync_post_code[0] = 0xdada01;
+
+    llk_wait_tiles(operand, num_tiles);
+
+    // 2-way handshake with dummy compute
+    *dummy_compute_sync_addr_data_arrived = 1;
+    dummy_compute_sync_post_code[0] = 0xdada02;
+    while (*dummy_compute_sync_addr_math_ack == 0);
+    *dummy_compute_sync_addr_data_arrived = 0;
+    dummy_compute_sync_post_code[0] = 0xdada00;
+
+}
+
 // Pop N tiles from the incoming stream
 inline void llk_pop_tiles(
     const std::int32_t operand, const std::int32_t num_tiles, const std::int32_t block_c_dim = 0) {
