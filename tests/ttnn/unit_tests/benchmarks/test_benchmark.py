@@ -150,9 +150,9 @@ matmul_configs = [
 ]
 
 
-@pytest.mark.skip(reason="WH didt hang, need to skip CI and run locally only")
+# @pytest.mark.skip(reason="WH didt hang, need to skip CI and run locally only")
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576, "trace_region_size": 3855488}], indirect=True)
-@pytest.mark.parametrize("grid_size", [(8, 8)])
+@pytest.mark.parametrize("grid_size", [(13, 10)])
 @pytest.mark.parametrize("tile_h", [32])
 @pytest.mark.parametrize("tile_w", [32])
 @pytest.mark.parametrize("num_warmup_iterations", [5])
@@ -208,6 +208,11 @@ def test_matmul_2d_host_perf(
                 matmul_shapes = matmul_shapes_bfloat4_b
             for m, k, n, in0_sharded, out_sharded, in0_block_w_div, num_out_blocks_h, num_out_blocks_w in matmul_shapes:
                 profiler.clear()
+
+                # scale input size to match BH grid size
+                m = (m // 8) * grid_size[1]
+                n = (n // 8) * grid_size[0]
+                k = (k // 8) * grid_size[0]
 
                 in0_shape = [1, 1, m, k]
                 in1_shape = [1, 1, k, n]
@@ -348,7 +353,9 @@ def test_matmul_2d_host_perf(
                             compute_kernel_config=compute_kernel_config,
                             output_tile=output_tile,
                         )
+                    logger.info(f"before sync")
                     ttnn.synchronize_device(device)
+                    logger.info(f"after sync")
                     profiler.end(f"run")
 
                 ttnn.DumpDeviceProfiler(device)
@@ -368,7 +375,8 @@ def test_matmul_2d_host_perf(
                 num_cores_full_grid = compute_grid_size.x * compute_grid_size.y
                 ideal_cycle_full_grid = m * k * n / tile_h / tile_w / 32 * cycle_per_tile / num_cores_full_grid
                 ideal_cycle_user_grid = m * k * n / tile_h / tile_w / 32 * cycle_per_tile / num_cores_user_grid
-                inference_cycle = inference_time_avg * get_device_freq() * 1e6
+                # inference_cycle = inference_time_avg * get_device_freq() * 1e6
+                inference_cycle = inference_time_avg * 800 * 1e6
                 utilization_full_grid = ideal_cycle_full_grid / inference_cycle
                 utilization_user_grid = ideal_cycle_user_grid / inference_cycle
                 utilization_full_grid_percentage = f"{utilization_full_grid * 100:.2f}%"
