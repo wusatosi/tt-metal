@@ -26,8 +26,9 @@ uint32_t math_sync_tile_dst_index = 0;
 uint32_t gl_alu_format_spec_reg = 0;
 uint32_t op_info_offset = 0;
 
-#define DUMMY_COMPUTE_SYNC_ADDR 0x15260
-#define DUMMY_COMPUTE_SYNC_POST_CODE 0x15260+8
+// MAKE SURE TO DOUBLE CHECK THIS VALUE WHEN REBASING
+#define DUMMY_COMPUTE_SYNC_ADDR 0x001e4
+#define DUMMY_COMPUTE_SYNC_POST_CODE DUMMY_COMPUTE_SYNC_ADDR + 8
 
 namespace ckernel
 {
