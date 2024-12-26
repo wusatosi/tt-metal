@@ -5,6 +5,8 @@
 #include <stdint.h>
 
 #include "dataflow_api.h"
+#include "debug/dprint.h"
+#include "ttnn/cpp/ttnn/deprecated/tt_dnn/kernels/dataflow/moreh_common.hpp"
 
 void kernel_main() {
     uint32_t src_addr = get_arg_val<uint32_t>(0);
@@ -15,10 +17,13 @@ void kernel_main() {
     uint32_t c_stride = get_arg_val<uint32_t>(5);
     uint32_t N = get_arg_val<uint32_t>(6);
     uint32_t C = get_arg_val<uint32_t>(7);
+    uint32_t param = get_arg_val<uint32_t>(10);
 
     constexpr bool src_is_dram = get_compile_time_arg_val(0) == 1;
 
     constexpr auto cb_id_src = tt::CBIndex::c_0;
+    constexpr auto cb_id_one = tt::CBIndex::c_3;
+    constexpr auto cb_id_param = tt::CBIndex::c_4;
     constexpr uint32_t onetile = 1;
 
     const uint32_t src_tile_bytes = get_tile_size(cb_id_src);
@@ -37,6 +42,14 @@ void kernel_main() {
 
     uint32_t next_channel_shift = c_stride - HtWt;
     uint32_t next_batch_shift = n_stride - c_stride * C;
+
+    union {
+        float f;
+        uint32_t u;
+    } scalar;
+    scalar.f = 1.0f;
+    fill_cb_with_value(cb_id_one, scalar.u);
+    fill_cb_with_value(cb_id_param, param);
 
     uint32_t num_tiles_read = 0;
     for (uint32_t n = start_n; n < N && num_tiles_read < num_tiles; ++n, start_c = 0) {

@@ -175,7 +175,12 @@ void set_or_update_runtime_arguments(
     const auto [aN, aC, aHt, aWt] = extract_shape_dims(a);
     const auto [bN, bC, bHt, bWt] = b.has_value() ? extract_shape_dims(*b) : std::tuple{1u, 1u, 1u, 1u};
     const auto [cN, cC, cHt, cWt] = extract_shape_dims(c);
-
+    const auto eps = 0.34f;
+    union {
+        float f;
+        uint32_t u;
+    } param;
+    param.f = eps;
     uint32_t num_output_tiles = c.volume() / c.tensor_spec().tile().get_tile_hw();
 
     constexpr bool row_major = true;
@@ -196,7 +201,7 @@ void set_or_update_runtime_arguments(
         } else if (core_group_2.contains(core)) {
             num_tiles_per_core = num_tiles_per_core_group_2;
         } else {
-            handle_args(program, reader_kernel_id, core, std::array<uint32_t, 10>{0});
+            handle_args(program, reader_kernel_id, core, std::array<uint32_t, 11>{0});
             handle_args(program, writer_kernel_id, core, std::array<uint32_t, 11>{0});
             handle_args(program, compute_kernel_id, core, std::array<uint32_t, 3>{0});
             continue;
@@ -213,7 +218,8 @@ void set_or_update_runtime_arguments(
             cN,
             cC,
             cHt,
-            cWt};
+            cWt,
+            param.u};
         handle_args(program, reader_kernel_id, core, reader_runtime_args);
 
         if (b.has_value()) {
@@ -305,6 +311,22 @@ BinaryNgDeviceOperation::ProgramFactory::cached_program_t BinaryNgDeviceOperatio
         create_cb(tt::CBIndex::c_0, program, all_device_cores, a_single_tile_size, num_tiles_per_cb, a_data_format);
     auto [c_cb, c_cb_handle] =
         create_cb(tt::CBIndex::c_2, program, all_device_cores, c_single_tile_size, num_tiles_per_cb, c_data_format);
+
+    // Intermediate buffer
+    auto [d_cb, d_cb_handle] =
+        create_cb(tt::CBIndex::c_3, program, all_device_cores, a_single_tile_size, num_tiles_per_cb, a_data_format);
+
+    auto [e_cb, e_cb_handle] =
+        create_cb(tt::CBIndex::c_4, program, all_device_cores, a_single_tile_size, num_tiles_per_cb, a_data_format);
+
+    auto [f_cb, f_cb_handle] =
+        create_cb(tt::CBIndex::c_5, program, all_device_cores, a_single_tile_size, num_tiles_per_cb, a_data_format);
+
+    auto [g_cb, g_cb_handle] =
+        create_cb(tt::CBIndex::c_6, program, all_device_cores, a_single_tile_size, num_tiles_per_cb, a_data_format);
+
+    auto [h_cb, h_cb_handle] =
+        create_cb(tt::CBIndex::c_16, program, all_device_cores, a_single_tile_size, num_tiles_per_cb, a_data_format);
 
     // If b is a scalar, we only need one tile in the CB
     uint32_t b_num_tiles_per_cb = b_buffer != nullptr ? num_tiles_per_cb : 1;
