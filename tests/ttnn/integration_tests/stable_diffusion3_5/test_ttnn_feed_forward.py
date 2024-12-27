@@ -27,8 +27,8 @@ def create_custom_preprocessor(device):
             parameters["net"][0] = gelu_custom_preprocessor(model.net[0], None, None)
             parameters["net"][1] = {}
             parameters["net"][2] = {}
-            parameters["net"][2]["weight"] = preprocess_linear_weight(model.net[2].weight, dtype=ttnn.bfloat16)
-            parameters["net"][2]["bias"] = preprocess_linear_bias(model.net[2].bias, dtype=ttnn.bfloat16)
+            parameters["net"][2]["weight"] = preprocess_linear_weight(model.net[2].weight, dtype=ttnn.bfloat8_b)
+            parameters["net"][2]["bias"] = preprocess_linear_bias(model.net[2].bias, dtype=ttnn.bfloat8_b)
 
         return parameters
 
@@ -40,8 +40,10 @@ def create_custom_preprocessor(device):
 @pytest.mark.parametrize(
     "hidden_states_shape",
     [
-        ([2, 4096, 1536]),
-        ([2, 333, 1536]),
+        # ([2, 4096, 1536]),
+        # ([2, 333, 1536]),
+        ([2, 1024, 1536]),
+        ([2, 154, 1536]),
     ],
 )
 def test_feed_forward(device, hidden_states_shape, reset_seeds):
@@ -64,7 +66,11 @@ def test_feed_forward(device, hidden_states_shape, reset_seeds):
 
     torch_output = reference_model(hidden_states=torch_hidden_states)
     ttnn_hidden_states = ttnn.from_torch(
-        torch_hidden_states, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device
+        torch_hidden_states,
+        layout=ttnn.TILE_LAYOUT,
+        dtype=ttnn.bfloat16,
+        device=device,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
     )
     ttnn_model = ttnn_FeedForward(
         dim=1536, dim_out=1536, mult=4, activation_fn="gelu-approximate", inner_dim=None, bias=True

@@ -13,7 +13,22 @@ class ttnn_TimestepEmbedding:
         self.linear_2_b = parameters.linear_2.bias
 
     def __call__(self, sample, device):
-        sample = ttnn.linear(sample, self.linear_1_w, bias=self.linear_1_b)
+        hifi2_kernel_config = ttnn.WormholeComputeKernelConfig(
+            math_fidelity=ttnn.MathFidelity.HiFi2,
+        )
+        sample = ttnn.linear(
+            sample,
+            self.linear_1_w,
+            bias=self.linear_1_b,
+            memory_config=ttnn.L1_MEMORY_CONFIG,
+            compute_kernel_config=hifi2_kernel_config,
+        )
         sample = ttnn.silu(sample)
-        sample = ttnn.linear(sample, self.linear_2_w, bias=self.linear_2_b)
+        sample = ttnn.linear(
+            sample,
+            self.linear_2_w,
+            bias=self.linear_2_b,
+            memory_config=ttnn.L1_MEMORY_CONFIG,
+            compute_kernel_config=hifi2_kernel_config,
+        )
         return sample

@@ -32,7 +32,9 @@ def test_ttnn_time_steps(init_inputs, device):
         device=device,
     )
     time_stamps = torch.tensor([100, 100], dtype=torch.int32)
-    tt_input = ttnn.from_torch(time_stamps, dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT)
+    tt_input = ttnn.from_torch(
+        time_stamps, dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG
+    )
     tt_input = ttnn.squeeze(tt_input, dim=0)
     tt_sub_module = tt_module(init_inputs[0], init_inputs[1], init_inputs[2], init_inputs[3])
     tt_out = tt_sub_module(tt_input, device)

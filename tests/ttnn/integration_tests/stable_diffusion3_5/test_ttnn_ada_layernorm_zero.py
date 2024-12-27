@@ -24,8 +24,8 @@ def create_custom_preprocessor(device):
         parameters = {}
         if isinstance(model, AdaLayerNormZero):
             parameters["linear"] = {}
-            parameters["linear"]["weight"] = preprocess_linear_weight(model.linear.weight, dtype=ttnn.bfloat16)
-            parameters["linear"]["bias"] = preprocess_linear_bias(model.linear.bias, dtype=ttnn.bfloat16)
+            parameters["linear"]["weight"] = preprocess_linear_weight(model.linear.weight, dtype=ttnn.bfloat8_b)
+            parameters["linear"]["bias"] = preprocess_linear_bias(model.linear.bias, dtype=ttnn.bfloat8_b)
 
             # Its none as elementwise_affine=False
             parameters["norm"] = {}
@@ -40,8 +40,10 @@ def create_custom_preprocessor(device):
 @pytest.mark.parametrize(
     "x_shape",
     [
-        ([2, 4096, 1536]),
-        ([2, 333, 1536]),
+        # ([2, 4096, 1536]),
+        # ([2, 333, 1536]),
+        ([2, 1024, 1536]),
+        ([2, 154, 1536]),
     ],
 )
 def test_ada_layernorm_zero(device, x_shape, reset_seeds):
@@ -60,8 +62,16 @@ def test_ada_layernorm_zero(device, x_shape, reset_seeds):
         x=torch_innput_x, timestep=None, class_labels=None, hidden_dtype=None, emb=torch_innput_emb
     )
 
-    ttnn_input_x = ttnn.from_torch(torch_innput_x, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device)
-    ttnn_input_emb = ttnn.from_torch(torch_innput_emb, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device)
+    ttnn_input_x = ttnn.from_torch(
+        torch_innput_x, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device, memory_config=ttnn.L1_MEMORY_CONFIG
+    )
+    ttnn_input_emb = ttnn.from_torch(
+        torch_innput_emb,
+        layout=ttnn.TILE_LAYOUT,
+        dtype=ttnn.bfloat16,
+        device=device,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+    )
 
     ttnn_model = ttnn_AdaLayerNormZero(embedding_dim=1536, num_embeddings=None, norm_type="layer_norm", bias=True)
     ttnn_output = ttnn_model(

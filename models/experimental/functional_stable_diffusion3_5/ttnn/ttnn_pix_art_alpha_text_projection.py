@@ -13,7 +13,22 @@ class ttnn_PixArtAlphaTextProjection:
         self.linear_2_b = parameters.linear_2.bias
 
     def __call__(self, caption, device):
-        hidden_states = ttnn.linear(caption, self.linear_1_w, bias=self.linear_1_b)
+        hifi2_kernel_config = ttnn.WormholeComputeKernelConfig(
+            math_fidelity=ttnn.MathFidelity.HiFi2,
+        )
+        hidden_states = ttnn.linear(
+            caption,
+            self.linear_1_w,
+            bias=self.linear_1_b,
+            memory_config=ttnn.L1_MEMORY_CONFIG,
+            compute_kernel_config=hifi2_kernel_config,
+        )
         hidden_states = ttnn.silu(hidden_states)
-        hidden_states = ttnn.linear(hidden_states, self.linear_2_w, bias=self.linear_2_b)
+        hidden_states = ttnn.linear(
+            hidden_states,
+            self.linear_2_w,
+            bias=self.linear_2_b,
+            memory_config=ttnn.L1_MEMORY_CONFIG,
+            compute_kernel_config=hifi2_kernel_config,
+        )
         return hidden_states

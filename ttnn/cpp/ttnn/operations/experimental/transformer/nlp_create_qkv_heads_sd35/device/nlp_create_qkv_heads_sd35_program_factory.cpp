@@ -5,7 +5,7 @@
 #include "tt_metal/host_api.hpp"
 #include "tt_metal/common/constants.hpp"
 #include "tt_metal/detail/util.hpp"
-#include "nlp_create_qkv_heads_segformer_device_operation.hpp"
+#include "nlp_create_qkv_heads_sd35_device_operation.hpp"
 #include "tt_metal/common/work_split.hpp"
 
 namespace ttnn::operations::experimental::transformer {
@@ -14,7 +14,7 @@ using namespace tt::constants;
 using namespace tt;
 using namespace tt::tt_metal;
 
-operation::ProgramWithCallbacks multi_core_nlp_create_qkv_heads_segformer(
+operation::ProgramWithCallbacks multi_core_nlp_create_qkv_heads_sd35(
     const Tensor& a, std::vector<Tensor>& output, CoreCoord compute_with_storage_grid_size) {
     const auto& ashape = a.get_legacy_shape();
 
@@ -32,15 +32,15 @@ operation::ProgramWithCallbacks multi_core_nlp_create_qkv_heads_segformer(
     ////////////////////////////////////////////////////////////////////////////
     //                      TM Parameters Setup
     ////////////////////////////////////////////////////////////////////////////
-    const uint32_t head_dim = 32;
+    const uint32_t head_dim = 64;
     uint32_t per_tensor_tiles = ashape[3] / TILE_WIDTH;
     const uint32_t q_num_tiles_per_tensor = per_tensor_tiles;
-    const uint32_t num_q_heads = q_num_tiles_per_tensor;  // hard-coding the head_dim = 32
+    const uint32_t num_q_heads = q_num_tiles_per_tensor / (head_dim / TILE_WIDTH);  // hard-coding the head_dim = 64
 
     // Per output tensor args
     // Output shape for Q/K/V is: [B, head_num, s, 32] # Needs shuffling from [B, 1, s, hidden_dim]
     uint32_t q_out_h_tiles = ashape[2] / TILE_WIDTH;
-    uint32_t q_out_w_tiles = 1;                                 // hard-coding the head_dim = 32
+    uint32_t q_out_w_tiles = (head_dim / TILE_WIDTH);           // hard-coding the head_dim = 64
     uint32_t q_out_c = q_num_tiles_per_tensor / q_out_w_tiles;  // num_heads
     uint32_t q_out_HtWt = q_out_h_tiles * q_out_w_tiles;
     uint32_t q_out_CHtWt = q_out_c * q_out_HtWt;
@@ -56,7 +56,6 @@ operation::ProgramWithCallbacks multi_core_nlp_create_qkv_heads_segformer(
     ////////////////////////////////////////////////////////////////////////////
     //                      Grayskull Device Setup
     ////////////////////////////////////////////////////////////////////////////
-    // TODO: modify the assert to be ==1
     TT_ASSERT((output.size() == 3), "Output vector must be size 3 !");
     tt_metal::Tensor& q = output[0];
     tt_metal::Tensor& k = output[1];
@@ -102,14 +101,14 @@ operation::ProgramWithCallbacks multi_core_nlp_create_qkv_heads_segformer(
     //////////////////////////////////////////////
     auto reader_kernel_id = tt_metal::CreateKernel(
         program,
-        "ttnn/cpp/ttnn/operations/experimental/transformer/nlp_create_qkv_heads_segformer/device/kernels/dataflow/"
+        "ttnn/cpp/ttnn/operations/experimental/transformer/nlp_create_qkv_heads_sd35/device/kernels/dataflow/"
         "reader_tm_tile_layout_nlp_create_qkv_heads.cpp",
         all_cores,
         tt_metal::ReaderDataMovementConfig(reader_compile_time_args, reader_defines));
 
     auto writer_kernel_id = tt_metal::CreateKernel(
         program,
-        "ttnn/cpp/ttnn/operations/experimental/transformer/nlp_create_qkv_heads_segformer/device/kernels/dataflow/"
+        "ttnn/cpp/ttnn/operations/experimental/transformer/nlp_create_qkv_heads_sd35/device/kernels/dataflow/"
         "writer_tm_tile_layout_nlp_create_qkv_heads.cpp",
         all_cores,
         tt_metal::WriterDataMovementConfig(writer_compile_time_args, writer_defines));
