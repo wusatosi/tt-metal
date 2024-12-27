@@ -13,6 +13,7 @@
 #include "dev_mem_map.h"
 #include "hostdevcommon/kernel_structs.h"
 #include "dev_msgs.h"
+#include "noc_overlay_parameters.h"
 #include "noc/noc_parameters.h"
 #include "debug/dprint.h"
 
@@ -75,4 +76,20 @@ uint32_t firmware_config_init(
                                          launch_msg_address->kernel_config.rta_offset[dispatch_class].crta_offset);
 
     return kernel_config_base[core_type_index];
+}
+
+FORCE_INLINE
+void reset_stream_register(uint32_t stream_id) {
+    NOC_STREAM_WRITE_REG(stream_id, STREAM_REMOTE_DEST_BUF_SIZE_REG_INDEX, 0);
+}
+
+FORCE_INLINE
+void increment_stream_register(uint32_t stream_id, uint32_t value) {
+    NOC_STREAM_WRITE_REG(
+        stream_id, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_UPDATE_REG_INDEX, value << REMOTE_DEST_BUF_WORDS_FREE_INC);
+}
+
+FORCE_INLINE
+uint32_t get_stream_register_value(uint32_t stream_id) {
+    return NOC_STREAM_READ_REG(stream_id, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_REG_INDEX);
 }

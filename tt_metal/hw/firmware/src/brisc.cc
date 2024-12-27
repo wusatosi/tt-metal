@@ -24,7 +24,6 @@
 #include "circular_buffer_init.h"
 #include "dataflow_api.h"
 #include "dev_mem_map.h"
-#include "noc_overlay_parameters.h"
 
 #include "debug/watcher_common.h"
 #include "debug/waypoint.h"
@@ -321,14 +320,8 @@ inline void set_ncrisc_kernel_resume_deassert_address() {
 }
 
 inline void run_triscs(dispatch_core_processor_masks enables) {
-    //*reinterpret_cast<volatile uint32_t*>(STREAM_REG_ADDR(STREAM_CHANNEL, STREAM_REMOTE_DEST_BUF_SIZE_REG_INDEX)) = 0;
-    // NOC_STREAM_WRITE_REG(STREAM_CHANNEL, STREAM_REMOTE_DEST_BUF_SIZE_REG_INDEX, 0);
     if (enables & DISPATCH_CLASS_MASK_TENSIX_ENABLE_COMPUTE) {
-        mailboxes->slave_sync.all = RUN_SYNC_MSG_ALL_TRISCS_GO;
-        NOC_STREAM_WRITE_REG(
-            STREAM_CHANNEL,
-            STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_UPDATE_REG_INDEX,
-            RUN_ALL_TRISCS << REMOTE_DEST_BUF_WORDS_FREE_INC);
+        increment_stream_register(STREAM_CHANNEL, RUN_ALL_TRISCS);
     }
 }
 
@@ -345,14 +338,16 @@ inline void finish_ncrisc_copy_and_run(dispatch_core_processor_masks enables) {
 
 inline void wait_ncrisc_trisc() {
     WAYPOINT("NTW");
-    while (mailboxes->slave_sync.all != RUN_SYNC_MSG_ALL_SLAVES_DONE) {
+    // stall on trisc first to reduce L1 hits
+    while (get_stream_register_value(STREAM_CHANNEL) & RUN_ALL_TRISCS != 0);  // stall on trisc first to reduce L1 hits
+    while (mailboxes->slave_sync.dm1 != RUN_SYNC_MSG_ALL_SLAVES_DONE) {
         invalidate_l1_cache();
     }
     WAYPOINT("NTD");
 }
 
 int main() {
-    NOC_STREAM_WRITE_REG(STREAM_CHANNEL, STREAM_REMOTE_DEST_BUF_SIZE_REG_INDEX, 0);
+    reset_stream_register(STREAM_CHANNEL);
     configure_l1_data_cache();
     DIRTY_STACK_MEMORY();
     WAYPOINT("I");

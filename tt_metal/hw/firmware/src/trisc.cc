@@ -15,7 +15,6 @@
 #include "debug/waypoint.h"
 #include "debug/dprint.h"
 #include "debug/stack_usage.h"
-#include "noc_overlay_parameters.h"
 #if !defined(UCK_CHLKC_MATH)
 #include "circular_buffer.h"
 #include "circular_buffer_init.h"
@@ -52,10 +51,6 @@ uint32_t op_info_offset __attribute__((used)) = 0;
 const uint8_t thread_id = COMPILE_FOR_TRISC;
 const uint8_t done_value = 1 << thread_id;
 
-#define GET_TRISC_RUN_EVAL(x, t) x##t
-#define GET_TRISC_RUN(x, t) GET_TRISC_RUN_EVAL(x, t)
-volatile tt_l1_ptr uint8_t *const trisc_run =
-    &GET_TRISC_RUN(((tt_l1_ptr mailboxes_t *)(MEM_MAILBOX_BASE))->slave_sync.trisc, COMPILE_FOR_TRISC);
 tt_l1_ptr mailboxes_t *const mailboxes = (tt_l1_ptr mailboxes_t *)(MEM_MAILBOX_BASE);
 }  // namespace ckernel
 
@@ -77,9 +72,7 @@ constexpr bool cb_init_write = false;
 
 using namespace ckernel;
 
-int main(int argc, char *argv[]) {
-    volatile uint32_t* noc_register = reinterpret_cast<volatile uint32_t*>(
-        STREAM_REG_ADDR(STREAM_CHANNEL, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_REG_INDEX));
+int main(int argc, char* argv[]) {
     configure_l1_data_cache();
     DIRTY_STACK_MEMORY();
     WAYPOINT("I");
@@ -95,10 +88,7 @@ int main(int argc, char *argv[]) {
     // Cleanup profiler buffer incase we never get the go message
     while (1) {
         WAYPOINT("W");
-        while ((*noc_register & done_value) != done_value);
-        // while (*trisc_run != RUN_SYNC_MSG_GO) {
-        //    invalidate_l1_cache();
-        //}
+        while ((get_stream_register_value(STREAM_CHANNEL) & done_value) != done_value);
         DeviceZoneScopedMainN("TRISC-FW");
 
         uint32_t launch_msg_rd_ptr = mailboxes->launch_msg_rd_ptr;
@@ -130,12 +120,8 @@ int main(int argc, char *argv[]) {
         RECORD_STACK_USAGE();
         WAYPOINT("D");
 
+        increment_stream_register(STREAM_CHANNEL, -done_value);
         // Signal completion
         tensix_sync();
-        *trisc_run = RUN_SYNC_MSG_DONE;
-        NOC_STREAM_WRITE_REG(
-            STREAM_CHANNEL,
-            STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_UPDATE_REG_INDEX,
-            (-done_value) << REMOTE_DEST_BUF_WORDS_FREE_INC);
     }
 }
