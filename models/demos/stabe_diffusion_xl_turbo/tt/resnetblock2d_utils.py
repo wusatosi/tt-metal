@@ -29,15 +29,19 @@ def run_conv_with_split(
     assert input_channels % split_factor == 0
     split_input_channels = input_channels // split_factor
     input_tensor = ttnn.to_layout(input_tensor, layout=ttnn.ROW_MAJOR_LAYOUT)
-    ttnn_weight = ttnn.to_torch(ttnn_weight)
-    ttnn_weight = ttnn.from_torch(ttnn_weight, dtype=ttnn.float32)
 
-    ttnn_bias = ttnn.to_torch(ttnn_bias)
-    ttnn_bias = ttnn.from_torch(ttnn_bias, dtype=ttnn.float32)
+    ttnn_weight = ttnn.from_device(ttnn_weight)
+    ttnn_bias = ttnn.from_device(ttnn_bias)
+
+    ttnn_weight = ttnn.to_dtype(ttnn_weight, ttnn.float32)
+    ttnn_bias = ttnn.to_dtype(ttnn_bias, ttnn.float32)
+
     ttnn_bias = ttnn.reshape(ttnn_bias, (1, 1, 1, ttnn_bias.shape[0]))
 
-    split_input_tensors = ttnn.split(input_tensor, split_factor, 1)
+    split_input_tensors = ttnn.split(input_tensor, split_factor, 1, memory_config=ttnn.L1_MEMORY_CONFIG)
+    ttnn.deallocate(input_tensor)
     split_weight_tensors = ttnn.split(ttnn_weight, split_factor, 1)
+    ttnn.deallocate(ttnn_weight)
     reader_patterns_cache = {}
 
     conv_config = ttnn.Conv2dConfig(
@@ -55,6 +59,20 @@ def run_conv_with_split(
     out_channels = tt_weight_tensor[1].shape[0]
     for i in range(split_factor):
         tt_input_tensor = ttnn.permute(split_input_tensors[i], (0, 2, 3, 1))
+        print(
+            tt_weight_tensor[i].shape,
+            tt_weight_tensor[i].memory_config(),
+            tt_weight_tensor[i].get_layout(),
+            tt_weight_tensor[i].get_dtype(),
+        )
+        print(ttnn_bias.shape, ttnn_bias.memory_config(), ttnn_bias.get_layout(), ttnn_bias.get_dtype())
+        print(
+            tt_input_tensor.shape,
+            tt_input_tensor.memory_config(),
+            tt_input_tensor.get_layout(),
+            tt_input_tensor.get_dtype(),
+        )
+
         tt_input_tensor = ttnn.from_device(tt_input_tensor)
         [tt_output_tensor_on_device, [out_height, out_width], [weights_device, bias_device]] = ttnn.conv2d(
             input_tensor=tt_input_tensor,
@@ -74,6 +92,7 @@ def run_conv_with_split(
             conv_op_cache=reader_patterns_cache,
             return_output_dim=True,
             return_weights_and_bias=True,
+            memory_config=ttnn.L1_MEMORY_CONFIG,
         )
         conv_output_tensor = ttnn.reshape(tt_output_tensor_on_device, (batch_size, out_height, out_width, out_channels))
         conv_output_tensor = ttnn.sharded_to_interleaved(conv_output_tensor)
@@ -82,7 +101,13 @@ def run_conv_with_split(
             output_tensor = conv_output_tensor
         else:
             output_tensor = ttnn.add(output_tensor, conv_output_tensor)
-
+        ttnn.deallocate(tt_input_tensor)
+        ttnn.deallocate(tt_weight_tensor[i])
+        ttnn.deallocate(split_weight_tensors[i])
+        ttnn.deallocate(split_input_tensors[i])
+    ttnn.deallocate(conv_output_tensor)
+    ttnn.deallocate(tt_output_tensor_on_device)
+    ttnn.deallocate(ttnn_bias)
     return output_tensor
 
 
@@ -108,21 +133,23 @@ def run_conv(
     fp32_accum=False,
     packer_l1_acc=False,
     output_layout=ttnn.TILE_LAYOUT,
-    deallocate_activation=False,
+    deallocate_activation=True,
     debug=False,
     groups=1,
     shard_layout=None,
-    auto_shard=False,
+    auto_shard=True,
 ):
     batch_size = tt_input_tensor.shape[0]
 
-    tt_weight_tensor = ttnn.to_torch(tt_weight_tensor)
-    tt_weight_tensor = ttnn.from_torch(tt_weight_tensor, dtype=ttnn.float32)
-    tt_bias_tensor = ttnn.to_torch(tt_bias_tensor)
-    tt_bias_tensor = ttnn.from_torch(tt_bias_tensor, dtype=ttnn.float32)
+    print(tt_weight_tensor.get_dtype())
+    print(tt_bias_tensor.get_dtype())
     tt_weight_tensor = ttnn.from_device(tt_weight_tensor)
     tt_bias_tensor = ttnn.from_device(tt_bias_tensor)
-    tt_input_tensor = ttnn.from_device(tt_input_tensor)
+    tt_weight_tensor = ttnn.to_dtype(tt_weight_tensor, ttnn.float32)
+    tt_bias_tensor = ttnn.to_dtype(tt_bias_tensor, ttnn.float32)
+    print(tt_weight_tensor.get_dtype())
+    print(tt_bias_tensor.get_dtype())
+
     tt_bias_tensor = ttnn.reshape(tt_bias_tensor, (1, 1, 1, tt_bias_tensor.shape[0]))
     reader_patterns_cache = {}
 
@@ -159,7 +186,19 @@ def run_conv(
         if config_override["num_cores_nhw"] == 98:
             conv_config.core_grid = ttnn.CoreRangeSet({ttnn.CoreRange((0, 0), (11, 7)), ttnn.CoreRange((0, 8), (1, 8))})
             conv_config.override_sharding_config = True
-
+    print(
+        tt_weight_tensor.shape,
+        tt_weight_tensor.memory_config(),
+        tt_weight_tensor.get_layout(),
+        tt_weight_tensor.get_dtype(),
+    )
+    print(tt_bias_tensor.shape, tt_bias_tensor.memory_config(), tt_bias_tensor.get_layout(), tt_bias_tensor.get_dtype())
+    print(
+        tt_input_tensor.shape,
+        tt_input_tensor.memory_config(),
+        tt_input_tensor.get_layout(),
+        tt_input_tensor.get_dtype(),
+    )
     [tt_output_tensor_on_device, [out_height, out_width], [weights_device, bias_device]] = ttnn.conv2d(
         input_tensor=tt_input_tensor,
         weight_tensor=tt_weight_tensor,
@@ -181,51 +220,41 @@ def run_conv(
         groups=groups,
         return_weights_and_bias=True,
         return_output_dim=True,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
     )
 
     tt_output_tensor_on_device = ttnn.reshape(
         tt_output_tensor_on_device,
         (tt_output_tensor_on_device.shape[0], out_height, out_width, tt_output_tensor_on_device.shape[-1]),
     )
-    tt_output_tensor_on_device = ttnn.to_torch(tt_output_tensor_on_device)
-    tt_output_tensor_on_device = ttnn.from_torch(
-        tt_output_tensor_on_device, dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT
-    )
 
     tt_output_tensor_on_device = ttnn.permute(tt_output_tensor_on_device, (0, 3, 1, 2))
     return tt_output_tensor_on_device
 
 
-def get_mask_tensor(C, groups, grid_size, device):
+def get_mask_tensor(C, groups, grid_size):
     input_mask_tensor = ttnn.create_group_norm_input_mask(C, groups, grid_size)
     input_mask_tensor = ttnn.from_torch(
         input_mask_tensor,
         dtype=ttnn.DataType.BFLOAT8_B,
         layout=ttnn.TILE_LAYOUT,
-        device=device,
-        memory_config=ttnn.DRAM_MEMORY_CONFIG,
     )
 
     return input_mask_tensor
 
 
-def get_weights(weight, bias, C, grid_size, device):
+def get_weights(weight, bias, C, grid_size):
     gamma = ttnn.create_group_norm_weight_bias_rm(ttnn.to_torch(weight), C, grid_size)
     beta = ttnn.create_group_norm_weight_bias_rm(ttnn.to_torch(bias), C, grid_size)
-
     gamma_t = ttnn.from_torch(
         gamma,
         dtype=ttnn.DataType.BFLOAT16,
         layout=ttnn.ROW_MAJOR_LAYOUT,
-        device=device,
-        memory_config=ttnn.DRAM_MEMORY_CONFIG,
     )
     beta_t = ttnn.from_torch(
         beta,
         dtype=ttnn.DataType.BFLOAT16,
         layout=ttnn.ROW_MAJOR_LAYOUT,
-        device=device,
-        memory_config=ttnn.DRAM_MEMORY_CONFIG,
     )
     return gamma_t, beta_t
 
@@ -275,7 +304,7 @@ def get_inputs(device, input_tensor, grid_size):
     in_sharded_mem_config = ttnn.MemoryConfig(tensor_memory_layout, ttnn.BufferType.L1, shard_spec)
 
     input_tensor = ttnn.to_memory_config(input_tensor, memory_config=in_sharded_mem_config)
-    return input_tensor
+    return input_tensor, in_sharded_mem_config
 
 
 def update_params(parameters):
@@ -296,34 +325,34 @@ def update_params(parameters):
             "conv_shortcut": False,
         },
         (1, 0): {
-            "split_conv_1": False,
-            "conv1_split_factor": 4,
-            "split_conv_2": True,
+            "split_conv_1": True,
+            "conv1_split_factor": 2,
+            "split_conv_2": False,
             "conv2_split_factor": 2,
             "conv_shortcut": True,
-            "split_conv_3": True,
+            "split_conv_3": False,
             "conv3_split_factor": 4,
         },
         (1, 1): {
-            "split_conv_1": True,
+            "split_conv_1": False,
             "conv1_split_factor": 2,
-            "split_conv_2": True,
+            "split_conv_2": False,
             "conv2_split_factor": 2,
             "conv_shortcut": False,
         },
         (2, 0): {
-            "split_conv_1": True,
+            "split_conv_1": False,
             "conv1_split_factor": 4,
-            "split_conv_2": True,
+            "split_conv_2": False,
             "conv2_split_factor": 8,
             "conv_shortcut": True,
-            "split_conv_3": True,
+            "split_conv_3": False,
             "conv3_split_factor": 8,
         },
         (2, 1): {
-            "split_conv_1": True,
+            "split_conv_1": False,
             "conv1_split_factor": 8,
-            "split_conv_2": True,
+            "split_conv_2": False,
             "conv2_split_factor": 8,
             "conv_shortcut": False,
         },
@@ -331,16 +360,16 @@ def update_params(parameters):
 
     mid_block = {
         (0, 0): {
-            "split_conv_1": True,
+            "split_conv_1": False,
             "conv1_split_factor": 8,
-            "split_conv_2": True,
+            "split_conv_2": False,
             "conv2_split_factor": 8,
             "conv_shortcut": False,
         },
         (1, 0): {
-            "split_conv_1": True,
+            "split_conv_1": False,
             "conv1_split_factor": 8,
-            "split_conv_2": True,
+            "split_conv_2": False,
             "conv2_split_factor": 8,
             "conv_shortcut": False,
         },
@@ -350,10 +379,10 @@ def update_params(parameters):
         (0, 0): {
             "split_conv_1": True,
             "conv1_split_factor": 16,
-            "split_conv_2": True,
+            "split_conv_2": False,
             "conv2_split_factor": 8,
             "conv_shortcut": True,
-            "split_conv_3": True,
+            "split_conv_3": False,
             "conv3_split_factor": 4,
             "use_torch_conv1": False,
             "use_torch_conv2": False,
@@ -362,22 +391,22 @@ def update_params(parameters):
         (0, 1): {
             "split_conv_1": True,
             "conv1_split_factor": 16,
-            "split_conv_2": True,
+            "split_conv_2": False,
             "conv2_split_factor": 8,
             "conv_shortcut": True,
-            "split_conv_3": True,
+            "split_conv_3": False,
             "conv3_split_factor": 4,
             "use_torch_conv1": False,
             "use_torch_conv2": False,
             "use_torch_conv3": False,
         },
         (0, 2): {
-            "split_conv_1": True,
+            "split_conv_1": False,
             "conv1_split_factor": 16,
-            "split_conv_2": True,
+            "split_conv_2": False,
             "conv2_split_factor": 16,
             "conv_shortcut": True,
-            "split_conv_3": True,
+            "split_conv_3": False,
             "conv3_split_factor": 16,
             "use_torch_conv1": False,
             "use_torch_conv2": False,
@@ -385,24 +414,24 @@ def update_params(parameters):
         },
         (1, 0): {
             "split_conv_1": True,
-            "conv1_split_factor": 12,
-            "split_conv_2": True,
+            "conv1_split_factor": 8,
+            "split_conv_2": False,
             "conv2_split_factor": 4,
             "conv_shortcut": True,
             "split_conv_3": True,
-            "conv3_split_factor": 4,
+            "conv3_split_factor": 16,
             "use_torch_conv1": False,
             "use_torch_conv2": False,
             "use_torch_conv3": False,
         },
         (1, 1): {
-            "split_conv_1": True,
+            "split_conv_1": False,
             "conv1_split_factor": 8,
-            "split_conv_2": True,
+            "split_conv_2": False,
             "conv2_split_factor": 4,
             "conv_shortcut": True,
             "split_conv_3": True,
-            "conv3_split_factor": 4,
+            "conv3_split_factor": 2,
             "use_torch_conv1": False,
             "use_torch_conv2": False,
             "use_torch_conv3": False,
@@ -410,7 +439,7 @@ def update_params(parameters):
         (1, 2): {
             "split_conv_1": True,
             "conv1_split_factor": 8,
-            "split_conv_2": True,
+            "split_conv_2": False,
             "conv2_split_factor": 4,
             "conv_shortcut": True,
             "split_conv_3": True,
@@ -421,12 +450,12 @@ def update_params(parameters):
         },
         (2, 0): {
             "split_conv_1": True,
-            "conv1_split_factor": 24,
+            "conv1_split_factor": 8,
             "split_conv_2": True,
-            "conv2_split_factor": 4,
+            "conv2_split_factor": 2,
             "conv_shortcut": True,
             "split_conv_3": True,
-            "conv3_split_factor": 4,
+            "conv3_split_factor": 8,
             "use_torch_conv1": False,
             "use_torch_conv2": False,
             "use_torch_conv3": False,
@@ -435,7 +464,7 @@ def update_params(parameters):
             "split_conv_1": True,
             "conv1_split_factor": 8,
             "split_conv_2": True,
-            "conv2_split_factor": 4,
+            "conv2_split_factor": 2,
             "conv_shortcut": True,
             "split_conv_3": True,
             "conv3_split_factor": 8,
@@ -447,7 +476,7 @@ def update_params(parameters):
             "split_conv_1": True,
             "conv1_split_factor": 8,
             "split_conv_2": True,
-            "conv2_split_factor": 4,
+            "conv2_split_factor": 2,
             "conv_shortcut": True,
             "split_conv_3": True,
             "conv3_split_factor": 8,

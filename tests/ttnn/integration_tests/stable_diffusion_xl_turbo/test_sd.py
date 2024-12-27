@@ -7,7 +7,7 @@ import torch
 import pytest
 from tests.ttnn.utils_for_testing import assert_with_pcc
 from diffusers import AutoPipelineForText2Image
-from models.demos.stabe_diffusion_xl_turbo.tt.resnetblock2d_utils import update_params
+from models.demos.stabe_diffusion_xl_turbo.tt.resnetblock2d_utils import update_params, run_conv_with_split, run_conv
 from models.demos.stabe_diffusion_xl_turbo.tt.sd_transformer2d import (
     sd_geglu,
     sd_feed_forward,
@@ -356,23 +356,23 @@ def test_transformer_2d_model(input_shape, index1, index2, block, attention_head
 @pytest.mark.parametrize(
     "batch_size, in_channels, input_height, input_width, index1, index2, block_name",
     [
-        # (1, 320, 128, 128, 0, 0, "down"),
-        # (1, 320, 128, 128, 0, 1, "down"),
-        # (1, 320, 64, 64, 1, 0, "down"),  #  0.9790
-        # (1, 640, 64, 64, 1, 1, "down"),  #  0.982
-        # (1, 640, 32, 32, 2, 0, "down"),  #  0.95
-        # (1, 1280, 32, 32, 2, 1, "down"),
-        # (1, 1280, 32, 32, 0, 0, "mid"),  # 0.9858
-        # (1, 1280, 32, 32, 1, 0, "mid"),  # 0.9746
-        # (1, 2560, 32, 32, 0, 0, "up"),  #  0.9509
-        # (1, 2560, 32, 32, 0, 1, "up"),  #  0.9595
-        # (1, 1920, 32, 32, 0, 2, "up"),  #  0.7976363194085021
-        # (1, 1920, 64, 64, 1, 0, "up"),  #  0.9596
-        # (1, 1280, 64, 64, 1, 1, "up"),  #  0.9555
-        (1, 960, 64, 64, 1, 2, "up"),  # 0.9764
-        # (1, 960, 128, 128, 2, 0, "up"),  #  OOM
-        # (1, 640, 128, 128, 2, 1, "up"),  #  0.93
-        # (1, 640, 128, 128, 2, 2, "up"),  # 0.9760
+        (1, 320, 128, 128, 0, 0, "down"),
+        (1, 320, 128, 128, 0, 1, "down"),
+        (1, 320, 64, 64, 1, 0, "down"),
+        (1, 640, 64, 64, 1, 1, "down"),
+        (1, 640, 32, 32, 2, 0, "down"),
+        (1, 1280, 32, 32, 2, 1, "down"),
+        (1, 1280, 32, 32, 0, 0, "mid"),
+        (1, 1280, 32, 32, 1, 0, "mid"),  # 0.988
+        (1, 2560, 32, 32, 0, 0, "up"),  #  0.96
+        (1, 2560, 32, 32, 0, 1, "up"),  #  0.97
+        (1, 1920, 32, 32, 0, 2, "up"),  #  0.979
+        (1, 1920, 64, 64, 1, 0, "up"),  # 0.94
+        (1, 1280, 64, 64, 1, 1, "up"),
+        (1, 960, 64, 64, 1, 2, "up"),  # 0.94
+        (1, 960, 128, 128, 2, 0, "up"),  # 0.94
+        (1, 640, 128, 128, 2, 1, "up"),  # 0.94
+        (1, 640, 128, 128, 2, 2, "up"),  # 0.98
     ],
 )
 def test_resnet_block_2d_1024x1024(
@@ -395,7 +395,9 @@ def test_resnet_block_2d_1024x1024(
         custom_preprocessor=custom_preprocessor,
         device=device,
     )
+    print("update_param")
     parameters = update_params(parameters)
+
     if block_name == "up":
         parameters = parameters.up_blocks[index1].resnets[index2]
         resnet = model.up_blocks[index1].resnets[index2]
@@ -405,9 +407,11 @@ def test_resnet_block_2d_1024x1024(
     else:
         parameters = parameters.mid_block.resnets[index1]
         resnet = model.mid_block.resnets[index1]
+
     temb_channels = 1280
     hidden_states_shape = [batch_size, in_channels, input_height, input_width]
     temb_shape = [1, temb_channels]
+
     input = torch.randn(hidden_states_shape)
     temb = torch.randn(temb_shape)
     torch_output = resnet(input, temb)
@@ -416,9 +420,16 @@ def test_resnet_block_2d_1024x1024(
         dtype=ttnn.DataType.BFLOAT16,
         layout=ttnn.ROW_MAJOR_LAYOUT,
         device=device,
+        # memory_config=ttnn.L1_MEMORY_CONFIG,
+    )
+    temb = ttnn.from_torch(
+        temb,
+        dtype=ttnn.bfloat16,
+        layout=ttnn.TILE_LAYOUT,
+        device=device,
         memory_config=ttnn.L1_MEMORY_CONFIG,
     )
-    temb = ttnn.from_torch(temb, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)
+
     resnet_block = ResnetBlock2D(
         config,
         input,
@@ -426,7 +437,8 @@ def test_resnet_block_2d_1024x1024(
         parameters,
         device,
     )
-    resnet_block = ttnn.to_torch(resnet_block)
+    resnet_block = ttnn.to_torch(resnet_block)  # .permute(0,3,1,2)
+    print(torch_output.shape, resnet_block.shape)
     assert_with_pcc(torch_output, resnet_block, 0.99)
 
 
@@ -478,8 +490,24 @@ def test_unetmidblock2dcrossattn_1024x1024(
 
 
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 32768}], indirect=True)
+@pytest.mark.parametrize(
+    "in_channels, res_channel1, res_channel2, res_channel3, input_height, input_width, index, num_layers, attention_head_dim",
+    [
+        (1280, 640, 1280, 1280, 32, 32, 0, 20, 10),
+        (1280, 320, 640, 640, 64, 64, 1, 10, 2),
+    ],
+)
 def test_crossattnupblock2d_1024x1024(
     device,
+    in_channels,
+    res_channel1,
+    res_channel2,
+    res_channel3,
+    input_height,
+    input_width,
+    index,
+    num_layers,
+    attention_head_dim,
 ):
     pipe = AutoPipelineForText2Image.from_pretrained("stabilityai/sdxl-turbo")
     model = pipe.unet
@@ -493,13 +521,13 @@ def test_crossattnupblock2d_1024x1024(
     )
     parameters = update_params(parameters)
 
-    model = model.up_blocks[1]
-    parameters = parameters.up_blocks[1]
+    model = model.up_blocks[index]
+    parameters = parameters.up_blocks[index]
 
-    hidden_states_shape = [1, 1280, 64, 64]
-    res_hidden_states_tuple1 = [1, 320, 64, 64]
-    res_hidden_states_tuple2 = [1, 640, 64, 64]
-    res_hidden_states_tuple3 = [1, 640, 64, 64]
+    hidden_states_shape = [1, in_channels, input_height, input_width]
+    res_hidden_states_tuple1 = [1, res_channel1, input_height, input_width]
+    res_hidden_states_tuple2 = [1, res_channel2, input_height, input_width]
+    res_hidden_states_tuple3 = [1, res_channel3, input_height, input_width]
     temb_shape = [1, 1280]
     encoder_hidden_states = [1, 77, 2048]
 
@@ -559,8 +587,8 @@ def test_crossattnupblock2d_1024x1024(
         ttnn_encoder_hidden_states,
         parameters,
         config,
-        num_layers=10,
-        attention_head_dim=20,
+        num_layers=num_layers,
+        attention_head_dim=attention_head_dim,
     )
 
     ttnn_output = ttnn.to_torch(ttnn_out)
@@ -597,3 +625,70 @@ def test_upsample(device, N, C, H, W, index, reset_seeds):
     output = ttnn.to_torch(output)
 
     assert_with_pcc(torch_output, output, 0.94 if index == 0 else 0.93)  # -0.000740
+
+
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 32768}], indirect=True)
+def test_split_conv(device):
+    torch.manual_seed(9)
+    weigts_shape = [320, 320, 3, 3]
+    bias_shape = [320]
+    input_shape = [1, 320, 128, 128]
+
+    bias = torch.randn(bias_shape, dtype=torch.bfloat16).float()
+    weights = torch.randn(weigts_shape, dtype=torch.bfloat16).float()
+    input = torch.randn(input_shape, dtype=torch.bfloat16).float()
+
+    torch_out_golden_tensor = torch.nn.functional.conv2d(
+        input,
+        weights,
+        bias=bias,
+        stride=(1, 1),
+        padding=(1, 1),
+    )
+
+    tt_bias = ttnn.from_torch(bias, dtype=ttnn.bfloat16)
+    tt_weights = ttnn.from_torch(weights, dtype=ttnn.bfloat16)
+    tt_input = ttnn.from_torch(input, dtype=ttnn.bfloat16, device=device)
+
+    parameters = {}
+
+    tt_out = run_conv_with_split(device, tt_input, 1, parameters, 3, 1, 1, 2, ttnn_weight=tt_weights, ttnn_bias=tt_bias)
+    # tt_out = run_conv(device, 320, 320,128,128, 3,1,1,tt_input,tt_weights,tt_bias )
+
+    ttnn_output = ttnn.to_torch(tt_out)
+
+    assert_with_pcc(torch_out_golden_tensor, ttnn_output, 0.99)
+
+
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 32768}], indirect=True)
+def test_conv(device):
+    torch.manual_seed(9)
+    weigts_shape = [1280, 1280, 3, 3]
+    bias_shape = [1280]
+    input_shape = [1, 1280, 32, 32]
+
+    bias = torch.randn(bias_shape, dtype=torch.bfloat16).float()
+    weights = torch.randn(weigts_shape, dtype=torch.bfloat16).float()
+    input = torch.randn(input_shape, dtype=torch.bfloat16).float()
+
+    torch_out_golden_tensor = torch.nn.functional.conv2d(
+        input,
+        weights,
+        bias=bias,
+        stride=(1, 1),
+        padding=(1, 1),
+    )
+
+    tt_bias = ttnn.from_torch(bias, dtype=ttnn.bfloat16)
+    tt_weights = ttnn.from_torch(weights, dtype=ttnn.bfloat16)
+    tt_input = ttnn.from_torch(input, dtype=ttnn.bfloat16, device=device)
+    tt_input = ttnn.permute(tt_input, (0, 2, 3, 1))
+
+    parameters = {}
+
+    tt_out = run_conv(device, 1280, 1280, 32, 32, 3, 1, 1, tt_input, tt_weights, tt_bias)
+    # tt_out = run_conv(device, 320, 320,128,128, 3,1,1,tt_input,tt_weights,tt_bias )
+
+    ttnn_output = ttnn.to_torch(tt_out)
+
+    assert_with_pcc(torch_out_golden_tensor, ttnn_output, 0.99)

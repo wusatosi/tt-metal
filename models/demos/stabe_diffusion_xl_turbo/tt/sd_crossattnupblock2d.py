@@ -32,7 +32,6 @@ def sd_crossattnupblock2d(
         parameters=parameters.attentions[0],
         config=config,
     )  # 0.874596164932406
-    # return hidden_states[0]
 
     hidden_states = ttnn.concat((hidden_states[0], tt_res_hidden_states_tuple[1]), dim=1)
     hidden_states = resnetblock2d.ResnetBlock2D(
@@ -47,11 +46,6 @@ def sd_crossattnupblock2d(
         parameters=parameters.attentions[1],
         config=config,
     )
-
-    # if hidden_states.get_layout() != ttnn.ROW_MAJOR_LAYOUT:
-    #     hidden_states = ttnn.to_layout(hidden_states, ttnn.ROW_MAJOR_LAYOUT)
-    # if tt_res_hidden_states_tuple[0].get_layout() != ttnn.ROW_MAJOR_LAYOUT:
-    #     tt_res_hidden_states_tuple[0] = ttnn.to_layout((tt_res_hidden_states_tuple[0]), ttnn.ROW_MAJOR_LAYOUT)
 
     hidden_states = ttnn.concat((hidden_states[0], tt_res_hidden_states_tuple[0]), dim=1)
     hidden_states = resnetblock2d.ResnetBlock2D(
