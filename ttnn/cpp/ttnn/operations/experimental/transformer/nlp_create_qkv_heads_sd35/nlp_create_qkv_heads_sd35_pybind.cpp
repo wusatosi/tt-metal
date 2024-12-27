@@ -4,20 +4,20 @@
 
 #include "ttnn/cpp/pybind11/decorators.hpp"
 
-#include "ttnn/operations/experimental/transformer/nlp_create_qkv_heads_segformer/nlp_create_qkv_heads_segformer.hpp"
-#include "ttnn/operations/experimental/transformer/nlp_create_qkv_heads_segformer/nlp_create_qkv_heads_segformer_pybind.hpp"
+#include "ttnn/operations/experimental/transformer/nlp_create_qkv_heads_sd35/nlp_create_qkv_heads_sd35.hpp"
+#include "ttnn/operations/experimental/transformer/nlp_create_qkv_heads_sd35/nlp_create_qkv_heads_sd35_pybind.hpp"
 
 namespace ttnn::operations::experimental::transformer::detail {
 
-void bind_nlp_create_qkv_heads_segformer(pybind11::module& module) {
+void bind_nlp_create_qkv_heads_sd35(pybind11::module& module) {
     ttnn::bind_registered_operation(
         module,
-        ttnn::experimental::nlp_create_qkv_heads_segformer,
+        ttnn::experimental::nlp_create_qkv_heads_sd35,
         R"doc(
             Shuffles [B, 1, S, hidden_dim] one of q,k,v tensors into heads with shapes [B, head_count, S, head_dim].
         )doc",
         ttnn::pybind_overload_t{
-            [](const decltype(ttnn::experimental::nlp_create_qkv_heads_segformer)& self,
+            [](const decltype(ttnn::experimental::nlp_create_qkv_heads_sd35)& self,
                const ttnn::Tensor& input_tensor_q,
                const std::optional<ttnn::MemoryConfig>& memory_config,
                std::optional<std::vector<std::optional<ttnn::Tensor>>>& optional_output_tensors,

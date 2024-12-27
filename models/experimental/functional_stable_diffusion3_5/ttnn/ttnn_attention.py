@@ -50,12 +50,16 @@ class ttnn_Attention:
         self.heads = out_dim // dim_head if out_dim is not None else heads
         self.added_kv_proj_dim = added_kv_proj_dim
         self.added_proj_bias = added_proj_bias
-        if qk_norm is None:
-            self.norm_q = None
-            self.norm_k = None
-        else:
+        self.eps = eps
+        if qk_norm is not None:
             self.norm_q = ttnn_RMSNorm(dim=dim_head, eps=eps, elementwise_affine=True, parameters=parameters.norm_q)
             self.norm_k = ttnn_RMSNorm(dim=dim_head, eps=eps, elementwise_affine=True, parameters=parameters.norm_k)
+            self.param_norm_q = parameters.norm_q
+            self.param_norm_k = parameters.norm_k
+        else:
+            self.norm_q = None
+            self.norm_k = None
+
         if qk_norm is not None and added_kv_proj_dim is not None:
             if qk_norm == "rms_norm":
                 self.norm_added_q = ttnn_RMSNorm(
@@ -64,6 +68,8 @@ class ttnn_Attention:
                 self.norm_added_k = ttnn_RMSNorm(
                     dim=dim_head, eps=eps, elementwise_affine=True, parameters=parameters.norm_added_k
                 )
+                self.param_norm_added_q = parameters.norm_added_q
+                self.param_norm_added_k = parameters.norm_added_k
         else:
             self.norm_added_q = None
             self.norm_added_k = None
@@ -108,98 +114,203 @@ class ttnn_JointAttnProcessor2_0:
         pass
 
     def __call__(self, ttnn_Attention, hidden_states, encoder_hidden_states, attention_mask, device):
-        print(hidden_states.memory_config())
+        # print(hidden_states.memory_config())
         batch_size = hidden_states.shape[0]
         residual = hidden_states
+
+        mm_a_y = 8
+        mm_a_x = 8
+        mm_a_x_strategy = ttnn.ShardStrategy.BLOCK
+        mm_a_x_memory_config = ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG
+
+        hidden_states = ttnn.to_memory_config(
+            hidden_states,
+            memory_config=ttnn.create_sharded_memory_config(
+                hidden_states.shape,
+                core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
+                strategy=mm_a_x_strategy,
+                orientation=ttnn.ShardOrientation.ROW_MAJOR,
+            ),
+            dtype=ttnn.bfloat16,
+        )
+
         query = ttnn.linear(
             hidden_states,
             ttnn_Attention.to_q_weight,
             bias=ttnn_Attention.to_q_bias,
-            memory_config=ttnn.L1_MEMORY_CONFIG,
+            memory_config=mm_a_x_memory_config,
+            core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
         )
-        print(query.memory_config())
+        # print(query.memory_config())
         key = ttnn.linear(
             hidden_states,
             ttnn_Attention.to_k_weight,
             bias=ttnn_Attention.to_k_bias,
-            memory_config=ttnn.L1_MEMORY_CONFIG,
+            memory_config=mm_a_x_memory_config,
+            core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
         )
-        print(key.memory_config())
+        # print(key.memory_config())
         value = ttnn.linear(
             hidden_states,
             ttnn_Attention.to_v_weight,
             bias=ttnn_Attention.to_v_bias,
-            memory_config=ttnn.L1_MEMORY_CONFIG,
+            memory_config=mm_a_x_memory_config,
+            core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
         )
-        print(value.memory_config())
+        ttnn.deallocate(hidden_states)
+        value = ttnn.reallocate(value)
+
+        query = ttnn.to_memory_config(query, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b)
+        # Split Heads
+        query = ttnn.experimental.nlp_create_qkv_heads_sd35(query, memory_config=ttnn.L1_MEMORY_CONFIG)[0]
+
+        key = ttnn.to_memory_config(key, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b)
+        # Split Heads
+        key = ttnn.experimental.nlp_create_qkv_heads_sd35(key, memory_config=ttnn.L1_MEMORY_CONFIG)[0]
+
+        value = ttnn.to_memory_config(value, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b)
+        # Split Heads
+        value = ttnn.experimental.nlp_create_qkv_heads_sd35(value, memory_config=ttnn.L1_MEMORY_CONFIG)[0]
+
+        # if ttnn_Attention.norm_q is not None:
+        #     query = ttnn_Attention.norm_q(query, device)
+        #     #ttnn.rms_norm(hidden_states, epsilon=self.variance_epsilon, weight=self.weight)
+        # if ttnn_Attention.norm_k is not None:
+        #     key = ttnn_Attention.norm_k(key, device)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // ttnn_Attention.heads
+
+        """
+        # print(value.memory_config())
         inner_dim = key.shape[-1]
         head_dim = inner_dim // ttnn_Attention.heads
         query = ttnn.reshape(query, (batch_size, query.shape[1], ttnn_Attention.heads, head_dim))
-        print(query.memory_config())
+        # print(query.memory_config())
         query = ttnn.permute(query, (0, 2, 1, 3))
-        print(query.memory_config())
+        # print(query.memory_config())
         key = ttnn.reshape(key, (batch_size, key.shape[1], ttnn_Attention.heads, head_dim))
-        print(key.memory_config())
+        # print(key.memory_config())
         key = ttnn.permute(key, (0, 2, 1, 3))
         value = ttnn.reshape(value, (batch_size, value.shape[1], ttnn_Attention.heads, head_dim))
         value = ttnn.permute(value, (0, 2, 1, 3))
-        print(value.memory_config())
+        # print(value.memory_config())
+        """
+
         if ttnn_Attention.norm_q is not None:
-            query = ttnn_Attention.norm_q(query, device)
-            print(query.memory_config())
+            # query = ttnn_Attention.norm_q(query, device)
+            query = ttnn.rms_norm(query, epsilon=ttnn_Attention.eps, weight=ttnn_Attention.param_norm_q.weight)
+            # print(query.memory_config())
         if ttnn_Attention.norm_k is not None:
-            key = ttnn_Attention.norm_k(key, device)
-            print(key.memory_config())
+            # key = ttnn_Attention.norm_k(key, device)
+            key = ttnn.rms_norm(key, epsilon=ttnn_Attention.eps, weight=ttnn_Attention.param_norm_k.weight)
+            # print(key.memory_config())
+
         if encoder_hidden_states is not None:
+            encoder_hidden_states = ttnn.to_memory_config(
+                encoder_hidden_states,
+                memory_config=ttnn.create_sharded_memory_config(
+                    hidden_states.shape,
+                    core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
+                    strategy=mm_a_x_strategy,
+                    orientation=ttnn.ShardOrientation.ROW_MAJOR,
+                ),
+                dtype=ttnn.bfloat16,
+            )
+
             encoder_hidden_states_query_proj = ttnn.linear(
                 encoder_hidden_states,
                 ttnn_Attention.add_q_proj_weight,
                 bias=ttnn_Attention.add_q_proj_bias,
-                memory_config=ttnn.L1_MEMORY_CONFIG,
+                memory_config=mm_a_x_memory_config,
+                core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
             )
-            print(encoder_hidden_states_query_proj.memory_config())
+
+            # print(encoder_hidden_states_query_proj.memory_config())
             encoder_hidden_states_key_proj = ttnn.linear(
                 encoder_hidden_states,
                 ttnn_Attention.add_k_proj_weight,
                 bias=ttnn_Attention.add_k_proj_bias,
-                memory_config=ttnn.L1_MEMORY_CONFIG,
+                memory_config=mm_a_x_memory_config,
+                core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
             )
-            print(encoder_hidden_states_key_proj.memory_config())
+            # print(encoder_hidden_states_key_proj.memory_config())
             encoder_hidden_states_value_proj = ttnn.linear(
                 encoder_hidden_states,
                 ttnn_Attention.add_v_proj_weight,
                 bias=ttnn_Attention.add_v_proj_bias,
-                memory_config=ttnn.L1_MEMORY_CONFIG,
+                memory_config=mm_a_x_memory_config,
+                core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
             )
-            print(encoder_hidden_states_value_proj.memory_config())
+
+            """
+            # print(encoder_hidden_states_value_proj.memory_config())
             encoder_hidden_states_query_proj = ttnn.reshape(
                 encoder_hidden_states_query_proj,
                 (batch_size, encoder_hidden_states_query_proj.shape[1], ttnn_Attention.heads, head_dim),
             )
-            print(encoder_hidden_states_query_proj.memory_config())
+            # print(encoder_hidden_states_query_proj.memory_config())
             encoder_hidden_states_query_proj = ttnn.permute(encoder_hidden_states_query_proj, (0, 2, 1, 3))
             encoder_hidden_states_key_proj = ttnn.reshape(
                 encoder_hidden_states_key_proj,
                 (batch_size, encoder_hidden_states_key_proj.shape[1], ttnn_Attention.heads, head_dim),
             )
-            print(encoder_hidden_states_key_proj.memory_config())
+            # print(encoder_hidden_states_key_proj.memory_config())
             encoder_hidden_states_key_proj = ttnn.permute(encoder_hidden_states_key_proj, (0, 2, 1, 3))
             encoder_hidden_states_value_proj = ttnn.reshape(
                 encoder_hidden_states_value_proj,
                 (batch_size, encoder_hidden_states_value_proj.shape[1], ttnn_Attention.heads, head_dim),
             )
-            print(encoder_hidden_states_key_proj.memory_config())
+            # print(encoder_hidden_states_key_proj.memory_config())
             encoder_hidden_states_value_proj = ttnn.permute(encoder_hidden_states_value_proj, (0, 2, 1, 3))
+            """
+
+            encoder_hidden_states_query_proj = ttnn.to_memory_config(
+                encoder_hidden_states_query_proj, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b
+            )
+            # Split Heads
+            encoder_hidden_states_query_proj = ttnn.experimental.nlp_create_qkv_heads_sd35(
+                encoder_hidden_states_query_proj, memory_config=ttnn.L1_MEMORY_CONFIG
+            )[0]
+
+            encoder_hidden_states_key_proj = ttnn.to_memory_config(
+                encoder_hidden_states_key_proj, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b
+            )
+            # Split Heads
+            encoder_hidden_states_key_proj = ttnn.experimental.nlp_create_qkv_heads_sd35(
+                encoder_hidden_states_key_proj, memory_config=ttnn.L1_MEMORY_CONFIG
+            )[0]
+
+            encoder_hidden_states_value_proj = ttnn.to_memory_config(
+                encoder_hidden_states_value_proj, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b
+            )
+            # Split Heads
+            encoder_hidden_states_value_proj = ttnn.experimental.nlp_create_qkv_heads_sd35(
+                encoder_hidden_states_value_proj, memory_config=ttnn.L1_MEMORY_CONFIG
+            )[0]
+
             if ttnn_Attention.norm_added_q is not None:
-                encoder_hidden_states_query_proj = ttnn_Attention.norm_added_q(
-                    encoder_hidden_states_query_proj, device=device
+                # encoder_hidden_states_query_proj = ttnn_Attention.norm_added_q(
+                #     encoder_hidden_states_query_proj, device=device
+                # )
+                encoder_hidden_states_query_proj = ttnn.rms_norm(
+                    encoder_hidden_states_query_proj,
+                    epsilon=ttnn_Attention.eps,
+                    weight=ttnn_Attention.param_norm_added_q.weight,
                 )
-                print(encoder_hidden_states_query_proj.memory_config())
+                # print(encoder_hidden_states_query_proj.memory_config())
+
             if ttnn_Attention.norm_added_k is not None:
-                encoder_hidden_states_key_proj = ttnn_Attention.norm_added_k(
-                    encoder_hidden_states_key_proj, device=device
+                # encoder_hidden_states_key_proj = ttnn_Attention.norm_added_k(
+                #     encoder_hidden_states_key_proj, device=device
+                # )
+                encoder_hidden_states_key_proj = ttnn.rms_norm(
+                    encoder_hidden_states_key_proj,
+                    epsilon=ttnn_Attention.eps,
+                    weight=ttnn_Attention.param_norm_added_k.weight,
                 )
-                print(encoder_hidden_states_key_proj.memory_config())
+                # print(encoder_hidden_states_key_proj.memory_config())
+
             query = ttnn.concat([query, encoder_hidden_states_query_proj], dim=2, memory_config=ttnn.DRAM_MEMORY_CONFIG)
             key = ttnn.concat([key, encoder_hidden_states_key_proj], dim=2, memory_config=ttnn.DRAM_MEMORY_CONFIG)
             value = ttnn.concat([value, encoder_hidden_states_value_proj], dim=2, memory_config=ttnn.DRAM_MEMORY_CONFIG)
@@ -236,30 +347,56 @@ class ttnn_JointAttnProcessor2_0:
         #     program_config=program_config,
         # )
         hidden_states = ttnn.to_memory_config(hidden_states, memory_config=ttnn.L1_MEMORY_CONFIG)
-        print(hidden_states.memory_config())
-        hidden_states = ttnn.permute(hidden_states, (0, 2, 1, 3))
-        hidden_states = ttnn.reshape(hidden_states, (batch_size, -1, ttnn_Attention.heads * head_dim))
+        # print(hidden_states.memory_config())
+        # hidden_states = ttnn.permute(hidden_states, (0, 2, 1, 3))
+        # hidden_states = ttnn.reshape(hidden_states, (batch_size, -1, ttnn_Attention.heads * head_dim))
+        hidden_states = ttnn.experimental.nlp_concat_heads(
+            hidden_states, memory_config=ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.L1)
+        )
         if encoder_hidden_states is not None:
             hidden_states, encoder_hidden_states = (
-                hidden_states[:, : residual.shape[1], :],
-                hidden_states[:, residual.shape[1] :, :],
+                hidden_states[:, :, : residual.shape[-2], :],
+                hidden_states[:, :, residual.shape[-2] :, :],
             )
-            print(hidden_states.memory_config(), encoder_hidden_states.memory_config())
             if not ttnn_Attention.context_pre_only:
+                encoder_hidden_states = ttnn.to_memory_config(
+                    encoder_hidden_states,
+                    memory_config=ttnn.create_sharded_memory_config(
+                        hidden_states.shape,
+                        core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
+                        strategy=mm_a_x_strategy,
+                        orientation=ttnn.ShardOrientation.ROW_MAJOR,
+                    ),
+                    dtype=ttnn.bfloat16,
+                )
+
                 encoder_hidden_states = ttnn.linear(
                     encoder_hidden_states,
                     ttnn_Attention.to_add_out_weight,
                     bias=ttnn_Attention.to_add_out_bias,
-                    memory_config=ttnn.L1_MEMORY_CONFIG,
+                    memory_config=mm_a_x_memory_config,
+                    core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
                 )
-                print(encoder_hidden_states.memory_config())
+                # print(encoder_hidden_states.memory_config())
+
+        hidden_states = ttnn.to_memory_config(
+            hidden_states,
+            memory_config=ttnn.create_sharded_memory_config(
+                hidden_states.shape,
+                core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
+                strategy=mm_a_x_strategy,
+                orientation=ttnn.ShardOrientation.ROW_MAJOR,
+            ),
+            dtype=ttnn.bfloat16,
+        )
         hidden_states = ttnn.linear(
             hidden_states,
             ttnn_Attention.to_out_weight,
             bias=ttnn_Attention.to_out_bias,
-            memory_config=ttnn.L1_MEMORY_CONFIG,
+            memory_config=mm_a_x_memory_config,
+            core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
         )
-        print(hidden_states.memory_config())
+        # print(hidden_states.memory_config())
         if encoder_hidden_states is not None:
             return hidden_states, encoder_hidden_states
         else:
