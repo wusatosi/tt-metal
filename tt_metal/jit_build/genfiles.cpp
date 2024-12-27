@@ -27,7 +27,9 @@ namespace tt::tt_metal {
 
 static void gen_kernel_cpp(const string& src, const string& dst_name, const vector<string>& prolog) {
     std::ofstream out(dst_name);
-    for (const string& s : prolog) out << s;
+    for (const string& s : prolog) {
+        out << s;
+    }
     out << src;
 }
 
@@ -51,11 +53,13 @@ static fs::path get_relative_file_path_from_config(const fs::path& file_path) {
     fs::path file_path_relative_to_dir;
 
     if (llrt::RunTimeOptions::get_instance().is_root_dir_specified()) {
-        file_path_relative_to_dir = get_file_path_relative_to_dir(llrt::RunTimeOptions::get_instance().get_root_dir(), file_path);
+        file_path_relative_to_dir =
+            get_file_path_relative_to_dir(llrt::RunTimeOptions::get_instance().get_root_dir(), file_path);
     }
 
     if (!fs::exists(file_path_relative_to_dir) && llrt::RunTimeOptions::get_instance().is_kernel_dir_specified()) {
-        file_path_relative_to_dir = get_file_path_relative_to_dir(llrt::RunTimeOptions::get_instance().get_kernel_dir(), file_path);
+        file_path_relative_to_dir =
+            get_file_path_relative_to_dir(llrt::RunTimeOptions::get_instance().get_kernel_dir(), file_path);
     }
 
     return file_path_relative_to_dir;
@@ -153,7 +157,6 @@ void jit_build_genfiles_triscs_src(
     });
 }
 
-
 static std::string data_format_vec_to_string(const vector<DataFormat>& formats) {
     std::string formats_string = "";
     for (int i = 0; i < formats.size(); i++) {
@@ -173,9 +176,11 @@ static std::string create_formats_array_string(
     return str_stream.str();
 }
 
-static std::pair<std::vector<DataFormat>, std::vector<DataFormat>>
-generate_unpack_data_formats(tt_hlk_desc& desc, DataFormat unpack_conditional_dst_format, bool fp32_dest_acc_en, std::vector<UnpackToDestMode> unpack_to_dest_mode) {
-
+static std::pair<std::vector<DataFormat>, std::vector<DataFormat>> generate_unpack_data_formats(
+    tt_hlk_desc& desc,
+    DataFormat unpack_conditional_dst_format,
+    bool fp32_dest_acc_en,
+    std::vector<UnpackToDestMode> unpack_to_dest_mode) {
     vector<DataFormat> src_formats = tt::get_unpack_src_formats(desc.buf_dataformat_arr);
 
     vector<DataFormat> dst_formats = tt::get_unpack_dst_formats(
@@ -209,17 +214,15 @@ static void emit_unpack_data_formats(
 }
 
 static std::pair<std::vector<DataFormat>, std::vector<DataFormat>> generate_pack_data_formats(
-    tt_hlk_desc& desc, DataFormat unpack_conditional_dst_format, bool fp32_dest_acc_en, bool bfp8_pack_precise, const tt::ARCH arch) {
+    tt_hlk_desc& desc,
+    DataFormat unpack_conditional_dst_format,
+    bool fp32_dest_acc_en,
+    bool bfp8_pack_precise,
+    const tt::ARCH arch) {
     vector<DataFormat> src_formats = tt::get_pack_src_formats(
-        desc.buf_dataformat_arr,
-        unpack_conditional_dst_format,
-        fp32_dest_acc_en,
-        bfp8_pack_precise,
-        false,
-        arch);
+        desc.buf_dataformat_arr, unpack_conditional_dst_format, fp32_dest_acc_en, bfp8_pack_precise, false, arch);
 
-    vector<DataFormat> dst_formats = tt::get_pack_dst_formats(
-        desc.buf_dataformat_arr);
+    vector<DataFormat> dst_formats = tt::get_pack_dst_formats(desc.buf_dataformat_arr);
 
     TT_ASSERT(src_formats.size() == NUM_CIRCULAR_BUFFERS);
     TT_ASSERT(dst_formats.size() == NUM_CIRCULAR_BUFFERS);
@@ -293,21 +296,23 @@ static void generate_data_format_descriptors(JitBuildOptions& options, const tt:
 
     // Determine dst format under ambiguous conditions (either or both l1 input & output formats are Float32)
     ExpPrecision exp_prec = tt::get_data_exp_precision(desc.buf_dataformat_arr);
-    DataFormat unpack_conditional_dst_format = (exp_prec == ExpPrecision::A) ? DataFormat::Float16 : DataFormat::Float16_b;
+    DataFormat unpack_conditional_dst_format =
+        (exp_prec == ExpPrecision::A) ? DataFormat::Float16 : DataFormat::Float16_b;
 
-    if (options.fp32_dest_acc_en && (tt::is_all_fp32_formats(desc.buf_dataformat_arr) || (exp_prec == ExpPrecision::B))) {
+    if (options.fp32_dest_acc_en &&
+        (tt::is_all_fp32_formats(desc.buf_dataformat_arr) || (exp_prec == ExpPrecision::B))) {
         unpack_conditional_dst_format = DataFormat::Tf32;
     }
 
-    tt::check_valid_formats_in_out_data_formats(
-        desc.buf_dataformat_arr);
+    tt::check_valid_formats_in_out_data_formats(desc.buf_dataformat_arr);
 
     vector<DataFormat> unpack_src_formats_all_cbs, unpack_dst_formats_all_cbs;
-    tie(unpack_src_formats_all_cbs, unpack_dst_formats_all_cbs) = generate_unpack_data_formats(desc, unpack_conditional_dst_format, options.fp32_dest_acc_en, options.unpack_to_dest_mode);
+    tie(unpack_src_formats_all_cbs, unpack_dst_formats_all_cbs) = generate_unpack_data_formats(
+        desc, unpack_conditional_dst_format, options.fp32_dest_acc_en, options.unpack_to_dest_mode);
 
     vector<DataFormat> pack_src_formats_all_cbs, pack_dst_formats_all_cbs;
-    tie(pack_src_formats_all_cbs, pack_dst_formats_all_cbs) =
-        generate_pack_data_formats(desc, unpack_conditional_dst_format, options.fp32_dest_acc_en, options.bfp8_pack_precise, arch);
+    tie(pack_src_formats_all_cbs, pack_dst_formats_all_cbs) = generate_pack_data_formats(
+        desc, unpack_conditional_dst_format, options.fp32_dest_acc_en, options.bfp8_pack_precise, arch);
 
     // equalize "upack src" and "pack dst" data format vectors
     // both "unpack src" and "pack dst" refer to data in L1, "unpack src" == L1, and "pack dst" == L1
@@ -334,13 +339,20 @@ static void emit_unpack_tile_dims(const std::string& unpack_tile_dims_descs, tt_
     ofstream file_stream;
     file_stream.open(unpack_tile_dims_descs);
     file_stream << "#pragma once\n\n";
-    file_stream << create_formats_array_string("constexpr uint8_t", "unpack_tile_num_faces", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_num_faces_arr));
-    file_stream << create_formats_array_string("constexpr uint8_t", "unpack_partial_face", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_partial_face_arr));
-    file_stream << create_formats_array_string("constexpr uint8_t", "unpack_tile_face_r_dim", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_face_r_dim_arr));
-    file_stream << create_formats_array_string("constexpr uint8_t", "unpack_narrow_tile", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_narrow_tile_arr));
-    file_stream << create_formats_array_string("constexpr uint8_t", "unpack_tile_r_dim", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_tile_r_dim_arr));
-    file_stream << create_formats_array_string("constexpr uint8_t", "unpack_tile_c_dim", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_tile_c_dim_arr));
-    file_stream << create_formats_array_string("constexpr uint16_t", "unpack_tile_size", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_tile_size_arr));
+    file_stream << create_formats_array_string(
+        "constexpr uint8_t", "unpack_tile_num_faces", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_num_faces_arr));
+    file_stream << create_formats_array_string(
+        "constexpr uint8_t", "unpack_partial_face", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_partial_face_arr));
+    file_stream << create_formats_array_string(
+        "constexpr uint8_t", "unpack_tile_face_r_dim", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_face_r_dim_arr));
+    file_stream << create_formats_array_string(
+        "constexpr uint8_t", "unpack_narrow_tile", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_narrow_tile_arr));
+    file_stream << create_formats_array_string(
+        "constexpr uint8_t", "unpack_tile_r_dim", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_tile_r_dim_arr));
+    file_stream << create_formats_array_string(
+        "constexpr uint8_t", "unpack_tile_c_dim", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_tile_c_dim_arr));
+    file_stream << create_formats_array_string(
+        "constexpr uint16_t", "unpack_tile_size", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_tile_size_arr));
     file_stream.close();
 }
 
@@ -348,13 +360,20 @@ static void emit_pack_tile_dims(const std::string& pack_tile_dims_descs, tt_hlk_
     ofstream file_stream;
     file_stream.open(pack_tile_dims_descs);
     file_stream << "#pragma once\n\n";
-    file_stream << create_formats_array_string("constexpr uint8_t", "pack_tile_num_faces", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_num_faces_arr));
-    file_stream << create_formats_array_string("constexpr uint8_t", "pack_partial_face", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_partial_face_arr));
-    file_stream << create_formats_array_string("constexpr uint8_t", "pack_tile_face_r_dim", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_face_r_dim_arr));
-    file_stream << create_formats_array_string("constexpr uint8_t", "pack_narrow_tile", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_narrow_tile_arr));
-    file_stream << create_formats_array_string("constexpr uint8_t", "pack_tile_r_dim", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_tile_r_dim_arr));
-    file_stream << create_formats_array_string("constexpr uint8_t", "pack_tile_c_dim", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_tile_c_dim_arr));
-    file_stream << create_formats_array_string("constexpr uint16_t", "pack_tile_size", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_tile_size_arr));
+    file_stream << create_formats_array_string(
+        "constexpr uint8_t", "pack_tile_num_faces", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_num_faces_arr));
+    file_stream << create_formats_array_string(
+        "constexpr uint8_t", "pack_partial_face", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_partial_face_arr));
+    file_stream << create_formats_array_string(
+        "constexpr uint8_t", "pack_tile_face_r_dim", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_face_r_dim_arr));
+    file_stream << create_formats_array_string(
+        "constexpr uint8_t", "pack_narrow_tile", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_narrow_tile_arr));
+    file_stream << create_formats_array_string(
+        "constexpr uint8_t", "pack_tile_r_dim", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_tile_r_dim_arr));
+    file_stream << create_formats_array_string(
+        "constexpr uint8_t", "pack_tile_c_dim", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_tile_c_dim_arr));
+    file_stream << create_formats_array_string(
+        "constexpr uint16_t", "pack_tile_size", NUM_CIRCULAR_BUFFERS, array_to_string(desc.buf_tile_size_arr));
     file_stream.close();
 }
 
@@ -429,17 +448,17 @@ static void generate_math_approx_mode_descriptor(JitBuildOptions& options) {
 }
 
 void jit_build_genfiles_descriptors(const JitBuildEnv& env, JitBuildOptions& options) {
-    //ZoneScoped;
-    //const std::string tracyPrefix = "generate_descriptors_";
-    //ZoneName((tracyPrefix + options.name).c_str(), options.name.length() + tracyPrefix.length());
+    // ZoneScoped;
+    // const std::string tracyPrefix = "generate_descriptors_";
+    // ZoneName((tracyPrefix + options.name).c_str(), options.name.length() + tracyPrefix.length());
     fs::create_directories(options.path);
     try {
-        std::thread td( [&]() { generate_data_format_descriptors(options, env.get_arch()); } );
-        std::thread tt( [&]() { generate_tile_dims_descriptors(options, env.get_arch()); } );
-        std::thread tm( [&]() { generate_math_fidelity_descriptor(options); } );
-        std::thread ta( [&]() { generate_math_approx_mode_descriptor(options); } );
-        std::thread tf( [&]() { generate_dst_accum_mode_descriptor(options); } );
-        std::thread ts( [&]() { generate_dst_sync_mode_descriptor(options); } );
+        std::thread td([&]() { generate_data_format_descriptors(options, env.get_arch()); });
+        std::thread tt([&]() { generate_tile_dims_descriptors(options, env.get_arch()); });
+        std::thread tm([&]() { generate_math_fidelity_descriptor(options); });
+        std::thread ta([&]() { generate_math_approx_mode_descriptor(options); });
+        std::thread tf([&]() { generate_dst_accum_mode_descriptor(options); });
+        std::thread ts([&]() { generate_dst_sync_mode_descriptor(options); });
         td.join();
         tt.join();
         tm.join();

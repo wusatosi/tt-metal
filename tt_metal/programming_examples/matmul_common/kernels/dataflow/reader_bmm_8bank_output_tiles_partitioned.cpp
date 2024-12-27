@@ -7,7 +7,13 @@
 
 #include "debug/dprint.h"
 
+FORCE_INLINE void print_info(uint32_t cb_id) {
+    auto cb_in0_addr = get_write_ptr(cb_id);
+    DPRINT << "cb_addr: " << cb_id << " " << DEC() << cb_in0_addr << ENDL();
+}
+
 void kernel_main() {
+    print_info(tt::CBIndex::c_0);
     // same arg indices as in reader_binary_diff_lenghts for compat
     uint32_t src0_addr = get_arg_val<uint32_t>(0);
     uint32_t src1_addr = get_arg_val<uint32_t>(1);

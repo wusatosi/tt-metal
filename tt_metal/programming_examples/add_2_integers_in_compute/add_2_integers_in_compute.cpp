@@ -2,9 +2,12 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+#include "buffers/circular_buffer.hpp"
+#include "llrt/hal.hpp"
 #include "tt_metal/host_api.hpp"
 #include "tt_metal/impl/device/device.hpp"
 #include "tt_metal/common/bfloat16.hpp"
+#include "umd/device/tt_core_coordinates.h"
 
 using namespace tt;
 using namespace tt::tt_metal;
@@ -38,7 +41,7 @@ int main(int argc, char** argv) {
     constexpr uint32_t src0_cb_index = CBIndex::c_0;
     constexpr uint32_t num_input_tiles = 1;
     CircularBufferConfig cb_src0_config =
-        CircularBufferConfig(num_input_tiles * single_tile_size, {{src0_cb_index, tt::DataFormat::Float16_b}})
+        CircularBufferConfig(681 * num_input_tiles * single_tile_size, {{src0_cb_index, tt::DataFormat::Float16_b}})
             .set_page_size(src0_cb_index, single_tile_size);
     CBHandle cb_src0 = tt_metal::CreateCircularBuffer(program, core, cb_src0_config);
 
@@ -60,13 +63,13 @@ int main(int argc, char** argv) {
         program,
         "tt_metal/programming_examples/add_2_integers_in_compute/kernels/dataflow/reader_binary_1_tile.cpp",
         core,
-        DataMovementConfig{.processor = DataMovementProcessor::RISCV_1, .noc = NOC::RISCV_1_default});
+        DataMovementConfig{.processor = DataMovementProcessor::RISCV_0, .noc = NOC::RISCV_0_default});
 
     KernelHandle unary_writer_kernel_id = CreateKernel(
         program,
         "tt_metal/programming_examples/add_2_integers_in_compute/kernels/dataflow/writer_1_tile.cpp",
         core,
-        DataMovementConfig{.processor = DataMovementProcessor::RISCV_0, .noc = NOC::RISCV_0_default});
+        DataMovementConfig{.processor = DataMovementProcessor::RISCV_1, .noc = NOC::RISCV_1_default});
 
     /* Set the parameters that the compute kernel will use */
     std::vector<uint32_t> compute_kernel_args = {};
@@ -91,6 +94,18 @@ int main(int argc, char** argv) {
 
     EnqueueWriteBuffer(cq, src0_dram_buffer, src0_vec, false);
     EnqueueWriteBuffer(cq, src1_dram_buffer, src1_vec, false);
+
+    uint32_t used_sram = device->get_base_allocator_addr(HalMemType::L1);
+    std::cout << used_sram << "\n";
+    auto cbs = program.circular_buffers();
+    for (const auto& cb : cbs) {
+        // std::cout << cb->
+        used_sram += cb->size();
+        // std::cout << cb->size() << std::endl;
+    }
+    std::cout << used_sram / 1024.0 << std::endl;
+
+    /* Use L1 circular buffers to set input buffers */
 
     /* Configure program and runtime kernel arguments, then execute */
     SetRuntimeArgs(
