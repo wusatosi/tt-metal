@@ -154,10 +154,8 @@ class ResnetConvTest(OpTestBase):
     indirect=["mesh_device"],
 )
 def test_resnet_conv(mesh_device, iterations, determinism_check_iterations, use_program_cache, simulate_bh_harvesting):
-    if is_blackhole():
-        pytest.skip("Blackhole is not supported for this test")
-    if simulate_bh_harvesting and is_blackhole() == False:
-        pytest.skip("Blackhole harvesting simulation is only supported for Blackhole devices")
+    if simulate_bh_harvesting:
+        pytest.skip("Blackhole harvesting is not supported for this test")
 
     groups = 1
     dilation = 1
