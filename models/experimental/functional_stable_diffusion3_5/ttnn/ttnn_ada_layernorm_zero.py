@@ -29,20 +29,34 @@ class ttnn_AdaLayerNormZero:
         emb: Optional[ttnn.Tensor] = None,
         parameters=None,
     ) -> Tuple[ttnn.Tensor, ttnn.Tensor, ttnn.Tensor, ttnn.Tensor, ttnn.Tensor]:
+        hifi2_kernel_config = ttnn.WormholeComputeKernelConfig(
+            math_fidelity=ttnn.MathFidelity.HiFi2,
+        )
         if self.emb is not None:
             emb = self.emb(timestep, class_labels, hidden_dtype=hidden_dtype)
-        emb = self.linear(self.silu(emb), parameters["linear"]["weight"], bias=parameters["linear"]["bias"])
-        emb = ttnn.to_torch(emb)
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.chunk(6, 1)
+        emb = self.linear(
+            self.silu(emb),
+            parameters["linear"]["weight"],
+            bias=parameters["linear"]["bias"],
+            memory_config=ttnn.L1_MEMORY_CONFIG,
+            compute_kernel_config=hifi2_kernel_config,
+        )
 
-        shift_msa = ttnn.from_torch(shift_msa, layout=ttnn.TILE_LAYOUT, device=x.device())
-        scale_msa = ttnn.from_torch(scale_msa, layout=ttnn.TILE_LAYOUT, device=x.device())
-        gate_msa = ttnn.from_torch(gate_msa, layout=ttnn.TILE_LAYOUT, device=x.device())
-        shift_mlp = ttnn.from_torch(shift_mlp, layout=ttnn.TILE_LAYOUT, device=x.device())
-        scale_mlp = ttnn.from_torch(scale_mlp, layout=ttnn.TILE_LAYOUT, device=x.device())
-        gate_mlp = ttnn.from_torch(gate_mlp, layout=ttnn.TILE_LAYOUT, device=x.device())
+        emb = ttnn.to_layout(emb, ttnn.ROW_MAJOR_LAYOUT)
 
-        x = self.norm(x) * (1 + ttnn.reshape(scale_msa, (scale_msa.shape[0], 1, scale_msa.shape[1]))) + ttnn.reshape(
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = ttnn.split(
+            emb, 6, 1, memory_config=ttnn.L1_MEMORY_CONFIG
+        )
+        shift_msa = ttnn.to_layout(shift_msa, ttnn.TILE_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG)
+        scale_msa = ttnn.to_layout(scale_msa, ttnn.TILE_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG)
+        gate_msa = ttnn.to_layout(gate_msa, ttnn.TILE_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG)
+        shift_mlp = ttnn.to_layout(shift_mlp, ttnn.TILE_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG)
+        scale_mlp = ttnn.to_layout(scale_mlp, ttnn.TILE_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG)
+        gate_mlp = ttnn.to_layout(gate_mlp, ttnn.TILE_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG)
+
+        x = self.norm(x, memory_config=ttnn.L1_MEMORY_CONFIG, compute_kernel_config=hifi2_kernel_config) * (
+            1 + ttnn.reshape(scale_msa, (scale_msa.shape[0], 1, scale_msa.shape[1]))
+        ) + ttnn.reshape(
             shift_msa, (shift_msa.shape[0], 1, shift_msa.shape[1])
         )  # shift_msa[:, None] replaced with ttnn.reshape(shift_msa,(shift_msa.shape[0],1,shift_msa.shape[1])) same for scale_msa[:,None]
         return x, gate_msa, shift_mlp, scale_mlp, gate_mlp

@@ -32,9 +32,18 @@ class ttnn_FeedForward:
         self.net.append(ttnn.linear)
 
     def __call__(self, hidden_states: ttnn.Tensor, parameters=None) -> ttnn.Tensor:
+        hifi2_kernel_config = ttnn.WormholeComputeKernelConfig(
+            math_fidelity=ttnn.MathFidelity.HiFi2,
+        )
         for module in self.net:
             if module == ttnn.linear:
-                hidden_states = module(hidden_states, parameters["net"][2]["weight"], bias=parameters["net"][2]["bias"])
+                hidden_states = module(
+                    hidden_states,
+                    parameters["net"][2]["weight"],
+                    bias=parameters["net"][2]["bias"],
+                    memory_config=ttnn.L1_MEMORY_CONFIG,
+                    compute_kernel_config=hifi2_kernel_config,
+                )
             else:
                 hidden_states = module(hidden_states, parameters=parameters["net"][0])
         return hidden_states

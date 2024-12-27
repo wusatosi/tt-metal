@@ -24,17 +24,28 @@ class ttnn_AdaLayerNormContinuous:
             raise ValueError(f"unknown norm_type {norm_type}")
 
     def __call__(self, x: ttnn.Tensor, conditioning_embedding: ttnn.Tensor, parameters=None) -> ttnn.Tensor:
+        hifi2_kernel_config = ttnn.WormholeComputeKernelConfig(
+            math_fidelity=ttnn.MathFidelity.HiFi2,
+        )
+
         # convert back to the original dtype in case `conditioning_embedding`` is upcasted to float32 (needed for hunyuanDiT)
         emb = self.linear(
-            self.silu(conditioning_embedding), parameters["linear"]["weight"], bias=parameters["linear"]["bias"]
+            self.silu(conditioning_embedding),
+            parameters["linear"]["weight"],
+            bias=parameters["linear"]["bias"],
+            memory_config=ttnn.L1_MEMORY_CONFIG,
+            compute_kernel_config=hifi2_kernel_config,
         )
-        emb = ttnn.to_layout(emb, layout=ttnn.ROW_MAJOR_LAYOUT)
-        scale, shift = ttnn.split(emb, 2, dim=1)
-        scale = ttnn.to_layout(scale, layout=ttnn.TILE_LAYOUT)
-        shift = ttnn.to_layout(shift, layout=ttnn.TILE_LAYOUT)
-        x = self.norm(x, epsilon=self.eps) * ttnn.reshape(
-            (1 + scale), (scale.shape[0], 1, scale.shape[1])
-        ) + ttnn.reshape(
+        emb = ttnn.to_layout(emb, layout=ttnn.ROW_MAJOR_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG)
+        scale, shift = ttnn.split(emb, 2, dim=1, memory_config=ttnn.L1_MEMORY_CONFIG)
+        scale = ttnn.to_layout(scale, layout=ttnn.TILE_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG)
+        shift = ttnn.to_layout(shift, layout=ttnn.TILE_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG)
+        x = self.norm(
+            x,
+            epsilon=self.eps,
+            memory_config=ttnn.L1_MEMORY_CONFIG,
+            compute_kernel_config=hifi2_kernel_config,
+        ) * ttnn.reshape((1 + scale), (scale.shape[0], 1, scale.shape[1])) + ttnn.reshape(
             shift, (shift.shape[0], 1, shift.shape[1])
         )  # (1+scale[:, None,:]) replaced with ttnn.reshape((1 + scale),(scale.shape[0],1,scale.shape[1])) same for shift[:,None,:]
         return x
