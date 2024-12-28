@@ -11,7 +11,7 @@ class ttnn_AdaLayerNormContinuous:
         embedding_dim: int,
         conditioning_embedding_dim: int,
         elementwise_affine=True,
-        eps=1e-5,
+        eps=1e-6,
         bias=True,
         norm_type="layer_norm",
     ):
@@ -29,23 +29,42 @@ class ttnn_AdaLayerNormContinuous:
         )
 
         # convert back to the original dtype in case `conditioning_embedding`` is upcasted to float32 (needed for hunyuanDiT)
+
+        mm_a_y = 8
+        mm_a_x = 8
+        mm_a_x_strategy = ttnn.ShardStrategy.WIDTH
+        mm_a_x_memory_config = ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG
+
+        conditioning_embedding = ttnn.reshape(
+            conditioning_embedding, (conditioning_embedding.shape[0], 1, conditioning_embedding.shape[1])
+        )
+
         emb = self.linear(
             self.silu(conditioning_embedding),
             parameters["linear"]["weight"],
             bias=parameters["linear"]["bias"],
-            memory_config=ttnn.L1_MEMORY_CONFIG,
+            memory_config=mm_a_x_memory_config,
+            core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
             compute_kernel_config=hifi2_kernel_config,
         )
-        emb = ttnn.to_layout(emb, layout=ttnn.ROW_MAJOR_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG)
-        scale, shift = ttnn.split(emb, 2, dim=1, memory_config=ttnn.L1_MEMORY_CONFIG)
-        scale = ttnn.to_layout(scale, layout=ttnn.TILE_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG)
-        shift = ttnn.to_layout(shift, layout=ttnn.TILE_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG)
+
+        emb = ttnn.to_memory_config(emb, ttnn.L1_MEMORY_CONFIG)
+        one_chunk = emb.shape[-1] // 2
+
+        # TODO: double-check in reference model that scale comes first, oppostie to the other 2 modules
+        i_beg = 0
+        i_end = one_chunk
+        scale = ttnn.slice(emb, [0, 0, i_beg], [2, 1, i_end])
+        i_beg += one_chunk
+        i_end += one_chunk
+        shift = ttnn.slice(emb, [0, 0, i_beg], [2, 1, i_end])
+
         x = self.norm(
             x,
             epsilon=self.eps,
             memory_config=ttnn.L1_MEMORY_CONFIG,
             compute_kernel_config=hifi2_kernel_config,
-        ) * ttnn.reshape((1 + scale), (scale.shape[0], 1, scale.shape[1])) + ttnn.reshape(
-            shift, (shift.shape[0], 1, shift.shape[1])
-        )  # (1+scale[:, None,:]) replaced with ttnn.reshape((1 + scale),(scale.shape[0],1,scale.shape[1])) same for shift[:,None,:]
+        )
+        x = x * (1 + scale) + shift
+
         return x

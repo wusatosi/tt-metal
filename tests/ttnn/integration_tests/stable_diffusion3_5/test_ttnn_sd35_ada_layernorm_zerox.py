@@ -83,4 +83,12 @@ def test_sd35_ada_layernorm_zerox(device, reset_seeds, h):
     ttnn_output = ttnn_model(ttnn_input_hidden_states, ttnn_input_emb, parameters=parameters)
 
     for i in range(len(torch_output)):
-        assert_with_pcc(torch_output[i], ttnn.to_torch(ttnn_output[i]), pcc=0.99)
+        torch_output_shape = torch_output[i].shape
+        if len(torch_output_shape) > 2:
+            assert_with_pcc(torch_output[i], ttnn.to_torch(ttnn_output[i]), pcc=0.99)
+        else:
+            assert_with_pcc(
+                torch_output[i].reshape(torch_output_shape[0], 1, torch_output_shape[1]),
+                ttnn.to_torch(ttnn_output[i]),
+                pcc=0.99,
+            )
