@@ -34,50 +34,57 @@ class ttnn_SD35AdaLayerNormZeroX:
         hifi2_kernel_config = ttnn.WormholeComputeKernelConfig(
             math_fidelity=ttnn.MathFidelity.HiFi2,
         )
+
+        mm_a_y = 8
+        mm_a_x = 8
+        mm_a_x_strategy = ttnn.ShardStrategy.WIDTH
+        mm_a_x_memory_config = ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG
+
+        emb = ttnn.reshape(emb, (emb.shape[0], 1, emb.shape[1]))
+
         emb = self.linear(
             self.silu(emb),
             parameters["linear"]["weight"],
             bias=parameters["linear"]["bias"],
-            memory_config=ttnn.L1_MEMORY_CONFIG,
+            memory_config=mm_a_x_memory_config,
+            core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
             compute_kernel_config=hifi2_kernel_config,
         )
-        emb = ttnn.to_torch(emb)
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp, shift_msa2, scale_msa2, gate_msa2 = emb.chunk(
-            9, dim=1
-        )
-        shift_msa = ttnn.from_torch(
-            shift_msa, layout=ttnn.TILE_LAYOUT, device=hidden_states.device(), memory_config=ttnn.L1_MEMORY_CONFIG
-        )
-        scale_msa = ttnn.from_torch(
-            scale_msa, layout=ttnn.TILE_LAYOUT, device=hidden_states.device(), memory_config=ttnn.L1_MEMORY_CONFIG
-        )
-        gate_msa = ttnn.from_torch(
-            gate_msa, layout=ttnn.TILE_LAYOUT, device=hidden_states.device(), memory_config=ttnn.L1_MEMORY_CONFIG
-        )
-        shift_mlp = ttnn.from_torch(
-            shift_mlp, layout=ttnn.TILE_LAYOUT, device=hidden_states.device(), memory_config=ttnn.L1_MEMORY_CONFIG
-        )
-        scale_mlp = ttnn.from_torch(
-            scale_mlp, layout=ttnn.TILE_LAYOUT, device=hidden_states.device(), memory_config=ttnn.L1_MEMORY_CONFIG
-        )
-        gate_mlp = ttnn.from_torch(
-            gate_mlp, layout=ttnn.TILE_LAYOUT, device=hidden_states.device(), memory_config=ttnn.L1_MEMORY_CONFIG
-        )
-        shift_msa2 = ttnn.from_torch(
-            shift_msa2, layout=ttnn.TILE_LAYOUT, device=hidden_states.device(), memory_config=ttnn.L1_MEMORY_CONFIG
-        )
-        scale_msa2 = ttnn.from_torch(
-            scale_msa2, layout=ttnn.TILE_LAYOUT, device=hidden_states.device(), memory_config=ttnn.L1_MEMORY_CONFIG
-        )
-        gate_msa2 = ttnn.from_torch(
-            gate_msa2, layout=ttnn.TILE_LAYOUT, device=hidden_states.device(), memory_config=ttnn.L1_MEMORY_CONFIG
-        )
+        emb = ttnn.to_memory_config(emb, ttnn.L1_MEMORY_CONFIG)
+        one_chunk = emb.shape[-1] // 9
+
+        i_beg = 0
+        i_end = one_chunk
+        shift_msa = ttnn.slice(emb, [0, 0, i_beg], [2, 1, i_end])
+        i_beg += one_chunk
+        i_end += one_chunk
+        scale_msa = ttnn.slice(emb, [0, 0, i_beg], [2, 1, i_end])
+        i_beg += one_chunk
+        i_end += one_chunk
+        gate_msa = ttnn.slice(emb, [0, 0, i_beg], [2, 1, i_end])
+        i_beg += one_chunk
+        i_end += one_chunk
+        shift_mlp = ttnn.slice(emb, [0, 0, i_beg], [2, 1, i_end])
+        i_beg += one_chunk
+        i_end += one_chunk
+        scale_mlp = ttnn.slice(emb, [0, 0, i_beg], [2, 1, i_end])
+        i_beg += one_chunk
+        i_end += one_chunk
+        gate_mlp = ttnn.slice(emb, [0, 0, i_beg], [2, 1, i_end])
+        i_beg += one_chunk
+        i_end += one_chunk
+        shift_msa2 = ttnn.slice(emb, [0, 0, i_beg], [2, 1, i_end])
+        i_beg += one_chunk
+        i_end += one_chunk
+        scale_msa2 = ttnn.slice(emb, [0, 0, i_beg], [2, 1, i_end])
+        i_beg += one_chunk
+        i_end += one_chunk
+        gate_msa2 = ttnn.slice(emb, [0, 0, i_beg], [2, 1, i_end])
+
+        ttnn.deallocate(emb)
 
         norm_hidden_states = self.norm(hidden_states, compute_kernel_config=hifi2_kernel_config)
-        hidden_states = norm_hidden_states * (
-            1 + ttnn.reshape(scale_msa, (scale_msa.shape[0], 1, scale_msa.shape[1]))
-        ) + ttnn.reshape(shift_msa, (shift_msa.shape[0], 1, shift_msa.shape[1]))
-        norm_hidden_states2 = norm_hidden_states * (
-            1 + ttnn.reshape(scale_msa2, (scale_msa2.shape[0], 1, scale_msa2.shape[1]))
-        ) + ttnn.reshape(shift_msa2, (shift_msa2.shape[0], 1, shift_msa2.shape[1]))
+        hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
+        norm_hidden_states2 = norm_hidden_states * (1 + scale_msa2) + shift_msa2
+
         return hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp, norm_hidden_states2, gate_msa2
