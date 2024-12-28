@@ -40,4 +40,4 @@ def test_ttnn_time_steps(init_inputs, device):
     tt_out = tt_sub_module(tt_input, device)
     torch_out = torch_sub_module(time_stamps)
     tt_out_in_torch = ttnn.to_torch(tt_out)
-    assert_with_pcc(torch_out, tt_out_in_torch, 0.96)
+    assert_with_pcc(torch_out, tt_out_in_torch, 0.969)

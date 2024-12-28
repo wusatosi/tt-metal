@@ -16,11 +16,18 @@ class ttnn_TimestepEmbedding:
         hifi2_kernel_config = ttnn.WormholeComputeKernelConfig(
             math_fidelity=ttnn.MathFidelity.HiFi2,
         )
+
+        mm_a_y = 8
+        mm_a_x = 6
+        mm_a_x_strategy = ttnn.ShardStrategy.WIDTH
+        mm_a_x_memory_config = ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG
+
         sample = ttnn.linear(
             sample,
             self.linear_1_w,
             bias=self.linear_1_b,
-            memory_config=ttnn.L1_MEMORY_CONFIG,
+            memory_config=mm_a_x_memory_config,
+            core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
             compute_kernel_config=hifi2_kernel_config,
         )
         sample = ttnn.silu(sample)
@@ -28,7 +35,8 @@ class ttnn_TimestepEmbedding:
             sample,
             self.linear_2_w,
             bias=self.linear_2_b,
-            memory_config=ttnn.L1_MEMORY_CONFIG,
+            memory_config=mm_a_x_memory_config,
+            core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
             compute_kernel_config=hifi2_kernel_config,
         )
         return sample
