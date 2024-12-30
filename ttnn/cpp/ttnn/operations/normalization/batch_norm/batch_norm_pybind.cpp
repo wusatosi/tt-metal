@@ -21,6 +21,7 @@ void bind_batch_norm_operation(pybind11::module& module) {
             py::arg("running_var") = std::nullopt,
             py::arg("training") = false,
             py::arg("eps") = 1e-05,
+            py::arg("weight") = std::nullopt,
             py::arg("output") = std::nullopt,
             py::arg("memory_config") = std::nullopt
 

@@ -70,6 +70,7 @@ void MAIN {
     uint32_t num_tiles = get_arg_val<uint32_t>(0);
     uint32_t tile_freq = get_arg_val<uint32_t>(1);
     uint32_t tile_start = get_arg_val<uint32_t>(2);
+    constexpr uint32_t weight_has_value = get_compile_time_arg_val(0) == 1;
 
     if (num_tiles == 0) {
         return;
@@ -77,11 +78,13 @@ void MAIN {
 
     constexpr auto cb_in0 = tt::CBIndex::c_0;   // input
     constexpr auto cb_in1 = tt::CBIndex::c_1;   // batch_mean
-    constexpr auto cb_out0 = tt::CBIndex::c_2;  // output
+    constexpr auto cb_out0 = tt::CBIndex::c_2;  // output -- > [(input - batch_mean)/(sqrt(batch_var + eps))] * weight
     constexpr auto cb_in2 = tt::CBIndex::c_3;   // batch_var
     constexpr auto cb_eps = tt::CBIndex::c_4;   // batch_var
     constexpr auto cb_den = tt::CBIndex::c_5;   // 1/(sqrt(batch_var + eps))
     constexpr auto cb_num = tt::CBIndex::c_6;   // input - batch_mean
+    constexpr auto cb_weight = tt::CBIndex::c_16;  // weight tensor
+    constexpr auto cb_tmp_1 = tt::CBIndex::c_17;   // (input - batch_mean)/(sqrt(batch_var + eps))
 
     auto cb_bcast = cb_in1;
     auto cb_other = cb_in0;
@@ -99,15 +102,14 @@ void MAIN {
         process_tile(cb_bcast, cb_other, cb_num, remaining_iterations, tile_start);
     }
 
+    constexpr auto cb_gamma_or_out = (weight_has_value) ? cb_tmp_1 : cb_out0;
     for (uint32_t tile_id = 0; tile_id < num_tiles; ++tile_id) {
-        // tile_regs_acquire();
         apply_rsqrt_to_sum_value(cb_in2, cb_eps, cb_den, 0, 0, 1, 1);  // 1/(sqrt(batch_var + eps))
-        mul_tiles_to_cb(cb_num, cb_den, cb_out0, 0, 0, 1, 1);          // result
-        // tile_regs_commit();
-        // tile_regs_wait();
-        // pack_tile(0, cb_out0);
-        // tile_regs_release();
-        // cb_push_back(cb_out0, 1);
+        mul_tiles_to_cb(cb_num, cb_den, cb_gamma_or_out, 0, 0, 1, 1);  // (input - batch_mean)/(sqrt(batch_var + eps))
+        if (weight_has_value) {
+            mul_tiles_to_cb(cb_gamma_or_out, cb_weight, cb_out0, 0, 0, 1, 1);  // [(input - batch_mean)/(sqrt(batch_var
+                                                                               // + eps))] * weight
+        }
     }
 }
 }  // namespace NAMESPACE

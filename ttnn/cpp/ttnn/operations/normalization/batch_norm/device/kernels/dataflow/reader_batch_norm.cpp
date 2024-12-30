@@ -10,7 +10,7 @@
 
 void kernel_main() {
     const auto eps = get_arg_val<uint32_t>(0);
-    uint32_t src_addr = get_arg_val<uint32_t>(1);
+    uint32_t src_addr = get_arg_val<uint32_t>(1);  // input tensor
     uint32_t start_tile_id = get_arg_val<uint32_t>(2);
     uint32_t num_tiles = get_arg_val<uint32_t>(3);
     uint32_t HtWt = get_arg_val<uint32_t>(4);

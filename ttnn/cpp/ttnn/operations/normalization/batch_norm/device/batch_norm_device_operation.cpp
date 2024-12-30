@@ -14,11 +14,14 @@ void BatchNormOperation::validate_tensors(
     const auto& batch_mean = tensor_args.batch_mean;
     const auto& batch_var = tensor_args.batch_var;
     const auto& eps = operation_attributes.eps;
+    const auto& weight = tensor_args.weight;
 
     auto& output = tensor_args.output;
 
     check_tensor(input, "batch_norm", "input");
-
+    check_tensor(batch_mean, "batch_norm", "batch_mean");
+    check_tensor(batch_var, "batch_norm", "batch_var");
+    check_tensor(weight, "batch_norm", "weight");
     check_tensor(output, "batch_norm", "output");
 
     // input (N, C, H, W)
@@ -37,6 +40,16 @@ void BatchNormOperation::validate_tensors(
     TT_FATAL(
         batch_var.get_shape().value.without_padding()[1] == C,
         "batch_var_shape[1] must be the same as input's channel size.");
+
+    // weight (1, C, 1, 1)
+    if (weight.has_value()) {
+        TT_FATAL(
+            weight.value().get_shape().value.without_padding()[1] == C,
+            "weight_shape[1] must be the same as input's channel size.");
+        TT_FATAL(
+            weight.value().get_shape().value.without_padding()[1] == C,
+            "weight_shape[1] must be the same as input's channel size.");
+    }
 }
 
 BatchNormOperation::program_factory_t BatchNormOperation::select_program_factory(
@@ -50,6 +63,7 @@ void BatchNormOperation::validate_on_program_cache_miss(
     const auto& input = tensor_args.input;
     const auto& batch_mean = tensor_args.batch_mean;
     const auto& batch_var = tensor_args.batch_var;
+    const auto& weight = tensor_args.weight;
     const auto& output = tensor_args.output;
 
     TT_FATAL(input.get_layout() == Layout::TILE, "Input tensor must be must be tilized");
@@ -69,6 +83,13 @@ void BatchNormOperation::validate_on_program_cache_miss(
         batch_var.memory_config().memory_layout == TensorMemoryLayout::INTERLEAVED,
         "batch_var tensor must be interleaved");
 
+    if (weight.has_value()) {
+        TT_FATAL(weight.value().get_layout() == Layout::TILE, "weight tensor must be tilized");
+        TT_FATAL(
+            weight.value().memory_config().memory_layout == TensorMemoryLayout::INTERLEAVED,
+            "weight tensor must be interleaved");
+    }
+
     validate_tensors(operation_attributes, tensor_args);
 };
 
@@ -84,7 +105,6 @@ DataType BatchNormOperation::operation_attributes_t::get_dtype() const {
 BatchNormOperation::spec_return_value_t BatchNormOperation::compute_output_specs(
     const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
     using namespace tt::constants;
-    // mean, rstd (1, C, 1, 1)
     const auto output_shape = tensor_args.input.get_logical_shape();
     return TensorSpec(
         output_shape,
@@ -106,10 +126,11 @@ std::tuple<BatchNormOperation::operation_attributes_t, BatchNormOperation::tenso
     const Tensor& batch_mean,
     const Tensor& batch_var,
     const float eps,
+    std::optional<Tensor> weight,
     std::optional<Tensor> output,
     const std::optional<MemoryConfig>& memory_config) {
     operation_attributes_t operation_attributes{eps, memory_config.value_or(input.memory_config())};
-    tensor_args_t tensor_args{input, batch_mean, batch_var, std::move(output)};
+    tensor_args_t tensor_args{input, batch_mean, batch_var, weight, std::move(output)};
     return {operation_attributes, tensor_args};
 }
 }  // namespace ttnn::operations::normalization

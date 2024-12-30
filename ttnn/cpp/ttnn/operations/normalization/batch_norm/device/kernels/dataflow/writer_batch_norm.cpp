@@ -8,19 +8,22 @@
 #include "ttnn/cpp/ttnn/operations/eltwise/binary_ng/device/kernels/dataflow/fill_tile_utils.hpp"
 
 void kernel_main() {
-    uint32_t src_addr = get_arg_val<uint32_t>(0);
-    uint32_t batch_var_addr = get_arg_val<uint32_t>(1);
-    uint32_t dst_addr = get_arg_val<uint32_t>(2);
-    uint32_t start_tile_id = get_arg_val<uint32_t>(3);
-    uint32_t num_tiles = get_arg_val<uint32_t>(4);
-    uint32_t HtWt = get_arg_val<uint32_t>(5);
-    uint32_t n_stride = get_arg_val<uint32_t>(6);
-    uint32_t c_stride = get_arg_val<uint32_t>(7);
-    uint32_t N = get_arg_val<uint32_t>(8);
-    uint32_t C = get_arg_val<uint32_t>(9);
+    uint32_t src_addr = get_arg_val<uint32_t>(0);        // batch_mean
+    uint32_t batch_var_addr = get_arg_val<uint32_t>(1);  // batch_var
+    const bool weight_has_value = get_arg_val<uint32_t>(2) == 1;
+    uint32_t weight_addr = get_arg_val<uint32_t>(3);  // weight
+    uint32_t dst_addr = get_arg_val<uint32_t>(4);     // output
+    uint32_t start_tile_id = get_arg_val<uint32_t>(5);
+    uint32_t num_tiles = get_arg_val<uint32_t>(6);
+    uint32_t HtWt = get_arg_val<uint32_t>(7);
+    uint32_t n_stride = get_arg_val<uint32_t>(8);
+    uint32_t c_stride = get_arg_val<uint32_t>(9);
+    uint32_t N = get_arg_val<uint32_t>(10);
+    uint32_t C = get_arg_val<uint32_t>(11);
 
     constexpr uint32_t onetile = 1;
 
+    // batch_mean
     constexpr auto cb_id_src = tt::CBIndex::c_1;
     constexpr bool src_is_dram = get_compile_time_arg_val(0) == 1;
     const uint32_t src_tile_bytes = get_tile_size(cb_id_src);
@@ -29,6 +32,7 @@ void kernel_main() {
     const InterleavedAddrGenFast<src_is_dram> src = {
         .bank_base_address = src_addr, .page_size = src_tile_bytes, .data_format = src_data_format};
 
+    // output
     constexpr auto cb_id_dst = tt::CBIndex::c_2;
     constexpr bool dst_is_dram = get_compile_time_arg_val(1) == 1;
     const uint32_t dst_tile_bytes = get_tile_size(cb_id_dst);
@@ -45,6 +49,15 @@ void kernel_main() {
 
     const InterleavedAddrGenFast<batch_var_is_dram> batch_var = {
         .bank_base_address = batch_var_addr, .page_size = batch_var_tile_bytes, .data_format = batch_var_data_format};
+
+    // weight
+    constexpr auto cb_id_weight = tt::CBIndex::c_16;
+    constexpr bool weight_is_dram = get_compile_time_arg_val(3) == 1;
+    const uint32_t weight_tile_bytes = get_tile_size(cb_id_weight);
+    const DataFormat weight_data_format = get_dataformat(cb_id_weight);
+
+    const InterleavedAddrGenFast<weight_is_dram> weight = {
+        .bank_base_address = weight_addr, .page_size = weight_tile_bytes, .data_format = weight_data_format};
 
     uint32_t tiles_per_batch = HtWt * C;
     uint32_t start_n = start_tile_id / tiles_per_batch;
@@ -74,6 +87,15 @@ void kernel_main() {
             noc_async_read_barrier();
             fill_tile_with_first_element_bfloat16(cb_id_batch_var);
             cb_push_back(cb_id_batch_var, onetile);
+
+            if (weight_has_value) {  // read a tile from weight tensor
+                cb_reserve_back(cb_id_weight, onetile);
+                uint32_t l1_weight_write_addr = get_write_ptr(cb_id_weight);
+                noc_async_read_tile(tile_offset, weight, l1_weight_write_addr);
+                noc_async_read_barrier();
+                fill_tile_with_first_element_bfloat16(cb_id_weight);
+                cb_push_back(cb_id_weight, onetile);
+            }
 
             for (uint32_t t = start_t; t < HtWt && num_tiles_written < num_tiles; ++t, ++num_tiles_written) {
                 // write a tile to dst, since the dst shape is full, the tile offset simply grows linearly

@@ -15,6 +15,7 @@ struct BatchNorm {
         std::optional<Tensor> running_var = std::nullopt,
         const bool training = false,
         const float eps = 1e-05,
+        std::optional<Tensor> weight = std::nullopt,
         std::optional<Tensor> output = std::nullopt,
         const std::optional<MemoryConfig>& memory_config = std::nullopt);
 };
