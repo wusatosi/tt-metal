@@ -84,8 +84,8 @@ class TransformerModel:
     def dram_loading_mm_compute(self, row_size):
         return self.num_parameters_B * row_size * 2
 
-    def attention_mm_compute(self, row_size):
-        return self.num_layers * self.num_q_heads * self.head_dim * row_size * row_size * 2 * 2 / 1024**3
+    def attention_mm_compute(self, row_size, col_size):
+        return self.num_layers * self.num_q_heads * self.head_dim * row_size * col_size * 2 * 2 / 1024**3
 
     def calculate_per_user(self, system):
         estimates_per_user = {}
@@ -137,7 +137,7 @@ class TransformerModel:
         ############################
         estimates_per_user["prefill_compute(GFLOPS)"] = self.dram_loading_mm_compute(
             self.input_sequence_length
-        ) + self.attention_mm_compute(self.input_sequence_length)
+        ) + self.attention_mm_compute(self.input_sequence_length, self.input_sequence_length)
 
         ############################
         # prefill_compute_latency(ms) #
@@ -183,7 +183,7 @@ class TransformerModel:
         # new version:
         estimates_per_batch["decode_compute(GFLOPS)"] = self.dram_loading_mm_compute(
             ceil(num_users / 32) * 32
-        ) + self.attention_mm_compute(self.average_sequence_length)
+        ) + self.attention_mm_compute(num_users, self.average_sequence_length)
 
         ############################
         # decode_compute_latency(ms) #
