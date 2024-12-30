@@ -22,6 +22,9 @@ class ttnn_TimestepEmbedding:
         mm_a_x_strategy = ttnn.ShardStrategy.WIDTH
         mm_a_x_memory_config = ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG
 
+        sample = ttnn.unsqueeze(sample, dim=1)
+        sample = ttnn.unsqueeze(sample, dim=1)
+
         sample = ttnn.linear(
             sample,
             self.linear_1_w,

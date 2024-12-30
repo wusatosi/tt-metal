@@ -132,7 +132,7 @@ def create_custom_preprocessor(device):
             },
             torch.randn([2, 1, 1024, 1536], dtype=torch.bfloat16),
             None,
-            torch.randn([2, 1, 154, 1536], dtype=torch.bfloat16),
+            torch.randn([2, 1, 160, 1536], dtype=torch.bfloat16),
         ),
         (
             {  # 512x512

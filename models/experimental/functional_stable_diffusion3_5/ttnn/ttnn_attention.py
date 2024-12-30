@@ -150,11 +150,11 @@ class ttnn_JointAttnProcessor2_0:
             memory_config=mm_a_x_memory_config,
             core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
         )
-        ttnn.deallocate(hidden_states)
+        # ttnn.deallocate(hidden_states)
         value = ttnn.reallocate(value)
         query = ttnn.to_memory_config(query, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b)
         # Split Heads
-        print("query shape: ", query.shape, query.memory_config().memory_layout, query.memory_config)
+        # print("query shape: ", query.shape, query.memory_config().memory_layout, query.memory_config)
         query = ttnn.experimental.nlp_create_qkv_heads_sd35(query, memory_config=ttnn.L1_MEMORY_CONFIG)[0]
         key = ttnn.to_memory_config(key, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b)
         # Split Heads
@@ -190,10 +190,15 @@ class ttnn_JointAttnProcessor2_0:
             # print(key.memory_config())
 
         if encoder_hidden_states is not None:
+            if encoder_hidden_states.shape[-2] < 512:
+                mm_a_x = 8
+                mm_a_y = 6
+                mm_a_x_strategy = ttnn.ShardStrategy.WIDTH
+                mm_a_x_memory_config = ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG
             encoder_hidden_states = ttnn.to_memory_config(
                 encoder_hidden_states,
                 memory_config=ttnn.create_sharded_memory_config(
-                    hidden_states.shape,
+                    encoder_hidden_states.shape,
                     core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
                     strategy=mm_a_x_strategy,
                     orientation=ttnn.ShardOrientation.ROW_MAJOR,
@@ -316,10 +321,14 @@ class ttnn_JointAttnProcessor2_0:
                 hidden_states[:, :, residual.shape[-2] :, :],
             )
             if not ttnn_Attention.context_pre_only:
+                if encoder_hidden_states.shape[-2] < 512:
+                    mm_a_y = 6
+                    mm_a_x_strategy = ttnn.ShardStrategy.WIDTH
+                    mm_a_x_memory_config = ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG
                 encoder_hidden_states = ttnn.to_memory_config(
                     encoder_hidden_states,
                     memory_config=ttnn.create_sharded_memory_config(
-                        hidden_states.shape,
+                        encoder_hidden_states.shape,
                         core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
                         strategy=mm_a_x_strategy,
                         orientation=ttnn.ShardOrientation.ROW_MAJOR,
@@ -333,6 +342,12 @@ class ttnn_JointAttnProcessor2_0:
                     memory_config=mm_a_x_memory_config,
                     core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
                 )
+
+        mm_a_y = 8
+        mm_a_x = 8
+        mm_a_x_strategy = ttnn.ShardStrategy.BLOCK
+        mm_a_x_memory_config = ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG
+
         hidden_states = ttnn.to_memory_config(
             hidden_states,
             memory_config=ttnn.create_sharded_memory_config(

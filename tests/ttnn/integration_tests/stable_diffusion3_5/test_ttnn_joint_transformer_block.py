@@ -331,22 +331,52 @@ def test_joint_transformer_block(device, reset_seeds, context_pre_only, use_dual
     torch_input_encoder_hidden_states = torch.randn(2, 154, 1536, dtype=torch.bfloat16)
     torch_input_temb = torch.randn(2, 1536, dtype=torch.bfloat16)
 
-    ttnn_input_hidden_states = ttnn.from_torch(
-        torch_input_hidden_states,
-        layout=ttnn.TILE_LAYOUT,
-        dtype=ttnn.bfloat16,
-        device=device,
-        memory_config=ttnn.L1_MEMORY_CONFIG,
+    mm_a_y = 8
+    mm_a_x = 8
+    mm_a_x_strategy = ttnn.ShardStrategy.BLOCK
+    mm_a_x_memory_config = ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG
+    if torch_input_hidden_states.unsqueeze(1).shape[-2] < 512:
+        mm_a_y = 6
+        mm_a_x_strategy = ttnn.ShardStrategy.WIDTH
+        mm_a_x_memory_config = ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG
+    hidden_states_input_memory_config = ttnn.create_sharded_memory_config(
+        torch_input_hidden_states.unsqueeze(1).shape,
+        core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
+        strategy=mm_a_x_strategy,
+        orientation=ttnn.ShardOrientation.ROW_MAJOR,
     )
-    ttnn_input_encoder_hidden_states = ttnn.from_torch(
-        torch_input_encoder_hidden_states,
+
+    ttnn_input_hidden_states = ttnn.from_torch(
+        torch_input_hidden_states.unsqueeze(1),
         layout=ttnn.TILE_LAYOUT,
-        dtype=ttnn.bfloat16,
+        dtype=ttnn.bfloat8_b,
         device=device,
-        memory_config=ttnn.L1_MEMORY_CONFIG,
+        memory_config=hidden_states_input_memory_config,
+    )
+
+    if torch_input_encoder_hidden_states.unsqueeze(1).shape[-2] < 512:
+        encoder_hidden_states_input_memory_config = ttnn.L1_MEMORY_CONFIG
+    else:
+        mm_a_y = 8
+        mm_a_x = 8
+        mm_a_x_strategy = ttnn.ShardStrategy.BLOCK
+        mm_a_x_memory_config = ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG
+
+        encoder_hidden_states_input_memory_config = ttnn.create_sharded_memory_config(
+            torch_input_encoder_hidden_states.unsqueeze(1).shape,
+            core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
+            strategy=mm_a_x_strategy,
+            orientation=ttnn.ShardOrientation.ROW_MAJOR,
+        )
+    ttnn_input_encoder_hidden_states = ttnn.from_torch(
+        torch_input_encoder_hidden_states.unsqueeze(1),
+        layout=ttnn.TILE_LAYOUT,
+        dtype=ttnn.bfloat8_b,
+        device=device,
+        memory_config=encoder_hidden_states_input_memory_config,
     )
     ttnn_input_temb = ttnn.from_torch(
-        torch_input_temb,
+        torch_input_temb.unsqueeze(1).unsqueeze(1),
         layout=ttnn.TILE_LAYOUT,
         dtype=ttnn.bfloat16,
         device=device,

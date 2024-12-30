@@ -10,7 +10,7 @@ from ttnn.model_preprocessing import preprocess_model_parameters, preprocess_lin
 from models.utility_functions import skip_for_grayskull
 from tests.ttnn.utils_for_testing import assert_with_pcc
 from models.experimental.functional_stable_diffusion3_5.reference.gelu import GELU
-from models.experimental.functional_stable_diffusion3_5.ttnn.ttnn_gelu_orig import ttnn_GELU
+from models.experimental.functional_stable_diffusion3_5.ttnn.ttnn_gelu import ttnn_GELU
 
 
 def create_custom_preprocessor(device):

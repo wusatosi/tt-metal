@@ -133,6 +133,14 @@ class ttnn_JointTransformerBlock:
 
         # Attention.
 
+        norm_encoder_hidden_states = ttnn.to_layout(
+            norm_encoder_hidden_states, layout=ttnn.ROW_MAJOR_LAYOUT, dtype=ttnn.bfloat16
+        )
+        norm_encoder_hidden_states = ttnn.pad(norm_encoder_hidden_states, (2, 1, 160, 1536), (0, 0, 0, 0), value=0.0)
+        norm_encoder_hidden_states = ttnn.to_layout(
+            norm_encoder_hidden_states, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat8_b
+        )
+
         attn_output, context_attn_output = self.attn(
             hidden_states=norm_hidden_states,
             encoder_hidden_states=norm_encoder_hidden_states,
@@ -140,26 +148,28 @@ class ttnn_JointTransformerBlock:
         )
 
         # Process attention outputs for the `hidden_states`.
-        attn_output = ttnn.unsqueeze(gate_msa, 1) * attn_output
+        attn_output = gate_msa * attn_output  # ttnn.unsqueeze(gate_msa, 1)
         hidden_states = hidden_states + attn_output
 
         if self.use_dual_attention:
             attn_output2 = self.attn2(hidden_states=norm_hidden_states2, device=norm_hidden_states2.device())
 
-            attn_output2 = ttnn.unsqueeze(gate_msa2, 1) * attn_output2
+            attn_output2 = gate_msa2 * attn_output2  # ttnn.unsqueeze(gate_msa2, 1)
             hidden_states = hidden_states + attn_output2
 
         norm_hidden_states = self.norm2(hidden_states, epsilon=1e-6)
-        norm_hidden_states = norm_hidden_states * (
-            1 + ttnn.reshape(scale_mlp, (scale_mlp.shape[0], 1, scale_mlp.shape[1]))
-        ) + ttnn.reshape(
-            shift_mlp, (shift_mlp.shape[0], 1, shift_mlp.shape[1])
-        )  # scale_mlp[:, None],shift_mlp[:, None]
+
+        norm_hidden_states = norm_hidden_states * (1 + scale_mlp) + shift_mlp
+        print("after reshape norm norm_hidden_states: ", norm_hidden_states.shape)
+        # norm_hidden_states = ttnn.reshape(norm_hidden_states, (norm_hidden_states.shape[0], norm_hidden_states.shape[2], norm_hidden_states.shape[3]))
+        # print("after reshape norm norm_hidden_states: ", norm_hidden_states.shape, norm_hidden_states.memory_config)
         if self._chunk_size is not None:
             # "feed_forward_chunk_size" can be used to save memory
             ff_output = _chunked_feed_forward(self.ff, norm_hidden_states, self._chunk_dim, self._chunk_size)
         else:
+            print("norm norm_hidden_states: ", norm_hidden_states.shape)
             ff_output = self.ff(norm_hidden_states, parameters=parameters["ff"])
+            print("ff_output: ", ff_output.shape)
         ff_output = ttnn.unsqueeze(gate_mlp, 1) * ff_output
 
         hidden_states = hidden_states + ff_output
@@ -172,11 +182,12 @@ class ttnn_JointTransformerBlock:
             encoder_hidden_states = encoder_hidden_states + context_attn_output
 
             norm_encoder_hidden_states = self.norm2_context(encoder_hidden_states, epsilon=1e-6)
-            norm_encoder_hidden_states = norm_encoder_hidden_states * (
-                1 + ttnn.reshape(c_scale_mlp, (c_scale_mlp.shape[0], 1, c_scale_mlp.shape[1]))
-            ) + ttnn.reshape(
-                c_shift_mlp, (c_shift_mlp.shape[0], 1, c_shift_mlp.shape[1])
-            )  # c_scale_mlp[:, None],c_shift_mlp[:, None]
+            # norm_encoder_hidden_states = norm_encoder_hidden_states * (
+            #     1 + ttnn.reshape(c_scale_mlp, (c_scale_mlp.shape[0], 1, c_scale_mlp.shape[1]))
+            # ) + ttnn.reshape(
+            #     c_shift_mlp, (c_shift_mlp.shape[0], 1, c_shift_mlp.shape[1])
+            # )  # c_scale_mlp[:, None],c_shift_mlp[:, None]
+            norm_encoder_hidden_states = norm_encoder_hidden_states * (1 + c_scale_mlp) + c_shift_mlp
             if self._chunk_size is not None:
                 # "feed_forward_chunk_size" can be used to save memory
                 context_ff_output = _chunked_feed_forward(
