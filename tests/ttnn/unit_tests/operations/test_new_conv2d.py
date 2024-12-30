@@ -2852,3 +2852,81 @@ def test_dram_input_mm_conv(device, tiled_input, input_on_device):
     passing, pcc_msg = check_with_pcc_without_tensor_printout(torch_output_tensor, torch_out_golden_tensor, pcc=0.99)
     logger.info(f"PCC = {pcc_msg}. Threshold = 0.99")
     assert passing
+
+
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
+@pytest.mark.parametrize(
+    "batch_size, output_channels,input_channels, input_height, input_width, filter_height, filter_width, stride_h, stride_w, pad_h, pad_w, use_1d_systolic_array, config_override, use_shallow_conv_variant",
+    (
+        (1, 512, 16, 128, 128, 3, 3, 1, 1, 1, 1, True, None, True),
+        (1, 512, 512, 128, 128, 3, 3, 1, 1, 1, 1, False, {"act_block_h": 32 * 4}, False),
+        # (1, 512, 512, 256, 256, 3, 3, 1, 1, 1, 1, True, {"act_block_h": 32*4}, False), #failing
+        # (1, 512, 512, 512, 512, 3, 3, 1, 1, 1, 1, False, {"act_block_h": 32*32}, True), #failing
+        # (1, 256, 512, 512, 512, 3, 3, 1, 1, 1, 1, True, {"act_block_h": 32*32}, False),#failing
+        # (1, 256, 256, 512, 512, 3, 3, 1, 1, 1, 1, False, {"act_block_h": 32*8}, False), #failing
+        # (1, 256, 512, 512, 512, 1, 1, 1, 1, 1, 1, False, {"act_block_h": 32*16}, False), #failing
+        # (1, 256, 256, 1024, 1024, 3, 3, 1, 1, 1, 1, False, {"act_block_h": 32*16}, False), #failing
+        # (1, 128, 256, 1024, 1024, 3, 3, 1, 1, 1, 1, True, {"act_block_h": 32*64}, False), #failing
+        # (1, 128, 128, 1024, 1024, 3, 3, 1, 1, 1, 1, True, {"act_block_h": 32*32}, False),  #failing
+        # (1, 128, 256, 1024, 1024, 1, 1, 1, 1, 1, 1, True, {"act_block_h": 32*32}, False), #failing
+        # (1, 3, 128, 1024, 1024, 3, 3, 1, 1, 1, 1, False, {"act_block_h": 32*32}, False), #failing
+    ),
+)
+@pytest.mark.parametrize(
+    "weights_dtype",
+    [ttnn.bfloat16, ttnn.bfloat8_b],
+)
+@pytest.mark.parametrize(
+    "activations_dtype",
+    [ttnn.bfloat16, ttnn.bfloat8_b],
+)
+@pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
+@pytest.mark.parametrize("output_layout", [ttnn.TILE_LAYOUT])
+@skip_for_grayskull()
+def test_conv_for_autoencoderKL(
+    device,
+    use_program_cache,
+    math_fidelity,
+    activations_dtype,
+    weights_dtype,
+    batch_size,
+    output_channels,
+    input_channels,
+    input_height,
+    input_width,
+    filter_height,
+    filter_width,
+    stride_h,
+    stride_w,
+    pad_h,
+    pad_w,
+    use_1d_systolic_array,
+    config_override,
+    use_shallow_conv_variant,
+    output_layout,
+):
+    if device.core_grid.y == 7:
+        pytest.skip("This test is not supported for N300")
+    run_conv(
+        device,
+        math_fidelity,
+        activations_dtype,
+        weights_dtype,
+        batch_size,
+        output_channels,
+        input_channels,
+        input_height,
+        input_width,
+        filter_height,
+        filter_width,
+        stride_h,
+        stride_w,
+        pad_h,
+        pad_w,
+        use_1d_systolic_array,
+        config_override,
+        use_shallow_conv_variant=use_shallow_conv_variant,
+        groups=1,
+        output_layout=output_layout,
+        has_bias=True,
+    )
