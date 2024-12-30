@@ -126,7 +126,7 @@ class ttnn_JointAttnProcessor2_0:
                 strategy=mm_a_x_strategy,
                 orientation=ttnn.ShardOrientation.ROW_MAJOR,
             ),
-            dtype=ttnn.bfloat16,
+            dtype=ttnn.bfloat8_b,
         )
 
         query = ttnn.linear(
@@ -153,7 +153,6 @@ class ttnn_JointAttnProcessor2_0:
         ttnn.deallocate(hidden_states)
         value = ttnn.reallocate(value)
         query = ttnn.to_memory_config(query, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b)
-        query = ttnn.to_layout(query, ttnn.ROW_MAJOR_LAYOUT)
         # Split Heads
         print("query shape: ", query.shape, query.memory_config().memory_layout, query.memory_config)
         query = ttnn.experimental.nlp_create_qkv_heads_sd35(query, memory_config=ttnn.L1_MEMORY_CONFIG)[0]
@@ -199,7 +198,7 @@ class ttnn_JointAttnProcessor2_0:
                     strategy=mm_a_x_strategy,
                     orientation=ttnn.ShardOrientation.ROW_MAJOR,
                 ),
-                dtype=ttnn.bfloat16,
+                dtype=ttnn.bfloat8_b,
             )
 
             encoder_hidden_states_query_proj = ttnn.linear(
@@ -325,7 +324,7 @@ class ttnn_JointAttnProcessor2_0:
                         strategy=mm_a_x_strategy,
                         orientation=ttnn.ShardOrientation.ROW_MAJOR,
                     ),
-                    dtype=ttnn.bfloat16,
+                    dtype=ttnn.bfloat8_b,
                 )
                 encoder_hidden_states = ttnn.linear(
                     encoder_hidden_states,
@@ -342,7 +341,7 @@ class ttnn_JointAttnProcessor2_0:
                 strategy=mm_a_x_strategy,
                 orientation=ttnn.ShardOrientation.ROW_MAJOR,
             ),
-            dtype=ttnn.bfloat16,
+            dtype=ttnn.bfloat8_b,
         )
         hidden_states = ttnn.linear(
             hidden_states,
