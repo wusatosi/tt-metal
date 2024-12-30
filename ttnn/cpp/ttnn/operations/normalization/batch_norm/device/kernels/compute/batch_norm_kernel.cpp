@@ -80,31 +80,34 @@ void MAIN {
     constexpr auto cb_out0 = tt::CBIndex::c_2;  // output
     constexpr auto cb_in2 = tt::CBIndex::c_3;   // batch_var
     constexpr auto cb_eps = tt::CBIndex::c_4;   // batch_var
+    constexpr auto cb_den = tt::CBIndex::c_5;   // 1/(sqrt(batch_var + eps))
+    constexpr auto cb_num = tt::CBIndex::c_6;   // input - batch_mean
 
     auto cb_bcast = cb_in1;
     auto cb_other = cb_in0;
 
     binary_op_init_common(cb_bcast, cb_other, cb_out0);
-    sub_tiles_init();
 
+    // input - batch_mean --> need to multiply with -1 her for right result
+    sub_tiles_init();
     uint32_t complete_iterations = (num_tiles + tile_start) / tile_freq;
     uint32_t remaining_iterations = (num_tiles + tile_start) % tile_freq;
-
-    // for (uint32_t i = 0; i < complete_iterations; ++i, tile_start = 0) {
-    //     process_tile(cb_bcast, cb_other, cb_out0, tile_freq, tile_start);
-    // }
-
-    // if (remaining_iterations > 0) {
-    //     process_tile(cb_bcast, cb_other, cb_out0, remaining_iterations, tile_start);
-    // }
+    for (uint32_t i = 0; i < complete_iterations; ++i, tile_start = 0) {
+        process_tile(cb_bcast, cb_other, cb_num, tile_freq, tile_start);
+    }
+    if (remaining_iterations > 0) {
+        process_tile(cb_bcast, cb_other, cb_num, remaining_iterations, tile_start);
+    }
 
     for (uint32_t tile_id = 0; tile_id < num_tiles; ++tile_id) {
-        tile_regs_acquire();
-        apply_rsqrt_to_sum_value(cb_in2, cb_eps, cb_out0, 0, 0, 1, 1);  // variance - eps
-        tile_regs_commit();
-        tile_regs_wait();
-        pack_tile(0, cb_out0);
-        tile_regs_release();
+        // tile_regs_acquire();
+        apply_rsqrt_to_sum_value(cb_in2, cb_eps, cb_den, 0, 0, 1, 1);  // 1/(sqrt(batch_var + eps))
+        mul_tiles_to_cb(cb_num, cb_den, cb_out0, 0, 0, 1, 1);          // result
+        // tile_regs_commit();
+        // tile_regs_wait();
+        // pack_tile(0, cb_out0);
+        // tile_regs_release();
+        // cb_push_back(cb_out0, 1);
     }
 }
 }  // namespace NAMESPACE

@@ -170,6 +170,22 @@ BatchNormOperation::BatchNormFactory::cached_program_t BatchNormOperation::Batch
     auto [eps_cb, eps_cb_handle] =
         create_cb(tt::CBIndex::c_4, program, all_device_cores, d_single_tile_size, b_num_tiles_per_cb, d_data_format);
 
+    // Temporary buffers to store intermediate results
+    auto [den_cb, den_cb_handle] = create_cb(
+        tt::CBIndex::c_5,
+        program,
+        all_device_cores,
+        a_single_tile_size,
+        num_tiles_per_cb,
+        a_data_format);  // to store 1/(sqrt(batch_var + eps))
+    auto [num_cb, num_cb_handle] = create_cb(
+        tt::CBIndex::c_6,
+        program,
+        all_device_cores,
+        a_single_tile_size,
+        num_tiles_per_cb,
+        a_data_format);  // to store input - batch_mean
+
     auto a_is_dram = static_cast<uint32_t>(a_buffer->buffer_type() == tt_metal::BufferType::DRAM);
     auto b_is_dram = static_cast<uint32_t>(b_buffer->buffer_type() == tt_metal::BufferType::DRAM);
     auto c_is_dram = static_cast<uint32_t>(c_buffer->buffer_type() == tt_metal::BufferType::DRAM);
