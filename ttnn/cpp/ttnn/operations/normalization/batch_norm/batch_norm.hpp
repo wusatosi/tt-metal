@@ -11,9 +11,10 @@ namespace operations::normalization {
 struct BatchNorm {
     static Tensor invoke(
         const Tensor& input,
-        const Tensor& batch_mean,
-        std::optional<Tensor> output,
-        const std::optional<MemoryConfig>& memory_config);
+        std::optional<Tensor> running_mean = std::nullopt,
+        const bool training = false,
+        std::optional<Tensor> output = std::nullopt,
+        const std::optional<MemoryConfig>& memory_config = std::nullopt);
 };
 }  // namespace operations::normalization
 

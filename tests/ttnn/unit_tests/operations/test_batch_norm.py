@@ -20,7 +20,7 @@ from tests.ttnn.unit_tests.operations.eltwise.backward.utility_funcs import (
         (torch.Size([1, 2, 32, 32])),
     ),
 )
-@pytest.mark.parametrize("training", [False])
+@pytest.mark.parametrize("training", [True])
 @pytest.mark.parametrize("weight", [True])
 @pytest.mark.parametrize("bias", [True])
 def test_batch_norm(input_shapes, training, weight, bias, device):
@@ -52,7 +52,8 @@ def test_batch_norm(input_shapes, training, weight, bias, device):
 
     tt_output_tensor_on_device = ttnn.batch_norm(
         input_tensor,
-        mean_tensor
+        # running_mean = mean_tensor,
+        training=training
         # 1.0,
         # running_mean=mean_tensor,
         # running_var=var_tensor,
@@ -61,7 +62,7 @@ def test_batch_norm(input_shapes, training, weight, bias, device):
     )
     output = ttnn.to_torch(tt_output_tensor_on_device)
     print("TT GROUP NORM MEAN OUTPUT : ", output)
-    print(in_data + mean_data)
+    print(in_data + in_data.mean(dim=(0, 2, 3), keepdim=True))
     # tt_mean_to_torch = ttnn.to_torch(tt_output_tensor_on_device[1]).to(torch.bfloat16)
     # sliced_tensor = tt_mean_to_torch[:, :, 0, 0].unsqueeze(2).unsqueeze(3)
     # print("\n\nSlicing the positions we need --> [1,3,1,1]", sliced_tensor)

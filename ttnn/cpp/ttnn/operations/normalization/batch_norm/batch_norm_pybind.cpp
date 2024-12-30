@@ -16,8 +16,9 @@ void bind_batch_norm_operation(pybind11::module& module) {
         "batch_norm Operation",
         ttnn::pybind_arguments_t{
             py::arg("input"),
-            py::arg("batch_mean"),
             py::kw_only(),
+            py::arg("running_mean") = std::nullopt,
+            py::arg("training") = false,
             py::arg("output") = std::nullopt,
             py::arg("memory_config") = std::nullopt
 

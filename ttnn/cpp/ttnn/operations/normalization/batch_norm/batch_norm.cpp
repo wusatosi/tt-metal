@@ -28,15 +28,19 @@ inline Tensor mean_NHW(const Tensor& input_tensor, const std::optional<MemoryCon
 
 Tensor BatchNorm::invoke(
     const Tensor& input,
-    const Tensor& batch_mean,
+    std::optional<Tensor> running_mean,
+    const bool training,
     std::optional<Tensor> output,
     const std::optional<MemoryConfig>& memory_config) {
-    // moreh mean code
-    // Tensor batch_mean = mean_NHW(input, memory_config);
-    // Tensor mean_sq = mean_NHW(ttnn::square(input, memory_config), memory_config);
-    // Tensor batch_var = ttnn::subtract(mean_sq, ttnn::square(batch_mean, memory_config), std::nullopt, memory_config);
-
-    // send mean as one input and check
-    return ttnn::prim::batch_norm(input, batch_mean, output, memory_config);
+    if (training) {
+        // moreh mean code
+        Tensor batch_mean = mean_NHW(input, memory_config);
+        // Tensor mean_sq = mean_NHW(ttnn::square(input, memory_config), memory_config);
+        // Tensor batch_var = ttnn::subtract(mean_sq, ttnn::square(batch_mean, memory_config), std::nullopt,
+        // memory_config);
+        return ttnn::prim::batch_norm(input, batch_mean, output, memory_config);
+    }
+    TT_FATAL((running_mean.has_value()), "running_mean must be defined in evaluation mode");
+    return ttnn::prim::batch_norm(input, running_mean.value(), output, memory_config);
 }
 }  // namespace ttnn::operations::normalization
