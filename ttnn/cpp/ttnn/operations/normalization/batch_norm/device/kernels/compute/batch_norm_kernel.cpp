@@ -53,7 +53,7 @@ ALWI void process_tile(uint32_t cb_bcast, uint32_t cb_other, uint32_t cb_out, ui
         cb_reserve_back(cb_out, onetile);
 
         tile_regs_acquire();
-        add_tiles(cb_bcast, cb_other, 0, 0, 0);
+        sub_tiles(cb_bcast, cb_other, 0, 0, 0);
         tile_regs_commit();
 
         tile_regs_wait();
@@ -85,7 +85,7 @@ void MAIN {
     auto cb_other = cb_in0;
 
     binary_op_init_common(cb_bcast, cb_other, cb_out0);
-    add_tiles_init();
+    sub_tiles_init();
 
     uint32_t complete_iterations = (num_tiles + tile_start) / tile_freq;
     uint32_t remaining_iterations = (num_tiles + tile_start) % tile_freq;
