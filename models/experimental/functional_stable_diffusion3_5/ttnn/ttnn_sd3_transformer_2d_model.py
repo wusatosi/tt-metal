@@ -121,6 +121,24 @@ class ttnn_SD3Transformer2DModel:
         )
 
         for index_block, block in enumerate(self.transformer_blocks):
+            torch.save(
+                ttnn.to_torch(hidden_states),
+                "models/experimental/functional_stable_diffusion3_5/demo/ttnn_inputs_pt/hidden_states_inputs_layer"
+                + str(index_block)
+                + ".pt",
+            )
+            torch.save(
+                ttnn.to_torch(encoder_hidden_states),
+                "models/experimental/functional_stable_diffusion3_5/demo/ttnn_inputs_pt/encoder_hidden_states_inputs_layer"
+                + str(index_block)
+                + ".pt",
+            )
+            torch.save(
+                ttnn.to_torch(temb),
+                "models/experimental/functional_stable_diffusion3_5/demo/ttnn_inputs_pt/temb_inputs_layer"
+                + str(index_block)
+                + ".pt",
+            )
             hidden_states = ttnn.to_memory_config(hidden_states, memory_config=ttnn.DRAM_MEMORY_CONFIG)
             encoder_hidden_states = ttnn.to_memory_config(encoder_hidden_states, memory_config=ttnn.DRAM_MEMORY_CONFIG)
             temb = ttnn.to_memory_config(temb, memory_config=ttnn.DRAM_MEMORY_CONFIG)

@@ -433,19 +433,20 @@ def test_ttnn_sd3_transformer_2d_model(device, reset_seeds):
     )
 
     hidden_states = torch.load(
-        "models/experimental/functional_stable_diffusion3_5/reference/hidden_states.pt",
+        "models/experimental/functional_stable_diffusion3_5/demo/inputs_pt/hidden_states_transformer_input.pt",
         map_location=torch.device("cpu"),
     )
     encoder_hidden_states = torch.load(
-        "models/experimental/functional_stable_diffusion3_5/reference/encoder_hidden_states.pt",
+        "models/experimental/functional_stable_diffusion3_5/demo/inputs_pt/encoder_hidden_states_transformer_input.pt",
         map_location=torch.device("cpu"),
     )
     pooled_projections = torch.load(
-        "models/experimental/functional_stable_diffusion3_5/reference/pooled_projections.pt",
+        "models/experimental/functional_stable_diffusion3_5/demo/inputs_pt/pooled_projections_transformer_input.pt",
         map_location=torch.device("cpu"),
     )
     timestep = torch.load(
-        "models/experimental/functional_stable_diffusion3_5/reference/timestep.pt", map_location=torch.device("cpu")
+        "models/experimental/functional_stable_diffusion3_5/demo/inputs_pt/timestep_transformer_input.pt",
+        map_location=torch.device("cpu"),
     )
 
     ttnn_hidden_states = ttnn.from_torch(hidden_states, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device)
@@ -469,6 +470,7 @@ def test_ttnn_sd3_transformer_2d_model(device, reset_seeds):
     )
 
     torch_output = torch.load(
-        "models/experimental/functional_stable_diffusion3_5/reference/sd3_5_output.pt", map_location=torch.device("cpu")
+        "models/experimental/functional_stable_diffusion3_5/demo/inputs_pt/output_transformer_output.pt",
+        map_location=torch.device("cpu"),
     )
     assert_with_pcc(torch_output, ttnn.to_torch(ttnn_output[0]), pcc=0.98)  # 0.9883407924985295
