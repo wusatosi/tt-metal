@@ -20,7 +20,7 @@ from tests.ttnn.unit_tests.operations.eltwise.backward.utility_funcs import (
         (torch.Size([3, 4, 32, 32])),
     ),
 )
-@pytest.mark.parametrize("training", [False])
+@pytest.mark.parametrize("training", [True])
 @pytest.mark.parametrize("weight", [True])
 @pytest.mark.parametrize("bias", [True])
 def test_batch_norm(input_shapes, training, weight, bias, device):
@@ -52,8 +52,8 @@ def test_batch_norm(input_shapes, training, weight, bias, device):
 
     tt_output_tensor_on_device = ttnn.batch_norm(
         input_tensor,
-        running_mean=mean_tensor,
-        running_var=var_tensor,
+        # running_mean=mean_tensor,
+        # running_var=var_tensor,
         training=training,
         eps=2.34,
         # gamma=weight_tensor,
@@ -62,9 +62,11 @@ def test_batch_norm(input_shapes, training, weight, bias, device):
     print(tt_output_tensor_on_device.shape)
     output = ttnn.to_torch(tt_output_tensor_on_device)
     print("TT to torch GROUP NORM MEAN OUTPUT : ", output, output.shape)
-    # print(in_data + in_data.mean(dim=(0, 2, 3), keepdim=True)) //step 1
-    # print(in_data.var(dim=(0, 2, 3), keepdim=True) + 0.0)
-    print(var_data + 2.34)
+    # print(in_data + in_data.mean(dim=(0, 2, 3), keepdim=True)) #step 1
+    # print(in_data.var(dim=(0, 2, 3), keepdim=True) + 0.0) #step 2
+    # print(var_data + 2.34) #step 2
+    # print(torch.rsqrt(var_data + 2.34)) #step 3
+    print(torch.rsqrt(in_data.var(dim=(0, 2, 3), keepdim=True) + 2.34))  # step 3
     # tt_mean_to_torch = ttnn.to_torch(tt_output_tensor_on_device[1]).to(torch.bfloat16)
     # sliced_tensor = tt_mean_to_torch[:, :, 0, 0].unsqueeze(2).unsqueeze(3)
     # print("\n\nSlicing the positions we need --> [1,3,1,1]", sliced_tensor)

@@ -9,6 +9,40 @@
 
 namespace NAMESPACE {
 
+ALWI void apply_rsqrt_to_sum_value(
+    uint32_t icb0,
+    uint32_t icb1,
+    uint32_t ocb,
+    uint32_t itile0 = 0,
+    uint32_t itile1 = 0,
+    uint32_t pop0 = 1,
+    uint32_t pop1 = 1) {
+    constexpr uint32_t onetile = 1;
+    constexpr int dst0 = 0;
+
+    cb_reserve_back(ocb, onetile);
+    cb_wait_front(icb0, itile0 + 1);
+    cb_wait_front(icb1, itile1 + 1);
+
+    tile_regs_acquire();
+    // add values and store them in dst
+    add_tiles_init_with_dt(icb0, icb1);
+    add_tiles(icb0, icb1, itile0, itile1, dst0);
+    // apply rsqrt on dst
+    rsqrt_tile_init();
+    rsqrt_tile(dst0);
+    tile_regs_commit();
+
+    tile_regs_wait();
+    pack_tile_with_dt(dst0, ocb);
+    tile_regs_release();
+
+    cb_pop_front(icb0, pop0);
+    cb_pop_front(icb1, pop1);
+
+    cb_push_back(ocb, onetile);
+}
+
 ALWI void process_tile(uint32_t cb_bcast, uint32_t cb_other, uint32_t cb_out, uint32_t freq, uint32_t tile_start) {
     constexpr uint32_t onetile = 1;
 
@@ -66,7 +100,7 @@ void MAIN {
 
     for (uint32_t tile_id = 0; tile_id < num_tiles; ++tile_id) {
         tile_regs_acquire();
-        add_tiles_to_cb(cb_in2, cb_eps, cb_out0, 0, 0, 1, 1);  // variance - eps
+        apply_rsqrt_to_sum_value(cb_in2, cb_eps, cb_out0, 0, 0, 1, 1);  // variance - eps
         tile_regs_commit();
         tile_regs_wait();
         pack_tile(0, cb_out0);
