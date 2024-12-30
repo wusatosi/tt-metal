@@ -70,18 +70,20 @@ void set_or_update_runtime_arguments(
         }
 
         uint32_t cHtWt = cHt * cWt;
-        std::array reader_runtime_args = {
-            *reinterpret_cast<const uint32_t*>(&eps),  // eps value
-            a.buffer()->address(),
-            start_tile_id,
-            num_tiles_per_core,
-            cHtWt,
-            aHt * aWt * aC * (aN > 1),
-            aHt * aWt * (aC > 1),
-            cN,
-            cC,
-            cHt,
-            cWt};
+        class bfloat16 bfloat_scalar(eps);
+        uint32_t packed_scalar = pack_two_bfloat16_into_uint32({bfloat_scalar, bfloat_scalar});
+        std::array reader_runtime_args = {// *reinterpret_cast<const uint32_t*>(&eps),  // eps value
+                                          packed_scalar,
+                                          a.buffer()->address(),
+                                          start_tile_id,
+                                          num_tiles_per_core,
+                                          cHtWt,
+                                          aHt * aWt * aC * (aN > 1),
+                                          aHt * aWt * (aC > 1),
+                                          cN,
+                                          cC,
+                                          cHt,
+                                          cWt};
         handle_args(program, reader_kernel_id, core, reader_runtime_args);
 
         // b

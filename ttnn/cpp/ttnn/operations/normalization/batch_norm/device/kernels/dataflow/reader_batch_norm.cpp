@@ -6,6 +6,7 @@
 
 #include "dataflow_api.h"
 #include "ttnn/cpp/ttnn/deprecated/tt_dnn/kernels/dataflow/moreh_common.hpp"
+#include "ttnn/cpp/ttnn/operations/eltwise/binary_ng/device/kernels/dataflow/fill_tile_utils.hpp"
 
 void kernel_main() {
     const auto eps = get_arg_val<uint32_t>(0);
@@ -35,7 +36,11 @@ void kernel_main() {
     uint32_t start_t = start_remaining % HtWt;
 
     constexpr auto cb_id_eps = tt::CBIndex::c_4;
-    fill_cb_with_value(cb_id_eps, eps);
+    // fill_cb_with_value(cb_id_eps, eps);
+
+    cb_reserve_back(cb_id_eps, onetile);
+    fill_with_val_bfloat16(cb_id_eps, eps);
+    cb_push_back(cb_id_eps, onetile);
 
     // this is the INPUT tile offset
     uint32_t tile_offset = start_n * n_stride + start_c * c_stride + start_t;

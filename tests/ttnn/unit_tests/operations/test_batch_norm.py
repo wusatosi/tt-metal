@@ -55,7 +55,7 @@ def test_batch_norm(input_shapes, training, weight, bias, device):
         running_mean=mean_tensor,
         running_var=var_tensor,
         training=training,
-        eps=1.0,
+        eps=2.34,
         # gamma=weight_tensor,
         # beta=bias_tensor,
     )
@@ -63,7 +63,8 @@ def test_batch_norm(input_shapes, training, weight, bias, device):
     output = ttnn.to_torch(tt_output_tensor_on_device)
     print("TT to torch GROUP NORM MEAN OUTPUT : ", output, output.shape)
     # print(in_data + in_data.mean(dim=(0, 2, 3), keepdim=True)) //step 1
-    print(var_data + 1.0)
+    # print(in_data.var(dim=(0, 2, 3), keepdim=True) + 0.0)
+    print(var_data + 2.34)
     # tt_mean_to_torch = ttnn.to_torch(tt_output_tensor_on_device[1]).to(torch.bfloat16)
     # sliced_tensor = tt_mean_to_torch[:, :, 0, 0].unsqueeze(2).unsqueeze(3)
     # print("\n\nSlicing the positions we need --> [1,3,1,1]", sliced_tensor)
