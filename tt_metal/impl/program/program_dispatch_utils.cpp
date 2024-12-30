@@ -5,6 +5,7 @@
 #include "program_dispatch_utils.hpp"
 #include "tt_metal/impl/dispatch/command_queue.hpp"
 #include "tt_metal/impl/dispatch/data_collection.hpp"
+#include "tt_metal/distributed/mesh_workload.hpp"
 
 namespace tt::tt_metal {
 namespace program_utils {
@@ -107,6 +108,101 @@ uint32_t configure_crta_offsets_for_kernel_groups(
         }
     }
     return total_crta_size;
+}
+
+template <typename T>
+void finalize(T& workload, Device* device) {
+    // CQ iterates over these to update runtime addresses, needs to know when eth begins (after tensix)
+    // TODO: should store all the counts
+
+    // Incremental offset. Will correspond to the size of the program config per core, once the
+    // program is finalized.
+    uint32_t offset = 0;
+    // Unique RTA offset.
+    uint32_t rta_offset = 0;
+    // Common RTA offsets and sizes.
+    std::array<uint32_t, DISPATCH_CLASS_MAX> crta_offsets;
+    std::array<uint32_t, DISPATCH_CLASS_MAX> crta_sizes;
+    // Semaphore offsets and sizes.
+    uint32_t sem_offset = 0;
+    uint32_t sem_size = 0;
+    // CB offsets and sizes.
+    uint32_t cb_offset = 0;
+    uint32_t cb_size = 0;
+    uint32_t local_cb_size = 0;
+    // Kernel binary offsets and sizes.
+    uint32_t kernel_text_offset = 0;
+    uint32_t kernel_text_size = 0;
+
+    auto set_program_offsets_and_sizes = [&](Program& program, uint32_t index) {
+        program.get_program_config(index).rta_offset = rta_offset;
+        program.get_program_config(index).crta_offsets = crta_offsets;
+        program.get_program_config(index).crta_sizes = crta_sizes;
+        program.get_program_config(index).sem_offset = sem_offset;
+        program.get_program_config(index).sem_size = sem_size;
+        program.get_program_config(index).cb_offset = cb_offset;
+        program.get_program_config(index).cb_size = cb_size;
+        program.get_program_config(index).kernel_text_offset = kernel_text_offset;
+        program.get_program_config(index).kernel_text_size = kernel_text_size;
+        program.get_program_config_sizes()[index] = offset;
+    };
+
+    auto set_program_attrs_across_core_types = [&](Program& program) {
+        program.set_launch_msg_sem_offsets();
+        // TODO: This check is wrong - it populates dispatch data for dispatch kernels
+        if (std::getenv("TT_METAL_SLOW_DISPATCH_MODE") == nullptr) {
+            program.populate_dispatch_data(device);  // TODO: maybe rename
+        }
+    };
+
+    for (uint32_t index = 0; index < hal.get_programmable_core_type_count(); index++) {
+        HalProgrammableCoreType programmable_core_type = static_cast<HalProgrammableCoreType>(index);
+
+        offset = finalize_rt_args(
+            workload.get_kernels(index),
+            workload.get_kernel_groups(index),
+            offset,
+            index,
+            rta_offset,
+            crta_offsets,
+            crta_sizes);
+        offset = finalize_sems(index, offset, workload.semaphores(), sem_offset, sem_size);
+        offset = finalize_cbs(index, workload.get_kernel_groups(index), offset, cb_offset, cb_size, local_cb_size);
+        offset = finalize_kernel_bins(
+            device,
+            index,
+            workload.get_kernels(index),
+            workload.get_kernel_groups(index),
+            offset,
+            kernel_text_offset,
+            kernel_text_size);
+
+        auto max_size = hal.get_dev_size(programmable_core_type, HalL1MemAddrType::KERNEL_CONFIG);
+        TT_FATAL(
+            offset < max_size,
+            "Program size ({}) too large for kernel config buffer ({}) on {}",
+            offset,
+            max_size,
+            magic_enum::enum_name(programmable_core_type));
+
+        if constexpr (std::is_same_v<T, Program>) {
+            set_program_offsets_and_sizes(workload, index);
+        } else {
+            for (auto& program_on_grid : workload.programs_) {
+                set_program_offsets_and_sizes(program_on_grid.second, index);
+            }
+        }
+    }
+    // The sem offsets cross programmable_core_types so must be set after the loop above
+    if constexpr (std::is_same_v<T, Program>) {
+        set_program_attrs_across_core_types(workload);
+    } else {
+        for (auto& program_on_grid : workload.programs_) {
+            set_program_attrs_across_core_types(program_on_grid.second);
+        }
+    }
+    workload.finalized_ = true;
+    // workload.set_finalized();
 }
 
 uint32_t finalize_rt_args(
@@ -1466,6 +1562,9 @@ KernelHandle get_device_local_kernel_handle(KernelHandle kernel_handle) {
     // being dispatched.
     return kernel_handle & 0xffff;
 }
+
+template void finalize<Program>(Program&, Device*);
+template void finalize<distributed::MeshWorkload>(distributed::MeshWorkload&, Device*);
 
 }  // namespace program_utils
 

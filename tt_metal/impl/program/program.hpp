@@ -46,7 +46,13 @@ CBHandle CreateCircularBuffer(
 namespace program_utils {
     void assemble_device_commands(
         ProgramCommandSequence& program_command_sequence, Program& program, Device* device, SubDeviceId sub_device_id);
+    template<typename T>
+    void finalize(T& workload_type, Device* device);
 } // namespace program_utils
+
+namespace distributed {
+    class MeshWorkload;
+} // namespace distributed
 
 class EnqueueProgramCommand;
 class HWCommandQueue;
@@ -170,7 +176,6 @@ class Program {
     void set_cached();
     void set_program_binary_status(std::size_t device_id, ProgramBinaryStatus status);
     void allocate_kernel_bin_buf_on_device(Device* device);
-    void finalize(Device *device);
     std::shared_ptr<Kernel> get_kernel(KernelHandle kernel_id) const;
 
     ProgramConfig& get_program_config(uint32_t programmable_core_type_index);
@@ -184,6 +189,7 @@ class Program {
 
     const std::vector<SubDeviceId> &determine_sub_device_ids(const Device *device);
     void set_kernels_bin_buffer(const std::shared_ptr<Buffer>& buffer);
+    void set_finalized();
    private:
     std::unique_ptr<detail::Program_> pimpl_;
 
@@ -222,9 +228,10 @@ class Program {
     friend void detail::AddConfigBuffer(Program &program, const std::shared_ptr<Buffer>& config_buffer);
     friend void program_utils::assemble_device_commands(
         ProgramCommandSequence& program_command_sequence, Program& program, Device* device, SubDeviceId sub_device_id);
-
+    template<typename T> friend void program_utils::finalize(T&, Device*);
     friend HWCommandQueue;
     friend EnqueueProgramCommand;
+    friend distributed::MeshWorkload;
     friend detail::Internal_;
 };
 

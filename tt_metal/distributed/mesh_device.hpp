@@ -140,7 +140,11 @@ public:
     // 1. The old_shape volume must equal the new_shape volume (i.e. number of devices must remain constant)
     // 2. For Grid-to-Grid or Line-to-Grid reshaping: physical connectivity must be possible with current devices
     void reshape(const MeshShape& new_shape);
-
+    CoreCoord enqueue_program_dispatch_core(uint8_t cq_id);
+    CoreType dispatch_core_type();
+    LaunchMessageRingBufferState& get_worker_launch_message_buffer_state() {
+        return this->worker_launch_message_buffer_state;
+    }
     void close_devices();
     const MeshDeviceView& get_view() const;
 
@@ -187,6 +191,17 @@ public:
 
     int num_dram_channels() const;
     allocator::Statistics get_memory_allocation_statistics(const BufferType &buffer_type, SubDeviceId sub_device_id = SubDeviceId{0}) const;
+
+    uint32_t num_worker_cores(HalProgrammableCoreType core_type, SubDeviceId sub_device_id) const;
+
+    // TODO: These must be moved to a Mesh Command Queue
+    // Track expected num workers here
+    // std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES> expected_num_workers_completed;
+    uint32_t expected_num_workers_completed = 0;
+    // Track worker config buffer state here. Global across all devices in the Mesh
+    // std::array<tt::tt_metal::WorkerConfigBufferMgr, dispatch_constants::DISPATCH_MESSAGE_ENTRIES> config_buffer_mgr;
+    tt::tt_metal::WorkerConfigBufferMgr config_buffer_mgr;
+    LaunchMessageRingBufferState worker_launch_message_buffer_state;
 };
 
 std::ostream& operator<<(std::ostream& os, const MeshDevice& mesh_device);

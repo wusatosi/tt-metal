@@ -583,6 +583,14 @@ class HWCommandQueue {
         CommandQueue& cq,
         Program& program,
         bool blocking);
+    friend void EnqueueProgramCommandSequence(
+        CommandQueue& cq,
+        ProgramCommandSequence& program_cmd_seq,
+        uint32_t num_active_cores_in_program,
+        SubDeviceId sub_device_id,
+        bool stall_first,
+        bool stall_before_program,
+        bool blocking);
     friend void EnqueueReadBufferImpl(
         CommandQueue& cq,
         std::variant<std::reference_wrapper<Buffer>, std::shared_ptr<Buffer>> buffer,

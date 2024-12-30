@@ -38,6 +38,9 @@ uint32_t configure_crta_offsets_for_kernel_groups(
     std::array<uint32_t, DISPATCH_CLASS_MAX>& crta_offsets,
     std::array<uint32_t, DISPATCH_CLASS_MAX>& crta_sizes);
 
+template <typename T>
+void finalize(T& workload_type, Device* device);
+
 uint32_t finalize_rt_args(
     std::unordered_map<KernelHandle, std::shared_ptr<Kernel>>& kernels,
     std::vector<std::shared_ptr<KernelGroup>>& kernel_groups,
