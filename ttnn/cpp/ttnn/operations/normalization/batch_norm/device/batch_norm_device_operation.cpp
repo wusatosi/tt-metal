@@ -12,6 +12,8 @@ void BatchNormOperation::validate_tensors(
     const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
     const auto& input = tensor_args.input;
     const auto& batch_mean = tensor_args.batch_mean;
+    const auto& batch_var = tensor_args.batch_var;
+    const auto& eps = operation_attributes.eps;
 
     auto& output = tensor_args.output;
 
@@ -31,6 +33,10 @@ void BatchNormOperation::validate_tensors(
     TT_FATAL(
         batch_mean.get_shape().value.without_padding()[1] == C,
         "batch_mean_shape[1] must be the same as input's channel size.");
+    // mean (1, C, 1, 1)
+    TT_FATAL(
+        batch_var.get_shape().value.without_padding()[1] == C,
+        "batch_var_shape[1] must be the same as input's channel size.");
 }
 
 BatchNormOperation::program_factory_t BatchNormOperation::select_program_factory(
@@ -43,6 +49,7 @@ void BatchNormOperation::validate_on_program_cache_miss(
     // We don't support sharding for now
     const auto& input = tensor_args.input;
     const auto& batch_mean = tensor_args.batch_mean;
+    const auto& batch_var = tensor_args.batch_var;
     const auto& output = tensor_args.output;
 
     TT_FATAL(input.get_layout() == Layout::TILE, "Input tensor must be must be tilized");
@@ -56,6 +63,11 @@ void BatchNormOperation::validate_on_program_cache_miss(
     TT_FATAL(
         batch_mean.memory_config().memory_layout == TensorMemoryLayout::INTERLEAVED,
         "batch_mean tensor must be interleaved");
+
+    TT_FATAL(batch_var.get_layout() == Layout::TILE, "batch_var tensor must be tilized");
+    TT_FATAL(
+        batch_var.memory_config().memory_layout == TensorMemoryLayout::INTERLEAVED,
+        "batch_var tensor must be interleaved");
 
     validate_tensors(operation_attributes, tensor_args);
 };
@@ -87,32 +99,17 @@ BatchNormOperation::tensor_return_value_t BatchNormOperation::create_output_tens
     }
 
     return create_device_tensor(compute_output_specs(operation_attributes, tensor_args), tensor_args.input.device());
-
-    // const auto output_shapes = compute_output_specs(operation_attributes, tensor_args);
-    // auto dtype = tensor_args.input.get_dtype();
-    // Layout layout{Layout::TILE};
-    // auto device = tensor_args.input.device();
-    // std::vector<std::optional<Tensor>> result;
-    // result.reserve(1);
-    // // output
-    // if (tensor_args.output.has_value()) {
-    //     result.push_back(tensor_args.output.value());
-    // } else {
-    //     result.push_back(
-    //         // create_device_tensor(output_shapes, dtype, layout, device, operation_attributes.memory_config)
-    //         create_device_tensor(output_shapes, tensor_args.input.device())
-    //     );
-    // }
-    // return std::move(result);
 }
 
 std::tuple<BatchNormOperation::operation_attributes_t, BatchNormOperation::tensor_args_t> BatchNormOperation::invoke(
     const Tensor& input,
     const Tensor& batch_mean,
+    const Tensor& batch_var,
+    const float eps,
     std::optional<Tensor> output,
     const std::optional<MemoryConfig>& memory_config) {
-    operation_attributes_t operation_attributes{memory_config.value_or(input.memory_config())};
-    tensor_args_t tensor_args{input, batch_mean, std::move(output)};
+    operation_attributes_t operation_attributes{eps, memory_config.value_or(input.memory_config())};
+    tensor_args_t tensor_args{input, batch_mean, batch_var, std::move(output)};
     return {operation_attributes, tensor_args};
 }
 }  // namespace ttnn::operations::normalization

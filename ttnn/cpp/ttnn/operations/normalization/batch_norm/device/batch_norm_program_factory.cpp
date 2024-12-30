@@ -31,6 +31,9 @@ void set_or_update_runtime_arguments(
     F handle_args) {
     const auto& a = tensor_args.input;
     const auto& b = tensor_args.batch_mean;
+    const auto& d = tensor_args.batch_var;
+
+    const auto eps = operation_attributes.eps;
 
     const auto ashape = a.padded_shape();
     const auto bshape = b.padded_shape();
@@ -60,14 +63,15 @@ void set_or_update_runtime_arguments(
         } else if (core_group_2.contains(core)) {
             num_tiles_per_core = num_tiles_per_core_group_2;
         } else {
-            handle_args(program, reader_kernel_id, core, std::array<uint32_t, 10>{0});
-            handle_args(program, writer_kernel_id, core, std::array<uint32_t, 11>{0});
+            handle_args(program, reader_kernel_id, core, std::array<uint32_t, 11>{0});
+            handle_args(program, writer_kernel_id, core, std::array<uint32_t, 12>{0});
             handle_args(program, compute_kernel_id, core, std::array<uint32_t, 3>{0});
             continue;
         }
 
         uint32_t cHtWt = cHt * cWt;
         std::array reader_runtime_args = {
+            *reinterpret_cast<const uint32_t*>(&eps),  // eps value
             a.buffer()->address(),
             start_tile_id,
             num_tiles_per_core,
@@ -83,6 +87,7 @@ void set_or_update_runtime_arguments(
         // b
         std::array writer_runtime_args = {
             b.buffer()->address(),
+            d.buffer()->address(),  // pass batch var
             c.buffer()->address(),
             start_tile_id,
             num_tiles_per_core,
@@ -118,6 +123,8 @@ BatchNormOperation::BatchNormFactory::cached_program_t BatchNormOperation::Batch
 
     const auto& a = tensor_args.input;
     const auto& b = tensor_args.batch_mean;
+    const auto& d = tensor_args.batch_var;
+    const auto& eps = operation_attributes.eps;
 
     auto program = CreateProgram();
 
@@ -126,10 +133,12 @@ BatchNormOperation::BatchNormFactory::cached_program_t BatchNormOperation::Batch
     auto a_data_format = datatype_to_dataformat_converter(a.get_dtype());
     auto b_data_format = datatype_to_dataformat_converter(b.get_dtype());
     auto c_data_format = datatype_to_dataformat_converter(output.get_dtype());
+    auto d_data_format = datatype_to_dataformat_converter(d.get_dtype());
 
     uint32_t a_single_tile_size = tt_metal::detail::TileSize(a_data_format);
     uint32_t b_single_tile_size = tt_metal::detail::TileSize(b_data_format);
     uint32_t c_single_tile_size = tt_metal::detail::TileSize(c_data_format);
+    uint32_t d_single_tile_size = tt_metal::detail::TileSize(d_data_format);
 
     uint32_t num_output_tiles = output.volume() / output.tensor_spec().tile().get_tile_hw();
 
@@ -143,6 +152,7 @@ BatchNormOperation::BatchNormFactory::cached_program_t BatchNormOperation::Batch
     Buffer* a_buffer = a.buffer();
     Buffer* b_buffer = b.buffer();
     Buffer* c_buffer = output.buffer();
+    Buffer* d_buffer = d.buffer();
 
     // How many tiles to store per input CB (double buffer)
     constexpr uint32_t num_tiles_per_cb = 2;
@@ -153,16 +163,15 @@ BatchNormOperation::BatchNormFactory::cached_program_t BatchNormOperation::Batch
         create_cb(tt::CBIndex::c_1, program, all_device_cores, b_single_tile_size, b_num_tiles_per_cb, b_data_format);
     auto [c_cb, c_cb_handle] =
         create_cb(tt::CBIndex::c_2, program, all_device_cores, c_single_tile_size, num_tiles_per_cb, c_data_format);
+    auto [d_cb, d_cb_handle] =
+        create_cb(tt::CBIndex::c_3, program, all_device_cores, d_single_tile_size, b_num_tiles_per_cb, d_data_format);
+    auto [eps_cb, eps_cb_handle] =
+        create_cb(tt::CBIndex::c_4, program, all_device_cores, d_single_tile_size, b_num_tiles_per_cb, d_data_format);
 
     auto a_is_dram = static_cast<uint32_t>(a_buffer->buffer_type() == tt_metal::BufferType::DRAM);
     auto b_is_dram = static_cast<uint32_t>(b_buffer->buffer_type() == tt_metal::BufferType::DRAM);
     auto c_is_dram = static_cast<uint32_t>(c_buffer->buffer_type() == tt_metal::BufferType::DRAM);
-
-    // auto kernel_config = CMAKE_UNIQUE_NAMESPACE::BinaryNgKernelConfig(operation_attributes.subtile_broadcast_type);
-    // reader_kernel = KernelName::ReaderNoBcast;
-    // compute_kernel = KernelName::ComputeBcast;
-    // writer_kernel = KernelName::WriterScalarBcast;
-    // bcast_input = 1;
+    auto d_is_dram = static_cast<uint32_t>(d_buffer->buffer_type() == tt_metal::BufferType::DRAM);
 
     // READER KERNEL
     auto reader_kernel_id = tt_metal::CreateKernel(
@@ -176,7 +185,7 @@ BatchNormOperation::BatchNormFactory::cached_program_t BatchNormOperation::Batch
         program,
         "ttnn/cpp/ttnn/operations/normalization/batch_norm/device/kernels/dataflow/writer_batch_norm.cpp",
         all_device_cores,
-        tt_metal::WriterDataMovementConfig({b_is_dram, c_is_dram}));
+        tt_metal::WriterDataMovementConfig({b_is_dram, c_is_dram, d_is_dram}));
 
     // COMPUTE KERNEL
     bool fp32_dest_acc_en = c_data_format == tt::DataFormat::UInt32 || c_data_format == tt::DataFormat::Int32 ||

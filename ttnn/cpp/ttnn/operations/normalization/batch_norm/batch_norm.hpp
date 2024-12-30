@@ -12,7 +12,9 @@ struct BatchNorm {
     static Tensor invoke(
         const Tensor& input,
         std::optional<Tensor> running_mean = std::nullopt,
+        std::optional<Tensor> running_var = std::nullopt,
         const bool training = false,
+        const float eps = 1e-05,
         std::optional<Tensor> output = std::nullopt,
         const std::optional<MemoryConfig>& memory_config = std::nullopt);
 };

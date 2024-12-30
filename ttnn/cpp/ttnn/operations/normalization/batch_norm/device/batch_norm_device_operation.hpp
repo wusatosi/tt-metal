@@ -11,6 +11,7 @@
 namespace ttnn::operations::normalization {
 struct BatchNormOperation {
     struct operation_attributes_t {
+        const float eps;
         const MemoryConfig memory_config;
 
         DataType input_dtype;
@@ -21,6 +22,7 @@ struct BatchNormOperation {
     struct tensor_args_t {
         const Tensor& input;
         const Tensor& batch_mean;
+        const Tensor& batch_var;
         std::optional<Tensor> output;
     };
 
@@ -62,6 +64,8 @@ struct BatchNormOperation {
     static std::tuple<operation_attributes_t, tensor_args_t> invoke(
         const Tensor& input,
         const Tensor& batch_mean,
+        const Tensor& batch_var,
+        const float eps,
         std::optional<Tensor> output,
         const std::optional<MemoryConfig>& memory_config);
 };
