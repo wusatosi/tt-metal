@@ -51,29 +51,48 @@ def test_sd35_ada_layernorm_zerox(device, reset_seeds, h):
     ).to(dtype=torch.bfloat16)
     reference_model.eval()
 
-    torch_innput_hidden_states = torch.randn(2, h, 1536, dtype=torch.bfloat16)
-    torch_innput_emb = torch.randn(2, 1536, dtype=torch.bfloat16)
+    torch_input_hidden_states = torch.randn(2, h, 1536, dtype=torch.bfloat16)
+    torch_input_emb = torch.randn(2, 1536, dtype=torch.bfloat16)
+    torch_output = reference_model(torch_input_hidden_states, torch_input_emb)
 
     parameters = preprocess_model_parameters(
         initialize_model=lambda: reference_model, custom_preprocessor=create_custom_preprocessor(device), device=device
     )
 
-    ttnn_input_hidden_states = ttnn.from_torch(
-        torch_innput_hidden_states,
-        layout=ttnn.TILE_LAYOUT,
-        dtype=ttnn.bfloat16,
-        device=device,
-        memory_config=ttnn.L1_MEMORY_CONFIG,
+    torch_input_hidden_states = torch_input_hidden_states.unsqueeze(1)
+
+    mm_a_y = 8
+    mm_a_x = 8
+    mm_a_x_strategy = ttnn.ShardStrategy.BLOCK
+    mm_a_x_memory_config = ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG
+    if torch_input_hidden_states.shape[-2] < 512:
+        mm_a_y = 6
+        mm_a_x_strategy = ttnn.ShardStrategy.WIDTH
+        mm_a_x_memory_config = ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG
+
+    input_memory_config = ttnn.create_sharded_memory_config(
+        torch_input_hidden_states.shape,
+        core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
+        strategy=mm_a_x_strategy,
+        orientation=ttnn.ShardOrientation.ROW_MAJOR,
     )
+
     ttnn_input_emb = ttnn.from_torch(
-        torch_innput_emb,
+        torch_input_emb.unsqueeze(1).unsqueeze(1),
         layout=ttnn.TILE_LAYOUT,
-        dtype=ttnn.bfloat16,
+        dtype=ttnn.bfloat8_b,
         device=device,
         memory_config=ttnn.L1_MEMORY_CONFIG,
     )
 
-    torch_output = reference_model(torch_innput_hidden_states, torch_innput_emb)
+    ttnn_input_hidden_states = ttnn.from_torch(
+        torch_input_hidden_states,
+        layout=ttnn.TILE_LAYOUT,
+        dtype=ttnn.bfloat8_b,
+        device=device,
+        memory_config=input_memory_config,  # input_memory_config, #ttnn.L1_MEMORY_CONFIG,
+    )
+
     ttnn_model = ttnn_SD35AdaLayerNormZeroX(
         embedding_dim=1536,
         norm_type="layer_norm",
@@ -85,10 +104,10 @@ def test_sd35_ada_layernorm_zerox(device, reset_seeds, h):
     for i in range(len(torch_output)):
         torch_output_shape = torch_output[i].shape
         if len(torch_output_shape) > 2:
-            assert_with_pcc(torch_output[i], ttnn.to_torch(ttnn_output[i]), pcc=0.99)
+            assert_with_pcc(torch_output[i].unsqueeze(1), ttnn.to_torch(ttnn_output[i]), pcc=0.99)
         else:
             assert_with_pcc(
-                torch_output[i].reshape(torch_output_shape[0], 1, torch_output_shape[1]),
+                torch_output[i].unsqueeze(1).unsqueeze(1),
                 ttnn.to_torch(ttnn_output[i]),
                 pcc=0.99,
             )
