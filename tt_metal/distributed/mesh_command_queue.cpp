@@ -110,6 +110,7 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
     if (blocking) {
         this->finish();
     }
+    mesh_workload.set_last_used_command_queue(this);
 }
 
 void MeshCommandQueue::finish() {

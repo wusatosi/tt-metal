@@ -23,5 +23,7 @@ void InsertProgramInMeshWorkload(MeshWorkload& mesh_workload, Program& program, 
 
 void EnqueueMeshWorkload(MeshCommandQueue& mesh_cq, MeshWorkload& mesh_workload, bool blocking);
 
+void Finish(MeshCommandQueue& mesh_cq);
+
 }  // namespace distributed
 }  // namespace tt::tt_metal

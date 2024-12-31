@@ -33,6 +33,7 @@ private:
     bool kernel_binary_always_stored_in_ringbuffer();
     bool is_finalized() const { return this->finalized_; }
     void set_finalized() { this->finalized_ = true; };
+    ProgramConfig& get_program_config(uint32_t index);
     ProgramBinaryStatus program_binary_status = ProgramBinaryStatus::NotSent;
     std::unordered_set<std::shared_ptr<Buffer>> kernel_bin_buffers_ = {};
     std::vector<std::unordered_map<KernelHandle, std::shared_ptr<Kernel>>> kernels_ = {};
@@ -41,6 +42,7 @@ private:
     std::unordered_map<LogicalDeviceRange, Program> programs_;
     bool finalized_ = false;
     std::unordered_map<LogicalDeviceRange, std::unordered_map<KernelHandle, RuntimeArgsPerCore>> runtime_args_;
+    MeshCommandQueue* last_used_command_queue = nullptr;
 
     template <typename T>
     friend void program_utils::finalize(T&, Device*);
@@ -52,5 +54,7 @@ public:
     void add_program(const LogicalDeviceRange& device_range, Program& program);
     std::unordered_map<LogicalDeviceRange, Program>& get_programs() { return this->programs_; }
     ProgramCommandSequence& get_dispatch_cmds_for_program(Program& program);
+    void set_last_used_command_queue(MeshCommandQueue* mesh_cq);
+    uint32_t get_cb_base_addr(std::shared_ptr<MeshDevice> mesh_device, CoreCoord logical_core, CoreType core_type);
 };
 }  // namespace tt::tt_metal::distributed

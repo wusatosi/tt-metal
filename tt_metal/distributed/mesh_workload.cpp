@@ -219,6 +219,28 @@ ProgramCommandSequence& MeshWorkload::get_dispatch_cmds_for_program(Program& pro
     return program.get_cached_program_command_sequences().begin()->second;
 }
 
+void MeshWorkload::set_last_used_command_queue(MeshCommandQueue* mesh_cq) { this->last_used_command_queue = mesh_cq; }
+
+ProgramConfig& MeshWorkload::get_program_config(uint32_t index) {
+    TT_FATAL(
+        this->programs_.size() and this->is_finalized(),
+        "Program Configs can only be queried if a MeshWorkload is populated and finalized.");
+    return this->programs_.begin()->second.get_program_config(index);
+}
+
+uint32_t MeshWorkload::get_cb_base_addr(
+    std::shared_ptr<MeshDevice> mesh_device, CoreCoord logical_core, CoreType core_type) {
+    auto device = mesh_device->get_device(0);
+    CoreCoord virtual_core = device->virtual_core_from_logical_core(logical_core, core_type);
+    HalProgrammableCoreType programmable_core_type = device->get_programmable_core_type(virtual_core);
+    uint32_t index = hal.get_programmable_core_type_index(programmable_core_type);
+
+    uint32_t base_addr =
+        this->last_used_command_queue->get_config_buffer_mgr().get_last_slot_addr(programmable_core_type);
+    uint32_t relative_cb_offset = get_program_config(index).cb_offset;
+    return base_addr + relative_cb_offset;
+}
+
 // void MeshWorkload::set_runtime_args(const LogicalDeviceRange& device_range, const CoreRangeSet& core_range_set,
 // KernelHandle kernel_id, const std::vector<uint32_t> runtime_args) {
 //     std::size_t intersection_count = 0;

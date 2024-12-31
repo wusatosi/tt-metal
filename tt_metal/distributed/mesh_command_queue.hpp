@@ -21,6 +21,7 @@ public:
     MeshCommandQueue(std::shared_ptr<MeshDevice> mesh_device, uint32_t id);
     const std::shared_ptr<MeshDevice>& mesh_device() { return this->mesh_device_; }
     uint32_t id() { return this->id_; }
+    WorkerConfigBufferMgr& get_config_buffer_mgr() { return this->config_buffer_mgr_; };
     void enqueue_mesh_workload(MeshWorkload& mesh_workload, bool blocking);
     void finish();
 };

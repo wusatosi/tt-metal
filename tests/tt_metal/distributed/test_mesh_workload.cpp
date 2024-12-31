@@ -7,6 +7,7 @@
 #include "tests/tt_metal/tt_metal/dispatch/dispatch_test_utils.hpp"
 #include "tests/tt_metal/distributed/distributed_fixture.hpp"
 #include "tt_metal/host_api.hpp"
+#include "tt_metal/detail/tt_metal.hpp"
 #include "tt_metal/common/bfloat16.hpp"
 
 namespace tt::tt_metal::distributed::test {
@@ -436,6 +437,53 @@ std::vector<std::shared_ptr<Program>> create_eltwise_bin_programs(
     return programs;
 }
 
+void verify_cb_config(
+    std::shared_ptr<MeshDevice> mesh_device,
+    MeshWorkload& workload,
+    std::vector<CBConfig>& golden_cb_config,
+    CoreRangeSet& crs) {
+    std::vector<uint32_t> cb_config_vector;
+    uint32_t cb_config_buffer_size =
+        NUM_CIRCULAR_BUFFERS * UINT32_WORDS_PER_LOCAL_CIRCULAR_BUFFER_CONFIG * sizeof(uint32_t);
+
+    for (auto& program_on_grid : workload.get_programs()) {
+        auto& device_range = program_on_grid.first;
+        auto& program = program_on_grid.second;
+        for (std::size_t logical_x = device_range.start_coord.x; logical_x < device_range.end_coord.x; logical_x++) {
+            for (std::size_t logical_y = device_range.start_coord.y; logical_y < device_range.end_coord.y;
+                 logical_y++) {
+                auto device = mesh_device->get_device(logical_y, logical_x);
+                uint32_t l1_unreserved_base = device->get_base_allocator_addr(HalMemType::L1);
+                for (const auto& core_range : crs.ranges()) {
+                    for (const auto& core_coord : core_range) {
+                        ::tt::tt_metal::detail::ReadFromDeviceL1(
+                            device,
+                            core_coord,
+                            workload.get_cb_base_addr(mesh_device, core_coord, CoreType::WORKER),
+                            cb_config_buffer_size,
+                            cb_config_vector);
+
+                        uint32_t cb_addr = l1_unreserved_base;
+                        for (uint32_t i = 0; i < golden_cb_config.size(); i++) {
+                            const uint32_t index = golden_cb_config[i].cb_id * sizeof(uint32_t);
+                            const uint32_t cb_num_pages = golden_cb_config[i].num_pages;
+                            const uint32_t cb_size = cb_num_pages * golden_cb_config[i].page_size;
+                            const bool addr_match = cb_config_vector.at(index) == cb_addr;
+                            const bool size_match = cb_config_vector.at(index + 1) == cb_size;
+                            const bool num_pages_match = cb_config_vector.at(index + 2) == cb_num_pages;
+                            EXPECT_TRUE(addr_match);
+                            EXPECT_TRUE(size_match);
+                            EXPECT_TRUE(num_pages_match);
+
+                            cb_addr += cb_size;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 TEST_F(MeshDevice_T3000, TestMeshWorkloadOnActiveEth) {
     uint32_t num_workloads = 10;
     auto random_seed = 0;
@@ -758,9 +806,6 @@ TEST_F(MeshDevice_T3000, TestMeshWorkloadSanity) {
             }
         }
     }
-    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), mesh_workload, false);
-
-    buffer_idx = 0;
     std::unordered_set<uint32_t> devices_with_output_populated = {};
 
     for (std::size_t logical_x = devices_0.start_coord.x; logical_x < devices_0.end_coord.x; logical_x++) {
@@ -769,24 +814,71 @@ TEST_F(MeshDevice_T3000, TestMeshWorkloadSanity) {
         }
     }
 
-    for (auto device : mesh_device_->get_devices()) {
-        for (std::size_t col_idx = 0; col_idx < worker_grid_size.x; col_idx++) {
-            for (std::size_t row_idx = 0; row_idx < worker_grid_size.y; row_idx++) {
-                std::vector<bfloat16> dst_vec = {};
-                EnqueueReadBuffer(device->command_queue(), output_buffers.at(buffer_idx), dst_vec, true);
-                buffer_idx++;
-                if (devices_with_output_populated.find(device->id()) != devices_with_output_populated.end()) {
-                    for (int i = 0; i < dst_vec.size(); i++) {
-                        float ref_val = std::pow(2, 1);
-                        if (i >= 512) {
-                            ref_val = std::pow(2, 2);
+    for (int iter = 0; iter < 100; iter++) {
+        log_info(LogTest, "Run iter {}", iter);
+        if (iter) {
+            auto& program = mesh_workload.get_programs().at(devices_0);
+            auto& rtas = GetRuntimeArgs(program, reader_writer_kernel);
+            for (auto core : full_grid) {
+                rtas[core.x][core.y].at(4) = ((iter % 2) + 1) * add_factor;
+            }
+        }
+        EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), mesh_workload, false);
+        buffer_idx = 0;
+        for (auto device : mesh_device_->get_devices()) {
+            for (std::size_t col_idx = 0; col_idx < worker_grid_size.x; col_idx++) {
+                for (std::size_t row_idx = 0; row_idx < worker_grid_size.y; row_idx++) {
+                    std::vector<bfloat16> dst_vec = {};
+                    EnqueueReadBuffer(device->command_queue(), output_buffers.at(buffer_idx), dst_vec, true);
+                    buffer_idx++;
+                    if (devices_with_output_populated.find(device->id()) != devices_with_output_populated.end()) {
+                        for (int i = 0; i < dst_vec.size(); i++) {
+                            float ref_val = std::pow(2, (iter % 2) + 1);
+                            if (i >= 512) {
+                                ref_val = std::pow(2, 2 * ((iter % 2) + 1));
+                            }
+                            EXPECT_EQ(dst_vec[i].to_float(), ref_val);
                         }
-                        EXPECT_EQ(dst_vec[i].to_float(), ref_val);
                     }
                 }
             }
         }
     }
+}
+
+TEST_F(MeshDevice_T3000, TestMeshWorkloadCBUpdate) {
+    std::shared_ptr<Program> program = std::make_shared<Program>();
+    CoreCoord worker_grid_size = mesh_device_->compute_with_storage_grid_size();
+    CoreRange cr = CoreRange({0, 0}, {worker_grid_size.x - 1, worker_grid_size.y - 1});
+    CoreRangeSet cr_set({cr});
+
+    CBConfig cb_config_0 = {.cb_id = 0, .num_pages = 1, .page_size = 2048, .data_format = tt::DataFormat::Float16_b};
+    CBConfig cb_config_1 = {.cb_id = 1, .num_pages = 2, .page_size = 4096, .data_format = tt::DataFormat::Float16_b};
+    CBConfig cb_config_2 = {.cb_id = 2, .num_pages = 2, .page_size = 2048, .data_format = tt::DataFormat::Float16_b};
+    CBConfig cb_config_3 = {.cb_id = 3, .num_pages = 4, .page_size = 2048, .data_format = tt::DataFormat::Float16_b};
+    std::vector<CBConfig> cb_config_vector = {cb_config_0, cb_config_1, cb_config_2, cb_config_3};
+
+    const std::vector<CBHandle>& cb_handles = initialize_dummy_circular_buffers(*program, cr_set, cb_config_vector);
+    initialize_dummy_kernels(*program, cr_set);
+
+    auto mesh_workload = CreateMeshWorkload();
+    LogicalDeviceRange devices = LogicalDeviceRange({0, 0}, {4, 2});
+
+    InsertProgramInMeshWorkload(mesh_workload, *program, devices);
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), mesh_workload, false);
+    Finish(mesh_device_->mesh_command_queue());
+    verify_cb_config(mesh_device_, mesh_workload, cb_config_vector, cr_set);
+
+    std::vector<CBConfig> updated_cb_config_vector = cb_config_vector;
+    for (uint32_t cb_id = 0; cb_id < cb_config_vector.size(); cb_id++) {
+        CBConfig& cb_config = updated_cb_config_vector[cb_id];
+        cb_config.num_pages *= 2;
+        const uint32_t cb_size = cb_config.num_pages * cb_config.page_size;
+        UpdateCircularBufferTotalSize(mesh_workload.get_programs().begin()->second, cb_handles[cb_id], cb_size);
+    }
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), mesh_workload, false);
+    Finish(mesh_device_->mesh_command_queue());
+    verify_cb_config(mesh_device_, mesh_workload, updated_cb_config_vector, cr_set);
 }
 
 }  // namespace tt::tt_metal::distributed::test

@@ -20,4 +20,6 @@ void EnqueueMeshWorkload(MeshCommandQueue& mesh_cq, MeshWorkload& mesh_workload,
     mesh_cq.enqueue_mesh_workload(mesh_workload, blocking);
 }
 
+void Finish(MeshCommandQueue& mesh_cq) { mesh_cq.finish(); }
+
 }  // namespace tt::tt_metal::distributed
