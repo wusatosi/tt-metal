@@ -40,9 +40,10 @@ private:
 public:
     MeshWorkload();
     void add_program(const LogicalDeviceRange& device_range, Program& program);
+    std::unordered_map<LogicalDeviceRange, Program>& get_programs() { return this->programs_; }
     void enqueue(std::shared_ptr<MeshDevice>& mesh_device, uint8_t cq_id, bool blocking);
     bool is_compiled() const { return this->compiled_; }
     bool is_finalized() const { return this->finalized_; }
-    bool set_finalized() { this -> finalized_ = true };
+    void set_finalized() { this->finalized_ = true; };
 };
 }  // namespace tt::tt_metal::distributed

@@ -171,6 +171,7 @@ class Program {
     void allocate_circular_buffers(const Device *device);
 
     bool is_finalized() const;
+    void set_finalized();
     bool is_cached() const;
     ProgramBinaryStatus get_program_binary_status(std::size_t device_id) const;
     void set_cached();
@@ -189,7 +190,6 @@ class Program {
 
     const std::vector<SubDeviceId> &determine_sub_device_ids(const Device *device);
     void set_kernels_bin_buffer(const std::shared_ptr<Buffer>& buffer);
-    void set_finalized();
    private:
     std::unique_ptr<detail::Program_> pimpl_;
 

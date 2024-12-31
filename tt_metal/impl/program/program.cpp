@@ -130,6 +130,7 @@ class Program_ {
     void allocate_circular_buffers(const Device *device);
 
     bool is_finalized() const;
+    void set_finalized();
     void allocate_kernel_bin_buf_on_device(Device* device);
     bool is_cached() const { return this->cached_; }
     ProgramBinaryStatus get_program_binary_status(std::size_t device_id) const {
@@ -1549,8 +1550,11 @@ std::vector<std::reference_wrapper<const Semaphore>> Program::semaphores_on_core
 }
 
 bool detail::Program_::is_finalized() const { return this->finalized_; }
+void detail::Program_::set_finalized() { this->finalized_ = true; }
 
-bool Program::is_finalized() const { return this->finalized_; }
+bool Program::is_finalized() const { return pimpl_->is_finalized(); }
+void Program::set_finalized() { pimpl_->set_finalized(); }
+
 bool Program::is_cached() const { return pimpl_->is_cached(); }
 void Program::set_cached() { pimpl_->set_cached(); }
 

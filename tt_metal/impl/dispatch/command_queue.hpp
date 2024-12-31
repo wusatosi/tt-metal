@@ -331,9 +331,6 @@ class EnqueueProgramCommand : public Command {
         uint32_t unicast_cores_launch_message_wptr,
         SubDeviceId sub_device_id);
 
-    void write_program_command_sequence(
-        const ProgramCommandSequence& program_command_sequence, bool stall_first, bool stall_before_program);
-
     void process();
 
     EnqueueCommandType type() { return EnqueueCommandType::ENQUEUE_PROGRAM; }

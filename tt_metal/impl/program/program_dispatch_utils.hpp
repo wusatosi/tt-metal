@@ -106,6 +106,14 @@ void update_program_dispatch_commands(
     ProgramBinaryStatus program_binary_status,
     int num_unicast_txns = -1);
 
+void write_program_command_sequence(
+    const ProgramCommandSequence& program_command_sequence,
+    SystemMemoryManager& manager,
+    uint32_t command_queue_id,
+    CoreType dispatch_core_type,
+    bool stall_first,
+    bool stall_before_program);
+
 KernelHandle get_device_local_kernel_handle(KernelHandle kernel_handle);
 
 }  // namespace program_utils
