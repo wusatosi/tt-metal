@@ -71,7 +71,7 @@ class ttnn_PatchEmbed:
         left = (self.pos_embed_max_size - width) // 2
         spatial_pos_embed = ttnn.reshape(self.pos_embed, (1, self.pos_embed_max_size, self.pos_embed_max_size, -1))
         spatial_pos_embed = spatial_pos_embed[:, top : top + height, left : left + width, :]
-        spatial_pos_embed = ttnn.reshape(spatial_pos_embed, (1, -1, spatial_pos_embed.shape[-1]))
+        spatial_pos_embed = ttnn.reshape(spatial_pos_embed, (1, 1, -1, spatial_pos_embed.shape[-1]))
         spatial_pos_embed = ttnn.to_layout(spatial_pos_embed, layout=ttnn.TILE_LAYOUT)
         return spatial_pos_embed
 
@@ -81,11 +81,13 @@ class ttnn_PatchEmbed:
         else:
             height, width = latent.shape[-2] // self.patch_size, latent.shape[-1] // self.patch_size
 
+        # print("hw", self.pos_embed_max_size, height, width)
         latent = ttnn.permute(latent, (0, 2, 3, 1))  # NCHW to NHWC
         latent = ttnn.to_layout(latent, layout=ttnn.ROW_MAJOR_LAYOUT)
         latent = self.proj(device, latent)
         latent = ttnn.to_layout(latent, layout=ttnn.ROW_MAJOR_LAYOUT)
-        latent = ttnn.reshape(latent, (self.patch_size, latent.shape[2] // self.patch_size, latent.shape[3]))
+        latent = ttnn.reshape(latent, (1, self.patch_size, latent.shape[2] // self.patch_size, latent.shape[3]))
+        latent = ttnn.permute(latent, (1, 0, 2, 3))
         latent = ttnn.to_layout(latent, layout=ttnn.TILE_LAYOUT)
 
         # TODO: move the pos_emb to the preprocessing, no need to run on device
@@ -104,4 +106,24 @@ class ttnn_PatchEmbed:
             else:
                 pos_embed = self.pos_embed
 
-        return latent + pos_embed
+        latent = ttnn.add(latent, pos_embed, dtype=ttnn.bfloat8_b)
+
+        mm_a_y = 8
+        mm_a_x = 8
+        mm_a_x_strategy = ttnn.ShardStrategy.BLOCK
+        mm_a_x_memory_config = ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG
+
+        latent = ttnn.to_memory_config(
+            latent,
+            memory_config=ttnn.create_sharded_memory_config(
+                latent.shape,
+                core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
+                strategy=mm_a_x_strategy,
+                orientation=ttnn.ShardOrientation.ROW_MAJOR,
+            ),
+            # dtype=ttnn.bfloat8_b,
+        )
+
+        latent = ttnn.reallocate(latent)
+
+        return latent

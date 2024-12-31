@@ -50,7 +50,7 @@ def test_patch_embed(device, reset_seeds, h, w):
     )
     parameters["pos_embed"] = ttnn.to_device(parameters["pos_embed"], device=device)
 
-    torch_output = torch_model(torch_input)
+    torch_output = torch_model(torch_input).unsqueeze(1)
 
     ttnn_model = ttnn_PatchEmbed(
         height=h,
