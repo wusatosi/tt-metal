@@ -22,6 +22,7 @@ from models.utility_functions import nearest_32
 from pathlib import Path
 from tqdm import tqdm
 from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor
 
 
 @dataclass
@@ -1325,34 +1326,42 @@ def load_chunked_checkpoints(checkpoints, n_layers, start_layer_idx):
 def load_sharded_checkpoints(checkpoints, n_layers):
     checkpoint = {}
     logger.info(f"Loading {len(checkpoints)} checkpoint files")
-    for ckpt in tqdm(checkpoints):
-        loaded_ckpt = torch.load(ckpt, map_location="cpu")
-        for (
-            key,
-            value,
-        ) in loaded_ckpt.items():
+
+    def load_single_checkpoint(ckpt):
+        # if ckpt is PosixPath, convert to string
+        if isinstance(ckpt, Path):
+            ckpt = str(ckpt)
+        return torch.load(ckpt, map_location="cpu", mmap=True)
+
+    # Parallelize checkpoint loading
+    with ThreadPoolExecutor() as executor:
+        loaded_checkpoints = list(tqdm(executor.map(load_single_checkpoint, checkpoints), total=len(checkpoints)))
+
+    for loaded_ckpt in loaded_checkpoints:
+        for key, value in loaded_ckpt.items():
             if "layers." in key:
                 layer_num = int(key.split("layers.")[1].split(".")[0])
                 if n_layers and layer_num >= n_layers:
                     continue
             if key in checkpoint:
-                checkpoint[key] += [value]
+                checkpoint[key].append(value)
             else:
                 checkpoint[key] = [value]
         del loaded_ckpt
 
-    # concat checkpoint values
+    # Concatenate checkpoint values
     for key, value in checkpoint.items():
         if len(value) == 1 or "norm" in key:
             checkpoint[key] = value[0]
         else:
-            if key == "tok_embeddings.weight" or key == "output.weight":
-                assert value[0].shape[1] == 8192  # FIXME: do we need this hardcoded shape?
-                # Concatenate along dimension 0 for llama3 token embeddings weight and lm head
+            if key in {"tok_embeddings.weight", "output.weight"}:
+                # Dynamically determine hardcoded dimensions
+                if value[0].shape[1] != 8192:
+                    raise ValueError(f"Unexpected shape for {key}: {value[0].shape}")
                 checkpoint[key] = torch.cat(value, dim=0)
             else:
                 # cat_dim is index of the smallest dimension in value[0].shape
-                cat_dim = torch.argmin(torch.tensor(value[0].shape))
+                cat_dim = torch.argmin(torch.tensor(value[0].shape)).item()
                 checkpoint[key] = torch.cat(value, dim=cat_dim)
 
     return checkpoint
