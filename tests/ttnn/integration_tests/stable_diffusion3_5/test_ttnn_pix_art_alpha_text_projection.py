@@ -54,11 +54,16 @@ def test_ttnn_px_art_alpha_text(in_features, hidden_size, out_features, fwd_inpu
         initialize_model=lambda: torch_sub_module, device=device, custom_preprocessor=create_custom_preprocessor(device)
     )
     torch_input = torch.randn([2, 2048], dtype=torch.bfloat16)
+    torch_input_unsqueezed = torch_input.unsqueeze(1).unsqueeze(1)
     tt_input = ttnn.from_torch(
-        torch_input, dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG
+        torch_input_unsqueezed,
+        dtype=ttnn.bfloat16,
+        device=device,
+        layout=ttnn.TILE_LAYOUT,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
     )
     tt_sub_module = tt_module(parameters)
     tt_out = tt_sub_module(tt_input, device=device)
-    torch_out = torch_sub_module(torch_input)
+    torch_out = torch_sub_module(torch_input).unsqueeze(1).unsqueeze(1)
     tt_out_in_torch = ttnn.to_torch(tt_out)
     assert_with_pcc(torch_out, tt_out_in_torch, 0.99)

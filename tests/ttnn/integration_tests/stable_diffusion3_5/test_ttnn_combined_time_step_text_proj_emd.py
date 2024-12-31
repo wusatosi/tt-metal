@@ -84,8 +84,9 @@ def test_ttnn_combined_time_step_text_proj_embeddings(init_inputs, fwd_inputs, d
     tt_input_timesteps = ttnn.from_torch(
         timesteps, dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG
     )
+    pooled_projection_unsqueezed = pooled_projection.unsqueeze(1).unsqueeze(1)
     tt_input_pool_proj = ttnn.from_torch(
-        pooled_projection,
+        pooled_projection_unsqueezed,
         dtype=ttnn.bfloat16,
         device=device,
         layout=ttnn.TILE_LAYOUT,
@@ -93,6 +94,7 @@ def test_ttnn_combined_time_step_text_proj_embeddings(init_inputs, fwd_inputs, d
     )
     tt_sub_module = tt_module(embedding_dim=init_inputs[0], pooled_projection_dim=init_inputs[1], parameters=parameters)
     tt_out = tt_sub_module(timestep=tt_input_timesteps, pooled_projection=tt_input_pool_proj, device=device)
-    torch_out = torch_sub_module(timesteps, pooled_projection)
+
+    torch_out = torch_sub_module(timesteps, pooled_projection).unsqueeze(1).unsqueeze(1)
     tt_out_in_torch = ttnn.to_torch(tt_out)
     assert_with_pcc(torch_out, tt_out_in_torch, 0.99)
