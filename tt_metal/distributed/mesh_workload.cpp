@@ -20,90 +20,21 @@ void MeshWorkload::add_program(const LogicalDeviceRange& device_range, Program& 
     this->programs_[device_range] = std::move(program);
 }
 
-void MeshWorkload::compile(std::shared_ptr<MeshDevice>& mesh_device) {
-    // Generate binaries for all programs in the MeshWorkload using
-    // the build system exposed by the first device
+void MeshWorkload::compile(MeshCommandQueue& mesh_cq) {
+    auto& mesh_device = mesh_cq.mesh_device();
     for (auto& program_on_grid : this->programs_) {
         program_on_grid.second.compile(mesh_device->get_device(0));
         program_on_grid.second.allocate_circular_buffers(mesh_device->get_device(0));
         tt::tt_metal::detail::ValidateCircularBufferRegion(program_on_grid.second, mesh_device->get_device(0));
     }
-    this->compiled_ = true;
+    program_utils::finalize(*this, mesh_device->get_device(0));
 }
 
-bool MeshWorkload::runs_on_noc_multicast_only_cores() {
-    bool ret = false;
-    for (auto& program_on_grid : this->programs_) {
-        ret = ret || (program_on_grid.second.runs_on_noc_multicast_only_cores());
-    }
-    return ret;
-}
-
-bool MeshWorkload::runs_on_noc_unicast_only_cores() {
-    bool ret = false;
-    for (auto& program_on_grid : this->programs_) {
-        ret = ret || (program_on_grid.second.runs_on_noc_unicast_only_cores());
-    }
-    return ret;
-}
-
-bool MeshWorkload::kernel_binary_always_stored_in_ringbuffer() {
-    bool stored_in_ring_buf = true;
-    for (auto& program_on_grid : this->programs_) {
-        stored_in_ring_buf &= program_on_grid.second.kernel_binary_always_stored_in_ringbuffer();
-    }
-    return stored_in_ring_buf;
-}
-
-std::unordered_map<KernelHandle, std::shared_ptr<Kernel>>& MeshWorkload::get_kernels(
-    uint32_t programmable_core_type_index) {
-    if (not this->kernels_.at(programmable_core_type_index).size()) {
-        for (auto& program_on_grid : this->programs_) {
-            auto& device_range = program_on_grid.first;
-            uint32_t device_range_handle = (device_range.start_coord.y << 24) | (device_range.start_coord.x << 16);
-            for (auto kernel : program_on_grid.second.get_kernels(programmable_core_type_index)) {
-                KernelHandle handle = (device_range_handle | kernel.first);
-                this->kernels_.at(programmable_core_type_index).insert({handle, kernel.second});
-            }
-        }
-    }
-    return this->kernels_.at(programmable_core_type_index);
-}
-
-std::vector<Semaphore>& MeshWorkload::semaphores() {
-    if (not this->semaphores_.size()) {
-        for (auto& program_on_grid : this->programs_) {
-            this->semaphores_.insert(
-                this->semaphores_.end(),
-                program_on_grid.second.semaphores().begin(),
-                program_on_grid.second.semaphores().end());
-        }
-    }
-    return this->semaphores_;
-}
-
-std::vector<std::shared_ptr<KernelGroup>>& MeshWorkload::get_kernel_groups(uint32_t programmable_core_type_index) {
-    if (not this->kernel_groups_.at(programmable_core_type_index).size()) {
-        for (auto& program_on_grid : this->programs_) {
-            auto& device_range = program_on_grid.first;
-            uint32_t device_range_handle = (device_range.start_coord.y << 24) | (device_range.start_coord.x << 16);
-            for (auto kg : program_on_grid.second.get_kernel_groups(programmable_core_type_index)) {
-                for (auto& optional_kernel_id : kg->kernel_ids) {
-                    if (optional_kernel_id.has_value()) {
-                        optional_kernel_id = (device_range_handle | optional_kernel_id.value());
-                    }
-                }
-                this->kernel_groups_.at(programmable_core_type_index).push_back(kg);
-            }
-        }
-    }
-    return this->kernel_groups_.at(programmable_core_type_index);
-}
-
-void MeshWorkload::load_binaries(std::shared_ptr<MeshDevice>& mesh_device, uint8_t cq_id) {
+void MeshWorkload::load_binaries(MeshCommandQueue& mesh_cq) {
     // Allocate kernel binary buffers of max size across all devices, to ensure
     // we have lock step allocation.
 
+    auto& mesh_device = mesh_cq.mesh_device();
     if (this->program_binary_status == ProgramBinaryStatus::NotSent) {
         uint32_t max_kernel_bin_buf_size = 0;
         for (auto& program_on_grid : this->programs_) {
@@ -147,7 +78,7 @@ void MeshWorkload::load_binaries(std::shared_ptr<MeshDevice>& mesh_device, uint8
                         std::nullopt,
                         false);
                     EnqueueWriteBuffer(
-                        device->command_queue(cq_id),
+                        device->command_queue(mesh_cq.id()),
                         buffer_view,
                         program_on_grid.second.get_program_transfer_info().binary_data.data(),
                         false);
@@ -158,6 +89,83 @@ void MeshWorkload::load_binaries(std::shared_ptr<MeshDevice>& mesh_device, uint8
         }
         this->program_binary_status = ProgramBinaryStatus::InFlight;
     }
+}
+
+void MeshWorkload::generate_dispatch_commands(MeshCommandQueue& mesh_cq) {
+    auto& mesh_device = mesh_cq.mesh_device();
+    for (auto& program_on_grid : this->programs_) {
+        auto grid_start = program_on_grid.first.start_coord;
+        program_on_grid.second.generate_dispatch_commands(mesh_device->get_device(grid_start.y, grid_start.x));
+    }
+}
+
+bool MeshWorkload::runs_on_noc_multicast_only_cores() {
+    bool ret = false;
+    for (auto& program_on_grid : this->programs_) {
+        ret = ret || (program_on_grid.second.runs_on_noc_multicast_only_cores());
+    }
+    return ret;
+}
+
+bool MeshWorkload::runs_on_noc_unicast_only_cores() {
+    bool ret = false;
+    for (auto& program_on_grid : this->programs_) {
+        ret = ret || (program_on_grid.second.runs_on_noc_unicast_only_cores());
+    }
+    return ret;
+}
+
+bool MeshWorkload::kernel_binary_always_stored_in_ringbuffer() {
+    bool stored_in_ring_buf = true;
+    for (auto& program_on_grid : this->programs_) {
+        stored_in_ring_buf &= program_on_grid.second.kernel_binary_always_stored_in_ringbuffer();
+    }
+    return stored_in_ring_buf;
+}
+
+std::unordered_map<KernelHandle, std::shared_ptr<Kernel>>& MeshWorkload::get_kernels(
+    uint32_t programmable_core_type_index) {
+    if (not this->kernels_.at(programmable_core_type_index).size()) {
+        for (auto& program_on_grid : this->programs_) {
+            auto& device_range = program_on_grid.first;
+            uint32_t device_range_handle = (device_range.start_coord.y << 24) | (device_range.start_coord.x << 16);
+            for (auto kernel : program_on_grid.second.get_kernels(programmable_core_type_index)) {
+                KernelHandle handle = (device_range_handle | kernel.first);
+                this->kernels_.at(programmable_core_type_index).insert({handle, kernel.second});
+            }
+        }
+    }
+    return this->kernels_.at(programmable_core_type_index);
+}
+
+std::vector<std::shared_ptr<KernelGroup>>& MeshWorkload::get_kernel_groups(uint32_t programmable_core_type_index) {
+    if (not this->kernel_groups_.at(programmable_core_type_index).size()) {
+        for (auto& program_on_grid : this->programs_) {
+            auto& device_range = program_on_grid.first;
+            uint32_t device_range_handle = (device_range.start_coord.y << 24) | (device_range.start_coord.x << 16);
+            for (auto kg : program_on_grid.second.get_kernel_groups(programmable_core_type_index)) {
+                for (auto& optional_kernel_id : kg->kernel_ids) {
+                    if (optional_kernel_id.has_value()) {
+                        optional_kernel_id = (device_range_handle | optional_kernel_id.value());
+                    }
+                }
+                this->kernel_groups_.at(programmable_core_type_index).push_back(kg);
+            }
+        }
+    }
+    return this->kernel_groups_.at(programmable_core_type_index);
+}
+
+std::vector<Semaphore>& MeshWorkload::semaphores() {
+    if (not this->semaphores_.size()) {
+        for (auto& program_on_grid : this->programs_) {
+            this->semaphores_.insert(
+                this->semaphores_.end(),
+                program_on_grid.second.semaphores().begin(),
+                program_on_grid.second.semaphores().end());
+        }
+    }
+    return this->semaphores_;
 }
 
 std::vector<uint32_t> MeshWorkload::get_program_config_sizes() {
@@ -209,25 +217,6 @@ std::unordered_set<SubDeviceId> MeshWorkload::determine_sub_device_ids(std::shar
 
 ProgramCommandSequence& MeshWorkload::get_dispatch_cmds_for_program(Program& program) {
     return program.get_cached_program_command_sequences().begin()->second;
-}
-
-void MeshWorkload::enqueue(std::shared_ptr<MeshDevice>& mesh_device, uint8_t cq_id, bool blocking) {
-    // Compile kernel binaries
-    if (not this->is_compiled()) {
-        this->compile(mesh_device);
-    }
-    // Compute relative addresses and dispatch data
-    if (not this->is_finalized()) {
-        program_utils::finalize(*this, mesh_device->get_device(0));
-    }
-    // Load binaries on the cluster
-    this->load_binaries(mesh_device, cq_id);
-
-    for (auto& program_on_grid : this->programs_) {
-        auto grid_start = program_on_grid.first.start_coord;
-        program_on_grid.second.generate_dispatch_commands(mesh_device->get_device(grid_start.y, grid_start.x));
-    }
-    mesh_device->mesh_command_queue().enqueue_mesh_workload(*this, blocking);
 }
 
 // void MeshWorkload::set_runtime_args(const LogicalDeviceRange& device_range, const CoreRangeSet& core_range_set,

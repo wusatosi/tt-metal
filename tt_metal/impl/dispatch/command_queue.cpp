@@ -1233,9 +1233,8 @@ void HWCommandQueue::enqueue_program(Program& program, bool blocking) {
     std::vector<SubDeviceId> sub_device_ids = {program.determine_sub_device_ids(device)};
     TT_FATAL(sub_device_ids.size() == 1, "Programs must be executed on a single sub-device");
     // Finalize Program: Compute relative offsets for data structures (semaphores, kernel binaries, etc) in L1
-    if (not program.is_finalized()) {
-        program_utils::finalize(program, device);
-    }
+    program_utils::finalize(program, device);
+
     if (program.get_program_binary_status(device->id()) == ProgramBinaryStatus::NotSent) {
         // Write program binaries to device if it hasn't previously been cached
         program.allocate_kernel_bin_buf_on_device(device);

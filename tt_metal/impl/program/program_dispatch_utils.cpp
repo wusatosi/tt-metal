@@ -275,6 +275,10 @@ void finalize(T& workload, Device* device) {
 
     // Incremental offset. Will correspond to the size of the program config per core, once the
     // program is finalized.
+    if (workload.is_finalized()) {
+        return;
+    }
+
     uint32_t offset = 0;
     // Unique RTA offset.
     uint32_t rta_offset = 0;

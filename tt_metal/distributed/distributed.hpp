@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "mesh_command_queue.hpp"
+
 namespace tt::tt_metal {
 
 inline namespace v0 {
@@ -15,7 +17,11 @@ class Tensor;
 
 namespace distributed {
 
-class MeshDevice;
+MeshWorkload CreateMeshWorkload();
+
+void InsertProgramInMeshWorkload(MeshWorkload& mesh_workload, Program& program, const LogicalDeviceRange& device_range);
+
+void EnqueueMeshWorkload(MeshCommandQueue& mesh_cq, MeshWorkload& mesh_workload, bool blocking);
 
 }  // namespace distributed
 }  // namespace tt::tt_metal
