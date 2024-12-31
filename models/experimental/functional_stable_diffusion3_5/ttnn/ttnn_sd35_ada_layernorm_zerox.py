@@ -40,7 +40,7 @@ class ttnn_SD35AdaLayerNormZeroX:
         mm_a_x_strategy = ttnn.ShardStrategy.WIDTH
         mm_a_x_memory_config = ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG
 
-        emb = ttnn.reshape(emb, (emb.shape[0], 1, emb.shape[1]))
+        # emb = ttnn.reshape(emb, (emb.shape[0], 1, emb.shape[1]))
 
         emb = self.linear(
             self.silu(emb),
@@ -55,36 +55,47 @@ class ttnn_SD35AdaLayerNormZeroX:
 
         i_beg = 0
         i_end = one_chunk
-        shift_msa = ttnn.slice(emb, [0, 0, i_beg], [2, 1, i_end])
+        shift_msa = ttnn.slice(emb, [0, 0, 0, i_beg], [2, 1, 1, i_end])
         i_beg += one_chunk
         i_end += one_chunk
-        scale_msa = ttnn.slice(emb, [0, 0, i_beg], [2, 1, i_end])
+        scale_msa = ttnn.slice(emb, [0, 0, 0, i_beg], [2, 1, 1, i_end])
         i_beg += one_chunk
         i_end += one_chunk
-        gate_msa = ttnn.slice(emb, [0, 0, i_beg], [2, 1, i_end])
+        gate_msa = ttnn.slice(emb, [0, 0, 0, i_beg], [2, 1, 1, i_end])
         i_beg += one_chunk
         i_end += one_chunk
-        shift_mlp = ttnn.slice(emb, [0, 0, i_beg], [2, 1, i_end])
+        shift_mlp = ttnn.slice(emb, [0, 0, 0, i_beg], [2, 1, 1, i_end])
         i_beg += one_chunk
         i_end += one_chunk
-        scale_mlp = ttnn.slice(emb, [0, 0, i_beg], [2, 1, i_end])
+        scale_mlp = ttnn.slice(emb, [0, 0, 0, i_beg], [2, 1, 1, i_end])
         i_beg += one_chunk
         i_end += one_chunk
-        gate_mlp = ttnn.slice(emb, [0, 0, i_beg], [2, 1, i_end])
+        gate_mlp = ttnn.slice(emb, [0, 0, 0, i_beg], [2, 1, 1, i_end])
         i_beg += one_chunk
         i_end += one_chunk
-        shift_msa2 = ttnn.slice(emb, [0, 0, i_beg], [2, 1, i_end])
+        shift_msa2 = ttnn.slice(emb, [0, 0, 0, i_beg], [2, 1, 1, i_end])
         i_beg += one_chunk
         i_end += one_chunk
-        scale_msa2 = ttnn.slice(emb, [0, 0, i_beg], [2, 1, i_end])
+        scale_msa2 = ttnn.slice(emb, [0, 0, 0, i_beg], [2, 1, 1, i_end])
         i_beg += one_chunk
         i_end += one_chunk
-        gate_msa2 = ttnn.slice(emb, [0, 0, i_beg], [2, 1, i_end])
+        gate_msa2 = ttnn.slice(emb, [0, 0, 0, i_beg], [2, 1, 1, i_end])
 
         ttnn.deallocate(emb)
 
-        norm_hidden_states = self.norm(hidden_states, compute_kernel_config=hifi2_kernel_config)
-        hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
-        norm_hidden_states2 = norm_hidden_states * (1 + scale_msa2) + shift_msa2
+        norm_hidden_states = ttnn.to_memory_config(hidden_states, ttnn.L1_MEMORY_CONFIG)
+        ttnn.deallocate(hidden_states)
+        norm_hidden_states = self.norm(norm_hidden_states, compute_kernel_config=hifi2_kernel_config)
+        scale_msa = scale_msa + 1
+        scale_msa2 = scale_msa2 + 1
+        # the following step is inserted here to save wasted memory gaps
+        gate_msa2 = ttnn.reallocate(gate_msa2)
+        hidden_states = norm_hidden_states * scale_msa
+        hidden_states = hidden_states + shift_msa
+        hidden_states2 = norm_hidden_states * scale_msa2
+        hidden_states2 = hidden_states2 + shift_msa2
+        ttnn.deallocate(norm_hidden_states)
+        # hidden_states2 = ttnn.reallocate(hidden_states2)
+        # hidden_states = ttnn.reallocate(hidden_states)
 
-        return hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp, norm_hidden_states2, gate_msa2
+        return hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp, hidden_states2, gate_msa2
