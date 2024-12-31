@@ -62,29 +62,52 @@ def test_ada_layernorm_zero(device, x_shape, reset_seeds):
         x=torch_innput_x, timestep=None, class_labels=None, hidden_dtype=None, emb=torch_innput_emb
     )
 
-    ttnn_input_x = ttnn.from_torch(
-        torch_innput_x, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device, memory_config=ttnn.L1_MEMORY_CONFIG
-    )
+    torch_innput_x_unsqueezed = torch_innput_x.unsqueeze(1)
+
+    if torch_innput_x_unsqueezed.shape[-2] < 512:
+        input_memory_config = ttnn.L1_MEMORY_CONFIG
+    else:
+        mm_a_y = 8
+        mm_a_x = 8
+        mm_a_x_strategy = ttnn.ShardStrategy.BLOCK
+        mm_a_x_memory_config = ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG
+
+        input_memory_config = ttnn.create_sharded_memory_config(
+            torch_innput_x_unsqueezed.shape,
+            core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
+            strategy=mm_a_x_strategy,
+            orientation=ttnn.ShardOrientation.ROW_MAJOR,
+        )
+
     ttnn_input_emb = ttnn.from_torch(
-        torch_innput_emb,
+        torch_innput_emb.unsqueeze(1).unsqueeze(1),
         layout=ttnn.TILE_LAYOUT,
-        dtype=ttnn.bfloat16,
+        dtype=ttnn.bfloat8_b,
         device=device,
         memory_config=ttnn.L1_MEMORY_CONFIG,
     )
 
+    ttnn_input_x = ttnn.from_torch(
+        torch_innput_x_unsqueezed,
+        layout=ttnn.TILE_LAYOUT,
+        dtype=ttnn.bfloat8_b,
+        device=device,
+        memory_config=input_memory_config,  # ttnn.L1_MEMORY_CONFIG
+    )
+
     ttnn_model = ttnn_AdaLayerNormZero(embedding_dim=1536, num_embeddings=None, norm_type="layer_norm", bias=True)
+
     ttnn_output = ttnn_model(
-        x=ttnn_input_x, timestep=None, class_labels=None, hidden_dtype=None, emb=ttnn_input_emb, parameters=parameters
+        ttnn_input_x, timestep=None, class_labels=None, hidden_dtype=None, emb=ttnn_input_emb, parameters=parameters
     )
 
     for i in range(len(torch_output)):
         torch_output_shape = torch_output[i].shape
         if len(torch_output_shape) > 2:
-            assert_with_pcc(torch_output[i], ttnn.to_torch(ttnn_output[i]), pcc=0.99)
+            assert_with_pcc(torch_output[i].unsqueeze(1), ttnn.to_torch(ttnn_output[i]), pcc=0.99)
         else:
             assert_with_pcc(
-                torch_output[i].reshape(torch_output_shape[0], 1, torch_output_shape[1]),
+                torch_output[i].unsqueeze(1).unsqueeze(1),
                 ttnn.to_torch(ttnn_output[i]),
                 pcc=0.99,
             )
