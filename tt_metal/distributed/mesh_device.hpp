@@ -22,6 +22,9 @@ struct MeshOffset {
     size_t row = 0;
     size_t col = 0;
 };
+
+class MeshCommandQueue;
+
 class MeshDeviceView;
 
 struct MeshSubDeviceManagerId;
@@ -86,8 +89,10 @@ private:
     std::unique_ptr<MeshDeviceView> view;
     std::map<chip_id_t, Device*> opened_devices;
     std::vector<Device*> devices;
-    std::vector<std::shared_ptr<MeshDevice>> submeshes;  // Parent owns submeshes and responsible fortheir destruction
+    std::vector<std::shared_ptr<MeshDevice>>
+        submeshes;  // Parent owns submeshes and is responsible for their destruction
     std::weak_ptr<MeshDevice> parent_mesh;               // Submesh created with reference to parent mesh
+    std::unique_ptr<MeshCommandQueue> mesh_command_queue_;
 
     void initialize(
         size_t l1_small_size,
@@ -117,6 +122,7 @@ public:
     Device* get_device(chip_id_t physical_device_id) const;
     Device* get_device(size_t row_idx, size_t col_idx) const;
 
+    MeshCommandQueue& mesh_command_queue();
     const DeviceIds get_device_ids() const;
 
     size_t num_devices() const;
@@ -140,11 +146,8 @@ public:
     // 1. The old_shape volume must equal the new_shape volume (i.e. number of devices must remain constant)
     // 2. For Grid-to-Grid or Line-to-Grid reshaping: physical connectivity must be possible with current devices
     void reshape(const MeshShape& new_shape);
-    CoreCoord enqueue_program_dispatch_core(uint8_t cq_id);
+    CoreCoord virtual_program_dispatch_core(uint8_t cq_id);
     CoreType dispatch_core_type();
-    LaunchMessageRingBufferState& get_worker_launch_message_buffer_state() {
-        return this->worker_launch_message_buffer_state;
-    }
     void close_devices();
     const MeshDeviceView& get_view() const;
 
@@ -193,15 +196,6 @@ public:
     allocator::Statistics get_memory_allocation_statistics(const BufferType &buffer_type, SubDeviceId sub_device_id = SubDeviceId{0}) const;
 
     uint32_t num_worker_cores(HalProgrammableCoreType core_type, SubDeviceId sub_device_id) const;
-
-    // TODO: These must be moved to a Mesh Command Queue
-    // Track expected num workers here
-    // std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES> expected_num_workers_completed;
-    uint32_t expected_num_workers_completed = 0;
-    // Track worker config buffer state here. Global across all devices in the Mesh
-    // std::array<tt::tt_metal::WorkerConfigBufferMgr, dispatch_constants::DISPATCH_MESSAGE_ENTRIES> config_buffer_mgr;
-    tt::tt_metal::WorkerConfigBufferMgr config_buffer_mgr;
-    LaunchMessageRingBufferState worker_launch_message_buffer_state;
 };
 
 std::ostream& operator<<(std::ostream& os, const MeshDevice& mesh_device);

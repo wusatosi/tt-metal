@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+#pragma once
+
 #include "mesh_device.hpp"
 #include "tt_metal/impl/program/program_dispatch_utils.hpp"
 #include "tt_metal/host_api.hpp"
@@ -9,6 +11,9 @@
 namespace tt::tt_metal::distributed {
 using LogicalDeviceRange = CoreRange;
 using RuntimeArgsPerCore = std::vector<std::vector<RuntimeArgsData>>;
+
+class MeshCommandQueue;
+
 class MeshWorkload {
     // A MeshWorkload can be fully described using a set of programs mapped to different Logical Device Regions
     // in a Mesh + configurable runtime Args
@@ -36,6 +41,7 @@ private:
 
     template <typename T>
     friend void program_utils::finalize(T&, Device*);
+    friend MeshCommandQueue;
 
 public:
     MeshWorkload();
@@ -45,5 +51,6 @@ public:
     bool is_compiled() const { return this->compiled_; }
     bool is_finalized() const { return this->finalized_; }
     void set_finalized() { this->finalized_ = true; };
+    ProgramCommandSequence& get_dispatch_cmds_for_program(Program& program);
 };
 }  // namespace tt::tt_metal::distributed

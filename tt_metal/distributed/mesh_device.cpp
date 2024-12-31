@@ -15,6 +15,7 @@
 #include "tt_metal/host_api.hpp"
 #include "tt_metal/distributed/mesh_device_view.hpp"
 #include "tt_metal/distributed/mesh_device.hpp"
+#include "tt_metal/distributed/mesh_command_queue.hpp"
 
 namespace tt::tt_metal::distributed {
 
@@ -363,19 +364,7 @@ MeshDevice::MeshDevice(const MeshShape& mesh_device_shape, MeshType type, std::w
     mesh_device_shape(mesh_device_shape),
     type(type),
     mesh_id(generate_unique_mesh_id()),
-    parent_mesh(std::move(parent_mesh)) {
-    this->config_buffer_mgr =  tt::tt_metal::WorkerConfigBufferMgr();
-    for (uint32_t index = 0; index < tt::tt_metal::hal.get_programmable_core_type_count(); index++) {
-        this->config_buffer_mgr.init_add_buffer(
-            tt::tt_metal::hal.get_dev_addr(
-                tt::tt_metal::hal.get_programmable_core_type(index), tt::tt_metal::HalL1MemAddrType::KERNEL_CONFIG),
-            tt::tt_metal::hal.get_dev_size(
-                tt::tt_metal::hal.get_programmable_core_type(index), tt::tt_metal::HalL1MemAddrType::KERNEL_CONFIG));
-    }
-    // Subtract 1 from the number of entries, so the watcher can read information (e.g. fired asserts) from the
-    // previous launch message.
-    this->config_buffer_mgr.init_add_buffer(0, launch_msg_buffer_num_entries - 1);
-}
+    parent_mesh(std::move(parent_mesh)) {}
 
 std::shared_ptr<MeshDevice> MeshDevice::create(
     const MeshDeviceConfig& config,
@@ -385,7 +374,7 @@ std::shared_ptr<MeshDevice> MeshDevice::create(
     const DispatchCoreConfig& dispatch_core_config) {
     auto mesh_device = std::make_shared<MeshDevice>(config.mesh_shape, config.mesh_type);
     mesh_device->initialize(l1_small_size, trace_region_size, num_command_queues, dispatch_core_config, config);
-
+    mesh_device->mesh_command_queue_ = std::make_unique<MeshCommandQueue>(mesh_device, 0);
     return mesh_device;
 }
 
@@ -489,6 +478,10 @@ Device* MeshDevice::get_device(size_t row_idx, size_t col_idx) const {
     return this->get_device_index(row_idx * num_cols() + col_idx);
 }
 
+MeshCommandQueue& MeshDevice::mesh_command_queue() {
+    return *(this->mesh_command_queue_);
+}
+
 const DeviceIds MeshDevice::get_device_ids() const {
     DeviceIds device_ids;
     for (auto device : this->get_devices()) {
@@ -548,14 +541,14 @@ void MeshDevice::reshape(const MeshShape& new_shape) {
     this->view = std::make_unique<MeshDeviceView>(*this);
 }
 
-CoreCoord MeshDevice::enqueue_program_dispatch_core(uint8_t cq_id) {
+CoreCoord MeshDevice::virtual_program_dispatch_core(uint8_t cq_id) {
     CoreCoord dispatch_core;
     int idx = 0;
     for (auto device : this->get_devices()) {
         uint16_t channel = tt::Cluster::instance().get_assigned_channel_for_device(device->id());
-        dispatch_core = device->virtual_core_from_logical_core(dispatch_core_manager::instance().dispatcher_s_core(device->id(), channel, cq_id), this->dispatch_core_type());
+        dispatch_core = device->virtual_program_dispatch_core(cq_id);
         if (idx) {
-            auto curr_dispatch_core = device->virtual_core_from_logical_core(dispatch_core_manager::instance().dispatcher_s_core(device->id(), channel, cq_id), this->dispatch_core_type());
+            auto curr_dispatch_core = device->virtual_program_dispatch_core(cq_id);
             TT_FATAL(dispatch_core == dispatch_core_manager::instance().dispatcher_s_core(device->id(), channel, cq_id), "Expected Dispatch Cores to match across devices");
         }
     }

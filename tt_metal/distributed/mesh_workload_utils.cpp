@@ -44,7 +44,7 @@ void write_go_signal(
     int num_unicast_txns = -1) {
     uint32_t pcie_alignment = hal.get_alignment(HalMemType::HOST);
     uint32_t cmd_sequence_sizeB =
-        align(sizeof(CQPrefetchCmd) + sizeof(CQDispatchCmd), pcie_alignment) + CQ_PREFETCH_CMD_BARE_MIN_SIZE;
+        align(sizeof(CQPrefetchCmd) + sizeof(CQDispatchCmd), pcie_alignment) + hal.get_alignment(HalMemType::HOST);
 
     auto& manager = cq.device()->sysmem_manager();
     void* cmd_region = manager.issue_queue_reserve(cmd_sequence_sizeB, cq.id());

@@ -1750,6 +1750,10 @@ LaunchMessageRingBufferState& Device::get_worker_launch_message_buffer_state(Sub
     return this->active_sub_device_manager_->get_worker_launch_message_buffer_state(sub_device_id);
 }
 
+CoreCoord Device::virtual_program_dispatch_core(uint8_t cq_id) const {
+    return this->hw_command_queues_[cq_id]->virtual_enqueue_program_dispatch_core;
+}
+
 // Main source to get NOC idx for dispatch core
 NOC Device::dispatch_go_signal_noc() const {
     return this->dispatch_s_enabled() ? NOC::NOC_1 : NOC::NOC_0;
