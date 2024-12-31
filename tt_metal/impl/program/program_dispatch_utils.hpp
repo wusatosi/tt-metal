@@ -15,7 +15,6 @@ namespace tt {
 namespace tt_metal {
 
 namespace program_utils {
-#define CQ_PREFETCH_CMD_BARE_MIN_SIZE tt::tt_metal::hal.get_alignment(tt::tt_metal::HalMemType::HOST)
 
 struct ProgramDispatchMetadata {
     std::vector<ConfigBufferEntry> kernel_config_addrs;

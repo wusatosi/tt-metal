@@ -514,6 +514,8 @@ class HWCommandQueue {
     void set_num_worker_sems_on_dispatch(uint32_t num_worker_sems);
     void set_go_signal_noc_data_on_dispatch(const vector_memcpy_aligned<uint32_t>& go_signal_noc_data);
     void reset_worker_state(bool reset_launch_msg_state);
+    uint32_t& expected_num_workers_completed_for_sub_device(uint32_t sub_device_index);
+
    private:
     uint32_t id;
     uint32_t size_B;

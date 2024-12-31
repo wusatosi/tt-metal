@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "mesh_workload.hpp"
+#include "mesh_workload_utils.hpp"
 #include "tt_metal/detail/tt_metal.hpp"
 
 namespace tt::tt_metal::distributed {
@@ -273,7 +274,7 @@ void MeshWorkload::enqueue(std::shared_ptr<MeshDevice>& mesh_device, uint8_t cq_
         for (std::size_t logical_x = device_range.start_coord.x; logical_x < device_range.end_coord.x; logical_x++) {
             for (std::size_t logical_y = device_range.start_coord.y; logical_y < device_range.end_coord.y;
                  logical_y++) {
-                EnqueueProgramCommandSequence(
+                experimental::write_program_commands(
                     mesh_device->get_device(logical_y, logical_x)->command_queue(cq_id),
                     program_cmd_seq,
                     num_workers,
@@ -289,7 +290,7 @@ void MeshWorkload::enqueue(std::shared_ptr<MeshDevice>& mesh_device, uint8_t cq_
     // state consistent across devices
     for (auto& device : mesh_device->get_devices()) {
         if (devices_running_program.find(device->id()) == devices_running_program.end()) {
-            EnqueueGoSignal(
+            experimental::write_go_signal(
                 device->command_queue(cq_id),
                 mesh_device->expected_num_workers_completed,
                 mesh_device->enqueue_program_dispatch_core(cq_id),

@@ -771,6 +771,11 @@ void HWCommandQueue::set_go_signal_noc_data_on_dispatch(const vector_memcpy_alig
     this->manager.fetch_queue_write(cmd_sequence_sizeB, this->id);
 }
 
+uint32_t& HWCommandQueue::expected_num_workers_completed_for_sub_device(uint32_t sub_device_index) {
+    TT_FATAL(sub_device_index < dispatch_constants::DISPATCH_MESSAGE_ENTRIES, "Expected sub_device_index to be less than dispatch_constants::DISPATCH_MESSAGE_ENTRIES");
+    return this->expected_num_workers_completed[sub_device_index];
+}
+
 void HWCommandQueue::reset_worker_state(bool reset_launch_msg_state) {
     auto num_sub_devices = device->num_sub_devices();
     uint32_t go_signals_cmd_size = 0;
@@ -2030,61 +2035,6 @@ void EnqueueProgramImpl(
     // leaks on device.
     program.release_buffers();
 
-}
-
-void EnqueueProgramCommandSequence(CommandQueue& cq, ProgramCommandSequence& program_cmd_seq, uint32_t num_active_cores_in_program, SubDeviceId sub_device_id, bool stall_first, bool stall_before_program, bool blocking) {
-    auto sub_device_index = sub_device_id.to_index();
-    // Snapshot of expected workers from previous programs, used for dispatch_wait cmd generation.
-    uint32_t expected_workers_completed = cq.device()->hw_command_queue(cq.id()).expected_num_workers_completed[sub_device_index];
-    // Increment locally to ensure other paths dont break
-    cq.device()->hw_command_queue(cq.id()).expected_num_workers_completed[sub_device_index] += num_active_cores_in_program;
-    // Write program command stream to device
-    program_utils::write_program_command_sequence(
-        program_cmd_seq,
-        cq.device()->sysmem_manager(),
-        cq.id(),
-        dispatch_core_manager::instance().get_dispatch_core_type(cq.device()->id()),
-        stall_first,
-        stall_before_program
-    );
-}
-
-void EnqueueGoSignal(CommandQueue& cq, uint32_t expected_num_workers_completed, CoreCoord dispatch_core, bool send_mcast, bool send_unicasts, int num_unicast_txns) {
-    uint32_t pcie_alignment = hal.get_alignment(HalMemType::HOST);
-    uint32_t cmd_sequence_sizeB = align(sizeof(CQPrefetchCmd) + sizeof(CQDispatchCmd), pcie_alignment) + CQ_PREFETCH_CMD_BARE_MIN_SIZE;
-
-    auto& manager = cq.device()->sysmem_manager();
-    void* cmd_region = manager.issue_queue_reserve(cmd_sequence_sizeB, cq.id());
-
-    HugepageDeviceCommand go_signal_cmd_sequence(cmd_region, cmd_sequence_sizeB);
-    go_msg_t run_program_go_signal;
-
-    run_program_go_signal.signal = RUN_MSG_GO;
-    run_program_go_signal.master_x = dispatch_core.x;
-    run_program_go_signal.master_y = dispatch_core.y;
-    run_program_go_signal.dispatch_message_offset = 0;
-
-    CoreType dispatch_core_type = dispatch_core_manager::instance().get_dispatch_core_type(cq.device()->id());
-    uint32_t dispatch_message_addr = dispatch_constants::get(dispatch_core_type).get_device_command_queue_addr(CommandQueueDeviceAddrType::DISPATCH_MESSAGE);
-
-    go_signal_cmd_sequence.add_notify_dispatch_s_go_signal_cmd(
-        0, /* wait */
-        1  /* index_bitmask */ );
-
-    go_signal_cmd_sequence.add_dispatch_go_signal_mcast(
-        expected_num_workers_completed,
-        *reinterpret_cast<uint32_t*>(&run_program_go_signal),
-        dispatch_message_addr,
-        send_mcast ? cq.device()->num_noc_mcast_txns(SubDeviceId{0}) : 0,
-        send_unicasts ? ((num_unicast_txns > 0) ? num_unicast_txns : cq.device()->num_noc_unicast_txns(SubDeviceId{0})) : 0,
-        0, /* noc_data_start_idx */
-        DispatcherSelect::DISPATCH_SLAVE
-    );
-
-    manager.issue_queue_push_back(cmd_sequence_sizeB, cq.id());
-
-    manager.fetch_queue_reserve_back(cq.id());
-    manager.fetch_queue_write(cmd_sequence_sizeB, cq.id());
 }
 
 void EnqueueRecordEventImpl(CommandQueue& cq, const std::shared_ptr<Event>& event, tt::stl::Span<const SubDeviceId> sub_device_ids) {
