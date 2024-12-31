@@ -52,19 +52,19 @@ def test_ada_layernorm_zero(device, x_shape, reset_seeds):
     )
 
     reference_model.eval()
-    torch_innput_x = torch.randn(x_shape, dtype=torch.bfloat16)
+    torch_input_x = torch.randn(x_shape, dtype=torch.bfloat16)
     torch_innput_emb = torch.randn(2, 1536, dtype=torch.bfloat16)
 
     parameters = preprocess_model_parameters(
         initialize_model=lambda: reference_model, custom_preprocessor=create_custom_preprocessor(device), device=device
     )
     torch_output = reference_model(
-        x=torch_innput_x, timestep=None, class_labels=None, hidden_dtype=None, emb=torch_innput_emb
+        x=torch_input_x, timestep=None, class_labels=None, hidden_dtype=None, emb=torch_innput_emb
     )
 
-    torch_innput_x_unsqueezed = torch_innput_x.unsqueeze(1)
+    torch_input_x_unsqueezed = torch_input_x.unsqueeze(1)
 
-    if torch_innput_x_unsqueezed.shape[-2] < 512:
+    if torch_input_x_unsqueezed.shape[-2] < 512:
         input_memory_config = ttnn.L1_MEMORY_CONFIG
     else:
         mm_a_y = 8
@@ -73,7 +73,7 @@ def test_ada_layernorm_zero(device, x_shape, reset_seeds):
         mm_a_x_memory_config = ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG
 
         input_memory_config = ttnn.create_sharded_memory_config(
-            torch_innput_x_unsqueezed.shape,
+            torch_input_x_unsqueezed.shape,
             core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
             strategy=mm_a_x_strategy,
             orientation=ttnn.ShardOrientation.ROW_MAJOR,
@@ -88,7 +88,7 @@ def test_ada_layernorm_zero(device, x_shape, reset_seeds):
     )
 
     ttnn_input_x = ttnn.from_torch(
-        torch_innput_x_unsqueezed,
+        torch_input_x_unsqueezed,
         layout=ttnn.TILE_LAYOUT,
         dtype=ttnn.bfloat8_b,
         device=device,

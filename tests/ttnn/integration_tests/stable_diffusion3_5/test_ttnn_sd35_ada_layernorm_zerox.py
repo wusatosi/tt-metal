@@ -90,7 +90,7 @@ def test_sd35_ada_layernorm_zerox(device, reset_seeds, h):
         layout=ttnn.TILE_LAYOUT,
         dtype=ttnn.bfloat8_b,
         device=device,
-        memory_config=input_memory_config,  # input_memory_config, #ttnn.L1_MEMORY_CONFIG,
+        memory_config=input_memory_config,  # ttnn.L1_MEMORY_CONFIG,
     )
 
     ttnn_model = ttnn_SD35AdaLayerNormZeroX(
