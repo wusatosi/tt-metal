@@ -58,16 +58,41 @@ void TilizeWithValPadding::validate(const std::vector<Tensor>& input_tensors) co
     }
 }
 
-std::vector<tt::tt_metal::LegacyShape> TilizeWithValPadding::compute_output_shapes(
+std::vector<ttnn::SimpleShape> TilizeWithValPadding::compute_output_shapes(
     const std::vector<Tensor>& input_tensors) const {
-    auto input_shape = input_tensors.at(0).get_legacy_shape();
-    auto dimensions_pads = std::vector<Padding::PadDimension>();
-    for (auto index = 0; index < input_shape.rank(); index++) {
-        auto back = this->output_tensor_shape[index] - input_shape[index];
-        dimensions_pads.push_back(Padding::PadDimension{.front = 0, .back = back});
+    const auto& input_tensor_a = input_tensors.at(0);
+    if (input_tensor_a.memory_config().is_sharded()) {
+        bool pad_extra = false;
+        auto input_shape = input_tensor_a.get_logical_shape();
+        auto input_rank = input_shape.rank();
+        pad_extra = input_shape[input_rank - 1] % tt::constants::TILE_WIDTH == 0 ? 0 : 1;
+        pad_extra = input_shape[input_rank - 2] % tt::constants::TILE_HEIGHT == 0 ? 0 : 1;
+
+        std::vector<uint32_t> output_shape;
+        if (pad_extra == true) {
+            for (int i = 0; i < this->output_tensor_shape.rank(); i++) {
+                output_shape.push_back(this->output_tensor_shape[i]);
+            }
+            return {ttnn::SimpleShape(output_shape)};
+        }
+        return {ttnn::SimpleShape(input_shape)};
+    } else {
+        bool pad_extra = false;
+        auto input_shape = input_tensors.at(0).get_logical_shape();
+        for (int i = 0; i < input_shape.rank(); i++) {
+            if (this->output_tensor_shape[i] - input_shape[i] >= tt::constants::TILE_WIDTH) {
+                pad_extra = true;
+            }
+        }
+        std::vector<uint32_t> output_shape;
+        if (pad_extra == true) {
+            for (int i = 0; i < this->output_tensor_shape.rank(); i++) {
+                output_shape.push_back(this->output_tensor_shape[i]);
+            }
+            return {ttnn::SimpleShape(output_shape)};
+        }
+        return {ttnn::SimpleShape(input_shape)};
     }
-    const auto padding = Padding(dimensions_pads, Padding::PadValue::Any);
-    return {tt::tt_metal::LegacyShape(this->output_tensor_shape, padding)};
 }
 
 std::vector<Tensor> TilizeWithValPadding::create_output_tensors(
@@ -76,7 +101,8 @@ std::vector<Tensor> TilizeWithValPadding::create_output_tensors(
     if (input_tensor_a.memory_config().is_sharded()) {
         auto output_shape = this->compute_output_shapes(input_tensors).at(0);
         auto shard_spec = input_tensor_a.shard_spec().value();
-        shard_spec.shape[0] = tt::tt_metal::compute_volume(output_shape) / output_shape[-1];
+        // shard_spec.shape[0] = tt::tt_metal::compute_volume(output_shape) / output_shape[-1];
+        shard_spec.shape[0] = output_shape.volume() / output_shape[-1];
         auto mem_config = this->output_mem_config;
         mem_config.shard_spec = shard_spec;
         return {
