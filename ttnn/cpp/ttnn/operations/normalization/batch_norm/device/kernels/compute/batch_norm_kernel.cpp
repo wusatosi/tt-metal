@@ -71,6 +71,7 @@ void MAIN {
     uint32_t tile_freq = get_arg_val<uint32_t>(1);
     uint32_t tile_start = get_arg_val<uint32_t>(2);
     constexpr uint32_t weight_has_value = get_compile_time_arg_val(0) == 1;
+    constexpr uint32_t bias_has_value = get_compile_time_arg_val(1) == 1;
 
     if (num_tiles == 0) {
         return;
@@ -85,6 +86,7 @@ void MAIN {
     constexpr auto cb_num = tt::CBIndex::c_6;   // input - batch_mean
     constexpr auto cb_weight = tt::CBIndex::c_16;  // weight tensor
     constexpr auto cb_tmp_1 = tt::CBIndex::c_17;   // (input - batch_mean)/(sqrt(batch_var + eps))
+    constexpr auto cb_bias = tt::CBIndex::c_18;    // bias tensor
 
     auto cb_bcast = cb_in1;
     auto cb_other = cb_in0;
@@ -102,13 +104,18 @@ void MAIN {
         process_tile(cb_bcast, cb_other, cb_num, remaining_iterations, tile_start);
     }
 
-    constexpr auto cb_gamma_or_out = (weight_has_value) ? cb_tmp_1 : cb_out0;
+    constexpr auto cb_affine_or_out = (weight_has_value || bias_has_value) ? cb_tmp_1 : cb_out0;
+    constexpr auto cb_scaled_output = (bias_has_value) ? cb_tmp_1 : cb_out0;
     for (uint32_t tile_id = 0; tile_id < num_tiles; ++tile_id) {
         apply_rsqrt_to_sum_value(cb_in2, cb_eps, cb_den, 0, 0, 1, 1);  // 1/(sqrt(batch_var + eps))
-        mul_tiles_to_cb(cb_num, cb_den, cb_gamma_or_out, 0, 0, 1, 1);  // (input - batch_mean)/(sqrt(batch_var + eps))
+        mul_tiles_to_cb(
+            cb_num, cb_den, cb_affine_or_out, 0, 0, 1, 1);  // (input - batch_mean)/(sqrt(batch_var + eps)) = result
         if (weight_has_value) {
-            mul_tiles_to_cb(cb_gamma_or_out, cb_weight, cb_out0, 0, 0, 1, 1);  // [(input - batch_mean)/(sqrt(batch_var
-                                                                               // + eps))] * weight
+            mul_tiles_to_cb(
+                cb_affine_or_out, cb_weight, cb_scaled_output, tile_id, 0, 0, 1);  // result = result * weight
+        }
+        if (bias_has_value) {
+            add_tiles_to_cb(cb_tmp_1, cb_bias, cb_out0, 0, 0, 1, 1);  // result = result + bias
         }
     }
 }

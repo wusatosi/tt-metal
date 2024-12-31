@@ -33,6 +33,7 @@ Tensor BatchNorm::invoke(
     const bool training,
     const float eps,
     std::optional<Tensor> weight,
+    std::optional<Tensor> bias,
     std::optional<Tensor> output,
     const std::optional<MemoryConfig>& memory_config) {
     if (training) {
@@ -41,11 +42,12 @@ Tensor BatchNorm::invoke(
         Tensor mean_sq = mean_NHW(ttnn::square(input, memory_config), memory_config);
         Tensor batch_var =
             ttnn::subtract(mean_sq, ttnn::square(batch_mean, memory_config), std::nullopt, memory_config);
-        return ttnn::prim::batch_norm(input, batch_mean, batch_var, eps, weight, output, memory_config);
+        return ttnn::prim::batch_norm(input, batch_mean, batch_var, eps, weight, bias, output, memory_config);
     }
     TT_FATAL(
         (running_mean.has_value() && running_var.has_value()),
         "running_mean and running_var must be defined in evaluation mode");
-    return ttnn::prim::batch_norm(input, running_mean.value(), running_var.value(), eps, weight, output, memory_config);
+    return ttnn::prim::batch_norm(
+        input, running_mean.value(), running_var.value(), eps, weight, bias, output, memory_config);
 }
 }  // namespace ttnn::operations::normalization

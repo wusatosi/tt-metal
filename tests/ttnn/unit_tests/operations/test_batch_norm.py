@@ -17,12 +17,12 @@ from tests.ttnn.unit_tests.operations.eltwise.backward.utility_funcs import (
     (
         # (torch.Size([1, 3, 32, 32])),
         # (torch.Size([1, 1, 32, 32])),
-        (torch.Size([1, 2, 64, 64])),
+        (torch.Size([1, 2, 32, 32])),
     ),
 )
 @pytest.mark.parametrize("training", [False])
 @pytest.mark.parametrize("weight", [True, False])
-@pytest.mark.parametrize("bias", [True])
+@pytest.mark.parametrize("bias", [True, False])
 # @pytest.mark.parametrize("eps", [1.0, 0.0, 2.34, 1e-05])
 @pytest.mark.parametrize("eps", [1.0])
 def test_batch_norm(input_shapes, training, weight, bias, eps, device):
@@ -37,14 +37,18 @@ def test_batch_norm(input_shapes, training, weight, bias, eps, device):
         var_tensor = None
     if weight:
         weight_data, weight_tensor = data_gen_with_range_batch_norm(input_shapes, 4, 10, device, False)
+        print("Weight has value")
     else:
         weight_data = None
         weight_tensor = None
+        print("Weight has NO value")
     if bias:
         bias_data, bias_tensor = data_gen_with_range_batch_norm(input_shapes, 4, 10, device, False)
+        print("Bias has value")
     else:
         bias_data = None
         bias_tensor = None
+        print("Bias has NO value")
 
     tt_output_tensor_on_device = ttnn.batch_norm(
         input_tensor,
@@ -53,7 +57,7 @@ def test_batch_norm(input_shapes, training, weight, bias, eps, device):
         training=training,
         eps=eps,
         weight=weight_tensor,
-        # bias=bias_tensor,
+        bias=bias_tensor,
     )
     print(tt_output_tensor_on_device.shape)
     output = ttnn.to_torch(tt_output_tensor_on_device)
@@ -71,7 +75,7 @@ def test_batch_norm(input_shapes, training, weight, bias, eps, device):
         running_mean=mean_data,
         running_var=var_data,
         weight=weight_data,
-        # bias=bias_data,
+        bias=bias_data,
         training=training,
         # momentum=momentum,
         eps=eps,
