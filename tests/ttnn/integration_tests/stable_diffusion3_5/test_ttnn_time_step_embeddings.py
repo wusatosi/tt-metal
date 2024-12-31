@@ -57,6 +57,6 @@ def test_ttnn_step_embeddings(init_inputs, fwd_input, device):
     )
     tt_sub_module = tt_module(parameters)
     tt_out = tt_sub_module(tt_input, device)
-    torch_out = torch_sub_module(torch_input)
+    torch_out = torch_sub_module(torch_input).unsqueeze(1).unsqueeze(1)
     tt_out_in_torch = ttnn.to_torch(tt_out)
     assert_with_pcc(torch_out, tt_out_in_torch, 0.99)
