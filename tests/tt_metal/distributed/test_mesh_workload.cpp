@@ -484,6 +484,26 @@ void verify_cb_config(
     }
 }
 
+void validate_sems(
+    std::shared_ptr<MeshDevice> mesh_device,
+    Device* device,
+    CoreRange& crs,
+    MeshWorkload& mesh_workload,
+    std::vector<uint32_t>& expected_semaphore_values) {
+    for (const auto& core : crs) {
+        const uint32_t sem_buffer_size = mesh_workload.get_sem_size(mesh_device, core, CoreType::WORKER);
+        const uint32_t sem_buffer_base = mesh_workload.get_sem_base_addr(mesh_device, core, CoreType::WORKER);
+        std::vector<uint32_t> readback_sem_vals;
+        ::tt::tt_metal::detail::ReadFromDeviceL1(device, core, sem_buffer_base, sem_buffer_size, readback_sem_vals);
+        uint32_t sem_idx = 0;
+        for (uint32_t i = 0; i < readback_sem_vals.size();
+             i += (hal.get_alignment(HalMemType::L1) / sizeof(uint32_t))) {
+            EXPECT_EQ(readback_sem_vals[i], expected_semaphore_values[sem_idx]);
+            sem_idx++;
+        }
+    }
+}
+
 TEST_F(MeshDevice_T3000, TestMeshWorkloadOnActiveEth) {
     uint32_t num_workloads = 10;
     auto random_seed = 0;
@@ -879,6 +899,66 @@ TEST_F(MeshDevice_T3000, TestMeshWorkloadCBUpdate) {
     EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), mesh_workload, false);
     Finish(mesh_device_->mesh_command_queue());
     verify_cb_config(mesh_device_, mesh_workload, updated_cb_config_vector, cr_set);
+}
+
+TEST_F(MeshDevice_T3000, TestMeshWorkloadSemaphoreSanity) {
+    auto worker_grid_size = mesh_device_->compute_with_storage_grid_size();
+    auto full_grid = CoreRange({0, 0}, {worker_grid_size.x - 1, worker_grid_size.y - 1});
+    Program program;
+    std::vector<uint32_t> expected_semaphore_values;
+
+    for (uint32_t sem = 0; sem < NUM_SEMAPHORES; sem++) {
+        CreateSemaphore(program, full_grid, sem);
+        expected_semaphore_values.push_back(sem);
+    }
+    auto mesh_workload = CreateMeshWorkload();
+    LogicalDeviceRange devices = LogicalDeviceRange({0, 0}, {4, 2});
+    InsertProgramInMeshWorkload(mesh_workload, program, devices);
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), mesh_workload, false);
+    Finish(mesh_device_->mesh_command_queue());
+
+    for (const auto device : mesh_device_->get_devices()) {
+        validate_sems(mesh_device_, device, full_grid, mesh_workload, expected_semaphore_values);
+    }
+}
+
+TEST_F(MeshDevice_T3000, TestMeshWorkloadSemaphoreDifferentPrograms) {
+    auto worker_grid_size = mesh_device_->compute_with_storage_grid_size();
+    auto full_grid = CoreRange({0, 0}, {worker_grid_size.x - 1, worker_grid_size.y - 1});
+    Program program0;
+    Program program1;
+    std::vector<uint32_t> expected_semaphore_values_0;
+    std::vector<uint32_t> expected_semaphore_values_1;
+
+    for (uint32_t sem = 0; sem < NUM_SEMAPHORES; sem++) {
+        CreateSemaphore(program0, full_grid, sem);
+        expected_semaphore_values_0.push_back(sem);
+
+        CreateSemaphore(program1, full_grid, sem + 1);
+        expected_semaphore_values_1.push_back(sem + 1);
+    }
+    auto mesh_workload = CreateMeshWorkload();
+    LogicalDeviceRange devices_0 = LogicalDeviceRange({0, 0}, {4, 1});
+    LogicalDeviceRange devices_1 = LogicalDeviceRange({0, 1}, {4, 2});
+
+    InsertProgramInMeshWorkload(mesh_workload, program0, devices_0);
+    InsertProgramInMeshWorkload(mesh_workload, program1, devices_1);
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), mesh_workload, false);
+    Finish(mesh_device_->mesh_command_queue());
+
+    for (std::size_t logical_x = devices_0.start_coord.x; logical_x < devices_0.end_coord.x; logical_x++) {
+        for (std::size_t logical_y = devices_0.start_coord.y; logical_y < devices_0.end_coord.y; logical_y++) {
+            auto device = mesh_device_->get_device(logical_y, logical_x);
+            validate_sems(mesh_device_, device, full_grid, mesh_workload, expected_semaphore_values_0);
+        }
+    }
+
+    for (std::size_t logical_x = devices_1.start_coord.x; logical_x < devices_1.end_coord.x; logical_x++) {
+        for (std::size_t logical_y = devices_1.start_coord.y; logical_y < devices_1.end_coord.y; logical_y++) {
+            auto device = mesh_device_->get_device(logical_y, logical_x);
+            validate_sems(mesh_device_, device, full_grid, mesh_workload, expected_semaphore_values_1);
+        }
+    }
 }
 
 }  // namespace tt::tt_metal::distributed::test

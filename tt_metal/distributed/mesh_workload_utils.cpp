@@ -19,10 +19,10 @@ void write_program_commands(
     bool stall_before_program,
     bool blocking) {
     auto sub_device_index = sub_device_id.to_index();
-    // Snapshot of expected workers from previous programs, used for dispatch_wait cmd generation.
-    uint32_t expected_workers_completed =
-        cq.device()->hw_command_queue(cq.id()).expected_num_workers_completed_for_sub_device(sub_device_index);
-    // Increment locally to ensure other paths dont break
+    // Increment expected num workers inside single device CQs to ensure other paths dont break.
+    // This is temporary, since data movement and events rely on single device CQs. Once MeshCommandQueue
+    // supports all runtime features, this will be removed, and program dispatch commands will be written
+    // directly through dedicated interfaces.
     cq.device()->hw_command_queue(cq.id()).expected_num_workers_completed_for_sub_device(sub_device_index) +=
         num_active_cores_in_program;
     // Write program command stream to device

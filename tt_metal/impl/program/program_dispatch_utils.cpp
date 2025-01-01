@@ -4,6 +4,7 @@
 
 #include "program_dispatch_utils.hpp"
 #include "tt_metal/impl/dispatch/command_queue.hpp"
+#include "tt_metal/distributed/mesh_command_queue.hpp"
 #include "tt_metal/impl/dispatch/data_collection.hpp"
 #include "tt_metal/distributed/mesh_workload.hpp"
 
@@ -328,8 +329,17 @@ void finalize(T& workload, Device* device) {
             rta_offset,
             crta_offsets,
             crta_sizes);
+
+        TT_ASSERT(offset == align(offset, hal.get_alignment(HalMemType::L1)));
+
         offset = finalize_sems(index, offset, workload.semaphores(), sem_offset, sem_size);
+
+        TT_ASSERT(offset == align(offset, hal.get_alignment(HalMemType::L1)));
+
         offset = finalize_cbs(index, workload.get_kernel_groups(index), offset, cb_offset, cb_size, local_cb_size);
+
+        TT_ASSERT(offset == align(offset, hal.get_alignment(HalMemType::L1)));
+
         offset = finalize_kernel_bins(
             device,
             index,
@@ -338,6 +348,8 @@ void finalize(T& workload, Device* device) {
             offset,
             kernel_text_offset,
             kernel_text_size);
+
+        TT_ASSERT(offset == align(offset, hal.get_alignment(HalMemType::L1)));
 
         auto max_size = hal.get_dev_size(programmable_core_type, HalL1MemAddrType::KERNEL_CONFIG);
         TT_FATAL(
@@ -1721,9 +1733,26 @@ KernelHandle get_device_local_kernel_handle(KernelHandle kernel_handle) {
     return kernel_handle & 0xffff;
 }
 
+template <typename WorkloadType, typename DeviceType>
+uint32_t program_base_addr_on_core(
+    WorkloadType& workload, DeviceType generic_device, HalProgrammableCoreType programmable_core_type) {
+    uint32_t index = hal.get_programmable_core_type_index(programmable_core_type);
+    const auto& sub_device_ids = workload.determine_sub_device_ids(generic_device);
+    // TODO: This restriction can be lifted once this function is changed to return a vector of addresses
+    // Addresses are not the same across sub-devices
+    TT_FATAL(
+        sub_device_ids.size() == 1, "get_sem_base_addr currently only supports programs spanning a single sub-device");
+    auto sub_device_index = sub_device_ids.begin()->to_index();
+    auto cq = workload.get_last_used_command_queue();
+    return cq ? (cq->get_config_buffer_mgr(sub_device_index).get_last_slot_addr(programmable_core_type))
+              : hal.get_dev_addr(programmable_core_type, HalL1MemAddrType::KERNEL_CONFIG);
+}
+
 template void finalize<Program>(Program&, Device*);
 template void finalize<distributed::MeshWorkload>(distributed::MeshWorkload&, Device*);
-
+template uint32_t program_base_addr_on_core<Program, Device*>(Program&, Device*, HalProgrammableCoreType);
+template uint32_t program_base_addr_on_core<distributed::MeshWorkload, std::shared_ptr<distributed::MeshDevice>>(
+    distributed::MeshWorkload&, std::shared_ptr<distributed::MeshDevice>, HalProgrammableCoreType);
 }  // namespace program_utils
 
 }  // namespace tt::tt_metal

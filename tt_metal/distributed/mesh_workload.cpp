@@ -221,6 +221,8 @@ ProgramCommandSequence& MeshWorkload::get_dispatch_cmds_for_program(Program& pro
 
 void MeshWorkload::set_last_used_command_queue(MeshCommandQueue* mesh_cq) { this->last_used_command_queue = mesh_cq; }
 
+MeshCommandQueue* MeshWorkload::get_last_used_command_queue() const { return this->last_used_command_queue; }
+
 ProgramConfig& MeshWorkload::get_program_config(uint32_t index) {
     TT_FATAL(
         this->programs_.size() and this->is_finalized(),
@@ -228,17 +230,52 @@ ProgramConfig& MeshWorkload::get_program_config(uint32_t index) {
     return this->programs_.begin()->second.get_program_config(index);
 }
 
+uint32_t MeshWorkload::get_sem_base_addr(
+    std::shared_ptr<MeshDevice> mesh_device, CoreCoord logical_core, CoreType core_type) {
+    HalProgrammableCoreType programmable_core_type =
+        ::tt::tt_metal::detail::hal_programmable_core_type_from_core_type(core_type);
+    uint32_t base_addr = program_utils::program_base_addr_on_core(*this, mesh_device, programmable_core_type);
+    return base_addr + get_program_config(hal.get_programmable_core_type_index(programmable_core_type)).sem_offset;
+}
+
+uint32_t MeshWorkload::get_sem_size(
+    std::shared_ptr<MeshDevice> mesh_device, CoreCoord logical_core, CoreType core_type) {
+    uint32_t sem_size = 0;
+    uint32_t program_idx = 0;
+    Device* device = mesh_device->get_device(0);
+    for (auto& program_on_grid : this->programs_) {
+        if (program_idx) {
+            TT_ASSERT(sem_size == program_on_grid.second.get_sem_size(device, logical_core, core_type));
+        } else {
+            sem_size = program_on_grid.second.get_sem_size(device, logical_core, core_type);
+        }
+        program_idx++;
+    }
+    return sem_size;
+}
+
 uint32_t MeshWorkload::get_cb_base_addr(
     std::shared_ptr<MeshDevice> mesh_device, CoreCoord logical_core, CoreType core_type) {
-    auto device = mesh_device->get_device(0);
-    CoreCoord virtual_core = device->virtual_core_from_logical_core(logical_core, core_type);
-    HalProgrammableCoreType programmable_core_type = device->get_programmable_core_type(virtual_core);
-    uint32_t index = hal.get_programmable_core_type_index(programmable_core_type);
+    HalProgrammableCoreType programmable_core_type =
+        ::tt::tt_metal::detail::hal_programmable_core_type_from_core_type(core_type);
+    uint32_t base_addr = program_utils::program_base_addr_on_core(*this, mesh_device, programmable_core_type);
+    return base_addr + get_program_config(hal.get_programmable_core_type_index(programmable_core_type)).cb_offset;
+}
 
-    uint32_t base_addr =
-        this->last_used_command_queue->get_config_buffer_mgr().get_last_slot_addr(programmable_core_type);
-    uint32_t relative_cb_offset = get_program_config(index).cb_offset;
-    return base_addr + relative_cb_offset;
+uint32_t MeshWorkload::get_cb_size(
+    std::shared_ptr<MeshDevice> mesh_device, CoreCoord logical_core, CoreType core_type) {
+    uint32_t cb_size = 0;
+    uint32_t program_idx = 0;
+    Device* device = mesh_device->get_device(0);
+    for (auto& program_on_grid : this->programs_) {
+        if (program_idx) {
+            TT_ASSERT(cb_size == program_on_grid.second.get_cb_size(device, logical_core, core_type));
+        } else {
+            cb_size = program_on_grid.second.get_cb_size(device, logical_core, core_type);
+        }
+        program_idx++;
+    }
+    return cb_size;
 }
 
 // void MeshWorkload::set_runtime_args(const LogicalDeviceRange& device_range, const CoreRangeSet& core_range_set,

@@ -115,6 +115,10 @@ void write_program_command_sequence(
 
 KernelHandle get_device_local_kernel_handle(KernelHandle kernel_handle);
 
+template <typename WorkloadType, typename DeviceType>
+uint32_t program_base_addr_on_core(
+    WorkloadType& workload, DeviceType generic_device, HalProgrammableCoreType programmable_core_type);
+
 }  // namespace program_utils
 
 }  // namespace tt_metal

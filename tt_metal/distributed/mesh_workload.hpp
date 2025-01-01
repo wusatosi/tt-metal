@@ -46,6 +46,8 @@ private:
 
     template <typename T>
     friend void program_utils::finalize(T&, Device*);
+    template <typename WorkloadType, typename DeviceType>
+    friend uint32_t program_utils::program_base_addr_on_core(WorkloadType&, DeviceType, HalProgrammableCoreType);
     friend MeshCommandQueue;
     friend void EnqueueMeshWorkload(MeshCommandQueue& mesh_cq, MeshWorkload& mesh_workload, bool blocking);
 
@@ -55,6 +57,11 @@ public:
     std::unordered_map<LogicalDeviceRange, Program>& get_programs() { return this->programs_; }
     ProgramCommandSequence& get_dispatch_cmds_for_program(Program& program);
     void set_last_used_command_queue(MeshCommandQueue* mesh_cq);
+    MeshCommandQueue* get_last_used_command_queue() const;
+    // For testing purposes
+    uint32_t get_sem_base_addr(std::shared_ptr<MeshDevice> mesh_device, CoreCoord logical_core, CoreType core_type);
+    uint32_t get_sem_size(std::shared_ptr<MeshDevice> mesh_device, CoreCoord logical_core, CoreType core_type);
     uint32_t get_cb_base_addr(std::shared_ptr<MeshDevice> mesh_device, CoreCoord logical_core, CoreType core_type);
+    uint32_t get_cb_size(std::shared_ptr<MeshDevice> mesh_device, CoreCoord logical_core, CoreType core_type);
 };
 }  // namespace tt::tt_metal::distributed

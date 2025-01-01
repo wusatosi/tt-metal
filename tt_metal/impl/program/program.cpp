@@ -150,11 +150,10 @@ class Program_ {
     const std::vector<SubDeviceId> &determine_sub_device_ids(const Device *device);
 
     // debug/test
-    uint32_t get_sem_base_addr(Device *device, CoreCoord logical_core, CoreType core_type);
-    uint32_t get_cb_base_addr(Device *device, CoreCoord logical_core, CoreType core_type);
     uint32_t get_sem_size(Device *device, CoreCoord logical_core, CoreType core_type) const;
     uint32_t get_cb_size(Device *device, CoreCoord logical_core, CoreType core_type) const;
     void set_last_used_command_queue_for_testing(HWCommandQueue *queue);
+    HWCommandQueue* get_last_used_command_queue() const;
     void populate_dispatch_data(Device *device);
 
    private:
@@ -1389,56 +1388,32 @@ void detail::Program_::set_runtime_id(uint64_t id) { this->runtime_id = id; }
 
 void Program::set_runtime_id(uint64_t id) { pimpl_->set_runtime_id(id); }
 
-uint32_t detail::Program_::get_sem_base_addr(Device *device, CoreCoord logical_core, CoreType core_type) {
-
-    CoreCoord virtual_core = device->virtual_core_from_logical_core(logical_core, core_type);
-    HalProgrammableCoreType programmable_core_type = device->get_programmable_core_type(virtual_core);
-    uint32_t index = hal.get_programmable_core_type_index(programmable_core_type);
-    const auto &sub_device_ids = this->determine_sub_device_ids(device);
-    // TODO: This restriction can be lifted once we have support for programs spanning multiple sub-devices
-    // Semaphores across sub-devices are expected to have the same address
-    TT_FATAL(sub_device_ids.size() == 1, "get_sem_base_addr currently only supports programs spanning a single sub-device");
-    auto sub_device_index = sub_device_ids[0].to_index();
-    uint32_t base_addr = device->using_fast_dispatch()
-                             ? this->last_used_command_queue_for_testing->get_config_buffer_mgr(sub_device_index).get_last_slot_addr(
-                                   programmable_core_type)
-                             : hal.get_dev_addr(programmable_core_type, HalL1MemAddrType::KERNEL_CONFIG);
-
-    return base_addr + this->program_configs_[index].sem_offset;
-}
-
 uint32_t Program::get_sem_base_addr(Device *device, CoreCoord logical_core, CoreType core_type) {
-    return pimpl_->get_sem_base_addr(device, logical_core, core_type);
-}
-
-uint32_t detail::Program_::get_cb_base_addr(Device *device, CoreCoord logical_core, CoreType core_type) {
-
-    CoreCoord virtual_core = device->virtual_core_from_logical_core(logical_core, core_type);
-    HalProgrammableCoreType programmable_core_type = device->get_programmable_core_type(virtual_core);
-    uint32_t index = hal.get_programmable_core_type_index(programmable_core_type);
-    const auto &sub_device_ids = this->determine_sub_device_ids(device);
-    // TODO: This restriction can be lifted once this function is changed to return a vector of addresses
-    // Addresses are not the same across sub-devices
-    TT_FATAL(sub_device_ids.size() == 1, "get_sem_base_addr currently only supports programs spanning a single sub-device");
-    auto sub_device_index = sub_device_ids[0].to_index();
-    uint32_t base_addr = device->using_fast_dispatch()
-                             ? this->last_used_command_queue_for_testing->get_config_buffer_mgr(sub_device_index).get_last_slot_addr(
-                                   programmable_core_type)
-                             : hal.get_dev_addr(programmable_core_type, HalL1MemAddrType::KERNEL_CONFIG);
-
-    return base_addr + this->program_configs_[index].cb_offset;
+    HalProgrammableCoreType programmable_core_type = ::tt::tt_metal::detail::hal_programmable_core_type_from_core_type(core_type);
+    uint32_t base_addr = program_utils::program_base_addr_on_core(*this, device, programmable_core_type);
+    return base_addr + get_program_config(hal.get_programmable_core_type_index(programmable_core_type)).sem_offset;
 }
 
 uint32_t Program::get_cb_base_addr(Device *device, CoreCoord logical_core, CoreType core_type) {
-    return pimpl_->get_cb_base_addr(device, logical_core, core_type);
+    HalProgrammableCoreType programmable_core_type = ::tt::tt_metal::detail::hal_programmable_core_type_from_core_type(core_type);
+    uint32_t base_addr = program_utils::program_base_addr_on_core(*this, device, programmable_core_type);
+    return base_addr + get_program_config(hal.get_programmable_core_type_index(programmable_core_type)).cb_offset;
 }
 
 void detail::Program_::set_last_used_command_queue_for_testing(HWCommandQueue *queue) {
     this->last_used_command_queue_for_testing = queue;
 }
 
+HWCommandQueue* detail::Program_::get_last_used_command_queue() const {
+    return this->last_used_command_queue_for_testing;
+}
+
 void Program::set_last_used_command_queue_for_testing(HWCommandQueue *queue) {
     pimpl_->set_last_used_command_queue_for_testing(queue);
+}
+
+HWCommandQueue* Program::get_last_used_command_queue() const {
+    return pimpl_->get_last_used_command_queue();
 }
 
 uint32_t detail::Program_::get_sem_size(Device *device, CoreCoord logical_core, CoreType core_type) const {

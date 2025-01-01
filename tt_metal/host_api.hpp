@@ -897,7 +897,6 @@ void Synchronize(
     tt::stl::Span<const SubDeviceId> sub_device_ids = {});
 
 }  // namespace v0
-
 }  // namespace tt_metal
 
 }  // namespace tt
