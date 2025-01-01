@@ -273,12 +273,12 @@ void finalize(T& workload, Device* device) {
     // Compute relative offsets (wrt the start of the kernel config ring buffer) and sizes of all
     // program data structures in L1. Will be used when assembling dispatch commands for this program
 
-    // Incremental offset. Will correspond to the size of the program config per core, once the
-    // program is finalized.
     if (workload.is_finalized()) {
         return;
     }
 
+    // Incremental offset. Will correspond to the size of the program config per core, once the
+    // program is finalized.
     uint32_t offset = 0;
     // Unique RTA offset.
     uint32_t rta_offset = 0;
@@ -319,7 +319,7 @@ void finalize(T& workload, Device* device) {
 
     for (uint32_t index = 0; index < hal.get_programmable_core_type_count(); index++) {
         HalProgrammableCoreType programmable_core_type = static_cast<HalProgrammableCoreType>(index);
-
+        offset = 0;  // Reset
         offset = finalize_rt_args(
             workload.get_kernels(index),
             workload.get_kernel_groups(index),
