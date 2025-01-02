@@ -19,6 +19,13 @@
 
 #define DEBUG_PRINT 0
 
+uint32_t start_clk_l = 0;
+#ifdef CONV_WORKLOAD_DELAY
+constexpr uint32_t workload_delay = CONV_WORKLOAD_DELAY;
+#else
+constexpr uint32_t workload_delay = 0;
+#endif
+
 // #include "debug_macros.h"
 
 // SliceRange srt = SliceRange{.h0 = 0, .h1 = 4, .hs = 1, .w0 = 0, .w1 = 8, .ws = 1};
@@ -218,7 +225,8 @@ void MAIN {
                         in0_block_w);
                 }
                 cb_wait_front(mm_in0_cb_id, in0_block_num_tiles);
-                cb_wait_front(in1_cb_id, in1_block_num_tiles);
+                cb_wait_front<workload_delay>(
+                    in1_cb_id, in1_block_num_tiles);  // use counter to check enough time has elapsed here
 
                 if (last_out) {
 #if defined PACK_RELU and not defined FUSE_BIAS
@@ -377,7 +385,7 @@ void MAIN {
 #endif
 
                 cb_pop_front(mm_in0_cb_id, in0_block_num_tiles);
-                cb_pop_front(in1_cb_id, in1_block_num_tiles);
+                cb_pop_front<workload_delay>(in1_cb_id, in1_block_num_tiles);  // start counter here
             }  // for in0_num_blocks_w
             if constexpr (matmul_partials_cb == mm_out_cb_id) {
                 UNPACK(get_local_cb_interface(matmul_partials_cb).fifo_rd_ptr = partials_cb_read_ptr);

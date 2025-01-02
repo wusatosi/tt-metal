@@ -49,6 +49,17 @@ std::pair<std::vector<uint32_t>, std::vector<uint32_t>> compute_opt_conv_activat
     return {{1, num_rows_padded, num_cols_padded}, {1, num_rows, num_cols}};
 }
 
+void add_workload_delay_defines_if_needed(
+    const tt::ARCH arch, const int num_cores, std::map<string, string>& conv_kernel_defines) {
+    // testing minimum delay between compute workloads
+    constexpr uint32_t WH_B0_MAX_CORES_NO_STAGGER = 48;
+    const char * delay = std::getenv("TT_ENABLE_WORKLOAD_DELAY");
+    if (delay && arch == tt::ARCH::WORMHOLE_B0 && num_cores > WH_B0_MAX_CORES_NO_STAGGER) {
+        conv_kernel_defines["CONV_WORKLOAD_DELAY"] = delay;
+        log_warning(tt::LogOp, "Workload delay enabled for conv op using {} cores.", num_cores);
+    }
+}
+
 } // optimized_conv_op_utils
 
 namespace ttnn::operations::conv {

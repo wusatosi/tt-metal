@@ -1322,6 +1322,9 @@ operation::ProgramWithCallbacks multi_core_optimized_conv_sharded_v2_impl(
         compute_defines["PACKER_L1_ACC"] = "1";
     }
 
+    optimized_conv_op_utils::add_workload_delay_defines_if_needed(
+        device->arch(), total_active_num_cores, compute_defines);
+
     writer_compile_time_args = {
         (uint32_t)(dst_dram_buffer->buffer_type() == tt_metal::BufferType::DRAM ? 1 : 0),
         out0_cb,

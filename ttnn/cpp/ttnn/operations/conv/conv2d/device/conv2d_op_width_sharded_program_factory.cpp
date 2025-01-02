@@ -638,6 +638,9 @@ operation::ProgramWithCallbacks multi_core_optimized_conv_width_sharded_v2_impl(
     if (packer_l1_acc) {
         compute_defines["PACKER_L1_ACC"] = "1";
     }
+
+    optimized_conv_op_utils::add_workload_delay_defines_if_needed(device->arch(), input_num_cores, compute_defines);
+
     uint32_t num_output_tiles = per_core_out_matrix_height_ntiles * per_core_out_matrix_width_ntiles;
     uint32_t use_non_tile_height = false;
     compute_kernel_args = {

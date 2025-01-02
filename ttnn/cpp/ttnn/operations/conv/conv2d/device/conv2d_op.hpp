@@ -182,4 +182,6 @@ std::pair<std::vector<uint32_t>, std::vector<uint32_t>> compute_opt_conv_activat
     uint32_t num_cores_nhw,
     uint32_t act_block_h_ntiles);
 
+void add_workload_delay_defines_if_needed(const tt::ARCH arch, const int num_cores, std::map<string, string>& conv_kernel_defines);
+
 } // optimized_conv_op_utils
