@@ -193,6 +193,8 @@ public:
     int num_dram_channels() const;
     allocator::Statistics get_memory_allocation_statistics(
         const BufferType& buffer_type, SubDeviceId sub_device_id = SubDeviceId{0}) const;
+
+    bool using_fast_dispatch();
 };
 
 std::ostream& operator<<(std::ostream& os, const MeshDevice& mesh_device);

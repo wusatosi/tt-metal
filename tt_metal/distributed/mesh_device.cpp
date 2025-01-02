@@ -451,7 +451,9 @@ void MeshDevice::initialize(
     auto shared_this = shared_from_this();
     this->view = std::make_unique<MeshDeviceView>(*this);
     system_mesh.register_mesh_device(shared_this, this->devices);
-    this->mesh_command_queue_ = std::make_unique<MeshCommandQueue>(shared_this, 0);
+    if (this->using_fast_dispatch()) {
+        this->mesh_command_queue_ = std::make_unique<MeshCommandQueue>(shared_this, 0);
+    }
 }
 
 MeshDevice::~MeshDevice() { close_devices(); }
@@ -480,6 +482,7 @@ Device* MeshDevice::get_device(size_t row_idx, size_t col_idx) const {
 }
 
 MeshCommandQueue& MeshDevice::mesh_command_queue() {
+    TT_FATAL(this->using_fast_dispatch(), "Can only acess the MeshCommandQueue when using Fast Dispatch.");
     return *(this->mesh_command_queue_);
 }
 
@@ -668,6 +671,18 @@ allocator::Statistics MeshDevice::get_memory_allocation_statistics(
     // This will be made more explicit in the future to have lock-step allocation across devices.
     // Right now, we just return the statistics of the first device.
     return this->reference_device()->get_memory_allocation_statistics(buffer_type, sub_device_id);
+}
+
+bool MeshDevice::using_fast_dispatch() {
+    bool using_fast_dispatch = true;
+    for (uint32_t i = 0; i < this->num_devices(); i++) {
+        if (i > 0) {
+            TT_FATAL(using_fast_dispatch == this->devices[i]->using_fast_dispatch(), "Expected all devices in a Mesh to use identical dispatch modes.");
+        } else {
+            using_fast_dispatch = this->devices[i]->using_fast_dispatch();
+        }
+    }
+    return using_fast_dispatch;
 }
 
 }  // namespace tt::tt_metal::distributed
