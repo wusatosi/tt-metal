@@ -374,7 +374,6 @@ std::shared_ptr<MeshDevice> MeshDevice::create(
     const DispatchCoreConfig& dispatch_core_config) {
     auto mesh_device = std::make_shared<MeshDevice>(config.mesh_shape, config.mesh_type);
     mesh_device->initialize(l1_small_size, trace_region_size, num_command_queues, dispatch_core_config, config);
-    mesh_device->mesh_command_queue_ = std::make_unique<MeshCommandQueue>(mesh_device, 0);
     return mesh_device;
 }
 
@@ -449,8 +448,10 @@ void MeshDevice::initialize(
     for (auto physical_device_id : physical_device_ids) {
         this->devices.push_back(this->opened_devices.at(physical_device_id));
     }
+    auto shared_this = shared_from_this();
     this->view = std::make_unique<MeshDeviceView>(*this);
-    system_mesh.register_mesh_device(shared_from_this(), this->devices);
+    system_mesh.register_mesh_device(shared_this, this->devices);
+    this->mesh_command_queue_ = std::make_unique<MeshCommandQueue>(shared_this, 0);
 }
 
 MeshDevice::~MeshDevice() { close_devices(); }

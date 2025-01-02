@@ -37,7 +37,6 @@ std::vector<std::shared_ptr<Program>> create_random_programs(
     CoreRange cr({0, 0}, {worker_grid_size.x - 1, worker_grid_size.y - 1});
     CoreRangeSet cr_set(cr);
 
-    log_info(tt::LogTest, "Creating {} programs now.", num_programs);
     std::vector<std::shared_ptr<Program>> programs;
 
     std::map<string, string> data_movement_defines = {{"DATA_MOVEMENT", "1"}};
@@ -511,7 +510,7 @@ TEST_F(MeshDevice_T3000, TestMeshWorkloadOnActiveEth) {
     uint32_t seed = tt::parse_env("TT_METAL_SEED", random_seed);
     std::vector<std::shared_ptr<MeshWorkload>> workloads = {};
     std::vector<std::shared_ptr<Program>> programs = {};
-
+    log_info("Create {} workloads", num_workloads);
     for (int i = 0; i < num_workloads; i++) {
         std::shared_ptr<MeshWorkload> workload = std::make_shared<MeshWorkload>();
         for (std::size_t logical_x = 0; logical_x < mesh_device_->num_cols(); logical_x++) {
@@ -534,9 +533,7 @@ TEST_F(MeshDevice_T3000, TestMeshWorkloadOnActiveEth) {
             EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), *workload, false);
         }
     }
-    for (auto device : mesh_device_->get_devices()) {
-        Finish(device->command_queue(0));
-    }
+    Finish(mesh_device_->mesh_command_queue());
 }
 
 TEST_F(MeshDevice_T3000, TestMeshWorkloadOnActiveEthRandomGridSize) {
@@ -550,7 +547,7 @@ TEST_F(MeshDevice_T3000, TestMeshWorkloadOnActiveEthRandomGridSize) {
     std::mt19937 rng(seed);
     std::uniform_int_distribution<int> gen_x(1, 4);
     std::uniform_int_distribution<int> gen_y(1, 2);
-
+    log_info("Create {} randomized workloads", num_workloads);
     for (int i = 0; i < num_workloads; i++) {
         std::shared_ptr<MeshWorkload> workload = std::make_shared<MeshWorkload>();
         uint32_t x_end = gen_x(rng);
@@ -575,9 +572,7 @@ TEST_F(MeshDevice_T3000, TestMeshWorkloadOnActiveEthRandomGridSize) {
             EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), *workload, false);
         }
     }
-    for (auto device : mesh_device_->get_devices()) {
-        Finish(device->command_queue(0));
-    }
+    Finish(mesh_device_->mesh_command_queue());
 }
 
 TEST_F(MeshDevice_T3000, TestSimultaneousMeshWorkloads) {
@@ -588,6 +583,8 @@ TEST_F(MeshDevice_T3000, TestSimultaneousMeshWorkloads) {
     uint32_t seed = tt::parse_env("TT_METAL_SEED", random_seed);
     log_info(tt::LogTest, "Using Test Seed: {}", seed);
     srand(seed);
+
+    log_info("Create MeshWorkloads with multiple programs each");
 
     auto programs = create_random_programs(num_programs, mesh_device_->compute_with_storage_grid_size(), seed);
     std::vector<std::shared_ptr<MeshWorkload>> mesh_workloads = {};
@@ -655,9 +652,7 @@ TEST_F(MeshDevice_T3000, TestSimultaneousMeshWorkloads) {
             EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), *workload, false);
         }
     }
-    for (auto& device : mesh_device_->get_devices()) {
-        Finish(device->command_queue(0));
-    }
+    Finish(mesh_device_->mesh_command_queue());
 }
 
 TEST_F(MeshDevice_T3000, TestRandomizedMeshWorkload) {
@@ -667,7 +662,7 @@ TEST_F(MeshDevice_T3000, TestRandomizedMeshWorkload) {
     uint32_t seed = tt::parse_env("TT_METAL_SEED", random_seed);
     log_info(tt::LogTest, "Using Test Seed: {}", seed);
     srand(seed);
-
+    log_info("Create {} MeshWorkloads", num_programs);
     auto programs = create_random_programs(num_programs, mesh_device_->compute_with_storage_grid_size(), seed);
     std::mt19937 rng(seed);
     std::uniform_int_distribution<int> gen_x(1, 4);
@@ -694,9 +689,7 @@ TEST_F(MeshDevice_T3000, TestRandomizedMeshWorkload) {
         }
     }
     log_info(tt::LogTest, "Calling Finish");
-    for (auto device : mesh_device_->get_devices()) {
-        Finish(device->command_queue(0));
-    }
+    Finish(mesh_device_->mesh_command_queue());
 }
 
 TEST_F(MeshDevice_T3000, TestEltwiseBinaryMeshWorkload) {
