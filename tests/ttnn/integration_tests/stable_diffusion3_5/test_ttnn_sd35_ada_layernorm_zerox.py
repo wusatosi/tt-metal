@@ -61,21 +61,17 @@ def test_sd35_ada_layernorm_zerox(device, reset_seeds, h):
 
     torch_input_hidden_states = torch_input_hidden_states.unsqueeze(1)
 
-    mm_a_y = 8
-    mm_a_x = 8
-    mm_a_x_strategy = ttnn.ShardStrategy.BLOCK
-    mm_a_x_memory_config = ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG
-    if torch_input_hidden_states.shape[-2] < 512:
-        mm_a_y = 6
-        mm_a_x_strategy = ttnn.ShardStrategy.WIDTH
-        mm_a_x_memory_config = ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG
+    # mm_a_y = 8
+    # mm_a_x = 8
+    # mm_a_x_strategy = ttnn.ShardStrategy.BLOCK
+    # mm_a_x_memory_config = ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG
 
-    input_memory_config = ttnn.create_sharded_memory_config(
-        torch_input_hidden_states.shape,
-        core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
-        strategy=mm_a_x_strategy,
-        orientation=ttnn.ShardOrientation.ROW_MAJOR,
-    )
+    # input_memory_config = ttnn.create_sharded_memory_config(
+    #     torch_input_hidden_states.shape,
+    #     core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
+    #     strategy=mm_a_x_strategy,
+    #     orientation=ttnn.ShardOrientation.ROW_MAJOR,
+    # )
 
     ttnn_input_emb = ttnn.from_torch(
         torch_input_emb.unsqueeze(1).unsqueeze(1),
@@ -90,7 +86,7 @@ def test_sd35_ada_layernorm_zerox(device, reset_seeds, h):
         layout=ttnn.TILE_LAYOUT,
         dtype=ttnn.bfloat8_b,
         device=device,
-        memory_config=input_memory_config,  # ttnn.L1_MEMORY_CONFIG,
+        memory_config=ttnn.L1_MEMORY_CONFIG,  # input_memory_config
     )
 
     ttnn_model = ttnn_SD35AdaLayerNormZeroX(

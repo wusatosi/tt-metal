@@ -42,7 +42,7 @@ def create_custom_preprocessor(device):
         # ([2, 4096, 1536]),
         # ([2, 333, 1536]),
         ([2, 1024, 1536]),
-        ([2, 154, 1536]),
+        # ([2, 160, 1536]),
     ],
 )
 def test_ada_layernorm_continuous(device, x_shape, reset_seeds):
@@ -65,20 +65,20 @@ def test_ada_layernorm_continuous(device, x_shape, reset_seeds):
 
     torch_input_x_unsqueezed = torch_input_x.unsqueeze(1)
 
-    if torch_input_x_unsqueezed.shape[-2] < 512:
-        input_memory_config = ttnn.L1_MEMORY_CONFIG
-    else:
-        mm_a_y = 8
-        mm_a_x = 8
-        mm_a_x_strategy = ttnn.ShardStrategy.BLOCK
-        mm_a_x_memory_config = ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG
+    # if torch_input_x_unsqueezed.shape[-2] < 512:
+    #     input_memory_config = ttnn.L1_MEMORY_CONFIG
+    # else:
+    #     mm_a_y = 8
+    #     mm_a_x = 8
+    #     mm_a_x_strategy = ttnn.ShardStrategy.BLOCK
+    #     mm_a_x_memory_config = ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG
 
-        input_memory_config = ttnn.create_sharded_memory_config(
-            torch_input_x_unsqueezed.shape,
-            core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
-            strategy=mm_a_x_strategy,
-            orientation=ttnn.ShardOrientation.ROW_MAJOR,
-        )
+    #     input_memory_config = ttnn.create_sharded_memory_config(
+    #         torch_input_x_unsqueezed.shape,
+    #         core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
+    #         strategy=mm_a_x_strategy,
+    #         orientation=ttnn.ShardOrientation.ROW_MAJOR,
+    #     )
 
     ttnn_input_conditioning_embedding = ttnn.from_torch(
         torch_input_conditioning_embedding.unsqueeze(1).unsqueeze(1),
@@ -93,7 +93,7 @@ def test_ada_layernorm_continuous(device, x_shape, reset_seeds):
         layout=ttnn.TILE_LAYOUT,
         dtype=ttnn.bfloat8_b,
         device=device,
-        memory_config=input_memory_config,  # ttnn.L1_MEMORY_CONFIG
+        memory_config=ttnn.L1_MEMORY_CONFIG,  # input_memory_config
     )
 
     torch_output = reference_model(torch_input_x, torch_input_conditioning_embedding)

@@ -77,13 +77,10 @@ class ttnn_AdaLayerNormZero:
         # x = self.norm(x, memory_config=ttnn.L1_MEMORY_CONFIG, compute_kernel_config=hifi2_kernel_config)
         # x = x * (1 + scale_msa) + shift_msa
 
-        norm_hidden_states = ttnn.to_memory_config(hidden_states, ttnn.L1_MEMORY_CONFIG)
-        ttnn.deallocate(hidden_states)
-        norm_hidden_states = self.norm(norm_hidden_states, compute_kernel_config=hifi2_kernel_config)
+        norm_hidden_states = self.norm(hidden_states, compute_kernel_config=hifi2_kernel_config)
         scale_msa = scale_msa + 1
-        hidden_states = norm_hidden_states * scale_msa
-        hidden_states = hidden_states + shift_msa
-        ttnn.deallocate(norm_hidden_states)
-        hidden_states = ttnn.reallocate(hidden_states)
+        # TODO: can we shard the hidden state but keep scale tensor as interleaved?
+        norm_hidden_states = norm_hidden_states * scale_msa
+        norm_hidden_states = norm_hidden_states + shift_msa
 
-        return hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp
+        return norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp
