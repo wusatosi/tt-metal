@@ -153,22 +153,18 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
     uint32_t in_cb_sz = 0;
     uint32_t in_nblocks_c = 1;
     if (is_large_kernel) {
-        in_cb_sz =
-            (input_shape[3] / num_shards_c * kernel_size_hw_padded) > (tt::constants::TILE_HW * MAX_TILES_PER_REDUCTION)
-                ? (tt::constants::TILE_HW * MAX_TILES_PER_REDUCTION)
-                : input_shape[3] / num_shards_c * kernel_size_hw_padded;
         if (is_wide_reduction) {
-            TT_FATAL(
-                in_ntiles_c % MAX_TILES_PER_REDUCTION == 0,
-                "for large kernels, wide reductions currently need to be a multiple of MAX_TILES_PER_REDUCTION");
+            in_cb_sz = MAX_TILES_PER_REDUCTION * tt::constants::TILE_WIDTH * max_rows_for_reduction;
             in_nblocks_c = std::ceil((float)in_ntiles_c / MAX_TILES_PER_REDUCTION);
+        } else {
+            in_cb_sz = input_shape[3] / num_shards_c * max_rows_for_reduction;
         }
     } else {
         if (is_wide_reduction) {
-            in_cb_sz = MAX_TILES_PER_REDUCTION * tt::constants::TILE_WIDTH * kernel_size_hw_padded;
+            in_cb_sz = MAX_TILES_PER_REDUCTION * tt::constants::TILE_WIDTH * kernel_size_hw;
             in_nblocks_c = std::ceil((float)in_ntiles_c / MAX_TILES_PER_REDUCTION);
         } else {
-            in_cb_sz = input_shape[3] / num_shards_c * kernel_size_hw_padded;
+            in_cb_sz = input_shape[3] / num_shards_c * kernel_size_hw;
         }
     }
     // reader output == input to tilize
@@ -219,7 +215,7 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
 
     if (is_large_kernel) {
         uint32_t max_pool_partials_cb_id = tt::CBIndex::c_25;  // max_pool partials
-        uint32_t max_pool_partials_cb_pagesize = std::min(out_cb_pagesize, TILE_SIZE * 8 * out_nbytes);
+        uint32_t max_pool_partials_cb_pagesize = out_cb_pagesize;
         uint32_t max_pool_partials_cb_npages = nblocks;
         CircularBufferConfig max_pool_partials_cb_config =
             CircularBufferConfig(
