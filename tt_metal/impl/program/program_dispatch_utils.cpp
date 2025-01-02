@@ -1393,6 +1393,19 @@ void assemble_device_commands(
              ->mcast;
 }
 
+void initialize_worker_config_buf_mgr(WorkerConfigBufferMgr& config_buffer_mgr) {
+    for (uint32_t index = 0; index < tt::tt_metal::hal.get_programmable_core_type_count(); index++) {
+        config_buffer_mgr.init_add_buffer(
+            tt::tt_metal::hal.get_dev_addr(
+                tt::tt_metal::hal.get_programmable_core_type(index), tt::tt_metal::HalL1MemAddrType::KERNEL_CONFIG),
+            tt::tt_metal::hal.get_dev_size(
+                tt::tt_metal::hal.get_programmable_core_type(index), tt::tt_metal::HalL1MemAddrType::KERNEL_CONFIG));
+    }
+    // Subtract 1 from the number of entries, so the watcher can read information (e.g. fired asserts) from the
+    // previous launch message.
+    config_buffer_mgr.init_add_buffer(0, launch_msg_buffer_num_entries - 1);
+}
+
 void reserve_space_in_kernel_config_buffer(
     WorkerConfigBufferMgr& config_buffer_mgr,
     const std::vector<uint32_t>& program_config_sizes,
@@ -1452,13 +1465,14 @@ void reserve_space_in_kernel_config_buffer(
         dispatch_md.sync_count = expected_num_workers_completed;
     }
 
-    dispatch_md.kernel_config_addrs = reservation.second;
+    // Remove launch buffer from config addrs, since it's not a real core.
+    dispatch_md.kernel_config_addrs = std::vector<ConfigBufferEntry>(
+        std::make_move_iterator(reservation.second.begin()), std::make_move_iterator(reservation.second.end() - 1));
 }
 
 void update_program_dispatch_commands(
     Program& program,
     ProgramCommandSequence& cached_program_command_sequence,
-    const tt::stl::Span<ConfigBufferEntry> kernel_config_addrs,
     uint32_t multicast_cores_launch_message_wptr,
     uint32_t unicast_cores_launch_message_wptr,
     uint32_t expected_num_workers_completed,
@@ -1493,12 +1507,12 @@ void update_program_dispatch_commands(
     // Update preamble based on kernel config ring buffer slot
     cached_program_command_sequence.preamble_command_sequence.update_cmd_sequence(
         tensix_l1_write_offset_offset,
-        &kernel_config_addrs[hal.get_programmable_core_type_index(HalProgrammableCoreType::TENSIX)],
+        &dispatch_md.kernel_config_addrs[hal.get_programmable_core_type_index(HalProgrammableCoreType::TENSIX)],
         sizeof(uint32_t));
     if (hal.get_programmable_core_type_count() >= 2) {
         cached_program_command_sequence.preamble_command_sequence.update_cmd_sequence(
             eth_l1_write_offset_offset,
-            &kernel_config_addrs[hal.get_programmable_core_type_index(HalProgrammableCoreType::ACTIVE_ETH)],
+            &dispatch_md.kernel_config_addrs[hal.get_programmable_core_type_index(HalProgrammableCoreType::ACTIVE_ETH)],
             sizeof(uint32_t));
     }
 
@@ -1531,8 +1545,8 @@ void update_program_dispatch_commands(
     }
     // Update launch messages
     for (auto& go_signal : cached_program_command_sequence.go_signals) {
-        for (uint32_t i = 0; i < kernel_config_addrs.size(); i++) {
-            go_signal->kernel_config.kernel_config_base[i] = kernel_config_addrs[i].addr;
+        for (uint32_t i = 0; i < dispatch_md.kernel_config_addrs.size(); i++) {
+            go_signal->kernel_config.kernel_config_base[i] = dispatch_md.kernel_config_addrs[i].addr;
         }
         go_signal->kernel_config.host_assigned_id = program.get_runtime_id();
     }

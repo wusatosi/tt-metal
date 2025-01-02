@@ -82,6 +82,8 @@ void assemble_runtime_args_commands(ProgramCommandSequence& program_command_sequ
 void assemble_device_commands(
     ProgramCommandSequence& program_command_sequence, Program& program, Device* device, SubDeviceId sub_device_id);
 
+void initialize_worker_config_buf_mgr(WorkerConfigBufferMgr& config_buffer_mgr);
+
 void reserve_space_in_kernel_config_buffer(
     WorkerConfigBufferMgr& config_buffer_mgr,
     const std::vector<uint32_t>& program_config_sizes,
@@ -94,7 +96,6 @@ void reserve_space_in_kernel_config_buffer(
 void update_program_dispatch_commands(
     Program& program,
     ProgramCommandSequence& cached_program_command_sequence,
-    const tt::stl::Span<ConfigBufferEntry> kernel_config_addrs,
     uint32_t multicast_cores_launch_message_wptr,
     uint32_t unicast_cores_launch_message_wptr,
     uint32_t expected_num_workers_completed,

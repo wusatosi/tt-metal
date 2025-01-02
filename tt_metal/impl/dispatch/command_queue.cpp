@@ -381,10 +381,6 @@ void EnqueueProgramCommand::process() {
         this->expected_num_workers_completed,
         dispatch_metadata);
 
-    // Remove launch buffer from config addrs, since it's not a real core.
-    const tt::stl::Span<ConfigBufferEntry> kernel_config_addrs{
-        dispatch_metadata.kernel_config_addrs.data(), dispatch_metadata.kernel_config_addrs.size() - 1};
-
     RecordProgramRun(program);
 
     // Access the program dispatch-command cache
@@ -393,7 +389,6 @@ void EnqueueProgramCommand::process() {
     program_utils::update_program_dispatch_commands(
         program,
         cached_program_command_sequence,
-        kernel_config_addrs,
         this->multicast_cores_launch_message_wptr,
         this->unicast_cores_launch_message_wptr,
         this->expected_num_workers_completed,
@@ -1798,16 +1793,7 @@ WorkerConfigBufferMgr& HWCommandQueue::get_config_buffer_mgr(uint32_t index) { r
 void HWCommandQueue::reset_config_buffer_mgr(const uint32_t num_entries) {
     for (uint32_t i = 0; i < num_entries; ++i) {
         this->config_buffer_mgr[i] = WorkerConfigBufferMgr();
-        for (uint32_t index = 0; index < tt::tt_metal::hal.get_programmable_core_type_count(); index++) {
-            this->config_buffer_mgr[i].init_add_buffer(
-                tt::tt_metal::hal.get_dev_addr(
-                    tt::tt_metal::hal.get_programmable_core_type(index), tt::tt_metal::HalL1MemAddrType::KERNEL_CONFIG),
-                tt::tt_metal::hal.get_dev_size(
-                    tt::tt_metal::hal.get_programmable_core_type(index), tt::tt_metal::HalL1MemAddrType::KERNEL_CONFIG));
-        }
-        // Subtract 1 from the number of entries, so the watcher can read information (e.g. fired asserts) from the
-        // previous launch message.
-        this->config_buffer_mgr[i].init_add_buffer(0, launch_msg_buffer_num_entries - 1);
+        program_utils::initialize_worker_config_buf_mgr(this->config_buffer_mgr[i]);
     }
 }
 

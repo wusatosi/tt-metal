@@ -12,17 +12,7 @@ MeshCommandQueue::MeshCommandQueue(std::shared_ptr<MeshDevice>& mesh_device, uin
     this->id_ = id;
 
     this->config_buffer_mgr_ = tt::tt_metal::WorkerConfigBufferMgr();
-    for (uint32_t index = 0; index < tt::tt_metal::hal.get_programmable_core_type_count(); index++) {
-        this->config_buffer_mgr_.init_add_buffer(
-            tt::tt_metal::hal.get_dev_addr(
-                tt::tt_metal::hal.get_programmable_core_type(index), tt::tt_metal::HalL1MemAddrType::KERNEL_CONFIG),
-            tt::tt_metal::hal.get_dev_size(
-                tt::tt_metal::hal.get_programmable_core_type(index), tt::tt_metal::HalL1MemAddrType::KERNEL_CONFIG));
-    }
-    // Subtract 1 from the number of entries, so the watcher can read information (e.g. fired asserts) from the
-    // previous launch message.
-    this->config_buffer_mgr_.init_add_buffer(0, launch_msg_buffer_num_entries - 1);
-
+    program_utils::initialize_worker_config_buf_mgr(this->config_buffer_mgr_);
     this->populate_virtual_program_dispatch_core();
     this->populate_dispatch_core_type();
 }
@@ -107,11 +97,7 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
         this->expected_num_workers_completed_,
         dispatch_metadata);
 
-    const tt::stl::Span<ConfigBufferEntry> kernel_config_addrs{
-        dispatch_metadata.kernel_config_addrs.data(), dispatch_metadata.kernel_config_addrs.size() - 1};
-
     std::unordered_set<uint32_t> chip_ids_in_workload = {};
-
     for (auto& program_on_grid : mesh_workload.get_programs()) {
         auto& device_range = program_on_grid.first;
         auto& program_cmd_seq = mesh_workload.get_dispatch_cmds_for_program(program_on_grid.second);
@@ -119,7 +105,6 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
         program_utils::update_program_dispatch_commands(
             program_on_grid.second,
             program_cmd_seq,
-            kernel_config_addrs,
             this->worker_launch_message_buffer_state_.get_mcast_wptr(),
             this->worker_launch_message_buffer_state_.get_unicast_wptr(),
             this->expected_num_workers_completed_,
