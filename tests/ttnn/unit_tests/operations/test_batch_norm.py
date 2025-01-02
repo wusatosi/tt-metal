@@ -81,6 +81,5 @@ def test_batch_norm(input_shapes, training, weight, bias, eps, device):
         eps=eps,
     )
     print(torch_result)
-    comp_pass = compare_pcc([tt_output_tensor_on_device], [torch_result * -1])
+    comp_pass = compare_pcc([tt_output_tensor_on_device], [torch_result])
     assert comp_pass
-    # return True

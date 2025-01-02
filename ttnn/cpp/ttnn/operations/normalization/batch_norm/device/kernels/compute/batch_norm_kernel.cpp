@@ -53,7 +53,7 @@ ALWI void process_tile(uint32_t cb_bcast, uint32_t cb_other, uint32_t cb_out, ui
         cb_reserve_back(cb_out, onetile);
 
         tile_regs_acquire();
-        sub_tiles(cb_bcast, cb_other, 0, 0, 0);
+        sub_tiles(cb_other, cb_bcast, 0, 0, 0);
         tile_regs_commit();
 
         tile_regs_wait();
