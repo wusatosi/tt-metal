@@ -23,22 +23,24 @@ from tests.tt_eager.python_api_testing.unit_testing.misc.test_speculative_flash_
 )
 
 
-def create_multi_device_tensors(input_tensors, mesh_device, mem_config, worker_sub_device_id, layout, dtype):
+def create_multi_device_tensors(
+    input_tensors, mesh_device, mem_config, worker_sub_device_id=None, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16
+):
+    sub_device_ids = [worker_sub_device_id] if worker_sub_device_id is not None else []
     tt_tensors = []
     for i, t in enumerate(input_tensors):
         tt_tensors.append(
-            ttnn.Tensor(t, dtype)
-            .to(layout)
-            .to(mesh_device.get_devices()[i], mem_config, sub_device_ids=[worker_sub_device_id])
+            ttnn.Tensor(t, dtype).to(layout).to(mesh_device.get_devices()[i], mem_config, sub_device_ids=sub_device_ids)
         )
     tensor_mesh = ttnn.aggregate_as_tensor(tt_tensors)
     return tensor_mesh
 
 
-def read_multi_device_tensor(tt_tensor, worker_sub_device_id):
+def read_multi_device_tensor(tt_tensor, worker_sub_device_id=None):
+    sub_device_ids = [worker_sub_device_id] if worker_sub_device_id is not None else []
     tensors = []
     for i, t in enumerate(ttnn.get_device_tensors(tt_tensor)):
-        t = t.cpu(sub_device_ids=[worker_sub_device_id]).to(ttnn.ROW_MAJOR_LAYOUT).to_torch()
+        t = t.cpu(sub_device_ids=sub_device_ids).to(ttnn.ROW_MAJOR_LAYOUT).to_torch()
         tensors.append(t)
     return tensors
 
@@ -62,7 +64,6 @@ def get_speculative_flash_decode_tt_ccl(
     cur_pos_tensor=False,
     sharded_out=False,
     height_sharded_memcfg=None,
-    priority_tensor=None,
 ):
     """
     Wrapper function for speculative flash decode tensor operations.
@@ -97,7 +98,9 @@ def get_speculative_flash_decode_tt_ccl(
                 program_config=program_config,
                 compute_kernel_config=compute_kernel_config,
                 memory_config=height_sharded_memcfg if sharded_out else memory_config,
-                priority_tensor=priority_tensor,
+                priority_tensor=tt_priority_tensors,
+                other_priority_tensor=tt_gathered_priority_tensors,
+                ccl_enabled=True,
             )
         else:
             outputs = ttnn.experimental.speculative_scaled_dot_product_attention_decode(
@@ -110,7 +113,9 @@ def get_speculative_flash_decode_tt_ccl(
                 program_config=program_config,
                 compute_kernel_config=compute_kernel_config,
                 memory_config=height_sharded_memcfg if sharded_out else memory_config,
-                priority_tensor=priority_tensor,
+                priority_tensor=tt_priority_tensors,
+                other_priority_tensor=tt_gathered_priority_tensors,
+                ccl_enabled=True,
             )
     else:
         raise NotImplementedError("Non-causal not implemented")
@@ -126,21 +131,16 @@ def get_speculative_flash_decode_tt_ccl(
     tt_back_spec_lp_distance = read_multi_device_tensor(tt_back_spec_lp_distance_md, worker_sub_device_id)[sender_idx]
     tt_back_lp_norm_x = read_multi_device_tensor(tt_back_lp_norm_x_md, worker_sub_device_id)[sender_idx]
     tt_back_gt_receiver = read_multi_device_tensor(tt_back_gt_md, worker_sub_device_id)[receiver_idx]
-    tt_back_spec_receiver = read_multi_device_tensor(tt_back_spec_md, worker_sub_device_id)[receiver_idx]
 
     # slice to correct number of heads
     tt_back_gt = tt_back_gt[:, :, :nh, :]
     tt_back_spec = tt_back_spec[:, :, :nh, :]
     tt_back_gt_receiver = tt_back_gt_receiver[:, :, :nh, :]
-    tt_back_spec_receiver = tt_back_spec_receiver[:, :, :nh, :]
 
     # uncomment this assert after enable ccl in kernel
-    # # assert tt_back_spec on the sender device is the same as the tt_back_spec and tt_back_gt on the receiver device
+    # # assert tt_back_spec on the sender device is the same as tt_back_gt on the receiver device
     # out_pass, out_pcc = comp_pcc(tt_back_spec, tt_back_gt_receiver, 0.99)
     # logger.debug(f"spec tt sender vs gt receiver: {out_pcc}")
-    # assert out_pass
-    # out_pass, out_pcc = comp_pcc(tt_back_spec, tt_back_spec_receiver, 0.99)
-    # logger.debug(f"spec tt sender vs spec receiver: {out_pcc}")
     # assert out_pass
 
     return tt_back_gt, tt_back_spec, tt_back_spec_lp_distance, tt_back_lp_norm_x

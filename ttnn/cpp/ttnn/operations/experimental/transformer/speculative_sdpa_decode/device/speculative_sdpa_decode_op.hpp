@@ -23,6 +23,7 @@ struct SpeculativeScaledDotProductAttentionDecode {
     const DeviceComputeKernelConfig compute_kernel_config;
     const uint32_t k_chunk_size;
     const bool paged_attention;
+    const bool ccl_enabled;
     const std::optional<bool> share_cache;
 
     void validate(
