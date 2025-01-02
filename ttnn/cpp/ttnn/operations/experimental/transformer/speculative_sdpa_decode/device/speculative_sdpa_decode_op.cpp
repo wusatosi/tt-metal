@@ -208,6 +208,12 @@ void SpeculativeScaledDotProductAttentionDecode::validate(
     TT_FATAL(
         q_shape_unpadded[2] <= 32, "Speculative flash decode only supports <= 32 q heads, got {}", q_shape_unpadded[2]);
 
+    if (this->ccl_enabled) {
+        TT_FATAL(
+            optional_input_tensors.at(3).has_value() && optional_input_tensors.at(4).has_value(),
+            "Must have priority and other priority tensors for ccl enabled");
+    }
+
     if (optional_input_tensors.at(3).has_value()) {
         const auto B = q_shape[1];
         const auto& priority_tensor = optional_input_tensors.at(3).value();
@@ -226,6 +232,25 @@ void SpeculativeScaledDotProductAttentionDecode::validate(
                 (priority_shape[3] == 1),
             "Expect priority tensor to be [1, 1, B, 1], got {}",
             priority_shape);
+    }
+    if (optional_input_tensors.at(4).has_value()) {
+        const auto B = q_shape[1];
+        const auto& other_priority_tensor = optional_input_tensors.at(4).value();
+        TT_FATAL(
+            other_priority_tensor.get_dtype() == DataType::INT32,
+            "Expect priority tensor to be INT32, got {}",
+            other_priority_tensor.get_dtype());
+        TT_FATAL(
+            other_priority_tensor.get_layout() == Layout::ROW_MAJOR,
+            "Expect priority tensor to be ROW_MAJOR, got {}",
+            other_priority_tensor.get_layout());
+        const auto other_priority_shape = other_priority_tensor.get_logical_shape();
+        ;
+        TT_FATAL(
+            (other_priority_shape[0] == 1) && (other_priority_shape[1] == 1) && (other_priority_shape[2] == B) &&
+                (other_priority_shape[3] == 1),
+            "Expect other priority tensor to be [1, 1, B, 1], got {}",
+            other_priority_shape);
     }
 }
 
@@ -262,6 +287,7 @@ operation::ProgramWithCallbacks SpeculativeScaledDotProductAttentionDecode::crea
     auto& page_table_tensor = optional_input_tensors.at(1);
     auto& attn_mask = optional_input_tensors.at(2);
     auto& priority_tensor = optional_input_tensors.at(3);
+    auto& other_priority_tensor = optional_input_tensors.at(4);
 
     auto& full_output_tensor = output_tensors.at(0);
     auto& speculated_output_tensor = output_tensors.at(1);
@@ -290,11 +316,13 @@ operation::ProgramWithCallbacks SpeculativeScaledDotProductAttentionDecode::crea
         page_table_tensor,
         attn_mask,
         priority_tensor,
+        other_priority_tensor,
         full_output_tensor,
         speculated_output_tensor,
         l2_dist_tensor,
         l2_norm_tensor,
         this->is_causal,
+        this->ccl_enabled,
         this->cur_pos,
         scale,
         lambda,
@@ -320,6 +348,7 @@ operation::Hash SpeculativeScaledDotProductAttentionDecode::compute_program_hash
         this->k_chunk_size,
         this->paged_attention,
         this->is_causal,
+        this->ccl_enabled,
         has_attn_mask,
         has_cur_pos,
         has_priority,

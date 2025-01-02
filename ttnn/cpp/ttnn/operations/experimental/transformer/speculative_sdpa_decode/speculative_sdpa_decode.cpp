@@ -47,7 +47,9 @@ ExecuteSpeculativeScaledDotProductAttentionDecode::invoke(
     const std::optional<MemoryConfig>& memory_config,
     std::optional<SDPAProgramConfig> program_config,
     std::optional<DeviceComputeKernelConfig> compute_kernel_config,
-    const std::optional<Tensor>& priority_tensor) {
+    const std::optional<Tensor>& priority_tensor,
+    const std::optional<Tensor>& other_priority_tensor,
+    const bool ccl_enabled) {
     auto arch = input_tensor_q.storage_type() == StorageType::DEVICE
                     ? input_tensor_q.device()->arch()
                     : ttnn::operations::experimental::auto_format::AutoFormat::GetDefaultDevice()->arch();
@@ -72,21 +74,54 @@ ExecuteSpeculativeScaledDotProductAttentionDecode::invoke(
     auto kernel_config_val = init_device_compute_kernel_config(
         input_tensor_q.device()->arch(), compute_kernel_config, MathFidelity::HiFi2, true, false, false);
 
-    auto output_tensors = operation::run(
-        SpeculativeScaledDotProductAttentionDecode{
-            .lambda_ = lambda_,
-            .is_causal = is_causal,
-            .cur_pos = cur_pos,
-            .scale = scale,
-            .output_mem_config = memory_config.value_or(operation::DEFAULT_OUTPUT_MEMORY_CONFIG),
-            .program_config = program_config,
-            .compute_kernel_config = kernel_config_val,
-            .k_chunk_size = k_chunk_size,
-            .paged_attention = false},
+    // ccl related
+    auto devices = input_tensor_q.get_workers();
+    uint32_t num_devices = devices.size();
+    tt::log_info("devices: {}", devices);
+    tt::log_info("num_devices: {}", num_devices);
+    if (ccl_enabled) {
+        TT_FATAL(num_devices > 1, "Must have at least 2 devices for ccl enabled, got: {}", num_devices);
+    }
+    std::vector<Tensor> output_tensors = {// 4 output tensors
+                                          Tensor(operation::get_workers_for_op_output({input_tensor_q})),
+                                          Tensor(operation::get_workers_for_op_output({input_tensor_q})),
+                                          Tensor(operation::get_workers_for_op_output({input_tensor_q})),
+                                          Tensor(operation::get_workers_for_op_output({input_tensor_q}))};
+
+    operation::launch_op(
+        [lambda_,
+         is_causal,
+         cur_pos,
+         scale,
+         memory_config,
+         program_config,
+         kernel_config_val,
+         k_chunk_size,
+         ccl_enabled,
+         queue_id](
+            const std::vector<Tensor>& input_tensors,
+            const std::vector<std::optional<const Tensor>>& optional_input_tensors,
+            const std::vector<std::optional<Tensor>>& optional_output_tensors) mutable -> std::vector<Tensor> {
+            return operation::run(
+                SpeculativeScaledDotProductAttentionDecode{
+                    .lambda_ = lambda_,
+                    .is_causal = is_causal,
+                    .cur_pos = cur_pos,
+                    .scale = scale,
+                    .output_mem_config = memory_config.value_or(operation::DEFAULT_OUTPUT_MEMORY_CONFIG),
+                    .program_config = program_config,
+                    .compute_kernel_config = kernel_config_val,
+                    .k_chunk_size = k_chunk_size,
+                    .paged_attention = false,
+                    .ccl_enabled = ccl_enabled},
+                input_tensors,
+                optional_input_tensors,
+                {},
+                queue_id);
+        },
         {input_tensor_q, input_tensor_k, input_tensor_v},
-        {cur_pos_tensor, std::nullopt, attn_mask, priority_tensor},
-        {},
-        queue_id);
+        output_tensors,
+        {cur_pos_tensor, std::nullopt, attn_mask, priority_tensor, other_priority_tensor});
 
     TT_FATAL(output_tensors.size() == 4, "Expected 4 output tensors, got: {}", output_tensors.size());
     return std::make_tuple(
@@ -110,7 +145,9 @@ ExecuteSpeculativeScaledDotProductAttentionDecode::invoke(
     const std::optional<MemoryConfig>& memory_config,
     std::optional<SDPAProgramConfig> program_config,
     std::optional<DeviceComputeKernelConfig> compute_kernel_config,
-    const std::optional<Tensor>& priority_tensor) {
+    const std::optional<Tensor>& priority_tensor,
+    const std::optional<Tensor>& other_priority_tensor,
+    const bool ccl_enabled) {
     return invoke(
         DefaultQueueId,
         input_tensor_q,
@@ -125,7 +162,9 @@ ExecuteSpeculativeScaledDotProductAttentionDecode::invoke(
         memory_config,
         program_config,
         compute_kernel_config,
-        priority_tensor);
+        priority_tensor,
+        other_priority_tensor,
+        ccl_enabled);
 }
 
 }  // namespace ttnn::operations::experimental::transformer
