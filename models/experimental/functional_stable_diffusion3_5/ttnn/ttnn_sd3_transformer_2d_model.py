@@ -101,24 +101,17 @@ class ttnn_SD3Transformer2DModel:
         else:
             lora_scale = 1.0
 
-        # if USE_PEFT_BACKEND:
-        #     # weight the lora layers by setting `lora_scale` for each PEFT layer
-        #     scale_lora_layers(self, lora_scale)
-        # else:
-        #     if joint_attention_kwargs is not None and joint_attention_kwargs.get("scale", None) is not None:
-        #         logger.warning(
-        #             "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
-        #         )
-
         height, width = hidden_states.shape[-2], hidden_states.shape[-1]
 
-        hidden_states = self.pos_embed(
-            hidden_states.device(), hidden_states
-        )  # takes care of adding positional embeddings too.
+        # ttnn_CombinedTimestepTextProjEmbeddings
         temb = self.time_text_embed(timestep, pooled_projections, device=hidden_states.device())
+
+        # Context Emb (just a Linear OP)
         encoder_hidden_states = self.context_embedder(
             encoder_hidden_states, parameters["context_embedder"]["weight"], bias=parameters["context_embedder"]["bias"]
         )
+        # ttnn_PatchEmbed + Pos Emb
+        hidden_states = self.pos_embed(hidden_states.device(), hidden_states)
 
         for index_block, block in enumerate(self.transformer_blocks):
             hidden_states = ttnn.to_memory_config(hidden_states, memory_config=ttnn.DRAM_MEMORY_CONFIG)

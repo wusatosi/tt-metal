@@ -81,21 +81,26 @@ class ttnn_SD35AdaLayerNormZeroX:
         i_end += one_chunk
         gate_msa2 = ttnn.slice(emb, [0, 0, 0, i_beg], [2, 1, 1, i_end])
 
+        # the following step is inserted here to save wasted memory gaps
         ttnn.deallocate(emb)
+        gate_msa2 = ttnn.reallocate(gate_msa2)
 
-        norm_hidden_states = ttnn.to_memory_config(hidden_states, ttnn.L1_MEMORY_CONFIG)
-        ttnn.deallocate(hidden_states)
-        norm_hidden_states = self.norm(norm_hidden_states, compute_kernel_config=hifi2_kernel_config)
+        # norm_hidden_states = ttnn.to_memory_config(hidden_states, ttnn.L1_MEMORY_CONFIG)
+        # ttnn.deallocate(hidden_states)
+        # norm_hidden_states = self.norm(norm_hidden_states, compute_kernel_config=hifi2_kernel_config)
+        norm_hidden_states = self.norm(hidden_states, compute_kernel_config=hifi2_kernel_config)
+
         scale_msa = scale_msa + 1
         scale_msa2 = scale_msa2 + 1
-        # the following step is inserted here to save wasted memory gaps
-        gate_msa2 = ttnn.reallocate(gate_msa2)
-        hidden_states = norm_hidden_states * scale_msa
-        hidden_states = hidden_states + shift_msa
-        hidden_states2 = norm_hidden_states * scale_msa2
-        hidden_states2 = hidden_states2 + shift_msa2
-        ttnn.deallocate(norm_hidden_states)
-        # hidden_states2 = ttnn.reallocate(hidden_states2)
-        # hidden_states = ttnn.reallocate(hidden_states)
 
-        return hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp, hidden_states2, gate_msa2
+        out_hidden_states = norm_hidden_states * scale_msa
+        out_hidden_states = out_hidden_states + shift_msa
+        out_hidden_states2 = norm_hidden_states * scale_msa2
+        out_hidden_states2 = out_hidden_states2 + shift_msa2
+        ttnn.deallocate(norm_hidden_states)
+        ttnn.deallocate(scale_msa)
+        ttnn.deallocate(scale_msa2)
+        out_hidden_states = ttnn.reallocate(out_hidden_states)
+        out_hidden_states2 = ttnn.reallocate(out_hidden_states2)
+
+        return out_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp, out_hidden_states2, gate_msa2

@@ -46,6 +46,10 @@ class ttnn_GELU:
             compute_kernel_config=hifi2_kernel_config,
         )
         ttnn.deallocate(hidden_states)
+
+        # needed only for 1024 resolution, if it helps!
+        hidden_states_pre_gelu = ttnn.reallocate(hidden_states_pre_gelu)
+
         hidden_states = self.gelu(
             hidden_states_pre_gelu, memory_config=hidden_states_pre_gelu.memory_config()
         )  # , memory_config=ttnn.DRAM_MEMORY_CONFIG) #

@@ -5,9 +5,8 @@
 import torch
 import pytest
 import ttnn
+
 from ttnn.model_preprocessing import preprocess_model_parameters, preprocess_linear_weight, preprocess_linear_bias
-
-
 from models.utility_functions import skip_for_grayskull
 from tests.ttnn.utils_for_testing import assert_with_pcc
 from models.experimental.functional_stable_diffusion3_5.reference.feed_forward import FeedForward
@@ -42,8 +41,8 @@ def create_custom_preprocessor(device):
     [
         # ([2, 4096, 1536]),
         # ([2, 333, 1536]),
-        # ([2, 1024, 1536]),
-        ([2, 160, 1536]),
+        ([2, 1, 1024, 1536]),
+        ([2, 1, 160, 1536]),
     ],
 )
 def test_feed_forward(device, hidden_states_shape, reset_seeds):
@@ -87,7 +86,7 @@ def test_feed_forward(device, hidden_states_shape, reset_seeds):
         layout=ttnn.TILE_LAYOUT,
         dtype=ttnn.bfloat8_b,
         device=device,
-        memory_config=input_memory_config,  # ttnn.L1_MEMORY_CONFIG,
+        memory_config=ttnn.L1_MEMORY_CONFIG,  # input_memory_config,
     )
 
     ttnn_model = ttnn_FeedForward(
