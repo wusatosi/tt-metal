@@ -57,7 +57,7 @@ inline HalProgrammableCoreType hal_programmable_core_type_from_core_type(CoreTyp
         case CoreType::TENSIX: return HalProgrammableCoreType::TENSIX;
         case CoreType::ACTIVE_ETH: return HalProgrammableCoreType::ACTIVE_ETH;
         case CoreType::IDLE_ETH: return HalProgrammableCoreType::IDLE_ETH;
-        default: TT_FATAL(false, "CoreType {} is not recognized by the HAL", core_type);
+        default: TT_FATAL(false, "CoreType is not recognized by the HAL in {}", __FUNCTION__);
     }
 }
 

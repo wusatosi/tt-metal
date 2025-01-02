@@ -28,7 +28,10 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
     std::unordered_set<SubDeviceId> sub_device_ids = mesh_workload.determine_sub_device_ids(mesh_device_);
     TT_FATAL(sub_device_ids.size() == 1, "Programs must be executed on a single sub-device");
     auto sub_device_id = *(sub_device_ids.begin());
-
+    auto mesh_device_id = this->mesh_device_->get_mesh_id();
+    TT_FATAL(
+        mesh_workload.get_program_binary_status(mesh_device_id) != ProgramBinaryStatus::NotSent,
+        "Expected program binaries to be written to the MeshDevice.");
     uint32_t num_workers = 0;
     if (mesh_workload.runs_on_noc_multicast_only_cores()) {
         num_workers += this->mesh_device_->num_worker_cores(HalProgrammableCoreType::TENSIX, sub_device_id);
@@ -42,7 +45,7 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
         this->config_buffer_mgr_,
         mesh_workload.get_program_config_sizes(),
         mesh_workload.kernel_binary_always_stored_in_ringbuffer(),
-        mesh_workload.program_binary_status,
+        mesh_workload.get_program_binary_status(mesh_device_id),
         num_workers,
         this->expected_num_workers_completed_,
         dispatch_metadata);
@@ -67,7 +70,7 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
             this->mesh_device_->dispatch_core_type(),
             sub_device_id,
             dispatch_metadata,
-            mesh_workload.program_binary_status,
+            mesh_workload.get_program_binary_status(mesh_device_id),
             this->mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id));
 
         for (std::size_t logical_x = device_range.start_coord.x; logical_x < device_range.end_coord.x; logical_x++) {
@@ -105,12 +108,12 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
     }
     this->expected_num_workers_completed_ += num_workers;
 
-    mesh_workload.program_binary_status = ProgramBinaryStatus::Committed;
+    mesh_workload.set_program_binary_status(mesh_device_id, ProgramBinaryStatus::Committed);
+    mesh_workload.set_last_used_command_queue(this);
 
     if (blocking) {
         this->finish();
     }
-    mesh_workload.set_last_used_command_queue(this);
 }
 
 void MeshCommandQueue::finish() {

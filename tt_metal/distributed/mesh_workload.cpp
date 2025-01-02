@@ -35,7 +35,14 @@ void MeshWorkload::load_binaries(MeshCommandQueue& mesh_cq) {
     // we have lock step allocation.
 
     auto& mesh_device = mesh_cq.mesh_device();
-    if (this->program_binary_status == ProgramBinaryStatus::NotSent) {
+    if (this->program_binary_status.size()) {
+        TT_FATAL(
+            this->program_binary_status.find(mesh_device->get_mesh_id()) != this->program_binary_status.end(),
+            "Reusing MeshWorkloads across MeshDevices is currently not supported.");
+        TT_FATAL(
+            this->program_binary_status.at(mesh_device->get_mesh_id()) == ProgramBinaryStatus::Committed,
+            "Expected Program Biinaries to be committed to DRAM.");
+    } else {
         uint32_t max_kernel_bin_buf_size = 0;
         for (auto& program_on_grid : this->programs_) {
             uint32_t curr_kernel_bin_size =
@@ -87,8 +94,19 @@ void MeshWorkload::load_binaries(MeshCommandQueue& mesh_cq) {
                 }
             }
         }
-        this->program_binary_status = ProgramBinaryStatus::InFlight;
+        this->program_binary_status.at(mesh_device->get_mesh_id()) = ProgramBinaryStatus::InFlight;
     }
+}
+
+ProgramBinaryStatus MeshWorkload::get_program_binary_status(std::size_t mesh_id) const {
+    if (this->program_binary_status.find(mesh_id) != this->program_binary_status.end()) {
+        return this->program_binary_status.at(mesh_id);
+    }
+    return ProgramBinaryStatus::NotSent;
+}
+
+void MeshWorkload::set_program_binary_status(std::size_t mesh_id, ProgramBinaryStatus status) {
+    this->program_binary_status[mesh_id] = status;
 }
 
 void MeshWorkload::generate_dispatch_commands(MeshCommandQueue& mesh_cq) {
@@ -182,24 +200,6 @@ std::vector<uint32_t> MeshWorkload::get_program_config_sizes() {
         }
     }
     return global_program_config_sizes;
-}
-
-ProgramBinaryStatus MeshWorkload::get_program_binary_status(std::shared_ptr<MeshDevice> mesh_device) {
-    ProgramBinaryStatus bin_status;
-    int idx = 0;
-    for (auto& program_on_grid : this->programs_) {
-        auto grid_start = program_on_grid.first.start_coord;
-        Device* device = mesh_device->get_device(grid_start.y, grid_start.x);
-        if (idx) {
-            TT_FATAL(
-                bin_status == program_on_grid.second.get_program_binary_status(device->id()),
-                "Expected program binary status to be identical across all programs in the MeshWorkload.");
-        } else {
-            bin_status = program_on_grid.second.get_program_binary_status(device->id());
-        }
-        idx++;
-    }
-    return bin_status;
 }
 
 std::unordered_set<SubDeviceId> MeshWorkload::determine_sub_device_ids(std::shared_ptr<MeshDevice> mesh_device) {

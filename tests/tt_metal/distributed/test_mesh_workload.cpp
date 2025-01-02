@@ -323,7 +323,7 @@ std::shared_ptr<Program> initialize_dummy_program(CoreCoord worker_grid_size) {
 }
 
 std::vector<std::shared_ptr<Program>> create_eltwise_bin_programs(
-    std::shared_ptr<MeshDevice> mesh_device,
+    std::shared_ptr<MeshDevice>& mesh_device,
     std::vector<std::shared_ptr<Buffer>>& src0_bufs,
     std::vector<std::shared_ptr<Buffer>>& src1_bufs,
     std::vector<std::shared_ptr<Buffer>>& output_bufs) {
@@ -438,7 +438,7 @@ std::vector<std::shared_ptr<Program>> create_eltwise_bin_programs(
 }
 
 void verify_cb_config(
-    std::shared_ptr<MeshDevice> mesh_device,
+    std::shared_ptr<MeshDevice>& mesh_device,
     MeshWorkload& workload,
     std::vector<CBConfig>& golden_cb_config,
     CoreRangeSet& crs) {
@@ -485,7 +485,7 @@ void verify_cb_config(
 }
 
 void validate_sems(
-    std::shared_ptr<MeshDevice> mesh_device,
+    std::shared_ptr<MeshDevice>& mesh_device,
     Device* device,
     CoreRange& crs,
     MeshWorkload& mesh_workload,
@@ -651,11 +651,11 @@ TEST_F(MeshDevice_T3000, TestSimultaneousMeshWorkloads) {
         if (i % 100 == 0) {
             log_info(tt::LogTest, "Run MeshWorkloads for iteration {}", i);
         }
-        for (auto workload : mesh_workloads) {
+        for (auto& workload : mesh_workloads) {
             EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), *workload, false);
         }
     }
-    for (auto device : mesh_device_->get_devices()) {
+    for (auto& device : mesh_device_->get_devices()) {
         Finish(device->command_queue(0));
     }
 }
@@ -689,7 +689,7 @@ TEST_F(MeshDevice_T3000, TestRandomizedMeshWorkload) {
         if (i % 100 == 0) {
             log_info(tt::LogTest, "Run MeshWorkloads for iteration {}", i);
         }
-        for (auto workload : mesh_workloads) {
+        for (auto& workload : mesh_workloads) {
             EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), *workload, false);
         }
     }
