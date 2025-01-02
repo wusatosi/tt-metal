@@ -146,8 +146,6 @@ public:
     // 1. The old_shape volume must equal the new_shape volume (i.e. number of devices must remain constant)
     // 2. For Grid-to-Grid or Line-to-Grid reshaping: physical connectivity must be possible with current devices
     void reshape(const MeshShape& new_shape);
-    CoreCoord virtual_program_dispatch_core(uint8_t cq_id);
-    CoreType dispatch_core_type();
     void close_devices();
     const MeshDeviceView& get_view() const;
 
@@ -193,9 +191,8 @@ public:
     size_t num_program_cache_entries() const;
 
     int num_dram_channels() const;
-    allocator::Statistics get_memory_allocation_statistics(const BufferType &buffer_type, SubDeviceId sub_device_id = SubDeviceId{0}) const;
-
-    uint32_t num_worker_cores(HalProgrammableCoreType core_type, SubDeviceId sub_device_id) const;
+    allocator::Statistics get_memory_allocation_statistics(
+        const BufferType& buffer_type, SubDeviceId sub_device_id = SubDeviceId{0}) const;
 };
 
 std::ostream& operator<<(std::ostream& os, const MeshDevice& mesh_device);

@@ -94,7 +94,7 @@ void MeshWorkload::load_binaries(MeshCommandQueue& mesh_cq) {
                 }
             }
         }
-        this->program_binary_status.at(mesh_device->get_mesh_id()) = ProgramBinaryStatus::InFlight;
+        this->program_binary_status[mesh_device->get_mesh_id()] = ProgramBinaryStatus::InFlight;
     }
 }
 
@@ -147,7 +147,7 @@ std::unordered_map<KernelHandle, std::shared_ptr<Kernel>>& MeshWorkload::get_ker
         for (auto& program_on_grid : this->programs_) {
             auto& device_range = program_on_grid.first;
             uint32_t device_range_handle = (device_range.start_coord.y << 24) | (device_range.start_coord.x << 16);
-            for (auto kernel : program_on_grid.second.get_kernels(programmable_core_type_index)) {
+            for (const auto& kernel : program_on_grid.second.get_kernels(programmable_core_type_index)) {
                 KernelHandle handle = (device_range_handle | kernel.first);
                 this->kernels_.at(programmable_core_type_index).insert({handle, kernel.second});
             }
@@ -161,7 +161,7 @@ std::vector<std::shared_ptr<KernelGroup>>& MeshWorkload::get_kernel_groups(uint3
         for (auto& program_on_grid : this->programs_) {
             auto& device_range = program_on_grid.first;
             uint32_t device_range_handle = (device_range.start_coord.y << 24) | (device_range.start_coord.x << 16);
-            for (auto kg : program_on_grid.second.get_kernel_groups(programmable_core_type_index)) {
+            for (auto& kg : program_on_grid.second.get_kernel_groups(programmable_core_type_index)) {
                 for (auto& optional_kernel_id : kg->kernel_ids) {
                     if (optional_kernel_id.has_value()) {
                         optional_kernel_id = (device_range_handle | optional_kernel_id.value());
@@ -202,7 +202,7 @@ std::vector<uint32_t> MeshWorkload::get_program_config_sizes() {
     return global_program_config_sizes;
 }
 
-std::unordered_set<SubDeviceId> MeshWorkload::determine_sub_device_ids(std::shared_ptr<MeshDevice> mesh_device) {
+std::unordered_set<SubDeviceId> MeshWorkload::determine_sub_device_ids(std::shared_ptr<MeshDevice>& mesh_device) {
     std::unordered_set<SubDeviceId> sub_devices_;
     for (auto& program_on_grid : this->programs_) {
         auto grid_start = program_on_grid.first.start_coord;
@@ -231,7 +231,7 @@ ProgramConfig& MeshWorkload::get_program_config(uint32_t index) {
 }
 
 uint32_t MeshWorkload::get_sem_base_addr(
-    std::shared_ptr<MeshDevice> mesh_device, CoreCoord logical_core, CoreType core_type) {
+    std::shared_ptr<MeshDevice>& mesh_device, CoreCoord logical_core, CoreType core_type) {
     HalProgrammableCoreType programmable_core_type =
         ::tt::tt_metal::detail::hal_programmable_core_type_from_core_type(core_type);
     uint32_t base_addr = program_utils::program_base_addr_on_core(*this, mesh_device, programmable_core_type);
@@ -239,7 +239,7 @@ uint32_t MeshWorkload::get_sem_base_addr(
 }
 
 uint32_t MeshWorkload::get_sem_size(
-    std::shared_ptr<MeshDevice> mesh_device, CoreCoord logical_core, CoreType core_type) {
+    std::shared_ptr<MeshDevice>& mesh_device, CoreCoord logical_core, CoreType core_type) {
     uint32_t sem_size = 0;
     uint32_t program_idx = 0;
     Device* device = mesh_device->get_device(0);
@@ -255,7 +255,7 @@ uint32_t MeshWorkload::get_sem_size(
 }
 
 uint32_t MeshWorkload::get_cb_base_addr(
-    std::shared_ptr<MeshDevice> mesh_device, CoreCoord logical_core, CoreType core_type) {
+    std::shared_ptr<MeshDevice>& mesh_device, CoreCoord logical_core, CoreType core_type) {
     HalProgrammableCoreType programmable_core_type =
         ::tt::tt_metal::detail::hal_programmable_core_type_from_core_type(core_type);
     uint32_t base_addr = program_utils::program_base_addr_on_core(*this, mesh_device, programmable_core_type);
@@ -263,7 +263,7 @@ uint32_t MeshWorkload::get_cb_base_addr(
 }
 
 uint32_t MeshWorkload::get_cb_size(
-    std::shared_ptr<MeshDevice> mesh_device, CoreCoord logical_core, CoreType core_type) {
+    std::shared_ptr<MeshDevice>& mesh_device, CoreCoord logical_core, CoreType core_type) {
     uint32_t cb_size = 0;
     uint32_t program_idx = 0;
     Device* device = mesh_device->get_device(0);

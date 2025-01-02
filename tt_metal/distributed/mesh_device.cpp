@@ -541,24 +541,6 @@ void MeshDevice::reshape(const MeshShape& new_shape) {
     this->view = std::make_unique<MeshDeviceView>(*this);
 }
 
-CoreCoord MeshDevice::virtual_program_dispatch_core(uint8_t cq_id) {
-    CoreCoord dispatch_core;
-    int idx = 0;
-    for (auto device : this->get_devices()) {
-        uint16_t channel = tt::Cluster::instance().get_assigned_channel_for_device(device->id());
-        dispatch_core = device->virtual_program_dispatch_core(cq_id);
-        if (idx) {
-            auto curr_dispatch_core = device->virtual_program_dispatch_core(cq_id);
-            TT_FATAL(dispatch_core == dispatch_core_manager::instance().dispatcher_s_core(device->id(), channel, cq_id), "Expected Dispatch Cores to match across devices");
-        }
-    }
-    return dispatch_core;
-}
-
-CoreType MeshDevice::dispatch_core_type() {
-    return dispatch_core_manager::instance().get_dispatch_core_type(this->get_device(0)->id());
-}
-
 void MeshDevice::close_devices() {
     for (const auto& submesh : this->submeshes) {
         submesh->close_devices();
@@ -685,17 +667,6 @@ allocator::Statistics MeshDevice::get_memory_allocation_statistics(
     // This will be made more explicit in the future to have lock-step allocation across devices.
     // Right now, we just return the statistics of the first device.
     return this->reference_device()->get_memory_allocation_statistics(buffer_type, sub_device_id);
-}
-
-uint32_t MeshDevice::num_worker_cores(HalProgrammableCoreType core_type, SubDeviceId sub_device_id) const {
-    if (core_type == HalProgrammableCoreType::TENSIX) {
-        return this->get_device(0)->num_worker_cores(core_type, sub_device_id);
-    }
-    uint32_t min_num_worker_cores = std::numeric_limits<uint32_t>::max();
-    for (auto& device : this->get_devices()) {
-        min_num_worker_cores = std::min(min_num_worker_cores, device->num_worker_cores(core_type, sub_device_id));
-    }
-    return min_num_worker_cores;
 }
 
 }  // namespace tt::tt_metal::distributed

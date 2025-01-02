@@ -7,7 +7,7 @@
 
 namespace tt::tt_metal::distributed {
 
-MeshCommandQueue::MeshCommandQueue(std::shared_ptr<MeshDevice> mesh_device, uint32_t id) {
+MeshCommandQueue::MeshCommandQueue(std::shared_ptr<MeshDevice>& mesh_device, uint32_t id) {
     this->mesh_device_ = mesh_device;
     this->id_ = id;
 
@@ -22,7 +22,64 @@ MeshCommandQueue::MeshCommandQueue(std::shared_ptr<MeshDevice> mesh_device, uint
     // Subtract 1 from the number of entries, so the watcher can read information (e.g. fired asserts) from the
     // previous launch message.
     this->config_buffer_mgr_.init_add_buffer(0, launch_msg_buffer_num_entries - 1);
+
+    this->populate_virtual_program_dispatch_core();
+    this->populate_dispatch_core_type();
 }
+
+uint32_t MeshCommandQueue::num_worker_cores(HalProgrammableCoreType core_type, SubDeviceId sub_device_id) {
+    if (core_type == HalProgrammableCoreType::TENSIX) {
+        uint32_t num_workers = 0;
+        for (auto& device : this->mesh_device_->get_devices()) {
+            if (num_workers) {
+                TT_FATAL(
+                    num_workers == device->num_worker_cores(core_type, sub_device_id),
+                    "Worker grid size must be consistent across all devices in a Mesh.");
+            } else {
+                num_workers = device->num_worker_cores(core_type, sub_device_id);
+            }
+        }
+        return num_workers;
+    } else {
+        uint32_t min_num_worker_cores = std::numeric_limits<uint32_t>::max();
+        for (auto& device : this->mesh_device_->get_devices()) {
+            min_num_worker_cores = std::min(min_num_worker_cores, device->num_worker_cores(core_type, sub_device_id));
+        }
+        return min_num_worker_cores;
+    }
+}
+
+void MeshCommandQueue::populate_virtual_program_dispatch_core() {
+    int device_idx = 0;
+    for (auto device : this->mesh_device_->get_devices()) {
+        if (device_idx) {
+            TT_FATAL(
+                this->dispatch_core_ == device->virtual_program_dispatch_core(this->id_),
+                "Expected Dispatch Cores to match across devices in a Mesh");
+        } else {
+            this->dispatch_core_ = device->virtual_program_dispatch_core(this->id_);
+        }
+        device_idx++;
+    }
+}
+
+void MeshCommandQueue::populate_dispatch_core_type() {
+    uint32_t device_idx = 0;
+    for (auto device : this->mesh_device_->get_devices()) {
+        if (device_idx) {
+            TT_FATAL(
+                this->dispatch_core_type_ == dispatch_core_manager::instance().get_dispatch_core_type(device->id()),
+                "Expected the Dispatch Core Type to match across device in a Mesh");
+        } else {
+            this->dispatch_core_type_ = dispatch_core_manager::instance().get_dispatch_core_type(device->id());
+        }
+        device_idx++;
+    }
+}
+
+CoreCoord MeshCommandQueue::virtual_program_dispatch_core() const { return this->dispatch_core_; }
+
+CoreType MeshCommandQueue::dispatch_core_type() const { return this->dispatch_core_type_; }
 
 void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool blocking) {
     std::unordered_set<SubDeviceId> sub_device_ids = mesh_workload.determine_sub_device_ids(mesh_device_);
@@ -34,10 +91,10 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
         "Expected program binaries to be written to the MeshDevice.");
     uint32_t num_workers = 0;
     if (mesh_workload.runs_on_noc_multicast_only_cores()) {
-        num_workers += this->mesh_device_->num_worker_cores(HalProgrammableCoreType::TENSIX, sub_device_id);
+        num_workers += this->num_worker_cores(HalProgrammableCoreType::TENSIX, sub_device_id);
     }
     if (mesh_workload.runs_on_noc_unicast_only_cores()) {
-        num_workers += this->mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id);
+        num_workers += this->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id);
     }
 
     program_utils::ProgramDispatchMetadata dispatch_metadata;
@@ -66,12 +123,12 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
             this->worker_launch_message_buffer_state_.get_mcast_wptr(),
             this->worker_launch_message_buffer_state_.get_unicast_wptr(),
             this->expected_num_workers_completed_,
-            this->mesh_device_->virtual_program_dispatch_core(this->id_),
-            this->mesh_device_->dispatch_core_type(),
+            this->virtual_program_dispatch_core(),
+            this->dispatch_core_type(),
             sub_device_id,
             dispatch_metadata,
             mesh_workload.get_program_binary_status(mesh_device_id),
-            this->mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id));
+            this->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id));
 
         for (std::size_t logical_x = device_range.start_coord.x; logical_x < device_range.end_coord.x; logical_x++) {
             for (std::size_t logical_y = device_range.start_coord.y; logical_y < device_range.end_coord.y;
@@ -94,10 +151,10 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
             experimental::write_go_signal(
                 device->command_queue(this->id_),
                 this->expected_num_workers_completed_,
-                this->mesh_device_->virtual_program_dispatch_core(this->id_),
+                this->virtual_program_dispatch_core(),
                 mesh_workload.runs_on_noc_multicast_only_cores(),
                 mesh_workload.runs_on_noc_unicast_only_cores(),
-                this->mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id));
+                this->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id));
         }
     }
     if (mesh_workload.runs_on_noc_multicast_only_cores()) {

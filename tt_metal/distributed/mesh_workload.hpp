@@ -28,7 +28,7 @@ private:
     std::vector<std::shared_ptr<KernelGroup>>& get_kernel_groups(uint32_t programmable_core_type_index);
     std::vector<Semaphore>& semaphores();
     std::vector<uint32_t> get_program_config_sizes();
-    std::unordered_set<SubDeviceId> determine_sub_device_ids(std::shared_ptr<MeshDevice> mesh_device);
+    std::unordered_set<SubDeviceId> determine_sub_device_ids(std::shared_ptr<MeshDevice>& mesh_device);
     bool kernel_binary_always_stored_in_ringbuffer();
     bool is_finalized() const { return this->finalized_; }
     void set_finalized() { this->finalized_ = true; };
@@ -60,9 +60,9 @@ public:
     // For testing purposes only
     void set_last_used_command_queue(MeshCommandQueue* mesh_cq);
     MeshCommandQueue* get_last_used_command_queue() const;
-    uint32_t get_sem_base_addr(std::shared_ptr<MeshDevice> mesh_device, CoreCoord logical_core, CoreType core_type);
-    uint32_t get_sem_size(std::shared_ptr<MeshDevice> mesh_device, CoreCoord logical_core, CoreType core_type);
-    uint32_t get_cb_base_addr(std::shared_ptr<MeshDevice> mesh_device, CoreCoord logical_core, CoreType core_type);
-    uint32_t get_cb_size(std::shared_ptr<MeshDevice> mesh_device, CoreCoord logical_core, CoreType core_type);
+    uint32_t get_sem_base_addr(std::shared_ptr<MeshDevice>& mesh_device, CoreCoord logical_core, CoreType core_type);
+    uint32_t get_sem_size(std::shared_ptr<MeshDevice>& mesh_device, CoreCoord logical_core, CoreType core_type);
+    uint32_t get_cb_base_addr(std::shared_ptr<MeshDevice>& mesh_device, CoreCoord logical_core, CoreType core_type);
+    uint32_t get_cb_size(std::shared_ptr<MeshDevice>& mesh_device, CoreCoord logical_core, CoreType core_type);
 };
 }  // namespace tt::tt_metal::distributed
