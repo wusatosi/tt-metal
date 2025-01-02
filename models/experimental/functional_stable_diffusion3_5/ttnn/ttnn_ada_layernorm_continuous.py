@@ -23,7 +23,7 @@ class ttnn_AdaLayerNormContinuous:
         else:
             raise ValueError(f"unknown norm_type {norm_type}")
 
-    def __call__(self, hidden_states: ttnn.Tensor, conditioning_embedding: ttnn.Tensor, parameters=None) -> ttnn.Tensor:
+    def __call__(self, hidden_states: ttnn.Tensor, emb: ttnn.Tensor, parameters=None) -> ttnn.Tensor:
         hifi2_kernel_config = ttnn.WormholeComputeKernelConfig(
             math_fidelity=ttnn.MathFidelity.HiFi2,
         )
@@ -35,12 +35,8 @@ class ttnn_AdaLayerNormContinuous:
         mm_a_x_strategy = ttnn.ShardStrategy.WIDTH
         mm_a_x_memory_config = ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG
 
-        # conditioning_embedding = ttnn.reshape(
-        #     conditioning_embedding, (conditioning_embedding.shape[0], 1, conditioning_embedding.shape[1])
-        # )
-
         emb = self.linear(
-            self.silu(conditioning_embedding),
+            self.silu(emb),
             parameters["linear"]["weight"],
             bias=parameters["linear"]["bias"],
             memory_config=mm_a_x_memory_config,
@@ -69,13 +65,9 @@ class ttnn_AdaLayerNormContinuous:
         # )
         # x = x * (1 + scale) + shift
 
-        norm_hidden_states = ttnn.to_memory_config(hidden_states, ttnn.L1_MEMORY_CONFIG)
-        ttnn.deallocate(hidden_states)
-        norm_hidden_states = self.norm(norm_hidden_states, compute_kernel_config=hifi2_kernel_config)
+        norm_hidden_states = self.norm(hidden_states, compute_kernel_config=hifi2_kernel_config)
         scale = scale + 1
-        hidden_states = norm_hidden_states * scale
-        hidden_states = hidden_states + shift
-        ttnn.deallocate(norm_hidden_states)
-        hidden_states = ttnn.reallocate(hidden_states)
+        norm_hidden_states = norm_hidden_states * scale
+        norm_hidden_states = norm_hidden_states + shift
 
-        return hidden_states
+        return norm_hidden_states

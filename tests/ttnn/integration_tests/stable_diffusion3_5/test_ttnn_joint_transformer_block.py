@@ -10,7 +10,13 @@ from ttnn.model_preprocessing import (
     preprocess_linear_weight,
     preprocess_linear_bias,
 )
-from models.utility_functions import skip_for_grayskull
+from models.utility_functions import (
+    skip_for_grayskull,
+    is_wormhole_b0,
+    enable_persistent_kernel_cache,
+    disable_persistent_kernel_cache,
+    torch_random,
+)
 from tests.ttnn.utils_for_testing import assert_with_pcc
 from models.experimental.functional_stable_diffusion3_5.reference.joint_transformer_block import (
     JointTransformerBlock,
@@ -314,7 +320,11 @@ def create_custom_preprocessor(device):
 @skip_for_grayskull()
 @pytest.mark.parametrize(
     "context_pre_only,use_dual_attention",
-    [(False, True)],  # , (False, False), (True, False)],
+    [
+        (False, True),
+        # (False, False),
+        # (True, False)
+    ],
 )
 def test_joint_transformer_block(device, reset_seeds, context_pre_only, use_dual_attention):
     reference_model = JointTransformerBlock(
@@ -328,35 +338,56 @@ def test_joint_transformer_block(device, reset_seeds, context_pre_only, use_dual
     reference_model.eval()
 
     torch_input_hidden_states = torch.randn(2, 1024, 1536, dtype=torch.bfloat16)
-    torch_input_encoder_hidden_states = torch.randn(2, 154, 1536, dtype=torch.bfloat16)
+    torch_input_encoder_hidden_states = torch.randn(2, 160, 1536, dtype=torch.bfloat16)
     torch_input_temb = torch.randn(2, 1536, dtype=torch.bfloat16)
-
-    ttnn_input_hidden_states = ttnn.from_torch(
-        torch_input_hidden_states,
-        layout=ttnn.TILE_LAYOUT,
-        dtype=ttnn.bfloat16,
-        device=device,
-        memory_config=ttnn.L1_MEMORY_CONFIG,
-    )
-    ttnn_input_encoder_hidden_states = ttnn.from_torch(
-        torch_input_encoder_hidden_states,
-        layout=ttnn.TILE_LAYOUT,
-        dtype=ttnn.bfloat16,
-        device=device,
-        memory_config=ttnn.L1_MEMORY_CONFIG,
-    )
-    ttnn_input_temb = ttnn.from_torch(
-        torch_input_temb,
-        layout=ttnn.TILE_LAYOUT,
-        dtype=ttnn.bfloat16,
-        device=device,
-        memory_config=ttnn.L1_MEMORY_CONFIG,
-    )
 
     parameters = preprocess_model_parameters(
         initialize_model=lambda: reference_model, custom_preprocessor=create_custom_preprocessor(device), device=device
     )
+
     torch_output = reference_model(torch_input_hidden_states, torch_input_encoder_hidden_states, torch_input_temb)
+
+    #####
+    torch_input_x_unsqueezed = torch_input_hidden_states.unsqueeze(1)
+
+    # if torch_input_x_unsqueezed.shape[-2] < 512:
+    #     input_memory_config = ttnn.L1_MEMORY_CONFIG
+    # else:
+    #     mm_a_y = 8
+    #     mm_a_x = 8
+    #     mm_a_x_strategy = ttnn.ShardStrategy.BLOCK
+    #     mm_a_x_memory_config = ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG
+
+    #     input_memory_config = ttnn.create_sharded_memory_config(
+    #         torch_input_x_unsqueezed.shape,
+    #         core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
+    #         strategy=mm_a_x_strategy,
+    #         orientation=ttnn.ShardOrientation.ROW_MAJOR,
+    #     )
+
+    ttnn_input_temb = ttnn.from_torch(
+        torch_input_temb.unsqueeze(1).unsqueeze(1),
+        layout=ttnn.TILE_LAYOUT,
+        dtype=ttnn.bfloat8_b,
+        device=device,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+    )
+
+    ttnn_input_encoder_hidden_states = ttnn.from_torch(
+        torch_input_encoder_hidden_states.unsqueeze(1),
+        layout=ttnn.TILE_LAYOUT,
+        dtype=ttnn.bfloat8_b,
+        device=device,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+    )
+
+    ttnn_input_hidden_states = ttnn.from_torch(
+        torch_input_x_unsqueezed,
+        layout=ttnn.TILE_LAYOUT,
+        dtype=ttnn.bfloat8_b,
+        device=device,
+        memory_config=ttnn.L1_MEMORY_CONFIG,  # input_memory_config
+    )
 
     ttnn_model = ttnn_JointTransformerBlock(
         dim=1536,
@@ -368,10 +399,22 @@ def test_joint_transformer_block(device, reset_seeds, context_pre_only, use_dual
         parameters=parameters,
     )
 
-    ttnn_output = ttnn_model(
-        ttnn_input_hidden_states, ttnn_input_encoder_hidden_states, ttnn_input_temb, parameters=parameters
-    )
+    import time
+
+    for i in range(1):
+        t0 = time.time()
+        ttnn_output = ttnn_model(
+            ttnn_input_hidden_states, ttnn_input_encoder_hidden_states, ttnn_input_temb, parameters=parameters
+        )
+        enable_persistent_kernel_cache()
+        t1 = time.time()
+        print("Time (sec):", t1 - t0)
 
     if context_pre_only != True:
-        assert_with_pcc(torch_output[0], ttnn.to_torch(ttnn_output[0]), pcc=0.99)
-    assert_with_pcc(torch_output[1], ttnn.to_torch(ttnn_output[1]), pcc=0.99)
+        ttnn_output_0 = ttnn.to_torch(ttnn_output[0])
+        ttnn_output_1 = ttnn.to_torch(ttnn_output[1])
+        assert_with_pcc(torch_output[0].unsqueeze(1), ttnn_output_0, pcc=0.99)
+        assert_with_pcc(torch_output[1].unsqueeze(1), ttnn_output_1, pcc=0.99)
+    else:
+        ttnn_output_1 = ttnn.to_torch(ttnn_output[1])
+        assert_with_pcc(torch_output[1].unsqueeze(1), ttnn_output_1, pcc=0.99)

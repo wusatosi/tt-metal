@@ -100,40 +100,40 @@ def create_custom_preprocessor(device):
 @pytest.mark.parametrize(
     "attn_inputs, hidden_states, attention_mask, encoder_hidden_states",
     [
-        # (
-        #     {  # 512x512
-        #         "query_dim": 1536,
-        #         "cross_attention_dim": None,
-        #         "heads": 24,
-        #         "kv_heads": None,
-        #         "dim_head": 64,
-        #         "dropout": 0.0,
-        #         "bias": True,
-        #         "upcast_attention": False,
-        #         "upcast_softmax": False,
-        #         "cross_attention_norm": None,
-        #         "cross_attention_norm_num_groups": 32,
-        #         "qk_norm": "rms_norm",
-        #         "added_kv_proj_dim": 1536,
-        #         "added_proj_bias": True,
-        #         "norm_num_groups": None,
-        #         "spatial_norm_dim": None,
-        #         "out_bias": True,
-        #         "scale_qk": True,
-        #         "only_cross_attention": False,
-        #         "eps": 1e-06,
-        #         "rescale_output_factor": 1.0,
-        #         "residual_connection": False,
-        #         "_from_deprecated_attn_block": False,
-        #         "out_dim": 1536,
-        #         "context_pre_only": False,
-        #         "pre_only": False,
-        #         "elementwise_affine": True,
-        #     },
-        #     torch.randn([2, 1, 1024, 1536], dtype=torch.bfloat16),
-        #     None,
-        #     torch.randn([2, 1, 160, 1536], dtype=torch.bfloat16),
-        # ),
+        (
+            {  # 512x512
+                "query_dim": 1536,
+                "cross_attention_dim": None,
+                "heads": 24,
+                "kv_heads": None,
+                "dim_head": 64,
+                "dropout": 0.0,
+                "bias": True,
+                "upcast_attention": False,
+                "upcast_softmax": False,
+                "cross_attention_norm": None,
+                "cross_attention_norm_num_groups": 32,
+                "qk_norm": "rms_norm",
+                "added_kv_proj_dim": 1536,
+                "added_proj_bias": True,
+                "norm_num_groups": None,
+                "spatial_norm_dim": None,
+                "out_bias": True,
+                "scale_qk": True,
+                "only_cross_attention": False,
+                "eps": 1e-06,
+                "rescale_output_factor": 1.0,
+                "residual_connection": False,
+                "_from_deprecated_attn_block": False,
+                "out_dim": 1536,
+                "context_pre_only": False,
+                "pre_only": False,
+                "elementwise_affine": True,
+            },
+            torch.randn([2, 1, 1024, 1536], dtype=torch.bfloat16),
+            None,
+            torch.randn([2, 1, 160, 1536], dtype=torch.bfloat16),
+        ),
         (
             {  # 512x512
                 "query_dim": 1536,
@@ -245,32 +245,27 @@ def test_ttnn_attention(attn_inputs, device, hidden_states, attention_mask, enco
     parameters = preprocess_model_parameters(
         initialize_model=lambda: torch_sub_module, device=device, custom_preprocessor=create_custom_preprocessor(device)
     )
-    tt_input_hidden_states = ttnn.from_torch(
-        hidden_states, dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG
-    )
+
     if encoder_hidden_states is not None:
         tt_input_encoder_hidden_states = ttnn.from_torch(
             encoder_hidden_states,
-            dtype=ttnn.bfloat16,
+            dtype=ttnn.bfloat8_b,
             device=device,
             layout=ttnn.TILE_LAYOUT,
             memory_config=ttnn.L1_MEMORY_CONFIG,
         )
     else:
         tt_input_encoder_hidden_states = None
+
+    tt_input_hidden_states = ttnn.from_torch(
+        hidden_states, dtype=ttnn.bfloat8_b, device=device, layout=ttnn.TILE_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG
+    )
     tt_sub_module = tt_module(**attn_inputs, processor=ttnn_JointAttnProcessor2_0(), parameters=parameters)
 
-    hidden_states_shape = hidden_states.shape
-    # print("hidden_states_shape", hidden_states_shape)
-    torch_hidden_states = torch.reshape(
-        hidden_states, (hidden_states_shape[0], hidden_states_shape[2], hidden_states_shape[3])
-    )
+    torch_hidden_states = hidden_states.squeeze(1)
+
     if encoder_hidden_states is not None:
-        encoder_hidden_states_shape = encoder_hidden_states.shape
-        torch_encoder_hidden_states = torch.reshape(
-            encoder_hidden_states,
-            (encoder_hidden_states_shape[0], encoder_hidden_states_shape[2], encoder_hidden_states_shape[3]),
-        )
+        torch_encoder_hidden_states = encoder_hidden_states.squeeze(1)
     else:
         torch_encoder_hidden_states = None
 
@@ -282,13 +277,11 @@ def test_ttnn_attention(attn_inputs, device, hidden_states, attention_mask, enco
     else:
         torch_out_1 = torch_sub_module(torch_hidden_states, torch_encoder_hidden_states)
         tt_out_1 = tt_sub_module(tt_input_hidden_states, tt_input_encoder_hidden_states, attention_mask, device)
-    tt_out_1_shape = tt_out_1.shape
-    tt_out_in_torch_1 = ttnn.to_torch(tt_out_1).reshape(tt_out_1_shape[0], tt_out_1_shape[2], tt_out_1_shape[3])
+
+    tt_out_in_torch_1 = ttnn.to_torch(tt_out_1).squeeze(1)
 
     if encoder_hidden_states is not None:
-        # print("torch2", torch_out_2.shape)
         tt_out_2_shape = tt_out_2.shape
-        tt_out_in_torch_2 = ttnn.to_torch(tt_out_2)[:, :, :154, :].reshape(tt_out_2_shape[0], 154, tt_out_2_shape[3])
-        # assert_with_pcc(torch_out_2, tt_out_in_torch_2, 0.987)
-    # print("torch1", torch_out_1.shape)
+        tt_out_in_torch_2 = ttnn.to_torch(tt_out_2).squeeze(1)
+        assert_with_pcc(torch_out_2[:, :154, :], tt_out_in_torch_2[:, :154, :], 0.988)
     assert_with_pcc(torch_out_1, tt_out_in_torch_1, 0.987)
