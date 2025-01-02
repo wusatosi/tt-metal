@@ -128,7 +128,7 @@ void kernel_main() {
                     uint32_t read_offset =
                         in_l1_read_base_addr + (stick_offset * in_nbytes_c + c_i * MAX_ELE_PER_REDUCTION);
                     noc_async_read_one_packet(get_noc_addr(read_offset), out_l1_write_addr, read_bytes);
-                    out_l1_write_addr += read_bytes;
+                    out_l1_write_addr += MAX_ELE_PER_REDUCTION;
                     processed_rows++;
                     if ((processed_rows % max_rows_for_reduction) == 0) {
                         noc_async_read_barrier();
