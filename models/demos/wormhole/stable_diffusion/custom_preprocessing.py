@@ -19,9 +19,9 @@ def preprocess_conv_parameter(parameter, *, dtype):
 
 def custom_preprocessor(model, name):
     parameters = {}
-    if isinstance(model, nn.GroupNorm):
-        parameters["weight"] = preprocess_groupnorm_parameter(model.weight, dtype=ttnn.bfloat16)
-        parameters["bias"] = preprocess_groupnorm_parameter(model.bias, dtype=ttnn.bfloat16)
+    # if isinstance(model, nn.GroupNorm):
+    #     parameters["weight"] = preprocess_groupnorm_parameter(model.weight, dtype=ttnn.bfloat16)
+    #     parameters["bias"] = preprocess_groupnorm_parameter(model.bias, dtype=ttnn.bfloat16)
 
     if isinstance(model, nn.Conv2d):
         weight = torch.permute(model.weight, (2, 3, 0, 1))
