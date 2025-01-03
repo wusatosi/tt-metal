@@ -60,50 +60,43 @@ void MeshWorkload::load_binaries(MeshCommandQueue& mesh_cq) {
         }
         // Allocate a buffer for kernel binaries on each device.
         // Once MeshBuffer is available, allocate kernel bin MeshBuffer directly here
-        for (auto device : mesh_device->get_devices()) {
-            std::shared_ptr<Buffer> kernel_bin_buf = Buffer::create(
-                device,
-                max_kernel_bin_buf_size,
+        DeviceLocalLayoutConfig device_local_kernel_bin_buf_config = {
+            .page_size = HostMemDeviceCommand::PROGRAM_PAGE_SIZE,
+            .buffer_type = BufferType::DRAM,
+            .buffer_layout = TensorMemoryLayout::INTERLEAVED,
+            .bottom_up = false
+        };
+        ReplicatedBufferConfig global_kernel_bin_buf_config = {
+            .mesh_device = mesh_device,
+            .buffer_size = max_kernel_bin_buf_size,
+            .device_shard_layout = device_local_kernel_bin_buf_config
+        };
+        kernel_bin_buf = MeshBuffer::create(global_kernel_bin_buf_config);
+        // Iterate over the sub-grids and EnqueueWriteMeshBuffer to each sub-grid that runs the program
+        for (auto& program_on_grid : this->programs_) {
+            auto& device_range = program_on_grid.first;
+            auto& grid_start = device_range.start_coord;
+            std::size_t kernel_bin_size =
+                program_on_grid.second.get_program_transfer_info().binary_data.size() * sizeof(uint32_t);
+            global_kernel_bin_buf_config.buffer_size = kernel_bin_size;
+            auto kernel_bin_buf_view = MeshBuffer::create(global_kernel_bin_buf_config, kernel_bin_buf->address());
+
+            mesh_device->mesh_command_queue().enqueue_write_to_sub_grid(
+                *kernel_bin_buf_view,
+                program_on_grid.second.get_program_transfer_info().binary_data.data(),
+                false,
+                device_range);
+
+            std::shared_ptr<Buffer> buffer_view = Buffer::create(
+                mesh_device->get_device(grid_start.y, grid_start.x),
+                kernel_bin_buf->address(),
+                kernel_bin_size,
                 HostMemDeviceCommand::PROGRAM_PAGE_SIZE,
                 BufferType::DRAM,
                 TensorMemoryLayout::INTERLEAVED,
                 std::nullopt,
                 false);
-            this->kernel_bin_buffers_.insert(
-                kernel_bin_buf);  // Tie the lifetime of kernel binary buffers to the MeshWorkload
-        }
-        // Iterate over the sub-grids and EnqueueWriteMeshBuffer to each sub-grid that runs the program
-        for (auto& program_on_grid : this->programs_) {
-            auto& device_range = program_on_grid.first;
-            std::size_t kernel_bin_size =
-                program_on_grid.second.get_program_transfer_info().binary_data.size() * sizeof(uint32_t);
-            for (std::size_t logical_x = device_range.start_coord.x; logical_x < device_range.end_coord.x;
-                 logical_x++) {
-                for (std::size_t logical_y = device_range.start_coord.y; logical_y < device_range.end_coord.y;
-                     logical_y++) {
-                    IDevice* device = mesh_device->get_device(logical_y, logical_x);
-                    // Get a view of the allocated buffer that matches the size of the kernel binary
-                    // for the sub grid
-                    std::shared_ptr<Buffer> buffer_view = Buffer::create(
-                        device,
-                        (*(this->kernel_bin_buffers_.begin()))->address(),
-                        kernel_bin_size,
-                        HostMemDeviceCommand::PROGRAM_PAGE_SIZE,
-                        BufferType::DRAM,
-                        TensorMemoryLayout::INTERLEAVED,
-                        std::nullopt,
-                        false);
-                    EnqueueWriteBuffer(
-                        device->command_queue(mesh_cq.id()),
-                        buffer_view,
-                        program_on_grid.second.get_program_transfer_info().binary_data.data(),
-                        false);
-                    // Assign this memory region to the program. Required when the program
-                    // object is used to generate dispatch commands
-                    program_on_grid.second.set_kernels_bin_buffer(buffer_view);
-                    program_on_grid.second.set_program_binary_status(device->id(), ProgramBinaryStatus::InFlight);
-                }
-            }
+            program_on_grid.second.set_kernels_bin_buffer(buffer_view);
         }
         this->program_binary_status[mesh_device->get_mesh_id()] = ProgramBinaryStatus::InFlight;
     }

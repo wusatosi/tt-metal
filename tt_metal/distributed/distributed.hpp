@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "tt_metal/distributed/mesh_buffer.hpp"
 #include "tt_metal/distributed/mesh_command_queue.hpp"
 
 namespace tt::tt_metal {

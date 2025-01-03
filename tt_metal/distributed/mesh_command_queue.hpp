@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "mesh_buffer.hpp"
 #include "mesh_device.hpp"
 #include "mesh_workload.hpp"
 
@@ -27,12 +28,15 @@ private:
     uint32_t id_;
     CoreCoord dispatch_core_;
     CoreType dispatch_core_type_;
+    buffer_utils::BufferDispatchConstants buf_dispatch_constants_;
 
 public:
     MeshCommandQueue(MeshDevice* mesh_device, uint32_t id);
     MeshDevice* device() const { return mesh_device_; }
     uint32_t id() const { return id_; }
     WorkerConfigBufferMgr& get_config_buffer_mgr(uint32_t index) { return config_buffer_mgr_; };
+    void enqueue_write_mesh_buffer(MeshBuffer& buffer, const void* src, bool blocking);
+    void enqueue_write_to_sub_grid(MeshBuffer& buffer, const void* src, bool blocking, const LogicalDeviceRange& device_range);
     void enqueue_mesh_workload(MeshWorkload& mesh_workload, bool blocking);
     void finish();
 };

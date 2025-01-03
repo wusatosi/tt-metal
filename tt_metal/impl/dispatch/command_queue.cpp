@@ -749,6 +749,7 @@ HWCommandQueue::HWCommandQueue(IDevice* device, uint32_t id, NOC noc_index) :
         this->expected_num_workers_completed[i] = 0;
     }
     reset_config_buffer_mgr(dispatch_constants::DISPATCH_MESSAGE_ENTRIES);
+    this->buf_dispatch_constants = buffer_utils::generate_buffer_dispatch_constants(this->manager, core_type, this->id);
 }
 
 uint32_t HWCommandQueue::get_id() const {
@@ -1065,187 +1066,23 @@ void HWCommandQueue::enqueue_write_buffer(Buffer& buffer, const void* src, bool 
 
     uint32_t padded_page_size = buffer.aligned_page_size();
 
-    const uint32_t command_issue_limit = this->manager.get_issue_queue_limit(this->id);
-    CoreType dispatch_core_type = dispatch_core_manager::instance().get_dispatch_core_type(this->device->id());
-    const uint32_t max_prefetch_command_size = dispatch_constants::get(dispatch_core_type).max_prefetch_command_size();
-    uint32_t max_data_sizeB =
-        max_prefetch_command_size - (hal.get_alignment(HalMemType::HOST) * 2);  // * 2 to account for issue
-
-    uint32_t dst_page_index = 0;
-
     sub_device_ids = detail::select_sub_device_ids(this->device, sub_device_ids);
 
     if (is_sharded(buffer.buffer_layout())) {
-        const bool width_split = buffer.shard_spec().shape_in_pages()[1] != buffer.shard_spec().tensor2d_shape[1];
-        const auto& buffer_page_mapping = width_split ? buffer.get_buffer_page_mapping() : nullptr;
-
-        const auto& cores = width_split ? buffer_page_mapping->all_cores_
-                                        : corerange_to_cores(
-                                              buffer.shard_spec().grid(),
-                                              buffer.num_cores(),
-                                              buffer.shard_spec().orientation() == ShardOrientation::ROW_MAJOR);
         TT_FATAL(
-            max_data_sizeB >= padded_page_size,
+            buf_dispatch_constants.max_data_sizeB >= padded_page_size,
             "Writing padded page size > {} is currently unsupported for sharded tensors.",
-            max_data_sizeB);
-        uint32_t num_total_pages = buffer.num_pages();
-        uint32_t max_pages_per_shard = buffer.shard_spec().size();
+            buf_dispatch_constants.max_data_sizeB);
 
+        buffer_utils::ShardedBufferDispatchParams dispatch_params = buffer_utils::initialize_sharded_buf_dispatch_params(buffer, this->id, this->expected_num_workers_completed);
+        const auto cores = buffer_utils::get_cores_for_sharded_buffer(dispatch_params, buffer);
         // Since we read core by core we are reading the device pages sequentially
         for (uint32_t core_id = 0; core_id < buffer.num_cores(); ++core_id) {
-            // Skip writing the padded pages along the bottom
-            // Currently since writing sharded tensors uses write_linear, we write the padded pages on width
-            // Alternative write each page row into separate commands, or have a strided linear write
-            uint32_t num_pages;
-            if (width_split) {
-                num_pages =
-                    buffer_page_mapping->core_shard_shape_[core_id][0] * buffer.shard_spec().shape_in_pages()[1];
-                if (num_pages == 0) {
-                    continue;
-                }
-                dst_page_index =
-                    buffer_page_mapping->host_page_to_dev_page_mapping_[buffer_page_mapping->core_host_page_indices_[core_id][0]];
-            } else {
-                num_pages = std::min(num_total_pages, max_pages_per_shard);
-                num_total_pages -= num_pages;
-            }
-            uint32_t curr_page_idx_in_shard = 0;
-            uint32_t bank_base_address = buffer.address();
-            if (buffer.is_dram()) {
-                bank_base_address += buffer.device()->bank_offset(
-                    BufferType::DRAM, buffer.device()->dram_channel_from_logical_core(cores[core_id]));
-            }
-            while (num_pages != 0) {
-                // data appended after CQ_PREFETCH_CMD_RELAY_INLINE + CQ_DISPATCH_CMD_WRITE_PAGED
-                uint32_t data_offset_bytes = (sizeof(CQPrefetchCmd) + sizeof(CQDispatchCmd));
-                bool issue_wait = dst_page_index == 0;  // only stall for the first write of the buffer
-                if (issue_wait) {
-                    // commands prefixed with CQ_PREFETCH_CMD_RELAY_INLINE + CQ_DISPATCH_CMD_WAIT
-                    data_offset_bytes *= 2;
-                }
-                uint32_t space_available_bytes = std::min(
-                    command_issue_limit - this->manager.get_issue_queue_write_ptr(this->id), max_prefetch_command_size);
-                int32_t num_pages_available =
-                    (int32_t(space_available_bytes) - int32_t(data_offset_bytes)) / int32_t(padded_page_size);
-
-                uint32_t pages_to_write = std::min(num_pages, (uint32_t)num_pages_available);
-                if (pages_to_write > 0) {
-                    uint32_t address = bank_base_address + curr_page_idx_in_shard * padded_page_size;
-
-                    tt::log_debug(tt::LogDispatch, "EnqueueWriteBuffer for channel {}", this->id);
-
-                    auto command = EnqueueWriteShardedBufferCommand(
-                        this->id,
-                        this->device,
-                        this->noc_index,
-                        buffer,
-                        src,
-                        this->manager,
-                        issue_wait,
-                        this->expected_num_workers_completed,
-                        sub_device_ids,
-                        address,
-                        buffer_page_mapping,
-                        cores[core_id],
-                        padded_page_size,
-                        dst_page_index,
-                        pages_to_write);
-
-                    this->enqueue_command(command, false, sub_device_ids);
-                    curr_page_idx_in_shard += pages_to_write;
-                    num_pages -= pages_to_write;
-                    dst_page_index += pages_to_write;
-                } else {
-                    this->manager.wrap_issue_queue_wr_ptr(this->id);
-                }
-            }
+           buffer_utils::write_sharded_buffer_to_core(src, core_id, buffer, dispatch_params, buf_dispatch_constants, sub_device_ids, cores);
         }
     } else {
-        uint32_t total_pages_to_write = buffer.num_pages();
-        bool write_partial_pages = padded_page_size > max_data_sizeB;
-        uint32_t page_size_to_write = padded_page_size;
-        uint32_t padded_buffer_size = buffer.num_pages() * padded_page_size;
-        if (write_partial_pages) {
-            TT_FATAL(buffer.num_pages() == 1, "TODO: add support for multi-paged buffer with page size > 64KB");
-            uint32_t partial_size = dispatch_constants::BASE_PARTIAL_PAGE_SIZE;
-            uint32_t pcie_alignment = hal.get_alignment(HalMemType::HOST);
-            while (padded_buffer_size % partial_size != 0) {
-                partial_size += pcie_alignment;
-            }
-            page_size_to_write = partial_size;
-            total_pages_to_write = padded_buffer_size / page_size_to_write;
-        }
-
-        const uint32_t num_banks = this->device->num_banks(buffer.buffer_type());
-        uint32_t num_pages_round_robined = buffer.num_pages() / num_banks;
-        uint32_t num_banks_with_residual_pages = buffer.num_pages() % num_banks;
-        uint32_t num_partial_pages_per_page = padded_page_size / page_size_to_write;
-        uint32_t num_partials_round_robined = num_partial_pages_per_page * num_pages_round_robined;
-
-        uint32_t max_num_pages_to_write = write_partial_pages
-                                              ? (num_pages_round_robined > 0 ? (num_banks * num_partials_round_robined)
-                                                                             : num_banks_with_residual_pages)
-                                              : total_pages_to_write;
-
-        uint32_t bank_base_address = buffer.address();
-
-        uint32_t num_full_pages_written = 0;
-        while (total_pages_to_write > 0) {
-            uint32_t data_offsetB = hal.get_alignment(HalMemType::HOST);  // data appended after CQ_PREFETCH_CMD_RELAY_INLINE
-                                                                    // + CQ_DISPATCH_CMD_WRITE_PAGED
-            bool issue_wait =
-                (dst_page_index == 0 and
-                 bank_base_address == buffer.address());  // only stall for the first write of the buffer
-            if (issue_wait) {
-                data_offsetB *= 2;  // commands prefixed with CQ_PREFETCH_CMD_RELAY_INLINE + CQ_DISPATCH_CMD_WAIT
-            }
-
-            uint32_t space_availableB = std::min(
-                command_issue_limit - this->manager.get_issue_queue_write_ptr(this->id), max_prefetch_command_size);
-            int32_t num_pages_available =
-                (int32_t(space_availableB) - int32_t(data_offsetB)) / int32_t(page_size_to_write);
-
-            if (num_pages_available <= 0) {
-                this->manager.wrap_issue_queue_wr_ptr(this->id);
-                continue;
-            }
-
-            uint32_t num_pages_to_write =
-                std::min(std::min((uint32_t)num_pages_available, max_num_pages_to_write), total_pages_to_write);
-
-            // Page offset in CQ_DISPATCH_CMD_WRITE_PAGED is uint16_t
-            // To handle larger page offsets move bank base address up and update page offset to be relative to the new
-            // bank address
-            if (dst_page_index > 0xFFFF or (num_pages_to_write == max_num_pages_to_write and write_partial_pages)) {
-                uint32_t num_banks_to_use = write_partial_pages ? max_num_pages_to_write : num_banks;
-                uint32_t residual = dst_page_index % num_banks_to_use;
-                uint32_t num_pages_written_per_bank = dst_page_index / num_banks_to_use;
-                bank_base_address += num_pages_written_per_bank * page_size_to_write;
-                dst_page_index = residual;
-            }
-
-            tt::log_debug(tt::LogDispatch, "EnqueueWriteBuffer for command queue {}", this->id);
-
-            auto command = EnqueueWriteInterleavedBufferCommand(
-                this->id,
-                this->device,
-                this->noc_index,
-                buffer,
-                src,
-                this->manager,
-                issue_wait,
-                this->expected_num_workers_completed,
-                sub_device_ids,
-                bank_base_address,
-                page_size_to_write,
-                dst_page_index,
-                num_pages_to_write);
-            this->enqueue_command(
-                command, false, sub_device_ids);  // don't block until the entire src data is enqueued in the issue queue
-
-            total_pages_to_write -= num_pages_to_write;
-            dst_page_index += num_pages_to_write;
-        }
+        buffer_utils::InterleavedBufferDispatchParams dispatch_params = buffer_utils::initialize_interleaved_buf_dispatch_params(buffer, buf_dispatch_constants, this->id, this->expected_num_workers_completed);
+        write_interleaved_buffer_to_device(src, dispatch_params, buffer, buf_dispatch_constants, sub_device_ids);
     }
 
     if (blocking) {
