@@ -105,6 +105,8 @@ class ttnn_SD3Transformer2DModel:
 
         # ttnn_CombinedTimestepTextProjEmbeddings
         temb = self.time_text_embed(timestep, pooled_projections, device=hidden_states.device())
+        ttnn.deallocate(timestep)
+        ttnn.deallocate(pooled_projections)
 
         # Context Emb (just a Linear OP)
         encoder_hidden_states = self.context_embedder(
@@ -113,13 +115,14 @@ class ttnn_SD3Transformer2DModel:
         # ttnn_PatchEmbed + Pos Emb
         hidden_states = self.pos_embed(hidden_states.device(), hidden_states)
 
-        for index_block, block in enumerate(self.transformer_blocks):
-            hidden_states = ttnn.to_memory_config(hidden_states, memory_config=ttnn.DRAM_MEMORY_CONFIG)
-            encoder_hidden_states = ttnn.to_memory_config(encoder_hidden_states, memory_config=ttnn.DRAM_MEMORY_CONFIG)
-            temb = ttnn.to_memory_config(temb, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+        encoder_hidden_states = ttnn.to_memory_config(
+            encoder_hidden_states, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b
+        )
+        temb = ttnn.to_memory_config(temb, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b)
 
+        for index_block, block in enumerate(self.transformer_blocks):
             encoder_hidden_states, hidden_states = block(
-                hidden_states=hidden_states,
+                hidden_states_i=hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
                 temb=temb,
                 parameters=parameters["transformer_blocks"][index_block],
@@ -131,6 +134,8 @@ class ttnn_SD3Transformer2DModel:
                 hidden_states = hidden_states + block_controlnet_hidden_states[index_block // interval_control]
 
         hidden_states = self.norm_out(hidden_states, temb, parameters=parameters["norm_out"])
+        ttnn.deallocate(temb)
+
         hidden_states = self.proj_out(
             hidden_states, parameters["proj_out"]["weight"], bias=parameters["proj_out"]["bias"]
         )
@@ -140,12 +145,19 @@ class ttnn_SD3Transformer2DModel:
         height = height // patch_size
         width = width // patch_size
 
+        hidden_states = ttnn.to_layout(hidden_states, layout=ttnn.ROW_MAJOR_LAYOUT)
+        hidden_states = ttnn.to_dtype(
+            hidden_states, ttnn.bfloat16
+        )  # ttnn Reshape is making issue when we have it in bfloat8
+
         hidden_states = ttnn.reshape(
             hidden_states, (hidden_states.shape[0], height, width, patch_size, patch_size, self.out_channels)
         )
         device = hidden_states.device()
         hidden_states = ttnn.to_torch(hidden_states)
-        hidden_states = torch.einsum("nhwpqc->nchpwq", hidden_states)
+        hidden_states = torch.einsum(
+            "nhwpqc->nchpwq", hidden_states
+        )  # This will be replace by ttnn permute, issue #12154
         hidden_states = ttnn.from_torch(hidden_states, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device)
         output = ttnn.reshape(
             hidden_states, (hidden_states.shape[0], self.out_channels, height * patch_size, width * patch_size)
