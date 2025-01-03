@@ -25,7 +25,7 @@ public:
     bfloat16(float float_num) {
         static_assert(sizeof float_num == 4, "float must have size 4");
 
-        uint16_data = (*reinterpret_cast<uint32_t*>(&float_num)) >> 16;
+        uint16_data = get_bfloat16_rounded(float_num);
     }
 
     // store lower 16 as 16-bit uint
@@ -48,6 +48,33 @@ public:
     bool operator==(const bfloat16 rhs) const { return uint16_data == rhs.uint16_data; }
     bool operator!=(const bfloat16 rhs) const { return not(*this == rhs); }
     bfloat16 operator*(const bfloat16 rhs) const { return bfloat16(this->to_float() * rhs.to_float()); }
+
+private:
+    uint16_t get_bfloat16_rounded(const float val) {
+        if (std::isnan(val)) {
+#define BFP16_NAN 0x7FC0
+            return BFP16_NAN;
+#undef BFP16_NAN
+        }
+
+        uint32_t float_bits = *reinterpret_cast<const uint32_t*>(&val);
+
+        // upper 16 bits
+        uint16_t bfloat16_bits = float_bits >> 16;
+
+        // check Guard, Round, Sticky bits from lower 16 bits
+        uint32_t lower_bits = float_bits & 0xFFFF;
+        uint32_t guard_bit = (lower_bits >> 15) & 1;
+        uint32_t round_bit = (lower_bits >> 14) & 1;
+        uint32_t sticky_bit = (lower_bits & 0x3FFF) != 0;
+
+        // Tie-to-even rounding rule
+        if (guard_bit && (round_bit || sticky_bit || (bfloat16_bits & 1))) {
+            bfloat16_bits += 1;
+        }
+
+        return bfloat16_bits;
+    }
 };
 
 inline std::ostream& operator<<(std::ostream& os, const bfloat16& bfp16) {

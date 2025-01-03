@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include "common/constants.hpp"
+#include "tt_metal/common/bfloat16.hpp"
 #include "full_like_device_operation.hpp"
 #include "host_api.hpp"
 #include "impl/buffers/circular_buffer_types.hpp"
@@ -17,28 +18,6 @@ using namespace tt;
 using namespace tt::tt_metal;
 using namespace tt::constants;
 using namespace tt::tt_metal::detail;
-
-// After the full modification and if there are no issues in the overall tests, it will be added to `bfloat16.hpp` and
-// applied globally.
-uint32_t get_bfloat16_rounded(const float val) {
-    uint32_t float_bits = *reinterpret_cast<const uint32_t*>(&val);
-
-    // upper 16 bits
-    uint16_t bfloat16_bits = float_bits >> 16;
-
-    // check Guard, Round, Sticky bits from lower 16 bits
-    uint32_t lower_bits = float_bits & 0xFFFF;
-    uint32_t guard_bit = (lower_bits >> 15) & 1;
-    uint32_t round_bit = (lower_bits >> 14) & 1;
-    uint32_t sticky_bit = (lower_bits & 0x3FFF) != 0;
-
-    // Tie-to-even rounding rule
-    if (guard_bit && (round_bit || sticky_bit || (bfloat16_bits & 1))) {
-        bfloat16_bits += 1;
-    }
-
-    return static_cast<uint32_t>(bfloat16_bits) << 16;
-}
 
 union datatype {
     uint32_t u32;
@@ -89,7 +68,7 @@ FullLikeOperation::ProgramFactory::cached_program_t FullLikeOperation::ProgramFa
     } else if (std::holds_alternative<float>(fill_value)) {
         auto float_fill_value = std::get<float>(fill_value);
         if (dtype == DataType::BFLOAT16) {
-            u.u32 = get_bfloat16_rounded(float_fill_value);
+            u.u32 = bfloat16(float_fill_value).to_uint16() << 16;
         } else {
             u.f32 = float_fill_value;
         }

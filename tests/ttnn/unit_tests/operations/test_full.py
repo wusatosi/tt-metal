@@ -53,6 +53,7 @@ def test_full_int(device, input_shape, fill_value):
         2.00830080,  # mantissa: 0000 0001 0001, bf16 round up test
         2.02343750,  # mantissa: 0000 0011, bf16 round up test
         -3.9921875,  # test mantissa overflow. answer should be 4
+        float("nan"),
     ],
 )
 @pytest.mark.parametrize(
@@ -71,7 +72,7 @@ def test_full_float(device, input_shape, fill_value, dtype):
     assert ttnn.is_tensor_storage_on_device(tt_output)
     tt_output_cpu = ttnn.to_torch(tt_output)
 
-    assert torch.equal(torch_output, tt_output_cpu)
+    assert torch.allclose(torch_output, tt_output_cpu, rtol=0.0, atol=0.0, equal_nan=True)
 
 
 @pytest.mark.parametrize(
