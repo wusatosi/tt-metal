@@ -148,12 +148,12 @@ void MAIN {
 #ifdef PACK_RELU
                 // for each batch we start with relu disabled so that intermediate results are not relu'd
                 if constexpr (batch > 1 || num_blocks_h_dim > 1 || num_blocks_w_dim > 1) {
-                    PACK((llk_pack_relu_config(ReluType::NO_RELU)));
+                    // PACK((llk_pack_relu_config(ReluType::NO_RELU)));
                 }
 #endif
 
                 if constexpr (batch > 1 || num_blocks_h_dim > 1 || num_blocks_w_dim > 1) {
-                    PACK((pack_reconfig_data_format(mm_partials_cb_id)));
+                    // PACK((pack_reconfig_data_format(mm_partials_cb_id)));
                 }
 
                 for (uint32_t block = 0; block < num_blocks_inner_dim; block++) {
@@ -162,7 +162,7 @@ void MAIN {
 #if not defined FUSE_BIAS and defined PACK_RELU
                     if (last_out) {
                         // if last block we pack the final result with relu enabled
-                        PACK((llk_pack_relu_config(ReluType::ZERO_RELU)));
+                        // PACK((llk_pack_relu_config(ReluType::ZERO_RELU)));
                     }
 #endif
 
@@ -193,6 +193,7 @@ void MAIN {
                             uint32_t in0_index = in0_index_subblock_offset;  // offset into in0 block
                             uint32_t in1_index = in1_index_subblock_offset;  // offset into in1 block
                             // inner dim that we accumualte is the inner dim of in0/in1, which is in0_block_w
+                            WAYPOINT("AAAA");
                             for (uint32_t inner_dim_idx = 0; inner_dim_idx < in0_block_w; ++inner_dim_idx) {
                                 // matmul outer product of (out_subblock_h x out_subblock_w) tiles that fill dst
                                 // accumulation is done by iterating matmul_block across inner dim
@@ -212,6 +213,7 @@ void MAIN {
                                 in1_index += in1_block_w;  // to stride down by 1 need to stride by in_per_core_w
                                                            // (should be called in1_block_w)
                             }
+                            WAYPOINT("BBBB");
 
 #endif  // SKIP_COMPUTE
 
@@ -228,18 +230,18 @@ void MAIN {
                                 tile_regs_wait();
 
 #if defined FP32_DEST_ACC_EN or defined PACKER_L1_ACC
-                                PACK((pack_reconfig_data_format(mm_out_cb_id)));
+                                // PACK((pack_reconfig_data_format(mm_out_cb_id)));
 #endif
 
 #ifdef PACKER_L1_ACC
 #ifdef FUSE_BIAS
                                 if (block == 0) {  // no accumulation for first iteration
-                                    PACK((llk_pack_reconfig_l1_acc(0)));
+                                    // PACK((llk_pack_reconfig_l1_acc(0)));
                                 } else {
-                                    PACK((llk_pack_reconfig_l1_acc(1)));
+                                    // PACK((llk_pack_reconfig_l1_acc(1)));
                                 }
 #else
-                                PACK((llk_pack_reconfig_l1_acc(0)));
+                                // PACK((llk_pack_reconfig_l1_acc(0)));
 #endif
 #endif
 
@@ -263,9 +265,9 @@ void MAIN {
 
 #ifdef PACKER_L1_ACC
                                 if (block == 0) {  // no accumulation for first iteration
-                                    PACK((llk_pack_reconfig_l1_acc(0)));
+                                    // PACK((llk_pack_reconfig_l1_acc(0)));
                                 } else if (block == 1) {
-                                    PACK((llk_pack_reconfig_l1_acc(1)));
+                                    // PACK((llk_pack_reconfig_l1_acc(1)));
                                 }
 #endif
 
@@ -314,13 +316,13 @@ void MAIN {
 #ifdef FUSE_BIAS
 #ifdef PACK_RELU
                 // if last block we pack the final result with relu enabled
-                PACK((llk_pack_relu_config(ReluType::ZERO_RELU)));
+                // PACK((llk_pack_relu_config(ReluType::ZERO_RELU)));
 #endif
 #if defined FP32_DEST_ACC_EN or defined PACKER_L1_ACC
-                PACK((pack_reconfig_data_format(out_cb_id)));
+                // PACK((pack_reconfig_data_format(out_cb_id)));
 #endif
 #ifdef PACKER_L1_ACC
-                PACK((llk_pack_reconfig_l1_acc(0)));
+                // PACK((llk_pack_reconfig_l1_acc(0)));
 #endif
 
                 reconfig_data_format(in1_cb_id, mm_partials_cb_id, in0_cb_id, bias_cb_id);
@@ -373,15 +375,15 @@ void MAIN {
 #endif  // FUSE_BIAS
                 if constexpr (untilize_out) {
 #ifdef PACK_RELU
-                    PACK((llk_pack_relu_config(ReluType::NO_RELU)));
+                    // PACK((llk_pack_relu_config(ReluType::NO_RELU)));
 #endif  // PACK_RELU
 #ifndef FUSE_BIAS
                     reconfig_data_format_srca(in1_cb_id, mm_partials_cb_id);
 #if defined FP32_DEST_ACC_EN or defined PACKER_L1_ACC
-                    PACK((pack_reconfig_data_format(out_cb_id)));
+                    // PACK((pack_reconfig_data_format(out_cb_id)));
 #endif
 #ifdef PACKER_L1_ACC
-                    PACK((llk_pack_reconfig_l1_acc(0)));
+                    // PACK((llk_pack_reconfig_l1_acc(0)));
 #endif
 #endif  // FUSE_BIAS
                     pack_untilize_dst_init_short<out_subblock_w, out_block_w>(out_cb_id);
