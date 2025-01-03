@@ -14,9 +14,9 @@ namespace ttnn::operations::examples {
 struct CompositeExampleOperation {
     // The user will be able to call this method as `Tensor output = ttnn::composite_example(input_tensor)` after the op
     // is registered
-    static Tensor invoke(const Tensor& input_tensor) {
-        auto copy = prim::example(input_tensor);
-        auto another_copy = prim::example(copy);
+    static Tensor invoke(const Tensor& input_tensor, uint32_t block_size) {
+        auto copy = prim::example(input_tensor, block_size);
+        auto another_copy = prim::example(copy, block_size);
         return another_copy;
     }
 };

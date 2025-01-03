@@ -20,6 +20,7 @@ struct ExampleDeviceOperation {
     struct operation_attributes_t {
         bool attribute;
         int some_other_attribute;
+        uint32_t block_size;
     };
 
     // Define the tensor arguments. This is it to store all tensors passed in and/or out of the operation
@@ -129,7 +130,7 @@ struct ExampleDeviceOperation {
     // ttnn::prim::example(input_tensor)` after the op is registered Keep in mind that the the overload with `queue_id`
     // argument will be added automatically for primitive operations So, the user can also call this operation using
     // `tensor_return_value_t output = ttnn::prim::example(queue_id, input_tensor)`
-    static std::tuple<operation_attributes_t, tensor_args_t> invoke(const Tensor& input_tensor);
+    static std::tuple<operation_attributes_t, tensor_args_t> invoke(const Tensor& input_tensor, uint32_t block_size);
 
     // Optional methods
 
