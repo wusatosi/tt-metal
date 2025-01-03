@@ -5,6 +5,7 @@
 import torch
 import pytest
 import ttnn
+import time
 from ttnn.model_preprocessing import (
     preprocess_model_parameters,
     preprocess_linear_weight,
@@ -365,30 +366,6 @@ def test_joint_transformer_block(device, reset_seeds, context_pre_only, use_dual
     #         orientation=ttnn.ShardOrientation.ROW_MAJOR,
     #     )
 
-    ttnn_input_temb = ttnn.from_torch(
-        torch_input_temb.unsqueeze(1).unsqueeze(1),
-        layout=ttnn.TILE_LAYOUT,
-        dtype=ttnn.bfloat8_b,
-        device=device,
-        memory_config=ttnn.L1_MEMORY_CONFIG,
-    )
-
-    ttnn_input_encoder_hidden_states = ttnn.from_torch(
-        torch_input_encoder_hidden_states.unsqueeze(1),
-        layout=ttnn.TILE_LAYOUT,
-        dtype=ttnn.bfloat8_b,
-        device=device,
-        memory_config=ttnn.L1_MEMORY_CONFIG,
-    )
-
-    ttnn_input_hidden_states = ttnn.from_torch(
-        torch_input_x_unsqueezed,
-        layout=ttnn.TILE_LAYOUT,
-        dtype=ttnn.bfloat8_b,
-        device=device,
-        memory_config=ttnn.L1_MEMORY_CONFIG,  # input_memory_config
-    )
-
     ttnn_model = ttnn_JointTransformerBlock(
         dim=1536,
         num_attention_heads=24,
@@ -399,14 +376,36 @@ def test_joint_transformer_block(device, reset_seeds, context_pre_only, use_dual
         parameters=parameters,
     )
 
-    import time
+    for i in range(5):
+        ttnn_input_temb = ttnn.from_torch(
+            torch_input_temb.unsqueeze(1).unsqueeze(1),
+            layout=ttnn.TILE_LAYOUT,
+            dtype=ttnn.bfloat8_b,
+            device=device,
+            memory_config=ttnn.L1_MEMORY_CONFIG,
+        )
 
-    for i in range(1):
+        ttnn_input_encoder_hidden_states = ttnn.from_torch(
+            torch_input_encoder_hidden_states.unsqueeze(1),
+            layout=ttnn.TILE_LAYOUT,
+            dtype=ttnn.bfloat8_b,
+            device=device,
+            memory_config=ttnn.L1_MEMORY_CONFIG,
+        )
+
+        ttnn_input_hidden_states = ttnn.from_torch(
+            torch_input_x_unsqueezed,
+            layout=ttnn.TILE_LAYOUT,
+            dtype=ttnn.bfloat8_b,
+            device=device,
+            memory_config=ttnn.L1_MEMORY_CONFIG,  # input_memory_config
+        )
+
         t0 = time.time()
         ttnn_output = ttnn_model(
             ttnn_input_hidden_states, ttnn_input_encoder_hidden_states, ttnn_input_temb, parameters=parameters
         )
-        enable_persistent_kernel_cache()
+        # enable_persistent_kernel_cache()
         t1 = time.time()
         print("Time (sec):", t1 - t0)
 
