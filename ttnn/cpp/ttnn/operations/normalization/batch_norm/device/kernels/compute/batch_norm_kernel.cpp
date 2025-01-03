@@ -111,8 +111,7 @@ void MAIN {
         mul_tiles_to_cb(
             cb_num, cb_den, cb_affine_or_out, 0, 0, 1, 1);  // (input - batch_mean)/(sqrt(batch_var + eps)) = result
         if (weight_has_value) {
-            mul_tiles_to_cb(
-                cb_affine_or_out, cb_weight, cb_scaled_output, tile_id, 0, 0, 1);  // result = result * weight
+            mul_tiles_to_cb(cb_affine_or_out, cb_weight, cb_scaled_output, 0, 0, 1, 1);  // result = result * weight
         }
         if (bias_has_value) {
             add_tiles_to_cb(cb_tmp_1, cb_bias, cb_out0, 0, 0, 1, 1);  // result = result + bias

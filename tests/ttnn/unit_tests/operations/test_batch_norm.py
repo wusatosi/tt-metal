@@ -15,16 +15,25 @@ from tests.ttnn.unit_tests.operations.eltwise.backward.utility_funcs import (
 @pytest.mark.parametrize(
     "input_shapes",
     (
-        # (torch.Size([1, 3, 32, 32])),
-        # (torch.Size([1, 1, 32, 32])),
+        (torch.Size([1, 1, 32, 32])),
         (torch.Size([1, 2, 32, 32])),
+        (torch.Size([1, 3, 32, 32])),
+        (torch.Size([2, 1, 32, 32])),
+        (torch.Size([2, 2, 32, 32])),
+        (torch.Size([2, 3, 32, 32])),
+        (torch.Size([3, 1, 32, 32])),
+        (torch.Size([3, 2, 32, 32])),
+        (torch.Size([3, 3, 32, 32])),
+        (torch.Size([4, 1, 32, 32])),
+        (torch.Size([4, 2, 32, 32])),
+        (torch.Size([4, 3, 32, 32])),
+        (torch.Size([4, 4, 32, 32])),
     ),
 )
 @pytest.mark.parametrize("training", [False])
 @pytest.mark.parametrize("weight", [True, False])
 @pytest.mark.parametrize("bias", [True, False])
-# @pytest.mark.parametrize("eps", [1.0, 0.0, 2.34, 1e-05])
-@pytest.mark.parametrize("eps", [1.0])
+@pytest.mark.parametrize("eps", [1.0, 0.0, 2.34, 1e-05])
 def test_batch_norm(input_shapes, training, weight, bias, eps, device):
     in_data, input_tensor = data_gen_with_range(input_shapes, 5, 10, device, False)
     if not training:
