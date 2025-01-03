@@ -128,6 +128,7 @@ class ttnnStableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSi
         tokenizer: CLIPTokenizer,
         text_encoder_2: CLIPTextModelWithProjection,
         tokenizer_2: CLIPTokenizer,
+        time_steps,
     ):
         super().__init__()
 
@@ -140,6 +141,7 @@ class ttnnStableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSi
         self.tokenizer_2 = tokenizer_2
         self.text_encoder_3 = None
         self.tokenizer_3 = None
+        self.time_steps = time_steps
 
         self.vae_scale_factor = (
             2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
@@ -658,6 +660,19 @@ class ttnnStableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSi
             generator,
             latents,
         )
+        # Preprocess timesteps_proj
+        parameters_transformer["timesteps_proj"] = {}
+        for i in range(num_inference_steps):
+            parameters_transformer["timesteps_proj"][i] = {}
+            parameters_transformer["timesteps_proj"][i] = ttnn.from_torch(
+                self.time_steps(
+                    timesteps[i].expand(latents.shape[0] * 2 if self.do_classifier_free_guidance else latents.shape[0])
+                ),
+                layout=ttnn.TILE_LAYOUT,
+                dtype=ttnn.bfloat16,
+                device=device_ttnn,
+                memory_config=ttnn.L1_MEMORY_CONFIG,
+            )
 
         print("Entering loop")
         # 6. Denoising loop
@@ -677,13 +692,7 @@ class ttnnStableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSi
                     device=device_ttnn,
                     memory_config=ttnn.L1_MEMORY_CONFIG,
                 )
-                ttnn_timestep = ttnn.from_torch(
-                    timestep,
-                    layout=ttnn.TILE_LAYOUT,
-                    dtype=ttnn.bfloat16,
-                    device=device_ttnn,
-                    memory_config=ttnn.L1_MEMORY_CONFIG,
-                )
+                ttnn_timestep_proj = parameters_transformer["timesteps_proj"][i]
                 prompt_embeds_pad = F.pad(prompt_embeds, (0, 0, 0, 6))
                 ttnn_prompt_embeds = ttnn.from_torch(
                     prompt_embeds_pad.unsqueeze(1),
@@ -703,7 +712,7 @@ class ttnnStableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSi
                 noise_pred = ttnn.to_torch(
                     self.transformer(
                         hidden_states=ttnn_latent_model_input,
-                        timestep=ttnn_timestep,
+                        timestep=ttnn_timestep_proj,
                         encoder_hidden_states=ttnn_prompt_embeds,
                         pooled_projections=ttnn_pooled_prompt_embeds,
                         joint_attention_kwargs=self.joint_attention_kwargs,

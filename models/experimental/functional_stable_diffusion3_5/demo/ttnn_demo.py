@@ -78,7 +78,14 @@ def test_demo(device, height, width):
     )
 
     ttnn_pipe = ttnnStableDiffusion3Pipeline(
-        ttnn_model, pipe.scheduler, pipe.vae, pipe.text_encoder, pipe.tokenizer, pipe.text_encoder_2, pipe.tokenizer_2
+        ttnn_model,
+        pipe.scheduler,
+        pipe.vae,
+        pipe.text_encoder,
+        pipe.tokenizer,
+        pipe.text_encoder_2,
+        pipe.tokenizer_2,
+        time_steps=pipe.transformer.time_text_embed.time_proj,
     )
 
     image = ttnn_pipe(

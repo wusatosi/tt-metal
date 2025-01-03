@@ -481,8 +481,15 @@ def test_ttnn_sd3_transformer_2d_model(device, reset_seeds):
         memory_config=ttnn.L1_MEMORY_CONFIG,
     )
     ttnn_timestep = ttnn.from_torch(
-        timestep, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device, memory_config=ttnn.L1_MEMORY_CONFIG
+        reference_model.time_text_embed.time_proj(timestep),
+        layout=ttnn.TILE_LAYOUT,
+        dtype=ttnn.bfloat16,
+        device=device,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
     )
+    # ttnn_timestep = ttnn.from_torch(
+    #     timestep, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device, memory_config=ttnn.L1_MEMORY_CONFIG
+    # )
 
     ttnn_output = ttnn_model(
         ttnn_hidden_states,
@@ -499,4 +506,4 @@ def test_ttnn_sd3_transformer_2d_model(device, reset_seeds):
         "models/experimental/functional_stable_diffusion3_5/demo/inputs_512_latest/output_512.pt",
         map_location=torch.device("cpu"),
     )
-    assert_with_pcc(torch_output, ttnn.to_torch(ttnn_output[0]), pcc=0.98)  # 0.9238
+    assert_with_pcc(torch_output, ttnn.to_torch(ttnn_output[0]), pcc=0.98)  # 0.94
