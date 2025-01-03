@@ -237,7 +237,6 @@ public:
         uint32_t bank_base_address,
         uint32_t padded_page_size,
         uint32_t dst_page_index = 0,
-        uint32_t orig_dst_page_index = 0,
         std::optional<uint32_t> pages_to_write = std::nullopt) :
         EnqueueWriteBufferCommand(
             command_queue_id,

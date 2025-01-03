@@ -1349,7 +1349,6 @@ void HWCommandQueue::enqueue_write_buffer(
                 bank_base_address,
                 page_size_to_write,
                 dst_page_index,
-                orig_dst_page_index,
                 num_pages_to_write);
             this->enqueue_command(
                 command, false, sub_device_ids);  // don't block until the entire src data is enqueued in the issue queue
