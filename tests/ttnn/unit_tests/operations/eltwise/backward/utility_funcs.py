@@ -11,17 +11,23 @@ from tests.tt_eager.python_api_testing.sweep_tests import (
 )
 
 
-def data_gen_with_range_batch_norm(input_shapes, low, high, device, required_grad=False, is_row_major=False):
+def data_gen_with_range_batch_norm(input_shapes, low, high, device, is_input=False, required_grad=False):
     assert high > low, "Incorrect range provided"
     torch.manual_seed(213919)
     channels = input_shapes[1]
-    pt_tensor = torch.rand(channels, requires_grad=required_grad).bfloat16() * (high - low) + low
-    # pt_tensor = pt_tensor.view(1, channels, 1, 1) // to test TT op
-    # reshaped_tensor = pt_tensor.expand(1, channels, 32, 32)
-    reshaped_tensor = pt_tensor.view(1, channels, 1, 1).expand(1, channels, 32, 32)
-    if is_row_major:
-        tt_tensor = ttnn.Tensor(reshaped_tensor, ttnn.bfloat16).to(ttnn.ROW_MAJOR_LAYOUT).to(device)
+    if is_input:
+        pt_tensor = torch.rand(input_shapes, requires_grad=required_grad).bfloat16() * (high - low) + low
+        tt_tensor = ttnn.from_torch(
+            pt_tensor,
+            device=device,
+            layout=ttnn.TILE_LAYOUT,
+            dtype=ttnn.bfloat16,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+        )
     else:
+        pt_tensor = torch.rand(channels, requires_grad=required_grad).bfloat16() * (high - low) + low
+        # pt_tensor = pt_tensor.view(1, channels, 1, 1) # to test each section of TT op
+        reshaped_tensor = pt_tensor.view(1, channels, 1, 1).expand(1, channels, 32, 32)
         tt_tensor = ttnn.Tensor(reshaped_tensor, ttnn.bfloat16).to(ttnn.TILE_LAYOUT).to(device)
     return pt_tensor, tt_tensor
 
@@ -119,6 +125,21 @@ def compare_results(tt_tensor, golden_tensor, pcc=0.99):
         logger.debug(comp_all)
         logger.debug(comp_out)
         status = status & (comp_pass | comp_all)
+    return status
+
+
+def compare_results_batch_norm(tt_tensor, golden_tensor, pcc=0.99):
+    status = True
+    for i in range(len(tt_tensor)):
+        tt_out_tensor = tt_tensor[i]
+        pt_out_tensor = golden_tensor[i]
+        comp_pass, comp_out = comparison_funcs.comp_pcc(pt_out_tensor, tt_out_tensor, pcc=pcc)
+        comp_all, comp_out_res = comparison_funcs.comp_allclose(pt_out_tensor, tt_out_tensor, atol=4, rtol=1e-1)
+        logger.debug(comp_pass)
+        logger.debug(comp_all)
+        logger.debug(comp_out)
+        logger.debug(comp_out_res)
+        status = status & comp_pass & comp_all
     return status
 
 
