@@ -44,21 +44,22 @@ void MAIN {
         return;
     }
 
-    constexpr auto cb_in0 = tt::CBIndex::c_0;   // input
-    constexpr auto cb_in1 = tt::CBIndex::c_1;   // batch_mean
-    constexpr auto cb_out0 = tt::CBIndex::c_2;  // output -- > [(input - batch_mean)/(sqrt(batch_var + eps))] * weight
-    constexpr auto cb_in2 = tt::CBIndex::c_3;   // batch_var
-    constexpr auto cb_eps = tt::CBIndex::c_4;   // batch_var
-    constexpr auto cb_den = tt::CBIndex::c_5;   // 1/(sqrt(batch_var + eps))
-    constexpr auto cb_num = tt::CBIndex::c_6;   // input - batch_mean
-    constexpr auto cb_weight = tt::CBIndex::c_16;  // weight tensor
-    constexpr auto cb_tmp_1 = tt::CBIndex::c_17;   // (input - batch_mean)/(sqrt(batch_var + eps))
-    constexpr auto cb_bias = tt::CBIndex::c_18;    // bias tensor
+    constexpr auto cb_input = tt::CBIndex::c_0;       // input
+    constexpr auto cb_batch_mean = tt::CBIndex::c_1;  // batch_mean
+    constexpr auto cb_output_0 =
+        tt::CBIndex::c_2;  // output -- > [(input - batch_mean)/(sqrt(batch_var + eps))] * weight
+    constexpr auto cb_batch_var = tt::CBIndex::c_3;  // batch_var
+    constexpr auto cb_eps = tt::CBIndex::c_4;        // batch_var
+    constexpr auto cb_den = tt::CBIndex::c_5;        // 1/(sqrt(batch_var + eps))
+    constexpr auto cb_num = tt::CBIndex::c_6;        // input - batch_mean
+    constexpr auto cb_weight = tt::CBIndex::c_16;    // weight tensor
+    constexpr auto cb_tmp_1 = tt::CBIndex::c_17;     // (input - batch_mean)/(sqrt(batch_var + eps))
+    constexpr auto cb_bias = tt::CBIndex::c_18;      // bias tensor
 
-    auto cb_bcast = cb_in1;
-    auto cb_other = cb_in0;
+    auto cb_bcast = cb_batch_mean;
+    auto cb_other = cb_input;
 
-    binary_op_init_common(cb_bcast, cb_other, cb_out0);
+    binary_op_init_common(cb_bcast, cb_other, cb_output_0);
 
     // input - batch_mean
     sub_tiles_init();
@@ -74,17 +75,17 @@ void MAIN {
     constexpr uint32_t onetile = 1;
     constexpr int dst0 = 0;
 
-    constexpr auto cb_affine_or_out = (weight_has_value || bias_has_value) ? cb_tmp_1 : cb_out0;
-    constexpr auto cb_scaled_output = (bias_has_value) ? cb_tmp_1 : cb_out0;
+    constexpr auto cb_affine_or_out = (weight_has_value || bias_has_value) ? cb_tmp_1 : cb_output_0;
+    constexpr auto cb_scaled_output = (bias_has_value) ? cb_tmp_1 : cb_output_0;
     for (uint32_t tile_id = 0; tile_id < num_tiles; ++tile_id) {
         // 1/(sqrt(batch_var + eps))
         cb_reserve_back(cb_den, onetile);
-        cb_wait_front(cb_in2, 1);
+        cb_wait_front(cb_batch_var, 1);
         cb_wait_front(cb_eps, 1);
 
         tile_regs_acquire();
-        add_tiles_init_with_dt(cb_in2, cb_eps);
-        add_tiles(cb_in2, cb_eps, 0, 0, dst0);
+        add_tiles_init_with_dt(cb_batch_var, cb_eps);
+        add_tiles(cb_batch_var, cb_eps, 0, 0, dst0);
         rsqrt_tile_init();
         rsqrt_tile(dst0);
         tile_regs_commit();
@@ -93,7 +94,7 @@ void MAIN {
         pack_tile_with_dt(dst0, cb_den);
         tile_regs_release();
 
-        cb_pop_front(cb_in2, 1);
+        cb_pop_front(cb_batch_var, 1);
         cb_pop_front(cb_eps, 1);
         cb_push_back(cb_den, onetile);
 
@@ -134,7 +135,7 @@ void MAIN {
             cb_push_back(cb_scaled_output, onetile);
         }
         if (bias_has_value) {  // result = result + bias
-            cb_reserve_back(cb_out0, 1);
+            cb_reserve_back(cb_output_0, 1);
             cb_wait_front(cb_tmp_1, 1);
             cb_wait_front(cb_bias, 1);
 
@@ -144,12 +145,12 @@ void MAIN {
             tile_regs_commit();
 
             tile_regs_wait();
-            pack_tile_with_dt(dst0, cb_out0);
+            pack_tile_with_dt(dst0, cb_output_0);
             tile_regs_release();
 
             cb_pop_front(cb_tmp_1, 1);
             cb_pop_front(cb_bias, 1);
-            cb_push_back(cb_out0, 1);
+            cb_push_back(cb_output_0, 1);
         }
     }
 }
