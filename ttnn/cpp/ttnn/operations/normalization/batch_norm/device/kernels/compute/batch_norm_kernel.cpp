@@ -9,26 +9,19 @@
 
 namespace NAMESPACE {
 
-ALWI void apply_rsqrt_to_sum_value(
-    uint32_t icb0,
-    uint32_t icb1,
-    uint32_t ocb,
-    uint32_t itile0 = 0,
-    uint32_t itile1 = 0,
-    uint32_t pop0 = 1,
-    uint32_t pop1 = 1) {
+ALWI void apply_rsqrt_to_sum_value(uint32_t cb_ina, uint32_t cb_inb, uint32_t cb_out) {
     constexpr uint32_t onetile = 1;
     constexpr int dst0 = 0;
 
-    cb_reserve_back(ocb, onetile);
-    cb_wait_front(icb0, 1);
-    cb_wait_front(icb1, 1);
+    cb_reserve_back(cb_out, onetile);
+    cb_wait_front(cb_ina, 1);
+    cb_wait_front(cb_inb, 1);
 
     tile_regs_acquire();
 
     // add values and store them in dst
-    add_tiles_init_with_dt(icb0, icb1);
-    add_tiles(icb0, icb1, 0, itile1, dst0);
+    add_tiles_init_with_dt(cb_ina, cb_inb);
+    add_tiles(cb_ina, cb_inb, 0, 0, dst0);
 
     // apply rsqrt on dst
     rsqrt_tile_init();
@@ -37,13 +30,13 @@ ALWI void apply_rsqrt_to_sum_value(
     tile_regs_commit();
 
     tile_regs_wait();
-    pack_tile_with_dt(dst0, ocb);
+    pack_tile_with_dt(dst0, cb_out);
     tile_regs_release();
 
-    cb_pop_front(icb0, pop0);
-    cb_pop_front(icb1, pop1);
+    cb_pop_front(cb_ina, 1);
+    cb_pop_front(cb_inb, 1);
 
-    cb_push_back(ocb, onetile);
+    cb_push_back(cb_out, onetile);
 }
 
 ALWI void subtract_bcast_tiles(
@@ -111,7 +104,7 @@ void MAIN {
     constexpr auto cb_affine_or_out = (weight_has_value || bias_has_value) ? cb_tmp_1 : cb_out0;
     constexpr auto cb_scaled_output = (bias_has_value) ? cb_tmp_1 : cb_out0;
     for (uint32_t tile_id = 0; tile_id < num_tiles; ++tile_id) {
-        apply_rsqrt_to_sum_value(cb_in2, cb_eps, cb_den, 0, 0, 1, 1);  // 1/(sqrt(batch_var + eps))
+        apply_rsqrt_to_sum_value(cb_in2, cb_eps, cb_den);  // 1/(sqrt(batch_var + eps))
         mul_tiles_to_cb(
             cb_num, cb_den, cb_affine_or_out, 0, 0, 1, 1);  // (input - batch_mean)/(sqrt(batch_var + eps)) = result
         if (weight_has_value) {
