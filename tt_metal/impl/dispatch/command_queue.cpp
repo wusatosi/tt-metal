@@ -369,6 +369,8 @@ void EnqueueProgramCommand::assemble_preamble_commands(
 
     // Send write offsets
     if (hal.get_programmable_core_type_count() >= 2) {
+        std::cout << "tensix index " << hal.get_programmable_core_type_index(HalProgrammableCoreType::TENSIX)
+                  << " active eth index " << hal.get_programmable_core_type_index(HalProgrammableCoreType::ACTIVE_ETH) << std::endl;
         program_command_sequence.preamble_command_sequence.add_dispatch_set_write_offsets(
             0,
             kernel_config_addrs[hal.get_programmable_core_type_index(HalProgrammableCoreType::TENSIX)].addr,
@@ -1159,12 +1161,12 @@ void EnqueueProgramCommand::assemble_device_commands(
                     for (auto y = core_range.start_coord.y; y <= core_range.end_coord.y; y++) {
                         CoreCoord virtual_coord = device->virtual_core_from_logical_core(
                             CoreCoord({x, y}), kernel_group.get_core_type());
-                        std::cout << "pbysical coord is " << physical_coord.str()
+                        std::cout << "pbysical coord is " << virtual_coord.str()
                                   << " enable is " << std::hex << uint32_t(kernel_group.launch_msg.kernel_config.enables) << std::dec
                                   << " noc index " << this->noc_index
-                                  << tt::tt_metal::hal.noc_coordinate(this->noc_index, device->grid_size().x, physical_coord.x)
-                                  << " " << tt::tt_metal::hal.noc_coordinate(this->noc_index, device->grid_size().y, physical_coord.y)
-                                  << " " << NOC_ADDR_NODE_ID_BITS
+                                  << tt::tt_metal::hal.noc_coordinate(this->noc_index, device->grid_size().x, virtual_coord.x)
+                                  << " " << tt::tt_metal::hal.noc_coordinate(this->noc_index, device->grid_size().y, virtual_coord.y)
+                                  << " " << 6 /*NOC_ADDR_NODE_ID_BITS*/
                                   << std::endl;
                         unicast_go_signal_sub_cmds.emplace_back(CQDispatchWritePackedUnicastSubCmd{
                             .noc_xy_addr =

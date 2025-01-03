@@ -577,11 +577,11 @@ void Device::reset_cores() {
 
         if (this->arch() == ARCH::BLACKHOLE) {
             TensixSoftResetOptions reset_val = TENSIX_ASSERT_SOFT_RESET & static_cast<TensixSoftResetOptions>(~std::underlying_type<TensixSoftResetOptions>::type(TensixSoftResetOptions::BRISC));
-            tt::Cluster::instance().assert_risc_reset_at_core(tt_cxy_pair(this->id(), physical_core), reset_val);
+            tt::Cluster::instance().assert_risc_reset_at_core(tt_cxy_pair(this->id(), virtual_core), reset_val);
         }
 
         // uint32_t reset_val;
-        // tt::Cluster::instance().read_reg(&reset_val, tt_cxy_pair(this->id_, physical_core), 0xFFB121B0);
+        // tt::Cluster::instance().read_reg(&reset_val, tt_cxy_pair(this->id_, virtual_core), 0xFFB121B0);
         // std::cout << "Active eth core " << eth_core.str() << " in reset_cores reset val " << std::hex << reset_val << std::dec << std::endl;
 
         // TensixSoftResetOptions assert_reset_val = TENSIX_ASSERT_SOFT_RESET;
@@ -881,9 +881,6 @@ void Device::clear_l1_state() {
         //         virtual_core,
         //         zero_vec_above_tile_header_buffer,
         //         eth_l1_mem::address_map::TILE_HEADER_BUFFER_BASE);
-    }
-
-        // }
     }
 
     // TODO: clear idle eriscs as well
