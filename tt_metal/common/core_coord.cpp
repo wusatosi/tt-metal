@@ -28,7 +28,7 @@ auto fmt::formatter<CoreCoord>::format(const CoreCoord& core_coord, format_conte
 
 std::string RelativeCoreCoord::str() const { return "(x=" + std::to_string(x) + ",y=" + std::to_string(y) + ")"; }
 
-CoreCoord get_core_coord_from_relative(const RelativeCoreCoord& in, const CoreCoord& grid_size) {
+CoreCoord get_core_coord_from_relative(const RelativeCoreCoord& in, const tt_xy_pair& grid_size) {
     CoreCoord coord;
     coord.x = in.x + ((in.x < 0) ? grid_size.x : 0);
     coord.y = in.y + ((in.y < 0) ? grid_size.y : 0);
@@ -36,6 +36,8 @@ CoreCoord get_core_coord_from_relative(const RelativeCoreCoord& in, const CoreCo
 }
 
 CoreRange::CoreRange(const CoreCoord& point) : start_coord(point), end_coord(point) {}
+
+CoreRange::CoreRange(const tt_cxy_pair& point) : start_coord(point), end_coord(point) {}
 
 CoreRange::CoreRange(const CoreCoord& start_coord, const CoreCoord& end_coord) {
     TT_FATAL(

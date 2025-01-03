@@ -320,7 +320,7 @@ class dispatch_core_manager {
         if (assignment.dispatcher_s.has_value()) {
             return assignment.dispatcher_s.value();
         }
-        CoreCoord dispatcher_s_coord;
+        tt_xy_pair dispatcher_s_coord;
         if (this->get_dispatch_core_type(device_id) == CoreType::WORKER) {
             chip_id_t mmio_device_id = tt::Cluster::instance().get_associated_mmio_device(device_id);
             if (mmio_device_id == device_id) {

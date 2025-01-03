@@ -29,7 +29,7 @@ Kernel::Kernel(
     kernel_src_(kernel_src),
     core_range_set_(core_range_set),
     max_runtime_args_per_core_(0),
-    core_with_max_runtime_args_({0, 0}),
+    core_with_max_runtime_args_(0, 0),
     compile_time_args_(compile_args),
     defines_(defines) {
     this->register_kernel_with_watcher();
@@ -40,7 +40,7 @@ Kernel::Kernel(
         auto end = core_range.end_coord;
         for (auto x = start.x; x <= end.x; x++) {
             for (auto y = start.y; y <= end.y; y++) {
-                CoreCoord logical_core({x, y});
+                CoreCoord logical_core(x, y);
                 this->logical_cores_.insert(logical_core);
                 max_x = std::max(max_x, x);
                 max_y = std::max(max_y, y);

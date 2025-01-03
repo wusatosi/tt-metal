@@ -15,7 +15,7 @@ namespace grayskull {
 
 static constexpr unsigned int DYNAMIC_TLB_BASE_INDEX = tt::umd::grayskull::MEM_LARGE_READ_TLB + 1;
 
-int32_t get_static_tlb_index(CoreCoord target) {
+int32_t get_static_tlb_index(tt_xy_pair target) {
     int flat_index = target.y * tt::umd::grayskull::GRID_SIZE_X + target.x;
     if (flat_index == 0) {
         return -1;
@@ -27,7 +27,7 @@ int32_t get_static_tlb_index(CoreCoord target) {
 
 namespace wormhole {
 
-int32_t get_static_tlb_index(CoreCoord target) {
+int32_t get_static_tlb_index(tt_xy_pair target) {
     bool is_eth_location =
         std::find(std::cbegin(tt::umd::wormhole::ETH_LOCATIONS), std::cend(tt::umd::wormhole::ETH_LOCATIONS), target) !=
         std::cend(tt::umd::wormhole::ETH_LOCATIONS);
@@ -87,7 +87,7 @@ static constexpr uint32_t NUM_DRAM_CHANNELS = 8;
 static constexpr uint32_t ETH_STATIC_TLB_START = 0;
 static constexpr uint32_t TENSIX_STATIC_TLB_START = 38;
 
-int32_t get_static_tlb_index(CoreCoord target) {
+int32_t get_static_tlb_index(tt_xy_pair target) {
     bool is_eth_location =
         std::find(
             std::cbegin(tt::umd::blackhole::ETH_LOCATIONS), std::cend(tt::umd::blackhole::ETH_LOCATIONS), target) !=

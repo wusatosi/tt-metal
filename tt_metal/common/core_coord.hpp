@@ -13,10 +13,9 @@
 
 #include <nlohmann/json.hpp>
 #include "umd/device/tt_xy_pair.h"
+#include "umd/device/tt_core_coordinates.h"
 #include "tt_metal/tt_stl/reflection.hpp"
 #include "tt_metal/tt_stl/span.hpp"
-
-using CoreCoord = tt_xy_pair;
 
 struct CoreRangeSet;
 
@@ -42,12 +41,13 @@ constexpr inline bool operator==(const RelativeCoreCoord& a, const RelativeCoreC
 
 constexpr inline bool operator!=(const RelativeCoreCoord& a, const RelativeCoreCoord& b) { return !(a == b); }
 
-CoreCoord get_core_coord_from_relative(const RelativeCoreCoord& in, const CoreCoord& grid_size);
+CoreCoord get_core_coord_from_relative(const RelativeCoreCoord& in, const tt_xy_pair& grid_size);
 
 struct CoreRange {
     CoreCoord start_coord;
     CoreCoord end_coord;
     CoreRange(const CoreCoord& point);
+    CoreRange(const tt_cxy_pair& point);
 
     CoreRange(const CoreCoord& start_coord, const CoreCoord& end_coord);
 
@@ -209,7 +209,6 @@ struct fmt::formatter<CoreRangeSet> {
 
 // Adding to tt::tt_metal namespace as we transition to moving this out of global namespace eventually.
 namespace tt::tt_metal {
-using ::CoreCoord;
 using ::CoreRange;
 using ::CoreRangeSet;
 }  // namespace tt::tt_metal

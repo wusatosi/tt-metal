@@ -96,9 +96,9 @@ public:
     int num_dram_channels() const;
     uint32_t l1_size_per_core() const;
     uint32_t dram_size_per_channel() const;
-    CoreCoord grid_size() const;
-    CoreCoord logical_grid_size() const;
-    CoreCoord dram_grid_size() const;
+    tt_xy_pair grid_size() const;
+    tt_xy_pair logical_grid_size() const;
+    tt_xy_pair dram_grid_size() const;
     CoreType core_type_from_virtual_core(const CoreCoord& virtual_coord) const;
 
     // Given a Virtual coordinate in noc_index space, get the equivalent coordinate in Virtual NOC0 space
@@ -123,7 +123,7 @@ public:
     std::vector<CoreCoord> get_ethernet_sockets(chip_id_t connected_chip_id) const;
     bool is_inactive_ethernet_core(CoreCoord logical_core) const;
 
-    CoreCoord compute_with_storage_grid_size() const;
+    tt_xy_pair compute_with_storage_grid_size() const;
 
     CoreRangeSet worker_cores(HalProgrammableCoreType core_type, SubDeviceId sub_device_id) const;
     uint32_t num_worker_cores(HalProgrammableCoreType core_type, SubDeviceId sub_device_id) const;

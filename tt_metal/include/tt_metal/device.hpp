@@ -133,7 +133,7 @@ std::uint32_t GetL1SizePerCore(DeviceHandle device);
  * @param device The device to query.
  * @return CoreCoord representing the storage grid size.
  */
-CoreCoord GetComputeWithStorageGridSize(DeviceHandle device);
+tt_xy_pair GetComputeWithStorageGridSize(DeviceHandle device);
 
 /**
  * @brief Retrieves the DRAM grid size for the device.
@@ -141,7 +141,7 @@ CoreCoord GetComputeWithStorageGridSize(DeviceHandle device);
  * @param device The device to query.
  * @return CoreCoord representing the DRAM grid size.
  */
-CoreCoord GetDramGridSize(DeviceHandle device);
+tt_xy_pair GetDramGridSize(DeviceHandle device);
 
 /**
  * @brief Enables the program cache on the device.

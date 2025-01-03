@@ -566,7 +566,7 @@ void detail::Program_::update_kernel_groups(uint32_t programmable_core_type_inde
                         core_to_kernel_group_index_table_[programmable_core_type_index][y * grid_extent_[programmable_core_type_index].x + x] = index;
 
                         if (not hal.get_supports_cbs(programmable_core_type_index)) continue;
-                        auto core = CoreCoord({x, y});
+                        auto core = CoreCoord(x, y);
                         auto local_val = per_core_local_cb_indices_.find(core);
                         if (local_val != per_core_local_cb_indices_.end()) {
                             max_local_cb_end_index = std::max(

@@ -438,7 +438,7 @@ CoreCoord Cluster::get_virtual_coordinate_from_physical_coordinates(chip_id_t ch
 CoreCoord Cluster::get_logical_ethernet_core_from_virtual(chip_id_t chip, CoreCoord core) const {
     const metal_SocDescriptor &soc_desc = tt::Cluster::instance().get_soc_desc(chip);
     auto phys_eth_core = this->virtual_to_umd_coord_mapping_.at(tt_cxy_pair(chip, core.x, core.y));
-    return soc_desc.get_logical_ethernet_core_from_physical(phys_eth_core);
+    return soc_desc.get_logical_ethernet_core_from_physical(CoreCoord(phys_eth_core.x, phys_eth_core.y));
 }
 
 uint32_t Cluster::get_harvested_rows(chip_id_t chip) const {

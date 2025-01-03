@@ -118,7 +118,7 @@ const core_descriptor_t& get_core_descriptor_config(
     }
     TT_ASSERT(dispatch_cores.size() || std::getenv("TT_METAL_SIMULATOR_EN"), "Dispatch cores size must be positive");
 
-    CoreCoord grid_size = tt::Cluster::instance().get_soc_desc(device_id).worker_grid_size;
+    tt_xy_pair grid_size = tt::Cluster::instance().get_soc_desc(device_id).worker_grid_size;
 
     std::vector<CoreCoord> logical_compute_cores;
     logical_compute_cores.reserve(compute_cores.size());

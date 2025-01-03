@@ -57,7 +57,7 @@ std::unordered_map<uint32_t, uint64_t> smallestHostime;
 
 std::mutex device_mutex;
 
-constexpr CoreCoord SYNC_CORE = {0, 0};
+constexpr CoreCoord SYNC_CORE = CoreCoord(0, 0);
 
 void setControlBuffer(uint32_t device_id, std::vector<uint32_t>& control_buffer) {
 #if defined(TRACY_ENABLE)

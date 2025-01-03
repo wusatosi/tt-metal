@@ -102,7 +102,7 @@ void Device::get_associated_dispatch_virtual_cores(
                     CoreCoord virtual_core_dispatch_hd;
                     if (dispatch_core_manager::instance().is_dispatcher_core_allocated(device_id, curr_channel, cq_id)) {
                         tt_cxy_pair dispatch_location = dispatch_core_manager::instance().dispatcher_core(device_id, curr_channel, cq_id);
-                        virtual_core_dispatch_hd = this->virtual_core_from_logical_core(dispatch_location, dispatch_core_type);
+                        virtual_core_dispatch_hd = this->virtual_core_from_logical_core(CoreCoord(dispatch_location.x, dispatch_location.y), dispatch_core_type);
                         my_dispatch_cores[this->id_].insert(virtual_core_dispatch_hd);
                         dispatch_hd_allocated = true;
                         log_debug(tt::LogMetal, "MMIO Device Dispatch core: Logical: {} - Physical: {}", dispatch_location.str(), virtual_core_dispatch_hd.str());
@@ -110,7 +110,7 @@ void Device::get_associated_dispatch_virtual_cores(
                     // Include dispatch_s in the dispatch core location set, if its not on the same core as dispatch_hd
                     if (dispatch_core_manager::instance().is_dispatcher_s_core_allocated(device_id, curr_channel, cq_id)) {
                         tt_cxy_pair dispatch_s_location = dispatch_core_manager::instance().dispatcher_s_core(device_id, curr_channel, cq_id);
-                        CoreCoord virtual_core_dispatch_s = this->virtual_core_from_logical_core(dispatch_s_location, dispatch_core_type);
+                        CoreCoord virtual_core_dispatch_s = this->virtual_core_from_logical_core(CoreCoord(dispatch_s_location.x, dispatch_s_location.y), dispatch_core_type);
                         if ((!dispatch_hd_allocated) or (virtual_core_dispatch_s != virtual_core_dispatch_hd)) {
                             my_dispatch_cores[dispatch_s_location.chip].insert(virtual_core_dispatch_s);
                         }
@@ -636,7 +636,7 @@ void Device::reset_cores() {
     }
 
     // Reset Tensix cores
-    CoreCoord grid_size = this->logical_grid_size();
+    tt_xy_pair grid_size = this->logical_grid_size();
     for (uint32_t y = 0; y < grid_size.y; y++) {
         for (uint32_t x = 0; x < grid_size.x; x++) {
             CoreCoord logical_core(x, y);
@@ -741,7 +741,7 @@ void Device::initialize_and_launch_firmware() {
 
     // Download to worker cores
     log_debug("Initializing firmware");
-    CoreCoord grid_size = this->logical_grid_size();
+    tt_xy_pair grid_size = this->logical_grid_size();
     std::unordered_set<CoreCoord> not_done_cores;
 
     for (uint32_t y = 0; y < grid_size.y; y++) {
@@ -804,7 +804,7 @@ void Device::initialize_and_launch_firmware() {
 void Device::clear_l1_state() {
     log_debug(tt::LogMetal, "Clearing L1 for device {}", this->id_);
     // Clear all clearable Tensix and Eth L1
-    CoreCoord logical_grid_size = this->logical_grid_size();
+    tt_xy_pair logical_grid_size = this->logical_grid_size();
     TT_ASSERT(this->l1_size_per_core() % sizeof(uint32_t) == 0);
     std::vector<uint32_t> zero_vec(this->l1_size_per_core() / sizeof(uint32_t), 0);
     constexpr uint32_t start_address = 0;
@@ -1067,7 +1067,7 @@ bool Device::close() {
     watcher_detach(this);
 
     // Assert worker cores
-    CoreCoord grid_size = this->logical_grid_size();
+    tt_xy_pair grid_size = this->logical_grid_size();
     for (uint32_t y = 0; y < grid_size.y; y++) {
         for (uint32_t x = 0; x < grid_size.x; x++) {
             CoreCoord logical_core(x, y);
@@ -1132,19 +1132,19 @@ uint32_t Device::dram_size_per_channel() const {
     return tt::Cluster::instance().get_soc_desc(id_).dram_bank_size;
 }
 
-CoreCoord Device::grid_size() const {
+tt_xy_pair Device::grid_size() const {
     return tt::Cluster::instance().get_soc_desc(id_).grid_size;
 }
 
-CoreCoord Device::logical_grid_size() const {
+tt_xy_pair Device::logical_grid_size() const {
     return tt::Cluster::instance().get_soc_desc(id_).worker_grid_size;
 }
 
-CoreCoord Device::dram_grid_size() const {
+tt_xy_pair Device::dram_grid_size() const {
     return tt::Cluster::instance().get_soc_desc(id_).get_dram_grid_size();
 }
 
-CoreCoord Device::compute_with_storage_grid_size() const {
+tt_xy_pair Device::compute_with_storage_grid_size() const {
     const auto &dispatch_core_config = dispatch_core_manager::instance().get_dispatch_core_config(id_);
     return tt::get_compute_grid_size(id_, num_hw_cqs_, dispatch_core_config);
 }
@@ -1956,9 +1956,9 @@ int v1::GetNumDramChannels(DeviceHandle device) { return device->num_dram_channe
 
 std::uint32_t v1::GetL1SizePerCore(DeviceHandle device) { return device->l1_size_per_core(); }
 
-CoreCoord v1::GetComputeWithStorageGridSize(DeviceHandle device) { return device->compute_with_storage_grid_size(); }
+tt_xy_pair v1::GetComputeWithStorageGridSize(DeviceHandle device) { return device->compute_with_storage_grid_size(); }
 
-CoreCoord v1::GetDramGridSize(DeviceHandle device) { return device->dram_grid_size(); }
+tt_xy_pair v1::GetDramGridSize(DeviceHandle device) { return device->dram_grid_size(); }
 
 void v1::EnableProgramCache(DeviceHandle device) { device->enable_program_cache(); }
 

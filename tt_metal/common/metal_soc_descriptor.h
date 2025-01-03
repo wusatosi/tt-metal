@@ -24,10 +24,10 @@ public:
     // in tt_SocDescriptor worker_log_to_routing_x and worker_log_to_routing_y map logical coordinates to NOC virtual
     // coordinates UMD accepts NOC virtual coordinates but Metal needs NOC physical coordinates to ensure a harvested
     // core is not targetted
-    std::unordered_map<tt_xy_pair, CoreDescriptor> physical_cores;
-    std::vector<tt_xy_pair> physical_workers;
-    std::vector<tt_xy_pair> physical_harvested_workers;
-    std::vector<tt_xy_pair> physical_ethernet_cores;
+    std::unordered_map<CoreCoord, CoreDescriptor> physical_cores;
+    std::vector<CoreCoord> physical_workers;
+    std::vector<CoreCoord> physical_harvested_workers;
+    std::vector<CoreCoord> physical_ethernet_cores;
 
     std::unordered_map<int, int> worker_log_to_physical_routing_x;
     std::unordered_map<int, int> worker_log_to_physical_routing_y;

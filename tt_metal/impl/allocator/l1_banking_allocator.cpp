@@ -83,10 +83,9 @@ void init_compute_and_storage_l1_bank_manager(Allocator& allocator, const Alloca
             "setup",
             logical_core.y,
             logical_core.x);
-        CoreCoord noc_core({
+        CoreCoord noc_core(
             static_cast<std::size_t>(alloc_config.worker_log_to_virtual_routing_x.at(logical_core.x)),
-            static_cast<std::size_t>(alloc_config.worker_log_to_virtual_routing_y.at(logical_core.y)),
-        });
+            static_cast<std::size_t>(alloc_config.worker_log_to_virtual_routing_y.at(logical_core.y)));
         TT_ASSERT(
             alloc_config.core_type_from_noc_coord_table.find(noc_core) !=
                 alloc_config.core_type_from_noc_coord_table.end(),

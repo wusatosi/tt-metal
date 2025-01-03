@@ -627,7 +627,7 @@ void EnqueueRecordEventCommand::process() {
             dispatch_location = dispatch_core_manager::instance().dispatcher_d_core(this->device->id(), channel, cq_id);
         }
 
-        CoreCoord dispatch_virtual_core = this->device->virtual_core_from_logical_core(dispatch_location, core_type);
+        CoreCoord dispatch_virtual_core = this->device->virtual_core_from_logical_core(CoreCoord(dispatch_location.x, dispatch_location.y), core_type);
         unicast_sub_cmds[cq_id] = CQDispatchWritePackedUnicastSubCmd{
             .noc_xy_addr = this->device->get_noc_unicast_encoding(this->noc_index, dispatch_virtual_core)};
         event_payloads[cq_id] = {event_payload.data(), event_payload.size() * sizeof(uint32_t)};
@@ -858,13 +858,16 @@ HWCommandQueue::HWCommandQueue(Device* device, uint32_t id, NOC noc_index) :
     CoreType core_type = dispatch_core_manager::instance().get_dispatch_core_type(device->id());
     if (this->device->num_hw_cqs() == 1 or core_type == CoreType::WORKER) {
         // dispatch_s exists with this configuration. Workers write to dispatch_s
-        enqueue_program_dispatch_core = dispatch_core_manager::instance().dispatcher_s_core(device->id(), channel, id);
+        tt_cxy_pair dispatch_core_enq = dispatch_core_manager::instance().dispatcher_s_core(device->id(), channel, id);
+        enqueue_program_dispatch_core = CoreCoord(dispatch_core_enq.x, dispatch_core_enq.y);
     }
     else {
         if (device->is_mmio_capable()) {
-            enqueue_program_dispatch_core = dispatch_core_manager::instance().dispatcher_core(device->id(), channel, id);
+            tt_cxy_pair dispatch_core_enq = dispatch_core_manager::instance().dispatcher_s_core(device->id(), channel, id);
+            enqueue_program_dispatch_core = CoreCoord(dispatch_core_enq.x, dispatch_core_enq.y);
         } else {
-            enqueue_program_dispatch_core = dispatch_core_manager::instance().dispatcher_d_core(device->id(), channel, id);
+            tt_cxy_pair dispatch_core_enq = dispatch_core_manager::instance().dispatcher_s_core(device->id(), channel, id);
+            enqueue_program_dispatch_core = CoreCoord(dispatch_core_enq.x, dispatch_core_enq.y);
         }
     }
     this->virtual_enqueue_program_dispatch_core =

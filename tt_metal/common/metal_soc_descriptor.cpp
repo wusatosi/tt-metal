@@ -59,14 +59,13 @@ bool metal_SocDescriptor::is_harvested_core(const CoreCoord& core) const {
 }
 
 const std::vector<CoreCoord>& metal_SocDescriptor::get_pcie_cores() const { return this->pcie_cores; }
-
 const std::vector<CoreCoord> metal_SocDescriptor::get_dram_cores() const {
     std::vector<CoreCoord> cores;
 
     // This is inefficient, but is currently not used in a perf path
     for (const auto& channel_it : this->dram_cores) {
         for (const auto& core_it : channel_it) {
-            cores.push_back(core_it);
+            cores.push_back(CoreCoord(core_it.x, core_it.y));
         }
     }
 
@@ -119,10 +118,9 @@ CoreCoord metal_SocDescriptor::get_physical_tensix_core_from_logical(const CoreC
         "Bounds-Error -- Logical_core={} is outside of logical_grid_size={}",
         logical_coord.str(),
         this->worker_grid_size.str());
-    CoreCoord physical_tensix_core({
+    CoreCoord physical_tensix_core(
         static_cast<size_t>(this->worker_log_to_physical_routing_x.at(logical_coord.x)),
-        static_cast<size_t>(this->worker_log_to_physical_routing_y.at(logical_coord.y)),
-    });
+        static_cast<size_t>(this->worker_log_to_physical_routing_y.at(logical_coord.y)));
     return physical_tensix_core;
 }
 
@@ -148,7 +146,8 @@ void metal_SocDescriptor::load_dram_metadata_from_device_descriptor() {
     this->preferred_eth_dram_core.clear();
     for (const auto& core_node : device_descriptor_yaml["dram_preferred_eth_endpoint"]) {
         if (core_node.IsScalar()) {
-            this->preferred_eth_dram_core.push_back(format_node(core_node.as<std::string>()));
+            const tt_xy_pair core = format_node(core_node.as<std::string>());
+            this->preferred_eth_dram_core.push_back(CoreCoord(core.x, core.y));
         } else {
             TT_THROW("Only NOC coords supported for dram_preferred_eth_endpoint cores");
         }
@@ -164,7 +163,8 @@ void metal_SocDescriptor::load_dram_metadata_from_device_descriptor() {
     this->preferred_worker_dram_core.clear();
     for (const auto& core_node : device_descriptor_yaml["dram_preferred_worker_endpoint"]) {
         if (core_node.IsScalar()) {
-            this->preferred_worker_dram_core.push_back(format_node(core_node.as<std::string>()));
+            const tt_xy_pair core = format_node(core_node.as<std::string>());
+            this->preferred_worker_dram_core.push_back(CoreCoord(core.x, core.y));
         } else {
             TT_THROW("Only NOC coords supported for dram_preferred_worker_endpoint");
         }
@@ -205,7 +205,7 @@ void metal_SocDescriptor::load_dram_metadata_from_device_descriptor() {
 
 // UMD expects virtual NOC coordinates for worker cores
 tt_cxy_pair metal_SocDescriptor::convert_to_umd_coordinates(const tt_cxy_pair& physical_cxy) const {
-    CoreCoord physical_coord({physical_cxy.x, physical_cxy.y});
+    CoreCoord physical_coord(physical_cxy.x, physical_cxy.y);
     const CoreDescriptor& core_desc = this->physical_cores.at(physical_coord);
     CoreCoord virtual_coord = physical_coord;
     if (core_desc.type == CoreType::WORKER or core_desc.type == CoreType::HARVESTED) {
@@ -223,7 +223,11 @@ void metal_SocDescriptor::generate_physical_descriptors_from_virtual(uint32_t ha
         this->worker_log_to_physical_routing_y = this->worker_log_to_routing_y;
         this->physical_cores = this->cores;
         this->physical_workers = this->workers;
-        this->physical_harvested_workers = this->harvested_workers;
+
+        for (auto& hv_worker : this->harvested_workers) {
+            this->physical_harvested_workers.push_back(CoreCoord(hv_worker.x, hv_worker.y));
+        }
+        // this->physical_harvested_workers = this->harvested_workers;
 
         for (const auto& [virtual_noc_core, core_desc] : this->cores) {
             if (core_desc.type == CoreType::WORKER or core_desc.type == CoreType::HARVESTED) {
@@ -294,7 +298,7 @@ void metal_SocDescriptor::generate_physical_descriptors_from_virtual(uint32_t ha
     }
 
     for (const auto& [virtual_noc_core, core_desc] : this->cores) {
-        CoreCoord physical_noc_core = virtual_noc_core;
+        CoreCoord physical_noc_core = CoreCoord(virtual_noc_core.x, virtual_noc_core.y);
         CoreDescriptor phys_core_desc = core_desc;
         if (core_desc.type == CoreType::WORKER or core_desc.type == CoreType::HARVESTED) {
             physical_noc_core.y = virtual_routing_to_physical_routing_y.at(virtual_noc_core.y);
