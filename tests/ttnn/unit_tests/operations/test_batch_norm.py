@@ -9,6 +9,7 @@ from tests.ttnn.unit_tests.operations.eltwise.backward.utility_funcs import (
     data_gen_with_range,
     data_gen_with_range_batch_norm,
     compare_pcc,
+    compare_all_close,
 )
 
 
@@ -78,4 +79,5 @@ def test_batch_norm(input_shapes, training, weight, bias, eps, device):
     )
     # print("Torch result : ",torch_result)
     comp_pass = compare_pcc([tt_output_tensor_on_device], [torch_result])
-    assert comp_pass
+    comp_close = compare_all_close([tt_output_tensor_on_device], [torch_result])
+    assert comp_pass & comp_close

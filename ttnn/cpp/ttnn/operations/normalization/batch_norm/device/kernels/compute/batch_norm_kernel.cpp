@@ -21,14 +21,14 @@ ALWI void apply_rsqrt_to_sum_value(
     constexpr int dst0 = 0;
 
     cb_reserve_back(ocb, onetile);
-    cb_wait_front(icb0, itile0 + 1);
-    cb_wait_front(icb1, itile1 + 1);
+    cb_wait_front(icb0, 1);
+    cb_wait_front(icb1, 1);
 
     tile_regs_acquire();
 
     // add values and store them in dst
     add_tiles_init_with_dt(icb0, icb1);
-    add_tiles(icb0, icb1, itile0, itile1, dst0);
+    add_tiles(icb0, icb1, 0, itile1, dst0);
 
     // apply rsqrt on dst
     rsqrt_tile_init();
@@ -46,7 +46,8 @@ ALWI void apply_rsqrt_to_sum_value(
     cb_push_back(ocb, onetile);
 }
 
-ALWI void process_tile(uint32_t cb_bcast, uint32_t cb_other, uint32_t cb_out, uint32_t freq, uint32_t tile_start) {
+ALWI void subtract_bcast_tiles(
+    uint32_t cb_bcast, uint32_t cb_other, uint32_t cb_out, uint32_t freq, uint32_t tile_start) {
     constexpr uint32_t onetile = 1;
 
     cb_wait_front(cb_bcast, onetile);
@@ -101,10 +102,10 @@ void MAIN {
     uint32_t complete_iterations = (num_tiles + tile_start) / tile_freq;
     uint32_t remaining_iterations = (num_tiles + tile_start) % tile_freq;
     for (uint32_t i = 0; i < complete_iterations; ++i, tile_start = 0) {
-        process_tile(cb_bcast, cb_other, cb_num, tile_freq, tile_start);
+        subtract_bcast_tiles(cb_bcast, cb_other, cb_num, tile_freq, tile_start);
     }
     if (remaining_iterations > 0) {
-        process_tile(cb_bcast, cb_other, cb_num, remaining_iterations, tile_start);
+        subtract_bcast_tiles(cb_bcast, cb_other, cb_num, remaining_iterations, tile_start);
     }
 
     constexpr auto cb_affine_or_out = (weight_has_value || bias_has_value) ? cb_tmp_1 : cb_out0;
