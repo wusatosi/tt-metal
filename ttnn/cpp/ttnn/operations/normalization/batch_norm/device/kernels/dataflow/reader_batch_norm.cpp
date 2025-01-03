@@ -36,13 +36,12 @@ void kernel_main() {
     uint32_t start_t = start_remaining % HtWt;
 
     constexpr auto cb_id_eps = tt::CBIndex::c_4;
-    // fill_cb_with_value(cb_id_eps, eps);
 
     cb_reserve_back(cb_id_eps, onetile);
     fill_with_val_bfloat16(cb_id_eps, eps);
     cb_push_back(cb_id_eps, onetile);
 
-    // this is the INPUT tile offset
+    // Input tile offset
     uint32_t tile_offset = start_n * n_stride + start_c * c_stride + start_t;
 
     uint32_t next_channel_shift = c_stride - HtWt;

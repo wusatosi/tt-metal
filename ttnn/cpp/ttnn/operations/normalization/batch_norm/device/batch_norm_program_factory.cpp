@@ -76,18 +76,18 @@ void set_or_update_runtime_arguments(
         uint32_t cHtWt = cHt * cWt;
         class bfloat16 bfloat_scalar(eps);
         uint32_t packed_scalar = pack_two_bfloat16_into_uint32({bfloat_scalar, bfloat_scalar});
-        std::array reader_runtime_args = {// *reinterpret_cast<const uint32_t*>(&eps),  // eps value
-                                          packed_scalar,
-                                          a.buffer()->address(),
-                                          start_tile_id,
-                                          num_tiles_per_core,
-                                          cHtWt,
-                                          aHt * aWt * aC * (aN > 1),
-                                          aHt * aWt * (aC > 1),
-                                          cN,
-                                          cC,
-                                          cHt,
-                                          cWt};
+        std::array reader_runtime_args = {
+            packed_scalar,
+            a.buffer()->address(),
+            start_tile_id,
+            num_tiles_per_core,
+            cHtWt,
+            aHt * aWt * aC * (aN > 1),
+            aHt * aWt * (aC > 1),
+            cN,
+            cC,
+            cHt,
+            cWt};
         handle_args(program, reader_kernel_id, core, reader_runtime_args);
 
         const auto weight_addr = weight_has_value ? e.value().buffer()->address() : 0;
@@ -176,7 +176,7 @@ BatchNormOperation::BatchNormFactory::cached_program_t BatchNormOperation::Batch
     Buffer* e_buffer = nullptr;
     Buffer* f_buffer = nullptr;
 
-    // How many tiles to store per input CB (double buffer)
+    // Number of tiles to store per input CB (double buffer)
     constexpr uint32_t num_tiles_per_cb = 2;
     uint32_t b_num_tiles_per_cb = num_tiles_per_cb;
 
@@ -221,13 +221,8 @@ BatchNormOperation::BatchNormFactory::cached_program_t BatchNormOperation::Batch
         a_single_tile_size,
         num_tiles_per_cb,
         a_data_format);  // to store input - batch_mean
-    auto [temp_1_cb, temp_1_cb_handle] = create_cb(
-        tt::CBIndex::c_17,
-        program,
-        all_device_cores,
-        a_single_tile_size,
-        num_tiles_per_cb,
-        a_data_format);  // to store (input - batch_mean)/(sqrt(batch_var + eps))
+    auto [temp_1_cb, temp_1_cb_handle] =
+        create_cb(tt::CBIndex::c_17, program, all_device_cores, a_single_tile_size, num_tiles_per_cb, a_data_format);
 
     auto a_is_dram = static_cast<uint32_t>(a_buffer->buffer_type() == tt_metal::BufferType::DRAM);
     auto b_is_dram = static_cast<uint32_t>(b_buffer->buffer_type() == tt_metal::BufferType::DRAM);

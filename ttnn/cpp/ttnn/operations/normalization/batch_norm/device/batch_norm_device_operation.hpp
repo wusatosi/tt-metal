@@ -28,8 +28,6 @@ struct BatchNormOperation {
         std::optional<Tensor> output;
     };
 
-    // using shape_return_value_t = std::vector<std::optional<SimpleShape>>;
-    // using tensor_return_value_t = std::vector<std::optional<Tensor>>;
     using spec_return_value_t = TensorSpec;
     using tensor_return_value_t = Tensor;
 

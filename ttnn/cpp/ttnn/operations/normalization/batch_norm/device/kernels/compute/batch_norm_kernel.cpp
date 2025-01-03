@@ -25,12 +25,15 @@ ALWI void apply_rsqrt_to_sum_value(
     cb_wait_front(icb1, itile1 + 1);
 
     tile_regs_acquire();
+
     // add values and store them in dst
     add_tiles_init_with_dt(icb0, icb1);
     add_tiles(icb0, icb1, itile0, itile1, dst0);
+
     // apply rsqrt on dst
     rsqrt_tile_init();
     rsqrt_tile(dst0);
+
     tile_regs_commit();
 
     tile_regs_wait();
@@ -93,7 +96,7 @@ void MAIN {
 
     binary_op_init_common(cb_bcast, cb_other, cb_out0);
 
-    // input - batch_mean --> need to multiply with -1 her for right result
+    // input - batch_mean
     sub_tiles_init();
     uint32_t complete_iterations = (num_tiles + tile_start) / tile_freq;
     uint32_t remaining_iterations = (num_tiles + tile_start) % tile_freq;

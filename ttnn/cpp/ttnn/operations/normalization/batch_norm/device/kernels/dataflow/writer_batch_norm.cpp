@@ -76,7 +76,7 @@ void kernel_main() {
     uint32_t start_c = start_remaining / HtWt;
     uint32_t start_t = start_remaining % HtWt;
 
-    // this is the INPUT tile offset
+    // Input tile offset
     uint32_t tile_offset = start_n * n_stride + start_c * c_stride;
     uint32_t next_batch_shift = n_stride - c_stride * C;
 
@@ -118,7 +118,7 @@ void kernel_main() {
             }
 
             for (uint32_t t = start_t; t < HtWt && num_tiles_written < num_tiles; ++t, ++num_tiles_written) {
-                // write a tile to dst, since the dst shape is full, the tile offset simply grows linearly
+                // write a tile to dst
                 cb_wait_front(cb_id_dst, onetile);
                 uint32_t l1_read_addr = get_read_ptr(cb_id_dst);
                 noc_async_write_tile(start_tile_id + num_tiles_written, dst, l1_read_addr);
