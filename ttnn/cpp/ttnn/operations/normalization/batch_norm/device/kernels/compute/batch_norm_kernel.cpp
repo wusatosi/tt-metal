@@ -9,36 +9,6 @@
 
 namespace NAMESPACE {
 
-ALWI void apply_rsqrt_to_sum_value(uint32_t cb_ina, uint32_t cb_inb, uint32_t cb_out) {
-    constexpr uint32_t onetile = 1;
-    constexpr int dst0 = 0;
-
-    cb_reserve_back(cb_out, onetile);
-    cb_wait_front(cb_ina, 1);
-    cb_wait_front(cb_inb, 1);
-
-    tile_regs_acquire();
-
-    // add values and store them in dst
-    add_tiles_init_with_dt(cb_ina, cb_inb);
-    add_tiles(cb_ina, cb_inb, 0, 0, dst0);
-
-    // apply rsqrt on dst
-    rsqrt_tile_init();
-    rsqrt_tile(dst0);
-
-    tile_regs_commit();
-
-    tile_regs_wait();
-    pack_tile_with_dt(dst0, cb_out);
-    tile_regs_release();
-
-    cb_pop_front(cb_ina, 1);
-    cb_pop_front(cb_inb, 1);
-
-    cb_push_back(cb_out, onetile);
-}
-
 ALWI void subtract_bcast_tiles(
     uint32_t cb_bcast, uint32_t cb_other, uint32_t cb_out, uint32_t freq, uint32_t tile_start) {
     constexpr uint32_t onetile = 1;
@@ -101,17 +71,85 @@ void MAIN {
         subtract_bcast_tiles(cb_bcast, cb_other, cb_num, remaining_iterations, tile_start);
     }
 
+    constexpr uint32_t onetile = 1;
+    constexpr int dst0 = 0;
+
     constexpr auto cb_affine_or_out = (weight_has_value || bias_has_value) ? cb_tmp_1 : cb_out0;
     constexpr auto cb_scaled_output = (bias_has_value) ? cb_tmp_1 : cb_out0;
     for (uint32_t tile_id = 0; tile_id < num_tiles; ++tile_id) {
-        apply_rsqrt_to_sum_value(cb_in2, cb_eps, cb_den);  // 1/(sqrt(batch_var + eps))
-        mul_tiles_to_cb(
-            cb_num, cb_den, cb_affine_or_out, 0, 0, 1, 1);  // (input - batch_mean)/(sqrt(batch_var + eps)) = result
-        if (weight_has_value) {
-            mul_tiles_to_cb(cb_affine_or_out, cb_weight, cb_scaled_output, 0, 0, 1, 1);  // result = result * weight
+        // 1/(sqrt(batch_var + eps))
+        cb_reserve_back(cb_den, onetile);
+        cb_wait_front(cb_in2, 1);
+        cb_wait_front(cb_eps, 1);
+
+        tile_regs_acquire();
+        add_tiles_init_with_dt(cb_in2, cb_eps);
+        add_tiles(cb_in2, cb_eps, 0, 0, dst0);
+        rsqrt_tile_init();
+        rsqrt_tile(dst0);
+        tile_regs_commit();
+
+        tile_regs_wait();
+        pack_tile_with_dt(dst0, cb_den);
+        tile_regs_release();
+
+        cb_pop_front(cb_in2, 1);
+        cb_pop_front(cb_eps, 1);
+        cb_push_back(cb_den, onetile);
+
+        // (input - batch_mean)/(sqrt(batch_var + eps)) = result
+        cb_reserve_back(cb_affine_or_out, onetile);
+        cb_wait_front(cb_num, 1);
+        cb_wait_front(cb_den, 1);
+
+        tile_regs_acquire();
+        mul_tiles_init_with_dt(cb_num, cb_den);
+        mul_tiles(cb_num, cb_den, 0, 0, dst0);
+        tile_regs_commit();
+
+        tile_regs_wait();
+        pack_tile_with_dt(dst0, cb_affine_or_out);
+        tile_regs_release();
+
+        cb_pop_front(cb_num, 1);
+        cb_pop_front(cb_den, 1);
+        cb_push_back(cb_affine_or_out, onetile);
+
+        if (weight_has_value) {  // result = result * weight
+            cb_reserve_back(cb_scaled_output, onetile);
+            cb_wait_front(cb_affine_or_out, 1);
+            cb_wait_front(cb_weight, 1);
+
+            tile_regs_acquire();
+            mul_tiles_init_with_dt(cb_affine_or_out, cb_weight);
+            mul_tiles(cb_affine_or_out, cb_weight, 0, 0, dst0);
+            tile_regs_commit();
+
+            tile_regs_wait();
+            pack_tile_with_dt(dst0, cb_scaled_output);
+            tile_regs_release();
+
+            cb_pop_front(cb_affine_or_out, 1);
+            cb_pop_front(cb_weight, 1);
+            cb_push_back(cb_scaled_output, onetile);
         }
-        if (bias_has_value) {
-            add_tiles_to_cb(cb_tmp_1, cb_bias, cb_out0, 0, 0, 1, 1);  // result = result + bias
+        if (bias_has_value) {  // result = result + bias
+            cb_reserve_back(cb_out0, 1);
+            cb_wait_front(cb_tmp_1, 1);
+            cb_wait_front(cb_bias, 1);
+
+            tile_regs_acquire();
+            add_tiles_init_with_dt(cb_tmp_1, cb_bias);
+            add_tiles(cb_tmp_1, cb_bias, 0, 0, dst0);
+            tile_regs_commit();
+
+            tile_regs_wait();
+            pack_tile_with_dt(dst0, cb_out0);
+            tile_regs_release();
+
+            cb_pop_front(cb_tmp_1, 1);
+            cb_pop_front(cb_bias, 1);
+            cb_push_back(cb_out0, 1);
         }
     }
 }
