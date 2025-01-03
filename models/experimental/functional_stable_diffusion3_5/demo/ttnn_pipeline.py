@@ -10,6 +10,7 @@ from transformers import (
     T5EncoderModel,
     T5TokenizerFast,
 )
+import torch.nn.functional as F
 
 from loguru import logger
 import inspect
@@ -669,21 +670,42 @@ class ttnnStableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSi
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
+                ttnn_latent_model_input = ttnn.from_torch(
+                    latent_model_input,
+                    layout=ttnn.TILE_LAYOUT,
+                    dtype=ttnn.bfloat16,
+                    device=device_ttnn,
+                    memory_config=ttnn.L1_MEMORY_CONFIG,
+                )
+                ttnn_timestep = ttnn.from_torch(
+                    timestep,
+                    layout=ttnn.TILE_LAYOUT,
+                    dtype=ttnn.bfloat16,
+                    device=device_ttnn,
+                    memory_config=ttnn.L1_MEMORY_CONFIG,
+                )
+                prompt_embeds_pad = F.pad(prompt_embeds, (0, 0, 0, 6))
+                ttnn_prompt_embeds = ttnn.from_torch(
+                    prompt_embeds_pad.unsqueeze(1),
+                    layout=ttnn.TILE_LAYOUT,
+                    dtype=ttnn.bfloat16,
+                    device=device_ttnn,
+                    memory_config=ttnn.L1_MEMORY_CONFIG,
+                )
+                ttnn_pooled_prompt_embeds = ttnn.from_torch(
+                    pooled_prompt_embeds.unsqueeze(1).unsqueeze(1),
+                    layout=ttnn.TILE_LAYOUT,
+                    dtype=ttnn.bfloat16,
+                    device=device_ttnn,
+                    memory_config=ttnn.L1_MEMORY_CONFIG,
+                )
                 print("Entering transformer")
                 noise_pred = ttnn.to_torch(
                     self.transformer(
-                        hidden_states=ttnn.from_torch(
-                            latent_model_input, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device_ttnn
-                        ),
-                        timestep=ttnn.from_torch(
-                            timestep, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device_ttnn
-                        ),
-                        encoder_hidden_states=ttnn.from_torch(
-                            prompt_embeds, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device_ttnn
-                        ),
-                        pooled_projections=ttnn.from_torch(
-                            pooled_prompt_embeds, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device_ttnn
-                        ),
+                        hidden_states=ttnn_latent_model_input,
+                        timestep=ttnn_timestep,
+                        encoder_hidden_states=ttnn_prompt_embeds,
+                        pooled_projections=ttnn_pooled_prompt_embeds,
                         joint_attention_kwargs=self.joint_attention_kwargs,
                         return_dict=False,
                         parameters=parameters_transformer,
