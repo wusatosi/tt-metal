@@ -682,6 +682,35 @@ TEST_F(CommandQueueSingleCardBufferFixture, TestWriteSubBufferInvalidRegion) {
     }
 }
 
+TEST_F(CommandQueueSingleCardBufferFixture, TestReadWriteShardedSubBuffer) {
+    const uint32_t buffer_region_size = 256;
+    for (Device* device : devices_) {
+        CoreCoord start_coord = {0, 0};
+        CoreCoord end_coord = {
+            device->compute_with_storage_grid_size().x - 1, device->compute_with_storage_grid_size().y - 1};
+        CoreRange cores(start_coord, end_coord);
+        ShardSpecBuffer shard_spec = ShardSpecBuffer(
+            CoreRangeSet(cores),
+            {tt::constants::TILE_HEIGHT, tt::constants::TILE_WIDTH},
+            ShardOrientation::ROW_MAJOR,
+            false,
+            {tt::constants::TILE_HEIGHT, tt::constants::TILE_WIDTH},
+            {(uint32_t)cores.size(), 1});
+        auto buffer = CreateBuffer(ShardedBufferConfig{
+            .device = device,
+            .size = 1024,
+            .page_size = 32,
+            .buffer_layout = TensorMemoryLayout::BLOCK_SHARDED,
+            .shard_parameters = shard_spec});
+        auto src = local_test_functions::generate_arange_vector(buffer_region_size);
+        const BufferRegion region(128, buffer_region_size);
+        EnqueueWriteSubBuffer(device->command_queue(), *buffer, src, region, false);
+        vector<uint32_t> result;
+        EnqueueReadSubBuffer(device->command_queue(), *buffer, result, region, true);
+        EXPECT_EQ(src, result);
+    }
+}
+
 // Test that command queue wraps when buffer read needs to be split into multiple enqueue_read_buffer commands and
 // available space in completion region is less than a page
 TEST_F(CommandQueueSingleCardBufferFixture, TestWrapCompletionQOnInsufficientSpace2) {
