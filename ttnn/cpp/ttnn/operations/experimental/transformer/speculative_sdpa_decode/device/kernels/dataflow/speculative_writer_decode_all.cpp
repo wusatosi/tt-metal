@@ -36,11 +36,21 @@ void kernel_main() {
     constexpr uint32_t ELEMENT_SIZE = get_compile_time_arg_val(19);
     constexpr bool is_causal = get_compile_time_arg_val(20) == 1;
 
+    // speculative flash decode related args
     constexpr uint32_t Spec_chunk_t =
         get_compile_time_arg_val(21);  // speculative chunk size (in tiles), for the first and last chunk
     constexpr uint32_t speculative_chunk_size = Spec_chunk_t * tt::constants::TILE_HEIGHT;
     constexpr bool use_priority_tensor = get_compile_time_arg_val(22) == 1;
     constexpr uint32_t lambda_val = get_compile_time_arg_val(23);
+    // ccl related args
+    constexpr bool ccl_enabled = get_compile_time_arg_val(24) == 1;
+    constexpr uint32_t ccl_core_x = get_compile_time_arg_val(25);
+    constexpr uint32_t ccl_core_y = get_compile_time_arg_val(26);
+    uint32_t local_spec_result_input_ready_semaphore_addr = get_semaphore(get_compile_time_arg_val(27));
+    uint32_t ccl_result_ready_semaphore_addr = get_semaphore(get_compile_time_arg_val(28));
+
+    const uint64_t ccl_semaphore_noc_addr =
+        get_noc_addr(ccl_core_x, ccl_core_y, local_spec_result_input_ready_semaphore_addr);
 
     uint32_t arg_idx = 0;
     const uint32_t out_addr = get_arg_val<uint32_t>(arg_idx++);
@@ -213,6 +223,9 @@ void kernel_main() {
         noc_async_write_barrier();
         cb_pop_front(cb_out, out_chunk_tiles);
         noc_semaphore_inc(output_semaphore_noc_addr, 1);  // signal speculative output is ready
+        if constexpr (ccl_enabled) {
+            noc_semaphore_inc(ccl_semaphore_noc_addr, 1);  // signal speculative output is ready for ccl core
+        }
         DPRINT << "done spec_compute" << ENDL();
     }
 
@@ -301,6 +314,15 @@ void kernel_main() {
         cb_wait_front(cb_out, out_chunk_tiles);
 
         DPRINT << "start write out" << ENDL();
+
+        if constexpr (ccl_enabled) {
+            // wait for ccl write to finish before writing to memory to avoid race condition
+            // note that this does not work if output is sharded as it writes directly to cb_out
+            // TODO: support sharded output case once we get more available cbs
+            volatile tt_l1_ptr uint32_t* ccl_result_ready_semaphore_addr_ptr =
+                reinterpret_cast<volatile tt_l1_ptr uint32_t*>(ccl_result_ready_semaphore_addr);
+            noc_semaphore_wait(ccl_result_ready_semaphore_addr_ptr, 1);
+        }
 
         if constexpr (num_kv_heads > 1) {
             // if gqa, we will need to write partial outputs for each head

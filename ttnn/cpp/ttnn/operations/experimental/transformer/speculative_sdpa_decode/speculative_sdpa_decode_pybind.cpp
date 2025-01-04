@@ -9,6 +9,7 @@
 
 #include "speculative_sdpa_decode.hpp"
 #include "ttnn/cpp/pybind11/decorators.hpp"
+#include "ttnn/cpp/ttnn/global_semaphore.hpp"
 
 namespace ttnn::operations::experimental::transformer {
 
@@ -46,6 +47,7 @@ void py_bind_speculative_sdpa_decode(py::module& module) {
             priority_tensor (ttnn.Tensor, optional): [1 x 1 x b x 1] tensor of integers of length b. Defaults to `None`. If provided, the op will inplace update the priority tensor with verification results.
             other_priority_tensor (ttnn.Tensor, optional): [1 x 1 x b x 1] tensor of integers of length b. Defaults to `None`.
             ccl_enabled (bool, optional): whether ccl is enabled where sender sends speculative results to the receiver device. Defaults to `False`.
+            multi_device_global_semaphore (ttnn.MultiDeviceGlobalSemaphore, optional): the global semaphore handles for ccl. Defaults to `None`. Required if ccl is enabled.
 
         Returns:
             ttnn.Tensor: the full output tensor [1 x b x pnh x dh].
@@ -79,6 +81,7 @@ void py_bind_speculative_sdpa_decode(py::module& module) {
                const std::optional<Tensor>& priority_tensor,
                const std::optional<Tensor>& other_priority_tensor,
                const bool ccl_enabled,
+               const std::optional<global_semaphore::MultiDeviceGlobalSemaphore>& multi_device_global_semaphore,
                uint8_t queue_id) {
                 return self(
                     queue_id,
@@ -96,7 +99,8 @@ void py_bind_speculative_sdpa_decode(py::module& module) {
                     compute_kernel_config,
                     priority_tensor,
                     other_priority_tensor,
-                    ccl_enabled);
+                    ccl_enabled,
+                    multi_device_global_semaphore);
             },
             py::arg("input_tensor_q").noconvert(),
             py::arg("input_tensor_k").noconvert(),
@@ -114,6 +118,7 @@ void py_bind_speculative_sdpa_decode(py::module& module) {
             py::arg("priority_tensor").noconvert() = std::nullopt,
             py::arg("other_priority_tensor").noconvert() = std::nullopt,
             py::arg("ccl_enabled").noconvert() = false,
+            py::arg("multi_device_global_semaphore").noconvert() = std::nullopt,
             py::arg("queue_id") = 0,
         });
 }
