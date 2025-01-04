@@ -10,6 +10,7 @@
 #include "ttnn/cpp/ttnn/operations/transformer/sdpa_decode/device/kernels/rt_args_common.hpp"
 #include "ttnn/cpp/ttnn/operations/transformer/sdpa_decode/device/kernels/dataflow/dataflow_common.hpp"
 #include "ttnn/cpp/ttnn/operations/experimental/transformer/speculative_sdpa_decode/device/kernels/speculative_common.hpp"
+#include "ttnn/cpp/ttnn/operations/experimental/transformer/speculative_sdpa_decode/device/kernels/dataflow/speculative_dataflow_common.hpp"
 
 #include "debug/dprint.h"  // required in all kernels using DPRINT
 
@@ -48,7 +49,7 @@ void kernel_main() {
     constexpr uint32_t ccl_core_y = get_compile_time_arg_val(26);
     uint32_t local_spec_result_input_ready_semaphore_addr = get_semaphore(get_compile_time_arg_val(27));
     uint32_t ccl_result_ready_semaphore_addr = get_semaphore(get_compile_time_arg_val(28));
-
+    constexpr uint32_t priority_stick_size = get_compile_time_arg_val(29);
     const uint64_t ccl_semaphore_noc_addr =
         get_noc_addr(ccl_core_x, ccl_core_y, local_spec_result_input_ready_semaphore_addr);
 
@@ -58,6 +59,7 @@ void kernel_main() {
     const uint32_t l2_dist_addr = get_arg_val<uint32_t>(arg_idx++);
     const uint32_t l2_norm_addr = get_arg_val<uint32_t>(arg_idx++);
     const uint32_t priority_addr = get_arg_val<uint32_t>(arg_idx++);
+    const uint32_t other_priority_addr = get_arg_val<uint32_t>(arg_idx++);
     const uint32_t worker_id_for_reduce = get_arg_val<uint32_t>(arg_idx++);
     const uint32_t worker_id_for_output = get_arg_val<uint32_t>(arg_idx++);
     const bool is_worker = get_arg_val<uint32_t>(arg_idx++) == 0;
@@ -72,6 +74,25 @@ void kernel_main() {
     if (out_addr == 0) {
         return;
     }
+
+    // Compare priority and decide if this device is sender or receiver
+    if constexpr (ccl_enabled) {
+        constexpr uint32_t cb_scratch_id = tt::CBIndex::c_9;
+        auto [min_priority, min_other_priority] =
+            read_min_priority_from_scratch<cb_scratch_id, B, priority_stick_size>();
+        DPRINT << "min_priority: " << min_priority << ENDL();
+        DPRINT << "min_other_priority: " << min_other_priority << ENDL();
+        if (min_priority < min_other_priority) {
+            // this device is the receiver, hence reader does nothing
+            if (!is_worker) {
+                noc_semaphore_inc(ccl_semaphore_noc_addr, 1);  // signal ccl core to progress on garbage data
+            }
+
+            DPRINT << "receiver exit early" << ENDL();
+            return;
+        }
+    }
+
     // Get cur_pos
     constexpr uint32_t cur_pos_base = St * 32 - 1;
     uint32_t cur_pos = cur_pos_base;  // default to non-causal, which we do attention on the entire kv cache. In this

@@ -90,6 +90,10 @@ std::tuple<KernelHandle, KernelHandle> ccl_multi_core_with_workers(
     std::vector<uint32_t> result_ready_core_physical_ys) {
     const uint32_t num_links = 1;
 
+    log_trace(tt::LogOp, "CCL idx: {}", ring_index);
+    log_trace(tt::LogOp, "input_tensor addr: {}", input_tensor.buffer()->address());
+    log_trace(tt::LogOp, "output_tensor addr: {}", output_tensor.buffer()->address());
+
     Device* device = input_tensor.device();
     bool is_first_chip = ring_index == 0;
     bool is_last_chip = ring_index == ring_size - 1;
@@ -108,6 +112,7 @@ std::tuple<KernelHandle, KernelHandle> ccl_multi_core_with_workers(
     std::vector<Tensor> input_tensors = {input_tensor};
     std::vector<Tensor> output_tensors = {output_tensor};
     const auto& op_config = ttnn::ccl::CCLOpConfig(input_tensors, output_tensors, topology);
+    log_trace(tt::LogOp, "op_config page size: {}", op_config.get_page_size());
 
     // Get worker cores, assuming 1 worker per link, 1 link
     auto ccl_core_range = CoreRangeSet(CoreRange(ccl_core, ccl_core));
@@ -147,9 +152,9 @@ std::tuple<KernelHandle, KernelHandle> ccl_multi_core_with_workers(
     // KERNEL CREATION
     const auto& worker_defines = op_config.emit_worker_defines();
     static const std::string& sender_kernel_reader_path =
-        "ttnn/cpp/ttnn/operations/ccl/common/kernels/ccl_send_reader.cpp";
+        "ttnn/cpp/ttnn/operations/ccl/common/kernels/ccl_send_reader_two_input.cpp";
     static const std::string& sender_kernel_writer_path =
-        "ttnn/cpp/ttnn/operations/ccl/common/kernels/ccl_send_writer.cpp";
+        "ttnn/cpp/ttnn/operations/ccl/common/kernels/ccl_send_reader_two_input.cpp";
 
     KernelHandle worker_sender_reader_kernel_id =
         ttnn::ccl::worker_detail::generate_multi_command_stream_kernel_ct_args(
@@ -181,10 +186,6 @@ std::tuple<KernelHandle, KernelHandle> ccl_multi_core_with_workers(
         "[unicast_dest_args] distance: {}, is_forward_direction: {}",
         unicast_dest_args.distance_in_hops,
         unicast_dest_args.is_forward_direction);
-
-    auto reader_tensor_slices = ttnn::ccl::cmd::builder::generate_worker_tensor_slices(1, input_tensor, num_links, 3);
-    log_trace(tt::LogOp, "reader_tensor_slices size: {}", reader_tensor_slices.size());
-    log_trace(tt::LogOp, "reader_tensor_slices[0] size: {}", reader_tensor_slices[0].size());
 
     const auto& input_worker_slice_v2 = input_tensor_slicer.get_worker_slice_v2(0);
     const auto& output_worker_slice_v2 = output_tensor_slicer.get_worker_slice_v2(0);
@@ -220,6 +221,10 @@ std::tuple<KernelHandle, KernelHandle> ccl_multi_core_with_workers(
 
     // READER COMMAND STREAM and RT ARGS
     std::vector<ttnn::ccl::cmd::CclHostLowLevelWorkerCommand> reader_cmd_stream;
+    // 1, wait for input ready semaphore
+    reader_cmd_stream.push_back(ttnn::ccl::cmd::uops::local_semaphore_wait(
+        local_spec_result_input_ready_semaphore_id, local_spec_result_input_ready_semaphore_wait_count));
+    // 2, read the input tensor slice to the CB
     reader_cmd_stream.push_back(  // use the reader_tensor_slices after the bug is fixed
         ttnn::ccl::cmd::uops::read_tensor_slice_to_cb_for_eventual_fabric_write(input_worker_slice_v2, src0_cb_index));
 
@@ -238,13 +243,10 @@ std::tuple<KernelHandle, KernelHandle> ccl_multi_core_with_workers(
 
     // WRITER COMMAND STREAM and RT ARGS
     std::vector<ttnn::ccl::cmd::CclHostLowLevelWorkerCommand> writer_cmd_stream;
-    // 1, wait for input ready semaphore
-    writer_cmd_stream.push_back(ttnn::ccl::cmd::uops::local_semaphore_wait(
-        local_spec_result_input_ready_semaphore_id, local_spec_result_input_ready_semaphore_wait_count));
-    // 2, do unicast of the tensor slice to its destination
+    // 1, do unicast of the tensor slice to its destination
     writer_cmd_stream.push_back(ttnn::ccl::cmd::uops::fabric_write_cb_to_tensor_slice(
         output_worker_slice_v2, src0_cb_index, unicast_dest_args));
-    // 3, unicast the semaphore to dest for ccl ready
+    // 2, unicast the semaphore to dest for ccl ready
     TT_FATAL(
         global_semaphore_handle != nullptr,
         "Internal error during all-=gather fatcory. Global semaphore for fabric teardown not properly "
@@ -255,14 +257,14 @@ std::tuple<KernelHandle, KernelHandle> ccl_multi_core_with_workers(
         ccl_core_physical.x,
         ccl_core_physical.y,
         unicast_dest_args));
-    // 4, wait for ccl result ready semaphore
+    // 3, wait for ccl result ready semaphore
     writer_cmd_stream.push_back(ttnn::ccl::cmd::uops::local_semaphore_wait(global_semaphore_handle.get(), 1));
-    // 5, set ccl result ready semaphore (unicast to each core, change to multicast inc after it is supported)
+    // 4, set ccl result ready semaphore (unicast to each core, change to multicast inc after it is supported)
     for (uint32_t i = 0; i < result_ready_core_physical_xs.size(); i++) {
         writer_cmd_stream.push_back(ttnn::ccl::cmd::uops::local_chip_noc_semaphore_inc(
             result_ready_core_physical_xs[i], result_ready_core_physical_ys[i], ccl_result_ready_semaphore_id, 1));
     }
-    // 6, reset local global semaphore to 0
+    // 5, reset local global semaphore to 0
     writer_cmd_stream.push_back(ttnn::ccl::cmd::uops::local_core_semaphore_set(global_semaphore_handle.get(), 0));
 
     // set the rt args
