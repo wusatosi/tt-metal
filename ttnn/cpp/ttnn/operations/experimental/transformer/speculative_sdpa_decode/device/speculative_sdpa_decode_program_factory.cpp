@@ -137,10 +137,12 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
     bool use_cur_pos_tensor = cur_pos_tensor.has_value();
     bool use_attention_mask = attn_mask.has_value();
     bool use_priority_tensor = priority_tensor.has_value();
+    bool use_other_priority_tensor = other_priority_tensor.has_value();
 
     log_debug("use_cur_pos_tensor: {}", use_cur_pos_tensor);
     log_debug("use_attention_mask: {}", use_attention_mask);
     log_debug("use_priority_tensor: {}", use_priority_tensor);
+    log_debug("use_other_priority_tensor: {}", use_other_priority_tensor);
 
     // Parallelization scheme
     // We will assign cores to batches
@@ -371,6 +373,9 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
     uint32_t page_table_tile_size = 0;
     uint32_t log2_page_table_page_size = 0;
     uint32_t page_table_stick_size = 0;
+    uint32_t priority_tensor_tile_size = 0;
+    uint32_t priority_stick_size = 0;
+    TT_FATAL(!is_paged_attention, "paged attention is not supported for speculative flash decode");
     if (is_paged_attention) {
         auto page_table_buffer = page_table_tensor.value().buffer();
         tt::DataFormat page_table_df =
@@ -381,6 +386,18 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
         // cb page_table
         auto c_in9_config = CircularBufferConfig(page_table_tile_size, {{CBIndex::c_9, page_table_df}})
                                 .set_page_size(CBIndex::c_9, page_table_tile_size);
+        auto cb_in9_id = CreateCircularBuffer(program, core_grid, c_in9_config);
+    } else if (ccl_enabled) {
+        // use the page table cb for now. TODO: use a separate cb for priority when more cbs are available
+        auto priority_buffer = priority_tensor.value().buffer();
+        tt::DataFormat priority_df = tt_metal::datatype_to_dataformat_converter(priority_tensor.value().get_dtype());
+        priority_tensor_tile_size = tt_metal::detail::TileSize(priority_df);
+        priority_stick_size = priority_buffer->aligned_page_size();
+        log_info("priority_stick_size: {}", priority_stick_size);
+
+        // priority cb
+        auto c_in9_config = CircularBufferConfig(priority_stick_size * 2 * B, {{CBIndex::c_9, priority_df}})
+                                .set_page_size(CBIndex::c_9, priority_stick_size);
         auto cb_in9_id = CreateCircularBuffer(program, core_grid, c_in9_config);
     }
 
@@ -647,7 +664,8 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
         use_attention_mask,
         Spec_chunk_t,
         output_semaphore_id,
-        is_output_sharded};
+        is_output_sharded,
+        ccl_enabled};
 
     std::vector<uint32_t> writer_compile_time_args_common = {
         B,
@@ -678,7 +696,8 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
         ccl_core_physical.x,
         ccl_core_physical.y,
         local_spec_result_input_ready_semaphore_id,
-        ccl_result_ready_semaphore_id};
+        ccl_result_ready_semaphore_id,
+        priority_stick_size};
 
     std::vector<uint32_t> compute_compile_time_args_common = {
         St,
@@ -704,7 +723,9 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
         is_causal,
         use_attention_mask,
         Spec_chunk_t,
-        num_q_heads};
+        num_q_heads,
+        ccl_enabled,
+        B};
 
     std::map<string, string> defines;
     defines["STATS_GRANULARITY"] = std::to_string(stats_granularity);
@@ -753,6 +774,7 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
     uint32_t page_table_addr = is_paged_attention ? page_table_tensor.value().buffer()->address() : 0;
     uint32_t attn_mask_addr = use_attention_mask ? attn_mask.value().buffer()->address() : 0;
     uint32_t priority_addr = use_priority_tensor ? priority_tensor.value().buffer()->address() : 0;
+    uint32_t other_priority_addr = use_other_priority_tensor ? other_priority_tensor.value().buffer()->address() : 0;
     uint32_t out_addr = out0_buffer->address();
     uint32_t out_spec_addr = out1_buffer->address();
     uint32_t l2_dist_addr = l2_dist_buffer->address();
@@ -794,6 +816,8 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
             attn_mask_addr,
             out_addr,
             out_spec_addr,
+            priority_addr,
+            other_priority_addr,
             page_table_stick_size,
             do_reduce,
             do_output,
@@ -812,6 +836,7 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
             l2_dist_addr,
             l2_norm_addr,
             priority_addr,
+            other_priority_addr,
             worker_id_for_reduce,
             worker_id_for_output,
             do_reduce,
@@ -868,6 +893,7 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
                                                 is_paged_attention,
                                                 is_causal,
                                                 use_priority_tensor,
+                                                use_other_priority_tensor,
                                                 ccl_enabled,
                                                 ccl_reader_kernel_id,
                                                 ccl_writer_kernel_id,
@@ -898,6 +924,8 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
         uint32_t page_table_addr = is_paged_attention ? optional_input_tensors.at(1).value().buffer()->address() : 0;
         uint32_t attn_mask_addr = use_attention_mask ? optional_input_tensors.at(2).value().buffer()->address() : 0;
         uint32_t priority_addr = use_priority_tensor ? optional_input_tensors.at(3).value().buffer()->address() : 0;
+        uint32_t other_priority_addr =
+            use_other_priority_tensor ? optional_input_tensors.at(4).value().buffer()->address() : 0;
         auto page_table_buffer = is_paged_attention ? optional_input_tensors.at(1).value().buffer() : nullptr;
         uint32_t page_table_stick_size = is_paged_attention ? page_table_buffer->aligned_page_size() : 0;
         uint32_t out_addr = out0_buffer->address();
@@ -937,6 +965,8 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
             reader_args[arg_idx++] = attn_mask_addr;
             reader_args[arg_idx++] = out_addr;
             reader_args[arg_idx++] = out_spec_addr;
+            reader_args[arg_idx++] = priority_addr;
+            reader_args[arg_idx++] = other_priority_addr;
             reader_args[arg_idx++] = page_table_stick_size;
             reader_args[arg_idx++] = do_reduce;
             reader_args[arg_idx++] = do_output;
@@ -953,6 +983,7 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
             writer_args[arg_idx++] = l2_dist_addr;
             writer_args[arg_idx++] = l2_norm_addr;
             writer_args[arg_idx++] = priority_addr;
+            writer_args[arg_idx++] = other_priority_addr;
             writer_args[arg_idx++] = worker_id_for_reduce;
             writer_args[arg_idx++] = worker_id_for_output;
             writer_args[arg_idx++] = do_reduce;

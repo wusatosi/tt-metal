@@ -140,11 +140,10 @@ def get_speculative_flash_decode_tt_ccl(
     tt_back_spec = tt_back_spec[:, :, :nh, :]
     tt_back_gt_receiver = tt_back_gt_receiver[:, :, :nh, :]
 
-    # uncomment this assert after enable ccl in kernel
-    # # assert tt_back_spec on the sender device is the same as tt_back_gt on the receiver device
-    # out_pass, out_pcc = comp_pcc(tt_back_spec, tt_back_gt_receiver, 0.99)
-    # logger.debug(f"spec tt sender vs gt receiver: {out_pcc}")
-    # assert out_pass
+    # assert tt_back_spec on the sender device is the same as tt_back_gt on the receiver device
+    out_pass, out_pcc = comp_pcc(tt_back_spec, tt_back_gt_receiver, 0.99)
+    logger.debug(f"spec tt sender vs gt receiver: {out_pcc}")
+    assert out_pass
 
     return tt_back_gt, tt_back_spec, tt_back_spec_lp_distance, tt_back_lp_norm_x
 
@@ -436,7 +435,7 @@ def run_speculative_flash_decode_ccl_impl(
         128,
     ],
 )
-@pytest.mark.parametrize("enable_async", [False])
+@pytest.mark.parametrize("enable_async", [True])
 def test_speculative_flash_decode_ccl(
     t3k_mesh_device,
     b,
