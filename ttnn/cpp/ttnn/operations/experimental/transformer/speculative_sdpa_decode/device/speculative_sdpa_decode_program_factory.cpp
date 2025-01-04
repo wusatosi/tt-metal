@@ -13,6 +13,7 @@
 #include "tt_metal/detail/util.hpp"
 #include "tt_metal/host_api.hpp"
 #include "ttnn/operation.hpp"
+#include "ttnn/cpp/ttnn/operations/ccl/ccl_host_types.hpp"
 
 using namespace tt;
 using namespace tt::constants;
@@ -35,7 +36,6 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
     const Tensor& l2_dist_tensor,
     const Tensor& l2_norm_tensor,
     bool is_causal,
-    bool ccl_enabled,
     const std::vector<uint32_t>& cur_pos_ids,
     std::optional<float> scale,
     std::optional<float> lambda,
@@ -43,7 +43,15 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
     std::optional<SDPAProgramConfig> program_config,
     const uint32_t k_chunk_size,
     const uint32_t speculative_chunk_size,
-    std::optional<bool> share_cache) {
+    std::optional<bool> share_cache,
+    // ccl related
+    bool ccl_enabled,
+    uint32_t num_devices,
+    uint32_t device_index,
+    ttnn::ccl::Topology topology,
+    std::optional<std::shared_ptr<const GlobalSemaphore>> semaphore_handle,
+    std::optional<Device*> forward_device,
+    std::optional<Device*> backward_device) {
     /*
     Q: 1 x B x PNH x DH
     K: 1 x B x S x DH
@@ -139,14 +147,15 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
     // Split to cores
     CoreCoord device_grid_size = device->compute_with_storage_grid_size();
     TT_FATAL(device_grid_size.y >= 2, "Speculative SDPA decode requires at least 2 columns in devicecompute grid size");
-    CoreCoord ccl_core = CoreCoord(device_grid_size.x, device_grid_size.y);  // dedicate the last column for ccl
+    CoreCoord ccl_core = {
+        (std::size_t)device_grid_size.x - 1, (std::size_t)device_grid_size.y - 1};  // dedicate the last column for ccl
     CoreCoord grid_size = program_config.has_value() ? program_config->compute_with_storage_grid_size
                                                      : CoreCoord(device_grid_size.x, device_grid_size.y - 1);
+    auto core_grid = CoreRange({0, 0}, {grid_size.x - 1, grid_size.y - 1});
     log_info("device_grid_size: {}", device_grid_size);
     log_info("grid_size: {}", grid_size);
     log_info("ccl_core: {}", ccl_core);
-
-    auto core_grid = CoreRange({0, 0}, {grid_size.x - 1, grid_size.y - 1});
+    log_info("core_grid: {}", core_grid);
     uint32_t num_cores_available = grid_size.x * grid_size.y;
 
     uint32_t num_cores_in_grid =
@@ -591,6 +600,30 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
     // Common Compile time Args
     auto reducer_semaphore_id = tt_metal::CreateSemaphore(program, core_grid, 0);
     auto output_semaphore_id = tt_metal::CreateSemaphore(program, core_grid, 0);
+    auto local_spec_result_input_ready_semaphore_id = tt_metal::CreateSemaphore(program, ccl_core, 0);
+    auto ccl_result_ready_semaphore_id = tt_metal::CreateSemaphore(program, core_grid, 0);
+    // launch ccl reader and writer kernels
+    std::optional<KernelHandle> ccl_reader_kernel_id, ccl_writer_kernel_id;
+    if (ccl_enabled) {
+        uint32_t local_spec_result_input_ready_semaphore_wait_count = num_kv_heads * B;
+        std::tie(ccl_reader_kernel_id, ccl_writer_kernel_id) = ccl_multi_core_with_workers(
+            program,
+            speculated_output_tensor,                            // input tensor
+            forward_device,                                      // forward device
+            backward_device,                                     // backward device
+            full_output_tensor,                                  // output tensor
+            num_devices,                                         // ring size
+            device_index,                                        // ring index
+            topology,                                            // topology
+            ccl_core,                                            // ccl core
+            local_spec_result_input_ready_semaphore_id,          // local spec result input ready semaphore
+            local_spec_result_input_ready_semaphore_wait_count,  // local spec result input ready semaphore wait count
+            semaphore_handle.value(),                            // global semaphore handle
+            ccl_result_ready_semaphore_id,                       // ccl result ready semaphore, set on reducer cores
+            reduce_core_physical_xs,                             // reducer core physical xs
+            reduce_core_physical_ys);                            // reducer core physical ys
+    }
+    auto ccl_core_physical = device->worker_core_from_logical_core(ccl_core);
 
     std::vector<uint32_t> reader_compile_time_args_common = {
         B,
@@ -640,7 +673,12 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
         is_causal,
         Spec_chunk_t,
         use_priority_tensor,
-        lambda_union.u};
+        lambda_union.u,
+        ccl_enabled,
+        ccl_core_physical.x,
+        ccl_core_physical.y,
+        local_spec_result_input_ready_semaphore_id,
+        ccl_result_ready_semaphore_id};
 
     std::vector<uint32_t> compute_compile_time_args_common = {
         St,
@@ -829,7 +867,11 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
                                                 use_attention_mask,
                                                 is_paged_attention,
                                                 is_causal,
-                                                use_priority_tensor](
+                                                use_priority_tensor,
+                                                ccl_enabled,
+                                                ccl_reader_kernel_id,
+                                                ccl_writer_kernel_id,
+                                                ccl_core](
                                                    const void* operation,
                                                    Program& program,
                                                    const std::vector<Tensor>& input_tensors,
@@ -868,6 +910,7 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
         auto& compute_args_by_core = GetRuntimeArgs(program, compute_kernels_id);
 
         // Set rt args
+        // flash decode
         for (uint32_t i = 0; i < num_active_cores; ++i) {
             CoreCoord core = core_group[i];
             uint32_t worker_id_for_reduce = (num_cores_per_head == 0) ? -1 : i % num_cores_per_head - 1;
@@ -929,6 +972,18 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
             compute_args[arg_idx++] = core_num_in_reduce;
             compute_args[arg_idx++] = core_num_in_output;
             compute_args[arg_idx++] = cur_pos;
+        }
+        // ccl related
+        if (ccl_enabled) {
+            // Update ccl related runtime args
+            auto& worker_reader_sender_runtime_args_by_core = GetRuntimeArgs(program, ccl_reader_kernel_id.value());
+            auto& worker_writer_sender_runtime_args_by_core = GetRuntimeArgs(program, ccl_writer_kernel_id.value());
+            // reader
+            auto& worker_reader_sender_runtime_args = worker_reader_sender_runtime_args_by_core[ccl_core.x][ccl_core.y];
+            worker_reader_sender_runtime_args.at(0) = out_spec_addr;
+            // writer
+            auto& worker_writer_sender_runtime_args = worker_writer_sender_runtime_args_by_core[ccl_core.x][ccl_core.y];
+            worker_writer_sender_runtime_args.at(0) = out_addr;
         }
 
         if (is_output_sharded) {

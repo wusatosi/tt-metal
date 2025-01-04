@@ -10,6 +10,7 @@
 #include "ttnn/operation.hpp"
 #include "ttnn/operations/transformer/sdpa_config.hpp"
 #include "ttnn/tensor/tensor.hpp"
+#include "ttnn/cpp/ttnn/operations/ccl/ccl_host_types.hpp"
 
 namespace ttnn::operations::experimental::transformer {
 
@@ -24,6 +25,12 @@ struct SpeculativeScaledDotProductAttentionDecode {
     const uint32_t k_chunk_size;
     const bool paged_attention;
     const bool ccl_enabled;
+    const uint32_t num_devices;
+    const uint32_t device_index;
+    const ttnn::ccl::Topology topology;
+    std::optional<std::shared_ptr<const GlobalSemaphore>> semaphore_handle;
+    std::optional<Device*> forward_device;
+    std::optional<Device*> backward_device;
     const std::optional<bool> share_cache;
 
     void validate(

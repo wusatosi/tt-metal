@@ -212,6 +212,8 @@ void SpeculativeScaledDotProductAttentionDecode::validate(
         TT_FATAL(
             optional_input_tensors.at(3).has_value() && optional_input_tensors.at(4).has_value(),
             "Must have priority and other priority tensors for ccl enabled");
+        TT_FATAL(this->semaphore_handle.has_value(), "Must have semaphore handle for ccl enabled");
+        TT_FATAL(!output_mem_config.is_sharded(), "Sharded output not supported for ccl enabled");
     }
 
     if (optional_input_tensors.at(3).has_value()) {
@@ -322,7 +324,6 @@ operation::ProgramWithCallbacks SpeculativeScaledDotProductAttentionDecode::crea
         l2_dist_tensor,
         l2_norm_tensor,
         this->is_causal,
-        this->ccl_enabled,
         this->cur_pos,
         scale,
         lambda,
@@ -330,7 +331,15 @@ operation::ProgramWithCallbacks SpeculativeScaledDotProductAttentionDecode::crea
         this->program_config,
         this->k_chunk_size,
         speculative_chunk_size,
-        this->share_cache);
+        this->share_cache,
+        // ccl related
+        this->ccl_enabled,
+        this->num_devices,
+        this->device_index,
+        this->topology,
+        this->semaphore_handle,
+        this->forward_device,
+        this->backward_device);
 }
 
 operation::Hash SpeculativeScaledDotProductAttentionDecode::compute_program_hash(
@@ -349,6 +358,12 @@ operation::Hash SpeculativeScaledDotProductAttentionDecode::compute_program_hash
         this->paged_attention,
         this->is_causal,
         this->ccl_enabled,
+        this->num_devices,
+        this->device_index,
+        this->topology,
+        this->semaphore_handle,
+        this->forward_device,
+        this->backward_device,
         has_attn_mask,
         has_cur_pos,
         has_priority,

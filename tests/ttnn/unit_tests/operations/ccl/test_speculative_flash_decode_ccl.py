@@ -51,6 +51,7 @@ def get_speculative_flash_decode_tt_ccl(
     tt_V,
     tt_priority_tensors,
     tt_gathered_priority_tensors,
+    sfd_semaphore_handles,
     mesh_device,
     worker_sub_device_id,
     start_indices,
@@ -101,6 +102,7 @@ def get_speculative_flash_decode_tt_ccl(
                 priority_tensor=tt_priority_tensors,
                 other_priority_tensor=tt_gathered_priority_tensors,
                 ccl_enabled=True,
+                multi_device_global_semaphore=sfd_semaphore_handles,
             )
         else:
             outputs = ttnn.experimental.speculative_scaled_dot_product_attention_decode(
@@ -116,6 +118,7 @@ def get_speculative_flash_decode_tt_ccl(
                 priority_tensor=tt_priority_tensors,
                 other_priority_tensor=tt_gathered_priority_tensors,
                 ccl_enabled=True,
+                multi_device_global_semaphore=sfd_semaphore_handles,
             )
     else:
         raise NotImplementedError("Non-causal not implemented")
@@ -181,13 +184,10 @@ def run_speculative_flash_decode_ccl_impl(
     ### Persistent fabric and ccl setup ###
     ############################################################
     compute_grid_size = mesh_device.compute_with_storage_grid_size()
-    worker_sub_device = ttnn.SubDevice(
-        [
-            ttnn.CoreRangeSet(
-                {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(compute_grid_size.x - 1, compute_grid_size.y - 1))}
-            )
-        ]
+    ccl_sub_device_crs = ttnn.CoreRangeSet(
+        {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(compute_grid_size.x - 1, compute_grid_size.y - 1))}
     )
+    worker_sub_device = ttnn.SubDevice([ccl_sub_device_crs])
     worker_sub_device_id = ttnn.SubDeviceId(0)
     if create_persistent_fabric:
         mesh_sub_device_manager_id = create_and_load_sub_device_manager_with_fabric_interface(
@@ -276,6 +276,16 @@ def run_speculative_flash_decode_ccl_impl(
     min_start_idx = 2 * k_chunk_size
     max_start_idx = min_start_idx
 
+    # create global semaphore handles for speculative flash decode
+    sfd_semaphore_handles = ttnn.create_global_semaphore(
+        mesh_device, ccl_sub_device_crs, 0, sub_device_ids=[worker_sub_device_id]
+    )
+    addrs = ttnn.get_global_semaphore_address(sfd_semaphore_handles)
+    logger.info(f"semaphore handle addresses: {addrs}")
+    # assert all addresses are the same
+    # assert len(set(addrs)) == 1 # uncomment this after new changes from global semaphore is pulled
+    assert addrs[0] == addrs[1]
+
     while max_start_idx < s:
         # Set start indices if not provided or in multi-iteration mode
         start_indices = (
@@ -319,6 +329,7 @@ def run_speculative_flash_decode_ccl_impl(
             tt_V,
             tt_priority_tensors,
             tt_gathered_priority_tensors,
+            sfd_semaphore_handles,
             mesh_device,
             worker_sub_device_id,
             start_indices,

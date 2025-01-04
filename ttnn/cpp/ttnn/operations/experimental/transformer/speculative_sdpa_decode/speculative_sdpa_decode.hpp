@@ -7,6 +7,7 @@
 #include "ttnn/operations/core/compute_kernel/compute_kernel_config.hpp"
 #include "ttnn/decorators.hpp"
 #include "ttnn/operations/transformer/sdpa_config.hpp"
+#include "ttnn/cpp/ttnn/global_semaphore.hpp"
 
 namespace ttnn {
 namespace operations::experimental::transformer {
@@ -30,7 +31,9 @@ struct ExecuteSpeculativeScaledDotProductAttentionDecode {
         std::optional<DeviceComputeKernelConfig> compute_kernel_config = std::nullopt,
         const std::optional<Tensor>& priority_tensor = std::nullopt,
         const std::optional<Tensor>& other_priority_tensor = std::nullopt,
-        const bool ccl_enabled = false);
+        const bool ccl_enabled = false,
+        const std::optional<global_semaphore::MultiDeviceGlobalSemaphore>& multi_device_global_semaphore =
+            std::nullopt);
 
     static std::tuple<ttnn::Tensor, ttnn::Tensor, ttnn::Tensor, ttnn::Tensor> invoke(
         const ttnn::Tensor& input_tensor_q,
@@ -47,7 +50,9 @@ struct ExecuteSpeculativeScaledDotProductAttentionDecode {
         std::optional<DeviceComputeKernelConfig> compute_kernel_config = std::nullopt,
         const std::optional<Tensor>& priority_tensor = std::nullopt,
         const std::optional<Tensor>& other_priority_tensor = std::nullopt,
-        const bool ccl_enabled = false);
+        const bool ccl_enabled = false,
+        const std::optional<global_semaphore::MultiDeviceGlobalSemaphore>& multi_device_global_semaphore =
+            std::nullopt);
 };
 
 }  // namespace operations::experimental::transformer
