@@ -238,3 +238,55 @@ def test_silu_llm(
         shard_orientation,
         op,
     )
+
+
+@skip_for_grayskull()
+@pytest.mark.parametrize(
+    "batch_size, input_channels, input_height, input_width, ncores, grid_size, shard_strategy, shard_orientation",
+    (
+        (1, 512, 256, 256, 64, (7, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),  # Failed with OOM
+        (
+            1,
+            256,
+            256,
+            256,
+            64,
+            (7, 8),
+            ttnn.ShardStrategy.HEIGHT,
+            ttnn.ShardOrientation.ROW_MAJOR,
+        ),  # Passed in Bfloat8_b, Fails in Bfloat16
+        (1, 256, 512, 512, 64, (7, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),  # Failed with OOM
+        (1, 128, 512, 512, 64, (7, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),  # Failed with OOM
+    ),
+)
+@pytest.mark.parametrize("op", ["silu"])
+@pytest.mark.parametrize("dtype", [ttnn.bfloat16, ttnn.bfloat8_b])
+def test_sd35_vae_512(
+    device,
+    batch_size,
+    input_channels,
+    input_height,
+    input_width,
+    grid_size,
+    ncores,
+    shard_strategy,
+    shard_orientation,
+    op,
+    dtype,
+):
+    if (device.compute_with_storage_grid_size().x, device.compute_with_storage_grid_size().y) == (8, 7):
+        if shard_strategy == ttnn.ShardStrategy.BLOCK:
+            grid_size = (grid_size[0], 4) if grid_size[1] == 8 else grid_size  # reduce #f core used for N300
+    run_elt_silu_relu(
+        device,
+        batch_size,
+        input_channels,
+        input_height,
+        input_width,
+        grid_size,
+        ncores,
+        shard_strategy,
+        shard_orientation,
+        op,
+        dtype,
+    )
