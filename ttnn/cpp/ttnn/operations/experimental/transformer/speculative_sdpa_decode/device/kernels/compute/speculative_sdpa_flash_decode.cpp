@@ -108,7 +108,7 @@ void MAIN {
         constexpr uint32_t cb_scratch_id = tt::CBIndex::c_9;
 
         uint32_t cum_wait = 0;
-        uint32_t min_priority = UINT32_MAX;
+        uint32_t max_priority = 0;
         for (uint32_t i = 0; i < B; i++) {
             cum_wait += 1;
             cb_wait_front(cb_scratch_id, cum_wait);
@@ -119,12 +119,12 @@ void MAIN {
             cb_release_tile(cb_scratch_id);
 
             DPRINT_PACK(DPRINT << "cur_priority: " << cur_priority << ENDL());
-            if (cur_priority < min_priority) {
-                min_priority = cur_priority;
+            if (cur_priority > max_priority) {
+                max_priority = cur_priority;
             }
         }
 
-        uint32_t min_other_priority = UINT32_MAX;
+        uint32_t max_other_priority = 0;
         for (uint32_t i = 0; i < B; i++) {
             cum_wait += 1;
             cb_wait_front(cb_scratch_id, cum_wait);
@@ -135,14 +135,14 @@ void MAIN {
             cb_release_tile(cb_scratch_id);
 
             DPRINT_PACK(DPRINT << "cur_other_priority: " << cur_other_priority << ENDL());
-            if (cur_other_priority < min_other_priority) {
-                min_other_priority = cur_other_priority;
+            if (cur_other_priority > max_other_priority) {
+                max_other_priority = cur_other_priority;
             }
         }
 
-        DPRINT_PACK(DPRINT << "min_priority: " << min_priority << ENDL());
-        DPRINT_PACK(DPRINT << "min_other_priority: " << min_other_priority << ENDL());
-        if (min_priority < min_other_priority) {
+        DPRINT_PACK(DPRINT << "max_priority: " << max_priority << ENDL());
+        DPRINT_PACK(DPRINT << "max_other_priority: " << max_other_priority << ENDL());
+        if (max_priority < max_other_priority) {
             // this device is the receiver, hence reader does nothing
             DPRINT_PACK(DPRINT << "receiver exit early" << ENDL());
             return;

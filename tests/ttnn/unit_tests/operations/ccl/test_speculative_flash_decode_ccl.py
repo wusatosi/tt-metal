@@ -148,7 +148,7 @@ def get_speculative_flash_decode_tt_ccl(
     # assert priority tensor value on the sender side is either 0 or 2
     # assert priority tensor value on the receiver side is 1
     p_tensors = read_multi_device_tensor(tt_priority_tensors, worker_sub_device_id)
-    assert torch.all(p_tensors[sender_idx].squeeze() == 0) or torch.all(p_tensors[sender_idx].squeeze() == 2)
+    assert torch.all((p_tensors[sender_idx].squeeze() == 0) | (p_tensors[sender_idx].squeeze() == 2))
     assert torch.all(p_tensors[receiver_idx].squeeze() == 1)
 
     return tt_back_gt, tt_back_spec, tt_back_spec_lp_distance, tt_back_lp_norm_x
