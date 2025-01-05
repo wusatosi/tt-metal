@@ -70,6 +70,8 @@ void kernel_main() {
     const uint32_t core_num_in_output = get_arg_val<uint32_t>(arg_idx++);
     const uint32_t cur_pos_arg = get_arg_val<uint32_t>(arg_idx++);
 
+    constexpr bool is_dram = true;
+
     // idle core
     if (out_addr == 0) {
         return;
@@ -86,6 +88,25 @@ void kernel_main() {
             // this device is the receiver, hence reader does nothing
             if (!is_worker) {
                 noc_semaphore_inc(ccl_semaphore_noc_addr, 1);  // signal ccl core to progress on garbage data
+            }
+
+            if (do_output) {
+                // set priority tensor to 1
+                uint32_t priority_val = 1;
+                DPRINT << "set priority val: " << priority_val << ENDL();
+                // write priority to a local cb, in this case, cb_out_l
+                constexpr uint32_t cb_out_l = tt::CBIndex::c_18;
+                volatile tt_l1_ptr uint32_t* priority_val_ptr =
+                    reinterpret_cast<volatile tt_l1_ptr uint32_t*>(get_write_ptr(cb_out_l));
+                priority_val_ptr[0] = priority_val;
+
+                // write priority to memory
+                constexpr uint32_t priority_scalar_bytes = 4;  // 4 bytes for uint32_t
+                const InterleavedAddrGen<is_dram> s_out_priority = {
+                    .bank_base_address = priority_addr, .page_size = priority_scalar_bytes};
+                uint64_t priority_noc_addr = get_noc_addr(cur_batch, s_out_priority);
+                noc_async_write(get_read_ptr(cb_out_l), priority_noc_addr, priority_scalar_bytes);
+                noc_async_write_barrier();
             }
 
             DPRINT << "receiver exit early" << ENDL();
@@ -168,7 +189,6 @@ void kernel_main() {
     num_cores_to_wait += 1;  // add 1 for speculative compute (specific to this kernel)
     uint32_t num_tiles_to_wait = (out_chunk_tiles + 2 * PNHt) * num_cores_to_wait;
 
-    constexpr bool is_dram = true;
     constexpr uint32_t cb_out = tt::CBIndex::c_20;
     constexpr uint32_t cb_intermed_out =
         tt::CBIndex::c_19;  // this cb holds the output intermediates from other worker cores
@@ -434,7 +454,7 @@ void kernel_main() {
             // we can square both sides to get dist_val <= lambda^2 * norm_val
             bool is_speculation_correct =
                 converted_dist_val <= (lambda_val_float * lambda_val_float) * converted_norm_val;
-            uint32_t priority_val = is_speculation_correct ? 2 : 0;
+            uint32_t priority_val = is_speculation_correct ? 0 : 2;
             DPRINT << "priority val: " << priority_val << ENDL();
             // write priority to a local cb, in this case, cb_out_l
             volatile tt_l1_ptr uint32_t* priority_val_ptr =
