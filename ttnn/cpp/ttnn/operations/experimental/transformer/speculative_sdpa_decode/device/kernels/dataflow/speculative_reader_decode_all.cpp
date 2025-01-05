@@ -77,12 +77,12 @@ void kernel_main() {
     // Compare priority and decide if this device is sender or receiver
     if constexpr (ccl_enabled) {
         constexpr uint32_t cb_scratch_id = tt::CBIndex::c_9;
-        auto [min_priority, min_other_priority] =
-            get_min_priority<is_dram, 4 /*priority_scalar_bytes*/, B, cb_scratch_id>(
+        auto [max_priority, max_other_priority] =
+            get_max_priority<is_dram, 4 /*priority_scalar_bytes*/, B, cb_scratch_id>(
                 priority_addr, other_priority_addr);
-        DPRINT << "min_priority: " << min_priority << ENDL();
-        DPRINT << "min_other_priority: " << min_other_priority << ENDL();
-        if (min_priority < min_other_priority) {
+        DPRINT << "max_priority: " << max_priority << ENDL();
+        DPRINT << "max_other_priority: " << max_other_priority << ENDL();
+        if (max_priority < max_other_priority) {
             // this device is the receiver, hence reader does nothing
             DPRINT << "receiver exit early" << ENDL();
             return;
