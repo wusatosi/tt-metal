@@ -257,6 +257,12 @@ typedef struct fvc_consumer_state {
 
 } fvc_consumer_state_t;
 
+void zero_l1_buf(tt_l1_ptr uint32_t* buf, uint32_t size_bytes) {
+    for (uint32_t i = 0; i < size_bytes / 4; i++) {
+        buf[i] = 0;
+    }
+}
+
 static_assert(sizeof(fvc_consumer_state_t) % 4 == 0);
 
 #define FVC_MODE_ROUTER 1
@@ -589,8 +595,147 @@ typedef struct fvc_producer_state {
                 packet_timestamp = get_timestamp();
             }
         } else {
-            words_processed = pull_data_from_fvc_buffer<fvc_mode>();
+            // multicast
+            if (current_packet_header.routing.flags & MCAST_DATA) {
+                words_processed = process_inbound_multicast_packet<fvc_mode>();
+            } else {
+                // unicast
+                words_processed = pull_data_from_fvc_buffer<fvc_mode>();
+            }
         }
+        return words_processed;
+    }
+
+    template <uint8_t fvc_mode = FVC_MODE_ROUTER>
+    inline uint32_t process_inbound_multicast_packet() {
+        int i = 0;
+        uint32_t words_processed = 0;
+
+        if (packet_is_for_local_chip()) {
+            if (current_packet_header.routing.flags == FORWARD && current_packet_header.session.command == ASYNC_WR) {
+                if (packet_in_progress == 0) {
+                    packet_dest = ((uint64_t)current_packet_header.session.target_offset_h << 32) |
+                                  current_packet_header.session.target_offset_l;
+                    packet_words_remaining -= PACKET_HEADER_SIZE_WORDS;
+                    advance_out_wrptr(PACKET_HEADER_SIZE_WORDS);
+                    advance_out_rdptr(PACKET_HEADER_SIZE_WORDS);
+                    packet_in_progress = 1;
+                    words_processed = PACKET_HEADER_SIZE_WORDS;
+
+                    words_processed += issue_async_write();
+                } else {
+                    flush_async_writes();
+                    if (packet_words_remaining) {
+                        words_processed = issue_async_write();
+                    } else {
+                        packet_in_progress = 0;
+                        curr_packet_valid = false;
+                        packet_timestamp = get_timestamp();
+                    }
+                }
+            } else if (current_packet_header.routing.flags == INLINE_FORWARD) {
+                uint64_t noc_addr = ((uint64_t)current_packet_header.session.target_offset_h << 32) |
+                                    current_packet_header.session.target_offset_l;
+                noc_fast_atomic_increment(
+                    noc_index,
+                    NCRISC_AT_CMD_BUF,
+                    noc_addr,
+                    NOC_UNICAST_WRITE_VC,
+                    current_packet_header.packet_parameters.atomic_parameters.increment,
+                    current_packet_header.packet_parameters.atomic_parameters.wrap_boundary,
+                    false);
+
+                packet_words_remaining -= PACKET_HEADER_SIZE_WORDS;
+                advance_out_wrptr(PACKET_HEADER_SIZE_WORDS);
+                advance_out_rdptr(PACKET_HEADER_SIZE_WORDS);
+                words_processed = PACKET_HEADER_SIZE_WORDS;
+                fvc_pull_rdptr = fvc_out_rdptr;
+                update_remote_rdptr_cleared<fvc_mode>();
+                curr_packet_valid = false;
+                packet_timestamp = get_timestamp();
+            }
+        }
+
+        // MULTICAST FORWARDING: replicate data to east / west if there are hops left
+        // in the packet header's mcast_params.
+
+        uint16_t east_hops = current_packet_header.packet_parameters.mcast_parameters.east;
+        uint16_t west_hops = current_packet_header.packet_parameters.mcast_parameters.west;
+
+        bool need_to_send_east = (east_hops > 0);
+        bool need_to_send_west = (west_hops > 0);
+
+        // If we do not need to replicate further, we still do the local consumption
+        if (!need_to_send_east && !need_to_send_west) {
+            words_processed += pull_data_from_fvc_buffer<fvc_mode>();
+            return words_processed;
+        }
+
+        // Otherwise, at least one side (east or west) needs a copy of this data.
+        local_pull_request_t local_pull_requests[2] __attribute__((aligned(16)));
+        uint32_t pr_count = 0;
+
+        // helpers
+        auto setup_mcast_pull_request = [&](local_pull_request_t& lpr) {
+            zero_l1_buf((tt_l1_ptr uint32_t*)&lpr, sizeof(local_pull_request_t));
+            {
+                uint32_t* dst = (uint32_t*)&lpr.pull_request;
+                uint32_t* src = (uint32_t*)&this->current_packet_header;
+                for (uint32_t i = 0; i < (sizeof(pull_request_t) / 4); i++) {
+                    dst[i] = src[i];
+                }
+            }
+            lpr.pull_request.flags = (MCAST_DATA | FORWARD);
+
+            lpr.pull_request.buffer_size = this->buffer_size;
+            lpr.pull_request.buffer_start = xy_local_addr + (uint32_t)this->buffer_start;
+            lpr.pull_request.wr_ptr = this->fvc_out_wrptr;
+            lpr.pull_request.rd_ptr = this->fvc_out_rdptr;
+            lpr.pull_request.ack_addr = xy_local_addr + (uint32_t)&(this->inbound_rdptr.ptr_cleared);
+        };
+
+        auto decrement_mcast_hops = [&](pull_request_t& pr, bool do_east, bool do_west) {
+            packet_header_t* phdr = (packet_header_t*)&pr;
+            if (do_east) {
+                phdr->packet_parameters.mcast_parameters.east -= 1;
+            }
+            if (do_west) {
+                phdr->packet_parameters.mcast_parameters.west -= 1;
+            }
+        };
+
+        if (need_to_send_east) {
+            setup_mcast_pull_request(local_pull_requests[pr_count]);
+            decrement_mcast_hops(local_pull_requests[pr_count].pull_request, true, false);
+
+            tt::tt_fabric::chan_id_t east_port = routing_table->port_direction.east;
+            if (east_port == tt::tt_fabric::INVALID_ROUTING_TABLE_ENTRY) {
+                // No valid route to east
+            } else {
+                uint64_t east_noc_xy = eth_chan_to_noc_xy[noc_index][east_port];
+                uint64_t dest_addr = (east_noc_xy << 32) | FABRIC_ROUTER_REQ_QUEUE_START;
+                tt_fabric_send_pull_request(dest_addr, &local_pull_requests[pr_count]);
+            }
+            pr_count++;
+        }
+
+        if (need_to_send_west) {
+            setup_mcast_pull_request(local_pull_requests[pr_count]);
+            decrement_mcast_hops(local_pull_requests[pr_count].pull_request, false, true);
+
+            tt::tt_fabric::chan_id_t west_port = routing_table->port_direction.west;
+            if (west_port == tt::tt_fabric::INVALID_ROUTING_TABLE_ENTRY) {
+                // No valid route to west
+            } else {
+                uint64_t west_noc_xy = eth_chan_to_noc_xy[noc_index][west_port];
+                uint64_t dest_addr = (west_noc_xy << 32) | FABRIC_ROUTER_REQ_QUEUE_START;
+                tt_fabric_send_pull_request(dest_addr, &local_pull_requests[pr_count]);
+            }
+            pr_count++;
+        }
+
+        words_processed += pull_data_from_fvc_buffer<fvc_mode>();
+
         return words_processed;
     }
 
@@ -635,12 +780,6 @@ bool tt_fabric_is_header_valid(packet_header_t* p_header) {
     return (p_header->packet_parameters.misc_parameters.words[0] == sum);
 }
 
-void zero_l1_buf(tt_l1_ptr uint32_t* buf, uint32_t size_bytes) {
-    for (uint32_t i = 0; i < size_bytes / 4; i++) {
-        buf[i] = 0;
-    }
-}
-
 static FORCE_INLINE void write_test_results(tt_l1_ptr uint32_t* const buf, uint32_t i, uint32_t val) {
     if (buf != nullptr) {
         buf[i] = val;
@@ -667,6 +806,7 @@ inline void req_buf_advance_wrptr(chan_req_buf* req_buf) { req_buf_ptr_advance(&
 inline void req_buf_advance_rdptr(chan_req_buf* req_buf) {
     // clear valid before incrementing read pointer.
     uint32_t rd_index = req_buf->rdptr.ptr & CHAN_REQ_BUF_SIZE_MASK;
+    req_buf->chan_req[rd_index].bytes[46] = 0;
     req_buf->chan_req[rd_index].bytes[47] = 0;
     req_buf_ptr_advance(&(req_buf->rdptr));
 }

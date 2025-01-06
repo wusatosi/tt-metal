@@ -70,6 +70,7 @@ int main(int argc, char** argv) {
     constexpr uint32_t default_tx_data_sent_per_iter_high = 240;
 
     constexpr uint32_t default_fabric_command = 1;
+    constexpr uint32_t default_fabric_flags = 0;  // 0 means "no extra flags" by default.
 
     constexpr uint32_t default_dump_stat_json = 0;
     constexpr const char* default_output_dir = "/tmp";
@@ -201,6 +202,7 @@ int main(int argc, char** argv) {
         input_args, "--tx_data_sent_per_iter_high", default_tx_data_sent_per_iter_high);
     uint32_t fabric_command =
         test_args::get_command_option_uint32(input_args, "--fabric_command", default_fabric_command);
+    uint32_t fabric_flags = test_args::get_command_option_uint32(input_args, "--fabric_flags", default_fabric_flags);
     uint32_t target_address =
         test_args::get_command_option_uint32(input_args, "--target_address", default_target_address);
     uint32_t atomic_increment =
@@ -380,7 +382,8 @@ int main(int argc, char** argv) {
                 fabric_command,                                                         // 18: fabric command
                 target_address,
                 atomic_increment,
-                tx_signal_address
+                tx_signal_address,
+                fabric_flags  // 22: user-specified fabric flags
 
             };
 

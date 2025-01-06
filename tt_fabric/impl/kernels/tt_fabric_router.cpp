@@ -128,8 +128,8 @@ void kernel_main() {
             chan_request_entry_t* req = (chan_request_entry_t*)fvc_consumer_req_buf->chan_req + req_index;
             pull_request_t* pull_req = &req->pull_request;
             bool can_pull = !fvc_consumer_state.sync_buf_full() && !fvc_consumer_state.sync_pending;
-            if (req->bytes[47] == FORWARD) {
-                // Data is packetized.
+            if ((req->bytes[47] & FORWARD) != 0) {
+                // Data is packetized. unicast or multicast
                 if (can_pull) {
                     pull_data_to_fvc_buffer(pull_req, &fvc_consumer_state);
                 }

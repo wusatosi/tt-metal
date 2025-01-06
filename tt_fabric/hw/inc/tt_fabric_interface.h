@@ -67,6 +67,7 @@ typedef struct tt_session {
 static_assert(sizeof(tt_session) == 20);
 
 typedef struct mcast_params {
+    // use east and west now as remaining hops
     uint16_t east;
     uint16_t west;
     uint16_t north;
@@ -137,9 +138,12 @@ typedef struct pull_request {
     uint64_t buffer_start;  // Producer local buffer start. Used for wrapping rd/wr_ptr at the end of buffer.
     uint64_t ack_addr;  // Producer local address to send rd_ptr updates. fabric router pushes its rd_ptr to requestor
                         // at this address.
-    uint8_t padding[15];
+    uint8_t padding[14];
+    uint8_t direction;
     uint8_t flags;  // Router command.
 } pull_request_t;
+
+enum { DIR_NONE = 0, DIR_EAST = 1, DIR_WEST = 2 };
 
 const uint32_t PULL_REQ_SIZE_BYTES = 48;
 

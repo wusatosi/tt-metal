@@ -56,6 +56,7 @@ constexpr uint32_t atomic_increment = get_compile_time_arg_val(20);
 uint32_t dest_device;
 
 constexpr uint32_t signal_address = get_compile_time_arg_val(21);
+constexpr uint32_t fabric_flags = get_compile_time_arg_val(22);
 
 uint32_t max_packet_size_mask;
 
@@ -101,7 +102,10 @@ inline bool test_buffer_handler_async_wr() {
 
             tt_l1_ptr uint32_t* header_ptr = reinterpret_cast<tt_l1_ptr uint32_t*>(byte_wr_addr);
 
-            packet_header.routing.flags = FORWARD;
+            // packet_header.routing.flags = FORWARD;
+            uint32_t flags = FORWARD;
+            flags |= fabric_flags;
+            packet_header.routing.flags = flags;
             packet_header.routing.packet_size_bytes = input_queue_state.curr_packet_size_words * PACKET_WORD_SIZE_BYTES;
             packet_header.routing.dst_mesh_id = dest_device >> 16;
             packet_header.routing.dst_dev_id = dest_device & 0xFFFF;
@@ -187,7 +191,10 @@ inline bool test_buffer_handler_atomic_inc() {
 
             tt_l1_ptr uint32_t* header_ptr = reinterpret_cast<tt_l1_ptr uint32_t*>(byte_wr_addr);
 
-            packet_header.routing.flags = INLINE_FORWARD;
+            // packet_header.routing.flags = INLINE_FORWARD;
+            uint32_t flags = INLINE_FORWARD;
+            flags |= fabric_flags;
+            packet_header.routing.flags = flags;
             packet_header.routing.dst_mesh_id = dest_device >> 16;
             packet_header.routing.dst_dev_id = dest_device & 0xFFFF;
             packet_header.routing.packet_size_bytes = PACKET_HEADER_SIZE_BYTES;
