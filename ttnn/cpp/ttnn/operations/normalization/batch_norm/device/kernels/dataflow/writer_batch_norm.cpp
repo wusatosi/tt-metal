@@ -13,15 +13,16 @@ void kernel_main() {
     const bool weight_has_value = get_arg_val<uint32_t>(2) == 1;
     uint32_t weight_addr = get_arg_val<uint32_t>(3);  // weight
     const bool bias_has_value = get_arg_val<uint32_t>(4) == 1;
-    uint32_t bias_addr = get_arg_val<uint32_t>(5);  // bias
-    uint32_t dst_addr = get_arg_val<uint32_t>(6);   // output
-    uint32_t start_tile_id = get_arg_val<uint32_t>(7);
-    uint32_t num_tiles = get_arg_val<uint32_t>(8);
-    uint32_t HtWt = get_arg_val<uint32_t>(9);
-    uint32_t n_stride = get_arg_val<uint32_t>(10);
-    uint32_t c_stride = get_arg_val<uint32_t>(11);
-    uint32_t N = get_arg_val<uint32_t>(12);
-    uint32_t C = get_arg_val<uint32_t>(13);
+    uint32_t bias_addr = get_arg_val<uint32_t>(5);           // bias
+    uint32_t dst_addr = get_arg_val<uint32_t>(6);            // output
+    const bool is_training_mode = get_arg_val<uint32_t>(7);  // mode of operation
+    uint32_t start_tile_id = get_arg_val<uint32_t>(8);
+    uint32_t num_tiles = get_arg_val<uint32_t>(9);
+    uint32_t HtWt = get_arg_val<uint32_t>(10);
+    uint32_t n_stride = get_arg_val<uint32_t>(11);
+    uint32_t c_stride = get_arg_val<uint32_t>(12);
+    uint32_t N = get_arg_val<uint32_t>(13);
+    uint32_t C = get_arg_val<uint32_t>(14);
 
     constexpr uint32_t onetile = 1;
 
@@ -115,6 +116,10 @@ void kernel_main() {
                 noc_async_read_barrier();
                 fill_tile_with_first_element_bfloat16(cb_id_bias);
                 cb_push_back(cb_id_bias, onetile);
+            }
+
+            // to read running stats value for updation
+            if (is_training_mode) {
             }
 
             for (uint32_t t = start_t; t < HtWt && num_tiles_written < num_tiles; ++t, ++num_tiles_written) {

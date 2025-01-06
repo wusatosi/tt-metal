@@ -68,7 +68,7 @@ void set_or_update_runtime_arguments(
             num_tiles_per_core = num_tiles_per_core_group_2;
         } else {
             handle_args(program, reader_kernel_id, core, std::array<uint32_t, 11>{0});
-            handle_args(program, writer_kernel_id, core, std::array<uint32_t, 16>{0});
+            handle_args(program, writer_kernel_id, core, std::array<uint32_t, 17>{0});
             handle_args(program, compute_kernel_id, core, std::array<uint32_t, 3>{0});
             continue;
         }
@@ -98,8 +98,9 @@ void set_or_update_runtime_arguments(
             static_cast<uint32_t>(weight_has_value),
             weight_addr,  // weight
             static_cast<uint32_t>(bias_has_value),
-            bias_addr,              // bias
-            c.buffer()->address(),  // output
+            bias_addr,                                             // bias
+            c.buffer()->address(),                                 // output
+            static_cast<uint32_t>(operation_attributes.training),  // mode of operation
             start_tile_id,
             num_tiles_per_core,
             cHtWt,
@@ -255,13 +256,21 @@ BatchNormOperation::BatchNormFactory::cached_program_t BatchNormOperation::Batch
         program,
         "ttnn/cpp/ttnn/operations/normalization/batch_norm/device/kernels/dataflow/writer_batch_norm.cpp",
         all_device_cores,
-        tt_metal::WriterDataMovementConfig({b_is_dram, c_is_dram, d_is_dram, e_is_dram, f_is_dram}));
+        tt_metal::WriterDataMovementConfig(
+            {b_is_dram,
+             c_is_dram,
+             d_is_dram,
+             e_is_dram,
+             f_is_dram,
+             static_cast<uint32_t>(operation_attributes.training)}));
 
     // COMPUTE KERNEL
     bool fp32_dest_acc_en = c_data_format == tt::DataFormat::UInt32 || c_data_format == tt::DataFormat::Int32 ||
                             c_data_format == tt::DataFormat::Float32;
     std::vector<uint32_t> compute_kernel_args = {
-        static_cast<uint32_t>(weight_has_value), static_cast<uint32_t>(bias_has_value)};
+        static_cast<uint32_t>(weight_has_value),
+        static_cast<uint32_t>(bias_has_value),
+        static_cast<uint32_t>(operation_attributes.training)};
     auto compute_kernel_id = tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/normalization/batch_norm/device/kernels/compute/batch_norm_kernel.cpp",

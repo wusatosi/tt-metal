@@ -39,6 +39,7 @@ void MAIN {
     uint32_t tile_start = get_arg_val<uint32_t>(2);
     constexpr uint32_t weight_has_value = get_compile_time_arg_val(0) == 1;
     constexpr uint32_t bias_has_value = get_compile_time_arg_val(1) == 1;
+    constexpr uint32_t is_training_mode = get_compile_time_arg_val(2) == 1;
 
     if (num_tiles == 0) {
         return;
@@ -78,6 +79,10 @@ void MAIN {
     constexpr auto cb_affine_or_out = (weight_has_value || bias_has_value) ? cb_tmp_1 : cb_output_0;
     constexpr auto cb_scaled_output = (bias_has_value) ? cb_tmp_1 : cb_output_0;
     for (uint32_t tile_id = 0; tile_id < num_tiles; ++tile_id) {
+        if (is_training_mode) {
+            // update running stats here
+        }
+
         // 1/(sqrt(batch_var + eps))
         cb_reserve_back(cb_den, onetile);
         cb_wait_front(cb_batch_var, 1);

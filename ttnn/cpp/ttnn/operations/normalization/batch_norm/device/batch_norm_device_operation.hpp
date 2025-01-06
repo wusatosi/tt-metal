@@ -12,6 +12,7 @@ namespace ttnn::operations::normalization {
 struct BatchNormOperation {
     struct operation_attributes_t {
         const float eps;
+        const bool training;
         const MemoryConfig memory_config;
 
         DataType input_dtype;
@@ -68,6 +69,7 @@ struct BatchNormOperation {
         const float eps,
         std::optional<Tensor> weight,
         std::optional<Tensor> bias,
+        const bool training,
         std::optional<Tensor> output,
         const std::optional<MemoryConfig>& memory_config);
 };

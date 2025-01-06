@@ -14,7 +14,7 @@ void bind_batch_norm_operation(pybind11::module& module) {
         module,
         ttnn::batch_norm,
         R"doc(
-            Applies Spatial Batch Normalization over each channel on :attr:`input_tensor`.Currently support is provided for inference mode only.
+            Applies Spatial Batch Normalization over each channel on :attr:`input_tensor`
 
 
         Args:
@@ -23,6 +23,7 @@ void bind_batch_norm_operation(pybind11::module& module) {
 
         Keyword args:
             eps (float, optional): Epsilon value. Defaults to `1e-05`.
+            momentum (float, optional): Momentum value. Defaults to `0.1`.
             running_mean (ttnn.Tensor, optional): the running_mean required for inference mode. Defaults to `None`.
             running_var (ttnn.Tensor, optional): the running_var required for inference mode. Defaults to `None`.
             weight (ttnn.Tensor, optional): the weight or gamma value. Defaults to `None`.
@@ -43,6 +44,7 @@ void bind_batch_norm_operation(pybind11::module& module) {
             py::arg("running_var") = std::nullopt,
             py::arg("training") = false,
             py::arg("eps") = 1e-05,
+            py::arg("momentum") = 0.1,
             py::arg("weight") = std::nullopt,
             py::arg("bias") = std::nullopt,
             py::arg("output") = std::nullopt,
