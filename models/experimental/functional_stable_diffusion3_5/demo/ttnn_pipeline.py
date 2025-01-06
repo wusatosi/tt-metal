@@ -11,6 +11,10 @@ from transformers import (
     T5TokenizerFast,
 )
 import torch.nn.functional as F
+from models.utility_functions import (
+    enable_persistent_kernel_cache,
+    disable_persistent_kernel_cache,
+)
 
 from loguru import logger
 import inspect
@@ -573,6 +577,8 @@ class ttnnStableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSi
         parameters_transformer=None,
         device_ttnn=None,
     ):
+        disable_persistent_kernel_cache()
+
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
 
@@ -675,16 +681,48 @@ class ttnnStableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSi
             )
 
         print("Entering loop")
+        import numpy as np
+
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                # for ii in range(1):
+                # t = timesteps[-1]
                 if self.interrupt:
                     continue
+
+                if i == 0:
+                    numpy_array = np.load(
+                        "../../sd35_512_unopt/tt-metal/models/experimental/functional_stable_diffusion3_5/demo/demo_unoptimized_512x512__latents_old_"
+                        + str(i)
+                        + ".npy"
+                    )
+                    latents = torch.from_numpy(numpy_array)
 
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
+
+                numpy_array = np.load(
+                    "../../sd35_512_unopt/tt-metal/models/experimental/functional_stable_diffusion3_5/demo/demo_unoptimized_512x512__hidden_states_"
+                    + str(i)
+                    + ".npy"
+                )
+                latent_model_input = torch.from_numpy(numpy_array)  # .to(dtype=torch.bfloat16)
+                numpy_array = np.load(
+                    "../../sd35_512_unopt/tt-metal/models/experimental/functional_stable_diffusion3_5/demo/demo_unoptimized_512x512__encoder_hidden_"
+                    + str(i)
+                    + ".npy"
+                )
+                prompt_embeds = torch.from_numpy(numpy_array)  # .to(dtype=torch.bfloat16)
+                numpy_array = np.load(
+                    "../../sd35_512_unopt/tt-metal/models/experimental/functional_stable_diffusion3_5/demo/demo_unoptimized_512x512__pooled_proj_"
+                    + str(i)
+                    + ".npy"
+                )
+                pooled_prompt_embeds = torch.from_numpy(numpy_array)  # .to(dtype=torch.bfloat16)
+
                 ttnn_latent_model_input = ttnn.from_torch(
                     latent_model_input,
                     layout=ttnn.TILE_LAYOUT,
@@ -693,7 +731,8 @@ class ttnnStableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSi
                     memory_config=ttnn.L1_MEMORY_CONFIG,
                 )
                 ttnn_timestep_proj = parameters_transformer["timesteps_proj"][i]
-                prompt_embeds_pad = F.pad(prompt_embeds, (0, 0, 0, 6))
+                # prompt_embeds_pad = F.pad(prompt_embeds, (0, 0, 0, 6))
+                prompt_embeds_pad = prompt_embeds
                 ttnn_prompt_embeds = ttnn.from_torch(
                     prompt_embeds_pad.unsqueeze(1),
                     layout=ttnn.TILE_LAYOUT,
@@ -720,23 +759,66 @@ class ttnnStableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSi
                         parameters=parameters_transformer,
                     )[0]
                 )
+                print("Ended transformer")
 
-                print("Eneded transformer")
+                numpy_array = noise_pred.to(torch.float32).detach().numpy()
+                np.save(
+                    "models/experimental/functional_stable_diffusion3_5/demo/demo_optimGuidedd_512x512__noise_pred_"
+                    + str(i)
+                    + ".npy",
+                    numpy_array,
+                )
+
                 # perform guidance
                 if self.do_classifier_free_guidance:
+                    print("do_classifier_free_guidance", self.guidance_scale)
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+
+                numpy_array = noise_pred.to(torch.float32).detach().numpy()
+                np.save(
+                    "models/experimental/functional_stable_diffusion3_5/demo/demo_optimGuidedd_512x512__noise_pred_ii_"
+                    + str(i)
+                    + ".npy",
+                    numpy_array,
+                )
+
+                numpy_array = latents.to(torch.float32).detach().numpy()
+                np.save(
+                    "models/experimental/functional_stable_diffusion3_5/demo/demo_optimGuidedd_512x512__latents_old_"
+                    + str(i)
+                    + ".npy",
+                    numpy_array,
+                )
+                numpy_array = t.to(torch.float32).detach().numpy()
+                np.save(
+                    "models/experimental/functional_stable_diffusion3_5/demo/demo_optimGuidedd_512x512__ttt_i_"
+                    + str(i)
+                    + ".npy",
+                    numpy_array,
+                )
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
+                print("latents_dtype", latents_dtype)
+                numpy_array = latents.to(torch.float32).detach().numpy()
+                np.save(
+                    "models/experimental/functional_stable_diffusion3_5/demo/demo_optimGuidedd_512x512__latents_i_"
+                    + str(i)
+                    + ".npy",
+                    numpy_array,
+                )
+
                 if latents.dtype != latents_dtype:
+                    print("why??")
                     if torch.backends.mps.is_available():
                         # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
                         latents = latents.to(latents_dtype)
 
                 if callback_on_step_end is not None:
+                    print("callback_on_step_end")
                     callback_kwargs = {}
                     for k in callback_on_step_end_tensor_inputs:
                         callback_kwargs[k] = locals()[k]
@@ -749,9 +831,19 @@ class ttnnStableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSi
                         "negative_pooled_prompt_embeds", negative_pooled_prompt_embeds
                     )
 
+                numpy_array = latents.to(torch.float32).detach().numpy()
+                np.save(
+                    "models/experimental/functional_stable_diffusion3_5/demo/demo_optimGuidedd__512x512__latents_"
+                    + str(i)
+                    + ".npy",
+                    numpy_array,
+                )
+
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
+
+                enable_persistent_kernel_cache()
 
                 # if XLA_AVAILABLE:
                 #     xm.mark_step()
@@ -765,7 +857,7 @@ class ttnnStableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSi
             numpy_array,
         )
         print("completed forloop")
-        exit(0)
+        # exit(0)
         if output_type == "latent":
             image = latents
 

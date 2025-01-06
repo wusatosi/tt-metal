@@ -219,6 +219,9 @@ class ttnn_JointTransformerBlock:
             encoder_hidden_states = encoder_hidden_states + context_ff_output
             ttnn.deallocate(context_ff_output)
             ttnn.deallocate(c_gate_mlp)
+            encoder_hidden_states = ttnn.to_memory_config(
+                encoder_hidden_states, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat16
+            )
             # additional realocate to save all possible spaces
             encoder_hidden_states = ttnn.reallocate(encoder_hidden_states)
             hidden_states = ttnn.reallocate(hidden_states)

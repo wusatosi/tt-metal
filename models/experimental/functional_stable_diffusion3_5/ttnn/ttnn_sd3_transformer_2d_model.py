@@ -115,10 +115,8 @@ class ttnn_SD3Transformer2DModel:
         # ttnn_PatchEmbed + Pos Emb
         hidden_states = self.pos_embed(hidden_states.device(), hidden_states)
 
-        encoder_hidden_states = ttnn.to_memory_config(
-            encoder_hidden_states, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b
-        )
-        temb = ttnn.to_memory_config(temb, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b)
+        encoder_hidden_states = ttnn.to_memory_config(encoder_hidden_states, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat16)
+        temb = ttnn.to_memory_config(temb, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat16)
 
         for index_block, block in enumerate(self.transformer_blocks):
             encoder_hidden_states, hidden_states = block(
@@ -153,19 +151,11 @@ class ttnn_SD3Transformer2DModel:
         hidden_states = ttnn.reshape(
             hidden_states, (hidden_states.shape[0], height, width, patch_size, patch_size, self.out_channels)
         )
-        device = hidden_states.device()
-        hidden_states = ttnn.to_torch(hidden_states)
-        hidden_states = torch.einsum(
-            "nhwpqc->nchpwq", hidden_states
-        )  # This will be replace by ttnn permute, issue #12154
-        hidden_states = ttnn.from_torch(hidden_states, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device)
+        # (2, 32, 32, 2, 2, 16)
+        hidden_states = ttnn.permute(hidden_states, (0, 5, 1, 3, 2, 4))  # (2, 16, 64, 2, 64, 2)
         output = ttnn.reshape(
             hidden_states, (hidden_states.shape[0], self.out_channels, height * patch_size, width * patch_size)
-        )
-
-        # if USE_PEFT_BACKEND:
-        #     # remove `lora_scale` from each PEFT layer
-        #     unscale_lora_layers(self, lora_scale)
+        )  # (2, 16, 128, 128)
 
         if not return_dict:
             return (output,)
