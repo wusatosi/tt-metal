@@ -216,7 +216,7 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
     if (is_large_kernel) {
         uint32_t max_pool_partials_cb_id = tt::CBIndex::c_25;  // max_pool partials
         uint32_t max_pool_partials_cb_pagesize = out_cb_pagesize;
-        uint32_t max_pool_partials_cb_npages = nblocks * out_cb_npages;
+        uint32_t max_pool_partials_cb_npages = nblocks;
         CircularBufferConfig max_pool_partials_cb_config =
             CircularBufferConfig(
                 max_pool_partials_cb_npages * max_pool_partials_cb_pagesize, {{max_pool_partials_cb_id, out_df}})

@@ -9,7 +9,7 @@
 
 #include "dataflow_api.h"
 
-#define ENABLE_DEBUG_PRINT 0
+#define ENABLE_DEBUG_PRINT 1
 
 #if ENABLE_DEBUG_PRINT == 1
 #include "debug/dprint.h"
@@ -119,6 +119,7 @@ void kernel_main() {
             uint32_t processed_rows = 0;
             cb_reserve_back(in_cb_id, 1);
             uint32_t out_l1_write_addr_base = get_write_ptr(in_cb_id);
+            uint32_t out_l1_write_addr_base_orig = out_l1_write_addr_base;
             uint32_t out_l1_write_addr = out_l1_write_addr_base;
             // fill interm buffer with minus_inf if we have only one chunk
             fill_with_val(out_l1_write_addr, in_cb_sz, minus_inf);
@@ -147,6 +148,10 @@ void kernel_main() {
                 noc_async_read_barrier();
                 cb_push_back(in_cb_id, 1);
             }
+            // DPRINT << "--" << ENDL();
+            // DPRINT << "BLOCK " << c_i << " " << top_left_local_index << " " << ENDL();
+            // DPRINT << "--" << ENDL();
+            // print_pages(out_l1_write_addr_base_orig, 256, 25, 0);
         }
         counter++;
         if (split_reader) {
