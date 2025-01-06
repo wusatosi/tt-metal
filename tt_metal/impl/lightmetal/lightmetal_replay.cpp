@@ -247,7 +247,6 @@ void LightMetalReplay::RemoveCBHandleFromMap(uint32_t global_id) { cb_handle_map
 void LightMetalReplay::SetupDevices() {
     log_debug(tt::LogMetalTrace, "LightMetalReplay(SetupDevices) - Using single chip WH device as temp hack.");
     const size_t trace_region_size = 2048;  // Default is 0
-    this->arch_ = tt::ARCH::WORMHOLE_B0;
     const int device_id = 0;
     const auto dispatch_core_type = tt_metal::DispatchCoreType::WORKER;
     const chip_id_t mmio_device_id = 0;
