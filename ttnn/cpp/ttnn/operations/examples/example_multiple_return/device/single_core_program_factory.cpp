@@ -48,6 +48,12 @@ ExampleMultipleReturnDeviceOperation::SingleCore::create(
             .set_page_size(src0_cb_index, single_tile_size);
     auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_src0_config);
 
+    uint32_t src1_cb_index = tt::CBIndex::c_1;
+    tt::tt_metal::CircularBufferConfig cb_src1_config =
+        tt::tt_metal::CircularBufferConfig(num_input_tiles * single_tile_size, {{src1_cb_index, cb_data_format}})
+            .set_page_size(src1_cb_index, single_tile_size);
+    auto cb_src1 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_src1_config);
+
     uint32_t output_cb_index = tt::CBIndex::c_2;
     uint32_t num_output_tiles = 2;
     tt::tt_metal::CircularBufferConfig cb_output_config =
@@ -65,12 +71,12 @@ ExampleMultipleReturnDeviceOperation::SingleCore::create(
     bool dst_is_dram2 = output_tensor2.has_value()
                             ? (output_tensor2.value().buffer()->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0)
                             : 0;
-    std::vector<uint32_t> writer_compile_time_args = {
-        (std::uint32_t)output_cb_index, (std::uint32_t)dst_is_dram1, (std::uint32_t)dst_is_dram2};
+    std::vector<uint32_t> writer_compile_time_args = {};
 
     tt::tt_metal::KernelHandle unary_reader_kernel_id = tt::tt_metal::CreateKernel(
         program,
-        "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/dataflow/reader_unary_interleaved_start_id.cpp",
+        "ttnn/cpp/ttnn/operations/examples/example_multiple_return/device/kernels/"
+        "reader_unary_interleaved_start_id.cpp",
         all_cores,
         tt::tt_metal::ReaderDataMovementConfig(reader_compile_time_args));
 
@@ -88,7 +94,7 @@ ExampleMultipleReturnDeviceOperation::SingleCore::create(
     bool math_approx_mode = false;
     auto eltwise_unary_kernel_group_1_id = tt::tt_metal::CreateKernel(
         program,
-        "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/compute/eltwise_sfpu.cpp",
+        "ttnn/cpp/ttnn/operations/examples/example_multiple_return/device/kernels/eltwise_sfpu.cpp",
         core_group_1,
         tt::tt_metal::ComputeConfig{
             .math_fidelity = MathFidelity::HiFi4,
@@ -103,7 +109,7 @@ ExampleMultipleReturnDeviceOperation::SingleCore::create(
 
         auto eltwise_unary_kernel_group_2_id = tt::tt_metal::CreateKernel(
             program,
-            "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/compute/eltwise_sfpu.cpp",
+            "ttnn/cpp/ttnn/operations/examples/example_multiple_return/device/kernels/eltwise_sfpu.cpp",
             core_group_2,
             tt::tt_metal::ComputeConfig{
                 .math_fidelity = MathFidelity::HiFi4,
