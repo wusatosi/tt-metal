@@ -369,8 +369,8 @@ void EnqueueProgramCommand::assemble_preamble_commands(
 
     // Send write offsets
     if (hal.get_programmable_core_type_count() >= 2) {
-        std::cout << "tensix index " << hal.get_programmable_core_type_index(HalProgrammableCoreType::TENSIX)
-                  << " active eth index " << hal.get_programmable_core_type_index(HalProgrammableCoreType::ACTIVE_ETH) << std::endl;
+        // std::cout << "tensix index " << hal.get_programmable_core_type_index(HalProgrammableCoreType::TENSIX)
+        //           << " active eth index " << hal.get_programmable_core_type_index(HalProgrammableCoreType::ACTIVE_ETH) << std::endl;
         program_command_sequence.preamble_command_sequence.add_dispatch_set_write_offsets(
             0,
             kernel_config_addrs[hal.get_programmable_core_type_index(HalProgrammableCoreType::TENSIX)].addr,
@@ -422,7 +422,7 @@ uint32_t get_max_write_packed_sub_cmds(
     uint32_t sub_cmd_sizeB =
         is_unicast ? sizeof(CQDispatchWritePackedUnicastSubCmd) : sizeof(CQDispatchWritePackedMulticastSubCmd);
     // Approximate calculation due to alignment
-    std::cout << "is_unicast " << is_unicast << std::endl;
+    // std::cout << "is_unicast " << is_unicast << std::endl;
     uint32_t l1_alignment = hal.get_alignment(HalMemType::L1);
     uint32_t max_prefetch_size =
         max_prefetch_cmd_size - sizeof(CQPrefetchCmd) - hal.get_alignment(HalMemType::HOST) - sizeof(CQDispatchCmd) - l1_alignment;
@@ -432,10 +432,10 @@ uint32_t get_max_write_packed_sub_cmds(
 
     uint32_t packed_write_max_multicast_sub_cmds =
         get_packed_write_max_multicast_sub_cmds(packed_write_max_unicast_sub_cmds);
-    std::cout << "max_prefetch_size " << max_prefetch_size
-              << " max_prefetch_num_packed_cmds " << max_prefetch_num_packed_cmds
-              << " packed_write_max_unicast_sub_cmds " << packed_write_max_unicast_sub_cmds
-              << " packed_write_max_multicast_sub_cmds " << packed_write_max_multicast_sub_cmds << std::endl;
+    // std::cout << "max_prefetch_size " << max_prefetch_size
+    //           << " max_prefetch_num_packed_cmds " << max_prefetch_num_packed_cmds
+    //           << " packed_write_max_unicast_sub_cmds " << packed_write_max_unicast_sub_cmds
+    //           << " packed_write_max_multicast_sub_cmds " << packed_write_max_multicast_sub_cmds << std::endl;
     return std::min(
         max_prefetch_num_packed_cmds,
         is_unicast ? packed_write_max_unicast_sub_cmds : packed_write_max_multicast_sub_cmds);
@@ -479,7 +479,7 @@ void generate_runtime_args_cmds(
     const uint32_t packed_write_max_unicast_sub_cmds,
     bool no_stride,
     enum DispatchWriteOffsets write_offset_index) {
-    std::cout << "in generate runtime args cmds" << std::endl;
+    // std::cout << "in generate runtime args cmds" << std::endl;
     static_assert(
         std::is_same<PackedSubCmd, CQDispatchWritePackedUnicastSubCmd>::value or
         std::is_same<PackedSubCmd, CQDispatchWritePackedMulticastSubCmd>::value);
@@ -492,9 +492,9 @@ void generate_runtime_args_cmds(
             uint32_t dispatch_cmd_sizeB = sizeof(CQDispatchCmd) + align(num_packed_cmds * sub_cmd_sizeB, l1_alignment);
             uint32_t aligned_runtime_data_sizeB =
                 (no_stride ? 1 : num_packed_cmds) * align(runtime_args_len * sizeof(uint32_t), l1_alignment);
-            std::cout << "get_runtime_payload_sizeB unicast " << is_unicast
-                      << " dispatch_cmd_sizeB " << dispatch_cmd_sizeB
-                      << " aligned_runtime_data_sizeB " << aligned_runtime_data_sizeB << std::endl;
+            // std::cout << "get_runtime_payload_sizeB unicast " << is_unicast
+            //           << " dispatch_cmd_sizeB " << dispatch_cmd_sizeB
+            //           << " aligned_runtime_data_sizeB " << aligned_runtime_data_sizeB << std::endl;
             return dispatch_cmd_sizeB + aligned_runtime_data_sizeB;
         };
     thread_local static auto get_runtime_args_data_offset =
@@ -503,15 +503,15 @@ void generate_runtime_args_cmds(
             uint32_t sub_cmd_sizeB =
                 is_unicast ? sizeof(CQDispatchWritePackedUnicastSubCmd) : sizeof(CQDispatchWritePackedMulticastSubCmd);
             uint32_t dispatch_cmd_sizeB = sizeof(CQDispatchCmd) + align(num_packed_cmds * sub_cmd_sizeB, l1_alignment);
-            std::cout << "get_runtime_args_data_offset is unicast " << is_unicast
-                      << " sub_cmd_sizeB " << sub_cmd_sizeB
-                      << " dispatch_cmd_sizeB " << dispatch_cmd_sizeB
-                      << " sizeofprefetch " << sizeof(CQPrefetchCmd) << std::endl;
+            // std::cout << "get_runtime_args_data_offset is unicast " << is_unicast
+            //           << " sub_cmd_sizeB " << sub_cmd_sizeB
+            //           << " dispatch_cmd_sizeB " << dispatch_cmd_sizeB
+            //           << " sizeofprefetch " << sizeof(CQPrefetchCmd) << std::endl;
             return sizeof(CQPrefetchCmd) + dispatch_cmd_sizeB;
         };
 
     constexpr bool unicast = std::is_same<PackedSubCmd, CQDispatchWritePackedUnicastSubCmd>::value;
-    std::cout << "unicast: " << unicast << std::endl;
+    // std::cout << "unicast: " << unicast << std::endl;
     uint32_t num_packed_cmds_in_seq = sub_cmds.size();
     uint32_t max_packed_cmds = get_max_write_packed_sub_cmds<PackedSubCmd>(
         max_runtime_args_len, max_prefetch_command_size, packed_write_max_unicast_sub_cmds, no_stride);
@@ -532,11 +532,11 @@ void generate_runtime_args_cmds(
             get_runtime_payload_sizeB(num_packed_cmds, max_runtime_args_len, unicast, no_stride);
         uint32_t cmd_sequence_sizeB = align(sizeof(CQPrefetchCmd) + rt_payload_sizeB, pcie_alignment);
         runtime_args_command_sequences.emplace_back(cmd_sequence_sizeB);
-        std::cout << "gen rt args cmd: " << l1_arg_base_addr
-                << " num_packed_cmds " << num_packed_cmds
-                << " cmd_sequence_sizeB " << cmd_sequence_sizeB
-                << " rt_payload_sizeB " << rt_payload_sizeB
-                << " write_offset_index " << write_offset_index << std::endl;
+        // std::cout << "gen rt args cmd: " << l1_arg_base_addr
+        //         << " num_packed_cmds " << num_packed_cmds
+        //         << " cmd_sequence_sizeB " << cmd_sequence_sizeB
+        //         << " rt_payload_sizeB " << rt_payload_sizeB
+        //         << " write_offset_index " << write_offset_index << std::endl;
         runtime_args_command_sequences.back().add_dispatch_write_packed<PackedSubCmd>(
             num_packed_cmds,
             l1_arg_base_addr,
@@ -600,7 +600,7 @@ void EnqueueProgramCommand::assemble_runtime_args_commands(ProgramCommandSequenc
             if (kg.total_rta_size != 0) {
                 uint32_t num_sub_cmds = kg.core_ranges.num_cores();
                 uint32_t max_runtime_args_len = kg.total_rta_size / sizeof(uint32_t);
-                std::cout << "About to call get_max_write_packed_sub_cmds" << std::endl;
+                // std::cout << "About to call get_max_write_packed_sub_cmds" << std::endl;
                 uint32_t max_packed_cmds = get_max_write_packed_sub_cmds<decltype(unique_sub_cmds)::value_type>(
                     max_runtime_args_len, max_prefetch_command_size, packed_write_max_unicast_sub_cmds, false);
                 command_count += div_up(num_sub_cmds, max_packed_cmds);
@@ -652,7 +652,7 @@ void EnqueueProgramCommand::assemble_runtime_args_commands(ProgramCommandSequenc
 
         for (auto& kg : program.get_kernel_groups(index)) {
             if (kg.total_rta_size != 0) {
-                std::cout << "unique rt args unicast" << std::endl;
+                // std::cout << "unique rt args unicast" << std::endl;
                 for (const CoreRange& core_range : kg.core_ranges.ranges()) {
                     for (auto x = core_range.start_coord.x; x <= core_range.end_coord.x; x++) {
                         for (auto y = core_range.start_coord.y; y <= core_range.end_coord.y; y++) {
@@ -993,8 +993,8 @@ void EnqueueProgramCommand::assemble_device_commands(
             if (write_linear) {
                 kernel_bins_unicast_cmds.emplace_back(2 * CQ_PREFETCH_CMD_BARE_MIN_SIZE);
                 cmd_sequence_sizeB += 2 * CQ_PREFETCH_CMD_BARE_MIN_SIZE;
-                std::cout << "Adding dispatch write linear that does not flush prefetch data size " << kg_transfer_info.lengths[kernel_idx]
-                          << " kg_transfer_info.dst_base_addrs[kernel_idx] " << kg_transfer_info.dst_base_addrs[kernel_idx] << std::endl;
+                // std::cout << "Adding dispatch write linear that does not flush prefetch data size " << kg_transfer_info.lengths[kernel_idx]
+                //           << " kg_transfer_info.dst_base_addrs[kernel_idx] " << kg_transfer_info.dst_base_addrs[kernel_idx] << std::endl;
                 constexpr bool flush_prefetch = false;
                 kernel_bins_unicast_cmds.back().add_dispatch_write_linear<flush_prefetch>(
                     num_mcast_dests,  // num_mcast_dests
@@ -1024,7 +1024,7 @@ void EnqueueProgramCommand::assemble_device_commands(
                     page_offset = kg_transfer_info.page_offsets[kernel_idx];
                 }
 
-                std::cout << "in epc assemble device cmd write linear about to add_prefetch_relay_paged" << std::endl;
+                // std::cout << "in epc assemble device cmd write linear about to add_prefetch_relay_paged" << std::endl;
                 kernel_bins_unicast_cmds.back().add_prefetch_relay_paged(
                     true,  // is_dram
                     page_offset,
@@ -1148,10 +1148,10 @@ void EnqueueProgramCommand::assemble_device_commands(
     // TODO: ugly, can be fixed by looping over indices w/ some work
     if (programmable_core_index != -1) {
         for (KernelGroup& kernel_group : program.get_kernel_groups(programmable_core_index)) {
-            std::cout << "in enqueue program command got kernel group for active eth" << std::endl;
+            // std::cout << "in enqueue program command got kernel group for active eth" << std::endl;
             kernel_group.launch_msg.kernel_config.mode = DISPATCH_MODE_DEV;
             for (uint32_t i = 0; i < kernel_config_addrs.size(); i++) {
-                std::cout << "kernel config base i " << i << " is " << kernel_config_addrs[i].addr << std::endl;
+                // std::cout << "kernel config base i " << i << " is " << kernel_config_addrs[i].addr << std::endl;
                 kernel_group.launch_msg.kernel_config.kernel_config_base[i] = kernel_config_addrs[i].addr;
             }
             kernel_group.launch_msg.kernel_config.host_assigned_id = program.get_runtime_id();
@@ -1161,13 +1161,13 @@ void EnqueueProgramCommand::assemble_device_commands(
                     for (auto y = core_range.start_coord.y; y <= core_range.end_coord.y; y++) {
                         CoreCoord virtual_coord = device->virtual_core_from_logical_core(
                             CoreCoord({x, y}), kernel_group.get_core_type());
-                        std::cout << "pbysical coord is " << virtual_coord.str()
-                                  << " enable is " << std::hex << uint32_t(kernel_group.launch_msg.kernel_config.enables) << std::dec
-                                  << " noc index " << this->noc_index
-                                  << tt::tt_metal::hal.noc_coordinate(this->noc_index, device->grid_size().x, virtual_coord.x)
-                                  << " " << tt::tt_metal::hal.noc_coordinate(this->noc_index, device->grid_size().y, virtual_coord.y)
-                                  << " " << 6 /*NOC_ADDR_NODE_ID_BITS*/
-                                  << std::endl;
+                        // std::cout << "pbysical coord is " << virtual_coord.str()
+                        //           << " enable is " << std::hex << uint32_t(kernel_group.launch_msg.kernel_config.enables) << std::dec
+                        //           << " noc index " << this->noc_index
+                        //           << tt::tt_metal::hal.noc_coordinate(this->noc_index, device->grid_size().x, virtual_coord.x)
+                        //           << " " << tt::tt_metal::hal.noc_coordinate(this->noc_index, device->grid_size().y, virtual_coord.y)
+                        //           << " " << 6 /*NOC_ADDR_NODE_ID_BITS*/
+                        //           << std::endl;
                         unicast_go_signal_sub_cmds.emplace_back(CQDispatchWritePackedUnicastSubCmd{
                             .noc_xy_addr =
                                 this->device->get_noc_unicast_encoding(this->noc_index, virtual_coord)});
@@ -1297,7 +1297,7 @@ void EnqueueProgramCommand::assemble_device_commands(
             kernel_bins_unicast_cmd.size_bytes());
     }
     uint32_t dram_alignment = hal.get_alignment(HalMemType::DRAM);
-    std::cout << "navy kernel_bins_dispatch_subcmds " << kernel_bins_dispatch_subcmds.size() << std::endl;
+    // std::cout << "navy kernel_bins_dispatch_subcmds " << kernel_bins_dispatch_subcmds.size() << std::endl;
     for (uint32_t i = 0; i < kernel_bins_dispatch_subcmds.size(); ++i) {
         device_command_sequence.add_dispatch_write_packed_large(
             dram_alignment,
@@ -1347,9 +1347,9 @@ void EnqueueProgramCommand::assemble_device_commands(
 
     if (unicast_go_signal_sub_cmds.size() > 0) {
         uint32_t unicast_launch_msg_addr = hal.get_dev_addr(HalProgrammableCoreType::ACTIVE_ETH, HalL1MemAddrType::LAUNCH) + this->unicast_cores_launch_message_wptr * sizeof(launch_msg_t);
-        std::cout << "Unicast launch msg addr " << unicast_launch_msg_addr
-                  << " unicast_go_signals_payload size " << unicast_go_signals_payload.size()
-                  << " go_signal_sizeB " << go_signal_sizeB << std::endl;
+        // std::cout << "Unicast launch msg addr " << unicast_launch_msg_addr
+        //           << " unicast_go_signals_payload size " << unicast_go_signals_payload.size()
+        //           << " go_signal_sizeB " << go_signal_sizeB << std::endl;
         uint32_t curr_sub_cmd_idx = 0;
         for (const auto& [num_sub_cmds_in_cmd, unicast_go_signal_payload_sizeB] : unicast_go_signals_payload) {
             uint32_t write_offset_bytes = device_command_sequence.write_offset_bytes();
@@ -1672,13 +1672,13 @@ void EnqueueProgramCommand::process() {
     if (!is_cached) {
         ProgramCommandSequence program_command_sequence;
         this->assemble_preamble_commands(program_command_sequence, kernel_config_addrs);
-        std::cout << "Done assembling preamble commands" << std::endl;
+        // std::cout << "Done assembling preamble commands" << std::endl;
         this->assemble_stall_commands(program_command_sequence, true);
         program_command_sequence.current_stall_seq_idx = UncachedStallSequenceIdx;
-        std::cout << "Done assembling stall commands" << std::endl;
+        // std::cout << "Done assembling stall commands" << std::endl;
         // Runtime Args Command Sequence
         this->assemble_runtime_args_commands(program_command_sequence);
-        std::cout << "Done assembling runtime args" << std::endl;
+        // std::cout << "Done assembling runtime args" << std::endl;
 
         // Record kernel groups in this program, only need to do it once.
         for (uint32_t index = 0; index < hal.get_programmable_core_type_count(); index++) {
@@ -2597,8 +2597,8 @@ void HWCommandQueue::enqueue_program(Program& program, bool blocking) {
     }
 
     auto &worker_launch_message_buffer_state = this->device->get_worker_launch_message_buffer_state(sub_device_id);
-    std::cout << "worker_launch_message_buffer_state.get_unicast_wptr() "
-              << worker_launch_message_buffer_state.get_unicast_wptr() << std::endl;
+    // std::cout << "worker_launch_message_buffer_state.get_unicast_wptr() "
+    //           << worker_launch_message_buffer_state.get_unicast_wptr() << std::endl;
     auto command = EnqueueProgramCommand(
         this->id,
         this->device,
