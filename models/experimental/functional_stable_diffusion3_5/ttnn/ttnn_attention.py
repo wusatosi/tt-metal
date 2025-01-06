@@ -50,8 +50,8 @@ class ttnn_Attention:
         self.added_proj_bias = added_proj_bias
         self.eps = eps
         if qk_norm is not None:
-            self.norm_q = ttnn_RMSNorm(dim=dim_head, eps=eps, elementwise_affine=True, parameters=parameters.norm_q)
-            self.norm_k = ttnn_RMSNorm(dim=dim_head, eps=eps, elementwise_affine=True, parameters=parameters.norm_k)
+            # self.norm_q = ttnn_RMSNorm(dim=dim_head, eps=eps, elementwise_affine=True, parameters=parameters.norm_q)
+            # self.norm_k = ttnn_RMSNorm(dim=dim_head, eps=eps, elementwise_affine=True, parameters=parameters.norm_k)
             self.param_norm_q = parameters.norm_q
             self.param_norm_k = parameters.norm_k
         else:
@@ -59,17 +59,19 @@ class ttnn_Attention:
             self.norm_k = None
         if qk_norm is not None and added_kv_proj_dim is not None:
             if qk_norm == "rms_norm":
-                self.norm_added_q = ttnn_RMSNorm(
-                    dim=dim_head, eps=eps, elementwise_affine=True, parameters=parameters.norm_added_q
-                )
-                self.norm_added_k = ttnn_RMSNorm(
-                    dim=dim_head, eps=eps, elementwise_affine=True, parameters=parameters.norm_added_k
-                )
+                # self.norm_added_q = ttnn_RMSNorm(
+                #     dim=dim_head, eps=eps, elementwise_affine=True, parameters=parameters.norm_added_q
+                # )
+                # self.norm_added_k = ttnn_RMSNorm(
+                #     dim=dim_head, eps=eps, elementwise_affine=True, parameters=parameters.norm_added_k
+                # )
                 self.param_norm_added_q = parameters.norm_added_q
                 self.param_norm_added_k = parameters.norm_added_k
         else:
-            self.norm_added_q = None
-            self.norm_added_k = None
+            # self.norm_added_q = None
+            # self.norm_added_k = None
+            self.param_norm_added_q = None
+            self.param_norm_added_k = None
         self.to_q_weight = parameters.to_q.weight
         self.to_q_bias = parameters.to_q.bias
         self.to_k_weight = parameters.to_k.weight
@@ -163,11 +165,17 @@ class ttnn_JointAttnProcessor2_0:
             bias=ttnn_Attention.to_q_bias,
             memory_config=mm_a_x_memory_config,
             core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
+            dtype=ttnn.bfloat8_b,
         )
         query = ttnn.to_memory_config(query, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b)
         query = ttnn.experimental.nlp_create_qkv_heads_sd35(query, memory_config=ttnn.L1_MEMORY_CONFIG)[0]
-        if ttnn_Attention.norm_q is not None:
-            query = ttnn.rms_norm(query, epsilon=ttnn_Attention.eps, weight=ttnn_Attention.param_norm_q.weight)
+        if ttnn_Attention.param_norm_q is not None:
+            query = ttnn.rms_norm(
+                query,
+                epsilon=ttnn_Attention.eps,
+                weight=ttnn_Attention.param_norm_q.weight,
+                memory_config=ttnn.L1_MEMORY_CONFIG,
+            )
         if encoder_hidden_states_exist:
             encoder_hidden_states_query_proj = ttnn.linear(
                 encoder_hidden_states,
@@ -175,6 +183,7 @@ class ttnn_JointAttnProcessor2_0:
                 bias=ttnn_Attention.add_q_proj_bias,
                 memory_config=mm_a_x_memory_config_proj,
                 core_grid=ttnn.CoreGrid(y=mm_a_y_proj, x=mm_a_x_proj),
+                dtype=ttnn.bfloat8_b,
             )
             ## Split Head
             encoder_hidden_states_query_proj = ttnn.to_memory_config(
@@ -184,7 +193,7 @@ class ttnn_JointAttnProcessor2_0:
                 encoder_hidden_states_query_proj, memory_config=ttnn.L1_MEMORY_CONFIG
             )[0]
             #
-            if ttnn_Attention.norm_added_q is not None:
+            if ttnn_Attention.param_norm_added_q is not None:
                 encoder_hidden_states_query_proj = ttnn.rms_norm(
                     encoder_hidden_states_query_proj,
                     epsilon=ttnn_Attention.eps,
@@ -202,11 +211,17 @@ class ttnn_JointAttnProcessor2_0:
             bias=ttnn_Attention.to_k_bias,
             memory_config=mm_a_x_memory_config,
             core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
+            dtype=ttnn.bfloat8_b,
         )
         key = ttnn.to_memory_config(key, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b)
         key = ttnn.experimental.nlp_create_qkv_heads_sd35(key, memory_config=ttnn.L1_MEMORY_CONFIG)[0]
-        if ttnn_Attention.norm_k is not None:
-            key = ttnn.rms_norm(key, epsilon=ttnn_Attention.eps, weight=ttnn_Attention.param_norm_k.weight)
+        if ttnn_Attention.param_norm_k is not None:
+            key = ttnn.rms_norm(
+                key,
+                epsilon=ttnn_Attention.eps,
+                weight=ttnn_Attention.param_norm_k.weight,
+                memory_config=ttnn.L1_MEMORY_CONFIG,
+            )
         if encoder_hidden_states_exist:
             encoder_hidden_states_key_proj = ttnn.linear(
                 encoder_hidden_states,
@@ -214,6 +229,7 @@ class ttnn_JointAttnProcessor2_0:
                 bias=ttnn_Attention.add_k_proj_bias,
                 memory_config=mm_a_x_memory_config_proj,
                 core_grid=ttnn.CoreGrid(y=mm_a_y_proj, x=mm_a_x_proj),
+                dtype=ttnn.bfloat8_b,
             )
             encoder_hidden_states_key_proj = ttnn.to_memory_config(
                 encoder_hidden_states_key_proj, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b
@@ -222,11 +238,12 @@ class ttnn_JointAttnProcessor2_0:
                 encoder_hidden_states_key_proj, memory_config=ttnn.L1_MEMORY_CONFIG
             )[0]
             #
-            if ttnn_Attention.norm_added_k is not None:
+            if ttnn_Attention.param_norm_added_k is not None:
                 encoder_hidden_states_key_proj = ttnn.rms_norm(
                     encoder_hidden_states_key_proj,
                     epsilon=ttnn_Attention.eps,
                     weight=ttnn_Attention.param_norm_added_k.weight,
+                    memory_config=ttnn.L1_MEMORY_CONFIG,
                 )
             key = ttnn.concat([key, encoder_hidden_states_key_proj], dim=2, memory_config=ttnn.DRAM_MEMORY_CONFIG)
             ttnn.deallocate(encoder_hidden_states_key_proj)
@@ -240,11 +257,14 @@ class ttnn_JointAttnProcessor2_0:
             bias=ttnn_Attention.to_v_bias,
             memory_config=mm_a_x_memory_config,
             core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
+            dtype=ttnn.bfloat8_b,
         )
         value = ttnn.to_memory_config(value, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b)
         value = ttnn.experimental.nlp_create_qkv_heads_sd35(value, memory_config=ttnn.L1_MEMORY_CONFIG)[0]
         ttnn.deallocate(hidden_states)
-        # value = ttnn.reallocate(value)
+        value = ttnn.reallocate(value)
+        key = ttnn.reallocate(key)
+        query = ttnn.reallocate(query)
         if encoder_hidden_states_exist:
             encoder_hidden_states_value_proj = ttnn.linear(
                 encoder_hidden_states,
@@ -252,21 +272,25 @@ class ttnn_JointAttnProcessor2_0:
                 bias=ttnn_Attention.add_v_proj_bias,
                 memory_config=mm_a_x_memory_config_proj,
                 core_grid=ttnn.CoreGrid(y=mm_a_y_proj, x=mm_a_x_proj),
+                dtype=ttnn.bfloat8_b,
             )
             encoder_hidden_states_value_proj = ttnn.to_memory_config(
                 encoder_hidden_states_value_proj, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b
             )
-            ttnn.deallocate(encoder_hidden_states)
             encoder_hidden_states_value_proj = ttnn.experimental.nlp_create_qkv_heads_sd35(
                 encoder_hidden_states_value_proj, memory_config=ttnn.L1_MEMORY_CONFIG
             )[0]
             value = ttnn.concat([value, encoder_hidden_states_value_proj], dim=2, memory_config=ttnn.DRAM_MEMORY_CONFIG)
             ttnn.deallocate(encoder_hidden_states_value_proj)
+            ttnn.deallocate(encoder_hidden_states)
         else:
             value = ttnn.to_memory_config(value, memory_config=ttnn.DRAM_MEMORY_CONFIG)
 
         ## SDPA
         hidden_states_combined = ttnn.transformer.scaled_dot_product_attention(query, key, value, is_causal=False)
+        ttnn.deallocate(query)  # ALL ARE IN DRAM
+        ttnn.deallocate(key)
+        ttnn.deallocate(value)
         hidden_states_combined = ttnn.to_memory_config(hidden_states_combined, memory_config=ttnn.L1_MEMORY_CONFIG)
 
         ## Concat Heads
@@ -290,7 +314,8 @@ class ttnn_JointAttnProcessor2_0:
             )
             hidden_states = ttnn.slice(hidden_states_combined, [0, 0, 0, 0], [batch_size, 1, seq_len_main, dim_hidden])
             ttnn.deallocate(hidden_states_combined)
-            # hidden_states = ttnn.reallocate(hidden_states)
+            encoder_hidden_states = ttnn.reallocate(encoder_hidden_states)
+            hidden_states = ttnn.reallocate(hidden_states)
 
             if not ttnn_Attention.context_pre_only:
                 if encoder_hidden_states.shape[-2] < 512:
@@ -313,6 +338,7 @@ class ttnn_JointAttnProcessor2_0:
                     bias=ttnn_Attention.to_add_out_bias,
                     memory_config=mm_a_x_memory_config,
                     core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
+                    dtype=ttnn.bfloat8_b,
                 )
 
         else:
@@ -344,6 +370,7 @@ class ttnn_JointAttnProcessor2_0:
             bias=ttnn_Attention.to_out_bias,
             memory_config=mm_a_x_memory_config,
             core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
+            dtype=ttnn.bfloat8_b,
         )
         if encoder_hidden_states_exist:
             return hidden_states_last, encoder_hidden_states

@@ -81,6 +81,7 @@ class ttnn_PatchEmbed:
         else:
             height, width = latent.shape[-2] // self.patch_size, latent.shape[-1] // self.patch_size
 
+        # print("hw", self.pos_embed_max_size, height, width)
         latent = ttnn.permute(latent, (0, 2, 3, 1))  # NCHW to NHWC
         latent = ttnn.to_layout(latent, layout=ttnn.ROW_MAJOR_LAYOUT)
         latent = self.proj(device, latent)
@@ -107,20 +108,23 @@ class ttnn_PatchEmbed:
 
         latent = ttnn.add(latent, pos_embed, dtype=ttnn.bfloat8_b)
 
-        mm_a_y = 8
-        mm_a_x = 8
-        mm_a_x_strategy = ttnn.ShardStrategy.BLOCK
-        mm_a_x_memory_config = ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG
+        # mm_a_y = 8
+        # mm_a_x = 8
+        # mm_a_x_strategy = ttnn.ShardStrategy.BLOCK
+        # mm_a_x_memory_config = ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG
 
-        latent = ttnn.to_memory_config(
-            latent,
-            memory_config=ttnn.create_sharded_memory_config(
-                latent.shape,
-                core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
-                strategy=mm_a_x_strategy,
-                orientation=ttnn.ShardOrientation.ROW_MAJOR,
-            ),
-        )
+        # latent = ttnn.to_memory_config(
+        #     latent,
+        #     memory_config=ttnn.create_sharded_memory_config(
+        #         latent.shape,
+        #         core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
+        #         strategy=mm_a_x_strategy,
+        #         orientation=ttnn.ShardOrientation.ROW_MAJOR,
+        #     ),
+        #     # dtype=ttnn.bfloat8_b,
+        # )
+
+        latent = ttnn.to_memory_config(latent, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b)
 
         latent = ttnn.reallocate(latent)
 

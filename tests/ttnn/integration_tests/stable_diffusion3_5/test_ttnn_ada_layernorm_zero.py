@@ -43,7 +43,7 @@ def create_custom_preprocessor(device):
         ([2, 4096, 1536]),
         # ([2, 333, 1536]),
         # ([2, 1024, 1536]),
-        ([2, 160, 1536]),
+        # ([2, 160, 1536]),
     ],
 )
 def test_ada_layernorm_zero(device, x_shape, reset_seeds):

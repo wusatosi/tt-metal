@@ -49,38 +49,47 @@ class ttnn_AdaLayerNormZero:
             memory_config=mm_a_x_memory_config,
             core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
             compute_kernel_config=hifi2_kernel_config,
+            dtype=ttnn.bfloat8_b,
         )
         emb = ttnn.to_memory_config(emb, ttnn.L1_MEMORY_CONFIG)
         one_chunk = emb.shape[-1] // 6
 
         i_beg = 0
         i_end = one_chunk
-        shift_msa = ttnn.slice(emb, [0, 0, 0, i_beg], [2, 1, 1, i_end])
+        c_shift_msa = ttnn.slice(emb, [0, 0, 0, i_beg], [2, 1, 1, i_end])
         i_beg += one_chunk
         i_end += one_chunk
-        scale_msa = ttnn.slice(emb, [0, 0, 0, i_beg], [2, 1, 1, i_end])
+        c_scale_msa = ttnn.slice(emb, [0, 0, 0, i_beg], [2, 1, 1, i_end])
         i_beg += one_chunk
         i_end += one_chunk
-        gate_msa = ttnn.slice(emb, [0, 0, 0, i_beg], [2, 1, 1, i_end])
+        c_gate_msa = ttnn.slice(emb, [0, 0, 0, i_beg], [2, 1, 1, i_end])
         i_beg += one_chunk
         i_end += one_chunk
-        shift_mlp = ttnn.slice(emb, [0, 0, 0, i_beg], [2, 1, 1, i_end])
+        c_shift_mlp = ttnn.slice(emb, [0, 0, 0, i_beg], [2, 1, 1, i_end])
         i_beg += one_chunk
         i_end += one_chunk
-        scale_mlp = ttnn.slice(emb, [0, 0, 0, i_beg], [2, 1, 1, i_end])
+        c_scale_mlp = ttnn.slice(emb, [0, 0, 0, i_beg], [2, 1, 1, i_end])
         i_beg += one_chunk
         i_end += one_chunk
-        gate_mlp = ttnn.slice(emb, [0, 0, 0, i_beg], [2, 1, 1, i_end])
+        c_gate_mlp = ttnn.slice(emb, [0, 0, 0, i_beg], [2, 1, 1, i_end])
 
         ttnn.deallocate(emb)
-
         # x = self.norm(x, memory_config=ttnn.L1_MEMORY_CONFIG, compute_kernel_config=hifi2_kernel_config)
         # x = x * (1 + scale_msa) + shift_msa
 
         norm_hidden_states = self.norm(hidden_states, compute_kernel_config=hifi2_kernel_config)
-        scale_msa = scale_msa + 1
+        # ttnn.deallocate(hidden_states)
+        # norm_hidden_states = ttnn.reallocate(norm_hidden_states)
+        c_scale_msa = c_scale_msa + 1
         # TODO: can we shard the hidden state but keep scale tensor as interleaved?
-        norm_hidden_states = norm_hidden_states * scale_msa
-        norm_hidden_states = norm_hidden_states + shift_msa
-
-        return norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp
+        norm_hidden_states = norm_hidden_states * c_scale_msa
+        norm_hidden_states = norm_hidden_states + c_shift_msa
+        ttnn.deallocate(c_shift_msa)
+        ttnn.deallocate(c_scale_msa)
+        c_gate_msa = ttnn.reallocate(c_gate_msa)
+        c_shift_mlp = ttnn.reallocate(c_shift_mlp)
+        c_scale_mlp = ttnn.reallocate(c_scale_mlp)
+        c_gate_mlp = ttnn.reallocate(c_gate_mlp)
+        norm_hidden_states = ttnn.reallocate(norm_hidden_states)
+        # norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp
+        return norm_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp

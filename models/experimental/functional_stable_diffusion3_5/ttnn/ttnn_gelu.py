@@ -36,8 +36,7 @@ class ttnn_GELU:
             mm_a_x_memory_config = ttnn.DRAM_MEMORY_CONFIG
             mm_a_y = 8
             mm_a_x = 8
-        print("config befor gleu op", hidden_states.memory_config())
-        hidden_states_pre_gelu = self.proj(  # expects in dram for 4096,width sharded for 352
+        hidden_states_pre_gelu = self.proj(  # expects in dram for 4096
             hidden_states,
             input_tensor_b=parameters["proj"]["weight"],
             bias=parameters["proj"]["bias"],

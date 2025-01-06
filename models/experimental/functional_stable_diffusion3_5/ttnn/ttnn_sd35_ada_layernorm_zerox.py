@@ -34,7 +34,7 @@ class ttnn_SD35AdaLayerNormZeroX:
         hifi2_kernel_config = ttnn.WormholeComputeKernelConfig(
             math_fidelity=ttnn.MathFidelity.HiFi2,
         )
-
+        print("config of hidden states input", hidden_states.memory_config())
         mm_a_y = 8
         mm_a_x = 8
         mm_a_x_strategy = ttnn.ShardStrategy.WIDTH
@@ -49,6 +49,7 @@ class ttnn_SD35AdaLayerNormZeroX:
             memory_config=mm_a_x_memory_config,
             core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
             compute_kernel_config=hifi2_kernel_config,
+            dtype=ttnn.bfloat8_b,
         )
         emb = ttnn.to_memory_config(emb, ttnn.L1_MEMORY_CONFIG)
         one_chunk = emb.shape[-1] // 9
@@ -82,20 +83,29 @@ class ttnn_SD35AdaLayerNormZeroX:
         gate_msa2 = ttnn.slice(emb, [0, 0, 0, i_beg], [2, 1, 1, i_end])
 
         ttnn.deallocate(emb)
-
+        gate_msa2 = ttnn.reallocate(gate_msa2)
         norm_hidden_states = ttnn.to_memory_config(hidden_states, ttnn.L1_MEMORY_CONFIG)
-        ttnn.deallocate(hidden_states)
+        # ttnn.deallocate(hidden_states)
+        # norm_hidden_states = ttnn.reallocate(norm_hidden_states)
         norm_hidden_states = self.norm(norm_hidden_states, compute_kernel_config=hifi2_kernel_config)
         scale_msa = scale_msa + 1
         scale_msa2 = scale_msa2 + 1
         # the following step is inserted here to save wasted memory gaps
-        gate_msa2 = ttnn.reallocate(gate_msa2)
-        hidden_states = norm_hidden_states * scale_msa
-        hidden_states = hidden_states + shift_msa
+        hidden_states_1 = norm_hidden_states * scale_msa
+
+        hidden_states_1 = hidden_states_1 + shift_msa
         hidden_states2 = norm_hidden_states * scale_msa2
         hidden_states2 = hidden_states2 + shift_msa2
         ttnn.deallocate(norm_hidden_states)
-        # hidden_states2 = ttnn.reallocate(hidden_states2)
-        # hidden_states = ttnn.reallocate(hidden_states)
-
-        return hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp, hidden_states2, gate_msa2
+        ttnn.deallocate(scale_msa)
+        ttnn.deallocate(shift_msa2)
+        ttnn.deallocate(scale_msa2)
+        ttnn.deallocate(shift_msa)
+        gate_msa = ttnn.reallocate(gate_msa)
+        shift_mlp = ttnn.reallocate(shift_mlp)
+        scale_mlp = ttnn.reallocate(scale_mlp)
+        gate_mlp = ttnn.reallocate(gate_mlp)
+        gate_msa2 = ttnn.reallocate(gate_msa2)
+        hidden_states2 = ttnn.reallocate(hidden_states2)
+        hidden_states_1 = ttnn.reallocate(hidden_states_1)
+        return hidden_states_1, gate_msa, shift_mlp, scale_mlp, gate_mlp, hidden_states2, gate_msa2
