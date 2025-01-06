@@ -310,3 +310,57 @@ def test_linear_by_passing_in_1D_systolic_array_program_config_and_optional_outo
     assert_with_pcc(torch_output_tensor, output_tensor, 0.997)
     assert_with_pcc(torch_output_tensor, optional_output_tensor, 0.997)
     assert_with_pcc(optional_output_tensor, output_tensor, 0.997)
+
+
+@pytest.mark.parametrize(
+    "batch_sizes,m_size,k_size, n_size, use_bias",
+    ((1, 4096, 512, 512, True),),  # Passed
+)
+def test_sd35_vae_512(
+    batch_sizes,
+    m_size,
+    k_size,
+    n_size,
+    use_bias,
+    *,
+    device,
+):
+    input_shape_a = (batch_sizes, m_size, k_size) if batch_sizes is not None else (m_size, k_size)
+    input_shape_b = (k_size, n_size)
+    torch_input_tensor_a = torch_random(input_shape_a, -0.1, 0.1, dtype=torch.float32)
+    torch_input_tensor_b = torch_random(input_shape_b, -0.1, 0.1, dtype=torch.float32)
+    if use_bias:
+        torch_bias = torch_random((n_size,), -0.1, 0.1, dtype=torch.float32)
+    else:
+        torch_bias = None
+    torch_output_tensor = torch.nn.functional.linear(
+        torch_input_tensor_a, torch_input_tensor_b.T.contiguous(), bias=torch_bias
+    )
+    input_tensor_a = ttnn.from_torch(
+        torch_input_tensor_a,
+        dtype=ttnn.bfloat16,
+        device=device,
+        layout=ttnn.TILE_LAYOUT,
+    )
+    input_tensor_b = ttnn.from_torch(
+        torch_input_tensor_b,
+        dtype=ttnn.bfloat16,
+        device=device,
+        layout=ttnn.TILE_LAYOUT,
+    )
+    if use_bias:
+        bias = ttnn.from_torch(
+            torch_bias.reshape((1, n_size)),
+            device=device,
+            dtype=ttnn.bfloat16,
+            layout=ttnn.TILE_LAYOUT,
+        )
+    else:
+        bias = None
+    output_tensor = ttnn.linear(
+        input_tensor_a,
+        input_tensor_b,
+        bias=bias,
+    )
+    output_tensor = ttnn.to_torch(output_tensor)
+    assert_with_pcc(torch_output_tensor, output_tensor, 0.999)

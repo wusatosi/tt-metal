@@ -2852,3 +2852,71 @@ def test_dram_input_mm_conv(device, tiled_input, input_on_device):
     passing, pcc_msg = check_with_pcc_without_tensor_printout(torch_output_tensor, torch_out_golden_tensor, pcc=0.99)
     logger.info(f"PCC = {pcc_msg}. Threshold = 0.99")
     assert passing
+
+
+@skip_for_grayskull()
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
+@pytest.mark.parametrize(
+    "batch_size, output_channels, input_channels, input_height, input_width, filter_height, filter_width, stride_h, stride_w, pad_h, pad_w, use_1d_systolic_array, config_override, use_shallow_conv_variant",
+    (
+        (1, 512, 16, 64, 64, 3, 3, 1, 1, 1, 1, True, None, False),  # Passed
+        (1, 512, 512, 64, 64, 3, 3, 1, 1, 1, 1, False, {"act_block_h": 64}, False),  # Passed
+        (1, 512, 512, 128, 128, 3, 3, 1, 1, 1, 1, False, {"act_block_h": 64}, False),  # Passed
+        (1, 512, 512, 256, 256, 3, 3, 1, 1, 1, 1, False, {"act_block_h": 512}, False),  # Failing
+        (1, 256, 512, 256, 256, 3, 3, 1, 1, 1, 1, False, {"act_block_h": 512}, False),  # Failing
+        (1, 256, 256, 256, 256, 3, 3, 1, 1, 1, 1, False, {"act_block_h": 512}, False),  # Failing
+        (1, 256, 512, 256, 256, 1, 1, 1, 1, 0, 0, False, {"act_block_h": 512}, False),  # Failing
+        (1, 256, 256, 512, 512, 3, 3, 1, 1, 1, 1, False, {"act_block_h": 512}, False),  # Failing
+        (1, 128, 256, 512, 512, 3, 3, 1, 1, 1, 1, False, {"act_block_h": 512}, False),  # Failing
+        (1, 128, 128, 512, 512, 3, 3, 1, 1, 1, 1, False, {"act_block_h": 512}, False),  # Failing
+        (1, 128, 256, 512, 512, 1, 1, 1, 1, 0, 0, False, {"act_block_h": 512}, False),  # Failing
+        (1, 3, 128, 512, 512, 3, 3, 1, 1, 1, 1, False, {"act_block_h": 512}, False),  # Failing
+    ),
+)
+@pytest.mark.parametrize("weights_dtype", [ttnn.bfloat8_b, ttnn.bfloat16])
+@pytest.mark.parametrize(
+    "activations_dtype",
+    [ttnn.bfloat8_b, ttnn.bfloat16],
+)
+@pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
+def test_sd35_vae_512(
+    device,
+    use_program_cache,
+    math_fidelity,
+    activations_dtype,
+    weights_dtype,
+    batch_size,
+    output_channels,
+    input_channels,
+    input_height,
+    input_width,
+    filter_height,
+    filter_width,
+    stride_h,
+    stride_w,
+    pad_h,
+    pad_w,
+    use_1d_systolic_array,
+    config_override,
+    use_shallow_conv_variant,
+):
+    run_conv(
+        device,
+        math_fidelity,
+        activations_dtype,
+        weights_dtype,
+        batch_size,
+        output_channels,
+        input_channels,
+        input_height,
+        input_width,
+        filter_height,
+        filter_width,
+        stride_h,
+        stride_w,
+        pad_h,
+        pad_w,
+        use_1d_systolic_array,
+        config_override,
+        use_shallow_conv_variant=use_shallow_conv_variant,
+    )

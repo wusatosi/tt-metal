@@ -357,3 +357,43 @@ def test_bilinear_multi_core(
 
     assert allclose
     assert passing
+
+
+@pytest.mark.parametrize(
+    "input_shapes",
+    [
+        [1, 64, 64, 512],
+        [1, 128, 128, 512],
+        [1, 256, 256, 256],
+    ],
+)
+@pytest.mark.parametrize("scale_h", [2])
+@pytest.mark.parametrize("scale_w", [2])
+def test_sd35_vae_512(device, input_shapes, scale_h, scale_w):
+    batch_size, height, width, num_channels = input_shapes
+
+    torch.manual_seed(0)
+    input = torch.rand(input_shapes, dtype=torch.bfloat16)
+    tt_input = input.permute(0, 3, 1, 2)
+
+    scale_factor = (scale_h, scale_w)
+    m = nn.Upsample(scale_factor=scale_factor, mode="nearest")
+    torch_result = m(tt_input)
+    torch_result = torch_result.permute(0, 2, 3, 1)
+
+    ## ttnn uses NHWC, so need to set scale_factor_c = 1
+    scale_factor = (scale_h, scale_w)
+    input_tensor = ttnn.from_torch(input, device=device)
+    output_tensor = ttnn.upsample(input_tensor, scale_factor)
+    output_tensor = ttnn.to_torch(output_tensor)
+    print("output_tensor: ", output_tensor.shape)
+
+    assert_with_pcc(torch_result, output_tensor)
+
+    allclose = torch.allclose(output_tensor, torch_result)
+    isclose = torch.all(torch.isclose(output_tensor, torch_result))
+    isequal = torch.equal(output_tensor, torch_result)
+
+    assert allclose
+    assert isclose
+    assert isequal
