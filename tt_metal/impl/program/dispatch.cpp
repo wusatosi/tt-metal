@@ -1478,7 +1478,7 @@ void update_program_dispatch_commands(
     SubDeviceId sub_device_id,
     const ProgramDispatchMetadata& dispatch_md,
     ProgramBinaryStatus program_binary_status,
-    int num_unicast_txns) {
+    std::pair<bool, int> unicast_go_signal_update) {
     uint32_t i = 0;
     ZoneScopedN("program_loaded_on_device");
 
@@ -1573,12 +1573,13 @@ void update_program_dispatch_commands(
         *reinterpret_cast<uint32_t*>(&run_program_go_signal);
     cached_program_command_sequence.mcast_go_signal_cmd_ptr->wait_count = expected_num_workers_completed;
     // Update the number of unicast txns based on user provided parameter
-    // This is required when a MeshWorkload users ethernet cores on a set of devices
+    // This is required when a MeshWorkload uses ethernet cores on a set of devices
     // where the number of active eth cores is heterogenous across devices.
     // Update the number of unicast txns to eth cores to match the minimum number of cores
     // across devices (specified by user)
-    if (num_unicast_txns >= 0 && cached_program_command_sequence.mcast_go_signal_cmd_ptr->num_unicast_txns) {
-        cached_program_command_sequence.mcast_go_signal_cmd_ptr->num_unicast_txns = num_unicast_txns;
+    if (unicast_go_signal_update.first) {
+        TT_FATAL(unicast_go_signal_update.second > 0, "Must specify a valid number of cores to unicast the go signal to when updating dispatch commands");
+        cached_program_command_sequence.mcast_go_signal_cmd_ptr->num_unicast_txns = unicast_go_signal_update.second;
     }
 }
 

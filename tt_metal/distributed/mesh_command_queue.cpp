@@ -82,10 +82,12 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
 
     // Compute number of workers being used for this workload.
     uint32_t num_workers = 0;
-    if (mesh_workload.runs_on_noc_multicast_only_cores()) {
+    bool unicast_go_signals = mesh_workload.runs_on_noc_unicast_only_cores();
+    bool mcast_go_signals = mesh_workload.runs_on_noc_multicast_only_cores();
+    if (mcast_go_signals) {
         num_workers += this->num_worker_cores(HalProgrammableCoreType::TENSIX, sub_device_id);
     }
-    if (mesh_workload.runs_on_noc_unicast_only_cores()) {
+    if (unicast_go_signals) {
         num_workers += this->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id);
     }
 
@@ -118,7 +120,7 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
             sub_device_id,
             dispatch_metadata,
             mesh_workload.get_program_binary_status(mesh_device_id),
-            this->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id));
+            std::pair<bool, int>(unicast_go_signals, this->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id)));
 
         for (std::size_t logical_x = device_range.start_coord.x; logical_x < device_range.end_coord.x; logical_x++) {
             for (std::size_t logical_y = device_range.start_coord.y; logical_y < device_range.end_coord.y;
@@ -142,16 +144,16 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
                 device->command_queue(this->id_),
                 this->expected_num_workers_completed_,
                 this->virtual_program_dispatch_core(),
-                mesh_workload.runs_on_noc_multicast_only_cores(),
-                mesh_workload.runs_on_noc_unicast_only_cores(),
+                mcast_go_signals,
+                unicast_go_signals,
                 this->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id));
         }
     }
     // Increment Launch Message Buffer Write Pointers
-    if (mesh_workload.runs_on_noc_multicast_only_cores()) {
+    if (mcast_go_signals) {
         this->worker_launch_message_buffer_state_.inc_mcast_wptr(1);
     }
-    if (mesh_workload.runs_on_noc_unicast_only_cores()) {
+    if (unicast_go_signals) {
         this->worker_launch_message_buffer_state_.inc_unicast_wptr(1);
     }
     // Update the expected number of workers dispatch must wait on

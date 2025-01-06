@@ -532,6 +532,54 @@ TEST_F(MeshDevice_T3000, TestMeshWorkloadOnActiveEth) {
     Finish(mesh_device_->mesh_command_queue());
 }
 
+TEST_F(MeshDevice_T3000, TestMeshWorkloadMixedTensixEth) {
+    uint32_t num_workloads = 20;
+    auto random_seed = 0;
+    uint32_t num_iters = 30;
+    uint32_t seed = tt::parse_env("TT_METAL_SEED", random_seed);
+    // Setup rng to query if first program in Mesh runs on ethernet
+    // cores or not. This allows devices to alternate running program
+    // on ethernet across loops
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::bernoulli_distribution gen_run_on_eth(0.5);
+
+    std::vector<std::shared_ptr<MeshWorkload>> workloads = {};
+    log_info("Create {} workloads", num_workloads);
+    for (int i = 0; i < num_workloads; i++) {
+        bool run_on_eth = gen_run_on_eth(gen);
+        std::shared_ptr<MeshWorkload> workload = std::make_shared<MeshWorkload>();
+        for (std::size_t logical_x = 0; logical_x < mesh_device_->num_cols(); logical_x++) {
+            for (std::size_t logical_y = 0; logical_y < mesh_device_->num_rows(); logical_y++) {
+                Device* device = mesh_device_->get_device(logical_y, logical_x);
+                LogicalDeviceRange devices = {{logical_x, logical_y}, {logical_x + 1, logical_y + 1}};
+                if (run_on_eth) {
+                    auto programs = create_random_programs(
+                        1, mesh_device_->compute_with_storage_grid_size(), seed, device->get_active_ethernet_cores(true));
+                    InsertProgramInMeshWorkload(*workload, *programs[0], devices);
+                } else {
+                    auto programs = create_random_programs(
+                        1, mesh_device_->compute_with_storage_grid_size(), seed);
+                    InsertProgramInMeshWorkload(*workload, *programs[0], devices);
+                }
+                run_on_eth = !run_on_eth;
+            }
+        }
+        EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), *workload, false);
+        workloads.push_back(workload);
+    }
+
+    for (int i = 0; i < num_iters; i++) {
+        if (i % 10 == 0) {
+            log_info(tt::LogTest, "Run MeshWorkloads for iteration {}", i);
+        }
+        for (auto& workload : workloads) {
+            EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), *workload, false);
+        }
+    }
+    Finish(mesh_device_->mesh_command_queue());
+}
+
 TEST_F(MeshDevice_T3000, TestMeshWorkloadOnActiveEthRandomGridSize) {
     uint32_t num_workloads = 30;
     auto random_seed = 0;

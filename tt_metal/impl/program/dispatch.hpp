@@ -105,7 +105,7 @@ void update_program_dispatch_commands(
     SubDeviceId sub_device_id,
     const ProgramDispatchMetadata& dispatch_md,
     ProgramBinaryStatus program_binary_status,
-    int num_unicast_txns = -1);
+    std::pair<bool, int> unicast_go_signal_update = {false, -1});
 
 void write_program_command_sequence(
     const ProgramCommandSequence& program_command_sequence,
