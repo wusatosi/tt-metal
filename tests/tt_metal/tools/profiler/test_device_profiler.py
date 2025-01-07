@@ -246,6 +246,8 @@ def test_profiler_host_device_sync():
         assert freq < (reportedFreq * (1 + TOLERANCE)), f"Frequency too large on device {device}"
         assert freq > (reportedFreq * (1 - TOLERANCE)), f"Frequency too small on device {device}"
 
+    os.environ["TT_METAL_PROFILER_SYNC"] = "0"
+
 
 def test_timestamped_events():
     OP_COUNT = 2
@@ -283,3 +285,19 @@ def test_timestamped_events():
             devicesData["data"]["devices"]["0"]["cores"]["DEVICE"]["riscs"]["TENSIX"]["events"]["all_events"]
         )
         assert eventCount in REF_COUNT_DICT[ENV_VAR_ARCH_NAME], "Wrong event count"
+
+
+def test_sub_device_profiler():
+    run_gtest_profiler_test(
+        "./build/test/tt_metal/unit_tests_dispatch", "CommandQueueSingleCardFixture.TensixTestSubDeviceBasicPrograms"
+    )
+    os.environ["TT_METAL_PROFILER_SYNC"] = "1"
+    run_gtest_profiler_test(
+        "./build/test/tt_metal/unit_tests_dispatch",
+        "CommandQueueSingleCardFixture.TensixActiveEthTestSubDeviceBasicEthPrograms",
+    )
+    os.environ["TT_METAL_PROFILER_SYNC"] = "0"
+    run_gtest_profiler_test(
+        "./build/test/tt_metal/unit_tests_dispatch_trace",
+        "CommandQueueSingleCardTraceFixture.TensixTestSubDeviceTraceBasicPrograms",
+    )

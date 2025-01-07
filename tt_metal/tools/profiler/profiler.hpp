@@ -41,8 +41,11 @@ private:
     // Output Dir for device Profile Logs
     std::filesystem::path output_dir;
 
-        // Device-Core tracy context
-        std::map<std::pair<uint16_t,CoreCoord>, TracyTTCtx> device_tracy_contexts;
+    // Device-Core tracy context
+    std::map<std::pair<uint16_t, CoreCoord>, TracyTTCtx> device_tracy_contexts;
+
+    // Device events
+    std::set<tracy::TTDeviceEvent> device_events;
 
     // Hash to zone source locations
     std::unordered_map<uint16_t, std::string> hash_to_zone_src_locations;
@@ -104,17 +107,12 @@ public:
     // Change the output dir of device profile logs
     void setOutputDir(const std::string& new_output_dir);
 
-        //Change the output dir of device profile logs
-        void setOutputDir(const std::string& new_output_dir);
+    // Traverse all cores on the device and dump the device profile results
+    void dumpResults(Device* device, const std::vector<CoreCoord>& worker_cores, bool lastDump);
 
-        //Traverse all cores on the device and dump the device profile results
-        void dumpResults(Device *device, const std::vector<CoreCoord> &worker_cores, bool lastDump);
-
-        // Traverse all cores, producing json report with noc events
-        void dumpJsonReport(
-            Device* device,
-            const std::vector<std::uint32_t>& profile_buffer,
-            const std::vector<CoreCoord>& worker_cores);
+    // Traverse all cores, producing json report with noc events
+    void dumpJsonReport(
+        Device* device, const std::vector<std::uint32_t>& profile_buffer, const std::vector<CoreCoord>& worker_cores);
 };
 
 }  // namespace tt_metal
