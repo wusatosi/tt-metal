@@ -363,8 +363,8 @@ void finalize_program_offsets(T& workload, Device* device) {
         if constexpr (std::is_same_v<T, Program>) {
             set_program_offsets_and_sizes(workload, index);
         } else {
-            for (auto& [_, program] : workload.get_programs()) {
-                set_program_offsets_and_sizes(program, index);
+            for (const auto& device_range : workload.get_logical_device_ranges()) {
+                set_program_offsets_and_sizes(workload.get_program_on_device_range(device_range), index);
             }
         }
     }
@@ -372,8 +372,8 @@ void finalize_program_offsets(T& workload, Device* device) {
     if constexpr (std::is_same_v<T, Program>) {
         set_program_attrs_across_core_types(workload);
     } else {
-        for (auto& [_, program] : workload.get_programs()) {
-            set_program_attrs_across_core_types(program);
+        for (const auto& device_range : workload.get_logical_device_ranges()) {
+            set_program_attrs_across_core_types(workload.get_program_on_device_range(device_range));
         }
     }
     workload.set_finalized();
@@ -1763,8 +1763,8 @@ uint32_t program_base_addr_on_core(
 template void finalize_program_offsets<Program>(Program&, Device*);
 template void finalize_program_offsets<distributed::MeshWorkload>(distributed::MeshWorkload&, Device*);
 template uint32_t program_base_addr_on_core<Program, Device*>(Program&, Device*, HalProgrammableCoreType);
-template uint32_t program_base_addr_on_core<distributed::MeshWorkload, std::shared_ptr<distributed::MeshDevice>>(
-    distributed::MeshWorkload&, std::shared_ptr<distributed::MeshDevice>, HalProgrammableCoreType);
+template uint32_t program_base_addr_on_core<distributed::MeshWorkload, distributed::MeshDevice*>(
+    distributed::MeshWorkload&, distributed::MeshDevice*, HalProgrammableCoreType);
 }  // namespace program_dispatch
 
 }  // namespace tt::tt_metal

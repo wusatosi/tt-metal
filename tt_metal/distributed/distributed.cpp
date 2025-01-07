@@ -10,11 +10,11 @@ MeshWorkload CreateMeshWorkload() { return MeshWorkload(); }
 
 void InsertProgramInMeshWorkload(
     MeshWorkload& mesh_workload, Program& program, const LogicalDeviceRange& device_range) {
-    mesh_workload.add_program(device_range, program);
+    mesh_workload.add_program(device_range, std::move(program));
 }
 
 void EnqueueMeshWorkload(MeshCommandQueue& mesh_cq, MeshWorkload& mesh_workload, bool blocking) {
-    mesh_workload.compile(mesh_cq);
+    mesh_workload.compile(mesh_cq.device());
     mesh_workload.load_binaries(mesh_cq);
     mesh_workload.generate_dispatch_commands(mesh_cq);
     mesh_cq.enqueue_mesh_workload(mesh_workload, blocking);

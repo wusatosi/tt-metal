@@ -23,15 +23,15 @@ private:
     tt::tt_metal::WorkerConfigBufferMgr config_buffer_mgr_;
     LaunchMessageRingBufferState worker_launch_message_buffer_state_;
     uint32_t expected_num_workers_completed_ = 0;
-    std::shared_ptr<MeshDevice> mesh_device_;
+    MeshDevice* mesh_device_;
     uint32_t id_;
     CoreCoord dispatch_core_;
     CoreType dispatch_core_type_;
 
 public:
-    MeshCommandQueue(std::shared_ptr<MeshDevice>& mesh_device, uint32_t id);
-    const std::shared_ptr<MeshDevice>& mesh_device() { return mesh_device_; }
-    uint32_t id() { return id_; }
+    MeshCommandQueue(MeshDevice* mesh_device, uint32_t id);
+    MeshDevice* device() const { return mesh_device_; }
+    uint32_t id() const { return id_; }
     WorkerConfigBufferMgr& get_config_buffer_mgr(uint32_t index) { return config_buffer_mgr_; };
     void enqueue_mesh_workload(MeshWorkload& mesh_workload, bool blocking);
     void finish();

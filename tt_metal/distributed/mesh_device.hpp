@@ -122,7 +122,7 @@ public:
     Device* get_device(chip_id_t physical_device_id) const;
     Device* get_device(size_t row_idx, size_t col_idx) const;
 
-    MeshCommandQueue& mesh_command_queue();
+    MeshCommandQueue& command_queue();
     const DeviceIds get_device_ids() const;
 
     size_t num_devices() const;

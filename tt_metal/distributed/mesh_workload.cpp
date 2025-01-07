@@ -18,17 +18,17 @@ MeshWorkload::MeshWorkload() {
     }
 }
 
-void MeshWorkload::add_program(const LogicalDeviceRange& device_range, Program& program) {
+void MeshWorkload::add_program(const LogicalDeviceRange& device_range, Program&& program) {
     // Add a program to a MeshWorkload and tie it a specific logical device range
     this->programs_[device_range] = std::move(program);
+    this->logical_device_ranges_.push_back(device_range);
 }
 
-void MeshWorkload::compile(MeshCommandQueue& mesh_cq) {
+void MeshWorkload::compile(MeshDevice* mesh_device) {
     // Multi-Step Compile:
     // 1. Compile Kernel Binaries
     // 2. Allocate and Validate CBs
     // 3. Finalize: Compute relative offsets for all data structures in L1
-    auto& mesh_device = mesh_cq.mesh_device();
     for (auto& program_on_grid : this->programs_) {
         program_on_grid.second.compile(mesh_device->get_device(0));
         program_on_grid.second.allocate_circular_buffers(mesh_device->get_device(0));
@@ -41,7 +41,7 @@ void MeshWorkload::load_binaries(MeshCommandQueue& mesh_cq) {
     // Load binaries for all programs to their respective devices in
     // the Mesh. Only done when the MeshWorkload is enqueued for the first
     // time.
-    auto& mesh_device = mesh_cq.mesh_device();
+    auto mesh_device = mesh_cq.device();
     if (this->program_binary_status.size()) {
         TT_FATAL(
             this->program_binary_status.find(mesh_device->get_mesh_id()) != this->program_binary_status.end(),
@@ -124,7 +124,7 @@ void MeshWorkload::generate_dispatch_commands(MeshCommandQueue& mesh_cq) {
     // Generate Dispatch Commands for each Program in the MeshWorkload.
     // These commands will be updated based on MeshDevice state when the
     // workload is enqueued.
-    auto& mesh_device = mesh_cq.mesh_device();
+    auto mesh_device = mesh_cq.device();
     for (auto& program_on_grid : this->programs_) {
         auto grid_start = program_on_grid.first.start_coord;
         program_on_grid.second.generate_dispatch_commands(mesh_device->get_device(grid_start.y, grid_start.x));
@@ -226,7 +226,7 @@ std::vector<uint32_t> MeshWorkload::get_program_config_sizes() {
     return global_program_config_sizes;
 }
 
-std::unordered_set<SubDeviceId> MeshWorkload::determine_sub_device_ids(std::shared_ptr<MeshDevice>& mesh_device) {
+std::unordered_set<SubDeviceId> MeshWorkload::determine_sub_device_ids(MeshDevice* mesh_device) {
     // Get the sub device ids for all program across all devices in the Workload
     std::unordered_set<SubDeviceId> sub_devices_;
     for (auto& program_on_grid : this->programs_) {
@@ -261,7 +261,7 @@ uint32_t MeshWorkload::get_sem_base_addr(
     std::shared_ptr<MeshDevice>& mesh_device, CoreCoord logical_core, CoreType core_type) {
     HalProgrammableCoreType programmable_core_type =
         ::tt::tt_metal::detail::hal_programmable_core_type_from_core_type(core_type);
-    uint32_t base_addr = program_dispatch::program_base_addr_on_core(*this, mesh_device, programmable_core_type);
+    uint32_t base_addr = program_dispatch::program_base_addr_on_core(*this, mesh_device.get(), programmable_core_type);
     return base_addr + get_program_config(hal.get_programmable_core_type_index(programmable_core_type)).sem_offset;
 }
 
@@ -285,7 +285,7 @@ uint32_t MeshWorkload::get_cb_base_addr(
     std::shared_ptr<MeshDevice>& mesh_device, CoreCoord logical_core, CoreType core_type) {
     HalProgrammableCoreType programmable_core_type =
         ::tt::tt_metal::detail::hal_programmable_core_type_from_core_type(core_type);
-    uint32_t base_addr = program_dispatch::program_base_addr_on_core(*this, mesh_device, programmable_core_type);
+    uint32_t base_addr = program_dispatch::program_base_addr_on_core(*this, mesh_device.get(), programmable_core_type);
     return base_addr + get_program_config(hal.get_programmable_core_type_index(programmable_core_type)).cb_offset;
 }
 

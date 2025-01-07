@@ -7,7 +7,7 @@
 
 namespace tt::tt_metal::distributed {
 
-MeshCommandQueue::MeshCommandQueue(std::shared_ptr<MeshDevice>& mesh_device, uint32_t id) {
+MeshCommandQueue::MeshCommandQueue(MeshDevice* mesh_device, uint32_t id) {
     this->mesh_device_ = mesh_device;
     this->id_ = id;
 
@@ -105,12 +105,12 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
     // Iterate over all programs. Update dispatch commands per program to reflect
     // current device state. Write the finalized program command sequence to each
     // physical device tied to the program.
-    for (auto& program_on_grid : mesh_workload.get_programs()) {
-        auto& device_range = program_on_grid.first;
-        auto& program_cmd_seq = mesh_workload.get_dispatch_cmds_for_program(program_on_grid.second);
+    for (const auto& device_range : mesh_workload.get_logical_device_ranges()) {
+        auto& program = mesh_workload.get_program_on_device_range(device_range);
+        auto& program_cmd_seq = mesh_workload.get_dispatch_cmds_for_program(program);
 
         program_dispatch::update_program_dispatch_commands(
-            program_on_grid.second,
+            program,
             program_cmd_seq,
             this->worker_launch_message_buffer_state_.get_mcast_wptr(),
             this->worker_launch_message_buffer_state_.get_unicast_wptr(),

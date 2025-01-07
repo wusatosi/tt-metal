@@ -448,11 +448,10 @@ void MeshDevice::initialize(
     for (auto physical_device_id : physical_device_ids) {
         this->devices.push_back(this->opened_devices.at(physical_device_id));
     }
-    auto shared_this = shared_from_this();
     this->view = std::make_unique<MeshDeviceView>(*this);
-    system_mesh.register_mesh_device(shared_this, this->devices);
+    system_mesh.register_mesh_device(shared_from_this(), this->devices);
     if (this->using_fast_dispatch()) {
-        this->mesh_command_queue_ = std::make_unique<MeshCommandQueue>(shared_this, 0);
+        this->mesh_command_queue_ = std::make_unique<MeshCommandQueue>(this, 0);
     }
 }
 
@@ -481,7 +480,7 @@ Device* MeshDevice::get_device(size_t row_idx, size_t col_idx) const {
     return this->get_device_index(row_idx * num_cols() + col_idx);
 }
 
-MeshCommandQueue& MeshDevice::mesh_command_queue() {
+MeshCommandQueue& MeshDevice::command_queue() {
     TT_FATAL(this->using_fast_dispatch(), "Can only acess the MeshCommandQueue when using Fast Dispatch.");
     return *(this->mesh_command_queue_);
 }
