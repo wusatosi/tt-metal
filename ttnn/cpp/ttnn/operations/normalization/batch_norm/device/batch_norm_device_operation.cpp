@@ -10,11 +10,13 @@
 namespace ttnn::operations::normalization {
 void BatchNormOperation::validate_tensors(
     const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
+    std::cout << "Inside device cpp file : 7" << std::endl;
     const auto& input = tensor_args.input;
     const auto& batch_mean = tensor_args.batch_mean;
     const auto& batch_var = tensor_args.batch_var;
     const auto& eps = operation_attributes.eps;
     const auto& weight = tensor_args.weight;
+    const auto& running_mean = tensor_args.running_mean;
     const auto& bias = tensor_args.bias;
 
     auto& output = tensor_args.output;
@@ -25,6 +27,7 @@ void BatchNormOperation::validate_tensors(
     check_tensor(weight, "batch_norm", "weight");
     check_tensor(bias, "batch_norm", "bias");
     check_tensor(output, "batch_norm", "output");
+    check_tensor(running_mean, "batch_norm", "running_mean");
 
     // input (N, C, H, W)
     auto C = input.get_logical_shape()[1];
@@ -52,6 +55,16 @@ void BatchNormOperation::validate_tensors(
         TT_FATAL(bias.value().get_logical_shape()[1] == C, "weight_shape[1] must be the same as input's channel size.");
         TT_FATAL(bias.value().get_logical_shape()[1] == C, "weight_shape[1] must be the same as input's channel size.");
     }
+
+    // running_mean (1, C, 1, 1)
+    if (running_mean.has_value()) {
+        TT_FATAL(
+            running_mean.value().get_logical_shape()[1] == C,
+            "running_mean_shape[1] must be the same as input's channel size.");
+        TT_FATAL(
+            running_mean.value().get_logical_shape()[1] == C,
+            "running_mean_shape[1] must be the same as input's channel size.");
+    }
 }
 
 BatchNormOperation::program_factory_t BatchNormOperation::select_program_factory(
@@ -61,6 +74,7 @@ BatchNormOperation::program_factory_t BatchNormOperation::select_program_factory
 
 void BatchNormOperation::validate_on_program_cache_miss(
     const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
+    std::cout << "Inside device cpp file : 6" << std::endl;
     // We don't support sharding for now
     const auto& input = tensor_args.input;
     const auto& batch_mean = tensor_args.batch_mean;
@@ -68,6 +82,7 @@ void BatchNormOperation::validate_on_program_cache_miss(
     const auto& weight = tensor_args.weight;
     const auto& bias = tensor_args.bias;
     const auto& output = tensor_args.output;
+    const auto& running_mean = tensor_args.running_mean;
 
     TT_FATAL(input.get_layout() == Layout::TILE, "Input tensor must be must be tilized");
     TT_FATAL(
@@ -100,6 +115,13 @@ void BatchNormOperation::validate_on_program_cache_miss(
             "bias tensor must be interleaved");
     }
 
+    if (running_mean.has_value()) {
+        TT_FATAL(running_mean.value().get_layout() == Layout::TILE, "running_mean tensor must be tilized");
+        TT_FATAL(
+            running_mean.value().memory_config().memory_layout == TensorMemoryLayout::INTERLEAVED,
+            "running_mean tensor must be interleaved");
+    }
+
     validate_tensors(operation_attributes, tensor_args);
 };
 
@@ -114,6 +136,7 @@ DataType BatchNormOperation::operation_attributes_t::get_dtype() const {
 
 BatchNormOperation::spec_return_value_t BatchNormOperation::compute_output_specs(
     const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
+    std::cout << "Inside device cpp file : 5" << std::endl;
     using namespace tt::constants;
     const auto output_shape = tensor_args.input.get_logical_shape();
     return TensorSpec(
@@ -123,6 +146,7 @@ BatchNormOperation::spec_return_value_t BatchNormOperation::compute_output_specs
 
 BatchNormOperation::tensor_return_value_t BatchNormOperation::create_output_tensors(
     const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
+    std::cout << "Inside device cpp file : 4" << std::endl;
     const auto& output_tensor = tensor_args.output;
     if (output_tensor.has_value()) {
         return output_tensor.value();
@@ -140,9 +164,14 @@ std::tuple<BatchNormOperation::operation_attributes_t, BatchNormOperation::tenso
     std::optional<Tensor> bias,
     const bool training,
     std::optional<Tensor> output,
+    std::optional<Tensor> running_mean,
     const std::optional<MemoryConfig>& memory_config) {
+    std::cout << "Inside device cpp file : 1" << std::endl;
     operation_attributes_t operation_attributes{eps, training, memory_config.value_or(input.memory_config())};
-    tensor_args_t tensor_args{input, batch_mean, batch_var, std::move(weight), std::move(bias), std::move(output)};
+    std::cout << "Inside device cpp file : 2" << std::endl;
+    tensor_args_t tensor_args{
+        input, batch_mean, batch_var, std::move(weight), std::move(bias), std::move(output), std::move(running_mean)};
+    std::cout << "Inside device cpp file : 3" << std::endl;
     return {operation_attributes, tensor_args};
 }
 }  // namespace ttnn::operations::normalization

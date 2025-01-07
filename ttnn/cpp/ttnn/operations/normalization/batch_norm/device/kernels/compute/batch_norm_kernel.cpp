@@ -40,6 +40,7 @@ void MAIN {
     constexpr uint32_t weight_has_value = get_compile_time_arg_val(0) == 1;
     constexpr uint32_t bias_has_value = get_compile_time_arg_val(1) == 1;
     constexpr uint32_t is_training_mode = get_compile_time_arg_val(2) == 1;
+    constexpr uint32_t running_mean_has_value = get_compile_time_arg_val(3) == 1;
 
     if (num_tiles == 0) {
         return;
@@ -56,6 +57,8 @@ void MAIN {
     constexpr auto cb_weight = tt::CBIndex::c_16;    // weight tensor
     constexpr auto cb_tmp_1 = tt::CBIndex::c_17;     // (input - batch_mean)/(sqrt(batch_var + eps))
     constexpr auto cb_bias = tt::CBIndex::c_18;      // bias tensor
+    constexpr auto cb_running_mean = tt::CBIndex::c_24;          // running_mean tensor
+    constexpr auto cb_updated_running_mean = tt::CBIndex::c_25;  // updated running_mean tensor
 
     auto cb_bcast = cb_batch_mean;
     auto cb_other = cb_input;
@@ -79,14 +82,11 @@ void MAIN {
     constexpr auto cb_affine_or_out = (weight_has_value || bias_has_value) ? cb_tmp_1 : cb_output_0;
     constexpr auto cb_scaled_output = (bias_has_value) ? cb_tmp_1 : cb_output_0;
     for (uint32_t tile_id = 0; tile_id < num_tiles; ++tile_id) {
-        if (is_training_mode) {
-            // update running stats here
-        }
-
         // 1/(sqrt(batch_var + eps))
         cb_reserve_back(cb_den, onetile);
         cb_wait_front(cb_batch_var, 1);
-        cb_wait_front(cb_eps, 1);
+        cb_wait_front(
+            cb_eps, tile_id + 1);  // change to cb_wait_front(cb_eps, 1) on completion of updation of running_sta
 
         tile_regs_acquire();
         add_tiles_init_with_dt(cb_batch_var, cb_eps);
@@ -100,7 +100,7 @@ void MAIN {
         tile_regs_release();
 
         cb_pop_front(cb_batch_var, 1);
-        cb_pop_front(cb_eps, 1);
+        // cb_pop_front(cb_eps, 1); // uncomment on completion of updation of running_stat
         cb_push_back(cb_den, onetile);
 
         // (input - batch_mean)/(sqrt(batch_var + eps)) = result
@@ -120,6 +120,14 @@ void MAIN {
         cb_pop_front(cb_num, 1);
         cb_pop_front(cb_den, 1);
         cb_push_back(cb_affine_or_out, onetile);
+
+        if (is_training_mode) {
+            // update running stats here
+            if (running_mean_has_value) {
+                // store result in cb_updated_running_mean
+                recip_tile_to_cb(cb_eps, cb_updated_running_mean, 0, 1);  // replace with correct formula
+            }
+        }
 
         if (weight_has_value) {  // result = result * weight
             cb_reserve_back(cb_scaled_output, onetile);

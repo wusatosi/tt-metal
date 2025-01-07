@@ -14,15 +14,17 @@ void kernel_main() {
     uint32_t weight_addr = get_arg_val<uint32_t>(3);  // weight
     const bool bias_has_value = get_arg_val<uint32_t>(4) == 1;
     uint32_t bias_addr = get_arg_val<uint32_t>(5);           // bias
-    uint32_t dst_addr = get_arg_val<uint32_t>(6);            // output
-    const bool is_training_mode = get_arg_val<uint32_t>(7);  // mode of operation
-    uint32_t start_tile_id = get_arg_val<uint32_t>(8);
-    uint32_t num_tiles = get_arg_val<uint32_t>(9);
-    uint32_t HtWt = get_arg_val<uint32_t>(10);
-    uint32_t n_stride = get_arg_val<uint32_t>(11);
-    uint32_t c_stride = get_arg_val<uint32_t>(12);
-    uint32_t N = get_arg_val<uint32_t>(13);
-    uint32_t C = get_arg_val<uint32_t>(14);
+    const bool running_mean_has_value = get_arg_val<uint32_t>(6) == 1;
+    uint32_t running_mean_addr = get_arg_val<uint32_t>(7);   // running_mean
+    uint32_t dst_addr = get_arg_val<uint32_t>(8);            // output
+    const bool is_training_mode = get_arg_val<uint32_t>(9);  // mode of operation
+    uint32_t start_tile_id = get_arg_val<uint32_t>(10);
+    uint32_t num_tiles = get_arg_val<uint32_t>(11);
+    uint32_t HtWt = get_arg_val<uint32_t>(12);
+    uint32_t n_stride = get_arg_val<uint32_t>(13);
+    uint32_t c_stride = get_arg_val<uint32_t>(14);
+    uint32_t N = get_arg_val<uint32_t>(15);
+    uint32_t C = get_arg_val<uint32_t>(16);
 
     constexpr uint32_t onetile = 1;
 
@@ -70,6 +72,20 @@ void kernel_main() {
 
     const InterleavedAddrGenFast<bias_is_dram> bias = {
         .bank_base_address = bias_addr, .page_size = bias_tile_bytes, .data_format = bias_data_format};
+
+    // running_mean
+    constexpr auto cb_id_running_mean = tt::CBIndex::c_24;
+    constexpr bool running_mean_is_dram = get_compile_time_arg_val(5) == 1;
+    const uint32_t running_mean_tile_bytes = get_tile_size(cb_id_running_mean);
+    const DataFormat running_mean_data_format = get_dataformat(cb_id_running_mean);
+
+    const InterleavedAddrGenFast<running_mean_is_dram> running_mean = {
+        .bank_base_address = running_mean_addr,
+        .page_size = running_mean_tile_bytes,
+        .data_format = running_mean_data_format};
+
+    // write updated running stats
+    constexpr auto cb_id_updated_running_mean = tt::CBIndex::c_25;
 
     uint32_t tiles_per_batch = HtWt * C;
     uint32_t start_n = start_tile_id / tiles_per_batch;
@@ -120,6 +136,22 @@ void kernel_main() {
 
             // to read running stats value for updation
             if (is_training_mode) {
+                // read a tile from running_mean tensor
+                if (running_mean_has_value) {
+                    cb_reserve_back(cb_id_running_mean, onetile);
+                    uint32_t l1_running_mean_write_addr = get_write_ptr(cb_id_running_mean);
+                    noc_async_read_tile(tile_offset, running_mean, l1_running_mean_write_addr);
+                    noc_async_read_barrier();
+                    fill_tile_with_first_element_bfloat16(cb_id_running_mean);
+                    cb_push_back(cb_id_running_mean, onetile);
+                }
+
+                // write the updated running_mean
+                cb_wait_front(cb_id_updated_running_mean, onetile);
+                uint32_t l1_write_updated_running_mean_addr = get_read_ptr(cb_id_updated_running_mean);
+                noc_async_write_tile(tile_offset, src, l1_write_updated_running_mean_addr);
+                noc_async_write_barrier();
+                cb_pop_front(cb_id_updated_running_mean, onetile);
             }
 
             for (uint32_t t = start_t; t < HtWt && num_tiles_written < num_tiles; ++t, ++num_tiles_written) {
