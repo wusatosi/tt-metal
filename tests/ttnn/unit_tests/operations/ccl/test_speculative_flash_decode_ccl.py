@@ -420,7 +420,6 @@ def run_speculative_flash_decode_ccl_impl(
     ############################################################
 
 
-# Enumerate the post-commit cases explicitly
 @skip_for_grayskull("Requires eth connected devices to run")
 @pytest.mark.parametrize(
     "dtype, q_dtype",
@@ -459,6 +458,249 @@ def test_speculative_flash_decode_ccl(
     enable_async,
 ):
     run_speculative_flash_decode_ccl_impl(
+        t3k_mesh_device,
+        b,
+        nh,
+        nkv,
+        s,
+        d,
+        dtype,
+        grid_size,
+        q_dtype,
+        cur_pos_tensor,
+        k_chunk_size,
+        sharded_in=False,
+        sharded_out=False,
+        enable_async=enable_async,
+    )
+
+
+def run_speculative_flash_decode_perf(
+    mesh_device,
+    b,
+    nh,
+    nkv,
+    s,
+    d,
+    dtype,
+    grid_size,
+    q_dtype=ttnn.bfloat16,
+    cur_pos_tensor=False,
+    k_chunk_size=128,
+    lambda_=0.2,
+    sharded_in=False,
+    sharded_out=False,
+    causal=True,
+    enable_async=False,
+):
+    ############################################################
+    # Setup and Defines
+    ############################################################
+    num_devices = 2
+    # Use Async mode based on test input config
+    mesh_device.enable_async(enable_async)
+    if enable_async:
+        logger.info(f"Using Async Mode for All Gather Op Dispatch")
+    enable_persistent_fabric = True
+    create_persistent_fabric = True
+    teardown_persistent_fabric = True
+    ############################################################
+
+    ############################################################
+    ### Persistent fabric and ccl setup ###
+    ############################################################
+    compute_grid_size = mesh_device.compute_with_storage_grid_size()
+    ccl_sub_device_crs = ttnn.CoreRangeSet(
+        {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(compute_grid_size.x - 1, compute_grid_size.y - 1))}
+    )
+    worker_sub_device = ttnn.SubDevice([ccl_sub_device_crs])
+    worker_sub_device_id = ttnn.SubDeviceId(0)
+    if create_persistent_fabric:
+        mesh_sub_device_manager_id = create_and_load_sub_device_manager_with_fabric_interface(
+            mesh_device, [worker_sub_device], 0, 0, enable_persistent_fabric
+        )
+    ############################################################
+
+    logger.info(f"Performing speculative flash decode ccl")
+    compute_grid_size = mesh_device.compute_with_storage_grid_size()
+    if grid_size[0] > compute_grid_size.x or grid_size[1] > compute_grid_size.y - 1:
+        pytest.skip(
+            f"Need {grid_size} grid size to run this test but core grid is {compute_grid_size} with last column dedicated for ccl"
+        )
+
+    padded_num_heads = nearest_pow_2(nearest_n(nh, n=32))
+    torch.manual_seed(1234)
+
+    num_parallel_cores = grid_size[0] * grid_size[1] // b
+    if num_parallel_cores == 1:
+        min_pcc = 0.90
+    else:
+        min_pcc = 0.99
+        if q_dtype == ttnn.bfloat8_b:
+            min_pcc = 0.98
+        min_pcc = 0.91 if dtype == ttnn.bfloat4_b else min_pcc
+
+    compute_kernel_config = ttnn.WormholeComputeKernelConfig(
+        math_fidelity=ttnn.MathFidelity.HiFi4,
+        math_approx_mode=False,
+        fp32_dest_acc_en=False,
+        packer_l1_acc=False,
+    )
+    dram_memcfg = ttnn.DRAM_MEMORY_CONFIG
+    shard_grid = ttnn.CoreRangeSet({num_to_corerange(b)})
+    shard_spec = ttnn.ShardSpec(shard_grid, (padded_num_heads, d), ttnn.ShardOrientation.ROW_MAJOR, False)
+    height_sharded_memcfg = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.HEIGHT_SHARDED, ttnn.BufferType.L1, shard_spec)
+
+    Ks = [fa_rand(b, nkv, s, d) for _ in range(num_devices)]
+    Vs = [fa_rand(b, nkv, s, d) for _ in range(num_devices)]
+
+    tt_K = create_multi_device_tensors(Ks, mesh_device, dram_memcfg, worker_sub_device_id, ttnn.TILE_LAYOUT, dtype)
+    tt_V = create_multi_device_tensors(Vs, mesh_device, dram_memcfg, worker_sub_device_id, ttnn.TILE_LAYOUT, dtype)
+
+    scale = d**-0.5
+    max_start_idx = s - 1
+
+    # create global semaphore handles for speculative flash decode
+    sfd_semaphore_handles = ttnn.create_global_semaphore(
+        mesh_device, ccl_sub_device_crs, 0, sub_device_ids=[worker_sub_device_id]
+    )
+    addrs = ttnn.get_global_semaphore_address(sfd_semaphore_handles)
+    logger.info(f"semaphore handle addresses: {addrs}")
+    # assert all addresses are the same
+    # assert len(set(addrs)) == 1 # uncomment this after new changes from global semaphore is pulled
+    assert addrs[0] == addrs[1]
+
+    # Set start indices if not provided or in multi-iteration mode
+    start_indices = [max_start_idx] * b
+    # create an alternating priority tensor [0,1] or [1,0]
+    priority_tensors = [torch.ones(1, 1, b, 1), torch.zeros(1, 1, b, 1)]
+
+    ##########################################
+    #### Prepare test config and data
+    ##########################################
+    program_config, padded_layer_len, attn_mask, Q = prepare_test_config_and_data(
+        b, nh, s, d, grid_size, padded_num_heads, k_chunk_size, max_start_idx, start_indices, causal
+    )
+
+    ##########################################
+    #### TT Calculation ####
+    ##########################################
+    Qs = [Q[:, :, :nh] for _ in range(num_devices)]
+    q_mem_config = height_sharded_memcfg if sharded_in else dram_memcfg
+    tt_Q = create_multi_device_tensors(Qs, mesh_device, q_mem_config, worker_sub_device_id, ttnn.TILE_LAYOUT, q_dtype)
+    gathered_priority_tensors = priority_tensors[
+        ::-1
+    ]  # priority tensor value of its pair device, same shape as priority_tensors
+
+    for i in range(5):
+        tt_priority_tensors = create_multi_device_tensors(
+            priority_tensors, mesh_device, dram_memcfg, worker_sub_device_id, ttnn.ROW_MAJOR_LAYOUT, ttnn.int32
+        )
+        tt_gathered_priority_tensors = create_multi_device_tensors(
+            gathered_priority_tensors, mesh_device, dram_memcfg, worker_sub_device_id, ttnn.ROW_MAJOR_LAYOUT, ttnn.int32
+        )
+        get_speculative_flash_decode_tt_ccl(
+            tt_Q,
+            tt_K,
+            tt_V,
+            tt_priority_tensors,
+            tt_gathered_priority_tensors,
+            sfd_semaphore_handles,
+            mesh_device,
+            worker_sub_device_id,
+            start_indices,
+            nh,
+            lambda_,
+            scale,
+            program_config,
+            compute_kernel_config,
+            dram_memcfg,
+            cur_pos_tensor=cur_pos_tensor,
+            sharded_out=sharded_out,
+            height_sharded_memcfg=height_sharded_memcfg,
+        )
+
+    for i in range(5):
+        if cur_pos_tensor:
+            start_indices_multidevice = [torch.tensor(start_indices), torch.tensor(start_indices)]
+            start_indices_tt = create_multi_device_tensors(
+                start_indices_multidevice,
+                mesh_device,
+                ttnn.DRAM_MEMORY_CONFIG,
+                worker_sub_device_id,
+                ttnn.ROW_MAJOR_LAYOUT,
+                ttnn.int32,
+            )
+            tt_back = ttnn.transformer.scaled_dot_product_attention_decode(
+                tt_Q,
+                tt_K,
+                tt_V,
+                cur_pos_tensor=start_indices_tt,
+                scale=scale,
+                program_config=program_config,
+                compute_kernel_config=compute_kernel_config,
+                memory_config=height_sharded_memcfg if sharded_out else dram_memcfg,
+            )
+        else:
+            tt_back = ttnn.transformer.scaled_dot_product_attention_decode(
+                tt_Q,
+                tt_K,
+                tt_V,
+                cur_pos=start_indices,
+                scale=scale,
+                program_config=program_config,
+                compute_kernel_config=compute_kernel_config,
+                memory_config=height_sharded_memcfg if sharded_out else dram_memcfg,
+            )
+
+    logger.info(f"Done speculative flash decode ccl")
+
+    ############################################################
+    ### Teardown persistent fabric ###
+    ############################################################
+    if enable_persistent_fabric and teardown_persistent_fabric:
+        teardown_fabric_interface(mesh_device)
+    ############################################################
+
+
+@skip_for_grayskull("Requires eth connected devices to run")
+@pytest.mark.parametrize(
+    "dtype, q_dtype",
+    [
+        [ttnn.bfloat8_b, ttnn.bfloat16],
+    ],
+    ids=[
+        "kv_bfp8",
+    ],
+)
+@pytest.mark.parametrize(
+    "b, nh, nkv, s, d, grid_size, cur_pos_tensor",
+    ([1, 32, 8, 16 * 8192, 128, (8, 4), True],),  # llama 3.1 8b
+)
+@pytest.mark.parametrize(
+    "k_chunk_size",
+    [
+        128,
+    ],
+)
+@pytest.mark.parametrize("enable_async", [True])
+def test_speculative_flash_decode_perf(
+    t3k_mesh_device,
+    b,
+    nh,
+    nkv,
+    s,
+    d,
+    dtype,
+    grid_size,
+    q_dtype,
+    cur_pos_tensor,
+    k_chunk_size,
+    use_program_cache,
+    function_level_defaults,
+    enable_async,
+):
+    run_speculative_flash_decode_perf(
         t3k_mesh_device,
         b,
         nh,
