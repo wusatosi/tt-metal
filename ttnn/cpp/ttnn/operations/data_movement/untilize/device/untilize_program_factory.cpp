@@ -136,13 +136,13 @@ operation::ProgramWithCallbacks untilize_multi_core_parallelize_column_subgrid(
 
     std::string compute_kernel(
         "ttnn/cpp/ttnn/operations/data_movement/untilize/device/kernels/compute/pack_untilize.cpp");
-    if (ntiles_per_block > MAX_PACK_UNTILIZE_WIDTH || !use_pack_untilize) {
-        log_debug(tt::LogOp, "Using slow untilize.");
-        compute_kernel =
-            std::string("ttnn/cpp/ttnn/operations/data_movement/untilize/device/kernels/compute/untilize.cpp");
-    } else {
-        log_debug(tt::LogOp, "Using fast pack untilize.");
-    }
+    // if (ntiles_per_block > MAX_PACK_UNTILIZE_WIDTH || !use_pack_untilize) {
+    //     log_debug(tt::LogOp, "Using slow untilize.");
+    //     compute_kernel =
+    //         std::string("ttnn/cpp/ttnn/operations/data_movement/untilize/device/kernels/compute/untilize.cpp");
+    // } else {
+    //     log_debug(tt::LogOp, "Using fast pack untilize.");
+    // }
 
     auto untilize_kernel_id = CreateKernel(
         program,
@@ -325,13 +325,13 @@ operation::ProgramWithCallbacks untilize_multi_core_parallelize_column(
 
     std::string compute_kernel(
         "ttnn/cpp/ttnn/operations/data_movement/untilize/device/kernels/compute/pack_untilize.cpp");
-    if (ntiles_per_block > MAX_PACK_UNTILIZE_WIDTH || !use_pack_untilize) {
-        log_debug(tt::LogOp, "Using slow untilize.");
-        compute_kernel =
-            std::string("ttnn/cpp/ttnn/operations/data_movement/untilize/device/kernels/compute/untilize.cpp");
-    } else {
-        log_debug(tt::LogOp, "Using fast pack untilize.");
-    }
+    // if (ntiles_per_block > MAX_PACK_UNTILIZE_WIDTH || !use_pack_untilize) {
+    //     log_debug(tt::LogOp, "Using slow untilize.");
+    //     compute_kernel =
+    //         std::string("ttnn/cpp/ttnn/operations/data_movement/untilize/device/kernels/compute/untilize.cpp");
+    // } else {
+    //     log_debug(tt::LogOp, "Using fast pack untilize.");
+    // }
 
     if (core_range.ranges().size() > 0) {
         auto untilize_kernel_id = CreateKernel(
@@ -628,13 +628,13 @@ operation::ProgramWithCallbacks untilize_multi_core(
 
     std::string compute_kernel(
         "ttnn/cpp/ttnn/operations/data_movement/untilize/device/kernels/compute/pack_untilize.cpp");
-    if (ntiles_per_block > MAX_PACK_UNTILIZE_WIDTH || !use_pack_untilize) {
-        log_debug(tt::LogOp, "Using slow untilize.");
-        compute_kernel =
-            std::string("ttnn/cpp/ttnn/operations/data_movement/untilize/device/kernels/compute/untilize.cpp");
-    } else {
-        log_debug(tt::LogOp, "Using fast pack untilize.");
-    }
+    // if (ntiles_per_block > MAX_PACK_UNTILIZE_WIDTH || !use_pack_untilize) {
+    //     log_debug(tt::LogOp, "Using slow untilize.");
+    //     compute_kernel =
+    //         std::string("ttnn/cpp/ttnn/operations/data_movement/untilize/device/kernels/compute/untilize.cpp");
+    // } else {
+    //     log_debug(tt::LogOp, "Using fast pack untilize.");
+    // }
 
     if (core_range.ranges().size() > 0) {
         auto untilize_kernel_id = CreateKernel(
@@ -981,13 +981,13 @@ operation::ProgramWithCallbacks untilize_single_core(
 
     std::string compute_kernel(
         "ttnn/cpp/ttnn/operations/data_movement/untilize/device/kernels/compute/pack_untilize.cpp");
-    if (num_tiles_per_block > MAX_PACK_UNTILIZE_WIDTH || !use_pack_untilize) {
-        log_debug(tt::LogOp, "Using slow untilize.");
-        compute_kernel =
-            std::string("ttnn/cpp/ttnn/operations/data_movement/untilize/device/kernels/compute/untilize.cpp");
-    } else {
-        log_debug(tt::LogOp, "Using fast pack untilize.");
-    }
+    // if (num_tiles_per_block > MAX_PACK_UNTILIZE_WIDTH || !use_pack_untilize) {
+    //     log_debug(tt::LogOp, "Using slow untilize.");
+    //     compute_kernel =
+    //         std::string("ttnn/cpp/ttnn/operations/data_movement/untilize/device/kernels/compute/untilize.cpp");
+    // } else {
+    //     log_debug(tt::LogOp, "Using fast pack untilize.");
+    // }
 
     auto untilize_kernel_id = tt::tt_metal::CreateKernel(
         program,
