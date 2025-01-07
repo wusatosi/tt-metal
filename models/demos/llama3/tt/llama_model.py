@@ -42,6 +42,8 @@ class TtTransformer(LightweightModule):
         self.grid_size = self.args.max_grid_size
         state_dict_prefix = args.get_state_dict_prefix("", None)
 
+        # TODO: Add prefetcher setup here
+
         self.embd = TtLlamaEmbedding(
             mesh_device=mesh_device,
             args=args,

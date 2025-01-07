@@ -24,7 +24,7 @@ from tqdm import tqdm
 from dataclasses import dataclass
 
 from tests.tt_eager.python_api_testing.unit_testing.misc.test_matmul_1d_gather_in0 import (
-    PREFETCHER_GRID,
+    PREFETCHER_NOC1_GRID,
     num_cores_to_rectangle_grid,
     get_physical_to_logical_core_mapping,
 )
@@ -105,6 +105,12 @@ class TtModelArgs:
         self.tile_size = 32
         self.is_70b = False
         self.max_prefill_chunk_size = max_seq_len
+        self.use_prefetcher = False
+
+        if self.num_devices == 32:
+            self.use_prefetcher = True
+
+        # Set up prefetcher stuff
 
         self.sub_core_grids = ttnn.CoreRangeSet(
             [
@@ -542,23 +548,20 @@ class TtModelArgs:
                 num_cores=mlp2_core_grid.num_cores,
             )
 
+            ##### Prefetcher stuff #####
+            self.model_config["USE_PREFETCHER"] = self.use_prefetcher
             RING_SIZE = 24
-            # mapping = get_physical_to_logical_core_mapping(mesh_device)
-            # CORE_RANGE = [mapping[physical_coord] for physical_coord in PREFETCHER_GRID]
-
-            # ring_core_range_set = ttnn.CoreRangeSet(
-            #     [
-            #         ttnn.CoreRange(
-            #             ttnn.CoreCoord(x, y),
-            #             ttnn.CoreCoord(x, y),
-            #         )
-            #         for x, y in CORE_RANGE
-            #     ]
-            # )
-            ring_core_range_set = ttnn.num_cores_to_corerangeset_in_subcoregrids(
-                self.start_core, RING_SIZE, self.sub_core_grids, row_wise=True
+            ring_core_range_set = ttnn.CoreRangeSet(
+                [
+                    ttnn.CoreRange(
+                        ttnn.CoreCoord(x, y),
+                        ttnn.CoreCoord(x, y),
+                    )
+                    for x, y in PREFETCHER_NOC1_GRID
+                ]
             )
 
+            # QKV
             self.model_config["SHARDED_ATTN_INPUT_RING_MEMCFG"] = (
                 ttnn.create_sharded_memory_config(
                     shape=(32, 2304 // RING_SIZE),
@@ -579,13 +582,10 @@ class TtModelArgs:
                     use_height_and_width_as_shard_shape=True,
                 )
             )
-            qkv_shard_shape_ring = (9216 // 4, 12288 // 8 // RING_SIZE)
-            self.model_config["SHARDED_QKV_RING_MEMCFG"] = ttnn.create_sharded_memory_config(
-                shape=qkv_shard_shape_ring,
-                core_grid=ring_core_range_set,
-                strategy=ttnn.ShardStrategy.WIDTH,
-                orientation=ttnn.ShardOrientation.ROW_MAJOR,
-                use_height_and_width_as_shard_shape=True,
+            qkv_shape_ring = (9216 // 4, 12288 // 8)
+            self.model_config["SHARDED_QKV_RING_MEMCFG"] = self.create_dram_sharded_mem_config(
+                k=qkv_shape_ring[0],
+                n=qkv_shape_ring[1],
             )
 
             qkv_out_shard_shape_ring = (32, 12288 // 8 // RING_SIZE)
@@ -604,6 +604,7 @@ class TtModelArgs:
                 RING_SIZE,
             )
 
+            # WO
             self.model_config["SHARDED_ATTN_WO_INPUT_RING_MEMCFG"] = ttnn.create_sharded_memory_config(
                 shape=(32, 12288 // 8 // RING_SIZE),
                 core_grid=ring_core_range_set,
@@ -612,13 +613,10 @@ class TtModelArgs:
                 use_height_and_width_as_shard_shape=True,
             )
 
-            wo_shard_shape_ring = (12288 // 8, 9216 // 4 // RING_SIZE)
-            self.model_config["SHARDED_WO_RING_MEMCFG"] = ttnn.create_sharded_memory_config(
-                shape=wo_shard_shape_ring,
-                core_grid=ring_core_range_set,
-                strategy=ttnn.ShardStrategy.WIDTH,
-                orientation=ttnn.ShardOrientation.ROW_MAJOR,
-                use_height_and_width_as_shard_shape=True,
+            wo_shape_ring = (12288 // 8, 9216 // 4)
+            self.model_config["SHARDED_WO_RING_MEMCFG"] = self.create_dram_sharded_mem_config(
+                k=wo_shape_ring[0],
+                n=wo_shape_ring[1],
             )
 
             wo_out_shard_shape_ring = (32, 9216 // 4 // RING_SIZE)

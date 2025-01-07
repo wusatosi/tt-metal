@@ -19,6 +19,7 @@ from models.utility_functions import (
     comp_allclose,
 )
 from models.utility_functions import skip_for_grayskull
+from tests.ttnn.unit_tests.operations.prefetcher_common import TtLlamaPrefetcherSetup
 
 
 @torch.no_grad()
@@ -130,7 +131,14 @@ def test_llama_attention_inference(
                 dims=(None, -2) if (model_args.is_galaxy and batch_size > 1) else (None, None),
                 mesh_shape=model_args.cluster_shape,
             ),
+            sub_device_ids=[prefetcher_setup.worker_sub_device_id],
         )
+
+    prefetcher_setup = TtLlamaPrefetcherSetup(
+        mesh_device,
+        n_tensors=2,
+        n_layers=1,
+    )
 
     tt_model = TtLlamaAttention(
         mesh_device,
@@ -141,6 +149,7 @@ def test_llama_attention_inference(
         transformation_mats=transformation_mats,
         configuration=model_args,
         paged_attention_config=paged_attention_config,
+        prefetcher_setup=prefetcher_setup,
     )
 
     cos, sin = precompute_freqs(
@@ -163,6 +172,7 @@ def test_llama_attention_inference(
             dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
             mesh_shape=model_args.cluster_shape,
         ),
+        sub_device_ids=[prefetcher_setup.worker_sub_device_id],
     )
 
     for i in range(generation_length):
@@ -180,6 +190,12 @@ def test_llama_attention_inference(
         # Get cos/sin matrices for the current position of each user
         rot_mats = rope_setup.get_rot_mats(current_pos)
 
+        ttnn.dram_prefetcher(
+            prefetcher_setup.tensors,
+            prefetcher_setup.get_tensor_addrs(),
+            num_layers=1,
+            global_circular_buffer=prefetcher_setup.global_cb,
+        )
         tt_out = tt_model(
             attention_input,
             current_pos_tensor,
@@ -191,6 +207,7 @@ def test_llama_attention_inference(
         tt_out = ttnn.to_torch(
             tt_out,
             mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(1, 3), mesh_shape=model_args.cluster_shape),
+            sub_device_ids=[prefetcher_setup.worker_sub_device_id],
         )
         tt_output_torch = tt_out[:, 0:1, : model_args.max_batch_size, : model_args.dim].view(-1, 1, model_args.dim)
 
@@ -221,6 +238,7 @@ def test_llama_attention_inference(
                 dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
                 mesh_shape=model_args.cluster_shape,
             ),
+            sub_device_ids=[prefetcher_setup.worker_sub_device_id],
         )
 
         check_kv_cache = True
@@ -241,6 +259,7 @@ def test_llama_attention_inference(
                                 dims=(1, 3) if model_args.is_galaxy else (0, 1),
                                 mesh_shape=model_args.cluster_shape,
                             ),
+                            sub_device_ids=[prefetcher_setup.worker_sub_device_id],
                         )[reverse_permutation][:, : model_args.n_kv_heads, :, : model_args.head_dim]
                         .reshape(
                             model_args.max_batch_size,
@@ -265,6 +284,7 @@ def test_llama_attention_inference(
                             dims=(1, 0) if model_args.is_galaxy else (0, 1),
                             mesh_shape=model_args.cluster_shape,
                         ),
+                        sub_device_ids=[prefetcher_setup.worker_sub_device_id],
                     )[:batch_size, :, :, :]
                     for cache in tt_model.layer_past
                 ]
