@@ -269,8 +269,8 @@ uint32_t finalize_kernel_bins(
     return max_offset;
 }
 
-template <typename T>
-void finalize_program_offsets(T& workload, Device* device) {
+template<typename T>
+void finalize_program_offsets(Workload<T>& workload, Device* device) {
     if (workload.is_finalized()) {
         return;
     }
@@ -360,22 +360,15 @@ void finalize_program_offsets(T& workload, Device* device) {
             max_size,
             magic_enum::enum_name(programmable_core_type));
 
-        if constexpr (std::is_same_v<T, Program>) {
-            set_program_offsets_and_sizes(workload, index);
-        } else {
-            for (const auto& device_range : workload.get_logical_device_ranges()) {
-                set_program_offsets_and_sizes(workload.get_program_on_device_range(device_range), index);
-            }
+        for (const auto& device_range : workload.get_logical_device_ranges()) {
+            set_program_offsets_and_sizes(workload.get_program_on_device_range(device_range), index);
         }
     }
     // The sem offsets cross programmable_core_types so must be set after the loop above
-    if constexpr (std::is_same_v<T, Program>) {
-        set_program_attrs_across_core_types(workload);
-    } else {
-        for (const auto& device_range : workload.get_logical_device_ranges()) {
-            set_program_attrs_across_core_types(workload.get_program_on_device_range(device_range));
-        }
+    for (const auto& device_range : workload.get_logical_device_ranges()) {
+        set_program_attrs_across_core_types(workload.get_program_on_device_range(device_range));
     }
+
     workload.set_finalized();
 }
 
@@ -1760,8 +1753,8 @@ uint32_t program_base_addr_on_core(
               : hal.get_dev_addr(programmable_core_type, HalL1MemAddrType::KERNEL_CONFIG);
 }
 
-template void finalize_program_offsets<Program>(Program&, Device*);
-template void finalize_program_offsets<distributed::MeshWorkload>(distributed::MeshWorkload&, Device*);
+template void finalize_program_offsets<Device*>(Workload<Device*>&, Device*);
+template void finalize_program_offsets<distributed::MeshDevice*>(Workload<distributed::MeshDevice*>&, Device*);
 template uint32_t program_base_addr_on_core<Program, Device*>(Program&, Device*, HalProgrammableCoreType);
 template uint32_t program_base_addr_on_core<distributed::MeshWorkload, distributed::MeshDevice*>(
     distributed::MeshWorkload&, distributed::MeshDevice*, HalProgrammableCoreType);

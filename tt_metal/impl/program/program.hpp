@@ -12,6 +12,7 @@
 #include "tt_metal/impl/buffers/semaphore.hpp"
 #include "tt_metal/impl/dispatch/program_command_sequence.hpp"
 #include "tt_metal/impl/program/program_device_map.hpp"
+#include "tt_metal/impl/program/workload.hpp"
 #include "tt_metal/impl/dispatch/worker_config_buffer.hpp"
 #include "dev_msgs.h"
 
@@ -46,8 +47,6 @@ CBHandle CreateCircularBuffer(
 namespace program_dispatch {
     void assemble_device_commands(
         ProgramCommandSequence& program_command_sequence, Program& program, Device* device, SubDeviceId sub_device_id);
-    template<typename T>
-    void finalize_program_offsets(T& workload_type, Device* device);
     template <typename WorkloadType, typename DeviceType>
     uint32_t program_base_addr_on_core(WorkloadType& workload, DeviceType generic_device, HalProgrammableCoreType core_type);
 } // namespace program_dispatch
@@ -99,29 +98,9 @@ struct KernelGroup {
     CoreType get_core_type() const;
 };
 
-// Contains the program's worker memory map
-struct ProgramConfig {
-    uint32_t rta_offset;
-    std::array<uint32_t, DISPATCH_CLASS_MAX> crta_offsets;
-    std::array<uint32_t, DISPATCH_CLASS_MAX> crta_sizes;
-    uint32_t sem_offset;
-    uint32_t sem_size;
-    uint32_t cb_offset;
-    uint32_t cb_size;
-    uint32_t local_cb_size;
-    uint32_t kernel_text_offset; // offset of first kernel bin
-    uint32_t kernel_text_size;   // max size of all kernel bins across all kernel groups
-};
-
 inline namespace v0 {
-// Represents the status of Program Kernel Binaries in Device DRAM with respect to the dispatcher
-enum class ProgramBinaryStatus : uint8_t {
-    NotSent = 0, // Binaries have not been written
-    InFlight = 1, // Fast Dispatch Commands to write the binaries to DRAM has been issued
-    Committed = 2, // Binaries have been commited to DRAM
-};
 
-class Program {
+class Program : public Workload<Device*> {
    public:
     Program();
 
@@ -192,6 +171,7 @@ class Program {
     HWCommandQueue* get_last_used_command_queue() const;
     const std::vector<SubDeviceId> &determine_sub_device_ids(const Device *device);
     void set_kernels_bin_buffer(const std::shared_ptr<Buffer>& buffer);
+    Program& get_program_on_device_range(const LogicalDeviceRange& device_range) { return *this; }
    private:
     std::unique_ptr<detail::Program_> pimpl_;
 
@@ -221,7 +201,7 @@ class Program {
     void populate_dispatch_data(Device* device);
     const ProgramTransferInfo &get_program_transfer_info() const noexcept;
     std::shared_ptr<Buffer> get_kernels_buffer(Device* device) const noexcept;
-    std::vector<uint32_t> &get_program_config_sizes() const noexcept;
+    std::vector<uint32_t> &get_program_config_sizes() const;
     bool runs_on_noc_unicast_only_cores();
     bool runs_on_noc_multicast_only_cores();
     std::unordered_map<uint64_t, ProgramCommandSequence> &get_cached_program_command_sequences() noexcept;
@@ -230,7 +210,7 @@ class Program {
     friend void detail::AddConfigBuffer(Program &program, const std::shared_ptr<Buffer>& config_buffer);
     friend void program_dispatch::assemble_device_commands(
         ProgramCommandSequence& program_command_sequence, Program& program, Device* device, SubDeviceId sub_device_id);
-    template<typename T> friend void program_dispatch::finalize_program_offsets(T&, Device*);
+
     template <typename WorkloadType, typename DeviceType>
     friend uint32_t program_dispatch::program_base_addr_on_core(WorkloadType&, DeviceType, HalProgrammableCoreType);
     friend HWCommandQueue;

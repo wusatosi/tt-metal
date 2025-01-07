@@ -1549,7 +1549,7 @@ void Program::set_kernels_bin_buffer(const std::shared_ptr<Buffer>& buffer) {
     pimpl_->kernels_buffer_.insert({buffer->device()->id(), buffer});
 }
 
-std::vector<uint32_t> &Program::get_program_config_sizes() const noexcept { return pimpl_->program_config_sizes_; }
+std::vector<uint32_t> &Program::get_program_config_sizes() const { return pimpl_->program_config_sizes_; }
 
 std::unordered_map<uint64_t, ProgramCommandSequence> &Program::get_cached_program_command_sequences() noexcept {
     return pimpl_->cached_program_command_sequences_;

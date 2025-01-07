@@ -16,7 +16,7 @@ void InsertProgramInMeshWorkload(
 void EnqueueMeshWorkload(MeshCommandQueue& mesh_cq, MeshWorkload& mesh_workload, bool blocking) {
     mesh_workload.compile(mesh_cq.device());
     mesh_workload.load_binaries(mesh_cq);
-    mesh_workload.generate_dispatch_commands(mesh_cq);
+    mesh_workload.generate_dispatch_commands(mesh_cq.device());
     mesh_cq.enqueue_mesh_workload(mesh_workload, blocking);
 }
 

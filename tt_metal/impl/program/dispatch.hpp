@@ -39,8 +39,8 @@ uint32_t configure_crta_offsets_for_kernel_groups(
 
 // Compute relative offsets (wrt the start of the kernel config ring buffer) and sizes of all
 // program data structures in L1. Will be used when assembling dispatch commands for this program
-template <typename T>
-void finalize_program_offsets(T& workload_type, Device* device);
+template<typename T>
+void finalize_program_offsets(Workload<T>& workload_type, Device* device);
 
 uint32_t finalize_rt_args(
     std::unordered_map<KernelHandle, std::shared_ptr<Kernel>>& kernels,
