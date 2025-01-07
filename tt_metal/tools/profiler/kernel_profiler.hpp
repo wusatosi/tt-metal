@@ -231,7 +231,9 @@ __attribute__((noinline)) void finish_profiler() {
                 uint64_t dram_bank_dst_noc_addr =
                     s.get_noc_addr(core_flat_id / profiler_core_count_per_dram, dram_offset);
 
-                noc_async_write(
+                // 2nd template arg here strips out noc tracing (if enabled) for
+                // profiler-related NoC writes to avoid a circular dependency
+                noc_async_write<NOC_MAX_BURST_SIZE + 1, false>(
                     reinterpret_cast<uint32_t>(profiler_data_buffer[hostIndex]), dram_bank_dst_noc_addr, send_size);
             }
             profiler_control_buffer[deviceIndex] = 0;
@@ -245,7 +247,7 @@ __attribute__((noinline)) void finish_profiler() {
 }
 
 inline __attribute__((always_inline)) void quick_push() {
-#if defined(DISPATCH_KERNEL) && defined(COMPILE_FOR_NCRISC) && (PROFILE_KERNEL == PROFILER_OPT_DO_DISPATCH_CORES)
+#if defined(COMPILE_FOR_BRISC) || defined(COMPILE_FOR_NCRISC)
     SrcLocNameToHash("PROFILER-NOC-QUICK-SEND");
     mark_time_at_index_inlined(wIndex, hash);
     wIndex += PROFILER_L1_MARKER_UINT32_SIZE;
@@ -273,7 +275,9 @@ inline __attribute__((always_inline)) void quick_push() {
     uint32_t currEndIndex = profiler_control_buffer[HOST_BUFFER_END_INDEX_BR_ER + myRiscID] + wIndex;
 
     if (currEndIndex <= PROFILER_FULL_HOST_VECTOR_SIZE_PER_RISC) {
-        noc_async_write(
+        // 2nd template arg here strips out noc tracing (if enabled) for
+        // profiler-related NoC writes to avoid a circular dependency
+        noc_async_write<NOC_MAX_BURST_SIZE + 1, false>(
             reinterpret_cast<uint32_t>(profiler_data_buffer[myRiscID]),
             dram_bank_dst_noc_addr,
             wIndex * sizeof(uint32_t));
@@ -354,6 +358,11 @@ struct profileScopeAccumulate {
 
 template <uint32_t data_id, bool dispatch = false>
 inline __attribute__((always_inline)) void timeStampedData(uint64_t data) {
+    // if buffer is full, push all data resident in L1 buffer to host
+    if (not bufferHasRoom<dispatch>()) {
+        quick_push();
+    }
+    // Don't assume quick_push() can free up buffer space
     if (bufferHasRoom<dispatch>()) {
         mark_time_at_index_inlined(wIndex, get_const_id(data_id, TS_DATA));
         wIndex += PROFILER_L1_MARKER_UINT32_SIZE;
