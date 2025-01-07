@@ -190,11 +190,12 @@ def test_llama_attention_inference(
         # Get cos/sin matrices for the current position of each user
         rot_mats = rope_setup.get_rot_mats(current_pos)
 
+        breakpoint()
         ttnn.dram_prefetcher(
             prefetcher_setup.tensors,
             prefetcher_setup.get_tensor_addrs(),
             num_layers=1,
-            global_circular_buffer=prefetcher_setup.global_cb,
+            global_cb=prefetcher_setup.global_circular_buffer,
         )
         tt_out = tt_model(
             attention_input,

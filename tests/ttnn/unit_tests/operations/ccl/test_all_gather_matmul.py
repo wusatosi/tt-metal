@@ -76,6 +76,7 @@ def run_all_gather_matmul_on_t3000_impl(
         mesh_mapper=ShardTensorToMesh(t3k_mesh_device, dim=dim),
         tile=ttnn.Tile(tile),
     )
+    breakpoint()
 
     ##### Configs for ttnn.matmul #####
     if matmul_config == "matmul_1d":

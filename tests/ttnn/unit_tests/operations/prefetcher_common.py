@@ -52,23 +52,23 @@ class TtLlamaPrefetcherSetup(LightweightModule):
 
         max_tile_size = 1088
         self.global_cb_size = 750 * max_tile_size
-        self.sender_receiver_mapping = list(zip(sender_cores, receiver_cores))
+        self.sender_receiver_mapping = list(zip(self.sender_cores, self.receiver_cores))
         self.global_circular_buffer = ttnn.create_global_circular_buffer(
-            device, self.sender_receiver_mapping, self.global_cb_size
+            self.mesh_device, self.sender_receiver_mapping, self.global_cb_size
         )
         logger.info(f"GlobalCB size {self.global_cb_size}")
 
         ##### Set up the input tensors #####
-        dram_core_range_set = ttnn.CoreRangeSet(
+        self.dram_core_range_set = ttnn.CoreRangeSet(
             [ttnn.CoreRange(core_coord, core_coord) for core_coord in self.dram_cores]
         )
-        sender_core_range_set = ttnn.CoreRangeSet(
+        self.sender_core_range_set = ttnn.CoreRangeSet(
             [ttnn.CoreRange(core_coord, core_coord) for core_coord in self.sender_cores]
         )
 
         ##### Setup up sub devices #####
-        self.prefetcher_sub_device = ttnn.SubDevice([sender_core_range_set])
-        self.worker_sub_device = ttnn.SubDevice([worker_cores_range_set])
+        self.prefetcher_sub_device = ttnn.SubDevice([self.sender_core_range_set])
+        self.worker_sub_device = ttnn.SubDevice([self.worker_cores_range_set])
         self.sub_device_manager = mesh_device.create_sub_device_manager(
             [self.prefetcher_sub_device, self.worker_sub_device], 0
         )
@@ -79,14 +79,22 @@ class TtLlamaPrefetcherSetup(LightweightModule):
         self.tensors = []
         self.tensor_addrs = []  # List of buffer addresses
 
+    def buffer_address(self, tensor):
+        addr = []
+        for i, ten in enumerate(ttnn.get_device_tensors(tensor)):
+            addr.append(ten.buffer_address())
+            if len(addr) > 0:
+                assert addr[i - 1] == addr[i], f"Expected {addr[i-1]} == {addr[i]}"
+        return addr[0]
+
     def insert_tensor(self, tensor: ttnn.Tensor):
         self.tensors.append(tensor)
-        self.tensor_addrs.append(tensor.buffer_address())
+        self.tensor_addrs.append(self.buffer_address(tensor))
 
     def get_tensor_addrs(self):
         assert (
-            len(tensor_addrs) == self.n_tensors * self.n_layers
-        ), f"Expected {self.n_tensors * self.n_layers} tensor addresses, got {len(tensor_addrs)}"
+            len(self.tensor_addrs) == self.n_tensors * self.n_layers
+        ), f"Expected {self.n_tensors * self.n_layers} tensor addresses, got {len(self.tensor_addrs)}"
 
         tensor_addrs = torch.tensor(self.tensor_addrs)
         tensor_addrs = tensor_addrs.repeat(len(self.dram_cores), 1)
@@ -94,8 +102,8 @@ class TtLlamaPrefetcherSetup(LightweightModule):
             ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
             ttnn.BufferType.L1,
             ttnn.ShardSpec(
-                sender_core_range_set,
-                [tensor_addrs.shape[0] // len(dram_cores), tensor_addrs.shape[1]],
+                self.sender_core_range_set,
+                [tensor_addrs.shape[0] // len(self.dram_cores), tensor_addrs.shape[1]],
                 ttnn.ShardOrientation.ROW_MAJOR,
                 False,
             ),
@@ -226,6 +234,7 @@ def get_core_ranges(num_reader_cores, num_global_cb_receivers, is_functional_tes
 
 
 def run_prefetcher_mm(
+    mesh_device,
     device,
     num_tensors,
     input_shapes,
@@ -279,8 +288,10 @@ def run_prefetcher_mm(
     # global_cb_size = 1000 * max_tile_size # works without profiler, fails with profiler, 900 doesn't provide tracy info
     global_cb_size = 750 * max_tile_size
     sender_receiver_mapping = list(zip(sender_cores, receiver_cores))
-    global_circular_buffer = ttnn.create_global_circular_buffer(device, sender_receiver_mapping, global_cb_size)
+    global_circular_buffer = ttnn.create_global_circular_buffer(mesh_device, sender_receiver_mapping, global_cb_size)
     logger.info(f"global cb size {global_cb_size}")
+
+    breakpoint()
 
     ##### Set up the input tensors #####
     dram_core_range_set = ttnn.CoreRangeSet([ttnn.CoreRange(core_coord, core_coord) for core_coord in dram_cores])

@@ -69,6 +69,7 @@ def test_run_prefetcher(
         pytest.skip("Skipping test_run_prefetcher because it only works with a 7x10 grid")
 
     run_prefetcher_mm(
+        mesh_device,
         device,
         num_tensors,
         input_shapes,
