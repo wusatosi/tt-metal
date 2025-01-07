@@ -529,6 +529,7 @@ def as_tensor(
     preprocess: Optional[Callable[[ttnn.Tensor], ttnn.Tensor]] = None,
     mesh_mapper: Optional[ttnn.TensorToMesh] = None,
     use_device_tilizer: bool = False,
+    sub_device_ids: List[ttnn.SubDeviceId] = [],
 ) -> ttnn.Tensor:
     """
     Converts the `torch.Tensor` tensor into a `ttnn.Tensor`.
@@ -580,6 +581,7 @@ def as_tensor(
         device: Optional[ttnn.Device],
         memory_config: Optional[ttnn.MemoryConfig],
         mesh_mapper: Optional[ttnn.TensorToMesh],
+        sub_device_ids: List[ttnn.SubDeviceId],
     ):
         if preprocess:
             tensor = preprocess(tensor)
@@ -590,6 +592,7 @@ def as_tensor(
                 mesh_mapper=mesh_mapper,
                 device=device,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                sub_device_ids=sub_device_ids,
             )
             tensor = ttnn.to_layout(tensor, layout, dtype=dtype, memory_config=memory_config, device=device)
         else:
@@ -600,11 +603,12 @@ def as_tensor(
                 mesh_mapper=mesh_mapper,
                 memory_config=memory_config,
                 device=device,
+                sub_device_ids=sub_device_ids,
             )
         return tensor
 
     if cache_file_name is None:
-        return torch_to_ttnn(tensor, dtype, layout, device, memory_config, mesh_mapper)
+        return torch_to_ttnn(tensor, dtype, layout, device, memory_config, mesh_mapper, sub_device_ids)
     else:
 
         def from_torch_and_dump(
@@ -613,8 +617,9 @@ def as_tensor(
             layout: Optional[ttnn.Layout],
             cache_file_name: str,
             mesh_mapper: Optional[ttnn.TensorToMesh],
+            sub_device_ids: List[ttnn.SubDeviceId],
         ):
-            tensor = torch_to_ttnn(tensor, dtype, layout, device, memory_config, mesh_mapper)
+            tensor = torch_to_ttnn(tensor, dtype, layout, device, memory_config, mesh_mapper, sub_device_ids)
             logger.debug(
                 f"Generating cache for {cache_file_name} of shape {tensor.shape}, dtype {dtype_name}, layout {layout_name}"
             )
@@ -638,10 +643,10 @@ def as_tensor(
                 logger.warning(
                     f"Cached file {cache_file_name} has shape {tensor.shape}, expected {tensor.shape}, regenerating cache"
                 )
-                tensor = from_torch_and_dump(tensor, dtype, layout, cache_file_name, mesh_mapper)
+                tensor = from_torch_and_dump(tensor, dtype, layout, cache_file_name, mesh_mapper, sub_device_ids)
             logger.debug(f"Loaded cache for {cache_file_name} of shape {tensor.shape}")
         except (FileNotFoundError, RuntimeError):
-            tensor = from_torch_and_dump(tensor, dtype, layout, cache_file_name, mesh_mapper)
+            tensor = from_torch_and_dump(tensor, dtype, layout, cache_file_name, mesh_mapper, sub_device_ids)
         return tensor
 
 
