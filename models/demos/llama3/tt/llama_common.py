@@ -51,7 +51,7 @@ def encode_prompt_hf(tokenizer, prompt_text, system_prompt_text=None):
         chat.append({"role": "system", "content": system_prompt_text})
     if prompt_text:
         chat.append({"role": "user", "content": prompt_text})
-    return tokenizer.apply_chat_template(chat, tokenize=True)
+    return tokenizer.apply_chat_template(chat, tokenize=True, add_generation_prompt=True)
 
 
 def apply_scaling(freqs: torch.Tensor):

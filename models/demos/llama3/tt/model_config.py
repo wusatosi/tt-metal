@@ -160,7 +160,9 @@ class TtModelArgs:
             local_params = "QWEN2_5_0_5B_PARAMS"
             self.model_name = "Qwen2.5-0.5B"
         else:
-            raise ValueError(f"Unsupported model: {LLAMA_DIR}")
+            local_params = "UNKNOWN"
+            self.model_name = "Unknown"
+            logger.warning(f"Unsupported model: {LLAMA_DIR}")
 
         if callable(optimizations):
             self.optimizations = optimizations(self.model_name)
@@ -1086,14 +1088,19 @@ class TtModelArgs:
             # Create a HuggingFace AutoTokenizer
             from transformers import AutoTokenizer
 
-            return AutoTokenizer.from_pretrained(self.DEFAULT_TOKENIZER_PATH)
+            tokenizer = AutoTokenizer.from_pretrained(self.DEFAULT_TOKENIZER_PATH)
+
+            # Add meta-compatible stop token list to the HF tokenizer
+            if not "stop_tokens" in tokenizer.__dict__:
+                tokenizer.stop_tokens = [tokenizer.eos_token_id]
+            return tokenizer
 
     def encode_prompt(self, prompt_text, system_prompt_text=None, instruct=True):
         if self.checkpoint_type == CheckpointType.Meta:
             if instruct:
                 return encode_prompt_llama_instruct(self.tokenizer, prompt_text, system_prompt_text)
             else:
-                return self.tokenizer.encode(prompt_text, bos=False, eos=False)
+                return self.tokenizer.encode(prompt_text, bos=True, eos=False)
         else:
             if instruct:
                 return encode_prompt_hf(self.tokenizer, prompt_text, system_prompt_text)
@@ -1284,8 +1291,6 @@ class HfModelWrapper:
         position_ids = torch.tensor(
             [list(range(start_pos, start_pos + inputs_embeds.shape[1]))] * inputs_embeds.shape[0]
         )
-        print(f"{inputs_embeds.shape=}")
-        print(f"our position_ids: {position_ids}")
         logits, new_cache, hidden_states = self.model.forward(
             inputs_embeds=inputs_embeds,
             position_ids=position_ids,

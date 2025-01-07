@@ -103,10 +103,7 @@ def preprocess_inputs_prefill(
     if max_prefill_len == 128 * 1024:
         max_prefill_len = 128 * 1024 - max_generated_tokens
 
-    if instruct:
-        encoded_prompts = [model_args.encode_prompt(prompt) for prompt in input_prompts]
-    else:
-        encoded_prompts = [tokenizer.encode(prompt, bos=True, eos=False) for prompt in input_prompts]
+    encoded_prompts = [model_args.encode_prompt(prompt, instruct=instruct) for prompt in input_prompts]
 
     # Print the length of encoded prompts
     logger.info("Encoded prompt lengths:" + ", ".join(str(len(prompt)) for prompt in encoded_prompts))
@@ -117,14 +114,26 @@ def preprocess_inputs_prefill(
 
     # The large input demo we provide contains more tokens than the maximum (32k tokens)
     # To avoid running out of memory, clip to max_prefill_len
+
     if min_prompt_len > max_prefill_len:
-        logger.info(f"Clipping prompts to {max_prefill_len}")
-        if instruct:  # When clipping, make sure to add the ` 】 token at the end (4 tokens)
-            encoded_prompts = [encod[: max_prefill_len - 4] for encod in encoded_prompts]
-            dec_prompts = [tokenizer.decode(encod) + " 】" for encod in encoded_prompts]
-            encoded_prompts = [tokenizer.encode(prompt, bos=True, eos=False) for prompt in dec_prompts]
+        logger.info(f"Left-clipping prompts to {max_prefill_len}")
+        if instruct:
+            # We need to allow a few tokens for the system prompt and the special turn tokens for assistant and user;
+            # to find out how big those will be, we will:
+            # 1. Tokenize the entire prompt with non-instruct tokenization
+            # 2. Calculate overhead = length of instruct tokenization - length of non-instruct tokenization
+            # 3. Shorten the tokenized clipped prompt by the overhead and convert back to text
+            # 4. Tokenize the result with instruct tokenization
+            # 5. Assert that the length of this is equal to the max_prefill_len
+            raw_prompts = [model_args.encode_prompt(prompt, instruct=False) for prompt in input_prompts]
+            overhead = [len(e) - len(r) for e, r in zip(encoded_prompts, raw_prompts)]
+            shortened = [tokenizer.decode(e[-(max_prefill_len - o) :]) for e, o in zip(raw_prompts, overhead)]
+            encoded_prompts = [model_args.encode_prompt(prompt, instruct=instruct) for prompt in shortened]
+            assert all(
+                len(e) == max_prefill_len for e in encoded_prompts
+            ), f"Clipped prompts are not of the correct length, expected {max_prefill_len} but got {[len(e) for e in encoded_prompts]}"
         else:
-            encoded_prompts = [encod[:max_prefill_len] for encod in encoded_prompts]
+            encoded_prompts = [encod[-max_prefill_len:] for encod in encoded_prompts]
 
         # Update prompt lengths
         prompt_lens = [len(x) for x in encoded_prompts]
@@ -301,8 +310,7 @@ def run_llama3_demo(
     )
     embd = model_args.reference_embedding()
     state_dict_prefix = model_args.get_state_dict_prefix("", None)
-    # FIXME: LLAMA wants emb.weight vs QWEN2.5 does not. Load state_dict in reference_embedding()
-    embd.load_state_dict({"weight": state_dict[f"{state_dict_prefix}tok_embeddings.weight"]})
+    embd.load_state_dict({"emb.weight": state_dict[f"{state_dict_prefix}tok_embeddings.weight"]})
     profiler.end("loading_weights_to_device")
     logger.info("Finished loading weights to device.")
 
@@ -597,8 +605,8 @@ def run_llama3_demo(
             for user in range(batch_size):
                 user_tok = tt_output_torch[user].tolist()
                 if (
-                    user_tok != 128009 and user_done[user] == False
-                ):  # Stop saving the ouput after hitting the eos token (<|eot_id|>) (128009)
+                    user_tok not in tokenizer.stop_tokens and user_done[user] == False
+                ):  # Read until an eos token (e.g. <|eot_id|>); create_tokenizer adds stop_tokens to HF tokenizers
                     all_outputs[user].append(user_tok)
                 else:
                     user_done[user] = True
@@ -648,14 +656,10 @@ def run_llama3_demo(
                 profiler.start(f"log_saving_file", iteration=batch_idx)
                 for i, (output, prompt) in enumerate(zip(all_outputs, input_prompts)):
                     text = tokenizer.decode(output)
-                    if instruct_mode:
-                        split_text = text.split("<|start_header_id|>assistant<|end_header_id|>", 1)
-                    else:
-                        split_text = text.split(prompt, 1)
-                    if len(split_text) > 1:
-                        text_after_prompt = split_text[1]
-                    else:
-                        text_after_prompt = text  # If prompt is not found, use the whole text
+                    prompt_including_assistant_tags = tokenizer.decode(
+                        model_args.encode_prompt(prompt, instruct=instruct_mode)
+                    )
+                    text_after_prompt = text.replace(prompt_including_assistant_tags, "", 1)
                     if print_to_file:
                         with open(output_filename, "a") as f:
                             f.write(
@@ -745,59 +749,62 @@ def run_llama3_demo(
     llama_model_name = model_args.model_name
     tt_device_name = model_args.device_name
 
-    assert llama_model_name in supported_models, f"Model {llama_model_name} not supported"
-    assert tt_device_name in supported_devices, f"Device {tt_device_name} not supported"
+    if llama_model_name in supported_models:
+        assert tt_device_name in supported_devices, f"Device {tt_device_name} not supported"
 
-    # Set the target times to first token for every combination of device and model
-    target_prefill_tok_s = {
-        "N150_3.2-1B": 1050,  # TODO Update target
-        "N300_3.2-1B": 1050,  # TODO Update target
-        "T3K_3.2-1B": 1050,  # TODO Update target
-        #
-        "N150_3.2-3B": 1050,  # TODO Update target
-        "N300_3.2-3B": 1050,  # TODO Update target
-        "T3K_3.2-3B": 1050,  # TODO Update target
-        #
-        "N150_3.1-8B": 1050,
-        "N300_3.1-8B": 1050,
-        "T3K_3.1-8B": 1050,
-        #
-        "N150_3.2-11B": 1050,  # TODO Update target
-        "N300_3.2-11B": 1050,  # TODO Update target
-        "T3K_3.2-11B": 1050,  # TODO Update target
-        #
-        "N150_3.1-70B": 1050,  # TODO Update target
-        "N300_3.1-70B": 1050,  # TODO Update target
-        "T3K_3.1-70B": 1050,  # TODO Update target
-    }[f"{tt_device_name}_{llama_model_name}"]
+        # Set the target times to first token for every combination of device and model
+        target_prefill_tok_s = {
+            "N150_3.2-1B": 1050,  # TODO Update target
+            "N300_3.2-1B": 1050,  # TODO Update target
+            "T3K_3.2-1B": 1050,  # TODO Update target
+            #
+            "N150_3.2-3B": 1050,  # TODO Update target
+            "N300_3.2-3B": 1050,  # TODO Update target
+            "T3K_3.2-3B": 1050,  # TODO Update target
+            #
+            "N150_3.1-8B": 1050,
+            "N300_3.1-8B": 1050,
+            "T3K_3.1-8B": 1050,
+            #
+            "N150_3.2-11B": 1050,  # TODO Update target
+            "N300_3.2-11B": 1050,  # TODO Update target
+            "T3K_3.2-11B": 1050,  # TODO Update target
+            #
+            "N150_3.1-70B": 1050,  # TODO Update target
+            "N300_3.1-70B": 1050,  # TODO Update target
+            "T3K_3.1-70B": 1050,  # TODO Update target
+        }[f"{tt_device_name}_{llama_model_name}"]
 
-    # Set the target decode timesfor every combination of device and model
-    target_decode_tok_s_u = {
-        "N150_3.2-1B": 160,  # TODO Update target
-        "N300_3.2-1B": 250,  # TODO Update target
-        "T3K_3.2-1B": 300,  # TODO Update target
-        #
-        "N150_3.2-3B": 60,  # TODO Update target
-        "N300_3.2-3B": 100,  # TODO Update target
-        "T3K_3.2-3B": 150,  # TODO Update target
-        #
-        "N150_3.1-8B": 23,  # TODO Update target
-        "N300_3.1-8B": 38,
-        "T3K_3.1-8B": 45,
-        #
-        "N150_3.2-11B": 23,
-        "N300_3.2-11B": 38,  # TODO Update target
-        "T3K_3.2-11B": 45,  # TODO Update target
-        #
-        "T3K_3.1-70B": 20,  # TODO Update target
-    }[f"{tt_device_name}_{llama_model_name}"]
+        # Set the target decode timesfor every combination of device and model
+        target_decode_tok_s_u = {
+            "N150_3.2-1B": 160,  # TODO Update target
+            "N300_3.2-1B": 250,  # TODO Update target
+            "T3K_3.2-1B": 300,  # TODO Update target
+            #
+            "N150_3.2-3B": 60,  # TODO Update target
+            "N300_3.2-3B": 100,  # TODO Update target
+            "T3K_3.2-3B": 150,  # TODO Update target
+            #
+            "N150_3.1-8B": 23,  # TODO Update target
+            "N300_3.1-8B": 38,
+            "T3K_3.1-8B": 45,
+            #
+            "N150_3.2-11B": 23,
+            "N300_3.2-11B": 38,  # TODO Update target
+            "T3K_3.2-11B": 45,  # TODO Update target
+            #
+            "T3K_3.1-70B": 20,  # TODO Update target
+        }[f"{tt_device_name}_{llama_model_name}"]
 
-    target_decode_tok_s = target_decode_tok_s_u * batch_size
-    targets = {
-        "prefill_t/s": target_prefill_tok_s,
-        "decode_t/s": target_decode_tok_s,
-        "decode_t/s/u": target_decode_tok_s_u,
-    }
+        target_decode_tok_s = target_decode_tok_s_u * batch_size
+        targets = {
+            "prefill_t/s": target_prefill_tok_s,
+            "decode_t/s": target_decode_tok_s,
+            "decode_t/s/u": target_decode_tok_s_u,
+        }
+    else:
+        logger.warning(f"Model {llama_model_name} not does not have performance targets set")
+        targets = {}
 
     # Save benchmark data for CI dashboard
     if is_ci_env:

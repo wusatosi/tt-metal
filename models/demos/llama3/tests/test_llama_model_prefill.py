@@ -123,10 +123,7 @@ def test_llama_model_inference(
     with bz2.open(prompt_file, "rt", encoding="utf-8") as f:
         prompt = f.read()
 
-    if instruct:
-        encoded_prompt = model_args.encode_prompt(prompt)[:seq_len]
-    else:
-        encoded_prompt = tokenizer.encode(prompt, bos=True, eos=False)[:seq_len]
+    encoded_prompt = model_args.encode_prompt(prompt, instruct=instruct)[:seq_len]
 
     if run_ref_pt:
         reference_model = model_args.reference_transformer()
