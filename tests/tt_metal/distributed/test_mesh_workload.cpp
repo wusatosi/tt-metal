@@ -998,45 +998,107 @@ TEST_F(MeshDevice_T3000, TestMeshWorkloadSemaphoreDifferentPrograms) {
     }
 }
 
-TEST_F(MeshDevice_T3000, TestMeshBufferAllocation) {
+TEST_F(MeshDevice_T3000, TestReplicatedInterleavedDRAMMeshBuffer) {
     uint32_t single_tile_size = ::tt::tt_metal::detail::TileSize(DataFormat::Float16_b);
     uint32_t num_tiles = 1024;
     uint32_t dram_buffer_size = single_tile_size * num_tiles;
-
+    uint32_t NUM_ITERS = 50;
     DeviceLocalLayoutConfig per_device_buffer_config {
-        .page_size = dram_buffer_size,
+        .page_size = single_tile_size,
         .buffer_type = BufferType::DRAM,
         .buffer_layout = TensorMemoryLayout::INTERLEAVED,
         .bottom_up = true
     };
 
     ReplicatedBufferConfig global_buffer_config {
-        .mesh_device = mesh_device_,
+        .mesh_device = mesh_device_.get(),
         .buffer_size = dram_buffer_size,
         .device_shard_layout = per_device_buffer_config
     };
+    
+    for (int i = 0; i < NUM_ITERS; i++) {
+        std::vector<uint32_t> src_vec = create_constant_vector_of_bfloat16(dram_buffer_size, i);
+        auto mesh_buffer = MeshBuffer::create(global_buffer_config);
+        mesh_device_->command_queue().enqueue_write_mesh_buffer(*mesh_buffer, src_vec.data(), true);
 
-    // {
-    std::vector<uint32_t> src_vec = create_constant_vector_of_bfloat16(dram_buffer_size, 1);
-    auto mesh_buffer = MeshBuffer::create(global_buffer_config);
-    std::cout << mesh_buffer->address() << std::endl;
-    mesh_device_->mesh_command_queue().enqueue_write_mesh_buffer(*mesh_buffer, src_vec.data(), true);
-
-    for (std::size_t logical_x = 0; logical_x < mesh_buffer->mesh_device()->num_cols(); logical_x++) {
-        for (std::size_t logical_y = 0; logical_y < mesh_buffer->mesh_device()->num_rows(); logical_y++) {
-            auto shard = mesh_buffer->get_shard_buffer(logical_x, logical_y);
-            std::vector<bfloat16> dst_vec = {};
-            EnqueueReadBuffer(shard->device()->command_queue(), *shard, dst_vec, true);
-            for (int i = 0; i < dst_vec.size(); i++) {
-                EXPECT_EQ(dst_vec[i].to_float(), 1.0f);
+        for (std::size_t logical_x = 0; logical_x < mesh_buffer->mesh_device()->num_cols(); logical_x++) {
+            for (std::size_t logical_y = 0; logical_y < mesh_buffer->mesh_device()->num_rows(); logical_y++) {
+                auto shard = mesh_buffer->get_shard_buffer(logical_x, logical_y);
+                std::vector<bfloat16> dst_vec = {};
+                EnqueueReadBuffer(shard->device()->command_queue(), *shard, dst_vec, true);
+                for (int j = 0; j < dst_vec.size(); j++) {
+                    EXPECT_EQ(dst_vec[i].to_float(), i);
+                }
             }
         }
     }
-    // }
-    // {
-        // MeshBuffer mesh_buffer_2 = MeshBuffer(global_buffer_config);
-        // std::cout << mesh_buffer_2.address() << std::endl;
-    // }
+    uint32_t seed = tt::parse_env("TT_METAL_SEED", 0);
+    std::uniform_int_distribution<int> gen_num_tiles(1, 1024);
+    std::mt19937 rng(seed);
+    std::vector<std::shared_ptr<MeshBuffer>> persistent_buffers;
+    for (int i = 0; i < NUM_ITERS; i++) {
+        uint32_t num_random_tiles = gen_num_tiles(rng);
+        ReplicatedBufferConfig global_buffer_config_randomized = {
+            .mesh_device = mesh_device_.get(),
+            .buffer_size = num_random_tiles * single_tile_size,
+            .device_shard_layout = per_device_buffer_config
+        };
+        std::vector<uint32_t> src_vec = create_constant_vector_of_bfloat16(num_random_tiles * single_tile_size, i);
+        auto mesh_buffer_randomized = MeshBuffer::create(global_buffer_config_randomized);
+        mesh_device_->command_queue().enqueue_write_mesh_buffer(*mesh_buffer_randomized, src_vec.data(), true);
+        for (std::size_t logical_x = 0; logical_x < mesh_buffer_randomized->mesh_device()->num_cols(); logical_x++) {
+            for (std::size_t logical_y = 0; logical_y < mesh_buffer_randomized->mesh_device()->num_rows(); logical_y++) {
+                auto shard = mesh_buffer_randomized->get_shard_buffer(logical_x, logical_y);
+                std::vector<bfloat16> dst_vec = {};
+                EnqueueReadBuffer(shard->device()->command_queue(), *shard, dst_vec, true);
+                for (int j = 0; j < dst_vec.size(); j++) {
+                    EXPECT_EQ(dst_vec[i].to_float(), i);
+                }
+            }
+        }
+        persistent_buffers.push_back(mesh_buffer_randomized);
+    }
+}
+
+TEST_F(MeshDevice_T3000, TestReplicatedInterleavedL1MeshBuffer) {
+    uint32_t seed = tt::parse_env("TT_METAL_SEED", 0);
+    uint32_t single_tile_size = ::tt::tt_metal::detail::TileSize(DataFormat::Float16_b);
+    std::uniform_int_distribution<int> gen_num_tiles(1, 128);
+    std::mt19937 rng(seed);
+    uint32_t NUM_ITERS = 150;
+    std::vector<std::shared_ptr<MeshBuffer>> persistent_buffers;
+    DeviceLocalLayoutConfig per_device_buffer_config {
+        .page_size = single_tile_size,
+        .buffer_type = BufferType::L1,
+        .buffer_layout = TensorMemoryLayout::INTERLEAVED,
+        .bottom_up = false
+    };
+
+    for (int i = 0; i < NUM_ITERS; i++) {
+        uint32_t num_random_tiles = gen_num_tiles(rng);
+        ReplicatedBufferConfig global_buffer_config_randomized = {
+            .mesh_device = mesh_device_.get(),
+            .buffer_size = num_random_tiles * single_tile_size,
+            .device_shard_layout = per_device_buffer_config
+        };
+
+        std::vector<uint32_t> src_vec = create_constant_vector_of_bfloat16(num_random_tiles * single_tile_size, i);
+        auto mesh_buffer_randomized = MeshBuffer::create(global_buffer_config_randomized);
+        std::cout << mesh_buffer_randomized->address() << std::endl;
+        mesh_device_->command_queue().enqueue_write_mesh_buffer(*mesh_buffer_randomized, src_vec.data(), true);
+
+        for (std::size_t logical_x = 0; logical_x < mesh_buffer_randomized->mesh_device()->num_cols(); logical_x++) {
+            for (std::size_t logical_y = 0; logical_y < mesh_buffer_randomized->mesh_device()->num_rows(); logical_y++) {
+                auto shard = mesh_buffer_randomized->get_shard_buffer(logical_x, logical_y);
+                std::vector<bfloat16> dst_vec = {};
+                EnqueueReadBuffer(shard->device()->command_queue(), *shard, dst_vec, true);
+                for (int j = 0; j < dst_vec.size(); j++) {
+                    EXPECT_EQ(dst_vec[i].to_float(), i);
+                }
+            }
+        }
+        persistent_buffers.push_back(mesh_buffer_randomized);
+    }
 }
 
 }  // namespace tt::tt_metal::distributed::test

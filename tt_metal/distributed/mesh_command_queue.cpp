@@ -176,11 +176,24 @@ void MeshCommandQueue::enqueue_write_to_sub_grid(MeshBuffer& buffer, const void*
     expected_num_workers_completed[0] = expected_num_workers_completed_;
 
     if (buffer.global_layout() == MeshBufferLayout::REPLICATED) {
-        for (std::size_t logical_x = device_range.start_coord.x; logical_x < device_range.end_coord.x; logical_x++) {
-            for (std::size_t logical_y = device_range.start_coord.y; logical_y < device_range.end_coord.y; logical_y++) {
-                auto device_shard_view = buffer.get_shard_buffer(logical_x, logical_y);
-                auto dispatch_params = buffer_utils::initialize_interleaved_buf_dispatch_params(*device_shard_view, buf_dispatch_constants_, id_, expected_num_workers_completed);
-                buffer_utils::write_interleaved_buffer_to_device(src, dispatch_params, *device_shard_view, buf_dispatch_constants_, sub_device_ids);
+        if (is_sharded(buffer.device_local_layout().buffer_layout)) {
+            for (std::size_t logical_x = device_range.start_coord.x; logical_x < device_range.end_coord.x; logical_x++) {
+                for (std::size_t logical_y = device_range.start_coord.y; logical_y < device_range.end_coord.y; logical_y++) {
+                    auto device_shard_view = buffer.get_shard_buffer(logical_x, logical_y);
+                    buffer_utils::ShardedBufferDispatchParams dispatch_params = buffer_utils::initialize_sharded_buf_dispatch_params(*device_shard_view, id_, expected_num_workers_completed);
+                    const auto cores = buffer_utils::get_cores_for_sharded_buffer(dispatch_params, *device_shard_view);
+                    for (uint32_t core_id = 0; core_id < device_shard_view->num_cores(); ++core_id) {
+                        buffer_utils::write_sharded_buffer_to_core(src, core_id, *device_shard_view, dispatch_params, buf_dispatch_constants_, sub_device_ids, cores);
+                    }
+                }
+            }
+        } else {
+            for (std::size_t logical_x = device_range.start_coord.x; logical_x < device_range.end_coord.x; logical_x++) {
+                for (std::size_t logical_y = device_range.start_coord.y; logical_y < device_range.end_coord.y; logical_y++) {
+                    auto device_shard_view = buffer.get_shard_buffer(logical_x, logical_y);
+                    auto dispatch_params = buffer_utils::initialize_interleaved_buf_dispatch_params(*device_shard_view, buf_dispatch_constants_, id_, expected_num_workers_completed);
+                    buffer_utils::write_interleaved_buffer_to_device(src, dispatch_params, *device_shard_view, buf_dispatch_constants_, sub_device_ids);
+                }
             }
         }
     } else {
@@ -192,25 +205,8 @@ void MeshCommandQueue::enqueue_write_to_sub_grid(MeshBuffer& buffer, const void*
 }
 
 void MeshCommandQueue::enqueue_write_mesh_buffer(MeshBuffer& buffer, const void* src, bool blocking) {
-    // TODO: Add proper support for Mesh Level Sub Devices
-    auto sub_device_ids = tt::stl::Span<const SubDeviceId>(mesh_device_->get_device(0)->get_sub_device_ids());
-    std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES> expected_num_workers_completed;
-    expected_num_workers_completed[0] = expected_num_workers_completed_;
-
-    if (buffer.global_layout() == MeshBufferLayout::REPLICATED) {
-        for (std::size_t logical_x = 0; logical_x < buffer.mesh_device()->num_cols(); logical_x++) {
-            for (std::size_t logical_y = 0; logical_y < buffer.mesh_device()->num_rows(); logical_y++) {
-                auto device_shard_view = buffer.get_shard_buffer(logical_x, logical_y);
-                auto dispatch_params = buffer_utils::initialize_interleaved_buf_dispatch_params(*device_shard_view, buf_dispatch_constants_, id_, expected_num_workers_completed);
-                buffer_utils::write_interleaved_buffer_to_device(src, dispatch_params, *device_shard_view, buf_dispatch_constants_, sub_device_ids);
-            }
-        }
-    } else {
-        TT_FATAL(false, "Writing to a Sharded MeshBuffer is not currently supported.");
-    }
-    if (blocking) {
-        this->finish();
-    }
+    LogicalDeviceRange mesh_device_extent({0, 0}, {buffer.mesh_device()->num_cols(), buffer.mesh_device()->num_rows()});
+    this->enqueue_write_to_sub_grid(buffer, src, blocking, mesh_device_extent);
 }
 
 void MeshCommandQueue::finish() {

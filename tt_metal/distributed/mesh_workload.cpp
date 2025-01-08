@@ -81,7 +81,7 @@ void MeshWorkload::load_binaries(MeshCommandQueue& mesh_cq) {
             global_kernel_bin_buf_config.buffer_size = kernel_bin_size;
             auto kernel_bin_buf_view = MeshBuffer::create(global_kernel_bin_buf_config, kernel_bin_buf->address());
 
-            mesh_device->mesh_command_queue().enqueue_write_to_sub_grid(
+            mesh_device->command_queue().enqueue_write_to_sub_grid(
                 *kernel_bin_buf_view,
                 program_on_grid.second.get_program_transfer_info().binary_data.data(),
                 false,

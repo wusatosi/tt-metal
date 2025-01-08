@@ -91,4 +91,10 @@ MeshBufferLayout MeshBuffer::global_layout() const {
     }
 }
 
+ShardSpecBuffer MeshBuffer::device_local_shard_spec() const {
+    TT_FATAL(is_sharded(this->device_local_layout().buffer_layout), "Can only query the device local shard spec for a MeshBuffer sharded across cores");
+    TT_FATAL(this->device_local_layout().shard_parameters.has_value(), "MeshBuffer is sharded across cores, but no shard parameters were specified.");
+    return this->device_local_layout().shard_parameters.value();
+}
+
 }  // namespace tt::tt_metal::distributed
