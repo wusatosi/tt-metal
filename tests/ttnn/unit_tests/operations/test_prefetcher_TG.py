@@ -70,7 +70,6 @@ def test_run_prefetcher(
 
     run_prefetcher_mm(
         mesh_device,
-        device,
         num_tensors,
         input_shapes,
         num_layers,
