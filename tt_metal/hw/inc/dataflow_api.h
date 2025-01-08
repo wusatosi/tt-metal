@@ -1038,8 +1038,7 @@ void noc_async_write_one_packet_set_state(std::uint64_t dst_noc_addr, std::uint3
 template <bool non_posted = true, bool enable_noc_tracing = true>
 FORCE_INLINE
 void noc_async_write_one_packet_with_state(std::uint32_t src_local_l1_addr, std::uint32_t dst_noc_addr, uint8_t noc = noc_index) {
-
-    RECORD_NOC_EVENT_WITH_ADDR(NocEventType::WRITE_WITH_STATE, 0, 0, -1);
+    RECORD_NOC_EVENT_WITH_ADDR(NocEventType::WRITE_WITH_STATE, 0ull, 0, -1);
 
     WAYPOINT("NWPW");
     while (!noc_cmd_buf_ready(noc, write_cmd_buf));
