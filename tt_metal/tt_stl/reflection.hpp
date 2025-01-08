@@ -452,16 +452,9 @@ std::ostream& operator<<(std::ostream& os, const std::set<T>& set) {
     return os;
 }
 
-template <typename K, typename V>
-std::ostream& operator<<(std::ostream& os, const std::vector<std::pair<K, V>>& vec) {
-    os << "{";
-    for (auto it = vec.begin(); it != vec.end(); ++it) {
-        os << it->first << ": " << it->second;
-        if (it != vec.end()) {
-            os << ", ";
-        }
-    }
-    os << "}";
+template <typename T1, typename T2>
+std::ostream& operator<<(std::ostream& os, const std::pair<T1, T2>& pair) {
+    os << "{" << pair.first << ", " << pair.second << "}";
     return os;
 }
 
@@ -997,6 +990,18 @@ struct fmt::formatter<std::array<T, N>> {
     }
 };
 
+template <typename T1, typename T2>
+struct fmt::formatter<std::pair<T1, T2>> {
+    constexpr auto parse(format_parse_context& ctx) -> format_parse_context::iterator { return ctx.end(); }
+
+    auto format(const std::pair<T1, T2>& pair, format_context& ctx) const -> format_context::iterator {
+        using tt::stl::reflection::operator<<;
+        std::stringstream ss;
+        ss << pair;
+        return fmt::format_to(ctx.out(), "{}", ss.str());
+    }
+};
+
 template <typename T>
 struct fmt::formatter<std::vector<T>> {
     constexpr auto parse(format_parse_context& ctx) -> format_parse_context::iterator { return ctx.end(); }
@@ -1156,26 +1161,22 @@ inline hash_t hash_object(const T& object) noexcept {
                 ...);
         }(std::make_index_sequence<num_elements>{});
         return hash;
-    } else if constexpr (is_specialization_v<T, std::vector>) {
-        if constexpr (is_specialization_v<typename T::value_type, std::pair>) {
-            if constexpr (DEBUG_HASH_OBJECT_FUNCTION) {
-                fmt::print("Hashing std::vector<std::pair> of type {}: {}\n", get_type_name<T>(), object);
-            }
-            hash_t hash = 0;
-            for (const auto& [key, value] : object) {
-                hash = hash_objects(hash, key, value);
-            }
-            return hash;
-        } else {
-            if constexpr (DEBUG_HASH_OBJECT_FUNCTION) {
-                fmt::print("Hashing std::vector of type {}: {}\n", get_type_name<T>(), object);
-            }
-            hash_t hash = 0;
-            for (const auto& element : object) {
-                hash = hash_objects(hash, element);
-            }
-            return hash;
+    } else if constexpr (is_specialization_v<T, std::pair>) {
+        if constexpr (DEBUG_HASH_OBJECT_FUNCTION) {
+            fmt::print("Hashing std::pair of type {}: {}\n", get_type_name<T>(), object);
         }
+        hash_t hash = 0;
+        hash = hash_objects(hash, object.first, object.second);
+        return hash;
+    } else if constexpr (is_specialization_v<T, std::vector>) {
+        if constexpr (DEBUG_HASH_OBJECT_FUNCTION) {
+            fmt::print("Hashing std::vector of type {}: {}\n", get_type_name<T>(), object);
+        }
+        hash_t hash = 0;
+        for (const auto& element : object) {
+            hash = hash_objects(hash, element);
+        }
+        return hash;
     } else if constexpr (is_specialization_v<T, std::set>) {
         if constexpr (DEBUG_HASH_OBJECT_FUNCTION) {
             fmt::print("Hashing std::set of type {}: {}\n", get_type_name<T>(), object);
