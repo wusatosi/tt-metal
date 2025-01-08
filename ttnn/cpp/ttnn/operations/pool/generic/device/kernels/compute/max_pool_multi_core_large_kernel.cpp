@@ -11,7 +11,7 @@
 #include "debug/dprint_tensix.h"
 // #include "tools/profiler/kernel_profiler.hpp"
 
-#define DEBUG_PRINT 1
+#define DEBUG_PRINT 0
 
 #if DEBUG_PRINT == 1
 #include "debug/dprint.h"
@@ -83,8 +83,6 @@ inline void reduce_h_fused(
         num_faces_in_input_tile /* unpack 1 or 2 faces ) */,
         unpA_face_r_dim);
 
-    // print_full_tile(curr_in_cb_id, 0, false);
-
     for (uint32_t c_i = 0; c_i < num_output_tiles; ++c_i) {
         reduce_tile_math(c_i, num_faces_in_input_tile /* reduce 1 or 2 faces */);
     }
@@ -153,9 +151,6 @@ void MAIN {
                     in_cb_id, in_scalar_cb_id, i, max_rows_for_reduction);
 
                 tile_regs_wait();
-
-                // dprint_tensix_dest_reg(0);
-
                 tile_regs_commit();
 
                 pack_untilize_dst<max_tiles_per_iter>(
@@ -185,16 +180,11 @@ void MAIN {
                     num_faces_in_input_tile /* unpack 1 or 2 faces ) */,
                     max_rows_for_reduction);
 
-                // print_full_tile(interm_reduction_cb_id, 0, false);
-
                 for (uint32_t c_i = 0; c_i < partial_iter_output_tiles; ++c_i) {
                     reduce_tile_math(c_i, num_faces_in_input_tile /* reduce 1 or 2 faces */);
                 }
 
                 tile_regs_wait();
-
-                // dprint_tensix_dest_reg(4);
-
                 tile_regs_commit();
 
                 pack_untilize_dst<partial_iter_output_tiles>(
@@ -222,16 +212,11 @@ void MAIN {
                     num_faces_in_input_tile /* unpack 1 or 2 faces ) */,
                     max_rows_for_reduction);
 
-                // print_full_tile(interm_reduction_cb_id, 0, false);
-
                 for (uint32_t c_i = 0; c_i < max_tiles_per_iter; ++c_i) {
                     reduce_tile_math(c_i, num_faces_in_input_tile /* reduce 1 or 2 faces */);
                 }
 
                 tile_regs_wait();
-
-                // dprint_tensix_dest_reg(4);
-
                 tile_regs_commit();
 
                 pack_untilize_dst<max_tiles_per_iter>(

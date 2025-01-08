@@ -9,7 +9,7 @@
 
 #include "dataflow_api.h"
 
-#define ENABLE_DEBUG_PRINT 1
+#define ENABLE_DEBUG_PRINT 0
 
 #if ENABLE_DEBUG_PRINT == 1
 #include "debug/dprint.h"
@@ -102,14 +102,14 @@ void kernel_main() {
 
     uint32_t in_w_padded = in_w + 2 * pad_w + ceil_pad_w;
 
-    uint32_t read_bytes = in_nbytes_c;
-    if (in_nbytes_c > MAX_ELE_PER_REDUCTION) {
-        read_bytes = MAX_ELE_PER_REDUCTION;  // for now, pow of 2 channels are only supported.
-    }
     uint32_t counter = reader_id;
     uint32_t total_elems_to_reduce = window_h * window_w;
     uint32_t remaining_elems = total_elems_to_reduce % max_rows_for_reduction;
     while (counter < reader_nindices) {
+        uint32_t read_bytes = in_nbytes_c;
+        if (in_nbytes_c > MAX_ELE_PER_REDUCTION) {
+            read_bytes = MAX_ELE_PER_REDUCTION;  // for now, pow of 2 channels are only supported.
+        }
         for (uint32_t c_i = 0; c_i < in_nblocks_c; c_i++) {
             if (c_i == in_nblocks_c - 1 && in_nblocks_c > 1) {
                 read_bytes = in_nbytes_c - c_i * MAX_ELE_PER_REDUCTION;
@@ -148,10 +148,6 @@ void kernel_main() {
                 noc_async_read_barrier();
                 cb_push_back(in_cb_id, 1);
             }
-            // DPRINT << "--" << ENDL();
-            // DPRINT << "BLOCK " << c_i << " " << top_left_local_index << " " << ENDL();
-            // DPRINT << "--" << ENDL();
-            // print_pages(out_l1_write_addr_base_orig, 256, 25, 0);
         }
         counter++;
         if (split_reader) {

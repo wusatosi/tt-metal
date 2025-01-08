@@ -132,13 +132,13 @@ def run_max_pool(
     torch.set_printoptions(precision=3, sci_mode=False, linewidth=500, threshold=10000, edgeitems=32)
 
     ## construct the tensor in NCHW shape
-    # act = torch.randn(act_shape, dtype=torch.bfloat16)
-    act = torch.zeros(act_shape, dtype=torch.bfloat16)
-    for n in range(act_shape[0]):
-        for c in range(act_shape[1]):
-            for h in range(act_shape[2]):
-                for w in range(act_shape[3]):
-                    act[n, c, h, w] = h * in_w + w
+    act = torch.randn(act_shape, dtype=torch.bfloat16)
+    # act = torch.zeros(act_shape, dtype=torch.bfloat16)
+    # for n in range(act_shape[0]):
+    #     for c in range(act_shape[1]):
+    #         for h in range(act_shape[2]):
+    #             for w in range(act_shape[3]):
+    #                 act[n, c, h, w] = h * in_w + w
     # torch.save(act, "act.pt")
     # act = torch.load("act.pt")
 
@@ -288,21 +288,10 @@ def run_max_pool(
             # [1, 96, 112, 112],
             # [1, 192, 132, 20],
             # wide non-8 multiple tests
-            [1, 768, 8, 8],
-            [1, 640, 8, 8],
-            [1, 512, 8, 8],
-            [1, 384, 8, 8],
-            [1, 768, 16, 8],
-            [1, 640, 16, 8],
-            [1, 512, 16, 8],
-            [1, 384, 16, 8],
-            [1, 768, 16, 16],
-            [1, 640, 16, 16],
-            [1, 512, 16, 16],
-            [1, 384, 16, 16],
-            # [1, 576, 16, 8],
-            # [1, 800, 8, 8],
-            # [1, 16, 10, 10],
+            [1, 800, 32, 32],
+            [1, 640, 32, 32],
+            [1, 576, 32, 32],
+            [1, 384, 32, 32],
         )
     ),
 )
@@ -312,8 +301,8 @@ def run_max_pool(
         # (2, 2),
         # (3, 3),
         (5, 5),
-        # (9, 9),
-        # (13, 13),
+        (9, 9),
+        (13, 13),
     ),
 )
 @pytest.mark.parametrize(
@@ -322,15 +311,15 @@ def run_max_pool(
         # (0, 0),
         # (1, 1),
         (2, 2),
-        # (4, 4),
-        # (6, 6),
+        (4, 4),
+        (6, 6),
     ),
 )
 @pytest.mark.parametrize(
     "stride",
     (
         (1, 1),
-        # (2, 2),
+        (2, 2),
     ),
 )
 @pytest.mark.parametrize("dilation", ((1, 1),))  ## default
