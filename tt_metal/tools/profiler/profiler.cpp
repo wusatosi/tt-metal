@@ -386,7 +386,7 @@ void DeviceProfiler::generateZoneSourceLocationsHashes() {
 }
 
 void DeviceProfiler::dumpJsonReport(
-    Device* device, const std::vector<std::uint32_t>& profile_buffer, const std::vector<CoreCoord>& worker_cores) {
+    IDevice* device, const std::vector<std::uint32_t>& profile_buffer, const std::vector<CoreCoord>& worker_cores) {
     auto device_id = device->id();
 
     // determine rpt filepath
@@ -609,7 +609,7 @@ void DeviceProfiler::dumpJsonReport(
     json_rpt_os.close();
 }
 
-void DeviceProfiler::dumpResults(Device* device, const std::vector<CoreCoord>& worker_cores, bool lastDump) {
+void DeviceProfiler::dumpResults(IDevice* device, const std::vector<CoreCoord>& worker_cores, bool lastDump) {
 #if defined(TRACY_ENABLE)
     ZoneScoped;
 
