@@ -301,8 +301,8 @@ def run_max_pool(
         # (2, 2),
         # (3, 3),
         (5, 5),
-        # (9, 9),
-        # (13, 13),
+        (9, 9),
+        (13, 13),
     ),
 )
 @pytest.mark.parametrize(
@@ -311,15 +311,15 @@ def run_max_pool(
         # (0, 0),
         # (1, 1),
         (2, 2),
-        # (4, 4),
-        # (6, 6),
+        (4, 4),
+        (6, 6),
     ),
 )
 @pytest.mark.parametrize(
     "stride",
     (
         (1, 1),
-        # (2, 2),
+        (2, 2),
     ),
 )
 @pytest.mark.parametrize("dilation", ((1, 1),))  ## default
