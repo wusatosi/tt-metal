@@ -105,13 +105,14 @@ void kernel_main() {
     uint32_t counter = reader_id;
     uint32_t total_elems_to_reduce = window_h * window_w;
     uint32_t remaining_elems = total_elems_to_reduce % max_rows_for_reduction;
+    bool wide_reduction = in_nblocks_c > 1;
     while (counter < reader_nindices) {
         uint32_t read_bytes = in_nbytes_c;
-        if (in_nbytes_c > MAX_ELE_PER_REDUCTION) {
+        if (wide_reduction) {
             read_bytes = MAX_ELE_PER_REDUCTION;  // for now, pow of 2 channels are only supported.
         }
         for (uint32_t c_i = 0; c_i < in_nblocks_c; c_i++) {
-            if (c_i == in_nblocks_c - 1 && in_nblocks_c > 1) {
+            if (c_i == in_nblocks_c - 1 && wide_reduction) {
                 read_bytes = in_nbytes_c - c_i * MAX_ELE_PER_REDUCTION;
             }
 
@@ -119,7 +120,6 @@ void kernel_main() {
             uint32_t processed_rows = 0;
             cb_reserve_back(in_cb_id, 1);
             uint32_t out_l1_write_addr_base = get_write_ptr(in_cb_id);
-            uint32_t out_l1_write_addr_base_orig = out_l1_write_addr_base;
             uint32_t out_l1_write_addr = out_l1_write_addr_base;
             // fill interm buffer with minus_inf if we have only one chunk
             fill_with_val(out_l1_write_addr, in_cb_sz, minus_inf);
@@ -129,7 +129,9 @@ void kernel_main() {
                     uint32_t read_offset =
                         in_l1_read_base_addr + (stick_offset * in_nbytes_c + c_i * MAX_ELE_PER_REDUCTION);
                     noc_async_read_one_packet(get_noc_addr(read_offset), out_l1_write_addr, read_bytes);
-                    out_l1_write_addr += MAX_ELE_PER_REDUCTION;
+                    out_l1_write_addr += wide_reduction
+                                             ? MAX_ELE_PER_REDUCTION
+                                             : read_bytes;  // in_cb is MAX_ELE_PER_REDUCTION for wide reductions
                     processed_rows++;
                     if ((processed_rows % max_rows_for_reduction) == 0) {
                         noc_async_read_barrier();
