@@ -216,9 +216,6 @@ def run_max_pool(
 
     output_pytorch = torch.permute(output_pytorch, (0, 3, 1, 2))  ## N, C, H, W
 
-    print("output_pytorch", output_pytorch[0][0])
-    print("golden_pytorch", golden_pytorch[0][0])
-
     pcc_thresh = 1.0
     if dtype == ttnn.bfloat8_b:
         pcc_thresh = 0.9997
@@ -291,8 +288,18 @@ def run_max_pool(
             # [1, 96, 112, 112],
             # [1, 192, 132, 20],
             # wide non-8 multiple tests
+            [1, 768, 8, 8],
+            [1, 640, 8, 8],
             [1, 512, 8, 8],
             [1, 384, 8, 8],
+            [1, 768, 16, 8],
+            [1, 640, 16, 8],
+            [1, 512, 16, 8],
+            [1, 384, 16, 8],
+            [1, 768, 16, 16],
+            [1, 640, 16, 16],
+            [1, 512, 16, 16],
+            [1, 384, 16, 16],
             # [1, 576, 16, 8],
             # [1, 800, 8, 8],
             # [1, 16, 10, 10],
