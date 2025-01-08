@@ -116,7 +116,7 @@ class ttnn_SD3Transformer2DModel:
         hidden_states = self.pos_embed(hidden_states.device(), hidden_states)
 
         encoder_hidden_states = ttnn.to_memory_config(
-            encoder_hidden_states, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b
+            encoder_hidden_states, ttnn.DRAM_MEMORY_CONFIG, dtype=ttnn.bfloat8_b
         )
         temb = ttnn.to_memory_config(temb, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b)
 
