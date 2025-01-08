@@ -123,12 +123,8 @@ inline __attribute__((always_inline)) uint32_t get_id(uint32_t id, PacketTypes t
 template <bool dispatch = false>
 inline __attribute__((always_inline)) bool bufferHasRoom() {
     bool bufferHasRoom = false;
-    if constexpr (dispatch) {
-        bufferHasRoom =
-            wIndex < (PROFILER_L1_VECTOR_SIZE - stackSize - (QUICK_PUSH_MARKER_COUNT * PROFILER_L1_MARKER_UINT32_SIZE));
-    } else {
-        bufferHasRoom = wIndex < (PROFILER_L1_VECTOR_SIZE - stackSize);
-    }
+    bufferHasRoom =
+        wIndex < (PROFILER_L1_VECTOR_SIZE - stackSize - (QUICK_PUSH_MARKER_COUNT * PROFILER_L1_MARKER_UINT32_SIZE));
     return bufferHasRoom;
 }
 
@@ -240,7 +236,7 @@ __attribute__((noinline)) void finish_profiler() {
         }
     }
 
-    noc_async_write_barrier();
+    noc_async_write_barrier<false>();
     profiler_control_buffer[RUN_COUNTER]++;
     profiler_control_buffer[PROFILER_DONE] = 1;
 #endif
