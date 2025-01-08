@@ -10,10 +10,7 @@ from transformers import (
     T5EncoderModel,
     T5TokenizerFast,
 )
-from models.utility_functions import (
-    enable_persistent_kernel_cache,
-    disable_persistent_kernel_cache,
-)
+import torch.nn.functional as F
 
 from loguru import logger
 import inspect
@@ -576,8 +573,6 @@ class ttnnStableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSi
         parameters_transformer=None,
         device_ttnn=None,
     ):
-        disable_persistent_kernel_cache()
-        # device_ttnn.enable_program_cache()
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
 
@@ -665,7 +660,6 @@ class ttnnStableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSi
             generator,
             latents,
         )
-
         # Preprocess timesteps_proj
         parameters_transformer["timesteps_proj"] = {}
         for i in range(num_inference_steps):
@@ -677,6 +671,7 @@ class ttnnStableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSi
                 layout=ttnn.TILE_LAYOUT,
                 dtype=ttnn.bfloat16,
                 device=device_ttnn,
+                memory_config=ttnn.L1_MEMORY_CONFIG,
             )
 
         print("Entering loop")
@@ -693,14 +688,19 @@ class ttnnStableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSi
                 ttnn_latent_model_input = ttnn.from_torch(
                     latent_model_input, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device_ttnn
                 )
-                ttnn_timestep_proj = parameters_transformer["timesteps_proj"][
-                    i
-                ]  # This is a 2D tensor  currently, reshape to make it 4d.
+                ttnn_timestep_proj = parameters_transformer["timesteps_proj"][i]
+                prompt_embeds_pad = F.pad(prompt_embeds, (0, 0, 0, 6))
                 ttnn_prompt_embeds = ttnn.from_torch(
-                    prompt_embeds, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device_ttnn
+                    prompt_embeds_pad,
+                    layout=ttnn.TILE_LAYOUT,
+                    dtype=ttnn.bfloat16,
+                    device=device_ttnn,
                 )
                 ttnn_pooled_prompt_embeds = ttnn.from_torch(
-                    pooled_prompt_embeds, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device_ttnn
+                    pooled_prompt_embeds,
+                    layout=ttnn.TILE_LAYOUT,
+                    dtype=ttnn.bfloat16,
+                    device=device_ttnn,
                 )
                 print("Entering transformer")
                 noise_pred = ttnn.to_torch(
@@ -746,8 +746,6 @@ class ttnnStableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSi
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
-
-                enable_persistent_kernel_cache()
 
                 # if XLA_AVAILABLE:
                 #     xm.mark_step()
