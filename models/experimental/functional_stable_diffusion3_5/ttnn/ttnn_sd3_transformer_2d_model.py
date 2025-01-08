@@ -153,12 +153,7 @@ class ttnn_SD3Transformer2DModel:
         hidden_states = ttnn.reshape(
             hidden_states, (hidden_states.shape[0], height, width, patch_size, patch_size, self.out_channels)
         )
-        device = hidden_states.device()
-        hidden_states = ttnn.to_torch(hidden_states)
-        hidden_states = torch.einsum(
-            "nhwpqc->nchpwq", hidden_states
-        )  # This will be replace by ttnn permute, issue #12154
-        hidden_states = ttnn.from_torch(hidden_states, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device)
+        hidden_states = ttnn.permute(hidden_states, (0, 5, 1, 3, 2, 4))
         output = ttnn.reshape(
             hidden_states, (hidden_states.shape[0], self.out_channels, height * patch_size, width * patch_size)
         )
