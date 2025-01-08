@@ -535,12 +535,10 @@ void DeviceProfiler::dumpJsonReport(
                                         getline(source_info, source_line_str, ',');
                                         source_line = stoi(source_line_str);
                                     }
-                                    if (zone_name.ends_with("-FW") || zone_phase == tracy::TTDeviceEventPhase::end) {
+                                    if (zone_name.ends_with("-FW") ||
+                                        zone_name.starts_with("PROFILER-NOC-QUICK-SEND")) {
                                         break;
-                                    } else if (
-                                        zone_name.ends_with("-KERNEL") &&
-                                        zone_phase == tracy::TTDeviceEventPhase::begin) {
-
+                                    } else if (zone_name.ends_with("-KERNEL")) {
                                         kernel_start_timestamp = timestamp;
                                         // derive proc from zone_name
                                         proc = zone_name;
