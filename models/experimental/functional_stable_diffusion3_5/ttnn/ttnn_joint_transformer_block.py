@@ -171,7 +171,7 @@ class ttnn_JointTransformerBlock:
         if not self.context_pre_only:
             c_shift_mlp = ttnn.reallocate(c_shift_mlp)
             c_gate_msa = ttnn.reallocate(c_gate_msa)
-            c_shift_mlp = ttnn.reallocate(c_scale_mlp)
+            c_scale_mlp = ttnn.reallocate(c_scale_mlp)
 
         if self._chunk_size is not None:
             # "feed_forward_chunk_size" can be used to save memory
