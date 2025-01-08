@@ -30,6 +30,14 @@ inline uint64_t get_timestamp() {
     return (((uint64_t)timestamp_high) << 32) | timestamp_low;
 }
 
+#ifdef TRACE_PACKET
+extern uint32_t loopback_mesh_id;
+extern uint32_t loopback_dev_id;
+extern uint32_t loopback_eth_chan;
+extern uint32_t my_eth_chan;
+extern bool is_loopback_packet;
+#endif
+
 typedef struct fvc_consumer_state {
     volatile chan_payload_ptr remote_rdptr;
     uint32_t remote_ptr_update_addr;
@@ -415,6 +423,10 @@ typedef struct fvc_producer_state {
 
     inline void advance_next_packet() {
         if (this->get_num_words_available() >= PACKET_HEADER_SIZE_WORDS) {
+#ifdef TRACE_PACKET
+            // get the timestamp now and append it to the packet payload later
+            packet_timestamp = get_timestamp();
+#endif
             tt_l1_ptr uint32_t* packet_header_ptr = (uint32_t*)&current_packet_header;
             tt_l1_ptr volatile uint32_t* next_header_ptr =
                 reinterpret_cast<tt_l1_ptr uint32_t*>(get_local_buffer_read_addr());
@@ -458,6 +470,13 @@ typedef struct fvc_producer_state {
     }
 
     uint32_t get_next_hop_router_noc_xy() {
+#ifdef TRACE_PACKET
+        if (is_loopback_packet) {
+            is_loopback_packet = false;
+            DPRINT << "eth chan: " << my_eth_chan << ", loopback eth chan: " << loopback_eth_chan << ENDL();
+            return eth_chan_to_noc_xy[noc_index][loopback_eth_chan];
+        }
+#endif
         uint32_t dst_mesh_id = current_packet_header.routing.dst_mesh_id;
         if (dst_mesh_id != routing_table->my_mesh_id) {
             uint32_t next_port = routing_table->inter_mesh_table.dest_entry[dst_mesh_id];
@@ -537,8 +556,33 @@ typedef struct fvc_producer_state {
     }
 
     inline bool packet_is_for_local_chip() {
-        return (current_packet_header.routing.dst_mesh_id == routing_table->my_mesh_id) &&
-               (current_packet_header.routing.dst_dev_id == routing_table->my_device_id);
+        bool my_packet = (current_packet_header.routing.dst_mesh_id == routing_table->my_mesh_id) &&
+                         (current_packet_header.routing.dst_dev_id == routing_table->my_device_id);
+#ifdef TRACE_PACKET
+        // extra check to avoid indefinite looping of the tracer packet
+        // loopback only when the chip is not the loopback chip (final destination of loopback pkt)
+        if (my_packet && (loopback_dev_id != routing_table->my_device_id)) {
+            DPRINT << "chip: " << routing_table->my_device_id << ", eth chan: " << my_eth_chan << ", looping back"
+                   << ENDL();
+            is_loopback_packet = true;
+
+            // modify the packet dest as we need to loopback now
+            current_packet_header.routing.dst_mesh_id = loopback_mesh_id;
+            current_packet_header.routing.dst_dev_id = loopback_dev_id;
+            return false;
+        } else if (my_packet) {
+            DPRINT << "chip: " << routing_table->my_device_id << ", eth chan: " << my_eth_chan << ", terminating"
+                   << ENDL();
+            // log the timestamp
+            // uint64_t packet_timestamp = get_timestamp();
+            tt_l1_ptr uint32_t* timestamp_ptr = reinterpret_cast<tt_l1_ptr uint32_t*>(0x60000);
+            timestamp_ptr[0] = 0x0ABCDEF0;
+            timestamp_ptr[1] = packet_timestamp & 0xFFFFFFFF;
+            timestamp_ptr[2] = packet_timestamp >> 32;
+            timestamp_ptr[3] = 0x0ABCDEF0;
+        }
+#endif
+        return my_packet;
     }
 
     template <uint8_t fvc_mode = FVC_MODE_ROUTER>

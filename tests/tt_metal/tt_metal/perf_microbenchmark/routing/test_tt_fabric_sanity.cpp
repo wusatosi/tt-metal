@@ -48,6 +48,8 @@ std::vector<CoreCoord> eth_chan_to_phys_core = {
 // decides if the tx puts the data directly on eth or if a noc hop is allowed as well
 bool allow_1st_noc_hop = false;
 
+bool trace_packet = false;
+
 inline std::vector<uint32_t> get_random_numbers_from_range(uint32_t start, uint32_t end, uint32_t count) {
     std::vector<uint32_t> range(end - start + 1);
 
@@ -372,6 +374,18 @@ typedef struct test_device {
     void launch_router_kernels(std::vector<uint32_t>& compile_args, std::map<string, string>& defines) {
         uint32_t num_routers = router_logical_cores.size();
         std::vector<uint32_t> zero_buf(1, 0);
+        chip_id_t loopback_chip_id = 0xFF;
+        mesh_id_t loopback_mesh_id = 0xFF;
+
+        if (trace_packet) {
+            // get the tx chip for this chip from the unicast map
+            for (auto& [tx_chip_id_, rx_chip_id_] : board_handle->unicast_map) {
+                if (rx_chip_id_ == physical_chip_id) {
+                    std::tie(loopback_mesh_id, loopback_chip_id) = board_handle->get_mesh_chip_id(tx_chip_id_);
+                    break;
+                }
+            }
+        }
 
         for (auto i = 0; i < num_routers; i++) {
             // setup run time args
@@ -379,6 +393,28 @@ typedef struct test_device {
                 num_routers,  // 0: number of active fabric routers
                 router_mask,  // 1: active fabric router mask
             };
+
+            if (trace_packet) {
+                chan_id_t loopback_eth_chan = 0xFF;
+                chan_id_t my_eth_chan;
+
+                // get current eth chan
+                // short-circuit if the chip is not an endpoint; in which case, it will never loopback
+                if (1 /*0xFF != loopback_chip_id*/) {
+                    auto it =
+                        std::find(eth_chan_to_phys_core.begin(), eth_chan_to_phys_core.end(), router_physical_cores[i]);
+                    my_eth_chan = std::distance(eth_chan_to_phys_core.begin(), it);
+
+                    // loopback on a different eth chan in the same routing plane
+                    // TODO: make sure that the loopback chan is running router kernel
+                    loopback_eth_chan = (my_eth_chan + 1) % 4 + ((my_eth_chan / 4) * 4);
+                }
+
+                runtime_args.push_back((uint32_t)loopback_mesh_id);   // 2: mesh id of origin chip
+                runtime_args.push_back((uint32_t)loopback_chip_id);   // 3: chip id of origin chip
+                runtime_args.push_back((uint32_t)loopback_eth_chan);  // 4: eth chan to use for loopback
+                runtime_args.push_back((uint32_t)my_eth_chan);        // 5: eth chan to use for loopback
+            }
 
             // initialize the semaphore
             tt::llrt::write_hex_vec_to_core(
@@ -424,11 +460,6 @@ typedef struct test_device {
     inline uint32_t get_noc_offset(CoreCoord& logical_core) {
         CoreCoord phys_core = device_handle->worker_core_from_logical_core(logical_core);
         return (phys_core.y << 10) | (phys_core.x << 4);
-    }
-
-    inline CoreCoord get_router_core() {
-        // TODO: should we return a random core?
-        return router_physical_cores.front();
     }
 
     inline std::vector<std::pair<chip_id_t, chan_id_t>> get_route_to_chip(
@@ -532,6 +563,8 @@ typedef struct test_traffic {
                 mesh_chip_id,                          // 4: mesh and chip id
                 rx_buf_size                            // 5: space in rx's L1
             };
+
+            std::cout << "tx router: " << router_phys_core.x << ", " << router_phys_core.y << std::endl;
 
             if (ASYNC_WR == fabric_command) {
                 runtime_args.push_back(tx_to_rx_address_map[i]);
@@ -646,6 +679,37 @@ typedef struct test_traffic {
         }
 
         return pass;
+    }
+
+    void collect_timestamps() {
+        // collect timestamps from tx memory
+        std::vector<uint32_t> timestamp_result;
+        for (auto i = 0; i < num_tx_workers; i++) {
+            timestamp_result =
+                tt::llrt::read_hex_vec_from_core(tx_device->device_handle->id(), tx_physical_cores[i], 0x60000, 16);
+            if (0x0ABCDEF0 != timestamp_result[0] || 0x0ABCDEF0 != timestamp_result[3]) {
+                throw std::runtime_error("timestamps corrupted on tx");
+            }
+            uint64_t start_timestamp = (((uint64_t)timestamp_result[2]) << 32) | timestamp_result[1];
+
+            uint64_t end_timestamp;
+            bool end_timestamp_found = false;
+            for (auto& core : available_router_cores) {
+                timestamp_result = tt::llrt::read_hex_vec_from_core(tx_device->device_handle->id(), core, 0x60000, 16);
+                if (0x0ABCDEF0 == timestamp_result[0] && 0x0ABCDEF0 == timestamp_result[3]) {
+                    end_timestamp = (((uint64_t)timestamp_result[2]) << 32) | timestamp_result[1];
+                    end_timestamp_found = true;
+                    break;
+                }
+            }
+
+            if (!end_timestamp_found) {
+                throw std::runtime_error("end timestamp not found on any router");
+            }
+
+            uint64_t elapsed_cycles = end_timestamp - start_timestamp;
+            log_info(LogTest, "latency (elapsed cycles) = {}", elapsed_cycles);
+        }
     }
 
     bool validate_results() {
@@ -895,6 +959,8 @@ int main(int argc, char **argv) {
 
     constexpr uint32_t default_num_links = 1;
 
+    constexpr uint32_t default_timestamps_address = 0x60000;
+
     std::vector<std::string> input_args(argv, argv + argc);
     if (test_args::has_command_option(input_args, "-h") ||
         test_args::has_command_option(input_args, "--help")) {
@@ -998,6 +1064,8 @@ int main(int argc, char **argv) {
 
     uint32_t num_links = test_args::get_command_option_uint32(input_args, "--num_links", default_num_links);
 
+    trace_packet = test_args::has_command_option(input_args, "--trace_packet");
+
     bool pass = true;
     uint32_t num_available_devices, num_allocated_devices = 0;
 
@@ -1011,6 +1079,14 @@ int main(int argc, char **argv) {
     }
 
     global_rng.seed(prng_seed);
+
+    if (trace_packet) {
+        num_packets = 1;
+        tx_skip_pkt_content_gen = true;
+        tx_pkt_dest_size_choice = 1;
+
+        defines["TRACE_PACKET"] = "";
+    }
 
     // if using fixed packet sizes and num packets is specified, get the test data size
     if ((1 == tx_pkt_dest_size_choice) && (default_num_packets != num_packets)) {
@@ -1237,6 +1313,12 @@ int main(int argc, char **argv) {
         if (pass) {
             for (auto& traffic : fabric_traffic) {
                 traffic.print_result_summary();
+            }
+        }
+
+        if (pass && trace_packet) {
+            for (auto& traffic : fabric_traffic) {
+                traffic.collect_timestamps();
             }
         }
 

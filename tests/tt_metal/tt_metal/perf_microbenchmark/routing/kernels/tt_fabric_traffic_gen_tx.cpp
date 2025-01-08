@@ -73,6 +73,16 @@ uint32_t target_address;
 uint32_t noc_offset;
 uint32_t rx_addr_hi;
 
+#ifdef TRACE_PACKET
+uint32_t loopback_mesh_id;
+uint32_t loopback_dev_id;
+uint32_t loopback_eth_chan;
+uint32_t my_eth_chan;
+bool is_loopback_packet;
+#endif
+
+#define TRACE_SIGNATURE (0x0ABCDEF0)
+
 // generates packets with random size and payload on the input side
 inline bool test_buffer_handler_async_wr() {
     if (input_queue_state.all_packets_done()) {
@@ -342,6 +352,16 @@ void kernel_main() {
         bool all_packets_initialized = test_buffer_handler();
 
         if (test_producer.get_curr_packet_valid()) {
+#ifdef TRACE_PACKET
+            {
+                uint64_t packet_timestamp = get_timestamp();
+                tt_l1_ptr uint32_t* timestamp_ptr = reinterpret_cast<tt_l1_ptr uint32_t*>(0x60000);
+                timestamp_ptr[0] = TRACE_SIGNATURE;
+                timestamp_ptr[1] = packet_timestamp & 0xFFFFFFFF;
+                timestamp_ptr[2] = packet_timestamp >> 32;
+                timestamp_ptr[3] = TRACE_SIGNATURE;
+            }
+#endif
             curr_packet_size =
                 (test_producer.current_packet_header.routing.packet_size_bytes + PACKET_WORD_SIZE_BYTES - 1) >> 4;
             uint32_t curr_data_words_sent = test_producer.pull_data_from_fvc_buffer<FVC_MODE_ENDPOINT>();

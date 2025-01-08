@@ -48,6 +48,14 @@ uint64_t xy_local_addr;
 
 #define SWITCH_THRESHOLD 0x3FF
 
+#ifdef TRACE_PACKET
+uint32_t loopback_mesh_id;
+uint32_t loopback_dev_id;
+uint32_t loopback_eth_chan;
+uint32_t my_eth_chan;
+bool is_loopback_packet = false;
+#endif
+
 inline void notify_all_routers() {
     uint32_t channel = 0;
     uint32_t remaining_cores = router_mask;
@@ -86,6 +94,13 @@ void kernel_main() {
 
     sync_val = get_arg_val<uint32_t>(0);
     router_mask = get_arg_val<uint32_t>(1);
+
+#ifdef TRACE_PACKET
+    loopback_mesh_id = get_arg_val<uint32_t>(2);
+    loopback_dev_id = get_arg_val<uint32_t>(3);
+    loopback_eth_chan = get_arg_val<uint32_t>(4);
+    my_eth_chan = get_arg_val<uint32_t>(5);
+#endif
 
     tt_fabric_init();
 
@@ -129,6 +144,12 @@ void kernel_main() {
             pull_request_t* pull_req = &req->pull_request;
             bool can_pull = !fvc_consumer_state.sync_buf_full() && !fvc_consumer_state.sync_pending;
             if (req->bytes[47] == FORWARD) {
+#ifdef TRACE_PACKET
+                DPRINT << "chip: " << routing_table->my_device_id << ", eth chan: " << my_eth_chan << ", pulling packet"
+                       << ENDL();
+#else
+                DPRINT << "pulling packet" << ENDL();
+#endif
                 // Data is packetized.
                 if (can_pull) {
                     pull_data_to_fvc_buffer(pull_req, &fvc_consumer_state);
@@ -204,14 +225,19 @@ void kernel_main() {
         }
         if (*(volatile uint32_t*)FABRIC_ROUTER_SYNC_SEM == 0) {
             // terminate signal from host sw.
-            if (loop_count >= 0x1000) {
+            if (loop_count >= 0x10000) {
                 break;
             }
         }
     }
     uint64_t cycles_elapsed = fvc_producer_state.packet_timestamp - start_timestamp;
 
-    DPRINT << "Router words processed " << total_words_procesed << ENDL();
+#ifdef TRACE_PACKET
+    DPRINT << "chip: " << routing_table->my_device_id << ", eth chan: " << my_eth_chan
+           << ", Router words processed: " << total_words_procesed << ENDL();
+#else
+    DPRINT << "Router words processed: " << total_words_procesed << ENDL();
+#endif
 
     write_kernel_status(kernel_status, PQ_TEST_MISC_INDEX, 0xff000002);
 
