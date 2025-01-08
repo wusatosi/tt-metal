@@ -720,16 +720,20 @@ class ttnnStableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSi
                         parameters=parameters_transformer,
                     )[0]
                 )
-
+                # from tests.ttnn.utils_for_testing import comp_pcc
+                # latents=torch.load("models/experimental/functional_stable_diffusion3_5/demo/post_transformer/un_opt_latents_input_0.pt")
+                # noise_pred=torch.load("models/experimental/functional_stable_diffusion3_5/demo/post_transformer/un_opt_noise_pred_0.pt")
                 print("Eneded transformer")
                 # perform guidance
                 if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                    # print("noise_pred_uncond",comp_pcc(noise_pred_uncond,torch.load("models/experimental/functional_stable_diffusion3_5/demo/post_transformer/un_opt_noise_pred_uncond_0.pt"),pcc=1.0)) pcc=1.0
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                # print("latents",comp_pcc(latents,torch.load("models/experimental/functional_stable_diffusion3_5/demo/post_transformer/un_opt_latents_output_0.pt"),pcc=1.0)) pcc=1.0
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
