@@ -352,3 +352,37 @@ def num_blocks_in_seq(seq_len, block_size):
 
 def nearest_pow_2(x):
     return 2 ** math.ceil(math.log2(x))
+
+
+def nearest_multiple(x, multiple_of):
+    return math.ceil(x / multiple_of) * multiple_of
+
+
+def pad_to_size(x: torch.Tensor, dim: int, size: int) -> torch.Tensor:
+    """
+    Pads the specified dimension of the input tensor with zeros
+
+    :param x: Input PyTorch Tensor
+    :param dim: The dimension to pad
+    :param size: The size to pad to
+    :return: Padded PyTorch Tensor
+    """
+    assert isinstance(x, torch.Tensor), "Input must be a torch.Tensor"
+    assert -x.dim() <= dim < x.dim(), f"Dimension out of range (expected between {-x.dim()} and {x.dim()-1})"
+    dim = x.dim() + dim if dim < 0 else dim
+
+    current_size = x.size(dim)
+    pad_size = size - current_size
+
+    if pad_size == 0:
+        return x  # No padding needed
+
+    # Prepare the padding configuration for F.pad
+    # F.pad expects padding in the form (pad_last_dim_left, pad_last_dim_right, ..., pad_dim_left, pad_dim_right)
+    # We only pad on the "end" side of the specified dimension
+    pad = [0] * (2 * x.dim())  # Initialize padding for all dimensions
+    pad_index = 2 * (x.dim() - dim - 1)
+    pad[pad_index + 1] = pad_size  # Pad on the "right" side of the specified dimension
+
+    padded_x = torch.nn.functional.pad(x, pad, mode="constant", value=0)
+    return padded_x

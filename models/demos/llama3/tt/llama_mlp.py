@@ -5,6 +5,7 @@
 import torch
 import ttnn
 from models.common.lightweightmodule import LightweightModule
+from models.demos.llama3.tt.llama_common import pad_to_size
 
 
 class TtLlamaMLP(LightweightModule):
@@ -19,6 +20,7 @@ class TtLlamaMLP(LightweightModule):
         self.model_config = model_config
         state_dict_prefix = state_dict_prefix or args.get_state_dict_prefix(self.__class__.__name__, layer_num)
         torch_weight = lambda name: torch.transpose(self.state_dict[f"{state_dict_prefix}.{name}.weight"], -2, -1)
+        pad_hidden_dim = lambda tensor, dim: pad_to_size(tensor, dim=dim, size=args.hidden_dim)
 
         if args.dummy_weights:
             cache_name = lambda _: None
@@ -30,7 +32,7 @@ class TtLlamaMLP(LightweightModule):
 
         # TODO Clean up this code. With sharding, we load the normal weights and then shard them
         as_sharded_tensor = lambda name, type, dim: ttnn.as_tensor(
-            torch_weight(name[:2]),  # Grab only the wX part of the name
+            pad_hidden_dim(torch_weight(name[:2]), dim),  # Grab only the wX part of the name
             dtype=type,
             device=self.mesh_device,
             mesh_mapper=ttnn.ShardTensorToMesh(self.mesh_device, dim=dim),

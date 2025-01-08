@@ -18,6 +18,7 @@ from models.demos.llama3.tt.llama_common import (
     get_out_subblock_w,
     encode_prompt_llama_instruct,
     encode_prompt_hf,
+    nearest_multiple,
 )
 from typing import Tuple
 from models.utility_functions import nearest_32
@@ -630,6 +631,7 @@ class TtModelArgs:
             self.model_config["XATTN_KV_PREFILL_MEM_CFG"] = _get_xattn_kv_prefill_mem_cfg
 
             self.VISION_MAX_MM_SEQ = nearest_32(self.vision_chunk_ntok)
+
             # RMS NORM
             self.model_config["SHARDED_NORM_ATTN_PRGM_CFG"] = self.create_sharded_norm_config(attn_input_grid)
             self.model_config["SHARDED_NORM_MLP_PRGM_CFG"] = self.create_sharded_norm_config(mlp_core_grid)
@@ -768,6 +770,9 @@ class TtModelArgs:
             self.ffn_dim_multiplier = params["ffn_dim_multiplier"]
             self.multiple_of = params["multiple_of"]
             self.hidden_dim = calculate_hidden_dim(self.dim, self.ffn_dim_multiplier, self.multiple_of)
+
+        # Pad hidden dim to multiple of tile size * num_devices * 8 coresas MLP shards in this dimension
+        self.hidden_dim = nearest_multiple(self.hidden_dim, 8 * self.tile_size * self.num_devices)
 
         # RoPE params
         self.rope_theta = params.get("rope_theta")
