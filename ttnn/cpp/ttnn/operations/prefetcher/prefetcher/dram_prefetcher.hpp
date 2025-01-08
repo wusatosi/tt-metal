@@ -15,9 +15,9 @@ namespace operations::dram_prefetcher {
 struct ExecuteDramPrefetcher {
     static ttnn::Tensor invoke(
         std::vector<ttnn::Tensor>& tensors,
-        const Tensor& tensor_addrs,
         const uint32_t num_layers,
-        const std::optional<const tt::tt_metal::v1::experimental::GlobalCircularBuffer>& global_cb);
+        const std::optional<const tt::tt_metal::v1::experimental::GlobalCircularBuffer>& global_cb,
+        const std::optional<const ttnn::global_circular_buffer::MultiDeviceGlobalCircularBuffer>& multi_global_cb);
 };
 
 }  // namespace operations::dram_prefetcher
