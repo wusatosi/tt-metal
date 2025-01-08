@@ -28,7 +28,7 @@ MeshBuffer::MeshBuffer(const MeshBufferConfig& mesh_buffer_config, std::optional
                 const auto [global_buffer_height, global_buffer_width] = config.global_buffer_shape;
                 const auto [shard_height, shard_width] = config.shard_shape;
                 TT_FATAL(
-                    (global_buffer_height % shard_height == 0) and (global_buffer_width % mesh_width == 0),
+                    (global_buffer_height % shard_height == 0) and (global_buffer_width % shard_width == 0),
                     "The global buffer shape must be aligned to the shard shape:  global buffer shape: {}, {}, shard "
                     "shape: {}, {}",
                     global_buffer_height,
