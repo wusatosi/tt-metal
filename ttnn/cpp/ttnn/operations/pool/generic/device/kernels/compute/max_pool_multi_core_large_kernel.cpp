@@ -8,6 +8,7 @@
 #include "compute_kernel_api/pack_untilize.h"
 #include "compute_kernel_api/reduce.h"
 #include "compute_kernel_api/tilize.h"
+#include "debug/dprint_tensix.h"
 // #include "tools/profiler/kernel_profiler.hpp"
 
 #define DEBUG_PRINT 0
@@ -24,7 +25,13 @@
 inline void print_tile_rows(uint32_t cb_id, uint32_t rows = 32, uint32_t tile_id = 0, bool untilize = false) {
     // UNPACK(( DPRINT << "======" << ENDL() ));
     for (uint16_t r = 0; r < rows; ++r) {
-        SliceRange sr = SliceRange{.h0 = r, .h1 = (uint16_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
+        SliceRange sr = SliceRange{
+            .h0 = (uint8_t)r,
+            .h1 = (uint8_t)(r + 1),
+            .hs = (uint8_t)1,
+            .w0 = (uint8_t)0,
+            .w1 = (uint8_t)32,
+            .ws = (uint8_t)1};
         // UNPACK(( DPRINT << (uint)r << " :: " << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL() ));
         UNPACK((DPRINT << (uint)r << " :: " << TileSlice(cb_id, tile_id, sr, true, untilize)));
     }
@@ -34,7 +41,13 @@ inline void print_tile_rows(uint32_t cb_id, uint32_t rows = 32, uint32_t tile_id
 inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
     UNPACK((DPRINT << "======" << ENDL()));
     for (uint16_t r = 0; r < 32; ++r) {
-        SliceRange sr = SliceRange{.h0 = r, .h1 = (uint16_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
+        SliceRange sr = SliceRange{
+            .h0 = (uint8_t)r,
+            .h1 = (uint8_t)(r + 1),
+            .hs = (uint8_t)1,
+            .w0 = (uint8_t)0,
+            .w1 = (uint8_t)32,
+            .ws = (uint8_t)1};
         UNPACK((DPRINT << (uint)r << " : " << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL()));
     }
     UNPACK((DPRINT << "++++++" << ENDL()));
@@ -52,16 +65,25 @@ inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize 
 // }
 #endif
 
-template <uint32_t num_output_tiles, bool is_partial_tile, uint32_t split_reader>
-inline void reduce_h_fused(
+template <
+    uint32_t num_output_tiles,
+    bool is_partial_tile,
+    uint32_t max_rows_for_reduction,
+    uint32_t split_reader,
+    uint32_t unpA_face_r_dim>
+inline void reduce_h_fused_iterm(
     const uint32_t in_cb_id,
     const uint32_t in_scalar_cb_id,
     const uint32_t in_stick_index,
-    const uint32_t unpA_face_r_dim) {
-    uint32_t num_faces_in_input_tile = is_partial_tile ? 1 : unpA_face_r_dim < 32 ? 2 : 4;
+    const uint32_t interm_index,
+    const uint32_t interm_cb_id) {
+    constexpr uint32_t num_faces_in_input_tile = is_partial_tile ? 1 : max_rows_for_reduction < 32 ? 2 : 4;
+    constexpr uint32_t num_faces_in_output_tile = is_partial_tile ? 1 : 2;
     constexpr uint32_t num_out_rows = 1;
+
     const uint32_t curr_in_cb_id = split_reader ? (in_cb_id + (in_stick_index & 0x1)) : in_cb_id;
     cb_wait_front(curr_in_cb_id, 1);
+    tile_regs_acquire();
     unpack_tilizeA_B_block(
         curr_in_cb_id,
         in_scalar_cb_id,
@@ -73,6 +95,43 @@ inline void reduce_h_fused(
         reduce_tile_math(c_i, num_faces_in_input_tile /* reduce 1 or 2 faces */);
     }
     cb_pop_front(curr_in_cb_id, 1);
+    tile_regs_wait();
+    tile_regs_commit();
+    pack_untilize_dst<num_output_tiles>(
+        interm_cb_id,
+        1 /*out_subblock_h*/,
+        interm_index,
+        num_out_rows,
+        num_faces_in_output_tile); /* pack 1 row (1x16 or 1x32) */
+    tile_regs_release();
+}
+
+template <uint32_t num_output_tiles, bool is_partial_tile, uint32_t max_rows_for_reduction>
+inline void reduce_h_fused(const uint32_t interm_cb_id, const uint32_t in_scalar_cb_id, const uint32_t out_cb_id) {
+    constexpr uint32_t num_faces_in_input_tile = is_partial_tile ? 1 : max_rows_for_reduction < 32 ? 2 : 4;
+    constexpr uint32_t num_faces_in_output_tile = is_partial_tile ? 1 : 2;
+    constexpr uint32_t num_out_rows = 1;
+
+    cb_reserve_back(out_cb_id, num_output_tiles);
+    cb_wait_front(interm_cb_id, 1);
+    tile_regs_acquire();
+    unpack_tilizeA_B_block(
+        interm_cb_id,
+        in_scalar_cb_id,
+        num_output_tiles,
+        0 /*tile idx for Src b is 0 because only 1 tile of constants is loaded*/,
+        num_faces_in_input_tile /* unpack 1 or 2 faces ) */,
+        max_rows_for_reduction);
+    for (uint32_t c_i = 0; c_i < num_output_tiles; ++c_i) {
+        reduce_tile_math(c_i, num_faces_in_input_tile /* reduce 1 or 2 faces */);
+    }
+    cb_pop_front(interm_cb_id, 1);
+    tile_regs_wait();
+    tile_regs_commit();
+    pack_untilize_dst<num_output_tiles>(
+        out_cb_id, 1 /*out_subblock_h*/, 0, num_out_rows, num_faces_in_output_tile); /* pack 1 row (1x16 or 1x32) */
+    tile_regs_release();
+    cb_push_back(out_cb_id, num_output_tiles);
 }
 
 namespace NAMESPACE {
@@ -97,7 +156,7 @@ void MAIN {
     constexpr uint32_t in_scalar_cb_id = tt::CBIndex::c_4;
     constexpr uint32_t in_tiled_cb_id = tt::CBIndex::c_24;
     constexpr uint32_t out_cb_id = tt::CBIndex::c_16;
-    constexpr uint32_t interm_reduction_cb_id = tt::CBIndex::c_25;
+    constexpr uint32_t interm_cb_id = tt::CBIndex::c_25;
 
     constexpr uint32_t MAX_TILES_PER_REDUCTION = 8;
 
@@ -107,74 +166,47 @@ void MAIN {
     constexpr uint32_t num_faces_in_output_tile = is_partial_tile ? 1 : 2;
     constexpr uint32_t num_out_rows = 1;
 
-    constexpr uint32_t num_output_tiles = in_ntiles_c / in_nblocks_c;
+    constexpr uint32_t max_tiles_per_iter =
+        in_ntiles_c < MAX_TILES_PER_REDUCTION ? in_ntiles_c : MAX_TILES_PER_REDUCTION;
+    constexpr uint32_t partial_iter_output_tiles = in_ntiles_c % MAX_TILES_PER_REDUCTION;
     tilizeA_B_reduce_init<true>(
-        in_cb_id,
-        in_scalar_cb_id,
-        num_output_tiles,
-        interm_reduction_cb_id,
-        num_faces_in_input_tile,
-        max_rows_for_reduction);
+        in_cb_id, in_scalar_cb_id, max_tiles_per_iter, interm_cb_id, num_faces_in_input_tile, max_rows_for_reduction);
+    pack_untilize_dst_init_short<max_tiles_per_iter>(out_cb_id, num_out_rows, num_faces_in_output_tile);
 
     uint32_t interm_reduction_chunks = window_size_hw / max_rows_for_reduction;
     cb_wait_front(in_scalar_cb_id, 1);
-    cb_reserve_back(out_cb_id, 1);
     for (uint32_t i = 0; i < nsticks_per_core_by_nblocks; ++i) {
         for (uint32_t b_i = 0; b_i < in_nblocks_c; b_i++) {
-            // NOTE: Assuming in_ntiles_hw < 8 for now.
-            // TODO: subblocking to support this.
-            uint32_t out_write_idx = i * in_nblocks_c + b_i;
-            pack_untilize_dst_init_short<num_output_tiles>(
-                interm_reduction_cb_id, num_out_rows, num_faces_in_output_tile);
-            cb_reserve_back(interm_reduction_cb_id, 1);
+            // perform the intermediate reductions over the max tiles per reduction
+            pack_untilize_uninit(interm_cb_id);
+            pack_untilize_dst_init_short<max_tiles_per_iter>(interm_cb_id, num_out_rows, num_faces_in_output_tile);
+            cb_reserve_back(interm_cb_id, 1);
             for (uint32_t h = 0; h <= interm_reduction_chunks; h++) {
-                tile_regs_acquire();
-
-                reduce_h_fused<num_output_tiles, is_partial_tile, split_reader>(
-                    in_cb_id, in_scalar_cb_id, i, max_rows_for_reduction);
-                tile_regs_wait();
-                tile_regs_commit();
-                pack_untilize_dst<num_output_tiles>(
-                    interm_reduction_cb_id,
-                    1 /*out_subblock_h*/,
-                    h,
-                    num_out_rows,
-                    num_faces_in_output_tile); /* pack 1 row (1x16 or 1x32) */
-                tile_regs_release();
+                reduce_h_fused_iterm<
+                    max_tiles_per_iter,
+                    is_partial_tile,
+                    max_rows_for_reduction,
+                    split_reader,
+                    max_rows_for_reduction>(in_cb_id, in_scalar_cb_id, i, h, interm_cb_id);
             }
-            cb_push_back(interm_reduction_cb_id, 1);
-            pack_untilize_uninit(interm_reduction_cb_id);
-            cb_wait_front(interm_reduction_cb_id, 1);
+            cb_push_back(interm_cb_id, 1);
 
-            pack_untilize_dst_init_short<num_output_tiles>(out_cb_id, num_out_rows, num_faces_in_output_tile);
-
-            tile_regs_acquire();
-            unpack_tilizeA_B_block(
-                interm_reduction_cb_id,
-                in_scalar_cb_id,
-                num_output_tiles,
-                0 /*tile idx for Src b is 0 because only 1 tile of constants is loaded*/,
-                num_faces_in_input_tile /* unpack 1 or 2 faces ) */,
-                max_rows_for_reduction);
-            for (uint32_t c_i = 0; c_i < num_output_tiles; ++c_i) {
-                reduce_tile_math(c_i, num_faces_in_input_tile /* reduce 1 or 2 faces */);
+            // perform the final reduction over the max the max tiles per reduction for all but (possibly) the final
+            // iteration
+            if (b_i == in_nblocks_c - 1 && partial_iter_output_tiles > 0) {
+                pack_untilize_uninit(out_cb_id);
+                pack_untilize_dst_init_short<partial_iter_output_tiles>(
+                    out_cb_id, num_out_rows, num_faces_in_output_tile);
+                reduce_h_fused<partial_iter_output_tiles, is_partial_tile, max_rows_for_reduction>(
+                    interm_cb_id, in_scalar_cb_id, out_cb_id);
+            } else {
+                pack_untilize_uninit(out_cb_id);
+                pack_untilize_dst_init_short<max_tiles_per_iter>(out_cb_id, num_out_rows, num_faces_in_output_tile);
+                reduce_h_fused<max_tiles_per_iter, is_partial_tile, max_rows_for_reduction>(
+                    interm_cb_id, in_scalar_cb_id, out_cb_id);
             }
-
-            tile_regs_wait();
-            tile_regs_commit();
-
-            pack_untilize_dst<num_output_tiles>(
-                out_cb_id,
-                1 /*out_subblock_h*/,
-                out_write_idx,
-                num_out_rows,
-                num_faces_in_output_tile); /* pack 1 row (1x16 or 1x32) */
-            tile_regs_release();
-            cb_pop_front(interm_reduction_cb_id, 1);
-            pack_untilize_uninit(out_cb_id);
         }
     }
-    cb_push_back(out_cb_id, 1);
     cb_pop_front(in_scalar_cb_id, 1);
 }
 

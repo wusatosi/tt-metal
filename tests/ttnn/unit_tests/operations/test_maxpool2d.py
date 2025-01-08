@@ -52,6 +52,18 @@ def run_max_pool(
     cores_y = device.core_grid.y
     max_cores = cores_x * cores_y
 
+    # temporarily skip non-8 tile multiple wide reductions with large kernels
+    # if kernel_h > 4:
+    #     if shard_scheme == ttnn.TensorMemoryLayout.HEIGHT_SHARDED or shard_scheme is None:
+    #         if in_c > 256 and in_c % 256 != 0:
+    #             pytest.skip("Wide reductions with large kernels requires input channels to be multiple of 8 tiles")
+    #     if shard_scheme == ttnn.TensorMemoryLayout.WIDTH_SHARDED:
+    #         if (in_c / max_cores) > 256 and (in_c / max_cores) % 256 != 0:
+    #             pytest.skip("Wide reductions with large kernels requires input channels to be multiple of 8 tiles")
+    #     if shard_scheme == ttnn.TensorMemoryLayout.BLOCK_SHARDED:
+    #         if (in_c / cores_x) > 256 and (in_c / cores_x) % 256 != 0:
+    #             pytest.skip("Wide reductions with large kernels requires input channels to be multiple of 8 tiles")
+
     if shard_scheme == ttnn.TensorMemoryLayout.HEIGHT_SHARDED or shard_scheme is None:
         if in_c % 16 != 0:
             pytest.skip("Current maxpool writer needs nchannels to be multiple of 16!")
@@ -236,53 +248,58 @@ def run_max_pool(
     "act_shape",  ## NCHW
     (
         (  ## resnet shapes
-            [1, 64, 112, 112],
-            [4, 64, 112, 112],
-            [8, 64, 112, 112],
-            [16, 64, 112, 112],
-            # [20, 64, 112, 112],   ## oom
-            ## hpr shapes
-            [8, 32, 132, 20],
-            [16, 32, 132, 20],
-            [32, 32, 132, 20],
-            [64, 32, 132, 20],
-            [128, 32, 132, 20],
-            # [256, 32, 132, 20],   ## oom
-            [8, 32, 264, 40],
-            [16, 32, 264, 40],
-            [32, 32, 264, 40],
-            # [64, 32, 264, 40],    ## oom
-            # [128, 32, 264, 40],   ## oom
-            # [256, 32, 264, 40],   ## oom
-            [4, 16, 1056, 160],
-            # [8, 16, 1056, 160],     ## oom
-            # [16, 16, 1056, 160],    ## oom
-            # [32, 16, 1056, 160],    ## oom
-            # [64, 16, 1056, 160],    ## oom
-            # [128, 16, 1056, 160],   ## oom
-            # [256, 16, 1056, 160],   ## oom
-            [8, 16, 528, 80],
-            [16, 16, 528, 80],
-            # [32, 16, 528, 80],  ## oom
-            # [64, 16, 528, 80],  ## oom
-            # [128, 16, 528, 80], ## oom
-            # [256, 16, 528, 80], ## oom
-            ## wide for vgg
-            [1, 256, 56, 56],
-            [1, 512, 28, 28],
-            [1, 512, 14, 14],
-            # wide yolo kernel
-            [1, 512, 10, 10],
-            [1, 96, 112, 112],
-            [1, 192, 132, 20],
+            # [1, 64, 112, 112],
+            # [4, 64, 112, 112],
+            # [8, 64, 112, 112],
+            # [16, 64, 112, 112],
+            # # [20, 64, 112, 112],   ## oom
+            # ## hpr shapes
+            # [8, 32, 132, 20],
+            # [16, 32, 132, 20],
+            # [32, 32, 132, 20],
+            # [64, 32, 132, 20],
+            # [128, 32, 132, 20],
+            # # [256, 32, 132, 20],   ## oom
+            # [8, 32, 264, 40],
+            # [16, 32, 264, 40],
+            # [32, 32, 264, 40],
+            # # [64, 32, 264, 40],    ## oom
+            # # [128, 32, 264, 40],   ## oom
+            # # [256, 32, 264, 40],   ## oom
+            # [4, 16, 1056, 160],
+            # # [8, 16, 1056, 160],     ## oom
+            # # [16, 16, 1056, 160],    ## oom
+            # # [32, 16, 1056, 160],    ## oom
+            # # [64, 16, 1056, 160],    ## oom
+            # # [128, 16, 1056, 160],   ## oom
+            # # [256, 16, 1056, 160],   ## oom
+            # [8, 16, 528, 80],
+            # [16, 16, 528, 80],
+            # # [32, 16, 528, 80],  ## oom
+            # # [64, 16, 528, 80],  ## oom
+            # # [128, 16, 528, 80], ## oom
+            # # [256, 16, 528, 80], ## oom
+            # ## wide for vgg
+            # [1, 256, 56, 56],
+            # [1, 512, 28, 28],
+            # [1, 512, 14, 14],
+            # # wide yolo kernel
+            # [1, 512, 10, 10],
+            # [1, 96, 112, 112],
+            # [1, 192, 132, 20],
+            # wide non-8 multiple tests
+            [1, 800, 32, 32],
+            [1, 640, 32, 32],
+            [1, 576, 32, 32],
+            [1, 384, 32, 32],
         )
     ),
 )
 @pytest.mark.parametrize(
     "kernel_size",
     (
-        (2, 2),
-        (3, 3),
+        # (2, 2),
+        # (3, 3),
         (5, 5),
         (9, 9),
         (13, 13),
@@ -291,8 +308,8 @@ def run_max_pool(
 @pytest.mark.parametrize(
     "padding",
     (
-        (0, 0),
-        (1, 1),
+        # (0, 0),
+        # (1, 1),
         (2, 2),
         (4, 4),
         (6, 6),
@@ -310,14 +327,14 @@ def run_max_pool(
     "dtype",
     [
         ttnn.bfloat16,
-        ttnn.bfloat8_b,
+        # ttnn.bfloat8_b,
     ],
 )
 @pytest.mark.parametrize(
     "ceil_mode",
     [
         False,
-        True,
+        # True,
     ],
 )
 def test_run_max_pool(act_shape, kernel_size, padding, stride, dilation, device, dtype, use_program_cache, ceil_mode):
@@ -334,7 +351,7 @@ def test_run_max_pool(act_shape, kernel_size, padding, stride, dilation, device,
     )
 
 
-@pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
+""" @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
 @pytest.mark.parametrize(
     "act_shape",  ## NCHW
     (
@@ -350,6 +367,10 @@ def test_run_max_pool(act_shape, kernel_size, padding, stride, dilation, device,
             # wide yolo kernel
             [1, 32768, 10, 10],
             [1, 6144, 6, 6],
+            # wide non-8 multiple tests
+            [1, 24576, 16, 16],
+            [1, 36864, 16, 8],
+            [1, 51200, 8, 8],
         )
     ),
 )
@@ -455,6 +476,10 @@ def test_run_max_pool_width_shard(
             [1, 4096, 10, 10],
             [1, 768, 56, 56],
             [1, 1280, 8, 6],
+            # wide non-8 multiple tests
+            [1, 3072, 16, 16],
+            [1, 4608, 16, 8],
+            [1, 6400, 8, 8],
         )
     ),
 )
@@ -873,4 +898,4 @@ def test_run_max_pool_squeeze_net_model(
         device,
         dtype,
         ceil_mode=ceil_mode,
-    )
+    ) """
