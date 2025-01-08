@@ -681,6 +681,7 @@ class ttnnStableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSi
                 if self.interrupt:
                     continue
 
+                # torch.save(latents,"models/experimental/functional_stable_diffusion3_5/demo/post_transformer/un_opt_latents_input_0.pt")
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
@@ -716,14 +717,17 @@ class ttnnStableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSi
                 )
 
                 print("Eneded transformer")
+                # torch.save(noise_pred,"models/experimental/functional_stable_diffusion3_5/demo/post_transformer/un_opt_noise_pred_0.pt")
                 # perform guidance
                 if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                    # torch.save(noise_pred_uncond,"models/experimental/functional_stable_diffusion3_5/demo/post_transformer/un_opt_noise_pred_uncond_0.pt")
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                # torch.save(latents,"models/experimental/functional_stable_diffusion3_5/demo/post_transformer/un_opt_latents_output_0.pt")
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
