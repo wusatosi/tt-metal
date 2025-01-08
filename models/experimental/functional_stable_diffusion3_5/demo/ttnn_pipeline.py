@@ -697,19 +697,19 @@ class ttnnStableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSi
                         + str(i)
                         + ".npy"
                     )
-                    latents = torch.from_numpy(numpy_array)
+                    latents = torch.from_numpy(numpy_array).to(torch.bfloat16)
 
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
-
-                numpy_array = np.load(
-                    "../../sd35_512_unopt/tt-metal/models/experimental/functional_stable_diffusion3_5/demo/demo_unoptimized_512x512__hidden_states_"
-                    + str(i)
-                    + ".npy"
-                )
-                latent_model_input = torch.from_numpy(numpy_array)  # .to(dtype=torch.bfloat16)
+                if i == 0:
+                    numpy_array = np.load(
+                        "../../sd35_512_unopt/tt-metal/models/experimental/functional_stable_diffusion3_5/demo/demo_unoptimized_512x512__hidden_states_"
+                        + str(i)
+                        + ".npy"
+                    )
+                    latent_model_input = torch.from_numpy(numpy_array)  # .to(dtype=torch.bfloat16)
                 numpy_array = np.load(
                     "../../sd35_512_unopt/tt-metal/models/experimental/functional_stable_diffusion3_5/demo/demo_unoptimized_512x512__encoder_hidden_"
                     + str(i)
@@ -772,8 +772,12 @@ class ttnnStableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSi
                 # perform guidance
                 if self.do_classifier_free_guidance:
                     print("do_classifier_free_guidance", self.guidance_scale)
+                    print("noise_pred", noise_pred.shape)
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                    print("noise_pred_uncond", noise_pred_uncond.shape)
+                    print("noise_pred_text", noise_pred_text.shape)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    print("noise_pred", noise_pred)
 
                 numpy_array = noise_pred.to(torch.float32).detach().numpy()
                 np.save(

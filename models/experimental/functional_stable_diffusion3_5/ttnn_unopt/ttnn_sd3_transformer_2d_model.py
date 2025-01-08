@@ -6,16 +6,15 @@
 import torch
 from torch import nn
 import ttnn
-import numpy as np
 
-from models.experimental.functional_stable_diffusion3_5.ttnn.ttnn_ada_layernorm_continuous import (
+from models.experimental.functional_stable_diffusion3_5.ttnn_unopt.ttnn_ada_layernorm_continuous import (
     ttnn_AdaLayerNormContinuous,
 )
-from models.experimental.functional_stable_diffusion3_5.ttnn.ttnn_joint_transformer_block import (
+from models.experimental.functional_stable_diffusion3_5.ttnn_unopt.ttnn_joint_transformer_block import (
     ttnn_JointTransformerBlock,
 )
-from models.experimental.functional_stable_diffusion3_5.ttnn.ttnn_patch_embed import ttnn_PatchEmbed
-from models.experimental.functional_stable_diffusion3_5.ttnn.ttnn_combined_time_step_text_proj_embeddings import (
+from models.experimental.functional_stable_diffusion3_5.ttnn_unopt.ttnn_patch_embed import ttnn_PatchEmbed
+from models.experimental.functional_stable_diffusion3_5.ttnn_unopt.ttnn_combined_time_step_text_proj_embeddings import (
     ttnn_CombinedTimestepTextProjEmbeddings,
 )
 from diffusers.models.transformers.transformer_sd3 import Transformer2DModelOutput
@@ -102,70 +101,36 @@ class ttnn_SD3Transformer2DModel:
         else:
             lora_scale = 1.0
 
+        # if USE_PEFT_BACKEND:
+        #     # weight the lora layers by setting `lora_scale` for each PEFT layer
+        #     scale_lora_layers(self, lora_scale)
+        # else:
+        #     if joint_attention_kwargs is not None and joint_attention_kwargs.get("scale", None) is not None:
+        #         logger.warning(
+        #             "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
+        #         )
+
         height, width = hidden_states.shape[-2], hidden_states.shape[-1]
 
-        # ttnn_CombinedTimestepTextProjEmbeddings
+        hidden_states = self.pos_embed(
+            hidden_states.device(), hidden_states
+        )  # takes care of adding positional embeddings too.
         temb = self.time_text_embed(timestep, pooled_projections, device=hidden_states.device())
-        ttnn.deallocate(timestep)
-        ttnn.deallocate(pooled_projections)
-
-        # Context Emb (just a Linear OP)
         encoder_hidden_states = self.context_embedder(
             encoder_hidden_states, parameters["context_embedder"]["weight"], bias=parameters["context_embedder"]["bias"]
         )
-        # ttnn_PatchEmbed + Pos Emb
-        hidden_states = self.pos_embed(hidden_states.device(), hidden_states)
-
-        encoder_hidden_states = ttnn.to_memory_config(encoder_hidden_states, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat16)
-        temb = ttnn.to_memory_config(temb, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat16)
 
         for index_block, block in enumerate(self.transformer_blocks):
-            ###
-            numpy_array = ttnn.to_torch(hidden_states).to(torch.float32).detach().numpy()
-            np.save(
-                "models/experimental/functional_stable_diffusion3_5/demo/demo_optim_512x512__TR_in0_layer_"
-                + str(index_block)
-                + ".npy",
-                numpy_array,
-            )
-            numpy_array = ttnn.to_torch(encoder_hidden_states).to(torch.float32).detach().numpy()
-            np.save(
-                "models/experimental/functional_stable_diffusion3_5/demo/demo_optim_512x512__TR_in1_layer_"
-                + str(index_block)
-                + ".npy",
-                numpy_array,
-            )
-            numpy_array = ttnn.to_torch(temb).to(torch.float32).detach().numpy()
-            np.save(
-                "models/experimental/functional_stable_diffusion3_5/demo/demo_optim_512x512__TR_in2_layer_"
-                + str(index_block)
-                + ".npy",
-                numpy_array,
-            )
+            hidden_states = ttnn.to_memory_config(hidden_states, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+            encoder_hidden_states = ttnn.to_memory_config(encoder_hidden_states, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+            temb = ttnn.to_memory_config(temb, memory_config=ttnn.DRAM_MEMORY_CONFIG)
 
             encoder_hidden_states, hidden_states = block(
-                hidden_states_i=hidden_states,
+                hidden_states=hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
                 temb=temb,
                 parameters=parameters["transformer_blocks"][index_block],
             )
-
-            ###
-            numpy_array = ttnn.to_torch(hidden_states).to(torch.float32).detach().numpy()
-            np.save(
-                "models/experimental/functional_stable_diffusion3_5/demo/demo_optim_512x512__TR_out0_layer_"
-                + str(index_block)
-                + ".npy",
-                numpy_array,
-            )
-            if index_block < 23:
-                numpy_array = ttnn.to_torch(encoder_hidden_states).to(torch.float32).detach().numpy()
-                np.save(
-                    "models/experimental/functional_stable_diffusion3_5/demo/demo_optim_512x512__TR_out1_layer_"
-                    + str(index_block)
-                    + ".npy",
-                    numpy_array,
-                )
 
             # controlnet residual
             if block_controlnet_hidden_states is not None and block.context_pre_only is False:
@@ -173,8 +138,6 @@ class ttnn_SD3Transformer2DModel:
                 hidden_states = hidden_states + block_controlnet_hidden_states[index_block // interval_control]
 
         hidden_states = self.norm_out(hidden_states, temb, parameters=parameters["norm_out"])
-        ttnn.deallocate(temb)
-
         hidden_states = self.proj_out(
             hidden_states, parameters["proj_out"]["weight"], bias=parameters["proj_out"]["bias"]
         )
@@ -184,20 +147,20 @@ class ttnn_SD3Transformer2DModel:
         height = height // patch_size
         width = width // patch_size
 
-        hidden_states = ttnn.to_layout(hidden_states, layout=ttnn.ROW_MAJOR_LAYOUT)
-        hidden_states = ttnn.to_dtype(
-            hidden_states, ttnn.bfloat16
-        )  # ttnn Reshape is making issue when we have it in bfloat8
-
         hidden_states = ttnn.reshape(
             hidden_states, (hidden_states.shape[0], height, width, patch_size, patch_size, self.out_channels)
         )
-        # (2, 32, 32, 2, 2, 16)
-        hidden_states = ttnn.permute(hidden_states, (0, 5, 1, 3, 2, 4))  # (2, 16, 64, 2, 64, 2)
+        device = hidden_states.device()
+        hidden_states = ttnn.to_torch(hidden_states)
+        hidden_states = torch.einsum("nhwpqc->nchpwq", hidden_states)
+        hidden_states = ttnn.from_torch(hidden_states, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device)
         output = ttnn.reshape(
             hidden_states, (hidden_states.shape[0], self.out_channels, height * patch_size, width * patch_size)
-        )  # (2, 16, 128, 128)
-        output = ttnn.to_layout(output, layout=ttnn.TILE_LAYOUT)
+        )
+
+        # if USE_PEFT_BACKEND:
+        #     # remove `lora_scale` from each PEFT layer
+        #     unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output,)

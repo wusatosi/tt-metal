@@ -2,9 +2,106 @@ import numpy as np
 import torch
 from tests.ttnn.utils_for_testing import assert_with_pcc
 
+iterations = 40
+layers = 24
+
+
+print("---TR in0 ---")
+for i in range(layers):
+    orig = torch.from_numpy(
+        np.load(
+            "../../sd35_512_unopt/tt-metal/models/experimental/functional_stable_diffusion3_5/demo/demo_unoptimized_512x512__TR_in0_layer_"
+            + str(i)
+            + ".npy"
+        )
+    )
+    new = torch.from_numpy(
+        np.load(
+            "models/experimental/functional_stable_diffusion3_5/demo/demo_optim_512x512__TR_in0_layer_"
+            + str(i)
+            + ".npy"
+        )
+    )
+    print(assert_with_pcc(orig.unsqueeze(1), new, pcc=-100))
+
+print("---TR in1 ---")
+for i in range(layers):
+    orig = torch.from_numpy(
+        np.load(
+            "../../sd35_512_unopt/tt-metal/models/experimental/functional_stable_diffusion3_5/demo/demo_unoptimized_512x512__TR_in1_layer_"
+            + str(i)
+            + ".npy"
+        )
+    )
+    new = torch.from_numpy(
+        np.load(
+            "models/experimental/functional_stable_diffusion3_5/demo/demo_optim_512x512__TR_in1_layer_"
+            + str(i)
+            + ".npy"
+        )
+    )
+    print(assert_with_pcc(orig.unsqueeze(1), new, pcc=-100))
+
+print("---TR in2 ---")
+for i in range(layers):
+    orig = torch.from_numpy(
+        np.load(
+            "../../sd35_512_unopt/tt-metal/models/experimental/functional_stable_diffusion3_5/demo/demo_unoptimized_512x512__TR_in2_layer_"
+            + str(i)
+            + ".npy"
+        )
+    )
+    new = torch.from_numpy(
+        np.load(
+            "models/experimental/functional_stable_diffusion3_5/demo/demo_optim_512x512__TR_in2_layer_"
+            + str(i)
+            + ".npy"
+        )
+    )
+    print(assert_with_pcc(orig.unsqueeze(1).unsqueeze(1), new, pcc=-100))
+
+
+print("---TR out0 ---")
+for i in range(layers):
+    orig = torch.from_numpy(
+        np.load(
+            "../../sd35_512_unopt/tt-metal/models/experimental/functional_stable_diffusion3_5/demo/demo_unoptimized_512x512__TR_out0_layer_"
+            + str(i)
+            + ".npy"
+        )
+    )
+    new = torch.from_numpy(
+        np.load(
+            "models/experimental/functional_stable_diffusion3_5/demo/demo_optim_512x512__TR_out0_layer_"
+            + str(i)
+            + ".npy"
+        )
+    )
+    print(assert_with_pcc(orig.unsqueeze(1), new, pcc=-100))
+
+print("---TR out1 ---")
+for i in range(layers - 1):
+    orig = torch.from_numpy(
+        np.load(
+            "../../sd35_512_unopt/tt-metal/models/experimental/functional_stable_diffusion3_5/demo/demo_unoptimized_512x512__TR_out1_layer_"
+            + str(i)
+            + ".npy"
+        )
+    )
+    new = torch.from_numpy(
+        np.load(
+            "models/experimental/functional_stable_diffusion3_5/demo/demo_optim_512x512__TR_out1_layer_"
+            + str(i)
+            + ".npy"
+        )
+    )
+    print(assert_with_pcc(orig.unsqueeze(1), new, pcc=-100))
+
+
+##########
 
 print("---noise pred ---")
-for i in range(40):
+for i in range(iterations):
     # orig = torch.from_numpy(np.load("../../sd35_512_unopt/tt-metal/models/experimental/functional_stable_diffusion3_5/demo/first_npy/demo_unoptimized_512x512__noise_pred_"+ str(i)+ ".npy"))
     orig = torch.from_numpy(
         np.load(
@@ -28,7 +125,7 @@ for i in range(40):
 
 print()
 print("---noise pred post guidance ---")
-for i in range(40):
+for i in range(iterations):
     orig = torch.from_numpy(
         np.load(
             "../../sd35_512_unopt/tt-metal/models/experimental/functional_stable_diffusion3_5/demo/demo_unoptimized_512x512__noise_pred_ii_"
@@ -48,7 +145,7 @@ for i in range(40):
 
 print()
 print("---time step ---")
-for i in range(40):
+for i in range(iterations):
     orig = torch.from_numpy(
         np.load(
             "../../sd35_512_unopt/tt-metal/models/experimental/functional_stable_diffusion3_5/demo/demo_unoptimizedd_512x512__ttt_i_"
@@ -69,7 +166,7 @@ for i in range(40):
 print()
 print("---latents-prev-----")
 
-for i in range(40):
+for i in range(iterations):
     orig = torch.from_numpy(
         np.load(
             "../../sd35_512_unopt/tt-metal/models/experimental/functional_stable_diffusion3_5/demo/demo_unoptimized_512x512__latents_old_"
@@ -90,7 +187,7 @@ for i in range(40):
 print()
 print("---latents-i-----")
 
-for i in range(40):
+for i in range(iterations):
     orig = torch.from_numpy(
         np.load(
             "../../sd35_512_unopt/tt-metal/models/experimental/functional_stable_diffusion3_5/demo/demo_unoptimized_512x512__latents_i_"
@@ -111,7 +208,7 @@ for i in range(40):
 print()
 print("---latents------")
 
-for i in range(40):
+for i in range(iterations):
     orig = torch.from_numpy(
         np.load(
             "../../sd35_512_unopt/tt-metal/models/experimental/functional_stable_diffusion3_5/demo/demo_unoptimized_512x512__latents_"
