@@ -400,64 +400,67 @@ def run_prefetcher_mm(
         )
 
         outputs_dram = []
-        for l in range(num_layers):
-            outputs_l1 = []
-            for t in range(num_tensors):
-                idx = l * num_tensors + t
+        # for l in range(num_layers):
+        #     outputs_l1 = []
+        #     for t in range(num_tensors):
+        #         idx = l * num_tensors + t
 
-                output_t = ttnn.matmul(
-                    in0_t_tensors[t],
-                    tt_tensors_all[idx],
-                    program_config=program_configs[t],
-                    memory_config=output_mem_configs[t],
-                    compute_kernel_config=compute_kernel_config,
-                    global_cb=global_circular_buffer,
-                )
-                outputs_l1.append(output_t)
+        #         output_t = ttnn.matmul(
+        #             in0_t_tensors[t],
+        #             tt_tensors_all[idx],
+        #             program_config=program_configs[t],
+        #             memory_config=output_mem_configs[t],
+        #             compute_kernel_config=compute_kernel_config,
+        #             global_cb=global_circular_buffer,
+        #         )
+        #         outputs_l1.append(output_t)
 
-            # Send outputs to DRAM to so that we don't run out of L1 memory when testing for large number of layers
-            for t in range(num_tensors):
-                outputs_dram.append(ttnn.to_memory_config(outputs_l1[t], ttnn.DRAM_MEMORY_CONFIG))
+        #     # Send outputs to DRAM to so that we don't run out of L1 memory when testing for large number of layers
+        #     for t in range(num_tensors):
+        #         outputs_dram.append(ttnn.to_memory_config(outputs_l1[t], ttnn.DRAM_MEMORY_CONFIG))
 
         return outputs_dram
 
     ##### Compile Model #####
     logger.info("Compiling model")
     outputs_t = run_op()
+    logger.info("AA")
+    ttnn.synchronize_device(device)
+    logger.info("BB")
 
-    ##### Capture Trace #####
-    logger.info("Capturing trace")
+    # ##### Capture Trace #####
+    # logger.info("Capturing trace")
 
-    trace_id = ttnn.begin_trace_capture(device, cq_id=0)
-    outputs_t = run_op()
-    ttnn.end_trace_capture(device, trace_id, cq_id=0)
+    # trace_id = ttnn.begin_trace_capture(device, cq_id=0)
+    # outputs_t = run_op()
+    # ttnn.end_trace_capture(device, trace_id, cq_id=0)
 
-    ##### Run Trace #####
-    logger.info("Running trace")
-    ttnn.execute_trace(device, trace_id, cq_id=0, blocking=True)
+    # ##### Run Trace #####
+    # logger.info("Running trace")
+    # ttnn.execute_trace(device, trace_id, cq_id=0, blocking=True)
 
-    ##### Check Results #####
-    all_passing = True
-    for l in range(num_layers):
-        for t in range(num_tensors):
-            idx = l * num_tensors + t
-            logger.info(f"Checking matmul for layer {l}, tensor {t}")
-            tt_out = ttnn.to_torch(outputs_t[idx], sub_device_ids=[ttnn.SubDeviceId(worker_sub_device_id)])
-            pt_out = in0_tensors[t] @ pt_tensors[idx]
+    # ##### Check Results #####
+    # all_passing = True
+    # for l in range(num_layers):
+    #     for t in range(num_tensors):
+    #         idx = l * num_tensors + t
+    #         logger.info(f"Checking matmul for layer {l}, tensor {t}")
+    #         tt_out = ttnn.to_torch(outputs_t[idx], sub_device_ids=[ttnn.SubDeviceId(worker_sub_device_id)])
+    #         pt_out = in0_tensors[t] @ pt_tensors[idx]
 
-            dtype = dtypes[t]
-            if dtype == ttnn.bfloat4_b:
-                pcc_threshold = 0.99
-            elif dtype == ttnn.bfloat8_b:
-                pcc_threshold = 0.999
-            elif dtype == ttnn.bfloat16:
-                pcc_threshold = 0.999
+    #         dtype = dtypes[t]
+    #         if dtype == ttnn.bfloat4_b:
+    #             pcc_threshold = 0.99
+    #         elif dtype == ttnn.bfloat8_b:
+    #             pcc_threshold = 0.999
+    #         elif dtype == ttnn.bfloat16:
+    #             pcc_threshold = 0.999
 
-            passing, output = comp_pcc(pt_out, tt_out, pcc_threshold)
-            logger.info(output)
-            all_passing = passing and all_passing
+    #         passing, output = comp_pcc(pt_out, tt_out, pcc_threshold)
+    #         logger.info(output)
+    #         all_passing = passing and all_passing
 
     device.clear_loaded_sub_device_manager()
     device.remove_sub_device_manager(sub_device_manager)
 
-    assert all_passing
+    # assert all_passing

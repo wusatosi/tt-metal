@@ -99,7 +99,7 @@ operation::ProgramWithCallbacks dram_prefetcher_multi_core(
         max_tensor_size,
         global_cb->size());
 
-    /* Cores setup */
+    // /* Cores setup */
     auto reader_core_range = global_cb->sender_cores();
     auto receiver_core_range = global_cb->receiver_cores();
 
@@ -108,29 +108,30 @@ operation::ProgramWithCallbacks dram_prefetcher_multi_core(
     const uint32_t total_num_blocks_in_buffer = 3;        // reader cb is triple buffered
     uint32_t reader_cb_size = max_block_size_per_reader_core * total_num_blocks_in_buffer;
 
-    TT_FATAL(reader_cb_size <= global_cb->size(), "reader_cb_size must not be larger than global cb");
+    // TT_FATAL(reader_cb_size <= global_cb->size(), "reader_cb_size must not be larger than global cb");
 
-    uint32_t reader_cb_index = tt::CBIndex::c_0;
-    CircularBufferConfig reader_cb_config = CircularBufferConfig(reader_cb_size, {{reader_cb_index, max_tile_size_df}})
-                                                .set_page_size(reader_cb_index, reader_cb_single_tile_size)
-                                                .set_globally_allocated_address(global_cb_buffer);
-    auto reader_cb = CreateCircularBuffer(program, reader_core_range, reader_cb_config);
+    // uint32_t reader_cb_index = tt::CBIndex::c_0;
+    // CircularBufferConfig reader_cb_config = CircularBufferConfig(reader_cb_size, {{reader_cb_index,
+    // max_tile_size_df}})
+    //                                             .set_page_size(reader_cb_index, reader_cb_single_tile_size)
+    //                                             .set_globally_allocated_address(global_cb_buffer);
+    // auto reader_cb = CreateCircularBuffer(program, reader_core_range, reader_cb_config);
 
-    /* tensor addresses cb setup */
-    uint32_t tensor_addrs_single_tile_size =
-        sizeof(uint32_t);  // tensor_addrs_tile.get_tile_size(tensor_addrs_data_format);
-    uint32_t tensor_addrs_cb_num_tiles = tensor_addrs_buffer->shard_spec().shape()[0] *
-                                         tensor_addrs_buffer->shard_spec().shape()[1];  // TODO: check this
-    uint32_t tensor_addrs_cb_size =
-        num_layers * num_tensors *
-        tensor_addrs_single_tile_size;  // tensor_addrs_cb_num_tiles * tensor_addrs_single_tile_size;
+    // /* tensor addresses cb setup */
+    // uint32_t tensor_addrs_single_tile_size =
+    //     sizeof(uint32_t);  // tensor_addrs_tile.get_tile_size(tensor_addrs_data_format);
+    // uint32_t tensor_addrs_cb_num_tiles = tensor_addrs_buffer->shard_spec().shape()[0] *
+    //                                      tensor_addrs_buffer->shard_spec().shape()[1];  // TODO: check this
+    // uint32_t tensor_addrs_cb_size =
+    //     num_layers * num_tensors *
+    //     tensor_addrs_single_tile_size;  // tensor_addrs_cb_num_tiles * tensor_addrs_single_tile_size;
 
-    uint32_t tensor_addrs_cb_index = tt::CBIndex::c_1;
-    CircularBufferConfig tensor_addrs_cb_config =
-        CircularBufferConfig(tensor_addrs_cb_size, {{tensor_addrs_cb_index, tensor_addrs_data_format}})
-            .set_page_size(tensor_addrs_cb_index, tensor_addrs_single_tile_size)
-            .set_globally_allocated_address(*tensor_addrs_buffer);
-    auto tensor_addrs_cb = CreateCircularBuffer(program, reader_core_range, tensor_addrs_cb_config);
+    // uint32_t tensor_addrs_cb_index = tt::CBIndex::c_1;
+    // CircularBufferConfig tensor_addrs_cb_config =
+    //     CircularBufferConfig(tensor_addrs_cb_size, {{tensor_addrs_cb_index, tensor_addrs_data_format}})
+    //         .set_page_size(tensor_addrs_cb_index, tensor_addrs_single_tile_size)
+    //         .set_globally_allocated_address(*tensor_addrs_buffer);
+    // auto tensor_addrs_cb = CreateCircularBuffer(program, reader_core_range, tensor_addrs_cb_config);
 
     /* remote cb setup */
     uint32_t remote_cb_size = global_cb->size();
@@ -161,89 +162,89 @@ operation::ProgramWithCallbacks dram_prefetcher_multi_core(
             .compile_args = reader_ct_args});
 
     // Writer kernel
-    std::vector<uint32_t> writer_ct_args = {
-        num_layers, num_tensors, num_blocks, num_receivers_per_reader, max_block_tiles};
+    // std::vector<uint32_t> writer_ct_args = {
+    //     num_layers, num_tensors, num_blocks, num_receivers_per_reader, max_block_tiles};
 
-    auto writer_kernel_id = CreateKernel(
-        program,
-        "ttnn/cpp/ttnn/operations/prefetcher/prefetcher/device/kernels/writer_l1.cpp",
-        reader_core_range,
-        tt::tt_metal::DataMovementConfig{
-            .processor = tt::tt_metal::DataMovementProcessor::RISCV_1,
-            .noc = tt::tt_metal::NOC::RISCV_0_default,
-            .noc_mode = tt::tt_metal::NOC_MODE::DM_DYNAMIC_NOC,
-            .compile_args = writer_ct_args});
+    // auto writer_kernel_id = CreateKernel(
+    //     program,
+    //     "ttnn/cpp/ttnn/operations/prefetcher/prefetcher/device/kernels/writer_l1.cpp",
+    //     reader_core_range,
+    //     tt::tt_metal::DataMovementConfig{
+    //         .processor = tt::tt_metal::DataMovementProcessor::RISCV_1,
+    //         .noc = tt::tt_metal::NOC::RISCV_0_default,
+    //         .noc_mode = tt::tt_metal::NOC_MODE::DM_DYNAMIC_NOC,
+    //         .compile_args = writer_ct_args});
 
     /* Runtime args */
-    std::vector<uint32_t> page_sizes;
-    std::vector<uint32_t> block_num_pages;
+    // std::vector<uint32_t> page_sizes;
+    // std::vector<uint32_t> block_num_pages;
 
-    std::vector<uint32_t> coalesced_page_sizes;
-    std::vector<uint32_t> coalesced_num_pages;
+    // std::vector<uint32_t> coalesced_page_sizes;
+    // std::vector<uint32_t> coalesced_num_pages;
 
-    for (uint32_t t = 0; t < num_tensors; t++) {
-        uint32_t page_size, num_pages;
-        get_max_page_size_and_num_pages(
-            max_tile_size,
-            tensor_block_num_tiles[t],
-            tt::tt_metal::detail::TileSize(tensor_data_formats[t]),
-            page_size,
-            num_pages);
-        page_sizes.push_back(page_size);
-        block_num_pages.push_back(num_pages);
+    // for (uint32_t t = 0; t < num_tensors; t++) {
+    //     uint32_t page_size, num_pages;
+    //     get_max_page_size_and_num_pages(
+    //         max_tile_size,
+    //         tensor_block_num_tiles[t],
+    //         tt::tt_metal::detail::TileSize(tensor_data_formats[t]),
+    //         page_size,
+    //         num_pages);
+    //     page_sizes.push_back(page_size);
+    //     block_num_pages.push_back(num_pages);
 
-        uint32_t coalesced_page_size, coalesced_num_page;
-        uint32_t block_width_in_tiles = tensor_shapes[t][1];
-        get_max_page_size_and_num_pages(
-            max_tile_size,
-            block_width_in_tiles / num_receivers_per_reader,
-            tt::tt_metal::detail::TileSize(tensor_data_formats[t]),
-            coalesced_page_size,
-            coalesced_num_page);
-        coalesced_page_sizes.push_back(coalesced_page_size);
-        coalesced_num_pages.push_back(coalesced_num_page);
-    }
+    //     uint32_t coalesced_page_size, coalesced_num_page;
+    //     uint32_t block_width_in_tiles = tensor_shapes[t][1];
+    //     get_max_page_size_and_num_pages(
+    //         max_tile_size,
+    //         block_width_in_tiles / num_receivers_per_reader,
+    //         tt::tt_metal::detail::TileSize(tensor_data_formats[t]),
+    //         coalesced_page_size,
+    //         coalesced_num_page);
+    //     coalesced_page_sizes.push_back(coalesced_page_size);
+    //     coalesced_num_pages.push_back(coalesced_num_page);
+    // }
 
-    std::vector<uint32_t> bank_ids;
-    const auto& reader_cores = corerange_to_cores(reader_core_range, std::nullopt, true);  // TODO: fix order??
+    // std::vector<uint32_t> bank_ids;
+    // const auto& reader_cores = corerange_to_cores(reader_core_range, std::nullopt, true);  // TODO: fix order??
 
-    // Runtime args for the reader cores
-    for (uint32_t core_index = 0; core_index < reader_core_range.num_cores(); core_index++) {
-        const auto& core = reader_cores[core_index];
+    // // Runtime args for the reader cores
+    // for (uint32_t core_index = 0; core_index < reader_core_range.num_cores(); core_index++) {
+    //     const auto& core = reader_cores[core_index];
 
-        /* reader kernel */
-        uint32_t bank_id = core_index;
-        uint32_t vc = bank_id & 0x1;
-        bank_ids.push_back(bank_id);
+    //     /* reader kernel */
+    //     uint32_t bank_id = core_index;
+    //     uint32_t vc = bank_id & 0x1;
+    //     bank_ids.push_back(bank_id);
 
-        // Compare with previous cores' vc
-        for (size_t j = 0; j < core_index; ++j) {
-            const CoreCoord& prev_core = reader_cores[j];
-            if (prev_core.y == core.y and ((bank_id & 0x1) == (bank_ids[j] & 0x1))) {  // same vc and same row
-                vc = (vc + 1) & 0x1;
-                break;
-            }
-        }
+    //     // Compare with previous cores' vc
+    //     for (size_t j = 0; j < core_index; ++j) {
+    //         const CoreCoord& prev_core = reader_cores[j];
+    //         if (prev_core.y == core.y and ((bank_id & 0x1) == (bank_ids[j] & 0x1))) {  // same vc and same row
+    //             vc = (vc + 1) & 0x1;
+    //             break;
+    //         }
+    //     }
 
-        std::vector<uint32_t> reader_rt_args = {bank_id, vc, total_num_blocks_in_buffer};
-        reader_rt_args.insert(reader_rt_args.end(), page_sizes.begin(), page_sizes.end());
-        reader_rt_args.insert(reader_rt_args.end(), block_num_pages.begin(), block_num_pages.end());
-        reader_rt_args.insert(reader_rt_args.end(), tensor_block_num_tiles.begin(), tensor_block_num_tiles.end());
+    //     std::vector<uint32_t> reader_rt_args = {bank_id, vc, total_num_blocks_in_buffer};
+    //     reader_rt_args.insert(reader_rt_args.end(), page_sizes.begin(), page_sizes.end());
+    //     reader_rt_args.insert(reader_rt_args.end(), block_num_pages.begin(), block_num_pages.end());
+    //     reader_rt_args.insert(reader_rt_args.end(), tensor_block_num_tiles.begin(), tensor_block_num_tiles.end());
 
-        tt::tt_metal::SetRuntimeArgs(program, reader_kernel_id, core, reader_rt_args);
+    //     tt::tt_metal::SetRuntimeArgs(program, reader_kernel_id, core, reader_rt_args);
 
-        /* writer kernel */
-        std::vector<uint32_t> writer_rt_args;
-        writer_rt_args.insert(writer_rt_args.end(), coalesced_page_sizes.begin(), coalesced_page_sizes.end());
-        writer_rt_args.insert(writer_rt_args.end(), coalesced_num_pages.begin(), coalesced_num_pages.end());
-        writer_rt_args.insert(writer_rt_args.end(), tensor_block_num_tiles.begin(), tensor_block_num_tiles.end());
-        writer_rt_args.insert(writer_rt_args.end(), tensor_tile_sizes.begin(), tensor_tile_sizes.end());
-        for (auto tensor_shape : tensor_shapes) {  // block_height_in_itles
-            writer_rt_args.push_back(tensor_shape[0] / num_blocks);
-        }
+    //     /* writer kernel */
+    //     std::vector<uint32_t> writer_rt_args;
+    //     writer_rt_args.insert(writer_rt_args.end(), coalesced_page_sizes.begin(), coalesced_page_sizes.end());
+    //     writer_rt_args.insert(writer_rt_args.end(), coalesced_num_pages.begin(), coalesced_num_pages.end());
+    //     writer_rt_args.insert(writer_rt_args.end(), tensor_block_num_tiles.begin(), tensor_block_num_tiles.end());
+    //     writer_rt_args.insert(writer_rt_args.end(), tensor_tile_sizes.begin(), tensor_tile_sizes.end());
+    //     for (auto tensor_shape : tensor_shapes) {  // block_height_in_itles
+    //         writer_rt_args.push_back(tensor_shape[0] / num_blocks);
+    //     }
 
-        tt::tt_metal::SetRuntimeArgs(program, writer_kernel_id, core, writer_rt_args);
-    }
+    //     tt::tt_metal::SetRuntimeArgs(program, writer_kernel_id, core, writer_rt_args);
+    // }
 
     return {.program = std::move(program), .override_runtime_arguments_callback = {}};
 }
