@@ -91,6 +91,8 @@ void py_module(py::module& module) {
     detail::bind_binary_ng_operation(module, ttnn::experimental::sub, "Binary Sub Operation");
     detail::bind_binary_ng_operation(module, ttnn::experimental::mul, "Binary Mul Operation");
     detail::bind_binary_ng_operation(module, ttnn::experimental::div, "Binary Div Operation");
+    detail::bind_binary_ng_operation(module, ttnn::experimental::rsub, "Binary Rsub Operation");
+    detail::bind_binary_ng_operation(module, ttnn::experimental::pow, "Binary Power Operation");
     detail::bind_binary_ng_operation(module, ttnn::experimental::gt, "Binary Greater Than Operation");
     detail::bind_binary_ng_operation(module, ttnn::experimental::lt, "Binary Less Than Operation");
     detail::bind_binary_ng_operation(module, ttnn::experimental::lte, "Binary Less Than or Equal To Operation");
@@ -106,5 +108,11 @@ void py_module(py::module& module) {
     detail::bind_binary_ng_operation(module, ttnn::experimental::ldexp, "Binary Ldexp Operation");
     detail::bind_binary_ng_operation(module, ttnn::experimental::logaddexp, "Binary Logaddexp Operation");
     detail::bind_binary_ng_operation(module, ttnn::experimental::logaddexp2, "Binary Logaddexp2 Operation");
+
+    detail::bind_binary_ng_operation(module, ttnn::experimental::bitwise_and, "Binary Logaddexp2 Operation");
+    detail::bind_binary_ng_operation(module, ttnn::experimental::bitwise_xor, "Binary Logaddexp2 Operation");
+    detail::bind_binary_ng_operation(module, ttnn::experimental::bitwise_or, "Binary Logaddexp2 Operation");
+    detail::bind_binary_ng_operation(module, ttnn::experimental::bitwise_left_shift, "Binary Logaddexp2 Operation");
+    detail::bind_binary_ng_operation(module, ttnn::experimental::bitwise_right_shift, "Binary Logaddexp2 Operation");
 }
 }  // namespace ttnn::operations::binary_ng

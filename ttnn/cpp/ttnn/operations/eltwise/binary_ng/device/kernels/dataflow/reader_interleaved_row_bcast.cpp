@@ -50,7 +50,15 @@ void kernel_main() {
                     uint32_t l1_write_addr_src = get_write_ptr(cb_id_src);
                     noc_async_read_tile(tile_offset + tw, src, l1_write_addr_src);
                     noc_async_read_barrier();
+#ifdef SFPU_F32
+                    fill_tile_with_first_row(cb_id_src);
+#endif
+#ifdef SFPU_INT32
+                    fill_tile_with_first_row(cb_id_src);
+#endif
+#ifdef FPU_BF16
                     fill_tile_with_first_row_bfloat16(cb_id_src);
+#endif
                     cb_push_back(cb_id_src, onetile);
                 }
             }

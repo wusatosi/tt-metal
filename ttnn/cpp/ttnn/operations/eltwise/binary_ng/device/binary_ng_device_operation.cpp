@@ -8,6 +8,42 @@ using namespace tt::tt_metal;
 
 namespace ttnn::operations::binary_ng {
 
+namespace utils {
+bool is_binary_sfpu_op(BinaryOpType val, DataType a, DataType b) {
+    switch (val) {
+        case BinaryOpType::ADD:
+            return (
+                (a == DataType::FLOAT32 && b == DataType::FLOAT32) || (a == DataType::INT32 && b == DataType::INT32));
+        case BinaryOpType::SUB:
+        case BinaryOpType::MUL:
+        case BinaryOpType::DIV:
+        case BinaryOpType::RSUB:
+        case BinaryOpType::LOGADDEXP:
+        case BinaryOpType::LOGADDEXP2:
+        case BinaryOpType::LDEXP:
+        case BinaryOpType::SQUARED_DIFFERENCE:
+        case BinaryOpType::LOGICAL_OR:
+        case BinaryOpType::LOGICAL_XOR:
+        case BinaryOpType::LOGICAL_AND:
+        case BinaryOpType::BIAS_GELU:
+        case BinaryOpType::GT:
+        case BinaryOpType::LT:
+        case BinaryOpType::GTE:
+        case BinaryOpType::LTE:
+        case BinaryOpType::EQ:
+        case BinaryOpType::NE: return (a == DataType::FLOAT32 && b == DataType::FLOAT32);
+        case BinaryOpType::LEFT_SHIFT:
+        case BinaryOpType::RIGHT_SHIFT:
+        case BinaryOpType::BITWISE_XOR:
+        case BinaryOpType::BITWISE_AND:
+        case BinaryOpType::BITWISE_OR: return (a == DataType::INT32 && b == DataType::INT32);
+        case BinaryOpType::POWER: return true;
+        default: return false;
+    }
+    return false;
+}
+}  // namespace utils
+
 SubtileBroadcastType get_subtile_broadcast_type(uint32_t a_h, uint32_t a_w, uint32_t b_h, uint32_t b_w) {
     if (a_h == b_h && a_w == b_w) {
         return SubtileBroadcastType::NONE;
@@ -49,7 +85,9 @@ tt::stl::hash::hash_t BinaryNgDeviceOperation::operation_attributes_t::to_hash()
         memory_config,
         get_dtype(),
         compute_kernel_config,
-        subtile_broadcast_type);
+        subtile_broadcast_type,
+        is_sfpu);
+    // should is_sfpu attribute be a part of this hash fn ?
 }
 
 DataType BinaryNgDeviceOperation::operation_attributes_t::get_dtype() const {
@@ -216,6 +254,12 @@ BinaryNgDeviceOperation::invoke(
         input_tensor_b_arg.get_logical_shape()[-2],
         input_tensor_b_arg.get_logical_shape()[-1]);
 
+    DataType dtype1 = input_tensor_a_arg.get_dtype();
+    DataType dtype2 = input_tensor_a_arg.get_dtype();
+    bool device_check = input_tensor_a_arg.device()->arch() != tt::ARCH::GRAYSKULL;
+    bool is_sfpu_op = (utils::is_binary_sfpu_op(binary_op_type, dtype1, dtype2) && device_check);
+    std::cout << "is sfpu device op? " << is_sfpu_op << std::endl;
+
     return {
         operation_attributes_t{
             binary_op_type,
@@ -227,7 +271,8 @@ BinaryNgDeviceOperation::invoke(
             input_tensor_a_arg.get_dtype(),
             output_dtype,
             std::nullopt,
-            subtile_broadcast_type},
+            subtile_broadcast_type,
+            is_sfpu_op},
         tensor_args_t{input_tensor_a_arg, input_tensor_b_arg, std::move(optional_output_tensor)}};
 }
 
@@ -242,6 +287,9 @@ BinaryNgDeviceOperation::invoke(
     tt::stl::Span<const unary::UnaryOpType> lhs_activations,
     tt::stl::Span<const unary::UnaryOpType> rhs_activations,
     tt::stl::Span<const unary::UnaryOpType> post_activations) {
+    DataType dtype1 = input_tensor_a_arg.get_dtype();
+    bool device_check = input_tensor_a_arg.device()->arch() != tt::ARCH::GRAYSKULL;
+    bool is_sfpu_op = (utils::is_binary_sfpu_op(binary_op_type, dtype1, dtype1) && device_check);
     return {
         operation_attributes_t{
             binary_op_type,
@@ -252,7 +300,9 @@ BinaryNgDeviceOperation::invoke(
             memory_config.value_or(input_tensor_a_arg.memory_config()),
             input_tensor_a_arg.get_dtype(),
             output_dtype,
-            std::nullopt},
+            std::nullopt,
+            SubtileBroadcastType::NONE,
+            is_sfpu_op},
         tensor_args_t{input_tensor_a_arg, std::nullopt, std::move(optional_output_tensor)}};
 }
 

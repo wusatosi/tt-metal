@@ -39,7 +39,16 @@ void kernel_main() {
 
     // we only need to fill a tile with the scalar value once
     cb_reserve_back(cb_id_src, onetile);
+#ifdef SFPU_F32
+    float* float_ptr = reinterpret_cast<float*>(&packed_scalar);
+    fill_with_val<1024, float>(cb_id_src, *float_ptr);
+#endif
+#ifdef SFPU_INT32
+    fill_with_val<1024, int32_t>(cb_id_src, packed_scalar);
+#endif
+#ifdef FPU_BF16
     fill_with_val_bfloat16(cb_id_src, packed_scalar);
+#endif
     cb_push_back(cb_id_src, onetile);
 
     uint32_t num_tiles_written = 0;
