@@ -171,7 +171,7 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
 
 // Need a Shard orientation equivalent here to figure out the order in which data is written to devices.
 // Allows for replication/sharding of data in logical x/y to arbitary device x/y/
-void MeshCommandQueue::write_sharded_buffer(MeshBuffer& buffer, const void* src) {
+void MeshCommandQueue::write_sharded_buffer(MeshBuffer& buffer, const void* src, const std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES>& expected_num_workers_completed, tt::stl::Span<const SubDeviceId> sub_device_ids) {
     auto global_buffer_shape = buffer.global_shard_spec().global_buffer_shape;
     auto global_buffer_size = buffer.global_shard_spec().global_buffer_size;
 
@@ -203,17 +203,7 @@ void MeshCommandQueue::write_sharded_buffer(MeshBuffer& buffer, const void* src)
                 size_to_read -= single_read_size;
                 local_offset++;
             }
-            if (std::get<1>(replicated_dims)) {
-                for (auto replicated_device_y = 0 ; replicated_device_y < num_devices_y; replicated_device_y++) {
-                    std::cout << "Replicate to: " << device_x << " " << replicated_device_y << std::endl;
-                }
-                device_x++;
-            } else {
-                std::cout << "Write to: " << device_x << " " << device_y << std::endl;
-                device_x = (device_x + 1) % num_devices_x;
-                if (device_x == 0) device_y++;
-            }
-            
+
             // Write shard to device here.
             // If replicated, check the shard orientation and copy data across the opposite orientation.
             // for (auto device : devices to replicate)
@@ -228,17 +218,50 @@ void MeshCommandQueue::write_sharded_buffer(MeshBuffer& buffer, const void* src)
             //     device_y = (device_y + 1) % num_devices_y
             //     if (device_y == 0) device_x++;
             // }
-            std::cout << "======= Shard data ========" << std::endl;
-            for (int i = 0; i < shard_data.size(); i++) {
-                if (i % std::get<0>(shard_shape) == 0) {
-                    std::cout << std::endl;
+            // std::cout << "======= Shard data ========" << std::endl;
+            // for (int i = 0; i < shard_data.size(); i++) {
+            //     if (i % std::get<0>(shard_shape) == 0) {
+            //         std::cout << std::endl;
+            //     }
+            //     std::cout << shard_data[i] << " ";
+            // }
+            // std::cout << std::endl;
+
+            if (std::get<1>(replicated_dims)) {
+                for (auto replicated_device_y = 0; replicated_device_y < num_devices_y; replicated_device_y++) {
+                    std::cout << "Replicate to: " << device_x << " " << replicated_device_y << std::endl;
+                    auto device_shard_view = buffer.get_shard_buffer(device_x, replicated_device_y);
+                    this->write_shard_to_device(device_shard_view, shard_data.data(), expected_num_workers_completed, sub_device_ids);
                 }
-                std::cout << shard_data[i] << " ";
+                device_x++;
+            } else {
+                std::cout << "Write to: " << device_x << " " << device_y << std::endl;
+                auto device_shard_view = buffer.get_shard_buffer(device_x, device_y);
+                this->write_shard_to_device(device_shard_view, shard_data.data(), expected_num_workers_completed, sub_device_ids);
+                std::cout << "Done write" << std::endl;
+                if (buffer.global_shard_spec().mesh_shard_orientation == ShardOrientation::ROW_MAJOR) {
+                    device_x = (device_x + 1) % num_devices_x;
+                    if (device_x == 0) device_y++;
+                } else {
+                    device_y = (device_y + 1) % num_devices_y;
+                    if (device_y == 0) device_x++;
+                }
             }
-            std::cout << std::endl;
         }
     }
+}
 
+void MeshCommandQueue::write_shard_to_device(std::shared_ptr<Buffer>& shard_view, const void* src, const std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES>& expected_num_workers_completed, tt::stl::Span<const SubDeviceId> sub_device_ids) {
+    if (is_sharded(shard_view->buffer_layout())) {
+        buffer_utils::ShardedBufferDispatchParams dispatch_params = buffer_utils::initialize_sharded_buf_dispatch_params(*shard_view, id_, expected_num_workers_completed);
+        const auto cores = buffer_utils::get_cores_for_sharded_buffer(dispatch_params, *shard_view);
+        for (uint32_t core_id = 0; core_id < shard_view->num_cores(); ++core_id) {
+            buffer_utils::write_sharded_buffer_to_core(src, core_id, *shard_view, dispatch_params, buf_dispatch_constants_, sub_device_ids, cores);
+        }
+    } else {
+        auto dispatch_params = buffer_utils::initialize_interleaved_buf_dispatch_params(*shard_view, buf_dispatch_constants_, id_, expected_num_workers_completed);
+        buffer_utils::write_interleaved_buffer_to_device(src, dispatch_params, *shard_view, buf_dispatch_constants_, sub_device_ids);
+    }
 }
 
 void MeshCommandQueue::enqueue_write_to_sub_grid(MeshBuffer& buffer, const void* src, bool blocking, const LogicalDeviceRange& device_range) {
@@ -248,28 +271,14 @@ void MeshCommandQueue::enqueue_write_to_sub_grid(MeshBuffer& buffer, const void*
     expected_num_workers_completed[0] = expected_num_workers_completed_;
 
     if (buffer.global_layout() == MeshBufferLayout::REPLICATED) {
-        if (is_sharded(buffer.device_local_layout().buffer_layout)) {
-            for (std::size_t logical_x = device_range.start_coord.x; logical_x < device_range.end_coord.x; logical_x++) {
-                for (std::size_t logical_y = device_range.start_coord.y; logical_y < device_range.end_coord.y; logical_y++) {
-                    auto device_shard_view = buffer.get_shard_buffer(logical_x, logical_y);
-                    buffer_utils::ShardedBufferDispatchParams dispatch_params = buffer_utils::initialize_sharded_buf_dispatch_params(*device_shard_view, id_, expected_num_workers_completed);
-                    const auto cores = buffer_utils::get_cores_for_sharded_buffer(dispatch_params, *device_shard_view);
-                    for (uint32_t core_id = 0; core_id < device_shard_view->num_cores(); ++core_id) {
-                        buffer_utils::write_sharded_buffer_to_core(src, core_id, *device_shard_view, dispatch_params, buf_dispatch_constants_, sub_device_ids, cores);
-                    }
-                }
-            }
-        } else {
-            for (std::size_t logical_x = device_range.start_coord.x; logical_x < device_range.end_coord.x; logical_x++) {
-                for (std::size_t logical_y = device_range.start_coord.y; logical_y < device_range.end_coord.y; logical_y++) {
-                    auto device_shard_view = buffer.get_shard_buffer(logical_x, logical_y);
-                    auto dispatch_params = buffer_utils::initialize_interleaved_buf_dispatch_params(*device_shard_view, buf_dispatch_constants_, id_, expected_num_workers_completed);
-                    buffer_utils::write_interleaved_buffer_to_device(src, dispatch_params, *device_shard_view, buf_dispatch_constants_, sub_device_ids);
-                }
+        for (std::size_t logical_x = device_range.start_coord.x; logical_x < device_range.end_coord.x; logical_x++) {   
+            for (std::size_t logical_y = device_range.start_coord.y; logical_y < device_range.end_coord.y; logical_y++) {
+                auto device_shard_view = buffer.get_shard_buffer(logical_x, logical_y);
+                this->write_shard_to_device(device_shard_view, src, expected_num_workers_completed, sub_device_ids);
             }
         }
     } else {
-        TT_FATAL(false, "Writing to a Sharded MeshBuffer is not currently supported.");
+        this->write_sharded_buffer(buffer, src, expected_num_workers_completed, sub_device_ids);
     }
     if (blocking) {
         this->finish();

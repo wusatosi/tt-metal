@@ -49,9 +49,11 @@ struct ShardedBufferConfig {
     // Global buffer size. Each device will get a fraction of this size.
     DeviceAddr global_buffer_size;
     // The shape of each shard sent to each device - used to determine the data-distribution scheme
-    std::pair<size_t, size_t> shard_shape = {0, 0};
+    std::pair<size_t, size_t> shard_shape = {0, 0}; // std::optional<std::size_t>
     // Global shape of the buffer; at metal-level, we expect the shape to be aligned with the mesh shape.
     std::pair<size_t, size_t> global_buffer_shape = {0, 0};
+    // Determines whether shards are written to devices across Mesh in Row or Col major order
+    ShardOrientation mesh_shard_orientation = ShardOrientation::ROW_MAJOR;
     // Specifies how each replicated shard is laid out across Memory Banks on a single device
     DeviceLocalLayoutConfig device_shard_layout;
 };

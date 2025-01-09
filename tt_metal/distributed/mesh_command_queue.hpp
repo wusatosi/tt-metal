@@ -7,6 +7,7 @@
 #include "mesh_buffer.hpp"
 #include "mesh_device.hpp"
 #include "mesh_workload.hpp"
+#include "tt_metal/impl/dispatch/command_queue_interface.hpp"
 
 namespace tt::tt_metal::distributed {
 
@@ -21,6 +22,8 @@ private:
     void populate_dispatch_core_type();
     CoreCoord virtual_program_dispatch_core() const;
     CoreType dispatch_core_type() const;
+    void write_shard_to_device(std::shared_ptr<Buffer>& shard_view, const void* src, const std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES>& expected_num_workers_completed, tt::stl::Span<const SubDeviceId> sub_device_ids);
+    void write_sharded_buffer(MeshBuffer& buffer, const void* src, const std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES>& expected_num_workers_completed, tt::stl::Span<const SubDeviceId> sub_device_ids);
     tt::tt_metal::WorkerConfigBufferMgr config_buffer_mgr_;
     LaunchMessageRingBufferState worker_launch_message_buffer_state_;
     uint32_t expected_num_workers_completed_ = 0;
@@ -38,7 +41,6 @@ public:
     void enqueue_write_mesh_buffer(MeshBuffer& buffer, const void* src, bool blocking);
     void enqueue_write_to_sub_grid(MeshBuffer& buffer, const void* src, bool blocking, const LogicalDeviceRange& device_range);
     void enqueue_mesh_workload(MeshWorkload& mesh_workload, bool blocking);
-    void write_sharded_buffer(MeshBuffer& buffer, const void* src);
     void finish();
 };
 

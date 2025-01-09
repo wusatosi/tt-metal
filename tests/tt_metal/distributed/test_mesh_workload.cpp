@@ -1008,8 +1008,8 @@ TEST_F(MeshDevice_T3000, TestSharding) {
         .bottom_up = true
     };
 
-    std::pair<std::size_t, std::size_t> global_buffer_shape = {256, 32};
-    std::pair<std::size_t, std::size_t> shard_shape = {64, 0};
+    std::pair<std::size_t, std::size_t> global_buffer_shape = {32, 256};// {32, 256}; // {256, 32};
+    std::pair<std::size_t, std::size_t> shard_shape =  {32, 32}; // {64, 0};
     uint32_t global_buffer_size = std::get<0>(global_buffer_shape) * std::get<1>(global_buffer_shape) * sizeof(uint32_t);
     
     ShardedBufferConfig sharded_config {
@@ -1017,6 +1017,7 @@ TEST_F(MeshDevice_T3000, TestSharding) {
         .global_buffer_size = global_buffer_size,
         .shard_shape = shard_shape,
         .global_buffer_shape = global_buffer_shape,
+        .mesh_shard_orientation = ShardOrientation::COL_MAJOR,
         .device_shard_layout = per_device_buffer_config
     };
 
@@ -1026,7 +1027,23 @@ TEST_F(MeshDevice_T3000, TestSharding) {
     for (int i = 0; i < src.size(); i++) {
         src[i] = i;
     }
-    mesh_device_->command_queue().write_sharded_buffer(*mesh_buffer, src.data());
+    mesh_device_->command_queue().enqueue_write_mesh_buffer(*mesh_buffer, src.data(), true);
+
+    for (std::size_t logical_x = 0; logical_x < mesh_buffer->mesh_device()->num_cols(); logical_x++) {
+        for (std::size_t logical_y = 0; logical_y < mesh_buffer->mesh_device()->num_rows(); logical_y++) {
+            auto shard = mesh_buffer->get_shard_buffer(logical_x, logical_y);
+            std::vector<uint32_t> dst_vec = {};
+            std::cout << "Read from: " <<  logical_x << " " << logical_y << std::endl;
+            EnqueueReadBuffer(shard->device()->command_queue(), *shard, dst_vec, true);
+            for (int i = 0; i < shard->size() / 4; i++) {
+                if (i % std::get<0>(shard_shape) == 0) {
+                    std::cout << std::endl;
+                }
+                std::cout << dst_vec[i] << " ";
+            }
+            std::cout << std::endl;
+        }
+    }
 }
 
 TEST_F(MeshDevice_T3000, TestReplicatedInterleavedDRAMMeshBuffer) {
