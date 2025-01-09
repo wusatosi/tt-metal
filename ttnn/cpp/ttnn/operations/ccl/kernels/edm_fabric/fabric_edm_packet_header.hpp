@@ -19,21 +19,18 @@ enum TerminationSignal : uint32_t {
     IMMEDIATELY_TERMINATE = 2
 };
 
-// 2 bits
-enum CommandType : uint8_t {
-    WRITE = 0,
-    ATOMIC_INC = 1
-};
-
 // How to send the payload across the cluster
 // 1 bit
 enum ChipSendType : uint8_t {
     CHIP_UNICAST = 0,
     CHIP_MULTICAST = 1,
 };
+// 2 bits
 enum NocSendType : uint8_t {
-    NOC_UNICAST = 0,
-    NOC_MULTICAST = 1
+    NOC_UNICAST_WRITE = 0,
+    NOC_UNICAST_ATOMIC_INC = 1,
+    NOC_MULTICAST_WRITE = 2,
+    NOC_MULTICAST_ATOMIC_INC = 3,
 };
 
 
@@ -115,10 +112,9 @@ struct PacketHeader {
     //   -> unicast_write, mcast_write, unicast_seminc, mcast_seminc
     // For now, kept it separate so I could do reads which would be handled differently
     // but for our purposes we shouldn't need read so we should be able to omit the support
-    CommandType command_type : 2;
     ChipSendType chip_send_type : 1;
-    NocSendType noc_send_type : 1;
-    uint8_t reserved : 4;
+    NocSendType noc_send_type : 2;
+    uint8_t reserved : 5;
 
     RoutingFields routing_fields;
     uint16_t reserved2; // can be tagged with src device for debug
@@ -137,27 +133,23 @@ struct PacketHeader {
     uint32_t padding2;
     uint32_t padding3;
 
-    inline void set_command_type(CommandType &type) { this->command_type = type; }
     inline void set_chip_send_type(ChipSendType &type) { this->chip_send_type = type; }
     inline void set_noc_send_type(NocSendType &type) { this->noc_send_type = type; }
     inline void set_routing_fields(RoutingFields &fields) { this->routing_fields = fields; }
     inline void set_command_fields(CommandFields &fields) { this->command_fields = fields; }
 
     size_t get_payload_size_excluding_header() volatile const {
-        switch(this->command_type) {
-            case WRITE: {
-                switch(this->noc_send_type) {
-                    case NOC_UNICAST: {
-                        return this->command_fields.unicast_write.size - sizeof(PacketHeader);
-                    } break;
-                    case NOC_MULTICAST: {
-                        return this->command_fields.mcast_write.size - sizeof(PacketHeader);
-                    } break;
-                    default:
-                        return 0;
-                }
+        switch(this->noc_send_type) {
+            case NOC_UNICAST_WRITE: {
+                return this->command_fields.unicast_write.size - sizeof(PacketHeader);
             } break;
-            case ATOMIC_INC: {
+            case NOC_MULTICAST_WRITE: {
+                return this->command_fields.mcast_write.size - sizeof(PacketHeader);
+            } break;
+            case NOC_UNICAST_ATOMIC_INC: {
+                return 0;
+            } break;
+            case NOC_MULTICAST_ATOMIC_INC: {
                 return 0;
             } break;
             default:
@@ -167,9 +159,9 @@ struct PacketHeader {
     inline size_t get_payload_size_including_header() volatile const {
         return get_payload_size_excluding_header() + sizeof(PacketHeader);
     }
-
-    inline PacketHeader& to_write() { this->command_type = WRITE; return *this; }
-    inline PacketHeader& to_atomic_inc() { this->command_type = ATOMIC_INC; return *this; }
+    // TODO: Potentially get rid of this? Currently only one user
+    inline PacketHeader& to_write() { this->noc_send_type = static_cast<NocSendType>(static_cast<uint8_t>(this->noc_send_type) & ~0b1); return *this; }
+    inline PacketHeader& to_atomic_inc() { this->noc_send_type = static_cast<NocSendType>(static_cast<uint8_t>(this->noc_send_type) | 0b1); return *this; }
 
     inline PacketHeader &to_chip_unicast(UnicastRoutingCommandHeader const &chip_unicast_command_header) {
         this->chip_send_type = CHIP_UNICAST;
@@ -181,30 +173,31 @@ struct PacketHeader {
         this->routing_fields.chip_mcast = chip_multicast_command_header;
         return *this;
     }
-    inline PacketHeader &to_noc_unicast(NocUnicastCommandHeader const &noc_unicast_command_header) {
-        this->noc_send_type = NOC_UNICAST;
+    inline PacketHeader &to_noc_unicast_write(NocUnicastCommandHeader const &noc_unicast_command_header) {
+        this->noc_send_type = NOC_UNICAST_WRITE;
         this->command_fields.unicast_write = noc_unicast_command_header;
         return *this;
     }
-    inline PacketHeader &to_noc_multicast(NocMulticastCommandHeader const &noc_multicast_command_header) {
-        this->noc_send_type = NOC_MULTICAST;
+    inline PacketHeader &to_noc_multicast_write(NocMulticastCommandHeader const &noc_multicast_command_header) {
+        this->noc_send_type = NOC_MULTICAST_WRITE;
         this->command_fields.mcast_write = noc_multicast_command_header;
         return *this;
     }
     inline PacketHeader &to_noc_unicast_atomic_inc(
         NocUnicastAtomicIncCommandHeader const &noc_unicast_atomic_inc_command_header) {
-        this->noc_send_type = NOC_UNICAST;
+        this->noc_send_type = NOC_UNICAST_ATOMIC_INC;
         this->command_fields.unicast_seminc = noc_unicast_atomic_inc_command_header;
         return *this;
     }
     inline PacketHeader &to_noc_multicast_atomic_inc(
         NocMulticastAtomicIncCommandHeader const &noc_multicast_atomic_inc_command_header) {
-        this->noc_send_type = NOC_MULTICAST;
+        this->noc_send_type = NOC_MULTICAST_ATOMIC_INC;
         this->command_fields.mcast_seminc = noc_multicast_atomic_inc_command_header;
         return *this;
     }
-    inline volatile PacketHeader* to_write() volatile { this->command_type = WRITE; return this; }
-    inline volatile PacketHeader* to_atomic_inc() volatile { this->command_type = ATOMIC_INC; return this; }
+    // TODO: Potentially get rid of this? Currently only one user
+    inline volatile PacketHeader* to_write() volatile { this->noc_send_type = static_cast<NocSendType>(static_cast<uint8_t>(this->noc_send_type) & ~0b1); return this; }
+    inline volatile PacketHeader* to_atomic_inc() volatile { this->noc_send_type = static_cast<NocSendType>(static_cast<uint8_t>(this->noc_send_type) | 0b1); return this; }
 
     inline volatile PacketHeader *to_chip_unicast(UnicastRoutingCommandHeader const &chip_unicast_command_header) volatile {
         this->chip_send_type = CHIP_UNICAST;
@@ -217,8 +210,8 @@ struct PacketHeader {
         this->routing_fields.chip_mcast.start_distance_in_hops = chip_multicast_command_header.start_distance_in_hops;
         return this;
     }
-    inline volatile PacketHeader *to_noc_unicast(NocUnicastCommandHeader const &noc_unicast_command_header) volatile {
-        this->noc_send_type = NOC_UNICAST;
+    inline volatile PacketHeader *to_noc_unicast_write(NocUnicastCommandHeader const &noc_unicast_command_header) volatile {
+        this->noc_send_type = NOC_UNICAST_WRITE;
         this->command_fields.unicast_write.address = noc_unicast_command_header.address;
         this->command_fields.unicast_write.size = noc_unicast_command_header.size;
         this->command_fields.unicast_write.noc_x = noc_unicast_command_header.noc_x;
@@ -226,8 +219,8 @@ struct PacketHeader {
 
         return this;
     }
-    inline volatile PacketHeader *to_noc_multicast(NocMulticastCommandHeader const &noc_multicast_command_header) volatile {
-        this->noc_send_type = NOC_MULTICAST;
+    inline volatile PacketHeader *to_noc_multicast_write(NocMulticastCommandHeader const &noc_multicast_command_header) volatile {
+        this->noc_send_type = NOC_MULTICAST_WRITE;
         this->command_fields.mcast_write.mcast_rect_size_x = noc_multicast_command_header.mcast_rect_size_x;
         this->command_fields.mcast_write.mcast_rect_size_y = noc_multicast_command_header.mcast_rect_size_y;
         this->command_fields.mcast_write.noc_x_start = noc_multicast_command_header.noc_x_start;
@@ -239,7 +232,7 @@ struct PacketHeader {
     }
     inline volatile PacketHeader *to_noc_unicast_atomic_inc(
         NocUnicastAtomicIncCommandHeader const &noc_unicast_atomic_inc_command_header) volatile {
-        this->noc_send_type = NOC_UNICAST;
+        this->noc_send_type = NOC_UNICAST_ATOMIC_INC;
         this->command_fields.unicast_seminc.address = noc_unicast_atomic_inc_command_header.address;
         this->command_fields.unicast_seminc.noc_x = noc_unicast_atomic_inc_command_header.noc_x;
         this->command_fields.unicast_seminc.noc_y = noc_unicast_atomic_inc_command_header.noc_y;
@@ -250,7 +243,7 @@ struct PacketHeader {
     }
     inline volatile PacketHeader *to_noc_multicast_atomic_inc(
         NocMulticastAtomicIncCommandHeader const &noc_multicast_atomic_inc_command_header) volatile {
-        this->noc_send_type = NOC_MULTICAST;
+        this->noc_send_type = NOC_MULTICAST_ATOMIC_INC;
         this->command_fields.mcast_seminc.address = noc_multicast_atomic_inc_command_header.address;
         this->command_fields.mcast_seminc.noc_x_start = noc_multicast_atomic_inc_command_header.noc_x_start;
         this->command_fields.mcast_seminc.noc_y_start = noc_multicast_atomic_inc_command_header.noc_y_start;
