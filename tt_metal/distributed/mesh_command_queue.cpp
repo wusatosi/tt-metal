@@ -169,10 +169,25 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
     }
 }
 
+// Need a Shard orientation equivalent here to figure out the order in which data is written to devices.
+// Allows for replication/sharding of data in logical x/y to arbitary device x/y/
 void MeshCommandQueue::write_sharded_buffer(MeshBuffer& buffer, const void* src) {
     auto global_buffer_shape = buffer.global_shard_spec().global_buffer_shape;
     auto global_buffer_size = buffer.global_shard_spec().global_buffer_size;
-    auto shard_shape = buffer.global_shard_spec().shard_shape;
+    auto shard_shape_ = buffer.global_shard_spec().shard_shape;
+
+    bool replicate_x = (std::get<0>(shard_shape_) == 0);
+    bool replicate_y = (std::get<1>(shard_shape_) == 0);
+
+    auto shard_shape = shard_shape_;
+    // User passed in a 0. Based on sharding semantics, this means that the dimension must be replicated
+    if (replicate_x) {
+        std::get<0>(shard_shape) = std::get<0>(global_buffer_shape);
+    }
+    if (replicate_y) {
+        std::get<1>(shard_shape) = std::get<1>(global_buffer_shape);
+    }
+
     auto datum_size_bytes = global_buffer_size / (std::get<0>(global_buffer_shape) * std::get<1>(global_buffer_shape));
 
     auto stride_size_bytes = datum_size_bytes * std::get<0>(global_buffer_shape);
@@ -183,13 +198,9 @@ void MeshCommandQueue::write_sharded_buffer(MeshBuffer& buffer, const void* src)
     auto num_shards_y = std::get<1>(global_buffer_shape) / std::get<1>(shard_shape);
 
     uint32_t shard_index = 0;
-    LogicalDeviceRange device_range({0, 0}, {buffer.mesh_device()->num_cols(), buffer.mesh_device()->num_rows()});
     std::vector<uint32_t> shard_data = std::vector<uint32_t>(total_read_size_per_shard / sizeof(uint32_t), 0);
-    for (std::size_t logical_x = device_range.start_coord.x; logical_x < device_range.end_coord.x; logical_x++) {
-        for (std::size_t logical_y = device_range.start_coord.y; logical_y < device_range.end_coord.y; logical_y++) {
-            uint32_t shard_x = shard_index % num_shards_x;
-            uint32_t shard_y = shard_index / num_shards_x;
-            // std::cout << shard_x << " " << shard_y << std::endl;
+    for (std::size_t shard_y = 0; shard_y < num_shards_y; shard_y++) {
+        for (std::size_t shard_x = 0; shard_x < num_shards_x; shard_x++) {
             auto read_offset = shard_x * single_read_size + shard_y * stride_size_bytes * std::get<1>(shard_shape);
             uint32_t size_to_read = total_read_size_per_shard;
             uint32_t local_offset = 0;
@@ -198,6 +209,20 @@ void MeshCommandQueue::write_sharded_buffer(MeshBuffer& buffer, const void* src)
                 size_to_read -= single_read_size;
                 local_offset++;
             }
+            // Write shard to device here.
+            // If replicated, check the shard orientation and copy data across the opposite orientation.
+            // for (auto device : devices to replicate)
+                // write_shard();
+            
+            // Device index updated according to shard orientation.
+            
+            // if (row_major_write) {
+            //     device_x = (device_x + 1) % num_devices_x
+            //     if (device_x == 0) device_y++;
+            // } else {
+            //     device_y = (device_y + 1) % num_devices_y
+            //     if (device_y == 0) device_x++;
+            // }
             std::cout << "======= Shard data ========" << std::endl;
             for (int i = 0; i < shard_data.size(); i++) {
                 if (i % std::get<0>(shard_shape) == 0) {
@@ -205,6 +230,7 @@ void MeshCommandQueue::write_sharded_buffer(MeshBuffer& buffer, const void* src)
                 }
                 std::cout << shard_data[i] << " ";
             }
+            std::cout << std::endl;
             shard_index++;
         }
     }
