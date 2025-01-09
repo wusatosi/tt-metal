@@ -163,7 +163,7 @@ class TtModelArgs:
         else:
             local_params = "UNKNOWN"
             self.model_name = "Unknown"
-            logger.warning(f"Unsupported model: {LLAMA_DIR}")
+            logger.warning(f"Unknown model: {LLAMA_DIR}")
 
         if callable(optimizations):
             self.optimizations = optimizations(self.model_name)
@@ -656,6 +656,10 @@ class TtModelArgs:
             self.is_2d_fracturing = all([dim > 1 for dim in self.mesh_device.shape]) if self.mesh_device else False
             self.is_multichip = self.num_devices > 1
 
+            print(f"attn_input_grid: {attn_input_grid}")
+            print(f"mlp_core_grid: {mlp_core_grid}")
+            print(f"lm_head_core_grid: {self.lm_head_core_grid}")
+
     def is_distributed_norm(self, mode):
         if not self.is_multichip:
             return False
@@ -771,8 +775,11 @@ class TtModelArgs:
             self.multiple_of = params["multiple_of"]
             self.hidden_dim = calculate_hidden_dim(self.dim, self.ffn_dim_multiplier, self.multiple_of)
 
-        # Pad hidden dim to multiple of tile size * num_devices * 8 coresas MLP shards in this dimension
-        self.hidden_dim = nearest_multiple(self.hidden_dim, 8 * self.tile_size * self.num_devices)
+        # Pad hidden dim to multiple of tile size * num_devices * 8 cores as MLP shards in this dimension
+        padded_hidden_dim = nearest_multiple(self.hidden_dim, 16 * self.tile_size * self.num_devices)
+        if padded_hidden_dim != self.hidden_dim:
+            print(f"padding hidden dim from {self.hidden_dim} to {padded_hidden_dim}")
+            self.hidden_dim = padded_hidden_dim
 
         # RoPE params
         self.rope_theta = params.get("rope_theta")
