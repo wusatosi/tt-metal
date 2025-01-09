@@ -135,22 +135,37 @@ class LMHead(LightweightModule):
                 memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
                 dtype=ttnn.bfloat8_b,
             )
-            outputs.append(ttnn.sharded_to_interleaved(output, memory_config=ttnn.L1_MEMORY_CONFIG))
+            # outputs.append(ttnn.sharded_to_interleaved(output, memory_config=ttnn.L1_MEMORY_CONFIG))
 
         # Concatenate the outputs
-        output = ttnn.concat(outputs, dim=-1, memory_config=ttnn.L1_MEMORY_CONFIG)
+        # output = ttnn.concat(outputs, dim=-1, memory_config=ttnn.L1_MEMORY_CONFIG)
 
-        output = tt_all_reduce(
+        # output = tt_all_reduce(
+        #     output,
+        #     mesh_device=self.mesh_device,
+        #     cluster_axis=1,
+        #     dim=3 if self.args.is_galaxy else 0,
+        #     num_reduce_scatter_links=self.args.num_reduce_scatter_links,
+        #     num_all_gather_links=self.args.num_all_gather_links,
+        #     memory_config=ttnn.L1_MEMORY_CONFIG,
+        #     dtype=self.args.ccl_dtype,
+        #     sharded=False,
+        #     use_composite=True,
+        # )
+        output_torch = ttnn.to_torch(
             output,
-            mesh_device=self.mesh_device,
-            cluster_axis=1,
-            dim=3 if self.args.is_galaxy else 0,
-            num_reduce_scatter_links=self.args.num_reduce_scatter_links,
-            num_all_gather_links=self.args.num_all_gather_links,
-            memory_config=ttnn.L1_MEMORY_CONFIG,
-            dtype=self.args.ccl_dtype,
-            sharded=False,
-            use_composite=True,
+            mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(3, 0), mesh_shape=(8, 4)),
         )
 
+        output_torch_reduced = torch.sum(w3_out_torch, dim=0, keepdim=True)
+        output = ttnn.as_tensor(
+            output_torch_reduced,
+            dtype=ttnn.bfloat8_b,
+            device=self.mesh_device,
+            mesh_mapper=ttnn.ShardTensor2dMesh(
+                mesh_device=self.mesh_device, dims=(3, None), mesh_shape=list(self.mesh_device.shape)
+            ),
+            layout=ttnn.TILE_LAYOUT,
+            memory_config=ttnn.L1_MEMORY_CONFIG,
+        )
         return output
