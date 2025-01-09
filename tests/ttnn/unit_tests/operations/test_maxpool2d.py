@@ -71,7 +71,7 @@ def run_max_pool(
             pytest.skip("This case runs out of memory on Grayskull")
         if kernel_h > 3 and kernel_w > 3 and act_shape == [16, 64, 112, 112] and is_grayskull():
             pytest.skip("This case runs out of memory on Grayskull")
-        if kernel_size == (13, 13) and act_shape == [128, 32, 132, 20] and is_grayskull():
+        if kernel_size == (13, 13) and (act_shape == [128, 32, 132, 20] or in_c > 512) and is_grayskull():
             pytest.skip("This case runs out of memory on Grayskull")
         if kernel_h > 5 and kernel_w > 5 and act_shape == [16, 64, 112, 112] and is_x2_harvested(device):
             pytest.skip("This case runs out of memory on Wormhole X2")
