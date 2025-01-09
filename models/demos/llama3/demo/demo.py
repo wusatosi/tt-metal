@@ -884,6 +884,50 @@ def run_llama3_demo(
             {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params  # TODO This will be serviced by vLLM
             {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
         ),
+        (  # Batch-2 run (Throughput) - 2 users, small prompt
+            "models/demos/llama3/demo/input_data_questions_prefill_128.json",  # input_prompts
+            True,  # instruct mode
+            1,  # repeat_batches
+            1024,  # max_seq_len
+            2,  # batch_size
+            200,  # max_generated_tokens
+            True,  # paged_attention
+            {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params  # TODO This will be serviced by vLLM
+            {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
+        ),
+        (  # Batch-4 run (Throughput) - 4 users, small prompt
+            "models/demos/llama3/demo/input_data_questions_prefill_128.json",  # input_prompts
+            True,  # instruct mode
+            1,  # repeat_batches
+            1024,  # max_seq_len
+            4,  # batch_size
+            200,  # max_generated_tokens
+            True,  # paged_attention
+            {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params  # TODO This will be serviced by vLLM
+            {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
+        ),
+        (  # Batch-8 run (Throughput) - 8 users, small prompt
+            "models/demos/llama3/demo/input_data_questions_prefill_128.json",  # input_prompts
+            True,  # instruct mode
+            1,  # repeat_batches
+            1024,  # max_seq_len
+            8,  # batch_size
+            200,  # max_generated_tokens
+            True,  # paged_attention
+            {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params  # TODO This will be serviced by vLLM
+            {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
+        ),
+        (  # Batch-16 run (Throughput) - 16 users, small prompt
+            "models/demos/llama3/demo/input_data_questions_prefill_128.json",  # input_prompts
+            True,  # instruct mode
+            1,  # repeat_batches
+            1024,  # max_seq_len
+            16,  # batch_size
+            200,  # max_generated_tokens
+            True,  # paged_attention
+            {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params  # TODO This will be serviced by vLLM
+            {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
+        ),
         (  # Batch-32 run (Throughput) - 32 users, small prompt
             "models/demos/llama3/demo/input_data_questions_prefill_128.json",  # input_prompts
             True,  # instruct mode
@@ -895,7 +939,29 @@ def run_llama3_demo(
             {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params  # TODO This will be serviced by vLLM
             {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
         ),
-        (  # Long-context run - Single user, long prompt (adapted to the model being used and architecture)
+        (  #
+            "models/demos/llama3/demo/input_data_questions_prefill_128.json",  # input_prompts
+            True,  # instruct mode
+            1,  # repeat_batches
+            1024,  # max_seq_len
+            1,  # batch_size
+            200,  # max_generated_tokens
+            False,  # paged_attention
+            {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params  # TODO This will be serviced by vLLM
+            {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
+        ),
+        (  # Long-context 32 run - Single user, long prompt (adapted to the model being used and architecture)
+            "models/demos/llama3/demo/input_data_long_32k.json",  # input_prompts
+            True,  # instruct mode
+            1,  # repeat_batches
+            32 * 1024,  # max_seq_len
+            1,  # batch_size
+            200,  # max_generated_tokens
+            False,  # paged_attention
+            {"page_block_size": 64, "page_max_num_blocks": 2048},  # page_params  # TODO This will be serviced by vLLM
+            {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
+        ),
+        (  # Long-context 64 run - Single user, long prompt (adapted to the model being used and architecture)
             "models/demos/llama3/demo/input_data_long_64k.json",  # input_prompts
             True,  # instruct mode
             1,  # repeat_batches
@@ -906,11 +972,29 @@ def run_llama3_demo(
             {"page_block_size": 64, "page_max_num_blocks": 2048},  # page_params  # TODO This will be serviced by vLLM
             {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
         ),
+        (  # Long-context 128 run - Single user, long prompt (adapted to the model being used and architecture)
+            "models/demos/llama3/demo/input_data_long_128k.json",  # input_prompts
+            True,  # instruct mode
+            1,  # repeat_batches
+            128 * 1024,  # max_seq_len
+            1,  # batch_size
+            200,  # max_generated_tokens
+            False,  # paged_attention
+            {"page_block_size": 64, "page_max_num_blocks": 2048},  # page_params  # TODO This will be serviced by vLLM
+            {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
+        ),
     ],
     ids=[
         "batch-1",  # latency
+        "batch-2",  #
+        "batch-4",  #
+        "batch-8",  #
+        "batch-16",  #
         "batch-32",  # throughput
-        "long-context",  # max-length
+        "long-context-1",  # max-length
+        "long-context-32",  # max-length
+        "long-context-64",  # max-length
+        "long-context-128",  # max-length
     ],
 )
 @pytest.mark.parametrize(
