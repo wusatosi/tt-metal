@@ -36,6 +36,8 @@ yaml.SafeDumper.ignore_aliases = lambda *args: True
 
 OUT_NAME = "ops_perf_results"
 
+TTNN_MIN_DEVICE_OP_ID = 1
+
 OPS_CSV_HEADER = [
     "OP CODE",
     "OP TYPE",
@@ -263,11 +265,15 @@ def append_device_data(ops, traceReplays, logFolder):
                     opIDHostDataDict[opID] = copy.deepcopy(deviceOp)
 
                 traceOps = {}
+                ttnnDeviceReportedOps = []
                 for deviceOpTime in deviceOpsTime:
                     if len(deviceOpTime["timeseries"]) > 0:
                         timeID, ts, statData, risc, core = deviceOpTime["timeseries"][0]
                         assert "run_host_id" in timeID.keys(), "Device op ID missing: Device data must provide op ID"
                         deviceOpID = timeID["run_host_id"]
+                        if deviceOpID < TTNN_MIN_DEVICE_OP_ID:
+                            continue
+                        ttnnDeviceReportedOps.append(deviceOpTime)
                         assert (
                             deviceOpID in opIDHostDataDict
                         ), f"Device op ID not present: Device op ID {deviceOpID} not present in host data"
@@ -294,10 +300,10 @@ def append_device_data(ops, traceReplays, logFolder):
                         generatedHostData.append(copy.deepcopy(opIDHostDataDict[deviceOpID]))
                 devicesOps[device] = generatedHostData
 
-            if len(devicesOps[device]) != len(deviceOpsTime):
+            if len(devicesOps[device]) != len(ttnnDeviceReportedOps):
                 deviceOPId = None
                 hostOPId = None
-                for deviceOp, deviceOpTime in zip(devicesOps[device], deviceOpsTime):
+                for deviceOp, deviceOpTime in zip(devicesOps[device], ttnnDeviceReportedOps):
                     if len(deviceOpTime["timeseries"]) > 0:
                         timeID, ts, statData, risc, core = deviceOpTime["timeseries"][0]
                         if "zone_name" in timeID.keys() and "FW" in timeID["zone_name"]:
@@ -310,14 +316,14 @@ def append_device_data(ops, traceReplays, logFolder):
                 if deviceOPId and hostOPId:
                     assert False, (
                         f"Device data mismatch: Expected {len(devicesOps[device])} "
-                        f"but received {len(deviceOpsTime)} ops on device {device}. "
+                        f"but received {len(ttnnDeviceReportedOps)} ops on device {device}. "
                         f"Device is showing op ID {deviceOPId} when host is showing op ID {hostOPId}"
                     )
                 else:
                     assert (
                         False
-                    ), f"Device data mismatch: Expected {len(deviceOps[device])} but received {len(deviceOpsTime)} ops on device {device}"
-            for deviceOp, deviceOpTime in zip(devicesOps[device], deviceOpsTime):
+                    ), f"Device data mismatch: Expected {len(deviceOps[device])} but received {len(ttnnDeviceReportedOps)} ops on device {device}"
+            for deviceOp, deviceOpTime in zip(devicesOps[device], ttnnDeviceReportedOps):
                 cores = set()
                 for timeID, ts, statData, risc, core in deviceOpTime["timeseries"]:
                     if "zone_name" in timeID.keys() and "FW" in timeID["zone_name"]:
