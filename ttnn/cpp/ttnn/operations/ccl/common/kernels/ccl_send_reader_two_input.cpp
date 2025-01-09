@@ -560,9 +560,9 @@ FORCE_INLINE void try_advance_inline_write_or_atomic_inc(command_context_t<Addrg
         if (!can_write_into_fabric) {
             return;
         }
-
         ASSERT(cmd_ctx.packet_header_buffer_addr != 0);
         auto* pkt_hdr = reinterpret_cast<volatile tt::fabric::PacketHeader*>(cmd_ctx.packet_header_buffer_addr + 2 * sizeof(tt::fabric::PacketHeader));
+        // TODO: Possible to get rid of this?
         if (cmd_ctx.current_cmd_header.code == ttnn::ccl::cmd::CclCommandCode::ATOMIC_INC) {
             pkt_hdr->to_atomic_inc();
         } else {
@@ -735,9 +735,9 @@ FORCE_INLINE void write_and_advance_local_read_address_for_fabric_write(
                                           : cmd_ctx.fabric_connection.get_backward_connection();
             auto pkt_hdr = reinterpret_cast<volatile tt::fabric::PacketHeader*>((unicast_args.is_forward_direction ? 0 : sizeof(tt::fabric::PacketHeader)) + cmd_ctx.packet_header_buffer_addr);
             if (!cmd_ctx.use_cached_packet_headers) {
-                pkt_hdr->to_write()->to_chip_unicast(tt::fabric::UnicastRoutingCommandHeader{unicast_args.distance_in_hops});
+                pkt_hdr->to_chip_unicast(tt::fabric::UnicastRoutingCommandHeader{unicast_args.distance_in_hops});
             }
-            pkt_hdr->to_noc_unicast(noc_write_packet_spec);
+            pkt_hdr->to_noc_unicast_write(noc_write_packet_spec);
 
             fabric_connection.wait_for_empty_write_slot();
             fabric_connection.send_payload_without_header_non_blocking_from_address(l1_read_addr, payload_size_bytes);
@@ -758,11 +758,11 @@ FORCE_INLINE void write_and_advance_local_read_address_for_fabric_write(
             auto pkt_hdr2 = reinterpret_cast<volatile tt::fabric::PacketHeader*>(cmd_ctx.packet_header_buffer_addr + sizeof(tt::fabric::PacketHeader));
             if (!cmd_ctx.use_cached_packet_headers) {
                 if (send_forward) {
-                    pkt_hdr->to_write()->to_chip_multicast(tt::fabric::MulticastRoutingCommandHeader{
+                    pkt_hdr->to_chip_multicast(tt::fabric::MulticastRoutingCommandHeader{
                         1, static_cast<uint8_t>(mcast_args.num_targets_forward_direction)});
                 }
                 if (send_backward) {
-                    pkt_hdr2->to_write()->to_chip_multicast(tt::fabric::MulticastRoutingCommandHeader{
+                    pkt_hdr2->to_chip_multicast(tt::fabric::MulticastRoutingCommandHeader{
                         1, static_cast<uint8_t>(mcast_args.num_targets_backward_direction)});
                 }
             }
@@ -775,11 +775,11 @@ FORCE_INLINE void write_and_advance_local_read_address_for_fabric_write(
                 backward_connection.wait_for_empty_write_slot();
                 backward_connection.send_payload_without_header_non_blocking_from_address(l1_read_addr, payload_size_bytes);
 
-                pkt_hdr->to_noc_unicast(noc_write_packet_spec);
+                pkt_hdr->to_noc_unicast_write(noc_write_packet_spec);
                 forward_connection.send_payload_non_blocking_from_address(
                         (uint32_t)pkt_hdr, sizeof(tt::fabric::PacketHeader));
 
-                pkt_hdr2->to_noc_unicast(noc_write_packet_spec);
+                pkt_hdr2->to_noc_unicast_write(noc_write_packet_spec);
                 backward_connection.send_payload_non_blocking_from_address(
                         (uint32_t)pkt_hdr2, sizeof(tt::fabric::PacketHeader));
             } else  {
@@ -788,7 +788,7 @@ FORCE_INLINE void write_and_advance_local_read_address_for_fabric_write(
                 fabric_connection.send_payload_without_header_non_blocking_from_address(l1_read_addr, payload_size_bytes);
 
                 auto packet_header = send_forward ? pkt_hdr : pkt_hdr2;
-                packet_header->to_noc_unicast(noc_write_packet_spec);
+                packet_header->to_noc_unicast_write(noc_write_packet_spec);
                 fabric_connection.send_payload_non_blocking_from_address(
                         (uint32_t)packet_header, sizeof(tt::fabric::PacketHeader));
             }

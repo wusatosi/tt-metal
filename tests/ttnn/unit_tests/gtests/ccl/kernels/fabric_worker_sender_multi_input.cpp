@@ -58,17 +58,16 @@ auto forward_to_fabric_from_cb(
     auto packet_addr = get_read_ptr(cb_id);
     auto &packet_header = *reinterpret_cast<tt::fabric::PacketHeader*>(packet_addr);
     if constexpr (mcast_mode) {
-        packet_header.to_write()
+        packet_header
             .to_chip_multicast(tt::fabric::MulticastRoutingCommandHeader{config.mcast.distance, config.mcast.range})
-            .to_noc_unicast(tt::fabric::NocUnicastCommandHeader{
+            .to_noc_unicast_write(tt::fabric::NocUnicastCommandHeader{
                 dest_addr,
                 (pages_to_send * page_size) + sizeof(tt::fabric::PacketHeader),
                 static_cast<uint8_t>(dest_worker_noc.x),
                 static_cast<uint8_t>(dest_worker_noc.y)});
     } else {
-        packet_header.to_write()
-            .to_chip_unicast(tt::fabric::UnicastRoutingCommandHeader{config.unicast.distance})
-            .to_noc_unicast(tt::fabric::NocUnicastCommandHeader{
+        packet_header.to_chip_unicast(tt::fabric::UnicastRoutingCommandHeader{config.unicast.distance})
+            .to_noc_unicast_write(tt::fabric::NocUnicastCommandHeader{
                 dest_addr,
                 (pages_to_send * page_size) + sizeof(tt::fabric::PacketHeader),
                 static_cast<uint8_t>(dest_worker_noc.x),
@@ -196,7 +195,6 @@ void kernel_main() {
     ASSERT(*last_message_semaphore_address == 0);
     packet_header.reserved = 0xE;
     packet_header.reserved2 = 0xFFFF;
-    packet_header.to_atomic_inc();
     packet_header.to_chip_unicast(tt::fabric::UnicastRoutingCommandHeader{kLoopbackNumHopsToMyChip});
     packet_header.to_noc_unicast_atomic_inc(tt::fabric::NocUnicastAtomicIncCommandHeader(
             reinterpret_cast<size_t>(last_message_semaphore_address),
