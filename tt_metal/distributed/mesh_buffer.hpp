@@ -70,6 +70,9 @@ public:
     std::shared_ptr<Buffer> get_shard_buffer(uint32_t logical_x, uint32_t logical_y);
     ShardSpecBuffer device_local_shard_spec() const;
     ShardedBufferConfig global_shard_spec() const;
+    std::pair<size_t, size_t> physical_shard_shape() const;
+    std::pair<bool, bool> replicated_dims() const;
+    uint32_t datum_size_bytes() const;
     void deallocate() {}
 
 private:

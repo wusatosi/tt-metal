@@ -1008,8 +1008,8 @@ TEST_F(MeshDevice_T3000, TestSharding) {
         .bottom_up = true
     };
 
-    std::pair<std::size_t, std::size_t> global_buffer_shape = {128, 64};
-    std::pair<std::size_t, std::size_t> shard_shape = {32, 32};
+    std::pair<std::size_t, std::size_t> global_buffer_shape = {256, 32};
+    std::pair<std::size_t, std::size_t> shard_shape = {64, 0};
     uint32_t global_buffer_size = std::get<0>(global_buffer_shape) * std::get<1>(global_buffer_shape) * sizeof(uint32_t);
     
     ShardedBufferConfig sharded_config {
