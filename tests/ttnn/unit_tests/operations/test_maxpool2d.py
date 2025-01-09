@@ -107,7 +107,7 @@ def run_max_pool(
             pytest.skip("This case runs out of memory on Wormhole X2")
         if kernel_h > 5 and kernel_w > 5 and act_shape == [8, 4096, 10, 16] and is_x2_harvested(device):
             pytest.skip("This case runs out of memory on Wormhole X2")
-        if kernel_size == (13, 13) and act_shape == [1, 32768, 10, 10] and is_x2_harvested(device):
+        if kernel_size == (13, 13) and in_c >= 32768 and is_x2_harvested(device):
             pytest.skip("This case runs out of memory on Wormhole X2")
 
     if shard_scheme == ttnn.TensorMemoryLayout.BLOCK_SHARDED:
