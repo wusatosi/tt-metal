@@ -115,12 +115,7 @@ def run_reduce_scatter_test(
         )
 
     if input_shard_shape and shard_grid:
-        input_shard_spec = ttnn.ShardSpec(
-            shard_grid,
-            input_shard_shape,
-            ttnn.ShardOrientation.ROW_MAJOR,
-            False,
-        )
+        input_shard_spec = ttnn.ShardSpec(shard_grid, input_shard_shape, ttnn.ShardOrientation.ROW_MAJOR)
         input_mem_config = ttnn.MemoryConfig(
             tensor_mem_layout, buffer_type=ttnn.BufferType.L1, shard_spec=input_shard_spec
         )
@@ -129,12 +124,7 @@ def run_reduce_scatter_test(
             output_shard_shape[1] *= num_devices
         else:
             output_shard_shape[0] *= num_devices
-        output_shard_spec = ttnn.ShardSpec(
-            shard_grid,
-            output_shard_shape,
-            ttnn.ShardOrientation.ROW_MAJOR,
-            False,
-        )
+        output_shard_spec = ttnn.ShardSpec(shard_grid, output_shard_shape, ttnn.ShardOrientation.ROW_MAJOR)
         output_mem_config = ttnn.MemoryConfig(
             tensor_mem_layout, buffer_type=ttnn.BufferType.L1, shard_spec=output_shard_spec
         )
@@ -616,7 +606,6 @@ def test_line_reduce_scatter_cluster_axis_on_T3K_width_sharded_reduce_scatter_po
         shard_grid,
         tuple(input_shard_shape),
         orientation,
-        False,
     )
 
     run_line_reduce_scatter_on_TG_with_mesh_tensor_along_rows(
