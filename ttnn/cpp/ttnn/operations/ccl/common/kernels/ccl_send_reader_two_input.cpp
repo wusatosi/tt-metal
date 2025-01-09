@@ -218,10 +218,19 @@ FORCE_INLINE auto build_source_address_generator(
     }
 }
 
+
 // TODO: rename to tensor IO command context
 struct wrapped_worker_slice_read_context {
     uint32_t curr_tile_id = 0;
     uint32_t offset_into_worker_slice = 0;
+    CclCommandSyncGranularity sync_granularity = CclCommandSyncGranularity::NONE;
+
+    // Two options I can think of:
+    // 1) Embed the sync dest core and addr (noc addr) here
+    // 2) embed the sync granularity and dest core command art
+    // 3) Add a new field to the main command context (`command_context_t`) specifically for fine-grain synchronization
+    //    -> This may be the best option since this is a pretty fundamental optimization and
+    //       feature we'll want to use regularly, even if it's not needed in every possible command type
 };
 struct inline_value_context {
     uint32_t value = 0;
@@ -237,6 +246,8 @@ struct noc_transfer_burst_context {
     uint32_t bank_base_address = 0;
     uint16_t num_transfers_total = 0;
     uint16_t current_noc_transfer = 0;
+    CclCommandSyncGranularity sync_granularity = CclCommandSyncGranularity::NONE;
+    // See notes above
 };
 union cmd_specific_context {
     wrapped_worker_slice_read_context wrapped_worker_slice_read_ctx;
@@ -320,6 +331,10 @@ struct command_context_t final {
     FORCE_INLINE void fetch_next_command() {
         populated = true;
 
+        // A bit of a hack to initialize the sync granularity so the user isn't required to provide it
+        // Maybe it makes more sense to embed this info in another part of the command or a command arg
+        this->cmd_specific_ctx.noc_transfer_burst_ctx.sync_granularity = CclCommandSyncGranularity::NONE;
+
         this->current_cmd_header = ttnn::ccl::cmd::CclCommandHeader::from_uint32(get_arg_val<uint32_t>(arg_idx++));
 #ifdef DEBUG_PRINT_ENABLED
         DPRINT << "CMD (code=" << (uint32_t)current_cmd_header.code
@@ -393,6 +408,13 @@ void update_ccl_command(
                     reinterpret_cast<volatile uint32_t*>(get_arg_addr(arg_idx)), cmd_tensor);
                 arg_idx += CclCommandArg<CclCommandArgCode::SET_FULL_TENSOR_SLICE_SPEC_IN_PAGES>::size_in_words();
                 break;
+
+
+            case CclCommandArgCode::SET_SYNC_GRANULARITY:
+                could add fields to the cmd-specific context both for burst noc read/write and tensor-streaming
+                command which could embed the sync granularity
+                break;
+
 
             case CclCommandArgCode::SET_TARGET_VALUE:
             case CclCommandArgCode::SET_ATOMIC_INC_VALUE: {
@@ -756,6 +778,12 @@ FORCE_INLINE void try_advance_write_tensor_from_cb(command_context_t<Addrgen>& c
             cmd_ctx.fabric_connection,
             l1_read_addr,
             contig_pages_advanced * cmd_ctx.page_size);
+        if (cmd_ctx.current_cmd_header.sync_granularity == ttnn::ccl::cmd::CclCommandSyncGranularity::PAGE) {
+            // send seminc to fabric
+            // increment value = contig_pages_advanced
+            // Optimized implementation is to send it inside of `write_payload_then_advance_read_address`, directly
+            // embedded in the packet header buffer
+        }
 
         auto done_worker_slice = ttnn::ccl::v2::advance_worker_global_page(
             cmd_specific_ctx.curr_tile_id,  // Updated internally
@@ -844,6 +872,12 @@ static void try_advance_noc_write_burst(
             fabric_connection,
             cb_rdptr,
             transfer_info.noc_transfer_size_bytes);
+        if (current_cmd_header.sync_granularity == ttnn::ccl::cmd::CclCommandSyncGranularity::PAGE) {
+            // send seminc to fabric
+            // increment value = contig_pages_advanced
+            // Optimized implementation is to send it inside of `write_payload_then_advance_read_address`, directly
+            // embedded in the packet header buffer
+        }
     }
     noc_async_writes_flushed();
 

@@ -103,6 +103,11 @@ using CclCommandArgs = std::variant<
 
 enum SRC_DEST_TYPE : uint8_t { SRC = 0, DEST = 1 };
 
+enum class CclCommandSyncGranularity : uint8_t {
+    NONE = 0,
+    PAGE = 1,
+};
+
 // Explicitly assigned integer values for easier debug
 enum class CclCommandArgCode : uint8_t {
     // If operating on a per page granularity
@@ -132,6 +137,11 @@ enum class CclCommandArgCode : uint8_t {
     // into a common ethernet packet too for better utilization (provided that the)
     // receiver does the proper unpacking
     SET_NOC_TRANSFER_BURST_SIZE_PER_PACKET = 11,
+
+    // specifies that the command should synchronize at the specified granularity
+    // This argument is only required if granularity is not NONE
+    // Valid values are NONE, PAGE
+    SET_SYNC_GRANULARITY = 12,
 
     INVALID = std::numeric_limits<uint8_t>::max(),
 };
@@ -597,6 +607,12 @@ using LocalOnlyCommandDestArgs = DestTypeArgsNull;
 // Used only for host code paths
 using CclCommandDestArgs = std::variant<UnicastCommandDestArgs, MulticastCommandDestArgs, LocalOnlyCommandDestArgs>;
 
+
+/*
+ | HEADER : CclCommandHeader |
+ | Args <variable length> size= CclCommandHeader::arg_count * command_arg_size(s) |
+ | ...|
+*/
 
 struct CclCommandHeader {
     CclCommandCode code : 6;

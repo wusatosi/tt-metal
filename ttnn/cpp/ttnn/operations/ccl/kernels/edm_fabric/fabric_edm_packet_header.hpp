@@ -19,6 +19,8 @@ enum TerminationSignal : uint32_t {
     IMMEDIATELY_TERMINATE = 2
 };
 
+// TODO: add a new write_atomic_inc command type to the do the atomic inc alongside the packet write
+//       without requiring a separate packet
 // 2 bits
 enum CommandType : uint8_t {
     WRITE = 0,

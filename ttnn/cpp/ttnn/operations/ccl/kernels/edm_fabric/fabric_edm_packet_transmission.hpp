@@ -82,6 +82,7 @@ void execute_chip_unicast_to_local_chip(volatile tt::fabric::PacketHeader *const
 
     tt::fabric::CommandType command_type = packet_start->command_type;
     tt::fabric::NocSendType noc_send_type = packet_start->noc_send_type;
+    // TODO: Update to support write_atomic_inc
     switch (command_type) {
         case tt::fabric::CommandType::WRITE: {
             switch (noc_send_type) {
