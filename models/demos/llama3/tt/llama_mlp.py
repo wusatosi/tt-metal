@@ -116,10 +116,6 @@ class TtLlamaMLP(LightweightModule):
         ttnn.deallocate(w3_out)
         ttnn.deallocate(w1_out)
 
-        print(f"{pc_2=}")
-        print(f"{w2_in.memory_config()=}")
-        print(f"{w2_in.shape=}")
-        print(f"{self.w2.shape=}")
         w2_out = ttnn.linear(
             w2_in,
             self.w2,
