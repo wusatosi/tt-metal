@@ -29,6 +29,34 @@ from tests.tt_eager.python_api_testing.unit_testing.misc.test_matmul_1d_gather_i
     get_physical_to_logical_core_mapping,
 )
 
+# logical coords
+PREFETCHER_MM_NOC1_RING = [
+    (6, 6),
+    (6, 7),
+    (6, 9),
+    (6, 0),
+    (6, 1),
+    (6, 2),
+    (6, 4),
+    (6, 5),
+    (5, 5),
+    (5, 6),
+    (5, 7),
+    (5, 9),
+    (5, 0),
+    (5, 1),
+    (5, 2),
+    (5, 4),
+    (1, 4),
+    (1, 5),
+    (1, 9),
+    (1, 0),
+    (2, 0),
+    (2, 4),
+    (2, 5),
+    (2, 9),
+]
+
 
 @dataclass
 class LlamaOptimizations:
@@ -556,20 +584,15 @@ class TtModelArgs:
             )
 
             RING_SIZE = 24
-            # mapping = get_physical_to_logical_core_mapping(mesh_device)
-            # CORE_RANGE = [mapping[physical_coord] for physical_coord in PREFETCHER_GRID]
 
-            # ring_core_range_set = ttnn.CoreRangeSet(
-            #     [
-            #         ttnn.CoreRange(
-            #             ttnn.CoreCoord(x, y),
-            #             ttnn.CoreCoord(x, y),
-            #         )
-            #         for x, y in CORE_RANGE
-            #     ]
-            # )
-            ring_core_range_set = ttnn.num_cores_to_corerangeset_in_subcoregrids(
-                self.start_core, RING_SIZE, self.sub_core_grids, row_wise=True
+            ring_core_range_set = ttnn.CoreRangeSet(
+                [
+                    ttnn.CoreRange(
+                        ttnn.CoreCoord(x, y),
+                        ttnn.CoreCoord(x, y),
+                    )
+                    for x, y in PREFETCHER_MM_NOC1_RING
+                ]
             )
 
             self.model_config["SHARDED_ATTN_INPUT_RING_MEMCFG"] = (
