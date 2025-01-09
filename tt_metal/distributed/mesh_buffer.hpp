@@ -69,6 +69,7 @@ public:
     DeviceLocalLayoutConfig device_local_layout() const { return device_local_layout_config_; }
     std::shared_ptr<Buffer> get_shard_buffer(uint32_t logical_x, uint32_t logical_y);
     ShardSpecBuffer device_local_shard_spec() const;
+    ShardedBufferConfig global_shard_spec() const;
     void deallocate() {}
 
 private:

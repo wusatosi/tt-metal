@@ -29,7 +29,7 @@ MeshBuffer::MeshBuffer(const MeshBufferConfig& mesh_buffer_config, std::optional
                 const auto [shard_height, shard_width] = config.shard_shape;
                 TT_FATAL(
                     (global_buffer_height % shard_height == 0) and (global_buffer_width % shard_width == 0),
-                    "The global buffer shape must be aligned to the shard shape:  global buffer shape: {}, {}, shard "
+                    "The global buffer shape must be aligned to the shard shape: global buffer shape: {}, {}, shard "
                     "shape: {}, {}",
                     global_buffer_height,
                     global_buffer_width,
@@ -95,6 +95,11 @@ ShardSpecBuffer MeshBuffer::device_local_shard_spec() const {
     TT_FATAL(is_sharded(this->device_local_layout().buffer_layout), "Can only query the device local shard spec for a MeshBuffer sharded across cores");
     TT_FATAL(this->device_local_layout().shard_parameters.has_value(), "MeshBuffer is sharded across cores, but no shard parameters were specified.");
     return this->device_local_layout().shard_parameters.value();
+}
+
+ShardedBufferConfig MeshBuffer::global_shard_spec() const {
+    TT_FATAL(this->global_layout() == MeshBufferLayout::SHARDED, "Can only query the global shard spec for a sharded MeshBuffer");
+    return std::get<ShardedBufferConfig>(config_);
 }
 
 }  // namespace tt::tt_metal::distributed

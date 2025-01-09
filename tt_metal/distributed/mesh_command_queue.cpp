@@ -169,6 +169,48 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
     }
 }
 
+void MeshCommandQueue::write_sharded_buffer(MeshBuffer& buffer, const void* src) {
+    auto global_buffer_shape = buffer.global_shard_spec().global_buffer_shape;
+    auto global_buffer_size = buffer.global_shard_spec().global_buffer_size;
+    auto shard_shape = buffer.global_shard_spec().shard_shape;
+    auto datum_size_bytes = global_buffer_size / (std::get<0>(global_buffer_shape) * std::get<1>(global_buffer_shape));
+
+    auto stride_size_bytes = datum_size_bytes * std::get<0>(global_buffer_shape);
+    auto single_read_size = datum_size_bytes * std::get<0>(shard_shape);
+    auto total_read_size_per_shard = single_read_size * std::get<1>(shard_shape);
+
+    auto num_shards_x = std::get<0>(global_buffer_shape) / std::get<0>(shard_shape);
+    auto num_shards_y = std::get<1>(global_buffer_shape) / std::get<1>(shard_shape);
+
+    uint32_t shard_index = 0;
+    LogicalDeviceRange device_range({0, 0}, {buffer.mesh_device()->num_cols(), buffer.mesh_device()->num_rows()});
+    std::vector<uint32_t> shard_data = std::vector<uint32_t>(total_read_size_per_shard / sizeof(uint32_t), 0);
+    for (std::size_t logical_x = device_range.start_coord.x; logical_x < device_range.end_coord.x; logical_x++) {
+        for (std::size_t logical_y = device_range.start_coord.y; logical_y < device_range.end_coord.y; logical_y++) {
+            uint32_t shard_x = shard_index % num_shards_x;
+            uint32_t shard_y = shard_index / num_shards_x;
+            // std::cout << shard_x << " " << shard_y << std::endl;
+            auto read_offset = shard_x * single_read_size + shard_y * stride_size_bytes * std::get<1>(shard_shape);
+            uint32_t size_to_read = total_read_size_per_shard;
+            uint32_t local_offset = 0;
+            while (size_to_read) {
+                std::memcpy(shard_data.data() + local_offset * (single_read_size / sizeof(uint32_t)), (uint8_t*)(src) + read_offset + local_offset * stride_size_bytes, single_read_size);
+                size_to_read -= single_read_size;
+                local_offset++;
+            }
+            std::cout << "======= Shard data ========" << std::endl;
+            for (int i = 0; i < shard_data.size(); i++) {
+                if (i % std::get<0>(shard_shape) == 0) {
+                    std::cout << std::endl;
+                }
+                std::cout << shard_data[i] << " ";
+            }
+            shard_index++;
+        }
+    }
+
+}
+
 void MeshCommandQueue::enqueue_write_to_sub_grid(MeshBuffer& buffer, const void* src, bool blocking, const LogicalDeviceRange& device_range) {
     // TODO: Add proper support for Mesh Level Sub Devices
     auto sub_device_ids = tt::stl::Span<const SubDeviceId>(mesh_device_->get_device(0)->get_sub_device_ids());

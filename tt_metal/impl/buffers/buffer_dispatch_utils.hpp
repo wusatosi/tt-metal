@@ -29,7 +29,7 @@ struct InterleavedBufferDispatchParams {
     uint32_t address;
     uint32_t dst_page_index;
     bool issue_wait;
-    Device* device;
+    IDevice* device;
     uint32_t cq_id;
 };
 
@@ -45,7 +45,7 @@ struct ShardedBufferDispatchParams {
     uint32_t address;
     uint32_t dst_page_index;
     bool issue_wait;
-    Device* device;
+    IDevice* device;
     uint32_t cq_id;
 };
 

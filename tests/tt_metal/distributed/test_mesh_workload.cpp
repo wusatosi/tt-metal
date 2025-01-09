@@ -998,6 +998,37 @@ TEST_F(MeshDevice_T3000, TestMeshWorkloadSemaphoreDifferentPrograms) {
     }
 }
 
+TEST_F(MeshDevice_T3000, TestSharding) {
+    uint32_t single_tile_size = ::tt::tt_metal::detail::TileSize(DataFormat::Float16_b);
+
+    DeviceLocalLayoutConfig per_device_buffer_config {
+        .page_size = single_tile_size,
+        .buffer_type = BufferType::DRAM,
+        .buffer_layout = TensorMemoryLayout::INTERLEAVED,
+        .bottom_up = true
+    };
+
+    std::pair<std::size_t, std::size_t> global_buffer_shape = {256, 32};
+    std::pair<std::size_t, std::size_t> shard_shape = {32, 32};
+    uint32_t global_buffer_size = std::get<0>(global_buffer_shape) * std::get<1>(global_buffer_shape) * sizeof(uint32_t);
+    
+    ShardedBufferConfig sharded_config {
+        .mesh_device = mesh_device_.get(),
+        .global_buffer_size = global_buffer_size,
+        .shard_shape = shard_shape,
+        .global_buffer_shape = global_buffer_shape,
+        .device_shard_layout = per_device_buffer_config
+    };
+
+    auto mesh_buffer = MeshBuffer::create(sharded_config);
+    std::vector<uint32_t> src = std::vector<uint32_t>(std::get<0>(global_buffer_shape) * std::get<1>(global_buffer_shape), 0);
+
+    for (int i = 0; i < src.size(); i++) {
+        src[i] = i;
+    }
+    mesh_device_->command_queue().write_sharded_buffer(*mesh_buffer, src.data());
+}
+
 TEST_F(MeshDevice_T3000, TestReplicatedInterleavedDRAMMeshBuffer) {
     uint32_t single_tile_size = ::tt::tt_metal::detail::TileSize(DataFormat::Float16_b);
     uint32_t num_tiles = 1024;

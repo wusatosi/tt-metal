@@ -38,6 +38,7 @@ public:
     void enqueue_write_mesh_buffer(MeshBuffer& buffer, const void* src, bool blocking);
     void enqueue_write_to_sub_grid(MeshBuffer& buffer, const void* src, bool blocking, const LogicalDeviceRange& device_range);
     void enqueue_mesh_workload(MeshWorkload& mesh_workload, bool blocking);
+    void write_sharded_buffer(MeshBuffer& buffer, const void* src);
     void finish();
 };
 
