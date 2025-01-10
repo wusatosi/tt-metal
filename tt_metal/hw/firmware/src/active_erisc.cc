@@ -94,8 +94,8 @@ int main() {
     mailboxes->go_message.signal = RUN_MSG_DONE;
     mailboxes->launch_msg_rd_ptr = 0;  // Initialize the rdptr to 0
 
-    DPRINT << "eth_l1_mem::address_map::ERISC_APP_SYNC_INFO_BASE " << HEX()
-           << (uint32_t)eth_l1_mem::address_map::ERISC_APP_SYNC_INFO_BASE << ENDL();
+    // DPRINT << "eth_l1_mem::address_map::ERISC_APP_SYNC_INFO_BASE " << HEX()
+    //        << (uint32_t)eth_l1_mem::address_map::ERISC_APP_SYNC_INFO_BASE << ENDL();
 
     while (1) {
         // Wait...

@@ -481,7 +481,7 @@ uint32_t process_relay_paged_cmd_large(
     uint32_t pages,
     uint32_t length_adjust) {
 #if ENABLE_PREFETCH_DPRINTS
-    DPRINT << "relay_paged_cmd_large: " << page_size << " " << pages << " " << length_adjust << ENDL();
+    // DPRINT << "relay_paged_cmd_large: " << page_size << " " << pages << " " << length_adjust << ENDL();
 #endif
 
     InterleavedAddrGen<is_dram> addr_gen{.bank_base_address = base_addr, .page_size = page_size};
@@ -1137,12 +1137,12 @@ bool process_cmd(
 
     switch (cmd->base.cmd_id) {
         case CQ_PREFETCH_CMD_RELAY_LINEAR:
-            DPRINT << "relay linear: " << cmd_ptr << ENDL();
+            // DPRINT << "relay linear: " << cmd_ptr << ENDL();
             stride = process_relay_linear_cmd(cmd_ptr, downstream_data_ptr);
             break;
 
         case CQ_PREFETCH_CMD_RELAY_PAGED:
-            DPRINT << "relay dram page: " << cmd_ptr << ENDL();
+            // DPRINT << "relay dram page: " << cmd_ptr << ENDL();
             {
                 uint32_t packed_page_flags = cmd->relay_paged.packed_page_flags;
                 uint32_t is_dram = packed_page_flags & (1 << CQ_PREFETCH_RELAY_PAGED_IS_DRAM_SHIFT);
@@ -1157,7 +1157,7 @@ bool process_cmd(
             break;
 
         case CQ_PREFETCH_CMD_RELAY_PAGED_PACKED:
-            DPRINT << "relay paged packed" << ENDL();
+            // DPRINT << "relay paged packed" << ENDL();
             if (exec_buf) {
                 stride =
                     process_exec_buf_relay_paged_packed_cmd(cmd_ptr, downstream_data_ptr, l1_cache, exec_buf_state);
@@ -1167,7 +1167,7 @@ bool process_cmd(
             break;
 
         case CQ_PREFETCH_CMD_RELAY_INLINE:
-            DPRINT << "relay inline" << ENDL();
+            // DPRINT << "relay inline" << ENDL();
             if constexpr (exec_buf) {
                 if (cmd->relay_inline.dispatcher_type == DispatcherSelect::DISPATCH_MASTER) {
                     stride = process_exec_buf_relay_inline_cmd<DispatchRelayInlineState>(
@@ -1188,13 +1188,13 @@ bool process_cmd(
             break;
 
         case CQ_PREFETCH_CMD_RELAY_INLINE_NOFLUSH:
-            DPRINT << "inline no flush" << ENDL();
+            // DPRINT << "inline no flush" << ENDL();
             if (exec_buf) {
                 stride = process_exec_buf_relay_inline_noflush_cmd(cmd_ptr, downstream_data_ptr, exec_buf_state);
             } else {
                 stride = process_relay_inline_noflush_cmd<cmddat_wrap_enable>(cmd_ptr, downstream_data_ptr);
             }
-            DPRINT << "stride " << stride << ENDL();
+            // DPRINT << "stride " << stride << ENDL();
             break;
 
         case CQ_PREFETCH_CMD_EXEC_BUF:
@@ -1216,7 +1216,7 @@ bool process_cmd(
             break;
 
         case CQ_PREFETCH_CMD_STALL:
-            DPRINT << "stall" << ENDL();
+            // DPRINT << "stall" << ENDL();
             stride = process_stall(cmd_ptr);
             break;
 
@@ -1230,27 +1230,27 @@ bool process_cmd(
             break;
 
         case CQ_PREFETCH_CMD_TERMINATE:
-            DPRINT << "prefetch terminating_" << is_h_variant << is_d_variant << ENDL();
+            // DPRINT << "prefetch terminating_" << is_h_variant << is_d_variant << ENDL();
             ASSERT(!exec_buf);
             done = true;
             break;
 
         default:
-            DPRINT << "prefetch invalid command:" << (uint32_t)cmd->base.cmd_id << " " << cmd_ptr << " "
-                   << cmddat_q_base << ENDL();
-            DPRINT << DEC() << *(uint32_t*)cmd_ptr << ENDL();
-            DPRINT << DEC() << *((uint32_t*)cmd_ptr + 1) << ENDL();
-            DPRINT << DEC() << *((uint32_t*)cmd_ptr + 2) << ENDL();
-            DPRINT << DEC() << *((uint32_t*)cmd_ptr + 3) << ENDL();
-            DPRINT << DEC() << *((uint32_t*)cmd_ptr + 4) << ENDL();
-            DPRINT << DEC() << *((uint32_t*)cmd_ptr + 5) << ENDL();
-            DPRINT << DEC() << *((uint32_t*)cmd_ptr + 6) << ENDL();
-            DPRINT << DEC() << *((uint32_t*)cmd_ptr + 7) << ENDL();
-            DPRINT << DEC() << *((uint32_t*)cmd_ptr + 8) << ENDL();
-            DPRINT << DEC() << *((uint32_t*)cmd_ptr + 9) << ENDL();
-            DPRINT << DEC() << *((uint32_t*)cmd_ptr + 10) << ENDL();
-            DPRINT << DEC() << *((uint32_t*)cmd_ptr + 11) << ENDL();
-            DPRINT << DEC() << *((uint32_t*)cmd_ptr + 12) << ENDL();
+            // DPRINT << "prefetch invalid command:" << (uint32_t)cmd->base.cmd_id << " " << cmd_ptr << " "
+            //        << cmddat_q_base << ENDL();
+            // DPRINT << DEC() << *(uint32_t*)cmd_ptr << ENDL();
+            // DPRINT << DEC() << *((uint32_t*)cmd_ptr + 1) << ENDL();
+            // DPRINT << DEC() << *((uint32_t*)cmd_ptr + 2) << ENDL();
+            // DPRINT << DEC() << *((uint32_t*)cmd_ptr + 3) << ENDL();
+            // DPRINT << DEC() << *((uint32_t*)cmd_ptr + 4) << ENDL();
+            // DPRINT << DEC() << *((uint32_t*)cmd_ptr + 5) << ENDL();
+            // DPRINT << DEC() << *((uint32_t*)cmd_ptr + 6) << ENDL();
+            // DPRINT << DEC() << *((uint32_t*)cmd_ptr + 7) << ENDL();
+            // DPRINT << DEC() << *((uint32_t*)cmd_ptr + 8) << ENDL();
+            // DPRINT << DEC() << *((uint32_t*)cmd_ptr + 9) << ENDL();
+            // DPRINT << DEC() << *((uint32_t*)cmd_ptr + 10) << ENDL();
+            // DPRINT << DEC() << *((uint32_t*)cmd_ptr + 11) << ENDL();
+            // DPRINT << DEC() << *((uint32_t*)cmd_ptr + 12) << ENDL();
             WAYPOINT("!CMD");
             ASSERT(0);
     }
@@ -1451,7 +1451,7 @@ void kernel_main_hd() {
 }
 
 void kernel_main() {
-    DPRINT << "prefetcher_" << is_h_variant << is_d_variant << ": start" << ENDL();
+    // DPRINT << "prefetcher_" << is_h_variant << is_d_variant << ": start" << ENDL();
 
     if (is_h_variant and is_d_variant) {
         kernel_main_hd();
@@ -1467,5 +1467,5 @@ void kernel_main() {
     // Confirm expected number of pages, spinning here is a leak
     cb_wait_all_pages<my_downstream_cb_sem_id>(downstream_cb_pages);
 
-    DPRINT << "prefetcher_" << is_h_variant << is_d_variant << ": out" << ENDL();
+    // DPRINT << "prefetcher_" << is_h_variant << is_d_variant << ": out" << ENDL();
 }
