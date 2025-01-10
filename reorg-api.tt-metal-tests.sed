@@ -34,6 +34,7 @@ s/#include "(tt_metal\/)?impl\/allocator\/algorithms\/(allocator_algorithm.hpp)"
 s/#include "(tt_metal\/)?impl\/buffers\/(circular_buffer_types.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?impl\/buffers\/(semaphore.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?impl\/device\/(device.hpp)"/#include <tt-metalium\/device_impl.hpp>/
+s/#include "(tt_metal\/)(device.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?impl\/dispatch\/(command_queue_interface.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?impl\/dispatch\/(cq_commands.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?impl\/dispatch\/(dispatch_core_common.hpp)"/#include <tt-metalium\/\2>/
@@ -105,3 +106,7 @@ s/#include "(tt_metal\/)?detail\/reports\/(compilation_reporter.hpp)"/#include <
 s/#include "(test_tiles.hpp)"/#include <tt-metalium\/\1>/
 s/#include "(bfloat16.hpp)"/#include <tt-metalium\/\1>/
 s/#include "(tt_metal\/)?common\/(tilize_untilize.hpp)"/#include <tt-metalium\/\2>/
+s/#include "(dispatch\/)?(dispatch_constants.hpp)"/#include <tt-metalium\/\2>/
+s/#include "(tt_metal\/)?impl\/dispatch\/util\/include\/(dispatch_constants.hpp)"/#include <tt-metalium\/\2>/
+s/#include "(tt_metal\/)?impl\/dispatch\/util\/include\/(dispatch_settings.hpp)"/#include <tt-metalium\/\2>/
+s/#include "(tt_metal\/)?hw\/inc\/(dataflow_api.h)"/#include <tt-metalium\/\2>/

@@ -57,6 +57,10 @@ s/#include <(unique_any.hpp)>/#include "\1"/
 s/#include <(util.hpp)>/#include "\1"/
 s/#include <(utils.hpp)>/#include "\1"/
 s/#include <(work_executor.hpp)>/#include "\1"/
+s/#include <(dispatch_settings.hpp)>/#include "\1"/
+s/#include <(dispatch_constants.hpp)>/#include "\1"/
+s/#include <(helpers.hpp)>/#include "\1"/
+s/#include <(device.hpp)>/#include "\1"/
 
 # End of host_api.hpp
 

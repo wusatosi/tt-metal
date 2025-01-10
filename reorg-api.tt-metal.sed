@@ -3,6 +3,7 @@ s/#include "(tt_metal\/)?(hlk_desc.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?(host_api\.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?(lock_free_queue.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?(program_cache.hpp)"/#include <\2>/
+s/#include "(tt_metal\/)?impl\/device\/(program_cache.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?buffers\/(circular_buffer_types.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?common\/(assert.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?common\/(base.hpp)"/#include <\2>/
@@ -63,6 +64,13 @@ s/#include "(tt_metal\/)?tt_stl\/(span.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?tt_stl\/(type_name.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?tt_stl\/(unique_any.hpp)"/#include <\2>/
 s/#include <(tt_metal\/)?common\/(assert.hpp)>/#include <\2>/
+s/#include "(tt_metal\/)?impl\/dispatch\/util\/include\/(dispatch_settings.hpp)"/#include <\2>/
+s/#include "(tt_metal\/impl\/dispatch\/util\/)?include\/(dispatch_settings.hpp)"/#include <\2>/
+s/#include "(tt_metal\/)?impl\/dispatch\/(dispatch_constants.hpp)"/#include <\2>/
+s/#include "(tt_metal\/impl\/)?dispatch\/(dispatch_constants.hpp)"/#include <\2>/
+s/#include "(tt_metal\/)?impl\/dispatch\/util\/include\/(helpers.hpp)"/#include <\2>/
+s/#include "(tt_metal\/impl\/dispatch\/util\/)?include\/(helpers.hpp)"/#include <\2>/
+s/#include "(tt_metal\/)(device.hpp)"/#include <\2>/
 
 # End of host_api.hpp
 

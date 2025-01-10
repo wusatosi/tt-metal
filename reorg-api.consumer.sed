@@ -25,6 +25,7 @@ s/#include "(tt_metal\/)?impl\/buffers\/(global_circular_buffer.hpp)"/#include <
 s/#include "(tt_metal\/)?impl\/device\/(device.hpp)"/#include <tt-metalium\/device_impl.hpp>/
 s/#include "(tt_metal\/impl\/)?device\/(device.hpp)"/#include <tt-metalium\/device_impl.hpp>/
 s/#include <(tt_metal\/)?impl\/device\/(device.hpp)>/#include <tt-metalium\/device_impl.hpp>/
+s/#include "(tt_metal\/)(device.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?tt_stl\/(concepts.hpp)"/#include <tt-metalium\/device_impl.hpp>/
 s/#include "(tt_metal\/)?include\/tt_metal\/(global_circular_buffer.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?impl\/buffers\/(global_semaphore.hpp)"/#include <tt-metalium\/\2>/
@@ -61,3 +62,4 @@ s/#include "(noc\/)(noc_parameters.h)"/#include <tt-metalium\/\2>/
 s/#include "(eth_l1_address_map.h)"/#include <tt-metalium\/\1>/
 s/#include "sub_device\/(sub_device_types.hpp)"/#include <tt-metalium\/\1>/
 s/#include "allocator\/(allocator.hpp)"/#include <tt-metalium\/\1>/
+s/#include "(tt_metal\/)?impl\/kernels\/(runtime_args_data.hpp)"/#include <tt-metalium\/\2>/

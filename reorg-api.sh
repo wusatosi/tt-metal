@@ -69,6 +69,10 @@ git mv impl/sub_device/sub_device.hpp api/tt-metalium/ 2>/dev/null
 git mv impl/sub_device/sub_device_types.hpp api/tt-metalium/ 2>/dev/null
 git mv impl/device/program_cache.hpp api/tt-metalium/ 2>/dev/null
 git mv tt_stl/unique_any.hpp api/tt-metalium/ 2>/dev/null
+git mv impl/dispatch/util/include/dispatch_settings.hpp api/tt-metalium/ 2>/dev/null
+git mv impl/dispatch/dispatch_constants.hpp api/tt-metalium/ 2>/dev/null
+git mv impl/dispatch/util/include/helpers.hpp api/tt-metalium/ 2>/dev/null
+git mv include/tt_metal/device.hpp api/tt-metalium/ 2>/dev/null
 # END OF host_api.hpp
 # The following files are extra fetches
 git mv common/bfloat16.hpp api/tt-metalium/ 2>/dev/null
@@ -152,3 +156,5 @@ pushd tt_eager
 find . \( -name '*.hpp' -o -name '*.h' -o -name '*.cpp' \) -print | xargs sed -Ef ../../reorg-api.consumer.sed -i
 popd
 popd
+
+sed -Ef ./reorg-api.doxyfile.sed -i Doxyfile
