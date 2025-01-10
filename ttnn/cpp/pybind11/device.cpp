@@ -9,12 +9,12 @@
 #include <pybind11/stl.h>
 
 #include "tt_metal/detail/persistent_kernel_cache.hpp"
-#include "tt_metal/detail/reports/compilation_reporter.hpp"
+#include <tt-metalium/compilation_reporter.hpp>
 #include "tt_metal/detail/reports/memory_reporter.hpp"
-#include "tt_metal/impl/device/device.hpp"
-#include "tt_metal/detail/tt_metal.hpp"
-#include "tt_metal/host_api.hpp"
-#include "tt_metal/impl/trace/trace.hpp"
+#include <tt-metalium/device_impl.hpp>
+#include <tt-metalium/tt_metal.hpp>
+#include <tt-metalium/host_api.hpp>
+#include <tt-metalium/trace.hpp>
 #include "ttnn/operations/experimental/auto_format/auto_format.hpp"
 
 using namespace tt::tt_metal;

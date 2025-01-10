@@ -5,10 +5,10 @@
 #include <optional>
 #include <utility>
 
-#include "common/constants.hpp"
-#include "common/math.hpp"
+#include <tt-metalium/constants.hpp>
+#include <tt-metalium/math.hpp>
 
-#include "tt_metal/impl/buffers/buffer_constants.hpp"
+#include <tt-metalium/buffer_constants.hpp>
 
 #include "ttnn/tensor/tensor.hpp"
 #include "ttnn/tensor/types.hpp"

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#include "tt_metal/distributed/mesh_device.hpp"
+#include <mesh_device.hpp>
 
 #include <cstddef>
 #include <memory>
@@ -10,11 +10,11 @@
 #include <utility>
 
 #include "umd/device/types/cluster_descriptor_types.h"
-#include "tt_metal/common/logger.hpp"
-#include "tt_metal/detail/tt_metal.hpp"
-#include "tt_metal/host_api.hpp"
-#include "tt_metal/distributed/mesh_device_view.hpp"
-#include "tt_metal/distributed/mesh_device.hpp"
+#include <logger.hpp>
+#include <tt_metal.hpp>
+#include <host_api.hpp>
+#include <mesh_device_view.hpp>
+#include <mesh_device.hpp>
 #include "tt_metal/distributed/mesh_command_queue.hpp"
 
 namespace tt::tt_metal::distributed {

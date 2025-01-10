@@ -4,7 +4,7 @@
 
 #include "ttnn/operations/conv/conv2d/prepare_conv2d_weights.hpp"
 
-#include "tt_metal/common/work_split.hpp"
+#include <tt-metalium/work_split.hpp>
 
 #include "ttnn/operations/conv/conv2d/conv2d_utils.hpp"
 #include "ttnn/operations/core/compute_kernel/compute_kernel_config.hpp"

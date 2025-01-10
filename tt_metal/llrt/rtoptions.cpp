@@ -11,7 +11,7 @@
 #include <string>
 
 #include "impl/debug/dprint_server.hpp"
-#include "tools/profiler/profiler_state.hpp"
+#include <profiler_state.hpp>
 
 using std::vector;
 

@@ -7,7 +7,7 @@
 #include "ttnn/run_operation.hpp"
 #include "reshape.hpp"
 #include "reshape_common.hpp"
-#include "tt_metal/common/constants.hpp"
+#include <tt-metalium/constants.hpp>
 #include <functional>
 #include <ttnn/operations/functions.hpp>
 #include "ttnn/operations/experimental/auto_format/auto_format.hpp"

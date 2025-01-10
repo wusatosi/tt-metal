@@ -10,10 +10,10 @@
 #include <memory>
 
 #include "ttnn/tensor/tensor.hpp"
-#include "tt_metal/graph/graph_tracking.hpp"
-#include "tt_metal/host_api.hpp"
+#include <tt-metalium/graph_tracking.hpp>
+#include <tt-metalium/host_api.hpp>
 #include "tt_metal/tt_stl/overloaded.hpp"
-#include "tt_metal/tools/profiler/op_profiler.hpp"
+#include <tt-metalium/op_profiler.hpp>
 #include "ttnn/core.hpp"
 #include "ttnn/run_operation.hpp"
 #include "ttnn/tensor/host_buffer/types.hpp"

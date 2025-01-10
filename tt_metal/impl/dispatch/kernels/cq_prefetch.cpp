@@ -9,10 +9,10 @@
 //    double buffered ScratchBuf for out of band data (e.g., from DRAM)
 //  - syncs w/ dispatcher via 2 semaphores, page_ready, page_done
 
-#include "tt_metal/impl/dispatch/cq_commands.hpp"
+#include <cq_commands.hpp>
 #include "tt_metal/impl/dispatch/kernels/cq_common.hpp"
 #include "debug/dprint.h"
-#include "noc/noc_parameters.h"  // PCIE_ALIGNMENT
+#include <tt-metalium/noc_parameters.h>  // PCIE_ALIGNMENT
 
 constexpr uint32_t CQ_PREFETCH_CMD_BARE_MIN_SIZE = PCIE_ALIGNMENT;  // for NOC PCIe alignemnt
 struct CQPrefetchHToPrefetchDHeader_s {

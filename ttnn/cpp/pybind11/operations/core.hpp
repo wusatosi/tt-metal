@@ -11,7 +11,7 @@
 #include "pybind11/cast.h"
 #include "ttnn/cpp/pybind11/decorators.hpp"
 #include "ttnn/operations/core/core.hpp"
-#include "tt_metal/common/work_split.hpp"
+#include <tt-metalium/work_split.hpp>
 
 namespace py = pybind11;
 

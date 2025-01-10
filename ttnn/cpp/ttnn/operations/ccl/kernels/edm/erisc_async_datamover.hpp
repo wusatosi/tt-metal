@@ -9,7 +9,7 @@
 
 #include "dataflow_api.h"
 #include "debug/assert.h"
-#include "eth_l1_address_map.h"
+#include <tt-metalium/eth_l1_address_map.h>
 #include "ethernet/dataflow_api.h"
 #include "ttnn/cpp/ttnn/operations/ccl/shared_with_host/hetergeneous_data_structs.hpp"
 #include "ttnn/cpp/ttnn/operations/ccl/kernels/edm/edm_handshake.hpp"

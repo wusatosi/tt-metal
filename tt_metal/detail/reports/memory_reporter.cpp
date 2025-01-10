@@ -4,9 +4,9 @@
 
 #include "tt_metal/detail/reports/memory_reporter.hpp"
 #include "tt_metal/detail/reports/report_utils.hpp"
-#include "tt_metal/impl/allocator/allocator.hpp"
-#include "tt_metal/device.hpp"
-#include "tt_metal/impl/program/program.hpp"
+#include <allocator.hpp>
+#include <device.hpp>
+#include <program_impl.hpp>
 
 #include <algorithm>
 #include <filesystem>

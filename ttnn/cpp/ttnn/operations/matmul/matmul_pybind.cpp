@@ -10,7 +10,7 @@
 #include <utility>
 
 #include "pybind11/decorators.hpp"
-#include "tt_metal/common/core_coord.hpp"
+#include <tt-metalium/core_coord.hpp>
 #include "ttnn/cpp/pybind11/json_class.hpp"
 #include "ttnn/operations/matmul/matmul.hpp"
 #include "ttnn/types.hpp"

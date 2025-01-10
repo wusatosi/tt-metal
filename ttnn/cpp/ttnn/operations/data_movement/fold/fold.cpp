@@ -12,7 +12,7 @@
 #include "ttnn/cpp/ttnn/operations/data_movement/slice/slice.hpp"
 #include "ttnn/cpp/ttnn/operations/data_movement/reshape_on_device/reshape.hpp"
 #include "ttnn/cpp/ttnn/operations/data_movement/pad/pad.hpp"
-#include "tt_metal/common/constants.hpp"
+#include <tt-metalium/constants.hpp>
 
 #include "fold.hpp"
 

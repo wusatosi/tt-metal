@@ -5,7 +5,7 @@
 #include "ttnn/cpp/ttnn/operations/ccl/common/uops/ccl_host_commands.hpp"
 
 #include "ttnn/operations/ccl/common/uops/ccl_command.hpp"
-#include "tt_metal/impl/buffers/global_semaphore.hpp"
+#include <tt-metalium/global_semaphore.hpp>
 #include "tt_metal/tt_stl/overloaded.hpp"
 
 #include <variant>

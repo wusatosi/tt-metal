@@ -8,7 +8,7 @@
 #include "ttnn/operations/eltwise/binary/binary.hpp"
 #include "ttnn/operations/eltwise/unary/unary.hpp"
 #include "ttnn/types.hpp"
-#include "tt_metal/common/bfloat16.hpp"
+#include <tt-metalium/bfloat16.hpp>
 #include "ttnn/operations/eltwise/binary/binary_composite.hpp"
 #include "ttnn/cpp/ttnn/operations/eltwise/ternary/where.hpp"
 #include "ttnn/cpp/ttnn/operations/copy.hpp"

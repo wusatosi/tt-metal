@@ -17,11 +17,11 @@
 #include "ttnn/operations/eltwise/unary_backward/unary_backward.hpp"
 #include "ttnn/operations/eltwise/binary_backward/binary_backward.hpp"
 #include "ttnn/operations/eltwise/complex_unary/complex_unary.hpp"
-#include "tt_metal/common/constants.hpp"
+#include <tt-metalium/constants.hpp>
 #include "ttnn/cpp/ttnn/common/constants.hpp"
 #include "ttnn/common/constants.hpp"
-#include "tt_metal/host_api.hpp"
-#include "tt_metal/tools/profiler/op_profiler.hpp"
+#include <tt-metalium/host_api.hpp>
+#include <tt-metalium/op_profiler.hpp>
 #include "ttnn/operations/eltwise/ternary/where.hpp"
 #include "ttnn/operations/creation.hpp"
 #include "ttnn/common/constants.hpp"

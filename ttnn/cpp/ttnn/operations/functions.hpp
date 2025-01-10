@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <common/math.hpp>
+#include <tt-metalium/math.hpp>
 #include <optional>
 #include <random>
 #include <ttnn/tensor/host_buffer/functions.hpp>

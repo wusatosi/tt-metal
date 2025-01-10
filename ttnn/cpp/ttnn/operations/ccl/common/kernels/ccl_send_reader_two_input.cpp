@@ -6,9 +6,9 @@
 //       that don't require macros to function
 
 #include "dataflow_api.h"
-#include "impl/buffers/buffer_constants.hpp"
+#include <tt-metalium/buffer_constants.hpp>
 #include "ttnn/cpp/ttnn/operations/ccl/shared_with_host/hetergeneous_data_structs.hpp"
-#include "tt_metal/impl/buffers/buffer_constants.hpp"
+#include <tt-metalium/buffer_constants.hpp>
 #include "ttnn/cpp/ttnn/operations/ccl/shared_with_host/sharded_tensor_addr_gen.hpp"
 #include "ttnn/cpp/ttnn/operations/ccl/all_gather/device/kernels/dataflow/worker_ring_gather_utils.hpp"
 

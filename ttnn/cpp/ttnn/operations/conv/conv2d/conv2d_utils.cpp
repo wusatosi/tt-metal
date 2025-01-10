@@ -7,19 +7,19 @@
 #include <optional>
 
 #include "conv2d_utils.hpp"
-#include "common/assert.hpp"
-#include "common/constants.hpp"
-#include "common/logger.hpp"
-#include "impl/buffers/buffer_constants.hpp"
+#include <tt-metalium/assert.hpp>
+#include <tt-metalium/constants.hpp>
+#include <tt-metalium/logger.hpp>
+#include <tt-metalium/buffer_constants.hpp>
 #include "ttnn/operations/core/core.hpp"
-#include "tt_metal/common/work_split.hpp"
+#include <tt-metalium/work_split.hpp>
 #include "ttnn/operations/data_movement/move/move.hpp"
 #include "ttnn/operations/eltwise/unary/common/unary_op_utils.hpp"
 #include "ttnn/operations/data_movement/pad/pad.hpp"
 #include "ttnn/cpp/ttnn/operations/data_movement/reshape_view/reshape.hpp"
 #include "ttnn/tensor/enum_types.hpp"
 #include "ttnn/tensor/tensor.hpp"
-#include "tt_metal/common/core_coord.hpp"
+#include <tt-metalium/core_coord.hpp>
 
 using namespace tt;
 namespace ttnn {

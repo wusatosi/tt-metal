@@ -8,7 +8,7 @@
 // It imports and renames types from the tt_metal library to maintain a consistent naming convention
 // within the TTNN namespace while leveraging the underlying tt_metal functionality.
 
-#include "tt_metal/distributed/mesh_device.hpp"
+#include <tt-metalium/mesh_device.hpp>
 
 namespace ttnn::distributed {
 

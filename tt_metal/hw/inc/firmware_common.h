@@ -12,8 +12,8 @@
 #include "compile_time_args.h"
 #include "dev_mem_map.h"
 #include "hostdevcommon/kernel_structs.h"
-#include "dev_msgs.h"
-#include "noc/noc_parameters.h"
+#include <dev_msgs.h>
+#include <tt-metalium/noc_parameters.h>
 #include "debug/dprint.h"
 
 extern uint16_t dram_bank_to_noc_xy[NUM_NOCS][NUM_DRAM_BANKS];

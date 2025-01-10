@@ -8,7 +8,7 @@
 #include "ttnn/cpp/ttnn/operations/ccl/kernel_common/worker_edm_utils.hpp"
 #include "ttnn/cpp/ttnn/operations/ccl/shared_with_host/hetergeneous_data_structs.hpp"
 #include "ttnn/cpp/ttnn/operations/ccl/kernel_common/worker_edm_adapters.hpp"
-#include "tt_metal/impl/buffers/buffer_constants.hpp"
+#include <tt-metalium/buffer_constants.hpp>
 #include "ttnn/cpp/ttnn/tensor/enum_types.hpp"
 #include "ttnn/cpp/ttnn/operations/ccl/common/types/ccl_types.hpp"
 

@@ -6,7 +6,7 @@
 
 #include <reflect>
 
-#include "tt_metal/graph/graph_tracking.hpp"
+#include <tt-metalium/graph_tracking.hpp>
 #include "tt_metal/third_party/tracy/public/tracy/Tracy.hpp"
 #include "ttnn/common/constants.hpp"
 #include "ttnn/core.hpp"
