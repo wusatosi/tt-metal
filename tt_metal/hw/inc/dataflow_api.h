@@ -1712,7 +1712,7 @@ void noc_async_read_barrier(uint8_t noc = noc_index) {
  */
 FORCE_INLINE
 void noc_async_write_barrier(uint8_t noc = noc_index) {
-    WAYPOINT("NWBW");
+    // WAYPOINT("NWBW");
     if constexpr (noc_mode == DM_DYNAMIC_NOC) {
         while (!ncrisc_dynamic_noc_nonposted_writes_flushed<proc_type>(noc));
     } else {
