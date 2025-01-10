@@ -2111,3 +2111,28 @@ def test_optional_output_argument(device, n_size, c, m, k, n):
     assert_with_pcc(torch_output_tensor, output, 0.999)
     assert_with_pcc(torch_output_tensor, optional_output_tensor, 0.999)
     assert_with_pcc(output, optional_output_tensor, 0.999)
+
+
+@pytest.mark.parametrize(
+    "ch, lhs_outer, inner, rhs_outer",
+    [
+        (1, 11, 8192, 2048),
+    ],
+)
+def test_matmul_llama(device, ch, lhs_outer, inner, rhs_outer):
+    torch.manual_seed(0)
+
+    torch_input_tensor_a = torch.randn((ch, lhs_outer, inner), dtype=torch.bfloat16)
+    torch_input_tensor_b = torch.randn((ch, inner, rhs_outer), dtype=torch.bfloat16)
+    torch_output_tensor = torch.matmul(torch_input_tensor_a, torch_input_tensor_b)
+    torch_opt_output_tensor = torch.zeros_like(torch_output_tensor)
+
+    input_tensor_a = ttnn.from_torch(torch_input_tensor_a, layout=ttnn.TILE_LAYOUT, device=device)
+    input_tensor_b = ttnn.from_torch(torch_input_tensor_b, layout=ttnn.TILE_LAYOUT, device=device)
+
+    output = ttnn.matmul(input_tensor_a, input_tensor_b)
+    output = ttnn.to_torch(output)
+
+    assert len(output.shape) == len(torch_output_tensor.shape)
+    assert output.shape == torch_output_tensor.shape
+    assert_with_pcc(torch_output_tensor, output, 0.999)
