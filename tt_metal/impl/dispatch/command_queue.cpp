@@ -1601,6 +1601,7 @@ void EnqueueProgramCommand::write_program_command_sequence(
 }
 
 void EnqueueProgramCommand::process() {
+    std::cout << "Program config sizes " << program.get_program_config_sizes().size() << std::endl;
     std::pair<ConfigBufferSync, std::vector<ConfigBufferEntry>&> reservation =
         this->config_buffer_mgr.reserve(program.get_program_config_sizes());
     uint32_t sync_count = 0;
@@ -1644,9 +1645,11 @@ void EnqueueProgramCommand::process() {
     TT_FATAL((not is_cached) or cached_cmd_iter != cached_program_command_sequences.end(), "Enqueueing a Program across devices with different cores harvested is not supported, unless coordinate virtualization is enabled (only enabled on Wormhole and above).");
     if (program.get_program_binary_status(device->id()) == ProgramBinaryStatus::InFlight) {
         // assemble_stall_commands is hardcoded to always wait for everything for now.
+        std::cout << "in flight so free " << this->expected_num_workers_completed << std::endl;
         this->config_buffer_mgr.free(this->expected_num_workers_completed);
     } else {
         if (stall_first || stall_before_program) {
+            std::cout << "free syn count " << sync_count << std::endl;
             this->config_buffer_mgr.free(sync_count);
         }
     }
@@ -1708,6 +1711,7 @@ void EnqueueProgramCommand::process() {
             cached_program_command_sequence.current_stall_seq_idx = CachedStallSequenceIdx;
         }
         auto& curr_stall_seq_idx = cached_program_command_sequence.current_stall_seq_idx;
+        std::cout << "Updating write_count_offset " << wait_count_offset << " sync count " << sync_count << std::endl;
         cached_program_command_sequence.stall_command_sequences[curr_stall_seq_idx].update_cmd_sequence(
             wait_count_offset, &sync_count, sizeof(uint32_t));
 

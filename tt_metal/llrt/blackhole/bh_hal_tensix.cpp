@@ -31,6 +31,11 @@ HalCoreInfoType create_tensix_mem_map() {
 
     std::vector<DeviceAddr> mem_map_bases;
 
+    std::cout << "Launch is at 0x" << std::hex << GET_MAILBOX_ADDRESS_HOST(launch) << " kernel config is at 0x "
+              << std::hex << L1_KERNEL_CONFIG_BASE << " unreserved is at 0x" << std::hex
+              << (((L1_KERNEL_CONFIG_BASE + L1_KERNEL_CONFIG_SIZE - 1) | (max_alignment - 1)) + 1) << std::dec
+              << std::endl;
+
     mem_map_bases.resize(static_cast<std::size_t>(HalL1MemAddrType::COUNT));
      mem_map_bases[static_cast<std::size_t>(HalL1MemAddrType::BASE)] = MEM_L1_BASE;
     mem_map_bases[static_cast<std::size_t>(HalL1MemAddrType::BARRIER)] = MEM_L1_BARRIER;
