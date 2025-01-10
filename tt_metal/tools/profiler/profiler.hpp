@@ -66,7 +66,7 @@ private:
         std::ofstream& log_file_ofs, const tt::ARCH& device_architecture, int device_core_frequency) const;
 
     // Dumping profile result to file
-    void dumpResultToFile(
+    void logPacketData(
         std::ofstream& log_file_ofs,
         uint32_t runID,
         uint32_t runHostID,
@@ -75,6 +75,36 @@ private:
         int core_flat,
         int risc_num,
         uint64_t stat_value,
+        uint32_t timer_id,
+        uint64_t timestamp);
+
+    // logs packet data to CSV file
+    void logPacketDataToCSV(
+        std::ofstream& log_file_ofs,
+        int device_id,
+        int core_x,
+        int core_y,
+        const std::string_view risc_name,
+        uint32_t timer_id,
+        uint64_t timestamp,
+        uint64_t data,
+        uint32_t run_id,
+        uint32_t run_host_id,
+        const std::string_view zone_name,
+        const std::string_view packet_type,
+        uint64_t source_line,
+        const std::string_view source_file);
+
+    // dump noc trace related profile data to json file
+    void dumpNocTraceToJson(
+        std::ofstream& log_file_ofs,
+        uint32_t run_id,
+        uint32_t run_host_id,
+        int device_id,
+        CoreCoord core,
+        int core_flat,
+        int risc_num,
+        uint64_t data,
         uint32_t timer_id,
         uint64_t timestamp);
 

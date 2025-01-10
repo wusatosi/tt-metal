@@ -146,7 +146,7 @@ void DeviceProfiler::readRiscProfilerResults(
                                     worker_core.y,
                                     runCounterRead);
 
-                                dumpResultToFile(
+                                logPacketData(
                                     log_file_ofs,
                                     runCounterRead,
                                     runHostCounterRead,
@@ -164,7 +164,7 @@ void DeviceProfiler::readRiscProfilerResults(
 
                             uint32_t time_H = opTime_H;
                             uint32_t time_L = opTime_L;
-                            dumpResultToFile(
+                            logPacketData(
                                 log_file_ofs,
                                 runCounterRead,
                                 runHostCounterRead,
@@ -184,7 +184,7 @@ void DeviceProfiler::readRiscProfilerResults(
                             index += kernel_profiler::PROFILER_L1_MARKER_UINT32_SIZE;
                             uint32_t data_H = profile_buffer[index];
                             uint32_t data_L = profile_buffer[index + 1];
-                            dumpResultToFile(
+                            logPacketData(
                                 log_file_ofs,
                                 runCounterRead,
                                 runHostCounterRead,
@@ -200,7 +200,7 @@ void DeviceProfiler::readRiscProfilerResults(
                         case kernel_profiler::TS_EVENT: {
                             uint32_t time_H = profile_buffer[index] & 0xFFF;
                             uint32_t time_L = profile_buffer[index + 1];
-                            dumpResultToFile(
+                            logPacketData(
                                 log_file_ofs,
                                 runCounterRead,
                                 runHostCounterRead,
@@ -233,7 +233,7 @@ void DeviceProfiler::firstTimestamp(uint64_t timestamp) {
     }
 }
 
-void DeviceProfiler::dumpResultToFile(
+void DeviceProfiler::logPacketData(
     std::ofstream& log_file_ofs,
     uint32_t run_id,
     uint32_t run_host_id,
@@ -288,8 +288,8 @@ void DeviceProfiler::dumpResultToFile(
 
     firstTimestamp(timestamp);
 
-    log_file_ofs << fmt::format(
-        "{},{},{},{},{},{},{},{},{},{},{},{},{}",
+    logPacketDataToCSV(
+        log_file_ofs,
         device_id,
         core.x,
         core.y,
@@ -303,7 +303,95 @@ void DeviceProfiler::dumpResultToFile(
         magic_enum::enum_name(packet_type),
         source_line,
         source_file);
-    log_file_ofs << std::endl;
+}
+
+void DeviceProfiler::logPacketDataToCSV(
+    std::ofstream& log_file_ofs,
+    int device_id,
+    int core_x,
+    int core_y,
+    const std::string_view risc_name,
+    uint32_t timer_id,
+    uint64_t timestamp,
+    uint64_t data,
+    uint32_t run_id,
+    uint32_t run_host_id,
+    const std::string_view zone_name,
+    const std::string_view packet_type,
+    uint64_t source_line,
+    const std::string_view source_file) {
+    log_file_ofs << fmt::format(
+                        "{},{},{},{},{},{},{},{},{},{},{},{},{}",
+                        device_id,
+                        core_x,
+                        core_y,
+                        risc_name,
+                        timer_id,
+                        timestamp,
+                        data,
+                        run_id,
+                        run_host_id,
+                        zone_name,
+                        packet_type,
+                        source_line,
+                        source_file)
+                 << std::endl;
+}
+
+void DeviceProfiler::dumpNocTraceToJson(
+    std::ofstream& log_file_ofs,
+    uint32_t run_id,
+    uint32_t run_host_id,
+    int device_id,
+    CoreCoord core,
+    int core_flat,
+    int risc_num,
+    uint64_t data,
+    uint32_t timer_id,
+    uint64_t timestamp) {
+    kernel_profiler::PacketTypes packet_type = get_packet_type(timer_id);
+
+    auto dquote = [](std::string_view str) { return fmt::format(R"("{}")", str); };
+
+    if ((packet_type == kernel_profiler::ZONE_START) || (packet_type == kernel_profiler::ZONE_END)) {
+        tracy::TTDeviceEventPhase zone_phase = (packet_type == kernel_profiler::ZONE_END)
+                                                   ? tracy::TTDeviceEventPhase::end
+                                                   : tracy::TTDeviceEventPhase::begin;
+        std::string zone_name = "";
+        if (hash_to_zone_src_locations.find((uint16_t)timer_id) != hash_to_zone_src_locations.end()) {
+            std::stringstream source_info(hash_to_zone_src_locations[timer_id]);
+            getline(source_info, zone_name, ',');
+        }
+
+        log_file_ofs
+            << std::endl
+            << fmt::format(
+                   R"({{ "proc":{:<8s}, "zone":{:<14}, "zone_phase":{:<7}, "sx":{:<2}, "sy":{:<2}, "timestamp" : {} }})",
+                   dquote(tracy::riscName[risc_num]),
+                   dquote(zone_name),
+                   dquote(magic_enum::enum_name(zone_phase)),
+                   core.x,
+                   core.y,
+                   timestamp)
+            << std::endl;
+
+    } else if (packet_type == kernel_profiler::TS_DATA) {
+        KernelProfilerNocEventMetadata ev_md(data);
+        log_file_ofs
+            << fmt::format(
+                   R"({{ "proc":{:<6}, "noc":{:<6}, "vc":{:<2}, "sx":{:<2},  "sy":{:<2},  "dx":{:<2},  "dy":{:<2},  "num_bytes":{:<6},  "type":{:<22}, "timestamp":{:<16} }})",
+                   dquote(tracy::riscName[risc_num]),
+                   dquote(magic_enum::enum_name(ev_md.noc_type)),
+                   ev_md.noc_vc,
+                   core.x,
+                   core.y,
+                   ev_md.dst_x,
+                   ev_md.dst_y,
+                   uint32_t(ev_md.num_bytes),
+                   dquote(magic_enum::enum_name(ev_md.noc_xfer_type)),
+                   timestamp)
+            << "\n";
+    }
 }
 
 DeviceProfiler::DeviceProfiler(const bool new_logs) {
