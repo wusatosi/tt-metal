@@ -83,7 +83,7 @@ protected:
         const CoreType kernel_core_type,
         const bool simple_kernel = false,
         const KernelProperties& kernel_properties = KernelProperties()) {
-        CoreRangeSet cores = this->get_cores(kernel_core_type);
+        CoreRangeSet cores = CoreRangeSet({CoreRange({0, 0}, {0, 0})});
         const bool create_eth_config = kernel_core_type == CoreType::ETH;
 
         if (simple_kernel) {
