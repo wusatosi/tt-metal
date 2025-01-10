@@ -28,7 +28,10 @@ static kernel_profiler::PacketTypes get_packet_type(uint32_t timer_id) {
 }
 
 void DeviceProfiler::readRiscProfilerResults(
-    int device_id, const std::vector<std::uint32_t>& profile_buffer, const CoreCoord& worker_core) {
+    std::ofstream& log_file_ofs,
+    int device_id,
+    const std::vector<std::uint32_t>& profile_buffer,
+    const CoreCoord& worker_core) {
     ZoneScoped;
 
     HalProgrammableCoreType CoreType;
@@ -144,6 +147,7 @@ void DeviceProfiler::readRiscProfilerResults(
                                     runCounterRead);
 
                                 dumpResultToFile(
+                                    log_file_ofs,
                                     runCounterRead,
                                     runHostCounterRead,
                                     device_id,
@@ -161,6 +165,7 @@ void DeviceProfiler::readRiscProfilerResults(
                             uint32_t time_H = opTime_H;
                             uint32_t time_L = opTime_L;
                             dumpResultToFile(
+                                log_file_ofs,
                                 runCounterRead,
                                 runHostCounterRead,
                                 device_id,
@@ -180,6 +185,7 @@ void DeviceProfiler::readRiscProfilerResults(
                             uint32_t data_H = profile_buffer[index];
                             uint32_t data_L = profile_buffer[index + 1];
                             dumpResultToFile(
+                                log_file_ofs,
                                 runCounterRead,
                                 runHostCounterRead,
                                 device_id,
@@ -195,6 +201,7 @@ void DeviceProfiler::readRiscProfilerResults(
                             uint32_t time_H = profile_buffer[index] & 0xFFF;
                             uint32_t time_L = profile_buffer[index + 1];
                             dumpResultToFile(
+                                log_file_ofs,
                                 runCounterRead,
                                 runHostCounterRead,
                                 device_id,
@@ -227,6 +234,7 @@ void DeviceProfiler::firstTimestamp(uint64_t timestamp) {
 }
 
 void DeviceProfiler::dumpResultToFile(
+    std::ofstream& log_file_ofs,
     uint32_t run_id,
     uint32_t run_host_id,
     int device_id,
@@ -236,10 +244,6 @@ void DeviceProfiler::dumpResultToFile(
     uint64_t data,
     uint32_t timer_id,
     uint64_t timestamp) {
-    std::pair<uint32_t, CoreCoord> deviceCore = {device_id, core};
-    std::filesystem::path log_path = output_dir / DEVICE_SIDE_LOG;
-    std::ofstream log_file;
-
     kernel_profiler::PacketTypes packet_type = get_packet_type(timer_id);
     uint32_t t_id = timer_id & 0xFFFF;
     std::string zone_name = "";
@@ -284,19 +288,7 @@ void DeviceProfiler::dumpResultToFile(
 
     firstTimestamp(timestamp);
 
-    if (!std::filesystem::exists(log_path)) {
-        log_file.open(log_path);
-        log_file << "ARCH: " << get_string_lowercase(device_architecture)
-                 << ", CHIP_FREQ[MHz]: " << device_core_frequency << std::endl;
-        log_file << "PCIe slot, core_x, core_y, RISC processor type, timer_id, time[cycles since reset], data, run ID, "
-                    "run host ID,  zone name, type, source line, source file"
-                 << std::endl;
-    } else {
-        log_file.open(log_path, std::ios_base::app);
-    }
-
-    // log_file << fmt::format("{:4},{:3},{:3},{:>7},{:7},{:15},{:15},{:5},{:>25},{:>6},{:6},{}",
-    log_file << fmt::format(
+    log_file_ofs << fmt::format(
         "{},{},{},{},{},{},{},{},{},{},{},{},{}",
         device_id,
         core.x,
@@ -311,8 +303,7 @@ void DeviceProfiler::dumpResultToFile(
         magic_enum::enum_name(packet_type),
         source_line,
         source_file);
-    log_file << std::endl;
-    log_file.close();
+    log_file_ofs << std::endl;
 }
 
 DeviceProfiler::DeviceProfiler(const bool new_logs) {
@@ -609,6 +600,15 @@ void DeviceProfiler::dumpJsonReport(
     json_rpt_os.close();
 }
 
+void DeviceProfiler::emitCSVHeader(
+    std::ofstream& log_file_ofs, const tt::ARCH& device_architecture, int device_core_frequency) const {
+    log_file_ofs << "ARCH: " << get_string_lowercase(device_architecture)
+                 << ", CHIP_FREQ[MHz]: " << device_core_frequency << std::endl;
+    log_file_ofs << "PCIe slot, core_x, core_y, RISC processor type, timer_id, time[cycles since reset], data, run ID, "
+                    "run host ID,  zone name, type, source line, source file"
+                 << std::endl;
+}
+
 void DeviceProfiler::dumpResults(IDevice* device, const std::vector<CoreCoord>& worker_cores, bool lastDump) {
 #if defined(TRACY_ENABLE)
     ZoneScoped;
@@ -640,8 +640,23 @@ void DeviceProfiler::dumpResults(IDevice* device, const std::vector<CoreCoord>& 
             dumpJsonReport(device, profile_buffer, worker_cores);
         }
 
-        for (const auto& worker_core : worker_cores) {
-            readRiscProfilerResults(device_id, profile_buffer, worker_core);
+        std::filesystem::path log_path = output_dir / DEVICE_SIDE_LOG;
+        std::ofstream log_file_ofs;
+
+        // append to existing CSV log file if it already exists
+        if (std::filesystem::exists(log_path)) {
+            log_file_ofs.open(log_path, std::ios_base::app);
+        } else {
+            log_file_ofs.open(log_path);
+            emitCSVHeader(log_file_ofs, device_architecture, device_core_frequency);
+        }
+
+        if (!log_file_ofs) {
+            log_error("Could not open kernel profiler dump file '{}'", log_path);
+        } else {
+            for (const auto& worker_core : worker_cores) {
+                readRiscProfilerResults(log_file_ofs, device_id, profile_buffer, worker_core);
+            }
         }
     } else {
         log_warning("DRAM profiler buffer is not initialized");

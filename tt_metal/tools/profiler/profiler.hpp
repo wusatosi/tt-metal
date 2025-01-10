@@ -62,8 +62,12 @@ private:
     // Iterate through all zone source locations and generate hash
     void generateZoneSourceLocationsHashes();
 
+    void emitCSVHeader(
+        std::ofstream& log_file_ofs, const tt::ARCH& device_architecture, int device_core_frequency) const;
+
     // Dumping profile result to file
     void dumpResultToFile(
+        std::ofstream& log_file_ofs,
         uint32_t runID,
         uint32_t runHostID,
         int device_id,
@@ -76,7 +80,10 @@ private:
 
     // Helper function for reading risc profile results
     void readRiscProfilerResults(
-        int device_id, const std::vector<std::uint32_t>& profile_buffer, const CoreCoord& worker_core);
+        std::ofstream& log_file_ofs,
+        int device_id,
+        const std::vector<std::uint32_t>& profile_buffer,
+        const CoreCoord& worker_core);
 
     // Push device results to tracy
     void pushTracyDeviceResults();
