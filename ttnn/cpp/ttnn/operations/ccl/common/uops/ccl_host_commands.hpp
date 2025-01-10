@@ -13,6 +13,16 @@ namespace ttnn::ccl::cmd {
 // command description (Intermediate Representation if you will) before being lowered directly to
 // Ccl Command Process KernelCommands
 
+using semaphore_id_t = std::variant<uint32_t, tt::tt_metal::GlobalSemaphore const*>;
+// TODO: future work - support mcast
+struct CclInlineCommandSync {
+    CclCommandAddrType semaphore_type = CclCommandAddrType::SEMAPHORE_ID;
+    semaphore_id_t semaphore;
+    uint8_t noc_x = 0;
+    uint8_t noc_y = 0;
+    CclCommandSyncGranularity sync_granularity = CclCommandSyncGranularity::NONE;
+};
+
 struct CclHostLowLevelWorkerCommand {
     ttnn::ccl::cmd::CclCommandCode command_code;
     ttnn::ccl::cmd::CclCommandArgs command_args;
@@ -31,24 +41,25 @@ struct CclHostLowLevelWorkerCommand {
     // unicast, mcast, local_only
     ttnn::ccl::cmd::CclCommandDestType fabric_transfer_type;
     ttnn::ccl::cmd::CclCommandDestArgs fabric_transfer_args;
+
+    ttnn::ccl::cmd::CclCommandLevelSyncType sync_type;
+    ttnn::ccl::cmd::CclCommandLevelSyncArgs sync_args;
 };
+
 
 using CclHostLowLevelCommandSequence = std::vector<CclHostLowLevelWorkerCommand>;
 
 namespace uops {
 
-using semaphore_id_t = std::variant<uint32_t, tt::tt_metal::GlobalSemaphore const*>;
-
-[[nodiscard]] CclHostLowLevelWorkerCommand read_tensor_slice_to_cb_for_eventual_fabric_write(
-    ttnn::ccl::v2::TensorSlice const& slice, size_t cb_id);
 [[nodiscard]] CclHostLowLevelWorkerCommand read_tensor_slice_to_cb(
     ttnn::ccl::v2::TensorSlice const& slice, size_t cb_id);
 [[nodiscard]] CclHostLowLevelWorkerCommand local_write_cb_to_tensor_slice(
-    ttnn::ccl::v2::TensorSlice const& slice, size_t cb_id);
+    ttnn::ccl::v2::TensorSlice const& slice, size_t cb_id, std::optional<CclInlineCommandSync> const& fine_grain_sync = std::nullopt);
 [[nodiscard]] CclHostLowLevelWorkerCommand fabric_write_cb_to_tensor_slice(
     ttnn::ccl::v2::TensorSlice const& slice,
     size_t cb_id,
-    std::variant<UnicastCommandDestArgs, MulticastCommandDestArgs> const& dest_args_variant);
+    std::variant<UnicastCommandDestArgs, MulticastCommandDestArgs> const& dest_args_variant,
+    std::optional<CclInlineCommandSync> const& fine_grain_sync = std::nullopt);
 [[nodiscard]] CclHostLowLevelWorkerCommand local_semaphore_wait(semaphore_id_t const& semaphore_id, size_t value);
 [[nodiscard]] CclHostLowLevelWorkerCommand local_chip_noc_semaphore_inc(
     size_t dest_noc0_x, size_t dest_noc0_y, semaphore_id_t const& semaphore_id, size_t value);
@@ -97,7 +108,8 @@ using semaphore_id_t = std::variant<uint32_t, tt::tt_metal::GlobalSemaphore cons
     CclCommandAddrAbsoluteAddress const& bank_base_address,
     tt::stl::Span<noc_transfer_info> const& transfer_infos,
     size_t cb_size_bytes,
-    size_t cb_id
+    size_t cb_id,
+    std::optional<CclInlineCommandSync> const& fine_grain_sync = std::nullopt
 );
 
 [[nodiscard]] CclHostLowLevelWorkerCommand fabric_unicast_noc_write_burst_from_cb(
@@ -105,7 +117,8 @@ using semaphore_id_t = std::variant<uint32_t, tt::tt_metal::GlobalSemaphore cons
     tt::stl::Span<noc_transfer_info> const& transfer_infos,
     size_t cb_size_bytes,
     size_t cb_id,
-    UnicastCommandDestArgs const& unicast_args
+    UnicastCommandDestArgs const& unicast_args,
+    std::optional<CclInlineCommandSync> const& fine_grain_sync = std::nullopt
 );
 
 [[nodiscard]] CclHostLowLevelWorkerCommand fabric_multicast_noc_write_burst_from_cb(
@@ -113,7 +126,8 @@ using semaphore_id_t = std::variant<uint32_t, tt::tt_metal::GlobalSemaphore cons
     tt::stl::Span<noc_transfer_info> const& transfer_infos,
     size_t cb_size_bytes,
     size_t cb_id,
-    MulticastCommandDestArgs const& multicast_args
+    MulticastCommandDestArgs const& multicast_args,
+    std::optional<CclInlineCommandSync> const& fine_grain_sync = std::nullopt
 );
 
 

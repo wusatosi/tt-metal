@@ -81,7 +81,7 @@ struct tensor_slice_command_arg_field<cmd::CclCommandArgCode::SET_FULL_TENSOR_SL
 };
 
 template <ttnn::ccl::cmd::CclCommandArgCode arg_code>
-void add_ccl_command_arg_to_runtime_args(v2::TensorSlice const& tensor_slice, std::vector<uint32_t>& rt_args_out) {
+void add_ccl_command_arg_to_runtime_args(ttnn::ccl::cmd::CclCommandStreamTensorSlice const& tensor_slice, std::vector<uint32_t>& rt_args_out) {
     rt_args_out.push_back(static_cast<uint32_t>(arg_code));
     auto num_words_for_args = ttnn::ccl::cmd::CclCommandArg<arg_code>::size_in_words();
     log_trace(tt::LogOp, "Emitting {} args for tensor_shape field", num_words_for_args);
@@ -89,7 +89,7 @@ void add_ccl_command_arg_to_runtime_args(v2::TensorSlice const& tensor_slice, st
 
     ttnn::ccl::cmd::CclCommandArg<arg_code>::pack_to(
         &rt_args_out[rt_args_out.size() - num_words_for_args],
-        tensor_slice_command_arg_field<arg_code>::get_value(tensor_slice));
+        tensor_slice_command_arg_field<arg_code>::get_value(tensor_slice.slice));
 
     for (std::size_t j = rt_args_out.size() - num_words_for_args; j < rt_args_out.size(); j++) {
         log_trace(tt::LogOp, "\t{}", rt_args_out[j]);
@@ -97,7 +97,7 @@ void add_ccl_command_arg_to_runtime_args(v2::TensorSlice const& tensor_slice, st
 }
 template <>
 void add_ccl_command_arg_to_runtime_args<ttnn::ccl::cmd::CclCommandArgCode::SET_WORKER_PAGES_PER_SLICE>(
-    v2::TensorSlice const& tensor_slice, std::vector<uint32_t>& rt_args_out) {
+    ttnn::ccl::cmd::CclCommandStreamTensorSlice const& tensor_slice, std::vector<uint32_t>& rt_args_out) {
     rt_args_out.push_back(static_cast<uint32_t>(ttnn::ccl::cmd::CclCommandArgCode::SET_WORKER_PAGES_PER_SLICE));
     auto num_words_for_args = 1;
     log_trace(tt::LogOp, "Emitting {} args for tensor_shape field", num_words_for_args);
@@ -106,7 +106,33 @@ void add_ccl_command_arg_to_runtime_args<ttnn::ccl::cmd::CclCommandArgCode::SET_
     ttnn::ccl::cmd::CclCommandArg<ttnn::ccl::cmd::CclCommandArgCode::SET_WORKER_PAGES_PER_SLICE>::pack_to(
         &rt_args_out[rt_args_out.size() - num_words_for_args],
         tensor_slice_command_arg_field<ttnn::ccl::cmd::CclCommandArgCode::SET_WORKER_PAGES_PER_SLICE>::get_value(
-            tensor_slice));
+            tensor_slice.slice));
+
+    for (std::size_t j = rt_args_out.size() - num_words_for_args; j < rt_args_out.size(); j++) {
+        log_trace(tt::LogOp, "\t{}", rt_args_out[j]);
+    }
+}
+
+/*
+ * Layout:
+ * byte       | 0              | 1                                  | 2                | 3                |
+ * hdr        | arg_code       | {sem_type << 4 | sync_granularity} | noc_x            | noc_y            |
+ * payload[0] |                                address/sem_id                                             |
+ */
+void add_ccl_command_arg_to_runtime_args(
+    ttnn::ccl::cmd::CclInlineCommandSync const& sync_info, std::vector<uint32_t>& rt_args_out) {
+    auto num_words_for_args = 1;
+
+    ttnn::ccl::cmd::CclCommandArgHeader hdr;
+    hdr.code = ttnn::ccl::cmd::CclCommandArgCode::SET_SYNC_GRANULARITY;
+    hdr.inline_value0 = static_cast<uint8_t>(sync_info.semaphore_type) << 4 | static_cast<uint8_t>(sync_info.sync_granularity);
+    hdr.inline_value1 = sync_info.noc_x;
+    hdr.inline_value2 = sync_info.noc_y;
+    rt_args_out.push_back(hdr.to_uint32());
+    rt_args_out.push_back(ccl::cmd::get_semaphore_addr_val(sync_info.semaphore)); // TODO
+    log_trace(tt::LogOp, "Emitting {} args for sync_granularity field", num_words_for_args);
+    rt_args_out.resize(rt_args_out.size() + num_words_for_args);
+
 
     for (std::size_t j = rt_args_out.size() - num_words_for_args; j < rt_args_out.size(); j++) {
         log_trace(tt::LogOp, "\t{}", rt_args_out[j]);
@@ -266,8 +292,8 @@ void generate_ccl_slice_sequence_commands_impl(
  * the number of runtime args generated.
  */
 size_t generate_ccl_tensor_slice_command_args(
-    std::optional<v2::TensorSlice> const& last_tensor_slice,
-    v2::TensorSlice const& current_tensor_slice,
+    std::optional<ttnn::ccl::cmd::CclCommandStreamTensorSlice> const& last_tensor_slice,
+    ttnn::ccl::cmd::CclCommandStreamTensorSlice const& current_tensor_slice,
     std::vector<uint32_t>& args_out) {
     // Copy the header
     std::size_t num_command_args_added = 0;
@@ -288,28 +314,28 @@ size_t generate_ccl_tensor_slice_command_args(
         auto header_index = args_out.size();
 
         // tensor shape
-        if (last_slice.tensor_shape != current_tensor_slice.tensor_shape) {
+        if (last_slice.slice.tensor_shape != current_tensor_slice.slice.tensor_shape) {
             add_ccl_command_arg_to_runtime_args<ttnn::ccl::cmd::CclCommandArgCode::SET_TENSOR_SHAPE_IN_PAGES>(
                 current_tensor_slice, args_out);
             num_command_args_added++;
         }
 
         // tensor slice shape
-        if (last_slice.tensor_slice_shape != current_tensor_slice.tensor_slice_shape) {
+        if (last_slice.slice.tensor_slice_shape != current_tensor_slice.slice.tensor_slice_shape) {
             add_ccl_command_arg_to_runtime_args<ttnn::ccl::cmd::CclCommandArgCode::SET_TENSOR_SLICE_SHAPE_IN_PAGES>(
                 current_tensor_slice, args_out);
             num_command_args_added++;
         }
 
         // tensor slice offset
-        if (last_slice.tensor_slice_offset != current_tensor_slice.tensor_slice_offset) {
+        if (last_slice.slice.tensor_slice_offset != current_tensor_slice.slice.tensor_slice_offset) {
             add_ccl_command_arg_to_runtime_args<ttnn::ccl::cmd::CclCommandArgCode::SET_TENSOR_SLICE_OFFSET_IN_PAGES>(
                 current_tensor_slice, args_out);
             num_command_args_added++;
         }
 
         // worker slice offset
-        if (last_slice.worker_slice_offset != current_tensor_slice.worker_slice_offset) {
+        if (last_slice.slice.worker_slice_offset != current_tensor_slice.slice.worker_slice_offset) {
             add_ccl_command_arg_to_runtime_args<
                 ttnn::ccl::cmd::CclCommandArgCode::SET_WORKER_START_OFFSET_IN_SLICE_IN_PAGES>(
                 current_tensor_slice, args_out);
@@ -317,11 +343,17 @@ size_t generate_ccl_tensor_slice_command_args(
         }
 
         // worker_pages_per_slice
-        if (last_slice.worker_slice_shape != current_tensor_slice.worker_slice_shape) {
+        if (last_slice.slice.worker_slice_shape != current_tensor_slice.slice.worker_slice_shape) {
             add_ccl_command_arg_to_runtime_args<ttnn::ccl::cmd::CclCommandArgCode::SET_WORKER_PAGES_PER_SLICE>(
                 current_tensor_slice, args_out);
             num_command_args_added++;
         }
+    }
+
+    if (current_tensor_slice.fine_grain_sync.has_value() && current_tensor_slice.fine_grain_sync->sync_granularity != ttnn::ccl::cmd::CclCommandSyncGranularity::NONE) {
+        add_ccl_command_arg_to_runtime_args<ttnn::ccl::cmd::CclCommandArgCode::SET_SYNC_GRANULARITY>(
+            current_tensor_slice, args_out);
+        num_command_args_added++;
     }
 
     log_trace(
@@ -628,7 +660,7 @@ void generate_ccl_command_stream_to_kernel_args(
     std::optional<std::vector<size_t>> const& tensor_indices,
     ttnn::ccl::tensor_address_runtime_args_overrider *rt_args_overrider_out,
     std::vector<uint32_t>& rt_args_out) {
-    std::optional<v2::TensorSlice> last_tensor_slice = std::nullopt;
+    std::optional<ttnn::ccl::cmd::CclCommandStreamTensorSlice> last_tensor_slice = std::nullopt;
 
     bool fill_args_overrider = rt_args_overrider_out != nullptr;
     TT_FATAL(!fill_args_overrider || tensor_index != std::nullopt, "Internal Error: When generating CCL command stream to kernel args, a runtime args overrider was provided but no tensor command index map was provided.");
@@ -943,26 +975,26 @@ static void log_command_stream(ttnn::ccl::cmd::CclHostLowLevelCommandSequence co
                             "(shape: (w:{},z:{},y:{},x:{}), slice_shape: (w:{},z:{},y:{},x:{}), slice_offset: "
                             "(w:{},z:{},y:{},x:{}), worker_slice_shape: (w:{},z:{},y:{},x:{}), worker_slice_offset: "
                             "(w:{},z:{},y:{},x:{}))",
-                            a.tensor_shape.w,
-                            a.tensor_shape.z,
-                            a.tensor_shape.y,
-                            a.tensor_shape.x,
-                            a.tensor_slice_shape.w,
-                            a.tensor_slice_shape.z,
-                            a.tensor_slice_shape.y,
-                            a.tensor_slice_shape.x,
-                            a.tensor_slice_offset.w,
-                            a.tensor_slice_offset.z,
-                            a.tensor_slice_offset.y,
-                            a.tensor_slice_offset.x,
-                            a.worker_slice_shape.w,
-                            a.worker_slice_shape.z,
-                            a.worker_slice_shape.y,
-                            a.worker_slice_shape.x,
-                            a.worker_slice_offset.w,
-                            a.worker_slice_offset.z,
-                            a.worker_slice_offset.y,
-                            a.worker_slice_offset.x);
+                            a.slice.tensor_shape.w,
+                            a.slice.tensor_shape.z,
+                            a.slice.tensor_shape.y,
+                            a.slice.tensor_shape.x,
+                            a.slice.tensor_slice_shape.w,
+                            a.slice.tensor_slice_shape.z,
+                            a.slice.tensor_slice_shape.y,
+                            a.slice.tensor_slice_shape.x,
+                            a.slice.tensor_slice_offset.w,
+                            a.slice.tensor_slice_offset.z,
+                            a.slice.tensor_slice_offset.y,
+                            a.slice.tensor_slice_offset.x,
+                            a.slice.worker_slice_shape.w,
+                            a.slice.worker_slice_shape.z,
+                            a.slice.worker_slice_shape.y,
+                            a.slice.worker_slice_shape.x,
+                            a.slice.worker_slice_offset.w,
+                            a.slice.worker_slice_offset.z,
+                            a.slice.worker_slice_offset.y,
+                            a.slice.worker_slice_offset.x);
                     },
                     [&ss](CclCommandAtomicInc const& a) {
                         ss << fmt::format("(val:{}, wrap: {})", a.value, a.wrap_value);

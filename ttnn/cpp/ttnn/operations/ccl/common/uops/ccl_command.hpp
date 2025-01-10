@@ -6,6 +6,7 @@
 
 #include <vector>
 
+#include <optional>
 #include <cstddef>
 #include <cstdint>
 #include <variant>
@@ -70,6 +71,15 @@ struct noc_transfer_info {
     size_t noc_transfer_size_bytes = 0;
 };
 
+enum class CclCommandSyncGranularity : uint8_t {
+    NONE = 0,
+
+    PAGE = 1,
+
+    // Sync after the current command - typically used after a tensor slice
+    FULL = 2,
+};
+
 struct HostNocTransferBurstGrouping {
     size_t num_transfers_per_packet = 0;
     std::vector<noc_transfer_info> transfer_infos;
@@ -103,9 +113,14 @@ using CclCommandArgs = std::variant<
 
 enum SRC_DEST_TYPE : uint8_t { SRC = 0, DEST = 1 };
 
-enum class CclCommandSyncGranularity : uint8_t {
-    NONE = 0,
-    PAGE = 1,
+enum class CclCommandAddrType : uint8_t {
+    SEMAPHORE_ID,
+    CIRCULAR_BUFFER_ID,
+    ABSOLUTE_ADDRESS,
+    RELATIVE_ADDRESS,
+
+    // Useful for inline commands (read/write, atomic inc)
+    NONE
 };
 
 // Explicitly assigned integer values for easier debug
@@ -476,15 +491,7 @@ using worker_start_offset_command_arg_t = CclCommandArg<CclCommandArgCode::SET_W
 using worker_pages_command_arg_t = CclCommandArg<CclCommandArgCode::SET_WORKER_PAGES_PER_SLICE>;
 using full_tensor_command_arg_t = CclCommandArg<CclCommandArgCode::SET_FULL_TENSOR_SLICE_SPEC_IN_PAGES>;
 
-enum class CclCommandAddrType : uint8_t {
-    SEMAPHORE_ID,
-    CIRCULAR_BUFFER_ID,
-    ABSOLUTE_ADDRESS,
-    RELATIVE_ADDRESS,
 
-    // Useful for inline commands (read/write, atomic inc)
-    NONE
-};
 struct CclCommandAddrSemaphoreId {
     uint32_t semaphore_id;
 };

@@ -17,30 +17,10 @@ namespace ttnn::ccl::cmd {
 
 namespace uops {
 
-CclHostLowLevelWorkerCommand read_tensor_slice_to_cb_for_eventual_fabric_write(
-    ttnn::ccl::v2::TensorSlice const& slice, size_t cb_id) {
-    return CclHostLowLevelWorkerCommand{
-        CclCommandCode::STREAM_TENSOR_TO_CB,
-        slice,
-        // At the moment, we don't support switching tensors from within a command stream
-        // so we set none because we assume the command stream is fixed/assigned to a given tensor
-        // based on order:
-        // - Command stream 0: tensor 0
-        // - Command stream 1: tensor 1
-        ttnn::ccl::cmd::CclCommandAddrType::NONE,
-        ttnn::ccl::cmd::CclCommandAddrNone(),
-        ttnn::ccl::cmd::CclCommandAddrType::CIRCULAR_BUFFER_ID,
-        ttnn::ccl::cmd::CclCommandAddrCircularBufferId{cb_id},
-        ttnn::ccl::cmd::CclCommandCoreDescriptorType::ADDRGEN,
-        ttnn::ccl::cmd::CclCommandCoreDescriptorTypeAddrgen(),
-        ttnn::ccl::cmd::CclCommandDestType::CHIP_UNICAST,
-        // Hack to add packet header padding when doing reads
-        ttnn::ccl::cmd::UnicastCommandDestArgs(0, true)};
-};
 CclHostLowLevelWorkerCommand read_tensor_slice_to_cb(ttnn::ccl::v2::TensorSlice const& slice, size_t cb_id) {
     return CclHostLowLevelWorkerCommand{
         CclCommandCode::STREAM_TENSOR_TO_CB,
-        slice,
+        ttnn::ccl::cmd::CclCommandStreamTensorSlice(slice),
         // At the moment, we don't support switching tensors from within a command stream
         // so we set none because we assume the command stream is fixed/assigned to a given tensor
         // based on order:
@@ -56,10 +36,10 @@ CclHostLowLevelWorkerCommand read_tensor_slice_to_cb(ttnn::ccl::v2::TensorSlice 
         ttnn::ccl::cmd::LocalOnlyCommandDestArgs()};
 };
 
-CclHostLowLevelWorkerCommand local_write_cb_to_tensor_slice(ttnn::ccl::v2::TensorSlice const& slice, size_t cb_id) {
+CclHostLowLevelWorkerCommand local_write_cb_to_tensor_slice(ttnn::ccl::v2::TensorSlice const& slice, size_t cb_id, std::optional<CclInlineCommandSync> const& fine_grain_sync) {
     return CclHostLowLevelWorkerCommand(
         CclCommandCode::STREAM_CB_TO_TENSOR,
-        ttnn::ccl::cmd::CclCommandArgs(slice),
+        ttnn::ccl::cmd::CclCommandStreamTensorSlice(slice, fine_grain_sync),
         ttnn::ccl::cmd::CclCommandAddrType::CIRCULAR_BUFFER_ID,
         ttnn::ccl::cmd::CclCommandAddrCircularBufferId{cb_id},
         ttnn::ccl::cmd::CclCommandAddrType::NONE,
@@ -67,13 +47,16 @@ CclHostLowLevelWorkerCommand local_write_cb_to_tensor_slice(ttnn::ccl::v2::Tenso
         ttnn::ccl::cmd::CclCommandCoreDescriptorType::ADDRGEN,
         ttnn::ccl::cmd::CclCommandCoreDescriptorTypeAddrgen(),
         ttnn::ccl::cmd::CclCommandDestType::CHIP_LOCAL_ONLY,
-        ttnn::ccl::cmd::LocalOnlyCommandDestArgs());
+        ttnn::ccl::cmd::LocalOnlyCommandDestArgs(),
+        fine_grain_sync.has_value() ? ttnn::ccl::cmd::CclCommand);
 }
 
 CclHostLowLevelWorkerCommand fabric_write_cb_to_tensor_slice(
     ttnn::ccl::v2::TensorSlice const& slice,
     size_t cb_id,
-    std::variant<ttnn::ccl::cmd::UnicastCommandDestArgs, ttnn::ccl::cmd::MulticastCommandDestArgs> const& dest_args) {
+    std::variant<ttnn::ccl::cmd::UnicastCommandDestArgs, ttnn::ccl::cmd::MulticastCommandDestArgs> const& dest_args,
+    std::optional<CclInlineCommandSync> const& fine_grain_sync) {
+
     auto const dest_type = std::visit(
         tt::stl::overloaded{
             [](ttnn::ccl::cmd::UnicastCommandDestArgs const&) { return CclCommandDestType::CHIP_UNICAST; },
@@ -103,7 +86,7 @@ CclHostLowLevelWorkerCommand fabric_write_cb_to_tensor_slice(
 
     return CclHostLowLevelWorkerCommand(
         CclCommandCode::STREAM_CB_TO_TENSOR,
-        ttnn::ccl::cmd::CclCommandStreamTensorSlice(slice),
+        ttnn::ccl::cmd::CclCommandStreamTensorSlice(slice, fine_grain_sync),
         // src
         ttnn::ccl::cmd::CclCommandAddrType::CIRCULAR_BUFFER_ID,
         ttnn::ccl::cmd::CclCommandAddrCircularBufferId{cb_id},
@@ -427,10 +410,11 @@ CclHostLowLevelWorkerCommand local_noc_write_burst_from_cb(
     CclCommandAddrAbsoluteAddress const& bank_base_address,
     tt::stl::Span<noc_transfer_info> const& transfer_infos,
     size_t cb_size_bytes,
-    size_t cb_id
+    size_t cb_id,
+    std::optional<CclInlineCommandSync> const& fine_grain_sync
 ) {
     auto transfer_burst_groupings = densely_pack_noc_transfers(transfer_infos, cb_size_bytes);
-
+    TT_FATAL(!fine_grain_sync.has_value(), "Fine grain sync not implemented for local writes");
     return CclHostLowLevelWorkerCommand(
         CclCommandCode::NOC_WRITE_BURST,
         ttnn::ccl::cmd::CclCommandArgs(ttnn::ccl::cmd::HostCclCommandNocTransferBurst{bank_base_address.absolute_address, transfer_infos.size(), transfer_burst_groupings}),
@@ -446,10 +430,11 @@ CclHostLowLevelWorkerCommand local_noc_write_burst_from_cb(
     tt::stl::Span<noc_transfer_info> const& transfer_infos,
     size_t cb_size_bytes,
     size_t cb_id,
-    UnicastCommandDestArgs const& unicast_args
+    UnicastCommandDestArgs const& unicast_args,
+    std::optional<CclInlineCommandSync> const& fine_grain_sync
 ) {
     auto transfer_burst_groupings = densely_pack_noc_transfers(transfer_infos, cb_size_bytes);
-
+    TT_FATAL(!fine_grain_sync.has_value(), "Fine grain sync not implemented for unicast writes");
     return CclHostLowLevelWorkerCommand(
         CclCommandCode::NOC_WRITE_BURST,
         ttnn::ccl::cmd::CclCommandArgs(ttnn::ccl::cmd::HostCclCommandNocTransferBurst{bank_base_address.absolute_address, transfer_infos.size(), transfer_burst_groupings}),
@@ -469,9 +454,11 @@ CclHostLowLevelWorkerCommand fabric_multicast_noc_write_burst_from_cb(
     tt::stl::Span<noc_transfer_info> const& transfer_infos,
     size_t cb_size_bytes,
     size_t cb_id,
-    MulticastCommandDestArgs const& multicast_args
+    MulticastCommandDestArgs const& multicast_args,
+    std::optional<CclInlineCommandSync> const& fine_grain_sync
 ) {
     auto transfer_burst_groupings = densely_pack_noc_transfers(transfer_infos, cb_size_bytes);
+    TT_FATAL(!fine_grain_sync.has_value(), "Fine grain sync not implemented for multicast writes");
 
     return CclHostLowLevelWorkerCommand(
         CclCommandCode::NOC_WRITE_BURST,

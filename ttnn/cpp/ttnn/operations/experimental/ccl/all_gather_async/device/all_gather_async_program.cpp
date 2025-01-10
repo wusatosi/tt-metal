@@ -303,8 +303,7 @@ operation::ProgramWithCallbacks all_gather_async_multi_core_with_workers(
         // READER COMMAND STREAM and RT ARGS
         std::vector<ttnn::ccl::cmd::CclHostLowLevelWorkerCommand> reader_cmd_stream;
         reader_cmd_stream.push_back(  // use the reader_tensor_slices after the bug is fixed
-            ttnn::ccl::cmd::uops::read_tensor_slice_to_cb_for_eventual_fabric_write(
-                input_worker_slice_v2, src0_cb_index));
+            ttnn::ccl::cmd::uops::read_tensor_slice_to_cb(input_worker_slice_v2, src0_cb_index));
 
         if (lower_command_stream_to_noc_commands) {
             reader_cmd_stream =
