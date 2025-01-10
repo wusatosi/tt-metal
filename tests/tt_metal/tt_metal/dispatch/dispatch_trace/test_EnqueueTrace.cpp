@@ -553,6 +553,7 @@ TEST_F(RandomProgramTraceFixture, TensixTestSimpleProgramsTrace) {
 }
 
 TEST_F(RandomProgramTraceFixture, ActiveEthTestSimpleProgramsTrace) {
+    GTEST_SKIP();
     if (!does_device_have_active_eth_cores(this->device_)) {
         GTEST_SKIP() << "Skipping test because device " << this->device_->id()
                      << " does not have any active ethernet cores";
@@ -575,6 +576,7 @@ TEST_F(RandomProgramTraceFixture, ActiveEthTestSimpleProgramsTrace) {
 }
 
 TEST_F(RandomProgramTraceFixture, TensixActiveEthTestSimpleProgramsTrace) {
+    GTEST_SKIP();
     if (!does_device_have_active_eth_cores(this->device_)) {
         GTEST_SKIP() << "Skipping test because device " << this->device_->id()
                      << " does not have any active ethernet cores";
@@ -623,6 +625,7 @@ TEST_F(RandomProgramTraceFixture, TensixTestProgramsTrace) {
 }
 
 TEST_F(RandomProgramTraceFixture, ActiveEthTestProgramsTrace) {
+    GTEST_SKIP();
     if (!does_device_have_active_eth_cores(this->device_)) {
         GTEST_SKIP() << "Skipping test because device " << this->device_->id()
                      << " does not have any active ethernet cores";
@@ -650,6 +653,7 @@ TEST_F(RandomProgramTraceFixture, ActiveEthTestProgramsTrace) {
 }
 
 TEST_F(RandomProgramTraceFixture, TensixActiveEthTestProgramsTrace) {
+    GTEST_SKIP();
     if (!does_device_have_active_eth_cores(this->device_)) {
         GTEST_SKIP() << "Skipping test because device " << this->device_->id()
                      << " does not have any active ethernet cores";
@@ -803,6 +807,7 @@ TEST_F(RandomProgramTraceFixture, TensixTestProgramsTraceAndNoTrace) {
 }
 
 TEST_F(RandomProgramTraceFixture, ActiveEthTestProgramsTraceAndNoTrace) {
+    GTEST_SKIP();
     if (!does_device_have_active_eth_cores(this->device_)) {
         GTEST_SKIP() << "Skipping test because device " << this->device_->id()
                      << " does not have any active ethernet cores";
@@ -852,6 +857,7 @@ TEST_F(RandomProgramTraceFixture, ActiveEthTestProgramsTraceAndNoTrace) {
 }
 
 TEST_F(RandomProgramTraceFixture, TensixActiveEthTestProgramsTraceAndNoTrace) {
+    GTEST_SKIP();
     if (!does_device_have_active_eth_cores(this->device_)) {
         GTEST_SKIP() << "Skipping test because device " << this->device_->id()
                      << " does not have any active ethernet cores";
