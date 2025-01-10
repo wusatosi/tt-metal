@@ -177,7 +177,7 @@ void MeshCommandQueue::write_sharded_buffer(MeshBuffer& buffer, const void* src,
 
     auto shard_shape = buffer.physical_shard_shape();
     auto replicated_dims = buffer.replicated_dims();
-    TT_FATAL(not std::get<0>(replicated_dims), "Replication along the x axis is not supported for buffers.");
+    // TT_FATAL(not std::get<0>(replicated_dims), "Replication along the x axis is not supported for buffers.");
     auto datum_size_bytes = buffer.datum_size_bytes();
 
     auto stride_size_bytes = datum_size_bytes * std::get<0>(global_buffer_shape);
@@ -204,41 +204,33 @@ void MeshCommandQueue::write_sharded_buffer(MeshBuffer& buffer, const void* src,
                 local_offset++;
             }
 
-            // Write shard to device here.
-            // If replicated, check the shard orientation and copy data across the opposite orientation.
-            // for (auto device : devices to replicate)
-                // write_shard();
-            
-            // Device index updated according to shard orientation.
-            
-            // if (row_major_write) {
-            //     device_x = (device_x + 1) % num_devices_x
-            //     if (device_x == 0) device_y++;
-            // } else {
-            //     device_y = (device_y + 1) % num_devices_y
-            //     if (device_y == 0) device_x++;
-            // }
-            // std::cout << "======= Shard data ========" << std::endl;
-            // for (int i = 0; i < shard_data.size(); i++) {
-            //     if (i % std::get<0>(shard_shape) == 0) {
-            //         std::cout << std::endl;
-            //     }
-            //     std::cout << shard_data[i] << " ";
-            // }
-            // std::cout << std::endl;
-
-            if (std::get<1>(replicated_dims)) {
-                for (auto replicated_device_y = 0; replicated_device_y < num_devices_y; replicated_device_y++) {
-                    std::cout << "Replicate to: " << device_x << " " << replicated_device_y << std::endl;
-                    auto device_shard_view = buffer.get_shard_buffer(device_x, replicated_device_y);
-                    this->write_shard_to_device(device_shard_view, shard_data.data(), expected_num_workers_completed, sub_device_ids);
+            if (std::get<0>(replicated_dims) and std::get<1>(replicated_dims)) {
+                for (std::size_t replicated_device_x = 0; replicated_device_x < num_devices_x; replicated_device_x++) {   
+                    for (std::size_t replicated_device_y = 0; replicated_device_y < num_devices_y; replicated_device_y++) {
+                        auto device_shard_view = buffer.get_shard_buffer(replicated_device_x, replicated_device_y);
+                        this->write_shard_to_device(device_shard_view, shard_data.data(), expected_num_workers_completed, sub_device_ids);
+                    }
                 }
-                device_x++;
+            } else if (std::get<0>(replicated_dims) or std::get<1>(replicated_dims)) {
+                if (buffer.global_shard_spec().mesh_shard_orientation  == ShardOrientation::ROW_MAJOR) {
+                    for (auto replicated_device_y = 0; replicated_device_y < num_devices_y; replicated_device_y++) {
+                        std::cout << "replicate to: " << device_x << " " << replicated_device_y << std::endl;
+                        auto device_shard_view = buffer.get_shard_buffer(device_x, replicated_device_y);
+                        this->write_shard_to_device(device_shard_view, shard_data.data(), expected_num_workers_completed, sub_device_ids);
+                    }
+                    device_x++;
+                } else {
+                    for (auto replicated_device_x = 0; replicated_device_x < num_devices_x; replicated_device_x++) {
+                        std::cout << "replicate to: " << replicated_device_x << " " << device_y << std::endl;
+                        auto device_shard_view = buffer.get_shard_buffer(replicated_device_x, device_y);
+                        this->write_shard_to_device(device_shard_view, shard_data.data(), expected_num_workers_completed, sub_device_ids);
+                    }
+                    device_y++;
+                }
             } else {
                 std::cout << "Write to: " << device_x << " " << device_y << std::endl;
                 auto device_shard_view = buffer.get_shard_buffer(device_x, device_y);
                 this->write_shard_to_device(device_shard_view, shard_data.data(), expected_num_workers_completed, sub_device_ids);
-                std::cout << "Done write" << std::endl;
                 if (buffer.global_shard_spec().mesh_shard_orientation == ShardOrientation::ROW_MAJOR) {
                     device_x = (device_x + 1) % num_devices_x;
                     if (device_x == 0) device_y++;

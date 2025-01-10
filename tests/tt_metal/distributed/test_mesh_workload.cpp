@@ -1008,8 +1008,8 @@ TEST_F(MeshDevice_T3000, TestSharding) {
         .bottom_up = true
     };
 
-    std::pair<std::size_t, std::size_t> global_buffer_shape = {32, 256};// {32, 256}; // {256, 32};
-    std::pair<std::size_t, std::size_t> shard_shape =  {32, 32}; // {64, 0};
+    std::pair<std::size_t, std::size_t> global_buffer_shape = {256, 64};// {32, 256}; // {256, 32};
+    std::pair<std::size_t, std::size_t> shard_shape =  {128, 0};
     uint32_t global_buffer_size = std::get<0>(global_buffer_shape) * std::get<1>(global_buffer_shape) * sizeof(uint32_t);
     
     ShardedBufferConfig sharded_config {
@@ -1036,7 +1036,7 @@ TEST_F(MeshDevice_T3000, TestSharding) {
             std::cout << "Read from: " <<  logical_x << " " << logical_y << std::endl;
             EnqueueReadBuffer(shard->device()->command_queue(), *shard, dst_vec, true);
             for (int i = 0; i < shard->size() / 4; i++) {
-                if (i % std::get<0>(shard_shape) == 0) {
+                if (i % std::get<0>(mesh_buffer->physical_shard_shape()) == 0) {
                     std::cout << std::endl;
                 }
                 std::cout << dst_vec[i] << " ";

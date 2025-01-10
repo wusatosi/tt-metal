@@ -39,12 +39,13 @@ MeshBuffer::MeshBuffer(const MeshBufferConfig& mesh_buffer_config, std::optional
                 // Check needs to account for shard orientation. The scaling factor for replication depends on which
                 // orientation we shard/replicate to when writing to device.
                 auto num_shards = (global_buffer_width / shard_width) * (global_buffer_height / shard_height);
-                if (std::get<0>(this->replicated_dims())) {
-                    num_shards *= config.mesh_device->num_cols();
+                
+                if (std::get<0>(this->replicated_dims()) and std::get<1>(this->replicated_dims())) {
+                    num_shards *= config.mesh_device->num_cols() * config.mesh_device->num_rows();
+                } else if (std::get<0>(this->replicated_dims()) or std::get<1>(this->replicated_dims())) {
+                    num_shards *= ((config.mesh_shard_orientation == ShardOrientation::ROW_MAJOR) * (config.mesh_device->num_rows()) + (config.mesh_shard_orientation == ShardOrientation::COL_MAJOR) * (config.mesh_device->num_cols()));
                 }
-                if (std::get<1>(this->replicated_dims())) {
-                    num_shards *= config.mesh_device->num_rows();
-                }
+                std::cout << "Num shards: " << num_shards << std::endl;
                 // Assume row major shard orientation for now. Orientation determines the order in which data is written to Mesh.
                 // We can always read from the sharded buffer in row major layout.
                 TT_FATAL(num_shards <= config.mesh_device->num_devices(), "The sharded tensor does not fit on the Mesh.");
