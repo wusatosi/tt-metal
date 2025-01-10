@@ -44,6 +44,7 @@ class ttnn_SD3Transformer2DModel:
         qk_norm: Optional[str] = None,
         config=None,
         parameters=None,
+        torch_model=None,
     ):
         self.config = config  # added by me
         default_out_channels = in_channels
@@ -75,6 +76,7 @@ class ttnn_SD3Transformer2DModel:
                 qk_norm=qk_norm,
                 use_dual_attention=True if i in dual_attention_layers else False,
                 parameters=parameters["transformer_blocks"][i],
+                torch_model=torch_model.transformer_blocks[i],
             )
             for i in range(self.config.num_layers)
         ]
@@ -121,6 +123,7 @@ class ttnn_SD3Transformer2DModel:
         temb = ttnn.to_memory_config(temb, ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b)
 
         for index_block, block in enumerate(self.transformer_blocks):
+            print("index_block", index_block)
             encoder_hidden_states, hidden_states = block(
                 hidden_states_i=hidden_states,
                 encoder_hidden_states=encoder_hidden_states,

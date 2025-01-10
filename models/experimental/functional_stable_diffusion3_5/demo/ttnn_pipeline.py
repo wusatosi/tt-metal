@@ -765,7 +765,7 @@ class ttnnStableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSi
 
         numpy_array = latents.to(torch.float32).numpy()
         np.save(
-            "models/experimental/functional_stable_diffusion3_5/demo/latents_of_40_iter_capybara.npy",
+            "models/experimental/functional_stable_diffusion3_5/demo/a_lion_10_01.npy",
             numpy_array,
         )
         print("completed forloop")

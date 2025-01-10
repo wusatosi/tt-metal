@@ -8,11 +8,18 @@ from typing import Optional, Tuple
 
 
 class ttnn_AdaLayerNormZero:
-    def __init__(self, embedding_dim: int, num_embeddings: Optional[int] = None, norm_type="layer_norm", bias=True):
+    def __init__(
+        self,
+        embedding_dim: int,
+        num_embeddings: Optional[int] = None,
+        norm_type="layer_norm",
+        bias=True,
+        torch_model=None,
+    ):
         self.emb = None
 
-        self.silu = ttnn.silu
-        self.linear = ttnn.linear
+        self.silu = torch.nn.SiLU()
+        self.linear = torch_model.linear
         if norm_type == "layer_norm":
             self.norm = ttnn.layer_norm
         else:
@@ -42,14 +49,18 @@ class ttnn_AdaLayerNormZero:
 
         # emb = ttnn.reshape(emb, (emb.shape[0], 1, emb.shape[1]))
 
-        emb = self.linear(
-            self.silu(emb),
-            parameters["linear"]["weight"],
-            bias=parameters["linear"]["bias"],
-            memory_config=mm_a_x_memory_config,
-            core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
-            compute_kernel_config=hifi2_kernel_config,
+        emb = ttnn.from_torch(
+            self.linear(self.silu(ttnn.to_torch(emb).to(dtype=torch.bfloat16))),
+            dtype=ttnn.bfloat8_b,
+            layout=ttnn.TILE_LAYOUT,
+            device=hidden_states.device(),
         )
+        # parameters["linear"]["weight"],
+        # bias=parameters["linear"]["bias"],
+        # memory_config=mm_a_x_memory_config,
+        # core_grid=ttnn.CoreGrid(y=mm_a_y, x=mm_a_x),
+        # compute_kernel_config=hifi2_kernel_config,
+
         emb = ttnn.to_memory_config(emb, ttnn.L1_MEMORY_CONFIG)
         one_chunk = emb.shape[-1] // 6
 

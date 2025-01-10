@@ -417,7 +417,7 @@ def test_ttnn_sd3_transformer_2d_model(device, reset_seeds):
         dual_attention_layers=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
         qk_norm="rms_norm",
         config=config,
-    )
+    ).to(dtype=torch.bfloat16)
     reference_model.load_state_dict(pipe.transformer.state_dict())
 
     reference_model.eval()
@@ -444,6 +444,7 @@ def test_ttnn_sd3_transformer_2d_model(device, reset_seeds):
         qk_norm="rms_norm",
         config=config,
         parameters=parameters,
+        torch_model=reference_model,
     )
 
     hidden_states = torch.load(
@@ -506,4 +507,4 @@ def test_ttnn_sd3_transformer_2d_model(device, reset_seeds):
         "models/experimental/functional_stable_diffusion3_5/demo/inputs_512_latest/output_512.pt",
         map_location=torch.device("cpu"),
     )
-    assert_with_pcc(torch_output, ttnn.to_torch(ttnn_output[0]), pcc=0.99)
+    assert_with_pcc(torch_output, ttnn.to_torch(ttnn_output[0]), pcc=1)

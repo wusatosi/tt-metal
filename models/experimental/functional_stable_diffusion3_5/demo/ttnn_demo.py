@@ -48,7 +48,7 @@ def test_demo(device, height, width):
         dual_attention_layers=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
         qk_norm="rms_norm",
         config=config,
-    )
+    ).to(dtype=torch.bfloat16)
     reference_model.load_state_dict(pipe.transformer.state_dict())
     reference_model.eval()
 
@@ -75,6 +75,7 @@ def test_demo(device, height, width):
         qk_norm="rms_norm",
         config=config,
         parameters=parameters,
+        torch_model=reference_model,
     )
 
     ttnn_pipe = ttnnStableDiffusion3Pipeline(

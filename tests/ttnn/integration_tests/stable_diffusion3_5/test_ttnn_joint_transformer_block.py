@@ -328,6 +328,12 @@ def create_custom_preprocessor(device):
     ],
 )
 def test_joint_transformer_block(device, reset_seeds, context_pre_only, use_dual_attention):
+    from diffusers import StableDiffusion3Pipeline
+
+    pipe = StableDiffusion3Pipeline.from_pretrained(
+        "stabilityai/stable-diffusion-3.5-medium", torch_dtype=torch.bfloat16
+    )
+
     reference_model = JointTransformerBlock(
         dim=1536,
         num_attention_heads=24,
@@ -336,11 +342,26 @@ def test_joint_transformer_block(device, reset_seeds, context_pre_only, use_dual
         qk_norm="rms_norm",
         use_dual_attention=use_dual_attention,
     ).to(dtype=torch.bfloat16)
+    reference_model.load_state_dict(pipe.transformer.transformer_blocks[0].state_dict())
     reference_model.eval()
 
-    torch_input_hidden_states = torch.randn(2, 1024, 1536, dtype=torch.bfloat16)
-    torch_input_encoder_hidden_states = torch.randn(2, 160, 1536, dtype=torch.bfloat16)
-    torch_input_temb = torch.randn(2, 1536, dtype=torch.bfloat16)
+    # hidden_states=torch.load("/home/ubuntu/punith_sd_optim/tt-metal/models/experimental/functional_stable_diffusion3_5/demo/512_padded_inputs_torch/torch_hidden_states_layer_0.pt",map_location=torch.device("cpu"),).unsqueeze(1)
+
+    # encoder_hidden_states=torch.load("/home/ubuntu/punith_sd_optim/tt-metal/models/experimental/functional_stable_diffusion3_5/demo/512_padded_inputs_torch/torch_encoder_hidden_states_layer_0.pt",map_location=torch.device("cpu"),).unsqueeze(1)
+
+    # temb=torch.load("/home/ubuntu/punith_sd_optim/tt-metal/models/experimental/functional_stable_diffusion3_5/demo/512_padded_inputs_torch/torch_temb_layer_0.pt",map_location=torch.device("cpu"),).unsqueeze(1).unsqueeze(1)
+    torch_input_hidden_states = torch.load(
+        "/home/ubuntu/punith_sd_optim/tt-metal/models/experimental/functional_stable_diffusion3_5/demo/512_padded_inputs_torch/torch_hidden_states_layer_0.pt",
+        map_location=torch.device("cpu"),
+    )
+    torch_input_encoder_hidden_states = torch.load(
+        "/home/ubuntu/punith_sd_optim/tt-metal/models/experimental/functional_stable_diffusion3_5/demo/512_padded_inputs_torch/torch_encoder_hidden_states_layer_0.pt",
+        map_location=torch.device("cpu"),
+    )
+    torch_input_temb = torch.load(
+        "/home/ubuntu/punith_sd_optim/tt-metal/models/experimental/functional_stable_diffusion3_5/demo/512_padded_inputs_torch/torch_temb_layer_0.pt",
+        map_location=torch.device("cpu"),
+    )
 
     parameters = preprocess_model_parameters(
         initialize_model=lambda: reference_model, custom_preprocessor=create_custom_preprocessor(device), device=device
@@ -376,7 +397,7 @@ def test_joint_transformer_block(device, reset_seeds, context_pre_only, use_dual
         parameters=parameters,
     )
 
-    for i in range(5):
+    for i in range(1):
         ttnn_input_temb = ttnn.from_torch(
             torch_input_temb.unsqueeze(1).unsqueeze(1),
             layout=ttnn.TILE_LAYOUT,
@@ -410,8 +431,12 @@ def test_joint_transformer_block(device, reset_seeds, context_pre_only, use_dual
         print("Time (sec):", t1 - t0)
 
     if context_pre_only != True:
+        from tests.ttnn.utils_for_testing import comp_pcc
+
         ttnn_output_0 = ttnn.to_torch(ttnn_output[0])
         ttnn_output_1 = ttnn.to_torch(ttnn_output[1])
+        print(comp_pcc(torch_output[0].unsqueeze(1), ttnn_output_0, pcc=0.99))
+        print(comp_pcc(torch_output[1].unsqueeze(1), ttnn_output_1, pcc=0.99))
         assert_with_pcc(torch_output[0].unsqueeze(1), ttnn_output_0, pcc=0.99)
         assert_with_pcc(torch_output[1].unsqueeze(1), ttnn_output_1, pcc=0.99)
     else:

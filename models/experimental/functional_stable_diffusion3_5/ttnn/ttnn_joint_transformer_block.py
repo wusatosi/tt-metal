@@ -31,22 +31,23 @@ class ttnn_JointTransformerBlock:
         qk_norm: Optional[str] = None,
         use_dual_attention: bool = False,
         parameters=None,
+        torch_model=None,
     ):
         self.use_dual_attention = use_dual_attention
         self.context_pre_only = context_pre_only
         context_norm_type = "ada_norm_continous" if context_pre_only else "ada_norm_zero"
 
         if use_dual_attention:
-            self.norm1 = ttnn_SD35AdaLayerNormZeroX(dim)
+            self.norm1 = ttnn_SD35AdaLayerNormZeroX(dim, torch_model=torch_model.norm1)
         else:
-            self.norm1 = ttnn_AdaLayerNormZero(dim)
+            self.norm1 = ttnn_AdaLayerNormZero(dim, torch_model=torch_model.norm1)
 
         if context_norm_type == "ada_norm_continous":
             self.norm1_context = ttnn_AdaLayerNormContinuous(
                 dim, dim, elementwise_affine=False, eps=1e-6, bias=True, norm_type="layer_norm"
             )
         elif context_norm_type == "ada_norm_zero":
-            self.norm1_context = ttnn_AdaLayerNormZero(dim)
+            self.norm1_context = ttnn_AdaLayerNormZero(dim, torch_model=torch_model.norm1_context)
         else:
             raise ValueError(
                 f"Unknown context_norm_type: {context_norm_type}, currently only support `ada_norm_continous`, `ada_norm_zero`"

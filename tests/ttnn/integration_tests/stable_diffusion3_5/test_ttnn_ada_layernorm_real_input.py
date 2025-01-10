@@ -106,7 +106,9 @@ def test_ada_layernorm_zero(device, x_shape, reset_seeds):
         memory_config=ttnn.L1_MEMORY_CONFIG,  # input_memory_config
     )
 
-    ttnn_model = ttnn_AdaLayerNormZero(embedding_dim=1536, num_embeddings=None, norm_type="layer_norm", bias=True)
+    ttnn_model = ttnn_AdaLayerNormZero(
+        embedding_dim=1536, num_embeddings=None, norm_type="layer_norm", bias=True, torch_model=reference_model
+    )
 
     ttnn_output = ttnn_model(
         ttnn_input_x, timestep=None, class_labels=None, hidden_dtype=None, emb=ttnn_input_emb, parameters=parameters
