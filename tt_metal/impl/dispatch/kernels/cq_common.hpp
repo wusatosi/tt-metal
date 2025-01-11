@@ -121,15 +121,9 @@ enum CQNocSend {
     CQ_NOC_SEND = 1,
 };
 
-bool sending_mcast = false;
-bool sending_linked = false;
-bool single_destination = false;
-
 template <enum CQNocFlags flags, enum CQNocWait wait = CQ_NOC_WAIT, enum CQNocSend send = CQ_NOC_SEND>
 FORCE_INLINE void cq_noc_async_write_with_state(
     uint32_t src_addr, uint64_t dst_addr, uint32_t size = 0, uint32_t ndests = 1) {
-    // DPRINT << "cq_noc_async_write_with_state " << HEX() << src_addr
-    //         << " " << dst_addr << " " << size << " " << ndests << ENDL();
     if constexpr (wait) {
         WAYPOINT("CNSW");
         while (!noc_cmd_buf_ready(noc_index, NCRISC_WR_CMD_BUF));
@@ -158,19 +152,6 @@ FORCE_INLINE void cq_noc_async_write_with_state(
         NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_AT_LEN_BE, size);
     }
     if constexpr (send) {
-        bool mcast = sending_mcast && !single_destination;
-        bool linked = mcast && sending_linked;
-
-        constexpr bool multicast_path_reserve = true;
-        constexpr bool posted = false;
-        const uint32_t vc = mcast ? NOC_DISPATCH_MULTICAST_WRITE_VC : NOC_UNICAST_WRITE_VC;
-
-        const uint32_t noc_cmd_field =
-            NOC_CMD_CPY | NOC_CMD_WR | NOC_CMD_VC_STATIC | NOC_CMD_STATIC_VC(vc) | (linked ? NOC_CMD_VC_LINKED : 0x0) |
-            (mcast ? ((multicast_path_reserve ? NOC_CMD_PATH_RESERVE : 0) | NOC_CMD_BRCST_PACKET) : 0x0) |
-            (posted ? 0 : NOC_CMD_RESP_MARKED);
-
-        NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_CTRL, noc_cmd_field);
         DEBUG_SANITIZE_NOC_WRITE_TRANSACTION_FROM_STATE(noc_index);
         NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
     }
@@ -181,8 +162,6 @@ FORCE_INLINE void cq_noc_async_write_with_state(
 template <bool write_last_packet = true>
 uint32_t cq_noc_async_write_with_state_any_len(
     uint32_t src_addr, uint64_t dst_addr, uint32_t size = 0, uint32_t ndests = 1) {
-    // DPRINT << "cq_noc_async_write_with_state_any_len " << HEX() << src_addr
-    //         << " " << dst_addr << " " << size << " " << ndests << ENDL();
     if (size > NOC_MAX_BURST_SIZE) {
         cq_noc_async_write_with_state<CQ_NOC_SnDL>(src_addr, dst_addr, NOC_MAX_BURST_SIZE, ndests);
         src_addr += NOC_MAX_BURST_SIZE;
@@ -212,19 +191,16 @@ FORCE_INLINE void cq_noc_async_write_init_state(uint32_t src_addr, uint64_t dst_
     }
     WAYPOINT("CNID");
 
-    // constexpr bool multicast_path_reserve = true;
-    // constexpr bool posted = false;
-    // constexpr uint32_t vc = mcast ? NOC_DISPATCH_MULTICAST_WRITE_VC : NOC_UNICAST_WRITE_VC;
+    constexpr bool multicast_path_reserve = true;
+    constexpr bool posted = false;
+    constexpr uint32_t vc = mcast ? NOC_DISPATCH_MULTICAST_WRITE_VC : NOC_UNICAST_WRITE_VC;
 
-    // constexpr uint32_t noc_cmd_field =
-    //     NOC_CMD_CPY | NOC_CMD_WR | NOC_CMD_VC_STATIC | NOC_CMD_STATIC_VC(vc) | (linked ? NOC_CMD_VC_LINKED : 0x0) |
-    //     (mcast ? ((multicast_path_reserve ? NOC_CMD_PATH_RESERVE : 0) | NOC_CMD_BRCST_PACKET) : 0x0) |
-    //     (posted ? 0 : NOC_CMD_RESP_MARKED);
+    constexpr uint32_t noc_cmd_field =
+        NOC_CMD_CPY | NOC_CMD_WR | NOC_CMD_VC_STATIC | NOC_CMD_STATIC_VC(vc) | (linked ? NOC_CMD_VC_LINKED : 0x0) |
+        (mcast ? ((multicast_path_reserve ? NOC_CMD_PATH_RESERVE : 0) | NOC_CMD_BRCST_PACKET) : 0x0) |
+        (posted ? 0 : NOC_CMD_RESP_MARKED);
 
-    sending_mcast = mcast;
-    sending_linked = linked;
-
-    // NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_CTRL, noc_cmd_field);
+    NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_CMD_BUF, NOC_CTRL, noc_cmd_field);
 
     cq_noc_async_write_with_state<flags, CQ_NOC_wait, CQ_NOC_send>(src_addr, dst_addr, size);
 }
