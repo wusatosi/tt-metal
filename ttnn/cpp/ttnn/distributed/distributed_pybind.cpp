@@ -137,6 +137,7 @@ void py_module(py::module& module) {
             "set_speculation_state",
             &MeshDevice::set_speculation_states,
             py::arg("states"),
+            py::arg("p_tensor_addr") = 0,
             R"doc(
             Set the speculation state for the mesh device.
 

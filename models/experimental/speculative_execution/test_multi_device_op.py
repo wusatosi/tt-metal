@@ -13,6 +13,15 @@ from tests.tt_eager.python_api_testing.sweep_tests.comparison_funcs import (
 )
 
 
+def get_buffer_address(tensor):
+    addr = []
+    for i, ten in enumerate(ttnn.get_device_tensors(tensor)):
+        addr.append(ten.buffer_address())
+        if len(addr) > 0:
+            assert addr[i - 1] == addr[i], f"Expected {addr[i-1]} == {addr[i]}"
+    return addr[0]
+
+
 @pytest.mark.skipif(is_grayskull(), reason="GS does not support fp32")
 @pytest.mark.parametrize(
     "shape",
@@ -25,10 +34,37 @@ def test_op_t3k(
     shape,
     function_level_defaults,
 ):
-    #### Read host tensor ####
+    num_devices = t3k_mesh_device.get_num_devices()
+    num_devices_to_skip = 3
+    num_cores = 64  # TODO: Get this from the device
 
-    for i in range(t3k_mesh_device.get_num_devices() - 5, t3k_mesh_device.get_num_devices()):
-        t3k_mesh_device.get_device(i).set_speculation_state(True)
+    # Set up the core range set
+    storage_grid = t3k_mesh_device.compute_with_storage_grid_size()
+    grid = ttnn.num_cores_to_corerangeset(num_cores, storage_grid, row_wise=True)
+
+    # Create the priority tensor
+    p_tensor = torch.zeros((num_devices, num_cores))
+    p_tensor[:num_devices_to_skip] = 1  # Set skipping priority
+    p_tensor_mem_config = ttnn.create_sharded_memory_config(
+        shape=(1, 1),
+        core_grid=grid,
+        strategy=ttnn.ShardStrategy.WIDTH,
+        orientation=ttnn.ShardOrientation.ROW_MAJOR,
+        use_height_and_width_as_shard_shape=True,
+    )
+    p_tensor_tt = ttnn.from_torch(
+        p_tensor,
+        device=t3k_mesh_device,
+        layout=ttnn.ROW_MAJOR_LAYOUT,
+        dtype=ttnn.uint32,
+        memory_config=p_tensor_mem_config,
+        mesh_mapper=ttnn.ShardTensorToMesh(t3k_mesh_device, dim=0),
+    )
+    pt_tensor_address = get_buffer_address(p_tensor_tt)
+    logger.info(f"Priority tensor address: {pt_tensor_address}")
+
+    for i in range(num_devices):
+        t3k_mesh_device.get_device(i).set_speculation_state(True, pt_tensor_address)
         logger.info(f"Device {i} speculation state: {t3k_mesh_device.get_device(i).get_speculation_state()}")
 
     pt_input = torch.randn((shape), dtype=torch.float32)
@@ -56,10 +92,12 @@ def test_op_t3k(
 
     pt_out = torch.add(pt_input, pt_input)
 
-    all_passing = True
-    for i in range(t3k_mesh_device.get_num_devices()):
+    num_passing = 0
+    expected_num_passing = num_devices - num_devices_to_skip
+    for i in range(num_devices):
         tt_out_ = tt_out[..., i * shape[-1] : (i + 1) * shape[-1]]
         passing, output = comp_pcc(pt_out, tt_out_)
         logger.info(f"{i}: {output}")
-        all_passing = all_passing and passing
-    assert all_passing
+        num_passing += int(passing)
+
+    assert num_passing == expected_num_passing, f"Expected {expected_num_passing} passing, got {num_passing}"

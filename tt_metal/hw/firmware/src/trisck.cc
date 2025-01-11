@@ -27,6 +27,20 @@ uint32_t math_sync_tile_dst_index = 0;
 uint32_t gl_alu_format_spec_reg = 0;
 uint32_t op_info_offset = 0;
 
+bool skip_kernel() {
+#ifdef SKIP_KERNEL
+    volatile tt_l1_ptr uint32_t* p_tensor = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(P_TENSOR_ADDR);
+    uint32_t p_tensor_data = *p_tensor;
+
+    if (p_tensor_data == 1) {
+        DPRINT << "Skipping TRISC kernel" << ENDL();
+        return true;
+    }
+    return false;
+#else
+    return false;
+#endif
+}
 namespace ckernel
 {
 volatile tt_reg_ptr uint * regfile = reinterpret_cast<volatile uint *>(REGFILE_BASE);
@@ -58,11 +72,10 @@ void kernel_launch(uint32_t kernel_base_addr)
 #if !defined(UCK_CHLKC_MATH) and defined ALIGN_LOCAL_CBS_TO_REMOTE_CBS
     ALIGN_LOCAL_CBS_TO_REMOTE_CBS
 #endif
-#ifdef SKIP_KERNEL
-    DPRINT << "SKIPPINNNG" << ENDL();
-#else
-  run_kernel();
-#endif
+
+    if (!skip_kernel()) {
+        run_kernel();
+    }
 #if !defined(UCK_CHLKC_MATH) and defined UPDATE_REMOTE_CB_CONFIGS_IN_L1
     UPDATE_REMOTE_CB_CONFIGS_IN_L1
 #endif

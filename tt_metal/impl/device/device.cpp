@@ -1144,12 +1144,13 @@ CoreCoord Device::dram_grid_size() const {
     return tt::Cluster::instance().get_soc_desc(id_).get_dram_grid_size();
 }
 
-bool Device::get_speculation_state() const{
-    return this->waiting_for_speculation_;
+std::pair<bool, uint32_t> Device::get_speculation_state() const{
+    return {this->waiting_for_speculation_, this->p_tensor_addr_};
 }
 
-void Device::set_speculation_state(bool state) {
+void Device::set_speculation_state(bool state, uint32_t p_tensor_addr) {
     this->waiting_for_speculation_ = state;
+    this->p_tensor_addr_ = p_tensor_addr;
 }
 
 CoreCoord Device::compute_with_storage_grid_size() const {

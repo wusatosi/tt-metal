@@ -99,8 +99,8 @@ public:
     CoreCoord grid_size() const;
     CoreCoord logical_grid_size() const;
     CoreCoord dram_grid_size() const;
-    bool get_speculation_state() const;
-    void set_speculation_state(bool state);
+    std::pair<bool, uint32_t> get_speculation_state() const;
+    void set_speculation_state(bool state, uint32_t p_tensor_addr);
     CoreType core_type_from_virtual_core(const CoreCoord& virtual_coord) const;
 
     // Given a Virtual coordinate in noc_index space, get the equivalent coordinate in Virtual NOC0 space
@@ -296,6 +296,7 @@ public:
 
 private:
     bool waiting_for_speculation_ = false;
+    uint32_t p_tensor_addr_ = 0;
     static_assert(detail::SubDeviceManager::MAX_NUM_SUB_DEVICES <= dispatch_constants::DISPATCH_MESSAGE_ENTRIES, "MAX_NUM_SUB_DEVICES must be less than or equal to dispatch_constants::DISPATCH_MESSAGE_ENTRIES");
     static constexpr uint32_t DEFAULT_NUM_SUB_DEVICES = 1;
 

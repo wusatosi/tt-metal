@@ -22,6 +22,21 @@
 #endif
 #include "debug/dprint.h"
 
+bool skip_kernel() {
+#ifdef SKIP_KERNEL
+    volatile tt_l1_ptr uint32_t* p_tensor = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(P_TENSOR_ADDR);
+    uint32_t p_tensor_data = *p_tensor;
+
+    if (p_tensor_data == 1) {
+        DPRINT << "Skipping BRISC kernel" << ENDL();
+        return true;
+    }
+    return false;
+#else
+    return false;
+#endif
+}
+
 void kernel_launch(uint32_t kernel_base_addr) {
 
 #if defined(DEBUG_NULL_KERNELS) && !defined(DISPATCH_KERNEL)
@@ -41,14 +56,10 @@ void kernel_launch(uint32_t kernel_base_addr) {
 #ifdef ALIGN_LOCAL_CBS_TO_REMOTE_CBS
     ALIGN_LOCAL_CBS_TO_REMOTE_CBS
 #endif
-#ifdef SKIP_KERNEL
-    DPRINT << "SKIPPINNNG" << ENDL();
-#else
-    {
+    if (!skip_kernel()) {
         DeviceZoneScopedMainChildN("BRISC-KERNEL");
         kernel_main();
     }
-#endif
 #ifdef UPDATE_REMOTE_CB_CONFIGS_IN_L1
     UPDATE_REMOTE_CB_CONFIGS_IN_L1
 #endif

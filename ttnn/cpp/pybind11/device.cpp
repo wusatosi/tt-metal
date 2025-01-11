@@ -148,6 +148,7 @@ void device_module(py::module& m_device) {
             "set_speculation_state",
             &Device::set_speculation_state,
             py::arg("state"),
+            py::arg("p_tensor_addr") = 0,
             "Set speculation state for the device")
         .def("get_speculation_state", &Device::get_speculation_state, "Get speculation state for the device")
         .def("dram_grid_size", &Device::dram_grid_size, "Grid size (x, y) denoting dram cores that can be targeted")
