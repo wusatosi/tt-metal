@@ -72,13 +72,14 @@ Cluster::Cluster() {
 
     this->initialize_device_drivers();
 
-    this->reserve_ethernet_cores_for_tunneling();
+    // this->reserve_ethernet_cores_for_tunneling();
 
-    this->initialize_ethernet_sockets();
+    // this->initialize_ethernet_sockets();
 
-    this->set_tunnels_from_mmio_device();
-
+    // this->set_tunnels_from_mmio_device();
+    std::cout << "assert_risc_reset" << std::endl;
     this->assert_risc_reset();
+    std::cout << "done assert_risc_reset" << std::endl;
 }
 
 void Cluster::detect_arch_and_target() {
