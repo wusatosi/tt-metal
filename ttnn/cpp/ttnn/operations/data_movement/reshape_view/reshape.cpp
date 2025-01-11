@@ -38,6 +38,7 @@ ttnn::Tensor convert_tile_to_rm(
     const PadValue &pad_value
 ) {
     // Convert the 3D->3D reshaping to row major and back to tile
+    std::cout << "It comes to convert_tile_to_rm" << std::endl;
     TT_FATAL(
         !(((shape[-1] % tile_first_dim != 0) || (shape[-2] % tile_second_dim != 0) ||
            (tensor.get_shape()[-1] % tile_first_dim != 0) || (tensor.get_shape()[-2] % tile_second_dim != 0)) &&
@@ -65,6 +66,7 @@ ttnn::Tensor convert_tensor_to_rm_reshape_convert_back_to_orig_layout(
     const PadValue &pad_value
     )
 {
+    std::cout << "It comes to convert_tensor_to_rm_reshape_convert_back_to_orig_layout" << std::endl;
     //This function turns ND -> MD into 2D->MD for row major and 3D->MD for tiled using a 0 cost view
     const auto layout = tensor.get_layout();
     const auto tensor_shape = tensor.get_shape();
@@ -134,6 +136,7 @@ ttnn::Tensor fix_shape_and_perform_reshape_on_3D_TILE(
     const PadValue &pad_value
     )
 {
+    std::cout << "It comes to fix_shape_and_perform_reshape_on_3D_TILE" << std::endl;
     //This function turns a TILE 3D->MD into an equivalent 3D->3D conversion and then turns the 3D output back to MD using a 0 cost view
     //Collapse into the third last dimension
     TT_FATAL((shape.rank() != 0), "Can't do reshape to rank 0 tensor");
@@ -169,6 +172,7 @@ ttnn::Tensor fix_shape_and_perform_reshape_on_2D_RM(
     const uint8_t queue_id
     )
 {
+    std::cout << "It comes to fix_shape_and_perform_reshape_on_2D_RM" << std::endl;
     //This function turns a RM 2D->MD into an equivalent 2D->2D conversion and then turns the 2D output back to MD using a 0 cost view
     TT_FATAL((shape.rank() != 0), "Can't do reshape to rank 0 tensor");
     //Collapse into the second last dimension
@@ -201,6 +205,7 @@ ttnn::Tensor perform_reshape_on_2D_RM(
     const uint8_t queue_id
     )
 {
+    std::cout << "It comes to perform_reshape_on_2D_RM" << std::endl;
     auto temp_tensor = tensor;
     auto intermediate_mem_config = tensor.memory_config();
     auto intermediate_out_memory_config = memory_config;
@@ -241,6 +246,7 @@ ttnn::Tensor perform_reshape_on_2D_RM(
 
 ttnn::Shape tiling_reshape_corrector(const ttnn::Shape& shape, const uint32_t tile_first_dim, const uint32_t tile_second_dim) {
     //Apply the correct padding metadata to the target shape
+    std::cout << "It comes to tiling_reshape_corrector" << std::endl;
     ttnn::Shape padded = shape.with_tile_padding();
     int64_t rank = shape.rank();
     const int8_t correction_1 =(tile_first_dim - (int)padded[-1] % tile_first_dim) % tile_first_dim;
@@ -266,6 +272,7 @@ ttnn::Shape tiling_reshape_corrector(const ttnn::Shape& shape, const uint32_t ti
 }
 
 ttnn::Tensor PerformView(const ttnn::Tensor& tensor, const ttnn::Shape& shape, const uint32_t tile_first_dim, const uint32_t tile_second_dim) {
+    std::cout << "It comes to PerformView" << std::endl;
     if (tensor.get_shape() == shape) {
         return tensor;
     }
@@ -280,6 +287,7 @@ ttnn::Tensor PerformView(const ttnn::Tensor& tensor, const ttnn::Shape& shape, c
 }
 
 ttnn::Shape shape_corrector(const ttnn::Tensor& tensor, const ttnn::Shape& shape) {
+    std::cout << "It comes to shape_corrector" << std::endl;
     //Correct the shape to account for inferred dimensions
     uint32_t input_volume = tensor.get_logical_volume();
     uint32_t output_volume = 1;
@@ -317,6 +325,7 @@ ttnn::Tensor ReshapeViewOperation::invoke(
     auto layout = tensor.get_layout();
     auto tensor_shape = tensor.get_shape();
     const ttnn::Shape shape = shape_corrector(tensor, input_shape);
+    std::cout << "It comes to 318 invoke" << std::endl;
     // First Case, No reshape Required
     if (tensor_shape == shape) {
         return tensor;
@@ -398,7 +407,8 @@ ttnn::Tensor ReshapeViewOperation::invoke(
     const ttnn::Tensor& tensor,
     const ttnn::Shape& shape
      ) {
-        return invoke(tensor, shape,std::nullopt,0,std::nullopt);
+    std::cout << "It comes to 406 invoke " << std::endl;
+    return invoke(tensor, shape, std::nullopt, 0, std::nullopt);
      }
 
      ttnn::Tensor ReshapeViewOperation::invoke(
@@ -407,6 +417,7 @@ ttnn::Tensor ReshapeViewOperation::invoke(
          const std::optional<MemoryConfig>& memory_config,
          const uint8_t queue_id,
          const std::optional<PadValue>& pad_value) {
+         std::cout << "It comes to 414 invoke" << std::endl;
          return invoke(tensor, ttnn::Shape(shape.view()), memory_config, queue_id, pad_value);
      }
 
@@ -414,6 +425,7 @@ ttnn::Tensor ReshapeViewOperation::invoke(
     const ttnn::Tensor& tensor,
     const ttnn::SimpleShape& shape
     ) {
+    std::cout << "It comes to 424 invoke" << std::endl;
     return invoke(tensor, ttnn::Shape(shape.view()), std::nullopt, 0, std::nullopt);
 }
 
@@ -424,6 +436,7 @@ ttnn::Tensor ReshapeViewOperation::invoke(
     const uint8_t queue_id,
     const std::optional<PadValue> &pad_value
     ) {
+    std::cout << "It comes to 432 invoke" << std::endl;
     return invoke(tensor, tt::tt_metal::infer_dims_for_reshape(tensor, shape_vector),memory_config,queue_id,pad_value);
 }
 
@@ -431,6 +444,7 @@ ttnn::Tensor ReshapeViewOperation::invoke(
     const ttnn::Tensor& tensor,
     tt::stl::Span<const int32_t> shape_vector
     ) {
+    std::cout << "It comes to 443 invoke" << std::endl;
     return invoke(tensor, tt::tt_metal::infer_dims_for_reshape(tensor, shape_vector),std::nullopt,0,std::nullopt);
 }
 

@@ -39,18 +39,26 @@ Tensor BatchNorm::invoke(
     std::optional<Tensor> output,
     const std::optional<MemoryConfig>& memory_config) {
     const auto in_shape = input.get_logical_shape();
+    std::cout << std::endl;
+    std::cout << "running_mean reshape process : " << std::endl;
     if (running_mean.has_value()) {
         running_mean = reshape_to_4D(in_shape, running_mean.value());
     }
+    std::cout << std::endl;
+    std::cout << "running_var reshape process : " << std::endl;
     if (running_var.has_value()) {
         running_var = reshape_to_4D(in_shape, running_var.value());
     }
-    if (weight.has_value()) {
-        weight = reshape_to_4D(in_shape, weight.value());
-    }
-    if (bias.has_value()) {
-        bias = reshape_to_4D(in_shape, bias.value());
-    }
+    // std::cout<<std::endl;
+    // std::cout<<"running_mean reshape process : "<<std::endl;
+    // if (weight.has_value()) {
+    //     weight = reshape_to_4D(in_shape, weight.value());
+    // }
+    // std::cout<<std::endl;
+    // std::cout<<"running_mean reshape process : "<<std::endl;
+    // if (bias.has_value()) {
+    //     bias = reshape_to_4D(in_shape, bias.value());
+    // }
     // TODO: Implementation for training mode is in progress
     TT_FATAL((!training), "Support currently provided for inference mode only");
     TT_FATAL(
