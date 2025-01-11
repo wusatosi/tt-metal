@@ -1577,6 +1577,11 @@ void detail::Program_::compile(Device *device, bool fd_bootloader_mode) {
     for (auto & kernels : kernels_) {
         for (auto &[id, kernel] : kernels) {
             validate_kernel_placement(kernel);
+
+            // Skip kernel if device is skipping
+            if (device->get_speculation_state()) {
+                kernel->add_defines({{"SKIP_KERNEL", "1"}});
+            }
             launch_build_step(
                 [kernel, device, this] {
                     JitBuildOptions build_options(device->build_env());

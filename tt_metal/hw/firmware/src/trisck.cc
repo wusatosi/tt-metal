@@ -18,6 +18,7 @@
 #if defined ALIGN_LOCAL_CBS_TO_REMOTE_CBS or defined UPDATE_REMOTE_CB_CONFIGS_IN_L1
 #include "circular_buffer_init.h"
 #endif
+#include "debug/dprint.h"
 
 // Global vars
 uint32_t unp_cfg_context = 0;
@@ -57,7 +58,11 @@ void kernel_launch(uint32_t kernel_base_addr)
 #if !defined(UCK_CHLKC_MATH) and defined ALIGN_LOCAL_CBS_TO_REMOTE_CBS
     ALIGN_LOCAL_CBS_TO_REMOTE_CBS
 #endif
-    run_kernel();
+#ifdef SKIP_KERNEL
+    DPRINT << "SKIPPINNNG" << ENDL();
+#else
+  run_kernel();
+#endif
 #if !defined(UCK_CHLKC_MATH) and defined UPDATE_REMOTE_CB_CONFIGS_IN_L1
     UPDATE_REMOTE_CB_CONFIGS_IN_L1
 #endif

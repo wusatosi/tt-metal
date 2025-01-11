@@ -141,6 +141,8 @@ public:
     // 2. For Grid-to-Grid or Line-to-Grid reshaping: physical connectivity must be possible with current devices
     void reshape(const MeshShape& new_shape);
 
+    void set_speculation_states(std::vector<bool> states);
+
     void close_devices();
     const MeshDeviceView& get_view() const;
 

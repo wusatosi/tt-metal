@@ -20,6 +20,7 @@
 #if defined ALIGN_LOCAL_CBS_TO_REMOTE_CBS or defined UPDATE_REMOTE_CB_CONFIGS_IN_L1
 #include "circular_buffer_init.h"
 #endif
+#include "debug/dprint.h"
 
 void kernel_launch(uint32_t kernel_base_addr) {
 
@@ -40,10 +41,14 @@ void kernel_launch(uint32_t kernel_base_addr) {
 #ifdef ALIGN_LOCAL_CBS_TO_REMOTE_CBS
     ALIGN_LOCAL_CBS_TO_REMOTE_CBS
 #endif
+#ifdef SKIP_KERNEL
+    DPRINT << "SKIPPINNNG" << ENDL();
+#else
     {
         DeviceZoneScopedMainChildN("BRISC-KERNEL");
         kernel_main();
     }
+#endif
 #ifdef UPDATE_REMOTE_CB_CONFIGS_IN_L1
     UPDATE_REMOTE_CB_CONFIGS_IN_L1
 #endif
