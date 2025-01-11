@@ -25,8 +25,8 @@ def data_gen_with_range_batch_norm(
     size = input_shapes if is_input else channels
     pt_tensor = torch.rand(size, requires_grad=required_grad).bfloat16() * (high - low) + low
     reshaped_tensor = pt_tensor
-    if not is_input:
-        reshaped_tensor = pt_tensor.view(1, channels, 1, 1).expand(1, channels, 32, 32)
+    # if not is_input:
+    # reshaped_tensor = pt_tensor.view(1, channels, 1, 1)
     tt_tensor = ttnn.from_torch(
         reshaped_tensor,
         device=device,
@@ -34,6 +34,7 @@ def data_gen_with_range_batch_norm(
         dtype=ttnn.bfloat16,
         memory_config=ttnn.DRAM_MEMORY_CONFIG,
     )
+    print(tt_tensor.shape)
     return pt_tensor, tt_tensor
 
 
