@@ -573,7 +573,7 @@ void process_write_packed(
     // dst_addr << " " << ENDL();
     uint32_t writes = 0;
     uint32_t mcasts = 0;
-    auto wait_for_barrier1 = [&]() {
+    auto wait_for_barrier = [&]() {
         if (!mcast) {
             return;
         }
@@ -583,33 +583,6 @@ void process_write_packed(
         mcasts = 0;
         // Workaround mcast path reservation hangs by always waiting for a write
         // barrier before doing an mcast that isn't linked to a previous mcast.
-        WAYPOINT("NAV1");
-        noc_async_write_barrier();
-    };
-    auto wait_for_barrier2 = [&]() {
-        if (!mcast) {
-            return;
-        }
-        noc_nonposted_writes_num_issued[noc_index] += writes;
-        noc_nonposted_writes_acked[noc_index] += mcasts;
-        writes = 0;
-        mcasts = 0;
-        // Workaround mcast path reservation hangs by always waiting for a write
-        // barrier before doing an mcast that isn't linked to a previous mcast.
-        WAYPOINT("LOVE");
-        noc_async_write_barrier();
-    };
-    auto wait_for_barrier3 = [&]() {
-        if (!mcast) {
-            return;
-        }
-        noc_nonposted_writes_num_issued[noc_index] += writes;
-        noc_nonposted_writes_acked[noc_index] += mcasts;
-        writes = 0;
-        mcasts = 0;
-        // Workaround mcast path reservation hangs by always waiting for a write
-        // barrier before doing an mcast that isn't linked to a previous mcast.
-        WAYPOINT("BABN");
         noc_async_write_barrier();
     };
     WritePackedSubCmd* sub_cmd_ptr = (WritePackedSubCmd*)l1_cache;
@@ -626,7 +599,7 @@ void process_write_packed(
             if (cb_fence == block_next_start_addr[rd_block_idx]) {
                 orphan_size = cb_fence - data_ptr;
                 if (orphan_size != 0) {
-                    wait_for_barrier1();
+                    wait_for_barrier();
                     cq_noc_async_write_with_state<CQ_NOC_SNdL>(data_ptr, dst, orphan_size, num_dests);
                     writes++;
                     mcasts += num_dests;
@@ -660,7 +633,7 @@ void process_write_packed(
                 uint32_t remainder_xfer_size = xfer_size - orphan_size;
                 // Creating full NOC addr not needed as we are not programming the noc coords
                 uint32_t remainder_dst_addr = dst_addr + orphan_size;
-                wait_for_barrier2();
+                wait_for_barrier();
                 cq_noc_async_write_with_state<CQ_NOC_SnDL>(
                     data_ptr, remainder_dst_addr, remainder_xfer_size, num_dests);
                 // Reset values expected below
@@ -675,7 +648,7 @@ void process_write_packed(
             }
         }
 
-        wait_for_barrier3();
+        wait_for_barrier();
         cq_noc_async_write_with_state<CQ_NOC_SNdl>(data_ptr, dst, xfer_size, num_dests);
         writes++;
         mcasts += num_dests;
@@ -733,9 +706,7 @@ void process_write_packed_large(
         uint32_t num_dests = sub_cmd_ptr->num_mcast_dests;
         uint32_t pad_size = align_power_of_2(length, alignment) - length;
         uint32_t unlink = sub_cmd_ptr->flags & CQ_DISPATCH_CMD_PACKED_WRITE_LARGE_FLAG_UNLINK;
-        DPRINT << "dispatch_write_packed_large: " << length << " " << num_dests << " " << dst_addr << " base "
-               << sub_cmd_ptr->addr << " offset " << local_write_offset << ENDL();
-        auto wait_for_barrier1 = [&]() {
+        auto wait_for_barrier = [&]() {
             if (!must_barrier) {
                 return;
             }
@@ -746,35 +717,6 @@ void process_write_packed_large(
             writes = 0;
             // Workaround mcast path reservation hangs by always waiting for a write
             // barrier before doing an mcast that isn't linked to a previous mcast.
-            WAYPOINT("NAV2");
-            noc_async_write_barrier();
-        };
-        auto wait_for_barrier2 = [&]() {
-            if (!must_barrier) {
-                return;
-            }
-            noc_nonposted_writes_num_issued[noc_index] += writes;
-
-            mcasts += num_dests * writes;
-            noc_nonposted_writes_acked[noc_index] = mcasts;
-            writes = 0;
-            // Workaround mcast path reservation hangs by always waiting for a write
-            // barrier before doing an mcast that isn't linked to a previous mcast.
-            WAYPOINT("MADA");
-            noc_async_write_barrier();
-        };
-        auto wait_for_barrier3 = [&]() {
-            if (!must_barrier) {
-                return;
-            }
-            noc_nonposted_writes_num_issued[noc_index] += writes;
-
-            mcasts += num_dests * writes;
-            noc_nonposted_writes_acked[noc_index] = mcasts;
-            writes = 0;
-            // Workaround mcast path reservation hangs by always waiting for a write
-            // barrier before doing an mcast that isn't linked to a previous mcast.
-            WAYPOINT("HELP");
             noc_async_write_barrier();
         };
 
@@ -818,27 +760,24 @@ void process_write_packed_large(
             uint32_t xfer_size;
             if (length > available_data) {
                 xfer_size = available_data;
-                wait_for_barrier1();
-                // DPRINT << "dispatch_write_packed_large 1: " << xfer_size << ENDL();
+                wait_for_barrier();
                 cq_noc_async_write_with_state_any_len(data_ptr, dst_addr, xfer_size, num_dests);
                 must_barrier = false;
             } else {
                 xfer_size = length;
                 if (unlink) {
-                    wait_for_barrier2();
+                    wait_for_barrier();
                     uint32_t rem_xfer_size =
                         cq_noc_async_write_with_state_any_len<false>(data_ptr, dst_addr, xfer_size, num_dests);
                     // Unset Link flag
                     cq_noc_async_write_init_state<CQ_NOC_sndl, true, false>(0, 0, 0);
                     uint32_t data_offset = xfer_size - rem_xfer_size;
-                    // DPRINT << "dispatch_write_packed_large 2: " << rem_xfer_size
-                    //        << " dst addr " << dst_addr << " offset " << data_offset << ENDL();
                     cq_noc_async_write_with_state<CQ_NOC_SnDL, CQ_NOC_wait>(
                         data_ptr + data_offset, dst_addr + data_offset, rem_xfer_size, num_dests);
                     // Later writes must barrier, but the `must_barrier = true` in the `if (init_state)` block above
                     // will see to that.
                 } else {
-                    wait_for_barrier3();
+                    wait_for_barrier();
                     cq_noc_async_write_with_state_any_len(data_ptr, dst_addr, xfer_size, num_dests);
                     must_barrier = false;
                 }
@@ -926,8 +865,7 @@ static void process_wait() {
     uint32_t count = cmd->wait.count;
 
     if (barrier) {
-        // DPRINT << " DISPATCH BARRIER\n";
-        WAYPOINT("NAV3");
+        DPRINT << " DISPATCH BARRIER\n";
         noc_async_write_barrier();
     }
 
@@ -940,7 +878,6 @@ static void process_wait() {
             invalidate_l1_cache();
             IDLE_ERISC_HEARTBEAT_AND_RETURN(heartbeat);
         } while (!wrap_ge(*sem_addr, count));
-        // DPRINT << "Done wait" << ENDL();
     }
     WAYPOINT("PWD");
 
@@ -1003,8 +940,7 @@ void process_notify_dispatch_s_go_signal_cmd() {
     uint32_t wait = cmd->notify_dispatch_s_go_signal.wait;
     // write barrier to wait before sending the go signal
     if (wait) {
-        // DPRINT << " DISPATCH_S_NOTIFY BARRIER\n";
-        WAYPOINT("NAV4");
+        DPRINT << " DISPATCH_S_NOTIFY BARRIER\n";
         noc_async_write_barrier();
     }
     uint16_t index_bitmask = cmd->notify_dispatch_s_go_signal.index_bitmask;
@@ -1050,13 +986,13 @@ re_run_command:
     switch (cmd->base.cmd_id) {
         case CQ_DISPATCH_CMD_WRITE_LINEAR:
             WAYPOINT("DWB");
-            // DPRINT << "cmd_write_linear\n";
+            DPRINT << "cmd_write_linear\n";
             process_write(block_noc_writes_to_clear, block_next_start_addr);
             WAYPOINT("DWD");
             break;
 
         case CQ_DISPATCH_CMD_WRITE_LINEAR_H:
-            // DPRINT << "cmd_write_linear_h\n";
+            DPRINT << "cmd_write_linear_h\n";
             if (is_h_variant) {
                 process_write(block_noc_writes_to_clear, block_next_start_addr);
             } else {
@@ -1065,7 +1001,7 @@ re_run_command:
             break;
 
         case CQ_DISPATCH_CMD_WRITE_LINEAR_H_HOST:
-            // DPRINT << "cmd_write_linear_h_host\n";
+            DPRINT << "cmd_write_linear_h_host\n";
             if (is_h_variant) {
                 process_write_host_h(block_noc_writes_to_clear, block_next_start_addr);
             } else {
@@ -1074,7 +1010,7 @@ re_run_command:
             break;
 
         case CQ_DISPATCH_CMD_WRITE_PAGED:
-            // DPRINT << "cmd_write_paged is_dram: " << (uint32_t)cmd->write_paged.is_dram << ENDL();
+            DPRINT << "cmd_write_paged is_dram: " << (uint32_t)cmd->write_paged.is_dram << ENDL();
             if (cmd->write_paged.is_dram) {
                 process_write_paged<true>(block_noc_writes_to_clear, block_next_start_addr);
             } else {
@@ -1083,7 +1019,7 @@ re_run_command:
             break;
 
         case CQ_DISPATCH_CMD_WRITE_PACKED: {
-            // DPRINT << "cmd_write_packed" << ENDL();
+            DPRINT << "cmd_write_packed" << ENDL();
             uint32_t flags = cmd->write_packed.flags;
             if (flags & CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_MCAST) {
                 process_write_packed<true, CQDispatchWritePackedMulticastSubCmd>(
@@ -1095,17 +1031,17 @@ re_run_command:
         } break;
 
         case CQ_DISPATCH_NOTIFY_SLAVE_GO_SIGNAL:
-            // DPRINT << "cmd_notify_dispatch_s_go_signal" << ENDL();
+            DPRINT << "cmd_notify_dispatch_s_go_signal" << ENDL();
             process_notify_dispatch_s_go_signal_cmd();
             break;
 
         case CQ_DISPATCH_CMD_WRITE_PACKED_LARGE:
-            // DPRINT << "cmd_write_packed_large" << ENDL();
+            DPRINT << "cmd_write_packed_large" << ENDL();
             process_write_packed_large(l1_cache, block_noc_writes_to_clear, block_next_start_addr);
             break;
 
         case CQ_DISPATCH_CMD_WAIT:
-            // DPRINT << "cmd_wait" << ENDL();
+            DPRINT << "cmd_wait" << ENDL();
             process_wait();
             break;
 
@@ -1114,18 +1050,18 @@ re_run_command:
         case CQ_DISPATCH_CMD_SINK: DPRINT << "cmd_sink" << ENDL(); break;
 
         case CQ_DISPATCH_CMD_DEBUG:
-            // DPRINT << "cmd_debug" << ENDL();
+            DPRINT << "cmd_debug" << ENDL();
             cmd_ptr = process_debug_cmd(cmd_ptr);
             goto re_run_command;
             break;
 
         case CQ_DISPATCH_CMD_DELAY:
-            // DPRINT << "cmd_delay" << ENDL();
+            DPRINT << "cmd_delay" << ENDL();
             process_delay_cmd();
             break;
 
         case CQ_DISPATCH_CMD_EXEC_BUF_END:
-            // DPRINT << "cmd_exec_buf_end\n";
+            DPRINT << "cmd_exec_buf_end\n";
             if (is_h_variant) {
                 process_exec_buf_end_h();
             } else {
@@ -1134,12 +1070,12 @@ re_run_command:
             break;
 
         case CQ_DISPATCH_CMD_SEND_GO_SIGNAL:
-            // DPRINT << "cmd_go_send_go_signal" << ENDL();
+            DPRINT << "cmd_go_send_go_signal" << ENDL();
             process_go_signal_mcast_cmd();
             break;
 
         case CQ_DISPATCH_SET_NUM_WORKER_SEMS:
-            // DPRINT << "cmd_set_num_worker_sems" << ENDL();
+            DPRINT << "cmd_set_num_worker_sems" << ENDL();
             // This command is only used by dispatch_s
             ASSERT(0);
             cmd_ptr += sizeof(CQDispatchCmd);
@@ -1148,9 +1084,8 @@ re_run_command:
         case CQ_DISPATCH_SET_GO_SIGNAL_NOC_DATA: set_go_signal_noc_data(); break;
 
         case CQ_DISPATCH_CMD_SET_WRITE_OFFSET:
-            // DPRINT << "write offset: " << cmd->set_write_offset.offset0 << " " << cmd->set_write_offset.offset1 << "
-            // "
-            //        << cmd->set_write_offset.offset2 << ENDL();
+            DPRINT << "write offset: " << cmd->set_write_offset.offset0 << " " << cmd->set_write_offset.offset1 << " "
+                   << cmd->set_write_offset.offset2 << ENDL();
             write_offset[0] = cmd->set_write_offset.offset0;
             write_offset[1] = cmd->set_write_offset.offset1;
             write_offset[2] = cmd->set_write_offset.offset2;
@@ -1158,7 +1093,7 @@ re_run_command:
             break;
 
         case CQ_DISPATCH_CMD_TERMINATE:
-            // DPRINT << "dispatch terminate\n";
+            DPRINT << "dispatch terminate\n";
             if (is_d_variant && !is_h_variant) {
                 relay_to_next_cb<split_dispatch_page_preamble_size>(
                     cmd_ptr, sizeof(CQDispatchCmd), block_noc_writes_to_clear, block_next_start_addr);
@@ -1168,13 +1103,13 @@ re_run_command:
             break;
 
         default:
-            // DPRINT << "dispatcher_d invalid command:" << cmd_ptr << " " << cb_fence << " " << dispatch_cb_base << " "
-            //        << dispatch_cb_end << " " << rd_block_idx << " "
-            //        << "xx" << ENDL();
-            // DPRINT << HEX() << *(uint32_t*)cmd_ptr << ENDL();
-            // DPRINT << HEX() << *((uint32_t*)cmd_ptr + 1) << ENDL();
-            // DPRINT << HEX() << *((uint32_t*)cmd_ptr + 2) << ENDL();
-            // DPRINT << HEX() << *((uint32_t*)cmd_ptr + 3) << ENDL();
+            DPRINT << "dispatcher_d invalid command:" << cmd_ptr << " " << cb_fence << " " << dispatch_cb_base << " "
+                   << dispatch_cb_end << " " << rd_block_idx << " "
+                   << "xx" << ENDL();
+            DPRINT << HEX() << *(uint32_t*)cmd_ptr << ENDL();
+            DPRINT << HEX() << *((uint32_t*)cmd_ptr + 1) << ENDL();
+            DPRINT << HEX() << *((uint32_t*)cmd_ptr + 2) << ENDL();
+            DPRINT << HEX() << *((uint32_t*)cmd_ptr + 3) << ENDL();
             WAYPOINT("!CMD");
             ASSERT(0);
     }
@@ -1190,33 +1125,33 @@ static inline bool process_cmd_h(
 
     switch (cmd->base.cmd_id) {
         case CQ_DISPATCH_CMD_WRITE_LINEAR_H:
-            // DPRINT << "dispatch_h write_linear_h\n";
+            DPRINT << "dispatch_h write_linear_h\n";
             process_write(block_noc_writes_to_clear, block_next_start_addr);
             break;
 
         case CQ_DISPATCH_CMD_WRITE_LINEAR_H_HOST:
-            // DPRINT << "dispatch_h linear_h_host\n";
+            DPRINT << "dispatch_h linear_h_host\n";
             process_write_host_h(block_noc_writes_to_clear, block_next_start_addr);
             break;
 
         case CQ_DISPATCH_CMD_EXEC_BUF_END:
-            // DPRINT << "dispatch_h exec_buf_end\n";
+            DPRINT << "dispatch_h exec_buf_end\n";
             process_exec_buf_end_h();
             break;
         case CQ_DISPATCH_CMD_TERMINATE:
-            // DPRINT << "dispatch_h terminate\n";
+            DPRINT << "dispatch_h terminate\n";
             cmd_ptr += sizeof(CQDispatchCmd);
             done = true;
             break;
 
         default:
-            // DPRINT << "dispatcher_h invalid command:" << cmd_ptr << " " << cb_fence << " "
-            //        << " " << dispatch_cb_base << " " << dispatch_cb_end << " " << rd_block_idx << " "
-            //        << "xx" << ENDL();
-            // DPRINT << HEX() << *(uint32_t*)cmd_ptr << ENDL();
-            // DPRINT << HEX() << *((uint32_t*)cmd_ptr + 1) << ENDL();
-            // DPRINT << HEX() << *((uint32_t*)cmd_ptr + 2) << ENDL();
-            // DPRINT << HEX() << *((uint32_t*)cmd_ptr + 3) << ENDL();
+            DPRINT << "dispatcher_h invalid command:" << cmd_ptr << " " << cb_fence << " "
+                   << " " << dispatch_cb_base << " " << dispatch_cb_end << " " << rd_block_idx << " "
+                   << "xx" << ENDL();
+            DPRINT << HEX() << *(uint32_t*)cmd_ptr << ENDL();
+            DPRINT << HEX() << *((uint32_t*)cmd_ptr + 1) << ENDL();
+            DPRINT << HEX() << *((uint32_t*)cmd_ptr + 2) << ENDL();
+            DPRINT << HEX() << *((uint32_t*)cmd_ptr + 3) << ENDL();
             WAYPOINT("!CMD");
             ASSERT(0);
     }
@@ -1289,7 +1224,6 @@ void kernel_main() {
         cmd_ptr = round_up_pow2(cmd_ptr, dispatch_cb_page_size);
     }
 
-    WAYPOINT("NAV5");
     noc_async_write_barrier();
 
     if (is_h_variant && !is_d_variant) {
