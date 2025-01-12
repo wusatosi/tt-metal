@@ -1,3 +1,8 @@
+#
+# Pass this script to Sed via a command such as:
+#    find . \( -name '*.hpp' -o -name '*.h' -o -name '*.cpp' \) -print | xargs sed -Ef reorg-api.consumer.sed -i
+#
+
 s/#include "(tt_metal\/)?common\/(assert.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?common\/(base_types.hpp)"/#include <tt-metalium\/\2>/
 s/#include <(tt_metal\/)?common\/(base_types.hpp)>/#include <tt-metalium\/\2>/
