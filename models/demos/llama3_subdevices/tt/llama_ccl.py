@@ -190,7 +190,6 @@ def tt_sharded_distributed_rmsnorm(
     ln_sharded_progcfg,
     ln_sharded_stats_memcfg,
 ):
-    breakpoint()
     # inp = ttnn.to_memory_config(inp, memory_config=ln_sharded_input_memcfg)
 
     # Run distributed rmsnorm part 1
