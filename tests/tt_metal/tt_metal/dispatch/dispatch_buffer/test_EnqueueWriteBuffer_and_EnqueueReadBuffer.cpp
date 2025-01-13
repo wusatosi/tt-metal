@@ -921,21 +921,6 @@ TEST_F(MultiCommandQueueSingleDeviceBufferFixture, TestIssueMultipleReadWriteCom
 
 namespace l1_tests {
 
-TEST_F(CommandQueueSingleCardBufferFixture, TestReadWriteSubBufferForL1) {
-    const uint32_t page_size = 256;
-    const uint32_t buffer_size = 128 * page_size;
-    const BufferRegion region(2 * page_size, 2048);
-    for (IDevice* device : devices_) {
-        tt::log_info("Running On Device {}", device->id());
-        auto buffer = Buffer::create(device, buffer_size, page_size, BufferType::L1);
-        auto src = local_test_functions::generate_arange_vector(region.size);
-        EnqueueWriteSubBuffer(device->command_queue(), *buffer, src, region, false);
-        vector<uint32_t> result;
-        EnqueueReadSubBuffer(device->command_queue(), *buffer, result, region, true);
-        EXPECT_EQ(src, result);
-    }
-}
-
 TEST_F(CommandQueueSingleCardBufferFixture, TestReadWriteShardedSubBuffer) {
     const uint32_t buffer_region_size = 128;
     for (IDevice* device : devices_) {
@@ -955,7 +940,7 @@ TEST_F(CommandQueueSingleCardBufferFixture, TestReadWriteShardedSubBuffer) {
         //     .page_size = 32,
         //     .buffer_layout = TensorMemoryLayout::BLOCK_SHARDED,
         //     .shard_parameters = shard_spec});
-        auto buffer = Buffer::create(device, 1024, 16, BufferType::L1, TensorMemoryLayout::WIDTH_SHARDED, shard_spec);
+        auto buffer = Buffer::create(device, 1024, 32, BufferType::L1, TensorMemoryLayout::WIDTH_SHARDED, shard_spec);
         auto src = local_test_functions::generate_arange_vector(buffer_region_size);
         EnqueueWriteBuffer(device->command_queue(), *buffer, zeroes, true);
         const BufferRegion region(256, buffer_region_size);
@@ -963,21 +948,6 @@ TEST_F(CommandQueueSingleCardBufferFixture, TestReadWriteShardedSubBuffer) {
         vector<uint32_t> result;
         EnqueueReadBuffer(device->command_queue(), *buffer, result, true);
         // EnqueueReadSubBuffer(device->command_queue(), *buffer, result, region, true);
-        EXPECT_EQ(src, result);
-    }
-}
-
-TEST_F(CommandQueueSingleCardBufferFixture, TestReadWriteSubBufferLargeOffsetForL1) {
-    const uint32_t page_size = 256;
-    const uint32_t buffer_size = 512 * page_size;
-    const BufferRegion region(400 * page_size, 2048);
-    for (IDevice* device : devices_) {
-        tt::log_info("Running On Device {}", device->id());
-        auto buffer = Buffer::create(device, buffer_size, page_size, BufferType::L1);
-        auto src = local_test_functions::generate_arange_vector(region.size);
-        EnqueueWriteSubBuffer(device->command_queue(), *buffer, src, region, false);
-        vector<uint32_t> result;
-        EnqueueReadSubBuffer(device->command_queue(), *buffer, result, region, true);
         EXPECT_EQ(src, result);
     }
 }
@@ -1010,6 +980,36 @@ TEST_F(CommandQueueSingleCardBufferFixture, TestReadWriteShardedSubBufferMultipl
         vector<uint32_t> result;
         EnqueueReadBuffer(device->command_queue(), *buffer, result, true);
         // EnqueueReadSubBuffer(device->command_queue(), *buffer, result, region, true);
+        EXPECT_EQ(src, result);
+    }
+}
+
+TEST_F(CommandQueueSingleCardBufferFixture, TestReadWriteSubBufferForL1) {
+    const uint32_t page_size = 256;
+    const uint32_t buffer_size = 128 * page_size;
+    const BufferRegion region(2 * page_size, 2048);
+    for (IDevice* device : devices_) {
+        tt::log_info("Running On Device {}", device->id());
+        auto buffer = Buffer::create(device, buffer_size, page_size, BufferType::L1);
+        auto src = local_test_functions::generate_arange_vector(region.size);
+        EnqueueWriteSubBuffer(device->command_queue(), *buffer, src, region, false);
+        vector<uint32_t> result;
+        EnqueueReadSubBuffer(device->command_queue(), *buffer, result, region, true);
+        EXPECT_EQ(src, result);
+    }
+}
+
+TEST_F(CommandQueueSingleCardBufferFixture, TestReadWriteSubBufferLargeOffsetForL1) {
+    const uint32_t page_size = 256;
+    const uint32_t buffer_size = 512 * page_size;
+    const BufferRegion region(400 * page_size, 2048);
+    for (IDevice* device : devices_) {
+        tt::log_info("Running On Device {}", device->id());
+        auto buffer = Buffer::create(device, buffer_size, page_size, BufferType::L1);
+        auto src = local_test_functions::generate_arange_vector(region.size);
+        EnqueueWriteSubBuffer(device->command_queue(), *buffer, src, region, false);
+        vector<uint32_t> result;
+        EnqueueReadSubBuffer(device->command_queue(), *buffer, result, region, true);
         EXPECT_EQ(src, result);
     }
 }
