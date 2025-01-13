@@ -231,6 +231,7 @@ template struct BinaryNg<BinaryOpType::LOGICAL_OR>;
 template struct BinaryNg<BinaryOpType::LOGICAL_XOR>;
 template struct BinaryNg<BinaryOpType::LDEXP>;
 template struct BinaryNg<BinaryOpType::LOGADDEXP>;
+template struct BinaryNg<BinaryOpType::LOGADDEXP2>;
 
 template struct BinaryNgBitwise<BinaryOpType::BITWISE_AND>;
 template struct BinaryNgBitwise<BinaryOpType::BITWISE_OR>;

@@ -195,7 +195,7 @@ BinaryNgDeviceOperation::ProgramFactory::cached_program_t BinaryNgDeviceOperatio
 
     auto op_type = operation_attributes.binary_op_type;
 
-    std::cout << "is sfpu op ? " << is_sfpu_op << std::endl;
+    // std::cout << "is sfpu op ? " << is_sfpu_op << std::endl;
     OpConfig op_config(op_type, is_sfpu_op);
     tt::log_info(tt::LogOp, "******** sfpu_binary_op : {}", op_config.sfpu_binary_op);
 
@@ -289,9 +289,9 @@ BinaryNgDeviceOperation::ProgramFactory::cached_program_t BinaryNgDeviceOperatio
         all_device_cores,
         tt_metal::ReaderDataMovementConfig({a_is_dram}, reader_defines));
     std::cout << "reader kernel " << get_kernel_file_path(kernel_config.reader_kernel, is_sfpu_op) << std::endl;
-    for (const auto& pair : reader_defines) {
-        std::cout << "reader sf " << pair.first << ": " << pair.second << std::endl;
-    }
+    // for (const auto& pair : reader_defines) {
+    //     std::cout << "reader sf " << pair.first << ": " << pair.second << std::endl;
+    // }
     // WRITER KERNEL
     auto writer_kernel = CMAKE_UNIQUE_NAMESPACE::KernelName::WriterScalar;
     auto compute_kernel = CMAKE_UNIQUE_NAMESPACE::KernelName::ComputeScalar;
@@ -308,13 +308,13 @@ BinaryNgDeviceOperation::ProgramFactory::cached_program_t BinaryNgDeviceOperatio
         all_device_cores,
         tt_metal::WriterDataMovementConfig({b_is_dram, c_is_dram}, writer_defines));
     std::cout << "writer kernel " << get_kernel_file_path(writer_kernel, is_sfpu_op) << std::endl;
-    for (const auto& pair : writer_defines) {
-        std::cout << "writer_defines sf " << pair.first << ": " << pair.second << std::endl;
-    }
+    // for (const auto& pair : writer_defines) {
+    //     std::cout << "writer_defines sf " << pair.first << ": " << pair.second << std::endl;
+    // }
     // COMPUTE KERNEL
     bool fp32_dest_acc_en = c_data_format == tt::DataFormat::UInt32 || c_data_format == tt::DataFormat::Int32 ||
                             c_data_format == tt::DataFormat::Float32;
-    std::cout << "fp32_dest_acc_en " << fp32_dest_acc_en << std::endl;
+    // std::cout << "fp32_dest_acc_en " << fp32_dest_acc_en << std::endl;
     uint32_t src0_cb_index = tt::CBIndex::c_0;
     uint32_t src1_cb_index = tt::CBIndex::c_1;
     uint32_t src0interim_cb_index = tt::CBIndex::c_3;
@@ -331,9 +331,9 @@ BinaryNgDeviceOperation::ProgramFactory::cached_program_t BinaryNgDeviceOperatio
     // This has to be passed as a compile-time argument
     // For now we're just going to do addition
     compute_kernel_defines["BCAST_INPUT"] = kernel_config.bcast_input_str();
-    for (const auto& pair : compute_kernel_defines) {
-        std::cout << "compute_kernel_defines sf " << pair.first << ": " << pair.second << std::endl;
-    }
+    // for (const auto& pair : compute_kernel_defines) {
+    //     std::cout << "compute_kernel_defines sf " << pair.first << ": " << pair.second << std::endl;
+    // }
     auto compute_kernel_id = tt_metal::CreateKernel(
         program,
         get_kernel_file_path(compute_kernel, is_sfpu_op),

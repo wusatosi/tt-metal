@@ -256,6 +256,7 @@ def test_01_volume_tensors(device, a, b, c_golden, memory_config):
     assert c.tolist() == c_golden
 
 
+@skip_for_grayskull("Unsupported dtype for Grayskull")
 @pytest.mark.parametrize(
     "input_shapes",
     (
@@ -291,15 +292,16 @@ def test_binary_ng(input_shapes, ttnn_fn, device):
     out_tt = ttnn_fn(a_tt, b_tt, queue_id=cq_id)
     golden_fn = ttnn.get_golden_function(ttnn_fn)
     out_pt = golden_fn(a_pt, b_pt)
-    torch.set_printoptions(linewidth=200, threshold=10000, precision=15, sci_mode=False, edgeitems=17)
-    print(ttnn.to_torch(out_tt))
-    print(out_pt)
-    print(a_pt - b_pt)
+    # torch.set_printoptions(linewidth=200, threshold=10000, precision=15, sci_mode=False, edgeitems=17)
+    # print(ttnn.to_torch(out_tt))
+    # print(out_pt)
+    # print(a_pt - b_pt)
     # comp_pass = compare_pcc([out_tt], [out_pt])
     comp_pass = ttnn.pearson_correlation_coefficient(out_pt, out_tt)
     assert comp_pass >= 0.99988
 
 
+@skip_for_grayskull("Unsupported dtype for Grayskull")
 @pytest.mark.parametrize(
     "input_shapes",
     [
@@ -333,14 +335,15 @@ def test_binary_ng_fp32(input_shapes, ttnn_fn, device):
     # print("tt ", z_tt_sub)
     tt_out = ttnn.to_torch(z_tt_sub)
 
-    torch.set_printoptions(linewidth=200, threshold=10000, precision=15, sci_mode=False, edgeitems=17)
-    print("torch", z_torch)
-    print("tt ", tt_out)
+    # torch.set_printoptions(linewidth=200, threshold=10000, precision=15, sci_mode=False, edgeitems=17)
+    # print("torch", z_torch)
+    # print("tt ", tt_out)
 
     status = torch.allclose(z_torch, tt_out, atol=1e-10, rtol=1e-5, equal_nan=False)
     assert status
 
 
+@skip_for_grayskull("Unsupported dtype for Grayskull")
 @pytest.mark.parametrize(
     "input_shapes",
     [
@@ -372,14 +375,15 @@ def test_binary_ng_fp32sc(input_shapes, ttnn_fn, device):
     # print("tt ", z_tt_sub)
     tt_out = ttnn.to_torch(z_tt_sub)
 
-    torch.set_printoptions(linewidth=200, threshold=10000, precision=15, sci_mode=False, edgeitems=17)
-    print("torch", z_torch)
-    print("tt ", tt_out)
+    # torch.set_printoptions(linewidth=200, threshold=10000, precision=15, sci_mode=False, edgeitems=17)
+    # print("torch", z_torch)
+    # print("tt ", tt_out)
 
     status = torch.allclose(z_torch, tt_out, atol=1e-10, rtol=1e-5, equal_nan=False)
     assert status
 
 
+@skip_for_grayskull("Unsupported dtype for Grayskull")
 @pytest.mark.parametrize(
     "input_shapes",
     ((torch.Size([2, 1, 2, 2]), torch.Size([2, 1, 2, 2])),),
@@ -412,14 +416,15 @@ def test_binary_ng_int32(input_shapes, ttnn_fn, device):
     )  #  lhs_activations=[ttnn.UnaryOpType.SQUARE]
     tt_out = ttnn.to_torch(z_tt_sub)
 
-    torch.set_printoptions(linewidth=200, threshold=10000, precision=15, sci_mode=False, edgeitems=17)
-    print("torch", z_torch)
-    print("tt ", tt_out)
+    # torch.set_printoptions(linewidth=200, threshold=10000, precision=15, sci_mode=False, edgeitems=17)
+    # print("torch", z_torch)
+    # print("tt ", tt_out)
 
     status = torch.allclose(z_torch, tt_out, atol=1e-10, rtol=1e-5, equal_nan=False)
     assert status
 
 
+@skip_for_grayskull("Unsupported dtype for Grayskull")
 @pytest.mark.parametrize(
     "input_shapes",
     [
@@ -455,14 +460,15 @@ def test_binary_ng_fp32_activ(input_shapes, ttnn_fn, device):
     # print("tt ", z_tt_sub)
     tt_out = ttnn.to_torch(z_tt_sub)
 
-    torch.set_printoptions(linewidth=200, threshold=10000, precision=15, sci_mode=False, edgeitems=17)
-    print("torch", z_torch)
-    print("tt ", tt_out)
+    # torch.set_printoptions(linewidth=200, threshold=10000, precision=15, sci_mode=False, edgeitems=17)
+    # print("torch", z_torch)
+    # print("tt ", tt_out)
 
     status = torch.allclose(z_torch, tt_out, atol=1e-10, rtol=1e-5, equal_nan=False)
     assert status
 
 
+@skip_for_grayskull("Unsupported dtype for Grayskull")
 @pytest.mark.parametrize(
     "input_shapes",
     [
@@ -498,9 +504,9 @@ def test_binary_ng_bf16_activ(input_shapes, ttnn_fn, device):
     # print("tt ", z_tt_sub)
     tt_out = ttnn.to_torch(z_tt_sub)
 
-    torch.set_printoptions(linewidth=200, threshold=10000, precision=15, sci_mode=False, edgeitems=17)
-    print("torch", z_torch)
-    print("tt ", tt_out)
+    # torch.set_printoptions(linewidth=200, threshold=10000, precision=15, sci_mode=False, edgeitems=17)
+    # print("torch", z_torch)
+    # print("tt ", tt_out)
 
     status = torch.allclose(z_torch, tt_out, atol=1e-10, rtol=1e-5, equal_nan=False)
     assert status
