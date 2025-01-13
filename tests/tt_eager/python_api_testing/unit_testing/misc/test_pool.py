@@ -31,7 +31,7 @@ def test_maxpool(device, input_shape, kernel_size, stride, padding, dilation):
     output_tensor = torch.permute(output_tensor, (0, 3, 1, 2))
 
     # COMMENTED OUT FOR INIT DEBUGGING
-    # assert_with_pcc(output_tensor, expected_output)
+    assert_with_pcc(output_tensor, expected_output)
 
 
 def test_add(device, batch_size, h, w, dim):
