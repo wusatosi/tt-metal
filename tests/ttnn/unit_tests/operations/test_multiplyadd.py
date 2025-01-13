@@ -56,21 +56,21 @@ def test_multiplyadd(device, h, w):
         dtype=ttnn.bfloat16,
         layout=ttnn.TILE_LAYOUT,
         device=device,
-        memory_config=tensor_memory_config,
+        memory_config=ttnn.DRAM_MEMORY_CONFIG,
     )
     input_tensor2 = ttnn.from_torch(
         torch_input_tensor2,
         dtype=ttnn.bfloat16,
         layout=ttnn.TILE_LAYOUT,
         device=device,
-        memory_config=tensor_memory_config,
+        memory_config=ttnn.DRAM_MEMORY_CONFIG,
     )
     input_tensor3 = ttnn.from_torch(
         torch_input_tensor3,
         dtype=ttnn.bfloat16,
         layout=ttnn.TILE_LAYOUT,
         device=device,
-        memory_config=tensor_memory_config,
+        memory_config=ttnn.DRAM_MEMORY_CONFIG,
     )
 
     output_tensor = ttnn.multiplyadd(input_tensor1, input_tensor2, input_tensor3)
