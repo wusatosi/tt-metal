@@ -168,7 +168,6 @@ def test_llama_decoder_inference(
             dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
             mesh_shape=model_args.cluster_shape,
         ),
-        sub_device_ids=[prefetcher_setup.worker_sub_device_id],
     )
     for i in range(generation_length):
         logger.info(f"[Decoder] Generating token {i}")
@@ -181,7 +180,6 @@ def test_llama_decoder_inference(
             tt_decode_input,
             # ttnn.DRAM_MEMORY_CONFIG,
             model_args.model_config["DECODE_RESIDUAL_MEMCFG"],
-            prefetcher_setup=prefetcher_setup,
         )
 
         # Get cos/sin matrices for the current position of each user
@@ -193,6 +191,8 @@ def test_llama_decoder_inference(
             global_cb=None,
             multi_global_cb=prefetcher_setup.global_circular_buffer,
         )
+        mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
+
         # Run TT model
         tt_out = tt_model(
             decode_input,
@@ -204,7 +204,6 @@ def test_llama_decoder_inference(
         tt_out = ttnn.to_torch(
             tt_out,
             mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(1, 3), mesh_shape=model_args.cluster_shape),
-            sub_device_ids=[prefetcher_setup.worker_sub_device_id],
         )
 
         tt_output_torch = tt_out[:, 0:1, : model_args.max_batch_size, : model_args.dim].view(-1, 1, model_args.dim)
@@ -236,7 +235,6 @@ def test_llama_decoder_inference(
                 dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
                 mesh_shape=model_args.cluster_shape,
             ),
-            sub_device_ids=[prefetcher_setup.worker_sub_device_id],
         )
 
     if all_tests_pass:

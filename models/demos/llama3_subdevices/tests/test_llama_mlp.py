@@ -98,7 +98,6 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
         if mode == "decode"
         else ttnn.DRAM_MEMORY_CONFIG,
         layout=ttnn.TILE_LAYOUT,
-        sub_device_ids=[prefetcher_setup.worker_sub_device_id],
     )
 
     logger.info("Run Llama_MLP")
@@ -108,12 +107,13 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
         global_cb=None,
         multi_global_cb=prefetcher_setup.global_circular_buffer,
     )
+    mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
+
     tt_output = tt_model(tt_input, mode)
 
     tt_output_torch = ttnn.to_torch(
         tt_output,
         mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(1, 3), mesh_shape=model_args.cluster_shape),
-        sub_device_ids=[prefetcher_setup.worker_sub_device_id],
     )
 
     tt_output_torch = tt_output_torch[:, :1, :, : model_args.dim]
