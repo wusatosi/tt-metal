@@ -309,15 +309,14 @@ void EnqueueWriteShardedBufferCommand::add_buffer_data(HugepageDeviceCommand& co
             dst_offset += this->padded_page_size;
         }
     } else {
+        uint32_t unpadded_src_offset = this->initial_src_offset; // this->dst_page_index * this->buffer.page_size();
         if (this->buffer.page_size() != this->padded_page_size and this->buffer.page_size() != this->buffer.size()) {
-            uint32_t unpadded_src_offset = this->dst_page_index * this->buffer.page_size();
             for (uint32_t i = 0; i < this->pages_to_write; ++i) {
                 command_sequence.add_data(
                     (char*)this->src + unpadded_src_offset, this->buffer.page_size(), this->padded_page_size);
                 unpadded_src_offset += this->buffer.page_size();
             }
         } else {
-            uint32_t unpadded_src_offset = this->dst_page_index * this->buffer.page_size();
             command_sequence.add_data((char*)this->src + unpadded_src_offset, data_size_bytes, data_size_bytes);
         }
     }
@@ -977,12 +976,30 @@ void HWCommandQueue::enqueue_read_buffer(
 
     uint32_t padded_page_size = buffer.aligned_page_size();
     uint32_t unpadded_dst_offset = 0;
-    uint32_t src_page_index;
+    uint32_t src_page_index = region.offset / buffer.page_size();
+    const uint32_t orig_src_page_index = src_page_index;
+
+    if (buffer.is_valid_partial_region(region)) {
+        TT_FATAL(
+            region.offset % buffer.page_size() == 0,
+            "Offset {} must be a multiple of the buffer page size {}.",
+            region.offset,
+            buffer.page_size());
+        TT_FATAL(
+            region.size % buffer.page_size() == 0,
+            "Size {} must be a multiple of the buffer page size {}.",
+            region.size,
+            buffer.page_size());
+        TT_FATAL(
+            (region.size + region.offset) <= buffer.size(),
+            "(Size + offset) {} must be <= the buffer size {}.",
+            region.size + region.offset,
+            buffer.size());
+    }
 
     sub_device_ids = detail::select_sub_device_ids(this->device, sub_device_ids);
 
     if (is_sharded(buffer.buffer_layout())) {
-        src_page_index = 0;
         const bool width_split = buffer.shard_spec().shape_in_pages()[1] != buffer.shard_spec().tensor2d_shape[1];
         const auto& buffer_page_mapping = width_split ? buffer.get_buffer_page_mapping() : nullptr;
 
@@ -993,8 +1010,9 @@ void HWCommandQueue::enqueue_read_buffer(
                                               buffer.shard_spec().grid(),
                                               buffer.num_cores(),
                                               buffer.shard_spec().orientation() == ShardOrientation::ROW_MAJOR);
-        uint32_t num_total_pages = buffer.num_pages();
+        uint32_t num_total_pages = region.size / buffer.page_size();
         uint32_t max_pages_per_shard = buffer.shard_spec().size();
+        uint32_t total_num_pages_skipped = 0;
         for (uint32_t core_id = 0; core_id < buffer.num_cores(); ++core_id) {
             uint32_t num_pages_to_read;
             if (width_split) {
@@ -1003,6 +1021,22 @@ void HWCommandQueue::enqueue_read_buffer(
             } else {
                 num_pages_to_read = std::min(num_total_pages, max_pages_per_shard);
                 num_total_pages -= num_pages_to_read;
+            }
+            if (total_num_pages_skipped + max_pages_per_shard <= orig_src_page_index) {
+                total_num_pages_skipped += max_pages_per_shard;
+                if (!width_split) {
+                    num_total_pages += num_pages_to_read;
+                }
+                num_pages_to_read = 0;
+            }
+            else if (core_id == orig_src_page_index / max_pages_per_shard) {
+                total_num_pages_skipped += (orig_src_page_index - total_num_pages_skipped);
+                const uint32_t orig_num_pages_to_read = num_pages_to_read;
+                num_pages_to_read = ((core_id + 1) * max_pages_per_shard) - total_num_pages_skipped;
+                if (!width_split) {
+                    num_total_pages += orig_num_pages_to_read;
+                    num_total_pages -= num_pages_to_read;
+                }
             }
             uint32_t bank_base_address = buffer.address();
             if (buffer.is_dram()) {
@@ -1015,7 +1049,7 @@ void HWCommandQueue::enqueue_read_buffer(
                     src_page_index = buffer_page_mapping->host_page_to_dev_page_mapping_[host_page];
                     unpadded_dst_offset = host_page * buffer.page_size();
                 } else {
-                    unpadded_dst_offset = src_page_index * buffer.page_size();
+                    unpadded_dst_offset = (src_page_index - orig_src_page_index) * buffer.page_size();
                 }
 
                 auto command = EnqueueReadShardedBufferCommand(
@@ -1051,24 +1085,6 @@ void HWCommandQueue::enqueue_read_buffer(
             this->finish(sub_device_ids);
         }
     } else {
-        if (buffer.is_valid_partial_region(region)) {
-            TT_FATAL(
-                region.offset % buffer.page_size() == 0,
-                "Offset {} must be a multiple of the buffer page size {}.",
-                region.offset,
-                buffer.page_size());
-            TT_FATAL(
-                region.size % buffer.page_size() == 0,
-                "Size {} must be a multiple of the buffer page size {}.",
-                region.size,
-                buffer.page_size());
-            TT_FATAL(
-                (region.size + region.offset) <= buffer.size(),
-                "(Size + offset) {} must be <= the buffer size {}.",
-                region.size + region.offset,
-                buffer.size());
-        }
-
         const uint32_t pages_to_read = region.size / buffer.page_size();
         if (pages_to_read > 0) {
             uint32_t bank_base_address = buffer.address();
@@ -1157,12 +1173,30 @@ void HWCommandQueue::enqueue_write_buffer(
     uint32_t max_data_sizeB =
         max_prefetch_command_size - (hal.get_alignment(HalMemType::HOST) * 2);  // * 2 to account for issue
 
-    uint32_t dst_page_index;
+    uint32_t dst_page_index = region.offset / buffer.page_size();
+    const uint32_t orig_dst_page_index = dst_page_index;
+
+    if (buffer.is_valid_partial_region(region)) {
+        TT_FATAL(
+            region.offset % buffer.page_size() == 0,
+            "Offset {} must be divisible by the buffer page size {}.",
+            region.offset,
+            buffer.page_size());
+        TT_FATAL(
+            region.size % buffer.page_size() == 0,
+            "Size {} must be divisible by the buffer page size {}.",
+            region.size,
+            buffer.page_size());
+        TT_FATAL(
+            (region.size + region.offset) <= buffer.size(),
+            "(Size + offset) {} must be <= the buffer size {}.",
+            region.size + region.offset,
+            buffer.size());
+    }
 
     sub_device_ids = detail::select_sub_device_ids(this->device, sub_device_ids);
 
     if (is_sharded(buffer.buffer_layout())) {
-        dst_page_index = 0;
         const bool width_split = buffer.shard_spec().shape_in_pages()[1] != buffer.shard_spec().tensor2d_shape[1];
         const auto& buffer_page_mapping = width_split ? buffer.get_buffer_page_mapping() : nullptr;
 
@@ -1175,8 +1209,11 @@ void HWCommandQueue::enqueue_write_buffer(
             max_data_sizeB >= padded_page_size,
             "Writing padded page size > {} is currently unsupported for sharded tensors.",
             max_data_sizeB);
-        uint32_t num_total_pages = buffer.num_pages();
+
+        uint32_t total_num_pages_written = 0;
+        uint32_t num_total_pages = region.size / buffer.page_size();
         uint32_t max_pages_per_shard = buffer.shard_spec().size();
+        uint32_t num_initial_pages_skipped = 0;
 
         // Since we read core by core we are reading the device pages sequentially
         for (uint32_t core_id = 0; core_id < buffer.num_cores(); ++core_id) {
@@ -1203,9 +1240,19 @@ void HWCommandQueue::enqueue_write_buffer(
                     BufferType::DRAM, buffer.device()->dram_channel_from_logical_core(cores[core_id]));
             }
             while (num_pages != 0) {
+                if (num_initial_pages_skipped < orig_dst_page_index) {
+                    curr_page_idx_in_shard += 1;
+                    num_initial_pages_skipped += 1;
+                    num_pages -= 1;
+                    if (!width_split) {
+                        num_total_pages += 1;
+                    }
+                    continue;
+                }
+
                 // data appended after CQ_PREFETCH_CMD_RELAY_INLINE + CQ_DISPATCH_CMD_WRITE_PAGED
                 uint32_t data_offset_bytes = (sizeof(CQPrefetchCmd) + sizeof(CQDispatchCmd));
-                bool issue_wait = dst_page_index == 0;  // only stall for the first write of the buffer
+                bool issue_wait = dst_page_index == orig_dst_page_index;  // only stall for the first write of the buffer
                 if (issue_wait) {
                     // commands prefixed with CQ_PREFETCH_CMD_RELAY_INLINE + CQ_DISPATCH_CMD_WAIT
                     data_offset_bytes *= 2;
@@ -1219,6 +1266,13 @@ void HWCommandQueue::enqueue_write_buffer(
                 if (pages_to_write > 0) {
                     uint32_t address = bank_base_address + curr_page_idx_in_shard * padded_page_size;
 
+                    uint32_t init_src_offset = 0;
+                    if (width_split) {
+                        ;
+                    } else {
+                        init_src_offset = total_num_pages_written * buffer.page_size();
+                    }
+
                     tt::log_debug(tt::LogDispatch, "EnqueueWriteBuffer for channel {}", this->id);
 
                     auto command = EnqueueWriteShardedBufferCommand(
@@ -1227,6 +1281,7 @@ void HWCommandQueue::enqueue_write_buffer(
                         this->noc_index,
                         buffer,
                         src,
+                        init_src_offset,
                         this->manager,
                         issue_wait,
                         this->expected_num_workers_completed,
@@ -1242,30 +1297,13 @@ void HWCommandQueue::enqueue_write_buffer(
                     curr_page_idx_in_shard += pages_to_write;
                     num_pages -= pages_to_write;
                     dst_page_index += pages_to_write;
+                    total_num_pages_written += pages_to_write;
                 } else {
                     this->manager.wrap_issue_queue_wr_ptr(this->id);
                 }
             }
         }
     } else {
-        if (buffer.is_valid_partial_region(region)) {
-            TT_FATAL(
-                region.offset % buffer.page_size() == 0,
-                "Offset {} must be divisible by the buffer page size {}.",
-                region.offset,
-                buffer.page_size());
-            TT_FATAL(
-                region.size % buffer.page_size() == 0,
-                "Size {} must be divisible by the buffer page size {}.",
-                region.size,
-                buffer.page_size());
-            TT_FATAL(
-                (region.size + region.offset) <= buffer.size(),
-                "(Size + offset) {} must be <= the buffer size {}.",
-                region.size + region.offset,
-                buffer.size());
-        }
-        dst_page_index = region.offset / buffer.page_size();
         uint32_t num_pages = region.size / buffer.page_size();
         uint32_t total_pages_to_write = num_pages;
         bool write_partial_pages = padded_page_size > max_data_sizeB;

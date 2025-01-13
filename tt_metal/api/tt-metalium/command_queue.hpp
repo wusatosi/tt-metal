@@ -263,6 +263,7 @@ private:
 
     const std::shared_ptr<const BufferPageMapping>& buffer_page_mapping;
     const CoreCoord core;
+    const uint32_t initial_src_offset;
 
 public:
     EnqueueWriteShardedBufferCommand(
@@ -271,6 +272,7 @@ public:
         NOC noc_index,
         const Buffer& buffer,
         const void* src,
+        uint32_t initial_src_offset,
         SystemMemoryManager& manager,
         bool issue_wait,
         tt::stl::Span<const uint32_t> expected_num_workers_completed,
@@ -295,6 +297,7 @@ public:
             padded_page_size,
             dst_page_index,
             pages_to_write),
+        initial_src_offset(initial_src_offset),
         buffer_page_mapping(buffer_page_mapping),
         core(core) {}
 };
