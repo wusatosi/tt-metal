@@ -76,7 +76,6 @@ class TtLlamaAttention(LightweightModule):
                 ),
                 layout=ttnn.TILE_LAYOUT,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
-                sub_device_ids=[self.prefetcher_setup.worker_sub_device_id],
             )
             self.slice_size = 8  # Slice size is 8 since we are consuming 8 users per chip
 
@@ -150,7 +149,6 @@ class TtLlamaAttention(LightweightModule):
                 self.mesh_device, dims=(3, 2) if self.TG else (2, 3), mesh_shape=configuration.cluster_shape
             ),
             # cache_file_name=cache_name("wqkv_sharded_2d_padded_pf"),  ## TODO: Fix caching
-            sub_device_ids=[self.prefetcher_setup.worker_sub_device_id],
         )
 
         if self.model_config["USE_PREFETCHER"]:
@@ -181,7 +179,6 @@ class TtLlamaAttention(LightweightModule):
             # cache_file_name=cache_name("wo_width_sharded_2d_padded_pf")
             # if (self.use_fused_all_gather_matmul or self.TG)
             # else cache_name("wo"),
-            sub_device_ids=[self.prefetcher_setup.worker_sub_device_id],
         )
         if self.model_config["USE_PREFETCHER"]:
             self.prefetcher_setup.insert_tensor(self.wo)
@@ -243,7 +240,6 @@ class TtLlamaAttention(LightweightModule):
                 cache_file_name=f"{weight_cache_path}/kvcache_{k_or_v.shape}"
                 if weight_cache_path and not configuration.dummy_weights
                 else None,
-                sub_device_ids=[self.prefetcher_setup.worker_sub_device_id],
             )
             for k_or_v in [cache_k, cache_v]
         ]
@@ -285,7 +281,6 @@ class TtLlamaAttention(LightweightModule):
                 dims=(3, 0),
                 mesh_shape=(8, 4),
             ),
-            sub_device_ids=[self.prefetcher_setup.worker_sub_device_id],
         )  # [4, 1, 32, 12288]
         x_torch_reduced = torch.sum(x_torch, dim=0, keepdim=True)  # [1, 1, 32, 12288]
         x_torch_reduced = x_torch_reduced[..., : 1280 * 8]  # Unpad, TODO: ttnn.slice?
@@ -299,7 +294,6 @@ class TtLlamaAttention(LightweightModule):
             ),
             layout=ttnn.TILE_LAYOUT,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
-            sub_device_ids=[self.prefetcher_setup.worker_sub_device_id],
         )
 
         xqkv_fused = ttnn.to_memory_config(xqkv_fused, self.model_config["CREATE_HEAD_INPUT_MEMCFG"])
@@ -388,7 +382,6 @@ class TtLlamaAttention(LightweightModule):
                 dims=(2, 1),
                 mesh_shape=(8, 4),
             ),
-            sub_device_ids=[self.prefetcher_setup.worker_sub_device_id],
         )
         ttnn.deallocate(attn_output_1G4D)
 
@@ -401,7 +394,6 @@ class TtLlamaAttention(LightweightModule):
             ),
             layout=ttnn.TILE_LAYOUT,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
-            sub_device_ids=[self.prefetcher_setup.worker_sub_device_id],
         )
         attn_output_gathered = ttnn.to_memory_config(
             attn_output_gathered, self.model_config["GATHER_USERS_MEMCFG"](list(self.mesh_device.shape)[1])
@@ -423,7 +415,6 @@ class TtLlamaAttention(LightweightModule):
                 dims=(3, 0),
                 mesh_shape=(8, 4),
             ),
-            sub_device_ids=[self.prefetcher_setup.worker_sub_device_id],
         )[0].unsqueeze(0)
 
         # [1, 1, 32, 12288]
@@ -441,7 +432,6 @@ class TtLlamaAttention(LightweightModule):
             ),
             layout=ttnn.TILE_LAYOUT,
             memory_config=self.model_config["SHARDED_ATTN_WO_INPUT_RING_MEMCFG"],
-            sub_device_ids=[self.prefetcher_setup.worker_sub_device_id],
         )
 
         # [1, 1, 32, 1536] @ [1, 1, 1536, 2304]
@@ -465,7 +455,6 @@ class TtLlamaAttention(LightweightModule):
                 dims=(0, 3),
                 mesh_shape=(8, 4),
             ),
-            sub_device_ids=[self.prefetcher_setup.worker_sub_device_id],
         )  # [4, 1, 32, 12288]
         ttnn.deallocate(dense_out_ttnn)
         dense_out_torch = torch.sum(dense_out_torch, dim=0, keepdim=True)  # [1, 1, 32, 2304*4]
@@ -480,7 +469,6 @@ class TtLlamaAttention(LightweightModule):
             ),
             layout=ttnn.TILE_LAYOUT,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
-            sub_device_ids=[self.prefetcher_setup.worker_sub_device_id],
         )
 
         return dense_out_reduced

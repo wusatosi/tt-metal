@@ -76,11 +76,9 @@ class TtTransformerBlock(LightweightModule):
                 is_distributed=self.args.is_distributed_norm,
                 sharded_program_config=self.model_config["SHARDED_NORM_ATTN_PRGM_CFG"],
                 sharded_output_config=self.model_config["SHARDED_ATTN_INPUT_MEMCFG"],
-                prefetcher_setup=prefetcher_setup,
             ),
             args,
             TG=args.is_galaxy,
-            prefetcher_setup=prefetcher_setup,
         )
         self.ff_norm = DistributedNorm(
             RMSNorm(
@@ -94,11 +92,9 @@ class TtTransformerBlock(LightweightModule):
                 is_distributed=self.args.is_distributed_norm,
                 sharded_program_config=self.model_config["SHARDED_NORM_MLP_PRGM_CFG"],
                 sharded_output_config=self.model_config["SHARDED_MLP_INPUT_MEMCFG"],
-                prefetcher_setup=prefetcher_setup,
             ),
             args,
             TG=args.is_galaxy,
-            prefetcher_setup=prefetcher_setup,
         )
         self.prefetcher_setup = prefetcher_setup
 
@@ -129,7 +125,6 @@ class TtTransformerBlock(LightweightModule):
         attn_in_torch = ttnn.to_torch(
             attn_in,
             mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(0, 3), mesh_shape=self.args.cluster_shape),
-            sub_device_ids=[self.prefetcher_setup.worker_sub_device_id],
         )
         attn_in_torch = F.pad(attn_in_torch, (0, 9216 - 8192), mode="constant", value=0)
         attn_in = ttnn.from_torch(
@@ -139,7 +134,6 @@ class TtTransformerBlock(LightweightModule):
             dtype=ttnn.bfloat8_b,
             memory_config=self.model_config["SHARDED_ATTN_INPUT_RING_MEMCFG"],
             layout=ttnn.TILE_LAYOUT,
-            sub_device_ids=[self.prefetcher_setup.worker_sub_device_id],
         )
 
         attn_out = self.attention.forward(
@@ -158,7 +152,6 @@ class TtTransformerBlock(LightweightModule):
         attn_out_torch = ttnn.to_torch(
             attn_out,
             mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(0, 3), mesh_shape=self.args.cluster_shape),
-            sub_device_ids=[self.prefetcher_setup.worker_sub_device_id],
         )
         attn_out_torch = attn_out_torch[:, :, :, : 2048 * 4]
         attn_out = ttnn.from_torch(
@@ -168,7 +161,6 @@ class TtTransformerBlock(LightweightModule):
             dtype=ttnn.bfloat8_b,
             memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"],
             layout=ttnn.TILE_LAYOUT,
-            sub_device_ids=[self.prefetcher_setup.worker_sub_device_id],
         )
 
         # Here x and attn_out are both fractured across devices
@@ -187,7 +179,6 @@ class TtTransformerBlock(LightweightModule):
         ff_in_torch = ttnn.to_torch(
             ff_in,
             mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(0, 3), mesh_shape=self.args.cluster_shape),
-            sub_device_ids=[self.prefetcher_setup.worker_sub_device_id],
         )
         ff_in_torch = F.pad(ff_in_torch, (0, 9216 - 8192), mode="constant", value=0)
         ff_in = ttnn.from_torch(
@@ -197,7 +188,6 @@ class TtTransformerBlock(LightweightModule):
             dtype=ttnn.bfloat8_b,
             memory_config=self.model_config["SHARDED_FF12_RING_MEMCFG"],
             layout=ttnn.TILE_LAYOUT,
-            sub_device_ids=[self.prefetcher_setup.worker_sub_device_id],
         )
 
         # MLP takes replicated inputs and produces fractured outputs
@@ -207,7 +197,6 @@ class TtTransformerBlock(LightweightModule):
         ff_out_torch = ttnn.to_torch(
             ff_out,
             mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(0, 3), mesh_shape=self.args.cluster_shape),
-            sub_device_ids=[self.prefetcher_setup.worker_sub_device_id],
         )
         ff_out_torch = ff_out_torch[:, :, :, : 2048 * 4]
         ff_out = ttnn.from_torch(
@@ -217,7 +206,6 @@ class TtTransformerBlock(LightweightModule):
             dtype=ttnn.bfloat8_b,
             memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"],
             layout=ttnn.TILE_LAYOUT,
-            sub_device_ids=[self.prefetcher_setup.worker_sub_device_id],
         )
 
         out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)

@@ -114,7 +114,6 @@ class TtLlamaPrefetcherSetup(LightweightModule):
                 self.sender_core_range_set,
                 [tensor_addrs.shape[0] // len(self.dram_cores), tensor_addrs.shape[1]],
                 ttnn.ShardOrientation.ROW_MAJOR,
-                False,
             ),
         )
         tt_tensor_addrs = ttnn.as_tensor(
@@ -122,7 +121,6 @@ class TtLlamaPrefetcherSetup(LightweightModule):
             device=self.mesh_device,
             dtype=ttnn.uint32,
             memory_config=tensor_addrs_mem_config,
-            sub_device_ids=[self.prefetcher_sub_device_id],
             mesh_mapper=ReplicateTensorToMesh(self.mesh_device),
         )
 

@@ -131,7 +131,6 @@ def test_llama_attention_inference(
                 dims=(None, -2) if (model_args.is_galaxy and batch_size > 1) else (None, None),
                 mesh_shape=model_args.cluster_shape,
             ),
-            sub_device_ids=[prefetcher_setup.worker_sub_device_id],
         )
 
     prefetcher_setup = TtLlamaPrefetcherSetup(
@@ -173,7 +172,6 @@ def test_llama_attention_inference(
             dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
             mesh_shape=model_args.cluster_shape,
         ),
-        sub_device_ids=[prefetcher_setup.worker_sub_device_id],
     )
 
     for i in range(generation_length):
@@ -197,6 +195,8 @@ def test_llama_attention_inference(
             global_cb=None,
             multi_global_cb=prefetcher_setup.global_circular_buffer,
         )
+        mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
+
         tt_out = tt_model(
             attention_input,
             current_pos_tensor,
@@ -208,7 +208,6 @@ def test_llama_attention_inference(
         tt_out = ttnn.to_torch(
             tt_out,
             mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(1, 3), mesh_shape=model_args.cluster_shape),
-            sub_device_ids=[prefetcher_setup.worker_sub_device_id],
         )
         tt_output_torch = tt_out[:, 0:1, : model_args.max_batch_size, : model_args.dim].view(-1, 1, model_args.dim)
 
@@ -239,7 +238,6 @@ def test_llama_attention_inference(
                 dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
                 mesh_shape=model_args.cluster_shape,
             ),
-            sub_device_ids=[prefetcher_setup.worker_sub_device_id],
         )
 
         check_kv_cache = True
@@ -260,7 +258,6 @@ def test_llama_attention_inference(
                                 dims=(1, 3) if model_args.is_galaxy else (0, 1),
                                 mesh_shape=model_args.cluster_shape,
                             ),
-                            sub_device_ids=[prefetcher_setup.worker_sub_device_id],
                         )[reverse_permutation][:, : model_args.n_kv_heads, :, : model_args.head_dim]
                         .reshape(
                             model_args.max_batch_size,
@@ -285,7 +282,6 @@ def test_llama_attention_inference(
                             dims=(1, 0) if model_args.is_galaxy else (0, 1),
                             mesh_shape=model_args.cluster_shape,
                         ),
-                        sub_device_ids=[prefetcher_setup.worker_sub_device_id],
                     )[:batch_size, :, :, :]
                     for cache in tt_model.layer_past
                 ]

@@ -82,11 +82,10 @@ def test_llama_rms_norm_inference(
         is_distributed=model_args.is_distributed_norm,
         sharded_program_config=model_args.get_model_config()["SHARDED_NORM_ATTN_PRGM_CFG"],
         sharded_output_config=model_args.get_model_config()["SHARDED_ATTN_INPUT_MEMCFG"],
-        prefetcher_setup=prefetcher_setup,
     )
 
     # Wrap it in DistributedNorm
-    tt_model = DistributedNorm(tt_inner_norm, model_args, TG=model_args.is_galaxy, prefetcher_setup=prefetcher_setup)
+    tt_model = DistributedNorm(tt_inner_norm, model_args, TG=model_args.is_galaxy)
 
     # Create reference model (unchanged)
     partial_state_dict = {
@@ -106,7 +105,6 @@ def test_llama_rms_norm_inference(
         layout=ttnn.TILE_LAYOUT,
         mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device, dims=(None, -1), mesh_shape=model_args.cluster_shape),
         memory_config=ttnn.DRAM_MEMORY_CONFIG,
-        sub_device_ids=[prefetcher_setup.worker_sub_device_id] if prefetcher_setup else [],
     )
 
     tt_output = tt_model(tt_input, mode=mode)
@@ -117,7 +115,6 @@ def test_llama_rms_norm_inference(
         mesh_composer=ttnn.ConcatMesh2dToTensor(
             mesh_device, dims=(0, 3) if model_args.is_galaxy else (3, 0), mesh_shape=model_args.cluster_shape
         ),
-        sub_device_ids=[prefetcher_setup.worker_sub_device_id] if prefetcher_setup else [],
     )[:1, :, :, :]
 
     passing, pcc_message = comp_pcc(reference_output, tt_output_torch)
