@@ -14,6 +14,7 @@ from tests.ttnn.utils_for_testing import assert_with_pcc
 @pytest.mark.parametrize("w", [32 * 128])  # can go up to 128 shard width, number of tiles per core
 def test_multiplyadd(device, h, w):
     torch.manual_seed(0)
+    ttnn.set_printoptions(profile="full")
     compute_grid_size = device.compute_with_storage_grid_size()
 
     torch_input_tensor1 = torch.randn((h, w), dtype=torch.bfloat16)
@@ -38,11 +39,14 @@ def test_multiplyadd(device, h, w):
     torch_output_tensor = golden_function(torch_input_tensor1, torch_input_tensor2, torch_input_tensor3)
 
     tensor_memory_config = ttnn.create_sharded_memory_config(
-        (1, 1),
-        ttnn.CoreGrid(y=1, x=1),
+        (h, w),
+        ttnn.CoreGrid(y=compute_grid_size.y, x=compute_grid_size.x),
         strategy=ttnn.ShardStrategy.HEIGHT,
         orientation=ttnn.ShardOrientation.ROW_MAJOR,
     )   
+
+    golden_function = ttnn.get_golden_function(ttnn.multiplyadd)
+    torch_output_tensor = golden_function(torch_input_tensor1, torch_input_tensor2, torch_input_tensor3)
 
     input_tensor1 = ttnn.from_torch(
         torch_input_tensor1,
@@ -65,9 +69,8 @@ def test_multiplyadd(device, h, w):
         device=device,
         memory_config=tensor_memory_config,
     )
-    print("3\n")
-    print(input_tensor3)
+
     output_tensor = ttnn.multiplyadd(input_tensor1, input_tensor2, input_tensor3)
     output_tensor = ttnn.to_torch(output_tensor)
 
-    assert_with_pcc(torch_output_tensor, ttnn.to_torch(output_tensor), pcc=0.99)
+    assert_with_pcc(torch_output_tensor, output_tensor, pcc=0.99)

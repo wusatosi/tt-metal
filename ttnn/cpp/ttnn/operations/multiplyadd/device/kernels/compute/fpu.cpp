@@ -2,6 +2,7 @@
 #include "compute_kernel_api/eltwise_binary.h"
 #include "compile_time_args.h"
 #include "hostdevcommon/kernel_structs.h"
+#include "debug/dprint.h"
 
 namespace NAMESPACE {
 
