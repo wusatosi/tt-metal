@@ -7,6 +7,7 @@
 #include "compute_kernel_api/tilize.h"
 #include "compute_kernel_api/reduce.h"
 #include "compute_kernel_api/pack_untilize.h"
+#include "debug/dprint_tensix.h"
 
 #define DEBUG_PRINT 0
 
@@ -121,6 +122,7 @@ void MAIN {
         reduce_h_fused<num_output_tiles, is_partial_tile, split_reader, window_size_hw, in_nblocks_c>(
             in_cb_id, in_scalar_cb_id, i, out_cb_id);
     }
+    // PACK(( dprint_tensix_pack_counters() ));
     cb_pop_front(in_scalar_cb_id, 1);
 }
 
