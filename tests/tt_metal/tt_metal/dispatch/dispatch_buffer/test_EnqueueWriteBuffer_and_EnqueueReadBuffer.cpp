@@ -938,7 +938,7 @@ TEST_F(CommandQueueSingleCardBufferFixture, TestReadWriteSubBufferForL1) {
 
 TEST_F(CommandQueueSingleCardBufferFixture, TestReadWriteShardedSubBuffer) {
     const uint32_t buffer_region_size = 128;
-    for (Device* device : devices_) {
+    for (IDevice* device : devices_) {
         vector<uint32_t> zeroes(256, 0);
         CoreCoord start_coord = {0, 0};
         CoreCoord end_coord = {3, 3};
@@ -947,8 +947,7 @@ TEST_F(CommandQueueSingleCardBufferFixture, TestReadWriteShardedSubBuffer) {
             CoreRangeSet(cores),
             {tt::constants::TILE_HEIGHT, tt::constants::TILE_WIDTH},
             ShardOrientation::ROW_MAJOR,
-            false,
-            {tt::constants::TILE_HEIGHT / 2, tt::constants::TILE_WIDTH / 2},
+            {tt::constants::TILE_HEIGHT, tt::constants::TILE_WIDTH},
             {(uint32_t)cores.size(), 1});
         // auto buffer = CreateBuffer(ShardedBufferConfig{
         //     .device = device,
@@ -985,7 +984,7 @@ TEST_F(CommandQueueSingleCardBufferFixture, TestReadWriteSubBufferLargeOffsetFor
 
 TEST_F(CommandQueueSingleCardBufferFixture, TestReadWriteShardedSubBufferMultiplePagesPerShard) {
     const uint32_t buffer_region_size = 128;
-    for (Device* device : devices_) {
+    for (IDevice* device : devices_) {
         vector<uint32_t> zeroes(256, 0);
         CoreCoord start_coord = {0, 0};
         CoreCoord end_coord = {3, 3};
@@ -994,7 +993,6 @@ TEST_F(CommandQueueSingleCardBufferFixture, TestReadWriteShardedSubBufferMultipl
             CoreRangeSet(cores),
             {tt::constants::TILE_HEIGHT, tt::constants::TILE_WIDTH},
             ShardOrientation::ROW_MAJOR,
-            false,
             {tt::constants::TILE_HEIGHT / 2, tt::constants::TILE_WIDTH / 2},
             {(uint32_t)cores.size(), 1});
         // auto buffer = CreateBuffer(ShardedBufferConfig{
@@ -1004,6 +1002,7 @@ TEST_F(CommandQueueSingleCardBufferFixture, TestReadWriteShardedSubBufferMultipl
         //     .buffer_layout = TensorMemoryLayout::BLOCK_SHARDED,
         //     .shard_parameters = shard_spec});
         auto buffer = Buffer::create(device, 1024, 32, BufferType::L1, TensorMemoryLayout::BLOCK_SHARDED, shard_spec);
+        EnqueueWriteBuffer(device->command_queue(), *buffer, zeroes, true);
         auto src = local_test_functions::generate_arange_vector(1024);
         EnqueueWriteBuffer(device->command_queue(), *buffer, src, false);
         const BufferRegion region(64, buffer_region_size);
