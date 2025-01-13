@@ -78,7 +78,7 @@ def test_llama_decoder_inference(
     prefetcher_setup = TtLlamaPrefetcherSetup(
         mesh_device,
         n_tensors=5,
-        n_layers=1,
+        n_layers=model_args.n_layers,
     )
     # Ref model needs partial state dict, but our models use full state dict keys as cached weight names
     first_layer_prefix = model_args.get_state_dict_prefix("TtTransformerBlock", 0)
