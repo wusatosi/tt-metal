@@ -11,10 +11,13 @@ from tests.ttnn.utils_for_testing import assert_with_pcc
 
 
 @pytest.mark.parametrize("h", [32 * 64])  # number of cores that does the work
+<<<<<<< HEAD:tests/ttnn/unit_tests/operations/test_multiplyadd_dram_interleaved.py
 @pytest.mark.parametrize("w", [32 * 128])  # can go up to 128 shard width, number of tiles per core
+=======
+@pytest.mark.parametrize("w", [32 * 2])  # shard width, number of tiles per core
+>>>>>>> Removed redundant pytest:tests/ttnn/unit_tests/operations/test_multiplyadd.py
 def test_multiplyadd(device, h, w):
     torch.manual_seed(0)
-    ttnn.set_printoptions(profile="full")
     compute_grid_size = device.compute_with_storage_grid_size()
 
     torch_input_tensor1 = torch.randn((h, w), dtype=torch.bfloat16)
