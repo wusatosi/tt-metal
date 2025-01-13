@@ -8,44 +8,25 @@ import ttnn
 import math
 import torchvision.transforms as transforms
 from torchvision.datasets import MNIST
-import time
 
-from tracy import Profiler
+transform = transforms.ToTensor()
+mnist_dataset = MNIST(root="./data", train=False, download=True, transform=transform)
 
-transform = transforms.ToTensor()  # Transform the image to a tensor
-mnist_dataset = MNIST(root="./data", train=True, download=True, transform=transform)
+image1, _ = mnist_dataset[0]
+image2, _ = mnist_dataset[1]
 
-# Batch size configurations
-MNIST_BATCH_SIZE_EXP_RANGE = 7
+image1_pil = transforms.ToPILImage()(image1)
+image2_pil = transforms.ToPILImage()(image2)
 
-# Input size configurations
-MNIIST_INPUT_SIZE_EXP_RANGE = [5, 7]
-MNIIST_INPUT_SIZE_FACTORS = [1, 3, 5, 7]
+image1_path = "mnist_image1.png"
+image2_path = "mnist_image2.png"
 
-# Hidden layer size configurations
-MNIST_HIDDEN_SIZE_EXP_RANGE = [5, 7]
-MNIIST_HIDDEN_SIZE_FACTORS = [1, 3]
+image1_pil.save(image1_path)
+image2_pil.save(image2_path)
 
-MNIST_INPUT_FEATURE_SIZE = 784  # 784 = 28 * 28, default size of MNIST image
-MNIST_OUTPUT_FEATURE_SIZE = 10  # 10 classes in MNIST, default output size
-MNIIST_HIDDEN_SIZE = 256  # Hidden layer size, default size
-
-BATCH_SIZE = [
-    2**i for i in range(MNIST_BATCH_SIZE_EXP_RANGE)
-]  # Batch size, sizes will be 1, 2, 4, 8, 16, 32, 64, etc.
-INPUT_SIZE = [  # Input size, sizes will be 1 * 2^5 = 32, 3 * 2^5 = 96, 5 * 2^5 = 160, 7 * 2^5 = 224, etc.
-    factor * hidden
-    for factor in MNIIST_INPUT_SIZE_FACTORS
-    for hidden in [2**i for i in range(MNIIST_INPUT_SIZE_EXP_RANGE[0], MNIIST_INPUT_SIZE_EXP_RANGE[1])]
-]
-HIDDEN_SIZE = [  # Hidden layer size, sizes will be 1 * 2^5 = 32, 3 * 2^5 = 96, 1 * 2^6 = 64, 3 * 2^6 = 192, etc.
-    factor * hidden
-    for factor in MNIIST_HIDDEN_SIZE_FACTORS
-    for hidden in [2**i for i in range(MNIST_HIDDEN_SIZE_EXP_RANGE[0], MNIST_HIDDEN_SIZE_EXP_RANGE[1])]
-]
-ARCH = []
-DATAFORMAT = []
-MATH_FIDELITY = []
+MNIST_INPUT_FEATURE_SIZE = 784
+MNIST_OUTPUT_FEATURE_SIZE = 10
+MNIIST_HIDDEN_SIZE = 256
 
 
 # Model definition
@@ -73,13 +54,44 @@ def _nearest_32(x):
 class MyMNIST:
     def __init__(self, l1_weight, l1_bias, l2_weight, l2_bias):
         self.l1_weight = l1_weight
+        mem_config = ttnn.create_sharded_memory_config(
+            shape=self.l1_weight.shape.with_tile_padding(),
+            core_grid=ttnn.CoreGrid(x=8, y=1),
+            strategy=ttnn.ShardStrategy.WIDTH,
+        )
+
+        self.l1_weight = ttnn.to_memory_config(self.l1_weight, mem_config)
+
         self.l1_bias = l1_bias
+        self.l1_bias = ttnn.to_memory_config(self.l1_bias, mem_config)
         self.l2_weight = l2_weight
         self.l2_bias = l2_bias
 
+        self.mem_config1 = ttnn.create_sharded_memory_config(
+            shape=(32, 256), core_grid=ttnn.CoreGrid(x=8, y=1), strategy=ttnn.ShardStrategy.WIDTH
+        )
+
+        self.prog = ttnn.MatmulMultiCoreReuseMultiCast1DProgramConfig(
+            compute_with_storage_grid_size=(8, 1),
+            in0_block_w=1,
+            out_subblock_h=1,
+            out_subblock_w=1,
+            per_core_M=1,  # M // 32
+            per_core_N=1,
+            fuse_batch=False,
+            fused_activation=None,
+            mcast_in0=True,
+        )
+
     def __call__(self, x):
-        output = ttnn.matmul(x, self.l1_weight)
-        output = output + self.l1_bias
+        output = ttnn.linear(
+            x,
+            self.l1_weight,
+            bias=self.l1_bias,
+            memory_config=self.mem_config1,
+            dtype=ttnn.bfloat16,
+            program_config=self.prog,
+        )
         output = ttnn.relu(output)
         output = ttnn.matmul(output, self.l2_weight)
         output = output + self.l2_bias
@@ -101,30 +113,22 @@ def fpadded_shape(x):
     return l
 
 
-def do_inference_ttnn(i, model_ttnn, device):
-    torch_input, label = mnist_dataset[i]
-    torch_input = torch_input.flatten()
+def do_inference_ttnn(model_ttnn, device, torch_input):
+    torch_input = torch_input.flatten(start_dim=1)
 
     torch_input = myf(torch_input)
 
-    input_ttnn = ttnn.from_torch(torch_input, device=device, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT)
-
-    mem_config1 = ttnn.create_sharded_memory_config(
-        shape=torch_input.shape, core_grid=ttnn.CoreGrid(x=1, y=1), strategy=ttnn.ShardStrategy.BLOCK
+    input_ttnn = ttnn.from_torch(
+        torch_input, device=device, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG
     )
-
-    input_ttnn = ttnn.to_memory_config(input_ttnn, mem_config1)
-    # input_ttnn = ttnn.tilize_with_val_padding(ttnn.from_torch(torch_input, device=device, dtype=ttnn.bfloat16), output_tensor_shape=fpadded_shape(torch_input), pad_value=0, memory_config=mem_config1)
-
-    print("input_ttnn shape:", input_ttnn.shape)
-    print("input_ttnn layout:", input_ttnn.layout)
 
     output_ttnn = model_ttnn(input_ttnn)
 
+    output_ttnn = ttnn.untilize_with_unpadding(output_ttnn, (0, 9))
 
-def do_inference_torch(i, model_torch):
-    torch_input, label = mnist_dataset[i]
-    torch_input = torch_input.flatten()
+
+def do_inference_torch(model_torch, torch_input):
+    torch_input = torch_input.flatten(start_dim=1)
 
     torch_input = myf(torch_input)
 
@@ -152,47 +156,37 @@ def test_mnist():
     l2_weight = myf(l2_weight)
     l2_bias = myf(l2_bias)
 
-    # print(f'l1_weight shape: {l1_weight.shape}')
-    print(f"l1_bias shape: {l1_bias.shape}")
-    # print(f'l2_weight shape: {l2_weight.shape}')
-    print(f"l2_bias shape: {l2_bias.shape}")
-
-    mem_config2 = ttnn.create_sharded_memory_config(
-        shape=l1_bias.shape, core_grid=ttnn.CoreGrid(x=4, y=1), strategy=ttnn.ShardStrategy.WIDTH
-    )
-    mem_config4 = ttnn.create_sharded_memory_config(
-        shape=l2_bias.shape, core_grid=ttnn.CoreGrid(x=5, y=1), strategy=ttnn.ShardStrategy.WIDTH
-    )
-
     model_ttnn = MyMNIST(
         ttnn.tilize_with_val_padding(
-            ttnn.from_torch(l1_weightT, device=device, dtype=ttnn.bfloat16),
+            ttnn.from_torch(l1_weightT, device=device, dtype=ttnn.bfloat16, memory_config=ttnn.L1_MEMORY_CONFIG),
             output_tensor_shape=fpadded_shape(l1_weightT),
             pad_value=0,
         ),
         ttnn.tilize_with_val_padding(
-            ttnn.from_torch(l1_bias, device=device, dtype=ttnn.bfloat16),
+            ttnn.from_torch(l1_bias, device=device, dtype=ttnn.bfloat16, memory_config=ttnn.L1_MEMORY_CONFIG),
             output_tensor_shape=fpadded_shape(l1_bias),
             pad_value=0,
-            memory_config=mem_config2,
         ),
         ttnn.tilize_with_val_padding(
-            ttnn.from_torch(l2_weightT, device=device, dtype=ttnn.bfloat16),
+            ttnn.from_torch(l2_weightT, device=device, dtype=ttnn.bfloat16, memory_config=ttnn.L1_MEMORY_CONFIG),
             output_tensor_shape=fpadded_shape(l2_weightT),
             pad_value=0,
         ),
         ttnn.tilize_with_val_padding(
-            ttnn.from_torch(l2_bias, device=device, dtype=ttnn.bfloat16),
+            ttnn.from_torch(l2_bias, device=device, dtype=ttnn.bfloat16, memory_config=ttnn.L1_MEMORY_CONFIG),
             output_tensor_shape=fpadded_shape(l2_bias),
             pad_value=0,
-            memory_config=mem_config4,
         ),
     )
 
-    for i in range(2):
-        do_inference_ttnn(i, model_ttnn, device)
-        do_inference_torch(i, model_torch)
+    training_loader = torch.utils.data.DataLoader(mnist_dataset, batch_size=32, shuffle=False)
 
+    for _ in range(2):
+        inputs, _ = next(iter(training_loader))
+        do_inference_torch(model_torch, inputs)
+        do_inference_ttnn(model_ttnn, device, inputs)
+
+    ttnn.DumpDeviceProfiler(device)  # important for device profiling
     ttnn.close_device(device)
 
 
