@@ -106,10 +106,15 @@ s/#include "(tt_metal\/)?impl\/buffers\/(circular_buffer.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?common\/(work_split.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?impl\/trace\/(trace.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?detail\/reports\/(compilation_reporter.hpp)"/#include <\2>/
+s/#include "(tt_metal\/)?detail\/reports\/(memory_reporter.hpp)"/#include <\2>/
 s/#include "(noc\/)(noc_parameters.h)"/#include <tt-metalium\/\2>/
+s/#include "(tt_metal\/)?impl\/debug\/(dprint_server.hpp)"/#include <\2>/
 
 s/#include "(third_party\/)?taskflow\/(taskflow\/taskflow.hpp)"/#include <\2>/
 
 s/#include "(tt_metal\/)?impl\/(debug\/sanitize_noc_host.hpp)"/#include <\2>/
 
 s/#include "..\/(dataflow_api.h)"/#include <tt-metalium\/\1>/
+s/#include "(tt_metal\/)?experimental\/(hal.hpp)"/#include <hal_exp.hpp>/
+s/#include "(tt_metal\/)?impl\/event\/(event.hpp)"/#include <\2>/
+s/#include "(tt_metal\/)?detail\/(persistent_kernel_cache.hpp)"/#include <\2>/

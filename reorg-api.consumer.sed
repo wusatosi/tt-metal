@@ -59,6 +59,7 @@ s/#include "(tt_metal\/)?impl\/buffers\/(circular_buffer_types.hpp)"/#include <t
 s/#include "(tt_metal\/)?impl\/kernels\/(kernel_types.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/impl\/)?kernels\/(kernel_types.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?detail\/reports\/(compilation_reporter.hpp)"/#include <tt-metalium\/\2>/
+s/#include "(tt_metal\/)?detail\/reports\/(memory_reporter.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?impl\/kernels\/(kernel.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?llrt\/(rtoptions.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?common\/(tilize_untilize.hpp)"/#include <tt-metalium\/\2>/
@@ -68,3 +69,8 @@ s/#include "(eth_l1_address_map.h)"/#include <tt-metalium\/\1>/
 s/#include "sub_device\/(sub_device_types.hpp)"/#include <tt-metalium\/\1>/
 s/#include "allocator\/(allocator.hpp)"/#include <tt-metalium\/\1>/
 s/#include "(tt_metal\/)?impl\/kernels\/(runtime_args_data.hpp)"/#include <tt-metalium\/\2>/
+s/#include "tt_metal\/third_party\/tracy\/public\/(tracy\/Tracy.hpp)"/#include <\1>/
+s/#include "(tt_metal\/)?experimental\/(hal.hpp)"/#include <tt-metalium\/hal_exp.hpp>/
+s/#include "(tt_metal\/)?tt_stl\/(overloaded.hpp)"/#include <tt-metalium\/\2>/
+s/#include "(tt_metal\/)?impl\/event\/(event.hpp)"/#include <tt-metalium\/\2>/
+s/#include "(tt_metal\/)?detail\/(persistent_kernel_cache.hpp)"/#include <tt-metalium\/\2>/

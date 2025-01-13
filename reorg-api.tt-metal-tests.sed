@@ -109,4 +109,7 @@ s/#include "(tt_metal\/)?common\/(tilize_untilize.hpp)"/#include <tt-metalium\/\
 s/#include "(dispatch\/)?(dispatch_constants.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?impl\/dispatch\/util\/include\/(dispatch_constants.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?impl\/dispatch\/util\/include\/(dispatch_settings.hpp)"/#include <tt-metalium\/\2>/
+s/#include "(tt_metal\/)?impl\/debug\/(dprint_server.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?hw\/inc\/(dataflow_api.h)"/#include <tt-metalium\/\2>/
+s/#include "(tt_metal\/)?impl\/event\/(event.hpp)"/#include <tt-metalium\/\2>/
+s/#include "(tt_metal\/)?detail\/(persistent_kernel_cache.hpp)"/#include <tt-metalium\/\2>/

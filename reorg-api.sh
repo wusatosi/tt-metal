@@ -32,6 +32,7 @@ git mv common/base.hpp api/tt-metalium/ 2>/dev/null
 git mv hw/inc/dev_msgs.h api/tt-metalium/ 2>/dev/null
 # FIXME: hostdevcommon
 git mv llrt/hal.hpp api/tt-metalium/ 2>/dev/null
+git mv experimental/hal.hpp api/tt-metalium/hal_exp.hpp 2>/dev/null
 git mv common/assert.hpp api/tt-metalium/ 2>/dev/null
 git mv common/utils.hpp api/tt-metalium/ 2>/dev/null
 git mv detail/util.hpp api/tt-metalium/ 2>/dev/null
@@ -119,6 +120,14 @@ cp hw/inc/blackhole/noc/noc_parameters.h api/blackhole/tt-metalium/ 2>/dev/null
 git mv hw/inc/grayskull/eth_l1_address_map.h api/grayskull/tt-metalium/ 2>/dev/null
 git mv hw/inc/wormhole/eth_l1_address_map.h api/wormhole/tt-metalium/ 2>/dev/null
 git mv hw/inc/blackhole/eth_l1_address_map.h api/blackhole/tt-metalium/ 2>/dev/null
+
+
+git mv detail/reports/memory_reporter.hpp api/tt-metalium/ 2>/dev/null
+git mv impl/debug/dprint_server.hpp api/tt-metalium/ 2>/dev/null
+git mv tt_stl/overloaded.hpp api/tt-metalium/ 2>/dev/null
+git mv impl/event/event.hpp api/tt-metalium/ 2>/dev/null
+git mv detail/persistent_kernel_cache.hpp api/tt-metalium/ 2>/dev/null
+
 popd
 
 pushd tt_metal
@@ -139,10 +148,12 @@ popd
 
 pushd ttnn
 find . \( -name '*.hpp' -o -name '*.h' -o -name '*.cpp' \) -print | xargs sed -Ef ../reorg-api.consumer.sed -i
+find . \( -name '*.hpp' -o -name '*.h' -o -name '*.cpp' \) -print | xargs sed -Ef ../reorg-api.ttnn.sed -i
 popd
 
 pushd tt-train
 find . \( -name '*.hpp' -o -name '*.h' -o -name '*.cpp' \) -print | xargs sed -Ef ../reorg-api.consumer.sed -i
+find . \( -name '*.hpp' -o -name '*.h' -o -name '*.cpp' \) -print | xargs sed -Ef ../reorg-api.ttnn.sed -i
 popd
 
 pushd tests
