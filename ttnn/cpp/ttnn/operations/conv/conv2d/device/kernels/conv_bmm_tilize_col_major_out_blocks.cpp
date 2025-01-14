@@ -16,6 +16,7 @@
 #endif
 
 #include "compute_kernel_api/eltwise_unary/sfpu_split_includes.h"
+#include "tt_metal/tools/profiler/kernel_profiler.hpp"
 
 #define DEBUG_PRINT 0
 
@@ -24,6 +25,11 @@ uint32_t start_clk_l = 0;
 constexpr uint32_t workload_delay = CONV_WORKLOAD_DELAY;
 #else
 constexpr uint32_t workload_delay = 0;
+#endif
+#ifdef CONV_SKIP_DELAY
+constexpr uint32_t skip_delay = CONV_SKIP_DELAY;
+#else
+constexpr uint32_t skip_delay = 0;
 #endif
 
 // #include "debug_macros.h"
@@ -224,8 +230,11 @@ void MAIN {
                         out_subblock_h,
                         in0_block_w);
                 }
+                // { // comment for tracy
+                // DeviceZoneScopedN("RADOMIR_TRACY_SCOPE_CONV");
+
                 cb_wait_front(mm_in0_cb_id, in0_block_num_tiles);
-                cb_wait_front<workload_delay>(
+                cb_wait_front<workload_delay, skip_delay>(
                     in1_cb_id, in1_block_num_tiles);  // use counter to check enough time has elapsed here
 
                 if (last_out) {
@@ -386,6 +395,7 @@ void MAIN {
 
                 cb_pop_front(mm_in0_cb_id, in0_block_num_tiles);
                 cb_pop_front<workload_delay>(in1_cb_id, in1_block_num_tiles);  // start counter here
+                // } // comment for tracy
             }  // for in0_num_blocks_w
             if constexpr (matmul_partials_cb == mm_out_cb_id) {
                 UNPACK(get_local_cb_interface(matmul_partials_cb).fifo_rd_ptr = partials_cb_read_ptr);

@@ -37,9 +37,9 @@ namespace ckernel {
  * tiles to wait for      | uint32_t | It must be less or equal than the size of the CB (the total number of tiles that
  * fit into the CB) | True     |
  * */
-template <uint32_t workload_delay = 0>
+template <uint32_t workload_delay = 0, uint32_t skip_delay = 0>
 ALWI void cb_wait_front(uint32_t cbid, uint32_t ntiles) {
-    UNPACK(( llk_wait_tiles<workload_delay>(cbid, ntiles) ));
+    UNPACK((llk_wait_tiles<workload_delay, skip_delay>(cbid, ntiles)));
 }
 
 /**

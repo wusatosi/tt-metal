@@ -14,12 +14,18 @@
 #endif
 
 #include "compute_kernel_api/eltwise_unary/sfpu_split_includes.h"
+#include "tt_metal/tools/profiler/kernel_profiler.hpp"
 
 uint32_t start_clk_l = 0;
 #ifdef MM_WORKLOAD_DELAY
-    constexpr uint32_t workload_delay = MM_WORKLOAD_DELAY;
+constexpr uint32_t workload_delay = MM_WORKLOAD_DELAY;
 #else
-    constexpr uint32_t workload_delay = 0;
+constexpr uint32_t workload_delay = 0;
+#endif
+#ifdef MM_SKIP_DELAY
+constexpr uint32_t skip_delay = MM_SKIP_DELAY;
+#else
+constexpr uint32_t skip_delay = 0;
 #endif
 
 // Please update
@@ -176,9 +182,12 @@ void MAIN {
                         PACK((llk_pack_relu_config(ReluType::ZERO_RELU)));
                     }
 #endif
+                    // { // comment for tracy
+                    // DeviceZoneScopedN("RADOMIR_TRACY_SCOPE_MM_INNER_BLOCK_DIM");
 
                     cb_wait_front(in0_cb_id, in0_block_num_tiles);
-                    cb_wait_front<workload_delay>(in1_cb_id, in1_block_num_tiles); // use counter to check enough time has elapsed here
+                    cb_wait_front<workload_delay, skip_delay>(
+                        in1_cb_id, in1_block_num_tiles);  // use counter to check enough time has elapsed here
 
                     int in0_index_subblock_offset = 0;
                     for (uint32_t in0_subblock = 0; in0_subblock < in0_num_subblocks; in0_subblock++) {
@@ -320,6 +329,7 @@ void MAIN {
 
                     cb_pop_front(in0_cb_id, in0_block_num_tiles);
                     cb_pop_front<workload_delay>(in1_cb_id, in1_block_num_tiles); // start counter here
+                    // } // comment for tracy
                 }
 
 #ifdef FUSE_BIAS

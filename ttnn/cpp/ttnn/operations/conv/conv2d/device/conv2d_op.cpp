@@ -52,11 +52,16 @@ std::pair<std::vector<uint32_t>, std::vector<uint32_t>> compute_opt_conv_activat
 void add_workload_delay_defines_if_needed(
     const tt::ARCH arch, const int num_cores, std::map<string, string>& conv_kernel_defines) {
     // testing minimum delay between compute workloads
-    constexpr uint32_t WH_B0_MAX_CORES_NO_STAGGER = 48;
+    constexpr uint32_t WH_B0_MAX_CORES_NO_DELAY = 48;
     const char * delay = std::getenv("TT_ENABLE_WORKLOAD_DELAY");
-    if (delay && arch == tt::ARCH::WORMHOLE_B0 && num_cores > WH_B0_MAX_CORES_NO_STAGGER) {
+    if (delay && arch == tt::ARCH::WORMHOLE_B0 && num_cores > WH_B0_MAX_CORES_NO_DELAY) {
         conv_kernel_defines["CONV_WORKLOAD_DELAY"] = delay;
         log_warning(tt::LogOp, "Workload delay enabled for conv op using {} cores.", num_cores);
+        const char * skip_delay = std::getenv("TT_ENABLE_SKIP_DELAY");
+        if (skip_delay) {
+            conv_kernel_defines["CONV_SKIP_DELAY"] = skip_delay;
+            log_warning(tt::LogOp, "Workload delay skip enabled for conv op using {} cores.", num_cores);
+        }
     }
 }
 
