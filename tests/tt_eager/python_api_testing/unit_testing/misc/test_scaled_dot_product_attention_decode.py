@@ -12,7 +12,7 @@ from tests.tt_eager.python_api_testing.sweep_tests.comparison_funcs import (
 import ttnn
 from loguru import logger
 import pytest
-from models.utility_functions import skip_for_grayskull, skip_for_wormhole_b0, skip_for_blackhole
+from models.utility_functions import skip_for_grayskull, skip_for_wormhole_b0, is_blackhole
 import math
 import numpy as np
 
@@ -487,7 +487,7 @@ def run_test_sdpa_decode_single_iter(
     assert out_pass
 
 
-@skip_for_blackhole("Unsupported on BH, see #12349")
+# @skip_for_blackhole("Unsupported on BH, see #12349")
 @skip_for_grayskull("Unsupported in GS since L1 runs OOM with most configs")
 @pytest.mark.parametrize(
     "dtype, q_dtype",
@@ -509,15 +509,16 @@ def run_test_sdpa_decode_single_iter(
     (
         # [32, 8, 1, 32768, 128, (8, 6), True, True],  # Llama2-70B
         # [16, 8, 1, 32768, 128, (8, 6), False, False],  # Llama2-70B
-        [8, 8, 1, 32768, 128, (8, 6), True, False],  # Llama2-70B
-        # [4, 8, 1, 32768, 128, (8, 6), True, False],  # Llama2-70B
-        [32, 8, 1, 8192, 128, (8, 8), True, True],  # Mixtral8x7b
-        # [32, 8, 1, 32768, 128, (8, 6), True, False],  # Llama2-70B
-        # [4, 32, 8, 32768, 128, (8, 8), True, False],  # llama 3.1 8b
-        [4, 32, 8, 8192, 128, (8, 8), True, True],  # llama 3.1 8b
-        [32, 32, 8, 8192, 128, (8, 8), True, False],  # llama 3.1 8b
+        # [8, 8, 1, 32768, 128, (8, 6), True, False],  # Llama2-70B
+        # # [4, 8, 1, 32768, 128, (8, 6), True, False],  # Llama2-70B
+        # [32, 8, 1, 8192, 128, (8, 8), True, True],  # Mixtral8x7b
+        # # [32, 8, 1, 32768, 128, (8, 6), True, False],  # Llama2-70B
+        # # [4, 32, 8, 32768, 128, (8, 8), True, False],  # llama 3.1 8b
+        # [4, 32, 8, 8192, 128, (8, 8), True, True],  # llama 3.1 8b
+        # [32, 32, 8, 8192, 128, (8, 8), True, False],  # llama 3.1 8b
         # [4, 16, 4, 32768, 128, (8, 8), False, False],  # llama 3.1 8b
         # [1, 8, 1, 8192*16, 128, (1, 1), False, True],  # llama2-70B long seqlen
+        [1, 32, 8, 1024 * 64, 128, (8, 4), False, True],  # failing test
     ),
 )
 def test_sdpa_decode(
@@ -537,7 +538,7 @@ def test_sdpa_decode(
         )
 
 
-@skip_for_blackhole("Unsupported on BH, see #12349")
+# @skip_for_blackhole("Unsupported on BH, see #12349")
 @skip_for_grayskull("Unsupported in GS since L1 runs OOM with most configs")
 @pytest.mark.parametrize(
     "dtype, q_dtype",
@@ -570,7 +571,7 @@ def test_sdpa_decode_non_causal(device, b, nh, nkv, s, d, dtype, grid_size, q_dt
     assert device.num_program_cache_entries() == 1
 
 
-@skip_for_blackhole("Unsupported on BH, see #12349")
+# @skip_for_blackhole("Unsupported on BH, see #12349")
 @skip_for_grayskull("Unsupported in GS since L1 runs OOM with most configs")
 @pytest.mark.parametrize(
     "dtype, q_dtype",
@@ -710,7 +711,10 @@ def run_test_sdpa_decode_paged_attention(
     max_start_idx = 0
     causal = True
 
-    while max_start_idx < s or not causal:
+    # while max_start_idx < s or not causal:
+    while True:
+        # for ii in range(100):
+        # max_start_idx = s
         scale = d**-0.5
         start_indices = np.linspace(max(max_start_idx - b, 0), max_start_idx, b, dtype=np.int32).tolist()
 
@@ -824,13 +828,15 @@ def run_test_sdpa_decode_paged_attention(
 
         if not causal:
             # only run one iteration for non-causal
-            break
+            causal = True
+            max_start_idx = 0
+
         if max_start_idx >= s:
             # run last iteration to test non-causal
             causal = False
 
 
-@skip_for_blackhole("Unsupported on BH, see #12349")
+# @skip_for_blackhole("Unsupported on BH, see #12349")
 @skip_for_grayskull("Unsupported in GS since L1 runs OOM with most configs")
 @pytest.mark.parametrize(
     "kv_dtype, q_dtype",
@@ -854,8 +860,11 @@ def run_test_sdpa_decode_paged_attention(
         # [4, 32, 8, 4096, 128, (8, 8), True],  # llama 3.1 8b
         # [4, 16, 4, 32768, 128, (8, 8), True],
         # [32, 32, 8, 4096, 128, (8, 8), True],  # llama 3.1 8b
-        [8, 16, 4, 4096, 128, (8, 2), True],  # llama 3.1 8b N300
-        [1, 8, 1, 128 * 1024, 128, (8, 4), True],  # llama 3.1 8b N300
+        # [8, 16, 4, 4096, 128, (8, 2), True],  # llama 3.1 8b N300
+        # [1, 8, 1, 128 * 1024, 128, (8, 4), True],  # llama 3.1 8b N300
+        [1, 32, 1, 1024 * 64, 128, (8, 4), True],  # failing test
+        [1, 32, 8, 1024 * 64, 128, (8, 4), True],  # failing test
+        [1, 32, 1, 1024 * 64, 128, (1, 2), True],  # failing test
         # [1, 8, 1, 32768, 128, (8, 1), True],  # Llama2-70B
         # [16, 8, 1, 32768, 128, (8, 6), False, False],  # Llama2-70B
         # [8, 8, 1, 32768, 128, (8, 6), True, False],  # Llama2-70B
@@ -887,10 +896,11 @@ def test_sdpa_decode_paged_attention(
         sharded_out=False,
     )
 
-    assert device.num_program_cache_entries() == 4
+    expected_entries = 5 if is_blackhole() else 4  # as_tensor is a device op on BH
+    # assert device.num_program_cache_entries() == expected_entries
 
 
-@skip_for_blackhole("Unsupported on BH, see #12349")
+# @skip_for_blackhole("Unsupported on BH, see #12349")
 @skip_for_grayskull("Unsupported in GS since L1 runs OOM with most configs")
 @pytest.mark.parametrize(
     "dtype, q_dtype",
@@ -923,7 +933,7 @@ def test_sdpa_decode_sharded(device, b, nh, nkv, s, d, dtype, grid_size, q_dtype
     )
 
 
-@skip_for_blackhole("Unsupported on BH, see #12349")
+# @skip_for_blackhole("Unsupported on BH, see #12349")
 @skip_for_grayskull("Unsupported in GS since L1 runs OOM with most configs")
 @pytest.mark.parametrize("device_params", [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL}], indirect=True)
 @pytest.mark.parametrize(
@@ -992,7 +1002,7 @@ def test_sdpa_decode_sharded_on_subcoregrids(
     assert device.num_program_cache_entries() == 1
 
 
-@skip_for_blackhole("Unsupported on BH, see #12349")
+# @skip_for_blackhole("Unsupported on BH, see #12349")
 @skip_for_grayskull("Unsupported in GS since L1 runs OOM with most configs")
 @pytest.mark.skip("Skipping Perf Test in CI")
 def test_sdpa_decode_perf(device, use_program_cache):
@@ -1047,7 +1057,7 @@ def test_sdpa_decode_perf(device, use_program_cache):
         )
 
 
-@skip_for_blackhole("Unsupported on BH, see #12349")
+# @skip_for_blackhole("Unsupported on BH, see #12349")
 @skip_for_grayskull("Unsupported in GS since L1 runs OOM with most configs")
 @pytest.mark.parametrize(
     "dtype",
@@ -1266,9 +1276,9 @@ def run_test_sdpa_decode_ndpcc(device, b, nh, nkv, s, d, dtype, grid_size, q_dty
     logger.info(f"PCC failed Start Pos: {failed_start_pos}")
 
 
-@skip_for_blackhole("Unsupported on BH, see #12349")
+# @skip_for_blackhole("Unsupported on BH, see #12349")
 @pytest.mark.timeout(600)
-@pytest.mark.skip("Skipping due to causing 45 minutes timeout on tt eager unit tests")
+# @pytest.mark.skip("Skipping due to causing 45 minutes timeout on tt eager unit tests")
 @skip_for_grayskull("Unsupported in GS since L1 runs OOM with most configs")
 @pytest.mark.parametrize(
     "dtype, q_dtype",

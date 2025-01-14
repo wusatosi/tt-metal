@@ -16,6 +16,8 @@
 #include "compute_kernel_api/matmul.h"
 #include "compute_kernel_api/reduce.h"
 
+#include "debug/waypoint.h"
+
 #include "ttnn/cpp/ttnn/operations/transformer/sdpa_decode/device/kernels/rt_args_common.hpp"
 #include "compute_common.hpp"
 
@@ -174,75 +176,75 @@ void MAIN {
             cb_out_o,
             cb_out_m,
             cb_out_l>(k_chunk_start, k_chunk_end, do_reduce, apply_mask_at_last_chunk);
+        WAYPOINT("CGAA");
 
         // do reduction across intermediates from other cores if this is the reduction core
         if (do_reduce) {
-            // cb_out_accumulate_im should contain o_1
-            // cb_prev_max and cb_prev_sum should contain m_1 and l_1
-
+            WAYPOINT("CGAB");
             if (k_chunk_end - k_chunk_start < k_num_chunks) {
-                // This indicates that there are computes done by other workers. Needs to wait for them and send to
-                // reducer's compute
+                WAYPOINT("CGAC");
                 for (uint32_t i = 0; i < num_cores_to_wait; i++) {
-                    // reconfig_data_format(cb_q_in, cb_q_in); // DEBUG
-                    // pack_reconfig_data_format(cb_out_accumulate_im_2);
+                    WAYPOINT("CGAD");
                     copy_block(cb_out_o, cb_out_accumulate_im_2, q_chunk_tiles);
+                    WAYPOINT("CGAE");
                     copy_block(cb_l_in, cb_prev_sum_2, Sq_chunk_t);
-                    max_block(cb_m_in, cb_prev_max, cb_cur_max, Sq_chunk_t);  // pushed, pushed, popped
-
-                    // l = torch.exp(m_2 - m) * l_2 + torch.exp(m_1 - m) * l_1
-                    /// l1 = torch.exp(m_2 - m) * l_2
-                    // reconfig_data_format(cb_prev_max_2, cb_cur_max); // DEBUG
-                    // pack_reconfig_data_format(cb_exp_max_diff_2);
+                    WAYPOINT("CGAF");
+                    max_block(cb_m_in, cb_prev_max, cb_cur_max, Sq_chunk_t);
+                    WAYPOINT("CGAG");
                     sub_exp_block(cb_m_in, cb_cur_max, cb_exp_max_diff_2, Sq_chunk_t);
+                    WAYPOINT("CGAH");
                     mul_block_inplace(cb_prev_sum_2, cb_exp_max_diff_2, Sq_chunk_t);
-                    /// l2 = torch.exp(m_1 - m) * l_1
-                    // reconfig_data_format(cb_prev_max, cb_cur_max); // DEBUG
-                    // pack_reconfig_data_format(cb_exp_max_diff);
+                    WAYPOINT("CGAI");
                     sub_exp_block(cb_prev_max, cb_cur_max, cb_exp_max_diff, Sq_chunk_t);
+                    WAYPOINT("CGAJ");
                     mul_block_inplace(cb_prev_sum, cb_exp_max_diff, Sq_chunk_t);
-                    /// l = l1 + l2
-                    // reconfig_data_format(cb_cur_sum, cb_prev_sum); // DEBUG
-                    // pack_reconfig_data_format(cb_cur_sum);
+                    WAYPOINT("CGAK");
                     add_block(cb_prev_sum_2, cb_prev_sum, cb_cur_sum, Sq_chunk_t);
-
-                    // reconfig_data_format(cb_out_accumulate_im, cb_exp_max_diff); // DEBUG
-                    // pack_reconfig_data_format(cb_out_accumulate_im);
+                    WAYPOINT("CGAL");
                     mul_block_bcast_cols_inplace(cb_out_accumulate_im, cb_exp_max_diff, Sq_chunk_t, DHt);
+                    WAYPOINT("CGAM");
                     mul_block_bcast_cols_inplace(cb_out_accumulate_im_2, cb_exp_max_diff_2, Sq_chunk_t, DHt);
-
-                    // reconfig_data_format(cb_out_accumulate_im, cb_out_accumulate_im_2);
-                    // pack_reconfig_data_format(cb_out_accumulate_im);
+                    WAYPOINT("CGAN");
                     add_block_inplace<true>(cb_out_accumulate_im, cb_out_accumulate_im_2, q_chunk_tiles);
-
-                    // copy tiles
-                    // reconfig_data_format(cb_cur_max, cb_cur_max); // DEBUG
-                    // pack_reconfig_data_format(cb_prev_max);
+                    WAYPOINT("CGAO");
                     cb_pop_front(cb_prev_max, Sq_chunk_t);
+                    WAYPOINT("CGAP");
                     cb_pop_front(cb_m_in, Sq_chunk_t);
+                    WAYPOINT("CGAQ");
                     copy_block(cb_cur_max, cb_prev_max, Sq_chunk_t);
+                    WAYPOINT("CGAR");
                     copy_block(cb_cur_sum, cb_prev_sum, Sq_chunk_t);
+                    WAYPOINT("CGAS");
                 }
+                WAYPOINT("CGAT");
             }
-            /* cb_cur_sum = 1.0 / cb_cur_sum */
+            WAYPOINT("CGAU");
             cb_push_back(cb_cur_sum, Sq_chunk_t);
-
-            reconfig_data_format(cb_cur_sum, cb_cur_sum);  // DEBUG
+            WAYPOINT("CGAV");
+            reconfig_data_format(cb_cur_sum, cb_cur_sum);
+            WAYPOINT("CGAW");
             pack_reconfig_data_format(cb_cur_sum);
+            WAYPOINT("CGAX");
             recip_block_inplace(cb_cur_sum, Sq_chunk_t);
-
-            /* cb_out_accumulate_im *= cb_cur_sum */
-            reconfig_data_format(cb_out_accumulate_im, cb_cur_sum);  // DEBUG
+            WAYPOINT("CGAY");
+            reconfig_data_format(cb_out_accumulate_im, cb_cur_sum);
+            WAYPOINT("CGAZ");
             pack_reconfig_data_format(cb_out_accumulate_im);
+            WAYPOINT("CGBA");
             mul_block_bcast_cols_inplace(cb_out_accumulate_im, cb_cur_sum, Sq_chunk_t, DHt);
+            WAYPOINT("CGBB");
             pack_reconfig_data_format(cb_out_final);
+            WAYPOINT("CGBC");
             copy_block(cb_out_accumulate_im, cb_out_final, out_chunk_tiles);
-
-            // free up cb_prev_max after K chunks
+            WAYPOINT("CGBD");
             cb_pop_front(cb_prev_max, Sq_chunk_t);
+            WAYPOINT("CGBE");
             cb_pop_front(cb_prev_sum, Sq_chunk_t);
+            WAYPOINT("CGBF");
         }
     }
+    WAYPOINT("CGBG");
     cb_pop_front(cb_q_in, q_chunk_tiles);
+    WAYPOINT("CGBI");
 }
 }  // namespace NAMESPACE

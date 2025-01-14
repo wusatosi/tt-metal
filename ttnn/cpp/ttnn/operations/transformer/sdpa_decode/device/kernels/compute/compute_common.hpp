@@ -15,6 +15,7 @@
 #include "compute_kernel_api/tile_move_copy.h"
 #include "compute_kernel_api/matmul.h"
 #include "compute_kernel_api/reduce.h"
+#include "debug/waypoint.h"
 
 /******************************************************************************
  *                                                                             *
@@ -26,46 +27,79 @@
  *                   Generic Compute Functions                                 *
  ******************************************************************************/
 void max_block_inplace(uint32_t in0, uint32_t in1, uint32_t num_tiles) {
-    // inputs come in full, outputs go out full
+    WAYPOINT("CCAV");
+    // inputs come in full, outputs go out full WAYPOINT("CCAW");
     copy_tile_to_dst_init_short(in0);
+    WAYPOINT("CCAX");
     max_tile_init();
-
+    WAYPOINT("CCAY");
+    // WAYPOINT("CCAZ");
     constexpr uint32_t dst_reg_0 = 0;
+    WAYPOINT("CCBA");
     constexpr uint32_t dst_reg_1 = 1;
+    WAYPOINT("CCBB");
     cb_wait_front(in0, num_tiles);
+    WAYPOINT("CCBC");
     cb_wait_front(in1, num_tiles);
+    WAYPOINT("CCBD");
     for (uint32_t i = 0; i < num_tiles; ++i) {
+        WAYPOINT("CCBE");
         acquire_dst();
+        WAYPOINT("CCBF");
         copy_tile(in0, 0, dst_reg_0);
+        WAYPOINT("CCBG");
         copy_tile(in1, i, dst_reg_1);
+        WAYPOINT("CCBH");
         cb_pop_front(in0, 1);
+        WAYPOINT("CCBI");
         cb_reserve_back(in0, 1);
+        WAYPOINT("CCBJ");
         max_tile(dst_reg_0, dst_reg_1);
+        WAYPOINT("CCBK");
         pack_tile(dst_reg_0, in0);
+        WAYPOINT("CCBL");
         cb_push_back(in0, 1);
+        WAYPOINT("CCBM");
         release_dst();
+        WAYPOINT("CCBN");
     }
 }
 
 void max_block(uint32_t in0, uint32_t in1, uint32_t out_cb, uint32_t num_tiles) {
-    // inputs come in full, outputs go out full
+    WAYPOINT("CCBQ");
+    // inputs come in full, outputs go out full WAYPOINT("CCBR");
     copy_tile_to_dst_init_short(in0);
+    WAYPOINT("CCBS");
     max_tile_init();
-
+    WAYPOINT("CCBT");
+    // WAYPOINT("CCBU");
     constexpr uint32_t dst_reg_0 = 0;
+    WAYPOINT("CCBV");
     constexpr uint32_t dst_reg_1 = 1;
+    WAYPOINT("CCBW");
     cb_wait_front(in0, num_tiles);
+    WAYPOINT("CCBX");
     cb_wait_front(in1, num_tiles);
+    WAYPOINT("CCBY");
     cb_reserve_back(out_cb, num_tiles);
+    WAYPOINT("CCBZ");
     for (uint32_t i = 0; i < num_tiles; ++i) {
+        WAYPOINT("CCCA");
         acquire_dst();
+        WAYPOINT("CCCB");
         copy_tile(in0, i, dst_reg_0);
+        WAYPOINT("CCCC");
         copy_tile(in1, i, dst_reg_1);
+        WAYPOINT("CCCD");
         max_tile(dst_reg_0, dst_reg_1);
+        WAYPOINT("CCCE");
         pack_tile(dst_reg_0, out_cb, i);
+        WAYPOINT("CCCF");
         release_dst();
+        WAYPOINT("CCCG");
     }
     cb_push_back(out_cb, num_tiles);
+    WAYPOINT("CCCI");
 }
 
 template <
@@ -77,243 +111,388 @@ template <
     uint32_t rows,
     uint32_t cols>
 void reduce_c() {
-    // Precondition: in0_cb has rows*cols produced. in0_cb has tiles in row-major order
-    // Precondition: scale_cb has 1 produced
-    // Precondition: out_cb has rows free
-    // Postcondition: in0_cb has rows*cols produced
-    // Precondition: scale_cb has 1 produced
-    // Postcondition: out_cb has rows produced
-
+    WAYPOINT("CCCK");
+    // Precondition: in0_cb has rows*cols produced. in0_cb has tiles in row-major order WAYPOINT("CCCT");
+    // Precondition: scale_cb has 1 produced WAYPOINT("CCCU");
+    // Precondition: out_cb has rows free WAYPOINT("CCCV");
+    // Postcondition: in0_cb has rows*cols produced WAYPOINT("CCCW");
+    // Precondition: scale_cb has 1 produced WAYPOINT("CCCX");
+    // Postcondition: out_cb has rows produced WAYPOINT("CCCY");
+    // WAYPOINT("CCCZ");
     reduce_init_delta<false, pool_type, reduce_dim>(in0_cb, scale_cb, out_cb);
-
+    WAYPOINT("CCDA");
+    // WAYPOINT("CCDB");
     const uint32_t num_tiles = rows * cols;
+    WAYPOINT("CCDC");
     cb_wait_front(scale_cb, 1);
+    WAYPOINT("CCDD");
     cb_wait_front(in0_cb, num_tiles);
+    WAYPOINT("CCDE");
     cb_reserve_back(out_cb, rows);
-
+    WAYPOINT("CCDF");
+    // WAYPOINT("CCDG");
     constexpr uint32_t reduce_dst_idx = 0;
-
+    WAYPOINT("CCDH");
+    // WAYPOINT("CCDI");
     for (uint32_t i = 0; i < rows; i++) {
+        WAYPOINT("CCDJ");
         acquire_dst();
+        WAYPOINT("CCDK");
         for (uint32_t j = 0; j < cols; j++) {
+            WAYPOINT("CCDL");
             reduce_tile<pool_type, reduce_dim>(in0_cb, scale_cb, i * cols + j, 0, reduce_dst_idx);
+            WAYPOINT("CCDM");
         }
-
+        // WAYPOINT("CCDO");
         cb_reserve_back(out_cb, 1);
+        WAYPOINT("CCDP");
         pack_tile(reduce_dst_idx, out_cb);
+        WAYPOINT("CCDQ");
         cb_push_back(out_cb, 1);
+        WAYPOINT("CCDR");
         release_dst();
+        WAYPOINT("CCDS");
     }
-
+    // WAYPOINT("CCDU");
     reduce_revert_delta<reduce_dim>(out_cb);
+    WAYPOINT("CCDV");
 }
 
 void recip_block_inplace(uint32_t in_cb, uint32_t num_tiles) {
-    // Precondition: in_cb has num_tiles produced
-    // Postcondition: in_cb has num_tiles produced
+    WAYPOINT("CCDX");
+    // Precondition: in_cb has num_tiles produced WAYPOINT("CCDY");
+    // Postcondition: in_cb has num_tiles produced WAYPOINT("CCDZ");
     copy_tile_to_dst_init_short(in_cb);
+    WAYPOINT("CCEA");
     recip_tile_init();
-
+    WAYPOINT("CCEB");
+    // WAYPOINT("CCEC");
     cb_wait_front(in_cb, num_tiles);
+    WAYPOINT("CCED");
     for (uint32_t i = 0; i < num_tiles; ++i) {
+        WAYPOINT("CCEE");
         acquire_dst();
+        WAYPOINT("CCEF");
         copy_tile(in_cb, 0, 0);
+        WAYPOINT("CCEG");
         cb_pop_front(in_cb, 1);
+        WAYPOINT("CCEH");
         recip_tile(0);
+        WAYPOINT("CCEI");
         cb_reserve_back(in_cb, 1);
+        WAYPOINT("CCEJ");
         pack_tile(0, in_cb);
+        WAYPOINT("CCEK");
         cb_push_back(in_cb, 1);
+        WAYPOINT("CCEL");
         release_dst();
+        WAYPOINT("CCEM");
     }
 }
 
 void sub_exp_block_bcast_cols_inplace(uint32_t in0_cb, uint32_t in1_cb, uint32_t rows, uint32_t cols) {
-    // Precondition: in0_cb has rows*cols produced
-    // Precondition: in1_cb has rows produced
-    // Postcondition: in0_cb has rows*cols produced
-    // Postcondition: in1_cb has rows produced
-
+    WAYPOINT("CCEP");
+    // Precondition: in0_cb has rows*cols produced WAYPOINT("CCEQ");
+    // Precondition: in1_cb has rows produced WAYPOINT("CCER");
+    // Postcondition: in0_cb has rows*cols produced WAYPOINT("CCES");
+    // Postcondition: in1_cb has rows produced WAYPOINT("CCET");
+    // WAYPOINT("CCEU");
     sub_bcast_cols_init_short(in0_cb, in1_cb);
+    WAYPOINT("CCEV");
     exp_tile_init<true>();
+    WAYPOINT("CCEW");
     cb_wait_front(in0_cb, rows * cols);
+    WAYPOINT("CCEX");
     cb_wait_front(in1_cb, rows);
-
+    WAYPOINT("CCEY");
+    // WAYPOINT("CCEZ");
     constexpr uint32_t dst_tiles = SUB_EXP_GRANULARITY;
+    WAYPOINT("CCFA");
     uint32_t granularity = cols >> LOG2_SUB_EXP_GRANULARITY;
+    WAYPOINT("CCFB");
     for (uint32_t i = 0; i < rows; ++i) {
+        WAYPOINT("CCFC");
         for (uint32_t u = 0; u < granularity; u++) {
+            WAYPOINT("CCFD");
             tile_regs_acquire();
+            WAYPOINT("CCFE");
             for (uint32_t j = 0; j < dst_tiles; ++j) {
+                WAYPOINT("CCFF");
                 sub_tiles_bcast_cols(in0_cb, in1_cb, j, i, j);
+                WAYPOINT("CCFG");
                 exp_tile<true>(j);
+                WAYPOINT("CCFH");
             }
             tile_regs_commit();
+            WAYPOINT("CCFJ");
             cb_pop_front(in0_cb, dst_tiles);
+            WAYPOINT("CCFK");
             cb_reserve_back(in0_cb, dst_tiles);
+            WAYPOINT("CCFL");
             tile_regs_wait();
+            WAYPOINT("CCFM");
             for (uint32_t j = 0; j < dst_tiles; ++j) {
+                WAYPOINT("CCFN");
                 pack_tile(j, in0_cb);
+                WAYPOINT("CCFO");
             }
             cb_push_back(in0_cb, dst_tiles);
+            WAYPOINT("CCFQ");
             tile_regs_release();
+            WAYPOINT("CCFR");
         }
     }
 }
 
 void mul_block_bcast_cols_inplace(uint32_t in0_cb, uint32_t in1_cb, uint32_t rows, uint32_t cols) {
-    // Precondition: in0_cb has rows*cols produced
-    // Precondition: in1_cb has rows produced
-    // Postcondition: in0_cb has rows*cols produced
-    // Postcondition: in1_cb has rows consumed
-
+    WAYPOINT("CCFV");
+    // Precondition: in0_cb has rows*cols produced WAYPOINT("CCFW");
+    // Precondition: in1_cb has rows produced WAYPOINT("CCFX");
+    // Postcondition: in0_cb has rows*cols produced WAYPOINT("CCFY");
+    // Postcondition: in1_cb has rows consumed WAYPOINT("CCFZ");
+    // WAYPOINT("CCGA");
     uint32_t num_tiles = rows * cols;
+    WAYPOINT("CCGB");
     mul_bcast_cols_init_short(in0_cb, in1_cb);
+    WAYPOINT("CCGC");
     cb_wait_front(in0_cb, num_tiles);
+    WAYPOINT("CCGD");
     cb_wait_front(in1_cb, rows);
+    WAYPOINT("CCGE");
     for (uint32_t i = 0; i < rows; ++i) {
+        WAYPOINT("CCGF");
         for (uint32_t j = 0; j < cols; ++j) {
+            WAYPOINT("CCGG");
             acquire_dst();
+            WAYPOINT("CCGH");
             mul_tiles_bcast_cols(in0_cb, in1_cb, 0, i, 0);
+            WAYPOINT("CCGI");
             cb_pop_front(in0_cb, 1);
+            WAYPOINT("CCGJ");
             cb_reserve_back(in0_cb, 1);
+            WAYPOINT("CCGK");
             pack_tile(0, in0_cb);
+            WAYPOINT("CCGL");
             cb_push_back(in0_cb, 1);
+            WAYPOINT("CCGM");
             release_dst();
+            WAYPOINT("CCGN");
         }
     }
     cb_pop_front(in1_cb, rows);
+    WAYPOINT("CCGQ");
 }
 
 void mul_block_bcast_scalar_inplace(uint32_t in0_cb, uint32_t in1_scalar_cb, uint32_t num_tiles) {
-    // Precondition: in0_cb has num_tiles produced
-    // Precondition: in1_scalar_cb has 1 produced
-    // Postcondition: in0_cb has num_tiles produced
-    // Postcondition: in1_scalar_cb has 1 produced
-
+    WAYPOINT("CCGS");
+    // Precondition: in0_cb has num_tiles produced WAYPOINT("CCGT");
+    // Precondition: in1_scalar_cb has 1 produced WAYPOINT("CCGU");
+    // Postcondition: in0_cb has num_tiles produced WAYPOINT("CCGV");
+    // Postcondition: in1_scalar_cb has 1 produced WAYPOINT("CCGW");
+    // WAYPOINT("CCGX");
     constexpr uint32_t dst_tiles = MUL_BCAST_GRANULARITY;
+    WAYPOINT("CCGY");
     uint32_t granularity = num_tiles >> LOG2_MUL_BCAST_GRANULARITY;
+    WAYPOINT("CCGZ");
     reconfig_data_format(in0_cb, in1_scalar_cb);
+    WAYPOINT("CCHA");
     mul_tiles_bcast_scalar_init_short();
+    WAYPOINT("CCHB");
     cb_wait_front(in0_cb, num_tiles);
+    WAYPOINT("CCHC");
     cb_wait_front(in1_scalar_cb, 1);
+    WAYPOINT("CCHD");
     for (uint32_t g = 0; g < granularity; ++g) {
+        WAYPOINT("CCHE");
         acquire_dst();
+        WAYPOINT("CCHF");
         for (uint32_t i = 0; i < dst_tiles; ++i) {
+            WAYPOINT("CCHG");
             mul_tiles_bcast_scalar(in0_cb, in1_scalar_cb, i, 0, i);
+            WAYPOINT("CCHH");
         }
         cb_pop_front(in0_cb, dst_tiles);
+        WAYPOINT("CCHJ");
         cb_reserve_back(in0_cb, dst_tiles);
+        WAYPOINT("CCHK");
         for (uint32_t i = 0; i < dst_tiles; ++i) {
+            WAYPOINT("CCHL");
             pack_tile(i, in0_cb);
+            WAYPOINT("CCHM");
         }
         cb_push_back(in0_cb, dst_tiles);
+        WAYPOINT("CCHO");
         release_dst();
+        WAYPOINT("CCHP");
     }
 }
 
 template <bool pop_in1>
 void add_block_inplace(uint32_t in0_cb, uint32_t in1_cb, uint32_t num_tiles) {
-    // Precondition: in0_cb and in1_cb have num_tiles produced
-    // Postcondition: in0_cb has num_tiles produced
-    // Postcondition: in1_cb has num_tiles consumed
-
+    WAYPOINT("CCHT");
+    // Precondition: in0_cb and in1_cb have num_tiles produced WAYPOINT("CCHU");
+    // Postcondition: in0_cb has num_tiles produced WAYPOINT("CCHV");
+    // Postcondition: in1_cb has num_tiles consumed WAYPOINT("CCHW");
+    // WAYPOINT("CCHX");
     add_tiles_init();
+    WAYPOINT("CCHY");
     cb_wait_front(in0_cb, num_tiles);
+    WAYPOINT("CCHZ");
     cb_wait_front(in1_cb, num_tiles);
+    WAYPOINT("CCIA");
     for (uint32_t i = 0; i < num_tiles; i++) {
+        WAYPOINT("CCIB");
         acquire_dst();
+        WAYPOINT("CCIC");
         add_tiles(in0_cb, in1_cb, 0, i, 0);
+        WAYPOINT("CCID");
         cb_pop_front(in0_cb, 1);
+        WAYPOINT("CCIE");
         cb_reserve_back(in0_cb, 1);
+        WAYPOINT("CCIF");
         pack_tile(0, in0_cb);
+        WAYPOINT("CCIG");
         cb_push_back(in0_cb, 1);
+        WAYPOINT("CCIH");
         release_dst();
+        WAYPOINT("CCII");
     }
     if (pop_in1) {
+        WAYPOINT("CCIK");
         cb_pop_front(in1_cb, num_tiles);
+        WAYPOINT("CCIL");
     }
 }
 
 void add_block(uint32_t in0_cb, uint32_t in1_cb, uint32_t out_cb, uint32_t num_tiles) {
-    // Precondition: in0_cb and in1_cb have num_tiles produced
-    // Postcondition: in0_cb has num_tiles produced
-    // Postcondition: in1_cb has num_tiles consumed
-
+    WAYPOINT("CCIO");
+    // Precondition: in0_cb and in1_cb have num_tiles produced WAYPOINT("CCIP");
+    // Postcondition: in0_cb has num_tiles produced WAYPOINT("CCIQ");
+    // Postcondition: in1_cb has num_tiles consumed WAYPOINT("CCIR");
+    // WAYPOINT("CCIS");
     add_tiles_init();
+    WAYPOINT("CCIT");
     cb_wait_front(in0_cb, num_tiles);
+    WAYPOINT("CCIU");
     cb_wait_front(in1_cb, num_tiles);
+    WAYPOINT("CCIV");
     cb_reserve_back(out_cb, num_tiles);
+    WAYPOINT("CCIW");
     for (uint32_t i = 0; i < num_tiles; i++) {
+        WAYPOINT("CCIX");
         acquire_dst();
+        WAYPOINT("CCIY");
         add_tiles(in0_cb, in1_cb, i, i, 0);
+        WAYPOINT("CCIZ");
         pack_tile(0, out_cb, i);
+        WAYPOINT("CCJA");
         release_dst();
+        WAYPOINT("CCJB");
     }
     cb_push_back(out_cb, num_tiles);
-
+    WAYPOINT("CCJD");
+    // WAYPOINT("CCJE");
     cb_pop_front(in0_cb, num_tiles);
+    WAYPOINT("CCJF");
     cb_pop_front(in1_cb, num_tiles);
+    WAYPOINT("CCJG");
 }
 
 void mul_block_inplace(uint32_t in0_cb, uint32_t in1_cb, uint32_t num_tiles) {
-    // Precondition: in0_cb and in1_cb have num_tiles produced
-    // Postcondition: in0_cb has num_tiles produced
-    // Postcondition: in1_cb has num_tiles produced
-
+    WAYPOINT("CCJI");
+    // Precondition: in0_cb and in1_cb have num_tiles produced WAYPOINT("CCJJ");
+    // Postcondition: in0_cb has num_tiles produced WAYPOINT("CCJK");
+    // Postcondition: in1_cb has num_tiles produced WAYPOINT("CCJL");
+    // WAYPOINT("CCJM");
     mul_tiles_init();
+    WAYPOINT("CCJN");
     cb_wait_front(in0_cb, num_tiles);
+    WAYPOINT("CCJO");
     cb_wait_front(in1_cb, num_tiles);
+    WAYPOINT("CCJP");
     for (uint32_t i = 0; i < num_tiles; i++) {
+        WAYPOINT("CCJQ");
         acquire_dst();
+        WAYPOINT("CCJR");
         mul_tiles(in0_cb, in1_cb, 0, i, 0);
+        WAYPOINT("CCJS");
         cb_pop_front(in0_cb, 1);
+        WAYPOINT("CCJT");
         cb_reserve_back(in0_cb, 1);
+        WAYPOINT("CCJU");
         pack_tile(0, in0_cb);
+        WAYPOINT("CCJV");
         cb_push_back(in0_cb, 1);
+        WAYPOINT("CCJW");
         release_dst();
+        WAYPOINT("CCJX");
     }
 }
 
 void sub_exp_block(uint32_t in0_cb, uint32_t in1_cb, uint32_t out_cb, uint32_t num_tiles) {
-    // Precondition: in0_cb and in1_cb have num_tiles produced
-    // Postcondition: out_cb has num_tiles produced
-    // Postcondition: in0_cb and in1_cb has num_tiles produced
+    WAYPOINT("CCKA");
+    // Precondition: in0_cb and in1_cb have num_tiles produced WAYPOINT("CCKB");
+    // Postcondition: out_cb has num_tiles produced WAYPOINT("CCKC");
+    // Postcondition: in0_cb and in1_cb has num_tiles produced WAYPOINT("CCKD");
     sub_tiles_init();
+    WAYPOINT("CCKE");
     exp_tile_init<EXP_APPROX_MODE>();
+    WAYPOINT("CCKF");
     cb_wait_front(in0_cb, num_tiles);
+    WAYPOINT("CCKG");
     cb_wait_front(in1_cb, num_tiles);
+    WAYPOINT("CCKH");
     cb_reserve_back(out_cb, num_tiles);
+    WAYPOINT("CCKI");
 
     for (uint32_t i = 0; i < num_tiles; i++) {
+        WAYPOINT("CCKJ");
         acquire_dst();
+        WAYPOINT("CCKK");
         sub_tiles(in0_cb, in1_cb, i, i, 0);
+        WAYPOINT("CCKL");
         exp_tile<EXP_APPROX_MODE>(0);
+        WAYPOINT("CCKM");
         pack_tile(0, out_cb);
+        WAYPOINT("CCKN");
         cb_push_back(out_cb, 1);
+        WAYPOINT("CCKO");
         release_dst();
+        WAYPOINT("CCKP");
     }
 }
 
 void copy_block(uint32_t in_cb, uint32_t out_cb, uint32_t num_tiles) {
-    // Precondition: in_cb has num_tiles produced
-    // Precondition: out_cb has num_tiles free
-    // Postcondition: in_cb has num_tiles consumed
-    // Postcondition: out_cb has num_tiles produced
-
+    WAYPOINT("CCKS");
+    // Precondition: in_cb has num_tiles produced WAYPOINT("CCKT");
+    // Precondition: out_cb has num_tiles free WAYPOINT("CCKU");
+    // Postcondition: in_cb has num_tiles consumed WAYPOINT("CCKV");
+    // Postcondition: out_cb has num_tiles produced WAYPOINT("CCKW");
+    // WAYPOINT("CCKX");
     copy_tile_to_dst_init_short(in_cb);
-
+    WAYPOINT("CCKY");
+    // WAYPOINT("CCKZ");
     cb_wait_front(in_cb, num_tiles);
+    WAYPOINT("CCLA");
     cb_reserve_back(out_cb, num_tiles);
-
-#pragma GCC unroll 0
+    WAYPOINT("CCLB");
+    // WAYPOINT("CCLC");
+#pragma GCC unroll 0 WAYPOINT("CCLD");
     for (uint32_t i = 0; i < num_tiles; i++) {
+        WAYPOINT("CCLE");
         acquire_dst();
+        WAYPOINT("CCLF");
         copy_tile(in_cb, i, 0 /*dst*/);
+        WAYPOINT("CCLG");
         pack_tile(0, out_cb);
+        WAYPOINT("CCLH");
         cb_push_back(out_cb, 1);
+        WAYPOINT("CCLI");
         release_dst();
+        WAYPOINT("CCLJ");
     }
     cb_pop_front(in_cb, num_tiles);
+    WAYPOINT("CCLL");
 }
 
 ALWI void cb_matmul_blocks(
@@ -330,52 +509,80 @@ ALWI void cb_matmul_blocks(
     const uint32_t& subblock_h,
     const uint32_t& subblock_w,
     const bool& transpose) {
-    // precondition: in0_cb has M*K produced
-    // preconditino: in1_cb has K*N produced
-    // postcondition: in0_cb is full, in1_cb is empty
-    // postcondition: out_cb has M*N produced
-
+    WAYPOINT("CCLZ");
+    // precondition: in0_cb has M*K produced WAYPOINT("CCMA");
+    // preconditino: in1_cb has K*N produced WAYPOINT("CCMC");
+    // postcondition: in0_cb is full, in1_cb is empty WAYPOINT("CCMD");
+    // postcondition: out_cb has M*N produced WAYPOINT("CCME");
+    // WAYPOINT("CCMF");
     mm_block_init_short(
         in0_cb, in1_cb, transpose /*transpose*/, subblock_w /*ct_dim*/, subblock_h /*rt_dim*/, in0_block_w /*kt_dim*/);
-
+    WAYPOINT("CCMH");
+    // WAYPOINT("CCMI");
     reconfig_data_format(in1_cb, in0_cb);
+    WAYPOINT("CCMJ");
     cb_wait_front(in1_cb, K * N);
-
+    WAYPOINT("CCMK");
+    // WAYPOINT("CCML");
     uint32_t output_num_tiles = M * N;
+    WAYPOINT("CCMM");
     uint32_t out_subblock_num_tiles = subblock_h * subblock_w;
+    WAYPOINT("CCMN");
     uint32_t in0_index_offset = 0;
-
+    WAYPOINT("CCMO");
+    // WAYPOINT("CCMP");
     for (uint32_t in0_subblock = 0; in0_subblock < in0_num_subblocks; ++in0_subblock) {
+        WAYPOINT("CCMQ");
         uint32_t in1_index_offset = 0;
+        WAYPOINT("CCMR");
         for (uint32_t in1_subblock = 0; in1_subblock < in1_num_subblocks; ++in1_subblock) {
+            WAYPOINT("CCMS");
             tile_regs_acquire();
-
+            WAYPOINT("CCMT");
+            // WAYPOINT("CCMU");
             uint32_t dst_index = 0;
+            WAYPOINT("CCMV");
             uint32_t in0_index = in0_index_offset;
+            WAYPOINT("CCMW");
             uint32_t in1_index = in1_index_offset;
-
+            WAYPOINT("CCMX");
+            // WAYPOINT("CCMY");
             for (uint32_t inner_dim = 0; inner_dim < in0_block_w; inner_dim++) {
+                WAYPOINT("CCMZ");
                 matmul_block(
                     in0_cb, in1_cb, in0_index, in1_index, dst_index, transpose, subblock_w, subblock_h, in0_block_w);
+                WAYPOINT("CCNB");
                 in0_index++;
+                WAYPOINT("CCNC");
                 in1_index += N;
+                WAYPOINT("CCND");
             }
             tile_regs_commit();
-
+            WAYPOINT("CCNF");
+            // WAYPOINT("CCNG");
             cb_reserve_back(out_cb, out_subblock_num_tiles);
+            WAYPOINT("CCNH");
             tile_regs_wait();
+            WAYPOINT("CCNI");
             for (uint32_t i = 0; i < out_subblock_num_tiles; i++) {
+                WAYPOINT("CCNJ");
                 pack_tile(i, out_cb);
+                WAYPOINT("CCNK");
             }
             tile_regs_release();
+            WAYPOINT("CCNM");
             cb_push_back(out_cb, out_subblock_num_tiles);
-            // in1_index_offset += in1_subblock * subblock_w;
-            // in1_index_offset = (in1_subblock+1) * subblock_w;
+            WAYPOINT("CCNN");
+            // in1_index_offset += in1_subblock * subblock_w; WAYPOINT("CCNO");
+            // in1_index_offset = (in1_subblock+1) * subblock_w; WAYPOINT("CCNP");
             in1_index_offset += subblock_w;
+            WAYPOINT("CCNQ");
         }
         in0_index_offset += subblock_h * in0_block_w;
+        WAYPOINT("CCNS");
     }
     cb_pop_front(in1_cb, K * N);
+    WAYPOINT("CCNU");
 }
 
 /******************************************************************************
