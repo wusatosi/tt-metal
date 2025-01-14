@@ -76,7 +76,7 @@ def test_mean(device, batch_size, h, w, dim):
 if __name__ == "__main__":
     try:
         device = ttnn.open_device(device_id=0, l1_small_size=4096)
-        test_maxpool(device, (1, 64, 56, 56), (2, 2), (2, 2), (0, 0), (1, 1))
+        test_maxpool(device, (1, 32, 2, 2), (2, 2), (2, 2), (0, 0), (1, 1))
         # test_add(device, 1, 32, 32, -2)
         test_mean(device, 1, 32, 32, -2)
     finally:

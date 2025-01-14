@@ -112,6 +112,7 @@ void MAIN {
     constexpr uint32_t num_out_rows = 1;
 
     constexpr uint32_t num_output_tiles = in_ntiles_c / in_nblocks_c;
+    // UNPACK (DPRINT << "nsticks_per_core = " << (uint16_t)nsticks_per_core << ENDL() );
     tilizeA_B_reduce_init<true>(
         in_cb_id, in_scalar_cb_id, num_output_tiles, out_cb_id, num_faces_in_tile, window_size_hw);
     pack_untilize_dst_init_short<in_ntiles_c>(

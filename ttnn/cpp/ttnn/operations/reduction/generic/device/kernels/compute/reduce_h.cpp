@@ -16,6 +16,9 @@ inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize 
 }
 namespace NAMESPACE {
 void MAIN {
+    // PACK(( dprint_tensix_pack_config(1) ));
+    // PACK(( dprint_tensix_pack_counters(0) ));
+    // PACK(( dprint_tensix_pack_strides(1) ));
     uint32_t Ht = get_compile_time_arg_val(0);
     uint32_t Wt = get_compile_time_arg_val(1);
     uint32_t NC = get_compile_time_arg_val(2);
@@ -35,10 +38,6 @@ void MAIN {
     //        tile order (H, W):
     //        1. chunk: (0, 0); (0, 1); (1, 0); (1, 1); (2, 0); (2, 1);
     //        2. chunk: (0, 2); (0, 3); (1, 2); (1, 3); (2, 2); (2, 3);
-    // PACK(( dprint_tensix_pack_config(1) ));
-    // PACK(( dprint_tensix_pack_counters(1) ));
-    // PACK(( dprint_tensix_pack_strides(1) ));
-    // PACK(( dprint_tensix_pack_strides(0) ));
     for (uint32_t nc = 0; nc < NC; ++nc) {
         for (uint32_t wt = 0; wt < Wt; wt += row_chunk) {
             uint32_t chunk_end = std::min(wt + row_chunk, Wt);
