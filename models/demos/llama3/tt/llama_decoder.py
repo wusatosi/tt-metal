@@ -21,6 +21,7 @@ class TtTransformerBlock(LightweightModule):
         transformation_mats,
         paged_attention_config=None,
         use_paged_kv_cache=False,
+        sfd_setup=None,
     ):
         super().__init__()
 
@@ -37,6 +38,7 @@ class TtTransformerBlock(LightweightModule):
         self.n_kv_heads = args.n_kv_heads
         self.current = 0
         self.model_config = args.get_model_config()
+        self.sfd_setup = sfd_setup
 
         self.layer_num = layer_num
 
@@ -50,6 +52,7 @@ class TtTransformerBlock(LightweightModule):
             configuration=args,
             paged_attention_config=paged_attention_config,
             use_paged_kv_cache=use_paged_kv_cache,
+            sfd_setup=sfd_setup,
         )
         self.feed_forward = TtLlamaMLP(
             mesh_device=mesh_device,

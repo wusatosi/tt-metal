@@ -21,6 +21,8 @@ from models.utility_functions import (
     comp_allclose,
 )
 from models.utility_functions import skip_for_grayskull
+from models.demos.llama3.tests.test_llama_attention import TtSFDSetup
+from time import time
 
 
 @torch.no_grad()
@@ -30,7 +32,7 @@ from models.utility_functions import skip_for_grayskull
 @pytest.mark.parametrize(
     "weights, layers",
     [
-        ("random", 1),
+        ("random", 32),
         ("instruct", None),
     ],
     ids=["quick", "full"],
@@ -38,12 +40,12 @@ from models.utility_functions import skip_for_grayskull
 @pytest.mark.parametrize(
     "paged_attention",
     (
-        True,
-        # False,
+        # True,
+        False,
     ),
     ids=(
-        "paged_attention",
-        # "default_attention",
+        # "paged_attention",
+        "default_attention",
     ),
 )
 @pytest.mark.parametrize(
@@ -56,12 +58,12 @@ from models.utility_functions import skip_for_grayskull
 )
 @pytest.mark.parametrize(
     "max_seq_len",
-    (256,),  # For decode-only unit test, there's no need to run with large sequence lengths
+    (31 * 1024,),  # For decode-only unit test, there's no need to run with large sequence lengths
 )
 @pytest.mark.parametrize(
     "optimizations",
     [
-        pytest.param(LlamaOptimizations.accuracy, id="accuracy"),
+        # pytest.param(LlamaOptimizations.accuracy, id="accuracy"),
         pytest.param(LlamaOptimizations.performance, id="performance"),
     ],
 )
@@ -87,7 +89,7 @@ def test_llama_model_inference(
     reset_seeds,
     ensure_gc,
 ):
-    run_ref_pt = True  # Flag to run reference PyTorch model and compare PCC
+    run_ref_pt = False  # Flag to run reference PyTorch model and compare PCC
     cache_pcc = layers == 1  # Flag to measure KV cache PCC. Avoid running for all layers to speed up test time.
     dtype = ttnn.bfloat8_b
     mesh_device.enable_async(True)
@@ -186,7 +188,7 @@ def test_llama_model_inference(
     embd = HostEmbedding(model_args)
     embd.load_state_dict({"emb.weight": state_dict[f"{state_dict_prefix}tok_embeddings.weight"]})
 
-    generation_start_pos = 0
+    generation_start_pos = 30 * 1024
     generation_length = iterations
 
     page_table_tt = None
@@ -218,6 +220,7 @@ def test_llama_model_inference(
         )
 
     # Load TTNN model
+    sfd_setup = TtSFDSetup(mesh_device, model_args.n_heads, model_args.head_dim, batch_size)
     tt_model = TtTransformer(
         args=model_args,
         mesh_device=mesh_device,
@@ -225,6 +228,7 @@ def test_llama_model_inference(
         state_dict=state_dict,
         weight_cache_path=model_args.weight_cache_path(dtype),
         paged_attention_config=paged_attention_config,
+        sfd_setup=sfd_setup,
     )
     logger.info("Model and caches loaded.")
 
@@ -252,7 +256,7 @@ def test_llama_model_inference(
         current_pos,
         device=mesh_device,
         dtype=ttnn.int32,
-        mesh_mapper=ttnn.ShardTensor2dMesh(
+        mesh_mapper=model_args.fracture_scheme(
             mesh_device,
             dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
             mesh_shape=model_args.cluster_shape,
@@ -271,6 +275,9 @@ def test_llama_model_inference(
         rot_mats = tt_model.rope_setup.get_rot_mats(current_pos)
 
         # Run TT model
+        ttnn.synchronize_devices(mesh_device)
+
+        t1 = time()
         tt_out = tt_model(
             decode_input,
             current_pos_tensor,
@@ -288,6 +295,8 @@ def test_llama_model_inference(
             .permute(2, 1, 0, 3)
             .squeeze(2)[: model_args.max_batch_size, 0:1, : model_args.vocab_size]
         )
+        t2 = time()
+        logger.info(f"T/s/u {1 / (t2 - t1)} and latency {t2 - t1}")
 
         ttnn.deallocate(tt_out)
 
@@ -296,12 +305,12 @@ def test_llama_model_inference(
             ref_output = reference_model(pt_decode_input, current_pos[0])
 
         # Increment position
-        current_pos = torch.tensor([generation_start_pos + i for _ in range(batch)])
+        current_pos = torch.tensor([generation_start_pos + i + 1 for _ in range(batch)])
         current_pos_tensor = ttnn.from_torch(
             current_pos,
             device=mesh_device,
             dtype=ttnn.int32,
-            mesh_mapper=ttnn.ShardTensor2dMesh(
+            mesh_mapper=model_args.fracture_scheme(
                 mesh_device,
                 dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
                 mesh_shape=model_args.cluster_shape,
@@ -393,7 +402,7 @@ def test_llama_model_inference(
                                         dims=(1, 0) if model_args.is_galaxy else (0, 1),
                                         mesh_shape=model_args.cluster_shape,
                                     ),
-                                )[:batch, :, :, :]
+                                )[:batch, : model_args.n_kv_heads, :, :]
                             )
 
                     for kv_cache, (cache_pt, cache_tt) in enumerate(zip(pytorch_layer_present, tt_layer_present)):
@@ -426,6 +435,8 @@ def test_llama_model_inference(
             logger.info("[ttnn generation User 0] " + tokenizer.decode(all_outputs).replace("\n", "\\n"))
             if run_ref_pt:
                 logger.info("[Ref generation User 0] " + tokenizer.decode(all_outputs_ref).replace("\n", "\\n"))
+
+    # sfd_setup.close_ccl()
 
     if run_ref_pt:
         if all_tests_pass:

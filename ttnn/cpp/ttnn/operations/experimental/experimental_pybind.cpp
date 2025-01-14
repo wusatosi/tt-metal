@@ -36,10 +36,11 @@
 #include "ttnn/operations/experimental/ccl/ccl_experimental_pybind.hpp"
 #include "ttnn/operations/experimental/plusone/plusone_pybind.hpp"
 #include "ttnn/operations/experimental/dropout/dropout_pybind.hpp"
-
+#include "ttnn/operations/experimental/speculative_execution/speculative_sdpa_decode/speculative_sdpa_decode_pybind.hpp"
+#include "ttnn/operations/experimental/speculative_execution/swap_tensor/swap_tensor_pybind.hpp"
+#include "ttnn/operations/experimental/speculative_execution/consolidate_cache/consolidate_cache_pybind.hpp"
 #include "ttnn/operations/experimental/reshape/view_pybind.hpp"
 
-#include "ttnn/operations/experimental/transformer/speculative_sdpa_decode/speculative_sdpa_decode_pybind.hpp"
 namespace ttnn::operations::experimental {
 
 void py_module(py::module& module) {
@@ -87,7 +88,9 @@ void py_module(py::module& module) {
         module.def_submodule("ccl_experimental", "experimental collective communication operations");
     ccl::py_module(m_experimental_ccl);
 
-    transformer::py_bind_speculative_sdpa_decode(module);
+    speculative_execution::py_bind_speculative_sdpa_decode(module);
+    speculative_execution::py_bind_swap_tensor(module);
+    speculative_execution::py_bind_consolidate_cache(module);
 }
 
 }  // namespace ttnn::operations::experimental
