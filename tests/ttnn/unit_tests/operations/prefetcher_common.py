@@ -387,19 +387,13 @@ def run_prefetcher_mm(
     )
 
     def run_op():
-        ttnn.dram_prefetcher(
-            tt_tensors,
-            tt_tensor_addrs,
-            num_layers,
-            global_circular_buffer,
-        )
-        device.set_sub_device_stall_group([worker_sub_device_id])
-
         outputs_dram = []
         for l in range(num_layers):
             outputs_l1 = []
             for t in range(num_tensors):
                 idx = l * num_tensors + t
+
+                logger.info("Matmul")
 
                 output_t = ttnn.matmul(
                     in0_t_tensors[t],
@@ -414,23 +408,33 @@ def run_prefetcher_mm(
             # Send outputs to DRAM to so that we don't run out of L1 memory when testing for large number of layers
             for t in range(num_tensors):
                 outputs_dram.append(ttnn.to_memory_config(outputs_l1[t], ttnn.DRAM_MEMORY_CONFIG))
-        device.reset_sub_device_stall_group()
+
         return outputs_dram
 
     ##### Compile Model #####
-    logger.info("Compiling model")
     outputs_t = run_op()
+    logger.info("set_sub_device_stall_group")
+    device.set_sub_device_stall_group([worker_sub_device_id])
+    logger.info("dram_prefetcher")
+    ttnn.dram_prefetcher(
+        tt_tensors,
+        tt_tensor_addrs,
+        num_layers,
+        global_circular_buffer,
+    )
+    logger.info("reset_sub_device_stall_group")
+    device.reset_sub_device_stall_group()
 
-    ##### Capture Trace #####
-    logger.info("Capturing trace")
+    # ##### Capture Trace #####
+    # logger.info("Capturing trace")
 
-    trace_id = ttnn.begin_trace_capture(device, cq_id=0)
-    outputs_t = run_op()
-    ttnn.end_trace_capture(device, trace_id, cq_id=0)
+    # trace_id = ttnn.begin_trace_capture(device, cq_id=0)
+    # outputs_t = run_op()
+    # ttnn.end_trace_capture(device, trace_id, cq_id=0)
 
-    ##### Run Trace #####
-    logger.info("Running trace")
-    ttnn.execute_trace(device, trace_id, cq_id=0, blocking=True)
+    # ##### Run Trace #####
+    # logger.info("Running trace")
+    # ttnn.execute_trace(device, trace_id, cq_id=0, blocking=True)
 
     ##### Check Results #####
     all_passing = True
