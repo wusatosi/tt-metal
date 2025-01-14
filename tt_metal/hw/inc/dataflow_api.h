@@ -718,9 +718,9 @@ void noc_async_read_one_packet(
  * coords)    | Yes      | | dst_local_l1_addr | Address in local L1 memory                         | uint32_t  | 0..1MB
  * | Yes      | | size              | Size of data transfer in bytes                     | uint32_t  | 0..1MB | Yes |
  */
-template <bool enable_noc_tracing = true>
-inline
-void noc_async_read(std::uint64_t src_noc_addr, std::uint32_t dst_local_l1_addr, std::uint32_t size, uint8_t noc = noc_index) {
+template <uint32_t max_page_size = NOC_MAX_BURST_SIZE + 1, bool enable_noc_tracing = true>
+inline void noc_async_read(
+    std::uint64_t src_noc_addr, std::uint32_t dst_local_l1_addr, std::uint32_t size, uint8_t noc = noc_index) {
     /*
         Read requests - use static VC
         Read responses - assigned VCs dynamically
@@ -728,43 +728,14 @@ void noc_async_read(std::uint64_t src_noc_addr, std::uint32_t dst_local_l1_addr,
 
     RECORD_NOC_EVENT_WITH_ADDR(NocEventType::READ,src_noc_addr,size, -1);
 
-    WAYPOINT("NARW");
-    DEBUG_SANITIZE_NOC_READ_TRANSACTION(noc, src_noc_addr, dst_local_l1_addr, size);
-    ncrisc_noc_fast_read_any_len(noc, read_cmd_buf, src_noc_addr, dst_local_l1_addr, size);
-    WAYPOINT("NARD");
-}
-
-// TODO: write docs
-// this issues only a single packet with size <= NOC_MAX_BURST_SIZE (ie maximum packet size)
-template <bool enable_noc_tracing = true>
-FORCE_INLINE
-void noc_async_read_one_packet(std::uint64_t src_noc_addr, std::uint32_t dst_local_l1_addr, std::uint32_t size, uint8_t noc = noc_index) {
-    /*
-        Read requests - use static VC
-        Read responses - assigned VCs dynamically
-    */
-
-    RECORD_NOC_EVENT_WITH_ADDR(NocEventType::READ, src_noc_addr, size, -1);
-
-    WAYPOINT("RPW");
-    while (!noc_cmd_buf_ready(noc, read_cmd_buf));
-    WAYPOINT("RPD");
-
-    WAYPOINT("NARW");
-    DEBUG_SANITIZE_NOC_READ_TRANSACTION(noc, src_noc_addr, dst_local_l1_addr, size);
-
-    NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_RET_ADDR_LO, dst_local_l1_addr);
-    NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_TARG_ADDR_LO, (uint32_t)src_noc_addr);
-#ifdef ARCH_BLACKHOLE
-    // Handles reading from PCIe
-    NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_TARG_ADDR_MID, (uint32_t)(src_noc_addr >> 32) & 0x1000000F);
-#endif
-    NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_TARG_ADDR_COORDINATE, (uint32_t)(src_noc_addr >> NOC_ADDR_COORD_SHIFT) & NOC_COORDINATE_MASK);
-    NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_AT_LEN_BE, size);
-    NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
-    noc_reads_num_issued[noc] += 1;
-
-    WAYPOINT("NARD");
+    if constexpr (max_page_size <= NOC_MAX_BURST_SIZE) {
+        noc_async_read_one_packet(src_noc_addr, dst_local_l1_addr, size, noc);
+    } else {
+        WAYPOINT("NARW");
+        DEBUG_SANITIZE_NOC_READ_TRANSACTION(noc, src_noc_addr, dst_local_l1_addr, size);
+        ncrisc_noc_fast_read_any_len(noc, read_cmd_buf, src_noc_addr, dst_local_l1_addr, size);
+        WAYPOINT("NARD");
+    }
 }
 
 // TODO: write docs
@@ -809,7 +780,7 @@ void noc_async_read_one_packet_with_state(std::uint32_t src_noc_addr, std::uint3
         Read responses - assigned VCs dynamically
     */
 
-    RECORD_NOC_EVENT_WITH_ADDR(NocEventType::READ_WITH_STATE,src_noc_addr,0,-1);
+    RECORD_NOC_EVENT_WITH_ADDR(NocEventType::READ_WITH_STATE, static_cast<uint64_t>(src_noc_addr), 0, -1);
 
     WAYPOINT("RPW");
     while (!noc_cmd_buf_ready(noc, read_cmd_buf));
@@ -1376,6 +1347,23 @@ FORCE_INLINE std::uint64_t get_noc_addr(
 
         InterleavedAddrGen: Check struct for attribute definitions.
     */
+    return s.get_noc_addr(id, offset, noc);
+}
+
+template <bool DRAM>
+FORCE_INLINE std::uint64_t get_noc_addr(
+    const uint32_t id, const InterleavedPow2AddrGenFast<DRAM>& s, uint32_t offset = 0, uint8_t noc = noc_index) {
+    /*
+        Alternative API for getting the noc address when we are reading using a swizzled
+        layout. This version assumes bank unit size is a power of 2 and less than or equal to NOC_MAX_BURST_SIZE.
+        For arbitrary bank unit size, use get_noc_addr(const uint32_t id, const InterleavedOffset s)
+
+        id: Unique id for the bank_unit you want to read, assuming row major order. We use this to compute the
+        bank for this unit of data.
+
+        InterleavedPow2AddrGenFast: Check struct for attribute definitions.
+    */
+
     return s.get_noc_addr(id, offset, noc);
 }
 
