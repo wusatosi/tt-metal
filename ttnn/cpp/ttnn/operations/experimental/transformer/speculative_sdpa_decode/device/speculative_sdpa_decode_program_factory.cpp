@@ -49,9 +49,9 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
     uint32_t num_devices,
     uint32_t device_index,
     ttnn::ccl::Topology topology,
-    std::optional<std::shared_ptr<const GlobalSemaphore>> semaphore_handle,
-    std::optional<Device*> forward_device,
-    std::optional<Device*> backward_device) {
+    std::optional<GlobalSemaphore> global_semaphore,
+    std::optional<IDevice*> forward_device,
+    std::optional<IDevice*> backward_device) {
     /*
     Q: 1 x B x PNH x DH
     K: 1 x B x S x DH
@@ -635,7 +635,7 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
             ccl_core,                                            // ccl core
             local_spec_result_input_ready_semaphore_id,          // local spec result input ready semaphore
             local_spec_result_input_ready_semaphore_wait_count,  // local spec result input ready semaphore wait count
-            semaphore_handle.value(),                            // global semaphore handle
+            global_semaphore.value(),                            // global semaphore handle
             ccl_result_ready_semaphore_id,                       // ccl result ready semaphore, set on reducer cores
             reduce_core_physical_xs,                             // reducer core physical xs
             reduce_core_physical_ys);                            // reducer core physical ys

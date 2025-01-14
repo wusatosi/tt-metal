@@ -455,6 +455,8 @@ void kernel_main() {
             bool is_speculation_correct =
                 converted_dist_val <= (lambda_val_float * lambda_val_float) * converted_norm_val;
             uint32_t priority_val = is_speculation_correct ? 0 : 2;
+            DPRINT << "lambda*lambda: " << lambda_val_float * lambda_val_float << ENDL();
+            DPRINT << "l^2*norm_val: " << lambda_val_float * lambda_val_float * converted_norm_val << ENDL();
             DPRINT << "priority val: " << priority_val << ENDL();
             // write priority to a local cb, in this case, cb_out_l
             volatile tt_l1_ptr uint32_t* priority_val_ptr =

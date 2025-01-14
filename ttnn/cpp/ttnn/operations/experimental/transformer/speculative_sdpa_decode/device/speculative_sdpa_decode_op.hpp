@@ -28,9 +28,9 @@ struct SpeculativeScaledDotProductAttentionDecode {
     const uint32_t num_devices;
     const uint32_t device_index;
     const ttnn::ccl::Topology topology;
-    std::optional<std::shared_ptr<const GlobalSemaphore>> semaphore_handle;
-    std::optional<Device*> forward_device;
-    std::optional<Device*> backward_device;
+    std::optional<GlobalSemaphore> semaphore;
+    std::optional<IDevice*> forward_device;
+    std::optional<IDevice*> backward_device;
     const std::optional<bool> share_cache;
 
     void validate(

@@ -14,8 +14,8 @@ namespace ttnn::operations::experimental::transformer::detail {
 std::tuple<KernelHandle, KernelHandle> ccl_multi_core_with_workers(
     tt::tt_metal::Program& program,
     const Tensor& input_tensor,
-    std::optional<Device*> forward_device,
-    std::optional<Device*> backward_device,
+    std::optional<IDevice*> forward_device,
+    std::optional<IDevice*> backward_device,
     const Tensor& output_tensor,
     const uint32_t ring_size,
     const uint32_t ring_index,
@@ -23,7 +23,7 @@ std::tuple<KernelHandle, KernelHandle> ccl_multi_core_with_workers(
     CoreCoord ccl_core,
     uint32_t local_spec_result_input_ready_semaphore,
     uint32_t local_spec_result_input_ready_semaphore_wait_count,
-    std::shared_ptr<const GlobalSemaphore>& global_semaphore_handle,
+    GlobalSemaphore& global_semaphore,
     uint32_t ccl_result_ready_semaphore_id,
     std::vector<uint32_t> result_ready_core_physical_xs,
     std::vector<uint32_t> result_ready_core_physical_ys);
@@ -55,8 +55,8 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
     uint32_t num_devices,
     uint32_t device_index,
     ttnn::ccl::Topology topology,
-    std::optional<std::shared_ptr<const GlobalSemaphore>> semaphore_handle,
-    std::optional<Device*> forward_device,
-    std::optional<Device*> backward_device);
+    std::optional<GlobalSemaphore> global_semaphore,
+    std::optional<IDevice*> forward_device,
+    std::optional<IDevice*> backward_device);
 
 }  // namespace ttnn::operations::experimental::transformer::detail

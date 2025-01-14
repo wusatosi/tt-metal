@@ -53,9 +53,7 @@ ExecuteSpeculativeScaledDotProductAttentionDecode::invoke(
     const std::optional<Tensor>& other_priority_tensor,
     const bool ccl_enabled,
     const std::optional<global_semaphore::MultiDeviceGlobalSemaphore>& multi_device_global_semaphore) {
-    auto arch = input_tensor_q.storage_type() == StorageType::DEVICE
-                    ? input_tensor_q.device()->arch()
-                    : ttnn::operations::experimental::auto_format::AutoFormat::GetDefaultDevice()->arch();
+    auto arch = input_tensor_q.device()->arch();
     uint32_t s = input_tensor_k.get_logical_shape()[-2];
     uint32_t k_chunk_size = get_chunk_size(s);
     if (program_config.has_value() && program_config.value().k_chunk_size > 0) {
@@ -120,15 +118,15 @@ ExecuteSpeculativeScaledDotProductAttentionDecode::invoke(
             auto this_device = input_tensors.at(0).device();
             uint32_t num_devices = devices.size();
             uint32_t device_index = 0;
-            std::optional<Device*> forward_device = std::nullopt;
-            std::optional<Device*> backward_device = std::nullopt;
-            std::shared_ptr<const GlobalSemaphore> semaphore_handle = nullptr;
+            std::optional<IDevice*> forward_device = std::nullopt;
+            std::optional<IDevice*> backward_device = std::nullopt;
+            std::optional<GlobalSemaphore> semaphore = std::nullopt;
             if (ccl_enabled) {
-                auto semaphore_handles = multi_device_global_semaphore.value().global_semaphores;
+                auto semaphores = multi_device_global_semaphore.value().global_semaphores;
                 for (uint32_t i = 0; i < num_devices; ++i) {
                     if (devices.at(i) == this_device) {
                         device_index = i;
-                        semaphore_handle = semaphore_handles.at(i);  // Get raw pointer
+                        semaphore = semaphores.at(i);  // Get raw pointer
                         if (i != 0) {
                             backward_device = devices.at(i - 1);
                         }
@@ -141,7 +139,7 @@ ExecuteSpeculativeScaledDotProductAttentionDecode::invoke(
                 tt::log_info("device_index: {}", device_index);
                 tt::log_info("backward_device: {}", backward_device);
                 tt::log_info("forward_device: {}", forward_device);
-                tt::log_info("semaphore_handle: {}", semaphore_handle->address());
+                tt::log_info("semaphore: {}", semaphore->address());
             }
 
             return operation::run(
@@ -159,7 +157,7 @@ ExecuteSpeculativeScaledDotProductAttentionDecode::invoke(
                     .num_devices = num_devices,
                     .device_index = device_index,
                     .topology = ccl_topology,
-                    .semaphore_handle = semaphore_handle,
+                    .semaphore = semaphore,
                     .forward_device = forward_device,
                     .backward_device = backward_device},
                 input_tensors,
