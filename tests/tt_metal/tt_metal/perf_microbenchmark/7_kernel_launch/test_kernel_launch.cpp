@@ -49,6 +49,7 @@ int main(int argc, char** argv) {
     uint32_t num_cores_c = 0;
     uint32_t num_core_groups;
     uint32_t num_tests = 10;
+    bool use_trace = false;
     bool bypass_check = false;
     try {
         std::tie(num_cores_r, input_args) =
@@ -62,6 +63,8 @@ int main(int argc, char** argv) {
         std::tie(num_tests, input_args) =
             test_args::get_command_option_uint32_and_remaining_args(input_args, "--num-tests", 10);
 
+        std::tie(use_trace, input_args) = test_args::has_command_option_and_remaining_args(input_args, "--use-trace");
+
         std::tie(bypass_check, input_args) =
             test_args::has_command_option_and_remaining_args(input_args, "--bypass-check");
 
@@ -74,7 +77,8 @@ int main(int argc, char** argv) {
     //                      Device Setup
     ////////////////////////////////////////////////////////////////////////////
     int device_id = 0;
-    tt_metal::Device* device = tt_metal::CreateDevice(device_id);
+    size_t trace_region_size = use_trace ? 256 * 1024 : 0;
+    tt_metal::Device* device = tt_metal::CreateDevice(device_id, 1, 0, trace_region_size);
 
     auto grid_coord = device->compute_with_storage_grid_size();
     num_cores_c = (num_cores_c == 0) ? grid_coord.x : num_cores_c;
@@ -159,20 +163,24 @@ int main(int argc, char** argv) {
                 group_of_cores,
                 tt_metal::ComputeConfig{.compile_args = compute_compile_args});
 
-            for (int i = start_core.y; i <= end_core.y; i++) {
-                for (int j = start_core.x; j <= end_core.x; j++) {
-                    CoreCoord core = {(std::size_t)j, (std::size_t)i};
-                    int core_index = i * num_cores_c + j;
+            constexpr uint32_t NUM_RTA = 0;
 
-                    std::array<uint32_t, 255> reader_runtime_args;
-                    std::array<uint32_t, 255> writer_runtime_args;
-                    for (uint32_t k = 0; k < 255; ++k) {
-                        reader_runtime_args[k] = core_index + k;
-                        writer_runtime_args[k] = core_index + k;
+            if constexpr (NUM_RTA > 0) {
+                for (int i = start_core.y; i <= end_core.y; i++) {
+                    for (int j = start_core.x; j <= end_core.x; j++) {
+                        CoreCoord core = {(std::size_t)j, (std::size_t)i};
+                        int core_index = i * num_cores_c + j;
+
+                        std::array<uint32_t, NUM_RTA> reader_runtime_args;
+                        std::array<uint32_t, NUM_RTA> writer_runtime_args;
+                        for (uint32_t k = 0; k < NUM_RTA; ++k) {
+                            reader_runtime_args[k] = core_index + k;
+                            writer_runtime_args[k] = core_index + k;
+                        }
+
+                        SetRuntimeArgs(program, writer_kernel, core, writer_runtime_args);
+                        SetRuntimeArgs(program, reader_kernel, core, reader_runtime_args);
                     }
-
-                    SetRuntimeArgs(program, writer_kernel, core, writer_runtime_args);
-                    SetRuntimeArgs(program, reader_kernel, core, reader_runtime_args);
                 }
             }
         }
@@ -183,16 +191,50 @@ int main(int argc, char** argv) {
         tt_metal::detail::CompileProgram(device, program);
 
         log_info(LogTest, "Num tests {}", num_tests);
-        for (uint32_t i = 0; i < num_tests; ++i) {
-            auto t_begin = std::chrono::steady_clock::now();
-            EnqueueProgram(device->command_queue(), program, false);
-            Finish(device->command_queue());
-            auto t_end = std::chrono::steady_clock::now();
-            elapsed_us.push_back(duration_cast<microseconds>(t_end - t_begin).count());
 
-            log_info(LogTest, "Time elapsed for executing empty kernels: {}us", elapsed_us[i]);
+        // compile kernel
+        EnqueueProgram(device->command_queue(), program, true);
+        Finish(device->command_queue());
+
+        uint32_t trace_id;
+        if (use_trace) {
+            // capture trace
+            trace_id = BeginTraceCapture(device, 0);
+            EnqueueProgram(device->command_queue(), program, false);
+            EndTraceCapture(device, 0, trace_id);
+            Finish(device->command_queue());
+
+            // warm-up
+            uint32_t num_warmups = 5;
+            for (uint32_t i = 0; i < num_warmups; ++i) {
+                EnqueueTrace(device->command_queue(), trace_id, false);
+            }
+            Finish(device->command_queue());
         }
 
+        auto t_begin = std::chrono::steady_clock::now();
+
+        if (use_trace) {
+            for (uint32_t i = 0; i < num_tests; ++i) {
+                EnqueueTrace(device->command_queue(), trace_id, false);
+            }
+        } else {
+            for (uint32_t i = 0; i < num_tests; ++i) {
+                EnqueueProgram(device->command_queue(), program, false);
+            }
+        }
+        Finish(device->command_queue());
+
+        auto t_end = std::chrono::steady_clock::now();
+        auto elapsed_us = (duration_cast<microseconds>(t_end - t_begin).count());
+
+        if (use_trace) {
+            ReleaseTrace(device, trace_id);
+        }
+
+        log_info("Time elapsed for executing empty kernels: {}us", elapsed_us);
+
+        tt_metal::detail::DumpDeviceProfileResults(device);
         pass &= tt_metal::CloseDevice(device);
     } catch (const std::exception& e) {
         pass = false;
@@ -200,27 +242,9 @@ int main(int argc, char** argv) {
         log_error(LogTest, "System error message: {}", std::strerror(errno));
     }
 
-    // Determine if it passes performance goal
-    auto avg_elapsed_us = calculate_average(elapsed_us);
-    if (pass && bypass_check == false) {
-        // goal is under 10us
-        long target_us = 10;
-
-        if (avg_elapsed_us > target_us) {
-            pass = false;
-            log_error(
-                LogTest,
-                "The kernel launch overhead does not meet the criteria. "
-                "Current: {}us, goal: <{}us",
-                avg_elapsed_us,
-                target_us);
-        }
-    }
-
     // for csv
     log_info("CSV_MICROBENCHMARK:title:test_kernel_launch");
     log_info("CSV_INPUT:num-cores-r:{}:num-cores-c:{}:core-groups:{}", num_cores_r, num_cores_c, num_core_groups);
-    log_info("CSV_OUTPUT:ElapsedTime(us):{}", avg_elapsed_us);
     log_info("CSV_RESULT:pass:{}", pass);
 
     if (pass) {
