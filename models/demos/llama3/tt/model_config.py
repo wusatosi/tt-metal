@@ -656,9 +656,9 @@ class TtModelArgs:
             self.is_2d_fracturing = all([dim > 1 for dim in self.mesh_device.shape]) if self.mesh_device else False
             self.is_multichip = self.num_devices > 1
 
-            print(f"attn_input_grid: {attn_input_grid}")
-            print(f"mlp_core_grid: {mlp_core_grid}")
-            print(f"lm_head_core_grid: {self.lm_head_core_grid}")
+            logger.info(f"Attention grid: {attn_input_grid}")
+            logger.info(f"MLP grid: {mlp_core_grid}")
+            logger.info(f"LM head grid: {self.lm_head_core_grid}")
 
     def is_distributed_norm(self, mode):
         if not self.is_multichip:
@@ -775,11 +775,30 @@ class TtModelArgs:
             self.multiple_of = params["multiple_of"]
             self.hidden_dim = calculate_hidden_dim(self.dim, self.ffn_dim_multiplier, self.multiple_of)
 
-        # Pad hidden dim to multiple of tile size * num_devices * 8 cores as MLP shards in this dimension
-        padded_hidden_dim = nearest_multiple(self.hidden_dim, 16 * self.tile_size * self.num_devices)
-        if padded_hidden_dim != self.hidden_dim:
-            print(f"padding hidden dim from {self.hidden_dim} to {padded_hidden_dim}")
-            self.hidden_dim = padded_hidden_dim
+        if "_name_or_path" in params:
+            self.model_name = params["_name_or_path"].split("/")[-1]
+        base_model_name = self.model_name.split("B-")[0] + "B" if "B-" in self.model_name else self.model_name
+
+        if base_model_name == "Qwen2.5-7B" and self.num_devices != 2:
+            raise AssertionError("Qwen2.5-7B is only supported on 2 devices, run on an N300 or use FAKE_DEVICE=N300")
+
+        # Default padding cores for each model, 0 if not set here
+        default_padded_cores = {
+            "Qwen2.5-72B": 32,
+            "Qwen2.5-7B": 16,
+        }.get(base_model_name, 0)
+
+        # Override MLP padding cores from env var
+        mlp_padded_cores = int(os.environ.get("PAD_MLP_CORES", default_padded_cores))
+
+        # Only pad if MLP_PADDED_CORES is non-zero
+        if mlp_padded_cores > 0:
+            padded_hidden_dim = nearest_multiple(self.hidden_dim, mlp_padded_cores * self.tile_size * self.num_devices)
+            if padded_hidden_dim != self.hidden_dim:
+                logger.info(
+                    f"PAD_MLP_CORES={mlp_padded_cores}, padding hidden dim from {self.hidden_dim} to {padded_hidden_dim}"
+                )
+                self.hidden_dim = padded_hidden_dim
 
         # RoPE params
         self.rope_theta = params.get("rope_theta")
@@ -920,7 +939,7 @@ class TtModelArgs:
         in0_block_w: int = None,
         fuse_batch: bool = False,
         fused_activation=None,
-    ) -> ttnn.MatmulMultiCoreReuseMultiCastProgramConfig:
+    ):
         per_core_M = math.ceil(m / (self.tile_size * grid_size[1]))
         per_core_N = math.ceil(n / (self.tile_size * grid_size[0]))
 
@@ -1024,9 +1043,7 @@ class TtModelArgs:
             f"Cannot find a grid configuration such that both {K} and {N} tiles evenly divide into cores of max size {max_rows}x{max_cols}."
         )
 
-    def dram_matmul_config(
-        self, m: int, k: int, n: int, num_cores=None
-    ) -> ttnn.MatmulMultiCoreReuseMultiCastDRAMShardedProgramConfig:
+    def dram_matmul_config(self, m: int, k: int, n: int, num_cores=None):
         # in0_block_w must evenly divide k and be no larger than tile_size * num_cores
         if num_cores is None:
             # num_cores = self.dram_shard_core_grid_for_k(k).num_cores
