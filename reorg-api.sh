@@ -2,9 +2,6 @@
 
 pushd tt_metal
 mkdir -p api/tt-metalium
-mkdir -p api/grayskull/tt-metalium
-mkdir -p api/wormhole/tt-metalium
-mkdir -p api/blackhole/tt-metalium
 
 git mv host_api.hpp api/tt-metalium/ 2>/dev/null
 git mv impl/kernels/runtime_args_data.hpp api/tt-metalium/ 2>/dev/null
@@ -111,16 +108,6 @@ git mv detail/reports/compilation_reporter.hpp api/tt-metalium/ 2>/dev/null
 git mv common/tilize_untilize.hpp api/tt-metalium/ 2>/dev/null
 git mv hw/inc/dataflow_api.h api/tt-metalium/ 2>/dev/null
 git mv hw/inc/tt_log.h api/tt-metalium/ 2>/dev/null
-
-# Here be copies.  BAD BAD BAD.  Because reasons.  And ARCH_NAME.  And stuff.
-cp hw/inc/grayskull/noc/noc_parameters.h api/grayskull/tt-metalium/ 2>/dev/null
-cp hw/inc/wormhole/noc/noc_parameters.h api/wormhole/tt-metalium/ 2>/dev/null
-cp hw/inc/blackhole/noc/noc_parameters.h api/blackhole/tt-metalium/ 2>/dev/null
-
-git mv hw/inc/grayskull/eth_l1_address_map.h api/grayskull/tt-metalium/ 2>/dev/null
-git mv hw/inc/wormhole/eth_l1_address_map.h api/wormhole/tt-metalium/ 2>/dev/null
-git mv hw/inc/blackhole/eth_l1_address_map.h api/blackhole/tt-metalium/ 2>/dev/null
-
 
 git mv detail/reports/memory_reporter.hpp api/tt-metalium/ 2>/dev/null
 git mv impl/debug/dprint_server.hpp api/tt-metalium/ 2>/dev/null

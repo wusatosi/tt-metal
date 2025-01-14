@@ -81,6 +81,7 @@ s/#include "(tt_metal\/)?common\/(bfloat8.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?detail\/(tt_metal.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?graph\/(graph_tracking.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?impl\/buffers\/(buffer.hpp)"/#include <\2>/
+s/#include "(tt_metal\/impl\/)?buffers\/(buffer.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?impl\/buffers\/(buffer_constants.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?impl\/buffers\/(global_circular_buffer.hpp)"/#include <global_circular_buffer_impl.hpp>/
 s/#include "(tt_metal\/)?impl\/device\/(device_handle.hpp)"/#include <\2>/
@@ -107,7 +108,6 @@ s/#include "(tt_metal\/)?common\/(work_split.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?impl\/trace\/(trace.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?detail\/reports\/(compilation_reporter.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?detail\/reports\/(memory_reporter.hpp)"/#include <\2>/
-s/#include "(noc\/)(noc_parameters.h)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?impl\/debug\/(dprint_server.hpp)"/#include <\2>/
 
 s/#include "(third_party\/)?taskflow\/(taskflow\/taskflow.hpp)"/#include <\2>/

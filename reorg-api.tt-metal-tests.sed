@@ -77,7 +77,9 @@ s/#include "(tt_metal\/)?common\/(bfloat8.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?detail\/(tt_metal.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?graph\/(graph_tracking.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?impl\/buffers\/(buffer.hpp)"/#include <tt-metalium\/\2>/
+s/#include "(tt_metal\/impl\/)?buffers\/(buffer.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?impl\/buffers\/(buffer_constants.hpp)"/#include <tt-metalium\/\2>/
+s/#include "(tt_metal\/impl\/)?buffers\/(buffer_constants.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?impl\/buffers\/(global_circular_buffer.hpp)"/#include <tt-metalium\/global_circular_buffer_impl.hpp>/
 s/#include "(tt_metal\/)?impl\/device\/(device_handle.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?impl\/tile\/(tile.hpp)"/#include <tt-metalium\/\2>/
