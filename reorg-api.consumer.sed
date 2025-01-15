@@ -50,7 +50,8 @@ s/#include "(tt_metal\/)?impl\/program\/(program.hpp)"/#include <tt-metalium\/pr
 s/#include "(tt_metal\/)?tt_stl\/(type_name.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?impl\/device\/(device_pool.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?impl\/device\/(program_cache.hpp)"/#include <tt-metalium\/\2>/
-s/#include "(tt_metal\/)?tools\/profiler\/(op_profiler.hpp)"/#include <tt-metalium\/\2>/
+# s/#include "(tt_metal\/)?tools\/profiler\/(op_profiler.hpp)"/#include <tt-metalium\/\2>/
+s/#include "(tt_metal\/)?tools\/profiler\/(profiler.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?common\/(work_split.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?detail\/(util.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?impl\/buffers\/(circular_buffer.hpp)"/#include <tt-metalium\/\2>/
@@ -77,3 +78,4 @@ s/#include "tt_metal\/hostdevcommon\/api\/hostdevcommon\/(common_values.hpp)"/#i
 s/#include "tt_metal\/hostdevcommon\/(common_values.hpp)"/#include <hostdevcommon\/\1>/
 s/#include "tt_metal\/hw\/inc\/(risc_attribs.h)"/#include <tt-metalium\/\1>/
 s/#include "tt_metal\/hw\/inc\/(dataflow_api.h)"/#include <tt-metalium\/\1>/
+s/#include "tt_metal\/distributed\/(system_mesh.hpp)"/#include <tt-metalium\/\1>/

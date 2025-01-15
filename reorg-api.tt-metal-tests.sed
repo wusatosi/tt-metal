@@ -94,7 +94,7 @@ s/#include "(tt_metal\/)?impl\/dispatch\/(command_queue.hpp)"/#include <tt-metal
 s/#include "(tt_metal\/)?impl\/dispatch\/(worker_config_buffer.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?impl\/trace\/(trace_buffer.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?impl\/device\/(device_pool.hpp)"/#include <tt-metalium\/\2>/
-s/#include "(tt_metal\/)?tools\/profiler\/(op_profiler.hpp)"/#include <tt-metalium\/\2>/
+# s/#include "(tt_metal\/)?tools\/profiler\/(op_profiler.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?tools\/profiler\/(profiler.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?tools\/profiler\/(profiler_state.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?tools\/profiler\/(common.hpp)"/#include <tt-metalium\/\2>/
@@ -115,3 +115,4 @@ s/#include "(tt_metal\/)?impl\/debug\/(dprint_server.hpp)"/#include <tt-metalium
 s/#include "(tt_metal\/)?hw\/inc\/(dataflow_api.h)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?impl\/event\/(event.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?detail\/(persistent_kernel_cache.hpp)"/#include <tt-metalium\/\2>/
+s/#include "(tt_metal\/)?distributed\/(system_mesh.hpp)"/#include <tt-metalium\/\2>/

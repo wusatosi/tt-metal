@@ -71,6 +71,7 @@ s/#include "(tt_metal\/impl\/)?dispatch\/(dispatch_constants.hpp)"/#include <\2>
 s/#include "(tt_metal\/)?impl\/dispatch\/util\/include\/(helpers.hpp)"/#include <\2>/
 s/#include "(tt_metal\/impl\/dispatch\/util\/)?include\/(helpers.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)(device.hpp)"/#include <\2>/
+s/#include "(tt_metal\/)include\/tt_metal\/(device.hpp)"/#include <\2>/
 
 # End of host_api.hpp
 
@@ -98,7 +99,7 @@ s/#include "(tt_metal\/)?impl\/dispatch\/(command_queue.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?impl\/dispatch\/(worker_config_buffer.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?impl\/trace\/(trace_buffer.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?impl\/device\/(device_pool.hpp)"/#include <\2>/
-s/#include "(tt_metal\/)?tools\/profiler\/(op_profiler.hpp)"/#include <\2>/
+# s/#include "(tt_metal\/)?tools\/profiler\/(op_profiler.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?tools\/profiler\/(profiler.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?tools\/profiler\/(profiler_state.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?tools\/profiler\/(common.hpp)"/#include <\2>/
@@ -119,3 +120,6 @@ s/#include "(tt_metal\/)?experimental\/(hal.hpp)"/#include <hal_exp.hpp>/
 s/#include "(tt_metal\/)?impl\/event\/(event.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?detail\/(persistent_kernel_cache.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?impl\/sub_device\/(sub_device_manager_tracker.hpp)"/#include <\2>/
+
+s/#include "(tt_metal\/)?distributed\/(mesh_config.hpp)"/#include <\2>/
+s/#include "(tt_metal\/)?distributed\/(system_mesh.hpp)"/#include <\2>/

@@ -97,7 +97,7 @@ git mv impl/dispatch/worker_config_buffer.hpp api/tt-metalium/ 2>/dev/null
 git mv impl/trace/trace_buffer.hpp api/tt-metalium/ 2>/dev/null
 git mv impl/trace/trace.hpp api/tt-metalium/ 2>/dev/null
 git mv impl/device/device_pool.hpp api/tt-metalium/ 2>/dev/null
-git mv tools/profiler/op_profiler.hpp api/tt-metalium/ 2>/dev/null
+# git mv tools/profiler/op_profiler.hpp api/tt-metalium/ 2>/dev/null
 git mv tools/profiler/profiler.hpp api/tt-metalium/ 2>/dev/null
 git mv tools/profiler/profiler_state.hpp api/tt-metalium/ 2>/dev/null
 git mv tools/profiler/common.hpp api/tt-metalium/ 2>/dev/null
@@ -117,6 +117,9 @@ git mv detail/persistent_kernel_cache.hpp api/tt-metalium/ 2>/dev/null
 
 git mv hw/inc/risc_attribs.h api/tt-metalium/ 2>/dev/null
 git mv impl/sub_device/sub_device_manager_tracker.hpp api/tt-metalium/ 2>/dev/null
+
+git mv distributed/mesh_config.hpp api/tt-metalium/ 2>/dev/null
+git mv distributed/system_mesh.hpp api/tt-metalium/ 2>/dev/null
 popd
 
 pushd tt_metal
