@@ -749,23 +749,26 @@ void Device::initialize_and_launch_firmware() {
     }
 
     // Clear erisc sync info
-    for (const auto &eth_core : this->get_active_ethernet_cores()) {
+    // for (const auto &eth_core : this->get_active_ethernet_cores()) {
 
-        static std::vector<uint32_t> zero_vec_erisc_init(hal.get_dev_size(HalProgrammableCoreType::ACTIVE_ETH, HalL1MemAddrType::APP_SYNC_INFO) / sizeof(uint32_t), 0);
+    //     static std::vector<uint32_t> zero_vec_erisc_init(hal.get_dev_size(HalProgrammableCoreType::ACTIVE_ETH,
+    //     HalL1MemAddrType::APP_SYNC_INFO) / sizeof(uint32_t), 0);
 
-        CoreCoord virtual_core = this->ethernet_core_from_logical_core(eth_core);
+    //     CoreCoord virtual_core = this->ethernet_core_from_logical_core(eth_core);
 
-        llrt::write_hex_vec_to_core(
-            this->id(), virtual_core, zero_vec_erisc_init, hal.get_dev_addr(HalProgrammableCoreType::ACTIVE_ETH, HalL1MemAddrType::APP_SYNC_INFO));
-    }
+    //     llrt::write_hex_vec_to_core(
+    //         this->id(), virtual_core, zero_vec_erisc_init, hal.get_dev_addr(HalProgrammableCoreType::ACTIVE_ETH,
+    //         HalL1MemAddrType::APP_SYNC_INFO));
+    // }
 
     // Load erisc app base FW to eth cores
-    for (const auto &eth_core : this->get_active_ethernet_cores()) {
-        CoreCoord phys_eth_core = this->ethernet_core_from_logical_core(eth_core);
-        tt::llrt::write_hex_vec_to_core(
-            this->id(), phys_eth_core, core_info_vec, this->get_dev_addr(phys_eth_core, HalL1MemAddrType::CORE_INFO));
-        this->initialize_firmware(HalProgrammableCoreType::ACTIVE_ETH, phys_eth_core, &launch_msg, &go_msg);
-    }
+    // for (const auto &eth_core : this->get_active_ethernet_cores()) {
+    //     CoreCoord phys_eth_core = this->ethernet_core_from_logical_core(eth_core);
+    //     tt::llrt::write_hex_vec_to_core(
+    //         this->id(), phys_eth_core, core_info_vec, this->get_dev_addr(phys_eth_core,
+    //         HalL1MemAddrType::CORE_INFO));
+    //     this->initialize_firmware(HalProgrammableCoreType::ACTIVE_ETH, phys_eth_core, &launch_msg, &go_msg);
+    // }
 
     for (const auto &eth_core : this->get_inactive_ethernet_cores()) {
         CoreCoord phys_eth_core = this->ethernet_core_from_logical_core(eth_core);
