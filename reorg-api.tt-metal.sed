@@ -118,3 +118,4 @@ s/#include "..\/(dataflow_api.h)"/#include <tt-metalium\/\1>/
 s/#include "(tt_metal\/)?experimental\/(hal.hpp)"/#include <hal_exp.hpp>/
 s/#include "(tt_metal\/)?impl\/event\/(event.hpp)"/#include <\2>/
 s/#include "(tt_metal\/)?detail\/(persistent_kernel_cache.hpp)"/#include <\2>/
+s/#include "(tt_metal\/)?impl\/sub_device\/(sub_device_manager_tracker.hpp)"/#include <\2>/

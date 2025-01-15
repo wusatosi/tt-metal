@@ -72,3 +72,8 @@ s/#include "(tt_metal\/)?experimental\/(hal.hpp)"/#include <tt-metalium\/hal_exp
 s/#include "(tt_metal\/)?tt_stl\/(overloaded.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?impl\/event\/(event.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?detail\/(persistent_kernel_cache.hpp)"/#include <tt-metalium\/\2>/
+s/#include "(tt_metal\/)?llrt\/(tt_cluster.hpp)"/#include <tt-metalium\/\2>/
+s/#include "tt_metal\/hostdevcommon\/api\/hostdevcommon\/(common_values.hpp)"/#include <hostdevcommon\/\1>/
+s/#include "tt_metal\/hostdevcommon\/(common_values.hpp)"/#include <hostdevcommon\/\1>/
+s/#include "tt_metal\/hw\/inc\/(risc_attribs.h)"/#include <tt-metalium\/\1>/
+s/#include "tt_metal\/hw\/inc\/(dataflow_api.h)"/#include <tt-metalium\/\1>/

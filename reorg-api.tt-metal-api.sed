@@ -87,3 +87,4 @@ s/#include <(tt_metal.hpp)>/#include "\1"/
 s/#include <(command_queue.hpp)>/#include "\1"/
 s/#include <(device_pool.hpp)>/#include "\1"/
 s/#include <(dprint_server.hpp)>/#include "\1"/
+s/#include <(sub_device_manager_tracker.hpp)>/#include "\1"/

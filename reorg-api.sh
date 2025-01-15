@@ -115,6 +115,8 @@ git mv tt_stl/overloaded.hpp api/tt-metalium/ 2>/dev/null
 git mv impl/event/event.hpp api/tt-metalium/ 2>/dev/null
 git mv detail/persistent_kernel_cache.hpp api/tt-metalium/ 2>/dev/null
 
+git mv hw/inc/risc_attribs.h api/tt-metalium/ 2>/dev/null
+git mv impl/sub_device/sub_device_manager_tracker.hpp api/tt-metalium/ 2>/dev/null
 popd
 
 pushd tt_metal
@@ -141,6 +143,11 @@ popd
 pushd tt-train
 find . \( -name '*.hpp' -o -name '*.h' -o -name '*.cpp' \) -print | xargs sed -Ef ../reorg-api.consumer.sed -i
 find . \( -name '*.hpp' -o -name '*.h' -o -name '*.cpp' \) -print | xargs sed -Ef ../reorg-api.ttnn.sed -i
+popd
+
+pushd tt_fabric
+find . \( -name '*.hpp' -o -name '*.h' -o -name '*.cpp' \) -print | xargs sed -Ef ../reorg-api.consumer.sed -i
+find . \( -name '*.hpp' -o -name '*.h' -o -name '*.cpp' \) -print | xargs sed -Ef ../reorg-api.fabric.sed -i
 popd
 
 pushd tests
