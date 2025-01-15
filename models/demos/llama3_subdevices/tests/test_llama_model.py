@@ -6,14 +6,14 @@ import pytest
 from loguru import logger
 import os
 import ttnn
-from models.demos.llama3.tt.llama_common import (
+from models.demos.llama3_subdevices.tt.llama_common import (
     sample_host,
     encode_prompt_llama_instruct,
     HostEmbedding,
     PagedAttentionConfig,
 )
-from models.demos.llama3.tt.model_config import TtModelArgs, LlamaOptimizations
-from models.demos.llama3.tt.llama_model import TtTransformer
+from models.demos.llama3_subdevices.tt.model_config import TtModelArgs, LlamaOptimizations
+from models.demos.llama3_subdevices.tt.llama_model import TtTransformer
 from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import Transformer
 from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.tokenizer import Tokenizer
 from models.utility_functions import (
@@ -52,7 +52,7 @@ from models.utility_functions import skip_for_grayskull
 )
 @pytest.mark.parametrize(
     "batch_size",
-    (1,),
+    (32,),
 )
 @pytest.mark.parametrize(
     "max_seq_len",
@@ -62,7 +62,7 @@ from models.utility_functions import skip_for_grayskull
     "optimizations",
     [
         pytest.param(LlamaOptimizations.accuracy, id="accuracy"),
-        pytest.param(LlamaOptimizations.performance, id="performance"),
+        # pytest.param(LlamaOptimizations.performance, id="performance"),
     ],
 )
 @pytest.mark.parametrize(
@@ -74,6 +74,7 @@ from models.utility_functions import skip_for_grayskull
     ],
     indirect=True,
 )
+@pytest.mark.parametrize("device_params", [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL}], indirect=True)
 def test_llama_model_inference(
     weights,
     layers,

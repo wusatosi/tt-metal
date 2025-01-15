@@ -737,6 +737,41 @@ class TtModelArgs:
                 use_height_and_width_as_shard_shape=True,
             )
 
+            LM_HEAD_RING_SIZE = 48
+            self.lm_head_shape = (12288 // 4, 128 * 1024 // 8 + 512)
+            lm_head_ring_core_range_set = ttnn.num_cores_to_corerangeset_in_subcoregrids(
+                self.start_core, LM_HEAD_RING_SIZE, self.sub_core_grids, row_wise=True
+            )
+            self.model_config["SHARDED_LM_HEAD_INPUT_RING_MEMCFG"] = ttnn.create_sharded_memory_config(
+                shape=(32, self.lm_head_shape[0] // LM_HEAD_RING_SIZE),
+                core_grid=lm_head_ring_core_range_set,
+                strategy=ttnn.ShardStrategy.WIDTH,
+                orientation=ttnn.ShardOrientation.ROW_MAJOR,
+                use_height_and_width_as_shard_shape=True,
+            )
+            self.model_config["LM_HEAD_RING_MEMCFG"] = ttnn.create_sharded_memory_config(
+                shape=(self.lm_head_shape[0], self.lm_head_shape[1] // LM_HEAD_RING_SIZE),
+                core_grid=lm_head_ring_core_range_set,
+                strategy=ttnn.ShardStrategy.WIDTH,
+                orientation=ttnn.ShardOrientation.ROW_MAJOR,
+                use_height_and_width_as_shard_shape=True,
+            )
+            self.model_config["LM_HEAD_OUT_RING_MEMCFG"] = ttnn.create_sharded_memory_config(
+                shape=(32, self.lm_head_shape[1] // LM_HEAD_RING_SIZE),
+                core_grid=lm_head_ring_core_range_set,
+                strategy=ttnn.ShardStrategy.WIDTH,
+                orientation=ttnn.ShardOrientation.ROW_MAJOR,
+                use_height_and_width_as_shard_shape=True,
+            )
+            self.model_config["LM_HEAD_TG_RING_PROGCFG"] = self.matmul_1d_ring_config(
+                1,
+                32,
+                self.lm_head_shape[0],
+                self.lm_head_shape[1],
+                LM_HEAD_RING_SIZE,
+                prefetch=False,
+            )
+
             attn_input_grid = self.dram_shard_core_grid_for_k(self.dim)
             attn_input_sub_core_grid = ttnn.num_cores_to_corerangeset_in_subcoregrids(
                 self.start_core, 32, self.sub_core_grids, row_wise=True
@@ -1406,6 +1441,7 @@ class TtModelArgs:
         K,
         N,
         num_cores,
+        prefetch=True,
     ):
         M *= B  # Fuse batch always enabled
 
@@ -1426,7 +1462,7 @@ class TtModelArgs:
         while out_block_w % out_subblock_w != 0:
             out_subblock_w -= 1
 
-        hop_grid = [(3, 6)]  # FIXME: Make not hard coded
+        hop_grid = [(3, 6)] if prefetch else []  # FIXME: Make not hard coded
         hop_core_range_set = ttnn.CoreRangeSet(
             {
                 ttnn.CoreRange(
@@ -1436,8 +1472,10 @@ class TtModelArgs:
                 for x, y in hop_grid
             }
         )
+        grid = num_to_coregrid(num_cores)
+
         program_config = ttnn.MatmulMultiCoreReuseMultiCast1DProgramConfig(
-            compute_with_storage_grid_size=(8, 3),  # hard coded for ring
+            compute_with_storage_grid_size=(grid.x, grid.y),
             in0_block_w=in0_block_w,
             out_subblock_h=out_subblock_h,
             out_subblock_w=out_subblock_w,
@@ -1448,7 +1486,7 @@ class TtModelArgs:
             mcast_in0=False,
             gather_in0=True,
             hop_cores=hop_core_range_set,
-            num_global_cb_receivers=2,
+            num_global_cb_receivers=2 if prefetch else 1,
         )
 
         return program_config

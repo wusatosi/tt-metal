@@ -6,7 +6,7 @@ import math
 import torch
 import ttnn
 from models.common.lightweightmodule import LightweightModule
-from models.demos.llama3.tt.llama_ccl import tt_all_reduce
+from models.demos.llama3_subdevices.tt.llama_ccl import tt_all_reduce
 
 
 class LMHead(LightweightModule):
@@ -48,18 +48,29 @@ class LMHead(LightweightModule):
             padded_lm_head = torch.zeros(1, 1, args.dim, self.padded_vocab_size)
             padded_lm_head[:, :, :, : self.vocab_size] = torch_output_weights
 
-            memory_config = (
-                ttnn.DRAM_MEMORY_CONFIG
-                if args.dim == 2048
-                else args.create_dram_sharded_mem_config(k=args.dim // 4, n=self.padded_vocab_size // 8)
-            )
+            if args.is_70b:
+                padded_lm_head = torch.nn.functional.pad(
+                    padded_lm_head,
+                    (0, (512 * 8), 0, (12288 - 8192)),  # for 48 cores, we need 16k + 512 per device
+                    "constant",
+                    0,
+                )
+
+            if args.is_70b:
+                memory_config = ttnn.DRAM_MEMORY_CONFIG
+            else:
+                memory_config = (
+                    ttnn.DRAM_MEMORY_CONFIG
+                    if args.dim == 2048
+                    else args.create_dram_sharded_mem_config(k=args.dim // 4, n=self.padded_vocab_size // 8)
+                )
             self.output_weights.append(  # (2k, 16k) 128* 1024
                 ttnn.as_tensor(
                     padded_lm_head,
                     device=mesh_device,
                     mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device, dims=(3, 2), mesh_shape=args.cluster_shape),
                     layout=ttnn.TILE_LAYOUT,
-                    dtype=dtype,
+                    dtype=ttnn.bfloat4_b,
                     memory_config=memory_config,
                     # cache_file_name=cache_file_name,
                 )
@@ -100,19 +111,26 @@ class LMHead(LightweightModule):
             math_approx_mode=False,
             fp32_dest_acc_en=False,
             packer_l1_acc=True,
+            dst_full_sync_en=True,
         )
-        if args.is_galaxy:
-            self.program_configs = [
-                None
-                if args.dim == 2048
-                else args.dram_matmul_config(
-                    args.tile_padded_batch_rows,  # (8k, 128k) -> (2k, 16k)
-                    args.dim // 4,
-                    16 * 1024,
-                    args.lm_head_core_grid.num_cores,
-                )
-            ]
 
+        self.output_memory_config = ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG
+        if args.is_galaxy:
+            # self.program_configs = [
+            #     None
+            #     if args.dim == 2048
+            #     else args.dram_matmul_config(
+            #         args.tile_padded_batch_rows,  # (8k, 128k) -> (2k, 16k)
+            #         args.dim // 4,
+            #         16 * 1024,
+            #         args.lm_head_core_grid.num_cores,
+            #     )
+            # ]
+
+            self.program_configs = [args.model_config["LM_HEAD_TG_RING_PROGCFG"]]
+
+            if args.is_70b:
+                self.output_memory_config = args.model_config["LM_HEAD_OUT_RING_MEMCFG"]
         else:
             self.program_configs = [
                 args.dram_matmul_config(
@@ -127,30 +145,50 @@ class LMHead(LightweightModule):
     def forward(self, x: ttnn.Tensor):
         outputs = []
         for weight, pc in zip(self.output_weights, self.program_configs):
+            weight_l1 = ttnn.to_memory_config(weight, self.args.model_config["LM_HEAD_RING_MEMCFG"])
             output = ttnn.linear(
                 x,
-                weight,
+                weight_l1,
                 compute_kernel_config=self.compute_kernel_config,
                 program_config=pc,
-                memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
+                memory_config=self.output_memory_config,
                 dtype=ttnn.bfloat8_b,
             )
-            outputs.append(ttnn.sharded_to_interleaved(output, memory_config=ttnn.L1_MEMORY_CONFIG))
+            # outputs.append(ttnn.sharded_to_interleaved(output, memory_config=ttnn.L1_MEMORY_CONFIG))
 
-        # Concatenate the outputs
-        output = ttnn.concat(outputs, dim=-1, memory_config=ttnn.L1_MEMORY_CONFIG)
+        # # Concatenate the outputs
+        # output = ttnn.concat(outputs, dim=-1, memory_config=ttnn.L1_MEMORY_CONFIG)
 
-        output = tt_all_reduce(
+        # output = tt_all_reduce(
+        #     output,
+        #     mesh_device=self.mesh_device,
+        #     cluster_axis=1,
+        #     dim=3 if self.args.is_galaxy else 0,
+        #     num_reduce_scatter_links=self.args.num_reduce_scatter_links,
+        #     num_all_gather_links=self.args.num_all_gather_links,
+        #     memory_config=ttnn.L1_MEMORY_CONFIG,
+        #     dtype=self.args.ccl_dtype,
+        #     sharded=False,
+        #     use_composite=True,
+        # )
+
+        output_torch = ttnn.to_torch(
             output,
-            mesh_device=self.mesh_device,
-            cluster_axis=1,
-            dim=3 if self.args.is_galaxy else 0,
-            num_reduce_scatter_links=self.args.num_reduce_scatter_links,
-            num_all_gather_links=self.args.num_all_gather_links,
+            mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(3, 0), mesh_shape=(8, 4)),
+        )
+        # Remove padding
+        output_torch = output_torch[:, :, :, : self.vocab_size]
+
+        output_torch_reduced = torch.sum(output_torch, dim=0, keepdim=True)
+        output = ttnn.as_tensor(
+            output_torch_reduced,
+            dtype=ttnn.bfloat8_b,
+            device=self.mesh_device,
+            mesh_mapper=ttnn.ShardTensor2dMesh(
+                mesh_device=self.mesh_device, dims=(3, None), mesh_shape=list(self.mesh_device.shape)
+            ),
+            layout=ttnn.TILE_LAYOUT,
             memory_config=ttnn.L1_MEMORY_CONFIG,
-            dtype=self.args.ccl_dtype,
-            sharded=False,
-            use_composite=True,
         )
 
         return output
