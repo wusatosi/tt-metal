@@ -9,7 +9,7 @@ from tests.ttnn.integration_tests.stable_diffusion3_5.test_ttnn_sd3_transformer_
 from models.experimental.functional_stable_diffusion3_5.ttnn.ttnn_sd3_transformer_2d_model import (
     ttnn_SD3Transformer2DModel,
 )
-
+from models.experimental.functional_stable_diffusion3_5.demo.ttnn_scheduler import ttnnFlowMatchEulerDiscreteScheduler
 from models.experimental.functional_stable_diffusion3_5.demo.ttnn_pipeline import ttnnStableDiffusion3Pipeline
 from diffusers import StableDiffusion3Pipeline
 
@@ -58,7 +58,8 @@ def test_demo(device, height, width):
 
     parameters["pos_embed"]["proj"]["weight"] = ttnn.from_device(parameters["pos_embed"]["proj"]["weight"])
     parameters["pos_embed"]["proj"]["bias"] = ttnn.from_device(parameters["pos_embed"]["proj"]["bias"])
-
+    scheduler_config = pipe.scheduler.config
+    ttnn_scheduler = ttnnFlowMatchEulerDiscreteScheduler(num_train_timesteps=1000, shift=3.0, config=scheduler_config)
     ttnn_model = ttnn_SD3Transformer2DModel(
         sample_size=128,
         patch_size=2,
@@ -79,7 +80,7 @@ def test_demo(device, height, width):
 
     ttnn_pipe = ttnnStableDiffusion3Pipeline(
         ttnn_model,
-        pipe.scheduler,
+        ttnn_scheduler,
         pipe.vae,
         pipe.text_encoder,
         pipe.tokenizer,
