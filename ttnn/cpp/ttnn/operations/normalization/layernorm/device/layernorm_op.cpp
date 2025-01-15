@@ -232,7 +232,7 @@ std::vector<TensorSpec> LayerNorm::compute_output_specs(const std::vector<Tensor
                 }
 
                 auto mem_config = this->output_mem_config;
-                mem_config.shard_spec = input_tensor.shard_spec().value();
+                // mem_config.shard_spec = input_tensor.shard_spec().value(); // Respect output memory config shard spec
                 return {TensorSpec(
                     output_shape, TensorLayout(input_tensor.get_dtype(), PageConfig(Layout::TILE), mem_config))};
             } else {
@@ -276,6 +276,10 @@ operation::ProgramWithCallbacks LayerNorm::create_program(
                 uint32_t num_cores_y = program_config.compute_with_storage_grid_size.y;
                 CoreCoord grid_size = CoreCoord(num_cores_x, num_cores_y);
 
+                uint32_t block_wt_resharded = this->output_mem_config.shard_spec.has_value()
+                                                  ? this->output_mem_config.shard_spec.value().shape[1] / TILE_WIDTH
+                                                  : program_config.block_w;
+
                 return layernorm_multi_core_sharded(
                     a,
                     b,
@@ -290,7 +294,9 @@ operation::ProgramWithCallbacks LayerNorm::create_program(
                     program_config.subblock_w,
                     program_config.block_h,
                     program_config.block_w,
-                    this->compute_kernel_config);
+                    this->compute_kernel_config,
+                    this->output_mem_config.shard_spec->grid,
+                    block_wt_resharded);
             } else {
                 return layernorm_multi_core(
                     a, b, gamma, beta, output_tensor, this->norm_type, this->eps, this->compute_kernel_config);
