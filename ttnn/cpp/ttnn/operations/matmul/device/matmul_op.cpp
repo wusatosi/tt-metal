@@ -2136,9 +2136,9 @@ operation::ProgramWithCallbacks Matmul::create_program(
                                     global_cb,
                                     std::nullopt,
                                     program_config.num_global_cb_receivers);
-                            } else if (std::is_same_v<
-                                           GlobalCBType,
-                                           ttnn::global_circular_buffer::MultiDeviceGlobalCircularBuffer>) {
+                            } else if constexpr (std::is_same_v<
+                                                     GlobalCBType,
+                                                     ttnn::global_circular_buffer::MultiDeviceGlobalCircularBuffer>) {
                                 return matmul_multi_core_reuse_mcast_1d_optimized(
                                     input_tensor_a,
                                     input_tensor_b,

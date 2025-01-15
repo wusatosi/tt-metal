@@ -35,7 +35,9 @@ void DramPrefetcher::validate(const std::vector<Tensor>& input_tensors) const {
                         receiver_core_range.size() == sender_receiver_core_mapping.begin()->second.size(),
                         "Global circular buffer must have same number of receivers for each sender core");
                 }
-            } else if (std::is_same_v<GlobalCBType, ttnn::global_circular_buffer::MultiDeviceGlobalCircularBuffer>) {
+            } else if constexpr (std::is_same_v<
+                                     GlobalCBType,
+                                     ttnn::global_circular_buffer::MultiDeviceGlobalCircularBuffer>) {
                 const auto& single_global_cb = global_cb.global_circular_buffers[0];
                 num_receiver_cores = single_global_cb.receiver_cores().num_cores();
 
@@ -100,7 +102,9 @@ operation::ProgramWithCallbacks DramPrefetcher::create_program(
             using GlobalCBType = std::decay_t<decltype(global_cb)>;
             if constexpr (std::is_same_v<GlobalCBType, tt::tt_metal::v1::experimental::GlobalCircularBuffer>) {
                 return dram_prefetcher_multi_core(input_tensors, this->num_layers, global_cb);
-            } else if (std::is_same_v<GlobalCBType, ttnn::global_circular_buffer::MultiDeviceGlobalCircularBuffer>) {
+            } else if constexpr (std::is_same_v<
+                                     GlobalCBType,
+                                     ttnn::global_circular_buffer::MultiDeviceGlobalCircularBuffer>) {
                 return dram_prefetcher_multi_core_multi_device(input_tensors, this->num_layers, global_cb);
             } else {
                 TT_THROW("Global circular buffer must either be single device or multi-device type");

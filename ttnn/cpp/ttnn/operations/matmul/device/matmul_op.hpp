@@ -22,6 +22,7 @@ namespace operations {
 namespace matmul {
 
 using DeviceGlobalCircularBuffer = std::variant<
+    std::monostate,
     tt::tt_metal::v1::experimental::GlobalCircularBuffer,
     ttnn::global_circular_buffer::MultiDeviceGlobalCircularBuffer>;
 
