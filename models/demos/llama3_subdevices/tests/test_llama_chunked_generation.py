@@ -7,15 +7,15 @@ import pytest
 from loguru import logger
 import os
 import ttnn
-from models.demos.llama3.tt.llama_common import (
+from models.demos.llama3_subdevices.tt.llama_common import (
     PagedAttentionConfig,
     get_block_size,
     num_blocks_in_seq,
     HostEmbedding,
 )
-from models.demos.llama3.tt.llama_model import TtTransformer
-from models.demos.llama3.tt.model_config import TtModelArgs, LlamaOptimizations
-from models.demos.llama3.tt.generator import LlamaGenerator
+from models.demos.llama3_subdevices.tt.llama_model import TtTransformer
+from models.demos.llama3_subdevices.tt.model_config import TtModelArgs, LlamaOptimizations
+from models.demos.llama3_subdevices.tt.generator import LlamaGenerator
 from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import Transformer
 from models.utility_functions import (
     comp_pcc,

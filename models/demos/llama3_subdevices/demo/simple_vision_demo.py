@@ -8,10 +8,10 @@ from loguru import logger
 from PIL import Image as PIL_Image
 from termcolor import cprint
 
-import llama_models.llama3.reference_impl.generation as llama_reference_generation
-from llama_models.llama3.api.tokenizer import Tokenizer
-from llama_models.llama3.api.chat_format import ChatFormat
-from llama_models.llama3.api.datatypes import ImageMedia, UserMessage
+import llama_models.llama3_subdevices.reference_impl.generation as llama_reference_generation
+from llama_models.llama3_subdevices.api.tokenizer import Tokenizer
+from llama_models.llama3_subdevices.api.chat_format import ChatFormat
+from llama_models.llama3_subdevices.api.datatypes import ImageMedia, UserMessage
 
 from pkg_resources import resource_filename
 
@@ -23,7 +23,7 @@ import os
 import ttnn
 import time
 
-from models.demos.llama3.tt.generator import LlamaGenerator
+from models.demos.llama3_subdevices.tt.generator import LlamaGenerator
 
 
 def get_batch_sampler(temperature, top_p, tokenizer):
@@ -42,8 +42,8 @@ def get_batch_sampler(temperature, top_p, tokenizer):
 
 
 def create_multimodal_model(mesh_device, max_batch_size, max_seq_len, dtype=ttnn.bfloat16, use_paged_kv_cache=False):
-    from models.demos.llama3.tt.multimodal.llama_vision_model import CrossAttentionTransformer
-    from models.demos.llama3.tt.model_config import TtModelArgs
+    from models.demos.llama3_subdevices.tt.multimodal.llama_vision_model import CrossAttentionTransformer
+    from models.demos.llama3_subdevices.tt.model_config import TtModelArgs
 
     tt_model_args = TtModelArgs(mesh_device, max_batch_size=max_batch_size)
     # limit length or we'll run out of space

@@ -15,17 +15,17 @@ from PIL import Image as PIL_Image
 
 from torch import nn, Tensor
 
-import llama_models.llama3.reference_impl.multimodal.model as llama_reference_model
-import llama_models.llama3.reference_impl.multimodal.image_transform as llama_reference_image_transforms
+import llama_models.llama3_subdevices.reference_impl.multimodal.model as llama_reference_model
+import llama_models.llama3_subdevices.reference_impl.multimodal.image_transform as llama_reference_image_transforms
 
 import ttnn
-from models.demos.llama3.tt.multimodal.llama_cross_attention_transformer_vision import (
+from models.demos.llama3_subdevices.tt.multimodal.llama_cross_attention_transformer_vision import (
     TtLlamaCrossAttentionTransformerVision,
 )
-from models.demos.llama3.tt.multimodal.llama_cross_attention_transformer_text import (
+from models.demos.llama3_subdevices.tt.multimodal.llama_cross_attention_transformer_text import (
     TtLlamaCrossAttentionTransformerText,
 )
-from models.demos.llama3.tt.llama_common import (
+from models.demos.llama3_subdevices.tt.llama_common import (
     get_prefill_rot_mat,
     get_rot_transformation_mat,
     get_single_rot_mat,

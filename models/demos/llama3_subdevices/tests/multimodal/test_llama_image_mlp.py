@@ -8,9 +8,9 @@ from loguru import logger
 import os
 import ttnn
 
-import llama_models.llama3.reference_impl.multimodal.model as llama_reference_mod
-from models.demos.llama3.tt.multimodal.llama_image_mlp import TtLlamaImageFeedForward
-from models.demos.llama3.tt.model_config import TtModelArgs
+import llama_models.llama3_subdevices.reference_impl.multimodal.model as llama_reference_mod
+from models.demos.llama3_subdevices.tt.multimodal.llama_image_mlp import TtLlamaImageFeedForward
+from models.demos.llama3_subdevices.tt.model_config import TtModelArgs
 from models.utility_functions import (
     comp_pcc,
     comp_allclose,

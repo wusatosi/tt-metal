@@ -11,9 +11,9 @@ from models.utility_functions import (
 )
 from models.common.lightweightmodule import LightweightModule
 from models.common.rmsnorm import RMSNorm
-from models.demos.llama3.tt.multimodal.llama_cross_attention import TtLlamaCrossAttention
-from models.demos.llama3.tt.llama_mlp import TtLlamaMLP
-from models.demos.llama3.tt.distributed_norm import DistributedNorm
+from models.demos.llama3_subdevices.tt.multimodal.llama_cross_attention import TtLlamaCrossAttention
+from models.demos.llama3_subdevices.tt.llama_mlp import TtLlamaMLP
+from models.demos.llama3_subdevices.tt.distributed_norm import DistributedNorm
 import os
 
 

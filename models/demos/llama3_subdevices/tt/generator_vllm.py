@@ -5,14 +5,14 @@
 from typing import List, Union
 import torch
 import PIL
-from llama_models.llama3.api.chat_format import create_vision_mask
-from llama_models.llama3.api.tokenizer import Tokenizer
+from llama_models.llama3_subdevices.api.chat_format import create_vision_mask
+from llama_models.llama3_subdevices.api.tokenizer import Tokenizer
 import ttnn
 
-from models.demos.llama3.tt.generator import LlamaGenerator
-from models.demos.llama3.tt.llama_model import TtTransformer
-from models.demos.llama3.tt.model_config import LlamaOptimizations, TtModelArgs
-from models.demos.llama3.demo.simple_vision_demo import create_multimodal_model
+from models.demos.llama3_subdevices.tt.generator import LlamaGenerator
+from models.demos.llama3_subdevices.tt.llama_model import TtTransformer
+from models.demos.llama3_subdevices.tt.model_config import LlamaOptimizations, TtModelArgs
+from models.demos.llama3_subdevices.demo.simple_vision_demo import create_multimodal_model
 from models.utility_functions import nearest_32
 
 from vllm.inputs import INPUT_REGISTRY, DecoderOnlyInputs, EncoderDecoderInputs, InputContext

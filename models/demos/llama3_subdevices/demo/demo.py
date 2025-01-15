@@ -16,7 +16,7 @@ from pathlib import Path
 import hashlib
 
 from models.utility_functions import nearest_32
-from models.demos.llama3.tt.llama_common import (
+from models.demos.llama3_subdevices.tt.llama_common import (
     get_prefill_rot_mat,
     get_rot_transformation_mat,
     HostEmbedding,
@@ -24,14 +24,14 @@ from models.demos.llama3.tt.llama_common import (
     PagedAttentionConfig,
     sample_host,
 )
-from models.demos.llama3.tt.llama_model import TtTransformer
-from models.demos.llama3.tt.llama_embedding import TtLlamaEmbedding
+from models.demos.llama3_subdevices.tt.llama_model import TtTransformer
+from models.demos.llama3_subdevices.tt.llama_embedding import TtLlamaEmbedding
 from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.tokenizer import Tokenizer
-from models.demos.llama3.tt.model_config import TtModelArgs
+from models.demos.llama3_subdevices.tt.model_config import TtModelArgs
 
 from models.perf.benchmarking_utils import BenchmarkProfiler
 from models.demos.utils.llm_demo_utils import create_benchmark_data, verify_perf
-from models.demos.llama3.tt.model_config import LlamaOptimizations
+from models.demos.llama3_subdevices.tt.model_config import LlamaOptimizations
 
 
 def load_and_cache_context(context_url, cache_dir, max_length=None):

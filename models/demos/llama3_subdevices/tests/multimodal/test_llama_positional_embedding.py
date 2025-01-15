@@ -26,10 +26,10 @@ from models.utility_functions import (
 from models.utility_functions import (
     nearest_32,
 )
-from models.demos.llama3.tt.multimodal.llama_positional_embedding import (
+from models.demos.llama3_subdevices.tt.multimodal.llama_positional_embedding import (
     TtLlamaPositionalEmbedding,
 )
-from models.demos.llama3.tt.model_config import TtModelArgs
+from models.demos.llama3_subdevices.tt.model_config import TtModelArgs
 
 
 ##### Torch op #####

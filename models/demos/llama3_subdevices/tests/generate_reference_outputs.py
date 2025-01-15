@@ -6,9 +6,9 @@ import bz2
 import os
 import argparse
 import time
-from models.demos.llama3.tt.llama_common import HostEmbedding
+from models.demos.llama3_subdevices.tt.llama_common import HostEmbedding
 from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import Transformer
-from models.demos.llama3.tt.model_config import TtModelArgs
+from models.demos.llama3_subdevices.tt.model_config import TtModelArgs
 from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.tokenizer import Tokenizer
 from loguru import logger
 from transformers import AutoModelForCausalLM, AutoTokenizer
