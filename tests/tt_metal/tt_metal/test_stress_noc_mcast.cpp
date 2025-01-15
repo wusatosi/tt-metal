@@ -129,8 +129,11 @@ int main(int argc, char** argv) {
         mcast_logical = eth_logical;
     }
 
-    CoreCoord virtual_offset = device->worker_core_from_logical_core({0, 0});
-    TT_ASSERT(virtual_offset.x == virtual_offset.y);
+    bool virtualization_enabled = tt::tt_metal::hal.is_coordinate_virtualization_enabled();
+    CoreCoord virtual_offset = virtualization_enabled
+                                   ? device->worker_core_from_logical_core({0, 0})
+                                   : CoreCoord(0, 0);  // in this case pass physical coordinates as runtime args
+
     std::vector<uint32_t> compile_args = {
         false,
         tl_core.x,
@@ -141,6 +144,7 @@ int main(int argc, char** argv) {
         ucast_size_g,
         mcast_size_g,
         virtual_offset.x,
+        virtual_offset.y,
         N_RANDS,
         rnd_delay_g,
         tt::tt_metal::hal.get_dev_addr(HalProgrammableCoreType::TENSIX, HalL1MemAddrType::UNRESERVED),
@@ -169,6 +173,11 @@ int main(int argc, char** argv) {
             for (int j = 0; j < sizeof(uint32_t); j++) {
                 uint32_t x = rand() % grid_size.x;
                 uint32_t y = rand() % grid_size.y;
+                if (!virtualization_enabled) {
+                    CoreCoord physical_coord = device->worker_core_from_logical_core(CoreCoord(x, y));
+                    x = physical_coord.x;
+                    y = physical_coord.y;
+                }
                 rnd = (rnd << 8) | (y << 4) | x;
             }
             runtime_args.push_back(rnd);

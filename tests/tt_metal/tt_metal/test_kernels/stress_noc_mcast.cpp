@@ -12,11 +12,12 @@ constexpr uint32_t height = get_compile_time_arg_val(4);
 constexpr uint64_t duration = (uint64_t)get_compile_time_arg_val(5) * 1000 * 1000 * 1000;
 constexpr uint32_t ucast_size = get_compile_time_arg_val(6);
 constexpr uint32_t mcast_size = get_compile_time_arg_val(7);
-constexpr uint32_t virtual_grid_offset = get_compile_time_arg_val(8);
-constexpr uint32_t nrands = get_compile_time_arg_val(9);
-constexpr bool enable_rnd_delay = get_compile_time_arg_val(10);
-constexpr uint32_t ucast_l1_addr = get_compile_time_arg_val(11);
-constexpr uint32_t mcast_l1_addr = get_compile_time_arg_val(12);
+constexpr uint32_t virtual_grid_offset_x = get_compile_time_arg_val(8);
+constexpr uint32_t virtual_grid_offset_y = get_compile_time_arg_val(9);
+constexpr uint32_t nrands = get_compile_time_arg_val(10);
+constexpr bool enable_rnd_delay = get_compile_time_arg_val(11);
+constexpr uint32_t ucast_l1_addr = get_compile_time_arg_val(12);
+constexpr uint32_t mcast_l1_addr = get_compile_time_arg_val(13);
 
 inline uint32_t next_rand(tt_l1_ptr uint8_t* rnds, uint32_t& rnd_index) {
     uint32_t rnd = rnds[rnd_index];
@@ -31,6 +32,7 @@ void kernel_main() {
 
     uint64_t stall_time = 0;
     while (c_tensix_core::read_wall_clock() < done_time) {
+        DPRINT << "wall clock time " << c_tensix_core::read_wall_clock() << " done time " << done_time << ENDL();
         for (uint32_t count = 0; count < 1000; count++) {
             if (enable_rnd_delay) {
                 // reading time here biases us to have more ~0 cycle stalls as this
@@ -46,8 +48,8 @@ void kernel_main() {
             } else {
                 uint32_t dst_x, dst_y;
                 uint8_t noc_addr = next_rand(rnds, rnd_index);
-                dst_x = (noc_addr & 0xf) + virtual_grid_offset;
-                dst_y = (noc_addr >> 4) + virtual_grid_offset;
+                dst_x = (noc_addr & 0xf) + virtual_grid_offset_x;
+                dst_y = (noc_addr >> 4) + virtual_grid_offset_y;
                 uint64_t noc_write_addr = NOC_XY_ADDR(NOC_X(dst_x), NOC_Y(dst_y), ucast_l1_addr);
                 noc_async_write(ucast_l1_addr, noc_write_addr, ucast_size);
             }
