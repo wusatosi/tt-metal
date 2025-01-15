@@ -7,8 +7,8 @@ import pytest
 from loguru import logger
 import os
 import ttnn
-from models.demos.llama3.tt.lm_head import LMHead
-from models.demos.llama3.tt.model_config import TtModelArgs
+from models.demos.llama3_subdevices.tt.lm_head import LMHead
+from models.demos.llama3_subdevices.tt.model_config import TtModelArgs
 from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import ColumnParallelLinear
 from models.utility_functions import (
     comp_pcc,
@@ -36,12 +36,13 @@ from models.utility_functions import skip_for_grayskull
     ],
     indirect=True,
 )
+@pytest.mark.parametrize("device_params", [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL}], indirect=True)
 def test_llama_lm_head_inference(seq_len, batch_size, mesh_device, use_program_cache, reset_seeds):
     dtype = ttnn.bfloat8_b
 
     mesh_device.enable_async(True)
 
-    model_args = TtModelArgs(mesh_device, max_batch_size=batch_size, max_seq_len=seq_len)
+    model_args = TtModelArgs(mesh_device, max_batch_size=batch_size, max_seq_len=seq_len, dummy_weights=True)
     model_args.n_layers = 1
     state_dict = model_args.load_state_dict()
 
@@ -64,16 +65,17 @@ def test_llama_lm_head_inference(seq_len, batch_size, mesh_device, use_program_c
         weight_cache_path=model_args.weight_cache_path(dtype),
     )
 
-    torch_input = torch.randn(1, 1, seq_len, model_args.dim)
+    torch_input_tt = torch.randn(1, 1, seq_len, 12288)
+    torch_input = torch_input_tt[..., : model_args.dim]
     reference_output = reference_model(torch_input)
     tt_input = ttnn.from_torch(
-        torch_input,
+        torch_input_tt,
         device=mesh_device,
         mesh_mapper=ttnn.ShardTensor2dMesh(
             mesh_device, dims=(None, 3) if model_args.is_galaxy else (None, None), mesh_shape=model_args.cluster_shape
         ),
         dtype=ttnn.bfloat8_b,
-        memory_config=model_args.model_config["LM_HEAD_INPUT_MEMCFG"],
+        memory_config=model_args.model_config["SHARDED_LM_HEAD_INPUT_RING_MEMCFG"],
         layout=ttnn.TILE_LAYOUT,
     )
 

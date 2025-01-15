@@ -8,16 +8,17 @@ import ttnn
 import torch
 import torch.nn as nn
 from tqdm import tqdm
-from models.demos.llama3.tt.llama_decoder import TtTransformerBlock
+from models.demos.llama3_subdevices.tt.llama_decoder import TtTransformerBlock
 from models.common.rmsnorm import RMSNorm
 import ttnn
 from typing import Optional
 from models.common.lightweightmodule import LightweightModule
-from models.demos.llama3.tt.distributed_norm import DistributedNorm
-from models.demos.llama3.tt.lm_head import LMHead
-from models.demos.llama3.tt.llama_common import copy_host_to_device, get_prefill_rot_mat, HostEmbedding
-from models.demos.llama3.tt.llama_rope import TtLlamaRotarySetup
-from models.demos.llama3.tt.llama_embedding import TtLlamaEmbedding
+from models.demos.llama3_subdevices.tt.distributed_norm import DistributedNorm
+from models.demos.llama3_subdevices.tt.lm_head import LMHead
+from models.demos.llama3_subdevices.tt.llama_common import copy_host_to_device, get_prefill_rot_mat, HostEmbedding
+from models.demos.llama3_subdevices.tt.llama_rope import TtLlamaRotarySetup
+from models.demos.llama3_subdevices.tt.llama_embedding import TtLlamaEmbedding
+from tests.ttnn.unit_tests.operations.prefetcher_common import TtLlamaPrefetcherSetup
 
 
 class TtTransformer(LightweightModule):
@@ -61,6 +62,12 @@ class TtTransformer(LightweightModule):
         )
         self.trans_mats_dict = self.rope_setup.get_both_trans_mats()
 
+        self.prefetcher_setup = TtLlamaPrefetcherSetup(
+            mesh_device,
+            n_tensors=5,
+            n_layers=self.n_layers,
+        )
+
         self.layers = [
             TtTransformerBlock(
                 args=args,
@@ -72,6 +79,7 @@ class TtTransformer(LightweightModule):
                 transformation_mats=self.trans_mats_dict,
                 paged_attention_config=paged_attention_config,
                 use_paged_kv_cache=use_paged_kv_cache,
+                prefetcher_setup=self.prefetcher_setup,
             )
             for i in tqdm(range(self.n_layers))
         ]
@@ -100,6 +108,9 @@ class TtTransformer(LightweightModule):
             state_dict_prefix=state_dict_prefix,
             weight_cache_path=weight_cache_path,
         )
+
+        # Append the tensor containing all the buffer addresses to the prefetched weights
+        self.prefetcher_setup.tensors.append(self.prefetcher_setup.get_tensor_addrs())
 
     def prepare_inputs_prefill(self, tokens, start_pos=0, page_table=None, chunk_page_table=None):
         """
@@ -319,6 +330,16 @@ class TtTransformer(LightweightModule):
         get_last_token=-1,
         kv_cache=None,
     ):
+        # Prefetcher
+        if mode == "decode" and self.args.is_galaxy:
+            ttnn.dram_prefetcher(
+                self.prefetcher_setup.tensors,
+                num_layers=self.n_layers,
+                global_cb=None,
+                multi_global_cb=self.prefetcher_setup.global_circular_buffer,
+            )
+            self.mesh_device.set_sub_device_stall_group([self.prefetcher_setup.worker_sub_device_id])
+
         # No-op if callers already provide the right memory config
         if mode == "decode" and not self.args.is_galaxy:
             x = ttnn.to_memory_config(x, self.model_config["DECODE_RESIDUAL_MEMCFG"])
@@ -348,5 +369,27 @@ class TtTransformer(LightweightModule):
 
         if mode == "prefill" and self.model_config["LM_HEAD_INPUT_MEMCFG"].is_sharded():
             x = ttnn.interleaved_to_sharded(x, self.model_config["LM_HEAD_INPUT_MEMCFG"])
+
+        if mode == "decode" and self.args.is_galaxy:
+            x_torch = ttnn.to_torch(
+                x,
+                mesh_composer=ttnn.ConcatMesh2dToTensor(
+                    self.mesh_device,
+                    dims=(0, 3),
+                    mesh_shape=(8, 4),
+                ),
+            )  # [8, 1, 32, 2048 * 4]
+            # [8, 1, 32, 3072 * 4]
+            x_torch_padded = torch.nn.functional.pad(x_torch, (0, 12288 - 8192), "constant", 0)
+            x = ttnn.as_tensor(
+                x_torch_padded,
+                dtype=ttnn.bfloat16,
+                device=self.mesh_device,
+                mesh_mapper=ttnn.ShardTensor2dMesh(
+                    mesh_device=self.mesh_device, dims=(0, 3), mesh_shape=list(self.mesh_device.shape)
+                ),
+                layout=ttnn.TILE_LAYOUT,
+                memory_config=self.args.model_config["SHARDED_LM_HEAD_INPUT_RING_MEMCFG"],
+            )
 
         return self.lm_head(x)

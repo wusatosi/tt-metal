@@ -5,7 +5,7 @@
 import torch
 import ttnn
 from models.common.lightweightmodule import LightweightModule
-from models.demos.llama3.tt.llama_ccl import tt_all_reduce
+from models.demos.llama3_subdevices.tt.llama_ccl import tt_all_reduce
 import torch.nn.functional as F
 
 
@@ -311,7 +311,6 @@ class TtLlamaMLP(LightweightModule):
             else None,
         )
         ttnn.deallocate(w2_in)
-        print("w2_out", w2_out.shape)
         # if mode == "decode" and not TG:
         #     w2_out = ttnn.sharded_to_interleaved(w2_out, ttnn.DRAM_MEMORY_CONFIG)
         # w2_out_reduced = tt_all_reduce(
@@ -343,8 +342,6 @@ class TtLlamaMLP(LightweightModule):
             layout=ttnn.TILE_LAYOUT,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
         )
-
-        print(w2_out_reduced.shape)
 
         # Ensure dim 0 and 1 are 1
         # original_shape = w2_out_reduced.shape
