@@ -807,25 +807,31 @@ void Cluster::initialize_blackhole_eth_connectivity() {
                         break;
                     }
                 }
-                TT_FATAL(
-                    connected_chip_id != this->chip_to_location.size(),
-                    "Expected to find connected chip for logical eth core {} on chip {}",
-                    logical_eth.str(),
-                    chip_id);
 
-                std::cout << "\tconnected chip id " << connected_chip_id << std::endl;
+                if (all_chips.find(connected_chip_id) != all_chips.end()) {
+                    TT_FATAL(
+                        connected_chip_id != this->chip_to_location.size(),
+                        "Expected to find connected chip for logical eth core {} on chip {}",
+                        logical_eth.str(),
+                        chip_id);
 
-                auto& remote_soc_desc = this->get_soc_desc(connected_chip_id);
-                CoreCoord remote_physical_eth_core(eth_id_to_noc0_x_mapping[remote_eth_id], eth_noc0_y);
-                CoreCoord remote_logical_eth =
-                    remote_soc_desc.get_logical_ethernet_core_from_physical(remote_physical_eth_core);
-                uint32_t remote_eth_channel = remote_soc_desc.logical_eth_core_to_chan_map.at(remote_logical_eth);
+                    std::cout << "\tconnected chip id " << connected_chip_id << std::endl;
 
-                std::cout << "\tremote remote_physical_eth_core " << remote_physical_eth_core.str()
-                          << " remote_logical_eth " << remote_logical_eth.str() << " remote eth channel "
-                          << remote_eth_channel << std::endl;
+                    auto& remote_soc_desc = this->get_soc_desc(connected_chip_id);
+                    CoreCoord remote_physical_eth_core(eth_id_to_noc0_x_mapping[remote_eth_id], eth_noc0_y);
+                    CoreCoord remote_logical_eth =
+                        remote_soc_desc.get_logical_ethernet_core_from_physical(remote_physical_eth_core);
+                    uint32_t remote_eth_channel = remote_soc_desc.logical_eth_core_to_chan_map.at(remote_logical_eth);
 
-                this->chip_to_eth_connected_chips[chip_id][eth_channel] = {connected_chip_id, remote_eth_channel};
+                    std::cout << "\tremote remote_physical_eth_core " << remote_physical_eth_core.str()
+                              << " remote_logical_eth " << remote_logical_eth.str() << " remote eth channel "
+                              << remote_eth_channel << std::endl;
+
+                    this->chip_to_eth_connected_chips[chip_id][eth_channel] = {connected_chip_id, remote_eth_channel};
+                } else {
+                    // active eth core but we don't have access to the connected chip
+                    this->chip_to_eth_connected_chips[chip_id][eth_channel] = std::nullopt;
+                }
             } else {
                 this->chip_to_eth_connected_chips[chip_id][eth_channel] = std::nullopt;
             }
