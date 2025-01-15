@@ -494,15 +494,25 @@ void Device::initialize_firmware(const HalProgrammableCoreType &core_type, CoreC
             if (is_idle_eth) {
                 tt::Cluster::instance().assert_risc_reset_at_core(tt_cxy_pair(this->id(), virtual_core));
             }
-            if (not llrt::RunTimeOptions::get_instance().get_skip_loading_fw()) {
-                for (uint32_t processor_class = 0; processor_class < processor_class_count; processor_class++) {
-                    auto [build_idx, num_build_states] = this->build_processor_type_to_index(core_type_idx, processor_class);
-                    for (uint32_t eriscv_id = build_idx; eriscv_id < (build_idx + num_build_states); eriscv_id++) {
-                        ll_api::memory const& binary_mem = llrt::get_risc_binary(
-                            firmware_build_states_[eriscv_id]->get_target_out_path(""));
-                        uint32_t fw_size = binary_mem.get_text_size();
-                        log_debug(LogDevice, "ERISC fw binary size: {} in bytes", fw_size);
-                        llrt::test_load_write_read_risc_binary(binary_mem, this->id(), virtual_core, core_type_idx, processor_class, (eriscv_id - build_idx));
+
+            if (is_idle_eth) {
+                if (not llrt::RunTimeOptions::get_instance().get_skip_loading_fw()) {
+                    for (uint32_t processor_class = 0; processor_class < processor_class_count; processor_class++) {
+                        auto [build_idx, num_build_states] =
+                            this->build_processor_type_to_index(core_type_idx, processor_class);
+                        for (uint32_t eriscv_id = build_idx; eriscv_id < (build_idx + num_build_states); eriscv_id++) {
+                            const ll_api::memory& binary_mem =
+                                llrt::get_risc_binary(firmware_build_states_[eriscv_id]->get_target_out_path(""));
+                            uint32_t fw_size = binary_mem.get_text_size();
+                            log_debug(LogDevice, "ERISC fw binary size: {} in bytes", fw_size);
+                            llrt::test_load_write_read_risc_binary(
+                                binary_mem,
+                                this->id(),
+                                virtual_core,
+                                core_type_idx,
+                                processor_class,
+                                (eriscv_id - build_idx));
+                        }
                     }
                 }
             }
@@ -747,26 +757,27 @@ void Device::initialize_and_launch_firmware() {
     }
 
     // Clear erisc sync info
-    // for (const auto &eth_core : this->get_active_ethernet_cores()) {
+    for (const auto& eth_core : this->get_active_ethernet_cores()) {
+        static std::vector<uint32_t> zero_vec_erisc_init(
+            hal.get_dev_size(HalProgrammableCoreType::ACTIVE_ETH, HalL1MemAddrType::APP_SYNC_INFO) / sizeof(uint32_t),
+            0);
 
-    //     static std::vector<uint32_t> zero_vec_erisc_init(hal.get_dev_size(HalProgrammableCoreType::ACTIVE_ETH,
-    //     HalL1MemAddrType::APP_SYNC_INFO) / sizeof(uint32_t), 0);
+        CoreCoord virtual_core = this->ethernet_core_from_logical_core(eth_core);
 
-    //     CoreCoord virtual_core = this->ethernet_core_from_logical_core(eth_core);
-
-    //     llrt::write_hex_vec_to_core(
-    //         this->id(), virtual_core, zero_vec_erisc_init, hal.get_dev_addr(HalProgrammableCoreType::ACTIVE_ETH,
-    //         HalL1MemAddrType::APP_SYNC_INFO));
-    // }
+        llrt::write_hex_vec_to_core(
+            this->id(),
+            virtual_core,
+            zero_vec_erisc_init,
+            hal.get_dev_addr(HalProgrammableCoreType::ACTIVE_ETH, HalL1MemAddrType::APP_SYNC_INFO));
+    }
 
     // Load erisc app base FW to eth cores
-    // for (const auto &eth_core : this->get_active_ethernet_cores()) {
-    //     CoreCoord phys_eth_core = this->ethernet_core_from_logical_core(eth_core);
-    //     tt::llrt::write_hex_vec_to_core(
-    //         this->id(), phys_eth_core, core_info_vec, this->get_dev_addr(phys_eth_core,
-    //         HalL1MemAddrType::CORE_INFO));
-    //     this->initialize_firmware(HalProgrammableCoreType::ACTIVE_ETH, phys_eth_core, &launch_msg, &go_msg);
-    // }
+    for (const auto& eth_core : this->get_active_ethernet_cores()) {
+        CoreCoord phys_eth_core = this->ethernet_core_from_logical_core(eth_core);
+        tt::llrt::write_hex_vec_to_core(
+            this->id(), phys_eth_core, core_info_vec, this->get_dev_addr(phys_eth_core, HalL1MemAddrType::CORE_INFO));
+        this->initialize_firmware(HalProgrammableCoreType::ACTIVE_ETH, phys_eth_core, &launch_msg, &go_msg);
+    }
 
     for (const auto &eth_core : this->get_inactive_ethernet_cores()) {
         CoreCoord phys_eth_core = this->ethernet_core_from_logical_core(eth_core);
