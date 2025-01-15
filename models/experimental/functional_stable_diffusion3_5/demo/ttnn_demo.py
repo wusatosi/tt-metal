@@ -91,6 +91,13 @@ def test_demo(device, height, width):
     while 1:
         print("Enter the input prompt, or q to exit:")
         new_prompt = input()
+        print("Want to enter prompt two? Enter Y for yes or N for No")
+        second_prompt_flag = input()
+        if second_prompt_flag in ["y", "Y"]:
+            print("Enter input Prompt two:")
+            prompt_2_user = input()
+        else:
+            prompt_2_user = None
         print("Enter the  num_inference_steps:")
         num_inference_steps = int(input())
         if len(new_prompt) > 0:
@@ -99,6 +106,7 @@ def test_demo(device, height, width):
             break
         image = ttnn_pipe(
             new_prompt,
+            prompt_2=prompt_2_user,
             num_inference_steps=num_inference_steps,
             guidance_scale=4.5,
             parameters_transformer=parameters,
