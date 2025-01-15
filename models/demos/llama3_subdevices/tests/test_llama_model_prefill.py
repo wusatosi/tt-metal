@@ -7,15 +7,15 @@ import pytest
 from loguru import logger
 import os
 import ttnn
-from models.demos.llama3.tt.llama_common import (
+from models.demos.llama3_subdevices.tt.llama_common import (
     get_prefill_rot_mat,
     get_rot_transformation_mat,
     HostEmbedding,
     encode_prompt_llama_instruct,
     PagedAttentionConfig,
 )
-from models.demos.llama3.tt.llama_model import TtTransformer
-from models.demos.llama3.tt.model_config import TtModelArgs, LlamaOptimizations
+from models.demos.llama3_subdevices.tt.llama_model import TtTransformer
+from models.demos.llama3_subdevices.tt.model_config import TtModelArgs, LlamaOptimizations
 from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import Transformer
 from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.tokenizer import Tokenizer
 from models.utility_functions import (

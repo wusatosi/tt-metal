@@ -12,19 +12,19 @@ from models.utility_functions import (
     nearest_32,
 )
 from models.common.lightweightmodule import LightweightModule
-from models.demos.llama3.tt.multimodal.llama_conv2d_patch import TtLlamaConv2dPatch
-from models.demos.llama3.tt.multimodal.llama_tile_position_embedding import TtLlamaTilePositionEmbedding
-from models.demos.llama3.tt.multimodal.llama_layernorm import TtLayerNorm
-from models.demos.llama3.tt.multimodal.llama_image_transformer import TtLlamaImageTransformer
-from models.demos.llama3.tt.multimodal.llama_positional_embedding import TtLlamaPositionalEmbedding
-from models.demos.llama3.tt.multimodal.llama_class_embedding import TtLlamaClassEmbedding
+from models.demos.llama3_subdevices.tt.multimodal.llama_conv2d_patch import TtLlamaConv2dPatch
+from models.demos.llama3_subdevices.tt.multimodal.llama_tile_position_embedding import TtLlamaTilePositionEmbedding
+from models.demos.llama3_subdevices.tt.multimodal.llama_layernorm import TtLayerNorm
+from models.demos.llama3_subdevices.tt.multimodal.llama_image_transformer import TtLlamaImageTransformer
+from models.demos.llama3_subdevices.tt.multimodal.llama_positional_embedding import TtLlamaPositionalEmbedding
+from models.demos.llama3_subdevices.tt.multimodal.llama_class_embedding import TtLlamaClassEmbedding
 
 
 from models.demos.falcon7b_common.tests.test_utils import (
     synchronize_devices,
 )
 
-import llama_models.llama3.reference_impl.multimodal.encoder_utils as encoder_utils
+import llama_models.llama3_subdevices.reference_impl.multimodal.encoder_utils as encoder_utils
 
 
 def to_2tuple(x):

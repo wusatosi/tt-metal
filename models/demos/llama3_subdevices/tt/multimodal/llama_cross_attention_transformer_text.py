@@ -6,14 +6,14 @@ import math
 import ttnn
 import torch
 from tqdm import tqdm
-from models.demos.llama3.tt.llama_decoder import TtTransformerBlock
-from models.demos.llama3.tt.multimodal.llama_cross_block import TtLlamaCrossAttentionTransformerBlock
-from models.demos.llama3.tt.distributed_norm import DistributedNorm
+from models.demos.llama3_subdevices.tt.llama_decoder import TtTransformerBlock
+from models.demos.llama3_subdevices.tt.multimodal.llama_cross_block import TtLlamaCrossAttentionTransformerBlock
+from models.demos.llama3_subdevices.tt.distributed_norm import DistributedNorm
 from models.common.rmsnorm import RMSNorm
 import ttnn
 from models.common.lightweightmodule import LightweightModule
-from models.demos.llama3.tt.llama_embedding import TtLlamaEmbedding
-from models.demos.llama3.tt.llama_rope import TtLlamaRotarySetup
+from models.demos.llama3_subdevices.tt.llama_embedding import TtLlamaEmbedding
+from models.demos.llama3_subdevices.tt.llama_rope import TtLlamaRotarySetup
 
 from models.utility_functions import (
     nearest_32,

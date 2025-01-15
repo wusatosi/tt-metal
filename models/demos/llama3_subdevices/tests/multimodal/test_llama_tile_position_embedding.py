@@ -26,12 +26,12 @@ from models.utility_functions import (
 from models.utility_functions import (
     nearest_32,
 )
-from models.demos.llama3.tt.multimodal.llama_tile_position_embedding import (
+from models.demos.llama3_subdevices.tt.multimodal.llama_tile_position_embedding import (
     TtLlamaTilePositionEmbedding,
 )
-from models.demos.llama3.tt.model_config import TtModelArgs
+from models.demos.llama3_subdevices.tt.model_config import TtModelArgs
 
-import llama_models.llama3.reference_impl.multimodal.model as llama_reference_mod
+import llama_models.llama3_subdevices.reference_impl.multimodal.model as llama_reference_mod
 
 
 @skip_for_grayskull("Requires wormhole_b0 to run")

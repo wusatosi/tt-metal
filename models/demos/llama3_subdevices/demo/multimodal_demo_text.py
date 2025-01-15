@@ -12,18 +12,18 @@ import pytest
 import os
 import ttnn
 
-import llama_models.llama3.reference_impl.generation as llama_reference_generation
-from llama_models.llama3.api.datatypes import ImageMedia
-from llama_models.llama3.api.tokenizer import Tokenizer
-from llama_models.llama3.api.chat_format import ChatFormat
+import llama_models.llama3_subdevices.reference_impl.generation as llama_reference_generation
+from llama_models.llama3_subdevices.api.datatypes import ImageMedia
+from llama_models.llama3_subdevices.api.tokenizer import Tokenizer
+from llama_models.llama3_subdevices.api.chat_format import ChatFormat
 
 
 from pkg_resources import resource_filename
 
 IMG_PATH = Path(resource_filename("llama_models", "scripts/resources/"))
 
-from models.demos.llama3.demo.simple_vision_demo import create_multimodal_model
-from models.demos.llama3.tt.generator import LlamaGenerator
+from models.demos.llama3_subdevices.demo.simple_vision_demo import create_multimodal_model
+from models.demos.llama3_subdevices.tt.generator import LlamaGenerator
 
 
 @pytest.mark.parametrize(

@@ -6,18 +6,18 @@ import ttnn
 import torch
 from loguru import logger
 
-from llama_models.llama3.api.datatypes import (
+from llama_models.llama3_subdevices.api.datatypes import (
     InterleavedTextMedia,
     StopReason,
 )
 
-from llama_models.llama3.reference_impl.generation import (
+from llama_models.llama3_subdevices.reference_impl.generation import (
     ChatPrediction,
     CompletionPrediction,
     TokenResult,
     sample_top_p,
 )
-from models.demos.llama3.tt.llama_common import (
+from models.demos.llama3_subdevices.tt.llama_common import (
     copy_host_to_device,
     get_padded_prefill_len,
     num_blocks_in_seq,
