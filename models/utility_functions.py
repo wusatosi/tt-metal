@@ -103,22 +103,31 @@ class Profiler:
         if key not in self.times:
             return 0
 
-        return sum(self.times[key]) / len(self.times[key])
+        mean = sum(self.times[key]) / len(self.times[key])
+        std = np.std(self.times[key])
+        return mean, std, len(self.times[key])
 
-    def print(self, units="s"):
+    def print(self, units="s", statistics=False):
         for key in self.times:
-            average = self.get(key)
+            [average, std, points] = self.get(key)
             if units == "s":
                 pass
             elif units == "ms":
                 average *= 1000
+                std *= 1000
             elif units == "us":
                 average *= 1000000
+                std *= 1000000
             elif units == "ns":
                 average *= 1000000000
+                std *= 1000000000
             else:
                 raise ValueError(f"Invalid units: {units}")
-            print(f"{key}: {average:.3f}{units}")
+
+            if statistics:
+                print(f"{key}: ({average:.1f}±{std:.1f}){units} | N={points}")
+            else:
+                print(f"{key}: {average:.3f}{units}")
 
 
 profiler = Profiler()
