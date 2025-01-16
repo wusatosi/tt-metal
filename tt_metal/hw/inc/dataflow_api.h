@@ -25,6 +25,7 @@
 #include "umd/device/tt_silicon_driver_common.hpp"
 #include "utils/utils.h"
 #include "debug/assert.h"
+#include "debug/dprint.h"
 #include "dev_msgs.h"
 
 #if defined(COMPILE_FOR_BRISC)
@@ -1479,6 +1480,8 @@ inline void noc_async_write_multicast(
     } else {
         WAYPOINT("NMWW");
         DEBUG_SANITIZE_NOC_MULTI_WRITE_TRANSACTION(noc, dst_noc_addr_multicast, src_local_l1_addr, size);
+        // noc_nonposted_writes_acked
+        DPRINT << "pre " << noc_nonposted_writes_acked[noc] << ENDL();
         ncrisc_noc_fast_write_any_len<proc_type, noc_mode>(
             noc,
             write_cmd_buf,
@@ -1490,6 +1493,7 @@ inline void noc_async_write_multicast(
             linked,
             num_dests,
             multicast_path_reserve);
+        DPRINT << "post " << noc_nonposted_writes_acked[noc] << ENDL();
         WAYPOINT("NMWD");
     }
 }
@@ -1716,7 +1720,13 @@ void noc_async_write_barrier(uint8_t noc = noc_index) {
     if constexpr (noc_mode == DM_DYNAMIC_NOC) {
         while (!ncrisc_dynamic_noc_nonposted_writes_flushed<proc_type>(noc));
     } else {
-        while (!ncrisc_noc_nonposted_writes_flushed(noc));
+        while (!ncrisc_noc_nonposted_writes_flushed(noc)) {
+            // (NOC_STATUS_READ_REG(noc, NIU_MST_WR_ACK_RECEIVED) == noc_nonposted_writes_acked[noc]);
+            // DPRINT << "wr ack received " << NOC_STATUS_READ_REG(noc, NIU_MST_WR_ACK_RECEIVED)
+            //        << " noc_nonposted_writes_acked " << noc_nonposted_writes_acked[noc] << ENDL();
+        }
+        // DPRINT << "matching wr ack received " << NOC_STATUS_READ_REG(noc, NIU_MST_WR_ACK_RECEIVED)
+        //         << " noc_nonposted_writes_acked " << noc_nonposted_writes_acked[noc] << ENDL();
     }
     WAYPOINT("NWBD");
 }

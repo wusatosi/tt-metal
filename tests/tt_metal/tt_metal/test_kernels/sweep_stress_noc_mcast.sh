@@ -15,7 +15,7 @@ fi
 
 function run_set() {
     echo "running: $@"
-    TT_METAL_SLOW_DISPATCH_MODE=1 build/test/tt_metal/test_stress_noc_mcast -t 120 $@
+    TT_METAL_SLOW_DISPATCH_MODE=1 build/test/tt_metal/test_stress_noc_mcast -t 10 $@
 }
 
 function run_all() {
@@ -31,6 +31,8 @@ function run_all() {
 }
 
 # sweep w/ randomized noc address, tensix mcast
+# width=12 / height=10
+
 for (( i=0; i<$width; i++ )); do
     h=$((height -1))
     run_all -x 0 -y 0 -width $width -height $h -mx $i -my $h

@@ -130,16 +130,25 @@ int main(int argc, char** argv) {
     }
 
     bool virtualization_enabled = tt::tt_metal::hal.is_coordinate_virtualization_enabled();
-    CoreCoord virtual_offset = virtualization_enabled
-                                   ? device->worker_core_from_logical_core({0, 0})
-                                   : CoreCoord(0, 0);  // in this case pass physical coordinates as runtime args
+    CoreCoord virtual_offset;
+    CoreCoord mcast_end = CoreCoord(width_g, height_g);
+    std::cout << "Mcast end is " << mcast_end.str() << std::endl;
+    if (virtualization_enabled) {
+        virtual_offset = device->worker_core_from_logical_core({0, 0});
+    } else {
+        virtual_offset = CoreCoord(0, 0);  // In this case pass physical coordinates as runtime args
+        mcast_end = device->worker_core_from_logical_core(mcast_end);
+    }
+    std::cout << "Mcast end is " << mcast_end.str() << std::endl;
+    uint32_t num_dests = width_g * height_g;
 
     std::vector<uint32_t> compile_args = {
         false,
         tl_core.x,
         tl_core.y,
-        width_g,
-        height_g,
+        mcast_end.x,
+        mcast_end.y,
+        num_dests,
         time_secs_g,
         ucast_size_g,
         mcast_size_g,
