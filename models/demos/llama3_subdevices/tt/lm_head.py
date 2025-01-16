@@ -142,7 +142,43 @@ class LMHead(LightweightModule):
                 for split_size in split_sizes
             ]
 
+    def forward_on_host(self, x: ttnn.Tensor):
+        x_torch = ttnn.to_torch(
+            x,
+            mesh_composer=ttnn.ConcatMesh2dToTensor(
+                self.mesh_device,
+                dims=(0, 3),
+                mesh_shape=(8, 4),
+            ),
+        )  # [8, 1, 32, 2048 * 4]
+        x_torch = x_torch[:1]
+
+        weight_torch = ttnn.to_torch(
+            self.output_weights[0],
+            mesh_composer=ttnn.ConcatMesh2dToTensor(
+                mesh_device=self.mesh_device, dims=(3, 2), mesh_shape=list(self.mesh_device.shape)
+            ),
+        )
+
+        output_torch = torch.matmul(x_torch.float(), weight_torch.float())
+
+        output = ttnn.as_tensor(
+            output_torch,
+            dtype=ttnn.bfloat8_b,
+            device=self.mesh_device,
+            mesh_mapper=ttnn.ShardTensor2dMesh(
+                mesh_device=self.mesh_device, dims=(3, None), mesh_shape=list(self.mesh_device.shape)
+            ),
+            layout=ttnn.TILE_LAYOUT,
+            memory_config=ttnn.L1_MEMORY_CONFIG,
+        )
+
+        return output
+
     def forward(self, x: ttnn.Tensor):
+        # workaround for OOM issue
+        return self.forward_on_host(x)
+
         outputs = []
         for weight, pc in zip(self.output_weights, self.program_configs):
             weight_l1 = ttnn.to_memory_config(weight, self.args.model_config["LM_HEAD_RING_MEMCFG"])
