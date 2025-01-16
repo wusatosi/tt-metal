@@ -1984,10 +1984,11 @@ uint32_t noc_async_read_tile_dram_sharded_set_state(uint32_t bank_base_address, 
     uint32_t src_addr_;
     uint32_t src_noc_xy;
 
-    RECORD_NOC_EVENT(NocEventType::UNSUPPORTED);
-
     src_addr_ = bank_base_address + bank_to_dram_offset[bank_id];
     src_noc_xy = dram_bank_to_noc_xy[noc][bank_id];
+
+    RECORD_NOC_EVENT_WITH_ADDR(
+        NocEventType::READ_DRAM_SHARDED_SET_STATE, uint64_t(src_noc_xy) << 32, page_size, (use_vc) ? vc : -1);
 
     WAYPOINT("NRTW");
     while (!noc_cmd_buf_ready(noc, read_cmd_buf));
@@ -2007,8 +2008,7 @@ uint32_t noc_async_read_tile_dram_sharded_set_state(uint32_t bank_base_address, 
 template <bool enable_noc_tracing = true>
 FORCE_INLINE
 void noc_async_read_tile_dram_sharded_with_state(uint32_t src_base_addr, uint32_t src_addr, uint32_t dest_addr, uint32_t trid = 0, uint8_t noc = noc_index) {
-
-    RECORD_NOC_EVENT(NocEventType::UNSUPPORTED);
+    RECORD_NOC_EVENT(NocEventType::READ_DRAM_SHARDED_WITH_STATE);
 
     uint32_t src_addr_;
 
@@ -2026,8 +2026,7 @@ void noc_async_read_tile_dram_sharded_with_state(uint32_t src_base_addr, uint32_
 template <bool enable_noc_tracing = true>
 FORCE_INLINE
 void noc_async_read_tile_dram_sharded_with_state_with_trid(uint32_t src_base_addr, uint32_t src_addr, uint32_t dest_addr, uint32_t trid = 0, uint8_t noc = noc_index) {
-
-    RECORD_NOC_EVENT(NocEventType::UNSUPPORTED);
+    RECORD_NOC_EVENT(NocEventType::READ_DRAM_SHARDED_WITH_STATE);
 
     WAYPOINT("NRDW");
 #ifndef ARCH_GRAYSKULL

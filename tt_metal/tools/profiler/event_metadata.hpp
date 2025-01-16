@@ -18,6 +18,8 @@ struct alignas(uint64_t) KernelProfilerNocEventMetadata {
         READ_BARRIER_START,
         READ_BARRIER_END,
         READ_BARRIER_WITH_TRID,
+        READ_DRAM_SHARDED_SET_STATE,
+        READ_DRAM_SHARDED_WITH_STATE,
 
         WRITE_,
         WRITE_INLINE,
