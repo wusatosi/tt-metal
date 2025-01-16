@@ -392,6 +392,12 @@ void DeviceProfiler::logNocTracePacketDataToJson(
 
     } else if (packet_type == kernel_profiler::TS_DATA) {
         KernelProfilerNocEventMetadata ev_md(data);
+
+        // fixup known invalid metadata based on event type
+        if (ev_md.noc_xfer_type == KernelProfilerNocEventMetadata::NocEventType::READ_SET_STATE) {
+            ev_md.dst_x = -1;
+            ev_md.dst_y = -1;
+        }
         noc_trace_json_log.push_back(nlohmann::json{
             {"proc", risc_name},
             {"noc", magic_enum::enum_name(ev_md.noc_type)},
