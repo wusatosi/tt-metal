@@ -332,7 +332,7 @@ class TtTransformer(LightweightModule):
     ):
         # Prefetcher
         if mode == "decode" and self.args.is_galaxy:
-            ttnn.dram_prefetcher(
+            garbage_tensor = ttnn.dram_prefetcher(
                 self.prefetcher_setup.tensors,
                 num_layers=self.n_layers,
                 global_cb=None,
@@ -356,6 +356,8 @@ class TtTransformer(LightweightModule):
                 chunk_start_idx=chunk_start_idx,
                 kv_cache=kv_cache[i] if kv_cache is not None else None,
             )
+
+        ttnn.deallocate(garbage_tensor)
 
         if mode == "prefill" and get_last_token == -1:
             return x
