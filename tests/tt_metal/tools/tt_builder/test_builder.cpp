@@ -5,9 +5,9 @@
 #include <gtest/gtest.h>
 #include <filesystem>
 #include "tools/tt_builder/builder.hpp"
-#include "llrt/hal.hpp"
-#include "tt_metal/common/logger.hpp"
-#include "tt_metal/llrt/rtoptions.hpp"
+#include <hal.hpp>
+#include <logger.hpp>
+#include <rtoptions.hpp>
 
 TEST(BuilderTest, test_firmware_build) {
     tt::tt_metal::BuilderTool builder;
