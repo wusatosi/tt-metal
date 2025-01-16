@@ -4,8 +4,8 @@
 
 #include <string>
 #include <filesystem>
-#include "tt_metal/jit_build/build.hpp"
-#include "tt_metal/host_api.hpp"
+#include <build.hpp>
+#include <host_api.hpp>
 
 namespace tt::tt_metal {
 

@@ -4,7 +4,7 @@
 
 #include <iostream>
 #include "builder.hpp"
-#include "tt_metal/common/logger.hpp"
+#include <logger.hpp>
 using namespace std;
 
 void print_usage(const char* exec_name) {
