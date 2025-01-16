@@ -70,6 +70,7 @@ s/#include "allocator\/(allocator.hpp)"/#include <tt-metalium\/\1>/
 s/#include "(tt_metal\/)?impl\/kernels\/(runtime_args_data.hpp)"/#include <tt-metalium\/\2>/
 s/#include "tt_metal\/third_party\/tracy\/public\/(tracy\/Tracy.hpp)"/#include <\1>/
 s/#include "(tt_metal\/)?experimental\/(hal.hpp)"/#include <tt-metalium\/hal_exp.hpp>/
+s/#include "(tt_metal\/)?llrt\/(hal.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?tt_stl\/(overloaded.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?impl\/event\/(event.hpp)"/#include <tt-metalium\/\2>/
 s/#include "(tt_metal\/)?detail\/(persistent_kernel_cache.hpp)"/#include <tt-metalium\/\2>/
