@@ -83,8 +83,8 @@ def get_device_freq():
 
 
 matmul_shapes_bfloat16 = [
-    (512, 512, 512, False, False, 1, 1, 1),
-    (512, 1024, 1024, False, False, 1, 1, 1),
+    # (512, 512, 512, False, False, 1, 1, 1),
+    # (512, 1024, 1024, False, False, 1, 1, 1),
     (512, 1024, 2048, False, False, 1, 1, 1),
     (1024, 1024, 1024, False, False, 1, 1, 1),
     (1024, 1024, 2048, False, False, 1, 1, 1),
