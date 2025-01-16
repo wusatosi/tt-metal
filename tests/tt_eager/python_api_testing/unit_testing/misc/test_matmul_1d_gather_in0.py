@@ -131,7 +131,7 @@ def run_multi_core_matmul_1d(
         pytest.skip(f"num_blocks_total {num_blocks_total} != num_cores {ring_size}")
 
     out_subblock_h = 1
-    out_subblock_w = max_dst_tiles if (out_block_h == 1 and out_block_w <= max_dst_tiles) else 4
+    out_subblock_w = max_dst_tiles if (out_block_h == 1 and out_block_w <= max_dst_tiles) else 8
     while out_block_w % out_subblock_w != 0:
         out_subblock_w -= 1
 
@@ -273,6 +273,9 @@ def run_multi_core_matmul_1d(
             memory_config=output_sharded_mem_config,
             compute_kernel_config=compute_kernel_config,
         )
+    test = output_t[:, :, :, :3584]
+    logger.info(test)
+
     tt_out = ttnn.to_torch(output_t)
 
     pt_out = in0 @ in1
@@ -283,8 +286,8 @@ def run_multi_core_matmul_1d(
     passing, output = comp_pcc(pt_out, tt_out, pcc_threshold)
     logger.info(output)
 
-    breakpoint()
-    # assert passing
+    # breakpoint()
+    assert passing
 
     # Check program cache
     assert device.num_program_cache_entries() == 1  # Only 1 op
@@ -341,7 +344,26 @@ def run_multi_core_matmul_1d(
         #     1,
         # ),
         # # TG prefetch case
-        # (1, 32, 2304, (3584 + 512), ttnn.bfloat16, ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, True, True, (8, 3), 3, 4),
+        # (1, 32, 2304, (3584) * 2, ttnn.bfloat16, ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, True, True, (8, 3), 3, 4), # 22 us
+        # (1, 32, 2304, (3840) * 2, ttnn.bfloat16, ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, True, True, (8, 3), 1, 2), # 22 us
+        (1, 32, 2304, 3840, ttnn.bfloat16, ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, True, True, (8, 3), 1, 1),
+        # (1, 32, 3840, 2304, ttnn.bfloat16, ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, True, True, (8, 3), 1, 1), # 15 us
+        # (1, 32, 3840, 3072, ttnn.bfloat16, ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, True, True, (8, 3), 6, 1), # 48 us
+        # (1, 32, 3840, 3072, ttnn.bfloat16, ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, True, True, (8, 3), 3, 4), # 22 us
+        # 1D weight fracturing
+        # ff1/3
+        # (1, 32, 8192 + 256, 1536, ttnn.bfloat16, ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, True, True, (8, 3), 1, 1),
+        # (1, 32, 8192 + 256, 1024, ttnn.bfloat16, ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, True, True, (8, 3), 3, 1),
+        # ff2
+        # (1, 32, 1536, 8192 + 256, ttnn.bfloat16, ttnn.bfloat4_b, ttnn.MathFidelity.HiFi2, True, False, (8, 3), 1, 1),
+        # (1, 32, 1536, 8192, ttnn.bfloat16, ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, True, False, (8, 3), 3, 1),
+        # (1, 32, 1536, 8192, ttnn.bfloat16, ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, True, False, (8, 3), 3, 8),
+        # do
+        # (1, 32, 768, 8192 + 256, ttnn.bfloat16, ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, True, True, (8, 3), 1, 1),
+        # (1, 32, 768, 8192, ttnn.bfloat16, ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, True, True, (8, 3), 3, 1),
+        # do/qkv (fixed)
+        # (1, 32, 8192 + 256, 768, ttnn.bfloat16, ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, True, True, (8, 3), 1, 1),
+        # (1, 32, 8192 + 256, 512, ttnn.bfloat16, ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, True, True, (8, 3), 3, 1),
         # (
         #     1,
         #     32,
@@ -426,20 +448,20 @@ def run_multi_core_matmul_1d(
         #     3,
         #     1,
         # ),
-        (
-            1,
-            32,
-            32 * 4,
-            3 * 32 * 2,
-            ttnn.bfloat16,
-            ttnn.bfloat4_b,
-            ttnn.MathFidelity.LoFi,
-            True,
-            True,
-            (4, 1),
-            4,
-            2,
-        ),  # fails
+        # (
+        #     1,
+        #     32,
+        #     32 * 4,
+        #     3 * 32 * 2,
+        #     ttnn.bfloat16,
+        #     ttnn.bfloat4_b,
+        #     ttnn.MathFidelity.LoFi,
+        #     True,
+        #     True,
+        #     (4, 1),
+        #     4,
+        #     2,
+        # ),  # fails
         # # Check if multi-batch works
         # (
         #     1,
