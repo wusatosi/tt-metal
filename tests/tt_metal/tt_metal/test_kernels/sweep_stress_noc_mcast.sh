@@ -15,7 +15,7 @@ fi
 
 function run_set() {
     echo "running: $@"
-    TT_METAL_SLOW_DISPATCH_MODE=1 build/test/tt_metal/test_stress_noc_mcast -t 10 $@
+    TT_METAL_SLOW_DISPATCH_MODE=1 build/test/tt_metal/test_stress_noc_mcast -t 120 $@
 }
 
 function run_all() {

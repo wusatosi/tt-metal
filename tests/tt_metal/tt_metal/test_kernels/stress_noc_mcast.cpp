@@ -7,8 +7,8 @@
 constexpr bool mcaster = get_compile_time_arg_val(0);
 constexpr uint32_t tlx = get_compile_time_arg_val(1);
 constexpr uint32_t tly = get_compile_time_arg_val(2);
-constexpr uint32_t width = get_compile_time_arg_val(3);
-constexpr uint32_t height = get_compile_time_arg_val(4);
+constexpr uint32_t mcast_end_x = get_compile_time_arg_val(3);
+constexpr uint32_t mcast_end_y = get_compile_time_arg_val(4);
 constexpr uint32_t num_dests = get_compile_time_arg_val(5);
 constexpr uint64_t duration = (uint64_t)get_compile_time_arg_val(6) * 1000 * 1000 * 1000;
 constexpr uint32_t ucast_size = get_compile_time_arg_val(7);
@@ -35,32 +35,32 @@ void kernel_main() {
     debug_addr_ptr[0] = 0xDEADBEEF;
 
     uint64_t stall_time = 0;
-    // while (c_tensix_core::read_wall_clock() < done_time) {
-    // DPRINT << "wall clock time " << c_tensix_core::read_wall_clock() << " done time " << done_time << ENDL();
-    for (uint32_t count = 0; count < 1; count++) {
-        if (enable_rnd_delay) {
-            // reading time here biases us to have more ~0 cycle stalls as this
-            // includes the write time
-            while (c_tensix_core::read_wall_clock() < stall_time);
-            stall_time = c_tensix_core::read_wall_clock() + next_rand(rnds, rnd_index);
-        }
+    while (c_tensix_core::read_wall_clock() < done_time) {
+        // DPRINT << "wall clock time " << c_tensix_core::read_wall_clock() << " done time " << done_time << ENDL();
+        for (uint32_t count = 0; count < 1000; count++) {
+            if (enable_rnd_delay) {
+                // reading time here biases us to have more ~0 cycle stalls as this
+                // includes the write time
+                while (c_tensix_core::read_wall_clock() < stall_time);
+                stall_time = c_tensix_core::read_wall_clock() + next_rand(rnds, rnd_index);
+            }
 
-        if (mcaster) {
-            DPRINT << "tlx " << tlx << " tly " << tly << " width " << width << " height " << height
-                   << " tlx + width - 1 " << (tlx + width - 1) << " tly + height - 1 " << (tly + height - 1)
-                   << " num_dests " << num_dests << ENDL();
-            uint64_t dst_noc_multicast_addr = get_noc_multicast_addr(tlx, tly, width, height, ucast_l1_addr);
-            noc_async_write_multicast(mcast_l1_addr, dst_noc_multicast_addr, mcast_size, num_dests, false);
-        } else {
-            uint32_t dst_x, dst_y;
-            uint8_t noc_addr = next_rand(rnds, rnd_index);
-            dst_x = (noc_addr & 0xf) + virtual_grid_offset_x;
-            dst_y = (noc_addr >> 4) + virtual_grid_offset_y;
-            uint64_t noc_write_addr = NOC_XY_ADDR(NOC_X(dst_x), NOC_Y(dst_y), ucast_l1_addr);
-            noc_async_write(ucast_l1_addr, noc_write_addr, ucast_size);
+            if (mcaster) {
+                DPRINT << "start x " << tlx << " start y " << tly << " end x " << mcast_end_x << " end y "
+                       << mcast_end_y << ENDL();
+                uint64_t dst_noc_multicast_addr =
+                    get_noc_multicast_addr(tlx, tly, mcast_end_x, mcast_end_y, ucast_l1_addr);
+                noc_async_write_multicast(mcast_l1_addr, dst_noc_multicast_addr, mcast_size, num_dests, false);
+            } else {
+                uint32_t dst_x, dst_y;
+                uint8_t noc_addr = next_rand(rnds, rnd_index);
+                dst_x = (noc_addr & 0xf) + virtual_grid_offset_x;
+                dst_y = (noc_addr >> 4) + virtual_grid_offset_y;
+                uint64_t noc_write_addr = NOC_XY_ADDR(NOC_X(dst_x), NOC_Y(dst_y), ucast_l1_addr);
+                noc_async_write(ucast_l1_addr, noc_write_addr, ucast_size);
+            }
         }
     }
-    // }
 
     noc_async_write_barrier();
 }
