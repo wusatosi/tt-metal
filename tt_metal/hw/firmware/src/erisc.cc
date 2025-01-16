@@ -83,7 +83,7 @@ void __attribute__((noinline)) Application(void) {
             // Note that a core may get "GO" w/ enable false to keep its launch_msg's in sync
             enum dispatch_core_processor_masks enables = (enum dispatch_core_processor_masks)launch_msg_address->kernel_config.enables;
             if (enables & DISPATCH_CLASS_MASK_ETH_DM0) {
-                WAYPOINT("R");
+                WAYPOINT("R2");
                 firmware_config_init(mailboxes, ProgrammableCoreType::ACTIVE_ETH, DISPATCH_CLASS_ETH_DM0);
                 kernel_init(0);
                 WAYPOINT("D");

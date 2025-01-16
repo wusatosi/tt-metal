@@ -117,7 +117,7 @@ int main(int argc, char *argv[]) {
         crta_l1_base = (uint32_t tt_l1_ptr *)(kernel_config_base +
             launch_msg->kernel_config.rta_offset[DISPATCH_CLASS_TENSIX_COMPUTE].crta_offset);
 
-        WAYPOINT("R");
+        WAYPOINT("R6");
         int index = static_cast<std::underlying_type<TensixProcessorTypes>::type>(TensixProcessorTypes::MATH0) + thread_id;
         void (*kernel_address)(uint32_t) = (void (*)(uint32_t))
             (kernel_config_base + launch_msg->kernel_config.kernel_text_offset[index]);

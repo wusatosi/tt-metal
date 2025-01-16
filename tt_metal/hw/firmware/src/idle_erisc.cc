@@ -157,7 +157,7 @@ int main() {
 
             // Run the ERISC kernel
             if (enables & DISPATCH_CLASS_MASK_ETH_DM0) {
-                WAYPOINT("R");
+                WAYPOINT("R3");
                 int index = static_cast<std::underlying_type<EthProcessorTypes>::type>(EthProcessorTypes::DM0);
                 void (*kernel_address)(uint32_t) = (void (*)(uint32_t))(
                     kernel_config_base + launch_msg_address->kernel_config.kernel_text_offset[index]);

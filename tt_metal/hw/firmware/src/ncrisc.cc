@@ -113,7 +113,7 @@ int main(int argc, char *argv[]) {
         cb_l1_base = (uint32_t tt_l1_ptr*)(kernel_config_base + launch_msg->kernel_config.remote_cb_offset);
         end_cb_index = launch_msg->kernel_config.min_remote_cb_start_index;
         experimental::setup_remote_cb_interfaces(cb_l1_base, end_cb_index);
-        WAYPOINT("R");
+        WAYPOINT("R4");
 
         int index = static_cast<std::underlying_type<TensixProcessorTypes>::type>(TensixProcessorTypes::DM1);
         void (*kernel_address)(uint32_t) = (void (*)(uint32_t))
