@@ -193,16 +193,8 @@ typedef struct fvc_consumer_state {
 
         uint32_t remote_fvc_buffer_space = get_remote_num_words_free();
         if (remote_fvc_buffer_space < (total_words_to_forward + 1)) {
-            // +1 is for pointer sync word.
-            // If fvc receiver buffer on link partner does not have space to receive the
-            // full sync buffer entry, we skip and try again next time.
             return 0;
         }
-
-        // Now that there is enough space in receiver buffer we will send total_words_to_forward number of words.
-        // This means that we may need to break up the writes to multiple ethernet packets
-        // depending on whether local buffer is wrapping, remote buffer is wrapping,
-        // we are writing sync word etc.
 
         if constexpr (live == true) {
             uint32_t src_addr = 0;
@@ -211,7 +203,6 @@ typedef struct fvc_consumer_state {
             while (words_remaining) {
                 uint32_t num_words_before_local_wrap = words_before_buffer_wrap(fvc_out_rdptr);
                 uint32_t num_words_before_remote_wrap = words_before_buffer_wrap(fvc_out_wrptr);
-                ;
                 uint32_t words_to_forward = std::min(num_words_before_local_wrap, num_words_before_remote_wrap);
                 words_to_forward = std::min(words_to_forward, words_remaining);
                 words_to_forward = std::min(words_to_forward, DEFAULT_MAX_ETH_SEND_WORDS);
@@ -225,7 +216,7 @@ typedef struct fvc_consumer_state {
                 words_remaining -= words_to_forward;
             }
 
-            // after sending all the data, send the last word which is pointer sync word.
+            // after sending all the data, send the last word (pointer sync word).
             volatile uint32_t* sync_ptr = (volatile uint32_t*)get_local_buffer_read_addr();
             advance_out_rdptr(1);
             sync_ptr[0] = fvc_out_wrptr;
@@ -234,12 +225,20 @@ typedef struct fvc_consumer_state {
             sync_ptr[3] = fvc_out_rdptr;
             internal_::eth_send_packet(
                 0, ((uint32_t)sync_ptr) / PACKET_WORD_SIZE_BYTES, remote_ptr_update_addr / PACKET_WORD_SIZE_BYTES, 1);
+
+            // DEBUG ADDED
+            DPRINT << "forward_data_from_fvc_buffer: Sent " << total_words_to_forward << " words plus sync word"
+                   << ENDL();
         } else {
             advance_out_rdptr(total_words_to_forward);
             advance_out_wrptr(total_words_to_forward);
             advance_out_rdptr(1);
             remote_rdptr.ptr = fvc_out_rdptr;
             remote_rdptr.ptr_cleared = fvc_out_wrptr;
+
+            // DEBUG ADDED
+            DPRINT << "forward_data_from_fvc_buffer (offline): " << total_words_to_forward << " words forwarded"
+                   << ENDL();
         }
         sync_buf_advance_rdptr();
         return total_words_to_forward;
@@ -268,15 +267,6 @@ static_assert(sizeof(fvc_consumer_state_t) % 4 == 0);
 #define FVC_MODE_ROUTER 1
 #define FVC_MODE_ENDPOINT 2
 
-// FVC Producer holds data that needs to be forwarded to other destinations.
-// This producer receives data over ethernet from neighboring chip.
-// Data in the producer is either destined for local chip, or has to make a noc hop
-// to ethernet port enroute to final destination.
-// FVC producer buffer issues pull requests to other entities in the fabric node to
-// pull data from Producer buffer. Pull requests can be made to next router/consumer buffer in the route
-// direction, socket receiver/consumer buffer, center worker/consumer buffer.
-// Which ever entity receives the pull request is responsible draining the required amount of data from
-// FVC Producer.
 typedef struct fvc_producer_state {
     volatile chan_payload_ptr inbound_wrptr;
     volatile chan_payload_ptr inbound_rdptr;
@@ -357,7 +347,6 @@ typedef struct fvc_producer_state {
 
     inline bool get_curr_packet_valid() {
         if (!curr_packet_valid && (get_num_words_available() >= PACKET_HEADER_SIZE_WORDS)) {
-            // Wait for a full packet header to arrive before advancing to next packet.
             this->advance_next_packet();
         }
         return this->curr_packet_valid;
@@ -427,8 +416,6 @@ typedef struct fvc_producer_state {
             uint32_t words_before_wrap = words_before_buffer_wrap(fvc_out_rdptr);
             uint32_t dwords_to_copy = PACKET_HEADER_SIZE_BYTES / 4;
             if (words_before_wrap < PACKET_HEADER_SIZE_WORDS) {
-                // Header spans buffer end.
-                // Needs to be copied in two steps.
                 uint32_t dwords_before_wrap = words_before_wrap * PACKET_WORD_SIZE_BYTES / 4;
                 uint32_t dwords_after_wrap = dwords_to_copy - dwords_before_wrap;
                 for (uint32_t i = 0; i < dwords_before_wrap; i++) {
@@ -452,6 +439,9 @@ typedef struct fvc_producer_state {
             } else {
                 this->packet_corrupted = true;
             }
+
+            // DEBUG ADDED
+            DPRINT << "advance_next_packet: got a valid header? " << (this->curr_packet_valid ? "yes" : "no") << ENDL();
         }
     }
 
@@ -496,34 +486,39 @@ typedef struct fvc_producer_state {
             }
             packet_words_remaining -= words_available;
             advance_out_rdptr(words_available);
-            // issue noc write to noc target of pull request.
+
             uint64_t dest_addr = ((uint64_t)get_next_hop_router_noc_xy() << 32) | FABRIC_ROUTER_REQ_QUEUE_START;
             packet_dest = tt_fabric_send_pull_request(dest_addr, local_pull_request);
+
             if (current_packet_header.routing.flags == INLINE_FORWARD) {
                 curr_packet_valid = false;
                 flush_async_writes<fvc_mode>();
+                // DEBUG ADDED
+                DPRINT << "pull_data_from_fvc_buffer (INLINE_FORWARD): " << words_available
+                       << " words consumed, packet done" << ENDL();
                 return words_available;
             }
         } else {
-            // pull_request.rd_ptr is updated by remote puller when data is read out of producer's local buffer.
-            // it is used to determine when it it safe to reclaim local buffer memory for more data.
             fvc_pull_rdptr = local_pull_request->pull_request.rd_ptr;
             if (packet_words_remaining) {
                 if (words_available) {
                     advance_out_wrptr(words_available);
-                    // packet_dest is returned by tt_fabric_send_pull_request() as the address of request q entry +
-                    // pull_request.wr_ptr.
                     noc_inline_dw_write(packet_dest, fvc_out_wrptr);
                     advance_out_rdptr(words_available);
                     packet_words_remaining -= words_available;
+
+                    // DEBUG ADDED
+                    DPRINT << "pull_data_from_fvc_buffer: " << words_available << " additional words forwarded"
+                           << ENDL();
                 }
             } else if (fvc_pull_rdptr == fvc_out_rdptr) {
-                // all data has been pulled and cleared from local buffer
                 packet_in_progress = 0;
                 curr_packet_valid = false;
+
+                // DEBUG ADDED
+                DPRINT << "pull_data_from_fvc_buffer: all data pulled & cleared from local buffer" << ENDL();
             }
         }
-        // send ptr cleared to ethernet sender.
         update_remote_rdptr_cleared<fvc_mode>();
         return words_available;
     }
@@ -538,6 +533,9 @@ typedef struct fvc_producer_state {
             advance_out_wrptr(words_available);
             advance_out_rdptr(words_available);
             packet_dest += words_available * PACKET_WORD_SIZE_BYTES;
+
+            // DEBUG ADDED
+            DPRINT << "issue_async_write: wrote " << words_available << " words" << ENDL();
         }
         return words_available;
     }
@@ -558,8 +556,6 @@ typedef struct fvc_producer_state {
                     packet_words_remaining -= PACKET_HEADER_SIZE_WORDS;
                     advance_out_wrptr(PACKET_HEADER_SIZE_WORDS);
                     advance_out_rdptr(PACKET_HEADER_SIZE_WORDS);
-                    // subtract the header words. Remaining words are the data to be written to packet_dest.
-                    // Remember to account for trailing bytes which may not be a full packet word.
                     packet_in_progress = 1;
                     words_processed = PACKET_HEADER_SIZE_WORDS;
                     words_processed += issue_async_write();
@@ -595,14 +591,15 @@ typedef struct fvc_producer_state {
                 packet_timestamp = get_timestamp();
             }
         } else {
-            // multicast
             if (current_packet_header.routing.flags & MCAST_DATA) {
                 words_processed = process_inbound_multicast_packet<fvc_mode>();
             } else {
-                // unicast
                 words_processed = pull_data_from_fvc_buffer<fvc_mode>();
             }
         }
+
+        // DEBUG ADDED
+        DPRINT << "process_inbound_packet: total words processed = " << words_processed << ENDL();
         return words_processed;
     }
 
@@ -621,7 +618,6 @@ typedef struct fvc_producer_state {
                     advance_out_rdptr(PACKET_HEADER_SIZE_WORDS);
                     packet_in_progress = 1;
                     words_processed = PACKET_HEADER_SIZE_WORDS;
-
                     words_processed += issue_async_write();
                 } else {
                     flush_async_writes();
@@ -656,26 +652,24 @@ typedef struct fvc_producer_state {
             }
         }
 
-        // MULTICAST FORWARDING: replicate data to east / west if there are hops left
-        // in the packet header's mcast_params.
-
         uint16_t east_hops = current_packet_header.packet_parameters.mcast_parameters.east;
         uint16_t west_hops = current_packet_header.packet_parameters.mcast_parameters.west;
 
         bool need_to_send_east = (east_hops > 0);
         bool need_to_send_west = (west_hops > 0);
 
-        // If we do not need to replicate further, we still do the local consumption
         if (!need_to_send_east && !need_to_send_west) {
             words_processed += pull_data_from_fvc_buffer<fvc_mode>();
+
+            // DEBUG ADDED
+            DPRINT << "process_inbound_multicast_packet: no more hops, pulled data. total=" << words_processed
+                   << ENDL();
             return words_processed;
         }
 
-        // Otherwise, at least one side (east or west) needs a copy of this data.
         local_pull_request_t local_pull_requests[2] __attribute__((aligned(16)));
         uint32_t pr_count = 0;
 
-        // helpers
         auto setup_mcast_pull_request = [&](local_pull_request_t& lpr) {
             zero_l1_buf((tt_l1_ptr uint32_t*)&lpr, sizeof(local_pull_request_t));
             {
@@ -709,9 +703,7 @@ typedef struct fvc_producer_state {
             decrement_mcast_hops(local_pull_requests[pr_count].pull_request, true, false);
 
             tt::tt_fabric::chan_id_t east_port = routing_table->port_direction.east;
-            if (east_port == tt::tt_fabric::INVALID_ROUTING_TABLE_ENTRY) {
-                // No valid route to east
-            } else {
+            if (east_port != tt::tt_fabric::INVALID_ROUTING_TABLE_ENTRY) {
                 uint64_t east_noc_xy = eth_chan_to_noc_xy[noc_index][east_port];
                 uint64_t dest_addr = (east_noc_xy << 32) | FABRIC_ROUTER_REQ_QUEUE_START;
                 tt_fabric_send_pull_request(dest_addr, &local_pull_requests[pr_count]);
@@ -724,9 +716,7 @@ typedef struct fvc_producer_state {
             decrement_mcast_hops(local_pull_requests[pr_count].pull_request, false, true);
 
             tt::tt_fabric::chan_id_t west_port = routing_table->port_direction.west;
-            if (west_port == tt::tt_fabric::INVALID_ROUTING_TABLE_ENTRY) {
-                // No valid route to west
-            } else {
+            if (west_port != tt::tt_fabric::INVALID_ROUTING_TABLE_ENTRY) {
                 uint64_t west_noc_xy = eth_chan_to_noc_xy[noc_index][west_port];
                 uint64_t dest_addr = (west_noc_xy << 32) | FABRIC_ROUTER_REQ_QUEUE_START;
                 tt_fabric_send_pull_request(dest_addr, &local_pull_requests[pr_count]);
@@ -736,6 +726,10 @@ typedef struct fvc_producer_state {
 
         words_processed += pull_data_from_fvc_buffer<fvc_mode>();
 
+        // DEBUG ADDED
+        DPRINT << "process_inbound_multicast_packet: " << pr_count
+               << " new pull requests for East/West, total processed=" << words_processed << ENDL();
+
         return words_processed;
     }
 
@@ -744,6 +738,9 @@ typedef struct fvc_producer_state {
         noc_async_write_barrier();
         fvc_pull_rdptr = fvc_out_rdptr;
         update_remote_rdptr_cleared<fvc_mode>();
+
+        // DEBUG ADDED
+        DPRINT << "flush_async_writes: fvc_pull_rdptr set to " << fvc_pull_rdptr << ENDL();
     }
 
 } fvc_producer_state_t;
@@ -837,12 +834,9 @@ inline uint32_t num_words_available_to_pull(volatile pull_request_t* pull_reques
     uint32_t buf_size = pull_request->buffer_size;
 
     if (wr_ptr == rd_ptr) {
-        // buffer empty.
         return 0;
     }
     uint32_t num_words = wr_ptr > rd_ptr ? wr_ptr - rd_ptr : buf_size * 2 + wr_ptr - rd_ptr;
-
-    // num_words = std::min(num_words, this->get_curr_packet_words_remaining());
     return num_words;
 }
 
@@ -906,6 +900,8 @@ inline uint32_t pull_data_to_fvc_buffer(
     bool full_packet_sent = (num_words_to_pull == fvc_consumer_state->packet_words_remaining);
     if (num_words_to_pull == 0) {
         temp[0] = 0xdead1111;
+        // DEBUG ADDED
+        DPRINT << "pull_data_to_fvc_buffer: no words to pull (0), skipping." << ENDL();
         return 0;
     }
 
@@ -913,12 +909,13 @@ inline uint32_t pull_data_to_fvc_buffer(
     uint64_t src_addr = pull_request->buffer_start + (rd_offset * PACKET_WORD_SIZE_BYTES);
     uint32_t fvc_addr = fvc_consumer_state->get_local_buffer_pull_addr();
 
-    // pull_data_from_remote();
     noc_async_read(src_addr, fvc_addr, num_words_to_pull * PACKET_WORD_SIZE_BYTES);
     fvc_consumer_state->register_pull_data(num_words_to_pull);
     pull_request->rd_ptr = advance_ptr(pull_request->buffer_size, pull_request->rd_ptr, num_words_to_pull);
 
-    // TODO: this->remote_wptr_update(num_words_to_forward);
+    // DEBUG ADDED
+    DPRINT << "pull_data_to_fvc_buffer: pulled " << num_words_to_pull
+           << " words from remote. packet_in_progress=" << (int)fvc_consumer_state->packet_in_progress << ENDL();
 
     return num_words_to_pull;
 }
@@ -930,8 +927,9 @@ inline uint32_t move_data_to_fvc_buffer(
         fvc_consumer_state->packet_in_progress = 1;
     }
 
-    // if fvc does not have enough space, try again later.
     if (fvc_consumer_state->get_num_words_free() < PACKET_HEADER_SIZE_WORDS) {
+        // DEBUG ADDED
+        DPRINT << "move_data_to_fvc_buffer: not enough free space in fvc" << ENDL();
         return 0;
     }
 
@@ -956,7 +954,6 @@ inline uint32_t move_data_to_fvc_buffer(
             fvc_addr[7] = src[11];
             break;
         case 2:
-            // uint32_t i = 0;
             for (uint32_t i = 0; i < (PACKET_HEADER_SIZE_WORDS - 1) * PACKET_WORD_SIZE_BYTES / 4; i++) {
                 fvc_addr[i] = src[i];
             }
@@ -973,19 +970,18 @@ inline uint32_t move_data_to_fvc_buffer(
     }
 
     fvc_consumer_state->register_pull_data(PACKET_HEADER_SIZE_WORDS);
+
+    // DEBUG ADDED
+    DPRINT << "move_data_to_fvc_buffer: moved packet header, " << PACKET_HEADER_SIZE_WORDS << " words" << ENDL();
+
     return PACKET_HEADER_SIZE_WORDS;
 }
-/**
- *  Polling for ready signal from the remote peers of all input and output queues.
- *  Blocks until all are ready, but doesn't block polling on each individual queue.
- *  Returns false in case of timeout.
- */
+
 bool wait_all_src_dest_ready(volatile router_state_t* router_state, uint32_t timeout_cycles = 0) {
     bool src_ready = false;
     bool dest_ready = false;
 
     uint32_t iters = 0;
-
     uint32_t start_timestamp = get_timestamp_32b();
     uint32_t sync_in_addr = ((uint32_t)&router_state->sync_in) / PACKET_WORD_SIZE_BYTES;
     uint32_t sync_out_addr = ((uint32_t)&router_state->sync_out) / PACKET_WORD_SIZE_BYTES;
@@ -1015,9 +1011,6 @@ bool wait_all_src_dest_ready(volatile router_state_t* router_state, uint32_t tim
 
 #if defined(COMPILE_FOR_ERISC)
         if ((timeout_cycles == 0) && (iters & 0xFFF) == 0) {
-            // if timeout is disabled, context switch every 4096 iterations.
-            // this is necessary to allow ethernet routing layer to operate.
-            // this core may have pending ethernet routing work.
             internal_::risc_context_switch();
         }
 #endif
@@ -1025,10 +1018,6 @@ bool wait_all_src_dest_ready(volatile router_state_t* router_state, uint32_t tim
     return true;
 }
 
-// issue a pull request.
-// currently blocks till the request queue has space.
-// This needs to be non blocking, so that if one fvc pull request queue is full,
-// we can process other fvcs and come back to check status of this pull request later.
 inline uint64_t tt_fabric_send_pull_request(uint64_t dest_addr, volatile local_pull_request_t* local_pull_request) {
     uint64_t noc_addr = dest_addr + offsetof(chan_req_buf, wrptr);
     noc_fast_atomic_increment<DM_DYNAMIC_NOC>(
@@ -1052,9 +1041,6 @@ inline uint64_t tt_fabric_send_pull_request(uint64_t dest_addr, volatile local_p
         }
 #if defined(COMPILE_FOR_ERISC)
         else {
-            // Consumer pull request buffer is full
-            // Context switch to enable base firmware routing
-            // as it might be handling slow dispatch traffic
             internal_::risc_context_switch();
         }
 #endif
@@ -1064,11 +1050,11 @@ inline uint64_t tt_fabric_send_pull_request(uint64_t dest_addr, volatile local_p
     noc_async_write_one_packet(
         (uint32_t)(&local_pull_request->pull_request), noc_addr, sizeof(pull_request_t), noc_index);
 
-    // compute the address to send write pointer updates to consumer buffer.
-    // This will happen, if the producer did not have all the availale data in its buffer when
-    // the pull request was first issued. In this case, as the producer gets more data in its buffer,
-    // it updates write pointer in the consumer request buffer pull request entry.
     uint64_t wr_ptr_addr = noc_addr + offsetof(pull_request_t, wr_ptr);
+
+    // DEBUG ADDED
+    DPRINT << "tt_fabric_send_pull_request: queueing new pull request at wr_index=" << dest_wr_index << ENDL();
+
     return wr_ptr_addr;
 }
 
@@ -1077,4 +1063,7 @@ inline void tt_fabric_init() {
     uint32_t my_x = noc_id_reg & NOC_NODE_ID_MASK;
     uint32_t my_y = (noc_id_reg >> NOC_ADDR_NODE_ID_BITS) & NOC_NODE_ID_MASK;
     xy_local_addr = NOC_XY_ADDR(my_x, my_y, 0);
+
+    // DEBUG ADDED
+    DPRINT << "tt_fabric_init: local xy addr = 0x" << (void*)xy_local_addr << ENDL();
 }

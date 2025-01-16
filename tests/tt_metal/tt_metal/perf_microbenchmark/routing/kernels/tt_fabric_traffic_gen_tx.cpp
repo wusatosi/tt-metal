@@ -114,6 +114,13 @@ inline bool test_buffer_handler_async_wr() {
             packet_header.session.target_offset_h = noc_offset;
             target_address += packet_header.routing.packet_size_bytes - PACKET_HEADER_SIZE_BYTES;
             packet_header.packet_parameters.misc_parameters.words[1] = input_queue_state.packet_rnd_seed;
+
+            // initially these values are hardcoded
+            packet_header.packet_parameters.mcast_parameters.east = 1;  // e.g. replicate 2 hops to the East
+            packet_header.packet_parameters.mcast_parameters.west = 2;  // replicate 1 hop to the West
+            packet_header.packet_parameters.mcast_parameters.north = 0;
+            packet_header.packet_parameters.mcast_parameters.south = 0;
+
             tt_fabric_add_header_checksum(&packet_header);
             uint32_t words_left = words_to_init - words_initialized;
             bool split_header = words_left < PACKET_HEADER_SIZE_WORDS;
