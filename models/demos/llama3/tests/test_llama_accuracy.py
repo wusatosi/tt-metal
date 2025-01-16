@@ -124,8 +124,7 @@ def test_tt_model_accuracy(
     logger.info("Finished loading weights...")
 
     # Load the reference data
-    model_size = model_args.model_name.split("-")[1].lower()  # e.g., "1b", "3b", "8b", "70b"
-    reference_data_file = f"models/demos/llama3/tests/reference_outputs/{model_size}.refpt"
+    reference_data_file = f"models/demos/llama3/tests/reference_outputs/{model_args.model_name}.refpt"
     logger.info(f"Loading reference data from {reference_data_file}")
     assert os.path.exists(
         reference_data_file
@@ -368,11 +367,12 @@ def test_tt_model_accuracy(
             logger.info(f"{error['position']}: {context}[{incorrect}] != [{expected}], true: [{true_word}]")
 
     # Get accuracy thresholds from PERF.md
-    min_top1_acc, min_top5_acc = get_accuracy_thresholds(
-        model_args.model_name,
-        model_args.device_name,
-        optimizations,
-    )
+    if not model_args.model_name.startswith("Qwen"):
+        min_top1_acc, min_top5_acc = get_accuracy_thresholds(
+            model_args.model_name,
+            model_args.device_name,
+            optimizations,
+        )
 
     logger.info(f"Top-1: {total_top1_acc:.0f}% | Top-5: {total_top5_acc:.0f}%")
     assert total_top1_acc > min_top1_acc, f"Top-1 accuracy {total_top1_acc:.1f}% is too low (expected >{min_top1_acc}%)"

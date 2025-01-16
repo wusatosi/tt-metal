@@ -779,26 +779,30 @@ class TtModelArgs:
             self.model_name = params["_name_or_path"].split("/")[-1]
         base_model_name = self.model_name.split("B-")[0] + "B" if "B-" in self.model_name else self.model_name
 
-        if base_model_name == "Qwen2.5-7B" and self.num_devices != 2:
+        if base_model_name == "Qwen2.5-7B" and self.num_devices not in [0, 2]:
             raise AssertionError("Qwen2.5-7B is only supported on 2 devices, run on an N300 or use FAKE_DEVICE=N300")
 
-        # Default padding cores for each model, 0 if not set here
-        default_padded_cores = {
-            "Qwen2.5-72B": 32,
-            "Qwen2.5-7B": 16,
-        }.get(base_model_name, 0)
+        # Don't need to pad for CPU runs
+        if self.num_devices:
+            # Default padding cores for each model, 0 if not set here
+            default_padded_cores = {
+                "Qwen2.5-72B": 32,
+                "Qwen2.5-7B": 16,
+            }.get(base_model_name, 0)
 
-        # Override MLP padding cores from env var
-        mlp_padded_cores = int(os.environ.get("PAD_MLP_CORES", default_padded_cores))
+            # Override MLP padding cores from env var
+            mlp_padded_cores = int(os.environ.get("PAD_MLP_CORES", default_padded_cores))
 
-        # Only pad if MLP_PADDED_CORES is non-zero
-        if mlp_padded_cores > 0:
-            padded_hidden_dim = nearest_multiple(self.hidden_dim, mlp_padded_cores * self.tile_size * self.num_devices)
-            if padded_hidden_dim != self.hidden_dim:
-                logger.info(
-                    f"PAD_MLP_CORES={mlp_padded_cores}, padding hidden dim from {self.hidden_dim} to {padded_hidden_dim}"
+            # Only pad if MLP_PADDED_CORES is non-zero
+            if mlp_padded_cores > 0:
+                padded_hidden_dim = nearest_multiple(
+                    self.hidden_dim, mlp_padded_cores * self.tile_size * self.num_devices
                 )
-                self.hidden_dim = padded_hidden_dim
+                if padded_hidden_dim != self.hidden_dim:
+                    logger.info(
+                        f"PAD_MLP_CORES={mlp_padded_cores}, padding hidden dim from {self.hidden_dim} to {padded_hidden_dim}"
+                    )
+                    self.hidden_dim = padded_hidden_dim
 
         # RoPE params
         self.rope_theta = params.get("rope_theta")
@@ -1336,3 +1340,6 @@ class HfModelWrapper:
 
     def load_state_dict(self, state_dict):
         return self.model.load_state_dict(convert_meta_to_hf(state_dict, self.head_dim))
+
+    def eval(self):
+        self.model.eval()

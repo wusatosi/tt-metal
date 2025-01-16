@@ -41,3 +41,9 @@ This configuration uses bfp4 MLP FF1+FF3 only for the 3.1-70B model.
 | 11b | N300 | 90 | 97 | 33.8 |
 | 11b | T3K | 88 | 97 | 52.6 |
 | 70b | T3K | 95 | 100 | 14.5 |
+
+# Qwen2.5
+
+| Model | Device | Top-1 (%) | Top-5 (%) |
+|-------|--------|-----------|-----------|
+| 7b | N150 | 81 | 96 |

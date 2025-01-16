@@ -48,7 +48,7 @@ def generate_reference_outputs(total_length, output_file):
         text = f.read()
 
     # Encode text to tokens
-    encoded_tokens = tokenizer.encode(text, bos=True, eos=False)[:total_length]
+    encoded_tokens = model_args.encode_prompt(text, instruct=False)
     encoded_tokens_tensor = torch.tensor(encoded_tokens).unsqueeze(0)  # Shape [1, seq_len]
 
     print(f"{'Progress':<15}{'Correct':<8}{'Actual':<15}{'Top 5 Predictions':<75}")
@@ -118,7 +118,7 @@ def generate_reference_outputs(total_length, output_file):
 
     # Save the data
     data = {
-        "top5_tokens": all_top5_tokens,
+        "top5_tokens": torch.cat(all_top5_tokens, dim=0),
         "reference_tokens": encoded_tokens_tensor,
     }
 
