@@ -8,6 +8,8 @@
 #include "ttnn/cpp/ttnn/deprecated/tt_dnn/kernels/dataflow/generate_reduce_scaler.hpp"
 #include "ttnn/cpp/ttnn/deprecated/tt_dnn/kernels/dataflow/generate_bcast_scalar.hpp"
 
+#include "debug/dprint.h"
+
 void kernel_main() {
     constexpr bool is_all_to_all_worker = get_compile_time_arg_val(0) == 1;
     constexpr bool fuse_gamma = get_compile_time_arg_val(1) == 1;
@@ -85,7 +87,16 @@ void kernel_main() {
         cb_push_back(cb_beta, block_w);
     }
 
+    DPRINT << "TEST!!!!" << ENDL();
+
 #ifndef SKIP_WRITE_BACK
+
+    DPRINT << "writing back to storage cores" << ENDL();
+
+    DPRINT << "block_ht" << block_ht << ENDL();
+    DPRINT << "worker_core_stride_w_bytes" << worker_core_stride_w_bytes << ENDL();
+    DPRINT << "storage_core_stride_w_bytes" << storage_core_stride_w_bytes << ENDL();
+
     uint32_t args_idx = 0;
     uint32_t worker_core_read_offset = 0;
 
@@ -97,11 +108,18 @@ void kernel_main() {
         uint32_t storage_core_x = segment_args[args_idx++];
         uint32_t storage_core_y = segment_args[args_idx++];
 
+        DPRINT << "i" << i << ENDL();
+        DPRINT << "write size: " << write_size << ENDL();
+        DPRINT << "storage_core_x: " << storage_core_x << ENDL();
+        DPRINT << "storage_core_y: " << storage_core_y << ENDL();
+        DPRINT << "worker_core_read_offset: " << worker_core_read_offset << ENDL();
+
         uint32_t worker_core_read_addr = cb_out_read_base_addr + worker_core_read_offset;
         uint32_t local_storage_core_write_addr = cb_out_reshard_write_base_addr;
         if (i == 0) {  // For the first segment we need to add the start offset; the following segments will start at 0
                        // offset
             local_storage_core_write_addr += storage_core_start_offset;
+            DPRINT << "storage_core_start_offset: " << storage_core_start_offset << ENDL();
         }
 
         uint64_t remote_storage_core_write_addr =

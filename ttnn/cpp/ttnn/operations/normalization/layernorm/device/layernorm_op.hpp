@@ -39,9 +39,7 @@ operation::ProgramWithCallbacks layernorm_multi_core_sharded(
     uint32_t subblock_wt,
     uint32_t block_ht,
     uint32_t block_wt,
-    DeviceComputeKernelConfig compute_kernel_config,
-    CoreRangeSet storage_core_range,
-    uint32_t block_wt_resharded);
+    DeviceComputeKernelConfig compute_kernel_config);
 
 struct LayerNorm {
     LayerNormType norm_type;

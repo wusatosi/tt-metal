@@ -206,9 +206,17 @@ void LayerNorm::validate(
 std::vector<TensorSpec> LayerNorm::compute_output_specs(const std::vector<Tensor>& input_tensors) const {
     const auto& input_tensor = input_tensors.at(0);
     auto output_shape = input_tensor.get_logical_shape();
+    auto output_shard_spec = this->output_mem_config.shard_spec.has_value() ? this->output_mem_config.shard_spec.value()
+                                                                            : input_tensor.shard_spec().value();
     if (this->distributed_norm_stage == DistributedLayerNormStage::PRE_ALL_GATHER) {
         uint32_t num_tiles_w = this->norm_type == LayerNormType::LAYERNORM ? 2 : 1;
         output_shape[3] = num_tiles_w * TILE_WIDTH;
+    } else if (
+        this->distributed_norm_stage == DistributedLayerNormStage::POST_ALL_GATHER &&
+        this->output_mem_config.shard_spec.has_value() &&
+        output_shard_spec.grid != input_tensor.shard_spec().value().grid) {
+        output_shape[3] = output_shard_spec.shape[1] * output_shard_spec.num_cores();
+        // TODO: handle padding?
     }
 
     return std::visit(
@@ -231,10 +239,12 @@ std::vector<TensorSpec> LayerNorm::compute_output_specs(const std::vector<Tensor
                     return {input_tensor.get_tensor_spec()};
                 }
 
-                auto mem_config = this->output_mem_config;
-                // mem_config.shard_spec = input_tensor.shard_spec().value(); // Respect output memory config shard spec
+                // std::cout << "this->output_mem_config: " << this->output_mem_config << std::endl;
+                // std::cout << "output_shape: " << output_shape << std::endl;
+
                 return {TensorSpec(
-                    output_shape, TensorLayout(input_tensor.get_dtype(), PageConfig(Layout::TILE), mem_config))};
+                    output_shape,
+                    TensorLayout(input_tensor.get_dtype(), PageConfig(Layout::TILE), this->output_mem_config))};
             } else {
                 return {TensorSpec(
                     output_shape, TensorLayout(input_tensor.get_dtype(), PageConfig(Layout::TILE), output_mem_config))};
@@ -253,6 +263,7 @@ std::vector<Tensor> LayerNorm::create_output_tensors(const std::vector<Tensor>& 
                 }
             }
             auto output_spec = compute_output_specs(input_tensors)[0];
+            // std::cout << "output_spec: " << output_spec << std::endl;
             return {create_device_tensor(output_spec, input_tensors.at(0).device())};
         },
         this->program_config);
@@ -276,10 +287,6 @@ operation::ProgramWithCallbacks LayerNorm::create_program(
                 uint32_t num_cores_y = program_config.compute_with_storage_grid_size.y;
                 CoreCoord grid_size = CoreCoord(num_cores_x, num_cores_y);
 
-                uint32_t block_wt_resharded = this->output_mem_config.shard_spec.has_value()
-                                                  ? this->output_mem_config.shard_spec.value().shape[1] / TILE_WIDTH
-                                                  : program_config.block_w;
-
                 return layernorm_multi_core_sharded(
                     a,
                     b,
@@ -294,9 +301,7 @@ operation::ProgramWithCallbacks LayerNorm::create_program(
                     program_config.subblock_w,
                     program_config.block_h,
                     program_config.block_w,
-                    this->compute_kernel_config,
-                    this->output_mem_config.shard_spec->grid,
-                    block_wt_resharded);
+                    this->compute_kernel_config);
             } else {
                 return layernorm_multi_core(
                     a, b, gamma, beta, output_tensor, this->norm_type, this->eps, this->compute_kernel_config);

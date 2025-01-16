@@ -472,14 +472,15 @@ operation::ProgramWithCallbacks layernorm_multi_core_sharded(
     uint32_t subblock_wt,
     uint32_t block_ht,
     uint32_t block_wt,
-    DeviceComputeKernelConfig compute_kernel_config,
-    const CoreRangeSet& all_storage_cores,
-    uint32_t block_wt_resharded) {
+    DeviceComputeKernelConfig compute_kernel_config) {
     using namespace CMAKE_UNIQUE_NAMESPACE;
     bool rms_norm = norm_type == LayerNormType::RMSNORM;
     bool is_pre_all_gather = distributed_norm_stage == DistributedLayerNormStage::PRE_ALL_GATHER;
     bool is_post_all_gather = distributed_norm_stage == DistributedLayerNormStage::POST_ALL_GATHER;
 
+    tt::log_debug("layernorm_multi_core_sharded: output.shard_spec().value()={}", output.shard_spec().value());
+
+    uint32_t block_wt_resharded = output.shard_spec().value().shape[1] / TILE_WIDTH;
     bool skip_write_back = block_wt_resharded == block_wt;
 
     ////////////////////////////////////////////////////////////////////////////
@@ -587,7 +588,9 @@ operation::ProgramWithCallbacks layernorm_multi_core_sharded(
     }
     uint32_t num_subblocks_w = block_wt / subblock_wt;
 
-    // get all storage cores
+    // Get all storage cores
+    ShardSpec output_shard_spec = output.shard_spec().value();
+    CoreRangeSet all_storage_cores = output_shard_spec.grid;
     std::vector<uint32_t> storage_core_noc_x;
     std::vector<uint32_t> storage_core_noc_y;
     std::vector<CoreCoord> storage_core_coords = corerange_to_cores(all_storage_cores);
@@ -1361,12 +1364,13 @@ operation::ProgramWithCallbacks layernorm_multi_core_sharded(
                 .set_page_size(cb_var_index, single_tile_size);
         auto cb_var_global = tt::tt_metal::CreateCircularBuffer(program, sender_cores, cb_var_config);
     }
+
     // out
     uint32_t output_cb_index = tt::CBIndex::c_16;
     tt::tt_metal::CircularBufferConfig output_cb_config =
         tt::tt_metal::CircularBufferConfig(out_CB_size, {{output_cb_index, out_data_format}})
             .set_page_size(output_cb_index, out_single_tile_size);
-    if (!(is_post_all_gather && skip_write_back)) {
+    if (!is_post_all_gather || skip_write_back) {
         output_cb_config = output_cb_config.set_globally_allocated_address(*output.buffer());
     }
     CBHandle cb_output = 0;
@@ -1379,10 +1383,10 @@ operation::ProgramWithCallbacks layernorm_multi_core_sharded(
     uint32_t output_reshard_cb_index = tt::CBIndex::c_17;
     tt::tt_metal::CircularBufferConfig output_reshard_cb_config =
         tt::tt_metal::CircularBufferConfig(out_reshard_CB_size, {{output_reshard_cb_index, out_data_format}})
-            .set_page_size(output_reshard_cb_index, out_single_tile_size)
-            .set_globally_allocated_address(*output.buffer());
+            .set_page_size(output_reshard_cb_index, out_single_tile_size);
     CBHandle cb_output_reshard = 0;
-    if (!(is_post_all_gather && skip_write_back)) {
+    if (is_post_all_gather && !skip_write_back) {
+        output_reshard_cb_config = output_reshard_cb_config.set_globally_allocated_address(*output.buffer());
         cb_output_reshard = tt::tt_metal::CreateCircularBuffer(program, all_cores, output_reshard_cb_config);
     }
 
@@ -1614,6 +1618,7 @@ operation::ProgramWithCallbacks layernorm_multi_core_sharded(
         }
 
         // Compute write back rt args
+
         std::vector<uint32_t> write_back_writer_args;
 
         // uint32_t num_storage_cores = (block_wt * num_cores + block_wt_resharded - 1) / block_wt_resharded;  // TODO:
@@ -1624,26 +1629,45 @@ operation::ProgramWithCallbacks layernorm_multi_core_sharded(
 
         uint32_t current_worker_num_segments_to_write_back = 0;
         uint32_t worker_core_current_offset = 0;
+
+        // 8192 / 4 = 2048 per device, 2048 / 16 = 128 per worker core (=4 tiles)
+        // 9216 / 4 = 2304 per device, 2304 / 24 = 96 per stoorage core (=3 tiles)
+
+        tt::log_debug("block_wt: {}, block_wt_resharded: {}", block_wt, block_wt_resharded);
+
         while (worker_core_current_offset <
                block_wt) {  // Continue until all worker core data has been written to corresponding storage cores
-            uint32_t num_bytes_available_at_current_storage_core = block_wt_resharded - current_storage_core_offset;
-            uint32_t num_bytes_left_on_current_worker_core = block_wt - worker_core_current_offset;
-            uint32_t num_bytes_to_write_back =
-                std::min(num_bytes_left_on_current_worker_core, num_bytes_available_at_current_storage_core);
+            uint32_t num_tiles_available_at_current_storage_core = block_wt_resharded - current_storage_core_offset;
+            uint32_t num_tiles_left_on_current_worker_core = block_wt - worker_core_current_offset;
+            uint32_t num_tiles_to_write_back =
+                std::min(num_tiles_left_on_current_worker_core, num_tiles_available_at_current_storage_core);
             current_worker_num_segments_to_write_back += 1;
 
-            write_back_writer_args.push_back(num_bytes_to_write_back);                   // num_bytes_to_write_back
+            tt::log_debug(
+                "New segment for worker core {}, Worker core offset: {}, Storage core offset: {}, Num tiles to write "
+                "back: {}",
+                i,
+                worker_core_current_offset,
+                current_storage_core_offset,
+                num_tiles_to_write_back);
+
+            write_back_writer_args.push_back(
+                num_tiles_to_write_back * out_single_tile_size);                         // num_bytes_to_write_back
             write_back_writer_args.push_back(storage_core_noc_x[current_storage_core]);  // current_storage_core_noc_x
             write_back_writer_args.push_back(storage_core_noc_y[current_storage_core]);  // current_storage_core_noc_y
 
-            worker_core_current_offset += num_bytes_to_write_back;
-            current_storage_core_offset += num_bytes_to_write_back;
+            worker_core_current_offset += num_tiles_to_write_back;
+            current_storage_core_offset += num_tiles_to_write_back;
 
             if (current_storage_core_offset >= block_wt_resharded) {
                 current_storage_core += 1;        // Move to next storage core
                 current_storage_core_offset = 0;  // Reset offset on new storage core
+
+                tt::log_debug(
+                    "Resetting storage core offset and moving to next storage core: {}", current_storage_core);
+
                 assert(
-                    current_storage_core <
+                    current_storage_core <=
                     num_storage_cores);  //  Sanity check: should not exceed number of storage cores
             }
         }

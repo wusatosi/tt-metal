@@ -14,9 +14,12 @@
 #include "compute_kernel_api/layernorm.h"
 #include "compute_kernel_api/tile_move_copy.h"
 
+#include "debug/dprint.h"
+
 // SPLIT REDUCE across Cores
 namespace NAMESPACE {
 void MAIN {
+    DPRINT << "TEST!!!!" << ENDL();
     constexpr uint32_t is_top_row = get_compile_time_arg_val(0);
     constexpr uint32_t do_gamma = get_compile_time_arg_val(1);
     constexpr uint32_t do_beta = get_compile_time_arg_val(2);
