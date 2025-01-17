@@ -204,6 +204,7 @@ struct CQDispatchWritePackedMulticastSubCmd {
 
 constexpr uint32_t CQ_DISPATCH_CMD_PACKED_WRITE_LARGE_FLAG_NONE = 0x00;
 constexpr uint32_t CQ_DISPATCH_CMD_PACKED_WRITE_LARGE_FLAG_UNLINK = 0x01;
+
 struct CQDispatchWritePackedLargeSubCmd {
     uint32_t noc_xy_addr;
     uint32_t addr;

@@ -4,10 +4,12 @@
 
 #include "tt_metal/impl/program/dispatch.hpp"
 #include <command_queue.hpp>
+#include "api/tt-metalium/cq_commands.hpp"
 #include "tt_metal/distributed/mesh_command_queue.hpp"
 #include "tt_metal/impl/dispatch/data_collection.hpp"
 #include "tt_metal/distributed/mesh_workload.hpp"
 #include <tt_align.hpp>
+#include <vector>
 
 namespace tt::tt_metal {
 namespace program_dispatch {
@@ -808,39 +810,99 @@ void assemble_device_commands(
     const auto& program_transfer_info = program.get_program_transfer_info();
     // Multicast Semaphore Cmd
     uint32_t num_multicast_semaphores = program_transfer_info.multicast_semaphores.size();
-    std::vector<std::vector<CQDispatchWritePackedMulticastSubCmd>> multicast_sem_sub_cmds(num_multicast_semaphores);
-    std::vector<std::vector<std::pair<const void*, uint32_t>>> multicast_sem_data(num_multicast_semaphores);
-    std::vector<std::vector<std::pair<uint32_t, uint32_t>>> multicast_sem_payload(num_multicast_semaphores);
-    std::vector<std::pair<uint32_t, uint32_t>> multicast_sem_dst_size;
-    multicast_sem_dst_size.reserve(num_multicast_semaphores);
+    struct TransferData {
+        uint32_t start;
+        std::vector<uint8_t> data;
+        bool operator<(const TransferData& other) const { return start < other.start; }
+    };
 
+    std::vector<std::vector<uint8_t>> semaphore_cmd_data;
+    std::vector<std::vector<CQDispatchWritePackedLargeSubCmd>> semaphore_dispatch_subcmds;
     if (num_multicast_semaphores > 0) {
-        uint32_t i = 0;
+        struct Hash {
+            std::size_t operator()(const std::pair<uint32_t, uint32_t> pair) const {
+                return std::hash<uint32_t>()(pair.first) ^ std::hash<uint32_t>()(pair.second);
+            }
+        };
+        std::unordered_map<
+            std::pair</*noc_xy_addr*/ uint32_t, /*num_mcast_dests*/ uint32_t>,
+            std::map<uint32_t, TransferData>,
+            Hash>
+            semaphore_transfers;
         for (const auto& [dst, transfer_info_vec] : program_transfer_info.multicast_semaphores) {
-            // TODO: loop over things inside transfer_info[i]
-            uint32_t write_packed_len = transfer_info_vec[0].data.size();
-            multicast_sem_dst_size.emplace_back(std::make_pair(dst, write_packed_len * sizeof(uint32_t)));
-
             for (const auto& transfer_info : transfer_info_vec) {
                 for (const auto& dst_noc_info : transfer_info.dst_noc_info) {
-                    TT_ASSERT(
-                        transfer_info.data.size() == write_packed_len,
-                        "Not all data std::vectors in write packed semaphore cmd equal in len");
-                    multicast_sem_sub_cmds[i].emplace_back(CQDispatchWritePackedMulticastSubCmd{
-                        .noc_xy_addr =
-                            device->get_noc_multicast_encoding(noc_index, std::get<CoreRange>(dst_noc_info.first)),
-                        .num_mcast_dests = dst_noc_info.second});
-                    multicast_sem_data[i].emplace_back(
-                        transfer_info.data.data(), transfer_info.data.size() * sizeof(uint32_t));
+                    auto& [range, dests] = dst_noc_info;
+                    auto noc_xy_addr = device->get_noc_multicast_encoding(noc_index, std::get<CoreRange>(range));
+                    // TODO: Avoid copying data here.
+                    std::vector<uint8_t> data(
+                        reinterpret_cast<const uint8_t*>(transfer_info.data.data()),
+                        reinterpret_cast<const uint8_t*>(transfer_info.data.data()) +
+                            transfer_info.data.size() * sizeof(uint32_t));
+                    semaphore_transfers[std::make_pair(noc_xy_addr, dests)][transfer_info.dst_base_addr] =
+                        TransferData{.start = transfer_info.dst_base_addr, .data = std::move(data)};
                 }
             }
-            cmd_sequence_sizeB += insert_write_packed_payloads<CQDispatchWritePackedMulticastSubCmd>(
-                multicast_sem_sub_cmds[i].size(),
-                multicast_sem_dst_size.back().second,
-                max_prefetch_command_size,
-                packed_write_max_unicast_sub_cmds,
-                multicast_sem_payload[i]);
-            i++;
+        }
+        uint32_t l1_alignment = hal.get_alignment(HalMemType::L1);
+        // Optimize transfers.
+        for (auto& transfer_set : semaphore_transfers) {
+            for (auto it = transfer_set.second.begin(); it != transfer_set.second.end();) {
+                auto next_it = std::next(it);
+                if (next_it != transfer_set.second.end() &&
+                    it->first + it->second.data.size() + l1_alignment >= next_it->first) {
+                    size_t padding_bytes = next_it->first - (it->first + it->second.data.size());
+                    it->second.data.reserve(it->second.data.size() + padding_bytes + next_it->second.data.size());
+                    std::fill_n(std::back_inserter(it->second.data), padding_bytes, 0);
+                    // TODO: Avoid copying data here.
+                    it->second.data.insert(it->second.data.end(), next_it->second.data.begin(), next_it->second.data.end());
+                    transfer_set.second.erase(next_it);
+                } else {
+                    it = next_it;
+                }
+            }
+        }
+        uint32_t index = hal.get_programmable_core_type_index(HalProgrammableCoreType::TENSIX);
+
+        for (auto& transfer_set : semaphore_transfers) {
+            for (auto& [start, transfer] : transfer_set.second) {
+                if (semaphore_dispatch_subcmds.empty() ||
+                    semaphore_dispatch_subcmds.back().size() >= CQ_DISPATCH_CMD_PACKED_WRITE_LARGE_MAX_SUB_CMDS) {
+                    semaphore_dispatch_subcmds.emplace_back();
+                    semaphore_cmd_data.emplace_back();
+                }
+                if (semaphore_dispatch_subcmds.back().size() > 0) {
+                    auto& last_transfer = semaphore_dispatch_subcmds.back().back();
+                    if (last_transfer.noc_xy_addr != transfer_set.first.first) {
+                        last_transfer.flags |= CQ_DISPATCH_CMD_PACKED_WRITE_LARGE_FLAG_UNLINK;
+                    }
+                }
+                //while (transfer.data.size() % l1_alignment != 0) {
+                //    transfer.data.push_back(0);
+               // }
+                semaphore_dispatch_subcmds.back().emplace_back(CQDispatchWritePackedLargeSubCmd{
+                    .noc_xy_addr = transfer_set.first.first,
+                    .addr = transfer.start + program.get_program_config(index).sem_offset,
+                    .length = (uint16_t)transfer.data.size(),
+                    .num_mcast_dests = transfer_set.first.second,
+                    .flags = CQ_DISPATCH_CMD_PACKED_WRITE_LARGE_FLAG_NONE});
+                // TODO: avoid copying data here.
+                semaphore_cmd_data.back().insert(
+                    semaphore_cmd_data.back().end(), transfer.data.begin(), transfer.data.end());
+                while (semaphore_cmd_data.back().size() % l1_alignment != 0) {
+                    semaphore_cmd_data.back().push_back(0);
+                }
+            }
+        }
+        uint32_t pcie_alignment = hal.get_alignment(HalMemType::HOST);
+        for (size_t i = 0; i < semaphore_dispatch_subcmds.size(); i++) {
+            cmd_sequence_sizeB += tt::align(
+                sizeof(CQPrefetchCmd) + sizeof(CQDispatchCmd) +
+                    semaphore_dispatch_subcmds[i].size() * sizeof(CQDispatchWritePackedLargeSubCmd) +
+                    semaphore_cmd_data[i].size(),
+                pcie_alignment);
+
+            semaphore_dispatch_subcmds[i].back().flags |= CQ_DISPATCH_CMD_PACKED_WRITE_LARGE_FLAG_UNLINK;
         }
     }
 
@@ -1191,25 +1253,17 @@ void assemble_device_commands(
     // Semaphores
     // Multicast Semaphore Cmd
     index = hal.get_programmable_core_type_index(HalProgrammableCoreType::TENSIX);
-    for (uint32_t i = 0; i < num_multicast_semaphores; ++i) {
-        uint32_t curr_sub_cmd_idx = 0;
-        for (const auto& [num_sub_cmds_in_cmd, multicast_sem_payload_sizeB] : multicast_sem_payload[i]) {
-            device_command_sequence.add_dispatch_write_packed<CQDispatchWritePackedMulticastSubCmd>(
-                num_sub_cmds_in_cmd,
-                multicast_sem_dst_size[i].first + program.get_program_config(index).sem_offset,
-                multicast_sem_dst_size[i].second,
-                multicast_sem_payload_sizeB,
-                multicast_sem_sub_cmds[i],
-                multicast_sem_data[i],
-                packed_write_max_unicast_sub_cmds,
-                curr_sub_cmd_idx,
-                false,
-                DISPATCH_WRITE_OFFSET_TENSIX_L1_CONFIG_BASE);
-            curr_sub_cmd_idx += num_sub_cmds_in_cmd;
-            for (auto& data_and_size : multicast_sem_data[i]) {
-                RecordDispatchData(program, DISPATCH_DATA_SEMAPHORE, data_and_size.second);
-            }
-        }
+
+    for (uint32_t i = 0; i < semaphore_dispatch_subcmds.size(); ++i) {
+        std::vector<std::pair<const void*, uint32_t>> semaphore_data;
+        semaphore_data.push_back(std::make_pair(semaphore_cmd_data[i].data(), semaphore_cmd_data[i].size()));
+        device_command_sequence.add_dispatch_write_packed_large(
+            l1_alignment,
+            semaphore_dispatch_subcmds[i].size(),
+            semaphore_dispatch_subcmds[i],
+            semaphore_data,
+            0,
+            DISPATCH_WRITE_OFFSET_TENSIX_L1_CONFIG_BASE);
     }
 
     // Unicast Semaphore Cmd
@@ -1401,6 +1455,8 @@ void assemble_device_commands(
         &((CQDispatchCmd*)((uint32_t*)device_command_sequence.data() +
                            (write_offset_bytes + sizeof(CQPrefetchCmd)) / sizeof(uint32_t)))
              ->mcast;
+
+    assert(device_command_sequence.size_bytes() == device_command_sequence.write_offset_bytes());
 }
 
 void initialize_worker_config_buf_mgr(WorkerConfigBufferMgr& config_buffer_mgr) {
