@@ -42,6 +42,7 @@ void bind_normalization_softmax_operation(py::module& module) {
             Keyword Args:
                 * :attr:`memory_config`: the memory configuration for the output tensor. If not provided, the memory configuration of the input tensor is used.
                 * :attr:`compute_kernel_config`: the compute kernel configuration for the op. If not provided, the default configuration of the op is used.
+                * :attr:`numeric_stable`: the numeric stable flags provides a higher computation precision when the input values have a large range.
 
             Example:
 
@@ -134,6 +135,7 @@ void bind_normalization_softmax_in_place_operation(py::module& module) {
             Keyword Args:
                 * :attr:`program_config`: the program configuration for op. If not provided, SoftmaxDefaultProgramConfig is used.
                 * :attr:`compute_kernel_config`: the compute kernel configuration for the op. If not provided, the default configuration of the op is used.
+                * :attr:`numeric_stable`: the numeric stable flags provides a higher computation precision when the input values have a large range.
 
             Example:
 
@@ -172,6 +174,7 @@ void bind_normalization_scale_mask_softmax_in_place_operation(py::module& module
             Keyword Args:
                 * :attr:`program_config`: the program configuration for op. If not provided, SoftmaxDefaultProgramConfig is used.
                 * :attr:`compute_kernel_config`: the compute kernel configuration for the op. If not provided, the default configuration of the op is used.
+                * :attr:`numeric_stable`: the numeric stable flags provides a higher computation precision when the input values have a large range.
 
             Example:
 
@@ -217,6 +220,7 @@ void bind_normalization_scale_causal_mask_hw_dims_softmax_in_place_operation(py:
             Keyword Args:
                 * :attr:`program_config`: the program configuration for op. If not provided, SoftmaxDefaultProgramConfig is used.
                 * :attr:`compute_kernel_config`: the compute kernel configuration for the op. If not provided, the default configuration of the op is used.
+                * :attr:`numeric_stable`: the numeric stable flags provides a higher computation precision when the input values have a large range.
 
             Example:
 
