@@ -21,6 +21,11 @@ from tests.tt_eager.python_api_testing.unit_testing.misc.test_matmul_1d_gather_i
     PREFETCHER_NOC1_GRID,
     num_cores_to_rectangle_grid,
 )
+from tests.ttnn.unit_tests.operations.ccl.test_ccl_common import (
+    create_and_load_sub_device_manager_with_fabric_interface,
+    teardown_fabric_interface,
+    create_global_semaphore_with_same_address,
+)
 
 
 def get_buffer_address(tensor):
@@ -78,10 +83,13 @@ class TtLlamaPrefetcherSetup(LightweightModule):
         ##### Setup up sub devices #####
         self.prefetcher_sub_device = ttnn.SubDevice([self.sender_core_range_set])
         self.worker_sub_device = ttnn.SubDevice([self.worker_cores_range_set])
-        self.sub_device_manager = mesh_device.create_sub_device_manager(
-            [self.prefetcher_sub_device, self.worker_sub_device], 0
+        mesh_sub_device_manager_id = create_and_load_sub_device_manager_with_fabric_interface(
+            mesh_device, [self.prefetcher_sub_device, self.worker_sub_device], 1, 0, True
         )
-        mesh_device.load_sub_device_manager(self.sub_device_manager)
+        # self.sub_device_manager = mesh_device.create_sub_device_manager(
+        #     [self.prefetcher_sub_device, self.worker_sub_device], 0
+        # )
+        # mesh_device.load_sub_device_manager(self.sub_device_manager)
         self.prefetcher_sub_device_id = ttnn.SubDeviceId(0)
         self.worker_sub_device_id = ttnn.SubDeviceId(1)
 

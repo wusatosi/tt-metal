@@ -38,6 +38,7 @@ class TtLlamaMLP(LightweightModule):
         model_config,
         state_dict_prefix=None,
         prefetcher_setup=None,
+        ccl_lib=None,
     ):
         super().__init__()
 
@@ -47,6 +48,7 @@ class TtLlamaMLP(LightweightModule):
         self.dim = args.dim
         self.model_config = model_config
         self.prefetcher_setup = prefetcher_setup
+        self.ccl_lib = ccl_lib
         state_dict_prefix = state_dict_prefix or args.get_state_dict_prefix(self.__class__.__name__, layer_num)
         torch_weight = lambda name: torch.transpose(self.state_dict[f"{state_dict_prefix}.{name}.weight"], -2, -1)
 
@@ -142,6 +144,7 @@ class TtLlamaMLP(LightweightModule):
             if self.model_config["USE_PREFETCHER"]
             else None,
         )
+        ttnn.synchronize_devices(self.mesh_device)
 
         w3_out = ttnn.linear(
             x,
@@ -157,6 +160,7 @@ class TtLlamaMLP(LightweightModule):
             if self.model_config["USE_PREFETCHER"]
             else None,
         )
+        ttnn.synchronize_devices(self.mesh_device)
         ttnn.deallocate(x)
 
         if TG:
@@ -205,6 +209,7 @@ class TtLlamaMLP(LightweightModule):
                     layout=ttnn.TILE_LAYOUT,
                     memory_config=self.model_config["SHARDED_FF12_PRE_MUL_RING_MEMCFG"],
                 )
+                ttnn.synchronize_devices(self.mesh_device)
 
                 # w1_out = ttnn.to_memory_config(w1_out, ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG)
 
@@ -224,6 +229,7 @@ class TtLlamaMLP(LightweightModule):
                     layout=ttnn.TILE_LAYOUT,
                     memory_config=self.model_config["SHARDED_FF12_PRE_MUL_RING_MEMCFG"],
                 )
+                ttnn.synchronize_devices(self.mesh_device)
 
                 # w3_out = ttnn.to_memory_config(w3_out, ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG)
 
@@ -254,6 +260,7 @@ class TtLlamaMLP(LightweightModule):
             dtype=ttnn.bfloat8_b,
             memory_config=w1_out.memory_config(),
         )
+        ttnn.synchronize_devices(self.mesh_device)
 
         # print("mul done", w2_in.shape)
 
@@ -310,6 +317,7 @@ class TtLlamaMLP(LightweightModule):
             if self.model_config["USE_PREFETCHER"]
             else None,
         )
+        ttnn.synchronize_devices(self.mesh_device)
         ttnn.deallocate(w2_in)
         # if mode == "decode" and not TG:
         #     w2_out = ttnn.sharded_to_interleaved(w2_out, ttnn.DRAM_MEMORY_CONFIG)
@@ -342,6 +350,7 @@ class TtLlamaMLP(LightweightModule):
             layout=ttnn.TILE_LAYOUT,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
         )
+        ttnn.synchronize_devices(self.mesh_device)
 
         # Ensure dim 0 and 1 are 1
         # original_shape = w2_out_reduced.shape

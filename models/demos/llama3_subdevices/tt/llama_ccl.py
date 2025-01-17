@@ -3,6 +3,68 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import ttnn
+from loguru import logger
+
+from tests.ttnn.unit_tests.operations.ccl.test_ccl_common import (
+    create_and_load_sub_device_manager_with_fabric_interface,
+    teardown_fabric_interface,
+    create_global_semaphore_with_same_address,
+)
+
+
+class TT_CCL:
+    def __init__(
+        self,
+        mesh_device,
+        sub_device_crs,
+        worker_sub_device_id,
+        enable_persistent_fabric=True,
+        create_persistent_fabric=True,
+        teardown_persistent_fabric=True,
+    ):
+        self.mesh_device = mesh_device
+        self.sub_device_crs = sub_device_crs
+        self.worker_sub_device_id = worker_sub_device_id
+        self.enable_persistent_fabric = enable_persistent_fabric
+        self.create_persistent_fabric = create_persistent_fabric
+        self.teardown_persistent_fabric = teardown_persistent_fabric
+
+        if create_persistent_fabric:
+            assert enable_persistent_fabric
+        if teardown_persistent_fabric:
+            assert enable_persistent_fabric
+        # create global semaphore handles
+        self.from_remote_semaphore_handles = create_global_semaphore_with_same_address(
+            self.mesh_device, self.sub_device_crs, 0
+        )
+        self.to_remote_semaphore_handles = create_global_semaphore_with_same_address(
+            self.mesh_device, self.sub_device_crs, 0
+        )
+        self.gather_semaphore_handles = create_global_semaphore_with_same_address(
+            self.mesh_device, self.sub_device_crs, 0
+        )
+
+    def tt_line_all_reduce(self, input_tensor_mesh, cluster_axis, num_links, mem_config):
+        output_tensor_mesh = ttnn.experimental.all_reduce_async(
+            input_tensor_mesh,
+            cluster_axis=cluster_axis,
+            mesh_device=self.mesh_device,
+            from_remote_multi_device_global_semaphore=self.from_remote_semaphore_handles,
+            to_remote_multi_device_global_semaphore=self.to_remote_semaphore_handles,
+            gather_multi_device_global_semaphore=self.gather_semaphore_handles,
+            math_op=ttnn.ReduceType.Sum,
+            num_links=num_links,
+            memory_config=mem_config,
+            topology=ttnn.Topology.Linear,
+            subdevice_id=self.worker_sub_device_id,
+        )
+
+    def close(self):
+        if self.enable_persistent_fabric and self.teardown_persistent_fabric:
+            logger.info("Tearing down persistent fabric interface")
+            self.mesh_device.reset_sub_device_stall_group()
+            teardown_fabric_interface(self.mesh_device)
+            logger.info("Done tearing down persistent fabric interface")
 
 
 # def tt_all_reduce(input_tensor, mesh_device, cluster_axis=0, dim=0, num_links=2, memory_config=None, sharded=False):

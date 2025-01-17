@@ -16,6 +16,7 @@ from models.utility_functions import (
 )
 from models.utility_functions import skip_for_grayskull
 from tests.ttnn.unit_tests.operations.prefetcher_common import TtLlamaPrefetcherSetup
+from models.demos.llama3_subdevices.tt.llama_ccl import TT_CCL
 
 
 @torch.no_grad()
@@ -54,6 +55,8 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
         n_layers=1,
     )
 
+    ccl_lib = TT_CCL(mesh_device, model_args.sub_core_grids, prefetcher_setup.worker_sub_device_id)
+
     # Ref model needs partial state dict, but our models use full state dict keys as cached weight names
     first_layer_prefix = model_args.get_state_dict_prefix("TtLlamaMLP", 0)
     partial_state_dict = {
@@ -78,6 +81,7 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
         dtype=dtype,
         model_config=model_args.get_model_config(),
         prefetcher_setup=prefetcher_setup,
+        ccl_lib=ccl_lib,
     )
 
     prefetcher_setup.tensors.append(prefetcher_setup.get_tensor_addrs())
@@ -100,7 +104,10 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
         layout=ttnn.TILE_LAYOUT,
     )
 
-    logger.info("Run Llama_MLP")
+    logger.info("Run Llama_MLP_PF")
+    mesh_device.set_sub_device_stall_group(
+        [prefetcher_setup.prefetcher_sub_device_id, prefetcher_setup.worker_sub_device_id]
+    )
     ttnn.dram_prefetcher(
         prefetcher_setup.tensors,
         num_layers=1,
@@ -109,7 +116,11 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
     )
     mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
 
+    logger.info("Run Llama_MLP")
     tt_output = tt_model(tt_input, mode)
+    logger.info("llama MLP Done")
+
+    ccl_lib.close()
 
     tt_output_torch = ttnn.to_torch(
         tt_output,
