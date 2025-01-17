@@ -102,17 +102,19 @@ ttnn::Tensor RepeatOperation::invoke(
             // slice/tilize don't support padding to tiled on the output for
             // now, so we need to perform the slice in row-major then re-tilize
             // ourselves.
+            /*
+            printf("we are executing the new untilize with unpadding\n");
             std::vector<uint32_t> untilize_vector_end;
             for (uint32_t i = 0; i < input_rank; i++) {
                 untilize_vector_end.push_back(repeated_logical_shape[i] - 1);
             }
             auto sliced_output = ttnn::untilize_with_unpadding(
                 output_tensors[0], tt::tt_metal::LegacyShape(untilize_vector_end), memory_config_arg);
-            /*
+            */
             auto rm_output = ttnn::untilize(output_tensors[0]);
             auto sliced_output =
                 ttnn::slice(rm_output, zero_indices, end_indices, step, input_tensor.memory_config(), std::nullopt);
-            */
+
             auto sliced_logical_shape = sliced_output.get_logical_shape();
             auto sliced_padded_shape = sliced_output.get_padded_shape();
 
@@ -136,6 +138,7 @@ ttnn::Tensor RepeatOperation::invoke(
             auto padded_output = ttnn::pad(queue_id, sliced_output, padding_vec, 0.0f, pad_use_multicore, std::nullopt);
             auto tiled_output = ttnn::tilize(padded_output, input_tensor.memory_config());
             */
+            printf("we are doing the tilize with zero padding after\n");
             auto padded_to_tiled_shape =
                 ttnn::Shape(sliced_logical_shape.view(), tiled_output.get_padded_shape().view());
             return ttnn::reshape(tiled_output, padded_to_tiled_shape);
