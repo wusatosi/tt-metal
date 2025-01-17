@@ -72,7 +72,7 @@ inline void reblock_and_untilize(
             tile_regs_release();
             block_offset += out_subblock_num_tiles;
         }
-        // cb_push_back(out_cb_id, out_block_w);
+        cb_push_back(out_cb_id, out_block_w);
 
         within_block_index += out_subblock_w;
     }
@@ -148,12 +148,12 @@ void MAIN {
 #ifdef PACK_RELU
                 // for each batch we start with relu disabled so that intermediate results are not relu'd
                 if constexpr (batch > 1 || num_blocks_h_dim > 1 || num_blocks_w_dim > 1) {
-                    // PACK((llk_pack_relu_config(ReluType::NO_RELU)));
+                    PACK((llk_pack_relu_config(ReluType::NO_RELU)));
                 }
 #endif
 
                 if constexpr (batch > 1 || num_blocks_h_dim > 1 || num_blocks_w_dim > 1) {
-                    // PACK((pack_reconfig_data_format(mm_partials_cb_id)));
+                    PACK((pack_reconfig_data_format(mm_partials_cb_id)));
                 }
 
                 for (uint32_t block = 0; block < num_blocks_inner_dim; block++) {
@@ -162,7 +162,7 @@ void MAIN {
 #if not defined FUSE_BIAS and defined PACK_RELU
                     if (last_out) {
                         // if last block we pack the final result with relu enabled
-                        // PACK((llk_pack_relu_config(ReluType::ZERO_RELU)));
+                        PACK((llk_pack_relu_config(ReluType::ZERO_RELU)));
                     }
 #endif
 
@@ -225,31 +225,31 @@ void MAIN {
                                 }
 #endif
                                 tile_regs_commit();
-                                // Pack out to output buffer
+                                // PACK out to output buffer
                                 // cb_reserve_back(mm_out_cb_id, out_subblock_num_tiles);
                                 tile_regs_wait();
 
 #if defined FP32_DEST_ACC_EN or defined PACKER_L1_ACC
-                                // PACK((pack_reconfig_data_format(mm_out_cb_id)));
+                                PACK((pack_reconfig_data_format(mm_out_cb_id)));
 #endif
 
 #ifdef PACKER_L1_ACC
 #ifdef FUSE_BIAS
                                 if (block == 0) {  // no accumulation for first iteration
-                                    // PACK((llk_pack_reconfig_l1_acc(0)));
+                                    PACK((llk_pack_reconfig_l1_acc(0)));
                                 } else {
-                                    // PACK((llk_pack_reconfig_l1_acc(1)));
+                                    PACK((llk_pack_reconfig_l1_acc(1)));
                                 }
 #else
-                                // PACK((llk_pack_reconfig_l1_acc(0)));
+                                PACK((llk_pack_reconfig_l1_acc(0)));
 #endif
 #endif
 
                                 uint32_t start_dst_index = 0;
-                                // matmul_pack_tile(start_dst_index, mm_out_cb_id, out_subblock_num_tiles);
+                                matmul_pack_tile(start_dst_index, mm_out_cb_id, out_subblock_num_tiles);
 
                                 tile_regs_release();
-                                // cb_push_back(mm_out_cb_id, out_subblock_num_tiles);
+                                cb_push_back(mm_out_cb_id, out_subblock_num_tiles);
 
                             } else {
                                 tile_regs_commit();
@@ -265,17 +265,17 @@ void MAIN {
 
 #ifdef PACKER_L1_ACC
                                 if (block == 0) {  // no accumulation for first iteration
-                                    // PACK((llk_pack_reconfig_l1_acc(0)));
+                                    PACK((llk_pack_reconfig_l1_acc(0)));
                                 } else if (block == 1) {
-                                    // PACK((llk_pack_reconfig_l1_acc(1)));
+                                    PACK((llk_pack_reconfig_l1_acc(1)));
                                 }
 #endif
 
                                 uint32_t start_dst_index = 0;
-                                // matmul_pack_tile(start_dst_index, mm_partials_cb_id, out_subblock_num_tiles);
+                                matmul_pack_tile(start_dst_index, mm_partials_cb_id, out_subblock_num_tiles);
 
                                 tile_regs_release();
-                                // cb_push_back(mm_partials_cb_id, out_subblock_num_tiles);
+                                cb_push_back(mm_partials_cb_id, out_subblock_num_tiles);
                             }
 
                             in1_index_subblock_offset += out_subblock_w;
@@ -316,13 +316,13 @@ void MAIN {
 #ifdef FUSE_BIAS
 #ifdef PACK_RELU
                 // if last block we pack the final result with relu enabled
-                // PACK((llk_pack_relu_config(ReluType::ZERO_RELU)));
+                PACK((llk_pack_relu_config(ReluType::ZERO_RELU)));
 #endif
 #if defined FP32_DEST_ACC_EN or defined PACKER_L1_ACC
-                // PACK((pack_reconfig_data_format(out_cb_id)));
+                PACK((pack_reconfig_data_format(out_cb_id)));
 #endif
 #ifdef PACKER_L1_ACC
-                // PACK((llk_pack_reconfig_l1_acc(0)));
+                PACK((llk_pack_reconfig_l1_acc(0)));
 #endif
 
                 reconfig_data_format(in1_cb_id, mm_partials_cb_id, in0_cb_id, bias_cb_id);
@@ -357,14 +357,14 @@ void MAIN {
                         tile_regs_commit();
 #endif
 
-                        // Pack out to output buffer
+                        PACK out to output buffer
                         // cb_reserve_back(untilize_mode_out_cb_id, out_subblock_num_tiles);
                         tile_regs_wait();
                         for (uint32_t i = 0; i < out_subblock_num_tiles; i++) {
                             pack_tile(i, untilize_mode_out_cb_id);
                         }
                         tile_regs_release();
-                        // cb_push_back(untilize_mode_out_cb_id, out_subblock_num_tiles);
+                        cb_push_back(untilize_mode_out_cb_id, out_subblock_num_tiles);
 
                         in1_index_subblock_offset += out_subblock_w;
                     }
@@ -375,15 +375,15 @@ void MAIN {
 #endif  // FUSE_BIAS
                 if constexpr (untilize_out) {
 #ifdef PACK_RELU
-                    // PACK((llk_pack_relu_config(ReluType::NO_RELU)));
+                    PACK((llk_pack_relu_config(ReluType::NO_RELU)));
 #endif  // PACK_RELU
 #ifndef FUSE_BIAS
                     reconfig_data_format_srca(in1_cb_id, mm_partials_cb_id);
 #if defined FP32_DEST_ACC_EN or defined PACKER_L1_ACC
-                    // PACK((pack_reconfig_data_format(out_cb_id)));
+                    PACK((pack_reconfig_data_format(out_cb_id)));
 #endif
 #ifdef PACKER_L1_ACC
-                    // PACK((llk_pack_reconfig_l1_acc(0)));
+                    PACK((llk_pack_reconfig_l1_acc(0)));
 #endif
 #endif  // FUSE_BIAS
                     pack_untilize_dst_init_short<out_subblock_w, out_block_w>(out_cb_id);

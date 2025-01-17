@@ -96,8 +96,12 @@ matmul_shapes_bfloat16 = [
     (3072, 3072, 4096, False, False, 2, 1, 1),
     (3072, 4096, 4096, False, False, 2, 1, 1),
     (4096, 4096, 4096, False, False, 1, 2, 2),
+    (4096, 4096, 4096, False, False, 1, 2, 2),
+    (4096, 4096, 4096, False, False, 1, 2, 2),
+    (4096, 4096, 4096, False, False, 1, 2, 2),
     (8192, 8192, 8192, False, False, 2, 4, 4),
     (16384, 16384, 16384, False, False, 4, 8, 8),
+    #(4096, 4096, 4096, False, False, 1, 2, 2),
 ]
 
 matmul_shapes_bfloat8_b = [
@@ -138,7 +142,7 @@ matmul_shapes_bfloat4_b = [
 
 matmul_configs = [
     (ttnn.bfloat16, ttnn.MathFidelity.HiFi2, False),
-    (ttnn.bfloat16, ttnn.MathFidelity.HiFi4, False),
+    #(ttnn.bfloat16, ttnn.MathFidelity.HiFi4, False),
     # (ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, False),
     # (ttnn.bfloat8_b, ttnn.MathFidelity.LoFi, False),
     # (ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, False),
@@ -227,7 +231,7 @@ def test_matmul_2d_host_perf(
                 # out_subblock_h, out_subblock_w = get_subblock_sizes(out_block_h, out_block_w, out_sharded)
                 out_subblock_h = 1
                 out_subblock_w = 1
-
+                logger.info("")
                 logger.info(f"M*K*N = {m}*{k}*{n} out_subblock_h: {out_subblock_h}, out_subblock_w: {out_subblock_w}")
 
                 in0 = torch.ones(in0_shape).bfloat16()
