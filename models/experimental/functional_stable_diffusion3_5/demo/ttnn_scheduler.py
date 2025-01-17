@@ -196,10 +196,18 @@ class ttnnFlowMatchEulerDiscreteScheduler:
             self._init_step_index(timestep)
 
         # self.sigmas=ttnn.to_layout(self.sigmas,layout=ttnn.ROW_MAJOR_LAYOUT)
-        sigma = self.sigmas[:, self.step_index : (self.step_index + 1)]
-        sigma_next = self.sigmas[
-            :, (self.step_index + 1) : (self.step_index + 2)
-        ]  # sigma_next = self.sigmas[:,(self.step_index + 1):(self.step_index + 2)
+        device = self.sigmas.device()
+        self.sigmas = ttnn.to_torch(self.sigmas)
+        # sigma = self.sigmas[:, self.step_index : (self.step_index + 1)]
+        # sigma_next = self.sigmas[
+        #     :, (self.step_index + 1) : (self.step_index + 2)
+        # ]  # sigma_next = self.sigmas[:,(self.step_index + 1):(self.step_index + 2)
+        sigma = self.sigmas[:, self.step_index]
+        sigma_next = self.sigmas[:, self.step_index + 1]
+        self.sigmas = ttnn.from_torch(self.sigmas, device=device)
+
+        sigma_next = ttnn.from_torch(sigma_next, device=device)
+        sigma = ttnn.from_torch(sigma, device=device)
         sigma_next = ttnn.to_layout(sigma_next, layout=ttnn.TILE_LAYOUT)
         sigma = ttnn.to_layout(sigma, layout=ttnn.TILE_LAYOUT)
 
