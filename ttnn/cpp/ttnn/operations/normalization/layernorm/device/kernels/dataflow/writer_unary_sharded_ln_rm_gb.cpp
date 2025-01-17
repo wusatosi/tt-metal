@@ -128,9 +128,9 @@ void kernel_main() {
 
     DPRINT << "writing back to storage cores" << ENDL();
 
-    DPRINT << "block_ht" << block_ht << ENDL();
-    DPRINT << "worker_core_stride_w_bytes" << worker_core_stride_w_bytes << ENDL();
-    DPRINT << "storage_core_stride_w_bytes" << storage_core_stride_w_bytes << ENDL();
+    DPRINT << "block_ht: " << block_ht << ENDL();
+    DPRINT << "worker_core_stride_w_bytes: " << worker_core_stride_w_bytes << ENDL();
+    DPRINT << "storage_core_stride_w_bytes: " << storage_core_stride_w_bytes << ENDL();
 
     uint32_t args_idx = 0;
     uint32_t worker_core_read_offset = 0;
@@ -143,7 +143,7 @@ void kernel_main() {
         uint32_t storage_core_x = segment_args[args_idx++];
         uint32_t storage_core_y = segment_args[args_idx++];
 
-        DPRINT << "i" << i << ENDL();
+        DPRINT << "i: " << i << ENDL();
         DPRINT << "write size: " << write_size << ENDL();
         DPRINT << "storage_core_x: " << storage_core_x << ENDL();
         DPRINT << "storage_core_y: " << storage_core_y << ENDL();

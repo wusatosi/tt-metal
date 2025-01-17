@@ -206,6 +206,7 @@ void LayerNorm::validate(
 std::vector<TensorSpec> LayerNorm::compute_output_specs(const std::vector<Tensor>& input_tensors) const {
     const auto& input_tensor = input_tensors.at(0);
     auto output_shape = input_tensor.get_logical_shape();
+    auto output_padded_shape = input_tensor.get_padded_shape();
     auto output_shard_spec = this->output_mem_config.shard_spec.has_value() ? this->output_mem_config.shard_spec.value()
                                                                             : input_tensor.shard_spec().value();
     if (this->distributed_norm_stage == DistributedLayerNormStage::PRE_ALL_GATHER) {
@@ -215,8 +216,7 @@ std::vector<TensorSpec> LayerNorm::compute_output_specs(const std::vector<Tensor
         this->distributed_norm_stage == DistributedLayerNormStage::POST_ALL_GATHER &&
         this->output_mem_config.shard_spec.has_value() &&
         output_shard_spec.grid != input_tensor.shard_spec().value().grid) {
-        output_shape[3] = output_shard_spec.shape[1] * output_shard_spec.num_cores();
-        // TODO: handle padding?
+        output_padded_shape[3] = output_shard_spec.shape[1] * output_shard_spec.num_cores();
     }
 
     return std::visit(
@@ -239,12 +239,13 @@ std::vector<TensorSpec> LayerNorm::compute_output_specs(const std::vector<Tensor
                     return {input_tensor.get_tensor_spec()};
                 }
 
-                // std::cout << "this->output_mem_config: " << this->output_mem_config << std::endl;
-                // std::cout << "output_shape: " << output_shape << std::endl;
-
-                return {TensorSpec(
+                return {ttnn::TensorSpec(
                     output_shape,
-                    TensorLayout(input_tensor.get_dtype(), PageConfig(Layout::TILE), this->output_mem_config))};
+                    TensorLayout::fromLegacyPaddedShape(
+                        input_tensor.get_dtype(),
+                        PageConfig(Layout::TILE),
+                        this->output_mem_config,
+                        ttnn::Shape(output_shape.view(), output_padded_shape.view())))};
             } else {
                 return {TensorSpec(
                     output_shape, TensorLayout(input_tensor.get_dtype(), PageConfig(Layout::TILE), output_mem_config))};

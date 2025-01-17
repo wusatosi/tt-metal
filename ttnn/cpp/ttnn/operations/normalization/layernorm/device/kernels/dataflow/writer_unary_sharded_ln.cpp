@@ -87,8 +87,6 @@ void kernel_main() {
         cb_push_back(cb_beta, block_w);
     }
 
-    DPRINT << "TEST!!!!" << ENDL();
-
 #ifndef SKIP_WRITE_BACK
 
     DPRINT << "writing back to storage cores" << ENDL();

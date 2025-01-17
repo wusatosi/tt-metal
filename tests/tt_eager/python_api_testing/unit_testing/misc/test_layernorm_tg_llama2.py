@@ -28,7 +28,11 @@ def rms_norm(x, dim, gamma, beta, eps):
 def test_layernorm_perf(mesh_device):
     torch.manual_seed(1234)
     num_devices_fractured = 4
-    core_grid = ttnn.CoreGrid(x=2, y=8)
+
+    # core_grid = ttnn.CoreGrid(x=2, y=8)
+    # core_grid = ttnn.CoreGrid(x=2, y=1)
+    core_grid = ttnn.CoreGrid(x=2, y=4)
+
     num_cores = core_grid.num_cores
     dim = int(
         math.ceil(8192 / num_devices_fractured / num_cores / 32) * num_devices_fractured * num_cores * 32
@@ -38,7 +42,6 @@ def test_layernorm_perf(mesh_device):
     input_core_range_set = ttnn.CoreRangeSet(
         [
             ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(core_grid.x - 1, core_grid.y - 1)),
-            # ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(2, 7)),
         ]
     )
     size_per_device = dim // num_devices_fractured
@@ -121,7 +124,9 @@ def test_layernorm_perf(mesh_device):
     # Output memory config
     output_core_range_set = ttnn.CoreRangeSet(
         [
-            ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(2, 7)),
+            # ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(2, 7)),
+            # ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(2, 0)),
+            ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(2, 3)),
         ]
     )
     padded_out_w = math.ceil(input_shape[3] / num_devices_fractured / output_core_range_set.num_cores() / 32) * 32
@@ -147,15 +152,16 @@ def test_layernorm_perf(mesh_device):
         # memory_config=input_memory_config
     )
 
+    print(tt_out.shape)
+
     tt_stats.deallocate(True)
     tt_out_torch = ttnn.to_torch(
         tt_out, mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(0, 3), mesh_shape=(8, 4))
     )[0].unsqueeze(0)
     ref_lnorm = rms_norm(input_tensor_torch, [3], gamma_torch, torch.zeros_like(gamma_torch), 1e-5)
-    tt_out_torch_unpadded = tt_out_torch[:, :, :, :dim]  # TODO: extend op to handle this as padding!!!!!
-    passing, output = comp_pcc(tt_out_torch_unpadded, ref_lnorm, 0.999)
+    passing, output = comp_pcc(tt_out_torch, ref_lnorm, 0.999)
     logger.info(output)
 
-    breakpoint()
+    # breakpoint()
 
     assert passing

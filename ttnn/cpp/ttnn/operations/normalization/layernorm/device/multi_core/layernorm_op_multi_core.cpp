@@ -481,7 +481,13 @@ operation::ProgramWithCallbacks layernorm_multi_core_sharded(
     tt::log_debug("layernorm_multi_core_sharded: output.shard_spec().value()={}", output.shard_spec().value());
 
     uint32_t block_wt_resharded = output.shard_spec().value().shape[1] / TILE_WIDTH;
-    bool skip_write_back = block_wt_resharded == block_wt;
+    bool skip_write_back = output.shard_spec().value().grid == a.shard_spec().value().grid;
+
+    // std::cout << "skip_write_back: " << skip_write_back << std::endl;
+    // std::cout << "block_wt_resharded: " << block_wt_resharded << std::endl;
+    // std::cout << "block_wt: " << block_wt << std::endl;
+    // std::cout << "output.shard_spec().value().grid: " << output.shard_spec().value().grid << std::endl;
+    // std::cout << "a.shard_spec().value().grid: " << a.shard_spec().value().grid;
 
     ////////////////////////////////////////////////////////////////////////////
     //                            Device Setup
