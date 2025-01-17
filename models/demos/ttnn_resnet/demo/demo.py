@@ -17,6 +17,9 @@ from models.utility_functions import (
 from models.demos.ttnn_resnet.tests.demo_utils import get_data, get_data_loader, get_batch
 from models.demos.ttnn_resnet.tests.resnet50_test_infra import create_test_infra
 
+# 0.11339236556340507
+# 0.11663152280932419 HiFi4
+
 resnet_model_config = {
     "MATH_FIDELITY": ttnn.MathFidelity.LoFi,
     "WEIGHTS_DTYPE": ttnn.bfloat8_b,
@@ -44,6 +47,7 @@ def run_resnet_imagenet_inference(
     # load inputs
     logger.info("ImageNet-1k validation Dataset")
     input_loc = str(model_location_generator("ImageNet_data"))
+    # print("Input loc is: ", input_loc)
     data_loader = get_data_loader(input_loc, batch_size, iterations)
 
     # Create TT Model Start
@@ -168,6 +172,7 @@ def run_resnet_inference(
     tt_out = test_infra.run()
     ttnn.synchronize_device(device)
     profiler.end(f"model_run_for_inference")
+    # test_infra.validate()
 
     profiler.start(f"post_processing")
     predictions = []

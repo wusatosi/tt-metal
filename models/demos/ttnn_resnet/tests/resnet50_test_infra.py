@@ -208,11 +208,15 @@ class ResNet50TestInfra:
 
         self.torch_input_tensor = torch.rand(input_shape, dtype=torch.float32)
 
+        print("Process model parameters begin")
         parameters = preprocess_model_parameters(
             initialize_model=lambda: torch_model,
             custom_preprocessor=create_custom_mesh_preprocessor(self.weights_mesh_mapper),
             device=None,
         )
+        print("Process model parameters end")
+
+        # print(f"Parameters are: {parameters}")
 
         torch_model.to(torch.bfloat16)
         self.torch_input_tensor = self.torch_input_tensor.to(torch.bfloat16)

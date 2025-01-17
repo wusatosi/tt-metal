@@ -1,5 +1,13 @@
 ---
 
+# From Pavle
+pytest models/demos/wormhole/resnet50/demo/demo.py::test_demo_sample
+
+# perf
+# 1. 4875
+# 2. 4875
+# 3. 4875
+
 # ResNet50 Demo
 
 ## Introduction
@@ -30,6 +38,7 @@ WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml pytest --disable-warnings mod
 - Note that the first time the model is run, ImageNet images must be downloaded from huggingface and stored in  `models/demos/ttnn_resnet/demo/images/`; therefore you need to login to huggingface using your token: `huggingface-cli login` or by setting the token with the command `export HF_TOKEN=<token>`
 - To obtain a huggingface token visit: https://huggingface.co/docs/hub/security-tokens
 
+# PCC=0.9773658552630627
 
 ## Performance
 
@@ -50,3 +59,9 @@ WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml pytest models/demos/wormhole/
 ```
 + This will generate a CSV with the timings and throughputs.
 + **Expected end-to-end perf**: For batch = 16, it is about `4,100 fps` currently. This may vary machine to machine.
+
+# pytest models/demos/wormhole/resnet50/tests/test_perf_device_resnet50.py::test_perf_device
+# python -m tracy -r -m "pytest models/demos/wormhole/resnet50/tests/test_perf_device_resnet50.py::test_perf_device"
+# pytest models/demos/wormhole/resnet50/tests/test_resnet50_performant.py::test_run_resnet50_inference[16-act_dtype0-weight_dtype0-math_fidelity0-device_params0] PCC
+
+# python -m tracy -r -m "pytest tests/ttnn/unit_tests/operations/eltwise/test_add.py"

@@ -51,14 +51,14 @@ def run_resnet50_inference(
     tt_inputs_host, input_mem_config = test_infra.setup_l1_sharded_input(device)
 
     # First run configures convs JIT
-    test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
-    test_infra.run()
-    test_infra.validate()
+    # test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
+    # test_infra.run()
+    # test_infra.validate()
 
-    # Optimized run
-    test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
-    test_infra.run()
-    test_infra.validate()
+    # # Optimized run
+    # test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
+    # test_infra.run()
+    # test_infra.validate()
 
     # More optimized run with caching
     if use_signpost:

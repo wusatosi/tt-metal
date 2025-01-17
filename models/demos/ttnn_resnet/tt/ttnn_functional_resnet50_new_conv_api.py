@@ -14,6 +14,13 @@ from typing import List
 from loguru import logger
 from tests.ttnn.utils_for_testing import assert_with_pcc
 
+try:
+    from tracy import signpost
+
+    use_signpost = True
+except ModuleNotFoundError:
+    use_signpost = False
+
 hardcoded_matmul_config_linear = {
     8: ttnn.MatmulMultiCoreReuseMultiCast1DProgramConfig(
         compute_with_storage_grid_size=(8, 4),
@@ -160,6 +167,8 @@ class resnet50Bottleneck:
     ):
         if self.downsample:
             logger.debug(f"Running downsample")
+            if use_signpost:
+                signpost(header="downsample_begin")
             ds_out, [self.ds_conv_weight_tensor, self.ds_conv_bias_tensor] = ttnn.conv2d(
                 input_tensor=x,
                 weight_tensor=self.ds_conv_weight_tensor,
@@ -203,6 +212,8 @@ class resnet50Bottleneck:
             )
             ttnn.deallocate(x)
             ds_out = ttnn.reallocate(ds_out)
+            if use_signpost:
+                signpost(header="downsample_end")
         else:
             ds_out = x
         return ds_out
@@ -231,6 +242,8 @@ class resnet50Bottleneck:
         # conv1 is 1x1 conv
         logger.debug(f"Running conv1")
         module_input_height = input_height
+        if use_signpost:
+            signpost(header="bottleneck_conv1_begin")
         out, [input_height, input_width], [self.conv1_weight_tensor, self.conv1_bias_tensor] = ttnn.conv2d(
             input_tensor=x,
             weight_tensor=self.conv1_weight_tensor,
@@ -263,7 +276,8 @@ class resnet50Bottleneck:
             return_output_dim=True,
             return_weights_and_bias=True,
         )
-
+        if use_signpost:
+            signpost(header="bottleneck_conv1_end")
         act_block_h_override = 0
         if is_grayskull():
             if self.conv2_output_channels == 64 and input_height == 56 and batch_size == 20:
@@ -317,6 +331,9 @@ class resnet50Bottleneck:
 
         reallocate_halo_output = batch_size == 20
         logger.debug(f"Running conv2")
+        logger.debug(f"Conv2 stride is {self.conv2_stride}")
+        if use_signpost:
+            signpost(header="bottleneck_conv2_begin")
         out, [input_height, input_width], [self.conv2_weight_tensor, self.conv2_bias_tensor] = ttnn.conv2d(
             input_tensor=out,
             weight_tensor=self.conv2_weight_tensor,
@@ -356,7 +373,8 @@ class resnet50Bottleneck:
             return_output_dim=True,
             return_weights_and_bias=True,
         )
-
+        if use_signpost:
+            signpost(header="bottleneck_conv2_end")
         logger.debug(
             f"{batch_size} and {input_height} and {self.conv1_input_channels} and {self.conv1_output_channels}"
         )
@@ -373,6 +391,8 @@ class resnet50Bottleneck:
 
         # conv3 is 1x1 conv
         logger.debug(f"Running conv3")
+        if use_signpost:
+            signpost(header="bottleneck_conv3_begin")
         out, [self.conv3_weight_tensor, self.conv3_bias_tensor] = ttnn.conv2d(
             input_tensor=out,
             weight_tensor=self.conv3_weight_tensor,
@@ -404,6 +424,8 @@ class resnet50Bottleneck:
             return_output_dim=False,
             return_weights_and_bias=True,
         )
+        if use_signpost:
+            signpost(header="bottleneck_conv3_end")
 
         if not run_downsample_before_conv2:
             ds_reshard = (
@@ -438,6 +460,8 @@ class resnet50Bottleneck:
             ds_out
         ), f"{ttnn.get_memory_config(out)} != {ttnn.get_memory_config(ds_out)}"
 
+        if use_signpost:
+            signpost(header="bottleneck_residual_add_begin")
         if eltwise_binary_out_in_place:
             # underscore version is in_place = True
             out = ttnn.add_(
@@ -453,6 +477,8 @@ class resnet50Bottleneck:
                 memory_config=ttnn.L1_MEMORY_CONFIG,
             )  ## TODO: check why not out mem config???
         ttnn.deallocate(ds_out)
+        if use_signpost:
+            signpost(header="bottleneck_residual_add_end")
         if batch_size == 20 and (is_wormhole_b0() or (module_input_height == 56 and self.conv1_input_channels == 64)):
             out = ttnn.reallocate(out)
         return out, input_height, input_width
@@ -723,6 +749,9 @@ class resnet50:
         logger.debug(f"==== fold on device")
 
         # run fold
+        # logger.info("Running fold")
+        if use_signpost:
+            signpost(header="fold_begin")
         fold_output_tensor = ttnn.fold(
             input_tensor,
             self.fold_stride_h,
@@ -734,6 +763,9 @@ class resnet50:
             grid_size=self.fold_compute_grid_size,
             override_memory_config=self.override_fold_mem_config,
         )
+        if use_signpost:
+            signpost(header="fold_end")
+        # logger.info("Done running fold")
         n, c, h, w = fold_output_tensor.shape
         fold_output_tensor = ttnn.reshape(fold_output_tensor, (1, 1, n * c * h, w))
 
@@ -741,6 +773,8 @@ class resnet50:
 
         logger.debug(f"==== first conv")
 
+        if use_signpost:
+            signpost(header="first_conv_begin")
         # first conv
         x, [x_height, x_width], [self.conv1_weight_tensor, self.conv1_bias_tensor] = ttnn.conv2d(
             input_tensor=fold_output_tensor,
@@ -761,6 +795,8 @@ class resnet50:
             return_output_dim=True,
             return_weights_and_bias=True,
         )
+        if use_signpost:
+            signpost(header="first_conv_end")
         # Relu is fused with conv1
         if self.batch_size == 20:
             x = ttnn.reallocate(x)
@@ -1227,7 +1263,11 @@ class resnet50:
             dtype=self.model_config["ACTIVATIONS_DTYPE"],
         )
 
+        if use_signpost:
+            signpost(header="fc_begin")
         x = self.fc(x)
+        if use_signpost:
+            signpost(header="fc_end")
         desired_shape = list(x.shape)
         desired_shape[-1] = 1000
         x = ttnn.untilize_with_unpadding(
