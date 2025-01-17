@@ -951,6 +951,98 @@ void assemble_device_commands(
             mcast_cb_payload);
     }
 
+    uint32_t l1_alignment = hal.get_alignment(HalMemType::L1);
+    {
+        program_command_sequence.device_command_sequence = HostMemDeviceCommand(cmd_sequence_sizeB);
+        auto& device_command_sequence = program_command_sequence.device_command_sequence;
+
+        // Semaphores
+        // Multicast Semaphore Cmd
+        index = hal.get_programmable_core_type_index(HalProgrammableCoreType::TENSIX);
+        for (uint32_t i = 0; i < num_multicast_semaphores; ++i) {
+            uint32_t curr_sub_cmd_idx = 0;
+            for (const auto& [num_sub_cmds_in_cmd, multicast_sem_payload_sizeB] : multicast_sem_payload[i]) {
+                device_command_sequence.add_dispatch_write_packed<CQDispatchWritePackedMulticastSubCmd>(
+                    num_sub_cmds_in_cmd,
+                    multicast_sem_dst_size[i].first + program.get_program_config(index).sem_offset,
+                    multicast_sem_dst_size[i].second,
+                    multicast_sem_payload_sizeB,
+                    multicast_sem_sub_cmds[i],
+                    multicast_sem_data[i],
+                    packed_write_max_unicast_sub_cmds,
+                    curr_sub_cmd_idx,
+                    false,
+                    DISPATCH_WRITE_OFFSET_TENSIX_L1_CONFIG_BASE);
+                curr_sub_cmd_idx += num_sub_cmds_in_cmd;
+                for (auto& data_and_size : multicast_sem_data[i]) {
+                    RecordDispatchData(program, DISPATCH_DATA_SEMAPHORE, data_and_size.second);
+                }
+            }
+        }
+
+        // Unicast Semaphore Cmd
+        index = hal.get_programmable_core_type_index(HalProgrammableCoreType::ACTIVE_ETH);
+        for (uint32_t i = 0; i < num_unicast_semaphores; ++i) {
+            uint32_t curr_sub_cmd_idx = 0;
+            for (const auto& [num_sub_cmds_in_cmd, unicast_sem_payload_sizeB] : unicast_sem_payload[i]) {
+                device_command_sequence.add_dispatch_write_packed<CQDispatchWritePackedUnicastSubCmd>(
+                    num_sub_cmds_in_cmd,
+                    unicast_sem_dst_size[i].first + program.get_program_config(index).sem_offset,
+                    unicast_sem_dst_size[i].second,
+                    unicast_sem_payload_sizeB,
+                    unicast_sem_sub_cmds[i],
+                    unicast_sem_data[i],
+                    packed_write_max_unicast_sub_cmds,
+                    curr_sub_cmd_idx,
+                    false,
+                    DISPATCH_WRITE_OFFSET_ETH_L1_CONFIG_BASE);
+                curr_sub_cmd_idx += num_sub_cmds_in_cmd;
+                for (auto& data_and_size : unicast_sem_data[i]) {
+                    RecordDispatchData(program, DISPATCH_DATA_SEMAPHORE, data_and_size.second);
+                }
+            }
+        }
+
+        // CB Configs commands
+        index = hal.get_programmable_core_type_index(HalProgrammableCoreType::TENSIX);
+        if (num_multicast_cb_sub_cmds > 0) {
+            uint32_t curr_sub_cmd_idx = 0;
+            program_command_sequence.cb_configs_payloads.reserve(num_multicast_cb_sub_cmds);
+            const uint32_t cb_config_size_words = aligned_cb_config_size_bytes / sizeof(uint32_t);
+            for (const auto& [num_sub_cmds_in_cmd, mcast_cb_payload_sizeB] : mcast_cb_payload) {
+                uint32_t write_offset_bytes = device_command_sequence.write_offset_bytes();
+                device_command_sequence.add_dispatch_write_packed<CQDispatchWritePackedMulticastSubCmd>(
+                    num_sub_cmds_in_cmd,
+                    program.get_program_config(index).cb_offset,
+                    cb_config_size_bytes,
+                    mcast_cb_payload_sizeB,
+                    multicast_cb_config_sub_cmds,
+                    multicast_cb_config_data,
+                    packed_write_max_unicast_sub_cmds,
+                    curr_sub_cmd_idx,
+                    false,
+                    DISPATCH_WRITE_OFFSET_TENSIX_L1_CONFIG_BASE);
+                for (auto& data_and_size : multicast_cb_config_data) {
+                    RecordDispatchData(program, DISPATCH_DATA_CB_CONFIG, data_and_size.second);
+                }
+                curr_sub_cmd_idx += num_sub_cmds_in_cmd;
+                RecordDispatchData(program, DISPATCH_DATA_CB_CONFIG, mcast_cb_payload_sizeB);
+                uint32_t curr_sub_cmd_data_offset_words =
+                    (write_offset_bytes + (sizeof(CQPrefetchCmd) + sizeof(CQDispatchCmd)) +
+                    tt::align(num_sub_cmds_in_cmd * sizeof(CQDispatchWritePackedMulticastSubCmd), l1_alignment)) /
+                    sizeof(uint32_t);
+                for (uint32_t i = 0; i < num_sub_cmds_in_cmd; ++i) {
+                    program_command_sequence.cb_configs_payloads.push_back(
+                        (uint32_t*)device_command_sequence.data() + curr_sub_cmd_data_offset_words);
+                    curr_sub_cmd_data_offset_words += cb_config_size_words;
+                }
+            }
+        }
+    }
+
+
+    cmd_sequence_sizeB = 0;
+
     // Program Binaries and Go Signals
     // Get launch msg data while getting size of cmds
     std::vector<std::vector<CQPrefetchRelayPagedPackedSubCmd>> kernel_bins_prefetch_subcmds;
@@ -1182,225 +1274,140 @@ void assemble_device_commands(
         unicast_go_signal_sub_cmds.size() > 0 ? device->num_noc_unicast_txns(sub_device_id) : 0;
     cmd_sequence_sizeB += tt::align(sizeof(CQPrefetchCmd) + sizeof(CQDispatchCmd), pcie_alignment);
 
-    program_command_sequence.device_command_sequence = HostMemDeviceCommand(cmd_sequence_sizeB);
 
-    auto& device_command_sequence = program_command_sequence.device_command_sequence;
+    {
+        program_command_sequence.binary_device_command_sequence = HostMemDeviceCommand(cmd_sequence_sizeB);
+        auto& device_command_sequence = program_command_sequence.binary_device_command_sequence;
 
-    uint32_t l1_alignment = hal.get_alignment(HalMemType::L1);
-
-    // Semaphores
-    // Multicast Semaphore Cmd
-    index = hal.get_programmable_core_type_index(HalProgrammableCoreType::TENSIX);
-    for (uint32_t i = 0; i < num_multicast_semaphores; ++i) {
-        uint32_t curr_sub_cmd_idx = 0;
-        for (const auto& [num_sub_cmds_in_cmd, multicast_sem_payload_sizeB] : multicast_sem_payload[i]) {
-            device_command_sequence.add_dispatch_write_packed<CQDispatchWritePackedMulticastSubCmd>(
-                num_sub_cmds_in_cmd,
-                multicast_sem_dst_size[i].first + program.get_program_config(index).sem_offset,
-                multicast_sem_dst_size[i].second,
-                multicast_sem_payload_sizeB,
-                multicast_sem_sub_cmds[i],
-                multicast_sem_data[i],
-                packed_write_max_unicast_sub_cmds,
-                curr_sub_cmd_idx,
-                false,
+        // Program Binaries
+        for (const auto& kernel_bins_unicast_cmd : kernel_bins_unicast_cmds) {
+            device_command_sequence.add_data(
+                kernel_bins_unicast_cmd.data(), kernel_bins_unicast_cmd.size_bytes(), kernel_bins_unicast_cmd.size_bytes());
+        }
+        uint32_t dram_alignment = hal.get_alignment(HalMemType::DRAM);
+        for (uint32_t i = 0; i < kernel_bins_dispatch_subcmds.size(); ++i) {
+            device_command_sequence.add_dispatch_write_packed_large(
+                dram_alignment,
+                kernel_bins_dispatch_subcmds[i].size(),
+                kernel_bins_dispatch_subcmds[i],
+                0,
                 DISPATCH_WRITE_OFFSET_TENSIX_L1_CONFIG_BASE);
-            curr_sub_cmd_idx += num_sub_cmds_in_cmd;
-            for (auto& data_and_size : multicast_sem_data[i]) {
-                RecordDispatchData(program, DISPATCH_DATA_SEMAPHORE, data_and_size.second);
-            }
+            device_command_sequence.add_prefetch_relay_paged_packed(
+                kernel_bins_write_packed_large_data_aligned_sizeB[i],
+                kernel_bins_prefetch_subcmds[i],
+                kernel_bins_prefetch_subcmds[i].size());
         }
-    }
 
-    // Unicast Semaphore Cmd
-    index = hal.get_programmable_core_type_index(HalProgrammableCoreType::ACTIVE_ETH);
-    for (uint32_t i = 0; i < num_unicast_semaphores; ++i) {
-        uint32_t curr_sub_cmd_idx = 0;
-        for (const auto& [num_sub_cmds_in_cmd, unicast_sem_payload_sizeB] : unicast_sem_payload[i]) {
-            device_command_sequence.add_dispatch_write_packed<CQDispatchWritePackedUnicastSubCmd>(
-                num_sub_cmds_in_cmd,
-                unicast_sem_dst_size[i].first + program.get_program_config(index).sem_offset,
-                unicast_sem_dst_size[i].second,
-                unicast_sem_payload_sizeB,
-                unicast_sem_sub_cmds[i],
-                unicast_sem_data[i],
-                packed_write_max_unicast_sub_cmds,
-                curr_sub_cmd_idx,
-                false,
-                DISPATCH_WRITE_OFFSET_ETH_L1_CONFIG_BASE);
-            curr_sub_cmd_idx += num_sub_cmds_in_cmd;
-            for (auto& data_and_size : unicast_sem_data[i]) {
-                RecordDispatchData(program, DISPATCH_DATA_SEMAPHORE, data_and_size.second);
-            }
-        }
-    }
+        // Go Signals
+        program_command_sequence.go_signals.reserve(
+            multicast_go_signal_sub_cmds.size() + unicast_go_signal_sub_cmds.size());
 
-    // CB Configs commands
-    index = hal.get_programmable_core_type_index(HalProgrammableCoreType::TENSIX);
-    if (num_multicast_cb_sub_cmds > 0) {
-        uint32_t curr_sub_cmd_idx = 0;
-        program_command_sequence.cb_configs_payloads.reserve(num_multicast_cb_sub_cmds);
-        const uint32_t cb_config_size_words = aligned_cb_config_size_bytes / sizeof(uint32_t);
-        for (const auto& [num_sub_cmds_in_cmd, mcast_cb_payload_sizeB] : mcast_cb_payload) {
-            uint32_t write_offset_bytes = device_command_sequence.write_offset_bytes();
-            device_command_sequence.add_dispatch_write_packed<CQDispatchWritePackedMulticastSubCmd>(
-                num_sub_cmds_in_cmd,
-                program.get_program_config(index).cb_offset,
-                cb_config_size_bytes,
-                mcast_cb_payload_sizeB,
-                multicast_cb_config_sub_cmds,
-                multicast_cb_config_data,
-                packed_write_max_unicast_sub_cmds,
-                curr_sub_cmd_idx,
-                false,
-                DISPATCH_WRITE_OFFSET_TENSIX_L1_CONFIG_BASE);
-            for (auto& data_and_size : multicast_cb_config_data) {
-                RecordDispatchData(program, DISPATCH_DATA_CB_CONFIG, data_and_size.second);
-            }
-            curr_sub_cmd_idx += num_sub_cmds_in_cmd;
-            RecordDispatchData(program, DISPATCH_DATA_CB_CONFIG, mcast_cb_payload_sizeB);
-            uint32_t curr_sub_cmd_data_offset_words =
-                (write_offset_bytes + (sizeof(CQPrefetchCmd) + sizeof(CQDispatchCmd)) +
-                 tt::align(num_sub_cmds_in_cmd * sizeof(CQDispatchWritePackedMulticastSubCmd), l1_alignment)) /
-                sizeof(uint32_t);
-            for (uint32_t i = 0; i < num_sub_cmds_in_cmd; ++i) {
-                program_command_sequence.cb_configs_payloads.push_back(
-                    (uint32_t*)device_command_sequence.data() + curr_sub_cmd_data_offset_words);
-                curr_sub_cmd_data_offset_words += cb_config_size_words;
-            }
-        }
-    }
-    // All Previous Cmds Up to This Point Go Into the Kernel Config Buffer
-    program_command_sequence.program_config_buffer_data_size_bytes = device_command_sequence.write_offset_bytes();
-
-    // Program Binaries
-    for (const auto& kernel_bins_unicast_cmd : kernel_bins_unicast_cmds) {
-        device_command_sequence.add_data(
-            kernel_bins_unicast_cmd.data(), kernel_bins_unicast_cmd.size_bytes(), kernel_bins_unicast_cmd.size_bytes());
-    }
-    uint32_t dram_alignment = hal.get_alignment(HalMemType::DRAM);
-    for (uint32_t i = 0; i < kernel_bins_dispatch_subcmds.size(); ++i) {
-        device_command_sequence.add_dispatch_write_packed_large(
-            dram_alignment,
-            kernel_bins_dispatch_subcmds[i].size(),
-            kernel_bins_dispatch_subcmds[i],
-            0,
-            DISPATCH_WRITE_OFFSET_TENSIX_L1_CONFIG_BASE);
-        device_command_sequence.add_prefetch_relay_paged_packed(
-            kernel_bins_write_packed_large_data_aligned_sizeB[i],
-            kernel_bins_prefetch_subcmds[i],
-            kernel_bins_prefetch_subcmds[i].size());
-    }
-
-    // Go Signals
-    program_command_sequence.go_signals.reserve(
-        multicast_go_signal_sub_cmds.size() + unicast_go_signal_sub_cmds.size());
-
-    // Launch Message address is resolved when the program is enqueued
-    uint32_t multicast_launch_msg_addr = 0;
-
-    if (multicast_go_signal_sub_cmds.size() > 0) {
-        uint32_t curr_sub_cmd_idx = 0;
-        for (const auto& [num_sub_cmds_in_cmd, multicast_go_signal_payload_sizeB] : multicast_go_signals_payload) {
-            uint32_t write_offset_bytes = device_command_sequence.write_offset_bytes();
-            device_command_sequence.add_dispatch_write_packed<CQDispatchWritePackedMulticastSubCmd>(
-                num_sub_cmds_in_cmd,
-                multicast_launch_msg_addr,
-                go_signal_sizeB,
-                multicast_go_signal_payload_sizeB,
-                multicast_go_signal_sub_cmds,
-                multicast_go_signal_data,
-                packed_write_max_unicast_sub_cmds,
-                curr_sub_cmd_idx);
-            curr_sub_cmd_idx += num_sub_cmds_in_cmd;
-            program_command_sequence.launch_msg_write_packed_cmd_ptrs.push_back(
-                &((CQDispatchCmd*)((uint32_t*)device_command_sequence.data() +
-                                   (write_offset_bytes + sizeof(CQPrefetchCmd)) / sizeof(uint32_t)))
-                     ->write_packed);
-            uint32_t curr_sub_cmd_data_offset_words =
-                (write_offset_bytes + (sizeof(CQPrefetchCmd) + sizeof(CQDispatchCmd)) +
-                 tt::align(num_sub_cmds_in_cmd * sizeof(CQDispatchWritePackedMulticastSubCmd), l1_alignment)) /
-                sizeof(uint32_t);
-            for (uint32_t i = 0; i < num_sub_cmds_in_cmd; ++i) {
-                program_command_sequence.go_signals.push_back(
-                    (launch_msg_t*)((uint32_t*)device_command_sequence.data() + curr_sub_cmd_data_offset_words));
-                curr_sub_cmd_data_offset_words += go_signal_size_words;
-            }
-        }
-    }
-
-    if (unicast_go_signal_sub_cmds.size() > 0) {
         // Launch Message address is resolved when the program is enqueued
-        uint32_t unicast_launch_msg_addr = 0;
-        uint32_t curr_sub_cmd_idx = 0;
-        for (const auto& [num_sub_cmds_in_cmd, unicast_go_signal_payload_sizeB] : unicast_go_signals_payload) {
-            uint32_t write_offset_bytes = device_command_sequence.write_offset_bytes();
-            device_command_sequence.add_dispatch_write_packed<CQDispatchWritePackedUnicastSubCmd>(
-                num_sub_cmds_in_cmd,
-                unicast_launch_msg_addr,
-                go_signal_sizeB,
-                unicast_go_signal_payload_sizeB,
-                unicast_go_signal_sub_cmds,
-                unicast_go_signal_data,
-                packed_write_max_unicast_sub_cmds,
-                curr_sub_cmd_idx);
-            curr_sub_cmd_idx += num_sub_cmds_in_cmd;
-            program_command_sequence.unicast_launch_msg_write_packed_cmd_ptrs.push_back(
-                &((CQDispatchCmd*)((uint32_t*)device_command_sequence.data() +
-                                   (write_offset_bytes + sizeof(CQPrefetchCmd)) / sizeof(uint32_t)))
-                     ->write_packed);
-            uint32_t curr_sub_cmd_data_offset_words =
-                (write_offset_bytes + (sizeof(CQPrefetchCmd) + sizeof(CQDispatchCmd)) +
-                 tt::align(num_sub_cmds_in_cmd * sizeof(CQDispatchWritePackedUnicastSubCmd), l1_alignment)) /
-                sizeof(uint32_t);
-            for (uint32_t i = 0; i < num_sub_cmds_in_cmd; ++i) {
-                program_command_sequence.go_signals.push_back(
-                    (launch_msg_t*)((uint32_t*)device_command_sequence.data() + curr_sub_cmd_data_offset_words));
-                curr_sub_cmd_data_offset_words += go_signal_size_words;
+        uint32_t multicast_launch_msg_addr = 0;
+
+        if (multicast_go_signal_sub_cmds.size() > 0) {
+            uint32_t curr_sub_cmd_idx = 0;
+            for (const auto& [num_sub_cmds_in_cmd, multicast_go_signal_payload_sizeB] : multicast_go_signals_payload) {
+                uint32_t write_offset_bytes = device_command_sequence.write_offset_bytes();
+                device_command_sequence.add_dispatch_write_packed<CQDispatchWritePackedMulticastSubCmd>(
+                    num_sub_cmds_in_cmd,
+                    multicast_launch_msg_addr,
+                    go_signal_sizeB,
+                    multicast_go_signal_payload_sizeB,
+                    multicast_go_signal_sub_cmds,
+                    multicast_go_signal_data,
+                    packed_write_max_unicast_sub_cmds,
+                    curr_sub_cmd_idx);
+                curr_sub_cmd_idx += num_sub_cmds_in_cmd;
+                program_command_sequence.launch_msg_write_packed_cmd_ptrs.push_back(
+                    &((CQDispatchCmd*)((uint32_t*)device_command_sequence.data() +
+                                    (write_offset_bytes + sizeof(CQPrefetchCmd)) / sizeof(uint32_t)))
+                        ->write_packed);
+                uint32_t curr_sub_cmd_data_offset_words =
+                    (write_offset_bytes + (sizeof(CQPrefetchCmd) + sizeof(CQDispatchCmd)) +
+                    tt::align(num_sub_cmds_in_cmd * sizeof(CQDispatchWritePackedMulticastSubCmd), l1_alignment)) /
+                    sizeof(uint32_t);
+                for (uint32_t i = 0; i < num_sub_cmds_in_cmd; ++i) {
+                    program_command_sequence.go_signals.push_back(
+                        (launch_msg_t*)((uint32_t*)device_command_sequence.data() + curr_sub_cmd_data_offset_words));
+                    curr_sub_cmd_data_offset_words += go_signal_size_words;
+                }
             }
         }
-    }
 
-    DispatcherSelect dispatcher_for_go_signal = DispatcherSelect::DISPATCH_MASTER;
-    auto sub_device_index = sub_device_id.to_index();
-    uint32_t dispatch_message_addr =
-        dispatch_constants::get(dispatch_core_type)
-            .get_device_command_queue_addr(CommandQueueDeviceAddrType::DISPATCH_MESSAGE) +
-        dispatch_constants::get(dispatch_core_type).get_dispatch_message_offset(sub_device_index);
-    if (device->dispatch_s_enabled()) {
-        // dispatch_d signals dispatch_s to send the go signal, use a barrier if there are cores active
-        uint16_t index_bitmask = 0;
-        index_bitmask |= 1 << sub_device_index;
-        device_command_sequence.add_notify_dispatch_s_go_signal_cmd(
-            program_transfer_info.num_active_cores > 0, index_bitmask);
-        dispatcher_for_go_signal = DispatcherSelect::DISPATCH_SLAVE;
-    } else {
-        // Wait Noc Write Barrier, wait for binaries/configs and launch_msg to be written to worker cores
-        if (program_transfer_info.num_active_cores > 0) {
-            device_command_sequence.add_dispatch_wait(true, dispatch_message_addr, 0, 0, false, false);
+        if (unicast_go_signal_sub_cmds.size() > 0) {
+            // Launch Message address is resolved when the program is enqueued
+            uint32_t unicast_launch_msg_addr = 0;
+            uint32_t curr_sub_cmd_idx = 0;
+            for (const auto& [num_sub_cmds_in_cmd, unicast_go_signal_payload_sizeB] : unicast_go_signals_payload) {
+                uint32_t write_offset_bytes = device_command_sequence.write_offset_bytes();
+                device_command_sequence.add_dispatch_write_packed<CQDispatchWritePackedUnicastSubCmd>(
+                    num_sub_cmds_in_cmd,
+                    unicast_launch_msg_addr,
+                    go_signal_sizeB,
+                    unicast_go_signal_payload_sizeB,
+                    unicast_go_signal_sub_cmds,
+                    unicast_go_signal_data,
+                    packed_write_max_unicast_sub_cmds,
+                    curr_sub_cmd_idx);
+                curr_sub_cmd_idx += num_sub_cmds_in_cmd;
+                program_command_sequence.unicast_launch_msg_write_packed_cmd_ptrs.push_back(
+                    &((CQDispatchCmd*)((uint32_t*)device_command_sequence.data() +
+                                    (write_offset_bytes + sizeof(CQPrefetchCmd)) / sizeof(uint32_t)))
+                        ->write_packed);
+                uint32_t curr_sub_cmd_data_offset_words =
+                    (write_offset_bytes + (sizeof(CQPrefetchCmd) + sizeof(CQDispatchCmd)) +
+                    tt::align(num_sub_cmds_in_cmd * sizeof(CQDispatchWritePackedUnicastSubCmd), l1_alignment)) /
+                    sizeof(uint32_t);
+                for (uint32_t i = 0; i < num_sub_cmds_in_cmd; ++i) {
+                    program_command_sequence.go_signals.push_back(
+                        (launch_msg_t*)((uint32_t*)device_command_sequence.data() + curr_sub_cmd_data_offset_words));
+                    curr_sub_cmd_data_offset_words += go_signal_size_words;
+                }
+            }
         }
+
+        DispatcherSelect dispatcher_for_go_signal = DispatcherSelect::DISPATCH_MASTER;
+        auto sub_device_index = sub_device_id.to_index();
+        uint32_t dispatch_message_addr =
+            dispatch_constants::get(dispatch_core_type)
+                .get_device_command_queue_addr(CommandQueueDeviceAddrType::DISPATCH_MESSAGE) +
+            dispatch_constants::get(dispatch_core_type).get_dispatch_message_offset(sub_device_index);
+        if (device->dispatch_s_enabled()) {
+            // dispatch_d signals dispatch_s to send the go signal, use a barrier if there are cores active
+            uint16_t index_bitmask = 0;
+            index_bitmask |= 1 << sub_device_index;
+            device_command_sequence.add_notify_dispatch_s_go_signal_cmd(
+                program_transfer_info.num_active_cores > 0, index_bitmask);
+            dispatcher_for_go_signal = DispatcherSelect::DISPATCH_SLAVE;
+        } else {
+            // Wait Noc Write Barrier, wait for binaries/configs and launch_msg to be written to worker cores
+            if (program_transfer_info.num_active_cores > 0) {
+                device_command_sequence.add_dispatch_wait(true, dispatch_message_addr, 0, 0, false, false);
+            }
+        }
+        go_msg_t run_program_go_signal;
+        run_program_go_signal.signal = RUN_MSG_GO;
+        // Dispatch X/Y resolved when the program is enqueued
+        run_program_go_signal.master_x = 0;
+        run_program_go_signal.master_y = 0;
+        run_program_go_signal.dispatch_message_offset =
+            (uint8_t)dispatch_constants::get(dispatch_core_type).get_dispatch_message_offset(sub_device_index);
+        uint32_t write_offset_bytes = device_command_sequence.write_offset_bytes();
+        // Num Workers Resolved when the program is enqueued
+        device_command_sequence.add_dispatch_go_signal_mcast(
+            0,
+            *reinterpret_cast<uint32_t*>(&run_program_go_signal),
+            dispatch_message_addr,
+            num_noc_mcast_txns,
+            num_noc_unicast_txns,
+            noc_data_start_idx,
+            dispatcher_for_go_signal);
+        program_command_sequence.mcast_go_signal_cmd_ptr =
+            &((CQDispatchCmd*)((uint32_t*)device_command_sequence.data() +
+                            (write_offset_bytes + sizeof(CQPrefetchCmd)) / sizeof(uint32_t)))
+                ->mcast;
     }
-    go_msg_t run_program_go_signal;
-    run_program_go_signal.signal = RUN_MSG_GO;
-    // Dispatch X/Y resolved when the program is enqueued
-    run_program_go_signal.master_x = 0;
-    run_program_go_signal.master_y = 0;
-    run_program_go_signal.dispatch_message_offset =
-        (uint8_t)dispatch_constants::get(dispatch_core_type).get_dispatch_message_offset(sub_device_index);
-    uint32_t write_offset_bytes = device_command_sequence.write_offset_bytes();
-    // Num Workers Resolved when the program is enqueued
-    device_command_sequence.add_dispatch_go_signal_mcast(
-        0,
-        *reinterpret_cast<uint32_t*>(&run_program_go_signal),
-        dispatch_message_addr,
-        num_noc_mcast_txns,
-        num_noc_unicast_txns,
-        noc_data_start_idx,
-        dispatcher_for_go_signal);
-    program_command_sequence.mcast_go_signal_cmd_ptr =
-        &((CQDispatchCmd*)((uint32_t*)device_command_sequence.data() +
-                           (write_offset_bytes + sizeof(CQPrefetchCmd)) / sizeof(uint32_t)))
-             ->mcast;
 }
 
 void initialize_worker_config_buf_mgr(WorkerConfigBufferMgr& config_buffer_mgr) {
@@ -1612,15 +1619,10 @@ void write_program_command_sequence(
     uint32_t runtime_args_fetch_size_bytes = program_command_sequence.runtime_args_fetch_size_bytes;
 
     uint32_t program_fetch_size_bytes = program_command_sequence.device_command_sequence.size_bytes();
-
-    uint32_t program_config_buffer_data_size_bytes = program_command_sequence.program_config_buffer_data_size_bytes;
-
-    uint32_t program_rem_fetch_size_bytes = program_fetch_size_bytes - program_config_buffer_data_size_bytes;
-
-    uint8_t* program_command_sequence_data = (uint8_t*)program_command_sequence.device_command_sequence.data();
+    uint32_t program_fetch_size_bytes2 = program_command_sequence.binary_device_command_sequence.size_bytes();
 
     uint32_t total_fetch_size_bytes =
-        stall_fetch_size_bytes + preamble_fetch_size_bytes + runtime_args_fetch_size_bytes + program_fetch_size_bytes;
+        stall_fetch_size_bytes + preamble_fetch_size_bytes + runtime_args_fetch_size_bytes + program_fetch_size_bytes + program_fetch_size_bytes2;
 
     if (total_fetch_size_bytes <= dispatch_constants::get(dispatch_core_type).max_prefetch_command_size()) {
         manager.issue_queue_reserve(total_fetch_size_bytes, command_queue_id);
@@ -1643,13 +1645,12 @@ void write_program_command_sequence(
             manager.cq_write(cmds.data(), cmds.size_bytes(), write_ptr);
             write_ptr += cmds.size_bytes();
         }
+        if (program_fetch_size_bytes > 0) {
+            manager.cq_write(program_command_sequence.device_command_sequence.data(), program_fetch_size_bytes, write_ptr);
+            write_ptr += program_fetch_size_bytes;
+        }
 
         if (stall_before_program) {
-            if (program_config_buffer_data_size_bytes > 0) {
-                manager.cq_write(program_command_sequence_data, program_config_buffer_data_size_bytes, write_ptr);
-                program_command_sequence_data += program_config_buffer_data_size_bytes;
-                write_ptr += program_config_buffer_data_size_bytes;
-            }
 
             // Didn't stall before kernel config data, stall before remaining commands
             manager.cq_write(
@@ -1657,10 +1658,11 @@ void write_program_command_sequence(
                 stall_fetch_size_bytes,
                 write_ptr);
             write_ptr += stall_fetch_size_bytes;
+        }
 
-            manager.cq_write(program_command_sequence_data, program_rem_fetch_size_bytes, write_ptr);
-        } else {
-            manager.cq_write(program_command_sequence_data, program_fetch_size_bytes, write_ptr);
+        if (program_fetch_size_bytes2 > 0) {
+            manager.cq_write(program_command_sequence.binary_device_command_sequence.data(), program_fetch_size_bytes2, write_ptr);
+            write_ptr += program_fetch_size_bytes2;
         }
 
         manager.issue_queue_push_back(total_fetch_size_bytes, command_queue_id);
@@ -1709,14 +1711,13 @@ void write_program_command_sequence(
         // Insert a stall between program data that goes on the ring buffer and the rest of the data
         // Otherwise write all data in 1 prefetch entry
         if (stall_before_program) {
-            if (program_config_buffer_data_size_bytes > 0) {
-                manager.issue_queue_reserve(program_config_buffer_data_size_bytes, command_queue_id);
+            if (program_fetch_size_bytes > 0) {
+                manager.issue_queue_reserve(program_fetch_size_bytes, command_queue_id);
                 write_ptr = manager.get_issue_queue_write_ptr(command_queue_id);
-                manager.cq_write(program_command_sequence_data, program_config_buffer_data_size_bytes, write_ptr);
-                manager.issue_queue_push_back(program_config_buffer_data_size_bytes, command_queue_id);
+                manager.cq_write(program_command_sequence.device_command_sequence.data(), program_fetch_size_bytes, write_ptr);
+                manager.issue_queue_push_back(program_fetch_size_bytes, command_queue_id);
                 manager.fetch_queue_reserve_back(command_queue_id);
-                manager.fetch_queue_write(program_config_buffer_data_size_bytes, command_queue_id);
-                program_command_sequence_data += program_config_buffer_data_size_bytes;
+                manager.fetch_queue_write(program_fetch_size_bytes, command_queue_id);
             }
 
             // Didn't stall before kernel config data, stall before remaining commands
@@ -1731,21 +1732,25 @@ void write_program_command_sequence(
             manager.fetch_queue_reserve_back(command_queue_id);
             manager.fetch_queue_write(stall_fetch_size_bytes, command_queue_id);
 
-            manager.issue_queue_reserve(program_rem_fetch_size_bytes, command_queue_id);
+            manager.issue_queue_reserve(program_fetch_size_bytes2, command_queue_id);
             write_ptr = manager.get_issue_queue_write_ptr(command_queue_id);
-            manager.cq_write(program_command_sequence_data, program_rem_fetch_size_bytes, write_ptr);
-            manager.issue_queue_push_back(program_rem_fetch_size_bytes, command_queue_id);
+            manager.cq_write(program_command_sequence.binary_device_command_sequence.data(), program_fetch_size_bytes2, write_ptr);
+            manager.issue_queue_push_back(program_fetch_size_bytes2, command_queue_id);
             // One fetch queue entry for rest of program commands
             manager.fetch_queue_reserve_back(command_queue_id);
-            manager.fetch_queue_write(program_rem_fetch_size_bytes, command_queue_id);
+            manager.fetch_queue_write(program_fetch_size_bytes2, command_queue_id);
+
         } else {
-            manager.issue_queue_reserve(program_fetch_size_bytes, command_queue_id);
+            uint32_t program_total_size_bytes = program_fetch_size_bytes + program_fetch_size_bytes2;
+            manager.issue_queue_reserve(program_total_size_bytes, command_queue_id);
             write_ptr = manager.get_issue_queue_write_ptr(command_queue_id);
-            manager.cq_write(program_command_sequence_data, program_fetch_size_bytes, write_ptr);
-            manager.issue_queue_push_back(program_fetch_size_bytes, command_queue_id);
+            manager.cq_write(program_command_sequence.device_command_sequence.data(), program_fetch_size_bytes, write_ptr);
+            write_ptr += program_fetch_size_bytes;
+            manager.cq_write(program_command_sequence.binary_device_command_sequence.data(), program_fetch_size_bytes2, write_ptr);
+            manager.issue_queue_push_back(program_total_size_bytes, command_queue_id);
             // One fetch queue entry for rest of program commands
             manager.fetch_queue_reserve_back(command_queue_id);
-            manager.fetch_queue_write(program_fetch_size_bytes, command_queue_id);
+            manager.fetch_queue_write(program_total_size_bytes, command_queue_id);
         }
     }
 }
