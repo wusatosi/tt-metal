@@ -13,6 +13,8 @@
 #include "ttnn/operations/data_movement/slice/slice.hpp"
 #include "ttnn/operations/data_movement/tilize/tilize.hpp"
 #include "ttnn/operations/data_movement/untilize/untilize.hpp"
+#include "ttnn/operations/data_movement/untilize_with_unpadding/untilize_with_unpadding.hpp"
+#include "ttnn/operations/data_movement/tilize_with_val_padding/tilize_with_val_padding.hpp"
 #include "ttnn/run_operation.hpp"
 
 namespace ttnn::operations::data_movement {
@@ -30,6 +32,22 @@ ttnn::Tensor RepeatOperation::invoke(
     for (uint32_t dim = 0; dim < input_rank; ++dim) {
         repeated_logical_shape[dim] *= repeat_dims[dim];
     }
+    /*
+    bool input_preprocess = false;
+    ttnn::Tensor input_tensor1;
+    if (input_tensor.get_layout() != Layout::ROW_MAJOR && logical_input_shape != padded_input_shape) {
+        input_preprocess = true;
+        std::vector<uint32_t> untilize_vector_end;
+        for (uint32_t i =0; i<logical_input_shape.rank(); i++) {
+            untilize_vector_end.push_back(logical_input_shape[i] - 1);
+        }
+        input_tensor1 = ttnn::untilize_with_unpadding(input_tensor, tt::tt_metal::LegacyShape(untilize_vector_end),
+    memory_config_arg);
+    }
+    else{
+        input_tensor1 = input_tensor;
+    }
+    */
 
     std::vector<Tensor> output_tensors = {Tensor(tt::tt_metal::operation::get_workers_for_op_output({input_tensor}))};
     tt::tt_metal::operation::launch_op(
@@ -67,6 +85,13 @@ ttnn::Tensor RepeatOperation::invoke(
         {},
         output_tensors);
     TT_FATAL(output_tensors.size() == 1, "ttnn.repeat: expected 1 output tensor, but got {}", output_tensors.size());
+    /*
+    if (input_preprocess == true) {
+        ttnn::Tensor output_tensor1 = ttnn::tilize_with_zero_padding(output_tensors[0]);
+        return output_tensor1;
+    }
+    */
+
     if (input_tensor.get_layout() != Layout::ROW_MAJOR && logical_input_shape != padded_input_shape) {
         auto zero_indices = ttnn::SmallVector<uint32_t>(input_rank, 0);
         auto end_indices = ttnn::SmallVector<uint32_t>(repeated_logical_shape.cbegin(), repeated_logical_shape.cend());
@@ -77,10 +102,17 @@ ttnn::Tensor RepeatOperation::invoke(
             // slice/tilize don't support padding to tiled on the output for
             // now, so we need to perform the slice in row-major then re-tilize
             // ourselves.
+            std::vector<uint32_t> untilize_vector_end;
+            for (uint32_t i = 0; i < input_rank; i++) {
+                untilize_vector_end.push_back(repeated_logical_shape[i] - 1);
+            }
+            auto sliced_output = ttnn::untilize_with_unpadding(
+                output_tensors[0], tt::tt_metal::LegacyShape(untilize_vector_end), memory_config_arg);
+            /*
             auto rm_output = ttnn::untilize(output_tensors[0]);
             auto sliced_output =
                 ttnn::slice(rm_output, zero_indices, end_indices, step, input_tensor.memory_config(), std::nullopt);
-
+            */
             auto sliced_logical_shape = sliced_output.get_logical_shape();
             auto sliced_padded_shape = sliced_output.get_padded_shape();
 
@@ -89,7 +121,8 @@ ttnn::Tensor RepeatOperation::invoke(
                 auto tiled_output = ttnn::tilize(sliced_output, input_tensor.memory_config());
                 return tiled_output;
             }
-
+            auto tiled_output = ttnn::tilize_with_zero_padding(sliced_output, input_tensor.memory_config());
+            /*
             auto padded_height = tt::round_up(sliced_padded_shape[-2], tt::constants::TILE_HEIGHT);
             auto padded_width = tt::round_up(sliced_padded_shape[-1], tt::constants::TILE_WIDTH);
             TT_ASSERT(input_rank >= 2, "ttnn.repeat: rank of tiled input tensor must be >= 2");
@@ -102,7 +135,7 @@ ttnn::Tensor RepeatOperation::invoke(
             constexpr bool pad_use_multicore = true;
             auto padded_output = ttnn::pad(queue_id, sliced_output, padding_vec, 0.0f, pad_use_multicore, std::nullopt);
             auto tiled_output = ttnn::tilize(padded_output, input_tensor.memory_config());
-
+            */
             auto padded_to_tiled_shape =
                 ttnn::Shape(sliced_logical_shape.view(), tiled_output.get_padded_shape().view());
             return ttnn::reshape(tiled_output, padded_to_tiled_shape);
