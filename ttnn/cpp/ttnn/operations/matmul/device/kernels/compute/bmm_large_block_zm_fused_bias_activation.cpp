@@ -137,8 +137,14 @@ void MAIN {
 
     constexpr bool spill = num_blocks_inner_dim > 1;
 
+    // MATH(( empty_loop(10) ));
     mm_block_init(
         in0_cb_id, in1_cb_id, mm_partials_cb_id, in1_transpose_tile, out_subblock_w, out_subblock_h, in0_block_w);
+
+    // mm_block_init_short_with_dt(
+    //                             in0_cb_id, in1_cb_id, mm_partials_cb_id, in1_transpose_tile, out_subblock_w,
+    //                             out_subblock_h, in0_block_w);
+
     for (uint32_t b = 0; b < batch; b++) {
         for (uint32_t bh = 0; bh < num_blocks_h_dim; ++bh) {
             for (uint32_t bw = 0; bw < num_blocks_w_dim; ++bw) {
@@ -174,17 +180,25 @@ void MAIN {
                         int in1_index_subblock_offset = 0;
                         for (uint32_t in1_subblock = 0; in1_subblock < in1_num_subblocks; in1_subblock++) {
                             tile_regs_acquire();
-                            if (enable_reload) {
-                                reload_from_cb_to_dst(
-                                    in0_cb_id,
-                                    in1_cb_id,
-                                    mm_partials_cb_id,
-                                    in1_transpose_tile,
-                                    out_subblock_num_tiles,
-                                    out_subblock_w,
-                                    out_subblock_h,
-                                    in0_block_w);
-                            }
+                            // if (enable_reload) {
+                            //     reload_from_cb_to_dst(
+                            //         in0_cb_id,
+                            //         in1_cb_id,
+                            //         mm_partials_cb_id,
+                            //         in1_transpose_tile,
+                            //         out_subblock_num_tiles,
+                            //         out_subblock_w,
+                            //         out_subblock_h,
+                            //         in0_block_w);
+                            // }
+                            // // if (enable_reload) {
+                            // mm_block_init_short_with_dt(
+                            //     in0_cb_id, in1_cb_id, mm_partials_cb_id, in1_transpose_tile, out_subblock_w,
+                            //     out_subblock_h, in0_block_w);
+                            // // }
+
+                            UNPACK((empty_loop(100)));
+                            MATH((empty_loop(100)));
 
 #ifndef SKIP_COMPUTE
                             // Compute output sub-block

@@ -152,7 +152,7 @@ matmul_configs = [
 
 # @pytest.mark.skip(reason="WH didt hang, need to skip CI and run locally only")
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576, "trace_region_size": 3855488}], indirect=True)
-@pytest.mark.parametrize("grid_size", [(1, 1)])
+@pytest.mark.parametrize("grid_size", [(13, 10)])
 @pytest.mark.parametrize("tile_h", [32])
 @pytest.mark.parametrize("tile_w", [32])
 @pytest.mark.parametrize("num_warmup_iterations", [5])
@@ -209,8 +209,8 @@ def test_matmul_2d_host_perf(
             for m, k, n, in0_sharded, out_sharded, in0_block_w_div, num_out_blocks_h, num_out_blocks_w in matmul_shapes:
                 profiler.clear()
 
-                # k_scale = grid_size[0]
-                k_scale = 8
+                k_scale = grid_size[0]
+                # k_scale = 8
                 # scale input size to match BH grid size
                 m = (m // 8) * grid_size[1]
                 n = (n // 8) * grid_size[0]
