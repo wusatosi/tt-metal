@@ -12,6 +12,7 @@
 
 #include <tt-metalium/global_circular_buffer_impl.hpp>
 #include <tt-metalium/global_circular_buffer.hpp>
+#include "cpp/ttnn/global_circular_buffer.hpp"
 
 namespace ttnn::operations::dram_prefetcher {
 
