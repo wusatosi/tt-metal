@@ -12,6 +12,7 @@
 #include <span>
 #include <thread>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "env_lib.hpp"
@@ -251,9 +252,8 @@ public:
             bank_base_address,
             padded_page_size,
             dst_page_index,
-            pages_to_write) {
-        this->initial_src_addr_offset = initial_src_addr_offset;
-    }
+            pages_to_write),
+        initial_src_addr_offset(initial_src_addr_offset) {}
 };
 
 class EnqueueWriteShardedBufferCommand : public EnqueueWriteBufferCommand {
@@ -261,9 +261,8 @@ private:
     void add_dispatch_write(HugepageDeviceCommand& command) override;
     void add_buffer_data(HugepageDeviceCommand& command) override;
 
-    const std::shared_ptr<const BufferPageMapping>& buffer_page_mapping;
     const CoreCoord core;
-    const uint32_t initial_src_offset;
+    const std::variant<uint32_t, std::vector<std::optional<uint32_t>>>& initial_src_addr_offset;
 
 public:
     EnqueueWriteShardedBufferCommand(
@@ -272,13 +271,12 @@ public:
         NOC noc_index,
         const Buffer& buffer,
         const void* src,
-        uint32_t initial_src_offset,
+        const std::variant<uint32_t, std::vector<std::optional<uint32_t>>>& initial_src_addr_offset,
         SystemMemoryManager& manager,
         bool issue_wait,
         tt::stl::Span<const uint32_t> expected_num_workers_completed,
         tt::stl::Span<const SubDeviceId> sub_device_ids,
         uint32_t bank_base_address,
-        const std::shared_ptr<const BufferPageMapping>& buffer_page_mapping,
         const CoreCoord& core,
         uint32_t padded_page_size,
         uint32_t dst_page_index = 0,
@@ -297,8 +295,7 @@ public:
             padded_page_size,
             dst_page_index,
             pages_to_write),
-        initial_src_offset(initial_src_offset),
-        buffer_page_mapping(buffer_page_mapping),
+        initial_src_addr_offset(initial_src_addr_offset),
         core(core) {}
 };
 

@@ -8,14 +8,17 @@
 #include <array>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <fstream>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <type_traits>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include <buffer.hpp>
 #include <math.hpp>
@@ -286,24 +289,22 @@ void EnqueueWriteShardedBufferCommand::add_dispatch_write(HugepageDeviceCommand&
 
 void EnqueueWriteShardedBufferCommand::add_buffer_data(HugepageDeviceCommand& command_sequence) {
     uint32_t data_size_bytes = this->pages_to_write * this->padded_page_size;
-    if (this->buffer_page_mapping) {
-        const auto& page_mapping = *this->buffer_page_mapping;
+    const bool width_split = !std::holds_alternative<uint32_t>(this->initial_src_addr_offset);
+    if (width_split) {
         uint8_t* dst = command_sequence.reserve_space<uint8_t*, true>(data_size_bytes);
         // TODO: Expose getter for cmd_write_offsetB?
         uint32_t dst_offset = dst - (uint8_t*)command_sequence.data();
-        for (uint32_t dev_page = this->dst_page_index; dev_page < this->dst_page_index + this->pages_to_write;
-             ++dev_page) {
-            auto& host_page = page_mapping.dev_page_to_host_page_mapping_[dev_page];
-            if (host_page.has_value()) {
+        std::vector<std::optional<uint32_t>> offset =
+            std::get<std::vector<std::optional<uint32_t>>>(this->initial_src_addr_offset);
+        for (uint32_t i = 0; i < offset.size(); i++) {
+            if (offset[i].has_value()) {
                 command_sequence.update_cmd_sequence(
-                    dst_offset,
-                    (char*)this->src + host_page.value() * this->buffer.page_size(),
-                    this->buffer.page_size());
+                    dst_offset, (char*)this->src + offset[i].value(), this->buffer.page_size());
             }
             dst_offset += this->padded_page_size;
         }
     } else {
-        uint32_t unpadded_src_offset = this->initial_src_offset; // this->dst_page_index * this->buffer.page_size();
+        uint32_t unpadded_src_offset = std::get<uint32_t>(this->initial_src_addr_offset);
         if (this->buffer.page_size() != this->padded_page_size and this->buffer.page_size() != this->buffer.size()) {
             for (uint32_t i = 0; i < this->pages_to_write; ++i) {
                 command_sequence.add_data(
@@ -1206,7 +1207,7 @@ void HWCommandQueue::enqueue_write_buffer(
 
         uint32_t total_num_pages_written = 0;
         uint32_t num_total_pages = region.size / buffer.page_size();
-        uint32_t max_pages_per_shard = buffer.shard_spec().size();
+        const uint32_t max_pages_per_shard = buffer.shard_spec().size();
         uint32_t num_initial_pages_skipped = 0;
 
         // Since we read core by core we are reading the device pages sequentially
@@ -1214,33 +1215,55 @@ void HWCommandQueue::enqueue_write_buffer(
             // Skip writing the padded pages along the bottom
             // Currently since writing sharded tensors uses write_linear, we write the padded pages on width
             // Alternative write each page row into separate commands, or have a strided linear write
+            uint32_t num_remaining_pages_in_shard = max_pages_per_shard;
             uint32_t num_pages;
+            uint32_t curr_page_idx_in_shard = 0;
             if (width_split) {
                 num_pages =
                     buffer_page_mapping->core_shard_shape_[core_id][0] * buffer.shard_spec().shape_in_pages()[1];
                 if (num_pages == 0) {
                     continue;
                 }
-                dst_page_index =
-                    buffer_page_mapping->host_page_to_dev_page_mapping_[buffer_page_mapping->core_host_page_indices_[core_id][0]];
+                const std::vector<uint32_t> core_host_pages = buffer_page_mapping->core_host_page_indices_[core_id];
+                TT_ASSERT(std::is_sorted(core_host_pages.begin(), core_host_pages.end()));
+                TT_ASSERT(num_pages % core_host_pages.size() == 0);
+                const uint32_t num_dev_pages_per_host_page = num_pages / core_host_pages.size();
+                bool all_core_host_pages_outside_of_region = true;
+                uint32_t host_page = core_host_pages.back();
+                uint32_t starting_host_page_index = core_host_pages.size() - 1;
+                for (int32_t i = core_host_pages.size() - 1; i >= 0; i--) {
+                    if (core_host_pages[i] >= orig_dst_page_index &&
+                        core_host_pages[i] < orig_dst_page_index + num_total_pages) {
+                        all_core_host_pages_outside_of_region = false;
+                        host_page = core_host_pages[i];
+                        starting_host_page_index = i;
+                    } else {
+                        num_pages -= num_dev_pages_per_host_page;
+                    }
+                }
+                if (all_core_host_pages_outside_of_region) {
+                    continue;
+                }
+                curr_page_idx_in_shard = starting_host_page_index * num_dev_pages_per_host_page;
+                dst_page_index = buffer_page_mapping->host_page_to_dev_page_mapping_[host_page];
             } else {
                 num_pages = std::min(num_total_pages, max_pages_per_shard);
-                num_total_pages -= num_pages;
+                // num_total_pages -= num_pages;
             }
-            uint32_t curr_page_idx_in_shard = 0;
             uint32_t bank_base_address = buffer.address();
             if (buffer.is_dram()) {
                 bank_base_address += buffer.device()->bank_offset(
                     BufferType::DRAM, buffer.device()->dram_channel_from_logical_core(cores[core_id]));
             }
             while (num_pages != 0) {
-                if (num_initial_pages_skipped < orig_dst_page_index) {
+                if (!width_split && num_initial_pages_skipped < orig_dst_page_index) {
                     curr_page_idx_in_shard += 1;
+                    num_remaining_pages_in_shard -= curr_page_idx_in_shard;
                     num_initial_pages_skipped += 1;
-                    num_pages -= 1;
-                    if (!width_split) {
-                        num_total_pages += 1;
-                    }
+                    num_pages = std::min(num_pages, num_remaining_pages_in_shard);
+                    // if (!width_split) {
+                    //     num_total_pages += 1;
+                    // }
                     continue;
                 }
 
@@ -1260,11 +1283,24 @@ void HWCommandQueue::enqueue_write_buffer(
                 if (pages_to_write > 0) {
                     uint32_t address = bank_base_address + curr_page_idx_in_shard * padded_page_size;
 
-                    uint32_t init_src_offset = 0;
+                    std::variant<uint32_t, std::vector<std::optional<uint32_t>>> initial_src_addr_offset;
                     if (width_split) {
-                        ;
+                        std::vector<std::optional<uint32_t>> offset;
+                        offset.reserve(pages_to_write);
+                        for (uint32_t dev_page = dst_page_index; dev_page < dst_page_index + pages_to_write;
+                             dev_page++) {
+                            std::optional<uint32_t> host_page =
+                                buffer_page_mapping->dev_page_to_host_page_mapping_[dev_page];
+                            if (host_page.has_value()) {
+                                uint32_t val = (host_page.value() - orig_dst_page_index) * (uint32_t)buffer.page_size();
+                                offset.push_back(val);
+                            } else {
+                                offset.push_back(std::nullopt);
+                            }
+                        }
+                        initial_src_addr_offset = offset;
                     } else {
-                        init_src_offset = total_num_pages_written * buffer.page_size();
+                        initial_src_addr_offset = total_num_pages_written * (uint32_t)buffer.page_size();
                     }
 
                     tt::log_debug(tt::LogDispatch, "EnqueueWriteBuffer for channel {}", this->id);
@@ -1275,13 +1311,12 @@ void HWCommandQueue::enqueue_write_buffer(
                         this->noc_index,
                         buffer,
                         src,
-                        init_src_offset,
+                        initial_src_addr_offset,
                         this->manager,
                         issue_wait,
                         this->expected_num_workers_completed,
                         sub_device_ids,
                         address,
-                        buffer_page_mapping,
                         cores[core_id],
                         padded_page_size,
                         dst_page_index,
@@ -1291,6 +1326,9 @@ void HWCommandQueue::enqueue_write_buffer(
                     curr_page_idx_in_shard += pages_to_write;
                     num_pages -= pages_to_write;
                     dst_page_index += pages_to_write;
+                    if (!width_split) {
+                        num_total_pages -= pages_to_write;
+                    }
                     total_num_pages_written += pages_to_write;
                 } else {
                     this->manager.wrap_issue_queue_wr_ptr(this->id);
