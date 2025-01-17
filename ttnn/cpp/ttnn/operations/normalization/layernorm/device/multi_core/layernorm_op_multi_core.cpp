@@ -596,10 +596,14 @@ operation::ProgramWithCallbacks layernorm_multi_core_sharded(
 
     // Get all storage cores
     ShardSpec output_shard_spec = output.shard_spec().value();
+    bool output_row_wise = output_shard_spec.orientation == ShardOrientation::ROW_MAJOR;
+
     CoreRangeSet all_storage_cores = output_shard_spec.grid;
+    CoreRangeSet all_worker_and_storage_cores = all_storage_cores.merge(a.shard_spec().value().grid);
     std::vector<uint32_t> storage_core_noc_x;
     std::vector<uint32_t> storage_core_noc_y;
-    std::vector<CoreCoord> storage_core_coords = corerange_to_cores(all_storage_cores);
+    std::vector<CoreCoord> storage_core_coords =
+        corerange_to_cores(all_storage_cores, all_storage_cores.num_cores(), row_wise = output_row_wise);
     for (auto core : storage_core_coords) {
         storage_core_noc_x.push_back((std::uint32_t)device->worker_core_from_logical_core(core).x);
         storage_core_noc_y.push_back((std::uint32_t)device->worker_core_from_logical_core(core).y);
@@ -1393,7 +1397,8 @@ operation::ProgramWithCallbacks layernorm_multi_core_sharded(
     CBHandle cb_output_reshard = 0;
     if (is_post_all_gather && !skip_write_back) {
         output_reshard_cb_config = output_reshard_cb_config.set_globally_allocated_address(*output.buffer());
-        cb_output_reshard = tt::tt_metal::CreateCircularBuffer(program, all_cores, output_reshard_cb_config);
+        cb_output_reshard =
+            tt::tt_metal::CreateCircularBuffer(program, all_worker_and_storage_cores, output_reshard_cb_config);
     }
 
     const auto& cores = corerange_to_cores(all_cores, all_cores.num_cores(), row_wise = row_wise);
@@ -1441,6 +1446,9 @@ operation::ProgramWithCallbacks layernorm_multi_core_sharded(
 
     for (uint32_t i = 0; i < cores.size(); ++i) {
         const auto& core = cores[i];
+
+        tt::log_debug("core: {}, {}", core.x, core.y);
+
         uint32_t height_index = 0, width_index = 0;
         if (mcast_1d) {
             height_index = 0;
@@ -1661,6 +1669,10 @@ operation::ProgramWithCallbacks layernorm_multi_core_sharded(
                 num_tiles_to_write_back * out_single_tile_size);                         // num_bytes_to_write_back
             write_back_writer_args.push_back(storage_core_noc_x[current_storage_core]);  // current_storage_core_noc_x
             write_back_writer_args.push_back(storage_core_noc_y[current_storage_core]);  // current_storage_core_noc_y
+
+            tt::log_debug("num_bytes_to_write_back: {}", num_tiles_to_write_back * out_single_tile_size);
+            tt::log_debug("storage_core_noc_x[current_storage_core]: {}", storage_core_noc_x[current_storage_core]);
+            tt::log_debug("storage_core_noc_y[current_storage_core]: {}", storage_core_noc_y[current_storage_core]);
 
             worker_core_current_offset += num_tiles_to_write_back;
             current_storage_core_offset += num_tiles_to_write_back;

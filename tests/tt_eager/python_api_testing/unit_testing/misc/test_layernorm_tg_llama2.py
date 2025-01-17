@@ -15,6 +15,16 @@ def rms_norm(x, dim, gamma, beta, eps):
     return x * torch.rsqrt(x.pow(2).mean([-i for i in range(1, len(dim) + 1)], keepdim=True) + eps) * gamma + beta
 
 
+@pytest.mark.parametrize(
+    "input_dim, input_core_grid, output_core_grid",
+    [
+        # (512, ttnn.CoreGrid(x=1, y=1), ttnn.CoreGrid(x=2, y=1)), # passes
+        (1024, ttnn.CoreGrid(x=2, y=1), ttnn.CoreGrid(x=3, y=1)),
+        # (2048, ttnn.CoreGrid(x=2, y=2), ttnn.CoreGrid(x=4, y=2)),  # passes
+        # (2048, ttnn.CoreGrid(x=2, y=2), ttnn.CoreGrid(x=3, y=2)),
+        # (8192, ttnn.CoreGrid(x=2, y=8), ttnn.CoreGrid(x=3, y=8)),  # TG llama use case; 4 tiles per core input
+    ],
+)
 @pytest.mark.parametrize("device_params", [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL}], indirect=True)
 @pytest.mark.parametrize(
     "mesh_device",
@@ -25,23 +35,19 @@ def rms_norm(x, dim, gamma, beta, eps):
     ],
     indirect=True,
 )
-def test_layernorm_perf(mesh_device):
+def test_layernorm_perf(mesh_device, input_dim, input_core_grid, output_core_grid):
     torch.manual_seed(1234)
     num_devices_fractured = 4
 
-    # core_grid = ttnn.CoreGrid(x=2, y=8)
-    # core_grid = ttnn.CoreGrid(x=2, y=1)
-    core_grid = ttnn.CoreGrid(x=2, y=4)
-
-    num_cores = core_grid.num_cores
+    num_cores = input_core_grid.num_cores
     dim = int(
-        math.ceil(8192 / num_devices_fractured / num_cores / 32) * num_devices_fractured * num_cores * 32
+        math.ceil(input_dim / num_devices_fractured / num_cores / 32) * num_devices_fractured * num_cores * 32
     )  # padded
-    print(f"dim: {dim}")
+    print(f"padded dim: {dim}")
     input_shape = (1, 1, 32, dim)
     input_core_range_set = ttnn.CoreRangeSet(
         [
-            ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(core_grid.x - 1, core_grid.y - 1)),
+            ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(input_core_grid.x - 1, input_core_grid.y - 1)),
         ]
     )
     size_per_device = dim // num_devices_fractured
@@ -77,7 +83,7 @@ def test_layernorm_perf(mesh_device):
         mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device, dims=(None, 2), mesh_shape=list(mesh_device.shape)),
     )
     ln_prg_cfg = ttnn.LayerNormShardedMultiCoreProgramConfig(
-        compute_with_storage_grid_size=(core_grid.x, core_grid.y),
+        compute_with_storage_grid_size=(input_core_grid.x, input_core_grid.y),
         subblock_w=(size_per_device // num_cores) // 32,
         block_h=1,
         block_w=(size_per_device // num_cores) // 32,
@@ -124,9 +130,7 @@ def test_layernorm_perf(mesh_device):
     # Output memory config
     output_core_range_set = ttnn.CoreRangeSet(
         [
-            # ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(2, 7)),
-            # ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(2, 0)),
-            ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(2, 3)),
+            ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(output_core_grid.x - 1, output_core_grid.y - 1)),
         ]
     )
     padded_out_w = math.ceil(input_shape[3] / num_devices_fractured / output_core_range_set.num_cores() / 32) * 32
@@ -158,6 +162,9 @@ def test_layernorm_perf(mesh_device):
     tt_out_torch = ttnn.to_torch(
         tt_out, mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(0, 3), mesh_shape=(8, 4))
     )[0].unsqueeze(0)
+
+    print(tt_out_torch.shape)
+
     ref_lnorm = rms_norm(input_tensor_torch, [3], gamma_torch, torch.zeros_like(gamma_torch), 1e-5)
     passing, output = comp_pcc(tt_out_torch, ref_lnorm, 0.999)
     logger.info(output)
