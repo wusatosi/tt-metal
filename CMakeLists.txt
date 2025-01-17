@@ -145,13 +145,15 @@ unset(SANITIZER_ENABLED)
 ############################################################################################################################
 # Find all required libraries to build
 ############################################################################################################################
-set(ENV{CPM_SOURCE_CACHE} "${PROJECT_SOURCE_DIR}/.cpmcache")
+# set(ENV{CPM_SOURCE_CACHE} "${PROJECT_SOURCE_DIR}/.cpmcache")
 include(CPM)
+message(NOTICE "Processing top-level deps")
 if(CMAKE_VERSION VERSION_LESS 3.25)
     # FIXME(14681): `SYSTEM` was introduced in v3.25; remove this when we can require v3.25
     add_subdirectory(dependencies EXCLUDE_FROM_ALL)
 else()
-    add_subdirectory(dependencies EXCLUDE_FROM_ALL SYSTEM)
+    # add_subdirectory(dependencies EXCLUDE_FROM_ALL SYSTEM)
+    add_subdirectory(dependencies SYSTEM)
 endif()
 
 if(WITH_PYTHON_BINDINGS)
@@ -170,6 +172,7 @@ if(NOT NUMA_LIBRARY)
     message(FATAL_ERROR "NUMA library not found")
 endif()
 
+message(NOTICE "Wandering off to UMD")
 # Bring in UMD and all it's dependencies
 add_subdirectory(tt_metal/third_party/umd)
 
@@ -235,15 +238,21 @@ add_link_options(
 if(ENABLE_CODE_TIMERS)
     add_compile_definitions(TT_ENABLE_CODE_TIMERS)
 endif()
+
+include(GNUInstallDirs)
+# GNUInstallDirs takes PROJECT_DIR verbatim, but directories should always be lowercase
+string(TOLOWER ${PROJECT_NAME} PROJECT_NAME_LOWER)
+string(REPLACE ${PROJECT_NAME} ${PROJECT_NAME_LOWER} CMAKE_INSTALL_DOCDIR ${CMAKE_INSTALL_DOCDIR})
+
 include(tracy)
 
 ############################################################################################################################
 # Build subdirectories
 ############################################################################################################################
 
-add_subdirectory(tt_fabric)
 add_subdirectory(tt_metal)
 add_subdirectory(ttnn)
+# add_subdirectory(tt_fabric)
 
 if(TT_METAL_BUILD_TESTS OR TTNN_BUILD_TESTS)
     add_subdirectory(${PROJECT_SOURCE_DIR}/tests)
@@ -255,8 +264,8 @@ endif()
 # For top level install: cmake --build build --target install  or  make/ninja install -C build
 ############################################################################################################################
 # Install for build artifacts that will upload build/lib
-include(GNUInstallDirs)
 
+#[[
 install(
     TARGETS
         tt_fabric
@@ -284,6 +293,7 @@ install(
         DESTINATION ${CMAKE_INSTALL_LIBDIR}
         COMPONENT dev
 )
+#]]
 if(WITH_PYTHON_BINDINGS)
     # Install .so into src files for pybinds implementation
     install(

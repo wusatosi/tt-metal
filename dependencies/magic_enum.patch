@@ -1,0 +1,20 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index d02af07..d96ec01 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -82,6 +82,7 @@ if(MAGIC_ENUM_OPT_INSTALL)
+   install(
+     DIRECTORY ${PROJECT_SOURCE_DIR}/include/${PROJECT_NAME}
+     DESTINATION include
++    COMPONENT magic-enum-dev
+     FILES_MATCHING
+     PATTERN "${PROJECT_INCLUDE_HEADER_PATTERN}"
+   )
+@@ -120,6 +121,7 @@ if(MAGIC_ENUM_OPT_INSTALL)
+
+   install(
+     EXPORT "${PROJECT_NAME}"
++    COMPONENT magic-enum-dev
+     FILE "${CMAKE_CONFIG_FILE_BASENAME}"
+     NAMESPACE "${EXPORT_NAMESPACE}"
+     DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/cmake/${PROJECT_NAME}"

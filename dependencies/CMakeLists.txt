@@ -10,7 +10,21 @@ set(CMAKE_CXX_CLANG_TIDY "")
 
 include(${PROJECT_SOURCE_DIR}/cmake/fetch_boost.cmake)
 
+find_package(Boost CONFIG)
 fetch_boost_library(core)
+if(TARGET boost_core AND CMAKE_VERSION VERSION_GREATER_EQUAL 3.23)
+    # FIXME(afuller): We shouldn't have to package Boost ourselves.  Best to use the system-provided Boost if at all possible.
+    target_sources(
+        boost_core
+        INTERFACE
+            FILE_SET api
+            TYPE HEADERS
+            BASE_DIRS ${boost_core_SOURCE_DIR}/include
+            FILES
+                ${boost_core_SOURCE_DIR}/include/boost/core/span.hpp
+                ${boost_core_SOURCE_DIR}/include/boost/core/data.hpp
+    )
+endif()
 fetch_boost_library(smart_ptr)
 fetch_boost_library(container)
 
@@ -67,20 +81,48 @@ CPMAddPackage(NAME reflect GITHUB_REPOSITORY boost-ext/reflect GIT_TAG v1.1.1)
 if(reflect_ADDED)
     add_library(reflect INTERFACE)
     add_library(Reflect::Reflect ALIAS reflect)
-    target_include_directories(reflect SYSTEM INTERFACE ${reflect_SOURCE_DIR})
+    target_include_directories(reflect SYSTEM INTERFACE "$<BUILD_INTERFACE:${reflect_SOURCE_DIR}>")
+
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.23)
+        target_sources(
+            reflect
+            INTERFACE
+                FILE_SET api
+                TYPE HEADERS
+                BASE_DIRS ${reflect_SOURCE_DIR}
+                FILES ${reflect_SOURCE_DIR}/reflect
+        )
+    endif()
 endif()
 
 ############################################################################################################################
 # magic_enum : https://github.com/Neargye/magic_enum
 ############################################################################################################################
 
-CPMAddPackage(NAME magic_enum GITHUB_REPOSITORY Neargye/magic_enum GIT_TAG v0.9.7)
+CPMAddPackage(
+    NAME magic_enum
+    GITHUB_REPOSITORY Neargye/magic_enum
+    GIT_TAG v0.9.7
+    OPTIONS
+        "MAGIC_ENUM_OPT_INSTALL TRUE"
+    PATCHES
+        magic_enum.patch
+)
 
 ############################################################################################################################
 # fmt : https://github.com/fmtlib/fmt
 ############################################################################################################################
 
-CPMAddPackage(NAME fmt GITHUB_REPOSITORY fmtlib/fmt GIT_TAG 11.0.1 OPTIONS "CMAKE_MESSAGE_LOG_LEVEL NOTICE")
+set(FMT_INC_DIR ${CMAKE_INSTALL_INCLUDEDIR}/metalium-thirdparty CACHE INTERNAL "" FORCE)
+CPMAddPackage(
+    NAME fmt
+    GITHUB_REPOSITORY fmtlib/fmt
+    GIT_TAG 11.1.2
+    OPTIONS
+        "CMAKE_MESSAGE_LOG_LEVEL NOTICE"
+    PATCHES
+        fmt.patch
+)
 
 ############################################################################################################################
 # range-v3 : https://github.com/ericniebler/range-v3
@@ -107,7 +149,16 @@ CPMAddPackage(NAME pybind11 GITHUB_REPOSITORY pybind/pybind11 GIT_TAG v2.13.6 OP
 # nlohmann/json : https://github.com/nlohmann/json
 ############################################################################################################################
 
-CPMAddPackage(NAME json GITHUB_REPOSITORY nlohmann/json GIT_TAG v3.11.3 OPTIONS "CMAKE_MESSAGE_LOG_LEVEL NOTICE")
+CPMAddPackage(
+    NAME json
+    GITHUB_REPOSITORY nlohmann/json
+    GIT_TAG v3.9.1
+    PATCHES
+        json.patch
+    OPTIONS
+        "JSON_BuildTests OFF"
+        "CMAKE_MESSAGE_LOG_LEVEL NOTICE"
+)
 
 ############################################################################################################################
 # xtensor : https://github.com/xtensor-stack/xtensor

@@ -34,7 +34,7 @@ if(DEFINED SFPI_${CMAKE_HOST_SYSTEM_PROCESSOR}_${CMAKE_HOST_SYSTEM_NAME}_RELEASE
             "https://github.com/tenstorrent/sfpi/releases/download/${SFPI_FILE}"
         URL_HASH "MD5=${SFPI_MD5}"
         SOURCE_DIR
-        "${PROJECT_SOURCE_DIR}/runtime/sfpi"
+        "${PROJECT_BINARY_DIR}/runtime/sfpi"
     )
     FetchContent_MakeAvailable(sfpi)
 else()
@@ -44,7 +44,7 @@ endif()
 foreach(ARCH IN LISTS ARCHS)
     set(DEV_MEM_MAP "${PROJECT_SOURCE_DIR}/tt_metal/hw/inc/${ARCH}/dev_mem_map.h")
     set(HW_INCLUDES "${PROJECT_SOURCE_DIR}/tt_metal/hw/inc/${ARCH}")
-    set(HW_OUTPUT_DIR "${PROJECT_SOURCE_DIR}/runtime/hw/toolchain/${ARCH}")
+    set(HW_OUTPUT_DIR "${PROJECT_BINARY_DIR}/runtime/hw/toolchain/${ARCH}")
     foreach(PROC IN LISTS PROCS)
         foreach(TYPE IN LISTS TYPES)
             set(HW_OUTPUT_FILE "${HW_OUTPUT_DIR}/${TYPE}_${PROC}.ld")
@@ -86,7 +86,7 @@ function(get_alias INPUT_STRING OUTPUT_VAR)
 endfunction()
 
 # Define the compiler command
-set(GPP_CMD ${PROJECT_SOURCE_DIR}/runtime/sfpi/compiler/bin/riscv32-unknown-elf-g++)
+set(GPP_CMD ${PROJECT_BINARY_DIR}/runtime/sfpi/compiler/bin/riscv32-unknown-elf-g++)
 
 set(GPP_DEFINES -DTENSIX_FIRMWARE)
 
@@ -144,7 +144,7 @@ foreach(ARCH IN LISTS ARCHS)
     )
 
     # Dump object files to this directory
-    set(HW_LIB_DIR ${PROJECT_SOURCE_DIR}/runtime/hw/lib/${ARCH})
+    set(HW_LIB_DIR ${PROJECT_BINARY_DIR}/runtime/hw/lib/${ARCH})
 
     # Includes independent from ARCH
     set(GPP_INCLUDES

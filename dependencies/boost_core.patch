@@ -1,0 +1,13 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 5d2e220..338bcb6 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -10,7 +10,7 @@ project(boost_core VERSION "${BOOST_SUPERPROJECT_VERSION}" LANGUAGES CXX)
+ add_library(boost_core INTERFACE)
+ add_library(Boost::core ALIAS boost_core)
+
+-target_include_directories(boost_core INTERFACE include)
++target_include_directories(boost_core INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>")
+
+ target_link_libraries(boost_core
+   INTERFACE

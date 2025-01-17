@@ -1,0 +1,13 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 6cfd4f4..9b16cd5 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -10,7 +10,7 @@ project(boost_assert VERSION "${BOOST_SUPERPROJECT_VERSION}" LANGUAGES CXX)
+ add_library(boost_assert INTERFACE)
+ add_library(Boost::assert ALIAS boost_assert)
+
+-target_include_directories(boost_assert INTERFACE include)
++target_include_directories(boost_assert INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>")
+
+ target_link_libraries(boost_assert
+   INTERFACE

@@ -1,10 +1,16 @@
 include(${PROJECT_SOURCE_DIR}/cmake/CPM.cmake)
 
 function(fetch_boost_library BOOST_PROJECT_NAME)
+    set(PATCH "")
+    if(EXISTS "${PROJECT_SOURCE_DIR}/dependencies/boost_${BOOST_PROJECT_NAME}.patch")
+        set(PATCH "${PROJECT_SOURCE_DIR}/dependencies/boost_${BOOST_PROJECT_NAME}.patch")
+    endif()
     CPMAddPackage(
         NAME boost_${BOOST_PROJECT_NAME}
         GITHUB_REPOSITORY boostorg/${BOOST_PROJECT_NAME}
         GIT_TAG boost-1.85.0
+        PATCHES
+            "${PATCH}"
         OPTIONS
             "BUILD_SHARED_LIBS OFF"
     )
