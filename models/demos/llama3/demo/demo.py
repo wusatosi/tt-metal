@@ -231,7 +231,7 @@ def run_llama3_demo(
         max_seq_len=max_seq_len,
     )
 
-    if model_args.model_name == "3.1-70B" and max_seq_len >= 64 * 1024:
+    if model_args.model_name == "Llama3.1-70B" and max_seq_len >= 64 * 1024:
         pytest.skip("Llama3.1-70B will run out of memory for max_seq_len >= 64k tokens")
 
     tokenizer = model_args.tokenizer
@@ -240,18 +240,18 @@ def run_llama3_demo(
     llama_model_name = model_args.model_name  # ["3.2-1B", "3.2-3B", "3.1-8B", "3.2-11B", "3.1-70B"]
     tt_device_name = model_args.device_name  # ["N150", "N300", "T3K", "TG"]
 
-    if llama_model_name == "3.2-1B":
+    if llama_model_name == "Llama3.2-1B":
         assert (
             max_seq_len <= 64 * 1024
         ), "Llama3.2-1B only supports a max context length of 64k tokens across all architectures"
-    if llama_model_name == "3.2-3B":
+    if llama_model_name == "Llama3.2-3B":
         if tt_device_name == "N150":
             assert max_seq_len <= 32 * 1024, "N150 only supports a max context length of 32k tokens for Llama3.2-3B"
         elif tt_device_name == "N300":
             assert max_seq_len <= 64 * 1024, "N300 only supports a max context length of 64k tokens for Llama3.2-3B"
         else:  # T3K and TG
             assert max_seq_len <= 64 * 1024, "T3K only supports a max context length of 64k tokens for Llama3.2-3B"
-    if llama_model_name in ["3.1-8B", "3.2-11B"]:
+    if llama_model_name in ["Llama3.1-8B", "Llama3.2-11B"]:
         if tt_device_name == "N150":
             assert (
                 max_seq_len <= 16 * 1024
@@ -264,7 +264,7 @@ def run_llama3_demo(
             assert (
                 max_seq_len <= 128 * 1024
             ), "T3K only supports a max context length of 128k tokens for Llama3.1-8B and Llama3.2-11B"
-    if llama_model_name == "3.1-70B":
+    if llama_model_name == "Llama3.1-70B":
         assert tt_device_name in ["T3K", "TG"], "Llama3.1-70B is only supported on T3K or TG"
 
     logger.info("Loading weights...")
@@ -746,55 +746,54 @@ def run_llama3_demo(
     supported_devices = ["N150", "N300", "T3K"]
 
     # TODO update targets based on the llama3 model and the target device
-    llama_model_name = model_args.model_name
     tt_device_name = model_args.device_name
 
-    if llama_model_name in supported_models:
+    if model_args.model_name in supported_models:
         assert tt_device_name in supported_devices, f"Device {tt_device_name} not supported"
 
         # Set the target times to first token for every combination of device and model
         target_prefill_tok_s = {
-            "N150_3.2-1B": 1050,  # TODO Update target
-            "N300_3.2-1B": 1050,  # TODO Update target
-            "T3K_3.2-1B": 1050,  # TODO Update target
+            "N150_Llama3.2-1B": 1050,  # TODO Update target
+            "N300_Llama3.2-1B": 1050,  # TODO Update target
+            "T3K_Llama3.2-1B": 1050,  # TODO Update target
             #
-            "N150_3.2-3B": 1050,  # TODO Update target
-            "N300_3.2-3B": 1050,  # TODO Update target
-            "T3K_3.2-3B": 1050,  # TODO Update target
+            "N150_Llama3.2-3B": 1050,  # TODO Update target
+            "N300_Llama3.2-3B": 1050,  # TODO Update target
+            "T3K_Llama3.2-3B": 1050,  # TODO Update target
             #
-            "N150_3.1-8B": 1050,
-            "N300_3.1-8B": 1050,
-            "T3K_3.1-8B": 1050,
+            "N150_Llama3.1-8B": 1050,
+            "N300_Llama3.1-8B": 1050,
+            "T3K_Llama3.1-8B": 1050,
             #
-            "N150_3.2-11B": 1050,  # TODO Update target
-            "N300_3.2-11B": 1050,  # TODO Update target
-            "T3K_3.2-11B": 1050,  # TODO Update target
+            "N150_Llama3.2-11B": 1050,  # TODO Update target
+            "N300_Llama3.2-11B": 1050,  # TODO Update target
+            "T3K_Llama3.2-11B": 1050,  # TODO Update target
             #
-            "N150_3.1-70B": 1050,  # TODO Update target
-            "N300_3.1-70B": 1050,  # TODO Update target
-            "T3K_3.1-70B": 1050,  # TODO Update target
-        }[f"{tt_device_name}_{llama_model_name}"]
+            "N150_Llama3.1-70B": 1050,  # TODO Update target
+            "N300_Llama3.1-70B": 1050,  # TODO Update target
+            "T3K_Llama3.1-70B": 1050,  # TODO Update target
+        }[f"{tt_device_name}_{model_args.model_name}"]
 
         # Set the target decode timesfor every combination of device and model
         target_decode_tok_s_u = {
-            "N150_3.2-1B": 160,  # TODO Update target
-            "N300_3.2-1B": 250,  # TODO Update target
-            "T3K_3.2-1B": 300,  # TODO Update target
+            "N150_Llama3.2-1B": 160,  # TODO Update target
+            "N300_Llama3.2-1B": 250,  # TODO Update target
+            "T3K_Llama3.2-1B": 300,  # TODO Update target
             #
-            "N150_3.2-3B": 60,  # TODO Update target
-            "N300_3.2-3B": 100,  # TODO Update target
-            "T3K_3.2-3B": 150,  # TODO Update target
+            "N150_Llama3.2-3B": 60,  # TODO Update target
+            "N300_Llama3.2-3B": 100,  # TODO Update target
+            "T3K_Llama3.2-3B": 150,  # TODO Update target
             #
-            "N150_3.1-8B": 23,  # TODO Update target
-            "N300_3.1-8B": 38,
-            "T3K_3.1-8B": 45,
+            "N150_Llama3.1-8B": 23,  # TODO Update target
+            "N300_Llama3.1-8B": 38,
+            "T3K_Llama3.1-8B": 45,
             #
-            "N150_3.2-11B": 23,
-            "N300_3.2-11B": 38,  # TODO Update target
-            "T3K_3.2-11B": 45,  # TODO Update target
+            "N150_Llama3.2-11B": 23,
+            "N300_Llama3.2-11B": 38,  # TODO Update target
+            "T3K_Llama3.2-11B": 45,  # TODO Update target
             #
-            "T3K_3.1-70B": 20,  # TODO Update target
-        }[f"{tt_device_name}_{llama_model_name}"]
+            "T3K_Llama3.1-70B": 20,  # TODO Update target
+        }[f"{tt_device_name}_{model_args.model_name}"]
 
         target_decode_tok_s = target_decode_tok_s_u * batch_size
         targets = {
@@ -803,7 +802,7 @@ def run_llama3_demo(
             "decode_t/s/u": target_decode_tok_s_u,
         }
     else:
-        logger.warning(f"Model {llama_model_name} not does not have performance targets set")
+        logger.warning(f"Model {model_args.model_name} not does not have performance targets set")
         targets = {}
 
     # Save benchmark data for CI dashboard
@@ -812,7 +811,7 @@ def run_llama3_demo(
         benchmark_data.prep_csvs(
             profiler,
             run_type=f"{tt_device_name}-demo",
-            ml_model_name=llama_model_name,
+            ml_model_name=model_args.model_name,
             ml_model_type="llm",
             num_layers=model_args.n_layers,
             batch_size=batch_size,

@@ -265,7 +265,7 @@ def main(stdscr):
     # Input fields positions (reordered)
     input_fields = [
         {"label": "Command [demo]", "value": "", "x": 0, "y": 0},
-        {"label": "Model (1b, 3b, 8b, 11b, 70b) [all]", "value": "", "x": 0, "y": 1},
+        {"label": "Model (1b, 3b, 8b, 11b, 70b, q7b, q72b) [all]", "value": "", "x": 0, "y": 1},
         {"label": "Device (n150, n300, t3k) [all]", "value": "", "x": 0, "y": 2},
     ]
 
@@ -374,7 +374,7 @@ def main(stdscr):
                     if current_field == len(input_fields) - 1:
                         # Submit command
                         command_input = input_fields[0]["value"] or "demo"
-                        model_input = input_fields[1]["value"] or "1b,3b,8b,11b,70b"
+                        model_input = input_fields[1]["value"] or "1b,3b,8b,11b,70b,q7b,q72b"
                         device_input = input_fields[2]["value"] or "n150,n300,t3k"
 
                         if command_input == "modules":
@@ -392,6 +392,8 @@ def main(stdscr):
                         # Ignore invalid combinations:
                         # - 11b and 11b-b models on n150 device
                         # - 70b model on n150 and n300 devices
+                        # - 72b model on n150 and n300 devices
+                        # - q7b on anything other than N300
                         # - Vision commands on non-vision (11b) models
                         combinations = [
                             (c, m, d)
@@ -401,6 +403,8 @@ def main(stdscr):
                             if not (
                                 (m in ["11b", "11b-b"] and d == "n150")
                                 or (m == "70b" and d in ["n150", "n300"])
+                                or (m == "q72b" and d in ["n150", "n300"])
+                                or (m == "q7b" and d != "n300")
                                 or ("vision" in c and m not in ["11b", "11b-b"])
                             )
                         ]
@@ -732,6 +736,7 @@ def run_entry_command(entry, screen_lock, output_entries, screen_needs_update):
     # Define command shortcuts
     command_shortcuts = {
         "demo": "pytest models/demos/llama3/demo/demo.py -k performance-batch-1",
+        "demo-acc": "pytest models/demos/llama3/demo/demo.py -k accuracy-batch-1",
         "demo-32": "pytest models/demos/llama3/demo/demo.py -k performance-batch-32",
         "demo-long": "pytest models/demos/llama3/demo/demo.py -k performance-long",
         "attention": "pytest models/demos/llama3/tests/test_llama_attention.py",
@@ -760,6 +765,7 @@ def run_entry_command(entry, screen_lock, output_entries, screen_needs_update):
         "vision-text-xfmr": "pytest models/demos/llama3/tests/multimodal/test_llama_cross_attention_transformer_text.py",
         "vision-vision-xfmr": "pytest models/demos/llama3/tests/multimodal/test_llama_cross_attention_transformer_vision.py",
         "accuracy": "pytest models/demos/llama3/tests/test_llama_accuracy.py -k performance",
+        "accuracy-acc": "pytest models/demos/llama3/tests/test_llama_accuracy.py -k accuracy",
     }
 
     # Check if the command is a shortcut and replace it if necessary
@@ -917,6 +923,8 @@ def get_llama_dir(model):
         "11b": os.environ.get("LLAMA_32_11B_DIR", "/proj_sw/user_dev/llama32-data/Llama3.2-11B-Vision-Instruct"),
         "11b-b": os.environ.get("LLAMA_32_11B_BASE_DIR", "/proj_sw/user_dev/llama32-data/Llama3.2-11B-Vision"),
         "70b": os.environ.get("LLAMA_31_70B_DIR", "/proj_sw/llama3_1-weights/Meta-Llama-3.1-70B-Instruct/repacked"),
+        "q7b": os.environ.get("QWEN_7B_DIR", "/proj_sw/user_dev/Qwen/Qwen2.5-7B-Instruct"),
+        "q72b": os.environ.get("QWEN_72B_DIR", "/proj_sw/user_dev/Qwen/Qwen2.5-72B-Instruct"),
     }.get(model.lower(), "")
 
     if not llama_dir or not os.path.exists(llama_dir):
@@ -927,6 +935,8 @@ def get_llama_dir(model):
         print("  - LLAMA_31_8B_DIR for 8b model")
         print("  - LLAMA_32_11B_DIR for 11b model")
         print("  - LLAMA_31_70B_DIR for 70b model")
+        print("  - QWEN_7B_DIR for 7b Qwen2.5 model")
+        print("  - QWEN_72B_DIR for 72b Qwen2.5 model")
         sys.exit(1)
 
     return llama_dir
@@ -1070,11 +1080,21 @@ def export_results_to_markdown(output_entries, stdscr):
         "|-------|--------|-----------|-----------|---------------|",
     ]
 
+    fullname = {
+        "1b": "Llama-3.2-1B",
+        "3b": "Llama-3.2-3B",
+        "8b": "Llama-3.1-8B",
+        "11b": "Llama-3.2-11B",
+        "70b": "Llama-3.1-70B",
+        "q7b": "Qwen-2.5-7B",
+        "q72b": "Qwen-2.5-72B",
+    }
+
     for key in demo_results.keys():
         model, device = key
         speed = demo_results.get(key, "N/A")
         top1, top5 = accuracy_results.get(key, ("N/A", "N/A"))
-        markdown_lines.append(f"| {model} | {device} | {top1} | {top5} | {speed} |")
+        markdown_lines.append(f"| {fullname[model]} | {device} | {top1} | {top5} | {speed} |")
 
     # Write to PERF.md
     with open("PERF.md", "w") as f:

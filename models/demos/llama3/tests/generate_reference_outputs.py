@@ -5,7 +5,7 @@ import torch
 import bz2
 import os
 import argparse
-from models.demos.llama3.tt.model_config import TtModelArgs
+from models.demos.llama3.tt.model_config import TtModelArgs, CheckpointType
 from loguru import logger
 
 
@@ -14,30 +14,36 @@ def generate_reference_outputs(total_length, output_file):
     model_args = TtModelArgs(mesh_device=None)
     tokenizer = model_args.tokenizer
 
-    # Load the model state dict
-    state_dict = model_args.load_state_dict()
+    # Special-case Hf models as they can load directly from the safetensors much more efficiently
+    if model_args.checkpoint_type == CheckpointType.Meta:
+        # Load the model state dict
+        state_dict = model_args.load_state_dict()
 
-    # Initialize the reference model
-    state_dict_prefix = model_args.get_state_dict_prefix("", None)
-    reference_state_dict = {
-        k[len(state_dict_prefix) :]: v
-        for k, v in state_dict.items()
-        if (
-            any([f"{state_dict_prefix}layers.{i}." in k for i in range(model_args.n_layers)])
-            or any(
-                [
-                    f"{state_dict_prefix}{name}" in k
-                    for name in ["tok_embeddings.weight", "norm.weight", "output.weight"]
-                ]
+        # Initialize the reference model
+        state_dict_prefix = model_args.get_state_dict_prefix("", None)
+        reference_state_dict = {
+            k[len(state_dict_prefix) :]: v
+            for k, v in state_dict.items()
+            if (
+                any([f"{state_dict_prefix}layers.{i}." in k for i in range(model_args.n_layers)])
+                or any(
+                    [
+                        f"{state_dict_prefix}{name}" in k
+                        for name in ["tok_embeddings.weight", "norm.weight", "output.weight"]
+                    ]
+                )
             )
-        )
-    }
-    reference_model = model_args.reference_transformer()
-    reference_model.load_state_dict(reference_state_dict)
-    reference_model.eval()  # Set to evaluation mode
+        }
+        reference_model = model_args.reference_transformer()
+        reference_model.eval()  # Set to evaluation mode
+        reference_model.load_state_dict(reference_state_dict)
 
-    embd = model_args.reference_embedding()
-    embd.load_state_dict({"emb.weight": state_dict[f"{state_dict_prefix}tok_embeddings.weight"]})
+        embd = model_args.reference_embedding(reference_model)
+        embd.load_state_dict({"emb.weight": state_dict[f"{state_dict_prefix}tok_embeddings.weight"]})
+    else:
+        reference_model = model_args.reference_transformer(load_checkpoint=True)
+        reference_model.eval()  # Set to evaluation mode
+        embd = reference_model.model.model.embed_tokens
 
     # Load the book text and encode tokens
     current_file_path = os.path.abspath(__file__)

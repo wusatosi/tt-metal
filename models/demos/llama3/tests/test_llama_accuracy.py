@@ -17,11 +17,8 @@ from models.demos.llama3.demo.demo import preprocess_inputs_prefill
 from pathlib import Path
 
 
-def get_accuracy_thresholds(model_name: str, device_name: str, optimizations: LlamaOptimizations):
+def get_accuracy_thresholds(base_model_name: str, device_name: str, optimizations: LlamaOptimizations):
     """Parse accuracy thresholds from PERF.md for the given model, optimization mode, and device."""
-    # Get model size (e.g., "1b", "3b", etc.)
-    model_size = model_name.split("-")[1].lower()
-
     # Read PERF.md
     perf_file = Path(__file__).parent.parent / "PERF.md"
     with open(perf_file, "r") as f:
@@ -29,22 +26,22 @@ def get_accuracy_thresholds(model_name: str, device_name: str, optimizations: Ll
 
     # Split into sections based on optimization mode
     sections = content.split("## ")
-    target_section = next(s for s in sections if s.startswith(f"LlamaOptimizations.{optimizations.__name__}\n"))
+    target_section = next(s for s in sections if s.lower().startswith(f"{optimizations.__name__}\n"))
 
     # Parse the table and find the row for our model and device
     rows = [
         line.split("|")[1:]  # Each row starts with a separator
         for line in target_section.split("\n")
-        if f"| {model_size} | {device_name} |" in line
+        if f"| {base_model_name} | {device_name} |" in line
     ]
     if not rows:
         raise ValueError(
-            f"Could not find accuracy data for {model_size} on {device_name} in {optimizations.__name__} mode"
+            f"Could not find accuracy data for {base_model_name} on {device_name} in {optimizations.__name__} mode"
         )
 
     assert (
         len(rows) == 1
-    ), f"Found multiple rows for {model_size} on {device_name} in {optimizations.__name__} mode in PERF.md"
+    ), f"Found multiple rows for {base_model_name} on {device_name} in {optimizations.__name__} mode in PERF.md"
     row = rows[0]
     top1_acc = float(row[2].strip())
     top5_acc = float(row[3].strip())
@@ -367,12 +364,11 @@ def test_tt_model_accuracy(
             logger.info(f"{error['position']}: {context}[{incorrect}] != [{expected}], true: [{true_word}]")
 
     # Get accuracy thresholds from PERF.md
-    if not model_args.model_name.startswith("Qwen"):
-        min_top1_acc, min_top5_acc = get_accuracy_thresholds(
-            model_args.model_name,
-            model_args.device_name,
-            optimizations,
-        )
+    min_top1_acc, min_top5_acc = get_accuracy_thresholds(
+        model_args.base_model_name,
+        model_args.device_name,
+        optimizations,
+    )
 
     logger.info(f"Top-1: {total_top1_acc:.0f}% | Top-5: {total_top5_acc:.0f}%")
     assert total_top1_acc > min_top1_acc, f"Top-1 accuracy {total_top1_acc:.1f}% is too low (expected >{min_top1_acc}%)"

@@ -47,7 +47,8 @@ class LlamaOptimizations:
         """Configuration optimized for accuracy
         Only 3.1-70B uses bfp4 MLPs in this configuration
         """
-        return cls(bfp4_mlp=model_name == "3.1-70B")
+        bfp4 = model_name in ["Llama3.1-70B", "Qwen2.5-72B"]
+        return cls(bfp4_mlp=bfp4)
 
     @classmethod
     def performance(cls, model_name):
@@ -144,19 +145,19 @@ class TtModelArgs:
         # FIXME: add a llama prefix to all llama-specific models and names
         if "3.2-1B" in LLAMA_DIR:
             local_params = "LLAMA3_2_1B_PARAMS"
-            self.model_name = "3.2-1B"
+            self.model_name = "Llama3.2-1B"
         elif "3.2-3B" in LLAMA_DIR:
             local_params = "LLAMA3_2_3B_PARAMS"
-            self.model_name = "3.2-3B"
+            self.model_name = "Llama3.2-3B"
         elif "3.1-8B" in LLAMA_DIR:
             local_params = "LLAMA3_1_8B_PARAMS"
-            self.model_name = "3.1-8B"
+            self.model_name = "Llama3.1-8B"
         elif "3.2-11B" in LLAMA_DIR:
             local_params = "LLAMA3_2_11B_PARAMS"
-            self.model_name = "3.2-11B"
+            self.model_name = "Llama3.2-11B"
         elif "3.1-70B" in LLAMA_DIR:
             local_params = "LLAMA3_1_70B_PARAMS"
-            self.model_name = "3.1-70B"
+            self.model_name = "Llama3.1-70B"
         elif "Qwen2.5-0.5B" in LLAMA_DIR:
             local_params = "QWEN2_5_0_5B_PARAMS"
             self.model_name = "Qwen2.5-0.5B"
@@ -665,7 +666,7 @@ class TtModelArgs:
             return False
         if all([dim > 1 for dim in self.mesh_device.shape]):  # 2D grid
             return True
-        elif self.dim >= 8192 and mode == "prefill":  # Somewhere between 4k and 8k WH runs out of L1 if not distributed
+        elif self.dim > 4096 and mode == "prefill":  # Somewhere between 4k and 8k WH runs out of L1 if not distributed
             return True
         return False
 
@@ -777,9 +778,8 @@ class TtModelArgs:
 
         if "_name_or_path" in params:
             self.model_name = params["_name_or_path"].split("/")[-1]
-        base_model_name = self.model_name.split("B-")[0] + "B" if "B-" in self.model_name else self.model_name
 
-        if base_model_name == "Qwen2.5-7B" and self.num_devices not in [0, 2]:
+        if self.base_model_name == "Qwen2.5-7B" and self.num_devices not in [0, 2]:
             raise AssertionError("Qwen2.5-7B is only supported on 2 devices, run on an N300 or use FAKE_DEVICE=N300")
 
         # Don't need to pad for CPU runs
@@ -788,7 +788,7 @@ class TtModelArgs:
             default_padded_cores = {
                 "Qwen2.5-72B": 32,
                 "Qwen2.5-7B": 16,
-            }.get(base_model_name, 0)
+            }.get(self.base_model_name, 0)
 
             # Override MLP padding cores from env var
             mlp_padded_cores = int(os.environ.get("PAD_MLP_CORES", default_padded_cores))
@@ -826,6 +826,10 @@ class TtModelArgs:
         self.vision_max_num_tiles = 4
         self.vision_patch_size = 14
         self.vision_in_channels = 3
+
+    @property
+    def base_model_name(self):
+        return self.model_name.split("B-")[0] + "B" if "B-" in self.model_name else self.model_name
 
     @property
     def vision_chunk_ntok(self):
@@ -1152,19 +1156,23 @@ class TtModelArgs:
             layer.load_state_dict = lambda x: layer._load_state_dict(convert_meta_to_hf(x, self.head_dim))
             return layer
 
-    def reference_transformer(self, wrap=True):
+    def reference_transformer(self, wrap=True, load_checkpoint=False):
         if self.checkpoint_type == CheckpointType.Meta:
             from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import Transformer
 
-            return Transformer(self)
+            model = Transformer(self)
+            if load_checkpoint:
+                model.load_state_dict(self.load_state_dict())
+            return model
         else:
             from transformers import AutoConfig, AutoModelForCausalLM
 
-            config = AutoConfig.from_pretrained(self.DEFAULT_CKPT_DIR)
-            config.num_layers = self.n_layers
-            model = AutoModelForCausalLM.from_config(config)
-            # model._load_state_dict = model.load_state_dict
-            # model.load_state_dict = lambda x: model._load_state_dict(convert_meta_to_hf(x, self.head_dim))
+            if not load_checkpoint:
+                config = AutoConfig.from_pretrained(self.DEFAULT_CKPT_DIR)
+                config.num_layers = self.n_layers
+                model = AutoModelForCausalLM.from_config(config)
+            else:
+                model = AutoModelForCausalLM.from_pretrained(self.DEFAULT_CKPT_DIR)
             if wrap:
                 wrapper = HfModelWrapper(model, self.head_dim)
                 return wrapper
@@ -1195,13 +1203,16 @@ class TtModelArgs:
             layer.load_state_dict = lambda x: layer._load_state_dict(convert_meta_to_hf(x, self.head_dim))
             return layer
 
-    def reference_embedding(self):
+    def reference_embedding(self, reference_model=None):
         if self.checkpoint_type == CheckpointType.Meta:
             from models.demos.llama3.tt.llama_common import HostEmbedding
 
             return HostEmbedding(self)
         else:
-            model = self.reference_transformer(wrap=False)
+            if reference_model is None:
+                model = self.reference_transformer(wrap=False)
+            else:
+                model = reference_model
             layer = model.model.embed_tokens
             layer._load_state_dict = layer.load_state_dict
             layer.load_state_dict = lambda x: layer._load_state_dict(convert_meta_to_hf(x, self.head_dim))
