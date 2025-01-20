@@ -146,6 +146,9 @@ public:
     // 1. The old_shape volume must equal the new_shape volume (i.e. number of devices must remain constant)
     // 2. For Grid-to-Grid or Line-to-Grid reshaping: physical connectivity must be possible with current devices
     void reshape(const MeshShape& new_shape);
+
+    void set_speculation_states(std::vector<bool> states, uint32_t p_tensor_addr);
+
     void close_devices();
     const MeshDeviceView& get_view() const;
 

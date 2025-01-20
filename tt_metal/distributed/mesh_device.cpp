@@ -501,6 +501,12 @@ CoreCoord MeshDevice::compute_with_storage_grid_size() const {
 
 CoreCoord MeshDevice::dram_grid_size() const { return this->reference_device()->dram_grid_size(); }
 
+void MeshDevice::set_speculation_states(std::vector<bool> states, uint32_t p_tensor_addr) {
+    for (size_t i = 0; i < this->num_devices(); i++) {
+        this->devices[i]->set_speculation_state(states[i], p_tensor_addr);
+    }
+}
+
 tt::ARCH MeshDevice::arch() const { return this->reference_device()->arch(); }
 
 size_t MeshDevice::num_rows() const { return this->mesh_device_shape.num_rows; }

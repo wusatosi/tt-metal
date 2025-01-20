@@ -20,6 +20,23 @@
 #if defined ALIGN_LOCAL_CBS_TO_REMOTE_CBS
 #include "remote_circular_buffer_api.h"
 #endif
+#include "debug/dprint.h"
+
+bool skip_kernel() {
+#ifdef SKIP_KERNEL
+    volatile tt_l1_ptr uint32_t* p_tensor = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(P_TENSOR_ADDR);
+    uint32_t p_tensor_data = *p_tensor;
+    DPRINT << "BRISC: " << p_tensor_data << ENDL();
+
+    if (p_tensor_data == 0) {
+        DPRINT << "Skipping BRISC kernel" << ENDL();
+        return true;
+    }
+    return false;
+#else
+    return false;
+#endif
+}
 
 void kernel_launch(uint32_t kernel_base_addr) {
 
@@ -40,7 +57,7 @@ void kernel_launch(uint32_t kernel_base_addr) {
 #ifdef ALIGN_LOCAL_CBS_TO_REMOTE_CBS
     ALIGN_LOCAL_CBS_TO_REMOTE_CBS
 #endif
-    {
+    if (!skip_kernel()) {
         DeviceZoneScopedMainChildN("BRISC-KERNEL");
         kernel_main();
     }
