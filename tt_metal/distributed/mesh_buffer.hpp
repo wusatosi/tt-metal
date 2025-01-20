@@ -9,6 +9,8 @@
 #include <mesh_device.hpp>
 #include <mesh_device_view.hpp>
 
+#include "tt_metal/impl/buffers/dispatch.hpp"
+
 namespace tt::tt_metal::distributed {
 
 // Specifies how a buffer is laid out across Memory Banks within a single device.

@@ -6,6 +6,7 @@
 
 #include <mesh_device.hpp>
 
+#include "tt_metal/distributed/mesh_buffer.hpp"
 #include "tt_metal/distributed/mesh_workload.hpp"
 
 namespace tt::tt_metal::distributed {
@@ -35,6 +36,7 @@ public:
     uint32_t id() const { return id_; }
     WorkerConfigBufferMgr& get_config_buffer_mgr(uint32_t index) { return config_buffer_mgr_; };
     void enqueue_mesh_workload(MeshWorkload& mesh_workload, bool blocking);
+    void read_shard_from_device(std::shared_ptr<Buffer>& shard_view, void* dst, bool blocking);
     void finish();
 };
 

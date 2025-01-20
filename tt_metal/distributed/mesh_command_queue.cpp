@@ -173,4 +173,54 @@ void MeshCommandQueue::finish() {
     }
 }
 
+void MeshCommandQueue::read_shard_from_device(std::shared_ptr<Buffer>& shard_view, void* dst, bool blocking) {
+    auto sub_device_ids = tt::stl::Span<const SubDeviceId>(mesh_device_->get_device(0)->get_sub_device_ids());
+    std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES> expected_num_workers_completed;
+    expected_num_workers_completed[0] = expected_num_workers_completed_;
+
+    auto device = shard_view->device();
+    chip_id_t mmio_device_id = tt::Cluster::instance().get_associated_mmio_device(device->id());
+    uint16_t channel = tt::Cluster::instance().get_assigned_channel_for_device(device->id());
+
+    bool exit_condition = false;
+
+    BufferRegion region(0, shard_view->size());
+
+    if (is_sharded(shard_view->buffer_layout())) {
+        auto dispatch_params = buffer_dispatch::initialize_sharded_buf_read_dispatch_params(
+            *shard_view, id_, expected_num_workers_completed);
+        auto cores = buffer_dispatch::get_cores_for_sharded_buffer(
+            dispatch_params.width_split, dispatch_params.buffer_page_mapping, *shard_view);
+        for (uint32_t core_id = 0; core_id < shard_view->num_cores(); ++core_id) {
+            buffer_dispatch::copy_sharded_buffer_from_core_to_completion_queue(
+                core_id,
+                *shard_view,
+                dispatch_params,
+                sub_device_ids,
+                cores[core_id],
+                dispatch_core_manager::instance().get_dispatch_core_type(device->id()));
+            if (dispatch_params.pages_per_txn > 0) {
+                auto read_descriptor = std::get<tt::tt_metal::detail::ReadBufferDescriptor>(
+                    *buffer_dispatch::generate_sharded_buffer_read_descriptor(dst, dispatch_params, *shard_view));
+                buffer_dispatch::copy_completion_queue_data_into_user_space(
+                    read_descriptor, mmio_device_id, channel, id_, device->sysmem_manager(), exit_condition);
+            }
+        }
+    } else {
+        auto dispatch_params = buffer_dispatch::initialize_interleaved_buf_read_dispatch_params(
+            *shard_view, id_, expected_num_workers_completed, region);
+        buffer_dispatch::copy_interleaved_buffer_to_completion_queue(
+            dispatch_params,
+            *shard_view,
+            sub_device_ids,
+            dispatch_core_manager::instance().get_dispatch_core_type(device->id()));
+        if (dispatch_params.pages_per_txn > 0) {
+            auto read_descriptor = std::get<tt::tt_metal::detail::ReadBufferDescriptor>(
+                *buffer_dispatch::generate_interleaved_buffer_read_descriptor(dst, dispatch_params, *shard_view));
+            buffer_dispatch::copy_completion_queue_data_into_user_space(
+                read_descriptor, mmio_device_id, channel, id_, device->sysmem_manager(), exit_condition);
+        }
+    }
+}
+
 }  // namespace tt::tt_metal::distributed

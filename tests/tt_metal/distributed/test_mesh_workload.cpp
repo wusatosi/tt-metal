@@ -1003,5 +1003,50 @@ TEST_F(MeshWorkloadTest, TestMeshWorkloadSemaphoreDifferentPrograms) {
     }
 }
 
+TEST_F(MeshWorkloadTest, TestInterleavedMeshBufferRead) {
+    uint32_t seed = tt::parse_env("TT_METAL_SEED", 0);
+    uint32_t single_tile_size = ::tt::tt_metal::detail::TileSize(DataFormat::Float16_b);
+
+    DeviceLocalBufferConfig per_device_buffer_config{
+        .page_size = single_tile_size,
+        .buffer_type = BufferType::L1,
+        .buffer_layout = TensorMemoryLayout::INTERLEAVED,
+        .bottom_up = false};
+
+    std::uniform_int_distribution<int> gen_num_tiles(1, 128);
+    std::mt19937 rng(seed);
+    for (int i = 0; i < 20; i++) {
+        uint32_t num_random_tiles = gen_num_tiles(rng);
+        std::cout << "Num Tiles: " << num_random_tiles << std::endl;
+        ReplicatedBufferConfig global_buffer_config = {
+            .size = num_random_tiles * single_tile_size,
+        };
+
+        std::cout << "Read for iter " << i << std::endl;
+        std::shared_ptr<MeshBuffer> buf =
+            MeshBuffer::create(global_buffer_config, per_device_buffer_config, mesh_device_.get());
+
+        std::vector<uint32_t> src_vec = create_constant_vector_of_bfloat16(num_random_tiles * single_tile_size, i);
+        for (std::size_t logical_x = 0; logical_x < buf->device()->num_cols(); logical_x++) {
+            for (std::size_t logical_y = 0; logical_y < buf->device()->num_rows(); logical_y++) {
+                auto shard = buf->get_device_buffer(Coordinate(logical_y, logical_x));
+                EnqueueWriteBuffer(shard->device()->command_queue(), shard, src_vec, true);
+            }
+        }
+
+        for (std::size_t logical_x = 0; logical_x < buf->device()->num_cols(); logical_x++) {
+            for (std::size_t logical_y = 0; logical_y < buf->device()->num_rows(); logical_y++) {
+                auto shard = buf->get_device_buffer(Coordinate(logical_y, logical_x));
+                std::vector<bfloat16> dst_vec = {};
+                dst_vec.resize(shard->page_size() * shard->num_pages() / 2);
+                mesh_device_->mesh_command_queue().read_shard_from_device(shard, dst_vec.data(), true);
+                for (int j = 0; j < dst_vec.size(); j++) {
+                    EXPECT_EQ(dst_vec[j].to_float(), i);
+                }
+            }
+        }
+    }
+}
+
 }  // namespace
 }  // namespace tt::tt_metal::distributed::test
