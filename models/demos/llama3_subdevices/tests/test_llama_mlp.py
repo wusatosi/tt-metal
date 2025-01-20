@@ -54,6 +54,9 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
         n_tensors=3,
         n_layers=1,
     )
+    mesh_device.set_sub_device_stall_group(
+        [prefetcher_setup.prefetcher_sub_device_id, prefetcher_setup.worker_sub_device_id]
+    )
 
     ccl_lib = TT_CCL(mesh_device, model_args.sub_core_grids, prefetcher_setup.worker_sub_device_id)
 
@@ -105,9 +108,6 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
     )
 
     logger.info("Run Llama_MLP_PF")
-    mesh_device.set_sub_device_stall_group(
-        [prefetcher_setup.prefetcher_sub_device_id, prefetcher_setup.worker_sub_device_id]
-    )
     ttnn.dram_prefetcher(
         prefetcher_setup.tensors,
         num_layers=1,
