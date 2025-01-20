@@ -27,8 +27,8 @@ class TtLlamaMLP(LightweightModule):
         else:
             cache_name = lambda name: weight_cache_path / (state_dict_prefix + f".{name}")
 
-        w1_w3_mem_config = args.create_dram_sharded_mem_config(args.dim, args.hidden_dim // args.num_devices)
-        w2_mem_config = args.create_dram_sharded_mem_config(args.hidden_dim // args.num_devices, args.dim)
+        w1_w3_mem_config = args.create_dram_sharded_mem_config(args.dim, args.hidden_dim // args.num_devices_tp)
+        w2_mem_config = args.create_dram_sharded_mem_config(args.hidden_dim // args.num_devices_tp, args.dim)
 
         # TODO Clean up this code. With sharding, we load the normal weights and then shard them
         as_sharded_tensor = lambda name, type, dim: ttnn.as_tensor(
@@ -48,8 +48,16 @@ class TtLlamaMLP(LightweightModule):
         self.four_bit_mlp = args.optimizations.bfp4_mlp
 
         # Sharded weights
-        w1_dim = (-1, -2) if args.is_galaxy else (-2, -1)
-        w2_dim = (-2, -1) if args.is_galaxy else (-1, -2)
+        if args.is_galaxy:
+            w1_dim = (-1, -2)
+            w2_dim = (-2, -1)
+        elif args.num_devices_dp > 1:
+            # replicate weights if dp mode, shard if tp mode. todo: hybrid
+            w1_dim = (None, None)
+            w2_dim = (None, None)
+        else:
+            w1_dim = (-2, -1)
+            w2_dim = (-1, -2)
 
         self.w1 = as_sharded_tensor(
             "w1_sharded", ttnn.bfloat4_b if self.four_bit_mlp else ttnn.bfloat8_b, dim=w1_dim
@@ -64,6 +72,11 @@ class TtLlamaMLP(LightweightModule):
         w3 -> up_proj
         HF reference: self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
         """
+
+        print(f"x {x.shape}")
+        ttnn.visualize_mesh_device(self.mesh_device, tensor=x)
+
+        batch_size = x.shape[0]
         seq_len = x.shape[-2]
         TG = self.args.is_galaxy
 
@@ -79,7 +92,7 @@ class TtLlamaMLP(LightweightModule):
         else:  # Update the program configs based for prefill
             if seq_len >= 1024:
                 # Reshape input to to fit on device and parallelize computation
-                x = ttnn.reshape(x, [1, seq_len // 1024, 1024, -1])
+                x = ttnn.reshape(x, [batch_size, seq_len // 1024, 1024, -1])
             pc_1 = self.model_config["PREFILL_MLP_W1_W3_PRG_CONFIG"](seq_len)
             pc_2 = self.model_config["PREFILL_MLP_W2_PRG_CONFIG"](seq_len)
             pc_3 = self.model_config["PREFILL_MLP_W1_W3_PRG_CONFIG"](seq_len)
@@ -109,6 +122,9 @@ class TtLlamaMLP(LightweightModule):
             program_config=pc_3,
             memory_config=x.memory_config(),
         )
+
+        print(f"x {x.shape}")
+        ttnn.visualize_mesh_device(self.mesh_device, tensor=x)
         ttnn.deallocate(x)
 
         if TG:
@@ -155,6 +171,15 @@ class TtLlamaMLP(LightweightModule):
                     memory_config=self.model_config["FF1_OUT_GATHERED_MEMCFG"] if mode == "decode" else None,
                 )
 
+        print(f"w1 {self.w1.shape}")
+        ttnn.visualize_mesh_device(self.mesh_device, tensor=self.w1)
+
+        print(f"w1_out {w1_out.shape}")
+        ttnn.visualize_mesh_device(self.mesh_device, tensor=w1_out)
+
+        print(f"w3_out {w3_out.shape}")
+        ttnn.visualize_mesh_device(self.mesh_device, tensor=w1_out)
+
         w2_in = ttnn.mul(
             w1_out,
             w3_out,
@@ -162,10 +187,13 @@ class TtLlamaMLP(LightweightModule):
             dtype=ttnn.bfloat8_b,
             memory_config=w1_out.memory_config(),
         )
+        print(f"w2_in {w2_in.shape}")
+        ttnn.visualize_mesh_device(self.mesh_device, tensor=w2_in)
         if mode == "decode" and not TG:
             # w2 may use a different core grid, this is a no-op if they already match
             w2_in = ttnn.to_memory_config(w2_in, self.model_config["SHARDED_MLP2_INPUT_MEMCFG"])
-
+        print(f"w2_in update {w2_in.shape}")
+        ttnn.visualize_mesh_device(self.mesh_device, tensor=w2_in)
         ttnn.deallocate(w3_out)
         ttnn.deallocate(w1_out)
 
@@ -196,31 +224,60 @@ class TtLlamaMLP(LightweightModule):
         ttnn.deallocate(w2_in)
         # if mode == "decode" and not TG:
         #     w2_out = ttnn.sharded_to_interleaved(w2_out, ttnn.DRAM_MEMORY_CONFIG)
-        w2_out_reduced = tt_all_reduce(
-            w2_out,
-            self.mesh_device,
-            cluster_axis=0,
-            dim=0 if (TG and self.dim < 8192) else 3,
-            num_reduce_scatter_links=self.args.num_reduce_scatter_links,
-            num_all_gather_links=self.args.num_all_gather_links,
-            sharded=(mode == "decode"),
-            memory_config=(self.model_config["FF2_OUT_REDUCE_SCATTER_MEMCFG"] if TG else w2_out.memory_config())
-            if mode == "decode"
-            else ttnn.DRAM_MEMORY_CONFIG,
-            dtype=self.args.ccl_dtype,
-            use_composite=True if self.dim == 8192 else False,
-        )
 
-        # Ensure dim 0 and 1 are 1
-        original_shape = w2_out_reduced.shape
-        w2_out_reduced = ttnn.reshape(
-            w2_out_reduced, (1, 1, original_shape[-4] * original_shape[-3] * original_shape[-2], original_shape[-1])
-        )
+        # if False:
+        if self.args.num_devices_dp > 1:
+            w2_out_reduced = w2_out  # no reductions in data_parallel mode; todo: hybrid
+
+            if seq_len >= 1024:
+                # If needed reshape output back to [batch, 1, seq_len, :]
+                w2_out_reduced = ttnn.reshape(w2_out_reduced, [batch_size, 1, seq_len, -1])
+        else:
+            print(f"w2 out {w2_out.shape}")
+            ttnn.visualize_mesh_device(self.mesh_device, tensor=w2_out)
+
+            w2_out_reduced = tt_all_reduce(
+                w2_out,
+                self.mesh_device,
+                cluster_axis=0,
+                dim=0 if (TG and self.dim < 8192) else 3,
+                num_reduce_scatter_links=self.args.num_reduce_scatter_links,
+                num_all_gather_links=self.args.num_all_gather_links,
+                sharded=(mode == "decode"),
+                memory_config=(self.model_config["FF2_OUT_REDUCE_SCATTER_MEMCFG"] if TG else w2_out.memory_config())
+                if mode == "decode"
+                else ttnn.DRAM_MEMORY_CONFIG,
+                dtype=self.args.ccl_dtype,
+                use_composite=True if self.dim == 8192 else False,
+            )
+
+            # print(f"{w2_out.shape} vs {w2_out_reduced.shape}")
+            # ttnn.visualize_mesh_device(self.mesh_device, tensor=w2_out)
+            # ttnn.visualize_mesh_device(self.mesh_device, tensor=w2_out_reduced)
+
+            # Ensure dim 0 and 1 are 1
+            original_shape = w2_out_reduced.shape
+
+            print(f"reduced {w2_out_reduced.shape}")
+            ttnn.visualize_mesh_device(self.mesh_device, tensor=w2_out_reduced)
+            w2_out_reduced = ttnn.reshape(
+                w2_out_reduced,
+                (batch_size, 1, original_shape[-4] * original_shape[-3] * original_shape[-2], original_shape[-1]),
+            )
+            print(f"reshaped {w2_out_reduced.shape}")
+            ttnn.visualize_mesh_device(self.mesh_device, tensor=w2_out_reduced)
+
+        print(f"returning {w2_out_reduced.shape}")
+        ttnn.visualize_mesh_device(self.mesh_device, tensor=w2_out_reduced)
+
         if mode == "decode":
             w2_out_reduced = ttnn.to_memory_config(
                 w2_out_reduced,
                 self.model_config["SHARDED_ATTN_INPUT_MEMCFG"] if TG else self.model_config["DECODE_RESIDUAL_MEMCFG"],
             )
+
+        print(f"returning {w2_out_reduced.shape}")
+        ttnn.visualize_mesh_device(self.mesh_device, tensor=w2_out_reduced)
 
         # ttnn.deallocate(w2_out)
         return w2_out_reduced

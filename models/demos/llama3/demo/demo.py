@@ -986,11 +986,11 @@ def run_llama3_demo(
     ],
     ids=[
         "batch-1",  # latency
-        "batch-2",  #
-        "batch-4",  #
-        "batch-8",  #
-        "batch-16",  #
-        "batch-32",  # throughput
+        "batch-2_",  #
+        "batch-4_",  #
+        "batch-8_",  #
+        "batch-16_",  #
+        "batch-32_",  # throughput
         "long-context-1",  # max-length
         "long-context-32",  # max-length
         "long-context-64",  # max-length

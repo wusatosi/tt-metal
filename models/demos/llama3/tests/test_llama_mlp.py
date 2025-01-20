@@ -22,8 +22,9 @@ from models.utility_functions import skip_for_grayskull
 @pytest.mark.parametrize(
     "mesh_device",
     [
-        {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
-            os.environ.get("FAKE_DEVICE"), len(ttnn.get_device_ids())
+        {"N150": (1, 1), "N300": (1, 2), "T3K": (2, 4), "TG": (8, 4)}.get(  # T3K was 1.8
+            # os.environ.get("FAKE_DEVICE"), len(ttnn.get_device_ids())
+            "T3K"
         )
     ],
     indirect=True,
@@ -35,18 +36,34 @@ from models.utility_functions import skip_for_grayskull
         32 * 1024,
         32,
     ),
+    ids=lambda seq_len: f"seq_len_{seq_len}_",
 )
 @pytest.mark.parametrize(
-    "batch_size",
-    (1,),
+    "batch_dp_tp",
+    [
+        (1, 1, 8),
+        # (4, 1, 8)
+        # (8, 1, 8), # broken out of L1 memory
+        # (8, 8, 1)
+    ],
+    # ids=lambda batch_size, data_parallel, tensor_parallel: f"batch_size_{batch_size}_dp_{data_parallel}_tp_{tensor_parallel}_",
+    ids=lambda args: "batch_{}_dp_{}_tp_{}".format(*args),
 )
-def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache, reset_seeds, ensure_gc):
+def test_llama_mlp_inference(seq_len, batch_dp_tp, mesh_device, use_program_cache, reset_seeds, ensure_gc):
+    batch_size, data_parallel, tensor_parallel = batch_dp_tp
+
     dtype = ttnn.bfloat8_b
     mode = "decode" if seq_len <= 32 else "prefill"
 
     mesh_device.enable_async(True)
 
-    model_args = TtModelArgs(mesh_device, max_batch_size=batch_size, max_seq_len=128)
+    model_args = TtModelArgs(
+        mesh_device,
+        max_batch_size=batch_size,
+        data_parallel=data_parallel,
+        tensor_parallel=tensor_parallel,
+        max_seq_len=128,
+    )
     model_args.n_layers = 1
     state_dict = model_args.load_state_dict()
 
@@ -74,13 +91,21 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
         dtype=dtype,
         model_config=model_args.get_model_config(),
     )
-    torch_input = torch.randn(1, 1, seq_len, model_args.dim)
+    torch_input = torch.randn(batch_size, 1, seq_len, model_args.dim)
     reference_output = reference_model(torch_input)
+
+    if model_args.is_galaxy:
+        input_shard_dims = (None, 3)
+    elif data_parallel > 1:  # if data parallel, use dim 1 to shard input
+        input_shard_dims = (0, None)
+    else:
+        input_shard_dims = (None, None)
+
     tt_input = ttnn.from_torch(
         torch_input,
         device=mesh_device,
         mesh_mapper=ttnn.ShardTensor2dMesh(
-            mesh_device, dims=(None, 3) if model_args.is_galaxy else (None, None), mesh_shape=model_args.cluster_shape
+            mesh_device, dims=input_shard_dims, mesh_shape=model_args.cluster_shape
         ),  # When both dims are None, the mapper used is `ReplicateTensorToMesh`
         dtype=ttnn.bfloat8_b,
         memory_config=(
@@ -93,15 +118,24 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
         layout=ttnn.TILE_LAYOUT,
     )
 
+    print(tt_input.shape)
+    ttnn.visualize_mesh_device(mesh_device, tensor=tt_input)
     logger.info("Run Llama_MLP")
     tt_output = tt_model(tt_input, mode)
 
+    if data_parallel > 1:
+        output_shard_dims = (0, 3)
+    else:
+        output_shard_dims = (1, 3)
+
     tt_output_torch = ttnn.to_torch(
         tt_output,
-        mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(1, 3), mesh_shape=model_args.cluster_shape),
+        mesh_composer=ttnn.ConcatMesh2dToTensor(
+            mesh_device, dims=output_shard_dims, mesh_shape=model_args.cluster_shape
+        ),
     )
 
-    tt_output_torch = tt_output_torch[:, :1, :, :]
+    # tt_output_torch = tt_output_torch[:, :1, :, :]
 
     pcc_required = 0.99
     passing, pcc_message = comp_pcc(reference_output, tt_output_torch, pcc_required)
