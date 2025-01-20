@@ -391,6 +391,11 @@ set(TTNN_OP_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/prefetcher/prefetcher/dram_prefetcher_pybind.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/prefetcher/prefetcher/device/dram_prefetcher_op.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/prefetcher/prefetcher/device/dram_prefetcher_op_multi_core.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/copy_tensor/copy_tensor_pybind.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/copy_tensor/copy_tensor/copy_tensor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/copy_tensor/copy_tensor/copy_tensor_pybind.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/copy_tensor/copy_tensor/device/copy_tensor_op.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/copy_tensor/copy_tensor/device/copy_tensor_op_multi_core.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/data_movement/sharded/interleaved_to_sharded/interleaved_to_sharded.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/data_movement/sharded/interleaved_to_sharded/interleaved_to_sharded_pybind.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/data_movement/sharded/interleaved_to_sharded/device/interleaved_to_sharded_op.cpp
@@ -635,6 +640,7 @@ set(TTNN_SUBLIBRARIES
     ttnn/operations/loss
     ttnn/operations/matmul
     ttnn/operations/prefetcher
+    ttnn/operations/copy_tensor
     ttnn/operations/moreh
     ttnn/operations/normalization
     ttnn/operations/pool

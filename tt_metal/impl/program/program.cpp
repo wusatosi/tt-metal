@@ -4,6 +4,7 @@
 
 #include <range/v3/view/filter.hpp>
 #include <range/v3/view/transform.hpp>
+#include <string>
 
 #include <circular_buffer_types.hpp>
 #include "common/executor.hpp"
@@ -1393,6 +1394,12 @@ void detail::Program_::compile(IDevice*device, bool fd_bootloader_mode) {
     for (auto & kernels : kernels_) {
         for (auto &[id, kernel] : kernels) {
             validate_kernel_placement(kernel);
+
+            // Skip kernel if device is skipping
+            if (device->get_speculation_state().first) {
+                kernel->add_defines({{"SKIP_KERNEL", "1"}});
+                kernel->add_defines({{"P_TENSOR_ADDR", std::to_string(device->get_speculation_state().second)}});
+            }
             launch_build_step(
                 [kernel, device, this] {
                     JitBuildOptions build_options(device->build_env());
