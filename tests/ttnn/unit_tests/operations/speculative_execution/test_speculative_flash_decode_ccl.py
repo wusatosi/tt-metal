@@ -29,7 +29,7 @@ from tests.ttnn.unit_tests.operations.speculative_execution.sfd_common import (
 )
 
 
-def get_skip_tensor(priority_tensor, mesh_device):
+def commit_priority_tensor(priority_tensor, mesh_device):
     """
     Create a skip tensor based on the priority tensor
     """
@@ -44,6 +44,11 @@ def get_skip_tensor(priority_tensor, mesh_device):
 
     skip_tensor = ttnn.repeat(priority_tensor, ttnn.Shape([64, 1, 1, 1]))
     skip_tensor = ttnn.to_memory_config(skip_tensor, skip_tensor_mem_config)
+    skip_tensor_address = get_buffer_address(skip_tensor)
+
+    for d in priority_tensor.devices():
+        d.set_speculation_state(True, skip_tensor_address)
+        logger.info(f"Device {d.id()} speculation state: {d.get_speculation_state()}")
 
     return skip_tensor
 
@@ -84,15 +89,8 @@ def get_speculative_flash_decode_tt_ccl(
     logger.info(f"tt_sender_idx: {sender_idx}")
 
     # Commit the priority tensor
-    skip_tensor = get_skip_tensor(tt_reset_priority_tensors, mesh_device)
-    skip_tensor_address = get_buffer_address(skip_tensor)
-
-    for d in tt_priority_tensors.devices():
-        d.set_speculation_state(True, skip_tensor_address)
-        logger.info(f"BEFORE Device {d.id()} speculation state: {d.get_speculation_state()}")
-
-    # breakpoint()
-    print(f"BEFORE: {tt_priority_tensors}")
+    if model_ops:
+        eset_skip_tensor = commit_priority_tensor(tt_reset_priority_tensors, mesh_device)
 
     if causal:
         if cur_pos_tensor:
@@ -139,19 +137,13 @@ def get_speculative_flash_decode_tt_ccl(
         raise NotImplementedError("Non-causal not implemented")
 
     tt_back_gt_md, tt_back_spec_md, tt_back_spec_lp_distance_md, tt_back_lp_norm_x_md = outputs
-    print(f"AFTER: {tt_priority_tensors}")
 
-    # Commit the priority tensor
-    skip_tensor = get_skip_tensor(tt_priority_tensors, mesh_device)
-    skip_tensor_address = get_buffer_address(skip_tensor)
+    if model_ops:
+        # Commit the priority tensor
+        ops_skip_tensor = commit_priority_tensor(tt_priority_tensors, mesh_device)
 
-    for d in tt_priority_tensors.devices():
-        d.set_speculation_state(True, skip_tensor_address)
-        logger.info(f"Device {d.id()} speculation state: {d.get_speculation_state()}")
-    print(f"AFTER: {skip_tensor}")
-    # time.sleep(5)
-
-    model_out = model_ops()
+        # Run the post-ops
+        model_out = model_ops()
 
     # read multi-device tensors and assign output to the sender device
     tt_back_gt = read_multi_device_tensor(tt_back_gt_md)[sender_idx]
@@ -181,9 +173,7 @@ def get_speculative_flash_decode_tt_ccl(
         tt_back_spec,
         tt_back_spec_lp_distance,
         tt_back_lp_norm_x,
-        skip_tensor,
         tt_priority_tensors,
-        tt_gathered_priority_tensors,
     )
 
 
@@ -335,15 +325,17 @@ def run_speculative_flash_decode_ccl_impl(
             start_indices = (
                 np.linspace(min_start_idx, max_start_idx, b, dtype=np.int32).tolist() if b > 1 else [max_start_idx]
             )
+            # create a random alternating priority tensor [0,1] or [1,0]
+            priority_tensors = (
+                [torch.zeros(1, 1, b, 1), torch.ones(1, 1, b, 1)]
+                if max_start_idx % 2 == 0
+                else [torch.ones(1, 1, b, 1), torch.zeros(1, 1, b, 1)]
+            )
 
             ##########################################
             #### Prepare test config and data
             ##########################################
-            (
-                program_config,
-                padded_layer_len,
-                attn_mask,
-            ) = prepare_test_config_and_data(
+            program_config, padded_layer_len, attn_mask, Q = prepare_test_config_and_data(
                 b, nh, s, d, grid_size, padded_num_heads, k_chunk_size, max_start_idx, start_indices, causal
             )
 
@@ -353,16 +345,6 @@ def run_speculative_flash_decode_ccl_impl(
             Qs = [Q[:, :, :nh] for _ in range(num_devices)]
             q_mem_config = height_sharded_memcfg if sharded_in else dram_memcfg
             tt_Q = create_multi_device_tensors(Qs, mesh_device, q_mem_config, ttnn.TILE_LAYOUT, q_dtype)
-
-            ##########################################
-            #### Priority Tensor ####
-            ##########################################
-            # create a random alternating priority tensor [0,1] or [1,0]
-            priority_tensors = (
-                [torch.zeros(1, 1, b, 1), torch.ones(1, 1, b, 1)]
-                if max_start_idx % 2 == 0
-                else [torch.ones(1, 1, b, 1), torch.zeros(1, 1, b, 1)]
-            )
             gathered_priority_tensors = priority_tensors[
                 ::-1
             ]  # priority tensor value of its pair device, same shape as priority_tensors
@@ -373,14 +355,20 @@ def run_speculative_flash_decode_ccl_impl(
                 gathered_priority_tensors, mesh_device, dram_memcfg, ttnn.ROW_MAJOR_LAYOUT, ttnn.int32
             )
 
-            model_ops = ModelOps(mesh_device, num_devices=num_devices)
-
-            tt_back_gt, tt_back_spec, tt_back_spec_lp_distance, tt_back_lp_norm_x = get_speculative_flash_decode_tt_ccl(
+            (
+                tt_back_gt,
+                tt_back_spec,
+                tt_back_spec_lp_distance,
+                tt_back_lp_norm_x,
+                _,
+            ) = get_speculative_flash_decode_tt_ccl(
                 tt_Q,
                 tt_K,
                 tt_V,
                 tt_priority_tensors,
                 tt_gathered_priority_tensors,
+                None,  # tt_reset_priority_tensors
+                None,  # model_ops
                 sfd_semaphore_handles,
                 mesh_device,
                 sub_device_stall_group,
@@ -669,21 +657,20 @@ def run_speculative_flash_decode_perf(
         ##########################################
         #### Priority Tensor ####
         ##########################################
-        priority_tensors = [torch.ones(1, 1, b, 1), 2 * torch.ones(1, 1, b, 1)]
-        reset_priority_tensor = [3 * torch.ones(1, 1, b, 1), 3 * torch.ones(1, 1, b, 1)]
-
-        model_ops = ModelOps(mesh_device, num_devices=num_devices)
-
+        priority_tensors = [torch.ones(1, 1, b, 1), torch.zeros(1, 1, b, 1)]
+        reset_priority_tensor = [
+            torch.ones(1, 1, b, 1),
+        ] * num_devices
         tt_priority_tensors = create_multi_device_tensors(
             priority_tensors, mesh_device, dram_memcfg, ttnn.ROW_MAJOR_LAYOUT, ttnn.int32
         )
         tt_reset_priority_tensors = create_multi_device_tensors(
             reset_priority_tensor, mesh_device, dram_memcfg, ttnn.ROW_MAJOR_LAYOUT, ttnn.int32
         )
+        model_ops = ModelOps(mesh_device, num_devices=num_devices)
 
         for i in range(5):
-            # Swap
-            # priority tensor value of its pair device, same shape as priority_tensors
+            # Swap. priority tensor value of its pair device, same shape as priority_tensors
             tt_gathered_priority_tensors = create_multi_device_tensors(
                 read_multi_device_tensor(tt_priority_tensors)[::-1],
                 mesh_device,
@@ -693,13 +680,11 @@ def run_speculative_flash_decode_perf(
             )
 
             (
-                tt_back_gt,
-                tt_back_spec,
-                tt_back_spec_lp_distance,
-                tt_back_lp_norm_x,
+                _,
+                _,
+                _,
                 _,
                 tt_priority_tensors,
-                _,
             ) = get_speculative_flash_decode_tt_ccl(
                 tt_Q,
                 tt_K,
@@ -803,7 +788,7 @@ def test_speculative_flash_decode_perf(
     q_dtype,
     cur_pos_tensor,
     k_chunk_size,
-    # use_program_cache,
+    use_program_cache,
     function_level_defaults,
     enable_async,
 ):
