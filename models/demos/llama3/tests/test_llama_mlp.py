@@ -10,10 +10,7 @@ import ttnn
 from models.demos.llama3.tt.llama_mlp import TtLlamaMLP
 from models.demos.llama3.tt.model_config import TtModelArgs
 from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import FeedForward
-from models.utility_functions import (
-    comp_pcc,
-    comp_allclose,
-)
+from models.utility_functions import comp_pcc, comp_allclose, skip_for_parallelism
 from models.utility_functions import skip_for_grayskull
 
 
@@ -22,9 +19,8 @@ from models.utility_functions import skip_for_grayskull
 @pytest.mark.parametrize(
     "mesh_device",
     [
-        {"N150": (1, 1), "N300": (1, 2), "T3K": (2, 4), "TG": (8, 4)}.get(  # T3K was 1.8
-            # os.environ.get("FAKE_DEVICE"), len(ttnn.get_device_ids())
-            "T3K"
+        {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
+            os.environ.get("FAKE_DEVICE"), len(ttnn.get_device_ids())
         )
     ],
     indirect=True,
@@ -42,15 +38,21 @@ from models.utility_functions import skip_for_grayskull
     "batch_dp_tp",
     [
         (1, 1, 8),
-        # (4, 1, 8)
-        # (8, 1, 8), # broken out of L1 memory
-        # (8, 8, 1)
+        (8, 8, 1),
+        (1, 1, 2),
+        (2, 2, 1),
     ],
     # ids=lambda batch_size, data_parallel, tensor_parallel: f"batch_size_{batch_size}_dp_{data_parallel}_tp_{tensor_parallel}_",
     ids=lambda args: "batch_{}_dp_{}_tp_{}".format(*args),
 )
 def test_llama_mlp_inference(seq_len, batch_dp_tp, mesh_device, use_program_cache, reset_seeds, ensure_gc):
     batch_size, data_parallel, tensor_parallel = batch_dp_tp
+
+    skip, reason = skip_for_parallelism(
+        mesh_device.get_num_devices() if mesh_device else 0, batch_size, data_parallel, tensor_parallel
+    )
+    if skip:
+        pytest.skip(reason)
 
     dtype = ttnn.bfloat8_b
     mode = "decode" if seq_len <= 32 else "prefill"
@@ -109,12 +111,14 @@ def test_llama_mlp_inference(seq_len, batch_dp_tp, mesh_device, use_program_cach
         ),  # When both dims are None, the mapper used is `ReplicateTensorToMesh`
         dtype=ttnn.bfloat8_b,
         memory_config=(
-            tt_model.model_config["MLP_ACT_MEMCFG"]
-            if model_args.is_galaxy
-            else model_args.model_config["SHARDED_MLP_INPUT_MEMCFG"]
-        )
-        if mode == "decode"
-        else ttnn.DRAM_MEMORY_CONFIG,
+            (
+                tt_model.model_config["MLP_ACT_MEMCFG"]
+                if model_args.is_galaxy
+                else model_args.model_config["SHARDED_MLP_INPUT_MEMCFG"]
+            )
+            if mode == "decode"
+            else ttnn.DRAM_MEMORY_CONFIG
+        ),
         layout=ttnn.TILE_LAYOUT,
     )
 
