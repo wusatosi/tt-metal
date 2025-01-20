@@ -51,7 +51,7 @@ class LMHead(LightweightModule):
             if args.is_70b:
                 padded_lm_head = torch.nn.functional.pad(
                     padded_lm_head,
-                    (0, (512 * 8), 0, (12288 - 8192)),  # for 48 cores, we need 16k + 512 per device
+                    (0, (2048 * 8), 0, (12288 - 8192)),  # for 48 cores, we need 16k + 512 per device
                     "constant",
                     0,
                 )
@@ -66,7 +66,18 @@ class LMHead(LightweightModule):
                 )
             self.output_weights.append(  # (2k, 16k) 128* 1024
                 ttnn.as_tensor(
-                    padded_lm_head,
+                    padded_lm_head[:, :, :, : (self.padded_vocab_size + 2048 * 8) // 2],
+                    device=mesh_device,
+                    mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device, dims=(3, 2), mesh_shape=args.cluster_shape),
+                    layout=ttnn.TILE_LAYOUT,
+                    dtype=ttnn.bfloat4_b,
+                    memory_config=memory_config,
+                    # cache_file_name=cache_file_name,
+                )
+            )
+            self.output_weights.append(  # (2k, 16k) 128* 1024
+                ttnn.as_tensor(
+                    padded_lm_head[:, :, :, (self.padded_vocab_size + 2048 * 8) // 2 :],
                     device=mesh_device,
                     mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device, dims=(3, 2), mesh_shape=args.cluster_shape),
                     layout=ttnn.TILE_LAYOUT,
@@ -127,7 +138,7 @@ class LMHead(LightweightModule):
             #     )
             # ]
 
-            self.program_configs = [args.model_config["LM_HEAD_TG_RING_PROGCFG"]]
+            self.program_configs = [args.model_config["LM_HEAD_TG_RING_PROGCFG"]] * 2
 
             if args.is_70b:
                 self.output_memory_config = args.model_config["LM_HEAD_OUT_RING_MEMCFG"]
@@ -177,7 +188,7 @@ class LMHead(LightweightModule):
 
     def forward(self, x: ttnn.Tensor):
         # workaround for OOM issue
-        return self.forward_on_host(x)
+        # return self.forward_on_host(x)
 
         outputs = []
         for weight, pc in zip(self.output_weights, self.program_configs):
@@ -190,10 +201,12 @@ class LMHead(LightweightModule):
                 memory_config=self.output_memory_config,
                 dtype=ttnn.bfloat8_b,
             )
-            # outputs.append(ttnn.sharded_to_interleaved(output, memory_config=ttnn.L1_MEMORY_CONFIG))
+            outputs.append(ttnn.sharded_to_interleaved(output, memory_config=ttnn.L1_MEMORY_CONFIG))
+            weight_l1.deallocate(True)
+            output.deallocate(True)
 
         # # Concatenate the outputs
-        # output = ttnn.concat(outputs, dim=-1, memory_config=ttnn.L1_MEMORY_CONFIG)
+        # output = ttnn.concat(outputs, dim=-1) #, memory_config=ttnn.L1_MEMORY_CONFIG)
 
         # output = tt_all_reduce(
         #     output,
@@ -208,10 +221,15 @@ class LMHead(LightweightModule):
         #     use_composite=True,
         # )
 
-        output_torch = ttnn.to_torch(
-            output,
-            mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(3, 0), mesh_shape=(8, 4)),
-        )
+        output_torch = [
+            ttnn.to_torch(
+                output,
+                mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(3, 0), mesh_shape=(8, 4)),
+            )
+            for output in outputs
+        ]
+
+        output_torch = torch.cat(output_torch, dim=-1)
         # Remove padding
         output_torch = output_torch[:, :, :, : self.vocab_size]
 

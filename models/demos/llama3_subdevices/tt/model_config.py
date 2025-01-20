@@ -738,7 +738,7 @@ class TtModelArgs:
             )
 
             LM_HEAD_RING_SIZE = 48
-            self.lm_head_shape = (12288 // 4, 128 * 1024 // 8 + 512)
+            self.lm_head_shape = (12288 // 4, 128 * 1024 // 8 + 2048)
             lm_head_ring_core_range_set = ttnn.num_cores_to_corerangeset_in_subcoregrids(
                 self.start_core, LM_HEAD_RING_SIZE, self.sub_core_grids, row_wise=True
             )
@@ -750,14 +750,14 @@ class TtModelArgs:
                 use_height_and_width_as_shard_shape=True,
             )
             self.model_config["LM_HEAD_RING_MEMCFG"] = ttnn.create_sharded_memory_config(
-                shape=(self.lm_head_shape[0], self.lm_head_shape[1] // LM_HEAD_RING_SIZE),
+                shape=(self.lm_head_shape[0], self.lm_head_shape[1] // 2 // LM_HEAD_RING_SIZE),
                 core_grid=lm_head_ring_core_range_set,
                 strategy=ttnn.ShardStrategy.WIDTH,
                 orientation=ttnn.ShardOrientation.ROW_MAJOR,
                 use_height_and_width_as_shard_shape=True,
             )
             self.model_config["LM_HEAD_OUT_RING_MEMCFG"] = ttnn.create_sharded_memory_config(
-                shape=(32, self.lm_head_shape[1] // LM_HEAD_RING_SIZE),
+                shape=(32, self.lm_head_shape[1] // 2 // LM_HEAD_RING_SIZE),
                 core_grid=lm_head_ring_core_range_set,
                 strategy=ttnn.ShardStrategy.WIDTH,
                 orientation=ttnn.ShardOrientation.ROW_MAJOR,
@@ -767,7 +767,7 @@ class TtModelArgs:
                 1,
                 32,
                 self.lm_head_shape[0],
-                self.lm_head_shape[1],
+                self.lm_head_shape[1] // 2,
                 LM_HEAD_RING_SIZE,
                 prefetch=False,
             )
