@@ -1639,7 +1639,8 @@ operation::ProgramWithCallbacks layernorm_multi_core_sharded(
         // need to pass in storage core grid anyway, take from there
         uint32_t num_storage_cores = all_storage_cores.num_cores();
 
-        write_back_writer_args.push_back(current_storage_core_offset);
+        write_back_writer_args.push_back(
+            current_storage_core_offset * out_single_tile_size);  // storage_core_start_offset
 
         uint32_t current_worker_num_segments_to_write_back = 0;
         uint32_t worker_core_current_offset = 0;

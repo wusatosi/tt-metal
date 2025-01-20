@@ -299,10 +299,10 @@ void MAIN {
         }
         cb_push_back(cb_outgamma, num_tiles_per_block);
         cb_pop_front(cb_im, num_tiles_per_block);
-        cb_wait_front(cb_outgamma, num_tiles_per_block);
     }
 
     if constexpr (do_beta) {
+        cb_wait_front(cb_outgamma, num_tiles_per_block);
         reconfig_data_format(cb_fusion, cb_beta);
         pack_reconfig_data_format(cb_out);
         add_bcast_rows_init_short();
@@ -329,7 +329,6 @@ void MAIN {
         }
         cb_push_back(cb_out, num_tiles_per_block);
         cb_pop_front(cb_fusion, num_tiles_per_block);
-        cb_wait_front(cb_out, num_tiles_per_block);
     }
 }
 

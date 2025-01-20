@@ -97,11 +97,13 @@ void LayerNorm::validate(
     }
     if (a.is_sharded()) {
         // TODO: Add support for this (should be similar to interleaved)
-        TT_FATAL(a.memory_config().memory_layout != TensorMemoryLayout::HEIGHT_SHARDED, "Error");
+        TT_FATAL(
+            a.memory_config().memory_layout != TensorMemoryLayout::HEIGHT_SHARDED,
+            "Hight sharded inputs are not supported.");
         TT_FATAL(
             this->output_mem_config.is_sharded() &&
                 this->output_mem_config.memory_layout != TensorMemoryLayout::HEIGHT_SHARDED,
-            "Error");
+            "Sharded inputs require sharded outputs.");
     }
     if (this->distributed_norm_stage == DistributedLayerNormStage::PRE_ALL_GATHER ||
         this->distributed_norm_stage == DistributedLayerNormStage::POST_ALL_GATHER) {
@@ -198,6 +200,17 @@ void LayerNorm::validate(
                 if (this->distributed_norm_stage == DistributedLayerNormStage::POST_ALL_GATHER) {
                     const auto stats_shard_spec = stats.value().shard_spec().value();
                     TT_FATAL(stats_shard_spec.num_cores() == 1, "Stats must be sharded with num_cores = 1");
+
+                    if (this->output_mem_config.shard_spec.has_value()) {
+                        const auto output_shard_spec = this->output_mem_config.shard_spec.value();
+                        TT_FATAL(
+                            output_shard_spec.num_cores() * output_shard_spec.shape[1] >=
+                                shard_spec.num_cores() * shard_spec.shape[1],
+                            "Output shard spec must be >= input shard spec.");
+                        TT_FATAL(
+                            output_shard_spec.shape[0] == shard_spec.shape[0],
+                            "Output shard spec must have the same height as input shard spec.");
+                    }
                 }
             }
         },
