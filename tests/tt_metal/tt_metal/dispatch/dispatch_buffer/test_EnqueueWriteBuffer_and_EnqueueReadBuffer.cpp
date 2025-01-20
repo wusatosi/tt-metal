@@ -933,7 +933,7 @@ TEST_F(CommandQueueSingleCardBufferFixture, TestReadWriteShardedSubBuffer) {
             {tt::constants::TILE_HEIGHT, tt::constants::TILE_WIDTH},  // needs to be multiple of page shape
             ShardOrientation::ROW_MAJOR,
             {tt::constants::TILE_HEIGHT / 2, tt::constants::TILE_WIDTH},
-            {(uint32_t)2, 1});  // <= num host pages, needs to be multiple of (shard shape / page shape); (2, 2) or (4,
+            {(uint32_t)2, 2});  // <= num host pages, needs to be multiple of (shard shape / page shape); (2, 2) or (4,
                                 // 1) are the only legit
         // auto buffer = CreateBuffer(ShardedBufferConfig{
         //     .device = device,
@@ -942,13 +942,13 @@ TEST_F(CommandQueueSingleCardBufferFixture, TestReadWriteShardedSubBuffer) {
         //     .buffer_layout = TensorMemoryLayout::BLOCK_SHARDED,
         //     .shard_parameters = shard_spec});
         auto buffer = Buffer::create(device, 1024, 256, BufferType::L1, TensorMemoryLayout::BLOCK_SHARDED, shard_spec);
-        auto src = local_test_functions::generate_arange_vector(buffer_region_size);
-        EnqueueWriteBuffer(device->command_queue(), *buffer, zeroes, true);
-        const BufferRegion region(256, buffer_region_size);
-        EnqueueWriteSubBuffer(device->command_queue(), *buffer, src, region, false);
+        auto src = local_test_functions::generate_arange_vector(1024);
+        EnqueueWriteBuffer(device->command_queue(), *buffer, src, true);
+        const BufferRegion region(512, buffer_region_size);
+        // EnqueueWriteSubBuffer(device->command_queue(), *buffer, src, region, false);
         vector<uint32_t> result;
-        EnqueueReadBuffer(device->command_queue(), *buffer, result, true);
-        // EnqueueReadSubBuffer(device->command_queue(), *buffer, result, region, true);
+        // EnqueueReadBuffer(device->command_queue(), *buffer, result, true);
+        EnqueueReadSubBuffer(device->command_queue(), *buffer, result, region, true);
         EXPECT_EQ(src, result);
     }
 }

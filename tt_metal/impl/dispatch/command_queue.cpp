@@ -1009,40 +1009,76 @@ void HWCommandQueue::enqueue_read_buffer(
         uint32_t max_pages_per_shard = buffer.shard_spec().size();
         uint32_t total_num_pages_skipped = 0;
         for (uint32_t core_id = 0; core_id < buffer.num_cores(); ++core_id) {
+            uint32_t bank_base_address = buffer.address();
             uint32_t num_pages_to_read;
+            uint32_t host_page = 0;
             if (width_split) {
                 num_pages_to_read =
                     buffer_page_mapping->core_shard_shape_[core_id][0] * buffer.shard_spec().shape_in_pages()[1];
+                if (num_pages_to_read == 0) {
+                    continue;
+                }
+                const std::vector<uint32_t> core_host_pages = buffer_page_mapping->core_host_page_indices_[core_id];
+                TT_ASSERT(std::is_sorted(core_host_pages.begin(), core_host_pages.end()));
+                TT_ASSERT(num_pages_to_read % core_host_pages.size() == 0);
+                const uint32_t num_dev_pages_per_host_page = num_pages_to_read / core_host_pages.size();
+                bool all_core_host_pages_outside_of_region = true;
+                host_page = core_host_pages.back();
+                uint32_t starting_host_page_index = core_host_pages.size() - 1;
+                for (int32_t i = core_host_pages.size() - 1; i >= 0; i--) {
+                    if (core_host_pages[i] >= orig_src_page_index &&
+                        core_host_pages[i] < orig_src_page_index + num_total_pages) {
+                        all_core_host_pages_outside_of_region = false;
+                        host_page = core_host_pages[i];
+                        starting_host_page_index = i;
+                    } else {
+                        num_pages_to_read -= num_dev_pages_per_host_page;
+                    }
+                }
+                if (all_core_host_pages_outside_of_region) {
+                    continue;
+                }
+                // curr_page_idx_in_shard = starting_host_page_index * num_dev_pages_per_host_page;
+                // bank_base_address += starting_host_page_index * num_dev_pages_per_host_page * buffer.page_size();
+                src_page_index = buffer_page_mapping->host_page_to_dev_page_mapping_[host_page];
             } else {
                 num_pages_to_read = std::min(num_total_pages, max_pages_per_shard);
                 num_total_pages -= num_pages_to_read;
-            }
-            if (total_num_pages_skipped + max_pages_per_shard <= orig_src_page_index) {
-                total_num_pages_skipped += max_pages_per_shard;
-                if (!width_split) {
-                    num_total_pages += num_pages_to_read;
+
+                if (total_num_pages_skipped + max_pages_per_shard <= orig_src_page_index) {
+                    total_num_pages_skipped += max_pages_per_shard;
+                    if (!width_split) {
+                        num_total_pages += num_pages_to_read;
+                    }
+                    num_pages_to_read = 0;
+                } else if (core_id == orig_src_page_index / max_pages_per_shard) {
+                    total_num_pages_skipped += (orig_src_page_index - total_num_pages_skipped);
+                    const uint32_t orig_num_pages_to_read = num_pages_to_read;
+                    num_pages_to_read = ((core_id + 1) * max_pages_per_shard) - total_num_pages_skipped;
+                    if (!width_split) {
+                        num_total_pages += orig_num_pages_to_read;
+                        num_total_pages -= num_pages_to_read;
+                    }
+                    bank_base_address += total_num_pages_skipped * buffer.page_size();
+                } else if (core_id > orig_src_page_index / max_pages_per_shard && num_pages_to_read > 0) {
+                    const uint32_t orig_num_pages_to_read = num_pages_to_read;
+                    num_pages_to_read = std::min(num_pages_to_read, max_pages_per_shard);
+                    if (!width_split) {
+                        num_total_pages += orig_num_pages_to_read;
+                        num_total_pages -= num_pages_to_read;
+                    }
                 }
-                num_pages_to_read = 0;
             }
-            else if (core_id == orig_src_page_index / max_pages_per_shard) {
-                total_num_pages_skipped += (orig_src_page_index - total_num_pages_skipped);
-                const uint32_t orig_num_pages_to_read = num_pages_to_read;
-                num_pages_to_read = ((core_id + 1) * max_pages_per_shard) - total_num_pages_skipped;
-                if (!width_split) {
-                    num_total_pages += orig_num_pages_to_read;
-                    num_total_pages -= num_pages_to_read;
-                }
-            }
-            uint32_t bank_base_address = buffer.address();
+
             if (buffer.is_dram()) {
                 bank_base_address += buffer.device()->bank_offset(
                     BufferType::DRAM, buffer.device()->dram_channel_from_logical_core(cores[core_id]));
             }
             if (num_pages_to_read > 0) {
                 if (width_split) {
-                    uint32_t host_page = buffer_page_mapping->core_host_page_indices_[core_id][0];
-                    src_page_index = buffer_page_mapping->host_page_to_dev_page_mapping_[host_page];
-                    unpadded_dst_offset = host_page * buffer.page_size();
+                    // uint32_t host_page = buffer_page_mapping->core_host_page_indices_[core_id][0];
+                    // src_page_index = buffer_page_mapping->host_page_to_dev_page_mapping_[host_page];
+                    unpadded_dst_offset = (host_page - orig_src_page_index) * buffer.page_size();
                 } else {
                     unpadded_dst_offset = (src_page_index - orig_src_page_index) * buffer.page_size();
                 }
