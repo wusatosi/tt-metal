@@ -150,6 +150,10 @@ public:
     const std::set<CoreCoord>& storage_only_cores() const override;
     uint32_t get_noc_unicast_encoding(uint8_t noc_index, const CoreCoord& core) const override;
     uint32_t get_noc_multicast_encoding(uint8_t noc_index, const CoreRange& cores) const override;
+
+    inline void reinit_build_cache(const std::string& output_dir) override {
+        this->reference_device()->reinit_build_cache(output_dir);
+    }
     const JitBuildEnv& build_env() const override;
     const string build_firmware_target_path(uint32_t programmable_core, uint32_t processor_class, int i) const override;
     const string build_kernel_target_path(uint32_t programmable_core, uint32_t processor_class, int i, const string& kernel_name) const override;

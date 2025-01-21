@@ -48,6 +48,13 @@ void check_built_dir(const std::filesystem::path& dir_path, const std::filesyste
     }
 }
 
+void JitBuildEnv::reinit(const std::string& out_root, const uint32_t build_key) {
+    // Paths
+    this->out_root_ = out_root;
+
+    this->out_firmware_root_ = this->out_root_ + to_string(build_key) + "/firmware/";
+    this->out_kernel_root_ = this->out_root_ + to_string(build_key) + "/kernels/";
+}
 void JitBuildEnv::init(
     uint32_t build_key, tt::ARCH arch, const std::map<std::string, std::string>& device_kernel_defines) {
     // Paths

@@ -45,6 +45,7 @@ class JitBuildEnv {
 public:
     JitBuildEnv();
     void init(uint32_t build_key, tt::ARCH arch, const std::map<std::string, std::string>& device_kernel_defines);
+    void reinit(const std::string& out_root, const uint32_t build_key);
 
     tt::ARCH get_arch() const { return arch_; }
     const string& get_root_path() const { return root_; }

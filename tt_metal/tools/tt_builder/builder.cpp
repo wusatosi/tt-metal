@@ -7,6 +7,7 @@
 #include <hal.hpp>
 #include "tt_metal/impl/dispatch/topology.hpp"
 #include "tt_metal/tools/tt_builder/builder.hpp"
+#include "tt_metal/llrt/tt_elffile.hpp"
 #include <magic_enum/magic_enum.hpp>
 
 using namespace tt;
@@ -123,6 +124,7 @@ void BuilderTool::build_firmware() {
     string log_file = firmware_output_dir_.string() + "build_output.log";
     for (auto& build_state : firmware_build_states) {
         const string& target_name = build_state->get_target_name();
+        const std::filesystem::path target_dir = firmware_output_dir_.string() + target_name + "/";
         const string& build_cflags = build_state->get_cflags();
         const string& build_defines = build_state->get_defines();
         const string& build_includes = build_state->get_includes();
@@ -131,9 +133,10 @@ void BuilderTool::build_firmware() {
         const auto& build_objs = build_state->get_objs();
         const string& build_link_objs = build_state->get_link_objs();
 
+        fs::create_directories(target_dir);
         // Compiling
         string cmd;
-        cmd = "cd " + firmware_output_dir_.string() + " && ";
+        cmd = "cd " + target_dir.string() + " && ";
         cmd += gpp_tool;
         cmd += build_cflags;
         cmd += build_defines;
@@ -146,14 +149,26 @@ void BuilderTool::build_firmware() {
         }
 
         // Linking
-        cmd = "cd " + firmware_output_dir_.string() + " && ";
+        cmd = "cd " + target_dir.string() + " && ";
         cmd += gpp_tool;
         cmd += build_lflags;
         cmd += build_link_objs;
 
-        cmd += "-o " + firmware_output_dir_.string() + target_name + ".elf";
+        cmd += "-o " + target_dir.string() + target_name + ".elf";
         if (!tt::utils::run_command(cmd, log_file, false)) {
             throw(runtime_error("Build failed at link"));
+        }
+
+        // Weaken
+        {
+            std::string pathname_in = target_dir.string() + target_name + ".elf";
+            std::string pathname_out = target_dir.string() + target_name + "_weakened.elf";
+
+            ll_api::ElfFile elf;
+            elf.ReadImage(pathname_in);
+            static const std::string_view strong_names[] = {"__fw_export_*", "__global_pointer$"};
+            elf.WeakenDataSymbols(strong_names);
+            elf.WriteImage(pathname_out);
         }
     }
 
@@ -162,6 +177,7 @@ void BuilderTool::build_firmware() {
 
 void BuilderTool::build_dispatch() {
     tt_metal::IDevice* device = tt_metal::CreateDevice(device_id);
+    device->reinit_build_cache(this->output_dir_);
     device->init_command_queue_host();
     populate_fd_kernels({device_id}, num_hw_cqs);
     create_and_compile_cq_program(device);
