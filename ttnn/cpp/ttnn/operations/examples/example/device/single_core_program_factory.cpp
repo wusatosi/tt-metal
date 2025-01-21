@@ -46,14 +46,14 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
         block_size);
 
     uint32_t src0_cb_index = tt::CBIndex::c_0;
-    uint32_t num_input_tiles = 2 * block_size;
+    uint32_t num_input_tiles = block_size;
     tt::tt_metal::CircularBufferConfig cb_src0_config =
         tt::tt_metal::CircularBufferConfig(num_input_tiles * single_tile_size, {{src0_cb_index, cb_data_format}})
             .set_page_size(src0_cb_index, single_tile_size);
     auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_src0_config);
 
-    uint32_t output_cb_index = tt::CBIndex::c_2;
-    uint32_t num_output_tiles = 2 * block_size;
+    uint32_t output_cb_index = tt::CBIndex::c_1;
+    uint32_t num_output_tiles = block_size;
     tt::tt_metal::CircularBufferConfig cb_output_config =
         tt::tt_metal::CircularBufferConfig(
             num_output_tiles * single_tile_size_output, {{output_cb_index, cb_data_format_output}})
@@ -90,8 +90,10 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
         core_group_1,
         tt::tt_metal::ComputeConfig{
             .math_fidelity = MathFidelity::HiFi4,
+            .fp32_dest_acc_en = true,
             .math_approx_mode = math_approx_mode,
-            .compile_args = compute_kernel_args_group_1});
+            // .compile_args = compute_kernel_args_group_1
+            .compile_args = {}});
 
     if (!core_group_2.ranges().empty()) {
         std::vector<uint32_t> compute_kernel_args_group_2 = {
@@ -105,8 +107,11 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
             core_group_2,
             tt::tt_metal::ComputeConfig{
                 .math_fidelity = MathFidelity::HiFi4,
+                .fp32_dest_acc_en = true,
                 .math_approx_mode = math_approx_mode,
-                .compile_args = compute_kernel_args_group_2});
+                .compile_args = {}
+                // .compile_args = compute_kernel_args_group_2
+            });
     }
 
     for (uint32_t i = 0, num_tiles_written = 0; i < num_cores; i++) {
@@ -120,11 +125,11 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
             TT_ASSERT(false, "Core not in specified core ranges");
         }
 
-        tt::tt_metal::SetRuntimeArgs(
-            program, unary_reader_kernel_id, core, {src_buffer->address(), num_tiles_per_core, num_tiles_written});
+        // tt::tt_metal::SetRuntimeArgs(
+        //     program, unary_reader_kernel_id, core, {src_buffer->address(), num_tiles_per_core, num_tiles_written});
 
-        tt::tt_metal::SetRuntimeArgs(
-            program, unary_writer_kernel_id, core, {dst_buffer->address(), num_tiles_per_core, num_tiles_written});
+        // tt::tt_metal::SetRuntimeArgs(
+        //     program, unary_writer_kernel_id, core, {dst_buffer->address(), num_tiles_per_core, num_tiles_written});
         num_tiles_written += num_tiles_per_core;
     }
 
@@ -149,13 +154,13 @@ void ExampleDeviceOperation::SingleCore::override_runtime_arguments(
     auto dst_buffer = output_tensor.buffer();
 
     {
-        auto& runtime_args = tt::tt_metal::GetRuntimeArgs(program, unary_reader_kernel_id, CoreCoord{0, 0});
-        runtime_args[0] = src_buffer->address();
+        // auto& runtime_args = tt::tt_metal::GetRuntimeArgs(program, unary_reader_kernel_id, CoreCoord{0, 0});
+        // runtime_args[0] = src_buffer->address();
     }
 
     {
-        auto& runtime_args = tt::tt_metal::GetRuntimeArgs(program, unary_writer_kernel_id, CoreCoord{0, 0});
-        runtime_args[0] = dst_buffer->address();
+        // auto& runtime_args = tt::tt_metal::GetRuntimeArgs(program, unary_writer_kernel_id, CoreCoord{0, 0});
+        // runtime_args[0] = dst_buffer->address();
     }
 }
 

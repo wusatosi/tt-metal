@@ -3,31 +3,40 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <cstdint>
-#include "compute_kernel_api/common.h"
 #include "compute_kernel_api/tile_move_copy.h"
 #include "compute_kernel_api/eltwise_unary/eltwise_unary.h"
-#include "compute_kernel_api/eltwise_unary/sfpu_split_includes.h"
 
 namespace NAMESPACE {
 void MAIN {
-    uint32_t per_core_block_cnt = get_compile_time_arg_val(0);
-    uint32_t per_core_block_dim = get_compile_time_arg_val(1);
+    uint32_t num_tiles = 256;
+    uint32_t start_id = 0;
 
-    init_sfpu(tt::CBIndex::c_0, tt::CBIndex::c_2);
-    for (uint32_t block_index = 0; block_index < per_core_block_cnt; block_index++) {
-        cb_reserve_back(tt::CBIndex::c_2, per_core_block_dim);
-        for (uint32_t tile_index = 0; tile_index < per_core_block_dim; ++tile_index) {
+    constexpr uint32_t cb_in0 = 0;
+    constexpr uint32_t block_size = 256;
+
+    init_sfpu(tt::CBIndex::c_0, tt::CBIndex::c_1);
+
+    uint32_t end_id = start_id + num_tiles;
+    for (uint32_t i = start_id; i < end_id; i += block_size) {
+        cb_reserve_back(tt::CBIndex::c_1, block_size);
+        cb_wait_front(tt::CBIndex::c_0, block_size);
+
+        for (uint32_t tile_index = 0; tile_index < block_size; ++tile_index) {
             tile_regs_acquire();
-            cb_wait_front(tt::CBIndex::c_0, 1);
-            copy_tile(tt::CBIndex::c_0, 0, 0);
+            // reconfig_data_format_srca<true>(tt::CBIndex::c_0);
+            reconfig_data_format_srca<true>(tt::CBIndex::c_0, tt::CBIndex::c_0);
+            copy_tile(tt::CBIndex::c_0, tile_index, 0);
             tile_regs_commit();
 
             tile_regs_wait();
-            pack_tile(0, tt::CBIndex::c_2);
-            cb_pop_front(tt::CBIndex::c_0, 1);
+            // pack_reconfig_data_format(tt::CBIndex::c_1);
+            pack_reconfig_data_format(tt::CBIndex::c_1, tt::CBIndex::c_1);
+            pack_tile(0, tt::CBIndex::c_1);
             tile_regs_release();
         }
-        cb_push_back(tt::CBIndex::c_2, per_core_block_dim);
+
+        cb_pop_front(tt::CBIndex::c_0, block_size);
+        cb_push_back(tt::CBIndex::c_1, block_size);
     }
 }
 }  // namespace NAMESPACE
