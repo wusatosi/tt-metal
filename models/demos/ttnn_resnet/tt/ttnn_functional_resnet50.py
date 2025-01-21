@@ -402,6 +402,10 @@ class resnet50Bottleneck:
             return_weights_and_bias=True,
         )
 
+        if layer_module and layer_module == "layer3_module5":
+            logger.warning(f"Returning early...")
+            return out, input_height, input_width
+
         if not run_downsample_before_conv2:
             ds_out = self.run_downsample_if_req(
                 x,
@@ -826,8 +830,8 @@ class resnet50:
 
         layer2_module1_input_shape = ttnn.Shape(x.shape.with_tile_padding())
 
-        reshard = False
-        height_shard = False
+        reshard = True
+        height_shard = True
 
         ## 98
         core_range_set = ttnn.CoreRangeSet(
@@ -852,19 +856,6 @@ class resnet50:
         #         ttnn.CoreRange(
         #             ttnn.CoreCoord(0, 8),
         #             ttnn.CoreCoord(7, 8),
-        #         ),
-        #     }
-        # )
-        ## 128
-        # core_range_set = ttnn.CoreRangeSet(
-        #     {
-        #         ttnn.CoreRange(
-        #             ttnn.CoreCoord(0, 0),
-        #             ttnn.CoreCoord(12, 8),
-        #         ),
-        #         ttnn.CoreRange(
-        #             ttnn.CoreCoord(0, 9),
-        #             ttnn.CoreCoord(10, 9),
         #         ),
         #     }
         # )
@@ -915,6 +906,7 @@ class resnet50:
             enable_act_double_buffer=True,
             enable_split_reader=False,
             enable_subblock_padding=False,
+            # layer_module="layer2_module2",
         )
 
         logger.debug(f"==== Running layer 2 module 3")
@@ -1071,192 +1063,193 @@ class resnet50:
             enable_act_double_buffer=True,
             enable_split_reader=False,
             enable_subblock_padding=False,
+            # layer_module="layer3_module5",
         )
 
-        logger.debug(f"==== Running layer 3 module 6")
-        x, x_height, x_width = self.layer3_module6(
-            x,
-            device,
-            self.batch_size,
-            x_height,
-            x_width,
-            conv_op_cache,
-            eltwise_binary_out_in_place=True,
-            transpose_shards=self.transpose_shards,
-            enable_act_double_buffer=True,
-            enable_split_reader=False,
-            enable_subblock_padding=False,
-        )
+        # logger.debug(f"==== Running layer 3 module 6")
+        # x, x_height, x_width = self.layer3_module6(
+        #     x,
+        #     device,
+        #     self.batch_size,
+        #     x_height,
+        #     x_width,
+        #     conv_op_cache,
+        #     eltwise_binary_out_in_place=True,
+        #     transpose_shards=self.transpose_shards,
+        #     enable_act_double_buffer=True,
+        #     enable_split_reader=False,
+        #     enable_subblock_padding=False,
+        # )
 
-        xshape = x.shape
-        # x = ttnn.slice(x, starts=(0, 0, 0, 0), ends=(xshape[0], xshape[1], xshape[2], xshape[3]), steps=(1, 1, 1, 1))
+        # xshape = x.shape
+        # # x = ttnn.slice(x, starts=(0, 0, 0, 0), ends=(xshape[0], xshape[1], xshape[2], xshape[3]), steps=(1, 1, 1, 1))
 
-        reshard = False
-        height_shard = False
-        # if is_first_run:
-        #     reshard = True
+        # reshard = False
+        # height_shard = False
+        # # if is_first_run:
+        # #     reshard = True
 
-        ## 104
-        grid_size = (13, 8)
-        core_range_set = ttnn.CoreRangeSet(
-            {
-                ttnn.CoreRange(
-                    ttnn.CoreCoord(0, 0),
-                    ttnn.CoreCoord(grid_size[0] - 1, grid_size[1] - 1),
-                ),
-            }
-        )
-        layer4_module1_input_shape = ttnn.Shape(x.shape.with_tile_padding())
-        mem_config = ttnn.create_sharded_memory_config_(
-            layer4_module1_input_shape,
-            core_range_set,
-            ttnn.TensorMemoryLayout.BLOCK_SHARDED,
-            ttnn.ShardOrientation.COL_MAJOR,
-            tile_layout=True,
-        )
-        x = ttnn.to_memory_config(x, mem_config)
+        # # 104
+        # grid_size = (13, 8)
+        # core_range_set = ttnn.CoreRangeSet(
+        #     {
+        #         ttnn.CoreRange(
+        #             ttnn.CoreCoord(0, 0),
+        #             ttnn.CoreCoord(grid_size[0] - 1, grid_size[1] - 1),
+        #         ),
+        #     }
+        # )
+        # layer4_module1_input_shape = ttnn.Shape(x.shape.with_tile_padding())
+        # mem_config = ttnn.create_sharded_memory_config_(
+        #     layer4_module1_input_shape,
+        #     core_range_set,
+        #     ttnn.TensorMemoryLayout.BLOCK_SHARDED,
+        #     ttnn.ShardOrientation.COL_MAJOR,
+        #     tile_layout=True,
+        # )
+        # x = ttnn.to_memory_config(x, mem_config)
 
-        logger.debug(f"==== Running layer 4 module 1")
-        x, x_height, x_width = self.layer4_module1(
-            x,
-            device,
-            self.batch_size,
-            x_height,
-            x_width,
-            conv_op_cache,
-            reshard_if_not_optimal=reshard,
-            height_sharding=height_shard,
-            transpose_shards=self.transpose_shards,
-            enable_act_double_buffer=True,
-            enable_split_reader=False,
-            enable_subblock_padding=False,
-            ops_parallel_config=ops_parallel_config,
-            layer_module="layer4_module1",
-        )
+        # logger.debug(f"==== Running layer 4 module 1")
+        # x, x_height, x_width = self.layer4_module1(
+        #     x,
+        #     device,
+        #     self.batch_size,
+        #     x_height,
+        #     x_width,
+        #     conv_op_cache,
+        #     reshard_if_not_optimal=reshard,
+        #     height_sharding=height_shard,
+        #     transpose_shards=self.transpose_shards,
+        #     enable_act_double_buffer=True,
+        #     enable_split_reader=False,
+        #     enable_subblock_padding=False,
+        #     ops_parallel_config=ops_parallel_config,
+        #     layer_module="layer4_module1",
+        # )
 
-        logger.debug(f"==== Running layer 4 module 2")
-        x, x_height, x_width = self.layer4_module2(
-            x,
-            device,
-            self.batch_size,
-            x_height,
-            x_width,
-            conv_op_cache,
-            transpose_shards=self.transpose_shards,
-            enable_act_double_buffer=True,
-            enable_split_reader=False,
-            enable_subblock_padding=False,
-        )
+        # logger.debug(f"==== Running layer 4 module 2")
+        # x, x_height, x_width = self.layer4_module2(
+        #     x,
+        #     device,
+        #     self.batch_size,
+        #     x_height,
+        #     x_width,
+        #     conv_op_cache,
+        #     transpose_shards=self.transpose_shards,
+        #     enable_act_double_buffer=True,
+        #     enable_split_reader=False,
+        #     enable_subblock_padding=False,
+        # )
 
-        logger.debug(f"==== Running layer 4 module 3")
-        x, x_height, x_width = self.layer4_module3(
-            x,
-            device,
-            self.batch_size,
-            x_height,
-            x_width,
-            conv_op_cache,
-            transpose_shards=self.transpose_shards,
-            enable_act_double_buffer=True,
-            enable_split_reader=False,
-            enable_subblock_padding=False,
-        )
+        # logger.debug(f"==== Running layer 4 module 3")
+        # x, x_height, x_width = self.layer4_module3(
+        #     x,
+        #     device,
+        #     self.batch_size,
+        #     x_height,
+        #     x_width,
+        #     conv_op_cache,
+        #     transpose_shards=self.transpose_shards,
+        #     enable_act_double_buffer=True,
+        #     enable_split_reader=False,
+        #     enable_subblock_padding=False,
+        # )
 
-        grid_size = (8, 4)
-        shard_grid = ttnn.CoreRangeSet(
-            {
-                ttnn.CoreRange(
-                    ttnn.CoreCoord(0, 0),
-                    ttnn.CoreCoord(grid_size[0] - 1, grid_size[1] - 1),
-                )
-            }
-        )
-        shard_shape = [
-            x.volume() // x.shape.with_tile_padding()[-1],
-            x.shape.with_tile_padding()[-1] // (grid_size[0] * grid_size[1]),
-        ]
-        shard_spec = ttnn.ShardSpec(shard_grid, shard_shape, ttnn.ShardOrientation.ROW_MAJOR)
-        width_sharded_mem_config = ttnn.MemoryConfig(
-            ttnn.TensorMemoryLayout.WIDTH_SHARDED, ttnn.BufferType.L1, shard_spec
-        )
-        x = ttnn.to_memory_config(x, width_sharded_mem_config)
+        # grid_size = (8, 4)
+        # shard_grid = ttnn.CoreRangeSet(
+        #     {
+        #         ttnn.CoreRange(
+        #             ttnn.CoreCoord(0, 0),
+        #             ttnn.CoreCoord(grid_size[0] - 1, grid_size[1] - 1),
+        #         )
+        #     }
+        # )
+        # shard_shape = [
+        #     x.volume() // x.shape.with_tile_padding()[-1],
+        #     x.shape.with_tile_padding()[-1] // (grid_size[0] * grid_size[1]),
+        # ]
+        # shard_spec = ttnn.ShardSpec(shard_grid, shard_shape, ttnn.ShardOrientation.ROW_MAJOR)
+        # width_sharded_mem_config = ttnn.MemoryConfig(
+        #     ttnn.TensorMemoryLayout.WIDTH_SHARDED, ttnn.BufferType.L1, shard_spec
+        # )
+        # x = ttnn.to_memory_config(x, width_sharded_mem_config)
 
-        unpadded_shape = x.shape
-        x = ttnn.untilize_with_unpadding(
-            x,
-            output_tensor_end=(
-                unpadded_shape[0] - 1,
-                unpadded_shape[1] - 1,
-                unpadded_shape[2] - 1,
-                unpadded_shape[3] - 1,
-            ),
-            memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
-        )
+        # unpadded_shape = x.shape
+        # x = ttnn.untilize_with_unpadding(
+        #     x,
+        #     output_tensor_end=(
+        #         unpadded_shape[0] - 1,
+        #         unpadded_shape[1] - 1,
+        #         unpadded_shape[2] - 1,
+        #         unpadded_shape[3] - 1,
+        #     ),
+        #     memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
+        # )
 
-        x = ttnn.reshape(
-            x,
-            (
-                self.batch_size,
-                x.shape[1],
-                x.shape[2] // self.batch_size,
-                x.shape[3],
-            ),
-        )
+        # x = ttnn.reshape(
+        #     x,
+        #     (
+        #         self.batch_size,
+        #         x.shape[1],
+        #         x.shape[2] // self.batch_size,
+        #         x.shape[3],
+        #     ),
+        # )
 
-        unpadded_shape = x.shape.with_tile_padding()
-        padded_shape = [
-            unpadded_shape[0],
-            unpadded_shape[1],
-            _nearest_32(unpadded_shape[2]),
-            _nearest_32(unpadded_shape[3]),
-        ]
-        x = ttnn.tilize_with_val_padding(
-            x,
-            padded_shape,
-            0.0,
-            memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
-            dtype=self.model_config["ACTIVATIONS_DTYPE"],
-        )
+        # unpadded_shape = x.shape.with_tile_padding()
+        # padded_shape = [
+        #     unpadded_shape[0],
+        #     unpadded_shape[1],
+        #     _nearest_32(unpadded_shape[2]),
+        #     _nearest_32(unpadded_shape[3]),
+        # ]
+        # x = ttnn.tilize_with_val_padding(
+        #     x,
+        #     padded_shape,
+        #     0.0,
+        #     memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
+        #     dtype=self.model_config["ACTIVATIONS_DTYPE"],
+        # )
 
-        x = self.avgpool(x, memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG)
+        # x = self.avgpool(x, memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG)
 
-        unpadded_shape_end = [
-            x.shape.with_tile_padding()[0] - 1,
-            x.shape.with_tile_padding()[1] - 1,
-            1 - 1,
-            x.shape.with_tile_padding()[3] - 1,
-        ]
-        x = ttnn.untilize_with_unpadding(
-            x, output_tensor_end=unpadded_shape_end, memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG
-        )
+        # unpadded_shape_end = [
+        #     x.shape.with_tile_padding()[0] - 1,
+        #     x.shape.with_tile_padding()[1] - 1,
+        #     1 - 1,
+        #     x.shape.with_tile_padding()[3] - 1,
+        # ]
+        # x = ttnn.untilize_with_unpadding(
+        #     x, output_tensor_end=unpadded_shape_end, memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG
+        # )
 
-        x = ttnn.reshape(
-            x,
-            (
-                1,
-                x.shape.with_tile_padding()[1],
-                self.batch_size * x.shape.with_tile_padding()[2],
-                x.shape.with_tile_padding()[3],
-            ),
-        )
+        # x = ttnn.reshape(
+        #     x,
+        #     (
+        #         1,
+        #         x.shape.with_tile_padding()[1],
+        #         self.batch_size * x.shape.with_tile_padding()[2],
+        #         x.shape.with_tile_padding()[3],
+        #     ),
+        # )
 
-        unpadded_shape = x.shape.with_tile_padding()
-        padded_shape = [
-            unpadded_shape[0],
-            unpadded_shape[1],
-            _nearest_32(unpadded_shape[2]),
-            _nearest_32(unpadded_shape[3]),
-        ]
+        # unpadded_shape = x.shape.with_tile_padding()
+        # padded_shape = [
+        #     unpadded_shape[0],
+        #     unpadded_shape[1],
+        #     _nearest_32(unpadded_shape[2]),
+        #     _nearest_32(unpadded_shape[3]),
+        # ]
 
-        x = ttnn.tilize_with_val_padding(
-            x,
-            padded_shape,
-            0.0,
-            memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
-            dtype=self.model_config["ACTIVATIONS_DTYPE"],
-        )
+        # x = ttnn.tilize_with_val_padding(
+        #     x,
+        #     padded_shape,
+        #     0.0,
+        #     memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
+        #     dtype=self.model_config["ACTIVATIONS_DTYPE"],
+        # )
 
-        x = self.fc(x)
+        # x = self.fc(x)
         # desired_shape = list(x.shape)
         # desired_shape[-1] = 1000
         # x = ttnn.untilize_with_unpadding(
