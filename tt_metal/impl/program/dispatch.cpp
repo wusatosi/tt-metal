@@ -1270,14 +1270,8 @@ void assemble_device_commands(
             }
         }
     }
-    // All Previous Cmds Up to This Point Go Into the Kernel Config Buffer
-    program_command_sequence.program_config_buffer_data_size_bytes = device_command_sequence.write_offset_bytes();
 
     // Program Binaries
-    for (const auto& kernel_bins_unicast_cmd : kernel_bins_unicast_cmds) {
-        device_command_sequence.add_data(
-            kernel_bins_unicast_cmd.data(), kernel_bins_unicast_cmd.size_bytes(), kernel_bins_unicast_cmd.size_bytes());
-    }
     uint32_t dram_alignment = hal.get_alignment(HalMemType::DRAM);
     for (uint32_t i = 0; i < kernel_bins_dispatch_subcmds.size(); ++i) {
         device_command_sequence.add_dispatch_write_packed_large(
@@ -1290,6 +1284,14 @@ void assemble_device_commands(
             kernel_bins_write_packed_large_data_aligned_sizeB[i],
             kernel_bins_prefetch_subcmds[i],
             kernel_bins_prefetch_subcmds[i].size());
+    }
+
+    // All Previous Cmds Up to This Point Go Into the Kernel Config Buffer
+    program_command_sequence.program_config_buffer_data_size_bytes = device_command_sequence.write_offset_bytes();
+
+    for (const auto& kernel_bins_unicast_cmd : kernel_bins_unicast_cmds) {
+        device_command_sequence.add_data(
+            kernel_bins_unicast_cmd.data(), kernel_bins_unicast_cmd.size_bytes(), kernel_bins_unicast_cmd.size_bytes());
     }
 
     // Go Signals
