@@ -19,36 +19,6 @@ from loguru import logger
 
 import ttnn
 import ttnn.database
-import shutil
-import os
-import pathlib
-import re
-import pprint
-
-
-def dumpNocTrace(dev, filepath):
-    start = time.monotonic()
-    PROFILER_JSON_DEFAULT_PATH = "generated/profiler/.logs/noc_trace_dev0.json"
-
-    ttnn.DumpDeviceProfiler(dev)
-    try:
-        pathlib.Path(os.path.dirname(filepath)).mkdir(parents=True, exist_ok=True)
-    except:
-        logger.warning(f"noc trace directory could not be created {os.path.dirname(filepath)}")
-
-    noext_filepath = re.sub(r"\.json$", "", filepath)
-    i = 0
-    while os.path.exists(filepath):
-        filepath = f"{noext_filepath}_i{i}.json"
-        i += 1
-
-    try:
-        shutil.move(PROFILER_JSON_DEFAULT_PATH, filepath)
-    except:
-        logger.warning(f"Failed to move '{PROFILER_JSON_DEFAULT_PATH}' to '{filepath}'")
-
-    end = time.monotonic()
-    logger.info(f"Dumped noc trace to {filepath} in {1000*(end-start):.2f} ms")
 
 
 def compare_tensors_using_pcc(python_fully_qualified_name, golden_outputs, outputs, desired_pcc, level):
@@ -152,9 +122,6 @@ def get_devices(object_value):
     if isinstance(object_value, ttnn.Tensor):
         if ttnn.is_tensor_storage_on_device(object_value) and object_value.is_allocated():
             devices.add(object_value.device())
-    elif isinstance(object_value, ttnn.MeshDevice):
-        for dev in object_value.get_devices():
-            devices.add(dev)
     elif isinstance(object_value, ttnn.Device):
         devices.add(object_value)
     elif isinstance(object_value, (list, tuple)):
@@ -359,17 +326,7 @@ class FastOperation:
         return hash(self.python_fully_qualified_name)
 
     def __call__(self, *function_args, **function_kwargs):
-        logger.info(f"FastOp '{self.python_fully_qualified_name}'")
-
-        ret = self.function(*function_args, **function_kwargs)
-
-        for dev in get_devices((function_args, function_kwargs)):
-            dumpNocTrace(
-                dev, os.path.join("noc_traces", "llama3.1-decoder", self.python_fully_qualified_name + ".json")
-            )
-            break
-
-        return ret
+        return self.function(*function_args, **function_kwargs)
 
     def __post_init__(self):
         if self.function.__doc__ is None:
