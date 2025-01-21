@@ -20,6 +20,7 @@ from models.utility_functions import (
 )
 from models.utility_functions import skip_for_grayskull
 from tests.ttnn.unit_tests.operations.prefetcher_common import TtLlamaPrefetcherSetup
+from models.demos.llama3_subdevices.tt.llama_ccl import TT_CCL
 
 
 @torch.no_grad()
@@ -139,6 +140,12 @@ def test_llama_attention_inference(
         n_layers=1,
     )
 
+    mesh_device.set_sub_device_stall_group(
+        [prefetcher_setup.prefetcher_sub_device_id, prefetcher_setup.worker_sub_device_id]
+    )
+
+    ccl_lib = TT_CCL(mesh_device, model_args.sub_core_grids, prefetcher_setup.worker_sub_device_id)
+
     tt_model = TtLlamaAttention(
         mesh_device,
         state_dict,
@@ -149,6 +156,7 @@ def test_llama_attention_inference(
         configuration=model_args,
         paged_attention_config=paged_attention_config,
         prefetcher_setup=prefetcher_setup,
+        ccl_lib=ccl_lib,
     )
     prefetcher_setup.tensors.append(prefetcher_setup.get_tensor_addrs())
 
@@ -301,6 +309,8 @@ def test_llama_attention_inference(
                 else:
                     logger.warning(f"KV Cache Failed! PCC value is lower than {pcc}")
                     all_tests_pass = False
+
+    ccl_lib.close()
 
     if all_tests_pass:
         logger.info("Llama Attention output Passed!")

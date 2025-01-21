@@ -23,6 +23,7 @@ class TtLlamaAttention(LightweightModule):
         paged_attention_config=None,
         use_paged_kv_cache=False,
         prefetcher_setup=None,
+        ccl_lib=None,
     ):
         super().__init__()
 
@@ -188,6 +189,7 @@ class TtLlamaAttention(LightweightModule):
             self.init_kv_cache(configuration, weight_cache_path)
 
         self.scale = self.head_dim**-0.5
+        self.ccl_lib = ccl_lib
 
     def init_kv_cache(self, configuration, weight_cache_path):
         """
@@ -272,7 +274,19 @@ class TtLlamaAttention(LightweightModule):
             else None,
         )
         ttnn.deallocate(x)
+        ttnn.synchronize_devices(self.mesh_device)
+
+        print("done qkv matmul")
         # xqkv_fused_sharded -> [1, 1, 32, 12288 // 8]
+        # xqkv_fused_sharded = ttnn.to_memory_config(xqkv_fused_sharded, ttnn.DRAM_MEMORY_CONFIG)
+        # xqkv_fused_sharded = self.ccl_lib.line_all_reduce(
+        #     xqkv_fused_sharded,
+        #     cluster_axis = 1,
+        #     num_links = 1,
+        #     memory_config = ttnn.DRAM_MEMORY_CONFIG,
+        # )
+
+        print("done all reduce")
 
         x_torch = ttnn.to_torch(
             xqkv_fused_sharded,
@@ -282,6 +296,7 @@ class TtLlamaAttention(LightweightModule):
                 mesh_shape=(8, 4),
             ),
         )  # [4, 1, 32, 12288]
+        ttnn.synchronize_devices(self.mesh_device)
         x_torch_reduced = torch.sum(x_torch, dim=0, keepdim=True)  # [1, 1, 32, 12288]
         x_torch_reduced = x_torch_reduced[..., : 1280 * 8]  # Unpad, TODO: ttnn.slice?
         # inner -> replicate, outer -> fractured
@@ -314,12 +329,15 @@ class TtLlamaAttention(LightweightModule):
             batch_offset=self.batch_offset_tt_tensor,
             slice_size=self.slice_size,
         )
+        ttnn.synchronize_devices(self.mesh_device)
 
         ttnn.deallocate(xqkv_fused)
+
         # Q, K Rotary Embeddings
         q_heads_1BQD, k_heads_1BKD = ttnn.experimental.rotary_embedding_llama_fused_qk(
             q_heads_pre_rot_1BQD, k_heads_pre_rot_1BKD, rot_mats[0], rot_mats[1], self.transformation_mats["decode"]
         )
+        ttnn.synchronize_devices(self.mesh_device)
 
         ttnn.deallocate(q_heads_pre_rot_1BQD)
         ttnn.deallocate(k_heads_pre_rot_1BKD)
@@ -339,6 +357,7 @@ class TtLlamaAttention(LightweightModule):
         ttnn.experimental.paged_fused_update_cache(
             keys, k_heads_1BKD, values, v_heads_1BKD, update_idxs_tensor=current_pos, page_table=page_table
         )
+        ttnn.synchronize_devices(self.mesh_device)
 
         ttnn.deallocate(k_heads_1BKD)
         ttnn.deallocate(v_heads_1BKD)
@@ -372,8 +391,20 @@ class TtLlamaAttention(LightweightModule):
                 compute_kernel_config=self.model_config["SDPA_DECODE_COMPUTE_PROGCFG"],
                 memory_config=sdpa_out_mem_cfg,  # FIXME: why not L1 height sharded e.g. SCORES_BATCHED_MM_OUTPUT_MEMCFG?
             )
+            ttnn.synchronize_devices(self.mesh_device)
 
         ttnn.deallocate(q_heads_1BQD)
+
+        print("done sdpa")
+
+        # attn_output_1G4D = ttnn.to_memory_config(attn_output_1G4D, ttnn.DRAM_MEMORY_CONFIG)
+        # attn_output_gathered = self.ccl_lib.line_all_gather(
+        #     attn_output_1G4D,
+        #     dim=2,
+        #     cluster_axis=1,
+        #     num_links =1,
+        #     memory_config = ttnn.DRAM_MEMORY_CONFIG,
+        # )
 
         attn_output_torch = ttnn.to_torch(
             attn_output_1G4D,
@@ -383,6 +414,7 @@ class TtLlamaAttention(LightweightModule):
                 mesh_shape=(8, 4),
             ),
         )
+        ttnn.synchronize_devices(self.mesh_device)
         ttnn.deallocate(attn_output_1G4D)
 
         attn_output_gathered = ttnn.as_tensor(
@@ -395,14 +427,16 @@ class TtLlamaAttention(LightweightModule):
             layout=ttnn.TILE_LAYOUT,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
         )
+        ttnn.synchronize_devices(self.mesh_device)
         attn_output_gathered = ttnn.to_memory_config(
             attn_output_gathered, self.model_config["GATHER_USERS_MEMCFG"](list(self.mesh_device.shape)[1])
         )
-
+        ttnn.synchronize_devices(self.mesh_device)
         attn_output_cat = ttnn.experimental.nlp_concat_heads_decode(
             attn_output_gathered,
             num_heads=self.n_local_heads,
         )
+        ttnn.synchronize_devices(self.mesh_device)
         ttnn.deallocate(attn_output_gathered)
         # Original matmul on each device [1, 1, 32, 1024] @ [1, 1, 1024, 2048]
         # Padded matmul on each device [1, 1, 32, 1536] @ [1, 1, 1536, 2304]
@@ -416,6 +450,7 @@ class TtLlamaAttention(LightweightModule):
                 mesh_shape=(8, 4),
             ),
         )[0].unsqueeze(0)
+        ttnn.synchronize_devices(self.mesh_device)
 
         # [1, 1, 32, 12288]
         attn_output_cat_torch = torch.nn.functional.pad(attn_output_cat_torch, (0, 12288 - 8192), "constant", 0)
@@ -433,6 +468,7 @@ class TtLlamaAttention(LightweightModule):
             layout=ttnn.TILE_LAYOUT,
             memory_config=self.model_config["SHARDED_ATTN_WO_INPUT_RING_MEMCFG"],
         )
+        ttnn.synchronize_devices(self.mesh_device)
 
         # [1, 1, 32, 1536] @ [1, 1, 1536, 2304]
         dense_out_ttnn = ttnn.matmul(
@@ -445,8 +481,18 @@ class TtLlamaAttention(LightweightModule):
             if self.model_config["USE_PREFETCHER"]
             else None,
         )
+        ttnn.synchronize_devices(self.mesh_device)
         # [1, 1, 32, 2304]
         ttnn.deallocate(attn_output_cat_ttnn)
+
+        # dense_out_ttnn = ttnn.to_memory_config(dense_out_ttnn, ttnn.DRAM_MEMORY_CONFIG)
+
+        # dense_out_ttnn = self.ccl_lib.line_all_reduce(
+        #     dense_out_ttnn,
+        #     cluster_axis=0,
+        #     num_links = 1,
+        #     memory_config=ttnn.DRAM_MEMORY_CONFIG,
+        # )
 
         dense_out_torch = ttnn.to_torch(
             dense_out_ttnn,
@@ -456,6 +502,7 @@ class TtLlamaAttention(LightweightModule):
                 mesh_shape=(8, 4),
             ),
         )  # [4, 1, 32, 12288]
+        ttnn.synchronize_devices(self.mesh_device)
         ttnn.deallocate(dense_out_ttnn)
         dense_out_torch = torch.sum(dense_out_torch, dim=0, keepdim=True)  # [1, 1, 32, 2304*4]
         dense_out_torch = dense_out_torch[..., : 2048 * 4]  # Unpad, TODO: ttnn.slice?
@@ -470,6 +517,7 @@ class TtLlamaAttention(LightweightModule):
             layout=ttnn.TILE_LAYOUT,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
         )
+        ttnn.synchronize_devices(self.mesh_device)
 
         return dense_out_reduced
 
