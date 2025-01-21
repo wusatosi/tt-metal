@@ -42,7 +42,7 @@ class ModelOps(torch.nn.Module):
         self.mesh_device = mesh_device
         self.num_devices = num_devices
 
-        M, K, N = (32, 1024, 4096)
+        M, K, N = (32, 2048, 172 * 1024)
 
         # Create the input tensors
         self.input_tensors = []
@@ -70,6 +70,10 @@ class ModelOps(torch.nn.Module):
             ones, mesh_device, tt_ones_mem_cfg, layout=ttnn.TILE_LAYOUT, dtype=ttnn.uint32
         )
 
+        self.out_add = create_multi_device_tensors(
+            [torch.ones(1, 1, 32, 32)] * num_devices, mesh_device, ttnn.DRAM_MEMORY_CONFIG
+        )
+
     def forward(self):
         compute_kernel_config = ttnn.WormholeComputeKernelConfig(
             math_fidelity=ttnn.MathFidelity.HiFi2,
@@ -79,11 +83,14 @@ class ModelOps(torch.nn.Module):
             dst_full_sync_en=True,
         )
 
-        tt_out = ttnn.matmul(
+        mm_out = ttnn.matmul(
             self.input_tensor_tt,
             self.weight_tensor_tt,
             compute_kernel_config=compute_kernel_config,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
         )
+
+        # Small tensor to that will be pushed to host to measure e2e latency
+        tt_out = ttnn.add(self.out_add, self.out_add)
 
         return tt_out

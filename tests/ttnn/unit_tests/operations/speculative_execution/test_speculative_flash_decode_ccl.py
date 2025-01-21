@@ -7,6 +7,7 @@ import pytest
 from loguru import logger
 import ttnn
 import numpy as np
+from time import time
 from tests.tt_eager.python_api_testing.sweep_tests.comparison_funcs import comp_equal, comp_pcc
 from models.utility_functions import skip_for_grayskull, skip_for_wormhole_b0
 from tests.ttnn.unit_tests.operations.ccl.test_reduce_scatter_async import (
@@ -33,6 +34,7 @@ def commit_priority_tensor(priority_tensor, mesh_device):
     """
     Create a skip tensor based on the priority tensor
     """
+    # return None # Disable this function if you want to disable skip_compute
 
     skip_tensor_mem_config = ttnn.create_sharded_memory_config(
         shape=(1, 4),
@@ -75,6 +77,7 @@ def get_speculative_flash_decode_tt_ccl(
     cur_pos_tensor=False,
     sharded_out=False,
     height_sharded_memcfg=None,
+    perf=False,
 ):
     """
     Wrapper function for speculative flash decode tensor operations.
@@ -90,8 +93,10 @@ def get_speculative_flash_decode_tt_ccl(
 
     # Commit the priority tensor
     if model_ops:
-        eset_skip_tensor = commit_priority_tensor(tt_reset_priority_tensors, mesh_device)
+        reset_skip_tensor = commit_priority_tensor(tt_reset_priority_tensors, mesh_device)
 
+    time_elapsed = 0
+    t1 = time()
     if causal:
         if cur_pos_tensor:
             start_indices_multidevice = [torch.tensor(start_indices), torch.tensor(start_indices)]
@@ -144,6 +149,10 @@ def get_speculative_flash_decode_tt_ccl(
 
         # Run the post-ops
         model_out = model_ops()
+        model_out_torch = read_multi_device_tensor(model_out)
+
+    t2 = time()
+    time_elapsed += t2 - t1
 
     # read multi-device tensors and assign output to the sender device
     tt_back_gt = read_multi_device_tensor(tt_back_gt_md)[sender_idx]
@@ -168,13 +177,18 @@ def get_speculative_flash_decode_tt_ccl(
     assert torch.all((p_tensors[sender_idx].squeeze() == 0) | (p_tensors[sender_idx].squeeze() == 2))
     assert torch.all(p_tensors[receiver_idx].squeeze() == 1)
 
-    return (
+    ret = [
         tt_back_gt,
         tt_back_spec,
         tt_back_spec_lp_distance,
         tt_back_lp_norm_x,
         tt_priority_tensors,
-    )
+    ]
+
+    if perf:
+        ret.append(time_elapsed)
+
+    return ret
 
 
 def run_speculative_flash_decode_ccl_impl(
@@ -535,6 +549,7 @@ def run_speculative_flash_decode_perf(
     sharded_out=False,
     causal=True,
     enable_async=False,
+    num_iters=1,
 ):
     ############################################################
     # Setup and Defines
@@ -669,7 +684,8 @@ def run_speculative_flash_decode_perf(
         )
         model_ops = ModelOps(mesh_device, num_devices=num_devices)
 
-        for i in range(5):
+        total_time_elapsed = 0
+        for i in range(num_iters):
             # Swap. priority tensor value of its pair device, same shape as priority_tensors
             tt_gathered_priority_tensors = create_multi_device_tensors(
                 read_multi_device_tensor(tt_priority_tensors)[::-1],
@@ -685,6 +701,7 @@ def run_speculative_flash_decode_perf(
                 _,
                 _,
                 tt_priority_tensors,
+                time_elapsed,
             ) = get_speculative_flash_decode_tt_ccl(
                 tt_Q,
                 tt_K,
@@ -706,7 +723,9 @@ def run_speculative_flash_decode_perf(
                 cur_pos_tensor=cur_pos_tensor,
                 sharded_out=sharded_out,
                 height_sharded_memcfg=height_sharded_memcfg,
+                perf=True,
             )
+            total_time_elapsed += time_elapsed if i > 0 else 0
 
         for i in range(5):
             if cur_pos_tensor:
@@ -741,6 +760,10 @@ def run_speculative_flash_decode_perf(
                 )
 
         logger.info(f"Done speculative flash decode ccl")
+
+        logger.info(
+            f"Token/second/user: {(num_iters - 1) / total_time_elapsed / b}, Time per iteration: {total_time_elapsed / num_iters}"
+        )
 
     except Exception as e:
         logger.error(f"Error during speculative flash decode ccl: {e}")
@@ -807,4 +830,5 @@ def test_speculative_flash_decode_perf(
         sharded_in=False,
         sharded_out=False,
         enable_async=enable_async,
+        num_iters=10,
     )
