@@ -44,7 +44,7 @@ class CCLConfig:
             )
             logger.info("Done Create persistent fabric interface")
             self.sub_device_stall_group = [worker_sub_device_id]
-        mesh_device.set_sub_device_stall_group(sub_device_stall_group)
+        mesh_device.set_sub_device_stall_group(self.sub_device_stall_group)
 
         self.all_gather_ccl_semaphore_handles = create_global_semaphore_with_same_address(
             mesh_device, ccl_sub_device_crs, 0

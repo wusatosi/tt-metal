@@ -16,6 +16,7 @@ from models.utility_functions import (
 )
 from models.utility_functions import skip_for_grayskull
 from tests.ttnn.unit_tests.operations.prefetcher_common import TtLlamaPrefetcherSetup
+from models.demos.llama3_subdevices.tt.llama_TG_async_ccl import CCLConfig
 
 
 @torch.no_grad()
@@ -69,6 +70,7 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
     )
     reference_model.load_state_dict(partial_state_dict)
 
+    ccl_config = CCLConfig(mesh_device)
     tt_model = TtLlamaMLP(
         mesh_device=mesh_device,
         args=model_args,
@@ -78,6 +80,7 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
         dtype=dtype,
         model_config=model_args.get_model_config(),
         prefetcher_setup=prefetcher_setup,
+        ccl_config=ccl_config,
     )
 
     prefetcher_setup.tensors.append(prefetcher_setup.get_tensor_addrs())
@@ -115,6 +118,8 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
         tt_output,
         mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(1, 3), mesh_shape=model_args.cluster_shape),
     )
+
+    ccl_config.teardown_persistent_fabric()
 
     tt_output_torch = tt_output_torch[:, :1, :, : model_args.dim]
 
