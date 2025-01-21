@@ -276,19 +276,30 @@ class TtLlamaAttention(LightweightModule):
         ttnn.deallocate(x)
         # xqkv_fused_sharded -> [1, 1, 32, 12288 // 8]
 
-        x_torch = ttnn.to_torch(
-            xqkv_fused_sharded,
+        xqkv_fused_dram = ttnn.to_memory_config(xqkv_fused_sharded, ttnn.DRAM_MEMORY_CONFIG)
+        ttnn.deallocate(xqkv_fused_sharded)
+
+        xqkv_reduced = self.tt_ccl.line_all_reduce(
+            xqkv_fused_dram, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
+        )
+
+        ttnn.synchronize_devices(self.mesh_device)
+        ttnn.deallocate(xqkv_fused_dram)
+
+        xqkv_torch_reduced = ttnn.to_torch(
+            xqkv_reduced,
             mesh_composer=ttnn.ConcatMesh2dToTensor(
                 self.mesh_device,
                 dims=(3, 0),
                 mesh_shape=(8, 4),
             ),
-        )  # [4, 1, 32, 12288]
-        x_torch_reduced = torch.sum(x_torch, dim=0, keepdim=True)  # [1, 1, 32, 12288]
-        x_torch_reduced = x_torch_reduced[..., : 1280 * 8]  # Unpad, TODO: ttnn.slice?
+        )[0].unsqueeze(
+            0
+        )  # [1, 1, 32, 12288]
+        xqkv_torch_reduced = xqkv_torch_reduced[..., : 1280 * 8]  # Unpad, TODO: ttnn.slice?
         # inner -> replicate, outer -> fractured
         xqkv_fused = ttnn.as_tensor(
-            x_torch_reduced,
+            xqkv_torch_reduced,
             dtype=ttnn.bfloat16,
             device=self.mesh_device,
             mesh_mapper=ttnn.ShardTensor2dMesh(
@@ -377,26 +388,13 @@ class TtLlamaAttention(LightweightModule):
 
         ttnn.deallocate(q_heads_1BQD)
 
-        attn_output_torch = ttnn.to_torch(
-            attn_output_1G4D,
-            mesh_composer=ttnn.ConcatMesh2dToTensor(
-                self.mesh_device,
-                dims=(2, 1),
-                mesh_shape=(8, 4),
-            ),
+        attn_output_1G4D = ttnn.to_memory_config(attn_output_1G4D, ttnn.DRAM_MEMORY_CONFIG)
+        attn_output_gathered = self.tt_ccl.line_all_gather(
+            attn_output_1G4D, dim=1, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
         )
+        ttnn.synchronize_devices(self.mesh_device)
         ttnn.deallocate(attn_output_1G4D)
 
-        attn_output_gathered = ttnn.as_tensor(
-            attn_output_torch,
-            dtype=ttnn.bfloat16,
-            device=self.mesh_device,
-            mesh_mapper=ttnn.ShardTensor2dMesh(
-                mesh_device=self.mesh_device, dims=(2, None), mesh_shape=list(self.mesh_device.shape)
-            ),
-            layout=ttnn.TILE_LAYOUT,
-            memory_config=ttnn.DRAM_MEMORY_CONFIG,
-        )
         attn_output_gathered = ttnn.to_memory_config(
             attn_output_gathered, self.model_config["GATHER_USERS_MEMCFG"](list(self.mesh_device.shape)[1])
         )
@@ -450,20 +448,30 @@ class TtLlamaAttention(LightweightModule):
         # [1, 1, 32, 2304]
         ttnn.deallocate(attn_output_cat_ttnn)
 
-        dense_out_torch = ttnn.to_torch(
-            dense_out_ttnn,
+        dense_out_dram = ttnn.to_memory_config(dense_out_ttnn, ttnn.DRAM_MEMORY_CONFIG)
+        ttnn.deallocate(dense_out_ttnn)
+
+        dense_out_reduced = self.tt_ccl.line_all_reduce(
+            dense_out_dram, cluster_axis=0, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
+        )
+
+        ttnn.synchronize_devices(self.mesh_device)
+        ttnn.deallocate(dense_out_dram)
+
+        dense_out_reduced_torch = ttnn.to_torch(
+            dense_out_reduced,
             mesh_composer=ttnn.ConcatMesh2dToTensor(
                 self.mesh_device,
                 dims=(0, 3),
                 mesh_shape=(8, 4),
             ),
-        )  # [4, 1, 32, 12288]
-        ttnn.deallocate(dense_out_ttnn)
-        dense_out_torch = torch.sum(dense_out_torch, dim=0, keepdim=True)  # [1, 1, 32, 2304*4]
-        dense_out_torch = dense_out_torch[..., : 2048 * 4]  # Unpad, TODO: ttnn.slice?
+        )[0].unsqueeze(
+            0
+        )  # [1, 1, 32, 2304*4]
+        dense_out_reduced_torch = dense_out_reduced_torch[..., : 2048 * 4]  # Unpad, TODO: ttnn.slice?
 
         dense_out_reduced = ttnn.as_tensor(
-            dense_out_torch,
+            dense_out_reduced_torch,
             dtype=ttnn.bfloat16,
             device=self.mesh_device,
             mesh_mapper=ttnn.ShardTensor2dMesh(
