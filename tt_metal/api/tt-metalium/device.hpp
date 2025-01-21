@@ -167,6 +167,7 @@ public:
     virtual uint32_t get_noc_unicast_encoding(uint8_t noc_index, const CoreCoord& core) const = 0;
     virtual uint32_t get_noc_multicast_encoding(uint8_t noc_index, const CoreRange& cores) const = 0;
 
+    virtual void reinit_build_cache(const std::string& output_dir) = 0;
     virtual const JitBuildEnv& build_env() const = 0;
     virtual const string build_firmware_target_path(uint32_t programmable_core, uint32_t processor_class, int i) const = 0;
     virtual const string build_kernel_target_path(uint32_t programmable_core, uint32_t processor_class, int i, const string& kernel_name) const = 0;
