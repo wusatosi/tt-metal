@@ -20,6 +20,7 @@ from models.utility_functions import (
 )
 from models.utility_functions import skip_for_grayskull
 from tests.ttnn.unit_tests.operations.prefetcher_common import TtLlamaPrefetcherSetup
+from models.demos.llama3_subdevices.tt.llama_ccl import TT_CCL
 
 
 @torch.no_grad()
@@ -70,7 +71,7 @@ def test_llama_decoder_inference(
     dtype = ttnn.bfloat8_b
     mesh_device.enable_async(True)
 
-    model_args = TtModelArgs(mesh_device, max_batch_size=batch_size, max_seq_len=max_seq_len)
+    model_args = TtModelArgs(mesh_device, max_batch_size=batch_size, max_seq_len=max_seq_len, dummy_weights=True)
     model_args.n_layers = 1
 
     state_dict = model_args.load_state_dict()
@@ -80,6 +81,11 @@ def test_llama_decoder_inference(
         n_tensors=5,
         n_layers=model_args.n_layers,
     )
+    mesh_device.set_sub_device_stall_group(
+        [prefetcher_setup.prefetcher_sub_device_id, prefetcher_setup.worker_sub_device_id]
+    )
+
+    tt_ccl = TT_CCL(mesh_device, model_args.sub_core_grids, prefetcher_setup.worker_sub_device_id)
     # Ref model needs partial state dict, but our models use full state dict keys as cached weight names
     first_layer_prefix = model_args.get_state_dict_prefix("TtTransformerBlock", 0)
     partial_state_dict = {
@@ -143,6 +149,7 @@ def test_llama_decoder_inference(
         transformation_mats=transformation_mats,
         paged_attention_config=paged_attention_config,
         prefetcher_setup=prefetcher_setup,
+        tt_ccl=tt_ccl,
     )
     prefetcher_setup.tensors.append(prefetcher_setup.get_tensor_addrs())
 
@@ -236,6 +243,8 @@ def test_llama_decoder_inference(
                 mesh_shape=model_args.cluster_shape,
             ),
         )
+
+    tt_ccl.close()
 
     if all_tests_pass:
         logger.info(f"All {generation_length} Llama decode iterations Passed!")

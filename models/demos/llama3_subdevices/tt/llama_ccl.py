@@ -283,6 +283,7 @@ def tt_sharded_distributed_rmsnorm(
     ln_sharded_input_memcfg,
     ln_sharded_progcfg,
     ln_sharded_stats_memcfg,
+    tt_ccl=None,
 ):
     # inp = ttnn.to_memory_config(inp, memory_config=ln_sharded_input_memcfg)
 
@@ -299,28 +300,23 @@ def tt_sharded_distributed_rmsnorm(
     #     memory_config=ln_sharded_stats_memcfg,
     #     topology=ttnn.Topology.Linear,
     # )
+    tt_stats_dram = ttnn.to_memory_config(tt_stats, ttnn.DRAM_MEMORY_CONFIG)
+    ttnn.deallocate(tt_stats)
+    tt_global_stats = tt_ccl.line_all_gather(
+        tt_stats_dram, dim=3, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
+    )
+    ttnn.synchronize_devices(mesh_device)  # This results into hang when running decoder
+    ttnn.deallocate(tt_stats_dram)
 
     grid_offset = ttnn.CoreCoord(1, 0)
-    tt_stats_torch = ttnn.to_torch(
-        tt_stats,
-        mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(0, 3), mesh_shape=(8, 4)),
-    )
-
-    tt_global_stats = ttnn.from_torch(
-        tt_stats_torch,
-        device=mesh_device,
-        mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device, dims=(0, None), mesh_shape=(8, 4)),
-        dtype=ttnn.bfloat16,
-        memory_config=ttnn.DRAM_MEMORY_CONFIG,
-        layout=ttnn.TILE_LAYOUT,
-    )
     tt_stats_sharded_config = ttnn.create_sharded_memory_config(
         shape=(32, tt_global_stats.shape.with_tile_padding()[-1]),
         core_grid=ttnn.CoreRangeSet([ttnn.CoreRange(grid_offset, grid_offset)]),
         strategy=ttnn.ShardStrategy.WIDTH,
         use_height_and_width_as_shard_shape=True,
     )
-    tt_stats = ttnn.to_memory_config(tt_global_stats, memory_config=tt_stats_sharded_config)
+    tt_global_stats_sharded = ttnn.to_memory_config(tt_global_stats, memory_config=tt_stats_sharded_config)
+    ttnn.deallocate(tt_global_stats)
 
     # Run distributed rmsnorm part 2
     tt_out = ttnn.rms_norm_post_all_gather(
@@ -328,8 +324,8 @@ def tt_sharded_distributed_rmsnorm(
         epsilon=epsilon,
         weight=gamma,
         program_config=ln_sharded_progcfg,
-        stats=tt_stats,
+        stats=tt_global_stats_sharded,
     )
-    tt_stats.deallocate(True)
+    tt_global_stats_sharded.deallocate(True)
 
     return tt_out

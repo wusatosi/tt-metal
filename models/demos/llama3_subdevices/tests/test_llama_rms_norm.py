@@ -16,6 +16,7 @@ from models.utility_functions import (
 from models.utility_functions import skip_for_grayskull
 from models.demos.llama3_subdevices.tt.distributed_norm import DistributedNorm
 from tests.ttnn.unit_tests.operations.prefetcher_common import TtLlamaPrefetcherSetup
+from models.demos.llama3_subdevices.tt.llama_ccl import TT_CCL
 
 
 @torch.no_grad()
@@ -57,19 +58,22 @@ def test_llama_rms_norm_inference(
 
     mesh_device.enable_async(True)
 
-    model_args = TtModelArgs(mesh_device, max_batch_size=batch_size, max_seq_len=max_seq_len)
+    model_args = TtModelArgs(mesh_device, max_batch_size=batch_size, max_seq_len=max_seq_len, dummy_weights=True)
 
     model_args.n_layers = 1
     state_dict = model_args.load_state_dict()
     state_dict_prefix = model_args.get_state_dict_prefix("", 0)
     first_layer_prefix = state_dict_prefix + "attention_norm."
 
-    # prefetcher_setup = TtLlamaPrefetcherSetup(
-    #     mesh_device,
-    #     n_tensors=5,
-    #     n_layers=1,
-    # )
-    prefetcher_setup = None
+    prefetcher_setup = TtLlamaPrefetcherSetup(
+        mesh_device,
+        n_tensors=1,
+        n_layers=1,
+    )
+    mesh_device.set_sub_device_stall_group(
+        [prefetcher_setup.prefetcher_sub_device_id, prefetcher_setup.worker_sub_device_id]
+    )
+    tt_ccl = TT_CCL(mesh_device, model_args.sub_core_grids, prefetcher_setup.worker_sub_device_id)
 
     # Create the inner RMSNormxw
     tt_inner_norm = TtRMSNorm(
@@ -85,7 +89,7 @@ def test_llama_rms_norm_inference(
     )
 
     # Wrap it in DistributedNorm
-    tt_model = DistributedNorm(tt_inner_norm, model_args, TG=model_args.is_galaxy)
+    tt_model = DistributedNorm(tt_inner_norm, model_args, TG=model_args.is_galaxy, tt_ccl=tt_ccl)
 
     # Create reference model (unchanged)
     partial_state_dict = {
@@ -108,7 +112,7 @@ def test_llama_rms_norm_inference(
         if mode == "decode"
         else ttnn.DRAM_MEMORY_CONFIG,
     )
-
+    mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
     tt_output = tt_model(tt_input, mode=mode)
 
     # DistributedNorm outputs are replicated across devices

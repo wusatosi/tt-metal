@@ -23,6 +23,7 @@ class TtTransformerBlock(LightweightModule):
         paged_attention_config=None,
         use_paged_kv_cache=False,
         prefetcher_setup=None,
+        tt_ccl=None,
     ):
         super().__init__()
 
@@ -41,6 +42,9 @@ class TtTransformerBlock(LightweightModule):
         self.model_config = args.get_model_config()
 
         self.layer_num = layer_num
+
+        self.prefetcher_setup = prefetcher_setup
+        self.tt_ccl = tt_ccl
 
         self.attention = TtLlamaAttention(
             mesh_device=mesh_device,
@@ -79,6 +83,7 @@ class TtTransformerBlock(LightweightModule):
             ),
             args,
             TG=args.is_galaxy,
+            tt_ccl=tt_ccl,
         )
         self.ff_norm = DistributedNorm(
             RMSNorm(
@@ -95,8 +100,8 @@ class TtTransformerBlock(LightweightModule):
             ),
             args,
             TG=args.is_galaxy,
+            tt_ccl=tt_ccl,
         )
-        self.prefetcher_setup = prefetcher_setup
 
     def forward(
         self,
