@@ -837,6 +837,17 @@ def run_llama3_demo(
 @pytest.mark.parametrize(
     "input_prompts, instruct, repeat_batches, max_seq_len, batch_size, max_generated_tokens, paged_attention, page_params, sampling_params",
     [
+        (  # Batch-1 run (Reasoning) - single user, small prompt, long thinking time
+            "models/demos/llama3/demo/input_data_questions_reasoning.json",  # input_prompts
+            True,  # instruct mode
+            1,  # repeat_batches
+            8192,  # max_seq_len
+            1,  # batch_size
+            7000,  # max_generated_tokens
+            True,  # paged_attention
+            {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params  # TODO This will be serviced by vLLM
+            {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
+        ),
         (  # Batch-1 run (Latency) - single user, small prompt
             "models/demos/llama3/demo/input_data_questions_prefill_128.json",  # input_prompts
             True,  # instruct mode
@@ -872,6 +883,7 @@ def run_llama3_demo(
         ),
     ],
     ids=[
+        "reasoning-1",
         "batch-1",  # latency
         "batch-32",  # throughput
         "long-context",  # max-length

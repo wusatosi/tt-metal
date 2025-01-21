@@ -125,7 +125,7 @@ def generate_reference_outputs(total_length, output_file):
     # Save the data
     data = {
         "top5_tokens": torch.cat(all_top5_tokens, dim=0),
-        "reference_tokens": encoded_tokens_tensor,
+        "reference_tokens": encoded_tokens_tensor[:, :total_length].clone(),
     }
 
     torch.save(data, output_file)
