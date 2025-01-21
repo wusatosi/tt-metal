@@ -37,6 +37,7 @@ public:
     WorkerConfigBufferMgr& get_config_buffer_mgr(uint32_t index) { return config_buffer_mgr_; };
     void enqueue_mesh_workload(MeshWorkload& mesh_workload, bool blocking);
     void read_shard_from_device(std::shared_ptr<Buffer>& shard_view, void* dst, bool blocking);
+    void read_sharded_buffer(MeshBuffer& buffer, void* dst, bool blocking);
     void finish();
 };
 

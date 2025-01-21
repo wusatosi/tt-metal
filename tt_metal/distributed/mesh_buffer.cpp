@@ -18,8 +18,8 @@ void validate_mesh_buffer_config(const MeshBufferConfig& config, const MeshDevic
     }
 
     const auto& sharded_config = std::get<ShardedBufferConfig>(config);
-    const auto [global_buffer_height, global_buffer_width] = sharded_config.global_buffer_shape;
-    const auto [shard_height, shard_width] = sharded_config.shard_shape;
+    const auto [global_buffer_width, global_buffer_height] = sharded_config.global_buffer_shape;
+    const auto [shard_width, shard_height] = sharded_config.shard_shape;
 
     TT_FATAL(
         (global_buffer_height % shard_height == 0) and (global_buffer_width % shard_width == 0),
@@ -82,7 +82,7 @@ std::shared_ptr<MeshBuffer> MeshBuffer::create(
                 device_local_size,
                 mesh_device,
                 std::move(backing_buffer)),
-            [backing_buffer_ptr](MeshBuffer*) { tt::tt_metal::detail::DeallocateBuffer(backing_buffer_ptr); });
+            deleter);
     } else {
         mesh_buffer = std::shared_ptr<MeshBuffer>(new MeshBuffer(
             mesh_buffer_config,
@@ -117,13 +117,14 @@ void MeshBuffer::allocate() {
 
     for (int row = 0; row < mesh_device_->num_rows(); row++) {
         for (int col = 0; col < mesh_device_->num_cols(); col++) {
-            if (row == 0 and col == 0) {
-                buffers_[row][col] = backing_buffer_;
-            } else {
-                buffers_[row][col] = allocate_device_buffer_at_address(Coordinate{row, col});
-            }
+            buffers_[row][col] = allocate_device_buffer_at_address(Coordinate{row, col});
         }
     }
+}
+
+void MeshBuffer::deleter(MeshBuffer* mesh_buffer) {
+    auto buffer_to_delete = mesh_buffer->get_device_buffer(Coordinate(0, 0));
+    tt::tt_metal::detail::DeallocateBuffer(buffer_to_delete.get());
 }
 
 std::shared_ptr<Buffer> MeshBuffer::get_device_buffer(const Coordinate& device_coord) {
@@ -154,6 +155,29 @@ const ShardedBufferConfig& MeshBuffer::global_shard_spec() const {
     TT_FATAL(
         global_layout() == MeshBufferLayout::SHARDED, "Can only query the global shard spec for a sharded MeshBuffer");
     return std::get<ShardedBufferConfig>(config_);
+}
+
+uint32_t MeshBuffer::datum_size_bytes() const {
+    // Limitation for now.
+    TT_FATAL(
+        this->global_layout() == MeshBufferLayout::SHARDED,
+        "Can only query datum size for buffers sharded across the Mesh");
+    return this->global_shard_spec().compute_datum_size_bytes();
+}
+
+std::pair<size_t, size_t> MeshBuffer::physical_shard_shape() const {
+    TT_FATAL(
+        this->global_layout() == MeshBufferLayout::SHARDED,
+        "Can only query physical shard shape for buffers sharded across the Mesh");
+    auto sharded_config = std::get<ShardedBufferConfig>(config_);
+    std::pair<size_t, size_t> physical_shard_shape = sharded_config.shard_shape;
+    if (std::get<0>(physical_shard_shape) == 0) {
+        std::get<0>(physical_shard_shape) = std::get<0>(sharded_config.global_buffer_shape);
+    }
+    if (std::get<1>(physical_shard_shape) == 0) {
+        std::get<1>(physical_shard_shape) = std::get<1>(sharded_config.global_buffer_shape);
+    }
+    return physical_shard_shape;
 }
 
 }  // namespace tt::tt_metal::distributed

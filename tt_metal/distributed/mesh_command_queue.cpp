@@ -223,4 +223,62 @@ void MeshCommandQueue::read_shard_from_device(std::shared_ptr<Buffer>& shard_vie
     }
 }
 
+void MeshCommandQueue::read_sharded_buffer(MeshBuffer& buffer, void* dst, bool blocking) {
+    auto sub_device_ids = tt::stl::Span<const SubDeviceId>(mesh_device_->get_device(0)->get_sub_device_ids());
+    std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES> expected_num_workers_completed;
+    expected_num_workers_completed[0] = expected_num_workers_completed_;
+
+    auto global_buffer_shape = buffer.global_shard_spec().global_buffer_shape;
+
+    auto shard_shape = buffer.physical_shard_shape();
+
+    auto datum_size_bytes = buffer.datum_size_bytes();
+
+    auto stride_size_bytes = datum_size_bytes * std::get<0>(global_buffer_shape);
+    auto single_write_size = datum_size_bytes * std::get<0>(shard_shape);
+    auto total_write_size_per_shard = single_write_size * std::get<1>(shard_shape);
+
+    auto num_shards_x = std::get<0>(global_buffer_shape) / std::get<0>(shard_shape);
+    auto num_shards_y = std::get<1>(global_buffer_shape) / std::get<1>(shard_shape);
+
+    uint32_t num_devices_x = buffer.device()->num_cols();
+    uint32_t num_devices_y = buffer.device()->num_rows();
+
+    uint32_t device_x = 0;
+    uint32_t device_y = 0;
+
+    std::vector<uint32_t> shard_data = std::vector<uint32_t>(total_write_size_per_shard / sizeof(uint32_t), 0);
+    for (std::size_t shard_y = 0; shard_y < num_shards_y; shard_y++) {
+        for (std::size_t shard_x = 0; shard_x < num_shards_x; shard_x++) {
+            auto device_shard_view = buffer.get_device_buffer(Coordinate(device_y, device_x));
+            this->read_shard_from_device(device_shard_view, shard_data.data(), true);
+
+            uint32_t write_offset =
+                shard_x * single_write_size + shard_y * stride_size_bytes * std::get<1>(shard_shape);
+            uint32_t size_to_write = total_write_size_per_shard;
+            uint32_t local_offset = 0;
+            while (size_to_write) {
+                std::memcpy(
+                    (uint8_t*)(dst) + write_offset + local_offset * stride_size_bytes,
+                    shard_data.data() + local_offset * (single_write_size / sizeof(uint32_t)),
+                    single_write_size);
+                local_offset++;
+                size_to_write -= single_write_size;
+            }
+
+            if (buffer.global_shard_spec().shard_orientation == ShardOrientation::ROW_MAJOR) {
+                device_x = (device_x + 1) % num_devices_x;
+                if (device_x == 0) {
+                    device_y++;
+                }
+            } else {
+                device_y = (device_y + 1) % num_devices_y;
+                if (device_y == 0) {
+                    device_x++;
+                }
+            }
+        }
+    }
+}
+
 }  // namespace tt::tt_metal::distributed

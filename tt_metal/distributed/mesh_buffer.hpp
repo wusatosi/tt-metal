@@ -82,6 +82,8 @@ public:
     const DeviceLocalBufferConfig& device_local_config() const { return device_local_config_; }
 
     std::shared_ptr<Buffer> get_device_buffer(const Coordinate& device_coord);
+    uint32_t datum_size_bytes() const;
+    std::pair<std::size_t, std::size_t> physical_shard_shape() const;
 
 private:
     MeshBuffer(
@@ -99,7 +101,7 @@ private:
         backing_buffer_(std::move(backing_buffer)) {}
 
     void allocate();
-
+    static void deleter(MeshBuffer* mesh_buffer);
     MeshBufferConfig config_;
     DeviceLocalBufferConfig device_local_config_;
     MeshDevice* mesh_device_ = nullptr;
