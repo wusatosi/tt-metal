@@ -28,11 +28,14 @@ class CCLConfig:
             ttnn.enable_program_cache(d)
 
         sub_device_stall_group = []
-        ccl_sub_device_crs = ttnn.CoreRangeSet(
+        ccl_sub_device_grid = ttnn.CoreRangeSet(
             [
                 ttnn.CoreRange(ttnn.CoreCoord(1, 0), ttnn.CoreCoord(3, 9)),
                 ttnn.CoreRange(ttnn.CoreCoord(5, 0), ttnn.CoreCoord(6, 9)),
             ]
+        )
+        ccl_sub_device_crs = ttnn.num_cores_to_corerangeset_in_subcoregrids(
+            ttnn.CoreCoord(1, 0), 24, ccl_sub_device_grid, row_wise=True
         )
         worker_sub_device = ttnn.SubDevice([ccl_sub_device_crs])
         worker_sub_device_id = ttnn.SubDeviceId(0)

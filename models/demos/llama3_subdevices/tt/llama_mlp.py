@@ -168,6 +168,8 @@ class TtLlamaMLP(LightweightModule):
             #     w3_out = ttnn.to_memory_config(w3_out, ttnn.DRAM_MEMORY_CONFIG)
             if self.dim == 8192 or mode == "prefill":
                 # input_mem_cfg = w1_out.memory_config()
+                w1_out = ttnn.to_memory_config(w1_out, self.model_config["SHARDED_FF12_SUBGRID_MEMCFG"])
+                w3_out = ttnn.to_memory_config(w3_out, self.model_config["SHARDED_FF12_SUBGRID_MEMCFG"])
                 w1_out = self.ccl_config.reduce_scatter(
                     w1_out,
                     dim=3,
@@ -262,7 +264,7 @@ class TtLlamaMLP(LightweightModule):
                 dim=3,
                 num_links=1,
                 cluster_axis=1,
-                output_mem_config=self.model_config["FF2_IN_RING_MEMCFG"],
+                output_mem_config=self.model_config["SHARDED_FF12_SUBGRID_MEMCFG"],
             )
             # w2_in_torch = ttnn.to_torch(
             #     w2_in,
@@ -286,6 +288,7 @@ class TtLlamaMLP(LightweightModule):
             #     w2_in = ttnn.to_memory_config(w2_in, self.model_config["FF2_IN_RING_MEMCFG"])
 
         # print("w2_in", w2_in)
+        w2_in = ttnn.to_memory_config(w2_in, self.model_config["FF2_IN_RING_MEMCFG"])
         w2_out = ttnn.linear(
             w2_in,
             self.w2,
@@ -303,6 +306,7 @@ class TtLlamaMLP(LightweightModule):
         ttnn.deallocate(w2_in)
         # if mode == "decode" and not TG:
         #     w2_out = ttnn.sharded_to_interleaved(w2_out, ttnn.DRAM_MEMORY_CONFIG)
+        w2_out = ttnn.to_memory_config(w2_out, self.model_config["FF2_OUT_SUBGRID_MEMCFG"])
         w2_out_reduced = self.ccl_config.all_reduce(
             w2_out,
             cluster_axis=0,

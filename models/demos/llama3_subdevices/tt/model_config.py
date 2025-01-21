@@ -713,6 +713,15 @@ class TtModelArgs:
                 use_height_and_width_as_shard_shape=True,
             )
             self.model_config["SHARDED_FF12_PRE_MUL_RING_MEMCFG"] = ttnn.create_sharded_memory_config(
+                shape=(32, 3840 // 4 // RING_SIZE),
+                core_grid=ttnn.num_cores_to_corerangeset_in_subcoregrids(
+                    self.start_core, 24, self.sub_core_grids, row_wise=True
+                ),
+                strategy=ttnn.ShardStrategy.WIDTH,
+                orientation=ttnn.ShardOrientation.ROW_MAJOR,
+                use_height_and_width_as_shard_shape=True,
+            )
+            self.model_config["SHARDED_FF12_SUBGRID_MEMCFG"] = ttnn.create_sharded_memory_config(
                 shape=(32, 3840 // RING_SIZE),
                 core_grid=ttnn.num_cores_to_corerangeset_in_subcoregrids(
                     self.start_core, 24, self.sub_core_grids, row_wise=True
@@ -736,7 +745,15 @@ class TtModelArgs:
                 orientation=ttnn.ShardOrientation.ROW_MAJOR,
                 use_height_and_width_as_shard_shape=True,
             )
-
+            self.model_config["FF2_OUT_SUBGRID_MEMCFG"] = ttnn.create_sharded_memory_config(
+                shape=(32, 9216 // 4 // RING_SIZE),
+                core_grid=ttnn.num_cores_to_corerangeset_in_subcoregrids(
+                    self.start_core, 24, self.sub_core_grids, row_wise=True
+                ),
+                strategy=ttnn.ShardStrategy.WIDTH,
+                orientation=ttnn.ShardOrientation.ROW_MAJOR,
+                use_height_and_width_as_shard_shape=True,
+            )
             LM_HEAD_RING_SIZE = 48
             self.lm_head_shape = (12288 // 4, 128 * 1024 // 8 + 2048)
             lm_head_ring_core_range_set = ttnn.num_cores_to_corerangeset_in_subcoregrids(
