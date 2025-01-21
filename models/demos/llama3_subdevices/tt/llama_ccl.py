@@ -60,6 +60,37 @@ class TT_CCL:
         )
         return output_tensor_mesh
 
+    def line_reduce_scatter(self, tensor, memory_config, dim, cluster_axis, num_links=1, math_op=ttnn.ReduceType.Sum):
+        ttnn_tensor_out = ttnn.experimental.reduce_scatter_async(
+            tensor,
+            dim=dim,
+            cluster_axis=cluster_axis,
+            mesh_device=self.mesh_device,
+            from_remote_multi_device_global_semaphore=self.from_remote_semaphore_handles,
+            to_remote_multi_device_global_semaphore=self.to_remote_semaphore_handles,
+            math_op=math_op,
+            memory_config=memory_config,
+            topology=ttnn.Topology.Linear,
+            num_links=num_links,
+            subdevice_id=self.worker_sub_device_id,
+        )
+        return ttnn_tensor_out
+
+    def line_all_gather(self, input_tensor_mesh, dim, cluster_axis, memory_config, num_links=1):
+        ttnn_tensor_out = ttnn.experimental.all_gather_async(
+            input_tensor_mesh,
+            dim,
+            cluster_axis=cluster_axis,
+            mesh_device=self.mesh_device,
+            topology=ttnn.Topology.Linear,
+            multi_device_global_semaphore=self.gather_semaphore_handles,
+            num_links=num_links,
+            memory_config=memory_config,
+            subdevice_id=self.worker_sub_device_id,
+            enable_persistent_fabric_mode=self.enable_persistent_fabric,
+        )
+        return ttnn_tensor_out
+
     def close(self):
         if self.enable_persistent_fabric and self.teardown_persistent_fabric:
             logger.info("Tearing down persistent fabric interface")

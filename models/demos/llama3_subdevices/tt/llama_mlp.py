@@ -192,26 +192,26 @@ class TtLlamaMLP(LightweightModule):
                 # print(w1_out.shape, w3_out.shape)
                 # All reduce W1
                 w1_out = ttnn.to_memory_config(w1_out, ttnn.DRAM_MEMORY_CONFIG)
-                w1_out_reduced = self.tt_ccl.line_all_reduce(
-                    w1_out, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
+                w1_out_reduced = self.tt_ccl.line_reduce_scatter(
+                    w1_out, dim=3, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
                 )
 
                 ttnn.synchronize_devices(self.mesh_device)
                 ttnn.deallocate(w1_out)
                 w1_out_reduced = ttnn.to_memory_config(
-                    w1_out_reduced, self.model_config["SHARDED_FF12_PRE_MUL_RING_MEMCFG"]
+                    w1_out_reduced, self.model_config["SHARDED_FF12_PRE_MUL_RING_REDUCE_MEMCFG"]
                 )
 
                 # All reduce W3
                 w3_out = ttnn.to_memory_config(w3_out, ttnn.DRAM_MEMORY_CONFIG)
-                w3_out_reduced = self.tt_ccl.line_all_reduce(
-                    w3_out, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
+                w3_out_reduced = self.tt_ccl.line_reduce_scatter(
+                    w3_out, dim=3, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
                 )
 
                 ttnn.synchronize_devices(self.mesh_device)
                 ttnn.deallocate(w3_out)
                 w3_out_reduced = ttnn.to_memory_config(
-                    w3_out_reduced, self.model_config["SHARDED_FF12_PRE_MUL_RING_MEMCFG"]
+                    w3_out_reduced, self.model_config["SHARDED_FF12_PRE_MUL_RING_REDUCE_MEMCFG"]
                 )
 
             else:
@@ -241,6 +241,16 @@ class TtLlamaMLP(LightweightModule):
         )
         ttnn.synchronize_devices(self.mesh_device)
 
+        # All reduce W3
+        w2_in = ttnn.to_memory_config(w2_in, ttnn.DRAM_MEMORY_CONFIG)
+        w2_in_gathered = self.tt_ccl.line_all_gather(
+            w2_in, dim=3, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
+        )
+
+        ttnn.synchronize_devices(self.mesh_device)
+        ttnn.deallocate(w2_in)
+        w2_in_gathered = ttnn.to_memory_config(w2_in_gathered, self.model_config["FF2_IN_RING_MEMCFG"])
+
         # print("mul done", w2_in.shape)
 
         if mode == "decode" and not TG:
@@ -250,40 +260,40 @@ class TtLlamaMLP(LightweightModule):
         ttnn.deallocate(w3_out)
         ttnn.deallocate(w1_out_reduced)
 
-        if TG and (self.dim == 8192 or mode == "prefill"):
-            # w2_in = ttnn.all_gather(
-            #     w2_in,
-            #     3,
-            #     num_links=2,
-            #     cluster_axis=1,
-            #     mesh_device=self.mesh_device,
-            #     topology=ttnn.Topology.Linear,
-            #     memory_config=input_mem_cfg,
-            # )
-            # w2_in_torch = ttnn.to_torch(
-            #     w2_in,
-            #     mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(3, 0), mesh_shape=(8, 4)),
-            # )
-            # #print(w2_in_torch.shape)
-            # w2_in_torch_gather = torch.cat([w2_in_torch] * 4, dim=3)
-            # #print(w2_in_torch_gather.shape)
-            # w2_in = ttnn.as_tensor(
-            #     w2_in_torch_gather,
-            #     dtype=ttnn.bfloat16,
-            #     device=self.mesh_device,
-            #     mesh_mapper=ttnn.ShardTensor2dMesh(
-            #         mesh_device=self.mesh_device, dims=(3, None), mesh_shape=list(self.mesh_device.shape)
-            #     ),
-            #     layout=ttnn.TILE_LAYOUT,
-            #     memory_config=ttnn.DRAM_MEMORY_CONFIG,
-            # )
-            # #print(w2_in)
-            if mode == "decode":
-                w2_in = ttnn.to_memory_config(w2_in, self.model_config["FF2_IN_RING_MEMCFG"])
+        # if TG and (self.dim == 8192 or mode == "prefill"):
+        # w2_in = ttnn.all_gather(
+        #     w2_in,
+        #     3,
+        #     num_links=2,
+        #     cluster_axis=1,
+        #     mesh_device=self.mesh_device,
+        #     topology=ttnn.Topology.Linear,
+        #     memory_config=input_mem_cfg,
+        # )
+        # w2_in_torch = ttnn.to_torch(
+        #     w2_in,
+        #     mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(3, 0), mesh_shape=(8, 4)),
+        # )
+        # #print(w2_in_torch.shape)
+        # w2_in_torch_gather = torch.cat([w2_in_torch] * 4, dim=3)
+        # #print(w2_in_torch_gather.shape)
+        # w2_in = ttnn.as_tensor(
+        #     w2_in_torch_gather,
+        #     dtype=ttnn.bfloat16,
+        #     device=self.mesh_device,
+        #     mesh_mapper=ttnn.ShardTensor2dMesh(
+        #         mesh_device=self.mesh_device, dims=(3, None), mesh_shape=list(self.mesh_device.shape)
+        #     ),
+        #     layout=ttnn.TILE_LAYOUT,
+        #     memory_config=ttnn.DRAM_MEMORY_CONFIG,
+        # )
+        # #print(w2_in)
+        # if mode == "decode":
+        #     w2_in_gathered = ttnn.to_memory_config(w2_in_gathered, self.model_config["FF2_IN_RING_MEMCFG"])
 
         # print("w2_in", w2_in)
         w2_out = ttnn.linear(
-            w2_in,
+            w2_in_gathered,
             self.w2,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
             dtype=self.args.ccl_dtype if TG else ttnn.bfloat16,
@@ -297,7 +307,7 @@ class TtLlamaMLP(LightweightModule):
             else None,
         )
         ttnn.synchronize_devices(self.mesh_device)
-        ttnn.deallocate(w2_in)
+        ttnn.deallocate(w2_in_gathered)
         # if mode == "decode" and not TG:
         #     w2_out = ttnn.sharded_to_interleaved(w2_out, ttnn.DRAM_MEMORY_CONFIG)
         # w2_out_reduced = tt_all_reduce(
@@ -321,7 +331,6 @@ class TtLlamaMLP(LightweightModule):
 
         ttnn.synchronize_devices(self.mesh_device)
         ttnn.deallocate(w2_out)
-        ttnn.synchronize_devices(self.mesh_device)
 
         # Ensure dim 0 and 1 are 1
         # original_shape = w2_out_reduced.shape
