@@ -50,19 +50,19 @@ class CCLConfig:
             mesh_device, ccl_sub_device_crs, 0
         )
         self.all_reduce_from_remote_semaphore_handles = create_global_semaphore_with_same_address(
-            mesh_device, ccl_sub_device_crs, 1
+            mesh_device, ccl_sub_device_crs, 0
         )
         self.all_reduce_to_remote_semaphore_handles = create_global_semaphore_with_same_address(
-            mesh_device, ccl_sub_device_crs, 2
+            mesh_device, ccl_sub_device_crs, 0
         )
         self.all_reduce_gather_semaphore_handles = create_global_semaphore_with_same_address(
-            mesh_device, ccl_sub_device_crs, 3
+            mesh_device, ccl_sub_device_crs, 0
         )
         self.reduce_scatter_from_remote_semaphore_handles = create_global_semaphore_with_same_address(
-            mesh_device, ccl_sub_device_crs, 4
+            mesh_device, ccl_sub_device_crs, 0
         )
         self.reduce_scatter_to_remote_semaphore_handles = create_global_semaphore_with_same_address(
-            mesh_device, ccl_sub_device_crs, 5
+            mesh_device, ccl_sub_device_crs, 0
         )
 
     def all_gather(self, tensor, output_mem_config, cluster_axis, dim=0, num_links=1):
