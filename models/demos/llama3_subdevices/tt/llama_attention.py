@@ -23,6 +23,7 @@ class TtLlamaAttention(LightweightModule):
         paged_attention_config=None,
         use_paged_kv_cache=False,
         prefetcher_setup=None,
+        tt_ccl=None,
     ):
         super().__init__()
 
@@ -52,6 +53,7 @@ class TtLlamaAttention(LightweightModule):
         self.n_local_kv_heads = self.n_kv_heads // self.num_devices_per_group
 
         self.prefetcher_setup = prefetcher_setup
+        self.tt_ccl = tt_ccl
 
         # TODO: Fix this once all-gather supports < tile_size
         if self.TG:
