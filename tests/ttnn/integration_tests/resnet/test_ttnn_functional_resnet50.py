@@ -59,7 +59,7 @@ def test_resnet_50(
     # # More optimized run with caching
     # test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
     # test_infra.run()
-    breakpoint()
+    # breakpoint()
     passed, message = test_infra.validate()
     logger.info("Test finished. PCC needs debugging: GH Issue #15069.")
-    # assert passed, message
+    assert passed, message
