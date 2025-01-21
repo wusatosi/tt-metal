@@ -44,6 +44,18 @@ class TT_CCL:
             self.mesh_device, self.sub_device_crs, 0
         )
 
+        self.all_gather_ccl_semaphore_handles = create_global_semaphore_with_same_address(
+            self.mesh_device, self.sub_device_crs, 0
+        )
+
+        self.reduce_scatter_from_remote_semaphore_handles = create_global_semaphore_with_same_address(
+            self.mesh_device, self.sub_device_crs, 0
+        )
+
+        self.reduce_scatter_to_remote_semaphore_handles = create_global_semaphore_with_same_address(
+            self.mesh_device, self.sub_device_crs, 0
+        )
+
     def line_all_reduce(self, input_tensor_mesh, cluster_axis, num_links, memory_config):
         output_tensor_mesh = ttnn.experimental.all_reduce_async(
             input_tensor_mesh,
@@ -59,6 +71,39 @@ class TT_CCL:
             subdevice_id=self.worker_sub_device_id,
         )
         return output_tensor_mesh
+
+    def line_all_gather(self, input_tensor_mesh, dim, cluster_axis, num_links, memory_config):
+        ttnn_tensor_out = ttnn.experimental.all_gather_async(
+            input_tensor_mesh,
+            dim,
+            cluster_axis=cluster_axis,
+            mesh_device=self.mesh_device,
+            topology=ttnn.Topology.Linear,
+            multi_device_global_semaphore=self.all_gather_ccl_semaphore_handles,
+            num_links=num_links,
+            memory_config=memory_config,
+            subdevice_id=self.worker_sub_device_id,
+            enable_persistent_fabric_mode=self.enable_persistent_fabric,
+        )
+
+        return ttnn_tensor_out
+
+    def line_reduce_scatter(self, tensor, memory_config, dim, cluster_axis, num_links=1, math_op=ttnn.ReduceType.Sum):
+        ttnn_tensor_out = ttnn.experimental.reduce_scatter_async(
+            tensor,
+            dim=dim,
+            cluster_axis=cluster_axis,
+            mesh_device=self.mesh_device,
+            from_remote_multi_device_global_semaphore=self.reduce_scatter_from_remote_semaphore_handles,
+            to_remote_multi_device_global_semaphore=self.reduce_scatter_to_remote_semaphore_handles,
+            math_op=math_op,
+            memory_config=memory_config,
+            topology=ttnn.Topology.Linear,
+            num_links=num_links,
+            subdevice_id=self.worker_sub_device_id,
+        )
+
+        return ttnn_tensor_out
 
     def close(self):
         if self.enable_persistent_fabric and self.teardown_persistent_fabric:
