@@ -12,6 +12,7 @@
 #include "tt_metal/common/core_coord.hpp"
 #include "tt_metal/impl/dispatch/dispatch_core_manager.hpp"
 #include "tt_metal/impl/buffers/buffer.hpp"
+#include "tt_metal/tools/profiler/profiler_optional_metadata.hpp"
 
 namespace tt::tt_metal {
 inline namespace v0 {
@@ -203,7 +204,11 @@ void InitDeviceProfiler(IDevice* device);
  * std::vector<CoreCoord>> & |                           | True     | | last_dump     | Last dump before process dies |
  * bool                                                         |                           | False    |
  * */
-void DumpDeviceProfileResults(IDevice* device, std::vector<CoreCoord>& worker_cores, bool last_dump = false);
+void DumpDeviceProfileResults(
+    IDevice* device,
+    std::vector<CoreCoord>& worker_cores,
+    bool last_dump = false,
+    const std::optional<ProfilerOptionalMetadata>& metadata = {});
 
 /**
  * Traverse all cores and read device side profiler data and dump results into device side CSV log
@@ -215,7 +220,8 @@ void DumpDeviceProfileResults(IDevice* device, std::vector<CoreCoord>& worker_co
  * | device        | The device holding the program being profiled.    | IDevice* |                           | True |
  * | last_dump     | Last dump before process dies                     | bool |                           | False    |
  * */
-void DumpDeviceProfileResults(IDevice* device, bool last_dump = false);
+void DumpDeviceProfileResults(
+    IDevice* device, bool last_dump = false, const std::optional<ProfilerOptionalMetadata>& metadata = {});
 
 /**
  * Set the directory for device-side CSV logs produced by the profiler instance in the tt-metal module

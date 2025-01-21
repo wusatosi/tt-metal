@@ -318,8 +318,7 @@ void InitDeviceProfiler(IDevice* device) {
     }
 #endif
 }
-
-void DumpDeviceProfileResults(IDevice* device, bool lastDump) {
+void DumpDeviceProfileResults(IDevice* device, bool lastDump, const std::optional<ProfilerOptionalMetadata>& metadata) {
 #if defined(TRACY_ENABLE)
     ZoneScoped;
     std::vector<CoreCoord> workerCores;
@@ -334,13 +333,18 @@ void DumpDeviceProfileResults(IDevice* device, bool lastDump) {
         auto virtualCore = device->virtual_core_from_logical_core(core, CoreType::ETH);
         workerCores.push_back(virtualCore);
     }
-    device->push_work(
-        [device, workerCores, lastDump]() mutable { DumpDeviceProfileResults(device, workerCores, lastDump); });
+    device->push_work([device, workerCores, lastDump, metadata]() mutable {
+        DumpDeviceProfileResults(device, workerCores, lastDump, metadata);
+    });
 
 #endif
 }
 
-void DumpDeviceProfileResults(IDevice* device, std::vector<CoreCoord>& worker_cores, bool lastDump) {
+void DumpDeviceProfileResults(
+    IDevice* device,
+    std::vector<CoreCoord>& worker_cores,
+    bool lastDump,
+    const std::optional<ProfilerOptionalMetadata>& metadata) {
 #if defined(TRACY_ENABLE)
     ZoneScoped;
 
@@ -432,7 +436,7 @@ void DumpDeviceProfileResults(IDevice* device, std::vector<CoreCoord>& worker_co
                 syncDeviceHost(device, SYNC_CORE, tt_metal_device_profiler_map.at(device_id).sync_program, false);
             }
             tt_metal_device_profiler_map.at(device_id).setDeviceArchitecture(device->arch());
-            tt_metal_device_profiler_map.at(device_id).dumpResults(device, worker_cores, lastDump);
+            tt_metal_device_profiler_map.at(device_id).dumpResults(device, worker_cores, lastDump, metadata);
             if (lastDump) {
                 // Process is ending, no more device dumps are coming, reset your ref on the buffer so deallocate is the
                 // last owner. Sync program also contains a buffer so it is safter to release it here

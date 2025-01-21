@@ -16,6 +16,7 @@
 #include "tt_metal/host_api.hpp"
 #include "tt_metal/impl/trace/trace.hpp"
 #include "ttnn/operations/experimental/auto_format/auto_format.hpp"
+#include "tt_metal/tools/profiler/op_profiler.hpp"
 
 using namespace tt::tt_metal;
 
@@ -23,7 +24,24 @@ namespace py = pybind11;
 
 namespace {
 inline void DumpDeviceProfiler(IDevice* device, bool last_dump) {
-    tt::tt_metal::detail::DumpDeviceProfileResults(device, last_dump);
+    // copy to ensure thread safety
+    ProfilerOptionalMetadata prof_metadata(std::move(op_profiler::runtime_id_to_opname.exportMap()));
+    tt::tt_metal::detail::DumpDeviceProfileResults(device, last_dump, prof_metadata);
+
+    // dump runtime_op_to_opname using log_info
+    auto runtime_id_to_opname = op_profiler::runtime_id_to_opname.exportMap();
+    for (const auto& [key, opname] : runtime_id_to_opname) {
+        auto [device_id, runtime_id] = key;
+        if (device->id() != device_id) {
+            tt::log_warning(
+                "Skipping runtime_id: {}, opname: {} as it does not belong to device_id: {}",
+                runtime_id,
+                opname,
+                device_id);
+            continue;
+        }
+        tt::log_info("runtime_id: {}, opname: {}", runtime_id, opname);
+    }
 }
 }  // namespace
 
