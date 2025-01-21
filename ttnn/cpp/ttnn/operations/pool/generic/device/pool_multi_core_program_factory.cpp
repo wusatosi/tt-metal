@@ -4,8 +4,8 @@
 
 #include "pool_op.hpp"
 #include "ttnn/operations/reduction/generic/device/reduce_op.hpp"  // for reduce_op_utils
-#include "tt_metal/common/bfloat16.hpp"
-#include "tt_metal/common/math.hpp"
+#include <tt-metalium/bfloat16.hpp>
+#include <tt-metalium/math.hpp>
 
 #include <limits>
 
@@ -113,14 +113,6 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
     const bool is_wide_reduction = in_ntiles_c > MAX_TILES_PER_REDUCTION;
 
     TT_FATAL(nblocks == 1, "Multiple blocks not yet supported");
-
-    TT_FATAL(
-        !(input_shape[3] > tt::constants::TILE_WIDTH && input_shape[3] % tt::constants::TILE_WIDTH != 0),
-        "channel > TILE_WIDTH and not a multiplier of TILE_WIDTH outputs incorrect results (#15731)");
-
-    TT_FATAL(
-        !(pool_type == Pool2DType::AVG_POOL2D && is_wide_reduction),
-        "avg_pool2d wide reduction outputs incorrect results (#14459)");
 
     uint32_t tile_w = tt::constants::TILE_WIDTH;
     if (input_shape[3] < tt::constants::TILE_WIDTH) {
