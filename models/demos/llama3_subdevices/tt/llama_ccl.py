@@ -44,7 +44,7 @@ class TT_CCL:
             self.mesh_device, self.sub_device_crs, 0
         )
 
-    def tt_line_all_reduce(self, input_tensor_mesh, cluster_axis, num_links, mem_config):
+    def line_all_reduce(self, input_tensor_mesh, cluster_axis, num_links, memory_config):
         output_tensor_mesh = ttnn.experimental.all_reduce_async(
             input_tensor_mesh,
             cluster_axis=cluster_axis,
@@ -54,10 +54,11 @@ class TT_CCL:
             gather_multi_device_global_semaphore=self.gather_semaphore_handles,
             math_op=ttnn.ReduceType.Sum,
             num_links=num_links,
-            memory_config=mem_config,
+            memory_config=memory_config,
             topology=ttnn.Topology.Linear,
             subdevice_id=self.worker_sub_device_id,
         )
+        return output_tensor_mesh
 
     def close(self):
         if self.enable_persistent_fabric and self.teardown_persistent_fabric:
