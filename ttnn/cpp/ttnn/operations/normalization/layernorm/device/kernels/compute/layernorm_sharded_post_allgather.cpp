@@ -294,10 +294,11 @@ void MAIN {
                 }
                 tile_regs_release();
                 index_subblock_w_offset += subblock_w;
+                cb_push_back(cb_outgamma, subblock_w);
             }
             index_h_offset += block_w;
         }
-        cb_push_back(cb_outgamma, num_tiles_per_block);
+        // cb_push_back(cb_outgamma, num_tiles_per_block);
         cb_pop_front(cb_im, num_tiles_per_block);
     }
 

@@ -51,8 +51,8 @@ PREFETCHER_NOC1_GRID = [
         # (2048, ttnn.CoreGrid(x=2, y=2), ttnn.CoreGrid(x=4, y=2)),
         # (2048, ttnn.CoreGrid(x=2, y=2), ttnn.CoreGrid(x=3, y=2)),
         # (8192, ttnn.CoreGrid(x=2, y=8), ttnn.CoreGrid(x=3, y=8)),  # TG llama use case; 4 tiles per core input
-        # (8192, ttnn.CoreGrid(x=2, y=8), PREFETCHER_NOC1_GRID),  # TG llama use case; 4 tiles per core input
-        (8192, ttnn.CoreGrid(x=2, y=8), None),
+        (8192, ttnn.CoreGrid(x=2, y=8), PREFETCHER_NOC1_GRID),  # TG llama use case; 4 tiles per core input
+        # (8192, ttnn.CoreGrid(x=2, y=8), None),
     ],
 )
 @pytest.mark.parametrize("device_params", [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL}], indirect=True)
@@ -125,7 +125,8 @@ def test_layernorm_perf(mesh_device, input_dim, input_core_grid, output_core_gri
     )
     ln_prg_cfg = ttnn.LayerNormShardedMultiCoreProgramConfig(
         compute_with_storage_grid_size=(input_core_grid.x, input_core_grid.y),
-        subblock_w=(size_per_device // num_cores) // 32,
+        # subblock_w=(size_per_device // num_cores) // 32,
+        subblock_w=1,
         block_h=1,
         block_w=(size_per_device // num_cores) // 32,
         inplace=False,
