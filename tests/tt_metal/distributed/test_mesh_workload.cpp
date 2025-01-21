@@ -1142,7 +1142,6 @@ TEST_F(MeshWorkloadTest, TestShardedMeshBufferRead) {
 }
 
 TEST_F(MeshWorkloadTest, TestReadConcat) {
-    // TODO: Comlete this test
     uint32_t single_tile_size = ::tt::tt_metal::detail::TileSize(DataFormat::Float16_b);
 
     DeviceLocalBufferConfig per_device_buffer_config{
@@ -1151,20 +1150,41 @@ TEST_F(MeshWorkloadTest, TestReadConcat) {
         .buffer_layout = TensorMemoryLayout::INTERLEAVED,
         .bottom_up = true};
 
-    std::pair<std::size_t, std::size_t> global_buffer_shape = {128, 64};
+    std::pair<std::size_t, std::size_t> global_buffer_shape = {256, 32};
     std::pair<std::size_t, std::size_t> shard_shape = {32, 32};
 
     uint32_t global_buffer_size = global_buffer_shape.first * global_buffer_shape.second * sizeof(uint32_t);
 
     ShardedBufferConfig sharded_config{
-        .global_size = global_buffer_Size,
+        .global_size = global_buffer_size,
         .global_buffer_shape = global_buffer_shape,
         .shard_shape = shard_shape,
-        .shard_orientation = ShardOrientation::ROW_MAJOR};
+        .shard_orientation = ShardOrientation::COL_MAJOR};
 
-    auto mesh_buffer = MeshBuffer::create(sharded_config, per_device_buffer_config, mesh_device_);
+    auto mesh_buffer = MeshBuffer::create(sharded_config, per_device_buffer_config, mesh_device_.get());
 
-    // for (std::)
+    uint32_t num_elements_in_shard = shard_shape.first;  // * shard_shape.second;
+    uint32_t shard_idx = 0;
+    for (std::size_t logical_x = 0; logical_x < mesh_buffer->device()->num_cols(); logical_x++) {
+        for (std::size_t logical_y = 0; logical_y < mesh_buffer->device()->num_rows(); logical_y++) {
+            std::vector<uint32_t> src = std::vector<uint32_t>(shard_shape.first * shard_shape.second, 0);
+            std::iota(src.begin(), src.end(), num_elements_in_shard * shard_idx);
+            auto shard = mesh_buffer->get_device_buffer(Coordinate(logical_y, logical_x));
+            EnqueueWriteBuffer(shard->device()->command_queue(), shard, src, false);
+            shard_idx++;
+        }
+    }
+    std::vector<uint32_t> dst_vec = {};
+    dst_vec.resize(global_buffer_shape.first * global_buffer_shape.second);
+
+    mesh_device_->mesh_command_queue().read_sharded_buffer(*mesh_buffer, dst_vec.data(), true);
+
+    for (int i = 0; i < dst_vec.size(); i++) {
+        if (i and i % 256 == 0) {
+            std::cout << std::endl;
+        }
+        std::cout << dst_vec[i] << " ";
+    }
 }
 
 }  // namespace
