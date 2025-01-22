@@ -912,7 +912,7 @@ LightMetalBinary LightMetalEndCapture();
 
 // clang-format off
 /**
- * Load an existing trace descriptor onto a particular device and command queue and assign it a unique trace id.
+ * Load an existing trace descriptor onto a particular device and command queue and assign it as user-provided trace id. Useful for Light Metal Binary replay.
  *
  * Return value: void
  *
