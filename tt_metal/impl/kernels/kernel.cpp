@@ -112,6 +112,7 @@ void Kernel::add_defines(const std::map<std::string, std::string>& defines) {
 
 void Kernel::process_defines(const std::function<void(const string &define, const string &value)> callback) const {
     for (const auto &[define, value] : this->defines_) {
+        TT_ASSERT(value.size() > 0 && value[0] != 0, "Define value is set to NULL for {}", define);
         callback(define, value);
     }
 }
@@ -126,6 +127,7 @@ void DataMovementKernel::process_defines(
 void ComputeKernel::process_defines(
     const std::function<void(const string &define, const string &value)> callback) const {
     for (const auto &[define, value] : this->defines_) {
+        TT_ASSERT(value.size() > 0 && value[0] != 0, "Define value is set to NULL for {}", define);
         callback(define, value);
     }
     // pass default noc mode as compute does not need it, just for compile to pass
