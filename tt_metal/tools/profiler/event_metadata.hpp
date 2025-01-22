@@ -40,6 +40,7 @@ struct alignas(uint64_t) KernelProfilerNocEventMetadata {
     };
     enum class NocType : unsigned char { UNDEF = 0, NOC_0 = 1, NOC_1 = 2 };
     using NocVirtualChannel = int8_t;
+    static constexpr int8_t INVALID_COORD_VAL = -1;
 
     KernelProfilerNocEventMetadata() = default;
 
@@ -49,14 +50,16 @@ struct alignas(uint64_t) KernelProfilerNocEventMetadata {
     }
 
     // these can be compressed to bit-fields if needed, but byte orientated has less overhead
-    int8_t dst_x = -1;
-    int8_t dst_y = -1;
-    NocEventType noc_xfer_type = NocEventType::UNDEF;
-    NocType noc_type = NocType::UNDEF;
-    NocVirtualChannel noc_vc = -1;
-    uint32_t num_bytes : 24;
+    int8_t dst_x = INVALID_COORD_VAL;
+    int8_t dst_y = INVALID_COORD_VAL;
+    int8_t mcast_end_dst_x = INVALID_COORD_VAL;
+    int8_t mcast_end_dst_y = INVALID_COORD_VAL;
+    NocEventType noc_xfer_type;
+    NocType noc_type : 4;
+    NocVirtualChannel noc_vc : 4;
+    uint16_t num_bytes;
 
-    uint64_t asU64() {
+    uint64_t asU64() const {
         uint64_t ret;
         std::memcpy(&ret, this, sizeof(uint64_t));
         return ret;
