@@ -326,6 +326,6 @@ def tt_sharded_distributed_rmsnorm(
         program_config=ln_sharded_progcfg,
         stats=tt_global_stats_sharded,
     )
-    tt_global_stats_sharded.deallocate(True)
+    ttnn.deallocate(tt_global_stats_sharded)
 
     return tt_out

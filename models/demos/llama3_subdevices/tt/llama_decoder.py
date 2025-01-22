@@ -57,6 +57,7 @@ class TtTransformerBlock(LightweightModule):
             paged_attention_config=paged_attention_config,
             use_paged_kv_cache=use_paged_kv_cache,
             prefetcher_setup=prefetcher_setup,
+            tt_ccl=tt_ccl,
         )
         self.feed_forward = TtLlamaMLP(
             mesh_device=mesh_device,
@@ -67,6 +68,7 @@ class TtTransformerBlock(LightweightModule):
             dtype=dtype,
             model_config=self.model_config,
             prefetcher_setup=prefetcher_setup,
+            tt_ccl=tt_ccl,
         )
         self.attention_norm = DistributedNorm(
             RMSNorm(
