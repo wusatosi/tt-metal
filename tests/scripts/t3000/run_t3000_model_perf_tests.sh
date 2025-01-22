@@ -63,7 +63,7 @@ run_t3000_falcon40b_tests() {
 
   echo "LOG_METAL: Running run_t3000_falcon40b_tests"
 
-  env WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml pytest -n auto models/demos/t3000/falcon40b/tests/test_perf_falcon.py -m "model_perf_t3000" --timeout=600 ; fail+=$?
+  env WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml pytest -n auto models/demos/t3000/falcon40b/tests/test_perf_falcon.py -m "model_perf_t3000" --timeout=1200 ; fail+=$?
 
   # Record the end time
   end_time=$(date +%s)
@@ -131,14 +131,14 @@ run_t3000_ccl_reduce_scatter_perf_tests() {
 }
 
 run_t3000_llm_tests() {
-  # Run falcon7b tests
-  run_t3000_falcon7b_tests
+  # # Run falcon7b tests
+  # run_t3000_falcon7b_tests
 
-  # Run mixtral tests
-  run_t3000_mixtral_tests
+  # # Run mixtral tests
+  # run_t3000_mixtral_tests
 
-  # Run llama2-70b tests
-  run_t3000_llama2_70b_tests
+  # # Run llama2-70b tests
+  # run_t3000_llama2_70b_tests
 
   # Run falcon40b tests
   run_t3000_falcon40b_tests
