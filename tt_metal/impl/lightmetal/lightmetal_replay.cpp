@@ -158,7 +158,7 @@ std::optional<detail::TraceDescriptor> LightMetalReplay::GetTraceByTraceId(uint3
 // Object Map Public Accessors      //
 //////////////////////////////////////
 
-void LightMetalReplay::AddBufferToMap(uint32_t global_id, std::shared_ptr<::tt::tt_metal::Buffer> buffer) {
+void LightMetalReplay::AddBufferToMap(uint32_t global_id, const std::shared_ptr<::tt::tt_metal::Buffer>& buffer) {
     if (buffer_map_.find(global_id) != buffer_map_.end()) {
         log_warning(tt::LogMetalTrace, "Buffer with global_id: {} already exists in map.", global_id);
     }
@@ -175,7 +175,7 @@ std::shared_ptr<::tt::tt_metal::Buffer> LightMetalReplay::GetBufferFromMap(uint3
 
 void LightMetalReplay::RemoveBufferFromMap(uint32_t global_id) { buffer_map_.erase(global_id); }
 
-void LightMetalReplay::AddProgramToMap(uint32_t global_id, std::shared_ptr<::tt::tt_metal::Program> program) {
+void LightMetalReplay::AddProgramToMap(uint32_t global_id, const std::shared_ptr<::tt::tt_metal::Program>& program) {
     if (program_map_.find(global_id) != program_map_.end()) {
         log_warning(tt::LogMetalTrace, "Program with global_id: {} already exists in map.", global_id);
     }
@@ -208,7 +208,7 @@ void LightMetalReplay::AddKernelHandleToMap(uint32_t global_id, ::tt::tt_metal::
 
 void LightMetalReplay::RemoveKernelHandleFromMap(uint32_t global_id) { kernel_handle_map_.erase(global_id); }
 
-void LightMetalReplay::AddKernelToMap(uint32_t global_id, std::shared_ptr<::tt::tt_metal::Kernel> kernel) {
+void LightMetalReplay::AddKernelToMap(uint32_t global_id, const std::shared_ptr<::tt::tt_metal::Kernel>& kernel) {
     if (kernel_map_.find(global_id) != kernel_map_.end()) {
         log_warning(tt::LogMetalTrace, "Kernel with global_id: {} already exists in map.", global_id);
     }

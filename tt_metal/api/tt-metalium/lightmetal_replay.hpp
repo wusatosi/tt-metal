@@ -87,11 +87,11 @@ public:
     void Execute(const tt::tt_metal::flatbuffer::LightMetalCompareCommand* command);
 
     // Object maps public accessors
-    void AddBufferToMap(uint32_t global_id, std::shared_ptr<::tt::tt_metal::Buffer> buffer);
+    void AddBufferToMap(uint32_t global_id, const std::shared_ptr<::tt::tt_metal::Buffer>& buffer);
     std::shared_ptr<::tt::tt_metal::Buffer> GetBufferFromMap(uint32_t global_id) const;
     void RemoveBufferFromMap(uint32_t global_id);
 
-    void AddProgramToMap(uint32_t global_id, std::shared_ptr<::tt::tt_metal::Program> program);
+    void AddProgramToMap(uint32_t global_id, const std::shared_ptr<::tt::tt_metal::Program>& program);
     std::shared_ptr<::tt::tt_metal::Program> GetProgramFromMap(uint32_t global_id) const;
     void RemoveProgramFromMap(uint32_t global_id);
 
@@ -99,7 +99,7 @@ public:
     ::tt::tt_metal::KernelHandle GetKernelHandleFromMap(uint32_t global_id) const;
     void RemoveKernelHandleFromMap(uint32_t global_id);
 
-    void AddKernelToMap(uint32_t global_id, std::shared_ptr<::tt::tt_metal::Kernel> kernel);
+    void AddKernelToMap(uint32_t global_id, const std::shared_ptr<::tt::tt_metal::Kernel>& kernel);
     std::shared_ptr<::tt::tt_metal::Kernel> GetKernelFromMap(uint32_t global_id) const;
     void RemoveKernelFromMap(uint32_t global_id);
 
