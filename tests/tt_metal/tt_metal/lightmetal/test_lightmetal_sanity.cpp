@@ -126,7 +126,7 @@ vector<bool> blocking_flags = {kBlocking, kNonBlocking};
 
 // Test that create buffer, write, readback, and verify works when traced + replayed.
 TEST_F(SingleDeviceLightMetalFixture, CreateBufferEnqueueWriteRead_Sanity) {
-    CreateDevice(2048);
+    CreateDevice(4096);
 
     CommandQueue& command_queue = this->device_->command_queue();
     uint32_t num_loops = parse_env<int>("NUM_LOOPS", 1);
@@ -179,7 +179,7 @@ TEST_F(SingleDeviceLightMetalFixture, CreateBufferEnqueueWriteRead_Sanity) {
 
 // Test simple case of single datamovement program on single RISC works for trace + replay.
 TEST_F(SingleDeviceLightMetalFixture, SingleRISCDataMovementSanity) {
-    CreateDevice(2048);
+    CreateDevice(4096);
 
     uint32_t size_bytes = 64;  // 16 elements.
     auto input = CreateBuffer(InterleavedBufferConfig{this->device_, size_bytes, size_bytes, BufferType::DRAM});
@@ -221,7 +221,7 @@ TEST_F(SingleDeviceLightMetalFixture, SingleRISCDataMovementSanity) {
 
 // Test simple case of 3 riscs used for datamovement and compute works for trace + replay.
 TEST_F(SingleDeviceLightMetalFixture, ThreeRISCDataMovementComputeSanity) {
-    CreateDevice(2048);
+    CreateDevice(4096);
 
     uint32_t size_bytes = 64;  // 16 elements.
     auto input = CreateBuffer(InterleavedBufferConfig{this->device_, size_bytes, size_bytes, BufferType::DRAM});
@@ -250,7 +250,7 @@ TEST_F(SingleDeviceLightMetalFixture, ThreeRISCDataMovementComputeSanity) {
 
 // Test simple case of 3 riscs used for datamovement and compute works for trace + replay. Also include dynamic CB.
 TEST_F(SingleDeviceLightMetalFixture, ThreeRISCDataMovementComputeSanityDynamicCB) {
-    CreateDevice(2048);
+    CreateDevice(4096);
 
     uint32_t buf_size_bytes = 64;  // 16 elements.
     uint32_t cb_size_bytes = 2048;
@@ -284,7 +284,7 @@ TEST_F(SingleDeviceLightMetalFixture, ThreeRISCDataMovementComputeSanityDynamicC
 
 // Test simple compute test with metal trace, but no explicit trace replay (added automatically by light metal trace).
 TEST_F(SingleDeviceLightMetalFixture, SingleProgramTraceCapture) {
-    CreateDevice(2048);
+    CreateDevice(4096);
 
     // Must use CreateBuffer not Buffer::create()
     uint32_t size_bytes = 64;  // 16 elements. Was 2048 in original test.
@@ -326,7 +326,7 @@ TEST_F(SingleDeviceLightMetalFixture, SingleProgramTraceCapture) {
 
 // Test simple compute test with metal trace, but no explicit trace replay (added automatically by light metal trace).
 TEST_F(SingleDeviceLightMetalFixture, TwoProgramTraceCapture) {
-    CreateDevice(2048);
+    CreateDevice(4096);
 
     // Must use CreateBuffer not Buffer::create()
     uint32_t size_bytes = 64;  // 16 elements. Was 2048 in original test.
