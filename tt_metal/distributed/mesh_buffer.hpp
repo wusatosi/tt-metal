@@ -53,6 +53,19 @@ struct ShardedBufferConfig {
     uint32_t compute_datum_size_bytes() const {
         return global_size / (global_buffer_shape.height() * global_buffer_shape.width());
     }
+
+    std::pair<bool, bool> replicated_dims() const { return {shard_shape.height() == 0, shard_shape.width() == 0}; }
+
+    Shape2D physical_shard_shape() const {
+        Shape2D physical_shard_shape = shard_shape;
+        if (physical_shard_shape.height() == 0) {
+            physical_shard_shape = {global_buffer_shape.height(), physical_shard_shape.width()};
+        }
+        if (physical_shard_shape.width() == 0) {
+            physical_shard_shape = {physical_shard_shape.height(), global_buffer_shape.width()};
+        }
+        return physical_shard_shape;
+    }
 };
 
 enum class MeshBufferLayout : uint8_t { REPLICATED, SHARDED };
@@ -81,6 +94,7 @@ public:
     std::shared_ptr<Buffer> get_device_buffer(const Coordinate& device_coord);
     uint32_t datum_size_bytes() const;
     Shape2D physical_shard_shape() const;
+    std::pair<bool, bool> replicated_dims() const;
 
 private:
     MeshBuffer(
