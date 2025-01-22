@@ -15,6 +15,7 @@
 #include "llrt/llrt.hpp"
 #include "tools/profiler/profiler_state.hpp"
 #include "tools/profiler/common.hpp"
+#include "tools/profiler/profiler_optional_metadata.hpp"
 #include "tracy/TracyTTDevice.hpp"
 #include "common/TracyTTDeviceData.hpp"
 
@@ -64,15 +65,27 @@ private:
     // Iterate through all zone source locations and generate hash
     void generateZoneSourceLocationsHashes();
 
+    // serialize all noc trace data into per-op json trace files
+    void serializeJsonNocTraces(
+        const nlohmann::json& noc_trace_json_log,
+        const std::filesystem::path& output_dir,
+        int device_id,
+        bool lastDump);
+
     void emitCSVHeader(
         std::ofstream& log_file_ofs, const tt::ARCH& device_architecture, int device_core_frequency) const;
 
+    // translates potentially-virtual coordinates recorded on Device into physical coordinates
+    CoreCoord getPhysicalAddressFromVirtual(const IDevice* device, const CoreCoord& c) const;
+
     // Dumping profile result to file
     void logPacketData(
+        const IDevice* device,
         std::ofstream& log_file_ofs,
         nlohmann::json& noc_trace_json_log,
         uint32_t runID,
         uint32_t runHostID,
+        std::string opname,
         int device_id,
         CoreCoord core,
         int core_flat,
@@ -83,6 +96,7 @@ private:
 
     // logs packet data to CSV file
     void logPacketDataToCSV(
+        const IDevice* device,
         std::ofstream& log_file_ofs,
         int device_id,
         int core_x,
@@ -93,6 +107,7 @@ private:
         uint64_t data,
         uint32_t run_id,
         uint32_t run_host_id,
+        const std::string_view opname,
         const std::string_view zone_name,
         kernel_profiler::PacketTypes packet_type,
         uint64_t source_line,
@@ -100,6 +115,7 @@ private:
 
     // dump noc trace related profile data to json file
     void logNocTracePacketDataToJson(
+        const IDevice* device,
         nlohmann::json& noc_trace_json_log,
         int device_id,
         int core_x,
@@ -110,6 +126,7 @@ private:
         uint64_t data,
         uint32_t run_id,
         uint32_t run_host_id,
+        const std::string_view opname,
         const std::string_view zone_name,
         kernel_profiler::PacketTypes packet_type,
         uint64_t source_line,
@@ -117,6 +134,8 @@ private:
 
     // Helper function for reading risc profile results
     void readRiscProfilerResults(
+        const IDevice* device,
+        const std::optional<ProfilerOptionalMetadata>& metadata,
         std::ofstream& log_file_ofs,
         nlohmann::json& noc_trace_json_log,
         int device_id,
@@ -153,7 +172,11 @@ public:
     void setOutputDir(const std::string& new_output_dir);
 
     // Traverse all cores on the device and dump the device profile results
-    void dumpResults(IDevice* device, const std::vector<CoreCoord>& worker_cores, bool lastDump);
+    void dumpResults(
+        IDevice* device,
+        const std::vector<CoreCoord>& worker_cores,
+        bool lastDump,
+        const std::optional<ProfilerOptionalMetadata>& metadata = {});
 };
 
 }  // namespace tt_metal
