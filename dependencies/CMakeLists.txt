@@ -147,6 +147,12 @@ CPMAddPackage(
         "FLATBUFFERS_BUILD_TESTS OFF"
         "FLATBUFFERS_SKIP_MONSTER_EXTRA ON"
         "FLATBUFFERS_STRICT_MODE ON"
-        "FLATBUFFERS_CXX_FLAGS=-Wno-restrict"
         "CMAKE_POSITION_INDEPENDENT_CODE ON"
 )
+
+if(flatbuffers_ADDED)
+    # Apply the desired compiler options to FlatBuffers targets
+    message(STATUS "KCM FlatBuffers package was successfully added. Applying custom compiler options.")
+    target_compile_options(flatc PRIVATE -Wno-restrict)
+    target_compile_options(flatbuffers PRIVATE -Wno-restrict)
+endif()
