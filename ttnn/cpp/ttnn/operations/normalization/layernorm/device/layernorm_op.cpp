@@ -255,7 +255,7 @@ std::vector<TensorSpec> LayerNorm::compute_output_specs(const std::vector<Tensor
                 return {ttnn::TensorSpec(
                     output_shape,
                     TensorLayout::fromLegacyPaddedShape(
-                        input_tensor.get_dtype(),
+                        this->dtype.value_or(input_tensor.get_dtype()),
                         PageConfig(Layout::TILE),
                         this->output_mem_config,
                         ttnn::Shape(output_shape.view(), output_padded_shape.view())))};
@@ -277,7 +277,6 @@ std::vector<Tensor> LayerNorm::create_output_tensors(const std::vector<Tensor>& 
                 }
             }
             auto output_spec = compute_output_specs(input_tensors)[0];
-            // std::cout << "output_spec: " << output_spec << std::endl;
             return {create_device_tensor(output_spec, input_tensors.at(0).device())};
         },
         this->program_config);
