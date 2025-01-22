@@ -108,7 +108,7 @@ class TtModelArgs:
     ):
         self.num_devices = mesh_device.get_num_devices() if mesh_device else 0
         self.mesh_device = mesh_device
-        self.device_name = {0: "CPU", 1: "N150", 2: "N300", 8: "T3K", 32: "TG"}[self.num_devices]
+        self.device_name = {0: "CPU", 1: "N150", 2: "N300", 4: "N150x4", 8: "T3K", 32: "TG"}[self.num_devices]
         self.model_name = "Unknown"  # Llama model name will be dependent on the checkpoint directory
         self.max_seq_len = max_seq_len
         self.max_batch_size = max_batch_size
@@ -779,8 +779,10 @@ class TtModelArgs:
         if "_name_or_path" in params:
             self.model_name = params["_name_or_path"].split("/")[-1]
 
-        if self.base_model_name == "Qwen2.5-7B" and self.num_devices not in [0, 2]:
-            raise AssertionError("Qwen2.5-7B is only supported on 2 devices, run on an N300 or use FAKE_DEVICE=N300")
+        if self.base_model_name == "Qwen2.5-7B" and self.num_devices not in [0, 2, 4]:
+            raise AssertionError(
+                "Qwen2.5-7B is only supported on 2 or 4 devices, run on an N300 or use FAKE_DEVICE=N150x4"
+            )
 
         # Don't need to pad for CPU runs
         if self.num_devices:

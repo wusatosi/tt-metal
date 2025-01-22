@@ -33,8 +33,8 @@ LLAMA_DIRS=(
     # "${LLAMA_31_8B_DIR:-/proj_sw/user_dev/llama31-8b-data/Meta-Llama-3.1-8B-Instruct}"
     # "${LLAMA_32_11B_DIR:-/proj_sw/user_dev/llama32-data/Llama3.2-11B-Vision-Instruct}"
     # "${LLAMA_31_70B_DIR:-/proj_sw/llama3_1-weights/Meta-Llama-3.1-70B-Instruct/repacked}"
-    "${QWEN_25_72B_DIR:-/proj_sw/user_dev/Qwen/Qwen2.5-72B-Instruct}"
     "${QWEN_25_7B_DIR:-/proj_sw/user_dev/Qwen/Qwen2.5-7B-Instruct}"
+    "${QWEN_25_72B_DIR:-/proj_sw/user_dev/Qwen/Qwen2.5-72B-Instruct}"
 )
 
 # Create reference_outputs directory if it doesn't exist
@@ -61,7 +61,7 @@ for DIR in "${LLAMA_DIRS[@]}"; do
 
     # Get model size for output filename
     MODEL_NAME=$(get_model_name "$DIR")
-    OUTPUT_FILE="${OUTPUT_DIR}/${MODEL_NAME}.refpt"
+    OUTPUT_FILE="${OUTPUT_DIR}/${MODEL_NAME}_full.refpt"
 
     echo "Generating reference outputs for ${MODEL_SIZE} model..."
     echo "Using weights from: ${DIR}"
