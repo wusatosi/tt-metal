@@ -986,8 +986,11 @@ operation::ProgramWithCallbacks layernorm_multi_core_sharded(
         (std::uint32_t)0,
         (std::uint32_t)reduce_second_stage_semaphore_id};
 
-    tt::tt_metal::NOC reader_noc = tt::tt_metal::detail::GetPreferredNOCForDRAMRead(device->arch());
-    tt::tt_metal::NOC writer_noc = tt::tt_metal::detail::GetPreferredNOCForDRAMWrite(device->arch());
+    // tt::tt_metal::NOC reader_noc = tt::tt_metal::detail::GetPreferredNOCForDRAMRead(device->arch());
+    // tt::tt_metal::NOC writer_noc = tt::tt_metal::detail::GetPreferredNOCForDRAMWrite(device->arch());
+
+    tt::tt_metal::NOC reader_noc = NOC::NOC_0;
+    tt::tt_metal::NOC writer_noc = NOC::NOC_1;
 
     // reader kernel
     std::string sender_reader_kernel_file =

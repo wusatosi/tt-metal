@@ -15,20 +15,25 @@ def rms_norm(x, dim, gamma, beta, eps):
     return x * torch.rsqrt(x.pow(2).mean([-i for i in range(1, len(dim) + 1)], keepdim=True) + eps) * gamma + beta
 
 
+# Communication:
+# 1,0 -> 6,6 (3) + 6,7 (1)
+# 2,0 -> 6,7 (2) + 6,9 (2)
+# 1,1 -> 6,9 (1) + 6,0 (3)
+# 2,1 -> 6,1 (3) + 6,2 (1)
+# 1,2 -> 6,2 (2) + 6,4 (2)
+# 2,2 -> 6,4 (1) + 6,5 (3)
+# 1,3 -> 5,5 (3) + 5,6 (1)
+# 2,3 -> 5,6 (2) + 5,7 (2)
+# 1,4 -> 5,7 (1) + 5,9 (3)
+# 2,4 -> 5,0 (3) + 5,1 (1)
+# 1,5 -> 5,1 (2) + 5,2 (2)
+# 2,5 -> 5,2 (1) + 5,4 (3)
+# 1,6 -> 1,4 (3) + 1,5 (1)
+# 2,6 -> 1,5 (2) + 1,9 (2)
+# 1,7 -> 1,9 (1) + 1,0 (3)
+# 2,7 -> 2,0 (3) + 2,4 (1)
+
 PREFETCHER_NOC1_GRID = [
-    (6, 6),
-    (6, 7),
-    (6, 9),
-    (6, 0),
-    (6, 1),
-    (6, 2),
-    (6, 4),
-    (6, 5),
-    (5, 5),
-    (5, 6),
-    (5, 7),
-    (5, 9),
-    (5, 0),
     (5, 1),
     (5, 2),
     (5, 4),
@@ -40,6 +45,19 @@ PREFETCHER_NOC1_GRID = [
     (2, 4),
     (2, 5),
     (2, 9),
+    (6, 6),  # 9,100 ns
+    (6, 7),  # 9,558 ns
+    (6, 9),  # 9,553 ns
+    (6, 0),  # 9,613 ns
+    (6, 1),  # 9,506 ns
+    (6, 2),  # 9,543 ns
+    (6, 4),  # 9,809 ns
+    (6, 5),  # 9,824 ns
+    (5, 5),  # 9,607 ns
+    (5, 6),  # 9,634 ns
+    (5, 7),  # 10,032 ns
+    (5, 9),  # 9,772 ns
+    (5, 0),  # 9,883 ns
 ]
 
 
@@ -208,8 +226,9 @@ def test_layernorm_perf(mesh_device, input_dim, input_core_grid, output_core_gri
         weight=gamma_tensor,
         program_config=ln_prg_cfg,
         stats=tt_stats,
-        memory_config=output_memory_config
-        # memory_config=input_memory_config
+        memory_config=output_memory_config,
+        # memory_config=input_memory_config,
+        dtype=ttnn.bfloat8_b,
     )
 
     print(tt_out.shape)
@@ -225,6 +244,6 @@ def test_layernorm_perf(mesh_device, input_dim, input_core_grid, output_core_gri
     passing, output = comp_pcc(tt_out_torch, ref_lnorm, 0.999)
     logger.info(output)
 
-    # breakpoint()
+    breakpoint()
 
     assert passing
