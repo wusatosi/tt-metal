@@ -128,6 +128,8 @@ def test_llama_rms_norm_inference(
     logger.info(comp_allclose(reference_output, tt_output_torch))
     logger.info(f"PCC: {pcc_message}")
 
+    tt_ccl.close()
+
     if passing:
         logger.info("Llama_rms_norm Passed!")
     else:
