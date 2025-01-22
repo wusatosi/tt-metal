@@ -17,8 +17,7 @@ ttnn::Tensor ExecuteRMSNormPostAllGather::invoke(
     const std::optional<const ttnn::Tensor>& bias,
     const std::optional<MemoryConfig>& memory_config,
     const std::optional<const DeviceComputeKernelConfig> compute_kernel_config,
-    const std::optional<const LayerNormProgramConfig>& program_config,
-    const std::optional<const DataType>& dtype) {
+    const std::optional<const LayerNormProgramConfig>& program_config) {
     auto arch = input_tensor.storage_type() == StorageType::DEVICE
                     ? input_tensor.device()->arch()
                     : ttnn::operations::experimental::auto_format::AutoFormat::GetDefaultDevice()->arch();
@@ -32,8 +31,7 @@ ttnn::Tensor ExecuteRMSNormPostAllGather::invoke(
                        .eps = epsilon,
                        .output_mem_config = memory_config.value_or(input_tensor.memory_config()),
                        .program_config = program_config.value_or(LayerNormDefaultProgramConfig{}),
-                       .compute_kernel_config = kernel_config_val,
-                       .dtype = dtype},
+                       .compute_kernel_config = kernel_config_val},
                    {input_tensor},
                    {std::nullopt, weight, bias, stats})
             .at(0);
@@ -43,8 +41,7 @@ ttnn::Tensor ExecuteRMSNormPostAllGather::invoke(
                        .norm_type = LayerNormDistributedType::RMSNORM,
                        .eps = epsilon,
                        .memory_config = memory_config.value_or(input_tensor.memory_config()),
-                       .compute_kernel_config = kernel_config_val,
-                       .dtype = dtype},
+                       .compute_kernel_config = kernel_config_val},
                    {input_tensor, stats},
                    {weight, bias})
             .at(0);
