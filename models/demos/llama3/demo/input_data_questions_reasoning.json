@@ -1,5 +1,8 @@
 [
   {
+    "prompt": "Find all integer solutions (x, y) to the equation x^2 - 3y^2 = 1."
+  },
+  {
     "prompt": "Find the least odd prime factor of 2019^8 + 1"
   },
   {
@@ -10,9 +13,6 @@
   },
   {
     "prompt": "A fair coin is tossed 8 times.  What is the probability (in simplest fractional form) of getting exactly 5 heads?"
-  },
-  {
-    "prompt": "Find all integer solutions (x, y) to the equation x^2 - 3y^2 = 1."
   },
   {
     "prompt": "How many 7-digit integers have digits strictly increasing from left to right? (For example, 1234567 is valid, 1357899 is not because of the repeated 9.)"

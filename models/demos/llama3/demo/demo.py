@@ -841,9 +841,9 @@ def run_llama3_demo(
             "models/demos/llama3/demo/input_data_questions_reasoning.json",  # input_prompts
             True,  # instruct mode
             1,  # repeat_batches
-            8192,  # max_seq_len
+            16384,  # max_seq_len
             1,  # batch_size
-            7000,  # max_generated_tokens
+            15000,  # max_generated_tokens
             True,  # paged_attention
             {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params  # TODO This will be serviced by vLLM
             {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
