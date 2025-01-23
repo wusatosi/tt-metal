@@ -53,13 +53,12 @@ def test_resnet_50(
     test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
     # First run configures convs JIT
     test_infra.run()
-    # # Optimized run
-    # test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
-    # test_infra.run()
-    # # More optimized run with caching
-    # test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
-    # test_infra.run()
-    # breakpoint()
+    # Optimized run
+    test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
+    test_infra.run()
+    # More optimized run with caching
+    test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
+    test_infra.run()
     passed, message = test_infra.validate()
     logger.info("Test finished. PCC needs debugging: GH Issue #15069.")
     assert passed, message
