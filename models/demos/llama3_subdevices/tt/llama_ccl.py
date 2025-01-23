@@ -33,44 +33,44 @@ class TT_CCL:
             assert enable_persistent_fabric
         if teardown_persistent_fabric:
             assert enable_persistent_fabric
-        # create global semaphore handles
-        self.from_remote_semaphore_handles = create_global_semaphore_with_same_address(
-            self.mesh_device, self.sub_device_crs, 0
-        )
-        self.to_remote_semaphore_handles = create_global_semaphore_with_same_address(
-            self.mesh_device, self.sub_device_crs, 0
-        )
-        self.gather_semaphore_handles = create_global_semaphore_with_same_address(
-            self.mesh_device, self.sub_device_crs, 0
-        )
+        # # create global semaphore handles
+        # self.from_remote_semaphore_handles = create_global_semaphore_with_same_address(
+        #     self.mesh_device, self.sub_device_crs, 0
+        # )
+        # self.to_remote_semaphore_handles = create_global_semaphore_with_same_address(
+        #     self.mesh_device, self.sub_device_crs, 0
+        # )
+        # self.gather_semaphore_handles = create_global_semaphore_with_same_address(
+        #     self.mesh_device, self.sub_device_crs, 0
+        # )
 
     def line_all_reduce(self, input_tensor_mesh, cluster_axis, num_links, memory_config, dim=3):
-        rs_output_tensor_mesh = ttnn.experimental.reduce_scatter_async(
-            input_tensor_mesh,
-            dim=dim,
-            cluster_axis=cluster_axis,
-            mesh_device=self.mesh_device,
-            from_remote_multi_device_global_semaphore=self.from_remote_semaphore_handles,
-            to_remote_multi_device_global_semaphore=self.to_remote_semaphore_handles,
-            math_op=ttnn.ReduceType.Sum,
-            memory_config=memory_config,
-            topology=ttnn.Topology.Linear,
-            num_links=num_links,
-            subdevice_id=self.worker_sub_device_id,
-        )
+        # rs_output_tensor_mesh = ttnn.experimental.reduce_scatter_async(
+        #     input_tensor_mesh,
+        #     dim=dim,
+        #     cluster_axis=cluster_axis,
+        #     mesh_device=self.mesh_device,
+        #     from_remote_multi_device_global_semaphore=self.from_remote_semaphore_handles,
+        #     to_remote_multi_device_global_semaphore=self.to_remote_semaphore_handles,
+        #     math_op=ttnn.ReduceType.Sum,
+        #     memory_config=memory_config,
+        #     topology=ttnn.Topology.Linear,
+        #     num_links=num_links,
+        #     subdevice_id=self.worker_sub_device_id,
+        # )
 
-        output_tensor_mesh = ttnn.experimental.all_gather_async(
-            rs_output_tensor_mesh,
-            dim=dim,
-            cluster_axis=cluster_axis,
-            mesh_device=self.mesh_device,
-            topology=ttnn.Topology.Linear,
-            multi_device_global_semaphore=self.gather_semaphore_handles,
-            num_links=num_links,
-            memory_config=memory_config,
-            subdevice_id=self.worker_sub_device_id,
-            enable_persistent_fabric_mode=self.enable_persistent_fabric,
-        )
+        # output_tensor_mesh = ttnn.experimental.all_gather_async(
+        #     rs_output_tensor_mesh,
+        #     dim=dim,
+        #     cluster_axis=cluster_axis,
+        #     mesh_device=self.mesh_device,
+        #     topology=ttnn.Topology.Linear,
+        #     multi_device_global_semaphore=self.gather_semaphore_handles,
+        #     num_links=num_links,
+        #     memory_config=memory_config,
+        #     subdevice_id=self.worker_sub_device_id,
+        #     enable_persistent_fabric_mode=self.enable_persistent_fabric,
+        # )
 
         # output_tensor_mesh = ttnn.experimental.all_reduce_async(
         #     input_tensor_mesh,
@@ -85,7 +85,7 @@ class TT_CCL:
         #     topology=ttnn.Topology.Linear,
         #     subdevice_id=self.worker_sub_device_id,
         # )
-        ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
+        # ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
         return output_tensor_mesh
 
     def line_reduce_scatter(self, tensor, memory_config, dim, cluster_axis, num_links=1, math_op=ttnn.ReduceType.Sum):
@@ -106,19 +106,36 @@ class TT_CCL:
         return ttnn_tensor_out
 
     def line_all_gather(self, input_tensor_mesh, dim, cluster_axis, memory_config, num_links=1):
-        ttnn_tensor_out = ttnn.experimental.all_gather_async(
-            input_tensor_mesh,
-            dim,
-            cluster_axis=cluster_axis,
-            mesh_device=self.mesh_device,
-            topology=ttnn.Topology.Linear,
-            multi_device_global_semaphore=self.gather_semaphore_handles,
-            num_links=num_links,
-            memory_config=memory_config,
-            subdevice_id=self.worker_sub_device_id,
-            enable_persistent_fabric_mode=self.enable_persistent_fabric,
+        ##### Host side implementation #####
+        dims = [0, 0] if dim != 0 else [1, 1]
+        dims[cluster_axis] = dim
+        torch_tensor_mesh = ttnn.to_torch(
+            input_tensor_mesh, mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=dims, mesh_shape=(8, 4))
         )
-        ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
+
+        dims[cluster_axis] = None
+        ttnn_tensor_out = ttnn.from_torch(
+            torch_tensor_mesh,
+            device=self.mesh_device,
+            mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=dims, mesh_shape=(8, 4)),
+            dtype=ttnn.bfloat16,
+            memory_config=memory_config,
+            layout=ttnn.TILE_LAYOUT,
+        )
+
+        # ttnn_tensor_out = ttnn.experimental.all_gather_async(
+        #     input_tensor_mesh,
+        #     dim,
+        #     cluster_axis=cluster_axis,
+        #     mesh_device=self.mesh_device,
+        #     topology=ttnn.Topology.Linear,
+        #     multi_device_global_semaphore=self.gather_semaphore_handles,
+        #     num_links=num_links,
+        #     memory_config=memory_config,
+        #     subdevice_id=self.worker_sub_device_id,
+        #     enable_persistent_fabric_mode=self.enable_persistent_fabric,
+        # )
+        # ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
         return ttnn_tensor_out
 
     def close(self):

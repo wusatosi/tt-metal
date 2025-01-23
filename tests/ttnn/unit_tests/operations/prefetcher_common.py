@@ -64,13 +64,13 @@ class TtLlamaPrefetcherSetup(LightweightModule):
             self.hop_grid,
         ) = get_core_ranges(num_reader_cores, num_global_cb_receivers, is_functional_test=False)
 
-        max_tile_size = 1088
-        self.global_cb_size = 750 * max_tile_size
-        self.sender_receiver_mapping = list(zip(self.sender_cores, self.receiver_cores))
-        self.global_circular_buffer = ttnn.create_global_circular_buffer(
-            self.mesh_device, self.sender_receiver_mapping, self.global_cb_size
-        )
-        logger.info(f"GlobalCB size {self.global_cb_size}")
+        # max_tile_size = 1088
+        # self.global_cb_size = 750 * max_tile_size
+        # self.sender_receiver_mapping = list(zip(self.sender_cores, self.receiver_cores))
+        # self.global_circular_buffer = ttnn.create_global_circular_buffer(
+        #     self.mesh_device, self.sender_receiver_mapping, self.global_cb_size
+        # )
+        # logger.info(f"GlobalCB size {self.global_cb_size}")
 
         ##### Set up the input tensors #####
         self.dram_core_range_set = ttnn.CoreRangeSet(
@@ -84,7 +84,7 @@ class TtLlamaPrefetcherSetup(LightweightModule):
         self.prefetcher_sub_device = ttnn.SubDevice([self.sender_core_range_set])
         self.worker_sub_device = ttnn.SubDevice([self.worker_cores_range_set])
         mesh_sub_device_manager_id = create_and_load_sub_device_manager_with_fabric_interface(
-            mesh_device, [self.prefetcher_sub_device, self.worker_sub_device], 1, 0, True
+            mesh_device, [self.prefetcher_sub_device, self.worker_sub_device], 1, 0, False
         )
         # self.sub_device_manager = mesh_device.create_sub_device_manager(
         #     [self.prefetcher_sub_device, self.worker_sub_device], 0
