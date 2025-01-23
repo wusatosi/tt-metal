@@ -19,7 +19,7 @@ from models.utility_functions import (
     divup,
 )
 
-from tests.ttnn.utils_for_testing import assert_with_pcc
+from tests.ttnn.utils_for_testing import assert_with_pcc, check_with_pcc
 from models.demos.ttnn_resnet.tt.custom_preprocessing import create_custom_mesh_preprocessor
 
 # from models.demos.ttnn_resnet.tt.ttnn_functional_resnet50_new_conv_api import resnet50
@@ -318,8 +318,6 @@ class ResNet50TestInfra:
         # output_tensor = ttnn.to_torch(output_tensor, device=self.device, mesh_composer=self.output_mesh_composer)
         output_tensor = torch.reshape(output_tensor, (output_tensor.shape[0], 1000))
 
-        breakpoint()
-
         batch_size = output_tensor.shape[0]
 
         valid_pcc = 1.0
@@ -338,11 +336,13 @@ class ResNet50TestInfra:
                     valid_pcc = 0.93
                 else:
                     valid_pcc = 0.982
-        self.pcc_passed, self.pcc_message = assert_with_pcc(self.torch_output_tensor, output_tensor, pcc=valid_pcc)
+        self.pcc_passed, self.pcc_message = check_with_pcc(self.torch_output_tensor, output_tensor, pcc=valid_pcc)
 
         logger.info(
             f"ResNet50 batch_size={batch_size}, act_dtype={self.act_dtype}, weight_dtype={self.weight_dtype}, math_fidelity={self.math_fidelity}, PCC={self.pcc_message}"
         )
+
+        return self.pcc_passed, self.pcc_message
 
 
 def create_test_infra(
