@@ -140,11 +140,8 @@ class TtLlamaMLP(LightweightModule):
             dtype=ttnn.bfloat8_b if TG else ttnn.bfloat16,
             program_config=pc_1,
             memory_config=self.model_config["SHARDED_FF12_OUT_RING_MEMCFG"],
-            global_cb=self.prefetcher_setup.global_circular_buffer
-            if self.model_config["USE_PREFETCHER"]
-            else None,
+            global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
         )
-        ttnn.synchronize_devices(self.mesh_device)
 
         w3_out = ttnn.linear(
             x,
@@ -156,11 +153,8 @@ class TtLlamaMLP(LightweightModule):
             dtype=ttnn.bfloat8_b if TG else ttnn.bfloat16,
             program_config=pc_3,
             memory_config=self.model_config["SHARDED_FF12_OUT_RING_MEMCFG"],
-            global_cb=self.prefetcher_setup.global_circular_buffer
-            if self.model_config["USE_PREFETCHER"]
-            else None,
+            global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
         )
-        ttnn.synchronize_devices(self.mesh_device)
         ttnn.deallocate(x)
 
         if TG:
@@ -196,7 +190,6 @@ class TtLlamaMLP(LightweightModule):
                     w1_out, dim=3, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
                 )
 
-                ttnn.synchronize_devices(self.mesh_device)
                 ttnn.deallocate(w1_out)
                 w1_out_reduced = ttnn.to_memory_config(
                     w1_out_reduced, self.model_config["SHARDED_FF12_PRE_MUL_RING_REDUCE_MEMCFG"]
@@ -208,7 +201,6 @@ class TtLlamaMLP(LightweightModule):
                     w3_out, dim=3, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
                 )
 
-                ttnn.synchronize_devices(self.mesh_device)
                 ttnn.deallocate(w3_out)
                 w3_out_reduced = ttnn.to_memory_config(
                     w3_out_reduced, self.model_config["SHARDED_FF12_PRE_MUL_RING_REDUCE_MEMCFG"]
@@ -239,7 +231,6 @@ class TtLlamaMLP(LightweightModule):
             dtype=ttnn.bfloat8_b,
             memory_config=w1_out.memory_config(),
         )
-        ttnn.synchronize_devices(self.mesh_device)
 
         # All reduce W3
         w2_in = ttnn.to_memory_config(w2_in, ttnn.DRAM_MEMORY_CONFIG)
@@ -247,7 +238,6 @@ class TtLlamaMLP(LightweightModule):
             w2_in, dim=3, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
         )
 
-        ttnn.synchronize_devices(self.mesh_device)
         ttnn.deallocate(w2_in)
         w2_in_gathered = ttnn.to_memory_config(w2_in_gathered, self.model_config["FF2_IN_RING_MEMCFG"])
 
@@ -302,11 +292,8 @@ class TtLlamaMLP(LightweightModule):
             if TG
             else w2_in.memory_config(),
             core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_2 else None,
-            global_cb=self.prefetcher_setup.global_circular_buffer
-            if self.model_config["USE_PREFETCHER"]
-            else None,
+            global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
         )
-        ttnn.synchronize_devices(self.mesh_device)
         ttnn.deallocate(w2_in_gathered)
         # if mode == "decode" and not TG:
         #     w2_out = ttnn.sharded_to_interleaved(w2_out, ttnn.DRAM_MEMORY_CONFIG)
@@ -329,7 +316,6 @@ class TtLlamaMLP(LightweightModule):
             w2_out, cluster_axis=0, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
         )
 
-        ttnn.synchronize_devices(self.mesh_device)
         ttnn.deallocate(w2_out)
 
         # Ensure dim 0 and 1 are 1
