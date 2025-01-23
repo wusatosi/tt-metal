@@ -5,8 +5,7 @@ import torch
 import bz2
 import os
 import argparse
-import time
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoConfig, AutoTokenizer
 from loguru import logger
 
 
@@ -16,7 +15,14 @@ def generate_reference_outputs(total_length, output_file, model_name):
     logger.info(f"Using device: {device}")
 
     # Load model and tokenizer from HuggingFace
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    config = AutoConfig.from_pretrained(model_name)
+
+    # Qwen only: add rope scaling to the config
+    # https://huggingface.co/Qwen/Qwen2.5-7B-Instruct#processing-long-texts
+    if "Qwen" in model_name:
+        config.rope_scaling = {"factor": 4.0, "original_max_position_embeddings": 32768, "type": "yarn"}
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name, config=config)
     model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float32, device_map="auto")
     model.eval()
 
