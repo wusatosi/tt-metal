@@ -432,10 +432,14 @@ operation::ProgramWithCallbacks untilize_with_unpadding_multi_core_sharded(
     num_output_rows_unpadded =
         num_rows_block - (tt::round_up(num_output_rows, out_shard_spec.shape[0]) - num_output_rows);
     if (a.memory_config().memory_layout == TensorMemoryLayout::WIDTH_SHARDED) {
-        last_idx = tt::div_up(output.get_legacy_shape()[-1], out_shard_spec.shape[1]) - 1;
+        printf("output.get_padded_shape()[-1]: %u\n", output.get_padded_shape()[-1]);
+        printf("output.get_logical_shape()[-1]: %u\n", output.get_logical_shape()[-1]);
+        last_idx = tt::div_up(output.get_padded_shape()[-1], out_shard_spec.shape[1]) - 1;
     } else if (a.memory_config().memory_layout == TensorMemoryLayout::HEIGHT_SHARDED) {
         last_idx = tt::div_up(num_output_rows, out_shard_spec.shape[0]) - 1;
     } else {
+        printf("output.get_padded_shape()[-1]: %u\n", output.get_padded_shape()[-1]);
+        printf("output.get_logical_shape()[-1]: %u\n", output.get_logical_shape()[-1]);
         end_core = {
             tt::div_up(output.get_legacy_shape()[-1], out_shard_spec.shape[1]) - 1,
             tt::div_up(num_output_rows, out_shard_spec.shape[0]) - 1};
