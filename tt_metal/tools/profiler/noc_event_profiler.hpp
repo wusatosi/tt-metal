@@ -102,7 +102,7 @@ FORCE_INLINE void recordMulticastNocEvent(
 }
 
 template <bool DRAM, typename NocIDU32>
-FORCE_INLINE void recordNocEventWithID(
+inline void recordNocEventWithID(
     KernelProfilerNocEventMetadata::NocEventType noc_event_type, NocIDU32 noc_id, uint32_t num_bytes, int8_t vc) {
     static_assert(std::is_same_v<NocIDU32, uint32_t>);
     auto [decoded_x, decoded_y] = decode_noc_id_into_coord<DRAM>(noc_id);
@@ -110,7 +110,7 @@ FORCE_INLINE void recordNocEventWithID(
 }
 
 template <typename NocAddrU64>
-FORCE_INLINE void recordNocEventWithAddr(
+inline void recordNocEventWithAddr(
     KernelProfilerNocEventMetadata::NocEventType noc_event_type, NocAddrU64 noc_addr, uint32_t num_bytes, int8_t vc) {
     static_assert(std::is_same_v<NocAddrU64, uint64_t>);
     auto [decoded_x, decoded_y] = decode_noc_addr_to_coord(noc_addr);
