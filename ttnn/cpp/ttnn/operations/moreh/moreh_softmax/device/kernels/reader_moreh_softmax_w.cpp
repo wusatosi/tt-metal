@@ -5,44 +5,47 @@
 #include "cpp/ttnn/deprecated/tt_dnn/kernels/dataflow/moreh_common.hpp"
 
 void kernel_main() {
-    uint32_t src_addr = get_arg_val<uint32_t>(0);
-    uint32_t N = get_arg_val<uint32_t>(1);
-    uint32_t tile_offset = get_arg_val<uint32_t>(2);
-    uint32_t Wt = get_arg_val<uint32_t>(3);
-    uint32_t scaler = get_arg_val<uint32_t>(4);
-    uint32_t mask_w = get_arg_val<uint32_t>(5);
+    constexpr auto cb_in0 = tt::CBIndex::c_0;
+    constexpr auto cb_scaler = tt::CBIndex::c_1;
+    constexpr auto cb_fp32_scaler = tt::CBIndex::c_2;
 
-    constexpr auto cb_in = tt::CBIndex::c_0;
-    constexpr auto cb_mask = tt::CBIndex::c_1;
-    constexpr auto cb_scaler = tt::CBIndex::c_2;
+    union Scalar {
+        float f;
+        uint32_t u;
+    } s;
 
-    uint32_t l1_write_addr_in;
+    {
+        cb_reserve_back(cb_in0, 1);
+        float* ptr = reinterpret_cast<float*>(get_write_ptr(cb_in0));
+        memset(ptr, 0, 1024 * sizeof(float));
+        ptr[0] = 1.265625f;
+        ptr[1] = 1.7890625;
+        ptr[2] = 0.271484375;
+        ptr[3] = 1.671875;
 
-    // ublocks size defined in tiles
-    constexpr uint32_t onetile = 1;
-    uint32_t src_in_tile_bytes = get_tile_size(cb_in);
-    const DataFormat src_in_data_format = get_dataformat(cb_in);
+        cb_push_back(cb_in0, 1);
+    }
 
-    constexpr bool in_is_dram = get_compile_time_arg_val(0) == 1;
+    {
+        cb_reserve_back(cb_scaler, 1);
+        uint16_t* ptr = reinterpret_cast<uint16_t*>(get_write_ptr(cb_scaler));
+        memset(ptr, 0, 1024 * sizeof(uint16_t));
+        s.f = 1.0f;
+        ptr[0] = static_cast<uint16_t>(s.u >> 16);
+        ptr[1] = static_cast<uint16_t>(s.u >> 16);
+        ptr[2] = static_cast<uint16_t>(s.u >> 16);
+        ptr[3] = static_cast<uint16_t>(s.u >> 16);
+        cb_push_back(cb_scaler, 1);
+    }
 
-    const InterleavedAddrGenFast<in_is_dram> src_in = {
-        .bank_base_address = src_addr, .page_size = src_in_tile_bytes, .data_format = src_in_data_format};
-
-    // TODO(AP): cleanup, probably with named args/param pack/reflection.
-    generate_bcast_scaler(cb_scaler, scaler);
-    generate_mask_w(cb_mask, mask_w);
-
-    // read ublocks from src0 to CB0, then push ublocks to compute (unpacker)
-    uint32_t curr_tile = tile_offset;
-    for (uint32_t i = 0; i < N; i += onetile) {
-        cb_reserve_back(cb_in, Wt);
-        l1_write_addr_in = get_write_ptr(cb_in);
-        for (uint32_t w = 0; w < Wt; w++) {
-            noc_async_read_tile(curr_tile, src_in, l1_write_addr_in);
-            l1_write_addr_in += src_in_tile_bytes;
-            curr_tile++;
-        }
-        noc_async_read_barrier();
-        cb_push_back(cb_in, Wt);
+    {
+        cb_reserve_back(cb_fp32_scaler, 1);
+        float* ptr = reinterpret_cast<float*>(get_write_ptr(cb_fp32_scaler));
+        memset(ptr, 0, 1024 * sizeof(float));
+        ptr[0] = 1.0;
+        ptr[1] = 1.0;
+        ptr[2] = 1.0;
+        ptr[3] = 1.0;
+        cb_push_back(cb_fp32_scaler, 1);
     }
 }
