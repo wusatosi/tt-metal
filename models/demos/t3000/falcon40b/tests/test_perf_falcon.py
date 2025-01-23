@@ -390,7 +390,8 @@ def test_perf_bare_metal(
     tt_cache_path = get_tt_cache_path(
         model_version, model_subdir="Falcon", default_dir=model_config["DEFAULT_CACHE_PATH"]
     )
-    print(f'tt_cache_path: {tt_cache_path}')
+    logger.info('tt_cache_path:')
+    logger.info(tt_cache_path)
     disable_persistent_kernel_cache()
     disable_compilation_reports()
 
