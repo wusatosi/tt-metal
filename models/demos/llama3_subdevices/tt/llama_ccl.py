@@ -302,6 +302,7 @@ def tt_sharded_distributed_rmsnorm(
     # )
     tt_stats_dram = ttnn.to_memory_config(tt_stats, ttnn.DRAM_MEMORY_CONFIG)
     ttnn.deallocate(tt_stats)
+    ttnn.synchronize_devices(mesh_device)
     tt_global_stats = tt_ccl.line_all_gather(
         tt_stats_dram, dim=3, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
     )
