@@ -22,6 +22,7 @@ AllGatherAsync create_all_gather_async_struct(
     const std::vector<IDevice*>& devices,
     const ttnn::ccl::Topology topology,
     const std::vector<GlobalSemaphore>& semaphores,
+    std::optional<SubDeviceId> sub_device_id,
     bool enable_persistent_fabric_mode) {
     uint32_t num_devices = devices.size();
 
@@ -52,6 +53,7 @@ AllGatherAsync create_all_gather_async_struct(
         memory_config.value_or(input_tensor.memory_config()),
         topology,
         semaphore.value(),
+        sub_device_id,
         enable_persistent_fabric_mode};
 }
 
@@ -121,6 +123,7 @@ operation::ProgramWithCallbacks AllGatherAsync::create_program(
         this->ring_index,
         this->topology,
         this->semaphore,
+        this->sub_device_id,
         this->enable_persistent_fabric_mode);
 }
 
@@ -155,7 +158,7 @@ Tensor all_gather_async(
     const uint32_t num_links,
     const std::optional<MemoryConfig>& memory_config,
     const ttnn::ccl::Topology topology,
-    std::optional<SubDeviceId> subdevice_id,
+    std::optional<SubDeviceId> sub_device_id,
     bool enable_persistent_fabric_mode) {
     TT_FATAL(
         std::getenv("TT_METAL_SLOW_DISPATCH_MODE") == nullptr,
@@ -181,7 +184,15 @@ Tensor all_gather_async(
     std::vector<GlobalSemaphore> semaphores = multi_device_global_semaphore.global_semaphores;
 
     operation::launch_op(
-        [dim, num_links, num_devices, memory_config, devices, ccl_topology, semaphores, enable_persistent_fabric_mode](
+        [dim,
+         num_links,
+         num_devices,
+         memory_config,
+         devices,
+         ccl_topology,
+         semaphores,
+         sub_device_id,
+         enable_persistent_fabric_mode](
             const std::vector<Tensor>& input_tensors,
             const std::vector<std::optional<const Tensor>>& optional_input_tensors,
             const std::vector<std::optional<Tensor>>& optional_output_tensors) mutable -> std::vector<Tensor> {
@@ -196,6 +207,7 @@ Tensor all_gather_async(
                     devices,
                     ccl_topology,
                     semaphores,
+                    sub_device_id,
                     enable_persistent_fabric_mode),
                 {input_tensor});
         },
@@ -213,7 +225,7 @@ Tensor all_gather_async(
     const global_semaphore::MultiDeviceGlobalSemaphore& multi_device_global_semaphore,
     const std::optional<MemoryConfig>& memory_config,
     const std::optional<size_t> num_preferred_links,
-    std::optional<SubDeviceId> subdevice_id,
+    std::optional<SubDeviceId> sub_device_id,
     bool enable_persistent_fabric_mode) {
     TT_FATAL(
         topology == ttnn::ccl::Topology::Linear,
@@ -247,6 +259,7 @@ Tensor all_gather_async(
          num_devices,
          topology,
          semaphores,
+         sub_device_id,
          enable_persistent_fabric_mode](
             const std::vector<Tensor>& input_tensors,
             const std::vector<std::optional<const Tensor>>& optional_input_tensors,
@@ -268,6 +281,7 @@ Tensor all_gather_async(
                     devices,
                     topology,
                     semaphores,
+                    sub_device_id,
                     enable_persistent_fabric_mode),
                 {input_tensor});
         },
