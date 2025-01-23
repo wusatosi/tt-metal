@@ -737,6 +737,12 @@ NOC MeshDevice::dispatch_go_signal_noc() const {
     return validate_and_get_reference_value(
         scoped_devices_->get_devices(), [](const auto& device) { return device->dispatch_go_signal_noc(); });
 }
+
+const std::map<std::string, std::string>& MeshDevice::get_device_kernel_defines() {
+    TT_THROW("get_device_kernel_defines() is not supported on MeshDevice - use individual devices instead");
+    return reference_device()->get_device_kernel_defines();
+}
+
 size_t MeshDevice::get_device_kernel_defines_hash() {
     TT_THROW("get_device_kernel_defines_hash() is not supported on MeshDevice - use individual devices instead");
     return validate_and_get_reference_value(

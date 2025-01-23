@@ -315,6 +315,8 @@ void DevicePool::activate_device(chip_id_t id) {
             TT_THROW("Cannot re-initialize device {}, must first call close()", id);
         }
     }
+    DeviceJitBuild* device_jit_build = DeviceJitBuild::createBuildForDevice(device->build_key());
+    device_jit_build->init(device->arch(), device->get_device_kernel_defines());
 }
 
 bool DevicePool::is_device_active(chip_id_t id) const {

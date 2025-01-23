@@ -233,6 +233,7 @@ public:
     virtual bool dispatch_s_enabled() const = 0;
     virtual bool distributed_dispatcher() const = 0;
     virtual NOC dispatch_go_signal_noc() const = 0;
+    virtual const std::map<std::string, std::string>& get_device_kernel_defines() = 0;
     virtual size_t get_device_kernel_defines_hash() = 0;
 
     virtual uint8_t num_noc_mcast_txns(SubDeviceId sub_device_id) const = 0;

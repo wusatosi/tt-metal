@@ -177,6 +177,34 @@ public:
     JitBuildIdleEthernet(const JitBuildEnv& env, const JitBuiltStateConfig& build_config);
 };
 
+class DeviceJitBuild {
+public:
+    DeviceJitBuild(uint32_t build_key) : build_key_(build_key), build_env_() {}
+    DeviceJitBuild() = delete;
+
+    DeviceJitBuild(const DeviceJitBuild& other) = delete;
+    DeviceJitBuild& operator=(const DeviceJitBuild& other) = delete;
+
+    uint32_t get_build_key() { return this->build_key_; }
+    void init(tt::ARCH arch, const std::map<std::string, std::string>& device_kernel_defines);
+
+    static DeviceJitBuild* createBuildForDevice(uint32_t build_key) {
+        static std::vector<std::shared_ptr<DeviceJitBuild>> build_list;
+        for (const auto& it : build_list) {
+            if (it->get_build_key() == build_key) {
+                return it.get();
+            }
+        }
+        auto new_build_item = std::make_shared<DeviceJitBuild>(build_key);
+        build_list.emplace_back(new_build_item);
+        return new_build_item.get();
+    }
+
+private:
+    uint32_t build_key_;
+    JitBuildEnv build_env_;
+};
+
 // Abstract base class for kernel specialization
 // Higher levels of the SW derive from this and fill in build details not known to the build system
 // (eg, API specified settings)

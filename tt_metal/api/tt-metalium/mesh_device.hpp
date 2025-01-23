@@ -208,6 +208,7 @@ public:
     bool dispatch_s_enabled() const override;
     bool distributed_dispatcher() const override;
     NOC dispatch_go_signal_noc() const override;
+    const std::map<std::string, std::string>& get_device_kernel_defines() override;
     size_t get_device_kernel_defines_hash() override;
     uint8_t num_noc_mcast_txns(SubDeviceId sub_device_id) const override;
     uint8_t num_noc_unicast_txns(SubDeviceId sub_device_id) const override;

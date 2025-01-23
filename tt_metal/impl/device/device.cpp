@@ -1785,6 +1785,8 @@ void Device::generate_device_bank_to_noc_tables()
     }
 }
 
+const std::map<std::string, std::string>& Device::get_device_kernel_defines() { return this->device_kernel_defines_; }
+
 size_t Device::get_device_kernel_defines_hash() {
     return tt::utils::DefinesHash{}(this->device_kernel_defines_);
 }

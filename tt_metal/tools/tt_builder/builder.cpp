@@ -177,6 +177,9 @@ void BuilderTool::build_firmware() {
 
 void BuilderTool::build_dispatch() {
     tt_metal::IDevice* device = tt_metal::CreateDevice(device_id);
+    DeviceJitBuild* device_jit_build = DeviceJitBuild::createBuildForDevice(device->build_key());
+    device_jit_build->init(device->arch(), device->get_device_kernel_defines());
+
     device->reinit_build_cache(this->output_dir_);
     device->init_command_queue_host();
     populate_fd_kernels({device_id}, num_hw_cqs);

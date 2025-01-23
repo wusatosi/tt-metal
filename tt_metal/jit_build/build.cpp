@@ -747,6 +747,10 @@ void JitBuildState::build(const JitBuildSettings* settings) const {
     extract_zone_src_locations(log_file);
 }
 
+void DeviceJitBuild::init(tt::ARCH arch, const std::map<std::string, std::string>& device_kernel_defines) {
+    this->build_env_.init(this->build_key_, arch, device_kernel_defines);
+}
+
 void jit_build(const JitBuildState& build, const JitBuildSettings* settings) {
     // ZoneScoped;
 
