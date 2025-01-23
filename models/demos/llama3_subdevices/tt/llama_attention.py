@@ -258,7 +258,6 @@ class TtLlamaAttention(LightweightModule):
         x: (seq_len, 1, batch, dim)
         current_pos: (batch_size), current token position in the sequence for each user
         """
-
         ###
         # QKV matmuls
         # Use HiFi2 for DRAM-sharded matmuls as they are otherwise flop-bound. Loses 1 bit of activation precision.
@@ -269,9 +268,7 @@ class TtLlamaAttention(LightweightModule):
             program_config=self.model_config["XQKV_DECODE_RING_PROGCFG"],
             memory_config=self.model_config["SHARDED_QKV_OUT_RING_MEMCFG"],
             compute_kernel_config=self.compute_kernel_config_hifi2,
-            global_cb=self.prefetcher_setup.global_circular_buffer
-            if self.model_config["USE_PREFETCHER"]
-            else None,
+            global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
         )
         ttnn.deallocate(x)
         # xqkv_fused_sharded -> [1, 1, 32, 12288 // 8]
@@ -283,7 +280,6 @@ class TtLlamaAttention(LightweightModule):
             xqkv_fused_dram, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
         )
 
-        ttnn.synchronize_devices(self.mesh_device)
         ttnn.deallocate(xqkv_fused_dram)
 
         xqkv_torch_reduced = ttnn.to_torch(
@@ -392,7 +388,6 @@ class TtLlamaAttention(LightweightModule):
         attn_output_gathered = self.tt_ccl.line_all_gather(
             attn_output_1G4D, dim=1, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
         )
-        ttnn.synchronize_devices(self.mesh_device)
         ttnn.deallocate(attn_output_1G4D)
 
         attn_output_gathered = ttnn.to_memory_config(
@@ -441,9 +436,7 @@ class TtLlamaAttention(LightweightModule):
             program_config=self.model_config["WO_DECODE_RING_PROGCFG"],
             memory_config=self.model_config["SHARDED_WO_OUT_RING_MEMCFG"],
             compute_kernel_config=self.compute_kernel_config_hifi2,
-            global_cb=self.prefetcher_setup.global_circular_buffer
-            if self.model_config["USE_PREFETCHER"]
-            else None,
+            global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
         )
         # [1, 1, 32, 2304]
         ttnn.deallocate(attn_output_cat_ttnn)
@@ -455,7 +448,6 @@ class TtLlamaAttention(LightweightModule):
             dense_out_dram, cluster_axis=0, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
         )
 
-        ttnn.synchronize_devices(self.mesh_device)
         ttnn.deallocate(dense_out_dram)
 
         dense_out_reduced_torch = ttnn.to_torch(
