@@ -150,9 +150,19 @@ operation::ProgramWithCallbacks all_gather_async_multi_core_with_workers(
     std::optional<ttnn::ccl::EdmLineFabricOpInterface> local_fabric_handle =
         enable_persistent_fabric_mode
             ? ttnn::ccl::EdmLineFabricOpInterface::build_program_builder_worker_connection_fabric(
-                  device, forward_device, backward_device, &program, enable_persistent_fabric_mode, num_links)
+                  device,
+                  forward_device.value_or(nullptr),
+                  backward_device.value_or(nullptr),
+                  &program,
+                  enable_persistent_fabric_mode,
+                  num_links)
             : ccl::EdmLineFabricOpInterface(
-                  device, forward_device, backward_device, &program, enable_persistent_fabric_mode, num_links);
+                  device,
+                  forward_device.value_or(nullptr),
+                  backward_device.value_or(nullptr),
+                  &program,
+                  enable_persistent_fabric_mode,
+                  num_links);
 
     LineTopology line_topology(ring_size, ring_index);
 
@@ -246,7 +256,7 @@ operation::ProgramWithCallbacks all_gather_async_multi_core_with_workers(
     log_trace(tt::LogOp, "reader_tensor_slices size: {}", reader_tensor_slices.size());
     log_trace(tt::LogOp, "reader_tensor_slices[0] size: {}", reader_tensor_slices[0].size());
 
-    CoreCoord drain_sync_core;
+    const CoreCoord drain_sync_core = device->worker_core_from_logical_core(sender_worker_cores.at(0));
     // For now these are a little disconnected from the commands - they'll need to be unified and explicitly
     // associated with each other but this is for bootstrapping the feature
     constexpr size_t reader_tensor_command_map_idx = 0;
@@ -256,10 +266,7 @@ operation::ProgramWithCallbacks all_gather_async_multi_core_with_workers(
 
     for (std::size_t link = 0; link < num_links; link++) {
         CoreCoord core = sender_worker_cores[link];
-        if (link == 0) {
-            // drain sync core is the first worker core
-            drain_sync_core = device->worker_core_from_logical_core(core);
-        }
+
         std::size_t worker_tensor_slice_index = link;
 
         const auto& input_worker_slice_v2 = input_tensor_slicer.get_worker_slice_v2(worker_tensor_slice_index);

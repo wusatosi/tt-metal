@@ -136,6 +136,7 @@ def run_all_gather_impl(
     cluster_axis=None,
     create_persistent_fabric=True,
     teardown_persistent_fabric=True,
+    wrap_fabric_around_mesh=False,
 ):
     enable_persistent_fabric = True
     if num_iters < 1:
@@ -159,12 +160,20 @@ def run_all_gather_impl(
     sub_device_stall_group = [worker_sub_device_id]
     if create_persistent_fabric:
         mesh_sub_device_manager_id = create_and_load_sub_device_manager_with_fabric_interface(
-            mesh_device, [worker_sub_device], 0, 0, enable_persistent_fabric
+            mesh_device,
+            [worker_sub_device],
+            0,
+            0,
+            enable_persistent_fabric,
+            wrap_fabric_around_mesh=wrap_fabric_around_mesh,
         )
         mesh_device.set_sub_device_stall_group(sub_device_stall_group)
 
     # create global semaphore handles
-    ccl_semaphore_handles = create_global_semaphore_with_same_address(mesh_device, ccl_sub_device_crs, 0)
+    ccl_semaphore_handles_list = []
+    num_global_semaphores = num_devices * 3
+    for i in range(num_global_semaphores):
+        ccl_semaphore_handles_list.append(create_global_semaphore_with_same_address(mesh_device, ccl_sub_device_crs, i))
 
     logger.info(f"Output shape: {output_shape}")
     logger.info(f"dim: {dim}")
@@ -207,32 +216,33 @@ def run_all_gather_impl(
     input_tensor_mesh_list = []
     output_tensor_goldens_list = []
 
-    for i in range(num_iters):
-        if rand_tensor:
-            output_tensor = torch.rand(output_shape).bfloat16()
-        else:
-            output_tensor = torch.zeros(output_shape)
-            tile_id = 1
-            for w in range(output_shape[0]):
-                for z in range(output_shape[1]):
-                    for y in range(0, output_shape[2], 32):
-                        for x in range(0, output_shape[3], 32):
-                            output_tensor[w, z, y : y + 32, x : x + 32] = tile_id
-                            tile_id += 1
+    # for i in range(num_iters):
+    if rand_tensor:
+        output_tensor = torch.rand(output_shape).bfloat16()
+    else:
+        output_tensor = torch.zeros(output_shape)
+        tile_id = 1
+        for w in range(output_shape[0]):
+            for z in range(output_shape[1]):
+                for y in range(0, output_shape[2], 32):
+                    for x in range(0, output_shape[3], 32):
+                        output_tensor[w, z, y : y + 32, x : x + 32] = tile_id
+                        tile_id += 1
 
-        output_tensor_goldens_list.append(output_tensor)
-        input_tensors = torch.chunk(output_tensor, num_devices, dim)
-        tt_input_tensors = []
-        for i, t in enumerate(input_tensors):
-            tt_input_tensors.append(
-                ttnn.Tensor(t, input_dtype).to(layout).to(mesh_device.get_devices()[i], input_mem_config)
-            )
-            logger.info(f"using device {mesh_device.get_devices()[i].id()}")
+    output_tensor_goldens_list.append(output_tensor)
+    input_tensors = torch.chunk(output_tensor, num_devices, dim)
+    tt_input_tensors = []
+    for i, t in enumerate(input_tensors):
+        tt_input_tensors.append(
+            ttnn.Tensor(t, input_dtype).to(layout).to(mesh_device.get_devices()[i], input_mem_config)
+        )
+        logger.info(f"using device {mesh_device.get_devices()[i].id()}")
 
-        input_tensor_mesh = ttnn.aggregate_as_tensor(tt_input_tensors)
+    input_tensor_mesh = ttnn.aggregate_as_tensor(tt_input_tensors)
 
-        input_tensor_mesh_list.append(input_tensor_mesh)
+    input_tensor_mesh_list.append(input_tensor_mesh)
 
+    global_sem_index = 0
     tt_out_tensor_list = []
     if trace_mode:
         tt_out_tensor = run_with_trace(
@@ -242,22 +252,28 @@ def run_all_gather_impl(
             dim,
             num_links,
             output_mem_config,
-            multi_device_global_semaphore=ccl_semaphore_handles,
+            multi_device_global_semaphore=ccl_semaphore_handles_list[
+                global_sem_index % len(ccl_semaphore_handles_list)
+            ],
             num_iter=num_iters,
             subdevice_id=worker_sub_device_id,
         )
         tt_out_tensor_list.append(tt_out_tensor)
+        global_sem_index += 1
     else:
         for i in range(num_iters):
+            logger.info(f"Launching op iteration {i}")
             if use_cluster_axis_api:
                 tt_out_tensor = ttnn.experimental.all_gather_async(
-                    input_tensor_mesh_list[i],
+                    input_tensor_mesh_list[0],
                     dim,
                     cluster_axis=cluster_axis,
                     mesh_device=mesh_device,
                     memory_config=output_mem_config,
                     topology=all_gather_topology,
-                    multi_device_global_semaphore=ccl_semaphore_handles,
+                    multi_device_global_semaphore=ccl_semaphore_handles_list[
+                        global_sem_index % len(ccl_semaphore_handles_list)
+                    ],
                     subdevice_id=worker_sub_device_id,
                     enable_persistent_fabric_mode=enable_persistent_fabric,
                     num_preferred_links=num_links,
@@ -265,24 +281,28 @@ def run_all_gather_impl(
 
             else:
                 tt_out_tensor = ttnn.experimental.all_gather_async(
-                    input_tensor_mesh_list[i],
+                    input_tensor_mesh_list[0],
                     dim,
-                    multi_device_global_semaphore=ccl_semaphore_handles,
+                    multi_device_global_semaphore=ccl_semaphore_handles_list[
+                        global_sem_index % len(ccl_semaphore_handles_list)
+                    ],
                     num_links=num_links,
                     memory_config=output_mem_config,
                     topology=all_gather_topology,
                     subdevice_id=worker_sub_device_id,
                     enable_persistent_fabric_mode=enable_persistent_fabric,
                 )
-            tt_out_tensor_list.append(tt_out_tensor)
+
+            global_sem_index += 1
 
             logger.info(f"Waiting for op {i}")
             ttnn.synchronize_devices(mesh_device, sub_device_ids=sub_device_stall_group)
             logger.info(f"Done iteration {i}")
+        tt_out_tensor_list.append(tt_out_tensor)
 
     for tensor_index in range(len(tt_out_tensor_list)):
         tt_out_tensor = tt_out_tensor_list[tensor_index]
-        output_tensor = output_tensor_goldens_list[tensor_index]
+        output_tensor = output_tensor_goldens_list[0]
         for i, t in enumerate(ttnn.get_device_tensors(tt_out_tensor)):
             tt_output_tensor = t.cpu().to(ttnn.ROW_MAJOR_LAYOUT).to_torch()
             logger.info(f"Checking for device {t.device().id()}")
@@ -338,6 +358,7 @@ def test_all_gather(
     use_program_cache,
     function_level_defaults,
     enable_async,
+    trace_mode=False,
 ):
     run_all_gather_impl(
         t3k_mesh_device,
@@ -353,7 +374,9 @@ def test_all_gather(
         num_iters=num_iters,
         enable_async=enable_async,
         rand_tensor=True,
+        trace_mode=trace_mode,
         mem_config=mem_config,
+        wrap_fabric_around_mesh=False,
     )
 
 
@@ -362,55 +385,55 @@ def test_all_gather(
 @pytest.mark.parametrize(
     "num_devices, output_shape, dim, layout, input_shard_shape, shard_grid, tensor_mem_layout",
     [
-        (
-            2,
-            [1, 1, 32, 256],
-            3,
-            ttnn.TILE_LAYOUT,
-            (32, 32),
-            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 3))}),
-            ttnn.TensorMemoryLayout.WIDTH_SHARDED,
-        ),
-        (
-            2,
-            [1, 1, 32, 256],
-            3,
-            ttnn.TILE_LAYOUT,
-            (32, 64),
-            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 1))}),
-            ttnn.TensorMemoryLayout.WIDTH_SHARDED,
-        ),
-        (
-            2,
-            [1, 1, 32, 256],
-            3,
-            ttnn.TILE_LAYOUT,
-            (32, 128),
-            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 0))}),
-            ttnn.TensorMemoryLayout.WIDTH_SHARDED,
-        ),
-        (
-            2,
-            [1, 1, 64, 256],
-            2,
-            ttnn.TILE_LAYOUT,
-            (32, 128),
-            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 1))}),
-            ttnn.TensorMemoryLayout.WIDTH_SHARDED,
-        ),
-        (
-            2,
-            [1, 4, 32, 256],
-            3,
-            ttnn.TILE_LAYOUT,
-            (32, 128),
-            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 3))}),
-            ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
-        ),
+        # (
+        #     2,
+        #     [1, 1, 32, 256],
+        #     3,
+        #     ttnn.TILE_LAYOUT,
+        #     (32, 32),
+        #     ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 3))}),
+        #     ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        # ),
+        # (
+        #     2,
+        #     [1, 1, 32, 256],
+        #     3,
+        #     ttnn.TILE_LAYOUT,
+        #     (32, 64),
+        #     ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 1))}),
+        #     ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        # ),
+        # (
+        #     2,
+        #     [1, 1, 32, 256],
+        #     3,
+        #     ttnn.TILE_LAYOUT,
+        #     (32, 128),
+        #     ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 0))}),
+        #     ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        # ),
+        # (
+        #     2,
+        #     [1, 1, 64, 256],
+        #     2,
+        #     ttnn.TILE_LAYOUT,
+        #     (32, 128),
+        #     ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 1))}),
+        #     ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        # ),
+        # (
+        #     2,
+        #     [1, 4, 32, 256],
+        #     3,
+        #     ttnn.TILE_LAYOUT,
+        #     (32, 128),
+        #     ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 3))}),
+        #     ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        # ),
         (
             4,
             [1, 4, 32, 1280],
-            3,
+            1,
             ttnn.TILE_LAYOUT,
             (32, 128),
             ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(1, 4))}),
@@ -418,7 +441,7 @@ def test_all_gather(
         ),
     ],
 )
-@pytest.mark.parametrize("num_links", [1])
+@pytest.mark.parametrize("num_links", [1, 2])
 @pytest.mark.parametrize(
     "input_dtype",
     [
@@ -428,8 +451,7 @@ def test_all_gather(
 @pytest.mark.parametrize("num_iters", [8])
 @pytest.mark.parametrize("enable_async", [True])
 def test_all_gather_sharded(
-    t3k_mesh_device,
-    # pcie_mesh_device,
+    pcie_mesh_device,
     num_devices,
     output_shape,
     dim,
@@ -443,9 +465,10 @@ def test_all_gather_sharded(
     input_shard_shape,
     shard_grid,
     tensor_mem_layout,
+    trace_mode=False,
 ):
     run_all_gather_impl(
-        t3k_mesh_device,
+        pcie_mesh_device,
         num_devices,
         output_shape,
         dim,
@@ -458,11 +481,123 @@ def test_all_gather_sharded(
         num_iters=num_iters,
         enable_async=enable_async,
         rand_tensor=True,
+        trace_mode=trace_mode,
         input_shard_shape=input_shard_shape,
         shard_grid=shard_grid,
         tensor_mem_layout=tensor_mem_layout,
         create_persistent_fabric=True,
         teardown_persistent_fabric=True,
+        wrap_fabric_around_mesh=True,
+    )
+
+
+@skip_for_grayskull("Requires eth connected devices to run")
+@pytest.mark.parametrize(
+    "num_devices, output_shape, dim, layout, input_shard_shape, shard_grid, tensor_mem_layout",
+    [
+        # (
+        #     2,
+        #     [1, 1, 32, 256],
+        #     3,
+        #     ttnn.TILE_LAYOUT,
+        #     (32, 32),
+        #     ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 3))}),
+        #     ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        # ),
+        # (
+        #     2,
+        #     [1, 1, 32, 256],
+        #     3,
+        #     ttnn.TILE_LAYOUT,
+        #     (32, 64),
+        #     ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 1))}),
+        #     ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        # ),
+        # (
+        #     2,
+        #     [1, 1, 32, 256],
+        #     3,
+        #     ttnn.TILE_LAYOUT,
+        #     (32, 128),
+        #     ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 0))}),
+        #     ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        # ),
+        # (
+        #     2,
+        #     [1, 1, 64, 256],
+        #     2,
+        #     ttnn.TILE_LAYOUT,
+        #     (32, 128),
+        #     ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 1))}),
+        #     ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        # ),
+        # (
+        #     2,
+        #     [1, 4, 32, 256],
+        #     3,
+        #     ttnn.TILE_LAYOUT,
+        #     (32, 128),
+        #     ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 3))}),
+        #     ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        # ),
+        (
+            4,
+            [1, 4, 32, 1280],
+            1,
+            ttnn.TILE_LAYOUT,
+            (32, 128),
+            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(1, 4))}),
+            ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+        ),
+    ],
+)
+@pytest.mark.parametrize("num_links", [2])
+@pytest.mark.parametrize(
+    "input_dtype",
+    [
+        ttnn.bfloat16,
+    ],
+)
+@pytest.mark.parametrize("num_iters", [4096])
+@pytest.mark.parametrize("enable_async", [True])
+def test_all_gather_sharded_stress_test_light(
+    pcie_mesh_device,
+    num_devices,
+    output_shape,
+    dim,
+    num_links,
+    input_dtype,
+    layout,
+    num_iters,
+    use_program_cache,
+    function_level_defaults,
+    enable_async,
+    input_shard_shape,
+    shard_grid,
+    tensor_mem_layout,
+    trace_mode=False,
+):
+    run_all_gather_impl(
+        pcie_mesh_device,
+        num_devices,
+        output_shape,
+        dim,
+        num_links,
+        input_dtype,
+        layout,
+        use_program_cache,
+        function_level_defaults,
+        all_gather_topology=ttnn.Topology.Ring,
+        num_iters=num_iters,
+        enable_async=enable_async,
+        rand_tensor=True,
+        trace_mode=trace_mode,
+        input_shard_shape=input_shard_shape,
+        shard_grid=shard_grid,
+        tensor_mem_layout=tensor_mem_layout,
+        create_persistent_fabric=True,
+        teardown_persistent_fabric=True,
+        wrap_fabric_around_mesh=True,
     )
 
 

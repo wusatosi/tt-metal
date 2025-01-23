@@ -130,6 +130,7 @@ void execute_chip_unicast_to_local_chip(volatile tt::fabric::PacketHeader *const
                         ", addr=" << (uint32_t)header.command_fields.unicast_seminc.address <<
                         ", inc=" << (uint32_t)increment << "\n";
                     noc_semaphore_inc(dest_address, increment);
+                    WAYPOINT("ainc");
 
                 }break;
                 case tt::fabric::NocSendType::NOC_MULTICAST: {

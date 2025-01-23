@@ -44,9 +44,11 @@ struct FabricEriscDatamoverConfig {
         sender_channel_0_buffer_index_address + field_size;
     std::size_t sender_channel_0_local_flow_control_semaphore_address =
         sender_channel_0_worker_connection_info_address + field_size;
+    std::size_t sender_channel_0_producer_terminate_connection_address =
+        sender_channel_0_local_flow_control_semaphore_address + field_size;
     // persistent mode field
     std::size_t sender_channel_0_connection_semaphore_address =
-        sender_channel_0_local_flow_control_semaphore_address + field_size;
+        sender_channel_0_producer_terminate_connection_address + field_size;
     // persistent mode field
     std::size_t sender_channel_0_buffer_index_semaphore_address =
         sender_channel_0_connection_semaphore_address + field_size;
@@ -60,9 +62,11 @@ struct FabricEriscDatamoverConfig {
         sender_channel_1_buffer_index_address + field_size;
     std::size_t sender_channel_1_local_flow_control_semaphore_address =
         sender_channel_1_worker_connection_info_address + field_size;
+    std::size_t sender_channel_1_producer_terminate_connection_address =
+        sender_channel_1_local_flow_control_semaphore_address + field_size;
     // persistent mode field
     std::size_t sender_channel_1_connection_semaphore_address =
-        sender_channel_1_local_flow_control_semaphore_address + field_size;
+        sender_channel_1_producer_terminate_connection_address + field_size;
     // persistent mode field
     std::size_t sender_channel_1_buffer_index_semaphore_address =
         sender_channel_1_connection_semaphore_address + field_size;
@@ -131,6 +135,8 @@ size_t log_worker_to_fabric_edm_sender_rt_args(std::vector<uint32_t> const& args
 class FabricEriscDatamoverBuilder {
    public:
        static constexpr size_t default_firmware_context_switch_interval = 200000;
+       // payload only, no header
+       static constexpr size_t default_packet_payload_size_bytes = 4352;
 
        FabricEriscDatamoverBuilder(
            const CoreCoord& my_eth_core_logical,
@@ -249,7 +255,13 @@ class EdmLineFabricOpInterface {
     EdmLineFabricOpInterface (IDevice* local_device, std::optional<IDevice*> forward_device, std::optional<IDevice*> backward_device,  Program* program, bool enable_persistent_mode, std::optional<size_t> desired_num_links, bool build_in_worker_connection_mode = false);
 
     static EdmLineFabricOpInterface build_program_builder_worker_connection_fabric(std::vector<IDevice*> const& device_sequence, std::vector<Program*> const& program_sequence, bool enable_persistent_mode, std::optional<size_t> desired_num_links = std::nullopt);
-    static EdmLineFabricOpInterface build_program_builder_worker_connection_fabric(IDevice* local_device, std::optional<IDevice*> forward_device, std::optional<IDevice*> backward_device,  Program* program, bool enable_persistent_mode, std::optional<size_t> desired_num_links = std::nullopt);
+    static EdmLineFabricOpInterface build_program_builder_worker_connection_fabric(
+        IDevice* local_device,
+        IDevice* forward_device,
+        IDevice* backward_device,
+        Program* program,
+        bool enable_persistent_mode,
+        std::optional<size_t> desired_num_links = std::nullopt);
 
     // Will create a connection adapter for a worker which can be used to pass args to the worker kernel talking to the
     // corresponding fabric endpoint. This interface will guarantee unique connections only so requesting more unique connections
@@ -312,7 +324,7 @@ class EdmLineFabricOpInterface {
     size_t firmware_context_switch_interval = FabricEriscDatamoverBuilder::default_firmware_context_switch_interval;
 };
 
-void initialize_edm_fabric(distributed::MeshDevice* mesh_device);
+void initialize_edm_fabric(distributed::MeshDevice* mesh_device, bool wrap_fabric_around_mesh = false);
 void teardown_edm_fabric(distributed::MeshDevice* mesh_device);
 
 };  // namespace ccl

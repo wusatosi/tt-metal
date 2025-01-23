@@ -16,6 +16,8 @@
 #include "cpp/ttnn/operations/ccl/kernels/edm_fabric/fabric_erisc_datamover_channels.hpp"
 #include "cpp/ttnn/operations/ccl/shared_with_host/hetergeneous_data_structs.hpp"
 
+#include "debug/ring_buffer.h"
+
 using ttnn::ccl::WorkerXY;
 
 /*
@@ -258,23 +260,28 @@ enum PacketLocalForwardType : uint8_t {
     PACKET_FORWARD_LOCAL_AND_REMOTE = 0x3
 };
 
-static constexpr uint32_t SWITCH_INTERVAL = get_compile_time_arg_val(0);
+static constexpr uint32_t SWITCH_INTERVAL =
+#ifndef DEBUG_PRINT_ENABLED
+    get_compile_time_arg_val(0);
+#else
+    10000;
+#endif
 static constexpr size_t ETH_BYTES_TO_WORDS_SHIFT = 4;
 static constexpr size_t NUM_SENDER_CHANNELS = 2;
 static constexpr size_t num_workers_ctor = 1;
 static constexpr size_t num_messages_to_move_ctor_value = 1;
 // Doesn't REALLY matter but for consistency I picked the next available ID
 static constexpr size_t receiver_channel_id = NUM_SENDER_CHANNELS;
-static constexpr size_t worker_info_offset_past_connection_semaphore = 32;
 
 /////////////////////////////////////////////
 //   SENDER SIDE HELPERS
 /////////////////////////////////////////////
-
+static size_t cnt = 0;
 FORCE_INLINE void sender_notify_workers_if_buffer_available_sequence(
     tt::fabric::EdmChannelWorkerInterface &local_sender_worker_interface) {
     local_sender_worker_interface.clear_local_semaphore();
     local_sender_worker_interface.increment_worker_semaphore();
+    WATCHER_RING_BUFFER_PUSH(cnt++);
 }
 
 template <uint8_t SENDER_NUM_BUFFERS, uint8_t RECEIVER_NUM_BUFFERS>
@@ -537,14 +544,17 @@ bool run_sender_channel_state_machine_step(
                 incr_sender_channel_index = send_status != tt::fabric::SendStatus::SENT_PAYLOAD_ONLY;
             } else if (!graceful_termination_mode) {
                 if (!local_sender_channel_worker_interface.has_payload() && local_sender_channel_worker_interface.has_worker_teardown_request()) {
+                    DPRINT << "EDMS teardown: " << (uint32_t)sender_channel_index << "\n";
                     local_sender_channel_worker_interface.teardown_connection();
                     *sender_state_out = SenderState::SENDER_WAIT_WORKER_HANDSHAKE;
+                    WAYPOINT("ConD");
                 }
             }
         } break;
 
         case SenderState::SENDER_WAIT_WORKER_HANDSHAKE:
             if (local_sender_channel_worker_interface.connection_is_live()) {
+                ASSERT(!local_sender_channel_worker_interface.has_payload());
                 bool is_safe_to_receive_next_message = local_sender_channel.eth_is_receiver_channel_send_acked() ||
                                                        local_sender_channel.eth_is_receiver_channel_send_done();
                 if (is_safe_to_receive_next_message) {
@@ -552,6 +562,8 @@ bool run_sender_channel_state_machine_step(
                     DPRINT << "\tl1 worker info ptr: " << (uint32_t)local_sender_channel_worker_interface.worker_location_info_ptr << "\n";
                     DPRINT << "\tworker.x=" << (uint32_t)local_sender_channel_worker_interface.worker_location_info_ptr->worker_xy.x << ", .y=" << (uint32_t)local_sender_channel_worker_interface.worker_location_info_ptr->worker_xy.y << ", sem_addr=" << (uint32_t)local_sender_channel_worker_interface.worker_location_info_ptr->worker_semaphore_address << "\n";
                     sender_notify_workers_if_buffer_available_sequence(local_sender_channel_worker_interface);
+                    cnt = 0;
+                    WAYPOINT("w_hs");
                     *sender_state_out = SenderState::SENDER_WAITING_FOR_WORKER;
                 } else {
                     *sender_state_out = SenderState::SENDER_WAITING_FOR_ETH;
@@ -576,7 +588,12 @@ bool run_sender_channel_state_machine_step(
             if (is_safe_to_receive_next_message) {
                 // This also notifies workers in the same call
                 DPRINT << "EDMS:\n";
-                sender_eth_check_receiver_ack_sequence(local_sender_channel, local_sender_channel_worker_interface);
+                if (!local_sender_channel_worker_interface.has_worker_teardown_request()) {
+                    sender_eth_check_receiver_ack_sequence(local_sender_channel, local_sender_channel_worker_interface);
+                } else {
+                    local_sender_channel.eth_clear_sender_channel_ack();
+                    local_sender_channel_worker_interface.clear_local_semaphore();
+                }
                 *sender_state_out = SenderState::SENDER_WAITING_FOR_WORKER;
             }
         } break;

@@ -405,6 +405,7 @@ void update_ccl_command(
 
             case CclCommandArgCode::SET_TARGET_VALUE:
             case CclCommandArgCode::SET_ATOMIC_INC_VALUE: {
+                DPRINT << "target_val: " << (uint32_t)command_arg_header.inline_value1 << "\n";
                 bool val_inline = static_cast<bool>(command_arg_header.inline_value0);
                 ASSERT(val_inline);
                 cmd_ctx.cmd_specific_ctx.inline_value_ctx = inline_value_context{};
@@ -495,6 +496,7 @@ FORCE_INLINE void try_advance_inline_write_or_atomic_inc(command_context_t<Addrg
         if (!can_write_into_fabric) {
             return;
         }
+        DPRINT << "value: " << (uint32_t)value << "\n";
 
         ASSERT(cmd_ctx.packet_header_buffer_addr != 0);
         auto* pkt_hdr = reinterpret_cast<tt::fabric::PacketHeader*>(cmd_ctx.packet_header_buffer_addr);
@@ -533,6 +535,7 @@ FORCE_INLINE void try_advance_inline_write_or_atomic_inc(command_context_t<Addrg
                         1, static_cast<uint8_t>(mcast_args.num_targets_forward_direction)});
                     cmd_ctx.fabric_connection.get_forward_connection().send_payload_flush_blocking_from_address(
                         cmd_ctx.packet_header_buffer_addr, sizeof(tt::fabric::PacketHeader));
+                    DPRINT << "mcast F: " << (uint32_t)mcast_args.num_targets_forward_direction << "\n";
                 }
 
                 // Write the mcast packet (backward)
@@ -542,9 +545,11 @@ FORCE_INLINE void try_advance_inline_write_or_atomic_inc(command_context_t<Addrg
                     cmd_ctx.fabric_connection.get_backward_connection().wait_for_empty_write_slot();
                     cmd_ctx.fabric_connection.get_backward_connection().send_payload_non_blocking_from_address(
                         cmd_ctx.packet_header_buffer_addr, sizeof(tt::fabric::PacketHeader));
+                    DPRINT << "mcast B: " << (uint32_t)mcast_args.num_targets_backward_direction << "\n";
                 }
 
                 uint64_t dest_noc_addr = safe_get_noc_addr(dest_noc0_x, dest_noc0_y, dest_bank_addr);
+                DPRINT << "dest_noc_addr: " << (uint64_t)dest_noc_addr << "\n";
                 if (cmd_ctx.current_cmd_header.code == ttnn::ccl::cmd::CclCommandCode::ATOMIC_INC) {
                     noc_semaphore_inc(dest_noc_addr, value);
                 } else if (cmd_ctx.current_cmd_header.code == ttnn::ccl::cmd::CclCommandCode::RAW_INLINE_WRITE_BYTES) {
@@ -559,7 +564,9 @@ FORCE_INLINE void try_advance_inline_write_or_atomic_inc(command_context_t<Addrg
         };
 
     } else {
+        DPRINT << "value: " << (uint32_t)value << "\n";
         const uint64_t dest_noc_addr = get_noc_addr(dest_noc0_x, dest_noc0_y, dest_bank_addr);
+        DPRINT << "dest_noc_addr: " << (uint64_t)dest_noc_addr << "\n";
         if (cmd_ctx.current_cmd_header.code == ttnn::ccl::cmd::CclCommandCode::ATOMIC_INC) {
             noc_semaphore_inc(dest_noc_addr, value);
         } else if (cmd_ctx.current_cmd_header.code == ttnn::ccl::cmd::CclCommandCode::RAW_INLINE_WRITE_BYTES) {
@@ -910,6 +917,7 @@ FORCE_INLINE void try_advance(command_context_t<Addrgen>& cmd_ctx) {
                 cmd_ctx.command_tensor.worker_pages_per_slice) {
                 DPRINT << "t_stream cmd cmpl\n";
                 cmd_ctx.complete_current_command();
+                // WAYPOINT("TStD");
             }
             break;
 
@@ -917,6 +925,7 @@ FORCE_INLINE void try_advance(command_context_t<Addrgen>& cmd_ctx) {
         case ttnn::ccl::cmd::CclCommandCode::RAW_INLINE_WRITE_BYTES:
             DPRINT << "at_inc cmd cmpl\n";
             cmd_ctx.complete_current_command();
+            WAYPOINT("IWRD");
             break;
         case ttnn::ccl::cmd::CclCommandCode::WAIT_VALUE:
             // Technically we are implementating semaphore wait as WAIT_MIN. FUTURE work to make separate commands
@@ -924,6 +933,7 @@ FORCE_INLINE void try_advance(command_context_t<Addrgen>& cmd_ctx) {
                 cmd_ctx.cmd_specific_ctx.inline_value_ctx.value) {
                 DPRINT << "Completing waitval command\n";
                 cmd_ctx.complete_current_command();
+                WAYPOINT("WVlD");
             }
             break;
 
@@ -933,6 +943,7 @@ FORCE_INLINE void try_advance(command_context_t<Addrgen>& cmd_ctx) {
                 cmd_ctx.cmd_specific_ctx.noc_transfer_burst_ctx.num_transfers_total) {
                 DPRINT << "noc_burst cmd cmpl\n";
                 cmd_ctx.complete_current_command();
+                WAYPOINT("NcBD");
             }
             break;
         default: ASSERT(false); break;
@@ -1066,6 +1077,7 @@ void kernel_main() {
 #endif
     }
 
+    noc_async_write_barrier();
     if (fabric_connection.is_logically_connected()) {
         fabric_connection.close();
     }

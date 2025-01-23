@@ -109,7 +109,7 @@ std::vector<ttnn::TensorSpec> AllGatherAsync::compute_output_specs(const std::ve
 
 operation::ProgramWithCallbacks AllGatherAsync::create_program(
     const std::vector<Tensor>& input_tensors, std::vector<Tensor>& output_tensors) const {
-    tt::log_debug(tt::LogOp, "DEBUG: create_program is called");
+    tt::log_info(tt::LogOp, "DEBUG: create_program is called");
     return all_gather_async_multi_core_with_workers(
         input_tensors[0],
         this->forward_device,
@@ -125,8 +125,15 @@ operation::ProgramWithCallbacks AllGatherAsync::create_program(
 }
 
 const operation::Hash AllGatherAsync::compute_program_hash(const std::vector<Tensor>& input_tensors) const {
+    tt::log_info(tt::LogOp, "DEBUG: hash semaphore address: {}", this->semaphore.address());
     return operation::hash_operation<AllGatherAsync>(
-        this->dim, this->num_links, this->ring_size, this->ring_index, this->output_mem_config, this->topology);
+        this->dim,
+        this->num_links,
+        this->ring_size,
+        this->ring_index,
+        this->output_mem_config,
+        this->topology,
+        this->semaphore.address());
 }
 
 

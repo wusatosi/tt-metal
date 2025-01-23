@@ -11,6 +11,7 @@
 #include "cpp/ttnn/operations/ccl/kernels/edm_fabric/fabric_edm_packet_header_validate.hpp"
 #include "debug/assert.h"
 #include "debug/dprint.h"
+#include "debug/ring_buffer.h"
 
 #include <cstdint>
 
@@ -95,15 +96,24 @@ struct WorkerToFabricEdmSender {
         num_buffers_per_channel(num_buffers_per_channel),
         last_buffer_index(num_buffers_per_channel - 1),
         edm_noc_x(edm_worker_x),
-        edm_noc_y(edm_worker_y) {
+        edm_noc_y(edm_worker_y),
+        cnt(0) {
         ASSERT(buffer_size_bytes > 0);
     }
 
     [[nodiscard]] FORCE_INLINE bool consumer_has_space() const { return *this->worker_sem_addr == 1; }
-    FORCE_INLINE void clear_flow_control_semaphore() const { noc_semaphore_set(this->worker_sem_addr, 0); }
-    FORCE_INLINE void wait_for_empty_write_slot() const {
+    FORCE_INLINE void clear_flow_control_semaphore() const {
+        ASSERT(*this->worker_sem_addr == 1);
+        noc_semaphore_set(this->worker_sem_addr, 0);
+        }
+    FORCE_INLINE void wait_for_empty_write_slot()  {
         DPRINT << "Wait for write slot @ " << (uint32_t)this->worker_sem_addr << "\n";
+        WAYPOINT("EDMW");
+        WATCHER_RING_BUFFER_PUSH(this->cnt++);
+        // while(*this->worker_sem_addr != 1);
         noc_semaphore_wait(this->worker_sem_addr, 1);
+        ASSERT(*this->worker_sem_addr == 1);
+        WAYPOINT("EDMD");
     }
 
     FORCE_INLINE void send_payload_blocking(uint32_t cb_id, uint32_t num_pages, uint32_t page_size) {
@@ -126,6 +136,9 @@ struct WorkerToFabricEdmSender {
     }
     FORCE_INLINE void send_payload_flush_blocking_from_address(uint32_t source_address, size_t size_bytes) {
         send_payload_from_address_impl<ttnn::ccl::EDM_IO_BLOCKING_MODE::FLUSH_BLOCKING>(source_address, size_bytes);
+    }
+    FORCE_INLINE void send_payload_flush_non_blocking_from_address(uint32_t source_address, size_t size_bytes) {
+        send_payload_from_address_impl<ttnn::ccl::EDM_IO_BLOCKING_MODE::NON_BLOCKING>(source_address, size_bytes);
     }
     FORCE_INLINE void send_payload_blocking_from_address(uint32_t source_address, size_t size_bytes) {
         send_payload_from_address_impl<ttnn::ccl::EDM_IO_BLOCKING_MODE::BLOCKING>(source_address, size_bytes);
@@ -153,6 +166,8 @@ struct WorkerToFabricEdmSender {
         // TODO: Need to change byte enable to be word enable
         noc_inline_dw_write(dest_edm_location_info_addr, reinterpret_cast<size_t>(worker_sem_addr));
         noc_inline_dw_write(dest_edm_location_info_addr + sizeof(uint32_t), reinterpret_cast<size_t>(worker_teardown_addr));
+        DPRINT << "WR TDWN @" << (uint64_t)(dest_edm_location_info_addr + sizeof(uint32_t)) << "\n";
+        DPRINT  << (uint32_t)worker_teardown_addr << "\n";
         noc_inline_dw_write(
             dest_edm_location_info_addr + 2 * sizeof(uint32_t), ttnn::ccl::WorkerXY(my_x[0], my_y[0]).to_uint32());
 
@@ -179,7 +194,12 @@ struct WorkerToFabricEdmSender {
         // A proper fix requires for example adding an additional teardown semaphore on the
         // worker side that the EDM writes to to acknowledge teardown. The problem here
         // is that the flow control aliases the teardown.
+        DPRINT << "WAIT TDWN @" << (uint32_t)this->worker_teardown_addr << "\n";
+        WAYPOINT("TDWN");
+        // while (*this->worker_teardown_addr != 1) {}
         noc_semaphore_wait(this->worker_teardown_addr, 1);
+        // *this->worker_teardown_addr = 0;
+        WAYPOINT("tdwn");
 
         noc_async_write_barrier();
     }
@@ -198,6 +218,7 @@ struct WorkerToFabricEdmSender {
     uint8_t last_buffer_index;
     uint8_t edm_noc_x;
     uint8_t edm_noc_y;
+    size_t cnt = 0;
 
 private:
 

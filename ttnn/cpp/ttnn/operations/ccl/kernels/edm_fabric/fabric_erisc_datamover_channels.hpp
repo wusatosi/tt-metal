@@ -215,17 +215,19 @@ struct EdmChannelWorkerInterface {
 
         DPRINT << "EDM ntf wrkr sem @" << (uint64_t)worker_semaphore_address << "\n";
         noc_semaphore_inc(worker_semaphore_address, 1);
+        WAYPOINT("ntfy");
     }
 
     // Connection management methods
     //
     FORCE_INLINE void teardown_connection() const {
         auto const &worker_info = *worker_location_info_ptr;
-        uint64_t worker_semaphore_address = get_noc_addr(
+        uint64_t worker_teardown_address = get_noc_addr(
             (uint32_t)worker_info.worker_xy.x, (uint32_t)worker_info.worker_xy.y, worker_info.worker_teardown_semaphore_address);
 
-        DPRINT << "EDM ntf trdn sem @" << (uint64_t)worker_semaphore_address << "\n";
-        noc_semaphore_inc(worker_semaphore_address, 1);
+        DPRINT << "EDM ntf trdn sem @" << (uint64_t)worker_teardown_address << "\n";
+        noc_semaphore_inc(worker_teardown_address, 1);
+        WAYPOINT("tdwn");
     }
 
     [[nodiscard]] FORCE_INLINE bool has_worker_teardown_request() const { return *connection_live_semaphore == 0; }
