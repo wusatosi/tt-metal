@@ -19,6 +19,7 @@ class LMHead(LightweightModule):
         state_dict_prefix,
         weight_cache_path,
         max_columns_per_device=128256 // 4,  # larger values per device lead to OOM or hangs
+        tt_ccl=None,
     ):
         super().__init__()
         self.args = args
@@ -27,6 +28,7 @@ class LMHead(LightweightModule):
         self.vocab_size = args.vocab_size
         self.padded_vocab_size = args.padded_vocab_size
         self.num_devices = args.num_devices
+        self.tt_ccl = tt_ccl
 
         size_per_device = self.vocab_size // self.num_devices
 
@@ -47,14 +49,6 @@ class LMHead(LightweightModule):
             )
             padded_lm_head = torch.zeros(1, 1, args.dim, self.padded_vocab_size)
             padded_lm_head[:, :, :, : self.vocab_size] = torch_output_weights
-
-            if args.is_70b:
-                padded_lm_head = torch.nn.functional.pad(
-                    padded_lm_head,
-                    (0, (512 * 8), 0, (12288 - 8192)),  # for 48 cores, we need 16k + 512 per device
-                    "constant",
-                    0,
-                )
 
             if args.is_70b:
                 memory_config = ttnn.DRAM_MEMORY_CONFIG
@@ -177,7 +171,9 @@ class LMHead(LightweightModule):
 
     def forward(self, x: ttnn.Tensor):
         # workaround for OOM issue
-        return self.forward_on_host(x)
+        # return self.forward_on_host(x)
+
+        # ttnn.device.dump_device_memory_state(self.mesh_device.get_device(self.mesh_device.get_device_ids()[0]), prefix="")
 
         outputs = []
         for weight, pc in zip(self.output_weights, self.program_configs):
@@ -190,7 +186,19 @@ class LMHead(LightweightModule):
                 memory_config=self.output_memory_config,
                 dtype=ttnn.bfloat8_b,
             )
-            # outputs.append(ttnn.sharded_to_interleaved(output, memory_config=ttnn.L1_MEMORY_CONFIG))
+            outputs.append(ttnn.sharded_to_interleaved(output, memory_config=ttnn.DRAM_MEMORY_CONFIG))
+            weight_l1.deallocate(True)
+            output.deallocate(True)
+
+        outputs_reduced = []
+        for output in outputs:
+            output_reduced = self.tt_ccl.line_all_reduce(
+                output, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
+            )
+            outputs_reduced.append(output_reduced)
+
+        assert len(outputs_reduced) == 1
+        output = outputs_reduced[0]
 
         # # Concatenate the outputs
         # output = ttnn.concat(outputs, dim=-1, memory_config=ttnn.L1_MEMORY_CONFIG)
@@ -207,24 +215,5 @@ class LMHead(LightweightModule):
         #     sharded=False,
         #     use_composite=True,
         # )
-
-        output_torch = ttnn.to_torch(
-            output,
-            mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(3, 0), mesh_shape=(8, 4)),
-        )
-        # Remove padding
-        output_torch = output_torch[:, :, :, : self.vocab_size]
-
-        output_torch_reduced = torch.sum(output_torch, dim=0, keepdim=True)
-        output = ttnn.as_tensor(
-            output_torch_reduced,
-            dtype=ttnn.bfloat8_b,
-            device=self.mesh_device,
-            mesh_mapper=ttnn.ShardTensor2dMesh(
-                mesh_device=self.mesh_device, dims=(3, None), mesh_shape=list(self.mesh_device.shape)
-            ),
-            layout=ttnn.TILE_LAYOUT,
-            memory_config=ttnn.L1_MEMORY_CONFIG,
-        )
 
         return output
