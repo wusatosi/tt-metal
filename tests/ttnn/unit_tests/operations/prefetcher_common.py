@@ -85,13 +85,13 @@ class TtLlamaPrefetcherSetup(LightweightModule):
         ##### Setup up sub devices #####
         self.prefetcher_sub_device = ttnn.SubDevice([self.sender_core_range_set])
         self.worker_sub_device = ttnn.SubDevice([self.worker_cores_range_set])
-        # mesh_sub_device_manager_id = create_and_load_sub_device_manager_with_fabric_interface(
-        #     mesh_device, [self.prefetcher_sub_device, self.worker_sub_device], 1, 0, True
-        # )
-        self.sub_device_manager = mesh_device.create_sub_device_manager(
-            [self.prefetcher_sub_device, self.worker_sub_device], 0
+        mesh_sub_device_manager_id = create_and_load_sub_device_manager_with_fabric_interface(
+            mesh_device, [self.prefetcher_sub_device, self.worker_sub_device], 1, 0, True
         )
-        mesh_device.load_sub_device_manager(self.sub_device_manager)
+        # self.sub_device_manager = mesh_device.create_sub_device_manager(
+        #     [self.prefetcher_sub_device, self.worker_sub_device], 0
+        # )
+        # mesh_device.load_sub_device_manager(self.sub_device_manager)
         self.prefetcher_sub_device_id = ttnn.SubDeviceId(0)
         self.worker_sub_device_id = ttnn.SubDeviceId(1)
 
