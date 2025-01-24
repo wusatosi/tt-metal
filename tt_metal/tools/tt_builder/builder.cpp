@@ -117,12 +117,18 @@ std::vector<std::shared_ptr<JitBuildState>> BuilderTool::get_build_states(
 
 void BuilderTool::build_firmware() {
     tt_metal::IDevice* device = tt_metal::CreateDevice(device_id);
+    DeviceJitBuild* device_jit_build = DeviceJitBuild::createBuildForDevice(device->build_key());
+    device_jit_build->configure_out_root_path(output_dir_.string());
+    device_jit_build->init(device->id(), device->num_hw_cqs(), device->arch(), device->get_device_kernel_defines());
 
-    firmware_output_dir_ = output_dir_.string() + to_string(device->build_key()) + "/firmware/";
+    // const JitBuildStateSet& firmware_build_states(this->get_build_states(device, device_id, true));
+    const JitBuildStateSet& firmware_build_states(device_jit_build->get_firmware_build_states());
+    jit_build_set(firmware_build_states, NULL);
+
+    /*
+    firmware_output_dir_ = output_dir_.string() + to_string(device_jit_build->get_build_key()) + "/firmware/";
     fs::create_directories(firmware_output_dir_);
-
-    const string& gpp_tool = device->build_env().get_gpp_tool();
-    const JitBuildStateSet& firmware_build_states(this->get_build_states(device, device_id, true));
+    const string& gpp_tool = device_jit_build->build_env().get_gpp_tool();
 
     string log_file = firmware_output_dir_.string() + "build_output.log";
     for (auto& build_state : firmware_build_states) {
@@ -174,6 +180,7 @@ void BuilderTool::build_firmware() {
             elf.WriteImage(pathname_out);
         }
     }
+    */
 
     tt_metal::CloseDevice(device);
 }
@@ -181,7 +188,7 @@ void BuilderTool::build_firmware() {
 void BuilderTool::build_dispatch() {
     tt_metal::IDevice* device = tt_metal::CreateDevice(device_id);
     DeviceJitBuild* device_jit_build = DeviceJitBuild::createBuildForDevice(device->build_key());
-    device_jit_build->init(device->arch(), device->get_device_kernel_defines());
+    // device_jit_build->init(device->id(), device->num_hw_cqs(), device->arch(), device->get_device_kernel_defines());
 
     device->reinit_build_cache(this->output_dir_);
     device->init_command_queue_host();

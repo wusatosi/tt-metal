@@ -316,7 +316,7 @@ void DevicePool::activate_device(chip_id_t id) {
         }
     }
     DeviceJitBuild* device_jit_build = DeviceJitBuild::createBuildForDevice(device->build_key());
-    device_jit_build->init(device->arch(), device->get_device_kernel_defines());
+    device_jit_build->init(id, this->num_hw_cqs, device->arch(), device->get_device_kernel_defines());
 }
 
 bool DevicePool::is_device_active(chip_id_t id) const {

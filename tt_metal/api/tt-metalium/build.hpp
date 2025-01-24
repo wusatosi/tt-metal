@@ -48,6 +48,10 @@ class JitBuildEnv {
 
 public:
     JitBuildEnv();
+    inline void configure_out_root_path(const std::string& out_root_path) {
+        this->out_root_ = out_root_path;
+        this->out_root_configured = true;
+    }
     void init(uint32_t build_key, tt::ARCH arch, const std::map<std::string, std::string>& device_kernel_defines);
     void reinit(const std::string& out_root, const uint32_t build_key);
 
@@ -63,6 +67,7 @@ private:
     tt::ARCH arch_;
     string arch_name_;
     string aliased_arch_name_;
+    bool out_root_configured = false;
 
     // Paths
     string root_;
@@ -186,7 +191,15 @@ public:
     DeviceJitBuild& operator=(const DeviceJitBuild& other) = delete;
 
     uint32_t get_build_key() { return this->build_key_; }
-    void init(tt::ARCH arch, const std::map<std::string, std::string>& device_kernel_defines);
+    const JitBuildEnv& build_env() { return build_env_; };
+    inline void configure_out_root_path(const std::string& path) { this->build_env_.configure_out_root_path(path); }
+    void init(
+        chip_id_t id,
+        uint8_t num_hw_cqs,
+        tt::ARCH arch,
+        const std::map<std::string, std::string>& device_kernel_defines);
+
+    JitBuildStateSet& get_firmware_build_states() { return this->firmware_build_states_; }
 
     static DeviceJitBuild* createBuildForDevice(uint32_t build_key) {
         static std::vector<std::shared_ptr<DeviceJitBuild>> build_list;
@@ -203,6 +216,9 @@ public:
 private:
     uint32_t build_key_;
     JitBuildEnv build_env_;
+    JitBuildStateSet firmware_build_states_;
+    JitBuildStateSet kernel_build_states_;
+    std::vector<std::vector<std::pair<int, int>>> build_state_indices_;
 };
 
 // Abstract base class for kernel specialization
