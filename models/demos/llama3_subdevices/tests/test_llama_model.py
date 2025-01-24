@@ -30,7 +30,7 @@ from models.utility_functions import skip_for_grayskull
 @pytest.mark.parametrize(
     "weights, layers",
     [
-        ("random", 1),
+        ("random", 3),
         ("instruct", None),
     ],
     ids=["quick", "full"],

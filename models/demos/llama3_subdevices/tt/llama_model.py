@@ -81,6 +81,7 @@ class TtTransformer(LightweightModule):
                 state_dict=state_dict,
                 weight_cache_path=weight_cache_path,
                 layer_num=i,
+                n_layers=self.n_layers,
                 transformation_mats=self.trans_mats_dict,
                 paged_attention_config=paged_attention_config,
                 use_paged_kv_cache=use_paged_kv_cache,
@@ -351,9 +352,11 @@ class TtTransformer(LightweightModule):
         if mode == "decode" and not self.args.is_galaxy:
             x = ttnn.to_memory_config(x, self.model_config["DECODE_RESIDUAL_MEMCFG"])
 
+        h = None
         for i, layer in enumerate(self.layers):
-            x = layer(
+            x, h = layer(
                 x,
+                h,
                 current_pos,
                 rot_mats,
                 user_id,
@@ -374,7 +377,7 @@ class TtTransformer(LightweightModule):
             x = ttnn.slice(x, (0, 0, get_last_token, 0), (1, 1, get_last_token + 32, x.shape[-1]))
 
         # Output norm
-        x = self.norm(x, mode=mode)
+        x = self.norm(x, res=None, mode=mode)
 
         if mode == "prefill" and self.model_config["LM_HEAD_INPUT_MEMCFG"].is_sharded():
             x = ttnn.interleaved_to_sharded(x, self.model_config["LM_HEAD_INPUT_MEMCFG"])
