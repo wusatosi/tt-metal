@@ -236,6 +236,9 @@ class resnet50Bottleneck:
             f"==== Running {batch_size}, {input_height}, {input_width}, {self.conv1_input_channels}, {self.conv1_output_channels}"
         )
 
+        ds_input_height = input_height
+        ds_input_width = input_width
+
         # conv1 is 1x1 conv
         logger.debug(f"Running conv1")
         module_input_height = input_height
@@ -277,9 +280,22 @@ class resnet50Bottleneck:
         run_downsample_before_conv2 = True
         ds_out = None
 
+        if is_grayskull():
+            if self.conv2_output_channels == 64 and input_height == 56 and batch_size == 20:
+                act_block_h_override = 320
+        elif is_wormhole_b0():
+            run_downsample_before_conv2 = False
+            # if (
+            #     batch_size == 16
+            #     and (
+            #         (input_height == 56 and self.conv1_input_channels == 256 and self.conv1_output_channels == 128)
+            #         or (input_height == 28 and self.conv1_input_channels == 512 and self.conv1_output_channels == 256)
+            #         or (input_height == 14 and self.conv1_input_channels == 1024 and self.conv1_output_channels == 512)
+            #     )
+            # ):
+            #     run_downsample_before_conv2 = True
+
         if run_downsample_before_conv2:
-            ds_input_height = input_height
-            ds_input_width = input_width
             if layer_module and layer_module == "layer4_module1":
                 if ops_parallel_config and "layer4_module1_downsample" in ops_parallel_config:
                     x = ttnn.to_memory_config(x, ops_parallel_config["layer4_module1_downsample"])
@@ -287,8 +303,8 @@ class resnet50Bottleneck:
                 x,
                 device,
                 batch_size,
-                input_height,
-                input_width,
+                ds_input_height,
+                ds_input_width,
                 conv_op_cache,
                 reshard_if_not_optimal,
                 height_sharding,
@@ -334,7 +350,7 @@ class resnet50Bottleneck:
                 weights_dtype=self.model_config["WEIGHTS_DTYPE"],
                 activation="relu",
                 deallocate_activation=True,
-                reallocate_halo_output=True,
+                reallocate_halo_output=not is_wormhole_b0(),
                 act_block_h_override=act_block_h_override,
                 shard_layout=ttnn.TensorMemoryLayout.HEIGHT_SHARDED
                 if height_sharding
@@ -409,8 +425,8 @@ class resnet50Bottleneck:
                 x,
                 device,
                 batch_size,
-                input_height,
-                input_width,
+                ds_input_height,
+                ds_input_width,
                 conv_op_cache,
                 reshard_if_not_optimal,
                 height_sharding,
@@ -745,33 +761,43 @@ class resnet50:
         x_height = 56
         x_width = 56
         x = ttnn.reshape(x, (1, 1, x_height * x_width * self.batch_size, 64))
-        core_range_set = ttnn.CoreRangeSet(
-            {
-                ttnn.CoreRange(
-                    ttnn.CoreCoord(0, 0),
-                    ttnn.CoreCoord(12, 7),
-                ),
-                ttnn.CoreRange(
-                    ttnn.CoreCoord(0, 8),
-                    ttnn.CoreCoord(7, 8),
-                ),
-            }
-        )
-        mem_config = ttnn.create_sharded_memory_config_(
-            ttnn.Shape([self.batch_size * x_height * x_width, 64]),
-            core_range_set,
-            ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
-            ttnn.ShardOrientation.ROW_MAJOR,
-            tile_layout=True,
-        )
-        x = ttnn.to_memory_config(x, mem_config)
+
+        if is_blackhole():
+            core_range_set = ttnn.CoreRangeSet(
+                {
+                    ttnn.CoreRange(
+                        ttnn.CoreCoord(0, 0),
+                        ttnn.CoreCoord(12, 7),
+                    ),
+                    ttnn.CoreRange(
+                        ttnn.CoreCoord(0, 8),
+                        ttnn.CoreCoord(7, 8),
+                    ),
+                }
+            )
+        elif is_wormhole_b0():
+            core_range_set = ttnn.CoreGrid(x=8, y=7)
+
+        if is_blackhole() or is_wormhole_b0():
+            mem_config = ttnn.create_sharded_memory_config_(
+                ttnn.Shape([self.batch_size * x_height * x_width, 64]),
+                core_range_set,
+                ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+                ttnn.ShardOrientation.ROW_MAJOR,
+                tile_layout=True,
+            )
+            x = ttnn.to_memory_config(x, mem_config)
+
         x = ttnn.to_layout(x, ttnn.TILE_LAYOUT, dtype=self.model_config["ACTIVATIONS_DTYPE"])
+
+        if self.batch_size == 20 and is_grayskull():
+            x = ttnn.reallocate(x)
 
         logger.debug(f"==== Running layer 1 module 1")
         layer1_module1_input_shape = ttnn.Shape(x.shape.with_tile_padding())
 
         reshard = False
-        height_shard = False
+        height_shard = True
 
         x, x_height, x_width = self.layer1_module1(
             x,
@@ -828,43 +854,44 @@ class resnet50:
 
         layer2_module1_input_shape = ttnn.Shape(x.shape.with_tile_padding())
 
-        reshard = True
+        reshard = not is_wormhole_b0()
         height_shard = True
 
-        ## 98
-        core_range_set = ttnn.CoreRangeSet(
-            {
-                ttnn.CoreRange(
-                    ttnn.CoreCoord(0, 0),
-                    ttnn.CoreCoord(12, 6),
-                ),
-                ttnn.CoreRange(
-                    ttnn.CoreCoord(0, 7),
-                    ttnn.CoreCoord(6, 7),
-                ),
-            }
-        )
-        ## 112
-        # core_range_set = ttnn.CoreRangeSet(
-        #     {
-        #         ttnn.CoreRange(
-        #             ttnn.CoreCoord(0, 0),
-        #             ttnn.CoreCoord(12, 7),
-        #         ),
-        #         ttnn.CoreRange(
-        #             ttnn.CoreCoord(0, 8),
-        #             ttnn.CoreCoord(7, 8),
-        #         ),
-        #     }
-        # )
-        mem_config = ttnn.create_sharded_memory_config_(
-            layer2_module1_input_shape,
-            core_range_set,
-            ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
-            ttnn.ShardOrientation.ROW_MAJOR,
-            tile_layout=True,
-        )
-        x = ttnn.to_memory_config(x, mem_config)
+        if is_blackhole():
+            ## 98
+            core_range_set = ttnn.CoreRangeSet(
+                {
+                    ttnn.CoreRange(
+                        ttnn.CoreCoord(0, 0),
+                        ttnn.CoreCoord(12, 6),
+                    ),
+                    ttnn.CoreRange(
+                        ttnn.CoreCoord(0, 7),
+                        ttnn.CoreCoord(6, 7),
+                    ),
+                }
+            )
+            ## 112
+            # core_range_set = ttnn.CoreRangeSet(
+            #     {
+            #         ttnn.CoreRange(
+            #             ttnn.CoreCoord(0, 0),
+            #             ttnn.CoreCoord(12, 7),
+            #         ),
+            #         ttnn.CoreRange(
+            #             ttnn.CoreCoord(0, 8),
+            #             ttnn.CoreCoord(7, 8),
+            #         ),
+            #     }
+            # )
+            mem_config = ttnn.create_sharded_memory_config_(
+                layer2_module1_input_shape,
+                core_range_set,
+                ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+                ttnn.ShardOrientation.ROW_MAJOR,
+                tile_layout=True,
+            )
+            x = ttnn.to_memory_config(x, mem_config)
 
         logger.debug(f"==== Running layer 2 module 1")
         x, x_height, x_width = self.layer2_module1(
@@ -937,7 +964,7 @@ class resnet50:
 
         layer3_module1_input_shape = ttnn.Shape(x.shape.with_tile_padding())
 
-        reshard = False
+        reshard = is_wormhole_b0()
         height_shard = False
         # if is_first_run:
         #     reshard = True
@@ -945,41 +972,42 @@ class resnet50:
         # else:
         #     x = ttnn.to_memory_config(x, ops_parallel_config["layer3_module1_input"])
 
-        # ## 96
-        # core_range_set = ttnn.CoreRangeSet(
-        #     {
-        #         ttnn.CoreRange(
-        #             ttnn.CoreCoord(0, 0),
-        #             ttnn.CoreCoord(11, 7),
-        #         ),
-        #     }
-        # )
-        ## 104
-        core_range_set = ttnn.CoreRangeSet(
-            {
-                ttnn.CoreRange(
-                    ttnn.CoreCoord(0, 0),
-                    ttnn.CoreCoord(12, 7),
-                ),
-            }
-        )
-        # ## 52
-        # core_range_set = ttnn.CoreRangeSet(
-        #     {
-        #         ttnn.CoreRange(
-        #             ttnn.CoreCoord(0, 0),
-        #             ttnn.CoreCoord(12, 3),
-        #         ),
-        #     }
-        # )
-        mem_config = ttnn.create_sharded_memory_config_(
-            layer3_module1_input_shape,
-            core_range_set,
-            ttnn.TensorMemoryLayout.BLOCK_SHARDED,
-            ttnn.ShardOrientation.COL_MAJOR,
-            tile_layout=True,
-        )
-        x = ttnn.to_memory_config(x, mem_config)
+        if is_blackhole():
+            # ## 96
+            # core_range_set = ttnn.CoreRangeSet(
+            #     {
+            #         ttnn.CoreRange(
+            #             ttnn.CoreCoord(0, 0),
+            #             ttnn.CoreCoord(11, 7),
+            #         ),
+            #     }
+            # )
+            ## 104
+            core_range_set = ttnn.CoreRangeSet(
+                {
+                    ttnn.CoreRange(
+                        ttnn.CoreCoord(0, 0),
+                        ttnn.CoreCoord(12, 7),
+                    ),
+                }
+            )
+            # ## 52
+            # core_range_set = ttnn.CoreRangeSet(
+            #     {
+            #         ttnn.CoreRange(
+            #             ttnn.CoreCoord(0, 0),
+            #             ttnn.CoreCoord(12, 3),
+            #         ),
+            #     }
+            # )
+            mem_config = ttnn.create_sharded_memory_config_(
+                layer3_module1_input_shape,
+                core_range_set,
+                ttnn.TensorMemoryLayout.BLOCK_SHARDED,
+                ttnn.ShardOrientation.COL_MAJOR,
+                tile_layout=True,
+            )
+            x = ttnn.to_memory_config(x, mem_config)
 
         logger.debug(f"==== Running layer 3 module 1")
         x, x_height, x_width = self.layer3_module1(
@@ -1089,25 +1117,36 @@ class resnet50:
         # if is_first_run:
         #     reshard = True
 
-        # 104
-        grid_size = (13, 8)
-        core_range_set = ttnn.CoreRangeSet(
-            {
-                ttnn.CoreRange(
-                    ttnn.CoreCoord(0, 0),
-                    ttnn.CoreCoord(grid_size[0] - 1, grid_size[1] - 1),
-                ),
-            }
-        )
         layer4_module1_input_shape = ttnn.Shape(x.shape.with_tile_padding())
-        mem_config = ttnn.create_sharded_memory_config_(
-            layer4_module1_input_shape,
-            core_range_set,
-            ttnn.TensorMemoryLayout.BLOCK_SHARDED,
-            ttnn.ShardOrientation.COL_MAJOR,
-            tile_layout=True,
-        )
-        x = ttnn.to_memory_config(x, mem_config)
+        if is_blackhole():
+            # 104
+            grid_size = (13, 8)
+            core_range_set = ttnn.CoreRangeSet(
+                {
+                    ttnn.CoreRange(
+                        ttnn.CoreCoord(0, 0),
+                        ttnn.CoreCoord(grid_size[0] - 1, grid_size[1] - 1),
+                    ),
+                }
+            )
+            mem_config = ttnn.create_sharded_memory_config_(
+                layer4_module1_input_shape,
+                core_range_set,
+                ttnn.TensorMemoryLayout.BLOCK_SHARDED,
+                ttnn.ShardOrientation.COL_MAJOR,
+                tile_layout=True,
+            )
+            x = ttnn.to_memory_config(x, mem_config)
+        elif is_wormhole_b0():
+            core_range_set = ttnn.CoreGrid(x=8, y=7)
+            shard_config = ttnn.create_sharded_memory_config_(
+                layer4_module1_input_shape,
+                core_range_set,
+                ttnn.TensorMemoryLayout.BLOCK_SHARDED,
+                ttnn.ShardOrientation.ROW_MAJOR,
+                tile_layout=True,
+            )
+            x = ttnn.to_memory_config(x, shard_config)
 
         logger.debug(f"==== Running layer 4 module 1")
         x, x_height, x_width = self.layer4_module1(
