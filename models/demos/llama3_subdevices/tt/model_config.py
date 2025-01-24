@@ -758,7 +758,7 @@ class TtModelArgs:
             self.model_config["LM_HEAD_TG_RING_PROGCFG"] = self.matmul_1d_ring_config(
                 1,
                 32,
-                self.lm_head_shape[0],
+                self.dim // 4,
                 self.lm_head_shape[1],
                 LM_HEAD_RING_SIZE,
                 prefetch=False,

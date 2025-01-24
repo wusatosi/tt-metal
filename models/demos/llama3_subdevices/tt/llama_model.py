@@ -114,6 +114,7 @@ class TtTransformer(LightweightModule):
             state_dict=state_dict,
             state_dict_prefix=state_dict_prefix,
             weight_cache_path=weight_cache_path,
+            tt_ccl=self.tt_ccl,
         )
 
         # Append the tensor containing all the buffer addresses to the prefetched weights
@@ -379,26 +380,11 @@ class TtTransformer(LightweightModule):
             x = ttnn.interleaved_to_sharded(x, self.model_config["LM_HEAD_INPUT_MEMCFG"])
 
         if mode == "decode" and self.args.is_galaxy:
-            x_torch = ttnn.to_torch(
-                x,
-                mesh_composer=ttnn.ConcatMesh2dToTensor(
-                    self.mesh_device,
-                    dims=(0, 3),
-                    mesh_shape=(8, 4),
-                ),
-            )  # [8, 1, 32, 2048 * 4]
-            # [8, 1, 32, 3072 * 4]
-            x_torch_padded = torch.nn.functional.pad(x_torch, (0, 12288 - 8192), "constant", 0)
-            x = ttnn.as_tensor(
-                x_torch_padded,
-                dtype=ttnn.bfloat16,
-                device=self.mesh_device,
-                mesh_mapper=ttnn.ShardTensor2dMesh(
-                    mesh_device=self.mesh_device, dims=(0, 3), mesh_shape=list(self.mesh_device.shape)
-                ),
-                layout=ttnn.TILE_LAYOUT,
-                memory_config=self.args.model_config["SHARDED_LM_HEAD_INPUT_RING_MEMCFG"],
-            )
+            x = ttnn.to_memory_config(x, self.args.model_config["SHARDED_LM_HEAD_INPUT_RING_MEMCFG"])
+
+            # Clear global circular buffer
+            del self.prefetcher_setup.global_circular_buffer
+            self.prefetcher_setup.global_circular_buffer = None
 
         return self.lm_head(x)
 
