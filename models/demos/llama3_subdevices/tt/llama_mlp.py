@@ -66,7 +66,7 @@ class TtLlamaMLP(LightweightModule):
 
         # TODO Clean up this code. With sharding, we load the normal weights and then shard them
         as_sharded_tensor = lambda name, type, dim: ttnn.as_tensor(
-            pad_to_next_multiple(torch_weight(name[:2])).unsqueeze(0).unsqueeze(0),  # Grab only the wX part of the name
+            torch_weight(name[:2]).unsqueeze(0).unsqueeze(0),  # Grab only the wX part of the name
             dtype=type,
             device=self.mesh_device,
             mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=dim, mesh_shape=args.cluster_shape),
