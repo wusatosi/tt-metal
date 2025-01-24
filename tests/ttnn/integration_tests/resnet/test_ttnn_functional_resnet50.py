@@ -13,7 +13,6 @@ from models.utility_functions import (
 )
 
 
-@run_for_blackhole("This is Blackhole specific test")
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
 @pytest.mark.parametrize(
     "batch_size, act_dtype, weight_dtype, math_fidelity",
