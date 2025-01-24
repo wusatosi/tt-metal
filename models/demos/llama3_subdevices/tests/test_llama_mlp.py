@@ -89,7 +89,7 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
 
     prefetcher_setup.tensors.append(prefetcher_setup.get_tensor_addrs())
 
-    torch_input = torch.randn(1, 1, seq_len, 9216)
+    torch_input = torch.randn(1, 1, seq_len, model_args.dim)
     tt_input = ttnn.from_torch(
         torch_input,
         device=mesh_device,

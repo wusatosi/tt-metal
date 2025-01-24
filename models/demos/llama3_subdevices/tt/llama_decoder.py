@@ -128,20 +128,7 @@ class TtTransformerBlock(LightweightModule):
         # Attention takes replicated inputs and produces fractured outputs
 
         # pad attn input
-        attn_in_torch = ttnn.to_torch(
-            attn_in,
-            mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(0, 3), mesh_shape=self.args.cluster_shape),
-        )
-        attn_in_torch = F.pad(attn_in_torch, (0, 9216 - 8192), mode="constant", value=0)
-        attn_in = ttnn.from_torch(
-            attn_in_torch,
-            device=self.mesh_device,
-            mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=(0, 3), mesh_shape=self.args.cluster_shape),
-            dtype=ttnn.bfloat8_b,
-            memory_config=self.model_config["SHARDED_ATTN_INPUT_RING_MEMCFG"],
-            layout=ttnn.TILE_LAYOUT,
-        )
-
+        attn_in = ttnn.to_memory_config(attn_in, self.model_config["SHARDED_ATTN_INPUT_RING_MEMCFG"])
         attn_out = self.attention.forward(
             attn_in,
             current_pos,
@@ -152,21 +139,6 @@ class TtTransformerBlock(LightweightModule):
             chunk_page_table=chunk_page_table,
             chunk_start_idx=chunk_start_idx,
             kv_cache=kv_cache,
-        )
-
-        # slice atten output
-        attn_out_torch = ttnn.to_torch(
-            attn_out,
-            mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(0, 3), mesh_shape=self.args.cluster_shape),
-        )
-        attn_out_torch = attn_out_torch[:, :, :, : 2048 * 4]
-        attn_out = ttnn.from_torch(
-            attn_out_torch,
-            device=self.mesh_device,
-            mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=(0, 3), mesh_shape=self.args.cluster_shape),
-            dtype=ttnn.bfloat8_b,
-            memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"],
-            layout=ttnn.TILE_LAYOUT,
         )
 
         # Here x and attn_out are both fractured across devices
@@ -181,38 +153,9 @@ class TtTransformerBlock(LightweightModule):
         # if TG and mode == "decode":
         #     ff_in = ttnn.to_memory_config(ff_in, memory_config=self.model_config["MLP_ACT_MEMCFG"])
 
-        # pad MLP input
-        ff_in_torch = ttnn.to_torch(
-            ff_in,
-            mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(0, 3), mesh_shape=self.args.cluster_shape),
-        )
-        ff_in_torch = F.pad(ff_in_torch, (0, 9216 - 8192), mode="constant", value=0)
-        ff_in = ttnn.from_torch(
-            ff_in_torch,
-            device=self.mesh_device,
-            mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=(0, 3), mesh_shape=self.args.cluster_shape),
-            dtype=ttnn.bfloat8_b,
-            memory_config=self.model_config["SHARDED_FF12_RING_MEMCFG"],
-            layout=ttnn.TILE_LAYOUT,
-        )
-
         # MLP takes replicated inputs and produces fractured outputs
+        ff_in = ttnn.to_memory_config(ff_in, self.model_config["SHARDED_FF12_RING_MEMCFG"])
         ff_out = self.feed_forward.forward(ff_in, mode)
-
-        # slice MLP output
-        ff_out_torch = ttnn.to_torch(
-            ff_out,
-            mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(0, 3), mesh_shape=self.args.cluster_shape),
-        )
-        ff_out_torch = ff_out_torch[:, :, :, : 2048 * 4]
-        ff_out = ttnn.from_torch(
-            ff_out_torch,
-            device=self.mesh_device,
-            mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=(0, 3), mesh_shape=self.args.cluster_shape),
-            dtype=ttnn.bfloat8_b,
-            memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"],
-            layout=ttnn.TILE_LAYOUT,
-        )
 
         out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)
         return out  # fractured across devices
