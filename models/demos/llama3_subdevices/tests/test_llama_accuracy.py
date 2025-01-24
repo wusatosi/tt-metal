@@ -207,7 +207,6 @@ def test_tt_model_acc(
     embd.load_state_dict({"emb.weight": state_dict[f"{state_dict_prefix}tok_embeddings.weight"]})
 
     # Skip prefill if prefill_len is 0
-    print(f"prefill_len: {prefill_len}")
     if prefill_len > 0:
         logger.info(f"Starting prefill...")
         batch_id = 0
@@ -336,7 +335,6 @@ def test_tt_model_acc(
         ttnn.deallocate(tt_out)
 
         tt_argmax_token = torch.argmax(tt_logits, dim=-1)
-        print(tt_argmax_token)
 
         # tt_argmax_token = ttnn.to_torch(tt_out_tok, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1))[
         #     0, 0, 0, 0
