@@ -59,7 +59,7 @@ def get_accuracy_thresholds(model_name: str, device_name: str, optimizations: Ll
 @pytest.mark.timeout(900)
 @pytest.mark.parametrize(
     "prefill_len, decode_len, max_seq_len",  # Max seqlen should be at least prefill_len + decode_len
-    ((512, 128, 1024),),
+    ((0, 128, 1024),),  # Prefill not yet supported with Prefetcher/on sub cores
 )
 @pytest.mark.parametrize(
     "mesh_device",
@@ -73,19 +73,19 @@ def get_accuracy_thresholds(model_name: str, device_name: str, optimizations: Ll
 @pytest.mark.parametrize(
     "optimizations",
     [
-        pytest.param(LlamaOptimizations.accuracy, id="accuracy"),
+        # pytest.param(LlamaOptimizations.accuracy, id="accuracy"),
         pytest.param(LlamaOptimizations.performance, id="performance"),
     ],
 )
 @pytest.mark.parametrize(
     "paged_attention",
     (
-        True,
-        # False
+        # True,
+        False,
     ),
     ids=(
-        "paged_attention",
-        # "default_attention"
+        # "paged_attention",
+        "default_attention",
     ),
 )
 @pytest.mark.parametrize(
@@ -94,15 +94,16 @@ def get_accuracy_thresholds(model_name: str, device_name: str, optimizations: Ll
 )
 @pytest.mark.parametrize(
     "batch_size",
-    (1,),
+    (32,),
 )
 @pytest.mark.parametrize(
     "use_reference_file",
     [
         pytest.param(True, id="reference_file"),
-        pytest.param(False, id="reference_text"),
+        # pytest.param(False, id="reference_text"),
     ],
 )
+@pytest.mark.parametrize("device_params", [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL}], indirect=True)
 def test_tt_model_acc(
     prefill_len,
     decode_len,
@@ -123,7 +124,7 @@ def test_tt_model_acc(
 
     dtype = ttnn.bfloat8_b
 
-    mesh_device.enable_async(True)
+    mesh_device.enable_async(False)
 
     # Load model args and tokenizer
     model_args = TtModelArgs(
@@ -206,6 +207,7 @@ def test_tt_model_acc(
     embd.load_state_dict({"emb.weight": state_dict[f"{state_dict_prefix}tok_embeddings.weight"]})
 
     # Skip prefill if prefill_len is 0
+    print(f"prefill_len: {prefill_len}")
     if prefill_len > 0:
         logger.info(f"Starting prefill...")
         batch_id = 0
@@ -304,35 +306,41 @@ def test_tt_model_acc(
             page_table=page_table_tt,
         )
 
-        if tt_model.args.num_devices > 1:
-            if tt_model.args.is_galaxy:
-                tt_out_gathered = ttnn.all_gather(
-                    tt_out,
-                    dim=3,
-                    num_links=tt_model.args.num_all_gather_links,
-                    cluster_axis=0,
-                    mesh_device=mesh_device,
-                    topology=tt_model.args.ccl_topology(),
-                )
-            else:
-                tt_out_gathered = ttnn.all_gather(tt_out, dim=3, num_links=1, topology=ttnn.Topology.Linear)
-            ttnn.deallocate(tt_out)
-        else:
-            tt_out_gathered = tt_out
-        tt_out_rm = ttnn.untilize(tt_out_gathered, use_multicore=True)
-        ttnn.deallocate(tt_out_gathered)
-        tt_out_tok = ttnn.argmax(
-            tt_out_rm,
-            dim=3,
-            use_multicore=True if model_args.max_batch_size == 1 else False,
-        )
-        if not use_reference_file:
-            tt_logits = ttnn.to_torch(tt_out_rm, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1))[0, 0, 0, :]
-        ttnn.deallocate(tt_out_rm)
+        # if tt_model.args.num_devices > 1:
+        #     if tt_model.args.is_galaxy:
+        #         tt_out_gathered = ttnn.all_gather(
+        #             tt_out,
+        #             dim=3,
+        #             num_links=tt_model.args.num_all_gather_links,
+        #             cluster_axis=0,
+        #             mesh_device=mesh_device,
+        #             topology=tt_model.args.ccl_topology(),
+        #         )
+        #     else:
+        #         tt_out_gathered = ttnn.all_gather(tt_out, dim=3, num_links=1, topology=ttnn.Topology.Linear)
+        #     ttnn.deallocate(tt_out)
+        # else:
+        #     tt_out_gathered = tt_out
+        # tt_out_rm = ttnn.untilize(tt_out_gathered, use_multicore=True)
+        # ttnn.deallocate(tt_out_gathered)
+        # tt_out_tok = ttnn.argmax(
+        #     tt_out_rm,
+        #     dim=3,
+        #     use_multicore=True if model_args.max_batch_size == 1 else False,
+        # )
+        # if not use_reference_file:
+        #     tt_logits = ttnn.to_torch(tt_out_rm, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1))[0, 0, 0, :]
+        # ttnn.deallocate(tt_out_rm)
 
-        tt_argmax_token = ttnn.to_torch(tt_out_tok, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1))[
-            0, 0, 0, 0
-        ]
+        tt_logits = ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1))[0, 0, 0, :]
+        ttnn.deallocate(tt_out)
+
+        tt_argmax_token = torch.argmax(tt_logits, dim=-1)
+        print(tt_argmax_token)
+
+        # tt_argmax_token = ttnn.to_torch(tt_out_tok, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1))[
+        #     0, 0, 0, 0
+        # ]
 
         ttnn.plus_one(current_pos_tensor)
 

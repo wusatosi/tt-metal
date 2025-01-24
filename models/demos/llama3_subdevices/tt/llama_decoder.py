@@ -76,6 +76,7 @@ class TtTransformerBlock(LightweightModule):
                 is_distributed=self.args.is_distributed_norm,
                 sharded_program_config=self.model_config["SHARDED_NORM_ATTN_PRGM_CFG"],
                 sharded_output_config=self.model_config["SHARDED_ATTN_INPUT_MEMCFG"],
+                output_dtype=self.args.activation_dtype,
             ),
             args,
             TG=args.is_galaxy,
@@ -92,6 +93,7 @@ class TtTransformerBlock(LightweightModule):
                 is_distributed=self.args.is_distributed_norm,
                 sharded_program_config=self.model_config["SHARDED_NORM_MLP_PRGM_CFG"],
                 sharded_output_config=self.model_config["SHARDED_MLP_INPUT_MEMCFG"],
+                output_dtype=self.args.activation_dtype,
             ),
             args,
             TG=args.is_galaxy,
@@ -130,7 +132,7 @@ class TtTransformerBlock(LightweightModule):
             attn_in_torch,
             device=self.mesh_device,
             mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=(0, 3), mesh_shape=self.args.cluster_shape),
-            dtype=ttnn.bfloat8_b,
+            dtype=self.args.activation_dtype,
             memory_config=self.model_config["SHARDED_ATTN_INPUT_RING_MEMCFG"],
             layout=ttnn.TILE_LAYOUT,
         )
@@ -157,13 +159,13 @@ class TtTransformerBlock(LightweightModule):
             attn_out_torch,
             device=self.mesh_device,
             mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=(0, 3), mesh_shape=self.args.cluster_shape),
-            dtype=ttnn.bfloat8_b,
+            dtype=self.args.activation_dtype,
             memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"],
             layout=ttnn.TILE_LAYOUT,
         )
 
         # Here x and attn_out are both fractured across devices
-        h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg)
+        h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg, dtype=ttnn.bfloat16)
         ttnn.deallocate(attn_out)
         if mode == "prefill":
             x.deallocate(True)
@@ -184,7 +186,7 @@ class TtTransformerBlock(LightweightModule):
             ff_in_torch,
             device=self.mesh_device,
             mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=(0, 3), mesh_shape=self.args.cluster_shape),
-            dtype=ttnn.bfloat8_b,
+            dtype=self.args.activation_dtype,
             memory_config=self.model_config["SHARDED_FF12_RING_MEMCFG"],
             layout=ttnn.TILE_LAYOUT,
         )
@@ -207,5 +209,5 @@ class TtTransformerBlock(LightweightModule):
             layout=ttnn.TILE_LAYOUT,
         )
 
-        out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)
+        out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg, dtype=ttnn.bfloat16)
         return out  # fractured across devices

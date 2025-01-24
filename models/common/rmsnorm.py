@@ -49,10 +49,12 @@ class RMSNorm(LightweightModule):
         eps: float = 1e-05,
         sharded_program_config=None,
         sharded_output_config=None,
+        output_dtype=None,
     ):
         super().__init__()
         self.eps = eps
         self.is_distributed = is_distributed
+        self.output_dtype = output_dtype
 
         if state_dict_prefix:
             weight_name = f"{state_dict_prefix}{weight_key}.weight"
@@ -108,7 +110,7 @@ class RMSNorm(LightweightModule):
         program_config = self.sharded_program_config if in_sharded else None
         memory_config = self.sharded_output_config if out_sharded else None
         distributed = self.is_distributed and self.is_distributed(mode)
-        norm = self._distributed_rmsnorm if distributed else ttnn.rms_norm
+        norm = self._distributed_rmsnorm if distributed else self._replicated_rmsnorm
         weight = self.weight_distributed if distributed else self.weight
 
         if in_sharded:
@@ -123,6 +125,7 @@ class RMSNorm(LightweightModule):
             program_config=program_config,
             memory_config=memory_config,
             compute_kernel_config=self.compute_kernel_config_hifi2,
+            dtype=self.output_dtype,
         )
 
         if in_sharded and not out_sharded:
@@ -130,8 +133,34 @@ class RMSNorm(LightweightModule):
         else:
             return x
 
+    def _replicated_rmsnorm(
+        self,
+        inp,
+        epsilon=None,
+        weight=None,
+        program_config=None,
+        memory_config=None,
+        compute_kernel_config=None,
+        dtype=None,
+    ):
+        return ttnn.rms_norm(
+            inp,
+            epsilon=epsilon,
+            weight=weight,
+            program_config=program_config,
+            memory_config=memory_config,
+            compute_kernel_config=compute_kernel_config,
+        )
+
     def _distributed_rmsnorm(
-        self, inp, epsilon=None, weight=None, program_config=None, memory_config=None, compute_kernel_config=None
+        self,
+        inp,
+        epsilon=None,
+        weight=None,
+        program_config=None,
+        memory_config=None,
+        compute_kernel_config=None,
+        dtype=None,
     ):
         assert program_config is None, "Distributed RMSNorm does not support sharded inputs"
         assert memory_config is None, "Distributed RMSNorm does not support sharded outputs"
@@ -152,6 +181,7 @@ class RMSNorm(LightweightModule):
             epsilon=epsilon,
             weight=weight,
             compute_kernel_config=compute_kernel_config,
+            dtype=dtype,
         )
         tt_stats.deallocate(True)
 

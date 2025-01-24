@@ -35,8 +35,8 @@ from tests.ttnn.unit_tests.operations.prefetcher_common import get_core_ranges
 @dataclass
 class LlamaOptimizations:
     bfp4_mlp: bool
+    bfp8_activations: bool
     # Future fields will go here:
-    # bfp8_activations: bool
     # bfp8_layernorm: bool
     # bfp8_ccl: bool
 
@@ -45,14 +45,14 @@ class LlamaOptimizations:
         """Configuration optimized for accuracy
         Only 3.1-70B uses bfp4 MLPs in this configuration
         """
-        return cls(bfp4_mlp=model_name == "3.1-70B")
+        return cls(bfp4_mlp=model_name == "3.1-70B", bfp8_activations=model_name == "3.1-70B")
 
     @classmethod
     def performance(cls, model_name):
         """Configuration optimized for performance
         All models use bfp4 MLPs in this configuration
         """
-        return cls(bfp4_mlp=True)
+        return cls(bfp4_mlp=True, bfp8_activations=True)
 
 
 class TtModelArgs:
@@ -1083,6 +1083,8 @@ class TtModelArgs:
             self.num_all_gather_links = (
                 2 if self.is_galaxy else 1
             )  # TODO: try out 3 for short axis and 4 for long axis (TG only) <- should work but untested in model
+
+            self.activation_dtype = ttnn.bfloat8_b if self.optimizations.bfp8_activations else ttnn.bfloat16
             self.ccl_dtype = ttnn.bfloat8_b
 
     def is_distributed_norm(self, mode):

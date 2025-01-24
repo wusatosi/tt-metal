@@ -26,6 +26,7 @@ class TtLlamaAttention(LightweightModule):
     ):
         super().__init__()
 
+        self.args = configuration
         self.state_dict = state_dict
         self.mesh_device = mesh_device
         self.num_devices = configuration.num_devices
@@ -287,7 +288,7 @@ class TtLlamaAttention(LightweightModule):
         # inner -> replicate, outer -> fractured
         xqkv_fused = ttnn.as_tensor(
             x_torch_reduced,
-            dtype=ttnn.bfloat16,
+            dtype=ttnn.bfloat16,  # nlp_create_qkv_heads_decode requires bf16 inputs
             device=self.mesh_device,
             mesh_mapper=ttnn.ShardTensor2dMesh(
                 mesh_device=self.mesh_device, dims=(3, None), mesh_shape=list(self.mesh_device.shape)
@@ -387,7 +388,7 @@ class TtLlamaAttention(LightweightModule):
 
         attn_output_gathered = ttnn.as_tensor(
             attn_output_torch,
-            dtype=ttnn.bfloat16,
+            dtype=ttnn.bfloat16,  # nlp_concat_heads_decode requires bf16 inputs
             device=self.mesh_device,
             mesh_mapper=ttnn.ShardTensor2dMesh(
                 mesh_device=self.mesh_device, dims=(2, None), mesh_shape=list(self.mesh_device.shape)
@@ -425,7 +426,7 @@ class TtLlamaAttention(LightweightModule):
         # [1, 1, 32, 1536]
         attn_output_cat_ttnn = ttnn.as_tensor(
             attn_output_cat_torch,
-            dtype=ttnn.bfloat16,
+            dtype=self.args.activation_dtype,
             device=self.mesh_device,
             mesh_mapper=ttnn.ShardTensor2dMesh(
                 mesh_device=self.mesh_device, dims=(3, None), mesh_shape=list(self.mesh_device.shape)
@@ -462,7 +463,7 @@ class TtLlamaAttention(LightweightModule):
 
         dense_out_reduced = ttnn.as_tensor(
             dense_out_torch,
-            dtype=ttnn.bfloat16,
+            dtype=self.args.activation_dtype,
             device=self.mesh_device,
             mesh_mapper=ttnn.ShardTensor2dMesh(
                 mesh_device=self.mesh_device, dims=(None, 3), mesh_shape=list(self.mesh_device.shape)
@@ -496,7 +497,7 @@ class TtLlamaAttention(LightweightModule):
         xqkv_fused = ttnn.linear(
             x_11SH,
             self.wqkv,
-            dtype=self.ccl_dtype if self.TG else ttnn.bfloat16,
+            dtype=self.ccl_dtype if self.TG else self.args.activation_dtype,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
             compute_kernel_config=self.compute_kernel_config_hifi2,
             program_config=self.model_config["XQKV_PREFILL_PROGCFG"](seq_len),

@@ -42,12 +42,12 @@ class DistributedNorm(LightweightModule):
             #     core_grid=ttnn.CoreGrid(y=1, x=1),
             #     strategy=ttnn.ShardStrategy.WIDTH,
             # )
-            # self.ln_cfg = ttnn.WormholeComputeKernelConfig(
-            #     math_fidelity=ttnn.MathFidelity.HiFi2,
-            #     math_approx_mode=False,
-            #     fp32_dest_acc_en=False,
-            #     packer_l1_acc=False,
-            # )
+            self.ln_cfg = ttnn.WormholeComputeKernelConfig(
+                math_fidelity=ttnn.MathFidelity.HiFi2,
+                math_approx_mode=False,
+                fp32_dest_acc_en=False,
+                packer_l1_acc=False,
+            )
         self.TG = TG
 
     def forward(self, x, mode):
@@ -62,6 +62,7 @@ class DistributedNorm(LightweightModule):
                     ln_sharded_input_memcfg=self.gather_in_mem_cfg,
                     ln_sharded_progcfg=self.ln_prg_cfg,
                     ln_sharded_stats_memcfg=self.ln_sharded_stats_memcfg,
+                    dtype=self.norm.output_dtype,
                 )
             else:
                 return tt_distributed_rmsnorm(
@@ -70,6 +71,7 @@ class DistributedNorm(LightweightModule):
                     gamma=self.norm.weight_distributed,
                     mesh_device=self.args.mesh_device,
                     compute_kernel_config=self.ln_cfg,
+                    dtype=self.norm.output_dtype,
                 )
 
         input_mem_cfg = self.norm.sharded_output_config if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG

@@ -95,6 +95,7 @@ class TtTransformer(LightweightModule):
                 is_distributed=self.args.is_distributed_norm,
                 sharded_program_config=self.model_config["SHARDED_NORM_LM_HEAD_PRGM_CFG"],
                 sharded_output_config=self.model_config["LM_HEAD_INPUT_MEMCFG"],
+                output_dtype=self.args.activation_dtype,
             ),
             args,
             args.is_galaxy,

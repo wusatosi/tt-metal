@@ -154,7 +154,7 @@ def tt_all_gather(
     return gathered
 
 
-def tt_distributed_rmsnorm(inp, epsilon, gamma, mesh_device, compute_kernel_config):
+def tt_distributed_rmsnorm(inp, epsilon, gamma, mesh_device, compute_kernel_config, dtype):
     # Run distributed rmsnorm part 1
     tt_stats = ttnn.rms_norm_pre_all_gather(inp, compute_kernel_config=compute_kernel_config, dtype=ttnn.bfloat16)
     padded_shape = (1, 1, inp.shape[-2], 32)
@@ -172,7 +172,7 @@ def tt_distributed_rmsnorm(inp, epsilon, gamma, mesh_device, compute_kernel_conf
 
     # Run distributed rmsnorm part 2
     tt_out = ttnn.rms_norm_post_all_gather(
-        inp, tt_stats_gathered, epsilon=epsilon, weight=gamma, compute_kernel_config=compute_kernel_config
+        inp, tt_stats_gathered, epsilon=epsilon, weight=gamma, compute_kernel_config=compute_kernel_config, dtype=dtype
     )
 
     tt_stats_gathered.deallocate(True)
@@ -189,6 +189,7 @@ def tt_sharded_distributed_rmsnorm(
     ln_sharded_input_memcfg,
     ln_sharded_progcfg,
     ln_sharded_stats_memcfg,
+    dtype,
 ):
     # inp = ttnn.to_memory_config(inp, memory_config=ln_sharded_input_memcfg)
 
@@ -235,6 +236,7 @@ def tt_sharded_distributed_rmsnorm(
         weight=gamma,
         program_config=ln_sharded_progcfg,
         stats=tt_stats,
+        dtype=dtype,
     )
     tt_stats.deallocate(True)
 

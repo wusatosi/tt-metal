@@ -135,7 +135,7 @@ class TtLlamaMLP(LightweightModule):
             if self.four_bit_mlp
             else self.args.compute_kernel_config_hifi2_fp16,
             core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_1 else None,
-            dtype=ttnn.bfloat8_b if TG else ttnn.bfloat16,
+            dtype=ttnn.bfloat8_b if TG else self.args.activation_dtype,
             program_config=pc_1,
             memory_config=self.model_config["SHARDED_FF12_OUT_RING_MEMCFG"],
             multi_global_cb=self.prefetcher_setup.global_circular_buffer
@@ -150,7 +150,7 @@ class TtLlamaMLP(LightweightModule):
             if self.four_bit_mlp
             else self.args.compute_kernel_config_hifi2_fp16,
             core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_3 else None,
-            dtype=ttnn.bfloat8_b if TG else ttnn.bfloat16,
+            dtype=ttnn.bfloat8_b if TG else self.args.activation_dtype,
             program_config=pc_3,
             memory_config=self.model_config["SHARDED_FF12_OUT_RING_MEMCFG"],
             multi_global_cb=self.prefetcher_setup.global_circular_buffer
@@ -300,7 +300,7 @@ class TtLlamaMLP(LightweightModule):
             w2_in,
             self.w2,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
-            dtype=self.args.ccl_dtype if TG else ttnn.bfloat16,
+            dtype=self.args.ccl_dtype if TG else self.args.activation_dtype,
             program_config=pc_2,
             memory_config=(self.model_config["FF2_OUT_RING_MEMCFG"] if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG)
             if TG
@@ -334,7 +334,7 @@ class TtLlamaMLP(LightweightModule):
         w2_out_torch_reduced = torch.sum(w2_out_torch, dim=0, keepdim=True)
         w2_out_reduced = ttnn.as_tensor(
             w2_out_torch_reduced,
-            dtype=ttnn.bfloat8_b,
+            dtype=self.args.activation_dtype,
             device=self.mesh_device,
             mesh_mapper=ttnn.ShardTensor2dMesh(
                 mesh_device=self.mesh_device, dims=(None, 3), mesh_shape=list(self.mesh_device.shape)
