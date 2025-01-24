@@ -38,11 +38,16 @@ python3 -m pip install -r $(pwd)/tt_metal/python_env/requirements-dev.txt
 echo "Installing tt-metal"
 pip install -e .
 
-# Do not install hooks when this is a worktree
-if [ $(git rev-parse --git-dir) = $(git rev-parse --git-common-dir) ] ; then
+# FIXME: This actually belongs in a 'bootstrap dev configuration' but we're piggy-backing
+# off bootstrapping the runtime environment for now...
+if [ "$(git rev-parse --git-dir)" = "$(git rev-parse --git-common-dir)" ]; then
     echo "Generating git hooks"
-    pre-commit install
-    pre-commit install --hook-type commit-msg
+    if command -v pre-commit > /dev/null; then
+        pre-commit install
+        pre-commit install --hook-type commit-msg
+    else
+        echo "pre-commit is not available. Skipping hook installation."
+    fi
 else
     echo "In worktree: not generating git hooks"
 fi
