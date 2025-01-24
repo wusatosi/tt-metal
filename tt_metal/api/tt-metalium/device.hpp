@@ -187,7 +187,9 @@ public:
     virtual std::shared_ptr<TraceBuffer> get_trace(uint32_t tid) = 0;
     virtual uint32_t get_trace_buffers_size() const = 0;
     virtual void set_trace_buffers_size(uint32_t size) = 0;
-
+    virtual DispatchCoreConfig get_dispatch_core_config() = 0;
+    virtual const std::vector<CoreCoord>& get_logical_storage_cores() = 0;
+    virtual const std::vector<CoreCoord>& get_logical_dispatch_cores() = 0;
     virtual bool using_slow_dispatch() const = 0;
     virtual bool using_fast_dispatch() const = 0;
 
