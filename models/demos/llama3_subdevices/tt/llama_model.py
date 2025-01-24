@@ -19,6 +19,7 @@ from models.demos.llama3_subdevices.tt.llama_common import copy_host_to_device, 
 from models.demos.llama3_subdevices.tt.llama_rope import TtLlamaRotarySetup
 from models.demos.llama3_subdevices.tt.llama_embedding import TtLlamaEmbedding
 from tests.ttnn.unit_tests.operations.prefetcher_common import TtLlamaPrefetcherSetup
+from models.demos.llama3_subdevices.tt.llama_ccl import TT_CCL
 
 
 class TtTransformer(LightweightModule):
@@ -67,6 +68,10 @@ class TtTransformer(LightweightModule):
             n_tensors=5,
             n_layers=self.n_layers,
         )
+        mesh_device.set_sub_device_stall_group(
+            [self.prefetcher_setup.prefetcher_sub_device_id, self.prefetcher_setup.worker_sub_device_id]
+        )
+        self.tt_ccl = TT_CCL(mesh_device, args.sub_core_grids, self.prefetcher_setup.worker_sub_device_id)
 
         self.layers = [
             TtTransformerBlock(
@@ -80,6 +85,7 @@ class TtTransformer(LightweightModule):
                 paged_attention_config=paged_attention_config,
                 use_paged_kv_cache=use_paged_kv_cache,
                 prefetcher_setup=self.prefetcher_setup,
+                tt_ccl=self.tt_ccl,
             )
             for i in tqdm(range(self.n_layers))
         ]
@@ -98,6 +104,7 @@ class TtTransformer(LightweightModule):
             ),
             args,
             args.is_galaxy,
+            tt_ccl=self.tt_ccl,
         )
 
         self.lm_head = LMHead(
@@ -394,3 +401,6 @@ class TtTransformer(LightweightModule):
             )
 
         return self.lm_head(x)
+
+    def __del__(self):
+        self.tt_ccl.close()
