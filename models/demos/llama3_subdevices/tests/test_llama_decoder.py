@@ -64,14 +64,14 @@ def test_llama_decoder_inference(
     paged_attention,
     page_params,
     mesh_device,
-    use_program_cache,
+    # use_program_cache,
     reset_seeds,
     ensure_gc,
 ):
     dtype = ttnn.bfloat8_b
     mesh_device.enable_async(True)
 
-    model_args = TtModelArgs(mesh_device, max_batch_size=batch_size, max_seq_len=max_seq_len, dummy_weights=True)
+    model_args = TtModelArgs(mesh_device, max_batch_size=batch_size, max_seq_len=max_seq_len, dummy_weights=False)
     model_args.n_layers = 1
 
     state_dict = model_args.load_state_dict()
