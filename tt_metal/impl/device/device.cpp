@@ -407,12 +407,15 @@ void Device::reinit_build_cache(const std::string& output_dir) {
                             break;
                         }
                         case HalProgrammableCoreType::ACTIVE_ETH: {
+                            // Cooperative means active erisc FW needs to context switch to base FW
+                            bool is_cooperative = this->arch() == ARCH::WORMHOLE_B0;
                             build_states[index] = std::make_shared<JitBuildActiveEthernet>(
                                 this->build_env_,
                                 JitBuiltStateConfig{
                                     .processor_id = processor_class,
                                     .is_fw = is_fw,
-                                    .dispatch_message_addr = dispatch_message_addr});
+                                    .dispatch_message_addr = dispatch_message_addr,
+                                    .is_cooperative = is_cooperative});
                             break;
                         }
                         case HalProgrammableCoreType::IDLE_ETH: {
