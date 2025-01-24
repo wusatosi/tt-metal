@@ -207,8 +207,6 @@ class resnet50Bottleneck:
                 return_output_dim=False,
                 return_weights_and_bias=True,
             )
-            ds_out_host = ds_out.cpu(blocking=True)
-            logger.debug(f"move to host: {ds_out_host.memory_config()}")
             ttnn.deallocate(x)
             ds_out = ttnn.reallocate(ds_out)
         else:
@@ -274,9 +272,6 @@ class resnet50Bottleneck:
             return_output_dim=True,
             return_weights_and_bias=True,
         )
-
-        out_host = out.cpu(blocking=True)
-        logger.debug(f"move to host: {out_host.memory_config()}")
 
         act_block_h_override = 0
         run_downsample_before_conv2 = True
@@ -360,9 +355,6 @@ class resnet50Bottleneck:
             return_output_dim=True,
             return_weights_and_bias=True,
         )
-        out_host = out.cpu(blocking=True)
-        logger.debug(f"move to host: {out_host.memory_config()}")
-
         if layer_module and layer_module == "layer4_module1":
             if ops_parallel_config and "layer4_module1_input" not in ops_parallel_config:
                 x_memory_config = ttnn.get_memory_config(out)
@@ -408,9 +400,6 @@ class resnet50Bottleneck:
             return_output_dim=False,
             return_weights_and_bias=True,
         )
-        out_host = out.cpu(blocking=True)
-        logger.debug(f"move to host: {out_host.memory_config()}")
-
         # if layer_module and layer_module == "layer3_module3":
         #     logger.warning(f"Returning early...")
         #     return out, input_height, input_width
@@ -452,9 +441,6 @@ class resnet50Bottleneck:
                 activations=[ttnn.UnaryWithParam(ttnn.UnaryOpType.RELU)],
                 memory_config=ttnn.L1_MEMORY_CONFIG,
             )
-        out_host = out.cpu(blocking=True)
-        logger.debug(f"move to host: {out_host.memory_config()}")
-
         ttnn.deallocate(ds_out)
         return out, input_height, input_width
 
