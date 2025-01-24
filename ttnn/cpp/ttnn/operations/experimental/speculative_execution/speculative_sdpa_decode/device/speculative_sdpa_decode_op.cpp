@@ -231,8 +231,8 @@ void SpeculativeScaledDotProductAttentionDecode::validate(
         ;
         TT_FATAL(
             (priority_shape[0] == 1) && (priority_shape[1] == 1) && (priority_shape[2] == B) &&
-                (priority_shape[3] == 1),
-            "Expect priority tensor to be [1, 1, B, 1], got {}",
+                (priority_shape[3] == 32),
+            "Expect priority tensor to be [1, 1, B, 32], got {}",
             priority_shape);
     }
     if (optional_input_tensors.at(4).has_value()) {
@@ -250,8 +250,8 @@ void SpeculativeScaledDotProductAttentionDecode::validate(
         ;
         TT_FATAL(
             (other_priority_shape[0] == 1) && (other_priority_shape[1] == 1) && (other_priority_shape[2] == B) &&
-                (other_priority_shape[3] == 1),
-            "Expect other priority tensor to be [1, 1, B, 1], got {}",
+                (other_priority_shape[3] == 32),
+            "Expect other priority tensor to be [1, 1, B, 32], got {}",
             other_priority_shape);
     }
 }
