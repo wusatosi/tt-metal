@@ -63,7 +63,7 @@ public:
     void enqueue_write_shard(
         std::shared_ptr<MeshBuffer>& mesh_buffer, void* host_data, const Coordinate& coord, bool blocking);
     void enqueue_write_shard_to_sub_grid(
-        MeshBuffer& buffer, void* host_data, bool blocking, const LogicalDeviceRange& device_range);
+        MeshBuffer& buffer, const void* host_data, bool blocking, const LogicalDeviceRange& device_range);
     void enqueue_write_mesh_buffer(const std::shared_ptr<MeshBuffer>& buffer, void* host_data, bool blocking);
     // MeshBuffer Read APIs - Top Level
     void enqueue_read_shard(

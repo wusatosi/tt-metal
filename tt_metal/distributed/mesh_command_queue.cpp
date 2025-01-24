@@ -395,7 +395,7 @@ void MeshCommandQueue::read_sharded_buffer(
 }
 
 void MeshCommandQueue::enqueue_write_shard_to_sub_grid(
-    MeshBuffer& buffer, void* host_data, bool blocking, const LogicalDeviceRange& device_range) {
+    MeshBuffer& buffer, const void* host_data, bool blocking, const LogicalDeviceRange& device_range) {
     // TODO: Add proper support for SubDevices once SubDeviceManager and allocator are moved up to MeshDevice
     // We should not be querying SubDevices from device 0.
     auto sub_device_ids = tt::stl::Span<const SubDeviceId>(mesh_device_->get_device(0)->get_sub_device_ids());
