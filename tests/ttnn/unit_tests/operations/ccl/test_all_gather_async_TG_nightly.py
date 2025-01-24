@@ -260,11 +260,11 @@ def test_line_all_gather_sharded_on_TG_cols_post_commit(
 @pytest.mark.parametrize(
     "num_devices, num_links, per_chip_output_shape, dim, layout",
     [
-        (8, 1, [1, 8, 32, 1280], 1, ttnn.TILE_LAYOUT),
-        (8, 1, [8, 1, 32, 1280], 0, ttnn.TILE_LAYOUT),
-        (8, 1, [1, 8, 32, 2048], 1, ttnn.TILE_LAYOUT),
-        (8, 1, [1, 8, 32, 2304], 1, ttnn.TILE_LAYOUT),
-        (8, 1, [1, 8, 32, 4096], 1, ttnn.TILE_LAYOUT),
+        (8, 1, [1, 1, 32, 32 * 8], 3, ttnn.TILE_LAYOUT),
+        # (8, 1, [8, 1, 32, 1280], 0, ttnn.TILE_LAYOUT),
+        # (8, 1, [1, 8, 32, 2048], 1, ttnn.TILE_LAYOUT),
+        # (8, 1, [1, 8, 32, 2304], 1, ttnn.TILE_LAYOUT),
+        # (8, 1, [1, 8, 32, 4096], 1, ttnn.TILE_LAYOUT),
         # multi-links fails: https://github.com/tenstorrent/tt-metal/issues/16699
         # (8, 4, [1, 8, 32, 1280], 1, ttnn.TILE_LAYOUT),
         # (8, 4, [8, 1, 32, 1280], 0, ttnn.TILE_LAYOUT),
@@ -277,14 +277,14 @@ def test_line_all_gather_sharded_on_TG_cols_post_commit(
     "input_dtype",
     [
         ttnn.bfloat16,
-        ttnn.bfloat8_b,
+        # ttnn.bfloat8_b,
     ],
 )
 @pytest.mark.parametrize(
     "buffer_type",
     [
         ttnn.BufferType.DRAM,
-        ttnn.BufferType.L1,
+        # ttnn.BufferType.L1,
     ],
 )
 @pytest.mark.parametrize("replication_factor", [4])

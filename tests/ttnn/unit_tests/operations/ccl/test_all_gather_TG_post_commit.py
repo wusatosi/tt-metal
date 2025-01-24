@@ -231,6 +231,32 @@ def run_line_all_gather_on_TG_with_mesh_tensor_along_rows(
         for _ in range(num_iters):
             if use_all_gather_async:
                 logger.info("Running all-gather async")
+                ttnn_tensor_out_dummy1 = ttnn.experimental.all_gather_async(
+                    ttnn_tensor,
+                    dim,
+                    cluster_axis=0 if cluster_axis == 1 else 1,
+                    mesh_device=mesh_device,
+                    topology=ttnn.Topology.Linear,
+                    multi_device_global_semaphore=ccl_semaphore_handles,
+                    num_links=num_links,
+                    memory_config=output_mem_config,
+                    subdevice_id=worker_sub_device_id,
+                    enable_persistent_fabric_mode=enable_persistent_fabric,
+                )
+                ttnn.synchronize_devices(mesh_device, sub_device_ids=sub_device_stall_group)
+                ttnn_tensor_out_dummy2 = ttnn.experimental.all_gather_async(
+                    ttnn_tensor_out_dummy1,
+                    dim,
+                    cluster_axis=cluster_axis,
+                    mesh_device=mesh_device,
+                    topology=ttnn.Topology.Linear,
+                    multi_device_global_semaphore=ccl_semaphore_handles,
+                    num_links=num_links,
+                    memory_config=output_mem_config,
+                    subdevice_id=worker_sub_device_id,
+                    enable_persistent_fabric_mode=enable_persistent_fabric,
+                )
+                ttnn.synchronize_devices(mesh_device, sub_device_ids=sub_device_stall_group)
                 ttnn_tensor_out = ttnn.experimental.all_gather_async(
                     ttnn_tensor,
                     dim,
