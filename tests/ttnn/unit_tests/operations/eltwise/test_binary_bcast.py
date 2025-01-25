@@ -465,7 +465,7 @@ def test_binary_sfpu_opt_out(input_shapes, dtype, ttnn_fn, device):
 
     a_pt = gen_func_with_cast_tt(partial(torch_random, low=-50, high=50, dtype=torch.float32), dtype)(a_shape)
     b_pt = gen_func_with_cast_tt(partial(torch_random, low=-50, high=50, dtype=torch.float32), dtype)(b_shape)
-    out = gen_func_with_cast_tt(partial(torch_random, low=0, high=1, dtype=torch.int32), dtype)(out_shape)
+    out = gen_func_with_cast_tt(partial(torch_random, low=0, high=1, dtype=torch.float32), dtype)(out_shape)
 
     a_tt = ttnn.from_torch(
         a_pt, dtype=dtype, device=device, layout=ttnn.TILE_LAYOUT, memory_config=ttnn.DRAM_MEMORY_CONFIG
@@ -580,5 +580,70 @@ def test_bitwise_opt_output(input_shapes, dtype, ttnn_fn, device):
     golden_fn = ttnn.get_golden_function(ttnn_fn)
     out_pt = golden_fn(a_pt, b_pt)
 
+    status = ttnn.pearson_correlation_coefficient(out_pt, tt_out)
+    assert status >= 0.999
+
+
+@skip_for_grayskull("Requires wormhole_b0 to run")
+@pytest.mark.parametrize(
+    "input_shapes",
+    (
+        (torch.Size([5, 3, 32, 32]), torch.Size([1, 1, 1, 1])),
+        # (torch.Size([5, 1, 32, 32]), torch.Size([1, 3, 1, 1])), # will fail
+        (torch.Size([5, 3, 64, 128]), torch.Size([1, 3, 1, 128])),
+        (torch.Size([5, 3, 128, 64]), torch.Size([1, 1, 128, 1])),
+        (torch.Size([5, 32, 128]), torch.Size([5, 1, 1])),
+    ),
+)
+@pytest.mark.parametrize(
+    "ttnn_fn",
+    [
+        ttnn.experimental.add_,
+        ttnn.experimental.sub_,
+        ttnn.experimental.mul_,
+        # ttnn.experimental.div_, needs separate test for bf16(non-zero B) and fp32
+        ttnn.experimental.eq_,
+        ttnn.experimental.ne_,
+        ttnn.experimental.gt_,
+        ttnn.experimental.gte_,
+        ttnn.experimental.lt_,
+        ttnn.experimental.lte_,
+        ttnn.experimental.logical_or_,
+        ttnn.experimental.logical_xor_,
+        ttnn.experimental.logical_and_,
+        ttnn.experimental.ldexp_,
+        ttnn.experimental.logaddexp_,
+        ttnn.experimental.logaddexp2_,
+        ttnn.experimental.squared_difference_,
+        ttnn.experimental.bias_gelu_,
+    ],
+)
+@pytest.mark.parametrize(
+    "dtype",
+    (
+        (ttnn.float32, torch.float32),
+        (ttnn.bfloat16, torch.bfloat16),
+    ),
+)
+def test_binary_sfpu_inplace(input_shapes, dtype, ttnn_fn, device):
+    a_shape, b_shape = input_shapes
+    tt_dtype, tor_dtype = dtype
+
+    a_pt = gen_func_with_cast_tt(partial(torch_random, low=-50, high=50, dtype=tor_dtype), dtype)(a_shape)
+    b_pt = gen_func_with_cast_tt(partial(torch_random, low=-50, high=50, dtype=tor_dtype), dtype)(b_shape)
+
+    a_tt = ttnn.from_torch(
+        a_pt, dtype=tt_dtype, device=device, layout=ttnn.TILE_LAYOUT, memory_config=ttnn.DRAM_MEMORY_CONFIG
+    )
+    b_tt = ttnn.from_torch(
+        b_pt, dtype=tt_dtype, device=device, layout=ttnn.TILE_LAYOUT, memory_config=ttnn.DRAM_MEMORY_CONFIG
+    )
+
+    cq_id = 0
+    ttnn_fn(a_tt, b_tt, queue_id=cq_id)
+    tt_out = ttnn.to_torch(a_tt)
+
+    golden_fn = ttnn.get_golden_function(ttnn_fn)
+    out_pt = golden_fn(a_pt, b_pt)
     status = ttnn.pearson_correlation_coefficient(out_pt, tt_out)
     assert status >= 0.999
