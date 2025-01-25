@@ -38,12 +38,12 @@ from models.utility_functions import skip_for_grayskull
 @pytest.mark.parametrize(
     "paged_attention",
     (
-        True,
-        # False,
+        # True,
+        False,
     ),
     ids=(
-        "paged_attention",
-        # "default_attention",
+        # "paged_attention",
+        "default_attention",
     ),
 )
 @pytest.mark.parametrize(
@@ -252,7 +252,7 @@ def test_llama_model_inference(
         current_pos,
         device=mesh_device,
         dtype=ttnn.int32,
-        mesh_mapper=ttnn.ShardTensor2dMesh(
+        mesh_mapper=model_args.fracture_scheme(
             mesh_device,
             dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
             mesh_shape=model_args.cluster_shape,
@@ -301,7 +301,7 @@ def test_llama_model_inference(
             current_pos,
             device=mesh_device,
             dtype=ttnn.int32,
-            mesh_mapper=ttnn.ShardTensor2dMesh(
+            mesh_mapper=model_args.fracture_scheme(
                 mesh_device,
                 dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
                 mesh_shape=model_args.cluster_shape,
@@ -393,7 +393,7 @@ def test_llama_model_inference(
                                         dims=(1, 0) if model_args.is_galaxy else (0, 1),
                                         mesh_shape=model_args.cluster_shape,
                                     ),
-                                )[:batch, :, :, :]
+                                )[:batch, : model_args.n_kv_heads, :, :]
                             )
 
                     for kv_cache, (cache_pt, cache_tt) in enumerate(zip(pytorch_layer_present, tt_layer_present)):
