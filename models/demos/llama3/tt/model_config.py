@@ -91,6 +91,12 @@ class TtModelArgs:
         optimizations=LlamaOptimizations.accuracy,
     ):
         self.num_devices = mesh_device.get_num_devices() if mesh_device else 0
+
+        self.use_sfd = os.getenv("USE_SFD") == "1"
+        logger.info(f"Using SFD: {self.use_sfd}")
+        if self.use_sfd:
+            self.num_devices = self.num_devices // 2
+
         self.mesh_device = mesh_device
         self.device_name = {0: "CPU", 1: "N150", 2: "N300", 8: "T3K", 32: "TG"}[self.num_devices]
         self.model_name = "Unknown"  # Llama model name will be dependent on the checkpoint directory
@@ -221,6 +227,11 @@ class TtModelArgs:
 
         device = mesh_device.get_devices()[0] if mesh_device is not None else None
         self.cluster_shape = list(mesh_device.shape)
+
+        # Set shape for config derivations
+        if self.use_sfd:
+            self.cluster_shape[1] = self.cluster_shape[1] // 2
+
         self.is_galaxy = self.num_devices == 32
         if device is not None:  # Avoid issue with test_llama_torch.py not having a device
             self.n_local_heads = self.n_heads // self.cluster_shape[1]
@@ -844,6 +855,18 @@ class TtModelArgs:
             )  # TODO: try out 3 for short axis and 4 for long axis (TG only) <- should work but untested in model
             self.ccl_dtype = ttnn.bfloat8_b
 
+            # Reset cluster shape
+            self.cluster_shape = list(self.mesh_device.shape)
+
+    def fracture_scheme(self, *args, **kwargs):
+        args = list(args)
+        if self.use_sfd:
+            return ttnn.ReplicateTensorToMesh(args[0])
+        elif len(args) + len(kwargs) == 2:
+            return ttnn.ShardTensorToMesh(*args, **kwargs)
+        else:
+            return ttnn.ShardTensor2dMesh(*args, **kwargs)
+
     def is_distributed_norm(self, mode):
         if not self.is_multichip:
             return False
@@ -866,7 +889,7 @@ class TtModelArgs:
         x: (batch, seq, dim)
         """
         dims = (None, None) if force_replicated else (None, -1)
-        mesh_mapper = ttnn.ShardTensor2dMesh(self.mesh_device, dims=dims, mesh_shape=self.cluster_shape)
+        mesh_mapper = self.fracture_scheme(self.mesh_device, dims=dims, mesh_shape=self.cluster_shape)
 
         if len(x.shape) == 3:
             batch = x.shape[0]
