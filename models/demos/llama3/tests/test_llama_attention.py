@@ -157,7 +157,7 @@ def test_llama_attention_inference(
         current_pos,
         device=mesh_device,
         dtype=ttnn.int32,
-        mesh_mapper=ttnn.ShardTensor2dMesh(
+        mesh_mapper=model_args.fracture_scheme(
             mesh_device,
             dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
             mesh_shape=model_args.cluster_shape,
@@ -214,7 +214,7 @@ def test_llama_attention_inference(
             current_pos,
             device=mesh_device,
             dtype=ttnn.int32,
-            mesh_mapper=ttnn.ShardTensor2dMesh(
+            mesh_mapper=model_args.fracture_scheme(
                 mesh_device,
                 dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
                 mesh_shape=model_args.cluster_shape,
@@ -263,7 +263,7 @@ def test_llama_attention_inference(
                             dims=(1, 0) if model_args.is_galaxy else (0, 1),
                             mesh_shape=model_args.cluster_shape,
                         ),
-                    )[:batch_size, :, :, :]
+                    )[:batch_size, : model_args.n_kv_heads, :, :]
                     for cache in tt_model.layer_past
                 ]
 
