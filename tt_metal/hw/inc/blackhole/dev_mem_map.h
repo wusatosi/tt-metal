@@ -125,6 +125,7 @@
 // TODO: reduce this when mailbox sizes are core type aware for some members (eg watcher/dprint)
 // TODO: also, move into gap above in the reserved area
 #define MEM_IERISC_MAILBOX_BASE (MEM_IERISC_RESERVED1 + MEM_IERISC_RESERVED1_SIZE)
+// 3360
 #define MEM_IERISC_MAILBOX_SIZE 3344
 #define MEM_IERISC_MAILBOX_END (MEM_IERISC_MAILBOX_BASE + MEM_IERISC_MAILBOX_SIZE)
 #define MEM_IERISC_FIRMWARE_BASE (MEM_IERISC_MAILBOX_END)
