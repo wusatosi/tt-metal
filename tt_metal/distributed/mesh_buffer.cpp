@@ -45,7 +45,11 @@ void validate_mesh_buffer_config(const MeshBufferConfig& config, const MeshDevic
             ((sharded_config.shard_orientation == ShardOrientation::ROW_MAJOR) * (mesh_device.num_rows()) +
              (sharded_config.shard_orientation == ShardOrientation::COL_MAJOR) * (mesh_device.num_cols()));
     }
-    TT_FATAL(num_shards <= mesh_device.num_devices(), "The sharded tensor does not fit on the Mesh");
+    TT_FATAL(
+        num_shards <= mesh_device.num_devices(),
+        "The sharded tensor does not fit on the Mesh. Num shards in buffer {}, Num Devices {}",
+        num_shards,
+        mesh_device.num_devices());
 }
 
 }  // namespace
