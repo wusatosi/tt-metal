@@ -175,24 +175,24 @@ void MeshCommandQueue::finish() {
 }
 
 void MeshCommandQueue::write_shard_to_device(
-    std::shared_ptr<Buffer>& shard_view,
-    const void* src,
-    std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES>& expected_num_workers_completed,
-    tt::stl::Span<const SubDeviceId> sub_device_ids) {
+    std::shared_ptr<Buffer>& shard_view, const void* src, tt::stl::Span<const SubDeviceId> sub_device_ids) {
     auto device = shard_view->device();
     BufferRegion region(0, shard_view->size());
+    sub_device_ids = buffer_dispatch::select_sub_device_ids(mesh_device_, sub_device_ids);
+    std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES> expected_num_workers_completed;
+    expected_num_workers_completed[0] = expected_num_workers_completed_;
     buffer_dispatch::write_to_device_buffer(
         src, *shard_view, region, id_, expected_num_workers_completed, this->dispatch_core_type(), sub_device_ids);
 }
 
 void MeshCommandQueue::read_shard_from_device(
-    std::shared_ptr<Buffer>& shard_view,
-    void* dst,
-    std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES>& expected_num_workers_completed,
-    tt::stl::Span<const SubDeviceId> sub_device_ids) {
+    std::shared_ptr<Buffer>& shard_view, void* dst, tt::stl::Span<const SubDeviceId> sub_device_ids) {
     auto device = shard_view->device();
     chip_id_t mmio_device_id = tt::Cluster::instance().get_associated_mmio_device(device->id());
     uint16_t channel = tt::Cluster::instance().get_assigned_channel_for_device(device->id());
+    sub_device_ids = buffer_dispatch::select_sub_device_ids(mesh_device_, sub_device_ids);
+    std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES> expected_num_workers_completed;
+    expected_num_workers_completed[0] = expected_num_workers_completed_;
 
     bool exit_condition = false;
 
@@ -229,13 +229,8 @@ void MeshCommandQueue::read_shard_from_device(
 
 void MeshCommandQueue::enqueue_write_shard(
     std::shared_ptr<MeshBuffer>& mesh_buffer, void* host_data, const Coordinate& coord, bool blocking) {
-    // TODO: Add proper support for SubDevices once SubDeviceManager and allocator are moved up to MeshDevice
-    // We should not be querying SubDevices from device 0.
-    auto sub_device_ids = tt::stl::Span<const SubDeviceId>(mesh_device_->get_device(0)->get_sub_device_ids());
-    std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES> expected_num_workers_completed;
-    expected_num_workers_completed[0] = expected_num_workers_completed_;
     auto shard = mesh_buffer->get_device_buffer(coord);
-    this->write_shard_to_device(shard, host_data, expected_num_workers_completed, sub_device_ids);
+    this->write_shard_to_device(shard, host_data);
 
     if (blocking) {
         this->finish();
@@ -245,20 +240,11 @@ void MeshCommandQueue::enqueue_write_shard(
 void MeshCommandQueue::enqueue_read_shard(
     void* host_data, const std::shared_ptr<MeshBuffer>& mesh_buffer, const Coordinate& coord, bool blocking) {
     TT_FATAL(blocking, "Only blocking reads are currently supported from MeshBuffer shards.");
-    // TODO: Add proper support for SubDevices once SubDeviceManager and allocator are moved up to MeshDevice
-    // We should not be querying SubDevices from device 0.
-    auto sub_device_ids = tt::stl::Span<const SubDeviceId>(mesh_device_->get_device(0)->get_sub_device_ids());
-    std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES> expected_num_workers_completed;
-    expected_num_workers_completed[0] = expected_num_workers_completed_;
     auto shard = mesh_buffer->get_device_buffer(coord);
-    this->read_shard_from_device(shard, host_data, expected_num_workers_completed, sub_device_ids);
+    this->read_shard_from_device(shard, host_data);
 }
 
-void MeshCommandQueue::write_sharded_buffer(
-    MeshBuffer& buffer,
-    const void* src,
-    std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES>& expected_num_workers_completed,
-    tt::stl::Span<const SubDeviceId> sub_device_ids) {
+void MeshCommandQueue::write_sharded_buffer(MeshBuffer& buffer, const void* src) {
     auto global_buffer_shape = buffer.global_shard_spec().global_buffer_shape;
     auto global_buffer_size = buffer.global_shard_spec().global_size;
 
@@ -299,30 +285,26 @@ void MeshCommandQueue::write_sharded_buffer(
                          replicated_device_y++) {
                         auto device_shard_view =
                             buffer.get_device_buffer(Coordinate(replicated_device_y, replicated_device_x));
-                        this->write_shard_to_device(
-                            device_shard_view, shard_data.data(), expected_num_workers_completed, sub_device_ids);
+                        this->write_shard_to_device(device_shard_view, shard_data.data());
                     }
                 }
             } else if (std::get<0>(replicated_dims) or std::get<1>(replicated_dims)) {
                 if (buffer.global_shard_spec().shard_orientation == ShardOrientation::ROW_MAJOR) {
                     for (auto replicated_device_y = 0; replicated_device_y < num_devices_y; replicated_device_y++) {
                         auto device_shard_view = buffer.get_device_buffer(Coordinate(replicated_device_y, device_x));
-                        this->write_shard_to_device(
-                            device_shard_view, shard_data.data(), expected_num_workers_completed, sub_device_ids);
+                        this->write_shard_to_device(device_shard_view, shard_data.data());
                     }
                     device_x++;
                 } else {
                     for (auto replicated_device_x = 0; replicated_device_x < num_devices_x; replicated_device_x++) {
                         auto device_shard_view = buffer.get_device_buffer(Coordinate(device_y, replicated_device_x));
-                        this->write_shard_to_device(
-                            device_shard_view, shard_data.data(), expected_num_workers_completed, sub_device_ids);
+                        this->write_shard_to_device(device_shard_view, shard_data.data());
                     }
                     device_y++;
                 }
             } else {
                 auto device_shard_view = buffer.get_device_buffer(Coordinate(device_y, device_x));
-                this->write_shard_to_device(
-                    device_shard_view, shard_data.data(), expected_num_workers_completed, sub_device_ids);
+                this->write_shard_to_device(device_shard_view, shard_data.data());
                 if (buffer.global_shard_spec().shard_orientation == ShardOrientation::ROW_MAJOR) {
                     device_x = (device_x + 1) % num_devices_x;
                     if (device_x == 0) {
@@ -339,11 +321,7 @@ void MeshCommandQueue::write_sharded_buffer(
     }
 }
 
-void MeshCommandQueue::read_sharded_buffer(
-    MeshBuffer& buffer,
-    void* dst,
-    std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES>& expected_num_workers_completed,
-    tt::stl::Span<const SubDeviceId> sub_device_ids) {
+void MeshCommandQueue::read_sharded_buffer(MeshBuffer& buffer, void* dst) {
     TT_FATAL(
         not(std::get<0>(buffer.replicated_dims()) or std::get<1>(buffer.replicated_dims())),
         "Cannot read a MeshBuffer that is replicated along any dimension.");
@@ -366,8 +344,7 @@ void MeshCommandQueue::read_sharded_buffer(
     for (std::size_t shard_y = 0; shard_y < num_shards_y; shard_y++) {
         for (std::size_t shard_x = 0; shard_x < num_shards_x; shard_x++) {
             auto device_shard_view = buffer.get_device_buffer(Coordinate(device_y, device_x));
-            this->read_shard_from_device(
-                device_shard_view, shard_data.data(), expected_num_workers_completed, sub_device_ids);
+            this->read_shard_from_device(device_shard_view, shard_data.data());
             uint32_t write_offset = shard_x * single_write_size + shard_y * stride_size_bytes * shard_shape.height();
             uint32_t size_to_write = total_write_size_per_shard;
             uint32_t local_offset = 0;
@@ -396,23 +373,16 @@ void MeshCommandQueue::read_sharded_buffer(
 
 void MeshCommandQueue::enqueue_write_shard_to_sub_grid(
     MeshBuffer& buffer, void* host_data, bool blocking, const LogicalDeviceRange& device_range) {
-    // TODO: Add proper support for SubDevices once SubDeviceManager and allocator are moved up to MeshDevice
-    // We should not be querying SubDevices from device 0.
-    auto sub_device_ids = tt::stl::Span<const SubDeviceId>(mesh_device_->get_device(0)->get_sub_device_ids());
-    std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES> expected_num_workers_completed;
-    expected_num_workers_completed[0] = expected_num_workers_completed_;
-
     if (buffer.global_layout() == MeshBufferLayout::REPLICATED) {
         for (std::size_t logical_x = device_range.start_coord.x; logical_x < device_range.end_coord.x; logical_x++) {
             for (std::size_t logical_y = device_range.start_coord.y; logical_y < device_range.end_coord.y;
                  logical_y++) {
                 auto device_shard_view = buffer.get_device_buffer(Coordinate(logical_y, logical_x));
-                this->write_shard_to_device(
-                    device_shard_view, host_data, expected_num_workers_completed, sub_device_ids);
+                this->write_shard_to_device(device_shard_view, host_data);
             }
         }
     } else {
-        this->write_sharded_buffer(buffer, host_data, expected_num_workers_completed, sub_device_ids);
+        this->write_sharded_buffer(buffer, host_data);
     }
     if (blocking) {
         this->finish();
@@ -429,10 +399,7 @@ void MeshCommandQueue::enqueue_read_mesh_buffer(
     void* host_data, const std::shared_ptr<MeshBuffer>& buffer, bool blocking) {
     TT_FATAL(
         buffer->global_layout() == MeshBufferLayout::SHARDED, "Can only read a Sharded MeshBuffer from a MeshDevice.");
-    auto sub_device_ids = tt::stl::Span<const SubDeviceId>(mesh_device_->get_device(0)->get_sub_device_ids());
-    std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES> expected_num_workers_completed;
-    expected_num_workers_completed[0] = expected_num_workers_completed_;
-    this->read_sharded_buffer(*buffer, host_data, expected_num_workers_completed, sub_device_ids);
+    this->read_sharded_buffer(*buffer, host_data);
 }
 
 }  // namespace tt::tt_metal::distributed

@@ -25,26 +25,12 @@ private:
     CoreType dispatch_core_type() const;
     // Helper functions for reading and writing individual shards
     void write_shard_to_device(
-        std::shared_ptr<Buffer>& shard_view,
-        const void* src,
-        std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES>& expected_num_workers_completed,
-        tt::stl::Span<const SubDeviceId> sub_device_ids);
+        std::shared_ptr<Buffer>& shard_view, const void* src, tt::stl::Span<const SubDeviceId> sub_device_ids = {});
     void read_shard_from_device(
-        std::shared_ptr<Buffer>& shard_view,
-        void* dst,
-        std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES>& expected_num_workers_completed,
-        tt::stl::Span<const SubDeviceId> sub_device_ids);
+        std::shared_ptr<Buffer>& shard_view, void* dst, tt::stl::Span<const SubDeviceId> sub_device_ids = {});
     // Helper functions for read and write entire Sharded-MeshBuffers
-    void write_sharded_buffer(
-        MeshBuffer& buffer,
-        const void* src,
-        std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES>& expected_num_workers_completed,
-        tt::stl::Span<const SubDeviceId> sub_device_ids);
-    void read_sharded_buffer(
-        MeshBuffer& buffer,
-        void* dst,
-        std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES>& expected_num_workers_completed,
-        tt::stl::Span<const SubDeviceId> sub_device_ids);
+    void write_sharded_buffer(MeshBuffer& buffer, const void* src);
+    void read_sharded_buffer(MeshBuffer& buffer, void* dst);
     tt::tt_metal::WorkerConfigBufferMgr config_buffer_mgr_;
     LaunchMessageRingBufferState worker_launch_message_buffer_state_;
     uint32_t expected_num_workers_completed_ = 0;
