@@ -286,7 +286,7 @@ class TtLlamaMLP(LightweightModule):
             w2_in_gathered,
             self.w2,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
-            dtype=self.args.ccl_dtype if TG else ttnn.bfloat16,
+            dtype=ttnn.bfloat16,
             program_config=pc_2,
             memory_config=(self.model_config["FF2_OUT_RING_MEMCFG"] if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG)
             if TG
@@ -312,11 +312,14 @@ class TtLlamaMLP(LightweightModule):
         #     use_composite=True if self.dim == 8192 else False,
         # )
         w2_out = ttnn.to_memory_config(w2_out, ttnn.DRAM_MEMORY_CONFIG)
-        w2_out_reduced = self.tt_ccl.line_all_reduce(
+        w2_out_reduced_dram = self.tt_ccl.line_all_reduce(
             w2_out, cluster_axis=0, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
         )
 
         ttnn.deallocate(w2_out)
+
+        w2_out_reduced = ttnn.to_memory_config(w2_out_reduced_dram, self.model_config["DECODE_RESIDUAL_MEMCFG"])
+        ttnn.deallocate(w2_out_reduced_dram)
 
         # Ensure dim 0 and 1 are 1
         # original_shape = w2_out_reduced.shape

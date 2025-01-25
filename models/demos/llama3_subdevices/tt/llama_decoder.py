@@ -127,6 +127,7 @@ class TtTransformerBlock(LightweightModule):
             x.memory_config() == skip_mem_cfg
         ), f"decoder input memcfg mismatch: {x.memory_config()} != {skip_mem_cfg}"
         # Norms take fractured inputs and output replicated across devices
+        breakpoint()
         attn_in, h = self.attention_norm(x, h, mode)
         # Attention takes replicated inputs and produces fractured outputs
 

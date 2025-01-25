@@ -377,7 +377,8 @@ class TtTransformer(LightweightModule):
             x = ttnn.slice(x, (0, 0, get_last_token, 0), (1, 1, get_last_token + 32, x.shape[-1]))
 
         # Output norm
-        x = self.norm(x, res=None, mode=mode)
+        x, res = self.norm(x, res=None, mode=mode)
+        ttnn.deallocate(res)
 
         if mode == "prefill" and self.model_config["LM_HEAD_INPUT_MEMCFG"].is_sharded():
             x = ttnn.interleaved_to_sharded(x, self.model_config["LM_HEAD_INPUT_MEMCFG"])
@@ -391,5 +392,5 @@ class TtTransformer(LightweightModule):
 
         return self.lm_head(x)
 
-    def __del__(self):
-        self.tt_ccl.close()
+    # def __del__(self):
+    #     self.tt_ccl.close()
