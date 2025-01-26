@@ -31,8 +31,8 @@ from models.utility_functions import skip_for_grayskull
 @pytest.mark.parametrize(
     "seq_len",
     (
-        # 64 * 1024,
-        # 32 * 1024,
+        64 * 1024,
+        32 * 1024,
         32,
     ),
 )

@@ -499,6 +499,7 @@ class TtLlamaAttention(LightweightModule):
             num_all_gather_links=self.num_all_gather_links,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
             dtype=self.ccl_dtype,
+            use_sfd=self.use_sfd,
         )
 
         if seq_len > self.MAX_QKV_MM_SEQ_LEN:
@@ -683,6 +684,7 @@ class TtLlamaAttention(LightweightModule):
                 num_all_gather_links=self.num_all_gather_links,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
                 dtype=self.ccl_dtype,
+                use_sfd=self.use_sfd,
             )
 
         return output_11SH

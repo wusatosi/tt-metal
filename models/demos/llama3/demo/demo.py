@@ -480,13 +480,16 @@ def run_llama3_demo(
             mode="decode",
             page_table=page_table_tt,
         )
-        if tt_model.args.num_devices > 1:
+
+        is_multichip = tt_model.args.num_devices > 1 or tt_model.args.use_sfd
+        if is_multichip:
             if tt_model.args.is_galaxy:
                 tt_out_gathered = ttnn.all_gather(
                     tt_out, dim=3, num_links=2, cluster_axis=0, mesh_device=mesh_device, topology=ttnn.Topology.Linear
                 )
             else:
                 tt_out_gathered = ttnn.all_gather(tt_out, dim=3, num_links=1, topology=ttnn.Topology.Linear)
+                tt_out_gathered = tt_out_gathered[..., : model_args.vocab_size]
             ttnn.deallocate(tt_out)
         else:
             tt_out_gathered = tt_out
@@ -524,13 +527,14 @@ def run_llama3_demo(
             mode="decode",
             page_table=page_table_tt,
         )
-        if tt_model.args.num_devices > 1:
+        if is_multichip:
             if tt_model.args.is_galaxy:
                 tt_out_gathered = ttnn.all_gather(
                     tt_out, dim=3, num_links=2, cluster_axis=0, mesh_device=mesh_device, topology=ttnn.Topology.Linear
                 )
             else:
                 tt_out_gathered = ttnn.all_gather(tt_out, dim=3, num_links=1, topology=ttnn.Topology.Linear)
+                tt_out_gathered = tt_out_gathered[..., : model_args.vocab_size]
             ttnn.deallocate(tt_out)
         else:
             tt_out_gathered = tt_out
@@ -555,7 +559,7 @@ def run_llama3_demo(
                 dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
                 mesh_shape=model_args.cluster_shape,
             )
-            if tt_model.args.num_devices > 1
+            if is_multichip
             else None,
         )
         tt_out_tok_reset = ttnn.from_torch(
@@ -564,7 +568,7 @@ def run_llama3_demo(
             ),
             # torch.nn.functional.pad(pt_out_batched.unsqueeze(0).unsqueeze(0).unsqueeze(0), (0, 30), "constant", 0),
             dtype=ttnn.uint32,
-            mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device) if tt_model.args.num_devices > 1 else None,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device) if is_multichip else None,
         )
 
         # Reset the current position and output token tensors for the real decode run
@@ -880,7 +884,7 @@ def run_llama3_demo(
             1024,  # max_seq_len
             1,  # batch_size
             200,  # max_generated_tokens
-            True,  # paged_attention
+            False,  # paged_attention
             {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params  # TODO This will be serviced by vLLM
             {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
         ),
