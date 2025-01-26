@@ -31,9 +31,8 @@ private:
     // Helper functions for read and write entire Sharded-MeshBuffers
     void write_sharded_buffer(MeshBuffer& buffer, const void* src);
     void read_sharded_buffer(MeshBuffer& buffer, void* dst);
-    tt::tt_metal::WorkerConfigBufferMgr config_buffer_mgr_;
-    LaunchMessageRingBufferState worker_launch_message_buffer_state_;
-    uint32_t expected_num_workers_completed_ = 0;
+    std::array<tt::tt_metal::WorkerConfigBufferMgr, dispatch_constants::DISPATCH_MESSAGE_ENTRIES> config_buffer_mgr_;
+    std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES> expected_num_workers_completed_;
     MeshDevice* mesh_device_;
     uint32_t id_;
     CoreCoord dispatch_core_;
@@ -43,7 +42,7 @@ public:
     MeshCommandQueue(MeshDevice* mesh_device, uint32_t id);
     MeshDevice* device() const { return mesh_device_; }
     uint32_t id() const { return id_; }
-    WorkerConfigBufferMgr& get_config_buffer_mgr(uint32_t index) { return config_buffer_mgr_; };
+    WorkerConfigBufferMgr& get_config_buffer_mgr(uint32_t index) { return config_buffer_mgr_[index]; };
     void enqueue_mesh_workload(MeshWorkload& mesh_workload, bool blocking);
     // MeshBuffer Write APIs - Top Level
     void enqueue_write_shard(

@@ -11,9 +11,11 @@ namespace tt::tt_metal::distributed {
 MeshCommandQueue::MeshCommandQueue(MeshDevice* mesh_device, uint32_t id) {
     this->mesh_device_ = mesh_device;
     this->id_ = id;
-
-    this->config_buffer_mgr_ = tt::tt_metal::WorkerConfigBufferMgr();
-    program_dispatch::initialize_worker_config_buf_mgr(this->config_buffer_mgr_);
+    for (int i = 0; i < dispatch_constants::DISPATCH_MESSAGE_ENTRIES; i++) {
+        config_buffer_mgr_[i] = tt::tt_metal::WorkerConfigBufferMgr();
+        program_dispatch::initialize_worker_config_buf_mgr(config_buffer_mgr_[i]);
+        expected_num_workers_completed_[i] = 0;
+    }
     this->populate_virtual_program_dispatch_core();
     this->populate_dispatch_core_type();
 }
@@ -76,7 +78,10 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
     std::unordered_set<SubDeviceId> sub_device_ids = mesh_workload.determine_sub_device_ids(mesh_device_);
     TT_FATAL(sub_device_ids.size() == 1, "Programs must be executed on a single sub-device");
     auto sub_device_id = *(sub_device_ids.begin());
+    auto sub_device_index = sub_device_id.to_index();
     auto mesh_device_id = this->mesh_device_->id();
+    auto& sysmem_manager = mesh_device_->get_device(0, 0)->sysmem_manager();
+
     TT_FATAL(
         mesh_workload.get_program_binary_status(mesh_device_id) != ProgramBinaryStatus::NotSent,
         "Expected program binaries to be written to the MeshDevice.");
@@ -95,11 +100,11 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
     program_dispatch::ProgramDispatchMetadata dispatch_metadata;
     // Reserve space in the L1 Kernel Config Ring Buffer for this workload.
     program_dispatch::reserve_space_in_kernel_config_buffer(
-        this->config_buffer_mgr_,
+        this->get_config_buffer_mgr(sub_device_index),
         mesh_workload.get_program_config_sizes(),
         mesh_workload.get_program_binary_status(mesh_device_id),
         num_workers,
-        this->expected_num_workers_completed_,
+        expected_num_workers_completed_[sub_device_index],
         dispatch_metadata);
 
     std::unordered_set<uint32_t> chip_ids_in_workload = {};
@@ -113,15 +118,16 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
         program_dispatch::update_program_dispatch_commands(
             program,
             program_cmd_seq,
-            this->worker_launch_message_buffer_state_.get_mcast_wptr(),
-            this->worker_launch_message_buffer_state_.get_unicast_wptr(),
-            this->expected_num_workers_completed_,
+            sysmem_manager.get_worker_launch_message_buffer_state()[sub_device_index].get_mcast_wptr(),
+            sysmem_manager.get_worker_launch_message_buffer_state()[sub_device_index].get_unicast_wptr(),
+            expected_num_workers_completed_[sub_device_index],
             this->virtual_program_dispatch_core(),
             this->dispatch_core_type(),
             sub_device_id,
             dispatch_metadata,
             mesh_workload.get_program_binary_status(mesh_device_id),
-            std::pair<bool, int>(unicast_go_signals, this->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id)));
+            std::pair<bool, int>(
+                unicast_go_signals, this->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id)));
 
         for (std::size_t logical_x = device_range.start_coord.x; logical_x < device_range.end_coord.x; logical_x++) {
             for (std::size_t logical_y = device_range.start_coord.y; logical_y < device_range.end_coord.y;
@@ -143,7 +149,7 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
         if (chip_ids_in_workload.find(device->id()) == chip_ids_in_workload.end()) {
             experimental::write_go_signal(
                 device->command_queue(this->id_),
-                this->expected_num_workers_completed_,
+                expected_num_workers_completed_[sub_device_index],
                 this->virtual_program_dispatch_core(),
                 mcast_go_signals,
                 unicast_go_signals,
@@ -152,13 +158,13 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
     }
     // Increment Launch Message Buffer Write Pointers
     if (mcast_go_signals) {
-        this->worker_launch_message_buffer_state_.inc_mcast_wptr(1);
+        sysmem_manager.get_worker_launch_message_buffer_state()[sub_device_index].inc_mcast_wptr(1);
     }
     if (unicast_go_signals) {
-        this->worker_launch_message_buffer_state_.inc_unicast_wptr(1);
+        sysmem_manager.get_worker_launch_message_buffer_state()[sub_device_index].inc_unicast_wptr(1);
     }
     // Update the expected number of workers dispatch must wait on
-    this->expected_num_workers_completed_ += num_workers;
+    expected_num_workers_completed_[sub_device_index] += num_workers;
     // From the dispatcher's perspective, binaries are now committed to DRAM
     mesh_workload.set_program_binary_status(mesh_device_id, ProgramBinaryStatus::Committed);
     mesh_workload.set_last_used_command_queue_for_testing(this);
@@ -179,10 +185,8 @@ void MeshCommandQueue::write_shard_to_device(
     auto device = shard_view->device();
     BufferRegion region(0, shard_view->size());
     sub_device_ids = buffer_dispatch::select_sub_device_ids(mesh_device_, sub_device_ids);
-    std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES> expected_num_workers_completed;
-    expected_num_workers_completed[0] = expected_num_workers_completed_;
     buffer_dispatch::write_to_device_buffer(
-        src, *shard_view, region, id_, expected_num_workers_completed, this->dispatch_core_type(), sub_device_ids);
+        src, *shard_view, region, id_, expected_num_workers_completed_, this->dispatch_core_type(), sub_device_ids);
 }
 
 void MeshCommandQueue::read_shard_from_device(
@@ -191,8 +195,6 @@ void MeshCommandQueue::read_shard_from_device(
     chip_id_t mmio_device_id = tt::Cluster::instance().get_associated_mmio_device(device->id());
     uint16_t channel = tt::Cluster::instance().get_assigned_channel_for_device(device->id());
     sub_device_ids = buffer_dispatch::select_sub_device_ids(mesh_device_, sub_device_ids);
-    std::array<uint32_t, dispatch_constants::DISPATCH_MESSAGE_ENTRIES> expected_num_workers_completed;
-    expected_num_workers_completed[0] = expected_num_workers_completed_;
 
     bool exit_condition = false;
 
@@ -200,7 +202,7 @@ void MeshCommandQueue::read_shard_from_device(
 
     if (is_sharded(shard_view->buffer_layout())) {
         auto dispatch_params = buffer_dispatch::initialize_sharded_buf_read_dispatch_params(
-            *shard_view, id_, expected_num_workers_completed);
+            *shard_view, id_, expected_num_workers_completed_);
         auto cores = buffer_dispatch::get_cores_for_sharded_buffer(
             dispatch_params.width_split, dispatch_params.buffer_page_mapping, *shard_view);
         for (uint32_t core_id = 0; core_id < shard_view->num_cores(); ++core_id) {
@@ -215,7 +217,7 @@ void MeshCommandQueue::read_shard_from_device(
         }
     } else {
         auto dispatch_params = buffer_dispatch::initialize_interleaved_buf_read_dispatch_params(
-            *shard_view, id_, expected_num_workers_completed, region);
+            *shard_view, id_, expected_num_workers_completed_, region);
         buffer_dispatch::copy_interleaved_buffer_to_completion_queue(
             dispatch_params, *shard_view, sub_device_ids, this->dispatch_core_type());
         if (dispatch_params.pages_per_txn > 0) {
