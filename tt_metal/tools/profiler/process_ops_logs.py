@@ -295,6 +295,9 @@ def append_device_data(ops, traceReplays, logFolder):
                 devicesOps[device] = generatedHostData
 
             if len(devicesOps[device]) != len(deviceOpsTime):
+                deviceOpsTime = deviceOpsTime[1:]
+
+            if len(devicesOps[device]) != len(deviceOpsTime):
                 deviceOPId = None
                 hostOPId = None
                 for deviceOp, deviceOpTime in zip(devicesOps[device], deviceOpsTime):

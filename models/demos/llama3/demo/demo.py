@@ -771,7 +771,7 @@ def run_llama3_demo(
     logger.info("")
 
     supported_models = ["3.2-1B", "3.2-3B", "3.1-8B", "3.2-11B", "3.1-70B"]
-    supported_devices = ["N150", "N300", "T3K", "TG"]
+    supported_devices = ["N150", "N300", "2XN300", "T3K", "TG"]
 
     # TODO update targets based on the llama3 model and the target device
     llama_model_name = model_args.model_name
@@ -794,6 +794,7 @@ def run_llama3_demo(
         #
         "N150_3.1-8B": 1050,
         "N300_3.1-8B": 1050,
+        "2XN300_3.1-8B": 1050,
         "T3K_3.1-8B": 1050,
         "TG_3.1-8B": 1050,
         #
@@ -822,6 +823,7 @@ def run_llama3_demo(
         #
         "N150_3.1-8B": 23,  # TODO Update target
         "N300_3.1-8B": 38,
+        "2XN300_3.1-8B": 38,
         "T3K_3.1-8B": 45,
         "TG_3.1-8B": 45,  # TODO Update target
         #
@@ -924,7 +926,7 @@ def run_llama3_demo(
 @pytest.mark.parametrize(
     "mesh_device",
     [
-        {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
+        {"N150": (1, 1), "N300": (1, 2), "2XN300": (1, 4), "T3K": (1, 8), "TG": (8, 4)}.get(
             os.environ.get("FAKE_DEVICE"), len(ttnn.get_device_ids())
         )
     ],

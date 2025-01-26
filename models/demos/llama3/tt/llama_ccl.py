@@ -41,6 +41,7 @@ def tt_all_reduce(
             math_op=ttnn.ReduceType.Sum,
             num_links=num_reduce_scatter_links,
             memory_config=memory_config,
+            topology=ttnn.Topology.Linear if list(mesh_device.shape) == [1, 4] else ttnn.Topology.Ring,
         )
         input_tensor.deallocate(True)
         return reduced
@@ -137,7 +138,7 @@ def tt_all_gather(
             input_tensor,
             dim,
             num_links=num_links,
-            topology=topology,
+            topology=ttnn.Topology.Linear if list(mesh_device.shape) == [1, 4] else topology,
             memory_config=memory_config,
         )
     else:
@@ -147,10 +148,11 @@ def tt_all_gather(
             num_links=num_links,
             cluster_axis=cluster_axis,
             mesh_device=mesh_device,
-            topology=topology,
+            topology=ttnn.Topology.Linear if list(mesh_device.shape) == [1, 4] else topology,
             memory_config=memory_config,
         )
     input_tensor.deallocate(True)
+
     return gathered
 
 

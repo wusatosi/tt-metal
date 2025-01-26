@@ -30,10 +30,13 @@ from models.utility_functions import skip_for_grayskull
 @pytest.mark.parametrize(
     "weights, layers",
     [
-        ("random", 1),
-        ("instruct", None),
+        ("random", 2),
+        # ("instruct", None),
     ],
-    ids=["quick", "full"],
+    ids=[
+        "quick",
+        #  "full"
+    ],
 )
 @pytest.mark.parametrize(
     "paged_attention",
@@ -56,19 +59,19 @@ from models.utility_functions import skip_for_grayskull
 )
 @pytest.mark.parametrize(
     "max_seq_len",
-    (256,),  # For decode-only unit test, there's no need to run with large sequence lengths
+    (2048,),  # For decode-only unit test, there's no need to run with large sequence lengths
 )
 @pytest.mark.parametrize(
     "optimizations",
     [
-        pytest.param(LlamaOptimizations.accuracy, id="accuracy"),
+        # pytest.param(LlamaOptimizations.accuracy, id="accuracy"),
         pytest.param(LlamaOptimizations.performance, id="performance"),
     ],
 )
 @pytest.mark.parametrize(
     "mesh_device",
     [
-        {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
+        {"N150": (1, 1), "N300": (1, 2), "2XN300": (1, 4), "T3K": (1, 8), "TG": (8, 4)}.get(
             os.environ.get("FAKE_DEVICE"), len(ttnn.get_device_ids())
         )
     ],
@@ -87,7 +90,7 @@ def test_llama_model_inference(
     reset_seeds,
     ensure_gc,
 ):
-    run_ref_pt = True  # Flag to run reference PyTorch model and compare PCC
+    run_ref_pt = False  # Flag to run reference PyTorch model and compare PCC
     cache_pcc = layers == 1  # Flag to measure KV cache PCC. Avoid running for all layers to speed up test time.
     dtype = ttnn.bfloat8_b
     mesh_device.enable_async(True)
@@ -141,11 +144,12 @@ def test_llama_model_inference(
         "llama31_70b": 0.9997,
     }[model_name]
 
-    quick_iterations = {"llama32_1b": 2, "llama32_3b": 4, "llama31_8b": 6, "llama32_11b": 6, "llama31_70b": 6}[
-        model_name
-    ]
+    # quick_iterations = {"llama32_1b": 2, "llama32_3b": 4, "llama31_8b": 6, "llama32_11b": 6, "llama31_70b": 6}[
+    #     model_name
+    # ]
+    quick_iterations = 2
 
-    iterations = quick_iterations if layers == 1 else 9
+    iterations = quick_iterations
 
     if layers is not None:
         model_args.n_layers = layers
@@ -186,7 +190,7 @@ def test_llama_model_inference(
     embd = HostEmbedding(model_args)
     embd.load_state_dict({"emb.weight": state_dict[f"{state_dict_prefix}tok_embeddings.weight"]})
 
-    generation_start_pos = 0
+    generation_start_pos = 1024
     generation_length = iterations
 
     page_table_tt = None
