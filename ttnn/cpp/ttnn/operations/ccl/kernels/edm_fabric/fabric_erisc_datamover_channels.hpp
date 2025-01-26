@@ -65,7 +65,9 @@ class EthChannelBuffer final {
         buffer_size_in_bytes(buffer_size_bytes),
         eth_transaction_ack_word_addr(eth_transaction_ack_word_addr),
         max_eth_payload_size_in_bytes(buffer_size_in_bytes + sizeof(eth_channel_sync_t)),
-        buff_idx(0),
+        buff_send_idx(0),
+        buff_ack_idx(0),
+        buff_completion_idx(0),
         channel_id(channel_id) {
         for (uint8_t i = 0; i < NUM_BUFFERS; i++) {
             this->buffer_addresses[i] =
@@ -138,6 +140,11 @@ class EthChannelBuffer final {
     [[nodiscard]] FORCE_INLINE bool eth_is_receiver_channel_send_acked() const {
         return *(this->get_current_bytes_acked_address()) != 0;
     }
+    [[nodiscard]] FORCE_INLINE bool eth_is_receiver_channel_send_acked_or_done() const {
+        return *(this->get_current_bytes_acked_address()) != 0 || this->eth_is_receiver_channel_send_done();
+    }
+
+
     FORCE_INLINE void eth_clear_sender_channel_ack() const {
         *(this->channel_bytes_acked_addresses[this->buffer_index()]) = 0;
     }
@@ -146,12 +153,31 @@ class EthChannelBuffer final {
         return this->eth_transaction_ack_word_addr;
     }
 
-    FORCE_INLINE void advance_buffer_index() {
-        this->buff_idx = wrap_increment<decltype(this->buff_idx), 2 * NUM_BUFFERS>(this->buff_idx);
-        DPRINT << "new buff_idx: " << (uint32_t)this->buff_idx << "\n";
+    FORCE_INLINE void advance_buffer_index(uint8_t &idx) {
+        idx = wrap_increment<decltype(idx), 2 * NUM_BUFFERS>(idx);
     }
 
+    FORCE_INLINE void advance_send_buffer_index() {
+        this->advance_buffer_index(this->buff_send_idx);
+        DPRINT << "new buff_send_idx: " << (uint32_t)this->buff_send_idx << "\n";
+    }
+
+    FORCE_INLINE void advance_ack_buffer_index() {
+        this->advance_buffer_index(this->buff_ack_idx);
+        DPRINT << "new buff_ack_idx: " << (uint32_t)this->buff_ack_idx << "\n";
+    }
+
+    FORCE_INLINE void advance_completion_buffer_index() {
+        this->advance_buffer_index(this->buff_completion_idx);
+        DPRINT << "new buff_completion_idx: " << (uint32_t)this->buff_completion_idx << "\n";
+    }
+
+    [[nodiscard]] FORCE_INLINE uint8_t get_buff_ack_idx_raw() const {
+        return this->buff_ack_idx;
+    }
     [[nodiscard]] FORCE_INLINE bool all_buffers_drained() const {
+        // Could be optimized but there isn't much benefit to putting in the effort
+        // right now due to persistent nature of fabric
         bool drained = true;
         for (size_t i = 0; i < NUM_BUFFERS && drained; i++) {
             drained &= *(channel_bytes_sent_addresses[i]) == 0;
@@ -163,14 +189,14 @@ class EthChannelBuffer final {
      * NOT used directly to index the buffers list
      */
     [[nodiscard]] FORCE_INLINE uint8_t get_rdptr() const {
-        return this->buff_idx;
+        return this->buff_send_idx;
     }
 
    private:
-    FORCE_INLINE auto buffer_index() const {
-        ASSERT(this->buff_idx < NUM_BUFFERS);
-        bool normalize = buff_idx >= NUM_BUFFERS;
-        return buff_idx - (normalize * NUM_BUFFERS);
+    FORCE_INLINE auto buffer_index(uint8_t &idx) const {
+        ASSERT(idx < NUM_BUFFERS);
+        bool normalize = idx >= NUM_BUFFERS;
+        return idx - (normalize * NUM_BUFFERS);
     }
 
     std::array<size_t, NUM_BUFFERS> buffer_addresses;
@@ -183,7 +209,9 @@ class EthChannelBuffer final {
     // Includes header + payload + channel_sync
     const std::size_t eth_transaction_ack_word_addr;
     const std::size_t max_eth_payload_size_in_bytes;
-    uint8_t buff_idx;
+    uint8_t buff_send_idx;
+    uint8_t buff_ack_idx;
+    uint8_t buff_completion_idx;
     uint8_t channel_id;
 };
 

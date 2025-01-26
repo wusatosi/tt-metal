@@ -524,6 +524,36 @@ bool run_sender_channel_state_machine_step(
     bool graceful_termination_mode,
     SenderState *const sender_state_out,
     uint8_t sender_channel_index) {
+
+    // // New implementation
+    // bool remote_has_space = local_sender_channel.eth_is_receiver_channel_send_done();
+    // bool local_has_payload = local_sender_channel_worker_interface.has_payload(local_sender_channel.get_rdptr());
+    // bool can_send = remote_has_space && local_has_payload;
+
+    // // check for acks, advance buffer ack index, notify worker (update their remote rdptr)
+    // auto old_buff_ack_idx = local_sender_channel.get_buff_ack_idx_raw();
+    // while (local_sender_channel.eth_is_receiver_channel_send_acked_or_done()) {
+    //     local_sender_channel.advance_ack_buffer_index();
+    // }
+    // auto new_buff_ack_idx = local_sender_channel.get_buff_ack_idx_raw();
+    // if (old_buff_ack_idx != new_buff_ack_idx) {
+    //     local_sender_channel_worker_interface.update_worker_read_ptr(local_sender_channel.get_rdptr());
+    // }
+    // // check for completion - advance buffer completion index
+    // while (local_sender_channel.eth_is_receiver_channel_send_done()) {
+    //     local_sender_channel.advance_completion_buffer_index();
+    // }
+
+    // // check for new packets from worker, send if possible
+    // bool can_send_packet = local_sender_channel_worker_interface.has_payload(local_sender_channel.get_rdptr()) && !eth_txq_is_busy() &&
+
+    // while (local_sender_channel.eth_is_receiver_channel_send_done() && local_sender_channel_worker_interface.has_payload(local_sender_channel.get_rdptr()) && !eth_txq_is_busy()) {
+
+
+    // }
+
+
+    // Old implementation
     bool incr_sender_channel_index = true;
     switch (*sender_state_out) {
         case SenderState::SENDER_WAITING_FOR_WORKER: {
@@ -578,6 +608,7 @@ bool run_sender_channel_state_machine_step(
         case SenderState::SENDER_SEND_CHANNEL_SYNC: {
             bool can_send_channel_sync_without_blocking = !eth_txq_is_busy();
             if (can_send_channel_sync_without_blocking) {
+                DeviceZoneScopedN("EDMS-CH-SYNC")
                 DPRINT << "EDMS send channel sync\n";
                 send_channel_sync(local_sender_channel, remote_receiver_channel);
                 local_sender_channel.advance_buffer_index();
@@ -617,12 +648,17 @@ void run_receiver_channel_state_machine_step(
     std::array<tt::fabric::EthChannelBuffer<SENDER_NUM_BUFFERS>, NUM_SENDER_CHANNELS> &remote_sender_channnels,
     tt::fabric::WorkerToFabricEdmSender &downstream_edm_interface,
     ReceiverState *const receiver_state_out) {
+
+    bool did_something = true;
+    while (did_something) {
+        did_something = false;
     switch (*receiver_state_out) {
         case ReceiverState::RECEIVER_WAITING_FOR_ETH: {
             bool got_payload = local_receiver_channel.eth_bytes_are_available_on_channel();
             if (got_payload) {
                 bool can_ack = !eth_txq_is_busy();
                 if (can_ack) {
+                    did_something = true;
                     DPRINT << "EDMR got pkt @: " << (uint32_t)reinterpret_cast<volatile uint64_t *>(local_receiver_channel.get_current_packet_header()) << "\n";
                     DPRINT << "EDMR got pkt 0 : " << (uint64_t) reinterpret_cast<volatile uint64_t *>(local_receiver_channel.get_current_packet_header())[0] << "\n";
                     DPRINT << "EDMR got pkt 1: " << (uint64_t) reinterpret_cast<volatile uint64_t *>(local_receiver_channel.get_current_packet_header())[1] << "\n";
@@ -647,6 +683,7 @@ void run_receiver_channel_state_machine_step(
             bool can_send_to_all_local_chip_receivers =
                 can_forward_packet_completely(packet_header, downstream_edm_interface);
             if (can_send_to_all_local_chip_receivers) {
+                did_something = true;
                 DPRINT << "EDMR writing pkt\n";
                 receiver_forward_packet(local_receiver_channel.get_current_packet_header(), downstream_edm_interface);
                 *receiver_state_out = ReceiverState::RECEIVER_WAITING_FOR_WRITE_FLUSH;
@@ -654,10 +691,11 @@ void run_receiver_channel_state_machine_step(
         } break;
 
         case ReceiverState::RECEIVER_WAITING_FOR_WRITE_FLUSH: {
-            bool writes_flushed = ncrisc_noc_nonposted_writes_sent(noc_index);
+            bool writes_flushed = true;//ncrisc_noc_nonposted_writes_sent(noc_index);
             if (writes_flushed) {
                 bool can_send_ack_without_blocking = !eth_txq_is_busy();
                 if (can_send_ack_without_blocking) {
+                    did_something = true;
                     receiver_send_completion_ack(remote_sender_channnels, local_receiver_channel);
                     *receiver_state_out = ReceiverState::RECEIVER_WAITING_FOR_ETH;
                 }
@@ -666,6 +704,7 @@ void run_receiver_channel_state_machine_step(
 
         default: break;
     };
+    }
 };
 
 
