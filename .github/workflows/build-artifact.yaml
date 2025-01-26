@@ -136,9 +136,7 @@ jobs:
             echo "Args: ${args_fixme}"
             build_command="./build_metal.sh --build-type ${{ inputs.build-type }} --toolchain-path ${{ inputs.toolchain }} ${args_fixme} --enable-ccache"
             echo "Build tracy: ${{ inputs.tracy }}"
-            if [ "${{ inputs.tracy }}" = "true" ]; then
-              build_command="$build_command --enable-profiler"
-            fi
+            build_command="$build_command --enable-profiler"
             nice -n 19 $build_command
             ccache -s > build/ccache.stats
       - name: Publish Ccache summary
