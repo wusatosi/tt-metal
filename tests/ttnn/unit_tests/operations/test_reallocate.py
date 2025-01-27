@@ -93,3 +93,25 @@ def test_reallocate_sharded(device, input_shape, core_grid, strategy, layout):
 
     output_tensor = ttnn.to_torch(output_tensor)
     assert_with_pcc(torch_input_tensor, output_tensor, 1.0)
+
+
+@pytest.mark.parametrize(
+    "input_shape",
+    (([8, 768, 384]),),
+)
+def test_reallocate_multidevice(mesh_device, input_shape):
+    mesh_device_flag = is_wormhole_b0() and ttnn.GetNumAvailableDevices() == 2
+    inputs_mesh_mapper = ttnn.ShardTensorToMesh(mesh_device, dim=0) if mesh_device_flag else None
+
+    torch_input_tensor = torch.rand(input_shape).to(dtype=torch.bfloat16)
+    input_tensor = ttnn.from_torch(
+        torch_input_tensor,
+        dtype=ttnn.bfloat16,
+        device=mesh_device,
+        mesh_mapper=inputs_mesh_mapper,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+    )
+    output_tensor = ttnn.reallocate(input_tensor)
+
+    output_tensor = ttnn.to_torch(output_tensor)
+    assert_with_pcc(torch_input_tensor, output_tensor, 1.0)
