@@ -1074,7 +1074,7 @@ bool Device::close() {
     }
 
     this->work_executor_.reset();
-    tt_metal::detail::DumpDeviceProfileResults(this, ProfilerDumpState::LAST_CLOSE_DEVICE);
+    // tt_metal::detail::DumpDeviceProfileResults(this, ProfilerDumpState::LAST_CLOSE_DEVICE);
 
     sub_device_manager_tracker_.reset(nullptr);
 

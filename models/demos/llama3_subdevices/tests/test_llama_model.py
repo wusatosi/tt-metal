@@ -428,7 +428,6 @@ def test_llama_model_inference(
             if run_ref_pt:
                 logger.info("[Ref generation User 0] " + tokenizer.decode(all_outputs_ref).replace("\n", "\\n"))
 
-    # tt_model.tt_ccl.close()
     if run_ref_pt:
         if all_tests_pass:
             logger.info(f"All {generation_length} Llama decode iterations Passed!")
@@ -437,3 +436,4 @@ def test_llama_model_inference(
             assert final_tests_pass, f"PCC value is lower than {final_model_pcc} for final output. Check Warnings!"
             assert kv_cache_tests_pass, f"KV Cache PCC value is lower expected for some of the outputs. Check Warnings!"
             assert all_tests_pass, f"PCC value is lower than {pcc} for some of the outputs. Check Warnings!"
+    tt_model.tt_ccl.close()

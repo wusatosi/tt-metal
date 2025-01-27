@@ -101,6 +101,7 @@ class TT_CCL:
         if self.enable_persistent_fabric and self.teardown_persistent_fabric:
             logger.info("Tearing down persistent fabric interface")
             self.mesh_device.reset_sub_device_stall_group()
+            logger.info("Done resetting stall group")
             teardown_fabric_interface(self.mesh_device)
             logger.info("Done tearing down persistent fabric interface")
 
