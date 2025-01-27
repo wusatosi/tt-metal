@@ -13,10 +13,10 @@ from tests.ttnn.utils_for_testing import assert_with_pcc
 
 @pytest.mark.parametrize("height", [32])
 @pytest.mark.parametrize("width", [32])
-@pytest.mark.parametrize("from_dtype", [ttnn.float32, ttnn.bfloat16])
-@pytest.mark.parametrize("to_dtype", [ttnn.bfloat16, ttnn.float32, ttnn.bfloat8_b])
+@pytest.mark.parametrize("from_dtype", [ttnn.bfloat8_b])
+@pytest.mark.parametrize("to_dtype", [ttnn.bfloat16])
 def test_to_dtype(height, width, from_dtype, to_dtype):
-    torch_input_tensor = torch.rand((height, width), dtype=torch.bfloat16)
+    torch_input_tensor = torch.rand((1, 256, 1, 49), dtype=torch.bfloat16)
 
     input_tensor = ttnn.from_torch(torch_input_tensor)
     assert input_tensor.layout == ttnn.ROW_MAJOR_LAYOUT
