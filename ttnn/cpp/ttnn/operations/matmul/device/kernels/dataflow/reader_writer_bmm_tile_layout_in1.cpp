@@ -147,5 +147,43 @@ void kernel_main() {
 
 #ifdef OUT_SHARDED
     cb_wait_front(cb_id_out0, batch * out_num_subblocks_h * out_num_subblocks_w * out_subblock_w * out_subblock_h);
+
+    uint32_t addr = get_read_ptr(cb_id_out0);
+    volatile tt_l1_ptr uint8_t* ptr = reinterpret_cast<volatile tt_l1_ptr uint8_t*>(addr);
+
+    // exponent seciont: 2 faces, each face 16B
+    DPRINT << "exponent section" << ENDL();
+    for (int a = 0; a < 2; ++a) {
+        for (int b = 0; b < 16; ++b) {
+            DPRINT << (uint)ptr[b + a * 16] << " ";
+        }
+        DPRINT << ENDL();
+    }
+
+    // data section: 2 faces, each face 16x16=256B
+    DPRINT << "data section" << ENDL();
+    int start = 32;
+    for (int a = 0; a < 2; ++a) {
+        for (int b = 0; b < 256; ++b) {
+            DPRINT << (uint)ptr[b + a * 256 + start] << " ";
+            if ((b + 1) % 16 == 0) {
+                DPRINT << ENDL();
+            }
+        }
+        DPRINT << ENDL();
+    }
+
+    // whatever after this tile
+    DPRINT << "whatever after this tile " << ENDL();
+    int start2 = start + 512;
+    for (int a = 0; a < 2; ++a) {
+        for (int b = 0; b < 256; ++b) {
+            DPRINT << (uint)ptr[b + a * 256 + start2] << " ";
+            if ((b + 1) % 16 == 0) {
+                DPRINT << ENDL();
+            }
+        }
+        DPRINT << ENDL();
+    }
 #endif
 }

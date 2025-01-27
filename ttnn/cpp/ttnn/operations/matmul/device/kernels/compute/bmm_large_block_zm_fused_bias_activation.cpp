@@ -15,6 +15,8 @@
 
 #include "compute_kernel_api/eltwise_unary/sfpu_split_includes.h"
 
+#include "debug/dprint_tensix.h"
+
 // Please update
 // tests/tt_metal/tt_metal/perf_microbenchmark/1_compute_mm/kernels/bmm_large_block_zm_fused_bias_activation_copy.cpp
 // when making any changes to this file.
@@ -213,6 +215,8 @@ void MAIN {
                                                            // (should be called in1_block_w)
                             }
 
+                            // dprint_tensix_dest_reg(0);
+
 #endif  // SKIP_COMPUTE
 
                             if (last_out) {
@@ -248,6 +252,16 @@ void MAIN {
 
                                 tile_regs_release();
                                 cb_push_back(mm_out_cb_id, out_subblock_num_tiles);
+
+                                // cb_wait_front(mm_out_cb_id, out_subblock_num_tiles);
+
+                                // for (int a = 0; a < 1; ++a) {
+                                //     for (int b = 0; b < 16; ++b) {
+                                //         DPRINT_UNPACK({ DPRINT  << TSLICE(mm_out_cb_id, a, SliceRange{.h0 =
+                                //         (uint8_t)b, .h1 = (uint8_t)(1+b), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1}) <<
+                                //         ENDL(); });
+                                //     }
+                                // }
 
                             } else {
                                 tile_regs_commit();
