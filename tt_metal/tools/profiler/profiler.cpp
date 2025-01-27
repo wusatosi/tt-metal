@@ -448,11 +448,12 @@ void DeviceProfiler::logNocTracePacketDataToJson(
             // DO NOT emit destination coord; it isn't meaningful
 
         } else if (ev_md.noc_xfer_type == KernelProfilerNocEventMetadata::NocEventType::WRITE_MULTICAST) {
-            // auto phys_start_coord = getPhysicalAddressFromVirtual(device, {ev_md.dst_x, ev_md.dst_y});
-            // data["mcast_start_x"] = phys_start_coord.x;
-            // data["mcast_start_y"] = phys_start_coord.y;
-            // auto phys_end_coord = getPhysicalAddressFromVirtual(device, {ev_md.mcast_end_dst_x,
-            // ev_md.mcast_end_dst_y}); data["mcast_end_x"] = phys_end_coord.x; data["mcast_end_y"] = phys_end_coord.y;
+            auto phys_start_coord = getPhysicalAddressFromVirtual(device, {ev_md.dst_x, ev_md.dst_y});
+            data["mcast_start_x"] = phys_start_coord.x;
+            data["mcast_start_y"] = phys_start_coord.y;
+            auto phys_end_coord = getPhysicalAddressFromVirtual(device, {ev_md.mcast_end_dst_x, ev_md.mcast_end_dst_y});
+            data["mcast_end_x"] = phys_end_coord.x;
+            data["mcast_end_y"] = phys_end_coord.y;
         } else {
             auto phys_coord = getPhysicalAddressFromVirtual(device, {ev_md.dst_x, ev_md.dst_y});
             data["dx"] = phys_coord.x;
