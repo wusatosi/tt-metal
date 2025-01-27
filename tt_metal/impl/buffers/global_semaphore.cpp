@@ -12,6 +12,8 @@
 #include <core_coord.hpp>
 #include <tt_metal.hpp>
 #include <host_api.hpp>
+#include "tt_metal/distributed/distributed.hpp"
+#include <tt-metalium/device_impl.hpp>
 #include <buffer.hpp>
 #include <buffer_constants.hpp>
 #include <device.hpp>
@@ -61,12 +63,27 @@ void GlobalSemaphore::reset_semaphore_value(uint32_t reset_value) const {
     // Only block for the slow dispatch case
     auto* device = this->device_;
     device->push_work([device, reset_value, num_cores = this->cores_.num_cores(), buffer = this->buffer_] {
+        v0::Device* single_device = dynamic_cast<v0::Device*>(device);
+        distributed::MeshDevice* mesh_device = dynamic_cast<distributed::MeshDevice*>(device);
         std::vector<uint32_t> host_buffer(num_cores, reset_value);
         if (device->using_slow_dispatch()) {
             detail::WriteToBuffer(*buffer, host_buffer);
             tt::Cluster::instance().l1_barrier(device->id());
         } else {
-            EnqueueWriteBuffer(device->command_queue(), buffer, host_buffer, false);
+            if (single_device) {
+                EnqueueWriteBuffer(single_device->command_queue(), buffer, host_buffer, false);
+            } else {
+                distributed::ReplicatedBufferConfig replicated_buffer_config{.size = buffer->size()};
+                distributed::DeviceLocalBufferConfig local_config{
+                    .page_size = buffer->page_size(),
+                    .buffer_type = buffer->buffer_type(),
+                    .buffer_layout = buffer->buffer_layout(),
+                    .shard_parameters = buffer->shard_spec(),
+                    .bottom_up = buffer->bottom_up()};
+                auto mesh_buffer = distributed::MeshBuffer::create(
+                    replicated_buffer_config, local_config, mesh_device, buffer->address());
+                distributed::EnqueueWriteMeshBuffer(mesh_device->mesh_command_queue(), mesh_buffer, host_buffer, false);
+            }
         }
     });
 }

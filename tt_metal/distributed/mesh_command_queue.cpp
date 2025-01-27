@@ -91,10 +91,10 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
     bool unicast_go_signals = mesh_workload.runs_on_noc_unicast_only_cores();
     bool mcast_go_signals = mesh_workload.runs_on_noc_multicast_only_cores();
     if (mcast_go_signals) {
-        num_workers += this->num_worker_cores(HalProgrammableCoreType::TENSIX, sub_device_id);
+        num_workers += mesh_device_->num_worker_cores(HalProgrammableCoreType::TENSIX, sub_device_id);
     }
     if (unicast_go_signals) {
-        num_workers += this->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id);
+        num_workers += mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id);
     }
 
     program_dispatch::ProgramDispatchMetadata dispatch_metadata;
@@ -127,7 +127,8 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
             dispatch_metadata,
             mesh_workload.get_program_binary_status(mesh_device_id),
             std::pair<bool, int>(
-                unicast_go_signals, this->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id)));
+                unicast_go_signals,
+                mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id)));
 
         for (std::size_t logical_x = device_range.start_coord.x; logical_x < device_range.end_coord.x; logical_x++) {
             for (std::size_t logical_y = device_range.start_coord.y; logical_y < device_range.end_coord.y;
@@ -153,7 +154,7 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
                 this->virtual_program_dispatch_core(),
                 mcast_go_signals,
                 unicast_go_signals,
-                this->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id));
+                mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id));
         }
     }
     // Increment Launch Message Buffer Write Pointers
@@ -402,6 +403,14 @@ void MeshCommandQueue::enqueue_read_mesh_buffer(
     TT_FATAL(
         buffer->global_layout() == MeshBufferLayout::SHARDED, "Can only read a Sharded MeshBuffer from a MeshDevice.");
     this->read_sharded_buffer(*buffer, host_data);
+}
+
+void MeshCommandQueue::reset_worker_state(
+    bool reset_launch_msg_state, uint32_t num_sub_devices, const vector_memcpy_aligned<uint32_t>& go_signal_noc_data) {
+    for (auto device : mesh_device_->get_devices()) {
+        auto& hw_cq = device->hw_command_queue(id_);
+        hw_cq.reset_worker_state(reset_launch_msg_state, num_sub_devices, go_signal_noc_data);
+    }
 }
 
 }  // namespace tt::tt_metal::distributed

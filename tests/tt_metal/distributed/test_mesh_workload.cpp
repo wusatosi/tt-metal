@@ -10,6 +10,7 @@
 
 #include "tests/tt_metal/tt_metal/dispatch/dispatch_test_utils.hpp"
 #include "tests/tt_metal/tt_metal/common/multi_device_fixture.hpp"
+#include "tests/tt_metal/tt_metal/dispatch/sub_device_test_utils.hpp"
 #include "tt_metal/distributed/distributed.hpp"
 
 namespace tt::tt_metal::distributed::test {
@@ -1003,5 +1004,32 @@ TEST_F(MeshWorkloadTest, TestMeshWorkloadSemaphoreDifferentPrograms) {
     }
 }
 
+TEST_F(MeshWorkloadTest, TestSubDevice) {
+    SubDevice sub_device_1(std::array{CoreRangeSet(CoreRange({0, 0}, {2, 2}))});
+    SubDevice sub_device_2(std::array{CoreRangeSet(std::vector{CoreRange({3, 3}, {3, 3}), CoreRange({4, 4}, {4, 4})})});
+
+    uint32_t num_iters = 5;
+    auto sub_device_manager = mesh_device_->create_sub_device_manager({sub_device_1, sub_device_2}, 3200);
+    mesh_device_->load_sub_device_manager(sub_device_manager);
+
+    auto [waiter_program, syncer_program, incrementer_program, global_sem] =
+        create_basic_sync_program(mesh_device_.get(), sub_device_1, sub_device_2);
+
+    LogicalDeviceRange devices = LogicalDeviceRange({0, 0}, {4, 2});
+    auto waiter_mesh_workload = CreateMeshWorkload();
+    auto syncer_mesh_workload = CreateMeshWorkload();
+    auto incrementer_mesh_workload = CreateMeshWorkload();
+    AddProgramToMeshWorkload(waiter_mesh_workload, waiter_program, devices);
+    AddProgramToMeshWorkload(syncer_mesh_workload, syncer_program, devices);
+    AddProgramToMeshWorkload(incrementer_mesh_workload, incrementer_program, devices);
+    for (uint32_t i = 0; i < num_iters; i++) {
+        EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), waiter_mesh_workload, false);
+        mesh_device_->set_sub_device_stall_group({SubDeviceId{0}});
+        EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), syncer_mesh_workload, true);
+        EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), incrementer_mesh_workload, false);
+        mesh_device_->reset_sub_device_stall_group();
+    }
+    Finish(mesh_device_->mesh_command_queue());
+}
 }  // namespace
 }  // namespace tt::tt_metal::distributed::test

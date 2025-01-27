@@ -30,11 +30,11 @@ void MeshWorkload::compile(MeshDevice* mesh_device) {
     // 2. Allocate and Validate CBs
     // 3. Finalize: Compute relative offsets for all data structures in L1
     for (auto& [device_range, program] : programs_) {
-        program.compile(mesh_device->get_device(0));
-        program.allocate_circular_buffers(mesh_device->get_device(0));
-        tt::tt_metal::detail::ValidateCircularBufferRegion(program, mesh_device->get_device(0));
+        program.compile(mesh_device);
+        program.allocate_circular_buffers(mesh_device);
+        tt::tt_metal::detail::ValidateCircularBufferRegion(program, mesh_device);
     }
-    program_dispatch::finalize_program_offsets(*this, mesh_device->get_device(0));
+    program_dispatch::finalize_program_offsets(*this, mesh_device);
 }
 
 void MeshWorkload::load_binaries(MeshCommandQueue& mesh_cq) {
@@ -80,6 +80,15 @@ void MeshWorkload::load_binaries(MeshCommandQueue& mesh_cq) {
                     IDevice* device = mesh_device->get_device(logical_y, logical_x);
                     // Get a view of the allocated buffer that matches the size of the kernel binary
                     // for the sub grid
+                    std::shared_ptr<Buffer> mesh_buffer_view = Buffer::create(
+                        mesh_device,
+                        (*(kernel_bin_buffers_.begin()))->address(),
+                        kernel_bin_size,
+                        HostMemDeviceCommand::PROGRAM_PAGE_SIZE,
+                        BufferType::DRAM,
+                        TensorMemoryLayout::INTERLEAVED,
+                        std::nullopt,
+                        false);
                     std::shared_ptr<Buffer> buffer_view = Buffer::create(
                         device,
                         (*(kernel_bin_buffers_.begin()))->address(),
@@ -96,7 +105,7 @@ void MeshWorkload::load_binaries(MeshCommandQueue& mesh_cq) {
                         false);
                     // Assign this memory region to the program. Required when the program
                     // object is used to generate dispatch commands
-                    program.set_kernels_bin_buffer(buffer_view);
+                    program.set_kernels_bin_buffer(mesh_buffer_view);
                     program.set_program_binary_status(device->id(), ProgramBinaryStatus::InFlight);
                 }
             }
@@ -122,8 +131,7 @@ void MeshWorkload::generate_dispatch_commands(MeshCommandQueue& mesh_cq) {
     // workload is enqueued.
     auto mesh_device = mesh_cq.device();
     for (auto& [device_range, program] : programs_) {
-        auto grid_start = device_range.start_coord;
-        program.generate_dispatch_commands(mesh_device->get_device(grid_start.y, grid_start.x));
+        program.generate_dispatch_commands(mesh_device);
     }
 }
 
@@ -223,7 +231,7 @@ std::unordered_set<SubDeviceId> MeshWorkload::determine_sub_device_ids(MeshDevic
     for (auto& [device_range, program] : programs_) {
         auto grid_start = device_range.start_coord;
         IDevice* device = mesh_device->get_device(grid_start.y, grid_start.x);
-        auto sub_devs_for_program = program.determine_sub_device_ids(device);
+        auto sub_devs_for_program = program.determine_sub_device_ids(mesh_device);
         for (auto& sub_dev : sub_devs_for_program) {
             sub_devices_.insert(sub_dev);
         }

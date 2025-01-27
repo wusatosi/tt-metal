@@ -55,6 +55,10 @@ public:
         void* host_data, const std::shared_ptr<MeshBuffer>& mesh_buffer, const Coordinate& coord, bool blocking);
     void enqueue_read_mesh_buffer(void* host_data, const std::shared_ptr<MeshBuffer>& buffer, bool blocking);
     void finish();
+    void reset_worker_state(
+        bool reset_launch_msg_state,
+        uint32_t num_sub_devices,
+        const vector_memcpy_aligned<uint32_t>& go_signal_noc_data);
 };
 
 }  // namespace tt::tt_metal::distributed
