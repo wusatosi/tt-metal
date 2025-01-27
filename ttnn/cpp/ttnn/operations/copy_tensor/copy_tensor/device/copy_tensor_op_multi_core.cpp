@@ -4,11 +4,11 @@
 
 #include <stdint.h>
 
+#include <tt-metalium/work_split.hpp>
+#include <tt-metalium/host_api.hpp>
+#include <tt-metalium/util.hpp>
 #include "copy_tensor_op.hpp"
-#include "tt_metal/common/work_split.hpp"
-#include "tt_metal/host_api.hpp"
-#include "tt_metal/common/constants.hpp"
-#include "tt_metal/detail/util.hpp"
+#include "ttnn/common/constants.hpp"
 
 namespace ttnn::operations::copy_tensor {
 
