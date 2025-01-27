@@ -5,49 +5,38 @@ on:
   workflow_call:
 
 jobs:
-  ubuntu-2004-debug:
+  build:
     uses: ./.github/workflows/build-artifact.yaml
+    needs: build-artifact
     secrets: inherit
+    strategy:
+      matrix:
+        config:
+          - os: "ubuntu-20.04-amd64"
+            toolchain: "cmake/x86_64-linux-clang-17-libcpp-toolchain.cmake"
+            build-type: "Debug"
+            publish-artifact: false
+          - os: "ubuntu-20.04-amd64"
+            toolchain: "cmake/x86_64-linux-clang-17-libcpp-toolchain.cmake"
+            build-type: "RelWithDebInfo"
+            publish-artifact: false
+          - os: "ubuntu-22.04-amd64"
+            toolchain: "cmake/x86_64-linux-clang-17-libcpp-toolchain.cmake"
+            build-type: "Release"
+            publish-artifact: false
+          - os: "ubuntu-22.04-amd64"
+            toolchain: "cmake/x86_64-linux-clang-17-libstdcpp-toolchain.cmake"
+            build-type: "Release"
+            publish-artifact: false
+            skip-tt-train: true
+          - os: "ubuntu-22.04-amd64"
+            toolchain: "cmake/x86_64-linux-gcc-12-toolchain.cmake"
+            build-type: "Release"
+            publish-artifact: false
+            skip-tt-train: true
     with:
-      os: "ubuntu-20.04-amd64"
-      toolchain: "cmake/x86_64-linux-clang-17-libcpp-toolchain.cmake"
-      build-type: "Debug"
-      publish-artifact: false
-
-  ubuntu-2004-relwithdebinfo:
-    uses: ./.github/workflows/build-artifact.yaml
-    secrets: inherit
-    with:
-      os: "ubuntu-20.04-amd64"
-      toolchain: "cmake/x86_64-linux-clang-17-libcpp-toolchain.cmake"
-      build-type: "RelWithDebInfo"
-      publish-artifact: false
-
-  ubuntu-2204-release:
-    uses: ./.github/workflows/build-artifact.yaml
-    secrets: inherit
-    with:
-      os: "ubuntu-22.04-amd64"
-      toolchain: "cmake/x86_64-linux-clang-17-libcpp-toolchain.cmake"
-      build-type: "Release"
-      publish-artifact: false
-
-  ubuntu-2204-libstdcpp:
-    uses: ./.github/workflows/build-artifact.yaml
-    secrets: inherit
-    with:
-      os: "ubuntu-22.04-amd64"
-      toolchain: "cmake/x86_64-linux-clang-17-libstdcpp-toolchain.cmake"
-      build-type: "Release"
-      publish-artifact: false
-      skip-tt-train: true
-
-  ubuntu-2204-gcc12:
-    uses: ./.github/workflows/build-artifact.yaml
-    secrets: inherit
-    with:
-      os: "ubuntu-22.04-amd64"
-      toolchain: "cmake/x86_64-linux-gcc-12-toolchain.cmake"
-      build-type: "Release"
-      publish-artifact: false
-      skip-tt-train: true # FIXME
+      os: ${{ matrix.config.os }}
+      toolchain: ${{ matrix.config.toolchain }}
+      build-type: ${{ matrix.config.build-type }}
+      publish-artifact: ${{ matrix.config.publish-artifact }}
+      skip-tt-train: ${{ matrix.config.skip-tt-train || false }}
