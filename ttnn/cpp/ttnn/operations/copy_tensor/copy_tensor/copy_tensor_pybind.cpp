@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "copy_tensor_pybind.hpp"
-#include "ttnn/cpp/pybind11/decorators.hpp"
+#include "cpp/pybind11/decorators.hpp"
 #include "copy_tensor.hpp"
 
 namespace ttnn::operations::copy_tensor::detail {
