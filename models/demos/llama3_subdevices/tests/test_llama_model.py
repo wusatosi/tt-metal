@@ -428,7 +428,7 @@ def test_llama_model_inference(
             if run_ref_pt:
                 logger.info("[Ref generation User 0] " + tokenizer.decode(all_outputs_ref).replace("\n", "\\n"))
 
-    tt_model.tt_ccl.close()
+    # tt_model.tt_ccl.close()
     if run_ref_pt:
         if all_tests_pass:
             logger.info(f"All {generation_length} Llama decode iterations Passed!")
