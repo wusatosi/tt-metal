@@ -7,7 +7,6 @@ on:
 jobs:
   build:
     uses: ./.github/workflows/build-artifact.yaml
-    needs: build-artifact
     secrets: inherit
     strategy:
       matrix:
