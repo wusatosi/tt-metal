@@ -6,7 +6,7 @@
 #include "ttnn/run_operation.hpp"
 #include "ttnn/operations/math.hpp"
 
-#include "tt_metal/common/constants.hpp"
+#include "ttnn/common/constants.hpp"
 
 #include <optional>
 
@@ -16,6 +16,13 @@ using namespace tt::constants;
 namespace ttnn::operations::copy_tensor {
 
 void CopyTensor::validate(const std::vector<Tensor>& input_tensors) const {}
+
+std::vector<ttnn::TensorSpec> CopyTensor::compute_output_specs(const std::vector<Tensor>& input_tensors) const {
+    return {ttnn::TensorSpec(
+        ttnn::SimpleShape{32, 32},
+        tt::tt_metal::TensorLayout(input_tensors[0].dtype(), PageConfig(input_tensors[0].layout()), MemoryConfig{}))};
+}
+
 // TODO: Remove output tensor entirely (if possible)
 std::vector<ttnn::SimpleShape> CopyTensor::compute_output_shapes(const std::vector<Tensor>& input_tensors) const {
     return {ttnn::SimpleShape{32, 32}};
