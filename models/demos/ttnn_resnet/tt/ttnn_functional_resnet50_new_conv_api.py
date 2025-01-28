@@ -1360,3 +1360,4 @@ class resnet50:
         )
 
         return x
+
