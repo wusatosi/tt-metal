@@ -53,7 +53,7 @@ class TtSFDSetup(torch.nn.Module):
         b=1,
         grid_size=(8, 7),
         k_chunk_size=128,
-        lambda_=100.0,
+        lambda_=0.0,
         enable_async=True,
     ):
         super().__init__()
@@ -180,7 +180,7 @@ class TtSFDSetup(torch.nn.Module):
         V,
         cur_pos_tensor,
     ):
-        logger.info(f"Starting speculative flash decode")
+        # logger.info(f"Starting speculative flash decode")
         tt_Q = ttnn.to_memory_config(Q, self.dram_memcfg)
         tt_K = ttnn.to_memory_config(K, self.dram_memcfg)
         tt_V = ttnn.to_memory_config(V, self.dram_memcfg)
@@ -225,19 +225,21 @@ class TtSFDSetup(torch.nn.Module):
         return tt_back_gt_md
 
     def consolidate_kv_cache(self, K_mesh, V_mesh):
-        K_new = read_multi_device_tensor(K_mesh)
-        V_new = read_multi_device_tensor(V_mesh)
+        # K_new = read_multi_device_tensor(K_mesh)
+        # V_new = read_multi_device_tensor(V_mesh)
 
-        priority = read_multi_device_tensor(self.tt_priority_tensors)
-        index = torch.argmax(torch.tensor([priority[0][0, 0, 0, 0], priority[1][0, 0, 0, 0]])).item()
+        # priority = read_multi_device_tensor(self.tt_priority_tensors)
+        # index = torch.argmax(torch.tensor([priority[0][0, 0, 0, 0], priority[1][0, 0, 0, 0]])).item()
 
-        K_new = [K_new[index], K_new[index]]
-        V_new = [V_new[index], V_new[index]]
+        # K_new = [K_new[index], K_new[index]]
+        # V_new = [V_new[index], V_new[index]]
 
-        K_new = create_multi_device_tensors(K_new, self.mesh_device, self.dram_memcfg, ttnn.TILE_LAYOUT, ttnn.bfloat16)
-        V_new = create_multi_device_tensors(V_new, self.mesh_device, self.dram_memcfg, ttnn.TILE_LAYOUT, ttnn.bfloat16)
+        # K_new = create_multi_device_tensors(K_new, self.mesh_device, self.dram_memcfg, ttnn.TILE_LAYOUT, ttnn.bfloat16)
+        # V_new = create_multi_device_tensors(V_new, self.mesh_device, self.dram_memcfg, ttnn.TILE_LAYOUT, ttnn.bfloat16)
 
-        return K_new, V_new
+        # return K_new, V_new
+
+        return K_mesh, V_mesh
 
     def reset_skip_tensor(self):
         if not self.done_first_run:
@@ -529,7 +531,7 @@ def test_llama_attention_inference(
                 else:
                     logger.warning(f"KV Cache Failed! PCC value is lower than {pcc}")
                     all_tests_pass = False
-    sfd_setup.close_ccl()
+    # sfd_setup.close_ccl()
 
     if all_tests_pass:
         logger.info("Llama Attention output Passed!")
