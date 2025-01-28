@@ -19,7 +19,7 @@ def create_multi_device_tensors(input_tensors, mesh_device, mem_config, layout=t
 def read_multi_device_tensor(tt_tensor):
     tensors = []
     for i, t in enumerate(ttnn.get_device_tensors(tt_tensor)):
-        t = t.cpu().to(ttnn.ROW_MAJOR_LAYOUT).to_torch()
+        t = t.cpu().to_torch()
         tensors.append(t)
     return tensors
 
