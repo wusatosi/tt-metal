@@ -106,7 +106,6 @@ def run_conv(
         )
 
     tt_input_tensor = ttnn.from_torch(torch_input_tensor, ttnn.bfloat16, mesh_mapper=input_mesh_mapper)
-    # tt_input_tensor = ttnn.from_torch(torch_input_tensor, ttnn.bfloat8_b, layout=ttnn.TILE_LAYOUT, mesh_mapper=input_mesh_mapper)
 
     if shard_layout is None and not auto_shard:
         shard_layout = (
@@ -923,78 +922,6 @@ def test_resnet50_conv_gs(
     )
 
 
-@pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
-@pytest.mark.parametrize(
-    "batch_size, output_channels, input_channels, input_height, input_width, filter_height, filter_width, stride_h, stride_w, pad_h, pad_w, use_1d_systolic_array, config_override",
-    (
-        # (16, 256, 256, 14, 14, 3, 3, 1, 1, 1, 1, False, None),
-        # (16, 512, 512, 14, 14, 3, 3, 2, 2, 1, 1, False, None),
-        # (16, 256, 512, 28, 28, 1, 1, 1, 1, 0, 0, False, None),
-        (16, 2048, 1024, 14, 14, 1, 1, 2, 2, 0, 0, False, None),  # r50 fourth bottleneck downsample shape
-    ),
-)
-@pytest.mark.parametrize(
-    "weights_dtype",
-    [ttnn.bfloat8_b],
-)
-@pytest.mark.parametrize(
-    "activations_dtype",
-    [ttnn.bfloat8_b],
-)
-@pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
-@pytest.mark.parametrize("packer_l1_acc", [True], ids=["pack_l1"])
-@pytest.mark.parametrize("has_bias", [True], ids=["with_bias"])
-@pytest.mark.parametrize("auto_shard", [True, False], ids=["auto_shard", "no_auto_shard"])
-def test_resnet50_tmp(
-    device,
-    use_program_cache,
-    math_fidelity,
-    activations_dtype,
-    weights_dtype,
-    batch_size,
-    output_channels,
-    input_channels,
-    input_height,
-    input_width,
-    filter_height,
-    filter_width,
-    stride_h,
-    stride_w,
-    pad_h,
-    pad_w,
-    use_1d_systolic_array,
-    config_override,
-    packer_l1_acc,
-    has_bias,
-    auto_shard,
-):
-    run_conv(
-        device,
-        math_fidelity,
-        activations_dtype,
-        weights_dtype,
-        batch_size,
-        output_channels,
-        input_channels,
-        input_height,
-        input_width,
-        filter_height,
-        filter_width,
-        stride_h,
-        stride_w,
-        pad_h,
-        pad_w,
-        use_1d_systolic_array,
-        config_override=config_override,
-        use_shallow_conv_variant=False,
-        transpose_mcast=use_1d_systolic_array,
-        packer_l1_acc=packer_l1_acc,
-        fp32_accum=False,
-        has_bias=has_bias,
-        auto_shard=auto_shard,
-    )
-
-
 @skip_for_grayskull()
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
 @pytest.mark.parametrize(
@@ -1082,27 +1009,8 @@ def test_resnet50_conv_wh(
     has_bias,
     auto_shard,
 ):
-    # if device.core_grid.y == 7:
-    #     pytest.skip("Issue #6992: Statically allocated circular buffers in program clash with L1 buffers on core range")
-    # if batch_size > 8 and (activations_dtype != ttnn.bfloat8_b or weights_dtype != ttnn.bfloat8_b):
-    #     pytest.skip("Batch > 8 must be run fully bfp8")
-
-    # if (
-    #     (
-    #         activations_dtype == ttnn.bfloat16
-    #         and batch_size == 20
-    #         and (
-    #             output_channels == 64
-    #             or (
-    #                 stride_h == 2
-    #                 and (output_channels == 256 or (output_channels == 128 and weights_dtype == ttnn.bfloat16))
-    #             )
-    #         )
-    #     )
-    #     # packer l1 acc has separate buffers when interm != output df, cannot fit into L1
-    #     or (batch_size == 20 and activations_dtype == ttnn.bfloat8_b and packer_l1_acc and input_height >= 64)
-    # ):
-    #     pytest.skip("Skipping test because it won't fit in L1!")
+    if device.core_grid.y == 7:
+        pytest.skip("Issue #6992: Statically allocated circular buffers in program clash with L1 buffers on core range")
 
     use_shallow_conv_variant = (input_channels == 16) and device.arch() == ttnn.device.Arch.GRAYSKULL
     run_conv(
