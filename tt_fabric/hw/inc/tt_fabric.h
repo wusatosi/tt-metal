@@ -56,6 +56,10 @@ typedef struct fvc_consumer_state {
     uint32_t words_to_forward;
     uint8_t sync_pending;
     uint8_t padding[3];
+    volatile uint32_t* receiver_space;
+    volatile uint32_t* receiver_space_local_update;
+    volatile uint32_t* words_sent_remote_update;
+
     uint32_t sync_buf[SYNC_BUF_SIZE];
 
     uint32_t get_num_words_free() {
@@ -69,12 +73,23 @@ typedef struct fvc_consumer_state {
     }
 
     uint32_t get_remote_num_words_free() {
+#ifdef TT_FABRIC_USE_HW_REG
+        return *receiver_space;
+#else
         uint32_t rd_ptr = remote_rdptr.ptr_cleared;
         uint32_t words_occupied = 0;
         if (fvc_out_wrptr != rd_ptr) {
             words_occupied = fvc_out_wrptr > rd_ptr ? fvc_out_wrptr - rd_ptr : buffer_size * 2 + fvc_out_wrptr - rd_ptr;
         }
         return buffer_size - words_occupied;
+#endif
+    }
+
+    inline void reset_receiver_space(uint32_t size) {
+        // Setting STREAM_REMOTE_DEST_BUF_SIZE_REG_INDEX resets the credit register
+        volatile uint32_t* ptr =
+            reinterpret_cast<volatile uint32_t*>(STREAM_REG_ADDR(0, STREAM_REMOTE_DEST_BUF_SIZE_REG_INDEX));
+        *ptr = size;
     }
 
     inline void init(uint32_t data_buf_start, uint32_t data_buf_size_words, uint32_t ptr_update_addr) {
@@ -88,6 +103,13 @@ typedef struct fvc_consumer_state {
         buffer_size = data_buf_size_words;
         remote_buffer_start = data_buf_start + buffer_size * PACKET_WORD_SIZE_BYTES;
         remote_ptr_update_addr = ptr_update_addr;
+        receiver_space =
+            reinterpret_cast<volatile uint32_t*>(STREAM_REG_ADDR(0, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_REG_INDEX));
+        receiver_space_local_update = reinterpret_cast<volatile uint32_t*>(
+            STREAM_REG_ADDR(0, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_UPDATE_REG_INDEX));
+        words_sent_remote_update = reinterpret_cast<volatile uint32_t*>(
+            STREAM_REG_ADDR(1, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_UPDATE_REG_INDEX));
+        reset_receiver_space(data_buf_size_words);
     }
 
     inline uint32_t words_before_buffer_wrap(uint32_t ptr) {
@@ -190,6 +212,42 @@ typedef struct fvc_consumer_state {
         return false;
     }
 
+#ifdef TT_FABRIC_USE_HW_REG
+    template <bool live = true>
+    inline uint32_t forward_data_from_fvc_buffer() {
+        uint32_t total_words_to_forward = pull_words_in_flight;
+        uint32_t remote_fvc_buffer_space = get_remote_num_words_free();
+        if (remote_fvc_buffer_space < (total_words_to_forward)) {
+            total_words_to_forward = remote_fvc_buffer_space;
+        }
+
+        uint32_t src_addr = 0;
+        uint32_t dest_addr = 0;  // should be second half of fvc buffer.
+        uint32_t words_remaining = total_words_to_forward;
+        while (words_remaining) {
+            uint32_t num_words_before_local_wrap = words_before_buffer_wrap(fvc_out_rdptr);
+            uint32_t num_words_before_remote_wrap = words_before_buffer_wrap(fvc_out_wrptr);
+
+            uint32_t words_to_forward = std::min(num_words_before_local_wrap, num_words_before_remote_wrap);
+            words_to_forward = std::min(words_to_forward, words_remaining);
+            words_to_forward = std::min(words_to_forward, DEFAULT_MAX_ETH_SEND_WORDS);
+            src_addr = get_local_buffer_read_addr();
+            dest_addr = get_remote_buffer_write_addr();
+
+            internal_::eth_send_packet(
+                0, src_addr / PACKET_WORD_SIZE_BYTES, dest_addr / PACKET_WORD_SIZE_BYTES, words_to_forward);
+            advance_out_rdptr(words_to_forward);
+            advance_out_wrptr(words_to_forward);
+            words_remaining -= words_to_forward;
+        }
+
+        // decrement remote buffer space locally
+        *receiver_space_local_update = (-total_words_to_forward) << REMOTE_DEST_BUF_WORDS_FREE_INC;
+        // send word credits to receiver
+        eth_write_remote_reg(
+            (uint32_t)words_sent_remote_update, total_words_to_forward << REMOTE_DEST_BUF_WORDS_FREE_INC);
+    }
+#else
     template <bool live = true>
     inline uint32_t forward_data_from_fvc_buffer() {
         uint32_t total_words_to_forward = 0;
@@ -251,6 +309,7 @@ typedef struct fvc_consumer_state {
         sync_buf_advance_rdptr();
         return total_words_to_forward;
     }
+#endif
 
     inline void sync_buf_advance_wrptr() { sync_buf_wrptr = (sync_buf_wrptr + 1) & SYNC_BUF_PTR_MASK; }
 
@@ -301,6 +360,16 @@ typedef struct fvc_producer_state {
     uint64_t packet_timestamp;
     uint64_t packet_dest;
     packet_header_t current_packet_header;
+    volatile uint32_t* words_received;
+    volatile uint32_t* words_received_local_update;
+    volatile uint32_t* words_cleared_remote_update;
+
+    inline void reset_words_received() {
+        // Setting STREAM_REMOTE_DEST_BUF_SIZE_REG_INDEX resets the credit register
+        volatile uint32_t* ptr =
+            reinterpret_cast<volatile uint32_t*>(STREAM_REG_ADDR(1, STREAM_REMOTE_DEST_BUF_SIZE_REG_INDEX));
+        *ptr = 0;
+    }
 
     inline void init(uint32_t data_buf_start, uint32_t data_buf_size_words, uint32_t ptr_update_addr) {
         uint32_t words = sizeof(fvc_producer_state) / 4;
@@ -312,6 +381,13 @@ typedef struct fvc_producer_state {
         buffer_start = data_buf_start;
         buffer_size = data_buf_size_words;
         remote_ptr_update_addr = ptr_update_addr;
+        words_received =
+            reinterpret_cast<volatile uint32_t*>(STREAM_REG_ADDR(1, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_REG_INDEX));
+        words_received_local_update = reinterpret_cast<volatile uint32_t*>(
+            STREAM_REG_ADDR(1, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_UPDATE_REG_INDEX));
+        words_cleared_remote_update = reinterpret_cast<volatile uint32_t*>(
+            STREAM_REG_ADDR(1, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_UPDATE_REG_INDEX));
+        reset_words_received();
     }
 
     inline uint32_t inc_ptr_with_wrap(uint32_t ptr, uint32_t inc) {
@@ -1256,6 +1332,7 @@ inline uint32_t get_num_words_to_pull(volatile pull_request_t* pull_request, fvc
 
     uint32_t fvc_space_before_wptr_wrap = fvc_consumer_state->words_before_local_buffer_wrap();
     num_words_to_pull = std::min(num_words_to_pull, fvc_space_before_wptr_wrap);
+
     num_words_to_pull = std::min(num_words_to_pull, fvc_consumer_state->buffer_size / 2);
 
     return num_words_to_pull;

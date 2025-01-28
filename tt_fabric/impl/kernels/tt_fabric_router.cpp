@@ -180,6 +180,7 @@ void kernel_main() {
             loop_count = 0;
         }
 
+        // if (!fvc_consumer_state.sync_buf_empty()) {
         if (fvc_req_buf_is_empty(fvc_consumer_req_buf)) {
             noc_async_read_barrier();
             while (!fvc_consumer_state.sync_buf_empty()) {
@@ -190,13 +191,18 @@ void kernel_main() {
                 }
             }
         }
+        //}
 
         fvc_producer_state.update_remote_rdptr_sent();
         if (fvc_producer_state.get_curr_packet_valid()) {
+#ifdef TT_FABRIC_DEBUG
             if (total_words_procesed == 0) {
                 start_timestamp = get_timestamp();
             }
             total_words_procesed += fvc_producer_state.process_inbound_packet();
+#else
+            fvc_producer_state.process_inbound_packet();
+#endif
             loop_count = 0;
         } else if (fvc_producer_state.packet_corrupted) {
             write_kernel_status(kernel_status, PQ_TEST_STATUS_INDEX, PACKET_QUEUE_TEST_BAD_HEADER);
