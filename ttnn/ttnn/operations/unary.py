@@ -5,6 +5,22 @@
 import ttnn
 
 
+def apply_activations(tensor, activations):
+    import torch
+
+    string_to_function = {
+        "relu": torch.relu,
+        "gelu": torch.nn.functional.gelu,
+        "silu": torch.nn.functional.silu,
+    }
+
+    if activations is not None:
+        for activation in activations:
+            activation_function = string_to_function[activation]
+            tensor = activation_function(tensor)
+    return tensor
+
+
 def register_ttnn_cpp_unary_function(unary_function):
     import torch
 
@@ -366,7 +382,8 @@ ttnn.attach_golden_function(ttnn.trunc, golden_function=_golden_function_trunc)
 def _golden_function_rsub(input_tensor_a, value, *args, **kwargs):
     import torch
 
-    return torch.sub(value, input_tensor_a)
+    output_tensor = torch.sub(value, input_tensor_a)
+    return apply_activations(output_tensor)
 
 
 ttnn.attach_golden_function(ttnn.rsub, golden_function=_golden_function_rsub)
