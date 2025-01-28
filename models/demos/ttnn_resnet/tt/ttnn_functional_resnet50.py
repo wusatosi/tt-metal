@@ -284,15 +284,6 @@ class resnet50Bottleneck:
                 act_block_h_override = 320
         elif is_wormhole_b0():
             run_downsample_before_conv2 = False
-            # if (
-            #     batch_size == 16
-            #     and (
-            #         (input_height == 56 and self.conv1_input_channels == 256 and self.conv1_output_channels == 128)
-            #         or (input_height == 28 and self.conv1_input_channels == 512 and self.conv1_output_channels == 256)
-            #         or (input_height == 14 and self.conv1_input_channels == 1024 and self.conv1_output_channels == 512)
-            #     )
-            # ):
-            #     run_downsample_before_conv2 = True
 
         if run_downsample_before_conv2:
             if layer_module and layer_module == "layer4_module1":
@@ -415,9 +406,6 @@ class resnet50Bottleneck:
             return_output_dim=False,
             return_weights_and_bias=True,
         )
-        # if layer_module and layer_module == "layer3_module3":
-        #     logger.warning(f"Returning early...")
-        #     return out, input_height, input_width
 
         if not run_downsample_before_conv2:
             ds_out = self.run_downsample_if_req(
@@ -629,16 +617,6 @@ class resnet50:
         conv_dummy_tensor = torch.rand((self.fold_output_shape), dtype=torch.bfloat16)
         conv_dummy_tensor = ttnn.from_torch(conv_dummy_tensor, layout=ttnn.ROW_MAJOR_LAYOUT)
 
-        # _, self.override_fold_mem_config, _, _ = ttnn.get_conv_padded_input_shape_and_mem_config(
-        #     device=device,
-        #     input_tensor=conv_dummy_tensor,
-        #     conv_config=self.conv1_config,
-        #     batch_size=self.batch_size,
-        #     height=self.conv1_output_height,
-        #     width=self.conv1_output_width,
-        #     in_channels=self.conv1_input_channels,
-        #     out_channels=self.conv1_output_channels,
-        # )
         self.override_fold_mem_config = get_conv_input_memory_config(
             self.batch_size,
             self.conv1_input_channels,
@@ -870,19 +848,6 @@ class resnet50:
                     ),
                 }
             )
-            ## 112
-            # core_range_set = ttnn.CoreRangeSet(
-            #     {
-            #         ttnn.CoreRange(
-            #             ttnn.CoreCoord(0, 0),
-            #             ttnn.CoreCoord(12, 7),
-            #         ),
-            #         ttnn.CoreRange(
-            #             ttnn.CoreCoord(0, 8),
-            #             ttnn.CoreCoord(7, 8),
-            #         ),
-            #     }
-            # )
             mem_config = ttnn.create_sharded_memory_config_(
                 layer2_module1_input_shape,
                 core_range_set,
@@ -930,7 +895,6 @@ class resnet50:
             enable_act_double_buffer=True,
             enable_split_reader=False,
             enable_subblock_padding=False,
-            # layer_module="layer2_module2",
         )
 
         logger.debug(f"==== Running layer 2 module 3")
@@ -965,22 +929,8 @@ class resnet50:
 
         reshard = is_wormhole_b0()
         height_shard = False
-        # if is_first_run:
-        #     reshard = True
-        #     height_shard = False
-        # else:
-        #     x = ttnn.to_memory_config(x, ops_parallel_config["layer3_module1_input"])
 
         if is_blackhole():
-            # ## 96
-            # core_range_set = ttnn.CoreRangeSet(
-            #     {
-            #         ttnn.CoreRange(
-            #             ttnn.CoreCoord(0, 0),
-            #             ttnn.CoreCoord(11, 7),
-            #         ),
-            #     }
-            # )
             ## 104
             core_range_set = ttnn.CoreRangeSet(
                 {
@@ -990,15 +940,6 @@ class resnet50:
                     ),
                 }
             )
-            # ## 52
-            # core_range_set = ttnn.CoreRangeSet(
-            #     {
-            #         ttnn.CoreRange(
-            #             ttnn.CoreCoord(0, 0),
-            #             ttnn.CoreCoord(12, 3),
-            #         ),
-            #     }
-            # )
             mem_config = ttnn.create_sharded_memory_config_(
                 layer3_module1_input_shape,
                 core_range_set,
@@ -1108,13 +1049,8 @@ class resnet50:
             enable_subblock_padding=False,
         )
 
-        xshape = x.shape
-        # x = ttnn.slice(x, starts=(0, 0, 0, 0), ends=(xshape[0], xshape[1], xshape[2], xshape[3]), steps=(1, 1, 1, 1))
-
         reshard = False
         height_shard = False
-        # if is_first_run:
-        #     reshard = True
 
         layer4_module1_input_shape = ttnn.Shape(x.shape.with_tile_padding())
         if is_blackhole():
