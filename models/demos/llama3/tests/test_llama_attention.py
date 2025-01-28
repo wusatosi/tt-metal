@@ -17,6 +17,7 @@ from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import Atten
 from models.utility_functions import (
     comp_pcc,
     comp_allclose,
+    comp_equal,
 )
 from models.utility_functions import skip_for_grayskull
 
@@ -73,12 +74,12 @@ class TtSFDSetup(torch.nn.Module):
         ### Persistent fabric and ccl setup ###
         ############################################################
         compute_grid_size = mesh_device.compute_with_storage_grid_size()
-        ccl_sub_device_crs = ttnn.CoreRangeSet(
+        self.ccl_sub_device_crs = ttnn.CoreRangeSet(
             {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(compute_grid_size.x - 1, compute_grid_size.y - 1))}
         )
-        worker_sub_device = ttnn.SubDevice([ccl_sub_device_crs])
-        worker_sub_device_id = ttnn.SubDeviceId(0)
-        self.sub_device_stall_group = [worker_sub_device_id]
+        worker_sub_device = ttnn.SubDevice([self.ccl_sub_device_crs])
+        self.worker_sub_device_id = ttnn.SubDeviceId(0)
+        self.sub_device_stall_group = [self.worker_sub_device_id]
         mesh_sub_device_manager_id = create_and_load_sub_device_manager_with_fabric_interface(
             mesh_device, [worker_sub_device], 0, 0, enable_persistent_fabric
         )
@@ -105,8 +106,12 @@ class TtSFDSetup(torch.nn.Module):
         self.scale = d**-0.5
 
         # create global semaphore handles for speculative flash decode
-        self.sfd_semaphore_handles = ttnn.create_global_semaphore(mesh_device, ccl_sub_device_crs, 0)
-        self.swap_semaphore_handles = ttnn.create_global_semaphore(mesh_device, ccl_sub_device_crs, 0)
+        self.sfd_semaphore_handles = ttnn.create_global_semaphore_with_same_address(
+            mesh_device, self.ccl_sub_device_crs, 0
+        )
+        self.swap_semaphore_handles = ttnn.create_global_semaphore_with_same_address(
+            mesh_device, self.ccl_sub_device_crs, 0
+        )
         addrs = ttnn.get_global_semaphore_address(self.sfd_semaphore_handles)
         logger.info(f"semaphore handle addresses: {addrs}")
         # assert all addresses are the same
@@ -136,7 +141,13 @@ class TtSFDSetup(torch.nn.Module):
         self.tt_priority_tensors = create_multi_device_tensors(
             priority_tensors, mesh_device, self.dram_memcfg, ttnn.TILE_LAYOUT, ttnn.uint32
         )
-        self.tt_gathered_priority_tensors = None  # Will be initialized afterwards
+        self.tt_gathered_priority_tensors = create_multi_device_tensors(
+            read_multi_device_tensor(self.tt_priority_tensors)[::-1],
+            self.mesh_device,
+            self.dram_memcfg,
+            ttnn.TILE_LAYOUT,
+            ttnn.uint32,
+        )
         self.tt_reset_priority_tensors = create_multi_device_tensors(
             reset_priority_tensor, mesh_device, self.dram_memcfg, ttnn.TILE_LAYOUT, ttnn.uint32
         )
@@ -147,7 +158,7 @@ class TtSFDSetup(torch.nn.Module):
         skip_tensor = [torch.ones((64, 1, ttnn.TILE_SIZE, ttnn.TILE_SIZE))] * num_devices
         skip_tensor_mem_config = ttnn.create_sharded_memory_config(
             shape=(ttnn.TILE_SIZE, ttnn.TILE_SIZE),
-            core_grid=ccl_sub_device_crs,
+            core_grid=self.ccl_sub_device_crs,
             strategy=ttnn.ShardStrategy.HEIGHT,
             orientation=ttnn.ShardOrientation.ROW_MAJOR,
             use_height_and_width_as_shard_shape=True,
@@ -175,7 +186,7 @@ class TtSFDSetup(torch.nn.Module):
         tt_V = ttnn.to_memory_config(V, self.dram_memcfg)
 
         # self.reset_skip_tensor()
-        tt_gathered_priority_tensors = create_multi_device_tensors(
+        self.tt_gathered_priority_tensors = create_multi_device_tensors(
             read_multi_device_tensor(self.tt_priority_tensors)[::-1],
             self.mesh_device,
             self.dram_memcfg,
@@ -202,7 +213,7 @@ class TtSFDSetup(torch.nn.Module):
             compute_kernel_config=self.compute_kernel_config,
             memory_config=self.dram_memcfg,
             priority_tensor=self.tt_priority_tensors,
-            other_priority_tensor=tt_gathered_priority_tensors,
+            other_priority_tensor=self.tt_gathered_priority_tensors,
             ccl_enabled=True,
             multi_device_global_semaphore=self.sfd_semaphore_handles,
         )
@@ -212,6 +223,21 @@ class TtSFDSetup(torch.nn.Module):
         commit_priority_tensor(self.tt_priority_tensors, self.tt_skip_tensor, self.mesh_device)
 
         return tt_back_gt_md
+
+    def consolidate_kv_cache(self, K_mesh, V_mesh):
+        K_new = read_multi_device_tensor(K_mesh)
+        V_new = read_multi_device_tensor(V_mesh)
+
+        priority = read_multi_device_tensor(self.tt_priority_tensors)
+        index = torch.argmax(torch.tensor([priority[0][0, 0, 0, 0], priority[1][0, 0, 0, 0]])).item()
+
+        K_new = [K_new[index], K_new[index]]
+        V_new = [V_new[index], V_new[index]]
+
+        K_new = create_multi_device_tensors(K_new, self.mesh_device, self.dram_memcfg, ttnn.TILE_LAYOUT, ttnn.bfloat16)
+        V_new = create_multi_device_tensors(V_new, self.mesh_device, self.dram_memcfg, ttnn.TILE_LAYOUT, ttnn.bfloat16)
+
+        return K_new, V_new
 
     def reset_skip_tensor(self):
         if not self.done_first_run:

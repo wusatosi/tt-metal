@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import torch
+import os
 import pytest
 from loguru import logger
 import ttnn
@@ -125,19 +126,20 @@ def run_consolidate_cache_impl(
             all_cache_tensors, mesh_device, mem_config, ttnn.TILE_LAYOUT, ttnn.bfloat16
         )
         priority_tensor_mesh = create_multi_device_tensors(
-            priority_tensors, mesh_device, mem_config, ttnn.ROW_MAJOR_LAYOUT, ttnn.float32
+            priority_tensors, mesh_device, mem_config, ttnn.TILE_LAYOUT, ttnn.uint32
         )
         other_priority_tensor_mesh = create_multi_device_tensors(
-            other_priority_tensors, mesh_device, mem_config, ttnn.ROW_MAJOR_LAYOUT, ttnn.float32
+            other_priority_tensors, mesh_device, mem_config, ttnn.TILE_LAYOUT, ttnn.uint32
         )
 
-        consolidated_cache_mesh = ttnn.experimental.consolidate_cache(
-            input_tensor_mesh,
-            priority_tensor_mesh,
-            other_priority_tensor_mesh,
-            multi_device_global_semaphore=all_gather_semaphore_handles,
-            num_links=num_links,
-        )
+        for _ in range(10):
+            consolidated_cache_mesh = ttnn.experimental.consolidate_cache(
+                input_tensor_mesh,
+                priority_tensor_mesh,
+                other_priority_tensor_mesh,
+                multi_device_global_semaphore=all_gather_semaphore_handles,
+                num_links=num_links,
+            )
         ttnn.synchronize_devices(mesh_device, sub_device_ids=sub_device_stall_group)
 
         consolidated_cache_tensors = read_multi_device_tensor(consolidated_cache_mesh)
@@ -186,13 +188,22 @@ def run_consolidate_cache_impl(
 @pytest.mark.parametrize(
     "priority_tensors",
     [
-        [torch.ones(1, 1, 1, 1), torch.zeros(1, 1, 1, 1)],
-        [torch.zeros(1, 1, 1, 1), torch.ones(1, 1, 1, 1)],
+        [torch.ones(1, 1, 32, 32), torch.zeros(1, 1, 32, 32)],
+        [torch.zeros(1, 1, 32, 32), torch.ones(1, 1, 32, 32)],
     ],
+)
+@pytest.mark.parametrize(
+    "mesh_device",
+    [
+        {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
+            os.environ.get("FAKE_DEVICE"), len(ttnn.get_device_ids())
+        )
+    ],
+    indirect=True,
 )
 @pytest.mark.parametrize("enable_async", [False])
 def test_consolidate_cache(
-    t3k_mesh_device,
+    mesh_device,
     shape,
     dtype,
     num_links,
@@ -202,7 +213,7 @@ def test_consolidate_cache(
     enable_async,
 ):
     run_consolidate_cache_impl(
-        t3k_mesh_device,
+        mesh_device,
         shape,
         dtype,
         priority_tensors,
