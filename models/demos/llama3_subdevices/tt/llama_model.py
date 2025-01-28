@@ -338,8 +338,10 @@ class TtTransformer(LightweightModule):
         get_last_token=-1,
         kv_cache=None,
     ):
+        breakpoint()
         # Prefetcher
         if mode == "decode" and self.args.is_galaxy:
+            self.prefetcher_setup.create_global_cb()
             garbage_tensor = ttnn.dram_prefetcher(
                 self.prefetcher_setup.tensors,
                 num_layers=self.n_layers,

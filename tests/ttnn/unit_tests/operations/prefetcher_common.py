@@ -69,9 +69,15 @@ class TtLlamaPrefetcherSetup(LightweightModule):
         max_tile_size = 1088
         self.global_cb_size = 750 * max_tile_size
         self.sender_receiver_mapping = list(zip(self.sender_cores, self.receiver_cores))
+        temp_global_circular_buffer = ttnn.create_global_circular_buffer(
+            self.mesh_device, self.sender_receiver_mapping, 400 * max_tile_size
+        )
         self.global_circular_buffer = ttnn.create_global_circular_buffer(
             self.mesh_device, self.sender_receiver_mapping, self.global_cb_size
         )
+        del temp_global_circular_buffer
+        temp_global_circular_buffer = None
+
         logger.info(f"GlobalCB size {self.global_cb_size}")
 
         ##### Set up the input tensors #####
@@ -135,6 +141,28 @@ class TtLlamaPrefetcherSetup(LightweightModule):
         )
 
         return tt_tensor_addrs
+
+    def create_global_cb(self):
+        if self.global_circular_buffer is None:
+            self.global_circular_buffer = ttnn.create_global_circular_buffer(
+                self.mesh_device, self.sender_receiver_mapping, self.global_cb_size
+            )
+
+    # def load_full_device_sub_device_manager(self):
+    #     ttnn.synchronize_devices(self.mesh_device)
+    #     self.mesh_device.reset_sub_device_stall_group()
+    #     # ttnn.synchronize_devices(self.mesh_device)
+
+    #     create_and_load_sub_device_manager_with_fabric_interface(
+    #         self.mesh_device, [self.full_sub_device], 0, 0, True
+    #     )
+    #     self.worker_sub_device_id = ttnn.SubDeviceId(0)
+
+    #     self.mesh_device.set_sub_device_stall_group(
+    #         [self.worker_sub_device_id]
+    #     )
+
+    #     logger.info("Loaded full device sub device manager")
 
 
 def get_buffer_address(tensor):

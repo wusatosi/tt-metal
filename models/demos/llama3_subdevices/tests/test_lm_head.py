@@ -71,6 +71,12 @@ def test_llama_lm_head_inference(seq_len, batch_size, mesh_device, use_program_c
         [prefetcher_setup.prefetcher_sub_device_id, prefetcher_setup.worker_sub_device_id]
     )
 
+    # Trying to load another sub device manager (WIP, results in bad PCC)
+    # tt_ccl = TT_CCL(mesh_device, model_args.sub_core_grids, prefetcher_setup.worker_sub_device_id)
+    # tt_ccl.close()
+    # del tt_ccl
+    # tt_ccl = None
+    # prefetcher_setup.load_full_device_sub_device_manager()
     tt_ccl = TT_CCL(mesh_device, model_args.sub_core_grids, prefetcher_setup.worker_sub_device_id)
 
     tt_model = LMHead(

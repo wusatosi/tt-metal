@@ -140,12 +140,12 @@ class TtTransformerBlock(LightweightModule):
             chunk_start_idx=chunk_start_idx,
             kv_cache=kv_cache,
         )
-
+        breakpoint()
         # Here x and attn_out are both fractured across devices
         h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg)
         ttnn.deallocate(attn_out)
-        if mode == "prefill":
-            x.deallocate(True)
+        # if mode == "prefill":
+        x.deallocate(True)
 
         # Norms take fractured inputs and output replicated across devices
 

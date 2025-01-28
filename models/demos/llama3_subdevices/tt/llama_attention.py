@@ -274,6 +274,7 @@ class TtLlamaAttention(LightweightModule):
         xqkv_fused_dram = ttnn.to_memory_config(xqkv_fused_sharded, ttnn.DRAM_MEMORY_CONFIG)
         ttnn.deallocate(xqkv_fused_sharded)
 
+        breakpoint()
         xqkv_reduced = self.tt_ccl.line_all_reduce(
             xqkv_fused_dram, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
         )
@@ -374,6 +375,7 @@ class TtLlamaAttention(LightweightModule):
             num_heads=self.n_local_heads,
         )
         ttnn.deallocate(attn_output_gathered)
+        breakpoint()
 
         # Original matmul on each device [1, 1, 32, 1024] @ [1, 1, 1024, 2048]
         attn_output_cat = ttnn.to_memory_config(attn_output_cat, self.model_config["SHARDED_ATTN_WO_INPUT_RING_MEMCFG"])
