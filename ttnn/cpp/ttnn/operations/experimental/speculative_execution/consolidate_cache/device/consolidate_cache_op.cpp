@@ -48,7 +48,7 @@ void ConsolidateCache::validate(const std::vector<Tensor>& input_tensors) const 
         priority.get_dtype(),
         other_priority.get_dtype());
     TT_FATAL(
-        priority.get_dtype() == DataType::FLOAT32,
+        priority.get_dtype() == DataType::UINT32,
         "Priority tensor must have dtype float32, got {}",
         priority.get_dtype());
 }
