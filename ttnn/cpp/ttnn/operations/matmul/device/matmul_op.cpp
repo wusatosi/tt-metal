@@ -1513,7 +1513,8 @@ void Matmul::validate(
                         TT_FATAL(program_config.fuse_batch, "Error: Batch fusion must be enabled.");
                         TT_FATAL(
                             input_tensor_a.memory_config().memory_layout == TensorMemoryLayout::WIDTH_SHARDED,
-                            "Error: input_tensor_a must be width sharded.");
+                            "Error: input_tensor_a must be width sharded. Provided tensor memory layout: {}",
+                            input_tensor_a.memory_config().memory_layout);
                         if (this->output_mem_config.is_sharded()) {
                             TT_FATAL(
                                 input_tensor_a.memory_config().buffer_type == this->output_mem_config.buffer_type,
@@ -1536,21 +1537,30 @@ void Matmul::validate(
                         auto shard_shape = input_tensor_a.shard_spec().value().shape;
 
                         // No padding
-                        TT_FATAL(M == per_core_M, "Error: M must be equal to per_core_M.");
+                        TT_FATAL(M == per_core_M, "Error: M ({}) must be equal to per_core_M ({}).", M, per_core_M);
                         TT_FATAL(
                             per_core_M == (shard_shape[0] / in0_tile_shape[0]),
-                            "Error: per_core_M must be equal to shard_shape[0] / in0_tile_shape[0].");
-                        TT_FATAL(K % program_config.in0_block_w == 0, "Error: K must be divisible by in0_block_w.");
+                            "Error: per_core_M must be equal to shard_shape[0] ({}) / in0_tile_shape[0] ({}).",
+                            shard_shape[0],
+                            in0_tile_shape[0]);
+                        TT_FATAL(
+                            K % program_config.in0_block_w == 0,
+                            "Error: K {} must be divisible by in0_block_w {}.",
+                            K,
+                            program_config.in0_block_w);
                         if (!program_config.gather_in0) {  // Padding allowed for gather_in0
                             TT_FATAL(
                                 (shard_shape[1] / in0_tile_shape[1]) % program_config.in0_block_w == 0,
-                                "Error: shard_shape[1] / in0_tile_shape[1] must be divisible by in0_block_w.");
+                                "Error: shard_shape[1] ({}) / in0_tile_shape[1] ({}) must be divisible by in0_block_w.",
+                            shard_shape[1],
+                            in0_tile_shape[1]);
                         }
                     }
                     if (this->output_mem_config.is_sharded()) {
                         TT_FATAL(
                             this->output_mem_config.memory_layout == TensorMemoryLayout::WIDTH_SHARDED,
-                            "Error: Output memory layout must be WIDTH_SHARDED.");
+                            "Error: Output memory layout must be WIDTH_SHARDED. Provided tensor memory layout: {}",
+                            this->output_mem_config.memory_layout);
                         uint32_t M =
                             (program_config.fuse_batch ? input_tensor_a.volume() / input_tensor_a.get_padded_shape()[-1]
                                                        : input_tensor_a.get_padded_shape()[-2]) /
@@ -1560,7 +1570,7 @@ void Matmul::validate(
                         uint32_t per_core_N = program_config.per_core_N;
 
                         // No padding
-                        TT_FATAL(M == per_core_M, "Error: M must be equal to per_core_M.");
+                        TT_FATAL(M == per_core_M, "Error: M {} must be equal to per_core_M {}.", M, per_core_M);
 
                         TT_FATAL(
                             program_config.out_subblock_w == per_core_N || program_config.out_subblock_h == 1,
