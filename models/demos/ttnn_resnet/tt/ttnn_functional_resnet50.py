@@ -10,7 +10,6 @@ from models.utility_functions import (
     is_wormhole_b0,
     is_blackhole,
     _nearest_y,
-    pad_and_fold_conv_activation_for_unity_stride,
 )
 from typing import List
 from loguru import logger
