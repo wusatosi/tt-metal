@@ -30,6 +30,7 @@ class TtTransformer(LightweightModule):
         weight_cache_path,
         paged_attention_config=None,
         use_paged_kv_cache=False,
+        sfd_setup=None,
     ):
         super().__init__()
         self.args = args
@@ -40,6 +41,7 @@ class TtTransformer(LightweightModule):
         self.dtype = dtype
         self.model_config = args.get_model_config()
         self.grid_size = self.args.max_grid_size
+        self.sfd_setup = sfd_setup
         state_dict_prefix = args.get_state_dict_prefix("", None)
 
         self.embd = TtLlamaEmbedding(
@@ -72,6 +74,7 @@ class TtTransformer(LightweightModule):
                 transformation_mats=self.trans_mats_dict,
                 paged_attention_config=paged_attention_config,
                 use_paged_kv_cache=use_paged_kv_cache,
+                sfd_setup=sfd_setup,
             )
             for i in tqdm(range(self.n_layers))
         ]
