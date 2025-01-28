@@ -37,11 +37,11 @@ def commit_priority_tensor(priority_tensor, skip_tensor, mesh_device):
     # return None # Disable this function if you want to disable skip_compute
     assert priority_tensor.shape[0] == 1
     assert priority_tensor.shape[1] == 1
-    assert priority_tensor.shape[2] == 1  # TODO: Update with batch size
+    assert priority_tensor.shape[2] == 32  # TODO: Update with batch size
     assert priority_tensor.shape[3] == ttnn.TILE_SIZE
 
     skip_tensor_mem_config = ttnn.create_sharded_memory_config(
-        shape=(1, ttnn.TILE_SIZE),  # TODO: Update with batch size
+        shape=(32, ttnn.TILE_SIZE),  # TODO: Update with batch size
         core_grid=ttnn.num_cores_to_corerangeset(64, mesh_device.compute_with_storage_grid_size(), row_wise=True),
         strategy=ttnn.ShardStrategy.HEIGHT,
         orientation=ttnn.ShardOrientation.ROW_MAJOR,
@@ -174,8 +174,8 @@ def get_speculative_flash_decode_tt_ccl(
     # assert priority tensor value on the sender side is either 0 or 2
     # assert priority tensor value on the receiver side is 1
     p_tensors = read_multi_device_tensor(tt_priority_tensors)
-    assert torch.all((p_tensors[sender_idx].squeeze()[0] == 0) | (p_tensors[sender_idx].squeeze()[0] == 2))
-    assert torch.all(p_tensors[receiver_idx].squeeze()[0] == 1)
+    assert torch.all((p_tensors[sender_idx].squeeze()[0, 0] == 0) | (p_tensors[sender_idx].squeeze()[0, 0] == 2))
+    assert torch.all(p_tensors[receiver_idx].squeeze()[0, 0] == 1)
 
     ret = [
         tt_back_gt,
@@ -672,31 +672,31 @@ def run_speculative_flash_decode_perf(
         ##########################################
         #### Priority Tensor ####
         ##########################################
-        priority_tensors = [torch.ones(1, 1, b, ttnn.TILE_SIZE), torch.zeros(1, 1, b, ttnn.TILE_SIZE)]
+        priority_tensors = [torch.ones(1, 1, 32, ttnn.TILE_SIZE), torch.zeros(1, 1, 32, ttnn.TILE_SIZE)]
         reset_priority_tensor = [
-            torch.ones(1, 1, b, ttnn.TILE_SIZE),
+            torch.ones(1, 1, 32, ttnn.TILE_SIZE),
         ] * num_devices
         tt_priority_tensors = create_multi_device_tensors(
-            priority_tensors, mesh_device, dram_memcfg, ttnn.ROW_MAJOR_LAYOUT, ttnn.int32
+            priority_tensors, mesh_device, dram_memcfg, ttnn.TILE_LAYOUT, ttnn.uint32
         )
         tt_reset_priority_tensors = create_multi_device_tensors(
-            reset_priority_tensor, mesh_device, dram_memcfg, ttnn.ROW_MAJOR_LAYOUT, ttnn.int32
+            reset_priority_tensor, mesh_device, dram_memcfg, ttnn.TILE_LAYOUT, ttnn.uint32
         )
         model_ops = ModelOps(mesh_device, num_devices=num_devices)
 
         ##########################################
         #### Skip Tensor ####
         ##########################################
-        skip_tensor = [torch.ones((64, 1, b, ttnn.TILE_SIZE))] * num_devices
+        skip_tensor = [torch.ones((64, 1, 32, ttnn.TILE_SIZE))] * num_devices
         skip_tensor_mem_config = ttnn.create_sharded_memory_config(
-            shape=(b, ttnn.TILE_SIZE),
+            shape=(32, ttnn.TILE_SIZE),
             core_grid=ccl_sub_device_crs,
             strategy=ttnn.ShardStrategy.HEIGHT,
             orientation=ttnn.ShardOrientation.ROW_MAJOR,
             use_height_and_width_as_shard_shape=True,
         )
         tt_skip_tensor = create_multi_device_tensors(
-            skip_tensor, mesh_device, skip_tensor_mem_config, ttnn.ROW_MAJOR_LAYOUT, ttnn.int32
+            skip_tensor, mesh_device, skip_tensor_mem_config, ttnn.TILE_LAYOUT, ttnn.uint32
         )
         skip_tensor_address = get_buffer_address(tt_skip_tensor)
         logger.info(f"Skip tensor address: {skip_tensor_address}")
@@ -711,8 +711,8 @@ def run_speculative_flash_decode_perf(
                 read_multi_device_tensor(tt_priority_tensors)[::-1],
                 mesh_device,
                 dram_memcfg,
-                ttnn.ROW_MAJOR_LAYOUT,
-                ttnn.int32,
+                ttnn.TILE_LAYOUT,
+                ttnn.uint32,
             )
             if i == 0:
                 for d in tt_skip_tensor.devices():

@@ -22,6 +22,7 @@ class TtLlamaAttention(LightweightModule):
         configuration,
         paged_attention_config=None,
         use_paged_kv_cache=False,
+        sfd_setup=None,
     ):
         super().__init__()
 
@@ -42,6 +43,7 @@ class TtLlamaAttention(LightweightModule):
         self.num_all_gather_links = configuration.num_all_gather_links
         self.MAX_QKV_MM_SEQ_LEN = configuration.MAX_QKV_MM_SEQ_LEN
         self.use_sfd = configuration.use_sfd
+        self.sfd_setup = sfd_setup
 
         self.num_device_groups = self.num_devices // self.n_kv_heads
         self.num_devices_per_group = self.n_kv_heads if self.TG else self.num_devices
@@ -352,16 +354,24 @@ class TtLlamaAttention(LightweightModule):
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
             )
         else:
-            attn_output_1G4D = ttnn.transformer.scaled_dot_product_attention_decode(
-                q_heads_1BQD,
-                keys,
-                values,
-                cur_pos_tensor=current_pos,
-                scale=self.scale,
-                program_config=self.model_config["SDPA_DECODE_PROGCFG"],
-                compute_kernel_config=self.model_config["SDPA_DECODE_COMPUTE_PROGCFG"],
-                memory_config=ttnn.DRAM_MEMORY_CONFIG,  # FIXME: why not L1 height sharded e.g. SCORES_BATCHED_MM_OUTPUT_MEMCFG?
-            )
+            if self.use_sfd:
+                attn_output_1G4D = self.sfd_setup.run_speculative_flash_decode(
+                    q_heads_1BQD,
+                    keys,
+                    values,
+                    cur_pos_tensor=current_pos,
+                )
+            else:
+                attn_output_1G4D = ttnn.transformer.scaled_dot_product_attention_decode(
+                    q_heads_1BQD,
+                    keys,
+                    values,
+                    cur_pos_tensor=current_pos,
+                    scale=self.scale,
+                    program_config=self.model_config["SDPA_DECODE_PROGCFG"],
+                    compute_kernel_config=self.model_config["SDPA_DECODE_COMPUTE_PROGCFG"],
+                    memory_config=ttnn.DRAM_MEMORY_CONFIG,  # FIXME: why not L1 height sharded e.g. SCORES_BATCHED_MM_OUTPUT_MEMCFG?
+                )
 
         ttnn.deallocate(q_heads_1BQD)
 

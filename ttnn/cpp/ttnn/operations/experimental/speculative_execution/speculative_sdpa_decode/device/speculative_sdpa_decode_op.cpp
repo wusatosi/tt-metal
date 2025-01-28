@@ -220,17 +220,17 @@ void SpeculativeScaledDotProductAttentionDecode::validate(
         const auto B = q_shape[1];
         const auto& priority_tensor = optional_input_tensors.at(3).value();
         TT_FATAL(
-            priority_tensor.get_dtype() == DataType::INT32,
+            priority_tensor.get_dtype() == DataType::UINT32,
             "Expect priority tensor to be INT32, got {}",
             priority_tensor.get_dtype());
         TT_FATAL(
-            priority_tensor.get_layout() == Layout::ROW_MAJOR,
+            priority_tensor.get_layout() == Layout::TILE,
             "Expect priority tensor to be ROW_MAJOR, got {}",
             priority_tensor.get_layout());
         const auto priority_shape = priority_tensor.get_logical_shape();
         ;
         TT_FATAL(
-            (priority_shape[0] == 1) && (priority_shape[1] == 1) && (priority_shape[2] == B) &&
+            (priority_shape[0] == 1) && (priority_shape[1] == 1) && (priority_shape[2] == 32) &&
                 (priority_shape[3] == 32),
             "Expect priority tensor to be [1, 1, B, 32], got {}",
             priority_shape);
@@ -239,17 +239,17 @@ void SpeculativeScaledDotProductAttentionDecode::validate(
         const auto B = q_shape[1];
         const auto& other_priority_tensor = optional_input_tensors.at(4).value();
         TT_FATAL(
-            other_priority_tensor.get_dtype() == DataType::INT32,
-            "Expect priority tensor to be INT32, got {}",
+            other_priority_tensor.get_dtype() == DataType::UINT32,
+            "Expect priority tensor to be UINT32, got {}",
             other_priority_tensor.get_dtype());
         TT_FATAL(
-            other_priority_tensor.get_layout() == Layout::ROW_MAJOR,
+            other_priority_tensor.get_layout() == Layout::TILE,
             "Expect priority tensor to be ROW_MAJOR, got {}",
             other_priority_tensor.get_layout());
         const auto other_priority_shape = other_priority_tensor.get_logical_shape();
         ;
         TT_FATAL(
-            (other_priority_shape[0] == 1) && (other_priority_shape[1] == 1) && (other_priority_shape[2] == B) &&
+            (other_priority_shape[0] == 1) && (other_priority_shape[1] == 1) && (other_priority_shape[2] == 32) &&
                 (other_priority_shape[3] == 32),
             "Expect other priority tensor to be [1, 1, B, 32], got {}",
             other_priority_shape);

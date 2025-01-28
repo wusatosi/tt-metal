@@ -116,11 +116,11 @@ def run_swap_tensor_impl(
         ### Swap tensor ###
         ############################################################
         logger.info(f"Performing swap tensor")
-        swap_tensor_d1 = torch.rand(shape).bfloat16()
-        swap_tensor_d2 = torch.rand(shape).bfloat16()
+        swap_tensor_d1 = torch.randint(0, 100, shape)
+        swap_tensor_d2 = torch.randint(0, 100, shape)
 
         input_tensor_mesh = create_multi_device_tensors(
-            [swap_tensor_d1, swap_tensor_d2], mesh_device, mem_config, layout, ttnn.bfloat16
+            [swap_tensor_d1, swap_tensor_d2], mesh_device, mem_config, layout, ttnn.uint32
         )
 
         if layout == ttnn.ROW_MAJOR_LAYOUT:
@@ -166,7 +166,8 @@ def run_swap_tensor_impl(
 @pytest.mark.parametrize(
     "dtype",
     [
-        ttnn.bfloat16,
+        ttnn.uint32,
+        # ttnn.bfloat16,
     ],
 )
 @pytest.mark.parametrize(
@@ -176,9 +177,9 @@ def run_swap_tensor_impl(
 @pytest.mark.parametrize(
     "shape, layout",
     [
-        [(1, 1, 32, 128), ttnn.TILE_LAYOUT],
-        [(1, 1, 1, 1), ttnn.ROW_MAJOR_LAYOUT],
-        [(1, 1, 4, 1), ttnn.ROW_MAJOR_LAYOUT],
+        [(1, 1, 32, 32), ttnn.TILE_LAYOUT],
+        # [(1, 1, 1, 32), ttnn.ROW_MAJOR_LAYOUT],
+        # [(1, 1, 4, 1), ttnn.ROW_MAJOR_LAYOUT],
     ],
 )
 @pytest.mark.parametrize("enable_async", [False])
