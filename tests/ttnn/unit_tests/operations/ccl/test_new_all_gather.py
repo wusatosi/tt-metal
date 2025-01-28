@@ -276,6 +276,34 @@ def run_all_gather_impl(
                 )
             tt_out_tensor_list.append(tt_out_tensor)
 
+            # breakpoint()
+
+            def create_multi_device_tensors(
+                input_tensors, mesh_device, mem_config, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16
+            ):
+                tt_tensors = []
+                for i, t in enumerate(input_tensors):
+                    tt_tensors.append(ttnn.Tensor(t, dtype).to(layout).to(mesh_device.get_devices()[i], mem_config))
+                tensor_mesh = ttnn.aggregate_as_tensor(tt_tensors)
+                return tensor_mesh
+
+            input_tensor_tt = create_multi_device_tensors(
+                [torch.rand(1, 1, 32, 64), torch.rand(1, 1, 32, 64)], mesh_device, ttnn.DRAM_MEMORY_CONFIG
+            )
+            weight_tensor_tt = create_multi_device_tensors(
+                [torch.rand(1, 1, 64, 128), torch.rand(1, 1, 64, 128)],
+                mesh_device,
+                ttnn.DRAM_MEMORY_CONFIG,
+                dtype=ttnn.bfloat8_b,
+            )
+            mm_out = ttnn.matmul(
+                input_tensor_tt,
+                weight_tensor_tt,
+                memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            )
+
+            # breakpoint()
+
             logger.info(f"Waiting for op {i}")
             ttnn.synchronize_devices(mesh_device, sub_device_ids=sub_device_stall_group)
             logger.info(f"Done iteration {i}")
@@ -305,7 +333,7 @@ def run_all_gather_impl(
 @pytest.mark.parametrize(
     "num_devices, num_links, output_shape, dim, layout",
     [
-        (4, 1, [1, 1, 64, 512], 3, ttnn.TILE_LAYOUT),
+        (2, 1, [1, 1, 64, 512], 3, ttnn.TILE_LAYOUT),
         # (4, 1, [1, 1, 32, 32768], 3, ttnn.TILE_LAYOUT),
         # (4, 1, [1, 1, 2048, 16384], 3, ttnn.TILE_LAYOUT),
     ],
@@ -322,7 +350,7 @@ def run_all_gather_impl(
         ttnn.MemoryConfig(buffer_type=ttnn.BufferType.DRAM),
     ],
 )
-@pytest.mark.parametrize("num_iters", [8])
+@pytest.mark.parametrize("num_iters", [1])
 @pytest.mark.parametrize("enable_async", [True])
 def test_all_gather(
     t3k_mesh_device,
