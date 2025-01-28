@@ -174,10 +174,13 @@ operation::ProgramWithCallbacks untilize_with_halo_multi_core_v2(
     log_debug(tt::LogOp, "out_stick_nbytes = {}", out_stick_nbytes);
     log_debug(tt::LogOp, "input_tensor.buffer()->alignment() = {}", input_tensor.buffer()->alignment());
 
-    // FIXME: Remove this workaround once the alignment is fixed in the allocator:
-    // https://github.com/tenstorrent/tt-metal/pull/13762, ticket: https://github.com/tenstorrent/tt-metal/issues/13609
-    // uint32_t input_buffer_alignment = input_tensor.buffer()->alignment();
-    uint32_t input_buffer_alignment = 32;  // this is a workaround for the issue mentioned above
+    uint32_t input_buffer_alignment = input_tensor.buffer()->alignment();
+    if (device->arch() == tt::ARCH::BLACKHOLE) {
+        // FIXME: Remove this workaround once the alignment is fixed in the allocator:
+        // https://github.com/tenstorrent/tt-metal/pull/13762, ticket:
+        // https://github.com/tenstorrent/tt-metal/issues/13609
+        input_buffer_alignment = 32;  // this is a workaround for the issue mentioned above
+    }
     if (out_stick_nbytes % input_buffer_alignment != 0) {
         aligned_input_nstick_nbytes = tt::round_up(out_stick_nbytes, input_buffer_alignment);
     }
