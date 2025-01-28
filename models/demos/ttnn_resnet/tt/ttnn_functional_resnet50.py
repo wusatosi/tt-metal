@@ -10,7 +10,6 @@ from models.utility_functions import (
     is_wormhole_b0,
     is_blackhole,
     _nearest_y,
-    pad_and_fold_conv_activation_for_unity_stride,
 )
 from typing import List
 from loguru import logger
@@ -794,7 +793,7 @@ class resnet50:
             x = ttnn.reallocate(x)
 
         logger.debug(f"==== Running layer 1 module 1")
-        layer1_module1_input_shape = ttnn.Shape(x.shape.with_tile_padding())
+        layer1_module1_input_shape = ttnn.Shape(x.padded_shape)
 
         reshard = False
         height_shard = True
@@ -852,7 +851,7 @@ class resnet50:
             enable_subblock_padding=True,
         )
 
-        layer2_module1_input_shape = ttnn.Shape(x.shape.with_tile_padding())
+        layer2_module1_input_shape = ttnn.Shape(x.padded_shape)
 
         reshard = not is_wormhole_b0()
         height_shard = True
@@ -962,7 +961,7 @@ class resnet50:
             enable_subblock_padding=False,
         )
 
-        layer3_module1_input_shape = ttnn.Shape(x.shape.with_tile_padding())
+        layer3_module1_input_shape = ttnn.Shape(x.padded_shape)
 
         reshard = is_wormhole_b0()
         height_shard = False
@@ -1117,7 +1116,7 @@ class resnet50:
         # if is_first_run:
         #     reshard = True
 
-        layer4_module1_input_shape = ttnn.Shape(x.shape.with_tile_padding())
+        layer4_module1_input_shape = ttnn.Shape(x.padded_shape)
         if is_blackhole():
             # 104
             grid_size = (13, 8)
@@ -1204,8 +1203,8 @@ class resnet50:
             }
         )
         shard_shape = [
-            x.volume() // x.shape.with_tile_padding()[-1],
-            x.shape.with_tile_padding()[-1] // (grid_size[0] * grid_size[1]),
+            x.volume() // x.padded_shape[-1],
+            x.padded_shape[-1] // (grid_size[0] * grid_size[1]),
         ]
         shard_spec = ttnn.ShardSpec(shard_grid, shard_shape, ttnn.ShardOrientation.ROW_MAJOR)
         width_sharded_mem_config = ttnn.MemoryConfig(
@@ -1235,7 +1234,7 @@ class resnet50:
             ),
         )
 
-        unpadded_shape = x.shape.with_tile_padding()
+        unpadded_shape = x.padded_shape
         padded_shape = [
             unpadded_shape[0],
             unpadded_shape[1],
@@ -1253,10 +1252,10 @@ class resnet50:
         x = self.avgpool(x, memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG)
 
         unpadded_shape_end = [
-            x.shape.with_tile_padding()[0] - 1,
-            x.shape.with_tile_padding()[1] - 1,
+            x.padded_shape[0] - 1,
+            x.padded_shape[1] - 1,
             1 - 1,
-            x.shape.with_tile_padding()[3] - 1,
+            x.padded_shape[3] - 1,
         ]
         x = ttnn.untilize_with_unpadding(
             x, output_tensor_end=unpadded_shape_end, memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG
@@ -1266,13 +1265,13 @@ class resnet50:
             x,
             (
                 1,
-                x.shape.with_tile_padding()[1],
-                self.batch_size * x.shape.with_tile_padding()[2],
-                x.shape.with_tile_padding()[3],
+                x.padded_shape[1],
+                self.batch_size * x.padded_shape[2],
+                x.padded_shape[3],
             ),
         )
 
-        unpadded_shape = x.shape.with_tile_padding()
+        unpadded_shape = x.padded_shape
         padded_shape = [
             unpadded_shape[0],
             unpadded_shape[1],
