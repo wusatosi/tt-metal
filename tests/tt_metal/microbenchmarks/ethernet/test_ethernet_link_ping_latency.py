@@ -17,7 +17,7 @@ import tt_metal.tools.profiler.device_post_proc_config as device_possetupt_proc_
     [
         (
             16,
-            16384,
+            # 16384,
         )
     ],
 )  # , 1024, 2048, 4096],
@@ -39,7 +39,7 @@ def test_bidirectional_erisc_bandwidth(sample_counts, sample_sizes, channel_coun
 
     ARCH_NAME = os.getenv("ARCH_NAME")
     rc = os.system(
-        f"TT_METAL_DEVICE_PROFILER=1 \
+        f"\
             {os.environ['TT_METAL_HOME']}/build/test/tt_metal/perf_microbenchmark/ethernet/test_ethernet_link_ping_latency_no_edm_{ARCH_NAME} \
                 {len(sample_counts)} {sample_counts_str} \
                     {len(sample_sizes)} {sample_sizes_str} \

@@ -38,6 +38,8 @@ FORCE_INLINE void run_loop_iteration(
                 channel_sync_addrs[i]->bytes_sent = 0;
                 channel_sync_addrs[i]->receiver_ack = 0;
 
+                DPRINT << "i: " << i << ENDL();
+
                 // wait for txq to be ready, otherwise we'll
                 // hit a context switch in the send command
                 eth_send_bytes_over_channel_payload_only(
