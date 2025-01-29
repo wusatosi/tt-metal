@@ -138,7 +138,7 @@ class TtLlamaPrefetcherSetup(LightweightModule):
 
     def get_input_tensors(self):
         assert (
-            len(self.tensors) > self.n_tensors
+            len(self.tensors) >= self.n_tensors
         ), f"Expected at least {self.n_tensors} tensors, got {len(self.tensors)}"
 
         return self.tensors[: self.n_tensors] + [self.get_tensor_addrs()]
