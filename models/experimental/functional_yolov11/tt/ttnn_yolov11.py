@@ -525,11 +525,11 @@ class Detect:
         c1 = ttnn.to_layout(c1, layout=ttnn.TILE_LAYOUT)
         c2 = ttnn.to_layout(c2, layout=ttnn.TILE_LAYOUT)
 
-        c1 = anchor - c1  # 0.998
-        c2 = anchor + c2  # 0.997
-
+        c1 = anchor - c1
+        c2 = anchor + c2
         z1 = c2 - c1
         z2 = c1 + c2
+
         z2 = ttnn.div(z2, 2)  # 0.9995
 
         z = ttnn.concat((z2, z1), dim=1)

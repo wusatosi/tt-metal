@@ -82,6 +82,6 @@ def test_yolov11(device, use_program_cache, reset_seeds):
     ttnn_output = ttnn_model(ttnn_input)
 
     ttnn_output = ttnn.to_torch(ttnn_output)
-    ttnn_output = ttnn_output.permute(0, 3, 1, 2)
+    # ttnn_output = ttnn_output.permute(0, 3, 1, 2)
     ttnn_output = ttnn_output.reshape(torch_output.shape)
     assert_with_pcc(torch_output, ttnn_output, 0.99999)
