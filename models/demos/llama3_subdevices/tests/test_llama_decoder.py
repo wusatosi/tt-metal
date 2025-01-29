@@ -151,7 +151,6 @@ def test_llama_decoder_inference(
         prefetcher_setup=prefetcher_setup,
         tt_ccl=tt_ccl,
     )
-    prefetcher_setup.tensors.append(prefetcher_setup.get_tensor_addrs())
 
     seqlen = 1
 
@@ -193,7 +192,7 @@ def test_llama_decoder_inference(
         rot_mats = rope_setup.get_rot_mats(current_pos)
 
         ttnn.dram_prefetcher(
-            prefetcher_setup.tensors,
+            prefetcher_setup.get_input_tensors(),
             num_layers=1,
             global_cb=prefetcher_setup.global_circular_buffer,
         )

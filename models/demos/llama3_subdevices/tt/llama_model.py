@@ -117,9 +117,6 @@ class TtTransformer(LightweightModule):
             tt_ccl=self.tt_ccl,
         )
 
-        # Append the tensor containing all the buffer addresses to the prefetched weights
-        self.prefetcher_setup.tensors.append(self.prefetcher_setup.get_tensor_addrs())
-
     def prepare_inputs_prefill(self, tokens, start_pos=0, page_table=None, chunk_page_table=None):
         """
         Inputs are torch tensors or python types. This function returns ttnn
@@ -341,7 +338,7 @@ class TtTransformer(LightweightModule):
         # Prefetcher
         if mode == "decode" and self.args.is_galaxy:
             garbage_tensor = ttnn.dram_prefetcher(
-                self.prefetcher_setup.tensors,
+                self.prefetcher_setup.get_input_tensors(),
                 num_layers=self.n_layers,
                 global_cb=self.prefetcher_setup.global_circular_buffer,
             )
