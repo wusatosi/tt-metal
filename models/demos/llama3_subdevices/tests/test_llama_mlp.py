@@ -87,8 +87,6 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
         tt_ccl=tt_ccl,
     )
 
-    prefetcher_setup.tensors.append(prefetcher_setup.get_tensor_addrs())
-
     torch_input = torch.randn(1, 1, seq_len, model_args.dim)
     tt_input = ttnn.from_torch(
         torch_input,
@@ -109,7 +107,7 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
 
     logger.info("Run Llama_MLP_PF")
     ttnn.dram_prefetcher(
-        prefetcher_setup.tensors,
+        prefetcher_setup.get_input_tensors(),
         num_layers=1,
         global_cb=prefetcher_setup.global_circular_buffer,
     )
