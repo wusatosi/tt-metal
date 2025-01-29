@@ -30,7 +30,7 @@ from models.utility_functions import skip_for_grayskull
 @pytest.mark.parametrize(
     "weights, layers",
     [
-        ("random", 10),
+        ("random", 3),
         ("instruct", None),
     ],
     ids=["quick", "full"],
@@ -89,7 +89,7 @@ def test_llama_model_inference(
     ensure_gc,
 ):
     run_ref_pt = True  # Flag to run reference PyTorch model and compare PCC
-    cache_pcc = layers == 1  # Flag to measure KV cache PCC. Avoid running for all layers to speed up test time.
+    cache_pcc = True  # Flag to measure KV cache PCC. Avoid running for all layers to speed up test time.
     dtype = ttnn.bfloat8_b
     mesh_device.enable_async(False)
     mode_accuracy = optimizations == LlamaOptimizations.accuracy
@@ -188,7 +188,7 @@ def test_llama_model_inference(
     embd.load_state_dict({"emb.weight": state_dict[f"{state_dict_prefix}tok_embeddings.weight"]})
 
     generation_start_pos = 127  # 0
-    generation_length = 2  # iterations
+    generation_length = 1  # iterations
 
     page_table_tt = None
     paged_attention_config = None

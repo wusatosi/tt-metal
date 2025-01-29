@@ -81,6 +81,7 @@ class TtTransformer(LightweightModule):
                 state_dict=state_dict,
                 weight_cache_path=weight_cache_path,
                 layer_num=i,
+                n_layers=self.n_layers,
                 transformation_mats=self.trans_mats_dict,
                 paged_attention_config=paged_attention_config,
                 use_paged_kv_cache=use_paged_kv_cache,
@@ -348,9 +349,11 @@ class TtTransformer(LightweightModule):
         if mode == "decode" and not self.args.is_galaxy:
             x = ttnn.to_memory_config(x, self.model_config["DECODE_RESIDUAL_MEMCFG"])
 
+        h = None
         for i, layer in enumerate(self.layers):
-            x = layer(
+            x, h = layer(
                 x,
+                h,
                 current_pos,
                 rot_mats,
                 user_id,
@@ -360,12 +363,14 @@ class TtTransformer(LightweightModule):
                 chunk_start_idx=chunk_start_idx,
                 kv_cache=kv_cache[i] if kv_cache is not None else None,
             )
+        ttnn.deallocate(h)
 
         ttnn.deallocate(garbage_tensor)
 
         # Output norm
-        x_norm = self.norm(x, mode=mode)
+        x_norm, res = self.norm(x, res=None, mode=mode)
         x.deallocate(True)
+        res.deallocate(True)
 
         if mode == "decode" and self.args.is_galaxy:
             x = ttnn.to_memory_config(x_norm, self.args.model_config["SHARDED_LM_HEAD_INPUT_RING_MEMCFG"])
