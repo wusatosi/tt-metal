@@ -396,11 +396,14 @@ class TtLlamaAttention(LightweightModule):
         dense_out_dram = ttnn.to_memory_config(dense_out_ttnn, ttnn.DRAM_MEMORY_CONFIG)
         ttnn.deallocate(dense_out_ttnn)
 
-        dense_out_reduced = self.tt_ccl.line_all_reduce(
+        dense_out_reduced_dram = self.tt_ccl.line_all_reduce(
             dense_out_dram, cluster_axis=0, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
         )
 
         ttnn.deallocate(dense_out_dram)
+
+        dense_out_reduced = ttnn.to_memory_config(dense_out_reduced_dram, self.model_config["DECODE_RESIDUAL_MEMCFG"])
+        ttnn.deallocate(dense_out_reduced_dram)
 
         return dense_out_reduced
 

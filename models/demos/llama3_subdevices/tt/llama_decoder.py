@@ -18,6 +18,7 @@ class TtTransformerBlock(LightweightModule):
         dtype,
         state_dict,
         layer_num,
+        n_layers,
         weight_cache_path,
         transformation_mats,
         paged_attention_config=None,
@@ -42,6 +43,7 @@ class TtTransformerBlock(LightweightModule):
         self.model_config = args.get_model_config()
 
         self.layer_num = layer_num
+        self.n_layers = n_layers
 
         self.prefetcher_setup = prefetcher_setup
         self.tt_ccl = tt_ccl
@@ -108,6 +110,7 @@ class TtTransformerBlock(LightweightModule):
     def forward(
         self,
         x: ttnn.Tensor,
+        h: ttnn.Tensor,
         current_pos,
         rot_mats=None,
         user_id=0,
@@ -124,7 +127,8 @@ class TtTransformerBlock(LightweightModule):
             x.memory_config() == skip_mem_cfg
         ), f"decoder input memcfg mismatch: {x.memory_config()} != {skip_mem_cfg}"
         # Norms take fractured inputs and output replicated across devices
-        attn_in = self.attention_norm(x, mode)
+        attn_in, h = self.attention_norm(x, h, mode)
+        # NOTE: donnot deallocate x here as it updated inplace and returns new h
         # Attention takes replicated inputs and produces fractured outputs
 
         # pad attn input
@@ -142,14 +146,9 @@ class TtTransformerBlock(LightweightModule):
             kv_cache=kv_cache,
         )
 
-        # Here x and attn_out are both fractured across devices
-        h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg)
-        ttnn.deallocate(attn_out)
-        x.deallocate(True)
-
         # Norms take fractured inputs and output replicated across devices
 
-        ff_in = self.ff_norm(h, mode)
+        ff_in, h = self.ff_norm(attn_out, h, mode)
         # if TG and mode == "decode":
         #     ff_in = ttnn.to_memory_config(ff_in, memory_config=self.model_config["MLP_ACT_MEMCFG"])
 
@@ -158,8 +157,8 @@ class TtTransformerBlock(LightweightModule):
         ff_in.deallocate(True)
         ff_out = self.feed_forward.forward(ff_in_sharded, mode)
 
-        out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)
-
-        ttnn.deallocate(h)
-        ttnn.deallocate(ff_out)
-        return out  # fractured across devices
+        if self.layer_num == self.n_layers - 1:
+            out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)
+        else:
+            out = ff_out
+        return out, h  # fractured across devices

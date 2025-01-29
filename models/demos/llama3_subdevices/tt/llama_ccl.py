@@ -283,6 +283,7 @@ def tt_distributed_rmsnorm(inp, epsilon, gamma, mesh_device, compute_kernel_conf
 
 def tt_sharded_distributed_rmsnorm(
     inp,
+    res,
     epsilon,
     gamma,
     mesh_device,
@@ -294,7 +295,7 @@ def tt_sharded_distributed_rmsnorm(
     # inp = ttnn.to_memory_config(inp, memory_config=ln_sharded_input_memcfg)
 
     # Run distributed rmsnorm part 1
-    tt_stats = ttnn.rms_norm_pre_all_gather(inp, program_config=ln_sharded_progcfg)
+    tt_stats = ttnn.rms_norm_pre_all_gather(inp, residual_input_tensor=res, program_config=ln_sharded_progcfg)
 
     # All gather stats
     # tt_stats = ttnn.all_gather(
@@ -333,4 +334,4 @@ def tt_sharded_distributed_rmsnorm(
     )
     ttnn.deallocate(tt_global_stats_sharded)
 
-    return tt_out
+    return tt_out, inp
