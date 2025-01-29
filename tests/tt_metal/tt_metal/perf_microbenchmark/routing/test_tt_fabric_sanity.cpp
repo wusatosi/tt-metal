@@ -1516,23 +1516,24 @@ int main(int argc, char **argv) {
 
         // keep the number of test devices even
         // TODO: handle differently for multicast
-        if (num_traffic_devices % 2) {
-            num_traffic_devices++;
-        }
+        if (run_traffic) {
+            if (num_traffic_devices % 2) {
+                num_traffic_devices++;
+            }
 
-        if (num_traffic_devices > num_available_devices) {
-            throw std::runtime_error("Insufficient number of devices available");
-        } else if (default_num_traffic_devices == num_traffic_devices) {
-            num_traffic_devices = num_available_devices;
-        }
+            if (num_traffic_devices > num_available_devices) {
+                throw std::runtime_error("Insufficient number of devices available");
+            } else if (default_num_traffic_devices == num_traffic_devices) {
+                num_traffic_devices = num_available_devices;
+            }
 
-        // validate left and right device IDs
-        if ((default_test_device_id_l != test_device_id_l) && !test_board.is_valid_chip_id(test_device_id_l)) {
-            throw std::runtime_error("Invalid left chip id");
-        }
-        if ((default_test_device_id_r != test_device_id_r) && !test_board.is_valid_chip_id(test_device_id_r)) {
-            throw std::runtime_error("Invalid right chip id");
-        }
+            // validate left and right device IDs
+            if ((default_test_device_id_l != test_device_id_l) && !test_board.is_valid_chip_id(test_device_id_l)) {
+                throw std::runtime_error("Invalid left chip id");
+            }
+            if ((default_test_device_id_r != test_device_id_r) && !test_board.is_valid_chip_id(test_device_id_r)) {
+                throw std::runtime_error("Invalid right chip id");
+            }
 
         // if both left and right device IDs are specified, launch traffic only b/w them
         if ((default_test_device_id_l != test_device_id_l) && (default_test_device_id_r != test_device_id_r)) {
@@ -1555,8 +1556,6 @@ int main(int argc, char **argv) {
         }
 
         std::unordered_map<chip_id_t, std::shared_ptr<test_device_t>> test_devices;
-        std::vector<test_traffic_t> fabric_traffic;
-
         // init test devices from the list of chips
         for (auto& chip_id : test_board.physical_chip_ids) {
             test_devices[chip_id] = std::make_shared<test_device_t>(chip_id, &test_board);
@@ -1686,19 +1685,27 @@ int main(int argc, char **argv) {
             mcast_depth[RoutingDirection::S],   // 27: mcast_s
         };
 
-        std::vector<uint32_t> rx_compile_args = {
-            prng_seed,                  // 0: prng seed
-            data_kb_per_tx,             // 1: total data kb
-            max_packet_size_words,      // 2: max packet size (in words)
-            fabric_command,             // 3: fabric command
-            target_address,             // 4: target address
-            atomic_increment,           // 5: atomic increment
-            test_results_addr,          // 6: test results addr
-            test_results_size,          // 7: test results size in bytes
-            tx_pkt_dest_size_choice,    // 8: pkt dest and size choice
-            tx_skip_pkt_content_gen,    // 9: skip packet validation
-            fixed_async_wr_notif_addr,  // 10: use fixed addr for async wr atomic inc
-        };
+                test_traffic_t traffic(
+                    test_devices[tx_chip_id],
+                    test_devices[rx_chip_id],
+                    num_src_endpoints,
+                    num_dest_endpoints,
+                    target_address,
+                    num_hops,
+                    num_links);
+                fabric_traffic.push_back(traffic);
+
+                if (bidirectional_traffic) {
+                    test_traffic_t traffic_r(
+                        test_devices[rx_chip_id],
+                        test_devices[tx_chip_id],
+                        num_src_endpoints,
+                        num_dest_endpoints,
+                        target_address,
+                        num_hops,
+                        num_links);
+                    fabric_traffic.push_back(traffic_r);
+                }
 
         // TODO: launch traffic kernels
         for (auto& traffic : fabric_traffic) {
@@ -1726,9 +1733,20 @@ int main(int argc, char **argv) {
             traffic.notify_tx_controller();
         }
 
-        // wait for rx kernels to finish
-        for (auto& traffic : fabric_traffic) {
-            traffic.wait_for_rx_workers_to_finish();
+        if (run_traffic) {
+            // notify tx kernels to start transmitting
+            for (auto& traffic : fabric_traffic) {
+                traffic.notify_tx_workers(tx_signal_address);
+            }
+
+            // wait for rx kernels to finish
+            for (auto& traffic : fabric_traffic) {
+                traffic.wait_for_rx_workers_to_finish();
+            }
+        }
+
+        if (!run_traffic) {
+            log_info("Sending termination signal");
         }
         // terminate fabric routers
         for (auto& [chip_id, test_device] : test_devices) {
@@ -1745,11 +1763,13 @@ int main(int argc, char **argv) {
         std::chrono::duration<double> elapsed_seconds = (end-start);
         log_info(LogTest, "Ran in {:.2f}us", elapsed_seconds.count() * 1000 * 1000);
 
-        // collect traffic results
-        for (auto& traffic : fabric_traffic) {
-            pass &= traffic.collect_results(test_results_addr);
-            if (!pass) {
-                log_fatal(LogTest, "Result collection failed\n");
+        if (run_traffic) {
+            // collect traffic results
+            for (auto& traffic : fabric_traffic) {
+                pass &= traffic.collect_results(test_results_addr);
+                if (!pass) {
+                    log_fatal(LogTest, "Result collection failed\n");
+                }
             }
         }
 
@@ -1773,18 +1793,20 @@ int main(int argc, char **argv) {
         // close devices
         test_board.close_devices();
 
-        // tally-up the packets and words from tx/rx kernels
-        for (auto& traffic : fabric_traffic) {
-            pass &= traffic.validate_results();
-            if (!pass) {
-                log_fatal(LogTest, "Result validation failed\n");
-            }
-        }
-
-        // print results
-        if (pass) {
+        if (run_traffic) {
+            // tally-up the packets and words from tx/rx kernels
             for (auto& traffic : fabric_traffic) {
-                traffic.print_result_summary();
+                pass &= traffic.validate_results();
+                if (!pass) {
+                    log_fatal(LogTest, "Result validation failed\n");
+                }
+            }
+
+            // print results
+            if (pass) {
+                for (auto& traffic : fabric_traffic) {
+                    traffic.print_result_summary();
+                }
             }
         }
 
