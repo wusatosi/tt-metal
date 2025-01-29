@@ -145,6 +145,7 @@ def test_llama_decoder_inference(
         dtype=dtype,
         state_dict=state_dict,
         layer_num=0,
+        n_layers=model_args.n_layers,
         weight_cache_path=model_args.weight_cache_path(dtype),
         transformation_mats=transformation_mats,
         paged_attention_config=paged_attention_config,
@@ -199,8 +200,10 @@ def test_llama_decoder_inference(
         mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
 
         # Run TT model
-        tt_out = tt_model(
+        res = None
+        tt_out, res = tt_model(
             decode_input,
+            res,
             current_pos_tensor,
             rot_mats=rot_mats,
             mode="decode",
