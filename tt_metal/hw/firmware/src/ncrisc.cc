@@ -19,6 +19,8 @@
 #include "debug/stack_usage.h"
 // clang-format on
 
+#define NCRISC_FIRMWARE_IN_IRAM (defined(ARCH_GRAYSKULL))
+
 uint32_t halt_stack_ptr_save;
 
 tt_l1_ptr mailboxes_t *const mailboxes = (tt_l1_ptr mailboxes_t *)(MEM_MAILBOX_BASE);
@@ -59,13 +61,13 @@ extern "C" void ncrisc_resume(void);
 extern "C" void notify_brisc_and_halt(uint32_t status);
 
 inline __attribute__((always_inline)) void set_ncrisc_resume_addr() {
-#ifdef NCRISC_HAS_IRAM
+#if NCRISC_FIRMWARE_IN_IRAM
     mailboxes->ncrisc_halt.resume_addr = (uint32_t)ncrisc_resume;
 #endif
 }
 
 inline __attribute__((always_inline)) void notify_brisc_and_wait() {
-#ifdef NCRISC_HAS_IRAM
+#if NCRISC_FIRMWARE_IN_IRAM
     notify_brisc_and_halt(RUN_SYNC_MSG_DONE);
 #else
     while (*ncrisc_run != RUN_SYNC_MSG_GO) {
@@ -75,7 +77,7 @@ inline __attribute__((always_inline)) void notify_brisc_and_wait() {
 }
 
 inline __attribute__((always_inline)) void signal_ncrisc_completion() {
-#ifndef NCRISC_HAS_IRAM
+#if !NCRISC_FIRMWARE_IN_IRAM
     *ncrisc_run = RUN_SYNC_MSG_DONE;
 #endif
 }

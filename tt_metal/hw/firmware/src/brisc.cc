@@ -302,7 +302,7 @@ inline void deassert_ncrisc_trisc() {
 }
 
 inline __attribute__((always_inline)) void wait_for_ncrisc_to_halt() {
-#ifdef NCRISC_HAS_IRAM
+#if NCRISC_FIRMWARE_IN_IRAM
     WAYPOINT("INW");
     while (mailboxes->slave_sync.dm1 != RUN_SYNC_MSG_DONE);
     WAYPOINT("IND");
@@ -310,13 +310,13 @@ inline __attribute__((always_inline)) void wait_for_ncrisc_to_halt() {
 }
 
 inline __attribute__((always_inline)) void reset_ncrisc_with_iram() {
-#ifdef NCRISC_HAS_IRAM
+#if NCRISC_FIRMARE_IN_IRAM
     assert_just_ncrisc_reset();
 #endif
 }
 
 inline void set_ncrisc_kernel_resume_deassert_address() {
-#ifdef NCRISC_HAS_IRAM
+#if NCRISC_FIRMWARE_IN_IRAM
     volatile tt_reg_ptr uint32_t* cfg_regs = core.cfg_regs_base(0);
     WAYPOINT("INRW");
     while (mailboxes->ncrisc_halt.resume_addr == 0);
@@ -333,11 +333,10 @@ inline void run_triscs(dispatch_core_processor_masks enables) {
 
 inline void finish_ncrisc_copy_and_run(dispatch_core_processor_masks enables) {
     if (enables & DISPATCH_CLASS_MASK_TENSIX_ENABLE_DM1) {
+        l1_to_ncrisc_iram_copy_wait();
         mailboxes->slave_sync.dm1 = RUN_SYNC_MSG_GO;
 
-        l1_to_ncrisc_iram_copy_wait();
-
-#ifdef NCRISC_HAS_IRAM
+#if NCRISC_FIRMWARE_IN_IRAM
         // Note: only ncrisc is in reset, so just deasserts ncrisc
         deassert_all_reset();
 #endif
