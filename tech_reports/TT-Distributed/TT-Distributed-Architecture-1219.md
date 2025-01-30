@@ -1,6 +1,8 @@
 # TT-Metalium Distributed
 
-Authors: Joseph Chu (jchu@tenstorrent.com), Aditya Saigal (asaigal@tenstorrent.com)
+Authors: TT-Metalium Scale-Out Team
+
+For questions and comments please use the [TT-Metalium Scale-Out Discord Server](https://discord.com/channels/863154240319258674/1321621251269328956)
 
 ## Architecture Specification
 
@@ -58,9 +60,9 @@ Version 1.0
 
 This document presents a specification for **TT-Mesh** and **TT-Distributed**, Tenstorrent’s scale-up and scale-out infrastructure to natively support workloads on multiple Tenstorrent hardware accelerators, potentially spanning multiple host servers.
 
-TT-Metalium provides a flexible programming model over a mesh of Tensix cores. The TT-Mesh and TT-Distributed layers, built on top of TT-Fabric, extend this programming model to a grid of Tensix cores spanning multiple devices connected over ethernet and controlled by multiple host processors. Through this, users are exposed to the same programming model as a single-chip, when systems are scaled-out.
+TT-Metalium provides a flexible programming model over a mesh of Tensix cores. The TT-Mesh and TT-Distributed layers, built on top of TT-Fabric, extend this programming model to a grid of Tensix cores spanning multiple devices connected over ethernet and controlled by multiple host processors. Through this, users are exposed to the same programming model as a single device, when systems are scaled-out.
 
-This infrastructure exposes a multi-chip system as a large virtual device with a distributed memory space and a set of programmable Tensix cores. Unlike conventional architectures, programming cores distributed over multiple host machines will not fundamentally alter the programming model.
+The key idea is to present a multi-device multi-host system as: 1) a large virtual device that has, 2) a distributed shared memory space, and 3) a set of programmable Tensix cores. Unlike conventional architectures, programming cores distributed over multiple devices or multiple host machines will not fundamentally alter the programming model.
 
 ![A diagram of a computer Description automatically generated](images/image001.png)
 
@@ -296,7 +298,6 @@ class MeshDevice {
 
    // - Common Interface between {Device, MeshDevice}
    uint32_t get_num_worker_cores() const;
-   uint32_t get_l1_small_size();
    int num_dram_channels() const;
    uint32_t l1_size_per_core() const;
    uint32_t dram_size_per_channel() const;
@@ -408,84 +409,56 @@ The figure below displays the MeshBuffer abstraction and how it interfaces with 
 The hierarchical nature of the MeshBuffer can be exposed through the following data-structures presented in this section.
 
 ```cpp
-// Data structure to specify how a buffer is laid out across Memory Banks within a single device
-struct DeviceLocalLayoutConfig {
-    DeviceAddr page_size;
+// Specifies how a buffer is laid out across Memory Banks within a single device.
+struct DeviceLocalBufferConfig {
+    DeviceAddr page_size = 0;
 
-    // Can be INTERLEAVED, HEIGHT_SHARDED, WIDTH_SHARDED or BLOCK_SHARDED
+    // Can be DRAM, L1, SYSTEM_MEMORY, L1_SMALL, TRACE.
+    BufferType buffer_type = BufferType::DRAM;
+
+    // Can be INTERLEAVED, HEIGHT_SHARDED, WIDTH_SHARDED or BLOCK_SHARDED.
     TensorMemoryLayout buffer_layout = TensorMemoryLayout::INTERLEAVED;
 
-    // Must be set for sharded buffer layouts
-    ShardSpecBuffer shard_parameters;
+    // Must be set for sharded buffer layouts.
+    std::optional<ShardSpecBuffer> shard_parameters;
 
-    // The direction in which memory for this buffer is allocated
-    bool bottom_up_;
+    // The direction in which memory for this buffer is allocated.
+    bool bottom_up = false;
 };
 
-class ShardIndex {
-public:
-    explicit ShardIndex(uint64_t value) : value_(value) {}
-
-    uint64_t value() const { return value_; }
-
-    bool operator==(const ShardIndex& other) const {
-        return value_ == other.value_;
-    }
-
-private:
-    uint64_t value_;
-};
-
-struct ShardMap {
-    std::vector<DeviceHandle> shard_to_device;
-};
-
-// When constructing a DistributedBuffer that must be sharded across a Virtual Mesh,
-// this config object can be used to fully specify the memory layout in the distributed memory space
-struct ShardedBufferConfig {
-    // MeshDevice the Distributed Buffer will be constructed on
-    DeviceHandle mesh_device;
-
-    // L1, DRAM, L1_SMALL, TRACE
-    BufferType buffer_type;
-
-    // For sharding, the global shape is needed: metal-level, we expect aligned shapes
-    Shape2D global_buffer_shape;
-
-    // For sharding the shard shape is needed: metal-level, we expect aligned shapes
-    Shape2D distributed_shard_shape;
-
-    // Optional mapping from shard to device, allows targetting specific devices when writing data
-    std::optional<ShardMap> distributed_shard_map;
-
-    // The total size of the buffer. A fraction of this size will be reserved across all devices in the Virtual Mesh
-    DeviceAddr global_buffer_size;
-
-    // Specifies how each shard is laid out across Memory Banks on a single device
-    DeviceLocalLayoutConfig device_shard_layout;
-};
-
-// When constructing a DistributedBuffer that must be replicated across a Virtual Mesh,
-// this config object can be used to fully specify the memory layout in the distributed memory space
+// Specifies MeshBuffer that is replicated across the virtual mesh.
 struct ReplicatedBufferConfig {
-    // MeshDevice the Distributed Buffer will be constructed on
-    DeviceHandle mesh_device;
-
-    // L1, DRAM, L1_SMALL, TRACE
-    BufferType buffer_type;
-
-    // The total size of the buffer. A fraction of this size will be reserved across all devices in the Virtual Mesh
-    DeviceAddr global_buffer_size;
-
-    // Specifies how each replicated shard is laid out across Memory Banks on a single device
-    DeviceLocalLayoutConfig device_shard_layout;
+    // Each device will get a buffer of this size.
+    DeviceAddr size = 0;
 };
 
-// Handle to generic BufferConfig
-using DistributedBufferConfig = std::variant<ShardedBufferConfig, ReplicatedBufferConfig>;
+// Specifies sharded MeshBuffer.
+struct ShardedBufferConfig {
+    // Global buffer size. Each device will get a fraction of this size.
+    DeviceAddr global_size = 0;
+
+    // Global shape of the buffer; at metal-level, we expect the shape to be aligned with the mesh shape.
+    // TODO: Consider a 2D shape class.
+    std::pair<size_t, size_t> global_buffer_shape = {0, 0};
+
+    // Shard shape, sent to each device.
+    // TODO: Consider a 2D shape class.
+    std::pair<size_t, size_t> shard_shape = {0, 0};
+
+    // Orientation of the shards in a mesh.
+    ShardOrientation shard_orientation = ShardOrientation::ROW_MAJOR;
+
+    // Computes the number of bytes per datum in the sharded buffer.
+    uint32_t compute_datum_size_bytes() const {
+        return global_size / (global_buffer_shape.first * global_buffer_shape.second);
+    }
+};
+
+enum class MeshBufferLayout : uint8_t { REPLICATED, SHARDED };
+using MeshBufferConfig = std::variant<ReplicatedBufferConfig, ShardedBufferConfig>;
 
 // The main memory management class exposed by TT-Mesh
-struct DistributedBuffer {
+class MeshBuffer {
 private:
     // Mesh Allocator provides an address
     BufferAddress address_;
@@ -494,11 +467,11 @@ private:
     BufferSize size_in_bytes_;
 
     // Memory layout across the Virtual Mesh distributed address space
-    DistributedBufferConfig distributed_config_;
+    MeshBufferConfig mesh_buffer_config_;
 
 public:
     // DistributedBuffer construction leads to an allocation
-    static DistributedBuffer create(const DistributedBufferConfig& config);
+    static MeshBuffer create(const MeshBufferConfig& config, const DeviceLocalBufferConfig& device_local_config, MeshDevice* mesh_device);
 
     DeviceHandle get_mesh_device();
     DeviceAddr address();
@@ -1016,8 +989,8 @@ Below, we include snippets from both the TT-Mesh and TT-Metal examples to illust
 MeshConfig mesh_config_0 = MeshConfig{.shape = virtual_mesh_shape, .offset = {0, 0}, .type=mesh_type};
 MeshConfig mesh_config_1 = MeshConfig{.shape = virtual_mesh_shape, .offset = {0, 4}, .type=mesh_type};
 
-DeviceHandle virtual_mesh_0 = CreateMeshDevice(mesh_config_0, DEFAULT_L1_SMALL_SIZE, DEFAULT_TRACE_REGION_SIZE, 1 /* num_command_queues */);
-DeviceHandle virtual_mesh_1 = CreateMeshDevice(mesh_config_1, DEFAULT_L1_SMALL_SIZE, DEFAULT_TRACE_REGION_SIZE, 1 /* num_command_queues */);
+DeviceHandle virtual_mesh_0 = CreateMeshDevice(mesh_config_0, 2 /* num_command_queues */, DEFAULT_L1_SMALL_SIZE, DEFAULT_TRACE_REGION_SIZE);
+DeviceHandle virtual_mesh_0 = CreateMeshDevice(mesh_config_1, 2 /* num_command_queues */, DEFAULT_L1_SMALL_SIZE, DEFAULT_TRACE_REGION_SIZE);
 ```
 
 *Directly create raw handles to two Devices.*
