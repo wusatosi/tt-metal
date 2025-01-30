@@ -49,7 +49,7 @@ volatile tt_l1_ptr fabric_router_l1_config_t* routing_table =
     reinterpret_cast<tt_l1_ptr fabric_router_l1_config_t*>(eth_l1_mem::address_map::FABRIC_ROUTER_CONFIG_BASE);
 uint64_t xy_local_addr;
 
-#define SWITCH_THRESHOLD 0x3FF
+#define SWITCH_THRESHOLD 0x3FFF
 
 inline void notify_gatekeeper() {
     // send semaphore increment to gatekeeper on this device.
@@ -128,81 +128,45 @@ void kernel_main() {
 
     write_kernel_status(kernel_status, PQ_TEST_MISC_INDEX, 0xff000001);
     uint32_t loop_count = 0;
-    uint32_t total_words_procesed = 0;
 
     while (1) {
+        // Handle Ethernet Outbound Data
         if (!fvc_req_buf_is_empty(fvc_consumer_req_buf) && fvc_req_valid(fvc_consumer_req_buf)) {
             uint32_t req_index = fvc_consumer_req_buf->rdptr.ptr & CHAN_REQ_BUF_SIZE_MASK;
             chan_request_entry_t* req = (chan_request_entry_t*)fvc_consumer_req_buf->chan_req + req_index;
             pull_request_t* pull_req = &req->pull_request;
-            bool can_pull = !fvc_consumer_state.sync_buf_full() && !fvc_consumer_state.sync_pending;
             if (req->bytes[47] == FORWARD) {
                 // Data is packetized.
-                if (can_pull) {
-                    pull_data_to_fvc_buffer(pull_req, &fvc_consumer_state);
-                }
-                if (!fvc_consumer_state.sync_buf_empty()) {
-                    noc_async_read_barrier();
-                    if (fvc_consumer_state.pull_words_in_flight) {
-                        // send words cleared count to producer/sender of pull request.
-                        update_pull_request_words_cleared(pull_req);
-                        fvc_consumer_state.pull_words_in_flight = 0;
-                    }
-                }
-
-            } else if (req->bytes[47] == INLINE_FORWARD) {
-                if (can_pull) {
-                    move_data_to_fvc_buffer(pull_req, &fvc_consumer_state);
+                pull_data_to_fvc_buffer(pull_req, &fvc_consumer_state);
+                if (fvc_consumer_state.packet_words_remaining == 0 ||
+                    fvc_consumer_state.pull_words_in_flight >= FVC_SYNC_THRESHOLD) {
+                    fvc_consumer_state.total_words_to_forward += fvc_consumer_state.pull_words_in_flight;
                     fvc_consumer_state.pull_words_in_flight = 0;
+                    fvc_consumer_state.forward_data_from_fvc_buffer<true>();
+                    // noc_async_read_barrier();
+                    update_pull_request_words_cleared(pull_req);
                 }
+            } else if (req->bytes[47] == INLINE_FORWARD) {
+                move_data_to_fvc_buffer(pull_req, &fvc_consumer_state);
             }
 
-            // Flush all sync entries here.
-            // There can be a previous pending sync entry plus another one
-            // from current inovcation of pull_data_to_fvc_buffer()
-            // current invocatoin may still result in sync pending,
-            // while previous sync pending has been serviced and pushed to sync buf
-            while (!fvc_consumer_state.sync_buf_empty()) {
-                if (fvc_consumer_state.forward_data_from_fvc_buffer<true>() == 0) {
-                    // not able to forward any data over ethernet.
-                    // should break and retry.
-                    break;
-                }
-            }
-            if (!fvc_consumer_state.check_sync_pending()) {
-                if (fvc_consumer_state.packet_in_progress == 1 and fvc_consumer_state.packet_words_remaining == 0) {
-                    // clear the flags field to invalidate pull request slot.
-                    // flags will be set to non-zero by next requestor.
-                    req_buf_advance_rdptr((chan_req_buf*)fvc_consumer_req_buf);
-                    fvc_consumer_state.packet_in_progress = 0;
-                }
+            if (fvc_consumer_state.packet_in_progress == 1 and fvc_consumer_state.packet_words_remaining == 0) {
+                // clear the flags field to invalidate pull request slot.
+                // flags will be set to non-zero by next requestor.
+                req_buf_advance_rdptr((chan_req_buf*)fvc_consumer_req_buf);
+                fvc_consumer_state.packet_in_progress = 0;
             }
             loop_count = 0;
         }
 
-        // if (!fvc_consumer_state.sync_buf_empty()) {
-        if (fvc_req_buf_is_empty(fvc_consumer_req_buf)) {
-            noc_async_read_barrier();
-            while (!fvc_consumer_state.sync_buf_empty()) {
-                if (fvc_consumer_state.forward_data_from_fvc_buffer<true>() == 0) {
-                    // not able to forward any data over ethernet.
-                    // should break and retry.
-                    break;
-                }
-            }
+        if (fvc_consumer_state.total_words_to_forward) {
+            fvc_consumer_state.forward_data_from_fvc_buffer<false>();
         }
-        //}
 
+        // Handle Ethernet Inbound Data
         fvc_producer_state.update_remote_rdptr_sent();
         if (fvc_producer_state.get_curr_packet_valid()) {
-#ifdef TT_FABRIC_DEBUG
-            if (total_words_procesed == 0) {
-                start_timestamp = get_timestamp();
-            }
-            total_words_procesed += fvc_producer_state.process_inbound_packet();
-#else
             fvc_producer_state.process_inbound_packet();
-#endif
             loop_count = 0;
         } else if (fvc_producer_state.packet_corrupted) {
             write_kernel_status(kernel_status, PQ_TEST_STATUS_INDEX, PACKET_QUEUE_TEST_BAD_HEADER);
@@ -227,8 +191,6 @@ void kernel_main() {
         }
     }
     uint64_t cycles_elapsed = fvc_producer_state.packet_timestamp - start_timestamp;
-
-    DPRINT << "Router words processed " << total_words_procesed << ENDL();
 
     write_kernel_status(kernel_status, PQ_TEST_MISC_INDEX, 0xff000002);
 
