@@ -117,7 +117,7 @@ NlpCreateHeadsDeviceOperation::spec_return_value_t NlpCreateHeadsDeviceOperation
     }
 
     const auto& input_tensor = tensor_args.input_tensor_q;
-    const auto input_shape = input_tensor.get_padded_shape();
+    const auto input_shape = input_tensor.get_logical_shape();
 
     auto sequence_length = input_shape[2];
     auto head_dim = operation_attributes.head_dim;
