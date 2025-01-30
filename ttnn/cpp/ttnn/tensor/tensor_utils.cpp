@@ -17,6 +17,10 @@ const ttnn::SimpleShape infer_dims_for_reshape(const Tensor& tensor, tt::stl::Sp
     int64_t new_volume = 1;
     int64_t index_of_negative_1 = -1;
     bool has_zero = false;
+    if (shape.size() == 0) {
+        ttnn::SmallVector<uint32_t> new_shape(0);
+        return ttnn::SimpleShape(std::move(new_shape));
+    }
     for (auto index = 0; index < shape.size(); ++index) {
         if (shape[index] == -1) {
             if (index_of_negative_1 != -1) {

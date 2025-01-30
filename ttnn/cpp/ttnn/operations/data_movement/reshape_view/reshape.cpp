@@ -306,10 +306,19 @@ ttnn::Tensor ReshapeViewOperation::invoke(
     MemoryConfig mem_config = memory_config.value_or(tensor.memory_config());
     auto layout = tensor.get_layout();
     auto tensor_shape = tensor.get_shape();
+    if (input_shape.rank() == 0) {
+        TT_FATAL(tensor.get_logical_volume() == 1, "Shape is 0D, but tensor's volume is not 1");
+        return ttnn::experimental::view(tensor, input_shape);
+    }
     const ttnn::Shape shape = shape_corrector(tensor, input_shape);
     // First Case, No reshape Required
     if (tensor_shape == shape) {
         return tensor;
+    }
+    if (tensor_shape.rank() == 0) {
+        printf("Here\n");
+        TT_FATAL(shape.logical_shape().volume() == 1, "Tensor is 0D, but shape's volume is not 1");
+        return ttnn::experimental::view(tensor, shape);
     }
     PadValue default_pad_value;
     if (tensor.get_dtype() == DataType::BFLOAT8_B or tensor.get_dtype() == DataType::BFLOAT16 or
@@ -319,10 +328,8 @@ ttnn::Tensor ReshapeViewOperation::invoke(
         default_pad_value = (uint32_t)0;
     }
 
-    //const uint32_t tile_first_dim =tensor.get_tile().get_width();
-    //const uint32_t tile_second_dim =tensor.get_tile().get_height();
-    const uint32_t tile_first_dim = 32;
-    const uint32_t tile_second_dim = 32;
+    const uint32_t tile_first_dim = tensor.tensor_spec().tile().get_width();
+    const uint32_t tile_second_dim = tensor.tensor_spec().tile().get_height();
     //The following case should only be called for the device storage case, the rest is a bandaid
     //for issue 15317
 

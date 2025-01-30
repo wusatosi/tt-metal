@@ -144,6 +144,19 @@ def test_reshape_cw_mul2_rm(device, n, c, h, w):
     assert torch.allclose(torch_output_tensor, output_tensor)
 
 
+def test_reshape_0_dim(device):
+    torch_input_tensor = torch.tensor(0)
+
+    input_tensor = ttnn.from_torch(
+        torch_input_tensor, layout=ttnn.ROW_MAJOR_LAYOUT, device=device, memory_config=ttnn.L1_MEMORY_CONFIG
+    )
+
+    output_tensor = ttnn.reshape(input_tensor, (1, 1, 1))
+    output_tensor = ttnn.to_torch(output_tensor)
+    torch_output_tensor = torch_input_tensor.reshape(1, 1, 1)
+    assert_with_pcc(torch_output_tensor, output_tensor, 0.9999)
+
+
 @pytest.mark.parametrize("n", [16])
 @pytest.mark.parametrize("c", [128])
 @pytest.mark.parametrize("h", [128])
