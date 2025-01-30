@@ -87,7 +87,12 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < 64; i++) regfile[i] = 0;
 
     reset_cfg_state_id();
-
+    //DPRINT << "trisc run: " << trisc_run << ENDL();
+#if defined(COMPILE_FOR_TRISC) && COMPILE_FOR_TRISC == 0
+    (*(volatile uint*)0x15200) = (uint)0;
+    (*(volatile uint*)0x15204) = (uint)0;
+#endif
+    //print("trisc run: %d", trisc_run);
     // Cleanup profiler buffer incase we never get the go message
     while (1) {
         WAYPOINT("W");
@@ -121,6 +126,7 @@ int main(int argc, char *argv[]) {
         int index = static_cast<std::underlying_type<TensixProcessorTypes>::type>(TensixProcessorTypes::MATH0) + thread_id;
         void (*kernel_address)(uint32_t) = (void (*)(uint32_t))
             (kernel_config_base + launch_msg->kernel_config.kernel_text_offset[index]);
+        (*(volatile uint*)0x15200) = (uint32_t)kernel_address;
         (*kernel_address)((uint32_t)kernel_address);
         RECORD_STACK_USAGE();
         WAYPOINT("D");
@@ -128,5 +134,6 @@ int main(int argc, char *argv[]) {
         // Signal completion
         tensix_sync();
         *trisc_run = RUN_SYNC_MSG_DONE;
+        (*(volatile uint*)0x15204) = (*(volatile uint*)0x15204) + 1;
     }
 }

@@ -199,6 +199,11 @@ void MAIN {
                                 // accumulation is done by iterating matmul_block across inner dim
                                 // in0_block_w is passed as innder dim (kt) to matmul_block, interally used to stride
                                 // in0
+                                // for (int i = 0l; i < 5; i++)
+                                // {
+                                //     TTI_NOP;
+                                // }
+
                                 matmul_block(
                                     in0_cb_id,
                                     in1_cb_id,
