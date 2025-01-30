@@ -64,7 +64,7 @@ tt::tt_metal::Tensor moreh_matmul(
 }
 
 void test_linear(uint32_t batch, uint32_t vocab_size, uint32_t seq_length, uint32_t embedding_dim, bool moreh = false) {
-    ttml::autograd::ctx().set_seed(322);
+    ttml::autograd::ctx().set_seed(323);
 
     auto* device = &ttml::autograd::ctx().get_device();
     auto tensor = ttml::autograd::create_tensor();
@@ -94,33 +94,31 @@ void test_linear(uint32_t batch, uint32_t vocab_size, uint32_t seq_length, uint3
     std::cout << "x_tensor shape: " << xt::adapt(x_tensor.shape()) << std::endl;
     std::cout << "x_weight shape: " << xt::adapt(x_weight.shape()) << std::endl;
     xt::xarray<float> golden = xt::linalg::dot(x_tensor, x_weight);
-    golden.reshape({batch, 1, seq_length, vocab_size});
+    x_res.reshape({batch * seq_length, vocab_size});
     std::cout << "golden shape: " << xt::adapt(golden.shape()) << std::endl;
-    for (int i = 0; i < batch; i++) {
-        auto x_res_c = xt::view(x_res, i, xt::all(), xt::all(), xt::all());
-        auto golden_c = xt::view(golden, i, xt::all(), xt::all(), xt::all());
+    for (int i = 0; i < batch * seq_length; i++) {
+        auto x_res_c = xt::view(x_res, i, xt::all());
+        auto golden_c = xt::view(golden, i, xt::all());
         auto x_norm_res = xt::sum(xt::pow(x_res_c, 2.0F));
         auto x_norm_golden = xt::sum(xt::pow(golden_c, 2.0F));
-        auto diff_norm = xt::sum(xt::pow(x_res_c - golden_c, 2.0F));
-        std::cout << "Batch " << i << std::endl;
-        std::cout << "norm res: " << x_norm_res << std::endl;
-        std::cout << "norm golden: " << x_norm_golden << std::endl;
-        std::cout << "diff norm: " << diff_norm << std::endl;
-        std::cout << "res min and max " << xt::amin(x_res_c) << " " << xt::amax(x_res_c) << std::endl;
-        std::cout << "golden min and max " << xt::amin(golden_c) << " " << xt::amax(golden_c) << std::endl;
+        float diff_norm = xt::sum(xt::pow(x_res_c - golden_c, 2.0F))();
+        // std::cout << "Batch " << i << std::endl;
+        // std::cout << "norm res: " << x_norm_res << std::endl;
+        // std::cout << "norm golden: " << x_norm_golden << std::endl;
+        // std::cout << "diff norm: " << diff_norm << std::endl;
+        // auto diff = x_res_c - golden_c;
+        // std::cout << "diff min and max " << xt::amin(diff) << " " << xt::amax(diff) << std::endl;
 
-        std::cout << x_res_c << std::endl;
-        std::cout << golden_c << std::endl;
-
-        EXPECT_TRUE(xt::allclose(x_res_c, golden_c, /*rtol=*/1e-3, /*atol=*/1e-2));
+        EXPECT_NEAR(diff_norm, 0.0F, 0.005F) << "Batch " << i << " norm res: " << x_norm_res
+                                             << " norm golden: " << x_norm_golden << " diff norm: " << diff_norm;
     }
 }
 
 TEST_F(LinearOpTest, TTNNLinearOpCrash) {
-    uint32_t dim = 32;
+    uint32_t dim = 768;
     uint32_t batch = 4;  // it works with batch = 1, please try to check from 4 to 64
     uint32_t seq_length = 1024;
-    uint32_t embedding_dim = 768;
-    bool moreh = false;
+    uint32_t embedding_dim = 4096 * 4;
+    bool moreh = true;
     test_linear(batch, dim, seq_length, embedding_dim, moreh);
 }
