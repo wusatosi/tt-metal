@@ -370,7 +370,7 @@ class TtTransformer(LightweightModule):
         # Output norm
         x_norm, res = self.norm(x, res=None, mode=mode)
         x.deallocate(True)
-        res.deallocate(True)
+        # res.deallocate(True)
 
         if mode == "decode" and self.args.is_galaxy:
             x = ttnn.to_memory_config(x_norm, self.args.model_config["SHARDED_LM_HEAD_INPUT_RING_MEMCFG"])
