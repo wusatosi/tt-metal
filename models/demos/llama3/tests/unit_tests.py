@@ -6,18 +6,23 @@ import torch
 import torch.nn as nn
 
 import ttnn
-from models.demos.llama3.tt.llama_mlp import TtLlamaMLP
 from models.demos.llama3.tt.model_config import TtModelArgs
+
+# TTNN Modules
+import models.demos.llama3.tt.llama_common as llama_common
+from models.demos.llama3.tt.llama_mlp import TtLlamaMLP
+from models.demos.llama3.tt.llama_attention import TtLlamaAttention
+
+# Reference Modules
 from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import FeedForward
+from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import Attention
+
+# Utils
 from models.utility_functions import (
     comp_pcc,
     comp_allclose,
 )
 from models.utility_functions import skip_for_grayskull
-from models.utility_functions import (
-    comp_pcc,
-    comp_allclose,
-)
 from loguru import logger
 import os
 
@@ -25,14 +30,17 @@ import os
 @torch.no_grad()
 @skip_for_grayskull("Requires wormhole_b0 to run")
 @pytest.mark.parametrize(
-    "input_shape, output_shape, module_class, ref_module_class",
+    "input_shape, output_shape, module_class, ref_module_class, max_seq_len, batch_size",
     [
-        ((1, 1, 32, 2048), (1, 1, 32, 2048), TtLlamaMLP, FeedForward),
+        ((1, 1, 32, 2048), (1, 1, 32, 2048), TtLlamaMLP, FeedForward, 128, 1),
+        # ((1, 1, 32, 2048), (1, 1, 32, 2048), TtLlamaAttention, Attention, 128, 1),  # TODO
     ],
 )
-def test_module_output_shape(input_shape, output_shape, module_class, ref_module_class, mesh_device, reset_seeds):
+def test_llama_unit(
+    input_shape, output_shape, module_class, ref_module_class, max_seq_len, batch_size, mesh_device, reset_seeds
+):
     """
-    Test if the output shape of the module matches the expected output shape.
+    Llama3 unit tests.
 
     Args:
         input_shape (tuple): Shape of the input tensor (e.g., (batch_size, channels, height, width)).
@@ -40,52 +48,29 @@ def test_module_output_shape(input_shape, output_shape, module_class, ref_module
         module_class (torch.nn.Module): The module class to evaluate.
     """
 
-    # TODO Add program cache
-    # TODO Add async
     mesh_device.enable_program_cache()
     mesh_device.enable_async(True)
 
+    # parametrize
     dtype = ttnn.bfloat8_b
     mode = "decode"
 
     ### INIT MODEL ARGS
 
-    # TODO Automate the input tt tensor creation
-    # TODO Use dummy weights
-
-    # TODO Pass model args
+    # Load the model args
     model_args = TtModelArgs(
         mesh_device,
         dummy_weights=True,
         # optimizations=optimizations,  # TODO Add this
-        max_seq_len=128,  # TODO parametrize
-        max_batch_size=1,  # TODO parametrize
+        max_seq_len=max_seq_len,
+        max_batch_size=batch_size,
     )
     model_args.n_layers = 1  # TODO Parametrize
-    model_args.WEIGHTS_DTYPE = dtype
     state_dict = model_args.load_state_dict()  # Dummy weights being used
     ########
 
-    ###### INPUT CREATION
-    # Create a random input tensor with the given shape
-    input_ref_tensor = torch.randn(*input_shape)
-    input_tt_tensor = ttnn.from_torch(
-        input_ref_tensor,
-        device=mesh_device,
-        mesh_mapper=ttnn.ShardTensor2dMesh(
-            mesh_device, dims=(None, 3) if model_args.is_galaxy else (None, None), mesh_shape=model_args.cluster_shape
-        ),  # When both dims are None, the mapper used is `ReplicateTensorToMesh`
-        dtype=dtype,
-        memory_config=(
-            tt_model.model_config["MLP_ACT_MEMCFG"]
-            if model_args.is_galaxy
-            else model_args.model_config["SHARDED_MLP_INPUT_MEMCFG"]
-        )
-        if mode == "decode"
-        else ttnn.DRAM_MEMORY_CONFIG,
-        layout=ttnn.TILE_LAYOUT,
-    )
-    ##########
+    # Create a random input tensor in torch and ttnn
+    input_ref_tensor, input_tt_tensor = create_inputs(*input_shape)
 
     #### RUN REF MODEL IF NO REFERENCE OUTPUT FOUND
     # TODO parametrize
@@ -152,20 +137,24 @@ def test_module_output_shape(input_shape, output_shape, module_class, ref_module
     assert passing, f"Llama_MLP output does not meet PCC requirement {0.99}: {pcc_message}."
 
 
-# Example usage
-if __name__ == "__main__":
-    # Define a simple module for testing
-    class SimpleConvNet(nn.Module):
-        def __init__(self):
-            super(SimpleConvNet, self).__init__()
-            self.conv = nn.Conv2d(in_channels=3, out_channels=16, kernel_size=3, stride=1, padding=1)
+# TODO figure out a way to standardize this between all unit tests
+def create_inputs(input_shape, model_args, mesh_device, dtype, mode):
+    input_ref_tensor = torch.randn(*input_shape)
+    input_tt_tensor = ttnn.from_torch(
+        input_ref_tensor,
+        device=mesh_device,
+        mesh_mapper=ttnn.ShardTensor2dMesh(
+            mesh_device, dims=(None, 3) if model_args.is_galaxy else (None, None), mesh_shape=model_args.cluster_shape
+        ),  # When both dims are None, the mapper used is `ReplicateTensorToMesh`
+        dtype=dtype,
+        memory_config=(
+            tt_model.model_config["MLP_ACT_MEMCFG"]
+            if model_args.is_galaxy
+            else model_args.model_config["SHARDED_MLP_INPUT_MEMCFG"]
+        )
+        if mode == "decode"
+        else ttnn.DRAM_MEMORY_CONFIG,
+        layout=ttnn.TILE_LAYOUT,
+    )
 
-        def forward(self, x):
-            return self.conv(x)
-
-    # Define input and output shapes
-    input_shape = (1, 3, 32, 32)  # Batch size 1, 3 channels, 32x32 image
-    output_shape = (1, 16, 32, 32)  # Batch size 1, 16 channels, 32x32 image
-
-    # Run the test
-    test_module_output_shape(input_shape, output_shape, SimpleConvNet)
+    return input_ref_tensor, input_tt_tensor
