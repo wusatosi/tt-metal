@@ -50,21 +50,25 @@ protected:
     }
 };
 
-class T3000MultiDeviceFixture : public ::testing::Test {
+template <int r, int c, int num_cqs>
+class MeshDeviceFixture : public ::testing::Test {
 protected:
     virtual void SetUp() override {
         using tt::tt_metal::distributed::MeshDevice;
         using tt::tt_metal::distributed::MeshDeviceConfig;
         using tt::tt_metal::distributed::MeshShape;
 
+        constexpr uint32_t num_required_devices = r * c;
         auto slow_dispatch = getenv("TT_METAL_SLOW_DISPATCH_MODE");
         const auto arch = tt::get_arch_from_string(tt::test_utils::get_umd_arch_name());
         const size_t num_devices = tt::tt_metal::GetNumAvailableDevices();
         if (slow_dispatch) {
-            GTEST_SKIP() << "Skipping Multi-Device test suite, since it can only be run in Fast Dispatch Mode.";
+            GTEST_SKIP() << "Skipping Mesh-Device test suite, since it can only be run in Fast Dispatch Mode.";
         }
-        if (num_devices < 8 or arch != tt::ARCH::WORMHOLE_B0) {
-            GTEST_SKIP() << "Skipping T3K Multi-Device test suite on non T3K machine.";
+        if (num_devices != num_required_devices or arch != tt::ARCH::WORMHOLE_B0) {
+            GTEST_SKIP() << fmt::format(
+                "Skipping Mesh-Device test suite on non-{} device machine.",
+                num_required_devices == 8 ? "T3K" : "N300");
         }
         create_mesh_device();
     }
@@ -83,22 +87,21 @@ protected:
         using tt::tt_metal::distributed::MeshDevice;
         using tt::tt_metal::distributed::MeshDeviceConfig;
         using tt::tt_metal::distributed::MeshShape;
-
-        mesh_device_ = MeshDevice::create(MeshDeviceConfig{.mesh_shape = MeshShape{2, 4}});
+        // Use ethernet dispatch for more than 1 CQ on T3K/N300
+        DispatchCoreType core_type = (num_cqs >= 2) ? DispatchCoreType::ETH : DispatchCoreType::WORKER;
+        mesh_device_ = MeshDevice::create(MeshDeviceConfig{.mesh_shape = MeshShape{r, c}}, 0, 0, num_cqs, core_type);
     }
 
     std::shared_ptr<tt::tt_metal::distributed::MeshDevice> mesh_device_;
 };
-
-class T3000MultiCQMultiDeviceFixture : public T3000MultiDeviceFixture {
-protected:
-    // Override only the mesh device creation logic
-    void create_mesh_device() override {
-        using tt::tt_metal::distributed::MeshDevice;
-        using tt::tt_metal::distributed::MeshDeviceConfig;
-        using tt::tt_metal::distributed::MeshShape;
-
-        mesh_device_ =
-            MeshDevice::create(MeshDeviceConfig{.mesh_shape = MeshShape{2, 4}}, 0, 0, 2, DispatchCoreType::ETH);
-    }
-};
+// Individual test fixtures for T3K and N300 (single and multi-cq)
+class T3000MeshDeviceFixture : public MeshDeviceFixture<2, 4, 1> {};
+class N300MeshDeviceFixture : public MeshDeviceFixture<2, 1, 1> {};
+class T3000MeshDeviceMultiCQFixture : public MeshDeviceFixture<2, 4, 2> {};
+class N300MeshDeviceMultiCQFixture : public MeshDeviceFixture<2, 1, 2> {};
+// Generic fixtures allowing a test to run on both N300 and T3K
+using MeshFixtureTypes = ::testing::Types<T3000MeshDeviceFixture, N300MeshDeviceFixture>;
+using MultiCQMeshFixtureTypes = ::testing::Types<T3000MeshDeviceMultiCQFixture, N300MeshDeviceMultiCQFixture>;
+// Generic class that can be bound to specific test suites
+template <typename T>
+class MeshTestSuite : public T {};

@@ -14,9 +14,14 @@
 namespace tt::tt_metal::distributed::test {
 namespace {
 
-using MeshEventsTest = T3000MultiCQMultiDeviceFixture;
+// Register MeshEvents Test suite for T3K and N300
+template <typename T>
+using MeshEventsTestSuite = MeshTestSuite<T>;
+TYPED_TEST_SUITE(MeshEventsTestSuite, MultiCQMeshFixtureTypes);
+// MeshEvents Test suite for T3K only
+using MeshEventsTestT3000 = T3000MeshDeviceMultiCQFixture;
 
-TEST_F(MeshEventsTest, ReplicatedAsyncIO) {
+TYPED_TEST(MeshEventsTestSuite, ReplicatedAsyncIO) {
     uint32_t NUM_TILES = 1000;
     uint32_t num_iterations = 20;
     int32_t single_tile_size = ::tt::tt_metal::detail::TileSize(DataFormat::UInt32);
@@ -31,7 +36,7 @@ TEST_F(MeshEventsTest, ReplicatedAsyncIO) {
     };
 
     std::shared_ptr<MeshBuffer> buf =
-        MeshBuffer::create(global_buffer_config, per_device_buffer_config, mesh_device_.get());
+        MeshBuffer::create(global_buffer_config, per_device_buffer_config, this->mesh_device_.get());
 
     for (std::size_t i = 0; i < num_iterations; i++) {
         std::vector<uint32_t> src_vec(NUM_TILES * single_tile_size / sizeof(uint32_t), 0);
@@ -40,10 +45,10 @@ TEST_F(MeshEventsTest, ReplicatedAsyncIO) {
         std::vector<std::vector<uint32_t>> readback_vecs = {};
         std::shared_ptr<MeshEvent> event = std::make_shared<MeshEvent>();
         // Writes on CQ 0
-        EnqueueWriteMeshBuffer(mesh_device_->mesh_command_queue(0), buf, src_vec);
+        EnqueueWriteMeshBuffer(this->mesh_device_->mesh_command_queue(0), buf, src_vec);
         // Device to Device Synchronization
-        EnqueueRecordEvent(mesh_device_->mesh_command_queue(0), event);
-        EnqueueWaitForEvent(mesh_device_->mesh_command_queue(1), event);
+        EnqueueRecordEvent(this->mesh_device_->mesh_command_queue(0), event);
+        EnqueueWaitForEvent(this->mesh_device_->mesh_command_queue(1), event);
 
         // Reads on CQ 1
         for (std::size_t logical_x = 0; logical_x < buf->device()->num_cols(); logical_x++) {
@@ -51,7 +56,10 @@ TEST_F(MeshEventsTest, ReplicatedAsyncIO) {
                 readback_vecs.push_back({});
                 auto shard = buf->get_device_buffer(Coordinate(logical_y, logical_x));
                 ReadShard(
-                    mesh_device_->mesh_command_queue(1), readback_vecs.back(), buf, Coordinate(logical_y, logical_x));
+                    this->mesh_device_->mesh_command_queue(1),
+                    readback_vecs.back(),
+                    buf,
+                    Coordinate(logical_y, logical_x));
             }
         }
 
@@ -61,7 +69,7 @@ TEST_F(MeshEventsTest, ReplicatedAsyncIO) {
     }
 }
 
-TEST_F(MeshEventsTest, ShardedAsyncIO) {
+TEST_F(MeshEventsTestT3000, ShardedAsyncIO) {
     uint32_t num_iterations = 20;
     uint32_t single_tile_size = ::tt::tt_metal::detail::TileSize(DataFormat::UInt32);
 
@@ -83,44 +91,44 @@ TEST_F(MeshEventsTest, ShardedAsyncIO) {
         .shard_orientation = ShardOrientation::ROW_MAJOR,
     };
 
-    auto mesh_buffer = MeshBuffer::create(sharded_config, per_device_buffer_config, mesh_device_.get());
+    auto mesh_buffer = MeshBuffer::create(sharded_config, per_device_buffer_config, this->mesh_device_.get());
     for (std::size_t i = 0; i < num_iterations; i++) {
         std::vector<uint32_t> src_vec =
             std::vector<uint32_t>(global_buffer_shape.height() * global_buffer_shape.width(), 0);
         std::iota(src_vec.begin(), src_vec.end(), i);
         std::shared_ptr<MeshEvent> event = std::make_shared<MeshEvent>();
         // Writes on CQ 0
-        EnqueueWriteMeshBuffer(mesh_device_->mesh_command_queue(0), mesh_buffer, src_vec);
+        EnqueueWriteMeshBuffer(this->mesh_device_->mesh_command_queue(0), mesh_buffer, src_vec);
         if (i % 2) {
             // Test Host <-> Device synchronization
-            EnqueueRecordEventToHost(mesh_device_->mesh_command_queue(0), event);
+            EnqueueRecordEventToHost(this->mesh_device_->mesh_command_queue(0), event);
             EventSynchronize(event);
         } else {
             // Test Device <-> Device synchronization
-            EnqueueRecordEvent(mesh_device_->mesh_command_queue(0), event);
-            EnqueueWaitForEvent(mesh_device_->mesh_command_queue(1), event);
+            EnqueueRecordEvent(this->mesh_device_->mesh_command_queue(0), event);
+            EnqueueWaitForEvent(this->mesh_device_->mesh_command_queue(1), event);
         }
         // Reads on CQ 1
         std::vector<uint32_t> dst_vec = {};
-        EnqueueReadMeshBuffer(mesh_device_->mesh_command_queue(1), dst_vec, mesh_buffer);
+        EnqueueReadMeshBuffer(this->mesh_device_->mesh_command_queue(1), dst_vec, mesh_buffer);
 
         EXPECT_EQ(dst_vec, src_vec);
     }
 }
 
-TEST_F(MeshEventsTest, AsyncWorkloadAndIO) {
+TYPED_TEST(MeshEventsTestSuite, AsyncWorkloadAndIO) {
     uint32_t num_iters = 5;
     std::vector<std::shared_ptr<MeshBuffer>> src0_bufs = {};
     std::vector<std::shared_ptr<MeshBuffer>> src1_bufs = {};
     std::vector<std::shared_ptr<MeshBuffer>> output_bufs = {};
 
-    CoreCoord worker_grid_size = mesh_device_->compute_with_storage_grid_size();
+    CoreCoord worker_grid_size = this->mesh_device_->compute_with_storage_grid_size();
 
     auto programs = tt::tt_metal::distributed::test::utils::create_eltwise_bin_programs(
-        mesh_device_, src0_bufs, src1_bufs, output_bufs);
+        this->mesh_device_, src0_bufs, src1_bufs, output_bufs);
     auto mesh_workload = CreateMeshWorkload();
-    LogicalDeviceRange devices_0 = LogicalDeviceRange({0, 0}, {3, 0});
-    LogicalDeviceRange devices_1 = LogicalDeviceRange({0, 1}, {3, 1});
+    LogicalDeviceRange devices_0 = LogicalDeviceRange({0, 0}, {this->mesh_device_->num_cols() - 1, 0});
+    LogicalDeviceRange devices_1 = LogicalDeviceRange({0, 1}, {this->mesh_device_->num_cols() - 1, 1});
 
     AddProgramToMeshWorkload(mesh_workload, *programs[0], devices_0);
     AddProgramToMeshWorkload(mesh_workload, *programs[1], devices_1);
@@ -136,40 +144,44 @@ TEST_F(MeshEventsTest, AsyncWorkloadAndIO) {
         for (std::size_t col_idx = 0; col_idx < worker_grid_size.x; col_idx++) {
             for (std::size_t row_idx = 0; row_idx < worker_grid_size.y; row_idx++) {
                 EnqueueWriteMeshBuffer(
-                    mesh_device_->mesh_command_queue(1), src0_bufs[col_idx * worker_grid_size.y + row_idx], src0_vec);
+                    this->mesh_device_->mesh_command_queue(1),
+                    src0_bufs[col_idx * worker_grid_size.y + row_idx],
+                    src0_vec);
                 EnqueueWriteMeshBuffer(
-                    mesh_device_->mesh_command_queue(1), src1_bufs[col_idx * worker_grid_size.y + row_idx], src1_vec);
+                    this->mesh_device_->mesh_command_queue(1),
+                    src1_bufs[col_idx * worker_grid_size.y + row_idx],
+                    src1_vec);
             }
         }
         if (iter % 2) {
             // Test Host <-> Device Synchronization
-            EnqueueRecordEventToHost(mesh_device_->mesh_command_queue(1), write_event);
+            EnqueueRecordEventToHost(this->mesh_device_->mesh_command_queue(1), write_event);
             EventSynchronize(write_event);
         } else {
             // Test Device <-> Device Synchronization
-            EnqueueRecordEvent(mesh_device_->mesh_command_queue(1), write_event);
-            EnqueueWaitForEvent(mesh_device_->mesh_command_queue(0), write_event);
+            EnqueueRecordEvent(this->mesh_device_->mesh_command_queue(1), write_event);
+            EnqueueWaitForEvent(this->mesh_device_->mesh_command_queue(0), write_event);
         }
         // Issue workloads on MeshCQ 0
-        EnqueueMeshWorkload(mesh_device_->mesh_command_queue(0), mesh_workload, false);
+        EnqueueMeshWorkload(this->mesh_device_->mesh_command_queue(0), mesh_workload, false);
         if (iter % 2) {
             // Test Device <-> Device Synchronization
-            EnqueueRecordEvent(mesh_device_->mesh_command_queue(0), op_event);
-            EnqueueWaitForEvent(mesh_device_->mesh_command_queue(1), op_event);
+            EnqueueRecordEvent(this->mesh_device_->mesh_command_queue(0), op_event);
+            EnqueueWaitForEvent(this->mesh_device_->mesh_command_queue(1), op_event);
         } else {
             // Test Host <-> Device Synchronization
-            EnqueueRecordEventToHost(mesh_device_->mesh_command_queue(0), op_event);
+            EnqueueRecordEventToHost(this->mesh_device_->mesh_command_queue(0), op_event);
             EventSynchronize(op_event);
         }
 
         // Issue reads on MeshCQ 1
-        for (std::size_t logical_y = 0; logical_y < mesh_device_->num_rows(); logical_y++) {
-            for (std::size_t logical_x = 0; logical_x < mesh_device_->num_cols(); logical_x++) {
+        for (std::size_t logical_y = 0; logical_y < this->mesh_device_->num_rows(); logical_y++) {
+            for (std::size_t logical_x = 0; logical_x < this->mesh_device_->num_cols(); logical_x++) {
                 for (std::size_t col_idx = 0; col_idx < worker_grid_size.x; col_idx++) {
                     for (std::size_t row_idx = 0; row_idx < worker_grid_size.y; row_idx++) {
                         std::vector<bfloat16> dst_vec = {};
                         ReadShard(
-                            mesh_device_->mesh_command_queue(1),
+                            this->mesh_device_->mesh_command_queue(1),
                             dst_vec,
                             output_bufs[col_idx * worker_grid_size.y + row_idx],
                             Coordinate(logical_y, logical_x));
@@ -189,7 +201,7 @@ TEST_F(MeshEventsTest, AsyncWorkloadAndIO) {
     }
 }
 
-TEST_F(MeshEventsTest, CustomDeviceRanges) {
+TYPED_TEST(MeshEventsTestSuite, CustomDeviceRanges) {
     uint32_t NUM_TILES = 1000;
     uint32_t num_iterations = 20;
     int32_t single_tile_size = ::tt::tt_metal::detail::TileSize(DataFormat::UInt32);
@@ -204,33 +216,38 @@ TEST_F(MeshEventsTest, CustomDeviceRanges) {
     };
 
     std::shared_ptr<MeshBuffer> buf =
-        MeshBuffer::create(global_buffer_config, per_device_buffer_config, mesh_device_.get());
+        MeshBuffer::create(global_buffer_config, per_device_buffer_config, this->mesh_device_.get());
 
     for (std::size_t i = 0; i < num_iterations; i++) {
         std::vector<uint32_t> src_vec(NUM_TILES * single_tile_size / sizeof(uint32_t), i);
         std::iota(src_vec.begin(), src_vec.end(), i);
-        LogicalDeviceRange devices_0 = LogicalDeviceRange({0, 0}, {3, 0});
-        LogicalDeviceRange devices_1 = LogicalDeviceRange({0, 1}, {3, 1});
+        LogicalDeviceRange devices_0 = LogicalDeviceRange({0, 0}, {this->mesh_device_->num_cols() - 1, 0});
+        LogicalDeviceRange devices_1 = LogicalDeviceRange({0, 1}, {this->mesh_device_->num_cols() - 1, 1});
 
         std::vector<std::vector<uint32_t>> readback_vecs = {};
         std::shared_ptr<MeshEvent> event_0 = std::make_shared<MeshEvent>();
         std::shared_ptr<MeshEvent> event_1 = std::make_shared<MeshEvent>();
 
-        mesh_device_->mesh_command_queue(1).enqueue_write_shard_to_sub_grid(*buf, src_vec.data(), devices_0, false);
-        EnqueueRecordEvent(mesh_device_->mesh_command_queue(1), event_0, {}, devices_0);
-        EnqueueWaitForEvent(mesh_device_->mesh_command_queue(0), event_0);
+        this->mesh_device_->mesh_command_queue(1).enqueue_write_shard_to_sub_grid(
+            *buf, src_vec.data(), devices_0, false);
+        EnqueueRecordEvent(this->mesh_device_->mesh_command_queue(1), event_0, {}, devices_0);
+        EnqueueWaitForEvent(this->mesh_device_->mesh_command_queue(0), event_0);
 
         for (std::size_t logical_x = devices_0.start_coord.x; logical_x < devices_0.end_coord.x; logical_x++) {
             for (std::size_t logical_y = devices_0.start_coord.y; logical_y < devices_0.end_coord.y; logical_y++) {
                 readback_vecs.push_back({});
                 auto shard = buf->get_device_buffer(Coordinate(logical_y, logical_x));
                 ReadShard(
-                    mesh_device_->mesh_command_queue(0), readback_vecs.back(), buf, Coordinate(logical_y, logical_x));
+                    this->mesh_device_->mesh_command_queue(0),
+                    readback_vecs.back(),
+                    buf,
+                    Coordinate(logical_y, logical_x));
             }
         }
 
-        mesh_device_->mesh_command_queue(1).enqueue_write_shard_to_sub_grid(*buf, src_vec.data(), devices_1, false);
-        EnqueueRecordEventToHost(mesh_device_->mesh_command_queue(1), event_1, {}, devices_1);
+        this->mesh_device_->mesh_command_queue(1).enqueue_write_shard_to_sub_grid(
+            *buf, src_vec.data(), devices_1, false);
+        EnqueueRecordEventToHost(this->mesh_device_->mesh_command_queue(1), event_1, {}, devices_1);
         EventSynchronize(event_1);
 
         for (std::size_t logical_x = devices_1.start_coord.x; logical_x < devices_1.end_coord.x; logical_x++) {
@@ -238,15 +255,18 @@ TEST_F(MeshEventsTest, CustomDeviceRanges) {
                 readback_vecs.push_back({});
                 auto shard = buf->get_device_buffer(Coordinate(logical_y, logical_x));
                 ReadShard(
-                    mesh_device_->mesh_command_queue(0), readback_vecs.back(), buf, Coordinate(logical_y, logical_x));
+                    this->mesh_device_->mesh_command_queue(0),
+                    readback_vecs.back(),
+                    buf,
+                    Coordinate(logical_y, logical_x));
             }
         }
         for (auto& vec : readback_vecs) {
             EXPECT_EQ(vec, src_vec);
         }
     }
-    Finish(mesh_device_->mesh_command_queue(0));
-    Finish(mesh_device_->mesh_command_queue(1));
+    Finish(this->mesh_device_->mesh_command_queue(0));
+    Finish(this->mesh_device_->mesh_command_queue(1));
 }
 
 }  // namespace
