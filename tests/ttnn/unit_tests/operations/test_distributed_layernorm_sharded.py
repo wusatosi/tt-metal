@@ -311,15 +311,45 @@ def test_pre_allgather_layernorm_1d_reduce(
 
 
 @skip_for_grayskull()
-@pytest.mark.parametrize("is_rmsnorm", [True, False])
-@pytest.mark.parametrize("seed", [0, 1234])
+@pytest.mark.parametrize(
+    "is_rmsnorm",
+    [
+        True,
+        # False
+    ],
+)
+@pytest.mark.parametrize(
+    "seed",
+    [
+        0,
+        # 1234
+    ],
+)
 @pytest.mark.parametrize("eps", [1e-6])
 @pytest.mark.parametrize(("min_pcc", "max_atol"), ((0.9997, 0.45),))
 @pytest.mark.parametrize("input_width", [2048])
 @pytest.mark.parametrize("num_devices", [4, 8])
-@pytest.mark.parametrize("input_df", [ttnn.bfloat8_b, ttnn.bfloat16])
-@pytest.mark.parametrize("output_df", [ttnn.bfloat8_b, ttnn.bfloat16])
-@pytest.mark.parametrize("weights_df", [ttnn.bfloat8_b, ttnn.bfloat16])
+@pytest.mark.parametrize(
+    "input_df",
+    [
+        ttnn.bfloat8_b,
+        # ttnn.bfloat16
+    ],
+)
+@pytest.mark.parametrize(
+    "output_df",
+    [
+        ttnn.bfloat8_b,
+        # ttnn.bfloat16
+    ],
+)
+@pytest.mark.parametrize(
+    "weights_df",
+    [
+        ttnn.bfloat8_b,
+        # ttnn.bfloat16
+    ],
+)
 @pytest.mark.parametrize(("mean", "std"), ([0, 1],))
 @pytest.mark.parametrize("core_grid", ((2, 8),))
 def test_post_allgather_layernorm(

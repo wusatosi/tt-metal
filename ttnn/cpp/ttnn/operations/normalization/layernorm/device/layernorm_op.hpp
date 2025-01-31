@@ -41,6 +41,22 @@ operation::ProgramWithCallbacks layernorm_multi_core_sharded(
     uint32_t block_wt,
     DeviceComputeKernelConfig compute_kernel_config);
 
+operation::ProgramWithCallbacks rms_norm_sharded_post_allgather_minimal(
+    const Tensor& a,
+    const std::optional<const Tensor>& b,
+    const std::optional<const Tensor>& gamma,
+    const std::optional<const Tensor>& beta,
+    const std::optional<const Tensor>& stats,
+    Tensor& output,
+    LayerNormType norm_type,
+    DistributedLayerNormStage distributed_norm_stage,
+    float eps,
+    CoreCoord compute_grid_size,
+    uint32_t subblock_wt,
+    uint32_t block_ht,
+    uint32_t block_wt,
+    DeviceComputeKernelConfig compute_kernel_config);
+
 struct LayerNorm {
     LayerNormType norm_type;
     DistributedLayerNormStage distributed_norm_stage;

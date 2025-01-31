@@ -288,6 +288,25 @@ operation::ProgramWithCallbacks LayerNorm::create_program(
                 uint32_t num_cores_y = program_config.compute_with_storage_grid_size.y;
                 CoreCoord grid_size = CoreCoord(num_cores_x, num_cores_y);
 
+                if (this->distributed_norm_stage == DistributedLayerNormStage::POST_ALL_GATHER and
+                    this->norm_type == LayerNormType::RMSNORM) {
+                    return rms_norm_sharded_post_allgather_minimal(
+                        a,
+                        b,
+                        gamma,
+                        beta,
+                        stats,
+                        output_tensor,
+                        this->norm_type,
+                        this->distributed_norm_stage,
+                        this->eps,
+                        program_config.compute_with_storage_grid_size,
+                        program_config.subblock_w,
+                        program_config.block_h,
+                        program_config.block_w,
+                        this->compute_kernel_config);
+                }
+
                 return layernorm_multi_core_sharded(
                     a,
                     b,
