@@ -342,6 +342,25 @@ operation::ProgramWithCallbacks all_gather_async_llama_post_binary_matmul(
         tt::tt_metal::CircularBufferConfig(cb_num_pages * l1_scratch_cb_page_size_bytes, {{src0_cb_index, df}})
             .set_page_size(src0_cb_index, l1_scratch_cb_page_size_bytes);
     CBHandle cb_src0_workers = CreateCircularBuffer(program, sender_worker_core_range, cb_src0_config);
+    // create cb for output tensor
+    tt::DataFormat output_df = tt::tt_metal::datatype_to_dataformat_converter(output_tensor.get_dtype());
+    uint32_t out_single_tile_size = tt::tt_metal::detail::TileSize(output_df);
+    uint32_t cb_output_index = tt::CB::c_out1;
+    tt::tt_metal::CircularBufferConfig cb_output_config =
+        tt::tt_metal::CircularBufferConfig(
+            output_tensor_shard_num_pages * out_single_tile_size, {{cb_output_index, output_df}})
+            .set_page_size(cb_output_index, out_single_tile_size)
+            .set_globally_allocated_address(*output_tensor.buffer());
+    CBHandle cb_output = CreateCircularBuffer(program, output_tensor_cores, cb_output_config);
+
+    // create cb for all gather output tensor
+    uint32_t cb_all_gather_output_index = tt::CB::c_out0;
+    tt::tt_metal::CircularBufferConfig cb_all_gather_output_config =
+        tt::tt_metal::CircularBufferConfig(
+            output_tensor_shard_num_pages * out_single_tile_size, {{cb_all_gather_output_index, output_df}})
+            .set_page_size(cb_all_gather_output_index, out_single_tile_size);
+    CBHandle cb_all_gather_output = CreateCircularBuffer(program, output_tensor_cores, cb_all_gather_output_config);
+
     // Set aside a buffer we can use for storing packet headers in (particularly for atomic incs)
     const auto reserved_packet_header_CB_index = tt::CB::c_in6;
     static constexpr auto num_packet_headers_storable = 8;
@@ -533,7 +552,7 @@ operation::ProgramWithCallbacks all_gather_async_llama_post_binary_matmul(
     }
 
     auto override_runtime_arguments_callback =
-        [worker_sender_reader_kernel_id, worker_sender_writer_kernel_id, semaphore, sender_worker_cores](
+        [worker_sender_reader_kernel_id, worker_sender_writer_kernel_id, semaphore, sender_worker_cores, cb_output](
             const void* operation,
             Program& program,
             const std::vector<Tensor>& input_tensors,
@@ -541,6 +560,8 @@ operation::ProgramWithCallbacks all_gather_async_llama_post_binary_matmul(
             const std::vector<Tensor>& output_tensors) {
             const auto& input = input_tensors[0];
             const auto& output = output_tensors[0];
+
+            UpdateDynamicCircularBufferAddress(program, cb_output, *output.buffer());
 
             // update senders
             auto& worker_reader_sender_runtime_args_by_core = GetRuntimeArgs(program, worker_sender_reader_kernel_id);

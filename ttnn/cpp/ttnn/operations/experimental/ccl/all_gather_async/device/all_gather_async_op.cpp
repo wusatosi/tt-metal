@@ -149,12 +149,12 @@ operation::ProgramWithCallbacks AllGatherAsync::create_program(
         tt::LogOp, "output_tensor_memory_config.shard_spec->shape: {}", output_tensor_memory_config.shard_spec->shape);
 
     if (input_tensor_shape[0] == 1 && input_tensor_shape[1] == 1 && input_tensor_shape[2] == 32 &&
-        input_tensor_shape[3] == 960 && input_tensor_memory_config.buffer_type == BufferType::L1 &&
+        input_tensor_shape[3] == 3840 && input_tensor_memory_config.buffer_type == BufferType::L1 &&
         output_tensor_memory_config.buffer_type == BufferType::L1 &&
         input_tensor_memory_config.memory_layout == TensorMemoryLayout::WIDTH_SHARDED &&
         output_tensor_memory_config.memory_layout == TensorMemoryLayout::WIDTH_SHARDED &&
-        input_tensor_memory_config.shard_spec->shape == Shape{32, 32} &&
-        output_tensor_memory_config.shard_spec->shape == Shape{32, 160} && input_shard_num_cores == 30 &&
+        input_tensor_memory_config.shard_spec->shape == Shape{32, 160} &&
+        output_tensor_memory_config.shard_spec->shape == Shape{32, 160 * 4} && input_shard_num_cores == 24 &&
         output_shard_num_cores == 24) {
         tt::log_info(
             tt::LogOp, "Detected all gather specialized shape. all_gather_async_llama_post_binary_matmul is called");

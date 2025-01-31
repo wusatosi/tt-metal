@@ -156,6 +156,8 @@ void kernel_main() {
     uint32_t tiles_read = 0;
     uint32_t shard_tile_id = first_core_tile_start_offset;
     uint32_t core_id = 0;
+    constexpr uint32_t out_cb = 16;
+    uint32_t out_tensor_local_addr = get_write_ptr(out_cb);
     while (tiles_read < num_tiles_to_read) {
         DPRINT << "tiles_read: " << tiles_read << "\n";
         uint32_t num_tiles_to_read_this_core = std::min(num_tiles_per_core - shard_tile_id, packet_size_in_pages);
@@ -164,7 +166,7 @@ void kernel_main() {
         size_t l1_read_addr = get_read_ptr(cb0_id);
 
         uint64_t noc0_dest_noc_addr =
-            get_noc_addr(core_noc_x[core_id], core_noc_y[core_id], tensor_address0, 0 /*noc_id*/);
+            get_noc_addr(core_noc_x[core_id], core_noc_y[core_id], out_tensor_local_addr, 0 /*noc_id*/);
         DPRINT << "core_noc_x[core_id]: " << (uint32_t)core_noc_x[core_id] << "\n";
         DPRINT << "core_noc_y[core_id]: " << (uint32_t)core_noc_y[core_id] << "\n";
         DPRINT << "noc0_dest_noc_addr_base: " << noc0_dest_noc_addr << "\n";
