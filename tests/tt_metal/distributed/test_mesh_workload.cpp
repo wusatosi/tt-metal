@@ -534,7 +534,7 @@ TEST_F(MeshWorkloadTest, MeshWorkloadOnActiveEth) {
             log_info(tt::LogTest, "Run MeshWorkloads for iteration {}", i);
         }
         for (auto& workload : workloads) {
-            EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), *workload, false);
+            EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), *workload, true);
         }
     }
     Finish(mesh_device_->mesh_command_queue());

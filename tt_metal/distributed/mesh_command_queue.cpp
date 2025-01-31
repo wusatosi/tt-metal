@@ -175,6 +175,7 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
 
 void MeshCommandQueue::finish() {
     for (auto device : this->mesh_device_->get_devices()) {
+        std::cout << "Calling finish on: " << device->id() << std::endl;
         Finish(device->command_queue(this->id_));
     }
 }
