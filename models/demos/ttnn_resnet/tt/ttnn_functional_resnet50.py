@@ -337,6 +337,11 @@ class resnet50Bottleneck:
             if layer_module and layer_module == "layer4_module1":
                 if ops_parallel_config and "layer4_module1_downsample" in ops_parallel_config:
                     x = ttnn.to_memory_config(x, ops_parallel_config["layer4_module1_downsample"])
+            if is_grayskull():
+                if input_height == 56 and self.conv1_input_channels == 256 and self.downsample:
+                    x_rm = ttnn.to_layout(x, ttnn.ROW_MAJOR_LAYOUT)
+                    ttnn.deallocate(x)
+                    x = ttnn.reallocate(x_rm)
             ds_out = self.run_downsample_if_req(
                 x,
                 device,
@@ -662,7 +667,7 @@ class resnet50:
             input_channels_alignment=input_channels_alignment,
             act_block_h_override=act_block_h_override,
             transpose_shards=self.transpose_shards,
-            enable_act_double_buffer=True,
+            enable_act_double_buffer=is_wormhole_b0() or is_blackhole(),
             enable_split_reader=True,
             enable_subblock_padding=False,
             shard_layout=ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
@@ -705,6 +710,19 @@ class resnet50:
         )
         num_cores_x = 8
         num_cores_y = 8
+        if self.batch_size == 16:
+            num_cores_x = 8
+            num_cores_y = 8
+        elif self.batch_size == 20:
+            if is_grayskull():
+                num_cores_x = 10
+                num_cores_y = 8
+            elif is_wormhole_b0():
+                num_cores_x = 8
+                num_cores_y = 5
+            elif is_blackhole():
+                num_cores_x = 8
+                num_cores_y = 10
         self.fold_compute_grid_size = (num_cores_x, num_cores_y)
 
         conv_dummy_tensor = torch.rand((self.fold_output_shape), dtype=torch.bfloat16)
@@ -837,7 +855,9 @@ class resnet50:
             return_output_dim=True,
             return_weights_and_bias=False,
         )
-        # # Relu is fused with conv1
+        # Relu is fused with conv1
+        if self.batch_size == 20:
+            x = ttnn.reallocate(x)
 
         x = ttnn.max_pool2d(
             input_tensor=x,
@@ -904,7 +924,7 @@ class resnet50:
             transpose_shards=self.transpose_shards,
             enable_act_double_buffer=True,
             enable_split_reader=True,
-            enable_subblock_padding=True,
+            enable_subblock_padding=not is_grayskull(),
         )
 
         if is_first_run:
@@ -928,7 +948,7 @@ class resnet50:
             transpose_shards=self.transpose_shards,
             enable_act_double_buffer=False,
             enable_split_reader=True,
-            enable_subblock_padding=True,
+            enable_subblock_padding=not is_grayskull(),
         )
 
         logger.debug(f"==== Running layer 1 module 3")
@@ -942,12 +962,12 @@ class resnet50:
             transpose_shards=self.transpose_shards,
             enable_act_double_buffer=False,
             enable_split_reader=True,
-            enable_subblock_padding=True,
+            enable_subblock_padding=not is_grayskull(),
         )
 
         layer2_module1_input_shape = ttnn.Shape(x.padded_shape)
 
-        reshard = not is_wormhole_b0()
+        reshard = not (is_wormhole_b0() or is_grayskull())
         height_shard = True
 
         if is_blackhole():
@@ -1043,7 +1063,7 @@ class resnet50:
 
         layer3_module1_input_shape = ttnn.Shape(x.padded_shape)
 
-        reshard = is_wormhole_b0()
+        reshard = is_wormhole_b0() or is_grayskull()
         height_shard = False
 
         if is_blackhole():
@@ -1165,7 +1185,7 @@ class resnet50:
             enable_subblock_padding=False,
         )
 
-        reshard = False
+        reshard = is_grayskull()
         height_shard = False
 
         layer4_module1_input_shape = ttnn.Shape(x.padded_shape)
