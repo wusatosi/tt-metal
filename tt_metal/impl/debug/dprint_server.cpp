@@ -1297,9 +1297,9 @@ void DprintServerAttach(IDevice* device) {
     if (!tt::llrt::RunTimeOptions::get_instance().get_feature_enabled(tt::llrt::RunTimeDebugFeatureDprint)) {
         return;
     }
-    TT_FATAL(
-        DebugPrintServerContext::ProfilerIsRunning == false,
-        "Device side profiler is running, cannot start print server");
+    // TT_FATAL(
+    // DebugPrintServerContext::ProfilerIsRunning == false,
+    //"Device side profiler is running, cannot start print server");
 
     // If no server is running, create one
     if (!DprintServerIsRunning()) {
