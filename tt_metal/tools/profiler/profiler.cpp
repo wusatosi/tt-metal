@@ -407,7 +407,8 @@ void DeviceProfiler::logNocTracePacketDataToJson(
     uint64_t source_line,
     const std::string_view source_file) {
     if (packet_type == kernel_profiler::ZONE_START || packet_type == kernel_profiler::ZONE_END) {
-        if ((risc_name == "NCRISC" || risc_name == "BRISC") && zone_name.ends_with("-KERNEL")) {
+        if ((risc_name == "NCRISC" || risc_name == "BRISC") &&
+            (zone_name.starts_with("TRUE-KERNEL-END") || zone_name.ends_with("-KERNEL"))) {
             tracy::TTDeviceEventPhase zone_phase = (packet_type == kernel_profiler::ZONE_END)
                                                        ? tracy::TTDeviceEventPhase::end
                                                        : tracy::TTDeviceEventPhase::begin;
@@ -599,9 +600,6 @@ void DeviceProfiler::serializeJsonNocTraces(
     for (auto& [runtime_id, events] : events_by_opname) {
         // dump events to a json file inside directory output_dir named after the opname
         std::filesystem::path rpt_path = output_dir;
-        if (events.size() == 0) {
-            continue;
-        }
         std::string op_name = events.front().value("op_name", "UnknownOP");
         rpt_path /= fmt::format("noc_trace_dev{}_{}_ID{}.json", device_id, op_name, runtime_id);
         log_info("Writing noc event json trace to '{}'", rpt_path);
