@@ -11,11 +11,14 @@ using namespace tt::tt_fabric;
 
 router_state_t router_state __attribute__((aligned(16)));
 fvc_consumer_state_t fvc_consumer_state __attribute__((aligned(16)));                // replicate for each fvc
-fvc_producer_state_t fvc_producer_state __attribute__((aligned(16)));                // replicate for each fvc
+#ifdef FVCC_SUPPORT
 fvcc_inbound_state_t fvcc_inbound_state __attribute__((aligned(16)));    // inbound fabric virtual control channel
 fvcc_outbound_state_t fvcc_outbound_state __attribute__((aligned(16)));  // outbound fabric virtual control channel
+#endif
 volatile local_pull_request_t local_pull_request_temp __attribute__((aligned(16)));  // replicate for each fvc
 volatile local_pull_request_t* local_pull_request = &local_pull_request_temp;        // replicate for each fvc
+chan_payload_ptr inbound_rdptr_ack __attribute__((aligned(16)));
+volatile chan_payload_ptr remote_rdptr __attribute__((aligned(16)));
 
 constexpr uint32_t fvc_data_buf_size_words = get_compile_time_arg_val(0);
 constexpr uint32_t fvc_data_buf_size_bytes = fvc_data_buf_size_words * PACKET_WORD_SIZE_BYTES;
@@ -78,6 +81,7 @@ inline void notify_gatekeeper() {
 }
 
 void kernel_main() {
+    fvc_producer_state_t fvc_producer_state;
     rtos_context_switch_ptr = (void (*)())RtosTable[0];
 
     uint32_t rt_args_idx = 0;
@@ -96,6 +100,10 @@ void kernel_main() {
 
     router_state.sync_in = 0;
     router_state.sync_out = 0;
+    inbound_rdptr_ack.ptr = 0;
+    inbound_rdptr_ack.ptr_cleared = 0;
+    inbound_rdptr_ack.pad[0] = 0;
+    inbound_rdptr_ack.pad[1] = 0;
 
     zero_l1_buf((tt_l1_ptr uint32_t*)fvc_consumer_req_buf, sizeof(chan_req_buf));
     zero_l1_buf((tt_l1_ptr uint32_t*)FVCC_IN_BUF_START, FVCC_IN_BUF_SIZE);
@@ -109,14 +117,16 @@ void kernel_main() {
     fvc_producer_state.init(
         FABRIC_ROUTER_DATA_BUF_START + (fvc_data_buf_size_words * PACKET_WORD_SIZE_BYTES / 2),
         fvc_data_buf_size_words / 2,
-        (uint32_t)&fvc_consumer_state.remote_rdptr);
+        (uint32_t)&remote_rdptr);
 
+#ifdef FVCC_SUPPORT
     fvcc_outbound_state.init(
         FVCC_OUT_BUF_START, FVCC_SYNC_BUF_START, FVCC_IN_BUF_START, (uint32_t)&fvcc_inbound_state.inbound_wrptr);
     fvcc_inbound_state.init(
         FVCC_IN_BUF_START,
         (uint32_t)&fvcc_outbound_state.remote_rdptr,
         (((uint64_t)gk_message_addr_h << 32) | gk_message_addr_l) + offsetof(gatekeeper_info_t, gk_msg_buf));
+#endif
 
     if (!wait_all_src_dest_ready(&router_state, timeout_cycles)) {
         write_kernel_status(kernel_status, PQ_TEST_STATUS_INDEX, PACKET_QUEUE_TEST_TIMEOUT);
@@ -173,8 +183,10 @@ void kernel_main() {
             return;
         }
 
+#ifdef FVCC_SUPPORT
         fvcc_inbound_state.fvcc_handler();
         fvcc_outbound_state.fvcc_handler();
+#endif
 
         loop_count++;
 

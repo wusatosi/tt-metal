@@ -61,6 +61,7 @@ FORCE_INLINE
 void eth_send_packet(uint32_t q_num, uint32_t src_word_addr, uint32_t dest_word_addr, uint32_t num_words) {
     while (eth_txq_reg_read(q_num, ETH_TXQ_CMD) != 0) {
         // Note, this is overly eager... Kills perf on allgather
+        (*(volatile uint32_t*)(0x9030))++;
         risc_context_switch();
     }
     eth_txq_reg_write(q_num, ETH_TXQ_TRANSFER_START_ADDR, src_word_addr << 4);
@@ -81,6 +82,7 @@ void eth_send_packet_unsafe(uint32_t q_num, uint32_t src_word_addr, uint32_t des
 FORCE_INLINE
 void eth_write_remote_reg(uint32_t q_num, uint32_t reg_addr, uint32_t val) {
     while (eth_txq_reg_read(q_num, ETH_TXQ_CMD) != 0) {
+        (*(volatile uint32_t*)(0x9034))++;
         risc_context_switch();
     }
     eth_txq_reg_write(q_num, ETH_TXQ_DEST_ADDR, reg_addr);

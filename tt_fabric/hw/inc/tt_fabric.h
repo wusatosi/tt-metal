@@ -24,6 +24,8 @@ const uint32_t SYNC_BUF_PTR_MASK = ((SYNC_BUF_SIZE << 1) - 1);
 extern uint64_t xy_local_addr;
 extern volatile local_pull_request_t* local_pull_request;
 extern volatile fabric_router_l1_config_t* routing_table;
+extern chan_payload_ptr inbound_rdptr_ack;
+extern volatile chan_payload_ptr remote_rdptr;
 
 uint64_t tt_fabric_send_pull_request(uint64_t dest_addr, volatile local_pull_request_t* local_pull_request);
 uint32_t num_words_available_to_pull(volatile pull_request_t* pull_request);
@@ -38,12 +40,10 @@ inline uint64_t get_timestamp() {
 }
 
 typedef struct fvc_consumer_state {
-    volatile chan_payload_ptr remote_rdptr;
     uint32_t remote_ptr_update_addr;
     uint8_t chan_num;
-    uint8_t packet_in_progress;
-    uint8_t sync_buf_wrptr;
-    uint8_t sync_buf_rdptr;
+    uint8_t pad[3];
+    uint32_t packet_in_progress;
     uint32_t packet_words_remaining;
     uint32_t fvc_out_rdptr;
     uint32_t fvc_pull_wrptr;
@@ -53,11 +53,7 @@ typedef struct fvc_consumer_state {
     uint32_t remote_buffer_start;
     uint32_t pull_words_in_flight;
     uint32_t total_words_to_forward;
-    uint8_t sync_pending;
-    uint8_t padding[3];
-    volatile uint32_t* words_sent_remote_update;
-
-    uint32_t sync_buf[SYNC_BUF_SIZE];
+    uint32_t* words_sent_remote_update;
 
     uint32_t get_num_words_free() {
         uint32_t rd_ptr = remote_rdptr.ptr;
@@ -90,8 +86,8 @@ typedef struct fvc_consumer_state {
         buffer_size_2x = data_buf_size_words * 2;
         remote_buffer_start = data_buf_start + buffer_size * PACKET_WORD_SIZE_BYTES;
         remote_ptr_update_addr = ptr_update_addr;
-        words_sent_remote_update = reinterpret_cast<volatile uint32_t*>(
-            STREAM_REG_ADDR(0, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_UPDATE_REG_INDEX));
+        words_sent_remote_update =
+            reinterpret_cast<uint32_t*>(STREAM_REG_ADDR(0, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_UPDATE_REG_INDEX));
     }
 
     inline uint32_t words_before_buffer_wrap(uint32_t ptr) {
@@ -122,16 +118,6 @@ typedef struct fvc_consumer_state {
 
     inline uint32_t get_local_buffer_read_addr() {
         uint32_t addr = buffer_start;
-        uint32_t offset = fvc_out_rdptr;
-        if (offset >= buffer_size) {
-            offset -= buffer_size;
-        }
-        addr = addr + (offset * PACKET_WORD_SIZE_BYTES);
-        return addr;
-    }
-
-    inline uint32_t get_remote_buffer_write_addr() {
-        uint32_t addr = remote_buffer_start;
         uint32_t offset = fvc_out_rdptr;
         if (offset >= buffer_size) {
             offset -= buffer_size;
@@ -227,24 +213,24 @@ static_assert(sizeof(fvc_consumer_state_t) % 4 == 0);
 // Which ever entity receives the pull request is responsible draining the required amount of data from
 // FVC Producer.
 typedef struct fvc_producer_state {
-    volatile chan_payload_ptr inbound_wrptr;
-    volatile chan_payload_ptr inbound_rdptr;
+    chan_payload_ptr inbound_wrptr;
+    chan_payload_ptr inbound_rdptr;
     uint32_t remote_ptr_update_addr;
     uint32_t my_id;
     uint8_t chan_num;
     uint8_t packet_in_progress;
-    uint8_t pad1;
+    uint8_t packet_end_flush;
     uint8_t pad2;
     uint32_t words_inbound;
     uint32_t packet_words_remaining;
     uint32_t fvc_out_wrptr;
     uint32_t fvc_out_rdptr;
-    volatile uint32_t fvc_pull_rdptr;
+    uint32_t fvc_pull_rdptr;
     uint32_t buffer_size;
     uint32_t buffer_size_2x;
     uint32_t buffer_start;
     uint32_t pull_words_in_flight;
-    uint32_t words_since_last_sync;
+    uint32_t words_before_read_wrap;
     uint32_t words_to_forward;
     bool curr_packet_valid;
     bool packet_corrupted;
@@ -253,7 +239,7 @@ typedef struct fvc_producer_state {
     packet_header_t current_packet_header;
     uint32_t* packet_id;
     volatile uint32_t* words_received;
-    volatile uint32_t* words_received_local_update;
+    uint32_t* words_received_local_update;
 
     inline void reset_words_received() {
         // Setting STREAM_REMOTE_DEST_BUF_SIZE_REG_INDEX resets the credit register
@@ -276,8 +262,8 @@ typedef struct fvc_producer_state {
         remote_ptr_update_addr = ptr_update_addr;
         words_received =
             reinterpret_cast<volatile uint32_t*>(STREAM_REG_ADDR(0, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_REG_INDEX));
-        words_received_local_update = reinterpret_cast<volatile uint32_t*>(
-            STREAM_REG_ADDR(0, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_UPDATE_REG_INDEX));
+        words_received_local_update =
+            reinterpret_cast<uint32_t*>(STREAM_REG_ADDR(0, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_UPDATE_REG_INDEX));
         reset_words_received();
         packet_id = (uint32_t*)&current_packet_header.routing.dst_mesh_id;
     }
@@ -293,8 +279,6 @@ typedef struct fvc_producer_state {
     inline void advance_local_wrptr(uint32_t num_words) {
         inbound_wrptr.ptr = inc_ptr_with_wrap(inbound_wrptr.ptr, num_words);
     }
-
-    inline void advance_out_wrptr(uint32_t num_words) { fvc_out_wrptr = inc_ptr_with_wrap(fvc_out_wrptr, num_words); }
 
     inline void advance_out_rdptr(uint32_t num_words) { fvc_out_rdptr = inc_ptr_with_wrap(fvc_out_rdptr, num_words); }
 
@@ -375,9 +359,10 @@ typedef struct fvc_producer_state {
         if (inbound_wrptr.ptr != inbound_rdptr.ptr) {
             inbound_rdptr.ptr = inbound_wrptr.ptr;
             if constexpr (fvc_mode == FVC_MODE_ROUTER) {
+                inbound_rdptr_ack.ptr = inbound_wrptr.ptr;
                 internal_::eth_send_packet(
                     0,
-                    ((uint32_t)&inbound_rdptr) / PACKET_WORD_SIZE_BYTES,
+                    ((uint32_t)&inbound_rdptr_ack) / PACKET_WORD_SIZE_BYTES,
                     remote_ptr_update_addr / PACKET_WORD_SIZE_BYTES,
                     1);
             }
@@ -389,9 +374,10 @@ typedef struct fvc_producer_state {
         if (fvc_pull_rdptr != inbound_rdptr.ptr_cleared) {
             inbound_rdptr.ptr_cleared = fvc_pull_rdptr;
             if constexpr (fvc_mode == FVC_MODE_ROUTER) {
+                inbound_rdptr_ack.ptr_cleared = fvc_pull_rdptr;
                 internal_::eth_send_packet(
                     0,
-                    ((uint32_t)&inbound_rdptr) / PACKET_WORD_SIZE_BYTES,
+                    ((uint32_t)&inbound_rdptr_ack) / PACKET_WORD_SIZE_BYTES,
                     remote_ptr_update_addr / PACKET_WORD_SIZE_BYTES,
                     1);
             }
@@ -455,14 +441,12 @@ typedef struct fvc_producer_state {
     template <uint8_t fvc_mode = FVC_MODE_ROUTER, bool socket_mode = false>
     inline uint32_t pull_data_from_fvc_buffer() {
         uint32_t words_available = get_num_words_available<fvc_mode>();
-        // uint32_t words_available = words_inbound;
         words_available = std::min(words_available, packet_words_remaining);
         if (packet_in_progress == 0) {
-            advance_out_wrptr(words_available);
             if (current_packet_header.routing.flags == INLINE_FORWARD) {
                 copy_header((pull_request_t*)&local_pull_request->pull_request);
             } else {
-                local_pull_request->pull_request.wr_ptr = fvc_out_wrptr;
+                local_pull_request->pull_request.wr_ptr = inc_ptr_with_wrap(fvc_out_rdptr, words_available);
                 local_pull_request->pull_request.rd_ptr = fvc_out_rdptr;
                 local_pull_request->pull_request.size = current_packet_header.routing.packet_size_bytes;
                 local_pull_request->pull_request.buffer_size = buffer_size;
@@ -491,11 +475,10 @@ typedef struct fvc_producer_state {
             fvc_pull_rdptr = local_pull_request->pull_request.rd_ptr;
             if (packet_words_remaining) {
                 if (words_available) {
-                    advance_out_wrptr(words_available);
+                    advance_out_rdptr(words_available);
                     // packet_dest is returned by tt_fabric_send_pull_request() as the address of request q entry +
                     // pull_request.wr_ptr.
-                    noc_inline_dw_write(packet_dest, fvc_out_wrptr);
-                    advance_out_rdptr(words_available);
+                    noc_inline_dw_write(packet_dest, fvc_out_rdptr);
                     packet_words_remaining -= words_available;
                 }
             } else if (fvc_pull_rdptr == fvc_out_rdptr) {
@@ -520,9 +503,11 @@ typedef struct fvc_producer_state {
         if (words_available) {
             noc_async_write(get_local_buffer_read_addr(), packet_dest, words_available * PACKET_WORD_SIZE_BYTES);
             packet_words_remaining -= words_available;
-            advance_out_wrptr(words_available);
             advance_out_rdptr(words_available);
             packet_dest += words_available * PACKET_WORD_SIZE_BYTES;
+            // if (packet_words_remaining == 0) {
+            //     packet_end_flush = 1;
+            // }
         }
         return words_available;
     }
@@ -539,7 +524,6 @@ typedef struct fvc_producer_state {
                         packet_dest = ((uint64_t)current_packet_header.session.target_offset_h << 32) |
                                       current_packet_header.session.target_offset_l;
                         packet_words_remaining -= PACKET_HEADER_SIZE_WORDS;
-                        advance_out_wrptr(PACKET_HEADER_SIZE_WORDS);
                         advance_out_rdptr(PACKET_HEADER_SIZE_WORDS);
                         // subtract the header words. Remaining words are the data to be written to packet_dest.
                         // Remember to account for trailing bytes which may not be a full packet word.
@@ -574,7 +558,6 @@ typedef struct fvc_producer_state {
                         false);
 
                     packet_words_remaining -= PACKET_HEADER_SIZE_WORDS;
-                    advance_out_wrptr(PACKET_HEADER_SIZE_WORDS);
                     advance_out_rdptr(PACKET_HEADER_SIZE_WORDS);
                     words_processed = PACKET_HEADER_SIZE_WORDS;
                     fvc_pull_rdptr = fvc_out_rdptr;
@@ -596,7 +579,16 @@ typedef struct fvc_producer_state {
         update_remote_rdptr_cleared<fvc_mode>();
     }
 
+    inline void check_packet_end_flush() {
+        if (packet_end_flush) {
+            flush_async_writes();
+            packet_in_progress = 0;
+            curr_packet_valid = false;
+            packet_end_flush = 0;
+        }
+    }
 } fvc_producer_state_t;
+
 typedef struct fvcc_outbound_state {
     volatile chan_payload_ptr remote_rdptr;
     uint32_t remote_ptr_update_addr;
@@ -1248,7 +1240,6 @@ inline uint32_t pull_data_to_fvc_buffer(
     }
 
     uint32_t num_words_to_pull = get_num_words_to_pull(pull_request, fvc_consumer_state);
-    bool full_packet_sent = (num_words_to_pull == fvc_consumer_state->packet_words_remaining);
     if (num_words_to_pull == 0) {
         return 0;
     }
