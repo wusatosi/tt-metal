@@ -174,6 +174,7 @@ def calculate_time_diff(start_time, end_time):
 # compute the duration of each test by subtracting the timestamps of the lines with the start and the "PASSED" log output
 def extract_individual_times_from_tests(log_files):
     test_times = {}
+    test_variant_count = {}
 
     for log_file in log_files:
         if not os.path.exists(log_file):
@@ -208,6 +209,9 @@ def extract_individual_times_from_tests(log_files):
                             test_start_time = timestamp
                             if current_test not in test_times:
                                 test_times[current_test] = 0
+                                test_variant_count[current_test] = 1
+                            else:
+                                test_variant_count[current_test] += 1
 
                         if "PASSED" in line and current_test and test_start_time:
                             test_duration = timestamp - test_start_time
@@ -215,7 +219,7 @@ def extract_individual_times_from_tests(log_files):
 
                             test_start_time = None
 
-    return test_times
+    return test_times, test_variant_count
 
 
 # return total time of ops and percentage with respect to total APC
@@ -245,10 +249,18 @@ def group_tests_by_base_name(test_times):
 
 
 # convert a dictionary to CSV
-def dict_to_csv(data_dict, filename):
+def dict_to_csv_time(data_dict, filename):
     with open(filename, mode="w", newline="") as file:
         writer = csv.writer(file)
         writer.writerow(["Test Name", "Time Spent (s)"])
+        for key, value in data_dict.items():
+            writer.writerow([key, value])
+
+
+def dict_to_csv_count(data_dict, filename):
+    with open(filename, mode="w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["Test Name", "Variant Count"])
         for key, value in data_dict.items():
             writer.writerow([key, value])
 
@@ -264,7 +276,7 @@ def main():
     python_tests_dict = extract_python_tests(log_files)
 
     # fetch the time of each python test
-    individual_tests_time = extract_individual_times_from_tests(python_tests_dict)
+    individual_tests_time, variants_count = extract_individual_times_from_tests(python_tests_dict)
 
     # group the tests by name
     grouped_dict = group_tests_by_base_name(individual_tests_time)
@@ -275,7 +287,8 @@ def main():
     print(time, percentage)
 
     # save the duration of each test in a csv file
-    dict_to_csv(grouped_dict, "/path_to_csv_file")
+    dict_to_csv_time(grouped_dict, "/path_to_csv_file")
+    dict_to_csv_count(variants_count, "/path_to_csv_file")
 
 
 if __name__ == "__main__":
