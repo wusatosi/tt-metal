@@ -117,13 +117,7 @@ class TtTransformer(LightweightModule):
             weight_cache_path=weight_cache_path,
             tt_ccl=self.tt_ccl,
         )
-
-        self.garbage_tensor = ttnn.dram_prefetcher(
-            self.prefetcher_setup.get_input_tensors(),
-            num_layers=self.n_layers,
-            global_cb=self.prefetcher_setup.global_circular_buffer,
-        )
-        self.mesh_device.set_sub_device_stall_group([self.prefetcher_setup.worker_sub_device_id])
+        self.tt_tensors = self.prefetcher_setup.get_input_tensors()
 
     def prepare_inputs_prefill(self, tokens, start_pos=0, page_table=None, chunk_page_table=None):
         """
@@ -345,6 +339,15 @@ class TtTransformer(LightweightModule):
     ):
         print("model start")
         # No-op if callers already provide the right memory config
+
+        garbage_tensor = ttnn.dram_prefetcher(
+            self.tt_tensors,
+            num_layers=self.n_layers,
+            global_cb=self.prefetcher_setup.global_circular_buffer,
+        )
+        print("prefetcher done")
+        self.mesh_device.set_sub_device_stall_group([self.prefetcher_setup.worker_sub_device_id])
+        print("stall group done")
         if mode == "decode" and not self.args.is_galaxy:
             x = ttnn.to_memory_config(x, self.model_config["DECODE_RESIDUAL_MEMCFG"])
 
@@ -364,7 +367,7 @@ class TtTransformer(LightweightModule):
             )
         ttnn.deallocate(h)
 
-        # ttnn.deallocate(garbage_tensor)
+        ttnn.deallocate(garbage_tensor)
         print("decoder done")
 
         # Output norm
