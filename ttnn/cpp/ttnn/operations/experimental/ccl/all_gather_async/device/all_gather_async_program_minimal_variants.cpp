@@ -345,7 +345,7 @@ operation::ProgramWithCallbacks all_gather_async_llama_post_binary_matmul(
     // create cb for output tensor
     tt::DataFormat output_df = tt::tt_metal::datatype_to_dataformat_converter(output_tensor.get_dtype());
     uint32_t out_single_tile_size = tt::tt_metal::detail::TileSize(output_df);
-    uint32_t cb_output_index = tt::CB::c_out1;
+    uint32_t cb_output_index = tt::CB::c_out0;
     tt::tt_metal::CircularBufferConfig cb_output_config =
         tt::tt_metal::CircularBufferConfig(
             output_tensor_shard_num_pages * out_single_tile_size, {{cb_output_index, output_df}})
@@ -354,7 +354,7 @@ operation::ProgramWithCallbacks all_gather_async_llama_post_binary_matmul(
     CBHandle cb_output = CreateCircularBuffer(program, output_tensor_cores, cb_output_config);
 
     // create cb for all gather output tensor
-    uint32_t cb_all_gather_output_index = tt::CB::c_out0;
+    uint32_t cb_all_gather_output_index = tt::CB::c_out1;
     tt::tt_metal::CircularBufferConfig cb_all_gather_output_config =
         tt::tt_metal::CircularBufferConfig(
             output_tensor_shard_num_pages * out_single_tile_size, {{cb_all_gather_output_index, output_df}})
@@ -411,9 +411,17 @@ operation::ProgramWithCallbacks all_gather_async_llama_post_binary_matmul(
     auto worker_sender_writer_kernel_id = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/experimental/ccl/all_gather_async/device/kernels/"
-        "llama_post_binary_matmul_shape_writer.cpp",
+        "llama_post_binary_matmul_shape_interleave_writer.cpp",
         sender_worker_core_range,
         writer_kernel_config);
+
+    // create compute kernel
+    auto compute_kernel_id = tt::tt_metal::CreateKernel(
+        program,
+        "ttnn/cpp/ttnn/operations/experimental/ccl/all_gather_async/device/kernels/"
+        "llama_all_gather_reduce_compute.cpp",
+        output_tensor_cores,
+        tt::tt_metal::ComputeConfig{});
 
     // Kernel Runtime Args
     CoreCoord drain_sync_core;  // the first worker of each chip is the drain sync core, which contains the output ready
@@ -421,12 +429,15 @@ operation::ProgramWithCallbacks all_gather_async_llama_post_binary_matmul(
     auto input_cores_vec = corerange_to_cores(input_tensor_cores, std::nullopt, true);
     auto output_cores_vec = corerange_to_cores(output_tensor_cores, std::nullopt, true);
     auto cores_per_device = output_cores_vec.size() / ring_size;
-    TT_FATAL(
-        output_cores_vec.size() % ring_size == 0,
-        "output sharded cores must be divisible by num_links for this work distribution scheme");
-    auto output_cores_this_device = std::vector<CoreCoord>(
-        output_cores_vec.begin() + ring_index * cores_per_device,
-        output_cores_vec.begin() + (ring_index + 1) * cores_per_device);
+    // std::cout << "cores_per_device: " << cores_per_device << std::endl;
+    // std::cout << "output_cores_vec.size(): " << output_cores_vec.size() << std::endl;
+    // std::cout << "ring_size: " << ring_size << std::endl;
+    // TT_FATAL(
+    //     output_cores_vec.size() % ring_size == 0,
+    //     "output sharded cores must be divisible by num_links for this work distribution scheme");
+    // auto output_cores_this_device = std::vector<CoreCoord>(
+    //     output_cores_vec.begin() + ring_index * cores_per_device,
+    //     output_cores_vec.begin() + (ring_index + 1) * cores_per_device);
 
     for (uint32_t link = 0; link < num_links; link++) {
         CoreCoord core = sender_worker_cores[link];
@@ -443,8 +454,8 @@ operation::ProgramWithCallbacks all_gather_async_llama_post_binary_matmul(
 
         std::vector<uint32_t> input_tensor_cores_x;
         std::vector<uint32_t> input_tensor_cores_y;
-        std::vector<uint32_t> output_tensor_cores_x;
-        std::vector<uint32_t> output_tensor_cores_y;
+        // std::vector<uint32_t> output_tensor_cores_x;
+        // std::vector<uint32_t> output_tensor_cores_y;
         for (uint32_t i = input_tile_id_start / input_tensor_shard_num_pages;
              i < (input_tile_id_end + input_tensor_shard_num_pages - 1) / input_tensor_shard_num_pages;
              i++) {
@@ -452,13 +463,13 @@ operation::ProgramWithCallbacks all_gather_async_llama_post_binary_matmul(
             input_tensor_cores_x.push_back(this_core.x);
             input_tensor_cores_y.push_back(this_core.y);
         }
-        for (uint32_t i = input_tile_id_start / output_tensor_shard_num_pages;
-             i < (input_tile_id_end + output_tensor_shard_num_pages - 1) / output_tensor_shard_num_pages;
-             i++) {
-            auto this_core = device->worker_core_from_logical_core(output_cores_this_device[i]);
-            output_tensor_cores_x.push_back(this_core.x);
-            output_tensor_cores_y.push_back(this_core.y);
-        }
+        // for (uint32_t i = input_tile_id_start / output_tensor_shard_num_pages;
+        //      i < (input_tile_id_end + output_tensor_shard_num_pages - 1) / output_tensor_shard_num_pages;
+        //      i++) {
+        //     auto this_core = device->worker_core_from_logical_core(output_cores_this_device[i]);
+        //     output_tensor_cores_x.push_back(this_core.x);
+        //     output_tensor_cores_y.push_back(this_core.y);
+        // }
 
         tt::log_debug(tt::LogOp, "input_tile_id_start: {}", input_tile_id_start);
         tt::log_debug(tt::LogOp, "input_tile_id_end: {}", input_tile_id_end);
@@ -467,8 +478,8 @@ operation::ProgramWithCallbacks all_gather_async_llama_post_binary_matmul(
         tt::log_debug(tt::LogOp, "output_first_core_tile_start_offset: {}", output_first_core_tile_start_offset);
         tt::log_debug(tt::LogOp, "input_tensor_cores_x: {}", input_tensor_cores_x);
         tt::log_debug(tt::LogOp, "input_tensor_cores_y: {}", input_tensor_cores_y);
-        tt::log_debug(tt::LogOp, "output_tensor_cores_x: {}", output_tensor_cores_x);
-        tt::log_debug(tt::LogOp, "output_tensor_cores_y: {}", output_tensor_cores_y);
+        // tt::log_debug(tt::LogOp, "output_tensor_cores_x: {}", output_tensor_cores_x);
+        // tt::log_debug(tt::LogOp, "output_tensor_cores_y: {}", output_tensor_cores_y);
 
         if (link == 0) {
             // drain sync core is the first worker core
@@ -507,10 +518,10 @@ operation::ProgramWithCallbacks all_gather_async_llama_post_binary_matmul(
         uint32_t out_ready_sem_wait_value = ring_size * num_links;
         std::vector<uint32_t> writer_rt_args = {
             output_tensor.buffer()->address(),    // tensor_address0
-            output_tensor_shard_num_pages,        // num_tiles_per_core
+            input_tensor_shard_num_pages,         // num_tiles_per_core
             worker_num_tiles_to_read,             // num_tiles_to_read
             output_first_core_tile_start_offset,  // first_core_tile_start_offset
-            output_tensor_cores_x.size(),         // num_cores
+            input_tensor_cores_x.size(),          // num_cores
             wait_output_semaphore,                // wait_output_semaphore
             reset_global_semaphore,               // reset_global_semaphore
             semaphore.address(),                  // out_ready_sem_bank_addr (absolute address)
@@ -518,8 +529,8 @@ operation::ProgramWithCallbacks all_gather_async_llama_post_binary_matmul(
             drain_sync_core.y,                    // out_ready_sem_noc0_y
             out_ready_sem_wait_value,             // out_ready_sem_wait_value
         };
-        writer_rt_args.insert(writer_rt_args.end(), output_tensor_cores_x.begin(), output_tensor_cores_x.end());
-        writer_rt_args.insert(writer_rt_args.end(), output_tensor_cores_y.begin(), output_tensor_cores_y.end());
+        writer_rt_args.insert(writer_rt_args.end(), input_tensor_cores_x.begin(), input_tensor_cores_x.end());
+        writer_rt_args.insert(writer_rt_args.end(), input_tensor_cores_y.begin(), input_tensor_cores_y.end());
         log_trace(tt::LogOp, "Writer Runtime Args:");
         for (const auto& arg : writer_rt_args) {
             log_trace(tt::LogOp, "\t{}", arg);
@@ -549,6 +560,12 @@ operation::ProgramWithCallbacks all_gather_async_llama_post_binary_matmul(
                 writer_rt_args);
         }
         tt::tt_metal::SetRuntimeArgs(program, worker_sender_writer_kernel_id, {core}, writer_rt_args);
+
+        // Set compute runtime args for
+        // const size_t out_ready_sem_bank_addr = get_arg_val<uint32_t>(arg_idx++);
+        // uint32_t out_ready_sem_wait_value = get_arg_val<uint32_t>(arg_idx++);
+        // size_t arg_for_fab = arg_idx;
+        // auto fabric_connection = FabricConnectionManager::build_from_args(arg_idx);
     }
 
     auto override_runtime_arguments_callback =

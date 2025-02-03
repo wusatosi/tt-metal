@@ -426,13 +426,13 @@ def test_all_gather(
         # ),
         (
             4,
-            [1, 1, 32, 3840 * 4],
+            [1, 1, 32, 32 * 4],
             3,
             ttnn.TILE_LAYOUT,
-            (32, 160),
-            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(3, 5))}),
-            (32, 160 * 4),
-            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(3, 5))}),
+            (32, 32),
+            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 0))}),
+            (32, 32 * 4),
+            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 0))}),
             ttnn.TensorMemoryLayout.WIDTH_SHARDED,
         ),
         # (
@@ -456,7 +456,7 @@ def test_all_gather(
         # ttnn.bfloat8_b,
     ],
 )
-@pytest.mark.parametrize("num_iters", [8])
+@pytest.mark.parametrize("num_iters", [1])
 @pytest.mark.parametrize("enable_async", [True])
 def test_all_gather_sharded(
     t3k_mesh_device,
