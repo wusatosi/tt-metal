@@ -117,12 +117,16 @@ inline void dprint_tensix_dest_reg_row_float32(uint16_t row) {
     dbg_read_dest_acc_row(row, rd_data_temp);
     dbg_read_dest_acc_row(row + 8, rd_data_temp + 8);
 
+    rd_data[0] = reconstruct_float32(lo_word(rd_data_temp[0]), lo_word(rd_data_temp[8]));
+
     for (int i = 0; i < 8; ++i) {
         rd_data[2 * i] = reconstruct_float32(lo_word(rd_data_temp[i]), lo_word(rd_data_temp[i + 8]));
         rd_data[2 * i + 1] = reconstruct_float32(hi_word(rd_data_temp[i]), hi_word(rd_data_temp[i + 8]));
     }
 
-    dprint_array_with_data_type((uint32_t)DataFormat::Float32, rd_data, ARRAY_LEN);
+    DPRINT << "AAAA HEX " << HEX() << lo_word(rd_data_temp[0]) << ", " << lo_word(rd_data_temp[8]) << ENDL();
+
+    dprint_array_with_data_type((uint32_t)DataFormat::Float32, rd_data, 1);
 }
 
 // Helper function that prints one row from dest when dest is configured for storing float16 values.
@@ -159,11 +163,11 @@ void dprint_tensix_dest_reg(int tile_id = 0) {
         is_swizzled = READ_HW_CFG_0_REG_FIELD(DEST_ACCESS_CFG_swizzle_32b) == 1;
 #endif
         // Print the contents
-        DPRINT << FIXED() << SETW(WIDTH) << SETPRECISION(PRECISION);
+        DPRINT << FIXED() << SETW(20) << SETPRECISION(20);
         DPRINT << "Tile ID = " << tile_id << ENDL();
 
-        for (int face_id = 0; face_id < NUM_FACES_PER_TILE; ++face_id) {
-            for (int row_id = 0; row_id < NUM_ROWS_PER_FACE; ++row_id) {
+        for (int face_id = 0; face_id < 1; ++face_id) {
+            for (int row_id = 0; row_id < 1; ++row_id) {
                 uint16_t row = get_dest_row_id(tile_id, face_id, row_id, is_float32, is_remapped, is_swizzled);
                 if (is_float32) {
                     dprint_tensix_dest_reg_row_float32(row);

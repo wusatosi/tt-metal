@@ -10,7 +10,9 @@ void kernel_main() {
         cb_reserve_back(cb_in0, 1);
         float* ptr = reinterpret_cast<float*>(get_write_ptr(cb_in0));
         memset(ptr, 0, 1024 * sizeof(float));
-        ptr[0] = 1.0039063;
+        // ptr[0] = 1.0039063;
+        ptr[0] = -1.01953125000;
+
         cb_push_back(cb_in0, 1);
     }
 }
