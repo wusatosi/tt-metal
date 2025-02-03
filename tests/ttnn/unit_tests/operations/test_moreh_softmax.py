@@ -73,6 +73,7 @@ def run_moreh_softmax_test(
 )
 def test_softmax_for_dim_hw(shape_dim, dtype, device):
     compute_kernel_options = True
+    # compute_kernel_options = False
     shape, dim = shape_dim
     torch.manual_seed(0)
     rtol = atol = 0.05

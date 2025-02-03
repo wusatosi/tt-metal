@@ -18,12 +18,14 @@ namespace NAMESPACE {
 void MAIN {
     constexpr auto cb_input = tt::CBIndex::c_0;   // float32
     constexpr auto cb_output = tt::CBIndex::c_3;  // bfloat16
+    constexpr auto cb_bfp8 = tt::CBIndex::c_5;    // bfloat16
 
     binary_op_init_common(cb_input, cb_output);
 
     constexpr int dst0 = 0;
     constexpr int dst1 = 1;
     constexpr uint32_t onetile = 1;
+    constexpr bool flag_to_from_int8 = true;
 
     cb_wait_front(cb_input, onetile);
 
@@ -36,7 +38,7 @@ void MAIN {
     tile_regs_acquire();
     cb_wait_front(cb_input, onetile);
 
-    reconfig_data_format_srca<true>(cb_input);
+    reconfig_data_format_srca<flag_to_from_int8>(cb_input);
     copy_tile_init(cb_input);
     copy_tile(cb_input, 0, dst0);
     tile_regs_commit();
@@ -51,5 +53,24 @@ void MAIN {
     cb_wait_front(cb_output, onetile);
     UNPACK(DPRINT << "AAAA cb_output "
                   << TSLICE(cb_output, 0, SliceRange{.h0 = 0, .h1 = 1, .hs = 1, .w0 = 0, .w1 = 3, .ws = 1}) << ENDL();)
+
+    tile_regs_acquire();
+    cb_wait_front(cb_output, onetile);
+
+    reconfig_data_format_srca<flag_to_from_int8>(cb_output);
+    copy_tile_init(cb_output);
+    copy_tile(cb_output, 0, dst0);
+    tile_regs_commit();
+
+    tile_regs_wait();
+    pack_reconfig_data_format(cb_bfp8);
+    pack_tile(dst0, cb_bfp8);
+    tile_regs_release();
+
+    cb_push_back(cb_bfp8, onetile);
+
+    cb_wait_front(cb_bfp8, onetile);
+    UNPACK(DPRINT << "AAAA cb_bfp8 "
+                  << TSLICE(cb_bfp8, 0, SliceRange{.h0 = 0, .h1 = 1, .hs = 1, .w0 = 0, .w1 = 3, .ws = 1}) << ENDL();)
 }
 }  // namespace NAMESPACE

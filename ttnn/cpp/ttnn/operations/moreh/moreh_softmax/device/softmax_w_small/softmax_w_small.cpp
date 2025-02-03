@@ -56,6 +56,7 @@ MorehSoftmaxOperation::MorehSoftmaxWSmallFactory::create(
             {tt::CBIndex::c_2, 1, tt::DataFormat::Float32},    // float32 scaler
             {tt::CBIndex::c_3, 1, tt::DataFormat::Float16_b},  // bfloat16 output
             {tt::CBIndex::c_4, 1, tt::DataFormat::Float32},    // float32 output
+            {tt::CBIndex::c_5, 1, tt::DataFormat::Bfp8_b},
         });
 
     // create read/wrtie kernel
@@ -88,7 +89,6 @@ MorehSoftmaxOperation::MorehSoftmaxWSmallFactory::create(
         compute_defines["LOG"] = "1";
     }
 
-    fp32_dest_acc_en = true;
     if (fp32_dest_acc_en) {
         compute_defines["FP32_DEST_ACC_EN"] = "1";
     }
