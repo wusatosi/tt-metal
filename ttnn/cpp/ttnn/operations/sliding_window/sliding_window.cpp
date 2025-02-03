@@ -699,7 +699,8 @@ std::string SlidingWindowConfig::to_string() const {
            std::to_string(std::get<1>(stride_hw)) + "_" + std::to_string(std::get<0>(pad_hw)) + "_" +
            std::to_string(std::get<1>(pad_hw)) + "_" + std::to_string(std::get<0>(dilation_hw)) + "_" +
            std::to_string(std::get<1>(dilation_hw)) + "_" + std::to_string(num_cores_nhw) + "_" +
-           std::to_string(num_cores_c) + "_" + std::to_string(ceil_mode) + "_" + core_range_set.str();
+           std::to_string(num_cores_c) + "_" + std::to_string(ceil_mode) + "_" + std::to_string(return_indices) + "_" +
+           core_range_set.str();
 }
 
 }  // namespace ttnn::operations::sliding_window

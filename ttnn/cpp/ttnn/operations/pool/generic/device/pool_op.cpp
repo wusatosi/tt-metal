@@ -106,6 +106,8 @@ Pool2D::spec_return_value_t Pool2D::compute_output_specs(
 
 Pool2D::tensor_return_value_t Pool2D::create_output_tensors(
     const operation_attributes_t& op_attr, const tensor_args_t& tensors) {
+    printf("return_indices: %d\n", op_attr.sliding_window_config_.return_indices);
+
     auto output_spec = compute_output_specs(op_attr, tensors);
     return create_device_tensor(output_spec, tensors.input_tensor_.device());
 }

@@ -57,6 +57,7 @@ std::vector<Tensor> Pool2DOp<pool_type>::invoke(
             .pad_hw = {padding.at(0), padding.at(1)},
             .dilation_hw = {dilation.at(0), dilation.at(1)},
             .ceil_mode = ceil_mode,
+            .return_indices = return_indices,
     };
     auto output_shape = sliding_window_config.get_output_shape();   // last dim/width is 0
     auto input_tensor_sharded = input_tensor;
@@ -131,6 +132,7 @@ std::vector<Tensor> Pool2DOp<pool_type>::invoke(
             .core_range_set = parallel_config.grid,
             .snap_to_tile = false,
             .ceil_mode = ceil_mode,
+            .return_indices = return_indices,
     };
 
     // Call the halo uop
