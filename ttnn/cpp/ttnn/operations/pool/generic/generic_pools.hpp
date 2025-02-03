@@ -17,7 +17,7 @@ namespace operations::pool {
 
 template <Pool2DType pool_type>
 struct Pool2DOp {
-    static Tensor invoke(
+    static std::vector<Tensor> invoke(
         uint8_t queue_id,
         const Tensor& input_tensor,
         uint32_t batch_size,
@@ -32,6 +32,14 @@ struct Pool2DOp {
         const std::optional<const TensorMemoryLayout> applied_shard_scheme = std::nullopt,
         bool ceil_mode = false,
         bool return_indices = false);
+
+    static inline std::vector<Tensor> create_async_output_tensors(
+        const std::vector<Tensor>& input_tensors, const std::vector<std::optional<const Tensor>>& optional_inputs) {
+        const auto& input_tensor = input_tensors.at(0);
+        return {
+            Tensor(operation::get_workers_for_op_output({input_tensor})),
+            Tensor(operation::get_workers_for_op_output({input_tensor}))};
+    }
 };
 
 }  // namespace operations::pool

@@ -31,7 +31,7 @@ uint32_t get_bf16_pool_init_value(Pool2DType pool_type) {
 }  // namespace
 
 template <Pool2DType pool_type>
-Tensor Pool2DOp<pool_type>::invoke(
+std::vector<Tensor> Pool2DOp<pool_type>::invoke(
     uint8_t queue_id,
     const Tensor& input_tensor,
     uint32_t batch_size,
@@ -157,7 +157,7 @@ Tensor Pool2DOp<pool_type>::invoke(
         output_tensor = ttnn::to_memory_config(output_tensor, memory_config.value(), std::nullopt);
     }
 
-    return output_tensor;
+    return {output_tensor};
 }
 
 template class Pool2DOp<Pool2DType::MAX_POOL2D>;

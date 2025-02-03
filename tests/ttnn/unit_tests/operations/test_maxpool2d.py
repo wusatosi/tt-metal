@@ -180,7 +180,7 @@ def run_max_pool(
             tile_size=32 if dtype == ttnn.bfloat8_b else 1,
         )
         ttact_device = ttnn.to_memory_config(ttact_device, sharded_memory_config)
-    output = ttnn.max_pool2d(
+    tt_results = ttnn.max_pool2d(
         input_tensor=ttact_device,
         batch_size=in_n,
         input_h=in_h,
@@ -196,12 +196,18 @@ def run_max_pool(
         return_indices=return_indices,
     )
 
+    if return_indices:
+        output = tt_results[0]
+        # output_indices = tt_results[1]
+    else:
+        output = tt_results[0]
+
     output_host = output.cpu()
     output_pytorch_padded = torch.Tensor(ttnn.to_torch(output_host))
     output_pytorch = output_pytorch_padded[:, :, :, :in_c]
 
     ## reference
-    golden_pytorch, golden_pytorch_indices = torch.nn.MaxPool2d(
+    golden_pytorch_results = torch.nn.MaxPool2d(
         kernel_size,
         stride=stride,
         padding=padding,
@@ -210,9 +216,20 @@ def run_max_pool(
         ceil_mode=ceil_mode,
     )(act)
 
+    if return_indices:
+        golden_pytorch = golden_pytorch_results[0]
+        golden_pytorch_indices = golden_pytorch_results[1]
+    else:
+        golden_pytorch = golden_pytorch_results[0]
+
     ## test for equivalance
     golden_shape = golden_pytorch.shape
+    if len(golden_shape) == 3:
+        golden_shape = (1, golden_shape[0], golden_shape[1], golden_shape[2])
+
+    print(golden_shape)
     output_pytorch = output_pytorch.reshape(golden_shape[0], golden_shape[2], golden_shape[3], golden_shape[1])
+    golden_pytorch = golden_pytorch.reshape(golden_shape[0], golden_shape[1], golden_shape[2], golden_shape[3])
 
     output_pytorch = torch.permute(output_pytorch, (0, 3, 1, 2))  ## N, C, H, W
 
@@ -343,7 +360,7 @@ def run_max_pool(
 @pytest.mark.parametrize(
     "return_indices",
     [
-        # False,
+        False,
         True,
     ],
 )

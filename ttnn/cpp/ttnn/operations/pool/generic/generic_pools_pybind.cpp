@@ -91,7 +91,7 @@ void bind_max_pool2d_operation(py::module& module) {
                const std::optional<const ttnn::TensorMemoryLayout> applied_shard_scheme,
                bool ceil_mode,
                bool return_indices,
-               const uint8_t& queue_id) -> ttnn::Tensor {
+               const uint8_t& queue_id) -> std::vector<ttnn::Tensor> {
                 return self(
                     queue_id,
                     input_tensor,
