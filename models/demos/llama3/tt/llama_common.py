@@ -64,6 +64,51 @@ def encode_prompt_hf(tokenizer, prompt_text, system_prompt_text=None):
     return tokenizer.apply_chat_template(chat, tokenize=True, add_generation_prompt=True)
 
 
+def apply_yarn_scaling(base, freqs: torch.Tensor, scale_factor: float, orig_context_len: int):
+    # Yarn-specific scaling logic
+    dim = freqs.shape[0] * 2  # Assuming freqs is half the dimension of the full embedding
+    max_position_embeddings = orig_context_len
+    factor = scale_factor  # config.rope_scaling['factor']
+    attention_factor = (
+        0.1 * math.log(factor) + 1.0
+    )  # config.rope_scaling.get('attention_factor', 0.1 * math.log(factor) + 1.0)
+    beta_fast = 32  # config.rope_scaling.get('beta_fast', 32)
+    beta_slow = 1  # config.rope_scaling.get('beta_slow', 1)
+
+    # Compute the inverse frequencies
+    def find_correction_dim(num_rotations, dim, base, max_position_embeddings):
+        """Inverse dimension formula to find the dimension based on the number of rotations"""
+        return (dim * math.log(max_position_embeddings / (num_rotations * 2 * math.pi))) / (2 * math.log(base))
+
+    def find_correction_range(low_rot, high_rot, dim, base, max_position_embeddings):
+        """Find dimension range bounds based on rotations"""
+        low = math.floor(find_correction_dim(low_rot, dim, base, max_position_embeddings))
+        high = math.ceil(find_correction_dim(high_rot, dim, base, max_position_embeddings))
+        return max(low, 0), min(high, dim - 1)
+
+    def linear_ramp_factor(min, max, dim):
+        if min == max:
+            max += 0.001  # Prevent singularity
+
+        linear_func = (torch.arange(dim, dtype=torch.float32) - min) / (max - min)
+        ramp_func = torch.clamp(linear_func, 0, 1)
+        return ramp_func
+
+    # Compute the inverse frequencies with Yarn scaling
+    pos_freqs = base ** (torch.arange(0, dim, 2).float().to(freqs.device) / dim)
+    inv_freq_extrapolation = 1.0 / pos_freqs
+    inv_freq_interpolation = 1.0 / (factor * pos_freqs)
+
+    low, high = find_correction_range(beta_fast, beta_slow, dim, base, max_position_embeddings)
+    inv_freq_extrapolation_factor = 1 - linear_ramp_factor(low, high, dim // 2).float().to(freqs.device)
+    inv_freq = (
+        inv_freq_interpolation * (1 - inv_freq_extrapolation_factor)
+        + inv_freq_extrapolation * inv_freq_extrapolation_factor
+    )
+
+    return inv_freq
+
+
 def apply_scaling(freqs: torch.Tensor, scale_factor: float, orig_context_len: int):
     # FIXME: Llama-3.x specific scaling - we need to support yarn for Qwen2.5 models
     # Values obtained from grid search
@@ -86,7 +131,7 @@ def apply_scaling(freqs: torch.Tensor, scale_factor: float, orig_context_len: in
     return torch.tensor(new_freqs, dtype=freqs.dtype, device=freqs.device)
 
 
-def precompute_freqs(dim: int, end: int, theta, scale_factor, orig_context_len):
+def precompute_freqs(dim: int, end: int, theta, scale_factor, orig_context_len, scale_type=None):
     """
     Precompute the frequency tensor for sine and cosine values with given dimensions.
 
@@ -101,9 +146,21 @@ def precompute_freqs(dim: int, end: int, theta, scale_factor, orig_context_len):
     freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
     t = torch.arange(end)
     if scale_factor is not None:
-        freqs = apply_scaling(freqs, scale_factor, orig_context_len)
+        if scale_type == "yarn":
+            freqs = apply_yarn_scaling(freqs, scale_factor, orig_context_len)
+        else:
+            freqs = apply_scaling(theta, freqs, scale_factor, orig_context_len)
     freqs = torch.outer(t, freqs).float()
     return torch.cos(freqs), torch.sin(freqs)
+
+
+def gather_cos_sin(position_ids, cos, sin):
+    position_id_expanded = position_ids.unsqueeze(1).expand(-1, cos.shape[-1])
+    cos = cos.gather(0, position_id_expanded)
+    sin = sin.gather(0, position_id_expanded)
+    cos = torch.stack([cos, cos], dim=-1).flatten(-2).unsqueeze(0).unsqueeze(0)
+    sin = torch.stack([sin, sin], dim=-1).flatten(-2).unsqueeze(0).unsqueeze(0)
+    return cos, sin
 
 
 def freqs_to_rotation_matrix(cos_freqs, sin_freqs):
@@ -120,15 +177,6 @@ def freqs_to_rotation_matrix(cos_freqs, sin_freqs):
 
     rot_emb_matrix = rot_emb_matrix.transpose(-1, -2)  # Necessary for correct rotation when applied as (x @ R)
     return rot_emb_matrix
-
-
-def gather_cos_sin(position_ids, cos, sin):
-    position_id_expanded = position_ids.unsqueeze(1).expand(-1, cos.shape[-1])
-    cos = cos.gather(0, position_id_expanded)
-    sin = sin.gather(0, position_id_expanded)
-    cos = torch.stack([cos, cos], dim=-1).flatten(-2).unsqueeze(0).unsqueeze(0)
-    sin = torch.stack([sin, sin], dim=-1).flatten(-2).unsqueeze(0).unsqueeze(0)
-    return cos, sin
 
 
 def get_prefill_rot_mat(
