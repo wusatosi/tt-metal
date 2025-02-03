@@ -15,7 +15,8 @@ from models.demos.ttnn_resnet.demo.demo import run_resnet_imagenet_inference, ru
 def test_demo_imagenet(
     batch_size, use_program_cache, iterations, imagenet_label_dict, model_location_generator, device
 ):
-    run_resnet_imagenet_inference(batch_size, iterations, imagenet_label_dict, model_location_generator, device)
+    for _ in range(20000):
+        run_resnet_imagenet_inference(batch_size, iterations, imagenet_label_dict, model_location_generator, device)
 
 
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)

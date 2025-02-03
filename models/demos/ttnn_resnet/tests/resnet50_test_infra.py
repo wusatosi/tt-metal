@@ -210,6 +210,7 @@ class ResNet50TestInfra:
         self.torch_input_tensor = torch.rand(input_shape, dtype=torch.float32)
 
         parameters = preprocess_model_parameters(
+            model_name="resnet-50",
             initialize_model=lambda: torch_model,
             custom_preprocessor=create_custom_mesh_preprocessor(self.weights_mesh_mapper),
             device=None,

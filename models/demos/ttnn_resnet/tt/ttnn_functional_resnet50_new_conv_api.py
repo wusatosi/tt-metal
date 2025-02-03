@@ -472,6 +472,7 @@ class resnet50:
         final_output_mem_config=ttnn.L1_MEMORY_CONFIG,
     ) -> None:
         super().__init__()
+        logger.remove()
         layers = [3, 4, 6, 3]
         num_classes = 1000
         conv_input_face_shape_hw = [224, 224]

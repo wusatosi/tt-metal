@@ -35,6 +35,7 @@ def run_resnet_imagenet_inference(
     model_config=resnet_model_config,
     model_version="microsoft/resnet-50",
 ):
+    logger.remove()
     disable_compilation_reports()
     profiler.clear()
 
@@ -81,6 +82,11 @@ def run_resnet_imagenet_inference(
         del tt_output, inputs, labels, predictions
     accuracy = correct / (batch_size * iterations)
     logger.info(f"Accuracy for {batch_size}x{iterations} inputs: {accuracy}")
+
+    # Append to file if accuracy is below 0.761875
+    if accuracy < 0.761875:
+        with open("accuracy_log.txt", "a") as file:
+            file.write(f"Accuracy: {accuracy}\n")
 
 
 def run_resnet_inference(
