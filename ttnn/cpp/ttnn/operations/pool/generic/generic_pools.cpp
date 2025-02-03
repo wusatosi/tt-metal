@@ -44,7 +44,11 @@ Tensor Pool2DOp<pool_type>::invoke(
     std::array<uint32_t, 2> dilation,
     const std::optional<const MemoryConfig>& memory_config,
     const std::optional<const TensorMemoryLayout> applied_shard_scheme,
-    bool ceil_mode) {
+    bool ceil_mode,
+    bool return_indices) {
+
+    printf("return_indices: %d\n", return_indices);
+
     sliding_window::SlidingWindowConfig sliding_window_config{
             .batch_size = batch_size,
             .input_hw = {input_h, input_w},
