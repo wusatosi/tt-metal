@@ -118,6 +118,13 @@ class TtTransformer(LightweightModule):
             tt_ccl=self.tt_ccl,
         )
 
+        self.garbage_tensor = ttnn.dram_prefetcher(
+            self.prefetcher_setup.get_input_tensors(),
+            num_layers=self.n_layers,
+            global_cb=self.prefetcher_setup.global_circular_buffer,
+        )
+        self.mesh_device.set_sub_device_stall_group([self.prefetcher_setup.worker_sub_device_id])
+
     def prepare_inputs_prefill(self, tokens, start_pos=0, page_table=None, chunk_page_table=None):
         """
         Inputs are torch tensors or python types. This function returns ttnn
@@ -336,15 +343,7 @@ class TtTransformer(LightweightModule):
         get_last_token=-1,
         kv_cache=None,
     ):
-        # Prefetcher
-        if mode == "decode" and self.args.is_galaxy:
-            garbage_tensor = ttnn.dram_prefetcher(
-                self.prefetcher_setup.get_input_tensors(),
-                num_layers=self.n_layers,
-                global_cb=self.prefetcher_setup.global_circular_buffer,
-            )
-            self.mesh_device.set_sub_device_stall_group([self.prefetcher_setup.worker_sub_device_id])
-
+        print("model start")
         # No-op if callers already provide the right memory config
         if mode == "decode" and not self.args.is_galaxy:
             x = ttnn.to_memory_config(x, self.model_config["DECODE_RESIDUAL_MEMCFG"])
@@ -365,18 +364,19 @@ class TtTransformer(LightweightModule):
             )
         ttnn.deallocate(h)
 
-        ttnn.deallocate(garbage_tensor)
+        # ttnn.deallocate(garbage_tensor)
+        print("decoder done")
 
         # Output norm
         x_norm, res = self.norm(x, res=None, mode=mode)
-        x.deallocate(True)
+        # x.deallocate(True)
         # res.deallocate(True)
 
         if mode == "decode" and self.args.is_galaxy:
             x = ttnn.to_memory_config(x_norm, self.args.model_config["SHARDED_LM_HEAD_INPUT_RING_MEMCFG"])
             x_norm.deallocate(True)
-            for sin_i in rot_mats:
-                sin_i.deallocate(True)
+            # for sin_i in rot_mats:
+            #     sin_i.deallocate(True)
 
         return self.lm_head(x)
 

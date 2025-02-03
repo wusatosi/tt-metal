@@ -269,6 +269,7 @@ class TtLlamaAttention(LightweightModule):
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
         )
         ttnn.deallocate(x)
+        print("done matmul")
         # xqkv_fused_sharded -> [1, 1, 32, 12288 // 8]
 
         xqkv_fused_dram = ttnn.to_memory_config(xqkv_fused_sharded, ttnn.DRAM_MEMORY_CONFIG)
@@ -277,6 +278,8 @@ class TtLlamaAttention(LightweightModule):
         xqkv_reduced = self.tt_ccl.line_all_reduce(
             xqkv_fused_dram, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
         )
+
+        print("done all reduce")
 
         ttnn.deallocate(xqkv_fused_dram)
 
@@ -299,6 +302,8 @@ class TtLlamaAttention(LightweightModule):
             slice_size=self.slice_size,
         )
 
+        print("done create qkv heads")
+
         ttnn.deallocate(xqkv_fused)
         # Q, K Rotary Embeddings
         q_heads_1BQD, k_heads_1BKD = ttnn.experimental.rotary_embedding_llama_fused_qk(
@@ -307,6 +312,8 @@ class TtLlamaAttention(LightweightModule):
 
         ttnn.deallocate(q_heads_pre_rot_1BQD)
         ttnn.deallocate(k_heads_pre_rot_1BKD)
+
+        print("done rotary embeddings")
 
         ###
         # KV update
@@ -326,6 +333,8 @@ class TtLlamaAttention(LightweightModule):
 
         ttnn.deallocate(k_heads_1BKD)
         ttnn.deallocate(v_heads_1BKD)
+
+        print("done update cache")
 
         # NOTE: Varying the batch size will result in slightly different outputs.
         # For example, a prompt w/ 1 user vs, the same prompt repeated N times for N users, will produce different outputs
@@ -359,6 +368,8 @@ class TtLlamaAttention(LightweightModule):
 
         ttnn.deallocate(q_heads_1BQD)
 
+        print("done attention")
+
         attn_output_1G4D = ttnn.to_memory_config(attn_output_1G4D_sharded, ttnn.DRAM_MEMORY_CONFIG)
         attn_output_1G4D_sharded.deallocate(True)
         attn_output_gathered = self.tt_ccl.line_all_gather(
@@ -376,6 +387,7 @@ class TtLlamaAttention(LightweightModule):
             num_heads=self.n_local_heads,
         )
         ttnn.deallocate(attn_output_gathered_sharded)
+        print("done concat heads")
 
         # Original matmul on each device [1, 1, 32, 1024] @ [1, 1, 1024, 2048]
         attn_output_cat = ttnn.to_memory_config(
@@ -392,6 +404,7 @@ class TtLlamaAttention(LightweightModule):
         )
         # [1, 1, 32, 2304]
         ttnn.deallocate(attn_output_cat)
+        print("done matmul")
 
         dense_out_dram = ttnn.to_memory_config(dense_out_ttnn, ttnn.DRAM_MEMORY_CONFIG)
         ttnn.deallocate(dense_out_ttnn)
@@ -401,6 +414,7 @@ class TtLlamaAttention(LightweightModule):
         )
 
         ttnn.deallocate(dense_out_dram)
+        print("done all reduce")
 
         dense_out_reduced = ttnn.to_memory_config(dense_out_reduced_dram, self.model_config["DECODE_RESIDUAL_MEMCFG"])
         ttnn.deallocate(dense_out_reduced_dram)
