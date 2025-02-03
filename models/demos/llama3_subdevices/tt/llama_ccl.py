@@ -34,43 +34,35 @@ class TT_CCL:
             assert enable_persistent_fabric
         if teardown_persistent_fabric:
             assert enable_persistent_fabric
+
+        self.num_cbs = 8
+        self.from_remote_semaphore_handles = []
+        self.to_remote_semaphore_handles = []
+        self.gather_semaphore_handles = []
         # create global semaphore handles
-        self.from_remote_semaphore_handles_0 = create_global_semaphore_with_same_address(
-            self.mesh_device, self.sub_device_crs, 0
-        )
-        self.to_remote_semaphore_handles_0 = create_global_semaphore_with_same_address(
-            self.mesh_device, self.sub_device_crs, 0
-        )
-        self.gather_semaphore_handles_0 = create_global_semaphore_with_same_address(
-            self.mesh_device, self.sub_device_crs, 0
-        )
-        self.from_remote_semaphore_handles_1 = create_global_semaphore_with_same_address(
-            self.mesh_device, self.sub_device_crs, 0
-        )
-        self.to_remote_semaphore_handles_1 = create_global_semaphore_with_same_address(
-            self.mesh_device, self.sub_device_crs, 0
-        )
-        self.gather_semaphore_handles_1 = create_global_semaphore_with_same_address(
-            self.mesh_device, self.sub_device_crs, 0
-        )
-        self.from_sem_flag = True
-        self.to_sem_flag = True
-        self.gather_sem_flag = True
+        for cb in range(self.num_cbs):
+            self.from_remote_semaphore_handles.append(
+                create_global_semaphore_with_same_address(self.mesh_device, self.sub_device_crs, 0)
+            )
+            self.to_remote_semaphore_handles.append(
+                create_global_semaphore_with_same_address(self.mesh_device, self.sub_device_crs, 0)
+            )
+            self.gather_semaphore_handles.append(
+                create_global_semaphore_with_same_address(self.mesh_device, self.sub_device_crs, 0)
+            )
+
+        self.from_sem_flag = 0
+        self.to_sem_flag = 0
+        self.gather_sem_flag = 0
 
     def line_all_reduce(self, input_tensor_mesh, cluster_axis, num_links, memory_config, dim=3):
         output_tensor_mesh = ttnn.experimental.all_reduce_async(
             input_tensor_mesh,
             cluster_axis=cluster_axis,
             mesh_device=self.mesh_device,
-            from_remote_multi_device_global_semaphore=self.from_remote_semaphore_handles_0
-            if self.from_sem_flag
-            else self.from_remote_semaphore_handles_1,
-            to_remote_multi_device_global_semaphore=self.to_remote_semaphore_handles_0
-            if self.to_sem_flag
-            else self.to_remote_semaphore_handles_1,
-            gather_multi_device_global_semaphore=self.gather_semaphore_handles_0
-            if self.gather_sem_flag
-            else self.gather_semaphore_handles_1,
+            from_remote_multi_device_global_semaphore=self.from_remote_semaphore_handles[self.from_sem_flag],
+            to_remote_multi_device_global_semaphore=self.to_remote_semaphore_handles[self.to_sem_flag],
+            gather_multi_device_global_semaphore=self.gather_semaphore_handles[self.gather_sem_flag],
             math_op=ttnn.ReduceType.Sum,
             num_links=num_links,
             memory_config=memory_config,
@@ -78,9 +70,9 @@ class TT_CCL:
             subdevice_id=self.worker_sub_device_id,
         )
         # ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
-        self.from_sem_flag = not self.from_sem_flag
-        self.to_sem_flag = not self.to_sem_flag
-        self.gather_sem_flag = not self.gather_sem_flag
+        self.from_sem_flag = (self.from_sem_flag + 1) % self.num_cbs
+        self.to_sem_flag = (self.to_sem_flag + 1) % self.num_cbs
+        self.gather_sem_flag = (self.gather_sem_flag + 1) % self.num_cbs
         return output_tensor_mesh
 
     def line_reduce_scatter(
@@ -91,20 +83,16 @@ class TT_CCL:
             dim,
             cluster_axis=cluster_axis,
             mesh_device=self.mesh_device,
-            from_remote_multi_device_global_semaphore=self.from_remote_semaphore_handles_0
-            if self.from_sem_flag
-            else self.from_remote_semaphore_handles_1,
-            to_remote_multi_device_global_semaphore=self.to_remote_semaphore_handles_0
-            if self.to_sem_flag
-            else self.to_remote_semaphore_handles_1,
+            from_remote_multi_device_global_semaphore=self.from_remote_semaphore_handles[self.from_sem_flag],
+            to_remote_multi_device_global_semaphore=self.to_remote_semaphore_handles[self.to_sem_flag],
             math_op=math_op,
             memory_config=memory_config,
             topology=ttnn.Topology.Linear,
             num_links=num_links,
             subdevice_id=self.worker_sub_device_id,
         )
-        self.from_sem_flag = not self.from_sem_flag
-        self.to_sem_flag = not self.to_sem_flag
+        self.from_sem_flag = (self.from_sem_flag + 1) % self.num_cbs
+        self.to_sem_flag = (self.to_sem_flag + 1) % self.num_cbs
         # ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
         return ttnn_tensor_out
 
@@ -115,15 +103,13 @@ class TT_CCL:
             cluster_axis=cluster_axis,
             mesh_device=self.mesh_device,
             topology=ttnn.Topology.Linear,
-            multi_device_global_semaphore=self.gather_semaphore_handles_0
-            if self.gather_sem_flag
-            else self.gather_semaphore_handles_1,
+            multi_device_global_semaphore=self.gather_semaphore_handles[self.gather_sem_flag],
             num_links=num_links,
             memory_config=memory_config,
             subdevice_id=self.worker_sub_device_id,
             enable_persistent_fabric_mode=self.enable_persistent_fabric,
         )
-        self.gather_sem_flag = not self.gather_sem_flag
+        self.gather_sem_flag = (self.gather_sem_flag + 1) % self.num_cbs
         # ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
         return ttnn_tensor_out
 

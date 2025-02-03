@@ -74,7 +74,11 @@ from models.utility_functions import skip_for_grayskull
     ],
     indirect=True,
 )
-@pytest.mark.parametrize("device_params", [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL}], indirect=True)
+@pytest.mark.parametrize(
+    "device_params",
+    [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL, "trace_region_size": 23887872, "num_command_queues": 2}],
+    indirect=True,
+)
 def test_llama_model_inference(
     weights,
     layers,
@@ -146,7 +150,7 @@ def test_llama_model_inference(
         model_name
     ]
 
-    iterations = quick_iterations if layers == 1 else 9
+    iterations = 1 if layers == 1 else 9
 
     if layers is not None:
         model_args.n_layers = layers
