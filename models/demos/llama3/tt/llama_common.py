@@ -145,11 +145,13 @@ def precompute_freqs(dim: int, end: int, theta, scale_factor, orig_context_len, 
     """
     freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
     t = torch.arange(end)
+    print("precompute_freqs", dim, end, theta, scale_factor, orig_context_len, scale_type)
+    scale_type = "yarn"
     if scale_factor is not None:
         if scale_type == "yarn":
-            freqs = apply_yarn_scaling(freqs, scale_factor, orig_context_len)
+            freqs = apply_yarn_scaling(theta, freqs, scale_factor, orig_context_len)
         else:
-            freqs = apply_scaling(theta, freqs, scale_factor, orig_context_len)
+            freqs = apply_scaling(freqs, scale_factor, orig_context_len)
     freqs = torch.outer(t, freqs).float()
     return torch.cos(freqs), torch.sin(freqs)
 

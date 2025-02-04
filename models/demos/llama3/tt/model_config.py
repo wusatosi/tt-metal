@@ -1019,21 +1019,22 @@ class TtModelArgs:
                     self.hidden_dim = padded_hidden_dim
 
         # RoPE params
+        print(self.base_model_name, params)
         self.rope_theta = params.get("rope_theta")
         self.use_scaled_rope = params.get("use_scaled_rope", False)
-        if "rope_scaling" in params:
-            self.rope_scaling_factor = params.get("factor", None)
-            self.orig_context_len = params.get("original_max_position_embeddings", None)
+        if "rope_scaling" in params and params["rope_scaling"] is not None:
+            self.rope_scaling_factor = params["rope_scaling"].get("factor", None)
+            self.orig_context_len = params["rope_scaling"].get("original_max_position_embeddings", None)
             if not "use_scaled_rope" in params:
                 self.use_scaled_rope = True
         else:
-            if "Qwen" in self.model_name:
+            if "Qwen" in self.base_model_name:
                 self.rope_scaling_factor = 4.0
                 self.orig_context_len = 32768
             else:
                 self.rope_scaling_factor = None
                 self.orig_context_len = None
-
+        print(self.rope_scaling_factor, self.orig_context_len)
         # Vision params (Meta-specific)
         self.vision_chunk_size = params.get("vision_chunk_size", -1)
         self.vision_max_num_chunks = params.get("vision_max_num_chunks", 4)
@@ -1511,6 +1512,8 @@ class TtModelArgs:
             if not load_checkpoint:
                 config = AutoConfig.from_pretrained(self.DEFAULT_CKPT_DIR)
                 config.num_layers = self.n_layers
+                config.rope_scaling = {"factor": 4.0, "original_max_position_embeddings": 32768, "type": "yarn"}
+                print(config)
                 model = AutoModelForCausalLM.from_config(config)
             else:
                 model = AutoModelForCausalLM.from_pretrained(self.DEFAULT_CKPT_DIR)
@@ -1577,6 +1580,7 @@ class TtModelArgs:
             return Attention(self)
         else:
             model = self.reference_transformer(wrap=False)
+            print(model)
             layer = model.model.layers[0].self_attn
             wrapper = HfAttentionWrapper(layer, self.head_dim)
             return wrapper
