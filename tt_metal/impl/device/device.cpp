@@ -267,8 +267,8 @@ std::unique_ptr<Allocator> Device::initialize_allocator(size_t l1_small_size, si
     const auto &logical_size = this->logical_grid_size();
     const auto &compute_size = this->compute_with_storage_grid_size();
     AllocatorConfig config(
-        {.num_dram_channels = static_cast<size_t>(soc_desc.get_num_dram_channels()),
-         .dram_bank_size = soc_desc.dram_bank_size,
+        {.num_dram_channels = static_cast<size_t>(soc_desc.get_num_dram_views()),
+         .dram_bank_size = soc_desc.dram_view_size,
          .dram_bank_offsets = {},
          .dram_unreserved_base =
              hal.get_dev_addr(HalDramMemAddrType::DRAM_BARRIER) + hal.get_dev_size(HalDramMemAddrType::DRAM_BARRIER),
@@ -292,7 +292,7 @@ std::unique_ptr<Allocator> Device::initialize_allocator(size_t l1_small_size, si
         "Reserved size must be aligned to allocator alignment {}",
         config.alignment);
     // Initialize dram_offsets from soc_descriptor
-    for (auto channel = 0; channel < soc_desc.get_num_dram_channels(); channel++) {
+    for (auto channel = 0; channel < soc_desc.get_num_dram_views(); channel++) {
         config.dram_bank_offsets.push_back(soc_desc.get_address_offset(channel));
     }
     // Initialize core_type_from_noc_coord_table table
@@ -998,11 +998,10 @@ void Device::init_command_queue_device() {
             tt::llrt::write_launch_msg_to_core(this->id(), virtual_core, &msg, &go_msg, this->get_dev_addr(virtual_core, HalL1MemAddrType::LAUNCH));
         }
     }
-
+    // Set num_worker_sems and go_signal_noc_data on dispatch for the default sub device config
     for (auto& hw_cq : this->command_queues_) {
-        hw_cq->set_num_worker_sems_on_dispatch(
-            sub_device_manager_tracker_->get_active_sub_device_manager()->num_sub_devices());
-        hw_cq->set_go_signal_noc_data_on_dispatch(
+        hw_cq->set_go_signal_noc_data_and_dispatch_sems(
+            sub_device_manager_tracker_->get_active_sub_device_manager()->num_sub_devices(),
             sub_device_manager_tracker_->get_active_sub_device_manager()->noc_mcast_unicast_data());
     }
 }
@@ -1144,16 +1143,12 @@ tt::ARCH Device::arch() const {
     return tt::Cluster::instance().arch();
 }
 
-int Device::num_dram_channels() const {
-    return tt::Cluster::instance().get_soc_desc(id_).get_num_dram_channels();
-}
+int Device::num_dram_channels() const { return tt::Cluster::instance().get_soc_desc(id_).get_num_dram_views(); }
 
 uint32_t Device::l1_size_per_core() const {
     return tt::Cluster::instance().get_soc_desc(id_).worker_l1_size;
 }
-uint32_t Device::dram_size_per_channel() const {
-    return tt::Cluster::instance().get_soc_desc(id_).dram_bank_size;
-}
+uint32_t Device::dram_size_per_channel() const { return tt::Cluster::instance().get_soc_desc(id_).dram_view_size; }
 
 CoreCoord Device::grid_size() const {
     return tt::Cluster::instance().get_soc_desc(id_).grid_size;
@@ -1308,12 +1303,12 @@ uint32_t Device::num_sub_devices() const {
 }
 
 CoreCoord Device::dram_core_from_dram_channel(uint32_t dram_channel) const {
-    return tt::Cluster::instance().get_soc_desc(id_).get_preferred_worker_core_for_dram_channel(dram_channel);
+    return tt::Cluster::instance().get_soc_desc(id_).get_preferred_worker_core_for_dram_view(dram_channel);
 }
 
 CoreCoord Device::logical_core_from_dram_channel(uint32_t dram_channel) const {
     const metal_SocDescriptor &soc_desc = tt::Cluster::instance().get_soc_desc(this->id_);
-    return tt::Cluster::instance().get_soc_desc(id_).get_logical_core_for_dram_channel(dram_channel);
+    return tt::Cluster::instance().get_soc_desc(id_).get_logical_core_for_dram_view(dram_channel);
 }
 
 uint32_t Device::dram_channel_from_logical_core(const CoreCoord& logical_core) const {
@@ -1370,10 +1365,6 @@ CommandQueue& Device::command_queue(size_t cq_id) {
     TT_FATAL(cq_id < command_queues_.size(), "cq_id {} is out of range", cq_id);
     TT_FATAL(this->is_initialized(), "Device has not been initialized, did you forget to call InitializeDevice?");
     return *command_queues_[cq_id];
-}
-
-bool Device::can_use_passthrough_scheduling() const {
-    return this->work_executor_.use_passthrough();
 }
 
 void Device::synchronize() {
