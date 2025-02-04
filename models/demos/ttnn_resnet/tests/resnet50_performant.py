@@ -9,6 +9,7 @@ from models.utility_functions import (
     is_wormhole_b0,
 )
 from models.demos.ttnn_resnet.tests.resnet50_test_infra import create_test_infra
+from loguru import logger
 
 try:
     from tracy import signpost
@@ -78,6 +79,8 @@ def run_resnet50_trace_inference(
     math_fidelity,
     model_location_generator,
 ):
+    logger.info("KCM Before create_test_infra")
+
     test_infra = create_test_infra(
         device,
         device_batch_size,
@@ -89,6 +92,13 @@ def run_resnet50_trace_inference(
         model_location_generator=model_location_generator,
     )
     tt_inputs_host, input_mem_config = test_infra.setup_l1_sharded_input(device)
+
+    logger.info("KCM Starting test")
+
+    # KCM - Is this placed correctly? Probably not.
+    do_light_metal_trace = True
+    if do_light_metal_trace:
+        ttnn.light_metal_begin_capture()
 
     # First run configures convs JIT
     test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
@@ -112,6 +122,9 @@ def run_resnet50_trace_inference(
     ttnn.end_trace_capture(device, tid, cq_id=0)
     assert trace_input_addr == ttnn.buffer_address(tt_image_res)
 
+    if do_light_metal_trace:
+        binary_data = ttnn.light_metal_end_capture()
+        binary_data.save_to_file("resnet_capture.bin")
     # More optimized run with caching
     if use_signpost:
         signpost(header="start")
