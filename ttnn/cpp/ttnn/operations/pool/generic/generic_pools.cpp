@@ -147,7 +147,7 @@ std::vector<Tensor> Pool2DOp<pool_type>::invoke(
         input_tensor_sharded.memory_config(),
         is_out_tiled);
 
-    Tensor output_tensor = ttnn::prim::pool2d(
+    std::vector<Tensor> output_tensors = ttnn::prim::pool2d(
         queue_id,
         haloed_tensor,
         sliding_window_config,
@@ -156,10 +156,12 @@ std::vector<Tensor> Pool2DOp<pool_type>::invoke(
         out_memory_config);
 
     if (memory_config.has_value() && memory_config.value() != out_memory_config) {
-        output_tensor = ttnn::to_memory_config(output_tensor, memory_config.value(), std::nullopt);
+        for (int i = 0; i < output_tensors.size(); i++) {
+            output_tensors[i] = ttnn::to_memory_config(output_tensors[i], memory_config.value(), std::nullopt);
+        }
     }
 
-    return {output_tensor};
+    return output_tensors;
 }
 
 template class Pool2DOp<Pool2DType::MAX_POOL2D>;
