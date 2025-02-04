@@ -19,6 +19,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <cstring>
 
 // Verify some knowledge of, and compatibilty with, RiscV
 #ifndef EM_RISCV
@@ -257,15 +258,17 @@ void ElfFile::Impl::LoadImage() {
             TT_THROW("{}: loadable segments after stack segment", path_);
         }
 
-        log_debug(
-            tt::LogLLRuntime,
-            "{}: loadable segment {}: [{},+{}/{})@{}",
-            path_,
-            unsigned(GetSegments().size()),
-            phdr.p_vaddr,
-            phdr.p_filesz,
-            phdr.p_memsz,
-            phdr.p_offset);
+        if (path_.find("reader_unary") != std::string::npos) {
+            log_debug(
+                tt::LogLLRuntime,
+                "{}: loadable segment {}: [{},+{}/{})@{}",
+                path_,
+                unsigned(GetSegments().size()),
+                phdr.p_vaddr,
+                phdr.p_filesz,
+                phdr.p_memsz,
+                phdr.p_offset);
+        }
 
         // Require loadable segments to be nicely aligned
         if ((phdr.p_offset | phdr.p_vaddr) & (sizeof(word_t) - 1)) {

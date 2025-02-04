@@ -87,8 +87,9 @@ struct ExampleDeviceOperation {
         struct shared_variables_t {
             KernelHandle unary_reader_kernel_id;
             KernelHandle unary_writer_kernel_id;
-            std::size_t num_cores;
+            CBHandle cb_src0;
             std::size_t num_cores_y;
+            std::size_t num_cores_x;
         };
         using cached_program_t = ttnn::device_operation::CachedProgram<shared_variables_t>;
 
