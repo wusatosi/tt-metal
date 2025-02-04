@@ -20,6 +20,7 @@
 #include "umd/device/tt_soc_descriptor.h"
 #include "fmt/base.h"
 #include <reflection.hpp>
+#include <host_api_call_guard.hpp>
 
 #include "tracy/Tracy.hpp"
 

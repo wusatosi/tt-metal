@@ -31,6 +31,7 @@
 #include "tracy/Tracy.hpp"
 #include <tt_align.hpp>
 #include <tuple>
+#include <host_api_call_guard.hpp>
 
 namespace tt::tt_metal {
 

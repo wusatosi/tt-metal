@@ -36,6 +36,7 @@
 
 #include <graph_tracking.hpp>
 #include "lightmetal/host_api_capture_helpers.hpp"
+#include <host_api_call_guard.hpp>
 
 #include "llrt.hpp"
 
@@ -379,6 +380,7 @@ std::map<chip_id_t, IDevice*> CreateDevices(
 }
 
 void CloseDevices(const std::map<chip_id_t, IDevice*>& devices) {
+    DETAIL_API_ENTRY();
     std::vector<IDevice*> devices_to_close;
     for (auto& [id, device] : devices) {
         devices_to_close.push_back(device);
@@ -910,6 +912,7 @@ IDevice* CreateDevice(
     const DispatchCoreConfig& dispatch_core_config,
     const std::vector<uint32_t>& l1_bank_remap) {
     ZoneScoped;
+    PUBLIC_API_ENTRY();
 
     tt::DevicePool::initialize(
         {device_id}, num_hw_cqs, l1_small_size, trace_region_size, dispatch_core_config, l1_bank_remap);
@@ -930,11 +933,13 @@ IDevice* CreateDeviceMinimal(
 
 bool CloseDevice(IDevice* device) {
     ZoneScoped;
+    PUBLIC_API_ENTRY();
     auto device_id = device->id();
     return tt::DevicePool::instance().close_device(device_id);
 }
 
 Program CreateProgram() {
+    PUBLIC_API_ENTRY();
     LIGHT_METAL_TRACE_FUNCTION_ENTRY();
     auto program = Program();
     LIGHT_METAL_TRACE_FUNCTION_CALL(CaptureCreateProgram, program);
@@ -1025,6 +1030,7 @@ KernelHandle CreateKernel(
     const std::string& file_name,
     const std::variant<CoreCoord, CoreRange, CoreRangeSet>& core_spec,
     const std::variant<DataMovementConfig, ComputeConfig, EthernetConfig>& config) {
+    PUBLIC_API_ENTRY();
     LIGHT_METAL_TRACE_FUNCTION_ENTRY();
     KernelHandle kernel = std::visit(
         [&](auto&& cfg) -> KernelHandle {
@@ -1050,6 +1056,7 @@ KernelHandle CreateKernelFromString(
     const std::string& kernel_src_code,
     const std::variant<CoreCoord, CoreRange, CoreRangeSet>& core_spec,
     const std::variant<DataMovementConfig, ComputeConfig, EthernetConfig>& config) {
+    PUBLIC_API_ENTRY();
     return std::visit(
         [&](auto&& cfg) -> KernelHandle {
             CoreRangeSet core_ranges = GetCoreRangeSet(core_spec);
@@ -1070,6 +1077,7 @@ CBHandle CreateCircularBuffer(
     Program& program,
     const std::variant<CoreCoord, CoreRange, CoreRangeSet>& core_spec,
     const CircularBufferConfig& config) {
+    PUBLIC_API_ENTRY();
     LIGHT_METAL_TRACE_FUNCTION_ENTRY();
     CoreRangeSet core_ranges = GetCoreRangeSet(core_spec);
     auto cb_handle = program.add_circular_buffer(core_ranges, config);
@@ -1112,6 +1120,7 @@ uint32_t CreateSemaphore(
     const std::variant<CoreRange, CoreRangeSet>& core_spec,
     uint32_t initial_value,
     CoreType core_type) {
+    PUBLIC_API_ENTRY();
     return std::visit(
         [&](auto&& c) -> uint32_t {
             using T = std::decay_t<decltype(c)>;
@@ -1154,6 +1163,7 @@ GlobalSemaphore CreateGlobalSemaphore(
 }
 
 std::shared_ptr<Buffer> CreateBuffer(const InterleavedBufferConfig& config) {
+    PUBLIC_API_ENTRY();
     LIGHT_METAL_TRACE_FUNCTION_ENTRY();
     auto buffer = Buffer::create(
         config.device,
@@ -1169,6 +1179,7 @@ std::shared_ptr<Buffer> CreateBuffer(const InterleavedBufferConfig& config) {
     return buffer;
 }
 std::shared_ptr<Buffer> CreateBuffer(const InterleavedBufferConfig& config, DeviceAddr address) {
+    PUBLIC_API_ENTRY();
     return Buffer::create(
         config.device,
         address,
@@ -1180,6 +1191,7 @@ std::shared_ptr<Buffer> CreateBuffer(const InterleavedBufferConfig& config, Devi
         std::nullopt);
 }
 std::shared_ptr<Buffer> CreateBuffer(const InterleavedBufferConfig& config, SubDeviceId sub_device_id) {
+    PUBLIC_API_ENTRY();
     return Buffer::create(
         config.device,
         config.size,
@@ -1191,6 +1203,7 @@ std::shared_ptr<Buffer> CreateBuffer(const InterleavedBufferConfig& config, SubD
         sub_device_id);
 }
 std::shared_ptr<Buffer> CreateBuffer(const ShardedBufferConfig& config) {
+    PUBLIC_API_ENTRY();
     return Buffer::create(
         config.device,
         config.size,
@@ -1202,6 +1215,7 @@ std::shared_ptr<Buffer> CreateBuffer(const ShardedBufferConfig& config) {
         std::nullopt);
 }
 std::shared_ptr<Buffer> CreateBuffer(const ShardedBufferConfig& config, DeviceAddr address) {
+    PUBLIC_API_ENTRY();
     return Buffer::create(
         config.device,
         address,
@@ -1214,6 +1228,7 @@ std::shared_ptr<Buffer> CreateBuffer(const ShardedBufferConfig& config, DeviceAd
         std::nullopt);
 }
 std::shared_ptr<Buffer> CreateBuffer(const ShardedBufferConfig& config, SubDeviceId sub_device_id) {
+    PUBLIC_API_ENTRY();
     return Buffer::create(
         config.device,
         config.size,
@@ -1226,6 +1241,7 @@ std::shared_ptr<Buffer> CreateBuffer(const ShardedBufferConfig& config, SubDevic
 }
 
 void DeallocateBuffer(Buffer& buffer) {
+    PUBLIC_API_ENTRY();
     LIGHT_METAL_TRACE_FUNCTION_ENTRY();
     LIGHT_METAL_TRACE_FUNCTION_CALL(CaptureDeallocateBuffer, buffer);
     buffer.deallocate();
@@ -1241,6 +1257,7 @@ void SetRuntimeArgs(
     KernelHandle kernel_id,
     const std::variant<CoreCoord, CoreRange, CoreRangeSet>& core_spec,
     stl::Span<const uint32_t> runtime_args) {
+    PUBLIC_API_ENTRY();
     LIGHT_METAL_TRACE_FUNCTION_ENTRY();
     LIGHT_METAL_TRACE_FUNCTION_CALL(CaptureSetRuntimeArgsUint32, program, kernel_id, core_spec, runtime_args);
     ZoneScoped;
@@ -1252,6 +1269,7 @@ void SetRuntimeArgs(
     KernelHandle kernel,
     const std::vector<CoreCoord>& core_spec,
     const std::vector<std::vector<uint32_t>>& runtime_args) {
+    PUBLIC_API_ENTRY();
     ZoneScoped;
     LIGHT_METAL_TRACE_FUNCTION_ENTRY();
     LIGHT_METAL_TRACE_FUNCTION_CALL(CaptureSetRuntimeArgsUint32VecPerCore, program, kernel, core_spec, runtime_args);
@@ -1271,6 +1289,7 @@ void SetRuntimeArgs(
     const std::shared_ptr<Kernel>& kernel,
     const std::variant<CoreCoord, CoreRange, CoreRangeSet>& core_spec,
     const std::shared_ptr<RuntimeArgs>& runtime_args) {
+    PUBLIC_API_ENTRY();
     LIGHT_METAL_TRACE_FUNCTION_ENTRY();
     detail::DispatchStateCheck(not device->using_slow_dispatch());
     LIGHT_METAL_TRACE_FUNCTION_CALL(CaptureSetRuntimeArgs, device, kernel, core_spec, runtime_args);
@@ -1282,6 +1301,7 @@ void SetRuntimeArgs(
     const std::shared_ptr<Kernel>& kernel,
     const std::vector<CoreCoord>& core_spec,
     const std::vector<std::shared_ptr<RuntimeArgs>>& runtime_args) {
+    PUBLIC_API_ENTRY();
     TT_FATAL(
         core_spec.size() == runtime_args.size(),
         "Mismatch between number of cores {} and number of runtime args {} getting updated",
@@ -1311,12 +1331,14 @@ RuntimeArgsData& GetCommonRuntimeArgs(const Program& program, KernelHandle kerne
 }
 
 uint32_t BeginTraceCapture(IDevice* device, const uint8_t cq_id) {
+    PUBLIC_API_ENTRY();
     const uint32_t tid = Trace::next_id();
     device->begin_trace(cq_id, tid);
     return tid;
 }
 
 void EndTraceCapture(IDevice* device, const uint8_t cq_id, const uint32_t tid) {
+    PUBLIC_API_ENTRY();
     LIGHT_METAL_TRACE_FUNCTION_ENTRY();
     device->end_trace(cq_id, tid);
     // When light metal tracing is enabled, TraceDescriptor will be serialized via end_trace() and this
@@ -1332,6 +1354,7 @@ void ReplayTrace(IDevice* device, const uint8_t cq_id, const uint32_t tid, const
 }
 
 void ReleaseTrace(IDevice* device, const uint32_t tid) {
+    PUBLIC_API_ENTRY();
     LIGHT_METAL_TRACE_FUNCTION_ENTRY();
     LIGHT_METAL_TRACE_FUNCTION_CALL(CaptureReleaseTrace, device, tid);
     device->release_trace(tid);
@@ -1398,6 +1421,7 @@ CBHandle CreateCircularBuffer(
     const std::variant<CoreCoord, CoreRange, CoreRangeSet>& core_spec,
     const CircularBufferConfig& config,
     const GlobalCircularBuffer& global_circular_buffer) {
+    PUBLIC_API_ENTRY();
     CoreRangeSet core_ranges = GetCoreRangeSet(core_spec);
     return program.add_circular_buffer(core_ranges, config, global_circular_buffer);
 }
