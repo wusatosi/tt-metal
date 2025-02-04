@@ -41,7 +41,6 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
     IDevice* device = input.device();
     tt::tt_metal::Buffer* src_dram_buffer = input.buffer();
     auto reader_indices_buffer = reader_indices.device_buffer();
-    tt::tt_metal::Buffer* dst_dram_buffer = outputs[0].buffer();
 
     const auto input_shape = input.get_padded_shape();
     const auto output_shape = outputs[0].get_padded_shape();
@@ -220,7 +219,9 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
             max_pool_partials_cb_pagesize,
             max_pool_partials_cb_npages);
     }
-    TT_FATAL(outputs[0].memory_config().is_sharded(), "Output memory config needs to be sharded");
+    for (int i = 0; i < outputs.size(); i++) {
+        TT_FATAL(outputs[i].memory_config().is_sharded(), "Output memory config needs to be sharded");
+    }
 
 #if 1
     {  // debug
@@ -236,7 +237,6 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
         log_debug(tt::LogOp, "out_cb :: PS = {}, NP = {}", out_cb_pagesize, out_cb_npages);
         log_debug(tt::LogOp, "in_addr: {}", src_dram_buffer->address());
         log_debug(tt::LogOp, "in_reader_indices_addr: {}", reader_indices_buffer->address());
-        log_debug(tt::LogOp, "out_addr: {}", dst_dram_buffer->address());
         log_debug(tt::LogOp, "kernel_size_h: {}", kernel_size_h);
         log_debug(tt::LogOp, "kernel_size_w: {}", kernel_size_w);
         log_debug(tt::LogOp, "kernel_size_hw: {}", kernel_size_hw);

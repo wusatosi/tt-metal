@@ -105,13 +105,16 @@ Pool2D::spec_return_value_t Pool2D::compute_output_specs(
 }
 
 std::vector<Tensor> Pool2D::create_output_tensors(const operation_attributes_t& op_attr, const tensor_args_t& tensors) {
-    auto output_spec = compute_output_specs(op_attr, tensors);
+    auto output_spec_data = compute_output_specs(op_attr, tensors);
     if (op_attr.sliding_window_config_.return_indices) {
+        auto output_spec_ind = output_spec_data;
+        auto& tensor_layout = const_cast<TensorLayout&>(output_spec_ind.tensor_layout());
+        tensor_layout.set_data_type(DataType::UINT16);  // change the data type for the index output tensor
         return {
-            create_device_tensor(output_spec, tensors.input_tensor_.device()),
-            create_device_tensor(output_spec, tensors.input_tensor_.device())};
+            create_device_tensor(output_spec_data, tensors.input_tensor_.device()),
+            create_device_tensor(output_spec_ind, tensors.input_tensor_.device())};
     } else {
-        return {create_device_tensor(output_spec, tensors.input_tensor_.device())};
+        return {create_device_tensor(output_spec_data, tensors.input_tensor_.device())};
     }
 }
 
