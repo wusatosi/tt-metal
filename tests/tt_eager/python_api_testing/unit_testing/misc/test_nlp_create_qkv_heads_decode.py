@@ -223,6 +223,12 @@ def run_test_create_min_width_shard(
         pytest.skip(
             "Skipping tests for batch>=32 for non-overlapping coregrid as CI device does not support full coregrid"
         )
+    if batch_offset is not None and slice_size is not None:
+        assert isinstance(batch_offset, ttnn.Tensor) and isinstance(slice_size, int)
+        assert ttnn.to_torch(batch_offset).shape == torch.Size([1])
+        batch_offset_int = ttnn.to_torch(batch_offset).item()
+        assert batch_offset_int + slice_size <= batch, "Invalid batch offset and slice size"
+
     seq_len = 1
     total_heads = n_local_heads + n_local_kv_heads * 2
     total_cores = total_heads * head_dim // 32
@@ -285,6 +291,9 @@ def run_test_create_min_width_shard(
         num_heads=n_local_heads,
         num_kv_heads=n_local_kv_heads,
         overlap_qk_coregrid=overlap_coregrid,
+        batch_offset=batch_offset,
+        slice_size=slice_size,
+        memory_config=HEIGHT_SHARDED_MEMCFG,
         batch_offset=batch_offset,
         slice_size=slice_size,
         memory_config=HEIGHT_SHARDED_MEMCFG,
@@ -363,6 +372,50 @@ def test_create_min_width_shard(
     # BH does s2i and i2s inside of to_device and from_device as device ops
     expected_entries = 1 if not is_blackhole() else 4 if overlap_coregrid else 5
     assert device.num_program_cache_entries() == expected_entries
+
+
+@skip_for_blackhole("Requires eth connected devices to run, see #12349")
+@skip_for_grayskull("Requires eth connected devices to run")
+@pytest.mark.parametrize("batch", (32,))
+@pytest.mark.parametrize(
+    "n_local_heads, n_local_kv_heads, head_dim",
+    ((8, 1, 128),),
+)
+@pytest.mark.parametrize("overlap_coregrid", (True, False))
+@pytest.mark.parametrize("batch_offset", (0, 8, 16, 24))
+@pytest.mark.parametrize("slice_size", (8,))
+def test_create_heads_with_slice(
+    batch,
+    n_local_heads,
+    n_local_kv_heads,
+    head_dim,
+    device,
+    overlap_coregrid,
+    batch_offset,
+    slice_size,
+    use_program_cache,
+):
+    torch.manual_seed(0)
+    batch_offset_tensor = torch.tensor([batch_offset], dtype=torch.int32)
+    # convert to tt tensor
+    batch_offset_tensor_tt = ttnn.from_torch(
+        batch_offset_tensor, device=device, layout=ttnn.ROW_MAJOR_LAYOUT, dtype=ttnn.int32
+    )
+
+    for i in range(3):
+        # multiple loops to test program caching
+        run_test_create_min_width_shard(
+            device,
+            batch,
+            n_local_heads,
+            n_local_kv_heads,
+            head_dim,
+            overlap_coregrid,
+            None,
+            batch_offset_tensor_tt,
+            slice_size,
+        )
+    assert device.num_program_cache_entries() == 1, "Only one Op program cache should exist"
 
 
 @pytest.fixture()

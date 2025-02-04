@@ -497,8 +497,7 @@ operation::ProgramWithCallbacks multi_core_nlp_create_qkv_heads_decode_sharded_i
                         use_batch_offset ? optional_input_tensors.at(0).value().buffer()->address() : 0;
                     runtime_args_writer[2] = i;
                 }
-            }
-        };
+            };
 
     return {.program = std::move(program), .override_runtime_arguments_callback = override_runtime_arguments_callback};
 
