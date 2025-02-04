@@ -2,8 +2,10 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+// #include "common/tt_backend_api_types.hpp"
 #include "pool_op.hpp"
 #include "ttnn/operations/reduction/generic/device/reduce_op.hpp"  // for reduce_op_utils
+#include <cstdint>
 #include <tt-metalium/math.hpp>
 
 /**
@@ -46,12 +48,20 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
     const auto output_shape = outputs[0].get_padded_shape();
 
     tt::DataFormat in_df = datatype_to_dataformat_converter(input.get_dtype());
-    tt::DataFormat out_df = datatype_to_dataformat_converter(outputs[0].get_dtype());
+    tt::DataFormat out_df_data = datatype_to_dataformat_converter(outputs[0].get_dtype());
+    bool return_indices = outputs.size() > 1;
+    tt::DataFormat out_df_indices;
+    if (return_indices) {
+        out_df_indices = datatype_to_dataformat_converter(outputs[1].get_dtype());
+    }
     uint32_t in_nbytes = datum_size(in_df);
-    uint32_t out_nbytes = datum_size(out_df);
+    uint32_t out_nbytes_data = datum_size(out_df_data);
+    uint32_t out_nbytes_indices = datum_size(out_df_indices);
 
-    uint32_t in_nbytes_c = input_shape[3] / num_shards_c * in_nbytes;     // row of input (channels)
-    uint32_t out_nbytes_c = output_shape[3] / num_shards_c * out_nbytes;  // row of output (channels)
+    printf("out_nbytes_data: %d\n", out_nbytes_data);
+    printf("out_nbytes_indices: %d\n", out_nbytes_indices);
+
+    uint32_t in_nbytes_c = input_shape[3] / num_shards_c * in_nbytes;  // row of input (channels)
 
     tt::DataFormat indices_df =
         tt::DataFormat::RawUInt16;  // datatype_to_dataformat_converter(reader_indices.get_dtype());
@@ -189,27 +199,41 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
     log_debug(tt::LogOp, "CB {} :: PS = {}, NP = {}", in_tiled_cb_id, in_tiled_cb_pagesize, in_tiled_cb_npages);
 
     // output of reduce == writer to write
-    uint32_t out_cb_id = tt::CBIndex::c_16;  // output rows in RM
+    uint32_t out_cb_id_data = tt::CBIndex::c_16;     // output rows in RM
+    uint32_t out_cb_id_indices = tt::CBIndex::c_17;  // output rows in RM
     // after reduction
-    uint32_t out_cb_pagesize = std::min(tt::constants::TILE_WIDTH, outputs[0].shard_spec().value().shape[1]) *
-                               out_nbytes;  // there is just one row of channels after each reduction (or 1 block
-                                            // of c if its greater than 8 tiles)
+    uint32_t out_cb_pagesize_data = std::min(tt::constants::TILE_WIDTH, outputs[0].shard_spec().value().shape[1]) *
+                                    out_nbytes_data;  // there is just one row of channels after each reduction (or 1
+                                                      // block of c if its greater than 8 tiles)
+    uint32_t out_cb_pagesize_indices;
+    if (return_indices) {
+        out_cb_pagesize_indices =
+            std::min(tt::constants::TILE_WIDTH, outputs[1].shard_spec().value().shape[1]) * out_nbytes_indices;
+    }
     uint32_t out_cb_npages = outputs[0].shard_spec().value().shape[0] * in_ntiles_c;
 
-    CircularBufferConfig cb_out_config = CircularBufferConfig(out_cb_npages * out_cb_pagesize, {{out_cb_id, out_df}})
-                                             .set_page_size(out_cb_id, out_cb_pagesize)
-                                             .set_globally_allocated_address(*outputs[0].buffer());
-    ;
-    auto cb_out = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_out_config);
-    log_debug(tt::LogOp, "CB {} :: PS = {}, NP = {}", out_cb_id, out_cb_pagesize, out_cb_npages);
+    CircularBufferConfig cb_out_config_data =
+        CircularBufferConfig(out_cb_npages * out_cb_pagesize_data, {{out_cb_id_data, out_df_data}})
+            .set_page_size(out_cb_id_data, out_cb_pagesize_data)
+            .set_globally_allocated_address(*outputs[0].buffer());
+    auto cb_out_data = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_out_config_data);
+    if (return_indices) {
+        CircularBufferConfig cb_out_config_indices =
+            CircularBufferConfig(out_cb_npages * out_cb_pagesize_indices, {{out_cb_id_indices, out_df_indices}})
+                .set_page_size(out_cb_id_indices, out_cb_pagesize_indices)
+                .set_globally_allocated_address(*outputs[1].buffer());
+        auto cb_out_indices = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_out_config_indices);
+    }
+    log_debug(tt::LogOp, "CB {} :: PS = {}, NP = {}", out_cb_id_data, out_cb_pagesize_data, out_cb_npages);
 
+    // TODO: update large kernels for index output
     if (is_large_kernel) {
         uint32_t max_pool_partials_cb_id = tt::CBIndex::c_25;  // max_pool partials
-        uint32_t max_pool_partials_cb_pagesize = out_cb_pagesize;
+        uint32_t max_pool_partials_cb_pagesize = out_cb_pagesize_data;
         uint32_t max_pool_partials_cb_npages = nblocks;
         CircularBufferConfig max_pool_partials_cb_config =
             CircularBufferConfig(
-                max_pool_partials_cb_npages * max_pool_partials_cb_pagesize, {{max_pool_partials_cb_id, out_df}})
+                max_pool_partials_cb_npages * max_pool_partials_cb_pagesize, {{max_pool_partials_cb_id, out_df_data}})
                 .set_page_size(max_pool_partials_cb_id, max_pool_partials_cb_pagesize);
         auto max_pool_partials_cb = tt::tt_metal::CreateCircularBuffer(program, all_cores, max_pool_partials_cb_config);
         log_debug(
@@ -234,7 +258,7 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
             in_reader_indices_cb_npages);
         log_debug(tt::LogOp, "in_scalar_cb :: PS = {}, NP = {}", in_scalar_cb_pagesize, in_scalar_cb_npages);
         log_debug(tt::LogOp, "in_tiled_cb :: PS = {}, NP = {}", in_tiled_cb_pagesize, in_tiled_cb_npages);
-        log_debug(tt::LogOp, "out_cb :: PS = {}, NP = {}", out_cb_pagesize, out_cb_npages);
+        log_debug(tt::LogOp, "out_cb :: PS = {}, NP = {}", out_cb_pagesize_data, out_cb_npages);
         log_debug(tt::LogOp, "in_addr: {}", src_dram_buffer->address());
         log_debug(tt::LogOp, "in_reader_indices_addr: {}", reader_indices_buffer->address());
         log_debug(tt::LogOp, "kernel_size_h: {}", kernel_size_h);
@@ -249,7 +273,6 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
         log_debug(tt::LogOp, "out_w: {}", out_w);
         log_debug(tt::LogOp, "out_w_loop_count: {}", out_w_loop_count);
         log_debug(tt::LogOp, "out_c: {}", output_shape[3]);
-        log_debug(tt::LogOp, "out_nbytes_c: {}", out_nbytes_c);
         log_debug(tt::LogOp, "in_h: {}", in_h);
         log_debug(tt::LogOp, "in_w: {}", in_w);
         log_debug(tt::LogOp, "in_c: {}", input_shape[3]);
@@ -382,7 +405,7 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
         {.reader0_kernel = reader0_kernel,
          .reader1_kernel = reader1_kernel,
          .raw_in_cb = raw_in_cb,
-         .cb_out = cb_out,
+         .cb_out = cb_out_data,
          .ncores = ncores,
          .ncores_w = ncores_w,
          .reader_indices_buffer = reader_indices_buffer}};
