@@ -392,8 +392,8 @@ def test_resnet50_linear(device, use_program_cache):
     )
     x = tt_input_tensor
     shard_shape = [
-        x.volume() // x.shape.with_tile_padding()[-1],
-        x.shape.with_tile_padding()[-1] // (grid_size[0] * grid_size[1]),
+        x.volume() // x.padded_shape[-1],
+        x.padded_shape[-1] // (grid_size[0] * grid_size[1]),
     ]
     shard_spec = ttnn.ShardSpec(shard_grid, shard_shape, ttnn.ShardOrientation.ROW_MAJOR)
     width_sharded_mem_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.WIDTH_SHARDED, ttnn.BufferType.L1, shard_spec)
