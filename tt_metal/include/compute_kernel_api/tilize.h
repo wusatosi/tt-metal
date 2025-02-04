@@ -112,11 +112,9 @@ ALWI void tilize_init_short(uint32_t icb, uint32_t block, uint32_t ocb = 16) {
 
 ALWI void tilize_init_unpack(uint32_t icb, uint32_t block) { UNPACK((llk_unpack_tilize_init(icb, block))); }
 
-ALWI void tilize_init_math(uint32_t icb, uint32_t block, uint32_t ocb = 16)
-{
+ALWI void tilize_init_math(uint32_t icb) {
     MATH(( llk_math_eltwise_unary_datacopy_init<A2D, BroadcastType::NONE, DST_ACCUM_MODE, false/*is_int_en*/, true/*tilize en*/>(false /*transpose of faces*/, false /*transpose within 16x16 face*/, icb) ));
 }
-
 
 /**
  * Re-initialize for the tilize operation. This also reconfigure the unpacker with CB data type.

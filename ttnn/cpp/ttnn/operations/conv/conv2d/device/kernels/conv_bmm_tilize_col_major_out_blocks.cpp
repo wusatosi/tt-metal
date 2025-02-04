@@ -20,6 +20,8 @@
 
 #define DEBUG_PRINT 0
 #define ADD_DUMMY_COMPUTE 1
+#define ALTERNATE_TILIZE 1
+#define COMMON_TILIZE_WAIT 0
 
 // #include "debug_macros.h"
 
@@ -37,7 +39,7 @@ inline void tilize_in(
         for (uint32_t h = 0; h < in_subblock_h; ++h) {
             if (ADD_DUMMY_COMPUTE) {
                 cb_wait_front_w_dummy(in_cb_id, in_block_w);
-                tilize_init_math(in_cb_id, in_block_w);
+                tilize_init_math(in_cb_id);
             } else {
                 cb_wait_front(in_cb_id, in_block_w);
             }
@@ -49,6 +51,30 @@ inline void tilize_in(
         }
     }
     tilize_uninit(in_cb_id);
+}  // tilize_in()
+
+inline void tilize_in_v1(
+    uint32_t in_cb_id, uint32_t in_subblock_h, uint32_t in_block_w, uint32_t in_num_subblocks, uint32_t out_cb_id) {
+    tilize_init_short(in_cb_id, in_block_w);
+    {
+        DeviceZoneScopedN("TILIZE");
+        for (uint32_t in_subblock = 0; in_subblock < in_num_subblocks; ++in_subblock) {
+            for (uint32_t h = 0; h < in_subblock_h; ++h) {
+                // if (ADD_DUMMY_COMPUTE) {
+                //     cb_wait_front_w_dummy(in_cb_id, in_block_w);
+                //     tilize_init_math(in_cb_id);
+                // } else {
+                //     cb_wait_front(in_cb_id, in_block_w);
+                // }
+
+                // cb_reserve_back(out_cb_id, in_block_w);
+                tilize_block(in_cb_id, in_block_w, out_cb_id);
+                // cb_push_back(out_cb_id, in_block_w);
+                // cb_pop_front(in_cb_id, in_block_w);
+            }
+        }
+        tilize_uninit(in_cb_id);
+    }
 }  // tilize_in()
 
 template <uint32_t out_subblock_w, uint32_t out_block_w, bool is_non_tile_height>
@@ -206,15 +232,109 @@ void MAIN {
 
                     reconfig_data_format_srca(in1_cb_id, in0_cb_id);
 
-                    tilize_in(in0_cb_id, in0_subblock_h, in0_block_w, in0_num_subblocks_read, tilized_in0_cb_id);
+                    //                     if (COMMON_TILIZE_WAIT) {
+                    //                         uint32_t num_waited_tiles_reader0 =
+                    //                         in0_subblock_h*in0_block_w*in0_num_subblocks_read;
+                    // #ifdef SPLIT_READER
+                    //                         uint32_t num_waited_tiles_reader1 =
+                    //                         in0_subblock_h*in0_block_w*in0_num_subblocks_read_last;
+                    // #else
+                    //                         uint32_t num_waited_tiles_reader1 = 0;
+                    // #endif
+                    //                         uint32_t num_tilized_tiles = num_waited_tiles_reader0 +
+                    //                         num_waited_tiles_reader1; if (ADD_DUMMY_COMPUTE) {
+                    //                             cb_wait_front_w_dummy(in0_cb_id, num_waited_tiles_reader0);
+                    //                         } else {
+                    //                             cb_wait_front(in0_cb_id, num_waited_tiles_reader0);
+                    //                         }
+
+                    // #ifdef SPLIT_READER
+                    //                         if (ADD_DUMMY_COMPUTE) {
+                    //                             cb_wait_front_w_dummy(in0_cb_second_reader_id,
+                    //                             num_waited_tiles_reader1);
+                    //                         } else {
+                    //                             cb_wait_front(in0_cb_second_reader_id, num_waited_tiles_reader1);
+                    //                         }
+                    // #endif
+                    //                         cb_reserve_back(tilized_in0_cb_id, num_tilized_tiles);
+                    //                     }
+
+                    // DPRINT << "Running loop " << in0_block_w_i << ENDL();
+                    // DPRINT_UNPACK(DPRINT << "Params: in0_block_w = " << in0_block_w <<
+                    //           ", in0_subblock_h = " << in0_subblock_h <<
+                    //           ", in0_num_subblocks_read = " << in0_num_subblocks_read <<
+                    //           ", in0_num_subblocks_read_last = " << in0_num_subblocks_read_last << ENDL());
+
+                    if (ALTERNATE_TILIZE) {
+                        uint32_t num_tilized_tiles = in0_subblock_h * in0_block_w * in0_num_subblocks_read;
+                        if (COMMON_TILIZE_WAIT == 0) {
+                            if (ADD_DUMMY_COMPUTE) {
+                                cb_wait_front_w_dummy(in0_cb_id, num_tilized_tiles);
+                                // tilize_init_math(in0_cb_id);
+                            } else {
+                                cb_wait_front(in0_cb_id, num_tilized_tiles);
+                            }
+                            cb_reserve_back(tilized_in0_cb_id, num_tilized_tiles);
+                        }
+                        // DPRINT << "Done wait reader0" << ENDL();
+                        tilize_in_v1(in0_cb_id, in0_subblock_h, in0_block_w, in0_num_subblocks_read, tilized_in0_cb_id);
+                        if (COMMON_TILIZE_WAIT == 0) {
+                            cb_push_back(tilized_in0_cb_id, num_tilized_tiles);
+                            cb_pop_front(in0_cb_id, num_tilized_tiles);
+                        }
+                        // DPRINT << "Done compute reader0" << ENDL();
+                    } else {
+                        tilize_in(in0_cb_id, in0_subblock_h, in0_block_w, in0_num_subblocks_read, tilized_in0_cb_id);
+                    }
+
 #ifdef SPLIT_READER
-                    tilize_in(
-                        in0_cb_second_reader_id,
-                        in0_subblock_h,
-                        in0_block_w,
-                        in0_num_subblocks_read_last,
-                        tilized_in0_cb_id);
+                    if (ALTERNATE_TILIZE) {
+                        uint32_t num_tilized_tiles = in0_subblock_h * in0_block_w * in0_num_subblocks_read_last;
+                        if (COMMON_TILIZE_WAIT == 0) {
+                            if (ADD_DUMMY_COMPUTE) {
+                                cb_wait_front_w_dummy(in0_cb_second_reader_id, num_tilized_tiles);
+                                // tilize_init_math(in0_cb_second_reader_id);
+                            } else {
+                                cb_wait_front(in0_cb_second_reader_id, num_tilized_tiles);
+                            }
+                            cb_reserve_back(tilized_in0_cb_id, num_tilized_tiles);
+                        }
+                        tilize_in_v1(
+                            in0_cb_second_reader_id,
+                            in0_subblock_h,
+                            in0_block_w,
+                            in0_num_subblocks_read_last,
+                            tilized_in0_cb_id);
+                        if (COMMON_TILIZE_WAIT == 0) {
+                            cb_push_back(tilized_in0_cb_id, num_tilized_tiles);
+                            cb_pop_front(in0_cb_second_reader_id, num_tilized_tiles);
+                        }
+                    } else {
+                        tilize_in(
+                            in0_cb_second_reader_id,
+                            in0_subblock_h,
+                            in0_block_w,
+                            in0_num_subblocks_read_last,
+                            tilized_in0_cb_id);
+                    }
 #endif
+
+                    //                     if (COMMON_TILIZE_WAIT) {
+                    //                         uint32_t num_waited_tiles_reader0 =
+                    //                         in0_subblock_h*in0_block_w*in0_num_subblocks_read;
+                    // #ifdef SPLIT_READER
+                    //                         uint32_t num_waited_tiles_reader1 =
+                    //                         in0_subblock_h*in0_block_w*in0_num_subblocks_read_last;
+                    // #else
+                    //                         uint32_t num_waited_tiles_reader1 = 0;
+                    // #endif
+                    //                         uint32_t num_tilized_tiles = num_waited_tiles_reader0 +
+                    //                         num_waited_tiles_reader1; cb_push_back(tilized_in0_cb_id,
+                    //                         num_tilized_tiles); cb_pop_front(in0_cb_id, num_waited_tiles_reader0);
+                    // #ifdef SPLIT_READER
+                    //                         cb_pop_front(in0_cb_second_reader_id, num_waited_tiles_reader1);
+                    // #endif
+                    //                     }
 
                     mm_block_init_short_with_dt(
                         mm_in0_cb_id,
@@ -225,6 +345,9 @@ void MAIN {
                         out_subblock_h,
                         in0_block_w);
                 }
+
+                // DPRINT << "Done tilize " << ENDL();
+
                 cb_wait_front(mm_in0_cb_id, in0_block_num_tiles);
                 cb_wait_front(in1_cb_id, in1_block_num_tiles);
 
@@ -281,6 +404,8 @@ void MAIN {
                             // matmul outer product of (out_subblock_h x out_subblock_w) tiles that fill dst
                             // accumulation is done by iterating matmul_block across inner dim
                             // in0_block_w is passed as innder dim (kt) to matmul_block, interally used to stride in0
+                            DPRINT << "Matmul in0 subblock " << in0_subblock_i << ", in1 subblock " << in1_subblock_i
+                                   << " inner_dim_idx " << inner_dim_idx << ENDL();
                             matmul_block(
                                 mm_in0_cb_id,
                                 in1_cb_id,

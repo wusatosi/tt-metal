@@ -202,8 +202,11 @@ ALWI void matmul_block(
     uint32_t ct_dim,
     uint32_t rt_dim,
     uint32_t kt_dim) {
-    UNPACK((llk_unpack_AB_matmul(in0_cb_id, in1_cb_id, in0_tile_index, in1_tile_index, ct_dim, rt_dim, kt_dim)));
-    MATH((llk_math_matmul<MATH_FIDELITY>(idst, transpose, ct_dim, rt_dim, kt_dim)));
+    {
+        DeviceZoneScopedN("MATMUL");
+        UNPACK((llk_unpack_AB_matmul(in0_cb_id, in1_cb_id, in0_tile_index, in1_tile_index, ct_dim, rt_dim, kt_dim)));
+        MATH((llk_math_matmul<MATH_FIDELITY>(idst, transpose, ct_dim, rt_dim, kt_dim)));
+    }
 }
 
 /**
@@ -232,6 +235,16 @@ ALWI void mm_block_init_short(
     uint32_t rt_dim = 1,
     uint32_t kt_dim = 1) {
     UNPACK((llk_unpack_AB_matmul_init(in0_cb_id, in1_cb_id, transpose, ct_dim, rt_dim, kt_dim)));
+    MATH((llk_math_matmul_init<MATH_FIDELITY>(in0_cb_id, in1_cb_id, transpose, ct_dim, rt_dim, kt_dim)));
+}
+
+ALWI void mm_block_init_short_math(
+    uint32_t in0_cb_id = 0,
+    uint32_t in1_cb_id = 1,
+    const uint32_t transpose = 0,
+    uint32_t ct_dim = 1,
+    uint32_t rt_dim = 1,
+    uint32_t kt_dim = 1) {
     MATH((llk_math_matmul_init<MATH_FIDELITY>(in0_cb_id, in1_cb_id, transpose, ct_dim, rt_dim, kt_dim)));
 }
 

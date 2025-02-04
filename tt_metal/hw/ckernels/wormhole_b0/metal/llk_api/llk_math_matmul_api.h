@@ -5,6 +5,7 @@
 #pragma once
 #include "llk_math_common_api.h"
 #include "llk_math_matmul.h"
+#include "tools/profiler/kernel_profiler.hpp"
 
 /*************************************************************************
  * LLK MATMUL
@@ -53,8 +54,11 @@ inline void llk_math_matmul(
 }
 
 inline void llk_dummy_math() {
-    tensix_sync();
-    _llk_math_dummy_matmul_init_();
-    _llk_math_dummy_matmul_continous();
-    tensix_sync();
+    {
+        DeviceZoneScopedN("DUMMY_MATH");
+        tensix_sync();
+        _llk_math_dummy_matmul_init_();
+        _llk_math_dummy_matmul_continous();
+        tensix_sync();
+    }
 }

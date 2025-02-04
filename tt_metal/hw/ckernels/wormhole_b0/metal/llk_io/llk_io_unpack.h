@@ -39,23 +39,36 @@ inline __attribute__((__always_inline__)) void apply_mm_stagger(int operand) {
 inline void llk_wait_tiles(int operand, std::int32_t num_tiles) {
     // TODO(MO): Manually uncomment until issue #6619 is resolved
     // DeviceZoneScopedSumN1("CB-COMPUTE-WAIT-FRONT");
-    std::uint32_t input = operand;
-    volatile tt_l1_ptr std::uint32_t* tiles_received_ptr = get_cb_tiles_received_ptr(operand);
-    std::uint16_t num_tiles_u = (std::uint16_t)num_tiles;
+    {
+        DeviceZoneScopedN("WAIT_TILES");
+        std::uint32_t input = operand;
+        volatile tt_l1_ptr std::uint32_t* tiles_received_ptr = get_cb_tiles_received_ptr(operand);
+        std::uint16_t num_tiles_u = (std::uint16_t)num_tiles;
 
-    std::uint16_t tiles_received;
+        std::uint16_t tiles_received;
 
-    uint16_t num_tiles_recv;
-    do {
-        tiles_received = (std::uint16_t)reg_read((std::uint32_t)tiles_received_ptr);
-        num_tiles_recv = tiles_received - get_local_cb_interface(input).tiles_acked;
-    } while (num_tiles_recv < num_tiles_u);
+        uint16_t num_tiles_recv;
+        do {
+            tiles_received = (std::uint16_t)reg_read((std::uint32_t)tiles_received_ptr);
+            num_tiles_recv = tiles_received - get_local_cb_interface(input).tiles_acked;
+        } while (num_tiles_recv < num_tiles_u);
 
-    apply_mm_stagger(operand);
+        apply_mm_stagger(operand);
+    }
 }
 
 inline void llk_wait_tiles_w_dummy(int operand, std::int32_t num_tiles) {
+    // {
+    //     DeviceZoneScopedN("WAIT_TILES");
 
+    // TTI_STALLWAIT(p_stall::STALL_UNPACK, p_stall::UNPACK);
+    tensix_sync();
+    TTI_UNPACR_NOP(SrcA, p_unpacr_nop::UNP_SET_DVALID);
+    TTI_UNPACR_NOP(SrcB, p_unpacr_nop::UNP_SET_DVALID);
+    TTI_UNPACR_NOP(SrcA, p_unpacr_nop::UNP_SET_DVALID);
+    TTI_UNPACR_NOP(SrcB, p_unpacr_nop::UNP_SET_DVALID);
+    // TTI_SETDVALID(0b11);
+    // TTI_SETDVALID(0b11);
     dummy_compute_sync_post_code[0] = 0xdada01;
 
     llk_wait_tiles(operand, num_tiles);
@@ -67,6 +80,7 @@ inline void llk_wait_tiles_w_dummy(int operand, std::int32_t num_tiles) {
     *dummy_compute_sync_addr_data_arrived = 0;
     dummy_compute_sync_post_code[0] = 0xdada00;
 
+    // }
 }
 
 // Pop N tiles from the incoming stream

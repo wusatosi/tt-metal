@@ -15,6 +15,8 @@
 
 #include "compute_kernel_api/eltwise_unary/sfpu_split_includes.h"
 
+#define ADD_DUMMY_COMPUTE 0
+
 // Please update
 // tests/tt_metal/tt_metal/perf_microbenchmark/1_compute_mm/kernels/bmm_large_block_zm_fused_bias_activation_copy.cpp
 // when making any changes to this file.
@@ -143,6 +145,7 @@ void MAIN {
 
     mm_block_init(
         in0_cb_id, in1_cb_id, mm_partials_cb_id, in1_transpose_tile, out_subblock_w, out_subblock_h, in0_block_w);
+
     for (uint32_t b = 0; b < batch; b++) {
         for (uint32_t bh = 0; bh < num_blocks_h_dim; ++bh) {
             for (uint32_t bw = 0; bw < num_blocks_w_dim; ++bw) {
@@ -170,8 +173,16 @@ void MAIN {
                     }
 #endif
 
-                    cb_wait_front(in0_cb_id, in0_block_num_tiles);
-                    cb_wait_front(in1_cb_id, in1_block_num_tiles);
+                    if (ADD_DUMMY_COMPUTE) {
+                        cb_wait_front_w_dummy(in0_cb_id, in0_block_num_tiles);
+                        // cb_wait_front_w_dummy(in1_cb_id, in1_block_num_tiles);
+                        cb_wait_front(in1_cb_id, in1_block_num_tiles);
+                        mm_block_init_short_math(
+                            in0_cb_id, in1_cb_id, in1_transpose_tile, out_subblock_w, out_subblock_h, in0_block_w);
+                    } else {
+                        cb_wait_front(in0_cb_id, in0_block_num_tiles);
+                        cb_wait_front(in1_cb_id, in1_block_num_tiles);
+                    }
 
                     int in0_index_subblock_offset = 0;
                     for (uint32_t in0_subblock = 0; in0_subblock < in0_num_subblocks; in0_subblock++) {
