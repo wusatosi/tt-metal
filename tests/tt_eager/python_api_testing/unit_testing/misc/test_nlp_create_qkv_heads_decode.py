@@ -426,55 +426,6 @@ def set_dispatch_col(device_params):
 
 @skip_for_blackhole("Requires eth connected devices to run, see #12349")
 @skip_for_grayskull("Requires eth connected devices to run")
-@pytest.mark.parametrize("batch", (32,))
-@pytest.mark.parametrize(
-    "n_local_heads, n_local_kv_heads, head_dim",
-    ((8, 1, 128),),
-)
-@pytest.mark.parametrize("overlap_coregrid", (True, False))
-@pytest.mark.parametrize("batch_offset", (0, 8, 16, 24))
-@pytest.mark.parametrize("slice_size", (8,))
-def test_create_heads_with_slice(
-    batch,
-    n_local_heads,
-    n_local_kv_heads,
-    head_dim,
-    device,
-    overlap_coregrid,
-    batch_offset,
-    slice_size,
-    use_program_cache,
-):
-    torch.manual_seed(0)
-    batch_offset_tensor = torch.tensor([batch_offset], dtype=torch.int32)
-    # convert to tt tensor
-    batch_offset_tensor_tt = ttnn.from_torch(batch_offset_tensor, device=device, layout=ttnn.TILE_LAYOUT)
-
-    for i in range(3):
-        # multiple loops to test program caching
-        run_test_create_min_width_shard(
-            device=device,
-            batch=batch,
-            n_local_heads=n_local_heads,
-            n_local_kv_heads=n_local_kv_heads,
-            head_dim=head_dim,
-            overlap_coregrid=overlap_coregrid,
-            batch_offset=batch_offset_tensor_tt,
-            slice_size=slice_size,
-        )
-    # BH does s2i and i2s inside of to_device and from_device as device ops
-    expected_entries = 1 if not is_blackhole() else 4 if overlap_coregrid else 5
-    assert device.num_program_cache_entries() == expected_entries
-
-
-@pytest.fixture()
-def set_dispatch_col(device_params):
-    device_params["dispatch_core_axis"] = ttnn.DispatchCoreAxis.COL
-    return device_params
-
-
-@skip_for_blackhole("Requires eth connected devices to run, see #12349")
-@skip_for_grayskull("Requires eth connected devices to run")
 @pytest.mark.parametrize("batch", (1, 8, 16))
 @pytest.mark.parametrize(
     "n_local_heads, n_local_kv_heads, head_dim",
