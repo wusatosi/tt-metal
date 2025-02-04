@@ -12,6 +12,7 @@
 #include <tt-metalium/util.hpp>
 #include <tt-metalium/host_api.hpp>
 #include "ttnn/operations/data_movement/tilize_with_val_padding/tilize_with_val_padding_common.hpp"
+#include <tt-metalium/work_split.hpp>
 
 using namespace tt::constants;
 using namespace tt::tt_metal;
@@ -260,6 +261,374 @@ operation::ProgramWithCallbacks tilize_with_val_padding_single_core(
     return {std::move(program), override_runtime_args_callback};
 }
 
+operation::ProgramWithCallbacks tilize_with_val_padding_multi_core_block_interleaved(
+    const Tensor& a, Tensor& output, const ttnn::PadValue pad_value) {
+    tt::tt_metal::Program program = tt::tt_metal::CreateProgram();
+
+    tt::DataFormat input_cb_data_format = tt::tt_metal::datatype_to_dataformat_converter(a.get_dtype());
+    uint32_t input_single_tile_size = tt::tt_metal::detail::TileSize(input_cb_data_format);
+    tt::DataFormat output_cb_data_format = tt::tt_metal::datatype_to_dataformat_converter(output.get_dtype());
+    uint32_t output_single_tile_size = tt::tt_metal::detail::TileSize(output_cb_data_format);
+
+    IDevice* device = a.device();
+    CoreCoord grid_size = device->compute_with_storage_grid_size();
+
+    uint32_t num_tiles_per_col = output.get_padded_shape()[-2] / TILE_HEIGHT;
+    uint32_t num_tiles_per_row = output.get_padded_shape()[-1] / TILE_WIDTH;
+
+    uint32_t num_blocks = (output.get_padded_shape()[-1] * output.get_padded_shape()[-2]) / (TILE_HEIGHT * TILE_WIDTH);
+
+    printf("num_tiles_per_col: %u\n", num_tiles_per_col);
+    printf("num_tiles_per_row: %u\n", num_tiles_per_row);
+    printf("num_blocks: %u\n", num_blocks);
+
+    // uint32_t num_blocks = output.volume() / output.get_padded_shape()[-1] / TILE_HEIGHT;
+
+    // bool enough_space = enough_available_space(a, input_single_tile_size, output_single_tile_size,
+    // num_tiles_per_row); if (!enough_space) {
+    //     return tilize_with_val_padding_single_core(a, output, pad_value);
+    // }
+    // uint32_t max_cb_size = 340;
+    // uint32_t blocks_per_row = output.get_padded_shape()[-1] / TILE_WIDTH;
+    auto
+        [ncores,
+         all_cores,
+         core_range,
+         cliff_row_core_range,
+         cliff_col_core_range,
+         cliff_col_row_core_range,
+         nblocks_per_core,
+         single_block_size,
+         single_block_size_cliff_row,
+         single_block_size_cliff_col,
+         has_cliff_row,
+         has_cliff_col,
+         full_cores_per_row,
+         full_cores_per_col] =
+            ttnn::split_blocks_for_tilize2(grid_size, num_blocks, num_tiles_per_row, num_tiles_per_col);
+
+    printf("single_block_size: %u\n", single_block_size);
+    printf("full_cores_per_row: %u\n", full_cores_per_row);
+    printf("has cliff row: %d\n", has_cliff_row);
+    printf(
+        "all cores size is : %zu = %zu, %zu, %zu, %zu\n",
+        all_cores.size(),
+        core_range.size(),
+        cliff_row_core_range.size(),
+        cliff_col_core_range.size(),
+        cliff_col_row_core_range.size());
+    uint32_t total_tiles_per_row = full_cores_per_row * single_block_size + has_cliff_row * single_block_size_cliff_row;
+
+    uint32_t unpadded_row_size_bytes = a.get_padded_shape()[-1] * a.element_size();     // Assuming bfloat16 dataformat
+    uint32_t padded_row_size_bytes = output.get_padded_shape()[-1] * a.element_size();  // Assuming bfloat16 dataformat
+
+    printf("unpadded_row_size_bytes: %u\n", unpadded_row_size_bytes);
+    printf("padded_row_size_bytes: %u\n", padded_row_size_bytes);
+
+    const uint32_t onetile = 1;
+    if (core_range.size() > 0) {
+        create_cb(
+            tt::CBIndex::c_0, program, core_range, input_single_tile_size, single_block_size, input_cb_data_format);
+
+        create_cb(
+            tt::CBIndex::c_16, program, core_range, output_single_tile_size, single_block_size, output_cb_data_format);
+    }
+    if (has_cliff_col && has_cliff_row) {
+        create_cb(
+            tt::CBIndex::c_0,
+            program,
+            cliff_col_row_core_range,
+            input_single_tile_size,
+            single_block_size_cliff_row,
+            input_cb_data_format);
+
+        create_cb(
+            tt::CBIndex::c_16,
+            program,
+            cliff_col_row_core_range,
+            output_single_tile_size,
+            single_block_size_cliff_row,
+            output_cb_data_format);
+    }
+
+    if (has_cliff_row) {
+        create_cb(
+            tt::CBIndex::c_0,
+            program,
+            cliff_row_core_range,
+            input_single_tile_size,
+            single_block_size_cliff_row,
+            input_cb_data_format);
+
+        create_cb(
+            tt::CBIndex::c_16,
+            program,
+            cliff_row_core_range,
+            output_single_tile_size,
+            single_block_size_cliff_row,
+            output_cb_data_format);
+    }
+
+    if (has_cliff_col) {
+        auto [src3_cb_index, cb_src3] = create_cb(
+            tt::CBIndex::c_0,
+            program,
+            cliff_col_core_range,
+            input_single_tile_size,
+            single_block_size,
+            input_cb_data_format);
+
+        auto [output3_cb_index, cb_output3] = create_cb(
+            tt::CBIndex::c_16,
+            program,
+            cliff_col_core_range,
+            output_single_tile_size,
+            single_block_size,
+            output_cb_data_format);
+    }
+
+    Buffer* src0_buffer = a.buffer();
+    Buffer* dst_buffer = output.buffer();
+    TT_ASSERT(dst_buffer != nullptr, "Output buffer should be allocated on device!");
+
+    // reader
+
+    uint32_t src0_is_dram = src0_buffer->buffer_type() == BufferType::DRAM ? 1 : 0;
+    uint32_t stick_size = unpadded_row_size_bytes;
+    uint32_t stick_size_is_power_of_two = is_power_of_two_at_least_32(stick_size);
+    uint32_t log2_stick_size = stick_size_is_power_of_two ? (std::uint32_t)std::log2(stick_size) : 0;
+
+    uint32_t packed_pad_value = get_packed_value(a, pad_value);
+    // log2(TILE_WIDTH * data_format_size_in_bytes)
+    uint32_t shift_bits = (a.get_dtype() == DataType::BFLOAT16) ? 6 : 7;
+
+    uint32_t num_tiles_2d = output.get_padded_shape()[-1] * output.get_padded_shape()[-2] / TILE_HW;
+    printf("num_tiles_2d: %u\n", num_tiles_2d);
+    printf("shift_bits: %u\n", shift_bits);
+
+    auto log_shape = output.get_logical_shape();
+    uint32_t third_dim = 1;
+    if (log_shape.rank() == 3) {
+        third_dim = log_shape[-3];
+    } else if (log_shape.rank() >= 4) {
+        third_dim = log_shape[-3] * log_shape[-4];
+    }
+
+    uint32_t tile_width = output.get_tensor_spec().tile().get_width();
+    uint32_t tile_height = output.get_tensor_spec().tile().get_height();
+
+    uint32_t total_num_rows = a.get_logical_shape()[-2];
+    printf("third_dim: %u\n", third_dim);
+    printf("tile_width: %u\n", tile_width);
+
+    printf("tile_height: %u\n", tile_height);
+    printf("total_num_rows: %u\n", total_num_rows);
+
+    // to be deleted
+    uint32_t num_padding_rows = output.get_padded_shape()[-2] - a.get_padded_shape()[-1];
+    printf("num padding rows: %u\n", num_padding_rows);
+
+    KernelHandle unary_reader_kernel_id = CreateKernel(
+        program,
+        "ttnn/cpp/ttnn/operations/data_movement/tilize_with_val_padding/device/kernels/dataflow/"
+        "reader_unary_pad_multicore_both_dims.cpp",
+        all_cores,
+        ReaderDataMovementConfig(
+            {src0_is_dram,
+             stick_size_is_power_of_two,
+             log2_stick_size,
+             num_padding_rows,
+             total_num_rows,
+             ncores,
+             third_dim,
+             tile_width,
+             a.element_size()}));
+
+    // writer
+    uint32_t out_is_dram = dst_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0;
+
+    // printf("before creating writer kernel\n");
+    KernelHandle unary_writer_kernel_id = CreateKernel(
+        program,
+        "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/dataflow/writer_unary_interleaved_start_id_wh.cpp",
+        all_cores,
+        WriterDataMovementConfig({tt::CBIndex::c_16, out_is_dram, num_tiles_2d, third_dim, total_tiles_per_row}));
+
+    // compute
+
+    // printf("before creating compute kernel\n");
+    //  This needs to be divided into 4
+    if (core_range.size() > 0) {
+        auto tilize_kernel_id = CreateKernel(
+            program,
+            "tests/tt_metal/tt_metal/test_kernels/compute/tilize_wh.cpp",
+            core_range,
+            ComputeConfig{.compile_args = {single_block_size, single_block_size, third_dim}});
+    }
+    if (has_cliff_col && has_cliff_row) {
+        auto tilize_col_row_cliff_kernel_id = CreateKernel(
+            program,
+            "tests/tt_metal/tt_metal/test_kernels/compute/tilize_wh.cpp",
+            cliff_col_row_core_range,
+            ComputeConfig{.compile_args = {single_block_size_cliff_col, single_block_size_cliff_row, third_dim}});
+    }
+    printf("has_cliff_row: %d\n", has_cliff_row);
+    if (has_cliff_row) {
+        printf("executing has licff row if\n");
+        auto tilize_row_cliff_kernel_id = CreateKernel(
+            program,
+            "tests/tt_metal/tt_metal/test_kernels/compute/tilize_wh.cpp",
+            cliff_row_core_range,
+            ComputeConfig{.compile_args = {single_block_size, single_block_size_cliff_row, third_dim}});
+    }
+
+    if (has_cliff_col) {
+        auto tilize_col_cliff_kernel_id = CreateKernel(
+            program,
+            "tests/tt_metal/tt_metal/test_kernels/compute/tilize_wh.cpp",
+            cliff_col_core_range,
+            ComputeConfig{.compile_args = {single_block_size_cliff_col, single_block_size, third_dim}});
+    }
+
+    // RUNTIME ARGS
+    const auto& cores = grid_to_cores(ncores, grid_size.x, grid_size.y, true);
+    uint32_t number_blocks_per_core;
+    uint32_t start_row_id = 0;
+    uint32_t start_column_id = 0;
+    uint32_t tile_start_id = 0;
+    uint32_t single_block_size_row_arg;
+    uint32_t single_block_size_col_arg;
+    printf("start_row_id: %u\n", start_row_id);
+    printf("start_column_id: %u\n", start_column_id);
+
+    printf("tile_start_id: %u\n", tile_start_id);
+    uint32_t total_row_cores = full_cores_per_row;
+    if (has_cliff_row) {
+        total_row_cores++;
+    }
+    uint32_t cores_col_count = 1;
+    for (uint32_t i = 0; i < ncores; ++i) {
+        const auto& core = cores[i];
+        // full_cores_per_row: 7
+        // full_cores_per_col: 4
+        if (has_cliff_col && has_cliff_row && i == ncores - 1) {
+            single_block_size_row_arg = single_block_size_cliff_row;
+            single_block_size_col_arg = single_block_size_cliff_col;
+            printf(
+                "for ncores -1 : single_block row and col are : %u, %u\n",
+                single_block_size_row_arg,
+                single_block_size_col_arg);
+            printf(" it is a col row cliff for core: %u, %zu, %zu\n", i, core.x, core.y);
+        } else if (has_cliff_row && i != 0 && ((i + 1) % (full_cores_per_row + 1)) == 0) {
+            single_block_size_row_arg = single_block_size_cliff_row;
+            single_block_size_col_arg = single_block_size;
+            printf(" it is a row cliff for core: %u, %zu, %zu\n", i, core.x, core.y);
+        } else if (i < total_row_cores * full_cores_per_col) {
+            single_block_size_row_arg = single_block_size;
+            single_block_size_col_arg = single_block_size;
+            printf(" it is non-cliff core for core: %u, %zu, %zu\n", i, core.x, core.y);
+        } else {
+            single_block_size_row_arg = single_block_size;
+            single_block_size_col_arg = single_block_size_cliff_col;
+            printf(" it is a col cliff core with core: %u, %zu, %zu\n", i, core.x, core.y);
+        }
+        number_blocks_per_core = single_block_size_row_arg * single_block_size_col_arg;
+        uint32_t size_per_row_per_block = nblocks_per_core * TILE_WIDTH * a.element_size();
+
+        //  reader runtime args
+        // printf("before reader rt args\n");
+        std::vector<uint32_t> reader_rt_args = {
+            src0_buffer->address(),
+            unpadded_row_size_bytes,
+            packed_pad_value,
+            i,
+            size_per_row_per_block,
+            number_blocks_per_core,
+            TILE_WIDTH * a.element_size(),
+            TILE_HEIGHT,
+            start_row_id,
+            start_column_id,
+            single_block_size_row_arg,
+            single_block_size_col_arg,
+        };
+        // printf("after reader rt args\n");
+
+        // writer runtime args
+        const std::array writer_rt_args = {
+            dst_buffer->address(), tile_start_id, single_block_size_row_arg, single_block_size_col_arg};
+
+        SetRuntimeArgs(program, unary_reader_kernel_id, core, reader_rt_args);
+        SetRuntimeArgs(program, unary_writer_kernel_id, core, writer_rt_args);
+
+        uint32_t end_column_id = start_column_id + single_block_size_row_arg * TILE_WIDTH * a.element_size();
+        printf("end_column_id: %u\n", end_column_id);
+        start_column_id = end_column_id % padded_row_size_bytes;
+        if (end_column_id % padded_row_size_bytes == 0 && end_column_id != 0) {
+            start_row_id += single_block_size_col_arg * TILE_HEIGHT;
+        }
+
+        if (start_column_id == 0) {
+            tile_start_id = cores_col_count * single_block_size_col_arg * total_tiles_per_row;
+            cores_col_count++;
+        } else {
+            tile_start_id += single_block_size_row_arg;
+        }
+        printf("start_row_id: %u\n", start_row_id);
+        printf("start_column_id: %u\n", start_column_id);
+
+        printf("tile_start_id: %u\n", tile_start_id);
+        /*
+        //update start_row_id and start_column_id
+        uint32_t end_column_id = start_column_id + number_blocks_per_core * TILE_WIDTH * a.element_size();
+        //printf("end_column_id: %u\n", end_column_id);
+
+        start_column_id = end_column_id % padded_row_size_bytes;
+        printf("number_blocks_per_core: %u\n", number_blocks_per_core);
+        printf("TILE_WIDTH: %u\n",TILE_WIDTH);
+        printf("a.element_size(): %u\n", a.element_size());
+        printf("padded_row_size_bytes: %u\n", padded_row_size_bytes);
+        uint32_t extra_tiles = 0;
+        if (number_blocks_per_core * TILE_WIDTH * a.element_size() % padded_row_size_bytes != 0) {
+            extra_tiles = number_blocks_per_core * TILE_WIDTH * a.element_size() / padded_row_size_bytes;
+        }
+        uint32_t end_row = end_column_id >= padded_row_size_bytes ? 1 : 0;
+
+        start_row_id += extra_tiles * TILE_HEIGHT + end_row * TILE_HEIGHT;
+        tile_start_id += number_blocks_per_core;
+
+        printf("extra_tiles: %u\n", extra_tiles);
+        printf("start_row_id: %u\n", start_row_id);
+        printf("start_column_id: %u\n", start_column_id);
+
+        printf("tile_start_id: %u\n", tile_start_id);
+        */
+    }
+
+    auto override_runtime_args_callback =
+        [reader_kernel_id = unary_reader_kernel_id, writer_kernel_id = unary_writer_kernel_id, cores = cores](
+            const Program& program,
+            const std::vector<Buffer*>& input_buffers,
+            const std::vector<Buffer*>& output_buffers) {
+            auto src_buffer = input_buffers.at(0);
+            auto dst_buffer = output_buffers.at(0);
+
+            auto& reader_runtime_args_by_core = GetRuntimeArgs(program, reader_kernel_id);
+            auto& writer_runtime_args_by_core = GetRuntimeArgs(program, writer_kernel_id);
+            for (const auto& core : cores) {
+                {
+                    auto& runtime_args = reader_runtime_args_by_core[core.x][core.y];
+                    runtime_args[0] = src_buffer->address();
+                }
+                {
+                    auto& runtime_args = writer_runtime_args_by_core[core.x][core.y];
+                    runtime_args[0] = dst_buffer->address();
+                }
+            }
+        };
+
+    return {std::move(program), override_runtime_args_callback};
+}
+
 operation::ProgramWithCallbacks tilize_with_val_padding_multi_core_interleaved(
     const Tensor& a, Tensor& output, const ttnn::PadValue pad_value) {
     tt::tt_metal::Program program = tt::tt_metal::CreateProgram();
@@ -277,7 +646,7 @@ operation::ProgramWithCallbacks tilize_with_val_padding_multi_core_interleaved(
 
     bool enough_space = enough_available_space(a, input_single_tile_size, output_single_tile_size, num_tiles_per_row);
     if (!enough_space) {
-        return tilize_with_val_padding_single_core(a, output, pad_value);
+        return tilize_with_val_padding_multi_core_block_interleaved(a, output, pad_value);
     }
 
     auto [ncores, all_cores, core_range, core_range_cliff, nblocks_per_core, nblocks_per_core_cliff] =
@@ -298,8 +667,8 @@ operation::ProgramWithCallbacks tilize_with_val_padding_multi_core_interleaved(
     Buffer* dst_buffer = output.buffer();
     TT_ASSERT(dst_buffer != nullptr, "Output buffer should be allocated on device!");
 
-    /** reader
-     */
+    // reader
+
     uint32_t src0_is_dram = src0_buffer->buffer_type() == BufferType::DRAM ? 1 : 0;
     uint32_t stick_size = unpadded_row_size_bytes;
     uint32_t stick_size_is_power_of_two = is_power_of_two_at_least_32(stick_size);
@@ -316,8 +685,8 @@ operation::ProgramWithCallbacks tilize_with_val_padding_multi_core_interleaved(
         all_cores,
         ReaderDataMovementConfig({src0_is_dram, stick_size_is_power_of_two, log2_stick_size, shift_bits}));
 
-    /** writer
-     */
+    // writer
+
     uint32_t out_is_dram = dst_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0;
 
     KernelHandle unary_writer_kernel_id = CreateKernel(
@@ -326,8 +695,8 @@ operation::ProgramWithCallbacks tilize_with_val_padding_multi_core_interleaved(
         all_cores,
         WriterDataMovementConfig({output_cb_index, out_is_dram}));
 
-    /** compute
-     */
+    // compute
+
     if (core_range.size() > 0) {
         auto tilize_kernel_id = CreateKernel(
             program,
@@ -343,7 +712,7 @@ operation::ProgramWithCallbacks tilize_with_val_padding_multi_core_interleaved(
             ComputeConfig{.compile_args = {nblocks_per_core_cliff, num_tiles_per_row}});
     }
 
-    /* RUNTIME ARGS */
+    // RUNTIME ARGS
     // 1D distribution of blocks across cores
     uint32_t tile_height = output.get_tensor_spec().tile().get_height();
     auto core_assignments = ttnn::distribute_work(
