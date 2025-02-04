@@ -136,7 +136,7 @@ std::vector<Tensor> Pool2DOp<pool_type>::invoke(
     };
 
     // Call the halo uop
-    auto haloed_tensor = ttnn::halo(
+    Tensor haloed_tensor = ttnn::halo(
         queue_id,
         input_tensor_sharded,
         sliding_window_config,
@@ -147,7 +147,7 @@ std::vector<Tensor> Pool2DOp<pool_type>::invoke(
         input_tensor_sharded.memory_config(),
         is_out_tiled);
 
-    auto output_tensor = ttnn::prim::pool2d(
+    Tensor output_tensor = ttnn::prim::pool2d(
         queue_id,
         haloed_tensor,
         sliding_window_config,
