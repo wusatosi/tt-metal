@@ -30,6 +30,7 @@
 #include "tracy/Tracy.hpp"
 #include <tt_align.hpp>
 #include <tuple>
+#include <host_api_call_guard.hpp>
 
 namespace tt::tt_metal {
 
@@ -327,7 +328,7 @@ detail::Program_::Program_() :
     program_config_sizes_.resize(programmable_core_count + 2);
 }
 
-Program::Program() : pimpl_(std::make_unique<detail::Program_>()) {}
+Program::Program() : pimpl_(std::make_unique<detail::Program_>()) { ENSURE_CALLED_FROM_API(); }
 
 KernelHandle detail::Program_::add_kernel(const std::shared_ptr<Kernel>& kernel, const HalProgrammableCoreType &programmable_core_type) {
     TT_FATAL(this->compiled_.empty(), "Cannot add kernel to an already compiled program {}", this->id);

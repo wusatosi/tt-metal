@@ -20,6 +20,7 @@
 #include "umd/device/tt_soc_descriptor.h"
 #include "fmt/base.h"
 #include <reflection.hpp>
+#include <host_api_call_guard.hpp>
 
 #include "tracy/Tracy.hpp"
 
@@ -296,6 +297,7 @@ std::shared_ptr<Buffer> Buffer::create(
     const std::optional<ShardSpecBuffer>& shard_parameters,
     const std::optional<bool> bottom_up,
     const std::optional<SubDeviceId> sub_device_id) {
+    ENSURE_CALLED_FROM_API();
     auto* bufferPtr = new Buffer(
         device,
         size,
