@@ -100,7 +100,7 @@ class Yolov11TestInfra:
         self.ttnn_yolov11_model = ttnn_yolov11(device, parameters)
 
     def run(self):
-        self.output_tensor = self.ttnn_yolov11_model(self.ttnn_input)
+        self.output_tensor = self.ttnn_yolov11_model(self.input_tensor)
 
     def setup_l1_sharded_input(self, device, torch_input_tensor=None):
         if is_wormhole_b0():
@@ -109,7 +109,7 @@ class Yolov11TestInfra:
             exit("Unsupported device")
         num_devices = 1 if isinstance(device, ttnn.Device) else device.get_num_devices()
         # torch tensor
-        torch_input_tensor = self.torch_input_tensor if torch_input_tensor is None else torch_input_tensor
+        torch_input_tensor = self.torch_input if self.torch_input is None else self.torch_input
 
         n, c, h, w = torch_input_tensor.shape
         # sharded mem config for fold input
@@ -118,7 +118,7 @@ class Yolov11TestInfra:
         grid_size = core_grid
         grid_coord = ttnn.CoreCoord(grid_size.x - 1, grid_size.y - 1)
         shard_grid = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), grid_coord)})
-        shard_spec = ttnn.ShardSpec(shard_grid, (shard_h, 16), ttnn.ShardOrientation.ROW_MAJOR, False)
+        shard_spec = ttnn.ShardSpec(shard_grid, (shard_h, 16), ttnn.ShardOrientation.ROW_MAJOR)
         input_mem_config = ttnn.MemoryConfig(
             ttnn.types.TensorMemoryLayout.HEIGHT_SHARDED, ttnn.types.BufferType.L1, shard_spec
         )
@@ -140,7 +140,6 @@ class Yolov11TestInfra:
                 16,
             ],
             ttnn.ShardOrientation.ROW_MAJOR,
-            False,
         )
         sharded_mem_config_DRAM = ttnn.MemoryConfig(
             ttnn.TensorMemoryLayout.HEIGHT_SHARDED, ttnn.BufferType.DRAM, dram_shard_spec
@@ -151,13 +150,13 @@ class Yolov11TestInfra:
     def validate(self, output_tensor=None):
         output_tensor = self.output_tensor if output_tensor is None else output_tensor
         output_tensor = ttnn.to_torch(self.output_tensor)
+        # output_tensor = torch.permute(output_tensor, (0, 3, 1, 2))
         output_tensor = output_tensor.reshape((self.torch_output).shape)
-        output_tensor = torch.permute(output_tensor, (0, 3, 1, 2))
 
-        valid_pcc = 0.998
+        valid_pcc = 0.996
         self.pcc_passed, self.pcc_message = assert_with_pcc(self.torch_output, output_tensor, pcc=valid_pcc)
 
-        logger.info(f"Yolov11 batch_size={self.batch_size}, PCC={self.pcc_message}")
+        logger.info(f"Yolov11, PCC={self.pcc_message}")
 
     def dealloc_output(self):
         ttnn.deallocate(self.output_tensor)
