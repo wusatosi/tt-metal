@@ -12,7 +12,7 @@ import torch
 from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import Transformer
 from models.demos.llama3.tt.llama_common import (
     precompute_freqs,
-    freqs_to_rotation_matrix,
+    # freqs_to_rotation_matrix,
     num_to_core_range_set,
     calculate_hidden_dim,
     get_out_subblock_w,
@@ -227,7 +227,7 @@ class TtModelArgs:
         self.cos, self.sin = precompute_freqs(
             self.head_dim, self.max_seq_len * 2, self.rope_theta, self.rope_scaling_factor, self.orig_context_len
         )  # for prefill
-        self.rot_emb = freqs_to_rotation_matrix(self.cos, self.sin)  # for decode
+        # self.rot_emb = freqs_to_rotation_matrix(self.cos, self.sin)  # for decode
 
         self.tokenizer = self.create_tokenizer()
 
@@ -1605,8 +1605,8 @@ class TtModelArgs:
             return Attention(self)
         else:
             model = self.reference_transformer(wrap=False)
-            print(model)
             layer = model.model.layers[0].self_attn
+            print(layer)
             wrapper = HfAttentionWrapper(layer, self.head_dim)
             return wrapper
 

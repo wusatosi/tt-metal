@@ -105,8 +105,9 @@ def apply_yarn_scaling(base, freqs: torch.Tensor, scale_factor: float, orig_cont
         inv_freq_interpolation * (1 - inv_freq_extrapolation_factor)
         + inv_freq_extrapolation * inv_freq_extrapolation_factor
     )
+    print("apply_yarn_scaling", inv_freq_extrapolation, attention_factor)
 
-    return inv_freq
+    return inv_freq, attention_factor
 
 
 def apply_scaling(freqs: torch.Tensor, scale_factor: float, orig_context_len: int):
@@ -118,6 +119,7 @@ def apply_scaling(freqs: torch.Tensor, scale_factor: float, orig_context_len: in
     low_freq_wavelen = orig_context_len / low_freq_factor
     high_freq_wavelen = orig_context_len / high_freq_factor
     new_freqs = []
+
     for freq in freqs:
         wavelen = 2 * math.pi / freq
         if wavelen < high_freq_wavelen:
@@ -147,38 +149,44 @@ def precompute_freqs(dim: int, end: int, theta, scale_factor, orig_context_len, 
     t = torch.arange(end)
     print("precompute_freqs", dim, end, theta, scale_factor, orig_context_len, scale_type)
     scale_type = "yarn"
+    scale_factor = None
+    attention_factor = 1.0
     if scale_factor is not None:
         if scale_type == "yarn":
-            freqs = apply_yarn_scaling(theta, freqs, scale_factor, orig_context_len)
+            freqs, attention_factor = apply_yarn_scaling(theta, freqs, scale_factor, orig_context_len)
         else:
             freqs = apply_scaling(freqs, scale_factor, orig_context_len)
+    print("precompute_freqs", freqs.shape)
     freqs = torch.outer(t, freqs).float()
-    return torch.cos(freqs), torch.sin(freqs)
+    print("precompute_freqs", freqs.shape)
+    return torch.cos(freqs) * attention_factor, torch.sin(freqs) * attention_factor
 
 
 def gather_cos_sin(position_ids, cos, sin):
+    print(position_ids)
     position_id_expanded = position_ids.unsqueeze(1).expand(-1, cos.shape[-1])
     cos = cos.gather(0, position_id_expanded)
     sin = sin.gather(0, position_id_expanded)
     cos = torch.stack([cos, cos], dim=-1).flatten(-2).unsqueeze(0).unsqueeze(0)
     sin = torch.stack([sin, sin], dim=-1).flatten(-2).unsqueeze(0).unsqueeze(0)
+    print("shapes!", cos.shape, sin.shape)
     return cos, sin
 
 
-def freqs_to_rotation_matrix(cos_freqs, sin_freqs):
-    """
-    Transform cos/sin frequencies to a rotation matrix.
-    """
-    emb_size, emb_dim = cos_freqs.shape
-    dhead = emb_dim * 2
-    rot_emb_matrix = torch.zeros(emb_size, dhead, dhead)
-    rot_emb_matrix[..., torch.arange(0, dhead, 2), torch.arange(0, dhead, 2)] = cos_freqs.clone()
-    rot_emb_matrix[..., torch.arange(1, dhead, 2), torch.arange(1, dhead, 2)] = cos_freqs.clone()
-    rot_emb_matrix[..., torch.arange(0, dhead, 2), torch.arange(1, dhead, 2)] = -sin_freqs.clone()
-    rot_emb_matrix[..., torch.arange(1, dhead, 2), torch.arange(0, dhead, 2)] = sin_freqs.clone()
+# def freqs_to_rotation_matrix(cos_freqs, sin_freqs):
+#     """
+#     Transform cos/sin frequencies to a rotation matrix.
+#     """
+#     emb_size, emb_dim = cos_freqs.shape
+#     dhead = emb_dim * 2
+#     rot_emb_matrix = torch.zeros(emb_size, dhead, dhead)
+#     rot_emb_matrix[..., torch.arange(0, dhead, 2), torch.arange(0, dhead, 2)] = cos_freqs.clone()
+#     rot_emb_matrix[..., torch.arange(1, dhead, 2), torch.arange(1, dhead, 2)] = cos_freqs.clone()
+#     rot_emb_matrix[..., torch.arange(0, dhead, 2), torch.arange(1, dhead, 2)] = -sin_freqs.clone()
+#     rot_emb_matrix[..., torch.arange(1, dhead, 2), torch.arange(0, dhead, 2)] = sin_freqs.clone()
 
-    rot_emb_matrix = rot_emb_matrix.transpose(-1, -2)  # Necessary for correct rotation when applied as (x @ R)
-    return rot_emb_matrix
+#     rot_emb_matrix = rot_emb_matrix.transpose(-1, -2)  # Necessary for correct rotation when applied as (x @ R)
+#     return rot_emb_matrix
 
 
 def get_prefill_rot_mat(
@@ -218,51 +226,51 @@ def get_rot_transformation_mat(dhead):
     return rot_emb_matrix
 
 
-def get_single_rot_mat(
-    dhead,
-    mesh_device,
-    num_devices,
-    start_pos,
-    theta,
-    scale_factor,
-    orig_context_len,
-    on_host=False,
-):
-    freqs_unscaled = 1.0 / (theta ** (torch.arange(0, dhead, 2)[: (dhead // 2)].float() / dhead))
-    if scale_factor is not None:
-        freqs = apply_scaling(freqs_unscaled, scale_factor, orig_context_len)
-    sin_freqs, cos_freqs = torch.sin(freqs), torch.cos(freqs)
-    rot_matrix = torch.zeros(dhead, dhead)
-    rot_matrix[torch.arange(0, dhead, 2), torch.arange(0, dhead, 2)] = cos_freqs.clone()
-    rot_matrix[torch.arange(1, dhead, 2), torch.arange(1, dhead, 2)] = cos_freqs.clone()
-    rot_matrix[torch.arange(0, dhead, 2), torch.arange(1, dhead, 2)] = -sin_freqs.clone()
-    rot_matrix[torch.arange(1, dhead, 2), torch.arange(0, dhead, 2)] = sin_freqs.clone()
-    rot_matrix = rot_matrix.transpose(-1, -2)
+# def get_single_rot_mat(
+#     dhead,
+#     mesh_device,
+#     num_devices,
+#     start_pos,
+#     theta,
+#     scale_factor,
+#     orig_context_len,
+#     on_host=False,
+# ):
+#     freqs_unscaled = 1.0 / (theta ** (torch.arange(0, dhead, 2)[: (dhead // 2)].float() / dhead))
+#     if scale_factor is not None:
+#         freqs = apply_scaling(freqs_unscaled, scale_factor, orig_context_len)
+#     sin_freqs, cos_freqs = torch.sin(freqs), torch.cos(freqs)
+#     rot_matrix = torch.zeros(dhead, dhead)
+#     rot_matrix[torch.arange(0, dhead, 2), torch.arange(0, dhead, 2)] = cos_freqs.clone()
+#     rot_matrix[torch.arange(1, dhead, 2), torch.arange(1, dhead, 2)] = cos_freqs.clone()
+#     rot_matrix[torch.arange(0, dhead, 2), torch.arange(1, dhead, 2)] = -sin_freqs.clone()
+#     rot_matrix[torch.arange(1, dhead, 2), torch.arange(0, dhead, 2)] = sin_freqs.clone()
+#     rot_matrix = rot_matrix.transpose(-1, -2)
 
-    # Support for start_pos different than 0
-    freqs = start_pos * freqs_unscaled
-    if scale_factor is not None:
-        freqs = apply_scaling(freqs, scale_factor, orig_context_len)
-    sin_freqs, cos_freqs = torch.sin(freqs), torch.cos(freqs)
-    current_rot_mat = torch.zeros(dhead, dhead)
-    current_rot_mat[torch.arange(0, dhead, 2), torch.arange(0, dhead, 2)] = cos_freqs.clone()
-    current_rot_mat[torch.arange(1, dhead, 2), torch.arange(1, dhead, 2)] = cos_freqs.clone()
-    current_rot_mat[torch.arange(0, dhead, 2), torch.arange(1, dhead, 2)] = -sin_freqs.clone()
-    current_rot_mat[torch.arange(1, dhead, 2), torch.arange(0, dhead, 2)] = sin_freqs.clone()
+#     # Support for start_pos different than 0
+#     freqs = start_pos * freqs_unscaled
+#     if scale_factor is not None:
+#         freqs = apply_scaling(freqs, scale_factor, orig_context_len)
+#     sin_freqs, cos_freqs = torch.sin(freqs), torch.cos(freqs)
+#     current_rot_mat = torch.zeros(dhead, dhead)
+#     current_rot_mat[torch.arange(0, dhead, 2), torch.arange(0, dhead, 2)] = cos_freqs.clone()
+#     current_rot_mat[torch.arange(1, dhead, 2), torch.arange(1, dhead, 2)] = cos_freqs.clone()
+#     current_rot_mat[torch.arange(0, dhead, 2), torch.arange(1, dhead, 2)] = -sin_freqs.clone()
+#     current_rot_mat[torch.arange(1, dhead, 2), torch.arange(0, dhead, 2)] = sin_freqs.clone()
 
-    return ttnn.from_torch(
-        current_rot_mat.T.unsqueeze(0).unsqueeze(0),  # 1,1,head_dim,head_dim
-        device=mesh_device if not on_host else None,
-        dtype=ttnn.bfloat16,
-        layout=ttnn.TILE_LAYOUT,
-        mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device) if num_devices > 1 or not on_host else None,
-    ), ttnn.from_torch(
-        rot_matrix.unsqueeze(0).unsqueeze(0),  # 1,1,head_dim,head_dim
-        device=mesh_device if not on_host else None,
-        dtype=ttnn.bfloat16,
-        layout=ttnn.TILE_LAYOUT,
-        mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device) if num_devices > 1 or not on_host else None,
-    )
+#     return ttnn.from_torch(
+#         current_rot_mat.T.unsqueeze(0).unsqueeze(0),  # 1,1,head_dim,head_dim
+#         device=mesh_device if not on_host else None,
+#         dtype=ttnn.bfloat16,
+#         layout=ttnn.TILE_LAYOUT,
+#         mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device) if num_devices > 1 or not on_host else None,
+#     ), ttnn.from_torch(
+#         rot_matrix.unsqueeze(0).unsqueeze(0),  # 1,1,head_dim,head_dim
+#         device=mesh_device if not on_host else None,
+#         dtype=ttnn.bfloat16,
+#         layout=ttnn.TILE_LAYOUT,
+#         mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device) if num_devices > 1 or not on_host else None,
+#     )
 
 
 def num_to_core_range_set(x):
@@ -484,4 +492,5 @@ def pad_to_size(x: torch.Tensor, dim: int, size: int) -> torch.Tensor:
     pad[pad_index + 1] = pad_size  # Pad on the "right" side of the specified dimension
 
     padded_x = torch.nn.functional.pad(x, pad, mode="constant", value=0)
+    print("padded shapes", x.shape, padded_x.shape)
     return padded_x
