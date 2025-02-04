@@ -49,4 +49,6 @@ enum class HalDramMemAddrType : uint8_t { DRAM_BARRIER = 0, COUNT = 1 };
 
 enum class HalMemType : uint8_t { L1 = 0, DRAM = 1, HOST = 2, COUNT = 3 };
 
+enum class HalTensixHarvestAxis : uint8_t { ROW = 0x01, COL = 0x10 };
+
 }  // namespace tt::tt_metal
