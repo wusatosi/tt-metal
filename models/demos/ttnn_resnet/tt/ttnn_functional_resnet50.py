@@ -678,6 +678,14 @@ class resnet50:
             math_fidelity=self.model_config["MATH_FIDELITY"],
             packer_l1_acc=True,
         )
+        if is_wormhole_b0() or is_blackhole():
+            # Issue #13145: Temp workaround for Galaxy to avoid hangs
+            if type(device) == ttnn.MeshDevice and device.get_num_devices() > 8:
+                self.conv1_config.act_block_h_override = 64
+            else:
+                # Todo: restore after issue #16895 is fixed
+                # self.conv1_config.act_block_h_override = 49 * 32
+                self.conv1_config.act_block_h_override = 2 * 32
 
         self.conv1_kernel_size = (4, 4)
         self.conv1_stride = (1, 1)
