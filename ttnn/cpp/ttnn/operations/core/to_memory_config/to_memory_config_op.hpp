@@ -102,6 +102,9 @@ struct ToMemoryConfig {
     }
 };
 
+constexpr auto to_memory_config =
+    ttnn::register_operation_with_auto_launch_op<"ttnn::to_memory_config", ttnn::operations::core::ToMemoryConfig>();
+
 }  // namespace core
 }  // namespace operations
 }  // namespace ttnn

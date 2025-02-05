@@ -393,29 +393,4 @@ template ttnn::Tensor SliceOperation::invoke<uint32_t>(
     const std::optional<MemoryConfig>& memory_config_arg,
     const std::optional<Tensor>& optional_output_tensor);
 
-template ttnn::Tensor SliceOperation::invoke<uint32_t, 4>(
-    const ttnn::Tensor& input_tensor,
-    const std::array<uint32_t, 4>& output_tensor_start,
-    const std::array<uint32_t, 4>& output_tensor_end,
-    const std::array<uint32_t, 4>& step,
-    const std::optional<MemoryConfig>& memory_config_arg,
-    const std::optional<Tensor>& optional_output_tensor);
-
-template ttnn::Tensor SliceOperation::invoke<uint32_t, 1>(
-    uint8_t queue_id,
-    const ttnn::Tensor& input_tensor,
-    const std::array<uint32_t, 1>& output_tensor_start,
-    const std::array<uint32_t, 1>& output_tensor_end,
-    const std::array<uint32_t, 1>& step,
-    const std::optional<MemoryConfig>& memory_config_arg,
-    const std::optional<Tensor>& optional_output_tensor);
-
-template ttnn::Tensor SliceOperation::invoke<uint32_t, 1>(
-    const ttnn::Tensor& input_tensor,
-    const std::array<uint32_t, 1>& output_tensor_start,
-    const std::array<uint32_t, 1>& output_tensor_end,
-    const std::array<uint32_t, 1>& step,
-    const std::optional<MemoryConfig>& memory_config_arg,
-    const std::optional<Tensor>& optional_output_tensor);
-
 }  // namespace ttnn::operations::data_movement

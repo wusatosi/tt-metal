@@ -39,6 +39,9 @@ struct ToLayout {
         MeshDevice* device = nullptr);
 };
 
+constexpr auto to_layout =
+    ttnn::register_operation_with_auto_launch_op<"ttnn::to_layout", ttnn::operations::core::ToLayout>();
+
 }  // namespace core
 }  // namespace operations
 }  // namespace ttnn

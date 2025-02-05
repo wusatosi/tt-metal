@@ -252,6 +252,9 @@ struct ToDtype {
     };
 };
 
+constexpr auto to_dtype =
+    ttnn::register_operation_with_auto_launch_op<"ttnn::to_dtype", ttnn::operations::core::ToDtype>();
+
 }  // namespace core
 }  // namespace operations
 }  // namespace ttnn
