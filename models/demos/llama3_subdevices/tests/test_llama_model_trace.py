@@ -283,7 +283,7 @@ def test_llama_model_inference(
         memory_config=model_args.model_config["DECODE_RESIDUAL_MEMCFG"],
     )
     rot_mats = tt_model.rope_setup.get_rot_mats(rot_mat_idxs)
-    for _ in range(1):
+    for _ in range(64):
         tt_out = tt_model(
             decode_input,
             current_pos_tensor,
@@ -320,6 +320,7 @@ def test_llama_model_inference(
 
     # outs = [ttnn.to_torch(out, mesh_composer=mesh_composer) for out in tt_out]
     ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
+    outs = [ttnn.to_torch(out, mesh_composer=mesh_composer) for out in tt_out]
 
     # Reset the current position and output token tensors for the real decode run
     current_pos_reset = ttnn.from_torch(
@@ -344,15 +345,20 @@ def test_llama_model_inference(
     # rot_mat_idxs_reset = tt_model.rope_setup.get_rot_idxs(current_pos, on_host=True)
     # ttnn.copy_host_to_device_tensor(rot_mat_idxs_reset, rot_mat_idxs)
 
+    # reset gsems
+    tt_model.tt_ccl.from_sem_flag = 0
+    tt_model.tt_ccl.to_sem_flag = 0
+    tt_model.tt_ccl.gather_sem_flag = 0
+
     try:
         for i in range(generation_length):
             logger.info(f"[Llama3 Model] Generating token {i}")
 
             # Execute trace
-            ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=True)
+            ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
+            outs = [ttnn.to_torch(out, mesh_composer=mesh_composer) for out in tt_out]
 
             logger.info(f"TT output shape: {outs[0].shape}")
-            outs = [ttnn.to_torch(out, mesh_composer=mesh_composer) for out in tt_out]
             outs = torch.concat(outs, dim=-1)
             for t in tt_out:
                 t.deallocate(True)
