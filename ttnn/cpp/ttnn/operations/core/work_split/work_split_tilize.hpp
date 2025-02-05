@@ -42,40 +42,28 @@ struct BlockSplit2 {
 };
 
 inline std::pair<int, int> closest_square_larger_than_b(int b, int width, int height, int ref) {
-    // Check if b is already a perfect square
     int sqrt_b = std::sqrt(b);
     bool is_perfect_square = (sqrt_b * sqrt_b == b);
 
-    // First check if b satisfies the condition (even if it's a perfect square)
     if (is_perfect_square) {
-        // If b is a perfect square, check the condition
         if ((std::ceil(static_cast<float>(width) / std::sqrt(b))) *
                 (std::ceil(static_cast<float>(height) / std::sqrt(b))) <
             ref) {
-            std::cout << "b is a perfect square and satisfies the condition: " << b << " with square root: " << sqrt_b
-                      << std::endl;
-            return {b, sqrt_b};  // Return b and its square root if it satisfies the condition
+            return {b, sqrt_b};
         }
     }
 
-    // Start from the square root of b and increment the number
-    int candidate = sqrt_b + 1;  // Start from the next integer larger than sqrt_b
+    int candidate = sqrt_b + 1;
 
-    // Loop until we find a square root that satisfies the condition
     while (true) {
-        // Calculate the square
         int square = candidate * candidate;
 
-        // Check if the condition is satisfied
         if ((std::ceil(static_cast<float>(width) / std::sqrt(square))) *
                 (std::ceil(static_cast<float>(height) / std::sqrt(square))) <
             ref) {
-            std::cout << "Found suitable square: " << square << " with square root: " << candidate
-                      << " which less than ref " << ref << std::endl;
-            return {square, candidate};  // Return the square and its square root
+            return {square, candidate};
         }
 
-        // Otherwise, try the next square
         candidate++;
     }
 }
@@ -102,18 +90,14 @@ inline BlockSplit2 split_blocks_for_tilize2(
     std::set<CoreRange> all_cores;
 
     uint32_t full_cores_per_row = width_tiles / single_block_size;
-    printf("full_cores_per_row: %u\n", full_cores_per_row);
     bool has_cliff_row = full_cores_per_row < total_blocks_width;
 
     uint32_t full_cores_per_col = height_tiles / single_block_size;
-    printf("fill_cores_per_col: %u\n", full_cores_per_col);
     bool has_cliff_col = full_cores_per_col < total_blocks_height;
 
     uint32_t single_block_size_cliff_row = width_tiles - full_cores_per_row * single_block_size;
-    printf("single_block_size_cliff_row: %u\n", single_block_size_cliff_row);
 
     uint32_t single_block_size_cliff_col = height_tiles - full_cores_per_col * single_block_size;
-    printf("single_block_size_cliff_col: %u\n", single_block_size_cliff_col);
 
     uint32_t i_x = 0;
     uint32_t i_y = 0;
@@ -159,11 +143,6 @@ inline BlockSplit2 split_blocks_for_tilize2(
             all_cores.insert(range_col_row_cliff);
         }
     }
-    printf("core_range size: %zu\n", core_range.size());
-    printf("core_range col cliff size: %zu\n", cliff_col_core_range.size());
-    printf("core_range row cliff size: %zu\n", cliff_row_core_range.size());
-    printf("core_range col row cliff size: %zu\n", cliff_col_row_core_range.size());
-    printf("all cores size: %zu\n", all_cores.size());
 
     return BlockSplit2{
         ncores,
