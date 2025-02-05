@@ -1171,7 +1171,7 @@ class resnet50:
         reshard = False
         height_shard = False
 
-        layer4_module1_input_shape = ttnn.Shape(x.shape.with_tile_padding())
+        layer4_module1_input_shape = ttnn.Shape(x.padded_shape)
         if is_blackhole():
             # 104
             grid_size = (13, 8)
