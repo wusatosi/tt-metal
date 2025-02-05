@@ -9,6 +9,7 @@
 #include "ethernet/dataflow_api.h"
 #include "debug/assert.h"
 #include "debug/dprint.h"
+#include "debug/ring_buffer.h"
 
 // #define ENABLE_DEBUG 1
 
@@ -46,9 +47,13 @@ bool is_power_of_two(T val) {
 constexpr uint32_t NUM_BUFFER_SLOTS = get_compile_time_arg_val(0);
 constexpr uint32_t MAX_NUM_TRANSACTION_ID =
     NUM_BUFFER_SLOTS / 2;  // the algorithm only works for NUM_BUFFER_SLOTS divisible by MAX_NUM_TRANSACTION_ID
-constexpr uint32_t worker_noc_x = get_compile_time_arg_val(1);
-constexpr uint32_t worker_noc_y = get_compile_time_arg_val(2);
-constexpr uint32_t worker_buffer_addr = get_compile_time_arg_val(3);
+constexpr uint32_t worker_start_noc_x = get_compile_time_arg_val(1);
+constexpr uint32_t worker_start_noc_y = get_compile_time_arg_val(2);
+constexpr uint32_t worker_end_noc_x =
+    get_compile_time_arg_val(3);  // worker_end_noc_x/y are same as worker_start_noc_x/y when receiver does not mcast
+constexpr uint32_t worker_end_noc_y = get_compile_time_arg_val(4);
+constexpr uint32_t worker_buffer_addr = get_compile_time_arg_val(5);
+constexpr uint32_t num_dests = get_compile_time_arg_val(6);
 
 // ******************************* Sender APIs ***************************************************
 
@@ -170,7 +175,11 @@ FORCE_INLINE bool has_incoming_packet(volatile eth_buffer_slot_sync_t* buffer_sl
 }
 
 FORCE_INLINE bool write_worker_done(uint32_t trid) {
+#ifdef MCAST_TO_WORKERS
+    return noc_async_write_barrier(noc_index);
+#else
     return ncrisc_noc_nonposted_write_with_transaction_id_flushed(noc_index, trid);
+#endif
 }
 
 FORCE_INLINE void ack_complete(volatile eth_buffer_slot_sync_t* buffer_slot_sync_addr, uint32_t qnum) {
@@ -194,7 +203,18 @@ FORCE_INLINE void write_worker(
     uint32_t message_size,
     uint32_t curr_trid_to_write) {
     // write to local
+#ifdef MCAST_TO_WORKERS
+    noc_async_write_multicast_one_packet(
+        buffer_slot_addr,
+        worker_noc_addr,
+        message_size,
+        num_dests,
+        /*linked=*/false,
+        /*path_reserve=*/true,
+        /*noc=*/noc_index);
+#else
     noc_async_write_one_packet_with_trid(buffer_slot_addr, worker_noc_addr, message_size, curr_trid_to_write);
+#endif
 
     // reset sync
     buffer_slot_sync_addr->bytes_sent = 0;

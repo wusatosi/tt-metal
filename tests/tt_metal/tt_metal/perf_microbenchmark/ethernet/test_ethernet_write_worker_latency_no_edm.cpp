@@ -90,7 +90,7 @@ std::vector<Program> build(
     IDevice* device1,
     CoreCoord eth_sender_core,
     CoreCoord eth_receiver_core,
-    CoreCoord worker_core,
+    const CoreRange& core_range,
     std::size_t num_samples,
     std::size_t sample_page_size,
     std::size_t num_buffer_slots,
@@ -103,18 +103,33 @@ std::vector<Program> build(
     Program program1;
 
     // worker core coords
-    uint32_t worker_noc_x = device1->worker_core_from_logical_core(worker_core).x;
-    uint32_t worker_noc_y = device1->worker_core_from_logical_core(worker_core).y;
+    uint32_t worker_start_noc_x = device1->worker_core_from_logical_core(core_range.start_coord).x;
+    uint32_t worker_start_noc_y = device1->worker_core_from_logical_core(core_range.start_coord).y;
+    uint32_t worker_end_noc_x = device1->worker_core_from_logical_core(core_range.end_coord).x;
+    uint32_t worker_end_noc_y = device1->worker_core_from_logical_core(core_range.end_coord).y;
+    uint32_t num_dests = core_range.size();
 
     uint32_t worker_buffer_0_addr = worker_buffer_0->address();
     uint32_t worker_buffer_1_addr = worker_buffer_1->address();
 
     // eth core ct args
     const std::vector<uint32_t>& eth_sender_ct_args = {
-        num_buffer_slots, worker_noc_x, worker_noc_y, worker_buffer_0_addr};
+        num_buffer_slots,
+        worker_start_noc_x,
+        worker_start_noc_y,
+        worker_end_noc_x,
+        worker_end_noc_y,
+        worker_buffer_0_addr,
+        num_dests};
 
     const std::vector<uint32_t>& eth_receiver_ct_args = {
-        num_buffer_slots, worker_noc_x, worker_noc_y, worker_buffer_1_addr};
+        num_buffer_slots,
+        worker_start_noc_x,
+        worker_start_noc_y,
+        worker_end_noc_x,
+        worker_end_noc_y,
+        worker_buffer_1_addr,
+        num_dests};
 
     // eth core rt args
     const std::vector<uint32_t>& eth_sender_receiver_rt_args = {
@@ -125,6 +140,9 @@ std::vector<Program> build(
     std::map<string, string> sender_receiver_defines;
     if (num_directions == 2) {
         sender_receiver_defines["ENABLE_BI_DIRECTION"] = "1";
+    }
+    if (num_dests > 1) {
+        sender_receiver_defines["MCAST_TO_WORKERS"] = "1";
     }
 
     local_kernel = tt_metal::CreateKernel(
@@ -202,6 +220,7 @@ int main(int argc, char** argv) {
     std::size_t num_buffer_slots = std::stoi(argv[arg_idx++]);
     std::size_t num_directions = std::stoi(argv[arg_idx++]);
     TT_FATAL(num_directions == 1 or num_directions == 2, "either uni-dir or bi-dir test");
+    std::size_t mcast_to_workers = std::stoi(argv[arg_idx++]);
 
     auto arch = tt::get_arch_from_string(tt::test_utils::get_umd_arch_name());
     auto num_devices = tt::tt_metal::GetNumAvailableDevices();
@@ -239,7 +258,15 @@ int main(int argc, char** argv) {
     TT_ASSERT(device_id == 1);
     const auto& device_1 = test_fixture.devices_.at(device_id);
     // worker
-    auto worker_core = CoreCoord(0, 0);
+    auto worker_core_start = CoreCoord(0, 0);
+    auto worker_core_end = worker_core_start;
+    if (mcast_to_workers == 1) {
+        CoreCoord worker_grid_size = device_0->compute_with_storage_grid_size();
+        TT_ASSERT(worker_grid_size == device_1->compute_with_storage_grid_size());
+        worker_core_end = CoreCoord(worker_grid_size.x - 1, worker_grid_size.y - 1);
+    }
+    auto core_range = CoreRange(worker_core_start, worker_core_end);
+
     // Add more configurations here until proper argc parsing added
     bool success = false;
     success = true;
@@ -247,16 +274,17 @@ int main(int argc, char** argv) {
     try {
         log_info(
             tt::LogTest,
-            "num_samples: {}, sample_page_size: {}, num_buffer_slots: {}, num_directions: {}",
+            "num_samples: {}, sample_page_size: {}, num_buffer_slots: {}, num_directions: {}, mcast_to_workers: {}",
             num_samples,
             sample_page_size,
             num_buffer_slots,
-            num_directions);
+            num_directions,
+            mcast_to_workers);
         KernelHandle local_kernel;
         KernelHandle remote_kernel;
         try {
             ShardSpecBuffer shard_spec = ShardSpecBuffer(
-                CoreRangeSet(std::set<CoreRange>({CoreRange(worker_core)})),
+                CoreRangeSet(std::set<CoreRange>{core_range}),
                 {1, sample_page_size},
                 ShardOrientation::ROW_MAJOR,
                 {1, sample_page_size},
@@ -279,7 +307,7 @@ int main(int argc, char** argv) {
                 device_1,
                 eth_sender_core,
                 eth_receiver_core,
-                worker_core,
+                core_range,
                 num_samples,
                 sample_page_size,
                 num_buffer_slots,

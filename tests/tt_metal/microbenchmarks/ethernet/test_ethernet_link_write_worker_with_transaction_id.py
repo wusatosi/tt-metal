@@ -78,7 +78,7 @@ def profile_results(sample_size, sample_count, channel_count):
     return main_loop_latency
 
 
-def run_erisc_write_worker(sample_count, sample_size_expected_latency, channel_count, num_directions):
+def run_erisc_write_worker(sample_count, sample_size_expected_latency, channel_count, num_directions, mcast_to_workers):
     os.system(f"rm -rf {os.environ['TT_METAL_HOME']}/generated/profiler/.logs/profile_log_device.csv")
 
     sample_size = sample_size_expected_latency[0]
@@ -92,7 +92,8 @@ def run_erisc_write_worker(sample_count, sample_size_expected_latency, channel_c
                 {sample_count} \
                 {sample_size} \
                 {channel_count} \
-                {num_directions} "
+                {num_directions} \
+                {mcast_to_workers} "
     rc = os.system(cmd)
     if rc != 0:
         logger.info("Error in running the test")
@@ -110,12 +111,15 @@ def run_erisc_write_worker(sample_count, sample_size_expected_latency, channel_c
 @pytest.mark.parametrize("sample_count", [256])
 @pytest.mark.parametrize("channel_count", [16])
 @pytest.mark.parametrize("num_directions", [1])
+@pytest.mark.parametrize("mcast_to_workers", [0])
 @pytest.mark.parametrize(
     "sample_size_expected_latency",
     [(16, 86.2), (128, 86.2), (256, 86.4), (512, 86.5), (1024, 87.2), (2048, 172.9), (4096, 339.9), (8192, 678.4)],
 )
-def test_erisc_write_worker_bw_uni_dir(sample_count, sample_size_expected_latency, channel_count, num_directions):
-    run_erisc_write_worker(sample_count, sample_size_expected_latency, channel_count, num_directions)
+def test_erisc_write_worker_bw_uni_dir(
+    sample_count, sample_size_expected_latency, channel_count, num_directions, mcast_to_workers
+):
+    run_erisc_write_worker(sample_count, sample_size_expected_latency, channel_count, num_directions, mcast_to_workers)
 
 
 # bi-direction test for eth-sender <---> eth-receiver ---> worker
@@ -123,9 +127,28 @@ def test_erisc_write_worker_bw_uni_dir(sample_count, sample_size_expected_latenc
 @pytest.mark.parametrize("sample_count", [1000])
 @pytest.mark.parametrize("channel_count", [16])
 @pytest.mark.parametrize("num_directions", [2])
+@pytest.mark.parametrize("mcast_to_workers", [0])
 @pytest.mark.parametrize(
     "sample_size_expected_latency",
     [(16, 86.2), (128, 86.2), (256, 86.4), (512, 86.5), (1024, 87.2), (2048, 172.9), (4096, 339.9)],
 )
-def test_erisc_write_worker_bw_bi_dir(sample_count, sample_size_expected_latency, channel_count, num_directions):
-    run_erisc_write_worker(sample_count, sample_size_expected_latency, channel_count, num_directions)
+def test_erisc_write_worker_bw_bi_dir(
+    sample_count, sample_size_expected_latency, channel_count, num_directions, mcast_to_workers
+):
+    run_erisc_write_worker(sample_count, sample_size_expected_latency, channel_count, num_directions, mcast_to_workers)
+
+
+# uni-direction test for eth-sender <---> eth-receiver --mcast--> worker grid
+@pytest.mark.skipif(is_grayskull(), reason="Unsupported on GS")
+@pytest.mark.parametrize("sample_count", [256])
+@pytest.mark.parametrize("channel_count", [16])
+@pytest.mark.parametrize("num_directions", [1])
+@pytest.mark.parametrize("mcast_to_workers", [1])
+@pytest.mark.parametrize(
+    "sample_size_expected_latency",
+    [(16, 86.2), (128, 86.2), (256, 86.4), (512, 86.5), (1024, 87.2), (2048, 172.9), (4096, 339.9), (8192, 678.4)],
+)
+def test_erisc_write_worker_bw_uni_dir(
+    sample_count, sample_size_expected_latency, channel_count, num_directions, mcast_to_workers
+):
+    run_erisc_write_worker(sample_count, sample_size_expected_latency, channel_count, num_directions, mcast_to_workers)

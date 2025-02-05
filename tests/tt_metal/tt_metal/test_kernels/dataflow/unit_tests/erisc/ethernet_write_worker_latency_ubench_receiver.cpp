@@ -111,7 +111,12 @@ void kernel_main() {
     }
 
     // worker noc address
-    uint64_t worker_noc_addr = get_noc_addr(worker_noc_x, worker_noc_y, worker_buffer_addr);
+#ifdef MCAST_TO_WORKERS
+    uint64_t worker_noc_addr = get_noc_multicast_addr(
+        worker_start_noc_x, worker_start_noc_y, worker_end_noc_x, worker_end_noc_y, worker_buffer_addr);
+#else
+    uint64_t worker_noc_addr = get_noc_addr(worker_start_noc_x, worker_start_noc_y, worker_buffer_addr);
+#endif
 
     eth_setup_handshake(handshake_addr, false);
 
