@@ -76,7 +76,12 @@ from models.utility_functions import skip_for_grayskull
 )
 @pytest.mark.parametrize(
     "device_params",
-    [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL, "trace_region_size": 23887872, "num_command_queues": 2}],
+    [
+        {
+            "dispatch_core_axis": ttnn.DispatchCoreAxis.COL,
+            "trace_region_size": 23887872,
+        }
+    ],
     indirect=True,
 )
 def test_llama_model_inference(
@@ -278,28 +283,28 @@ def test_llama_model_inference(
         memory_config=model_args.model_config["DECODE_RESIDUAL_MEMCFG"],
     )
     rot_mats = tt_model.rope_setup.get_rot_mats(rot_mat_idxs)
-    print(rot_mat_idxs)
-    tt_out = tt_model(
-        decode_input,
-        current_pos_tensor,
-        rot_mats=rot_mats,
-        mode="decode",
-        page_table=page_table_tt,
-    )
-    mesh_composer = ttnn.ConcatMesh2dToTensor(
-        mesh_device, dims=(3, 1) if model_args.is_galaxy else (1, -1), mesh_shape=model_args.cluster_shape
-    )
+    for _ in range(1):
+        tt_out = tt_model(
+            decode_input,
+            current_pos_tensor,
+            rot_mats=rot_mats,
+            mode="decode",
+            page_table=page_table_tt,
+        )
+        mesh_composer = ttnn.ConcatMesh2dToTensor(
+            mesh_device, dims=(3, 1) if model_args.is_galaxy else (1, -1), mesh_shape=model_args.cluster_shape
+        )
 
-    outs = [ttnn.to_torch(out, mesh_composer=mesh_composer) for out in tt_out]
-    decode_input_reset = ttnn.from_torch(
-        tt_decode_input,
-        device=None,
-        dtype=ttnn.bfloat16,
-        layout=ttnn.TILE_LAYOUT,
-        mesh_mapper=mesh_mapper,
-        memory_config=None,
-    )
-    ttnn.copy_host_to_device_tensor(decode_input_reset, decode_input)
+        outs = [ttnn.to_torch(out, mesh_composer=mesh_composer) for out in tt_out]
+        decode_input_reset = ttnn.from_torch(
+            tt_decode_input,
+            device=None,
+            dtype=ttnn.bfloat16,
+            layout=ttnn.TILE_LAYOUT,
+            mesh_mapper=mesh_mapper,
+            memory_config=None,
+        )
+        ttnn.copy_host_to_device_tensor(decode_input_reset, decode_input)
     # capture the trace
     logger.info(f"Capturing model trace...")
     trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
@@ -336,8 +341,8 @@ def test_llama_model_inference(
     )
     ttnn.copy_host_to_device_tensor(current_pos_reset, current_pos_tensor)
     ttnn.copy_host_to_device_tensor(decode_input_reset, decode_input)
-    rot_mat_idxs_reset = tt_model.rope_setup.get_rot_idxs(current_pos, on_host=True)
-    ttnn.copy_host_to_device_tensor(rot_mat_idxs_reset, rot_mat_idxs)
+    # rot_mat_idxs_reset = tt_model.rope_setup.get_rot_idxs(current_pos, on_host=True)
+    # ttnn.copy_host_to_device_tensor(rot_mat_idxs_reset, rot_mat_idxs)
 
     try:
         for i in range(generation_length):
@@ -373,8 +378,8 @@ def test_llama_model_inference(
             )
             ttnn.copy_host_to_device_tensor(current_pos_tensor_reset, current_pos_tensor)
 
-            rot_mat_idxs_updated = tt_model.rope_setup.get_rot_idxs(current_pos, on_host=True)
-            ttnn.copy_host_to_device_tensor(rot_mat_idxs_updated, rot_mat_idxs)
+            # rot_mat_idxs_updated = tt_model.rope_setup.get_rot_idxs(current_pos, on_host=True)
+            # ttnn.copy_host_to_device_tensor(rot_mat_idxs_updated, rot_mat_idxs)
 
             # Append the generated token to the list of outputs
             if i in range(len(encoded_prompts[0])):
