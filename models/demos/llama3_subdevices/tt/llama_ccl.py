@@ -35,7 +35,7 @@ class TT_CCL:
         if teardown_persistent_fabric:
             assert enable_persistent_fabric
 
-        self.num_cbs = 8
+        self.num_cbs = 1
         self.from_remote_semaphore_handles = []
         self.to_remote_semaphore_handles = []
         self.gather_semaphore_handles = []
@@ -330,11 +330,11 @@ def tt_sharded_distributed_rmsnorm(
         tt_stats_dram, dim=3, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
     )
     ttnn.deallocate(tt_stats_dram)
-    print("all gather stats")
+    print("all gather stats", tt_global_stats.shape)
 
     grid_offset = ttnn.CoreCoord(1, 0)
     tt_stats_sharded_config = ttnn.create_sharded_memory_config(
-        shape=(32, tt_global_stats.shape.with_tile_padding()[-1]),
+        shape=(32, 128),
         core_grid=ttnn.CoreRangeSet([ttnn.CoreRange(grid_offset, grid_offset)]),
         strategy=ttnn.ShardStrategy.WIDTH,
         use_height_and_width_as_shard_shape=True,
@@ -352,5 +352,5 @@ def tt_sharded_distributed_rmsnorm(
         stats=tt_global_stats_sharded,
     )
     ttnn.deallocate(tt_global_stats_sharded)
-    print("rmsnorm post all gather")
+    print("rmsnorm post all gather", tt_out.shape)
     return tt_out, inp
