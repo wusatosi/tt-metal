@@ -1741,6 +1741,18 @@ void noc_async_writes_flushed(uint8_t noc = noc_index) {
 }
 
 /**
+ * This blocking call waits for all outstanding enqueued posted *noc_async_write*
+ * calls issued on the current Tensix core to depart, but will not wait
+ * for them to complete
+ */
+FORCE_INLINE
+void noc_async_posted_writes_flushed(uint8_t noc = noc_index) {
+    WAYPOINT("NPWW");
+    while (!ncrisc_noc_posted_writes_sent(noc));
+    WAYPOINT("NPWD");
+}
+
+/**
  * This blocking call waits for all the outstanding enqueued *noc_async_write*
  * calls issued on the current Tensix core to complete. After returning from
  * this call the *noc_async_write* queue will be empty for the current Tensix
@@ -1877,7 +1889,7 @@ void noc_inline_dw_write(uint64_t addr, uint32_t val, uint8_t be = 0xF, uint8_t 
     DEBUG_SANITIZE_NOC_ADDR(noc, addr, 4);
     noc_fast_write_dw_inline<proc_type, noc_mode>(
         noc,
-        write_reg_cmd_buf,
+        write_at_cmd_buf,
         val,
         addr,
         be,  // byte-enable
@@ -2008,6 +2020,31 @@ void noc_async_read_barrier_with_trid(uint32_t trid, uint8_t noc = noc_index) {
 #endif
     invalidate_l1_cache();
     WAYPOINT("NBTD");
+}
+
+inline void noc_async_write_one_packet_with_trid(
+    std::uint32_t src_local_l1_addr,
+    std::uint64_t dst_noc_addr,
+    std::uint32_t size,
+    std::uint32_t trid,
+    uint8_t noc = noc_index) {
+    WAYPOINT("NAWW");
+    DEBUG_SANITIZE_NOC_WRITE_TRANSACTION(noc, dst_noc_addr, src_local_l1_addr, size);
+#ifndef ARCH_GRAYSKULL
+    ncrisc_noc_fast_write_any_len<proc_type, noc_mode, true, true>(
+        noc, write_cmd_buf, src_local_l1_addr, dst_noc_addr, size, NOC_UNICAST_WRITE_VC, false, false, 1, true, trid);
+#endif
+    WAYPOINT("NAWD");
+}
+
+FORCE_INLINE
+void noc_async_write_barrier_with_trid(uint32_t trid, uint8_t noc = noc_index) {
+    WAYPOINT("NWTW");
+#ifndef ARCH_GRAYSKULL
+    while (!ncrisc_noc_nonposted_write_with_transaction_id_flushed(noc, trid));
+#endif
+    invalidate_l1_cache();
+    WAYPOINT("NWTD");
 }
 
 template <bool DRAM>
