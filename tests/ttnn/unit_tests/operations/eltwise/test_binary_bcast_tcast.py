@@ -45,3 +45,47 @@ def test_binary_scalar_ops(input_shapes, dtype, device):
 
     comp_pass = compare_pcc([out_tt], [out_pt])
     assert comp_pass
+
+
+@skip_for_grayskull("Requires wormhole_b0 to run")
+@pytest.mark.parametrize(
+    "input_shapes",
+    (
+        (
+            torch.Size([1, 1, 32, 32]),
+            torch.Size(
+                [
+                    1,
+                ]
+            ),
+        ),
+    ),
+)
+@pytest.mark.parametrize(
+    "dtype",
+    ([ttnn.float32, ttnn.bfloat16]),
+)
+def test_greater_with_broadcast(input_shapes, dtype, device):
+    a_shape, b_shape = input_shapes
+
+    # Generate random test data with specific range
+    a_pt = gen_func_with_cast_tt(partial(torch_random, low=-100, high=100, dtype=torch.float32), dtype)(a_shape)
+    b_pt = gen_func_with_cast_tt(partial(torch_random, low=-100, high=100, dtype=torch.float32), dtype)(b_shape)
+
+    # Convert PyTorch tensors to TTNN format
+    a_tt = ttnn.from_torch(
+        a_pt, dtype=dtype, device=device, layout=ttnn.TILE_LAYOUT, memory_config=ttnn.DRAM_MEMORY_CONFIG
+    )
+    b_tt = ttnn.from_torch(
+        b_pt, dtype=dtype, device=device, layout=ttnn.TILE_LAYOUT, memory_config=ttnn.DRAM_MEMORY_CONFIG
+    )
+
+    # Perform greater than operation
+    out_tt = ttnn.gt(a_tt, b_tt)
+    out_pt = a_pt > b_pt
+
+    # Compare results
+    comp_pass = compare_pcc([out_tt], [out_pt])
+    assert (
+        comp_pass
+    ), f"Results mismatch: TTNN and PyTorch outputs differ\nTTNN output: {out_tt}\nPyTorch output: {out_pt}"
