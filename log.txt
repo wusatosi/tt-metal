@@ -1,0 +1,26 @@
+0:(x=0,y=7):NC: prefetcher_11: start
+0:(x=1,y=7):NC: dispatch_11: start
+0:(x=1,y=7):NC: cmd_wait
+0:(x=1,y=7):NC:  DISPATCH WAIT 18470 count 0
+0:(x=1,y=7):NC: cmd_write_paged is_dram: 1
+0:(x=1,y=7):BR: dispatch_s : start
+0:(x=1,y=7):NC: cmd_wait
+0:(x=1,y=7):NC:  DISPATCH WAIT 18470 count 0
+0:(x=1,y=7):NC: cmd_write_paged is_dram: 1
+0:(x=1,y=7):NC: cmd_wait
+0:(x=1,y=7):NC:  DISPATCH WAIT 18470 count 0
+0:(x=1,y=7):NC: cmd_write_paged is_dram: 1
+0:(x=1,y=7):NC: cmd_wait
+0:(x=1,y=7):NC:  DISPATCH BARRIER
+0:(x=1,y=7):NC:  DISPATCH WAIT 18470 count 0
+0:(x=1,y=7):NC: cmd_write_packed
+0:(x=1,y=7):NC: cmd_write_linear_h_host
+0:(x=1,y=7):NC: cmd_wait
+0:(x=1,y=7):NC:  DISPATCH BARRIER
+0:(x=1,y=7):NC:  DISPATCH WAIT 18470 count 0
+0:(x=0,y=7):NC: prefetcher_11: out
+0:(x=1,y=7):NC: cmd_write_packed
+0:(x=1,y=7):NC: cmd_write_linear_h_host
+0:(x=1,y=7):NC: dispatch terminate
+0:(x=1,y=7):NC: dispatch_11: out
+0:(x=1,y=7):BR: dispatch_s : done

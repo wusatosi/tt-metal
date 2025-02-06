@@ -12,34 +12,20 @@ void RunningStatistics::validate_tensors(
     const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
     const auto& [batch_mean, batch_var, running_mean, running_var] = tensor_args;
 
-    check_tensor(batch_mean, "running_statistics", "batch_mean");
-    check_tensor(batch_var, "running_statistics", "batch_var");
-    check_tensor(running_mean, "running_statistics", "running_mean");
-    check_tensor(running_var, "running_statistics", "running_var");
-
     // mean (1, C, 1, 1)
     auto C = batch_mean.get_logical_shape()[1];
-    // var (1, C, 1, 1)
-    TT_FATAL(batch_var.get_logical_shape()[1] == C, "batch_var_shape[1] must be the same as input's channel size.");
+
+    check_tensor_BN(batch_mean, "batch_mean_shape", C);
+    check_tensor_BN(batch_var, "batch_var_shape", C);
 
     // running_mean (1, C, 1, 1)
     if (running_mean.has_value()) {
-        TT_FATAL(
-            running_mean.value().get_logical_shape()[1] == C,
-            "running_mean_shape[1] must be the same as input's channel size.");
-        TT_FATAL(
-            running_mean.value().get_logical_shape()[1] == C,
-            "running_mean_shape[1] must be the same as input's channel size.");
+        check_tensor_BN(running_mean.value(), "running_mean_shape", C);
     }
 
     // running_var (1, C, 1, 1)
     if (running_var.has_value()) {
-        TT_FATAL(
-            running_var.value().get_logical_shape()[1] == C,
-            "running_var_shape[1] must be the same as input's channel size.");
-        TT_FATAL(
-            running_var.value().get_logical_shape()[1] == C,
-            "running_var_shape[1] must be the same as input's channel size.");
+        check_tensor_BN(running_var.value(), "running_var_shape", C);
     }
 }
 
@@ -110,7 +96,8 @@ std::tuple<RunningStatistics::operation_attributes_t, RunningStatistics::tensor_
     std::optional<Tensor> running_mean,
     std::optional<Tensor> running_var,
     const std::optional<MemoryConfig>& memory_config) {
-    operation_attributes_t operation_attributes{momentum, memory_config.value_or(batch_mean.memory_config())};
+    operation_attributes_t operation_attributes{
+        momentum, memory_config.value_or(batch_mean.memory_config()), batch_mean.get_dtype()};
     tensor_args_t tensor_args{batch_mean, batch_var, std::move(running_mean), std::move(running_var)};
     return {operation_attributes, tensor_args};
 }
