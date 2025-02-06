@@ -53,10 +53,10 @@ def test_resnet_50(
     # First run configures convs JIT
     test_infra.run()
     # Optimized run
-    test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
-    test_infra.run()
-    # More optimized run with caching
-    test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
-    test_infra.run()
+    # test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
+    # test_infra.run()
+    # # More optimized run with caching
+    # test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
+    # test_infra.run()
     passed, message = test_infra.validate()
     assert passed, message

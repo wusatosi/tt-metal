@@ -21,6 +21,7 @@
 #include "remote_circular_buffer_api.h"
 #endif
 
+volatile tt_reg_ptr uint32_t* p_reg = reinterpret_cast<volatile tt_reg_ptr uint32_t*>(RISCV_DEBUG_REG_WALL_CLOCK_L);
 void kernel_launch(uint32_t kernel_base_addr) {
 #if defined(DEBUG_NULL_KERNELS) && !defined(DISPATCH_KERNEL)
     wait_for_go_message();
@@ -42,8 +43,9 @@ void kernel_launch(uint32_t kernel_base_addr) {
 #endif
     wait_for_go_message();
     {
-        DeviceZoneScopedMainChildN("BRISC-KERNEL");
+        // uint32_t test1 = p_reg[0];
         kernel_main();
+        // uint32_t test2 = p_reg[0];
     }
 #endif
 }

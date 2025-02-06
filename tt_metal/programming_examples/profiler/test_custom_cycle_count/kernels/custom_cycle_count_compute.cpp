@@ -21,12 +21,13 @@
  */
 
 namespace NAMESPACE {
+volatile tt_reg_ptr uint32_t* p_reg_2 = reinterpret_cast<volatile tt_reg_ptr uint32_t*>(RISCV_DEBUG_REG_WALL_CLOCK_L);
 void MAIN {
-    for (int i = 0; i < LOOP_COUNT; i++) {
+    for (int i = 0; i < 1000000; i++) {
 // Max unroll size
 #pragma GCC unroll 65534
         for (int j = 0; j < LOOP_SIZE; j++) {
-            asm("nop");
+            uint32_t test2 = p_reg_2[0];
         }
     }
 }
