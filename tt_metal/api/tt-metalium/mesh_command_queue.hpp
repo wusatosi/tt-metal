@@ -12,6 +12,7 @@
 #include "mesh_buffer.hpp"
 #include "mesh_device.hpp"
 #include "mesh_workload.hpp"
+#include "mesh_trace.hpp"
 
 namespace tt::tt_metal::distributed {
 
@@ -49,8 +50,42 @@ private:
         tt::stl::Span<const SubDeviceId> sub_device_ids,
         bool notify_host,
         const std::optional<LogicalDeviceRange>& device_range = std::nullopt);
+    void capture_program_trace_on_subgrid(
+        const LogicalDeviceRange& sub_grid,
+        ProgramCommandSequence& program_cmd_seq,
+        bool stall_first,
+        bool stall_before_program);
+    void capture_go_signal_trace_on_unused_subgrids(
+        std::vector<CoreRangeSet>& active_sub_grids,
+        const SubDeviceId& sub_device_id,
+        uint32_t expected_num_workers_completed,
+        bool mcast_go_signals,
+        bool unicast_go_signals);
+    void write_program_cmds_to_subgrid(
+        const LogicalDeviceRange& sub_grid,
+        ProgramCommandSequence& program_cmd_seq,
+        bool stall_first,
+        bool stall_before_program,
+        std::unordered_set<uint32_t>& chip_ids_in_workload);
+    void write_go_signal_to_unused_sub_grids(
+        std::unordered_set<uint32_t>& chip_ids_in_workload,
+        const SubDeviceId& sub_device_id,
+        uint32_t expected_num_workers_completed,
+        bool mcast_go_signals,
+        bool unicast_go_signals);
+
     std::array<tt::tt_metal::WorkerConfigBufferMgr, DispatchSettings::DISPATCH_MESSAGE_ENTRIES> config_buffer_mgr_;
     std::array<uint32_t, DispatchSettings::DISPATCH_MESSAGE_ENTRIES> expected_num_workers_completed_;
+
+    std::array<LaunchMessageRingBufferState, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>
+        worker_launch_message_buffer_state_reset_;
+    std::array<uint32_t, DispatchSettings::DISPATCH_MESSAGE_ENTRIES> expected_num_workers_completed_reset_;
+    std::array<tt::tt_metal::WorkerConfigBufferMgr, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>
+        config_buffer_mgr_reset_;
+    std::optional<uint32_t> tid_;
+    std::shared_ptr<MeshTraceDescriptor> trace_ctx_;
+    std::vector<MeshTraceStagingMetadata> ordered_mesh_trace_md_;
+
     MeshDevice* mesh_device_ = nullptr;
     uint32_t id_ = 0;
     CoreCoord dispatch_core_;
@@ -73,7 +108,11 @@ public:
 
     // MeshBuffer Write APIs
     void enqueue_write_shard_to_sub_grid(
-        const MeshBuffer& buffer, const void* host_data, const LogicalDeviceRange& device_range, bool blocking);
+        const MeshBuffer& buffer,
+        const void* host_data,
+        const LogicalDeviceRange& device_range,
+        bool blocking,
+        std::optional<BufferRegion> region = std::nullopt);
     void enqueue_write_mesh_buffer(const std::shared_ptr<MeshBuffer>& buffer, const void* host_data, bool blocking);
     void enqueue_write_shards(
         const std::shared_ptr<MeshBuffer>& mesh_buffer,
@@ -103,6 +142,10 @@ public:
         bool reset_launch_msg_state,
         uint32_t num_sub_devices,
         const vector_memcpy_aligned<uint32_t>& go_signal_noc_data);
+    void record_begin(uint32_t tid, const std::shared_ptr<MeshTraceDescriptor>& ctx);
+    void record_end();
+    std::vector<MeshTraceStagingMetadata>& get_mesh_trace_md();
+    void enqueue_trace(uint32_t trace_id, bool blocking);
 };
 
 }  // namespace tt::tt_metal::distributed

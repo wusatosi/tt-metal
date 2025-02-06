@@ -94,6 +94,14 @@ void EnqueueWaitForEvent(MeshCommandQueue& mesh_cq, const std::shared_ptr<MeshEv
 
 void EventSynchronize(const std::shared_ptr<MeshEvent>& event);
 
+uint32_t BeginTraceCapture(MeshDevice* device, uint8_t cq_id);
+
+void EndTraceCapture(MeshDevice* device, uint8_t cq_id, uint32_t trace_id);
+
+void ReplayTrace(MeshDevice* device, uint8_t cq_id, uint32_t trace_id, bool blocking);
+
+void ReleaseTrace(MeshDevice* device, const uint32_t trace_id);
+
 void Finish(MeshCommandQueue& mesh_cq, tt::stl::Span<const SubDeviceId> sub_device_ids = {});
 
 }  // namespace distributed
