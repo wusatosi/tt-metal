@@ -89,7 +89,6 @@ void kernel_main() {
     ///////////////////////////////////////////////////
     // ARGS
     ///////////////////////////////////////////////////
-    uint32_t reduction_semaphore_send_addr = get_semaphore(get_compile_time_arg_val(8));
 
     size_t arg_idx = 0;
     // Load the input tensor spec
@@ -106,6 +105,7 @@ void kernel_main() {
     const uint8_t out_ready_sem_noc0_x = get_arg_val<uint32_t>(arg_idx++);
     const uint8_t out_ready_sem_noc0_y = get_arg_val<uint32_t>(arg_idx++);
     uint32_t out_ready_sem_wait_value = get_arg_val<uint32_t>(arg_idx++);
+    const uint32_t reduction_semaphore_send_addr = get_semaphore(get_arg_val<uint32_t>(arg_idx++));
     const uint32_t mcast_dest_noc_start_x = get_arg_val<uint32_t>(arg_idx++);
     const uint32_t mcast_dest_noc_start_y = get_arg_val<uint32_t>(arg_idx++);
     const uint32_t mcast_dest_noc_end_x = get_arg_val<uint32_t>(arg_idx++);
