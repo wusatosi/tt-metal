@@ -25,6 +25,7 @@ namespace distributed {
 class MeshCommandQueue;
 class MeshDeviceView;
 class MeshSubDeviceManagerId;
+class MeshTraceBuffer;
 
 class MeshDevice : public IDevice, public std::enable_shared_from_this<MeshDevice> {
 private:
@@ -60,9 +61,11 @@ private:
     std::weak_ptr<MeshDevice> parent_mesh_;  // Submesh created with reference to parent mesh
     std::vector<std::unique_ptr<MeshCommandQueue>> mesh_command_queues_;
     std::unique_ptr<SubDeviceManagerTracker> sub_device_manager_tracker_;
-
+    std::unordered_map<uint32_t, std::shared_ptr<MeshTraceBuffer>> trace_buffer_pool_;
+    uint32_t trace_buffers_size_ = 0;
     // This is a reference device used to query properties that are the same for all devices in the mesh.
     IDevice* reference_device() const;
+    std::shared_ptr<MeshTraceBuffer>& create_mesh_trace(uint32_t tid);
 
 public:
     MeshDevice(
@@ -138,6 +141,10 @@ public:
     void end_trace(const uint8_t cq_id, const uint32_t tid) override;
     void replay_trace(const uint8_t cq_id, const uint32_t tid, const bool blocking) override;
     void release_trace(const uint32_t tid) override;
+    void begin_mesh_trace(uint8_t cq_id, uint32_t tid);
+    void end_mesh_trace(uint8_t cq_id, uint32_t tid);
+    void release_mesh_trace(uint32_t tid);
+    std::shared_ptr<MeshTraceBuffer> get_mesh_trace(uint32_t tid);
     std::shared_ptr<TraceBuffer> get_trace(uint32_t tid) override;
     uint32_t get_trace_buffers_size() const override;
     void set_trace_buffers_size(uint32_t size) override;

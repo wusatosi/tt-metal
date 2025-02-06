@@ -566,68 +566,31 @@ const CoreCoord& HWCommandQueue::virtual_enqueue_program_dispatch_core() const {
 const CoreCoord& HWCommandQueue::completion_queue_writer_core() const { return this->completion_queue_writer_core_; }
 
 void HWCommandQueue::record_begin(const uint32_t tid, const std::shared_ptr<TraceDescriptor>& ctx) {
-    auto num_sub_devices = this->device_->num_sub_devices();
-    // Record the original value of expected_num_workers_completed, and reset it to 0.
-    std::copy(
-        this->expected_num_workers_completed.begin(),
-        this->expected_num_workers_completed.begin() + num_sub_devices,
-        this->expected_num_workers_completed_reset.begin());
-    std::fill(
-        this->expected_num_workers_completed.begin(),
-        this->expected_num_workers_completed.begin() + num_sub_devices,
-        0);
+    // Clear host dispatch state, since when trace runs we will reset the launch_msg_ring_buffer,
+    // worker_config_buffer, etc.
+    program_dispatch::reset_host_dispatch_state_for_trace(
+        device_->num_sub_devices(),
+        this->manager,
+        this->expected_num_workers_completed,
+        this->config_buffer_mgr,
+        this->worker_launch_message_buffer_state_reset,
+        this->expected_num_workers_completed_reset,
+        this->config_buffer_mgr_reset);
+
     // Record commands using bypass mode
     this->tid_ = tid;
     this->trace_ctx = std::move(ctx);
-    // Record original value of launch msg buffer
-    auto& worker_launch_message_buffer_state = this->manager.get_worker_launch_message_buffer_state();
-    std::copy(
-        worker_launch_message_buffer_state.begin(),
-        worker_launch_message_buffer_state.begin() + num_sub_devices,
-        this->worker_launch_message_buffer_state_reset.begin());
-    for (uint32_t i = 0; i < num_sub_devices; ++i) {
-        // Set launch msg wptr to 0. Every time trace runs on device, it will ensure that the workers
-        // reset their rptr to be in sync with device.
-        worker_launch_message_buffer_state[i].reset();
-    }
-    this->manager.set_bypass_mode(true, true);  // start
-    // Record original value of config buffer manager
-    std::copy(
-        this->config_buffer_mgr.begin(),
-        this->config_buffer_mgr.begin() + num_sub_devices,
-        this->config_buffer_mgr_reset.begin());
-    for (uint32_t i = 0; i < num_sub_devices; ++i) {
-        // Sync values in the trace need to match up with the counter starting at 0 again.
-        this->config_buffer_mgr[i].mark_completely_full(this->expected_num_workers_completed[i]);
-    }
 }
 
 void HWCommandQueue::record_end() {
     auto& trace_data = this->trace_ctx->data;
     trace_data = std::move(this->manager.get_bypass_data());
-    // Add command to terminate the trace buffer
+    // Add trace end command to terminate the trace buffer
     DeviceCommand command_sequence(hal.get_alignment(HalMemType::HOST));
     command_sequence.add_prefetch_exec_buf_end();
     for (int i = 0; i < command_sequence.size_bytes() / sizeof(uint32_t); i++) {
         trace_data.push_back(((uint32_t*)command_sequence.data())[i]);
     }
-    // Reset the expected workers, launch msg buffer state, and config buffer mgr to their original value,
-    // so device can run programs after a trace was captured. This is needed since trace capture modifies the state on
-    // host, even though device doesn't run any programs.
-    auto num_sub_devices = this->device_->num_sub_devices();
-    std::copy(
-        this->expected_num_workers_completed_reset.begin(),
-        this->expected_num_workers_completed_reset.begin() + num_sub_devices,
-        this->expected_num_workers_completed.begin());
-    std::copy(
-        this->worker_launch_message_buffer_state_reset.begin(),
-        this->worker_launch_message_buffer_state_reset.begin() + num_sub_devices,
-        this->manager.get_worker_launch_message_buffer_state().begin());
-    std::copy(
-        this->config_buffer_mgr_reset.begin(),
-        this->config_buffer_mgr_reset.begin() + num_sub_devices,
-        this->config_buffer_mgr.begin());
-
     // Copy the desc keys into a separate vector. When enqueuing traces, we sometimes need to pass sub-device ids
     // separately
     this->trace_ctx->sub_device_ids.reserve(this->trace_ctx->descriptors.size());
@@ -637,7 +600,18 @@ void HWCommandQueue::record_end() {
     }
     this->tid_ = std::nullopt;
     this->trace_ctx = nullptr;
-    this->manager.set_bypass_mode(false, true);  // stop
+
+    // Reset the expected workers, launch msg buffer state, and config buffer mgr to their original value,
+    // so device can run programs after a trace was captured. This is needed since trace capture modifies the state on
+    // host, even though device doesn't run any programs.
+    program_dispatch::load_host_dispatch_state(
+        device_->num_sub_devices(),
+        this->manager,
+        this->expected_num_workers_completed,
+        this->config_buffer_mgr,
+        this->worker_launch_message_buffer_state_reset,
+        this->expected_num_workers_completed_reset,
+        this->config_buffer_mgr_reset);
 }
 
 void HWCommandQueue::terminate() {

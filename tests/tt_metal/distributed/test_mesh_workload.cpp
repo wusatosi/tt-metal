@@ -527,6 +527,31 @@ TEST_F(MeshWorkloadTest, RandomizedMeshWorkload) {
     Finish(mesh_device_->mesh_command_queue());
 }
 
+TEST_F(MeshWorkloadTest, TraceTest) {
+    auto random_seed = 10;
+    uint32_t seed = tt::parse_env("TT_METAL_SEED", random_seed);
+    log_info(tt::LogTest, "Using Test Seed: {}", seed);
+    srand(seed);
+    log_info("Create {} MeshWorkloads", 1);
+    auto programs = create_random_programs(1, mesh_device_->compute_with_storage_grid_size(), seed);
+    LogicalDeviceRange device_range = LogicalDeviceRange({0, 0}, {3, 1});
+
+    auto random_workload = std::make_shared<MeshWorkload>();
+    AddProgramToMeshWorkload(*random_workload, *programs[0], device_range);
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), *random_workload, true);
+
+    auto tid = MeshTrace::next_id();
+    mesh_device_->begin_mesh_trace(0, tid);
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), *random_workload, false);
+    mesh_device_->end_mesh_trace(0, tid);
+    for (int i = 0; i < 2; i++) {
+        std::cout << "Run iter " << i << std::endl;
+        mesh_device_->mesh_command_queue().enqueue_trace(tid, false);
+    }
+    Finish(mesh_device_->mesh_command_queue());
+    mesh_device_->release_mesh_trace(tid);
+}
+
 TEST_F(MeshWorkloadTest, EltwiseBinaryMeshWorkload) {
     std::vector<std::shared_ptr<MeshBuffer>> src0_bufs = {};
     std::vector<std::shared_ptr<MeshBuffer>> src1_bufs = {};

@@ -80,4 +80,41 @@ public:
     uint32_t get_cb_base_addr(std::shared_ptr<MeshDevice>& mesh_device, CoreCoord logical_core, CoreType core_type);
     uint32_t get_cb_size(std::shared_ptr<MeshDevice>& mesh_device, CoreCoord logical_core, CoreType core_type);
 };
+
+struct MeshTraceDescriptor {
+    // The total number of workers (per logical device) that are functional for
+    // the entire trace
+    uint32_t num_completion_worker_cores = 0;
+    // Number of Workloads captured by the trace
+    uint32_t num_workloads = 0;
+    // Trace data per logical Device in a Mesh.
+    std::vector<uint32_t> trace_data;
+};
+
+struct MeshTraceBuffer {
+    // The trace descriptor associated with a MeshTrace
+    std::shared_ptr<MeshTraceDescriptor> desc;
+
+    // The MeshBuffer this trace will be serialized to, before being run on a
+    // MeshDevice
+    std::shared_ptr<MeshBuffer> mesh_buffer;
+};
+
+struct MeshTrace {
+private:
+    // A unique ID assigned to each Trace
+    static std::atomic<uint32_t> global_trace_id;
+
+public:
+    // Get global (unique) ID for trace
+    static uint32_t next_id();
+    // Create an empty MeshTraceBuffer, which needs to be populated
+    // with a MeshTraceDescriptor and a MeshBuffer, to get tied to a MeshDevice.
+    static std::shared_ptr<MeshTraceBuffer> create_empty_mesh_trace_buffer();
+    // Once the Trace Data per logical device has been captured in the
+    // MeshTraceDescriptor corresponding to this MeshTraceBuffer,
+    // it can be binarized to a MeshDevice through a Command Queue.
+    static void populate_mesh_buffer(MeshCommandQueue& mesh_cq, std::shared_ptr<MeshTraceBuffer> trace_buffer);
+};
+
 }  // namespace tt::tt_metal::distributed

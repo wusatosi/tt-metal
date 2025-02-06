@@ -66,7 +66,7 @@ protected:
         if (num_devices < 8 or arch != tt::ARCH::WORMHOLE_B0) {
             GTEST_SKIP() << "Skipping T3K Multi-Device test suite on non T3K machine.";
         }
-        mesh_device_ = MeshDevice::create(MeshDeviceConfig{.mesh_shape = MeshShape{2, 4}});
+        mesh_device_ = MeshDevice::create(MeshDeviceConfig{.mesh_shape = MeshShape{2, 4}}, 0, 200000);
     }
 
     void TearDown() override {

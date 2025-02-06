@@ -8,6 +8,7 @@
 #include <tt_metal.hpp>
 
 #include "tt_metal/distributed/mesh_workload_utils.hpp"
+#include <tt-metalium/distributed.hpp>
 
 namespace tt::tt_metal::distributed {
 
@@ -291,6 +292,104 @@ uint32_t MeshWorkload::get_cb_size(
         program_idx++;
     }
     return cb_size;
+}
+
+std::atomic<uint32_t> MeshTrace::global_trace_id = 0;
+
+uint32_t MeshTrace::next_id() { return global_trace_id++; }
+
+std::shared_ptr<MeshTraceBuffer> MeshTrace::create_empty_mesh_trace_buffer() {
+    return std::make_shared<MeshTraceBuffer>(std::make_shared<MeshTraceDescriptor>(), nullptr);
+}
+
+static constexpr uint32_t kExecBufPageMin = 1024;
+static constexpr uint32_t kExecBufPageMax = 4096;
+
+static constexpr bool kBlocking = true;
+static constexpr bool kNonBlocking = false;
+
+// Assumes pages are interleaved across all banks starting at 0
+size_t interleaved_page_size(
+    const uint32_t buf_size, const uint32_t num_banks, const uint32_t min_size, const uint32_t max_size) {
+    // Populate power of 2 numbers within min and max as candidates
+    TT_FATAL(
+        min_size > 0 and min_size <= max_size,
+        "min_size {} not positive and less than or equal to max_size {}.",
+        min_size,
+        max_size);
+    std::vector<uint32_t> candidates;
+    candidates.reserve(__builtin_clz(min_size) - __builtin_clz(max_size) + 1);
+    for (uint32_t size = 1; size <= max_size; size <<= 1) {
+        if (size >= min_size) {
+            candidates.push_back(size);
+        }
+    }
+    uint32_t min_waste = -1;
+    uint32_t pick = 0;
+    // Pick the largest size that minimizes waste
+    for (const uint32_t size : candidates) {
+        // Pad data to the next fully banked size
+        uint32_t fully_banked = num_banks * size;
+        uint32_t padded_size = (buf_size + fully_banked - 1) / fully_banked * fully_banked;
+        uint32_t waste = padded_size - buf_size;
+        if (waste <= min_waste) {
+            min_waste = waste;
+            pick = size;
+        }
+    }
+    TT_FATAL(
+        pick >= min_size and pick <= max_size,
+        "pick {} not between min_size {} and max_size {}",
+        pick,
+        min_size,
+        max_size);
+    return pick;
+}
+
+void MeshTrace::populate_mesh_buffer(MeshCommandQueue& mesh_cq, std::shared_ptr<MeshTraceBuffer> trace_buffer) {
+    std::cout << "Get trace data" << std::endl;
+    std::vector<uint32_t>& trace_data = trace_buffer->desc->trace_data;
+    std::cout << "Trace data size: " << trace_data.size() << std::endl;
+    uint64_t unpadded_size = trace_data.size() * sizeof(uint32_t);
+    std::cout << "Unpadded size: " << unpadded_size << std::endl;
+    size_t page_size = interleaved_page_size(
+        unpadded_size,
+        mesh_cq.device()->allocator()->get_num_banks(BufferType::DRAM),
+        kExecBufPageMin,
+        kExecBufPageMax);
+    std::cout << "Page size: " << page_size << std::endl;
+    uint64_t padded_size = round_up(unpadded_size, page_size);
+    std::cout << "Padded size " << padded_size << std::endl;
+    size_t numel_padding = (padded_size - unpadded_size) / sizeof(uint32_t);
+    std::cout << "Numel padding " << numel_padding << std::endl;
+    if (numel_padding > 0) {
+        trace_data.resize(trace_data.size() + numel_padding, 0 /*padding value*/);
+    }
+    std::cout << "Trace data resized" << std::endl;
+    const auto current_trace_buffers_size = mesh_cq.device()->get_trace_buffers_size();
+    mesh_cq.device()->set_trace_buffers_size(current_trace_buffers_size + padded_size);
+    auto trace_region_size = mesh_cq.device()->allocator()->get_config().trace_region_size;
+    TT_FATAL(
+        mesh_cq.device()->get_trace_buffers_size() <= trace_region_size,
+        "Creating trace buffers of size {}B on MeshDevice {}, but only {}B is allocated for trace region.",
+        mesh_cq.device()->get_trace_buffers_size(),
+        mesh_cq.device()->id(),
+        trace_region_size);
+
+    DeviceLocalBufferConfig device_local_trace_buf_config = {
+        .page_size = page_size,
+        .buffer_type = BufferType::TRACE,
+        .buffer_layout = TensorMemoryLayout::INTERLEAVED,
+    };
+
+    ReplicatedBufferConfig global_trace_buf_config = {
+        .size = padded_size,
+    };
+
+    // Commit trace to device DRAM
+    trace_buffer->mesh_buffer =
+        MeshBuffer::create(global_trace_buf_config, device_local_trace_buf_config, mesh_cq.device());
+    EnqueueWriteMeshBuffer(mesh_cq, trace_buffer->mesh_buffer, trace_data, kBlocking);
 }
 
 }  // namespace tt::tt_metal::distributed

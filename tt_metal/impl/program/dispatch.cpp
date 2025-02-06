@@ -1964,6 +1964,64 @@ void set_go_signal_noc_data_on_dispatch(
     manager.fetch_queue_write(cmd_sequence_sizeB, cq_id);
 }
 
+void reset_host_dispatch_state_for_trace(
+    uint32_t num_sub_devices,
+    SystemMemoryManager& sysmem_manager,
+    std::array<uint32_t, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>& expected_num_workers_completed,
+    std::array<WorkerConfigBufferMgr, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>& config_buffer_mgr,
+    std::array<LaunchMessageRingBufferState, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>&
+        worker_launch_message_buffer_state_reset,
+    std::array<uint32_t, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>& expected_num_workers_completed_reset,
+    std::array<WorkerConfigBufferMgr, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>& config_buffer_mgr_reset) {
+    // Record the original value of expected_num_workers_completed, and reset it to 0.
+    std::copy(
+        expected_num_workers_completed.begin(),
+        expected_num_workers_completed.begin() + num_sub_devices,
+        expected_num_workers_completed_reset.begin());
+    std::fill(expected_num_workers_completed.begin(), expected_num_workers_completed.begin() + num_sub_devices, 0);
+
+    // Record original value of launch msg buffer
+    auto& worker_launch_message_buffer_state = sysmem_manager.get_worker_launch_message_buffer_state();
+    std::copy(
+        worker_launch_message_buffer_state.begin(),
+        worker_launch_message_buffer_state.begin() + num_sub_devices,
+        worker_launch_message_buffer_state_reset.begin());
+    for (uint32_t i = 0; i < num_sub_devices; ++i) {
+        // Set launch msg wptr to 0. Every time trace runs on device, it will ensure that the workers
+        // reset their rptr to be in sync with device.
+        worker_launch_message_buffer_state[i].reset();
+    }
+    // Record original value of config buffer manager
+    std::copy(config_buffer_mgr.begin(), config_buffer_mgr.begin() + num_sub_devices, config_buffer_mgr_reset.begin());
+    for (uint32_t i = 0; i < num_sub_devices; ++i) {
+        // Sync values in the trace need to match up with the counter starting at 0 again.
+        config_buffer_mgr[i].mark_completely_full(expected_num_workers_completed[i]);
+    }
+    sysmem_manager.set_bypass_mode(true, true);  // start trace capture
+}
+
+void load_host_dispatch_state(
+    uint32_t num_sub_devices,
+    SystemMemoryManager& sysmem_manager,
+    std::array<uint32_t, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>& expected_num_workers_completed,
+    std::array<WorkerConfigBufferMgr, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>& config_buffer_mgr,
+    std::array<LaunchMessageRingBufferState, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>&
+        worker_launch_message_buffer_state_reset,
+    std::array<uint32_t, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>& expected_num_workers_completed_reset,
+    std::array<WorkerConfigBufferMgr, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>& config_buffer_mgr_reset) {
+    std::copy(
+        expected_num_workers_completed_reset.begin(),
+        expected_num_workers_completed_reset.begin() + num_sub_devices,
+        expected_num_workers_completed.begin());
+    std::copy(
+        worker_launch_message_buffer_state_reset.begin(),
+        worker_launch_message_buffer_state_reset.begin() + num_sub_devices,
+        sysmem_manager.get_worker_launch_message_buffer_state().begin());
+    std::copy(
+        config_buffer_mgr_reset.begin(), config_buffer_mgr_reset.begin() + num_sub_devices, config_buffer_mgr.begin());
+    sysmem_manager.set_bypass_mode(false, true);  // stop trace capture
+}
+
 template void finalize_program_offsets<Program>(Program&, IDevice*);
 template void finalize_program_offsets<distributed::MeshWorkload>(distributed::MeshWorkload&, IDevice*);
 template uint32_t program_base_addr_on_core<Program, IDevice*>(Program&, IDevice*, HalProgrammableCoreType);

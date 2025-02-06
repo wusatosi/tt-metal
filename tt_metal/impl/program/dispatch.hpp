@@ -144,6 +144,26 @@ template <typename WorkloadType, typename DeviceType>
 uint32_t program_base_addr_on_core(
     WorkloadType& workload, DeviceType generic_device, HalProgrammableCoreType programmable_core_type);
 
+void reset_host_dispatch_state_for_trace(
+    uint32_t num_sub_devices,
+    SystemMemoryManager& sysmem_manager,
+    std::array<uint32_t, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>& expected_num_workers_completed,
+    std::array<WorkerConfigBufferMgr, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>& config_buffer_mgr,
+    std::array<LaunchMessageRingBufferState, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>&
+        worker_launch_message_buffer_state_reset,
+    std::array<uint32_t, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>& expected_num_workers_completed_reset,
+    std::array<WorkerConfigBufferMgr, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>& config_buffer_mgr_reset);
+
+void load_host_dispatch_state(
+    uint32_t num_sub_devices,
+    SystemMemoryManager& sysmem_manager,
+    std::array<uint32_t, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>& expected_num_workers_completed,
+    std::array<WorkerConfigBufferMgr, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>& config_buffer_mgr,
+    std::array<LaunchMessageRingBufferState, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>&
+        worker_launch_message_buffer_state_reset,
+    std::array<uint32_t, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>& expected_num_workers_completed_reset,
+    std::array<WorkerConfigBufferMgr, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>& config_buffer_mgr_reset);
+
 }  // namespace program_dispatch
 
 }  // namespace tt_metal

@@ -131,6 +131,9 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
                     dispatch_metadata.stall_first,
                     dispatch_metadata.stall_before_program);
                 chip_ids_in_workload.insert(this->mesh_device_->get_device(logical_y, logical_x)->id());
+                if (sysmem_manager.get_bypass_mode()) {
+                    break;
+                }
             }
         }
     }
@@ -157,7 +160,12 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
         sysmem_manager.get_worker_launch_message_buffer_state()[sub_device_index].inc_unicast_wptr(1);
     }
     // Update the expected number of workers dispatch must wait on
-    expected_num_workers_completed_[sub_device_index] += num_workers;
+    if (sysmem_manager.get_bypass_mode()) {
+        trace_ctx_->num_workloads++;
+        trace_ctx_->num_completion_worker_cores += num_workers;
+    } else {
+        expected_num_workers_completed_[sub_device_index] += num_workers;
+    }
     // From the dispatcher's perspective, binaries are now committed to DRAM
     mesh_workload.set_program_binary_status(mesh_device_id, ProgramBinaryStatus::Committed);
     mesh_workload.set_last_used_command_queue_for_testing(this);
@@ -478,6 +486,7 @@ void MeshCommandQueue::drain_events_from_completion_queue() {
                 uint16_t channel = tt::Cluster::instance().get_assigned_channel_for_device(device->id());
                 bool exit_condition = false;
                 device->sysmem_manager().completion_queue_wait_front(id_, exit_condition);
+                std::cout << "Wait for: " << device->id() << std::endl;
                 event_dispatch::read_events_from_completion_queue(
                     mesh_read_descriptor->single_device_descriptor,
                     mmio_device_id,
@@ -525,6 +534,170 @@ void MeshCommandQueue::reset_worker_state(
         auto& sysmem_manager = mesh_device_->get_device(0, 0)->sysmem_manager();
         sysmem_manager.reset_worker_launch_message_buffer_state(num_sub_devices);
     }
+}
+
+void MeshCommandQueue::issue_trace_commands(
+    SystemMemoryManager& sysmem_manager,
+    uint32_t cmd_sequence_sizeB,
+    std::shared_ptr<MeshTraceDescriptor> descriptor,
+    std::shared_ptr<MeshBuffer> buffer) {
+    void* cmd_region = sysmem_manager.issue_queue_reserve(cmd_sequence_sizeB, id_);
+
+    HugepageDeviceCommand command_sequence(cmd_region, cmd_sequence_sizeB);
+
+    DispatcherSelect dispatcher_for_go_signal = DispatcherSelect::DISPATCH_MASTER;
+    if (DispatchQueryManager::instance().dispatch_s_enabled()) {
+        uint16_t index_bitmask = 1;  // hardcode to 1
+
+        // for (const auto& id : descriptor->sub_device_ids) {
+        //     index_bitmask |= 1 << id.to_index();
+        // }
+        command_sequence.add_notify_dispatch_s_go_signal_cmd(false, index_bitmask);
+        dispatcher_for_go_signal = DispatcherSelect::DISPATCH_SLAVE;
+    }
+    auto dispatch_core_config = DispatchQueryManager::instance().get_dispatch_core_config();
+    auto dispatch_core_type = dispatch_core_config.get_core_type();
+
+    uint32_t dispatch_message_base_addr =
+        DispatchMemMap::get(dispatch_core_type)
+            .get_device_command_queue_addr(CommandQueueDeviceAddrType::DISPATCH_MESSAGE);
+
+    go_msg_t reset_launch_message_read_ptr_go_signal;
+    reset_launch_message_read_ptr_go_signal.signal = RUN_MSG_RESET_READ_PTR;
+    reset_launch_message_read_ptr_go_signal.master_x = (uint8_t)dispatch_core_.x;
+    reset_launch_message_read_ptr_go_signal.master_y = (uint8_t)dispatch_core_.y;
+
+    const auto& noc_data_start_idx = mesh_device_->noc_data_start_index(
+        SubDeviceId{0},  // hardcode to 0
+        descriptor->num_workloads,
+        0 /* no programs on eth cores */);
+
+    const auto& num_noc_mcast_txns = mesh_device_->num_noc_mcast_txns(SubDeviceId{0});  // hardcode to 0
+    const auto& num_noc_unicast_txns = 0;                                               // no txns to eth
+    reset_launch_message_read_ptr_go_signal.dispatch_message_offset =
+        (uint8_t)DispatchMemMap::get(dispatch_core_type).get_dispatch_message_offset(0);  // hardcode to 0
+    uint32_t dispatch_message_addr =
+        dispatch_message_base_addr +
+        DispatchMemMap::get(dispatch_core_type).get_dispatch_message_offset(0);  // hardcode to 0
+    auto index = 0;                                                              // hardcode to 0
+
+    // Wait to ensure that all kernels have completed. Then send the reset_rd_ptr go_signal.
+    command_sequence.add_dispatch_go_signal_mcast(
+        expected_num_workers_completed_[index],
+        *reinterpret_cast<uint32_t*>(&reset_launch_message_read_ptr_go_signal),
+        dispatch_message_addr,
+        num_noc_mcast_txns,
+        num_noc_unicast_txns,
+        noc_data_start_idx,
+        dispatcher_for_go_signal);
+
+    // Wait to ensure that all workers have reset their read_ptr. dispatch_d will stall until all workers have completed
+    // this step, before sending kernel config data to workers or notifying dispatch_s that its safe to send the
+    // go_signal. Clear the dispatch <--> worker semaphore, since trace starts at 0.
+
+    constexpr bool clear_count = true;
+    if (DispatchQueryManager::instance().distributed_dispatcher()) {
+        command_sequence.add_dispatch_wait(
+            false,
+            dispatch_message_addr,
+            expected_num_workers_completed_[index] +
+                mesh_device_->num_worker_cores(HalProgrammableCoreType::TENSIX, SubDeviceId{0}),  // hardcode to 0,
+            clear_count,
+            false,
+            true,
+            1);
+    }
+    command_sequence.add_dispatch_wait(
+        false,
+        dispatch_message_addr,
+        expected_num_workers_completed_[index] +
+            mesh_device_->num_worker_cores(HalProgrammableCoreType::TENSIX, SubDeviceId{0}),
+        clear_count);
+    // if (clear_count) {
+    //     expected_num_workers_completed_[index] = 0;
+    // }
+
+    uint32_t page_size = buffer->page_size();
+    uint32_t page_size_log2 = __builtin_ctz(page_size);
+    TT_ASSERT((page_size & (page_size - 1)) == 0, "Page size must be a power of 2");
+
+    command_sequence.add_prefetch_exec_buf(buffer->address(), page_size_log2, buffer->num_pages());
+
+    sysmem_manager.issue_queue_push_back(cmd_sequence_sizeB, id_);
+
+    sysmem_manager.fetch_queue_reserve_back(id_);
+
+    const bool stall_prefetcher = true;
+    sysmem_manager.fetch_queue_write(cmd_sequence_sizeB, id_, stall_prefetcher);
+}
+
+void MeshCommandQueue::enqueue_trace(uint32_t trace_id, bool blocking) {
+    auto trace_inst = mesh_device_->get_mesh_trace(trace_id);
+    auto descriptor = trace_inst->desc;
+    auto buffer = trace_inst->mesh_buffer;
+    uint32_t num_sub_devices = 1;  // HARDCODDE TO 1
+    uint32_t pcie_alignment = hal.get_alignment(HalMemType::HOST);
+
+    uint32_t go_signals_cmd_size =
+        align(sizeof(CQPrefetchCmd) + sizeof(CQDispatchCmd), pcie_alignment) * num_sub_devices;
+
+    uint32_t cmd_sequence_sizeB =
+        DispatchQueryManager::instance().dispatch_s_enabled() *
+            hal.get_alignment(
+                HalMemType::HOST) +  // dispatch_d -> dispatch_s sem update (send only if dispatch_s is running)
+        go_signals_cmd_size +        // go signal cmd
+        (hal.get_alignment(
+             HalMemType::HOST) +  // wait to ensure that reset go signal was processed (dispatch_d)
+                                  // when dispatch_s and dispatch_d are running on 2 cores, workers update dispatch_s.
+                                  // dispatch_s is responsible for resetting worker count and giving dispatch_d the
+                                  // latest worker state. This is encapsulated in the dispatch_s wait command (only to
+                                  // be sent when dispatch is distributed on 2 cores)
+         (DispatchQueryManager::instance().distributed_dispatcher()) * hal.get_alignment(HalMemType::HOST)) *
+            num_sub_devices +
+        hal.get_alignment(HalMemType::HOST);  // CQ_PREFETCH_CMD_EXEC_BUF
+
+    for (auto device : mesh_device_->get_devices()) {
+        this->issue_trace_commands(device->sysmem_manager(), cmd_sequence_sizeB, descriptor, buffer);
+    }
+    auto& sysmem_manager = mesh_device_->get_device(0, 0)->sysmem_manager();
+    expected_num_workers_completed_[0] = descriptor->num_completion_worker_cores;
+    sysmem_manager.get_worker_launch_message_buffer_state()[0].set_mcast_wptr(descriptor->num_workloads);
+    config_buffer_mgr_[0].mark_completely_full(expected_num_workers_completed_[0]);
+}
+
+void MeshCommandQueue::record_begin(uint32_t tid, const std::shared_ptr<MeshTraceDescriptor>& ctx) {
+    program_dispatch::reset_host_dispatch_state_for_trace(
+        mesh_device_->num_sub_devices(),
+        mesh_device_->get_device(0, 0)->sysmem_manager(),
+        expected_num_workers_completed_,
+        config_buffer_mgr_,
+        worker_launch_message_buffer_state_reset_,
+        expected_num_workers_completed_reset_,
+        config_buffer_mgr_reset_);
+    tid_ = tid;
+    trace_ctx_ = std::move(ctx);
+}
+
+void MeshCommandQueue::record_end() {
+    auto& trace_data = trace_ctx_->trace_data;
+    trace_data = std::move(mesh_device_->get_device(0, 0)->sysmem_manager().get_bypass_data());
+
+    DeviceCommand command_sequence(hal.get_alignment(HalMemType::HOST));
+    command_sequence.add_prefetch_exec_buf_end();
+    for (int i = 0; i < command_sequence.size_bytes() / sizeof(uint32_t); i++) {
+        trace_data.push_back(((uint32_t*)command_sequence.data())[i]);
+    }
+    tid_ = std::nullopt;
+    trace_ctx_ = nullptr;
+
+    program_dispatch::load_host_dispatch_state(
+        mesh_device_->num_sub_devices(),
+        mesh_device_->get_device(0, 0)->sysmem_manager(),
+        expected_num_workers_completed_,
+        config_buffer_mgr_,
+        worker_launch_message_buffer_state_reset_,
+        expected_num_workers_completed_reset_,
+        config_buffer_mgr_reset_);
 }
 
 }  // namespace tt::tt_metal::distributed
