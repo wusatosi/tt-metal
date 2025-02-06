@@ -87,13 +87,16 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
     }
 
     program_dispatch::ProgramDispatchMetadata dispatch_metadata;
+    uint32_t expected_num_workers_completed = sysmem_manager.get_bypass_mode()
+                                                  ? trace_ctx_->num_completion_worker_cores
+                                                  : expected_num_workers_completed_[sub_device_index];
     // Reserve space in the L1 Kernel Config Ring Buffer for this workload.
     program_dispatch::reserve_space_in_kernel_config_buffer(
         this->get_config_buffer_mgr(sub_device_index),
         mesh_workload.get_program_config_sizes(),
         mesh_workload.get_program_binary_status(mesh_device_id),
         num_workers,
-        expected_num_workers_completed_[sub_device_index],
+        expected_num_workers_completed,
         dispatch_metadata);
 
     std::unordered_set<uint32_t> chip_ids_in_workload = {};
@@ -109,7 +112,7 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
             program_cmd_seq,
             sysmem_manager.get_worker_launch_message_buffer_state()[sub_device_index].get_mcast_wptr(),
             sysmem_manager.get_worker_launch_message_buffer_state()[sub_device_index].get_unicast_wptr(),
-            expected_num_workers_completed_[sub_device_index],
+            expected_num_workers_completed,
             this->virtual_program_dispatch_core(),
             dispatch_core_type,
             sub_device_id,
@@ -135,21 +138,27 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
                     break;
                 }
             }
+            if (sysmem_manager.get_bypass_mode()) {
+                break;
+            }
         }
     }
     // Send go signals to devices not running a program to ensure consistent global state
-    for (auto& device : this->mesh_device_->get_devices()) {
-        if (chip_ids_in_workload.find(device->id()) == chip_ids_in_workload.end()) {
-            write_go_signal(
-                id_,
-                device,
-                sub_device_id,
-                device->sysmem_manager(),
-                expected_num_workers_completed_[sub_device_index],
-                this->virtual_program_dispatch_core(),
-                mcast_go_signals,
-                unicast_go_signals,
-                mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id));
+    if (not sysmem_manager.get_bypass_mode()) {
+        for (auto& device : this->mesh_device_->get_devices()) {
+            if (chip_ids_in_workload.find(device->id()) == chip_ids_in_workload.end()) {
+                std::cout << "Send go signal to " << device->id() << std::endl;
+                write_go_signal(
+                    id_,
+                    device,
+                    sub_device_id,
+                    device->sysmem_manager(),
+                    expected_num_workers_completed_[sub_device_index],
+                    this->virtual_program_dispatch_core(),
+                    mcast_go_signals,
+                    unicast_go_signals,
+                    mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id));
+            }
         }
     }
     // Increment Launch Message Buffer Write Pointers
@@ -486,7 +495,7 @@ void MeshCommandQueue::drain_events_from_completion_queue() {
                 uint16_t channel = tt::Cluster::instance().get_assigned_channel_for_device(device->id());
                 bool exit_condition = false;
                 device->sysmem_manager().completion_queue_wait_front(id_, exit_condition);
-                std::cout << "Wait for: " << device->id() << std::endl;
+
                 event_dispatch::read_events_from_completion_queue(
                     mesh_read_descriptor->single_device_descriptor,
                     mmio_device_id,

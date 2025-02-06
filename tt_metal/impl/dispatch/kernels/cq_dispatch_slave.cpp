@@ -124,6 +124,8 @@ void wait_for_workers(volatile CQDispatchCmd tt_l1_ptr* cmd) {
     uint8_t dispatch_message_offset = *((uint8_t*)&cmd->mcast.go_signal + offsetof(go_msg_t, dispatch_message_offset));
     volatile tt_l1_ptr uint32_t* worker_sem =
         reinterpret_cast<volatile tt_l1_ptr uint32_t*>(worker_sem_base_addr + dispatch_message_offset);
+    DPRINT << "Wait for: " << cmd->mcast.wait_count << " workers. Go Signal " << HEX() << cmd->mcast.go_signal
+           << ENDL();
     while (wrap_gt(cmd->mcast.wait_count, *worker_sem)) {
         invalidate_l1_cache();
     }

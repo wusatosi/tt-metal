@@ -347,25 +347,18 @@ size_t interleaved_page_size(
 }
 
 void MeshTrace::populate_mesh_buffer(MeshCommandQueue& mesh_cq, std::shared_ptr<MeshTraceBuffer> trace_buffer) {
-    std::cout << "Get trace data" << std::endl;
     std::vector<uint32_t>& trace_data = trace_buffer->desc->trace_data;
-    std::cout << "Trace data size: " << trace_data.size() << std::endl;
     uint64_t unpadded_size = trace_data.size() * sizeof(uint32_t);
-    std::cout << "Unpadded size: " << unpadded_size << std::endl;
     size_t page_size = interleaved_page_size(
         unpadded_size,
         mesh_cq.device()->allocator()->get_num_banks(BufferType::DRAM),
         kExecBufPageMin,
         kExecBufPageMax);
-    std::cout << "Page size: " << page_size << std::endl;
     uint64_t padded_size = round_up(unpadded_size, page_size);
-    std::cout << "Padded size " << padded_size << std::endl;
     size_t numel_padding = (padded_size - unpadded_size) / sizeof(uint32_t);
-    std::cout << "Numel padding " << numel_padding << std::endl;
     if (numel_padding > 0) {
         trace_data.resize(trace_data.size() + numel_padding, 0 /*padding value*/);
     }
-    std::cout << "Trace data resized" << std::endl;
     const auto current_trace_buffers_size = mesh_cq.device()->get_trace_buffers_size();
     mesh_cq.device()->set_trace_buffers_size(current_trace_buffers_size + padded_size);
     auto trace_region_size = mesh_cq.device()->allocator()->get_config().trace_region_size;
