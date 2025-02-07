@@ -14,7 +14,7 @@ void MAIN {
 
     constexpr auto cb_in0 = tt::CBIndex::c_0;
     constexpr auto cb_in1 = tt::CBIndex::c_1;
-    constexpr auto cb_out0 = tt::CBIndex::c_16;
+    constexpr auto cb_out0 = tt::CBIndex::c_2;
     constexpr uint32_t onetile = 1;
     constexpr uint32_t dst0 = 0;
     constexpr uint32_t dst1 = 1;

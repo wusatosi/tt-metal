@@ -40,7 +40,7 @@ operation::ProgramWithCallbacks multi_core_nlp_concat_heads_decode(
     auto in_cores = in_shard_spec.grid;
     auto in_num_tiles = in_shard_spec.shape[0] * in_shard_spec.shape[1] / TILE_HW;
 
-    uint32_t q_output_cb_index = CBIndex::c_16;
+    uint32_t q_output_cb_index = CBIndex::c_0;
     tt_metal::CircularBufferConfig cb_q_output_config =
         tt_metal::CircularBufferConfig(q_num_tiles * single_tile_size, {{q_output_cb_index, cb_data_format}})
             .set_page_size(q_output_cb_index, single_tile_size)
@@ -185,7 +185,7 @@ operation::ProgramWithCallbacks multi_core_nlp_concat_heads_decode_subcoregrids(
     const auto in_cores = in_shard_spec.grid;
     const auto in_num_tiles = in_shard_spec.shape[0] * in_shard_spec.shape[1] / tile_hw;
 
-    uint32_t q_output_cb_index = CBIndex::c_16;
+    uint32_t q_output_cb_index = CBIndex::c_0;
     tt_metal::CircularBufferConfig cb_q_output_config =
         tt_metal::CircularBufferConfig(q_num_tiles * single_tile_size, {{q_output_cb_index, cb_data_format}})
             .set_page_size(q_output_cb_index, single_tile_size)

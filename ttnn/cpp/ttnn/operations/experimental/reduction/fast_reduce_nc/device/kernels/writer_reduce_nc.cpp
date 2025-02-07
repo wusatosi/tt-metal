@@ -13,7 +13,7 @@ void kernel_main() {
     const auto num_tiles = get_arg_val<uint32_t>(1);
     const auto start_id = get_arg_val<uint32_t>(2);
 
-    constexpr uint32_t cb_id_out = 16;
+    constexpr uint32_t cb_id_out = 2;
     constexpr uint32_t onetile = 1;
 
     uint32_t output_tile_bytes = get_tile_size(cb_id_out);

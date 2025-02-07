@@ -84,7 +84,7 @@ operation::ProgramWithCallbacks multi_core_nlp_create_qkv_heads_decode_interleav
     auto in_shape = input_tensor.get_padded_shape();
     auto in_num_tiles = in_shape[-2] * in_shape[-1] / TILE_HW;
 
-    uint32_t q_output_cb_index = CBIndex::c_16;
+    uint32_t q_output_cb_index = CBIndex::c_0;
     tt_metal::CircularBufferConfig cb_q_output_config =
         tt_metal::CircularBufferConfig(q_num_tiles * single_tile_size, {{q_output_cb_index, cb_data_format}})
             .set_page_size(q_output_cb_index, single_tile_size)
@@ -95,7 +95,7 @@ operation::ProgramWithCallbacks multi_core_nlp_create_qkv_heads_decode_interleav
     auto k_cores = k_shard_spec.grid;
     auto k_num_tiles = k_shard_spec.shape[0] * k_shard_spec.shape[1] / TILE_HW;
 
-    uint32_t k_output_cb_index = CBIndex::c_17;
+    uint32_t k_output_cb_index = CBIndex::c_1;
     tt_metal::CircularBufferConfig cb_k_output_config =
         tt_metal::CircularBufferConfig(k_num_tiles * single_tile_size, {{k_output_cb_index, cb_data_format}})
             .set_page_size(k_output_cb_index, single_tile_size)
@@ -106,7 +106,7 @@ operation::ProgramWithCallbacks multi_core_nlp_create_qkv_heads_decode_interleav
     auto v_cores = q_shard_spec.grid;
     auto v_num_tiles = v_shard_spec.shape[0] * v_shard_spec.shape[1] / TILE_HW;
 
-    uint32_t v_output_cb_index = CBIndex::c_18;
+    uint32_t v_output_cb_index = CBIndex::c_2;
     tt_metal::CircularBufferConfig cb_v_output_config =
         tt_metal::CircularBufferConfig(v_num_tiles * single_tile_size, {{v_output_cb_index, cb_data_format}})
             .set_page_size(v_output_cb_index, single_tile_size)
@@ -227,8 +227,8 @@ operation::ProgramWithCallbacks multi_core_nlp_create_qkv_heads_decode_sharded_i
 
     tt_metal::IDevice* device = input_tensor.device();
     // Create CBs for reader/writer for batch_offset
-    uint32_t batch_offset_cb_index_reader = CBIndex::c_15;
-    uint32_t batch_offset_cb_index_writer = CBIndex::c_14;
+    uint32_t batch_offset_cb_index_reader = CBIndex::c_4;
+    uint32_t batch_offset_cb_index_writer = CBIndex::c_3;
     CBHandle cb_batch_offset_reader = 0;
     CBHandle cb_batch_offset_writer = 0;
 
@@ -278,14 +278,14 @@ operation::ProgramWithCallbacks multi_core_nlp_create_qkv_heads_decode_sharded_i
         cb_batch_offset_writer = tt_metal::CreateCircularBuffer(program, qk_cores, cb_batch_offset_config_writer);
     }
 
-    uint32_t q_output_cb_index = CBIndex::c_16;
+    uint32_t q_output_cb_index = CBIndex::c_0;
     tt_metal::CircularBufferConfig cb_q_output_config =
         tt_metal::CircularBufferConfig(q_num_tiles * single_tile_size, {{q_output_cb_index, cb_data_format}})
             .set_page_size(q_output_cb_index, single_tile_size)
             .set_globally_allocated_address(*output[0].buffer());
     auto cb_q_output = tt_metal::CreateCircularBuffer(program, q_cores, cb_q_output_config);
 
-    uint32_t k_output_cb_index = CBIndex::c_17;
+    uint32_t k_output_cb_index = CBIndex::c_1;
     tt_metal::CircularBufferConfig cb_k_output_config =
         tt_metal::CircularBufferConfig(k_num_tiles * single_tile_size, {{k_output_cb_index, cb_data_format}})
             .set_page_size(k_output_cb_index, single_tile_size)
@@ -296,7 +296,7 @@ operation::ProgramWithCallbacks multi_core_nlp_create_qkv_heads_decode_sharded_i
     auto v_cores = q_shard_spec.grid;
     auto v_num_tiles = v_shard_spec.shape[0] * v_shard_spec.shape[1] / TILE_HW;
 
-    uint32_t v_output_cb_index = CBIndex::c_18;
+    uint32_t v_output_cb_index = CBIndex::c_2;
     tt_metal::CircularBufferConfig cb_v_output_config =
         tt_metal::CircularBufferConfig(v_num_tiles * single_tile_size, {{v_output_cb_index, cb_data_format}})
             .set_page_size(v_output_cb_index, single_tile_size)
@@ -520,8 +520,8 @@ operation::ProgramWithCallbacks multi_core_nlp_create_qkv_heads_decode_sharded_i
 
     tt_metal::IDevice* device = input_tensor.device();
     // Create CBs for reader/writer for batch_offset
-    uint32_t batch_offset_cb_index_reader = CBIndex::c_15;
-    uint32_t batch_offset_cb_index_writer = CBIndex::c_14;
+    uint32_t batch_offset_cb_index_reader = CBIndex::c_4;
+    uint32_t batch_offset_cb_index_writer = CBIndex::c_3;
     CBHandle cb_batch_offset_reader = 0;
     CBHandle cb_batch_offset_writer = 0;
 
@@ -571,14 +571,14 @@ operation::ProgramWithCallbacks multi_core_nlp_create_qkv_heads_decode_sharded_i
         cb_batch_offset_writer = tt_metal::CreateCircularBuffer(program, qk_cores, cb_batch_offset_config_writer);
     }
 
-    uint32_t q_output_cb_index = CBIndex::c_16;
+    uint32_t q_output_cb_index = CBIndex::c_0;
     tt_metal::CircularBufferConfig cb_q_output_config =
         tt_metal::CircularBufferConfig(q_num_tiles * single_tile_size, {{q_output_cb_index, cb_data_format}})
             .set_page_size(q_output_cb_index, single_tile_size)
             .set_globally_allocated_address(*output[0].buffer());
     auto cb_q_output = tt_metal::CreateCircularBuffer(program, q_cores, cb_q_output_config);
 
-    uint32_t k_output_cb_index = CBIndex::c_17;
+    uint32_t k_output_cb_index = CBIndex::c_1;
     tt_metal::CircularBufferConfig cb_k_output_config =
         tt_metal::CircularBufferConfig(k_num_tiles * single_tile_size, {{k_output_cb_index, cb_data_format}})
             .set_page_size(k_output_cb_index, single_tile_size)
@@ -589,7 +589,7 @@ operation::ProgramWithCallbacks multi_core_nlp_create_qkv_heads_decode_sharded_i
     const auto v_cores = q_shard_spec.grid;
     const auto v_num_tiles = v_shard_spec.shape[0] * v_shard_spec.shape[1] / TILE_HW;
 
-    uint32_t v_output_cb_index = CBIndex::c_18;
+    uint32_t v_output_cb_index = CBIndex::c_2;
     tt_metal::CircularBufferConfig cb_v_output_config =
         tt_metal::CircularBufferConfig(v_num_tiles * single_tile_size, {{v_output_cb_index, cb_data_format}})
             .set_page_size(v_output_cb_index, single_tile_size)
