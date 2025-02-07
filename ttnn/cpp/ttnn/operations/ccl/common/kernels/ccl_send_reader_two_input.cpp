@@ -163,7 +163,7 @@ template <
     tt::tt_metal::TensorMemoryLayout tensor_layout,
     tt::tt_metal::BufferType buffer_type,
     tt::tt_metal::Layout page_layout>
-FORCE_INLINE auto build_source_address_generator(
+auto build_source_address_generator(
     std::size_t& arg_idx,
     address_t tensor_address,
     std::size_t page_size,
@@ -263,7 +263,7 @@ void update_ccl_command(
 
 template <typename Addrgen>
 struct command_context_t final {
-    FORCE_INLINE command_context_t(
+    command_context_t(
         FabricConnectionManager& fabric_connection,
         Addrgen& addrgen,
         uint16_t num_commands,
@@ -315,16 +315,16 @@ struct command_context_t final {
         return current_cmd_header.dest_type != ttnn::ccl::cmd::CclCommandDestType::CHIP_LOCAL_ONLY;
     }
 
-    FORCE_INLINE bool is_complete() const { return command_idx >= num_commands; }
+    bool is_complete() const { return command_idx >= num_commands; }
 
-    FORCE_INLINE void complete_current_command() {
+    void complete_current_command() {
         command_idx++;
         populated = false;
     }
 
-    FORCE_INLINE bool current_command_active() const { return populated; }
+    bool current_command_active() const { return populated; }
 
-    FORCE_INLINE void fetch_next_command() {
+    void fetch_next_command() {
         populated = true;
 
         this->current_cmd_header = ttnn::ccl::cmd::CclCommandHeader::from_uint32(get_arg_val<uint32_t>(arg_idx++));
@@ -471,7 +471,7 @@ void update_ccl_command(
 }
 
 template <typename Addrgen>
-FORCE_INLINE void try_advance_inline_write_or_atomic_inc(command_context_t<Addrgen>& cmd_ctx) {
+void try_advance_inline_write_or_atomic_inc(command_context_t<Addrgen>& cmd_ctx) {
     const size_t value = cmd_ctx.cmd_specific_ctx.inline_value_ctx.value;
     const size_t dest_bank_addr = cmd_ctx.dest_addr_info.address;
     bool is_remote_atomic_inc_over_fabric = cmd_ctx.command_requires_fabric();
@@ -570,7 +570,7 @@ FORCE_INLINE void try_advance_inline_write_or_atomic_inc(command_context_t<Addrg
 
 #ifndef NO_TENSOR_MODE
 template <tt::tt_metal::TensorMemoryLayout TENSOR_LAYOUT, tt::tt_metal::Layout MEM_LAYOUT, typename Addrgen>
-FORCE_INLINE void try_advance_read_tensor_to_cb(command_context_t<Addrgen>& cmd_ctx) {
+void try_advance_read_tensor_to_cb(command_context_t<Addrgen>& cmd_ctx) {
     if (!cb_pages_reservable_at_back(cmd_ctx.cb_id, cmd_ctx.packet_size_in_pages)) {
         return;
     }
@@ -621,7 +621,7 @@ FORCE_INLINE void try_advance_read_tensor_to_cb(command_context_t<Addrgen>& cmd_
 }
 #endif
 
-FORCE_INLINE void write_and_advance_local_read_address_for_fabric_write(
+void write_and_advance_local_read_address_for_fabric_write(
     uint64_t noc0_dest_noc_addr,
     size_t packet_header_buffer_addr,
     const ttnn::ccl::cmd::CclCommandHeader& current_cmd_header,
@@ -684,7 +684,7 @@ FORCE_INLINE void write_and_advance_local_read_address_for_fabric_write(
     l1_read_addr += payload_size_bytes;
 }
 
-FORCE_INLINE void write_payload_then_advance_read_address(
+void write_payload_then_advance_read_address(
     uint64_t noc0_dest_noc_addr,
     size_t packet_header_buffer_addr,
     const ttnn::ccl::cmd::CclCommandHeader& current_cmd_header,
@@ -725,7 +725,7 @@ FORCE_INLINE void write_payload_then_advance_read_address(
 // based on command type so we can avoid the perf overhead of the branching that would otherwise
 // be required.
 template <tt::tt_metal::TensorMemoryLayout TENSOR_LAYOUT, tt::tt_metal::Layout MEM_LAYOUT, typename Addrgen>
-FORCE_INLINE void try_advance_write_tensor_from_cb(command_context_t<Addrgen>& cmd_ctx) {
+void try_advance_write_tensor_from_cb(command_context_t<Addrgen>& cmd_ctx) {
     if (!cb_pages_available_at_front(cmd_ctx.cb_id, cmd_ctx.packet_size_in_pages)) {
         return;
     }
@@ -782,7 +782,7 @@ FORCE_INLINE void try_advance_write_tensor_from_cb(command_context_t<Addrgen>& c
 }
 #endif
 
-static FORCE_INLINE ttnn::ccl::cmd::noc_transfer_info get_next_noc_transfer_in_burst(arg_idx_t& arg_idx) {
+static ttnn::ccl::cmd::noc_transfer_info get_next_noc_transfer_in_burst(arg_idx_t& arg_idx) {
     auto noc_yx_in_16bits_each = get_arg_val<uint32_t>(arg_idx + 1);
     noc_grid_index_t noc_x = static_cast<noc_grid_index_t>(noc_yx_in_16bits_each & 0xFF);
     noc_grid_index_t noc_y = static_cast<noc_grid_index_t>((noc_yx_in_16bits_each >> 16) & 0xFF);
@@ -792,9 +792,9 @@ static FORCE_INLINE ttnn::ccl::cmd::noc_transfer_info get_next_noc_transfer_in_b
     return {safe_get_noc_addr(noc_x, noc_y, bank_addr_offset), noc_transfer_size_bytes};
 }
 
-static FORCE_INLINE size_t get_args_consumed_by_noc_transfer_info_in_burst() { return 3; }
+static size_t get_args_consumed_by_noc_transfer_info_in_burst() { return 3; }
 
-FORCE_INLINE static ttnn::ccl::cmd::noc_transfer_info advance_to_next_noc_transaction_in_burst(
+static ttnn::ccl::cmd::noc_transfer_info advance_to_next_noc_transaction_in_burst(
     noc_transfer_burst_context& noc_burst_ctx, arg_idx_t& arg_idx) {
     const auto noc_transfer_info = get_next_noc_transfer_in_burst(arg_idx);
     arg_idx += get_args_consumed_by_noc_transfer_info_in_burst();
@@ -803,7 +803,7 @@ FORCE_INLINE static ttnn::ccl::cmd::noc_transfer_info advance_to_next_noc_transa
     return noc_transfer_info;
 }
 
-FORCE_INLINE static void try_advance_noc_read_burst(
+static void try_advance_noc_read_burst(
     noc_transfer_burst_context& noc_burst_ctx, uint32_t cb_id, uint32_t packet_size_in_pages, arg_idx_t& arg_idx) {
     if (!cb_pages_reservable_at_back(cb_id, packet_size_in_pages)) {
         return;
@@ -860,7 +860,7 @@ static void try_advance_noc_write_burst(
 }
 
 template <tt::tt_metal::TensorMemoryLayout TENSOR_LAYOUT, tt::tt_metal::Layout MEM_LAYOUT, typename Addrgen>
-FORCE_INLINE void try_advance(command_context_t<Addrgen>& cmd_ctx) {
+void try_advance(command_context_t<Addrgen>& cmd_ctx) {
     switch (cmd_ctx.current_cmd_header.code) {
         case ttnn::ccl::cmd::CclCommandCode::STREAM_TENSOR_TO_EDM:  // STREAM TENSOR TO CB
 #ifndef NO_TENSOR_MODE
