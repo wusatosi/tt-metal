@@ -117,28 +117,28 @@ operation::ProgramWithCallbacks rotary_embedding_llama_multi_core(
     auto cb_trans_mat = tt_metal::CreateCircularBuffer(program, all_cores, cb_trans_mat_config);
 
     uint32_t num_interm_tiles = head_dim_t;
-    uint32_t rotated_input_interm_cb_index = CBIndex::c_24;
+    uint32_t rotated_input_interm_cb_index = CBIndex::c_5;
     tt_metal::CircularBufferConfig cb_rotated_input_interm_config =
         tt_metal::CircularBufferConfig(
             num_interm_tiles * input_single_tile_size, {{rotated_input_interm_cb_index, input_cb_data_format}})
             .set_page_size(rotated_input_interm_cb_index, input_single_tile_size);
     auto cb_rotated_input_interm = tt_metal::CreateCircularBuffer(program, all_cores, cb_rotated_input_interm_config);
 
-    uint32_t cos_interm_cb_index = CBIndex::c_25;
+    uint32_t cos_interm_cb_index = CBIndex::c_6;
     tt_metal::CircularBufferConfig cb_cos_interm_config =
         tt_metal::CircularBufferConfig(
             num_interm_tiles * cos_single_tile_size, {{cos_interm_cb_index, cos_cb_data_format}})
             .set_page_size(cos_interm_cb_index, cos_single_tile_size);
     auto cb_cos_interm = tt_metal::CreateCircularBuffer(program, all_cores, cb_cos_interm_config);
 
-    uint32_t sin_interm_cb_index = CBIndex::c_26;
+    uint32_t sin_interm_cb_index = CBIndex::c_7;
     tt_metal::CircularBufferConfig cb_sin_interm_config =
         tt_metal::CircularBufferConfig(
             num_interm_tiles * sin_single_tile_size, {{sin_interm_cb_index, sin_cb_data_format}})
             .set_page_size(sin_interm_cb_index, sin_single_tile_size);
     auto cb_sin_interm = tt_metal::CreateCircularBuffer(program, all_cores, cb_sin_interm_config);
 
-    uint32_t output_cb_index = CBIndex::c_16;  // output operands start at index 16
+    uint32_t output_cb_index = CBIndex::c_4;  // output operands start at index 16
     tt_metal::CircularBufferConfig cb_output_config =
         tt_metal::CircularBufferConfig(
             num_output_tiles * output_single_tile_size, {{output_cb_index, output_cb_data_format}})
@@ -420,28 +420,28 @@ operation::ProgramWithCallbacks rotary_embedding_llama_multi_core_sharded(
     auto cb_trans_mat = tt_metal::CreateCircularBuffer(program, all_cores, cb_trans_mat_config);
 
     uint32_t num_interm_tiles = head_dim_t;
-    uint32_t rotated_input_interm_cb_index = CBIndex::c_24;
+    uint32_t rotated_input_interm_cb_index = CBIndex::c_5;
     tt_metal::CircularBufferConfig cb_rotated_input_interm_config =
         tt_metal::CircularBufferConfig(
             num_interm_tiles * input_single_tile_size, {{rotated_input_interm_cb_index, input_cb_data_format}})
             .set_page_size(rotated_input_interm_cb_index, input_single_tile_size);
     auto cb_rotated_input_interm = tt_metal::CreateCircularBuffer(program, all_cores, cb_rotated_input_interm_config);
 
-    uint32_t cos_interm_cb_index = CBIndex::c_25;
+    uint32_t cos_interm_cb_index = CBIndex::c_6;
     tt_metal::CircularBufferConfig cb_cos_interm_config =
         tt_metal::CircularBufferConfig(
             num_interm_tiles * input_single_tile_size, {{cos_interm_cb_index, cos_cb_data_format}})
             .set_page_size(cos_interm_cb_index, cos_single_tile_size);
     auto cb_cos_interm = tt_metal::CreateCircularBuffer(program, all_cores, cb_cos_interm_config);
 
-    uint32_t sin_interm_cb_index = CBIndex::c_26;
+    uint32_t sin_interm_cb_index = CBIndex::c_7;
     tt_metal::CircularBufferConfig cb_sin_interm_config =
         tt_metal::CircularBufferConfig(
             num_interm_tiles * input_single_tile_size, {{sin_interm_cb_index, sin_cb_data_format}})
             .set_page_size(sin_interm_cb_index, sin_single_tile_size);
     auto cb_sin_interm = tt_metal::CreateCircularBuffer(program, all_cores, cb_sin_interm_config);
 
-    uint32_t output_cb_index = CBIndex::c_16;  // output operands start at index 16
+    uint32_t output_cb_index = CBIndex::c_4;  // output operands start at index 16
     tt_metal::CircularBufferConfig cb_output_config =
         tt_metal::CircularBufferConfig(
             num_output_tiles * output_single_tile_size, {{output_cb_index, output_cb_data_format}})

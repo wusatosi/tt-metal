@@ -131,10 +131,10 @@ operation::ProgramWithCallbacks paged_update_cache_multi_core(
     const tt::CBIndex src1_cb_index = CBIndex::c_1;
     const tt::CBIndex cb_index_id = CBIndex::c_2;
     const tt::CBIndex cb_pagetable_id = CBIndex::c_3;
-    const tt::CBIndex intermed0_cb_index = CBIndex::c_24;
-    const tt::CBIndex intermed1_cb_index = CBIndex::c_25;
-    const tt::CBIndex intermed2_cb_index = CBIndex::c_26;
-    const tt::CBIndex output_cb_index = CBIndex::c_16;
+    const tt::CBIndex intermed0_cb_index = CBIndex::c_5;
+    const tt::CBIndex intermed1_cb_index = CBIndex::c_6;
+    const tt::CBIndex intermed2_cb_index = CBIndex::c_7;
+    const tt::CBIndex output_cb_index = CBIndex::c_4;
 
     create_cb(src0_cb_index, program, all_cores, cache_single_tile_size, num_cache_tiles, cache_cb_data_format);
     auto [_, cb_src1] = create_cb(
