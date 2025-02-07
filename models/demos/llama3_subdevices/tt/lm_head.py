@@ -200,4 +200,6 @@ class LMHead(LightweightModule):
             )
             outputs_reduced.append(output_reduced)
 
+        ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.tt_ccl.worker_sub_device_id])
+
         return outputs_reduced
