@@ -67,7 +67,7 @@ private:
 
     // serialize all noc trace data into per-op json trace files
     void serializeJsonNocTraces(
-        const nlohmann::json& noc_trace_json_log,
+        const nlohmann::ordered_json& noc_trace_json_log,
         const std::filesystem::path& output_dir,
         int device_id,
         bool lastDump);
@@ -82,7 +82,7 @@ private:
     void logPacketData(
         const IDevice* device,
         std::ofstream& log_file_ofs,
-        nlohmann::json& noc_trace_json_log,
+        nlohmann::ordered_json& noc_trace_json_log,
         uint32_t runID,
         uint32_t runHostID,
         std::string opname,
@@ -116,7 +116,7 @@ private:
     // dump noc trace related profile data to json file
     void logNocTracePacketDataToJson(
         const IDevice* device,
-        nlohmann::json& noc_trace_json_log,
+        nlohmann::ordered_json& noc_trace_json_log,
         int device_id,
         int core_x,
         int core_y,
@@ -137,7 +137,7 @@ private:
         const IDevice* device,
         const std::optional<ProfilerOptionalMetadata>& metadata,
         std::ofstream& log_file_ofs,
-        nlohmann::json& noc_trace_json_log,
+        nlohmann::ordered_json& noc_trace_json_log,
         int device_id,
         const std::vector<std::uint32_t>& profile_buffer,
         const CoreCoord& worker_core);
