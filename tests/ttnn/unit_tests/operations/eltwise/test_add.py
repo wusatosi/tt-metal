@@ -58,7 +58,7 @@ def test_add_1D_tensor_and_scalar(device, scalar, size):
 @pytest.mark.parametrize("hw", [(32, 64), (1, 1), (0, 0)])
 def test_add_2D_tensors(device, hw):
     torch_input_tensor_a = torch.rand(hw, dtype=torch.bfloat16)
-    torch_input_tensor_b = torch.rand(hw, dtype=torch.bfloat16)
+    torch_input_tensor_b = torch.rand(hw, dtype=torch.float32)
     torch_output_tensor = torch.add(torch_input_tensor_a, torch_input_tensor_b)
 
     input_tensor_a = ttnn.from_torch(torch_input_tensor_a, layout=ttnn.TILE_LAYOUT, device=device)
