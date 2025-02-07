@@ -109,7 +109,6 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
         auto start_coord = device_range.start_coord;
         auto& sysmem_manager_for_trace = mesh_device_->get_device(start_coord.y, start_coord.x)->sysmem_manager();
         uint32_t sysmem_manager_offset = sysmem_manager_for_trace.get_issue_queue_write_ptr(id_);
-
         program_dispatch::update_program_dispatch_commands(
             program,
             program_cmd_seq,
@@ -133,6 +132,12 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
                 dispatch_core_type,
                 dispatch_metadata.stall_first,
                 dispatch_metadata.stall_before_program);
+            auto mesh_trace_md = MeshTraceCmdStorage{
+                device_range,
+                start_coord,
+                sysmem_manager_offset,
+                sysmem_manager_for_trace.get_issue_queue_write_ptr(id_) - sysmem_manager_offset};
+            ordered_mesh_trace_md_.push_back(mesh_trace_md);
         } else {
             for (std::size_t logical_x = device_range.start_coord.x; logical_x < device_range.end_coord.x + 1;
                  logical_x++) {
@@ -149,11 +154,6 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
                 }
             }
         }
-        auto mesh_trace_md = MeshTraceCmdStorage{
-            device_range,
-            start_coord,
-            sysmem_manager_offset,
-            sysmem_manager_for_trace.get_issue_queue_write_ptr(id_) - sysmem_manager_offset};
     }
     // Send go signals to devices not running a program to ensure consistent global state
     if (not sysmem_manager.get_bypass_mode()) {
@@ -703,9 +703,11 @@ void MeshCommandQueue::record_begin(uint32_t tid, const std::shared_ptr<MeshTrac
         expected_num_workers_completed_reset_,
         config_buffer_mgr_reset_);
 
-    for (std::size_t logical_x = 1; logical_x < mesh_device_->num_cols(); logical_x++) {
-        for (std::size_t logical_y = 1; logical_y < mesh_device_->num_rows(); logical_y++) {
-            mesh_device_->get_device(logical_y, logical_x)->sysmem_manager().set_bypass_mode(true, true);
+    for (std::size_t logical_x = 0; logical_x < mesh_device_->num_cols(); logical_x++) {
+        for (std::size_t logical_y = 0; logical_y < mesh_device_->num_rows(); logical_y++) {
+            if (not mesh_device_->get_device(logical_y, logical_x)->sysmem_manager().get_bypass_mode()) {
+                mesh_device_->get_device(logical_y, logical_x)->sysmem_manager().set_bypass_mode(true, true);
+            }
         }
     }
 
@@ -721,21 +723,40 @@ void MeshCommandQueue::record_end() {
         auto trace_data_word_offset = trace_md.offset / sizeof(uint32_t);
         auto trace_data_size_words = trace_md.size / sizeof(uint32_t);
         auto& bypass_data = sysmem_manager.get_bypass_data();
-        trace_data.push_back(MeshTraceData{
-            trace_md.device_range,
-            std::vector<uint32_t>(
-                bypass_data.begin() + trace_data_word_offset,
-                bypass_data.begin() + trace_data_word_offset + trace_data_size_words)});
+        bool intersection_found = false;
+        for (auto& program : trace_data) {
+            if (program.device_range.intersects(trace_md.device_range)) {
+                intersection_found = true;
+                std::vector<uint32_t> program_cmds_vector(
+                    bypass_data.begin() + trace_data_word_offset,
+                    bypass_data.begin() + trace_data_word_offset + trace_data_size_words);
+                program.data.insert(program.data.end(), program_cmds_vector.begin(), program_cmds_vector.end());
+            }
+        }
+        if (not intersection_found) {
+            trace_data.push_back(MeshTraceData{
+                trace_md.device_range,
+                std::vector<uint32_t>(
+                    bypass_data.begin() + trace_data_word_offset,
+                    bypass_data.begin() + trace_data_word_offset + trace_data_size_words)});
+        }
         trace_ctx_->total_trace_size += trace_md.size;
     }
 
+    auto bcast_device_range = LogicalDeviceRange({0, 0}, {mesh_device_->num_cols() - 1, mesh_device_->num_rows() - 1});
+    std::vector<uint32_t> exec_buf_end = {};
+
     DeviceCommand command_sequence(hal.get_alignment(HalMemType::HOST));
     command_sequence.add_prefetch_exec_buf_end();
-    auto bcast_device_range = LogicalDeviceRange({0, 0}, {mesh_device_->num_cols() - 1, mesh_device_->num_rows() - 1});
-    trace_data.push_back(
-        MeshTraceData{LogicalDeviceRange({0, 0}, {mesh_device_->num_cols() - 1, mesh_device_->num_rows() - 1}), {}});
+
     for (int i = 0; i < command_sequence.size_bytes() / sizeof(uint32_t); i++) {
-        trace_data.back().data.push_back(((uint32_t*)command_sequence.data())[i]);
+        exec_buf_end.push_back(((uint32_t*)command_sequence.data())[i]);
+    }
+
+    for (auto& program : trace_data) {
+        if (program.device_range.intersects(bcast_device_range)) {
+            program.data.insert(program.data.end(), exec_buf_end.begin(), exec_buf_end.end());
+        }
     }
     trace_ctx_->total_trace_size += command_sequence.size_bytes();
     tid_ = std::nullopt;
@@ -750,11 +771,14 @@ void MeshCommandQueue::record_end() {
         expected_num_workers_completed_reset_,
         config_buffer_mgr_reset_);
 
-    for (std::size_t logical_x = 1; logical_x < mesh_device_->num_cols(); logical_x++) {
-        for (std::size_t logical_y = 1; logical_y < mesh_device_->num_rows(); logical_y++) {
-            mesh_device_->get_device(logical_y, logical_x)->sysmem_manager().set_bypass_mode(false, true);
+    for (std::size_t logical_x = 0; logical_x < mesh_device_->num_cols(); logical_x++) {
+        for (std::size_t logical_y = 0; logical_y < mesh_device_->num_rows(); logical_y++) {
+            if (mesh_device_->get_device(logical_y, logical_x)->sysmem_manager().get_bypass_mode()) {
+                mesh_device_->get_device(logical_y, logical_x)->sysmem_manager().set_bypass_mode(false, true);
+            }
         }
     }
+    ordered_mesh_trace_md_.clear();
 }
 
 std::vector<MeshTraceCmdStorage>& MeshCommandQueue::get_mesh_trace_md() { return ordered_mesh_trace_md_; }

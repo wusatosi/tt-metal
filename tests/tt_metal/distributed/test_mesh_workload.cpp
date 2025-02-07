@@ -532,15 +532,17 @@ TEST_F(MeshWorkloadTest, TraceTest) {
     uint32_t seed = tt::parse_env("TT_METAL_SEED", random_seed);
     log_info(tt::LogTest, "Using Test Seed: {}", seed);
     srand(seed);
-    uint32_t num_workloads = 1;
+    uint32_t num_workloads = 25;
     log_info("Create {} MeshWorkloads", num_workloads);
-    auto programs = create_random_programs(num_workloads, mesh_device_->compute_with_storage_grid_size(), seed);
-    LogicalDeviceRange device_range = LogicalDeviceRange({0, 0}, {3, 1});
+    LogicalDeviceRange devices_0 = LogicalDeviceRange({0, 0}, {3, 0});
+    LogicalDeviceRange devices_1 = LogicalDeviceRange({0, 1}, {3, 1});
     std::vector<std::shared_ptr<MeshWorkload>> mesh_workloads = {};
 
     for (int i = 0; i < num_workloads; i++) {
+        auto programs = create_random_programs(2, mesh_device_->compute_with_storage_grid_size(), seed);
         auto random_workload = std::make_shared<MeshWorkload>();
-        AddProgramToMeshWorkload(*random_workload, *programs[i], device_range);
+        AddProgramToMeshWorkload(*random_workload, *programs[0], devices_0);
+        AddProgramToMeshWorkload(*random_workload, *programs[1], devices_1);
         EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), *random_workload, true);
         mesh_workloads.push_back(random_workload);
     }
