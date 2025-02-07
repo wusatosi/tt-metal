@@ -69,8 +69,8 @@ constexpr static std::uint32_t PROFILER_L1_BUFFER_SIZE = PROFILER_L1_VECTOR_SIZE
 
 }  // namespace kernel_profiler
 
-#if TT_METAL_DEVICE_PROFILER_NOC_EVENTS == 1
-constexpr static std::uint32_t PROFILER_OP_SUPPORT_COUNT = 50000;
+#if defined(TRACY_ENABLE) && defined(DEVICE_PROFILER_OP_SUPPORT_COUNT_OVERRIDE)
+constexpr static std::uint32_t PROFILER_OP_SUPPORT_COUNT = DEVICE_PROFILER_OP_SUPPORT_COUNT_OVERRIDE;
 #else
 constexpr static std::uint32_t PROFILER_OP_SUPPORT_COUNT = 1000;
 #endif
