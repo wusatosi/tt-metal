@@ -109,13 +109,13 @@ operation::ProgramWithCallbacks reduce_nc_factory(
 
     tt_metal::CircularBufferConfig cb_intermed0_config =
         tt_metal::CircularBufferConfig(
-            intermed0_t * intermed_cb_single_tile_size, {{CBIndex::c_24, intermed_cb_data_format}})
-            .set_page_size(CBIndex::c_24, intermed_cb_single_tile_size);
+            intermed0_t * intermed_cb_single_tile_size, {{CBIndex::c_3, intermed_cb_data_format}})
+            .set_page_size(CBIndex::c_3, intermed_cb_single_tile_size);
     auto cb_intermed0 = tt_metal::CreateCircularBuffer(program, all_cores, cb_intermed0_config);
 
     tt_metal::CircularBufferConfig cb_output_config =
-        tt_metal::CircularBufferConfig(out0_t * single_tile_size, {{CBIndex::c_16, cb_data_format}})
-            .set_page_size(CBIndex::c_16, single_tile_size);
+        tt_metal::CircularBufferConfig(out0_t * single_tile_size, {{CBIndex::c_2, cb_data_format}})
+            .set_page_size(CBIndex::c_2, single_tile_size);
     auto cb_output = tt_metal::CreateCircularBuffer(program, all_cores, cb_output_config);
 
     ////////////////////////////////////////////////////////////////////////////
