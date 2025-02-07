@@ -263,7 +263,7 @@ operation::ProgramWithCallbacks tilize_with_val_padding_multi_core_block_interle
          has_cliff_col,
          full_cores_per_row,
          full_cores_per_col] =
-            ttnn::split_blocks_for_tilize2(grid_size, num_blocks, num_tiles_per_row, num_tiles_per_col);
+            ttnn::split_blocks_for_tilize_wh(grid_size, num_blocks, num_tiles_per_row, num_tiles_per_col);
 
     uint32_t total_tiles_per_row = full_cores_per_row * single_block_size + has_cliff_row * single_block_size_cliff_row;
 
@@ -334,7 +334,7 @@ operation::ProgramWithCallbacks tilize_with_val_padding_multi_core_block_interle
 
     Buffer* src0_buffer = a.buffer();
     Buffer* dst_buffer = output.buffer();
-    TT_ASSERT(dst_buffer != nullptr, "Output buffer should be allocated on device!");
+    TT_FATAL(dst_buffer != nullptr, "Output buffer should be allocated on device!");
 
     // reader
 
@@ -374,11 +374,9 @@ operation::ProgramWithCallbacks tilize_with_val_padding_multi_core_block_interle
             {src0_is_dram,
              stick_size_is_power_of_two,
              log2_stick_size,
-             num_padding_rows,
              total_num_rows,
-             ncores,
              third_dim,
-             tile_width,
+             tile_height,
              a.element_size()}));
 
     // writer
@@ -462,11 +460,7 @@ operation::ProgramWithCallbacks tilize_with_val_padding_multi_core_block_interle
             src0_buffer->address(),
             unpadded_row_size_bytes,
             packed_pad_value,
-            i,
-            size_per_row_per_block,
-            number_blocks_per_core,
             TILE_WIDTH * a.element_size(),
-            TILE_HEIGHT,
             start_row_id,
             start_column_id,
             single_block_size_row_arg,

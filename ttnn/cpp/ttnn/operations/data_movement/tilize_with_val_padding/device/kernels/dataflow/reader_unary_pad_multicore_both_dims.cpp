@@ -16,17 +16,14 @@ FORCE_INLINE void fill_with_val(uint32_t begin_addr, uint32_t n, uint32_t val) {
 void kernel_main() {
     constexpr uint32_t cb_id_in0 = 0;
 
-    constexpr uint32_t num_padding_rows = get_compile_time_arg_val(3);
-    const uint32_t total_num_rows = get_compile_time_arg_val(4);
-    const uint32_t ncores = get_compile_time_arg_val(5);
-    const uint32_t third_dim = get_compile_time_arg_val(6);
-    const uint32_t tile_width = get_compile_time_arg_val(7);
-    const uint32_t element_size = get_compile_time_arg_val(8);
+    const uint32_t total_num_rows = get_compile_time_arg_val(3);
+    const uint32_t third_dim = get_compile_time_arg_val(4);
+    const uint32_t tile_height = get_compile_time_arg_val(5);
+    const uint32_t element_size = get_compile_time_arg_val(6);
 
     const uint32_t src_addr = get_arg_val<uint32_t>(0);
     const uint32_t unpadded_X_size = get_arg_val<uint32_t>(1);
     const uint32_t pad_value = get_arg_val<uint32_t>(2);
-    const uint32_t core_number = get_arg_val<uint32_t>(3);
 
     constexpr bool src0_is_dram = get_compile_time_arg_val(0) == 1;
 
@@ -40,8 +37,6 @@ void kernel_main() {
 #endif
 
     auto read_block = [&](uint32_t num_rows,
-                          uint32_t mul,
-                          uint32_t size_per_row_per_block,
                           uint32_t start_row_id,
                           uint32_t start_column_id,
                           uint32_t width_size,
@@ -65,7 +60,7 @@ void kernel_main() {
             uint32_t this_block_size = unpadded_X_size - prev_size;
             if (this_block_size < width_size * single_block_size) {
                 uint32_t to_pad = width_size * single_block_size - this_block_size;
-                fill_with_val(l1_write_addr + this_block_size + element_size, (to_pad) >> 2, 5);
+                fill_with_val(l1_write_addr + this_block_size + element_size, (to_pad) >> 2, pad_value);
             }
 
             // Block before copying data from tmp to cb buffer
@@ -74,24 +69,21 @@ void kernel_main() {
         }
 
         for (uint32_t pad_row = 0; pad_row < padding_rows; pad_row++) {
-            fill_with_val(l1_write_addr, (width_size * single_block_size >> 2), 3);
+            fill_with_val(l1_write_addr, (width_size * single_block_size >> 2), pad_value);
             l1_write_addr += width_size * single_block_size;
         }
 
         cb_push_back(cb_id_in0, single_block_size * has_rows);
     };
 
-    const uint32_t size_per_row_per_block = get_arg_val<uint32_t>(4);
-    const uint32_t blocks_per_core = get_arg_val<uint32_t>(5);
-    const uint32_t width_size = get_arg_val<uint32_t>(6);
-    const uint32_t tile_height = get_arg_val<uint32_t>(7);  // move to compile time
+    const uint32_t width_size = get_arg_val<uint32_t>(3);
 
     uint32_t size_2d = 0;
     for (uint32_t dim3 = 0; dim3 < third_dim; dim3++) {
-        uint32_t start_row_id = get_arg_val<uint32_t>(8);
-        uint32_t start_column_id = get_arg_val<uint32_t>(9);
-        uint32_t single_block_size_row_arg = get_arg_val<uint32_t>(10);
-        uint32_t single_block_size_col_arg = get_arg_val<uint32_t>(11);
+        uint32_t start_row_id = get_arg_val<uint32_t>(4);
+        uint32_t start_column_id = get_arg_val<uint32_t>(5);
+        uint32_t single_block_size_row_arg = get_arg_val<uint32_t>(6);
+        uint32_t single_block_size_col_arg = get_arg_val<uint32_t>(7);
         for (uint32_t b = 0; b < single_block_size_col_arg; b++) {
             uint32_t this_block_num_rows = tile_height;
             if (start_row_id + tile_height > total_num_rows) {
@@ -100,9 +92,6 @@ void kernel_main() {
             if (this_block_num_rows > 0) {
                 read_block(
                     this_block_num_rows,
-                    core_number,
-                    size_per_row_per_block,
-                    // padded_size_per_row,
                     start_row_id,
                     start_column_id,
                     width_size,
