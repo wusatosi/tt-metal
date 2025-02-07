@@ -35,12 +35,12 @@ operation::ProgramWithCallbacks consolidate_cache(
     const Tensor& output_tensor) {
     Program program = CreateProgram();
 
-    auto input_shape = input_tensor.get_shape();
+    auto input_shape = input_tensor.get_logical_shape();
     tt::DataFormat input_df = tt_metal::datatype_to_dataformat_converter(input_tensor.get_dtype());
     auto input_element_size = input_tensor.element_size();
     auto input_num_tiles = input_tensor.buffer()->num_pages();
     const uint32_t input_is_dram = input_tensor.buffer()->buffer_type() == BufferType::DRAM ? 1 : 0;
-    const uint32_t B = priority_tensor.get_shape()[2];
+    const uint32_t B = priority_tensor.get_logical_shape()[2];
 
     CoreCoord worker_core = {0, 0};  // TODO: assume single core for now
 

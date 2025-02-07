@@ -48,7 +48,9 @@ def commit_priority_tensor(priority_tensor, skip_tensor, mesh_device):
         use_height_and_width_as_shard_shape=True,
     )
 
-    new_skip_tensor = ttnn.repeat(priority_tensor, ttnn.Shape([64, 1, 1, 1]))
+    # new_skip_tensor = ttnn.repeat(priority_tensor, ttnn.Shape((64, 1, 1, 1)))
+    new_skip_tensor = ttnn.concat([priority_tensor] * 32, dim=0)
+    new_skip_tensor = ttnn.concat([new_skip_tensor] * 2, dim=0)
     new_skip_tensor = ttnn.to_memory_config(new_skip_tensor, skip_tensor_mem_config)
 
     ttnn.copy_tensor(new_skip_tensor, skip_tensor)

@@ -265,7 +265,7 @@ std::vector<TensorSpec> SpeculativeScaledDotProductAttentionDecode::compute_outp
         input.get_logical_shape(), TensorLayout(input.get_dtype(), PageConfig(Layout::TILE), output_mem_config));
 
     auto batch_size = input.get_logical_shape()[1];
-    ttnn::SimpleShape spec_stat_shape{1, 1, batch_size, 1};
+    ttnn::Shape spec_stat_shape{1, 1, batch_size, 1};
     MemoryConfig stat_mem_cfg = MemoryConfig{
         .memory_layout = tt::tt_metal::TensorMemoryLayout::INTERLEAVED,
         .buffer_type = BufferType::DRAM,

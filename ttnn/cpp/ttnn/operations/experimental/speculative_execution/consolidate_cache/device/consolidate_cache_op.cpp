@@ -23,10 +23,10 @@ void ConsolidateCache::validate(const std::vector<Tensor>& input_tensors) const 
         input.get_dtype(),
         other.get_dtype());
     TT_FATAL(
-        input.get_shape() == other.get_shape(),
+        input.get_logical_shape() == other.get_logical_shape(),
         "Input and other tensors must have the same shape, got {} and {}",
-        input.get_shape(),
-        other.get_shape());
+        input.get_logical_shape(),
+        other.get_logical_shape());
     TT_FATAL(
         input.layout() == other.layout(),
         "Input and other tensors must have the same layout, got {} and {}",
@@ -38,10 +38,10 @@ void ConsolidateCache::validate(const std::vector<Tensor>& input_tensors) const 
         input.memory_config(),
         other.memory_config());
     TT_FATAL(
-        priority.get_shape() == other_priority.get_shape(),
+        priority.get_logical_shape() == other_priority.get_logical_shape(),
         "Priority and other_priority tensors must have the same shape, got {} and {}",
-        priority.get_shape(),
-        other_priority.get_shape());
+        priority.get_logical_shape(),
+        other_priority.get_logical_shape());
     TT_FATAL(
         priority.get_dtype() == other_priority.get_dtype(),
         "Priority and other_priority tensors must have the same dtype, got {} and {}",

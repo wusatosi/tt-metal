@@ -62,7 +62,12 @@ std::tuple<KernelHandle, KernelHandle> ccl_multi_core_with_workers(
         is_last_chip);
     std::optional<ttnn::ccl::EdmLineFabricOpInterface> local_fabric_handle =
         ttnn::ccl::EdmLineFabricOpInterface::build_program_builder_worker_connection_fabric(
-            device, forward_device, backward_device, &program, true /*enable_persistent_fabric_mode*/, num_links);
+            device,
+            forward_device.value_or(nullptr),
+            backward_device.value_or(nullptr),
+            &program,
+            true /*enable_persistent_fabric_mode*/,
+            num_links);
     LineTopology line_topology(ring_size, ring_index);
 
     // Get OP Config, topology config

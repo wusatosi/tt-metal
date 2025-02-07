@@ -19,17 +19,17 @@ void CopyTensor::validate(const std::vector<Tensor>& input_tensors) const {}
 
 std::vector<ttnn::TensorSpec> CopyTensor::compute_output_specs(const std::vector<Tensor>& input_tensors) const {
     return {ttnn::TensorSpec(
-        ttnn::SimpleShape{32, 32},
+        ttnn::Shape{32, 32},
         tt::tt_metal::TensorLayout(input_tensors[0].dtype(), PageConfig(input_tensors[0].layout()), MemoryConfig{}))};
 }
 
 // TODO: Remove output tensor entirely (if possible)
-std::vector<ttnn::SimpleShape> CopyTensor::compute_output_shapes(const std::vector<Tensor>& input_tensors) const {
-    return {ttnn::SimpleShape{32, 32}};
+std::vector<ttnn::Shape> CopyTensor::compute_output_shapes(const std::vector<Tensor>& input_tensors) const {
+    return {ttnn::Shape{32, 32}};
 }
 std::vector<Tensor> CopyTensor::create_output_tensors(const std::vector<Tensor>& input_tensors) const {
     auto output_tensor = create_device_tensor(
-        ttnn::SimpleShape{32, 32},
+        ttnn::Shape{32, 32},
         input_tensors[0].dtype(),
         input_tensors[0].layout(),
         input_tensors[0].device(),

@@ -16,7 +16,7 @@ operation::ProgramWithCallbacks copy_tensor_multi_core(const Tensor& src_tensor,
 
 struct CopyTensor {
     void validate(const std::vector<Tensor>& input_tensors) const;
-    std::vector<ttnn::SimpleShape> compute_output_shapes(const std::vector<Tensor>& input_tensors) const;
+    std::vector<ttnn::Shape> compute_output_shapes(const std::vector<Tensor>& input_tensors) const;
     std::vector<ttnn::TensorSpec> compute_output_specs(const std::vector<Tensor>& input_tensors) const;
     std::vector<Tensor> create_output_tensors(const std::vector<Tensor>& input_tensors) const;
     operation::ProgramWithCallbacks create_program(
