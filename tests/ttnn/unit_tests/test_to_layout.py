@@ -341,15 +341,18 @@ def test_untilize_w4(shape, input_layout, output_layout, device):
     assert_with_pcc(input_a[:, :, :1, :10912], output_tensor)
 
 
-@pytest.mark.parametrize("width", [56, 64])
-def test_shard_untilize_with_unpad(device, width):
+def test_shard_untilize(device):
     torch.manual_seed(2005)
-    torch_tensor = torch.rand(1, 1, 127008, width, dtype=torch.bfloat16)
+
+    # conv_output_slice.shape=Shape([1, 1, 29640, 128])
+    # conv_output_slice.memory_config()=MemoryConfig(memory_layout=TensorMemoryLayout::HEIGHT_SHARDED,buffer_type=BufferType::L1,shard_spec=ShardSpec(grid={[(x=0,y=0) - (x=7,y=6)], [(x=0,y=7) - (x=5,y=7)]},shape={480, 128},orientation=ShardOrientation::ROW_MAJOR,mode=ShardMode::PHYSICAL,physical_shard_shape=std::nullopt))
+
+    torch_tensor = torch.rand(1, 1, 29640, 128, dtype=torch.bfloat16)
 
     sharded_memory_config = ttnn.create_sharded_memory_config(
         [
-            127008 // 63,  # division with // 63 because shard is on that many cores,
-            64,  # width is 64 because it needs to be padded when going to TILE_LAYOUT
+            480,
+            128,
         ],
         core_grid=ttnn.CoreRangeSet(
             {
@@ -359,7 +362,7 @@ def test_shard_untilize_with_unpad(device, width):
                 ),
                 ttnn.CoreRange(
                     ttnn.CoreCoord(0, 7),
-                    ttnn.CoreCoord(6, 7),
+                    ttnn.CoreCoord(5, 7),
                 ),
             }
         ),
@@ -373,7 +376,10 @@ def test_shard_untilize_with_unpad(device, width):
     # uncomment to test on dram (passes)
     # input_tensor = ttnn.to_memory_config(input_tensor, ttnn.DRAM_MEMORY_CONFIG)
 
-    output_tensor = ttnn.to_layout(input_tensor, layout=ttnn.ROW_MAJOR_LAYOUT)
+    output_tensor = ttnn.to_layout(input_tensor, layout=ttnn.ROW_MAJOR_LAYOUT, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+    print(f"output_tensor.memory_config()={output_tensor.memory_config()}")
+    assert output_tensor.memory_config() == ttnn.DRAM_MEMORY_CONFIG, "Memory config is not DRAM"
+
     output_tensor = ttnn.to_torch(output_tensor)
     assert torch_tensor.shape == output_tensor.shape
     assert_with_pcc(torch_tensor, output_tensor, 0.9999)
