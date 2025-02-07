@@ -81,6 +81,11 @@ public:
     uint32_t get_cb_size(std::shared_ptr<MeshDevice>& mesh_device, CoreCoord logical_core, CoreType core_type);
 };
 
+struct MeshTraceData {
+    LogicalDeviceRange device_range = LogicalDeviceRange({0, 0});
+    std::vector<uint32_t> data = {};
+};
+
 struct MeshTraceDescriptor {
     // The total number of workers (per logical device) that are functional for
     // the entire trace
@@ -88,7 +93,8 @@ struct MeshTraceDescriptor {
     // Number of Workloads captured by the trace
     uint32_t num_workloads = 0;
     // Trace data per logical Device in a Mesh.
-    std::vector<uint32_t> trace_data;
+    std::vector<MeshTraceData> ordered_trace_data;
+    uint32_t total_trace_size = 0;
 };
 
 struct MeshTraceBuffer {

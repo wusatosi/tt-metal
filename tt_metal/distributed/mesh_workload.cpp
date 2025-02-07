@@ -347,18 +347,15 @@ size_t interleaved_page_size(
 }
 
 void MeshTrace::populate_mesh_buffer(MeshCommandQueue& mesh_cq, std::shared_ptr<MeshTraceBuffer> trace_buffer) {
-    std::vector<uint32_t>& trace_data = trace_buffer->desc->trace_data;
-    uint64_t unpadded_size = trace_data.size() * sizeof(uint32_t);
+    auto mesh_device = mesh_cq.device();
+    uint64_t unpadded_size = trace_buffer->desc->total_trace_size;
     size_t page_size = interleaved_page_size(
         unpadded_size,
         mesh_cq.device()->allocator()->get_num_banks(BufferType::DRAM),
         kExecBufPageMin,
         kExecBufPageMax);
-    uint64_t padded_size = round_up(unpadded_size, page_size);
-    size_t numel_padding = (padded_size - unpadded_size) / sizeof(uint32_t);
-    if (numel_padding > 0) {
-        trace_data.resize(trace_data.size() + numel_padding, 0 /*padding value*/);
-    }
+    size_t padded_size = round_up(unpadded_size, page_size);
+
     const auto current_trace_buffers_size = mesh_cq.device()->get_trace_buffers_size();
     mesh_cq.device()->set_trace_buffers_size(current_trace_buffers_size + padded_size);
     auto trace_region_size = mesh_cq.device()->allocator()->get_config().trace_region_size;
@@ -379,10 +376,66 @@ void MeshTrace::populate_mesh_buffer(MeshCommandQueue& mesh_cq, std::shared_ptr<
         .size = padded_size,
     };
 
-    // Commit trace to device DRAM
     trace_buffer->mesh_buffer =
         MeshBuffer::create(global_trace_buf_config, device_local_trace_buf_config, mesh_cq.device());
-    EnqueueWriteMeshBuffer(mesh_cq, trace_buffer->mesh_buffer, trace_data, kBlocking);
+
+    std::unordered_map<LogicalDeviceRange, uint32_t> write_offset_per_device_range = {};
+    for (auto& mesh_trace_data : trace_buffer->desc->ordered_trace_data) {
+        auto& device_range = mesh_trace_data.device_range;
+        if (write_offset_per_device_range.find(device_range) == write_offset_per_device_range.end()) {
+            write_offset_per_device_range.insert({device_range, 0});
+        }
+        std::vector<uint32_t> write_data = mesh_trace_data.data;
+        auto unpadded_data_size = write_data.size() * sizeof(uint32_t);
+        auto padded_data_size = round_up(unpadded_size, page_size);
+        size_t numel_padding = (padded_data_size - unpadded_data_size) / sizeof(uint32_t);
+        if (numel_padding > 0) {
+            write_data.resize(write_data.size() + numel_padding, 0);
+        }
+
+        auto write_region =
+            BufferRegion(write_offset_per_device_range.at(device_range), write_data.size() * sizeof(uint32_t));
+        mesh_cq.enqueue_write_shard_to_sub_grid(
+            *(trace_buffer->mesh_buffer), write_data.data(), device_range, kBlocking, write_region);
+        write_offset_per_device_range.at(device_range) += mesh_trace_data.data.size() * sizeof(uint32_t);
+    }
+    // auto bcast_device_range = LogicalDeviceRange({0, 0}, {mesh_device->num_cols() - 1, mesh_device->num_rows() - 1});
+    // std::vector<uint32_t>& trace_data = trace_buffer->desc->ordered_trace_data[bcast_device_range];
+    // uint64_t unpadded_size = trace_data.size() * sizeof(uint32_t);
+    // size_t page_size = interleaved_page_size(
+    //     unpadded_size,
+    //     mesh_cq.device()->allocator()->get_num_banks(BufferType::DRAM),
+    //     kExecBufPageMin,
+    //     kExecBufPageMax);
+    // uint64_t padded_size = round_up(unpadded_size, page_size);
+    // size_t numel_padding = (padded_size - unpadded_size) / sizeof(uint32_t);
+    // if (numel_padding > 0) {
+    //     trace_data.resize(trace_data.size() + numel_padding, 0 /*padding value*/);
+    // }
+    // const auto current_trace_buffers_size = mesh_cq.device()->get_trace_buffers_size();
+    // mesh_cq.device()->set_trace_buffers_size(current_trace_buffers_size + padded_size);
+    // auto trace_region_size = mesh_cq.device()->allocator()->get_config().trace_region_size;
+    // TT_FATAL(
+    //     mesh_cq.device()->get_trace_buffers_size() <= trace_region_size,
+    //     "Creating trace buffers of size {}B on MeshDevice {}, but only {}B is allocated for trace region.",
+    //     mesh_cq.device()->get_trace_buffers_size(),
+    //     mesh_cq.device()->id(),
+    //     trace_region_size);
+
+    // DeviceLocalBufferConfig device_local_trace_buf_config = {
+    //     .page_size = page_size,
+    //     .buffer_type = BufferType::TRACE,
+    //     .buffer_layout = TensorMemoryLayout::INTERLEAVED,
+    // };
+
+    // ReplicatedBufferConfig global_trace_buf_config = {
+    //     .size = padded_size,
+    // };
+
+    // // Commit trace to device DRAM
+    // trace_buffer->mesh_buffer =
+    //     MeshBuffer::create(global_trace_buf_config, device_local_trace_buf_config, mesh_cq.device());
+    // EnqueueWriteMeshBuffer(mesh_cq, trace_buffer->mesh_buffer, trace_data, kBlocking);
 }
 
 }  // namespace tt::tt_metal::distributed

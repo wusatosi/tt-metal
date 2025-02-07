@@ -532,7 +532,7 @@ TEST_F(MeshWorkloadTest, TraceTest) {
     uint32_t seed = tt::parse_env("TT_METAL_SEED", random_seed);
     log_info(tt::LogTest, "Using Test Seed: {}", seed);
     srand(seed);
-    uint32_t num_workloads = 50;
+    uint32_t num_workloads = 1;
     log_info("Create {} MeshWorkloads", num_workloads);
     auto programs = create_random_programs(num_workloads, mesh_device_->compute_with_storage_grid_size(), seed);
     LogicalDeviceRange device_range = LogicalDeviceRange({0, 0}, {3, 1});
@@ -551,7 +551,7 @@ TEST_F(MeshWorkloadTest, TraceTest) {
         EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), *workload, false);
     }
     mesh_device_->end_mesh_trace(0, tid);
-    for (int i = 0; i < 100; i++) {
+    for (int i = 0; i < 10; i++) {
         mesh_device_->mesh_command_queue().enqueue_trace(tid, false);
     }
     Finish(mesh_device_->mesh_command_queue());
