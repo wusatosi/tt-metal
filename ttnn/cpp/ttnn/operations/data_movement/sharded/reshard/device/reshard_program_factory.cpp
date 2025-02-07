@@ -435,7 +435,7 @@ operation::ProgramWithCallbacks reshard_multi_core_generic(const Tensor& input, 
     auto grid = input.buffer()->buffer_type() == BufferType::DRAM ? device->dram_grid_size()
                                                                   : device->compute_with_storage_grid_size();
     auto input_core_type = input.buffer()->core_type();
-    uint32_t dst_cb_index = 16;
+    uint32_t dst_cb_index = 1;
     auto cores =
         corerange_to_cores(all_cores, std::nullopt, output_shard_spec.orientation == ShardOrientation::ROW_MAJOR);
 
