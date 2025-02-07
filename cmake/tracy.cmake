@@ -31,7 +31,7 @@ target_compile_options(TracyClient PUBLIC -fno-omit-frame-pointer)
 target_link_options(TracyClient PUBLIC -rdynamic)
 
 # Allow changing the max number of profiler events trackable in device DRAM for
-# each Tensix core. 1000 events ~ 5MB of total DRAM space for all worker cores.
+# each Tensix core. 1000 events ~ 5MB of total DRAM overhead.
 if(DEFINED ENV{TT_METAL_DEVICE_PROFILER_OP_SUPPORT_COUNT_OVERRIDE})
     target_compile_definitions(
         TracyClient
