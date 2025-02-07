@@ -113,11 +113,24 @@ std::vector<Program> build(
     uint32_t worker_buffer_1_addr = worker_buffer_1->address();
 
     // eth core ct args
-    const std::vector<uint32_t>& eth_sender_ct_args = {
-        num_buffer_slots, worker_noc_x, worker_noc_y, worker_buffer_0_addr};
+    std::vector<uint32_t> eth_sender_ct_args = {num_buffer_slots, worker_noc_x, worker_noc_y, worker_buffer_0_addr};
 
-    const std::vector<uint32_t>& eth_receiver_ct_args = {
-        num_buffer_slots, worker_noc_x, worker_noc_y, worker_buffer_1_addr};
+    std::vector<uint32_t> eth_receiver_ct_args = {num_buffer_slots, worker_noc_x, worker_noc_y, worker_buffer_1_addr};
+
+    if (enable_worker) {
+        eth_sender_ct_args.push_back(1);
+        eth_receiver_ct_args.push_back(1);
+    } else {
+        eth_sender_ct_args.push_back(0);
+        eth_receiver_ct_args.push_back(0);
+    }
+    if (disable_trid) {
+        eth_sender_ct_args.push_back(1);
+        eth_receiver_ct_args.push_back(1);
+    } else {
+        eth_sender_ct_args.push_back(0);
+        eth_receiver_ct_args.push_back(0);
+    }
 
     // eth core rt args
     const std::vector<uint32_t>& eth_sender_receiver_rt_args = {
@@ -132,17 +145,11 @@ std::vector<Program> build(
     if (test_latency) {
         sender_receiver_defines["TEST_LATENCY"] = "1";
     }
-    if (enable_worker) {
-        sender_receiver_defines["ENABLE_WORKER"] = "1";
-    }
-    if (disable_trid) {
-        sender_receiver_defines["DISABLE_TRID"] = "1";
-    }
 
     local_kernel = tt_metal::CreateKernel(
         program0,
         "tests/tt_metal/tt_metal/test_kernels/dataflow/unit_tests/erisc/"
-        "ethernet_write_worker_latency_ubench_sender.cpp",
+        "eth_send_recv_write_worker_ubench_sender.cpp",
         eth_sender_core,
         tt_metal::EthernetConfig{
             .noc = tt_metal::NOC::RISCV_0_default,
@@ -153,7 +160,7 @@ std::vector<Program> build(
     remote_kernel = tt_metal::CreateKernel(
         program1,
         "tests/tt_metal/tt_metal/test_kernels/dataflow/unit_tests/erisc/"
-        "ethernet_write_worker_latency_ubench_receiver.cpp",
+        "eth_send_recv_write_worker_ubench_receiver.cpp",
         eth_receiver_core,
         tt_metal::EthernetConfig{
             .noc = tt_metal::NOC::RISCV_0_default,

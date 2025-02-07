@@ -41,15 +41,6 @@ bool is_power_of_two(T val) {
     return (val & (val - 1)) == T(0);
 }
 
-// ******************************* Common Ct Args ************************************************
-
-constexpr uint32_t NUM_BUFFER_SLOTS = get_compile_time_arg_val(0);
-constexpr uint32_t MAX_NUM_TRANSACTION_ID =
-    NUM_BUFFER_SLOTS / 2;  // the algorithm only works for NUM_BUFFER_SLOTS divisible by MAX_NUM_TRANSACTION_ID
-constexpr uint32_t worker_noc_x = get_compile_time_arg_val(1);
-constexpr uint32_t worker_noc_y = get_compile_time_arg_val(2);
-constexpr uint32_t worker_buffer_addr = get_compile_time_arg_val(3);
-
 // ******************************* Sender APIs ***************************************************
 
 FORCE_INLINE uint32_t setup_sender_buffer(
@@ -210,6 +201,26 @@ FORCE_INLINE void write_worker(
     buffer_slot_sync_addr->bytes_sent = 0;
 }
 
+template <bool disable_trid>
+FORCE_INLINE void write_worker(
+    uint32_t buffer_slot_addr,
+    volatile eth_buffer_slot_sync_t* buffer_slot_sync_addr,
+    uint64_t worker_noc_addr,
+    uint32_t message_size,
+    uint32_t curr_trid_to_write) {
+    // write to local
+    if constexpr (disable_trid) {
+        noc_async_write(buffer_slot_addr, worker_noc_addr, message_size);
+        noc_async_writes_flushed();
+    } else {
+        noc_async_write_one_packet_with_trid_with_state(
+            buffer_slot_addr, worker_noc_addr, message_size, curr_trid_to_write);
+    }
+    // reset sync
+    buffer_slot_sync_addr->bytes_sent = 0;
+}
+
+template <bool enable_worker, bool disable_trid>
 FORCE_INLINE void check_incomping_packet_and_write_worker(
     const std::array<uint32_t, NUM_BUFFER_SLOTS>& buffer_slot_addrs,
     const std::array<volatile eth_buffer_slot_sync_t*, NUM_BUFFER_SLOTS>& buffer_slot_sync_addrs,
@@ -221,15 +232,20 @@ FORCE_INLINE void check_incomping_packet_and_write_worker(
     bool buffer_not_full = next_write_ptr != read_ptr;
 
     if (buffer_not_full && has_incoming_packet(buffer_slot_sync_addrs[write_ptr])) {
-#ifdef ENABLE_WORKER
-        uint32_t curr_trid = get_buffer_slot_trid(write_ptr);
-        write_worker(
-            buffer_slot_addrs[write_ptr], buffer_slot_sync_addrs[write_ptr], worker_noc_addr, message_size, curr_trid);
-#endif
+        if constexpr (enable_worker) {
+            uint32_t curr_trid = get_buffer_slot_trid(write_ptr);
+            write_worker<disable_trid>(
+                buffer_slot_addrs[write_ptr],
+                buffer_slot_sync_addrs[write_ptr],
+                worker_noc_addr,
+                message_size,
+                curr_trid);
+        }
         write_ptr = next_write_ptr;
     }
 }
 
+template <bool enable_worker, bool disable_trid>
 FORCE_INLINE void check_write_worker_done_and_send_ack(
     const std::array<volatile eth_buffer_slot_sync_t*, NUM_BUFFER_SLOTS>& buffer_slot_sync_addrs,
     uint32_t& read_ptr,
@@ -237,21 +253,23 @@ FORCE_INLINE void check_write_worker_done_and_send_ack(
     uint32_t& num_messages_ack) {
     bool buffer_not_empty = read_ptr != write_ptr;
 
-#if defined(ENABLE_WORKER) and !defined(DISABLE_TRID)
-    uint32_t curr_trid = get_buffer_slot_trid(read_ptr);
-    if (buffer_not_empty && write_worker_done(curr_trid)) {
-#else
-    if (buffer_not_empty) {
-#endif
-        // DPRINT << "read_ptr " << read_ptr <<ENDL();
-        ack_complete(buffer_slot_sync_addrs[read_ptr]);
-
-        read_ptr = advance_buffer_slot_ptr(read_ptr);
-
-        num_messages_ack++;
+    if constexpr (enable_worker && !disable_trid) {
+        uint32_t curr_trid = get_buffer_slot_trid(read_ptr);
+        if (buffer_not_empty && write_worker_done(curr_trid)) {
+            ack_complete(buffer_slot_sync_addrs[read_ptr]);
+            read_ptr = advance_buffer_slot_ptr(read_ptr);
+            num_messages_ack++;
+        }
+    } else {
+        if (buffer_not_empty) {
+            ack_complete(buffer_slot_sync_addrs[read_ptr]);
+            read_ptr = advance_buffer_slot_ptr(read_ptr);
+            num_messages_ack++;
+        }
     }
 }
 
+template <bool enable_worker, bool disable_trid>
 FORCE_INLINE void update_receiver_state(
     const std::array<uint32_t, NUM_BUFFER_SLOTS>& buffer_slot_addrs,
     const std::array<volatile eth_buffer_slot_sync_t*, NUM_BUFFER_SLOTS>& buffer_slot_sync_addrs,
@@ -261,8 +279,9 @@ FORCE_INLINE void update_receiver_state(
     uint32_t& buffer_read_ptr,
     uint32_t& buffer_write_ptr) {
     // Check if there's an incoming packet for current buffer slot and write to worker if there's new packet
-    check_incomping_packet_and_write_worker(
+    check_incomping_packet_and_write_worker<enable_worker, disable_trid>(
         buffer_slot_addrs, buffer_slot_sync_addrs, buffer_read_ptr, buffer_write_ptr, worker_noc_addr, message_size);
     // Check if the write for trid is done, and ack sender if the current buffer slot is done
-    check_write_worker_done_and_send_ack(buffer_slot_sync_addrs, buffer_read_ptr, buffer_write_ptr, num_messages_ack);
+    check_write_worker_done_and_send_ack<enable_worker, disable_trid>(
+        buffer_slot_sync_addrs, buffer_read_ptr, buffer_write_ptr, num_messages_ack);
 }

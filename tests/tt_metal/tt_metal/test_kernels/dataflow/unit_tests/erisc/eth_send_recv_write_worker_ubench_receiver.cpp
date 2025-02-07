@@ -2,13 +2,25 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#include "ethernet_write_worker_latency_ubench_common.hpp"
+// ******************************* Common Ct Args ************************************************
+constexpr uint32_t NUM_BUFFER_SLOTS = get_compile_time_arg_val(0);
+constexpr uint32_t MAX_NUM_TRANSACTION_ID =
+    NUM_BUFFER_SLOTS / 2;  // the algorithm only works for NUM_BUFFER_SLOTS divisible by MAX_NUM_TRANSACTION_ID
+constexpr uint32_t worker_noc_x = get_compile_time_arg_val(1);
+constexpr uint32_t worker_noc_y = get_compile_time_arg_val(2);
+constexpr uint32_t worker_buffer_addr = get_compile_time_arg_val(3);
+constexpr bool ENABLE_WORKER = get_compile_time_arg_val(4) == 1;
+constexpr bool DISABLE_TRID = get_compile_time_arg_val(5) == 1;
 
-FORCE_INLINE void main_loop_uni_dir(
-    const std::array<uint32_t, NUM_BUFFER_SLOTS>& buffer_slot_addrs,
-    const std::array<volatile eth_buffer_slot_sync_t*, NUM_BUFFER_SLOTS>& buffer_slot_sync_addrs,
-    uint32_t full_payload_size,
-    uint32_t num_messages) {
+#include "eth_send_recv_write_worker_ubench_common.hpp"
+
+///////////////////////////////////////////////// receiver main loop /////////////////////////////////////////////////
+FORCE_INLINE void main_receiver_loop_uni_dir(
+    const std::array<uint32_t, NUM_BUFFER_SLOTS>& receiver_buffer_slot_addrs,
+    const std::array<volatile eth_buffer_slot_sync_t*, NUM_BUFFER_SLOTS>& receiver_buffer_slot_sync_addrs,
+    uint32_t message_size,
+    uint32_t num_messages,
+    uint64_t worker_noc_addr) {
     uint32_t total_msgs =
 #ifdef TEST_LATENCY
         num_messages;
@@ -16,28 +28,31 @@ FORCE_INLINE void main_loop_uni_dir(
         num_messages * NUM_BUFFER_SLOTS;
 #endif
 
-    DPRINT << "SENDER MAIN LOOP" << ENDL();
+    DPRINT << "RECEIVER MAIN LOOP" << ENDL();
 
-    uint32_t sender_buffer_read_ptr = 0;
-    uint32_t sender_buffer_write_ptr = 0;
-    uint32_t sender_num_messages_ack = 0;
-    uint32_t sender_num_messages_send = total_msgs;
+    uint32_t receiver_buffer_read_ptr = 0;
+    uint32_t receiver_buffer_write_ptr = 0;
+    uint32_t receiver_num_messages_ack = 0;
 
-    while (sender_num_messages_ack < total_msgs) {
-        update_sender_state(
-            buffer_slot_addrs,
-            buffer_slot_sync_addrs,
-            full_payload_size,
-            sender_num_messages_ack,
-            sender_num_messages_send,
-            sender_buffer_read_ptr,
-            sender_buffer_write_ptr);
+    noc_async_write_one_packet_with_trid_set_state(worker_noc_addr);
+
+    while (receiver_num_messages_ack < total_msgs) {
+        update_receiver_state<ENABLE_WORKER, DISABLE_TRID>(
+            receiver_buffer_slot_addrs,
+            receiver_buffer_slot_sync_addrs,
+            worker_noc_addr,
+            message_size,
+            receiver_num_messages_ack,
+            receiver_buffer_read_ptr,
+            receiver_buffer_write_ptr);
 
         // not called in normal execution mode
         switch_context_if_debug();
     }
 }
 
+///////////////////////////////////////////////// sender receiver main loop
+////////////////////////////////////////////////////
 FORCE_INLINE void main_loop_bi_dir(
     const std::array<uint32_t, NUM_BUFFER_SLOTS>& sender_buffer_slot_addrs,
     const std::array<volatile eth_buffer_slot_sync_t*, NUM_BUFFER_SLOTS>& sender_buffer_slot_sync_addrs,
@@ -54,7 +69,7 @@ FORCE_INLINE void main_loop_bi_dir(
         num_messages * NUM_BUFFER_SLOTS * 2;
 #endif
 
-    DPRINT << "SENDER MAIN LOOP" << ENDL();
+    DPRINT << "RECEIVER MAIN LOOP" << ENDL();
 
     uint32_t sender_buffer_read_ptr = 0;
     uint32_t sender_buffer_write_ptr = 0;
@@ -82,7 +97,7 @@ FORCE_INLINE void main_loop_bi_dir(
             sender_buffer_read_ptr,
             sender_buffer_write_ptr);
 
-        update_receiver_state(
+        update_receiver_state<ENABLE_WORKER, DISABLE_TRID>(
             receiver_buffer_slot_addrs,
             receiver_buffer_slot_sync_addrs,
             worker_noc_addr,
@@ -109,27 +124,26 @@ void kernel_main() {
 
     uint32_t buffer_start_addr = handshake_addr + sizeof(eth_buffer_slot_sync_t);
 
-    std::array<uint32_t, NUM_BUFFER_SLOTS> sender_buffer_slot_addrs;
-    std::array<volatile eth_buffer_slot_sync_t*, NUM_BUFFER_SLOTS> sender_buffer_slot_sync_addrs;
-    buffer_start_addr =
-        setup_sender_buffer(sender_buffer_slot_addrs, sender_buffer_slot_sync_addrs, buffer_start_addr, message_size);
-
-#ifdef ENABLE_BI_DIRECTION
     std::array<uint32_t, NUM_BUFFER_SLOTS> receiver_buffer_slot_addrs;
     std::array<volatile eth_buffer_slot_sync_t*, NUM_BUFFER_SLOTS> receiver_buffer_slot_sync_addrs;
-    setup_receiver_buffer(receiver_buffer_slot_addrs, receiver_buffer_slot_sync_addrs, buffer_start_addr, message_size);
+    buffer_start_addr = setup_receiver_buffer(
+        receiver_buffer_slot_addrs, receiver_buffer_slot_sync_addrs, buffer_start_addr, message_size);
+
+#ifdef ENABLE_BI_DIRECTION
+    std::array<uint32_t, NUM_BUFFER_SLOTS> sender_buffer_slot_addrs;
+    std::array<volatile eth_buffer_slot_sync_t*, NUM_BUFFER_SLOTS> sender_buffer_slot_sync_addrs;
+    setup_sender_buffer(sender_buffer_slot_addrs, sender_buffer_slot_sync_addrs, buffer_start_addr, message_size);
 #endif
 
     // Avoids hang in issue https://github.com/tenstorrent/tt-metal/issues/9963
     for (uint32_t i = 0; i < 2000000000; i++) {
         asm volatile("nop");
     }
-    eth_setup_handshake(handshake_addr, true);
 
     // worker noc address
-#ifdef ENABLE_BI_DIRECTION
     uint64_t worker_noc_addr = get_noc_addr(worker_noc_x, worker_noc_y, worker_buffer_addr);
-#endif
+
+    eth_setup_handshake(handshake_addr, false);
 
     {
         DeviceZoneScopedN("MAIN-TEST-BODY");
@@ -144,10 +158,10 @@ void kernel_main() {
             num_messages,
             worker_noc_addr);
 #else
-        main_loop_uni_dir(sender_buffer_slot_addrs, sender_buffer_slot_sync_addrs, full_payload_size, num_messages);
+        main_receiver_loop_uni_dir(
+            receiver_buffer_slot_addrs, receiver_buffer_slot_sync_addrs, message_size, num_messages, worker_noc_addr);
 #endif
     }
-
     // need to do a delay as trid writes are not waiting for acks, so need to make sure noc response is back.
     for (int i = 0; i < 1000; ++i) {
         asm volatile("nop");
