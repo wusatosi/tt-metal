@@ -401,22 +401,28 @@ class TtModelArgs:
             )
 
             # Calculate largest number of lm_head_num_rows such that self.dim % (lm_head_num_rows * lm_head_cores_per_row) == 0
-            if self.num_devices == 32:
+            if self.is_galaxy:
                 lm_head_num_rows = 4
+                lm_head_cores_per_row = 8
+                # FIXME: Why is this 32*32 for galaxy?
                 while self.dim % (32 * 32 * lm_head_num_rows) != 0:
                     lm_head_num_rows -= 1
+                    if lm_head_num_rows == 0:
+                        raise ValueError(
+                            f"Could not find a lm_head_num_rows <= 4 such that self.dim(={self.dim}) % (32 * 32 * lm_head_num_rows) == 0"
+                        )
             else:
                 lm_head_num_rows = 8
-            lm_head_cores_per_row = 8
-            while self.dim % (32 * lm_head_num_rows * lm_head_cores_per_row) != 0:
-                lm_head_num_rows -= 1
-                if lm_head_num_rows == 0:
-                    lm_head_cores_per_row -= 1
-                    if lm_head_cores_per_row == 0:
-                        raise ValueError(
-                            f"Could not find a lm_head_num_rows such that self.dim(={self.dim}) % (lm_head_num_rows * 8) == 0"
-                        )
-                    lm_head_num_rows = 8
+                lm_head_cores_per_row = 8
+                while self.dim % (self.num_devices * lm_head_num_rows * lm_head_cores_per_row * self.tile_size) != 0:
+                    lm_head_num_rows -= 1
+                    if lm_head_num_rows == 0:
+                        lm_head_cores_per_row -= 1
+                        if lm_head_cores_per_row == 0:
+                            raise ValueError(
+                                f"Could not find a lm_head_num_rows such that {self.dim=} % ({self.num_devices=} * {lm_head_num_rows=} * {lm_head_cores_per_row=} * {self.tile_size=}) == 0"
+                            )
+                        lm_head_num_rows = 8
             self.lm_head_core_grid = ttnn.CoreGrid(y=lm_head_num_rows, x=lm_head_cores_per_row)
 
             self.model_config["LM_HEAD_INPUT_MEMCFG"] = ttnn.create_sharded_memory_config(
