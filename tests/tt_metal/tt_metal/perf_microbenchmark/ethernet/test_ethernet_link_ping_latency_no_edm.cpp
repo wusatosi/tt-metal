@@ -176,29 +176,9 @@ int main(int argc, char** argv) {
     // argv[3]: max_channels_per_direction
     assert(argc >= 4);
     std::size_t arg_idx = 1;
-    std::size_t num_sample_counts = std::stoi(argv[arg_idx++]);
-    log_trace(tt::LogTest, "num_sample_counts: {}", std::stoi(argv[arg_idx]));
-    std::vector<std::size_t> sample_counts;
-    for (std::size_t i = 0; i < num_sample_counts; i++) {
-        sample_counts.push_back(std::stoi(argv[arg_idx++]));
-        log_trace(tt::LogTest, "sample_counts[{}]: {}", i, sample_counts.back());
-    }
-
-    std::size_t num_sample_sizes = std::stoi(argv[arg_idx++]);
-    std::vector<std::size_t> sample_sizes;
-    log_trace(tt::LogTest, "num_sample_sizes: {}", num_sample_sizes);
-    for (std::size_t i = 0; i < num_sample_sizes; i++) {
-        sample_sizes.push_back(std::stoi(argv[arg_idx++]));
-        log_trace(tt::LogTest, "sample_sizes[{}]: {}", i, sample_sizes.back());
-    }
-
-    std::size_t num_channel_counts = std::stoi(argv[arg_idx++]);
-    std::vector<std::size_t> channel_counts;
-    log_trace(tt::LogTest, "num_channel_counts: {}", num_channel_counts);
-    for (std::size_t i = 0; i < num_channel_counts; i++) {
-        channel_counts.push_back(std::stoi(argv[arg_idx++]));
-        log_trace(tt::LogTest, "channel_counts[{}]: {}", i, channel_counts.back());
-    }
+    std::size_t num_samples = std::stoi(argv[arg_idx++]);
+    std::size_t sample_page_size = std::stoi(argv[arg_idx++]);
+    std::size_t max_channels_per_direction = std::stoi(argv[arg_idx++]);
 
     auto arch = tt::get_arch_from_string(tt::test_utils::get_umd_arch_name());
     auto num_devices = tt::tt_metal::GetNumAvailableDevices();
@@ -245,47 +225,41 @@ int main(int argc, char** argv) {
     success = true;
     std::cout << "STARTING" << std::endl;
     try {
-        for (auto num_samples : sample_counts) {
-            for (auto sample_page_size : sample_sizes) {
-                for (auto max_channels_per_direction : channel_counts) {
-                    log_info(
-                        tt::LogTest,
-                        "num_samples: {}, sample_page_size: {}, num_channels_per_direction: {}",
-                        num_samples,
-                        sample_page_size,
-                        max_channels_per_direction);
-                    KernelHandle local_kernel;
-                    KernelHandle remote_kernel;
-                    try {
-                        auto [program0, program1] = build(
-                            device_0,
-                            device_1,
-                            eth_sender_core,
-                            eth_receiver_core,
-                            num_samples,
-                            sample_page_size,
-                            max_channels_per_direction,
-                            local_kernel,
-                            remote_kernel);
-                        run(device_0,
-                            device_1,
-                            program0,
-                            program1,
-                            local_kernel,
-                            remote_kernel,
+        log_info(
+            tt::LogTest,
+            "num_samples: {}, sample_page_size: {}, num_channels_per_direction: {}",
+            num_samples,
+            sample_page_size,
+            max_channels_per_direction);
+        KernelHandle local_kernel;
+        KernelHandle remote_kernel;
+        try {
+            auto [program0, program1] = build(
+                device_0,
+                device_1,
+                eth_sender_core,
+                eth_receiver_core,
+                num_samples,
+                sample_page_size,
+                max_channels_per_direction,
+                local_kernel,
+                remote_kernel);
+            run(device_0,
+                device_1,
+                program0,
+                program1,
+                local_kernel,
+                remote_kernel,
 
-                            eth_sender_core,
-                            eth_receiver_core,
-                            num_samples,
-                            sample_page_size,
-                            max_channels_per_direction);
-                    } catch (std::exception& e) {
-                        log_error(tt::LogTest, "Caught exception: {}", e.what());
-                        test_fixture.TearDown();
-                        return -1;
-                    }
-                }
-            }
+                eth_sender_core,
+                eth_receiver_core,
+                num_samples,
+                sample_page_size,
+                max_channels_per_direction);
+        } catch (std::exception& e) {
+            log_error(tt::LogTest, "Caught exception: {}", e.what());
+            test_fixture.TearDown();
+            return -1;
         }
     } catch (std::exception& e) {
         test_fixture.TearDown();
