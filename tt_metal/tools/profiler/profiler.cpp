@@ -31,7 +31,7 @@ void DeviceProfiler::readRiscProfilerResults(
     const IDevice* device,
     const std::optional<ProfilerOptionalMetadata>& metadata,
     std::ofstream& log_file_ofs,
-    nlohmann::json& noc_trace_json_log,
+    nlohmann::ordered_json& noc_trace_json_log,
     int device_id,
     const std::vector<std::uint32_t>& profile_buffer,
     const CoreCoord& worker_core) {
@@ -262,7 +262,7 @@ void DeviceProfiler::firstTimestamp(uint64_t timestamp) {
 void DeviceProfiler::logPacketData(
     const IDevice* device,
     std::ofstream& log_file_ofs,
-    nlohmann::json& noc_trace_json_log,
+    nlohmann::ordered_json& noc_trace_json_log,
     uint32_t run_id,
     uint32_t run_host_id,
     std::string opname,
@@ -391,7 +391,7 @@ void DeviceProfiler::logPacketDataToCSV(
 
 void DeviceProfiler::logNocTracePacketDataToJson(
     const IDevice* device,
-    nlohmann ::json& noc_trace_json_log,
+    nlohmann::ordered_json& noc_trace_json_log,
     int device_id,
     int core_x,
     int core_y,
@@ -412,7 +412,7 @@ void DeviceProfiler::logNocTracePacketDataToJson(
             tracy::TTDeviceEventPhase zone_phase = (packet_type == kernel_profiler::ZONE_END)
                                                        ? tracy::TTDeviceEventPhase::end
                                                        : tracy::TTDeviceEventPhase::begin;
-            noc_trace_json_log.push_back(nlohmann::json{
+            noc_trace_json_log.push_back(nlohmann::ordered_json{
                 {"run_id", run_id},
                 {"run_host_id", run_host_id},
                 {"op_name", opname},
@@ -428,7 +428,7 @@ void DeviceProfiler::logNocTracePacketDataToJson(
     } else if (packet_type == kernel_profiler::TS_DATA) {
         KernelProfilerNocEventMetadata ev_md(data);
 
-        nlohmann::json data = {
+        nlohmann::ordered_json data = {
             {"run_id", run_id},
             {"run_host_id", run_host_id},
             {"op_name", opname},
@@ -545,7 +545,10 @@ void DeviceProfiler::emitCSVHeader(
 }
 
 void DeviceProfiler::serializeJsonNocTraces(
-    const nlohmann::json& noc_trace_json_log, const std::filesystem::path& output_dir, int device_id, bool lastDump) {
+    const nlohmann::ordered_json& noc_trace_json_log,
+    const std::filesystem::path& output_dir,
+    int device_id,
+    bool lastDump) {
     // create output directory if it does not exist
     std::filesystem::create_directories(output_dir);
     if (!std::filesystem::is_directory(output_dir)) {
@@ -669,7 +672,7 @@ void DeviceProfiler::dumpResults(
         }
 
         // create nlohmann json log object
-        nlohmann::json noc_trace_json_log = nlohmann::json::array();
+        nlohmann::ordered_json noc_trace_json_log = nlohmann::json::array();
 
         if (!log_file_ofs) {
             log_error("Could not open kernel profiler dump file '{}'", log_path);
