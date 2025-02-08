@@ -8,10 +8,24 @@
 #include "ttnn/operations/reduction/generic/generic_reductions.hpp"
 #include "ttnn/operations/eltwise/unary/device/unary_composite_op.hpp"
 #include "device/running_statistics_device_operation.hpp"
+#include "cpp/ttnn/operations/data_movement/reshape_view/reshape.hpp"
 
 using namespace tt::tt_metal;
 
 namespace ttnn::operations::normalization {
+
+inline void reshape_to_4D(const ttnn::Shape& input_tensor_shape, std::optional<Tensor>& reshaping_tensor) {
+    const auto stat_shape = reshaping_tensor.value().get_logical_shape();
+    TT_FATAL(
+        stat_shape[-1] == input_tensor_shape[1],
+        "Mismatch in channel size. Found {} instead of channel size = {}.",
+        stat_shape[-1],
+        input_tensor_shape[1]);
+    Tensor b = reshaping_tensor.value();
+    if (stat_shape.rank() < 3) {
+        reshaping_tensor = ttnn::reshape(b, ttnn::Shape(std::array<uint32_t, 4>{1, input_tensor_shape[1], 1, 1}));
+    }
+}
 
 inline Tensor mean_NHW(const Tensor& input_tensor, const std::optional<MemoryConfig>& memory_config) {
     auto output_mem_config = memory_config.value_or(input_tensor.memory_config());
@@ -31,6 +45,32 @@ Tensor BatchNorm::invoke(
     const std::optional<Tensor>& bias,
     const std::optional<Tensor>& output,
     const std::optional<MemoryConfig>& memory_config) {
+    const auto in_shape = input.get_logical_shape();
+
+    if (running_mean.has_value()) {
+        reshape_to_4D(in_shape, running_mean);
+    }
+    std::cout << std::endl;
+    std::cout << "running_mean reshape process : " << running_mean->get_logical_shape() << std::endl;
+    if (running_var.has_value()) {
+        reshape_to_4D(in_shape, running_var);
+    }
+    std::cout << std::endl;
+    std::cout << "running_var reshape process : " << running_var->get_logical_shape() << std::endl;
+
+    // std::cout << std::endl;
+    // std::cout << "weight reshape before : " << weight->get_logical_shape() << std::endl;
+    // if (weight.has_value()) {
+    //     reshape_to_4D(in_shape, weight);
+    // }
+    // std::cout << std::endl;
+    // std::cout << "weight reshape after : " << weight->get_logical_shape() << std::endl;
+    // if (bias.has_value()) {
+    //     reshape_to_4D(in_shape, bias);
+    // }
+    // std::cout << std::endl;
+    // std::cout << "bias reshape process : " << bias->get_logical_shape() << std::endl;
+
     Tensor batch_mean = mean_NHW(input, memory_config);
     Tensor mean_sq = mean_NHW(ttnn::square(input, memory_config), memory_config);
     Tensor batch_var = ttnn::subtract(mean_sq, ttnn::square(batch_mean, memory_config), std::nullopt, memory_config);

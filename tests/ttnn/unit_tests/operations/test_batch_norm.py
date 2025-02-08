@@ -8,6 +8,7 @@ import ttnn
 from tests.ttnn.unit_tests.operations.eltwise.backward.utility_funcs import (
     data_gen_with_range_batch_norm,
     compare_results_batch_norm,
+    data_gen_with_range_batch_norm_reshape,
 )
 from itertools import product
 from models.utility_functions import skip_for_grayskull
@@ -366,4 +367,97 @@ def test_batch_norm_program_cache_and_default(input_shapes, mem_layout, device):
     tt_output = ttnn.to_torch(tt_output_tensor_on_device)
     torch_result = torch.nn.functional.batch_norm(input=in_data, running_mean=mean_data, running_var=var_data)
     comp_pass = compare_results_batch_norm([tt_output], [torch_result])
+    assert comp_pass
+
+
+@pytest.mark.parametrize(
+    "input_shapes",
+    [
+        # *(torch.Size([n, c, 32, 32]) for n, c in product([1, 2, 3, 4], [1, 2, 3, 4])),
+        # *(torch.Size([n, c, 23, 23]) for n, c in product([1, 2, 3, 4], [1, 2, 3, 4])),
+        # *(torch.Size([n, c, 64, 120]) for n, c in product([1, 2], [1, 2, 3])),
+        torch.Size([3, 1, 64, 120]),
+        torch.Size([3, 2, 64, 120]),
+    ],
+)
+@pytest.mark.parametrize(
+    "training, check_mean, check_var",
+    [
+        (True, True, True),
+        # (True, True, False),
+        # (True, False, True),
+        # (True, False, False),
+        # (False, True, True),
+    ],
+)
+@pytest.mark.parametrize("weight", [True, False])
+@pytest.mark.parametrize("bias", [True, False])
+@pytest.mark.parametrize("eps", [1.0])
+@pytest.mark.parametrize("momentum", [0.0])
+def test_batch_norm_reshape_testing(input_shapes, training, check_mean, check_var, weight, bias, eps, momentum, device):
+    in_data, input_tensor = data_gen_with_range_batch_norm_reshape(input_shapes, 5, 10, device, is_input=True)
+    mean_data, mean_tensor = (
+        data_gen_with_range_batch_norm_reshape(input_shapes, 4, 10, device) if (check_mean) else (None, None)
+    )
+    var_data, var_tensor = (
+        data_gen_with_range_batch_norm_reshape(input_shapes, 4, 20, device) if (check_var) else (None, None)
+    )
+    weight_data, weight_tensor = data_gen_with_range_batch_norm(input_shapes, 4, 10, device) if weight else (None, None)
+    bias_data, bias_tensor = data_gen_with_range_batch_norm(input_shapes, 4, 10, device) if bias else (None, None)
+
+    if (not training) and ((not check_mean) or (not check_var)):
+        pytest.xfail("running_mean and running_var must be defined in evaluation mode")
+
+    tt_output_tensor_on_device = ttnn.batch_norm(
+        input_tensor,
+        running_mean=mean_tensor,
+        running_var=var_tensor,
+        training=training,
+        eps=eps,
+        momentum=momentum,
+        weight=weight_tensor,
+        bias=bias_tensor,
+    )
+    tt_output = ttnn.to_torch(tt_output_tensor_on_device)
+    tt_updated_mean = None
+    tt_updated_var = None
+    if training:
+        if check_mean:
+            tt_updated_mean = ttnn.to_torch(mean_tensor)
+        if check_var:
+            tt_updated_var = ttnn.to_torch(var_tensor)
+
+    torch_result = torch.nn.functional.batch_norm(
+        input=in_data,
+        running_mean=mean_data,
+        running_var=var_data,
+        weight=weight_data,
+        bias=bias_data,
+        training=training,
+        eps=eps,
+        momentum=momentum,
+    )
+    comp_pass = compare_results_batch_norm([tt_output], [torch_result])  # Check BN Result
+    if training:
+        channels = input_shapes[1]
+        if check_mean:
+            comp_pass_1 = compare_results_batch_norm(
+                [tt_updated_mean], [mean_data], stats=True
+            )  # Check Updated running mean
+        else:
+            if tt_updated_mean is None:
+                comp_pass_1 = True
+            else:
+                comp_pass_1 = False
+        if check_var:
+            comp_pass_2 = compare_results_batch_norm(
+                [tt_updated_var], [var_data], stats=True
+            )  # Check Updated running var
+        else:
+            if tt_updated_var is None:
+                comp_pass_2 = True
+            else:
+                comp_pass_2 = False
+        comp_pass = comp_pass and comp_pass_1 and comp_pass_2
+
     assert comp_pass
