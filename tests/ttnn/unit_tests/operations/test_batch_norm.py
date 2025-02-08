@@ -373,9 +373,9 @@ def test_batch_norm_program_cache_and_default(input_shapes, mem_layout, device):
 @pytest.mark.parametrize(
     "input_shapes",
     [
-        # *(torch.Size([n, c, 32, 32]) for n, c in product([1, 2, 3, 4], [1, 2, 3, 4])),
-        # *(torch.Size([n, c, 23, 23]) for n, c in product([1, 2, 3, 4], [1, 2, 3, 4])),
-        # *(torch.Size([n, c, 64, 120]) for n, c in product([1, 2], [1, 2, 3])),
+        *(torch.Size([n, c, 32, 32]) for n, c in product([1, 2, 3, 4], [1, 2, 3, 4])),
+        *(torch.Size([n, c, 23, 23]) for n, c in product([1, 2, 3, 4], [1, 2, 3, 4])),
+        *(torch.Size([n, c, 64, 120]) for n, c in product([1, 2], [1, 2, 3])),
         torch.Size([3, 1, 64, 120]),
         torch.Size([3, 2, 64, 120]),
     ],
@@ -384,16 +384,19 @@ def test_batch_norm_program_cache_and_default(input_shapes, mem_layout, device):
     "training, check_mean, check_var",
     [
         (True, True, True),
-        # (True, True, False),
-        # (True, False, True),
-        # (True, False, False),
-        # (False, True, True),
+        (True, True, False),
+        (True, False, True),
+        (True, False, False),
+        (False, False, False),  # xfail case
+        (False, True, False),  # xfail case
+        (False, False, True),  # xfail case
+        (False, True, True),
     ],
 )
 @pytest.mark.parametrize("weight", [True, False])
 @pytest.mark.parametrize("bias", [True, False])
-@pytest.mark.parametrize("eps", [1.0])
-@pytest.mark.parametrize("momentum", [0.0])
+@pytest.mark.parametrize("eps", [1.0, 0.0, 2.34, 1e-05])
+@pytest.mark.parametrize("momentum", [0.0, 0.1, 0.5])
 def test_batch_norm_reshape_testing(input_shapes, training, check_mean, check_var, weight, bias, eps, momentum, device):
     in_data, input_tensor = data_gen_with_range_batch_norm_reshape(input_shapes, 5, 10, device, is_input=True)
     mean_data, mean_tensor = (
@@ -402,12 +405,17 @@ def test_batch_norm_reshape_testing(input_shapes, training, check_mean, check_va
     var_data, var_tensor = (
         data_gen_with_range_batch_norm_reshape(input_shapes, 4, 20, device) if (check_var) else (None, None)
     )
-    weight_data, weight_tensor = data_gen_with_range_batch_norm(input_shapes, 4, 10, device) if weight else (None, None)
-    bias_data, bias_tensor = data_gen_with_range_batch_norm(input_shapes, 4, 10, device) if bias else (None, None)
+    weight_data, weight_tensor = (
+        data_gen_with_range_batch_norm_reshape(input_shapes, 4, 10, device) if weight else (None, None)
+    )
+    bias_data, bias_tensor = (
+        data_gen_with_range_batch_norm_reshape(input_shapes, 4, 10, device) if bias else (None, None)
+    )
 
     if (not training) and ((not check_mean) or (not check_var)):
         pytest.xfail("running_mean and running_var must be defined in evaluation mode")
 
+    print(weight_tensor)
     tt_output_tensor_on_device = ttnn.batch_norm(
         input_tensor,
         running_mean=mean_tensor,
