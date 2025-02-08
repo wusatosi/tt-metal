@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+#include "tt-metalium/logger.hpp"
 #include "ttnn/operations/data_movement/untilize_with_halo_v2/device/untilize_with_halo_v2_program_factory.hpp"
 #include "ttnn/tensor/shape/shape.hpp"
 #include "ttnn/operations/sliding_window/halo/device/halo_device_operation.hpp"
@@ -167,16 +168,22 @@ Tensor halo_op(
 
         auto device = input_tensor.device();
 
-        auto sliding_window_hash = config.get_hash();
-        if (!HaloDeviceOperation::sliding_window_max_out_nsticks_per_core.contains(sliding_window_hash)) {
-            auto op_trace_metadata = sliding_window::generate_op_trace_metadata(config);
-            auto shard_boundaries = sliding_window::generate_shard_boundaries(config, op_trace_metadata);
-            HaloDeviceOperation::sliding_window_max_out_nsticks_per_core.emplace(
-                sliding_window_hash, sliding_window::generate_max_out_nsticks_per_core(shard_boundaries));
-        }
+        // auto sliding_window_hash = config.get_hash();
+        // if (!HaloDeviceOperation::sliding_window_max_out_nsticks_per_core.contains(sliding_window_hash)) {
+        auto op_trace_metadata = sliding_window::generate_op_trace_metadata(config);
+        auto shard_boundaries = sliding_window::generate_shard_boundaries(config, op_trace_metadata);
+        // HaloDeviceOperation::sliding_window_max_out_nsticks_per_core.emplace(
+        //   sliding_window_hash, sliding_window::generate_max_out_nsticks_per_core(shard_boundaries));
+        //}
 
-        uint32_t max_out_nsticks_per_core =
-            HaloDeviceOperation::sliding_window_max_out_nsticks_per_core.at(sliding_window_hash);
+        // const auto& mapref = HaloDeviceOperation::sliding_window_max_out_nsticks_per_core;
+        // tt::log_info(tt::LogOp, "Sliding window map size is: {} currently hit hash is: {}", mapref.size(),
+        // sliding_window_hash);
+
+        // uint32_t max_out_nsticks_per_core =
+        //     HaloDeviceOperation::sliding_window_max_out_nsticks_per_core.at(sliding_window_hash);
+        uint32_t max_out_nsticks_per_core = sliding_window::generate_max_out_nsticks_per_core(shard_boundaries);
+        log_info(tt::LogOp, "max_out_nsticks_per_core: {}", max_out_nsticks_per_core);
         ParallelConfig p_config;
         p_config.grid = input_tensor.shard_spec().value().grid;
         p_config.shard_scheme = input_tensor.memory_config().memory_layout;
