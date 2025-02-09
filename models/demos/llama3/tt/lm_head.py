@@ -117,13 +117,12 @@ class LMHead(LightweightModule):
 
         else:
             self.program_configs = [
-                # args.dram_matmul_config(
-                #     args.tile_padded_batch_rows,
-                #     args.dim,
-                #     split_size,
-                #     args.lm_head_core_grid.num_cores,
-                # )
-                None
+                args.dram_matmul_config(
+                    args.tile_padded_batch_rows,
+                    args.dim,
+                    split_size,
+                    args.lm_head_core_grid.num_cores,
+                )
                 for split_size in split_sizes
             ]
 

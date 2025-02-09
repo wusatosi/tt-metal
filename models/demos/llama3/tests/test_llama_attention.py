@@ -113,6 +113,12 @@ class TtSFDSetup(torch.nn.Module):
         self.swap_semaphore_handles = ttnn.create_global_semaphore_with_same_address(
             mesh_device, self.ccl_sub_device_crs, 0
         )
+        self.k_cache_semaphore_handles = ttnn.create_global_semaphore_with_same_address(
+            mesh_device, self.ccl_sub_device_crs, 0
+        )
+        self.v_cache_semaphore_handles = ttnn.create_global_semaphore_with_same_address(
+            mesh_device, self.ccl_sub_device_crs, 0
+        )
         addrs = ttnn.get_global_semaphore_address(self.sfd_semaphore_handles)
         logger.info(f"semaphore handle addresses: {addrs}")
         # assert all addresses are the same
@@ -241,7 +247,23 @@ class TtSFDSetup(torch.nn.Module):
 
         # return K_new, V_new
 
-        return K_mesh, V_mesh
+        K_new = ttnn.experimental.consolidate_cache(
+            K_mesh,
+            self.tt_priority_tensors,
+            self.tt_gathered_priority_tensors,
+            multi_device_global_semaphore=self.k_cache_semaphore_handles,
+            num_links=1,
+        )
+
+        V_new = ttnn.experimental.consolidate_cache(
+            V_mesh,
+            self.tt_priority_tensors,
+            self.tt_gathered_priority_tensors,
+            multi_device_global_semaphore=self.v_cache_semaphore_handles,
+            num_links=1,
+        )
+
+        return K_new, V_new
 
     def reset_skip_tensor(self):
         if not self.done_first_run:
