@@ -30,6 +30,14 @@ from tests.ttnn.unit_tests.operations.speculative_execution.sfd_common import (
 )
 
 
+def set_devices_speculation_state(skip_tensor, state):
+    skip_tensor_address = get_buffer_address(skip_tensor)
+
+    for d in skip_tensor.devices():
+        d.set_speculation_state(state, skip_tensor_address)
+        logger.info(f"Device {d.id()} speculation state: {d.get_speculation_state()}")
+
+
 def commit_priority_tensor(priority_tensor, skip_tensor, mesh_device):
     """
     Create a skip tensor based on the priority tensor
@@ -96,6 +104,7 @@ def get_speculative_flash_decode_tt_ccl(
     # Commit the priority tensor
     if model_ops:
         commit_priority_tensor(tt_reset_priority_tensors, tt_skip_tensor, mesh_device)
+        set_devices_speculation_state(tt_skip_tensor, False)
 
     time_elapsed = 0
     t1 = time()
@@ -148,6 +157,7 @@ def get_speculative_flash_decode_tt_ccl(
     if model_ops:
         # Commit the priority tensor
         commit_priority_tensor(tt_priority_tensors, tt_skip_tensor, mesh_device)
+        set_devices_speculation_state(tt_skip_tensor, True)
 
         # Run the post-ops
         model_out = model_ops()

@@ -328,6 +328,9 @@ class TtLlamaAttention(LightweightModule):
             values = self.layer_past[1]
         # k_heads, [seqlen, n_kv_heads, bsz, head_dim]
         # v_heads [seqlen, n_kv_heads, bsz, head_dim]
+
+        self.sfd_setup.reset_skip_tensor()
+
         # keys, [max_batch_size, n_kv_heads // configuration.num_devices, max_seq_len, head_dim]
         k_new = ttnn.to_memory_config(k_heads_1BKD, ttnn.DRAM_MEMORY_CONFIG)
         v_new = ttnn.to_memory_config(v_heads_1BKD, ttnn.DRAM_MEMORY_CONFIG)

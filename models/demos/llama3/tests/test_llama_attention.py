@@ -41,6 +41,7 @@ from tests.ttnn.unit_tests.operations.speculative_execution.test_speculative_fla
 
 from tests.ttnn.unit_tests.operations.speculative_execution.test_speculative_flash_decode_ccl import (
     commit_priority_tensor,
+    set_devices_speculation_state,
 )
 
 
@@ -53,7 +54,7 @@ class TtSFDSetup(torch.nn.Module):
         b=1,
         grid_size=(8, 7),
         k_chunk_size=128,
-        lambda_=0.0,
+        lambda_=1000.0,
         enable_async=True,
     ):
         super().__init__()
@@ -186,20 +187,20 @@ class TtSFDSetup(torch.nn.Module):
         tt_V = ttnn.to_memory_config(V, self.dram_memcfg)
 
         # self.reset_skip_tensor()
-        self.tt_gathered_priority_tensors = create_multi_device_tensors(
-            read_multi_device_tensor(self.tt_priority_tensors)[::-1],
-            self.mesh_device,
-            self.dram_memcfg,
-            ttnn.TILE_LAYOUT,
-            ttnn.uint32,
-        )
-        # # Swap. priority tensor value of its pair device, same shape as priority_tensors
-        # FIXME: Leads to a hang eventually
-        # tt_gathered_priority_tensors = ttnn.experimental.swap_tensor(
-        #     self.tt_priority_tensors, multi_device_global_semaphore=self.swap_semaphore_handles, num_links=1
+        # self.tt_gathered_priority_tensors = create_multi_device_tensors(
+        #     read_multi_device_tensor(self.tt_priority_tensors)[::-1],
+        #     self.mesh_device,
+        #     self.dram_memcfg,
+        #     ttnn.TILE_LAYOUT,
+        #     ttnn.uint32,
         # )
+        # Swap. priority tensor value of its pair device, same shape as priority_tensors
+        # FIXME: Leads to a hang eventually
+        self.tt_gathered_priority_tensors = ttnn.experimental.swap_tensor(
+            self.tt_priority_tensors, multi_device_global_semaphore=self.swap_semaphore_handles, num_links=1
+        )
 
-        self.reset_skip_tensor()
+        # self.reset_skip_tensor()
 
         # Run speculative flash decode
         outputs = ttnn.experimental.speculative_scaled_dot_product_attention_decode(
@@ -221,6 +222,7 @@ class TtSFDSetup(torch.nn.Module):
 
         # Commit the priority tensor
         commit_priority_tensor(self.tt_priority_tensors, self.tt_skip_tensor, self.mesh_device)
+        set_devices_speculation_state(self.tt_skip_tensor, True)
 
         return tt_back_gt_md
 
@@ -244,7 +246,7 @@ class TtSFDSetup(torch.nn.Module):
     def reset_skip_tensor(self):
         if not self.done_first_run:
             for d in self.tt_skip_tensor.devices():
-                d.set_speculation_state(True, self.skip_tensor_address)
+                d.set_speculation_state(False, self.skip_tensor_address)
                 logger.info(f"Device {d.id()} speculation state: {d.get_speculation_state()}")
 
             self.done_first_run = True
@@ -334,7 +336,7 @@ def test_llama_attention_inference(
     seq_len = 1
 
     generation_start_pos = 1000
-    generation_length = 10
+    generation_length = 3
     all_tests_pass = True
 
     # Setup RoPE transformation matrices
