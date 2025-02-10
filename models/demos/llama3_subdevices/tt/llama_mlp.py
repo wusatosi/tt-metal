@@ -126,10 +126,10 @@ class TtLlamaMLP(LightweightModule):
             pc_2 = self.model_config["PREFILL_MLP_W2_PRG_CONFIG"](seq_len)
             pc_3 = self.model_config["PREFILL_MLP_W1_W3_PRG_CONFIG"](seq_len)
 
-        # print(pc_1, pc_2)
+        # #print(pc_1, pc_2)
         # In decode mode (seqlen <= 32) do DRAM sharded matmuls
         # These use HiFi2; this drops 1 bit of the activations but would be FLOP-bound on 12 cores with HiFi4
-        # print(x.shape, self.w1.shape, self.w3.shape)
+        # #print(x.shape, self.w1.shape, self.w3.shape)
         w1_out = ttnn.linear(
             x,
             self.w1,
@@ -156,8 +156,9 @@ class TtLlamaMLP(LightweightModule):
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
         )
         ttnn.deallocate(x)
+        # print("linear", w3_out)
 
-        if TG:
+        if False:
             # if mode == "decode" and self.dim!=8192:
             #     w1_out = ttnn.to_memory_config(w1_out, ttnn.DRAM_MEMORY_CONFIG)
             #     w3_out = ttnn.to_memory_config(w3_out, ttnn.DRAM_MEMORY_CONFIG)
@@ -183,7 +184,7 @@ class TtLlamaMLP(LightweightModule):
                 #     topology=ttnn.Topology.Linear,
                 #     memory_config=self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else None,
                 # )
-                # print(w1_out.shape, w3_out.shape)
+                # #print(w1_out.shape, w3_out.shape)
                 # All reduce W1
                 w1_out = ttnn.to_memory_config(w1_out, ttnn.DRAM_MEMORY_CONFIG)
                 w1_out_reduced = self.tt_ccl.line_reduce_scatter(
@@ -206,84 +207,41 @@ class TtLlamaMLP(LightweightModule):
                     w3_out_reduced, self.model_config["SHARDED_FF12_PRE_MUL_RING_REDUCE_MEMCFG"]
                 )
 
-            else:
-                w1_out = tt_all_reduce(
+        else:
+            try:
+                w1_out_reduced = self.tt_ccl.line_all_reduce(
                     w1_out,
-                    self.mesh_device,
                     cluster_axis=1,
-                    num_all_gather_links=2,
-                    sharded=True if mode == "decode" else False,
-                    memory_config=self.model_config["FF1_OUT_GATHERED_MEMCFG"] if mode == "decode" else None,
+                    num_links=1,
+                    memory_config=self.model_config["FF2_IN_RING_MEMCFG"],
                 )
-                w3_out = tt_all_reduce(
+                w3_out_reduced = self.tt_ccl.line_all_reduce(
                     w3_out,
-                    self.mesh_device,
                     cluster_axis=1,
-                    num_all_gather_links=2,
-                    sharded=True if mode == "decode" else False,
-                    memory_config=self.model_config["FF1_OUT_GATHERED_MEMCFG"] if mode == "decode" else None,
+                    num_links=1,
+                    memory_config=self.model_config["FF2_IN_RING_MEMCFG"],
                 )
+
+                # print("reduced", w1_out_reduced)
+            except Exception as e:
+                # print(e)
+                self.tt_ccl.close()
 
         w2_in = ttnn.mul(
             w1_out_reduced,
             w3_out_reduced,
             input_tensor_a_activation=ttnn.UnaryOpType.SILU,
             dtype=ttnn.bfloat8_b,
-            memory_config=w1_out.memory_config(),
+            memory_config=w1_out_reduced.memory_config(),
         )
 
-        # All reduce W3
-        w2_in = ttnn.to_memory_config(w2_in, ttnn.DRAM_MEMORY_CONFIG)
-        w2_in_gathered = self.tt_ccl.line_all_gather(
-            w2_in, dim=3, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
-        )
+        # print("eltwise mul", w2_in)
 
-        ttnn.deallocate(w2_in)
-        w2_in_gathered = ttnn.to_memory_config(w2_in_gathered, self.model_config["FF2_IN_RING_MEMCFG"])
-
-        # print("mul done", w2_in.shape)
-
-        if mode == "decode" and not TG:
-            # w2 may use a different core grid, this is a no-op if they already match
-            w2_in = ttnn.to_memory_config(w2_in, self.model_config["SHARDED_MLP2_INPUT_MEMCFG"])
-
-        ttnn.deallocate(w3_out)
+        ttnn.deallocate(w3_out_reduced)
         ttnn.deallocate(w1_out_reduced)
 
-        # if TG and (self.dim == 8192 or mode == "prefill"):
-        # w2_in = ttnn.all_gather(
-        #     w2_in,
-        #     3,
-        #     num_links=2,
-        #     cluster_axis=1,
-        #     mesh_device=self.mesh_device,
-        #     topology=ttnn.Topology.Linear,
-        #     memory_config=input_mem_cfg,
-        # )
-        # w2_in_torch = ttnn.to_torch(
-        #     w2_in,
-        #     mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(3, 0), mesh_shape=(8, 4)),
-        # )
-        # #print(w2_in_torch.shape)
-        # w2_in_torch_gather = torch.cat([w2_in_torch] * 4, dim=3)
-        # #print(w2_in_torch_gather.shape)
-        # w2_in = ttnn.as_tensor(
-        #     w2_in_torch_gather,
-        #     dtype=ttnn.bfloat16,
-        #     device=self.mesh_device,
-        #     mesh_mapper=ttnn.ShardTensor2dMesh(
-        #         mesh_device=self.mesh_device, dims=(3, None), mesh_shape=list(self.mesh_device.shape)
-        #     ),
-        #     layout=ttnn.TILE_LAYOUT,
-        #     memory_config=ttnn.DRAM_MEMORY_CONFIG,
-        # )
-        # #print(w2_in)
-        # if mode == "decode":
-        #     w2_in_gathered = ttnn.to_memory_config(w2_in_gathered, self.model_config["FF2_IN_RING_MEMCFG"])
-
-        # print("w2_in", w2_in)
         w2_out = ttnn.linear(
-            w2_in_gathered,
+            w2_in,
             self.w2,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
             dtype=ttnn.bfloat16,
@@ -294,31 +252,14 @@ class TtLlamaMLP(LightweightModule):
             core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_2 else None,
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
         )
-        ttnn.deallocate(w2_in_gathered)
-        # if mode == "decode" and not TG:
-        #     w2_out = ttnn.sharded_to_interleaved(w2_out, ttnn.DRAM_MEMORY_CONFIG)
-        # w2_out_reduced = tt_all_reduce(
-        #     w2_out,
-        #     self.mesh_device,
-        #     cluster_axis=0,
-        #     dim=0 if (TG and self.dim < 8192) else 3,
-        #     num_reduce_scatter_links=self.args.num_reduce_scatter_links,
-        #     num_all_gather_links=self.args.num_all_gather_links,
-        #     sharded=(mode == "decode"),
-        #     memory_config=(self.model_config["FF2_OUT_REDUCE_SCATTER_MEMCFG"] if TG else w2_out.memory_config())
-        #     if mode == "decode"
-        #     else ttnn.DRAM_MEMORY_CONFIG,
-        #     dtype=self.args.ccl_dtype,
-        #     use_composite=True if self.dim == 8192 else False,
-        # )
-        w2_out = ttnn.to_memory_config(w2_out, ttnn.DRAM_MEMORY_CONFIG)
-        w2_out_reduced_dram = self.tt_ccl.line_all_reduce(
-            w2_out, cluster_axis=0, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
+        # print("linear", w2_out)
+        ttnn.deallocate(w2_in)
+
+        w2_out_reduced = self.tt_ccl.line_all_reduce(
+            w2_out, cluster_axis=0, num_links=1, memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"]
         )
+        # print("reduced", w2_out_reduced)
 
         ttnn.deallocate(w2_out)
-
-        w2_out_reduced = ttnn.to_memory_config(w2_out_reduced_dram, self.model_config["DECODE_RESIDUAL_MEMCFG"])
-        ttnn.deallocate(w2_out_reduced_dram)
 
         return w2_out_reduced
