@@ -17,7 +17,10 @@ import math
     ],
 )
 @pytest.mark.parametrize("parallel_factor", [8])
-def test_conv1x1_tt_expand(device, B, in_channels, out_channels, T, H, W, bias, parallel_factor, texp, sexp):
+@pytest.mark.parametrize("input_layout", [ttnn.TILE_LAYOUT])
+def test_conv1x1_tt_expand(
+    device, B, in_channels, out_channels, T, H, W, bias, parallel_factor, texp, sexp, input_layout
+):
     # Set manual seed for reproducibility
     torch.manual_seed(42)
     T = math.ceil(T / parallel_factor)
@@ -48,7 +51,7 @@ def test_conv1x1_tt_expand(device, B, in_channels, out_channels, T, H, W, bias, 
     tt_weight = ttnn.from_torch(
         weight,
         dtype=ttnn.DataType.BFLOAT16,
-        layout=ttnn.TILE_LAYOUT,
+        layout=input_layout,
         device=device,
         memory_config=ttnn.DRAM_MEMORY_CONFIG,
     )
@@ -56,7 +59,7 @@ def test_conv1x1_tt_expand(device, B, in_channels, out_channels, T, H, W, bias, 
     tt_bias = ttnn.from_torch(
         bias,
         dtype=ttnn.DataType.BFLOAT16,
-        layout=ttnn.TILE_LAYOUT,
+        layout=input_layout,
         device=device,
         memory_config=ttnn.DRAM_MEMORY_CONFIG,
     )
@@ -67,7 +70,7 @@ def test_conv1x1_tt_expand(device, B, in_channels, out_channels, T, H, W, bias, 
     tt_input = ttnn.from_torch(
         x_perm,
         dtype=ttnn.DataType.BFLOAT16,
-        layout=ttnn.TILE_LAYOUT,
+        layout=input_layout,
         device=device,
         memory_config=ttnn.DRAM_MEMORY_CONFIG,
     )
@@ -99,8 +102,9 @@ def test_conv1x1_tt_expand(device, B, in_channels, out_channels, T, H, W, bias, 
         (1, 128, 163, 480, 848, 3, True),
     ],
 )
+@pytest.mark.parametrize("input_layout", [ttnn.TILE_LAYOUT])
 @pytest.mark.parametrize("parallel_factor", [8])
-def test_conv1x1_tt_rgb(device, B, in_channels, out_channels, T, H, W, bias, parallel_factor):
+def test_conv1x1_tt_rgb(device, B, in_channels, out_channels, T, H, W, bias, parallel_factor, input_layout):
     # Set manual seed for reproducibility
     torch.manual_seed(42)
     T = math.ceil(T / parallel_factor)
@@ -117,7 +121,7 @@ def test_conv1x1_tt_rgb(device, B, in_channels, out_channels, T, H, W, bias, par
     tt_input = ttnn.from_torch(
         x,
         dtype=ttnn.DataType.BFLOAT16,
-        layout=ttnn.TILE_LAYOUT,
+        layout=input_layout,
         device=device,
         memory_config=ttnn.DRAM_MEMORY_CONFIG,
     )
@@ -129,7 +133,7 @@ def test_conv1x1_tt_rgb(device, B, in_channels, out_channels, T, H, W, bias, par
     tt_weight = ttnn.from_torch(
         weight,
         dtype=ttnn.DataType.BFLOAT16,
-        layout=ttnn.TILE_LAYOUT,
+        layout=input_layout,
         device=device,
         memory_config=ttnn.DRAM_MEMORY_CONFIG,
     )
@@ -137,7 +141,7 @@ def test_conv1x1_tt_rgb(device, B, in_channels, out_channels, T, H, W, bias, par
     tt_bias = ttnn.from_torch(
         bias,
         dtype=ttnn.DataType.BFLOAT16,
-        layout=ttnn.TILE_LAYOUT,
+        layout=input_layout,
         device=device,
         memory_config=ttnn.DRAM_MEMORY_CONFIG,
     )
