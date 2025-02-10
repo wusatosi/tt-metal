@@ -44,7 +44,7 @@ class LMHead(LightweightModule):
 
         self.output_weights = []
         if args.is_galaxy:
-            num_splits = 4
+            num_splits = 1
             cache_file_name = (
                 None if args.dummy_weights else weight_cache_path / f"output_lm_head_{num_splits}_split_shard_0"
             )
@@ -180,7 +180,8 @@ class LMHead(LightweightModule):
 
         outputs = []
         for weight, pc in zip(self.output_weights, self.program_configs):
-            weight_l1 = ttnn.to_memory_config(weight, self.args.model_config["LM_HEAD_RING_MEMCFG"])
+            weight_l1 = weight  # ttnn.to_memory_config(weight, self.args.model_config["LM_HEAD_RING_MEMCFG"])
+            print(f"weight_l1: {weight_l1}")
             output = ttnn.linear(
                 x,
                 weight_l1,
@@ -189,8 +190,10 @@ class LMHead(LightweightModule):
                 memory_config=self.output_memory_config,
                 dtype=ttnn.bfloat8_b,
             )
+
+            print(f"output: {output}")
             outputs.append(ttnn.sharded_to_interleaved(output, memory_config=ttnn.DRAM_MEMORY_CONFIG))
-            weight_l1.deallocate(True)
+            # weight_l1.deallocate(True)
             output.deallocate(True)
 
         outputs_reduced = []
