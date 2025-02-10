@@ -272,19 +272,12 @@ class TtLlamaAttention(LightweightModule):
         print("done matmul")
         # xqkv_fused_sharded -> [1, 1, 32, 12288 // 8]
 
-        xqkv_fused_dram = ttnn.to_memory_config(xqkv_fused_sharded, ttnn.DRAM_MEMORY_CONFIG)
-        ttnn.deallocate(xqkv_fused_sharded)
-
         xqkv_reduced = self.tt_ccl.line_all_reduce(
-            xqkv_fused_dram, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
+            xqkv_fused_sharded, cluster_axis=1, num_links=3, memory_config=self.model_config["CREATE_HEAD_INPUT_MEMCFG"]
         )
 
         print("done all reduce")
 
-        ttnn.deallocate(xqkv_fused_dram)
-
-        xqkv_fused = ttnn.to_memory_config(xqkv_reduced, self.model_config["CREATE_HEAD_INPUT_MEMCFG"])
-        xqkv_reduced.deallocate(True)
         ###
         # Reshape and rotary embeddings
         ###
@@ -293,7 +286,7 @@ class TtLlamaAttention(LightweightModule):
             k_heads_pre_rot_1BKD,
             v_heads_1BKD,
         ) = ttnn.experimental.nlp_create_qkv_heads_decode(
-            xqkv_fused,
+            xqkv_reduced,
             num_heads=self.n_local_heads,
             num_kv_heads=self.n_local_kv_heads,
             memory_config=ttnn.L1_HEIGHT_SHARDED_MEMORY_CONFIG,
@@ -304,7 +297,7 @@ class TtLlamaAttention(LightweightModule):
 
         print("done create qkv heads")
 
-        ttnn.deallocate(xqkv_fused)
+        ttnn.deallocate(xqkv_reduced)
         # Q, K Rotary Embeddings
         q_heads_1BQD, k_heads_1BKD = ttnn.experimental.rotary_embedding_llama_fused_qk(
             q_heads_pre_rot_1BQD, k_heads_pre_rot_1BKD, rot_mats[0], rot_mats[1], self.transformation_mats["decode"]
@@ -406,18 +399,12 @@ class TtLlamaAttention(LightweightModule):
         ttnn.deallocate(attn_output_cat)
         print("done matmul")
 
-        dense_out_dram = ttnn.to_memory_config(dense_out_ttnn, ttnn.DRAM_MEMORY_CONFIG)
+        dense_out_reduced = self.tt_ccl.line_all_reduce(
+            dense_out_ttnn, cluster_axis=0, num_links=3, memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"]
+        )
         ttnn.deallocate(dense_out_ttnn)
 
-        dense_out_reduced_dram = self.tt_ccl.line_all_reduce(
-            dense_out_dram, cluster_axis=0, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
-        )
-
-        ttnn.deallocate(dense_out_dram)
         print("done all reduce")
-
-        dense_out_reduced = ttnn.to_memory_config(dense_out_reduced_dram, self.model_config["DECODE_RESIDUAL_MEMCFG"])
-        ttnn.deallocate(dense_out_reduced_dram)
 
         return dense_out_reduced
 
