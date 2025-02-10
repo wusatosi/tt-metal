@@ -292,14 +292,14 @@ void py_module(py::module& module) {
 
     module.def(
         "begin_trace_capture",
-        py::overload_cast<MeshDevice*, const uint8_t>(&ttnn::operations::core::begin_trace_capture),
+        py::overload_cast<MeshDevice*, const QueueId>(&ttnn::operations::core::begin_trace_capture),
         py::arg("mesh_device"),
         py::kw_only(),
         py::arg("cq_id") = ttnn::DefaultQueueId);
 
     module.def(
         "end_trace_capture",
-        py::overload_cast<MeshDevice*, const uint32_t, const uint8_t>(&ttnn::operations::core::end_trace_capture),
+        py::overload_cast<MeshDevice*, const uint32_t, const QueueId>(&ttnn::operations::core::end_trace_capture),
         py::arg("mesh_device"),
         py::arg("trace_id"),
         py::kw_only(),
@@ -307,7 +307,7 @@ void py_module(py::module& module) {
 
     module.def(
         "execute_trace",
-        py::overload_cast<MeshDevice*, const uint32_t, const uint8_t, bool>(&ttnn::operations::core::execute_trace),
+        py::overload_cast<MeshDevice*, const uint32_t, const QueueId, bool>(&ttnn::operations::core::execute_trace),
         py::arg("mesh_device"),
         py::arg("trace_id"),
         py::kw_only(),

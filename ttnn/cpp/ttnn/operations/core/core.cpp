@@ -131,19 +131,19 @@ Tensor reallocate(const Tensor& input_tensor, const std::optional<MemoryConfig>&
 uint32_t begin_trace_capture(IDevice* device, const QueueId cq_id) {
     ZoneScoped;
     uint32_t tid = Trace::next_id();
-    device->push_work([device, cq_id, tid]() mutable { device->begin_trace(cq_id, tid); });
+    device->push_work([device, cq_id, tid]() mutable { device->begin_trace(*cq_id, tid); });
     return tid;
 }
 
 void end_trace_capture(IDevice* device, const uint32_t tid, const QueueId cq_id) {
     ZoneScoped;
-    device->push_work([device, cq_id, tid]() mutable { device->end_trace(cq_id, tid); });
+    device->push_work([device, cq_id, tid]() mutable { device->end_trace(*cq_id, tid); });
 }
 
 void execute_trace(IDevice* device, const uint32_t tid, const QueueId cq_id, bool blocking) {
     ZoneScoped;
     // If blocking, ensure that worker thread blocks until trace is completed
-    device->push_work([device, cq_id, tid, blocking]() mutable { device->replay_trace(cq_id, tid, blocking); });
+    device->push_work([device, cq_id, tid, blocking]() mutable { device->replay_trace(*cq_id, tid, blocking); });
     // If blocking, wait until worker threads have completed
     if (blocking) {
         device->synchronize();
@@ -155,30 +155,30 @@ void release_trace(IDevice* device, const uint32_t tid) {
 }
 
 // Trace APIs - Multi Device
-uint32_t begin_trace_capture(MeshDevice* device, const uint8_t cq_id) {
+uint32_t begin_trace_capture(MeshDevice* device, const QueueId cq_id) {
     ZoneScoped;
     auto workers = device->get_devices();
     uint32_t tid = Trace::next_id();
     for (auto& worker : workers) {
-        worker->push_work([worker, cq_id, tid]() mutable { worker->begin_trace(cq_id, tid); });
+        worker->push_work([worker, cq_id, tid]() mutable { worker->begin_trace(*cq_id, tid); });
     }
     return tid;
 }
 
-void end_trace_capture(MeshDevice* device, const uint32_t tid, const uint8_t cq_id) {
+void end_trace_capture(MeshDevice* device, const uint32_t tid, const QueueId cq_id) {
     ZoneScoped;
     auto workers = device->get_devices();
     for (auto& worker : workers) {
-        worker->push_work([worker, cq_id, tid]() mutable { worker->end_trace(cq_id, tid); });
+        worker->push_work([worker, cq_id, tid]() mutable { worker->end_trace(*cq_id, tid); });
     }
 }
 
-void execute_trace(MeshDevice* device, const uint32_t tid, const uint8_t cq_id, bool blocking) {
+void execute_trace(MeshDevice* device, const uint32_t tid, const QueueId cq_id, bool blocking) {
     ZoneScoped;
     auto workers = device->get_devices();
     // If blocking, ensure that each worker thread blocks until device-local trace is completed
     for (auto& worker : workers) {
-        worker->push_work([worker, cq_id, tid, blocking]() mutable { worker->replay_trace(cq_id, tid, blocking); });
+        worker->push_work([worker, cq_id, tid, blocking]() mutable { worker->replay_trace(*cq_id, tid, blocking); });
     }
     // If blocking, wait until worker threads have completed
     if (blocking) {

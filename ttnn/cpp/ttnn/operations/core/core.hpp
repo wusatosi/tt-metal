@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "ttnn/common/queue_id.hpp"
 #include "ttnn/core.hpp"
 #include "ttnn/decorators.hpp"
 #include "ttnn/operations/core/to_dtype/to_dtype_op.hpp"
@@ -72,12 +73,12 @@ void execute_trace(IDevice* device, const uint32_t tid, const QueueId cq_id, boo
 void release_trace(IDevice* device, const uint32_t tid);
 
 // Trace APIs - Multi Device
-uint32_t begin_trace_capture(MeshDevice* device, const uint8_t cq_id = ttnn::DefaultQueueId);
+uint32_t begin_trace_capture(MeshDevice* device, const QueueId cq_id = ttnn::DefaultQueueId);
 
-void end_trace_capture(MeshDevice* device, const uint32_t tid, const uint8_t cq_id = ttnn::DefaultQueueId);
+void end_trace_capture(MeshDevice* device, const uint32_t tid, const QueueId cq_id);
 
 void execute_trace(
-    MeshDevice* device, const uint32_t tid, const uint8_t cq_id = ttnn::DefaultQueueId, bool blocking = true);
+    MeshDevice* device, const uint32_t tid, const QueueId cq_id = ttnn::DefaultQueueId, bool blocking = true);
 
 void release_trace(MeshDevice* device, const uint32_t tid);
 
