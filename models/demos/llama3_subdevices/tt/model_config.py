@@ -607,7 +607,7 @@ class TtModelArgs:
                     use_height_and_width_as_shard_shape=True,
                 )
             )
-            qkv_shape_ring = (9216 // 4, 12288 // 8)  # Use padded K and N
+            qkv_shape_ring = (8192 // 4, 12288 // 8)  # Use padded K and N
             self.model_config["SHARDED_QKV_RING_MEMCFG"] = self.create_dram_sharded_mem_config(
                 k=qkv_shape_ring[0],
                 n=qkv_shape_ring[1],
@@ -638,7 +638,7 @@ class TtModelArgs:
                 use_height_and_width_as_shard_shape=True,
             )
 
-            wo_shape_ring = (12288 // 8, 9216 // 4)  # Use padded K and N
+            wo_shape_ring = (8192 // 8, 9216 // 4)  # Use padded K and N
             self.model_config["SHARDED_WO_RING_MEMCFG"] = self.create_dram_sharded_mem_config(
                 k=wo_shape_ring[0],
                 n=wo_shape_ring[1],
