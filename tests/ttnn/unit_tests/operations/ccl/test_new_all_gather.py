@@ -415,6 +415,101 @@ def test_all_gather(
             3,
             ttnn.TILE_LAYOUT,
             (32, 32),
+            ttnn.CoreRangeSet(
+                [
+                    ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 1)),
+                    ttnn.CoreRange(ttnn.CoreCoord(2, 0), ttnn.CoreCoord(2, 1)),
+                ]
+            ),
+            None,
+            None,
+            ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        ),
+        (
+            2,
+            [1, 4, 32, 256],
+            3,
+            ttnn.TILE_LAYOUT,
+            (32, 128),
+            ttnn.CoreRangeSet(
+                [
+                    ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 1)),
+                    ttnn.CoreRange(ttnn.CoreCoord(2, 0), ttnn.CoreCoord(2, 1)),
+                ]
+            ),
+            None,
+            None,
+            ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+        ),
+    ],
+)
+@pytest.mark.parametrize("num_links", [1])
+@pytest.mark.parametrize(
+    "input_dtype",
+    [
+        ttnn.bfloat16,
+        ttnn.bfloat8_b,
+    ],
+)
+@pytest.mark.parametrize("num_iters", [8])
+@pytest.mark.parametrize("enable_async", [True])
+def test_all_gather_complex_sharded(
+    t3k_mesh_device,
+    num_devices,
+    output_shape,
+    dim,
+    num_links,
+    input_dtype,
+    layout,
+    num_iters,
+    use_program_cache,
+    function_level_defaults,
+    enable_async,
+    input_shard_shape,
+    input_shard_grid,
+    output_shard_shape,
+    output_shard_grid,
+    tensor_mem_layout,
+):
+    if num_links > 1:
+        assert f"num_links > 1 not supported for sharded all gather test function which is currently using the t3k_mesh_device (and hence only has 1 link available for use)"
+
+    run_all_gather_impl(
+        t3k_mesh_device,
+        num_devices,
+        output_shape,
+        dim,
+        num_links,
+        input_dtype,
+        layout,
+        use_program_cache,
+        function_level_defaults,
+        all_gather_topology=ttnn.Topology.Linear,
+        num_iters=num_iters,
+        enable_async=enable_async,
+        rand_tensor=True,
+        input_shard_shape=input_shard_shape,
+        input_shard_grid=input_shard_grid,
+        output_shard_shape=output_shard_shape,
+        output_shard_grid=output_shard_grid,
+        tensor_mem_layout=tensor_mem_layout,
+        create_persistent_fabric=True,
+        teardown_persistent_fabric=True,
+        wrap_fabric_around_mesh=True,
+    )
+
+
+# Enumerate the post-commit cases explicitly
+@skip_for_grayskull("Requires eth connected devices to run")
+@pytest.mark.parametrize(
+    "num_devices, output_shape, dim, layout, input_shard_shape, input_shard_grid, output_shard_shape, output_shard_grid, tensor_mem_layout",
+    [
+        (
+            2,
+            [1, 1, 32, 256],
+            3,
+            ttnn.TILE_LAYOUT,
+            (32, 32),
             ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 3))}),
             None,
             None,
