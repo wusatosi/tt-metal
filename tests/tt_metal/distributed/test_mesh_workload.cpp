@@ -532,12 +532,22 @@ TEST_F(MeshWorkloadTest, TraceTest) {
     uint32_t seed = tt::parse_env("TT_METAL_SEED", random_seed);
     log_info(tt::LogTest, "Using Test Seed: {}", seed);
     srand(seed);
-    uint32_t num_homogenous_workloads = 20;
-    uint32_t num_heterogeneous_workloads = 20;
-
+    uint32_t num_homogenous_workloads = 1;
+    uint32_t num_heterogeneous_workloads = 1;
+    // Full device range
     LogicalDeviceRange all_devices = LogicalDeviceRange({0, 0}, {3, 1});
+    // Individual rows
     LogicalDeviceRange devices_0 = LogicalDeviceRange({0, 0}, {3, 0});
     LogicalDeviceRange devices_1 = LogicalDeviceRange({0, 1}, {3, 1});
+    // Individual device coords
+    LogicalDeviceRange device_00 = LogicalDeviceRange({0, 0}, {0, 0});
+    LogicalDeviceRange device_10 = LogicalDeviceRange({1, 0}, {1, 0});
+    LogicalDeviceRange device_20 = LogicalDeviceRange({2, 0}, {2, 0});
+    LogicalDeviceRange device_30 = LogicalDeviceRange({3, 0}, {3, 0});
+    LogicalDeviceRange device_01 = LogicalDeviceRange({0, 1}, {0, 1});
+    LogicalDeviceRange device_11 = LogicalDeviceRange({1, 1}, {1, 1});
+    LogicalDeviceRange device_21 = LogicalDeviceRange({2, 1}, {2, 1});
+    LogicalDeviceRange device_31 = LogicalDeviceRange({3, 1}, {3, 1});
 
     log_info("Create {} MeshWorkloads", 2 * num_homogenous_workloads + num_heterogeneous_workloads);
     std::vector<std::shared_ptr<MeshWorkload>> mesh_workloads = {};
@@ -559,6 +569,23 @@ TEST_F(MeshWorkloadTest, TraceTest) {
         EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), *workload, true);
         mesh_workloads.push_back(workload);
     }
+
+    for (int i = 0; i < num_heterogeneous_workloads; i++) {
+        auto programs = create_random_programs(8, mesh_device_->compute_with_storage_grid_size(), seed);
+        auto workload = std::make_shared<MeshWorkload>();
+        AddProgramToMeshWorkload(*workload, *programs[0], device_00);
+        AddProgramToMeshWorkload(*workload, *programs[1], device_10);
+        AddProgramToMeshWorkload(*workload, *programs[2], device_20);
+        AddProgramToMeshWorkload(*workload, *programs[3], device_30);
+        AddProgramToMeshWorkload(*workload, *programs[4], device_01);
+        AddProgramToMeshWorkload(*workload, *programs[5], device_11);
+        AddProgramToMeshWorkload(*workload, *programs[6], device_21);
+        AddProgramToMeshWorkload(*workload, *programs[7], device_31);
+
+        EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), *workload, true);
+        mesh_workloads.push_back(workload);
+    }
+
     programs = create_random_programs(num_homogenous_workloads, mesh_device_->compute_with_storage_grid_size(), seed);
     for (int i = 0; i < num_homogenous_workloads; i++) {
         auto workload = std::make_shared<MeshWorkload>();

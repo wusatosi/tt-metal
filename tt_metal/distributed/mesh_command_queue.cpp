@@ -752,11 +752,15 @@ void MeshCommandQueue::record_end() {
             bypass_data.begin() + trace_data_word_offset,
             bypass_data.begin() + trace_data_word_offset + trace_data_size_words);
         std::vector<LogicalDeviceRange> device_ranges_to_invalidate = {};
+        std::cout << "ADD PROGRAM ON: " << trace_md.device_range.str() << std::endl;
         for (auto& program : trace_data) {
+            std::cout << "Check if intersercts" << std::endl;
             if (program.device_range.intersects(trace_md.device_range)) {
                 // The current program intersects with a program that was previously
                 // placed on the Mesh.
+                std::cout << "Intersection found" << std::endl;
                 intersection_found = true;
+                std::cout << "Find intersection" << std::endl;
                 auto intersection = program.device_range.intersection(trace_md.device_range).value();
                 if (intersection == program.device_range) {
                     // Intersection matches the originally placed program.
@@ -764,6 +768,7 @@ void MeshCommandQueue::record_end() {
                     std::cout << "Pure intersection: " << program.device_range.str() << std::endl;
                 } else {
                     // Intersection is a subset of the originally placed program.
+                    std::cout << "Find compliment" << std::endl;
                     auto compliment_ = compliment(program.device_range, intersection);
                     std::cout << "Parent Range: " << program.device_range.str() << std::endl;
                     std::cout << "Intersection: " << intersection.str() << std::endl;
