@@ -168,7 +168,14 @@ operation::ProgramWithCallbacks AllReduceAsync::create_program(
 
 const operation::Hash AllReduceAsync::compute_program_hash(const std::vector<Tensor>& input_tensors) const {
     return operation::hash_operation<AllReduceAsync>(
-        this->num_links, this->ring_size, this->ring_index, this->output_mem_config, this->topology);
+        input_tensors[0].get_padded_shape(),
+        input_tensors[0].get_dtype(),
+        input_tensors[0].memory_config(),
+        this->num_links,
+        this->ring_size,
+        this->ring_index,
+        this->output_mem_config,
+        this->topology);
 }
 
 namespace operations {
