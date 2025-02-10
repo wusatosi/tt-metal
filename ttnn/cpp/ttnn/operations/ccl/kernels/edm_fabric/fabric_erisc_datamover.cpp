@@ -537,7 +537,7 @@ FORCE_INLINE void send_next_data(
         reinterpret_cast<volatile tt::fabric::PacketHeader *>(sender_buffer_channel.get_buffer_address(local_sender_wrptr_buffer_index));
     ASSERT(tt::fabric::is_valid(*const_cast<tt::fabric::PacketHeader *>(pkt_header)));
     size_t payload_size_bytes = pkt_header->get_payload_size_including_header();
-    pkt_header->src_ch_id = sender_channel_index;
+    pkt_header->common_fields.src_ch_id = sender_channel_index;
 
     auto src_addr = sender_buffer_channel.get_buffer_address(local_sender_wrptr_buffer_index);
     auto dest_addr = receiver_buffer_channel.get_buffer_address(remote_receiver_wrptr.get_buffer_index());
@@ -576,7 +576,7 @@ FORCE_INLINE void receiver_send_received_ack(
 
     auto receiver_buffer_index = receiver_channel_ptr.get_buffer_index();
     auto volatile *pkt_header = reinterpret_cast<volatile tt::fabric::PacketHeader *>(local_receiver_buffer_channel.get_buffer_address(receiver_buffer_index));
-    const auto src_id = pkt_header->src_ch_id;
+    const auto src_id = pkt_header->get_src_chip_id();
     remote_update_ptr_val(to_sender_packets_acked_streams[src_id], 1);
 }
 
@@ -591,7 +591,7 @@ FORCE_INLINE void receiver_send_completion_ack(
     auto receiver_buffer_index = receiver_channel_ptr.get_buffer_index();
 
     auto volatile *pkt_header = reinterpret_cast<volatile tt::fabric::PacketHeader *>(local_receiver_buffer_channel.get_buffer_address(receiver_buffer_index));
-    const auto src_id = pkt_header->src_ch_id;
+    const auto src_id = pkt_header->get_src_chip_id();
     remote_update_ptr_val(to_sender_packets_completed_streams[src_id], 1);
     receiver_channel_ptr.increment();
     auto &remote_sender_completion_ptr = remote_eth_sender_completion_ptrs[src_id];
@@ -600,8 +600,7 @@ FORCE_INLINE void receiver_send_completion_ack(
 
 template <uint8_t SENDER_NUM_BUFFERS>
 FORCE_INLINE bool can_forward_packet_completely(
-    const volatile tt::fabric::PacketHeader* packet_header,
-    tt::fabric::RoutingFields cached_routing_fields,
+    tt::fabric::RoutingFields const& cached_routing_fields,
     tt::fabric::EdmToEdmSender<SENDER_NUM_BUFFERS>& downstream_edm_interface) {
     // We always check if it is the terminal mcast packet value. We can do this because all unicast packets have the
     // mcast terminal value masked in to the routing field. This simplifies the check here to a single compare.
@@ -614,17 +613,26 @@ template <uint8_t SENDER_NUM_BUFFERS>
 FORCE_INLINE void receiver_forward_packet(
     // TODO: have a separate cached copy of the packet header to save some additional L1 loads
     volatile tt::fabric::PacketHeader *packet_start,
-    tt::fabric::RoutingFields cached_routing_fields,
+    tt::fabric::PacketHeaderCommon const& cached_packet_header_common,
     tt::fabric::EdmToEdmSender<SENDER_NUM_BUFFERS> &downstream_edm_interface,
     uint8_t transaction_id) {
 
-    bool start_distance_is_terminal_value = (cached_routing_fields.value & tt::fabric::RoutingFields::HOP_DISTANCE_MASK) == tt::fabric::RoutingFields::LAST_HOP_DISTANCE_VAL;
+    auto const noc_command_fields = packet_start->cache_noc_command_fields();
+    tt::fabric::NocSendType const noc_send_type = cached_packet_header_common.get_noc_send_type();
+    auto payload_size_bytes = cached_packet_header_common.get_payload_size();
+    auto routing_fields = cached_packet_header_common.get_routing_fields();
+    bool start_distance_is_terminal_value = (routing_fields.value & tt::fabric::RoutingFields::HOP_DISTANCE_MASK) == tt::fabric::RoutingFields::LAST_HOP_DISTANCE_VAL;
     if (start_distance_is_terminal_value) {
-        execute_chip_unicast_to_local_chip(packet_start, transaction_id);
+        execute_chip_unicast_to_local_chip(
+            (size_t)packet_start,
+            payload_size_bytes,
+            noc_send_type,
+            noc_command_fields,
+            transaction_id);
     }
-    bool not_last_destination_device = cached_routing_fields.value != tt::fabric::RoutingFields::LAST_MCAST_VAL;
+    bool not_last_destination_device = routing_fields.value != tt::fabric::RoutingFields::LAST_MCAST_VAL;
     if (not_last_destination_device) {
-        forward_payload_to_downstream_edm(packet_start, cached_routing_fields, downstream_edm_interface, transaction_id);
+        forward_payload_to_downstream_edm(packet_start, payload_size_bytes, cached_packet_header_common, downstream_edm_interface, transaction_id);
     }
 }
 
@@ -777,15 +785,18 @@ FORCE_INLINE void run_receiver_channel_step(
         auto receiver_buffer_index = wr_sent_ptr.get_buffer_index();
         volatile auto packet_header = local_receiver_channel.get_packet_header(receiver_buffer_index);
 
-        tt::fabric::RoutingFields cached_routing_fields = const_cast<tt::fabric::PacketHeader*>(packet_header)->routing_fields;
-        print_pkt_header(packet_header);
+        print_pkt_header(packet_header); // commenting out degrades perf by about 400MB/s/dir
+        auto const cached_packet_header_common = packet_header->common_fields.create_cached_copy();
+        // auto const routing_fields = *const_cast<tt::fabric::RoutingFields*>(&packet_header->common_fields.routing_fields);
         bool can_send_to_all_local_chip_receivers =
-            can_forward_packet_completely(packet_header, cached_routing_fields, downstream_edm_interface);
+            can_forward_packet_completely(cached_packet_header_common.routing_fields, downstream_edm_interface);
+            // can_forward_packet_completely(routing_fields, downstream_edm_interface);
         bool trid_flushed = receiver_channel_trid_tracker.transaction_flushed(receiver_buffer_index);
         if (can_send_to_all_local_chip_receivers && trid_flushed) {
+            // auto const cached_packet_header_common = packet_header->common_fields.create_cached_copy();
             // DeviceZoneScopedN("EDMR-Send-Impl");
             uint8_t trid = receiver_channel_trid_tracker.update_buffer_slot_to_next_trid_and_advance_trid_counter(receiver_buffer_index);
-            receiver_forward_packet(packet_header, cached_routing_fields, downstream_edm_interface, trid);
+            receiver_forward_packet(packet_header, cached_packet_header_common, downstream_edm_interface, trid);
             wr_sent_ptr.increment();
         }
     }

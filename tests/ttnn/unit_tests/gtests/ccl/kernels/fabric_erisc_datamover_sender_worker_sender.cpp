@@ -150,8 +150,7 @@ void kernel_main() {
         uint64_t last_message_semaphore_noc0_addr =
             safe_get_noc_addr(my_x[0], my_y[0], (uint32_t)last_message_semaphore_address, 0);
         packet_header.to_chip_unicast(2);
-        packet_header.to_noc_unicast_atomic_inc(
-            tt::fabric::NocUnicastAtomicIncCommandHeader(last_message_semaphore_noc0_addr, 1, 32));
+        packet_header.to_noc_unicast_atomic_inc({last_message_semaphore_noc0_addr, 1, 32});
 
         sender.send_payload_blocking_from_address(
             a_packet_header_addr, packet_header.get_payload_size_including_header());

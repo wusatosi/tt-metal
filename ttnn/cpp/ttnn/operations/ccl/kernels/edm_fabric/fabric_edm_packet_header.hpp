@@ -7,7 +7,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-
+#include <array>
+#include <cstring>
 namespace tt::fabric {
 
 enum TerminationSignal : uint32_t {
@@ -64,9 +65,6 @@ struct NocUnicastInlineWriteCommandHeader {
     uint32_t value;
 };
 struct NocUnicastAtomicIncCommandHeader {
-    NocUnicastAtomicIncCommandHeader(uint64_t noc_address, uint16_t val, uint16_t wrap)
-        : noc_address(noc_address), val(val), wrap(wrap) {}
-
     uint64_t noc_address;
     uint16_t val;
     uint16_t wrap;
@@ -101,12 +99,11 @@ union NocCommandFields{
 } ;
 static_assert(sizeof(NocCommandFields) <= 16, "CommandFields size is not 16 bytes");
 
-// TODO: wrap this in a debug version that holds type info so we can assert for field/command/
-struct PacketHeader {
-    // TODO: trim this down noc_send_type 2 bits (4 values):
-    //   -> unicast_write, mcast_write, unicast_seminc, mcast_seminc
-    // For now, kept it separate so I could do reads which would be handled differently
-    // but for our purposes we shouldn't need read so we should be able to omit the support
+using CachedPacketHeader = std::array<uint32_t, 3>;
+
+struct PacketHeaderCommon {
+    // Defines non-noc-cmd related fields
+    // separated so we can cache it with minimal reads
     NocSendType noc_send_type : 3;
     ChipSendType chip_send_type : 1;
 
@@ -117,6 +114,51 @@ struct PacketHeader {
 
     RoutingFields routing_fields;
     uint16_t payload_size_bytes; // excludes header size
+
+    inline PacketHeaderCommon create_cached_copy() volatile const {
+        constexpr size_t num_4B_words = sizeof(PacketHeaderCommon) / sizeof(uint32_t);
+        static_assert(sizeof(PacketHeaderCommon) % sizeof(uint32_t) == 0, "PacketHeaderCommon size is not a multiple of uint32_t");
+        PacketHeaderCommon cached_packet_header;
+        std::memcpy(&cached_packet_header, const_cast<PacketHeaderCommon*>(this), sizeof(cached_packet_header));
+        // for (uint32_t i = 0; i < num_4B_words; i++) {
+        //     reinterpret_cast<uint32_t*>(&cached_packet_header)[i] = reinterpret_cast<volatile const uint32_t*>(this)[i];
+        // }
+        return cached_packet_header;
+    }
+    inline uint16_t get_payload_size() const {
+        return this->payload_size_bytes;
+    }
+
+    inline NocSendType get_noc_send_type() const {
+        return this->noc_send_type;
+    }
+    inline RoutingFields get_routing_fields() const {
+        return this->routing_fields;
+    }
+    inline uint8_t get_src_ch_id() const {
+        return this->src_ch_id;
+    }
+};
+static_assert(sizeof(PacketHeaderCommon) == 4, "PacketHeaderCommon size is not 2 bytes");
+// TODO: wrap this in a debug version that holds type info so we can assert for field/command/
+struct PacketHeader {
+    PacketHeaderCommon common_fields;
+    // TODO: trim this down noc_send_type 2 bits (4 values):
+    //   -> unicast_write, mcast_write, unicast_seminc, mcast_seminc
+    // For now, kept it separate so I could do reads which would be handled differently
+    // but for our purposes we shouldn't need read so we should be able to omit the support
+    // NocSendType noc_send_type : 3;
+    // ChipSendType chip_send_type : 1;
+
+    // // Used only by the EDM sender and receiver channels. Populated by EDM sender channel to
+    // // indicate to the receiver channel what channel was the source of this packet. Reserved
+    // // otherwise.
+    // uint8_t src_ch_id : 4;
+
+    // RoutingFields routing_fields;
+    // uint16_t payload_size_bytes; // excludes header size
+    uint32_t padding00;
+
     NocCommandFields command_fields; // size = 16B due to uint64_t alignment
 
     // Sort of hack to work-around DRAM read alignment issues that must be 32B aligned
@@ -130,52 +172,106 @@ struct PacketHeader {
     uint32_t padding0;
     uint32_t padding1;
 
-    inline void set_chip_send_type(ChipSendType &type) { this->chip_send_type = type; }
-    inline void set_noc_send_type(NocSendType &type) { this->noc_send_type = type; }
-    inline void set_routing_fields(RoutingFields &fields) { this->routing_fields = fields; }
+    // inline CachedPacketHeader cache_as_raw_uint32() volatile const{
+    //     auto as_uint32_ptr = reinterpret_cast<volatile uint32_t const*>(this);
+    //     return {as_uint32_ptr[0], 0, as_uint32_ptr[2]};
+    // }
+
+
+
+    // inline static NocCommandFields get_noc_command_fields_from_cached(CachedPacketHeader const& cached_uint32_ptr) {
+    //     static_assert(offsetof(PacketHeader, command_fields) == 8);
+    //     constexpr uint32_t noc_fields_bits_mask = sizeof(NocCommandFields) * 8 - 1;
+    //     uint16_t noc_fields_bits = cached_uint32_ptr[2] & noc_fields_bits_mask;
+    //     DPRINT << "get_payload_size_from_cached\n";
+    //     DPRINT << "\tcached_uint32_ptr[0]: " << (uint32_t) cached_uint32_ptr[0] << "\n";
+    //     DPRINT << "\tcached_uint32_ptr[1]: " << (uint32_t) cached_uint32_ptr[1] << "\n";
+    //     DPRINT << "\tcached_uint32_ptr[2]: " << (uint32_t) cached_uint32_ptr[2] << "\n";
+    //     DPRINT << "\tnoc_fields_bits: " << (uint32_t) noc_fields_bits << "\n";
+    //     auto cmd_fields = *reinterpret_cast<NocCommandFields*>(&noc_fields_bits);
+    //     DPRINT << "cmd_fields."
+    //     return *reinterpret_cast<NocCommandFields*>(&noc_fields_bits);
+    // }
+
+
+    // PacketHeader cache_packet_header(volatile PacketHeader const& packet_header) {
+    //     constexpr uint32_t num_4B_words = sizeof(PacketHeader)/ sizeof(uint32_t);
+    //     static_assert(sizeof(PacketHeader) % sizeof(uint32_t) == 0, "PacketHeader size is not a multiple of uint32_t");
+
+    //     PacketHeader cached_packet_header;
+    //     for (uint32_t i = 0; i < num_4B_words; i++) {
+    //         reinterpret_cast<uint32_t*>(&cached_packet_header)[i] = reinterpret_cast<volatile const uint32_t*>(&packet_header)[i];
+    //     }
+    //     return cached_packet_header;
+    // }
+
+    inline void set_chip_send_type(ChipSendType &type) { this->common_fields.chip_send_type = type; }
+    inline void set_noc_send_type(NocSendType &type) { this->common_fields.noc_send_type = type; }
+    inline void set_routing_fields(RoutingFields &fields) { this->common_fields.routing_fields = fields; }
     inline void set_command_fields(NocCommandFields &fields) { this->command_fields = fields; }
+
+    inline uint8_t get_src_chip_id() const { return this->common_fields.src_ch_id; }
+    inline ChipSendType get_chip_send_type() const { return this->common_fields.chip_send_type; }
+    inline NocSendType get_noc_send_type() const { return this->common_fields.noc_send_type; }
+    inline RoutingFields get_routing_fields() const { return this->common_fields.routing_fields; }
+    inline NocCommandFields get_command_fields() const { return this->command_fields; }
+    inline ChipSendType get_chip_send_type() volatile const { return this->common_fields.chip_send_type; }
+    inline NocSendType get_noc_send_type() volatile const { return this->common_fields.noc_send_type; }
+    inline uint8_t get_src_chip_id() volatile const { return this->common_fields.src_ch_id; }
+    inline RoutingFields get_routing_fields() volatile const { return RoutingFields{this->common_fields.routing_fields.value}; }
+    // inline NocCommandFields get_command_fields() volatile const { return this->command_fields; }
+
+    NocCommandFields cache_noc_command_fields() volatile const {
+        NocCommandFields cached_noc_command_fields;
+        constexpr size_t cached_num_words = 3;
+        static_assert(sizeof(NocCommandFields) >= cached_num_words, "Implementation for cache_noc_command_fields mis-sized");
+        for (size_t i = 0; i < cached_num_words; i++) {
+            reinterpret_cast<uint32_t*>(&cached_noc_command_fields)[i] = reinterpret_cast<volatile const uint32_t*>(&this->command_fields)[i];
+        }
+        return cached_noc_command_fields;
+    }
 
     // Returns size of payload in bytes - TODO: convert to words (4B)
     size_t get_payload_size_excluding_header() volatile const {
-        return this->payload_size_bytes;
+        return this->common_fields.payload_size_bytes;
     }
     inline size_t get_payload_size_including_header() volatile const {
         return get_payload_size_excluding_header() + sizeof(PacketHeader);
     }
 
     inline PacketHeader &to_chip_unicast(uint8_t distance_in_hops) {
-        this->chip_send_type = CHIP_UNICAST;
-        this->routing_fields.value = RoutingFields::LAST_CHIP_IN_MCAST_VAL | distance_in_hops;
+        this->common_fields.chip_send_type = CHIP_UNICAST;
+        this->common_fields.routing_fields.value = RoutingFields::LAST_CHIP_IN_MCAST_VAL | distance_in_hops;
         return *this;
     }
     inline PacketHeader &to_chip_multicast(MulticastRoutingCommandHeader const &chip_multicast_command_header) {
-        this->chip_send_type = CHIP_MULTICAST;
-        this->routing_fields.value = ((static_cast<uint8_t>(chip_multicast_command_header.range_hops) << RoutingFields::START_DISTANCE_FIELD_BIT_WIDTH)) | static_cast<uint8_t>(chip_multicast_command_header.start_distance_in_hops);
+        this->common_fields.chip_send_type = CHIP_MULTICAST;
+        this->common_fields.routing_fields.value = ((static_cast<uint8_t>(chip_multicast_command_header.range_hops) << RoutingFields::START_DISTANCE_FIELD_BIT_WIDTH)) | static_cast<uint8_t>(chip_multicast_command_header.start_distance_in_hops);
         return *this;
     }
 
     inline PacketHeader &to_noc_unicast_write(NocUnicastCommandHeader const &noc_unicast_command_header, size_t payload_size_bytes) {
-        this->noc_send_type = NOC_UNICAST_WRITE;
+        this->common_fields.noc_send_type = NOC_UNICAST_WRITE;
         this->command_fields.unicast_write = noc_unicast_command_header;
-        this->payload_size_bytes = payload_size_bytes;
+        this->common_fields.payload_size_bytes = payload_size_bytes;
         return *this;
     }
     inline PacketHeader &to_noc_unicast_inline_write(NocUnicastInlineWriteCommandHeader const &noc_unicast_command_header) {
-        this->noc_send_type = NOC_UNICAST_INLINE_WRITE;
+        this->common_fields.noc_send_type = NOC_UNICAST_INLINE_WRITE;
         this->command_fields.unicast_inline_write = noc_unicast_command_header;
-        this->payload_size_bytes = 0;
+        this->common_fields.payload_size_bytes = 0;
         return *this;
     }
     inline PacketHeader &to_noc_multicast_write(NocMulticastCommandHeader const &noc_multicast_command_header, size_t payload_size_bytes) {
-        this->noc_send_type = NOC_MULTICAST_WRITE;
+        this->common_fields.noc_send_type = NOC_MULTICAST_WRITE;
         this->command_fields.mcast_write = noc_multicast_command_header;
-        this->payload_size_bytes = payload_size_bytes;
+        this->common_fields.payload_size_bytes = payload_size_bytes;
         return *this;
     }
     inline PacketHeader &to_noc_unicast_atomic_inc(NocUnicastAtomicIncCommandHeader const &noc_unicast_atomic_inc_command_header) {
-        this->noc_send_type = NOC_UNICAST_ATOMIC_INC;
+        this->common_fields.noc_send_type = NOC_UNICAST_ATOMIC_INC;
         this->command_fields.unicast_seminc = noc_unicast_atomic_inc_command_header;
-        this->payload_size_bytes = 0;
+        this->common_fields.payload_size_bytes = 0;
         return *this;
     }
     inline PacketHeader &to_noc_multicast_atomic_inc(NocMulticastAtomicIncCommandHeader const &noc_multicast_command_header, size_t payload_size_bytes) {
@@ -183,58 +279,58 @@ struct PacketHeader {
         ASSERT(false);
         while (1) {};
         #endif
-        this->payload_size_bytes = payload_size_bytes;
+        this->common_fields.payload_size_bytes = payload_size_bytes;
         return *this;
     }
 
     inline volatile PacketHeader *to_chip_unicast(uint8_t distance_in_hops) volatile {
-        this->chip_send_type = CHIP_UNICAST;
-        this->routing_fields.value = RoutingFields::LAST_CHIP_IN_MCAST_VAL | distance_in_hops;
+        this->common_fields.chip_send_type = CHIP_UNICAST;
+        this->common_fields.routing_fields.value = RoutingFields::LAST_CHIP_IN_MCAST_VAL | distance_in_hops;
         return this;
     }
     inline volatile PacketHeader *to_chip_multicast(MulticastRoutingCommandHeader const &chip_multicast_command_header) volatile {
-        this->chip_send_type = CHIP_MULTICAST;
-        this->routing_fields.value = (static_cast<uint8_t>(chip_multicast_command_header.range_hops) << RoutingFields::START_DISTANCE_FIELD_BIT_WIDTH) | chip_multicast_command_header.start_distance_in_hops;
+        this->common_fields.chip_send_type = CHIP_MULTICAST;
+        this->common_fields.routing_fields.value = (static_cast<uint8_t>(chip_multicast_command_header.range_hops) << RoutingFields::START_DISTANCE_FIELD_BIT_WIDTH) | chip_multicast_command_header.start_distance_in_hops;
         return this;
     }
     inline volatile PacketHeader *to_noc_unicast_write(NocUnicastCommandHeader const &noc_unicast_command_header, size_t payload_size_bytes) volatile {
-        this->noc_send_type = NOC_UNICAST_WRITE;
+        this->common_fields.noc_send_type = NOC_UNICAST_WRITE;
         this->command_fields.unicast_write.noc_address = noc_unicast_command_header.noc_address;
-        this->payload_size_bytes = payload_size_bytes;
+        this->common_fields.payload_size_bytes = payload_size_bytes;
 
         return this;
     }
     inline volatile PacketHeader &to_noc_unicast_inline_write(NocUnicastInlineWriteCommandHeader const &noc_unicast_command_header) volatile {
-        this->noc_send_type = NOC_UNICAST_INLINE_WRITE;
+        this->common_fields.noc_send_type = NOC_UNICAST_INLINE_WRITE;
         this->command_fields.unicast_inline_write.noc_address = noc_unicast_command_header.noc_address;
         this->command_fields.unicast_inline_write.value = noc_unicast_command_header.value;
-        this->payload_size_bytes = 0;
+        this->common_fields.payload_size_bytes = 0;
         return *this;
     }
     inline volatile PacketHeader *to_noc_multicast(NocMulticastCommandHeader const &noc_multicast_command_header, size_t payload_size_bytes) volatile {
-        this->noc_send_type = NOC_MULTICAST_WRITE;
+        this->common_fields.noc_send_type = NOC_MULTICAST_WRITE;
         this->command_fields.mcast_write.mcast_rect_size_x = noc_multicast_command_header.mcast_rect_size_x;
         this->command_fields.mcast_write.mcast_rect_size_y = noc_multicast_command_header.mcast_rect_size_y;
         this->command_fields.mcast_write.noc_x_start = noc_multicast_command_header.noc_x_start;
         this->command_fields.mcast_write.noc_y_start = noc_multicast_command_header.noc_y_start;
-        this->payload_size_bytes = payload_size_bytes;
+        this->common_fields.payload_size_bytes = payload_size_bytes;
         this->command_fields.mcast_write.address = noc_multicast_command_header.address;
 
         return this;
     }
     inline volatile PacketHeader *to_noc_unicast_atomic_inc(
         NocUnicastAtomicIncCommandHeader const &noc_unicast_atomic_inc_command_header) volatile {
-        this->noc_send_type = NOC_UNICAST_ATOMIC_INC;
+        this->common_fields.noc_send_type = NOC_UNICAST_ATOMIC_INC;
         this->command_fields.unicast_seminc.noc_address = noc_unicast_atomic_inc_command_header.noc_address;
         this->command_fields.unicast_seminc.val = noc_unicast_atomic_inc_command_header.val;
         this->command_fields.unicast_seminc.wrap = noc_unicast_atomic_inc_command_header.wrap;
-        this->payload_size_bytes = 0;
+        this->common_fields.payload_size_bytes = 0;
 
         return this;
     }
     inline volatile PacketHeader *to_noc_multicast_atomic_inc(
         NocMulticastAtomicIncCommandHeader const &noc_multicast_atomic_inc_command_header, size_t payload_size_bytes) volatile {
-        this->noc_send_type = NOC_MULTICAST_ATOMIC_INC;
+        this->common_fields.noc_send_type = NOC_MULTICAST_ATOMIC_INC;
         this->command_fields.mcast_seminc.address = noc_multicast_atomic_inc_command_header.address;
         this->command_fields.mcast_seminc.noc_x_start = noc_multicast_atomic_inc_command_header.noc_x_start;
         this->command_fields.mcast_seminc.noc_y_start = noc_multicast_atomic_inc_command_header.noc_y_start;
@@ -242,11 +338,11 @@ struct PacketHeader {
         this->command_fields.mcast_seminc.size_y = noc_multicast_atomic_inc_command_header.size_y;
         this->command_fields.mcast_seminc.val = noc_multicast_atomic_inc_command_header.val;
         this->command_fields.mcast_seminc.wrap = noc_multicast_atomic_inc_command_header.wrap;
-        this->payload_size_bytes = payload_size_bytes;
+        this->common_fields.payload_size_bytes = payload_size_bytes;
 
         return this;
     }
-    inline void set_src_ch_id(uint8_t ch_id) volatile { this->src_ch_id = ch_id; }
+    inline void set_src_ch_id(uint8_t ch_id) volatile { this->common_fields.src_ch_id = ch_id; }
 };
 
 
