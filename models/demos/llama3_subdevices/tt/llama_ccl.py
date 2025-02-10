@@ -35,7 +35,7 @@ class TT_CCL:
         if teardown_persistent_fabric:
             assert enable_persistent_fabric
 
-        self.num_cbs = 8
+        self.num_cbs = 1
         self.from_remote_semaphore_handles = []
         self.to_remote_semaphore_handles = []
         self.gather_semaphore_handles = []
@@ -60,18 +60,16 @@ class TT_CCL:
             input_tensor_mesh,
             cluster_axis=cluster_axis,
             mesh_device=self.mesh_device,
-            from_remote_multi_device_global_semaphore=self.from_remote_semaphore_handles[self.from_sem_flag],
-            to_remote_multi_device_global_semaphore=self.to_remote_semaphore_handles[self.to_sem_flag],
-            gather_multi_device_global_semaphore=self.gather_semaphore_handles[self.gather_sem_flag],
+            multi_device_global_semaphore=self.gather_semaphore_handles[self.gather_sem_flag],
             math_op=ttnn.ReduceType.Sum,
             num_links=num_links,
             memory_config=memory_config,
             topology=ttnn.Topology.Linear,
             subdevice_id=self.worker_sub_device_id,
         )
-        # ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
-        self.from_sem_flag = (self.from_sem_flag + 1) % self.num_cbs
-        self.to_sem_flag = (self.to_sem_flag + 1) % self.num_cbs
+        ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
+        # self.from_sem_flag = (self.from_sem_flag + 1) % self.num_cbs
+        # self.to_sem_flag = (self.to_sem_flag + 1) % self.num_cbs
         self.gather_sem_flag = (self.gather_sem_flag + 1) % self.num_cbs
         return output_tensor_mesh
 
@@ -93,7 +91,7 @@ class TT_CCL:
         )
         self.from_sem_flag = (self.from_sem_flag + 1) % self.num_cbs
         self.to_sem_flag = (self.to_sem_flag + 1) % self.num_cbs
-        # ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
+        ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
         return ttnn_tensor_out
 
     def line_all_gather(self, input_tensor_mesh, dim, cluster_axis, memory_config, num_links=1):
@@ -110,7 +108,7 @@ class TT_CCL:
             enable_persistent_fabric_mode=self.enable_persistent_fabric,
         )
         self.gather_sem_flag = (self.gather_sem_flag + 1) % self.num_cbs
-        # ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
+        ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
         return ttnn_tensor_out
 
     def close(self):
@@ -329,6 +327,7 @@ def tt_sharded_distributed_rmsnorm(
     tt_global_stats = tt_ccl.line_all_gather(
         tt_stats_dram, dim=3, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
     )
+    # ttnn.synchronize_devices(tt_ccl.mesh_device, sub_device_ids=[tt_ccl.worker_sub_device_id])
     ttnn.deallocate(tt_stats_dram)
     print("all gather stats", tt_global_stats.shape)
 
