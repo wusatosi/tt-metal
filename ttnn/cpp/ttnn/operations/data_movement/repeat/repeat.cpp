@@ -175,31 +175,30 @@ ttnn::Tensor RepeatOperation::invoke(
 
     // tiled -> RM
     if (working_tensor.layout() == ttnn::TILE_LAYOUT) {
-        working_tensor =
-            ttnn::to_layout(working_tensor, ttnn::ROW_MAJOR_LAYOUT, std::nullopt, std::nullopt, (Device*)nullptr);
-    }
+        working_tensor = core::to_device(working_tensor.cpu(true).to(Layout::ROW_MAJOR), input.device(), std::nullopt);
 
-    // loop over dims in repetition vector, backwards because repeat pages first is faster
-    for (auto it = repetition_vector.crbegin(); it != repetition_vector.crend(); ++it) {
-        // no op for unit repetitions
-        if (*it == 1) {
-            continue;
+        // loop over dims in repetition vector, backwards because repeat pages first is faster
+        for (auto it = repetition_vector.crbegin(); it != repetition_vector.crend(); ++it) {
+            // no op for unit repetitions
+            if (*it == 1) {
+                continue;
+            }
+            // if last dim
+            if (it == repetition_vector.crbegin()) {
+                working_tensor = detail::repeat_last_dim_rm(working_tensor, *it, queue_id, working_output_mem_config);
+            }
+            // if not last dim
+            else {
+                auto i = repetition_vector.crend() - it - 1;  // forward index
+                working_tensor =
+                    detail::repeat_upper_dims_rm(working_tensor, i, *it, queue_id, working_output_mem_config);
+            }
         }
-        // if last dim
-        if (it == repetition_vector.crbegin()) {
-            working_tensor = detail::repeat_last_dim_rm(working_tensor, *it, queue_id, working_output_mem_config);
-        }
-        // if not last dim
-        else {
-            auto i = repetition_vector.crend() - it - 1;  // forward index
-            working_tensor = detail::repeat_upper_dims_rm(working_tensor, i, *it, queue_id, working_output_mem_config);
-        }
-    }
 
     // RM -> OG page layout
     if (tensor.layout() == ttnn::TILE_LAYOUT) {
-        working_tensor =
-            ttnn::to_layout(working_tensor, ttnn::TILE_LAYOUT, tensor.get_dtype(), std::nullopt, (Device*)nullptr);
+        working_tensor = core::to_device(
+            working_tensor.cpu(true).pad_to_tile(0).to(Layout::TILE), working_tensor.device(), std::nullopt);
     }
 
     // Interleaved to OG mem layout
