@@ -23,4 +23,5 @@ from .distributed import (
     visualize_mesh_device,
     ConcatMesh2dToTensor,
     distribute,
+    MeshType,
 )

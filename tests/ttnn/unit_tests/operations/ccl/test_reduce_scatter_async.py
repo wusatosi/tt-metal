@@ -348,9 +348,8 @@ def run_reduce_scatter_test(
 @pytest.mark.parametrize("enable_async", [False])
 @pytest.mark.parametrize("trace_mode", [False])
 @pytest.mark.parametrize("device_params", [{"trace_region_size": 27648}], indirect=True)
-@pytest.mark.parametrize("mesh_device", [pytest.param((2, 4), id="2x4_grid")], indirect=True)
 def test_line_reduce_scatter_async_post_commit(
-    mesh_device,
+    t3k_mesh_device,
     num_devices,
     per_chip_output_shape,
     dim,
@@ -366,7 +365,7 @@ def test_line_reduce_scatter_async_post_commit(
     num_iters=16,
 ):
     run_reduce_scatter_test(
-        mesh_device,
+        t3k_mesh_device,
         num_devices,
         per_chip_output_shape,
         dim,
@@ -413,9 +412,8 @@ def test_line_reduce_scatter_async_post_commit(
 @pytest.mark.parametrize("enable_async", [True])
 @pytest.mark.parametrize("replication_factor", [4])
 @pytest.mark.parametrize("math_op", [ttnn.ReduceType.Sum])
-@pytest.mark.parametrize("mesh_device", [pytest.param((2, 4), id="2x4_grid")], indirect=True)
 def test_line_reduce_scatter_async_on_T3K_cols_post_commit(
-    mesh_device,
+    t3k_mesh_device,
     num_devices,
     per_chip_input_shape,
     dim,
@@ -430,11 +428,11 @@ def test_line_reduce_scatter_async_on_T3K_cols_post_commit(
     replication_factor,
     num_iters=1,
 ):
-    if len(mesh_device.get_devices()) < 8:
+    if len(t3k_mesh_device.get_devices()) < 8:
         pytest.skip("Not T3K!")
 
     run_line_reduce_scatter_on_TG_with_mesh_tensor_along_rows(
-        mesh_device,
+        t3k_mesh_device,
         num_devices,
         per_chip_input_shape,
         ttnn.TensorMemoryLayout.INTERLEAVED,
@@ -482,9 +480,8 @@ def test_line_reduce_scatter_async_on_T3K_cols_post_commit(
 @pytest.mark.parametrize("enable_async", [True])
 @pytest.mark.parametrize("replication_factor", [2])
 @pytest.mark.parametrize("math_op", [ttnn.ReduceType.Sum])
-@pytest.mark.parametrize("mesh_device", [pytest.param((2, 4), id="2x4_grid")], indirect=True)
 def test_line_reduce_scatter_async_on_T3K_rows_post_commit(
-    mesh_device,
+    t3k_mesh_device,
     num_devices,
     per_chip_input_shape,
     dim,
@@ -499,11 +496,11 @@ def test_line_reduce_scatter_async_on_T3K_rows_post_commit(
     replication_factor,
     num_iters=1,
 ):
-    if len(mesh_device.get_devices()) < 8:
+    if len(t3k_mesh_device.get_devices()) < 8:
         pytest.skip("Not T3K!")
 
     run_line_reduce_scatter_on_TG_with_mesh_tensor_along_rows(
-        mesh_device,
+        t3k_mesh_device,
         num_devices,
         per_chip_input_shape,
         ttnn.TensorMemoryLayout.INTERLEAVED,
@@ -605,9 +602,8 @@ def test_line_reduce_scatter_async_on_T3K_rows_post_commit(
 @pytest.mark.parametrize("math_op", [ttnn.ReduceType.Sum])
 @pytest.mark.parametrize("enable_async", [False])
 @pytest.mark.parametrize("replication_factor", [1])
-@pytest.mark.parametrize("mesh_device", [pytest.param((2, 4), id="2x4_grid")], indirect=True)
 def test_line_reduce_scatter_cluster_axis_on_T3K_width_sharded_reduce_scatter_post_commit(
-    mesh_device,
+    t3k_mesh_device,
     num_devices,
     per_chip_input_shape,
     input_shard_shape,
@@ -627,7 +623,7 @@ def test_line_reduce_scatter_cluster_axis_on_T3K_width_sharded_reduce_scatter_po
     num_iters=1,
     trace_mode=False,
 ):
-    if len(mesh_device.get_devices()) < 8:
+    if len(t3k_mesh_device.get_devices()) < 8:
         pytest.skip("Not T3K!")
 
     input_shard_spec = ttnn.ShardSpec(
@@ -637,7 +633,7 @@ def test_line_reduce_scatter_cluster_axis_on_T3K_width_sharded_reduce_scatter_po
     )
 
     run_line_reduce_scatter_on_TG_with_mesh_tensor_along_rows(
-        mesh_device,
+        t3k_mesh_device,
         num_devices,
         per_chip_input_shape,
         tensor_mem_layout,
