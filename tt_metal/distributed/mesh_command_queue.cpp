@@ -715,7 +715,29 @@ void MeshCommandQueue::record_begin(uint32_t tid, const std::shared_ptr<MeshTrac
     trace_ctx_ = std::move(ctx);
 }
 
+LogicalDeviceRange compliment(LogicalDeviceRange& parent, LogicalDeviceRange& intersection) {
+    TT_FATAL(parent.contains(intersection), "Parent must contain intersection");
+    auto intersection_grid_size = intersection.grid_size();
+    auto parent_grid_size = parent.grid_size();
+    TT_FATAL(
+        intersection_grid_size.x == parent_grid_size.x || intersection_grid_size.y == parent_grid_size.y,
+        "Non convex grids not supported");
+    if (intersection.start_coord.y == parent.start_coord.y) {
+        return LogicalDeviceRange(
+            {parent.start_coord.x, intersection.end_coord.y + 1}, {parent.end_coord.x, parent.end_coord.y});
+    } else if (intersection.end_coord.y == parent.end_coord.y) {
+        return LogicalDeviceRange(
+            {parent.start_coord.x, parent.start_coord.y}, {parent.end_coord.x, intersection.start_coord.y - 1});
+    } else if (intersection.start_coord.x == parent.start_coord.x) {
+        return LogicalDeviceRange(
+            {intersection.end_coord.x + 1, parent.start_coord.y}, {parent.end_coord.x, parent.end_coord.y});
+    } else {
+        return LogicalDeviceRange(
+            {parent.start_coord.x, parent.start_coord.y}, {intersection.start_coord.x - 1, parent.end_coord.y});
+    }
+}
 void MeshCommandQueue::record_end() {
+    std::cout << "Call record end" << std::endl;
     auto& trace_data = trace_ctx_->ordered_trace_data;
     for (auto& trace_md : get_mesh_trace_md()) {
         auto& sysmem_mgr_coord = trace_md.sysmem_manager_coord;
@@ -724,16 +746,53 @@ void MeshCommandQueue::record_end() {
         auto trace_data_size_words = trace_md.size / sizeof(uint32_t);
         auto& bypass_data = sysmem_manager.get_bypass_data();
         bool intersection_found = false;
+
+        std::vector<MeshTraceData> intermed_trace_data = {};
+        std::vector<uint32_t> program_cmds_vector(
+            bypass_data.begin() + trace_data_word_offset,
+            bypass_data.begin() + trace_data_word_offset + trace_data_size_words);
+        std::vector<LogicalDeviceRange> device_ranges_to_invalidate = {};
         for (auto& program : trace_data) {
             if (program.device_range.intersects(trace_md.device_range)) {
+                // The current program intersects with a program that was previously
+                // placed on the Mesh.
                 intersection_found = true;
-                std::vector<uint32_t> program_cmds_vector(
-                    bypass_data.begin() + trace_data_word_offset,
-                    bypass_data.begin() + trace_data_word_offset + trace_data_size_words);
-                program.data.insert(program.data.end(), program_cmds_vector.begin(), program_cmds_vector.end());
+                auto intersection = program.device_range.intersection(trace_md.device_range).value();
+                if (intersection == program.device_range) {
+                    // Intersection matches the originally placed program.
+                    program.data.insert(program.data.end(), program_cmds_vector.begin(), program_cmds_vector.end());
+                    std::cout << "Pure intersection: " << program.device_range.str() << std::endl;
+                } else {
+                    // Intersection is a subset of the originally placed program.
+                    auto compliment_ = compliment(program.device_range, intersection);
+                    std::cout << "Parent Range: " << program.device_range.str() << std::endl;
+                    std::cout << "Intersection: " << intersection.str() << std::endl;
+                    std::cout << "Compliment: " << compliment_.str() << std::endl;
+                    intermed_trace_data.push_back(MeshTraceData{compliment_, program.data});
+                    intermed_trace_data.push_back(MeshTraceData{intersection, program.data});
+                    auto& intersection_data = intermed_trace_data.back().data;
+                    intersection_data.insert(
+                        intersection_data.end(), program_cmds_vector.begin(), program_cmds_vector.end());
+                    device_ranges_to_invalidate.push_back(program.device_range);
+                }
             }
         }
+        if (intermed_trace_data.size()) {
+            // Invalidate programs with partial intersections with current programs.
+            for (auto& program : trace_data) {
+                if (std::find(
+                        device_ranges_to_invalidate.begin(), device_ranges_to_invalidate.end(), program.device_range) ==
+                    device_ranges_to_invalidate.end()) {
+                    intermed_trace_data.push_back(program);
+                } else {
+                    std::cout << "Invalidate range: " << program.device_range.str() << std::endl;
+                }
+            }
+            trace_data = intermed_trace_data;
+        }
         if (not intersection_found) {
+            // Intersection not found, place program on Mesh.
+            std::cout << "No intersection. Place Program on: " << trace_md.device_range.str() << std::endl;
             trace_data.push_back(MeshTraceData{
                 trace_md.device_range,
                 std::vector<uint32_t>(
@@ -742,7 +801,6 @@ void MeshCommandQueue::record_end() {
         }
         trace_ctx_->total_trace_size += trace_md.size;
     }
-
     auto bcast_device_range = LogicalDeviceRange({0, 0}, {mesh_device_->num_cols() - 1, mesh_device_->num_rows() - 1});
     std::vector<uint32_t> exec_buf_end = {};
 
