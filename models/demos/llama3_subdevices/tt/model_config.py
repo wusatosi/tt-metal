@@ -705,7 +705,7 @@ class TtModelArgs:
                 use_height_and_width_as_shard_shape=True,
             )
             self.model_config["SHARDED_FF12_PRE_MUL_RING_REDUCE_MEMCFG"] = ttnn.create_sharded_memory_config(
-                shape=(32, 3840 // 30 // 4),  # Use padded N
+                shape=(32, 3840 // 30),  # Use padded N
                 core_grid=ttnn.num_cores_to_corerangeset_in_subcoregrids(
                     self.start_core, 30, self.sub_core_grids, row_wise=True
                 ),
@@ -730,7 +730,7 @@ class TtModelArgs:
             )
 
             LM_HEAD_RING_SIZE = 32
-            self.lm_head_shape = (8192 // 4, 128 * 1024 // 8 // 4)
+            self.lm_head_shape = (8192 // 4, 128 * 1024 // 8)
             lm_head_ring_core_range_set = ttnn.num_cores_to_corerangeset_in_subcoregrids(
                 self.start_core, LM_HEAD_RING_SIZE, self.sub_core_grids, row_wise=True
             )
