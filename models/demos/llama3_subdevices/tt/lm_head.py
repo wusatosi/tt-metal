@@ -63,7 +63,7 @@ class LMHead(LightweightModule):
                 index = i * self.padded_vocab_size // num_splits
                 self.output_weights.append(  # (2k, 16k) 128* 1024
                     ttnn.as_tensor(
-                        padded_lm_head[..., index : index + self.padded_vocab_size // 4],
+                        padded_lm_head[..., index : index + self.padded_vocab_size // num_splits],
                         device=mesh_device,
                         mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device, dims=(3, 2), mesh_shape=args.cluster_shape),
                         layout=ttnn.TILE_LAYOUT,
@@ -192,14 +192,15 @@ class LMHead(LightweightModule):
             )
 
             print(f"output: {output}")
-            outputs.append(ttnn.sharded_to_interleaved(output, memory_config=ttnn.DRAM_MEMORY_CONFIG))
+            outputs.append(output)
+            # outputs.append(ttnn.sharded_to_interleaved(output, memory_config=ttnn.DRAM_MEMORY_CONFIG))
             # weight_l1.deallocate(True)
-            output.deallocate(True)
+            # output.deallocate(True)
 
         outputs_reduced = []
         for output in outputs:
             output_reduced = self.tt_ccl.line_all_reduce(
-                output, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
+                output, cluster_axis=1, num_links=1, memory_config=self.output_memory_config
             )
             outputs_reduced.append(output_reduced)
 
