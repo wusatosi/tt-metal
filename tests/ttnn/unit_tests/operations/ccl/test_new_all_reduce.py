@@ -5,6 +5,7 @@
 import torch
 import pytest
 import math
+from time import time
 from loguru import logger
 import ttnn
 from tests.tt_eager.python_api_testing.sweep_tests.comparison_funcs import comp_equal, comp_pcc
@@ -67,7 +68,9 @@ def run_all_reduce_impl(
         mesh_device.set_sub_device_stall_group(sub_device_stall_group)
 
     # create global semaphore handles
-    ccl_semaphore_handles = create_global_semaphore_with_same_address(mesh_device, ccl_sub_device_crs, 0)
+    ccl_semaphore_handles = [
+        create_global_semaphore_with_same_address(mesh_device, ccl_sub_device_crs, 0) for _ in range(8)
+    ]
 
     logger.info(f"Output shape: {output_shape}")
 
@@ -145,34 +148,45 @@ def run_all_reduce_impl(
                     tt_input_tensor,
                     cluster_axis=cluster_axis,
                     mesh_device=mesh_device,
-                    multi_device_global_semaphore=ccl_semaphore_handles,
+                    multi_device_global_semaphore=ccl_semaphore_handles[i % 8],
                     memory_config=output_mem_config,
                     topology=ttnn.Topology.Linear,
                     num_links=num_links,
                     subdevice_id=worker_sub_device_id,
                 )
-                for d in mesh_device.get_devices():
-                    ttnn.synchronize_device(d)
+                if not trace_mode:
+                    for d in mesh_device.get_devices():
+                        ttnn.synchronize_device(d)
                 outs.append(out)
 
             return outs
 
-        # ##### Compile Model #####
-        # logger.info("Compiling model")
-        # tt_outs = run_op()
+        if trace_mode:
+            ##### Compile Model #####
+            logger.info("Compiling model")
+            tt_outs = run_op()
 
-        # ##### Capture Trace #####
-        # logger.info("Capturing trace")
+            ##### Capture Trace #####
+            logger.info("Capturing trace")
 
-        # trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
-        # tt_outs = run_op()
-        # ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
+            trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
+            tt_outs = run_op()
+            ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
 
-        # ##### Run Trace #####
-        # logger.info("Running trace")
-        # ttnn.execute_trace(mesh_device, trace_id, blocking=False)
+            ##### Run Trace #####
+            logger.info("Starting Trace perf test...")
+            time_start = time()
+            ttnn.execute_trace(mesh_device, trace_id, blocking=False)
+            ttnn.release_trace(mesh_device, trace_id)
+            for d in mesh_device.get_devices():
+                ttnn.synchronize_device(d)
+            time_end = time()
+            logger.info(f"Time taken: {time_end - time_start} s")
+            logger.info(f"Time per iter: {(time_end - time_start) / num_iters} s")
+            logger.info(f"Time per iter: {(time_end - time_start) / num_iters * 1e6} us")
 
-        tt_outs = run_op()
+        else:
+            tt_outs = run_op()
 
         ##################################
         ##### Validation
@@ -187,31 +201,42 @@ def run_all_reduce_impl(
                 else:
                     output_tensor_ = output_tensor[i // cluster_shape[cluster_axis]].unsqueeze(0).unsqueeze(0)
 
-                tt_output_tensor = t.cpu().to(ttnn.ROW_MAJOR_LAYOUT).to_torch()
-                logger.info(f"Checking for device {t.device().id()}")
+                tt_output_tensor = t.cpu().to_torch()
+                # logger.info(f"Checking for device {t.device().id()}")
 
                 if input_dtype == ttnn.bfloat16:
                     eq, output = comp_pcc(tt_output_tensor, output_tensor_)
                 else:
                     eq, output = comp_pcc(tt_output_tensor, output_tensor_)
-                logger.info(f"PCC output for {i} is: {output}")
                 assert eq, f"{i} FAILED: {output}"
+            logger.info(f"PCC output for {tensor_index} is: {output}")
+
+        for i in range(mesh_device.get_num_devices()):
+            assert (
+                mesh_device.get_devices()[i].num_program_cache_entries() == 1
+                or mesh_device.get_devices()[i].num_program_cache_entries() == num_iters
+            ), f"Device {i} has {mesh_device.get_devices()[i].num_program_cache_entries()} program cache entries"
+
     finally:
         if enable_persistent_fabric and teardown_persistent_fabric:
             mesh_device.reset_sub_device_stall_group()
+            t1 = time()
             teardown_fabric_interface(mesh_device)
+            t2 = time()
+            logger.info(f"Teardown time: {t2 - t1}")
 
 
 @skip_for_grayskull("Requires eth connected devices to run")
 @pytest.mark.parametrize(
     "output_shape, cluster_axis, num_links, input_num_cores, output_num_cores",
     [
+        ([1, 1, 32, 2048], 0, 4, 24, 16),  # FF2/DO all reduce
         ([1, 1, 32, 1280], 1, 3, 24, 40),  # QKV all reduce
         ([1, 1, 32, 3584], 1, 3, 24, 24),  # FF1 all reduce
         ([1, 1, 32, 2048], 0, 3, 24, 16),  # FF2/DO all reduce
         ([1, 1, 32, 1280], 1, 2, 24, 40),  # QKV all reduce
         ([1, 1, 32, 3584], 1, 2, 24, 24),  # FF1 all reduce
-        # ([1, 1, 32, 2048], 0, 2, 24, 16),  # FF2/DO all reduce  # Not supported
+        ([1, 1, 32, 2048], 0, 2, 24, 16),  # FF2/DO all reduce
         ([1, 1, 32, 1280], 1, 1, 24, 40),  # QKV all reduce
         ([1, 1, 32, 3584], 1, 1, 24, 24),  # FF1 all reduce
         ([1, 1, 32, 2048], 0, 1, 24, 16),  # FF2/DO all reduce
@@ -224,8 +249,9 @@ def run_all_reduce_impl(
         ttnn.bfloat8_b,
     ],
 )
-@pytest.mark.parametrize("num_iters", [1])
+@pytest.mark.parametrize("num_iters", [5])
 @pytest.mark.parametrize("enable_async", [True])
+@pytest.mark.parametrize("trace_mode", [True])
 @pytest.mark.parametrize(
     "device_params",
     [{"trace_region_size": 23887872}],
@@ -248,6 +274,7 @@ def test_all_reduce(
     output_num_cores,
     num_iters,
     enable_async,
+    trace_mode,
     use_program_cache,
     function_level_defaults,
 ):
@@ -261,4 +288,5 @@ def test_all_reduce(
         output_num_cores,
         num_iters=num_iters,
         enable_async=enable_async,
+        trace_mode=trace_mode,
     )
