@@ -532,13 +532,19 @@ TEST_F(MeshWorkloadTest, TraceTest) {
     uint32_t seed = tt::parse_env("TT_METAL_SEED", random_seed);
     log_info(tt::LogTest, "Using Test Seed: {}", seed);
     srand(seed);
-    uint32_t num_homogenous_workloads = 1;
-    uint32_t num_heterogeneous_workloads = 1;
+    uint32_t num_homogenous_workloads = 10;
+    uint32_t num_heterogeneous_workloads = 10;
     // Full device range
     LogicalDeviceRange all_devices = LogicalDeviceRange({0, 0}, {3, 1});
     // Individual rows
     LogicalDeviceRange devices_0 = LogicalDeviceRange({0, 0}, {3, 0});
     LogicalDeviceRange devices_1 = LogicalDeviceRange({0, 1}, {3, 1});
+
+    LogicalDeviceRange devices_2 = LogicalDeviceRange({0, 0}, {0, 1});
+    LogicalDeviceRange devices_3 = LogicalDeviceRange({1, 0}, {1, 1});
+    LogicalDeviceRange devices_4 = LogicalDeviceRange({2, 0}, {2, 1});
+    LogicalDeviceRange devices_5 = LogicalDeviceRange({3, 0}, {3, 1});
+
     // Individual device coords
     LogicalDeviceRange device_00 = LogicalDeviceRange({0, 0}, {0, 0});
     LogicalDeviceRange device_10 = LogicalDeviceRange({1, 0}, {1, 0});
@@ -586,6 +592,14 @@ TEST_F(MeshWorkloadTest, TraceTest) {
         mesh_workloads.push_back(workload);
     }
 
+    for (int i = 0; i < num_heterogeneous_workloads; i++) {
+        auto programs = create_random_programs(4, mesh_device_->compute_with_storage_grid_size(), seed);
+        auto workload = std::make_shared<MeshWorkload>();
+        AddProgramToMeshWorkload(*workload, *programs[0], devices_2);
+        AddProgramToMeshWorkload(*workload, *programs[1], devices_3);
+        AddProgramToMeshWorkload(*workload, *programs[2], devices_4);
+        AddProgramToMeshWorkload(*workload, *programs[3], devices_5);
+    }
     programs = create_random_programs(num_homogenous_workloads, mesh_device_->compute_with_storage_grid_size(), seed);
     for (int i = 0; i < num_homogenous_workloads; i++) {
         auto workload = std::make_shared<MeshWorkload>();

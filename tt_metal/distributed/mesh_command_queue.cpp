@@ -715,6 +715,10 @@ void MeshCommandQueue::record_begin(uint32_t tid, const std::shared_ptr<MeshTrac
     trace_ctx_ = std::move(ctx);
 }
 
+bool is_row_major_intersection(LogicalDeviceRange& parent, LogicalDeviceRange& intersection) {
+    return intersection.grid_size().x == parent.grid_size().x;
+}
+
 LogicalDeviceRange compliment(LogicalDeviceRange& parent, LogicalDeviceRange& intersection) {
     TT_FATAL(parent.contains(intersection), "Parent must contain intersection");
     auto intersection_grid_size = intersection.grid_size();
@@ -722,18 +726,25 @@ LogicalDeviceRange compliment(LogicalDeviceRange& parent, LogicalDeviceRange& in
     TT_FATAL(
         intersection_grid_size.x == parent_grid_size.x || intersection_grid_size.y == parent_grid_size.y,
         "Non convex grids not supported");
-    if (intersection.start_coord.y == parent.start_coord.y) {
-        return LogicalDeviceRange(
-            {parent.start_coord.x, intersection.end_coord.y + 1}, {parent.end_coord.x, parent.end_coord.y});
-    } else if (intersection.end_coord.y == parent.end_coord.y) {
-        return LogicalDeviceRange(
-            {parent.start_coord.x, parent.start_coord.y}, {parent.end_coord.x, intersection.start_coord.y - 1});
-    } else if (intersection.start_coord.x == parent.start_coord.x) {
-        return LogicalDeviceRange(
-            {intersection.end_coord.x + 1, parent.start_coord.y}, {parent.end_coord.x, parent.end_coord.y});
+
+    if (is_row_major_intersection(parent, intersection)) {
+        std::cout << "Row major intersection" << std::endl;
+        if (intersection.start_coord.y == parent.start_coord.y) {
+            return LogicalDeviceRange(
+                {parent.start_coord.x, intersection.end_coord.y + 1}, {parent.end_coord.x, parent.end_coord.y});
+        } else {
+            return LogicalDeviceRange(
+                {parent.start_coord.x, parent.start_coord.y}, {parent.end_coord.x, intersection.start_coord.y - 1});
+        }
     } else {
-        return LogicalDeviceRange(
-            {parent.start_coord.x, parent.start_coord.y}, {intersection.start_coord.x - 1, parent.end_coord.y});
+        if (intersection.start_coord.x == parent.start_coord.x) {
+            std::cout << intersection.str() << " " << parent.str() << std::endl;
+            return LogicalDeviceRange(
+                {intersection.end_coord.x + 1, parent.start_coord.y}, {parent.end_coord.x, parent.end_coord.y});
+        } else {
+            return LogicalDeviceRange(
+                {parent.start_coord.x, parent.start_coord.y}, {intersection.start_coord.x - 1, parent.end_coord.y});
+        }
     }
 }
 void MeshCommandQueue::record_end() {
