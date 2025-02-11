@@ -200,9 +200,9 @@ def test_llama_decoder_inference(
 
         # Get cos/sin matrices for the current position of each user
         rot_mats = rope_setup.get_rot_mats(current_pos)
-
+        tt_pf = prefetcher_setup.get_input_tensors()
         ttnn.dram_prefetcher(
-            prefetcher_setup.get_input_tensors(),
+            tt_pf,
             num_layers=1,
             global_cb=prefetcher_setup.global_circular_buffer,
         )
@@ -233,6 +233,12 @@ def test_llama_decoder_inference(
         # capture trace
         trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
 
+        ttnn.dram_prefetcher(
+            tt_pf,
+            num_layers=1,
+            global_cb=prefetcher_setup.global_circular_buffer,
+        )
+        mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
         tt_out, res = tt_model(
             decode_input,
             res,
@@ -254,6 +260,11 @@ def test_llama_decoder_inference(
             memory_config=None,
         )
         ttnn.copy_host_to_device_tensor(decode_input_reset, decode_input)
+        from tracy import signpost
+        from time import sleep
+
+        sleep(5)
+        signpost("tracy_perf_run")
 
         # execute trace
         ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
