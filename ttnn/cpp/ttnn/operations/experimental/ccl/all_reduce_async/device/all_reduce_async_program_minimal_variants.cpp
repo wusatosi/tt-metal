@@ -430,7 +430,7 @@ operation::ProgramWithCallbacks all_reduce_async_minimal_multi_core_with_workers
     }
 
     auto override_runtime_arguments_callback =
-        [worker_sender_reader_kernel_id, worker_sender_writer_kernel_id, semaphore, sender_worker_cores, cb_out](
+        [worker_sender_reader_kernel_id, worker_sender_writer_kernel_id, sender_worker_cores, cb_out](
             const void* operation,
             Program& program,
             const std::vector<Tensor>& input_tensors,
