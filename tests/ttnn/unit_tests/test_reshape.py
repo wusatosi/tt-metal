@@ -533,3 +533,15 @@ def test_reshape_zero_element(input_shape, output_shape, layout, ttnn_reshape, u
     tt_output_tensor = ttnn.from_device(tt_output_tensor)
     tt_output_tensor = ttnn.to_torch(tt_output_tensor)
     assert tt_output_tensor.shape == torch.Size(output_shape)
+
+
+def test_flatten_swin(device):
+    torch_input_tensor = torch.randn(1, 768, 1, 1)
+    torch_output_tensor = torch.flatten(torch_input_tensor, start_dim=1)
+
+    ttnn_input = ttnn.from_torch(
+        torch_input_tensor, layout=ttnn.TILE_LAYOUT, device=device, memory_config=ttnn.L1_MEMORY_CONFIG
+    )
+    ttnn_output = ttnn.reshape(ttnn_input, (1, 768))
+    ttnn_output = ttnn.to_torch(ttnn_output)
+    assert_with_pcc(torch_output_tensor, ttnn_output, 0.9999)

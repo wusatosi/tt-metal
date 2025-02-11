@@ -537,3 +537,26 @@ def test_permute_5d_wyh(shape, perm, dtype, device):
     torch_output = torch.permute(torch_tensor, perm)
     assert torch_output.shape == output_tensor.shape
     assert_with_pcc(torch_output, output_tensor, 0.9999)
+
+
+@pytest.mark.parametrize(
+    "input_shape, permute_shape",
+    (
+        ([1, 96, 128, 128], (0, 2, 3, 1)),
+        ([1, 16, 16, 768], (0, 3, 1, 2)),
+    ),
+)
+# @pytest.mark.parametrize("w", [64])
+def test_permute_swin(device, input_shape, permute_shape):
+    torch.manual_seed(2005)
+    torch_input_tensor = torch.rand(input_shape, dtype=torch.bfloat16)
+    torch_output_tensor = torch.permute(torch_input_tensor, permute_shape)
+
+    input_tensor = ttnn.from_torch(torch_input_tensor)
+    input_tensor = ttnn.to_device(input_tensor, device)
+    output_tensor = ttnn.permute(input_tensor, permute_shape)
+    output_tensor = ttnn.to_layout(output_tensor, ttnn.ROW_MAJOR_LAYOUT)
+    output_tensor = ttnn.from_device(output_tensor)
+    output_tensor = ttnn.to_torch(output_tensor)
+
+    assert_with_pcc(torch_output_tensor, output_tensor, 0.9999)
