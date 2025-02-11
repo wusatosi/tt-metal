@@ -363,17 +363,21 @@ class TtLlamaAttention(LightweightModule):
 
         print("done attention")
 
-        attn_output_1G4D = ttnn.to_memory_config(attn_output_1G4D_sharded, ttnn.DRAM_MEMORY_CONFIG)
-        attn_output_1G4D_sharded.deallocate(True)
-        attn_output_gathered = self.tt_ccl.line_all_gather(
-            attn_output_1G4D, dim=1, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
+        # attn_output_1G4D = ttnn.to_memory_config(attn_output_1G4D_sharded, ttnn.DRAM_MEMORY_CONFIG)
+        # attn_output_1G4D_sharded.deallocate(True)
+        attn_output_gathered_sharded = self.tt_ccl.line_all_gather(
+            attn_output_1G4D_sharded,
+            dim=1,
+            cluster_axis=1,
+            num_links=1,
+            memory_config=self.model_config["GATHER_USERS_MEMCFG"](list(self.mesh_device.shape)[1]),
         )
-        ttnn.deallocate(attn_output_1G4D)
+        # ttnn.deallocate(attn_output_1G4D)
 
-        attn_output_gathered_sharded = ttnn.to_memory_config(
-            attn_output_gathered, self.model_config["GATHER_USERS_MEMCFG"](list(self.mesh_device.shape)[1])
-        )
-        ttnn.deallocate(attn_output_gathered)
+        # attn_output_gathered_sharded = ttnn.to_memory_config(
+        #     attn_output_gathered, self.model_config["GATHER_USERS_MEMCFG"](list(self.mesh_device.shape)[1])
+        # )
+        # ttnn.deallocate(attn_output_gathered)
 
         attn_output_cat_0 = ttnn.experimental.nlp_concat_heads_decode(
             attn_output_gathered_sharded,
@@ -400,7 +404,7 @@ class TtLlamaAttention(LightweightModule):
         print("done matmul")
 
         dense_out_reduced = self.tt_ccl.line_all_reduce(
-            dense_out_ttnn, cluster_axis=0, num_links=3, memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"]
+            dense_out_ttnn, cluster_axis=0, num_links=4, memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"]
         )
         ttnn.deallocate(dense_out_ttnn)
 
