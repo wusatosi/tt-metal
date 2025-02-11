@@ -66,7 +66,7 @@ class TT_CCL:
             topology=ttnn.Topology.Linear,
             subdevice_id=self.worker_sub_device_id,
         )
-        ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
+        # ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
         # self.from_sem_flag = (self.from_sem_flag + 1) % self.num_cbs
         # self.to_sem_flag = (self.to_sem_flag + 1) % self.num_cbs
         self.gather_sem_flag = (self.gather_sem_flag + 1) % self.num_cbs
@@ -90,7 +90,7 @@ class TT_CCL:
         )
         self.from_sem_flag = (self.from_sem_flag + 1) % self.num_cbs
         self.to_sem_flag = (self.to_sem_flag + 1) % self.num_cbs
-        ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
+        # ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
         return ttnn_tensor_out
 
     def line_all_gather(self, input_tensor_mesh, dim, cluster_axis, memory_config, num_links=1):
@@ -107,7 +107,7 @@ class TT_CCL:
             enable_persistent_fabric_mode=self.enable_persistent_fabric,
         )
         self.gather_sem_flag = (self.gather_sem_flag + 1) % self.num_cbs
-        ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
+        # ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
         return ttnn_tensor_out
 
     def close(self):
