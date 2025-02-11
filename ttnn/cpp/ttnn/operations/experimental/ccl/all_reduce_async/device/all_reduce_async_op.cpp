@@ -175,7 +175,8 @@ const operation::Hash AllReduceAsync::compute_program_hash(const std::vector<Ten
         this->ring_size,
         this->ring_index,
         this->output_mem_config,
-        this->topology);
+        this->topology,
+        this->semaphore);
 }
 
 namespace operations {
