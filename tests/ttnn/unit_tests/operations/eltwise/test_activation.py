@@ -392,3 +392,9 @@ def run_activation_test_threshold(device, h, w, scalar1, scalar2, ttnn_function,
 @pytest.mark.parametrize("w", [128])
 def test_threshold(device, h, w, value, threshold):
     run_activation_test_threshold(device, h, w, value, threshold, ttnn.threshold)
+
+
+@pytest.mark.parametrize("h", [84])
+@pytest.mark.parametrize("w", [8400])
+def test_sigmoid_yolov9c(device, h, w):
+    run_activation_unary_test(device, h, w, ttnn.sigmoid)

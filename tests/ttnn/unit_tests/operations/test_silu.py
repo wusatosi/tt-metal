@@ -238,3 +238,52 @@ def test_silu_llm(
         shard_orientation,
         op,
     )
+
+
+@pytest.mark.parametrize(
+    "batch_size, input_channels, input_height, input_width, ncores, grid_size, shard_strategy, shard_orientation",
+    (
+        (1, 64, 320, 320, 64, (8, 8), ttnn.ShardStrategy.BLOCK, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 128, 160, 160, 64, (7, 8), ttnn.ShardStrategy.BLOCK, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 32, 160, 160, 64, (7, 8), ttnn.ShardStrategy.BLOCK, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 64, 160, 160, 64, (7, 8), ttnn.ShardStrategy.BLOCK, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 256, 160, 160, 64, (7, 8), ttnn.ShardStrategy.BLOCK, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 128, 80, 80, 64, (3, 8), ttnn.ShardStrategy.BLOCK, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 256, 80, 80, 64, (3, 8), ttnn.ShardStrategy.BLOCK, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 64, 80, 80, 64, (3, 8), ttnn.ShardStrategy.BLOCK, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 512, 80, 80, 64, (3, 8), ttnn.ShardStrategy.BLOCK, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 256, 40, 40, 64, (1, 8), ttnn.ShardStrategy.BLOCK, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 512, 40, 40, 64, (1, 8), ttnn.ShardStrategy.BLOCK, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 128, 40, 40, 64, (1, 8), ttnn.ShardStrategy.BLOCK, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 256, 20, 20, 64, (1, 8), ttnn.ShardStrategy.BLOCK, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 512, 20, 20, 64, (1, 8), ttnn.ShardStrategy.BLOCK, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 128, 20, 20, 64, (1, 8), ttnn.ShardStrategy.BLOCK, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 64, 40, 40, 64, (1, 8), ttnn.ShardStrategy.BLOCK, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 64, 20, 20, 64, (1, 8), ttnn.ShardStrategy.BLOCK, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+    ),
+)
+@pytest.mark.parametrize("op", ["silu"])
+def test_silu_yolov9c(
+    device,
+    batch_size,
+    input_channels,
+    input_height,
+    input_width,
+    grid_size,
+    ncores,
+    shard_strategy,
+    shard_orientation,
+    op,
+):
+    run_elt_silu_relu(
+        device,
+        batch_size,
+        input_channels,
+        input_height,
+        input_width,
+        grid_size,
+        ncores,
+        shard_strategy,
+        shard_orientation,
+        op,
+    )

@@ -328,3 +328,169 @@ def test_concat_sharded_pad(device, core_grid, hw, channels1, channels2, shard_h
     )
     expected = torch.concat([torch_input_tensor1, torch_input_tensor2], dim=-1)
     assert_with_pcc(expected, ttnn.to_torch(actual), 0.9999)
+
+
+@pytest.mark.parametrize(
+    "inputs",
+    (
+        (
+            (1, 32, 160, 160),
+            (1, 32, 160, 160),
+        ),  # Passed
+        (
+            (1, 128, 80, 80),
+            (1, 128, 80, 80),
+        ),  # Passed
+        (
+            (1, 64, 80, 80),
+            (1, 64, 80, 80),
+        ),  # Passed
+        (
+            (1, 256, 40, 40),
+            (1, 256, 40, 40),
+        ),  # Passed
+        (
+            (1, 256, 20, 20),
+            (1, 256, 20, 20),
+        ),  # Passed
+        (
+            (1, 128, 20, 20),
+            (1, 128, 20, 20),
+        ),  # Passed
+        (
+            (1, 512, 40, 40),
+            (1, 512, 40, 40),
+        ),  # Passed
+        (
+            (1, 128, 40, 40),
+            (1, 128, 40, 40),
+        ),  # Passed
+        (
+            (1, 512, 80, 80),
+            (1, 512, 80, 80),
+        ),  # Passed
+        (
+            (1, 256, 40, 40),
+            (1, 512, 40, 40),
+        ),  # Passed
+        (
+            (1, 512, 20, 20),
+            (1, 512, 20, 20),
+        ),  # Passed
+        (
+            (1, 64, 20, 20),
+            (1, 80, 20, 20),
+        ),  # Passed
+        (
+            (1, 64, 80, 80),
+            (1, 80, 80, 80),
+        ),  # Passed
+        (
+            (1, 64, 40, 40),
+            (1, 80, 40, 40),
+        ),  # Passed
+        (
+            (1, 2, 8400),
+            (1, 2, 8400),
+        ),  # Passed
+        (
+            (1, 4, 8400),
+            (1, 80, 8400),
+        ),  # Passed
+    ),
+)
+@pytest.mark.parametrize("async_mode", [True, False], ids=["async_on", "async_off"])
+def test_concat_yolov9c_2(device, inputs, async_mode, dim=1):
+    device.enable_async(async_mode)
+    torch_input_tensor_a = torch.rand(inputs[0], dtype=torch.bfloat16)
+    torch_input_tensor_b = torch.rand(inputs[1], dtype=torch.bfloat16)
+    torch_output_tensor = torch.concat([torch_input_tensor_a, torch_input_tensor_b], dim=dim)
+
+    input_tensor_a = ttnn.from_torch(torch_input_tensor_a, layout=ttnn.TILE_LAYOUT, device=device)
+    input_tensor_b = ttnn.from_torch(torch_input_tensor_b, layout=ttnn.TILE_LAYOUT, device=device)
+
+    output = ttnn.concat([input_tensor_a, input_tensor_b], dim=dim)
+    output = ttnn.to_torch(output)
+
+    assert_with_pcc(torch_output_tensor, output, 0.9999)
+
+
+@pytest.mark.parametrize(
+    "inputs",
+    (
+        (
+            (1, 144, 6400),
+            (1, 144, 1600),
+            (1, 144, 400),
+        ),  # Passed
+    ),
+)
+@pytest.mark.parametrize("async_mode", [True, False], ids=["async_on", "async_off"])
+def test_concat_yolov9c_3x3d(device, inputs, async_mode, dim=2):
+    device.enable_async(async_mode)
+    torch_input_tensor_a = torch.rand(inputs[0], dtype=torch.bfloat16)
+    torch_input_tensor_b = torch.rand(inputs[1], dtype=torch.bfloat16)
+    torch_input_tensor_c = torch.rand(inputs[2], dtype=torch.bfloat16)
+
+    torch_output_tensor = torch.concat([torch_input_tensor_a, torch_input_tensor_b, torch_input_tensor_c], dim=dim)
+
+    input_tensor_a = ttnn.from_torch(torch_input_tensor_a, layout=ttnn.TILE_LAYOUT, device=device)
+    input_tensor_b = ttnn.from_torch(torch_input_tensor_b, layout=ttnn.TILE_LAYOUT, device=device)
+    input_tensor_c = ttnn.from_torch(torch_input_tensor_c, layout=ttnn.TILE_LAYOUT, device=device)
+
+    output = ttnn.concat([input_tensor_a, input_tensor_b, input_tensor_c], dim=dim)
+    output = ttnn.to_torch(output)
+
+    assert_with_pcc(torch_output_tensor, output, 0.9999)
+
+
+@pytest.mark.parametrize(
+    "inputs",
+    (
+        (
+            (1, 64, 160, 160),
+            (1, 64, 160, 160),
+            (1, 64, 160, 160),
+            (1, 64, 160, 160),
+        ),  # Passed
+        (
+            (1, 128, 80, 80),
+            (1, 128, 80, 80),
+            (1, 128, 80, 80),
+            (1, 128, 80, 80),
+        ),  # Passed
+        (
+            (1, 256, 20, 20),
+            (1, 256, 20, 20),
+            (1, 256, 20, 20),
+            (1, 256, 20, 20),
+        ),  # Passed
+        (
+            (1, 256, 40, 40),
+            (1, 256, 40, 40),
+            (1, 256, 40, 40),
+            (1, 256, 40, 40),
+        ),  # Passed
+    ),
+)
+@pytest.mark.parametrize("async_mode", [True, False], ids=["async_on", "async_off"])
+def test_concat_yolov9c_4(device, inputs, async_mode, dim=1):
+    device.enable_async(async_mode)
+    torch_input_tensor_a = torch.rand(inputs[0], dtype=torch.bfloat16)
+    torch_input_tensor_b = torch.rand(inputs[1], dtype=torch.bfloat16)
+    torch_input_tensor_c = torch.rand(inputs[2], dtype=torch.bfloat16)
+    torch_input_tensor_d = torch.rand(inputs[3], dtype=torch.bfloat16)
+
+    torch_output_tensor = torch.concat(
+        [torch_input_tensor_a, torch_input_tensor_b, torch_input_tensor_c, torch_input_tensor_d], dim=dim
+    )
+
+    input_tensor_a = ttnn.from_torch(torch_input_tensor_a, layout=ttnn.TILE_LAYOUT, device=device)
+    input_tensor_b = ttnn.from_torch(torch_input_tensor_b, layout=ttnn.TILE_LAYOUT, device=device)
+    input_tensor_c = ttnn.from_torch(torch_input_tensor_c, layout=ttnn.TILE_LAYOUT, device=device)
+    input_tensor_d = ttnn.from_torch(torch_input_tensor_d, layout=ttnn.TILE_LAYOUT, device=device)
+
+    output = ttnn.concat([input_tensor_a, input_tensor_b, input_tensor_c, input_tensor_d], dim=dim)
+    output = ttnn.to_torch(output)
+
+    assert_with_pcc(torch_output_tensor, output, 0.9999)
