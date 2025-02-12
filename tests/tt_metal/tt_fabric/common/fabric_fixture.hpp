@@ -59,7 +59,7 @@ struct DeviceFabricData {
             gatekeeper_logical_core_ = *idle_eth_cores.begin();
             gatekeeper_virtual_core_ = device->ethernet_core_from_logical_core(gatekeeper_logical_core_);
         } else {
-            gatekeeper_logical_core_ = {0, 9};
+            gatekeeper_logical_core_ = {0, 8};
             gatekeeper_virtual_core_ = device->worker_core_from_logical_core(gatekeeper_logical_core_);
         }
         gatekeeper_noc_offset_ = tt_metal::hal.noc_xy_encoding(gatekeeper_virtual_core_.x, gatekeeper_virtual_core_.y);
@@ -235,7 +235,7 @@ public:
 protected:
     std::unique_ptr<tt::tt_fabric::ControlPlane> control_plane_;
     std::unique_ptr<FabricData> fabric_data_;
-    bool run_gk_on_idle_ethernet = true;
+    bool run_gk_on_idle_ethernet = false;
 
     void SetUpFabricPrograms() {
         fabric_data_ = std::make_unique<FabricData>(devices_, run_gk_on_idle_ethernet);
