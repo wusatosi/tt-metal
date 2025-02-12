@@ -66,6 +66,11 @@ Take a look at the main users of volatiles in `ttnn/cpp/ttnn/operations/ccl/kern
 ### Optimization: Optimize the Main Control Loop
 `run_fabric_edm_main_loop` in `ttnn/cpp/ttnn/operations/ccl/kernels/edm_fabric/fabric_erisc_datamover.cpp` has a lot of branching. Consider simplifying the logic to minimize the per iteration time for idle iterations.
 
+
+## Optimization: Move NoC Command Dispatch
+NoC command dispatch is currently implemented in `execute_chip_unicast_to_local_chip` in  `ttnn/cpp/ttnn/operations/ccl/kernels/edm_fabric/fabric_edm_packet_transmission.hpp` as a switch-case. Consider transforming this to use a function pointer array to do NoC async dispatch.
+
+
 ### Unguided Optimization:
 If you'd like to freely explore and try optimizing elsewhere in the implementation, you can make use of the performance capture tools here:
 
