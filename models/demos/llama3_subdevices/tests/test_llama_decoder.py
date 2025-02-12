@@ -63,7 +63,7 @@ from models.demos.llama3_subdevices.tt.llama_ccl import TT_CCL
     [
         {
             "dispatch_core_axis": ttnn.DispatchCoreAxis.COL,
-            "trace_region_size": 23887872,
+            "trace_region_size": 165136000,
         }
     ],
     indirect=True,
@@ -258,6 +258,7 @@ def test_llama_decoder_inference(
         time_warmup = time.time() - start_warmup
 
         # capture trace
+        print("Capturing trace 2 ")
         trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
         for _ in range(1000):
             ttnn.dram_prefetcher(
@@ -275,7 +276,7 @@ def test_llama_decoder_inference(
                 page_table=page_table_tt,
             )
         ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
-        print("Trace captured")
+        print("Trace captured 2")
 
         start_run = time.time()
         ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
