@@ -32,6 +32,12 @@ TEST_F(FabricFixture, TestAsyncWriteRoutingPlane) {
             break;
         }
     }
+    physical_start_device_id = 20;
+    physical_end_device_id = 70;
+    start_mesh_chip_id = control_plane_->get_mesh_chip_id_from_physical_chip_id(physical_start_device_id);
+    end_mesh_chip_id = control_plane_->get_mesh_chip_id_from_physical_chip_id(physical_end_device_id);
+    connection_found = true;
+    std::cout << " start " << physical_start_device_id << " end " << physical_end_device_id << std::endl;
     if (!connection_found) {
         GTEST_SKIP() << "No path found between sender and receivers";
     }
