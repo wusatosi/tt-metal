@@ -180,6 +180,35 @@ void ControlPlane::initialize_from_mesh_graph_desc_file(const std::string& mesh_
         nw_chip_eth_coord = {0, 3, 7, 0, 1};
         mesh_ns_size = routing_table_generator_->get_mesh_ns_size(/*mesh_id=*/4);
         mesh_ew_size = routing_table_generator_->get_mesh_ew_size(/*mesh_id=*/4);
+    } else if (mesh_graph_desc_file.find("tgg_mesh_graph_descriptor.yaml") != std::string::npos) {
+
+        // Add the N150 MMIO devices
+        this->logical_mesh_chip_id_to_physical_chip_id_mapping_.push_back(this->get_mesh_physical_chip_ids(1, 1, 4, 0));
+        this->logical_mesh_chip_id_to_physical_chip_id_mapping_.push_back(this->get_mesh_physical_chip_ids(1, 1, 4, 1));
+        this->logical_mesh_chip_id_to_physical_chip_id_mapping_.push_back(this->get_mesh_physical_chip_ids(1, 1, 4, 2));
+        this->logical_mesh_chip_id_to_physical_chip_id_mapping_.push_back(this->get_mesh_physical_chip_ids(1, 1, 4, 3));
+        this->logical_mesh_chip_id_to_physical_chip_id_mapping_.push_back(this->get_mesh_physical_chip_ids(1, 1, 4, 4));
+        this->logical_mesh_chip_id_to_physical_chip_id_mapping_.push_back(this->get_mesh_physical_chip_ids(1, 1, 4, 5));
+        this->logical_mesh_chip_id_to_physical_chip_id_mapping_.push_back(this->get_mesh_physical_chip_ids(1, 1, 4, 6));
+        this->logical_mesh_chip_id_to_physical_chip_id_mapping_.push_back(this->get_mesh_physical_chip_ids(1, 1, 4, 7));
+
+        nw_chip_eth_coord = {0, 3, 7, 0, 2};
+        mesh_ns_size = routing_table_generator_->get_mesh_ns_size(/*mesh_id=*/8);
+        mesh_ew_size = routing_table_generator_->get_mesh_ew_size(/*mesh_id=*/8);
+        chip_id_t nw_chip_physical_chip_id = 0;
+        for (const auto& [physical_chip_id, eth_coord] : tt::Cluster::instance().get_user_chip_ethernet_coordinates()) {
+            if (eth_coord == nw_chip_eth_coord) {
+                nw_chip_physical_chip_id = physical_chip_id;
+                break;
+            }
+        }
+        const std::uint32_t num_ports_per_side = routing_table_generator_->get_chip_spec().num_eth_ports_per_direction;
+        // Main board
+        this->logical_mesh_chip_id_to_physical_chip_id_mapping_.push_back(
+            this->get_mesh_physical_chip_ids(mesh_ns_size, mesh_ew_size, num_ports_per_side, nw_chip_physical_chip_id));
+        nw_chip_eth_coord = {0,0, 7, 0, 1};
+        mesh_ns_size = routing_table_generator_->get_mesh_ns_size(/*mesh_id=*/9);
+        mesh_ew_size = routing_table_generator_->get_mesh_ew_size(/*mesh_id=*/9);
     } else if (mesh_graph_desc_file.find("quanta_galaxy_mesh_graph_descriptor.yaml") != std::string::npos) {
         cluster_desc_file_path = std::filesystem::path(tt::llrt::RunTimeOptions::get_instance().get_root_dir()) /
                                  "tests/tt_metal/tt_fabric/common/quanta_galaxy_cluster_desc.yaml";

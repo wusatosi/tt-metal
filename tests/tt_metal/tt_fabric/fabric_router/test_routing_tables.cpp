@@ -36,6 +36,20 @@ TEST_F(ControlPlaneFixture, TestTGFabricRoutes) {
     }
 }
 
+TEST_F(ControlPlaneFixture, TestTGGMeshGraphInit) {
+    const std::filesystem::path tg_mesh_graph_desc_path =
+        std::filesystem::path(tt::llrt::RunTimeOptions::get_instance().get_root_dir()) /
+        "tt_fabric/mesh_graph_descriptors/tgg_mesh_graph_descriptor.yaml";
+    auto mesh_graph_desc = std::make_unique<MeshGraph>(tg_mesh_graph_desc_path.string());
+}
+
+TEST_F(ControlPlaneFixture, TestTGGControlPlaneInit) {
+    const std::filesystem::path tg_mesh_graph_desc_path =
+        std::filesystem::path(tt::llrt::RunTimeOptions::get_instance().get_root_dir()) /
+        "tt_fabric/mesh_graph_descriptors/tgg_mesh_graph_descriptor.yaml";
+    auto control_plane = std::make_unique<ControlPlane>(tg_mesh_graph_desc_path.string());
+}
+
 TEST_F(ControlPlaneFixture, TestT3kMeshGraphInit) {
     const std::filesystem::path t3k_mesh_graph_desc_path =
         std::filesystem::path(tt::llrt::RunTimeOptions::get_instance().get_root_dir()) /

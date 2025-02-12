@@ -260,6 +260,8 @@ protected:
             mesh_graph_descriptor = "t3k_mesh_graph_descriptor.yaml";
         } else if (32 == num_available_devices) {
             mesh_graph_descriptor = "tg_mesh_graph_descriptor.yaml";
+        } else if (64 == num_available_devices) {
+            mesh_graph_descriptor = "tgg_mesh_graph_descriptor.yaml";
         } else {
             throw std::runtime_error("Unrecognized board");
         }
