@@ -148,44 +148,17 @@ def run_llama3_demo(
         max_seq_len=max_seq_len,
     )
 
+    model_args.n_layers = 1
+
     tokenizer = Tokenizer(model_args.tokenizer_path)
 
     # Check max sequence length compatibility with model and architecture. Refer to README for more information
     llama_model_name = model_args.model_name  # ["3.2-1B", "3.2-3B", "3.1-8B", "3.2-11B", "3.1-70B"]
     tt_device_name = model_args.device_name  # ["N150", "N300", "T3K", "TG"]
 
-    if llama_model_name == "3.2-1B":
-        assert (
-            max_seq_len <= 128 * 1024
-        ), "Llama3.2-1B supports the official max context length of 128k tokens across all architectures"
-    if llama_model_name == "3.2-3B":
-        if tt_device_name == "N150":
-            assert max_seq_len <= 32 * 1024, "N150 only supports a max context length of 32k tokens for Llama3.2-3B"
-        else:  # N300, T3K and TG
-            assert (
-                max_seq_len <= 128 * 1024
-            ), "N300, T3K and TG support the official max context length of 128k tokens for Llama3.2-3B"
-    if llama_model_name in ["3.1-8B", "3.2-11B"]:
-        if tt_device_name == "N150":
-            assert (
-                max_seq_len <= 16 * 1024
-            ), "N150 only supports a max context length of 16k tokens for Llama3.1-8B and Llama3.2-11B"
-        elif tt_device_name == "N300":
-            assert (
-                max_seq_len <= 64 * 1024
-            ), "N300 only supports a max context length of 64k tokens for Llama3.1-8B and Llama3.2-11B"
-        else:  # T3K and TG
-            assert (
-                max_seq_len <= 128 * 1024
-            ), "T3K only supports a max context length of 128k tokens for Llama3.1-8B and Llama3.2-11B"
     if llama_model_name == "3.1-70B":
-        assert tt_device_name in ["T3K", "TG"], "Llama3.1-70B is only supported on T3K or TG"
-        if tt_device_name == "T3K":
-            assert max_seq_len <= 64 * 1024, "T3K only supports a max context length of 64k tokens for Llama3.1-70B"
-        else:  # TG
-            assert (
-                max_seq_len <= 128 * 1024
-            ), "TG supports the official max context length of 128k tokens for Llama3.1-70B"
+        assert tt_device_name in ["TG"], "Llama3.1-70B is only supported on TG"
+        assert max_seq_len <= 128 * 1024, "TG supports the official max context length of 128k tokens for Llama3.1-70B"
 
     logger.info("Loading weights...")
     profiler.start("weight_loading")
@@ -228,22 +201,17 @@ def run_llama3_demo(
         state_dict=state_dict,
         dtype=ttnn.bfloat16,  # Row major layout requires bfloat16
     )
-    embd = HostEmbedding(model_args)
-    state_dict_prefix = model_args.get_state_dict_prefix("", None)
-    embd.load_state_dict({"emb.weight": state_dict[f"{state_dict_prefix}tok_embeddings.weight"]})
     profiler.end("loading_weights_to_device")
     logger.info("Finished loading weights to device.")
 
     # Keep track of generated outputs to print out every iteration
-    if instruct:
+    if instruct_mode:
         encoded_prompts = [encode_prompt_llama_instruct(tokenizer, prompt) for prompt in input_prompts]
     else:
         encoded_prompts = [tokenizer.encode(prompt, bos=True, eos=False) for prompt in input_prompts]
 
-    all_outputs = [encoded_prompts[b][:prefill_seq_len] for b in range(batch_size)]
-    for user in range(batch_size):
-        user_tok = int(pt_out_batched[user].item())
-        all_outputs[user].append(user_tok)
+    # Prefill by decode: start at first token
+    encoded_prompts_tensor = torch.tensor([encoded_prompts[b] for b in range(batch_size)])
 
     user_done = [False] * batch_size  # Keeps track when a user reaches EoD token
 
@@ -262,13 +230,8 @@ def run_llama3_demo(
                 mesh_shape=model_args.cluster_shape,
             ),
         )
-    # Set sampling mode
-    argmax_on_device = False if (batch_size > 1 or sampling_params["temperature"] != 0) else True
 
-    # Create events
-    profiler.start(f"compile_trace_{batch_idx}")
-    op_event = ttnn.create_event(mesh_device)
-    write_event = ttnn.create_event(mesh_device)
+        logger.info("Page table tensor done")
 
     # Initial positions
     decoding_pos = [0] * batch_size
@@ -285,95 +248,95 @@ def run_llama3_demo(
         ),
     )
 
+    logger.info("Current pos tensor done")
+
     # Get cos/sin matrices for the current position of each user
     rot_mats, rot_mat_idxs = tt_model.rope_setup.get_rot_mats(current_pos, return_rot_idxs=True)
+
+    logger.info("Rot mats done")
+
+    logger.info(f"decode residual memcfg: {model_args.model_config['DECODE_RESIDUAL_MEMCFG']}")
+
+    # Prepare the encoded prompts for the decode input
+    tt_out_tok = model_args.prepare_residual_tensor_decode(
+        encoded_prompts_tensor[:, :1].unsqueeze(0),
+        ttnn.DRAM_MEMORY_CONFIG,
+    )
+    logger.info("Out tok done")
+
     # Compile
     logger.info(f"Compiling model trace...")
 
-    decode_input = ttnn.from_torch(
-        tt_decode_input,
-        device=mesh_device,
-        dtype=ttnn.bfloat16,
-        layout=ttnn.TILE_LAYOUT,
-        mesh_mapper=mesh_mapper,
-        memory_config=model_args.model_config["DECODE_RESIDUAL_MEMCFG"],
-    )
+    tt_decode_input = tt_embd(tt_out_tok)
+    logger.info(f"tt_decode_input done")
+    tt_decode_input_sharded = ttnn.to_memory_config(tt_decode_input, model_args.model_config["DECODE_RESIDUAL_MEMCFG"])
+    logger.info(f"tt_decode_input_sharded done")
     tt_out = tt_model(
-        decode_input,
+        tt_decode_input_sharded,
         current_pos_tensor,
         rot_mats=rot_mats,
         mode="decode",
         page_table=page_table_tt,
     )
-    if tt_model.args.num_devices > 1:
-        if tt_model.args.is_galaxy:
-            tt_out_gathered = ttnn.all_gather(
-                tt_out, dim=3, num_links=2, cluster_axis=0, mesh_device=mesh_device, topology=ttnn.Topology.Linear
-            )
-        else:
-            tt_out_gathered = ttnn.all_gather(tt_out, dim=3, num_links=1, topology=ttnn.Topology.Linear)
-        ttnn.deallocate(tt_out)
-    else:
-        tt_out_gathered = tt_out
-    tt_out_rm = ttnn.untilize(tt_out_gathered, use_multicore=True)
-    ttnn.deallocate(tt_out_gathered)
-    if argmax_on_device:
-        tt_out_tok = ttnn.argmax(  # FIXME When ttnn.argmax supports multicore, avoid falling back to host
-            tt_out_rm, dim=3, use_multicore=False if batch_size > 1 else True, output_tensor=tt_out_tok
-        )
-        ttnn.deallocate(tt_out_rm)
-    else:
-        tt_out_tok_reset, _ = sample_host(
-            tt_out_rm,
-            mesh_device,
-            temperature=sampling_params["temperature"],
-            top_p=sampling_params["top_p"],
-            on_host=True,
-        )
-        ttnn.copy_host_to_device_tensor(tt_out_tok_reset, tt_out_tok)
-    ttnn.plus_one(current_pos_tensor)
-    profiler.end(f"compile_trace_{batch_idx}")
-
-    decode_input_reset = ttnn.from_torch(
-        tt_decode_input,
-        device=None,
-        dtype=ttnn.bfloat16,
-        layout=ttnn.TILE_LAYOUT,
-        mesh_mapper=mesh_mapper,
-        memory_config=None,
+    logger.info(f"tt_out done")
+    # Sampling
+    tt_out_gathered = ttnn.all_gather(
+        tt_out, dim=3, num_links=2, cluster_axis=0, mesh_device=mesh_device, topology=ttnn.Topology.Linear
     )
-    ttnn.copy_host_to_device_tensor(decode_input_reset, decode_input)
+    ttnn.deallocate(tt_out)
+    tt_out_rm = ttnn.untilize(tt_out_gathered, use_multicore=True, sub_core_grids=model_args.sub_core_grids)
+    ttnn.deallocate(tt_out_gathered)
+    # tt_out_tok = ttnn.argmax(
+    #     tt_out_rm, dim=3, use_multicore=False if batch_size > 1 else True, output_tensor=tt_out_tok
+    # )
+    # ttnn.deallocate(tt_out_rm)
+    tt_out_tok_reset, _ = sample_host(
+        tt_out_rm,
+        mesh_device,
+        temperature=sampling_params["temperature"],
+        top_p=sampling_params["top_p"],
+        on_host=True,
+    )
+    ttnn.copy_host_to_device_tensor(tt_out_tok_reset, tt_out_tok)
+    logger.info(f"tt_out_tok_reset done")
+    ttnn.plus_one(current_pos_tensor)
+    profiler.end(f"compile_trace")
 
     # Capture Trace
     logger.info(f"Capturing model trace...")
-    profiler.start(f"capture_trace_{batch_idx}")
+    profiler.start(f"capture_trace")
     trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
 
     rot_mats = tt_model.rope_setup.get_rot_mats(rot_mat_idxs)
+    tt_decode_input = tt_embd(tt_out_tok)
+    tt_decode_input_sharded = ttnn.to_memory_config(tt_decode_input, model_args.model_config["DECODE_RESIDUAL_MEMCFG"])
     tt_out = tt_model(
-        decode_input,
+        tt_decode_input_sharded,
         current_pos_tensor,
         rot_mats=rot_mats,
         mode="decode",
         page_table=page_table_tt,
     )
-    if tt_model.args.num_devices > 1:
-        if tt_model.args.is_galaxy:
-            tt_out_gathered = ttnn.all_gather(
-                tt_out, dim=3, num_links=2, cluster_axis=0, mesh_device=mesh_device, topology=ttnn.Topology.Linear
-            )
-        else:
-            tt_out_gathered = ttnn.all_gather(tt_out, dim=3, num_links=1, topology=ttnn.Topology.Linear)
-        ttnn.deallocate(tt_out)
-    else:
-        tt_out_gathered = tt_out
-    tt_out_rm = ttnn.untilize(tt_out_gathered, use_multicore=True)
-    ttnn.deallocate(tt_out_gathered)
-    if argmax_on_device:
-        tt_out_tok = ttnn.argmax(
-            tt_out_rm, dim=3, use_multicore=False if batch_size > 1 else True, output_tensor=tt_out_tok
-        )  # FIXME Multicore is not compatible with batch > 1
-        ttnn.deallocate(tt_out_rm)
+
+    # Sampling
+    tt_out_gathered = ttnn.all_gather(
+        tt_out, dim=3, num_links=2, cluster_axis=0, mesh_device=mesh_device, topology=ttnn.Topology.Linear
+    )
+    tt_out_rm = ttnn.untilize(tt_out_gathered, use_multicore=True, sub_core_grids=model_args.sub_core_grids)
+    # ttnn.deallocate(tt_out_gathered)
+    # tt_out_tok = ttnn.argmax(
+    #     tt_out_rm, dim=3, use_multicore=False if batch_size > 1 else True, output_tensor=tt_out_tok
+    # )  # FIXME Multicore is not compatible with batch > 1
+    # ttnn.deallocate(tt_out_rm)
+    tt_out_tok_reset, _ = sample_host(
+        tt_out_rm,
+        mesh_device,
+        temperature=sampling_params["temperature"],
+        top_p=sampling_params["top_p"],
+        on_host=True,
+    )
+    ttnn.copy_host_to_device_tensor(tt_out_tok_reset, tt_out_tok)
+
     ttnn.plus_one(current_pos_tensor)
     # ttnn.plus_one(rot_mat_idxs)  # FIXME <- This won't work since embedding requires uint32 and plus_one only works for int32
 
@@ -387,17 +350,14 @@ def run_llama3_demo(
             mesh_device,
             dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
             mesh_shape=model_args.cluster_shape,
-        )
-        if tt_model.args.num_devices > 1
-        else None,
+        ),
     )
     tt_out_tok_reset = ttnn.from_torch(
-        torch.nn.functional.pad(
-            pt_out_batched.unsqueeze(0).unsqueeze(0).unsqueeze(0), (0, 32 - len(pt_out_batched)), "constant", 0
-        ),
-        # torch.nn.functional.pad(pt_out_batched.unsqueeze(0).unsqueeze(0).unsqueeze(0), (0, 30), "constant", 0),
-        dtype=ttnn.uint32,
-        mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device) if tt_model.args.num_devices > 1 else None,
+        encoded_prompts_tensor[:, :1],
+        dtype=ttnn.bfloat16,
+        layout=ttnn.TILE_LAYOUT,
+        mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device, dims=(None, -1), mesh_shape=model_args.cluster_shape),
+        memory_config=model_args.model_config["DECODE_RESIDUAL_MEMCFG"],
     )
 
     # Reset the current position and output token tensors for the real decode run
@@ -406,7 +366,7 @@ def run_llama3_demo(
     rot_mat_idxs_reset = tt_model.rope_setup.get_rot_idxs(current_pos, on_host=True)
     ttnn.copy_host_to_device_tensor(rot_mat_idxs_reset, rot_mat_idxs)
 
-    profiler.end(f"capture_trace_{batch_idx}")
+    profiler.end(f"capture_trace")
 
     # Start decoding
     iteration = 0
@@ -414,19 +374,18 @@ def run_llama3_demo(
     total_decoding_time = 0  # Track total decoding time
     total_tokens_generated = 0  # Track total tokens generated
 
-    logger.info(f"Starting decode loop...")
-    profiler.start(f"inference_decode", iteration=batch_idx)
+    all_outputs = []
 
-    ttnn.record_event(1, write_event)
+    logger.info(f"Starting decode loop...")
+    profiler.start(f"inference_decode", iteration=iteration)
+
     while users_decoding:
         if iteration == 0:  # First iteration also accounts for compile time
-            profiler.start(f"compile_decode", iteration=batch_idx)
+            profiler.start(f"compile_decode", iteration=iteration)
         iteration_time_start = time()
 
         # Execute trace
-        ttnn.wait_for_event(0, write_event)
         ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=True)
-        ttnn.record_event(0, op_event)
 
         # Update current pos and mat idxs on host and send to device
         # TODO This is required for now since we cannot ttnn.plus_one(rot_mat_idxs) while it being uint32.
@@ -436,49 +395,26 @@ def run_llama3_demo(
         ttnn.copy_host_to_device_tensor(rot_mat_idxs_updated, rot_mat_idxs)
 
         # Write to host
-        ttnn.wait_for_event(1, op_event)
-        if argmax_on_device:
-            tt_output_torch = ttnn.to_torch(
-                tt_out_tok.cpu(blocking=True, cq_id=1),
-                mesh_composer=ttnn.ConcatMesh2dToTensor(
-                    mesh_device,
-                    dims=(3, 1) if tt_model.args.is_galaxy else (1, -1),
-                    mesh_shape=model_args.cluster_shape,
-                ),
-            )[0, 0, 0, :batch_size]
-        else:
-            tt_out_tok_reset, tt_output_torch = sample_host(
-                tt_out_rm,
+        tt_output_torch = ttnn.to_torch(
+            tt_out_tok.cpu(blocking=True, cq_id=1),
+            mesh_composer=ttnn.ConcatMesh2dToTensor(
                 mesh_device,
-                temperature=sampling_params["temperature"],
-                top_p=sampling_params["top_p"],
-                on_host=True,
-            )
-            tt_output_torch = tt_output_torch[0, 0, 0, :batch_size]
-            ttnn.copy_host_to_device_tensor(tt_out_tok_reset, tt_out_tok)
-        ttnn.record_event(1, write_event)
+                dims=(3, 1),
+                mesh_shape=model_args.cluster_shape,
+            ),
+        )[0, 0, 0, :batch_size]
 
         # Append the generated token to the list of outputs
         if i in range(len(encoded_prompts[0])):
             # While in "prefill" mode, use the prompt tokens as the output
             all_outputs.append(encoded_prompts[0][i])  # Update list of TT outputs
-            if run_ref_pt:
-                all_outputs_ref.append(encoded_prompts[0][i])  # Update list of ref outputs
-
-            tt_decode_input = embd(encoded_prompts_tensor[:, i]).view(batch, seqlen, -1)
-            if run_ref_pt:
-                pt_decode_input = embd(encoded_prompts_tensor[:, i]).view(batch, seqlen, -1)
+            # tt_decode_input = tt_embd(encoded_prompts[:, i]).view(batch_size, 1, -1)
+            tt_out_tok = encoded_prompts_tensor[:, i].unsqueeze(0).unsqueeze(0)
+            breakpoint()
         else:
-            # Greedy decode (temperature = 0) the generated token and save it to print out later
-            tt_out_tok = sample_host(tt_output_torch, None, temperature=0, top_p=0.8)
-            tt_decode_input = embd(tt_out_tok)
-            all_outputs.append(tt_out_tok.squeeze(1).tolist()[0])  # Update generated token to list of TT outputs
-            if run_ref_pt:
-                pt_out_tok = sample_host(ref_output, None, temperature=0, top_p=0.8)
-                pt_decode_input = embd(pt_out_tok)
-                all_outputs_ref.append(
-                    pt_out_tok.squeeze(1).tolist()[0]
-                )  # Update generated token to list of ref outputs
+            # tt_decode_input = tt_embd(tt_out_tok)
+            all_outputs.append(tt_output_torch.squeeze(1).tolist()[0])  # Update generated token to list of TT outputs
+            breakpoint()
 
         # Save output token to print out later
         for user in range(batch_size):
@@ -503,7 +439,7 @@ def run_llama3_demo(
 
         tokens_per_second_per_user = 1 / iteration_time
 
-        profiler.start(f"log_printing_iter_{iteration}", iteration=batch_idx)
+        profiler.start(f"log_printing_iter_{iteration}", iteration=iteration)
         # Print out generated outputs for each user at the end of every iteration
         if not is_ci_env:
             if len(user_input) == 1:
@@ -520,10 +456,10 @@ def run_llama3_demo(
         logger.info(
             f"Iteration {iteration}: {1000*iteration_time:.0f}ms @ {tokens_per_second_per_user:.1f} tok/s/user ({batch_size*tokens_per_second_per_user:.1f} tok/s throughput)"
         )
-        profiler.end(f"log_printing_iter_{iteration}", iteration=batch_idx)
+        profiler.end(f"log_printing_iter_{iteration}", iteration=iteration)
 
         if iteration == 0:  # First iteration also accounts for compile time
-            profiler.end(f"compile_decode", iteration=batch_idx)
+            profiler.end(f"compile_decode", iteration=iteration)
 
         iteration += 1
 
@@ -562,37 +498,37 @@ def run_llama3_demo(
             1024,  # max_seq_len
             1,  # batch_size
             200,  # max_generated_tokens
-            True,  # paged_attention
+            False,  # True,  # paged_attention
             {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params  # TODO This will be serviced by vLLM
             {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
         ),
-        (  # Batch-32 run (Throughput) - 32 users, small prompt
-            "models/demos/llama3/demo/input_data_questions_prefill_128.json",  # input_prompts
-            True,  # instruct mode
-            1,  # repeat_batches
-            1024,  # max_seq_len
-            32,  # batch_size
-            200,  # max_generated_tokens
-            True,  # paged_attention
-            {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params  # TODO This will be serviced by vLLM
-            {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
-        ),
-        (  # Long-context run - Single user, long prompt (adapted to the model being used and architecture)
-            "models/demos/llama3/demo/input_data_long_64k.json",  # input_prompts
-            True,  # instruct mode
-            1,  # repeat_batches
-            64 * 1024,  # max_seq_len
-            1,  # batch_size
-            200,  # max_generated_tokens
-            False,  # paged_attention
-            {"page_block_size": 64, "page_max_num_blocks": 2048},  # page_params  # TODO This will be serviced by vLLM
-            {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
-        ),
+        # (  # Batch-32 run (Throughput) - 32 users, small prompt
+        #     "models/demos/llama3/demo/input_data_questions_prefill_128.json",  # input_prompts
+        #     True,  # instruct mode
+        #     1,  # repeat_batches
+        #     1024,  # max_seq_len
+        #     32,  # batch_size
+        #     200,  # max_generated_tokens
+        #     True,  # paged_attention
+        #     {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params  # TODO This will be serviced by vLLM
+        #     {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
+        # ),
+        # (  # Long-context run - Single user, long prompt (adapted to the model being used and architecture)
+        #     "models/demos/llama3/demo/input_data_long_64k.json",  # input_prompts
+        #     True,  # instruct mode
+        #     1,  # repeat_batches
+        #     64 * 1024,  # max_seq_len
+        #     1,  # batch_size
+        #     200,  # max_generated_tokens
+        #     False,  # paged_attention
+        #     {"page_block_size": 64, "page_max_num_blocks": 2048},  # page_params  # TODO This will be serviced by vLLM
+        #     {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
+        # ),
     ],
     ids=[
         "batch-1",  # latency
-        "batch-32",  # throughput
-        "long-context",  # max-length
+        # "batch-32",  # throughput
+        # "long-context",  # max-length
     ],
 )
 @pytest.mark.parametrize(
@@ -602,7 +538,6 @@ def run_llama3_demo(
         LlamaOptimizations.accuracy,
     ],
 )
-@pytest.mark.parametrize("device_params", [{"trace_region_size": 23887872, "num_command_queues": 2}], indirect=True)
 @pytest.mark.parametrize(
     "mesh_device",
     [
@@ -611,6 +546,9 @@ def run_llama3_demo(
         )
     ],
     indirect=True,
+)
+@pytest.mark.parametrize(
+    "device_params", [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL, "trace_region_size": 23887872}], indirect=True
 )
 def test_llama_demo(
     input_prompts,

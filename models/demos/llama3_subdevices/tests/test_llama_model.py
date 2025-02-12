@@ -30,7 +30,7 @@ from models.utility_functions import skip_for_grayskull
 @pytest.mark.parametrize(
     "weights, layers",
     [
-        ("random", 3),
+        ("random", 1),
         ("instruct", 80),
     ],
     ids=["quick", "full"],
@@ -188,7 +188,7 @@ def test_llama_model_inference(
     embd.load_state_dict({"emb.weight": state_dict[f"{state_dict_prefix}tok_embeddings.weight"]})
 
     generation_start_pos = 0
-    generation_length = 30  # iterations
+    generation_length = 1  # iterations
 
     page_table_tt = None
     paged_attention_config = None

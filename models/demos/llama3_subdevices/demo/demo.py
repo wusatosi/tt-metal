@@ -227,6 +227,8 @@ def run_llama3_demo(
         max_seq_len=max_seq_len,
     )
 
+    model_args.n_layers = 1
+
     tokenizer = Tokenizer(model_args.tokenizer_path)
 
     # Check max sequence length compatibility with model and architecture. Refer to README for more information

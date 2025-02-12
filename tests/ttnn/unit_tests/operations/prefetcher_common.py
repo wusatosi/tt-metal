@@ -82,21 +82,27 @@ class TtLlamaPrefetcherSetup(LightweightModule):
             [ttnn.CoreRange(core_coord, core_coord) for core_coord in self.sender_cores]
         )
 
+        logger.info(f"Dram core range set {self.dram_core_range_set}")
+        logger.info(f"Sender core range set {self.sender_core_range_set}")
+
         ##### Setup up sub devices #####
         self.prefetcher_sub_device = ttnn.SubDevice([self.sender_core_range_set])
         self.worker_sub_device = ttnn.SubDevice([self.worker_cores_range_set])
+        logger.info(f"sub devices created")
         mesh_sub_device_manager_id = create_and_load_sub_device_manager_with_fabric_interface(
             mesh_device, [self.prefetcher_sub_device, self.worker_sub_device], 1, 0, True
         )
+        logger.info(f"Sub device manager created with id {mesh_sub_device_manager_id}")
         # self.sub_device_manager = mesh_device.create_sub_device_manager(
         #     [self.prefetcher_sub_device, self.worker_sub_device], 0
         # )
         # mesh_device.load_sub_device_manager(self.sub_device_manager)
         self.prefetcher_sub_device_id = ttnn.SubDeviceId(0)
         self.worker_sub_device_id = ttnn.SubDeviceId(1)
-
+        logger.info(f"Sub device ids: {self.prefetcher_sub_device_id}, {self.worker_sub_device_id}")
         self.tensors = []
         self.tensor_addrs = []  # List of buffer addresses
+        logger.info(f"Prefetcher setup done")
 
     def buffer_address(self, tensor):
         addr = []

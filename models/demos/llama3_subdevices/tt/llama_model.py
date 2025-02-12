@@ -90,6 +90,7 @@ class TtTransformer(LightweightModule):
             )
             for i in tqdm(range(self.n_layers))
         ]
+
         self.norm = DistributedNorm(
             RMSNorm(
                 device=mesh_device,
