@@ -7,6 +7,7 @@
 #include "gtest/gtest.h"
 #include <tt-metalium/host_api.hpp>
 #include <tt-metalium/tt_metal.hpp>
+#include "mesh_device.hpp"
 #include "tt_metal/test_utils/env_vars.hpp"
 #include <tt-metalium/program_impl.hpp>
 #include <tt-metalium/command_queue.hpp>
@@ -61,6 +62,7 @@ public:
 
 protected:
     tt::ARCH arch_;
+    std::shared_ptr<tt::tt_metal::distributed::MeshDevice> mesh_device_;
     std::vector<tt::tt_metal::IDevice*> devices_;
     bool slow_dispatch_;
 
@@ -69,6 +71,7 @@ protected:
         // Set up all available devices
         this->arch_ = tt::get_arch_from_string(tt::test_utils::get_umd_arch_name());
         auto num_devices = tt::tt_metal::GetNumAvailableDevices();
+        TT_FATAL(num_devices == 8, "This test was hardcoded to work on T3K");
         std::vector<chip_id_t> ids;
         for (unsigned int id = 0; id < num_devices; id++) {
             if (SkipTest(id)) {
@@ -83,7 +86,15 @@ protected:
             DEFAULT_L1_SMALL_SIZE,
             DEFAULT_TRACE_REGION_SIZE,
             dispatch_core_config);
-        devices_ = tt::DevicePool::instance().get_all_active_devices();
+
+        using tt::tt_metal::distributed::MeshDevice;
+        using tt::tt_metal::distributed::MeshDeviceConfig;
+        using tt::tt_metal::distributed::MeshShape;
+
+        mesh_device_ = MeshDevice::create(MeshDeviceConfig{.mesh_shape = MeshShape{2, 4}});
+        for (auto* device : mesh_device_->get_devices()) {
+            devices_.push_back(device);
+        }
     }
 
     void TearDown() override {

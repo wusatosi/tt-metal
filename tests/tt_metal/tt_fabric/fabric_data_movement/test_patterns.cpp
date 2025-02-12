@@ -7,6 +7,10 @@
 #include "tt_fabric/control_plane.hpp"
 #include "tt_fabric/mesh_graph.hpp"
 #include "tt_fabric/routing_table_generator.hpp"
+#include "ttnn/cpp/ttnn/tensor/shape/shape.hpp"
+#include "ttnn/cpp/ttnn/tensor/tensor.hpp"
+#include "ttnn/cpp/ttnn/distributed/api.hpp"
+#include "ttnn/cpp/ttnn/operations/ccl/fabric_composite/fabric_composite.hpp"
 
 namespace tt::tt_fabric {
 
@@ -1281,6 +1285,54 @@ TEST_F(FabricFixture, TestAsyncWriteMulticastMultidirectional) {
             std::vector<uint32_t> received_buffer_data = tt::llrt::read_hex_vec_from_core(
                 physical_end_device_id, receiver_virtual_core, buffer_data_addr, buffer_data_size);
             EXPECT_EQ(buffer_data, received_buffer_data);
+        }
+    }
+}
+
+TEST_F(FabricFixture, TestTTNNFabricBroadcast) {
+    auto* device = devices_.front();
+    auto shape = ttnn::Shape({1, 1, 32, 32});
+    auto dtype = DataType::FLOAT32;
+
+    std::vector<float> values(32 * 32);
+    std::iota(values.begin(), values.end(), 0);
+
+    auto tensor = ttnn::Tensor::from_vector(
+        std::move(values),
+        ttnn::TensorSpec(shape, TensorLayout(dtype, PageConfig(Layout::ROW_MAJOR, {}), MemoryConfig{})),
+        device);
+
+    auto broadcasted_tensor = ttnn::fabric_broadcast(tensor, mesh_device_.get());
+
+    auto out_tensors = ttnn::distributed::get_device_tensors(broadcasted_tensor);
+    for (auto& out_tensor : out_tensors) {
+        auto out_tensor_values = out_tensor.to_vector<float>();
+        EXPECT_EQ(out_tensor_values, values);
+    }
+}
+
+TEST_F(FabricFixture, TestTTNNFabricScatter) {
+    auto* device = devices_.front();
+    auto shape = ttnn::Shape({1, 1, 32, 32 * 8});
+    auto dtype = DataType::FLOAT32;
+
+    std::vector<float> values(32 * 32);
+    std::iota(values.begin(), values.end(), 0);
+
+    auto tensor = ttnn::Tensor::from_vector(
+        std::move(values),
+        ttnn::TensorSpec(shape, TensorLayout(dtype, PageConfig(Layout::ROW_MAJOR, {}), MemoryConfig{})),
+        device);
+
+    auto scattered_tensor = ttnn::fabric_scatter(tensor, mesh_device_.get(), 3);
+
+    auto out_tensors = ttnn::distributed::get_device_tensors(scattered_tensor);
+
+    int iter = 0;
+    for (auto& out_tensor : out_tensors) {
+        auto out_vector = out_tensor.to_vector<float>();
+        for (int i = 0; i < out_vector.size(); i++, iter++) {
+            EXPECT_EQ(out_vector[i], values[iter]);
         }
     }
 }

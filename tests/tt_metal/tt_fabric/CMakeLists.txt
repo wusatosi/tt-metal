@@ -9,6 +9,7 @@ target_link_libraries(
     PRIVATE
         tt_metal
         tt_fabric
+        Metalium::TTNN
         test_common_libs
 )
 

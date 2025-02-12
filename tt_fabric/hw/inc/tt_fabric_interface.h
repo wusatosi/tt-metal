@@ -39,7 +39,6 @@ constexpr uint32_t FVC_SYNC_THRESHOLD = 256;
 #define SOCKET_CLOSE (0x1 << 9)
 #define SOCKET_CONNECT (0x1 << 10)
 
-#define INVALID 0x0
 #define MCAST_ACTIVE 0x1
 #define MCAST_DATA 0x2
 #define SYNC 0x4
