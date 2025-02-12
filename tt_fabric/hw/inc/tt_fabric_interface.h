@@ -58,13 +58,13 @@ typedef struct _tt_routing {
 static_assert(sizeof(tt_routing) == 16);
 
 typedef struct _tt_session {
-    uint32_t command;
-    uint32_t target_offset_l;  // RDMA address
-    uint32_t target_offset_h;
     uint32_t ack_offset_l;  // fabric client local address for session command acknowledgement.
                             // This is complete end-to-end acknowledgement of sessoin command completion at the remote
                             // device.
     uint32_t ack_offset_h;
+    uint32_t command;
+    uint32_t target_offset_l;  // RDMA address
+    uint32_t target_offset_h;
 } tt_session;
 
 static_assert(sizeof(tt_session) == 20);
@@ -128,6 +128,49 @@ typedef struct _packet_header {
     tt_routing routing;
 } packet_header_t;
 
+typedef struct _pkt_hdr_1_2_first {
+    packet_params packet_parameters;
+    uint32_t ack_offset_l;
+} pkt_hdr_1_2_first_t;
+
+typedef struct _pkt_hdr_1_2_second {
+    uint32_t ack_offset_h;
+    uint32_t command;  // this is in packet_header.session.command
+    uint32_t target_offset_l;
+    uint32_t target_offset_h;
+    tt_routing routing;
+} pkt_hdr_1_2_second_t;
+
+typedef struct _pkt_hdr_2_1_first {
+    packet_params packet_parameters;
+    tt_session session;
+} pkt_hdr_2_1_first_t;
+
+typedef struct _pkt_hdr_2_1_second {
+    tt_routing routing;
+} pkt_hdr_2_1_second_t;
+
+typedef struct _flex_packet_header {
+    uint8_t first_word_size;  // 1 or 2
+    union {
+        packet_header_t* ptr;
+        packet_header_t* padding;
+        struct {
+            pkt_hdr_1_2_first_t* first;
+            pkt_hdr_1_2_second_t* second;
+        } ptr_1_2;
+        struct {
+            pkt_hdr_2_1_first_t* first;
+            pkt_hdr_2_1_second_t* second;
+        } ptr_2_1;
+        struct {
+            void* first;
+            void* second;
+        } ptr_void;
+    };
+} flex_packet_header_t;
+
+// WARNING: if you change header size, you have to change
 const uint32_t PACKET_HEADER_SIZE_BYTES = 48;
 const uint32_t PACKET_HEADER_SIZE_WORDS = PACKET_HEADER_SIZE_BYTES / PACKET_WORD_SIZE_BYTES;
 
@@ -154,6 +197,37 @@ bool tt_fabric_is_header_valid(packet_header_t* p_header) {
     sum = ~sum;
     sum += sum;
     return (p_header->packet_parameters.misc_parameters.words[0] == sum);
+#else
+    return true;
+#endif
+}
+
+bool tt_fabric_is_header_valid(flex_packet_header_t* p_header) {
+#ifdef TT_FABRIC_DEBUG
+    uint16_t* ptr = (uint16_t*)p_header->ptr;
+    uint32_t sum = 0;
+    if (p_header->first_word_size == 1) {
+        for (uint32_t i = 2; i < sizeof(pkt_hdr_1_2_first_t) / 2; i++) {
+            sum += ptr[i];
+        }
+        ptr = (uint16_t*)p_header->ptr_1_2.second;
+        for (uint32_t i = 2; i < sizeof(pkt_hdr_1_2_second_t) / 2; i++) {
+            sum += ptr[i];
+        }
+    } else if (p_header->first_word_size == 2) {
+        for (uint32_t i = 2; i < sizeof(pkt_hdr_2_1_first_t) / 2; i++) {
+            sum += ptr[i];
+        }
+        ptr = (uint16_t*)p_header->ptr_2_1.second;
+        for (uint32_t i = 2; i < sizeof(pkt_hdr_2_1_second_t) / 2; i++) {
+            sum += ptr[i];
+        }
+    } else {
+        return tt_fabric_is_header_valid(p_header->ptr);
+    }
+    sum = ~sum;
+    sum += sum;
+    return (p_header->ptr->packet_parameters.misc_parameters.words[0] == sum);
 #else
     return true;
 #endif

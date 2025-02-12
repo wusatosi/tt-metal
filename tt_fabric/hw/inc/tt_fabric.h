@@ -236,11 +236,60 @@ typedef struct fvc_producer_state {
     bool packet_corrupted;
     uint64_t packet_timestamp;
     uint64_t packet_dest;
-    packet_header_t current_packet_header;
-    packet_header_t* current_packet_header_ptr;
+    flex_packet_header_t current_packet_header;
     uint32_t* packet_id;
     volatile uint32_t* words_received;
     uint32_t* words_received_local_update;
+
+    FORCE_INLINE
+    tt_routing* get_routing_unsafe() {
+        if (current_packet_header.first_word_size == 0) {
+            return &current_packet_header.ptr->routing;
+        } else if (current_packet_header.first_word_size == 1) {
+            return &current_packet_header.ptr_1_2.second->routing;
+        } else {
+            return &current_packet_header.ptr_2_1.second->routing;
+        }
+    }
+
+    FORCE_INLINE
+    uint64_t get_packet_dest_addr() {
+        if (current_packet_header.first_word_size == 0) {
+            return ((uint64_t)current_packet_header.ptr->session.target_offset_h << 32) |
+                   current_packet_header.ptr->session.target_offset_l;
+        } else if (current_packet_header.first_word_size == 1) {
+            return ((uint64_t)current_packet_header.ptr_1_2.second->target_offset_h << 32) |
+                   current_packet_header.ptr_1_2.second->target_offset_l;
+        } else {
+            return ((uint64_t)current_packet_header.ptr_2_1.first->session.target_offset_h << 32) |
+                   current_packet_header.ptr_2_1.first->session.target_offset_l;
+        }
+    }
+
+    FORCE_INLINE
+    uint32_t get_session_command_unsafe() {
+        if (current_packet_header.first_word_size == 0) {
+            return current_packet_header.ptr->session.command;
+        } else if (current_packet_header.first_word_size == 1) {
+            return current_packet_header.ptr_1_2.second->command;
+        } else {
+            return current_packet_header.ptr_2_1.first->session.command;
+        }
+    }
+
+    FORCE_INLINE
+    packet_params* get_packet_params_unsafe() { return (packet_params*)current_packet_header.ptr_void.first; }
+
+    FORCE_INLINE
+    uint32_t get_packet_size_bytes() {
+        if (current_packet_header.first_word_size == 0) {
+            return current_packet_header.ptr->routing.packet_size_bytes / PACKET_WORD_SIZE_BYTES;
+        } else if (current_packet_header.first_word_size == 1) {
+            return current_packet_header.ptr_1_2.second->routing.packet_size_bytes / PACKET_WORD_SIZE_BYTES;
+        } else {
+            return current_packet_header.ptr_2_1.second->routing.packet_size_bytes / PACKET_WORD_SIZE_BYTES;
+        }
+    }
 
     inline void reset_words_received() {
         // Setting STREAM_REMOTE_DEST_BUF_SIZE_REG_INDEX resets the credit register
@@ -385,35 +434,39 @@ typedef struct fvc_producer_state {
     }
 
     template <uint8_t fvc_mode = FVC_MODE_ROUTER>
-    inline void advance_next_packet() {
-        tt_l1_ptr uint32_t* packet_header_ptr;
+    FORCE_INLINE void advance_next_packet() {
         volatile tt_l1_ptr uint32_t* next_header_ptr =
             reinterpret_cast<tt_l1_ptr uint32_t*>(get_local_buffer_read_addr());
         uint32_t words_before_wrap = words_before_buffer_wrap(fvc_out_rdptr);
-        uint32_t dwords_to_copy = PACKET_HEADER_SIZE_BYTES / 4;
+        current_packet_header.ptr_void.first = (void*)next_header_ptr;
+        current_packet_header.ptr_void.second = (void*)buffer_start;
         if (words_before_wrap < PACKET_HEADER_SIZE_WORDS) {
             // Header spans buffer end.
             // Needs to be copied in two steps.
-            packet_header_ptr = (uint32_t*)&current_packet_header;
-
-            uint32_t dwords_before_wrap = words_before_wrap * PACKET_WORD_SIZE_BYTES / 4;
-            uint32_t dwords_after_wrap = dwords_to_copy - dwords_before_wrap;
-            for (uint32_t i = 0; i < dwords_before_wrap; i++) {
-                packet_header_ptr[i] = next_header_ptr[i];
-            }
-            next_header_ptr = reinterpret_cast<tt_l1_ptr uint32_t*>(buffer_start);
-            for (uint32_t i = 0; i < dwords_after_wrap; i++) {
-                packet_header_ptr[i + dwords_before_wrap] = next_header_ptr[i];
+            if (words_before_wrap == 1) {
+                current_packet_header.first_word_size = 1;
+                packet_id = (uint32_t*)&current_packet_header.ptr_1_2.second->routing.dst_mesh_id;
+                packet_words_remaining =
+                    (((pkt_hdr_1_2_second_t*)current_packet_header.ptr_1_2.second)->routing.packet_size_bytes +
+                     PACKET_WORD_SIZE_BYTES - 1) >>
+                    4;
+            } else {  // == 2
+                current_packet_header.first_word_size = 2;
+                packet_id = (uint32_t*)&current_packet_header.ptr_2_1.second->routing.dst_mesh_id;
+                packet_words_remaining =
+                    (((pkt_hdr_2_1_second_t*)current_packet_header.ptr_2_1.second)->routing.packet_size_bytes +
+                     PACKET_WORD_SIZE_BYTES - 1) >>
+                    4;
             }
         } else {
-            packet_header_ptr = (uint32_t*)next_header_ptr;
+            current_packet_header.first_word_size = 0;
+            packet_id = (uint32_t*)&current_packet_header.ptr->routing.dst_mesh_id;
+            packet_words_remaining = (((packet_header_t*)current_packet_header.ptr)->routing.packet_size_bytes +
+                                      PACKET_WORD_SIZE_BYTES - 1) >>
+                                     4;
         }
 
-        this->packet_words_remaining =
-            (((packet_header_t*)packet_header_ptr)->routing.packet_size_bytes + PACKET_WORD_SIZE_BYTES - 1) >> 4;
-        if (tt_fabric_is_header_valid((packet_header_t*)packet_header_ptr)) {
-            current_packet_header_ptr = (packet_header_t*)packet_header_ptr;
-            packet_id = (uint32_t*)&current_packet_header_ptr->routing.dst_mesh_id;
+        if (tt_fabric_is_header_valid(current_packet_header.ptr)) {
             this->curr_packet_valid = true;
         } else {
             this->packet_corrupted = true;
@@ -422,20 +475,44 @@ typedef struct fvc_producer_state {
 
     inline void copy_header(pull_request_t* req) {
         uint32_t* dst = (uint32_t*)req;
-        uint32_t* src = (uint32_t*)current_packet_header_ptr;
-        for (uint32_t i = 0; i < sizeof(pull_request_t) / 4; i++) {
-            dst[i] = src[i];
+        if (current_packet_header.first_word_size == 0) {
+            uint32_t* src = (uint32_t*)current_packet_header.ptr;
+#pragma GCC unroll 12
+            for (uint32_t i = 0; i < sizeof(pull_request_t) / 4; i++) {
+                dst[i] = src[i];
+            }
+        } else if (current_packet_header.first_word_size == 1) {
+            uint32_t* src = (uint32_t*)current_packet_header.ptr_void.first;
+#pragma GCC unroll 4
+            for (uint32_t i = 0; i < sizeof(pkt_hdr_1_2_first_t) / 4; i++) {
+                dst[i] = src[i];
+            }
+            src = (uint32_t*)current_packet_header.ptr_void.second;
+#pragma GCC unroll 8
+            for (uint32_t i = 0; i < sizeof(pkt_hdr_1_2_second_t) / 4; i++) {
+                dst[i + sizeof(pkt_hdr_1_2_first_t) / 4] = src[i];
+            }
+        } else {
+            uint32_t* src = (uint32_t*)current_packet_header.ptr_void.first;
+#pragma GCC unroll 8
+            for (uint32_t i = 0; i < sizeof(pkt_hdr_2_1_first_t) / 4; i++) {
+                dst[i] = src[i];
+            }
+            src = (uint32_t*)current_packet_header.ptr_void.second;
+#pragma GCC unroll 4
+            for (uint32_t i = 0; i < sizeof(pkt_hdr_2_1_second_t) / 4; i++) {
+                dst[i + sizeof(pkt_hdr_2_1_first_t) / 4] = src[i];
+            }
         }
     }
 
     uint32_t get_next_hop_router_noc_xy() {
-        uint32_t dst_mesh_id = current_packet_header_ptr->routing.dst_mesh_id;
-        if (dst_mesh_id != routing_table->my_mesh_id) {
-            uint32_t next_port = routing_table->inter_mesh_table.dest_entry[dst_mesh_id];
+        tt_routing* routing_unsafe = get_routing_unsafe();
+        if (routing_unsafe->dst_mesh_id != routing_table->my_mesh_id) {
+            uint32_t next_port = routing_table->inter_mesh_table.dest_entry[routing_unsafe->dst_mesh_id];
             return eth_chan_to_noc_xy[noc_index][next_port];
         } else {
-            uint32_t dst_device_id = current_packet_header_ptr->routing.dst_dev_id;
-            uint32_t next_port = routing_table->intra_mesh_table.dest_entry[dst_device_id];
+            uint32_t next_port = routing_table->intra_mesh_table.dest_entry[routing_unsafe->dst_dev_id];
             return eth_chan_to_noc_xy[noc_index][next_port];
         }
     }
@@ -445,12 +522,13 @@ typedef struct fvc_producer_state {
         uint32_t words_available = get_num_words_available<fvc_mode>();
         words_available = std::min(words_available, packet_words_remaining);
         if (packet_in_progress == 0) {
-            if (current_packet_header_ptr->routing.flags == INLINE_FORWARD) {
+            tt_routing* routing_unsafe = get_routing_unsafe();
+            if (routing_unsafe->flags == INLINE_FORWARD) {
                 copy_header((pull_request_t*)&local_pull_request->pull_request);
             } else {
                 local_pull_request->pull_request.wr_ptr = inc_ptr_with_wrap(fvc_out_rdptr, words_available);
                 local_pull_request->pull_request.rd_ptr = fvc_out_rdptr;
-                local_pull_request->pull_request.size = current_packet_header_ptr->routing.packet_size_bytes;
+                local_pull_request->pull_request.size = routing_unsafe->packet_size_bytes;
                 local_pull_request->pull_request.buffer_size = buffer_size;
                 local_pull_request->pull_request.buffer_start = xy_local_addr + buffer_start;
                 local_pull_request->pull_request.ack_addr =
@@ -463,10 +541,9 @@ typedef struct fvc_producer_state {
             // issue noc write to noc target of pull request.
             uint64_t dest_addr = socket_mode == false
                                      ? ((uint64_t)get_next_hop_router_noc_xy() << 32) | FABRIC_ROUTER_REQ_QUEUE_START
-                                     : ((uint64_t)current_packet_header_ptr->session.target_offset_h << 32) |
-                                           current_packet_header_ptr->session.target_offset_l;
+                                     : get_packet_dest_addr();
             packet_dest = tt_fabric_send_pull_request(dest_addr, local_pull_request);
-            if (current_packet_header_ptr->routing.flags == INLINE_FORWARD) {
+            if (routing_unsafe->flags == INLINE_FORWARD) {
                 curr_packet_valid = false;
                 flush_async_writes<fvc_mode>();
                 return words_available;
@@ -520,11 +597,12 @@ typedef struct fvc_producer_state {
     inline uint32_t process_inbound_packet() {
         uint32_t words_processed = 0;
         if (packet_is_for_local_chip()) {
-            if (current_packet_header_ptr->routing.flags == FORWARD) {
-                if (current_packet_header_ptr->session.command & ASYNC_WR) {
+            uint32_t command = get_session_command_unsafe();
+            uint8_t flags = get_routing_unsafe()->flags;
+            if (flags == FORWARD) {
+                if (command & ASYNC_WR) {
                     if (packet_in_progress == 0) {
-                        packet_dest = ((uint64_t)current_packet_header_ptr->session.target_offset_h << 32) |
-                                      current_packet_header_ptr->session.target_offset_l;
+                        packet_dest = get_packet_dest_addr();
                         packet_words_remaining -= PACKET_HEADER_SIZE_WORDS;
                         advance_out_rdptr(PACKET_HEADER_SIZE_WORDS);
                         // subtract the header words. Remaining words are the data to be written to packet_dest.
@@ -533,23 +611,21 @@ typedef struct fvc_producer_state {
                         words_inbound -= PACKET_HEADER_SIZE_WORDS;
                         issue_async_write<false>();
                     } else {
+                        packet_params p_params = *get_packet_params_unsafe();  // safe copy before flush
                         flush_async_writes();
                         if (packet_words_remaining) {
                             issue_async_write<true>();
                         } else {
                             // for fused command issue the atomic inc before invalidating the current packet
-                            if (current_packet_header_ptr->session.command & ATOMIC_INC) {
-                                uint64_t noc_addr =
-                                    ((uint64_t)
-                                         current_packet_header_ptr->packet_parameters.async_wr_atomic_parameters.noc_xy
-                                     << 32) |
-                                    current_packet_header_ptr->packet_parameters.async_wr_atomic_parameters.l1_offset;
+                            if (command & ATOMIC_INC) {
+                                uint64_t noc_addr = ((uint64_t)p_params.async_wr_atomic_parameters.noc_xy << 32) |
+                                                    p_params.async_wr_atomic_parameters.l1_offset;
                                 noc_fast_atomic_increment(
                                     noc_index,
                                     NCRISC_AT_CMD_BUF,
                                     noc_addr,
                                     NOC_UNICAST_WRITE_VC,
-                                    current_packet_header_ptr->packet_parameters.async_wr_atomic_parameters.increment,
+                                    p_params.async_wr_atomic_parameters.increment,
                                     31,
                                     false);
                             }
@@ -557,22 +633,20 @@ typedef struct fvc_producer_state {
                             curr_packet_valid = false;
                         }
                     }
-                } else if (current_packet_header_ptr->session.command == DSOCKET_WR) {
+                } else if (command == DSOCKET_WR) {
                     words_processed = pull_data_from_fvc_buffer<fvc_mode, true>();
                 }
-            } else if (current_packet_header_ptr->routing.flags == INLINE_FORWARD) {
-                if (current_packet_header_ptr->session.command == SOCKET_CLOSE) {
+            } else if (flags == INLINE_FORWARD) {
+                if (command == SOCKET_CLOSE) {
                     words_processed = pull_data_from_fvc_buffer<fvc_mode, true>();
                 } else {
-                    uint64_t noc_addr = ((uint64_t)current_packet_header_ptr->session.target_offset_h << 32) |
-                                        current_packet_header_ptr->session.target_offset_l;
                     noc_fast_atomic_increment(
                         noc_index,
                         NCRISC_AT_CMD_BUF,
-                        noc_addr,
+                        get_packet_dest_addr(),
                         NOC_UNICAST_WRITE_VC,
-                        current_packet_header_ptr->packet_parameters.atomic_parameters.increment,
-                        current_packet_header_ptr->packet_parameters.atomic_parameters.wrap_boundary,
+                        get_packet_params_unsafe()->atomic_parameters.increment,
+                        get_packet_params_unsafe()->atomic_parameters.wrap_boundary,
                         false);
 
                     packet_words_remaining -= PACKET_HEADER_SIZE_WORDS;
