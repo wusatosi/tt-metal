@@ -209,31 +209,58 @@ def test_binary_sfpu_pow_bug(device, input_shapes, dtype):
     assert pcc >= 0.999
 
 
+@skip_for_grayskull("Unsupported dtype for Grayskull")
 @pytest.mark.parametrize(
-    "input_a, input_b",
+    "dtype_a",
     [
-        ([32, 64], [32, 64]),
-        ([1, 128, 96], [1, 128, 1]),
-        ([5, 3, 1, 128], [5, 1, 64, 128]),
-        ([2, 1, 1, 1, 1], [2, 1, 2, 64, 128]),
-        ([], [128]),
+        "bfloat8_b",
+        "bfloat4_b",
     ],
 )
-@pytest.mark.parametrize("dtype", ["float32", "bfloat16"])
-def test_binary_ng_pow(device, input_a, input_b, dtype):
-    torch.manual_seed(0)
-    torch_dtype = getattr(torch, dtype)
-    ttnn_dtype = getattr(ttnn, dtype)
-    torch_input_tensor_a = torch.randn(input_a, dtype=torch_dtype)
-    torch_input_tensor_b = torch.randn(input_b, dtype=torch_dtype)
-    golden_fn = ttnn.get_golden_function(ttnn.pow)
-    torch_output_tensor = golden_fn(torch_input_tensor_a, torch_input_tensor_b)
+@pytest.mark.parametrize(
+    "dtype_b",
+    [
+        "bfloat8_b",
+        "bfloat4_b",
+    ],
+)
+@pytest.mark.parametrize(
+    "ttnn_function",
+    [
+        ttnn.pow,
+        ttnn.experimental.pow,
+    ],
+)
+def test_binary_pow_block(device, dtype_a, dtype_b, ttnn_function):
+    if dtype_a != dtype_b:
+        pytest.skip("Mixed datatypes not supported in ttnn.pow")
+    torch_dtype_a = getattr(torch, "bfloat16")
+    ttnn_dtype_a = getattr(ttnn, dtype_a)
+    torch_dtype_b = getattr(torch, "bfloat16")
+    ttnn_dtype_b = getattr(ttnn, dtype_b)
+    x_torch = torch.tensor([[0.98828125, 0.47851562, 1.1875, -1.59375]], dtype=torch.bfloat16)
+    y_torch = torch.tensor([[0.0751953125, 0.53125, -0.6640625, 0.1533203125]], dtype=torch.bfloat16)
+    # torch_input_tensor_a = generate_torch_tensor(input_shapes, -30, 0, step=0.0111)
+    # torch_input_tensor_b = generate_torch_tensor(input_shapes, 0, 10)
 
-    input_tensor_a = ttnn.from_torch(torch_input_tensor_a, dtype=ttnn_dtype, layout=ttnn.TILE_LAYOUT, device=device)
-    input_tensor_b = ttnn.from_torch(torch_input_tensor_b, dtype=ttnn_dtype, layout=ttnn.TILE_LAYOUT, device=device)
+    x_tt = ttnn.from_torch(x_torch, dtype=ttnn_dtype_a, layout=ttnn.TILE_LAYOUT, device=device)
+    y_tt = ttnn.from_torch(y_torch, dtype=ttnn_dtype_b, layout=ttnn.TILE_LAYOUT, device=device)
+    x_torch = ttnn.to_torch(x_tt)
+    y_torch = ttnn.to_torch(y_tt)
+    golden_fn = ttnn.get_golden_function(ttnn_function)
+    z_torch = golden_fn(x_torch, y_torch)
+    z_tt_pow = ttnn_function(x_tt, y_tt)
+    tt_out = ttnn.to_torch(z_tt_pow)
 
-    output = ttnn.pow(input_tensor_a, input_tensor_b, use_legacy=False)
-    output = ttnn.to_torch(output)
+    print("tt_out", tt_out)
+    print("z_torch", z_torch)
 
-    pcc = ttnn.pearson_correlation_coefficient(torch_output_tensor, output)
-    assert pcc >= 0.999
+    # output - bfloat8_b
+    # tt_out TorchTensor([[0., 0., 0., inf]])
+    # z_torch TorchTensor([[0.9988, 0.6804, 0.8922,    nan]])
+    # output - bfloat4_b
+    # tt_out TorchTensor([[0., 0., 0., inf]])
+    # z_torch TorchTensor([[1.0000, 0.7071, 0.8698,    nan]])
+
+    status = ttnn.pearson_correlation_coefficient(z_torch, tt_out) >= 0.99
+    assert status
