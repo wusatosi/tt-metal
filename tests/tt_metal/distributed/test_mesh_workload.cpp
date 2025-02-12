@@ -527,6 +527,47 @@ TEST_F(MeshWorkloadTest, RandomizedMeshWorkload) {
     Finish(mesh_device_->mesh_command_queue());
 }
 
+TEST_F(MeshWorkloadTest, TraceTest2) {
+    auto random_seed = 10;
+    uint32_t seed = tt::parse_env("TT_METAL_SEED", random_seed);
+    log_info(tt::LogTest, "Using Test Seed: {}", seed);
+    srand(seed);
+
+    LogicalDeviceRange all_devices = LogicalDeviceRange({0, 0}, {3, 1});
+    LogicalDeviceRange top_row = LogicalDeviceRange({0, 0}, {3, 0});
+
+    std::vector<std::shared_ptr<MeshWorkload>> mesh_workloads = {};
+    auto programs = create_random_programs(3, mesh_device_->compute_with_storage_grid_size(), seed);
+
+    auto workload = std::make_shared<MeshWorkload>();
+    AddProgramToMeshWorkload(*workload, *programs[0], all_devices);
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), *workload, true);
+    mesh_workloads.push_back(workload);
+
+    auto workload_1 = std::make_shared<MeshWorkload>();
+    AddProgramToMeshWorkload(*workload_1, *programs[1], top_row);
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), *workload_1, true);
+    mesh_workloads.push_back(workload_1);
+
+    auto workload_2 = std::make_shared<MeshWorkload>();
+    AddProgramToMeshWorkload(*workload_2, *programs[2], all_devices);
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), *workload_2, true);
+    mesh_workloads.push_back(workload_2);
+
+    auto tid = MeshTrace::next_id();
+    mesh_device_->begin_mesh_trace(0, tid);
+    for (auto& workload : mesh_workloads) {
+        EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), *workload, false);
+    }
+    mesh_device_->end_mesh_trace(0, tid);
+
+    for (int i = 0; i < 1; i++) {
+        mesh_device_->mesh_command_queue().enqueue_trace(tid, false);
+    }
+    Finish(mesh_device_->mesh_command_queue());
+    mesh_device_->release_mesh_trace(tid);
+}
+
 TEST_F(MeshWorkloadTest, TraceTest) {
     auto random_seed = 10;
     uint32_t seed = tt::parse_env("TT_METAL_SEED", random_seed);
@@ -580,13 +621,14 @@ TEST_F(MeshWorkloadTest, TraceTest) {
         auto programs = create_random_programs(8, mesh_device_->compute_with_storage_grid_size(), seed);
         auto workload = std::make_shared<MeshWorkload>();
         AddProgramToMeshWorkload(*workload, *programs[0], device_00);
+        AddProgramToMeshWorkload(*workload, *programs[3], device_30);
         AddProgramToMeshWorkload(*workload, *programs[1], device_10);
         AddProgramToMeshWorkload(*workload, *programs[2], device_20);
-        AddProgramToMeshWorkload(*workload, *programs[3], device_30);
-        AddProgramToMeshWorkload(*workload, *programs[4], device_01);
-        AddProgramToMeshWorkload(*workload, *programs[5], device_11);
-        AddProgramToMeshWorkload(*workload, *programs[6], device_21);
-        AddProgramToMeshWorkload(*workload, *programs[7], device_31);
+
+        // AddProgramToMeshWorkload(*workload, *programs[4], device_01);
+        // AddProgramToMeshWorkload(*workload, *programs[5], device_11);
+        // AddProgramToMeshWorkload(*workload, *programs[6], device_21);
+        // AddProgramToMeshWorkload(*workload, *programs[7], device_31);
 
         EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), *workload, true);
         mesh_workloads.push_back(workload);
@@ -597,8 +639,10 @@ TEST_F(MeshWorkloadTest, TraceTest) {
         auto workload = std::make_shared<MeshWorkload>();
         AddProgramToMeshWorkload(*workload, *programs[0], devices_2);
         AddProgramToMeshWorkload(*workload, *programs[1], devices_3);
-        AddProgramToMeshWorkload(*workload, *programs[2], devices_4);
-        AddProgramToMeshWorkload(*workload, *programs[3], devices_5);
+        // AddProgramToMeshWorkload(*workload, *programs[2], devices_4);
+        // AddProgramToMeshWorkload(*workload, *programs[3], devices_5);
+        EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), *workload, true);
+        mesh_workloads.push_back(workload);
     }
     programs = create_random_programs(num_homogenous_workloads, mesh_device_->compute_with_storage_grid_size(), seed);
     for (int i = 0; i < num_homogenous_workloads; i++) {

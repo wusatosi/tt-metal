@@ -37,7 +37,9 @@ void write_go_signal(
     run_program_go_signal.master_y = dispatch_core.y;
     run_program_go_signal.dispatch_message_offset = 0;
 
-    CoreType dispatch_core_type = dispatch_core_manager::instance().get_dispatch_core_type(device->id());
+    auto dispatch_core_config = DispatchQueryManager::instance().get_dispatch_core_config();
+    CoreType dispatch_core_type = dispatch_core_config.get_core_type();
+
     uint32_t dispatch_message_addr = DispatchMemMap::get(dispatch_core_type)
                                          .get_device_command_queue_addr(CommandQueueDeviceAddrType::DISPATCH_MESSAGE);
 

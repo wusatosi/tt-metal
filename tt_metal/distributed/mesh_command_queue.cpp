@@ -59,6 +59,39 @@ CoreCoord MeshCommandQueue::virtual_program_dispatch_core() const { return this-
 
 CoreType MeshCommandQueue::dispatch_core_type() const { return this->dispatch_core_type_; }
 
+bool is_row_major_intersection(LogicalDeviceRange& parent, LogicalDeviceRange& intersection) {
+    return intersection.grid_size().x == parent.grid_size().x;
+}
+
+LogicalDeviceRange compliment(LogicalDeviceRange& parent, LogicalDeviceRange& intersection) {
+    TT_FATAL(parent.contains(intersection), "Parent must contain intersection");
+    auto intersection_grid_size = intersection.grid_size();
+    auto parent_grid_size = parent.grid_size();
+    TT_FATAL(
+        intersection_grid_size.x == parent_grid_size.x || intersection_grid_size.y == parent_grid_size.y,
+        "Non convex grids not supported");
+
+    if (is_row_major_intersection(parent, intersection)) {
+        std::cout << "Row major intersection" << std::endl;
+        if (intersection.start_coord.y == parent.start_coord.y) {
+            return LogicalDeviceRange(
+                {parent.start_coord.x, intersection.end_coord.y + 1}, {parent.end_coord.x, parent.end_coord.y});
+        } else {
+            return LogicalDeviceRange(
+                {parent.start_coord.x, parent.start_coord.y}, {parent.end_coord.x, intersection.start_coord.y - 1});
+        }
+    } else {
+        if (intersection.start_coord.x == parent.start_coord.x) {
+            std::cout << intersection.str() << " " << parent.str() << std::endl;
+            return LogicalDeviceRange(
+                {intersection.end_coord.x + 1, parent.start_coord.y}, {parent.end_coord.x, parent.end_coord.y});
+        } else {
+            return LogicalDeviceRange(
+                {parent.start_coord.x, parent.start_coord.y}, {intersection.start_coord.x - 1, parent.end_coord.y});
+        }
+    }
+}
+
 void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool blocking) {
     std::unordered_set<SubDeviceId> sub_device_ids = mesh_workload.determine_sub_device_ids(mesh_device_);
     TT_FATAL(sub_device_ids.size() == 1, "Programs must be executed on a single sub-device");
@@ -100,6 +133,7 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
         dispatch_metadata);
 
     std::unordered_set<uint32_t> chip_ids_in_workload = {};
+    std::vector<CoreRangeSet> program_ranges = {};
     // Iterate over all programs. Update dispatch commands per program to reflect
     // current device state. Write the finalized program command sequence to each
     // physical device tied to the program.
@@ -138,6 +172,7 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
                 sysmem_manager_offset,
                 sysmem_manager_for_trace.get_issue_queue_write_ptr(id_) - sysmem_manager_offset};
             ordered_mesh_trace_md_.push_back(mesh_trace_md);
+            program_ranges.push_back(device_range);
         } else {
             for (std::size_t logical_x = device_range.start_coord.x; logical_x < device_range.end_coord.x + 1;
                  logical_x++) {
@@ -159,18 +194,54 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
     if (not sysmem_manager.get_bypass_mode()) {
         for (auto& device : this->mesh_device_->get_devices()) {
             if (chip_ids_in_workload.find(device->id()) == chip_ids_in_workload.end()) {
-                std::cout << "Send go signal to " << device->id() << std::endl;
                 write_go_signal(
                     id_,
-                    device,
+                    mesh_device_,
                     sub_device_id,
                     device->sysmem_manager(),
-                    expected_num_workers_completed_[sub_device_index],
+                    expected_num_workers_completed,
                     this->virtual_program_dispatch_core(),
                     mcast_go_signals,
                     unicast_go_signals,
                     mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id));
             }
+        }
+    } else {
+        CoreRangeSet merged_ranges = program_ranges[0];
+        for (int i = 1; i < program_ranges.size(); i++) {
+            merged_ranges = merged_ranges.merge(program_ranges[i]);
+        }
+        TT_FATAL(merged_ranges.size() == 1, "Cannot support non convex grids");
+        CoreRange active_devices = merged_ranges.bounding_box();
+        CoreRange full_grid = CoreRange({0, 0}, {mesh_device_->num_cols() - 1, mesh_device_->num_rows() - 1});
+        if (active_devices != full_grid) {
+            CoreRange empty_cores = compliment(full_grid, active_devices);
+
+            auto start_coord = empty_cores.start_coord;
+            auto& sysmem_manager_for_trace = mesh_device_->get_device(start_coord.y, start_coord.x)->sysmem_manager();
+            uint32_t sysmem_manager_offset = sysmem_manager_for_trace.get_issue_queue_write_ptr(id_);
+
+            // std::cout << "Send empty go signal to: " << empty_cores.str() << std::endl;
+            // std::cout << "Devices " << std::endl;
+            // for (auto core : empty_cores) {
+            //     std::cout << mesh_device_->get_device(core.y, core.x)->id() << std::endl;
+            // }
+            write_go_signal(
+                id_,
+                mesh_device_,
+                sub_device_id,
+                sysmem_manager_for_trace,
+                expected_num_workers_completed,
+                this->virtual_program_dispatch_core(),
+                mcast_go_signals,
+                unicast_go_signals,
+                mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id));
+            auto mesh_trace_md = MeshTraceCmdStorage{
+                empty_cores,
+                start_coord,
+                sysmem_manager_offset,
+                sysmem_manager_for_trace.get_issue_queue_write_ptr(id_) - sysmem_manager_offset};
+            ordered_mesh_trace_md_.push_back(mesh_trace_md);
         }
     }
     // Increment Launch Message Buffer Write Pointers
@@ -715,40 +786,8 @@ void MeshCommandQueue::record_begin(uint32_t tid, const std::shared_ptr<MeshTrac
     trace_ctx_ = std::move(ctx);
 }
 
-bool is_row_major_intersection(LogicalDeviceRange& parent, LogicalDeviceRange& intersection) {
-    return intersection.grid_size().x == parent.grid_size().x;
-}
-
-LogicalDeviceRange compliment(LogicalDeviceRange& parent, LogicalDeviceRange& intersection) {
-    TT_FATAL(parent.contains(intersection), "Parent must contain intersection");
-    auto intersection_grid_size = intersection.grid_size();
-    auto parent_grid_size = parent.grid_size();
-    TT_FATAL(
-        intersection_grid_size.x == parent_grid_size.x || intersection_grid_size.y == parent_grid_size.y,
-        "Non convex grids not supported");
-
-    if (is_row_major_intersection(parent, intersection)) {
-        std::cout << "Row major intersection" << std::endl;
-        if (intersection.start_coord.y == parent.start_coord.y) {
-            return LogicalDeviceRange(
-                {parent.start_coord.x, intersection.end_coord.y + 1}, {parent.end_coord.x, parent.end_coord.y});
-        } else {
-            return LogicalDeviceRange(
-                {parent.start_coord.x, parent.start_coord.y}, {parent.end_coord.x, intersection.start_coord.y - 1});
-        }
-    } else {
-        if (intersection.start_coord.x == parent.start_coord.x) {
-            std::cout << intersection.str() << " " << parent.str() << std::endl;
-            return LogicalDeviceRange(
-                {intersection.end_coord.x + 1, parent.start_coord.y}, {parent.end_coord.x, parent.end_coord.y});
-        } else {
-            return LogicalDeviceRange(
-                {parent.start_coord.x, parent.start_coord.y}, {intersection.start_coord.x - 1, parent.end_coord.y});
-        }
-    }
-}
 void MeshCommandQueue::record_end() {
-    std::cout << "Call record end" << std::endl;
+    // std::cout << "Call record end" << std::endl;
     auto& trace_data = trace_ctx_->ordered_trace_data;
     for (auto& trace_md : get_mesh_trace_md()) {
         auto& sysmem_mgr_coord = trace_md.sysmem_manager_coord;
@@ -765,13 +804,10 @@ void MeshCommandQueue::record_end() {
         std::vector<LogicalDeviceRange> device_ranges_to_invalidate = {};
         std::cout << "ADD PROGRAM ON: " << trace_md.device_range.str() << std::endl;
         for (auto& program : trace_data) {
-            std::cout << "Check if intersercts" << std::endl;
             if (program.device_range.intersects(trace_md.device_range)) {
                 // The current program intersects with a program that was previously
                 // placed on the Mesh.
-                std::cout << "Intersection found" << std::endl;
                 intersection_found = true;
-                std::cout << "Find intersection" << std::endl;
                 auto intersection = program.device_range.intersection(trace_md.device_range).value();
                 if (intersection == program.device_range) {
                     // Intersection matches the originally placed program.
@@ -779,7 +815,6 @@ void MeshCommandQueue::record_end() {
                     std::cout << "Pure intersection: " << program.device_range.str() << std::endl;
                 } else {
                     // Intersection is a subset of the originally placed program.
-                    std::cout << "Find compliment" << std::endl;
                     auto compliment_ = compliment(program.device_range, intersection);
                     std::cout << "Parent Range: " << program.device_range.str() << std::endl;
                     std::cout << "Intersection: " << intersection.str() << std::endl;
