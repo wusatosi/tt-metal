@@ -20,17 +20,21 @@ std::vector<std::optional<T>> tuple_to_vector_optional(Tuple&& tuple) {
         std::forward<Tuple>(tuple));
 }
 namespace ttnn {
-namespace operations::data_movement {
+namespace operations::ccl {
 
-struct ExecuteFabricBroadcast {
+struct ExecuteFabricUnicast {
     static inline Tensor invoke(
         QueueId queue_id,
         const Tensor& input_tensor,
-        const uint16_t dest_device_id,
-        const uint16_t dest_mesh_id,
+        MeshDevice* mesh_device,
+        const uint16_t device_id,
         const std::optional<MemoryConfig>& memory_config) {
         return operation::run(
-            FabricBroadcast{dest_device_id, dest_mesh_id, memory_config.value_or(input_tensor.memory_config())},
+            FabricUnicast{
+                dest_device_id,
+                MeshDevice * mesh_device,
+                device_id,
+                memory_config.value_or(input_tensor.memory_config())},
             {input_tensor},
             {},
             {},
@@ -40,14 +44,13 @@ struct ExecuteFabricBroadcast {
     static inline auto invoke(
         const Tensor& input_tensor,
         const uint16_t dest_device_id,
-        const uint16_t dest_mesh_id,
-        const std::optional<MemoryConfig>& memory_config,
-        std::optional<std::tuple<Tensor, Tensor>> optional_output_tensors) {
-        return invoke(DefaultQueueId, input_tensor, k, dim, largest, sorted, memory_config, optional_output_tensors);
+        MeshDevice* mesh_device,
+        const uint16_t device_id,
+        const std::optional<MemoryConfig>& memory_config) {
+        return invoke(DefaultQueueId, input_tensor, mesh_device, device_id, memory_config);
     }
 
-    static inline std::vector<Tensor> create_async_output_tensors(
-        const std::vector<Tensor>& input_tensors, const std::vector<std::optional<const Tensor>>& optional_inputs) {
+    static inline std::vector<Tensor> create_async_output_tensors(const std::vector<Tensor>& input_tensors) {
         const auto& input_tensor = input_tensors.at(0);
         return {
             Tensor(operation::get_workers_for_op_output({input_tensor})),
@@ -55,9 +58,9 @@ struct ExecuteFabricBroadcast {
     }
 };
 
-}  // namespace operations::data_movement
+}  // namespace operations::ccl
 
-constexpr auto topk =
-    ttnn::register_operation_with_auto_launch_op<"ttnn::topk", ttnn::operations::data_movement::ExecuteTopK>();
+constexpr auto fabric_unicast =
+    ttnn::register_operation_with_auto_launch_op<"ttnn::fabric_unicast", ttnn::operations::ccl::FabricUnicast>();
 
 }  // namespace ttnn
