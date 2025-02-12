@@ -2,6 +2,7 @@
 
 # SPDX-License-Identifier: Apache-2.0
 import torch
+import time
 import pytest
 from loguru import logger
 import os
@@ -232,44 +233,59 @@ def test_llama_decoder_inference(
 
         # capture trace
         trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
-
-        ttnn.dram_prefetcher(
-            tt_pf,
-            num_layers=1,
-            global_cb=prefetcher_setup.global_circular_buffer,
-        )
-        mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
-        tt_out, res = tt_model(
-            decode_input,
-            res,
-            current_pos_tensor,
-            rot_mats=rot_mats,
-            mode="decode",
-            page_table=page_table_tt,
-        )
+        for _ in range(100):
+            ttnn.dram_prefetcher(
+                tt_pf,
+                num_layers=1,
+                global_cb=prefetcher_setup.global_circular_buffer,
+            )
+            mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
+            tt_out, res = tt_model(
+                decode_input,
+                res,
+                current_pos_tensor,
+                rot_mats=rot_mats,
+                mode="decode",
+                page_table=page_table_tt,
+            )
         ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
         print("Trace captured")
-        mesh_mapper = ttnn.ShardTensor2dMesh(mesh_device, dims=(None, -1), mesh_shape=model_args.cluster_shape)
 
-        decode_input_reset = ttnn.from_torch(
-            tt_decode_input.view(1, 1, batch_size, -1),
-            device=None,
-            dtype=ttnn.bfloat16,
-            layout=ttnn.TILE_LAYOUT,
-            mesh_mapper=mesh_mapper,
-            memory_config=None,
-        )
-        ttnn.copy_host_to_device_tensor(decode_input_reset, decode_input)
-        from tracy import signpost
-        from time import sleep
-
-        sleep(5)
-        signpost("tracy_perf_run")
-
-        # execute trace
+        start_warmup = time.time()
         ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
         ttnn.synchronize_devices(mesh_device, sub_device_ids=[prefetcher_setup.worker_sub_device_id])
-        print("Trace executed")
+        ttnn.release_trace(mesh_device, trace_id)
+        time_warmup = time.time() - start_warmup
+
+        # capture trace
+        trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
+        for _ in range(1000):
+            ttnn.dram_prefetcher(
+                tt_pf,
+                num_layers=1,
+                global_cb=prefetcher_setup.global_circular_buffer,
+            )
+            mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
+            tt_out, res = tt_model(
+                decode_input,
+                res,
+                current_pos_tensor,
+                rot_mats=rot_mats,
+                mode="decode",
+                page_table=page_table_tt,
+            )
+        ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
+        print("Trace captured")
+
+        start_run = time.time()
+        ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
+        ttnn.synchronize_devices(mesh_device, sub_device_ids=[prefetcher_setup.worker_sub_device_id])
+        ttnn.release_trace(mesh_device, trace_id)
+        time_run = time.time() - start_run
+
+        print(f"Time taken for warmup: {time_warmup}")
+        print(f"Time taken for run: {time_run}")
+
         # In this test all users have the same position
         # freqs_cis_i = freqs_cis[current_pos[0], :].unsqueeze(0)
 
