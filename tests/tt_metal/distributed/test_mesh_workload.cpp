@@ -667,17 +667,33 @@ TEST_F(MeshWorkloadTest, TraceTest) {
 TEST_F(MeshWorkloadTest, EltwiseBinaryMeshWorkload) {
     std::vector<std::shared_ptr<MeshBuffer>> src0_bufs = {};
     std::vector<std::shared_ptr<MeshBuffer>> src1_bufs = {};
+    std::vector<std::shared_ptr<MeshBuffer>> intermed_bufs = {};
+    std::vector<std::shared_ptr<MeshBuffer>> intermed_bufs_1 = {};
     std::vector<std::shared_ptr<MeshBuffer>> output_bufs = {};
 
     CoreCoord worker_grid_size = mesh_device_->compute_with_storage_grid_size();
 
     auto programs = tt::tt_metal::distributed::test::utils::create_eltwise_bin_programs(
-        mesh_device_, src0_bufs, src1_bufs, output_bufs);
+        mesh_device_, src0_bufs, src1_bufs, intermed_bufs);
     auto mesh_workload = CreateMeshWorkload();
     LogicalDeviceRange devices_0 = LogicalDeviceRange({0, 0}, {3, 0});
     LogicalDeviceRange devices_1 = LogicalDeviceRange({0, 1}, {3, 1});
+    LogicalDeviceRange devices_2 = LogicalDeviceRange({0, 0}, {1, 1});
+    LogicalDeviceRange devices_3 = LogicalDeviceRange({2, 0}, {2, 1});
+    LogicalDeviceRange devices_4 = LogicalDeviceRange({3, 0}, {3, 1});
+
     AddProgramToMeshWorkload(mesh_workload, *programs[0], devices_0);
     AddProgramToMeshWorkload(mesh_workload, *programs[1], devices_1);
+
+    auto programs_1 = tt::tt_metal::distributed::test::utils::create_eltwise_bin_programs(
+        mesh_device_, intermed_bufs, src1_bufs, intermed_bufs_1);
+    auto mesh_workload_1 = CreateMeshWorkload();
+    AddProgramToMeshWorkload(mesh_workload_1, *programs_1[1], devices_0);
+    AddProgramToMeshWorkload(mesh_workload_1, *programs_1[0], devices_1);
+
+    auto programs_2 = tt::tt_metal::distributed::test::utils::create_eltwise_bin_programs(
+        mesh_device_, intermed_bufs_1, src1_bufs, output_bufs);
+
     std::vector<uint32_t> src0_vec = create_constant_vector_of_bfloat16(src0_bufs[0]->size(), 2);
     std::vector<uint32_t> src1_vec = create_constant_vector_of_bfloat16(src1_bufs[0]->size(), 3);
 
@@ -690,9 +706,19 @@ TEST_F(MeshWorkloadTest, EltwiseBinaryMeshWorkload) {
         }
     }
 
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), mesh_workload, false);
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), mesh_workload_1, false);
+
+    auto tid = MeshTrace::next_id();
+    mesh_device_->begin_mesh_trace(0, tid);
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), mesh_workload, false);
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), mesh_workload_1, false);
+    mesh_device_->end_mesh_trace(0, tid);
+
     // Run workload multiple times
     for (int i = 0; i < 1000; i++) {
-        EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), mesh_workload, false);
+        mesh_device_->mesh_command_queue().enqueue_trace(tid, false);
+        // EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), mesh_workload, false);
     }
 
     for (std::size_t logical_y = 0; logical_y < mesh_device_->num_rows(); logical_y++) {
@@ -707,17 +733,18 @@ TEST_F(MeshWorkloadTest, EltwiseBinaryMeshWorkload) {
                         Coordinate(logical_y, logical_x));
                     if (logical_y == 0) {
                         for (int i = 0; i < dst_vec.size(); i++) {
-                            EXPECT_EQ(dst_vec[i].to_float(), 5);
+                            EXPECT_EQ(dst_vec[i].to_float(), 5 * 3);
                         }
                     } else {
                         for (int i = 0; i < dst_vec.size(); i++) {
-                            EXPECT_EQ(dst_vec[i].to_float(), 6);
+                            EXPECT_EQ(dst_vec[i].to_float(), 6 + 3);
                         }
                     }
                 }
             }
         }
     }
+    mesh_device_->release_mesh_trace(tid);
 }
 
 TEST_F(MeshWorkloadTest, MeshWorkloadSanity) {

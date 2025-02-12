@@ -11,8 +11,9 @@ std::vector<std::shared_ptr<Program>> create_eltwise_bin_programs(
     std::vector<std::shared_ptr<MeshBuffer>>& src0_bufs,
     std::vector<std::shared_ptr<MeshBuffer>>& src1_bufs,
     std::vector<std::shared_ptr<MeshBuffer>>& output_bufs) {
-    const std::vector<std::string> op_id_to_op_define = {"add_tiles", "mul_tiles"};
-    const std::vector<std::string> op_id_to_op_type_define = {"EltwiseBinaryType::ELWADD", "EltwiseBinaryType::ELWMUL"};
+    const std::vector<std::string> op_id_to_op_define = {"add_tiles", "mul_tiles", "sub_tiles"};
+    const std::vector<std::string> op_id_to_op_type_define = {
+        "EltwiseBinaryType::ELWADD", "EltwiseBinaryType::ELWMUL", "EltwiseBinaryType::ELWSUB"};
 
     CoreCoord worker_grid_size = mesh_device->compute_with_storage_grid_size();
 
@@ -34,15 +35,17 @@ std::vector<std::shared_ptr<Program>> create_eltwise_bin_programs(
             .buffer_layout = TensorMemoryLayout::INTERLEAVED,
             .bottom_up = true};
 
+        bool allocate_bufs = src0_bufs.empty();
         for (std::size_t col_idx = 0; col_idx < worker_grid_size.x; col_idx++) {
             for (std::size_t row_idx = 0; row_idx < worker_grid_size.y; row_idx++) {
-                auto src0_dram_buffer =
-                    MeshBuffer::create(global_buffer_config, per_device_buffer_config, mesh_device.get());
-                src0_bufs.push_back(src0_dram_buffer);
-
-                auto src1_dram_buffer =
-                    MeshBuffer::create(global_buffer_config, per_device_buffer_config, mesh_device.get());
-                src1_bufs.push_back(src1_dram_buffer);
+                if (allocate_bufs) {
+                    auto src0_dram_buffer =
+                        MeshBuffer::create(global_buffer_config, per_device_buffer_config, mesh_device.get());
+                    src0_bufs.push_back(src0_dram_buffer);
+                    auto src1_dram_buffer =
+                        MeshBuffer::create(global_buffer_config, per_device_buffer_config, mesh_device.get());
+                    src1_bufs.push_back(src1_dram_buffer);
+                }
                 auto dst_dram_buffer =
                     MeshBuffer::create(global_buffer_config, per_device_buffer_config, mesh_device.get());
                 output_bufs.push_back(dst_dram_buffer);
