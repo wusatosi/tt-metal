@@ -22,7 +22,7 @@ std::vector<std::optional<T>> tuple_to_vector_optional(Tuple&& tuple) {
 namespace ttnn {
 namespace operations::ccl {
 
-struct ExecuteFabricBroadcast {
+struct ExecuteFabricUnicast {
     static inline Tensor invoke(
         QueueId queue_id,
         const Tensor& input_tensor,
@@ -30,7 +30,7 @@ struct ExecuteFabricBroadcast {
         const uint16_t device_id,
         const std::optional<MemoryConfig>& memory_config) {
         return operation::run(
-            FabricBroadcast{
+            FabricUnicast{
                 dest_device_id,
                 MeshDevice * mesh_device,
                 device_id,
@@ -60,7 +60,7 @@ struct ExecuteFabricBroadcast {
 
 }  // namespace operations::ccl
 
-constexpr auto fabric_broadcast =
-    ttnn::register_operation_with_auto_launch_op<"ttnn::fabric_broadcast", ttnn::operations::ccl::FabricBroadcast>();
+constexpr auto fabric_unicast =
+    ttnn::register_operation_with_auto_launch_op<"ttnn::fabric_unicast", ttnn::operations::ccl::FabricUnicast>();
 
 }  // namespace ttnn
