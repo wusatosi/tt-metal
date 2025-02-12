@@ -233,20 +233,22 @@ def test_llama_decoder_inference(
         # capture trace
         trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
 
-        ttnn.dram_prefetcher(
-            tt_pf,
-            num_layers=1,
-            global_cb=prefetcher_setup.global_circular_buffer,
-        )
-        mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
-        tt_out, res = tt_model(
-            decode_input,
-            res,
-            current_pos_tensor,
-            rot_mats=rot_mats,
-            mode="decode",
-            page_table=page_table_tt,
-        )
+        tt_out = decode_input
+        for _ in range(10):
+            ttnn.dram_prefetcher(
+                tt_pf,
+                num_layers=1,
+                global_cb=prefetcher_setup.global_circular_buffer,
+            )
+            mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
+            tt_out, res = tt_model(
+                tt_out,
+                res,
+                current_pos_tensor,
+                rot_mats=rot_mats,
+                mode="decode",
+                page_table=page_table_tt,
+            )
         ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
         print("Trace captured")
         mesh_mapper = ttnn.ShardTensor2dMesh(mesh_device, dims=(None, -1), mesh_shape=model_args.cluster_shape)
@@ -267,6 +269,7 @@ def test_llama_decoder_inference(
         signpost("tracy_perf_run")
 
         # execute trace
+        # for k in range(10):
         ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
         ttnn.synchronize_devices(mesh_device, sub_device_ids=[prefetcher_setup.worker_sub_device_id])
         print("Trace executed")

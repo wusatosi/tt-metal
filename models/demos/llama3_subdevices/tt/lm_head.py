@@ -196,11 +196,12 @@ class LMHead(LightweightModule):
             # outputs.append(ttnn.sharded_to_interleaved(output, memory_config=ttnn.DRAM_MEMORY_CONFIG))
             # weight_l1.deallocate(True)
             # output.deallocate(True)
+        breakpoint()
 
         outputs_reduced = []
         for output in outputs:
             output_reduced = self.tt_ccl.line_all_reduce(
-                output, cluster_axis=1, num_links=1, memory_config=self.output_memory_config
+                output, cluster_axis=1, num_links=3, memory_config=self.output_memory_config
             )
             outputs_reduced.append(output_reduced)
 
