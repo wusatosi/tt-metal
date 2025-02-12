@@ -10,6 +10,7 @@
 
 #include "ttnn/operations/ccl/ccl_host_datastructures.hpp"
 #include "cpp/ttnn/operations/ccl/erisc_datamover_builder.hpp"
+#include "cpp/ttnn/operations/ccl/fabric_unicast_pybind.hpp"
 
 namespace ttnn::operations::ccl {
 
@@ -33,6 +34,7 @@ void py_module(py::module& module) {
     ccl::py_bind_all_gather(module);
     ccl::py_bind_reduce_scatter(module);
     ccl::py_bind_barrier(module);
+    ccl::bind_fabric_unicast_operation(module);
 }
 
 }  // namespace ttnn::operations::ccl
