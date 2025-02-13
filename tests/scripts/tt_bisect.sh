@@ -1,4 +1,5 @@
 #!/bin/bash
+set -x
 
 : << 'END'
 This script is used to find the commit that broke a test.

@@ -1,4 +1,5 @@
 #!/bin/bash
+set -x
 
 run_t3000_falcon7b_perplexity_tests() {
   # Record the start time

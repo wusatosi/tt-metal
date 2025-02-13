@@ -1,5 +1,6 @@
 #!/bin/bash
 set -x
+set -x
 set -eo pipefail
 
 run_profiling_test() {

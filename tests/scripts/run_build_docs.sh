@@ -1,4 +1,5 @@
 #!/bin/bash
+set -x
 set -eo pipefail
 
 if [[ -z "$TT_METAL_HOME" ]]; then

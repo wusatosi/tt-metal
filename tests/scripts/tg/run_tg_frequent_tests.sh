@@ -1,4 +1,5 @@
 #!/bin/bash
+set -x
 
 run_tg_llama3_tests() {
   # Record the start time

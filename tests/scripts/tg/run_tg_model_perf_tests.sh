@@ -1,4 +1,5 @@
 #!/bin/bash
+set -x
 
 run_tg_llm_tests() {
 

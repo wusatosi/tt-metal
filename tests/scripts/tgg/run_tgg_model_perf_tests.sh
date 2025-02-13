@@ -1,4 +1,5 @@
 #!/bin/bash
+set -x
 set -eo pipefail
 
 run_tgg_llm_tests() {

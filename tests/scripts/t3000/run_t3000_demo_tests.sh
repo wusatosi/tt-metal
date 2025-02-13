@@ -1,4 +1,5 @@
 #!/bin/bash
+set -x
 set -eo pipefail
 
 run_t3000_falcon40b_tests() {

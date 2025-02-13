@@ -1,4 +1,5 @@
 #!/bin/bash
+set -x
 set +e
 
 run_common_func_tests() {

@@ -1,4 +1,5 @@
 #!/bin/bash
+set -x
 set -eo pipefail
 
 # Exit immediately if ARCH_NAME is not set or empty

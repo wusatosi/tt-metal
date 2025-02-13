@@ -1,5 +1,7 @@
 #! /usr/bin/env bash
 
+set -x
+
 source scripts/tools_setup_common.sh
 
 set -eo pipefail
