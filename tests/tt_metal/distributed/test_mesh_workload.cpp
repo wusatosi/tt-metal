@@ -694,6 +694,11 @@ TEST_F(MeshWorkloadTest, EltwiseBinaryMeshWorkload) {
     auto programs_2 = tt::tt_metal::distributed::test::utils::create_eltwise_bin_programs(
         mesh_device_, intermed_bufs_1, src1_bufs, output_bufs);
 
+    auto mesh_workload_2 = CreateMeshWorkload();
+    AddProgramToMeshWorkload(mesh_workload_2, *programs_2[0], devices_2);
+    AddProgramToMeshWorkload(mesh_workload_2, *programs_2[1], devices_3);
+    AddProgramToMeshWorkload(mesh_workload_2, *programs_2[2], devices_4);
+
     std::vector<uint32_t> src0_vec = create_constant_vector_of_bfloat16(src0_bufs[0]->size(), 2);
     std::vector<uint32_t> src1_vec = create_constant_vector_of_bfloat16(src1_bufs[0]->size(), 3);
 
@@ -708,11 +713,12 @@ TEST_F(MeshWorkloadTest, EltwiseBinaryMeshWorkload) {
 
     EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), mesh_workload, false);
     EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), mesh_workload_1, false);
-
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), mesh_workload_2, false);
     auto tid = MeshTrace::next_id();
     mesh_device_->begin_mesh_trace(0, tid);
     EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), mesh_workload, false);
     EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), mesh_workload_1, false);
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), mesh_workload_2, false);
     mesh_device_->end_mesh_trace(0, tid);
 
     // Run workload multiple times
@@ -720,7 +726,7 @@ TEST_F(MeshWorkloadTest, EltwiseBinaryMeshWorkload) {
         mesh_device_->mesh_command_queue().enqueue_trace(tid, false);
         // EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), mesh_workload, false);
     }
-
+    std::vector<uint32_t> expected_values = {18, 18, 45, 12, 12, 12, 27, 6};
     for (std::size_t logical_y = 0; logical_y < mesh_device_->num_rows(); logical_y++) {
         for (std::size_t logical_x = 0; logical_x < mesh_device_->num_cols(); logical_x++) {
             for (std::size_t col_idx = 0; col_idx < worker_grid_size.x; col_idx++) {
@@ -731,14 +737,9 @@ TEST_F(MeshWorkloadTest, EltwiseBinaryMeshWorkload) {
                         dst_vec,
                         output_bufs[col_idx * worker_grid_size.y + row_idx],
                         Coordinate(logical_y, logical_x));
-                    if (logical_y == 0) {
-                        for (int i = 0; i < dst_vec.size(); i++) {
-                            EXPECT_EQ(dst_vec[i].to_float(), 5 * 3);
-                        }
-                    } else {
-                        for (int i = 0; i < dst_vec.size(); i++) {
-                            EXPECT_EQ(dst_vec[i].to_float(), 6 + 3);
-                        }
+                    auto expected_value = expected_values[logical_x + logical_y * mesh_device_->num_cols()];
+                    for (int i = 0; i < dst_vec.size(); i++) {
+                        EXPECT_EQ(dst_vec[i].to_float(), expected_value);
                     }
                 }
             }

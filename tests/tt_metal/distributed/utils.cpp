@@ -17,7 +17,8 @@ std::vector<std::shared_ptr<Program>> create_eltwise_bin_programs(
 
     CoreCoord worker_grid_size = mesh_device->compute_with_storage_grid_size();
 
-    std::vector<std::shared_ptr<Program>> programs = {std::make_shared<Program>(), std::make_shared<Program>()};
+    std::vector<std::shared_ptr<Program>> programs = {
+        std::make_shared<Program>(), std::make_shared<Program>(), std::make_shared<Program>()};
     auto full_grid = CoreRange({0, 0}, {worker_grid_size.x - 1, worker_grid_size.y - 1});
 
     for (std::size_t eltwise_op = 0; eltwise_op < op_id_to_op_define.size(); eltwise_op++) {
