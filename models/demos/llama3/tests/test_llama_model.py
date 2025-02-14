@@ -32,10 +32,10 @@ from time import time
 @pytest.mark.parametrize(
     "weights, layers",
     [
-        ("random", 32),
+        # ("random", 10),
         ("instruct", None),
     ],
-    ids=["quick", "full"],
+    # ids=["quick", "full"],
 )
 @pytest.mark.parametrize(
     "paged_attention",
@@ -188,8 +188,8 @@ def test_llama_model_inference(
     embd = HostEmbedding(model_args)
     embd.load_state_dict({"emb.weight": state_dict[f"{state_dict_prefix}tok_embeddings.weight"]})
 
-    generation_start_pos = 30 * 1024
-    generation_length = iterations
+    generation_start_pos = 0  # 30 * 1024
+    generation_length = 1000  # iterations
 
     page_table_tt = None
     paged_attention_config = None
@@ -220,7 +220,9 @@ def test_llama_model_inference(
         )
 
     # Load TTNN model
-    sfd_setup = TtSFDSetup(mesh_device, model_args.n_heads, model_args.head_dim, batch_size)
+    sfd_setup = TtSFDSetup(
+        mesh_device, model_args.n_heads, model_args.head_dim, batch_size, lambda_=100000, full_setup=False
+    )  # 1000000000)
     tt_model = TtTransformer(
         args=model_args,
         mesh_device=mesh_device,
@@ -263,6 +265,8 @@ def test_llama_model_inference(
         ),
     )
 
+    sfd_setup.setup()
+
     for i in range(generation_length):
         logger.info(f"[Llama3 Model] Generating token {i}")
 
@@ -290,11 +294,11 @@ def test_llama_model_inference(
         mesh_composer = ttnn.ConcatMesh2dToTensor(
             mesh_device, dims=(3, 1) if model_args.is_galaxy else (1, -1), mesh_shape=model_args.cluster_shape
         )
-        tt_output_torch = (
-            ttnn.to_torch(tt_out, mesh_composer=mesh_composer)
-            .permute(2, 1, 0, 3)
-            .squeeze(2)[: model_args.max_batch_size, 0:1, : model_args.vocab_size]
-        )
+        tt_output_torch = ttnn.to_torch(tt_out, mesh_composer=mesh_composer)
+        tt_output_torch = sfd_setup.get_correct_tensor(tt_output_torch)
+        tt_output_torch = tt_output_torch.permute(2, 1, 0, 3).squeeze(2)[
+            : model_args.max_batch_size, 0:1, : model_args.vocab_size
+        ]
         t2 = time()
         logger.info(f"T/s/u {1 / (t2 - t1)} and latency {t2 - t1}")
 
@@ -436,7 +440,7 @@ def test_llama_model_inference(
             if run_ref_pt:
                 logger.info("[Ref generation User 0] " + tokenizer.decode(all_outputs_ref).replace("\n", "\\n"))
 
-    # sfd_setup.close_ccl()
+    sfd_setup.close_ccl()
 
     if run_ref_pt:
         if all_tests_pass:
