@@ -27,17 +27,44 @@ from loguru import logger
 import os
 
 
+# TODO the dictionary of reference outputs should have:
+# - the name of the model - Based on the name of the class
+# - the seqlen being used
+# - the batch size being used
+# - the dtype being used
+ref_output_tensors_path = {
+    "FeedForward": f"models/demos/llama3/tests/reference_outputs/reference_outputs/FeedForward_1b_1l_128s.pt",
+    "Attention": f"models/demos/llama3/tests/reference_outputs/reference_outputs/Attention_1b_1l_128s.pt",
+}
+
+
 @torch.no_grad()
 @skip_for_grayskull("Requires wormhole_b0 to run")
 @pytest.mark.parametrize(
-    "input_shape, output_shape, module_class, ref_module_class, max_seq_len, batch_size",
+    "input_shape, output_shape, module_class, ref_module_class, max_seq_len, batch_size, n_layers",
     [
-        ((1, 1, 32, 2048), (1, 1, 32, 2048), TtLlamaMLP, FeedForward, 128, 1),
+        (
+            (1, 1, 32, 2048),
+            (1, 1, 32, 2048),
+            TtLlamaMLP,
+            FeedForward,
+            128,
+            1,
+            1,
+        ),
         # ((1, 1, 32, 2048), (1, 1, 32, 2048), TtLlamaAttention, Attention, 128, 1),  # TODO
     ],
 )
 def test_llama_unit(
-    input_shape, output_shape, module_class, ref_module_class, max_seq_len, batch_size, mesh_device, reset_seeds
+    input_shape,
+    output_shape,
+    module_class,
+    ref_module_class,
+    max_seq_len,
+    batch_size,
+    n_layers,
+    mesh_device,
+    reset_seeds,
 ):
     """
     Llama3 unit tests.
@@ -55,8 +82,6 @@ def test_llama_unit(
     dtype = ttnn.bfloat8_b
     mode = "decode"
 
-    ### INIT MODEL ARGS
-
     # Load the model args
     model_args = TtModelArgs(
         mesh_device,
@@ -65,43 +90,58 @@ def test_llama_unit(
         max_seq_len=max_seq_len,
         max_batch_size=batch_size,
     )
-    model_args.n_layers = 1  # TODO Parametrize
+    if n_layers != 0:  # If n_layers==0, run full model
+        model_args.n_layers = n_layers
     state_dict = model_args.load_state_dict()  # Dummy weights being used
-    ########
+    ####################
 
     # Create a random input tensor in torch and ttnn
     input_ref_tensor, input_tt_tensor = create_inputs(*input_shape)
 
-    #### RUN REF MODEL IF NO REFERENCE OUTPUT FOUND
-    # TODO parametrize
-    reference_output_tensor = "models/demos/llama3/tests/reference_outputs/mlp.pt"
-    if os.path.exists(reference_output_tensor):
-        output_ref = torch.load(reference_output_tensor)
-        logger.info(f"Reference output tensor found at {reference_output_tensor}")
-    else:  # Only run the reference model if no reference output is found
-        logger.info(f"Reference output tensor not found. Running the reference model...")
+    # Load the reference output tensor if it exists, otherwise run the reference model
+    ref_tensor = ref_output_tensors_path[ref_module_class.__name__]
+    if os.path.exists(ref_tensor):
+        ref_output = torch.load(ref_tensor)
+        logger.info(f"Ref output tensor found. Loading {ref_tensor}")
+    else:
+        logger.info(f"Ref output tensor not found. Running the reference model...")
+        # TODO Find a way to parametrize this! For now it only works for single layer
         # Ref model needs partial state dict, but our models use full state dict keys as cached weight names
-        # TODO Find a way to parametrize this!
-        first_layer_prefix = model_args.get_state_dict_prefix("TtLlamaMLP", 0)
+        first_layer_prefix = model_args.get_state_dict_prefix(module_class.__name__, 0)
+        # TODO Miguel See if this works for attn. If not we have to put this on a dictionary :/
         partial_state_dict = {
             k[len(first_layer_prefix) + 1 :]: v for k, v in state_dict.items() if (k.startswith(first_layer_prefix))
         }
 
-        module_ref = ref_module_class(
-            dim=model_args.dim,
-            hidden_dim=4 * model_args.dim,
-            multiple_of=model_args.multiple_of,
-            ffn_dim_multiplier=model_args.ffn_dim_multiplier,
-        )
-        module_ref.load_state_dict(partial_state_dict)
-        output_ref = module_ref(input_ref_tensor)
-        torch.save(
-            output_ref, "models/demos/llama3/tests/reference_outputs/mlp.pt"
+        # Instantiate the reference model
+        # TODO Standardize this for all modules!
+        # ref_model = ref_module_class(*ref_model_params)
+        if ref_module_class.__name__ == "FeedForward":
+            ref_model = ref_module_class(
+                dim=model_args.dim,
+                hidden_dim=4 * model_args.dim,
+                multiple_of=model_args.multiple_of,
+                ffn_dim_multiplier=model_args.ffn_dim_multiplier,
+            )
+        elif ref_module_class.__name__ == "Attention":
+            ref_model = ref_module_class(
+                args=model_args,
+            )
+
+        # Load partial state dict for a single layer
+        ref_model.load_state_dict(partial_state_dict)
+
+        # Run the reference model
+        ref_output = ref_model(input_ref_tensor)
+
+        torch.save(  # TODO Add more info to the tensor name!
+            ref_output,
+            f"models/demos/llama3/tests/reference_outputs/{ref_module_class.__name__}_{batch_size}b_{n_layers}l_{max_seq_len}s.pt",
         )  # Save the reference output for future runs
         # TODO encode in the tensor name the llama model, seqlen, batch, etc.
         # TODO See how test accuracy saves the tensors, since we need to reduce their size.
 
-    ########
+    ############
 
     #### RUN TTNN MODEL
     logger.info(f"Running TTNN model...")
@@ -125,8 +165,8 @@ def test_llama_unit(
     )
     output_tt = output_tt[:, :1, :, :]
 
-    passing, pcc_message = comp_pcc(output_ref, output_tt, 0.99)
-    logger.info(comp_allclose(output_ref, output_tt))
+    passing, pcc_message = comp_pcc(ref_output, output_tt, 0.99)
+    logger.info(comp_allclose(ref_output, output_tt))
     logger.info(f"PCC: {pcc_message}")
 
     # Check if the output tensor shape matches the expected shape
