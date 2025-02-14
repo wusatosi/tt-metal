@@ -56,10 +56,30 @@ class TtSFDSetup(torch.nn.Module):
         k_chunk_size=128,
         lambda_=1000.0,
         enable_async=True,
+        full_setup=True,
     ):
         super().__init__()
         self.mesh_device = mesh_device
+        self.nh = nh
+        self.d = d
+        self.b = b
+        self.grid_size = grid_size
+        self.k_chunk_size = k_chunk_size
         self.lambda_ = lambda_
+        self.enable_async = enable_async
+
+        if full_setup:
+            self.setup()
+
+    def setup(self):
+        mesh_device = self.mesh_device
+        nh = self.nh
+        d = self.d
+        b = self.b
+        grid_size = self.grid_size
+        k_chunk_size = self.k_chunk_size
+        lambda_ = self.lambda_
+        enable_async = self.enable_async
 
         ############################################################
         # Setup and Defines
@@ -269,19 +289,21 @@ class TtSFDSetup(torch.nn.Module):
         if not self.done_first_run:
             for d in self.tt_skip_tensor.devices():
                 d.set_speculation_state(False, self.skip_tensor_address)
-                logger.info(f"Device {d.id()} speculation state: {d.get_speculation_state()}")
+                # logger.info(f"Device {d.id()} speculation state: {d.get_speculation_state()}")
 
             self.done_first_run = True
 
         # Reset, so we don't skip SFD
         commit_priority_tensor(self.tt_reset_priority_tensors, self.tt_skip_tensor, self.mesh_device)
 
-    def get_correct_tensor(self, multi_device_tensor):
-        priority = read_multi_device_tensor(multi_device_tensor)
-        index = torch.argmax(priority)
+    def get_correct_tensor(self, multi_device_tensor_output_pt):
+        priority = read_multi_device_tensor(self.tt_priority_tensors)
+        priority_id = torch.tensor([priority[0][0, 0, 0, 0], priority[1][0, 0, 0, 0]])
+        index = torch.argmax(priority_id)
+        logger.debug(f"Read tensor index: {index} for priority_id: {priority_id}")
 
-        shape = multi_device_tensor.shape[-1] // 2
-        return multi_device_tensor[..., index * shape : (index + 1) * shape]
+        shape = multi_device_tensor_output_pt.shape[-1] // 2
+        return multi_device_tensor_output_pt[..., index * shape : (index + 1) * shape]
 
     def close_ccl(self):
         ############################################################
