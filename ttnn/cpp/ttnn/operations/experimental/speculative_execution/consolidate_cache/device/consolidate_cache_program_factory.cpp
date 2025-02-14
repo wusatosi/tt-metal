@@ -62,10 +62,10 @@ operation::ProgramWithCallbacks consolidate_cache(
     auto cb_priority = CreateCircularBuffer(program, worker_core, priority_cb_config);
 
     // kernel
-    tt::log_info("input_num_tiles: {}", input_num_tiles);
-    tt::log_info("input_is_dram: {}", input_is_dram);
-    tt::log_info("priority_stick_size: {}", priority_stick_size);
-    tt::log_info("B: {}", B);
+    tt::log_debug("input_num_tiles: {}", input_num_tiles);
+    tt::log_debug("input_is_dram: {}", input_is_dram);
+    tt::log_debug("priority_stick_size: {}", priority_stick_size);
+    tt::log_debug("B: {}", B);
     std::vector<uint32_t> reader_compile_time_args = {input_num_tiles, input_is_dram, priority_stick_size, B};
     auto reader_kernel_id = tt_metal::CreateKernel(
         program,
