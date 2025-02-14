@@ -139,7 +139,7 @@ class LMHead(LightweightModule):
                 weight,
                 core_grid=ttnn.CoreGrid(y=4, x=8),
                 compute_kernel_config=self.compute_kernel_config,
-                program_config=pc,
+                # program_config=pc,
                 memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
                 dtype=ttnn.bfloat8_b,
             )
