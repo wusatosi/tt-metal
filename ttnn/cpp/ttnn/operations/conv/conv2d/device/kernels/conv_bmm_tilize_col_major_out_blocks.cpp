@@ -265,6 +265,13 @@ void MAIN {
                         uint32_t in1_index = in1_index_subblock_offset;  // offset into in1 block
                         // inner dim that we accumulate is the inner dim of in0/in1, which is in0_block_w
                         for (uint32_t inner_dim_idx = 0; inner_dim_idx < in0_block_w; inner_dim_idx++) {
+#ifdef ARCH_BLACKHOLE
+                            // FIXME: This is a temporary workaround to avoid hangs on blackhole.
+                            // https://github.com/tenstorrent/tt-metal/issues/16439
+                            for (uint32_t i = 0; i < 10; i++) {
+                                asm volatile("nop");
+                            }
+#endif
                             // matmul outer product of (out_subblock_h x out_subblock_w) tiles that fill dst
                             // accumulation is done by iterating matmul_block across inner dim
                             // in0_block_w is passed as innder dim (kt) to matmul_block, interally used to stride in0
