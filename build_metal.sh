@@ -365,7 +365,8 @@ ln -nsf $build_dir build
 
 echo "INFO: Configuring Project"
 echo "INFO: Running: cmake "${cmake_args[@]}""
-cmake "${cmake_args[@]}"
+set -x
+cmake "${cmake_args[@]}" --profiling-format=google-trace --profiling-output=cmake.trace
 
 # Build libraries and cpp tests
 if [ "$configure_only" = "OFF" ]; then

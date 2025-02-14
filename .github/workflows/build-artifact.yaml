@@ -178,6 +178,9 @@ jobs:
           fi
 
           nice -n 19 $build_command
+          ls -al .
+          ls -al build/
+          find . -iname '*cmake.trace*'
 
       - name: 🛠️ Compile
         run: |
@@ -188,6 +191,13 @@ jobs:
         if: false # Packaging coming later
         run: |
           nice -19 cmake --build $build_dir --target package
+
+      - name: ☁ CMake trace
+        uses: actions/upload-artifact@v4
+        with:
+          name: cmake-trace
+          path: /work/cmake.trace
+          if-no-files-found: error
 
       - name: 🐍 Build wheel
         if: ${{ inputs.build-wheel }}
