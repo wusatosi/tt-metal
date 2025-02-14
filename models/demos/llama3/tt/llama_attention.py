@@ -362,7 +362,8 @@ class TtLlamaAttention(LightweightModule):
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
             )
         else:
-            if self.use_sfd:
+            cur_pos_int = int(ttnn.get_device_tensors(current_pos)[0].cpu().to_torch())
+            if self.use_sfd and cur_pos_int > self.sfd_setup.k_chunk_size * 2:
                 attn_output_1G4D = self.sfd_setup.run_speculative_flash_decode(
                     q_heads_1BQD,
                     keys,
