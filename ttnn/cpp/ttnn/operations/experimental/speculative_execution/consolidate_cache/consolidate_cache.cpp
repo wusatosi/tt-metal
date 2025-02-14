@@ -26,8 +26,8 @@ ttnn::Tensor ExecuteConsolidateCache::invoke(
     auto devices = input_tensor.get_workers();
     uint32_t num_devices = devices.size();
     ttnn::ccl::Topology ccl_topology = ttnn::ccl::Topology::Linear;
-    tt::log_info("devices: {}", devices);
-    tt::log_info("num_devices: {}", num_devices);
+    tt::log_debug("devices: {}", devices);
+    tt::log_debug("num_devices: {}", num_devices);
 
     TT_FATAL(num_devices == 2, "Must have 2 devices for consolidate cache, got: {}", num_devices);
 
@@ -59,11 +59,11 @@ ttnn::Tensor ExecuteConsolidateCache::invoke(
                     }
                 }
             }
-            tt::log_info("num_devices: {}", num_devices);
-            tt::log_info("device_index: {}", device_index);
-            tt::log_info("backward_device: {}", backward_device);
-            tt::log_info("forward_device: {}", forward_device);
-            tt::log_info("semaphore: {}", semaphore->address());
+            tt::log_debug("num_devices: {}", num_devices);
+            tt::log_debug("device_index: {}", device_index);
+            tt::log_debug("backward_device: {}", backward_device);
+            tt::log_debug("forward_device: {}", forward_device);
+            tt::log_debug("semaphore: {}", semaphore->address());
 
             auto input_tensor = input_tensors.at(0);
             auto priority_tensor = input_tensors.at(1);

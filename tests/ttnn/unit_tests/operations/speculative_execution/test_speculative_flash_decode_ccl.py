@@ -35,7 +35,7 @@ def set_devices_speculation_state(skip_tensor, state):
 
     for d in skip_tensor.devices():
         d.set_speculation_state(state, skip_tensor_address)
-        logger.info(f"Device {d.id()} speculation state: {d.get_speculation_state()}")
+        # logger.info(f"Device {d.id()} speculation state: {d.get_speculation_state()}")
 
 
 def commit_priority_tensor(priority_tensor, skip_tensor, mesh_device):

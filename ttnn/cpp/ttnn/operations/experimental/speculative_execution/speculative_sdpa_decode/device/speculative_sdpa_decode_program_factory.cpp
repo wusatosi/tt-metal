@@ -154,10 +154,10 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
     CoreCoord grid_size = program_config.has_value() ? program_config->compute_with_storage_grid_size
                                                      : CoreCoord(device_grid_size.x, device_grid_size.y - 1);
     auto core_grid = CoreRange({0, 0}, {grid_size.x - 1, grid_size.y - 1});
-    log_info("device_grid_size: {}", device_grid_size);
-    log_info("grid_size: {}", grid_size);
-    log_info("ccl_core: {}", ccl_core);
-    log_info("core_grid: {}", core_grid);
+    log_debug("device_grid_size: {}", device_grid_size);
+    log_debug("grid_size: {}", grid_size);
+    log_debug("ccl_core: {}", ccl_core);
+    log_debug("core_grid: {}", core_grid);
     uint32_t num_cores_available = grid_size.x * grid_size.y;
 
     uint32_t num_cores_in_grid =
@@ -234,16 +234,16 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
         }
     }
 
-    log_info("Parallelization scheme:");
-    log_info("num_cores_available: {}", num_cores_available);
-    log_info("num_cores_per_batch: {}", num_cores_per_batch);
-    log_info("num_cores_per_head: {}", num_cores_per_head);
-    log_info("num_heads_per_core: {}", num_heads_per_core);
-    log_info("num_active_cores: {}", num_active_cores);
-    log_info("num_reducer_cores: {}", num_reducer_cores);
-    log_info("num_output_cores: {}", num_output_cores);
-    log_info("core_group: {}", core_group);
-    log_info("core_group_idle: {}", core_group_idle);
+    log_debug("Parallelization scheme:");
+    log_debug("num_cores_available: {}", num_cores_available);
+    log_debug("num_cores_per_batch: {}", num_cores_per_batch);
+    log_debug("num_cores_per_head: {}", num_cores_per_head);
+    log_debug("num_heads_per_core: {}", num_heads_per_core);
+    log_debug("num_active_cores: {}", num_active_cores);
+    log_debug("num_reducer_cores: {}", num_reducer_cores);
+    log_debug("num_output_cores: {}", num_output_cores);
+    log_debug("core_group: {}", core_group);
+    log_debug("core_group_idle: {}", core_group_idle);
 
     // These tile capacity counts for CBs need to match the number of tiles expected by the kernel (softmax.cpp)
     uint32_t q_tiles = PNHt * DHt;
@@ -393,7 +393,7 @@ operation::ProgramWithCallbacks speculative_sdpa_decode_multi_core(
         tt::DataFormat priority_df = tt_metal::datatype_to_dataformat_converter(priority_tensor.value().get_dtype());
         priority_tensor_tile_size = tt_metal::detail::TileSize(priority_df);
         priority_stick_size = priority_buffer->aligned_page_size();
-        log_info("priority_stick_size: {}", priority_stick_size);
+        log_debug("priority_stick_size: {}", priority_stick_size);
 
         // priority cb
         auto c_in9_config = CircularBufferConfig(priority_stick_size * 2 * B, {{CBIndex::c_9, priority_df}})

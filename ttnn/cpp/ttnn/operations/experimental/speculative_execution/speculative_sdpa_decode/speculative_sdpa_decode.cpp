@@ -82,9 +82,9 @@ ExecuteSpeculativeScaledDotProductAttentionDecode::invoke(
     if (num_devices == 2) {
         ccl_topology = ttnn::ccl::Topology::Linear;
     }
-    tt::log_info("devices: {}", devices);
-    tt::log_info("num_devices: {}", num_devices);
-    tt::log_info("ccl_enabled: {}", ccl_enabled);
+    tt::log_debug("devices: {}", devices);
+    tt::log_debug("num_devices: {}", num_devices);
+    tt::log_debug("ccl_enabled: {}", ccl_enabled);
 
     if (ccl_enabled) {
         TT_FATAL(num_devices > 1, "Must have at least 2 devices for ccl enabled, got: {}", num_devices);
@@ -135,11 +135,11 @@ ExecuteSpeculativeScaledDotProductAttentionDecode::invoke(
                         }
                     }
                 }
-                tt::log_info("num_devices: {}", num_devices);
-                tt::log_info("device_index: {}", device_index);
-                tt::log_info("backward_device: {}", backward_device);
-                tt::log_info("forward_device: {}", forward_device);
-                tt::log_info("semaphore: {}", semaphore->address());
+                tt::log_debug("num_devices: {}", num_devices);
+                tt::log_debug("device_index: {}", device_index);
+                tt::log_debug("backward_device: {}", backward_device);
+                tt::log_debug("forward_device: {}", forward_device);
+                tt::log_debug("semaphore: {}", semaphore->address());
             }
 
             return operation::run(
