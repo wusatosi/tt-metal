@@ -124,8 +124,8 @@ void wait_for_workers(volatile CQDispatchCmd tt_l1_ptr* cmd) {
     uint8_t dispatch_message_offset = *((uint8_t*)&cmd->mcast.go_signal + offsetof(go_msg_t, dispatch_message_offset));
     volatile tt_l1_ptr uint32_t* worker_sem =
         reinterpret_cast<volatile tt_l1_ptr uint32_t*>(worker_sem_base_addr + dispatch_message_offset);
-    DPRINT << "Wait for: " << cmd->mcast.wait_count << " workers. Go Signal " << HEX() << cmd->mcast.go_signal
-           << ENDL();
+    // DPRINT << "Wait for: " << cmd->mcast.wait_count << " workers. Go Signal " << HEX() << cmd->mcast.go_signal
+    //    << ENDL();
     while (wrap_gt(cmd->mcast.wait_count, *worker_sem)) {
         invalidate_l1_cache();
     }
@@ -266,7 +266,7 @@ void set_go_signal_noc_data() {
 }
 
 void kernel_main() {
-    DPRINT << "dispatch_s : start" << ENDL();
+    // DPRINT << "dispatch_s : start" << ENDL();
     // Initialize customized command buffers.
     dispatch_s_wr_reg_cmd_buf_init();
     dispatch_s_atomic_cmd_buf_init();
@@ -305,5 +305,5 @@ void kernel_main() {
     // skip this for now.
     noc_async_full_barrier();
 #endif
-    DPRINT << "dispatch_s : done" << ENDL();
+    // DPRINT << "dispatch_s : done" << ENDL();
 }

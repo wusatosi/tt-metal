@@ -28,8 +28,13 @@ TEST_F(MeshSubDeviceTest, SyncWorkloadsOnSubDevice) {
     auto [waiter_program_1, syncer_program_1, incrementer_program_1, global_sem_1] =
         create_basic_sync_program(mesh_device_.get(), sub_device_1, sub_device_2);
 
-    LogicalDeviceRange devices = LogicalDeviceRange({0, 0}, {0, mesh_device_->num_rows() - 1});
-    LogicalDeviceRange dev_1 = LogicalDeviceRange({1, 0}, {1, mesh_device_->num_rows() - 1});
+    auto [waiter_program_2, syncer_program_2, incrementer_program_2, global_sem_2] =
+        create_basic_sync_program(mesh_device_.get(), sub_device_1, sub_device_2);
+
+    LogicalDeviceRange devices = LogicalDeviceRange({0, 0}, {mesh_device_->num_cols() - 1, 0});
+    LogicalDeviceRange dev_1 = LogicalDeviceRange({0, 1}, {mesh_device_->num_cols() - 1, 1});
+    LogicalDeviceRange all_devices =
+        LogicalDeviceRange({0, 0}, {mesh_device_->num_cols() - 1, mesh_device_->num_rows() - 1});
     auto waiter_mesh_workload = CreateMeshWorkload();
     auto syncer_mesh_workload = CreateMeshWorkload();
     auto incrementer_mesh_workload = CreateMeshWorkload();
@@ -46,29 +51,46 @@ TEST_F(MeshSubDeviceTest, SyncWorkloadsOnSubDevice) {
     AddProgramToMeshWorkload(syncer_1, syncer_program_1, dev_1);
     AddProgramToMeshWorkload(incrementer_1, incrementer_program_1, dev_1);
 
+    auto waiter_2 = CreateMeshWorkload();
+    auto syncer_2 = CreateMeshWorkload();
+    auto incrementer_2 = CreateMeshWorkload();
+
+    AddProgramToMeshWorkload(waiter_2, waiter_program_2, all_devices);
+    AddProgramToMeshWorkload(syncer_2, syncer_program_2, all_devices);
+    AddProgramToMeshWorkload(incrementer_2, incrementer_program_2, all_devices);
+
     EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), waiter_mesh_workload, false);
     mesh_device_->set_sub_device_stall_group({SubDeviceId{0}});
-    std::cout << "Block" << std::endl;
     EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), syncer_mesh_workload, true);
-    std::cout << "Done Block" << std::endl;
     EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), incrementer_mesh_workload, false);
     mesh_device_->reset_sub_device_stall_group();
-    std::cout << "Finish 1" << std::endl;
     Finish(mesh_device_->mesh_command_queue());
-    std::cout << "Done Finish 1" << std::endl;
+
     EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), waiter_1, false);
     mesh_device_->set_sub_device_stall_group({SubDeviceId{0}});
     EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), syncer_1, true);
     EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), incrementer_1, false);
     mesh_device_->reset_sub_device_stall_group();
-    std::cout << "Finish 2" << std::endl;
     Finish(mesh_device_->mesh_command_queue());
-    std::cout << "Done Finish 2" << std::endl;
+
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), waiter_2, false);
+    mesh_device_->set_sub_device_stall_group({SubDeviceId{0}});
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), syncer_2, true);
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), incrementer_2, false);
+    mesh_device_->reset_sub_device_stall_group();
+    Finish(mesh_device_->mesh_command_queue());
+
     auto tid = MeshTrace::next_id();
     mesh_device_->begin_mesh_trace(0, tid);
     EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), waiter_mesh_workload, false);
     EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), syncer_mesh_workload, false);
     EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), incrementer_mesh_workload, false);
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), waiter_1, false);
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), syncer_1, false);
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), incrementer_1, false);
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), waiter_2, false);
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), syncer_2, false);
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), incrementer_2, false);
 
     mesh_device_->end_mesh_trace(0, tid);
     for (uint32_t i = 0; i < num_iters; i++) {
@@ -81,6 +103,7 @@ TEST_F(MeshSubDeviceTest, DataCopyOnSubDevices) {
     SubDevice sub_device_1(std::array{CoreRangeSet(CoreRange({0, 0}, {0, 0}))});
     SubDevice sub_device_2(std::array{CoreRangeSet(CoreRange({1, 1}, {1, 1}))});
     SubDevice sub_device_3(std::array{CoreRangeSet(CoreRange({2, 2}, {2, 2}))});
+    SubDevice sub_device_4(std::array{CoreRangeSet(CoreRange({3, 3}, {3, 3}))});
 
     uint32_t single_tile_size = ::tt::tt_metal::detail::TileSize(DataFormat::UInt32);
     uint32_t num_tiles = 32;
@@ -98,7 +121,8 @@ TEST_F(MeshSubDeviceTest, DataCopyOnSubDevices) {
     auto output_buf = MeshBuffer::create(global_buffer_config, per_device_buffer_config, mesh_device_.get());
 
     // Create and Load SubDeviceConfig on the mesh
-    auto sub_device_manager = mesh_device_->create_sub_device_manager({sub_device_1, sub_device_2, sub_device_3}, 3200);
+    auto sub_device_manager =
+        mesh_device_->create_sub_device_manager({sub_device_1, sub_device_2, sub_device_3, sub_device_4}, 3200);
     mesh_device_->load_sub_device_manager(sub_device_manager);
 
     auto syncer_coord = sub_device_1.cores(HalProgrammableCoreType::TENSIX).ranges().at(0).start_coord;
@@ -107,8 +131,11 @@ TEST_F(MeshSubDeviceTest, DataCopyOnSubDevices) {
     auto datacopy_coord = sub_device_2.cores(HalProgrammableCoreType::TENSIX).ranges().at(0).start_coord;
     auto datacopy_core = CoreRangeSet(CoreRange(datacopy_coord, datacopy_coord));
     auto datacopy_core_phys = mesh_device_->worker_core_from_logical_core(datacopy_coord);
+    auto add_coord = sub_device_4.cores(HalProgrammableCoreType::TENSIX).ranges().at(0).start_coord;
+    auto add_core = CoreRangeSet(CoreRange(add_coord, add_coord));
+    auto add_core_phys = mesh_device_->worker_core_from_logical_core(add_coord);
 
-    auto all_cores = syncer_core.merge(datacopy_core);
+    auto all_cores = syncer_core.merge(datacopy_core).merge(add_core);
     auto global_sem = CreateGlobalSemaphore(mesh_device_.get(), all_cores, 0);
 
     Program sync_and_incr_program = CreateProgram();
@@ -141,13 +168,32 @@ TEST_F(MeshSubDeviceTest, DataCopyOnSubDevices) {
         "tests/tt_metal/tt_metal/test_kernels/misc/sub_device/sync_and_add.cpp",
         datacopy_core,
         DataMovementConfig{.processor = DataMovementProcessor::RISCV_0, .noc = NOC::RISCV_0_default});
-    std::array<uint32_t, 6> add_rt_args = {
-        global_sem.address(), 0, 0, input_buf->address(), output_buf->address(), num_tiles};
+    std::array<uint32_t, 8> add_rt_args = {
+        global_sem.address(),
+        0,
+        0,
+        input_buf->address(),
+        output_buf->address(),
+        num_tiles,
+        add_core_phys.x,
+        add_core_phys.y};
     SetRuntimeArgs(add_program, add_kernel, datacopy_core, add_rt_args);
     CBHandle add_cb = CreateCircularBuffer(add_program, datacopy_core, cb_src0_config);
 
+    Program add_program_2 = CreateProgram();
+    auto add_kernel_2 = CreateKernel(
+        add_program_2,
+        "tests/tt_metal/tt_metal/test_kernels/misc/sub_device/sync_and_add.cpp",
+        add_core,
+        DataMovementConfig{.processor = DataMovementProcessor::RISCV_0, .noc = NOC::RISCV_0_default});
+    std::array<uint32_t, 8> add_rt_args_2 = {
+        global_sem.address(), 0, 0, output_buf->address(), output_buf->address(), num_tiles, 0, 0};
+    SetRuntimeArgs(add_program_2, add_kernel_2, add_core, add_rt_args_2);
+    CBHandle add_cb_2 = CreateCircularBuffer(add_program_2, add_core, cb_src0_config);
+
     auto syncer_mesh_workload = CreateMeshWorkload();
     auto datacopy_mesh_workload = CreateMeshWorkload();
+    auto add_mesh_workload = CreateMeshWorkload();
 
     LogicalDeviceRange devices =
         LogicalDeviceRange({0, 0}, {mesh_device_->num_cols() - 1, mesh_device_->num_rows() - 1});
@@ -157,11 +203,14 @@ TEST_F(MeshSubDeviceTest, DataCopyOnSubDevices) {
     AddProgramToMeshWorkload(syncer_mesh_workload, sync_and_incr_program, devices);
     AddProgramToMeshWorkload(datacopy_mesh_workload, datacopy_program, dev_1);
     AddProgramToMeshWorkload(datacopy_mesh_workload, add_program, dev_2);
+    AddProgramToMeshWorkload(add_mesh_workload, add_program_2, dev_2);
 
     // Compile and load workloads
     mesh_device_->set_sub_device_stall_group({SubDeviceId{2}});
     EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), syncer_mesh_workload, false);
     EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), datacopy_mesh_workload, false);
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), add_mesh_workload, false);
+
     for (auto device : mesh_device_->get_devices()) {
         tt::llrt::write_hex_vec_to_core(device->id(), syncer_core_phys, std::vector<uint32_t>{1}, global_sem.address());
     }
@@ -171,6 +220,7 @@ TEST_F(MeshSubDeviceTest, DataCopyOnSubDevices) {
     mesh_device_->begin_mesh_trace(0, tid);
     EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), syncer_mesh_workload, false);
     EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), datacopy_mesh_workload, false);
+    EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), add_mesh_workload, false);
     mesh_device_->end_mesh_trace(0, tid);
     for (int i = 0; i < 50; i++) {
         mesh_device_->mesh_command_queue().enqueue_trace(tid, false);
@@ -200,7 +250,7 @@ TEST_F(MeshSubDeviceTest, DataCopyOnSubDevices) {
                 std::vector<uint32_t> dst_vec;
                 ReadShard(mesh_device_->mesh_command_queue(), dst_vec, output_buf, Coordinate(logical_y, logical_x));
                 for (int j = 0; j < dst_vec.size(); j++) {
-                    EXPECT_EQ(dst_vec[j], src_vec[j] + 1);
+                    EXPECT_EQ(dst_vec[j], src_vec[j] + 2);
                 }
             }
         }

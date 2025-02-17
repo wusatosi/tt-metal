@@ -473,8 +473,8 @@ void process_write_paged(uint32_t& block_noc_writes_to_clear, uint32_t block_nex
     InterleavedAddrGen<is_dram> addr_gen{.bank_base_address = base_addr, .page_size = page_size};
     uint64_t dst_addr_offset = 0;  // Offset into page.
 
-    // // DPRINT "process_write_paged - pages: " << pages << " page_size: " << page_size
-    //        << " dispatch_cb_page_size: " << dispatch_cb_page_size << ENDL();
+    DPRINT << "process_write_paged - pages: " << pages << " page_size: " << page_size
+           << " dispatch_cb_page_size: " << dispatch_cb_page_size << ENDL();
 
     while (write_length != 0) {
         // TODO #7360: Have more performant handling when page_size > dispatch_cb_page_size by not doing multiple writes
@@ -568,8 +568,8 @@ void process_write_packed(
     volatile uint32_t tt_l1_ptr* l1_addr = (uint32_t*)(cmd_ptr + sizeof(CQDispatchCmd));
     cq_noc_async_write_init_state<CQ_NOC_snDL, mcast>(0, dst_addr, xfer_size);
 
-    // // DPRINT "dispatch_write_packed: " << xfer_size << " " << stride << " " << data_ptr << " " << count << " " <<
-    // dst_addr << " " << ENDL();
+    DPRINT << "dispatch_write_packed: " << xfer_size << " " << stride << " " << data_ptr << " " << count << " "
+           << dst_addr << " " << ENDL();
     uint32_t writes = 0;
     uint32_t mcasts = 0;
     auto wait_for_barrier = [&]() {
@@ -864,7 +864,7 @@ static void process_wait() {
     uint32_t count = cmd->wait.count;
 
     if (barrier) {
-        // DPRINT " DISPATCH BARRIER\n";
+        DPRINT << " DISPATCH BARRIER\n";
         noc_async_write_barrier();
     }
 
@@ -872,7 +872,10 @@ static void process_wait() {
     volatile tt_l1_ptr uint32_t* sem_addr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(addr);
     uint32_t heartbeat = 0;
     if (wait) {
-        // DPRINT " DISPATCH WAIT " << HEX() << addr << DEC() << " count " << count << ENDL();
+        DPRINT << " DISPATCH WAIT " << HEX() << addr << DEC() << " count " << count << ENDL();
+        for (volatile int i = 0; i < 10000; i++) {
+        }
+        DPRINT << "Got: " << *sem_addr << ENDL();
         do {
             invalidate_l1_cache();
             IDLE_ERISC_HEARTBEAT_AND_RETURN(heartbeat);
@@ -939,7 +942,7 @@ void process_notify_dispatch_s_go_signal_cmd() {
     uint32_t wait = cmd->notify_dispatch_s_go_signal.wait;
     // write barrier to wait before sending the go signal
     if (wait) {
-        // DPRINT " DISPATCH_S_NOTIFY BARRIER\n";
+        DPRINT << " DISPATCH_S_NOTIFY BARRIER\n";
         noc_async_write_barrier();
     }
     uint16_t index_bitmask = cmd->notify_dispatch_s_go_signal.index_bitmask;
@@ -985,13 +988,13 @@ re_run_command:
     switch (cmd->base.cmd_id) {
         case CQ_DISPATCH_CMD_WRITE_LINEAR:
             WAYPOINT("DWB");
-            // DPRINT "cmd_write_linear\n";
+            DPRINT << "cmd_write_linear\n";
             process_write(block_noc_writes_to_clear, block_next_start_addr);
             WAYPOINT("DWD");
             break;
 
         case CQ_DISPATCH_CMD_WRITE_LINEAR_H:
-            // DPRINT "cmd_write_linear_h\n";
+            DPRINT << "cmd_write_linear_h\n";
             if (is_h_variant) {
                 process_write(block_noc_writes_to_clear, block_next_start_addr);
             } else {
@@ -1000,7 +1003,7 @@ re_run_command:
             break;
 
         case CQ_DISPATCH_CMD_WRITE_LINEAR_H_HOST:
-            // DPRINT "cmd_write_linear_h_host\n";
+            DPRINT << "cmd_write_linear_h_host\n";
             if (is_h_variant) {
                 process_write_host_h(block_noc_writes_to_clear, block_next_start_addr);
             } else {
@@ -1009,7 +1012,7 @@ re_run_command:
             break;
 
         case CQ_DISPATCH_CMD_WRITE_PAGED:
-            // DPRINT "cmd_write_paged is_dram: " << (uint32_t)cmd->write_paged.is_dram << ENDL();
+            DPRINT << "cmd_write_paged is_dram: " << (uint32_t)cmd->write_paged.is_dram << ENDL();
             if (cmd->write_paged.is_dram) {
                 process_write_paged<true>(block_noc_writes_to_clear, block_next_start_addr);
             } else {
@@ -1018,7 +1021,7 @@ re_run_command:
             break;
 
         case CQ_DISPATCH_CMD_WRITE_PACKED: {
-            // DPRINT "cmd_write_packed" << ENDL();
+            DPRINT << "cmd_write_packed" << ENDL();
             uint32_t flags = cmd->write_packed.flags;
             if (flags & CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_MCAST) {
                 process_write_packed<true, CQDispatchWritePackedMulticastSubCmd>(
@@ -1030,17 +1033,17 @@ re_run_command:
         } break;
 
         case CQ_DISPATCH_NOTIFY_SLAVE_GO_SIGNAL:
-            // DPRINT "cmd_notify_dispatch_s_go_signal" << ENDL();
+            DPRINT << "cmd_notify_dispatch_s_go_signal" << ENDL();
             process_notify_dispatch_s_go_signal_cmd();
             break;
 
         case CQ_DISPATCH_CMD_WRITE_PACKED_LARGE:
-            // DPRINT "cmd_write_packed_large" << ENDL();
+            DPRINT << "cmd_write_packed_large" << ENDL();
             process_write_packed_large(l1_cache, block_noc_writes_to_clear, block_next_start_addr);
             break;
 
         case CQ_DISPATCH_CMD_WAIT:
-            // DPRINT "cmd_wait" << ENDL();
+            DPRINT << "cmd_wait" << ENDL();
             process_wait();
             break;
 
@@ -1060,7 +1063,7 @@ re_run_command:
             break;
 
         case CQ_DISPATCH_CMD_EXEC_BUF_END:
-            // DPRINT "cmd_exec_buf_end\n";
+            DPRINT << "cmd_exec_buf_end\n";
             if (is_h_variant) {
                 process_exec_buf_end_h();
             } else {
@@ -1069,12 +1072,12 @@ re_run_command:
             break;
 
         case CQ_DISPATCH_CMD_SEND_GO_SIGNAL:
-            // DPRINT "cmd_go_send_go_signal" << ENDL();
+            DPRINT << "cmd_go_send_go_signal" << ENDL();
             process_go_signal_mcast_cmd();
             break;
 
         case CQ_DISPATCH_SET_NUM_WORKER_SEMS:
-            // DPRINT "cmd_set_num_worker_sems" << ENDL();
+            DPRINT << "cmd_set_num_worker_sems" << ENDL();
             // This command is only used by dispatch_s
             ASSERT(0);
             cmd_ptr += sizeof(CQDispatchCmd);
@@ -1083,8 +1086,8 @@ re_run_command:
         case CQ_DISPATCH_SET_GO_SIGNAL_NOC_DATA: set_go_signal_noc_data(); break;
 
         case CQ_DISPATCH_CMD_SET_WRITE_OFFSET:
-            // DPRINT "write offset: " << cmd->set_write_offset.offset0 << " " << cmd->set_write_offset.offset1 << " "
-            //        << cmd->set_write_offset.offset2 << ENDL();
+            DPRINT << "write offset: " << cmd->set_write_offset.offset0 << " " << cmd->set_write_offset.offset1 << " "
+                   << cmd->set_write_offset.offset2 << ENDL();
             write_offset[0] = cmd->set_write_offset.offset0;
             write_offset[1] = cmd->set_write_offset.offset1;
             write_offset[2] = cmd->set_write_offset.offset2;
@@ -1102,9 +1105,9 @@ re_run_command:
             break;
 
         default:
-            // DPRINT "dispatcher_d invalid command:" << cmd_ptr << " " << cb_fence << " " << dispatch_cb_base << " "
-            //    << dispatch_cb_end << " " << rd_block_idx << " "
-            //    << "xx" << ENDL();
+            DPRINT << "dispatcher_d invalid command:" << cmd_ptr << " " << cb_fence << " " << dispatch_cb_base << " "
+                   << dispatch_cb_end << " " << rd_block_idx << " "
+                   << "xx" << ENDL();
             // DPRINT HEX() << *(uint32_t*)cmd_ptr << ENDL();
             // DPRINT HEX() << *((uint32_t*)cmd_ptr + 1) << ENDL();
             // DPRINT HEX() << *((uint32_t*)cmd_ptr + 2) << ENDL();
