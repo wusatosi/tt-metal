@@ -191,6 +191,20 @@ AllGatherAsyncVersion AllGatherAsync::select_version(const Tensor& input_tensor)
                 tt::LogOp, "Matching conditions for Llama rms norm case, using LLAMA_MINIMAL_SHARDED implementation");
             return AllGatherAsyncVersion::LLAMA_MINIMAL_SHARDED;
         }
+
+        // Check for qkv
+        if (input_tensor_shape[0] == 1 && input_tensor_shape[1] == 1 && input_tensor_shape[2] == 32 &&
+            input_tensor_shape[3] == 1536 && input_tensor_memory_config.buffer_type == BufferType::L1 &&
+            output_mem_config.buffer_type == BufferType::L1 &&
+            input_tensor_memory_config.memory_layout == TensorMemoryLayout::WIDTH_SHARDED &&
+            output_mem_config.memory_layout == TensorMemoryLayout::WIDTH_SHARDED &&
+            input_tensor_memory_config.shard_spec->shape[0] == 32 &&
+            input_tensor_memory_config.shard_spec->shape[1] == 64 && output_mem_config.shard_spec->shape[0] == 32 &&
+            output_mem_config.shard_spec->shape[1] == 256 && input_shard_num_cores == 24 &&
+            output_shard_num_cores == 24) {
+            tt::log_info("Matching conditions for qkv case, using LLAMA_MINIMAL_SHARDED implementation");
+            return AllGatherAsyncVersion::LLAMA_MINIMAL_SHARDED;
+        }
     }
     log_trace(tt::LogOp, "Using generic implementation");
     return AllGatherAsyncVersion::GENERIC;
