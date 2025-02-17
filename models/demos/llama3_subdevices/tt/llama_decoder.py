@@ -84,6 +84,7 @@ class TtTransformerBlock(LightweightModule):
                 is_distributed=self.args.is_distributed_norm,
                 sharded_program_config=self.model_config["SHARDED_NORM_ATTN_PRGM_CFG"],
                 sharded_output_config=self.model_config["SHARDED_ATTN_INPUT_MEMCFG"],
+                # sharded_output_config=self.model_config["SHARDED_ATTN_INPUT_RING_MEMCFG"],
             ),
             args,
             TG=args.is_galaxy,
@@ -129,6 +130,7 @@ class TtTransformerBlock(LightweightModule):
         # Norms take fractured inputs and output replicated across devices
         try:
             attn_in, h = self.attention_norm(x, h, mode)
+            # attn_in_sharded, h = self.attention_norm(x, h, mode)
         except Exception as e:
             print(e)
             print("failed to run attention norm")
@@ -137,8 +139,10 @@ class TtTransformerBlock(LightweightModule):
         # Attention takes replicated inputs and produces fractured outputs
         print("done attention norm")
         # pad attn input
-        attn_in_sharded = ttnn.to_memory_config(attn_in, self.model_config["SHARDED_ATTN_INPUT_RING_MEMCFG"])
-        attn_in.deallocate(True)
+        attn_in_sharded = ttnn.to_memory_config(
+            attn_in, self.model_config["SHARDED_ATTN_INPUT_RING_MEMCFG"]
+        )  # TODO: comment
+        attn_in.deallocate(True)  # TODO: comment
         attn_out = self.attention.forward(
             attn_in_sharded,
             current_pos,
