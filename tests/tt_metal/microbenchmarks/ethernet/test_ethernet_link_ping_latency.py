@@ -41,6 +41,7 @@ def get_device_freq():
 
 def profile_results(sample_size, sample_count, channel_count, output_latency):
     freq = get_device_freq() / 1000.0
+    logger.info(f"frequencye {freq}")
     setup = device_post_proc_config.default_setup()
     setup.deviceInputLog = profiler_log_path
     main_test_body_string = "MAIN-TEST-BODY"
