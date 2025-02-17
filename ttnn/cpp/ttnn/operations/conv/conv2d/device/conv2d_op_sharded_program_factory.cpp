@@ -1298,7 +1298,7 @@ operation::ProgramWithCallbacks multi_core_optimized_conv_sharded_v2_impl(
         compute_defines["PACKER_L1_ACC"] = "1";
     }
 
-    bmm_op_utils::add_nops_in_matmul(compute_defines);
+    bmm_op_utils::add_nops_in_matmul(compute_defines, math_fidelity);
 
     writer_compile_time_args = {
         (uint32_t)(dst_dram_buffer->buffer_type() == tt_metal::BufferType::DRAM ? 1 : 0),

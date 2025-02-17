@@ -648,7 +648,7 @@ tt::tt_metal::operation::ProgramWithCallbacks multi_core_optimized_conv_width_sh
     }
     uint32_t num_output_tiles = per_core_out_matrix_height_ntiles * p_config.per_core_out_matrix_width_ntile;
 
-    bmm_op_utils::add_nops_in_matmul(compute_defines);
+    bmm_op_utils::add_nops_in_matmul(compute_defines, math_fidelity);
 
     compute_kernel_args = {
         act_block_w_ntiles,      // in0_block_w
