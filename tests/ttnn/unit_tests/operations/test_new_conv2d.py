@@ -2917,3 +2917,58 @@ def test_dram_input_mm_conv(device, tiled_input, input_on_device):
     passing, pcc_msg = check_with_pcc_without_tensor_printout(torch_output_tensor, torch_out_golden_tensor, pcc=0.99)
     logger.info(f"PCC = {pcc_msg}. Threshold = 0.99")
     assert passing
+
+
+@skip_for_grayskull()
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
+@pytest.mark.parametrize(
+    "batch_size, output_channels, input_channels, input_height, input_width, filter_height, filter_width, stride_h, stride_w, pad_h, pad_w, shard_layout, config_override",
+    ((16, 64, 16, 115, 115, 4, 4, 1, 1, 0, 0, HS, None),),
+)
+@pytest.mark.parametrize("memory_config", [ttnn.L1_MEMORY_CONFIG, ttnn.DRAM_MEMORY_CONFIG])
+def test_conv_circular_buffer_issue(
+    device,
+    torch_tensor_map,
+    use_program_cache,
+    batch_size,
+    output_channels,
+    input_channels,
+    input_height,
+    input_width,
+    filter_height,
+    filter_width,
+    stride_h,
+    stride_w,
+    pad_h,
+    pad_w,
+    shard_layout,
+    config_override,
+    memory_config,
+):
+    use_shallow_conv_variant = (input_channels == 16) and device.arch() != ttnn.device.Arch.WORMHOLE_B0
+    run_conv(
+        device,
+        torch_tensor_map,
+        ttnn.MathFidelity.LoFi,
+        ttnn.bfloat8_b,
+        ttnn.bfloat8_b,
+        batch_size,
+        output_channels,
+        input_channels,
+        input_height,
+        input_width,
+        filter_height,
+        filter_width,
+        stride_h,
+        stride_w,
+        pad_h,
+        pad_w,
+        shard_layout=shard_layout,
+        config_override=config_override,
+        use_shallow_conv_variant=use_shallow_conv_variant,
+        packer_l1_acc=True,
+        fp32_accum=False,
+        has_bias=True,
+        auto_shard=False,
+        memory_config=memory_config,
+    )
