@@ -5,7 +5,7 @@
 import pytest
 import torch
 import ttnn
-
+import torch.nn as nn
 from tests.ttnn.utils_for_testing import assert_with_pcc
 from models.utility_functions import skip_for_grayskull
 
@@ -23,6 +23,22 @@ def run_activation_unary_test(device, h, w, ttnn_function, pcc=0.99):
     output_tensor = ttnn.from_device(output_tensor)
     output_tensor = ttnn.to_torch(output_tensor)
 
+    assert_with_pcc(torch_output_tensor, output_tensor, pcc)
+
+
+def run_activation_test(device, input_shape, pcc=0.99):
+    torch.manual_seed(0)
+
+    torch_input_tensor = torch.randn(input_shape, dtype=torch.bfloat16)
+    # golden_function = ttnn.get_golden_function(ttnn_function)
+    relu = nn.ReLU()
+    torch_output_tensor = relu(torch_input_tensor)
+
+    input_tensor = ttnn.from_torch(torch_input_tensor, layout=ttnn.TILE_LAYOUT, device=device)
+    output_tensor = ttnn.relu(input_tensor)
+    output_tensor = ttnn.to_layout(output_tensor, ttnn.ROW_MAJOR_LAYOUT)
+    output_tensor = ttnn.from_device(output_tensor)
+    output_tensor = ttnn.to_torch(output_tensor)
     assert_with_pcc(torch_output_tensor, output_tensor, pcc)
 
 
@@ -392,3 +408,35 @@ def run_activation_test_threshold(device, h, w, scalar1, scalar2, ttnn_function,
 @pytest.mark.parametrize("w", [128])
 def test_threshold(device, h, w, value, threshold):
     run_activation_test_threshold(device, h, w, value, threshold, ttnn.threshold)
+
+
+@pytest.mark.parametrize(
+    "input_shape",
+    (
+        ([1, 64, 112, 112]),
+        ([1, 64, 112, 112]),
+        ([1, 64, 56, 56]),
+        ([1, 128, 56, 56]),
+        ([1, 128, 56, 56]),
+        ([1, 128, 56, 56]),
+        ([1, 128, 56, 56]),
+        ([1, 256, 56, 56]),
+        ([1, 160, 28, 28]),
+        ([1, 160, 28, 28]),
+        ([1, 160, 28, 28]),
+        ([1, 160, 28, 28]),
+        ([1, 512, 28, 28]),
+        ([1, 192, 14, 14]),
+        ([1, 192, 14, 14]),
+        ([1, 192, 14, 14]),
+        ([1, 192, 14, 14]),
+        ([1, 768, 14, 14]),
+        ([1, 224, 7, 7]),
+        ([1, 224, 7, 7]),
+        ([1, 224, 7, 7]),
+        ([1, 224, 7, 7]),
+        ([1, 1024, 7, 7]),
+    ),
+)
+def test_vovnet_relu(device, input_shape):
+    run_activation_test(device, input_shape)

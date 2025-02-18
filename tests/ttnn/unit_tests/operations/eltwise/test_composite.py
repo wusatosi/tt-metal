@@ -911,3 +911,26 @@ def test_unary_rdiv(input_shapes, param, round_mode, device):
 
     comp_pass = compare_pcc([output_tensor], [golden_tensor])
     assert comp_pass
+
+
+@pytest.mark.parametrize(
+    "input_shapes",
+    (
+        (torch.Size([1, 256, 1, 1])),
+        (torch.Size([1, 512, 1, 1])),
+        (torch.Size([1, 768, 1, 1])),
+        (torch.Size([1, 1024, 1, 1])),
+    ),
+)
+def test_unary_composite_hardsigmoid_vovnet(input_shapes, device):
+    # in_data1, input_tensor1 = data_gen_with_range(input_shapes, -100, 100, device)
+    input = torch.randn(input_shapes, dtype=torch.bfloat16)
+    input_tensor = ttnn.from_torch(input, layout=ttnn.TILE_LAYOUT, device=device)
+
+    output_tensor = ttnn.hardsigmoid(input_tensor)
+    golden_function = ttnn.get_golden_function(ttnn.hardsigmoid)
+    golden_tensor = golden_function(input)
+    output_tensor = ttnn.to_torch(output_tensor)
+    assert_with_pcc(golden_tensor, output_tensor, pcc=0.99)
+    # comp_pass = compare_pcc([output_tensor], [golden_tensor])
+    # assert comp_pass

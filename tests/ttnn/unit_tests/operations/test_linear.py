@@ -411,3 +411,44 @@ def test_resnet50_linear(device, use_program_cache):
     tt_output_tensor = ttnn.from_device(tt_output_tensor_on_device)
     torch_output_tensor = ttnn.to_torch(tt_output_tensor)
     assert_with_pcc(torch_out_golden_tensor, torch_output_tensor[0, 0, :, :], pcc=0.99)
+
+
+def test_vovnet_linear(device):
+    torch_input_tensor = torch.randn((1, 1024), dtype=torch.float32)
+    torch_weight = torch.randn((1000, 1024), dtype=torch.float32)
+    torch_bias = torch.randn((1000), dtype=torch.float32)
+
+    t_weight = torch_weight.T.contiguous()
+
+    torch_output = torch_input_tensor @ t_weight + torch_bias
+
+    input_tensor = ttnn.from_torch(
+        torch_input_tensor,
+        dtype=ttnn.bfloat16,
+        layout=ttnn.TILE_LAYOUT,
+        device=device,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+    )
+    weights = ttnn.from_torch(
+        t_weight, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device, memory_config=ttnn.L1_MEMORY_CONFIG
+    )
+    bias = ttnn.from_torch(
+        torch_bias.reshape((1, -1)),
+        dtype=ttnn.bfloat16,
+        layout=ttnn.TILE_LAYOUT,
+        device=device,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+    )
+
+    output = ttnn.linear(
+        input_tensor,
+        weights,
+        bias=bias,
+        core_grid=device.core_grid,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+        dtype=ttnn.bfloat16,
+    )
+
+    output = ttnn.to_torch(output)
+    print(torch_output.shape, " ", output.shape)
+    assert_with_pcc(torch_output, output, pcc=0.99)
