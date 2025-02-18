@@ -198,5 +198,5 @@ void kernel_main() {
 
     noc_async_write_barrier();
 
-    // DPRINT << "writer done \n";
+    DPRINT << "writer done \n";
 }

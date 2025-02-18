@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include "compute_kernel_api/eltwise_binary.h"
+#include "debug/dprint.h"
 
 namespace NAMESPACE {
 void MAIN {
@@ -55,5 +56,7 @@ void MAIN {
 
         block_num_tiles_cnt += num_tiles_to_pack;
     }
+
+    PACK(DPRINT << "DONE REDUCTION" << ENDL());
 }
 }  // namespace NAMESPACE

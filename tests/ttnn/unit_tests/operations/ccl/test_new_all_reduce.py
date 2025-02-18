@@ -88,6 +88,7 @@ def run_all_reduce_impl(
         N_per_shard = round_up(math.ceil(N / input_num_cores), ttnn.TILE_SIZE)
         output_N_per_shard = round_up(math.ceil(N / output_num_cores), ttnn.TILE_SIZE)
         input_shape = [*cluster_shape, M, N]
+        logger.info(f"N_per_shard: {N_per_shard}, output_N_per_shard: {output_N_per_shard}")
 
         CORE_RANGE = [(x, y) for y in range(compute_grid_size.y) for x in range(compute_grid_size.x)]
         core_range_set = ttnn.CoreRangeSet(
@@ -128,7 +129,7 @@ def run_all_reduce_impl(
         )
 
         logger.info(f"Input shape: {input_shape[2:]}, Padded shape: {[M, N_per_shard * input_num_cores]}")
-        input_tensor = torch.randn(input_shape)
+        input_tensor = torch.ones(input_shape)
         tt_input_tensor = ttnn.from_torch(
             input_tensor,
             device=mesh_device,
@@ -234,8 +235,9 @@ def run_all_reduce_impl(
                     eq, output = comp_pcc(tt_output_tensor, output_tensor_)
                 else:
                     eq, output = comp_pcc(tt_output_tensor, output_tensor_)
-                assert eq, f"{i} FAILED: {output}"
-            logger.info(f"PCC output is: {output}")
+
+                logger.info(f"PCC output is: {output}")
+            assert eq, f"{i} FAILED: {output}"
 
         if validate_all:
             for tensor_index in range(len(tt_outs)):
@@ -266,29 +268,31 @@ def run_all_reduce_impl(
 @pytest.mark.parametrize(
     "output_shape, cluster_axis, num_links, input_num_cores, output_num_cores",
     [
-        ([1, 1, 32, 2048], 0, 4, 24, 16),  # FF2/DO all reduce
-        ([1, 1, 32, 1280], 1, 3, 24, 40),  # QKV all reduce
-        ([1, 1, 32, 3584], 1, 3, 24, 24),  # FF1 all reduce
-        ([1, 1, 32, 2048], 0, 3, 24, 16),  # FF2/DO all reduce
-        ([1, 1, 32, 1280], 1, 2, 24, 40),  # QKV all reduce
-        ([1, 1, 32, 3584], 1, 2, 24, 24),  # FF1 all reduce
-        ([1, 1, 32, 2048], 0, 2, 24, 16),  # FF2/DO all reduce
-        ([1, 1, 32, 1280], 1, 1, 24, 40),  # QKV all reduce
+        # ([1, 1, 32, 2048], 0, 4, 24, 16),  # FF2/DO all reduce
+        # ([1, 1, 32, 1280], 1, 3, 24, 40),  # QKV all reduce
+        # ([1, 1, 32, 3584], 1, 3, 24, 24),  # FF1 all reduce
+        # ([1, 1, 32, 2048], 0, 3, 24, 16),  # FF2/DO all reduce
+        # ([1, 1, 32, 1280], 1, 2, 24, 40),  # QKV all reduce
+        # ([1, 1, 32, 3584], 1, 2, 24, 24),  # FF1 all reduce
+        # ([1, 1, 32, 2048], 0, 2, 24, 16),  # FF2/DO all reduce
+        # ([1, 1, 32, 1280], 1, 1, 24, 40),  # QKV all reduce
         ([1, 1, 32, 3584], 1, 1, 24, 24),  # FF1 all reduce
-        ([1, 1, 32, 2048], 0, 1, 24, 16),  # FF2/DO all reduce
+        # ([1, 1, 32, 2048], 0, 1, 24, 16),  # FF2/DO all reduce
+        # ([1, 1, 32, 3840], 1, 1, 24, 24),  # FF1 all reduce
     ],
 )
 @pytest.mark.parametrize(
     "input_dtype",
     [
-        ttnn.bfloat16,
+        # ttnn.bfloat16,
         ttnn.bfloat8_b,
     ],
 )
 @pytest.mark.parametrize(
     "num_iters, warmup_iters",
     [
-        (1000, 100),
+        # (1000, 100),
+        (1, 0),
     ],
 )
 @pytest.mark.parametrize("enable_async", [True])

@@ -6,6 +6,7 @@
 #include <tt-metalium/buffer_constants.hpp>
 #include <cstdint>
 #include <utility>
+#include "debug/dprint.h"
 
 using address_t = uint32_t;
 using tt::tt_metal::BufferType;
@@ -61,4 +62,6 @@ void kernel_main() {
         shard_tile_id = 0;
         core_id++;
     }
+
+    DPRINT << "DONE LINK READING" << ENDL();
 }

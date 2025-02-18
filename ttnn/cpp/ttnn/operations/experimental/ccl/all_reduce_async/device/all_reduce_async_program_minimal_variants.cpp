@@ -116,6 +116,7 @@ operation::ProgramWithCallbacks all_reduce_async_minimal_multi_core_with_workers
 
     // L1 Scratch CB Creation
     const size_t packet_size_bytes = local_fabric_handle->get_edm_buffer_size_bytes();
+    std::cout << "packet_size_bytes: " << packet_size_bytes << std::endl;
     uint32_t l1_scratch_cb_page_size_bytes = op_config.get_page_size();
     uint32_t num_pages_per_packet = packet_size_bytes / l1_scratch_cb_page_size_bytes;
     uint32_t cb_base_num_pages = std::lcm(input_tensor_shard_num_pages, output_tensor_shard_num_pages);
@@ -139,7 +140,8 @@ operation::ProgramWithCallbacks all_reduce_async_minimal_multi_core_with_workers
         CreateCircularBuffer(program, sender_worker_core_range, cb_reserved_packet_header_config);
 
     // Reduction kernel stuff
-    auto all_cores = output_tensor_cores.merge(sender_worker_core_range);
+    // auto all_cores = output_tensor_cores.merge(sender_worker_core_range);
+    const auto all_cores = device->worker_cores(HalProgrammableCoreType::TENSIX, device->get_sub_device_ids().at(0));
     auto input_cores_vec = corerange_to_cores(input_tensor_cores, std::nullopt, true);
     auto output_cores_vec = corerange_to_cores(output_tensor_cores, std::nullopt, true);
 
@@ -424,9 +426,6 @@ operation::ProgramWithCallbacks all_reduce_async_minimal_multi_core_with_workers
         };
         tt::tt_metal::SetRuntimeArgs(
             program, reduction_reader_kernel_id, output_corerangeset_per_link[link], reduction_reader_rt_args);
-
-        input_first_core_tile_start_offset =
-            (worker_num_tiles_to_read % input_tensor_shard_num_pages) + input_first_core_tile_start_offset;
     }
 
     auto override_runtime_arguments_callback =
