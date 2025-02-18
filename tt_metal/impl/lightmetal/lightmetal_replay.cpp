@@ -284,8 +284,8 @@ void LightMetalReplay::execute(const tt::tt_metal::flatbuffer::Command* command)
             execute(command->cmd_as_FinishCommand());
             break;
         }
-        case ::tt::tt_metal::flatbuffer::CommandType::CreateProgramCommand: {
-            execute(command->cmd_as_CreateProgramCommand());
+        case ::tt::tt_metal::flatbuffer::CommandType::ProgramConstructorCommand: {
+            execute(command->cmd_as_ProgramConstructorCommand());
             break;
         }
         case ::tt::tt_metal::flatbuffer::CommandType::EnqueueProgramCommand: {
@@ -453,10 +453,9 @@ void LightMetalReplay::execute(const tt::tt_metal::flatbuffer::FinishCommand* cm
     Finish(cq, sub_device_ids);
 }
 
-void LightMetalReplay::execute(const tt::tt_metal::flatbuffer::CreateProgramCommand* cmd) {
-    log_debug(tt::LogMetalTrace, "LightMetalReplay(CreateProgram) global_id: {} ", cmd->global_id());
-    auto program = CreateProgram();
-    add_program_to_map(cmd->global_id(), std::make_shared<Program>(std::move(program)));
+void LightMetalReplay::execute(const tt::tt_metal::flatbuffer::ProgramConstructorCommand* cmd) {
+    log_debug(tt::LogMetalTrace, "LightMetalReplay(ProgramConstructor) global_id: {} ", cmd->global_id());
+    add_program_to_map(cmd->global_id(), std::make_shared<Program>());
 }
 
 void LightMetalReplay::execute(const tt::tt_metal::flatbuffer::EnqueueProgramCommand* cmd) {

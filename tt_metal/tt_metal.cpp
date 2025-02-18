@@ -940,10 +940,7 @@ bool CloseDevice(IDevice* device) {
 
 Program CreateProgram() {
     PUBLIC_API_ENTRY();
-    LIGHT_METAL_TRACE_FUNCTION_ENTRY();
-    auto program = Program();
-    LIGHT_METAL_TRACE_FUNCTION_CALL(CaptureCreateProgram, program);
-    return program;
+    return Program();
 }
 
 KernelHandle CreateDataMovementKernel(

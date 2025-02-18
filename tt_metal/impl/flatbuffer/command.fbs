@@ -56,7 +56,7 @@ table FinishCommand {
   sub_device_ids: [ubyte];    // array of uint8 values representing SubDeviceId::Id
 }
 
-table CreateProgramCommand {
+table ProgramConstructorCommand {
   global_id: uint32;
 }
 
@@ -118,7 +118,7 @@ union CommandType {
   EnqueueWriteBufferCommand,
   EnqueueReadBufferCommand,
   FinishCommand,
-  CreateProgramCommand,
+  ProgramConstructorCommand,
   EnqueueProgramCommand,
   CreateKernelCommand,
   SetRuntimeArgsUint32Command,

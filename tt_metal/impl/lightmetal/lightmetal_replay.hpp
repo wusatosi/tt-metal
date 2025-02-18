@@ -29,7 +29,7 @@ struct DeallocateBufferCommand;
 struct EnqueueWriteBufferCommand;
 struct EnqueueReadBufferCommand;
 struct FinishCommand;
-struct CreateProgramCommand;
+struct ProgramConstructorCommand;
 struct EnqueueProgramCommand;
 struct CreateKernelCommand;
 struct SetRuntimeArgsUint32Command;
@@ -73,7 +73,7 @@ private:
     void execute(const tt::tt_metal::flatbuffer::EnqueueWriteBufferCommand* command);
     void execute(const tt::tt_metal::flatbuffer::EnqueueReadBufferCommand* command);
     void execute(const tt::tt_metal::flatbuffer::FinishCommand* command);
-    void execute(const tt::tt_metal::flatbuffer::CreateProgramCommand* command);
+    void execute(const tt::tt_metal::flatbuffer::ProgramConstructorCommand* command);
     void execute(const tt::tt_metal::flatbuffer::EnqueueProgramCommand* command);
     void execute(const tt::tt_metal::flatbuffer::CreateKernelCommand* command);
     void execute(const tt::tt_metal::flatbuffer::SetRuntimeArgsUint32Command* command);

@@ -224,8 +224,8 @@ void CaptureCreateProgram(Program& program) {
     uint32_t program_global_id = ctx.add_to_map(&program);
     log_debug(tt::LogMetalTrace, "{}: program_global_id: {}", __FUNCTION__, program_global_id);
 
-    auto cmd = tt::tt_metal::flatbuffer::CreateCreateProgramCommand(ctx.get_builder(), program_global_id);
-    CaptureCommand(tt::tt_metal::flatbuffer::CommandType::CreateProgramCommand, cmd.Union());
+    auto cmd = tt::tt_metal::flatbuffer::CreateProgramConstructorCommand(ctx.get_builder(), program_global_id);
+    CaptureCommand(tt::tt_metal::flatbuffer::CommandType::ProgramConstructorCommand, cmd.Union());
 }
 
 void CaptureEnqueueProgram(CommandQueue& cq, Program& program, bool blocking) {
