@@ -261,6 +261,7 @@ class resnet50Bottleneck:
         logger.debug(
             f"==== Running {batch_size}, {input_height}, {input_width}, {self.conv1_input_channels}, {self.conv1_output_channels}"
         )
+        logger.debug(f"==== {x.layout}")
 
         ds_input_height = input_height
         ds_input_width = input_width
@@ -539,6 +540,10 @@ class resnet50Bottleneck:
 
         assert ds_out is not None, "ds_out is None"
 
+        logger.debug(f"{ttnn.get_memory_config(out)}")
+        logger.debug(f"{(out.layout)}")
+        logger.debug(f"{(ds_out.layout)}")
+
         assert ttnn.get_memory_config(out) == ttnn.get_memory_config(
             ds_out
         ), f"{ttnn.get_memory_config(out)} != {ttnn.get_memory_config(ds_out)}"
@@ -802,7 +807,13 @@ class resnet50:
         return layers
 
     def __call__(self, input_tensor, device, ops_parallel_config) -> ttnn.Tensor:
-        return self.run(
+        # return self.run(
+        #     input_tensor,
+        #     device,
+        #     ops_parallel_config,
+        #     {} if not ops_parallel_config else self.conv_op_cache,
+        # )
+        return self.run_l2m2_dummy(
             input_tensor,
             device,
             ops_parallel_config,
@@ -1403,6 +1414,48 @@ class resnet50:
                 x.shape[2] // self.batch_size,
                 x.shape[3],
             ),
+        )
+
+        return x
+
+    def run_l2m2_dummy(self, input_tensor, device, ops_parallel_config, conv_op_cache={}) -> ttnn.Tensor:
+        # layer2_module2_input_shape = ttnn.Shape((1, 1, self.batch_size * 28 * 28, 512))
+        # if is_blackhole():
+        #     ## 98
+        #     core_range_set = ttnn.CoreRangeSet(
+        #         {
+        #             ttnn.CoreRange(
+        #                 ttnn.CoreCoord(0, 0),
+        #                 ttnn.CoreCoord(12, 6),
+        #             ),
+        #             ttnn.CoreRange(
+        #                 ttnn.CoreCoord(0, 7),
+        #                 ttnn.CoreCoord(6, 7),
+        #             ),
+        #         }
+        #     )
+        #     mem_config = ttnn.create_sharded_memory_config_(
+        #         layer2_module2_input_shape,
+        #         core_range_set,
+        #         ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+        #         ttnn.ShardOrientation.ROW_MAJOR,
+        #         tile_layout=True,
+        #     )
+        #     x = ttnn.to_memory_config(input_tensor, mem_config)
+
+        logger.debug(f"==== Running layer 2 module 2")
+        x, x_height, x_width = self.layer2_module2(
+            input_tensor,
+            device,
+            self.batch_size,
+            28,
+            28,
+            conv_op_cache,
+            transpose_shards=self.transpose_shards,
+            enable_act_double_buffer=True,
+            enable_split_reader=False,
+            enable_subblock_padding=False,
+            layer_module="layer2_module2_dummy",
         )
 
         return x
