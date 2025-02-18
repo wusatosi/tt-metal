@@ -233,9 +233,6 @@ def mesh_device(request, silicon_arch_name, silicon_arch_wormhole_b0, device_par
     for device in mesh_device.get_devices():
         ttnn.DumpDeviceProfiler(device)
 
-    ttnn.close_mesh_device(mesh_device)
-    del mesh_device
-
 
 @pytest.fixture(scope="function")
 def pcie_mesh_device(request, silicon_arch_name, silicon_arch_wormhole_b0, device_params):
