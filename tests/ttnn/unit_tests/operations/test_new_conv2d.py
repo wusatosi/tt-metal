@@ -40,7 +40,6 @@ def randomize_torch_tensor(torch_tensor_map, tensor_shape):
 
 def run_conv(
     device,
-    torch_tensor_map,
     math_fidelity,
     activations_dtype,
     weights_dtype,
@@ -55,9 +54,13 @@ def run_conv(
     stride_w,
     pad_h,
     pad_w,
+    use_1d_systolic_array,
     config_override,
     dilation=1,
     use_shallow_conv_variant=False,
+    transpose_mcast=True,
+    enable_auto_formatting=False,
+    padded_input_channels=None,
     fp32_accum=False,
     packer_l1_acc=False,
     output_layout=ttnn.TILE_LAYOUT,
@@ -83,15 +86,16 @@ def run_conv(
         total_batch_size = batch_size
 
     torch.manual_seed(0)
-    conv_input_shape = (total_batch_size, input_channels, input_height, input_width)
-    conv_weight_shape = (output_channels, input_channels // groups, filter_height, filter_width)
-    conv_bias_shape = (1, 1, 1, output_channels)
-    torch_input_tensor_nchw = randomize_torch_tensor(torch_tensor_map, conv_input_shape)
+    conv_input_shape = [total_batch_size, input_channels, input_height, input_width]
+    conv_weight_shape = [output_channels, input_channels // groups, filter_height, filter_width]
+    conv_bias_shape = [1, 1, 1, output_channels]
+    torch_input_tensor_nchw = torch.randn(conv_input_shape, dtype=torch.bfloat16).float()
+    print("Conv2d input shape", torch_input_tensor_nchw.shape)
+
     torch_input_tensor = torch.permute(torch_input_tensor_nchw, (0, 2, 3, 1))
+    torch_weight_tensor = torch.randn(conv_weight_shape, dtype=torch.bfloat16).float()
 
-    torch_weight_tensor = randomize_torch_tensor(torch_tensor_map, conv_weight_shape)
-    torch_bias_tensor = randomize_torch_tensor(torch_tensor_map, conv_bias_shape) if has_bias else None
-
+    torch_bias_tensor = torch.randn(conv_bias_shape, dtype=torch.bfloat16).float() if has_bias else None
     torch_out_golden_tensor = torch.nn.functional.conv2d(
         torch_input_tensor_nchw,
         torch_weight_tensor,
@@ -101,6 +105,12 @@ def run_conv(
         dilation=(dilation, dilation),
         groups=groups,
     )
+    output_shape_nhwc = [
+        torch_out_golden_tensor.shape[0],
+        torch_out_golden_tensor.shape[2],
+        torch_out_golden_tensor.shape[3],
+        torch_out_golden_tensor.shape[1],
+    ]
 
     reader_patterns_cache = {}
 
@@ -117,17 +127,19 @@ def run_conv(
             mesh_mapper=weight_mesh_mapper,
         )
 
-    tt_input_tensor = ttnn.from_torch(
-        torch_input_tensor,
-        activations_dtype if activations_dtype == ttnn.float32 else ttnn.bfloat16,
-        mesh_mapper=input_mesh_mapper,
-    )
+    tt_input_tensor = ttnn.from_torch(torch_input_tensor, ttnn.bfloat16, mesh_mapper=input_mesh_mapper)
 
+    if shard_layout is None and not auto_shard:
+        shard_layout = (
+            ttnn.TensorMemoryLayout.HEIGHT_SHARDED if use_1d_systolic_array else ttnn.TensorMemoryLayout.BLOCK_SHARDED
+        )
     conv_config = ttnn.Conv2dConfig(
         dtype=activations_dtype,
         weights_dtype=weights_dtype,
-        shard_layout=shard_layout if not auto_shard else None,
-        input_channels_alignment=8 if use_shallow_conv_variant and not auto_shard else 32,
+        shard_layout=shard_layout,
+        input_channels_alignment=(
+            16 if use_shallow_conv_variant or (input_channels == 16 and input_height == 115) else 32
+        ),
         deallocate_activation=deallocate_activation,
         enable_act_double_buffer=False,
         enable_split_reader=False,
@@ -151,8 +163,8 @@ def run_conv(
             conv_config.core_grid = ttnn.CoreRangeSet({ttnn.CoreRange((0, 0), (11, 7)), ttnn.CoreRange((0, 8), (1, 8))})
             conv_config.override_sharding_config = True
             print("Setting num_cores_nhw to 98")
-
-    [tt_output_tensor_on_device, [out_height, out_width]] = ttnn.conv2d(
+    print("tt_input_tensor", tt_input_tensor.memory_config())
+    [tt_output_tensor_on_device, [out_height, out_width], [weights_device, bias_device]] = ttnn.conv2d(
         input_tensor=tt_input_tensor,
         weight_tensor=tt_weight_tensor,
         in_channels=input_channels,
@@ -171,10 +183,11 @@ def run_conv(
         conv_op_cache=reader_patterns_cache,
         debug=debug,
         groups=groups,
-        memory_config=memory_config,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+        return_weights_and_bias=True,
         return_output_dim=True,
     )
-
+    print("tt_output_tensor_on_device", tt_output_tensor_on_device.memory_config())
     tt_output_tensor = ttnn.from_device(tt_output_tensor_on_device)
     torch_output_tensor = ttnn.to_torch(tt_output_tensor, mesh_composer=output_mesh_composer)
 
@@ -2917,3 +2930,187 @@ def test_dram_input_mm_conv(device, tiled_input, input_on_device):
     passing, pcc_msg = check_with_pcc_without_tensor_printout(torch_output_tensor, torch_out_golden_tensor, pcc=0.99)
     logger.info(f"PCC = {pcc_msg}. Threshold = 0.99")
     assert passing
+
+
+@skip_for_grayskull()
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
+@pytest.mark.parametrize(
+    "batch_size, input_channels, output_channels, input_height, input_width, filter_height, filter_width, stride_h, stride_w, pad_h, pad_w, groups, use_1d_systolic_array, config_override, use_shallow_conv_variant",
+    (
+        (1, 3, 80, 640, 640, 3, 3, 2, 2, 1, 1, 1, True, None, False),
+        (1, 80, 160, 320, 320, 3, 3, 2, 2, 1, 1, 1, True, None, False),
+        (1, 160, 160, 160, 160, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 80, 80, 160, 160, 3, 3, 1, 1, 1, 1, 1, True, None, False),
+        (1, 400, 160, 160, 160, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 160, 320, 160, 160, 3, 3, 2, 2, 1, 1, 1, True, None, False),
+        (1, 320, 320, 80, 80, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 160, 160, 80, 80, 3, 3, 1, 1, 1, 1, 1, True, None, False),
+        (1, 1280, 320, 80, 80, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 320, 640, 80, 80, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 640, 640, 80, 80, 3, 3, 2, 2, 1, 1, 640, False, None, False),
+        (1, 640, 640, 40, 40, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 320, 320, 40, 40, 3, 3, 1, 1, 1, 1, 320, True, None, False),
+        (1, 320, 640, 40, 40, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 640, 640, 40, 40, 3, 3, 1, 1, 1, 1, 640, False, None, False),
+        (1, 640, 320, 40, 40, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 640, 640, 40, 40, 3, 3, 2, 2, 1, 1, 640, False, None, False),
+        (1, 640, 640, 20, 20, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 320, 320, 20, 20, 3, 3, 1, 1, 1, 1, 320, True, None, False),
+        (1, 320, 640, 20, 20, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 640, 640, 20, 20, 3, 3, 1, 1, 1, 1, 640, False, None, False),
+        (1, 640, 320, 20, 20, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 1600, 640, 20, 20, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 1280, 640, 20, 20, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 320, 320, 20, 20, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 1280, 640, 40, 40, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 1600, 640, 40, 40, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 960, 320, 80, 80, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 800, 320, 80, 80, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 320, 320, 80, 80, 3, 3, 2, 2, 1, 1, 1, True, None, False),
+        (1, 960, 640, 40, 40, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 320, 80, 80, 80, 3, 3, 1, 1, 1, 1, 1, True, None, False),
+        (1, 80, 80, 80, 80, 3, 3, 1, 1, 1, 1, 1, True, None, False),
+        (1, 80, 64, 80, 80, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 320, 320, 80, 80, 3, 3, 1, 1, 1, 1, 320, True, None, False),
+        (1, 320, 80, 80, 80, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 640, 80, 40, 40, 3, 3, 1, 1, 1, 1, 1, True, None, False),
+        (1, 80, 80, 40, 40, 3, 3, 1, 1, 1, 1, 1, True, None, False),
+        (1, 80, 64, 40, 40, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 320, 320, 40, 40, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 320, 80, 40, 40, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 640, 80, 20, 20, 3, 3, 1, 1, 1, 1, 1, True, None, False),
+        (1, 80, 80, 20, 20, 3, 3, 1, 1, 1, 1, 1, True, None, False),
+        (1, 80, 64, 20, 20, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 320, 80, 20, 20, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        (1, 16, 1, 4, 8400, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+    ),
+)
+@pytest.mark.parametrize(
+    "weights_dtype",
+    [ttnn.bfloat8_b],
+)
+@pytest.mark.parametrize(
+    "activations_dtype",
+    [ttnn.bfloat8_b],
+)
+@pytest.mark.parametrize("memory_config", [ttnn.L1_MEMORY_CONFIG])
+@pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
+@pytest.mark.parametrize("output_layout", [ttnn.TILE_LAYOUT])
+def test_conv_yolov10x(
+    device,
+    use_program_cache,
+    math_fidelity,
+    activations_dtype,
+    weights_dtype,
+    batch_size,
+    output_channels,
+    input_channels,
+    input_height,
+    input_width,
+    filter_height,
+    filter_width,
+    stride_h,
+    stride_w,
+    pad_h,
+    pad_w,
+    use_1d_systolic_array,
+    config_override,
+    use_shallow_conv_variant,
+    groups,
+    output_layout,
+    memory_config,
+    auto_shard,
+):
+    run_conv(
+        device,
+        math_fidelity,
+        activations_dtype,
+        weights_dtype,
+        batch_size,
+        output_channels,
+        input_channels,
+        input_height,
+        input_width,
+        filter_height,
+        filter_width,
+        stride_h,
+        stride_w,
+        pad_h,
+        pad_w,
+        use_1d_systolic_array,
+        config_override,
+        use_shallow_conv_variant=use_shallow_conv_variant,
+        groups=groups,
+        output_layout=output_layout,
+        memory_config=None,
+        auto_shard=auto_shard,
+    )
+
+
+@skip_for_grayskull()
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
+@pytest.mark.parametrize(
+    "batch_size, input_channels, output_channels, input_height, input_width, filter_height, filter_width, stride_h, stride_w, pad_h, pad_w, groups, use_1d_systolic_array, config_override, use_shallow_conv_variant",
+    ((1, 2560, 640, 40, 40, 1, 1, 1, 1, 0, 0, 1, True, None, False),),
+)
+@pytest.mark.parametrize(
+    "weights_dtype",
+    [ttnn.bfloat8_b],
+)
+@pytest.mark.parametrize(
+    "activations_dtype",
+    [ttnn.bfloat8_b],
+)
+@pytest.mark.parametrize("memory_config", [ttnn.L1_MEMORY_CONFIG])
+@pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
+@pytest.mark.parametrize("output_layout", [ttnn.TILE_LAYOUT])
+@pytest.mark.parametrize("auto_shard", [True], ids=["auto_shard"])
+def test_conv_yolov10x_auto_shard(
+    device,
+    use_program_cache,
+    math_fidelity,
+    activations_dtype,
+    weights_dtype,
+    batch_size,
+    output_channels,
+    input_channels,
+    input_height,
+    input_width,
+    filter_height,
+    filter_width,
+    stride_h,
+    stride_w,
+    pad_h,
+    pad_w,
+    use_1d_systolic_array,
+    config_override,
+    use_shallow_conv_variant,
+    groups,
+    output_layout,
+    memory_config,
+    auto_shard,
+):
+    run_conv(
+        device,
+        math_fidelity,
+        activations_dtype,
+        weights_dtype,
+        batch_size,
+        output_channels,
+        input_channels,
+        input_height,
+        input_width,
+        filter_height,
+        filter_width,
+        stride_h,
+        stride_w,
+        pad_h,
+        pad_w,
+        use_1d_systolic_array,
+        config_override,
+        use_shallow_conv_variant=use_shallow_conv_variant,
+        groups=groups,
+        output_layout=output_layout,
+        memory_config=None,
+        auto_shard=auto_shard,
+    )

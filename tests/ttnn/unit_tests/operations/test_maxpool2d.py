@@ -866,21 +866,21 @@ def test_pool_core_nondivis(
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
 @pytest.mark.parametrize(
     "act_shape",
-    (([1, 256, 54, 54],)),
+    (([1, 320, 20, 20],)),
 )
 @pytest.mark.parametrize(
     "kernel_size",
-    ((3, 3),),
+    ((5, 5),),
 )
 @pytest.mark.parametrize(
     "padding",
-    ((0, 0),),
+    ((2, 2),),
 )
-@pytest.mark.parametrize("stride", ((2, 2),))
+@pytest.mark.parametrize("stride", ((1, 1),))
 @pytest.mark.parametrize("dilation", ((1, 1),))
 @pytest.mark.parametrize("dtype", [ttnn.bfloat16])
-@pytest.mark.parametrize("ceil_mode", [False, True])
-def test_run_max_pool_squeeze_net_model(
+@pytest.mark.parametrize("ceil_mode", [False])
+def test_run_yolo10x_max_pool(
     act_shape,
     kernel_size,
     padding,

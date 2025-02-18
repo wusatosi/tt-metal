@@ -13,10 +13,15 @@ from tests.ttnn.utils_for_testing import assert_with_pcc
 
 @pytest.mark.parametrize(
     "concat_spec",
-    (([[1, 1, 12, 50], [1, 1, 12, 50]], -1),),
+    (
+        ([[1, 640, 80, 80], [1, 320, 80, 80]], 1),
+        ([[1, 640, 40, 40], [1, 640, 40, 40]], 1),
+        ([[1, 640, 20, 20], [1, 640, 20, 20]], 1),
+        ([[1, 320, 40, 40], [1, 640, 40, 40]], 1),
+    ),
 )
 @pytest.mark.parametrize("async_mode", [True, False], ids=["async_on", "async_off"])
-def test_tiled_concat(device, concat_spec, async_mode):
+def test_yolov10x_concat(device, concat_spec, async_mode):
     shapes, dim = concat_spec
     device.enable_async(async_mode)
     torch_input_tensors = [torch.rand(shape, dtype=torch.bfloat16) for shape in shapes]

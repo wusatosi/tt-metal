@@ -94,6 +94,7 @@ def run_elt_silu_relu(
 
     logger.debug(f"shard_memory_layout={in_sharded_mem_config}")
     input_tensor = ttnn.to_memory_config(input_tensor, memory_config=in_sharded_mem_config)
+    print("input_tensoinput_tensorr", input_tensor.memory_config())
     ##op computation
     if op == "silu":
         torch_silu = torch.nn.SiLU()
@@ -215,6 +216,51 @@ def test_wh_silu_relu(
 )
 @pytest.mark.parametrize("op", ["silu", "relu"])
 def test_silu_llm(
+    device,
+    batch_size,
+    input_channels,
+    input_height,
+    input_width,
+    grid_size,
+    ncores,
+    shard_strategy,
+    shard_orientation,
+    op,
+):
+    run_elt_silu_relu(
+        device,
+        batch_size,
+        input_channels,
+        input_height,
+        input_width,
+        grid_size,
+        ncores,
+        shard_strategy,
+        shard_orientation,
+        op,
+    )
+
+
+@pytest.mark.parametrize(
+    "batch_size, input_channels, input_height, input_width, ncores, grid_size, shard_strategy, shard_orientation",
+    (
+        (1, 80, 320, 320, 64, (14, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),
+        (1, 160, 160, 160, 64, (14, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),
+        (1, 80, 160, 160, 64, (14, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),
+        (1, 320, 80, 80, 64, (14, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),
+        (1, 160, 80, 80, 64, (14, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),
+        (1, 640, 80, 80, 64, (14, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),
+        (1, 640, 80, 40, 64, (14, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),
+        (1, 320, 40, 40, 64, (14, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),
+        (1, 640, 20, 20, 64, (14, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),
+        (1, 320, 20, 20, 64, (14, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),
+        (1, 80, 80, 80, 64, (14, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),
+        (1, 80, 40, 40, 64, (14, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),
+        (1, 80, 20, 20, 64, (14, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),
+    ),
+)
+@pytest.mark.parametrize("op", ["silu"])
+def test_silu_yolov10x(
     device,
     batch_size,
     input_channels,
