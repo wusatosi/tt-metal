@@ -139,12 +139,12 @@ TEST_F(LightMetalBasicTest, CreateBufferEnqueueWriteRead) {
     std::vector<std::shared_ptr<Buffer>> buffers_vec;
 
     for (uint32_t loop_idx = 0; loop_idx < num_loops; loop_idx++) {
-        log_debug(tt::LogTest, "Running loop: {}", loop_idx);
+        log_info(tt::LogTest, "Running loop: {}", loop_idx);
 
         // Switch to use top level CreateBuffer API that has trace support.
         uint32_t size_bytes = 64;  // 16 elements.
         auto buffer = CreateBuffer(InterleavedBufferConfig{device_, size_bytes, size_bytes, BufferType::DRAM});
-        log_debug(
+        log_info(
             tt::LogTest,
             "created buffer loop: {} with size: {} bytes addr: 0x{:x}",
             loop_idx,
@@ -161,12 +161,13 @@ TEST_F(LightMetalBasicTest, CreateBufferEnqueueWriteRead) {
         for (uint32_t i = 0; i < input_data.size(); i++) {
             input_data[i] = start_val + i;
         }
-        log_debug(tt::LogTest, "initialize input_data with {} elements start_val: {}", input_data.size(), start_val);
+        log_info(tt::LogTest, "initialize input_data with {} elements start_val: {}", input_data.size(), start_val);
 
         vector<uint32_t> readback_data;
         readback_data.resize(input_data.size());  // This is required.
 
         // Write data to buffer, then read outputs and verify against expected.
+        log_info(tt::LogTest, "KCM Before EnqueueWriteBuffer");
         EnqueueWriteBuffer(command_queue, *buffer, input_data.data(), /*blocking=*/true);
         // This will verify that readback matches between capture + replay
         LightMetalCompareToCapture(command_queue, *buffer, readback_data.data());
@@ -175,7 +176,7 @@ TEST_F(LightMetalBasicTest, CreateBufferEnqueueWriteRead) {
 
         // For dev/debug go ahead and print the results. Had a replay bug, was seeing wrong data.
         for (size_t i = 0; i < readback_data.size(); i++) {
-            log_debug(tt::LogMetalTrace, "loop: {} rd_data i: {:3d} => data: {}", loop_idx, i, readback_data[i]);
+            log_info(tt::LogMetalTrace, "loop: {} rd_data i: {:3d} => data: {}", loop_idx, i, readback_data[i]);
         }
     }
 
@@ -195,7 +196,7 @@ void SingleRISCDataMovement_test(tt::tt_metal::IDevice* device, bool rt_arg_per_
     auto input = CreateBuffer(InterleavedBufferConfig{device, size_bytes, size_bytes, BufferType::DRAM});
     auto output = CreateBuffer(InterleavedBufferConfig{device, size_bytes, size_bytes, BufferType::DRAM});
     auto l1_buffer = CreateBuffer(InterleavedBufferConfig{device, size_bytes, size_bytes, BufferType::L1});
-    log_debug(
+    log_info(
         tt::LogTest,
         "Created 3 Buffers. input: 0x{:x} output: 0x{:x} l1_buffer: 0x{:x}",
         input->address(),
@@ -223,7 +224,7 @@ void SingleRISCDataMovement_test(tt::tt_metal::IDevice* device, bool rt_arg_per_
 
     // For dev/debug go ahead and print the results
     for (size_t i = 0; i < eager_output_data.size(); i++) {
-        log_debug(tt::LogMetalTrace, "i: {:3d} input: {} output: {}", i, input_data[i], eager_output_data[i]);
+        log_info(tt::LogMetalTrace, "i: {:3d} input: {} output: {}", i, input_data[i], eager_output_data[i]);
     }
 
     Finish(command_queue);
