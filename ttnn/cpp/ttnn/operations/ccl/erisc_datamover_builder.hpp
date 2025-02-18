@@ -345,7 +345,7 @@ class EdmLineFabricOpInterface {
         return -1;
     }
 
-    size_t get_edm_buffer_size_bytes() const { return buffer_size_bytes; }
+    size_t get_edm_buffer_size_bytes() const { return 4096 /* buffer_size_bytes */; }
 
     void teardown_from_host(tt::fabric::TerminationSignal termination_signal = tt::fabric::TerminationSignal::GRACEFULLY_TERMINATE) const;
 

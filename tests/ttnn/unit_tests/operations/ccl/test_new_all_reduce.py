@@ -257,6 +257,7 @@ def run_all_reduce_impl(
 
     finally:
         if enable_persistent_fabric and teardown_persistent_fabric:
+            logger.info("Starting teardown")
             mesh_device.reset_sub_device_stall_group()
             t1 = time()
             teardown_fabric_interface(mesh_device)
