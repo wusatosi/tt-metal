@@ -104,6 +104,7 @@ void kernel_main() {
     while (tiles_read < num_tiles_to_read) {
         uint32_t num_tiles_to_read_this_core = std::min(num_tiles_per_core - shard_tile_id, packet_size_in_pages);
         num_tiles_to_read_this_core = std::min(num_tiles_to_read - tiles_read, num_tiles_to_read_this_core);
+        num_tiles_to_read_this_core = 1;
         cb_wait_front(cb0_id, num_tiles_to_read_this_core);
         size_t l1_read_addr = get_read_ptr(cb0_id);
 
@@ -183,6 +184,12 @@ void kernel_main() {
         false,  // TODO: Why?
         false,  // TODO: Why?
         0);
+
+    // for (uint32_t i = 0; i < num_cores; i++) {
+    //     noc_semaphore_inc(get_noc_addr(core_noc_x[i], core_noc_y[i], reduction_semaphore_send_addr), 1);
+    // }
+
+    // noc_semaphore_wait(reduction_semaphore_send_addr_ptr, num_cores + 1);
 
     // DPRINT << "wait done for output semphore \n";
 

@@ -237,7 +237,9 @@ operation::ProgramWithCallbacks all_reduce_async_minimal_multi_core_with_workers
     auto reduction_reader_kernel_config = tt::tt_metal::ReaderDataMovementConfig{};
     reduction_reader_kernel_config.compile_args = {
         reduction_cb_index,  // reduction_cb_index
+        out_cb_index,        // out_cb_index
         reduction_CB_tiles,  // total_num_reduction_tiles
+        ring_size,           // ring_size
     };
     auto reduction_reader_kernel_id = tt::tt_metal::CreateKernel(
         program,
@@ -421,6 +423,8 @@ operation::ProgramWithCallbacks all_reduce_async_minimal_multi_core_with_workers
 
         std::vector<uint32_t> reduction_reader_rt_args = {
             reduction_semaphore_ids[link],  // reduction_semaphore_id
+            drain_sync_core.x,              // link_worker_x
+            drain_sync_core.y,              // link_worker_y
         };
         tt::tt_metal::SetRuntimeArgs(
             program, reduction_reader_kernel_id, output_corerangeset_per_link[link], reduction_reader_rt_args);
