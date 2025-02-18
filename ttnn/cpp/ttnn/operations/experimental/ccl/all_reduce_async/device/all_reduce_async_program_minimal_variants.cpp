@@ -139,7 +139,8 @@ operation::ProgramWithCallbacks all_reduce_async_minimal_multi_core_with_workers
         CreateCircularBuffer(program, sender_worker_core_range, cb_reserved_packet_header_config);
 
     // Reduction kernel stuff
-    auto all_cores = output_tensor_cores.merge(sender_worker_core_range);
+    // auto all_cores = output_tensor_cores.merge(sender_worker_core_range);
+    const auto all_cores = device->worker_cores(HalProgrammableCoreType::TENSIX, device->get_sub_device_ids().at(0));
     auto input_cores_vec = corerange_to_cores(input_tensor_cores, std::nullopt, true);
     auto output_cores_vec = corerange_to_cores(output_tensor_cores, std::nullopt, true);
 

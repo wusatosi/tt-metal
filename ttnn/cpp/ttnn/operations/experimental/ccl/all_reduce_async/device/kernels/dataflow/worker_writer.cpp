@@ -113,8 +113,16 @@ void kernel_main() {
 
         // Offset the writer chip offset
         // noc0_dest_noc_addr +=  writer_chip_offset;
+        DPRINT << "core_noc_x[core_id]: " << (uint32_t)core_noc_x[core_id] << "\n";
+        DPRINT << "core_noc_y[core_id]: " << (uint32_t)core_noc_y[core_id] << "\n";
+        DPRINT << "noc0_dest_noc_addr_base: " << noc0_dest_noc_addr << "\n";
 
         noc0_dest_noc_addr += shard_tile_id * tensor0_page_size;
+
+        DPRINT << "core_id: " << core_id << "\n";
+        DPRINT << "num_tiles_to_read_this_core: " << num_tiles_to_read_this_core << "\n";
+        DPRINT << "noc0_dest_noc_addr: " << noc0_dest_noc_addr << "\n";
+        DPRINT << "shard_tile_id: " << shard_tile_id << "\n";
 
         write_and_advance_local_read_address_for_fabric_write(
             noc0_dest_noc_addr,
@@ -123,7 +131,8 @@ void kernel_main() {
             fabric_connection,
             l1_read_addr,
             num_tiles_to_read_this_core * tensor0_page_size);
-        noc_async_writes_flushed();
+        noc_async_write_barrier();
+        // noc_async_writes_flushed();
 
         cb_pop_front(cb0_id, num_tiles_to_read_this_core);
         tiles_read += num_tiles_to_read_this_core;

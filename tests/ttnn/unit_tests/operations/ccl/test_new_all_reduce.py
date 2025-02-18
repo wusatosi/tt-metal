@@ -164,7 +164,7 @@ def run_all_reduce_impl(
                 for t in range(num_shapes):
                     if t == 1:
                         out = out[:, :, :, :2048]
-                        breakpoint()
+                        # breakpoint()
                     out = ttnn.reshard(out, tt_input_tensors[t].memory_config())
                     out = ttnn.experimental.all_reduce_async(
                         out,
@@ -255,7 +255,7 @@ def run_all_reduce_impl(
                 else:
                     eq, output = comp_pcc(tt_output_tensor, output_tensor_)
                 # assert eq, f"{i} FAILED: {output}"
-            breakpoint()
+            # breakpoint()
             logger.info(f"PCC output is: {output}")
 
         if validate_all:
@@ -298,7 +298,7 @@ def run_all_reduce_impl(
         # ([1, 1, 32, 1280], 1, 1, 24, 40),  # QKV all reduce
         # ([1, 1, 32, 3584], 1, 1, 24, 24),  # FF1 all reduce
         # ([1, 1, 32, 2048], 0, 1, 24, 16),  # FF2/DO all reduce
-        ([[1, 1, 32, 3840], [1, 1, 32, 2048]], [1, 1], [1, 1], [24, 24], [24, 16]),  # FF1 all reduce
+        ([[1, 1, 32, 3584], [1, 1, 32, 2048]], [1, 1], [1, 1], [24, 24], [24, 16]),  # FF1 all reduce
     ],
 )
 @pytest.mark.parametrize(

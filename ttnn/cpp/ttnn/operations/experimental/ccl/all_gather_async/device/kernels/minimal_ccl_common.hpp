@@ -40,7 +40,7 @@ FORCE_INLINE void write_and_advance_local_read_address_for_fabric_write(
             (uint32_t)pkt_hdr_backward, sizeof(tt::fabric::PacketHeader));
     }
 
-    noc_async_writes_flushed();
+    noc_async_write_barrier();
 
     l1_read_addr += payload_size_bytes;
 }
