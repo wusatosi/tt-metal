@@ -49,11 +49,6 @@ private:
         tt::stl::Span<const SubDeviceId> sub_device_ids,
         bool notify_host,
         const std::optional<LogicalDeviceRange>& device_range = std::nullopt);
-    void issue_trace_commands(
-        SystemMemoryManager& sysmem_manager,
-        uint32_t cmd_sequence_sizeB,
-        std::shared_ptr<MeshTraceDescriptor> descriptor,
-        std::shared_ptr<MeshBuffer> buffer);
     std::array<tt::tt_metal::WorkerConfigBufferMgr, DispatchSettings::DISPATCH_MESSAGE_ENTRIES> config_buffer_mgr_;
     std::array<uint32_t, DispatchSettings::DISPATCH_MESSAGE_ENTRIES> expected_num_workers_completed_;
     std::array<LaunchMessageRingBufferState, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>

@@ -7,6 +7,7 @@
 #include "host_api.hpp"
 #include "mesh_device.hpp"
 #include "mesh_buffer.hpp"
+#include "trace_buffer.hpp"
 
 namespace tt::tt_metal::distributed {
 // The LogicalDeviceRange concept is fundamentally identical to the CoreRange concept
@@ -87,25 +88,19 @@ struct MeshTraceData {
 };
 
 struct MeshTraceDescriptor {
-    struct Descriptor {
-        // The total number of workers (per logical device) that are functional for
-        // the entire trace
-        uint32_t num_completion_worker_cores = 0;
-        // Number of Workloads captured by the trace
-        uint32_t num_workloads = 0;
-    };
     // Mapping of sub_device_id to descriptor
-    std::unordered_map<SubDeviceId, Descriptor> descriptors;
+    std::unordered_map<SubDeviceId, TraceWorkerDescriptor> descriptors;
+    // Store the keys of the map in a vector after descriptor has finished being populated
+    // This is an optimization since we sometimes need to only pass the keys in a container
+    std::vector<SubDeviceId> sub_device_ids;
     // Trace data per logical Device in a Mesh.
     std::vector<MeshTraceData> ordered_trace_data;
-    std::vector<SubDeviceId> sub_device_ids;
     uint32_t total_trace_size = 0;
 };
 
 struct MeshTraceBuffer {
     // The trace descriptor associated with a MeshTrace
     std::shared_ptr<MeshTraceDescriptor> desc;
-
     // The MeshBuffer this trace will be serialized to, before being run on a
     // MeshDevice
     std::shared_ptr<MeshBuffer> mesh_buffer;

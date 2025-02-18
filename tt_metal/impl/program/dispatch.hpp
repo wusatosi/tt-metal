@@ -9,6 +9,7 @@
 #include <kernel.hpp>
 #include <program_impl.hpp>
 #include <worker_config_buffer.hpp>
+#include <trace_buffer.hpp>
 
 namespace tt {
 
@@ -21,6 +22,29 @@ struct ProgramDispatchMetadata {
     uint32_t sync_count;
     uint32_t stall_first;
     uint32_t stall_before_program;
+};
+
+struct TraceDispatchMetadata {
+    uint32_t cmd_sequence_sizeB;
+    std::unordered_map<SubDeviceId, TraceWorkerDescriptor>& trace_worker_descriptors;
+    std::vector<SubDeviceId>& sub_device_ids;
+    uint32_t trace_buffer_page_size;
+    uint32_t trace_buffer_num_pages;
+    uint32_t trace_buffer_address;
+
+    TraceDispatchMetadata(
+        uint32_t cmd_size,
+        std::unordered_map<SubDeviceId, TraceWorkerDescriptor>& descriptors,
+        std::vector<SubDeviceId>& sub_devices,
+        uint32_t buf_page_size,
+        uint32_t buf_num_pages,
+        uint32_t buf_address) :
+        cmd_sequence_sizeB(cmd_size),
+        trace_worker_descriptors(descriptors),
+        sub_device_ids(sub_devices),
+        trace_buffer_page_size(buf_page_size),
+        trace_buffer_num_pages(buf_num_pages),
+        trace_buffer_address(buf_address) {}
 };
 
 uint32_t configure_rta_offsets_for_kernel_groups(
@@ -163,6 +187,22 @@ void load_host_dispatch_state(
         worker_launch_message_buffer_state_reset,
     std::array<uint32_t, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>& expected_num_workers_completed_reset,
     std::array<WorkerConfigBufferMgr, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>& config_buffer_mgr_reset);
+
+void issue_trace_commands(
+    IDevice* device,
+    SystemMemoryManager& sysmem_manager,
+    TraceDispatchMetadata& dispatch_md,
+    uint8_t cq_id,
+    std::array<uint32_t, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>& expected_num_workers_completed,
+    CoreCoord dispatch_core);
+
+uint32_t compute_trace_cmd_size(uint32_t num_sub_devices);
+
+void update_worker_state_post_trace_execution(
+    std::unordered_map<SubDeviceId, TraceWorkerDescriptor>& trace_worker_descriptors,
+    SystemMemoryManager& manager,
+    std::array<WorkerConfigBufferMgr, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>& config_buffer_mgr,
+    std::array<uint32_t, DispatchSettings::DISPATCH_MESSAGE_ENTRIES>& expected_num_workers_completed);
 
 }  // namespace program_dispatch
 
