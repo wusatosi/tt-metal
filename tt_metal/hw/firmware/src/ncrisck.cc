@@ -29,6 +29,9 @@ uint32_t noc_nonposted_writes_acked[NUM_NOCS];
 uint32_t noc_nonposted_atomics_acked[NUM_NOCS];
 uint32_t noc_posted_writes_num_issued[NUM_NOCS];
 
+volatile tt_reg_ptr uint32_t* p_reg = reinterpret_cast<volatile tt_reg_ptr uint32_t*>(RISCV_DEBUG_REG_WALL_CLOCK_L);
+volatile tt_l1_ptr uint32_t* profiler_data_buffer =
+    reinterpret_cast<volatile tt_l1_ptr uint32_t*>(GET_MAILBOX_ADDRESS_DEV(profiler.buffer));
 void kernel_launch(uint32_t kernel_base_addr) {
 #if defined(DEBUG_NULL_KERNELS) && !defined(DISPATCH_KERNEL)
     wait_for_go_message();
@@ -51,7 +54,13 @@ void kernel_launch(uint32_t kernel_base_addr) {
 #endif
     wait_for_go_message();
     DeviceZoneScopedMainChildN("NCRISC-KERNEL");
+    profiler_data_buffer[4] = p_reg[0];
+    profiler_data_buffer[5] = p_reg[1];
+    profiler_data_buffer[5] = p_reg[1];
+    profiler_data_buffer[5] = p_reg[1];
     kernel_main();
+    profiler_data_buffer[6] = p_reg[0];
+    profiler_data_buffer[7] = p_reg[1];
     if constexpr (NOC_MODE == DM_DEDICATED_NOC) {
         WAYPOINT("NKFW");
         // Assert that no noc transactions are outstanding, to ensure that all reads and writes have landed and the NOC

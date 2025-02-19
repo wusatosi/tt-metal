@@ -37,10 +37,15 @@ volatile tt_reg_ptr uint * mailbox_base[4] = {
 };
 }
 
+volatile tt_reg_ptr uint32_t* p_reg = reinterpret_cast<volatile tt_reg_ptr uint32_t*>(RISCV_DEBUG_REG_WALL_CLOCK_L);
+volatile tt_l1_ptr uint32_t* profiler_data_buffer =
+    reinterpret_cast<volatile tt_l1_ptr uint32_t*>(GET_MAILBOX_ADDRESS_DEV(profiler.buffer));
 void kernel_launch(uint32_t kernel_base_addr) {
 #if defined(DEBUG_NULL_KERNELS) && !defined(DISPATCH_KERNEL)
     wait_for_go_message();
     DeviceZoneScopedMainChildN("TRISC-KERNEL");
+    profiler_data_buffer[0] = p_reg[0];
+    profiler_data_buffer[1] = p_reg[1];
 #ifdef KERNEL_RUN_TIME
     ckernel::wait(KERNEL_RUN_TIME);
 #endif
@@ -59,6 +64,16 @@ void kernel_launch(uint32_t kernel_base_addr) {
 #endif
     wait_for_go_message();
     DeviceZoneScopedMainChildN("TRISC-KERNEL");
+    profiler_data_buffer[0] = p_reg[0];
+    profiler_data_buffer[0] = p_reg[0];
+    profiler_data_buffer[0] = p_reg[0];
+    profiler_data_buffer[0] = p_reg[0];
+    // profiler_data_buffer[1] = p_reg[1];
     run_kernel();
+    // profiler_data_buffer[2] = p_reg[0];
+    profiler_data_buffer[3] = p_reg[1];
+    profiler_data_buffer[3] = p_reg[1];
+    profiler_data_buffer[3] = p_reg[1];
+    profiler_data_buffer[3] = p_reg[1];
 #endif
 }
