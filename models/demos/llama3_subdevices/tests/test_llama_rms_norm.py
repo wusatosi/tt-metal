@@ -122,6 +122,7 @@ def test_llama_rms_norm_inference(
             if mode == "decode"
             else ttnn.DRAM_MEMORY_CONFIG,
         )
+        tt_input_res = None
         mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
         tt_output, res = tt_model(tt_input, tt_input_res, mode=mode)
 

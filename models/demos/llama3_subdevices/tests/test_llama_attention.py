@@ -73,7 +73,7 @@ def test_llama_attention_inference(
 
     mesh_device.enable_async(True)
 
-    model_args = TtModelArgs(mesh_device, dummy_weights=True, max_batch_size=batch_size, max_seq_len=max_seq_len)
+    model_args = TtModelArgs(mesh_device, dummy_weights=False, max_batch_size=batch_size, max_seq_len=max_seq_len)
     model_args.n_layers = 1  # For the unit test, just run a sigle layer
 
     state_dict = model_args.load_state_dict()
@@ -90,7 +90,7 @@ def test_llama_attention_inference(
     seq_len = 1
 
     generation_start_pos = 127
-    generation_length = 1
+    generation_length = 10
     all_tests_pass = True
 
     # Setup RoPE transformation matrices
@@ -179,10 +179,10 @@ def test_llama_attention_inference(
             mesh_shape=model_args.cluster_shape,
         ),
     )
+    pt_attention_input = torch.randn(batch_size, seq_len, model_args.dim) * 0.05
 
     for i in range(generation_length):
         # 70B attention block typically sees tensors with mean 0 and std 0.03 - 0.05 in layer 1
-        pt_attention_input = torch.randn(batch_size, seq_len, model_args.dim) * 0.05
 
         tt_attention_input = pt_attention_input.clone()
 
@@ -232,7 +232,7 @@ def test_llama_attention_inference(
             all_tests_pass = False
 
         # Increment position
-        current_pos = torch.tensor([generation_start_pos + i for _ in range(batch_size)])
+        current_pos = torch.tensor([generation_start_pos for _ in range(batch_size)])
         current_pos_tensor = ttnn.from_torch(
             current_pos,
             device=mesh_device,

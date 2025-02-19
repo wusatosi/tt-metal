@@ -128,7 +128,7 @@ class TtTransformerBlock(LightweightModule):
         ), f"decoder input memcfg mismatch: {x.memory_config()} != {skip_mem_cfg}"
         # Norms take fractured inputs and output replicated across devices
         try:
-            attn_in, h = self.attention_norm(x, h, mode)
+            attn_in, h = self.attention_norm(x, None, mode)
         except Exception as e:
             print(e)
             print("failed to run attention norm")
@@ -138,7 +138,7 @@ class TtTransformerBlock(LightweightModule):
         print("done attention norm")
         # pad attn input
         attn_in_sharded = ttnn.to_memory_config(attn_in, self.model_config["SHARDED_ATTN_INPUT_RING_MEMCFG"])
-        attn_in.deallocate(True)
+        # attn_in.deallocate(True)
         attn_out = self.attention.forward(
             attn_in_sharded,
             current_pos,
@@ -153,20 +153,21 @@ class TtTransformerBlock(LightweightModule):
         print("done attention")
 
         # Norms take fractured inputs and output replicated across devices
+        h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg, dtype=ttnn.bfloat16)
 
-        ff_in, h = self.ff_norm(attn_out, h, mode)
+        ff_in, _ = self.ff_norm(h, None, mode)
         # if TG and mode == "decode":
         #     ff_in = ttnn.to_memory_config(ff_in, memory_config=self.model_config["MLP_ACT_MEMCFG"])
 
         # MLP takes replicated inputs and produces fractured outputs
         ff_in_sharded = ttnn.to_memory_config(ff_in, self.model_config["SHARDED_FF12_RING_MEMCFG"])
-        ff_in.deallocate(True)
+        # ff_in.deallocate(True)
         print("done ff norm")
         ff_out = self.feed_forward.forward(ff_in_sharded, mode)
         print("done feed forward")
-        if self.layer_num == self.n_layers - 1:
-            out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)
-        else:
-            out = ff_out
+        # if self.layer_num == self.n_layers - 1:
+        out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg, dtype=ttnn.bfloat16)
+        # else:
+        #     out = ff_out
         print("done add")
         return out, h  # fractured across devices

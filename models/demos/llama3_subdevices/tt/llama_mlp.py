@@ -72,10 +72,10 @@ class TtLlamaMLP(LightweightModule):
             mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=dim, mesh_shape=args.cluster_shape),
             layout=ttnn.TILE_LAYOUT,
             memory_config=w2_mem_config if "w2" in name else w1_w3_mem_config,
-            # cache_file_name=cache_name(name),
+            cache_file_name=cache_name(name),
         )
 
-        self.four_bit_mlp = args.optimizations.bfp4_mlp
+        self.four_bit_mlp = False  # args.optimizations.bfp4_mlp
 
         # Sharded weights
         w1_dim = (-1, -2) if args.is_galaxy else (-2, -1)
@@ -137,7 +137,7 @@ class TtLlamaMLP(LightweightModule):
             if self.four_bit_mlp
             else self.args.compute_kernel_config_hifi2_fp16,
             core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_1 else None,
-            dtype=ttnn.bfloat8_b if TG else ttnn.bfloat16,
+            dtype=ttnn.bfloat16 if TG else ttnn.bfloat16,
             program_config=pc_1,
             memory_config=self.model_config["SHARDED_FF12_OUT_RING_MEMCFG"],
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
@@ -150,12 +150,12 @@ class TtLlamaMLP(LightweightModule):
             if self.four_bit_mlp
             else self.args.compute_kernel_config_hifi2_fp16,
             core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_3 else None,
-            dtype=ttnn.bfloat8_b if TG else ttnn.bfloat16,
+            dtype=ttnn.bfloat16 if TG else ttnn.bfloat16,
             program_config=pc_3,
             memory_config=self.model_config["SHARDED_FF12_OUT_RING_MEMCFG"],
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
         )
-        ttnn.deallocate(x)
+        # ttnn.deallocate(x)
         # print("linear", w3_out)
 
         if False:
@@ -209,20 +209,53 @@ class TtLlamaMLP(LightweightModule):
 
         else:
             try:
-                w1_out_reduced = self.tt_ccl.line_all_reduce(
+                # w1_out_reduced = self.tt_ccl.line_all_reduce(
+                #     w1_out,
+                #     cluster_axis=1,
+                #     num_links=3,
+                #     memory_config=self.model_config["FF2_IN_RING_MEMCFG"],
+                # )
+                # w3_out_reduced = self.tt_ccl.line_all_reduce(
+                #     w3_out,
+                #     cluster_axis=1,
+                #     num_links=3,
+                #     memory_config=self.model_config["FF2_IN_RING_MEMCFG"],
+                # )
+                w1_out_torch = ttnn.to_torch(
                     w1_out,
-                    cluster_axis=1,
-                    num_links=3,
-                    memory_config=self.model_config["FF2_IN_RING_MEMCFG"],
-                )
-                w3_out_reduced = self.tt_ccl.line_all_reduce(
-                    w3_out,
-                    cluster_axis=1,
-                    num_links=3,
+                    mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(3, 0), mesh_shape=(8, 4)),
+                )  # [4, 1, 32, 12288]
+
+                w1_out_torch_reduced = torch.sum(w1_out_torch, dim=0, keepdim=True)  # [1, 1, 32, 12288]
+
+                w1_out_reduced = ttnn.as_tensor(
+                    w1_out_torch_reduced,
+                    dtype=ttnn.bfloat16,
+                    device=self.mesh_device,
+                    mesh_mapper=ttnn.ShardTensor2dMesh(
+                        mesh_device=self.mesh_device, dims=(3, None), mesh_shape=list(self.mesh_device.shape)
+                    ),
+                    layout=ttnn.TILE_LAYOUT,
                     memory_config=self.model_config["FF2_IN_RING_MEMCFG"],
                 )
 
-                # print("reduced", w1_out_reduced)
+                w3_out_torch = ttnn.to_torch(
+                    w3_out,
+                    mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(3, 0), mesh_shape=(8, 4)),
+                )
+
+                w3_out_torch_reduced = torch.sum(w3_out_torch, dim=0, keepdim=True)
+                w3_out_reduced = ttnn.as_tensor(
+                    w3_out_torch_reduced,
+                    dtype=ttnn.bfloat16,
+                    device=self.mesh_device,
+                    mesh_mapper=ttnn.ShardTensor2dMesh(
+                        mesh_device=self.mesh_device, dims=(3, None), mesh_shape=list(self.mesh_device.shape)
+                    ),
+                    layout=ttnn.TILE_LAYOUT,
+                    memory_config=self.model_config["FF2_IN_RING_MEMCFG"],
+                )
+
             except Exception as e:
                 # print(e)
                 self.tt_ccl.close()
@@ -231,14 +264,14 @@ class TtLlamaMLP(LightweightModule):
             w1_out_reduced,
             w3_out_reduced,
             input_tensor_a_activation=ttnn.UnaryOpType.SILU,
-            dtype=ttnn.bfloat8_b,
+            dtype=ttnn.bfloat16,
             memory_config=w1_out_reduced.memory_config(),
         )
 
         # print("eltwise mul", w2_in)
 
-        ttnn.deallocate(w3_out_reduced)
-        ttnn.deallocate(w1_out_reduced)
+        # ttnn.deallocate(w3_out_reduced)
+        # ttnn.deallocate(w1_out_reduced)
 
         w2_out = ttnn.linear(
             w2_in,
@@ -252,14 +285,24 @@ class TtLlamaMLP(LightweightModule):
             core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_2 else None,
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
         )
-        # print("linear", w2_out)
-        ttnn.deallocate(w2_in)
 
-        w2_out_reduced = self.tt_ccl.line_all_reduce(
-            w2_out, cluster_axis=0, num_links=4, memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"]
+        # w2_out_reduced = self.tt_ccl.line_all_reduce(
+        #     w2_out, cluster_axis=0, num_links=4, memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"]
+        # )
+        w2_out_torch = ttnn.to_torch(
+            w2_out,
+            mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(0, 3), mesh_shape=(8, 4)),
         )
-        # print("reduced", w2_out_reduced)
-
-        ttnn.deallocate(w2_out)
+        w2_out_torch_reduced = torch.sum(w2_out_torch, dim=0, keepdim=True)
+        w2_out_reduced = ttnn.as_tensor(
+            w2_out_torch_reduced,
+            dtype=ttnn.bfloat16,
+            device=self.mesh_device,
+            mesh_mapper=ttnn.ShardTensor2dMesh(
+                mesh_device=self.mesh_device, dims=(None, 3), mesh_shape=list(self.mesh_device.shape)
+            ),
+            layout=ttnn.TILE_LAYOUT,
+            memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"],
+        )
 
         return w2_out_reduced

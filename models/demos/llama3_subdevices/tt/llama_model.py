@@ -365,9 +365,9 @@ class TtTransformer(LightweightModule):
                 chunk_start_idx=chunk_start_idx,
                 kv_cache=kv_cache[i] if kv_cache is not None else None,
             )
-        ttnn.deallocate(h)
+        # ttnn.deallocate(h)
 
-        ttnn.deallocate(garbage_tensor)
+        # ttnn.deallocate(garbage_tensor)
         print("decoder done")
 
         # Output norm
