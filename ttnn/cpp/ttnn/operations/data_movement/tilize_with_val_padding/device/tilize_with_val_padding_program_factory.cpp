@@ -687,9 +687,9 @@ operation::ProgramWithCallbacks tilize_with_val_padding_multi_core_interleaved(
         if (num_tiles_per_row > num_tiles_per_col) {
             return tilize_with_val_padding_multi_core_col_interleaved(a, output, pad_value);
         }
-        if (num_tiles_per_col > threshold_row_block || num_tiles_per_row > num_tiles_per_col) {
-            return tilize_with_val_padding_multi_core_block_interleaved(a, output, pad_value);
-        }
+        // if (num_tiles_per_col > threshold_row_block || num_tiles_per_row > num_tiles_per_col) {
+        //     return tilize_with_val_padding_multi_core_block_interleaved(a, output, pad_value);
+        // }
     }
 
     auto [ncores, all_cores, core_range, core_range_cliff, nblocks_per_core, nblocks_per_core_cliff] =

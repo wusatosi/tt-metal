@@ -90,7 +90,7 @@ operation::ProgramWithCallbacks TilizeWithValPadding::create_program(
     if (input_tensor_a.memory_config().is_sharded()) {
         return detail::tilize_with_val_padding_multi_core_sharded(input_tensor_a, output_tensor, this->pad_value);
     }
-    if (!this->enough_space_height) {
+    if (!this->enough_space_height || this->enough_space_width) {
         return detail::tilize_with_val_padding_multi_core_block_interleaved(
             input_tensor_a, output_tensor, this->pad_value);
     }

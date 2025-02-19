@@ -675,9 +675,10 @@ operation::ProgramWithCallbacks untilize_with_unpadding_multi_core_interleaved(
         if (num_tiles_per_row > num_tiles_per_col) {
             return untilize_with_unpadding_multi_core_col_interleaved(a, output, use_pack_untilize, fp32_dest_acc_en);
         }
-        if (num_tiles_per_col > threshold_row_block || num_tiles_per_row > num_tiles_per_col) {
-            return untilize_with_unpadding_multi_core_block_interleaved(a, output, use_pack_untilize, fp32_dest_acc_en);
-        }
+        // if (num_tiles_per_col > threshold_row_block || num_tiles_per_row > num_tiles_per_col) {
+        //     return untilize_with_unpadding_multi_core_block_interleaved(a, output, use_pack_untilize,
+        //     fp32_dest_acc_en);
+        // }
     }
 
     auto [ncores, all_cores, core_range, core_range_cliff, nblocks_per_core, nblocks_per_core_cliff] =
