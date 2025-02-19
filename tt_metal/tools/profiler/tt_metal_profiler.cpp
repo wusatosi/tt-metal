@@ -640,7 +640,7 @@ void DumpDeviceProfileResults(IDevice* device, ProfilerDumpState state, const st
         auto virtualCore = device->virtual_core_from_logical_core(core, CoreType::ETH);
         workerCores.push_back(virtualCore);
     }
-    device->push_work([device, workerCores, state]() mutable {
+    device->push_work([device, workerCores, state, metadata]() mutable {
         DumpDeviceProfileResults(device, workerCores, state, metadata);
         if (deviceDeviceTimePair.find(device->id()) != deviceDeviceTimePair.end() and
             state == ProfilerDumpState::CLOSE_DEVICE_SYNC) {
