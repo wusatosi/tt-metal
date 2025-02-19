@@ -1161,8 +1161,7 @@ GlobalSemaphore CreateGlobalSemaphore(
 
 std::shared_ptr<Buffer> CreateBuffer(const InterleavedBufferConfig& config) {
     PUBLIC_API_ENTRY();
-    LIGHT_METAL_TRACE_FUNCTION_ENTRY();
-    auto buffer = Buffer::create(
+    return Buffer::create(
         config.device,
         config.size,
         config.page_size,
@@ -1171,9 +1170,6 @@ std::shared_ptr<Buffer> CreateBuffer(const InterleavedBufferConfig& config) {
         std::nullopt,
         std::nullopt,
         std::nullopt);
-
-    LIGHT_METAL_TRACE_FUNCTION_CALL(CaptureCreateBuffer, buffer, config);
-    return buffer;
 }
 std::shared_ptr<Buffer> CreateBuffer(const InterleavedBufferConfig& config, DeviceAddr address) {
     PUBLIC_API_ENTRY();

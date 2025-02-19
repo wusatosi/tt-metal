@@ -24,7 +24,7 @@ struct ReplayTraceCommand;
 struct EnqueueTraceCommand;
 struct LoadTraceCommand;
 struct ReleaseTraceCommand;
-struct CreateBufferCommand;
+struct BufferCreateCommand;
 struct DeallocateBufferCommand;
 struct EnqueueWriteBufferCommand;
 struct EnqueueReadBufferCommand;
@@ -68,7 +68,7 @@ private:
     void execute(const tt::tt_metal::flatbuffer::ReplayTraceCommand* command);
     void execute(const tt::tt_metal::flatbuffer::LoadTraceCommand* command);
     void execute(const tt::tt_metal::flatbuffer::ReleaseTraceCommand* command);
-    void execute(const tt::tt_metal::flatbuffer::CreateBufferCommand* command);
+    void execute(const tt::tt_metal::flatbuffer::BufferCreateCommand* cmd);
     void execute(const tt::tt_metal::flatbuffer::DeallocateBufferCommand* command);
     void execute(const tt::tt_metal::flatbuffer::EnqueueWriteBufferCommand* command);
     void execute(const tt::tt_metal::flatbuffer::EnqueueReadBufferCommand* command);
