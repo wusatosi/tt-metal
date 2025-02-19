@@ -140,27 +140,15 @@ def run_with_trace(
 
     # Run the op
     logger.info("Starting Trace perf test...")
-    profiler.start("all-gather-async-trace-warmup")
-    if warmup_iters > 0:
-        ttnn.execute_trace(mesh_device, trace_id_warmup, blocking=False)
-        ttnn.release_trace(mesh_device, trace_id_warmup)
-        for d in mesh_device.get_devices():
-            ttnn.synchronize_device(d)
-    profiler.end("all-gather-async-trace-warmup")
-
     profiler.start("all-gather-async-trace")
     ttnn.execute_trace(mesh_device, trace_id, blocking=False)
     ttnn.release_trace(mesh_device, trace_id)
     for d in mesh_device.get_devices():
         ttnn.synchronize_device(d)
     profiler.end("all-gather-async-trace")
-    time_taken = profiler.get_duration("all-gather-async-trace") - profiler.get_duration(
-        "all-gather-async-trace-warmup"
-    )
-    effective_iter = num_iter - warmup_iters
-    logger.info(f"Time taken: {time_taken} s")
-    logger.info(f"Time per iter: {time_taken / effective_iter} s")
-    logger.info(f"Time per iter: {time_taken / effective_iter * 1e6} us")
+    logger.info(f"Time taken: {profiler.get_duration('all-gather-async-trace')} s")
+    logger.info(f"Time per iter: {(profiler.get_duration('all-gather-async-trace')) / num_iter} s")
+    logger.info(f"Time per iter: {(profiler.get_duration('all-gather-async-trace')) / num_iter * 1e6} us")
 
     return tt_out_tensor
 

@@ -68,8 +68,6 @@ volatile fabric_client_interface_t* client_interface;
 uint64_t xy_local_addr;
 uint32_t target_address;
 uint32_t noc_offset;
-uint32_t gk_interface_addr_l;
-uint32_t gk_interface_addr_h;
 uint32_t controller_noc_offset;
 uint32_t time_seed;
 
@@ -94,11 +92,9 @@ void kernel_main() {
     src_endpoint_id = get_arg_val<uint32_t>(increment_arg_idx(rt_args_idx));
     noc_offset = get_arg_val<uint32_t>(increment_arg_idx(rt_args_idx));
     controller_noc_offset = get_arg_val<uint32_t>(increment_arg_idx(rt_args_idx));
-    uint32_t routing_plane = get_arg_val<uint32_t>(increment_arg_idx(rt_args_idx));
+    uint32_t outbound_eth_chan = get_arg_val<uint32_t>(increment_arg_idx(rt_args_idx));
     dest_device = get_arg_val<uint32_t>(increment_arg_idx(rt_args_idx));
     uint32_t rx_buf_size = get_arg_val<uint32_t>(increment_arg_idx(rt_args_idx));
-    gk_interface_addr_l = get_arg_val<uint32_t>(increment_arg_idx(rt_args_idx));
-    gk_interface_addr_h = get_arg_val<uint32_t>(increment_arg_idx(rt_args_idx));
 
     if constexpr (ASYNC_WR & test_command) {
         base_target_address = get_arg_val<uint32_t>(increment_arg_idx(rt_args_idx));
@@ -140,7 +136,7 @@ void kernel_main() {
     }
 
     // initalize client
-    fabric_endpoint_init(client_interface_addr, gk_interface_addr_l, gk_interface_addr_h);
+    fabric_endpoint_init(client_interface_addr, outbound_eth_chan);
 
     // notify the controller kernel that this worker is ready to proceed
     notify_traffic_controller();

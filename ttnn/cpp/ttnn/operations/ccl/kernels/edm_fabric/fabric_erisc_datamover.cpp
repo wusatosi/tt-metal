@@ -600,7 +600,6 @@ FORCE_INLINE void receiver_send_completion_ack(
 
 template <uint8_t SENDER_NUM_BUFFERS>
 FORCE_INLINE bool can_forward_packet_completely(
-    const volatile tt::fabric::PacketHeader* packet_header,
     tt::fabric::RoutingFields cached_routing_fields,
     tt::fabric::EdmToEdmSender<SENDER_NUM_BUFFERS>& downstream_edm_interface) {
     // We always check if it is the terminal mcast packet value. We can do this because all unicast packets have the
@@ -619,12 +618,13 @@ FORCE_INLINE void receiver_forward_packet(
     uint8_t transaction_id) {
 
     bool start_distance_is_terminal_value = (cached_routing_fields.value & tt::fabric::RoutingFields::HOP_DISTANCE_MASK) == tt::fabric::RoutingFields::LAST_HOP_DISTANCE_VAL;
+    uint16_t payload_size_bytes = packet_start->payload_size_bytes;
     if (start_distance_is_terminal_value) {
-        execute_chip_unicast_to_local_chip(packet_start, transaction_id);
+        execute_chip_unicast_to_local_chip(packet_start, payload_size_bytes, transaction_id);
     }
     bool not_last_destination_device = cached_routing_fields.value != tt::fabric::RoutingFields::LAST_MCAST_VAL;
     if (not_last_destination_device) {
-        forward_payload_to_downstream_edm(packet_start, cached_routing_fields, downstream_edm_interface, transaction_id);
+        forward_payload_to_downstream_edm(packet_start, payload_size_bytes, cached_routing_fields, downstream_edm_interface, transaction_id);
     }
 }
 
@@ -661,7 +661,6 @@ FORCE_INLINE bool run_sender_channel_step(
                     tt::fabric::validate(*packet_header);
                     packet_header_recorder.record_packet_header(packet_header);
                 }
-                print_pkt_header(packet_header);
                 send_next_data(
                     local_sender_channel,
                     local_sender_channel_worker_interface,
@@ -747,8 +746,7 @@ FORCE_INLINE void run_receiver_channel_step(
     std::array<tt::fabric::ChannelBufferPointer<SENDER_NUM_BUFFERS>, NUM_SENDER_CHANNELS> &remote_eth_sender_wrptrs,
     ReceiverChannelPointers<RECEIVER_NUM_BUFFERS> &receiver_channel_pointers,
     PacketHeaderRecorder &packet_header_recorder,
-    WriteTransactionIdTracker<RECEIVER_NUM_BUFFERS, NUM_TRANSACTION_IDS> &receiver_channel_trid_tracker,
-    ReceiverState *const receiver_state_out) {
+    WriteTransactionIdTracker<RECEIVER_NUM_BUFFERS, NUM_TRANSACTION_IDS> &receiver_channel_trid_tracker) {
 
     auto &ack_ptr = receiver_channel_pointers.ack_ptr;
     auto pkts_received_since_last_check = get_ptr_val<to_receiver_pkts_sent_id>();
@@ -778,9 +776,9 @@ FORCE_INLINE void run_receiver_channel_step(
         volatile auto packet_header = local_receiver_channel.get_packet_header(receiver_buffer_index);
 
         tt::fabric::RoutingFields cached_routing_fields = const_cast<tt::fabric::PacketHeader*>(packet_header)->routing_fields;
-        print_pkt_header(packet_header);
         bool can_send_to_all_local_chip_receivers =
-            can_forward_packet_completely(packet_header, cached_routing_fields, downstream_edm_interface);
+            can_forward_packet_completely(
+                cached_routing_fields, downstream_edm_interface);
         bool trid_flushed = receiver_channel_trid_tracker.transaction_flushed(receiver_buffer_index);
         if (can_send_to_all_local_chip_receivers && trid_flushed) {
             // DeviceZoneScopedN("EDMR-Send-Impl");
@@ -892,7 +890,6 @@ void run_fabric_edm_main_loop(
     std::array<PacketHeaderRecorder, NUM_SENDER_CHANNELS> &sender_channel_packet_recorders) {
     std::array<SenderState, NUM_SENDER_CHANNELS> sender_states = {
         SenderState::SENDER_WAIT_WORKER_HANDSHAKE, SenderState::SENDER_WAIT_WORKER_HANDSHAKE};
-    ReceiverState receiver_state = ReceiverState::RECEIVER_WAITING_FOR_ETH;
     size_t sender_channel_index = 0;
     size_t did_nothing_count = 0;
     *termination_signal_ptr = tt::fabric::TerminationSignal::KEEP_RUNNING;
@@ -911,6 +908,11 @@ void run_fabric_edm_main_loop(
 
     WriteTransactionIdTracker<RECEIVER_NUM_BUFFERS, NUM_TRANSACTION_IDS> receiver_channel_trid_tracker;
 
+    // This value defines the number of loop iterations we perform of the main control sequence before exiting
+    // to check for termination and context switch. Removing the these checks from the inner loop can drastically
+    // improve performance. The value of 32 was chosen somewhat empirically and then raised up slightly.
+    constexpr uint32_t DEFAULT_ITERATIONS_BETWEEN_CTX_SWITCH_AND_TEARDOWN_CHECKS = 32;
+
     while (!got_immediate_termination_signal(termination_signal_ptr)) {
         bool got_graceful_termination = got_graceful_termination_signal(termination_signal_ptr);
         if (got_graceful_termination) {
@@ -922,33 +924,41 @@ void run_fabric_edm_main_loop(
                 return;
             }
         }
+        bool did_something = false;
+        for (size_t i = 0; i < DEFAULT_ITERATIONS_BETWEEN_CTX_SWITCH_AND_TEARDOWN_CHECKS; i++) {
+            // Capture these to see if we made progress
 
-        // Capture these to see if we made progress
-        auto old_recv_state = receiver_state;
+            // There are some cases, mainly for performance, where we don't want to switch between sender channels
+            // so we interoduce this to provide finer grain control over when we disable the automatic switching
+            bool did_something_sender = run_sender_channel_step<enable_packet_header_recording, enable_fabric_counters>(
+                local_sender_channels[0],
+                local_sender_channel_worker_interfaces[0],
+                outbound_to_receiver_channel_pointers,
+                remote_receiver_channel,
+                sender_channel_counters_ptrs[0],
+                sender_channel_packet_recorders[0],
+                channel_connection_established[0],
+                0);
 
-        // There are some cases, mainly for performance, where we don't want to switch between sender channels
-        // so we interoduce this to provide finer grain control over when we disable the automatic switching
-        bool did_something_sender = run_sender_channel_step<enable_packet_header_recording, enable_fabric_counters>(
-            local_sender_channels[sender_channel_index],
-            local_sender_channel_worker_interfaces[sender_channel_index],
-            outbound_to_receiver_channel_pointers,
-            remote_receiver_channel,
-            sender_channel_counters_ptrs[sender_channel_index],
-            sender_channel_packet_recorders[sender_channel_index],
-            channel_connection_established[sender_channel_index],
-            sender_channel_index);
+            run_receiver_channel_step<enable_packet_header_recording, enable_fabric_counters, RECEIVER_NUM_BUFFERS, SENDER_NUM_BUFFERS, NUM_SENDER_CHANNELS>(
+                local_receiver_channel, remote_sender_channels, downstream_edm_noc_interface, receiver_channel_counters_ptr,
+                remote_eth_sender_wrptrs,
+                receiver_channel_pointers,
+                receiver_channel_packet_recorder,
+                receiver_channel_trid_tracker);
 
-        sender_channel_index = 1 - sender_channel_index;
+            bool did_something_sender2 = run_sender_channel_step<enable_packet_header_recording, enable_fabric_counters>(
+                local_sender_channels[1],
+                local_sender_channel_worker_interfaces[1],
+                outbound_to_receiver_channel_pointers,
+                remote_receiver_channel,
+                sender_channel_counters_ptrs[1],
+                sender_channel_packet_recorders[1],
+                channel_connection_established[1],
+                1);
 
-        run_receiver_channel_step<enable_packet_header_recording, enable_fabric_counters, RECEIVER_NUM_BUFFERS, SENDER_NUM_BUFFERS, NUM_SENDER_CHANNELS>(
-            local_receiver_channel, remote_sender_channels, downstream_edm_noc_interface, receiver_channel_counters_ptr,
-            remote_eth_sender_wrptrs,
-            receiver_channel_pointers,
-            receiver_channel_packet_recorder,
-            receiver_channel_trid_tracker,
-            &receiver_state);
-
-        bool did_something = did_something_sender || old_recv_state != receiver_state;
+            did_something = did_something || did_something_sender || did_something_sender2;
+        }
 
         if (did_something) {
             did_nothing_count = 0;

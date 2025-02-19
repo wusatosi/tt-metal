@@ -16,7 +16,7 @@ static constexpr size_t DESTINATION_HOP_COUNT = 1;
 // TODO: make 0 and the associated field to num mcast destinations
 static constexpr size_t LAST_MCAST_DESTINATION = 1;
 
-void print_pkt_hdr_routing_fields(volatile tt::fabric::PacketHeader *const packet_start) {
+FORCE_INLINE void print_pkt_hdr_routing_fields(volatile tt::fabric::PacketHeader *const packet_start) {
 #ifdef DEBUG_PRINT_ENABLED
     switch (packet_start->chip_send_type) {
         case tt::fabric::CHIP_UNICAST: {
@@ -32,7 +32,7 @@ void print_pkt_hdr_routing_fields(volatile tt::fabric::PacketHeader *const packe
 #endif
 }
 
-void print_pkt_header_noc_fields(volatile tt::fabric::PacketHeader *const packet_start) {
+FORCE_INLINE void print_pkt_header_noc_fields(volatile tt::fabric::PacketHeader *const packet_start) {
 #ifdef DEBUG_PRINT_ENABLED
     switch (packet_start->noc_send_type) {
         case tt::fabric::NocSendType::NOC_UNICAST_WRITE: {
@@ -50,7 +50,7 @@ void print_pkt_header_noc_fields(volatile tt::fabric::PacketHeader *const packet
 #endif
 }
 
-void print_pkt_header(volatile tt::fabric::PacketHeader *const packet_start) {
+FORCE_INLINE void print_pkt_header(volatile tt::fabric::PacketHeader *const packet_start) {
 #ifdef DEBUG_PRINT_ENABLED
     auto const& header = *packet_start;
     DPRINT << "PKT: nsnd_t:" << (uint32_t) packet_start->noc_send_type <<
@@ -64,10 +64,8 @@ void print_pkt_header(volatile tt::fabric::PacketHeader *const packet_start) {
 
 
 // Since we unicast to local, we must omit the packet header
-FORCE_INLINE void execute_chip_unicast_to_local_chip(volatile tt::fabric::PacketHeader *const packet_start, uint32_t transaction_id) {
-    // TODO [volatile-use]: do word-based reads of packet header when enterring the fwd packet path
-    //                      we end up grabbing many individual fields from the same word region
-    //                      which will resolve as many separate loads
+FORCE_INLINE void execute_chip_unicast_to_local_chip(
+    volatile tt::fabric::PacketHeader *const packet_start, uint16_t payload_size_bytes, uint32_t transaction_id) {
     auto const& header = *packet_start;
     uint32_t payload_start_address = reinterpret_cast<size_t>(packet_start) + sizeof(tt::fabric::PacketHeader);
 
@@ -131,11 +129,11 @@ FORCE_INLINE void update_packet_header_for_next_hop(volatile tt::fabric::PacketH
 template <uint8_t NUM_SENDER_BUFFERS>
 FORCE_INLINE void forward_payload_to_downstream_edm(
     volatile tt::fabric::PacketHeader *packet_header,
+    uint16_t payload_size_bytes,
     tt::fabric::RoutingFields cached_routing_fields,
     tt::fabric::EdmToEdmSender<NUM_SENDER_BUFFERS> &downstream_edm_interface,
     uint8_t transaction_id
     ) {
-    DPRINT << "Fwding pkt to downstream\n";
     // TODO: PERF - this should already be getting checked by the caller so this should be redundant make it an ASSERT
     ASSERT(downstream_edm_interface.edm_has_space_for_packet()); // best effort check
 
@@ -144,6 +142,6 @@ FORCE_INLINE void forward_payload_to_downstream_edm(
     update_packet_header_for_next_hop(packet_header, cached_routing_fields);
     downstream_edm_interface.send_payload_non_blocking_from_address_with_trid(
         reinterpret_cast<size_t>(packet_header),
-        packet_header->get_payload_size_including_header(),
+        payload_size_bytes + sizeof(tt::fabric::PacketHeader),
         transaction_id);
 }

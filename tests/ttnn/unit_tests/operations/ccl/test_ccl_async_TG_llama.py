@@ -96,9 +96,9 @@ CORE_RANGE_SET_1x1 = ttnn.CoreRangeSet(
     ],
 )
 @pytest.mark.parametrize(
-    "num_iters, warmup_iters",
+    "num_iters",
     [
-        (2500, 100),
+        5000,
     ],
 )
 @pytest.mark.parametrize("shard_grid_orientation", [ttnn.ShardOrientation.ROW_MAJOR])
@@ -119,7 +119,7 @@ CORE_RANGE_SET_1x1 = ttnn.CoreRangeSet(
                 }
             ),
             ttnn.TILE_LAYOUT,
-            14.5,
+            32,
         ),
         (  # AllGather after Binary Mult+Silu
             ttnn.TensorMemoryLayout.WIDTH_SHARDED,
@@ -130,18 +130,7 @@ CORE_RANGE_SET_1x1 = ttnn.CoreRangeSet(
             (32, 160),
             get_core_range_set(PREFETCHER_NOC1_RING),
             ttnn.TILE_LAYOUT,
-            15.5,
-        ),
-        (  # AllGather for layernorm
-            ttnn.TensorMemoryLayout.WIDTH_SHARDED,
-            (1, 1, 32, 128),
-            3,
-            (32, 32),
-            CORE_RANGE_SET_1x1,
-            (32, 128),
-            CORE_RANGE_SET_1x1,
-            ttnn.TILE_LAYOUT,
-            9.5,
+            25,
         ),
     ),
 )
@@ -168,7 +157,6 @@ def test_all_gather_tg_llama(
     enable_async,
     replication_factor,
     num_iters,
-    warmup_iters,
     perf_target_us,
 ):
     if len(mesh_device.get_devices()) != 32:
@@ -217,8 +205,77 @@ def test_all_gather_tg_llama(
         teardown_persistent_fabric=True,
     )
 
-    time_taken = profiler.get_duration("all-gather-async-trace") - profiler.get_duration(
-        "all-gather-async-trace-warmup"
+    latency_us = profiler.get_duration("all-gather-async-trace") / num_iters * 1e6
+    if perf_target_us is not None:
+        assert (
+            latency_us < perf_target_us
+        ), f"Measured latency {latency_us} us is greater than target {perf_target_us} us"
+
+
+@skip_for_grayskull("Requires eth connected devices to run")
+@pytest.mark.parametrize(
+    "num_devices, num_links",
+    [
+        (4, 2),
+    ],
+)
+@pytest.mark.parametrize(
+    "tensor_mem_layout, per_chip_input_shape, dim, input_shard_shape,shard_grid,layout",
+    (
+        (  # ReduceScatter After FF1/3  (~100 us)
+            ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+            (1, 1, 32, 3840),
+            3,
+            (32, 160),
+            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 2))}),
+            ttnn.TILE_LAYOUT,
+        ),
+    ),
+)
+@pytest.mark.parametrize("shard_grid_orientation", [ttnn.ShardOrientation.ROW_MAJOR])
+@pytest.mark.parametrize(
+    "input_dtype",
+    [
+        ttnn.bfloat16,
+        # ttnn.bfloat8_b,
+    ],
+)
+@pytest.mark.parametrize(
+    "buffer_type",
+    [
+        ttnn.BufferType.L1,
+    ],
+)
+@pytest.mark.parametrize("enable_async", [True])
+@pytest.mark.parametrize("replication_factor", [8])
+@pytest.mark.parametrize("mesh_device", [pytest.param((8, 4), id="8x4_grid")], indirect=True)
+@pytest.mark.parametrize("math_op", [ttnn.ReduceType.Sum])
+def test_line_reduce_scatter_sharded_on_TG_rows_llama(
+    mesh_device,
+    num_devices,
+    per_chip_input_shape,
+    tensor_mem_layout,
+    input_shard_shape,
+    shard_grid,
+    shard_grid_orientation,
+    dim,
+    num_links,
+    math_op,
+    input_dtype,
+    layout,
+    buffer_type,
+    use_program_cache,
+    function_level_defaults,
+    enable_async,
+    replication_factor,
+    num_iters=10,
+):
+    if len(mesh_device.get_devices()) != 32:
+        pytest.skip("Not TG!")
+    input_shard_spec = ttnn.ShardSpec(
+        shard_grid,
+        input_shard_shape,
+        shard_grid_orientation,
     )
     effective_iter = num_iters - warmup_iters
     latency_us = time_taken / effective_iter * 1e6
