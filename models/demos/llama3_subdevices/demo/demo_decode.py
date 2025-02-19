@@ -26,6 +26,7 @@ from models.demos.llama3_subdevices.tt.llama_model import TtTransformer
 from models.demos.llama3_subdevices.tt.llama_embedding import TtLlamaEmbedding
 from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.tokenizer import Tokenizer
 from models.demos.llama3_subdevices.tt.model_config import TtModelArgs
+from models.demos.llama3_subdevices.tt.sampling import TTSampling
 
 from models.perf.benchmarking_utils import BenchmarkProfiler
 from models.demos.utils.llm_demo_utils import create_benchmark_data, verify_perf
@@ -201,6 +202,12 @@ def run_llama3_demo(
         state_dict=state_dict,
         dtype=ttnn.bfloat16,  # Row major layout requires bfloat16
     )
+    tt_sampling = TTSampling(
+        args=model_args,
+        mesh_device=mesh_device,
+        sampling_params=sampling_params,
+        tt_ccl=tt_model.tt_ccl,
+    )
     profiler.end("loading_weights_to_device")
     logger.info("Finished loading weights to device.")
 
@@ -210,8 +217,10 @@ def run_llama3_demo(
     else:
         encoded_prompts = [tokenizer.encode(prompt, bos=True, eos=False) for prompt in input_prompts]
 
-    # Prefill by decode: start at first token
-    encoded_prompts_tensor = torch.tensor([encoded_prompts[b] for b in range(batch_size)])
+    # Prefill by decode: start at first token; pad to 32 (tile size)
+    max_prompt_length = max([len(prompt) for prompt in encoded_prompts])
+    padded_token_prompts = [prompt + [128009] * (max_prompt_length - len(prompt)) for prompt in encoded_prompts]
+    encoded_prompts_tensor_whole_sequence = torch.tensor([padded_token_prompts[b] for b in range(batch_size)])
 
     user_done = [False] * batch_size  # Keeps track when a user reaches EoD token
 
@@ -258,84 +267,56 @@ def run_llama3_demo(
     logger.info(f"decode residual memcfg: {model_args.model_config['DECODE_RESIDUAL_MEMCFG']}")
 
     # Prepare the encoded prompts for the decode input
-    tt_out_tok = model_args.prepare_residual_tensor_decode(
-        encoded_prompts_tensor[:, :1].unsqueeze(0),
-        ttnn.DRAM_MEMORY_CONFIG,
+    tt_out_tok = ttnn.from_torch(
+        encoded_prompts_tensor_whole_sequence[:, :1].reshape(1, 1, 1, batch_size),
+        device=mesh_device,
+        dtype=ttnn.uint32,
+        layout=ttnn.ROW_MAJOR_LAYOUT,
+        mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device, dims=(None, None), mesh_shape=model_args.cluster_shape),
+        memory_config=ttnn.DRAM_MEMORY_CONFIG,
     )
-    logger.info("Out tok done")
 
     # Compile
     logger.info(f"Compiling model trace...")
 
     tt_decode_input = tt_embd(tt_out_tok)
     logger.info(f"tt_decode_input done")
-    tt_decode_input_sharded = ttnn.to_memory_config(tt_decode_input, model_args.model_config["DECODE_RESIDUAL_MEMCFG"])
-    logger.info(f"tt_decode_input_sharded done")
+
     tt_out = tt_model(
-        tt_decode_input_sharded,
+        tt_decode_input,
         current_pos_tensor,
         rot_mats=rot_mats,
         mode="decode",
         page_table=page_table_tt,
     )
     logger.info(f"tt_out done")
+
     # Sampling
-    tt_out_gathered = ttnn.all_gather(
-        tt_out, dim=3, num_links=2, cluster_axis=0, mesh_device=mesh_device, topology=ttnn.Topology.Linear
-    )
-    ttnn.deallocate(tt_out)
-    tt_out_rm = ttnn.untilize(tt_out_gathered, use_multicore=True, sub_core_grids=model_args.sub_core_grids)
-    ttnn.deallocate(tt_out_gathered)
-    # tt_out_tok = ttnn.argmax(
-    #     tt_out_rm, dim=3, use_multicore=False if batch_size > 1 else True, output_tensor=tt_out_tok
-    # )
-    # ttnn.deallocate(tt_out_rm)
-    tt_out_tok_reset, _ = sample_host(
-        tt_out_rm,
-        mesh_device,
-        temperature=sampling_params["temperature"],
-        top_p=sampling_params["top_p"],
-        on_host=True,
-    )
-    ttnn.copy_host_to_device_tensor(tt_out_tok_reset, tt_out_tok)
-    logger.info(f"tt_out_tok_reset done")
+    tt_out_tok_reset = tt_sampling(tt_out[0])
+    logger.info(f"sampling done")
+
     ttnn.plus_one(current_pos_tensor)
-    profiler.end(f"compile_trace")
+    profiler.end(f"plus one position done")
 
     # Capture Trace
     logger.info(f"Capturing model trace...")
     profiler.start(f"capture_trace")
+
+    breakpoint()
+
     trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
 
-    rot_mats = tt_model.rope_setup.get_rot_mats(rot_mat_idxs)
+    # Get cos/sin matrices for the current position of each user
+    rot_mats, rot_mat_idxs = tt_model.rope_setup.get_rot_mats(current_pos, return_rot_idxs=True)
     tt_decode_input = tt_embd(tt_out_tok)
-    tt_decode_input_sharded = ttnn.to_memory_config(tt_decode_input, model_args.model_config["DECODE_RESIDUAL_MEMCFG"])
     tt_out = tt_model(
-        tt_decode_input_sharded,
+        tt_decode_input,
         current_pos_tensor,
         rot_mats=rot_mats,
         mode="decode",
         page_table=page_table_tt,
     )
-
-    # Sampling
-    tt_out_gathered = ttnn.all_gather(
-        tt_out, dim=3, num_links=2, cluster_axis=0, mesh_device=mesh_device, topology=ttnn.Topology.Linear
-    )
-    tt_out_rm = ttnn.untilize(tt_out_gathered, use_multicore=True, sub_core_grids=model_args.sub_core_grids)
-    # ttnn.deallocate(tt_out_gathered)
-    # tt_out_tok = ttnn.argmax(
-    #     tt_out_rm, dim=3, use_multicore=False if batch_size > 1 else True, output_tensor=tt_out_tok
-    # )  # FIXME Multicore is not compatible with batch > 1
-    # ttnn.deallocate(tt_out_rm)
-    tt_out_tok_reset, _ = sample_host(
-        tt_out_rm,
-        mesh_device,
-        temperature=sampling_params["temperature"],
-        top_p=sampling_params["top_p"],
-        on_host=True,
-    )
-    ttnn.copy_host_to_device_tensor(tt_out_tok_reset, tt_out_tok)
+    tt_out_tok_reset = tt_sampling(tt_out[0])
 
     ttnn.plus_one(current_pos_tensor)
     # ttnn.plus_one(rot_mat_idxs)  # FIXME <- This won't work since embedding requires uint32 and plus_one only works for int32
@@ -352,12 +333,13 @@ def run_llama3_demo(
             mesh_shape=model_args.cluster_shape,
         ),
     )
+
     tt_out_tok_reset = ttnn.from_torch(
-        encoded_prompts_tensor[:, :1],
-        dtype=ttnn.bfloat16,
-        layout=ttnn.TILE_LAYOUT,
-        mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device, dims=(None, -1), mesh_shape=model_args.cluster_shape),
-        memory_config=model_args.model_config["DECODE_RESIDUAL_MEMCFG"],
+        encoded_prompts_tensor_whole_sequence[:, :1].reshape(1, 1, 1, batch_size),
+        dtype=ttnn.uint32,
+        layout=ttnn.ROW_MAJOR_LAYOUT,
+        mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device, dims=(None, None), mesh_shape=model_args.cluster_shape),
+        memory_config=ttnn.DRAM_MEMORY_CONFIG,
     )
 
     # Reset the current position and output token tensors for the real decode run
@@ -407,9 +389,16 @@ def run_llama3_demo(
         # Append the generated token to the list of outputs
         if i in range(len(encoded_prompts[0])):
             # While in "prefill" mode, use the prompt tokens as the output
-            all_outputs.append(encoded_prompts[0][i])  # Update list of TT outputs
+            all_outputs.append(encoded_prompts_tensor_whole_sequence[0, i])  # Update list of TT outputs
             # tt_decode_input = tt_embd(encoded_prompts[:, i]).view(batch_size, 1, -1)
-            tt_out_tok = encoded_prompts_tensor[:, i].unsqueeze(0).unsqueeze(0)
+            # tt_out_tok = encoded_prompts_tensor[:, i].unsqueeze(0).unsqueeze(0)
+            tt_out_tok = ttnn.from_torch(
+                encoded_prompts_tensor_whole_sequence[:, i].unsqueeze(0).unsqueeze(0),
+                dtype=ttnn.bfloat16,
+                layout=ttnn.TILE_LAYOUT,
+                mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device, dims=(None, -1), mesh_shape=model_args.cluster_shape),
+                memory_config=model_args.model_config["DECODE_RESIDUAL_MEMCFG"],
+            )
             breakpoint()
         else:
             # tt_decode_input = tt_embd(tt_out_tok)
@@ -491,28 +480,28 @@ def run_llama3_demo(
 @pytest.mark.parametrize(
     "input_prompts, instruct, repeat_batches, max_seq_len, batch_size, max_generated_tokens, paged_attention, page_params, sampling_params",
     [
-        (  # Batch-1 run (Latency) - single user, small prompt
-            "models/demos/llama3/demo/input_data_questions_prefill_128.json",  # input_prompts
-            True,  # instruct mode
-            1,  # repeat_batches
-            1024,  # max_seq_len
-            1,  # batch_size
-            200,  # max_generated_tokens
-            False,  # True,  # paged_attention
-            {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params  # TODO This will be serviced by vLLM
-            {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
-        ),
-        # (  # Batch-32 run (Throughput) - 32 users, small prompt
+        # (  # Batch-1 run (Latency) - single user, small prompt
         #     "models/demos/llama3/demo/input_data_questions_prefill_128.json",  # input_prompts
         #     True,  # instruct mode
         #     1,  # repeat_batches
         #     1024,  # max_seq_len
-        #     32,  # batch_size
+        #     1,  # batch_size
         #     200,  # max_generated_tokens
-        #     True,  # paged_attention
+        #     False,  # True,  # paged_attention
         #     {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params  # TODO This will be serviced by vLLM
         #     {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
         # ),
+        (  # Batch-32 run (Throughput) - 32 users, small prompt
+            "models/demos/llama3/demo/input_data_questions_prefill_128.json",  # input_prompts
+            True,  # instruct mode
+            1,  # repeat_batches
+            1024,  # max_seq_len
+            32,  # batch_size
+            200,  # max_generated_tokens
+            False,  # paged_attention
+            {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params  # TODO This will be serviced by vLLM
+            {"top_k": 32, "top_p": 0.08, "seed": 42},  # sampling_params (argmax)
+        ),
         # (  # Long-context run - Single user, long prompt (adapted to the model being used and architecture)
         #     "models/demos/llama3/demo/input_data_long_64k.json",  # input_prompts
         #     True,  # instruct mode
@@ -526,8 +515,8 @@ def run_llama3_demo(
         # ),
     ],
     ids=[
-        "batch-1",  # latency
-        # "batch-32",  # throughput
+        # "batch-1",  # latency
+        "batch-32",  # throughput
         # "long-context",  # max-length
     ],
 )
@@ -535,7 +524,7 @@ def run_llama3_demo(
     "optimizations",
     [
         LlamaOptimizations.performance,
-        LlamaOptimizations.accuracy,
+        # LlamaOptimizations.accuracy,
     ],
 )
 @pytest.mark.parametrize(
@@ -573,7 +562,7 @@ def test_llama_demo(
     if os.environ.get("FAKE_DEVICE") == "TG" and batch_size not in [1, 32]:
         pytest.skip("TG only supports batch 1 and 32")
 
-    mesh_device.enable_async(True)
+    # mesh_device.enable_async(True)
 
     if paged_attention:
         paged_attention_config = PagedAttentionConfig(

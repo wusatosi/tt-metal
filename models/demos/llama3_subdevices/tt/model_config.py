@@ -314,6 +314,26 @@ class TtModelArgs:
                 )
             )
 
+            start_core = ttnn.CoreCoord(1, 0)
+            core_grid = ttnn.CoreRangeSet(
+                [
+                    ttnn.CoreRange(ttnn.CoreCoord(1, 0), ttnn.CoreCoord(3, 9)),
+                    ttnn.CoreRange(ttnn.CoreCoord(5, 0), ttnn.CoreCoord(6, 9)),
+                ]
+            )
+            num_cores = self.cluster_shape[0]
+            shard_grid = ttnn.num_cores_to_corerangeset_in_subcoregrids(
+                start_core, num_cores, core_grid, row_wise=False
+            )
+
+            self.model_config["DECODE_SAMPLING_INPUT_MEMCFG"] = ttnn.create_sharded_memory_config(
+                shape=(1, 1, self.max_batch_size, 32),
+                core_grid=shard_grid,
+                strategy=ttnn.ShardStrategy.WIDTH,
+                orientation=ttnn.ShardOrientation.ROW_MAJOR,
+                use_height_and_width_as_shard_shape=True,
+            )
+
             # Chunk values based on what works best empirically
             self.model_config["SDPA_PROGCFG"] = lambda seqlen: ttnn.SDPAProgramConfig(
                 compute_with_storage_grid_size=(8, 8),
