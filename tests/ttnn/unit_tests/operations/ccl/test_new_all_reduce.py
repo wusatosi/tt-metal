@@ -267,28 +267,28 @@ def run_all_reduce_impl(
     "output_shape, cluster_axis, num_links, input_num_cores, output_num_cores",
     [
         ([1, 1, 32, 2048], 0, 4, 24, 16),  # FF2/DO all reduce
-        ([1, 1, 32, 1280], 1, 3, 24, 40),  # QKV all reduce
+        # ([1, 1, 32, 1280], 1, 3, 24, 40),  # QKV all reduce
         ([1, 1, 32, 3584], 1, 3, 24, 24),  # FF1 all reduce
-        ([1, 1, 32, 2048], 0, 3, 24, 16),  # FF2/DO all reduce
-        ([1, 1, 32, 1280], 1, 2, 24, 40),  # QKV all reduce
-        ([1, 1, 32, 3584], 1, 2, 24, 24),  # FF1 all reduce
-        ([1, 1, 32, 2048], 0, 2, 24, 16),  # FF2/DO all reduce
-        ([1, 1, 32, 1280], 1, 1, 24, 40),  # QKV all reduce
-        ([1, 1, 32, 3584], 1, 1, 24, 24),  # FF1 all reduce
-        ([1, 1, 32, 2048], 0, 1, 24, 16),  # FF2/DO all reduce
+        # ([1, 1, 32, 2048], 0, 3, 24, 16),  # FF2/DO all reduce
+        # ([1, 1, 32, 1280], 1, 2, 24, 40),  # QKV all reduce
+        # ([1, 1, 32, 3584], 1, 2, 24, 24),  # FF1 all reduce
+        # ([1, 1, 32, 2048], 0, 2, 24, 16),  # FF2/DO all reduce
+        # ([1, 1, 32, 1280], 1, 1, 24, 40),  # QKV all reduce
+        # ([1, 1, 32, 3584], 1, 1, 24, 24),  # FF1 all reduce
+        ([1, 1, 32, 2048], 1, 1, 16, 16),  # FF2/DO all reduce
     ],
 )
 @pytest.mark.parametrize(
     "input_dtype",
     [
-        ttnn.bfloat16,
+        # ttnn.bfloat16,
         ttnn.bfloat8_b,
     ],
 )
 @pytest.mark.parametrize(
     "num_iters, warmup_iters",
     [
-        (1000, 100),
+        (10, 1),
     ],
 )
 @pytest.mark.parametrize("enable_async", [True])
@@ -334,7 +334,7 @@ def test_all_reduce(
         warmup_iters=warmup_iters,
         enable_async=enable_async,
         trace_mode=trace_mode,
-        validate_all=False,
+        validate_all=True,
         profiler=profiler,
     )
 

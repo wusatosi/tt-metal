@@ -51,7 +51,7 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
 
     prefetcher_setup = TtLlamaPrefetcherSetup(
         mesh_device,
-        n_tensors=3,
+        n_tensors=2,
         n_layers=1,
     )
     mesh_device.set_sub_device_stall_group(

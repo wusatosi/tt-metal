@@ -139,7 +139,8 @@ operation::ProgramWithCallbacks all_reduce_async_minimal_multi_core_with_workers
         CreateCircularBuffer(program, sender_worker_core_range, cb_reserved_packet_header_config);
 
     // Reduction kernel stuff
-    auto all_cores = output_tensor_cores.merge(sender_worker_core_range);
+    // auto all_cores = output_tensor_cores.merge(sender_worker_core_range);
+    auto all_cores = device->worker_cores(HalProgrammableCoreType::TENSIX, *sub_device_id);
     auto input_cores_vec = corerange_to_cores(input_tensor_cores, std::nullopt, true);
     auto output_cores_vec = corerange_to_cores(output_tensor_cores, std::nullopt, true);
 
@@ -183,7 +184,7 @@ operation::ProgramWithCallbacks all_reduce_async_minimal_multi_core_with_workers
 
         uint32_t end_core_idx = std::min(
             start_core_idx + tt::div_up(num_pages_this_link + input_tensor_tile_offset, input_tensor_shard_num_pages),
-            num_input_cores - 1);
+            num_input_cores);
 
         // Num pages allocated based on number of input cores selected for this link
         uint32_t num_pages_allocated =

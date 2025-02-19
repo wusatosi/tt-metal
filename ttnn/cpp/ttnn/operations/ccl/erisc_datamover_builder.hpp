@@ -183,7 +183,7 @@ class FabricEriscDatamoverBuilder {
    public:
        static constexpr size_t default_firmware_context_switch_interval = 200000;
        // payload only, no header
-       static constexpr size_t default_packet_payload_size_bytes = 4352;
+       static constexpr size_t default_packet_payload_size_bytes = 3 * 1088;
 
        FabricEriscDatamoverBuilder(
            const CoreCoord& my_eth_core_logical,
