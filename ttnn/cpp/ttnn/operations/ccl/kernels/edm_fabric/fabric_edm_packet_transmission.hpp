@@ -70,7 +70,6 @@ FORCE_INLINE void execute_chip_unicast_to_local_chip(
     uint32_t payload_start_address = reinterpret_cast<size_t>(packet_start) + sizeof(tt::fabric::PacketHeader);
 
     tt::fabric::NocSendType noc_send_type = packet_start->noc_send_type;
-    auto const payload_size_bytes = header.payload_size_bytes;
     switch (noc_send_type) {
         case tt::fabric::NocSendType::NOC_UNICAST_WRITE: {
             auto const dest_address = header.command_fields.unicast_write.noc_address;
