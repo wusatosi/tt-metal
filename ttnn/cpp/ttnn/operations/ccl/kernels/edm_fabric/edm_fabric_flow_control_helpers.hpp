@@ -33,19 +33,21 @@ using BufferPtr = NamedType<uint8_t, struct BufferPtrType>;
 // Increments val and wraps to 0 if it reaches limit
 template <size_t LIMIT = 0, typename T>
 FORCE_INLINE auto wrap_increment(T val) -> T {
+    // static_assert(LIMIT != 0, "wrap_increment called with limit of 0; it must be greater than 0");
     constexpr bool is_pow2 = LIMIT != 0 && is_power_of_2(LIMIT);
     if constexpr (LIMIT == 1) {
         return val;
     } else if constexpr (LIMIT == 2) {
         return 1 - val;
     } else if constexpr (is_pow2) {
-        return (val + 1) & (static_cast<T>(LIMIT - 1));
+        return (val + 1) & (LIMIT - 1);
     } else {
         return (val == static_cast<T>(LIMIT - 1)) ? static_cast<T>(0) : static_cast<T>(val + 1);
     }
 }
 template <size_t LIMIT, typename T>
 FORCE_INLINE auto wrap_increment_n(T val, uint8_t increment) -> T {
+    // static_assert(LIMIT != 0, "wrap_increment called with limit of 0; it must be greater than 0");
     constexpr bool is_pow2 = LIMIT != 0 && is_power_of_2(LIMIT);
     if constexpr (LIMIT == 1) {
         return val;
@@ -78,9 +80,9 @@ FORCE_INLINE auto normalize_ptr(BufferPtr ptr) -> BufferIndex {
     constexpr bool is_size_1 = NUM_BUFFERS == 1;
     constexpr uint8_t wrap_mask = NUM_BUFFERS - 1;
     if constexpr (is_size_pow2) {
-        return BufferIndex{static_cast<uint8_t>(ptr.get() & wrap_mask)};
+        return BufferIndex{ptr & wrap_mask};
     } else if constexpr (is_size_2) {
-        return BufferIndex{(uint8_t)1 - ptr.get()};
+        return BufferIndex{(uint8_t)1 - ptr};
     } else if constexpr (is_size_1) {
         return BufferIndex{0};
     } else {
@@ -147,7 +149,7 @@ public:
     FORCE_INLINE void increment_n(uint8_t n) {
         this->ptr = BufferPtr{wrap_increment_n<2 * NUM_BUFFERS>(this->ptr.get(), n)};
     }
-    FORCE_INLINE void increment() { this->ptr = BufferPtr{wrap_increment<2 * NUM_BUFFERS>(this->ptr.get())}; }
+    FORCE_INLINE void increment() { this->ptr = wrap_increment<2 * NUM_BUFFERS>(this->ptr); }
 
 private:
     // Make these private to make sure caller doesn't accidentally mix two pointers pointing to
