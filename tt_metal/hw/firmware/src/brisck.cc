@@ -22,8 +22,7 @@
 #endif
 
 volatile tt_reg_ptr uint32_t* p_reg = reinterpret_cast<volatile tt_reg_ptr uint32_t*>(RISCV_DEBUG_REG_WALL_CLOCK_L);
-volatile tt_l1_ptr uint32_t* profiler_data_buffer =
-    reinterpret_cast<volatile tt_l1_ptr uint32_t*>(GET_MAILBOX_ADDRESS_DEV(profiler.buffer));
+volatile uint32_t test;
 void kernel_launch(uint32_t kernel_base_addr) {
 #if defined(DEBUG_NULL_KERNELS) && !defined(DISPATCH_KERNEL)
     wait_for_go_message();
@@ -46,15 +45,15 @@ void kernel_launch(uint32_t kernel_base_addr) {
     wait_for_go_message();
     {
         DeviceZoneScopedMainChildN("BRISC-KERNEL");
-        profiler_data_buffer[8] = p_reg[0];
-        profiler_data_buffer[9] = p_reg[1];
-        profiler_data_buffer[9] = p_reg[1];
-        profiler_data_buffer[9] = p_reg[1];
+        test = p_reg[0];
+        test = p_reg[0];
+        test = p_reg[0];
+        test = p_reg[0];
         kernel_main();
-        profiler_data_buffer[10] = p_reg[0];
-        profiler_data_buffer[11] = p_reg[1];
-        profiler_data_buffer[11] = p_reg[1];
-        profiler_data_buffer[11] = p_reg[1];
+        test = p_reg[0];
+        test = p_reg[0];
+        test = p_reg[0];
+        test = p_reg[0];
     }
 #endif
 }
