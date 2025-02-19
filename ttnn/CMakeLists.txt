@@ -810,7 +810,7 @@ endforeach(
     ${TTNN_SUBLIBRARIES}
 )
 
-GENERATE_FBS_HEADER(${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/tensor/flatbuffer/tensor_types.fbs)
+GENERATE_FBS_HEADER(${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/tensor/flatbuffer/tensor_spec.fbs)
 list(APPEND TENSOR_SRCS ${FBS_GENERATED_HEADER_FILE})
 add_ttnn_sublibrary(ttnn_tensor ${TENSOR_SRCS})
 add_ttnn_sublibrary(ttnn_ccl ${CCL_TTNN_SRCS})

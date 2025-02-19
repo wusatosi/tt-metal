@@ -79,6 +79,11 @@ MeshDeviceView::DeviceView MeshDeviceView::get_devices(const MeshShape& submesh_
     return get_devices({0, 0}, {submesh_shape.num_rows - 1, submesh_shape.num_cols - 1});
 }
 
+MeshDeviceView::DeviceView MeshDeviceView::get_devices(const SimpleMeshShape& submesh_shape) const {
+    TT_FATAL(submesh_shape.dims() == 2, "Submesh shape must be 2D");
+    return get_devices({0, 0}, {submesh_shape[0] - 1, submesh_shape[1] - 1});
+}
+
 std::vector<IDevice*> MeshDeviceView::get_devices_on_row(size_t row) const {
     std::vector<IDevice*> row_devices;
     for (const auto& device : devices_) {

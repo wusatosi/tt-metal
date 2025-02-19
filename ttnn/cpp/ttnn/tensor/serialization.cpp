@@ -11,12 +11,16 @@
 
 #include <flatbuffers/flatbuffers.h>
 
+#include "tt-metalium/buffer_constants.hpp"
+#include "tt-metalium/overloaded.hpp"
+#include "ttnn/distributed/distributed_tensor.hpp"
+#include "ttnn/distributed/distributed_tensor_config.hpp"
 #include "ttnn/tensor/host_buffer/functions.hpp"
 #include "ttnn/tensor/tensor_utils.hpp"
 #include "ttnn/tensor/types.hpp"
 #include "ttnn/distributed/types.hpp"
-#include "ttnn/tensor/flatbuffer/tensor_types_from_flatbuffer.hpp"
-#include "ttnn/tensor/flatbuffer/tensor_types_to_flatbuffer.hpp"
+#include "ttnn/tensor/flatbuffer/tensor_spec_from_flatbuffer.hpp"
+#include "ttnn/tensor/flatbuffer/tensor_spec_to_flatbuffer.hpp"
 
 namespace tt::tt_metal {
 
@@ -108,6 +112,19 @@ TensorSpec load_tensor_spec(FILE* input_file) {
     return ttnn::from_flatbuffer(spec);
 }
 
+template <typename BufferType>
+void dump_host_storage(FILE* output_file, const BufferType& storage) {
+    std::visit(
+        [output_file]<typename TypedBuffer>(const TypedBuffer& b) {
+            using DataType = TypedBuffer::value_type;
+            const auto buffer = host_buffer::get_as<DataType>(b);
+            uint64_t size = buffer.size();
+            safe_fwrite(&size, sizeof(size), 1, output_file);
+            safe_fwrite(buffer.data(), sizeof(DataType) * size, 1, output_file);
+        },
+        storage.buffer);
+}
+
 void dump_owned_storage(FILE* output_file, const OwnedStorage& storage) {
     std::visit(
         [output_file]<typename T>(const owned_buffer::Buffer<T>& generic_buffer) {
@@ -130,15 +147,20 @@ void dump_borrowed_storage(FILE* output_file, const BorrowedStorage& storage) {
         storage.buffer);
 }
 
-void dump_multi_device_host_storage(
-    FILE* output_file, const MultiDeviceHostStorage& storage, const DistributedTensorConfig& strategy) {
+void dump_multi_device_host_storage(FILE* output_file, const MultiDeviceHostStorage& storage) {
     uint64_t num_buffers = storage.num_buffers();
     safe_fwrite(&num_buffers, sizeof(num_buffers), 1, output_file);
 
-    // Use the user-specified strategy which defines how it gets distributed when mapped onto multi-device
+    DistributedTensorConfig strategy = [&]() {
+        if (storage.mesh_shape.has_value()) {
+            return DistributedTensorConfig(
+                ShardTensor2D(ShardMesh{.y = (*storage.mesh_shape)[0], .x = (*storage.mesh_shape)[1]}));
+        }
+        return DistributedTensorConfig(AllGatherTensor{});
+    }();
     safe_fwrite(&strategy, sizeof(strategy), 1, output_file);
 
-    if (std::holds_alternative<ReplicateTensor>(strategy)) {
+    for (int i = 0; i < num_buffers; i++) {
         std::visit(
             [output_file]<typename T>(const owned_buffer::Buffer<T>& generic_buffer) {
                 const auto buffer = owned_buffer::get_as<T>(generic_buffer);
@@ -146,23 +168,10 @@ void dump_multi_device_host_storage(
                 safe_fwrite(&size, sizeof(size), 1, output_file);
                 safe_fwrite(buffer.begin(), sizeof(T) * size, 1, output_file);
             },
-            storage.get_buffer(0));
-        auto spec = storage.specs.at(0);
+            storage.get_buffer(i));
+    }
+    for (const auto& spec : storage.specs) {
         dump_tensor_spec(spec, output_file);
-    } else {
-        for (int i = 0; i < num_buffers; i++) {
-            std::visit(
-                [output_file]<typename T>(const owned_buffer::Buffer<T>& generic_buffer) {
-                    const auto buffer = owned_buffer::get_as<T>(generic_buffer);
-                    uint64_t size = buffer.size();
-                    safe_fwrite(&size, sizeof(size), 1, output_file);
-                    safe_fwrite(buffer.begin(), sizeof(T) * size, 1, output_file);
-                },
-                storage.get_buffer(i));
-        }
-        for (const auto& spec : storage.specs) {
-            dump_tensor_spec(spec, output_file);
-        }
     }
 }
 
@@ -232,7 +241,12 @@ MultiDeviceHostStorage load_multi_device_host_storage(
         }
     }
 
-    return {strategy, buffers, specs};
+    std::optional<distributed::SimpleMeshShape> mesh_shape;
+    if (auto shard2d_config = std::get_if<ShardTensor2D>(&strategy); shard2d_config != nullptr) {
+        mesh_shape = distributed::SimpleMeshShape(shard2d_config->shard_mesh.y, shard2d_config->shard_mesh.x);
+    }
+
+    return {mesh_shape, buffers, specs};
 }
 
 OwnedStorage load_owned_storage(FILE* input_file, DataType data_type) {
@@ -452,22 +466,13 @@ void dump_tensor(
     }
 
     std::visit(
-        [output_file, &strategy](const auto& storage) {
-            using StorageType = std::decay_t<decltype(storage)>;
-            if constexpr (std::is_same_v<StorageType, OwnedStorage>) {
-                dump_owned_storage(output_file, storage);
-            } else if constexpr (std::is_same_v<StorageType, BorrowedStorage>) {
-                dump_borrowed_storage(output_file, storage);
-            } else if constexpr (std::is_same_v<StorageType, DeviceStorage>) {
-                TT_THROW("Device storage isn't supported");
-            } else if constexpr (std::is_same_v<StorageType, MultiDeviceStorage>) {
-                TT_THROW("Device storage isn't supported");
-            } else if constexpr (std::is_same_v<StorageType, MultiDeviceHostStorage>) {
-                auto distribute_config = get_distributed_tensor_config(strategy);
-                dump_multi_device_host_storage(output_file, storage, distribute_config);
-            } else {
-                raise_unsupported_storage<StorageType>();
-            }
+        tt::stl::overloaded{
+            [output_file](const OwnedStorage& storage) { dump_owned_storage(output_file, storage); },
+            [output_file](const BorrowedStorage& storage) { dump_borrowed_storage(output_file, storage); },
+            [output_file](const MultiDeviceHostStorage& storage) {
+                dump_multi_device_host_storage(output_file, storage);
+            },
+            [](const auto&) { TT_THROW("Device storage isn't supported"); },
         },
         tensor_to_dump.get_storage());
 }

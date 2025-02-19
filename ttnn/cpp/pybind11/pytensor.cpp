@@ -377,8 +377,12 @@ Tensor convert_python_tensors_to_tt_tensors(
         host_owned_specs.push_back(shard.get_tensor_spec());
     }
     auto distributed_tensor_config = get_distributed_tensor_config(strategy);
-    auto storage = MultiDeviceHostStorage{distributed_tensor_config, std::move(host_owned_buffers), host_owned_specs};
+    std::optional<distributed::SimpleMeshShape> mesh_shape;
+    if (auto shard_spec = std::get_if<ShardTensor2D>(&distributed_tensor_config); shard_spec != nullptr) {
+        mesh_shape = distributed::SimpleMeshShape{shard_spec->shard_mesh.y, shard_spec->shard_mesh.x};
+    }
 
+    auto storage = MultiDeviceHostStorage{mesh_shape, std::move(host_owned_buffers), std::move(host_owned_specs)};
     auto output = Tensor(std::move(storage), tt_shards.at(0).get_tensor_spec());
     output = tt::tt_metal::set_tensor_id(output);
     GraphTracker::instance().track_function_end(output);

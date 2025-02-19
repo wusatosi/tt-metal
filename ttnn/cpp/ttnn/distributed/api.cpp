@@ -58,7 +58,7 @@ std::vector<ttnn::Tensor> get_device_tensors(const ttnn::Tensor& tensor) {
 }
 
 Tensor aggregate_as_tensor(
-    const std::vector<Tensor>& tensor_shards, const tt::tt_metal::DistributedTensorConfig& config) {
+    const std::vector<Tensor>& tensor_shards, const std::optional<distributed::SimpleMeshShape>& mesh_shape) {
     TT_ASSERT(tensor_shards.size() > 0, "At least one tensor shard must be provided");
     const auto& reference_shard = tensor_shards.at(0);
     for (const auto& shard : tensor_shards) {
@@ -90,7 +90,7 @@ Tensor aggregate_as_tensor(
                     shard_tile.get_width());
             }
         }
-        auto storage = MultiDeviceHostStorage{config, std::move(host_owned_buffers), specs};
+        auto storage = MultiDeviceHostStorage{mesh_shape, std::move(host_owned_buffers), specs};
         return Tensor(std::move(storage), reference_shard.get_tensor_spec());
     } else {
         std::vector<int> ordered_device_ids;
@@ -115,8 +115,8 @@ Tensor aggregate_as_tensor(
                     shard_tile.get_width());
             }
         }
-        auto storage =
-            MultiDeviceStorage{config, ordered_device_ids, std::move(device_buffers), specs, /*mesh_buffer=*/nullptr};
+        auto storage = MultiDeviceStorage{
+            mesh_shape, ordered_device_ids, std::move(device_buffers), specs, /*mesh_buffer=*/nullptr};
         return Tensor(std::move(storage), reference_shard.get_tensor_spec());
     }
 }
@@ -148,37 +148,13 @@ std::vector<IDevice*> get_mapped_devices(const Tensor& tensor, MeshDevice& mesh_
         // Given a MeshDevice, this linearizes the set of mapped devices for a tensor specified with some
         // distributed tensor strategy. The different strategies map to different policies on how
         // this distribution is mapped to physical devices.
-        return std::visit(
-            tt::stl::overloaded{
-                [&](const ShardTensor2D& s) {
-                    return mesh_device.get_view().get_devices(MeshShape{s.shard_mesh.y, s.shard_mesh.x});
-                },
-                [&](const auto&) { return get_workers_for_tensor(mesh_device.get_devices()); }},
-            host_storage.strategy);
+        return host_storage.mesh_shape.has_value() ? mesh_device.get_view().get_devices(*host_storage.mesh_shape)
+                                                   : get_workers_for_tensor(mesh_device.get_devices());
     } else if (std::holds_alternative<MultiDeviceStorage>(tensor.get_storage())) {
         return tensor.workers;
     } else {
         return get_workers_for_tensor(mesh_device.get_devices());
     }
-}
-
-DistributedTensorConfig get_distributed_tensor_config_from_tensor(const Tensor& tensor) {
-    if (tensor.storage_type() == StorageType::MULTI_DEVICE) {
-        const auto* multi_device_storage = std::get_if<MultiDeviceStorage>(&tensor.get_storage());
-        TT_ASSERT(
-            multi_device_storage != nullptr,
-            "Unexpected type {}",
-            tt::stl::get_active_type_name_in_variant(tensor.get_storage()));
-        return multi_device_storage->strategy;
-    } else if (tensor.storage_type() == StorageType::MULTI_DEVICE_HOST) {
-        const auto* multi_device_host_storage = std::get_if<MultiDeviceHostStorage>(&tensor.get_storage());
-        TT_ASSERT(
-            multi_device_host_storage != nullptr,
-            "Unexpected type {}",
-            tt::stl::get_active_type_name_in_variant(tensor.get_storage()));
-        return multi_device_host_storage->strategy;
-    }
-    TT_THROW("Tensor is not a multi-device tensor");
 }
 
 Tensor get_device_tensor(const Tensor& multi_device_tensor, const int device_id) {
@@ -246,7 +222,9 @@ std::vector<Tensor> get_tensors_from_multi_device_storage(const Tensor& multi_de
 }
 
 Tensor create_multi_device_tensor(
-    const std::vector<Tensor>& tensors, StorageType storage_type, const DistributedTensorConfig& strategy) {
+    const std::vector<Tensor>& tensors,
+    StorageType storage_type,
+    const std::optional<distributed::SimpleMeshShape>& mesh_shape) {
     if (tensors.empty()) {
         TT_THROW("Cannot create multi-device tensor with empty tensor list");
     }
@@ -267,7 +245,7 @@ Tensor create_multi_device_tensor(
             specs.insert({device_id, tensor.get_tensor_spec()});
         }
         return Tensor{
-            MultiDeviceStorage{strategy, ordered_device_ids, device_buffers, specs, /*mesh_buffer=*/nullptr},
+            MultiDeviceStorage{mesh_shape, ordered_device_ids, device_buffers, specs, /*mesh_buffer=*/nullptr},
             TensorSpec(
                 tensors.at(0).get_logical_shape(),
                 TensorLayout::fromPaddedShape(
@@ -288,7 +266,7 @@ Tensor create_multi_device_tensor(
             specs.push_back(tensor.get_tensor_spec());
         }
         return Tensor{
-            MultiDeviceHostStorage{strategy, owned_buffers, specs},
+            MultiDeviceHostStorage{mesh_shape, owned_buffers, specs},
             TensorSpec(
                 tensors.at(0).get_logical_shape(),
                 TensorLayout::fromPaddedShape(

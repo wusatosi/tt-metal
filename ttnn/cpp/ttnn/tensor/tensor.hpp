@@ -17,7 +17,6 @@
 #include <tt-metalium/tt_backend_api_types.hpp>
 #include "ttnn/any_device.hpp"
 #include "ttnn/common/queue_id.hpp"
-#include "ttnn/distributed/distributed_tensor_config.hpp"
 #include "ttnn/tensor/types.hpp"
 #include "ttnn/tensor/storage.hpp"
 #include "ttnn/tensor/tensor_spec.hpp"
@@ -105,8 +104,7 @@ public:
 
     // Constructors to initialize unpopulated tensor with workers and storage specified. Use this when creating tensor
     // handles in async mode.
-    explicit Tensor(
-        uint32_t num_buffers, std::optional<DistributedTensorConfig> distributed_tensor_config = std::nullopt);
+    explicit Tensor(uint32_t num_buffers, const std::optional<distributed::SimpleMeshShape>& mesh_shape = std::nullopt);
     explicit Tensor(const std::vector<IDevice*>& workers);
 
     Tensor(const Tensor& other);

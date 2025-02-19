@@ -132,9 +132,13 @@ struct BorrowedStorage {
 };
 
 struct MultiDeviceHostStorage {
-    DistributedTensorConfig strategy;
+    // TODO: consider if `mesh_shape` can become non-optional.
+    // If the tensor was sharded in ND space, mesh shape specifies the layout of the shards in ND space.
+    // This is used during read/write operations that might target a submesh within a mesh device.
+    std::optional<distributed::SimpleMeshShape> mesh_shape;
     std::vector<OwnedBuffer> buffers;
     std::vector<TensorSpec> specs;
+
     mutable std::mutex mtx;
 
     friend void swap(MultiDeviceHostStorage& first, MultiDeviceHostStorage& second) {
@@ -142,20 +146,22 @@ struct MultiDeviceHostStorage {
         // enable ADL (not necessary, but good practice)
         using std::swap;
 
-        swap(first.strategy, second.strategy);
+        swap(first.mesh_shape, second.mesh_shape);
         swap(first.buffers, second.buffers);
         swap(first.specs, second.specs);
     }
 
     MultiDeviceHostStorage() = default;
     MultiDeviceHostStorage(
-        DistributedTensorConfig strategy_, std::vector<OwnedBuffer> buffers_, std::vector<TensorSpec> specs_) :
-        strategy(strategy_), buffers(std::move(buffers_)), specs(std::move(specs_)) {}
+        const std::optional<distributed::SimpleMeshShape>& mesh_shape,
+        std::vector<OwnedBuffer> buffers_,
+        std::vector<TensorSpec> specs_) :
+        mesh_shape(mesh_shape), buffers(std::move(buffers_)), specs(std::move(specs_)) {}
     MultiDeviceHostStorage(MultiDeviceHostStorage&& other) { swap(*this, other); }
     // unfotunately we need to have this code written manually.
     MultiDeviceHostStorage(const MultiDeviceHostStorage& other) {
         std::scoped_lock lock(other.mtx);
-        strategy = other.strategy;
+        mesh_shape = other.mesh_shape;
         buffers = other.buffers;
         specs = other.specs;
     }
@@ -172,7 +178,7 @@ struct MultiDeviceHostStorage {
     }
 
     bool operator==(const MultiDeviceHostStorage& other) {
-        return this->strategy == other.strategy and this->buffers == other.buffers and this->specs == other.specs;
+        return this->mesh_shape == other.mesh_shape and this->buffers == other.buffers and this->specs == other.specs;
     }
 
     static constexpr auto attribute_names = std::forward_as_tuple();
@@ -221,7 +227,7 @@ struct MultiDeviceHostStorage {
 };
 
 struct MultiDeviceStorage {
-    DistributedTensorConfig strategy;
+    std::optional<distributed::SimpleMeshShape> mesh_shape;
     std::vector<int> ordered_device_ids;
     std::unordered_map<int, std::shared_ptr<Buffer>> buffers;
     std::unordered_map<int, TensorSpec> specs;
@@ -237,7 +243,7 @@ struct MultiDeviceStorage {
     friend void swap(MultiDeviceStorage& first, MultiDeviceStorage& second) {
         std::scoped_lock lock(first.buffer_mtx, first.shape_mtx, second.buffer_mtx, second.shape_mtx);
 
-        swap(first.strategy, second.strategy);
+        swap(first.mesh_shape, second.mesh_shape);
         swap(first.ordered_device_ids, second.ordered_device_ids);
         swap(first.buffers, second.buffers);
         swap(first.specs, second.specs);
@@ -246,12 +252,12 @@ struct MultiDeviceStorage {
 
     // Constructs a multi-device tensor backed by a collection of heterogeneous single-device buffers.
     MultiDeviceStorage(
-        DistributedTensorConfig strategy_,
+        const std::optional<distributed::SimpleMeshShape>& mesh_shape,
         std::vector<int> ordered_device_ids_,
         std::unordered_map<int, std::shared_ptr<Buffer>> buffers_,
         std::unordered_map<int, TensorSpec> specs_,
         std::shared_ptr<distributed::MeshBuffer> mesh_buffer_) :
-        strategy(std::move(strategy_)),
+        mesh_shape(mesh_shape),
         ordered_device_ids(std::move(ordered_device_ids_)),
         buffers(std::move(buffers_)),
         specs(std::move(specs_)),
@@ -264,8 +270,8 @@ struct MultiDeviceStorage {
 
     MultiDeviceStorage(const MultiDeviceStorage& other) {
         std::scoped_lock lock(other.buffer_mtx, other.shape_mtx);
+        mesh_shape = other.mesh_shape;
         ordered_device_ids = other.ordered_device_ids;
-        strategy = other.strategy;
         buffers = other.buffers;
         specs = other.specs;
         mesh_buffer = other.mesh_buffer;
@@ -283,7 +289,7 @@ struct MultiDeviceStorage {
     }
 
     bool operator==(const MultiDeviceStorage& other) {
-        return this->ordered_device_ids == other.ordered_device_ids and this->strategy == other.strategy and
+        return this->mesh_shape == other.mesh_shape and this->ordered_device_ids == other.ordered_device_ids and
                this->buffers == other.buffers and this->specs == other.specs and this->mesh_buffer == other.mesh_buffer;
     }
 

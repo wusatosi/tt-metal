@@ -86,7 +86,7 @@ TEST_F(MeshTensorDeviceTest, ReplicateHostTensor) {
     for (const auto& [_, shard_spec] : multi_device_storage->specs) {
         EXPECT_EQ(shard_spec.logical_shape(), shape);
     }
-    EXPECT_TRUE(std::holds_alternative<tt::tt_metal::ReplicateTensor>(multi_device_storage->strategy));
+    EXPECT_FALSE(multi_device_storage->mesh_shape.has_value());
 
     // Read the tensor back, and compare it with input data.
     Tensor output_host_tensor = tensor_impl::to_host_mesh_tensor_wrapper(device_tensor);
@@ -115,13 +115,6 @@ TEST_F(MeshTensorDeviceTest, WriteMultiDeviceHostTensor) {
         Tensor::from_vector(host_data, tensor_spec), *shard_tensor_to_mesh_mapper(*mesh_device_, /*dim=*/1));
     EXPECT_TRUE(input_host_tensor_sharded.storage_type() == StorageType::MULTI_DEVICE_HOST);
 
-    auto* multi_device_host_storage =
-        std::get_if<tt::tt_metal::MultiDeviceHostStorage>(&input_host_tensor_sharded.get_storage());
-    ASSERT_NE(multi_device_host_storage, nullptr);
-    const auto* strategy = std::get_if<tt::tt_metal::ShardTensor>(&multi_device_host_storage->strategy);
-    ASSERT_NE(strategy, nullptr);
-    EXPECT_EQ(strategy->shard_dimension, 1);
-
     // Write host tensor to device.
     Tensor device_tensor =
         tensor_impl::to_device_mesh_tensor_wrapper(input_host_tensor_sharded, mesh_device_.get(), MemoryConfig{});
@@ -129,9 +122,7 @@ TEST_F(MeshTensorDeviceTest, WriteMultiDeviceHostTensor) {
 
     auto* multi_device_storage = std::get_if<tt::tt_metal::MultiDeviceStorage>(&device_tensor.get_storage());
     ASSERT_NE(multi_device_storage, nullptr);
-    const auto* device_tensor_strategy = std::get_if<tt::tt_metal::ShardTensor>(&multi_device_storage->strategy);
-    ASSERT_NE(device_tensor_strategy, nullptr);
-    EXPECT_EQ(device_tensor_strategy->shard_dimension, 1);
+    EXPECT_FALSE(multi_device_storage->mesh_shape.has_value());
 
     // Read the tensor back, and compare it with input data.
     Tensor output_host_tensor = aggregate_tensor(

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#include "tensor_types_from_flatbuffer.hpp"
+#include "tensor_spec_from_flatbuffer.hpp"
 
 namespace ttnn {
 

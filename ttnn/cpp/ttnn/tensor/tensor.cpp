@@ -260,26 +260,22 @@ Tensor::Tensor(const std::vector<IDevice*>& workers) :
     }
 }
 
-Tensor::Tensor(uint32_t num_buffers, std::optional<DistributedTensorConfig> distributed_tensor_config) :
+Tensor::Tensor(uint32_t num_buffers, const std::optional<distributed::SimpleMeshShape>& mesh_shape) :
     tensor_attributes(std::make_shared<TensorAttributes>()) {
     if (num_buffers == 0) {
         return;
     }
 
-    tensor_attributes->storage = [&]() {
-        if (num_buffers == 1) {
-            return Storage(OwnedStorage());
-        }
-        MultiDeviceHostStorage storage;
-        if (distributed_tensor_config.has_value()) {
-            storage.strategy = distributed_tensor_config.value();
-        }
-        storage.buffers = std::vector<OwnedBuffer>(num_buffers, OwnedBuffer());
-        storage.specs = std::vector<ttnn::TensorSpec>(
-            num_buffers,
-            TensorSpec(Shape{}, TensorLayout(DataType::FLOAT32, PageConfig(Layout::ROW_MAJOR), MemoryConfig{})));
-        return Storage(std::move(storage));
-    }();
+    tensor_attributes->storage =
+        num_buffers == 1
+            ? Storage(OwnedStorage())
+            : Storage(MultiDeviceHostStorage(
+                  mesh_shape,
+                  std::vector<OwnedBuffer>(num_buffers, OwnedBuffer()),
+                  std::vector<ttnn::TensorSpec>(
+                      num_buffers,
+                      TensorSpec(
+                          Shape{}, TensorLayout(DataType::FLOAT32, PageConfig(Layout::ROW_MAJOR), MemoryConfig{})))));
     tensor_attributes->num_shards_to_be_populated = num_buffers;
 }
 

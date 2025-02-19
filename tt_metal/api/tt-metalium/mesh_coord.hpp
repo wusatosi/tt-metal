@@ -184,7 +184,8 @@ private:
 template <typename T>
 class MeshContainer {
 public:
-    MeshContainer(const SimpleMeshShape& shape, const T& fill_value);
+    explicit MeshContainer(const SimpleMeshShape& shape, const T& fill_value = T());
+    MeshContainer(const SimpleMeshShape& shape, std::vector<T> values);
 
     // Returns a shape of the container.
     const SimpleMeshShape& shape() const;
@@ -251,6 +252,12 @@ private:
 template <typename T>
 MeshContainer<T>::MeshContainer(const SimpleMeshShape& shape, const T& fill_value) :
     shape_(shape), coord_range_(shape), values_(shape.mesh_size(), fill_value) {}
+
+template <typename T>
+MeshContainer<T>::MeshContainer(const SimpleMeshShape& shape, std::vector<T> values) :
+    shape_(shape), coord_range_(shape), values_(std::move(values)) {
+    TT_FATAL(values_.size() == shape.mesh_size(), "Invalid number of values {} for shape {}", values_.size(), shape);
+}
 
 template <typename T>
 const SimpleMeshShape& MeshContainer<T>::shape() const {

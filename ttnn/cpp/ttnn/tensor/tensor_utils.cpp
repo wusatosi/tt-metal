@@ -72,8 +72,17 @@ Tensor transform(const Tensor& tensor, std::function<Tensor(const Tensor&)> tran
     std::transform(input_tensors.begin(), input_tensors.end(), output_tensors.begin(), [&](const auto& device_tensor) {
         return transform_func(device_tensor);
     });
-    return ttnn::distributed::create_multi_device_tensor(
-        output_tensors, tensor.storage_type(), ttnn::distributed::get_distributed_tensor_config_from_tensor(tensor));
+
+    const auto mesh_shape = [&tensor]() -> std::optional<distributed::SimpleMeshShape> {
+        if (tensor.storage_type() == StorageType::MULTI_DEVICE) {
+            return std::get<MultiDeviceStorage>(tensor.get_storage()).mesh_shape;
+        } else if (tensor.storage_type() == StorageType::MULTI_DEVICE_HOST) {
+            return std::get<MultiDeviceHostStorage>(tensor.get_storage()).mesh_shape;
+        } else {
+            return std::nullopt;
+        }
+    }();
+    return ttnn::distributed::create_multi_device_tensor(output_tensors, tensor.storage_type(), mesh_shape);
 }
 
 void apply(const Tensor& tensor, const std::function<void(const Tensor&)>& callable) {

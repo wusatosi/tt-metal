@@ -13,6 +13,7 @@
 
 #include "device.hpp"
 #include "mesh_config.hpp"
+#include "mesh_coord.hpp"
 
 namespace tt::tt_metal::distributed {
 
@@ -83,6 +84,7 @@ public:
     // devices are returned in row-major order with start/end coordinates inclusive
     [[nodiscard]] DeviceView get_devices(const Coordinate& start, const Coordinate& end) const;
     [[nodiscard]] DeviceView get_devices(const MeshShape& submesh_shape) const;
+    [[nodiscard]] DeviceView get_devices(const distributed::SimpleMeshShape& submesh_shape) const;
     [[nodiscard]] DeviceView get_devices() const;
 
     [[nodiscard]] DeviceView get_devices_on_row(size_t row) const;
