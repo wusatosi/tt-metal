@@ -181,9 +181,9 @@ size_t log_worker_to_fabric_edm_sender_rt_args(std::vector<uint32_t> const& args
 
 class FabricEriscDatamoverBuilder {
    public:
-       static constexpr size_t default_firmware_context_switch_interval = 200000;
+       static constexpr size_t default_firmware_context_switch_interval = 5000;
        // payload only, no header
-       static constexpr size_t default_packet_payload_size_bytes = 4352;
+       static constexpr size_t default_packet_payload_size_bytes = 1088 * 3;
 
        FabricEriscDatamoverBuilder(
            const CoreCoord& my_eth_core_logical,
@@ -345,7 +345,7 @@ class EdmLineFabricOpInterface {
         return -1;
     }
 
-    size_t get_edm_buffer_size_bytes() const { return 4096 /* buffer_size_bytes */; }
+    size_t get_edm_buffer_size_bytes() const { return buffer_size_bytes; }
 
     void teardown_from_host(tt::fabric::TerminationSignal termination_signal = tt::fabric::TerminationSignal::GRACEFULLY_TERMINATE) const;
 
