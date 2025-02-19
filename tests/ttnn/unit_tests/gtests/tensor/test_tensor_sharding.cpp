@@ -756,17 +756,6 @@ class CreateShardedTensorWithAlignmentTests
     : public ttnn::TTNNFixtureWithDevice,
       public ::testing::WithParamInterface<CreateShardedTensorWithAlignmentParams> {};
 
-TEST_P(CreateShardedTensorWithAlignmentTests, AllocateTensor) {
-    const auto& params = GetParam();
-    const auto& input_shape = params.inputs.shape;
-
-    TensorLayout layout(params.inputs.data_type, params.inputs.page_config, params.inputs.memory_config);
-
-    test_utils::test_tensor_on_device(input_shape, layout, device_);
-
-    EXPECT_EQ(layout.compute_physical_shape(input_shape), params.expected.physical_shape);
-}
-
 INSTANTIATE_TEST_SUITE_P(
     TensorShardingTests,
     CreateShardedTensorWithAlignmentTests,

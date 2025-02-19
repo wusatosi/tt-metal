@@ -789,7 +789,7 @@ void launch_op_func(
             });
 
         for (auto target_device : workers) {
-            target_device->push_work([target_device, work_lambda]() mutable { (*work_lambda)(target_device); });
+            (*work_lambda)(target_device);
         }
     }
 
