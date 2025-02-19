@@ -166,7 +166,9 @@ int main(int argc, char *argv[]) {
         RECORD_STACK_USAGE();
         WAYPOINT("D");
 
+#ifndef NCRISC_FIRMWARE_KERNEL_SPLIT
         signal_ncrisc_completion();
+#endif
     }
 
     return 0;

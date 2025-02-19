@@ -549,6 +549,14 @@ int main() {
             WAYPOINT("D");
 
             wait_ncrisc_trisc();
+#ifdef NCRISC_FIRMWARE_KERNEL_SPLIT
+            if (enables & DISPATCH_CLASS_MASK_TENSIX_ENABLE_DM1) {
+                volatile tt_reg_ptr uint32_t* cfg_regs = core.cfg_regs_base(0);
+                cfg_regs[NCRISC_RESET_PC_PC_ADDR32] = mailboxes->ncrisc_halt.resume_addr;
+                assert_just_ncrisc_reset();
+                deassert_all_reset();
+            }
+#endif
 
             if (noc_mode == DM_DYNAMIC_NOC) {
                 // barrier to make sure all writes are finished
