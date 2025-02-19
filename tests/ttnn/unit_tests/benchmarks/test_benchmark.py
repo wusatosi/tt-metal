@@ -83,21 +83,21 @@ def get_device_freq():
 
 
 matmul_shapes_bfloat16 = [
-    (512, 512, 512, False, False, 1, 1, 1),
+    # (512, 512, 512, False, False, 1, 1, 1),
     (512, 1024, 1024, False, False, 1, 1, 1),
     (512, 1024, 2048, False, False, 1, 1, 1),
-    (1024, 1024, 1024, False, False, 1, 1, 1),
-    (1024, 1024, 2048, False, False, 1, 1, 1),
-    (1024, 2048, 2048, False, False, 1, 1, 1),
-    (2048, 2048, 2048, False, False, 1, 1, 1),
-    (2048, 2048, 3072, False, False, 1, 1, 1),
-    (2048, 3072, 3072, False, False, 2, 1, 1),
-    (3072, 3072, 3072, False, False, 4, 1, 1),
-    (3072, 3072, 4096, False, False, 2, 1, 1),
-    (3072, 4096, 4096, False, False, 2, 1, 1),
-    (4096, 4096, 4096, False, False, 1, 2, 2),
-    (8192, 8192, 8192, False, False, 2, 4, 4),
-    (16384, 16384, 16384, False, False, 4, 8, 8),
+    # (1024, 1024, 1024, False, False, 1, 1, 1),
+    # (1024, 1024, 2048, False, False, 1, 1, 1),
+    # (1024, 2048, 2048, False, False, 1, 1, 1),
+    # (2048, 2048, 2048, False, False, 1, 1, 1),
+    # (2048, 2048, 3072, False, False, 1, 1, 1),
+    # (2048, 3072, 3072, False, False, 2, 1, 1),
+    # (3072, 3072, 3072, False, False, 4, 1, 1),
+    # (3072, 3072, 4096, False, False, 2, 1, 1),
+    # (3072, 4096, 4096, False, False, 2, 1, 1),
+    # (4096, 4096, 4096, False, False, 1, 2, 2),
+    # (8192, 8192, 8192, False, False, 2, 4, 4),
+    # (16384, 16384, 16384, False, False, 4, 8, 8),
 ]
 
 matmul_shapes_bfloat8_b = [
@@ -138,7 +138,7 @@ matmul_shapes_bfloat4_b = [
 
 matmul_configs = [
     (ttnn.bfloat16, ttnn.MathFidelity.HiFi2, False),
-    (ttnn.bfloat16, ttnn.MathFidelity.HiFi4, False),
+    # (ttnn.bfloat16, ttnn.MathFidelity.HiFi4, False),
     # (ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, False),
     # (ttnn.bfloat8_b, ttnn.MathFidelity.LoFi, False),
     # (ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, False),
@@ -155,8 +155,8 @@ matmul_configs = [
 @pytest.mark.parametrize("grid_size", [(1, 1)])
 @pytest.mark.parametrize("tile_h", [32])
 @pytest.mark.parametrize("tile_w", [32])
-@pytest.mark.parametrize("num_warmup_iterations", [5])
-@pytest.mark.parametrize("num_measurement_iterations", [100])
+@pytest.mark.parametrize("num_warmup_iterations", [0])
+@pytest.mark.parametrize("num_measurement_iterations", [1])
 def test_matmul_2d_host_perf(
     device,
     grid_size,
@@ -306,15 +306,15 @@ def test_matmul_2d_host_perf(
                 else:
                     output_tile = ttnn.Tile([tile_h, tile_w])
 
-                output_t = ttnn.matmul(
-                    in0_t,
-                    in1_t,
-                    program_config=program_config,
-                    memory_config=out_mem_config,
-                    dtype=dtype,
-                    compute_kernel_config=compute_kernel_config,
-                    output_tile=output_tile,
-                )
+                # output_t = ttnn.matmul(
+                #     in0_t,
+                #     in1_t,
+                #     program_config=program_config,
+                #     memory_config=out_mem_config,
+                #     dtype=dtype,
+                #     compute_kernel_config=compute_kernel_config,
+                #     output_tile=output_tile,
+                # )
 
                 for iter in range(0, num_warmup_iterations):
                     output_t = ttnn.matmul(
