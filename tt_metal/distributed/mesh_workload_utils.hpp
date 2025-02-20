@@ -20,6 +20,6 @@ void write_go_signal(
     bool send_unicasts,
     int num_unicast_txns = -1);
 
-LogicalDeviceRange convex_relative_compliment(LogicalDeviceRange& parent, LogicalDeviceRange& intersection);
+CoreRangeSet relative_compliment(LogicalDeviceRange& parent, LogicalDeviceRange& intersection);
 
 }  // namespace tt::tt_metal::distributed

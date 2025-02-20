@@ -45,8 +45,10 @@ void MeshTraceDescriptor::assemble_dispatch_commands(
                         std::make_move_iterator(program_cmds_vector.end()));
                 } else {
                     // Intersection is a subset of the originally placed program.
-                    auto compliment_ = convex_relative_compliment(program.device_range, intersection);
-                    intermed_trace_data.push_back(MeshTraceData{compliment_, program.data});
+                    auto compliment_set = relative_compliment(program.device_range, intersection);
+                    for (auto& compliment_range : compliment_set.ranges()) {
+                        intermed_trace_data.push_back(MeshTraceData{compliment_range, program.data});
+                    }
                     intermed_trace_data.push_back(MeshTraceData{intersection, program.data});
                     auto& intersection_data = intermed_trace_data.back().data;
                     intersection_data.insert(
