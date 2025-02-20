@@ -23,8 +23,10 @@ void MAIN {
 
         for (uint32_t tile_index = 0; tile_index < block_size; ++tile_index) {
             tile_regs_acquire();
-            // reconfig_data_format_srca<true>(tt::CBIndex::c_0);
-            reconfig_data_format_srca<true>(tt::CBIndex::c_0, tt::CBIndex::c_0);
+            // reconfig_data_format_srca<true>(tt::CBIndex::c_0, tt::CBIndex::c_0); // TRISC kernel duration around
+            // 182xx ~ 184xx reconfig_data_format_srca<true>(tt::CBIndex::c_0); // TRISC kernel duration around 176xx ~
+            // 178xx
+            TTI_STALLWAIT(p_stall::STALL_CFG, p_stall::UNPACK0);  // TRISC kernel duration around 176xx ~ 178xx
             copy_tile(tt::CBIndex::c_0, tile_index, 0);
             tile_regs_commit();
 
