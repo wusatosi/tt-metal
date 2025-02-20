@@ -289,7 +289,7 @@ def analyze_op(row, prev_row):
         op_to_op_gap = Cell(
             row["OP TO OP LATENCY [ns]"] / 1000 if pd.notna(row["OP TO OP LATENCY [ns]"]) else None,
             unit="us",
-            decimals=0,
+            decimals=3,
         )
     else:
         op_to_op_gap = Cell(None, unit="us", decimals=0)

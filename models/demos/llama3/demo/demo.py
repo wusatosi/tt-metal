@@ -684,7 +684,7 @@ def run_llama3_demo(
             iteration += 1
 
             # Upper limit of generated tokens for each user (to avoid infinite generation in case eos is not seen)
-            if iteration >= max_generated_tokens and iteration >= 1:
+            if iteration >= max_generated_tokens or iteration >= 1:
                 users_decoding = False
 
             if not users_decoding:
