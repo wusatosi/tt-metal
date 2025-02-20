@@ -21,6 +21,7 @@ import framework.tt_smi_util as tt_smi_util
 from elasticsearch import Elasticsearch, NotFoundError
 from framework.elastic_config import *
 from framework.sweeps_logger import sweeps_logger as logger
+from sweeps_report import fetch_vector_details, generate_hash
 
 ARCH = os.getenv("ARCH_NAME")
 
@@ -111,7 +112,7 @@ def get_timeout(test_module):
     return timeout
 
 
-def execute_suite(test_module, test_vectors, pbar_manager, suite_name):
+def execute_suite(module_name, test_module, test_vectors, pbar_manager, suite_name):
     results = []
     input_queue = Queue()
     output_queue = Queue()
@@ -128,6 +129,8 @@ def execute_suite(test_module, test_vectors, pbar_manager, suite_name):
             result["exception"] = "INVALID VECTOR: " + test_vector["invalid_reason"]
             result["e2e_perf"] = None
         else:
+            vector_id = test_vector["vector_id"]
+            test_vector.pop("vector_id")
             test_vector.pop("invalid_reason")
             test_vector.pop("status")
             test_vector.pop("validity")
@@ -188,6 +191,23 @@ def execute_suite(test_module, test_vectors, pbar_manager, suite_name):
                 tt_smi_util.run_tt_smi(ARCH)
                 result["status"], result["exception"] = TestStatus.FAIL_CRASH_HANG, "TEST TIMED OUT (CRASH / HANG)"
                 result["e2e_perf"] = None
+            if result["status"] != TestStatus.PASS:
+                es = Elasticsearch(ELASTIC_CONNECTION_STRING, basic_auth=(ELASTIC_USERNAME, ELASTIC_PASSWORD))
+                vector_details = fetch_vector_details(es, module_name, vector_id)
+                if vector_details:
+                    hash_value = generate_hash(vector_details)
+                    existing_doc = es.options(ignore_status=[404]).get(
+                        index=RESULT_INDEX_PREFIX + "hash_table_index", id=hash_value
+                    )
+                    if existing_doc and "_source" in existing_doc:
+                        issues = existing_doc["_source"].get("issues", [])
+                        result["issues"] = issues
+                        logger.debug(f"Found issues for vector ID {vector_id}: {issues}")
+                    else:
+                        logger.debug(f"No issues found for vector ID {vector_id}.")
+                else:
+                    logger.debug(f"No vector details found for vector ID {vector_id}.")
+                es.close()
         result["timestamp"] = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         result["host"] = get_hostname()
         result["user"] = get_username()
@@ -203,7 +223,7 @@ def execute_suite(test_module, test_vectors, pbar_manager, suite_name):
 
 
 def sanitize_inputs(test_vectors):
-    info_field_names = ["sweep_name", "suite_name", "vector_id", "input_hash"]
+    info_field_names = ["sweep_name", "suite_name", "input_hash"]
     header_info = []
     for vector in test_vectors:
         header = dict()
@@ -289,7 +309,7 @@ def run_sweeps_json(module_name, suite_name):
             test_module = importlib.import_module("sweeps." + module_name)
             header_info, test_vectors = sanitize_inputs(vectors)
             logger.info(f"Executing tests for module {module_name}, suite {suite}")
-            results = execute_suite(test_module, test_vectors, pbar_manager, suite)
+            results = execute_suite(module_name, test_module, test_vectors, pbar_manager, suite)
             logger.info(f"Completed tests for module {module_name}, suite {suite}.")
             logger.info(f"Tests Executed - {len(results)}")
             logger.info("Dumping results to JSON file.")
@@ -345,7 +365,7 @@ def run_sweeps(module_name, suite_name, vector_id):
                 for suite in suites:
                     logger.info(f"Executing tests for module {sweep_name}, suite {suite}.")
                     header_info, test_vectors = get_suite_vectors(client, vector_index, suite)
-                    results = execute_suite(test_module, test_vectors, pbar_manager, suite)
+                    results = execute_suite(module_name, test_module, test_vectors, pbar_manager, suite)
                     logger.info(f"Completed tests for module {sweep_name}, suite {suite}.")
                     logger.info(f"Tests Executed - {len(results)}")
                     export_test_results(header_info, results)
@@ -370,7 +390,7 @@ def run_sweeps(module_name, suite_name, vector_id):
             test_vector = client.get(index=vector_index, id=vector_id)["_source"]
             test_vector["vector_id"] = vector_id
             header_info, test_vectors = sanitize_inputs([test_vector])
-            results = execute_suite(test_module, test_vectors, pbar_manager, "Single Vector")
+            results = execute_suite(module_name, test_module, test_vectors, pbar_manager, "Single Vector")
             export_test_results(header_info, results)
         else:
             try:
@@ -391,14 +411,14 @@ def run_sweeps(module_name, suite_name, vector_id):
                     for suite in suites:
                         logger.info(f"Executing tests for module {module_name}, suite {suite}.")
                         header_info, test_vectors = get_suite_vectors(client, vector_index, suite)
-                        results = execute_suite(test_module, test_vectors, pbar_manager, suite)
+                        results = execute_suite(module_name, test_module, test_vectors, pbar_manager, suite)
                         logger.info(f"Completed tests for module {module_name}, suite {suite}.")
                         logger.info(f"Tests Executed - {len(results)}")
                         export_test_results(header_info, results)
                 else:
                     logger.info(f"Executing tests for module {module_name}, suite {suite_name}.")
                     header_info, test_vectors = get_suite_vectors(client, vector_index, suite_name)
-                    results = execute_suite(test_module, test_vectors, pbar_manager, suite_name)
+                    results = execute_suite(module_name, test_module, test_vectors, pbar_manager, suite_name)
                     logger.info(f"Completed tests for module {module_name}, suite {suite_name}.")
                     logger.info(f"Tests Executed - {len(results)}")
                     export_test_results(header_info, results)
