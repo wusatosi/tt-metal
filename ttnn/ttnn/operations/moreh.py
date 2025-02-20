@@ -42,6 +42,7 @@ softmin = ttnn._ttnn.operations.moreh.moreh_softmin
 softmin_backward = ttnn._ttnn.operations.moreh.moreh_softmin_backward
 sum = ttnn._ttnn.operations.moreh.moreh_sum
 sum_backward = ttnn._ttnn.operations.moreh.moreh_sum_backward
+bug_report = ttnn._ttnn.operations.moreh.moreh_bug_report
 
 SoftmaxBackwardOp = ttnn._ttnn.operations.moreh.MorehSoftmaxBackwardOp
 SoftmaxBackwardOpParallelizationStrategy = ttnn._ttnn.operations.moreh.MorehSoftmaxBackwardOpParallelizationStrategy
