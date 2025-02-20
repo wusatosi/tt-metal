@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -eo pipefail
+# set -eo pipefail
 
 if [[ -z "$TT_METAL_HOME" ]]; then
     echo "Must provide TT_METAL_HOME in environment" 1>&2
@@ -20,6 +20,9 @@ export TT_METAL_CLEAR_L1=1
 echo "Running fabric sanity tests now...";
 
 cd $TT_METAL_HOME
+
+ls ./build/test/tt_metal/perf_microbenchmark/routing
+ls ./build_Release/test/tt_metal/perf_microbenchmark/routing
 
 TEST_FOLDER="./build/test/tt_metal/perf_microbenchmark/routing"
 

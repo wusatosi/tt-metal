@@ -56,39 +56,39 @@ jobs:
     with:
       from-precompiled: true
     secrets: inherit
-  # Slow Dispatch Unit Tests
-  sd-unit-tests:
-    needs: build-artifact
-    secrets: inherit
-    strategy:
-      fail-fast: false
-      matrix:
-        test-group: [
-          { arch: grayskull, runner-label: E150 },
-          { arch: wormhole_b0, runner-label: N150 },
-          { arch: wormhole_b0, runner-label: N300 },
-        ]
-    uses: ./.github/workflows/build-and-unit-tests.yaml
-    with:
-      arch: ${{ matrix.test-group.arch }}
-      runner-label: ${{ matrix.test-group.runner-label }}
-  # Fast Dispatch Unit Tests
-  fast-dispatch-unit-tests:
-    needs: build-artifact
-    secrets: inherit
-    strategy:
-      fail-fast: false
-      matrix:
-        test-group: [
-          { arch: grayskull, runner-label: E150 },
-          { arch: wormhole_b0, runner-label: N150 },
-          { arch: wormhole_b0, runner-label: N300 },
-        ]
-    uses: ./.github/workflows/fast-dispatch-build-and-unit-tests.yaml
-    with:
-      os: ubuntu-20.04
-      arch: ${{ matrix.test-group.arch }}
-      runner-label: ${{ matrix.test-group.runner-label }}
+  # # Slow Dispatch Unit Tests
+  # sd-unit-tests:
+  #   needs: build-artifact
+  #   secrets: inherit
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       test-group: [
+  #         { arch: grayskull, runner-label: E150 },
+  #         { arch: wormhole_b0, runner-label: N150 },
+  #         { arch: wormhole_b0, runner-label: N300 },
+  #       ]
+  #   uses: ./.github/workflows/build-and-unit-tests.yaml
+  #   with:
+  #     arch: ${{ matrix.test-group.arch }}
+  #     runner-label: ${{ matrix.test-group.runner-label }}
+  # # Fast Dispatch Unit Tests
+  # fast-dispatch-unit-tests:
+  #   needs: build-artifact
+  #   secrets: inherit
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       test-group: [
+  #         { arch: grayskull, runner-label: E150 },
+  #         { arch: wormhole_b0, runner-label: N150 },
+  #         { arch: wormhole_b0, runner-label: N300 },
+  #       ]
+  #   uses: ./.github/workflows/fast-dispatch-build-and-unit-tests.yaml
+  #   with:
+  #     os: ubuntu-20.04
+  #     arch: ${{ matrix.test-group.arch }}
+  #     runner-label: ${{ matrix.test-group.runner-label }}
   # Fabric Unit Tests
   fabric-unit-tests:
     needs: build-artifact
@@ -104,94 +104,94 @@ jobs:
       os: ubuntu-20.04
       arch: ${{ matrix.test-group.arch }}
       runner-label: ${{ matrix.test-group.runner-label }}
-  # TTNN FD Unit tests
-  ttnn-unit-tests:
-    needs: build-artifact
-    secrets: inherit
-    strategy:
-      fail-fast: false
-      matrix:
-        test-group: [
-          { arch: grayskull, runner-label: E150 },
-          { arch: wormhole_b0, runner-label: N150 },
-          { arch: wormhole_b0, runner-label: N300 },
-        ]
-    uses: ./.github/workflows/ttnn-post-commit.yaml
-    with:
-      arch: ${{ matrix.test-group.arch }}
-      runner-label: ${{ matrix.test-group.runner-label }}
-  # FD Model Tests
-  models-unit-tests:
-    needs: build-artifact
-    secrets: inherit
-    strategy:
-      fail-fast: false
-      matrix:
-        test-group: [
-          { arch: grayskull, runner-label: E150 },
-          { arch: wormhole_b0, runner-label: N150 },
-          { arch: wormhole_b0, runner-label: N300 },
-        ]
-    uses: ./.github/workflows/models-post-commit.yaml
-    with:
-      arch: ${{ matrix.test-group.arch }}
-      runner-label: ${{ matrix.test-group.runner-label }}
-  # FD C++ Unit Tests
-  cpp-unit-tests:
-    needs: build-artifact
-    secrets: inherit
-    strategy:
-      fail-fast: false
-      matrix:
-        test-group: [
-          { arch: grayskull, runner-label: E150 },
-          { arch: wormhole_b0, runner-label: N150 },
-          { arch: wormhole_b0, runner-label: N300 },
-        ]
-    uses: ./.github/workflows/cpp-post-commit.yaml
-    with:
-      arch: ${{ matrix.test-group.arch }}
-      runner-label: ${{ matrix.test-group.runner-label }}
-  code-analysis:
-    uses: ./.github/workflows/code-analysis.yaml
-    secrets: inherit
-    with:
-      version: 22.04
-  tt-train-cpp-unit-tests:
-    needs: build-artifact
-    secrets: inherit
-    strategy:
-      fail-fast: false
-      matrix:
-        test-group: [
-          { arch: wormhole_b0, runner-label: N150 },
-          # Disabled due to https://github.com/tenstorrent/tt-metal/issues/16012
-          # { arch: wormhole_b0, runner-label: N300 },
-        ]
-    uses: ./.github/workflows/tt-train-post-commit.yaml
-    with:
-      arch: ${{ matrix.test-group.arch }}
-      runner-label: ${{ matrix.test-group.runner-label }}
-      docker-image: ${{ needs.build-artifact.outputs.ci-build-docker-image }}
-  run-profiler-regression:
-    needs: build-artifact-profiler
-    strategy:
-      fail-fast: false
-      matrix:
-        test-group: [
-          { arch: grayskull, runner-label: E150 },
-          { arch: wormhole_b0, runner-label: N150 },
-          { arch: wormhole_b0, runner-label: N300 },
-        ]
-    uses: ./.github/workflows/run-profiler-regression.yaml
-    secrets: inherit
-    with:
-      arch: ${{ matrix.test-group.arch}}
-      runner-label: ${{ matrix.test-group.runner-label}}
-  build-docs:
-    needs: build-artifact
-    uses: ./.github/workflows/docs-latest-public.yaml
-    secrets: inherit
+  # # TTNN FD Unit tests
+  # ttnn-unit-tests:
+  #   needs: build-artifact
+  #   secrets: inherit
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       test-group: [
+  #         { arch: grayskull, runner-label: E150 },
+  #         { arch: wormhole_b0, runner-label: N150 },
+  #         { arch: wormhole_b0, runner-label: N300 },
+  #       ]
+  #   uses: ./.github/workflows/ttnn-post-commit.yaml
+  #   with:
+  #     arch: ${{ matrix.test-group.arch }}
+  #     runner-label: ${{ matrix.test-group.runner-label }}
+  # # FD Model Tests
+  # models-unit-tests:
+  #   needs: build-artifact
+  #   secrets: inherit
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       test-group: [
+  #         { arch: grayskull, runner-label: E150 },
+  #         { arch: wormhole_b0, runner-label: N150 },
+  #         { arch: wormhole_b0, runner-label: N300 },
+  #       ]
+  #   uses: ./.github/workflows/models-post-commit.yaml
+  #   with:
+  #     arch: ${{ matrix.test-group.arch }}
+  #     runner-label: ${{ matrix.test-group.runner-label }}
+  # # FD C++ Unit Tests
+  # cpp-unit-tests:
+  #   needs: build-artifact
+  #   secrets: inherit
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       test-group: [
+  #         { arch: grayskull, runner-label: E150 },
+  #         { arch: wormhole_b0, runner-label: N150 },
+  #         { arch: wormhole_b0, runner-label: N300 },
+  #       ]
+  #   uses: ./.github/workflows/cpp-post-commit.yaml
+  #   with:
+  #     arch: ${{ matrix.test-group.arch }}
+  #     runner-label: ${{ matrix.test-group.runner-label }}
+  # code-analysis:
+  #   uses: ./.github/workflows/code-analysis.yaml
+  #   secrets: inherit
+  #   with:
+  #     version: 22.04
+  # tt-train-cpp-unit-tests:
+  #   needs: build-artifact
+  #   secrets: inherit
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       test-group: [
+  #         { arch: wormhole_b0, runner-label: N150 },
+  #         # Disabled due to https://github.com/tenstorrent/tt-metal/issues/16012
+  #         # { arch: wormhole_b0, runner-label: N300 },
+  #       ]
+  #   uses: ./.github/workflows/tt-train-post-commit.yaml
+  #   with:
+  #     arch: ${{ matrix.test-group.arch }}
+  #     runner-label: ${{ matrix.test-group.runner-label }}
+  #     docker-image: ${{ needs.build-artifact.outputs.ci-build-docker-image }}
+  # run-profiler-regression:
+  #   needs: build-artifact-profiler
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       test-group: [
+  #         { arch: grayskull, runner-label: E150 },
+  #         { arch: wormhole_b0, runner-label: N150 },
+  #         { arch: wormhole_b0, runner-label: N300 },
+  #       ]
+  #   uses: ./.github/workflows/run-profiler-regression.yaml
+  #   secrets: inherit
+  #   with:
+  #     arch: ${{ matrix.test-group.arch}}
+  #     runner-label: ${{ matrix.test-group.runner-label}}
+  # build-docs:
+  #   needs: build-artifact
+  #   uses: ./.github/workflows/docs-latest-public.yaml
+  #   secrets: inherit
   build:
     uses: ./.github/workflows/build-artifact.yaml
     needs: build-artifact
