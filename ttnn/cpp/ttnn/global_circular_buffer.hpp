@@ -25,11 +25,15 @@ GlobalCircularBuffer create_global_circular_buffer(
     uint32_t size,
     BufferType buffer_type = BufferType::L1);
 
+void reset_global_circular_buffer(const GlobalCircularBuffer& global_circular_buffer);
+
 // Multi Device APIs
 MultiDeviceGlobalCircularBuffer create_global_circular_buffer(
     MeshDevice* mesh_device,
     const std::vector<std::pair<CoreCoord, CoreRangeSet>>& sender_receiver_core_mapping,
     uint32_t size,
     BufferType buffer_type = BufferType::L1);
+
+void reset_global_circular_buffer(const MultiDeviceGlobalCircularBuffer& global_circular_buffer);
 
 }  // namespace ttnn::global_circular_buffer

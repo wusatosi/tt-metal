@@ -35,6 +35,17 @@ void py_module(py::module& module) {
                 buffer_type (BufferType): The type of buffer to use for the global circular buffer.\
             )doc");
 
+    module.def(
+        "reset_global_circular_buffer",
+        py::overload_cast<const GlobalCircularBuffer&>(&reset_global_circular_buffer),
+        py::arg("global_circular_buffer"),
+        R"doc(
+            Reset the value of the global circular buffer configs.
+
+            Args:
+                global_circular_buffer (GlobalCircularBuffer): The global circular buffer object.
+            )doc");
+
     // Multi Device APIs
     module.def(
         "create_global_circular_buffer",
@@ -45,13 +56,24 @@ void py_module(py::module& module) {
         py::arg("size"),
         py::arg("buffer_type") = tt::tt_metal::BufferType::L1,
         R"doc(
-            Create a GlobalCircularBuffer Object on a single device.
+            Create a GlobalCircularBuffer Object on a mesh device.
 
             Args:
                 mesh_device (MeshDevice): The mesh device on which to create the global circular buffer.
                 sender_receiver_core_mapping (List[Tuple[CoreCoord, CoreRangeSet]]): The mapping of remote sender to remote receiver cores for the circular buffer.
                 size (int): Size of the global circular buffer per core in bytes.
                 buffer_type (BufferType): The type of buffer to use for the global circular buffer.
+            )doc");
+
+    module.def(
+        "reset_global_circular_buffer",
+        py::overload_cast<const MultiDeviceGlobalCircularBuffer&>(&reset_global_circular_buffer),
+        py::arg("global_circular_buffer"),
+        R"doc(
+            Reset the value of the global circular buffer configs.
+
+            Args:
+                global_circular_buffer (GlobalCircularBuffer): The global circular buffer object.
             )doc");
 }
 

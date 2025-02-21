@@ -26,6 +26,10 @@ GlobalCircularBuffer create_global_circular_buffer(
         device, sender_receiver_core_mapping, size, buffer_type);
 }
 
+void reset_global_circular_buffer(const GlobalCircularBuffer& global_circular_buffer) {
+    global_circular_buffer.reset_cb_buffers();
+}
+
 MultiDeviceGlobalCircularBuffer create_global_circular_buffer(
     MeshDevice* mesh_device,
     const std::vector<std::pair<CoreCoord, CoreRangeSet>>& sender_receiver_core_mapping,
@@ -40,6 +44,12 @@ MultiDeviceGlobalCircularBuffer create_global_circular_buffer(
             create_global_circular_buffer(device, sender_receiver_core_mapping, size, buffer_type));
     }
     return multi_device_global_cb;
+}
+
+void reset_global_circular_buffer(const MultiDeviceGlobalCircularBuffer& global_circular_buffer) {
+    for (const auto& global_circular_buffer : global_circular_buffer.global_circular_buffers) {
+        reset_global_circular_buffer(global_circular_buffer);
+    }
 }
 
 }  // namespace ttnn::global_circular_buffer

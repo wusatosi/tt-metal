@@ -70,7 +70,7 @@ void py_module(py::module& module) {
         py::arg("initial_value"),
         py::arg("buffer_type") = tt::tt_metal::BufferType::L1,
         R"doc(
-            Create a GlobalSemaphore Object on a single device.
+            Create a GlobalSemaphore Object on a mesh device.
 
             Args:
                 mesh_device (MeshDevice): The mesh device on which to create the global semaphore.
