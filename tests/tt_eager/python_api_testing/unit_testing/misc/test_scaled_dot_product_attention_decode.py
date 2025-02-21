@@ -893,6 +893,69 @@ def test_sdpa_decode_paged_attention(
     # assert device.num_program_cache_entries() == 4
 
 
+@skip_for_grayskull("Unsupported in GS since L1 runs OOM with most configs")
+@pytest.mark.parametrize(
+    "kv_dtype, q_dtype",
+    [
+        # [ttnn.bfloat8_b, ttnn.bfloat8_b],
+        [ttnn.bfloat16, ttnn.bfloat16],
+        # [ttnn.bfloat8_b, ttnn.bfloat16],
+        # [ttnn.bfloat4_b, ttnn.bfloat16],
+    ],
+    ids=[
+        # "all_bfp8",
+        "all_bfp16",
+        # "kv_bfp8_q_bf16",
+        # "kv_bfp4",
+    ],
+)
+@pytest.mark.parametrize(
+    "b, nh, nkv, s, d, grid_size, cur_pos_tensor",
+    (
+        # [1, 4, 1, 16 * 1024, 128, (1, 1), True],
+        # [1, 32, 8, 64 * 1024, 128, (8, 1), True],
+        [1, 32, 1, 64 * 1024, 128, (1, 1), True],
+        # [32, 32, 8, 2 * 1024, 128, (8, 4), True],
+        # [32, 32, 8, 64 * 1024, 128, (8, 8), True],
+        # [32, 8, 1, 32768, 128, (8, 6), True],  # Llama2-70B
+        # [4, 32, 8, 4096, 128, (8, 8), True],  # llama 3.1 8b
+        # [4, 16, 4, 32768, 128, (8, 8), True],
+        # [32, 32, 8, 4096, 128, (8, 8), True],  # llama 3.1 8b
+        # [8, 16, 4, 4096, 128, (8, 2), True],  # llama 3.1 8b N300
+        # [1, 8, 1, 128 * 1024, 128, (8, 4), True],  # llama 3.1 8b N300
+        # [1, 8, 1, 32768, 128, (8, 1), True],  # Llama2-70B
+        # [16, 8, 1, 32768, 128, (8, 6), False, False],  # Llama2-70B
+        # [8, 8, 1, 32768, 128, (8, 6), True, False],  # Llama2-70B
+        # [4, 8, 1, 32768, 128, (8, 6), True, False],  # Llama2-70B
+        # [32, 8, 1, 32768, 128, (8, 8), True, True],  # Mixtral8x7b
+    ),
+)
+@pytest.mark.parametrize("block_size", (64,), ids=["paged_64"])
+# @pytest.mark.parametrize("block_size", (64, 128), ids=["paged_64", "paged_128"])
+def test_sdpa_hang_single_core(
+    device, b, nh, nkv, s, d, kv_dtype, grid_size, q_dtype, cur_pos_tensor, block_size, use_program_cache
+):
+    if s == 128 * 1024 and block_size != 64:
+        # 128k sequence, block_size 64 tests the sizing of the page table CB
+        pytest.skip("Skipping test for seq_len=128k with block_size!=64")
+    ttnn.device.DisablePersistentKernelCache()
+    run_test_sdpa_decode_paged_attention(
+        device,
+        b,
+        nh,
+        nkv,
+        s,
+        d,
+        kv_dtype,
+        grid_size,
+        q_dtype,
+        cur_pos_tensor,
+        block_size=block_size,
+        sharded_in=True,
+        sharded_out=False,
+    )
+
+
 @skip_for_blackhole("Unsupported on BH, see #12349")
 @skip_for_grayskull("Unsupported in GS since L1 runs OOM with most configs")
 @pytest.mark.parametrize(
