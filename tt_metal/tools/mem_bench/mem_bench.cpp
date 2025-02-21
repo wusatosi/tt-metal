@@ -6,7 +6,7 @@
 
 #include <benchmark/benchmark.h>
 
-#include <tt_cluster.hpp>
+#include <llrt/tt_cluster.hpp>
 #include <tt-metalium/host_api.hpp>
 #include <tt-metalium/hal_exp.hpp>
 #include <tt-metalium/tt_metal.hpp>

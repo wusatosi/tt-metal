@@ -18,7 +18,7 @@
 #include "umd/device/types/xy_pair.h"
 #include <fmt/base.h>
 #include "llrt.hpp"
-#include <tt_cluster.hpp>
+#include <llrt/tt_cluster.hpp>
 
 #include <core_coord.hpp>
 #include "hw/inc/debug/ring_buffer.h"

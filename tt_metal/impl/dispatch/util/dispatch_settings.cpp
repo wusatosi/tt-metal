@@ -4,7 +4,7 @@
 
 #include <cstdint>
 #include <hal.hpp>
-#include <tt_cluster.hpp>
+#include <llrt/tt_cluster.hpp>
 #include "magic_enum/magic_enum.hpp"
 #include "umd/device/tt_core_coordinates.h"
 #include <dispatch_settings.hpp>

@@ -8,7 +8,7 @@
 #include <chrono>
 #include <algorithm>
 #include <numa.h>
-#include <tt_cluster.hpp>
+#include <llrt/tt_cluster.hpp>
 
 namespace tt::tt_metal::tools::mem_bench {
 

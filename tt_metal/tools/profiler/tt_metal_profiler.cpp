@@ -16,7 +16,7 @@
 #include "tracy/TracyTTDevice.hpp"
 #include <device.hpp>
 #include <device_pool.hpp>
-#include <tt_cluster.hpp>
+#include <llrt/tt_cluster.hpp>
 
 #include "llrt.hpp"
 

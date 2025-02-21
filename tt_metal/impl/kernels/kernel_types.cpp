@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <kernel_types.hpp>
-#include <tt_cluster.hpp>
+#include <llrt/tt_cluster.hpp>
 
 #include <utility>
 
