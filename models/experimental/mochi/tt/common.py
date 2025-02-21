@@ -105,7 +105,9 @@ def matmul_config(
     ), f"num_out_blocks_w {num_out_blocks_w} must evenly divide per_core_N {per_core_N}"
     out_block_h = per_core_M / num_out_blocks_h
     out_block_w = per_core_N / num_out_blocks_w
-    out_subblock_h, out_subblock_w = get_subblock_sizes(out_block_h, out_block_w)  # want these to be 1 and 6
+    out_subblock_h, out_subblock_w = get_subblock_sizes(
+        out_block_h, out_block_w, False, True
+    )  # want these to be 1 and 6
 
     if in0_block_w is None:
         # in0_block_w = min(4, max(1, k // (TILE_SIZE * grid_size[0])))

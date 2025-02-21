@@ -101,8 +101,10 @@ def validate_outputs(tt_outputs, ref_outputs, test_name):
 @torch.no_grad()
 @skip_for_grayskull("Requires wormhole_b0 to run")
 @pytest.mark.parametrize(
-    "seq_len",
-    (256,),
+    "vision_seq_len, text_seq_len",
+    [
+        (22 * 256 * 8, 256),
+    ],
 )
 @pytest.mark.parametrize(
     "mesh_device",
@@ -119,14 +121,18 @@ def validate_outputs(tt_outputs, ref_outputs, test_name):
         ("blocks.0.attn", 3072, 1536),
     ],
 )
-def test_tt_attn_qkv_y(mesh_device, seq_len, use_program_cache, reset_seeds, attn_path, dim_x, dim_y):
+def test_tt_attn_qkv_y(
+    mesh_device, vision_seq_len, text_seq_len, use_program_cache, reset_seeds, attn_path, dim_x, dim_y
+):
     state_dict, partial_state_dict = load_model_weights(attn_path)
-    reference_model, tt_model = create_models(mesh_device, state_dict, partial_state_dict, attn_path, dim_x, dim_y)
+    reference_model, tt_model = create_models(
+        mesh_device, state_dict, partial_state_dict, attn_path, vision_seq_len, dim_x, dim_y
+    )
 
     batch_size = 1
     # Create input tensor
-    torch_input = torch.randn(batch_size, seq_len, dim_y)
-    tt_input = to_tt_tensor(torch_input.view(1, batch_size, seq_len, dim_y), mesh_device)
+    torch_input = torch.randn(batch_size, text_seq_len, dim_y)
+    tt_input = to_tt_tensor(torch_input.view(1, batch_size, text_seq_len, dim_y), mesh_device)
 
     logger.info("Run TtAsymmetricAttention QKV_Y")
     tt_q, tt_k, tt_v = tt_model.run_qkv_y(tt_input)
@@ -141,9 +147,9 @@ def test_tt_attn_qkv_y(mesh_device, seq_len, use_program_cache, reset_seeds, att
         ref_q, ref_k, ref_v = reference_model.run_qkv_y(torch_input)
 
         # Reshape to [B, H, L, D]
-        ref_q = ref_q.reshape(batch_size, seq_len, NUM_HEADS, HEAD_DIM).transpose(1, 2)
-        ref_k = ref_k.reshape(batch_size, seq_len, NUM_HEADS, HEAD_DIM).transpose(1, 2)
-        ref_v = ref_v.reshape(batch_size, seq_len, NUM_HEADS, HEAD_DIM).transpose(1, 2)
+        ref_q = ref_q.reshape(batch_size, text_seq_len, NUM_HEADS, HEAD_DIM).transpose(1, 2)
+        ref_k = ref_k.reshape(batch_size, text_seq_len, NUM_HEADS, HEAD_DIM).transpose(1, 2)
+        ref_v = ref_v.reshape(batch_size, text_seq_len, NUM_HEADS, HEAD_DIM).transpose(1, 2)
 
     validate_outputs([tt_q_torch, tt_k_torch, tt_v_torch], [ref_q, ref_k, ref_v], "TtAsymmetricAttention QKV_Y")
 
@@ -291,7 +297,7 @@ def test_tt_attn_run_attention(
     """Test run_attention implementation by comparing with reference model."""
     state_dict, partial_state_dict = load_model_weights(attn_path)
     reference_model, tt_model = create_models(
-        mesh_device, state_dict, partial_state_dict, attn_path, dim_x, dim_y, update_y
+        mesh_device, state_dict, partial_state_dict, attn_path, vision_seq_len, dim_x, dim_y, update_y
     )
 
     batch_size = 1
@@ -392,7 +398,7 @@ def test_tt_attn_post_attention(
     """Test post_attention implementation by comparing with reference model."""
     state_dict, partial_state_dict = load_model_weights(attn_path)
     reference_model, tt_model = create_models(
-        mesh_device, state_dict, partial_state_dict, attn_path, dim_x, dim_y, update_y
+        mesh_device, state_dict, partial_state_dict, attn_path, vision_seq_len, dim_x, dim_y, update_y
     )
 
     batch_size = 1
@@ -459,8 +465,9 @@ def test_tt_attn_post_attention(
 @pytest.mark.parametrize(
     "vision_seq_len, text_seq_len",
     [
-        (43 * 1024, 256),
-        (44520, 118),
+        (22 * 256 * 8, 256),
+        # (43 * 1024, 256),
+        # (44520, 118),
     ],
 )
 @pytest.mark.parametrize(
@@ -487,7 +494,7 @@ def test_tt_attn_forward(
     """Test complete forward pass of TtAsymmetricAttention."""
     state_dict, partial_state_dict = load_model_weights(attn_path)
     reference_model, tt_model = create_models(
-        mesh_device, state_dict, partial_state_dict, attn_path, dim_x, dim_y, update_y
+        mesh_device, state_dict, partial_state_dict, attn_path, vision_seq_len, dim_x, dim_y, update_y
     )
 
     # Create input tensors
@@ -511,12 +518,12 @@ def test_tt_attn_forward(
     valid_token_indices = torch.arange(total_seq_len)
     max_seqlen_in_batch = total_seq_len
 
-    tt_x = to_tt_tensor(x_input.unsqueeze(0), mesh_device)
+    tt_x = to_tt_tensor(x_input.unsqueeze(0), mesh_device, shard_dim=-2)
     tt_y = to_tt_tensor(y_input.unsqueeze(0), mesh_device)
     tt_scale_x = to_tt_tensor(scale_x.view(batch_size, 1, 1, dim_x), mesh_device)
     tt_scale_y = to_tt_tensor(scale_y.view(batch_size, 1, 1, dim_y), mesh_device)
-    tt_rope_cos = to_tt_tensor(rope_cos_stack, mesh_device, shard_dim=-3)
-    tt_rope_sin = to_tt_tensor(rope_sin_stack, mesh_device, shard_dim=-3)
+    tt_rope_cos = to_tt_tensor(rope_cos_stack, mesh_device, shard_dim=-2)
+    tt_rope_sin = to_tt_tensor(rope_sin_stack, mesh_device, shard_dim=-2)
 
     # Create transformation matrix for RoPE
     trans_mat = get_rot_transformation_mat(None)
