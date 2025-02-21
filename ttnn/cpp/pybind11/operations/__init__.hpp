@@ -47,6 +47,7 @@
 #include "ttnn/operations/transformer/transformer_pybind.hpp"
 #include "ttnn/operations/prefetcher/prefetcher_pybind.hpp"
 #include "ttnn/operations/uniform/uniform_pybind.hpp"
+#include "ttnn/operations/muladd/muladd_pybind.hpp"
 
 namespace py = pybind11;
 
@@ -168,6 +169,9 @@ void py_module(py::module& module) {
 
     auto m_bernoulli = module.def_submodule("bernoulli", "bernoulli operations");
     bernoulli::bind_bernoulli_operation(m_bernoulli);
+
+    auto m_muladd = module.def_submodule("muladd", "muladd operations");
+    muladd::py_module(m_muladd);
 }
 }  // namespace operations
 

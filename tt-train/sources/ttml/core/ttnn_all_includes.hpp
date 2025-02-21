@@ -61,6 +61,7 @@
 #include <ttnn/operations/moreh/moreh_nll_loss/moreh_nll_loss.hpp>                                 // NOLINT
 #include <ttnn/operations/moreh/moreh_nll_loss_backward/moreh_nll_loss_backward.hpp>               // NOLINT
 #include <ttnn/operations/moreh/moreh_sum/moreh_sum.hpp>                                           // NOLINT
+#include <ttnn/operations/muladd/muladd.hpp>                                                       // NOLINT
 #include <ttnn/operations/normalization/softmax/softmax.hpp>                                       // NOLINT
 #include <ttnn/operations/reduction/generic/generic_reductions.hpp>                                // NOLINT
 #include <ttnn/tensor/enum_types.hpp>                                                              // NOLINT

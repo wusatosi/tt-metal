@@ -601,6 +601,10 @@ set(TTNN_OP_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/experimental/dropout/dropout_pybind.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/experimental/reshape/view.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/experimental/reshape/view_pybind.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/muladd/device/muladd_op.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/muladd/device/muladd_program_factory.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/muladd/muladd_pybind.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/muladd/muladd.cpp
 )
 
 set(TTNN_SUBLIBRARIES
@@ -649,6 +653,7 @@ set(TTNN_SUBLIBRARIES
     ttnn/operations/sliding_window
     ttnn/operations/transformer
     ttnn/operations/uniform
+    ttnn/operations/muladd
 )
 
 #Split src and python bindings
