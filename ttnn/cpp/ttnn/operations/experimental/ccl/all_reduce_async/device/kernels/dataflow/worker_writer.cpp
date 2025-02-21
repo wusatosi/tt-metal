@@ -38,7 +38,7 @@ void kernel_main() {
     size_t arg_idx = 0;
     // Load the input tensor spec
     uint32_t reduction_output_cb_id = get_arg_val<address_t>(arg_idx++);
-    address_t tensor_address0 = get_write_ptr(reduction_output_cb_id);
+    // address_t tensor_address0 = get_write_ptr(reduction_output_cb_id);
 
     const size_t out_ready_sem_bank_addr = get_arg_val<uint32_t>(arg_idx++);
     uint32_t num_tiles_per_core = get_arg_val<uint32_t>(arg_idx++);
@@ -57,11 +57,17 @@ void kernel_main() {
     const uint32_t mcast_dest_noc_end_y = get_arg_val<uint32_t>(arg_idx++);
     const uint32_t link = get_arg_val<uint32_t>(arg_idx++);
 
+    if (num_cores == 16) {
+        reduction_output_cb_id = 4;
+    }
+
+    address_t tensor_address0 = get_write_ptr(reduction_output_cb_id);
+
     // DPRINT << "reduction_output_cb_id: " << reduction_semaphore_send_addr << "\n";
 
-    volatile tt_l1_ptr uint32_t* reduction_semaphore_send_addr_ptr =
-        reinterpret_cast<volatile tt_l1_ptr uint32_t*>(reduction_semaphore_send_addr);
-    noc_semaphore_set(reduction_semaphore_send_addr_ptr, VALID);
+    // volatile tt_l1_ptr uint32_t* reduction_semaphore_send_addr_ptr =
+    //     reinterpret_cast<volatile tt_l1_ptr uint32_t*>(reduction_semaphore_send_addr);
+    // noc_semaphore_set(reduction_semaphore_send_addr_ptr, VALID);
 
     tt_l1_ptr uint32_t* core_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
     arg_idx += num_cores;
@@ -123,6 +129,7 @@ void kernel_main() {
             l1_read_addr,
             num_tiles_to_read_this_core * tensor0_page_size);
         noc_async_writes_flushed();
+        noc_async_write_barrier();
 
         cb_pop_front(cb0_id, num_tiles_to_read_this_core);
         tiles_read += num_tiles_to_read_this_core;
@@ -157,6 +164,8 @@ void kernel_main() {
         fabric_connection.get_backward_connection().send_payload_flush_blocking_from_address(
             packet_header_buffer_seminc, sizeof(tt::fabric::PacketHeader));
     }
+    noc_async_write_barrier();
+
     // increment locally
     uint64_t out_ready_sem_noc_addr =
         safe_get_noc_addr(out_ready_sem_noc0_x, out_ready_sem_noc0_y, out_ready_sem_bank_addr);
@@ -168,21 +177,25 @@ void kernel_main() {
         while (*reinterpret_cast<volatile uint32_t*>(out_ready_sem_bank_addr) < out_ready_sem_wait_value);
     }
 
-    // Signal the reduction workers
-    const uint64_t reduction_semaphore_recv_noc_addr = get_noc_multicast_addr(
-        mcast_dest_noc_start_x,
-        mcast_dest_noc_start_y,
-        mcast_dest_noc_end_x,
-        mcast_dest_noc_end_y,
-        reduction_semaphore_send_addr);
+    for (uint32_t i = 0; i < num_cores; i++) {
+        noc_semaphore_inc(get_noc_addr(core_noc_x[i], core_noc_y[i], reduction_semaphore_send_addr), 1);
+    }
 
-    noc_semaphore_set_multicast(
-        reduction_semaphore_send_addr,
-        reduction_semaphore_recv_noc_addr,
-        num_cores,
-        false,  // TODO: Why?
-        false,  // TODO: Why?
-        0);
+    // // Signal the reduction workers
+    // const uint64_t reduction_semaphore_recv_noc_addr = get_noc_multicast_addr(
+    //     mcast_dest_noc_start_x,
+    //     mcast_dest_noc_start_y,
+    //     mcast_dest_noc_end_x,
+    //     mcast_dest_noc_end_y,
+    //     reduction_semaphore_send_addr);
+
+    // noc_semaphore_set_multicast(
+    //     reduction_semaphore_send_addr,
+    //     reduction_semaphore_recv_noc_addr,
+    //     num_cores,
+    //     false,  // TODO: Why?
+    //     false,  // TODO: Why?
+    //     0);
 
     // DPRINT << "wait done for output semphore \n";
 
@@ -191,6 +204,9 @@ void kernel_main() {
         const uint64_t dest_noc_addr = get_noc_addr(my_x[0], my_y[0], out_ready_sem_bank_addr);
         noc_inline_dw_write(dest_noc_addr, 0);
     }
+
+    noc_semaphore_wait(reinterpret_cast<volatile tt_l1_ptr uint32_t*>(reduction_semaphore_send_addr), num_cores);
+    noc_semaphore_set(reinterpret_cast<volatile tt_l1_ptr uint32_t*>(reduction_semaphore_send_addr), 0);
 
     if (fabric_connection.is_logically_connected()) {
         fabric_connection.close();

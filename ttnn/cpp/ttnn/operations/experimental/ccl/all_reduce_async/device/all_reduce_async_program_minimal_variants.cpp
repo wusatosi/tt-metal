@@ -221,6 +221,12 @@ operation::ProgramWithCallbacks all_reduce_async_minimal_multi_core_with_workers
             .set_page_size(reduction_cb_index, reduction_CB_single_tile_size);
     auto cb_reduction = tt::tt_metal::CreateCircularBuffer(program, all_cores, reduction_cb_config);
 
+    uint32_t reduction_cb2_index = tt::CBIndex::c_4;
+    tt::tt_metal::CircularBufferConfig reduction_cb2_config =
+        tt::tt_metal::CircularBufferConfig(reduction_CB_size, {{reduction_cb2_index, df}})
+            .set_page_size(reduction_cb2_index, reduction_CB_single_tile_size);
+    auto cb_reduction2 = tt::tt_metal::CreateCircularBuffer(program, all_cores, reduction_cb2_config);
+
     /* out cb */
     uint32_t out_CB_single_tile_size = output_tensor.get_tensor_spec().tile().get_tile_size(df);
     uint32_t out_CB_tiles = output_tensor_shard_num_pages;
@@ -239,6 +245,8 @@ operation::ProgramWithCallbacks all_reduce_async_minimal_multi_core_with_workers
     reduction_reader_kernel_config.compile_args = {
         reduction_cb_index,  // reduction_cb_index
         reduction_CB_tiles,  // total_num_reduction_tiles
+        out_cb_index,        // out_cb_index
+        ring_size,           // num_blocks
     };
     auto reduction_reader_kernel_id = tt::tt_metal::CreateKernel(
         program,
@@ -253,6 +261,7 @@ operation::ProgramWithCallbacks all_reduce_async_minimal_multi_core_with_workers
         reduction_cb_index,  // reduction_cb_index
         out_cb_index,        // out_cb_index
     };
+    reduction_kernel_config.bfp8_pack_precise = true;
     auto reduction_kernel_id = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/experimental/ccl/all_reduce_async/device/kernels/compute/"
@@ -422,6 +431,8 @@ operation::ProgramWithCallbacks all_reduce_async_minimal_multi_core_with_workers
 
         std::vector<uint32_t> reduction_reader_rt_args = {
             reduction_semaphore_ids[link],  // reduction_semaphore_id
+            drain_sync_core.x,              // out_ready_sem_noc0_x
+            drain_sync_core.y,              // out_ready_sem_noc0_y
         };
         tt::tt_metal::SetRuntimeArgs(
             program, reduction_reader_kernel_id, output_corerangeset_per_link[link], reduction_reader_rt_args);

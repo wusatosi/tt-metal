@@ -7,15 +7,19 @@
 
 namespace NAMESPACE {
 void MAIN {
-    constexpr uint32_t cb_in0 = get_compile_time_arg_val(0);
+    uint32_t cb_in0 = get_compile_time_arg_val(0);
     constexpr uint32_t cb_out0 = get_compile_time_arg_val(1);
-    constexpr uint32_t cb_in1 = cb_in0;
 
     uint32_t rt_args_idx = 0;
     const uint32_t num_blocks = get_arg_val<uint32_t>(rt_args_idx++);
     const uint32_t block_num_tiles = get_arg_val<uint32_t>(rt_args_idx++);
     const uint32_t copy_first_block = num_blocks % 2 != 0;
 
+    if (num_blocks == 8) {
+        cb_in0 = 4;
+    }
+
+    uint32_t cb_in1 = cb_in0;
     constexpr uint32_t max_dst_tiles = 8;  // TODO: Make general
 
     cb_wait_front(cb_in0, num_blocks * block_num_tiles);
@@ -55,5 +59,7 @@ void MAIN {
 
         block_num_tiles_cnt += num_tiles_to_pack;
     }
+
+    cb_push_back(cb_out0, block_num_tiles);
 }
 }  // namespace NAMESPACE

@@ -96,6 +96,7 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
     torch_input = torch.ones(1, 1, seq_len, model_args.dim)
 
     logger.info("Run Llama_MLP_PF")
+    keep = []
     for i in range(20):
         ttnn.dram_prefetcher(
             prefetcher_setup.get_input_tensors(),
@@ -124,6 +125,7 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
         )
         logger.info("Run Llama_MLP")
         tt_output, tt_w1_out, tt_w1_reduced = tt_model(tt_input, mode)
+        # keep.append([tt_output, tt_w1_out, tt_w1_reduced])
 
         tt_output_torch = ttnn.to_torch(
             tt_output,
@@ -133,6 +135,7 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
             tt_w1_reduced,
             mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(3, 1), mesh_shape=model_args.cluster_shape),
         )
+        # torch.where(test != 0)
         tt_w1_out_torch = ttnn.to_torch(
             tt_w1_out,
             mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(3, 2), mesh_shape=model_args.cluster_shape),
@@ -141,7 +144,8 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
 
         tt_output_torch = tt_output_torch[:, :1, :, : model_args.dim]
 
-        tt_w1_reduced_torch = tt_w1_reduced_torch[:, :1, :, :28672]
+        tt_w1_reduced_torch = tt_w1_reduced_torch[:, :1, :, :28672].reshape(8, 1, 32, 3584)
+        tes = tt_w1_reduced_torch[0, 0, :32, -32:]
 
         reference_output = reference_model(torch_input[:, :1, :, : model_args.dim])
 
@@ -150,7 +154,7 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
 
         logger.info(comp_allclose(reference_output, tt_output_torch))
         logger.info(f"PCC: {pcc_message}")
-        breakpoint()
+        # breakpoint()
     if passing:
         logger.info("Llama_MLP Passed!")
     else:
