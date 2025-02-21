@@ -520,7 +520,7 @@ operation::ProgramWithCallbacks untilize_with_unpadding_multi_core_col_interleav
     uint32_t unpadded_row_size_bytes;
 
     uint32_t el_size = a.element_size();
-    if (a.get_dtype() == DataType::BFLOAT8_B) {
+    if (a.get_dtype() == DataType::BFLOAT8_B || a.get_dtype() == DataType::BFLOAT4_B) {
         padded_row_size_bytes = input_shape[-1] * output.element_size();
         unpadded_row_size_bytes = output_shape[-1] * output.element_size();
         el_size = output.element_size();
@@ -707,7 +707,7 @@ operation::ProgramWithCallbacks untilize_with_unpadding_multi_core_interleaved(
     uint32_t padded_row_size_bytes;
     uint32_t unpadded_row_size_bytes;
 
-    if (a.get_dtype() == DataType::BFLOAT8_B) {
+    if (a.get_dtype() == DataType::BFLOAT8_B || a.get_dtype() == DataType::BFLOAT4_B) {
         padded_row_size_bytes = input_shape[-1] * output.element_size();
         unpadded_row_size_bytes = output_shape[-1] * output.element_size();
     } else {

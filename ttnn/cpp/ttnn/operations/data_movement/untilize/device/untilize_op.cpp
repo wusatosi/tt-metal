@@ -64,7 +64,9 @@ std::vector<ttnn::TensorSpec> Untilize::compute_output_specs(const std::vector<T
     using namespace tt::constants;
     const auto& input_tensor = input_tensors.at(0);
     DataType output_dtype =
-        input_tensor.get_dtype() == DataType::BFLOAT8_B ? DataType::BFLOAT16 : input_tensor.get_dtype();
+        input_tensor.get_dtype() == DataType::BFLOAT8_B || input_tensor.get_dtype() == DataType::BFLOAT4_B
+            ? DataType::BFLOAT16
+            : input_tensor.get_dtype();
     if (output_mem_config.is_sharded()) {
         if (input_tensor.memory_config().is_sharded()) {
             auto mem_config = this->output_mem_config;

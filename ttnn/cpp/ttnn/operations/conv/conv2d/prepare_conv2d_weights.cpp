@@ -441,7 +441,8 @@ Tensor convert_conv_weight_tensor_to_grouped_layout(
                 {DataType::UINT32, &conv_group_weight_zero_pad_helper<uint32_t>},
                 {DataType::BFLOAT4_B, &conv_group_weight_zero_pad_helper<uint32_t>},
             };
-    output_dtype = output_dtype == DataType::BFLOAT8_B ? DataType::FLOAT32 : output_dtype;
+    output_dtype =
+        output_dtype == DataType::BFLOAT8_B || output_dtype == DataType::BFLOAT4_B ? DataType::FLOAT32 : output_dtype;
 
     return convert_tensor_to_tiled_layout_common(
         conv_weight_tensor,
@@ -705,7 +706,7 @@ std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights_biases
 
     ttnn::Shape weights_channels_padded_shape({out_channels_padded, in_channels_padded, window_h, window_w});
 
-    if (weights_bias_dtype == DataType::BFLOAT8_B) {
+    if (weights_bias_dtype == DataType::BFLOAT8_B || weights_bias_dtype == DataType::BFLOAT4_B) {
         TT_ASSERT(weight_tensor_.get_dtype() == DataType::FLOAT32);
         if (bias_tensor.has_value()) {
             TT_ASSERT(bias_tensor.value().get_dtype() == DataType::FLOAT32);
