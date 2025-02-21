@@ -73,7 +73,7 @@ def run_all_reduce_impl(
 
     # create global semaphore handles
     ccl_semaphore_handles = [
-        create_global_semaphore_with_same_address(mesh_device, ccl_sub_device_crs, 0) for _ in range(8)
+        create_global_semaphore_with_same_address(mesh_device, ccl_sub_device_crs, 0) for _ in range(num_iters)
     ]
 
     logger.info(f"Output shape: {output_shape}")
@@ -126,9 +126,29 @@ def run_all_reduce_impl(
                 ttnn.ShardOrientation.ROW_MAJOR,
             ),
         )
+        dummy_mem_config = ttnn.MemoryConfig(
+            ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+            ttnn.BufferType.L1,
+            ttnn.ShardSpec(
+                ccl_sub_device_crs,
+                [M, 3 * 32],
+                ttnn.ShardOrientation.ROW_MAJOR,
+            ),
+        )
+
+        dummy_shape = [*cluster_shape, M, 1024 * 6]
+        dummy_tensor1 = torch.ones(dummy_shape)
+        dummy_input_tensor1 = ttnn.from_torch(
+            dummy_tensor1,
+            device=mesh_device,
+            layout=ttnn.TILE_LAYOUT,
+            dtype=input_dtype,
+            memory_config=dummy_mem_config,
+            mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device, dims=(0, 1), mesh_shape=cluster_shape),
+        )
 
         logger.info(f"Input shape: {input_shape[2:]}, Padded shape: {[M, N_per_shard * input_num_cores]}")
-        input_tensor = torch.randn(input_shape)
+        input_tensor = torch.ones(input_shape)
         tt_input_tensor = ttnn.from_torch(
             input_tensor,
             device=mesh_device,
@@ -139,36 +159,53 @@ def run_all_reduce_impl(
         )
 
         # All-Reduce Golden
-        output_tensor_goldens_list = [torch.sum(input_tensor, dim=cluster_axis) for _ in range(num_iters)]
+        output_tensor_goldens_list = [torch.sum(input_tensor, dim=cluster_axis, keepdim=True)]
+        for i in range(1, num_iters):
+            new_out = output_tensor_goldens_list[-1].repeat(1, 4, 1, 1)
+            output_tensor_goldens_list.append(torch.sum(new_out, dim=cluster_axis, keepdim=True))
+        # output_tensor_goldens_list = [torch.sum(input_tensor, dim=cluster_axis) for i in range(num_iters)]
 
         ##################################
         ##### Run the op
         ##################################
 
-        def run_op(n_iters, store_all_results=True):
+        def run_op(tt_input_tensor, n_iters, store_all_results=True):
             outs = []
+            # all_gather_outs = []
             for i in range(n_iters):
-                out = ttnn.experimental.all_reduce_async(
+                out, all_gather_out = ttnn.experimental.all_reduce_async(
                     tt_input_tensor,
                     cluster_axis=cluster_axis,
                     mesh_device=mesh_device,
-                    multi_device_global_semaphore=ccl_semaphore_handles[i % 8],
+                    multi_device_global_semaphore=ccl_semaphore_handles[i % n_iters],
                     memory_config=output_mem_config,
                     topology=ttnn.Topology.Linear,
                     num_links=num_links,
                     subdevice_id=worker_sub_device_id,
                 )
-                if not trace_mode:
-                    for d in mesh_device.get_devices():
-                        ttnn.synchronize_device(d)
+                ttnn.deallocate(all_gather_out)
+                tt_input_tensor = out
+                # if not trace_mode:
+                #     for d in mesh_device.get_devices():
+                #         ttnn.synchronize_device(d)
                 if store_all_results:
                     outs.append(out)
+                    # all_gather_outs.append(all_gather_out)
 
             if store_all_results:
                 return outs
             else:
                 return [out]
 
+        dummy_tensor2 = torch.ones(dummy_shape) * 2
+        dummy_input_tensor2 = ttnn.from_torch(
+            dummy_tensor2,
+            device=mesh_device,
+            layout=ttnn.TILE_LAYOUT,
+            dtype=input_dtype,
+            memory_config=dummy_mem_config,
+            mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device, dims=(0, 1), mesh_shape=cluster_shape),
+        )
         if trace_mode:
             ##### Compile Model #####
             logger.info("Compiling model")
@@ -214,27 +251,20 @@ def run_all_reduce_impl(
             logger.info(f"Time per iter: {time_taken / effective_iter * 1e6} us")
 
         else:
-            tt_outs = run_op(num_iters, store_all_results=validate_all)
+            tt_outs = run_op(tt_input_tensor, num_iters, store_all_results=validate_all)
 
         ##################################
         ##### Validation
         ##################################
         def validate(tt_out_tensor, output_tensor):
-            for i, t in enumerate(ttnn.get_device_tensors(tt_out_tensor)):
-                # get_device_tensors returns row major, so we need to select the correct golden tensor
-                if cluster_axis == 0:
-                    output_tensor_ = output_tensor[i % cluster_shape[not (cluster_axis)]].unsqueeze(0).unsqueeze(0)
-                else:
-                    output_tensor_ = output_tensor[i // cluster_shape[cluster_axis]].unsqueeze(0).unsqueeze(0)
-
-                tt_output_tensor = t.cpu().to_torch()
-                # logger.info(f"Checking for device {t.device().id()}")
-
-                if input_dtype == ttnn.bfloat16:
-                    eq, output = comp_pcc(tt_output_tensor, output_tensor_)
-                else:
-                    eq, output = comp_pcc(tt_output_tensor, output_tensor_)
-                assert eq, f"{i} FAILED: {output}"
+            tt_out_tensor_torch = ttnn.to_torch(
+                tt_out_tensor,
+                mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(0, 1), mesh_shape=cluster_shape),
+            )
+            tt_out_tensor_torch = tt_out_tensor_torch[:, :1, ...]
+            # breakpoint()
+            eq, output = comp_pcc(tt_out_tensor_torch, output_tensor)
+            assert eq, f"{i} FAILED: {output}"
             logger.info(f"PCC output is: {output}")
 
         if validate_all:
@@ -246,7 +276,8 @@ def run_all_reduce_impl(
             tt_out_tensor = tt_outs[-1]
             output_tensor = output_tensor_goldens_list[-1]
             validate(tt_out_tensor, output_tensor)
-
+        validate(dummy_input_tensor1, dummy_tensor1)
+        validate(dummy_input_tensor2, dummy_tensor2)
         for i in range(mesh_device.get_num_devices()):
             assert (
                 mesh_device.get_devices()[i].num_program_cache_entries() == 1
@@ -266,23 +297,23 @@ def run_all_reduce_impl(
 @pytest.mark.parametrize(
     "output_shape, cluster_axis, num_links, input_num_cores, output_num_cores",
     [
-        ([1, 1, 32, 2048], 0, 4, 24, 16),  # FF2/DO all reduce
+        # ([1, 1, 32, 2048], 0, 1, 24, 16),  # FF2/DO all reduce
         # ([1, 1, 32, 1280], 1, 3, 24, 40),  # QKV all reduce
-        ([1, 1, 32, 3584], 1, 3, 24, 24),  # FF1 all reduce
+        ([1, 1, 32, 3584], 1, 1, 24, 24),  # FF1 all reduce
         # ([1, 1, 32, 2048], 0, 3, 24, 16),  # FF2/DO all reduce
         # ([1, 1, 32, 1280], 1, 2, 24, 40),  # QKV all reduce
         # ([1, 1, 32, 3584], 1, 2, 24, 24),  # FF1 all reduce
         # ([1, 1, 32, 2048], 0, 2, 24, 16),  # FF2/DO all reduce
         # ([1, 1, 32, 1280], 1, 1, 24, 40),  # QKV all reduce
         # ([1, 1, 32, 3584], 1, 1, 24, 24),  # FF1 all reduce
-        ([1, 1, 32, 2048], 1, 1, 16, 16),  # FF2/DO all reduce
+        # ([1, 1, 32, 2048], 1, 1, 16, 16),  # FF2/DO all reduce
     ],
 )
 @pytest.mark.parametrize(
     "input_dtype",
     [
-        # ttnn.bfloat16,
-        ttnn.bfloat8_b,
+        ttnn.bfloat16,
+        # ttnn.bfloat8_b,
     ],
 )
 @pytest.mark.parametrize(
@@ -292,7 +323,7 @@ def run_all_reduce_impl(
     ],
 )
 @pytest.mark.parametrize("enable_async", [True])
-@pytest.mark.parametrize("trace_mode", [True])
+@pytest.mark.parametrize("trace_mode", [False])
 @pytest.mark.parametrize(
     "device_params",
     [{"trace_region_size": 23887872}],

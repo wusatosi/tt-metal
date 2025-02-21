@@ -107,7 +107,7 @@ ttnn::Tensor ExecuteAllReduceAsync::invoke(
         true);
 }
 
-ttnn::Tensor ExecuteAllReduceAsync::invoke(
+std::vector<ttnn::Tensor> ExecuteAllReduceAsync::invoke(
     const ttnn::Tensor& input_tensor,
     const uint32_t cluster_axis,
     const MeshDevice& mesh_device,

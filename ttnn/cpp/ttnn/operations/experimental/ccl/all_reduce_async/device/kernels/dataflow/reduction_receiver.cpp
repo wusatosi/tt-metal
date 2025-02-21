@@ -3,6 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "dataflow_api.h"
+#include "debug/dprint.h"
+#include "debug/dprint_tile.h"
 
 void kernel_main() {
     ///////////////////////////////////////////////////
@@ -21,6 +23,10 @@ void kernel_main() {
     // 1. Wait for signal from All-Gather worker
     noc_semaphore_wait(signal_semaphore_addr_ptr, VALID);
     noc_semaphore_set(signal_semaphore_addr_ptr, 0);
+
+    // for (uint32_t i = 0; i < total_num_reduction_tiles; ++i) {
+    //     DPRINT << i << " " << TSLICE(cb_id, i, SliceRange::hw041(), false, true) << ENDL();
+    // }
 
     // 2. Signal compute kernel to start processing
     cb_push_back(cb_id, total_num_reduction_tiles);

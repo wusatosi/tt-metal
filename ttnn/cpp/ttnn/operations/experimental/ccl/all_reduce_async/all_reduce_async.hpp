@@ -42,7 +42,7 @@ struct ExecuteAllReduceAsync {
         const std::optional<size_t> num_preferred_links,
         std::optional<SubDeviceId> worker_subdevice_id_opt);
 
-    static ttnn::Tensor invoke(
+    static std::vector<ttnn::Tensor> invoke(
         const ttnn::Tensor& input_tensor,
         const uint32_t cluster_axis,
         const MeshDevice& mesh_device,

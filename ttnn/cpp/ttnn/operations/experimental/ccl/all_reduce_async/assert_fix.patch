@@ -1,0 +1,37 @@
+diff --git a/ttnn/cpp/ttnn/operations/ccl/kernels/edm_fabric/fabric_edm_packet_header.hpp b/ttnn/cpp/ttnn/operations/ccl/kernels/edm_fabric/fabric_edm_packet_header.hpp
+index 9a5cfcb40f..af3c53f27b 100644
+--- a/ttnn/cpp/ttnn/operations/ccl/kernels/edm_fabric/fabric_edm_packet_header.hpp
++++ b/ttnn/cpp/ttnn/operations/ccl/kernels/edm_fabric/fabric_edm_packet_header.hpp
+@@ -26,13 +26,15 @@ enum NocSendType : uint8_t {
+     NOC_UNICAST_INLINE_WRITE = 1,
+     NOC_MULTICAST_WRITE = 2,
+     NOC_UNICAST_ATOMIC_INC = 3,
+-    NOC_MULTICAST_ATOMIC_INC = 4
++    NOC_MULTICAST_ATOMIC_INC = 4,
++    NOC_SEND_TYPE_LAST = NOC_MULTICAST_ATOMIC_INC
+ };
+ // How to send the payload across the cluster
+ // 1 bit
+ enum ChipSendType : uint8_t {
+     CHIP_UNICAST = 0,
+     CHIP_MULTICAST = 1,
++    CHIP_SEND_TYPE_LAST = CHIP_MULTICAST
+ };
+
+ struct RoutingFields {
+diff --git a/ttnn/cpp/ttnn/operations/ccl/kernels/edm_fabric/fabric_edm_packet_header_validate.hpp b/ttnn/cpp/ttnn/operations/ccl/kernels/edm_fabric/fabric_edm_packet_header_validate.hpp
+index bb6b6603e1..e23edd72ce 100644
+--- a/ttnn/cpp/ttnn/operations/ccl/kernels/edm_fabric/fabric_edm_packet_header_validate.hpp
++++ b/ttnn/cpp/ttnn/operations/ccl/kernels/edm_fabric/fabric_edm_packet_header_validate.hpp
+@@ -9,9 +9,9 @@
+
+ namespace tt::fabric {
+
+-FORCE_INLINE void validate(const PacketHeader& packet_header) { ASSERT(packet_header.chip_send_type < 2); }
++FORCE_INLINE void validate(const PacketHeader& packet_header) { ASSERT(packet_header.chip_send_type <= CHIP_SEND_TYPE_LAST); }
+ FORCE_INLINE bool is_valid(PacketHeader const& packet_header) {
+-    return (packet_header.chip_send_type < 2) && (packet_header.noc_send_type < 2);
++    return (packet_header.chip_send_type <= CHIP_SEND_TYPE_LAST) && (packet_header.noc_send_type <= NOC_SEND_TYPE_LAST);
+ }
+
+ }  // namespace tt::fabric

@@ -102,6 +102,7 @@ operation::ProgramWithCallbacks all_reduce_async_minimal_multi_core_with_workers
     std::optional<IDevice*> forward_device,
     std::optional<IDevice*> backward_device,
     Tensor& output_tensor,
+    Tensor& all_gather_output_tensor,
     const uint32_t num_links,
     const uint32_t ring_size,
     const uint32_t ring_index,
@@ -114,7 +115,7 @@ namespace operations {
 namespace experimental {
 namespace ccl {
 
-Tensor all_reduce_async(
+std::vector<Tensor> all_reduce_async(
     const Tensor& input_tensor,
     const uint32_t cluster_axis,
     const MeshDevice& mesh_device,

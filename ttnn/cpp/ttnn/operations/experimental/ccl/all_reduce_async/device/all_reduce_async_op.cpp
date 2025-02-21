@@ -123,9 +123,21 @@ static void validate_output_tensor_allocation(const std::vector<Tensor>& output_
 std::vector<ttnn::TensorSpec> AllReduceAsync::compute_output_specs(const std::vector<Tensor>& input_tensors) const {
     const auto& input_tensor = input_tensors[0];
     auto shape = input_tensor.get_padded_shape();  // TODO: Replace with get_logical_shape()
-    return {TensorSpec(
-        shape,
-        TensorLayout(input_tensor.get_dtype(), input_tensor.get_tensor_spec().page_config(), output_mem_config))};
+    auto all_gather_out_shape = shape;
+    all_gather_out_shape[3] = shape[3] * this->ring_size;
+    auto all_gather_out_shard_spec = this->output_mem_config.shard_spec.value();
+    ;
+    all_gather_out_shard_spec.shape[1] *= this->ring_size;
+    auto all_gather_out_mem_config = this->output_mem_config;
+    all_gather_out_mem_config.shard_spec = all_gather_out_shard_spec;
+    return {
+        TensorSpec(
+            shape,
+            TensorLayout(input_tensor.get_dtype(), input_tensor.get_tensor_spec().page_config(), output_mem_config)),
+        TensorSpec(
+            all_gather_out_shape,
+            TensorLayout(
+                input_tensor.get_dtype(), input_tensor.get_tensor_spec().page_config(), all_gather_out_mem_config))};
 }
 
 operation::ProgramWithCallbacks AllReduceAsync::create_program(
@@ -157,6 +169,7 @@ operation::ProgramWithCallbacks AllReduceAsync::create_program(
         this->forward_device,
         this->backward_device,
         output_tensors[0],
+        output_tensors[1],
         this->num_links,
         this->ring_size,
         this->ring_index,
@@ -183,7 +196,7 @@ namespace operations {
 namespace experimental {
 namespace ccl {
 
-Tensor all_reduce_async(
+std::vector<Tensor> all_reduce_async(
     const Tensor& input_tensor,
     const uint32_t cluster_axis,
     const MeshDevice& mesh_device,
@@ -200,7 +213,9 @@ Tensor all_reduce_async(
     auto devices = input_tensor.get_workers();
     std::size_t num_devices = (cluster_axis == 0) ? mesh_view.num_rows() : mesh_view.num_cols();
 
-    std::vector<Tensor> output_tensors = {Tensor(operation::get_workers_for_op_output({input_tensor}))};
+    std::vector<Tensor> output_tensors = {
+        Tensor(operation::get_workers_for_op_output({input_tensor})),
+        Tensor(operation::get_workers_for_op_output({input_tensor}))};
     CoreCoord grid_size = devices[0]->compute_with_storage_grid_size();
     auto core_grid = CoreRange({0, 0}, {grid_size.x - 1, grid_size.y - 1});
     std::vector<GlobalSemaphore> semaphores = multi_device_global_semaphore.global_semaphores;
@@ -240,7 +255,7 @@ Tensor all_reduce_async(
         },
         {input_tensor},
         output_tensors);
-    return output_tensors.at(0);
+    return output_tensors;
 }
 
 }  // namespace ccl
