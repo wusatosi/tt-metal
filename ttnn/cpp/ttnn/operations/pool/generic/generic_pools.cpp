@@ -59,7 +59,7 @@ Tensor Pool2DOp<pool_type>::invoke(
 
     // pool output is row major
     bool is_out_tiled = false;
-    bool is_in_tiled = input_tensor.dtype() == DataType::BFLOAT8_B; // input tiled for bfp8_b
+    bool is_in_tiled = input_tensor.dtype() == DataType::BFLOAT8_B || input_tensor.dtype() == DataType::BFLOAT4_B; // input tiled for bfp8_b
 
     sliding_window::ParallelConfig parallel_config;
     MemoryConfig out_memory_config = input_tensor_sharded.memory_config();
@@ -108,7 +108,7 @@ Tensor Pool2DOp<pool_type>::invoke(
 
     // update the shard spec to match the output shape
     auto shard_spec = out_memory_config.shard_spec.value();
-    uint32_t output_shard_width_padded = input_tensor.dtype() == DataType::BFLOAT8_B ? tt::round_up(channels / num_cores_c, tt::constants::TILE_WIDTH) : tt::round_up(channels / num_cores_c * tt::datum_size(tt::tt_metal::datatype_to_dataformat_converter(input_tensor.dtype())), tt::constants::TILE_WIDTH);
+    uint32_t output_shard_width_padded = (input_tensor.dtype() == DataType::BFLOAT8_B || input_tensor.dtype() == DataType::BFLOAT4_B )? tt::round_up(channels / num_cores_c, tt::constants::TILE_WIDTH) : tt::round_up(channels / num_cores_c * tt::datum_size(tt::tt_metal::datatype_to_dataformat_converter(input_tensor.dtype())), tt::constants::TILE_WIDTH);
     uint32_t output_nhw = output_shape[0] * output_shape[1] * output_shape[2];
     uint32_t output_nhw_padded = tt::round_up(output_nhw, num_cores_nhw * (is_out_tiled ? tt::constants::TILE_HEIGHT : 1));
     uint32_t output_shard_height_padded = output_nhw_padded / num_cores_nhw;

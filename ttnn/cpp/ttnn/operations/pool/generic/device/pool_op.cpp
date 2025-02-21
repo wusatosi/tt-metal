@@ -72,7 +72,7 @@ Pool2D::spec_return_value_t Pool2D::compute_output_specs(
     uint32_t out_h = sliding_window_config.get_output_shape()[1];
     uint32_t out_w = sliding_window_config.get_output_shape()[2];
 
-    bool is_out_tiled = output_dtype == DataType::BFLOAT8_B;
+    bool is_out_tiled = output_dtype == DataType::BFLOAT8_B || output_dtype == DataType::BFLOAT4_B;
 
     // need to pad the last dim to TILE_WIDTH
     uint32_t out_c = input_shape[3];

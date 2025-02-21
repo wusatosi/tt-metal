@@ -6,6 +6,7 @@
 
 #include "ttnn/run_operation.hpp"
 #include <tt-metalium/work_split.hpp>
+#include "ttnn/tensor/types.hpp"
 #include "untilize_with_halo_v2_program_factory.hpp"
 
 using namespace tt::tt_metal;
@@ -51,7 +52,9 @@ std::vector<ttnn::TensorSpec> UntilizeWithHaloV2::compute_output_specs(const std
     log_debug(tt::LogOp, "ncores_nhw: {}", ncores_nhw_);
 
     DataType output_dtype =
-        input_tensor.get_dtype() == DataType::BFLOAT8_B ? DataType::BFLOAT16 : input_tensor.get_dtype();
+        input_tensor.get_dtype() == DataType::BFLOAT8_B || input_tensor.get_dtype() == DataType::BFLOAT4_B
+            ? DataType::BFLOAT16
+            : input_tensor.get_dtype();
     TT_FATAL(
         input_tensor.memory_config().memory_layout == out_mem_config_.memory_layout,
         "{} {}",
