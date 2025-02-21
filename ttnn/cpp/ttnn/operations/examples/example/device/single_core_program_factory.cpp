@@ -45,6 +45,7 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
         num_tiles_per_core_group_2,
         block_size);
 
+    // input
     uint32_t src0_cb_index = tt::CBIndex::c_0;
     uint32_t num_input_tiles = block_size;
     tt::tt_metal::CircularBufferConfig cb_src0_config =
@@ -52,7 +53,31 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
             .set_page_size(src0_cb_index, single_tile_size);
     auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_src0_config);
 
-    uint32_t output_cb_index = tt::CBIndex::c_1;
+    // input2
+    uint32_t src1_cb_index = tt::CBIndex::c_1;
+    uint32_t num_src1_tiles = 1;
+    tt::tt_metal::CircularBufferConfig cb_src1_config =
+        tt::tt_metal::CircularBufferConfig(num_src1_tiles * single_tile_size, {{src1_cb_index, cb_data_format}})
+            .set_page_size(src1_cb_index, single_tile_size);
+    auto cb_src1 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_src1_config);
+
+    // input3
+    uint32_t src2_cb_index = tt::CBIndex::c_2;
+    uint32_t num_src2_tiles = 1;
+    tt::tt_metal::CircularBufferConfig cb_src2_config =
+        tt::tt_metal::CircularBufferConfig(num_src2_tiles * single_tile_size, {{src2_cb_index, cb_data_format}})
+            .set_page_size(src2_cb_index, single_tile_size);
+    auto cb_src2 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_src2_config);
+
+    // tmp0
+    uint32_t tmp0_cb_index = tt::CBIndex::c_24;
+    uint32_t num_tmp0_tiles = 1;
+    tt::tt_metal::CircularBufferConfig cb_tmp0_config =
+        tt::tt_metal::CircularBufferConfig(num_tmp0_tiles * single_tile_size, {{tmp0_cb_index, cb_data_format}})
+            .set_page_size(tmp0_cb_index, single_tile_size);
+    auto cb_tmp0 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_tmp0_config);
+
+    uint32_t output_cb_index = tt::CBIndex::c_16;
     uint32_t num_output_tiles = block_size;
     tt::tt_metal::CircularBufferConfig cb_output_config =
         tt::tt_metal::CircularBufferConfig(

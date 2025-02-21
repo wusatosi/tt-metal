@@ -7,5 +7,11 @@
 
 void kernel_main() {
     constexpr uint32_t cb_in0 = 0;
-    cb_push_back(cb_in0, 256);
+    cb_push_back(cb_in0, 128);
+
+    constexpr uint32_t cb_in1 = 1;
+    cb_push_back(cb_in1, 1);
+
+    constexpr uint32_t cb_in2 = 2;
+    cb_push_back(cb_in2, 1);
 }
