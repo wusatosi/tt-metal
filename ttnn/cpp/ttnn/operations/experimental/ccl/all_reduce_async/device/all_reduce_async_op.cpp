@@ -221,8 +221,8 @@ Tensor all_reduce_async(
             const auto& input_device_tensor = input_tensors.at(0);
 
             const auto coordinate = mesh_view.find_device(input_device_tensor.device()->id());
-            std::vector<IDevice*> devices = (cluster_axis == 0) ? mesh_view.get_devices_on_column(coordinate.col)
-                                                                : mesh_view.get_devices_on_row(coordinate.row);
+            std::vector<IDevice*> devices = (cluster_axis == 0) ? mesh_view.get_devices_on_column(coordinate[1])
+                                                                : mesh_view.get_devices_on_row(coordinate[0]);
 
             const auto& input_tensor = input_tensors.at(0);
 
