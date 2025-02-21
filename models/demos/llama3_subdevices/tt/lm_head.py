@@ -106,7 +106,7 @@ class LMHead(LightweightModule):
         self.compute_kernel_config = ttnn.WormholeComputeKernelConfig(
             math_fidelity=ttnn.MathFidelity.HiFi2,
             math_approx_mode=False,
-            fp32_dest_acc_en=False,
+            fp32_dest_acc_en=True,
             packer_l1_acc=True,
             dst_full_sync_en=True,
         )
@@ -170,10 +170,11 @@ class LMHead(LightweightModule):
             memory_config=ttnn.L1_MEMORY_CONFIG,
         )
 
-        return output
+        return [output]
 
     def forward(self, x: ttnn.Tensor):
         # workaround for OOM issue
+        return self.forward_on_host(x)
         # return self.forward_on_host(x)
 
         # ttnn.device.dump_device_memory_state(self.mesh_device.get_device(self.mesh_device.get_device_ids()[0]), prefix="")
@@ -197,7 +198,6 @@ class LMHead(LightweightModule):
             outputs.append(ttnn.sharded_to_interleaved(output, memory_config=ttnn.DRAM_MEMORY_CONFIG))
             # weight_l1.deallocate(True)
             # output.deallocate(True)
-
         outputs_reduced = []
         for output in outputs:
             output_reduced = self.tt_ccl.line_all_reduce_old(

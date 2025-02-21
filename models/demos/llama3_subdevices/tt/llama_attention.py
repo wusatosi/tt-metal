@@ -452,7 +452,7 @@ class TtLlamaAttention(LightweightModule):
                 mesh_device=self.mesh_device, dims=(None, 3), mesh_shape=list(self.mesh_device.shape)
             ),
             layout=ttnn.TILE_LAYOUT,
-            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"],
         )
 
         print("done all reduce")

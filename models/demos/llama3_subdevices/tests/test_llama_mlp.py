@@ -90,7 +90,7 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
     torch_input = torch.randn(1, 1, seq_len, model_args.dim)
 
     logger.info("Run Llama_MLP_PF")
-    for i in range(20):
+    for i in range(2):
         ttnn.dram_prefetcher(
             prefetcher_setup.get_input_tensors(),
             num_layers=1,

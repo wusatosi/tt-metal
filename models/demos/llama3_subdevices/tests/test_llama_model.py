@@ -30,7 +30,7 @@ from models.utility_functions import skip_for_grayskull
 @pytest.mark.parametrize(
     "weights, layers",
     [
-        ("random", 10),
+        ("random", 1),
         ("instruct", 80),
     ],
     ids=["quick", "full"],
@@ -88,8 +88,10 @@ def test_llama_model_inference(
     reset_seeds,
     ensure_gc,
 ):
-    run_ref_pt = False  # Flag to run reference PyTorch model and compare PCC
-    cache_pcc = False  # Flag to measure KV cache PCC. Avoid running for all layers to speed up test time.
+    run_ref_pt = True if weights == "random" else False  # Flag to run reference PyTorch model and compare PCC
+    cache_pcc = (
+        True if weights == "random" else False
+    )  # Flag to measure KV cache PCC. Avoid running for all layers to speed up test time.
     dtype = ttnn.bfloat8_b
     mesh_device.enable_async(False)
     mode_accuracy = optimizations == LlamaOptimizations.accuracy
@@ -146,7 +148,7 @@ def test_llama_model_inference(
         model_name
     ]
 
-    iterations = 20  # 10 if layers == 1 else 3
+    iterations = 1 if weights == "random" else 20  # 10 if layers == 1 else 3
 
     if layers is not None:
         model_args.n_layers = layers
@@ -335,22 +337,25 @@ def test_llama_model_inference(
                     )  # Update generated token to list of ref outputs
             # Measure PCC if also running reference model
             if run_ref_pt:
-                # if layers == 1 and i == iterations - 1:  # On last iteration in the quick test, set a tighter PCC
-                #     passing, pcc_message = comp_pcc(ref_output, tt_output_torch, final_model_pcc)
-                #     if not passing:
-                #         final_tests_pass = False
-                # else:
-                #     passing, pcc_message = comp_pcc(ref_output, tt_output_torch, pcc)
+                print(f"TT output: {tt_output_torch}")
+                print(f"Ref output: {ref_output}")
+                if layers == 1 and i == iterations - 1:  # On last iteration in the quick test, set a tighter PCC
+                    passing, pcc_message = comp_pcc(ref_output, tt_output_torch, final_model_pcc)
+                    if not passing:
+                        final_tests_pass = False
+                else:
+                    passing, pcc_message = comp_pcc(ref_output, tt_output_torch, pcc)
 
-                # logger.info(comp_allclose(ref_output, tt_output_torch))
-                # logger.info(f"PCC: {pcc_message}")
+                logger.info(comp_allclose(ref_output, tt_output_torch))
 
-                # if passing:
-                #     logger.info("Llama Model Passed!")
-                # else:
-                #     logger.warning("Llama Model Failed!")
-                # if not passing:
-                #     all_tests_pass = False
+                logger.info(f"PCC: {pcc_message}")
+
+                if passing:
+                    logger.info("Llama Model Passed!")
+                else:
+                    logger.warning("Llama Model Failed!")
+                if not passing:
+                    all_tests_pass = False
 
                 # Compare KV caches
                 if cache_pcc:

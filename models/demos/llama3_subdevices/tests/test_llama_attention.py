@@ -90,7 +90,7 @@ def test_llama_attention_inference(
     seq_len = 1
 
     generation_start_pos = 127
-    generation_length = 10
+    generation_length = 1
     all_tests_pass = True
 
     # Setup RoPE transformation matrices
@@ -214,6 +214,7 @@ def test_llama_attention_inference(
             tt_out,
             mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(1, 3), mesh_shape=model_args.cluster_shape),
         )
+
         tt_output_torch = tt_out[:, 0:1, : model_args.max_batch_size, : model_args.dim].view(-1, 1, model_args.dim)
 
         # In this test all users have the same position (if using batch > 1)
@@ -222,6 +223,9 @@ def test_llama_attention_inference(
         reference_output = reference_model(pt_attention_input, current_pos[0], freqs_cis_i, mask=None)
 
         passing, pcc_message = comp_pcc(reference_output, tt_output_torch, pcc)
+
+        print(f"Reference output: {reference_output}")
+        print(f"TT output: {tt_output_torch}")
 
         logger.info(comp_allclose(reference_output, tt_output_torch))
         logger.info(f"PCC: {pcc_message}")

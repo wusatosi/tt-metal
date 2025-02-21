@@ -109,7 +109,7 @@ def test_llama_lm_head_inference(seq_len, batch_size, mesh_device, use_program_c
 
     pcc_required = 0.99
     passing, pcc_message = comp_pcc(reference_output, tt_output_torch, pcc_required)
-
+    print(reference_output, tt_output_torch)
     logger.info(comp_allclose(reference_output, tt_output_torch))
     logger.info(f"PCC: {pcc_message}")
     if passing:
