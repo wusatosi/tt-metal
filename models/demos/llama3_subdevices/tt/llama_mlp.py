@@ -50,8 +50,9 @@ class TtLlamaMLP(LightweightModule):
         self.prefetcher_setup = prefetcher_setup
         self.tt_ccl = tt_ccl
         state_dict_prefix = state_dict_prefix or args.get_state_dict_prefix(self.__class__.__name__, layer_num)
-        torch_weight = lambda name: torch.transpose(self.state_dict[f"{state_dict_prefix}.{name}.weight"], -2, -1)
-
+        torch_weight = lambda name, fill_val: torch.transpose(
+            self.state_dict[f"{state_dict_prefix}.{name}.weight"], -2, -1
+        ).fill_(fill_val)
         if args.dummy_weights:
             cache_name = lambda _: None
         else:
@@ -65,8 +66,8 @@ class TtLlamaMLP(LightweightModule):
         ]  # args.create_dram_sharded_mem_config(args.hidden_dim // args.num_devices, args.dim)
 
         # TODO Clean up this code. With sharding, we load the normal weights and then shard them
-        as_sharded_tensor = lambda name, type, dim: ttnn.as_tensor(
-            torch_weight(name[:2]).unsqueeze(0).unsqueeze(0),  # Grab only the wX part of the name
+        as_sharded_tensor = lambda name, type, dim, fill_val: ttnn.as_tensor(
+            torch_weight(name[:2], fill_val).unsqueeze(0).unsqueeze(0),  # Grab only the wX part of the name
             dtype=type,
             device=self.mesh_device,
             mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=dim, mesh_shape=args.cluster_shape),
@@ -82,11 +83,11 @@ class TtLlamaMLP(LightweightModule):
         w2_dim = (-2, -1) if args.is_galaxy else (-1, -2)
 
         self.w1 = as_sharded_tensor(
-            "w1_sharded", ttnn.bfloat4_b if self.four_bit_mlp else ttnn.bfloat8_b, dim=w1_dim
+            "w1_sharded", ttnn.bfloat4_b if self.four_bit_mlp else ttnn.bfloat8_b, dim=w1_dim, fill_val=1 / 8192
         )  # bfp4 normally ok here but sub .99 pcc for llama 3.1 weights
         if self.model_config["USE_PREFETCHER"]:
             self.prefetcher_setup.insert_tensor(self.w1)
-        self.w2 = as_sharded_tensor("w2_sharded", ttnn.bfloat8_b, dim=w2_dim)
+        self.w2 = as_sharded_tensor("w2_sharded", ttnn.bfloat8_b, dim=w2_dim, fill_val=1.0)
         # self.w3 = as_sharded_tensor("w3_sharded", ttnn.bfloat4_b if self.four_bit_mlp else ttnn.bfloat8_b, dim=w1_dim)
         # if self.model_config["USE_PREFETCHER"]:
         #     self.prefetcher_setup.insert_tensor(self.w3)
@@ -254,13 +255,31 @@ class TtLlamaMLP(LightweightModule):
         )
         # ttnn.synchronize_devices(self.mesh_device)
         # print("linear", w2_out)
-        ttnn.deallocate(w1_out_reduced)
+        # ttnn.deallocate(w1_out_reduced)
 
         w2_out_reduced = self.tt_ccl.line_all_reduce(
             w2_out, cluster_axis=0, num_links=1, memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"]
         )
         # print("reduced", w2_out_reduced)
+        # w1_out_reduced_torch = ttnn.to_torch(
+        #     w1_out_reduced,
+        #     mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(3, 1), mesh_shape=(8, 4)),
+        # )
+        # torch.save(w1_out_reduced_torch, "w1_out_reduced_torch.pt")
 
+        # w2_out_torch = ttnn.to_torch(
+        #     w2_out,
+        #     mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(1, 3), mesh_shape=(8, 4)),
+        # )
+        # torch.save(w2_out_torch, "w2_out_torch.pt")
+
+        # w2_out_reduced_torch = ttnn.to_torch(
+        #     w2_out_reduced,
+        #     mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(1, 3), mesh_shape=(8, 4)),
+        # )
+        # torch.save(w2_out_reduced_torch, "w2_out_reduced_torch.pt")
+
+        # ttnn.deallocate(w1_out_reduced)
         ttnn.deallocate(w2_out)
 
-        return w2_out_reduced
+        return w2_out_reduced, w1_out, w1_out_reduced

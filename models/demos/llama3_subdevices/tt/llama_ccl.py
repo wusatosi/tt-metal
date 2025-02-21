@@ -35,7 +35,7 @@ class TT_CCL:
         if teardown_persistent_fabric:
             assert enable_persistent_fabric
 
-        self.num_cbs = 8
+        self.num_cbs = 20
         self.from_remote_semaphore_handles = []
         self.to_remote_semaphore_handles = []
         self.gather_semaphore_handles = []

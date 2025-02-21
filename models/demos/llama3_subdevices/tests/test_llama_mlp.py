@@ -45,9 +45,10 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
 
     mesh_device.enable_async(True)
 
-    model_args = TtModelArgs(mesh_device, max_batch_size=batch_size, dummy_weights=False, max_seq_len=128)
+    model_args = TtModelArgs(mesh_device, max_batch_size=batch_size, dummy_weights=True, max_seq_len=128)
     model_args.n_layers = 1
     state_dict = model_args.load_state_dict()
+    logger.info(f"Loaded state dict with keys")
 
     prefetcher_setup = TtLlamaPrefetcherSetup(
         mesh_device,
@@ -57,8 +58,10 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
     mesh_device.set_sub_device_stall_group(
         [prefetcher_setup.prefetcher_sub_device_id, prefetcher_setup.worker_sub_device_id]
     )
+    logger.info(f"Prefetcher setup done")
 
     tt_ccl = TT_CCL(mesh_device, model_args.sub_core_grids, prefetcher_setup.worker_sub_device_id)
+    logger.info(f"TT CCL setup done")
 
     # Ref model needs partial state dict, but our models use full state dict keys as cached weight names
     first_layer_prefix = model_args.get_state_dict_prefix("TtLlamaMLP", 0)
@@ -75,6 +78,8 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
     )
     reference_model.load_state_dict(partial_state_dict)
 
+    logger.info("Reference model loaded")
+
     tt_model = TtLlamaMLP(
         mesh_device=mesh_device,
         args=model_args,
@@ -86,8 +91,9 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
         prefetcher_setup=prefetcher_setup,
         tt_ccl=tt_ccl,
     )
+    logger.info("TT model loaded")
 
-    torch_input = torch.randn(1, 1, seq_len, model_args.dim)
+    torch_input = torch.ones(1, 1, seq_len, model_args.dim)
 
     logger.info("Run Llama_MLP_PF")
     for i in range(20):
@@ -117,15 +123,25 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
             layout=ttnn.TILE_LAYOUT,
         )
         logger.info("Run Llama_MLP")
-        tt_output = tt_model(tt_input, mode)
+        tt_output, tt_w1_out, tt_w1_reduced = tt_model(tt_input, mode)
 
         tt_output_torch = ttnn.to_torch(
             tt_output,
             mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(1, 3), mesh_shape=model_args.cluster_shape),
         )
+        tt_w1_reduced_torch = ttnn.to_torch(
+            tt_w1_reduced,
+            mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(3, 1), mesh_shape=model_args.cluster_shape),
+        )
+        tt_w1_out_torch = ttnn.to_torch(
+            tt_w1_out,
+            mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(3, 2), mesh_shape=model_args.cluster_shape),
+        )
         logger.info("llama MLP Done")
 
         tt_output_torch = tt_output_torch[:, :1, :, : model_args.dim]
+
+        tt_w1_reduced_torch = tt_w1_reduced_torch[:, :1, :, :28672]
 
         reference_output = reference_model(torch_input[:, :1, :, : model_args.dim])
 
@@ -134,6 +150,7 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
 
         logger.info(comp_allclose(reference_output, tt_output_torch))
         logger.info(f"PCC: {pcc_message}")
+        breakpoint()
     if passing:
         logger.info("Llama_MLP Passed!")
     else:
