@@ -116,6 +116,14 @@ ParallelConfig determine_parallel_config(
             block_shard_orientation == ShardOrientation::COL_MAJOR ? compute_grid_size.x : compute_grid_size.y;
         uint32_t num_cores_nhw = find_closest_largest_divisor_with_num_padding_and_mult(
             out_nhw_ntiles, start_divisor, act_block_h_override_ntiles);
+        log_info(
+            tt::LogOp,
+            "num_cores_nhw: {}, out_nhw_ntiles: {} start_divisor: {} act_block_h_override_ntiles{} ",
+            num_cores_nhw,
+            out_nhw_ntiles,
+            start_divisor,
+            act_block_h_override_ntiles);
+
         uint32_t start_divisor_c =
             block_shard_orientation == ShardOrientation::COL_MAJOR ? compute_grid_size.y : compute_grid_size.x;
         uint32_t num_cores_c =
@@ -123,6 +131,18 @@ ParallelConfig determine_parallel_config(
                 ? find_closest_largest_divisor_with_num_padding(
                       out_channels_ntiles, input_channles_ntiles, start_divisor_c)
                 : find_closest_largest_divisor(out_channels_ntiles, input_channles_ntiles, start_divisor_c);
+
+        log_info(
+            tt::LogOp,
+            "num_cores_c: {}, out_channels_ntiles: {} input_channles_ntiles: {} start_divisor_c{} "
+            "enable_channels_padding{} ",
+            num_cores_c,
+            out_channels_ntiles,
+            input_channles_ntiles,
+            start_divisor,
+            enable_channels_padding);
+
+        log_info(tt::LogOp, "num_cores_nhw: {}, num_cores_c: {}", num_cores_nhw, num_cores_c);
         uint32_t cores_x = block_shard_orientation == ShardOrientation::COL_MAJOR ? num_cores_nhw : num_cores_c;
         uint32_t cores_y = block_shard_orientation == ShardOrientation::COL_MAJOR ? num_cores_c : num_cores_nhw;
         CoreRange core_range = CoreRange(CoreCoord({0, 0}), CoreCoord({cores_x - 1, cores_y - 1}));
@@ -802,7 +822,7 @@ Conv2dConfig determine_conv_config_for_auto_shard(
         uint32_t approx_input_size_per_core = approx_input_size / input_parallel_config.grid.num_cores();
 
         l1_usage.tensor_allocation_size += approx_input_size_per_core;
-        log_debug(
+        log_info(
             tt::LogOp,
             "L1 usage for {}: {}, {}",
             conv_config.shard_layout,
@@ -834,8 +854,9 @@ Conv2dConfig determine_conv_config_for_auto_shard(
         winning_config = width;
     }
 
-    log_debug(LogOp, "Core counts H: {} B: {}, W: {}", height.core_count, block.core_count, width.core_count);
-    log_debug(
+    log_info(LogOp, "Core counts H: {} B: {}, W: {}", height.core_count, block.core_count, width.core_count);
+    log_info(LogOp, "Size H: {} B: {}, W: {}", height.size, block.size, width.size);
+    log_info(
         LogOp, "Selected shard layout: {}, size: {}", winning_config.conv_config.shard_layout, winning_config.size);
 
     return winning_config.conv_config;

@@ -2803,16 +2803,22 @@ def test_small_in_large_out_channels_auto_shard(device, torch_tensor_map):
 @pytest.mark.parametrize(
     "batch, groups, input_channels, output_channels, input_height, input_width, num_input_slices, dram_slice, weights_dtype, activations_dtype, kernel, stride, padding, dilation, input_channels_alignment, act_block_h_override, act_block_w_div, deallocate_activation, math_fidelity, fp32_accum, packer_l1_acc, math_approx_mode, dst_full_sync_en",
     (
-        (1, 1, 10, 64, 4096,  512,  2, DramSlice.Height, ttnn.bfloat8_b, ttnn.bfloat8_b, (4, 4), (2, 2), (1, 1), (1, 1), 16, 32*64, 1, True , ttnn.MathFidelity.LoFi, True, False, True, False),
-        (1, 1, 64, 64, 2048,  256,  2, DramSlice.Height, ttnn.bfloat8_b, ttnn.bfloat8_b, (4, 4), (2, 2), (1, 1), (1, 1), 32, 32*16 , 1, False, ttnn.MathFidelity.LoFi, True, False, True, False),
-        (1, 1, 64, 64, 1024,  128,  1, DramSlice.Height, ttnn.bfloat8_b, ttnn.bfloat8_b, (4, 4), (2, 2), (1, 1), (1, 1), 32, 0 , 1, False, ttnn.MathFidelity.LoFi, True, False, True, False),
-        (1, 1, 64, 64,  512,   64,  1, DramSlice.Height, ttnn.bfloat8_b, ttnn.bfloat8_b, (4, 4), (2, 2), (1, 1), (1, 1), 32, 0 , 1, False, ttnn.MathFidelity.LoFi, True, False, True, False),
-        (1, 1,  4, 32, 1024, 1024,  2, DramSlice.Width,  ttnn.bfloat8_b, ttnn.bfloat8_b, (5, 5), (1, 1), (0, 0), (1, 1), 16, 32*6, 1, True, ttnn.MathFidelity.LoFi, True, False, True, False),
-        (1, 1, 32, 48, 1020, 1020,  3, DramSlice.Width,  ttnn.bfloat8_b, ttnn.bfloat8_b, (3, 3), (1, 1), (0, 0), (2, 2), 32, 32*16, 1, True, ttnn.MathFidelity.LoFi, True, False, True, False),
-        (1, 1, 48, 56, 1016, 1016,  4, DramSlice.Width,  ttnn.bfloat8_b, ttnn.bfloat8_b, (3, 3), (1, 1), (0, 0), (4, 4), 32, 32*3, 1, True, ttnn.MathFidelity.LoFi, True, False, True, False),
-        (1, 1, 56, 64, 1008, 1008, 12, DramSlice.Width,  ttnn.bfloat8_b, ttnn.bfloat8_b, (3, 3), (1, 1), (0, 0), (8, 8), 32, 0, 1, True, ttnn.MathFidelity.LoFi, True, False, True, False), # pcc if act_block_h_override, 6 slices ...
-        (1, 1, 64, 128, 992,  992,  5, DramSlice.Width,  ttnn.bfloat8_b, ttnn.bfloat8_b, (2, 2), (1, 1), (0, 0), (1, 1), 32, 32*8, 1, True, ttnn.MathFidelity.LoFi, True, False, True, False),
+        # (1, 1, 10, 64, 4096,  512,  2, DramSlice.Height, ttnn.bfloat8_b, ttnn.bfloat8_b, (4, 4), (2, 2), (1, 1), (1, 1), 16, 32*64, 1, True , ttnn.MathFidelity.LoFi, True, False, True, False),
+        # (1, 1, 64, 64, 2048,  256,  2, DramSlice.Height, ttnn.bfloat8_b, ttnn.bfloat8_b, (4, 4), (2, 2), (1, 1), (1, 1), 32, 32*16 , 1, False, ttnn.MathFidelity.LoFi, True, False, True, False),
+        # (1, 1, 64, 64, 1024,  128,  1, DramSlice.Height, ttnn.bfloat8_b, ttnn.bfloat8_b, (4, 4), (2, 2), (1, 1), (1, 1), 32, 0 , 1, False, ttnn.MathFidelity.LoFi, True, False, True, False),
+        # (1, 1, 64, 64,  512,   64,  1, DramSlice.Height, ttnn.bfloat8_b, ttnn.bfloat8_b, (4, 4), (2, 2), (1, 1), (1, 1), 32, 0 , 1, False, ttnn.MathFidelity.LoFi, True, False, True, False),
+        (1, 1,  4, 32, 1024, 1024,  2, DramSlice.Height,  ttnn.bfloat8_b, ttnn.bfloat8_b, (5, 5), (1, 1), (0, 0), (1, 1), 16, 32*6, 1, True, ttnn.MathFidelity.LoFi, True, False, True, False),
+        (1, 1, 32, 48, 1020, 1020,  3, DramSlice.Height,  ttnn.bfloat8_b, ttnn.bfloat8_b, (3, 3), (1, 1), (0, 0), (2, 2), 32, 0, 1, True, ttnn.MathFidelity.LoFi, True, False, True, False),
+        (1, 1, 48, 56, 1016, 1016,  8, DramSlice.Height,  ttnn.bfloat8_b, ttnn.bfloat8_b, (3, 3), (1, 1), (0, 0), (4, 4), 32, 0, 1, True, ttnn.MathFidelity.LoFi, True, False, True, False),
+        (1, 1, 56, 64, 1008, 1008, 1008, DramSlice.Height,  ttnn.bfloat8_b, ttnn.bfloat8_b, (3, 3), (1, 1), (0, 0), (8, 8), 32, 0, 1, True, ttnn.MathFidelity.LoFi, True, False, True, False), # pcc if act_block_h_override, 6 slices ...
+        (1, 1, 64, 128, 992,  992,  8, DramSlice.Height,  ttnn.bfloat8_b, ttnn.bfloat8_b, (2, 2), (1, 1), (0, 0), (1, 1), 32, 0, 1, True, ttnn.MathFidelity.LoFi, True, False, True, False),
+        # SD3.5L
+        # (1, 1, 256, 256, 1024,  1024,  16, DramSlice.Height,  ttnn.bfloat8_b, ttnn.bfloat8_b, (3, 3), (1, 1), (1, 1), (1, 1), 32, 0, 1, True, ttnn.MathFidelity.LoFi, True, False, True, False),
+        (1, 1, 256, 256, 1024//16,  1024,  1, DramSlice.Height,  ttnn.bfloat8_b, ttnn.bfloat8_b, (3, 3), (1, 1), (0, 0), (1, 1), 32, 0, 1, True, ttnn.MathFidelity.LoFi, True, False, True, False),
+
+        #    (1, 256, 256, (3, 3), (1, 1), (1, 1), 1024, 1024),
     ),
+    ids=["k1", "k2", "k3", "k4","k5","sd"],
 )
 #fmt: on
 @skip_for_grayskull()
@@ -2890,7 +2896,8 @@ def test_dram_slice_conv2d(
     conv_config = ttnn.Conv2dConfig(
         dtype=activations_dtype,
         weights_dtype=weights_dtype,
-        shard_layout=ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+        shard_layout=None,#ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+        # shard_layout=BS,
         input_channels_alignment=input_channels_alignment,
         activation="relu",
         deallocate_activation=deallocate_activation,

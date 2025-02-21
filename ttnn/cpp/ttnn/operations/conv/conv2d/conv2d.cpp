@@ -86,7 +86,9 @@ Result conv2d(
             bias_tensor.has_value(),
             compute_config);
         auto_shard = true;
+        log_info(tt::LogOp, "determine_conv_config_for_auto_shard");
     }
+    log_info(tt::LogOp, "conv_config={}", conv_config);
 
     ShardOrientation shard_orientation =
         conv_config.transpose_shards ? ShardOrientation::COL_MAJOR : ShardOrientation::ROW_MAJOR;

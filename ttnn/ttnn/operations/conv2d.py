@@ -335,6 +335,7 @@ def conv2d_dram_slice(
         )
         conv_output_height = get_conv_output_dim(input_height, kernel_size[0], stride[0], padding[0], dilation[0])
 
+    print(f"conv_slice_params={conv_slice_params}\n conv_output_height={conv_output_height}")
     # Prepare conv config for slices
     conv2d_config_for_slices = ttnn.Conv2dConfig(conv_config)
     # conv2d_config_for_slices.output_layout = ttnn.ROW_MAJOR_LAYOUT, cant set RM, leads to OOM
@@ -384,6 +385,7 @@ def conv2d_dram_slice(
             input_tensor_slice.shape[3],
         )
 
+        print(f"input_tensor_slice.shape={input_tensor_slice.shape}")
         (
             conv_output_slice,
             conv_output_height_slice,
