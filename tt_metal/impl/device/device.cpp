@@ -1637,7 +1637,7 @@ void Device::end_trace(const uint8_t cq_id, const uint32_t tid) {
 void Device::replay_trace(const uint8_t cq_id, const uint32_t tid, const bool blocking) {
     ZoneScoped;
     TracyTTMetalReplayTrace(this->id(), tid);
-    constexpr bool check = false;
+    constexpr bool check = true;
     auto* active_sub_device_manager = sub_device_manager_tracker_->get_active_sub_device_manager();
     const auto& trace_buffer = active_sub_device_manager->get_trace(tid);
     TT_FATAL(
@@ -1647,6 +1647,7 @@ void Device::replay_trace(const uint8_t cq_id, const uint32_t tid, const bool bl
         this->id_,
         active_sub_device_manager->id());
     if constexpr (check) {
+        log_info("ARIK testing");
         Trace::validate_instance(*trace_buffer);
     }
     EnqueueTrace(this->command_queue(cq_id), tid, blocking);

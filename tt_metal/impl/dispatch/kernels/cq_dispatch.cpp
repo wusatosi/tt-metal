@@ -12,6 +12,7 @@
 
 #include "debug/assert.h"
 #include "debug/dprint.h"
+#include "debug/pause.h"
 #include "tt_metal/impl/dispatch/cq_commands.hpp"
 #include "tt_metal/impl/dispatch/kernels/cq_common.hpp"
 #include "tt_metal/impl/dispatch/kernels/packet_queue_ctrl.hpp"
@@ -112,6 +113,8 @@ typedef struct GoSignalState {
 static GoSignalState go_signal_state_ring_buf[4];
 static uint8_t go_signal_state_wr_ptr = 0;
 static uint8_t go_signal_state_rd_ptr = 0;
+
+static uint32_t counter = 0;
 
 static uint32_t go_signal_noc_data[max_num_go_signal_noc_data_entries];
 
@@ -230,6 +233,9 @@ void process_write_host_h(uint32_t& block_noc_writes_to_clear, uint32_t block_ne
             uint32_t num_noc_packets_written = div_up(last_chunk_size, NOC_MAX_BURST_SIZE);
             noc_nonposted_writes_num_issued[noc_index] += num_noc_packets_written;
             noc_nonposted_writes_acked[noc_index] += num_noc_packets_written;
+            if (noc_nonposted_writes_acked[noc_index] == 0xf0) {
+                WATCHER_RING_BUFFER_PUSH(12);
+            }
         }
         cq_noc_async_write_with_state_any_len(data_ptr, completion_queue_write_addr, xfer_size);
 
@@ -240,6 +246,9 @@ void process_write_host_h(uint32_t& block_noc_writes_to_clear, uint32_t block_ne
         uint32_t num_noc_packets_written = div_up(xfer_size, NOC_MAX_BURST_SIZE) + 1;
         noc_nonposted_writes_num_issued[noc_index] += num_noc_packets_written;
         noc_nonposted_writes_acked[noc_index] += num_noc_packets_written;
+        if (noc_nonposted_writes_acked[noc_index] == 0xf0) {
+            WATCHER_RING_BUFFER_PUSH(13);
+        }
 
         length -= xfer_size;
         data_ptr += xfer_size;
@@ -305,6 +314,9 @@ void relay_to_next_cb(
                 downstream_cb_data_ptr, xfer_size + preamble_size + not_end_of_cmd);
             noc_nonposted_writes_num_issued[noc_index]++;
             noc_nonposted_writes_acked[noc_index]++;
+            if (noc_nonposted_writes_acked[noc_index] == 0xf0) {
+                WATCHER_RING_BUFFER_PUSH(14);
+            }
             downstream_cb_data_ptr += preamble_size;
             ASSERT(downstream_cb_data_ptr < downstream_cb_end);
         }
@@ -322,6 +334,9 @@ void relay_to_next_cb(
                         cq_noc_async_write_with_state<CQ_NOC_SnDL>(data_ptr, downstream_cb_data_ptr, orphan_size);
                         noc_nonposted_writes_num_issued[noc_index]++;
                         noc_nonposted_writes_acked[noc_index]++;
+                        if (noc_nonposted_writes_acked[noc_index] == 0xf0) {
+                            WATCHER_RING_BUFFER_PUSH(15);
+                        }
                         length -= orphan_size;
                         xfer_size -= orphan_size;
                         downstream_cb_data_ptr += orphan_size;
@@ -352,6 +367,9 @@ void relay_to_next_cb(
         cq_noc_async_write_with_state<CQ_NOC_SnDL>(data_ptr, downstream_cb_data_ptr, xfer_size);
         noc_nonposted_writes_num_issued[noc_index]++;
         noc_nonposted_writes_acked[noc_index]++;
+        if (noc_nonposted_writes_acked[noc_index] == 0xf0) {
+            WATCHER_RING_BUFFER_PUSH(16);
+        }
         cb_release_pages<my_noc_index, downstream_noc_xy, downstream_cb_sem_id>(1);
 
         length -= xfer_size;
@@ -443,6 +461,9 @@ void process_write_linear(
         uint32_t num_noc_packets_written = div_up(xfer_size, NOC_MAX_BURST_SIZE);
         noc_nonposted_writes_num_issued[noc_index] += num_noc_packets_written;
         noc_nonposted_writes_acked[noc_index] += num_mcast_dests * num_noc_packets_written;
+        if (noc_nonposted_writes_acked[noc_index] == 0xf0) {
+            WATCHER_RING_BUFFER_PUSH(17);
+        }
         length -= xfer_size;
         data_ptr += xfer_size;
         dst_addr += xfer_size;
@@ -569,8 +590,8 @@ void process_write_packed(
     volatile uint32_t tt_l1_ptr* l1_addr = (uint32_t*)(cmd_ptr + sizeof(CQDispatchCmd));
     cq_noc_async_write_init_state<CQ_NOC_snDL, mcast>(0, dst_addr, xfer_size);
 
-    // DPRINT << "dispatch_write_packed: " << xfer_size << " " << stride << " " << data_ptr << " " << count << " " <<
-    // dst_addr << " " << ENDL();
+    DPRINT << "dispatch_write_packed: " << xfer_size << " " << stride << " " << data_ptr << " " << count << " "
+           << dst_addr << " " << ENDL();
     uint32_t writes = 0;
     uint32_t mcasts = 0;
     auto wait_for_barrier = [&]() {
@@ -579,26 +600,39 @@ void process_write_packed(
         }
         noc_nonposted_writes_num_issued[noc_index] += writes;
         noc_nonposted_writes_acked[noc_index] += mcasts;
+        // if (noc_nonposted_writes_acked[noc_index] == 0xf0) {
+        //  WATCHER_RING_BUFFER_PUSH(18);
+        //  WATCHER_RING_BUFFER_PUSH(mcasts);
+        //}
         writes = 0;
         mcasts = 0;
         // Workaround mcast path reservation hangs by always waiting for a write
         // barrier before doing an mcast that isn't linked to a previous mcast.
+        // WAYPOINT("ARI1");
         noc_async_write_barrier();
+        WAYPOINT("AR60");
     };
     WritePackedSubCmd* sub_cmd_ptr = (WritePackedSubCmd*)l1_cache;
     while (count != 0) {
         uint32_t dst_noc = sub_cmd_ptr->noc_xy_addr;
         uint32_t num_dests = mcast ? ((CQDispatchWritePackedMulticastSubCmd*)sub_cmd_ptr)->num_mcast_dests : 1;
         sub_cmd_ptr++;
+        // WATCHER_RING_BUFFER_PUSH(dst_addr);
+        // WATCHER_RING_BUFFER_PUSH(data_ptr);
+        // WATCHER_RING_BUFFER_PUSH(stride);
+        // WATCHER_RING_BUFFER_PUSH(xfer_size);
         uint64_t dst = get_noc_addr_helper(dst_noc, dst_addr);
         // Get a page if needed
         if (data_ptr + xfer_size > cb_fence) {
+            WATCHER_RING_BUFFER_PUSH(0xffff11);
             // Check for block completion and issue orphan writes for this block
             // before proceeding to next block
             uint32_t orphan_size = 0;
             if (cb_fence == block_next_start_addr[rd_block_idx]) {
+                WATCHER_RING_BUFFER_PUSH(0xffff22);
                 orphan_size = cb_fence - data_ptr;
                 if (orphan_size != 0) {
+                    WAYPOINT("AR63");
                     wait_for_barrier();
                     cq_noc_async_write_with_state<CQ_NOC_SNdL>(data_ptr, dst, orphan_size, num_dests);
                     writes++;
@@ -613,6 +647,8 @@ void process_write_packed(
                 }
                 noc_nonposted_writes_num_issued[noc_index] += writes;
                 noc_nonposted_writes_acked[noc_index] += mcasts;
+                // if (noc_nonposted_writes_acked[noc_index] == 0xf0)
+                WATCHER_RING_BUFFER_PUSH(19);
                 writes = 0;
                 mcasts = 0;
                 move_rd_to_next_block_and_release_pages<
@@ -630,10 +666,13 @@ void process_write_packed(
 
             // This is done here so the common case doesn't have to restore the pointers
             if (orphan_size != 0) {
+                WATCHER_RING_BUFFER_PUSH(0xffff33);
                 uint32_t remainder_xfer_size = xfer_size - orphan_size;
                 // Creating full NOC addr not needed as we are not programming the noc coords
                 uint32_t remainder_dst_addr = dst_addr + orphan_size;
+                WAYPOINT("AR62");
                 wait_for_barrier();
+
                 cq_noc_async_write_with_state<CQ_NOC_SnDL>(
                     data_ptr, remainder_dst_addr, remainder_xfer_size, num_dests);
                 // Reset values expected below
@@ -647,8 +686,19 @@ void process_write_packed(
                 continue;
             }
         }
-
+        WAYPOINT("AR61");
         wait_for_barrier();
+        // if (noc_nonposted_writes_acked[noc_index] >= 0x3f) {
+        //  WATCHER_RING_BUFFER_PUSH(dst_addr);
+        //  WATCHER_RING_BUFFER_PUSH(dst);
+        //  WATCHER_RING_BUFFER_PUSH(*(uint32_t *)data_ptr);
+        //  WATCHER_RING_BUFFER_PUSH(*((uint32_t *)data_ptr)+1);
+        //  WATCHER_RING_BUFFER_PUSH(xfer_size);
+        // WATCHER_RING_BUFFER_PUSH(noc_nonposted_writes_acked[noc_index]);
+        // }
+        //  if (noc_nonposted_writes_acked[noc_index] == 0x104) {
+        //      PAUSE();
+        //  }
         cq_noc_async_write_with_state<CQ_NOC_SNdl>(data_ptr, dst, xfer_size, num_dests);
         writes++;
         mcasts += num_dests;
@@ -659,6 +709,10 @@ void process_write_packed(
 
     noc_nonposted_writes_num_issued[noc_index] += writes;
     noc_nonposted_writes_acked[noc_index] += mcasts;
+    // if (noc_nonposted_writes_acked[noc_index] == 0xf0) {
+    //  WATCHER_RING_BUFFER_PUSH(20);
+    //  WATCHER_RING_BUFFER_PUSH(mcasts);
+    //}
 
     cmd_ptr = data_ptr;
 }
@@ -714,9 +768,13 @@ void process_write_packed_large(
 
             mcasts += num_dests * writes;
             noc_nonposted_writes_acked[noc_index] = mcasts;
+            if (noc_nonposted_writes_acked[noc_index] == 0xf0) {
+                WATCHER_RING_BUFFER_PUSH(21);
+            }
             writes = 0;
             // Workaround mcast path reservation hangs by always waiting for a write
             // barrier before doing an mcast that isn't linked to a previous mcast.
+            WAYPOINT("ARI2");
             noc_async_write_barrier();
         };
 
@@ -824,6 +882,9 @@ void process_write_packed_large(
         count--;
     }
     noc_nonposted_writes_acked[noc_index] = mcasts;
+    if (noc_nonposted_writes_acked[noc_index] == 0xf0) {
+        WATCHER_RING_BUFFER_PUSH(22);
+    }
 
     cmd_ptr = data_ptr;
 }
@@ -866,6 +927,7 @@ static void process_wait() {
 
     if (barrier) {
         DPRINT << " DISPATCH BARRIER\n";
+        WAYPOINT("ARI3");
         noc_async_write_barrier();
     }
 
@@ -922,6 +984,29 @@ void process_go_signal_mcast_cmd() {
     // send go signal update here
     for (uint32_t i = 0, num_mcasts = cmd->mcast.num_mcast_txns; i < num_mcasts; ++i) {
         uint64_t dst = get_noc_addr_helper(go_signal_noc_data[go_signal_noc_data_idx++], mcast_go_signal_addr);
+        // for (uint32_t row = 2; row < 12; row++) {
+        //     for (uint32_t col1 = 1; col1 < 8; col1++) {
+        //         dst = NOC_XY_ADDR(col1, row, mcast_go_signal_addr);
+        //         // packed_write_max_unicast_sub_cmds is the total number of compute cores (num_mcast_dests for this
+        //         txn)
+        //         // noc_async_write_multicast_one_packet(
+        //         //     (uint32_t)(aligned_go_signal_storage), dst, sizeof(uint32_t),
+        //         go_signal_noc_data[go_signal_noc_data_idx++]);
+        //         noc_async_write_one_packet((uint32_t)(aligned_go_signal_storage), dst, sizeof(uint32_t));
+        //     }
+        //     for (uint32_t col2 = 10; col2 < 17; col2++) {
+        //         // if (col2==16 && (row==2 || row==3))
+        //         //     continue;
+        //         dst = NOC_XY_ADDR(col2, row, mcast_go_signal_addr);
+        //         // packed_write_max_unicast_sub_cmds is the total number of compute cores (num_mcast_dests for this
+        //         txn)
+        //         // noc_async_write_multicast_one_packet(
+        //         //     (uint32_t)(aligned_go_signal_storage), dst, sizeof(uint32_t),
+        //         go_signal_noc_data[go_signal_noc_data_idx++]);
+        //         noc_async_write_one_packet((uint32_t)(aligned_go_signal_storage), dst, sizeof(uint32_t));
+        //     }
+        // }
+        // dst = NOC_XY_ADDR(1, 2, mcast_go_signal_addr);
         // packed_write_max_unicast_sub_cmds is the total number of compute cores (num_mcast_dests for this txn)
         noc_async_write_multicast_one_packet(
             (uint32_t)(aligned_go_signal_storage), dst, sizeof(uint32_t), go_signal_noc_data[go_signal_noc_data_idx++]);
@@ -941,6 +1026,7 @@ void process_notify_dispatch_s_go_signal_cmd() {
     // write barrier to wait before sending the go signal
     if (wait) {
         DPRINT << " DISPATCH_S_NOTIFY BARRIER\n";
+        WAYPOINT("ARI4");
         noc_async_write_barrier();
     }
     uint16_t index_bitmask = cmd->notify_dispatch_s_go_signal.index_bitmask;
@@ -952,6 +1038,7 @@ void process_notify_dispatch_s_go_signal_cmd() {
             static uint32_t num_go_signals_safe_to_send[max_num_worker_sems] = {0};
             uint64_t dispatch_s_notify_addr = get_noc_addr_helper(dispatch_s_noc_xy, dispatch_s_sync_sem_addr);
             num_go_signals_safe_to_send[set_index]++;
+            WATCHER_RING_BUFFER_PUSH(num_go_signals_safe_to_send[set_index]);
             noc_inline_dw_write(dispatch_s_notify_addr, num_go_signals_safe_to_send[set_index]);
         } else {
             tt_l1_ptr uint32_t* notify_ptr = (uint32_t tt_l1_ptr*)(dispatch_s_sync_sem_addr);
@@ -982,7 +1069,8 @@ static inline bool process_cmd_d(
 
 re_run_command:
     volatile CQDispatchCmd tt_l1_ptr* cmd = (volatile CQDispatchCmd tt_l1_ptr*)cmd_ptr;
-
+    // WATCHER_RING_BUFFER_PUSH((counter<<16) + cmd->base.cmd_id);
+    // counter++;
     switch (cmd->base.cmd_id) {
         case CQ_DISPATCH_CMD_WRITE_LINEAR:
             WAYPOINT("DWB");
@@ -1223,7 +1311,7 @@ void kernel_main() {
         // Move to next page
         cmd_ptr = round_up_pow2(cmd_ptr, dispatch_cb_page_size);
     }
-
+    WAYPOINT("ARI5");
     noc_async_write_barrier();
 
     if (is_h_variant && !is_d_variant) {

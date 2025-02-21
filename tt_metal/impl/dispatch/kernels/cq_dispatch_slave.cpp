@@ -13,6 +13,7 @@
 
 #include "debug/assert.h"
 #include "debug/dprint.h"
+#include "debug/ring_buffer.h"
 #include "tt_metal/impl/dispatch/cq_commands.hpp"
 #include "tt_metal/impl/dispatch/kernels/cq_common.hpp"
 
@@ -104,7 +105,7 @@ void dispatch_s_noc_semaphore_inc(uint64_t addr, uint32_t incr, uint8_t noc_id) 
 
 FORCE_INLINE
 void dispatch_s_noc_inline_dw_write(uint64_t addr, uint32_t val, uint8_t noc_id, uint8_t be = 0xF) {
-    WAYPOINT("NWIW");
+    // WAYPOINT("NWIW");
     DEBUG_SANITIZE_NOC_ADDR(noc_id, addr, 4);
     noc_fast_write_dw_inline<proc_type, noc_mode>(
         noc_id,
@@ -116,7 +117,7 @@ void dispatch_s_noc_inline_dw_write(uint64_t addr, uint32_t val, uint8_t noc_id,
         false,  // mcast
         false   // posted
     );
-    WAYPOINT("NWID");
+    // WAYPOINT("NWID");
 }
 
 FORCE_INLINE
@@ -161,6 +162,7 @@ FORCE_INLINE void cb_acquire_pages_dispatch_s(uint32_t n) {
     uint32_t heartbeat = 0;
     // Stall until the number of pages already acquired + the number that need to be acquired is greater
     // than the number available
+    WAYPOINT("AR61");
     while (wrap_gt(num_pages_acquired + n, *sem_addr)) {
         invalidate_l1_cache();
         update_worker_completion_count_on_dispatch_d();
@@ -184,11 +186,15 @@ void process_go_signal_mcast_cmd() {
 
     // Wait for notification from dispatch_d, signalling that it's safe to send the go signal
     uint32_t& mcasts_sent = num_mcasts_sent[(cmd->mcast.wait_addr - worker_sem_base_addr) / L1_ALIGNMENT];
+    WAYPOINT("AR62");
+    WATCHER_RING_BUFFER_PUSH(mcasts_sent);
+    WATCHER_RING_BUFFER_PUSH(*sync_sem_addr);
     while (wrap_ge(mcasts_sent, *sync_sem_addr)) {
         invalidate_l1_cache();
         // Update dispatch_d with the latest num_workers
         update_worker_completion_count_on_dispatch_d();
     }
+    WAYPOINT("AR72");
     mcasts_sent++;  // Go signal sent -> update counter
     // Wait until workers have completed before sending go signal
     wait_for_workers(cmd);
@@ -213,6 +219,7 @@ void process_go_signal_mcast_cmd() {
         uint64_t dst = get_noc_addr_helper(go_signal_noc_data[go_signal_noc_data_idx++], unicast_go_signal_addr);
         noc_async_write_one_packet((uint32_t)(aligned_go_signal_storage), dst, sizeof(uint32_t));
     }
+    WAYPOINT("AR63");
     update_worker_completion_count_on_dispatch_d();
     cmd_ptr += sizeof(CQDispatchCmd);
 }
@@ -235,6 +242,7 @@ void process_dispatch_s_wait_cmd() {
     }
     // Send updated worker count to dispatch_d and wait for updated count to get picked up by NOC before clearing the
     // counter. dispatch_d will clear it's own counter
+    WAYPOINT("AR60");
     update_worker_completion_count_on_dispatch_d<true>();
     *worker_sem = 0;
     worker_count_update_for_dispatch_d[index] =

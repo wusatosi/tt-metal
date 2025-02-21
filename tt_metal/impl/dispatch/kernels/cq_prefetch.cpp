@@ -140,7 +140,7 @@ static uint32_t upstream_total_acquired_page_count = 0;
 static enum StallState { STALL_NEXT = 2, STALLED = 1, NOT_STALLED = 0 } stall_state = NOT_STALLED;
 
 static_assert((downstream_cb_base & (downstream_cb_page_size - 1)) == 0);
-
+static uint32_t counter = 0;
 template <bool cmddat_wrap_enable, bool exec_buf>
 bool process_cmd(
     uint32_t& cmd_ptr,
@@ -378,6 +378,8 @@ static uint32_t process_relay_inline_cmd(uint32_t cmd_ptr, uint32_t& local_downs
 
     // Assume the downstream buffer is big relative to cmddat command size that we can
     // grab what we need in one chunk
+    WAYPOINT("AR10");
+    // DPRINT << "npages:" << npages << " length " << length << ENDL();
     cb_acquire_pages<my_noc_xy, RelayInlineState::my_downstream_cb_sem>(npages);
 
     uint32_t remaining = cmddat_q_end - data_ptr;
@@ -418,6 +420,7 @@ static uint32_t process_relay_inline_noflush_cmd(uint32_t cmd_ptr, uint32_t& dis
     uint32_t length = cmd->relay_inline.length;
     uint32_t data_ptr = cmd_ptr + sizeof(CQPrefetchCmd);
 
+    WAYPOINT("AR11");
     cb_acquire_pages<my_noc_xy, my_downstream_cb_sem_id>(1);
     if (dispatch_data_ptr == downstream_cb_end) {
         dispatch_data_ptr = downstream_cb_base;
@@ -448,6 +451,7 @@ static uint32_t write_pages_to_dispatcher(
     // Grabbing all pages at once is ok if scratch_size < 3 * downstream_cb_block_size
     // test_for_nonzero is an optimization: inner loops moving lots of pages don't bother
     if (!test_for_nonzero || npages != 0) {
+        WAYPOINT("AR12");
         cb_acquire_pages<my_noc_xy, my_downstream_cb_sem_id>(npages);
     }
 
@@ -959,7 +963,10 @@ FORCE_INLINE static uint32_t process_exec_buf_relay_inline_cmd(
 
     // Assume the downstream buffer is big relative to cmddat command size that we can
     // grab what we need in one chunk
+    WAYPOINT("AR13");
+    // WATCHER_RING_BUFFER_PUSH((counter<<8) + npages);
     cb_acquire_pages<my_noc_xy, RelayInlineState::my_downstream_cb_sem>(npages);
+    WAYPOINT("AR50");
     uint32_t stride = cmd->relay_inline.stride;
     uint32_t remaining_stride = exec_buf_state.length;
     uint32_t remaining = exec_buf_state.length - sizeof(CQPrefetchCmd);
@@ -1012,6 +1019,7 @@ static uint32_t process_exec_buf_relay_inline_noflush_cmd(
 
     uint32_t stride = cmd->relay_inline.stride;
 
+    WAYPOINT("AR14");
     cb_acquire_pages<my_noc_xy, my_downstream_cb_sem_id>(1);
     if (dispatch_data_ptr == downstream_cb_end) {
         dispatch_data_ptr = downstream_cb_base;
@@ -1136,6 +1144,8 @@ bool process_cmd(
     volatile CQPrefetchCmd tt_l1_ptr* cmd = (volatile CQPrefetchCmd tt_l1_ptr*)cmd_ptr;
     bool done = false;
 
+    WATCHER_RING_BUFFER_PUSH((exec_buf << 24) + (counter << 8) + cmd->base.cmd_id);
+    counter++;
     switch (cmd->base.cmd_id) {
         case CQ_PREFETCH_CMD_RELAY_LINEAR:
             // DPRINT << "relay linear: " << cmd_ptr << ENDL();
@@ -1197,7 +1207,7 @@ bool process_cmd(
             break;
 
         case CQ_PREFETCH_CMD_EXEC_BUF:
-            // DPRINT << "exec buf: " << cmd_ptr << ENDL();
+            DPRINT << "exec buf: " << cmd_ptr << ENDL();
             ASSERT(!exec_buf);
             if (is_h_variant) {
                 ASSERT(stall_state == STALLED);  // ExecBuf must be preceded by a prefetcher stall
@@ -1207,7 +1217,7 @@ bool process_cmd(
             break;
 
         case CQ_PREFETCH_CMD_EXEC_BUF_END:
-            // DPRINT << "exec buf end: " << cmd_ptr << ENDL();
+            DPRINT << "exec buf end: " << cmd_ptr << ENDL();
             ASSERT(exec_buf);
             stride = process_exec_buf_relay_inline_cmd<DispatchRelayInlineState>(
                 cmd_ptr, downstream_data_ptr, exec_buf_state);
@@ -1261,6 +1271,7 @@ static uint32_t process_relay_inline_all(uint32_t data_ptr, uint32_t fence, bool
 
     // Assume the dispatch buffer is big relative to cmddat command size that we can
     // grab what we need in one chunk
+    WAYPOINT("AR15");
     cb_acquire_pages<my_noc_xy, my_downstream_cb_sem_id>(npages);
     if (is_exec_buf) {
         // swipe all the downstream page credits from ourselves...

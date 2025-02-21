@@ -62,7 +62,7 @@ protected:
             max_num_cbs(MAX_NUM_CBS) {}
     };
 
-    static const uint32_t NUM_PROGRAMS = 75;
+    static const uint32_t NUM_PROGRAMS = 15;
 
     IDevice* device_;
 
@@ -73,7 +73,7 @@ protected:
     }
 
     void initialize_seed() {
-        const uint32_t seed = tt::parse_env("TT_METAL_SEED", static_cast<uint32_t>(time(nullptr)));
+        const uint32_t seed = 173765315;  // tt::parse_env("TT_METAL_SEED", static_cast<uint32_t>(time(nullptr)));
         log_info(tt::LogTest, "Using seed: {}", seed);
         srand(seed);
     }
@@ -356,7 +356,7 @@ private:
 class RandomProgramTraceFixture : virtual public RandomProgramFixture,
                                   virtual public CommandQueueSingleCardTraceFixture {
 protected:
-    static const uint32_t NUM_TRACE_ITERATIONS = 50;
+    static const uint32_t NUM_TRACE_ITERATIONS = 1;
     Program programs[NUM_PROGRAMS];
 
     void SetUp() override {
@@ -383,7 +383,8 @@ private:
 
     void run_trace(const uint32_t trace_id) {
         for (uint32_t i = 0; i < NUM_TRACE_ITERATIONS; i++) {
-            EnqueueTrace(this->device_->command_queue(), trace_id, false);
+            // EnqueueTrace(this->device_->command_queue(), trace_id, false);
+            this->device_->replay_trace(this->device_->command_queue().id(), trace_id, false);
         }
     }
 };

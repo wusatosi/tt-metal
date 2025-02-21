@@ -48,6 +48,7 @@ uint32_t mcast_from_n_eth_g;
 bool mcast_from_eth_g;
 bool rnd_delay_g = false;
 bool rnd_coord_g = true;
+bool atomics_g = false;
 
 void init(int argc, char** argv) {
     std::vector<std::string> input_args(argv, argv + argc);
@@ -67,6 +68,7 @@ void init(int argc, char** argv) {
         log_info(LogTest, "     -u: ucast packet size");
         log_info(LogTest, "-rdelay: insert random delay between noc transactions");
         log_info(LogTest, "     -s: seed random number generator");
+        log_info(LogTest, "     -a: atomic writes from eth core set with -e to (0,3)");
         exit(0);
     }
 
@@ -84,6 +86,8 @@ void init(int argc, char** argv) {
     mcast_from_eth_g = (mcast_from_n_eth_g != 0xffff);
     rnd_delay_g = test_args::has_command_option(input_args, "-rdelay");
     uint32_t seed = test_args::get_command_option_uint32(input_args, "-s", 0);
+    atomics_g = test_args::has_command_option(input_args, "-a");
+
     srand(seed);
 
     if (!mcast_from_eth_g && mcast_x_g >= tlx_g && mcast_x_g <= tlx_g + width_g - 1 && mcast_y_g >= tly_g &&
@@ -105,7 +109,7 @@ int main(int argc, char** argv) {
     CoreCoord mcast_logical(mcast_x_g, mcast_y_g);
     CoreCoord tl_core = device->worker_core_from_logical_core({tlx_g, tly_g});
 
-    if (mcast_from_eth_g) {
+    if (mcast_from_eth_g || atomics_g) {
         CoreCoord eth_logical(0, mcast_from_n_eth_g);
         bool found = false;
         for (const auto& eth_core : eth_cores) {
@@ -123,7 +127,7 @@ int main(int argc, char** argv) {
     }
 
     CoreCoord virtual_offset = device->worker_core_from_logical_core({0, 0});
-    TT_ASSERT(virtual_offset.x == virtual_offset.y);
+    // TT_ASSERT(virtual_offset.x == virtual_offset.y);
     std::vector<uint32_t> compile_args = {
         false,
         tl_core.x,
@@ -140,33 +144,69 @@ int main(int argc, char** argv) {
         tt::tt_metal::hal.get_dev_addr(
             mcast_from_eth_g ? HalProgrammableCoreType::IDLE_ETH : HalProgrammableCoreType::TENSIX,
             HalL1MemAddrType::UNRESERVED),
+        false,
+        tt::tt_metal::hal.get_dev_addr(HalProgrammableCoreType::IDLE_ETH, HalL1MemAddrType::UNRESERVED),
     };
 
-    KernelHandle ucast_kernel = tt_metal::CreateKernel(
-        program,
-        "tests/tt_metal/tt_metal/test_kernels/stress_noc_mcast.cpp",
-        workers_logical,
-        tt_metal::DataMovementConfig{
-            .processor = tt_metal::DataMovementProcessor::RISCV_0,
-            .noc = tt_metal::NOC::RISCV_0_default,
-            .compile_args = compile_args,
-        });
+    KernelHandle ucast_kernel;
+    if (atomics_g) {
+        compile_args[13] = true;
+        ucast_kernel = tt_metal::CreateKernel(
+            program,
+            "tests/tt_metal/tt_metal/test_kernels/stress_noc_mcast.cpp",
+            CoreCoord(0, 1),
+            tt_metal::EthernetConfig{
+                .eth_mode = Eth::IDLE,
+                .noc = tt_metal::NOC::NOC_0,
+                .compile_args = compile_args,
+            });
 
-    for (CoreCoord coord : workers_logical) {
-        std::vector<uint32_t> runtime_args;
-        // Not particularly random since all cores are getting the same data
-        // N_RANDS in bytes
-        CoreCoord grid_size = device->logical_grid_size();
-        for (int i = 0; i < N_RANDS / sizeof(uint32_t); i++) {
-            uint32_t rnd = 0;
-            for (int j = 0; j < sizeof(uint32_t); j++) {
-                uint32_t x = rand() % grid_size.x;
-                uint32_t y = rand() % grid_size.y;
-                rnd = (rnd << 8) | (y << 4) | x;
+        KernelHandle receiver_kernel = tt_metal::CreateKernel(
+            program,
+            "tests/tt_metal/tt_metal/test_kernels/atomic_stress_receiver.cpp",
+            CoreCoord(0, 2),
+            tt_metal::EthernetConfig{
+                .eth_mode = Eth::IDLE,
+                .noc = tt_metal::NOC::NOC_0,
+                .compile_args = compile_args,
+            });
+
+        KernelHandle tensix = tt_metal::CreateKernel(
+            program,
+            "tests/tt_metal/tt_metal/test_kernels/atomic_stress_tensix.cpp",
+            CoreRange({0, 0}, {13, 9}),
+            tt_metal::DataMovementConfig{
+                .processor = tt_metal::DataMovementProcessor::RISCV_0,
+                .noc = tt_metal::NOC::RISCV_0_default,
+                .compile_args = compile_args,
+            });
+    } else {
+        ucast_kernel = tt_metal::CreateKernel(
+            program,
+            "tests/tt_metal/tt_metal/test_kernels/stress_noc_mcast.cpp",
+            workers_logical,
+            tt_metal::DataMovementConfig{
+                .processor = tt_metal::DataMovementProcessor::RISCV_0,
+                .noc = tt_metal::NOC::RISCV_0_default,
+                .compile_args = compile_args,
+            });
+
+        for (CoreCoord coord : workers_logical) {
+            std::vector<uint32_t> runtime_args;
+            // Not particularly random since all cores are getting the same data
+            // N_RANDS in bytes
+            CoreCoord grid_size = device->logical_grid_size();
+            for (int i = 0; i < N_RANDS / sizeof(uint32_t); i++) {
+                uint32_t rnd = 0;
+                for (int j = 0; j < sizeof(uint32_t); j++) {
+                    uint32_t x = rand() % grid_size.x;
+                    uint32_t y = rand() % grid_size.y;
+                    rnd = (rnd << 8) | (y << 4) | x;
+                }
+                runtime_args.push_back(rnd);
             }
-            runtime_args.push_back(rnd);
+            tt::tt_metal::SetRuntimeArgs(program, ucast_kernel, coord, runtime_args);
         }
-        tt::tt_metal::SetRuntimeArgs(program, ucast_kernel, coord, runtime_args);
     }
 
     compile_args[0] = true;

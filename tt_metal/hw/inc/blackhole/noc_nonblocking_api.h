@@ -9,6 +9,7 @@
 #include "noc_parameters.h"
 #include "dev_msgs.h"
 #include "noc_overlay_parameters.h"
+#include "debug/ring_buffer.h"
 
 // Helper functions to convert NoC coordinates to NoC-0 coordinates, used in metal as "physical" coordinates.
 #define NOC_0_X(noc_index, noc_size_x, x) (noc_index == 0 ? (x) : (noc_size_x - 1 - (x)))
@@ -176,6 +177,9 @@ inline __attribute__((always_inline)) void ncrisc_noc_fast_write(
         } else {
             noc_nonposted_writes_num_issued[noc] += 1;
             noc_nonposted_writes_acked[noc] += num_dests;
+            if (noc_nonposted_writes_acked[noc] == 0xf0) {
+                WATCHER_RING_BUFFER_PUSH(1);
+            }
         }
     }
 }
@@ -211,6 +215,9 @@ inline __attribute__((always_inline)) void ncrisc_noc_fast_write_loopback_src(
     } else {
         noc_nonposted_writes_num_issued[noc] += 1;
         noc_nonposted_writes_acked[noc] += num_dests;
+        if (noc_nonposted_writes_acked[noc] == 0xf0) {
+            WATCHER_RING_BUFFER_PUSH(2);
+        }
     }
 }
 
@@ -246,6 +253,9 @@ inline __attribute__((always_inline)) void ncrisc_noc_fast_write_exclude_region(
     } else {
         noc_nonposted_writes_num_issued[noc] += 1;
         noc_nonposted_writes_acked[noc] += num_dests;
+        if (noc_nonposted_writes_acked[noc] == 0xf0) {
+            WATCHER_RING_BUFFER_PUSH(3);
+        }
     }
 }
 
@@ -265,6 +275,9 @@ inline __attribute__((always_inline)) void ncrisc_noc_blitz_write_setup(
     } else {
         noc_nonposted_writes_num_issued[noc] += num_times_to_write;
         noc_nonposted_writes_acked[noc] += num_times_to_write;
+        if (noc_nonposted_writes_acked[noc] == 0xf0) {
+            WATCHER_RING_BUFFER_PUSH(4);
+        }
     }
 }
 
@@ -288,6 +301,9 @@ inline __attribute__((always_inline)) bool ncrisc_noc_nonposted_writes_flushed(u
 }
 
 inline __attribute__((always_inline)) bool ncrisc_noc_nonposted_atomics_flushed(uint32_t noc) {
+    WATCHER_RING_BUFFER_PUSH(noc);
+    WATCHER_RING_BUFFER_PUSH(noc_nonposted_atomics_acked[noc]);
+    WATCHER_RING_BUFFER_PUSH(NOC_STATUS_READ_REG(noc, NIU_MST_ATOMIC_RESP_RECEIVED));
     return (NOC_STATUS_READ_REG(noc, NIU_MST_ATOMIC_RESP_RECEIVED) == noc_nonposted_atomics_acked[noc]);
 }
 
@@ -595,6 +611,9 @@ inline __attribute__((always_inline)) void noc_fast_write_dw_inline(
         } else {
             noc_nonposted_writes_num_issued[noc] += 1;
             noc_nonposted_writes_acked[noc] += 1;
+            if (noc_nonposted_writes_acked[noc] == 0xf0) {
+                WATCHER_RING_BUFFER_PUSH(5);
+            }
         }
     }
 }

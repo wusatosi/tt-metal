@@ -25,6 +25,7 @@
 #include "umd/device/tt_silicon_driver_common.hpp"
 #include "utils/utils.h"
 #include "debug/assert.h"
+#include "debug/ring_buffer.h"
 #include "dev_msgs.h"
 
 #if defined(COMPILE_FOR_BRISC)
@@ -902,6 +903,9 @@ void noc_async_write_one_packet(
     } else {
         noc_nonposted_writes_num_issued[noc] += 1;
         noc_nonposted_writes_acked[noc] += 1;  // num_dests
+        if (noc_nonposted_writes_acked[noc] == 0xf0) {
+            WATCHER_RING_BUFFER_PUSH(6);
+        }
     }
 }
 
@@ -945,6 +949,9 @@ void noc_async_write_multicast_one_packet(
     } else {
         noc_nonposted_writes_num_issued[noc] += 1;
         noc_nonposted_writes_acked[noc] += num_dests;
+        if (noc_nonposted_writes_acked[noc] == 0xf0) {
+            WATCHER_RING_BUFFER_PUSH(7);
+        }
     }
 }
 
@@ -997,6 +1004,9 @@ FORCE_INLINE void noc_async_write_one_packet_with_state(
         } else {
             noc_nonposted_writes_num_issued[noc] += 1;
             noc_nonposted_writes_acked[noc] += 1;  // num_dests
+            if (noc_nonposted_writes_acked[noc] == 0xf0) {
+                WATCHER_RING_BUFFER_PUSH(8);
+            }
         }
     }
 }
@@ -1145,6 +1155,9 @@ struct InterleavedAddrGenFast {
         } else {
             noc_nonposted_writes_num_issued[noc] += 1;
             noc_nonposted_writes_acked[noc] += 1;  // num_dests
+            if (noc_nonposted_writes_acked[noc] == 0xf0) {
+                WATCHER_RING_BUFFER_PUSH(9);
+            }
         }
     }
 };
@@ -1262,7 +1275,8 @@ struct InterleavedPow2AddrGenFast {
             inc_noc_nonposted_writes_acked<proc_type>(noc);
         } else {
             noc_nonposted_writes_num_issued[noc] += 1;
-            noc_nonposted_writes_acked[noc] += 1;  // num_dests
+            noc_nonposted_writes_acked[noc] += 1;  // num_destsif (noc_nonposted_writes_acked[noc] == 0xf0)
+            WATCHER_RING_BUFFER_PUSH(10);
         }
 
     }
@@ -1712,10 +1726,13 @@ void noc_async_read_barrier(uint8_t noc = noc_index) {
  */
 FORCE_INLINE
 void noc_async_write_barrier(uint8_t noc = noc_index) {
-    WAYPOINT("NWBW");
+    // WAYPOINT("NWBW");
     if constexpr (noc_mode == DM_DYNAMIC_NOC) {
+        WAYPOINT("DYNA");
         while (!ncrisc_dynamic_noc_nonposted_writes_flushed<proc_type>(noc));
     } else {
+        // WAYPOINT("NDYN");
+        //
         while (!ncrisc_noc_nonposted_writes_flushed(noc));
     }
     WAYPOINT("NWBD");
@@ -1743,7 +1760,9 @@ void noc_async_writes_flushed(uint8_t noc = noc_index) {
  */
 FORCE_INLINE
 void noc_async_atomic_barrier(uint8_t noc_idx = noc_index) {
-    WAYPOINT("NABW");
+    // WAYPOINT("NABW");
+    // WATCHER_RING_BUFFER_PUSH((NOC_STATUS_READ_REG(noc_idx, NIU_MST_ATOMIC_RESP_RECEIVED)<<16) +
+    // noc_nonposted_atomics_acked[noc_idx]);
     while (!ncrisc_noc_nonposted_atomics_flushed(noc_idx));
     WAYPOINT("NABD");
 }
