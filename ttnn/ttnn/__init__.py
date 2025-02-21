@@ -105,6 +105,7 @@ from ttnn._ttnn.events import create_event, record_event, wait_for_event
 
 from ttnn._ttnn.global_circular_buffer import (
     create_global_circular_buffer,
+    reset_global_circular_buffer,
 )
 
 from ttnn._ttnn.global_semaphore import (

@@ -52,6 +52,8 @@ public:
     static constexpr auto attribute_names = std::forward_as_tuple("sender_receiver_core_mapping", "size");
     const auto attribute_values() const { return std::make_tuple(this->sender_receiver_core_mapping_, this->size_); }
 
+    void reset_cb_buffers() const;
+
 private:
     void setup_cb_buffers(BufferType buffer_type, uint32_t max_num_receivers_per_sender);
 
@@ -59,6 +61,7 @@ private:
     // This can be updated in the future to be its own container with optimized dispatch functions
     std::shared_ptr<Buffer> cb_buffer_;
     std::shared_ptr<Buffer> cb_config_buffer_;
+    std::shared_ptr<std::vector<uint32_t>> cb_config_host_buffer_;
     IDevice* device_;
     std::vector<std::pair<CoreCoord, CoreRangeSet>> sender_receiver_core_mapping_;
     CoreRangeSet sender_cores_;

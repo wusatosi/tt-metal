@@ -87,6 +87,7 @@ void GlobalCircularBuffer::setup_cb_buffers(BufferType buffer_type, uint32_t max
         .shard_parameters = std::move(shard_parameters),
     };
     cb_config_buffer_ = CreateBuffer(cb_config_buffer_shard_config);
+    cb_config_host_buffer_ = std::make_shared<std::vector<uint32_t>>();
 
     // Write the config buffer to the device
     // Only block for the slow dispatch case
@@ -98,11 +99,13 @@ void GlobalCircularBuffer::setup_cb_buffers(BufferType buffer_type, uint32_t max
                        l1_alignment,
                        buffer_address = cb_buffer_->address(),
                        cb_config_buffer = cb_config_buffer_,
+                       cb_config_host_buffer_ptr = cb_config_host_buffer_,
                        size = size_,
                        sender_receiver_core_mapping = sender_receiver_core_mapping_] {
         auto config_buffer_address = cb_config_buffer->address();
         const auto& core_to_core_id = cb_config_buffer->get_buffer_page_mapping()->core_to_core_id_;
-        std::vector<uint32_t> cb_config_host_buffer(cb_config_size / sizeof(uint32_t), 0);
+        auto& cb_config_host_buffer = *cb_config_host_buffer_ptr;
+        cb_config_host_buffer.resize(cb_config_size / sizeof(uint32_t), 0);
         uint32_t noc_xy_address = config_buffer_address + num_config_elements * sizeof(uint32_t);
         uint32_t pages_sent_address = tt::align(noc_xy_address + num_noc_xy_words * sizeof(uint32_t), l1_alignment);
 
@@ -145,6 +148,21 @@ void GlobalCircularBuffer::setup_cb_buffers(BufferType buffer_type, uint32_t max
             EnqueueWriteBuffer(device->command_queue(), cb_config_buffer, cb_config_host_buffer.data(), false);
         }
     });
+}
+
+void GlobalCircularBuffer::reset_cb_buffers() const {
+    // Write the config buffer to the device
+    // Only block for the slow dispatch case
+    auto* device = device_;
+    device->push_work(
+        [device, cb_config_buffer = cb_config_buffer_, cb_config_host_buffer_ptr = cb_config_host_buffer_] {
+            if (device->using_slow_dispatch()) {
+                detail::WriteToBuffer(*cb_config_buffer, *cb_config_host_buffer_ptr);
+                tt::Cluster::instance().l1_barrier(device->id());
+            } else {
+                EnqueueWriteBuffer(device->command_queue(), cb_config_buffer, cb_config_host_buffer_ptr->data(), false);
+            }
+        });
 }
 
 const Buffer& GlobalCircularBuffer::cb_buffer() const { return *cb_buffer_; }
