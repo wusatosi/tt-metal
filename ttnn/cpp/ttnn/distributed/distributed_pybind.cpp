@@ -10,6 +10,7 @@
 #include "ttnn/distributed/api.hpp"
 #include "ttnn/tensor/tensor.hpp"
 #include "ttnn/types.hpp"
+#include "pybind11/device_holder.hpp"
 
 // This is required for automatic conversions, as in the creation of mesh devices
 // https://github.com/tenstorrent/tt-metal/issues/18082
@@ -22,7 +23,7 @@ namespace ttnn::distributed {
 namespace py = pybind11;
 
 void py_module_types(py::module& module) {
-    py::class_<MeshDevice, IDevice, std::shared_ptr<MeshDevice>>(module, "MeshDevice");
+    py::class_<MeshDevice, IDevice, DeviceHolder<MeshDevice>>(module, "MeshDevice");
     py::class_<MeshSubDeviceManagerId>(module, "MeshSubDeviceManagerId");
     py::class_<MeshShape>(module, "MeshShape", "Struct representing the shape of a mesh device.");
     py::class_<MeshOffset>(module, "MeshOffset", "Struct representing the offset of a mesh device.");
@@ -59,7 +60,8 @@ void py_module(py::module& module) {
             })
         .def("__iter__", [](const MeshOffset& mo) { return py::iter(py::make_tuple(mo.row, mo.col)); });
 
-    auto py_mesh_device = static_cast<py::class_<MeshDevice, std::shared_ptr<MeshDevice>>>(module.attr("MeshDevice"));
+    auto py_mesh_device =
+        static_cast<py::class_<MeshDevice, IDevice, DeviceHolder<MeshDevice>>>(module.attr("MeshDevice"));
     py_mesh_device
         .def(
             py::init([](const MeshShape& mesh_device_shape,

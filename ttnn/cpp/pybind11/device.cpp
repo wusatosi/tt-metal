@@ -9,6 +9,7 @@
 #include <pybind11/stl.h>
 
 #include "small_vector_caster.hpp"  // NOLINT - for pybind11 SmallVector binding support.
+#include "device_holder.hpp"
 #include <tt-metalium/persistent_kernel_cache.hpp>
 #include <tt-metalium/compilation_reporter.hpp>
 #include <tt-metalium/memory_reporter.hpp>
@@ -103,10 +104,10 @@ void py_device_module_types(py::module& m_device) {
             py::arg("type"),
             py::arg("axis"));
 
-    py::class_<IDevice, std::shared_ptr<IDevice>>(
+    py::class_<IDevice, DeviceHolder<IDevice>>(
         m_device, "IDevice", "Base class describing a Tenstorrent accelerator device.");
 
-    py::class_<tt::tt_metal::Device, IDevice, std::shared_ptr<Device>>(
+    py::class_<tt::tt_metal::Device, IDevice, DeviceHolder<Device>>(
         m_device, "Device", "Class describing a Tenstorrent accelerator device.");
 
     py::class_<SubDevice>(m_device, "SubDevice", "Class describing a sub-device of a Tenstorrent accelerator device.");
@@ -151,7 +152,7 @@ void device_module(py::module& m_device) {
         .def(py::self != py::self);
 
     auto pyIDevice =
-        static_cast<py::class_<IDevice, std::unique_ptr<IDevice, py::nodelete>>>(m_device.attr("IDevice"))
+        static_cast<py::class_<IDevice, DeviceHolder<IDevice>>>(m_device.attr("IDevice"))
             .def("id", &IDevice::id, "Device's ID")
             .def("arch", &IDevice::arch, "Device's arch")
             .def(
@@ -260,13 +261,13 @@ void device_module(py::module& m_device) {
                 Args:
                     sub_device_manager_id (SubDeviceManagerId): The ID of the sub-device manager to remove.
             )doc")
-        .def(
-            "set_sub_device_stall_group",
-            [](IDevice* device, const std::vector<SubDeviceId>& sub_device_ids) {
-                device->push_work([device, sub_device_ids] { device->set_sub_device_stall_group(sub_device_ids); });
-            },
-            py::arg("sub_device_ids"),
-            R"doc(
+            .def(
+                "set_sub_device_stall_group",
+                [](IDevice* device, const std::vector<SubDeviceId>& sub_device_ids) {
+                    device->push_work([device, sub_device_ids] { device->set_sub_device_stall_group(sub_device_ids); });
+                },
+                py::arg("sub_device_ids"),
+                R"doc(
                 Set the SubDevice IDs that will be stalled on by default for Fast Dispatch commands such as reading, writing, synchronizing.
                 Stalling here refers to the Fast Dispatch cores waiting for programs to complete execution on the specified SubDevices before proceeding with the specified instruction.
                 The default SubDevice IDs to stall on are set to all SubDevice IDs, and whenever a new SubDevice Manager is loaded.
@@ -274,25 +275,25 @@ void device_module(py::module& m_device) {
                 Args:
                     sub_device_ids (List[SubDeviceId]): The IDs of the SubDevices to stall on.
             )doc")
-        .def(
-            "reset_sub_device_stall_group",
-            [](IDevice* device) { device->push_work([device] { device->reset_sub_device_stall_group(); }); },
-            R"doc(
+            .def(
+                "reset_sub_device_stall_group",
+                [](IDevice* device) { device->push_work([device] { device->reset_sub_device_stall_group(); }); },
+                R"doc(
                 Resets the sub_device_ids that will be stalled on by default for Fast Dispatch commands such as reading, writing, synchronizing
                 back to all SubDevice IDs.
             )doc")
-        .def(
-            "sfpu_eps",
-            [](IDevice* device) { return tt::tt_metal::experimental::hal::get_eps(); },
-            R"doc(Returns machine epsilon value for current architecture.)doc")
-        .def(
-            "sfpu_nan",
-            [](IDevice* device) { return tt::tt_metal::experimental::hal::get_nan(); },
-            R"doc(Returns NaN value for current architecture.)doc")
-        .def(
-            "sfpu_inf",
-            [](IDevice* device) { return tt::tt_metal::experimental::hal::get_inf(); },
-            R"doc(Returns Infinity value for current architecture.)doc");
+            .def(
+                "sfpu_eps",
+                [](IDevice* device) { return tt::tt_metal::experimental::hal::get_eps(); },
+                R"doc(Returns machine epsilon value for current architecture.)doc")
+            .def(
+                "sfpu_nan",
+                [](IDevice* device) { return tt::tt_metal::experimental::hal::get_nan(); },
+                R"doc(Returns NaN value for current architecture.)doc")
+            .def(
+                "sfpu_inf",
+                [](IDevice* device) { return tt::tt_metal::experimental::hal::get_inf(); },
+                R"doc(Returns Infinity value for current architecture.)doc");
 
     auto pyDevice = static_cast<py::class_<tt::tt_metal::Device, IDevice, std::unique_ptr<tt::tt_metal::Device, py::nodelete>>>(m_device.attr("Device"));
     pyDevice
@@ -336,7 +337,7 @@ void device_module(py::module& m_device) {
            size_t l1_small_size,
            size_t trace_region_size,
            const tt::tt_metal::DispatchCoreConfig& dispatch_core_config) {
-            std::map<int, std::shared_ptr<IDevice>> result;
+            std::map<int, DeviceHolder<MeshDevice>> result;
             for (int device_id : device_ids) {
                 result[device_id] = MeshDevice::create_single_device(
                     device_id, l1_small_size, trace_region_size, num_command_queues, dispatch_core_config);
