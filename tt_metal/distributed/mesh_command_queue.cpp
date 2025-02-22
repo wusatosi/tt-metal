@@ -24,7 +24,7 @@ struct MeshReadEventDescriptor {
     LogicalDeviceRange device_range;
 };
 
-MeshCommandQueue::MeshCommandQueue(MeshDevice* mesh_device, uint32_t id) {
+MeshCommandQueue::MeshCommandQueue(MeshDevice* mesh_device, uint32_t id) : thread_pool_(mesh_device->num_devices()) {
     this->mesh_device_ = mesh_device;
     this->id_ = id;
     program_dispatch::reset_config_buf_mgrs_and_expected_workers(
@@ -579,19 +579,38 @@ void MeshCommandQueue::write_program_cmds_to_subgrid(
     std::unordered_set<uint32_t>& chip_ids_in_workload) {
     auto dispatch_core_config = DispatchQueryManager::instance().get_dispatch_core_config();
     CoreType dispatch_core_type = dispatch_core_config.get_core_type();
+    auto start = std::chrono::high_resolution_clock::now();
 
+    std::vector<std::future<void>> futures;
     for (std::size_t logical_x = sub_grid.start_coord.x; logical_x < sub_grid.end_coord.x + 1; logical_x++) {
         for (std::size_t logical_y = sub_grid.start_coord.y; logical_y < sub_grid.end_coord.y + 1; logical_y++) {
-            program_dispatch::write_program_command_sequence(
-                program_cmd_seq,
-                this->mesh_device_->get_device(logical_y, logical_x)->sysmem_manager(),
-                id_,
-                dispatch_core_type,
-                stall_first,
-                stall_before_program);
+            auto work_lambda = [&program_cmd_seq,
+                                this,
+                                &dispatch_core_type,
+                                &stall_first,
+                                &stall_before_program,
+                                physical_device = mesh_device_->get_device(logical_y, logical_x)]() {
+                program_dispatch::write_program_command_sequence(
+                    program_cmd_seq,
+                    physical_device->sysmem_manager(),
+                    id_,
+                    dispatch_core_type,
+                    stall_first,
+                    stall_before_program);
+            };
+            futures.push_back(thread_pool_.enqueue(work_lambda));
             chip_ids_in_workload.insert(this->mesh_device_->get_device(logical_y, logical_x)->id());
         }
     }
+
+    for (auto& future : futures) {
+        future.wait();
+    }
+    float wait_duration =
+        std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start)
+            .count();
+    total_time += wait_duration;
+    num_workloads++;
 }
 
 void MeshCommandQueue::write_go_signal_to_unused_sub_grids(

@@ -13,11 +13,34 @@
 #include "mesh_device.hpp"
 #include "mesh_workload.hpp"
 #include "mesh_trace.hpp"
+#include <tt-metalium/thread_pool.hpp>
 
 namespace tt::tt_metal::distributed {
 
 class MeshEvent;
 struct MeshReadEventDescriptor;
+
+// class ThreadPool {
+// public:
+//     std::vector<WorkExecutor> executors_ = {};
+//     ThreadPool(uint32_t num_threads) {
+//         executors_.reserve(num_threads);
+//         for (int i = 0; i < num_threads; i++) {
+//             executors_.push_back(WorkExecutor(16 + i, i));
+//             executors_.back().initialize();
+//             executors_.back().set_worker_mode(WorkExecutorMode::SYNCHRONOUS);
+//         }
+//     }
+//     template <typename F>
+//     void submit_task(F&& task, uint32_t thread_index) {
+//         executors_[thread_index].push_work(task);
+//     }
+//     void barrier() {
+//         for (int i = 0; i < executors_.size(); i++) {
+//             executors_[i].synchronize();
+//         }
+//     }
+// };
 
 class MeshCommandQueue {
     // Main interface to dispatch data and workloads to a MeshDevice
@@ -110,9 +133,16 @@ private:
     CoreCoord dispatch_core_;
     CoreType dispatch_core_type_ = CoreType::WORKER;
     std::queue<std::shared_ptr<MeshReadEventDescriptor>> event_descriptors_;
+    ThreadPool thread_pool_;
+    float total_time = 0;
+    float num_workloads = 0;
 
 public:
     MeshCommandQueue(MeshDevice* mesh_device, uint32_t id);
+    ~MeshCommandQueue() {
+        std::cout << "Total time: " << total_time << " " << num_workloads << std::endl;
+        std::cout << "Average time to launch workloads: " << (total_time / num_workloads) << std::endl;
+    }
     MeshDevice* device() const { return mesh_device_; }
     uint32_t id() const { return id_; }
     WorkerConfigBufferMgr& get_config_buffer_mgr(uint32_t index) { return config_buffer_mgr_[index]; };

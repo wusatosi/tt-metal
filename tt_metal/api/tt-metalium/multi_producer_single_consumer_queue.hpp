@@ -66,7 +66,7 @@ public:
         // to match the location of head (rptr). The current push can
         // thus overwrite data that's being read. Stall until head
         // has progressed (data has been read).
-        std::unique_lock<std::mutex> lock(this->queue_mutex);
+        // std::unique_lock<std::mutex> lock(this->queue_mutex);
         while (tail.load()->next == head.load()) {
         };
         tail.load()->data = std::make_shared<T>(std::move(value));
@@ -81,7 +81,7 @@ public:
         // to match the location of head (rptr). The current push can
         // thus overwrite data that's being read. Stall until head
         // has progressed (data has been read).
-        std::unique_lock<std::mutex> lock(this->queue_mutex);
+        // std::unique_lock<std::mutex> lock(this->queue_mutex);
         while (tail.load()->next == head.load()) {
         };
         tail.load()->data = std::move(value);

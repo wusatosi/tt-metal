@@ -114,12 +114,14 @@ public:
         while (true) {
             {
                 // Worker stalls until queue is non-empty or terminate signal is set
+                // std::cout << "Start worker thread: " << this->managed_device_id << std::endl;
                 std::unique_lock<std::mutex> lock(this->cv_mutex);
                 this->cv.wait(lock, [this] {
                     return (not this->worker_queue.empty()) or this->worker_state == WorkerState::TERMINATE;
                 });
             }
             if (this->worker_state == WorkerState::TERMINATE) {
+                // std::cout << "Terminate worker thread: " << this->managed_device_id << std::endl;
                 // Terminate signal set, and queue is empty - worker exits
                 if (this->worker_queue.empty()) {
                     break;
@@ -127,6 +129,7 @@ public:
             }
             ZoneScopedN("PopWork");
             // Queue non-empty: run command
+            // std::cout << "Popping work" << std::endl;
             auto func = this->worker_queue.pop();
             (*func)();
         }
@@ -175,11 +178,13 @@ public:
     }
 
     inline void set_worker_mode(const WorkExecutorMode& mode) {
+        // std::cout << "call set_worker_mode on " << managed_device_id << std::endl;
         if (this->work_executor_mode == mode) {
             return;
         }
         this->work_executor_mode = mode;
         if (this->work_executor_mode == WorkExecutorMode::ASYNCHRONOUS) {
+            // std::cout << "Starting worker for: " << managed_device_id << std::endl;
             this->start_worker();
         } else if (this->work_executor_mode == WorkExecutorMode::SYNCHRONOUS) {
             this->synchronize();
