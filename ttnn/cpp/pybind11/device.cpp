@@ -103,10 +103,10 @@ void py_device_module_types(py::module& m_device) {
             py::arg("type"),
             py::arg("axis"));
 
-    py::class_<IDevice, std::unique_ptr<IDevice, py::nodelete>>(
+    py::class_<IDevice, std::shared_ptr<IDevice>>(
         m_device, "IDevice", "Base class describing a Tenstorrent accelerator device.");
 
-    py::class_<tt::tt_metal::Device, IDevice, std::unique_ptr<Device, py::nodelete>>(
+    py::class_<tt::tt_metal::Device, IDevice, std::shared_ptr<Device>>(
         m_device, "Device", "Class describing a Tenstorrent accelerator device.");
 
     py::class_<SubDevice>(m_device, "SubDevice", "Class describing a sub-device of a Tenstorrent accelerator device.");
@@ -312,8 +312,8 @@ void device_module(py::module& m_device) {
            size_t l1_small_size,
            size_t trace_region_size,
            const tt::tt_metal::DispatchCoreConfig& dispatch_core_config) {
-            return tt::tt_metal::CreateDevice(
-                device_id, num_command_queues, l1_small_size, trace_region_size, dispatch_core_config);
+            return MeshDevice::create_single_device(
+                device_id, l1_small_size, trace_region_size, num_command_queues, dispatch_core_config);
         },
         R"doc(
         Creates an instance of TT device.
@@ -336,8 +336,12 @@ void device_module(py::module& m_device) {
            size_t l1_small_size,
            size_t trace_region_size,
            const tt::tt_metal::DispatchCoreConfig& dispatch_core_config) {
-            return tt::tt_metal::detail::CreateDevices(
-                device_ids, num_command_queues, l1_small_size, trace_region_size, dispatch_core_config);
+            std::map<int, std::shared_ptr<IDevice>> result;
+            for (int device_id : device_ids) {
+                result[device_id] = MeshDevice::create_single_device(
+                    device_id, l1_small_size, trace_region_size, num_command_queues, dispatch_core_config);
+            }
+            return result;
         },
         R"doc(
         Creates an instance of TT device.
@@ -353,7 +357,7 @@ void device_module(py::module& m_device) {
         py::arg("l1_small_size") = DEFAULT_L1_SMALL_SIZE,
         py::arg("trace_region_size") = DEFAULT_TRACE_REGION_SIZE,
         py::arg("DispatchCoreConfig") = tt::tt_metal::DispatchCoreConfig{});
-    m_device.def("CloseDevice", &tt::tt_metal::CloseDevice, R"doc(
+    m_device.def("CloseDevice", [](IDevice* device) { device->close(); }, R"doc(
         Reset an instance of TT accelerator device to default state and relinquish connection to device.
 
         +------------------+------------------------+-----------------------+-------------+----------+
@@ -362,7 +366,14 @@ void device_module(py::module& m_device) {
         | device           | TT Device to close     | ttnn.Device           |             | Yes      |
         +------------------+------------------------+-----------------------+-------------+----------+
     )doc");
-    m_device.def("CloseDevices", &tt::tt_metal::detail::CloseDevices, R"doc(
+    m_device.def(
+        "CloseDevices",
+        [](const std::map<chip_id_t, IDevice*>& devices) {
+            for (const auto& device_entry : devices) {
+                device_entry.second->close();
+            }
+        },
+        R"doc(
         Reset an instance of TT accelerator device to default state and relinquish connection to device.
 
         +------------------+------------------------+-----------------------+-------------+----------+
@@ -580,11 +591,6 @@ void device_module(py::module& m_device) {
     m_device.def(
         "synchronize_device",
         [](IDevice* device, const QueueId cq_id, const std::vector<SubDeviceId>& sub_device_ids) {
-            // Send finish command to issue queue through worker thread
-            // Worker thread will stall until the device is flushed.
-            device->push_work(
-                [device, cq_id, &sub_device_ids]() mutable { Synchronize(device, *cq_id, sub_device_ids); });
-            // Main thread stalls until worker is complete (full device and worker queue flush).
             device->synchronize();
         },
         R"doc(

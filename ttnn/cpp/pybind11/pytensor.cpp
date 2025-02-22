@@ -961,34 +961,6 @@ void pytensor_module(py::module& m_tensor) {
                 Dellocates all data of a tensor. This either deletes all host data or deallocates tensor data from device memory.
             )doc")
         .def(
-            "to",
-            py::overload_cast<IDevice*, const MemoryConfig&, QueueId>(&Tensor::to_device, py::const_),
-            py::arg("device").noconvert(),
-            py::arg("mem_config").noconvert() = MemoryConfig{.memory_layout = TensorMemoryLayout::INTERLEAVED},
-            py::arg("cq_id") = ttnn::DefaultQueueId,
-            py::keep_alive<0, 2>(),
-            R"doc(
-            Move TT Tensor from host device to TT accelerator device.
-
-            Only BFLOAT16 (in ROW_MAJOR or TILE layout) and BFLOAT8_B, BFLOAT4_B (in TILE layout) are supported on device.
-
-            If ``arg1`` is not supplied, default ``MemoryConfig`` with ``interleaved`` set to ``True``.
-
-            +-----------+-------------------------------------------------+----------------------------+-----------------------+----------+
-            | Argument  | Description                                     | Data type                  | Valid range           | Required |
-            +===========+=================================================+============================+=======================+==========+
-            | arg0      | Device to which tensor will be moved            | ttnn.Device                | TT accelerator device | Yes      |
-            +-----------+-------------------------------------------------+----------------------------+-----------------------+----------+
-            | arg1      | MemoryConfig of tensor of TT accelerator device | ttnn.MemoryConfig          |                       | No       |
-            +-----------+-------------------------------------------------+----------------------------+-----------------------+----------+
-            | arg2      | CQ ID of TT accelerator device to use           | uint8_t                    |                       | No       |
-            +-----------+-------------------------------------------------+----------------------------+-----------------------+----------+
-
-            .. code-block:: python
-
-                tt_tensor = tt_tensor.to(tt_device)
-        )doc")
-        .def(
             "track_ref_count",
             [](Tensor& self) { return self.track_ref_count(); },
             R"doc(
@@ -1080,30 +1052,6 @@ void pytensor_module(py::module& m_tensor) {
             .. code-block:: python
 
                 tt_tensor = tt_tensor.cpu()
-        )doc")
-        .def(
-            "to",
-            py::overload_cast<Layout, IDevice*>(&Tensor::to_layout, py::const_),
-            py::arg("target_layout").noconvert(),
-            py::arg("worker") = nullptr,
-            R"doc(
-            Convert TT Tensor to provided memory layout. Available layouts conversions are:
-
-            * ROW_MAJOR to TILE
-            * TILE to ROW_MAJOR
-
-            +-----------+-------------------------------------------------+----------------------------+--------------------------------+----------+
-            | Argument  | Description                                     | Data type                  | Valid range                    | Required |
-            +===========+=================================================+============================+================================+==========+
-            | arg0      | Target memory layout                            | ttnn.Layout                | ROW_MAJOR, TILE                | Yes      |
-            +-----------+-------------------------------------------------+----------------------------+--------------------------------+----------+
-            | arg1      | Worker thread performing layout conversion      | ttnn.Device                | Thread tied to TT accelerator  | No       |
-            |           | (optional)                                      |                            | device                         |          |
-            +-----------+-------------------------------------------------+----------------------------+--------------------------------+----------+
-
-            .. code-block:: python
-
-                tt_tensor = tt_tensor.to(ttnn.Layout.TILE, worker)
         )doc")
         .def(
             "to",

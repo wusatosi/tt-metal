@@ -3,19 +3,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "ttnn/device.hpp"
+#include "ttnn/distributed/api.hpp"
 #include <tt-metalium/device_pool.hpp>
 
 namespace ttnn {
 
 namespace device {
 
-IDevice& open_device(
+std::shared_ptr<IDevice> open_device(
     int device_id,
     size_t l1_small_size,
     size_t trace_region_size,
     const tt::tt_metal::DispatchCoreConfig& dispatch_core_config) {
-    tt::DevicePool::initialize({device_id}, 1, l1_small_size, trace_region_size, dispatch_core_config, {});
-    return *(tt::DevicePool::instance().get_active_device(device_id));
+    return MeshDevice::create_single_device(device_id, l1_small_size, trace_region_size, 1, dispatch_core_config);
 }
 
 bool is_device_open(int device_id) { return tt::DevicePool::instance().is_device_active(device_id); }
@@ -24,7 +24,7 @@ void enable_program_cache(IDevice& device) { device.enable_program_cache(); }
 
 void disable_and_clear_program_cache(IDevice& device) { device.disable_and_clear_program_cache(); }
 
-void close_device(IDevice& device) { tt::DevicePool::instance().close_device(device.id()); }
+void close_device(IDevice& device) { device.close(); }
 
 bool is_wormhole_or_blackhole(tt::ARCH arch) { return arch == tt::ARCH::WORMHOLE_B0 or arch == tt::ARCH::BLACKHOLE; }
 
