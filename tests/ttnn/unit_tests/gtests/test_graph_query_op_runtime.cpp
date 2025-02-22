@@ -28,11 +28,13 @@ namespace ttnn::operations::binary::test {
 
 class TTNNFixtureWithTraceEnabledDevice : public TTNNFixture {
 protected:
+    std::shared_ptr<ttnn::IDevice> device_owned_ = nullptr;
     ttnn::IDevice* device_ = nullptr;
 
     void SetUp() override {
         TTNNFixture::SetUp();
-        device_ = &ttnn::open_device(0, DEFAULT_L1_SMALL_SIZE, /* trace region size= */ 200000);
+        device_owned_ = ttnn::open_device(0, DEFAULT_L1_SMALL_SIZE, /* trace region size= */ 200000);
+        device_ = device_owned_.get();
     }
 
     void TearDown() override {
