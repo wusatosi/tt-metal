@@ -614,7 +614,7 @@ void launch_op_func(
     ZoneScopedN("LaunchOp");
     auto& workers = detail::get_workers(output_tensors);
     std::size_t workers_size = workers.size();
-    if (not enable_autoformat_device and workers.empty() or tt::tt_metal::detail::InWorkerThread()) {
+    if (workers.size() <= 1 || tt::tt_metal::detail::InWorkerThread()) {
         // Run in main thread or immediately in worker thread
         output_tensors = op_func(input_tensors, optional_input_tensors, optional_output_tensors);
         return;

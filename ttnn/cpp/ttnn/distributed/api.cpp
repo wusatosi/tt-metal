@@ -243,7 +243,7 @@ std::vector<Tensor> get_tensors_from_multi_device_storage(const Tensor& multi_de
             tensors.push_back(Tensor{OwnedStorage{tensor_storage.get_buffer(i)}, tensor_storage.specs[i]});
         }
     } else {
-        TT_THROW("get_tensors_from_multi_device_storage only support multi device tensors");
+        tensors = {multi_device_tensor};
     }
     return tensors;
 }

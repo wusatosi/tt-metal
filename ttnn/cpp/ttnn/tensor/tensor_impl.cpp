@@ -691,6 +691,17 @@ std::shared_ptr<Buffer> to_device_buffer(
                     expected_packed_buffer_size_bytes);
                 return initialize_data_on_device<T>(data_to_write, device, tensor_spec, cq_id);
             },
+            [&device, &tensor_spec, cq_id](const MultiDeviceHostStorage& storage) {
+                auto data_to_write = host_buffer::get_as<T>(storage.buffers[0]);
+                auto expected_packed_buffer_size_bytes = tensor_spec.compute_packed_buffer_size_bytes();
+                auto input_size_bytes = data_to_write.size() * sizeof(T);
+                TT_FATAL(
+                    input_size_bytes == expected_packed_buffer_size_bytes,
+                    "Host data with total size {}B does not match expected size {}B of device buffer!",
+                    input_size_bytes,
+                    expected_packed_buffer_size_bytes);
+                return initialize_data_on_device<T>(data_to_write, device, tensor_spec, cq_id);
+            },
             [](const auto& s) {
                 TT_THROW("Unexpected storage type {}", tt::stl::get_type_name(s));
                 return std::shared_ptr<Buffer>();

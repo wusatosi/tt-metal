@@ -21,7 +21,7 @@ using namespace tt::tt_metal;
 namespace ttnn::operations::experimental::auto_format {
 
 Tensor AutoFormat::move_tensor_to_device(const Tensor& input, IDevice* device, const MemoryConfig& mem_config) {
-    if (input.storage_type() != StorageType::DEVICE) {
+    if (input.storage_type() != StorageType::DEVICE && input.storage_type() != StorageType::MULTI_DEVICE) {
         return input.to_device(device, mem_config);
     } else {
         return input;
@@ -29,7 +29,7 @@ Tensor AutoFormat::move_tensor_to_device(const Tensor& input, IDevice* device, c
 }
 
 Tensor AutoFormat::move_tensor_to_mem_config(const Tensor& input, const MemoryConfig& mem_config) {
-    if (input.storage_type() != StorageType::DEVICE) {
+    if (input.storage_type() != StorageType::DEVICE && input.storage_type() != StorageType::MULTI_DEVICE) {
         return input.to_device(AutoFormat::GetDefaultDevice(), mem_config);
     } else if (input.memory_config() != mem_config) {
         return ttnn::clone(input, std::nullopt, mem_config, std::nullopt);
@@ -72,7 +72,7 @@ Tensor AutoFormat::format_input_tensor(
     MemoryConfig mem_config = operation::DEFAULT_OUTPUT_MEMORY_CONFIG;
     if (target_mem_config.has_value()) {
         mem_config = target_mem_config.value();
-    } else if (input.storage_type() == StorageType::DEVICE) {
+    } else if (input.storage_type() == StorageType::DEVICE || input.storage_type() == StorageType::MULTI_DEVICE) {
         mem_config = input.memory_config();
     }
 
@@ -81,7 +81,7 @@ Tensor AutoFormat::format_input_tensor(
 
     // TODO: Profile if it is faster to put host tensor to device and then pad/convert if possible
     // Device side conversions
-    if (formatted_input.storage_type() == StorageType::DEVICE) {
+    if (formatted_input.storage_type() == StorageType::DEVICE || input.storage_type() == StorageType::MULTI_DEVICE) {
         if (convert_layout && !pad_input) {
             if (target_layout == Layout::TILE && formatted_input.get_layout() == Layout::ROW_MAJOR) {
                 return ttnn::tilize(formatted_input, mem_config);
@@ -160,13 +160,13 @@ Tensor AutoFormat::format_output_tensor(
     MemoryConfig mem_config = operation::DEFAULT_OUTPUT_MEMORY_CONFIG;
     if (target_mem_config.has_value()) {
         mem_config = target_mem_config.value();
-    } else if (output.storage_type() == StorageType::DEVICE) {
+    } else if (output.storage_type() == StorageType::DEVICE || output.storage_type() == StorageType::MULTI_DEVICE) {
         mem_config = output.memory_config();
     }
 
     Tensor formatted_output = output;
     // Device side conversions
-    if (formatted_output.storage_type() == StorageType::DEVICE) {
+    if (formatted_output.storage_type() == StorageType::DEVICE || output.storage_type() == StorageType::MULTI_DEVICE) {
         if (!unpad_output && convert_layout) {
             // If target layout is tile but shape does not support tile, we don't do any conversions
             if (target_layout == Layout::TILE && formatted_output.get_layout() == Layout::ROW_MAJOR) {
@@ -246,7 +246,8 @@ Tensor AutoFormat::format_output_tensor(
 
     // Send formatted_output to device if possible
     // Check that shape is supported on device
-    if (formatted_output.storage_type() != StorageType::DEVICE) {
+    if (formatted_output.storage_type() != StorageType::DEVICE &&
+        formatted_output.storage_type() != StorageType::MULTI_DEVICE) {
         if (AutoFormat::legal_device_shape(formatted_output.get_padded_shape(), formatted_output.get_layout())) {
             formatted_output = AutoFormat::move_tensor_to_device(formatted_output, device, mem_config);
         }

@@ -44,6 +44,8 @@ def test_as_tensor_with_device_tilizer(device, height, width):
     tensor = ttnn.as_tensor(
         torch_input_tensor, layout=ttnn.TILE_LAYOUT, device=device, memory_config=memory_config, use_device_tilizer=True
     )
+    print(f"Original {torch_input_tensor}")
+    print(f"TTNN {tensor}")
 
     torch_output_tensor = ttnn.to_torch(tensor)
     assert torch.allclose(torch_input_tensor, torch_output_tensor)

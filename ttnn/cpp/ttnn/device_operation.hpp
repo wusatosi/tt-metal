@@ -13,6 +13,7 @@
 #include "tools/profiler/op_profiler.hpp"
 #include <tt-metalium/reflection.hpp>
 #include <tt-metalium/graph_tracking.hpp>
+#include <tt-metalium/distributed.hpp>
 #include "ttnn/core.hpp"
 #include "ttnn/distributed/api.hpp"
 #include "tools/profiler/op_profiler.hpp"
@@ -282,8 +283,19 @@ void launch_on_worker_thread(auto cq_id, auto device_operation_id, const auto& o
     const auto enqueue_or_launch_program = [=](tt::tt_metal::Program& program) {
         if (USE_FAST_DISPATCH) {
             ZoneScopedN("EnqueueProgram");
-            auto& queue = device->command_queue(*cq_id);
-            tt::tt_metal::EnqueueProgram(queue, program, false);
+            if (auto mesh_device = dynamic_cast<tt::tt_metal::distributed::MeshDevice*>(device)) {
+                auto& cq = mesh_device->mesh_command_queue();
+                auto mesh_workload = tt::tt_metal::distributed::CreateMeshWorkload();
+                auto mesh_shape = mesh_device->shape();
+                tt::tt_metal::distributed::AddProgramToMeshWorkload(
+                    mesh_workload,
+                    program,
+                    LogicalDeviceRange({0, 0}, {mesh_shape.num_cols - 1, mesh_shape.num_rows - 1}));
+                tt::tt_metal::distributed::EnqueueMeshWorkload(cq, mesh_workload, true);
+            } else {
+                auto& queue = device->command_queue(*cq_id);
+                tt::tt_metal::EnqueueProgram(queue, program, false);
+            }
         } else {
             ZoneScopedN("LaunchProgram");
             tt::tt_metal::detail::LaunchProgram(device, program);
@@ -362,6 +374,9 @@ template <DeviceOperationConcept device_operation_t>
 typename device_operation_t::tensor_args_t get_shard_tensor_args(std::size_t index, auto device, const typename device_operation_t::tensor_args_t& tensor_args) {
     auto get_shard = [device](const auto& tensor) {
         auto& storage = std::get<tt::tt_metal::MultiDeviceStorage>(tensor.get_storage());
+        if (storage.buffers.size() == 1 && storage.mesh_buffer) {
+            return tensor;
+        }
         return Tensor{DeviceStorage{storage.get_buffer_for_device(device)}, storage.get_tensor_spec_for_device(device)};
     };
     return tt::stl::reflection::transform_object_of_type<Tensor>(get_shard, tensor_args);
@@ -465,6 +480,9 @@ typename device_operation_t::tensor_return_value_t invoke(
             if constexpr (std::is_same_v<storage_t, tt::tt_metal::DeviceStorage>) {
                 return detail::launch_on_single_device<device_operation_t>(cq_id, operation_attributes, tensor_args);
             } else if constexpr (std::is_same_v<storage_t, tt::tt_metal::MultiDeviceStorage>) {
+                if (storage.buffers.size() == 1 && storage.mesh_buffer) {
+                    return detail::launch_on_single_device<device_operation_t>(cq_id, operation_attributes, tensor_args);
+                }
                 return detail::launch_on_multi_device<device_operation_t>(cq_id, operation_attributes, tensor_args);
             }
             else {

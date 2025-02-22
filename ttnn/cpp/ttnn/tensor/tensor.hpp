@@ -285,10 +285,17 @@ public:
     Buffer* buffer() const {
         auto storage_type = this->storage_type();
         TT_FATAL(
-            storage_type == tt::tt_metal::StorageType::DEVICE,
+            storage_type == tt::tt_metal::StorageType::DEVICE ||
+                storage_type == tt::tt_metal::StorageType::MULTI_DEVICE,
             "ttnn::Tensor::buffer(): Expected Tensor with DeviceStorage, got {}",
             storage_type);
-        return std::get<DeviceStorage>(this->get_storage()).get_buffer().get();
+        if (storage_type == tt::tt_metal::StorageType::DEVICE) {
+            return std::get<DeviceStorage>(this->get_storage()).get_buffer().get();
+        } else {
+            auto& storage = std::get<MultiDeviceStorage>(this->get_storage());
+            TT_FATAL(storage.get_buffers().size() == 1, "More than 1 buffer");
+            return storage.get_buffers()[0].get();
+        }
     }
     std::shared_ptr<Buffer> device_buffer() const { return std::get<DeviceStorage>(this->get_storage()).get_buffer(); }
 
@@ -300,6 +307,10 @@ public:
             }
             return buffer->device();
         } else if (this->storage_type() == tt::tt_metal::StorageType::MULTI_DEVICE) {
+            auto& multi_storage = std::get<MultiDeviceStorage>(get_storage());
+            if (multi_storage.mesh_buffer) {
+                return multi_storage.mesh_buffer->device();
+            }
             return this->get_workers().at(0);
         } else {
             TT_THROW("Cannot get the device from a tensor with host storage");

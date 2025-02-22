@@ -79,7 +79,7 @@ Tensor tensor_to_device(
         worker->push_work(
             [worker, input_tensor, device_tensor, mem_config, num_workers, worker_index, cq_id]() mutable {
                 auto shard = get_shard_for_device(input_tensor, worker, worker_index);
-                if (shard.storage_type() == StorageType::OWNED) {
+                if (shard.storage_type() == StorageType::OWNED || shard.storage_type() == StorageType::BORROWED) {
                     shard = tensor_impl::to_device_wrapper(shard, worker, mem_config, cq_id);
                 }
                 insert_buffer_and_shape_for_device(worker, shard, device_tensor, worker_index);

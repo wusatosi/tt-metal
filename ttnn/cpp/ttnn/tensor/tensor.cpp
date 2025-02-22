@@ -239,9 +239,6 @@ Tensor::Tensor(const std::vector<IDevice*>& workers) :
     }
 
     tensor_attributes->storage = [&]() {
-        if (workers.size() == 1) {
-            return Storage(DeviceStorage());
-        }
         MultiDeviceStorage storage;
         std::transform(
             workers.cbegin(),
@@ -267,9 +264,6 @@ Tensor::Tensor(uint32_t num_buffers, std::optional<DistributedTensorConfig> dist
     }
 
     tensor_attributes->storage = [&]() {
-        if (num_buffers == 1) {
-            return Storage(OwnedStorage());
-        }
         MultiDeviceHostStorage storage;
         if (distributed_tensor_config.has_value()) {
             storage.strategy = distributed_tensor_config.value();
@@ -538,6 +532,9 @@ std::vector<IDevice*> Tensor::get_workers(bool blocking) const {
             } else if constexpr (std::is_same_v<StorageType, MultiDeviceStorage>) {
                 // Either explictly syncing or workers are pre-populated (this will happen for device tensors if using
                 // the correct APIs).
+                if (storage.mesh_buffer) {
+                    workers = {storage.mesh_buffer->device()};
+                }
                 TT_FATAL(
                     blocking or (this->workers.size()),
                     "Worker Handles for tensor must be populated or blocking = true must be set in get_workers().");
@@ -740,6 +737,9 @@ Tensor Tensor::to_device(IDevice* target_device, const MemoryConfig& mem_config,
 }
 
 Tensor Tensor::to_device(distributed::MeshDevice* mesh_device, const MemoryConfig& mem_config, QueueId cq_id) const {
+    if (mesh_device->num_devices() == 1) {
+        return tensor_impl::to_device_mesh_tensor_wrapper(*this, mesh_device, mem_config);
+    }
     std::vector<IDevice*> workers_to_use = ttnn::distributed::get_mapped_devices(*this, *mesh_device);
     return tensor_ops::tensor_to_device(*this, workers_to_use, mem_config, cq_id);
 }
@@ -856,6 +856,10 @@ Tensor create_device_tensor(const TensorSpec& tensor_spec, IDevice* device) {
         tensor_spec.tensor_layout().get_layout(),
         device,
         tensor_spec.tensor_layout().get_memory_config());
+
+    if (auto mesh = dynamic_cast<distributed::MeshDevice*>(device)) {
+        return allocate_tensor_on_mesh(tensor_spec, mesh);
+    }
 
     auto device_buffer = tensor_impl::allocate_buffer_on_device(device, tensor_spec);
     auto output = Tensor(DeviceStorage{device_buffer}, tensor_spec);

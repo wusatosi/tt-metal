@@ -187,6 +187,7 @@ def from_torch(
         Tensor([[1.375, -1.30469, -0.714844],
             [-0.761719, 0.53125, -0.652344]], dtype=bfloat16)
     """
+    print("from_torch called")
     if memory_config is not None and memory_config.is_sharded():
         if memory_config.shard_spec is None:
             raise RuntimeError("ttnn.from_torch: Shard spec must not be None for sharded tensors")
@@ -235,6 +236,7 @@ def from_torch(
         if memory_config is None:
             memory_config = ttnn.DRAM_MEMORY_CONFIG
         tensor = ttnn.to_device(tensor, device, memory_config=memory_config, cq_id=cq_id)
+        print(f"to_device called {device}, got {tensor.device()}")
 
     if logical_shape is not None and logical_shape != tensor.shape and mesh_mapper is None:
         tensor = ttnn.reshape(tensor, logical_shape, padded_shape)
@@ -552,6 +554,8 @@ def as_tensor(
             [-0.761719, 0.53125, -0.652344]], dtype=bfloat16)
     """
 
+    print("as_tensor called!")
+
     dtype_name = dtype.name if dtype is not None else "None"
     layout_name = layout.name if layout is not None else "None"
 
@@ -574,9 +578,11 @@ def as_tensor(
         memory_config: Optional[ttnn.MemoryConfig],
         mesh_mapper: Optional[ttnn.TensorToMesh],
     ):
+        print("torch_to_ttnn called")
         if preprocess:
             tensor = preprocess(tensor)
         if use_device_tilizer:
+            print("use_device_tilizer")
             tensor = ttnn.from_torch(
                 tensor,
                 layout=ttnn.ROW_MAJOR_LAYOUT,
@@ -584,8 +590,11 @@ def as_tensor(
                 device=device,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
             )
+            print(f"From torch {tensor}")
             tensor = ttnn.to_layout(tensor, layout, dtype=dtype, memory_config=memory_config, device=device)
+            print(f"To layout {tensor}")
         else:
+            print("not use_device_tilizer")
             tensor = ttnn.from_torch(
                 tensor,
                 dtype=dtype,
@@ -594,6 +603,7 @@ def as_tensor(
                 memory_config=memory_config,
                 device=device,
             )
+            print(f"Got device {tensor.device()}, but expected {device}")
         return tensor
 
     if cache_file_name is None:
@@ -627,6 +637,7 @@ def as_tensor(
 
         try:
             tensor = ttnn._ttnn.tensor.load_tensor(cache_file_name, device=device)
+            print(f"tensor loaded target {device} got {tensor.device()}")
             if tuple(tensor.shape) != tuple(tensor.shape):
                 logger.warning(
                     f"Cached file {cache_file_name} has shape {tensor.shape}, expected {tensor.shape}, regenerating cache"
