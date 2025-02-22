@@ -356,6 +356,9 @@ void MeshDevice::reshape(const MeshShape& new_shape) {
 }
 
 bool MeshDevice::close() {
+    parent_mesh_.reset();
+    view_.reset();
+    sub_device_manager_tracker_.reset();
     for (const auto& submesh : submeshes_) {
         submesh->close();
     }
@@ -363,9 +366,6 @@ bool MeshDevice::close() {
     if (scoped_devices_) {
         scoped_devices_.reset();
     }
-    parent_mesh_.reset();
-    view_.reset();
-    sub_device_manager_tracker_.reset();
     return true;
 }
 
