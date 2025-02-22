@@ -19,6 +19,10 @@
 
 namespace tt::tt_fabric {
 
+constexpr int STREAM_ID_UNUSED = -1;
+// currently unused
+constexpr int32_t to_downstream_sender_0_pkts_sent_id = 8;
+
 /*
  * The WorkerToFabricEdmSenderImpl acts as an adapter between the worker and the EDM, it hides details
  * of the communication between worker and EDM to provide flexibility for the implementation to change
@@ -37,8 +41,9 @@ namespace tt::tt_fabric {
  * As the adapter writes into the EDM, it updates the local wrptr. As the EDM reads from its local L1 channel buffer,
  * it will notify the worker/adapter (here) by updating the worker remote_rdptr to carry the value of the EDM rdptr.
  */
-template <uint8_t EDM_NUM_BUFFER_SLOTS = 0>
+template <uint8_t EDM_NUM_BUFFER_SLOTS = 0, int REMOTE_DEST_FLOW_CONTROL_STREAM_ID = STREAM_ID_UNUSED>
 struct WorkerToFabricEdmSenderImpl {
+    static constexpr bool USE_STREAM_REG_UPDATE = REMOTE_DEST_FLOW_CONTROL_STREAM_ID != STREAM_ID_UNUSED;
     static constexpr bool USER_DEFINED_NUM_BUFFER_SLOTS = EDM_NUM_BUFFER_SLOTS != 0;
     static constexpr bool IS_POW2_NUM_BUFFERS = USER_DEFINED_NUM_BUFFER_SLOTS && is_power_of_2(EDM_NUM_BUFFER_SLOTS);
     static constexpr size_t BUFFER_SLOT_PTR_WRAP = EDM_NUM_BUFFER_SLOTS * 2;
@@ -107,9 +112,11 @@ struct WorkerToFabricEdmSenderImpl {
         uint8_t data_noc_cmd_buf = write_reg_cmd_buf,
         uint8_t sync_noc_cmd_buf = write_at_cmd_buf) :
         edm_buffer_addr(edm_buffer_base_addr),
-        edm_buffer_slot_wrptr_addr(
-            connected_to_persistent_fabric ? edm_l1_sem_id
-                                           : get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(edm_l1_sem_id)),
+        edm_buffer_slot_wrptr_l1_addr(
+            connected_to_persistent_fabric ? (USE_STREAM_REG_UPDATE ? STREAM_REG_ADDR(REMOTE_DEST_FLOW_CONTROL_STREAM_ID, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_UPDATE_REG_INDEX) : edm_l1_sem_id)
+                                : get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(edm_l1_sem_id)),
+        edm_buffer_slot_wrptr_addr(get_noc_addr(this->edm_noc_x, this->edm_noc_y, edm_buffer_slot_wrptr_l1_addr, noc)),
+        edm_noc_addr_base(get_noc_addr(this->edm_noc_x, this->edm_noc_y, 0)),
         edm_connection_handshake_l1_addr(
             connected_to_persistent_fabric
                 ? edm_connection_handshake_l1_id
@@ -158,7 +165,9 @@ struct WorkerToFabricEdmSenderImpl {
             const auto wrptr = this->buffer_slot_wrptr;
             auto buffer_ptr_wrap = 2 * this->num_buffers_per_channel;
             auto slots_used = distance_behind(
-                BufferPtr{static_cast<uint8_t>(rdptr)}, BufferPtr{static_cast<uint8_t>(wrptr)}, buffer_ptr_wrap);
+                                BufferPtr{static_cast<uint8_t>(rdptr)},
+                                BufferPtr{static_cast<uint8_t>(wrptr)},
+                                buffer_ptr_wrap);
             return slots_used < this->num_buffers_per_channel;
         }
     }
@@ -325,7 +334,9 @@ struct WorkerToFabricEdmSenderImpl {
     // the L1 address of buffer_slot wrptr on the EDM we are writing to
     // Writing to this address will tell the EDM that the wrptr is changed and
     // that new data is available
-    uint32_t edm_buffer_slot_wrptr_addr;
+    uint32_t edm_buffer_slot_wrptr_l1_addr;
+    uint64_t edm_buffer_slot_wrptr_addr;
+    uint64_t edm_noc_addr_base;
     size_t edm_connection_handshake_l1_addr;
     size_t edm_worker_location_info_addr;
     size_t edm_buffer_index_addr;
@@ -358,6 +369,9 @@ struct WorkerToFabricEdmSenderImpl {
 private:
     template <bool stateful_api = false, bool enable_ring_support = false>
     FORCE_INLINE void update_edm_buffer_slot_wrptr(uint8_t noc = noc_index) {
+#ifdef ARCH_BLACKHOLE
+        static_assert(!stateful_api, "stateful api support not tested on Blackhole");
+#endif
         if constexpr (stateful_api) {
             if constexpr (enable_ring_support) {
                 noc_inline_dw_write_with_state<true, false, true>(
@@ -369,7 +383,7 @@ private:
         } else {
             const uint64_t noc_sem_addr =
                 get_noc_addr(this->edm_noc_x, this->edm_noc_y, this->edm_buffer_slot_wrptr_addr, noc);
-            noc_inline_dw_write(noc_sem_addr, this->buffer_slot_wrptr, 0xf, noc);
+            noc_inline_dw_write<USE_STREAM_REG_UPDATE, true>(noc_sem_addr, this->buffer_slot_wrptr, 0xf, noc);
         }
     }
 
@@ -463,9 +477,9 @@ private:
     }
 };
 
-using WorkerToFabricEdmSender = WorkerToFabricEdmSenderImpl<0>;
+using WorkerToFabricEdmSender = WorkerToFabricEdmSenderImpl<0, to_downstream_sender_0_pkts_sent_id>;
 
-template <uint8_t EDM_SENDER_CHANNEL_NUM_BUFFERS>
-using EdmToEdmSender = WorkerToFabricEdmSenderImpl<EDM_SENDER_CHANNEL_NUM_BUFFERS>;
+template <uint8_t EDM_SENDER_CHANNEL_NUM_BUFFERS, int REMOTE_DEST_FLOW_CONTROL_STREAM_ID>
+using EdmToEdmSender = WorkerToFabricEdmSenderImpl<EDM_SENDER_CHANNEL_NUM_BUFFERS, REMOTE_DEST_FLOW_CONTROL_STREAM_ID>;
 
 }  // namespace tt::tt_fabric

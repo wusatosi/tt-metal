@@ -36,6 +36,9 @@ constexpr uint32_t to_sender_1_pkts_completed_id = 6;
 // receivers updates the reg on this stream
 constexpr uint32_t to_sender_2_pkts_completed_id = 7;
 
+constexpr uint32_t to_receiver_channel_fwd_path_rdptr_id = 9;
+constexpr uint32_t to_downstream_sender_1_pkts_sent_id = 10;
+
 constexpr size_t MAX_NUM_RECEIVER_CHANNELS = 2;
 constexpr size_t MAX_NUM_SENDER_CHANNELS = 3;
 
