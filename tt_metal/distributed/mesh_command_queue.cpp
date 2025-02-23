@@ -24,7 +24,8 @@ struct MeshReadEventDescriptor {
     LogicalDeviceRange device_range;
 };
 
-MeshCommandQueue::MeshCommandQueue(MeshDevice* mesh_device, uint32_t id) : thread_pool_(mesh_device->num_devices()) {
+MeshCommandQueue::MeshCommandQueue(MeshDevice* mesh_device, uint32_t id) :
+    thread_pool_(mesh_device->num_devices()), program_commands_dispatcher_(thread_pool_, mesh_device) {
     this->mesh_device_ = mesh_device;
     this->id_ = id;
     program_dispatch::reset_config_buf_mgrs_and_expected_workers(
@@ -571,45 +572,74 @@ void MeshCommandQueue::reset_worker_state(
     }
 }
 
+ProgramCommandsDispatcher::ProgramCommandsDispatcher(ThreadPool& thread_pool, MeshDevice* device) :
+    thread_pool_(thread_pool) {
+    device_ = device;
+    auto dispatch_core_config = DispatchQueryManager::instance().get_dispatch_core_config();
+    dispatch_core_type_ = dispatch_core_config.get_core_type();
+}
+
+void ProgramCommandsDispatcher::enqueue(
+    ProgramCommandSequence& program_cmd_seq,
+    uint8_t cq_id,
+    bool stall_first,
+    bool stall_before_program,
+    const LogicalDeviceRange& sub_grid,
+    std::unordered_set<uint32_t>& chip_ids_in_workload) {
+    // Parallelize Dispatch across columns
+    uint32_t num_columns = (sub_grid.end_coord.x - sub_grid.start_coord.x + 1);
+    uint32_t num_dispatch_threads = std::min(num_columns, thread_pool_.num_threads());
+    uint32_t num_columns_per_thread = num_columns / num_dispatch_threads;
+    auto dispatch_lambda =
+        [&program_cmd_seq, &sub_grid, cq_id, stall_first, stall_before_program, num_columns_per_thread, this](
+            uint32_t start_x) {
+            for (std::size_t logical_x = start_x; logical_x < start_x + num_columns_per_thread; logical_x++) {
+                for (std::size_t logical_y = sub_grid.start_coord.y; logical_y < sub_grid.end_coord.y + 1;
+                     logical_y++) {
+                    program_dispatch::write_program_command_sequence(
+                        program_cmd_seq,
+                        device_->get_device(logical_y, logical_x)->sysmem_manager(),
+                        cq_id,
+                        dispatch_core_type_,
+                        stall_first,
+                        stall_before_program);
+                }
+            }
+        };
+
+    for (std::size_t thread_idx = 0; thread_idx < num_dispatch_threads; thread_idx++) {
+        thread_pool_.enqueue(
+            [&dispatch_lambda, thread_idx, num_columns_per_thread, start = sub_grid.start_coord.x]() mutable {
+                dispatch_lambda(start + thread_idx * num_columns_per_thread);
+            });
+    }
+
+    for (std::size_t logical_x = sub_grid.start_coord.x; logical_x < sub_grid.end_coord.x + 1; logical_x++) {
+        for (std::size_t logical_y = sub_grid.start_coord.y; logical_y < sub_grid.end_coord.y + 1; logical_y++) {
+            chip_ids_in_workload.insert(device_->get_device(logical_y, logical_x)->id());
+        }
+    }
+
+    thread_pool_.barrier();
+}
+
 void MeshCommandQueue::write_program_cmds_to_subgrid(
     const LogicalDeviceRange& sub_grid,
     ProgramCommandSequence& program_cmd_seq,
     bool stall_first,
     bool stall_before_program,
     std::unordered_set<uint32_t>& chip_ids_in_workload) {
-    auto dispatch_core_config = DispatchQueryManager::instance().get_dispatch_core_config();
-    CoreType dispatch_core_type = dispatch_core_config.get_core_type();
     auto start = std::chrono::high_resolution_clock::now();
 
-    std::vector<std::future<void>> futures;
-    for (std::size_t logical_x = sub_grid.start_coord.x; logical_x < sub_grid.end_coord.x + 1; logical_x++) {
-        for (std::size_t logical_y = sub_grid.start_coord.y; logical_y < sub_grid.end_coord.y + 1; logical_y++) {
-            auto work_lambda = [&program_cmd_seq,
-                                this,
-                                &dispatch_core_type,
-                                &stall_first,
-                                &stall_before_program,
-                                physical_device = mesh_device_->get_device(logical_y, logical_x)]() {
-                program_dispatch::write_program_command_sequence(
-                    program_cmd_seq,
-                    physical_device->sysmem_manager(),
-                    id_,
-                    dispatch_core_type,
-                    stall_first,
-                    stall_before_program);
-            };
-            futures.push_back(thread_pool_.enqueue(work_lambda));
-            chip_ids_in_workload.insert(this->mesh_device_->get_device(logical_y, logical_x)->id());
-        }
-    }
+    program_commands_dispatcher_.enqueue(
+        program_cmd_seq, id_, stall_first, stall_before_program, sub_grid, chip_ids_in_workload);
 
-    for (auto& future : futures) {
-        future.wait();
-    }
     float wait_duration =
         std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start)
             .count();
-    total_time += wait_duration;
+    if (num_workloads >= 60) {
+        total_time += wait_duration;
+    }
     num_workloads++;
 }
 

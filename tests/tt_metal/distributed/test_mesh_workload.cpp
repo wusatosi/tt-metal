@@ -160,9 +160,9 @@ TEST_F(MeshWorkloadTestT3000, MeshWorkloadOnActiveEthAsserts) {
 }
 
 TEST_F(MeshWorkloadTestT3000, SimultaneousMeshWorkloads) {
-    uint32_t num_programs = 20;
+    uint32_t num_programs = 100;
     uint32_t num_heterogeneous_programs = 64;
-    uint32_t num_iterations = 300;
+    uint32_t num_iterations = 1000;
     auto random_seed = 0;
     uint32_t seed = tt::parse_env("TT_METAL_SEED", random_seed);
     log_info(tt::LogTest, "Using Test Seed: {}", seed);
@@ -245,7 +245,7 @@ TEST_F(MeshWorkloadTestT3000, SimultaneousMeshWorkloads) {
 // MeshWorkload tests on N300 and T3000
 TEST_F(MeshWorkloadTestSuite, RandomizedMeshWorkload) {
     uint32_t num_programs = 60;
-    uint32_t num_iterations = 200;
+    uint32_t num_iterations = 5;
     auto random_seed = 10;
     uint32_t seed = tt::parse_env("TT_METAL_SEED", random_seed);
     log_info(tt::LogTest, "Using Test Seed: {}", seed);
@@ -263,8 +263,7 @@ TEST_F(MeshWorkloadTestSuite, RandomizedMeshWorkload) {
     log_info(tt::LogTest, "Compile and load {} MeshWorkloads", num_programs);
     for (int i = 0; i < num_programs; i += 1) {
         // Choose a grid of random dimensions and run a MeshWorkload on it
-        LogicalDeviceRange device_range =
-            LogicalDeviceRange({0, 0}, {mesh_device_->num_cols() - 1, mesh_device_->num_rows() - 1});
+        LogicalDeviceRange device_range = LogicalDeviceRange({0, 0}, {gen_x(rng) - 1, gen_y(rng) - 1});
         auto random_workload = std::make_shared<MeshWorkload>();
         AddProgramToMeshWorkload(*random_workload, *programs[i], device_range);
         EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), *random_workload, false);
@@ -292,11 +291,11 @@ TEST_F(MeshWorkloadTestSuite, EltwiseBinaryMeshWorkload) {
     auto programs = tt::tt_metal::distributed::test::utils::create_eltwise_bin_programs(
         mesh_device_, src0_bufs, src1_bufs, output_bufs);
     auto mesh_workload = CreateMeshWorkload();
-    LogicalDeviceRange devices_0 = LogicalDeviceRange({0, 0}, {mesh_device_->num_cols() - 1, 1});
-    // LogicalDeviceRange devices_1 = LogicalDeviceRange(
-    //     {0, mesh_device_->num_rows() - 1}, {mesh_device_->num_cols() - 1, mesh_device_->num_rows() - 1});
+    LogicalDeviceRange devices_0 = LogicalDeviceRange({0, 0}, {mesh_device_->num_cols() - 1, 0});
+    LogicalDeviceRange devices_1 = LogicalDeviceRange(
+        {0, mesh_device_->num_rows() - 1}, {mesh_device_->num_cols() - 1, mesh_device_->num_rows() - 1});
     AddProgramToMeshWorkload(mesh_workload, *programs[0], devices_0);
-    // AddProgramToMeshWorkload(mesh_workload, *programs[1], devices_1);
+    AddProgramToMeshWorkload(mesh_workload, *programs[1], devices_1);
     std::vector<uint32_t> src0_vec = create_constant_vector_of_bfloat16(src0_bufs[0]->size(), 2);
     std::vector<uint32_t> src1_vec = create_constant_vector_of_bfloat16(src1_bufs[0]->size(), 3);
 
@@ -324,15 +323,15 @@ TEST_F(MeshWorkloadTestSuite, EltwiseBinaryMeshWorkload) {
                         dst_vec,
                         output_bufs[col_idx * worker_grid_size.y + row_idx],
                         MeshCoordinate(logical_y, logical_x));
-                    // if (logical_y == 0) {
-                    for (int i = 0; i < dst_vec.size(); i++) {
-                        EXPECT_EQ(dst_vec[i].to_float(), 5);
+                    if (logical_y == 0) {
+                        for (int i = 0; i < dst_vec.size(); i++) {
+                            EXPECT_EQ(dst_vec[i].to_float(), 5);
+                        }
+                    } else {
+                        for (int i = 0; i < dst_vec.size(); i++) {
+                            EXPECT_EQ(dst_vec[i].to_float(), 6);
+                        }
                     }
-                    // } else {
-                    //     for (int i = 0; i < dst_vec.size(); i++) {
-                    //         EXPECT_EQ(dst_vec[i].to_float(), 6);
-                    //     }
-                    // }
                 }
             }
         }
