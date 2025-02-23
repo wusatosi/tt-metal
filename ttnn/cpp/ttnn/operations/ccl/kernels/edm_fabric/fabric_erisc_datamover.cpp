@@ -665,8 +665,8 @@ FORCE_INLINE bool run_sender_channel_step(
         // if (has_unsent_packet) {
         //     if (!sender_backpressured_from_sender_side) {
                 did_something = true;
-                auto packet_header = reinterpret_cast<tt::fabric::PacketHeader*>(local_sender_channel.get_buffer_address(local_sender_channel_worker_interface.local_wrptr.get_buffer_index()));
                 if constexpr (enable_packet_header_recording) {
+                    auto packet_header = reinterpret_cast<tt::fabric::PacketHeader*>(local_sender_channel.get_buffer_address(local_sender_channel_worker_interface.local_wrptr.get_buffer_index()));
                     tt::fabric::validate(*packet_header);
                     packet_header_recorder.record_packet_header(packet_header);
                 }
@@ -713,6 +713,9 @@ FORCE_INLINE bool run_sender_channel_step(
     }
 
 
+    bool connection_status_maybe_changed = !channel_connection_established || local_sender_channel_worker_interface.has_worker_teardown_request();
+    // maybe worth outlining since it's a rare event
+    if (connection_status_maybe_changed) {
     if (!channel_connection_established) {
         // Can get rid of one of these two checks if we duplicate the logic above here in the function
         // and depending on which of the two versions we are in (the connected version or disconnected version)
@@ -742,6 +745,7 @@ FORCE_INLINE bool run_sender_channel_step(
         channel_connection_established = false;
         local_sender_channel_worker_interface.teardown_connection(
             local_sender_channel_worker_interface.local_rdptr.get_ptr());
+    }
     }
 
     return did_something;
@@ -790,7 +794,8 @@ FORCE_INLINE void run_receiver_channel_step(
             can_forward_packet_completely(
                 cached_routing_fields, downstream_edm_interface);
         bool trid_flushed = receiver_channel_trid_tracker.transaction_flushed(receiver_buffer_index);
-        if (can_send_to_all_local_chip_receivers && trid_flushed) {
+        bool can_forward_packet = can_send_to_all_local_chip_receivers && trid_flushed;
+        if (can_forward_packet) {
             uint8_t trid = receiver_channel_trid_tracker.update_buffer_slot_to_next_trid_and_advance_trid_counter(receiver_buffer_index);
             receiver_forward_packet(packet_header, cached_routing_fields, downstream_edm_interface, trid);
             wr_sent_ptr.increment();
