@@ -104,7 +104,7 @@ class AsymmetricAttention(LightweightModule):
         self.proj_x_config = partial(matmul_2d_config, k=dim_x, n=dim_x // self.num_devices, grid_size=(8, 8))
         self.mm_compute_kernel_config = ttnn.WormholeComputeKernelConfig(
             math_fidelity=ttnn.MathFidelity.HiFi2,
-            math_approx_mode=False,
+            math_approx_mode=True,
             fp32_dest_acc_en=True,
             packer_l1_acc=True,
         )
