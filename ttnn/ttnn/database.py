@@ -167,7 +167,7 @@ def get_or_create_sqlite_db(report_path):
     )
     cursor.execute(
         """CREATE TABLE IF NOT EXISTS device_tensors
-                (tensor_id int, device_id int, address int)"""
+                (tensor_id int, device_id int, address int, shape text)"""
     )
     cursor.execute(
         """CREATE TABLE IF NOT EXISTS local_tensor_comparison_records
@@ -333,6 +333,7 @@ def insert_tensor(report_path, tensor):
                 {
                     "device_id": device_tensor.device().id(),
                     "address": device_tensor.buffer_address(),
+                    "shape": device_tensor.shape,
                 }
             )
 
@@ -355,7 +356,8 @@ def insert_tensor(report_path, tensor):
             INSERT INTO device_tensors VALUES (
             {tensor.tensor_id},
             {device_tensor["device_id"]},
-            {device_tensor["address"]})"""
+            {device_tensor["address"]},
+            '{device_tensor["shape"]}')"""
         )
     sqlite_connection.commit()
 
