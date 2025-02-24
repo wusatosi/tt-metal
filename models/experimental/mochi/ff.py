@@ -1,7 +1,10 @@
 import ttnn
 from models.common.lightweightmodule import LightweightModule
 import torch
-from models.experimental.mochi.common import matmul_2d_config
+from models.experimental.mochi.common import (
+    matmul_2d_config,
+    ff_matmul_config,
+)
 from functools import partial
 
 
@@ -63,8 +66,24 @@ class TtFeedForward(LightweightModule):
         self.w2 = as_tensor("w2", torch_weight("w2"), ttnn.bfloat16, dim=-2)
 
         if seq_shard:
-            self.w13_config = partial(matmul_2d_config, k=in_features, n=hidden_size, grid_size=(8, 8))
-            self.w2_config = partial(matmul_2d_config, k=hidden_size, n=in_features, grid_size=(8, 8))
+            self.w13_config = partial(
+                ff_matmul_config,
+                k=in_features,
+                n=hidden_size,
+                in0_block_w=6,
+                num_out_blocks_h=2,
+                num_out_blocks_w=4,
+                grid_size=(8, 8),
+            )
+            self.w2_config = partial(
+                ff_matmul_config,
+                k=hidden_size,
+                n=in_features,
+                in0_block_w=8,
+                num_out_blocks_h=2,
+                num_out_blocks_w=1,
+                grid_size=(8, 8),
+            )
         else:
             self.w13_config = partial(
                 matmul_2d_config, k=in_features, n=hidden_size // self.num_devices, grid_size=(8, 8)
