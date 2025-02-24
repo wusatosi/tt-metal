@@ -104,37 +104,26 @@ def test_topk(N, C, H, W, k, largest, dtype, device):
 @skip_for_grayskull()
 @pytest.mark.parametrize(
     "dtype",
-    (
-        ttnn.bfloat16,
-        # ttnn.bfloat8_b,
-    ),
+    (ttnn.bfloat8_b,),
     ids=[
-        "BFLOAT16_B",
-        # "BFLOAT8_B",
+        "BFLOAT8_B",
     ],
 )
 @pytest.mark.parametrize(
     "N, C, H, W, k,",
     (
         (1, 1, 32, 16 * 1024, 32),
-        # (1, 1, 32, 64, 32),
+        (1, 1, 32, 64, 32),
     ),
 )
 @pytest.mark.parametrize(
     "sub_core_grids",
     [
-        # ttnn.CoreRangeSet(
-        #         [
-        #             ttnn.CoreRange(ttnn.CoreCoord(1, 0), ttnn.CoreCoord(1, 0)),
-        #         ]
-        #     ),
         ttnn.CoreRangeSet(
             [
-                # ttnn.CoreRange(ttnn.CoreCoord(1, 0), ttnn.CoreCoord(3, 8)),
-                # ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(3, 8)),
-                ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(3, 8)),
+                ttnn.CoreRange(ttnn.CoreCoord(1, 0), ttnn.CoreCoord(3, 8)),
             ]
-        )
+        ),
     ],
 )
 @pytest.mark.parametrize("largest", (True,))
