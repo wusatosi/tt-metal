@@ -274,13 +274,13 @@ operation::ProgramWithCallbacks topk_multicore_interleaved(
         value_tile_size,
         index_tile_size);
 
-    auto all_cores_range_set = select_from_corerange(first_core_range_set, 0, num_cores - 1u, false);
+    auto all_cores_range_set = select_from_corerange(first_core_range_set, 0, num_cores - 1u, true);
 
-    auto local_cores_range_set = select_from_corerange(first_core_range_set, 0, num_cores - 2u, false);
-    auto local_cores = corerange_to_cores(local_cores_range_set, num_cores - 1u, false);
+    auto local_cores_range_set = select_from_corerange(first_core_range_set, 0, num_cores - 2u, true);
+    auto local_cores = corerange_to_cores(local_cores_range_set, num_cores - 1u, true);
 
-    auto final_cores_range_set = select_from_corerange(first_core_range_set, num_cores - 1u, num_cores - 1u, false);
-    auto final_core = corerange_to_cores(final_cores_range_set, 1u, false).at(0);
+    auto final_cores_range_set = select_from_corerange(first_core_range_set, num_cores - 1u, num_cores - 1u, true);
+    auto final_core = corerange_to_cores(final_cores_range_set, 1u, true).at(0);
 
     tt::log_info("topk_multicore_interleaved");
 

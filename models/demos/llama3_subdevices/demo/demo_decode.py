@@ -278,18 +278,18 @@ def run_llama3_demo(
 
     # Compile
     logger.info(f"Compiling model trace...")
+    for i in range(24):
+        tt_decode_input = tt_embd(tt_out_tok)
+        logger.info(f"tt_decode_input done")
 
-    tt_decode_input = tt_embd(tt_out_tok)
-    logger.info(f"tt_decode_input done")
-
-    tt_out = tt_model(
-        tt_decode_input,
-        current_pos_tensor,
-        rot_mats=rot_mats,
-        mode="decode",
-        page_table=page_table_tt,
-    )
-    logger.info(f"tt_out done")
+        tt_out = tt_model(
+            tt_decode_input,
+            current_pos_tensor,
+            rot_mats=rot_mats,
+            mode="decode",
+            page_table=page_table_tt,
+        )
+        logger.info(f"tt_out done")
 
     # Sampling
     tt_out_tok_reset = tt_sampling(tt_out[0])
@@ -302,13 +302,12 @@ def run_llama3_demo(
     logger.info(f"Capturing model trace...")
     profiler.start(f"capture_trace")
 
-    breakpoint()
-
     trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
 
     # Get cos/sin matrices for the current position of each user
-    rot_mats, rot_mat_idxs = tt_model.rope_setup.get_rot_mats(current_pos, return_rot_idxs=True)
+    rot_mats = tt_model.rope_setup.get_rot_mats(rot_mat_idxs)
     tt_decode_input = tt_embd(tt_out_tok)
+    breakpoint()
     tt_out = tt_model(
         tt_decode_input,
         current_pos_tensor,
@@ -316,6 +315,7 @@ def run_llama3_demo(
         mode="decode",
         page_table=page_table_tt,
     )
+    breakpoint()
     tt_out_tok_reset = tt_sampling(tt_out[0])
 
     ttnn.plus_one(current_pos_tensor)
