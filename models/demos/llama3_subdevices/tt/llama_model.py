@@ -339,13 +339,13 @@ class TtTransformer(LightweightModule):
     ):
         print("model start")
         # No-op if callers already provide the right memory config
-
+        ttnn.reset_global_circular_buffer(self.prefetcher_setup.global_circular_buffer)
         garbage_tensor = ttnn.dram_prefetcher(
             self.tt_tensors,
             num_layers=self.n_layers,
             global_cb=self.prefetcher_setup.global_circular_buffer,
         )
-        print("prefetcher done")
+
         self.mesh_device.set_sub_device_stall_group([self.prefetcher_setup.worker_sub_device_id])
         print("stall group done")
         if mode == "decode" and not self.args.is_galaxy:

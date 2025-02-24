@@ -88,7 +88,7 @@ def test_llama_model_inference(
     reset_seeds,
     ensure_gc,
 ):
-    run_ref_pt = True if weights == "random" else False  # Flag to run reference PyTorch model and compare PCC
+    run_ref_pt = True  # if weights == "random" else False  # Flag to run reference PyTorch model and compare PCC
     cache_pcc = (
         True if weights == "random" else False
     )  # Flag to measure KV cache PCC. Avoid running for all layers to speed up test time.
@@ -148,7 +148,7 @@ def test_llama_model_inference(
         model_name
     ]
 
-    iterations = 1 if weights == "random" else 20  # 10 if layers == 1 else 3
+    iterations = 20  # if weights == "random" else 20  # 10 if layers == 1 else 3
 
     if layers is not None:
         model_args.n_layers = layers
@@ -262,6 +262,8 @@ def test_llama_model_inference(
         ),
     )
 
+    all_pccs = []
+
     try:
         for i in range(generation_length):
             logger.info(f"[Llama3 Model] Generating token {i}")
@@ -337,8 +339,8 @@ def test_llama_model_inference(
                     )  # Update generated token to list of ref outputs
             # Measure PCC if also running reference model
             if run_ref_pt:
-                print(f"TT output: {tt_output_torch}")
-                print(f"Ref output: {ref_output}")
+                # print(f"TT output: {tt_output_torch}")
+                # print(f"Ref output: {ref_output}")
                 if layers == 1 and i == iterations - 1:  # On last iteration in the quick test, set a tighter PCC
                     passing, pcc_message = comp_pcc(ref_output, tt_output_torch, final_model_pcc)
                     if not passing:
@@ -349,6 +351,7 @@ def test_llama_model_inference(
                 logger.info(comp_allclose(ref_output, tt_output_torch))
 
                 logger.info(f"PCC: {pcc_message}")
+                all_pccs.append(pcc_message)
 
                 if passing:
                     logger.info("Llama Model Passed!")
@@ -437,7 +440,7 @@ def test_llama_model_inference(
                     logger.info("[Ref generation User 0] " + tokenizer.decode(all_outputs_ref).replace("\n", "\\n"))
     finally:
         tt_model.tt_ccl.close()
-
+    print(all_pccs)
     if run_ref_pt:
         if all_tests_pass:
             logger.info(f"All {generation_length} Llama decode iterations Passed!")
