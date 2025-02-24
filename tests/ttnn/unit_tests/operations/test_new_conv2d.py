@@ -105,6 +105,8 @@ def run_conv(
         dilation=(dilation, dilation),
         groups=groups,
     )
+    if activation == "relu":
+        torch_out_golden_tensor = torch.nn.functional.relu(torch_out_golden_tensor)
 
     reader_patterns_cache = {}
 
@@ -207,7 +209,7 @@ def run_conv(
 
     passing, pcc_msg = check_with_pcc_without_tensor_printout(torch_output_tensor, torch_out_golden_tensor, pcc=pcc)
     logger.info(f"PCC = {pcc_msg}. Threshold = {pcc}")
-    assert passing
+    assert passing, pcc_msg
 
     if memory_config:
         output_memory_config = ttnn.get_memory_config(tt_output_tensor_on_device)
@@ -2833,16 +2835,21 @@ def test_small_in_large_out_channels_auto_shard(device, torch_tensor_map):
 
 # fmt: off
 @pytest.mark.parametrize(
-    "batch, groups, input_channels, output_channels, input_height, input_width, weights_dtype, activations_dtype, kernel, stride, padding, dilation, input_channels_alignment, act_block_h_override, act_block_w_div, deallocate_activation, math_fidelity, fp32_accum, packer_l1_acc, math_approx_mode, dst_full_sync_en",
+    "batch, groups, input_channels, output_channels, input_height, input_width, weights_dtype, activations_dtype, kernel, stride, padding, dilation, math_fidelity",
     (
-        (1, 1, 256, 256, 1024//16,  1024,  ttnn.bfloat8_b, ttnn.bfloat8_b, (3, 3), (1, 1), (1, 1), (1, 1), 32, 0, 1, True, ttnn.MathFidelity.HiFi4, True, False, True, False),
+        (1, 1, 256, 256, 128,  128,  ttnn.bfloat8_b, ttnn.bfloat8_b, (3, 3), (1, 1), (1, 1), (1, 1), ttnn.MathFidelity.HiFi4),
     ),
 )
 #fmt: on
+
+@pytest.mark.parametrize("shard_layout", [HS, BS])
+@pytest.mark.parametrize("activation", ["", "relu"])
+
 @skip_for_grayskull()
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 16384*2}], indirect=True)
-def test_sdxl(
+def test_sdxl_simple(
     device,
+    torch_tensor_map,
     batch,
     groups,
     input_channels,
@@ -2855,119 +2862,37 @@ def test_sdxl(
     stride,
     padding,
     dilation,
-    input_channels_alignment,
-    act_block_h_override,
-    act_block_w_div,
-    deallocate_activation,
     math_fidelity,
-    fp32_accum,
-    packer_l1_acc,
-    math_approx_mode,
-    dst_full_sync_en,
+    shard_layout,
+    activation,
 ):
-    torch.manual_seed(11234)
-
-    if device.core_grid.y != 8 and is_wormhole_b0():
-        pytest.skip("Needs 8x8 grid for wormhole_b0")
-
-    conv_input_shape = [batch, input_channels, input_height, input_width]
-    conv_weight_shape = [output_channels, input_channels // groups, kernel[0], kernel[1]]
-    conv_bias_shape = [1, 1, 1, output_channels]
-
-    torch_input_tensor_nchw = torch.randn(conv_input_shape, dtype=torch.bfloat16).float()
-    torch_input_tensor = torch.permute(torch_input_tensor_nchw, (0, 2, 3, 1))
-
-    torch_weight_tensor = torch.randn(conv_weight_shape, dtype=torch.bfloat16).float()
-    torch_bias_tensor = torch.randn(conv_bias_shape, dtype=torch.bfloat16).float()
-
-    torch_out_golden_tensor = torch.nn.functional.conv2d(
-        torch_input_tensor_nchw,
-        torch_weight_tensor,
-        bias=torch_bias_tensor.reshape(-1),
-        stride=stride,
-        padding=padding,
-        dilation=dilation,
+    config_override = {}
+    config_override["act_block_h"] = 32
+    run_conv(
+        device,
+        torch_tensor_map,
+        math_fidelity,
+        activations_dtype,
+        weights_dtype,
+        batch,
+        output_channels,
+        input_channels,
+        input_height,
+        input_width,
+        kernel[0],
+        kernel[1],
+        stride[0],
+        stride[1],
+        padding[0],
+        padding[1],
+        config_override=config_override,
+        dilation=dilation[0],
+        use_shallow_conv_variant=False,
+        fp32_accum=False,
+        packer_l1_acc=False,
+        deallocate_activation=True,
         groups=groups,
+        shard_layout=shard_layout,
+        auto_shard=False,
+        activation=activation,
     )
-    torch_out_golden_tensor = torch.nn.functional.relu(torch_out_golden_tensor)
-
-    pad, hpad = 16, 0
-    if torch_input_tensor.shape[-1] < pad or torch_input_tensor.shape[-2] < hpad:
-        torch_input_tensor = torch.nn.functional.pad(
-            torch_input_tensor,
-            (
-                0,
-                max(0, pad - torch_input_tensor.shape[-1]),
-                0,
-                max(0, hpad - torch_input_tensor.shape[-2]),
-            ),
-        )
-
-    tt_input_tensor = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, mesh_mapper=None)
-    tt_weight_tensor = ttnn.from_torch(
-        torch_weight_tensor, weights_dtype if weights_dtype != ttnn.bfloat8_b else ttnn.float32, mesh_mapper=None)
-    tt_bias_tensor = ttnn.from_torch(
-        torch_bias_tensor, dtype=weights_dtype if weights_dtype != ttnn.bfloat8_b else ttnn.float32, mesh_mapper=None)
-
-    conv_config = ttnn.Conv2dConfig(
-        dtype=activations_dtype,
-        weights_dtype=weights_dtype,
-        shard_layout=None,
-        input_channels_alignment=input_channels_alignment,
-        activation="relu",
-        deallocate_activation=deallocate_activation,
-        enable_act_double_buffer=False,
-        enable_split_reader=False,
-        enable_subblock_padding=False,
-        output_layout=ttnn.TILE_LAYOUT,
-        act_block_h_override=act_block_h_override,
-        act_block_w_div=act_block_w_div,
-        override_sharding_config = False,
-        reallocate_halo_output = True,
-    )
-
-    compute_config = ttnn.init_device_compute_kernel_config(
-        device.arch(),
-        math_fidelity=math_fidelity,
-        fp32_dest_acc_en=fp32_accum,
-        packer_l1_acc=packer_l1_acc,
-        math_approx_mode=math_approx_mode,
-        dst_full_sync_en=dst_full_sync_en,
-    )
-
-    tt_output_tensor, [out_height, out_width], [weight, bias] = ttnn.conv2d(
-        input_tensor = tt_input_tensor,
-        weight_tensor = tt_weight_tensor,
-        bias_tensor = tt_bias_tensor,
-        device = device,
-        in_channels = input_channels,
-        out_channels = output_channels,
-        batch_size = batch,
-        input_height = input_height,
-        input_width = input_width,
-        kernel_size = kernel,
-        stride = stride,
-        padding = padding,
-        dilation = dilation,
-        groups = groups,
-        conv_config = conv_config,
-        compute_config = compute_config,
-        conv_op_cache = {},
-        return_output_dim = True,
-        return_weights_and_bias = True,
-    )
-
-    tt_output_tensor = ttnn.from_device(tt_output_tensor)
-    torch_output_tensor = ttnn.to_torch(tt_output_tensor, mesh_composer=None)
-
-    # NHWC to NCHW
-    torch_output_tensor = torch_output_tensor.reshape(
-        batch, out_height, out_width, torch_output_tensor.shape[-1]
-    )
-    torch_output_tensor = torch_output_tensor[:, :, :, :output_channels]
-    torch_output_tensor = torch.permute(torch_output_tensor, (0, 3, 1, 2))
-
-    target_pcc = 0.995
-    passing, pcc_msg = check_with_pcc_without_tensor_printout(torch_output_tensor, torch_out_golden_tensor, pcc=target_pcc)
-    logger.info(f"PCC = {pcc_msg}. Threshold = {target_pcc}")
-    assert passing, pcc_msg
