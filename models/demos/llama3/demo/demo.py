@@ -518,6 +518,7 @@ def run_llama3_demo(
             )
             ttnn.copy_host_to_device_tensor(tt_out_tok_reset, tt_out_tok)
         ttnn.plus_one(current_pos_tensor)
+        ttnn.plus_one(rot_mat_idxs)
         profiler.end(f"compile_trace_{batch_idx}")
 
         # Capture Trace
@@ -558,7 +559,7 @@ def run_llama3_demo(
             )  # FIXME Multicore is not compatible with batch > 1
             ttnn.deallocate(tt_out_rm)
         ttnn.plus_one(current_pos_tensor)
-        # ttnn.plus_one(rot_mat_idxs)  # FIXME <- This won't work since embedding requires uint32 and plus_one only works for int32
+        ttnn.plus_one(rot_mat_idxs)
 
         ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
 
@@ -612,13 +613,6 @@ def run_llama3_demo(
             ttnn.wait_for_event(0, write_event)
             ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=True)
             ttnn.record_event(0, op_event)
-
-            # Update current pos and mat idxs on host and send to device
-            # TODO This is required for now since we cannot ttnn.plus_one(rot_mat_idxs) while it being uint32.
-            # If this tensor is int32, it won't be supported by ttnn.embedding
-            current_pos += 1
-            rot_mat_idxs_updated = tt_model.rope_setup.get_rot_idxs(current_pos, on_host=True)
-            ttnn.copy_host_to_device_tensor(rot_mat_idxs_updated, rot_mat_idxs)
 
             # Write to host
             ttnn.wait_for_event(1, op_event)

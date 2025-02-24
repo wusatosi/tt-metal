@@ -31,7 +31,8 @@ operation::ProgramWithCallbacks plusone_single_core(const Tensor& input) {
         tt::tt_metal::split_work_to_cores(compute_with_storage_grid_size, num_units);
 
     const auto& input_shape = input.get_padded_shape();
-    const uint32_t W = input_shape[0];
+    const uint32_t W = input_shape.size() > 1 ? input_shape[1] : input_shape[0];
+    const uint32_t H = input_shape.size() > 1 ? input_shape[0] : 1;
 
     uint32_t src0_cb_index = tt::CBIndex::c_0;
     uint32_t num_input_units = W;
@@ -44,12 +45,7 @@ operation::ProgramWithCallbacks plusone_single_core(const Tensor& input) {
     auto src_buffer = input.buffer();
     bool src_is_dram = src_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0;
 
-    std::vector<uint32_t> reader_compile_time_args = {
-        src0_cb_index,
-        src_is_dram,
-        aligned_input_unit_size,
-        W,
-    };
+    std::vector<uint32_t> reader_compile_time_args = {src0_cb_index, src_is_dram, aligned_input_unit_size, W, H};
 
     std::map<string, string> kernel_defines;
     tt::tt_metal::KernelHandle reader_kernel_id = tt::tt_metal::CreateKernel(
