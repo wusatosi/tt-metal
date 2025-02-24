@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: © 2025 Tenstorrent Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+
 #include <thread>
 #include <mutex>
 #include <semaphore>
@@ -90,13 +94,13 @@ public:
                     counter--;
                 }
             });
-            cpu_set_t cpuset;
-            CPU_ZERO(&cpuset);
-            CPU_SET(2 * i, &cpuset);
-            int rc = pthread_setaffinity_np(workers_.back().native_handle(), sizeof(cpu_set_t), &cpuset);
-            if (rc != 0) {
-                std::cerr << "Error setting affinity for thread " << i << ": " << strerror(rc) << std::endl;
-            }
+            // cpu_set_t cpuset;
+            // CPU_ZERO(&cpuset);
+            // CPU_SET(i + 8, &cpuset);
+            // int rc = pthread_setaffinity_np(workers_.back().native_handle(), sizeof(cpu_set_t), &cpuset);
+            // if (rc != 0) {
+            //     std::cerr << "Error setting affinity for thread " << i << ": " << strerror(rc) << std::endl;
+            // }
         }
     }
 
@@ -110,7 +114,7 @@ public:
 
     void barrier() const noexcept { while (counter); }
 
-    uint32_t num_threads() const noexcept { return workers_.size(); }
+    std::size_t num_threads() const noexcept { return workers_.size(); }
 
     ~ThreadPool() {
         shutdown_ = true;

@@ -28,8 +28,8 @@ public:
         uint8_t cq_id,
         bool stall_first,
         bool stall_before_program,
-        const LogicalDeviceRange& sub_grid,
-        std::unordered_set<uint32_t>& chip_ids_in_workload);
+        const LogicalDeviceRange& sub_grid);
+    void finish() const noexcept;
 
 private:
     MeshDevice* device_ = nullptr;
@@ -138,8 +138,8 @@ private:
 public:
     MeshCommandQueue(MeshDevice* mesh_device, uint32_t id);
     ~MeshCommandQueue() {
-        std::cout << "Total time: " << total_time << " " << num_workloads - 60 << std::endl;
-        std::cout << "Average time to launch workloads: " << (total_time / (num_workloads - 60)) << std::endl;
+        std::cout << "Total time: " << total_time << " " << num_workloads << std::endl;
+        std::cout << "Average time to launch workloads: " << (total_time / (num_workloads)) << std::endl;
     }
     MeshDevice* device() const { return mesh_device_; }
     uint32_t id() const { return id_; }
