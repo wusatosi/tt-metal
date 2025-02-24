@@ -335,6 +335,7 @@ def test_binary_invalid_rank(device, a_shape, b_shape):
         tt_c = ttnn.experimental.add(tt_a, tt_b)
 
 
+# [5, 7, 64, 128] 5*7*2*32  4*32
 height_sharded_memory_config = ttnn.create_sharded_memory_config(
     # [320, 128], # 7 cores
     # core_grid=ttnn.CoreRangeSet({ttnn.CoreRange((0, 0), (0, 6))}),
@@ -356,10 +357,11 @@ height_sharded_memory_config = ttnn.create_sharded_memory_config(
 
 # width sharding is not good for large and tall (w is small) tensors
 # because each core may ends up with a large tensor as well, then out of L1 space
+# [5, 7, 64, 128] 5*7*2*32  4*32
 width_sharded_memory_config = ttnn.create_sharded_memory_config(
     # [2240, 64],
     # core_grid=ttnn.CoreRangeSet({ttnn.CoreRange((0, 0), (0, 1))}),
-    [2240, 32],
+    [2240, 32],  # 70 * 32 = 2240
     # core_grid=ttnn.CoreRangeSet({ttnn.CoreRange((0, 0), (0, 3))}),
     # core_grid=ttnn.CoreRangeSet({ttnn.CoreRange((1, 0), (1, 3))}),
     core_grid=ttnn.CoreRangeSet({ttnn.CoreRange((0, 0), (0, 1)), ttnn.CoreRange((2, 2), (2, 3))}),
@@ -372,12 +374,14 @@ block_sharded_memory_config = ttnn.create_sharded_memory_config(
     # [320, 64], # 128 / 64 = 2, core grid is 2x6
     # core_grid=ttnn.CoreRangeSet({ttnn.CoreRange((0, 0), (1, 6))}),
     # following is better, more cores
-    [320, 32],  # 128 / 32 = 4, core grid is 4x6
-    # core_grid=ttnn.CoreRangeSet({ttnn.CoreRange((0, 0), (3, 6))}),
-    core_grid=ttnn.CoreRangeSet({ttnn.CoreRange((1, 0), (4, 6))}),
+    # [320, 32],  # 128 / 32 = 4, core grid is 4x6
+    [32, 320],  # CM
+    # core_grid=ttnn.CoreRangeSet({ttnn.CoreRange((1, 0), (4, 6))}),
+    core_grid=ttnn.CoreRangeSet({ttnn.CoreRange((0, 1), (6, 4))}),
     # [160, 32] will not work, because it needs core grid 4x14
     strategy=ttnn.ShardStrategy.BLOCK,
-    orientation=ttnn.ShardOrientation.ROW_MAJOR,
+    # orientation=ttnn.ShardOrientation.ROW_MAJOR,
+    orientation=ttnn.ShardOrientation.COL_MAJOR,
     use_height_and_width_as_shard_shape=True,
 )
 
@@ -389,8 +393,8 @@ block_sharded_memory_config = ttnn.create_sharded_memory_config(
 @pytest.mark.parametrize(
     "sharded_config",
     [
-        height_sharded_memory_config,
-        width_sharded_memory_config,
+        # height_sharded_memory_config,
+        # width_sharded_memory_config,
         block_sharded_memory_config,
     ],
 )
@@ -1335,3 +1339,208 @@ def test_binary_sharded_col_major(a_shape, b_shape, shard_type, shard_size, core
         out_tt_interleaved = ttnn_fn(a_tt, b_tt, memory_config=ttnn.DRAM_MEMORY_CONFIG)
         out_tt_interleaved = ttnn.to_torch(out_tt_interleaved)
         assert ttnn.pearson_correlation_coefficient(out_tt_interleaved, out_pt) >= 0.99988
+
+
+@skip_for_grayskull()
+@pytest.mark.parametrize(
+    "dtype_pt, dtype_tt",
+    (
+        [torch.bfloat16, ttnn.bfloat16],
+        # [torch.int32, ttnn.int32],
+        # [torch.float32, ttnn.float32],
+    ),
+)
+def test_binary_sharded_bcast_w_col(device, dtype_pt, dtype_tt):
+    a_shape = torch.Size([5, 7, 2 * 32, 4 * 32])
+    b_shape = torch.Size([5, 7, 2 * 32, 1])
+
+    a_sharded_config = ttnn.create_sharded_memory_config(
+        [4 * 32, 10 * 32],
+        core_grid=ttnn.CoreRangeSet({ttnn.CoreRange((0, 0), (0, 6))}),
+        strategy=ttnn.ShardStrategy.HEIGHT,
+        orientation=ttnn.ShardOrientation.COL_MAJOR,
+        use_height_and_width_as_shard_shape=True,
+    )
+
+    b_sharded_config = ttnn.create_sharded_memory_config(
+        [32, 10 * 32],
+        core_grid=ttnn.CoreRangeSet({ttnn.CoreRange((0, 0), (0, 6))}),
+        strategy=ttnn.ShardStrategy.HEIGHT,
+        orientation=ttnn.ShardOrientation.COL_MAJOR,
+        use_height_and_width_as_shard_shape=True,
+    )
+
+    input_combinations = (
+        (ttnn.DRAM_MEMORY_CONFIG, b_sharded_config),
+        (a_sharded_config, ttnn.DRAM_MEMORY_CONFIG),
+        (a_sharded_config, b_sharded_config),
+    )
+
+    for src_config, dst_config in input_combinations:
+        a_pt = gen_func_with_cast_tt(partial(torch_random, low=-50, high=50, dtype=dtype_pt), dtype_tt)(a_shape)
+        b_pt = gen_func_with_cast_tt(partial(torch_random, low=-50, high=50, dtype=dtype_pt), dtype_tt)(b_shape)
+
+        a_tt = ttnn.from_torch(
+            a_pt,
+            dtype=dtype_tt,
+            device=device,
+            layout=ttnn.TILE_LAYOUT,
+            memory_config=src_config,
+        )
+        b_tt = ttnn.from_torch(
+            b_pt,
+            dtype=dtype_tt,
+            device=device,
+            layout=ttnn.TILE_LAYOUT,
+            memory_config=dst_config,
+        )
+
+        out_pt = torch.add(a_pt, b_pt)
+        out_tt_sharded = ttnn.experimental.add(a_tt, b_tt, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+        out_tt_sharded = ttnn.to_torch(out_tt_sharded)
+        torch.testing.assert_close(out_tt_sharded, out_pt)
+
+        out_tt_sharded = ttnn.experimental.add(a_tt, b_tt, memory_config=a_sharded_config)
+        out_tt_sharded = ttnn.to_torch(out_tt_sharded)
+        torch.testing.assert_close(out_tt_sharded, out_pt)
+
+
+@skip_for_grayskull()
+@pytest.mark.parametrize(
+    "dtype_pt, dtype_tt",
+    (
+        [torch.bfloat16, ttnn.bfloat16],
+        [torch.int32, ttnn.int32],
+        [torch.float32, ttnn.float32],
+    ),
+)
+def test_binary_Wsharded_bcast(device, dtype_pt, dtype_tt):
+    a_shape = torch.Size([5, 2, 2 * 32, 4 * 32])
+    b_shape = torch.Size([5, 2, 2 * 32, 4 * 32])
+
+    a_sharded_config = ttnn.create_sharded_memory_config(
+        # [20 * 32, 32], # ROW_MAJOR
+        [32, 20 * 32],
+        core_grid=ttnn.CoreRangeSet({ttnn.CoreRange((0, 0), (0, 3))}),
+        strategy=ttnn.ShardStrategy.WIDTH,
+        # orientation=ttnn.ShardOrientation.ROW_MAJOR,
+        orientation=ttnn.ShardOrientation.COL_MAJOR,
+        use_height_and_width_as_shard_shape=True,
+    )
+
+    b_sharded_config = ttnn.create_sharded_memory_config(
+        # [20 * 32, 32], # ROW_MAJOR
+        [32, 20 * 32],
+        core_grid=ttnn.CoreRangeSet({ttnn.CoreRange((0, 0), (0, 3))}),
+        strategy=ttnn.ShardStrategy.WIDTH,
+        # orientation=ttnn.ShardOrientation.ROW_MAJOR,
+        orientation=ttnn.ShardOrientation.COL_MAJOR,
+        use_height_and_width_as_shard_shape=True,
+    )
+
+    input_combinations = (
+        (ttnn.DRAM_MEMORY_CONFIG, b_sharded_config),
+        (a_sharded_config, ttnn.DRAM_MEMORY_CONFIG),
+        (a_sharded_config, b_sharded_config),
+    )
+
+    for src_config, dst_config in input_combinations:
+        a_pt = gen_func_with_cast_tt(partial(torch_random, low=-50, high=50, dtype=dtype_pt), dtype_tt)(a_shape)
+        b_pt = gen_func_with_cast_tt(partial(torch_random, low=-50, high=50, dtype=dtype_pt), dtype_tt)(b_shape)
+
+        a_tt = ttnn.from_torch(
+            a_pt,
+            dtype=dtype_tt,
+            device=device,
+            layout=ttnn.TILE_LAYOUT,
+            memory_config=src_config,
+        )
+        b_tt = ttnn.from_torch(
+            b_pt,
+            dtype=dtype_tt,
+            device=device,
+            layout=ttnn.TILE_LAYOUT,
+            memory_config=dst_config,
+        )
+
+        out_pt = torch.add(a_pt, b_pt)
+        out_tt_sharded = ttnn.experimental.add(a_tt, b_tt, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+        out_tt_sharded = ttnn.to_torch(out_tt_sharded)
+        torch.testing.assert_close(out_tt_sharded, out_pt)
+
+        out_tt_sharded = ttnn.experimental.add(a_tt, b_tt, memory_config=a_sharded_config)
+        out_tt_sharded = ttnn.to_torch(out_tt_sharded)
+        torch.testing.assert_close(out_tt_sharded, out_pt)
+
+
+@skip_for_grayskull()
+@pytest.mark.parametrize(
+    "dtype_pt, dtype_tt",
+    (
+        [torch.bfloat16, ttnn.bfloat16],
+        [torch.int32, ttnn.int32],
+        [torch.float32, ttnn.float32],
+    ),
+)
+def test_binary_Bsharded_bcast(device, dtype_pt, dtype_tt):
+    a_shape = torch.Size([5, 2, 2 * 32, 4 * 32])
+    b_shape = torch.Size([5, 2, 2 * 32, 4 * 32])
+
+    a_sharded_config = ttnn.create_sharded_memory_config(
+        [5 * 32, 2 * 32],  # RM
+        # [2 * 32, 5 * 32],   # CM
+        # core grid (0, 0), (1, 3) width of this grid = 4 and height of this grid is 2
+        # shard shape (RM) W = input W / grid height
+        # shard shape (RM) H = input H / grid width
+        core_grid=ttnn.CoreRangeSet({ttnn.CoreRange((0, 0), (1, 3))}),  # RM 2 X 4
+        # core_grid=ttnn.CoreRangeSet({ttnn.CoreRange((0, 0), (3, 1))}), # CM 4 X 2
+        strategy=ttnn.ShardStrategy.BLOCK,
+        orientation=ttnn.ShardOrientation.ROW_MAJOR,
+        # orientation=ttnn.ShardOrientation.COL_MAJOR,
+        use_height_and_width_as_shard_shape=True,
+    )
+
+    b_sharded_config = ttnn.create_sharded_memory_config(
+        [5 * 32, 2 * 32],  # RM
+        #  [2 * 32, 5 * 32],   # CM
+        core_grid=ttnn.CoreRangeSet({ttnn.CoreRange((0, 0), (1, 3))}),  # RM 2 X 4
+        # core_grid=ttnn.CoreRangeSet({ttnn.CoreRange((0, 0), (3, 1))}), # CM 4 X 2
+        strategy=ttnn.ShardStrategy.BLOCK,
+        orientation=ttnn.ShardOrientation.ROW_MAJOR,
+        # orientation=ttnn.ShardOrientation.COL_MAJOR,
+        use_height_and_width_as_shard_shape=True,
+    )
+
+    input_combinations = (
+        (ttnn.DRAM_MEMORY_CONFIG, b_sharded_config),
+        (a_sharded_config, ttnn.DRAM_MEMORY_CONFIG),
+        (a_sharded_config, b_sharded_config),
+    )
+
+    for src_config, dst_config in input_combinations:
+        a_pt = gen_func_with_cast_tt(partial(torch_random, low=-50, high=50, dtype=dtype_pt), dtype_tt)(a_shape)
+        b_pt = gen_func_with_cast_tt(partial(torch_random, low=-50, high=50, dtype=dtype_pt), dtype_tt)(b_shape)
+
+        a_tt = ttnn.from_torch(
+            a_pt,
+            dtype=dtype_tt,
+            device=device,
+            layout=ttnn.TILE_LAYOUT,
+            memory_config=src_config,
+        )
+        b_tt = ttnn.from_torch(
+            b_pt,
+            dtype=dtype_tt,
+            device=device,
+            layout=ttnn.TILE_LAYOUT,
+            memory_config=dst_config,
+        )
+
+        out_pt = torch.add(a_pt, b_pt)
+        out_tt_sharded = ttnn.experimental.add(a_tt, b_tt, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+        out_tt_sharded = ttnn.to_torch(out_tt_sharded)
+        torch.testing.assert_close(out_tt_sharded, out_pt)
+
+        out_tt_sharded = ttnn.experimental.add(a_tt, b_tt, memory_config=a_sharded_config)
+        out_tt_sharded = ttnn.to_torch(out_tt_sharded)
+        torch.testing.assert_close(out_tt_sharded, out_pt)

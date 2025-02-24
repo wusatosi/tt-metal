@@ -17,10 +17,12 @@ void validate_shard_spec_with_tensor_shape(const TensorSpec& tensor_spec) {
     // Sharding checks use physical shape and physical shard shape
     // TODO: Review and port to use logical shapes
     const auto& physical_shape = tensor_spec.physical_shape();
+    tt::log_info(tt::LogOp, "********  physical_shape: {} ", physical_shape);
     const auto physical_height = physical_shape.height();
     const auto physical_width = physical_shape.width();
 
     const auto& physical_shard_shape = tensor_spec.tensor_layout().get_physical_shard_shape();
+    tt::log_info(tt::LogOp, "********  physical_shard_shape: {} ", physical_shard_shape);
     const auto physical_shard_height = physical_shard_shape.height();
     const auto physical_shard_width = physical_shard_shape.width();
 
