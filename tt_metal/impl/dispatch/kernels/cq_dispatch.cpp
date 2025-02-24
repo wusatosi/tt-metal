@@ -19,6 +19,38 @@
 // The command queue write interface controls writes to the completion region, host owns the completion region read
 // interface Data requests from device and event states are written to the completion region
 
+#if defined(PROFILE_KERNEL) && (PROFILE_KERNEL == PROFILER_OPT_DO_DISPATCH_CORES)
+namespace kernel_profiler {
+template <DoingDispatch dispatch = DoingDispatch::NOT_DISPATCH>
+struct profileScopeDynamic {
+    bool start_marked = false;
+    uint32_t timer_id;
+    inline __attribute__((always_inline)) profileScopeDynamic(uint32_t timer_id) : timer_id(timer_id) {
+        if (bufferHasRoom<dispatch>()) {
+            stackSize += PROFILER_L1_MARKER_UINT32_SIZE;
+            start_marked = true;
+            mark_time_at_index_inlined(wIndex, timer_id);
+            wIndex += PROFILER_L1_MARKER_UINT32_SIZE;
+        }
+    }
+
+    inline __attribute__((always_inline)) ~profileScopeDynamic() {
+        if (start_marked) {
+            mark_time_at_index_inlined(wIndex, get_const_id(timer_id, ZONE_END));
+            wIndex += PROFILER_L1_MARKER_UINT32_SIZE;
+            start_marked = false;
+            stackSize -= PROFILER_L1_MARKER_UINT32_SIZE;
+        }
+
+        if constexpr (dispatch == DoingDispatch::DISPATCH) {
+            if (wIndex >= (PROFILER_L1_VECTOR_SIZE - (QUICK_PUSH_MARKER_COUNT * PROFILER_L1_MARKER_UINT32_SIZE))) {
+                quick_push();
+            }
+        }
+    }
+};
+}  // namespace kernel_profiler
+#endif
 CQWriteInterface cq_write_interface;
 
 constexpr uint32_t dispatch_cb_base = get_compile_time_arg_val(0);
@@ -580,6 +612,7 @@ void process_write_packed(
         noc_nonposted_writes_acked[noc_index] += mcasts;
         writes = 0;
         mcasts = 0;
+        DeviceZoneScopedN("PACKED_BARRIER");
         // Workaround mcast path reservation hangs by always waiting for a write
         // barrier before doing an mcast that isn't linked to a previous mcast.
         noc_async_write_barrier();
@@ -714,6 +747,7 @@ void process_write_packed_large(
             mcasts += num_dests * writes;
             noc_nonposted_writes_acked[noc_index] = mcasts;
             writes = 0;
+            DeviceZoneScopedN("WRITE_PACKED_LARGE_BARRIER");
             // Workaround mcast path reservation hangs by always waiting for a write
             // barrier before doing an mcast that isn't linked to a previous mcast.
             noc_async_write_barrier();
@@ -865,6 +899,7 @@ static void process_wait() {
 
     if (barrier) {
         DPRINT << " DISPATCH BARRIER\n";
+        DeviceZoneScopedN("DISPATCH_BARRIER");
         noc_async_write_barrier();
     }
 
@@ -940,6 +975,7 @@ void process_notify_dispatch_s_go_signal_cmd() {
     // write barrier to wait before sending the go signal
     if (wait) {
         DPRINT << " DISPATCH_S_NOTIFY BARRIER\n";
+        DeviceZoneScopedN("WAIT_BARRIER");
         noc_async_write_barrier();
     }
     uint16_t index_bitmask = cmd->notify_dispatch_s_go_signal.index_bitmask;
@@ -983,14 +1019,17 @@ re_run_command:
     volatile CQDispatchCmd tt_l1_ptr* cmd = (volatile CQDispatchCmd tt_l1_ptr*)cmd_ptr;
 
     switch (cmd->base.cmd_id) {
-        case CQ_DISPATCH_CMD_WRITE_LINEAR:
+        case CQ_DISPATCH_CMD_WRITE_LINEAR: {
+            DeviceZoneScopedN("WriteLinear");
             WAYPOINT("DWB");
             DPRINT << "cmd_write_linear\n";
             process_write(block_noc_writes_to_clear, block_next_start_addr);
             WAYPOINT("DWD");
             break;
+        }
 
-        case CQ_DISPATCH_CMD_WRITE_LINEAR_H:
+        case CQ_DISPATCH_CMD_WRITE_LINEAR_H: {
+            DeviceZoneScopedN("WriteLinearH");
             DPRINT << "cmd_write_linear_h\n";
             if (is_h_variant) {
                 process_write(block_noc_writes_to_clear, block_next_start_addr);
@@ -998,8 +1037,10 @@ re_run_command:
                 relay_write_h(block_noc_writes_to_clear, block_next_start_addr);
             }
             break;
+        }
 
-        case CQ_DISPATCH_CMD_WRITE_LINEAR_H_HOST:
+        case CQ_DISPATCH_CMD_WRITE_LINEAR_H_HOST: {
+            DeviceZoneScopedN("WriteLinearHHist");
             DPRINT << "cmd_write_linear_h_host\n";
             if (is_h_variant) {
                 process_write_host_h(block_noc_writes_to_clear, block_next_start_addr);
@@ -1007,6 +1048,7 @@ re_run_command:
                 process_write_host_d(block_noc_writes_to_clear, block_next_start_addr);
             }
             break;
+        }
 
         case CQ_DISPATCH_CMD_WRITE_PAGED:
             DPRINT << "cmd_write_paged is_dram: " << (uint32_t)cmd->write_paged.is_dram << ENDL();
@@ -1020,29 +1062,119 @@ re_run_command:
         case CQ_DISPATCH_CMD_WRITE_PACKED: {
             DPRINT << "cmd_write_packed" << ENDL();
             uint32_t flags = cmd->write_packed.flags;
+            uint32_t hash;
+#define SET_HASH(name)                           \
+    DO_PRAGMA(message(PROFILER_MSG_NAME(name))); \
+    hash = kernel_profiler::Hash16_CT(PROFILER_MSG_NAME(name));
+
             if (flags & CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_MCAST) {
+#if defined(PROFILE_KERNEL) && (PROFILE_KERNEL == PROFILER_OPT_DO_DISPATCH_CORES)
+
+                switch (flags & CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_TYPE) {
+                    case CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_RTA: {
+                        SET_HASH("RTA_MULTICAST");
+                        break;
+                    }
+
+                    case CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_SEM: {
+                        SET_HASH("SEM_MULTICAST");
+                        break;
+                    }
+
+                    case CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_CB_CONFIG: {
+                        SET_HASH("CB_CONFIG_MULTICAST");
+                        break;
+                    }
+
+                    case CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_LAUNCH: {
+                        SET_HASH("LAUNCH_MULTICAST");
+                        break;
+                    }
+
+                    default: {
+                        SET_HASH("PACKED_MULTICAST");
+                        break;
+                    }
+                }
+                kernel_profiler::profileScopeDynamic<kernel_profiler::DoingDispatch::DISPATCH> zone =
+                    kernel_profiler::profileScopeDynamic<kernel_profiler::DoingDispatch::DISPATCH>(hash);
+
+#endif
                 process_write_packed<true, CQDispatchWritePackedMulticastSubCmd>(
                     flags, l1_cache, block_noc_writes_to_clear, block_next_start_addr);
             } else {
+#if defined(PROFILE_KERNEL) && (PROFILE_KERNEL == PROFILER_OPT_DO_DISPATCH_CORES)
+                switch (flags & CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_TYPE) {
+                    case CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_RTA: {
+                        SET_HASH("RTA_UNICAST");
+                        break;
+                    }
+
+                    case CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_SEM: {
+                        SET_HASH("SEM_UNICAST");
+                        break;
+                    }
+
+                    case CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_CB_CONFIG: {
+                        SET_HASH("CB_CONFIG_UNICAST");
+                        break;
+                    }
+
+                    case CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_LAUNCH: {
+                        SET_HASH("LAUNCH_UNICAST");
+                        break;
+                    }
+
+                    default: {
+                        SET_HASH("PACKED_UNICAST");
+                        break;
+                    }
+                }
+                kernel_profiler::profileScopeDynamic<kernel_profiler::DoingDispatch::DISPATCH> zone =
+                    kernel_profiler::profileScopeDynamic<kernel_profiler::DoingDispatch::DISPATCH>(hash);
+#endif
                 process_write_packed<false, CQDispatchWritePackedUnicastSubCmd>(
                     flags, l1_cache, block_noc_writes_to_clear, block_next_start_addr);
             }
         } break;
 
-        case CQ_DISPATCH_NOTIFY_SLAVE_GO_SIGNAL:
+        case CQ_DISPATCH_NOTIFY_SLAVE_GO_SIGNAL: {
+            DeviceZoneScopedN("NotifySlaveGo");
             DPRINT << "cmd_notify_dispatch_s_go_signal" << ENDL();
             process_notify_dispatch_s_go_signal_cmd();
             break;
+        }
 
-        case CQ_DISPATCH_CMD_WRITE_PACKED_LARGE:
-            DPRINT << "cmd_write_packed_large" << ENDL();
+        case CQ_DISPATCH_CMD_WRITE_PACKED_LARGE: {
+#if defined(PROFILE_KERNEL) && (PROFILE_KERNEL == PROFILER_OPT_DO_DISPATCH_CORES)
+            uint32_t hash;
+            switch (cmd->write_packed_large.flags) {
+                case CQ_DISPATCH_CMD_WRITE_PACKED_LARGE_FLAG_CB_SEM: {
+                    SET_HASH("CB_SEM");
+                    break;
+                }
+                case CQ_DISPATCH_CMD_WRITE_PACKED_LARGE_FLAG_PROGRAM: {
+                    SET_HASH("BINARY");
+                    break;
+                }
+                default: {
+                    SET_HASH("PACKED_WRITE_LARGE");
+                    break;
+                }
+            }
+            kernel_profiler::profileScopeDynamic<kernel_profiler::DoingDispatch::DISPATCH> zone =
+                kernel_profiler::profileScopeDynamic<kernel_profiler::DoingDispatch::DISPATCH>(hash);
+#endif
             process_write_packed_large(l1_cache, block_noc_writes_to_clear, block_next_start_addr);
             break;
+        }
 
-        case CQ_DISPATCH_CMD_WAIT:
+        case CQ_DISPATCH_CMD_WAIT: {
+            DeviceZoneScopedN("Wait");
             DPRINT << "cmd_wait" << ENDL();
             process_wait();
             break;
+        }
 
         case CQ_DISPATCH_CMD_GO: DPRINT << "cmd_go" << ENDL(); break;
 
@@ -1068,10 +1200,12 @@ re_run_command:
             }
             break;
 
-        case CQ_DISPATCH_CMD_SEND_GO_SIGNAL:
+        case CQ_DISPATCH_CMD_SEND_GO_SIGNAL: {
+            DeviceZoneScopedN("SendGoSignal");
             DPRINT << "cmd_go_send_go_signal" << ENDL();
             process_go_signal_mcast_cmd();
             break;
+        }
 
         case CQ_DISPATCH_SET_NUM_WORKER_SEMS:
             DPRINT << "cmd_set_num_worker_sems" << ENDL();
@@ -1082,7 +1216,8 @@ re_run_command:
 
         case CQ_DISPATCH_SET_GO_SIGNAL_NOC_DATA: set_go_signal_noc_data(); break;
 
-        case CQ_DISPATCH_CMD_SET_WRITE_OFFSET:
+        case CQ_DISPATCH_CMD_SET_WRITE_OFFSET: {
+            DeviceZoneScopedN("SetWriteOffset");
             DPRINT << "write offset: " << cmd->set_write_offset.offset0 << " " << cmd->set_write_offset.offset1 << " "
                    << cmd->set_write_offset.offset2 << ENDL();
             write_offset[0] = cmd->set_write_offset.offset0;
@@ -1090,6 +1225,7 @@ re_run_command:
             write_offset[2] = cmd->set_write_offset.offset2;
             cmd_ptr += sizeof(CQDispatchCmd);
             break;
+        }
 
         case CQ_DISPATCH_CMD_TERMINATE:
             DPRINT << "dispatch terminate\n";
@@ -1195,7 +1331,7 @@ void kernel_main() {
     bool done = false;
     uint32_t heartbeat = 0;
     while (!done) {
-        DeviceZoneScopedN("CQ-DISPATCH");
+        // DeviceZoneScopedN("CQ-DISPATCH");
         if (cmd_ptr == cb_fence) {
             get_cb_page_and_release_pages<
                 dispatch_cb_base,
@@ -1216,8 +1352,15 @@ void kernel_main() {
 
         IDLE_ERISC_HEARTBEAT_AND_RETURN(heartbeat);
 
-        done = is_d_variant ? process_cmd_d(cmd_ptr, l1_cache, block_noc_writes_to_clear, block_next_start_addr)
-                            : process_cmd_h(cmd_ptr, block_noc_writes_to_clear, block_next_start_addr);
+        volatile CQDispatchCmd tt_l1_ptr* cmd = (volatile CQDispatchCmd tt_l1_ptr*)cmd_ptr;
+        if (cmd->base.cmd_id == CQ_DISPATCH_CMD_WRITE_PAGED) {
+            done = is_d_variant ? process_cmd_d(cmd_ptr, l1_cache, block_noc_writes_to_clear, block_next_start_addr)
+                                : process_cmd_h(cmd_ptr, block_noc_writes_to_clear, block_next_start_addr);
+        } else {
+            // DeviceZoneScopedN("CQ-DISPATCH");
+            done = is_d_variant ? process_cmd_d(cmd_ptr, l1_cache, block_noc_writes_to_clear, block_next_start_addr)
+                                : process_cmd_h(cmd_ptr, block_noc_writes_to_clear, block_next_start_addr);
+        }
 
         // Move to next page
         cmd_ptr = round_up_pow2(cmd_ptr, dispatch_cb_page_size);

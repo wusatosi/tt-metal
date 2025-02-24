@@ -454,6 +454,7 @@ class TtModelArgs:
                 use_height_and_width_as_shard_shape=True,
             )
             self.qkv_size = self.head_dim * (2 * self.n_kv_heads + self.n_heads)
+            print("a",self.tile_size * 8 * 8,"b",self.n_kv_heads,"c",self.cluster_shape[1])
             self.min_kv_prefill_shard_seqlen = (self.tile_size * 8 * 8) / (self.n_kv_heads // self.cluster_shape[1])
             self.MAX_QKV_MM_SEQ_LEN = 2048
             self.model_config["XQKV_PREFILL_PROGCFG"] = lambda seq_len: ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(

@@ -583,6 +583,7 @@ public:
         uint32_t payload_sizeB,
         const std::vector<PackedSubCmd>& sub_cmds,
         const std::vector<std::pair<const void*, uint32_t>>& data_collection,
+        uint32_t type,
         uint32_t packed_write_max_unicast_sub_cmds,
         const uint32_t offset_idx = 0,
         const bool no_stride = false,
@@ -609,7 +610,7 @@ public:
         auto initialize_write_packed_cmd = [&](CQDispatchCmd* write_packed_cmd) {
             write_packed_cmd->base.cmd_id = CQ_DISPATCH_CMD_WRITE_PACKED;
             write_packed_cmd->write_packed.flags =
-                (multicast ? CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_MCAST : CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_NONE) |
+                type | (multicast ? CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_MCAST : CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_NONE) |
                 (no_stride ? CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_NO_STRIDE : CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_NONE);
             write_packed_cmd->write_packed.count = num_sub_cmds;
             write_packed_cmd->write_packed.write_offset_index = write_offset_index;
@@ -656,6 +657,7 @@ public:
         uint32_t payload_sizeB,
         const std::vector<PackedSubCmd>& sub_cmds,
         const std::vector<std::vector<std::tuple<const void*, uint32_t, uint32_t>>>& data_collection,
+        uint32_t type,
         uint32_t packed_write_max_unicast_sub_cmds,
         const uint32_t offset_idx = 0,
         const bool no_stride = false,
@@ -682,7 +684,7 @@ public:
         auto initialize_write_packed_cmd = [&](CQDispatchCmd* write_packed_cmd) {
             write_packed_cmd->base.cmd_id = CQ_DISPATCH_CMD_WRITE_PACKED;
             write_packed_cmd->write_packed.flags =
-                (multicast ? CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_MCAST : CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_NONE) |
+                type | (multicast ? CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_MCAST : CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_NONE) |
                 (no_stride ? CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_NO_STRIDE : CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_NONE);
             write_packed_cmd->write_packed.count = num_sub_cmds;
             write_packed_cmd->write_packed.write_offset_index = write_offset_index;
@@ -728,13 +730,14 @@ public:
         uint16_t alignment,
         uint16_t num_sub_cmds,
         const std::vector<CQDispatchWritePackedLargeSubCmd>& sub_cmds,
+        uint32_t type,
         const uint32_t offset_idx = 0,
         uint32_t write_offset_index = 0) {
         constexpr bool flush_prefetch = false;
         uint32_t sub_cmds_sizeB = num_sub_cmds * sizeof(CQDispatchWritePackedLargeSubCmd);
         uint32_t payload_size = tt::align(sizeof(CQDispatchCmd) + sub_cmds_sizeB, this->l1_alignment);
         this->add_dispatch_write_packed_large_internal(
-            flush_prefetch, alignment, payload_size, num_sub_cmds, sub_cmds, offset_idx, write_offset_index);
+            flush_prefetch, alignment, payload_size, num_sub_cmds, sub_cmds, type, offset_idx, write_offset_index);
         this->cmd_write_offsetB = tt::align(this->cmd_write_offsetB, this->pcie_alignment);
     }
 
@@ -746,6 +749,7 @@ public:
         const std::vector<tt::stl::Span<const uint8_t>>& data_collection,
         std::vector<uint8_t*>*
             data_collection_buffer_ptr,  // optional. Stores the location each data segment was written to
+        uint32_t type,
         const uint32_t offset_idx = 0,
         uint32_t write_offset_index = 0) {
         constexpr bool flush_prefetch = true;
@@ -758,7 +762,7 @@ public:
             tt::align(sizeof(CQDispatchCmd) + sub_cmds_sizeB, this->l1_alignment) + data_collection_size,
             this->l1_alignment);
         this->add_dispatch_write_packed_large_internal(
-            flush_prefetch, alignment, payload_size, num_sub_cmds, sub_cmds, offset_idx, write_offset_index);
+            flush_prefetch, alignment, payload_size, num_sub_cmds, sub_cmds, type, offset_idx, write_offset_index);
 
         if (data_collection_buffer_ptr != nullptr) {
             data_collection_buffer_ptr->resize(data_collection.size());
@@ -826,6 +830,7 @@ private:
         uint32_t payload_sizeB,
         uint16_t num_sub_cmds,
         const std::vector<CQDispatchWritePackedLargeSubCmd>& sub_cmds,
+        uint32_t type,
         const uint32_t offset_idx,
         uint32_t write_offset_index) {
         TT_ASSERT(
@@ -838,6 +843,7 @@ private:
 
         auto initialize_write_packed_large_cmd = [&](CQDispatchCmd* write_packed_large_cmd) {
             write_packed_large_cmd->base.cmd_id = CQ_DISPATCH_CMD_WRITE_PACKED_LARGE;
+            write_packed_large_cmd->write_packed_large.flags = type;
             write_packed_large_cmd->write_packed_large.count = num_sub_cmds;
             write_packed_large_cmd->write_packed_large.alignment = alignment;
             write_packed_large_cmd->write_packed_large.write_offset_index = write_offset_index;

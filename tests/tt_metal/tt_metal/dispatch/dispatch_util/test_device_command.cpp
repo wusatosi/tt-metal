@@ -191,7 +191,7 @@ TYPED_TEST(WritePackedCommandTest, AddDispatchWritePacked) {
         std::vector<TypeParam> sub_cmds(2);
         uint32_t data[1] = {};
         std::vector<std::pair<const void*, uint32_t>> data_collection{{data, 4}, {data, 4}};
-        command.add_dispatch_write_packed<TypeParam>(2, 0, 5, 0, sub_cmds, data_collection, 100, 0, false);
+        command.add_dispatch_write_packed<TypeParam>(2, 0, 5, 0, sub_cmds, data_collection, 0, 100, 0, false);
         EXPECT_EQ(command.size_bytes(), command.write_offset_bytes());
     }
     {
@@ -202,7 +202,7 @@ TYPED_TEST(WritePackedCommandTest, AddDispatchWritePacked) {
         std::vector<TypeParam> sub_cmds(2);
         uint32_t data[1] = {};
         std::vector<std::pair<const void*, uint32_t>> data_collection{{data, 4}};
-        command.add_dispatch_write_packed<TypeParam>(2, 0, 5, 0, sub_cmds, data_collection, 100, 0, true);
+        command.add_dispatch_write_packed<TypeParam>(2, 0, 5, 0, sub_cmds, data_collection, 0, 100, 0, true);
         EXPECT_EQ(command.size_bytes(), command.write_offset_bytes());
     }
 }
@@ -214,7 +214,7 @@ TEST(DeviceCommandTest, AddDispatchWritePackedLarge) {
 
         HostMemDeviceCommand command(calculator.write_offset_bytes());
         std::vector<CQDispatchWritePackedLargeSubCmd> sub_cmds(1);
-        command.add_dispatch_write_packed_large(0, 1, sub_cmds);
+        command.add_dispatch_write_packed_large(0, 1, sub_cmds, 0);
         EXPECT_EQ(command.size_bytes(), command.write_offset_bytes());
     }
     {
@@ -226,7 +226,7 @@ TEST(DeviceCommandTest, AddDispatchWritePackedLarge) {
 
         uint8_t data[4] = {};
         std::vector<tt::stl::Span<const uint8_t>> data_collection{{data, 4}};
-        command.add_dispatch_write_packed_large(0, 1, sub_cmds, data_collection, nullptr);
+        command.add_dispatch_write_packed_large(0, 1, sub_cmds, data_collection, nullptr, 0);
         EXPECT_EQ(command.size_bytes(), command.write_offset_bytes());
     }
 }
@@ -268,6 +268,7 @@ TYPED_TEST(WritePackedCommandTest, RandomAddDispatchWritePacked) {
                 payload_size,
                 sub_cmds,
                 data_collection,
+                0,
                 packed_write_max_unicast_sub_cmds,
                 curr_sub_cmd_idx);
             curr_sub_cmd_idx += sub_cmd_ct;

@@ -105,6 +105,7 @@ void issue_record_event_commands(
         packed_event_payload_sizeB,
         unicast_sub_cmds,
         event_payloads,
+        0,
         packed_write_max_unicast_sub_cmds);
 
     if (notify_host) {

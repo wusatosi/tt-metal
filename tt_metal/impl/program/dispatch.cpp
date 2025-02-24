@@ -6,6 +6,7 @@
 
 #include <command_queue.hpp>
 #include <tt-metalium/command_queue_interface.hpp>
+#include "api/tt-metalium/cq_commands.hpp"
 #include <tt-metalium/dispatch_settings.hpp>
 #include <mesh_command_queue.hpp>
 #include <mesh_workload.hpp>
@@ -498,6 +499,7 @@ void generate_runtime_args_cmds(
             rt_payload_sizeB,
             sub_cmds,
             rt_data_and_sizes,
+            CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_RTA,
             packed_write_max_unicast_sub_cmds,
             offset_idx,
             no_stride,
@@ -1244,6 +1246,7 @@ void assemble_device_commands(
             batched_dispatch_subcmds[i],
             batched_data,
             &data_collection_location,
+            CQ_DISPATCH_CMD_WRITE_PACKED_LARGE_FLAG_CB_SEM,
             0,
             DISPATCH_WRITE_OFFSET_TENSIX_L1_CONFIG_BASE);
 
@@ -1275,6 +1278,7 @@ void assemble_device_commands(
                 unicast_sem_payload_sizeB,
                 unicast_sem_sub_cmds[i],
                 unicast_sem_data[i],
+                CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_SEM,
                 packed_write_max_unicast_sub_cmds,
                 curr_sub_cmd_idx,
                 false,
@@ -1300,6 +1304,7 @@ void assemble_device_commands(
             dram_alignment,
             kernel_bins_dispatch_subcmds[i].size(),
             kernel_bins_dispatch_subcmds[i],
+            CQ_DISPATCH_CMD_WRITE_PACKED_LARGE_FLAG_PROGRAM,
             0,
             DISPATCH_WRITE_OFFSET_TENSIX_L1_CONFIG_BASE);
         device_command_sequence.add_prefetch_relay_paged_packed(
@@ -1326,6 +1331,7 @@ void assemble_device_commands(
                 multicast_go_signal_payload_sizeB,
                 multicast_go_signal_sub_cmds,
                 multicast_go_signal_data,
+                CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_LAUNCH,
                 packed_write_max_unicast_sub_cmds,
                 curr_sub_cmd_idx);
             curr_sub_cmd_idx += num_sub_cmds_in_cmd;
@@ -1358,6 +1364,7 @@ void assemble_device_commands(
                 unicast_go_signal_payload_sizeB,
                 unicast_go_signal_sub_cmds,
                 unicast_go_signal_data,
+                CQ_DISPATCH_CMD_PACKED_WRITE_FLAG_LAUNCH,
                 packed_write_max_unicast_sub_cmds,
                 curr_sub_cmd_idx);
             curr_sub_cmd_idx += num_sub_cmds_in_cmd;
