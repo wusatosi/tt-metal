@@ -9,24 +9,21 @@ from models.utility_functions import skip_for_grayskull
 @pytest.mark.parametrize(
     "input_shapes",
     [
-        [32, 32],
+        [5, 3, 64 * 8, 64 * 8],
     ],
 )
 def test_muladd(device, input_shapes):
     torch.manual_seed(0)
-    torch_ina = torch.ones(input_shapes, dtype=torch.bfloat16) * 4
-    torch_inb = torch.ones(input_shapes, dtype=torch.bfloat16) * 8
-    torch_inc = torch.ones(input_shapes, dtype=torch.bfloat16) * 7
-    torch_ind = torch.ones(input_shapes, dtype=torch.bfloat16) * 168
+    torch_ina = torch.randn(input_shapes, dtype=torch.bfloat16)
+    torch_inb = torch.randn(input_shapes, dtype=torch.bfloat16)
+    torch_inc = torch.randn(input_shapes, dtype=torch.bfloat16)
+    torch_ind = torch.rand(input_shapes, dtype=torch.bfloat16) + 1
 
-    base = torch.tensor([[x for x in range(i * 32, (i + 1) * 32)] for i in range(32)], dtype=torch.bfloat16).reshape(
-        (32, 32)
-    )
+    # torch_ina = torch.ones(input_shapes, dtype=torch.bfloat16)
+    # torch_inb = torch.ones(input_shapes, dtype=torch.bfloat16)
+    # torch_inc = torch.ones(input_shapes, dtype=torch.bfloat16)
+    # torch_ind = torch.ones(input_shapes, dtype=torch.bfloat16)
 
-    # torch_ina = base * 4
-    # torch_inb = base * 8
-    # torch_inc = torch.ones(input_shapes,dtype=torch.bfloat16)
-    # torch_ind = base * 32
     in_memory_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM)
     out_memory_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM)
 
@@ -63,19 +60,20 @@ def test_muladd(device, input_shapes):
         memory_config=in_memory_config,
     )
     torch_output = torch.div((torch_ina + torch_inb) * torch_inc, torch_ind)
+
     output = ttnn.muladd(
         tt_ina,
         tt_inb,
         tt_inc,
         tt_ind,
         dtype=ttnn.bfloat16,
-        memory_config=ttnn.DRAM_MEMORY_CONFIG,
+        memory_config=out_memory_config,
         math_fidelity=ttnn.MathFidelity.HiFi2,
     )
+
+    print(output)
     output = ttnn.to_torch(output)
 
-    torch.set_printoptions(edgeitems=32)
-    print(output)
     pcc = ttnn.pearson_correlation_coefficient(torch_output, output)
     print(f"PCC: {pcc}")
     assert pcc >= 0.99

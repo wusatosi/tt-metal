@@ -20,10 +20,10 @@ void MulAdd::validate(const std::vector<Tensor>& input_tensors) const {
 }
 
 std::vector<ttnn::TensorSpec> MulAdd::compute_output_specs(const std::vector<Tensor>& input_tensors) const {
-    Shape output_shape({32, 32});
     // return {TensorSpec(output_shape, TensorLayout(DataType::BFLOAT16, PageConfig(Layout::TILE),
     // DRAM_MEMORY_CONFIG))};
-    return {TensorSpec(output_shape, TensorLayout(dtype, PageConfig(Layout::TILE), memory_config))};
+    return {TensorSpec(
+        input_tensors.at(0).get_logical_shape(), TensorLayout(dtype, PageConfig(Layout::TILE), memory_config))};
 }
 
 operation::ProgramWithCallbacks MulAdd::create_program(
@@ -35,7 +35,9 @@ operation::ProgramWithCallbacks MulAdd::create_program(
 
     auto& output_tensor = output_tensors.at(0);
 
-    return single_core_muladd(
+    // return single_core_muladd(input_tensor_a, input_tensor_b, input_tensor_c, input_tensor_d, output_tensor,
+    // math_fidelity);
+    return multi_core_muladd(
         input_tensor_a, input_tensor_b, input_tensor_c, input_tensor_d, output_tensor, math_fidelity);
 }
 

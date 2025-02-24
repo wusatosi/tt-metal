@@ -11,4 +11,7 @@ namespace ttnn::operations::muladd {
 
 operation::ProgramWithCallbacks single_core_muladd(
     const Tensor& a, const Tensor& b, const Tensor& c, const Tensor& d, Tensor& output, MathFidelity math_fidelity);
+
+operation::ProgramWithCallbacks multi_core_muladd(
+    const Tensor& a, const Tensor& b, const Tensor& c, const Tensor& d, Tensor& output, MathFidelity math_fidelity);
 }  // namespace ttnn::operations::muladd
