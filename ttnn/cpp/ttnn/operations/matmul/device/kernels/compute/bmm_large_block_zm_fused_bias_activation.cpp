@@ -110,22 +110,28 @@ void MAIN {
     constexpr uint32_t out_block_num_tiles = get_compile_time_arg_val(14);     // number of tiles in out_block
     constexpr bool untilize_out = get_compile_time_arg_val(15);                // untilize output
 
-    DPRINT_UNPACK(DPRINT << "ARG: in0_block_w: " << in0_block_w << ENDL());
-    DPRINT_UNPACK(DPRINT << "ARG: in0_num_subblocks: " << in0_num_subblocks << ENDL());
-    DPRINT_UNPACK(DPRINT << "ARG: in0_block_num_tiles: " << in0_block_num_tiles << ENDL());
-    DPRINT_UNPACK(DPRINT << "ARG: in0_subblock_num_tiles: " << in0_subblock_num_tiles << ENDL());
-    DPRINT_UNPACK(DPRINT << "ARG: in1_num_subblocks: " << in1_num_subblocks << ENDL());
-    DPRINT_UNPACK(DPRINT << "ARG: in1_block_num_tiles: " << in1_block_num_tiles << ENDL());
-    DPRINT_UNPACK(DPRINT << "ARG: in1_block_w: " << in1_block_w << ENDL());
-    DPRINT_UNPACK(DPRINT << "ARG: num_blocks_inner_dim: " << num_blocks_inner_dim << ENDL());
-    DPRINT_UNPACK(DPRINT << "ARG: num_blocks_w_dim: " << num_blocks_w_dim << ENDL());
-    DPRINT_UNPACK(DPRINT << "ARG: num_blocks_h_dim: " << num_blocks_h_dim << ENDL());
-    DPRINT_UNPACK(DPRINT << "ARG: out_subblock_h: " << out_subblock_h << ENDL());
-    DPRINT_UNPACK(DPRINT << "ARG: out_subblock_w: " << out_subblock_w << ENDL());
-    DPRINT_UNPACK(DPRINT << "ARG: out_subblock_num_tiles: " << out_subblock_num_tiles << ENDL());
-    DPRINT_UNPACK(DPRINT << "ARG: batch: " << batch << ENDL());
-    DPRINT_UNPACK(DPRINT << "ARG: out_block_num_tiles: " << out_block_num_tiles << ENDL());
-    DPRINT_UNPACK(DPRINT << "ARG: untilize_out: " << (uint32_t)untilize_out << ENDL());
+    DPRINT_UNPACK(
+        DPRINT << in0_block_w << "," << in0_num_subblocks << "," << in0_block_num_tiles << "," << in0_subblock_num_tiles
+               << "," << in1_num_subblocks << "," << in1_block_num_tiles << "," << in1_block_w << ","
+               << num_blocks_inner_dim << "," << num_blocks_w_dim << "," << num_blocks_h_dim << "," << out_subblock_h
+               << "," << out_subblock_w << "," << out_subblock_num_tiles << "," << batch << "," << out_block_num_tiles
+               << "," << (uint32_t)untilize_out << ENDL());
+    // DPRINT_UNPACK(DPRINT << "ARG: in0_block_w: " << in0_block_w << ENDL());
+    // DPRINT_UNPACK(DPRINT << "ARG: in0_num_subblocks: " << in0_num_subblocks << ENDL());
+    // DPRINT_UNPACK(DPRINT << "ARG: in0_block_num_tiles: " << in0_block_num_tiles << ENDL());
+    // DPRINT_UNPACK(DPRINT << "ARG: in0_subblock_num_tiles: " << in0_subblock_num_tiles << ENDL());
+    // DPRINT_UNPACK(DPRINT << "ARG: in1_num_subblocks: " << in1_num_subblocks << ENDL());
+    // DPRINT_UNPACK(DPRINT << "ARG: in1_block_num_tiles: " << in1_block_num_tiles << ENDL());
+    // DPRINT_UNPACK(DPRINT << "ARG: in1_block_w: " << in1_block_w << ENDL());
+    // DPRINT_UNPACK(DPRINT << "ARG: num_blocks_inner_dim: " << num_blocks_inner_dim << ENDL());
+    // DPRINT_UNPACK(DPRINT << "ARG: num_blocks_w_dim: " << num_blocks_w_dim << ENDL());
+    // DPRINT_UNPACK(DPRINT << "ARG: num_blocks_h_dim: " << num_blocks_h_dim << ENDL());
+    // DPRINT_UNPACK(DPRINT << "ARG: out_subblock_h: " << out_subblock_h << ENDL());
+    // DPRINT_UNPACK(DPRINT << "ARG: out_subblock_w: " << out_subblock_w << ENDL());
+    // DPRINT_UNPACK(DPRINT << "ARG: out_subblock_num_tiles: " << out_subblock_num_tiles << ENDL());
+    // DPRINT_UNPACK(DPRINT << "ARG: batch: " << batch << ENDL());
+    // DPRINT_UNPACK(DPRINT << "ARG: out_block_num_tiles: " << out_block_num_tiles << ENDL());
+    // DPRINT_UNPACK(DPRINT << "ARG: untilize_out: " << (uint32_t)untilize_out << ENDL());
 
     constexpr uint32_t out_block_w = out_subblock_w * in1_num_subblocks;
 
