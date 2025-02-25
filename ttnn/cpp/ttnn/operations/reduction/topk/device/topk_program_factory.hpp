@@ -26,9 +26,6 @@ operation::ProgramWithCallbacks topk_single_core_interleaved(
 
     auto core = corerange_to_cores(sub_core_grids, 1, true).at(0);
 
-    tt::log_info("topk_single_core_interleaved");
-    tt::log_info("sub_core_grids: {}", sub_core_grids);
-    tt::log_info("core: {}", core);
     uint32_t input_tile_size = tile_size(input_cb_data_format);
     uint32_t value_tile_size = tile_size(value_cb_data_format);
     uint32_t index_tile_size = tile_size(index_cb_data_format);
@@ -51,8 +48,6 @@ operation::ProgramWithCallbacks topk_single_core_interleaved(
     uint32_t num_cb_unit = 2;
     uint32_t cb_in_units = 2 * num_cb_unit;
 
-    tt::log_info("after setup");
-
     // Two tiles are loaded in for topk_local_sort at a time, and we double buffer to avoid stalls, so allocate four
     // tiles of space
     // TODO: In theory if we have enough memory we could allocate 2*Wt tiles to reduce stalls
@@ -61,8 +56,6 @@ operation::ProgramWithCallbacks topk_single_core_interleaved(
         tt::tt_metal::CircularBufferConfig(cb_in_units * value_tile_size, {{input_cb_index, input_cb_data_format}})
             .set_page_size(input_cb_index, input_tile_size);
     auto cb_input_tensor = tt::tt_metal::CreateCircularBuffer(program, core, input_cb_config);
-
-    tt::log_info("after input_cb_index init");
 
     // Two tiles are loaded in for topk_local_sort at a time, and we double buffer to avoid stalls, so allocate four
     // tiles of space This CB carries the indices that are created in the reader kernel
@@ -100,16 +93,12 @@ operation::ProgramWithCallbacks topk_single_core_interleaved(
             .set_page_size(output_ind_cb_index, index_tile_size);
     auto cb_output_ind_tensor = tt::tt_metal::CreateCircularBuffer(program, core, output_ind_cb_config);
 
-    tt::log_info("after output_ind_cb_index init");
-
     std::vector<uint32_t> reader_compile_time_args = {input_cb_index, index_cb_index, (uint32_t)input_is_dram, Ht, Wt};
     tt::tt_metal::KernelHandle unary_reader_kernel_id = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/reduction/topk/device/kernels/dataflow/reader_create_index_tensor.cpp",
         core,
         tt::tt_metal::ReaderDataMovementConfig(reader_compile_time_args));
-
-    tt::log_info("after unary_reader_kernel_id init");
 
     SetRuntimeArgs(
         program,
@@ -119,8 +108,6 @@ operation::ProgramWithCallbacks topk_single_core_interleaved(
             input_buffer->address(),
         });
 
-    tt::log_info("after setRuntimeArgs");
-
     std::vector<uint32_t> writer_compile_time_args = {
         values_cb_index, output_ind_cb_index, (std::uint32_t)values_is_dram, (std::uint32_t)index_is_dram, Ht, k};
     tt::tt_metal::KernelHandle binary_writer_kernel_id = tt::tt_metal::CreateKernel(
@@ -128,8 +115,6 @@ operation::ProgramWithCallbacks topk_single_core_interleaved(
         "ttnn/cpp/ttnn/operations/reduction/topk/device/kernels/dataflow/writer_binary_interleaved.cpp",
         core,
         tt::tt_metal::WriterDataMovementConfig(writer_compile_time_args));
-
-    tt::log_info("after binary_writer_kernel_id init");
 
     SetRuntimeArgs(
         program,
@@ -140,8 +125,6 @@ operation::ProgramWithCallbacks topk_single_core_interleaved(
             index_buffer->address(),
 
         });
-
-    tt::log_info("after setRuntimeArgs");
 
     std::vector<uint32_t> compute_args = {
         input_cb_index,
@@ -162,8 +145,6 @@ operation::ProgramWithCallbacks topk_single_core_interleaved(
         core,
         tt::tt_metal::ComputeConfig{.compile_args = compute_args});
 
-    tt::log_info("after topk_compute_kernel_id init");
-
     auto override_runtime_args_callback = [unary_reader_kernel_id, binary_writer_kernel_id, core](
                                               const Program& program,
                                               const std::vector<Buffer*>& input_buffers,
@@ -171,9 +152,6 @@ operation::ProgramWithCallbacks topk_single_core_interleaved(
         auto input_buffer = input_buffers.at(0);
         auto values_buffer = output_buffers.at(0);
         auto index_buffer = output_buffers.at(1);
-
-        tt::log_info("override_runtime_args_callback");
-        tt::log_info("core: {}", core);
 
         {
             auto& reader_runtime_args = GetRuntimeArgs(program, unary_reader_kernel_id, core);
@@ -282,13 +260,6 @@ operation::ProgramWithCallbacks topk_multicore_interleaved(
     auto final_cores_range_set = select_from_corerange(first_core_range_set, num_cores - 1u, num_cores - 1u, true);
     auto final_core = corerange_to_cores(final_cores_range_set, 1u, true).at(0);
 
-    tt::log_info("topk_multicore_interleaved");
-
-    tt::log_info("num_cores: {}", num_cores);
-    tt::log_info("all_cores_range_set: {}", all_cores_range_set);
-    tt::log_info("local_cores_range_set: {}", local_cores_range_set);
-    tt::log_info("final_cores_range_set: {}", final_cores_range_set);
-
     uint32_t Wt_local = local_topk_input_size / TILE_WIDTH;
     uint32_t Wt_final = final_topk_input_size / TILE_WIDTH;
     uint32_t Kt = k % TILE_WIDTH == 0 ? k / TILE_WIDTH : k / TILE_WIDTH + 1;
@@ -377,8 +348,6 @@ operation::ProgramWithCallbacks topk_multicore_interleaved(
             .set_page_size(output_ind_cb_index, index_tile_size);
     auto cb_output_ind_tensor = tt::tt_metal::CreateCircularBuffer(program, all_cores_range_set, output_ind_cb_config);
 
-    tt::log_info("done cb setup");
-
     // Create semaphores
     auto sender_semaphore_id = tt::tt_metal::CreateSemaphore(program, all_cores_range_set, INVALID);
     auto receiver_semaphore_id = tt::tt_metal::CreateSemaphore(program, all_cores_range_set, INVALID);
@@ -390,24 +359,14 @@ operation::ProgramWithCallbacks topk_multicore_interleaved(
         Wt_local,
         input_shape[-1] / TILE_WIDTH,  // Wt
     };
-    tt::log_info("done reader_local_compile_time_args");
     tt::tt_metal::KernelHandle unary_reader_kernel_id = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/reduction/topk/device/kernels/dataflow/reader_create_index_local_topk.cpp",
         local_cores_range_set,
         tt::tt_metal::ReaderDataMovementConfig(reader_local_compile_time_args));
 
-    tt::log_info("done unary_reader_kernel_id");
-
-    tt::log_info("local cores: {}", local_cores);
-    tt::log_info(" local_cores.at(0): {}", local_cores.at(0));
-    tt::log_info(" local_cores.at(num_cores - 2): {}", local_cores.at(num_cores - 2));
-
     CoreCoord local_cores_physical_start = device->worker_core_from_logical_core(local_cores.at(0));
     CoreCoord local_cores_physical_end = device->worker_core_from_logical_core(local_cores.at(num_cores - 2u));
-    tt::log_info("done local_cores_physical_start and local_cores_physical_end");
-    tt::log_info("local_cores_physical_start: {}", local_cores_physical_start);
-    tt::log_info("local_cores_physical_end: {}", local_cores_physical_end);
     std::vector<uint32_t> reader_compile_time_args = {
         (std::uint32_t)receiver_semaphore_id,
         (std::uint32_t)sender_semaphore_id,
@@ -419,17 +378,13 @@ operation::ProgramWithCallbacks topk_multicore_interleaved(
         (std::uint32_t)Wt_final,
         (std::uint32_t)num_cores - 1,
     };
-    tt::log_info("done reader_compile_time_args");
     tt::tt_metal::KernelHandle unary_reader_final_kernel_id = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/reduction/topk/device/kernels/dataflow/reader_final_topk.cpp",
         final_cores_range_set,
         tt::tt_metal::ReaderDataMovementConfig(reader_compile_time_args));
 
-    tt::log_info("done unary_reader_final_kernel_id");
-
     CoreCoord final_cores_physical = device->worker_core_from_logical_core(final_core);
-    tt::log_info("final_cores_physical: {}", final_cores_physical);
     std::vector<uint32_t> writer_compile_time_args = {
         (std::uint32_t)receiver_semaphore_id,
         (std::uint32_t)sender_semaphore_id,
@@ -444,7 +399,6 @@ operation::ProgramWithCallbacks topk_multicore_interleaved(
         "ttnn/cpp/ttnn/operations/reduction/topk/device/kernels/dataflow/writer_local_topk.cpp",
         local_cores_range_set,
         tt::tt_metal::WriterDataMovementConfig(writer_compile_time_args));
-    tt::log_info("done binary_writer_kernel_id");
 
     std::vector<uint32_t> writer_compile_time_args_final = {
         values_cb_index, output_ind_cb_index, (std::uint32_t)values_is_dram, (std::uint32_t)index_is_dram, Ht, Kt};
@@ -453,7 +407,6 @@ operation::ProgramWithCallbacks topk_multicore_interleaved(
         "ttnn/cpp/ttnn/operations/reduction/topk/device/kernels/dataflow/writer_final_topk.cpp",
         final_cores_range_set,
         tt::tt_metal::WriterDataMovementConfig(writer_compile_time_args_final));
-    tt::log_info("done binary_writer_final_kernel_id");
     std::vector<uint32_t> compute_args = {
         input_cb_index,
         index_cb_index,
@@ -473,7 +426,6 @@ operation::ProgramWithCallbacks topk_multicore_interleaved(
         "ttnn/cpp/ttnn/operations/reduction/topk/device/kernels/compute/topk_local.cpp",
         local_cores_range_set,
         tt::tt_metal::ComputeConfig{.compile_args = compute_args});
-    tt::log_info("done topk_compute_kernel_id");
     std::vector<uint32_t> compute_args_final = {
         gathered_values_cb_index,
         gathered_indices_cb_index,
@@ -494,7 +446,6 @@ operation::ProgramWithCallbacks topk_multicore_interleaved(
         "ttnn/cpp/ttnn/operations/reduction/topk/device/kernels/compute/topk_final.cpp",
         final_cores_range_set,
         tt::tt_metal::ComputeConfig{.compile_args = compute_args_final});
-    tt::log_info("done topk_final_compute_kernel_id");
 
     int core_h = 0;
     int core_w = 0;
@@ -509,7 +460,6 @@ operation::ProgramWithCallbacks topk_multicore_interleaved(
                 0,  // no height parallelism for now
                 core_w * Wt_local,
             });
-        tt::log_info("core: {} core_w: {} Wt_local: {}", core, core_w, Wt_local);
 
         SetRuntimeArgs(
             program,
@@ -519,7 +469,6 @@ operation::ProgramWithCallbacks topk_multicore_interleaved(
                 core_h,  // TODO: remove this, unused
                 core_w,
             });
-        tt::log_info("core: {} core_h: {} core_w: {}", core, core_h, core_w);
 
         SetRuntimeArgs(
             program,
@@ -528,7 +477,6 @@ operation::ProgramWithCallbacks topk_multicore_interleaved(
             {
                 ascending,
             });
-        tt::log_info("core: {} ascending: {}", core, ascending);
         core_w++;
         ascending = !ascending;
     }
@@ -540,26 +488,25 @@ operation::ProgramWithCallbacks topk_multicore_interleaved(
             values_buffer->address(),
             index_buffer->address(),
         });
-    tt::log_info("final_core: {}", final_core);
-    tt::log_info("done SetRuntimeArgs");
 
-    auto override_runtime_args_callback = [unary_reader_kernel_id, binary_writer_final_kernel_id, local_cores](
-                                              const Program& program,
-                                              const std::vector<Buffer*>& input_buffers,
-                                              const std::vector<Buffer*>& output_buffers) {
-        auto input_buffer = input_buffers.at(0);
-        auto values_buffer = output_buffers.at(0);
-        auto index_buffer = output_buffers.at(1);
+    auto override_runtime_args_callback =
+        [unary_reader_kernel_id, binary_writer_final_kernel_id, local_cores, final_core](
+            const Program& program,
+            const std::vector<Buffer*>& input_buffers,
+            const std::vector<Buffer*>& output_buffers) {
+            auto input_buffer = input_buffers.at(0);
+            auto values_buffer = output_buffers.at(0);
+            auto index_buffer = output_buffers.at(1);
 
-        for (auto core : local_cores) {
-            auto& reader_runtime_args = GetRuntimeArgs(program, unary_reader_kernel_id, core);
-            reader_runtime_args[0] = input_buffer->address();
+            for (auto core : local_cores) {
+                auto& reader_runtime_args = GetRuntimeArgs(program, unary_reader_kernel_id, core);
+                reader_runtime_args[0] = input_buffer->address();
+            }
 
-            auto& writer_runtime_args = GetRuntimeArgs(program, binary_writer_final_kernel_id, core);
+            auto& writer_runtime_args = GetRuntimeArgs(program, binary_writer_final_kernel_id, final_core);
             writer_runtime_args[0] = values_buffer->address();
             writer_runtime_args[1] = index_buffer->address();
-        }
-    };
+        };
 
     return {std::move(program), override_runtime_args_callback};
 }

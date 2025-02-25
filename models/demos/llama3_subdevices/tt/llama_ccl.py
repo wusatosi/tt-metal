@@ -55,6 +55,11 @@ class TT_CCL:
         self.to_sem_flag = 0
         self.gather_sem_flag = 0
 
+    def reset_sem_flags(self):
+        self.gather_sem_flag = 0
+        self.from_sem_flag = 0
+        self.to_sem_flag = 0
+
     def line_all_reduce_old(self, input_tensor_mesh, cluster_axis, num_links, memory_config, dim=3):
         output_tensor_mesh = ttnn.experimental.all_reduce_async(
             input_tensor_mesh,
