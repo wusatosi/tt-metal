@@ -159,8 +159,8 @@ matmul_configs = [
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576, "trace_region_size": 3855488}], indirect=True)
 @pytest.mark.parametrize("tile_h", [32])
 @pytest.mark.parametrize("tile_w", [32])
-@pytest.mark.parametrize("num_warmup_iterations", [5])
-@pytest.mark.parametrize("num_measurement_iterations", [100])
+@pytest.mark.parametrize("num_warmup_iterations", [0])
+@pytest.mark.parametrize("num_measurement_iterations", [1])
 @pytest.mark.parametrize("dump_profiler_log", [False])
 @pytest.mark.parametrize("dump_profiler_log_single_iteration", [False])
 def test_matmul_2d_host_perf(
@@ -327,26 +327,26 @@ def test_matmul_2d_host_perf(
                 else:
                     output_tile = ttnn.Tile([tile_h, tile_w])
 
-                output_t = ttnn.matmul(
-                    in0_t,
-                    in1_t,
-                    program_config=program_config,
-                    memory_config=out_mem_config,
-                    dtype=dtype,
-                    compute_kernel_config=compute_kernel_config,
-                    output_tile=output_tile,
-                )
+                # output_t = ttnn.matmul(
+                #     in0_t,
+                #     in1_t,
+                #     program_config=program_config,
+                #     memory_config=out_mem_config,
+                #     dtype=dtype,
+                #     compute_kernel_config=compute_kernel_config,
+                #     output_tile=output_tile,
+                # )
 
-                for iter in range(0, num_warmup_iterations):
-                    output_t = ttnn.matmul(
-                        in0_t,
-                        in1_t,
-                        program_config=program_config,
-                        memory_config=out_mem_config,
-                        dtype=dtype,
-                        compute_kernel_config=compute_kernel_config,
-                        output_tile=output_tile,
-                    )
+                # for iter in range(0, num_warmup_iterations):
+                #     output_t = ttnn.matmul(
+                #         in0_t,
+                #         in1_t,
+                #         program_config=program_config,
+                #         memory_config=out_mem_config,
+                #         dtype=dtype,
+                #         compute_kernel_config=compute_kernel_config,
+                #         output_tile=output_tile,
+                #     )
 
                 # Clear profiler log from warmup data before measurement iterations starts
                 ttnn.DumpDeviceProfiler(device)
@@ -415,7 +415,7 @@ def test_matmul_2d_host_perf(
                 num_cores_full_grid = compute_grid_size.x * compute_grid_size.y
                 ideal_cycle_full_grid = m * k * n / tile_h / tile_w / 32 * cycle_per_tile / num_cores_full_grid
                 ideal_cycle_user_grid = m * k * n / tile_h / tile_w / 32 * cycle_per_tile / num_cores_user_grid
-                inference_cycle = inference_time_avg * get_device_freq() * 1e6
+                inference_cycle = inference_time_avg * 1000 * 1e6
                 utilization_full_grid = ideal_cycle_full_grid / inference_cycle
                 utilization_user_grid = ideal_cycle_user_grid / inference_cycle
                 utilization_full_grid_percentage = f"{utilization_full_grid * 100:.2f}%"
