@@ -836,23 +836,19 @@ void Device::initialize_and_launch_firmware() {
             this->id(), virtual_core, zero_vec_erisc_init, hal.get_dev_addr(HalProgrammableCoreType::ACTIVE_ETH, HalL1MemAddrType::APP_SYNC_INFO));
     }
 
-    bool init_aerisc = std::getenv("TT_METAL_INIT_AERISC") != nullptr;
-
     // Load erisc app base FW to eth cores on WH and active_erisc FW on second risc of BH active eth cores
     std::unordered_set<CoreCoord> bh_active_eth_cores;
     for (const auto& eth_core : this->get_active_ethernet_cores()) {
         CoreCoord phys_eth_core = this->ethernet_core_from_logical_core(eth_core);
         tt::llrt::write_hex_vec_to_core(
             this->id(), phys_eth_core, core_info_vec, this->get_dev_addr(phys_eth_core, HalL1MemAddrType::CORE_INFO));
-        if (init_aerisc) {
-            std::cout << "Loading fw on active eth core " << eth_core.str() << std::endl;
-            this->initialize_firmware(HalProgrammableCoreType::ACTIVE_ETH, phys_eth_core, &launch_msg, &go_msg);
-            if (this->arch() == ARCH::BLACKHOLE) {
-                bh_active_eth_cores.insert(phys_eth_core);
-                // if (init_aeric) {
-                not_done_cores.insert(phys_eth_core);
-                // }
-            }
+        std::cout << "Loading fw on active eth core " << eth_core.str() << std::endl;
+        this->initialize_firmware(HalProgrammableCoreType::ACTIVE_ETH, phys_eth_core, &launch_msg, &go_msg);
+        if (this->arch() == ARCH::BLACKHOLE) {
+            bh_active_eth_cores.insert(phys_eth_core);
+            // if (init_aeric) {
+            not_done_cores.insert(phys_eth_core);
+            // }
         }
     }
 
@@ -876,10 +872,9 @@ void Device::initialize_and_launch_firmware() {
             reset_val = TENSIX_DEASSERT_SOFT_RESET &
                         static_cast<TensixSoftResetOptions>(
                             ~std::underlying_type<TensixSoftResetOptions>::type(TensixSoftResetOptions::TRISC0));
+        } else {
+            reset_val = TENSIX_DEASSERT_SOFT_RESET;
         }
-        // if (worker_core.y == 1) {
-        //     std::cout << "standard eth deassert val " << std::hex << (uint32_t)reset_val << std::dec << std::endl;
-        // }
         tt::Cluster::instance().deassert_risc_reset_at_core(tt_cxy_pair(this->id(), worker_core), reset_val);
     }
 

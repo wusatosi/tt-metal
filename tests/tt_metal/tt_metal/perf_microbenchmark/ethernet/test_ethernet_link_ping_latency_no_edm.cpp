@@ -34,24 +34,23 @@ using namespace tt;
 using namespace tt::test_utils;
 using namespace tt::test_utils::df;
 
-class N300TestDevice {
+class TwoChipTestDevice {
 public:
-    N300TestDevice() : device_open(false) {
+    TwoChipTestDevice() : device_open(false) {
         arch_ = tt::get_arch_from_string(tt::test_utils::get_umd_arch_name());
 
         num_devices_ = tt::tt_metal::GetNumAvailableDevices();
-        if (arch_ == tt::ARCH::WORMHOLE_B0 and tt::tt_metal::GetNumAvailableDevices() >= 2 and
-            tt::tt_metal::GetNumPCIeDevices() >= 1) {
+        if (tt::tt_metal::GetNumAvailableDevices() >= 2 and tt::tt_metal::GetNumPCIeDevices() >= 1) {
             std::vector<chip_id_t> ids(num_devices_, 0);
             std::iota(ids.begin(), ids.end(), 0);
             devices_ = tt::tt_metal::detail::CreateDevices(ids);
 
         } else {
-            TT_THROW("This suite can only be run on N300 Wormhole devices");
+            TT_THROW("This suite can only be run on multi-chip machines");
         }
         device_open = true;
     }
-    ~N300TestDevice() {
+    ~TwoChipTestDevice() {
         if (device_open) {
             TearDown();
         }
@@ -192,34 +191,31 @@ int main(int argc, char** argv) {
     }
 
     std::cout << "setting up test fixture" << std::endl;
-    N300TestDevice test_fixture;
+    TwoChipTestDevice test_fixture;
     std::cout << "done setting up test fixture" << std::endl;
 
     const auto& device_0 = test_fixture.devices_.at(0);
-    std::cout << "1" << std::endl;
-    auto const& active_eth_cores = device_0->get_active_ethernet_cores(true);
-    std::cout << "2" << std::endl;
+    const auto& active_eth_cores = device_0->get_active_ethernet_cores(true);
     auto eth_sender_core_iter = active_eth_cores.begin();
     auto eth_sender_core_iter_end = active_eth_cores.end();
     chip_id_t device_id = std::numeric_limits<chip_id_t>::max();
-    std::cout << "3" << std::endl;
     tt_xy_pair eth_receiver_core;
     bool initialized = false;
     tt_xy_pair eth_sender_core;
-    std::cout << "4" << std::endl;
     do {
         TT_ASSERT(eth_sender_core_iter != eth_sender_core_iter_end);
-        std::cout << "4a" << std::endl;
+        std::cout << "Checking " << (*eth_sender_core_iter).str() << std::endl;
+        if (not tt::Cluster::instance().is_ethernet_link_up(device_0->id(), *eth_sender_core_iter)) {
+            std::cout << "skipping because it isn't active!" << std::endl;
+            eth_sender_core_iter++;
+            continue;
+        }
         std::tie(device_id, eth_receiver_core) = device_0->get_connected_ethernet_core(*eth_sender_core_iter);
-        std::cout << "4b" << std::endl;
         eth_sender_core = *eth_sender_core_iter;
         eth_sender_core_iter++;
     } while (device_id != 1);
-    std::cout << "5" << std::endl;
     TT_ASSERT(device_id == 1);
-    std::cout << "6" << std::endl;
     const auto& device_1 = test_fixture.devices_.at(device_id);
-    std::cout << "7" << std::endl;
     // Add more configurations here until proper argc parsing added
     bool success = false;
     success = true;

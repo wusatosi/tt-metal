@@ -125,6 +125,7 @@ FORCE_INLINE
 void notify_dispatch_core_done(uint64_t dispatch_addr) {
     //  flush both nocs because ethernet kernels could be using different nocs to try to atomically increment semaphore
     //  in dispatch core
+    invalidate_l1_cache();
     for (uint32_t n = 0; n < NUM_NOCS; n++) {
         while (!noc_cmd_buf_ready(n, NCRISC_AT_CMD_BUF));
     }
@@ -137,7 +138,7 @@ void notify_dispatch_core_done(uint64_t dispatch_addr) {
         1,
         31 /*wrap*/,
         false /*linked*/,
-        true /*posted*/);
+        false /*posted*/);
 }
 
 }  // namespace internal_

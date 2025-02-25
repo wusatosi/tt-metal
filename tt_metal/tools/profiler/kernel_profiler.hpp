@@ -136,6 +136,11 @@ inline __attribute__((always_inline)) bool bufferHasRoom() {
 }
 
 inline __attribute__((always_inline)) void mark_time_at_index_inlined(uint32_t index, uint32_t timer_id) {
+    constexpr int CYCLE_BURN_COUNT = 3;
+#pragma GCC unroll 65534
+    for (int j = 0; j < CYCLE_BURN_COUNT; j++) {
+        asm volatile("nop");
+    }
     volatile tt_reg_ptr uint32_t* p_reg = reinterpret_cast<volatile tt_reg_ptr uint32_t*>(RISCV_DEBUG_REG_WALL_CLOCK_L);
     profiler_data_buffer[myRiscID][index] =
         0x80000000 | ((timer_id & 0x7FFFF) << 12) | (p_reg[WALL_CLOCK_HIGH_INDEX] & 0xFFF);
@@ -189,7 +194,7 @@ inline void __attribute__((always_inline)) noc_async_write_posted(
     WAYPOINT("NAWW");
     DEBUG_SANITIZE_NOC_WRITE_TRANSACTION(noc, dst_noc_addr, src_local_l1_addr, size);
     ncrisc_noc_fast_write_any_len<proc_type, noc_mode>(
-        noc, write_cmd_buf, src_local_l1_addr, dst_noc_addr, size, NOC_UNICAST_WRITE_VC, false, false, 1, true, true);
+        noc, write_cmd_buf, src_local_l1_addr, dst_noc_addr, size, NOC_UNICAST_WRITE_VC, false, false, 1, true, false);
     WAYPOINT("NAWD");
 }
 #endif
@@ -200,7 +205,9 @@ __attribute__((noinline)) void finish_profiler() {
     if (profiler_control_buffer[PROFILER_DONE] == 1) {
         return;
     }
-    while (!profiler_control_buffer[DRAM_PROFILER_ADDRESS]);
+    while (!profiler_control_buffer[DRAM_PROFILER_ADDRESS]) {
+        invalidate_l1_cache();
+    }
     uint32_t core_flat_id = profiler_control_buffer[FLAT_ID];
     uint32_t profiler_core_count_per_dram = profiler_control_buffer[CORE_COUNT_PER_DRAM];
 
@@ -246,14 +253,27 @@ __attribute__((noinline)) void finish_profiler() {
                 uint64_t dram_bank_dst_noc_addr =
                     s.get_noc_addr(core_flat_id / profiler_core_count_per_dram, dram_offset);
 
-                noc_async_write_posted(
+                volatile tt_l1_ptr uint32_t* debug = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(0x18540);
+                volatile tt_l1_ptr uint32_t* debug1 = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(0x18544);
+                volatile tt_l1_ptr uint32_t* debug2 = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(0x18548);
+                volatile tt_l1_ptr uint32_t* debug3 = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(0x1854C);
+
+                debug[0] = reinterpret_cast<uint32_t>(profiler_data_buffer[hostIndex]);
+                debug1[0] = send_size;
+                debug2[0] = (uint32_t)(dram_bank_dst_noc_addr >> 32);
+                debug3[0] = (uint32_t)dram_bank_dst_noc_addr;
+
+                // 2c9000271040
+
+                noc_async_write(
                     reinterpret_cast<uint32_t>(profiler_data_buffer[hostIndex]), dram_bank_dst_noc_addr, send_size);
             }
             profiler_control_buffer[deviceIndex] = 0;
         }
     }
 
-    noc_async_posted_writes_flushed();
+    WAYPOINT("NAVY");
+    noc_async_write_barrier();
     profiler_control_buffer[RUN_COUNTER]++;
     profiler_control_buffer[PROFILER_DONE] = 1;
 #endif
@@ -267,7 +287,9 @@ __attribute__((noinline)) void quick_push() {
     mark_time_at_index_inlined(wIndex, hash);
     wIndex += PROFILER_L1_MARKER_UINT32_SIZE;
 
-    while (!profiler_control_buffer[DRAM_PROFILER_ADDRESS]);
+    while (!profiler_control_buffer[DRAM_PROFILER_ADDRESS]) {
+        invalidate_l1_cache();
+    }
     uint32_t core_flat_id = profiler_control_buffer[FLAT_ID];
     uint32_t profiler_core_count_per_dram = profiler_control_buffer[CORE_COUNT_PER_DRAM];
 
@@ -293,12 +315,12 @@ __attribute__((noinline)) void quick_push() {
     uint32_t currEndIndex = profiler_control_buffer[HOST_BUFFER_END_INDEX_BR_ER + myRiscID] + wIndex;
 
     if (currEndIndex <= PROFILER_FULL_HOST_VECTOR_SIZE_PER_RISC) {
-        noc_async_write_posted(
+        noc_async_write(
             reinterpret_cast<uint32_t>(profiler_data_buffer[myRiscID]),
             dram_bank_dst_noc_addr,
             wIndex * sizeof(uint32_t));
 
-        noc_async_posted_writes_flushed();
+        noc_async_write_barrier();
         profiler_control_buffer[HOST_BUFFER_END_INDEX_BR_ER + myRiscID] = currEndIndex;
 
     } else {

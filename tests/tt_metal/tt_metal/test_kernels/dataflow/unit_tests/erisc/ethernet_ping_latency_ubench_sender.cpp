@@ -51,7 +51,9 @@ FORCE_INLINE void run_loop_iteration(
         {
             // DeviceZoneScopedN("WAIT-ACKS-PHASE");
 
-            while (channel_sync_addrs[0]->bytes_sent != 0);
+            while (channel_sync_addrs[0]->bytes_sent != 0) {
+                invalidate_l1_cache();
+            }
 
             // bool got_second_msg = false;
             // bool got_first_ack = false;
@@ -78,7 +80,9 @@ FORCE_INLINE void run_loop_iteration(
         eth_send_bytes_over_channel_payload_only_unsafe_one_packet(
             channel_addrs[0], channel_addrs[0], full_payload_size);
 
-        while (channel_sync_addrs[0]->bytes_sent != 0);
+        while (channel_sync_addrs[0]->bytes_sent != 0) {
+            invalidate_l1_cache();
+        }
 
         // bool got_second_msg = false;
         // bool got_first_ack = false;
@@ -141,6 +145,8 @@ void kernel_main() {
             run_loop_iteration<true>(channel_addrs, channel_sync_addrs, full_payload_size, full_payload_size_eth_words);
         }
     }
+    volatile tt_l1_ptr uint32_t* debug = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(handshake_addr);
+    debug[0] = 0xDEADBEEF;
     for (int i = 0; i < 1000; ++i) {
         asm volatile("nop");
     }

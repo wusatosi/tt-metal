@@ -1429,6 +1429,15 @@ inline void noc_async_write(
     if constexpr (max_page_size <= NOC_MAX_BURST_SIZE) {
         noc_async_write_one_packet(src_local_l1_addr, dst_noc_addr, size, noc);
     } else {
+        // volatile tt_l1_ptr uint32_t* debug4 = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(0x18550);
+        // debug4[0] = noc;
+
+        // volatile tt_l1_ptr uint32_t* debug5 = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(0x18554);
+        // debug5[0] = write_cmd_buf;
+
+        // volatile tt_l1_ptr uint32_t* debug6 = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(0x18558);
+        // debug6[0] = 0xdeadbeef;
+
         WAYPOINT("NAWW");
         DEBUG_SANITIZE_NOC_WRITE_TRANSACTION(noc, dst_noc_addr, src_local_l1_addr, size);
         ncrisc_noc_fast_write_any_len<proc_type, noc_mode>(
@@ -1746,7 +1755,7 @@ void noc_async_read_barrier(uint8_t noc = noc_index) {
  */
 FORCE_INLINE
 void noc_async_write_barrier(uint8_t noc = noc_index) {
-    WAYPOINT("NWBW");
+    // WAYPOINT("NWBW");
     if constexpr (noc_mode == DM_DYNAMIC_NOC) {
         while (!ncrisc_dynamic_noc_nonposted_writes_flushed<proc_type>(noc));
     } else {

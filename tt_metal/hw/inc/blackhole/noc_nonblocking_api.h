@@ -183,6 +183,27 @@ inline __attribute__((always_inline)) void ncrisc_noc_fast_write(
             noc_nonposted_writes_acked[noc] += num_dests;
         }
     }
+
+    // uint32_t rdback_cmd_f = NOC_CMD_BUF_READ_REG(noc, cmd_buf, NOC_CTRL);
+    // uint32_t rdback_targ_lo = NOC_CMD_BUF_READ_REG(noc, cmd_buf, NOC_TARG_ADDR_LO);
+    // uint32_t three = NOC_CMD_BUF_READ_REG(noc, cmd_buf, NOC_RET_ADDR_LO);
+    // uint32_t four = NOC_CMD_BUF_READ_REG(noc, cmd_buf, NOC_RET_ADDR_MID);
+    // uint32_t five = NOC_CMD_BUF_READ_REG(noc, cmd_buf, NOC_RET_ADDR_COORDINATE);
+    // uint32_t six = NOC_CMD_BUF_READ_REG(noc, cmd_buf, NOC_AT_LEN_BE);
+
+    // volatile uint32_t* debug = reinterpret_cast<volatile uint32_t*>(0x18540);
+    // volatile uint32_t* debug1 = reinterpret_cast<volatile uint32_t*>(0x18544);
+    // volatile uint32_t* debug2 = reinterpret_cast<volatile uint32_t*>(0x18548);
+    // volatile uint32_t* debug3 = reinterpret_cast<volatile uint32_t*>(0x1854C);
+    // volatile uint32_t* debug4 = reinterpret_cast<volatile uint32_t*>(0x18550);
+    // volatile uint32_t* debug5 = reinterpret_cast<volatile uint32_t*>(0x18554);
+
+    // debug[0] = rdback_cmd_f;
+    // debug1[0] = rdback_targ_lo;
+    // debug2[0] = three;
+    // debug3[0] = four;
+    // debug4[0] = five;
+    // debug5[0] = six;
 }
 
 template <uint32_t proc_type, uint8_t noc_mode = DM_DEDICATED_NOC>
