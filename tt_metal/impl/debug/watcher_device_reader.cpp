@@ -243,7 +243,7 @@ void WatcherDeviceReader::Dump(FILE* file) {
                 stack_size,
                 info.core.coord.str().c_str(),
                 kernel_names[info.kernel_id].c_str());
-            if (info.stack_usage >= stack_size) {
+            if (info.stack_usage > stack_size) {
                 fprintf(f, " (OVERFLOW)");
                 log_fatal(
                     "Watcher detected stack overflow on Device {} Core {}: {}! Kernel {} uses {}/{} of the stack.",
