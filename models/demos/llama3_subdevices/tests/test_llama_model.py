@@ -93,7 +93,7 @@ def test_llama_model_inference(
     run_ref_pt = False  # Flag to run reference PyTorch model and compare PCC
     cache_pcc = False  # Flag to measure KV cache PCC. Avoid running for all layers to speed up test time.
     dtype = ttnn.bfloat8_b
-    mesh_device.enable_async(False)
+    mesh_device.enable_async(True)
     mode_accuracy = optimizations == LlamaOptimizations.accuracy
     instruct = True if weights == "instruct" else False
     dummy_weights = True if weights == "random" else False
@@ -292,6 +292,7 @@ def test_llama_model_inference(
         page_table=page_table_tt,
     )
     ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
+    ttnn.synchronize_devices(mesh_device)
     logger.info("Trace captured")
     try:
         for i in range(generation_length):

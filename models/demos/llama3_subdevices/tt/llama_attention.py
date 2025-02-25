@@ -140,16 +140,24 @@ class TtLlamaAttention(LightweightModule):
         # 9216, 12288
 
         # [1, 1, 8192, 10240] -> [2304, 1536]
-        self.wqkv = ttnn.as_tensor(
-            qkv_cat,
+        # self.wqkv = ttnn.as_tensor(
+        #     qkv_cat,
+        #     dtype=self.dtype,
+        #     layout=ttnn.TILE_LAYOUT,
+        #     device=self.mesh_device,
+        #     memory_config=self.model_config["SHARDED_QKV_RING_MEMCFG"] if self.TG else wqkv_mem_config,
+        #     mesh_mapper=ttnn.ShardTensor2dMesh(
+        #         self.mesh_device, dims=(3, 2) if self.TG else (2, 3), mesh_shape=configuration.cluster_shape
+        #     ),
+        #     cache_file_name=cache_name("wqkv_sharded_2d_prefetcher"),  ## TODO: Fix caching
+        # )
+
+        self.wqkv = ttnn.empty(
+            shape=[qkv_cat.shape[0], qkv_cat.shape[1], qkv_cat.shape[2] // 4, qkv_cat.shape[3] // 8],
             dtype=self.dtype,
             layout=ttnn.TILE_LAYOUT,
             device=self.mesh_device,
             memory_config=self.model_config["SHARDED_QKV_RING_MEMCFG"] if self.TG else wqkv_mem_config,
-            mesh_mapper=ttnn.ShardTensor2dMesh(
-                self.mesh_device, dims=(3, 2) if self.TG else (2, 3), mesh_shape=configuration.cluster_shape
-            ),
-            cache_file_name=cache_name("wqkv_sharded_2d_prefetcher"),  ## TODO: Fix caching
         )
 
         if self.model_config["USE_PREFETCHER"]:
@@ -163,22 +171,29 @@ class TtLlamaAttention(LightweightModule):
             configuration.dim // configuration.num_devices, configuration.dim
         )
 
-        self.wo = ttnn.as_tensor(
-            pt_wo,
+        # self.wo = ttnn.as_tensor(
+        #     pt_wo,
+        #     dtype=ttnn.bfloat8_b,
+        #     layout=ttnn.TILE_LAYOUT,
+        #     device=self.mesh_device,
+        #     memory_config=self.model_config["SHARDED_WO_RING_MEMCFG"]
+        #     if (self.use_fused_all_gather_matmul or self.TG)
+        #     else wo_mem_config,
+        #     mesh_mapper=ttnn.ShardTensor2dMesh(
+        #         self.mesh_device,
+        #         dims=(2, 3) if (self.use_fused_all_gather_matmul or self.TG) else (3, 2),
+        #         mesh_shape=configuration.cluster_shape,
+        #     ),
+        #     cache_file_name=cache_name("wo_width_sharded_2d_prefetcher")
+        #     if (self.use_fused_all_gather_matmul or self.TG)
+        #     else cache_name("wo"),
+        # )
+        self.wo = ttnn.empty(
+            shape=[pt_wo.shape[0], pt_wo.shape[1], pt_wo.shape[2] // 8, pt_wo.shape[3] // 4],
             dtype=ttnn.bfloat8_b,
             layout=ttnn.TILE_LAYOUT,
             device=self.mesh_device,
-            memory_config=self.model_config["SHARDED_WO_RING_MEMCFG"]
-            if (self.use_fused_all_gather_matmul or self.TG)
-            else wo_mem_config,
-            mesh_mapper=ttnn.ShardTensor2dMesh(
-                self.mesh_device,
-                dims=(2, 3) if (self.use_fused_all_gather_matmul or self.TG) else (3, 2),
-                mesh_shape=configuration.cluster_shape,
-            ),
-            cache_file_name=cache_name("wo_width_sharded_2d_prefetcher")
-            if (self.use_fused_all_gather_matmul or self.TG)
-            else cache_name("wo"),
+            memory_config=self.model_config["SHARDED_WO_RING_MEMCFG"],
         )
         if self.model_config["USE_PREFETCHER"]:
             self.prefetcher_setup.insert_tensor(self.wo)
@@ -229,17 +244,27 @@ class TtLlamaAttention(LightweightModule):
                 )
             )
 
+        # self.layer_past = [
+        #     ttnn.as_tensor(
+        #         k_or_v,
+        #         dtype=self.dtype,
+        #         layout=self.model_config["ATTN_W_LAYOUT_TILE"],
+        #         device=self.mesh_device,
+        #         memory_config=ttnn.DRAM_MEMORY_CONFIG,
+        #         mesh_mapper=ttnn.ReplicateTensorToMesh(self.mesh_device),
+        #         cache_file_name=f"{weight_cache_path}/kvcache_{k_or_v.shape}"
+        #         if weight_cache_path and not configuration.dummy_weights
+        #         else None,
+        #     )
+        #     for k_or_v in [cache_k, cache_v]
+        # ]
         self.layer_past = [
-            ttnn.as_tensor(
-                k_or_v,
+            ttnn.empty(
+                shape=[k_or_v.shape[0], k_or_v.shape[1], k_or_v.shape[2], k_or_v.shape[3]],
                 dtype=self.dtype,
                 layout=self.model_config["ATTN_W_LAYOUT_TILE"],
                 device=self.mesh_device,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
-                mesh_mapper=ttnn.ReplicateTensorToMesh(self.mesh_device),
-                cache_file_name=f"{weight_cache_path}/kvcache_{k_or_v.shape}"
-                if weight_cache_path and not configuration.dummy_weights
-                else None,
             )
             for k_or_v in [cache_k, cache_v]
         ]

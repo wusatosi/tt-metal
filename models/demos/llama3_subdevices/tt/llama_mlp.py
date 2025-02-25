@@ -65,11 +65,25 @@ class TtLlamaMLP(LightweightModule):
         ]  # args.create_dram_sharded_mem_config(args.hidden_dim // args.num_devices, args.dim)
 
         # TODO Clean up this code. With sharding, we load the normal weights and then shard them
-        as_sharded_tensor = lambda name, type, dim: ttnn.as_tensor(
-            torch_weight(name[:2]).unsqueeze(0).unsqueeze(0),  # Grab only the wX part of the name
+        # as_sharded_tensor = lambda name, type, dim: ttnn.as_tensor(
+        #     torch_weight(name[:2]).unsqueeze(0).unsqueeze(0),  # Grab only the wX part of the name
+        #     dtype=type,
+        #     device=self.mesh_device,
+        #     mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=dim, mesh_shape=args.cluster_shape),
+        #     layout=ttnn.TILE_LAYOUT,
+        #     memory_config=w2_mem_config if "w2" in name else w1_w3_mem_config,
+        #     #cache_file_name=cache_name(name),
+        # )
+
+        as_sharded_tensor = lambda name, type, dim: ttnn.empty(
+            shape=[
+                1,
+                1,
+                torch_weight(name[:2]).shape[0] // dim[0],
+                torch_weight(name[:2]).shape[1] // dim[1],
+            ],  # Grab only the wX part of the name
             dtype=type,
             device=self.mesh_device,
-            mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=dim, mesh_shape=args.cluster_shape),
             layout=ttnn.TILE_LAYOUT,
             memory_config=w2_mem_config if "w2" in name else w1_w3_mem_config,
             # cache_file_name=cache_name(name),
@@ -78,8 +92,8 @@ class TtLlamaMLP(LightweightModule):
         self.four_bit_mlp = args.optimizations.bfp4_mlp
 
         # Sharded weights
-        w1_dim = (-1, -2) if args.is_galaxy else (-2, -1)
-        w2_dim = (-2, -1) if args.is_galaxy else (-1, -2)
+        w1_dim = (4, 8)  # (-1, -2) if args.is_galaxy else (-2, -1)
+        w2_dim = (8, 4)  # (-2, -1) if args.is_galaxy else (-1, -2)
 
         self.w1 = as_sharded_tensor(
             "w1_sharded", ttnn.bfloat4_b if self.four_bit_mlp else ttnn.bfloat8_b, dim=w1_dim
