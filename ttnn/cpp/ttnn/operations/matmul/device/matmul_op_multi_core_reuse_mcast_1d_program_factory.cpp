@@ -2099,7 +2099,7 @@ operation::ProgramWithCallbacks create_program_gather_in0(
             TT_ASSERT(input_tensors.size() + optional_input_tensors.size() == 3);
             TT_ASSERT(output_tensors.size() == 1);
 
-            auto& global_cb = static_cast<const Matmul*>(operation)->global_cb;
+            auto& global_cb = static_cast<const ttnn::operations::matmul::Matmul*>(operation)->global_cb;
 
             auto src_buffer_a = input_tensors[0].buffer();
             auto src_buffer_b = input_tensors[1].buffer();

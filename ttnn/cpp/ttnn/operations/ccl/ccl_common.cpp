@@ -285,7 +285,8 @@ KernelHandle generate_edm_kernel_impl(
         program,
         kernel_path,
         eth_core,
-        tt::tt_metal::EthernetConfig{.noc = noc_id, .compile_args = eth_sender_ct_args});
+        tt::tt_metal::EthernetConfig{
+            .noc = noc_id, .compile_args = eth_sender_ct_args});  //, .opt_level=KernelBuildOptLevel::O3});
 
     tt::tt_metal::SetRuntimeArgs(program, eth_sender_kernel, eth_core, edm_kernel_rt_args);
 
