@@ -7,6 +7,8 @@ import torch
 import math
 import tt_lib
 from models.experimental.functional_yolov7.ttnn.common import Conv
+from pdb import set_trace as bp
+from tests.ttnn.utils_for_testing import assert_with_pcc
 from tt_lib.fallback_ops import fallback_ops
 from models.utility_functions import (
     tt_to_torch_tensor,
@@ -152,9 +154,9 @@ class ttnn_SPPCSPC:
         y1 = ttnn.sharded_to_interleaved(y1, ttnn.L1_MEMORY_CONFIG)
         y2 = ttnn.sharded_to_interleaved(y2, ttnn.L1_MEMORY_CONFIG)
 
-        y2 = ttnn.from_device(y2)
-        y2 = ttnn.to_dtype(y2, ttnn.bfloat8_b)
-        y2 = ttnn.to_device(y2, self.device)
+        # y2 = ttnn.from_device(y2)
+        # y2 = ttnn.to_dtype(y2, ttnn.bfloat8_b)
+        # y2 = ttnn.to_device(y2, self.device)
 
         out = ttnn.concat([y1, y2], dim=3, memory_config=ttnn.L1_MEMORY_CONFIG)
 
@@ -216,11 +218,17 @@ class ttnn_detect:
         self.na = len(anchors[0]) // 2
         self.grid = [ttnn.zeros([1])] * self.nl
         self.grid_tensors = grid_tensors
+        self.grid[0] = ttnn.from_torch(grid_tensors[0], dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT)
+        self.grid[1] = ttnn.from_torch(grid_tensors[1], dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT)
+        self.grid[2] = ttnn.from_torch(grid_tensors[2], dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT)
         a = torch.tensor(anchors).float().view(self.nl, -1, 2)
-        a = ttnn.from_torch(a, dtype=ttnn.bfloat16, device=device)
+        a = ttnn.from_torch(a, dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT)
         self.anchors = ttnn.clone(a)
-        self.anchor_grid = ttnn.reshape((ttnn.clone(a)), (self.nl, 1, -1, 1, 1, 2))
-        self.anchor_grid = ttnn.to_torch(self.anchor_grid)
+        self.anchor_grid = ttnn.reshape((ttnn.clone(a)), (self.nl, -1, 1, 1, 2))
+        # self.anchor_grid[0] =
+        # self.anchor_grid = ttnn.to_torch(self.anchor_grid)
+        self.stride = [8.0, 16.0, 32.0]
+        # self.stride = ttnn.from_torch(self.stride,dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT)
         self.m = []
         self.convm_1 = Conv([1, 80, 80, 256], (1, 1, 1, 1, 0, 0, 1, 1), parameters["0"], is_reshape=True)
         self.m.append(self.convm_1)
@@ -234,7 +242,7 @@ class ttnn_detect:
     def __call__(self, x):
         z = []
         self.training = False
-        self.stride = torch.tensor([8.0, 16.0, 32.0])
+        # self.stride = torch.tensor([8.0, 16.0, 32.0])
 
         for i in range(self.nl):
             x[i] = self.m[i](self.device, x[i])
@@ -246,25 +254,49 @@ class ttnn_detect:
             x[i] = ttnn.permute(x[i], (0, 1, 3, 4, 2))
 
             if not self.training:
-                grid_shape = ttnn.to_torch(self.grid[i]).shape[2:4]
-                x_shape = ttnn.to_torch(x[i]).shape[2:4]
-                if grid_shape != x_shape:
-                    self.grid[i] = self.grid_tensors[i]
+                # grid_shape = ttnn.to_torch(self.grid[i]).shape[2:4]
+                # x_shape = ttnn.to_torch(x[i]).shape[2:4]
+                # if grid_shape != x_shape:
+                #    print("##############################SUD")
+                #    self.grid[i] = self.grid_tensors[i]
 
                 x[i] = ttnn.to_layout(x[i], ttnn.TILE_LAYOUT)
                 y = ttnn.sigmoid(x[i])
 
                 if not torch.onnx.is_in_onnx_export():
-                    y = ttnn.to_torch(y)
-                    y[..., 0:2] = (y[..., 0:2] * 2.0 - 0.5 + self.grid[i]) * self.stride[i]
-                    y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]
-                    y = ttnn.from_torch(y, device=self.device, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT)
+                    # y = ttnn.to_torch(y)
+                    # y_check = ttnn.to_torch(y)
+                    # yy_check = (y_check[..., 0:2] * 2.0 - 0.5 + ttnn.to_torch(self.grid[i]))
+                    # yy = yy_check * self.stride[i]
+                    # y_check[..., 0:2] = (y_check[..., 0:2] * 2.0 - 0.5 + ttnn.to_torch(self.grid[i])) * self.stride[i]
+                    # y_check[..., 2:4] = (y_check[..., 2:4] * 2) ** 2 *  ttnn.to_torch(self.anchor_grid[i:i+1])
+                    y = ttnn.permute(y, (0, 1, 4, 2, 3))
+                    c1 = y[:, :, 0:2, :, :]
+                    d1 = y[:, :, 2:4, :, :]
+                    e1 = y[:, :, 4:, :, :]
+                    ttnn_grid = ttnn.permute(self.grid[i], (0, 1, 4, 2, 3))
+                    ttnn_grid = ttnn.concat((ttnn_grid, ttnn_grid, ttnn_grid), dim=1)
+                    # y[..., 0:2] = (y[..., 0:2] * 2.0 - 0.5 + self.grid[i]) * self.stride[i]
+                    # bp()
+                    c2 = c1 * 2 - 0.5 + ttnn_grid
+                    c3 = c2 * self.stride[i]
+                    # bp()
+
+                    # y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]
+                    ttnn_anchor_grid = ttnn.permute(self.anchor_grid[i : i + 1], (0, 1, 4, 2, 3))
+
+                    d2 = ttnn.pow((d1 * 2), 2) * ttnn_anchor_grid
+                    # y = ttnn.from_torch(y, device=self.device, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT)
+                    y_cat = ttnn.concat([c3, d2, e1], dim=2)
+                    y_cat = ttnn.permute(y_cat, (0, 1, 3, 4, 2))
+                    # bp()
+                    # assert_with_pcc(y_check,ttnn.to_torch(y_cat),pcc=0.99)
                 else:
                     xy, wh, conf = y.split((2, 2, self.nc + 1), 4)
                     xy = xy * (2.0 * self.stride[i]) + (self.stride[i] * (self.grid[i] - 0.5))
                     wh = wh**2 * (4 * self.anchor_grid[i].data)
                     y = torch.cat((xy, wh, conf), 4)
-                z.append(ttnn.reshape(y, (bs, -1, self.no)))
+                z.append(ttnn.reshape(y_cat, (bs, -1, self.no)))
         # if self.training:
         #     print("Training")
         #     out = x
@@ -598,6 +630,7 @@ class ttnn_yolov7:
             parameters["41"],
             act_block_h=64,
             height_sharding=False,
+            reshard=True,
             enable_act_double_buffer=True,
             fp32_dest_acc_en=True,
             packer_l1_acc=True,
@@ -1268,12 +1301,12 @@ class ttnn_yolov7:
         conv36 = ttnn.sharded_to_interleaved(conv36, ttnn.L1_MEMORY_CONFIG)
         conv35 = ttnn.sharded_to_interleaved(conv35, ttnn.L1_MEMORY_CONFIG)
 
-        conv36 = ttnn.from_device(conv36)
-        conv35 = ttnn.from_device(conv35)
-        conv36 = ttnn.to_dtype(conv36, ttnn.bfloat8_b)
-        conv35 = ttnn.to_dtype(conv35, ttnn.bfloat8_b)
-        conv36 = ttnn.to_device(conv36, self.device)
-        conv35 = ttnn.to_device(conv35, self.device)
+        # conv36 = ttnn.from_device(conv36)
+        # conv35 = ttnn.from_device(conv35)
+        # conv36 = ttnn.to_dtype(conv36, ttnn.bfloat8_b)
+        # conv35 = ttnn.to_dtype(conv35, ttnn.bfloat8_b)
+        # conv36 = ttnn.to_device(conv36, self.device)
+        # conv35 = ttnn.to_device(conv35, self.device)
 
         conv40 = ttnn.concat(
             [conv40, conv38, conv36, conv35], dim=3, memory_config=ttnn.L1_MEMORY_CONFIG
