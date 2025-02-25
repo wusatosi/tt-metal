@@ -169,20 +169,23 @@ void kernel_main() {
     }
 
     // Signal the reduction workers
-    const uint64_t reduction_semaphore_recv_noc_addr = get_noc_multicast_addr(
-        mcast_dest_noc_start_x,
-        mcast_dest_noc_start_y,
-        mcast_dest_noc_end_x,
-        mcast_dest_noc_end_y,
-        reduction_semaphore_send_addr);
+    // const uint64_t reduction_semaphore_recv_noc_addr = get_noc_multicast_addr(
+    //     mcast_dest_noc_start_x,
+    //     mcast_dest_noc_start_y,
+    //     mcast_dest_noc_end_x,
+    //     mcast_dest_noc_end_y,
+    //     reduction_semaphore_send_addr);
 
-    noc_semaphore_set_multicast(
-        reduction_semaphore_send_addr,
-        reduction_semaphore_recv_noc_addr,
-        num_cores,
-        false,  // TODO: Why?
-        false,  // TODO: Why?
-        0);
+    // noc_semaphore_set_multicast(
+    //     reduction_semaphore_send_addr,
+    //     reduction_semaphore_recv_noc_addr,
+    //     num_cores,
+    //     false,  // TODO: Why?
+    //     true,  // TODO: Why?
+    //     0);
+    for (uint32_t i = 0; i < num_cores; i++) {
+        noc_semaphore_inc(get_noc_addr(core_noc_x[i], core_noc_y[i], reduction_semaphore_send_addr), 1);
+    }
 
     // DPRINT << "wait done for output semphore \n";
 
