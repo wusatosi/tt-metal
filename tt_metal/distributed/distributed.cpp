@@ -41,8 +41,9 @@ void EnqueueWaitForEvent(MeshCommandQueue& mesh_cq, const std::shared_ptr<MeshEv
 
 void EventSynchronize(const std::shared_ptr<MeshEvent>& event) {
     auto& mesh_cq = event->device->mesh_command_queue(event->cq_id);
-    mesh_cq.drain_events_from_completion_queue();
-    mesh_cq.verify_reported_events_after_draining(event);
+    mesh_cq.finish();
+    // mesh_cq.drain_events_from_completion_queue();
+    // mesh_cq.verify_reported_events_after_draining(event);
 }
 
 MeshTraceId BeginTraceCapture(MeshDevice* device, uint8_t cq_id) {

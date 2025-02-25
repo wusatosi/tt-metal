@@ -332,6 +332,27 @@ TEST_F(MeshWorkloadTestSuite, EltwiseBinaryMeshWorkload) {
     }
 }
 
+TEST_F(MeshWorkloadTestSuite, NonBlockingReads) {
+    uint32_t num_tiles = 1;
+    uint32_t single_tile_size = ::tt::tt_metal::detail::TileSize(DataFormat::Float16_b);
+    uint32_t dram_buffer_size = single_tile_size * num_tiles;
+
+    DeviceLocalBufferConfig per_device_buffer_config{
+        .page_size = dram_buffer_size,
+        .buffer_type = tt_metal::BufferType::DRAM,
+        .buffer_layout = TensorMemoryLayout::INTERLEAVED,
+        .bottom_up = true};
+    ReplicatedBufferConfig global_buffer_config{.size = dram_buffer_size};
+
+    auto buffer = MeshBuffer::create(global_buffer_config, per_device_buffer_config, mesh_device_.get());
+    std::vector<uint32_t> src_vec = create_constant_vector_of_bfloat16(dram_buffer_size, 1);
+    std::cout << "Start write" << std::endl;
+    for (int i = 0; i < 10; i++) {
+        EnqueueWriteMeshBuffer(mesh_device_->mesh_command_queue(), buffer, src_vec, true);
+    }
+    std::cout << "Done write" << std::endl;
+}
+
 TEST_F(MeshWorkloadTestSuite, MeshWorkloadSanity) {
     CoreCoord worker_grid_size = mesh_device_->compute_with_storage_grid_size();
     uint32_t single_tile_size = ::tt::tt_metal::detail::TileSize(DataFormat::Float16_b);

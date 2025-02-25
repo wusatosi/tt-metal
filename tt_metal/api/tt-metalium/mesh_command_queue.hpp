@@ -13,11 +13,15 @@
 #include "mesh_device.hpp"
 #include "mesh_workload.hpp"
 #include "mesh_trace.hpp"
+#include <semaphore>
 
 namespace tt::tt_metal::distributed {
 
 class MeshEvent;
 struct MeshReadEventDescriptor;
+struct MeshReadBufferDescriptor;
+
+using MeshCompletionReaderVariant = std::variant<MeshReadBufferDescriptor, MeshReadEventDescriptor>;
 
 class MeshCommandQueue {
     // Main interface to dispatch data and workloads to a MeshDevice
@@ -109,7 +113,12 @@ private:
     uint32_t id_ = 0;
     CoreCoord dispatch_core_;
     CoreType dispatch_core_type_ = CoreType::WORKER;
-    std::queue<std::shared_ptr<MeshReadEventDescriptor>> event_descriptors_;
+
+    MultiProducerSingleConsumerQueue<MeshCompletionReaderVariant> completion_queue_reads_;
+    std::atomic<uint32_t> outstanding_reads_count_ = 0;
+    std::counting_semaphore<> num_outstanding_reads_{0};
+    bool exit_condition_ = false;
+    std::thread completion_queue_reader_thread_;
 
 public:
     MeshCommandQueue(MeshDevice* mesh_device, uint32_t id);
@@ -154,8 +163,6 @@ public:
         tt::stl::Span<const SubDeviceId> sub_device_ids = {},
         const std::optional<MeshCoordinateRange>& device_range = std::nullopt);
     void enqueue_wait_for_event(const std::shared_ptr<MeshEvent>& sync_event);
-    void drain_events_from_completion_queue();
-    void verify_reported_events_after_draining(const std::shared_ptr<MeshEvent>& event);
     void finish(tt::stl::Span<const SubDeviceId> sub_device_ids = {});
     void reset_worker_state(
         bool reset_launch_msg_state,
@@ -164,6 +171,9 @@ public:
     void record_begin(const MeshTraceId& trace_id, const std::shared_ptr<MeshTraceDescriptor>& ctx);
     void record_end();
     void enqueue_trace(const MeshTraceId& trace_id, bool blocking);
+    void read_completion_queue();
+    void read_completion_queue_event(MeshReadEventDescriptor& read_event_descriptor);
+    void copy_buffer_data_to_user_space(MeshReadBufferDescriptor& read_buffer_descriptor);
 };
 
 }  // namespace tt::tt_metal::distributed
