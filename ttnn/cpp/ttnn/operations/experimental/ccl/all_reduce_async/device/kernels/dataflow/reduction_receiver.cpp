@@ -19,7 +19,7 @@ void kernel_main() {
         reinterpret_cast<volatile tt_l1_ptr uint32_t*>(signal_semaphore_addr);
 
     // 1. Wait for signal from All-Gather worker
-    noc_semaphore_wait(signal_semaphore_addr_ptr, VALID);
+    // noc_semaphore_wait(signal_semaphore_addr_ptr, VALID);
     noc_semaphore_set(signal_semaphore_addr_ptr, 0);
 
     // 2. Signal compute kernel to start processing
