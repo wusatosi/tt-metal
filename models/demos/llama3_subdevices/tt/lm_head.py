@@ -179,6 +179,7 @@ class LMHead(LightweightModule):
         # ttnn.device.dump_device_memory_state(self.mesh_device.get_device(self.mesh_device.get_device_ids()[0]), prefix="")
 
         outputs = []
+        x = ttnn.to_memory_config(x, self.args.model_config["SHARDED_LM_HEAD_INPUT_RING_MEMCFG"])
         for weight, pc in zip(self.output_weights, self.program_configs):
             weight_l1 = weight  # ttnn.to_memory_config(weight, self.args.model_config["LM_HEAD_RING_MEMCFG"])
 
@@ -194,9 +195,11 @@ class LMHead(LightweightModule):
             # ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.tt_ccl.worker_sub_device_id])
 
             outputs.append(output)
-            # outputs.append(ttnn.sharded_to_interleaved(output, memory_config=ttnn.DRAM_MEMORY_CONFIG))
-            # weight_l1.deallocate(True)
-            # output.deallocate(True)
+
+        return outputs
+        # outputs.append(ttnn.sharded_to_interleaved(output, memory_config=ttnn.DRAM_MEMORY_CONFIG))
+        # weight_l1.deallocate(True)
+        # output.deallocate(True)
 
         outputs_reduced = []
         for output in outputs:

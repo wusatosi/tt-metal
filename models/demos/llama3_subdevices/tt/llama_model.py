@@ -368,6 +368,7 @@ class TtTransformer(LightweightModule):
         ttnn.deallocate(h)
 
         ttnn.deallocate(garbage_tensor)
+        return x
         # print("decoder done")
 
         # Output norm
