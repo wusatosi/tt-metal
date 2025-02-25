@@ -29,6 +29,7 @@ class TtAsymmDiTJoint(LightweightModule):
     def __init__(
         self,
         mesh_device,
+        vision_seq_len,
         state_dict,
         weight_cache_path: Path,
         *,
@@ -67,6 +68,7 @@ class TtAsymmDiTJoint(LightweightModule):
         self.t5_token_length = t5_token_length
         self.t5_feat_dim = t5_feat_dim
         self.rope_theta = rope_theta
+        self.vision_seq_len = vision_seq_len
 
         # Create PyTorch embedders (these run on CPU) and load their weights
         self.x_embedder = TtPatchEmbed(
@@ -112,6 +114,7 @@ class TtAsymmDiTJoint(LightweightModule):
                 weight_cache_path=weight_cache_path,
                 layer_num=b,
                 dtype=ttnn.bfloat16,
+                vision_seq_len=vision_seq_len,
                 hidden_size_x=hidden_size_x,
                 hidden_size_y=hidden_size_y,
                 num_heads=num_heads,
@@ -198,8 +201,8 @@ class TtAsymmDiTJoint(LightweightModule):
 
         tt_y_feat_1BLY = to_tt_tensor(unsqueeze_to_4d(y_feat_BLY), self.mesh_device)  # Add dim for ttnn format
         tt_y_pool_11BX = to_tt_tensor(unsqueeze_to_4d(t5_y_pool), self.mesh_device)
-        tt_rope_cos_1HND = to_tt_tensor(unsqueeze_to_4d(rope_cos_1HND), self.mesh_device, shard_dim=-3)
-        tt_rope_sin_1HND = to_tt_tensor(unsqueeze_to_4d(rope_sin_1HND), self.mesh_device, shard_dim=-3)
+        tt_rope_cos_1HND = to_tt_tensor(unsqueeze_to_4d(rope_cos_1HND), self.mesh_device, shard_dim=-2)
+        tt_rope_sin_1HND = to_tt_tensor(unsqueeze_to_4d(rope_sin_1HND), self.mesh_device, shard_dim=-2)
         tt_trans_mat = to_tt_tensor(trans_mat, self.mesh_device)
 
         return tt_y_feat_1BLY, tt_y_pool_11BX, tt_rope_cos_1HND, tt_rope_sin_1HND, tt_trans_mat
@@ -223,7 +226,7 @@ class TtAsymmDiTJoint(LightweightModule):
         # Flatten x for embedding
         x = x.reshape(C, T, pH, self.patch_size, pW, self.patch_size)
         x_1BNI = x.permute(1, 2, 4, 0, 3, 5).reshape(1, B, T * pH * pW, C * self.patch_size * self.patch_size)
-        x_1BNI = to_tt_tensor(x_1BNI, self.mesh_device)
+        x_1BNI = to_tt_tensor(x_1BNI, self.mesh_device, shard_dim=-2)
         x_1BNX = self.x_embedder(x_1BNI)
 
         # Global vector embedding for conditionings
@@ -329,7 +332,7 @@ class TtAsymmDiTJoint(LightweightModule):
 
         # Global vector embedding for conditionings
         c_t_BX = self.t_embedder(1 - sigma)
-        c_t_11BX = to_tt_tensor(unsqueeze_to_4d(c_t_BX), self.mesh_device)  # Add dims for ttnn format
+        c_t_11BX = to_tt_tensor(unsqueeze_to_4d(c_t_BX), self.mesh_device, shard_dim=-2)  # Add dims for ttnn format
         c_11BX = c_t_11BX + y_pool_11BX
 
         # Run blocks
@@ -346,6 +349,9 @@ class TtAsymmDiTJoint(LightweightModule):
 
         # Run final layer
         x_1BNI = self.final_layer(x_1BNX, c_11BX)
+
+        if self.num_devices > 1:
+            x_1BND = ttnn.all_gather(x_1BND, dim=2)
 
         return x_1BNI
 
@@ -383,6 +389,10 @@ class TtAsymmDiTJoint(LightweightModule):
         # Run final layer
         x_1BND = self.final_layer(x_1BNX, c_11BX)
 
+        if self.num_devices > 1:
+            x_1BND = ttnn.all_gather(x_1BND, dim=2)
+
         # Converts output back to torch and expected shape
         x_BCTHW = self.reverse_preprocess(x_1BND, T, H, W)
+
         return x_BCTHW
