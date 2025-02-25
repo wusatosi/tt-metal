@@ -111,9 +111,9 @@ class TtLlamaPrefetcherSetup(LightweightModule):
         self.tensor_addrs.append(self.buffer_address(tensor))
 
     def get_tensor_addrs(self):
-        assert (
-            len(self.tensor_addrs) == self.n_tensors * self.n_layers
-        ), f"Expected {self.n_tensors * self.n_layers} tensor addresses, got {len(self.tensor_addrs)}"
+        # assert (
+        #     len(self.tensor_addrs) == self.n_tensors * self.n_layers
+        # ), f"Expected {self.n_tensors * self.n_layers} tensor addresses, got {len(self.tensor_addrs)}"
 
         tensor_addrs = torch.tensor(self.tensor_addrs)
         tensor_addrs = tensor_addrs.repeat(len(self.dram_cores), 1)

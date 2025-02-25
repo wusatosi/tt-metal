@@ -81,15 +81,16 @@ def test_llama_decoder_inference(
     dtype = ttnn.bfloat8_b
     mesh_device.enable_async(True)
 
-    model_args = TtModelArgs(mesh_device, max_batch_size=batch_size, max_seq_len=max_seq_len, dummy_weights=False)
+    model_args = TtModelArgs(mesh_device, max_batch_size=batch_size, max_seq_len=max_seq_len, dummy_weights=True)
     model_args.n_layers = 1
+    custom_layers = 3
 
     state_dict = model_args.load_state_dict()
 
     prefetcher_setup = TtLlamaPrefetcherSetup(
         mesh_device,
         n_tensors=5,
-        n_layers=model_args.n_layers,
+        n_layers=custom_layers,
     )
     mesh_device.set_sub_device_stall_group(
         [prefetcher_setup.prefetcher_sub_device_id, prefetcher_setup.worker_sub_device_id]
@@ -101,11 +102,9 @@ def test_llama_decoder_inference(
     partial_state_dict = {
         k[len(first_layer_prefix) :]: v for k, v in state_dict.items() if (k.startswith(first_layer_prefix))
     }
-    reference_model = TransformerBlock(layer_id=0, args=model_args)
-    reference_model.load_state_dict(partial_state_dict)
 
     generation_start_pos = 127
-    generation_length = 1
+    generation_length = 20
     all_tests_pass = True
 
     # Setup RoPE transformation matrices
@@ -162,6 +161,7 @@ def test_llama_decoder_inference(
         prefetcher_setup=prefetcher_setup,
         tt_ccl=tt_ccl,
     )
+    prefetcher_setup.tensor_addrs = prefetcher_setup.tensor_addrs * custom_layers
 
     seqlen = 1
 
@@ -186,31 +186,30 @@ def test_llama_decoder_inference(
             mesh_shape=model_args.cluster_shape,
         ),
     )
-    for i in range(generation_length):
-        logger.info(f"[Decoder] Generating token {i}")
 
-        # input = torch.randn(1, 32, 4096)
-        pt_decode_input = (torch.rand(batch_size, seqlen, model_args.dim) * 2) - 1
-        tt_decode_input = pt_decode_input.clone()
+    # input = torch.randn(1, 32, 4096)
+    pt_decode_input = (torch.rand(batch_size, seqlen, model_args.dim) * 2) - 1
+    tt_decode_input = pt_decode_input.clone()
 
-        decode_input = model_args.prepare_residual_tensor_decode(
-            tt_decode_input,
-            # ttnn.DRAM_MEMORY_CONFIG,
-            model_args.model_config["DECODE_RESIDUAL_MEMCFG"],
-        )
+    decode_input = model_args.prepare_residual_tensor_decode(
+        tt_decode_input,
+        # ttnn.DRAM_MEMORY_CONFIG,
+        model_args.model_config["DECODE_RESIDUAL_MEMCFG"],
+    )
 
-        # Get cos/sin matrices for the current position of each user
-        rot_mats = rope_setup.get_rot_mats(current_pos)
-        tt_pf = prefetcher_setup.get_input_tensors()
-        ttnn.dram_prefetcher(
-            tt_pf,
-            num_layers=1,
-            global_cb=prefetcher_setup.global_circular_buffer,
-        )
-        mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
+    # Get cos/sin matrices for the current position of each user
+    rot_mats = rope_setup.get_rot_mats(current_pos)
+    tt_pf = prefetcher_setup.get_input_tensors()
+    ttnn.dram_prefetcher(
+        tt_pf,
+        num_layers=custom_layers,
+        global_cb=prefetcher_setup.global_circular_buffer,
+    )
+    mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
 
-        # Run TT model
-        res = None
+    # Run TT model
+    res = None
+    for _ in range(custom_layers):
         tt_out, res = tt_model(
             decode_input,
             res,
@@ -219,104 +218,46 @@ def test_llama_decoder_inference(
             mode="decode",
             page_table=page_table_tt,
         )
-        tt_out = ttnn.to_torch(
-            tt_out,
-            mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(1, 3), mesh_shape=model_args.cluster_shape),
+    ttnn.deallocate(res)
+    tt_out = decode_input
+    ttnn.synchronize_devices(mesh_device, sub_device_ids=[prefetcher_setup.worker_sub_device_id])
+    print("compiled")
+
+    print("Capturing trace 1")
+    trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
+
+    ttnn.dram_prefetcher(
+        tt_pf,
+        num_layers=custom_layers,
+        global_cb=prefetcher_setup.global_circular_buffer,
+    )
+    mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
+    res = None
+    for _ in range(custom_layers):
+        decode_input, res = tt_model(
+            decode_input,
+            res,
+            current_pos_tensor,
+            rot_mats=rot_mats,
+            mode="decode",
+            page_table=page_table_tt,
         )
-        print("compiled")
+    ttnn.deallocate(res)
+    tt_out = decode_input
+    ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
+    ttnn.synchronize_devices(mesh_device, sub_device_ids=[prefetcher_setup.worker_sub_device_id])
+    print("Trace captured 1")
 
-        decode_input = model_args.prepare_residual_tensor_decode(
-            tt_decode_input,
-            # ttnn.DRAM_MEMORY_CONFIG,
-            model_args.model_config["DECODE_RESIDUAL_MEMCFG"],
-        )
-
-        # capture trace
-        trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
-        for _ in range(100):
-            ttnn.dram_prefetcher(
-                tt_pf,
-                num_layers=1,
-                global_cb=prefetcher_setup.global_circular_buffer,
-            )
-            mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
-            tt_out, res = tt_model(
-                decode_input,
-                res,
-                current_pos_tensor,
-                rot_mats=rot_mats,
-                mode="decode",
-                page_table=page_table_tt,
-            )
-        ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
-        print("Trace captured")
-
-        start_warmup = time.time()
-        ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
-        ttnn.synchronize_devices(mesh_device, sub_device_ids=[prefetcher_setup.worker_sub_device_id])
-        ttnn.release_trace(mesh_device, trace_id)
-        time_warmup = time.time() - start_warmup
-
-        # capture trace
-        print("Capturing trace 2 ")
-        trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
-        for _ in range(1000):
-            ttnn.dram_prefetcher(
-                tt_pf,
-                num_layers=1,
-                global_cb=prefetcher_setup.global_circular_buffer,
-            )
-            mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
-            tt_out, res = tt_model(
-                decode_input,
-                res,
-                current_pos_tensor,
-                rot_mats=rot_mats,
-                mode="decode",
-                page_table=page_table_tt,
-            )
-        ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
-        print("Trace captured 2")
-
+    for i in range(generation_length):
+        logger.info(f"[Decoder] Generating token {i}")
+        res = None
         start_run = time.time()
         ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
         ttnn.synchronize_devices(mesh_device, sub_device_ids=[prefetcher_setup.worker_sub_device_id])
-        ttnn.release_trace(mesh_device, trace_id)
         time_run = time.time() - start_run
-
-        print(f"Time taken for warmup: {time_warmup}")
         print(f"Time taken for run: {time_run}")
 
-        # In this test all users have the same position
-        # freqs_cis_i = freqs_cis[current_pos[0], :].unsqueeze(0)
-
-        # # Reference model
-        # ref_output = reference_model(pt_decode_input, current_pos[0], freqs_cis_i, mask=None)
-
-        # passing, pcc_message = comp_pcc(ref_output, tt_output_torch)
-
-        # logger.info(comp_allclose(ref_output, tt_output_torch))
-        # logger.info(f"PCC: {pcc_message}")
-
-        # if passing:
-        #     logger.info("Llama Decoder Block Passed!")
-        # else:
-        #     logger.warning("Llama Decoder Block Failed!")
-        #     all_tests_pass = False
-
-        # # Increment position
-        # current_pos = torch.tensor([generation_start_pos + i for _ in range(batch_size)])
-        # current_pos_tensor = ttnn.from_torch(
-        #     current_pos,
-        #     device=mesh_device,
-        #     dtype=ttnn.int32,
-        #     mesh_mapper=ttnn.ShardTensor2dMesh(
-        #         mesh_device,
-        #         dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
-        #         mesh_shape=model_args.cluster_shape,
-        #     ),
-        # )
-
+    ttnn.release_trace(mesh_device, trace_id)
     tt_ccl.close()
 
     if all_tests_pass:
