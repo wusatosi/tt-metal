@@ -416,7 +416,7 @@ class TtAsymmetricAttention(LightweightModule):
                     layout=ttnn.TILE_LAYOUT,
                     memory_config=ttnn.DRAM_MEMORY_CONFIG,
                     device=self.mesh_device,
-                    mesh_mapper=ttnn.ReplicateTensorToMesh(self.mesh_device),
+                    mesh_mapper=ttnn.ShardTensorToMesh(self.mesh_device, dim=3),
                 )
 
         else:
