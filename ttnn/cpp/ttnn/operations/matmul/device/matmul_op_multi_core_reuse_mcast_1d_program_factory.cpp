@@ -1892,7 +1892,17 @@ operation::ProgramWithCallbacks create_program_gather_in0(
     auto mm_kernel_in0_id = tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/reader_bmm_tile_layout_in0_ring_all_gather.cpp",
-        ring_cores,
+        all_cores,
+        tt_metal::DataMovementConfig{
+            .processor = tt_metal::DataMovementProcessor::RISCV_1,
+            .noc = in0_noc,
+            .noc_mode = tt_metal::NOC_MODE::DM_DYNAMIC_NOC,
+            .compile_args = in0_sender_compile_time_args});
+
+    auto mm_kernel_in0_hop_cores_id = tt_metal::CreateKernel(
+        program,
+        "ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/reader_bmm_tile_layout_in0_ring_all_gather.cpp",
+        hop_cores,
         tt_metal::DataMovementConfig{
             .processor = tt_metal::DataMovementProcessor::RISCV_1,
             .noc = in0_noc,
@@ -2086,11 +2096,18 @@ operation::ProgramWithCallbacks create_program_gather_in0(
             (std::uint32_t)true,        // is_hop_core
             (std::uint32_t)end_of_hop,  // end_of_hop
         };
-        tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, mm_in0_args);
+        tt_metal::SetRuntimeArgs(program, mm_kernel_in0_hop_cores_id, core, mm_in0_args);
     }
 
     auto override_runtime_arguments_callback =
-        [mm_kernel_in0_id, mm_kernel_in1_sender_writer_id, cb_src0, cb_src1, cb_output, num_cores, cores](
+        [mm_kernel_in0_id,
+         mm_kernel_in0_hop_cores_id,
+         mm_kernel_in1_sender_writer_id,
+         cb_src0,
+         cb_src1,
+         cb_output,
+         num_cores,
+         cores](
             const void* operation,
             Program& program,
             const std::vector<Tensor>& input_tensors,

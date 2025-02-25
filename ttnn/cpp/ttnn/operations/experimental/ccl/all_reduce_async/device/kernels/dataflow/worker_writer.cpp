@@ -181,12 +181,13 @@ void kernel_main() {
     //     reduction_semaphore_recv_noc_addr,
     //     num_cores,
     //     false,  // TODO: Why?
-    //     false,  // TODO: Why?
+    //     true,  // TODO: Why?
     //     0);
-
     for (uint32_t i = 0; i < num_cores; i++) {
         noc_semaphore_inc(get_noc_addr(core_noc_x[i], core_noc_y[i], reduction_semaphore_send_addr), 1);
     }
+
+    // DPRINT << "wait done for output semphore \n";
 
     // 4. global semaphore reset
     if (reset_global_semaphore) {
