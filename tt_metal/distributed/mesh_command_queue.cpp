@@ -199,7 +199,10 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
 void MeshCommandQueue::finish(tt::stl::Span<const SubDeviceId> sub_device_ids) {
     std::shared_ptr<MeshEvent> event = std::make_shared<MeshEvent>();
     this->enqueue_record_event_to_host(event, sub_device_ids);
-    while (outstanding_reads_count_.load(std::memory_order_acquire));
+
+    std::unique_lock<std::mutex> lock(reads_processed_cv_mutex_);
+    reads_processed_cv_.wait(
+        lock, [this] { return num_entries_in_completion_q_ == num_completed_completion_q_reads_; });
 }
 
 void MeshCommandQueue::write_shard_to_device(
@@ -237,8 +240,11 @@ void MeshCommandQueue::read_shard_from_device(
                 this->completion_queue_reads_.push(std::make_shared<MeshCompletionReaderVariant>(
                     std::in_place_type<MeshReadBufferDescriptor>,
                     MeshReadBufferDescriptor{.descriptor = std::move(read_descriptor), .device = device}));
-                num_outstanding_reads_.release();
-                outstanding_reads_count_++;
+                num_entries_in_completion_q_++;
+                {
+                    std::lock_guard lock(reader_thread_cv_mutex_);
+                    reader_thread_cv_.notify_one();
+                }
             }
         }
     } else {
@@ -252,8 +258,11 @@ void MeshCommandQueue::read_shard_from_device(
             this->completion_queue_reads_.push(std::make_shared<MeshCompletionReaderVariant>(
                 std::in_place_type<MeshReadBufferDescriptor>,
                 MeshReadBufferDescriptor{.descriptor = std::move(read_descriptor), .device = device}));
-            num_outstanding_reads_.release();
-            outstanding_reads_count_++;
+            num_entries_in_completion_q_++;
+            {
+                std::lock_guard lock(reader_thread_cv_mutex_);
+                reader_thread_cv_.notify_one();
+            }
         }
     }
 }
@@ -499,11 +508,14 @@ void MeshCommandQueue::enqueue_record_event_to_host(
     tt::stl::Span<const SubDeviceId> sub_device_ids,
     const std::optional<MeshCoordinateRange>& device_range) {
     this->enqueue_record_event_helper(event, sub_device_ids, true, device_range);
-    std::cout << "Push event descriptor" << std::endl;
     this->completion_queue_reads_.push(std::make_shared<MeshCompletionReaderVariant>(MeshReadEventDescriptor{
         .single_device_descriptor = ReadEventDescriptor(event->event_id), .device_range = event->device_range}));
-    num_outstanding_reads_.release();
-    outstanding_reads_count_++;
+
+    num_entries_in_completion_q_++;
+    {
+        std::lock_guard lock(reader_thread_cv_mutex_);
+        reader_thread_cv_.notify_one();
+    }
 }
 
 void MeshCommandQueue::enqueue_wait_for_event(const std::shared_ptr<MeshEvent>& sync_event) {
@@ -514,31 +526,34 @@ void MeshCommandQueue::enqueue_wait_for_event(const std::shared_ptr<MeshEvent>& 
 }
 
 void MeshCommandQueue::read_completion_queue() {
-    std::cout << "Thread started" << std::endl;
     while (true) {
-        num_outstanding_reads_.acquire();
+        std::unique_lock<std::mutex> lock(reader_thread_cv_mutex_);
+        reader_thread_cv_.wait(lock, [this] {
+            return num_entries_in_completion_q_ > num_completed_completion_q_reads_ or exit_condition_;
+        });
+
         if (exit_condition_) {
             return;
         } else {
-            uint32_t num_reads = outstanding_reads_count_.load();
-            std::cout << "Num reads: " << num_reads << std::endl;
+            uint32_t num_reads = num_entries_in_completion_q_ - num_completed_completion_q_reads_;
             for (uint32_t i = 0; i < num_reads; i++) {
                 auto mesh_read_descriptor = *(completion_queue_reads_.pop());
                 std::visit(
                     [&](auto&& mesh_read_descriptor) {
                         using T = std::decay_t<decltype(mesh_read_descriptor)>;
                         if constexpr (std::is_same_v<T, MeshReadBufferDescriptor>) {
-                            std::cout << "Buffer descriptor" << std::endl;
                             this->copy_buffer_data_to_user_space(mesh_read_descriptor);
                         } else {
-                            std::cout << "Event descriptor" << std::endl;
                             this->read_completion_queue_event(mesh_read_descriptor);
                         }
                     },
                     mesh_read_descriptor);
             }
-            std::cout << "Subtract by: " << num_reads << std::endl;
-            outstanding_reads_count_.fetch_sub(num_reads, std::memory_order_release);
+            num_completed_completion_q_reads_ += num_reads;
+            {
+                std::unique_lock<std::mutex> lock(reads_processed_cv_mutex_);
+                reads_processed_cv_.notify_one();
+            }
         }
     }
 }

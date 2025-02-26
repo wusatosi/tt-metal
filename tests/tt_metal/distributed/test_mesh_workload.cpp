@@ -333,8 +333,8 @@ TEST_F(MeshWorkloadTestSuite, EltwiseBinaryMeshWorkload) {
 }
 
 TEST_F(MeshWorkloadTestSuite, NonBlockingReads) {
-    uint32_t num_tiles = 1;
-    uint32_t single_tile_size = ::tt::tt_metal::detail::TileSize(DataFormat::Float16_b);
+    uint32_t num_tiles = 10;
+    uint32_t single_tile_size = ::tt::tt_metal::detail::TileSize(DataFormat::UInt32);
     uint32_t dram_buffer_size = single_tile_size * num_tiles;
 
     DeviceLocalBufferConfig per_device_buffer_config{
@@ -343,14 +343,30 @@ TEST_F(MeshWorkloadTestSuite, NonBlockingReads) {
         .buffer_layout = TensorMemoryLayout::INTERLEAVED,
         .bottom_up = true};
     ReplicatedBufferConfig global_buffer_config{.size = dram_buffer_size};
+    MeshCoordinateRange devices_0(
+        MeshCoordinate{0, 0}, MeshCoordinate{mesh_device_->num_rows() - 1, mesh_device_->num_cols() - 1});
 
     auto buffer = MeshBuffer::create(global_buffer_config, per_device_buffer_config, mesh_device_.get());
-    std::vector<uint32_t> src_vec = create_constant_vector_of_bfloat16(dram_buffer_size, 1);
-    std::cout << "Start write" << std::endl;
-    for (int i = 0; i < 10; i++) {
-        EnqueueWriteMeshBuffer(mesh_device_->mesh_command_queue(), buffer, src_vec, true);
+    std::vector<uint32_t> src_vec = std::vector<uint32_t>(dram_buffer_size / sizeof(uint32_t));
+    std::iota(src_vec.begin(), src_vec.end(), 1);
+    std::vector<MeshCommandQueue::ShardDataTransfer> shards = {};
+    std::vector<std::vector<uint32_t>> shard_data = {};
+    for (const auto& device_coord : devices_0) {
+        shard_data.push_back(std::vector<uint32_t>(src_vec.size()));
+        shards.push_back(MeshCommandQueue::ShardDataTransfer{
+            .shard_coord = device_coord,
+            .host_data = shard_data.back().data(),
+        });
     }
-    std::cout << "Done write" << std::endl;
+
+    for (int i = 0; i < 1; i++) {
+        EnqueueWriteMeshBuffer(mesh_device_->mesh_command_queue(), buffer, src_vec, true);
+        mesh_device_->mesh_command_queue().enqueue_read_shards(shards, buffer, false);
+    }
+    Finish(mesh_device_->mesh_command_queue());
+    for (auto& dst_vec : shard_data) {
+        EXPECT_EQ(dst_vec, src_vec);
+    }
 }
 
 TEST_F(MeshWorkloadTestSuite, MeshWorkloadSanity) {

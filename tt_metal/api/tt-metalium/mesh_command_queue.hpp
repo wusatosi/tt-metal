@@ -115,8 +115,16 @@ private:
     CoreType dispatch_core_type_ = CoreType::WORKER;
 
     MultiProducerSingleConsumerQueue<MeshCompletionReaderVariant> completion_queue_reads_;
-    std::atomic<uint32_t> outstanding_reads_count_ = 0;
-    std::counting_semaphore<> num_outstanding_reads_{0};
+
+    std::condition_variable reader_thread_cv_;
+    std::mutex reader_thread_cv_mutex_;
+
+    std::condition_variable reads_processed_cv_;
+    std::mutex reads_processed_cv_mutex_;
+
+    uint32_t num_completed_completion_q_reads_ = 0;
+    uint32_t num_entries_in_completion_q_ = 0;
+
     bool exit_condition_ = false;
     std::thread completion_queue_reader_thread_;
 
