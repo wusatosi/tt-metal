@@ -29,6 +29,8 @@ std::tuple<uint32_t, uint32_t> calculate_compute_kernel_args(
         case SubtileBroadcastType::NONE:
         case SubtileBroadcastType::ROW_A:
         case SubtileBroadcastType::ROW_B: return {1, 0};
+        case SubtileBroadcastType::ROW_A_H_FIRST: return {Ht, start_t};
+        case SubtileBroadcastType::ROW_B_H_FIRST: return {Ht, start_t};
         case SubtileBroadcastType::SCALAR_A:
         case SubtileBroadcastType::SCALAR_B: return {Ht * Wt, start_t};
         case SubtileBroadcastType::COL_A:
@@ -178,8 +180,8 @@ void set_or_update_runtime_arguments(
     // as well as having the sharded tensors (if any) start at (0, 0)
     // This will run the original work/core distribution algorithms that are specifically for this setup, as these
     // are faster than the generic work/core distribution algorithms that work on arbitrary CoreRangeSets
-    bool zero_start_grid = false;
-    CoreCoord compute_with_storage_grid;
+    bool zero_start_grid = true;
+    CoreCoord compute_with_storage_grid = CoreCoord{1u, 1u};
     const auto& all_device_cores = operation_attributes.worker_grid;
     if (grid.size() == 1) {
         const auto& cr = *all_device_cores.ranges().begin();
@@ -192,7 +194,7 @@ void set_or_update_runtime_arguments(
                 }
             } else {
                 zero_start_grid = true;
-                compute_with_storage_grid = CoreCoord(cr.end_coord.x + 1, cr.end_coord.y + 1);
+                compute_with_storage_grid = CoreCoord(1u, 1u);
             }
         }
     }

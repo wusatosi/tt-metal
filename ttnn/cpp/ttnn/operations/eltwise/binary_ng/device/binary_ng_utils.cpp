@@ -90,9 +90,51 @@ BinaryNgKernelConfig::BinaryNgKernelConfig(SubtileBroadcastType subtile_broadcas
             break;
 
         case SubtileBroadcastType::ROW_B_COL_A:
-            reader_kernel = KernelName::ReaderColBcast;
+            reader_kernel = KernelName::ReaderColBcastHFirst;
             compute_kernel = KernelName::ComputeBcast;
-            writer_kernel = KernelName::WriterRowBcast;
+            writer_kernel = KernelName::WriterRowBcastHFirst;
+            bcast_input = 0;
+            break;
+
+        case SubtileBroadcastType::ROW_A_H_FIRST:
+            reader_kernel = KernelName::ReaderRowBcastHFirst;
+            compute_kernel = KernelName::ComputeBcast;
+            writer_kernel = KernelName::WriterNoBcastHFirst;
+            bcast_input = 0;
+            break;
+
+        case SubtileBroadcastType::ROW_B_H_FIRST:
+            reader_kernel = KernelName::ReaderNoBcastHFirst;
+            compute_kernel = KernelName::ComputeBcast;
+            writer_kernel = KernelName::WriterRowBcastHFirst;
+            bcast_input = 1;
+            break;
+
+        case SubtileBroadcastType::COL_A_H_FIRST:
+            reader_kernel = KernelName::ReaderColBcastHFirst;
+            compute_kernel = KernelName::ComputeBcast;
+            writer_kernel = KernelName::WriterNoBcastHFirst;
+            bcast_input = 0;
+            break;
+
+        case SubtileBroadcastType::COL_B_H_FIRST:
+            reader_kernel = KernelName::ReaderNoBcastHFirst;
+            compute_kernel = KernelName::ComputeBcast;
+            writer_kernel = KernelName::WriterColBcastHFirst;
+            bcast_input = 1;
+            break;
+
+        case SubtileBroadcastType::ROW_A_COL_B_H_FIRST:
+            reader_kernel = KernelName::ReaderRowBcastHFirst;
+            compute_kernel = KernelName::ComputeBcast;
+            writer_kernel = KernelName::WriterColBcastHFirst;
+            bcast_input = 1;
+            break;
+
+        case SubtileBroadcastType::ROW_B_COL_A_H_FIRST:
+            reader_kernel = KernelName::ReaderColBcastHFirst;
+            compute_kernel = KernelName::ComputeBcast;
+            writer_kernel = KernelName::WriterRowBcastHFirst;
             bcast_input = 0;
             break;
     }
@@ -114,10 +156,22 @@ std::string get_kernel_file_path(KernelName kernel_name, bool is_sfpu) {
         case KernelName::ReaderNoBcast: return fmt::format(dataflow, root, "reader_interleaved_no_bcast.cpp");
         case KernelName::ReaderRowBcast: return fmt::format(dataflow, root, "reader_interleaved_row_bcast.cpp");
         case KernelName::ReaderColBcast: return fmt::format(dataflow, root, "reader_interleaved_col_bcast.cpp");
+        case KernelName::ReaderNoBcastHFirst:
+            return fmt::format(dataflow, root, "reader_interleaved_no_bcast_h_first.cpp");
+        case KernelName::ReaderRowBcastHFirst:
+            return fmt::format(dataflow, root, "reader_interleaved_row_bcast_h_first.cpp");
+        case KernelName::ReaderColBcastHFirst:
+            return fmt::format(dataflow, root, "reader_interleaved_col_bcast_h_first.cpp");
         case KernelName::ReaderScalarBcast: return fmt::format(dataflow, root, "reader_interleaved_scalar_bcast.cpp");
         case KernelName::WriterNoBcast: return fmt::format(dataflow, root, "writer_interleaved_no_bcast.cpp");
         case KernelName::WriterRowBcast: return fmt::format(dataflow, root, "writer_interleaved_row_bcast.cpp");
         case KernelName::WriterColBcast: return fmt::format(dataflow, root, "writer_interleaved_col_bcast.cpp");
+        case KernelName::WriterNoBcastHFirst:
+            return fmt::format(dataflow, root, "writer_interleaved_no_bcast_h_first.cpp");
+        case KernelName::WriterRowBcastHFirst:
+            return fmt::format(dataflow, root, "writer_interleaved_row_bcast_h_first.cpp");
+        case KernelName::WriterColBcastHFirst:
+            return fmt::format(dataflow, root, "writer_interleaved_col_bcast_h_first.cpp");
         case KernelName::WriterScalarBcast: return fmt::format(dataflow, root, "writer_interleaved_scalar_bcast.cpp");
         case KernelName::WriterScalar: return fmt::format(dataflow, root, "writer_interleaved_scalar.cpp");
         case KernelName::ComputeNoBcast:

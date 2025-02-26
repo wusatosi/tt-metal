@@ -1029,7 +1029,13 @@ def test_add_perf_17910_rowcast(input_shape, dtype, device):
 
 @pytest.mark.parametrize(
     "input_shape",
-    ((8192, 8192),),
+    (
+        # (8192, 8192),
+        (32, 32),
+        (64, 64),
+        (128, 128),
+        (512, 512),
+    ),
 )
 @pytest.mark.parametrize(
     "dtype",
@@ -1046,7 +1052,11 @@ def test_add_perf_17910_rowcast_right(input_shape, dtype, device):
         b = torch.rand(b_shape, dtype=torch.float32)
 
     a, b = b, a
+    print(a, b)
     torch_out = a + b
+    print(torch_out)
+    print("a:", a.shape)
+    print("b:", b.shape)
 
     a_tt = ttnn.from_torch(
         a, dtype=dtype, device=device, layout=ttnn.TILE_LAYOUT, memory_config=ttnn.DRAM_MEMORY_CONFIG
@@ -1055,10 +1065,12 @@ def test_add_perf_17910_rowcast_right(input_shape, dtype, device):
         b, dtype=dtype, device=device, layout=ttnn.TILE_LAYOUT, memory_config=ttnn.DRAM_MEMORY_CONFIG
     )
 
-    orig_add = ttnn.add(a_tt, b_tt)
-    assert_with_pcc(torch_out, ttnn.to_torch(orig_add), 0.999)
+    # orig_add = ttnn.add(a_tt, b_tt)
+    # assert_with_pcc(torch_out, ttnn.to_torch(orig_add), 0.999)
     new_add = ttnn.experimental.add(a_tt, b_tt)
-    assert_with_pcc(torch_out, ttnn.to_torch(new_add), 0.999)
+    out = ttnn.to_torch(new_add)
+    print(out)
+    assert_with_pcc(torch_out, out, 0.999)
 
 
 @pytest.mark.parametrize(

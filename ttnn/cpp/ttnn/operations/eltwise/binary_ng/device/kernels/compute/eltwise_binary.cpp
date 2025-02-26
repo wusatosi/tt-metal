@@ -35,10 +35,15 @@ ALWI void process_tile(
 #endif
 
     PREPROCESS(BCAST_OP, CB_PRE_BCAST, CB_POST_BCAST, cb_out, onetile);
+    UNPACK(DPRINT << "CB_POST_BCAST: " << (uint32_t)CB_POST_BCAST << ENDL());
+    UNPACK(DPRINT << "Tile start: " << tile_start << ENDL());
+    UNPACK(DPRINT << "Tile frequency: " << freq << ENDL());
     cb_wait_front(CB_POST_BCAST, onetile);
 
+    UNPACK(DPRINT << "CB_POST_OTHER: " << (uint32_t)CB_POST_OTHER << ENDL());
     for (uint32_t j = tile_start; j < freq; ++j) {
         PREPROCESS(OTHER_OP, CB_PRE_OTHER, CB_POST_OTHER, cb_out, onetile);
+        UNPACK(DPRINT << "Processing tile " << j << ENDL());
         cb_wait_front(CB_POST_OTHER, onetile);
 
         cb_reserve_back(cb_out, onetile);
@@ -88,7 +93,7 @@ void MAIN {
 
     uint32_t complete_iterations = (num_tiles + tile_start) / tile_freq;
     uint32_t remaining_iterations = (num_tiles + tile_start) % tile_freq;
-
+    UNPACK(DPRINT << "Complete iterations: " << complete_iterations << ENDL());
     for (uint32_t i = 0; i < complete_iterations; ++i, tile_start = 0) {
         process_tile(cb_pre_lhs, cb_post_lhs, cb_pre_rhs, cb_post_rhs, cb_out, tile_freq, tile_start);
     }

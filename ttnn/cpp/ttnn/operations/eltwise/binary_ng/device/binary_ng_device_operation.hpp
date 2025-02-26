@@ -12,15 +12,23 @@
 namespace ttnn::operations::binary_ng {
 
 enum class SubtileBroadcastType {
-    NONE,         // both tensors have equal tile dimensions (H & W)
-    SCALAR_A,     // a is a scalar (H = 1, W = 1)
-    SCALAR_B,     // b is a scalar (H = 1, W = 1)
-    ROW_A_COL_B,  // a has a single tile row, b has a single tile column
-    ROW_B_COL_A,  // b has a single tile row, a has a single tile column
-    ROW_A,        // a has a single tile row, b is full
-    ROW_B,        // b has a single tile row, a is full
-    COL_A,        // a has a single tile column, b is full
-    COL_B,        // b has a single tile column, a is full
+    NONE,                 // both tensors have equal tile dimensions (H & W)
+    SCALAR_A,             // a is a scalar (H = 1, W = 1)
+    SCALAR_B,             // b is a scalar (H = 1, W = 1)
+    ROW_A_COL_B,          // a has a single tile row, b has a single tile column
+    ROW_B_COL_A,          // b has a single tile row, a has a single tile column
+    ROW_A,                // a has a single tile row, b is full
+    ROW_B,                // b has a single tile row, a is full
+    COL_A,                // a has a single tile column, b is full
+    COL_B,                // b has a single tile column, a is full
+    ROW_A_COL_B_H_FIRST,  // a has a single tile row, b has a single tile column and traversing along the column first
+                          // requires less reads
+    ROW_B_COL_A_H_FIRST,  // b has a single tile row, a has a single tile column and traversing along the column first
+                          // requires less reads
+    ROW_A_H_FIRST,  // a has a single tile row, b is full and traversing along the column first requires less reads
+    ROW_B_H_FIRST,  // b has a single tile row, a is full and traversing along the column first requires less reads
+    COL_A_H_FIRST,  // a has a single tile column, b is full and traversing along the column first requires less reads
+    COL_B_H_FIRST,  // b has a single tile column, a is full and traversing along the column first requires less reads
 };
 
 SubtileBroadcastType get_subtile_broadcast_type(uint32_t a_h, uint32_t a_w, uint32_t b_h, uint32_t b_w);

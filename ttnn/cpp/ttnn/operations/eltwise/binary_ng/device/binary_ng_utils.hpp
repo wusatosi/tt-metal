@@ -15,12 +15,18 @@ namespace ttnn::operations::binary_ng {
 
 enum class KernelName {
     ReaderNoBcast,
+    ReaderNoBcastHFirst,
     ReaderRowBcast,
     ReaderColBcast,
+    ReaderRowBcastHFirst,
+    ReaderColBcastHFirst,
     ReaderScalarBcast,
     WriterNoBcast,
+    WriterNoBcastHFirst,
     WriterRowBcast,
     WriterColBcast,
+    WriterRowBcastHFirst,
+    WriterColBcastHFirst,
     WriterScalarBcast,
     WriterScalar,
     ComputeNoBcast,

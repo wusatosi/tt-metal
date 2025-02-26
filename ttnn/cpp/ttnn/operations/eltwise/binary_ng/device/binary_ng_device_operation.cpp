@@ -80,22 +80,34 @@ SubtileBroadcastType get_subtile_broadcast_type(uint32_t a_h, uint32_t a_w, uint
     if (b_h == 1 && b_w == 1) {
         return SubtileBroadcastType::SCALAR_B;
     }
-    if (a_h == 1 /* && a_w != 1 */ && b_w == 1 /* && b_h != 1 */) {
+    /**
+     * [2, 1] + [1,3] if we move along width we do (1 broadcast a + 3 broadcasts b) * 2 rows = 8 reads
+     * [2, 1] + [1,3] if we move along height we do (2 broadcast a + 1 broadcast b) * 3 columns = 9 reads
+     * generally we should iterate along the axis that has the least number of broadcasts, which will be the bigger
+     *dimension, as that is the dimension along which the other tensor is broadcasted
+     **/
+    if (a_h == 1 && b_w == 1 && a_w >= b_h) {
         return SubtileBroadcastType::ROW_A_COL_B;
     }
-    if (a_w == 1 /* && a_h != 1 */ && b_h == 1 /* && b_w != 1 */) {
+    if (a_h == 1 && b_w == 1 && a_w < b_h) {
+        return SubtileBroadcastType::ROW_A_COL_B_H_FIRST;
+    }
+    if (a_w == 1 && b_h == 1 && a_h <= b_w) {
         return SubtileBroadcastType::ROW_B_COL_A;
     }
-    if (a_h == 1) {
-        return SubtileBroadcastType::ROW_A;
+    if (a_w == 1 && b_h == 1 && a_h > b_w) {
+        return SubtileBroadcastType::ROW_B_COL_A_H_FIRST;
     }
-    if (a_w == 1) {
+    if (a_h == 1) {  // a is copied along H to broadcast to b_h, so move down to reuse
+        return SubtileBroadcastType::ROW_A_H_FIRST;
+    }
+    if (a_w == 1) {  // a is copied along W to broadcast to b_w, so we move right to reuse
         return SubtileBroadcastType::COL_A;
     }
-    if (b_h == 1) {
-        return SubtileBroadcastType::ROW_B;
+    if (b_h == 1) {  // b is copied along H to broadcast to a_h, so move down to reuse
+        return SubtileBroadcastType::ROW_B_H_FIRST;
     }
-    if (b_w == 1) {
+    if (b_w == 1) {  // b is copied along W to broadcast to a_w, so we move right to reuse
         return SubtileBroadcastType::COL_B;
     }
 
