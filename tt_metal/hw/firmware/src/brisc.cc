@@ -515,8 +515,17 @@ int main() {
 
             if (noc_mode == DM_DYNAMIC_NOC) {
                 // barrier to make sure all writes are finished
-                while (!ncrisc_dynamic_noc_nonposted_writes_flushed<proc_type>(noc_index));
-                while (!ncrisc_dynamic_noc_nonposted_writes_flushed<proc_type>(1 - noc_index));
+                WAYPOINT("NKFW");
+                // Assert that no noc transactions are outstanding, to ensure that all reads and writes have landed and
+                // the NOC interface is in a known idle state for the next kernel.
+                for (int noc = 0; noc < NUM_NOCS; noc++) {
+                    ASSERT(ncrisc_dynamic_noc_reads_flushed(noc));
+                    ASSERT(ncrisc_dynamic_noc_nonposted_writes_sent(noc));
+                    ASSERT(ncrisc_dynamic_noc_nonposted_writes_flushed(noc));
+                    ASSERT(ncrisc_dynamic_noc_nonposted_atomics_flushed(noc));
+                    ASSERT(ncrisc_dynamic_noc_posted_writes_sent(noc));
+                }
+                WAYPOINT("NKFD");
             }
 
 #if defined(PROFILE_KERNEL)

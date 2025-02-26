@@ -83,7 +83,7 @@ def test_llama_decoder_inference(
 
     model_args = TtModelArgs(mesh_device, max_batch_size=batch_size, max_seq_len=max_seq_len, dummy_weights=True)
     model_args.n_layers = 1
-    custom_layers = 3
+    custom_layers = 80
 
     state_dict = model_args.load_state_dict()
 
@@ -104,7 +104,7 @@ def test_llama_decoder_inference(
     }
 
     generation_start_pos = 127
-    generation_length = 20
+    generation_length = 100
     all_tests_pass = True
 
     # Setup RoPE transformation matrices
