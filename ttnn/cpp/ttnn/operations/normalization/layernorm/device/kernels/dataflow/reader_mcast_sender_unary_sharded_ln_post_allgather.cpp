@@ -62,4 +62,5 @@ void kernel_main() {
     cb_push_back(cb_ex_global, stats_tiles * block_h);
     cb_pop_front(cb_stats_reduced, stats_tiles * block_h);
     global_semaphore_set();
+    noc_async_write_barrier();
 }
