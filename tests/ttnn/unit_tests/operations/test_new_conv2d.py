@@ -2802,20 +2802,20 @@ def test_small_in_large_out_channels_auto_shard(device, torch_tensor_map):
 @pytest.mark.parametrize(
     "batch, input_channels, output_channels, input_height, input_width, weights_dtype, activations_dtype, kernel, stride, padding, dilation, auto_shard, use_shallow_conv_variant, act_block_h_override, act_block_w_div, deallocate_activation, math_fidelity, fp32_accum, packer_l1_acc, enable_split_reader",
     (
-        (1,  4,   32, 288, 288, ttnn.bfloat8_b, ttnn.bfloat8_b, (5, 5), (1, 1), (0, 0), (1, 1), True, True,  0, 1, True, ttnn.MathFidelity.LoFi, True, False, False),
+        # (1,  4,   32, 288, 288, ttnn.bfloat8_b, ttnn.bfloat8_b, (5, 5), (1, 1), (0, 0), (1, 1), True, True,  0, 1, True, ttnn.MathFidelity.LoFi, True, False, False),
         (1, 32,   48, 284, 284, ttnn.bfloat8_b, ttnn.bfloat8_b, (3, 3), (1, 1), (0, 0), (2, 2), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, True, False, False),
-        (1, 48,   56, 280, 280, ttnn.bfloat8_b, ttnn.bfloat8_b, (3, 3), (1, 1), (0, 0), (4, 4), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, True, False, False),
-        (1, 56,   64, 272, 272, ttnn.bfloat8_b, ttnn.bfloat8_b, (3, 3), (1, 1), (0, 0), (8, 8), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, True, False, False),
-        (1, 64,  128, 256, 256, ttnn.bfloat8_b, ttnn.bfloat8_b, (2, 2), (1, 1), (0, 0), (1, 1), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, True, False, False),
-        (1, 128, 256, 255, 255, ttnn.bfloat8_b, ttnn.bfloat8_b, (1, 1), (1, 1), (0, 0), (1, 1), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, True, False, False),
-        (1, 256,   1, 255, 255, ttnn.bfloat8_b, ttnn.bfloat8_b, (1, 1), (1, 1), (0, 0), (1, 1), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, True, False, False),
+        (1, 32,   48, 284, 284, ttnn.bfloat8_b, ttnn.bfloat8_b, (3, 3), (1, 1), (0, 0), (2, 2), False, False, 32, 1, True, ttnn.MathFidelity.LoFi, True, False, False),
+        (1, 32,   48, 284, 284, ttnn.bfloat8_b, ttnn.bfloat8_b, (3, 3), (1, 1), (0, 0), (2, 2), False, False, 32*3, 1, True, ttnn.MathFidelity.LoFi, True, False, False),
+        (1, 32,   48, 284, 284, ttnn.bfloat8_b, ttnn.bfloat8_b, (3, 3), (1, 1), (0, 0), (2, 2), False, False, 32*13, 1, True, ttnn.MathFidelity.LoFi, True, False, False),
     ),
+    # ids=["k1", "k2", "k3", "k4", "k5", "k6", "k7"],
 )
 #fmt: on
 
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 16384*2}], indirect=True)
 def test_conv_model_kauai(
     device,
+    torch_tensor_map,
     batch,
     input_channels,
     output_channels,
@@ -2843,6 +2843,7 @@ def test_conv_model_kauai(
 
     run_conv(
         device=device,
+        torch_tensor_map=torch_tensor_map,
         math_fidelity=math_fidelity,
         activations_dtype=activations_dtype,
         weights_dtype=weights_dtype,

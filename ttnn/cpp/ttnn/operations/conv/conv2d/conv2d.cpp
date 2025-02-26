@@ -87,6 +87,7 @@ Result conv2d(
             compute_config);
         auto_shard = true;
     }
+    log_info(tt::LogOp, "conv_config {}", conv_config);
 
     ShardOrientation shard_orientation =
         conv_config.transpose_shards ? ShardOrientation::COL_MAJOR : ShardOrientation::ROW_MAJOR;
@@ -193,6 +194,11 @@ Result conv2d(
                 input_tensor_post_tm = ttnn::move(input_tensor_post_tm);
             }
         }
+
+        log_info(tt::LogOp, "conv_config {}", conv_config);
+        log_info(tt::LogOp, "opt_conv_op_parallel_config {}", opt_conv_op_parallel_config);
+        log_info(tt::LogOp, "opt_conv_op_block_config {}", opt_conv_op_block_config);
+        log_info(tt::LogOp, "conv_out_memory_config {}", conv_out_memory_config);
 
         // call conv micro op
         auto conv_output = optimized_conv_new(

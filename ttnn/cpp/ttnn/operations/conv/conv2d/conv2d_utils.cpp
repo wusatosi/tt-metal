@@ -313,6 +313,12 @@ OptimizedConvBlockConfig determine_per_core_conv_block_config(
 
     uint32_t act_block_h_ntiles = conv_op_parallel_config.per_core_out_matrix_height_ntile;
 
+    log_info(
+        tt::LogOp,
+        "act_block_h_override_ntiles {}, padded_output_height_ntiles_per_core {}",
+        act_block_h_override / constants::TILE_HEIGHT,
+        padded_output_height_ntiles_per_core);
+
     if (act_block_h_override > 0) {
         uint32_t act_block_h_override_ntiles = act_block_h_override / constants::TILE_HEIGHT;
         if (padded_output_height_ntiles_per_core % act_block_h_override_ntiles == 0) {
