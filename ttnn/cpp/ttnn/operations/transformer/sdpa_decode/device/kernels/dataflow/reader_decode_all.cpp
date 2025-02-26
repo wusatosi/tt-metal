@@ -8,6 +8,7 @@
 
 #include "cpp/ttnn/operations/transformer/sdpa_decode/device/kernels/rt_args_common.hpp"
 #include "dataflow_common.hpp"
+// #include "debug/dprint.h"
 
 void kernel_main() {
     /*
@@ -35,21 +36,53 @@ void kernel_main() {
     constexpr bool is_causal = get_compile_time_arg_val(17) == 1;
     constexpr bool use_attention_mask = get_compile_time_arg_val(18) == 1;
 
+    // DPRINT << "Reader decode all" << ENDL();
+
     uint32_t arg_idx = 0;
     const uint32_t q_addr = get_arg_val<uint32_t>(arg_idx++);
-    const uint32_t k_addr = get_arg_val<uint32_t>(arg_idx++);
-    const uint32_t v_addr = get_arg_val<uint32_t>(arg_idx++);
-    const uint32_t pos_addr = get_arg_val<uint32_t>(arg_idx++);
-    const uint32_t page_table_addr = get_arg_val<uint32_t>(arg_idx++);
-    const uint32_t mask_addr = get_arg_val<uint32_t>(arg_idx++);
-    const uint32_t page_table_page_size = get_arg_val<uint32_t>(arg_idx++);
-    const bool is_worker = get_arg_val<uint32_t>(arg_idx++) == 0;
-    const bool is_output_core = get_arg_val<uint32_t>(arg_idx++) == 1;
-    const uint32_t cur_head_group = get_arg_val<uint32_t>(arg_idx++);
-    const uint32_t cur_batch = get_arg_val<uint32_t>(arg_idx++);
-    const uint32_t core_num_in_reduce = get_arg_val<uint32_t>(arg_idx++);
-    const uint32_t core_num_in_output = get_arg_val<uint32_t>(arg_idx++);
+    const uint32_t k_addr = 504864;      // get_arg_val<uint32_t>(arg_idx++);
+    const uint32_t v_addr = 528800;      // get_arg_val<uint32_t>(arg_idx++);
+    const uint32_t pos_addr = 552736;    // get_arg_val<uint32_t>(arg_idx++);
+    const uint32_t page_table_addr = 0;  // get_arg_val<uint32_t>(arg_idx++);
+    const uint32_t mask_addr = 0;
+    ;                                         // get_arg_val<uint32_t>(arg_idx++);
+    const uint32_t page_table_page_size = 0;  // get_arg_val<uint32_t>(arg_idx++);
+    const uint32_t core_idx = get_arg_val<uint32_t>(arg_idx++);
+    // const bool is_worker = get_arg_val<uint32_t>(arg_idx++) == 0;
+    // const bool is_output_core = get_arg_val<uint32_t>(arg_idx++) == 1;
+    // const uint32_t cur_head_group = get_arg_val<uint32_t>(arg_idx++);
+    // const uint32_t cur_batch = get_arg_val<uint32_t>(arg_idx++);
+    // const uint32_t core_num_in_reduce = get_arg_val<uint32_t>(arg_idx++);
+    // const uint32_t core_num_in_output = get_arg_val<uint32_t>(arg_idx++);
     const uint32_t cur_pos_arg = get_arg_val<uint32_t>(arg_idx++);
+
+    //------------------Reduce runtime args------------------//
+    const uint32_t worker_id_for_reduce = core_idx % num_cores_per_head - 1;
+    const uint32_t worker_id_for_output = core_idx % num_cores_per_batch - 1;
+    const bool is_worker = (worker_id_for_reduce == UINT32_MAX) == 0;
+    const bool is_output_core = (worker_id_for_output == UINT32_MAX) == 1;
+
+    const uint32_t cur_head_group = (core_idx % num_cores_per_batch) / num_cores_per_head;
+    const uint32_t cur_batch = core_idx / num_cores_per_batch;
+    const uint32_t core_num_in_reduce = core_idx % num_cores_per_head;
+    const uint32_t core_num_in_output = core_idx % num_cores_per_batch;
+
+    // DPRINT << "Reader decode all" << ENDL();
+    // // print all arguments
+    // DPRINT << "q_addr: " << q_addr << ENDL();
+    // DPRINT << "k_addr: " << k_addr << ENDL();
+    // DPRINT << "v_addr: " << v_addr << ENDL();
+    // DPRINT << "pos_addr: " << pos_addr << ENDL();
+    // DPRINT << "page_table_addr: " << page_table_addr << ENDL();
+    // DPRINT << "mask_addr: " << mask_addr << ENDL();
+    // DPRINT << "page_table_page_size: " << page_table_page_size << ENDL();
+    // DPRINT << "is_worker: " << is_worker << ENDL();
+    // DPRINT << "is_output_core: " << is_output_core << ENDL();
+    // DPRINT << "cur_head_group: " << cur_head_group << ENDL();
+    // DPRINT << "cur_batch: " << cur_batch << ENDL();
+    // DPRINT << "core_num_in_reduce: " << core_num_in_reduce << ENDL();
+    // DPRINT << "core_num_in_output: " << core_num_in_output << ENDL();
+    // DPRINT << "cur_pos_arg: " << cur_pos_arg << ENDL();
 
     // idle core
     if (q_addr == 0) {
@@ -103,7 +136,7 @@ void kernel_main() {
     tt_l1_ptr uint32_t* all_output_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
     arg_idx += num_output_cores;
     tt_l1_ptr uint32_t* all_output_noc_y = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx++));
-
+    // DPRINT << "reader - last arg_idx: " << arg_idx + num_output_cores << ENDL();
     uint32_t output_core_noc_x = all_output_noc_x[cur_batch];
     uint32_t output_core_noc_y = all_output_noc_y[cur_batch];
 

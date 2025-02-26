@@ -716,34 +716,35 @@ operation::ProgramWithCallbacks sdpa_decode_multi_core(
         // reader runtime args
         std::vector<uint32_t> reader_rt_args = {
             q_addr,
-            k_addr,
-            v_addr,
-            pos_addr,
-            page_table_addr,
-            attn_mask_addr,
-            page_table_stick_size,
-            do_reduce,
-            do_output,
-            cur_head,
-            cur_batch,
-            core_num_in_reduce,
-            core_num_in_output,
+            i,
+            // k_addr,
+            // v_addr,
+            // pos_addr,
+            // page_table_addr,
+            // attn_mask_addr,
+            // page_table_stick_size,
+            // do_reduce,
+            // do_output,
+            // cur_head,
+            // cur_batch,
+            // core_num_in_reduce,
+            // core_num_in_output,
             cur_pos};
         reader_rt_args.insert(reader_rt_args.end(), output_core_physical_xs.begin(), output_core_physical_xs.end());
         reader_rt_args.insert(reader_rt_args.end(), output_core_physical_ys.begin(), output_core_physical_ys.end());
 
         // writer runtime args
-        std::vector<uint32_t> writer_rt_args = {
-            out_addr,
-            worker_id_for_reduce,
-            worker_id_for_output,
-            do_reduce,
-            do_output,
-            cur_head,
-            cur_batch,
-            core_num_in_reduce,
-            core_num_in_output,
-            cur_pos};
+        std::vector<uint32_t> writer_rt_args = {// out_addr,
+                                                i,
+                                                // worker_id_for_reduce,
+                                                // worker_id_for_output,
+                                                // do_reduce,
+                                                // do_output,
+                                                // cur_head,
+                                                // cur_batch,
+                                                // core_num_in_reduce,
+                                                // core_num_in_output,
+                                                cur_pos};
         writer_rt_args.insert(writer_rt_args.end(), reduce_core_physical_xs.begin(), reduce_core_physical_xs.end());
         writer_rt_args.insert(writer_rt_args.end(), reduce_core_physical_ys.begin(), reduce_core_physical_ys.end());
         writer_rt_args.insert(writer_rt_args.end(), output_core_physical_xs.begin(), output_core_physical_xs.end());
@@ -839,31 +840,33 @@ operation::ProgramWithCallbacks sdpa_decode_multi_core(
                 // reader runtime args
                 uint32_t arg_idx = 0;
                 reader_args[arg_idx++] = q_addr;
-                reader_args[arg_idx++] = k_addr;
-                reader_args[arg_idx++] = v_addr;
-                reader_args[arg_idx++] = pos_addr;
-                reader_args[arg_idx++] = page_table_addr;
-                reader_args[arg_idx++] = attn_mask_addr;
-                reader_args[arg_idx++] = page_table_stick_size;
-                reader_args[arg_idx++] = do_reduce;
-                reader_args[arg_idx++] = do_output;
-                reader_args[arg_idx++] = cur_head;
-                reader_args[arg_idx++] = cur_batch;
-                reader_args[arg_idx++] = core_num_in_reduce;
-                reader_args[arg_idx++] = core_num_in_output;
+                reader_args[arg_idx++] = i;
+                // reader_args[arg_idx++] = k_addr;
+                // reader_args[arg_idx++] = v_addr;
+                // reader_args[arg_idx++] = pos_addr;
+                // reader_args[arg_idx++] = page_table_addr;
+                // reader_args[arg_idx++] = attn_mask_addr;
+                // reader_args[arg_idx++] = page_table_stick_size;
+                // reader_args[arg_idx++] = do_reduce;
+                // reader_args[arg_idx++] = do_output;
+                // reader_args[arg_idx++] = cur_head;
+                // reader_args[arg_idx++] = cur_batch;
+                // reader_args[arg_idx++] = core_num_in_reduce;
+                // reader_args[arg_idx++] = core_num_in_output;
                 reader_args[arg_idx++] = cur_pos;
 
                 // writer runtime args
                 arg_idx = 0;
-                writer_args[arg_idx++] = out_addr;
-                writer_args[arg_idx++] = worker_id_for_reduce;
-                writer_args[arg_idx++] = worker_id_for_output;
-                writer_args[arg_idx++] = do_reduce;
-                writer_args[arg_idx++] = do_output;
-                writer_args[arg_idx++] = cur_head;
-                writer_args[arg_idx++] = cur_batch;
-                writer_args[arg_idx++] = core_num_in_reduce;
-                writer_args[arg_idx++] = core_num_in_output;
+                writer_args[arg_idx++] = i;
+                // writer_args[arg_idx++] = out_addr;
+                // writer_args[arg_idx++] = worker_id_for_reduce;
+                // writer_args[arg_idx++] = worker_id_for_output;
+                // writer_args[arg_idx++] = do_reduce;
+                // writer_args[arg_idx++] = do_output;
+                // writer_args[arg_idx++] = cur_head;
+                // writer_args[arg_idx++] = cur_batch;
+                // writer_args[arg_idx++] = core_num_in_reduce;
+                // writer_args[arg_idx++] = core_num_in_output;
                 writer_args[arg_idx++] = cur_pos;
 
                 // compute runtime args

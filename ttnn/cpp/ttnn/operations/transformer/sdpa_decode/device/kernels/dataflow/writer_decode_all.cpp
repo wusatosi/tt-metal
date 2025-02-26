@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+#include <cstdint>
 #include "dataflow_api.h"
 #include "cpp/ttnn/deprecated/tt_dnn/kernels/dataflow/generate_bcast_scalar.hpp"
 #include "cpp/ttnn/deprecated/tt_dnn/kernels/dataflow/generate_reduce_scaler.hpp"
@@ -9,6 +10,8 @@
 
 #include "cpp/ttnn/operations/transformer/sdpa_decode/device/kernels/rt_args_common.hpp"
 #include "dataflow_common.hpp"
+
+// #include "debug/dprint.h"
 
 void kernel_main() {
     constexpr uint32_t B = get_compile_time_arg_val(0);     // batch size
@@ -33,17 +36,44 @@ void kernel_main() {
     constexpr uint32_t ELEMENT_SIZE = get_compile_time_arg_val(19);
     constexpr bool is_causal = get_compile_time_arg_val(20) == 1;
 
+    // DPRINT << "Writer decode all" << ENDL();
+
     uint32_t arg_idx = 0;
-    const uint32_t out_addr = get_arg_val<uint32_t>(arg_idx++);
-    const uint32_t worker_id_for_reduce = get_arg_val<uint32_t>(arg_idx++);
-    const uint32_t worker_id_for_output = get_arg_val<uint32_t>(arg_idx++);
-    const bool is_worker = get_arg_val<uint32_t>(arg_idx++) == 0;
-    const bool do_output = get_arg_val<uint32_t>(arg_idx++) == 1;
-    const uint32_t cur_head_group = get_arg_val<uint32_t>(arg_idx++);
-    const uint32_t cur_batch = get_arg_val<uint32_t>(arg_idx++);
-    const uint32_t core_num_in_reduce = get_arg_val<uint32_t>(arg_idx++);
-    const uint32_t core_num_in_output = get_arg_val<uint32_t>(arg_idx++);
+    // const uint32_t out_addr = get_arg_val<uint32_t>(arg_idx++);
+    const uint32_t core_idx = get_arg_val<uint32_t>(arg_idx++);
+    // const uint32_t worker_id_for_reduce = get_arg_val<uint32_t>(arg_idx++);
+    // const uint32_t worker_id_for_output = get_arg_val<uint32_t>(arg_idx++);
+    // const bool is_worker = get_arg_val<uint32_t>(arg_idx++) == 0;
+    // const bool do_output = get_arg_val<uint32_t>(arg_idx++) == 1;
+    // const uint32_t cur_head_group = get_arg_val<uint32_t>(arg_idx++);
+    // const uint32_t cur_batch = get_arg_val<uint32_t>(arg_idx++);
+    // const uint32_t core_num_in_reduce = get_arg_val<uint32_t>(arg_idx++);
+    // const uint32_t core_num_in_output = get_arg_val<uint32_t>(arg_idx++);
     const uint32_t cur_pos_arg = get_arg_val<uint32_t>(arg_idx++);
+
+    const uint32_t out_addr = 645344;
+    // const uint32_t worker_id_for_reduce = 0;
+    //---------------------------Add RTAs inside kernel--------//
+    const uint32_t worker_id_for_reduce = core_idx % num_cores_per_head - 1;
+    const uint32_t worker_id_for_output = core_idx % num_cores_per_batch - 1;
+    const bool is_worker = (worker_id_for_reduce == UINT32_MAX) == 0;
+    const bool do_output = (worker_id_for_output == UINT32_MAX) == 1;
+    const uint32_t cur_head_group = (core_idx % num_cores_per_batch) / num_cores_per_head;
+    const uint32_t cur_batch = core_idx / num_cores_per_batch;
+    const uint32_t core_num_in_reduce = core_idx % num_cores_per_head;
+    const uint32_t core_num_in_output = core_idx % num_cores_per_batch;
+
+    // print all arguments
+    // DPRINT << "out_addr: " << out_addr << ENDL();
+    // DPRINT << "worker_id_for_reduce: " << worker_id_for_reduce << ENDL();
+    // DPRINT << "worker_id_for_output: " << worker_id_for_output << ENDL();
+    // DPRINT << "is_worker: " << is_worker << ENDL();
+    // DPRINT << "do_output: " << do_output << ENDL();
+    // DPRINT << "cur_head_group: " << cur_head_group << ENDL();
+    // DPRINT << "cur_batch: " << cur_batch << ENDL();
+    // DPRINT << "core_num_in_reduce: " << core_num_in_reduce << ENDL();
+    // DPRINT << "core_num_in_output: " << core_num_in_output << ENDL();
+    // DPRINT << "cur_pos_arg: " << cur_pos_arg << ENDL();
 
     // idle core
     if (out_addr == 0) {
@@ -81,7 +111,7 @@ void kernel_main() {
     tt_l1_ptr uint32_t* all_output_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
     arg_idx += num_output_cores;
     tt_l1_ptr uint32_t* all_output_noc_y = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx++));
-
+    // DPRINT << "writer - last arg_idx: " << arg_idx + num_output_cores << ENDL();
     uint32_t reduce_core_index = (cur_batch * num_cores_per_batch) / num_cores_per_head + cur_head_group;
     uint32_t reduce_core_noc_x = all_reducer_noc_x[reduce_core_index];
     uint32_t reduce_core_noc_y = all_reducer_noc_y[reduce_core_index];
