@@ -170,6 +170,14 @@ jobs:
         run: |
           nice -n 19 cmake --build --preset clang-tidy
 
+      - name: Debug missing symbol
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug
+          path: /work/.build/clang-tidy/tt-train/sources/ttml/RelWithDebInfo/libttml.a
+          compression-level: 0
+          if-no-files-found: error
+
       - name: Publish Ccache summary
         run: |
           echo '## CCache Summary' >> $GITHUB_STEP_SUMMARY
