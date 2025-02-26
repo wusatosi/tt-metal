@@ -25,7 +25,8 @@ struct MeshReadEventDescriptor {
     MeshCoordinateRange device_range;
 };
 
-MeshCommandQueue::MeshCommandQueue(MeshDevice* mesh_device, uint32_t id) {
+MeshCommandQueue::MeshCommandQueue(MeshDevice* mesh_device, uint32_t id, ThreadPool& thread_pool) :
+    thread_pool_(thread_pool) {
     this->mesh_device_ = mesh_device;
     this->id_ = id;
     program_dispatch::reset_config_buf_mgrs_and_expected_workers(
@@ -422,13 +423,27 @@ void MeshCommandQueue::enqueue_write_shards(
     bool blocking) {
     // TODO: #17215 - this API is used by TTNN, as it currently implements rich ND sharding API for multi-devices.
     // In the long run, the multi-device sharding API in Metal will change, and this will most likely be replaced.
-    for (const auto& shard_data_transfer : shard_data_transfers) {
-        auto device_shard_view = buffer->get_device_buffer(shard_data_transfer.shard_coord);
-        write_shard_to_device(
-            device_shard_view,
-            shard_data_transfer.host_data,
-            shard_data_transfer.region.value_or(BufferRegion(0, device_shard_view->size())));
+    auto start = std::chrono::high_resolution_clock::now();
+    auto dispatch_lambda =
+        std::make_shared<std::function<void(uint32_t)>>([&buffer, &shard_data_transfers, this](uint32_t thread_idx) {
+            auto& shard_data_transfer = shard_data_transfers[thread_idx];
+            auto device_shard_view = buffer->get_device_buffer(shard_data_transfer.shard_coord);
+            this->write_shard_to_device(
+                device_shard_view,
+                shard_data_transfer.host_data,
+                shard_data_transfer.region.value_or(BufferRegion(0, device_shard_view->size())));
+        });
+
+    for (std::size_t thread_idx = 0; thread_idx < shard_data_transfers.size(); thread_idx++) {
+        thread_pool_.enqueue([dispatch_lambda, thread_idx]() { (*dispatch_lambda)(thread_idx); });
     }
+    thread_pool_.barrier();
+
+    float wait_duration =
+        std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start)
+            .count();
+    total_write_time += wait_duration;
+    num_writes++;
     if (blocking) {
         this->finish();
     }
@@ -440,12 +455,29 @@ void MeshCommandQueue::enqueue_read_shards(
     bool blocking) {
     // TODO: #17215 - this API is used by TTNN, as it currently implements rich ND sharding API for multi-devices.
     // In the long run, the multi-device sharding API in Metal will change, and this will most likely be replaced.
-    for (const auto& shard_data_transfer : shard_data_transfers) {
-        auto device_shard_view = buffer->get_device_buffer(shard_data_transfer.shard_coord);
-        read_shard_from_device(
-            device_shard_view,
-            shard_data_transfer.host_data,
-            shard_data_transfer.region.value_or(BufferRegion(0, device_shard_view->size())));
+
+    auto start = std::chrono::high_resolution_clock::now();
+    auto dispatch_lambda =
+        std::make_shared<std::function<void(uint32_t)>>([&buffer, &shard_data_transfers, this](uint32_t thread_idx) {
+            auto& shard_data_transfer = shard_data_transfers[thread_idx];
+            auto device_shard_view = buffer->get_device_buffer(shard_data_transfer.shard_coord);
+            read_shard_from_device(
+                device_shard_view,
+                shard_data_transfer.host_data,
+                shard_data_transfer.region.value_or(BufferRegion(0, device_shard_view->size())));
+        });
+
+    for (std::size_t thread_idx = 0; thread_idx < shard_data_transfers.size(); thread_idx++) {
+        thread_pool_.enqueue([dispatch_lambda, thread_idx]() { (*dispatch_lambda)(thread_idx); });
+    }
+    thread_pool_.barrier();
+    float wait_duration =
+        std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start)
+            .count();
+    total_read_time += wait_duration;
+    num_reads++;
+    if (blocking) {
+        this->finish();
     }
 }
 
@@ -558,16 +590,50 @@ void MeshCommandQueue::write_program_cmds_to_subgrid(
     auto dispatch_core_config = DispatchQueryManager::instance().get_dispatch_core_config();
     CoreType dispatch_core_type = dispatch_core_config.get_core_type();
 
-    for (const auto& coord : sub_grid) {
-        program_dispatch::write_program_command_sequence(
-            program_cmd_seq,
-            this->mesh_device_->get_device(coord)->sysmem_manager(),
-            id_,
-            dispatch_core_type,
-            stall_first,
-            stall_before_program);
+    auto start = std::chrono::high_resolution_clock::now();
+
+    for (auto& coord : sub_grid) {
         chip_ids_in_workload.insert(this->mesh_device_->get_device(coord)->id());
     }
+
+    uint32_t num_cols = sub_grid.end_coord().coords()[1] - sub_grid.start_coord().coords()[1] + 1;
+    uint32_t num_chips_per_col = chip_ids_in_workload.size() / num_cols;
+
+    auto dispatch_lambda =
+        std::make_shared<std::function<void(uint32_t)>>([&chip_ids_in_workload,
+                                                         &program_cmd_seq,
+                                                         num_chips_per_col,
+                                                         dispatch_core_type,
+                                                         stall_first,
+                                                         stall_before_program,
+                                                         this](uint32_t thread_idx) mutable {
+            uint32_t start_idx = thread_idx * num_chips_per_col;
+            auto coord = chip_ids_in_workload.begin();
+            std::advance(coord, start_idx);
+            for (uint32_t i = 0; i < num_chips_per_col; i++) {
+                program_dispatch::write_program_command_sequence(
+                    program_cmd_seq,
+                    this->mesh_device_->get_device(*coord)->sysmem_manager(),
+                    id_,
+                    dispatch_core_type,
+                    stall_first,
+                    stall_before_program);
+                std::advance(coord, 1);
+            }
+        });
+
+    for (uint32_t thread_idx = 0; thread_idx < num_cols; thread_idx++) {
+        thread_pool_.enqueue([dispatch_lambda, thread_idx]() { (*dispatch_lambda)(thread_idx); });
+    }
+    thread_pool_.barrier();
+    float wait_duration =
+        std::chrono::duration_cast<std::chrono ::microseconds>(std::chrono::high_resolution_clock::now() - start)
+            .count();
+
+    if (num_workloads >= 60) {
+        total_workload_time += wait_duration;
+    }
+    num_workloads++;
 }
 
 void MeshCommandQueue::write_go_signal_to_unused_sub_grids(

@@ -13,7 +13,11 @@
 #include "mesh_device.hpp"
 #include "mesh_workload.hpp"
 #include "mesh_trace.hpp"
+
 #include "mesh_trace_id.hpp"
+
+#include <semaphore>
+#include <tt-metalium/thread_pool.hpp>
 
 namespace tt::tt_metal::distributed {
 
@@ -105,15 +109,30 @@ private:
     std::optional<MeshTraceId> trace_id_;
     std::shared_ptr<MeshTraceDescriptor> trace_ctx_;
     std::vector<MeshTraceStagingMetadata> ordered_mesh_trace_md_;
+    // The MeshCQ is provided a reference to a thread-pool currently owned by the MeshDevice
+    ThreadPool& thread_pool_;
 
     MeshDevice* mesh_device_ = nullptr;
     uint32_t id_ = 0;
     CoreCoord dispatch_core_;
     CoreType dispatch_core_type_ = CoreType::WORKER;
     std::queue<std::shared_ptr<MeshReadEventDescriptor>> event_descriptors_;
+    float total_workload_time = 0;
+    float num_workloads = 0;
+    float total_read_time = 0;
+    float num_reads = 0;
+    float total_write_time = 0;
+    float num_writes = 0;
 
 public:
-    MeshCommandQueue(MeshDevice* mesh_device, uint32_t id);
+    MeshCommandQueue(MeshDevice* mesh_device, uint32_t id, ThreadPool& thread_pool);
+    ~MeshCommandQueue() {
+        std::cout << "Average write time: " << (total_write_time / (num_writes)) << std::endl;
+        std::cout << "Average read time: " << (total_read_time / (num_reads)) << std::endl;
+        // Skip accounting for the first 60 workoads, since these invoke Kernel Compilation and are not representative
+        // of runtime performance.
+        std::cout << "Average time to launch workloads: " << (total_workload_time / (num_workloads - 60)) << std::endl;
+    }
     MeshDevice* device() const { return mesh_device_; }
     uint32_t id() const { return id_; }
     WorkerConfigBufferMgr& get_config_buffer_mgr(uint32_t index) { return config_buffer_mgr_[index]; };

@@ -9,6 +9,8 @@
 #include <optional>
 #include <vector>
 
+#include <tt-metalium/thread_pool.hpp>
+
 #include "device.hpp"
 
 #include "mesh_config.hpp"
@@ -63,6 +65,8 @@ private:
     std::weak_ptr<MeshDevice> parent_mesh_;  // Submesh created with reference to parent mesh
     std::vector<std::unique_ptr<MeshCommandQueue>> mesh_command_queues_;
     std::unique_ptr<SubDeviceManagerTracker> sub_device_manager_tracker_;
+    // Thread-Pool used to parallelize dispatch to the Virtual Mesh
+    ThreadPool thread_pool_;
     std::unordered_map<MeshTraceId, std::shared_ptr<MeshTraceBuffer>> trace_buffer_pool_;
     uint32_t trace_buffers_size_ = 0;
     std::recursive_mutex push_work_mutex_;
