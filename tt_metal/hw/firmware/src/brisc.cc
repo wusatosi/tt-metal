@@ -462,6 +462,7 @@ int main() {
                 if (prev_noc_mode != noc_mode) {
                     noc_init(MEM_NOC_ATOMIC_RET_VAL_ADDR);
                 }
+                noc_local_state_init(noc_index);
             } else {
                 if (prev_noc_mode != noc_mode) {
                     dynamic_noc_init();
@@ -486,6 +487,7 @@ int main() {
                     (uint32_t tt_l1_ptr*)(kernel_config_base + launch_msg_address->kernel_config.remote_cb_offset);
                 end_cb_index = launch_msg_address->kernel_config.min_remote_cb_start_index;
                 experimental::setup_remote_cb_interfaces<true>(cb_l1_base, end_cb_index);
+                noc_async_atomic_barrier();
                 int index = static_cast<std::underlying_type<TensixProcessorTypes>::type>(TensixProcessorTypes::DM0);
                 void (*kernel_address)(uint32_t) = (void (*)(uint32_t))
                     (kernel_config_base + launch_msg_address->kernel_config.kernel_text_offset[index]);
@@ -506,6 +508,7 @@ int main() {
                         (uint32_t tt_l1_ptr*)(kernel_config_base + launch_msg_address->kernel_config.remote_cb_offset);
                     uint32_t end_cb_index = launch_msg_address->kernel_config.min_remote_cb_start_index;
                     experimental::setup_remote_cb_interfaces<true>(cb_l1_base, end_cb_index);
+                    noc_async_atomic_barrier();
                 }
                 wait_for_go_message();
             }
