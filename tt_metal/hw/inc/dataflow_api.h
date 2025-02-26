@@ -26,6 +26,7 @@
 #include "utils/utils.h"
 #include "debug/assert.h"
 #include "dev_msgs.h"
+#include "debug/ring_buffer.h"
 
 #if defined(KERNEL_BUILD)
 constexpr uint8_t noc_index = NOC_INDEX;
@@ -1833,7 +1834,34 @@ FORCE_INLINE
 void noc_async_atomic_barrier(uint8_t noc_idx = noc_index) {
     WAYPOINT("NABW");
     if constexpr (noc_mode == DM_DYNAMIC_NOC) {
-        while (!ncrisc_dynamic_noc_nonposted_atomics_flushed(noc_idx));
+        uint32_t self_risc_acked = get_noc_counter_val<proc_type, NocBarrierType::NONPOSTED_ATOMICS_ACKED>(noc_idx);
+        uint32_t other_risc_acked =
+            get_noc_counter_val<1 - proc_type, NocBarrierType::NONPOSTED_ATOMICS_ACKED>(noc_idx);
+        uint32_t count = NOC_STATUS_READ_REG(noc_idx, NIU_MST_ATOMIC_RESP_RECEIVED);
+        uint32_t total = self_risc_acked + other_risc_acked;
+        WATCHER_RING_BUFFER_PUSH(0xdeadbeef);
+        WATCHER_RING_BUFFER_PUSH(noc_idx);
+        WATCHER_RING_BUFFER_PUSH(proc_type);
+        WATCHER_RING_BUFFER_PUSH(self_risc_acked);
+        WATCHER_RING_BUFFER_PUSH(other_risc_acked);
+        WATCHER_RING_BUFFER_PUSH(count);
+        WATCHER_RING_BUFFER_PUSH(total);
+        for (volatile uint32_t i = 0; i < 1000000; ++i);
+        while (!ncrisc_dynamic_noc_nonposted_atomics_flushed(noc_idx)) {
+            uint32_t self_risc_acked = get_noc_counter_val<proc_type, NocBarrierType::NONPOSTED_ATOMICS_ACKED>(noc_idx);
+            uint32_t other_risc_acked =
+                get_noc_counter_val<1 - proc_type, NocBarrierType::NONPOSTED_ATOMICS_ACKED>(noc_idx);
+            uint32_t count = NOC_STATUS_READ_REG(noc_idx, NIU_MST_ATOMIC_RESP_RECEIVED);
+            uint32_t total = self_risc_acked + other_risc_acked;
+            WATCHER_RING_BUFFER_PUSH(0xdeadbeef);
+            WATCHER_RING_BUFFER_PUSH(noc_idx);
+            WATCHER_RING_BUFFER_PUSH(proc_type);
+            WATCHER_RING_BUFFER_PUSH(self_risc_acked);
+            WATCHER_RING_BUFFER_PUSH(other_risc_acked);
+            WATCHER_RING_BUFFER_PUSH(count);
+            WATCHER_RING_BUFFER_PUSH(total);
+            for (volatile uint32_t i = 0; i < 1000000; ++i);
+        }
     } else {
         while (!ncrisc_noc_nonposted_atomics_flushed(noc_idx));
     }

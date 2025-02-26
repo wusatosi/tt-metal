@@ -384,7 +384,7 @@ int main() {
     noc_init(MEM_NOC_ATOMIC_RET_VAL_ADDR);
     noc_local_state_init(noc_index);
     uint8_t prev_noc_mode = DM_DEDICATED_NOC;
-
+    uint8_t noc_atomic_cmd_buf = BRISC_AT_CMD_BUF;
     while (1) {
         init_sync_registers();
         reset_ncrisc_with_iram();
@@ -417,7 +417,7 @@ int main() {
                 DEBUG_SANITIZE_NOC_ADDR(noc_index, dispatch_addr, 4);
                 noc_fast_atomic_increment(
                     noc_index,
-                    NCRISC_AT_CMD_BUF,
+                    noc_atomic_cmd_buf,
                     dispatch_addr,
                     NOC_UNICAST_WRITE_VC,
                     1,
@@ -463,18 +463,19 @@ int main() {
                     noc_init(MEM_NOC_ATOMIC_RET_VAL_ADDR);
                 }
                 noc_local_state_init(noc_index);
+                noc_atomic_cmd_buf = BRISC_AT_CMD_BUF;
             } else {
                 if (prev_noc_mode != noc_mode) {
                     dynamic_noc_init();
                 }
                 dynamic_noc_local_state_init();
+                noc_atomic_cmd_buf = DYNAMIC_NOC_BRISC_AT_CMD_BUF;
             }
             prev_noc_mode = noc_mode;
 
             uint32_t tt_l1_ptr* cb_l1_base =
                 (uint32_t tt_l1_ptr*)(kernel_config_base + launch_msg_address->kernel_config.local_cb_offset);
             setup_local_cb_read_write_interfaces(cb_l1_base, 0, num_cbs_to_early_init, true, true, false);
-            finish_ncrisc_copy_and_run(enables);
 
             // Run the BRISC kernel
             WAYPOINT("R");
@@ -488,6 +489,7 @@ int main() {
                 end_cb_index = launch_msg_address->kernel_config.min_remote_cb_start_index;
                 experimental::setup_remote_cb_interfaces<true>(cb_l1_base, end_cb_index);
                 noc_async_atomic_barrier();
+                finish_ncrisc_copy_and_run(enables);
                 int index = static_cast<std::underlying_type<TensixProcessorTypes>::type>(TensixProcessorTypes::DM0);
                 void (*kernel_address)(uint32_t) = (void (*)(uint32_t))
                     (kernel_config_base + launch_msg_address->kernel_config.kernel_text_offset[index]);
@@ -503,34 +505,50 @@ int main() {
 #endif
                 // Brisc is responsible for issuing any noc cmds needed when initializing remote cbs
                 // So have brisc setup remote cb interfaces even when brisc is not in use
-                if (launch_msg_address->kernel_config.enables) {
+                if (enables) {
                     cb_l1_base =
                         (uint32_t tt_l1_ptr*)(kernel_config_base + launch_msg_address->kernel_config.remote_cb_offset);
                     uint32_t end_cb_index = launch_msg_address->kernel_config.min_remote_cb_start_index;
                     experimental::setup_remote_cb_interfaces<true>(cb_l1_base, end_cb_index);
                     noc_async_atomic_barrier();
                 }
+                finish_ncrisc_copy_and_run(enables);
                 wait_for_go_message();
             }
             WAYPOINT("D");
 
             wait_ncrisc_trisc();
-
+            noc_async_atomic_barrier();
             if (noc_mode == DM_DYNAMIC_NOC) {
                 // barrier to make sure all writes are finished
                 WAYPOINT("NKFW");
                 // Assert that no noc transactions are outstanding, to ensure that all reads and writes have landed and
                 // the NOC interface is in a known idle state for the next kernel.
                 for (int noc = 0; noc < NUM_NOCS; noc++) {
-                    ASSERT(ncrisc_dynamic_noc_reads_flushed(noc));
-                    ASSERT(ncrisc_dynamic_noc_nonposted_writes_sent(noc));
-                    ASSERT(ncrisc_dynamic_noc_nonposted_writes_flushed(noc));
-                    ASSERT(ncrisc_dynamic_noc_nonposted_atomics_flushed(noc));
-                    ASSERT(ncrisc_dynamic_noc_posted_writes_sent(noc));
+                    // while(!ncrisc_dynamic_noc_reads_flushed(noc));
+                    // while(!ncrisc_dynamic_noc_nonposted_writes_sent(noc));
+                    // while(!ncrisc_dynamic_noc_nonposted_writes_flushed(noc));
+                    while (!ncrisc_dynamic_noc_nonposted_atomics_flushed(noc)) {
+                        WATCHER_RING_BUFFER_PUSH(0xbeefbeef);
+                        uint32_t self_risc_acked =
+                            get_noc_counter_val<proc_type, NocBarrierType::NONPOSTED_ATOMICS_ACKED>(noc);
+                        uint32_t other_risc_acked =
+                            get_noc_counter_val<1 - proc_type, NocBarrierType::NONPOSTED_ATOMICS_ACKED>(noc);
+                        uint32_t count = NOC_STATUS_READ_REG(noc, NIU_MST_ATOMIC_RESP_RECEIVED);
+                        uint32_t total = self_risc_acked + other_risc_acked;
+                        WATCHER_RING_BUFFER_PUSH(noc);
+                        WATCHER_RING_BUFFER_PUSH(proc_type);
+                        WATCHER_RING_BUFFER_PUSH(self_risc_acked);
+                        WATCHER_RING_BUFFER_PUSH(other_risc_acked);
+                        WATCHER_RING_BUFFER_PUSH(count);
+                        WATCHER_RING_BUFFER_PUSH(total);
+                        for (volatile uint32_t i = 0; i < 1000000; ++i);
+                    }
+                    // while(!ncrisc_dynamic_noc_posted_writes_sent(noc));
                 }
                 WAYPOINT("NKFD");
             }
-
+            noc_async_atomic_barrier();
 #if defined(PROFILE_KERNEL)
             if (noc_mode == DM_DYNAMIC_NOC) {
                 // re-init for profiler to able to run barrier in dedicated noc mode
@@ -556,7 +574,7 @@ int main() {
                 CLEAR_PREVIOUS_LAUNCH_MESSAGE_ENTRY_FOR_WATCHER();
                 noc_fast_atomic_increment(
                     noc_index,
-                    NCRISC_AT_CMD_BUF,
+                    noc_atomic_cmd_buf,
                     dispatch_addr,
                     NOC_UNICAST_WRITE_VC,
                     1,
@@ -565,6 +583,7 @@ int main() {
                     true /*posted*/);
                 mailboxes->launch_msg_rd_ptr = (launch_msg_rd_ptr + 1) & (launch_msg_buffer_num_entries - 1);
             }
+            noc_async_atomic_barrier();
         }
     }
 
