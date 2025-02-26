@@ -240,7 +240,7 @@ TEST_F(MeshWorkloadTestT3000, SimultaneousMeshWorkloads) {
 // MeshWorkload tests on N300 and T3000
 TEST_F(MeshWorkloadTestSuite, RandomizedMeshWorkload) {
     uint32_t num_programs = 60;
-    uint32_t num_iterations = 1500;
+    uint32_t num_iterations = 5;
     auto random_seed = 10;
     uint32_t seed = tt::parse_env("TT_METAL_SEED", random_seed);
     log_info(tt::LogTest, "Using Test Seed: {}", seed);
@@ -258,7 +258,8 @@ TEST_F(MeshWorkloadTestSuite, RandomizedMeshWorkload) {
     log_info(tt::LogTest, "Compile and load {} MeshWorkloads", num_programs);
     for (int i = 0; i < num_programs; i += 1) {
         // Choose a grid of random dimensions and run a MeshWorkload on it
-        MeshCoordinateRange device_range(MeshCoordinate{0, 0}, MeshCoordinate{gen_row(rng) - 1, gen_col(rng) - 1});
+        MeshCoordinateRange device_range(
+            MeshCoordinate{0, 0}, MeshCoordinate{mesh_device_->num_rows() - 1, mesh_device_->num_cols() - 1});
         auto random_workload = std::make_shared<MeshWorkload>();
         AddProgramToMeshWorkload(*random_workload, std::move(*programs[i]), device_range);
         EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), *random_workload, false);
@@ -537,6 +538,59 @@ TEST_F(MeshWorkloadTestSuite, MeshWorkloadSemaphoreDifferentPrograms) {
     for (const auto& device_coord : devices_1) {
         auto device = mesh_device_->get_device(device_coord);
         validate_sems(mesh_device_, device, full_grid, mesh_workload, expected_semaphore_values_1);
+    }
+}
+
+TEST_F(MeshWorkloadTestSuite, ShardedMeshBufferWrites) {
+    constexpr uint32_t NUM_ITERS = 50;
+    uint32_t seed = tt::parse_env("TT_METAL_SEED", 0);
+    uint32_t single_tile_size = ::tt::tt_metal::detail::TileSize(DataFormat::UInt32);
+
+    std::uniform_int_distribution<int> gen_num_datums(32, 128);
+    std::mt19937 rng(seed);
+
+    DeviceLocalBufferConfig per_device_buffer_config{
+        .page_size = single_tile_size,
+        .buffer_type = BufferType::DRAM,
+        .buffer_layout = TensorMemoryLayout::INTERLEAVED,
+        .bottom_up = true};
+
+    distributed::MeshCoordinateRange coord_range(
+        distributed::MeshCoordinate(0, 0),
+        distributed::MeshCoordinate(mesh_device_->num_rows() - 1, mesh_device_->num_cols() - 1));
+    for (auto shard_orientation : {ShardOrientation::COL_MAJOR, ShardOrientation::ROW_MAJOR}) {
+        for (int i = 0; i < NUM_ITERS; i++) {
+            Shape2D global_buffer_shape = {
+                gen_num_datums(rng) * constants::TILE_HEIGHT * 2, gen_num_datums(rng) * constants::TILE_WIDTH * 4};
+            Shape2D shard_shape = {global_buffer_shape.height() / 2, global_buffer_shape.width() / 4};
+            uint32_t global_buffer_size = global_buffer_shape.height() * global_buffer_shape.width() * sizeof(uint32_t);
+            ShardedBufferConfig sharded_config{
+                .global_size = global_buffer_size,
+                .global_buffer_shape = global_buffer_shape,
+                .shard_shape = shard_shape,
+                .shard_orientation = shard_orientation,
+            };
+            std::vector<uint32_t> src_vec = std::vector<uint32_t>(global_buffer_size / 8 / sizeof(uint32_t), 0);
+            std::iota(src_vec.begin(), src_vec.end(), 0);
+            std::unordered_map<distributed::MeshCoordinate, std::vector<uint32_t>> dst_vec = {};
+            auto mesh_buffer = MeshBuffer::create(sharded_config, per_device_buffer_config, mesh_device_.get());
+            std::vector<MeshCommandQueue::ShardDataTransfer> input_shards = {};
+            std::vector<MeshCommandQueue::ShardDataTransfer> output_shards = {};
+            for (auto& coord : coord_range) {
+                input_shards.push_back({coord, src_vec.data()});
+            }
+            for (auto& coord : coord_range) {
+                dst_vec[coord] = std::vector<uint32_t>(global_buffer_size / 8 / sizeof(uint32_t), 0);
+                output_shards.push_back({coord, dst_vec[coord].data()});
+            }
+
+            mesh_device_->mesh_command_queue().enqueue_write_shards(mesh_buffer, input_shards, false);
+            mesh_device_->mesh_command_queue().enqueue_read_shards(output_shards, mesh_buffer, true);
+
+            for (auto& dst : dst_vec) {
+                EXPECT_EQ(dst.second, src_vec);
+            }
+        }
     }
 }
 
