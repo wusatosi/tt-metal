@@ -513,7 +513,7 @@ int main() {
             // Run the BRISC kernel
             WAYPOINT("R");
             if (enables & DISPATCH_CLASS_MASK_TENSIX_ENABLE_DM0) {
-                end_cb_index = launch_msg_address->kernel_config.max_local_cb_end_index;
+                uint32_t end_cb_index = launch_msg_address->kernel_config.max_local_cb_end_index;
                 setup_local_cb_read_write_interfaces(
                     cb_l1_base, num_cbs_to_early_init, end_cb_index, true, true, false);
 
