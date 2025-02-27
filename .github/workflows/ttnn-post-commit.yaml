@@ -108,6 +108,7 @@ jobs:
         with:
           docker_username: ${{ github.actor }}
           docker_password: ${{ secrets.GITHUB_TOKEN }}
+          docker_os_arch: tt-metalium/${{ inputs.os }}-amd64
           docker_opts: |
             -e ARCH_NAME=${{ inputs.arch }}
             -e GITHUB_ACTIONS=true
