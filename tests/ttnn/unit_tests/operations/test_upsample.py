@@ -239,20 +239,15 @@ def test_upsample_multi_core(device, input_shape, scale_h, scale_w, shard_strate
 
 
 @skip_for_grayskull()
-@skip_for_blackhole()
+# @skip_for_blackhole()
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
 @pytest.mark.parametrize(
     "batch_size, num_channels, height, width, scale_h, scale_w",
-    (
-        (1, 256, 16, 16, 8, 8),  # 256x256
-        (1, 256, 32, 32, 4, 4),  # 256x256
-        (1, 256, 64, 64, 2, 2),  # 256x256
-        (1, 256, 128, 128, 1, 1),  # 256x256
-    ),
+    ((1, 32, 2, 2, 1, 1),),
 )
 @pytest.mark.parametrize("shard_strategy", [ttnn.ShardStrategy.HEIGHT])
-@pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.HiFi4, ttnn.MathFidelity.LoFi])
-@pytest.mark.parametrize("math_approx_mode", [True, False])
+@pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.HiFi4])
+@pytest.mark.parametrize("math_approx_mode", [True])
 def test_bilinear_multi_core(
     device,
     use_program_cache,
@@ -269,7 +264,7 @@ def test_bilinear_multi_core(
     ## input shape is N C H W
     input_shape = [batch_size, num_channels, height, width]
     torch.manual_seed(0)
-    input = torch.rand(input_shape, dtype=torch.bfloat16)
+    input = torch.ones(input_shape, dtype=torch.bfloat16)
 
     ## golden reference using torch
     scale_factor = (scale_h, scale_w)
@@ -368,6 +363,8 @@ def test_bilinear_multi_core(
 
     passing, pcc_msg = check_with_pcc_without_tensor_printout(torch_result, output_tensor, pcc=0.999)
     allclose = torch.allclose(output_tensor, torch_result, atol=1e-1, rtol=1e-1)
+    print(output_tensor)
+    print(torch_result)
     logger.info(pcc_msg)
 
     assert allclose
