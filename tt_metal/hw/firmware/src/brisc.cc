@@ -248,23 +248,21 @@ void device_setup() {
 }
 
 inline void deassert_ncrisc_trisc() {
-    // Below sets ncrisc to go so we can wait until it is cleared on first iteration
-    mailboxes->slave_sync.all = RUN_SYNC_MSG_ALL_SLAVES_DONE;
-
     // Bring ncrisc/triscs out of reset
     deassert_all_reset();
 }
 
 inline void run_triscs(dispatch_core_processor_masks enables) {
     // Wait for init_sync_registers to complete. Should always be done by the time we get here.
-    while (mailboxes->slave_sync.trisc0 != RUN_SYNC_MSG_DONE) {
-        invalidate_l1_cache();
+    while (get_slave_sync_component(SLAVE_SYNC_MSG_OFFSET_TRISC0) != RUN_SYNC_MSG_DONE) {
     }
 
     if (enables & DISPATCH_CLASS_MASK_TENSIX_ENABLE_COMPUTE) {
-        mailboxes->slave_sync.trisc0 = RUN_SYNC_MSG_GO;
-        mailboxes->slave_sync.trisc1 = RUN_SYNC_MSG_GO;
-        mailboxes->slave_sync.trisc2 = RUN_SYNC_MSG_GO;
+        // Previous value should be DONE, i.e. 0.
+        increment_stream_register(
+            SLAVE_SYNC_STREAM_REGISTER,
+            (RUN_SYNC_MSG_GO << SLAVE_SYNC_MSG_OFFSET_TRISC0) | (RUN_SYNC_MSG_GO << SLAVE_SYNC_MSG_OFFSET_TRISC1) |
+                (RUN_SYNC_MSG_GO << SLAVE_SYNC_MSG_OFFSET_TRISC2));
     }
 }
 
@@ -274,7 +272,7 @@ inline void start_ncrisc_kernel_run_early(dispatch_core_processor_masks enables)
     // CBs before we wait on it.
 #if !defined(NCRISC_FIRMWARE_KERNEL_SPLIT)
     if (enables & DISPATCH_CLASS_MASK_TENSIX_ENABLE_DM1) {
-        mailboxes->slave_sync.dm1 = RUN_SYNC_MSG_GO;
+        modify_slave_sync_component<false>(SLAVE_SYNC_MSG_OFFSET_DM1, RUN_SYNC_MSG_LOAD, RUN_SYNC_MSG_GO);
     }
 #endif
 }
@@ -284,8 +282,8 @@ inline void start_ncrisc_kernel_run(dispatch_core_processor_masks enables) {
     if (enables & DISPATCH_CLASS_MASK_TENSIX_ENABLE_DM1) {
         // The NCRISC behaves badly if it jumps from L1 to IRAM, so instead halt it and then reset it to the IRAM
         // address it provides.
-        while (mailboxes->slave_sync.dm1 != RUN_SYNC_MSG_WAITING_FOR_RESET);
-        mailboxes->slave_sync.dm1 = RUN_SYNC_MSG_GO;
+        while (get_slave_sync_component(SLAVE_SYNC_MSG_OFFSET_DM1) != RUN_SYNC_MSG_WAITING_FOR_RESET);
+        modify_slave_sync_component<false>(SLAVE_SYNC_MSG_OFFSET_DM1, RUN_SYNC_MSG_WAITING_FOR_RESET, RUN_SYNC_MSG_GO);
         volatile tt_reg_ptr uint32_t* cfg_regs = core.cfg_regs_base(0);
         cfg_regs[NCRISC_RESET_PC_PC_ADDR32] = mailboxes->ncrisc_halt.resume_addr;
         assert_just_ncrisc_reset();
@@ -300,13 +298,15 @@ inline void start_ncrisc_kernel_run(dispatch_core_processor_masks enables) {
 
 inline void wait_ncrisc_trisc() {
     WAYPOINT("NTW");
-    while (mailboxes->slave_sync.all != RUN_SYNC_MSG_ALL_SLAVES_DONE) {
-        invalidate_l1_cache();
+    while (get_stream_register_value(SLAVE_SYNC_STREAM_REGISTER) != 0) {
     }
     WAYPOINT("NTD");
 }
 
-inline void trigger_sync_register_init() { mailboxes->slave_sync.trisc0 = RUN_SYNC_MSG_INIT_SYNC_REGISTERS; }
+inline void trigger_sync_register_init() {
+    modify_slave_sync_component<false>(
+        SLAVE_SYNC_MSG_OFFSET_TRISC0, RUN_SYNC_MSG_DONE, RUN_SYNC_MSG_INIT_SYNC_REGISTERS);
+}
 
 inline void barrier_remote_cb_interface_setup(uint8_t noc_index, uint32_t end_cb_index) {
 #if defined(ARCH_BLACKHOLE)
@@ -318,6 +318,7 @@ inline void barrier_remote_cb_interface_setup(uint8_t noc_index, uint32_t end_cb
 }
 
 int main() {
+    reset_stream_register(SLAVE_SYNC_STREAM_REGISTER);
     configure_l1_data_cache();
     DIRTY_STACK_MEMORY();
     WAYPOINT("I");
@@ -325,6 +326,7 @@ int main() {
     do_crt1((uint32_t*)MEM_BRISC_INIT_LOCAL_L1_BASE_SCRATCH);
 
     noc_bank_table_init(MEM_BANK_TO_NOC_SCRATCH);
+    mailboxes->slave_sync.all = 0;
 
     mailboxes->launch_msg_rd_ptr = 0; // Initialize the rdptr to 0
     noc_index = 0;
@@ -336,7 +338,6 @@ int main() {
 
     // Set ncrisc's resume address to 0 so we know when ncrisc has overwritten it
     mailboxes->ncrisc_halt.resume_addr = 0;
-    mailboxes->slave_sync.dm1 = RUN_SYNC_MSG_GO;
     deassert_ncrisc_trisc();
 
     mailboxes->go_message.signal = RUN_MSG_DONE;
@@ -377,6 +378,7 @@ int main() {
                 notify_dispatch_core_done(dispatch_addr, noc_index);
             }
         }
+        invalidate_l1_cache();
 
         WAYPOINT("GD");
 
@@ -392,7 +394,7 @@ int main() {
                 (enum dispatch_core_processor_masks)launch_msg_address->kernel_config.enables;
             // Trigger the NCRISC to start loading CBs and IRAM as soon as possible.
             if (enables & DISPATCH_CLASS_MASK_TENSIX_ENABLE_DM1) {
-                mailboxes->slave_sync.dm1 = RUN_SYNC_MSG_LOAD;
+                modify_slave_sync_component<false>(SLAVE_SYNC_MSG_OFFSET_DM1, RUN_SYNC_MSG_DONE, RUN_SYNC_MSG_LOAD);
             }
             // Copies from L1 to IRAM on chips where NCRISC has IRAM
             uint32_t kernel_config_base =

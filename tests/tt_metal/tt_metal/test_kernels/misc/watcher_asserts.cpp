@@ -5,6 +5,7 @@
 #include <cstdint>
 #include "debug/assert.h"
 #include "debug/ring_buffer.h"
+#include "firmware_common.h"
 
 /*
  * A test for the assert feature.
@@ -13,6 +14,7 @@
 void kernel_main() {
 #else
 #include "compute_kernel_api/common.h"
+
 namespace NAMESPACE {
 void MAIN {
 #endif
@@ -56,10 +58,10 @@ void MAIN {
     }
 #else
 #if defined(TRISC0) or defined(TRISC1) or defined(TRISC2)
-#define GET_TRISC_RUN_EVAL(x, t) x##t
-#define GET_TRISC_RUN(x, t) GET_TRISC_RUN_EVAL(x, t)
-    volatile tt_l1_ptr uint8_t * const trisc_run = &GET_TRISC_RUN(((tt_l1_ptr mailboxes_t *)(MEM_MAILBOX_BASE))->slave_sync.trisc, COMPILE_FOR_TRISC);
-    *trisc_run = RUN_SYNC_MSG_DONE;
+    if (a == b) {
+        const uint32_t stream_offset = (COMPILE_FOR_TRISC + 1) * SLAVE_SYNC_MESSAGE_WIDTH;
+        modify_slave_sync_component(stream_offset, RUN_SYNC_MSG_GO, RUN_SYNC_MSG_DONE);
+    }
 #endif
 #endif
 
