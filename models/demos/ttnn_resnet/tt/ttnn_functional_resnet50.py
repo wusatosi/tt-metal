@@ -39,8 +39,6 @@ hardcoded_matmul_config_linear = {
         mcast_in0=True,
     ),
     20: ttnn.MatmulMultiCoreReuseMultiCast1DProgramConfig(
-        # compute_with_storage_grid_size=(8, 4),
-        # in0_block_w=2,
         compute_with_storage_grid_size=(8, 8),
         in0_block_w=1,
         out_subblock_h=1,
@@ -52,8 +50,6 @@ hardcoded_matmul_config_linear = {
         mcast_in0=True,
     ),
     32: ttnn.MatmulMultiCoreReuseMultiCast1DProgramConfig(
-        # compute_with_storage_grid_size=(8, 4),
-        # in0_block_w=2,
         compute_with_storage_grid_size=(8, 8),
         in0_block_w=1,
         out_subblock_h=1,
@@ -212,8 +208,6 @@ class resnet50Bottleneck:
                     enable_subblock_padding=enable_subblock_padding,
                 ),
             }
-            # if is_blackhole():
-            #     conv_kwargs["conv_config"].enable_split_reader = False
 
             if not ttnn.is_tensor_storage_on_device(self.ds_conv_weight_tensor):
                 self.ds_conv_weight_tensor = ttnn.prepare_conv_weights(
@@ -772,7 +766,6 @@ class resnet50:
         if self.batch_size == 16:
             num_cores_x = 8
             num_cores_y = 8
-            # self.fold_compute_grid_size = (num_cores_x, num_cores_y)
             self.fold_compute_grid_size = ttnn.CoreRangeSet(
                 {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(num_cores_x - 1, num_cores_y - 1))}
             )
@@ -786,7 +779,6 @@ class resnet50:
             elif is_blackhole():
                 num_cores_x = 10
                 num_cores_y = 8
-            # self.fold_compute_grid_size = (num_cores_x, num_cores_y)
             self.fold_compute_grid_size = ttnn.CoreRangeSet(
                 {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(num_cores_x - 1, num_cores_y - 1))}
             )
@@ -966,19 +958,6 @@ class resnet50:
                     ),
                 }
             )
-            # ## 128
-            # core_range_set = ttnn.CoreRangeSet(
-            #     {
-            #         ttnn.CoreRange(
-            #             ttnn.CoreCoord(0, 0),
-            #             ttnn.CoreCoord(12, 8),
-            #         ),
-            #         ttnn.CoreRange(
-            #             ttnn.CoreCoord(0, 9),
-            #             ttnn.CoreCoord(10, 9),
-            #         ),
-            #     }
-            # )
         elif is_wormhole_b0():
             core_range_set = ttnn.CoreGrid(x=8, y=7)
 
@@ -991,8 +970,6 @@ class resnet50:
                 tile_layout=True,
             )
             x = ttnn.to_memory_config(x, mem_config)
-
-        # x = ttnn.to_layout(x, ttnn.TILE_LAYOUT, dtype=self.model_config["ACTIVATIONS_DTYPE"])
 
         if self.batch_size == 20 and is_grayskull():
             x = ttnn.reallocate(x)

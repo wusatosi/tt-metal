@@ -305,7 +305,6 @@ Tensor FoldOperation::invoke(
                            pad_c,
                            pad_h,
                            pad_w,
-                           // grid_size.value_or(CoreCoord(1, 1)),
                            core_grid.value_or(CoreRangeSet{CoreRange{CoreCoord{0, 0}, CoreCoord{1, 1}}}),
                            override_memory_config)
                     .at(0);
