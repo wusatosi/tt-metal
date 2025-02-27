@@ -6,7 +6,7 @@
 #include "llk_unpack_AB.h"
 #include "llk_unpack_common_api.h"
 #include "llk_unpack_tilize.h"
-
+#include "debug/dprint.h"
 /*************************************************************************
  * LLK UNPACK TILIZE
  *************************************************************************/
@@ -46,9 +46,10 @@ inline void llk_unpack_tilize_init(const std::uint32_t operand, const std::uint3
     const std::uint32_t operand_id = get_operand_id(operand);
     const std::uint32_t face_r_dim = get_operand_face_r_dim(operand_id);
     const bool narrow_tile = get_operand_narrow_tile(operand_id);
+    const bool unpack_to_dest = unpack_src_format[operand_id] == (const int32_t)DataFormat::Float32 || unpack_src_format[operand_id] == (const int32_t)DataFormat::UInt32;
 
     _llk_unpack_tilize_init_(
-        unpack_src_format[operand_id], unpack_dst_format[operand_id], ct_dim, face_r_dim, narrow_tile);
+        unpack_src_format[operand_id], unpack_dst_format[operand_id], ct_dim, face_r_dim, narrow_tile, unpack_to_dest);
 }
 
 inline void llk_unpack_tilize_uninit(const std::uint32_t operand, const std::uint32_t face_r_dim = FACE_R_DIM) {
@@ -80,13 +81,14 @@ inline void llk_unpack_tilize(std::uint32_t operand, std::uint32_t tile_index, s
     const std::uint32_t face_r_dim = get_operand_face_r_dim(operand_id);
     const std::uint32_t num_faces = get_operand_num_faces(operand_id);
     const bool narrow_tile = get_operand_narrow_tile(operand_id);
+    const bool unpack_to_dest = unpack_src_format[operand_id] == (const int32_t)DataFormat::Float32 || unpack_src_format[operand_id] == (const int32_t)DataFormat::UInt32;
 
-    std::uint32_t base_address =
-        get_local_cb_interface(operand_id).fifo_rd_ptr - 1;  // Remove header size added by descriptor
+    std::uint32_t base_address = get_local_cb_interface(operand_id).fifo_rd_ptr - 1;  // Remove header size added by descriptor
+    std::uint32_t offset_address = get_local_cb_interface(operand_id).fifo_page_size * tile_index;
 
     WAYPOINT("UPTW");
     _llk_unpack_tilize_(
-        base_address, tile_index, unpack_src_format[operand_id], block_ct_dim, face_r_dim, num_faces, narrow_tile);
+        base_address, tile_index, unpack_src_format[operand_id], block_ct_dim, face_r_dim, num_faces, narrow_tile, unpack_to_dest, offset_address);
     WAYPOINT("UPTD");
 }
 
