@@ -5,7 +5,7 @@
 #pragma once
 
 #include <stdint.h>
-
+#include <array>
 #include "noc_parameters.h"
 #include <dev_msgs.h>
 #include "noc_overlay_parameters.h"
@@ -63,72 +63,42 @@ extern uint32_t noc_nonposted_writes_acked[NUM_NOCS];
 extern uint32_t noc_nonposted_atomics_acked[NUM_NOCS];
 extern uint32_t noc_posted_writes_num_issued[NUM_NOCS];
 
-#define BRISC_NOC0_RD_NUM_ISSUED MEM_NOC_COUNTER_BASE
-#define BRISC_NOC1_RD_NUM_ISSUED (BRISC_NOC0_RD_NUM_ISSUED + MEM_NOC_COUNTER_SIZE)
-#define NCRISC_NOC0_RD_NUM_ISSUED (BRISC_NOC1_RD_NUM_ISSUED + MEM_NOC_COUNTER_SIZE)
-#define NCRISC_NOC1_RD_NUM_ISSUED (NCRISC_NOC0_RD_NUM_ISSUED + MEM_NOC_COUNTER_SIZE)
-#define BRISC_NOC0_NONPOSTED_WR_NUM_ISSUED (NCRISC_NOC1_RD_NUM_ISSUED + MEM_NOC_COUNTER_SIZE)
-#define BRISC_NOC1_NONPOSTED_WR_NUM_ISSUED (BRISC_NOC0_NONPOSTED_WR_NUM_ISSUED + MEM_NOC_COUNTER_SIZE)
-#define NCRISC_NOC0_NONPOSTED_WR_NUM_ISSUED (BRISC_NOC1_NONPOSTED_WR_NUM_ISSUED + MEM_NOC_COUNTER_SIZE)
-#define NCRISC_NOC1_NONPOSTED_WR_NUM_ISSUED (NCRISC_NOC0_NONPOSTED_WR_NUM_ISSUED + MEM_NOC_COUNTER_SIZE)
-#define BRISC_NOC0_NONPOSTED_WR_ACKED (NCRISC_NOC1_NONPOSTED_WR_NUM_ISSUED + MEM_NOC_COUNTER_SIZE)
-#define BRISC_NOC1_NONPOSTED_WR_ACKED (BRISC_NOC0_NONPOSTED_WR_ACKED + MEM_NOC_COUNTER_SIZE)
-#define NCRISC_NOC0_NONPOSTED_WR_ACKED (BRISC_NOC1_NONPOSTED_WR_ACKED + MEM_NOC_COUNTER_SIZE)
-#define NCRISC_NOC1_NONPOSTED_WR_ACKED (NCRISC_NOC0_NONPOSTED_WR_ACKED + MEM_NOC_COUNTER_SIZE)
-#define BRISC_NOC0_NONPOSTED_AT_ACKED (NCRISC_NOC1_NONPOSTED_WR_ACKED + MEM_NOC_COUNTER_SIZE)
-#define BRISC_NOC1_NONPOSTED_AT_ACKED (BRISC_NOC0_NONPOSTED_AT_ACKED + MEM_NOC_COUNTER_SIZE)
-#define NCRISC_NOC0_NONPOSTED_AT_ACKED (BRISC_NOC1_NONPOSTED_AT_ACKED + MEM_NOC_COUNTER_SIZE)
-#define NCRISC_NOC1_NONPOSTED_AT_ACKED (NCRISC_NOC0_NONPOSTED_AT_ACKED + MEM_NOC_COUNTER_SIZE)
-#define BRISC_NOC0_POSTED_WR_NUM_ISSUED (NCRISC_NOC1_NONPOSTED_AT_ACKED + MEM_NOC_COUNTER_SIZE)
-#define BRISC_NOC1_POSTED_WR_NUM_ISSUED (BRISC_NOC0_POSTED_WR_NUM_ISSUED + MEM_NOC_COUNTER_SIZE)
-#define NCRISC_NOC0_POSTED_WR_NUM_ISSUED (BRISC_NOC1_POSTED_WR_NUM_ISSUED + MEM_NOC_COUNTER_SIZE)
-#define NCRISC_NOC1_POSTED_WR_NUM_ISSUED (NCRISC_NOC0_POSTED_WR_NUM_ISSUED + MEM_NOC_COUNTER_SIZE)
-
-static_assert(
-    NCRISC_NOC1_POSTED_WR_NUM_ISSUED + MEM_NOC_COUNTER_SIZE == MEM_NOC_COUNTER_BASE + MEM_NOC_COUNTER_L1_SIZE);
-
 enum class NocBarrierType : uint8_t {
     READS_NUM_ISSUED,
     NONPOSTED_WRITES_NUM_ISSUED,
     NONPOSTED_WRITES_ACKED,
     NONPOSTED_ATOMICS_ACKED,
-    POSTED_WRITES_NUM_ISSUED
+    POSTED_WRITES_NUM_ISSUED,
+    COUNT
 };
+
+static constexpr uint8_t NUM_BARRIER_TYPES = static_cast<uint32_t>(NocBarrierType::COUNT);
+
+constexpr std::array<std::array<std::array<uint32_t, NUM_NOCS>, NUM_BARRIER_TYPES>, MaxDMProcessorsPerCoreType>
+initialize_noc_counter_addresses() {
+    std::array<std::array<std::array<uint32_t, NUM_NOCS>, NUM_BARRIER_TYPES>, MaxDMProcessorsPerCoreType> arr = {};
+    uint32_t addr = MEM_NOC_COUNTER_BASE;
+    for (uint8_t proc = 0; proc < MaxDMProcessorsPerCoreType; proc++) {
+        for (uint8_t barrier = 0; barrier < NUM_BARRIER_TYPES; barrier++) {
+            for (uint8_t noc = 0; noc < NUM_NOCS; noc++) {
+                arr[proc][barrier][noc] = addr;
+                addr += MEM_NOC_COUNTER_SIZE;
+            }
+        }
+    }
+    return arr;
+}
+
+static constexpr std::array<std::array<std::array<uint32_t, NUM_NOCS>, NUM_BARRIER_TYPES>, MaxDMProcessorsPerCoreType>
+    noc_counter_addresses = initialize_noc_counter_addresses();
+
+static_assert(
+    noc_counter_addresses[MaxDMProcessorsPerCoreType - 1][NUM_BARRIER_TYPES - 1][NUM_NOCS - 1] + MEM_NOC_COUNTER_SIZE ==
+    MEM_MAP_END);
 
 template <uint8_t proc_t, NocBarrierType barrier_type>
 inline __attribute__((always_inline)) uint32_t get_noc_counter_address(uint32_t noc) {
-    constexpr TensixProcessorTypes proc = static_cast<TensixProcessorTypes>(proc_t);
-    if constexpr (barrier_type == NocBarrierType::READS_NUM_ISSUED) {
-        if constexpr (proc == TensixProcessorTypes::DM0) {
-            return noc == 0 ? BRISC_NOC0_RD_NUM_ISSUED : BRISC_NOC1_RD_NUM_ISSUED;
-        } else {
-            return noc == 0 ? NCRISC_NOC0_RD_NUM_ISSUED : NCRISC_NOC1_RD_NUM_ISSUED;
-        }
-    } else if constexpr (barrier_type == NocBarrierType::NONPOSTED_WRITES_NUM_ISSUED) {
-        if constexpr (proc == TensixProcessorTypes::DM0) {
-            return noc == 0 ? BRISC_NOC0_NONPOSTED_WR_NUM_ISSUED : BRISC_NOC1_NONPOSTED_WR_NUM_ISSUED;
-        } else {
-            return noc == 0 ? NCRISC_NOC0_NONPOSTED_WR_NUM_ISSUED : NCRISC_NOC1_NONPOSTED_WR_NUM_ISSUED;
-        }
-    } else if constexpr (barrier_type == NocBarrierType::NONPOSTED_WRITES_ACKED) {
-        if constexpr (proc == TensixProcessorTypes::DM0) {
-            return noc == 0 ? BRISC_NOC0_NONPOSTED_WR_ACKED : BRISC_NOC1_NONPOSTED_WR_ACKED;
-        } else {
-            return noc == 0 ? NCRISC_NOC0_NONPOSTED_WR_ACKED : NCRISC_NOC1_NONPOSTED_WR_ACKED;
-        }
-    } else if constexpr (barrier_type == NocBarrierType::NONPOSTED_ATOMICS_ACKED) {
-        if constexpr (proc == TensixProcessorTypes::DM0) {
-            return noc == 0 ? BRISC_NOC0_NONPOSTED_AT_ACKED : BRISC_NOC1_NONPOSTED_AT_ACKED;
-        } else {
-            return noc == 0 ? NCRISC_NOC0_NONPOSTED_AT_ACKED : NCRISC_NOC1_NONPOSTED_AT_ACKED;
-        }
-    } else {
-        if constexpr (proc == TensixProcessorTypes::DM0) {
-            return noc == 0 ? BRISC_NOC0_POSTED_WR_NUM_ISSUED : BRISC_NOC1_POSTED_WR_NUM_ISSUED;
-        } else {
-            return noc == 0 ? NCRISC_NOC0_POSTED_WR_NUM_ISSUED : NCRISC_NOC1_POSTED_WR_NUM_ISSUED;
-        }
-    }
+    return noc_counter_addresses[proc_t][static_cast<std::underlying_type_t<NocBarrierType>>(barrier_type)][noc];
 }
 
 // noc_nonposted_writes_acked
