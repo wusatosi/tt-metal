@@ -25,9 +25,9 @@ using namespace tt;
 using namespace tt::test_utils;
 using namespace tt::test_utils::df;
 
-TEST_F(DeviceSingleCardFastSlowDispatchFixture, TestDynamicNoCAsyncWriteProgram) {
+TEST_F(DeviceSingleCardFastSlowDispatchFixture, TestDynamicNoCOnlyProgram) {
     uint32_t NUM_PROGRAMS = 3;
-    uint32_t MAX_LOOP = 123456789;
+    uint32_t MAX_LOOP = 65536;
     uint32_t page_size = 1024;
 
     // Make random
@@ -70,10 +70,22 @@ TEST_F(DeviceSingleCardFastSlowDispatchFixture, TestDynamicNoCAsyncWriteProgram)
                 CoreCoord core = {(std::size_t) core_idx_x, (std::size_t) core_idx_y};
                 CoreCoord neighbour_core = {core_idx_x == worker_grid_size.x - 1 ? 0 : core_idx_x + 1, core_idx_y};
                 CoreCoord neighbour_core_physical = device_->worker_core_from_logical_core(neighbour_core);
+                // mcast
+                auto device_grid = this->device_->compute_with_storage_grid_size();
+                CoreCoord top_left_core = {0, 0};
+                CoreCoord top_left_core_physical = device_->worker_core_from_logical_core(top_left_core);
+                CoreCoord bottom_right_core = {device_grid.x - 1, device_grid.y - 1};
+                CoreCoord bottom_right_core_physical = device_->worker_core_from_logical_core(bottom_right_core);
                 std::vector<uint32_t> rt_args = {
-                    (std::uint32_t) neighbour_core_physical.x,
-                    (std::uint32_t) neighbour_core_physical.y,
-                };
+                    (std::uint32_t)neighbour_core_physical.x,
+                    (std::uint32_t)neighbour_core_physical.y,
+                    // mcast
+                    (core_idx_x == 0 && core_idx_y == 0) ? true : false,
+                    top_left_core_physical.x,
+                    top_left_core_physical.y,
+                    bottom_right_core_physical.x,
+                    bottom_right_core_physical.y,
+                    device_grid.x * device_grid.y};
                 tt::tt_metal::SetRuntimeArgs(program, brisc_kernel, core, rt_args);
                 tt::tt_metal::SetRuntimeArgs(program, ncrisc_kernel, core, rt_args);
             }

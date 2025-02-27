@@ -707,6 +707,11 @@ void noc_async_read_one_packet(
     WAYPOINT("NAOW");
     DEBUG_SANITIZE_NOC_READ_TRANSACTION(noc, src_noc_addr, dst_local_l1_addr, size);
 
+    if constexpr (noc_mode == DM_DYNAMIC_NOC) {
+        uint32_t noc_rd_cmd_field =
+            NOC_CMD_CPY | NOC_CMD_RD | NOC_CMD_RESP_MARKED | NOC_CMD_VC_STATIC | NOC_CMD_STATIC_VC(1);
+        NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_CTRL, noc_rd_cmd_field);
+    }
     NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_RET_ADDR_LO, dst_local_l1_addr);
     NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_TARG_ADDR_LO, (uint32_t)src_noc_addr);
 #ifdef ARCH_BLACKHOLE
@@ -779,6 +784,11 @@ void noc_async_read_one_packet_set_state(std::uint64_t src_noc_addr, std::uint32
 
     WAYPOINT("NASW");
 
+    if constexpr (noc_mode == DM_DYNAMIC_NOC) {
+        uint32_t noc_rd_cmd_field =
+            NOC_CMD_CPY | NOC_CMD_RD | NOC_CMD_RESP_MARKED | NOC_CMD_VC_STATIC | NOC_CMD_STATIC_VC(1);
+        NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_CTRL, noc_rd_cmd_field);
+    }
 #ifdef ARCH_BLACKHOLE
     // Handles reading from PCIe
     NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_TARG_ADDR_MID, (uint32_t)(src_noc_addr >> 32) & 0x1000000F);
@@ -841,6 +851,11 @@ void noc_async_read_set_state(std::uint64_t src_noc_addr, uint8_t noc = noc_inde
 
     WAYPOINT("NAUW");
 
+    if constexpr (noc_mode == DM_DYNAMIC_NOC) {
+        uint32_t noc_rd_cmd_field =
+            NOC_CMD_CPY | NOC_CMD_RD | NOC_CMD_RESP_MARKED | NOC_CMD_VC_STATIC | NOC_CMD_STATIC_VC(1);
+        NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_CTRL, noc_rd_cmd_field);
+    }
 #ifdef ARCH_BLACKHOLE
     // Handles reading from PCIe
     NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_TARG_ADDR_MID, (uint32_t)(src_noc_addr >> 32) & 0x1000000F);
@@ -1161,6 +1176,11 @@ struct InterleavedAddrGenFast {
         while (!noc_cmd_buf_ready(noc, read_cmd_buf));
         WAYPOINT("NRTD");
 
+        if constexpr (noc_mode == DM_DYNAMIC_NOC) {
+            uint32_t noc_rd_cmd_field =
+                NOC_CMD_CPY | NOC_CMD_RD | NOC_CMD_RESP_MARKED | NOC_CMD_VC_STATIC | NOC_CMD_STATIC_VC(1);
+            NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_CTRL, noc_rd_cmd_field);
+        }
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_RET_ADDR_LO, dest_addr);
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_TARG_ADDR_LO, src_addr);            // (uint32_t)src_addr
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_TARG_ADDR_COORDINATE, src_noc_xy);  // src_addr >> 32
@@ -1255,6 +1275,11 @@ struct InterleavedPow2AddrGenFast {
         while (!noc_cmd_buf_ready(noc, read_cmd_buf));
         WAYPOINT("NRPD");
 
+        if constexpr (noc_mode == DM_DYNAMIC_NOC) {
+            uint32_t noc_rd_cmd_field =
+                NOC_CMD_CPY | NOC_CMD_RD | NOC_CMD_RESP_MARKED | NOC_CMD_VC_STATIC | NOC_CMD_STATIC_VC(1);
+            NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_CTRL, noc_rd_cmd_field);
+        }
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_RET_ADDR_LO, dest_addr);
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_TARG_ADDR_LO, src_addr);            // (uint32_t)src_addr
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_TARG_ADDR_COORDINATE, src_noc_xy);  // src_addr >> 32
@@ -1285,6 +1310,11 @@ struct InterleavedPow2AddrGenFast {
         WAYPOINT("RP1D");
         DEBUG_SANITIZE_NOC_READ_TRANSACTION(noc, get_noc_addr_helper(src_noc_xy, src_addr), dest_addr, size);
 
+        if constexpr (noc_mode == DM_DYNAMIC_NOC) {
+            uint32_t noc_rd_cmd_field =
+                NOC_CMD_CPY | NOC_CMD_RD | NOC_CMD_RESP_MARKED | NOC_CMD_VC_STATIC | NOC_CMD_STATIC_VC(1);
+            NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_CTRL, noc_rd_cmd_field);
+        }
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_RET_ADDR_LO, dest_addr);
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_TARG_ADDR_LO, src_addr);            // (uint32_t)src_addr
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_TARG_ADDR_COORDINATE, src_noc_xy);  // src_addr >> 32
