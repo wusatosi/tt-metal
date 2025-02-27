@@ -119,15 +119,13 @@ std::vector<Tensor> fold_with_transpose_(
 
 ttnn::MemoryConfig create_sharded_memory_config(
     ttnn::Shape tensor_shape,
-    // CoreCoord grid_size,
-    CoreRangeSet grid_size,
-    ShardOrientation orientation,
+    const CoreRangeSet grid_size,
+    const ShardOrientation orientation,
     const std::optional<MemoryConfig>& override_memory_config = std::nullopt) {
     if (override_memory_config.has_value()) {
         return override_memory_config.value();
     }
 
-    // uint32_t total_cores = grid_size.x * grid_size.y;
     uint32_t total_cores = grid_size.num_cores();
 
     uint32_t tensor_height = tensor_shape[-2] * tensor_shape[-3] * tensor_shape[-4];
@@ -138,11 +136,7 @@ ttnn::MemoryConfig create_sharded_memory_config(
     auto sharded_memory_config = ttnn::MemoryConfig{
         .memory_layout = ttnn::TensorMemoryLayout::HEIGHT_SHARDED,
         .buffer_type = ttnn::BufferType::L1,
-        .shard_spec = ShardSpec{// CoreRangeSet{std::set<CoreRange>{CoreRange{CoreCoord{0, 0}, CoreCoord{grid_size.x -
-                                // 1, grid_size.y - 1}}}},
-                                grid_size,
-                                {shard_height, shard_width},
-                                orientation}};
+        .shard_spec = ShardSpec{grid_size, {shard_height, shard_width}, orientation}};
 
     tt::log_debug(tt::LogOp, "sharded_memory_config: {}", sharded_memory_config);
 
@@ -297,8 +291,7 @@ Tensor FoldOperation::invoke(
     uint32_t pad_c,
     uint32_t pad_h,
     uint32_t pad_w,
-    // const std::optional<CoreCoord> grid_size,
-    const std::optional<CoreRangeSet> core_grid,
+    const std::optional<CoreRangeSet>& core_grid,
     const std::optional<MemoryConfig>& override_memory_config) {
     if (use_transpose_as_fold) {
         if (input_tensor.is_sharded()) {
@@ -336,8 +329,7 @@ Tensor FoldOperation::invoke(
     uint32_t pad_c,
     uint32_t pad_h,
     uint32_t pad_w,
-    // const std::optional<CoreCoord> grid_size,
-    const std::optional<CoreRangeSet> core_grid,
+    const std::optional<CoreRangeSet>& core_grid,
     const std::optional<MemoryConfig>& override_memory_config) {
     QueueId queue_id = DefaultQueueId;
     return invoke(
