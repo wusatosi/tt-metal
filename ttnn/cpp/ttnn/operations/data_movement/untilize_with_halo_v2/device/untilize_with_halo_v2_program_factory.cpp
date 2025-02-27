@@ -192,13 +192,11 @@ operation::ProgramWithCallbacks untilize_with_halo_multi_core_v2(
         remote_read,
         (uint32_t)(transpose_mcast ? 1 : 0),
         is_width_sharded,
-        aligned_input_nstick_nbytes,
-        true  // split_remote_reader
-    };
+        aligned_input_nstick_nbytes};
 
     reader_ct_args[0] = 0;
     reader_ct_args[1] = local_config_cb_id;
-    reader_ct_args[2] = remote_config_cb_id;
+    reader_ct_args[2] = 0;
 
     KernelHandle reader_kernel_id0 = CreateKernel(
         program,
