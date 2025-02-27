@@ -119,7 +119,7 @@ std::vector<Tensor> fold_with_transpose_(
 
 ttnn::MemoryConfig create_sharded_memory_config(
     ttnn::Shape tensor_shape,
-    const CoreRangeSet grid_size,
+    const CoreRangeSet& grid_size,
     const ShardOrientation orientation,
     const std::optional<MemoryConfig>& override_memory_config = std::nullopt) {
     if (override_memory_config.has_value()) {
@@ -152,7 +152,7 @@ std::vector<Tensor> fold_with_transpose_sharded_(
     uint32_t pad_c,
     uint32_t pad_h,
     uint32_t pad_w,
-    CoreRangeSet grid_size,
+    const CoreRangeSet& grid_size,
     const std::optional<MemoryConfig>& override_memory_config) {
     using namespace tt::constants;
     IDevice* device;
