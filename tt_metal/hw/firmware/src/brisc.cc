@@ -513,7 +513,7 @@ int main() {
             // Run the BRISC kernel
             WAYPOINT("R");
             if (enables & DISPATCH_CLASS_MASK_TENSIX_ENABLE_DM0) {
-                uint32_t end_cb_index = launch_msg_address->kernel_config.max_local_cb_end_index;
+                end_cb_index = launch_msg_address->kernel_config.max_local_cb_end_index;
                 setup_local_cb_read_write_interfaces(
                     cb_l1_base, num_cbs_to_early_init, end_cb_index, true, true, false);
 
@@ -549,20 +549,20 @@ int main() {
             WAYPOINT("D");
 
             wait_ncrisc_trisc();
-
-            if (noc_mode == DM_DYNAMIC_NOC) {
-                // barrier to make sure all writes are finished
-                WAYPOINT("NKFW");
-                // Assert that no noc transactions are outstanding, to ensure that all reads and writes have landed and
-                // the NOC interface is in a known idle state for the next kernel.
-                for (int noc = 0; noc < NUM_NOCS; noc++) {
-                    ASSERT(ncrisc_dynamic_noc_reads_flushed(noc));
-                    ASSERT(ncrisc_dynamic_noc_nonposted_writes_sent(noc));
-                    ASSERT(ncrisc_dynamic_noc_nonposted_writes_flushed(noc));
-                    ASSERT(ncrisc_dynamic_noc_nonposted_atomics_flushed(noc));
-                    ASSERT(ncrisc_dynamic_noc_posted_writes_sent(noc));
+            if constexpr (WATCHER_ASSERT_ENABLED) {
+                if (noc_mode == DM_DYNAMIC_NOC) {
+                    WAYPOINT("NKFW");
+                    // Assert that no noc transactions are outstanding, to ensure that all reads and writes have landed
+                    // and the NOC interface is in a known idle state for the next kernel.
+                    for (int noc = 0; noc < NUM_NOCS; noc++) {
+                        ASSERT(ncrisc_dynamic_noc_reads_flushed(noc));
+                        ASSERT(ncrisc_dynamic_noc_nonposted_writes_sent(noc));
+                        ASSERT(ncrisc_dynamic_noc_nonposted_writes_flushed(noc));
+                        ASSERT(ncrisc_dynamic_noc_nonposted_atomics_flushed(noc));
+                        ASSERT(ncrisc_dynamic_noc_posted_writes_sent(noc));
+                    }
+                    WAYPOINT("NKFD");
                 }
-                WAYPOINT("NKFD");
             }
 
 #if defined(PROFILE_KERNEL)

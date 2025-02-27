@@ -16,6 +16,8 @@ namespace experimental {
 namespace detail {
 
 #ifndef COMPILE_FOR_TRISC
+static constexpr uint8_t default_noc_mode = noc_mode;
+template <uint8_t nm = default_noc_mode, bool barrier_atomics = false>
 FORCE_INLINE void update_pages_sent(
     const RemoteSenderCBInterface& sender_cb_interface, uint32_t aligned_page_adjustment, uint8_t noc) {
     uint32_t aligned_pages_sent_addr = sender_cb_interface.aligned_pages_sent_ptr;
@@ -31,12 +33,29 @@ FORCE_INLINE void update_pages_sent(
             NOC_XY_ENCODING(DYNAMIC_NOC_X(noc, remote_noc_xy_ptr[0]), DYNAMIC_NOC_Y(noc, remote_noc_xy_ptr[1])));
         *pages_sent_ptr += aligned_page_adjustment;
         uint64_t remote_ack_ptr_addr = get_noc_addr_helper(remote_noc_xy, (uint32_t)pages_sent_ptr);
-        noc_semaphore_inc(remote_ack_ptr_addr, aligned_page_adjustment, noc);
+        noc_fast_atomic_increment<nm>(
+            noc,
+            write_at_cmd_buf,
+            remote_ack_ptr_addr,
+            NOC_UNICAST_WRITE_VC,
+            aligned_page_adjustment,
+            31 /*wrap*/,
+            false /*linked*/,
+            false /*posted*/,
+            MEM_NOC_ATOMIC_RET_VAL_ADDR);
         pages_sent_ptr += 2 * L1_ALIGNMENT / sizeof(uint32_t);
         remote_noc_xy_ptr += 2;
     }
+    if constexpr (barrier_atomics) {
+        if constexpr (nm == DM_DYNAMIC_NOC) {
+            while (!ncrisc_dynamic_noc_nonposted_atomics_flushed(noc));
+        } else {
+            while (!ncrisc_noc_nonposted_atomics_flushed(noc));
+        }
+    }
 }
 
+template <uint8_t nm = default_noc_mode, bool barrier_atomics = false>
 FORCE_INLINE void update_pages_acked(
     const RemoteReceiverCBInterface& receiver_cb_interface, uint32_t aligned_page_adjustment, uint8_t noc) {
     uint32_t aligned_pages_acked_addr = receiver_cb_interface.aligned_pages_acked_ptr;
@@ -48,18 +67,38 @@ FORCE_INLINE void update_pages_acked(
         reinterpret_cast<volatile tt_l1_ptr uint32_t*>(aligned_pages_acked_addr);
     *pages_acked_ptr += aligned_page_adjustment;
     uint64_t remote_ack_ptr_addr = get_noc_addr(sender_noc_x, sender_noc_y, (uint32_t)pages_acked_ptr, noc);
-    noc_semaphore_inc(remote_ack_ptr_addr, aligned_page_adjustment, noc);
+    noc_fast_atomic_increment<nm>(
+        noc,
+        write_at_cmd_buf,
+        remote_ack_ptr_addr,
+        NOC_UNICAST_WRITE_VC,
+        aligned_page_adjustment,
+        31 /*wrap*/,
+        false /*linked*/,
+        false /*posted*/,
+        MEM_NOC_ATOMIC_RET_VAL_ADDR);
+    if constexpr (barrier_atomics) {
+        if constexpr (nm == DM_DYNAMIC_NOC) {
+            while (!ncrisc_dynamic_noc_nonposted_atomics_flushed(noc));
+        } else {
+            while (!ncrisc_noc_nonposted_atomics_flushed(noc));
+        }
+    }
 }
 #else
+static constexpr uint8_t default_noc_mode = 0;
+template <uint8_t nm = default_noc_mode, bool barrier_atomics = false>
 FORCE_INLINE void update_pages_sent(
     const RemoteSenderCBInterface& sender_cb_interface, uint32_t aligned_page_adjustment, uint8_t noc) {}
+template <uint8_t nm = default_noc_mode, bool barrier_atomics = false>
 FORCE_INLINE void update_pages_acked(
     const RemoteReceiverCBInterface& receiver_cb_interface, uint32_t aligned_page_adjustment, uint8_t noc) {}
 #endif
 }  // namespace detail
 
-template <bool update_remote_over_noc = false>
-FORCE_INLINE void resize_remote_sender_cb_interface(uint32_t cb_id, uint32_t page_size, uint8_t noc) {
+template <bool update_remote_over_noc = false, bool barrier_atomics = false>
+FORCE_INLINE void resize_remote_sender_cb_interface(
+    uint32_t cb_id, uint32_t page_size, uint8_t noc, uint8_t nm = detail::default_noc_mode) {
     ASSERT(page_size % REMOTE_CIRCULAR_BUFFER_ALIGNED_PAGE_SIZE == 0);
     RemoteSenderCBInterface& sender_cb_interface = get_remote_sender_cb_interface(cb_id);
     uint32_t fifo_size = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(sender_cb_interface.config_ptr)[3];
@@ -79,7 +118,13 @@ FORCE_INLINE void resize_remote_sender_cb_interface(uint32_t cb_id, uint32_t pag
             aligned_page_adjustment = (next_fifo_wr_ptr - fifo_wr_ptr) / REMOTE_CIRCULAR_BUFFER_ALIGNED_PAGE_SIZE;
         }
         if (aligned_page_adjustment != 0) {
-            detail::update_pages_sent(sender_cb_interface, aligned_page_adjustment, noc);
+            if (nm == DM_DYNAMIC_NOC) {
+                detail::update_pages_sent<DM_DYNAMIC_NOC, barrier_atomics>(
+                    sender_cb_interface, aligned_page_adjustment, noc);
+            } else {
+                detail::update_pages_sent<DM_DEDICATED_NOC, barrier_atomics>(
+                    sender_cb_interface, aligned_page_adjustment, noc);
+            }
         }
     } else if (next_fifo_wr_ptr >= fifo_limit_page_aligned) {
         next_fifo_wr_ptr = fifo_start_addr;
@@ -89,8 +134,9 @@ FORCE_INLINE void resize_remote_sender_cb_interface(uint32_t cb_id, uint32_t pag
     sender_cb_interface.fifo_page_size = page_size;
 }
 
-template <bool update_remote_over_noc = false>
-FORCE_INLINE void resize_remote_receiver_cb_interface(uint32_t cb_id, uint32_t page_size, uint8_t noc) {
+template <bool update_remote_over_noc = false, bool barrier_atomics = false>
+FORCE_INLINE void resize_remote_receiver_cb_interface(
+    uint32_t cb_id, uint32_t page_size, uint8_t noc, uint8_t nm = detail::default_noc_mode) {
     ASSERT(page_size % REMOTE_CIRCULAR_BUFFER_ALIGNED_PAGE_SIZE == 0);
     RemoteReceiverCBInterface& receiver_cb_interface = get_remote_receiver_cb_interface(cb_id);
     uint32_t fifo_size = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(receiver_cb_interface.config_ptr)[3];
@@ -110,7 +156,13 @@ FORCE_INLINE void resize_remote_receiver_cb_interface(uint32_t cb_id, uint32_t p
             aligned_page_adjustment = (next_fifo_rd_ptr - fifo_rd_ptr) / REMOTE_CIRCULAR_BUFFER_ALIGNED_PAGE_SIZE;
         }
         if (aligned_page_adjustment != 0) {
-            detail::update_pages_acked(receiver_cb_interface, aligned_page_adjustment, noc);
+            if (nm == DM_DYNAMIC_NOC) {
+                detail::update_pages_acked<DM_DYNAMIC_NOC, barrier_atomics>(
+                    receiver_cb_interface, aligned_page_adjustment, noc);
+            } else {
+                detail::update_pages_acked<DM_DEDICATED_NOC, barrier_atomics>(
+                    receiver_cb_interface, aligned_page_adjustment, noc);
+            }
         }
     } else if (next_fifo_rd_ptr >= fifo_limit_page_aligned) {
         next_fifo_rd_ptr = fifo_start_addr;
