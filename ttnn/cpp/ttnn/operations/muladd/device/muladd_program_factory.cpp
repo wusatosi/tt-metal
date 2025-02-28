@@ -295,9 +295,6 @@ operation::ProgramWithCallbacks multi_core_muladd(
             .compile_args = compute_compile_time_args,
             .defines = defines});
 
-    printf("Num cores: %d\n", num_cores);
-    printf("Shard tiles w: %d, h: %d\n", shard_tiles_w, shard_tiles_h);
-
     for (uint32_t i = 0, output_tile_start_id = 0; i < num_cores; i++) {
         CoreCoord core(i % num_cores_x, i / num_cores_x);
         uint32_t num_output_tiles_per_core = 0;
