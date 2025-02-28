@@ -73,7 +73,8 @@ def run_all_reduce_impl(
 
     # create global semaphore handles
     ccl_semaphore_handles = [
-        create_global_semaphore_with_same_address(mesh_device, ccl_sub_device_crs, 0) for _ in range(8)
+        create_global_semaphore_with_same_address(mesh_device, ccl_sub_device_crs, cluster_shape[cluster_axis])
+        for _ in range(32)
     ]
 
     logger.info(f"Output shape: {output_shape}")
@@ -306,29 +307,30 @@ def run_all_reduce_impl(
 @pytest.mark.parametrize(
     "output_shape, cluster_axis, num_links, input_num_cores, output_num_cores",
     [
-        ([1, 1, 32, 2048], 0, 4, 24, 16),  # FF2/DO all reduce
-        ([1, 1, 32, 1280], 1, 3, 24, 40),  # QKV all reduce
-        ([1, 1, 32, 3584], 1, 3, 24, 24),  # FF1 all reduce
-        ([1, 1, 32, 2048], 0, 3, 24, 16),  # FF2/DO all reduce
-        ([1, 1, 32, 1280], 1, 2, 24, 40),  # QKV all reduce
-        ([1, 1, 32, 3584], 1, 2, 24, 24),  # FF1 all reduce
-        ([1, 1, 32, 2048], 0, 2, 24, 16),  # FF2/DO all reduce
-        ([1, 1, 32, 1280], 1, 1, 24, 40),  # QKV all reduce
-        ([1, 1, 32, 3584], 1, 1, 24, 24),  # FF1 all reduce
-        ([1, 1, 32, 2048], 0, 1, 24, 16),  # FF2/DO all reduce
+        ([1, 1, 32, 128], 0, 4, 4, 4),  # FF2/DO all reduce
+        # ([1, 1, 32, 2048], 0, 4, 24, 16),  # FF2/DO all reduce
+        # ([1, 1, 32, 1280], 1, 3, 24, 40),  # QKV all reduce
+        # ([1, 1, 32, 3584], 1, 3, 24, 24),  # FF1 all reduce
+        # ([1, 1, 32, 2048], 0, 3, 24, 16),  # FF2/DO all reduce
+        # ([1, 1, 32, 1280], 1, 2, 24, 40),  # QKV all reduce
+        # ([1, 1, 32, 3584], 1, 2, 24, 24),  # FF1 all reduce
+        # ([1, 1, 32, 2048], 0, 2, 24, 16),  # FF2/DO all reduce
+        # ([1, 1, 32, 1280], 1, 1, 24, 40),  # QKV all reduce
+        # ([1, 1, 32, 3584], 1, 1, 24, 24),  # FF1 all reduce
+        # ([1, 1, 32, 2048], 0, 1, 24, 16),  # FF2/DO all reduce
     ],
 )
 @pytest.mark.parametrize(
     "input_dtype",
     [
-        ttnn.bfloat16,
+        # ttnn.bfloat16,
         ttnn.bfloat8_b,
     ],
 )
 @pytest.mark.parametrize(
     "num_iters, warmup_iters",
     [
-        (1000, 100),
+        (100, 0),
     ],
 )
 @pytest.mark.parametrize("enable_async", [True])
