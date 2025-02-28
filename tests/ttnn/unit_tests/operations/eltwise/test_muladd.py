@@ -1,45 +1,43 @@
 import torch
 import pytest
 import ttnn
-from tests.ttnn.utils_for_testing import assert_with_pcc
-from models.utility_functions import skip_for_grayskull
+from enum import Enum
 
 
-@pytest.mark.parametrize("input_shapes", [[1, 1, 3 * 64 * 32, 4 * 32]])
-@pytest.mark.parametrize("ina_sharded", [True, False])
-@pytest.mark.parametrize("inb_sharded", [True, False])
-@pytest.mark.parametrize("inc_sharded", [True, False])
-@pytest.mark.parametrize("ind_sharded", [True, False])
-@pytest.mark.parametrize("out_sharded", [True, False])
-def test_muladd(device, input_shapes, ina_sharded, inb_sharded, inc_sharded, ind_sharded, out_sharded):
+class ShardStrat(Enum):
+    NONE = 0
+    BLOCK = 1
+    HEIGHT = 2
+
+
+@pytest.mark.parametrize("input_shapes", [[1, 1, 16 * 16 * 32, 2 * 8 * 32], [1, 1, 3 * 8 * 8 * 32, 3 * 8 * 32]])
+@pytest.mark.parametrize("ina_shard_strat", [ShardStrat.NONE, ShardStrat.BLOCK, ShardStrat.HEIGHT])
+@pytest.mark.parametrize("inb_shard_strat", [ShardStrat.NONE, ShardStrat.BLOCK, ShardStrat.HEIGHT])
+@pytest.mark.parametrize("inc_shard_strat", [ShardStrat.NONE, ShardStrat.BLOCK, ShardStrat.HEIGHT])
+@pytest.mark.parametrize("ind_shard_strat", [ShardStrat.NONE, ShardStrat.BLOCK, ShardStrat.HEIGHT])
+@pytest.mark.parametrize("out_shard_strat", [ShardStrat.NONE, ShardStrat.BLOCK, ShardStrat.HEIGHT])
+def test_muladd(
+    device, input_shapes, ina_shard_strat, inb_shard_strat, inc_shard_strat, ind_shard_strat, out_shard_strat
+):
     torch.manual_seed(0)
+
+    shard_strats = set([ina_shard_strat, inb_shard_strat, inc_shard_strat, ind_shard_strat, out_shard_strat])
+    if ShardStrat.BLOCK in shard_strats and ShardStrat.HEIGHT in shard_strats:
+        pytest.skip("Cannot test both block and height sharding at the same time")
 
     compute_grid_size = device.compute_with_storage_grid_size()
     compute_grid_x = compute_grid_size.x
     compute_grid_y = compute_grid_size.y
-    # compute_grid_x=1
-    # compute_grid_y =4
-
-    base = [[i + j * 32 for i in range(4 * 32)] for j in range(64 * 32)]
-    # torch_ina = torch.concatenate((torch.ones(32,32,dtype=torch.bfloat16),torch.ones(32,32,dtype=torch.bfloat16)*2),dim=1)
-
-    # torch_ina = torch.ones(32,32,dtype=torch.bfloat16)
-
     torch_ina = torch.randn(input_shapes, dtype=torch.bfloat16)
     torch_inb = torch.randn(input_shapes, dtype=torch.bfloat16)
     torch_inc = torch.randn(input_shapes, dtype=torch.bfloat16)
     torch_ind = torch.rand(input_shapes, dtype=torch.bfloat16) + 1
 
-    # torch_ina = torch.concatenate((torch.tensor(base,dtype=torch.bfloat16),torch.tensor(base,dtype=torch.bfloat16)*2),dim=1)
-    # torch_inb = torch.concatenate((torch.tensor(base,dtype=torch.bfloat16)*4,torch.tensor(base,dtype=torch.bfloat16)*3),dim=1)
-    # torch_inc = torch.concatenate((torch.tensor(base,dtype=torch.bfloat16)*4,torch.tensor(base,dtype=torch.bfloat16)*6),dim=1)
-    # torch_ind = torch.concatenate((torch.tensor(base,dtype=torch.bfloat16)*10,torch.tensor(base,dtype=torch.bfloat16)*5),dim=1)
-
-    # base = [[ j*i for i in range(32)] for j in range(input_shapes[2])]
-    # torch_ina = torch.tensor(base, dtype=torch.bfloat16) *1
-    # torch_inb = torch.tensor(base, dtype=torch.bfloat16) *2
-    # torch_inc = torch.tensor(base, dtype=torch.bfloat16) *4
-    # torch_ind = torch.tensor(base, dtype=torch.bfloat16) *2
+    ina_sharded = ina_shard_strat != ShardStrat.NONE
+    inb_sharded = inb_shard_strat != ShardStrat.NONE
+    inc_sharded = inc_shard_strat != ShardStrat.NONE
+    ind_sharded = ind_shard_strat != ShardStrat.NONE
+    out_sharded = out_shard_strat != ShardStrat.NONE
 
     in_memory_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM)
     out_memory_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM)
@@ -47,7 +45,7 @@ def test_muladd(device, input_shapes, ina_sharded, inb_sharded, inc_sharded, ind
         out_memory_config = ttnn.create_sharded_memory_config(
             input_shapes,
             core_grid=ttnn.CoreGrid(x=compute_grid_x, y=compute_grid_y),
-            strategy=ttnn.ShardStrategy.HEIGHT,
+            strategy=ttnn.ShardStrategy.BLOCK if out_shard_strat == ShardStrat.BLOCK else ttnn.ShardStrategy.HEIGHT,
             orientation=ttnn.ShardOrientation.ROW_MAJOR,
         )
 
@@ -56,7 +54,7 @@ def test_muladd(device, input_shapes, ina_sharded, inb_sharded, inc_sharded, ind
         ina_memory_config = ttnn.create_sharded_memory_config(
             input_shapes,
             core_grid=ttnn.CoreGrid(x=compute_grid_x, y=compute_grid_y),
-            strategy=ttnn.ShardStrategy.HEIGHT,
+            strategy=ttnn.ShardStrategy.BLOCK if ina_shard_strat == ShardStrat.BLOCK else ttnn.ShardStrategy.HEIGHT,
             orientation=ttnn.ShardOrientation.ROW_MAJOR,
         )
 
@@ -65,7 +63,7 @@ def test_muladd(device, input_shapes, ina_sharded, inb_sharded, inc_sharded, ind
         inb_memory_config = ttnn.create_sharded_memory_config(
             input_shapes,
             core_grid=ttnn.CoreGrid(x=compute_grid_x, y=compute_grid_y),
-            strategy=ttnn.ShardStrategy.HEIGHT,
+            strategy=ttnn.ShardStrategy.BLOCK if inb_shard_strat == ShardStrat.BLOCK else ttnn.ShardStrategy.HEIGHT,
             orientation=ttnn.ShardOrientation.ROW_MAJOR,
         )
 
@@ -74,7 +72,7 @@ def test_muladd(device, input_shapes, ina_sharded, inb_sharded, inc_sharded, ind
         inc_memory_config = ttnn.create_sharded_memory_config(
             input_shapes,
             core_grid=ttnn.CoreGrid(x=compute_grid_x, y=compute_grid_y),
-            strategy=ttnn.ShardStrategy.HEIGHT,
+            strategy=ttnn.ShardStrategy.BLOCK if inc_shard_strat == ShardStrat.BLOCK else ttnn.ShardStrategy.HEIGHT,
             orientation=ttnn.ShardOrientation.ROW_MAJOR,
         )
 
@@ -83,7 +81,7 @@ def test_muladd(device, input_shapes, ina_sharded, inb_sharded, inc_sharded, ind
         ind_memory_config = ttnn.create_sharded_memory_config(
             input_shapes,
             core_grid=ttnn.CoreGrid(x=compute_grid_x, y=compute_grid_y),
-            strategy=ttnn.ShardStrategy.HEIGHT,
+            strategy=ttnn.ShardStrategy.BLOCK if ind_shard_strat == ShardStrat.BLOCK else ttnn.ShardStrategy.HEIGHT,
             orientation=ttnn.ShardOrientation.ROW_MAJOR,
         )
 
@@ -130,10 +128,6 @@ def test_muladd(device, input_shapes, ina_sharded, inb_sharded, inc_sharded, ind
         memory_config=out_memory_config,
         math_fidelity=ttnn.MathFidelity.HiFi2,
     )
-
-    # print(torch_ina)
-    # print("\n\n")
-    print(output)
     output = ttnn.to_torch(output)
     pcc = ttnn.pearson_correlation_coefficient(torch_output, output)
     print(f"PCC: {pcc}")

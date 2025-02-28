@@ -1,30 +1,6 @@
 #include <stdint.h>
 #include <cstdint>
 #include "dataflow_api.h"
-#include "debug/dprint_pages.h"
-#include "debug/dprint.h"
-
-inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
-    DPRINT << "======" << ENDL();
-    for (uint16_t r = 0; r < 32; ++r) {
-        DPRINT << (uint)r << " : "
-               << TileSlice(
-                      cb_id,
-                      tile_id,
-                      SliceRange{
-                          .h0 = (uint8_t)r,
-                          .h1 = (uint8_t)(r + 1),
-                          .hs = (uint8_t)1,
-                          .w0 = (uint8_t)0,
-                          .w1 = (uint8_t)32,
-                          .ws = (uint8_t)1},
-                      true,
-                      untilize)
-               << ENDL();
-    }
-    DPRINT << "++++++" << ENDL();
-}
-// #include "compute_kernel_api/common.h"
 
 void kernel_main() {
     uint32_t src0_addr = get_arg_val<uint32_t>(0);
@@ -38,6 +14,8 @@ void kernel_main() {
     constexpr bool src1_is_dram = get_compile_time_arg_val(1) == 1;
     constexpr bool src2_is_dram = get_compile_time_arg_val(2) == 1;
     constexpr bool src3_is_dram = get_compile_time_arg_val(3) == 1;
+    constexpr uint32_t stride = get_compile_time_arg_val(4);
+    constexpr uint32_t num_tiles_w = get_compile_time_arg_val(5);
 
     constexpr uint32_t cb_id_in0 = tt::CBIndex::c_0;
     constexpr uint32_t cb_id_in1 = tt::CBIndex::c_1;
@@ -119,6 +97,9 @@ void kernel_main() {
         cb_push_back(cb_id_in3, onetile);
 #endif
         current_tile++;
+        if (current_tile % num_tiles_w == 0) {
+            current_tile += stride;
+        }
     }
 #endif
 }

@@ -5,29 +5,6 @@
 #include <sys/types.h>
 #include <cstdint>
 #include "dataflow_api.h"
-#include "debug/dprint_pages.h"
-#include "debug/dprint.h"
-
-inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
-    DPRINT << "======" << ENDL();
-    for (uint16_t r = 0; r < 32; ++r) {
-        DPRINT << (uint)r << " : "
-               << TileSlice(
-                      cb_id,
-                      tile_id,
-                      SliceRange{
-                          .h0 = (uint8_t)r,
-                          .h1 = (uint8_t)(r + 1),
-                          .hs = (uint8_t)1,
-                          .w0 = (uint8_t)0,
-                          .w1 = (uint8_t)32,
-                          .ws = (uint8_t)1},
-                      true,
-                      untilize)
-               << ENDL();
-    }
-    DPRINT << "++++++" << ENDL();
-}
 
 void kernel_main() {
 #ifndef OUT_SHARDED
@@ -37,6 +14,8 @@ void kernel_main() {
 
     constexpr uint32_t cb_id_out = get_compile_time_arg_val(0);
     constexpr bool dst_is_dram = get_compile_time_arg_val(1) == 1;
+    constexpr uint32_t stride = get_compile_time_arg_val(2);
+    constexpr uint32_t num_tiles_w = get_compile_time_arg_val(3);
 
     const uint32_t tile_bytes = get_tile_size(cb_id_out);
     const DataFormat data_format = get_dataformat(cb_id_out);
@@ -54,6 +33,9 @@ void kernel_main() {
         noc_async_write_barrier();
         cb_pop_front(cb_id_out, 1);
         current_tile++;
+        if (current_tile % num_tiles_w == 0) {
+            current_tile += stride;
+        }
     }
 #endif
 }

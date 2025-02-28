@@ -4,6 +4,7 @@
 #include <cstdint>
 #include "tt-metalium/base_types.hpp"
 #include "tt-metalium/buffer.hpp"
+#include "tt-metalium/buffer_constants.hpp"
 #include "tt-metalium/core_coord.hpp"
 #include "ttnn/common/queue_id.hpp"
 #include "ttnn/tensor/tensor_utils.hpp"
@@ -125,7 +126,6 @@ operation::ProgramWithCallbacks multi_core_muladd(
     for (int i = 0; i < shape.size(); i++) {
         total_elements *= shape[i];
     }
-    // TODO fix this in cases of nonpadded shapes
     const uint32_t num_output_tiles = total_elements / 1024;
 
     auto input_buffer_a_address = a.buffer()->address();
@@ -152,13 +152,14 @@ operation::ProgramWithCallbacks multi_core_muladd(
     uint32_t stride = 0;
 
     CoreRangeSet cores;
+    TensorMemoryLayout memory_layout;
     if (ina_sharded) {
         shard_tiles_w = a.buffer()->shard_spec().shape()[1] / 32;
         shard_tiles_h = a.buffer()->shard_spec().shape()[0] / 32;
         num_cores = a.buffer()->shard_spec().grid().num_cores();
         num_cores_x = a.buffer()->shard_spec().grid().bounding_box().grid_size().x;
-        // //         num_cores_y = a.buffer()->shard_spec().grid().bounding_box().grid_size().y;
         cores = a.buffer()->shard_spec().grid();
+        memory_layout = a.memory_config().memory_layout;
     }
     if (inb_sharded) {
         shard_tiles_w = b.buffer()->shard_spec().shape()[1] / 32;
@@ -167,6 +168,7 @@ operation::ProgramWithCallbacks multi_core_muladd(
         num_cores_x = b.buffer()->shard_spec().grid().bounding_box().grid_size().x;
         num_cores_y = b.buffer()->shard_spec().grid().bounding_box().grid_size().y;
         cores = b.buffer()->shard_spec().grid();
+        memory_layout = b.memory_config().memory_layout;
     }
     if (inc_sharded) {
         shard_tiles_w = c.buffer()->shard_spec().shape()[1] / 32;
@@ -175,6 +177,7 @@ operation::ProgramWithCallbacks multi_core_muladd(
         num_cores_x = c.buffer()->shard_spec().grid().bounding_box().grid_size().x;
         num_cores_y = c.buffer()->shard_spec().grid().bounding_box().grid_size().y;
         cores = c.buffer()->shard_spec().grid();
+        memory_layout = c.memory_config().memory_layout;
     }
     if (ind_sharded) {
         shard_tiles_w = d.buffer()->shard_spec().shape()[1] / 32;
@@ -183,6 +186,7 @@ operation::ProgramWithCallbacks multi_core_muladd(
         num_cores_x = d.buffer()->shard_spec().grid().bounding_box().grid_size().x;
         num_cores_y = d.buffer()->shard_spec().grid().bounding_box().grid_size().y;
         cores = d.buffer()->shard_spec().grid();
+        memory_layout = d.memory_config().memory_layout;
     }
     if (out_sharded) {
         shard_tiles_w = output.buffer()->shard_spec().shape()[1] / 32;
@@ -191,10 +195,8 @@ operation::ProgramWithCallbacks multi_core_muladd(
         num_cores_x = output.buffer()->shard_spec().grid().bounding_box().grid_size().x;
         num_cores_y = output.buffer()->shard_spec().grid().bounding_box().grid_size().y;
         cores = output.buffer()->shard_spec().grid();
+        memory_layout = output.memory_config().memory_layout;
     }
-    // printf("cores bounding box: %zu, %zu\n", cores.bounding_box().grid_size().x, cores.bounding_box().grid_size().y);
-    // printf("Shard tiles w: %d, h: %d\n",shard_tiles_w,shard_tiles_h);
-    // printf("Shard shape w: %d, h: %d\n",a.buffer()->shard_spec().shape()[1],a.buffer()->shard_spec().shape()[0]);
 
     const tt::DataFormat input_format = tt::DataFormat::Float16_b;
     const tt::DataFormat output_format = input_format;
@@ -243,10 +245,14 @@ operation::ProgramWithCallbacks multi_core_muladd(
         b.buffer()->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0,
         c.buffer()->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0,
         d.buffer()->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0,
+        memory_layout == TensorMemoryLayout::BLOCK_SHARDED ? (num_cores_x - 1) * shard_tiles_w : 0,
+        shard_tiles_w != 0 ? shard_tiles_w : 1,
     };
     std::vector<uint32_t> writer_compile_time_args = {
         tt::CBIndex::c_16,
         output.buffer()->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0,
+        memory_layout == TensorMemoryLayout::BLOCK_SHARDED ? (num_cores_x - 1) * shard_tiles_w : 0,
+        shard_tiles_w != 0 ? shard_tiles_w : 1,
     };
     std::vector<uint32_t> compute_compile_time_args = {};
 
@@ -292,17 +298,9 @@ operation::ProgramWithCallbacks multi_core_muladd(
     printf("Num cores: %d\n", num_cores);
     printf("Shard tiles w: %d, h: %d\n", shard_tiles_w, shard_tiles_h);
 
-    // for(uint32_t i =0;i<num_cores_x;i++){
-    //     for(uint32_t j =0;j<num_cores_y;j++){
-    //         CoreCoord core = {i,j};
-    //         if(cores.contains(core))
-    //             printf("Core contained: %d, %d\n",i,j);
-    //     }
-    // }
     for (uint32_t i = 0, output_tile_start_id = 0; i < num_cores; i++) {
         CoreCoord core(i % num_cores_x, i / num_cores_x);
         uint32_t num_output_tiles_per_core = 0;
-
         if (ina_sharded || inb_sharded || inc_sharded || ind_sharded) {
             num_output_tiles_per_core = shard_tiles_w * shard_tiles_h;
         } else {
@@ -334,27 +332,15 @@ operation::ProgramWithCallbacks multi_core_muladd(
         SetRuntimeArgs(program, reader_kernel_id, core, reader_runtime_args);
         SetRuntimeArgs(program, writer_kernel_id, core, writer_runtime_args);
         SetRuntimeArgs(program, compute_kernel_id, core, compute_runtime_args);
-        if (!ina_sharded && !inb_sharded && !inc_sharded && !ind_sharded) {
+        if (!ina_sharded && !inb_sharded && !inc_sharded && !ind_sharded && !out_sharded) {
             output_tile_start_id += num_output_tiles_per_core;
-        } else {
+        } else if (memory_layout == TensorMemoryLayout::BLOCK_SHARDED) {
+            output_tile_start_id = ((i + 1) / num_cores_x * num_cores_x) * shard_tiles_h * shard_tiles_w +
+                                   ((i + 1) % num_cores_x) * shard_tiles_w;
+        } else {  // HEIGHT_SHARDED
             output_tile_start_id += shard_tiles_h * shard_tiles_w;
         }
     }
-
-    // auto override_runtime_arguments_callback = [a,b,c,d,output](
-    //     const void* operation,
-    //     Program& program,
-    //     const std::vector<Tensor>& input_tensors,
-    //     const std::vector<std::optional<const Tensor>>& optional_input_tensors,
-    //     const std::vector<Tensor>& output_tensors) {
-    //         UpdateDynamicCircularBufferAddress(program, tt::CBIndex::c_4, *a.buffer());
-    //         UpdateDynamicCircularBufferAddress(program, tt::CBIndex::c_5, *b.buffer());
-    //         UpdateDynamicCircularBufferAddress(program, tt::CBIndex::c_6, *c.buffer());
-    //         UpdateDynamicCircularBufferAddress(program, tt::CBIndex::c_7, *d.buffer());
-    //         UpdateDynamicCircularBufferAddress(program, tt::CBIndex::c_17, *output.buffer());
-    //     };
-
-    return {
-        .program = std::move(program) /*,.override_runtime_arguments_callback=override_runtime_arguments_callback*/};
+    return {.program = std::move(program)};
 }
 }  // namespace ttnn::operations::muladd
