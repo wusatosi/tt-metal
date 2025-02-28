@@ -1792,7 +1792,9 @@ inline void noc_async_write_multicast_exclude_region(
 void noc_async_read_barrier(uint8_t noc = noc_index) {
     WAYPOINT("NRBW");
     if constexpr (noc_mode == DM_DYNAMIC_NOC) {
-        while (!ncrisc_dynamic_noc_reads_flushed(noc));
+        while (!ncrisc_dynamic_noc_reads_flushed(noc)) {
+            invalidate_l1_cache();
+        }
     } else {
         while (!ncrisc_noc_reads_flushed(noc));
     }
@@ -1812,10 +1814,13 @@ FORCE_INLINE
 void noc_async_write_barrier(uint8_t noc = noc_index) {
     WAYPOINT("NWBW");
     if constexpr (noc_mode == DM_DYNAMIC_NOC) {
-        while (!ncrisc_dynamic_noc_nonposted_writes_flushed(noc));
+        while (!ncrisc_dynamic_noc_nonposted_writes_flushed(noc)) {
+            invalidate_l1_cache();
+        }
     } else {
         while (!ncrisc_noc_nonposted_writes_flushed(noc));
     }
+    invalidate_l1_cache();
     WAYPOINT("NWBD");
 }
 
@@ -1828,10 +1833,13 @@ FORCE_INLINE
 void noc_async_writes_flushed(uint8_t noc = noc_index) {
     WAYPOINT("NWFW");
     if constexpr (noc_mode == DM_DYNAMIC_NOC) {
-        while (!ncrisc_dynamic_noc_nonposted_writes_sent(noc));
+        while (!ncrisc_dynamic_noc_nonposted_writes_sent(noc)) {
+            invalidate_l1_cache();
+        }
     } else {
         while (!ncrisc_noc_nonposted_writes_sent(noc));
     }
+    invalidate_l1_cache();
     WAYPOINT("NWFD");
 }
 
@@ -1844,10 +1852,13 @@ FORCE_INLINE
 void noc_async_posted_writes_flushed(uint8_t noc = noc_index) {
     WAYPOINT("NPWW");
     if constexpr (noc_mode == DM_DYNAMIC_NOC) {
-        while (!ncrisc_dynamic_noc_posted_writes_sent(noc));
+        while (!ncrisc_dynamic_noc_posted_writes_sent(noc)) {
+            invalidate_l1_cache();
+        }
     } else {
         while (!ncrisc_noc_posted_writes_sent(noc));
     }
+    invalidate_l1_cache();
     WAYPOINT("NPWD");
 }
 
@@ -1863,10 +1874,13 @@ FORCE_INLINE
 void noc_async_atomic_barrier(uint8_t noc_idx = noc_index) {
     WAYPOINT("NABW");
     if constexpr (noc_mode == DM_DYNAMIC_NOC) {
-        while (!ncrisc_dynamic_noc_nonposted_atomics_flushed(noc_idx));
+        while (!ncrisc_dynamic_noc_nonposted_atomics_flushed(noc_idx)) {
+            invalidate_l1_cache();
+        }
     } else {
         while (!ncrisc_noc_nonposted_atomics_flushed(noc_idx));
     }
+    invalidate_l1_cache();
     WAYPOINT("NABD");
 }
 

@@ -149,6 +149,7 @@ inline __attribute__((always_inline)) bool noc_cmd_buf_ready(uint32_t noc, uint3
     return (NOC_CMD_BUF_READ_REG(noc, cmd_buf, NOC_CMD_CTRL) == NOC_CTRL_STATUS_READY);
 }
 
+template <uint8_t noc_mode = DM_DEDICATED_NOC>
 inline __attribute__((always_inline)) void ncrisc_noc_fast_read(
     uint32_t noc, uint32_t cmd_buf, uint64_t src_addr, uint32_t dest_addr, uint32_t len_bytes) {
     NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_RET_ADDR_LO, dest_addr);
@@ -180,7 +181,7 @@ inline __attribute__((always_inline)) bool ncrisc_noc_read_with_transaction_id_f
     return (NOC_STATUS_READ_REG(noc, NIU_MST_REQS_OUTSTANDING_ID(transcation_id)) == 0);
 }
 
-template <uint32_t proc_type, uint8_t noc_mode = DM_DEDICATED_NOC, bool use_trid = false>
+template <uint8_t noc_mode = DM_DEDICATED_NOC, bool use_trid = false>
 inline __attribute__((always_inline)) void ncrisc_noc_fast_write(
     uint32_t noc,
     uint32_t cmd_buf,
@@ -230,7 +231,7 @@ inline __attribute__((always_inline)) void ncrisc_noc_fast_write(
     }
 }
 
-template <uint32_t proc_type, uint8_t noc_mode = DM_DEDICATED_NOC>
+template <uint8_t noc_mode = DM_DEDICATED_NOC>
 inline __attribute__((always_inline)) void ncrisc_noc_fast_write_loopback_src(
     uint32_t noc,
     uint32_t cmd_buf,
@@ -265,7 +266,7 @@ inline __attribute__((always_inline)) void ncrisc_noc_fast_write_loopback_src(
     }
 }
 
-template <uint32_t proc_type, uint8_t noc_mode = DM_DEDICATED_NOC>
+template <uint8_t noc_mode = DM_DEDICATED_NOC>
 inline __attribute__((always_inline)) void ncrisc_noc_fast_write_exclude_region(
     uint32_t noc,
     uint32_t cmd_buf,
@@ -301,7 +302,7 @@ inline __attribute__((always_inline)) void ncrisc_noc_fast_write_exclude_region(
     }
 }
 
-template <uint32_t proc_type, uint8_t noc_mode = DM_DEDICATED_NOC>
+template <uint8_t noc_mode = DM_DEDICATED_NOC>
 inline __attribute__((always_inline)) void ncrisc_noc_blitz_write_setup(
     uint32_t noc, uint32_t cmd_buf, uint64_t dest_addr, uint32_t len_bytes, uint32_t vc, uint32_t num_times_to_write) {
     uint32_t noc_cmd_field = NOC_CMD_CPY | NOC_CMD_WR | NOC_CMD_VC_STATIC | NOC_CMD_STATIC_VC(vc) | NOC_CMD_RESP_MARKED;

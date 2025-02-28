@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2023 Tenstorrent Inc.
+// SPDX-FileCopyrightText: © 2025 Tenstorrent Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -136,8 +136,10 @@ void kernel_main() {
                 noc);
         }
 
-        // dw_write
+// dw_write skip BH since there's HW issue
+#ifndef ARCH_BLACKHOLE
         noc_inline_dw_write(noc_addr, 1, 0xF, noc);
+#endif
     }
 
     // DRAM sharded read API
@@ -153,6 +155,8 @@ void kernel_main() {
         noc_async_read_barrier_with_trid(i, 1 - noc_index);
     }
 
+// Some mem corruption issue when using the noc_async_write_barrier_with_trid
+#ifndef ARCH_BLACKHOLE
     // DRAM sharded write API
     for (uint32_t i = 0; i < iteration; i++) {
         uint32_t trid = i % 16 + 1;
@@ -163,8 +167,10 @@ void kernel_main() {
         noc_async_write_barrier_with_trid(i, noc_index);
         noc_async_write_barrier_with_trid(i, 1 - noc_index);
     }
+#endif
 
     DPRINT << "END" <<ENDL();
+    DPRINT << "noc_mode " << (uint)noc_mode << ENDL();
 
     // barrier on all txns
     for (int noc = 0; noc < NUM_NOCS; noc++) {

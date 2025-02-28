@@ -45,85 +45,104 @@ void build_and_run_program(
 
     log_info(tt::LogTest, "Starting compile of {} programs now.", NUM_PROGRAMS);
 
-    vector<Program> programs;
-    for (uint32_t i = 0; i < NUM_PROGRAMS; i++) {
-        programs.push_back(Program());
-        Program& program = programs.back();
+    Program program1;
+    Program program2;
 
-        tt_metal::NOC_MODE noc_mode;
-        if (mix_noc_mode) {
-            noc_mode = i % 2 == 0 ? tt_metal::NOC_MODE::DM_DYNAMIC_NOC : tt_metal::NOC_MODE::DM_DEDICATED_NOC;
-        } else {
-            noc_mode = tt_metal::NOC_MODE::DM_DYNAMIC_NOC;
-        }
+    CircularBufferConfig cb_config =
+        CircularBufferConfig(page_size, {{0, tt::DataFormat::Float16_b}}).set_page_size(0, page_size);
+    auto cb1 = CreateCircularBuffer(program1, cr_set, cb_config);
+    auto cb2 = CreateCircularBuffer(program2, cr_set, cb_config);
 
-        if (i % 10 == 0) {
-            log_info(tt::LogTest, "Compiling program {} of {}", i + 1, NUM_PROGRAMS);
-        }
+    vector<uint32_t> compile_args = {MAX_LOOP, page_size};
 
-        CircularBufferConfig cb_config = CircularBufferConfig(page_size, {{0, tt::DataFormat::Float16_b}}).set_page_size(0, page_size);
-        auto cb = CreateCircularBuffer(program, cr_set, cb_config);
+    auto brisc_kernel1 = CreateKernel(
+        program1,
+        "tests/tt_metal/tt_metal/test_kernels/dataflow/dynamic_noc_writer.cpp",
+        cr_set,
+        DataMovementConfig{
+            .processor = DataMovementProcessor::RISCV_0,
+            .noc = NOC::RISCV_0_default,
+            .noc_mode = tt_metal::NOC_MODE::DM_DYNAMIC_NOC,
+            .compile_args = compile_args});
 
-        vector<uint32_t> compile_args = {MAX_LOOP, page_size};
+    auto ncrisc_kernel1 = CreateKernel(
+        program1,
+        "tests/tt_metal/tt_metal/test_kernels/dataflow/dynamic_noc_writer.cpp",
+        cr_set,
+        DataMovementConfig{
+            .processor = DataMovementProcessor::RISCV_1,
+            .noc = NOC::RISCV_1_default,
+            .noc_mode = tt_metal::NOC_MODE::DM_DYNAMIC_NOC,
+            .compile_args = compile_args});
 
-        auto brisc_kernel = CreateKernel(
-            program,
-            "tests/tt_metal/tt_metal/test_kernels/dataflow/dynamic_noc_writer.cpp",
-            cr_set,
-            DataMovementConfig{
-                .processor = DataMovementProcessor::RISCV_0,
-                .noc = NOC::RISCV_0_default,
-                .noc_mode = noc_mode,
-                .compile_args = compile_args});
+    auto brisc_kernel2 = CreateKernel(
+        program2,
+        mix_noc_mode ? "tests/tt_metal/tt_metal/test_kernels/dataflow/dedicated_noc_writer.cpp"
+                     : "tests/tt_metal/tt_metal/test_kernels/dataflow/dynamic_noc_writer.cpp",
+        cr_set,
+        DataMovementConfig{
+            .processor = DataMovementProcessor::RISCV_0,
+            .noc = NOC::RISCV_0_default,
+            .noc_mode = tt_metal::NOC_MODE::DM_DEDICATED_NOC,
+            .compile_args = compile_args});
 
-        auto ncrisc_kernel = CreateKernel(
-            program,
-            "tests/tt_metal/tt_metal/test_kernels/dataflow/dynamic_noc_writer.cpp",
-            cr_set,
-            DataMovementConfig{
-                .processor = DataMovementProcessor::RISCV_1,
-                .noc = NOC::RISCV_1_default,
-                .noc_mode = noc_mode,
-                .compile_args = compile_args});
+    auto ncrisc_kernel2 = CreateKernel(
+        program2,
+        mix_noc_mode ? "tests/tt_metal/tt_metal/test_kernels/dataflow/dedicated_noc_writer.cpp"
+                     : "tests/tt_metal/tt_metal/test_kernels/dataflow/dynamic_noc_writer.cpp",
+        cr_set,
+        DataMovementConfig{
+            .processor = DataMovementProcessor::RISCV_1,
+            .noc = NOC::RISCV_1_default,
+            .noc_mode = tt_metal::NOC_MODE::DM_DEDICATED_NOC,
+            .compile_args = compile_args});
 
-        for(int core_idx_y = 0; core_idx_y < worker_grid_size.y; core_idx_y++) {
-            for(int core_idx_x = 0; core_idx_x < worker_grid_size.x; core_idx_x++) {
-                CoreCoord core = {(std::size_t) core_idx_x, (std::size_t) core_idx_y};
-                CoreCoord neighbour_core = {core_idx_x == worker_grid_size.x - 1 ? 0 : core_idx_x + 1, core_idx_y};
-                CoreCoord neighbour_core_physical = device->worker_core_from_logical_core(neighbour_core);
+    for (int core_idx_y = 0; core_idx_y < worker_grid_size.y; core_idx_y++) {
+        for (int core_idx_x = 0; core_idx_x < worker_grid_size.x; core_idx_x++) {
+            CoreCoord core = {(std::size_t)core_idx_x, (std::size_t)core_idx_y};
+            CoreCoord neighbour_core = {core_idx_x == worker_grid_size.x - 1 ? 0 : core_idx_x + 1, core_idx_y};
+            CoreCoord neighbour_core_physical = device->worker_core_from_logical_core(neighbour_core);
+            // mcast
+            auto device_grid = device->compute_with_storage_grid_size();
+            CoreCoord top_left_core = {0, 0};
+            CoreCoord top_left_core_physical = device->worker_core_from_logical_core(top_left_core);
+            CoreCoord bottom_right_core = {device_grid.x - 1, device_grid.y - 1};
+            CoreCoord bottom_right_core_physical = device->worker_core_from_logical_core(bottom_right_core);
+            std::vector<uint32_t> rt_args = {
+                (std::uint32_t)neighbour_core_physical.x,
+                (std::uint32_t)neighbour_core_physical.y,
                 // mcast
-                auto device_grid = device->compute_with_storage_grid_size();
-                CoreCoord top_left_core = {0, 0};
-                CoreCoord top_left_core_physical = device->worker_core_from_logical_core(top_left_core);
-                CoreCoord bottom_right_core = {device_grid.x - 1, device_grid.y - 1};
-                CoreCoord bottom_right_core_physical = device->worker_core_from_logical_core(bottom_right_core);
-                std::vector<uint32_t> rt_args = {
-                    (std::uint32_t)neighbour_core_physical.x,
-                    (std::uint32_t)neighbour_core_physical.y,
-                    // mcast
-                    (core_idx_x == 0 && core_idx_y == 0) ? true : false,
-                    top_left_core_physical.x,
-                    top_left_core_physical.y,
-                    bottom_right_core_physical.x,
-                    bottom_right_core_physical.y,
-                    device_grid.x * device_grid.y};
-                tt::tt_metal::SetRuntimeArgs(program, brisc_kernel, core, rt_args);
-                tt::tt_metal::SetRuntimeArgs(program, ncrisc_kernel, core, rt_args);
-            }
+                (core_idx_x == 0 && core_idx_y == 0) ? true : false,
+                top_left_core_physical.x,
+                top_left_core_physical.y,
+                bottom_right_core_physical.x,
+                bottom_right_core_physical.y,
+                device_grid.x * device_grid.y};
+            tt::tt_metal::SetRuntimeArgs(program1, brisc_kernel1, core, rt_args);
+            tt::tt_metal::SetRuntimeArgs(program1, ncrisc_kernel1, core, rt_args);
+            tt::tt_metal::SetRuntimeArgs(program2, brisc_kernel2, core, rt_args);
+            tt::tt_metal::SetRuntimeArgs(program2, ncrisc_kernel2, core, rt_args);
         }
-
-        tt::tt_metal::detail::CompileProgram(device, program);
     }
 
-    log_info(tt::LogTest, "Running {} programs for cache warmup.", programs.size());
-    // This loop caches program and runs
+    tt::tt_metal::detail::CompileProgram(device, program1);
+    tt::tt_metal::detail::CompileProgram(device, program2);
+
+    // This loop caches program1 and runs
     for (uint32_t i = 0; i < NUM_PROGRAMS; i++) {
-        Program& program = programs[i];
-        log_info(tt::LogTest, "Running program {} of {}", i + 1, NUM_PROGRAMS);
-        if (slow_dispatch) {
-            tt::tt_metal::detail::LaunchProgram(device, program);
+        log_info(tt::LogTest, "Running program1 {} of {}", i + 1, NUM_PROGRAMS);
+        if (i % 2 == 0) {
+            if (slow_dispatch) {
+                tt::tt_metal::detail::LaunchProgram(device, program1);
+            } else {
+                EnqueueProgram(device->command_queue(), program1, false);
+            }
         } else {
-            EnqueueProgram(device->command_queue(), program, false);
+            if (slow_dispatch) {
+                tt::tt_metal::detail::LaunchProgram(device, program2);
+            } else {
+                EnqueueProgram(device->command_queue(), program2, false);
+            }
         }
     }
     if (!slow_dispatch) {

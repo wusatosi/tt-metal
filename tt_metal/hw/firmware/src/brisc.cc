@@ -29,6 +29,8 @@
 #include "debug/waypoint.h"
 #include "debug/dprint.h"
 #include "debug/stack_usage.h"
+
+#include "debug/ring_buffer.h"
 // clang-format on
 
 uint8_t noc_index;
@@ -587,6 +589,32 @@ int main() {
                 // messages in the ring buffer. Must be executed before the atomic increment, as after that the launch
                 // message is no longer owned by us.
                 CLEAR_PREVIOUS_LAUNCH_MESSAGE_ENTRY_FOR_WATCHER();
+
+#if defined(ARCH_BLACKHOLE)
+                if (noc_mode == DM_DYNAMIC_NOC) {
+                    noc_fast_atomic_increment<DM_DYNAMIC_NOC>(
+                        noc_index,
+                        NCRISC_AT_CMD_BUF,
+                        dispatch_addr,
+                        NOC_UNICAST_WRITE_VC,
+                        1,
+                        31 /*wrap*/,
+                        false /*linked*/,
+                        post_atomic_increments /*posted*/);
+                    // barrier till the atomic response is back
+                    while (!ncrisc_dynamic_noc_nonposted_atomics_flushed(noc_index));
+                } else {
+                    noc_fast_atomic_increment(
+                        noc_index,
+                        NCRISC_AT_CMD_BUF,
+                        dispatch_addr,
+                        NOC_UNICAST_WRITE_VC,
+                        1,
+                        31 /*wrap*/,
+                        false /*linked*/,
+                        post_atomic_increments /*posted*/);
+                }
+#else
                 noc_fast_atomic_increment(
                     noc_index,
                     NCRISC_AT_CMD_BUF,
@@ -596,6 +624,7 @@ int main() {
                     31 /*wrap*/,
                     false /*linked*/,
                     post_atomic_increments /*posted*/);
+#endif
                 mailboxes->launch_msg_rd_ptr = (launch_msg_rd_ptr + 1) & (launch_msg_buffer_num_entries - 1);
             }
         }
