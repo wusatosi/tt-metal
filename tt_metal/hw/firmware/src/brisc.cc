@@ -456,6 +456,10 @@ int main() {
                     31 /*wrap*/,
                     false /*linked*/,
                     post_atomic_increments /*posted*/);
+#if defined(ARCH_BLACKHOLE)
+                // flush for BH since this is non-posted, which could cause counter mismatch
+                while (!ncrisc_noc_nonposted_atomics_flushed(noc_index));
+#endif
             }
         }
 
@@ -590,31 +594,6 @@ int main() {
                 // message is no longer owned by us.
                 CLEAR_PREVIOUS_LAUNCH_MESSAGE_ENTRY_FOR_WATCHER();
 
-#if defined(ARCH_BLACKHOLE)
-                if (noc_mode == DM_DYNAMIC_NOC) {
-                    noc_fast_atomic_increment<DM_DYNAMIC_NOC>(
-                        noc_index,
-                        NCRISC_AT_CMD_BUF,
-                        dispatch_addr,
-                        NOC_UNICAST_WRITE_VC,
-                        1,
-                        31 /*wrap*/,
-                        false /*linked*/,
-                        post_atomic_increments /*posted*/);
-                    // barrier till the atomic response is back
-                    while (!ncrisc_dynamic_noc_nonposted_atomics_flushed(noc_index));
-                } else {
-                    noc_fast_atomic_increment(
-                        noc_index,
-                        NCRISC_AT_CMD_BUF,
-                        dispatch_addr,
-                        NOC_UNICAST_WRITE_VC,
-                        1,
-                        31 /*wrap*/,
-                        false /*linked*/,
-                        post_atomic_increments /*posted*/);
-                }
-#else
                 noc_fast_atomic_increment(
                     noc_index,
                     NCRISC_AT_CMD_BUF,
@@ -624,6 +603,20 @@ int main() {
                     31 /*wrap*/,
                     false /*linked*/,
                     post_atomic_increments /*posted*/);
+#if defined(ARCH_BLACKHOLE)
+                if (noc_mode == DM_DYNAMIC_NOC) {
+                    // inc dm noc counter for BH as this is non-posted
+                    inc_noc_counter_val<
+                        static_cast<std::underlying_type_t<TensixProcessorTypes>>(TensixProcessorTypes::DM0),
+                        NocBarrierType::NONPOSTED_ATOMICS_ACKED>(noc_index, 1);
+                    // barrier till the atomic response is back
+                    while (!ncrisc_dynamic_noc_nonposted_atomics_flushed(noc_index));
+                    // reset local counters
+                    noc_local_state_init(noc_index);
+                } else {
+                    // flush for BH since this is non-posted, which could cause counter mismatch in the next iter
+                    while (!ncrisc_noc_nonposted_atomics_flushed(noc_index));
+                }
 #endif
                 mailboxes->launch_msg_rd_ptr = (launch_msg_rd_ptr + 1) & (launch_msg_buffer_num_entries - 1);
             }

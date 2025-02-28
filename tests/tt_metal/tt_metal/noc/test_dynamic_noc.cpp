@@ -83,7 +83,7 @@ void build_and_run_program(
         DataMovementConfig{
             .processor = DataMovementProcessor::RISCV_0,
             .noc = NOC::RISCV_0_default,
-            .noc_mode = tt_metal::NOC_MODE::DM_DEDICATED_NOC,
+            .noc_mode = mix_noc_mode ? tt_metal::NOC_MODE::DM_DEDICATED_NOC : tt_metal::NOC_MODE::DM_DYNAMIC_NOC,
             .compile_args = compile_args});
 
     auto ncrisc_kernel2 = CreateKernel(
@@ -94,7 +94,7 @@ void build_and_run_program(
         DataMovementConfig{
             .processor = DataMovementProcessor::RISCV_1,
             .noc = NOC::RISCV_1_default,
-            .noc_mode = tt_metal::NOC_MODE::DM_DEDICATED_NOC,
+            .noc_mode = mix_noc_mode ? tt_metal::NOC_MODE::DM_DEDICATED_NOC : tt_metal::NOC_MODE::DM_DYNAMIC_NOC,
             .compile_args = compile_args});
 
     for (int core_idx_y = 0; core_idx_y < worker_grid_size.y; core_idx_y++) {
