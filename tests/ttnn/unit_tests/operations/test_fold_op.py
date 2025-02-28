@@ -412,23 +412,6 @@ def test_fold_sharded(device):
     torch.testing.assert_allclose(actual, expected)
 
 
-def resnet50_fold_torch(input_tensor, stride_h, stride_w):
-    n, c, h, w = input_tensor.shape
-    c = c + 1
-    h = h + 2 * 3
-    w = w + 2 * 3
-    output = torch.nn.functional.pad(input_tensor, (0, 0, 0, 6, 0, 1, 0, 0))  ## pad C to 4
-    breakpoint()
-    output = torch.transpose(output, 2, 3)  ## NCHW -> NCWH
-    output = torch.nn.functional.pad(output, (0, 0, 0, 6, 0, 0, 0, 0))  ## pad C to 4
-    output = torch.transpose(output, 1, 2)  ## NCWH -> NWCH     16 224 4 224
-    output = torch.reshape(output, (n, w // 2, 2 * c, h))  ## 16 112 8 224
-    output = torch.transpose(output, 2, 3)  ## NWCH -> NWHC     16 112 224 8
-    output = torch.reshape(output, (n, w // 2, h // 2, 2 * 2 * c))  ## 16 112 112 16
-    output = torch.transpose(output, 1, 2)  ## NWHC -> NHWC     16 112 112 16
-    return output
-
-
 def test_resnet50_fold(device):
     torch.manual_seed(0)
 
@@ -444,7 +427,7 @@ def test_resnet50_fold(device):
 
     torch_input = torch.randn(input_shape, dtype=torch.bfloat16)
 
-    torch_expected = resnet50_fold_torch(torch_input, 2, 2)
+    torch_expected = pad_and_fold_with_permute_and_reshape(torch_input, 3, 3, 2, 2)
 
     shard_grid = ttnn.CoreRangeSet(
         {
@@ -458,8 +441,6 @@ def test_resnet50_fold(device):
 
     from models.demos.ttnn_resnet.tt.ttnn_functional_resnet50_model_utils import get_conv_input_memory_config
     from models.demos.ttnn_resnet.tests.resnet50_test_infra import create_test_infra
-
-    breakpoint()
 
     test_infra = create_test_infra(
         device,
