@@ -1998,6 +1998,15 @@ operation::ProgramWithCallbacks transpose_wh_multi_core_sharded_rm(const Tensor&
     uint32_t ht = (H + TILE_HEIGHT - 1) / TILE_HEIGHT;
     uint32_t wt = (W + TILE_WIDTH - 1) / TILE_WIDTH;
 
+    tt::log_debug("W: {}", W);
+    tt::log_debug("H: {}", H);
+    tt::log_debug("C: {}", C);
+    tt::log_debug("N: {}", N);
+    tt::log_debug("total_height: {}", total_height);
+    tt::log_debug("stick_size_bytes: {}", stick_size_bytes);
+    tt::log_debug("ht: {}", ht);
+    tt::log_debug("wt: {}", wt);
+
     uint32_t output_page_size, pack_num_pages, pack_num_pages_last_col, pack_num_pages_last_row,
         pack_num_pages_last_row_col;
     if ((W % TILE_WIDTH) != 0 and (H % TILE_HEIGHT) != 0) {
@@ -2093,7 +2102,7 @@ operation::ProgramWithCallbacks transpose_wh_multi_core_sharded_rm(const Tensor&
     auto cb_im = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_im_config);
 
     // untilize cb
-    if (ht > 8) {
+    if (ht > 0) {
         uint32_t im2_cb_index = tt::CBIndex::c_26;
         uint32_t num_im2_tiles = ht;
         tt::tt_metal::CircularBufferConfig cb_im2_config =

@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include "dataflow_api.h"
 
+#include <debug/dprint_pages.h>
+
 void kernel_main() {
     constexpr uint32_t num_hw_blocks_per_core = get_compile_time_arg_val(0);
     constexpr uint32_t Ht = get_compile_time_arg_val(1);
@@ -35,6 +37,7 @@ void kernel_main() {
                 read_noc_addr += stick_size_bytes;
             }
             noc_async_read_barrier();
+            tt::data_movement::common::print_bf16_pages(get_read_ptr(cb_in), stick_size_bytes / 2, 32);  // H_per_tile);
             cb_push_back(cb_in, Wt);
         }
     }

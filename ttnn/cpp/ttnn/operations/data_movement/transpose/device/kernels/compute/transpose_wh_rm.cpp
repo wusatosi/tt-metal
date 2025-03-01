@@ -10,6 +10,26 @@
 #include "compute_kernel_api/untilize.h"
 #include "compute_kernel_api/pack_untilize.h"
 
+#include "dprint_tensix.h"
+
+inline void print_bf16_pages(uint32_t l1_addr, uint32_t elts_per_page, uint32_t npages, uint32_t start = 0) {
+    DPRINT << "l1 addr: " << l1_addr << ENDL();
+    volatile tt_l1_ptr uint16_t* ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(l1_addr) + start * elts_per_page;
+    for (uint32_t page = 0; page < npages; ++page) {
+        DPRINT << start + page << ": ";
+        for (uint32_t j = 0; j < elts_per_page; ++j, ++ptr) {
+            DPRINT << BF16(*ptr) << " ";
+        }
+        DPRINT << ENDL();
+    }
+}
+
+inline void print_cb(uint32_t cb_id, uint32_t cols = 32, uint32_t rows = 32) {
+    uint32_t addr = 0;
+    UNPACK(addr = get_local_cb_interface(cb_id).fifo_rd_ptr;);
+    print_bf16_pages(addr, cols, rows);
+}
+
 template <uint32_t Wt, uint32_t Ht, uint32_t HtWt>
 ALWI void transpose_with_untilize(uint32_t cb_tilize, uint32_t cb_untilize, uint32_t cb_out) {
     uint32_t tile_idx = 0;
@@ -59,8 +79,9 @@ ALWI void transpose_with_pack_untilize_narrow_row(uint32_t cb_tilize, uint32_t c
             transpose_wh_tile(cb_tilize, tile_idx, h);
             tile_idx += Wt;
         }
-
         tile_regs_commit();
+
+        dprint_tensix_dest_reg(0);
 
         if (w == Wt - 1) {  // last row
             cb_reserve_back(cb_out, pack_num_pages_last_row_col);
@@ -93,7 +114,6 @@ ALWI void transpose_with_pack_untilize(uint32_t cb_tilize, uint32_t cb_out) {
             tile_idx += Wt;
         }
         tile_regs_commit();
-
         cb_reserve_back(cb_out, Ht);
         tile_regs_wait();
         pack_untilize_dst<Ht>(cb_out);
@@ -146,12 +166,15 @@ void MAIN {
         tilize_init_short(cb_in, Wt, cb_tilize);
         for (uint32_t h = 0; h < Ht; ++h) {
             cb_wait_front(cb_in, Wt);
+            // print_cb(cb_in, 256, 8);
             cb_reserve_back(cb_tilize, Wt);
             tilize_block(cb_in, Wt, cb_tilize);
             cb_push_back(cb_tilize, Wt);
             cb_pop_front(cb_in, Wt);
         }
         tilize_uninit(cb_in, cb_tilize);
+
+        // print_cb(cb_tilize, 32, 32);
 
         // transpose
         cb_wait_front(cb_tilize, HtWt);

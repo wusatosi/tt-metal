@@ -1182,10 +1182,16 @@ def test_transpose_high_rank(*, device: ttnn.Device, rank: int, indices, layout)
 def test_resnet50_fold(device, n, c, h, w, dim0, dim1):
     torch.manual_seed(0)
     input_shape = (n, c, h, w)
-    torch_input = torch.randn(input_shape, dtype=torch.bfloat16)
+    # torch_input = torch.randn(input_shape, dtype=torch.bfloat16)
+    torch_input = torch.zeros(input_shape, dtype=torch.bfloat16)
+    for i in range(n):
+        for j in range(c):
+            torch_input[i, j, :, :] = torch.tensor([[i + j + 1] * w] * h)
 
     ## WH -> HW
     torch_output = torch_input.transpose(dim0, dim1)
+
+    # breakpoint()
 
     core_grid = ttnn.CoreGrid(y=8, x=8)
     mem_config = ttnn.create_sharded_memory_config(
