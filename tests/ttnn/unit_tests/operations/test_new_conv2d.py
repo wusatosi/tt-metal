@@ -2188,7 +2188,7 @@ def test_conv_dilation(
         output_layout=output_layout,
         dilation=dilation,
         fp32_accum=True,
-        packer_l1_acc=True,
+        packer_l1_acc=(output_layout == ttnn.TILE_LAYOUT),
         has_bias=False,
     )
 
