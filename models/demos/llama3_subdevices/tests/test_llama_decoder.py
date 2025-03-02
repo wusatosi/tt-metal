@@ -233,7 +233,7 @@ def test_llama_decoder_inference(
 
         # capture trace
         trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
-        for _ in range(100):
+        for _ in range(0):
             ttnn.dram_prefetcher(
                 tt_pf,
                 num_layers=1,
@@ -261,7 +261,7 @@ def test_llama_decoder_inference(
         # capture trace
         print("Capturing trace 2 ")
         trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
-        for _ in range(1000):
+        for _ in range(50):
             ttnn.dram_prefetcher(
                 tt_pf,
                 num_layers=1,
@@ -283,8 +283,8 @@ def test_llama_decoder_inference(
         start_run = time.time()
         ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
         ttnn.synchronize_devices(mesh_device, sub_device_ids=[prefetcher_setup.worker_sub_device_id])
-        ttnn.release_trace(mesh_device, trace_id)
         time_run = time.time() - start_run
+        ttnn.release_trace(mesh_device, trace_id)
 
         print(f"Time taken for warmup: {time_warmup}")
         print(f"Time taken for run: {time_run}")

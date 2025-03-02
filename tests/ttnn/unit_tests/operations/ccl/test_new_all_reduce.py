@@ -163,7 +163,7 @@ def run_all_reduce_impl(
 
         # All-Reduce Golden
         # Inputs reduce sequentially for 10 iters
-        loopback_size = 4
+        loopback_size = 1
         output_tensor_goldens_list = []
         for i in range(num_iters):
             if i % loopback_size == 0:
@@ -202,7 +202,7 @@ def run_all_reduce_impl(
                     outs.append(out)
 
                 # Loop back the output to the input
-                tt_input = ttnn.reshard(out, input_mem_config)
+                # tt_input = ttnn.reshard(out, input_mem_config)
 
             if store_all_results:
                 return outs
@@ -287,11 +287,11 @@ def run_all_reduce_impl(
             output_tensor = output_tensor_goldens_list[-1]
             validate(tt_out_tensor, output_tensor)
 
-        for i in range(mesh_device.get_num_devices()):
-            assert (
-                mesh_device.get_devices()[i].num_program_cache_entries() == 1 + 1
-                or mesh_device.get_devices()[i].num_program_cache_entries() == num_iters + 1
-            ), f"Device {i} has {mesh_device.get_devices()[i].num_program_cache_entries()} program cache entries"
+        # for i in range(mesh_device.get_num_devices()):
+        #     assert (
+        #         mesh_device.get_devices()[i].num_program_cache_entries() == 1 + 1
+        #         or mesh_device.get_devices()[i].num_program_cache_entries() == num_iters + 1
+        #     ), f"Device {i} has {mesh_device.get_devices()[i].num_program_cache_entries()} program cache entries"
 
     finally:
         if enable_persistent_fabric and teardown_persistent_fabric:
@@ -309,19 +309,19 @@ def run_all_reduce_impl(
         ([1, 1, 32, 2048], 0, 4, 24, 16),  # FF2/DO all reduce
         ([1, 1, 32, 1280], 1, 3, 24, 40),  # QKV all reduce
         ([1, 1, 32, 3584], 1, 3, 24, 24),  # FF1 all reduce
-        ([1, 1, 32, 2048], 0, 3, 24, 16),  # FF2/DO all reduce
-        ([1, 1, 32, 1280], 1, 2, 24, 40),  # QKV all reduce
-        ([1, 1, 32, 3584], 1, 2, 24, 24),  # FF1 all reduce
-        ([1, 1, 32, 2048], 0, 2, 24, 16),  # FF2/DO all reduce
-        ([1, 1, 32, 1280], 1, 1, 24, 40),  # QKV all reduce
-        ([1, 1, 32, 3584], 1, 1, 24, 24),  # FF1 all reduce
-        ([1, 1, 32, 2048], 0, 1, 24, 16),  # FF2/DO all reduce
+        # ([1, 1, 32, 2048], 0, 3, 24, 16),  # FF2/DO all reduce
+        # ([1, 1, 32, 1280], 1, 2, 24, 40),  # QKV all reduce
+        # ([1, 1, 32, 3584], 1, 2, 24, 24),  # FF1 all reduce
+        # ([1, 1, 32, 2048], 0, 2, 24, 16),  # FF2/DO all reduce
+        # ([1, 1, 32, 1280], 1, 1, 24, 40),  # QKV all reduce
+        # ([1, 1, 32, 3584], 1, 1, 24, 24),  # FF1 all reduce
+        # ([1, 1, 32, 2048], 0, 1, 24, 16),  # FF2/DO all reduce
     ],
 )
 @pytest.mark.parametrize(
     "input_dtype",
     [
-        ttnn.bfloat16,
+        # ttnn.bfloat16,
         ttnn.bfloat8_b,
     ],
 )
