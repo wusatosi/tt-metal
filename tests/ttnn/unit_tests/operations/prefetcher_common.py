@@ -23,6 +23,7 @@ from tests.tt_eager.python_api_testing.unit_testing.misc.test_matmul_1d_gather_i
     num_cores_to_rectangle_grid,
     round_up,
 )
+from models.perf.benchmarking_utils import BenchmarkProfiler
 
 
 def get_buffer_address(tensor):
@@ -159,6 +160,8 @@ def run_prefetcher_mm(
     num_reader_cores,
     dtypes,
     is_functional_test=False,
+    profiler=BenchmarkProfiler(),
+    measure_perf=False,
 ):
     logger.info(f"Running test_run_prefetcher with num_tensors={num_tensors}, num_layers={num_layers}")
     assert len(input_shapes) == len(dtypes)
@@ -226,7 +229,9 @@ def run_prefetcher_mm(
     cluster_shape = None
     mesh_mapper = None
     mesh_composer = None
+    mesh_device = False
     if isinstance(device, ttnn._ttnn.multi_device.MeshDevice):
+        mesh_device = True
         cluster_shape = device.shape
         mesh_mapper = ReplicateTensorToMesh(device)
         mesh_composer = ConcatMesh2dToTensor(device, dims=(0, 1), mesh_shape=cluster_shape)
@@ -463,7 +468,10 @@ def run_prefetcher_mm(
 
             # Send outputs to DRAM to so that we don't run out of L1 memory when testing for large number of layers
             for t in range(num_tensors):
-                outputs_dram.append(ttnn.to_memory_config(outputs_l1[t], ttnn.DRAM_MEMORY_CONFIG))
+                if measure_perf:
+                    outputs_dram.append(outputs_l1[t])
+                else:
+                    outputs_dram.append(ttnn.to_memory_config(outputs_l1[t], ttnn.DRAM_MEMORY_CONFIG))
         device.reset_sub_device_stall_group()
         return outputs_dram
 
@@ -480,7 +488,9 @@ def run_prefetcher_mm(
 
     ##### Run Trace #####
     logger.info("Running trace")
+    profiler.start("op-duration")
     ttnn.execute_trace(device, trace_id, cq_id=0, blocking=True)
+    profiler.end("op-duration")
 
     ##### Check Results #####
     all_passing = True

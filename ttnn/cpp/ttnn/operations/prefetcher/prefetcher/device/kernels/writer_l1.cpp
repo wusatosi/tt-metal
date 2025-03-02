@@ -23,6 +23,7 @@ void kernel_main() {
     constexpr uint32_t max_block_num_tiles = get_compile_time_arg_val(4);
     constexpr uint32_t local_cb_id = get_compile_time_arg_val(5);
     constexpr uint32_t remote_cb_id = get_compile_time_arg_val(6);
+    constexpr bool non_blocking = (bool)get_compile_time_arg_val(7);
 
     // Runtime args
     // Note: Coalesced sizes -> wrt to receiver cores, sizes -> wrt to dram reader cores
@@ -46,7 +47,7 @@ void kernel_main() {
             uint32_t curr_block_size_per_receiver = curr_block_size / num_receivers;
 
             experimental::resize_remote_sender_cb_interface<true>(remote_cb_id, curr_block_size_per_receiver, noc);
-            experimental::remote_cb_reserve_back(remote_cb_id, num_blocks);
+            // experimental::remote_cb_reserve_back(remote_cb_id, num_blocks);
 
             for (uint32_t block = 0; block < num_blocks; ++block) {
                 {
@@ -65,10 +66,16 @@ void kernel_main() {
                     cb_pop_front(local_cb_id, max_block_num_tiles);
                 }
             }
+
+            if constexpr (non_blocking) {
+                experimental::remote_cb_pop_front(remote_cb_id, num_blocks);
+            }
         }
     }
 
-    experimental::remote_cb_sender_barrier(remote_cb_id);
+    if constexpr (!non_blocking) {
+        experimental::remote_cb_sender_barrier(remote_cb_id);
+    }
 
     experimental::update_remote_cb_config_in_l1(remote_cb_id);
 }

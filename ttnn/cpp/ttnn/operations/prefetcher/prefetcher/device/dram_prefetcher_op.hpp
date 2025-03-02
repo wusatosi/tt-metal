@@ -20,11 +20,13 @@ namespace ttnn::operations::dram_prefetcher {
 tt::tt_metal::operation::ProgramWithCallbacks dram_prefetcher_multi_core(
     const std::vector<Tensor>& input_tensors,
     const uint32_t num_layers,
-    const tt::tt_metal::v1::experimental::GlobalCircularBuffer& global_cb);
+    const tt::tt_metal::v1::experimental::GlobalCircularBuffer& global_cb,
+    const bool non_blocking);
 
 struct DramPrefetcher {
     const std::optional<const tt::tt_metal::DeviceGlobalCircularBuffer> global_cb;
     const uint32_t num_layers;
+    const bool non_blocking;
 
     void validate(const std::vector<Tensor>& input_tensors) const;
     std::vector<ttnn::TensorSpec> compute_output_specs(const std::vector<Tensor>& input_tensors) const;
