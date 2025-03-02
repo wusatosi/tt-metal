@@ -117,6 +117,9 @@ PREFETCHER_NOC1_GRID = [
     (2, 5),
     (2, 9),
 ]
+PREFETCHER_HOP_GRID = [
+    (3, 6),
+]
 
 
 def run_multi_core_matmul_1d(
@@ -134,16 +137,25 @@ def run_multi_core_matmul_1d(
     activation,
     grid,
     use_arbitrary_cores,
-    num_iters,
+    num_iters=1,
     max_dst_tiles=8,
     pcc_threshold=0.98,
     use_physical_to_logical_mapping=True,
     hop_grid=None,
     in1_is_dram_interleaved=False,
+    return_setup=False,
 ):
     assert not has_bias, "Bias not supported for gather_in0 mode."
     if not isinstance(grid, tuple) and not use_arbitrary_cores:
         pytest.skip("Grid is not a tuple and not using arbitrary cores")
+
+    mesh_mapper = None
+    mesh_composer = None
+    is_mesh_device = False
+    if isinstance(device, ttnn._ttnn.multi_device.MeshDevice):
+        is_mesh_device = True
+        mesh_mapper = ttnn.ReplicateTensorToMesh(device)
+        mesh_composer = ttnn.ConcatMeshToTensor(device, dim=0)
 
     in0_shape = [1, B, M, K]
     in1_shape = [1, 1, K, N]
@@ -271,6 +283,7 @@ def run_multi_core_matmul_1d(
         layout=ttnn.TILE_LAYOUT,
         dtype=in0_dtype,
         memory_config=in0_sharded_mem_config,
+        mesh_mapper=mesh_mapper,
     )
     in1_t = ttnn.from_torch(
         in1,
@@ -278,6 +291,7 @@ def run_multi_core_matmul_1d(
         layout=ttnn.TILE_LAYOUT,
         dtype=in1_dtype,
         memory_config=in1_sharded_mem_config,
+        mesh_mapper=mesh_mapper,
     )
 
     program_config = ttnn.MatmulMultiCoreReuseMultiCast1DProgramConfig(
@@ -308,6 +322,17 @@ def run_multi_core_matmul_1d(
             dst_full_sync_en=True,
         )
 
+    if return_setup:
+        return {
+            "in0_torch": in0,
+            "in1_torch": in1,
+            "in0_tt": in0_t,
+            "in1_tt": in1_t,
+            "program_config": program_config,
+            "memory_config": output_sharded_mem_config,
+            "compute_kernel_config": compute_kernel_config,
+        }
+
     for _ in range(num_iters):
         output_t = ttnn.matmul(
             in0_t,
@@ -317,7 +342,7 @@ def run_multi_core_matmul_1d(
             compute_kernel_config=compute_kernel_config,
         )
 
-    tt_out = ttnn.to_torch(output_t)
+    tt_out = ttnn.to_torch(output_t, mesh_composer=mesh_composer)[:1]
     pt_out = in0 @ in1
 
     if activation:
@@ -330,7 +355,12 @@ def run_multi_core_matmul_1d(
     assert passing
 
     # Check program cache
-    assert device.num_program_cache_entries() == 1  # Only 1 op
+    if is_mesh_device:
+        for i in range(device.get_num_devices()):
+            d = device.get_devices()[i]
+            assert d.num_program_cache_entries() == 1
+    else:
+        assert device.num_program_cache_entries() == 1  # Only 1 op
 
 
 @pytest.mark.skipif(is_grayskull(), reason="GS does not support fp32")

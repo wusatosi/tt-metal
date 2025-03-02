@@ -17,6 +17,11 @@ from tests.ttnn.unit_tests.operations.ccl.test_ccl_common import (
 from tests.ttnn.unit_tests.operations.prefetcher_common import (
     get_core_ranges,
 )
+from tests.tt_eager.python_api_testing.unit_testing.misc.test_matmul_1d_gather_in0 import (
+    run_multi_core_matmul_1d,
+    PREFETCHER_NOC1_GRID,
+    PREFETCHER_HOP_GRID,
+)
 from models.perf.benchmarking_utils import BenchmarkProfiler
 
 
@@ -147,3 +152,62 @@ class LlamaPrefetcher(LightweightModule):
         ), f"Expected at least {self.n_tensors} tensors, got {len(self.tensors)}"
 
         return self.tensors[: self.n_tensors] + [self.get_tensor_addrs()]
+
+    def run_op(self):
+        ttnn.dram_prefetcher(
+            self.input_tensors,
+            self.n_layers,
+            self.global_circular_buffer,
+            non_blocking=True,
+        )
+        self.mesh_device.set_sub_device_stall_group([self.worker_sub_device_id])
+
+
+class MatmulOp(LightweightModule):
+    def __init__(
+        self,
+        mesh_device,
+        in0_dtype,
+        in1_dtype,
+        fidelity,
+        fp32_acc_mode,
+        packer_l1_acc,
+        B,
+        M,
+        K,
+        N,
+    ):
+        logger.info("Running MatmulOp")
+
+        self.mesh_device = mesh_device
+
+        self.setup = run_multi_core_matmul_1d(
+            mesh_device,
+            in0_dtype,
+            in1_dtype,
+            fidelity,
+            False,  # has_bias
+            fp32_acc_mode,
+            packer_l1_acc,
+            B,
+            M,
+            K,
+            N,
+            activation=None,
+            grid=PREFETCHER_NOC1_GRID,
+            use_arbitrary_cores=True,
+            use_physical_to_logical_mapping=False,
+            hop_grid=PREFETCHER_HOP_GRID,
+            return_setup=True,
+        )
+
+    def run_op(self):
+        out = ttnn.matmul(
+            self.setup["in0_tt"],
+            self.setup["in1_tt"],
+            program_config=self.setup["program_config"],
+            memory_config=self.setup["memory_config"],
+            compute_kernel_config=self.setup["compute_kernel_config"],
+        )
+
+        return out
