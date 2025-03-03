@@ -353,9 +353,7 @@ def test_matmul_2d_host_perf(
                             compute_kernel_config=compute_kernel_config,
                             output_tile=output_tile,
                         )
-                    logger.info(f"before sync")
                     ttnn.synchronize_device(device)
-                    logger.info(f"after sync")
                     profiler.end(f"run")
 
                 ttnn.DumpDeviceProfiler(device)
