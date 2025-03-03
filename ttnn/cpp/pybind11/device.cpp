@@ -28,7 +28,7 @@ namespace py = pybind11;
 namespace {
 inline void DumpDeviceProfiler(IDevice* device) {
     ProfilerOptionalMetadata prof_metadata(op_profiler::runtime_id_to_opname.exportMap());
-    tt::tt_metal::detail::DumpDeviceProfileResults(device);
+    tt::tt_metal::detail::DumpDeviceProfileResults(device, ProfilerDumpState::NORMAL, prof_metadata);
 }
 }  // namespace
 
