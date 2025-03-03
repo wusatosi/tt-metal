@@ -68,7 +68,7 @@ Tensor halo_op(
     uint32_t reshard_num_cores_nhw = 0,
     const MemoryConfig& output_memory_config = operation::DEFAULT_OUTPUT_MEMORY_CONFIG,
     bool is_out_tiled = true,
-    bool enable_split_reader = false);
+    bool enable_split_reader = true);
 
 }  // namespace halo
 

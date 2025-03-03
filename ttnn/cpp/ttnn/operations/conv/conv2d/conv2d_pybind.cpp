@@ -356,7 +356,7 @@ void py_bind_conv2d(py::module& module) {
         py::arg("enable_weights_double_buffer") = false,
         py::arg("enable_split_reader") = false,
         py::arg("enable_subblock_padding") = false,
-        py::arg("enable_halo_split_reader") = false);
+        py::arg("enable_halo_split_reader") = true);
     py_conv_config.def_readwrite("dtype", &Conv2dConfig::dtype);
     py_conv_config.def_readwrite("weights_dtype", &Conv2dConfig::weights_dtype);
     py_conv_config.def_readwrite("activation", &Conv2dConfig::activation);

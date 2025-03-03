@@ -74,7 +74,7 @@ struct Conv2dConfig {
 
     bool enable_subblock_padding = false;
 
-    bool enable_halo_split_reader = false;
+    bool enable_halo_split_reader = true;
     static constexpr auto attribute_names = std::make_tuple(
         "dtype",
         "weights_dtype",
