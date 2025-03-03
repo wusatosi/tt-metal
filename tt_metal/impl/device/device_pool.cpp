@@ -464,6 +464,10 @@ void DevicePool::wait_for_fabric_master_router_sync() const {
                     master_router_status,
                     CoreType::ETH);
             }
+            std::cout << fmt::format(
+                "Fabric router sync address = {:#x}. Logical core = {}\n",
+                fabric_router_sync_sem_addr,
+                fabric_master_router_core.str());
         }
     }
 }

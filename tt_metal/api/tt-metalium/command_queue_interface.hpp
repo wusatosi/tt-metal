@@ -176,11 +176,7 @@ private:
             } else if (dev_addr_type == CommandQueueDeviceAddrType::DISPATCH_MESSAGE) {
                 device_cq_addr_sizes_[dev_addr_idx] = settings.dispatch_message_;
             } else if (dev_addr_type == CommandQueueDeviceAddrType::FABRIC_INTERFACE) {
-                if (llrt::RunTimeOptions::get_instance().get_fd_fabric()) {
-                    device_cq_addr_sizes_[dev_addr_idx] = tt_fabric::PACKET_HEADER_SIZE_BYTES;
-                } else {
-                    device_cq_addr_sizes_[dev_addr_idx] = 0;
-                }
+                device_cq_addr_sizes_[dev_addr_idx] = tt_fabric::PACKET_HEADER_SIZE_BYTES;
             } else {
                 device_cq_addr_sizes_[dev_addr_idx] = settings.other_ptrs_size;
             }

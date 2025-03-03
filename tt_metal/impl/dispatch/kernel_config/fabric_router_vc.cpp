@@ -49,13 +49,11 @@ void FabricRouterVC::GenerateDependentConfigs() {
 
         if (auto prefetch_us = dynamic_cast<PrefetchKernel*>(us_kernel);
             auto prefetch_ds = dynamic_cast<PrefetchKernel*>(ds_kernel)) {
-            std::cout << fmt::format("Fabric Router VC - Sender Path (Prefetch H to Prefetch D or Reverse)\n");
             valid_path = true;
         }
 
         if (auto dispatch_us = dynamic_cast<DispatchKernel*>(us_kernel);
             auto dispatch_ds = dynamic_cast<DispatchKernel*>(ds_kernel)) {
-            std::cout << fmt::format("Fabric Router VC - Return Path (Dispatch D to Dispatch H or Reverse)\n");
             valid_path = true;
         }
 

@@ -499,7 +499,6 @@ std::vector<DispatchKernelNode> generate_nodes(const std::set<chip_id_t>& device
             // TODO: Put this in a better place
             if (llrt::RunTimeOptions::get_instance().get_fd_fabric()) {
                 TT_FATAL(num_hw_cqs == 1, "Only 1 CQ is supported at this time for FD on Fabric");
-                tt::tt_metal::detail::InitializeFabricConfig(tt::FabricConfig::FABRIC_2D);
                 nodes_for_one_mmio = two_chip_arch_1cq_fabric;
             } else {
                 nodes_for_one_mmio = (num_hw_cqs == 1) ? two_chip_arch_1cq : two_chip_arch_2cq;

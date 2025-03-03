@@ -28,6 +28,10 @@ protected:
             this->num_devices_ = 2;
         }
 
+        if (tt::llrt::RunTimeOptions::get_instance().get_fd_fabric()) {
+            tt::tt_metal::detail::InitializeFabricConfig(tt::FabricConfig::FABRIC_2D);
+        }
+
         std::vector<chip_id_t> ids;
         for (unsigned int id = 0; id < num_devices_; id++) {
             ids.push_back(id);

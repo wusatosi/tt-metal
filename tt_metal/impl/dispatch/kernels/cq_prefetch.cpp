@@ -12,6 +12,7 @@
 #include <cq_commands.hpp>
 #include "dataflow_api.h"
 #include "dataflow_api_addrgen.h"
+#include "fabric_host_interface.h"
 #include "tt_metal/impl/dispatch/kernels/cq_common.hpp"
 #include "tt_metal/fabric/hw/inc/tt_fabric_api.h"
 #include "tt_metal/fabric/hw/inc/tt_fabric_interface.h"
@@ -1478,24 +1479,54 @@ void kernel_main_hd() {
 }
 
 void kernel_main() {
-    DPRINT << "prefetcher_" << is_h_variant << is_d_variant << ": start" << ENDL();
+    // DPRINT << "prefetcher_" << is_h_variant << is_d_variant << " fabric_en = " << (uint32_t)(client_interface_addr !=
+    // 0) << " router noc xy = 0x" << HEX() << fabric_router_noc_xy << ": start" << ENDL();
     if constexpr (client_interface_addr) {
+        DPRINT << "Initialize fabric endpoint\n";
         tt::tt_fabric::fabric_endpoint_init(client_interface, 0 /*Unused*/);
     }
 
     if (is_h_variant and is_d_variant) {
-        kernel_main_hd();
+        // kernel_main_hd();
     } else if (is_h_variant) {
-        kernel_main_h();
+        // kernel_main_h();
+        uint64_t dst_noc_addr = get_noc_addr_helper(downstream_noc_xy, downstream_cb_base);
+        DPRINT << "client interface = 0x" << HEX() << client_interface_addr << "Remote cb addr = 0x" << HEX()
+               << downstream_cb_base << " downstream noc_xy = 0x" << HEX() << downstream_noc_xy << " dst noc addr = 0x"
+               << HEX() << dst_noc_addr << " fabric router xy = 0x" << fabric_router_noc_xy << ENDL();
+        auto dptr = reinterpret_cast<volatile uint32_t*>(cmddat_q_base);
+        auto user_dptr = reinterpret_cast<volatile uint32_t*>(cmddat_q_base + tt::tt_fabric::PACKET_HEADER_SIZE_BYTES);
+        user_dptr[0] = 0xdeadbeef;
+        fabric_async_write(
+            client_interface,
+            fabric_router_noc_xy,
+            (uint32_t)dptr,
+            downstream_mesh_id,
+            downstream_chip_id,
+            dst_noc_addr,
+            12 * sizeof(uint32_t) + tt::tt_fabric::PACKET_HEADER_SIZE_BYTES);
+        DPRINT << "Fabric async write\n";
+
+        fabric_wait_for_pull_request_flushed(client_interface);
+
+        DPRINT << "Pull request flushed\n";
     } else if (is_d_variant) {
-        kernel_main_d();
+        // kernel_main_d();
+        DPRINT << "D variant waiting for data at 0x" << HEX() << cmddat_q_base << ENDL();
+        auto dptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(cmddat_q_base);
+        auto dptr2 = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(prefetch_q_base);
+        auto dptr3 = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(scratch_db_base);
+        auto dptr4 =
+            reinterpret_cast<volatile tt_l1_ptr uint32_t*>(cmddat_q_base + tt::tt_fabric::PACKET_HEADER_SIZE_BYTES);
+        while (dptr[0] == 0 && dptr2[0] == 0 && dptr3[0] == 0 && dptr[4] == 0);
+        DPRINT << "D variant received 0x" << HEX() << dptr[0] << ENDL();
     } else {
         ASSERT(0);
     }
     IDLE_ERISC_RETURN();
 
     // Confirm expected number of pages, spinning here is a leak
-    cb_wait_all_pages<my_downstream_cb_sem_id>(downstream_cb_pages);
+    // cb_wait_all_pages<my_downstream_cb_sem_id>(downstream_cb_pages);
 
     noc_async_full_barrier();
 
