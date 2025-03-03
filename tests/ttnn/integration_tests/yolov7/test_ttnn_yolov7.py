@@ -8,16 +8,16 @@ import ttnn
 import numpy as np
 from loguru import logger
 import sys
-from models.experimental.functional_yolov7.reference.model import Yolov7_model
-import models.experimental.functional_yolov7.reference.yolov7_utils
-import models.experimental.functional_yolov7.reference.yolov7_model
+from models.experimental.yolov7.reference.model import Yolov7_model
+import models.experimental.yolov7.reference.yolov7_utils
+import models.experimental.yolov7.reference.yolov7_model
 from ttnn.model_preprocessing import preprocess_model_parameters, fold_batch_norm2d_into_conv2d, infer_ttnn_module_args
-from models.experimental.functional_yolov7.tt.tt_yolov7 import ttnn_yolov7
+from models.experimental.yolov7.tt.tt_yolov7 import ttnn_yolov7
 from tests.ttnn.utils_for_testing import assert_with_pcc
-from models.experimental.functional_yolov7.reference.yolov7_utils import download_yolov7_weights
+from models.experimental.yolov7.reference.yolov7_utils import download_yolov7_weights
 
-sys.modules["models.common"] = sys.modules["models.experimental.functional_yolov7.reference.yolov7_utils"]
-sys.modules["models.yolo"] = sys.modules["models.experimental.functional_yolov7.reference.yolov7_model"]
+sys.modules["models.common"] = sys.modules["models.experimental.yolov7.reference.yolov7_utils"]
+sys.modules["models.yolo"] = sys.modules["models.experimental.yolov7.reference.yolov7_model"]
 
 
 def create_custom_preprocessor(device):
