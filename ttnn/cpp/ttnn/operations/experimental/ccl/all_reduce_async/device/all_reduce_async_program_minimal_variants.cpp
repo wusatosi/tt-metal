@@ -42,7 +42,214 @@ CoreRangeSet cores_to_corerangeset(const std::vector<CoreCoord>& cores) {
     return CoreRangeSet(core_ranges);
 }
 
-tt::tt_metal::operation::ProgramWithCallbacks all_reduce_async_minimal_multi_core_with_workers(
+std::optional<std::vector<CoreCoord>> reorder_ethernet_cores(
+    IDevice* device, std::optional<IDevice*> remote_device, uint32_t num_links) {
+    if (remote_device.has_value()) {
+        uint32_t size = device->get_ethernet_sockets(remote_device.value()->id()).size();
+        std::vector<CoreCoord> reordered_ethernet_cores;
+        reordered_ethernet_cores.reserve(size);
+        std::vector<std::pair<CoreCoord, CoreCoord>> ethernet_cores_logical_physical;
+        ethernet_cores_logical_physical.reserve(size);
+
+        for (auto core : device->get_ethernet_sockets(remote_device.value()->id())) {
+            auto core_physical = device->virtual_core_from_logical_core(core, CoreType::ETH);
+            ethernet_cores_logical_physical.emplace_back(core, core_physical);
+        }
+        std::sort(ethernet_cores_logical_physical.begin(), ethernet_cores_logical_physical.end(), [](auto& a, auto& b) {
+            return a.second.x < b.second.x;
+        });
+
+        for (auto& core_pair : ethernet_cores_logical_physical) {
+            reordered_ethernet_cores.push_back(core_pair.first);
+        }
+        return reordered_ethernet_cores;
+    }
+
+    return std::nullopt;
+}
+
+std::vector<CoreCoord> compute_top_row_ethernet_cores(
+    IDevice* device,
+    std::optional<std::vector<CoreCoord>> forward_ethernet_cores,
+    std::optional<std::vector<CoreCoord>> backward_ethernet_cores) {
+    std::vector<CoreCoord> ethernet_cores;
+    if (forward_ethernet_cores.has_value()) {
+        ethernet_cores = forward_ethernet_cores.value();
+    } else if (backward_ethernet_cores.has_value()) {
+        ethernet_cores = backward_ethernet_cores.value();
+    }
+
+    std::vector<CoreCoord> ethernet_cores_virtual;
+    for (auto core : ethernet_cores) {
+        auto core_virtual = device->virtual_core_from_logical_core(core, CoreType::ETH);
+        ethernet_cores_virtual.push_back(core_virtual);
+    }
+
+    for (auto& eth_core : ethernet_cores_virtual) {
+        eth_core.y = 16;
+    }
+    return ethernet_cores_virtual;
+}
+
+bool core_vector_contains_core(std::vector<CoreCoord> core_vector, CoreCoord core) {
+    auto it = std::find(core_vector.begin(), core_vector.end(), core);
+    return it != core_vector.end();
+}
+
+std::tuple<bool, CoreRangeSet, std::vector<CoreCoord>> get_optimal_worker_core_placement(
+    IDevice* device,
+    std::vector<CoreCoord> ethernet_cores_virtual,
+    std::optional<CoreRangeSet> reserved_cores,
+    uint32_t num_links,
+    const std::optional<SubDeviceId>& sub_device_id) {
+    bool success = true;
+    std::vector<CoreCoord> sender_worker_cores;
+    std::vector<CoreCoord> sender_worker_cores_physical;
+
+    auto available_cores_corerangeset = device->worker_cores(
+        HalProgrammableCoreType::TENSIX,
+        sub_device_id.has_value() ? *sub_device_id : device->get_sub_device_ids().at(0));
+    auto available_cores = corerange_to_cores(available_cores_corerangeset, std::nullopt, true);
+    std::vector<CoreCoord> available_cores_physical;
+    for (auto available_core : available_cores) {
+        auto available_core_physical = device->physical_worker_core_from_logical_core(available_core);
+        available_cores_physical.push_back(available_core_physical);
+    }
+
+    // if (device->id() == 4) {
+    //     tt::log_info("available_cores_physical: {}", available_cores_physical);
+    // }
+
+    auto available_cores_bbox = available_cores_corerangeset.bounding_box();
+    auto available_core_start = available_cores_bbox.start_coord;
+    auto available_core_end = available_cores_bbox.end_coord;
+    auto available_core_start_physical = device->physical_worker_core_from_logical_core(available_core_start);
+    auto available_core_end_physical = device->physical_worker_core_from_logical_core(available_core_end);
+
+    auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
+    uint32_t num_cores_x = compute_with_storage_grid_size.x;
+    uint32_t num_cores_y = compute_with_storage_grid_size.y;
+    // Get all logical cores in the worker grid
+    std::vector<CoreCoord> compute_cores_logical;
+    for (int i = 0; i < num_cores_x; ++i) {
+        for (int j = 0; j < num_cores_y; ++j) {
+            compute_cores_logical.push_back(CoreCoord(i, j));
+        }
+    }
+
+    // get reserved core placement
+    std::vector<CoreCoord> reserved_cores_physical;
+    if (reserved_cores.has_value()) {
+        auto reserved_cores_vector = corerange_to_cores(reserved_cores.value(), std::nullopt, true);
+        for (auto reserved_core : reserved_cores_vector) {
+            auto reserved_core_physical = device->physical_worker_core_from_logical_core(reserved_core);
+            reserved_cores_physical.push_back(reserved_core_physical);
+        }
+    }
+
+    if (device->id() == 4) {
+        tt::log_info("reserved_cores_physical: {}", reserved_cores_physical);
+    }
+
+    for (uint32_t link = 0; link < num_links; link++) {
+        auto core_virtual = ethernet_cores_virtual[link];
+        CoreCoord eth_core_physical;
+        eth_core_physical.x = core_virtual.x >= 22 ? (core_virtual.x - 16) : (core_virtual.x - 17);
+        eth_core_physical.y = (core_virtual.y - 16) * 6;
+
+        // if (device->id() == 4) {
+        //     tt::log_info("eth_core_physical: {}", eth_core_physical);
+        // }
+
+        // shift down the worker core
+        auto worker_core_physical = CoreCoord(eth_core_physical.x, eth_core_physical.y + 1);
+        // check if we need to shift left for left-end cores
+        if (available_core_start_physical.x > worker_core_physical.x) {
+            worker_core_physical.x += (available_core_start_physical.x - worker_core_physical.x);
+        }
+
+        // check if we need to shift left for right-end cores
+        if (worker_core_physical.x > available_core_end_physical.x) {
+            worker_core_physical.x -= (worker_core_physical.x - available_core_end_physical.x);
+        }
+        // if (device->id() == 4) {
+        //     tt::log_info("worker_core_physical after shift left right : {}", worker_core_physical);
+        // }
+
+        // check the reserved cores
+        uint32_t start_core_y = worker_core_physical.y;
+        uint32_t end_core_y = available_core_end_physical.y;
+        for (uint32_t core_y = start_core_y; core_y < end_core_y + 1; ++core_y) {
+            worker_core_physical.y = core_y;
+            if (!core_vector_contains_core(sender_worker_cores_physical, worker_core_physical) &&
+                !core_vector_contains_core(reserved_cores_physical, worker_core_physical) &&
+                core_vector_contains_core(available_cores_physical, worker_core_physical)) {  // not find
+                break;
+            }
+        }
+
+        if (not(!core_vector_contains_core(reserved_cores_physical, worker_core_physical) &&
+                core_vector_contains_core(available_cores_physical, worker_core_physical) &&
+                !core_vector_contains_core(sender_worker_cores_physical, worker_core_physical))) {
+            success = false;
+        }
+        if (device->id() == 4) {
+            tt::log_info("worker_core_physical after shift down : {}", worker_core_physical);
+        }
+        // TT_FATAL(
+        //     !core_vector_contains_core(reserved_cores_physical, worker_core_physical) &&
+        //     core_vector_contains_core(available_cores_physical, worker_core_physical), "iter 1 worker core cannot
+        //     find a coord to be placed");
+
+        sender_worker_cores_physical.push_back(worker_core_physical);
+    }
+
+    // Convert to physical worker coordinates to logical.
+    for (int i = 0; i < sender_worker_cores_physical.size(); ++i) {
+        for (int j = 0; j < compute_cores_logical.size(); ++j) {
+            auto core = device->physical_worker_core_from_logical_core(compute_cores_logical[j]);
+            if (sender_worker_cores_physical[i] == core) {
+                sender_worker_cores.push_back(compute_cores_logical[j]);
+            }
+        }
+    }
+
+    // if (device->id() == 35) {
+    //     tt::log_info("dev {} sender_worker_cores: {}", device->id(), sender_worker_cores);
+    // }
+
+    // sender_worker_cores.clear();
+    // sender_worker_cores.push_back(CoreCoord(7,2));
+    // sender_worker_cores.push_back(CoreCoord(7,3));
+    // sender_worker_cores.push_back(CoreCoord(7,4));
+    // sender_worker_cores.push_back(CoreCoord(7,5));
+    //
+
+    // if (device->id() == 4) {
+    //     sender_worker_cores.push_back(CoreCoord(0,5));
+    //     sender_worker_cores.push_back(CoreCoord(1,5));
+    //     sender_worker_cores.push_back(CoreCoord(6,5));
+    //     sender_worker_cores.push_back(CoreCoord(7,5));
+    // } else {
+    //     sender_worker_cores.push_back(CoreCoord(0,3));
+    //     sender_worker_cores.push_back(CoreCoord(1,3));
+    //     sender_worker_cores.push_back(CoreCoord(6,3));
+    //     sender_worker_cores.push_back(CoreCoord(7,3));
+    // }
+
+    // if (device->id() == 4)
+    // tt::log_info("sender_worker_cores: {}", sender_worker_cores);
+
+    std::set<CoreRange> sender_worker_cores_set;
+    for (int i = 0; i < sender_worker_cores.size(); ++i) {
+        sender_worker_cores_set.insert(CoreRange(sender_worker_cores[i]));
+    }
+    CoreRangeSet sender_worker_corerangeset = CoreRangeSet(sender_worker_cores_set);
+
+    return {success, sender_worker_corerangeset, sender_worker_cores};
+}
+
+operation::ProgramWithCallbacks all_reduce_async_minimal_multi_core_with_workers(
     const Tensor& input_tensor,
     const Tensor& all_gather_output_tensor,
     std::optional<IDevice*> forward_device,
@@ -71,6 +278,11 @@ tt::tt_metal::operation::ProgramWithCallbacks all_reduce_async_minimal_multi_cor
         is_first_chip,
         is_last_chip);
 
+    std::optional<std::vector<CoreCoord>> forward_ethernet_cores =
+        reorder_ethernet_cores(device, forward_device, num_links);
+    std::optional<std::vector<CoreCoord>> backward_ethernet_cores =
+        reorder_ethernet_cores(device, backward_device, num_links);
+
     std::optional<ttnn::ccl::EdmLineFabricOpInterface> local_fabric_handle =
         ttnn::ccl::EdmLineFabricOpInterface::build_program_builder_worker_connection_fabric(
             device,
@@ -78,7 +290,16 @@ tt::tt_metal::operation::ProgramWithCallbacks all_reduce_async_minimal_multi_cor
             backward_device.value_or(nullptr),
             &program,
             enable_persistent_fabric_mode,
-            num_links);
+            num_links,
+            std::array{forward_ethernet_cores, backward_ethernet_cores});
+    // std::optional<ttnn::ccl::EdmLineFabricOpInterface> local_fabric_handle =
+    //     ttnn::ccl::EdmLineFabricOpInterface::build_program_builder_worker_connection_fabric(
+    //         device,
+    //         forward_device.value_or(nullptr),
+    //         backward_device.value_or(nullptr),
+    //         &program,
+    //         enable_persistent_fabric_mode,
+    //         num_links);
 
     // Get OP Config, topology config
     std::vector<Tensor> input_tensors = {input_tensor};
@@ -104,8 +325,30 @@ tt::tt_metal::operation::ProgramWithCallbacks all_reduce_async_minimal_multi_cor
     // Get worker cores, assuming 1 worker per link
     std::optional<CoreRangeSet> reserved_cores = output_tensor_cores;
     uint32_t num_workers_per_link = 1;
-    const auto [sender_worker_core_range, sender_worker_cores] = choose_worker_cores(
-        num_links, num_workers_per_link, enable_persistent_fabric_mode, device, sub_device_id, reserved_cores);
+
+    TT_FATAL(
+        backward_ethernet_cores.has_value() || forward_ethernet_cores.has_value(),
+        "at least one dir need to have eth cores");
+    TT_FATAL(reserved_cores.has_value(), "reserved core no value");
+
+    std::vector<CoreCoord> ethernet_cores_virtual =
+        compute_top_row_ethernet_cores(device, forward_ethernet_cores, backward_ethernet_cores);
+    // tt::log_info("dev {} ethernet_cores: {}", device->id(), ethernet_cores_virtual);
+    auto [success, sender_worker_core_range, sender_worker_cores] =
+        get_optimal_worker_core_placement(device, ethernet_cores_virtual, reserved_cores, num_links, sub_device_id);
+
+    if (device->id() == 4) {
+        tt::log_info("success: {}", success);
+    }
+
+    if (not success) {
+        auto [temp_core_range, temp_cores] = choose_worker_cores(
+            num_links, num_workers_per_link, enable_persistent_fabric_mode, device, sub_device_id, reserved_cores);
+        sender_worker_core_range = temp_core_range;
+        sender_worker_cores = temp_cores;
+    }
+    // const auto [sender_worker_core_range, sender_worker_cores] = choose_worker_cores(
+    //     num_links, num_workers_per_link, enable_persistent_fabric_mode, device, sub_device_id, reserved_cores);
 
     tt::log_debug(tt::LogOp, "input_tensor_num_pages: {}", input_tensor_num_pages);
     tt::log_debug(tt::LogOp, "input_tensor_cores: {}", input_tensor_cores);
@@ -267,27 +510,26 @@ tt::tt_metal::operation::ProgramWithCallbacks all_reduce_async_minimal_multi_cor
     tt::tt_metal::SetRuntimeArgs(program, reduction_kernel_id, output_tensor_cores, reduction_kernel_rt_args);
 
     // KERNEL CREATION
+    tt::tt_metal::NOC reader_noc = NOC::NOC_1;
+    tt::tt_metal::NOC writer_noc = NOC::NOC_0;
     // Reader
-    auto reader_kernel_config = tt::tt_metal::ReaderDataMovementConfig{};
-    reader_kernel_config.compile_args = {
+    std::vector<uint32_t> reader_compile_args = {
         ring_index,                 // my_chip_id
         src0_cb_index,              // cb0_id
         op_config.get_page_size(),  // tensor0_page_size
     };
     log_trace(tt::LogOp, "Reader Compile Args:");
-    for (const auto& arg : reader_kernel_config.compile_args) {
-        log_trace(tt::LogOp, "\t{}", arg);
-    }
     auto worker_sender_reader_kernel_id = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/experimental/ccl/all_reduce_async/device/kernels/dataflow/"
         "worker_reader.cpp",
         sender_worker_core_range,
-        reader_kernel_config);
+        DataMovementConfig{
+            .processor = DataMovementProcessor::RISCV_1, .noc = reader_noc, .compile_args = reader_compile_args});
 
     // Writer
     auto writer_kernel_config = tt::tt_metal::WriterDataMovementConfig{};
-    writer_kernel_config.compile_args = {
+    std::vector<uint32_t> writer_compile_args = {
         ring_index,                       // my_chip_id
         reserved_packet_header_CB_index,  // reserved_packet_header_cb_id
         num_packet_headers_storable,      // num_packet_headers_storable
@@ -298,15 +540,15 @@ tt::tt_metal::operation::ProgramWithCallbacks all_reduce_async_minimal_multi_cor
         num_targets_backward,             // num_targets_backward_direction
     };
     log_trace(tt::LogOp, "Writer Compile Args:");
-    for (const auto& arg : writer_kernel_config.compile_args) {
-        log_trace(tt::LogOp, "\t{}", arg);
-    }
+    // writer_kernel_config.DataMovementConfig.processor = NOC::RISCV_0;
+    // writer_kernel_config.DataMovementConfig.noc = NOC::RISCV_0_default;
     auto worker_sender_writer_kernel_id = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/experimental/ccl/all_reduce_async/device/kernels/dataflow/"
         "worker_writer.cpp",
         sender_worker_core_range,
-        writer_kernel_config);
+        DataMovementConfig{
+            .processor = DataMovementProcessor::RISCV_0, .noc = writer_noc, .compile_args = writer_compile_args});
 
     // Kernel Runtime Args
     for (uint32_t link = 0; link < num_links; link++) {
@@ -332,6 +574,10 @@ tt::tt_metal::operation::ProgramWithCallbacks all_reduce_async_minimal_multi_cor
             auto this_core = device->worker_core_from_logical_core(output_cores_vec[i]);
             output_tensor_cores_x.push_back(this_core.x);
             output_tensor_cores_y.push_back(this_core.y);
+
+            // if (device->id() == 4) {
+            //     tt::log_info("this_core: {}", this_core);
+            // }
         }
 
         std::optional<ttnn::ccl::SenderWorkerAdapterSpec> forward_fabric_connection =
@@ -344,6 +590,34 @@ tt::tt_metal::operation::ProgramWithCallbacks all_reduce_async_minimal_multi_cor
                 ? std::nullopt
                 : std::optional<ttnn::ccl::SenderWorkerAdapterSpec>(local_fabric_handle->uniquely_connect_worker(
                       device, ttnn::ccl::EdmLineFabricOpInterface::BACKWARD));
+
+        if (device->id() == 4) {
+            tt::log_info("core: {}", core);
+            if (forward_fabric_connection.has_value()) {
+                tt::log_info(
+                    "forward edm: {} {}", forward_fabric_connection->edm_noc_x, forward_fabric_connection->edm_noc_y);
+
+                auto edmcore = CoreCoord(forward_fabric_connection->edm_noc_x, forward_fabric_connection->edm_noc_y);
+
+                // auto it = std::find(edm_coords.begin(), edm_coords.end(), edmcore);
+                // if (it == edm_coords.end()) {
+                //     TT_THROW("not in edm_coords: {}", edmcore);
+                // }
+            }
+            if (backward_fabric_connection.has_value()) {
+                tt::log_info(
+                    "backward edm: {} {}",
+                    backward_fabric_connection->edm_noc_x,
+                    backward_fabric_connection->edm_noc_y);
+
+                auto edmcore = CoreCoord(backward_fabric_connection->edm_noc_x, backward_fabric_connection->edm_noc_y);
+
+                // auto it = std::find(edm_coords.begin(), edm_coords.end(), edmcore);
+                // if (it == edm_coords.end()) {
+                //     TT_THROW("not in edm_coords: {}", edmcore);
+                // }
+            }
+        }
 
         // Set reader runtime args
         std::vector<uint32_t> reader_rt_args = {
@@ -362,10 +636,25 @@ tt::tt_metal::operation::ProgramWithCallbacks all_reduce_async_minimal_multi_cor
         tt::tt_metal::SetRuntimeArgs(program, worker_sender_reader_kernel_id, {core}, reader_rt_args);
 
         // Set writer runtime args
-        auto mcast_start_core =
-            device->worker_core_from_logical_core(output_corerangeset_per_link[link].bounding_box().start_coord);
-        auto mcast_end_core =
-            device->worker_core_from_logical_core(output_corerangeset_per_link[link].bounding_box().end_coord);
+        auto output_tensor_bbox = output_corerangeset_per_link[link].bounding_box();
+        auto mcast_start_core = device->worker_core_from_logical_core(output_tensor_bbox.start_coord);
+        auto mcast_end_core = device->worker_core_from_logical_core(output_tensor_bbox.end_coord);
+        auto num_cores_mcast = (output_tensor_bbox.end_coord.x - output_tensor_bbox.start_coord.x + 1) *
+                               (output_tensor_bbox.end_coord.y - output_tensor_bbox.start_coord.y + 1);
+        // remove self from num_cores_mcast since we are not mcasting to self
+        if (output_tensor_bbox.contains(core)) {
+            num_cores_mcast -= 1;
+            if (device->id() == 4) {
+                tt::log_info("output_tensor_bbox.contains(core) {}", num_cores_mcast);
+            }
+        }
+        if (writer_noc == NOC::NOC_1) {
+            std::swap(mcast_start_core, mcast_end_core);
+        }
+
+        if (device->id() == 4) {
+            tt::log_info("mcast_start_core: {} mcast_end_core {}", mcast_start_core, mcast_end_core);
+        }
 
         bool wait_output_semaphore = true;   // (link == 0) && !enable_async_output_tensor;
         bool reset_global_semaphore = true;  // (link == 0) && !enable_async_output_tensor;
@@ -377,6 +666,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_reduce_async_minimal_multi_cor
             worker_num_tiles_to_read,             // num_tiles_to_read
             output_first_core_tile_start_offset,  // first_core_tile_start_offset
             output_tensor_cores_x.size(),         // num_cores
+            num_cores_mcast,                      // num_cores_mcast
             wait_output_semaphore,                // wait_output_semaphore
             reset_global_semaphore,               // reset_global_semaphore
             drain_sync_core.x,                    // out_ready_sem_noc0_x

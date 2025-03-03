@@ -308,13 +308,14 @@ class EdmLineFabricOpInterface {
     // Invocable per chip if we want to collectively build the fabric by building this separately per chip
     // (and implicitly building the fabric that way)
     EdmLineFabricOpInterface(
-        tt::tt_metal::IDevice* local_device,
-        std::optional<tt::tt_metal::IDevice*> forward_device,
-        std::optional<tt::tt_metal::IDevice*> backward_device,
-        tt::tt_metal::Program* program,
+        IDevice* local_device,
+        std::optional<IDevice*> forward_device,
+        std::optional<IDevice*> backward_device,
+        Program* program,
         bool enable_persistent_mode,
         std::optional<size_t> desired_num_links,
-        bool build_in_worker_connection_mode = false);
+        bool build_in_worker_connection_mode = false,
+        std::array<std::optional<std::vector<CoreCoord>>, 2> forward_backward_ethernet_cores = {});
 
     static EdmLineFabricOpInterface build_program_builder_worker_connection_fabric(
         const std::vector<tt::tt_metal::IDevice*>& device_sequence,
@@ -327,7 +328,8 @@ class EdmLineFabricOpInterface {
         tt::tt_metal::IDevice* backward_device,
         tt::tt_metal::Program* program,
         bool enable_persistent_mode,
-        std::optional<size_t> desired_num_links = std::nullopt);
+        std::optional<size_t> desired_num_links = std::nullopt,
+        std::array<std::optional<std::vector<CoreCoord>>, 2> forward_backward_ethernet_cores = {});
 
     // Will create a connection adapter for a worker which can be used to pass args to the worker kernel talking to the
     // corresponding fabric endpoint. This interface will guarantee unique connections only so requesting more unique connections
