@@ -260,6 +260,10 @@ void PrefetchKernel::GenerateDependentConfigs() {
             dependent_config_.downstream_cb_pages =
                 downstream_buffer_size / (1 << DispatchSettings::PREFETCH_D_BUFFER_LOG_PAGE_SIZE);
         } else if (auto prefetch_d = dynamic_cast<PrefetchKernel*>(downstream_kernels_[0])) {
+            TT_ASSERT(
+                prefetch_d->GetStaticConfig().is_d_variant.value() &&
+                !prefetch_d->GetStaticConfig().is_h_variant.value());
+
             dependent_config_.downstream_logical_core = prefetch_d->GetLogicalCore();
             dependent_config_.downstream_s_logical_core = UNUSED_LOGICAL_CORE;
             dependent_config_.downstream_cb_base = prefetch_d->GetStaticConfig().cmddat_q_base.value();
@@ -370,11 +374,12 @@ void PrefetchKernel::CreateKernel() {
         dependent_config_.downstream_chip_id.value_or(0),
         dependent_config_.upstream_mesh_id.value_or(0),
         dependent_config_.upstream_chip_id.value_or(0),
+        dependent_config_.fabric_router_noc_xy.value_or(0xdeadbeef),
         static_config_.client_interface_addr.value(),
         static_config_.is_d_variant.value(),
         static_config_.is_h_variant.value(),
     };
-    TT_ASSERT(compile_args.size() == 33);
+    TT_ASSERT(compile_args.size() == 34);
     auto my_virtual_core = device_->virtual_core_from_logical_core(logical_core_, GetCoreType());
     auto upstream_virtual_core =
         device_->virtual_core_from_logical_core(dependent_config_.upstream_logical_core.value(), GetCoreType());
@@ -451,13 +456,13 @@ void PrefetchKernel::ConfigureCore() {
 }
 
 void PrefetchKernel::UpdateArgsForFabric(
-    const CoreCoord& fabric_router,
+    const CoreCoord& fabric_router_virtual,
     tt::tt_fabric::mesh_id_t upstream_mesh_id,
     chip_id_t upstream_chip_id,
     tt::tt_fabric::mesh_id_t downstream_mesh_id,
     chip_id_t downstream_chip_id) {
-    dependent_config_.fabric_router_logical_core =
-        this->device_->virtual_core_from_logical_core(fabric_router, CoreType::ETH);
+    dependent_config_.fabric_router_noc_xy =
+        tt::tt_metal::hal.noc_xy_encoding(fabric_router_virtual.x, fabric_router_virtual.y);
     dependent_config_.upstream_mesh_id = upstream_mesh_id;
     dependent_config_.upstream_chip_id = upstream_chip_id;
     dependent_config_.downstream_mesh_id = downstream_mesh_id;
