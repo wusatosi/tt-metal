@@ -538,7 +538,11 @@ void DeviceProfiler::serializeJsonNocTraces(
         // dump events to a json file inside directory output_dir named after the opname
         std::filesystem::path rpt_path = output_dir;
         std::string op_name = events.front().value("op_name", "UnknownOP");
-        rpt_path /= fmt::format("noc_trace_dev{}_{}_ID{}.json", device_id, op_name, runtime_id);
+        if (!op_name.empty()) {
+            rpt_path /= fmt::format("noc_trace_dev{}_{}_ID{}.json", device_id, op_name, runtime_id);
+        } else {
+            rpt_path /= fmt::format("noc_trace_dev{}_ID{}.json", device_id, runtime_id);
+        }
         log_info("Writing noc event json trace to '{}'", rpt_path);
         std::ofstream rpt_ofs(rpt_path);
         if (!rpt_ofs) {
@@ -689,7 +693,9 @@ void DeviceProfiler::dumpResults(
                 rpt_path = output_dir;
             }
 
-            serializeJsonNocTraces(noc_trace_json_log, rpt_path, device_id);
+            if (tt::llrt::RunTimeOptions::get_instance().get_profiler_noc_events_enabled()) {
+                serializeJsonNocTraces(noc_trace_json_log, rpt_path, device_id);
+            }
         }
     } else {
         log_warning("DRAM profiler buffer is not initialized");
