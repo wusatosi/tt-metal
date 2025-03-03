@@ -520,8 +520,6 @@ void DevicePool::initialize_control_plane() {
         mesh_graph_descriptor = "n150_mesh_graph_descriptor.yaml";
     } else if (tt::Cluster::instance().get_cluster_type() == tt::ClusterType::N300) {
         mesh_graph_descriptor = "n300_mesh_graph_descriptor.yaml";
-    } else if (tt::Cluster::instance().get_cluster_type() == tt::ClusterType::N150) {
-        mesh_graph_descriptor = "n150_mesh_graph_descriptor.yaml";
     } else if (tt::Cluster::instance().get_cluster_type() == tt::ClusterType::T3K) {
         mesh_graph_descriptor = "t3k_mesh_graph_descriptor.yaml";
     } else if (tt::Cluster::instance().get_cluster_type() == tt::ClusterType::GALAXY) {
