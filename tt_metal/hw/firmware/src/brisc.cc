@@ -489,6 +489,12 @@ int main() {
 
             run_triscs(enables);
 
+            if constexpr (!post_atomic_increments) {
+                // Ensure the atomics issued at the end of the last iteration aren't in flight when
+                // dynamic_noc_local_state_init() or noc_local_state_init is called.
+                noc_async_atomic_barrier(noc_index);
+            }
+
             noc_index = launch_msg_address->kernel_config.brisc_noc_id;
             noc_mode = launch_msg_address->kernel_config.brisc_noc_mode;
 
