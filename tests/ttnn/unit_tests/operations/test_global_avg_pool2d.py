@@ -38,3 +38,34 @@ def test_run_average_pool2d(
     output_tensor = torch.permute(output_tensor, (0, 3, 1, 2))
 
     assert_with_pcc(torch_output_tensor, output_tensor)
+
+
+@pytest.mark.parametrize(
+    "input_shape",
+    (
+        [1, 256, 160, 160],
+        [1, 512, 80, 80],
+        [1, 512, 40, 40],
+        [1, 256, 80, 80],
+    ),
+)
+@pytest.mark.parametrize(
+    "dtype",
+    (ttnn.bfloat16,),
+)
+def test_run_average_pool2d_yolov9c(
+    input_shape,
+    dtype,
+    device,
+):
+    torch.manual_seed(0)
+
+    torch_input_tensor = torch.randn(input_shape)
+    torch_output_tensor = torch.nn.functional.avg_pool2d(torch_input_tensor, 2, 1, 0, False, True)
+    input_tensor = torch.permute(torch_input_tensor, (0, 2, 3, 1))  # ttnn operates on channels-last tensors
+    input_tensor = ttnn.from_torch(input_tensor, dtype=dtype, layout=ttnn.TILE_LAYOUT, device=device)
+    output_tensor = ttnn.global_avg_pool2d(input_tensor)
+    output_tensor = ttnn.to_torch(output_tensor)
+    output_tensor = torch.permute(output_tensor, (0, 3, 1, 2))
+
+    assert_with_pcc(torch_output_tensor, output_tensor)
