@@ -25,6 +25,7 @@
 #include <metal_soc_descriptor.h>
 #include <tt_backend_api_types.hpp>
 #include "umd/device/types/arch.h"
+#include "umd/device/arc_messenger.h"
 #include "umd/device/tt_cluster_descriptor.h"
 #include "umd/device/types/cluster_descriptor_types.h"
 #include "umd/device/cluster.h"
@@ -277,13 +278,25 @@ void Cluster::open_driver(const bool &skip_driver_allocs) {
         // This will remove harvested rows from the soc descriptor
         const bool perform_harvesting = true;
         const bool clean_system_resources = true;
-        device_driver = std::make_unique<tt::umd::Cluster>(
+        std::unique_ptr<tt::umd::Cluster> cluster_device_driver = std::make_unique<tt::umd::Cluster>(
             sdesc_path,
             all_chips_set,
             num_host_mem_ch_per_mmio_device,
             skip_driver_allocs,
             clean_system_resources,
             perform_harvesting);
+
+        if (arch_ == ARCH::BLACKHOLE) {
+            for (chip_id_t chip_id : cluster_device_driver->get_target_device_ids()) {
+                auto bh_arc_messenger =
+                    tt::umd::ArcMessenger::create_arc_messenger(cluster_device_driver->get_tt_device(chip_id));
+                uint32_t response =
+                    bh_arc_messenger->send_message((uint32_t)tt::umd::blackhole::ArcMessageType::AICLK_GO_BUSY);
+                TT_FATAL(response == 0, "Arc msg to increase AICLK failed with response code {}", response);
+            }
+        }
+
+        device_driver = std::move(cluster_device_driver);
 
         // Adding this check is a workaround for current UMD bug that only uses this getter to populate private metadata
         // that is later expected to be populated by unrelated APIs
