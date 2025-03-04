@@ -81,7 +81,7 @@ private:
         nlohmann::ordered_json& noc_trace_json_log,
         uint32_t runID,
         uint32_t runHostID,
-        std::string opname,
+        const std::string& opname,
         int device_id,
         CoreCoord core,
         int core_flat,

@@ -272,7 +272,7 @@ void DeviceProfiler::logPacketData(
     nlohmann::ordered_json& noc_trace_json_log,
     uint32_t run_id,
     uint32_t run_host_id,
-    std::string opname,
+    const std::string& opname,
     int device_id,
     CoreCoord core,
     int core_flat,
