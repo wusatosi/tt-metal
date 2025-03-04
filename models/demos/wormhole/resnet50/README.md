@@ -53,5 +53,5 @@ WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml pytest models/demos/wormhole/
 
 + For trace+2cq flow running inference on Imagenet dataset (1600 images), run
 ```python
-WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml pytest models/demos/wormhole/resnet50/tests/test_resnet50_performant_imagenet.py::test_run_resnet50_trace_2cqs_inference[True-16-act_dtype0-weight_dtype0-device_params0]
+WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml pytest models/demos/wormhole/resnet50/tests/test_perf_e2e_resnet50.py::test_perf_trace_2cqs_with_imagenet[True-16-act_dtype0-weight_dtype0-device_params0]
 ```
