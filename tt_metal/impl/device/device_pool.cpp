@@ -253,7 +253,6 @@ void DevicePool::initialize(
     _inst->init_firmware_on_active_devices();
 
     tt::Cluster::instance().set_internal_routing_info_for_ethernet_cores(true, target_mmio_ids);
-    _inst->wait_for_fabric_master_router_sync();
     _inst->init_profiler_devices();
 }
 
@@ -289,16 +288,17 @@ void DevicePool::initialize_active_devices() const {
     // Activate fabric (must be previous FD)
     // TODO: add handling of EDM
     if (tt::Cluster::instance().get_fabric_config() == FabricConfig::FABRIC_2D) {
+        // Initialize control plane, does not configure kernels/routing tables
+        // We always need a control plane for mapping of logical devices to physical devices
+        // TODO: add single device support
+        _inst->initialize_control_plane();  // not const
+        // write routing tables to all ethernet cores
+        this->control_plane->configure_routing_tables();
         // Initialize fabric on mmio device
         for (const auto& dev : active_devices) {
-            // Initialize control plane, does not configure kernels/routing tables
-            // We always need a control plane for mapping of logical devices to physical devices
-            // TODO: add single device support
-            _inst->initialize_control_plane();  // not const
-            // write routing tables to all ethernet cores
-            this->control_plane->configure_routing_tables();
             dev->init_fabric();
         }
+        _inst->wait_for_fabric_master_router_sync();
     }
 
     // Activate FD kernels
