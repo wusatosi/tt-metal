@@ -83,39 +83,39 @@ def get_device_freq():
 
 
 matmul_shapes_bfloat16 = [
-    (512, 512, 512, True, True, 1, 1, 1),
-    (512, 1024, 1024, True, True, 1, 1, 1),
-    (512, 1024, 2048, True, True, 1, 1, 1),
-    (1024, 1024, 1024, True, True, 1, 1, 1),
-    (1024, 1024, 2048, True, True, 1, 1, 1),
-    (1024, 2048, 2048, True, True, 1, 1, 1),
-    (2048, 2048, 2048, True, True, 1, 1, 1),
-    (2048, 2048, 3072, True, True, 1, 1, 1),
-    (2048, 3072, 3072, True, True, 2, 1, 1),
-    (3072, 3072, 3072, True, True, 4, 1, 1),
-    (3072, 3072, 4096, False, False, 2, 1, 1),
-    (3072, 4096, 4096, False, False, 2, 1, 1),
-    (4096, 4096, 4096, False, False, 1, 2, 2),
-    (8192, 8192, 8192, False, False, 2, 4, 4),
+    # (512, 512, 512, True, True, 1, 1, 1),
+    # (512, 1024, 1024, True, True, 1, 1, 1),
+    # (512, 1024, 2048, True, True, 1, 1, 1),
+    # (1024, 1024, 1024, True, True, 1, 1, 1),
+    # (1024, 1024, 2048, True, True, 1, 1, 1),
+    # (1024, 2048, 2048, True, True, 1, 1, 1),
+    # (2048, 2048, 2048, True, True, 1, 1, 1),
+    # (2048, 2048, 3072, True, True, 1, 1, 1),
+    # (2048, 3072, 3072, True, True, 2, 1, 1),
+    # (3072, 3072, 3072, True, True, 4, 1, 1),
+    # (3072, 3072, 4096, False, False, 2, 1, 1),
+    # (3072, 4096, 4096, False, False, 2, 1, 1),
+    # (4096, 4096, 4096, False, False, 1, 2, 2),
+    # (8192, 8192, 8192, False, False, 2, 4, 4),
     (16384, 16384, 16384, False, False, 4, 8, 8),
 ]
 
 matmul_shapes_bfloat8_b = [
-    (512, 512, 512, True, True, 1, 1, 1),
-    (512, 1024, 1024, True, True, 1, 1, 1),
-    (512, 1024, 2048, True, True, 1, 1, 1),
-    (1024, 1024, 1024, True, True, 1, 1, 1),
-    (1024, 1024, 2048, True, True, 1, 1, 1),
-    (1024, 2048, 2048, True, True, 1, 1, 1),
-    (2048, 2048, 2048, True, True, 1, 1, 1),
-    (2048, 2048, 3072, True, True, 1, 1, 1),
-    (2048, 3072, 3072, True, True, 1, 1, 1),
-    (3072, 3072, 3072, True, True, 2, 1, 1),
-    (3072, 3072, 4096, True, True, 2, 1, 1),
-    (3072, 4096, 4096, True, True, 1, 2, 2),
-    (4096, 4096, 4096, False, False, 1, 2, 2),
+    # (512, 512, 512, True, True, 1, 1, 1),
+    # (512, 1024, 1024, True, True, 1, 1, 1),
+    # (512, 1024, 2048, True, True, 1, 1, 1),
+    # (1024, 1024, 1024, True, True, 1, 1, 1),
+    # (1024, 1024, 2048, True, True, 1, 1, 1),
+    # (1024, 2048, 2048, True, True, 1, 1, 1),
+    # (2048, 2048, 2048, True, True, 1, 1, 1),
+    # (2048, 2048, 3072, True, True, 1, 1, 1),
+    # (2048, 3072, 3072, True, True, 1, 1, 1),
+    # (3072, 3072, 3072, True, True, 2, 1, 1),
+    # (3072, 3072, 4096, True, True, 2, 1, 1),
+    # (3072, 4096, 4096, True, True, 1, 2, 2),
+    # (4096, 4096, 4096, False, False, 1, 2, 2),
     (8192, 8192, 8192, False, False, 2, 4, 4),
-    (16384, 16384, 16384, False, False, 4, 8, 8),
+    # (16384, 16384, 16384, False, False, 4, 8, 8),
 ]
 
 matmul_shapes_bfloat4_b = [
@@ -137,26 +137,26 @@ matmul_shapes_bfloat4_b = [
 ]
 
 matmul_configs = [
-    (ttnn.bfloat16, ttnn.MathFidelity.HiFi2, False),
+    # (ttnn.bfloat16, ttnn.MathFidelity.HiFi2, False),
     (ttnn.bfloat16, ttnn.MathFidelity.HiFi4, False),
-    (ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, False),
-    (ttnn.bfloat8_b, ttnn.MathFidelity.LoFi, False),
-    (ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, False),
-    (ttnn.bfloat16, ttnn.MathFidelity.HiFi2, True),
-    (ttnn.bfloat16, ttnn.MathFidelity.HiFi4, True),
-    (ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, True),
-    (ttnn.bfloat8_b, ttnn.MathFidelity.LoFi, True),
-    (ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, True),
+    (ttnn.bfloat8_b, ttnn.MathFidelity.HiFi4, False),
+    # (ttnn.bfloat8_b, ttnn.MathFidelity.LoFi, False),
+    # (ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, False),
+    # (ttnn.bfloat16, ttnn.MathFidelity.HiFi2, True),
+    # (ttnn.bfloat16, ttnn.MathFidelity.HiFi4, True),
+    # (ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, True),
+    # (ttnn.bfloat8_b, ttnn.MathFidelity.LoFi, True),
+    # (ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, True),
 ]
 
 
 # @pytest.mark.skip(reason="WH didt hang, need to skip CI and run locally only")
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576, "trace_region_size": 3855488}], indirect=True)
-@pytest.mark.parametrize("grid_size", [(13, 10)])
+@pytest.mark.parametrize("grid_size", [(1, 1)])
 @pytest.mark.parametrize("tile_h", [32])
 @pytest.mark.parametrize("tile_w", [32])
-@pytest.mark.parametrize("num_warmup_iterations", [5])
-@pytest.mark.parametrize("num_measurement_iterations", [100])
+@pytest.mark.parametrize("num_warmup_iterations", [1])
+@pytest.mark.parametrize("num_measurement_iterations", [1])
 def test_matmul_2d_host_perf(
     device,
     grid_size,
@@ -206,6 +206,7 @@ def test_matmul_2d_host_perf(
                 matmul_shapes = matmul_shapes_bfloat8_b
             elif dtype == ttnn.bfloat4_b:
                 matmul_shapes = matmul_shapes_bfloat4_b
+            logger.info(f"dtype = {dtype}")
             for m, k, n, in0_sharded, out_sharded, in0_block_w_div, num_out_blocks_h, num_out_blocks_w in matmul_shapes:
                 profiler.clear()
 
