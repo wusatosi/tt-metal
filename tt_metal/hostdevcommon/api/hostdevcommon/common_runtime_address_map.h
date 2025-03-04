@@ -15,6 +15,6 @@
 
 // TODO: move this to the memory manager, make configurable through the API
 constexpr static std::uint32_t L1_KERNEL_CONFIG_BASE = MEM_MAP_END;
-constexpr static std::uint32_t L1_KERNEL_CONFIG_SIZE = 69 * 1024;
+constexpr static std::uint32_t L1_KERNEL_CONFIG_SIZE = 120 * 1024;
 
 static_assert(L1_KERNEL_CONFIG_BASE % L1_ALIGNMENT == 0);

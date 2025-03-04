@@ -274,16 +274,25 @@ def test_llama_model_inference(
 
     mesh_mapper = ttnn.ShardTensor2dMesh(mesh_device, dims=(None, -1), mesh_shape=model_args.cluster_shape)
     # compile
-    decode_input = ttnn.from_torch(
-        tt_decode_input,
-        device=mesh_device,
-        dtype=ttnn.bfloat16,
-        layout=ttnn.TILE_LAYOUT,
-        mesh_mapper=mesh_mapper,
-        memory_config=model_args.model_config["DECODE_RESIDUAL_MEMCFG"],
-    )
-    rot_mats = tt_model.rope_setup.get_rot_mats(rot_mat_idxs)
-    for _ in range(64):
+    # decode_input = ttnn.from_torch(
+    #     tt_decode_input,
+    #     device=mesh_device,
+    #     dtype=ttnn.bfloat16,
+    #     layout=ttnn.TILE_LAYOUT,
+    #     mesh_mapper=mesh_mapper,
+    #     memory_config=model_args.model_config["DECODE_RESIDUAL_MEMCFG"],
+    # )
+    # rot_mats = tt_model.rope_setup.get_rot_mats(rot_mat_idxs)
+    for _ in range(16):
+        decode_input = ttnn.from_torch(
+            tt_decode_input,
+            device=mesh_device,
+            dtype=ttnn.bfloat16,
+            layout=ttnn.TILE_LAYOUT,
+            mesh_mapper=mesh_mapper,
+            memory_config=model_args.model_config["DECODE_RESIDUAL_MEMCFG"],
+        )
+        rot_mats = tt_model.rope_setup.get_rot_mats(rot_mat_idxs)
         tt_out = tt_model(
             decode_input,
             current_pos_tensor,
@@ -353,7 +362,11 @@ def test_llama_model_inference(
     try:
         for i in range(generation_length):
             logger.info(f"[Llama3 Model] Generating token {i}")
+            from tracy import signpost
+            from time import sleep
 
+            sleep(5)
+            signpost("tracy_perf_run")
             # Execute trace
             ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
             outs = [ttnn.to_torch(out, mesh_composer=mesh_composer) for out in tt_out]

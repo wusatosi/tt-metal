@@ -234,8 +234,8 @@ class TtLlamaMLP(LightweightModule):
             dtype=ttnn.bfloat8_b,
             memory_config=w1_out_reduced.memory_config(),
         )
-
-        # print("eltwise mul", w2_in)
+        ttnn.deallocate(w1_out, True)
+        ttnn.deallocate(w3_out, True)
 
         ttnn.deallocate(w3_out_reduced)
         ttnn.deallocate(w1_out_reduced)
@@ -256,7 +256,7 @@ class TtLlamaMLP(LightweightModule):
         ttnn.deallocate(w2_in)
 
         w2_out_reduced = self.tt_ccl.line_all_reduce(
-            w2_out, cluster_axis=0, num_links=4, memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"]
+            w2_out, cluster_axis=0, num_links=3, memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"]
         )
         # print("reduced", w2_out_reduced)
 

@@ -374,8 +374,7 @@ class TtTransformer(LightweightModule):
         x_norm, res = self.norm(x, res=None, mode=mode)
         # x.deallocate(True)
         # res.deallocate(True)
-
-        x = x_norm
+        res.deallocate(True)
 
         # if mode == "decode" and self.args.is_galaxy:
         #     x = ttnn.to_memory_config(x_norm, self.args.model_config["SHARDED_LM_HEAD_INPUT_RING_MEMCFG"])
@@ -383,7 +382,7 @@ class TtTransformer(LightweightModule):
         # for sin_i in rot_mats:
         #     sin_i.deallocate(True)
 
-        return self.lm_head(x)
+        return self.lm_head(x_norm)
 
     def __del__(self):
         self.tt_ccl.close()

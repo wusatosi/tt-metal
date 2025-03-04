@@ -297,15 +297,16 @@ class TtLlamaAttention(LightweightModule):
         )
 
         # print("done create qkv heads")
+        xqkv_fused_sharded.deallocate(True)
+        xqkv_reduced.deallocate(True)
 
-        ttnn.deallocate(xqkv_reduced)
         # Q, K Rotary Embeddings
         q_heads_1BQD, k_heads_1BKD = ttnn.experimental.rotary_embedding_llama_fused_qk(
             q_heads_pre_rot_1BQD, k_heads_pre_rot_1BKD, rot_mats[0], rot_mats[1], self.transformation_mats["decode"]
         )
 
-        ttnn.deallocate(q_heads_pre_rot_1BQD)
-        ttnn.deallocate(k_heads_pre_rot_1BKD)
+        q_heads_pre_rot_1BQD.deallocate(True)
+        k_heads_pre_rot_1BKD.deallocate(True)
 
         # print("done rotary embeddings")
 
@@ -379,7 +380,7 @@ class TtLlamaAttention(LightweightModule):
         #     attn_output_gathered, self.model_config["GATHER_USERS_MEMCFG"](list(self.mesh_device.shape)[1])
         # )
         # ttnn.deallocate(attn_output_gathered)
-
+        attn_output_1G4D_sharded.deallocate(True)
         attn_output_cat_0 = ttnn.experimental.nlp_concat_heads_decode(
             attn_output_gathered_sharded,
             num_heads=self.n_local_heads,

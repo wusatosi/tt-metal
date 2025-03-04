@@ -149,10 +149,9 @@ class TtTransformerBlock(LightweightModule):
             chunk_start_idx=chunk_start_idx,
             kv_cache=kv_cache,
         )
-
+        ttnn.deallocate(attn_in)
         # Norms take fractured inputs and output replicated across devices
         h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg)
-
         ff_in, _ = self.ff_norm(h, None, mode)
         # if TG and mode == "decode":
         #     ff_in = ttnn.to_memory_config(ff_in, memory_config=self.model_config["MLP_ACT_MEMCFG"])
@@ -163,6 +162,8 @@ class TtTransformerBlock(LightweightModule):
         ff_out = self.feed_forward.forward(ff_in_sharded, mode)
         # if self.layer_num == self.n_layers - 1:
         out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)
+        ttnn.deallocate(ff_in)
+        ttnn.deallocate(ff_out)
         # else:
         #     out = ff_out
         return out, h  # fractured across devices
