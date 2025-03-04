@@ -163,7 +163,11 @@ class TtHead:
         output_tensor = ttnn.leaky_relu(output_tensor, negative_slope=0.1)
         outfrom_Neck1 = input_tensor[2]
 
-        output_tensor = ttnn.sharded_to_interleaved(output_tensor, ttnn.L1_MEMORY_CONFIG)
+        output_tensor = ttnn.sharded_to_interleaved(
+            output_tensor,
+            ttnn.L1_MEMORY_CONFIG,
+        )
+        output_tensor = ttnn.reshape(output_tensor, output_tensor.shape, output_tensor.shape)
         if (
             outfrom_Neck1.memory_config().is_sharded()
         ):  # This is used because test of head sub_module passes interleaved tensor

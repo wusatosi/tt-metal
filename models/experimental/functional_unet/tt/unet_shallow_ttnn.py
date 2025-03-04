@@ -311,6 +311,9 @@ class UNetUpblock:
 
         x = self.upsample(x)
 
+        residual = ttnn.sharded_to_interleaved(residual, ttnn.L1_MEMORY_CONFIG)
+        residual = ttnn.reshape(residual, residual.shape, residual.shape)
+
         if not residual.is_sharded():
             core_grid = get_core_grid_from_num_cores(x.memory_config().shard_spec.num_cores())
             memory_config = ttnn.create_sharded_memory_config_(

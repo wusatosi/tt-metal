@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+#include <array>
 #include <buffer.hpp>
 
 #include "tt_metal/buffer.hpp"
@@ -604,8 +605,47 @@ const std::shared_ptr<const BufferPageMapping>& Buffer::get_buffer_page_mapping(
     return this->buffer_page_mapping_;
 }
 
-bool ShardSpec::operator==(const ShardSpec&) const = default;
-bool ShardSpec::operator!=(const ShardSpec&) const = default;
+bool ShardSpec::operator==(const ShardSpec& other) const {
+    if (grid != other.grid) {
+        return false;
+    }
+    if (orientation != other.orientation) {
+        return false;
+    }
+    if (mode == other.mode) {
+        if (physical_shard_shape != other.physical_shard_shape) {
+            return false;
+        }
+        if (shape != other.shape) {
+            return false;
+        }
+    } else if (mode != other.mode) {
+        std::array<uint32_t, 2> this_shape, other_shape;
+        if (mode == ShardMode::LOGICAL) {
+            if (physical_shard_shape.has_value()) {
+                this_shape = physical_shard_shape.value();
+            } else {
+                this_shape = shape;
+            }
+        } else {
+            this_shape = shape;
+        }
+        if (other.mode == ShardMode::LOGICAL) {
+            if (other.physical_shard_shape.has_value()) {
+                other_shape = other.physical_shard_shape.value();
+            } else {
+                other_shape = other.shape;
+            }
+        } else {
+            other_shape = other.shape;
+        }
+        if (this_shape != other_shape) {
+            return false;
+        }
+    }
+    return true;
+}
+bool ShardSpec::operator!=(const ShardSpec& other) const { return !(*this == other); };
 
 std::array<uint32_t, 2> ShardSpecBuffer::shape_in_pages() const {
     auto height_in_pages = page_shape[0] == 0 ? 0 : tensor_shard_spec.shape[0] / page_shape[0];
