@@ -33,6 +33,7 @@
 #include "umd/device/tt_xy_pair.h"
 #include "umd/device/types/xy_pair.h"
 #include "umd/device/hugepage.h"
+#include "umd/device/blackhole_arc_telemetry_reader.h"
 
 #include <dev_msgs.h>
 
@@ -293,6 +294,16 @@ void Cluster::open_driver(const bool &skip_driver_allocs) {
                 uint32_t response =
                     bh_arc_messenger->send_message((uint32_t)tt::umd::blackhole::ArcMessageType::AICLK_GO_BUSY);
                 TT_FATAL(response == 0, "Arc msg to increase AICLK failed with response code {}", response);
+
+                auto blackhole_arc_telemetry_reader = std::make_unique<tt::umd::blackhole::BlackholeArcTelemetryReader>(
+                    cluster_device_driver->get_tt_device(chip_id));
+                uint32_t aiclk = blackhole_arc_telemetry_reader->read_entry(tt::umd::blackhole::TAG_AICLK);
+                std::cout << "AICLK is " << aiclk << std::endl;
+                TT_FATAL(
+                    aiclk == tt::umd::blackhole::AICLK_BUSY_VAL,
+                    "Expected AICLK to be {} MHz but it is {} MHz",
+                    tt::umd::blackhole::AICLK_BUSY_VAL,
+                    aiclk);
             }
         }
 
