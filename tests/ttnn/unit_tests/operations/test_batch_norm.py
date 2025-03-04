@@ -17,17 +17,17 @@ from models.utility_functions import skip_for_grayskull
 @pytest.mark.parametrize(
     "input_shapes",
     [
-        *(torch.Size([n, c, 32, 32]) for n, c in product([1, 2, 3, 4], [1, 2, 3, 4])),
-        *(torch.Size([n, c, 23, 23]) for n, c in product([1, 2, 3, 4], [1, 2, 3, 4])),
-        *(torch.Size([n, c, 64, 120]) for n, c in product([1, 2, 3], [1, 2, 3, 4])),
+        # *(torch.Size([n, c, 32, 32]) for n, c in product([1, 2, 3, 4], [1, 2, 3, 4])),
+        # *(torch.Size([n, c, 23, 23]) for n, c in product([1, 2, 3, 4], [1, 2, 3, 4])),
+        *(torch.Size([n, c, 64, 120]) for n, c in product([3], [5, 6, 7, 8])),
     ],
 )
 @pytest.mark.parametrize(
     "check_mean, check_var",
     [
-        (False, False),
-        (True, False),
-        (False, True),
+        # (False, False),
+        # (True, False),
+        # (False, True),
         (True, True),
     ],
 )

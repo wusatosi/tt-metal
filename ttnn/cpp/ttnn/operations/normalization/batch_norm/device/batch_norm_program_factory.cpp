@@ -166,8 +166,10 @@ BatchNormOperation::BatchNormFactory::cached_program_t BatchNormOperation::Batch
     uint32_t num_cores_y = compute_with_storage_grid_size.y;
     auto all_device_cores = CoreRange({0, 0}, {num_cores_x - 1, num_cores_y - 1});
 
+    const auto [cN, cC, cHt, cWt] = unity_ad77aaf753de52a6d0e4674bc9d05c73::extract_shape_dims(output);
+
     // Number of tiles to store per input CB (double buffer)
-    constexpr uint32_t num_tiles_per_cb = 2;
+    uint32_t num_tiles_per_cb = cHt * cWt;
     uint32_t b_num_tiles_per_cb = num_tiles_per_cb;
 
     // Input buffers
