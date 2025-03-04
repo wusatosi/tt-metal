@@ -126,6 +126,8 @@ inline thread_safe_runtime_id_to_ops_map runtime_id_to_opname{};
 inline thread_safe_cached_ops_map cached_ops{};
 inline thread_safe_call_stack call_stack;
 
+static auto getRuntimeToOpnameMap() { return runtime_id_to_opname.exportMap(); }
+
 template <typename device_operation_t>
 inline auto compute_program_hash(
     const typename device_operation_t::operation_attributes_t& operation_attributes,
