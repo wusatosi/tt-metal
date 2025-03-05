@@ -123,26 +123,33 @@ parameters = {
         #     ttnn.ROW_MAJOR_LAYOUT,
         #     ttnn.TILE_LAYOUT,
         # ),
+        # (
+        #     {"weight_shape": [1, 768], "indices_shape": [1, 10]},
+        #     ttnn.bfloat16,
+        #     ttnn.TILE_LAYOUT,
+        #     ttnn.TILE_LAYOUT,
+        #     ttnn.TILE_LAYOUT,
+        # ),
+        # (
+        #     {"weight_shape": [1024, 768], "indices_shape": [1, 7]},
+        #     ttnn.bfloat16,
+        #     ttnn.TILE_LAYOUT,
+        #     ttnn.ROW_MAJOR_LAYOUT,
+        #     ttnn.TILE_LAYOUT,
+        # ),
+        # (
+        #     {"weight_shape": [1024, 768], "indices_shape": [1, 7]},
+        #     ttnn.bfloat16,
+        #     ttnn.TILE_LAYOUT,
+        #     ttnn.TILE_LAYOUT,
+        #     ttnn.TILE_LAYOUT,
+        # ),
         (
-            {"weight_shape": [1, 768], "indices_shape": [1, 10]},
-            ttnn.bfloat16,
-            ttnn.TILE_LAYOUT,
-            ttnn.TILE_LAYOUT,
-            ttnn.TILE_LAYOUT,
-        ),
-        (
-            {"weight_shape": [1024, 768], "indices_shape": [1, 7]},
+            {"weight_shape": [81, 768], "indices_shape": [1, 24], "padding_idx": 1},
             ttnn.bfloat16,
             ttnn.TILE_LAYOUT,
             ttnn.ROW_MAJOR_LAYOUT,
-            ttnn.TILE_LAYOUT,
-        ),
-        (
-            {"weight_shape": [1024, 768], "indices_shape": [1, 7]},
-            ttnn.bfloat16,
-            ttnn.TILE_LAYOUT,
-            ttnn.TILE_LAYOUT,
-            ttnn.TILE_LAYOUT,
+            ttnn.ROW_MAJOR_LAYOUT,
         ),
     ],
 )
@@ -206,4 +213,4 @@ def test_embedding_single(
         return [False, None]
     result, msg = check_with_pcc(torch_output_tensor, ttnn_output_tensor, 0.999)
     print("run result: {}, with message= {} ".format(result, msg))
-    return [result, e2e_perf]
+    assert_with_pcc(torch_output_tensor, ttnn_output_tensor, 0.999)
