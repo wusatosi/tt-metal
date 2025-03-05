@@ -679,6 +679,10 @@ void MeshDevice::init_fabric() {
     TT_THROW("init_fabric_program() is not supported on MeshDevice - use individual devices instead");
     reference_device()->init_fabric();
 }
+void MeshDevice::allocate_dram_debug_buffer() {
+    TT_THROW("allocate_dram_debug_buffer() is not supported on MeshDevice - use individual devices instead");
+    reference_device()->allocate_dram_debug_buffer();
+}
 void MeshDevice::synchronize() {
     // Nothing to synchronize, as all work is executed by MeshDevice is synchronous.
 }

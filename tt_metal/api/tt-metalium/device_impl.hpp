@@ -203,7 +203,7 @@ public:
 
     bool is_mmio_capable() const override;
 
-    void allocate_dram_debug_buffer();
+    void allocate_dram_debug_buffer() override;
 
 private:
     static constexpr uint32_t DEFAULT_NUM_SUB_DEVICES = 1;

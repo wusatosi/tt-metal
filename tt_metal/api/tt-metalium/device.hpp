@@ -206,6 +206,8 @@ public:
     virtual bool is_mmio_capable() const = 0;
 
     static constexpr MemoryAllocator allocator_scheme_ = MemoryAllocator::L1_BANKING;
+
+    virtual void allocate_dram_debug_buffer() = 0;
 };
 
 }  // namespace v0

@@ -102,7 +102,7 @@ def test_ff1_matmul(
             576,
         ],
         ttnn.ShardOrientation.ROW_MAJOR,
-        False,
+        # False, # this used to be HALO
     )
     in0_mem_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.BLOCK_SHARDED, ttnn.BufferType.L1, in0_block_shard_spec)
     in1_mem_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM)
