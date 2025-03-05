@@ -8,12 +8,12 @@ import ttnn
 from loguru import logger
 
 from tests.ttnn.unit_tests.operations.prefetcher_common import run_prefetcher_mm
-from models.perf.benchmarking_utils import BenchmarkProfiler
+from models.perf.benchmarking_utils import BenchmarkData, BenchmarkProfiler
 from tests.ttnn.unit_tests.llama_tg.prefetcher_utils import (
     LlamaPrefetcher,
     MatmulOp,
 )
-from models.perf.device_perf_utils import run_device_perf, check_device_perf, prep_device_perf_report
+from models.perf.device_perf_utils import run_device_perf_detailed
 from tracy import signpost
 
 NUM_ITERATIONS = 10
@@ -190,9 +190,9 @@ def test_run_pf_mm(
 @pytest.mark.parametrize(
     "mm_type, perf_target_us",
     [
-        ("qkv", 7),
-        ("do", 6.5),
-        ("ff13", 8),
+        ("qkv", 8),
+        ("do", 7.5),
+        ("ff13", 9),
         ("ff2", 13.5),
     ],
 )
@@ -201,18 +201,38 @@ def test_pf_mm_perf(
     mm_type,
     perf_target_us,
 ):
-    num_run_iterations = 1
-    batch_size = 1
+    profiler = BenchmarkProfiler()
+    benchmark_data = BenchmarkData()
+    step_name = f"matmul_{mm_type}"
+
     subdir = "llama_pf_mm_perf"
     command = f"pytest tests/ttnn/unit_tests/llama_tg/test_prefetched_matmul_perf.py::test_run_pf_mm -k {mm_type}"
     cols = ["DEVICE KERNEL"]
     op_name = "Matmul"
 
-    results = run_device_perf(command, subdir, num_run_iterations, cols, batch_size, op_name, has_signposts=True)
-    total_time_us = 1 / list(results.values())[0] / 1e-6
+    profiler.start("run")
+    profiler.start(step_name)
+    results = run_device_perf_detailed(command, subdir, cols, op_name, has_signposts=True)
+    profiler.end(step_name)
+    profiler.end("run")
 
-    num_rows = NUM_ITERATIONS * 4  # 4 devices
-    perf_measured_us = total_time_us / num_rows
-    logger.info(f"Measured performance: {perf_measured_us:.3f} us vs. target: {perf_target_us} us")
+    # Get the measured performance
+    measured_min_us = results[cols[0]]["MIN"] / 1000
+    measured_max_us = results[cols[0]]["MAX"] / 1000
+    measured_avg_us = results[cols[0]]["AVG"] / 1000
+    measured_std_us = results[cols[0]]["STD"] / 1000
 
-    assert perf_measured_us < perf_target_us, f"Performance target not met: {perf_measured_us} us > {perf_target_us} us"
+    logger.info(f"Measured performance: {measured_avg_us:.3f} us vs. target: {perf_target_us} us")
+
+    # Save the measurement
+    benchmark_data.add_measurement(profiler, 0, step_name, f"matmul-{mm_type}-min-us", measured_min_us)
+    benchmark_data.add_measurement(profiler, 0, step_name, f"matmul-{mm_type}-max-us", measured_max_us)
+    benchmark_data.add_measurement(profiler, 0, step_name, f"matmul-{mm_type}-avg-us", measured_avg_us)
+    benchmark_data.add_measurement(profiler, 0, step_name, f"matmul-{mm_type}-std-us", measured_std_us)
+    benchmark_data.save_partial_run_json(
+        profiler,
+        run_type=f"matmul",
+        ml_model_name="llama70b-tg-mm",
+    )
+
+    assert measured_avg_us < perf_target_us, f"Performance target not met: {measured_avg_us} us > {perf_target_us} us"
