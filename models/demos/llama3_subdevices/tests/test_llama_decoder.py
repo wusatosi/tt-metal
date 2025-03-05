@@ -261,7 +261,7 @@ def test_llama_decoder_inference(
         # capture trace
         print("Capturing trace 2 ")
         trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
-        for _ in range(1):
+        for _ in range(100):
             ttnn.dram_prefetcher(
                 tt_pf,
                 num_layers=1,

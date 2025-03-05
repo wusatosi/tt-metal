@@ -101,13 +101,13 @@ std::tuple<bool, CoreRangeSet, std::vector<CoreCoord>> get_optimal_worker_core_p
     std::vector<CoreCoord> ethernet_cores_virtual,
     std::optional<CoreRangeSet> reserved_cores,
     uint32_t num_links,
-    const std::optional<SubDeviceId>& sub_device_id) {
+    const std::optional<tt::tt_metal::SubDeviceId>& sub_device_id) {
     bool success = true;
     std::vector<CoreCoord> sender_worker_cores;
     std::vector<CoreCoord> sender_worker_cores_physical;
 
     auto available_cores_corerangeset = device->worker_cores(
-        HalProgrammableCoreType::TENSIX,
+        tt::tt_metal::HalProgrammableCoreType::TENSIX,
         sub_device_id.has_value() ? *sub_device_id : device->get_sub_device_ids().at(0));
     auto available_cores = corerange_to_cores(available_cores_corerangeset, std::nullopt, true);
     std::vector<CoreCoord> available_cores_physical;
@@ -249,7 +249,7 @@ std::tuple<bool, CoreRangeSet, std::vector<CoreCoord>> get_optimal_worker_core_p
     return {success, sender_worker_corerangeset, sender_worker_cores};
 }
 
-operation::ProgramWithCallbacks all_reduce_async_minimal_multi_core_with_workers(
+tt::tt_metal::operation::ProgramWithCallbacks all_reduce_async_minimal_multi_core_with_workers(
     const Tensor& input_tensor,
     const Tensor& all_gather_output_tensor,
     std::optional<IDevice*> forward_device,
@@ -510,8 +510,8 @@ operation::ProgramWithCallbacks all_reduce_async_minimal_multi_core_with_workers
     tt::tt_metal::SetRuntimeArgs(program, reduction_kernel_id, output_tensor_cores, reduction_kernel_rt_args);
 
     // KERNEL CREATION
-    tt::tt_metal::NOC reader_noc = NOC::NOC_1;
-    tt::tt_metal::NOC writer_noc = NOC::NOC_0;
+    tt::tt_metal::NOC reader_noc = tt::tt_metal::NOC::NOC_1;
+    tt::tt_metal::NOC writer_noc = tt::tt_metal::NOC::NOC_0;
     // Reader
     std::vector<uint32_t> reader_compile_args = {
         ring_index,                 // my_chip_id
@@ -524,8 +524,10 @@ operation::ProgramWithCallbacks all_reduce_async_minimal_multi_core_with_workers
         "ttnn/cpp/ttnn/operations/experimental/ccl/all_reduce_async/device/kernels/dataflow/"
         "worker_reader.cpp",
         sender_worker_core_range,
-        DataMovementConfig{
-            .processor = DataMovementProcessor::RISCV_1, .noc = reader_noc, .compile_args = reader_compile_args});
+        tt::tt_metal::DataMovementConfig{
+            .processor = tt::tt_metal::DataMovementProcessor::RISCV_1,
+            .noc = reader_noc,
+            .compile_args = reader_compile_args});
 
     // Writer
     auto writer_kernel_config = tt::tt_metal::WriterDataMovementConfig{};
@@ -547,8 +549,10 @@ operation::ProgramWithCallbacks all_reduce_async_minimal_multi_core_with_workers
         "ttnn/cpp/ttnn/operations/experimental/ccl/all_reduce_async/device/kernels/dataflow/"
         "worker_writer.cpp",
         sender_worker_core_range,
-        DataMovementConfig{
-            .processor = DataMovementProcessor::RISCV_0, .noc = writer_noc, .compile_args = writer_compile_args});
+        tt::tt_metal::DataMovementConfig{
+            .processor = tt::tt_metal::DataMovementProcessor::RISCV_0,
+            .noc = writer_noc,
+            .compile_args = writer_compile_args});
 
     // Kernel Runtime Args
     for (uint32_t link = 0; link < num_links; link++) {
@@ -648,7 +652,7 @@ operation::ProgramWithCallbacks all_reduce_async_minimal_multi_core_with_workers
                 tt::log_info("output_tensor_bbox.contains(core) {}", num_cores_mcast);
             }
         }
-        if (writer_noc == NOC::NOC_1) {
+        if (writer_noc == tt::tt_metal::NOC::NOC_1) {
             std::swap(mcast_start_core, mcast_end_core);
         }
 

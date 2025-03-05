@@ -308,10 +308,10 @@ class EdmLineFabricOpInterface {
     // Invocable per chip if we want to collectively build the fabric by building this separately per chip
     // (and implicitly building the fabric that way)
     EdmLineFabricOpInterface(
-        IDevice* local_device,
-        std::optional<IDevice*> forward_device,
-        std::optional<IDevice*> backward_device,
-        Program* program,
+        tt::tt_metal::IDevice* local_device,
+        std::optional<tt::tt_metal::IDevice*> forward_device,
+        std::optional<tt::tt_metal::IDevice*> backward_device,
+        tt::tt_metal::Program* program,
         bool enable_persistent_mode,
         std::optional<size_t> desired_num_links,
         bool build_in_worker_connection_mode = false,
