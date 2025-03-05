@@ -1,4 +1,4 @@
-## ttnn.Conv2d Fails with "Statically allocated circular buffers issue" with larger groups
+## ttnn.Conv2d Fails with "Statically allocated circular buffers issue" for larger in_channel size = 2560
 
 ### Run the following command to run the test
 ```
