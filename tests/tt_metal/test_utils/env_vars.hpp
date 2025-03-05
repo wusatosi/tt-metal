@@ -40,12 +40,14 @@ inline std::string get_env_arch_name() {
 }
 
 inline std::string get_umd_arch_name() {
+    return "wormhole_b0";
 
     if(llrt::RunTimeOptions::get_instance().get_simulator_enabled()) {
         tt_SimulationDeviceInit init(llrt::RunTimeOptions::get_instance().get_simulator_path());
         return tt::arch_to_str(init.get_arch_name());
     }
 
+    // TODO: create from yaml
     auto cluster_desc = tt_ClusterDescriptor::create();
     const std::unordered_set<chip_id_t> &device_ids = cluster_desc->get_all_chips();
     tt::ARCH arch = cluster_desc->get_arch(*device_ids.begin());
