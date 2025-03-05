@@ -34,6 +34,26 @@ def reset_device_and_replay_binary(reset_device, device, binary_data):
     assert success == 1, "Light Metal Binary replay failure"
 
 
+# Test that buffer can be written to and read back same way during capture and replay.
+@pytest.mark.parametrize("shape", [[1, 1, 2, 2], [1, 1, 32, 32], (1, 3, 256, 512)])
+def test_buffer_read_write(device, reset_device, shape, tmp_path):
+    ttnn.light_metal_begin_capture()
+
+    # Create single buffer on device with random values:
+    input_0_torch = torch.rand(tuple(shape), dtype=torch.float32)
+    input0 = ttnn.from_torch(input_0_torch, dtype=ttnn.float32)
+    input_0_dev = ttnn.to_device(input0, device, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+
+    # Read back the buffer to host and print for debug
+    input_0_host = ttnn.to_torch(input_0_dev)
+    logger.info("input_0_dev: shape: {} dtype: {} data: {}", input_0_host.shape, input_0_host.dtype, input_0_host)
+
+    # End Light Metal capture, write binary and replay from binary.
+    binary_data = ttnn.light_metal_end_capture()
+    write_binary_to_file(binary_data, tmp_path, inspect.currentframe().f_code.co_name)
+    reset_device_and_replay_binary(reset_device, device, binary_data)
+
+
 # Simple bringup single op test to see if everything uses host APIs and if it can be light-metal traced.
 @pytest.mark.parametrize("shape", [[1, 3, 1024, 1024], (1, 1, 512, 512), (1, 3, 32, 32)])
 @pytest.mark.parametrize("enable_async", [False])
