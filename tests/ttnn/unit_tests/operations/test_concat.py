@@ -318,3 +318,41 @@ def test_concat_sharded_pad(device, core_grid, hw, channels1, channels2, shard_h
     )
     expected = torch.concat([torch_input_tensor1, torch_input_tensor2], dim=-1)
     assert_with_pcc(expected, ttnn.to_torch(actual), 0.9999)
+
+
+@pytest.mark.parametrize(
+    "inputs",
+    (
+        (
+            [1, 768, 40, 40],
+            [1, 768, 40, 40],
+        ),  # Passed
+        (
+            [1, 768, 80, 80],
+            [1, 768, 80, 80],
+        ),  # Passed
+        (
+            [1, 768, 20, 20],
+            [1, 768, 20, 20],
+        ),  # Passed
+        (
+            (1, 384, 40, 40),
+            (1, 384, 40, 40),
+        ),  # Passed
+    ),
+)
+@pytest.mark.parametrize("async_mode", [True, False], ids=["async_on", "async_off"])
+def test_concat_yolov12x_2(device, inputs, async_mode, dim=1):
+    device.enable_async(async_mode)
+    torch_input_tensor_a = torch.rand(inputs[0], dtype=torch.bfloat16)
+    torch_input_tensor_b = torch.rand(inputs[1], dtype=torch.bfloat16)
+
+    torch_output_tensor = torch.concat([torch_input_tensor_a, torch_input_tensor_b], dim=dim)
+
+    input_tensor_a = ttnn.from_torch(torch_input_tensor_a, layout=ttnn.TILE_LAYOUT, device=device)
+    input_tensor_b = ttnn.from_torch(torch_input_tensor_b, layout=ttnn.TILE_LAYOUT, device=device)
+
+    output = ttnn.concat([input_tensor_a, input_tensor_b], dim=dim)
+    output = ttnn.to_torch(output)
+
+    assert_with_pcc(torch_output_tensor, output, 0.9999)

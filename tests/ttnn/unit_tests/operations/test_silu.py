@@ -57,6 +57,8 @@ def run_elt_silu_relu(
     if shard_strategy == ttnn.ShardStrategy.BLOCK:
         input_2d_height_padded = _nearest_y(input_2d_height, grid_size[0] * 32)
         shard_height = math.ceil(input_2d_height_padded / grid_size[0])
+        print(f"input_2d_width: {input_2d_width}")
+        print(f"grid_size[1]: {grid_size[1]}")
         shard_width = math.ceil(input_2d_width / grid_size[1])
         shard_orientation = ttnn.ShardOrientation.COL_MAJOR
         tensor_memory_layout = ttnn.TensorMemoryLayout.BLOCK_SHARDED
@@ -78,12 +80,15 @@ def run_elt_silu_relu(
     elif shard_strategy == ttnn.ShardStrategy.WIDTH:
         shard_height = input_2d_height
         input_2d_width_padded = _nearest_y(input_2d_width, ncores * 32)
+        print(f"input_2d_width_padded: {input_2d_width_padded}")
+        print(f"ncores: {ncores}")
         shard_width = math.ceil(input_2d_width_padded / ncores)
         shard_orientation = ttnn.ShardOrientation.ROW_MAJOR
         tensor_memory_layout = ttnn.TensorMemoryLayout.WIDTH_SHARDED
         shard_grid = get_shard_grid_from_num_cores(ncores, device)
 
     assert shard_height % TILE_WIDTH == 0
+    print(f"shard_width: {shard_width}")
     assert shard_width % TILE_WIDTH == 0
 
     logger.debug(f"shard_grid={shard_grid}")
@@ -215,6 +220,54 @@ def test_wh_silu_relu(
 )
 @pytest.mark.parametrize("op", ["silu", "relu"])
 def test_silu_llm(
+    device,
+    batch_size,
+    input_channels,
+    input_height,
+    input_width,
+    grid_size,
+    ncores,
+    shard_strategy,
+    shard_orientation,
+    op,
+):
+    run_elt_silu_relu(
+        device,
+        batch_size,
+        input_channels,
+        input_height,
+        input_width,
+        grid_size,
+        ncores,
+        shard_strategy,
+        shard_orientation,
+        op,
+    )
+
+
+@pytest.mark.parametrize(
+    "batch_size, input_channels, input_height, input_width, ncores, grid_size, shard_strategy, shard_orientation",
+    (
+        (1, 96, 320, 320, 40, (8, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 192, 160, 160, 40, (7, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 48, 160, 160, 40, (7, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 96, 160, 160, 40, (7, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 384, 160, 160, 40, (7, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 384, 80, 80, 40, (3, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 96, 80, 80, 40, (3, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 192, 80, 80, 40, (3, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 768, 80, 80, 40, (3, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 768, 40, 40, 40, (1, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 384, 40, 40, 40, (1, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 460, 40, 40, 40, (1, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 192, 40, 40, 40, (1, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 192, 20, 20, 40, (1, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 96, 40, 40, 40, (1, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+        (1, 96, 20, 20, 40, (1, 8), ttnn.ShardStrategy.HEIGHT, ttnn.ShardOrientation.ROW_MAJOR),  # Passed
+    ),
+)
+@pytest.mark.parametrize("op", ["silu"])
+def test_silu_yolov12x(
     device,
     batch_size,
     input_channels,
