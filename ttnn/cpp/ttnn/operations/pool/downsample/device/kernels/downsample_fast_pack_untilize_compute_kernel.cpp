@@ -7,6 +7,8 @@
 #include "compute_kernel_api/untilize.h"
 #include "compute_kernel_api/pack_untilize.h"
 #include "compute_kernel_api/tilize.h"
+#include "dprint.h"
+#include "debug/dprint_pages.h"
 
 namespace NAMESPACE {
 void MAIN {
@@ -70,9 +72,12 @@ void MAIN {
     for (uint32_t b = 0; b < local_input_num_rows_of_tiles; ++b) {
         cb_reserve_back(untilize_cb_index, num_input_tiles_in_row);
 
+        UNPACK((tt::compute::common::print_full_tile(input_cb_index, 0)));
+
         pack_untilize_block<num_input_tiles_in_row>(input_cb_index, 1, untilize_cb_index);
 
         cb_push_back(untilize_cb_index, num_input_tiles_in_row);
+        UNPACK((tt::compute::common::print_full_tile(untilize_cb_index, 0)));
         cb_pop_front(input_cb_index, num_input_tiles_in_row);
     }
 
