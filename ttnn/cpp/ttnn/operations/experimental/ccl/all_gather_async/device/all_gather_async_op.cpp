@@ -109,6 +109,7 @@ std::vector<ttnn::TensorSpec> AllGatherAsync::compute_output_specs(const std::ve
 }
 
 AllGatherAsyncVersion AllGatherAsync::select_version(const Tensor& input_tensor) const {
+    return AllGatherAsyncVersion::LLAMA_POST_BINARY_MATMUL;
     auto input_tensor_shape = input_tensor.get_padded_shape();
     auto input_tensor_buffer_layout = input_tensor.buffer()->buffer_layout();
     auto input_tensor_page_layout = input_tensor.layout();
@@ -147,33 +148,34 @@ AllGatherAsyncVersion AllGatherAsync::select_version(const Tensor& input_tensor)
 
     if (input_is_sharded && output_is_sharded) {
         // Check for first llama post binary matmul case
-        if (input_tensor_shape[0] == 1 && input_tensor_shape[1] == 1 && input_tensor_shape[2] == 32 &&
-            input_tensor_shape[3] == 960 && input_tensor_memory_config.buffer_type == BufferType::L1 &&
-            output_mem_config.buffer_type == BufferType::L1 &&
-            input_tensor_memory_config.memory_layout == TensorMemoryLayout::WIDTH_SHARDED &&
-            output_mem_config.memory_layout == TensorMemoryLayout::WIDTH_SHARDED &&
-            input_tensor_memory_config.shard_spec->shape[0] == 32 &&
-            input_tensor_memory_config.shard_spec->shape[1] == 32 &&
-            output_mem_config.shard_spec->shape[0] == 32 &&
-            output_mem_config.shard_spec->shape[1] == 160 && input_shard_num_cores == 30 &&
-            output_shard_num_cores == 24) {
-            return AllGatherAsyncVersion::LLAMA_POST_BINARY_MATMUL;
-        }
+        // if (input_tensor_shape[0] == 1 && input_tensor_shape[1] == 1 && input_tensor_shape[2] == 32 &&
+        //     (input_tensor_shape[3] == 960 || input_tensor_shape[3] == 2048) && input_tensor_memory_config.buffer_type
+        //     == BufferType::L1 && output_mem_config.buffer_type == BufferType::L1 &&
+        //     input_tensor_memory_config.memory_layout == TensorMemoryLayout::WIDTH_SHARDED &&
+        //     output_mem_config.memory_layout == TensorMemoryLayout::WIDTH_SHARDED &&
+        //     input_tensor_memory_config.shard_spec->shape[0] == 32 &&
+        //     input_tensor_memory_config.shard_spec->shape[1] == 32 &&
+        //     output_mem_config.shard_spec->shape[0] == 32 &&
+        //     output_mem_config.shard_spec->shape[1] == 160 && input_shard_num_cores == 30 &&
+        //     output_shard_num_cores == 24
+        // ) {
+        return AllGatherAsyncVersion::LLAMA_POST_BINARY_MATMUL;
+        // }
 
         // Check for second llama post binary matmul case
-        if (input_tensor_shape[0] == 1 && input_tensor_shape[1] == 8 && input_tensor_shape[2] == 32 &&
-            input_tensor_shape[3] == 128 && input_tensor_memory_config.buffer_type == BufferType::L1 &&
-            output_mem_config.buffer_type == BufferType::L1 &&
-            input_tensor_memory_config.memory_layout == TensorMemoryLayout::HEIGHT_SHARDED &&
-            output_mem_config.memory_layout == TensorMemoryLayout::HEIGHT_SHARDED &&
-            input_tensor_memory_config.shard_spec->shape[0] == 32 &&
-            input_tensor_memory_config.shard_spec->shape[1] == 128 &&
-            output_mem_config.shard_spec->shape[0] == 32 &&
-            output_mem_config.shard_spec->shape[1] == 128 && input_shard_num_cores == 8 &&
-            output_shard_num_cores == 32) {
-            log_trace(tt::LogOp, "All conditions matched for LLAMA_POST_BINARY_MATMUL case");
-            return AllGatherAsyncVersion::LLAMA_POST_BINARY_MATMUL;
-        }
+        // if (input_tensor_shape[0] == 1 && input_tensor_shape[1] == 8 && input_tensor_shape[2] == 32 &&
+        //     input_tensor_shape[3] == 128 && input_tensor_memory_config.buffer_type == BufferType::L1 &&
+        //     output_mem_config.buffer_type == BufferType::L1 &&
+        //     input_tensor_memory_config.memory_layout == TensorMemoryLayout::HEIGHT_SHARDED &&
+        //     output_mem_config.memory_layout == TensorMemoryLayout::HEIGHT_SHARDED &&
+        //     input_tensor_memory_config.shard_spec->shape[0] == 32 &&
+        //     input_tensor_memory_config.shard_spec->shape[1] == 128 &&
+        //     output_mem_config.shard_spec->shape[0] == 32 &&
+        //     output_mem_config.shard_spec->shape[1] == 128 && input_shard_num_cores == 8 &&
+        //     output_shard_num_cores == 32) {
+        //     log_trace(tt::LogOp, "All conditions matched for LLAMA_POST_BINARY_MATMUL case");
+        return AllGatherAsyncVersion::LLAMA_POST_BINARY_MATMUL;
+        // }
     }
     log_trace(tt::LogOp, "All conditions matched for generic case");
     return AllGatherAsyncVersion::GENERIC;

@@ -66,6 +66,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
     const GlobalSemaphore& semaphore,
     const std::optional<tt::tt_metal::SubDeviceId>& sub_device_id,
     bool enable_persistent_fabric_mode) {
+    TT_THROW("ERROR");
     tt::tt_metal::Program program{};
     const bool enable_async_output_tensor = false;
     TT_FATAL(
