@@ -168,6 +168,7 @@ def run_all_gather_impl(
             tt_out_tensor = ttnn.all_gather(
                 input_tensor_mesh, dim, num_links=num_links, memory_config=mem_config, topology=all_gather_topology
             )
+            print(tt_out_tensor.shape)
 
             ttnn.synchronize_device(mesh_device)
             logger.info(f"Done iteration {i}")
