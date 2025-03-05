@@ -23,8 +23,11 @@ from tests.ttnn.unit_tests.operations.ccl.test_reduce_scatter_TG_nightly import 
 from tests.ttnn.unit_tests.operations.ccl.test_new_all_reduce import (
     run_all_reduce_impl,
 )
-from models.perf.benchmarking_utils import BenchmarkProfiler
+from models.perf.benchmarking_utils import BenchmarkData, BenchmarkProfiler
+from models.perf.device_perf_utils import run_device_perf_detailed
 
+
+NUM_ITERATIONS = 55
 
 PREFETCHER_NOC1_RING = [
     (6, 6),
@@ -98,12 +101,12 @@ CORE_RANGE_SET_1x1 = ttnn.CoreRangeSet(
 @pytest.mark.parametrize(
     "num_iters, warmup_iters",
     [
-        (2500, 100),
+        (NUM_ITERATIONS, 10),
     ],
 )
 @pytest.mark.parametrize("shard_grid_orientation", [ttnn.ShardOrientation.ROW_MAJOR])
 @pytest.mark.parametrize(
-    "tensor_mem_layout, output_shape, dim, input_shard_shape,input_shard_grid,output_shard_shape, output_shard_grid, layout, perf_target_us",
+    "tensor_mem_layout, output_shape, dim, input_shard_shape,input_shard_grid,output_shard_shape, output_shard_grid, layout",
     (
         (  # AllGather after SDPA
             ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
@@ -119,7 +122,6 @@ CORE_RANGE_SET_1x1 = ttnn.CoreRangeSet(
                 }
             ),
             ttnn.TILE_LAYOUT,
-            14.5,
         ),
         (  # AllGather after Binary Mult+Silu
             ttnn.TensorMemoryLayout.WIDTH_SHARDED,
@@ -130,7 +132,6 @@ CORE_RANGE_SET_1x1 = ttnn.CoreRangeSet(
             (32, 160),
             get_core_range_set(PREFETCHER_NOC1_RING),
             ttnn.TILE_LAYOUT,
-            15.5,
         ),
         (  # AllGather for layernorm
             ttnn.TensorMemoryLayout.WIDTH_SHARDED,
@@ -141,9 +142,13 @@ CORE_RANGE_SET_1x1 = ttnn.CoreRangeSet(
             (32, 128),
             CORE_RANGE_SET_1x1,
             ttnn.TILE_LAYOUT,
-            9.5,
         ),
     ),
+    ids=[
+        "sdpa",
+        "binary_mult",
+        "layernorm",
+    ],
 )
 @pytest.mark.parametrize("replication_factor", [8])
 @pytest.mark.parametrize("enable_async", [True])
@@ -169,7 +174,6 @@ def test_all_gather_tg_llama(
     replication_factor,
     num_iters,
     warmup_iters,
-    perf_target_us,
 ):
     if len(mesh_device.get_devices()) != 32:
         pytest.skip("Not TG!")
@@ -217,38 +221,88 @@ def test_all_gather_tg_llama(
         teardown_persistent_fabric=True,
     )
 
-    time_taken = profiler.get_duration("all-gather-async-trace") - profiler.get_duration(
-        "all-gather-async-trace-warmup"
+
+@pytest.mark.parametrize(
+    "ag_type, warmup_iters, perf_target_us",
+    [
+        ("sdpa", 10, 11),
+        ("binary_mult", 10, 12),
+        ("layernorm", 10, 8),
+    ],
+)
+@pytest.mark.models_device_performance_bare_metal
+def test_ag_tg_llama_perf(
+    ag_type,
+    warmup_iters,
+    perf_target_us,
+):
+    profiler = BenchmarkProfiler()
+    benchmark_data = BenchmarkData()
+    step_name = f"all_gather_{ag_type}"
+
+    subdir = "llama_ccl_perf"
+    command = (
+        f"pytest tests/ttnn/unit_tests/operations/ccl/test_ccl_async_TG_llama.py::test_all_gather_tg_llama -k {ag_type}"
     )
-    effective_iter = num_iters - warmup_iters
-    latency_us = time_taken / effective_iter * 1e6
-    logger.info(f"Time taken: {time_taken} s")
-    logger.info(f"Time per iter: {latency_us} us")
-    if perf_target_us is not None:
-        assert (
-            latency_us < perf_target_us
-        ), f"Measured latency {latency_us} us is greater than target {perf_target_us} us"
+    cols = ["DEVICE KERNEL"]
+    op_name = "AllGatherAsync"
+    warmup_iters = warmup_iters * 32  # 5 iterations per device
+
+    profiler.start("run")
+    profiler.start(step_name)
+    results = run_device_perf_detailed(command, subdir, cols, op_name, has_signposts=True, warmup_iters=warmup_iters)
+    profiler.end(step_name)
+    profiler.end("run")
+
+    # Get the measured performance
+    measured_min_us = results[cols[0]]["MIN"] / 1000
+    measured_max_us = results[cols[0]]["MAX"] / 1000
+    measured_avg_us = results[cols[0]]["AVG"] / 1000
+    measured_std_us = results[cols[0]]["STD"] / 1000
+
+    logger.info(f"Measured performance: {measured_avg_us:.3f} us vs. target: {perf_target_us} us")
+
+    # Save the measurement
+    benchmark_data.add_measurement(profiler, 0, step_name, f"all_gather-{ag_type}-min-us", measured_min_us)
+    benchmark_data.add_measurement(profiler, 0, step_name, f"all_gather-{ag_type}-max-us", measured_max_us)
+    benchmark_data.add_measurement(profiler, 0, step_name, f"all_gather-{ag_type}-avg-us", measured_avg_us)
+    benchmark_data.add_measurement(profiler, 0, step_name, f"all_gather-{ag_type}-std-us", measured_std_us)
+    benchmark_data.save_partial_run_json(
+        profiler,
+        run_type=f"all_gather",
+        ml_model_name="llama70b-tg-ccl",
+    )
+
+    assert measured_avg_us < perf_target_us, f"Performance target not met: {measured_avg_us} us > {perf_target_us} us"
 
 
 @skip_for_grayskull("Requires eth connected devices to run")
 @pytest.mark.parametrize(
-    "output_shape, cluster_axis, num_links, input_num_cores, output_num_cores, perf_target_us",
+    "output_shape, cluster_axis, num_links, input_num_cores, output_num_cores",
     [
-        ([1, 1, 32, 2048], 0, 4, 24, 16, 35.5),  # FF2/DO all reduce
-        ([1, 1, 32, 1280], 1, 3, 24, 40, 34.5),  # QKV all reduce
-        ([1, 1, 32, 3584], 1, 3, 24, 24, 40),  # FF1 all reduce
+        ([1, 1, 32, 2048], 0, 4, 24, 16),  # FF2/DO all reduce
+        ([1, 1, 32, 1280], 1, 3, 24, 40),  # QKV all reduce
+        ([1, 1, 32, 3584], 1, 3, 24, 24),  # FF1 all reduce
+        ([1, 1, 32, 16 * 1024], 1, 3, 32, 32),  # LM head all reduce
+    ],
+    ids=[
+        "ff2",
+        "qkv",
+        "ff1",
+        "lm_head",
     ],
 )
 @pytest.mark.parametrize(
-    "input_dtype",
+    "mesh_device",
     [
         ttnn.bfloat8_b,
     ],
+    indirect=True,
 )
 @pytest.mark.parametrize(
     "num_iters, warmup_iters",
     [
-        (2500, 100),
+        (NUM_ITERATIONS, 10),
     ],
 )
 @pytest.mark.parametrize("enable_async", [True])
@@ -275,7 +329,6 @@ def test_all_reduce_tg_llama(
     output_num_cores,
     num_iters,
     warmup_iters,
-    perf_target_us,
     enable_async,
     trace_mode,
     use_program_cache,
@@ -299,14 +352,57 @@ def test_all_reduce_tg_llama(
         profiler=profiler,
     )
 
-    time_taken = profiler.get_duration("all-reduce-async-trace") - profiler.get_duration(
-        "all-reduce-async-trace-warmup"
+
+@pytest.mark.parametrize(
+    "ar_type, warmup_iters, perf_target_us",
+    [
+        ("ff2", 10, 29),
+        ("qkv", 10, 25),
+        ("ff1", 10, 30),
+        ("lm_head", 10, 70),
+    ],
+)
+@pytest.mark.models_device_performance_bare_metal
+def test_ar_tg_llama_perf(
+    ar_type,
+    warmup_iters,
+    perf_target_us,
+):
+    profiler = BenchmarkProfiler()
+    benchmark_data = BenchmarkData()
+    step_name = f"all_reduce_{ar_type}"
+
+    subdir = "llama_ccl_perf"
+    command = (
+        f"pytest tests/ttnn/unit_tests/operations/ccl/test_ccl_async_TG_llama.py::test_all_reduce_tg_llama -k {ar_type}"
     )
-    effective_iter = num_iters - warmup_iters
-    latency_us = time_taken / effective_iter * 1e6
-    logger.info(f"Time taken: {time_taken} s")
-    logger.info(f"Time per iter: {latency_us} us")
-    if perf_target_us is not None:
-        assert (
-            latency_us < perf_target_us
-        ), f"Measured latency {latency_us} us is greater than target {perf_target_us} us"
+    cols = ["DEVICE KERNEL"]
+    op_name = "AllReduceAsync"
+    warmup_iters = warmup_iters * 32  # 5 iterations per device
+
+    profiler.start("run")
+    profiler.start(step_name)
+    results = run_device_perf_detailed(command, subdir, cols, op_name, has_signposts=True, warmup_iters=warmup_iters)
+    profiler.end(step_name)
+    profiler.end("run")
+
+    # Get the measured performance
+    measured_min_us = results[cols[0]]["MIN"] / 1000
+    measured_max_us = results[cols[0]]["MAX"] / 1000
+    measured_avg_us = results[cols[0]]["AVG"] / 1000
+    measured_std_us = results[cols[0]]["STD"] / 1000
+
+    logger.info(f"Measured performance: {measured_avg_us:.3f} us vs. target: {perf_target_us} us")
+
+    # Save the measurement
+    benchmark_data.add_measurement(profiler, 0, step_name, f"all_reduce-{ar_type}-min-us", measured_min_us)
+    benchmark_data.add_measurement(profiler, 0, step_name, f"all_reduce-{ar_type}-max-us", measured_max_us)
+    benchmark_data.add_measurement(profiler, 0, step_name, f"all_reduce-{ar_type}-avg-us", measured_avg_us)
+    benchmark_data.add_measurement(profiler, 0, step_name, f"all_reduce-{ar_type}-std-us", measured_std_us)
+    benchmark_data.save_partial_run_json(
+        profiler,
+        run_type=f"all_reduce",
+        ml_model_name="llama70b-tg-ccl",
+    )
+
+    assert measured_avg_us < perf_target_us, f"Performance target not met: {measured_avg_us} us > {perf_target_us} us"
