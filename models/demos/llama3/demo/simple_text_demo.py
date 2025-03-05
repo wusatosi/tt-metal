@@ -119,6 +119,7 @@ def create_tt_model(
         max_batch_size=max_batch_size,
         optimizations=optimizations,
         max_seq_len=max_seq_len,
+        dummy_weights=True,
     )
     state_dict = tt_model_args.load_state_dict()
 

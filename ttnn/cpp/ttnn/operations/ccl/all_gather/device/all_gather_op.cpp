@@ -316,6 +316,7 @@ Tensor all_gather(
         {input_tensor},
         output_tensors);
 
+    std::cout << "actually ran it!" << std::endl;
     return output_tensors.at(0);
 }
 
@@ -405,6 +406,7 @@ Tensor all_gather(
         },
         {input_tensor},
         output_tensors);
+    std::cout << "IN HERE" << std::endl;
     return output_tensors.at(0);
 }
 
