@@ -1464,7 +1464,7 @@ void pytensor_module(py::module& m_tensor) {
             Convert tensor to torch tensor using legacy padded shape.
             WARNING: Will be deprecated soon!
 
-            The tensor must be on host when calling this function.
+            The tensor must be on host when calling this function. It is possible for ttnn.uint16 entries over 32767 and ttnn.uint32 entries over 2147483647 to overflow into negative signed torch.int16 and torch.int32 entries respectively.
 
             .. code-block:: python
 
@@ -1477,7 +1477,7 @@ void pytensor_module(py::module& m_tensor) {
             R"doc(
             Convert tensor to torch tensor.
 
-            The tensor must be on host when calling this function.
+            The tensor must be on host when calling this function. It is possible for ttnn.uint16 entries over 32767 and ttnn.uint32 entries over 2147483647 to overflow into negative signed torch.int16 and torch.int32 entries respectively.
 
             .. code-block:: python
 
