@@ -141,19 +141,19 @@ void kernel_main() {
         32});
     // Write the mcast packet (forward)
     if (fabric_connection.has_forward_connection()) {
-        fabric_connection.get_forward_connection().wait_for_empty_write_slot();
+        // fabric_connection.get_forward_connection().wait_for_empty_write_slot();
         pkt_hdr->to_chip_multicast(
             tt::fabric::MulticastRoutingCommandHeader{1, static_cast<uint8_t>(num_targets_forward_direction)});
-        fabric_connection.get_forward_connection().send_payload_flush_blocking_from_address(
-            packet_header_buffer_seminc, sizeof(PACKET_HEADER_TYPE));
+        // fabric_connection.get_forward_connection().send_payload_flush_blocking_from_address(
+        //     packet_header_buffer_seminc, sizeof(PACKET_HEADER_TYPE));
     }
     // Write the mcast packet (backward)
     if (fabric_connection.has_backward_connection()) {
         pkt_hdr->to_chip_multicast(
             tt::fabric::MulticastRoutingCommandHeader{1, static_cast<uint8_t>(num_targets_backward_direction)});
-        fabric_connection.get_backward_connection().wait_for_empty_write_slot();
-        fabric_connection.get_backward_connection().send_payload_flush_blocking_from_address(
-            packet_header_buffer_seminc, sizeof(PACKET_HEADER_TYPE));
+        // fabric_connection.get_backward_connection().wait_for_empty_write_slot();
+        // fabric_connection.get_backward_connection().send_payload_flush_blocking_from_address(
+        //     packet_header_buffer_seminc, sizeof(PACKET_HEADER_TYPE));
     }
     // increment locally
     uint64_t out_ready_sem_noc_addr =
@@ -161,25 +161,25 @@ void kernel_main() {
     noc_semaphore_inc(out_ready_sem_noc_addr, 1);
 
     // 3. wait for mcast output ready semaphore
-    while (*reinterpret_cast<volatile uint32_t*>(out_ready_sem_bank_addr) < out_ready_sem_wait_value);
+    // while (*reinterpret_cast<volatile uint32_t*>(out_ready_sem_bank_addr) < out_ready_sem_wait_value);
 
-    // loop over mcast ranges
-    for (uint32_t i = 0; i < num_mcast_ranges; i++) {
-        // Signal the reduction workers
-        const uint64_t reduction_semaphore_recv_noc_addr = get_noc_multicast_addr(
-            mcast_dest_noc_start_x[i],
-            mcast_dest_noc_start_y[i],
-            mcast_dest_noc_end_x[i],
-            mcast_dest_noc_end_y[i],
-            reduction_semaphore_send_addr);
+    // // loop over mcast ranges
+    // for (uint32_t i = 0; i < num_mcast_ranges; i++) {
+    //     // Signal the reduction workers
+    //     const uint64_t reduction_semaphore_recv_noc_addr = get_noc_multicast_addr(
+    //         mcast_dest_noc_start_x[i],
+    //         mcast_dest_noc_start_y[i],
+    //         mcast_dest_noc_end_x[i],
+    //         mcast_dest_noc_end_y[i],
+    //         reduction_semaphore_send_addr);
 
-        noc_semaphore_set_multicast(
-            reduction_semaphore_send_addr,
-            reduction_semaphore_recv_noc_addr,
-            i == 0 ? num_mcast_cores : 0,
-            false,  // linked = false
-            true);  // multicast_path_reserve = true
-    }
+    //     noc_semaphore_set_multicast(
+    //         reduction_semaphore_send_addr,
+    //         reduction_semaphore_recv_noc_addr,
+    //         i == 0 ? num_mcast_cores : 0,
+    //         false,  // linked = false
+    //         true);  // multicast_path_reserve = true
+    // }
 
     // 4. global semaphore reset
     *reinterpret_cast<volatile uint32_t*>(out_ready_sem_bank_addr) = 0;
