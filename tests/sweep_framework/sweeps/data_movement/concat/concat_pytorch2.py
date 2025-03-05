@@ -4171,7 +4171,12 @@ def invalidate_vector(test_vector) -> Tuple[bool, Optional[str]]:
         if test_vector["dtype"] == ttnn.bfloat8_b:
             return True, "bfloat8_b not supported with ROW_MAJOR_LAYOUT"
 
-    return False, None
+    dim = test_vector["concat_specs"]["dim"]
+    for shape in test_vector["concat_specs"]["shapes"]:
+        if shape[dim] % 32 != 0 and (dim > len(shape) - 3 or (dim < 0 and dim > -3)):
+            return False, None
+
+    return True, "Shape dimension is tile aligned"
 
 
 def run(
@@ -4207,7 +4212,17 @@ def test_concat_pytorch2(concat_spec, dtype, layout, device):
     if dtype == ttnn.bfloat16 and any([shape[-1] % 2 != 0 for shape in shapes]) and layout == ttnn.ROW_MAJOR_LAYOUT:
         pytest.skip("Skipping test for RM bfloat16 with odd last dimension")
 
+    check = True
+    for shape in shapes:
+        if shape[dim] % 32 != 0 and (dim > len(shape) - 3 or (dim < 0 and dim > -3)):
+            check = False
+            break
+
+    if check:
+        pytest.skip("Shape dimensions are tile aligned")
+
     torch_input_tensors = [torch_random(shape, -0.1, 0.1, dtype=torch.bfloat16) for shape in shapes]
+
     torch_output_tensor = torch.cat(torch_input_tensors, dim=dim)
 
     ttnn_input_tensors = [

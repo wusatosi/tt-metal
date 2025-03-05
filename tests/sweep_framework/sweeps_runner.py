@@ -61,8 +61,24 @@ def gather_single_test_perf(device, test_passed):
         logger.error("No profiling data available. Ensure you are running with the profiler build.")
         return None
     elif len(opPerfData) > 1:
-        logger.info("Composite op detected in device perf measurement. Composite op perf is not supported. Failing.")
-        return None
+        # print(opPerfData)
+        logger.info("Composite op detected in device perf measurement. Summing the kernel perf data.")
+        perf_result = opPerfData[0]
+        for key in perf_result:
+            perf_result[key] = 0
+        i = 0
+        for op in opPerfData:
+            # print(op)
+            for key, value in op.items():
+                # logger.info(f"{key}: {value}")
+                # print(f"{perf_result[key]} + {int(value)}")
+                # if(key == "device_perf.DEVICE KERNEL DURATION [ns]"):
+                # perf_result[key + '_{i}'] = int(value)
+                if key not in perf_result:
+                    perf_result[key] = int(value)
+                else:
+                    perf_result[key] += int(value)
+        return perf_result
     else:
         return opPerfData[0]
 
