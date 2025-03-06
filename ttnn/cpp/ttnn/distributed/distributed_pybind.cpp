@@ -357,7 +357,11 @@ void py_module(py::module& module) {
             R"doc(
                Resets the sub_device_ids that will be stalled on by default for Fast Dispatch commands such as reading, writing, synchronizing
                back to all SubDevice IDs.
-           )doc");
+           )doc")
+        .def(
+            "num_program_cache_entries",
+            &MeshDevice::num_program_cache_entries,
+            "Number of entries in the program cache for this device");
 
     module.def(
         "open_mesh_device",

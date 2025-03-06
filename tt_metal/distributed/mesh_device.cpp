@@ -462,9 +462,8 @@ std::vector<CoreCoord> MeshDevice::worker_cores_from_logical_cores(const std::ve
     });
 }
 std::vector<CoreCoord> MeshDevice::get_optimal_dram_bank_to_logical_worker_assignment() {
-    return validate_and_get_reference_value(scoped_devices_->root_devices(), [](const auto& device) {
-        return device->get_optimal_dram_bank_to_logical_worker_assignment();
-    });
+    auto device_it = scoped_devices_->root_devices().begin();
+    return (*device_it)->get_optimal_dram_bank_to_logical_worker_assignment();
 }
 CoreCoord MeshDevice::virtual_core_from_logical_core(const CoreCoord& logical_coord, const CoreType& core_type) const {
     return validate_and_get_reference_value(
