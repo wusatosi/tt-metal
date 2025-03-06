@@ -150,7 +150,7 @@ class TtLlamaAttention(LightweightModule):
             mesh_mapper=ttnn.ShardTensor2dMesh(
                 self.mesh_device, dims=(3, 2) if self.TG else (2, 3), mesh_shape=configuration.cluster_shape
             ),
-            cache_file_name=cache_name("wqkv_sharded_2d_prefetcher"),  ## TODO: Fix caching
+            # cache_file_name=cache_name("wqkv_sharded_2d_prefetcher"),  ## TODO: Fix caching
         )
 
         if self.model_config["USE_PREFETCHER"]:
@@ -177,9 +177,9 @@ class TtLlamaAttention(LightweightModule):
                 dims=(2, 3) if (self.use_fused_all_gather_matmul or self.TG) else (3, 2),
                 mesh_shape=configuration.cluster_shape,
             ),
-            cache_file_name=cache_name("wo_width_sharded_2d_prefetcher")
-            if (self.use_fused_all_gather_matmul or self.TG)
-            else cache_name("wo"),
+            # cache_file_name=cache_name("wo_width_sharded_2d_prefetcher")
+            # if (self.use_fused_all_gather_matmul or self.TG)
+            # else cache_name("wo"),
         )
         if self.model_config["USE_PREFETCHER"]:
             self.prefetcher_setup.insert_tensor(self.wo)
@@ -446,14 +446,8 @@ class TtLlamaAttention(LightweightModule):
             program_config=self.model_config["XQKV_PREFILL_PROGCFG"](seq_len),
         )
 
-        xqkv_fused = tt_all_reduce(
-            xqkv_fused,
-            self.mesh_device,
-            cluster_axis=1,
-            num_reduce_scatter_links=self.num_reduce_scatter_links,
-            num_all_gather_links=self.num_all_gather_links,
-            memory_config=ttnn.DRAM_MEMORY_CONFIG,
-            dtype=self.ccl_dtype,
+        xqkv_fused = self.tt_ccl.line_all_reduce(
+            xqkv_fused, cluster_axis=1, num_links=3, memory_config=ttnn.DRAM_MEMORY_CONFIG
         )
 
         if seq_len > 2048:
@@ -629,15 +623,8 @@ class TtLlamaAttention(LightweightModule):
 
         # Reduce-scatter
         if not self.use_fused_all_gather_matmul:
-            output_11SH = tt_all_reduce(
-                output_11SH,
-                self.mesh_device,
-                cluster_axis=0,
-                dim=0 if self.TG else 3,
-                num_reduce_scatter_links=self.num_reduce_scatter_links,
-                num_all_gather_links=self.num_all_gather_links,
-                memory_config=ttnn.DRAM_MEMORY_CONFIG,
-                dtype=self.ccl_dtype,
+            output_11SH = self.tt_ccl.line_all_reduce(
+                output_11SH, cluster_axis=0, num_links=3, memory_config=ttnn.DRAM_MEMORY_CONFIG
             )
 
         return output_11SH

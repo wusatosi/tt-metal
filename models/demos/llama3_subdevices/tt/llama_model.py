@@ -63,15 +63,23 @@ class TtTransformer(LightweightModule):
         )
         self.trans_mats_dict = self.rope_setup.get_both_trans_mats()
 
+        # self.prefetcher_setup = TtLlamaPrefetcherSetup(
+        #     mesh_device,
+        #     n_tensors=5,
+        #     n_layers=self.n_layers,
+        # )
+        # mesh_device.set_sub_device_stall_group(
+        #     [self.prefetcher_setup.prefetcher_sub_device_id, self.prefetcher_setup.worker_sub_device_id]
+        # )
+        # self.tt_ccl = TT_CCL(mesh_device, args.sub_core_grids, self.prefetcher_setup.worker_sub_device_id)
         self.prefetcher_setup = TtLlamaPrefetcherSetup(
             mesh_device,
-            n_tensors=5,
+            n_tensors=0,
             n_layers=self.n_layers,
         )
-        mesh_device.set_sub_device_stall_group(
-            [self.prefetcher_setup.prefetcher_sub_device_id, self.prefetcher_setup.worker_sub_device_id]
-        )
-        self.tt_ccl = TT_CCL(mesh_device, args.sub_core_grids, self.prefetcher_setup.worker_sub_device_id)
+        mesh_device.set_sub_device_stall_group([self.prefetcher_setup.worker_sub_device_id])
+        crs = ttnn.CoreRangeSet([ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(6, 9))])
+        self.tt_ccl = TT_CCL(mesh_device, crs, self.prefetcher_setup.worker_sub_device_id)
 
         self.layers = [
             TtTransformerBlock(
@@ -339,14 +347,14 @@ class TtTransformer(LightweightModule):
     ):
         # print("model start")
         # No-op if callers already provide the right memory config
-
-        garbage_tensor = ttnn.dram_prefetcher(
-            self.tt_tensors,
-            num_layers=self.n_layers,
-            global_cb=self.prefetcher_setup.global_circular_buffer,
-        )
-        # print("prefetcher done")
-        self.mesh_device.set_sub_device_stall_group([self.prefetcher_setup.worker_sub_device_id])
+        if mode == "decode":
+            garbage_tensor = ttnn.dram_prefetcher(
+                self.tt_tensors,
+                num_layers=self.n_layers,
+                global_cb=self.prefetcher_setup.global_circular_buffer,
+            )
+            # print("prefetcher done")
+            self.mesh_device.set_sub_device_stall_group([self.prefetcher_setup.worker_sub_device_id])
         # print("stall group done")
         if mode == "decode" and not self.args.is_galaxy:
             x = ttnn.to_memory_config(x, self.model_config["DECODE_RESIDUAL_MEMCFG"])
@@ -366,9 +374,16 @@ class TtTransformer(LightweightModule):
                 kv_cache=kv_cache[i] if kv_cache is not None else None,
             )
         ttnn.deallocate(h)
-
-        ttnn.deallocate(garbage_tensor)
+        if mode == "decode":
+            ttnn.deallocate(garbage_tensor)
         # print("decoder done")
+
+        if mode == "prefill" and get_last_token == -1:
+            return x
+
+        # Slicing the tensor to the nearest ceiling/floor multiples of 32 for the prefill_len, to get the last token
+        if get_last_token != -1:
+            x = ttnn.slice(x, (0, 0, get_last_token, 0), (1, 1, get_last_token + 32, x.shape[-1]))
 
         # Output norm
         x_norm, res = self.norm(x, res=None, mode=mode)

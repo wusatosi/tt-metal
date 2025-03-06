@@ -81,20 +81,23 @@ class TtLlamaPrefetcherSetup(LightweightModule):
         self.sender_core_range_set = ttnn.CoreRangeSet(
             [ttnn.CoreRange(core_coord, core_coord) for core_coord in self.sender_cores]
         )
+        self.all_core_range_set = ttnn.CoreRangeSet([ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(6, 9))])
 
         ##### Setup up sub devices #####
-        self.prefetcher_sub_device = ttnn.SubDevice([self.sender_core_range_set])
-        self.worker_sub_device = ttnn.SubDevice([self.worker_cores_range_set])
+        self.all_sub_device = ttnn.SubDevice([self.all_core_range_set])
+        # self.prefetcher_sub_device = ttnn.SubDevice([self.sender_core_range_set])
+        # self.worker_sub_device = ttnn.SubDevice([self.worker_cores_range_set])
         mesh_sub_device_manager_id = create_and_load_sub_device_manager_with_fabric_interface(
-            mesh_device, [self.prefetcher_sub_device, self.worker_sub_device], 1, 0, True
+            mesh_device, [self.all_sub_device], 0, 0, True
         )
         # self.sub_device_manager = mesh_device.create_sub_device_manager(
         #     [self.prefetcher_sub_device, self.worker_sub_device], 0
         # )
         # mesh_device.load_sub_device_manager(self.sub_device_manager)
-        self.prefetcher_sub_device_id = ttnn.SubDeviceId(0)
-        self.worker_sub_device_id = ttnn.SubDeviceId(1)
-
+        self.all_sub_device_id = ttnn.SubDeviceId(0)
+        # self.prefetcher_sub_device_id = ttnn.SubDeviceId(1)
+        # self.worker_sub_device_id = ttnn.SubDeviceId(2)
+        self.worker_sub_device_id = self.all_sub_device_id
         self.tensors = []
         self.tensor_addrs = []  # List of buffer addresses
 

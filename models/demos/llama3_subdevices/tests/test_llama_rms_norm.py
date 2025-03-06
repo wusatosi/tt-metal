@@ -41,7 +41,7 @@ from models.demos.llama3_subdevices.tt.llama_ccl import TT_CCL
 @pytest.mark.parametrize(
     "mode",
     [
-        "decode",
+        "prefill",
     ],
 )
 @pytest.mark.parametrize("device_params", [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL}], indirect=True)
@@ -67,12 +67,10 @@ def test_llama_rms_norm_inference(
 
     prefetcher_setup = TtLlamaPrefetcherSetup(
         mesh_device,
-        n_tensors=1,
+        n_tensors=0,
         n_layers=1,
     )
-    mesh_device.set_sub_device_stall_group(
-        [prefetcher_setup.prefetcher_sub_device_id, prefetcher_setup.worker_sub_device_id]
-    )
+    mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
     tt_ccl = TT_CCL(mesh_device, model_args.sub_core_grids, prefetcher_setup.worker_sub_device_id)
 
     # Create the inner RMSNormxw

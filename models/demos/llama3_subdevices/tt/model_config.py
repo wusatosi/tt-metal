@@ -343,7 +343,7 @@ class TtModelArgs:
 
             # Chunk values based on what works best empirically
             self.model_config["SDPA_PROGCFG"] = lambda seqlen: ttnn.SDPAProgramConfig(
-                compute_with_storage_grid_size=(8, 8),
+                compute_with_storage_grid_size=(7, 10),
                 exp_approx_mode=False,
                 q_chunk_size=256 if seqlen >= 2048 else 64,
                 k_chunk_size=256 if seqlen >= 2048 else 64,
@@ -407,24 +407,20 @@ class TtModelArgs:
                 m=min(seq_len, 1024),
                 k=self.dim // self.cluster_shape[0],
                 n=self.hidden_dim // self.cluster_shape[1],
-                grid_size=(8, min(min(seq_len, 1024) // 32, 4))
-                if self.is_galaxy
-                else ((8, 8) if seq_len >= 1024 else (8, 4)),
+                grid_size=(4, 4) if self.is_galaxy else ((8, 8) if seq_len >= 1024 else (8, 4)),
             )
             self.model_config["PREFILL_MLP_W2_PRG_CONFIG"] = lambda seq_len: self.matmul_config(
                 m=min(seq_len, 1024),
                 k=self.hidden_dim // (self.cluster_shape[1] if self.is_galaxy else 1),
                 n=self.dim,
-                grid_size=(8, min(min(seq_len, 1024) // 32, 4))
-                if self.is_galaxy
-                else ((8, 8) if seq_len >= 1024 else (8, 4)),
+                grid_size=(4, 4) if self.is_galaxy else ((8, 8) if seq_len >= 1024 else (8, 4)),
             )
 
             self.model_config["WO_PREFILL_PROGCFG"] = lambda seq_len: self.matmul_config(
                 m=min(seq_len, 1024 if self.is_galaxy else 2048),
                 k=self.dim // self.cluster_shape[0] if self.is_galaxy else self.dim,
                 n=self.dim // self.cluster_shape[1] if self.is_galaxy else self.dim,
-                grid_size=(8, 8),
+                grid_size=(7, 10),
                 in0_block_w=1,
                 fuse_batch=seq_len <= 1024,  # if self.is_galaxy else 2048),
             )
@@ -456,12 +452,12 @@ class TtModelArgs:
             self.qkv_size = self.head_dim * (2 * self.n_kv_heads + self.n_heads)
             self.min_kv_prefill_shard_seqlen = (self.tile_size * 8 * 8) / (self.n_kv_heads // self.cluster_shape[1])
             self.model_config["XQKV_PREFILL_PROGCFG"] = lambda seq_len: ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
-                compute_with_storage_grid_size=(8, 8),
+                compute_with_storage_grid_size=(4, 8),
                 in0_block_w=1,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
                 out_subblock_h=1,  # Must be divisible by per_core_M
                 out_subblock_w=1,  # Must be divisible by per_core_N, out_subblock_w * out_subblock_h <= 4
                 per_core_M=max(
-                    1, 8 if seq_len >= 2048 else seq_len // self.tile_size // 8  # 8 rows
+                    1, 4 if seq_len >= 2048 else seq_len // self.tile_size // 4  # 8 rows
                 ),  # M / TILE_HEIGHT / Grid_Size (dynamic based on seqlen)
                 per_core_N=math.ceil(self.qkv_size / self.cluster_shape[1] / 32 / 8),  # N / TILE_WIDTH / grid width
                 transpose_mcast=False,
@@ -655,7 +651,14 @@ class TtModelArgs:
                 12288 // 8,  # Use padded N
                 RING_SIZE,
             )
-
+            pc_1 = self.matmul_1d_ring_config(
+                1,
+                128,
+                self.dim // 4,
+                3584,
+                16,
+                prefetch=False,
+            )
             # WO
             self.model_config["SHARDED_ATTN_WO_INPUT_RING_MEMCFG"] = ttnn.create_sharded_memory_config(
                 shape=(32, 12288 // 8 // RING_SIZE),  # Use padded K
