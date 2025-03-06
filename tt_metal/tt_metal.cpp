@@ -1371,7 +1371,7 @@ LightMetalBinary LightMetalEndCapture() {
 #if defined(TT_ENABLE_LIGHT_METAL_TRACE) && (TT_ENABLE_LIGHT_METAL_TRACE == 1)
     log_info(tt::LogMetalTrace, "End LightMetalBinary Capture");
     auto& lm_capture_ctx = LightMetalCaptureContext::get();
-    TT_ASSERT(lm_capture_ctx.is_tracing(), "Light Metal Capture was not enabled.");
+    TT_FATAL(lm_capture_ctx.is_tracing(), "Light Metal Capture was not enabled.");
     lm_capture_ctx.set_tracing(false);  // Disable tracing
     return lm_capture_ctx.create_light_metal_binary();
 #else
