@@ -10,6 +10,8 @@
 #include "compute_kernel_api/tile_move_copy.h"
 #include "compute_kernel_api/matmul.h"
 // #include "debug/dprint.h"
+// #include "hostdevcommon/profiler_common.h"
+#include "tools/profiler/kernel_profiler.hpp"
 
 #ifdef FUSE_BIAS
 #include "compute_kernel_api/bcast.h"
@@ -32,7 +34,10 @@ inline void tilize_in(
         for (uint32_t h = 0; h < in_subblock_h; ++h) {
             cb_wait_front(in_cb_id, in_block_w);
             cb_reserve_back(out_cb_id, in_block_w);
-            tilize_block(in_cb_id, in_block_w, out_cb_id);
+            {
+                DeviceZoneScopedN("tilize_block");
+                tilize_block(in_cb_id, in_block_w, out_cb_id);
+            }
             cb_push_back(out_cb_id, in_block_w);
             cb_pop_front(in_cb_id, in_block_w);
         }
@@ -135,7 +140,9 @@ void MAIN {
 #endif
     // in1 num blocks w is the outer loop. Output blocks are computed in col major order.
     for (uint32_t in1_block_w_i = 0; in1_block_w_i < in1_num_blocks_w; ++in1_block_w_i) {
+        DeviceZoneScopedN("in1_block_w_i");
         for (uint32_t in0_block_h_i = 0; in0_block_h_i < in0_num_blocks_h; ++in0_block_h_i) {
+            DeviceZoneScopedN("in0_block_h_i");
 #ifdef PRE_TILIZE
             reconfig_data_format_srca(in1_cb_id, in0_pretilize_cb_id);
 
@@ -156,6 +163,8 @@ void MAIN {
             PACK(const uint32_t partials_cb_write_ptr = get_local_cb_interface(matmul_partials_cb).fifo_wr_ptr);
             uint32_t curr_matmul_out_cb = matmul_partials_cb;
             for (uint32_t in0_block_w_i = 0; in0_block_w_i < in0_num_blocks_w; ++in0_block_w_i) {
+                DeviceZoneScopedN("in0_block_w_i");
+
 #ifdef WIDTH_SHARDED
                 if (in0_block_w_i % in0_nblocks_w_tilize == 0) {
                     reconfig_data_format_srca(in1_cb_id, in0_pretilize_cb_id);
@@ -169,6 +178,7 @@ void MAIN {
 #endif
                 bool last_out = (in0_block_w_i == in0_num_blocks_w - 1);
                 if constexpr (tilize_in0) {
+                    DeviceZoneScopedN("tilize_in0");
 #if defined PACK_RELU and not defined FUSE_BIAS
                     if (last_out) {
                         // if last block we pack the final result with relu enabled
@@ -201,8 +211,15 @@ void MAIN {
                         out_subblock_h,
                         in0_block_w);
                 }
-                cb_wait_front(mm_in0_cb_id, in0_block_num_tiles);
-                cb_wait_front(in1_cb_id, in1_block_num_tiles);
+                {
+                    DeviceZoneScopedN("cb_wait_front mm_in0_cb_id");
+
+                    cb_wait_front(mm_in0_cb_id, in0_block_num_tiles);
+                }
+                {
+                    DeviceZoneScopedN("cb_wait_front in1_cb_id");
+                    cb_wait_front(in1_cb_id, in1_block_num_tiles);
+                }
 
                 if (last_out) {
 #if defined PACK_RELU and not defined FUSE_BIAS
@@ -219,8 +236,11 @@ void MAIN {
 #endif
                 uint32_t in0_index_subblock_offset = 0;
                 for (uint32_t in0_subblock_i = 0; in0_subblock_i < in0_num_subblocks; ++in0_subblock_i) {
+                    DeviceZoneScopedN("bmm");
+
                     uint32_t in1_index_subblock_offset = 0;
                     for (uint32_t in1_subblock_i = 0; in1_subblock_i < in1_num_subblocks; ++in1_subblock_i) {
+                        // DeviceZoneScopedN("in1_subblock_i");
                         if (enable_reload) {
                             // Reconfigure input
                             copy_tile_to_dst_init_short_with_dt(in1_cb_id, matmul_partials_cb);
@@ -257,6 +277,7 @@ void MAIN {
                             // matmul outer product of (out_subblock_h x out_subblock_w) tiles that fill dst
                             // accumulation is done by iterating matmul_block across inner dim
                             // in0_block_w is passed as innder dim (kt) to matmul_block, interally used to stride in0
+                            DeviceZoneScopedN("inner_dim_idx");
                             matmul_block(
                                 mm_in0_cb_id,
                                 in1_cb_id,
@@ -342,6 +363,8 @@ void MAIN {
 #endif
 #else
                 if constexpr (spill) {
+                    DeviceZoneScopedN("spill");
+
                     enable_reload = true;
 
 #ifdef FUSE_BIAS
@@ -416,6 +439,7 @@ void MAIN {
             }  // in0_num_subblocks
 #endif
             if constexpr (untilize_out) {
+                DeviceZoneScopedN("untilize_out");
 #if defined PACKER_L1_ACC and not defined FUSE_BIAS
                 pack_reconfig_data_format(matmul_partials_cb, out_cb_id);
                 pack_reconfig_l1_acc(0);
@@ -429,6 +453,7 @@ void MAIN {
                 pack_untilize_dst_init_short<out_subblock_w, out_block_w>(out_cb_id);
                 copy_tile_to_dst_init_short(matmul_partials_cb);
                 for (uint32_t in0_subblock_i = 0; in0_subblock_i < in0_num_subblocks; ++in0_subblock_i) {
+                    DeviceZoneScopedN("reblock_and_untilize");
                     reblock_and_untilize<out_subblock_w, out_block_w>(
                         in1_num_subblocks, out_subblock_num_tiles, out_subblock_h, matmul_partials_cb, out_cb_id);
                 }
@@ -449,9 +474,12 @@ void MAIN {
                 }
             }
         }  // for in0_num_blocks_h
+        {
+            DeviceZoneScopedN("bias_block_offset");
 #ifdef FUSE_BIAS
-        bias_block_offset += in1_block_w;
+            bias_block_offset += in1_block_w;
 #endif
+        }
     }  // for in1_num_blocks_w
 }  // MAIN
 }  // namespace NAMESPACE

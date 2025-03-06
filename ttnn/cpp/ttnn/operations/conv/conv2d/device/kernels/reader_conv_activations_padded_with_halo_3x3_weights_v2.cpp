@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include "dataflow_api.h"
 #include "firmware_common.h"
+#include "tools/profiler/kernel_profiler.hpp"
 
 #define DILATION_W get_compile_time_arg_val(4)
 void kernel_main() {
@@ -42,6 +43,7 @@ void kernel_main() {
     uint32_t noop = get_arg_val<uint32_t>(i);
     i += 1;
 
+    DeviceZoneScopedN("reader");
     if (noop) {
         return;
     }
@@ -100,53 +102,63 @@ void kernel_main() {
 
     uint32_t start_reader_idx = 0;
     for (uint32_t bh = 0; bh < act_num_blocks_h; bh++) {
+        DeviceZoneScopedN("bh");
         for (uint32_t outer = 0; outer < window_outer; outer++) {
+            DeviceZoneScopedN("read outer window");
+
             // Reset reader_idx to finish act_block_h_datums
             reader_idx = start_reader_idx;
 
-            cb_reserve_back(cb_id_act, act_block_num_tiles_read);
-            uint32_t l1_write_addr_act = get_write_ptr(cb_id_act);
-            uint32_t reader_offset = act_l1_read_addr + (reader_offsets[reader_offset_idx] * conv_act_c_read_bytes);
-            // #pragma GCC unroll 4 // unroll didn't help, but act_block_h_datums (loop bound) being const does help
-            uint32_t act_block_h_datums_read_curr =
-                bh == act_num_blocks_h - 1 ? act_block_h_datums_read_last_block : act_block_h_datums_read;
+            {
+                DeviceZoneScopedN("cb_reserve_back");
+                cb_reserve_back(cb_id_act, act_block_num_tiles_read);
+            }
 
-            for (uint32_t bhd = 0; bhd < act_block_h_datums_read_curr; bhd++) {
-                // local read from reader_index + reader_offset;
-                uint32_t two_reader_indices = packed_reader_indices_ptr[reader_idx];
-                uint32_t reader_idx_1 = two_reader_indices & 0xffff;
-                uint32_t reader_idx_2 = two_reader_indices >> 16;
+            {
+                DeviceZoneScopedN("act block h read");
+                uint32_t l1_write_addr_act = get_write_ptr(cb_id_act);
+                uint32_t reader_offset = act_l1_read_addr + (reader_offsets[reader_offset_idx] * conv_act_c_read_bytes);
+                // #pragma GCC unroll 4 // unroll didn't help, but act_block_h_datums (loop bound) being const does help
+                uint32_t act_block_h_datums_read_curr =
+                    bh == act_num_blocks_h - 1 ? act_block_h_datums_read_last_block : act_block_h_datums_read;
+
+                for (uint32_t bhd = 0; bhd < act_block_h_datums_read_curr; bhd++) {
+                    // local read from reader_index + reader_offset;
+                    uint32_t two_reader_indices = packed_reader_indices_ptr[reader_idx];
+                    uint32_t reader_idx_1 = two_reader_indices & 0xffff;
+                    uint32_t reader_idx_2 = two_reader_indices >> 16;
 
 #if DILATION_W == 1
-                act_l1_offset = reader_offset + (reader_idx_1 * conv_act_c_read_bytes);
-                noc_async_read_one_packet_with_state<true>(act_l1_offset, l1_write_addr_act);
-                l1_write_addr_act += (coalesced_read_bytes + act_block_w_extra_align_bytes);
+                    act_l1_offset = reader_offset + (reader_idx_1 * conv_act_c_read_bytes);
+                    noc_async_read_one_packet_with_state<true>(act_l1_offset, l1_write_addr_act);
+                    l1_write_addr_act += (coalesced_read_bytes + act_block_w_extra_align_bytes);
 
-                act_l1_offset = reader_offset + (reader_idx_2 * conv_act_c_read_bytes);
-                noc_async_read_one_packet_with_state<true>(act_l1_offset, l1_write_addr_act);
-                l1_write_addr_act += (coalesced_read_bytes + act_block_w_extra_align_bytes);
+                    act_l1_offset = reader_offset + (reader_idx_2 * conv_act_c_read_bytes);
+                    noc_async_read_one_packet_with_state<true>(act_l1_offset, l1_write_addr_act);
+                    l1_write_addr_act += (coalesced_read_bytes + act_block_w_extra_align_bytes);
 #else
-                act_l1_offset = reader_offset + (reader_idx_1 * conv_act_c_read_bytes);
-                for (uint32_t inner = 0; inner < weight_size_w; inner++) {
-                    noc_async_read_one_packet_with_state<true>(act_l1_offset, l1_write_addr_act);
-                    l1_write_addr_act += conv_act_c_read_bytes;
-                    act_l1_offset += stride_w_bytes;
-                }
+                    act_l1_offset = reader_offset + (reader_idx_1 * conv_act_c_read_bytes);
+                    for (uint32_t inner = 0; inner < weight_size_w; inner++) {
+                        noc_async_read_one_packet_with_state<true>(act_l1_offset, l1_write_addr_act);
+                        l1_write_addr_act += conv_act_c_read_bytes;
+                        act_l1_offset += stride_w_bytes;
+                    }
 
-                act_l1_offset = reader_offset + (reader_idx_2 * conv_act_c_read_bytes);
-                for (uint32_t inner = 0; inner < weight_size_w; inner++) {
-                    noc_async_read_one_packet_with_state<true>(act_l1_offset, l1_write_addr_act);
-                    l1_write_addr_act += conv_act_c_read_bytes;
-                    act_l1_offset += stride_w_bytes;
-                }
+                    act_l1_offset = reader_offset + (reader_idx_2 * conv_act_c_read_bytes);
+                    for (uint32_t inner = 0; inner < weight_size_w; inner++) {
+                        noc_async_read_one_packet_with_state<true>(act_l1_offset, l1_write_addr_act);
+                        l1_write_addr_act += conv_act_c_read_bytes;
+                        act_l1_offset += stride_w_bytes;
+                    }
 #endif
-                reader_idx++;
+                    reader_idx++;
+                }
+                noc_async_read_barrier();
+
+                cb_push_back(cb_id_act, act_block_num_tiles_read);
+
+                reader_offset_idx += window_inner;
             }
-            noc_async_read_barrier();
-
-            cb_push_back(cb_id_act, act_block_num_tiles_read);
-
-            reader_offset_idx += window_inner;
         }
         reader_offset_idx = 0;
 
