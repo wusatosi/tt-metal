@@ -49,11 +49,11 @@ def run_avg_pool(device, input_shape, kernel_size, stride, padding, dilation):
     # print(output_tensor)
 
     # Find and print mismatched indices and values.
-    mismatches = (expected_output != output_tensor).nonzero(as_tuple=True)
-    for idx in zip(*mismatches):
-        print(
-            f"Index: {idx}, | Expected: {expected_output[idx]}, | Actual: {output_tensor[idx]}, | Diff: {expected_output[idx] - output_tensor[idx]}"
-        )
+    # mismatches = (expected_output != output_tensor).nonzero(as_tuple=True)
+    # for idx in zip(*mismatches):
+    #     print(
+    #         f"Index: {idx}, | Expected: {expected_output[idx]}, | Actual: {output_tensor[idx]}, | Diff: {expected_output[idx] - output_tensor[idx]}"
+    #     )
 
     assert torch.allclose(expected_output, output_tensor, rtol=0.01)
 
@@ -63,19 +63,20 @@ def run_avg_pool(device, input_shape, kernel_size, stride, padding, dilation):
     "input_shape, kernel_size, stride, padding, dilation",
     [
         # Normal compute & Normal reader kernel.
-        (
-            (1, 64, 16, 16),
-            (2, 2),
-            (2, 2),
-            (0, 0),
-            (1, 1),
-        ),  # Correct for int. Could be incorrect for decimals. BF16 is for higher number, less precision than FP16.
-        ((1, 64, 112, 112), (2, 2), (2, 2), (0, 0), (1, 1)),  # Correct.
+        # (
+        #     (1, 64, 16, 16),
+        #     (2, 2),
+        #     (2, 2),
+        #     (0, 0),
+        #     (1, 1),
+        # ),  # Correct for int. Could be incorrect for decimals. BF16 is for higher number, less precision than FP16.
+        # ((1, 64, 112, 112), (2, 2), (2, 2), (0, 0), (1, 1)),  # Correct.
         # ((2, 64, 16, 16), (2, 2), (2, 2), (0, 0), (1, 1)),    # TOOD(jongbinlimTT): Need to test higher batch size.
         # ((4, 64, 112, 112), (2, 2), (1, 1), (0, 0), (1, 1)),  # TOOD(jongbinlimTT): Need to test higher batch size.
         # Large compute & Large (not wide) reader kernel.
         # ((1, 64, 16, 16), (5, 5), (1, 1), (0, 0), (1, 1)), # Wrong values. # TODO(jongbinlimTT): This case fails. Need to remove double division.
         # Normal compute & Wide (not large) reader kernel. C greater than 8 * 32 = 256 is "wide" reader kernel.
+        ((1, 256, 16, 16), (2, 2), (2, 2), (0, 0), (1, 1)),
         ((1, 512, 16, 16), (2, 2), (2, 2), (0, 0), (1, 1)),  # It was correct, and sometimes fails. Need to investigate.
         # Large compute & Large + wide -> Large reader kernel.
         # ((1, 800, 32, 32), (5, 5), (1, 1), (0, 0), (1, 1)),

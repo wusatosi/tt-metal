@@ -25,6 +25,7 @@ inline void reduce_h_fused(
     cb_reserve_back(out_cb_id, num_output_tiles);
     const uint32_t curr_in_cb_id = split_reader ? (in_cb_id + (in_stick_index & 0x1)) : in_cb_id;
     cb_wait_front(curr_in_cb_id, 1);
+    // DPRINT << "WAITED FOR CB " << curr_in_cb_id << ENDL();
     tile_regs_acquire();
     unpack_tilizeA_B_block(
         curr_in_cb_id,
@@ -37,6 +38,7 @@ inline void reduce_h_fused(
         reduce_tile_math(c_i, num_faces_in_tile /* reduce 1 or 2 faces */);
     }
     cb_pop_front(curr_in_cb_id, 1);
+    // DPRINT << "POPPED CB " << curr_in_cb_id << ENDL();
     tile_regs_wait();
     tile_regs_commit();
     pack_untilize_dst<num_output_tiles>(
@@ -80,8 +82,6 @@ void MAIN {
     static_assert(REDUCE_OP == PoolType::MAX || REDUCE_OP == PoolType::SUM, "Only supports REDUCE_OP = MAX or Sum");
     constexpr bool neginf_srca_maxpool = (REDUCE_OP == PoolType::MAX) ? true : false;
     constexpr bool zero_srca_avgpool = (REDUCE_OP == PoolType::SUM) ? true : false;
-    DPRINT << "Normal compute kernel - neginf_srca_maxpool : " << (uint32_t)neginf_srca_maxpool << ENDL();
-    DPRINT << "Normal compute kernel - zero_srca_avgpool : " << (uint32_t)zero_srca_avgpool << ENDL();
 
     tilizeA_B_reduce_init<neginf_srca_maxpool, zero_srca_avgpool>(
         in_cb_id, in_scalar_cb_id, max_tiles_per_iter, out_cb_id, num_faces_in_tile, window_size_hw);
