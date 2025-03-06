@@ -62,6 +62,8 @@ inline std::string get_umd_arch_name() {
 
     return get_string_lowercase(arch);
 
+    // Option 2
+    // return get_string_lowercase(tt::umd::Cluster::get_cluster_arch());
 }
 
 
