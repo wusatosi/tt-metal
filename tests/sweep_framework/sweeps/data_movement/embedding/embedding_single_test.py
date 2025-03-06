@@ -172,6 +172,11 @@ def test_embedding_single(
     # Create random weight and indices tensors in PyTorch
     weight = torch_random(weight_shape, -0.1, 0.1, dtype=torch.bfloat16)
     indices = torch.randint(0, weight_shape[0], indices_shape, dtype=torch.int32)
+    indices = torch.tensor(
+        [[74, 16, 25, 0, 79, 33, 44, 65, 71, 48, 42, 73, 12, 31, 34, 70, 21, 50, 66, 71, 19, 1, 22, 1]],
+        dtype=torch.int32,
+    )
+    print("indices = ", indices)
 
     # Create a PyTorch embedding layer and apply it
     torch_embedding = torch.nn.Embedding.from_pretrained(weight, padding_idx=padding_idx)
