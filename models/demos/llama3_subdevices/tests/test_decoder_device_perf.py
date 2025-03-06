@@ -228,7 +228,7 @@ def test_llama_decoder_inference(
         )
         # for device in mesh_device.get_devices():
         #     ttnn.DumpDeviceProfiler(device)
-    ttnn.synchronize_devices(mesh_device)
+    ttnn.synchronize_device(mesh_device)
     tt_ccl.close()
 
 

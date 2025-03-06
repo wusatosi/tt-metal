@@ -256,7 +256,7 @@ def test_tt_model_acc(
                 page_table=page_table_tt,
             )
 
-            ttnn.synchronize_devices(mesh_device)
+            ttnn.synchronize_device(mesh_device)
             tt_out_gathered = tt_model.tt_ccl.line_all_gather(
                 tt_out[0], dim=3, num_links=2, cluster_axis=0, memory_config=ttnn.DRAM_MEMORY_CONFIG
             )

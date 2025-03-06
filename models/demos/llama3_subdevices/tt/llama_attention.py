@@ -268,7 +268,7 @@ class TtLlamaAttention(LightweightModule):
             memory_config=self.model_config["SHARDED_QKV_OUT_RING_MEMCFG"],
             compute_kernel_config=self.compute_kernel_config_hifi2,
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
-            # dtype=ttnn.bfloat16,
+            dtype=ttnn.bfloat16,
         )
         ttnn.deallocate(x)
         # print("done matmul")
@@ -409,7 +409,7 @@ class TtLlamaAttention(LightweightModule):
         # print("done matmul")
 
         dense_out_reduced = self.tt_ccl.line_all_reduce(
-            dense_out_ttnn, cluster_axis=0, num_links=3, memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"]
+            dense_out_ttnn, cluster_axis=0, num_links=4, memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"]
         )
         ttnn.deallocate(dense_out_ttnn)
 

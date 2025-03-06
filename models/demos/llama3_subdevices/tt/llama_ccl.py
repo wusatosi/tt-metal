@@ -156,7 +156,7 @@ class TT_CCL:
             topology=ttnn.Topology.Linear,
             subdevice_id=self.worker_sub_device_id,
         )
-        # ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
+        # ttnn.synchronize_device(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
 
         self.gather_idx[cluster_axis] = (self.gather_idx[cluster_axis] + 1) % self.num_cbs
         self.buffer_idx[cluster_axis] = (self.buffer_idx[cluster_axis] + 1) % self.num_cbs
@@ -180,7 +180,7 @@ class TT_CCL:
         )
         self.from_sem_flag = (self.from_sem_flag + 1) % self.num_cbs
         self.to_sem_flag = (self.to_sem_flag + 1) % self.num_cbs
-        # ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
+        # ttnn.synchronize_device(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
         return ttnn_tensor_out
 
     def line_all_gather(self, input_tensor_mesh, dim, cluster_axis, memory_config, num_links=1):
@@ -197,7 +197,7 @@ class TT_CCL:
             enable_persistent_fabric_mode=self.enable_persistent_fabric,
         )
         self.gather_idx[cluster_axis] = (self.gather_idx[cluster_axis] + 1) % self.num_cbs
-        # ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
+        # ttnn.synchronize_device(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
         return ttnn_tensor_out
 
     def close(self):
@@ -423,7 +423,7 @@ def tt_sharded_distributed_rmsnorm(
     tt_global_stats_sharded = tt_ccl.line_all_gather(
         tt_stats, dim=3, cluster_axis=1, num_links=1, memory_config=tt_stats_sharded_config
     )
-    # ttnn.synchronize_devices(tt_ccl.mesh_device, sub_device_ids=[tt_ccl.worker_sub_device_id])
+    # ttnn.synchronize_device(tt_ccl.mesh_device, sub_device_ids=[tt_ccl.worker_sub_device_id])
     # ttnn.deallocate(tt_stats_dram)
     # print("all gather stats", tt_global_stats.shape)
 

@@ -250,11 +250,11 @@ def test_llama_decoder_inference(
             )
         ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
         print("Trace captured")
-        ttnn.synchronize_devices(mesh_device, sub_device_ids=[prefetcher_setup.worker_sub_device_id])
+        ttnn.synchronize_device(mesh_device, sub_device_ids=[prefetcher_setup.worker_sub_device_id])
 
         start_warmup = time.time()
         ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
-        ttnn.synchronize_devices(mesh_device, sub_device_ids=[prefetcher_setup.worker_sub_device_id])
+        ttnn.synchronize_device(mesh_device, sub_device_ids=[prefetcher_setup.worker_sub_device_id])
         ttnn.release_trace(mesh_device, trace_id)
         time_warmup = time.time() - start_warmup
         print("done", time_warmup)

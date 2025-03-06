@@ -191,7 +191,7 @@ class LMHead(LightweightModule):
                 dtype=ttnn.bfloat8_b,
             )
 
-            # ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.tt_ccl.worker_sub_device_id])
+            # ttnn.synchronize_device(self.mesh_device, sub_device_ids=[self.tt_ccl.worker_sub_device_id])
 
             outputs.append(output)
             # outputs.append(ttnn.sharded_to_interleaved(output, memory_config=ttnn.DRAM_MEMORY_CONFIG))
@@ -206,6 +206,6 @@ class LMHead(LightweightModule):
             outputs_reduced.append(ttnn.sharded_to_interleaved(output_reduced, memory_config=ttnn.DRAM_MEMORY_CONFIG))
             # outputs_reduced.append(output_reduced)
 
-        # ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.tt_ccl.worker_sub_device_id])
+        # ttnn.synchronize_device(self.mesh_device, sub_device_ids=[self.tt_ccl.worker_sub_device_id])
 
         return outputs_reduced
