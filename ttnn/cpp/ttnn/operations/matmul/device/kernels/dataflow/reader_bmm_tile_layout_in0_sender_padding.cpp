@@ -7,8 +7,10 @@
 #include "dataflow_api.h"
 #include "hostdevcommon/common_values.hpp"
 #include "cpp/ttnn/operations/ccl/kernel_common/worker_sync_utils.hpp"
+#include "debug/dprint.h"
 
 void kernel_main() {
+    // DPRINT << "Reader in0 sender start" << ENDL();
     uint32_t rt_args_idx = 0;
     // in0 tensor args
     const uint32_t in0_tensor_addr = get_arg_val<uint32_t>(rt_args_idx++);
@@ -233,4 +235,5 @@ void kernel_main() {
         in0_tensor_start_tile_id += MtKt;
     }
     noc_async_write_barrier();
+    // DPRINT << "Reader in0 sender end" << ENDL();
 }

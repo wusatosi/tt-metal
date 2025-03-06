@@ -6,8 +6,10 @@
 
 #include "dataflow_api.h"
 #include "hostdevcommon/common_values.hpp"
+#include "debug/dprint.h"
 
 void kernel_main() {
+    // DPRINT << "Reader in0 receiver start" << ENDL();
     // in0 mcast args
     const uint32_t in0_mcast_sender_noc_x = get_arg_val<uint32_t>(0);
     const uint32_t in0_mcast_sender_noc_y = get_arg_val<uint32_t>(1);
@@ -54,4 +56,5 @@ void kernel_main() {
             }
         }
     }
+    // DPRINT << "Reader in0 receiver end" << ENDL();
 }

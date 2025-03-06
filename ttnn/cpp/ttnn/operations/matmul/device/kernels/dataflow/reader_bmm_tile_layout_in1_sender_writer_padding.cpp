@@ -7,8 +7,10 @@
 #include "dataflow_api.h"
 #include "hostdevcommon/common_values.hpp"
 #include "cpp/ttnn/operations/ccl/kernel_common/worker_sync_utils.hpp"
+#include "debug/dprint.h"
 
 void kernel_main() {
+    // DPRINT << "Reader in1 sender start" << ENDL();
     // READER
     uint32_t rt_args_idx = 0;
     // in1 tensor args
@@ -500,4 +502,5 @@ void kernel_main() {
         cb_id_out0,
         batch * out_num_nonzero_subblocks_h * out_num_nonzero_subblocks_w * out_subblock_w * out_subblock_h);
 #endif
+    // DPRINT << "Reader in1 sender end" << ENDL();
 }

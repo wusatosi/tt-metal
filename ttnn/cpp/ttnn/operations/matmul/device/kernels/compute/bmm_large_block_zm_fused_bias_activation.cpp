@@ -8,6 +8,7 @@
 #include "compute_kernel_api/pack_untilize.h"
 #include "compute_kernel_api/tile_move_copy.h"
 #include "mod_div_lib.h"
+#include "debug/dprint.h"
 
 #ifdef FUSE_BIAS
 #include "compute_kernel_api/bcast.h"
@@ -80,6 +81,7 @@ inline void reblock_and_untilize(
 }
 
 void MAIN {
+    // DPRINT << "Compute start" << ENDL();
 // RUNTIME ARGS
 #ifdef MATMUL_DRAM_SHARDED
     const bool is_worker_core = get_arg_val<uint32_t>(0) == 1;
@@ -198,16 +200,7 @@ void MAIN {
                                 // accumulation is done by iterating matmul_block across inner dim
                                 // in0_block_w is passed as innder dim (kt) to matmul_block, interally used to stride
                                 // in0
-
-                                // #ifdef ARCH_BLACKHOLE
-                                //                                 // FIXME: This is a temporary workaround to avoid
-                                //                                 hangs on blackhole.
-                                //                                 //
-                                //                                 https://github.com/tenstorrent/tt-metal/issues/16439
-                                //                                 for (uint32_t i = 0; i < 10; i++) {
-                                //                                     asm volatile("nop");
-                                //                                 }
-                                // #endif
+                                // UNPACK(DPRINT << "matmul_block start" << ENDL());
                                 matmul_block(
                                     in0_cb_id,
                                     in1_cb_id,
@@ -220,7 +213,7 @@ void MAIN {
                                     in0_block_w);
                                 in0_index++;               // stride right by 1
                                 in1_index += in1_block_w;  // to stride down by 1 need to stride by in_per_core_w
-                                                           // (should be called in1_block_w)
+                                // (should be called in1_block_w)
                             }
 
 #endif  // SKIP_COMPUTE
@@ -417,5 +410,7 @@ void MAIN {
             }
         }
     }
+    // DPRINT << "Compute end" << ENDL();
+    // MATH(DPRINT << "matmul_block end" << ENDL());
 }
 }  // namespace NAMESPACE
