@@ -41,6 +41,7 @@ inline void llk_unpack_untilize_init(std::uint32_t operand = 0) {
     const std::uint32_t operand_id = get_operand_id(operand);
     const std::uint32_t face_r_dim = 1;
     const std::uint32_t num_faces = get_operand_num_faces(operand_id);
+    const bool unpack_to_dest = unpack_dst_format[operand_id] == (uint)DataFormat::UInt32;
 
     // Save state of unpacker config for quick restore
     TTI_RDCFG(
@@ -53,7 +54,11 @@ inline void llk_unpack_untilize_init(std::uint32_t operand = 0) {
         p_gpr_unpack::SR_UNPACK_UNTILIZER_STATE_2, THCON_SEC0_REG0_TileDescriptor_ADDR32 + 1);  // Save descriptor 1
 
     _llk_unpack_untilize_init_(
-        unpack_dst_format[operand_id], get_local_cb_interface(operand_id).fifo_page_size, face_r_dim, num_faces);
+        unpack_dst_format[operand_id],
+        get_local_cb_interface(operand_id).fifo_page_size,
+        face_r_dim,
+        num_faces,
+        unpack_to_dest);
 }
 
 inline void llk_unpack_untilize_uninit(const std::uint32_t operand, const std::uint32_t face_r_dim = FACE_R_DIM) {
@@ -91,8 +96,9 @@ template <bool first_pass = true>
 inline void llk_unpack_untilize_pass(std::uint32_t operand, std::uint32_t block_tile_cols) {
     const std::uint32_t operand_id = get_operand_id(operand);
     const std::uint32_t base_address = get_local_cb_interface(operand_id).fifo_rd_ptr - 1;
+    const bool unpack_to_dest = unpack_dst_format[operand_id] == (uint)DataFormat::UInt32;
 
-    _llk_unpack_untilize_pass_<first_pass>(base_address, block_tile_cols);
+    _llk_unpack_untilize_pass_<first_pass>(base_address, block_tile_cols, unpack_to_dest);
 }
 
 inline void llk_unpack_untilize(std::uint32_t operand, std::uint32_t block_c_tiles) {

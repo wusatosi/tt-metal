@@ -18,7 +18,7 @@ namespace ckernel {
  * Init function for untilize operations, to be used at the beginning of the kernel.
  */
 ALWI void untilize_init(uint32_t icb, uint32_t ocb) {
-    MATH((llk_math_eltwise_unary_datacopy_init<A2D, BroadcastType::NONE, DST_ACCUM_MODE>(
+    MATH((llk_math_eltwise_unary_datacopy_init<A2D, BroadcastType::NONE, DST_ACCUM_MODE, UnpackToDestEn>(
         false /*transpose of faces*/, false /*transpose within 16x16 face*/, icb)));
     MATH((llk_math_pack_sync_init<DST_ACCUM_MODE>()));
     MATH((llk_math_hw_configure_disaggregated(icb, icb)));
@@ -52,7 +52,7 @@ ALWI void untilize_block(uint32_t icb, uint32_t block, uint32_t ocb) {
 
         // Datacopy
         for (int reg_id = 0; reg_id < N; reg_id++) {
-            MATH((llk_math_eltwise_unary_datacopy<A2D, BroadcastType::NONE, DST_ACCUM_MODE>(reg_id)));
+            MATH((llk_math_eltwise_unary_datacopy<A2D, BroadcastType::NONE, DST_ACCUM_MODE, UnpackToDestEn>(reg_id)));
         }
 
         MATH((llk_math_dest_section_done<DST_ACCUM_MODE>()));
