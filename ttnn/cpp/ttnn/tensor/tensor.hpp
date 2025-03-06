@@ -268,6 +268,7 @@ public:
     // Direct accessor to MeshBuffer. Should become main buffer accessor API after
     // migration to TT-Mesh is complete.
     distributed::MeshBuffer* mesh_buffer() const {
+        TT_FATAL(std::holds_alternative<DeviceStorage>(), "Can only extract MeshBuffer from Tensors on device.");
         return std::get<DeviceStorage>(this->get_storage()).get_mesh_buffer();
     }
 
