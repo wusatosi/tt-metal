@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 import torch
 from numpy import random
-from models.experimental.functional_yolov7.reference.yolov7_utils import *
+from models.experimental.yolov7.reference.yolov7_utils import *
 
 
 def letterbox(

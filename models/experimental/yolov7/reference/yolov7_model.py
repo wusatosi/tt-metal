@@ -13,8 +13,8 @@ sys.path.append("./")
 logger = logging.getLogger(__name__)
 import torch
 from torch import nn
-from models.experimental.functional_yolov7.reference.yolov7_utils import *
-from models.experimental.functional_yolov7.reference.yolov7_config import config
+from models.experimental.yolov7.reference.yolov7_utils import *
+from models.experimental.yolov7.reference.yolov7_config import config
 import yaml
 
 try:
