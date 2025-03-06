@@ -268,16 +268,6 @@ uint32_t get_read_ptr(uint32_t operand) {
     return rd_ptr_bytes;
 }
 
-inline void wait_for_sync_register_value(uint32_t addr, int32_t val) {
-    volatile tt_reg_ptr uint32_t* reg_ptr = (volatile uint32_t*)addr;
-    int32_t reg_value;
-    WAYPOINT("SW");
-    do {
-        reg_value = reg_ptr[0];
-    } while (reg_value != val);
-    WAYPOINT("SD");
-}
-
 // clang-format off
 /**
  * A non-blocking call that checks if the specified number of pages are available for reservation at the back of the
@@ -1447,9 +1437,6 @@ inline void RISC_POST_HEARTBEAT(uint32_t& heartbeat) {
     heartbeat++;
     ptr[0] = 0xAABB0000 | (heartbeat & 0xFFFF);
 }
-
-FORCE_INLINE
-uint32_t min(uint32_t a, uint32_t b) { return (a < b) ? a : b; }
 
 template <bool use_vc>
 FORCE_INLINE uint32_t noc_async_read_tile_dram_sharded_set_state(
