@@ -1028,7 +1028,6 @@ operation::ProgramWithCallbacks create_program_mcast_in0_in1(
                     mm_in1_sender_writer_args.push_back(last_out_block_w);
 
                     // padding args (WRITER)
-                    mm_in1_sender_writer_args.push_back(last_out_num_blocks_w);
                     mm_in1_sender_writer_args.push_back(out_block_h / out_subblock_h);
                     mm_in1_sender_writer_args.push_back(out_subblock_h);
                     mm_in1_sender_writer_args.push_back(0);
@@ -1042,7 +1041,6 @@ operation::ProgramWithCallbacks create_program_mcast_in0_in1(
                     mm_in1_sender_writer_args.push_back(out_block_w);
 
                     // padding args (WRITER)
-                    mm_in1_sender_writer_args.push_back(out_num_blocks_x);
                     mm_in1_sender_writer_args.push_back(out_block_h / out_subblock_h);
                     mm_in1_sender_writer_args.push_back(out_subblock_h);
                     mm_in1_sender_writer_args.push_back(0);
@@ -1060,6 +1058,13 @@ operation::ProgramWithCallbacks create_program_mcast_in0_in1(
                 } else {
                     mm_in1_sender_writer_args.push_back(0);  // Placeholder; not used
                     mm_in1_sender_writer_args.push_back(0);  // Placeholder; not used
+                }
+                if (!output_is_sharded) {
+                    if (in1_idx == in1_end_idx) {  // right cores when no transpose_mcast
+                        mm_in1_sender_writer_args.push_back(last_out_num_blocks_w);
+                    } else {
+                        mm_in1_sender_writer_args.push_back(out_num_blocks_x);
+                    }
                 }
 
                 if (in1_is_sharded and in1_is_dram) {  // in1 is dram sharded
@@ -1146,8 +1151,6 @@ operation::ProgramWithCallbacks create_program_mcast_in0_in1(
 
                 if (in1_idx == in1_end_idx and in0_idx == in0_end_idx) {  // bottom-right core when no transpose_mcast
                     // padding args (WRITER)
-                    mm_in1_receiver_writer_args.push_back(last_out_num_blocks_h);
-                    mm_in1_receiver_writer_args.push_back(last_out_num_blocks_w);
                     mm_in1_receiver_writer_args.push_back(out_block_h / out_subblock_h);
                     mm_in1_receiver_writer_args.push_back(last_block_num_nonzero_subblocks_h);
                     mm_in1_receiver_writer_args.push_back(last_subblock_of_last_block_h);
@@ -1159,8 +1162,6 @@ operation::ProgramWithCallbacks create_program_mcast_in0_in1(
                     mm_in1_receiver_writer_args.push_back(last_block_padded_block_tiles_w_skip);
                 } else if (in0_idx == in0_end_idx) {  // bottom cores except bottom-right when no transpose_mcast
                     // padding args (WRITER)
-                    mm_in1_receiver_writer_args.push_back(last_out_num_blocks_h);
-                    mm_in1_receiver_writer_args.push_back(out_num_blocks_x);
                     mm_in1_receiver_writer_args.push_back(out_block_h / out_subblock_h);
                     mm_in1_receiver_writer_args.push_back(last_block_num_nonzero_subblocks_h);
                     mm_in1_receiver_writer_args.push_back(last_subblock_of_last_block_h);
@@ -1172,8 +1173,6 @@ operation::ProgramWithCallbacks create_program_mcast_in0_in1(
                     mm_in1_receiver_writer_args.push_back(0);
                 } else if (in1_idx == in1_end_idx) {  // right cores except bottom when no transpose_mcast
                     // padding args (WRITER)
-                    mm_in1_receiver_writer_args.push_back(out_num_blocks_y);
-                    mm_in1_receiver_writer_args.push_back(last_out_num_blocks_w);
                     mm_in1_receiver_writer_args.push_back(out_block_h / out_subblock_h);
                     mm_in1_receiver_writer_args.push_back(out_block_h / out_subblock_h);
                     mm_in1_receiver_writer_args.push_back(out_subblock_h);
@@ -1185,8 +1184,6 @@ operation::ProgramWithCallbacks create_program_mcast_in0_in1(
                     mm_in1_receiver_writer_args.push_back(last_block_padded_block_tiles_w_skip);
                 } else {
                     // padding args (WRITER)
-                    mm_in1_receiver_writer_args.push_back(out_num_blocks_y);
-                    mm_in1_receiver_writer_args.push_back(out_num_blocks_x);
                     mm_in1_receiver_writer_args.push_back(out_block_h / out_subblock_h);
                     mm_in1_receiver_writer_args.push_back(out_block_h / out_subblock_h);
                     mm_in1_receiver_writer_args.push_back(out_subblock_h);
@@ -1196,6 +1193,22 @@ operation::ProgramWithCallbacks create_program_mcast_in0_in1(
                     mm_in1_receiver_writer_args.push_back(out_subblock_w);
                     mm_in1_receiver_writer_args.push_back(0);
                     mm_in1_receiver_writer_args.push_back(0);
+                }
+                if (!output_is_sharded) {
+                    if (in1_idx == in1_end_idx and
+                        in0_idx == in0_end_idx) {  // bottom-right core when no transpose_mcast
+                        mm_in1_receiver_writer_args.push_back(last_out_num_blocks_h);
+                        mm_in1_receiver_writer_args.push_back(last_out_num_blocks_w);
+                    } else if (in0_idx == in0_end_idx) {  // bottom cores except bottom-right when no transpose_mcast
+                        mm_in1_receiver_writer_args.push_back(last_out_num_blocks_h);
+                        mm_in1_receiver_writer_args.push_back(out_num_blocks_x);
+                    } else if (in1_idx == in1_end_idx) {  // right cores except bottom when no transpose_mcast
+                        mm_in1_receiver_writer_args.push_back(out_num_blocks_y);
+                        mm_in1_receiver_writer_args.push_back(last_out_num_blocks_w);
+                    } else {
+                        mm_in1_receiver_writer_args.push_back(out_num_blocks_y);
+                        mm_in1_receiver_writer_args.push_back(out_num_blocks_x);
+                    }
                 }
 
                 // left half
@@ -1269,7 +1282,7 @@ operation::ProgramWithCallbacks create_program_mcast_in0_in1(
                 writer_runtime_args[0] = src_buffer_b->address();
                 writer_runtime_args[6] = dst_buffer->address();
                 if (bias_tensor.has_value()) {
-                    writer_runtime_args[18] = (*bias_buffer)->address();
+                    writer_runtime_args[17] = (*bias_buffer)->address();
                 }
             }
 

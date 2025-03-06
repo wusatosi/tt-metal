@@ -836,7 +836,6 @@ operation::ProgramWithCallbacks create_program_mcast_in0(
                 mm_in1_sender_writer_args.push_back(last_out_block_w);
 
                 // padding args (WRITER)
-                mm_in1_sender_writer_args.push_back(last_out_num_blocks_w);
                 mm_in1_sender_writer_args.push_back(out_block_h / out_subblock_h);
                 mm_in1_sender_writer_args.push_back(out_subblock_h);
                 mm_in1_sender_writer_args.push_back(0);
@@ -850,7 +849,6 @@ operation::ProgramWithCallbacks create_program_mcast_in0(
                 mm_in1_sender_writer_args.push_back(out_block_w);
 
                 // padding args (WRITER)
-                mm_in1_sender_writer_args.push_back(out_num_blocks_x);
                 mm_in1_sender_writer_args.push_back(out_block_h / out_subblock_h);
                 mm_in1_sender_writer_args.push_back(out_subblock_h);
                 mm_in1_sender_writer_args.push_back(0);
@@ -868,6 +866,13 @@ operation::ProgramWithCallbacks create_program_mcast_in0(
             } else {                                            // Placeholder args
                 mm_in1_sender_writer_args.push_back(0);
                 mm_in1_sender_writer_args.push_back(0);
+            }
+            if (!output_is_sharded) {
+                if (output_idx_x == num_blocks_x - 1) {
+                    mm_in1_sender_writer_args.push_back(last_out_num_blocks_w);
+                } else {
+                    mm_in1_sender_writer_args.push_back(out_num_blocks_x);
+                }
             }
 
             if (fuse_op) {
@@ -941,7 +946,7 @@ operation::ProgramWithCallbacks create_program_mcast_in0(
                 writer_runtime_args[0] = src_buffer_b->address();
                 writer_runtime_args[6] = dst_buffer->address();
                 if (bias_tensor.has_value()) {
-                    writer_runtime_args[18] = (*bias_buffer)->address();
+                    writer_runtime_args[17] = (*bias_buffer)->address();
                 }
             }
 
@@ -1529,7 +1534,6 @@ operation::ProgramWithCallbacks create_program_mcast_in1(
                 // padding args (READER)
                 (std::uint32_t)out_block_w,  // last_block_w
                 // padding args (WRITER)
-                (std::uint32_t)out_num_blocks_x,
                 (std::uint32_t)out_block_h / out_subblock_h,
                 (std::uint32_t)out_subblock_h,
                 (std::uint32_t)0,
@@ -1543,6 +1547,12 @@ operation::ProgramWithCallbacks create_program_mcast_in1(
                 mm_in1_sender_writer_args.push_back((std::uint32_t)bias_buffer->address());
                 mm_in1_sender_writer_args.push_back(
                     (std::uint32_t)per_core_N * output_idx_x);  // in3_tensor_start_tile_id
+            } else {
+                mm_in1_sender_writer_args.push_back(0);
+                mm_in1_sender_writer_args.push_back(0);
+            }
+            if (!output_is_sharded) {
+                mm_in1_sender_writer_args.push_back(out_num_blocks_x);
             }
 
             tt_metal::SetRuntimeArgs(
@@ -1564,8 +1574,6 @@ operation::ProgramWithCallbacks create_program_mcast_in1(
 
             if (output_idx_y == num_blocks_y - 1) {
                 // padding args (WRITER)
-                mm_in1_receiver_writer_args.push_back(last_out_num_blocks_h);
-                mm_in1_receiver_writer_args.push_back(out_num_blocks_x);
                 mm_in1_receiver_writer_args.push_back(out_block_h / out_subblock_h);
                 mm_in1_receiver_writer_args.push_back(last_block_num_nonzero_subblocks_h);
                 mm_in1_receiver_writer_args.push_back(last_subblock_of_last_block_h);
@@ -1577,8 +1585,6 @@ operation::ProgramWithCallbacks create_program_mcast_in1(
                 mm_in1_receiver_writer_args.push_back(0);
             } else {
                 // padding args (WRITER)
-                mm_in1_receiver_writer_args.push_back(out_num_blocks_y);
-                mm_in1_receiver_writer_args.push_back(out_num_blocks_x);
                 mm_in1_receiver_writer_args.push_back(out_block_h / out_subblock_h);
                 mm_in1_receiver_writer_args.push_back(out_block_h / out_subblock_h);
                 mm_in1_receiver_writer_args.push_back(out_subblock_h);
@@ -1588,6 +1594,15 @@ operation::ProgramWithCallbacks create_program_mcast_in1(
                 mm_in1_receiver_writer_args.push_back(out_subblock_w);
                 mm_in1_receiver_writer_args.push_back(0);
                 mm_in1_receiver_writer_args.push_back(0);
+            }
+            if (!output_is_sharded) {
+                if (output_idx_y == num_blocks_y - 1) {
+                    mm_in1_receiver_writer_args.push_back(last_out_num_blocks_h);
+                    mm_in1_receiver_writer_args.push_back(out_num_blocks_x);
+                } else {
+                    mm_in1_receiver_writer_args.push_back(out_num_blocks_y);
+                    mm_in1_receiver_writer_args.push_back(out_num_blocks_x);
+                }
             }
 
             tt_metal::SetRuntimeArgs(
@@ -1657,7 +1672,7 @@ operation::ProgramWithCallbacks create_program_mcast_in1(
                 sender_writer_runtime_args[0] = src_buffer_b->address();
                 sender_writer_runtime_args[6] = dst_buffer->address();
                 if (bias_tensor.has_value()) {
-                    sender_writer_runtime_args[18] = (*bias_buffer)->address();
+                    sender_writer_runtime_args[17] = (*bias_buffer)->address();
                 }
             }
 
