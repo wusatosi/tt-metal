@@ -7,8 +7,9 @@
 #include "compute_kernel_api/tilize.h"
 #include "compute_kernel_api/reduce.h"
 #include "compute_kernel_api/pack_untilize.h"
+#include "tt_metal/hw/inc/circular_buffer.h"
 
-#define DEBUG_PRINT 1
+#define DEBUG_PRINT 0
 
 #if DEBUG_PRINT == 1
 #include "debug/dprint.h"
@@ -22,7 +23,6 @@ inline void reduce_h_fused(
     constexpr uint32_t num_faces_in_tile = is_partial_tile ? 1 : 2;
     constexpr uint32_t num_out_rows = 1;
 
-    cb_reserve_back(out_cb_id, num_output_tiles);
     const uint32_t curr_in_cb_id = split_reader ? (in_cb_id + (in_stick_index & 0x1)) : in_cb_id;
     cb_wait_front(curr_in_cb_id, 1);
     // DPRINT << "WAITED FOR CB " << curr_in_cb_id << ENDL();
@@ -37,14 +37,20 @@ inline void reduce_h_fused(
     for (uint32_t c_i = 0; c_i < num_output_tiles; ++c_i) {
         reduce_tile_math(c_i, num_faces_in_tile /* reduce 1 or 2 faces */);
     }
-    cb_pop_front(curr_in_cb_id, 1);
     // DPRINT << "POPPED CB " << curr_in_cb_id << ENDL();
-    tile_regs_wait();
     tile_regs_commit();
+    // cb_reserve_back(out_cb_id, num_output_tiles);
+    tile_regs_wait();
     pack_untilize_dst<num_output_tiles>(
         out_cb_id, /*out_subblock_h=*/1, 0, num_out_rows, num_faces_in_tile); /* pack 1 row (1x16 or 1x32) */
     tile_regs_release();
+
+    // PACK(DPRINT << get_local_cb_interface(out_cb_id).fifo_rd_ptr << " " <<
+    // get_local_cb_interface(out_cb_id).fifo_wr_ptr
+    //            << ENDL());
+
     cb_push_back(out_cb_id, num_output_tiles);
+    cb_pop_front(curr_in_cb_id, 1);
 }
 
 namespace NAMESPACE {
@@ -85,7 +91,10 @@ void MAIN {
 
     tilizeA_B_reduce_init<neginf_srca_maxpool, zero_srca_avgpool>(
         in_cb_id, in_scalar_cb_id, max_tiles_per_iter, out_cb_id, num_faces_in_tile, window_size_hw);
-    pack_untilize_dst_init_short<in_ntiles_c>(out_cb_id, num_out_rows, num_faces_in_tile);
+    pack_untilize_dst_init_short<max_tiles_per_iter>(out_cb_id, num_out_rows, num_faces_in_tile);
+
+    // DPRINT << "max_tiles_per_iter: " << max_tiles_per_iter << ENDL();
+    // DPRINT << "partial_iter_output_tiles: " << partial_iter_output_tiles << ENDL();
 
     cb_wait_front(in_scalar_cb_id, 1);
     for (uint32_t i = 0; i < nsticks_per_core; ++i) {

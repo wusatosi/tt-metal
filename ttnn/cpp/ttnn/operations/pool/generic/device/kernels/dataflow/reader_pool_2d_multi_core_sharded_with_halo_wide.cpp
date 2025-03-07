@@ -66,6 +66,7 @@ void kernel_main() {
     constexpr uint32_t in_shard_cb_id = tt::CBIndex::c_2;  // local input shard
     constexpr uint32_t in_reader_indices_cb_id = tt::CBIndex::c_3;
     constexpr uint32_t in_scalar_cb_id = tt::CBIndex::c_4;
+    constexpr uint32_t out_cb_id = tt::CBIndex::c_16;
 
     constexpr uint32_t ROW_HW = 64;
 
@@ -76,7 +77,9 @@ void kernel_main() {
         // uint32_t bf16_one_u16 = bf16_scalar >> 16;  // This scalar is bf16_one_u32 for maxpool.
         // fill 1 row w/ scalar
         // fill_with_val(get_write_ptr(in_scalar_cb_id), ROW_HW, bf16_one_u16);
-        fill_with_val(get_write_ptr(in_scalar_cb_id), ROW_HW, bf16_scalar >> 16);  // >> 16 is needed for maxpool?
+        fill_with_val(get_write_ptr(in_scalar_cb_id), TILE_WIDTH, bf16_scalar >> 16);  // >> 16 is needed for maxpool?
+        // fill_with_val(get_write_ptr(out_cb_id), 512 * reader_nindices, 0);
+        noc_async_write_barrier();
         cb_push_back(in_scalar_cb_id, 1);
     }
 
@@ -104,6 +107,8 @@ void kernel_main() {
                         in_l1_read_base_addr +
                         (stick_offset * in_nbytes_c + c_i * MAX_ELE_PER_REDUCTION);  // 2 bytes, max 8 tiles
                     noc_async_read_one_packet(get_noc_addr(read_offset), out_l1_write_addr, read_bytes);
+                    noc_async_read_barrier();
+                    // tt::data_movement::common::print_bf16_pages(get_noc_addr(read_offset), 256, 1);
                     out_l1_write_addr += MAX_ELE_PER_REDUCTION;
                 }
             }

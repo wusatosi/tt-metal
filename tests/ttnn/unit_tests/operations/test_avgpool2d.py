@@ -12,13 +12,13 @@ from tests.ttnn.utils_for_testing import assert_with_pcc
 def run_avg_pool(device, input_shape, kernel_size, stride, padding, dilation):
     # Test setup for both.
     batch_size, in_c, in_h, in_w = input_shape
-    # torch_input = torch.rand(input_shape, dtype=torch.bfloat16)
-    torch_input = torch.zeros(input_shape, dtype=torch.bfloat16)
-    for n in range(input_shape[0]):
-        for c in range(input_shape[1]):
-            for h in range(input_shape[2]):
-                for w in range(input_shape[3]):
-                    torch_input[n, c, h, w] = h * in_w + w
+    torch_input = torch.rand(input_shape, dtype=torch.bfloat16)
+    # torch_input = torch.zeros(input_shape, dtype=torch.bfloat16)
+    # for n in range(input_shape[0]):
+    #     for c in range(input_shape[1]):
+    #         for h in range(input_shape[2]):
+    #             for w in range(input_shape[3]):
+    #                 torch_input[n, c, h, w] = h * in_w + w
 
     # Test setup for Actual.
     input_tensor = torch.permute(torch_input, (0, 2, 3, 1))
@@ -37,6 +37,9 @@ def run_avg_pool(device, input_shape, kernel_size, stride, padding, dilation):
     output_tensor = ttnn.to_torch(output_tensor)
     output_tensor = torch.permute(output_tensor, (0, 3, 1, 2))
     output_tensor = torch.reshape(output_tensor, expected_output.shape)
+
+    # for i in range(0, 512):
+    #    print("i: ", i, " | expected_output: ", expected_output[0, i, 0, 0], " | output_tensor: ", output_tensor[0, i, 0, 0])
 
     # Assertion
     # assert_with_pcc(expected_output, output_tensor, 0.99)
@@ -76,8 +79,14 @@ def run_avg_pool(device, input_shape, kernel_size, stride, padding, dilation):
         # Large compute & Large (not wide) reader kernel.
         # ((1, 64, 16, 16), (5, 5), (1, 1), (0, 0), (1, 1)), # Wrong values. # TODO(jongbinlimTT): This case fails. Need to remove double division.
         # Normal compute & Wide (not large) reader kernel. C greater than 8 * 32 = 256 is "wide" reader kernel.
-        ((1, 256, 16, 16), (2, 2), (2, 2), (0, 0), (1, 1)),
-        ((1, 512, 16, 16), (2, 2), (2, 2), (0, 0), (1, 1)),  # It was correct, and sometimes fails. Need to investigate.
+        # ((1, 256, 2, 2), (2, 2), (1, 1), (0, 0), (1, 1)),
+        (
+            (1, 512, 112, 112),
+            (2, 2),
+            (2, 2),
+            (0, 0),
+            (1, 1),
+        ),  # It was correct, and sometimes fails. Need to investigate.
         # Large compute & Large + wide -> Large reader kernel.
         # ((1, 800, 32, 32), (5, 5), (1, 1), (0, 0), (1, 1)),
         # ((4, 256, 40, 40), (2, 2), (2, 2), (0, 0), (1, 1)),
