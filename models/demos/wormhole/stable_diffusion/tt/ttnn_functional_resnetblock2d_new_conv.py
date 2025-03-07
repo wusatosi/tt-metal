@@ -18,6 +18,7 @@ from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_utility_functions
     conv_cache,
     get_default_compute_config,
 )
+from tests.ttnn.utils_for_testing import assert_with_pcc
 from loguru import logger
 
 
@@ -404,6 +405,8 @@ class resnetBlock2D:
         else:
             nonlinearity = ttnn.silu
 
+        input_tensor_torch_beginning = ttnn.to_torch(input_tensor)
+
         out_channels = in_channels if out_channels is None else out_channels
         hidden_states = ttnn.to_layout(input_tensor, ttnn.ROW_MAJOR_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG)
         if ttnn.get_memory_config(hidden_states) != self.first_gn_expected_input_sharded_memory_config:
@@ -702,7 +705,20 @@ class resnetBlock2D:
         #     hidden_states, self.conv2.conv.input_sharded_memory_config, hidden_states.dtype
         # )
 
+        input_tensor_torch_before_silu = ttnn.to_torch(input_tensor)
+        assert_with_pcc(input_tensor_torch_before_silu, input_tensor_torch_beginning, 1)
+
         hidden_states = nonlinearity(hidden_states, memory_config=ttnn.get_memory_config(hidden_states))
+
+        # # Comment out for avoiding silu issue on device
+        # hidden_states_torch = ttnn.to_torch(hidden_states)
+        # hidden_states_torch = torch.nn.SiLU()(hidden_states_torch)
+        # hidden_states_torch = ttnn.from_torch(hidden_states_torch, ttnn.bfloat8_b, layout=ttnn.TILE_LAYOUT)
+        # hidden_states = ttnn.to_device(hidden_states_torch, self.device, memory_config=hidden_states.memory_config())
+
+        input_tensor_torch_after_silu = ttnn.to_torch(input_tensor)
+        assert_with_pcc(input_tensor_torch_after_silu, input_tensor_torch_beginning, 1)
+
         # hidden_states = ttnn.to_layout(hidden_states, ttnn.ROW_MAJOR_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG)
         hidden_states = ttnn.sharded_to_interleaved(hidden_states, ttnn.L1_MEMORY_CONFIG, hidden_states.dtype)
 

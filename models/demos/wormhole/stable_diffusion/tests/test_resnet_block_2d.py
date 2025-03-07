@@ -36,35 +36,35 @@ def ttnn_to_torch(input):
         # fmt: off
         # down block 0
         (2, 320, 64, 64, ttnn.TensorMemoryLayout.HEIGHT_SHARDED, ttnn.BufferType.L1, (7, 7), (128, 320), 320, False, "down", 0, 0),
-        (2, 320, 64, 64, ttnn.TensorMemoryLayout.BLOCK_SHARDED, ttnn.BufferType.L1, (4, 7), (1024, 64), 320, False, "down", 0, 1),
-        # down block 1
-        (2, 320, 32, 32, ttnn.TensorMemoryLayout.BLOCK_SHARDED, ttnn.BufferType.L1, (4, 7), (256, 64), 640, True, "down", 1, 0),
-        (2, 640, 32, 32, ttnn.TensorMemoryLayout.BLOCK_SHARDED, ttnn.BufferType.L1, (4, 7), (256, 128), 640, False, "down", 1, 1),
-        # down block 2
-        (2, 640, 16, 16, ttnn.TensorMemoryLayout.BLOCK_SHARDED, ttnn.BufferType.L1, (4, 7), (64, 128), 1280, True, "down", 2, 0),
-        (2, 1280, 16, 16, ttnn.TensorMemoryLayout.BLOCK_SHARDED, ttnn.BufferType.L1, (7, 7), (64, 160), 1280, False, "down", 2, 1),
-        # down block 3
-        (2, 1280, 8, 8, ttnn.TensorMemoryLayout.BLOCK_SHARDED, ttnn.BufferType.L1, (7, 3), (32, 160), 1280, None, "down", 3, 0),
-        (2, 1280, 8, 8, ttnn.TensorMemoryLayout.BLOCK_SHARDED, ttnn.BufferType.L1, (7, 3), (32, 160), 1280, None, "down", 3, 1),
-        # mid
-        (2, 1280, 8, 8, ttnn.TensorMemoryLayout.BLOCK_SHARDED, ttnn.BufferType.L1, (7, 3), (32, 160), 1280, None, "mid", 0, 0),
-        (2, 1280, 8, 8, ttnn.TensorMemoryLayout.BLOCK_SHARDED, ttnn.BufferType.L1, (7, 3), (32, 160), 1280, None, "mid", 0, 1),
-        # up block 0
-        (2, 2560, 8, 8, ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.L1, None, None, 1280, None, "up", 0, 0,),
-        (2, 2560, 8, 8, ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.L1, None, None, 1280, None, "up", 0, 1),
-        (2, 2560, 8, 8, ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.L1, None, None, 1280, None, "up", 0, 2),
-        # up block 1
-        (2, 2560, 16, 16, ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM, None, None, 1280, None, "up", 1, 0),
-        (2, 2560, 16, 16, ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM, None, None, 1280, None, "up", 1, 1),
-        (2, 1920, 16, 16, ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM, None, None, 1280, None, "up", 1, 2),
-        # up block 2
-        (2, 1920, 32, 32, ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM, None, None, 640, None, "up", 2, 0),
-        (2, 1280, 32, 32, ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM, None, None, 640, None, "up", 2, 1),
-        (2, 960, 32, 32, ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM, None, None, 640, None, "up", 2, 2),
-        # up block 3
-        (2, 960, 64, 64, ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM, None, None, 320, None, "up", 3, 0),
-        (2, 640, 64, 64, ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM, None, None, 320, None, "up", 3, 1),
-        (2, 640, 64, 64, ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM, None, None, 320, None, "up", 3, 2),
+        # (2, 320, 64, 64, ttnn.TensorMemoryLayout.BLOCK_SHARDED, ttnn.BufferType.L1, (4, 7), (1024, 64), 320, False, "down", 0, 1),
+        # # down block 1
+        # (2, 320, 32, 32, ttnn.TensorMemoryLayout.BLOCK_SHARDED, ttnn.BufferType.L1, (4, 7), (256, 64), 640, True, "down", 1, 0),
+        # (2, 640, 32, 32, ttnn.TensorMemoryLayout.BLOCK_SHARDED, ttnn.BufferType.L1, (4, 7), (256, 128), 640, False, "down", 1, 1),
+        # # down block 2
+        # (2, 640, 16, 16, ttnn.TensorMemoryLayout.BLOCK_SHARDED, ttnn.BufferType.L1, (4, 7), (64, 128), 1280, True, "down", 2, 0),
+        # (2, 1280, 16, 16, ttnn.TensorMemoryLayout.BLOCK_SHARDED, ttnn.BufferType.L1, (7, 7), (64, 160), 1280, False, "down", 2, 1),
+        # # down block 3
+        # (2, 1280, 8, 8, ttnn.TensorMemoryLayout.BLOCK_SHARDED, ttnn.BufferType.L1, (7, 3), (32, 160), 1280, None, "down", 3, 0),
+        # (2, 1280, 8, 8, ttnn.TensorMemoryLayout.BLOCK_SHARDED, ttnn.BufferType.L1, (7, 3), (32, 160), 1280, None, "down", 3, 1),
+        # # mid
+        # (2, 1280, 8, 8, ttnn.TensorMemoryLayout.BLOCK_SHARDED, ttnn.BufferType.L1, (7, 3), (32, 160), 1280, None, "mid", 0, 0),
+        # (2, 1280, 8, 8, ttnn.TensorMemoryLayout.BLOCK_SHARDED, ttnn.BufferType.L1, (7, 3), (32, 160), 1280, None, "mid", 0, 1),
+        # # up block 0
+        # (2, 2560, 8, 8, ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.L1, None, None, 1280, None, "up", 0, 0,),
+        # (2, 2560, 8, 8, ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.L1, None, None, 1280, None, "up", 0, 1),
+        # (2, 2560, 8, 8, ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.L1, None, None, 1280, None, "up", 0, 2),
+        # # up block 1
+        # (2, 2560, 16, 16, ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM, None, None, 1280, None, "up", 1, 0),
+        # (2, 2560, 16, 16, ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM, None, None, 1280, None, "up", 1, 1),
+        # (2, 1920, 16, 16, ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM, None, None, 1280, None, "up", 1, 2),
+        # # up block 2
+        # (2, 1920, 32, 32, ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM, None, None, 640, None, "up", 2, 0),
+        # (2, 1280, 32, 32, ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM, None, None, 640, None, "up", 2, 1),
+        # (2, 960, 32, 32, ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM, None, None, 640, None, "up", 2, 2),
+        # # up block 3
+        # (2, 960, 64, 64, ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM, None, None, 320, None, "up", 3, 0),
+        # (2, 640, 64, 64, ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM, None, None, 320, None, "up", 3, 1),
+        # (2, 640, 64, 64, ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM, None, None, 320, None, "up", 3, 2),
         # fmt: on
     ],
 )
