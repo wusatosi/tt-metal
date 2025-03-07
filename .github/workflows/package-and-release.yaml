@@ -64,14 +64,6 @@ jobs:
           ./scripts/build_scripts/get_should_create_release.sh ${{ fromJSON(steps.get-is-release-candidate.outputs.is-release-candidate) && '--release-candidate' || '' }}
           shouldCreateRelease=$(scripts/build_scripts/get_should_create_release.sh ${{ fromJSON(steps.get-is-release-candidate.outputs.is-release-candidate) && '--release-candidate' || '' }})
           echo "should-create-release=$shouldCreateRelease" >> "$GITHUB_OUTPUT"
-  create-tag:
-    needs: get-params
-    if: ${{ fromJSON(needs.get-params.outputs.should-create-release) }}
-    uses: ./.github/workflows/release-verify-or-create-tag.yaml
-    with:
-      fetch_depth: 0
-      bump_each_commit: false
-      release_candidate_suffix: ${{ needs.get-params.outputs.is-release-candidate && fromJSON(needs.get-params.outputs.is-release-candidate) }}
   create-changelog:
     needs: create-tag
     permissions: read-all
