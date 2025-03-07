@@ -14,31 +14,16 @@ namespace detail {
 
 class BoostThreadPool : public ThreadPool {
 public:
-    BoostThreadPool(size_t thread_count) : pool_(thread_count) {
-        // Given the current use case, we don't expect to
-        // enqueue more tasks than the number of threads.
-        // Add a factor of safety and modify as needed.
-        futures_.reserve(thread_count * 4);
-    }
+    BoostThreadPool(size_t thread_count) : pool_(thread_count) {}
 
     ~BoostThreadPool() noexcept override = default;
 
-    void enqueue(std::function<void()>&& f) override {
-        std::packaged_task<void()> task(std::move(f));
-        futures_.push_back(task.get_future());
-        boost::asio::post(pool_, [executor = std::move(task)]() mutable { executor(); });
-    }
+    void enqueue(std::function<void()>&& f) override { boost::asio::post(pool_, f); }
 
-    void wait() override {
-        for (auto& future : futures_) {
-            future.get();
-        }
-        futures_.clear();
-    }
+    void wait() override { pool_.wait(); }
 
 private:
     boost::asio::thread_pool pool_;
-    std::vector<std::future<void>> futures_;
 };
 
 }  // namespace detail
