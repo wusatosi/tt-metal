@@ -187,7 +187,7 @@ public:
 
     ~BoostThreadPool() noexcept override = default;
 
-    void enqueue(std::function<void()>&& f, uint32_t thread_idx) override {
+    void enqueue(std::function<void()>&& f, uint32_t thread_idx = 0) override {
         std::packaged_task<void()> task(std::move(f));
         futures_.push_back(task.get_future());
         boost::asio::post(pool_, [executor = std::move(task)]() mutable { executor(); });
@@ -212,11 +212,11 @@ public:
     DeviceBoundThreadPool(uint32_t thread_count, uint32_t logical_cpu_offset) {
         workers_.reserve(thread_count);
         for (uint32_t i = 0; i < thread_count; i++) {
-            workers_.emplace_back(std::make_unique<NumaAwareExecutor>(i, logical_cpu_offset));
+            workers_.emplace_back(std::make_unique<BoostThreadPool>(1));
         }
     }
 
-    void enqueue(std::function<void()>&& f, uint32_t thread_idx) override {
+    void enqueue(std::function<void()>&& f, uint32_t thread_idx = 0) override {
         workers_[thread_idx]->enqueue(std::move(f));
     }
 
@@ -227,7 +227,7 @@ public:
     }
 
 private:
-    std::vector<std::unique_ptr<NumaAwareExecutor>> workers_;
+    std::vector<std::unique_ptr<BoostThreadPool>> workers_;
 };
 
 }  // namespace thread_pool_impls

@@ -470,6 +470,7 @@ void MeshCommandQueue::enqueue_write_shards(
 
     auto dispatch_lambda =
         std::function<void(uint32_t)>([&shard_data_transfers, &buffer, this](uint32_t shard_idx) {
+            ZoneScopedN("WriteShard");
             auto& shard_data_transfer = shard_data_transfers[shard_idx];
             auto device_shard_view = buffer->get_device_buffer(shard_data_transfer.shard_coord);
             this->write_shard_to_device(
@@ -615,6 +616,7 @@ MultiProducerSingleConsumerQueue<CompletionReaderVariant>& MeshCommandQueue::get
 
 void MeshCommandQueue::copy_buffer_data_to_user_space(MeshBufferReadDescriptor& read_buffer_descriptor) {
     auto reader_lambda = [this](IDevice* device, uint32_t num_reads) {
+        ZoneScopedN("ReadShards");
         auto& read_descriptor_queue = this->get_read_descriptor_queue(device);
         chip_id_t mmio_device_id = tt::Cluster::instance().get_associated_mmio_device(device->id());
         uint16_t channel = tt::Cluster::instance().get_assigned_channel_for_device(device->id());
