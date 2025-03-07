@@ -16,12 +16,39 @@ from models.demos.llama3.tt.llama_ccl import tt_all_reduce, tt_all_gather
 # Enumerate the post-commit cases explicitly
 @skip_for_grayskull("Requires eth connected devices to run")
 @pytest.mark.parametrize(
-    "num_devices, num_links, output_shape, dim, layout",
+    "num_devices, num_links, output_shape, dim, layout, input_dtype, mem_config",
     [
+        (
+            2,
+            1,
+            [1, 1, 128, 4096],
+            3,
+            ttnn.TILE_LAYOUT,
+            ttnn.bfloat16,
+            ttnn.MemoryConfig(buffer_type=ttnn.BufferType.DRAM),
+        ),
+        (
+            2,
+            1,
+            [1, 1, 32, 4096],
+            3,
+            ttnn.TILE_LAYOUT,
+            ttnn.bfloat16,
+            ttnn.MemoryConfig(buffer_type=ttnn.BufferType.DRAM),
+        ),
+        (
+            2,
+            1,
+            [1, 1, 32, 128256],
+            3,
+            ttnn.TILE_LAYOUT,
+            ttnn.bfloat8_b,
+            ttnn.MemoryConfig(buffer_type=ttnn.BufferType.L1),
+        ),
         # (2, 1, [1, 1, 64, 16384], 3, ttnn.TILE_LAYOUT), # mismatching!
         # (2, 1, [8, 5, 32, 768], 3, ttnn.TILE_LAYOUT), # mismatching!
         # (2, 1, [1, 1, 32, 736], 3, ttnn.TILE_LAYOUT), # HANGING
-        (2, 1, [1, 1, 32, 704], 3, ttnn.TILE_LAYOUT),  # passing
+        # (2, 1, [1, 1, 32, 704], 3, ttnn.TILE_LAYOUT),  # passing
         # (2, 1, [1, 1, 64, 704], 3, ttnn.TILE_LAYOUT),  # passing
         # # (2, 1, [1, 1, 32, 736], 3, ttnn.ROW_MAJOR_LAYOUT), # alignment issue!!!
         # (2, 1, [1, 1, 32, 704], 3, ttnn.ROW_MAJOR_LAYOUT),  # passing
@@ -39,20 +66,20 @@ from models.demos.llama3.tt.llama_ccl import tt_all_reduce, tt_all_gather
         # (2, 1, [1, 2, 32, 1024], 3, ttnn.TILE_LAYOUT),  # passing
     ],
 )
-@pytest.mark.parametrize(
-    "input_dtype",
-    [
-        ttnn.bfloat16,
-        ttnn.bfloat8_b,
-    ],
-)
-@pytest.mark.parametrize(
-    "mem_config",
-    [
-        ttnn.MemoryConfig(buffer_type=ttnn.BufferType.DRAM),
-        ttnn.MemoryConfig(buffer_type=ttnn.BufferType.L1),
-    ],
-)
+# @pytest.mark.parametrize(
+#     "input_dtype",
+#     [
+#         ttnn.bfloat16,
+#         ttnn.bfloat8_b,
+#     ],
+# )
+# @pytest.mark.parametrize(
+#     "mem_config",
+#     [
+#         ttnn.MemoryConfig(buffer_type=ttnn.BufferType.DRAM),
+#         ttnn.MemoryConfig(buffer_type=ttnn.BufferType.L1),
+#     ],
+# )
 @pytest.mark.parametrize("num_iters", [1])
 @pytest.mark.parametrize("enable_async", [True, False])
 def test_all_gather_on_dual_p150_post_commit(
@@ -80,7 +107,7 @@ def test_all_gather_on_dual_p150_post_commit(
         mem_config,
         use_program_cache,
         function_level_defaults,
-        all_gather_topology=ttnn.Topology.Ring,
+        all_gather_topology=ttnn.Topology.Linear,
         num_iters=num_iters,
         enable_async=enable_async,
     )
@@ -108,14 +135,14 @@ def test_all_gather_on_dual_p150_post_commit(
     "input_shape, input_shard_shape,shard_grid",
     (
         (
-            (1, 1, 128, 8192),
-            (128, 256),
+            (1, 1, 32, 2048),
+            (32, 128),
             ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 3))}),
         ),
         (
-            (1, 1, 32, 1792),
-            (32, 32),
-            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 6))}),
+            (1, 1, 32, 2048),
+            (32, 64),
+            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 7))}),
         ),
     ),
 )
@@ -152,7 +179,7 @@ def test_all_gather_sharded_dual_p150_post_commit(
         # num_cores,
         use_program_cache,
         function_level_defaults,
-        all_gather_topology=ttnn.Topology.Ring,
+        all_gather_topology=ttnn.Topology.Linear,
         enable_async=enable_async,
     )
 

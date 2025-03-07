@@ -116,6 +116,7 @@ class ModelArgs:
         self.tile_size = 32
         self.is_70b = False
         self.from_hf_url = False  # updated below if true
+        self.arch_name = ttnn.get_arch_name()
 
         assert not os.getenv(
             "FAKE_DEVICE"

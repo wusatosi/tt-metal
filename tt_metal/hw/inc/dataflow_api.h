@@ -28,6 +28,7 @@
 #include "dev_msgs.h"
 #include "dataflow_api_common.h"
 #include "dataflow_api_addrgen.h"
+#include "debug/ring_buffer.h"
 
 // clang-format off
 /**
@@ -1316,6 +1317,7 @@ void noc_semaphore_wait(volatile tt_l1_ptr uint32_t* sem_addr, uint32_t val) {
     WAYPOINT("NSW");
     do {
         invalidate_l1_cache();
+        // WATCHER_RING_BUFFER_PUSH(*sem_addr);
     } while ((*sem_addr) != val);
     WAYPOINT("NSD");
 }

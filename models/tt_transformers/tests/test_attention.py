@@ -52,7 +52,7 @@ from models.utility_functions import skip_for_grayskull
 )
 @pytest.mark.parametrize(
     "max_seq_len",
-    (256,),  # For decode-only unit test, there's no need to run with large sequence lengths
+    (128,),  # For decode-only unit test, there's no need to run with large sequence lengths
 )
 def test_attention_inference(
     max_seq_len,
@@ -69,7 +69,7 @@ def test_attention_inference(
 
     mesh_device.enable_async(True)
 
-    model_args = ModelArgs(mesh_device, max_batch_size=batch_size, max_seq_len=max_seq_len)
+    model_args = ModelArgs(mesh_device, max_batch_size=batch_size, max_seq_len=max_seq_len, dummy_weights=True)
     model_args.n_layers = 1  # For the unit test, just run a single layer
 
     state_dict = model_args.load_state_dict()

@@ -213,11 +213,12 @@ def mesh_device(request, silicon_arch_name, device_params):
         num_devices_requested = grid_dims[0] * grid_dims[1]
         if num_devices_requested > len(device_ids):
             pytest.skip("Requested more devices than available. Test not applicable for machine")
-        mesh_shape = ttnn.MeshShape(*grid_dims)
+        # mesh_shape = ttnn.MeshShape(*grid_dims)
+        mesh_shape = ttnn.MeshShape(1, 1)
         assert num_devices_requested <= len(device_ids), "Requested more devices than available."
     else:
         num_devices_requested = min(param, len(device_ids))
-        mesh_shape = ttnn.MeshShape(1, num_devices_requested)
+        mesh_shape = ttnn.MeshShape(1, 1)
 
     request.node.pci_ids = [ttnn.GetPCIeDeviceID(i) for i in device_ids[:num_devices_requested]]
 

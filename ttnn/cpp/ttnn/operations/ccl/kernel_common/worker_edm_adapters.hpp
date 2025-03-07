@@ -93,6 +93,7 @@ struct WorkerToEdmSender {
     }
 
     FORCE_INLINE void wait_for_empty_write_slot() const {
+        WAYPOINT("SLOT");
         noc_semaphore_wait(this->worker_sem_addr, 1);
         noc_semaphore_set(this->worker_sem_addr, 0);
     }
