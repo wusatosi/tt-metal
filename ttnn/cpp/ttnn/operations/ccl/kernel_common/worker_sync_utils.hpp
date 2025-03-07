@@ -28,6 +28,7 @@ FORCE_INLINE void master_sync_slaves(
     // Wait for all the slaves to finish their work
     volatile tt_l1_ptr uint32_t* master_l1_semaphore_addr =
         reinterpret_cast<volatile tt_l1_ptr uint32_t*>(worker_sync_sem_addr);
+    WAYPOINT("GAH2");
     noc_semaphore_wait(master_l1_semaphore_addr, num_workers_to_sync - 1);
     // DPRINT << "MASTER SYNCED WITH SLAVES" << ENDL();
 
@@ -71,6 +72,7 @@ FORCE_INLINE void slave_sync_master(const uint32_t* worker_noc_coords, const uin
     // Wait for the master to signal that this slave is ready to continue
     volatile tt_l1_ptr uint32_t* slave_l1_semaphore_addr =
         reinterpret_cast<volatile tt_l1_ptr uint32_t*>(worker_sync_sem_addr);
+    WAYPOINT("GAH3");
     noc_semaphore_wait(slave_l1_semaphore_addr, 1);
     // DPRINT << "SLAVE SEMAPHORE CLEARED BY MASTER" << ENDL();
 
@@ -276,6 +278,7 @@ struct MatmulOpReceiver {
 
             // Wait for a sempaphore signal to start processing the tensor slice
             if (this->wait_for_op_signal) {
+                WAYPOINT("GAH4");
                 noc_semaphore_wait_min(this->signal_op_semaphore_addr_ptrs[this->curr_dir], tensor_slice_cnt + 1);
             }
 
@@ -314,6 +317,7 @@ struct MatmulOpReceiver {
             // Wait for a sempaphore signal to start processing the tensor slice
             if (this->wait_for_op_signal && block_id == sender_id) {
                 uint32_t tensor_slice_cnt = (this->curr_transfer_idx) / this->num_directions;
+                WAYPOINT("GAH5");
                 noc_semaphore_wait_min(this->signal_op_semaphore_addr_ptrs[this->curr_dir], 1);
             }
 

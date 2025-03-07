@@ -401,6 +401,7 @@ std::vector<uint32_t> ReduceScatterWorkerArgBuilder::generate_sender_kernel_rt_a
     TT_ASSERT(args.size() == i, "Missed some args");
 
     if (local_output_tensor.is_sharded()) {
+        // std::cout << "################### ReduceScatter emitting rt args for sharded output tensor" << std::endl;
         auto const& shard_rt_args = ShardedAddrGenArgBuilder::emit_rt_args(device, local_output_tensor);
         std::copy(shard_rt_args.begin(), shard_rt_args.end(), std::back_inserter(args));
 

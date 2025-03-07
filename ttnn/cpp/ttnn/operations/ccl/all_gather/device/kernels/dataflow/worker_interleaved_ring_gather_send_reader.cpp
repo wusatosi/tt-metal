@@ -83,6 +83,18 @@ void kernel_main() {
 
     constexpr uint32_t cb_id_in0 = tt::CBIndex::c_0;
 
+#ifdef INTERLEAVED_MEM_LAYOUT
+    WATCHER_RING_BUFFER_PUSH(0xfacefeed);
+#elif defined SHARDED_MEM_LAYOUT
+    WATCHER_RING_BUFFER_PUSH(0xdeadbeef);
+#endif
+
+#ifdef ROW_MAJOR_LAYOUT
+    WATCHER_RING_BUFFER_PUSH(0x39);
+#elif defined TILED_LAYOUT
+    WATCHER_RING_BUFFER_PUSH(0x40);
+#endif
+
 #ifdef ROW_MAJOR_LAYOUT
 #ifdef INTERLEAVED_MEM_LAYOUT
     const InterleavedAddrGen<src_is_dram> s = {.bank_base_address = src_addr, .page_size = page_size};
@@ -167,13 +179,16 @@ void kernel_main() {
 
     if (num_full_chunks > 0) {
         for (uint32_t c = 0; c < num_full_chunks; ++c) {
+            WAYPOINT("ABCD");
             read_chunk_from_input_tensor(input_page_idx, cb_id_in0, s, num_pages, page_size);
         }
     }
     if (rem_num_pages > 0) {
+        WAYPOINT("EFGH");
         read_chunk_from_input_tensor(input_page_idx, cb_id_in0, s, rem_num_pages, page_size);
         ASSERT(num_pages == 0 || num_pages > rem_num_pages);
         ASSERT(half_cb_n_pages > rem_num_pages);
+        WAYPOINT("HELP");
         push_filler_pages_to_cb(cb_id_in0, half_cb_n_pages - rem_num_pages);
     }
 
@@ -182,6 +197,7 @@ void kernel_main() {
     // num_transfers = num_devices - 1
     for (uint32_t i = 1; i < num_transfers; ++i) {
         if (is_clockwise_direction) {
+            WAYPOINT("WABI");
             if (input_ring_idx == 0) {
                 input_ring_idx = ring_size - 1;
                 if (output_addr_offset != 0) {
@@ -200,6 +216,7 @@ void kernel_main() {
                 }
             }
         } else {
+            WAYPOINT("SABI");
             if (input_ring_idx == ring_size - 1) {  // 0) {
                 input_ring_idx = 0;
                 if (output_addr_offset != 0) {
@@ -225,8 +242,10 @@ void kernel_main() {
         row_idx = row_start_idx;
         if (num_full_chunks > 0) {
             for (uint32_t c = 0; c < num_full_chunks; ++c) {
+                WAYPOINT("GAH0");
                 noc_semaphore_wait_min(sender_semaphore_addr_ptr, sem_idx);
                 sem_idx++;
+                WAYPOINT("HUGH");
                 read_chunk_from_output_tensor(
                     output_page_idx,
                     col_idx,
@@ -242,8 +261,10 @@ void kernel_main() {
             }
         }
         if (rem_num_pages > 0) {
+            WAYPOINT("GAH1");
             noc_semaphore_wait_min(sender_semaphore_addr_ptr, sem_idx);
             sem_idx++;
+            WAYPOINT("DESK");
             read_chunk_from_output_tensor(
                 output_page_idx,
                 col_idx,
@@ -259,6 +280,7 @@ void kernel_main() {
             ASSERT(num_pages == 0 || num_pages > rem_num_pages);
             ASSERT(half_cb_n_pages > rem_num_pages);
             push_filler_pages_to_cb(cb_id_in0, half_cb_n_pages - rem_num_pages);
+            WAYPOINT("KONK");
         }
     }
 }

@@ -132,6 +132,7 @@ void kernel_main() {
 
     if (num_full_chunks > 0) {
         for (uint32_t c = 0; c < num_full_chunks; ++c) {
+            WAYPOINT("CHUK");
             sender.wait_for_empty_write_slot();
             write_and_send_chunk(
                 output_page_idx,
@@ -150,7 +151,9 @@ void kernel_main() {
     }
 
     if (rem_num_pages > 0) {
+        WAYPOINT("KICK");
         sender.wait_for_empty_write_slot();
+        WAYPOINT("TEST");
         write_and_send_chunk(
             output_page_idx,
             col_idx,
@@ -166,11 +169,13 @@ void kernel_main() {
             sender);
         ASSERT(num_pages_per_full_chunk == 0 || num_pages_per_full_chunk > rem_num_pages);
         ASSERT(half_cb_n_pages > rem_num_pages);
+        WAYPOINT("FILT");
         pop_filler_pages_from_cb(cb_id_in0, half_cb_n_pages - rem_num_pages);
     }
 
     if (fuse_op) {
         // Synchronize and signal that the local tensor slice is available
+        WAYPOINT("SYNC");
         op_signaler.synchronize_workers_and_signal_op(input_start_ring_idx);
     }
 
@@ -178,15 +183,19 @@ void kernel_main() {
     for (uint32_t i = 1; i < num_transfers; ++i) {
         if (num_full_chunks > 0) {
             for (uint32_t c = 0; c < num_full_chunks; ++c) {
+                WAYPOINT("HEND");
                 sender.wait_for_empty_write_slot();
+                WAYPOINT("PEND");
                 sender.send_payload_blocking(cb_id_in0, num_pages_per_full_chunk, page_size);
             }
         }
         if (rem_num_pages > 0) {
+            WAYPOINT("HEN1");
             sender.wait_for_empty_write_slot();
             sender.send_payload_blocking(cb_id_in0, rem_num_pages, page_size);
             ASSERT(num_pages_per_full_chunk == 0 || num_pages_per_full_chunk > rem_num_pages);
             ASSERT(half_cb_n_pages > rem_num_pages);
+            WAYPOINT("HEN2");
             pop_filler_pages_from_cb(cb_id_in0, half_cb_n_pages - rem_num_pages);
         }
     }

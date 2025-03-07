@@ -91,7 +91,7 @@ def run_reduce_scatter_test(
     function_level_defaults,
     enable_async=True,
     num_iters=1,
-    topology=ttnn.Topology.Ring,
+    topology=ttnn.Topology.Linear,
     trace_mode=False,
 ):
     if len(mesh_device.get_device_ids()) < num_devices:
@@ -406,7 +406,7 @@ def run_reduce_scatter_sharded_test(
     function_level_defaults,
     in_shard_override=None,
     in_shard_grid_override=None,
-    topology=ttnn.Topology.Ring,
+    topology=ttnn.Topology.Linear,
     enable_async=True,
     num_iters=1,
     n_worker=None,

@@ -20,9 +20,16 @@ from tests.ttnn.unit_tests.operations.ccl.test_reduce_scatter_post_commit import
     ],
 )
 @pytest.mark.parametrize(
-    "per_chip_output_shape, dim, layout",
+    "per_chip_output_shape, dim, layout, input_dtype, mem_config",
     [
-        ([1, 1, 128, 2048], 3, ttnn.TILE_LAYOUT),
+        ([1, 1, 128, 2048], 3, ttnn.TILE_LAYOUT, ttnn.bfloat8_b, ttnn.MemoryConfig(buffer_type=ttnn.BufferType.DRAM)),
+        (
+            [1, 1, 128, 2048],
+            3,
+            ttnn.TILE_LAYOUT,
+            ttnn.bfloat16,
+            ttnn.MemoryConfig(buffer_type=ttnn.BufferType.DRAM),
+        ),  # mismatching
         # ([1, 1, 32, 4096], 3, ttnn.TILE_LAYOUT), # passing
         # ([1, 1, 32, 2048], 3, ttnn.TILE_LAYOUT), # passing
         # ([1, 1, 32, 1024], 3, ttnn.TILE_LAYOUT), # passing
@@ -31,20 +38,20 @@ from tests.ttnn.unit_tests.operations.ccl.test_reduce_scatter_post_commit import
         # ([1, 1, 768, 1024], 3, ttnn.TILE_LAYOUT), # mismatch and then hang
     ],
 )
-@pytest.mark.parametrize(
-    "input_dtype",
-    [
-        ttnn.bfloat16,
-        ttnn.bfloat8_b,
-    ],
-)
-@pytest.mark.parametrize(
-    "mem_config",
-    [
-        ttnn.MemoryConfig(buffer_type=ttnn.BufferType.DRAM),
-        # ttnn.MemoryConfig(buffer_type=ttnn.BufferType.L1),
-    ],
-)
+# @pytest.mark.parametrize(
+#     "input_dtype",
+#     [
+#         ttnn.bfloat16,
+#         ttnn.bfloat8_b,
+#     ],
+# )
+# @pytest.mark.parametrize(
+#     "mem_config",
+#     [
+#         ttnn.MemoryConfig(buffer_type=ttnn.BufferType.DRAM),
+#         # ttnn.MemoryConfig(buffer_type=ttnn.BufferType.L1),
+#     ],
+# )
 @pytest.mark.parametrize("math_op", [ttnn.ReduceType.Sum])
 @pytest.mark.parametrize("enable_async", [True])
 def test_ring_reduce_scatter_dual_p150_post_commit(
@@ -99,6 +106,12 @@ def test_ring_reduce_scatter_dual_p150_post_commit(
 @pytest.mark.parametrize(
     "per_chip_output_shape,output_shard_shape,shard_grid,tensor_mem_layout",
     (
+        (
+            (1, 1, 32, 2048),
+            (32, 64),
+            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 3))}),
+            ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        ),
         (
             (1, 1, 32, 2048),
             (32, 128),

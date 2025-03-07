@@ -60,6 +60,7 @@ FORCE_INLINE void write_and_send_chunk_write_to_tensor_segment(
         auto [noc_yx, page_offset, contig_pages_] = d.get_page_location_with_contiguous_pages_in_row_in_bank(output_page_idx);
         contig_pages = std::min<int32_t>(pages_remaining, std::min<int32_t>(contig_pages_, num_cols - col_idx));
         uint64_t dst_noc_addr = get_noc_addr(static_cast<uint32_t>(noc_yx.noc_x), noc_yx.noc_y, d.bank_base_address + (page_offset * d.page_size) + 0);
+        WAYPOINT("CRUT");
         noc_async_write(l1_read_addr, dst_noc_addr, page_size * contig_pages);
     #endif
         output_page_idx += contig_pages;
@@ -76,8 +77,10 @@ FORCE_INLINE void write_and_send_chunk_write_to_tensor_segment(
 #endif
         l1_read_addr += page_size * contig_pages;
     }
+    WAYPOINT("BUND");
     noc_async_write_barrier();
     cb_pop_front(cb_id, num_pages);
+    WAYPOINT("NAVY");
 }
 
 
@@ -95,10 +98,12 @@ FORCE_INLINE void write_and_send_chunk(
     const uint32_t& num_pages,
     const uint32_t& page_size,
     ccl::edm::WorkerToEdmSender<termination_mode> &sender_adapter) {
+    WAYPOINT("TELE");
     cb_wait_front(cb_id, num_pages);
+    WAYPOINT("BELT");
     uint32_t l1_read_addr = get_read_ptr(cb_id);
     sender_adapter.send_payload_non_blocking(cb_id, num_pages, page_size);
-
+    WAYPOINT("PAYD");
     write_and_send_chunk_write_to_tensor_segment(
         output_page_idx,
         col_idx,
@@ -295,22 +300,27 @@ FORCE_INLINE void read_chunk_from_input_tensor(
 #ifdef ROW_MAJOR_LAYOUT
     // #ifdef INTERLEAVED_MEM_LAYOUT || defined SHARDED_MEM_LAYOUT
         uint64_t src_noc_addr = get_noc_addr(input_page_idx, s);
+        WAYPOINT("HEL0");
         noc_async_read(src_noc_addr, local_l1_read_addr, page_size);
 #elif defined TILED_LAYOUT
     #ifdef INTERLEAVED_MEM_LAYOUT
+        WAYPOINT("HEL1");
         noc_async_read_tile(input_page_idx, s, local_l1_read_addr);
     #elif defined SHARDED_MEM_LAYOUT
         auto const&[noc_yx, page_offset, contig_pages_] = s.get_page_location_with_contiguous_pages_in_row_in_bank(input_page_idx);
         contig_pages = std::min<int32_t>(pages_remaining, contig_pages_);
         uint64_t src_noc_addr = get_noc_addr(static_cast<uint32_t>(noc_yx.noc_x), static_cast<uint32_t>(noc_yx.noc_y), s.bank_base_address + (page_offset * s.page_size) + 0);
+        WAYPOINT("HEL2");
         noc_async_read(src_noc_addr, local_l1_read_addr, page_size * contig_pages);
     #endif
 #endif
         local_l1_read_addr += (page_size * contig_pages);
         input_page_idx += contig_pages;
     }
+    WAYPOINT("HELY");
     noc_async_read_barrier();
     cb_push_back(cb_id, num_pages);
+    WAYPOINT("OKAY");
 }
 
 // read chunk from output tensor (local chip)
@@ -335,6 +345,7 @@ FORCE_INLINE void read_chunk_from_output_tensor(
 #ifdef ROW_MAJOR_LAYOUT
     #ifdef INTERLEAVED_MEM_LAYOUT
         uint64_t src_noc_addr = get_noc_addr(input_page_idx, s);
+        WAYPOINT("HEL3");
         noc_async_read(src_noc_addr, local_l1_read_addr, page_size);
     #elif defined SHARDED_MEM_LAYOUT
         auto const&[noc_yx, page_offset] = s.get_page_location(input_page_idx);
@@ -350,11 +361,13 @@ FORCE_INLINE void read_chunk_from_output_tensor(
         }
 #elif defined TILED_LAYOUT
     #ifdef INTERLEAVED_MEM_LAYOUT
+        WAYPOINT("HEL4");
         noc_async_read_tile(input_page_idx, s, local_l1_read_addr);
     #elif defined SHARDED_MEM_LAYOUT
         auto [noc_yx, page_offset, contig_pages_] = s.get_page_location_with_contiguous_pages_in_row_in_bank(input_page_idx);
         contig_pages = std::min<int32_t>(pages_remaining, std::min<int32_t>(contig_pages_, num_cols - col_idx));
         uint64_t src_noc_addr = get_noc_addr(static_cast<uint32_t>(noc_yx.noc_x), static_cast<uint32_t>(noc_yx.noc_y), s.bank_base_address + (page_offset * s.page_size) + 0);
+        WAYPOINT("HEL5");
         noc_async_read(src_noc_addr, local_l1_read_addr, page_size * contig_pages);
     #endif
         input_page_idx += contig_pages;
@@ -371,8 +384,10 @@ FORCE_INLINE void read_chunk_from_output_tensor(
 #endif
         local_l1_read_addr += page_size * contig_pages;
     }
+    WAYPOINT("BARD");
     noc_async_read_barrier();
     cb_push_back(cb_id, num_pages);
+    WAYPOINT("SURE");
 }
 
 template <typename AddrGen>

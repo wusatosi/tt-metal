@@ -21,6 +21,7 @@ def tt_all_reduce(
 ):
     # N150
     if list(mesh_device.shape) == [1, 1] or (cluster_axis == 1 and 1 in list(mesh_device.shape)):
+        print("NO SCATTER")
         return input_tensor
 
     # Ensure dim 0 and 1 are 1
@@ -122,6 +123,7 @@ def tt_all_gather(
 ):
     # N150
     if list(mesh_device.shape) == (1, 1) or (cluster_axis == 1 and 1 in list(mesh_device.shape)):
+        print("NO GATHER")
         return input_tensor
 
     # Ensure the input tensor is in the correct memory configuration

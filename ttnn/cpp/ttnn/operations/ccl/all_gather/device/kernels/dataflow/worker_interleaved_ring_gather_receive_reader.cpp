@@ -39,20 +39,25 @@ void kernel_main() {
     for (uint32_t i = 0; i < num_transfers; ++i) {
         if (num_full_chunks > 0) {
             for (uint32_t c = 0; c < num_full_chunks; ++c) {
+                WAYPOINT("AVAI");
                 reader.wait_for_payload_available();
+                WAYPOINT("AVAN");
                 reader.fetch_payload_blocking(cb_id_in0, num_pages_per_full_chunk, page_size, false);
             }
         }
         if (rem_num_pages > 0) {
+            WAYPOINT("NAVA");
             reader.wait_for_payload_available();
             reader.fetch_payload_blocking(cb_id_in0, rem_num_pages, page_size, false);
             ASSERT(num_pages_per_full_chunk == 0 || num_pages_per_full_chunk > rem_num_pages);
             ASSERT(half_cb_n_pages > rem_num_pages);
+            WAYPOINT("SAVE");
             push_filler_pages_to_cb(cb_id_in0, half_cb_n_pages - rem_num_pages);
         }
     }
 
     reader.close();
 
+    WAYPOINT("PLSO");
     noc_async_full_barrier();
 }
