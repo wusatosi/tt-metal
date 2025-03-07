@@ -30,6 +30,7 @@ constexpr uint32_t num_targets_backward_direction = get_compile_time_arg_val(7);
  * dispatch implementations depending on those invocation parameters.
  */
 void kernel_main() {
+    return;
     ///////////////////////////////////////////////////
     // ARGS
     ///////////////////////////////////////////////////

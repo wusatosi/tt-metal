@@ -22,6 +22,7 @@ constexpr uint32_t tensor0_page_size = get_compile_time_arg_val(2);
  * dispatch implementations depending on those invocation parameters.
  */
 void kernel_main() {
+    return;
     ///////////////////////////////////////////////////
     // ARGS
     ///////////////////////////////////////////////////
