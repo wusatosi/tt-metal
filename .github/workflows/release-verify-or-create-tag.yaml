@@ -50,9 +50,7 @@ jobs:
       - name: Get full version number
         id: get-version-number
         run: |
-          versionNumber=${{ inputs.release_candidate_suffix &&
-          steps.get-release-candidate-version.outputs.release-candidate-version ||
-          steps.get-next-semantic-base-version.outputs.version }}
+          versionNumber="v0.56.0"
           echo "version=$versionNumber" >> "$GITHUB_OUTPUT"
           echo "$versionNumber"
       - name: Create tag
