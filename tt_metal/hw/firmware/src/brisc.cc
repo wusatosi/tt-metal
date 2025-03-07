@@ -408,7 +408,7 @@ int main() {
 #if defined(ARCH_BLACKHOLE)
     // When dispatch_s is on an ethernet core on blockhole, we've been seeing
     // issues where posted atomic incremenets seem to fail to complete.
-    const bool post_atomic_increments = false;
+    const bool post_atomic_increments = true;
 #else
     const bool post_atomic_increments = true;
 #endif
