@@ -15,9 +15,12 @@
 #include "hostdevcommon/profiler_common.h"
 #include <rtoptions.hpp>
 #include <dev_msgs.h>
-#include "tracy/Tracy.hpp"
 #include <device.hpp>
 #include "tools/profiler/event_metadata.hpp"
+
+#include "hostdevcommon/profiler_common.h"
+#include "tracy/Tracy.hpp"
+#include "tt_metal/impl/dispatch/kernels/cq_commands.hpp"
 
 #include "llrt.hpp"
 
@@ -106,6 +109,7 @@ void DeviceProfiler::readRiscProfilerResults(
             uint32_t coreFlatIDRead = 0;
             uint32_t runCounterRead = 0;
             uint32_t runHostCounterRead = 0;
+            bool runHostCounterDispatchSet = false;
 
             bool newRunStart = false;
 
@@ -125,7 +129,9 @@ void DeviceProfiler::readRiscProfilerResults(
                     riscNumRead = profile_buffer[index] & 0x7;
                     coreFlatIDRead = (profile_buffer[index] >> 3) & 0xFF;
                     runCounterRead = profile_buffer[index + 1] & 0xFFFF;
-                    runHostCounterRead = (profile_buffer[index + 1] >> 16) & 0xFFFF;
+                    if (!runHostCounterDispatchSet) {
+                        runHostCounterRead = (profile_buffer[index + 1] >> 16) & 0xFFFF;
+                    }
 
                     opname = getOpNameIfAvailable(device_id, runHostCounterRead);
 
@@ -206,6 +212,16 @@ void DeviceProfiler::readRiscProfilerResults(
                             index += kernel_profiler::PROFILER_L1_MARKER_UINT32_SIZE;
                             uint32_t data_H = profile_buffer[index];
                             uint32_t data_L = profile_buffer[index + 1];
+                            //std::string zone_name = "";
+                            //if (hash_to_zone_src_locations.find((uint16_t)timer_id) !=
+                                //hash_to_zone_src_locations.end()) {
+                                //std::stringstream source_info(hash_to_zone_src_locations[timer_id]);
+                                //getline(source_info, zone_name, ',');
+                                //if (zone_name.find("runtime_host_id_dispatch") != std::string::npos) {
+                                    //runHostCounterRead = data_L;
+                                    //runHostCounterDispatchSet = true;
+                                //}
+                            //}
                             logPacketData(
                                 log_file_ofs,
                                 noc_trace_json_log,
@@ -280,20 +296,31 @@ void DeviceProfiler::logPacketData(
     std::string source_file = "";
     uint64_t source_line = 0;
 
+    static std::set<tracy::TTDeviceEvent>::iterator last_event_it;
+    static uint32_t dispatch_runtime_id = 0;
+    static std::string cmd_type = "";
+
+    if (hash_to_zone_src_locations.find((uint16_t)timer_id) != hash_to_zone_src_locations.end()) {
+        std::stringstream source_info(hash_to_zone_src_locations[timer_id]);
+        getline(source_info, zone_name, ',');
+        getline(source_info, source_file, ',');
+
+        std::string source_line_str;
+        getline(source_info, source_line_str, ',');
+        source_line = stoi(source_line_str);
+    }
+
     if ((packet_type == kernel_profiler::ZONE_START) || (packet_type == kernel_profiler::ZONE_END)) {
         tracy::TTDeviceEventPhase zone_phase = tracy::TTDeviceEventPhase::begin;
         if (packet_type == kernel_profiler::ZONE_END) {
             zone_phase = tracy::TTDeviceEventPhase::end;
         }
 
-        if (hash_to_zone_src_locations.find((uint16_t)timer_id) != hash_to_zone_src_locations.end()) {
-            std::stringstream source_info(hash_to_zone_src_locations[timer_id]);
-            getline(source_info, zone_name, ',');
-            getline(source_info, source_file, ',');
-
-            std::string source_line_str;
-            getline(source_info, source_line_str, ',');
-            source_line = stoi(source_line_str);
+        if (zone_name.find("DISPATCH") != std::string::npos) {
+            run_host_id = dispatch_runtime_id;
+            zone_name = fmt::format("{}:CQ-DISPATCH", dispatch_runtime_id);
+        } else if (zone_name.find("BRISC-FW") == std::string::npos && zone_name.find("ERISC-FW") == std::string::npos) {
+            run_host_id = 0;
         }
 
         tracy::TTDeviceEvent event = tracy::TTDeviceEvent(
@@ -310,13 +337,42 @@ void DeviceProfiler::logPacketData(
             zone_phase);
 
         auto ret = device_events.insert(event);
+        last_event_it = ret.first;
+        event.run_num = 1;
 
         if (!ret.second) {
             return;
         }
     }
 
+    if (packet_type == kernel_profiler::TS_DATA) {
+        if (last_event_it->zone_phase == tracy::TTDeviceEventPhase::begin &&
+            last_event_it->zone_name.find("DISPATCH") != std::string::npos) {
+            if (zone_name.find("process_cmd") != std::string::npos) {
+                cmd_type = fmt::format("{}", magic_enum::enum_name((CQDispatchCmdId)data));
+            } else if (zone_name.find("runtime_host_id_dispatch") != std::string::npos) {
+                dispatch_runtime_id = (uint32_t)data;
+            }
+            tracy::TTDeviceEvent event = tracy::TTDeviceEvent(
+                dispatch_runtime_id,
+                last_event_it->chip_id,
+                last_event_it->core_x,
+                last_event_it->core_y,
+                last_event_it->risc,
+                last_event_it->marker,
+                last_event_it->timestamp,
+                last_event_it->line,
+                last_event_it->file,
+                fmt::format("{}:{}", dispatch_runtime_id, cmd_type),
+                last_event_it->zone_phase);
+            device_events.erase(last_event_it);
+            auto ret = device_events.insert(event);
+            last_event_it = ret.first;
+        }
+    }
+
     firstTimestamp(timestamp);
+    return;
 
     logPacketDataToCSV(
         log_file_ofs,
@@ -637,6 +693,9 @@ void DeviceProfiler::dumpResults(
     ZoneScoped;
 
     auto device_id = device->id();
+    if (device_id < 4) {
+        return;
+    }
     device_core_frequency = tt::Cluster::instance().get_device_aiclk(device_id);
 
     generateZoneSourceLocationsHashes();
