@@ -36,6 +36,7 @@ void kernel_main() {
     address_t reduction_input_addr = get_write_ptr(reduction_input_cb_id);
 
     const size_t out_ready_sem_bank_addr = get_arg_val<uint32_t>(arg_idx++);
+    uint32_t direction = get_arg_val<uint32_t>(arg_idx++);
     uint32_t num_tiles_per_core = get_arg_val<uint32_t>(arg_idx++);
     uint32_t num_tiles_to_read = get_arg_val<uint32_t>(arg_idx++);
     uint32_t first_core_tile_start_offset = get_arg_val<uint32_t>(arg_idx++);
@@ -101,6 +102,15 @@ void kernel_main() {
     uint32_t core_id = 0;
     uint32_t writer_chip_offset = my_chip_id * num_tiles_per_core * tensor0_page_size;
 
+    bool loopback = false;
+    if (num_targets_forward_direction > 0 && num_targets_backward_direction > 0) {
+        loopback = direction == 0;
+    } else if (num_targets_forward_direction > 0) {
+        loopback = direction == 0;
+    } else if (num_targets_backward_direction > 0) {
+        loopback = direction == 1;
+    }
+
     while (tiles_read < num_tiles_to_read) {
         uint32_t num_tiles_to_read_this_core = std::min(num_tiles_per_core - shard_tile_id, packet_size_in_pages);
         num_tiles_to_read_this_core = std::min(num_tiles_to_read - tiles_read, num_tiles_to_read_this_core);
@@ -119,7 +129,8 @@ void kernel_main() {
             pkt_hdr_backward,
             fabric_connection,
             l1_read_addr,
-            num_tiles_to_read_this_core * tensor0_page_size);
+            num_tiles_to_read_this_core * tensor0_page_size,
+            true);
         noc_async_writes_flushed();
 
         cb_pop_front(cb0_id, num_tiles_to_read_this_core);
@@ -155,34 +166,37 @@ void kernel_main() {
         fabric_connection.get_backward_connection().send_payload_flush_blocking_from_address(
             packet_header_buffer_seminc, sizeof(PACKET_HEADER_TYPE));
     }
-    // increment locally
-    uint64_t out_ready_sem_noc_addr =
-        safe_get_noc_addr(out_ready_sem_noc0_x, out_ready_sem_noc0_y, out_ready_sem_bank_addr);
-    noc_semaphore_inc(out_ready_sem_noc_addr, 1);
 
-    // 3. wait for mcast output ready semaphore
-    while (*reinterpret_cast<volatile uint32_t*>(out_ready_sem_bank_addr) != out_ready_sem_wait_value);
+    if (direction == 0) {
+        // increment locally
+        uint64_t out_ready_sem_noc_addr =
+            safe_get_noc_addr(out_ready_sem_noc0_x, out_ready_sem_noc0_y, out_ready_sem_bank_addr);
+        noc_semaphore_inc(out_ready_sem_noc_addr, 1);
 
-    // loop over mcast ranges
-    for (uint32_t i = 0; i < num_mcast_ranges; i++) {
-        // Signal the reduction workers
-        const uint64_t reduction_semaphore_recv_noc_addr = get_noc_multicast_addr(
-            mcast_dest_noc_start_x[i],
-            mcast_dest_noc_start_y[i],
-            mcast_dest_noc_end_x[i],
-            mcast_dest_noc_end_y[i],
-            reduction_semaphore_send_addr);
+        // 3. wait for mcast output ready semaphore
+        while (*reinterpret_cast<volatile uint32_t*>(out_ready_sem_bank_addr) != out_ready_sem_wait_value);
 
-        noc_semaphore_set_multicast(
-            reduction_semaphore_send_addr,
-            reduction_semaphore_recv_noc_addr,
-            i == 0 ? num_mcast_cores : 0,
-            false,  // linked = false
-            true);  // multicast_path_reserve = true
+        // loop over mcast ranges
+        for (uint32_t i = 0; i < num_mcast_ranges; i++) {
+            // Signal the reduction workers
+            const uint64_t reduction_semaphore_recv_noc_addr = get_noc_multicast_addr(
+                mcast_dest_noc_start_x[i],
+                mcast_dest_noc_start_y[i],
+                mcast_dest_noc_end_x[i],
+                mcast_dest_noc_end_y[i],
+                reduction_semaphore_send_addr);
+
+            noc_semaphore_set_multicast(
+                reduction_semaphore_send_addr,
+                reduction_semaphore_recv_noc_addr,
+                i == 0 ? num_mcast_cores : 0,
+                false,  // linked = false
+                true);  // multicast_path_reserve = true
+        }
+
+        // 4. global semaphore reset
+        *reinterpret_cast<volatile uint32_t*>(out_ready_sem_bank_addr) = 0;
     }
-
-    // 4. global semaphore reset
-    *reinterpret_cast<volatile uint32_t*>(out_ready_sem_bank_addr) = 0;
 
     if (fabric_connection.is_logically_connected()) {
         fabric_connection.close();
