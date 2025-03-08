@@ -30,6 +30,18 @@ constexpr uint32_t num_targets_backward_direction = get_compile_time_arg_val(7);
  * dispatch implementations depending on those invocation parameters.
  */
 void kernel_main() {
+    // // 9 us
+    // for (uint32_t i = 0; i < 3; i++) {
+    //     for (uint32_t j = 0; j < 1000; j++) {
+    //         asm volatile("nop");
+    //     }
+    // }
+
+    // 4.5 us
+    for (uint32_t i = 0; i < 1500; i++) {
+        asm volatile("nop");
+    }
+
     return;
     ///////////////////////////////////////////////////
     // ARGS

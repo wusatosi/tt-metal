@@ -5,12 +5,32 @@
 #include "dataflow_api.h"
 
 void kernel_main() {
-    return;
+    // // 16 us
+    // for (uint32_t i = 0; i < 5; i++) {
+    //     for (uint32_t j = 0; j < 1000; j++) {
+    //         asm volatile("nop");
+    //     }
+    // }
+
     ///////////////////////////////////////////////////
     // ARGS
     ///////////////////////////////////////////////////
     constexpr uint32_t cb_id = get_compile_time_arg_val(0);
     constexpr uint32_t total_num_reduction_tiles = get_compile_time_arg_val(1);
+
+    if (total_num_reduction_tiles == 4) {
+        // 5 us
+        for (uint32_t i = 0; i < 1650; i++) {
+            asm volatile("nop");
+        }
+    } else {
+        // 13 us
+        for (uint32_t i = 0; i < 4000; i++) {
+            asm volatile("nop");
+        }
+    }
+
+    return;
 
     // runtime args
     size_t arg_idx = 0;
