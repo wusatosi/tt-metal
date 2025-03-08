@@ -150,7 +150,7 @@ def test_width_sharded_reduce_scatter_dual_p150_post_commit(
     use_program_cache,
     function_level_defaults,
     enable_async,
-    num_iters=5,
+    num_iters=10,
 ):
     run_reduce_scatter_sharded_test(
         dual_p150_mesh_device,

@@ -34,7 +34,13 @@ struct WorkerToEdmReader {
         buffer_index(0) {}
 
     FORCE_INLINE void wait_for_payload_available() const {
-        noc_semaphore_wait(this->worker_sem_addr, 1);
+        // noc_semaphore_wait(this->worker_sem_addr, 1);
+        WAYPOINT("NSWE");
+        do {
+            invalidate_l1_cache();
+            WATCHER_RING_BUFFER_PUSH(*this->worker_sem_addr);
+        } while ((*this->worker_sem_addr) != 1);
+        WAYPOINT("NSDE");
         noc_semaphore_set(this->worker_sem_addr, 0);
     }
 

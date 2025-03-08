@@ -83,7 +83,7 @@ def test_llama_decoder_inference(
     reference_model.load_state_dict(partial_state_dict)
 
     generation_start_pos = 0
-    generation_length = 1
+    generation_length = 10
     all_tests_pass = True
 
     # pre-compute the rotational embedding matrix and send to device

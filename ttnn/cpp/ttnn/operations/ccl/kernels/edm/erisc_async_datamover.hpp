@@ -170,12 +170,15 @@ public:
 
                 noc_semaphore_inc(worker_semaphore_address, 1);
             }
+            WAYPOINT("BREK");
+            WATCHER_RING_BUFFER_PUSH(this->num_workers);
         } else if (BUFFER_SHARING_MODE == EriscDataMoverBufferSharingMode::ROUND_ROBIN) {
             WorkerXY worker_xy = this->worker_coords[this->worker_index.worker_index];
             uint64_t worker_semaphore_address =
                 get_noc_addr((uint32_t)worker_xy.x, (uint32_t)worker_xy.y, this->worker_semaphore_l1_address);
 
             noc_semaphore_inc(worker_semaphore_address, 1);
+            WAYPOINT("UMS");
             this->worker_index.worker_index++;
             if (this->worker_index.worker_index >= this->num_workers) {
                 this->worker_index.worker_index = 0;
