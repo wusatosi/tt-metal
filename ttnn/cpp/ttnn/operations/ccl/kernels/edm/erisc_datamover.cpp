@@ -17,7 +17,7 @@
 // 2) sender channels offset (indicates for the erisc channels, where the senders start
 //    so sender and receivers don't clash when paired with sender/receiver on the other
 //    end of the link.)
-// 3) sender num channels (How many erisc channels to use. ALso how many buffers to instantiate)
+// 3) sender num channels (How many erisc channels to use. Also how many buffers to instantiate)
 //    Informs how many times to iterate through the next group of args
 //    4) sender_buffer_address
 //    5) sender_num_messages_to_send
@@ -254,25 +254,30 @@ void kernel_main() {
         //////////////////////////////////////
         // SENDER
         if constexpr (enable_sender_side) {
+            WAYPOINT("HELP");
             ChannelBufferT& current_sender = buffer_channels[send_recv_index.real_index.sender];
             switch (current_sender.get_state()) {
                 case ChannelBufferT::STATE::SENDER_WAITING_FOR_WORKER:
+                    WAYPOINT("WAIT");
                     did_something_sender = erisc::datamover::sender_noc_receive_payload_ack_check_sequence(
                         current_sender, num_senders_complete);
                     senders_in_progress = senders_in_progress && num_senders_complete != sender_num_channels;
                     break;
 
                 case ChannelBufferT::STATE::SENDER_READY_FOR_ETH_TRANSFER:
+                    WAYPOINT("DATE");
                     did_something_sender = erisc::datamover::sender_eth_send_data_sequence(current_sender);
                     break;
 
                 case ChannelBufferT::STATE::SENDER_SIGNALING_WORKER:
+                    WAYPOINT("SIGN");
                     did_something_sender = erisc::datamover::sender_notify_workers_if_buffer_available_sequence(
                         current_sender, num_senders_complete);
                     senders_in_progress = senders_in_progress && num_senders_complete != sender_num_channels;
                     break;
 
                 case ChannelBufferT::STATE::SENDER_WAITING_FOR_ETH:
+                    WAYPOINT("WAYZ");
                     did_something_sender =
                         erisc::datamover::sender_eth_check_receiver_ack_sequence(current_sender, num_senders_complete);
                     senders_in_progress = senders_in_progress && num_senders_complete != sender_num_channels;
@@ -285,21 +290,25 @@ void kernel_main() {
         //////////////////////////////////////
         // RECEIVER
         if constexpr (enable_receiver_side) {
+            WAYPOINT("HELP");
             ChannelBufferT& current_receiver = buffer_channels[send_recv_index.real_index.receiver];
 
             switch (current_receiver.get_state()) {
                 case ChannelBufferT::STATE::RECEIVER_WAITING_FOR_ETH:
+                    WAYPOINT("WAIT");
                     did_something_receiver = erisc::datamover::receiver_eth_accept_payload_sequence(
                         current_receiver, num_receivers_complete, eth_transaction_ack_word_addr);
                     receivers_in_progress = receivers_in_progress && num_receivers_complete != receiver_num_channels;
                     break;
 
                 case ChannelBufferT::STATE::RECEIVER_SIGNALING_WORKER:
+                    WAYPOINT("SIGN");
                     did_something_receiver =
                         erisc::datamover::receiver_eth_notify_workers_payload_available_sequence(current_receiver);
                     break;
 
                 case ChannelBufferT::STATE::RECEIVER_WAITING_FOR_WORKER:
+                    WAYPOINT("RWAI");
                     did_something_receiver = erisc::datamover::receiver_noc_read_worker_completion_check_sequence(
                         current_receiver, num_receivers_complete);
                     receivers_in_progress = receivers_in_progress && num_receivers_complete != receiver_num_channels;
@@ -340,6 +349,7 @@ void kernel_main() {
                 channel.buffer_index = buffer_index;
                 if (!channel.is_sender_side) {
                     if (!channel.eth_is_receiver_channel_send_done()) {
+                        WAYPOINT("RDON");
                         channel.eth_receiver_channel_done();
                     }
                 }
@@ -347,6 +357,7 @@ void kernel_main() {
             for (uint8_t buffer_index = 0; buffer_index < num_buffers_per_channel; buffer_index++) {
                 if (channel.is_sender_side) {
                     while (!channel.eth_is_receiver_channel_send_done()) {
+                        WAYPOINT("HERM");
                         wait_count++;
                         if (wait_count > wait_max) {
                             WAYPOINT("STK");

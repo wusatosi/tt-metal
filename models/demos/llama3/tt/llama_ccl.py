@@ -21,7 +21,6 @@ def tt_all_reduce(
 ):
     # N150
     if list(mesh_device.shape) == [1, 1] or (cluster_axis == 1 and 1 in list(mesh_device.shape)):
-        print("NO SCATTER")
         return input_tensor
 
     # Ensure dim 0 and 1 are 1
@@ -33,6 +32,7 @@ def tt_all_reduce(
 
     # N300 and T3K: reduce_scatter
     if 1 in list(mesh_device.shape):
+        print("Reduce")
         if input_tensor.is_sharded() and not sharded:
             input_tensor_sharded = input_tensor
             input_tensor = ttnn.sharded_to_interleaved(input_tensor_sharded, ttnn.L1_MEMORY_CONFIG)
@@ -60,6 +60,7 @@ def tt_all_reduce(
         input_tensor = ttnn.to_memory_config(input_tensor, ttnn.DRAM_MEMORY_CONFIG)
 
     if not use_composite:
+        print("AllGather in Reduce")
         gathered_tensor = ttnn.all_gather(
             input_tensor,
             dim,
@@ -73,6 +74,7 @@ def tt_all_reduce(
         if sharded:
             gathered_tensor = ttnn.to_memory_config(gathered_tensor, ttnn.L1_MEMORY_CONFIG)
 
+        print("FastReduce")
         reduced_tensor = ttnn.experimental.fast_reduce_nc(
             gathered_tensor,
             dims=[dim],
@@ -82,6 +84,7 @@ def tt_all_reduce(
         )
         gathered_tensor.deallocate(True)
     else:
+        print("ReduceScatter")
         input_mem_cfg = input_tensor.memory_config()
         reduced_tensor = ttnn.reduce_scatter(
             input_tensor,
@@ -94,6 +97,7 @@ def tt_all_reduce(
             memory_config=ttnn.DRAM_MEMORY_CONFIG if not sharded else memory_config,
         )
 
+        print("AllGather")
         reduced_tensor = ttnn.all_gather(
             reduced_tensor,
             dim,
@@ -123,7 +127,6 @@ def tt_all_gather(
 ):
     # N150
     if list(mesh_device.shape) == (1, 1) or (cluster_axis == 1 and 1 in list(mesh_device.shape)):
-        print("NO GATHER")
         return input_tensor
 
     # Ensure the input tensor is in the correct memory configuration
@@ -137,6 +140,7 @@ def tt_all_gather(
             input_tensor = ttnn.to_memory_config(input_tensor, memory_config, dtype)  # to sharded
 
     if cluster_axis is None:
+        print("AllGather no cluster axis")
         gathered = ttnn.all_gather(
             input_tensor,
             dim,
@@ -145,6 +149,7 @@ def tt_all_gather(
             memory_config=memory_config,
         )
     else:
+        print("AllGather")
         gathered = ttnn.all_gather(
             input_tensor,
             dim,
