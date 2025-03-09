@@ -29,6 +29,10 @@ UnaryShardedProgramFactory::cached_program_t UnaryShardedProgramFactory::create(
     auto all_cores = shard_spec.grid;
     uint32_t ncores = shard_spec.num_cores();
 
+    auto compute_with_storage_grid_size = input.device()->compute_with_storage_grid_size();
+    tt::log_info(tt::LogOp, "compute_with_storage_grid_size {}", compute_with_storage_grid_size);
+    tt::log_info(tt::LogOp, "ncores {}", ncores);
+
     auto out_shard_spec = output.shard_spec().value();
     TT_FATAL(
         out_shard_spec.num_cores() == ncores,
