@@ -16,6 +16,7 @@
 #include "noc_nonblocking_api.h"
 #include "firmware_common.h"
 #include "dataflow_api.h"
+#include "debug/ring_buffer.h"
 #include "tools/profiler/kernel_profiler.hpp"
 #include <kernel_includes.hpp>
 #if defined ALIGN_LOCAL_CBS_TO_REMOTE_CBS
@@ -45,6 +46,22 @@ void kernel_launch(uint32_t kernel_base_addr) {
     {
         DeviceZoneScopedMainChildN("BRISC-KERNEL");
         kernel_main();
+        if constexpr (NOC_MODE == DM_DEDICATED_NOC) {
+            // WAYPOINT("NKFW");
+            // // Assert that no noc transactions are outstanding, to ensure that all reads and writes have landed and
+            // the NOC
+            // // interface is in a known idle state for the next kernel.
+            // ASSERT(ncrisc_noc_reads_flushed(NOC_INDEX));
+            // WAYPOINT("CAST");
+            // ASSERT(ncrisc_noc_nonposted_writes_sent(NOC_INDEX));
+            // WAYPOINT("DARK");
+            // ASSERT(ncrisc_noc_nonposted_writes_flushed(NOC_INDEX));
+            // WAYPOINT("SARI");
+            // ASSERT(ncrisc_noc_nonposted_atomics_flushed(NOC_INDEX));
+            // WAYPOINT("MANI");
+            // ASSERT(ncrisc_noc_posted_writes_sent(NOC_INDEX));
+            // WAYPOINT("NKFD");
+        }
     }
 #endif
 }

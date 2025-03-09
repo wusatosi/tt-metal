@@ -102,6 +102,7 @@ FORCE_INLINE void receiver_side_finish(
     std::uint32_t handshake_register_address, size_t HS_CONTEXT_SWITCH_TIMEOUT = A_LONG_TIMEOUT_BEFORE_CONTEXT_SWITCH) {
     eth_wait_for_bytes(16, HS_CONTEXT_SWITCH_TIMEOUT);
     while (eth_txq_is_busy()) {
+        invalidate_l1_cache();  // may not need this
         asm volatile("nop");
     }
     eth_receiver_channel_done(0);

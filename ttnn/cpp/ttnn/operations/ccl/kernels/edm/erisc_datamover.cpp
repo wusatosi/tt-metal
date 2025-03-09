@@ -143,6 +143,10 @@ void kernel_main() {
     uint32_t args_offset = 0;
     uint32_t handshake_addr = get_arg_val<uint32_t>(args_offset++);
 
+    for (uint32_t i = 0; i < eth_l1_mem::address_map::MAX_NUM_CONCURRENT_TRANSACTIONS; i++) {
+        // WATCHER_RING_BUFFER_PUSH(erisc_info->channels[i].bytes_sent);
+    }
+
     bool is_done_as_rx_handshaker = is_handshake_sender;
     if constexpr (is_handshake_sender) {
         erisc::datamover::handshake::sender_side_start(handshake_addr);
@@ -175,6 +179,8 @@ void kernel_main() {
             (volatile tt_l1_ptr uint32_t* const)receiver_semaphores_base_address,
             (const WorkerXY*)workers_xy_list_addr,
             false);
+        // WATCHER_RING_BUFFER_PUSH(channel);
+        WAYPOINT("INIT");
 
         if constexpr (terminate_on_worker_signal == EriscDataMoverTerminationMode::MESSAGE_COUNT_REACHED) {
             if (receiver_num_messages_to_send == 0) {
@@ -184,10 +190,12 @@ void kernel_main() {
     }
 
     if (!is_handshake_sender) {
+        WAYPOINT("RSHK");
         if (!is_done_as_rx_handshaker && erisc::datamover::handshake::receiver_side_can_finish()) {
             is_done_as_rx_handshaker = true;
             erisc::datamover::handshake::receiver_side_finish(handshake_addr);
         }
+        WAYPOINT("DSHK");
     }
 
     uint8_t const sender_channels_start = get_arg_val<uint32_t>(args_offset++);
@@ -216,12 +224,15 @@ void kernel_main() {
             (volatile tt_l1_ptr uint32_t* const)sender_semaphores_base_address,
             (const WorkerXY*)workers_xy_list_addr,
             true);
+        // WAYPOINT("SNIT");
         if constexpr (terminate_on_worker_signal == EriscDataMoverTerminationMode::MESSAGE_COUNT_REACHED) {
             if (sender_num_messages_to_send == 0) {
                 num_senders_with_no_work++;
             }
         }
     }
+
+    WAYPOINT("REDO");
 
     if constexpr (is_handshake_sender) {
         erisc::datamover::handshake::sender_side_finish(handshake_addr);
@@ -231,6 +242,9 @@ void kernel_main() {
             is_done_as_rx_handshaker = true;
         }
     }
+
+    WAYPOINT("SHOK");
+
     uint32_t eth_transaction_ack_word_addr = handshake_addr + 16;
     uint32_t eth_transaction_complete_addr = handshake_addr + 32;
 
@@ -262,11 +276,13 @@ void kernel_main() {
                     did_something_sender = erisc::datamover::sender_noc_receive_payload_ack_check_sequence(
                         current_sender, num_senders_complete);
                     senders_in_progress = senders_in_progress && num_senders_complete != sender_num_channels;
+                    WAYPOINT("CMD0");
                     break;
 
                 case ChannelBufferT::STATE::SENDER_READY_FOR_ETH_TRANSFER:
                     WAYPOINT("DATE");
                     did_something_sender = erisc::datamover::sender_eth_send_data_sequence(current_sender);
+                    WAYPOINT("CMD1");
                     break;
 
                 case ChannelBufferT::STATE::SENDER_SIGNALING_WORKER:
@@ -274,6 +290,7 @@ void kernel_main() {
                     did_something_sender = erisc::datamover::sender_notify_workers_if_buffer_available_sequence(
                         current_sender, num_senders_complete);
                     senders_in_progress = senders_in_progress && num_senders_complete != sender_num_channels;
+                    WAYPOINT("CMD2");
                     break;
 
                 case ChannelBufferT::STATE::SENDER_WAITING_FOR_ETH:
@@ -281,6 +298,7 @@ void kernel_main() {
                     did_something_sender =
                         erisc::datamover::sender_eth_check_receiver_ack_sequence(current_sender, num_senders_complete);
                     senders_in_progress = senders_in_progress && num_senders_complete != sender_num_channels;
+                    WAYPOINT("CMD3");
                     break;
 
                 default: break;
