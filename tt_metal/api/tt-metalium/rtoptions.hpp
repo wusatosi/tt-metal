@@ -139,6 +139,7 @@ class RunTimeOptions {
     std::filesystem::path simulator_path = "";
 
     bool erisc_iram_enabled = false;
+    uint32_t arc_debug_buffer_size = 0;
 
     RunTimeOptions();
 
@@ -320,6 +321,8 @@ public:
     inline const std::filesystem::path& get_simulator_path() { return simulator_path; }
 
     inline bool get_erisc_iram_enabled() { return erisc_iram_enabled; }
+    inline uint32_t get_arc_debug_buffer_size() { return arc_debug_buffer_size; }
+    inline void set_arc_debug_buffer_size(uint32_t size) { arc_debug_buffer_size = size; }
 
 private:
     // Helper functions to parse feature-specific environment vaiables.

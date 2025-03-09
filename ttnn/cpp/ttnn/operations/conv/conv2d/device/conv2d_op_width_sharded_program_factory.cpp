@@ -13,6 +13,7 @@
 #include <tt-metalium/tt_metal.hpp>
 #include <tt-metalium/util.hpp>
 #include <tt-metalium/host_api.hpp>
+#include "ttnn/operations/matmul/device/matmul_op.hpp"
 
 using namespace tt::constants;
 
@@ -742,6 +743,8 @@ tt::tt_metal::operation::ProgramWithCallbacks multi_core_optimized_conv_width_sh
         }
         cb_output = tt_metal::CreateCircularBuffer(program, all_cores, cb_output_config);
     }
+
+    bmm_op_utils::add_nops_in_matmul(compute_defines, math_fidelity);
 
     compute_kernel_args = {
         act_block_w_ntiles,      // in0_block_w

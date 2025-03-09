@@ -290,6 +290,8 @@ void DevicePool::initialize_device(IDevice* dev) const {
         // Initialize fabric on mmio device
         dev->init_fabric();
     }
+    // FIXME MT: Temp remove this feature
+    // dev->allocate_dram_debug_buffer();
 
     // Set up HW command queues on device for FD
     if (this->using_fast_dispatch) {
