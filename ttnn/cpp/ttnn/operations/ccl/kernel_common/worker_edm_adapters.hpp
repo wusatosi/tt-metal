@@ -36,9 +36,12 @@ struct WorkerToEdmReader {
     FORCE_INLINE void wait_for_payload_available() const {
         // noc_semaphore_wait(this->worker_sem_addr, 1);
         WAYPOINT("NSWE");
+        // WATCHER_RING_BUFFER_PUSH((uint32_t)this->worker_sem_addr);
+        DPRINT << "Waiting for payload at addr " << HEX() << ((uint32_t)this->worker_sem_addr) << DEC() << ENDL();
         do {
             invalidate_l1_cache();
-            WATCHER_RING_BUFFER_PUSH(*this->worker_sem_addr);
+            // WATCHER_RING_BUFFER_PUSH((uint32_t)this->worker_sem_addr);
+            // WATCHER_RING_BUFFER_PUSH(*this->worker_sem_addr);
         } while ((*this->worker_sem_addr) != 1);
         WAYPOINT("NSDE");
         noc_semaphore_set(this->worker_sem_addr, 0);
@@ -51,9 +54,15 @@ struct WorkerToEdmReader {
         fetch_chunk(cb_id, num_pages, page_size, buffer_address);
         if constexpr (termination_mode == ttnn::ccl::EriscDataMoverTerminationMode::WORKER_INITIATED) {
             if (!last_message) {
+                DPRINT << "A: inc " << HEX() << NOC_UNICAST_ADDR_X(edm_semaphore_addr) << " , "
+                       << NOC_UNICAST_ADDR_Y(edm_semaphore_addr) << DEC() << ENDL();
+                // WATCHER_RING_BUFFER_PUSH(0xfeedface);
                 noc_semaphore_inc(edm_semaphore_addr, ttnn::ccl::EriscDataMoverWorkerSignal::NEXT_MESSAGE_AVAILABLE);
             }
         } else {
+            // WATCHER_RING_BUFFER_PUSH(0xdaceabcd);
+            DPRINT << "B: inc " << HEX() << NOC_UNICAST_ADDR_X(edm_semaphore_addr) << " , "
+                   << NOC_UNICAST_ADDR_Y(edm_semaphore_addr) << DEC() << ENDL();
             noc_semaphore_inc(edm_semaphore_addr, ttnn::ccl::EriscDataMoverWorkerSignal::NEXT_MESSAGE_AVAILABLE);
         }
         this->buffer_index = (this->buffer_index == this->last_buffer_index) ? 0 : this->buffer_index + 1;
@@ -61,7 +70,11 @@ struct WorkerToEdmReader {
 
     FORCE_INLINE void close() {
         if constexpr (termination_mode == ttnn::ccl::EriscDataMoverTerminationMode::WORKER_INITIATED) {
+            // WATCHER_RING_BUFFER_PUSH(0xbeeffeeb);
+            DPRINT << "C: inc " << HEX() << NOC_UNICAST_ADDR_X(edm_semaphore_addr) << " , "
+                   << NOC_UNICAST_ADDR_Y(edm_semaphore_addr) << DEC() << ENDL();
             noc_semaphore_inc(edm_semaphore_addr, ttnn::ccl::EriscDataMoverWorkerSignal::TERMINATE_IMMEDIATELY);
+            noc_async_atomic_barrier();
         }
     }
 
@@ -99,7 +112,12 @@ struct WorkerToEdmSender {
 
     FORCE_INLINE void wait_for_empty_write_slot() const {
         WAYPOINT("SLOT");
-        noc_semaphore_wait(this->worker_sem_addr, 1);
+        do {
+            invalidate_l1_cache();
+            // WATCHER_RING_BUFFER_PUSH((uint32_t)this->worker_sem_addr);
+        } while ((*this->worker_sem_addr) != 1);
+        WAYPOINT("SLOD");
+        // noc_semaphore_wait(this->worker_sem_addr, 1);
         noc_semaphore_set(this->worker_sem_addr, 0);
     }
 
@@ -133,7 +151,11 @@ struct WorkerToEdmSender {
     FORCE_INLINE void close() {
         if constexpr (termination_mode == ttnn::ccl::EriscDataMoverTerminationMode::WORKER_INITIATED) {
             this->wait_for_empty_write_slot();
+            // WATCHER_RING_BUFFER_PUSH(0xcadebace);
+            DPRINT << "D: inc " << HEX() << NOC_UNICAST_ADDR_X(edm_semaphore_addr) << " , "
+                   << NOC_UNICAST_ADDR_Y(edm_semaphore_addr) << DEC() << ENDL();
             noc_semaphore_inc(edm_semaphore_addr, ttnn::ccl::EriscDataMoverWorkerSignal::TERMINATE_IMMEDIATELY);
+            noc_async_atomic_barrier();
         }
     }
 
@@ -154,7 +176,11 @@ private:
             this->edm_buffer_addr + (this->buffer_index * (this->buffer_size_bytes + sizeof(eth_channel_sync_t)));
         ASSERT(num_pages * page_size <= this->buffer_size_bytes);
         send_chunk_from_address<blocking_mode>(source_address, num_pages, page_size, buffer_address);
+        // WATCHER_RING_BUFFER_PUSH(0xabcdefac);
+        // DPRINT << "E: inc " << HEX() << NOC_UNICAST_ADDR_X(edm_semaphore_addr) << " , " <<
+        // NOC_UNICAST_ADDR_Y(edm_semaphore_addr) << DEC() << ENDL();
         noc_semaphore_inc(edm_semaphore_addr, 1);
+        WATCHER_RING_BUFFER_PUSH(noc_nonposted_atomics_acked[NOC_INDEX]);
         this->buffer_index = (this->buffer_index == this->last_buffer_index) ? 0 : this->buffer_index + 1;
     }
 
@@ -164,6 +190,9 @@ private:
             this->edm_buffer_addr + (this->buffer_index * (this->buffer_size_bytes + sizeof(eth_channel_sync_t)));
         ASSERT(num_pages * page_size <= this->buffer_size_bytes);
         send_chunk<blocking_mode>(cb_id, num_pages, page_size, buffer_address);
+        // WATCHER_RING_BUFFER_PUSH(0xbaacfeac);
+        // DPRINT << "F: inc " << HEX() << NOC_UNICAST_ADDR_X(edm_semaphore_addr) << " , " <<
+        // NOC_UNICAST_ADDR_Y(edm_semaphore_addr) << DEC() << ENDL();
         noc_semaphore_inc(edm_semaphore_addr, 1);
         this->buffer_index = (this->buffer_index == this->last_buffer_index) ? 0 : this->buffer_index + 1;
     }

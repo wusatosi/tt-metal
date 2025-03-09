@@ -149,6 +149,8 @@ public:
             if (is_sender_side) {
                 // Tell the sender side workers that we're ready to accept data on this channel
                 increment_worker_semaphores();
+                // WATCHER_RING_BUFFER_PUSH(this->worker_semaphore_l1_address);
+                WAYPOINT("DAFT");
             }
         } else {
             ASSERT(TERMINATION_MODE != ttnn::ccl::EriscDataMoverTerminationMode::WORKER_INITIATED);
@@ -171,14 +173,21 @@ public:
                 noc_semaphore_inc(worker_semaphore_address, 1);
             }
             WAYPOINT("BREK");
-            WATCHER_RING_BUFFER_PUSH(this->num_workers);
+            // WATCHER_RING_BUFFER_PUSH(this->num_workers);
         } else if (BUFFER_SHARING_MODE == EriscDataMoverBufferSharingMode::ROUND_ROBIN) {
             WorkerXY worker_xy = this->worker_coords[this->worker_index.worker_index];
             uint64_t worker_semaphore_address =
                 get_noc_addr((uint32_t)worker_xy.x, (uint32_t)worker_xy.y, this->worker_semaphore_l1_address);
 
             noc_semaphore_inc(worker_semaphore_address, 1);
-            WAYPOINT("UMS");
+            // WATCHER_RING_BUFFER_PUSH(0xfacefeed);
+            // WATCHER_RING_BUFFER_PUSH((uint32_t)worker_xy.x);
+            // WATCHER_RING_BUFFER_PUSH(0xabcd0123);
+            // WATCHER_RING_BUFFER_PUSH((uint32_t)worker_xy.y);
+            DPRINT << HEX() << (worker_semaphore_address) << " " << worker_xy.x << " " << worker_xy.y << DEC() << DEC()
+                   << ENDL();
+            // WATCHER_RING_BUFFER_PUSH(this->worker_semaphore_l1_address);
+            // WAYPOINT("UMS");
             this->worker_index.worker_index++;
             if (this->worker_index.worker_index >= this->num_workers) {
                 this->worker_index.worker_index = 0;
@@ -433,6 +442,7 @@ FORCE_INLINE bool sender_notify_workers_if_buffer_available_sequence(
 
     sender_buffer_channel.clear_local_semaphore();
     sender_buffer_channel.increment_worker_semaphores();
+    WAYPOINT("GRAB");
 
     if (!channel_done) {
         sender_buffer_channel.goto_state(ChannelBuffer<EDM_CONFIG>::SENDER_WAITING_FOR_WORKER);
@@ -501,6 +511,7 @@ FORCE_INLINE bool receiver_eth_notify_workers_payload_available_sequence(Channel
     buffer_channel.clear_local_semaphore();
     uint32_t worker_semaphore_address = buffer_channel.worker_semaphore_l1_address;
     buffer_channel.increment_worker_semaphores();
+    WAYPOINT("MESK");
 
     buffer_channel.goto_state(ChannelBuffer<EDM_CONFIG>::RECEIVER_WAITING_FOR_WORKER);
     return true;

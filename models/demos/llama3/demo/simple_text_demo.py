@@ -119,7 +119,6 @@ def create_tt_model(
         max_batch_size=max_batch_size,
         optimizations=optimizations,
         max_seq_len=max_seq_len,
-        dummy_weights=True,
     )
     state_dict = tt_model_args.load_state_dict()
 
@@ -276,7 +275,7 @@ def create_tt_model(
 @pytest.mark.parametrize(
     "mesh_device",
     [
-        {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
+        {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4), "2xP150": (1, 2)}.get(
             os.environ.get("FAKE_DEVICE"), len(ttnn.get_device_ids())
         )
     ],

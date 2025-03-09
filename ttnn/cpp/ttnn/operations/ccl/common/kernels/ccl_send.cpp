@@ -312,7 +312,9 @@ void kernel_main() {
             }
         }
     }
+    WATCHER_RING_BUFFER_PUSH(0xfacefeed);
     ////////////////////////////////////////////////////////////////////////////////////
 
     sender.close();
+    WATCHER_RING_BUFFER_PUSH(noc_nonposted_atomics_acked[NOC_INDEX]);
 }
