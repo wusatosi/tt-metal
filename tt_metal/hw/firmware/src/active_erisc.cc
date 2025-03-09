@@ -85,7 +85,6 @@ int main() {
 
     while (1) {
         // Wait...
-        go_msg_t* go_msg_address = &(mailboxes->go_message);
         WAYPOINT("GW");
 
         uint8_t go_message_signal = RUN_MSG_DONE;
@@ -96,7 +95,7 @@ int main() {
             if (go_message_signal == RUN_MSG_RESET_READ_PTR) {
                 // Set the rd_ptr on workers to specified value
                 mailboxes->launch_msg_rd_ptr = 0;
-                uint64_t dispatch_addr = calculate_dispatch_addr(mailboxes->go_message);
+                uint64_t dispatch_addr = calculate_dispatch_addr(&mailboxes->go_message);
                 mailboxes->go_message.signal = RUN_MSG_DONE;
                 // Notify dispatcher that this has been done
                 internal_::notify_dispatch_core_done(dispatch_addr);
