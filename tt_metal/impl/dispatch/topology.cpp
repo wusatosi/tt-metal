@@ -45,9 +45,9 @@ void increment_node_ids(DispatchKernelNode& node, uint32_t inc) {
 // Downstream: send data to tunnel and/or prefetch_d variant and/or dispatch_d
 //
 constexpr noc_selection_t k_prefetcher_noc = {
-    .non_dispatch_noc = tt::tt_metal::NOC::NOC_0,
-    .upstream_noc = tt::tt_metal::NOC::NOC_0,
-    .downstream_noc = tt::tt_metal::NOC::NOC_0,
+    .non_dispatch_noc = tt::tt_metal::NOC::NOC_1,
+    .upstream_noc = tt::tt_metal::NOC::NOC_1,
+    .downstream_noc = tt::tt_metal::NOC::NOC_1,
 };
 
 //
