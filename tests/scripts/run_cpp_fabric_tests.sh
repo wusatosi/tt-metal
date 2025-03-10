@@ -50,7 +50,7 @@ TT_METAL_SLOW_DISPATCH_MODE=1 ${TEST_FOLDER}/test_tt_fabric_sanity_${ARCH_NAME} 
 
 # Async Write with Push Router
 TT_METAL_SLOW_DISPATCH_MODE=1 ${TEST_FOLDER}/test_tt_fabric_sanity_${ARCH_NAME} --fabric_command 1 --board_type n300 --data_kb_per_tx 600 --push_router
-TT_METAL_SLOW_DISPATCH_MODE=1 ${TEST_FOLDER}/test_tt_fabric_sanity_${ARCH_NAME} --fabric_command 1 --board_type n300 --data_kb_per_tx 600 --benchmark --push_router
+TT_METAL_SLOW_DISPATCH_MODE=1 ${TEST_FOLDER}/test_tt_fabric_sanity_${ARCH_NAME} --fabric_command 1 --board_type n300 --num_packets 5000 --packet_size_kb 4 --benchmark --push_router
 TT_METAL_SLOW_DISPATCH_MODE=1 ${TEST_FOLDER}/test_tt_fabric_sanity_${ARCH_NAME} --fabric_command 1 --board_type n300 --data_kb_per_tx 600 --metal_fabric_init_level 1 --push_router
 TT_METAL_SLOW_DISPATCH_MODE=1 ${TEST_FOLDER}/test_tt_fabric_sanity_${ARCH_NAME} --fabric_command 1 --board_type n300 --data_kb_per_tx 600 --benchmark --metal_fabric_init_level 1 --push_router
 # Atomic Inc with Push Router
