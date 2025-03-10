@@ -88,8 +88,8 @@ def test_llama_model_inference(
     dtype = ttnn.bfloat8_b
     mesh_device.enable_async(True)
     mode_accuracy = optimizations == LlamaOptimizations.accuracy
-    instruct = False  # True if weights == "instruct" else False
-    dummy_weights = True if weights == "random" else False
+    instruct = True  # True if weights == "instruct" else False
+    dummy_weights = True  # if weights == "random" else False
     model_args = TtModelArgs(
         mesh_device,
         instruct=instruct,
