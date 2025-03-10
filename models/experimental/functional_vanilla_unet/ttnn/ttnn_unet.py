@@ -21,6 +21,34 @@ def ttnn_to_torch(input):
     return input
 
 
+def sharded_concat(input_tensors, num_cores=64, dim=3):  # expected input tensors to be in fp16, RM, same (h*w)
+    shard_grid = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 7))})
+    in_shard_width = input_tensors[0].shape[-1]
+    shard_height = (input_tensors[0].shape[2] * input_tensors[0].shape[1] + num_cores - 1) // num_cores
+    input_sharded_memory_config = ttnn.create_sharded_memory_config(
+        (shard_height, in_shard_width),
+        core_grid=shard_grid,
+        strategy=ttnn.ShardStrategy.HEIGHT,
+        use_height_and_width_as_shard_shape=True,
+    )
+    out_shard_width = 0
+    for i in range(len(input_tensors)):
+        out_shard_width += input_tensors[i].shape[-1]
+        input_tensors[i] = ttnn.to_memory_config(input_tensors[i], input_sharded_memory_config)
+    output_sharded_memory_config = ttnn.create_sharded_memory_config(
+        (shard_height, out_shard_width),
+        core_grid=shard_grid,
+        strategy=ttnn.ShardStrategy.HEIGHT,
+        use_height_and_width_as_shard_shape=True,
+    )
+    output = ttnn.concat(input_tensors, dim, memory_config=output_sharded_memory_config)
+    # ttnn.deallocate(input_tensors[0])
+    # ttnn.deallocate(input_tensors[1])
+    output = ttnn.sharded_to_interleaved(output, memory_config=ttnn.L1_MEMORY_CONFIG)
+
+    return output
+
+
 class TtUnet:
     def __init__(
         self,
@@ -34,9 +62,9 @@ class TtUnet:
             parameters["encoder1"][0],
             act_block_h=64,
         )
-        self.enc1_2 = Conv([1, 1, 1, 1], parameters["encoder1"][1], act_block_h=32, auto_shard=True)
+        self.enc1_2 = Conv([1, 1, 1, 1], parameters["encoder1"][1], act_block_h=32)
 
-        self.enc2_1 = Conv([1, 1, 1, 1], parameters["encoder2"][0], reshard=True, auto_shard=True)
+        self.enc2_1 = Conv([1, 1, 1, 1], parameters["encoder2"][0], reshard=True)
         self.enc2_2 = Conv([1, 1, 1, 1], parameters["encoder2"][1], act_block_h=64, auto_shard=True)
 
         self.enc3_1 = Conv([1, 1, 1, 1], parameters["encoder3"][0], auto_shard=True)
@@ -77,7 +105,7 @@ class TtUnet:
 
         self.conv = Conv([1, 1, 0, 0], parameters["conv"], activation="")
 
-    def __call__(self, device, input_tensor):
+    def __call__(self, device, input_tensor, is_shard_concat):
         enc1 = self.enc1_1(device, input_tensor)
         enc1 = self.enc1_2(device, enc1)  # 0.9992
 
@@ -95,11 +123,16 @@ class TtUnet:
         )  # 0.9993
         pool_1_out_h, pool_1_out_w = int(enc1.shape[1] / 2), int(enc1.shape[2] / 2)
         pool_1 = ttnn.reshape(pool_1, (enc1.shape[0], pool_1_out_h, pool_1_out_w, enc1.shape[3]))
-        # ttnn.deallocate(enc1)
+
         enc1 = ttnn.to_memory_config(enc1, ttnn.DRAM_MEMORY_CONFIG)
 
-        if pool_1.is_sharded:
-            pool_1 = ttnn.sharded_to_interleaved(pool_1, ttnn.L1_MEMORY_CONFIG)
+        memory_config = ttnn.create_sharded_memory_config(
+            [1216, 32],
+            core_grid=device.core_grid,
+            strategy=ttnn.ShardStrategy.HEIGHT,
+            use_height_and_width_as_shard_shape=True,
+        )
+        pool_1 = ttnn.to_memory_config(pool_1, memory_config)
 
         enc2 = self.enc2_1(device, pool_1)
         ttnn.deallocate(pool_1)
@@ -183,26 +216,14 @@ class TtUnet:
             bottleneck = ttnn.sharded_to_interleaved(bottleneck, ttnn.L1_MEMORY_CONFIG)
         dec4 = self.upconv4(device, bottleneck)  # 0.9978
 
-        # dec4 = ttnn.reshape(dec4, (1,1,dec4.shape[0]*dec4.shape[1]*dec4.shape[2], dec4.shape[3]))
-
-        # sharded_memory_config = ttnn.create_sharded_memory_config(
-        #     [pool_in4.memory_config().shard_spec.shape[0], pool_in4.memory_config().shard_spec.shape[1]],
-        #     core_grid=pool_in4.memory_config().shard_spec.grid,
-        #     strategy=ttnn.ShardStrategy.HEIGHT,
-        #     use_height_and_width_as_shard_shape=True,
-        # )
-        # dec4 = ttnn.to_memory_config(dec4, sharded_memory_config)
-        # sharded_memory_config = ttnn.create_sharded_memory_config(
-        #     [pool_in4.memory_config().shard_spec.shape[0], 2*pool_in4.memory_config().shard_spec.shape[1]],
-        #     core_grid=pool_in4.memory_config().shard_spec.grid,
-        #     strategy=ttnn.ShardStrategy.HEIGHT,
-        #     use_height_and_width_as_shard_shape=True,
-        # )
-        if dec4.is_sharded:
-            dec4 = ttnn.sharded_to_interleaved(dec4, ttnn.L1_MEMORY_CONFIG)
-        if enc4.is_sharded:
-            enc4 = ttnn.sharded_to_interleaved(enc4, ttnn.L1_MEMORY_CONFIG)
-        dec4 = ttnn.concat([dec4, enc4], dim=3, memory_config=ttnn.L1_MEMORY_CONFIG)  # 0.996
+        if is_shard_concat:
+            dec4 = sharded_concat([dec4, enc4])
+        else:
+            if dec4.is_sharded:
+                dec4 = ttnn.sharded_to_interleaved(dec4, ttnn.L1_MEMORY_CONFIG)
+            if enc4.is_sharded:
+                enc4 = ttnn.sharded_to_interleaved(enc4, ttnn.L1_MEMORY_CONFIG)
+            dec4 = ttnn.concat([dec4, enc4], dim=3, memory_config=ttnn.L1_MEMORY_CONFIG)  # 0.996
 
         ttnn.deallocate(enc4)
 
@@ -213,12 +234,15 @@ class TtUnet:
         dec3 = self.upconv3(device, dec4)  # 0.993
         ttnn.deallocate(dec4)
 
-        if dec3.is_sharded:
-            dec3 = ttnn.sharded_to_interleaved(dec3, ttnn.L1_MEMORY_CONFIG)
-        if enc3.is_sharded:
-            enc3 = ttnn.sharded_to_interleaved(enc3, ttnn.L1_MEMORY_CONFIG)
+        if is_shard_concat:
+            dec3 = sharded_concat([dec3, enc3])
+        else:
+            if dec3.is_sharded:
+                dec3 = ttnn.sharded_to_interleaved(dec3, ttnn.L1_MEMORY_CONFIG)
+            if enc3.is_sharded:
+                enc3 = ttnn.sharded_to_interleaved(enc3, ttnn.L1_MEMORY_CONFIG)
 
-        dec3 = ttnn.concat([dec3, enc3], dim=3, memory_config=ttnn.L1_MEMORY_CONFIG)  # 0.993
+            dec3 = ttnn.concat([dec3, enc3], dim=3, memory_config=ttnn.L1_MEMORY_CONFIG)  # 0.993
         ttnn.deallocate(enc3)
 
         dec3 = self.dec3_1(device, dec3)  # 0.9892
@@ -229,12 +253,16 @@ class TtUnet:
         dec2 = self.upconv2(device, dec3)  # 0.992
         ttnn.deallocate(dec3)
 
-        if dec2.is_sharded:
-            dec2 = ttnn.sharded_to_interleaved(dec2, ttnn.L1_MEMORY_CONFIG)
-        if enc2.is_sharded:
-            enc2 = ttnn.sharded_to_interleaved(enc2, ttnn.L1_MEMORY_CONFIG)
+        if is_shard_concat:
+            dec2 = sharded_concat([dec2, enc2])
+        else:
+            if dec2.is_sharded:
+                dec2 = ttnn.sharded_to_interleaved(dec2, ttnn.L1_MEMORY_CONFIG)
+            if enc2.is_sharded:
+                enc2 = ttnn.sharded_to_interleaved(enc2, ttnn.L1_MEMORY_CONFIG)
 
-        dec2 = ttnn.concat([dec2, enc2], dim=3, memory_config=ttnn.L1_MEMORY_CONFIG)  # 0.997
+            dec2 = ttnn.concat([dec2, enc2], dim=3, memory_config=ttnn.L1_MEMORY_CONFIG)  # 0.997
+
         ttnn.deallocate(enc2)
 
         dec2 = self.dec2_1(device, dec2)
@@ -253,11 +281,14 @@ class TtUnet:
             dec1 = ttnn.sharded_to_interleaved(dec1, ttnn.L1_MEMORY_CONFIG)
 
         dec1 = ttnn.concat([dec1, enc1], dim=3, memory_config=ttnn.L1_MEMORY_CONFIG)  # 0.9988
+
+        # dec1 = sharded_concat([dec1, enc1])
         ttnn.deallocate(enc1)
 
         dec1 = ttnn_to_torch(dec1)
         dec1 = dec1.permute(0, 3, 1, 2)
         dec1 = dec1.to(torch.float)
+        print(dec1.shape)
         dec1 = self.model.decoder1[:3](dec1)
         dec1 = dec1.permute(0, 2, 3, 1)
         dec1 = torch_to_ttnn(dec1, device)  # 0.9979
