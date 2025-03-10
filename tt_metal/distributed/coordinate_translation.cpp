@@ -63,6 +63,7 @@ const std::pair<CoordinateTranslationMap, MeshShape>& get_system_mesh_coordinate
         const std::unordered_map<size_t, std::pair<std::string, MeshShape>> system_mesh_translation_map = {
             {1, std::make_pair("device.json", MeshShape(1, 1))},
             {2, std::make_pair("N300.json", MeshShape(1, 2))},
+            {4, std::make_pair("2xN300.json", MeshShape(2, 2))},
             {8, std::make_pair("T3000.json", MeshShape(2, 4))},
             {32, std::make_pair(is_qg ? "QG.json" : "TG.json", MeshShape(8, 4))},
             {64, std::make_pair("TGG.json", MeshShape(8, 8))},
