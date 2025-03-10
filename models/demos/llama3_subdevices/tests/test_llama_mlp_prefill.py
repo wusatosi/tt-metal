@@ -52,11 +52,7 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, reset_seeds, ensu
     # return None
     state_dict = model_args.load_state_dict()
 
-    prefetcher_setup = TtLlamaPrefetcherSetup(
-        mesh_device,
-        n_tensors=0,
-        n_layers=1,
-    )
+    prefetcher_setup = TtLlamaPrefetcherSetup(mesh_device, n_tensors=0, n_layers=1, mode="prefill")
     mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
     crs = ttnn.CoreRangeSet([ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(6, 9))])
     tt_ccl = TT_CCL(mesh_device, crs, prefetcher_setup.worker_sub_device_id)
@@ -90,7 +86,7 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, reset_seeds, ensu
     torch_input = torch.randn(1, 1, seq_len, model_args.dim)
 
     logger.info("Run Llama_MLP_PF")
-    for i in range(3):
+    for i in range(1):
         # ttnn.dram_prefetcher(
         #     prefetcher_setup.get_input_tensors(),
         #     num_layers=1,

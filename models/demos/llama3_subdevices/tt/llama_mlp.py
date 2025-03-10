@@ -397,30 +397,33 @@ class TtLlamaMLP(LightweightModule):
             core_grid=None,  # FIXME: validate on TG ttnn.CoreGrid(y=8, x=8) if not pc_2 else None,
         )
         ttnn.deallocate(w2_in)
-        # w2_out_reduced = self.tt_ccl.line_all_reduce(
-        #     w2_out, cluster_axis=0, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
+        w2_out = ttnn.mul(w2_out, 0.0)
+        print("linear w2", w2_out)
+        w2_out_reduced = self.tt_ccl.line_all_reduce(
+            w2_out, cluster_axis=0, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
+        )
+        print("reduced w2", w2_out_reduced)
+        # w2_out_torch = ttnn.to_torch(
+        #     w2_out,
+        #     mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(0, 3), mesh_shape=(8, 4)),
         # )
-        w2_out_torch = ttnn.to_torch(
-            w2_out,
-            mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(0, 3), mesh_shape=(8, 4)),
-        )
-        w2_out_torch_reduced = torch.sum(w2_out_torch, dim=0, keepdim=True)
-        w2_out_reduced = ttnn.as_tensor(
-            w2_out_torch_reduced,
-            dtype=ttnn.bfloat16,
-            device=self.mesh_device,
-            mesh_mapper=ttnn.ShardTensor2dMesh(
-                mesh_device=self.mesh_device, dims=(None, 3), mesh_shape=list(self.mesh_device.shape)
-            ),
-            layout=ttnn.TILE_LAYOUT,
-            memory_config=ttnn.DRAM_MEMORY_CONFIG,
-        )
+        # w2_out_torch_reduced = torch.sum(w2_out_torch, dim=0, keepdim=True)
+        # w2_out_reduced = ttnn.as_tensor(
+        #     w2_out_torch_reduced,
+        #     dtype=ttnn.bfloat16,
+        #     device=self.mesh_device,
+        #     mesh_mapper=ttnn.ShardTensor2dMesh(
+        #         mesh_device=self.mesh_device, dims=(None, 3), mesh_shape=list(self.mesh_device.shape)
+        #     ),
+        #     layout=ttnn.TILE_LAYOUT,
+        #     memory_config=ttnn.DRAM_MEMORY_CONFIG,
+        # )
 
-        # Ensure dim 0 and 1 are 1
-        original_shape = w2_out_reduced.shape
-        w2_out_reduced = ttnn.reshape(
-            w2_out_reduced, (1, 1, original_shape[-4] * original_shape[-3] * original_shape[-2], original_shape[-1])
-        )
+        # # Ensure dim 0 and 1 are 1
+        # original_shape = w2_out_reduced.shape
+        # w2_out_reduced = ttnn.reshape(
+        #     w2_out_reduced, (1, 1, original_shape[-4] * original_shape[-3] * original_shape[-2], original_shape[-1])
+        # )
 
         # ttnn.deallocate(w2_out)
         return w2_out_reduced

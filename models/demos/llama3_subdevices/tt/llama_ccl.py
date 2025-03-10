@@ -173,15 +173,17 @@ class TT_CCL:
             subdevice_id=self.worker_sub_device_id,
             math_op=ttnn.ReduceType.Sum,
         )
-        ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
+        # ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
 
-        # self.gather_idx[cluster_axis] = (self.gather_idx[cluster_axis] + 1) % self.num_cbs
+        self.gather_idx[cluster_axis] = (self.gather_idx[cluster_axis] + 1) % self.num_cbs
         # self.buffer_idx[cluster_axis] = (self.buffer_idx[cluster_axis] + 1) % self.num_cbs
         return output_tensor_mesh
 
     def line_reduce_scatter(
         self, input_tensor_mesh, memory_config, dim, cluster_axis, num_links=1, math_op=ttnn.ReduceType.Sum
     ):
+        ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
+
         ttnn_tensor_out = ttnn.experimental.reduce_scatter_async(
             input_tensor_mesh,
             dim,
@@ -197,7 +199,7 @@ class TT_CCL:
         )
         self.from_sem_flag = (self.from_sem_flag + 1) % self.num_cbs
         self.to_sem_flag = (self.to_sem_flag + 1) % self.num_cbs
-        # ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
+        ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
         return ttnn_tensor_out
 
     def line_all_gather(self, input_tensor_mesh, dim, cluster_axis, memory_config, num_links=1):
