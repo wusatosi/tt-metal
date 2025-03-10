@@ -60,6 +60,17 @@ hardcoded_matmul_config_linear = {
         fused_activation=None,
         mcast_in0=True,
     ),
+    32: ttnn.MatmulMultiCoreReuseMultiCast1DProgramConfig(
+        compute_with_storage_grid_size=(8, 4),
+        in0_block_w=2,
+        out_subblock_h=1,
+        out_subblock_w=1,
+        per_core_M=1,
+        per_core_N=1,
+        fuse_batch=True,
+        fused_activation=None,
+        mcast_in0=True,
+    ),
 }
 
 ops_parallel_config = {
@@ -850,6 +861,7 @@ class resnet50:
 
     ## merged runs (first and optimized)
     def run(self, input_tensor, device, ops_parallel_config, conv_op_cache={}) -> ttnn.Tensor:
+        self.batch_size = 16
         is_first_run = False
         if not ops_parallel_config:
             is_first_run = True

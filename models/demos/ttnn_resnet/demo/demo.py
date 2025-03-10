@@ -58,7 +58,7 @@ def run_resnet_imagenet_inference(
         final_output_mem_config=ttnn.L1_MEMORY_CONFIG,
         model_location_generator=model_location_generator,
     )
-    ttnn.synchronize_device(device)
+    ttnn.synchronize_devices(device)
 
     # load ImageNet batch by batch
     # and run inference
@@ -69,7 +69,9 @@ def run_resnet_imagenet_inference(
         tt_inputs_host, input_mem_config = test_infra.setup_l1_sharded_input(device, inputs)
         test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
         tt_output = test_infra.run()
-        tt_output = ttnn.from_device(tt_output, blocking=True).to_torch().to(torch.float)
+        tt_output = ttnn.from_device(tt_output, blocking=True)
+        tt_output = ttnn.to_torch(tt_output, mesh_composer=ttnn.ConcatMeshToTensor(device, dim=0)).to(torch.float)
+        test_infra.validate()
         prediction = tt_output[:, 0, 0, :].argmax(dim=-1)
         for i in range(batch_size):
             predictions.append(imagenet_label_dict[prediction[i].item()])

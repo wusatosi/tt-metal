@@ -201,6 +201,8 @@ class ResNet50TestInfra:
         self.dealloc_input = dealloc_input
         self.final_output_mem_config = final_output_mem_config
         self.inputs_mesh_mapper, self.weights_mesh_mapper, self.output_mesh_composer = self.get_mesh_mappers(device)
+        self.model_location_generator = model_location_generator
+        self.use_pretrained_weight = use_pretrained_weight
 
         self.resnet50_first_conv_kernel_size = 3
         self.resnet50_first_conv_stride = 2
@@ -282,6 +284,27 @@ class ResNet50TestInfra:
         num_devices = 1 if isinstance(device, ttnn.Device) else device.get_num_devices()
         # torch tensor
         torch_input_tensor = self.torch_input_tensor if torch_input_tensor is None else torch_input_tensor
+
+        torch_model = (
+            load_resnet50_model(self.model_location_generator).eval()
+            if self.use_pretrained_weight
+            else torchvision.models.resnet50().eval()
+        )
+
+        self.torch_input_tensor = torch_input_tensor
+        parameters = preprocess_model_parameters(
+            initialize_model=lambda: torch_model,
+            custom_preprocessor=create_custom_mesh_preprocessor(self.weights_mesh_mapper),
+            device=None,
+        )
+
+        torch_model.to(torch.bfloat16)
+        self.torch_input_tensor = self.torch_input_tensor.to(torch.bfloat16)
+
+        ## golden
+
+        self.torch_output_tensor = torch_model(self.torch_input_tensor)
+
         if num_devices > 1:
             n, c, h, w = torch_input_tensor.shape
             n = n // num_devices
@@ -332,7 +355,10 @@ class ResNet50TestInfra:
 
     def validate(self, output_tensor=None):
         output_tensor = self.output_tensor if output_tensor is None else output_tensor
-        output_tensor = ttnn.to_torch(output_tensor, device=self.device, mesh_composer=self.output_mesh_composer)
+        output_tensor = ttnn.from_device(output_tensor, blocking=True)
+        output_tensor = ttnn.to_torch(output_tensor, device=self.device, mesh_composer=self.output_mesh_composer).to(
+            torch.float
+        )
         output_tensor = torch.reshape(output_tensor, (output_tensor.shape[0], 1000))
 
         batch_size = output_tensor.shape[0]
