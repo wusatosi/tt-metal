@@ -111,7 +111,7 @@ void DispatchQueryManager::reset(uint8_t num_hw_cqs) {
         (num_hw_cqs == 1 or dispatch_core_config().get_dispatch_core_type() == DispatchCoreType::WORKER);
     distributed_dispatcher_ =
         (num_hw_cqs == 1 and dispatch_core_config().get_dispatch_core_type() == DispatchCoreType::ETH);
-    go_signal_noc_ = dispatch_s_enabled_ ? NOC::NOC_1 : NOC::NOC_0;
+    go_signal_noc_ = dispatch_s_enabled_ ? NOC::NOC_0 : NOC::NOC_1;
     // Reset the dispatch cores reported by the manager. Will be re-populated when the associated query is made
     dispatch_cores_ = {};
     // Populate dispatch and storage
