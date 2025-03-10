@@ -318,59 +318,60 @@ class TtLlamaMLP(LightweightModule):
             program_config=pc_3,
             memory_config=x.memory_config(),
         )
-        ttnn.deallocate(x)
+
+        # ttnn.deallocate(x)
 
         # print("linear w3", w3_out)
 
         try:
-            # w1_out_reduced = self.tt_ccl.line_all_reduce(
-            #     w1_out,
-            #     cluster_axis=1,
-            #     num_links=1,
-            #     memory_config=w1_out.memory_config(),
-            # )
-            # # print("reduced w1", w1_out_reduced)
-            # w3_out_reduced = self.tt_ccl.line_all_reduce(
-            #     w3_out,
-            #     cluster_axis=1,
-            #     num_links=1,
-            #     memory_config=w3_out.memory_config(),
-            # )
-            # print("reduced w3", w3_out_reduced)
-            w1_out_torch = ttnn.to_torch(
+            w1_out_reduced = self.tt_ccl.line_all_reduce(
                 w1_out,
-                mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(3, 0), mesh_shape=(8, 4)),
-            )  # [4, 1, 32, 12288]
-
-            w1_out_torch_reduced = torch.sum(w1_out_torch, dim=0, keepdim=True)  # [1, 1, 32, 12288]
-
-            w1_out_reduced = ttnn.as_tensor(
-                w1_out_torch_reduced,
-                dtype=ttnn.bfloat16,
-                device=self.mesh_device,
-                mesh_mapper=ttnn.ShardTensor2dMesh(
-                    mesh_device=self.mesh_device, dims=(3, None), mesh_shape=list(self.mesh_device.shape)
-                ),
-                layout=ttnn.TILE_LAYOUT,
+                cluster_axis=1,
+                num_links=3,
                 memory_config=w1_out.memory_config(),
             )
-
-            w3_out_torch = ttnn.to_torch(
+            # print("reduced w1", w1_out_reduced)
+            w3_out_reduced = self.tt_ccl.line_all_reduce(
                 w3_out,
-                mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(3, 0), mesh_shape=(8, 4)),
-            )
-
-            w3_out_torch_reduced = torch.sum(w3_out_torch, dim=0, keepdim=True)
-            w3_out_reduced = ttnn.as_tensor(
-                w3_out_torch_reduced,
-                dtype=ttnn.bfloat16,
-                device=self.mesh_device,
-                mesh_mapper=ttnn.ShardTensor2dMesh(
-                    mesh_device=self.mesh_device, dims=(3, None), mesh_shape=list(self.mesh_device.shape)
-                ),
-                layout=ttnn.TILE_LAYOUT,
+                cluster_axis=1,
+                num_links=3,
                 memory_config=w3_out.memory_config(),
             )
+            # print("reduced w3", w3_out_reduced)
+            # w1_out_torch = ttnn.to_torch(
+            #     w1_out,
+            #     mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(3, 0), mesh_shape=(8, 4)),
+            # )  # [4, 1, 32, 12288]
+
+            # w1_out_torch_reduced = torch.sum(w1_out_torch, dim=0, keepdim=True)  # [1, 1, 32, 12288]
+
+            # w1_out_reduced = ttnn.as_tensor(
+            #     w1_out_torch_reduced,
+            #     dtype=ttnn.bfloat16,
+            #     device=self.mesh_device,
+            #     mesh_mapper=ttnn.ShardTensor2dMesh(
+            #         mesh_device=self.mesh_device, dims=(3, None), mesh_shape=list(self.mesh_device.shape)
+            #     ),
+            #     layout=ttnn.TILE_LAYOUT,
+            #     memory_config=w1_out.memory_config(),
+            # )
+
+            # w3_out_torch = ttnn.to_torch(
+            #     w3_out,
+            #     mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(3, 0), mesh_shape=(8, 4)),
+            # )
+
+            # w3_out_torch_reduced = torch.sum(w3_out_torch, dim=0, keepdim=True)
+            # w3_out_reduced = ttnn.as_tensor(
+            #     w3_out_torch_reduced,
+            #     dtype=ttnn.bfloat16,
+            #     device=self.mesh_device,
+            #     mesh_mapper=ttnn.ShardTensor2dMesh(
+            #         mesh_device=self.mesh_device, dims=(3, None), mesh_shape=list(self.mesh_device.shape)
+            #     ),
+            #     layout=ttnn.TILE_LAYOUT,
+            #     memory_config=w3_out.memory_config(),
+            # )
         except Exception as e:
             print(e)
             self.tt_ccl.close()
@@ -382,10 +383,9 @@ class TtLlamaMLP(LightweightModule):
             dtype=ttnn.bfloat8_b,
             memory_config=w1_out.memory_config(),
         )
-        # w2_in = w1_out
 
-        ttnn.deallocate(w3_out)
-        ttnn.deallocate(w1_out)
+        # ttnn.deallocate(w3_out)
+        # ttnn.deallocate(w1_out)
 
         w2_out = ttnn.linear(
             w2_in,
@@ -396,13 +396,29 @@ class TtLlamaMLP(LightweightModule):
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
             core_grid=None,  # FIXME: validate on TG ttnn.CoreGrid(y=8, x=8) if not pc_2 else None,
         )
-        ttnn.deallocate(w2_in)
-        w2_out = ttnn.mul(w2_out, 0.0)
-        print("linear w2", w2_out)
+        # ttnn.synchronize_devices(self.mesh_device)
+        # print("linear w2", w2_out)
+        # ttnn.deallocate(w2_out)
+        # del w2_out
+        # ttnn.synchronize_devices(self.mesh_device)
+
+        # x = ttnn.mul(x, 0.0)
+        # w2_out = x
+        # print("linear w2", w2_out)
         w2_out_reduced = self.tt_ccl.line_all_reduce(
-            w2_out, cluster_axis=0, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG
+            w2_out, cluster_axis=0, num_links=3, memory_config=ttnn.DRAM_MEMORY_CONFIG
         )
-        print("reduced w2", w2_out_reduced)
+        # print("reduced w2", w2_out_reduced)
+        # w2_out_scattered = self.tt_ccl.line_reduce_scatter(
+        #     w2_out, cluster_axis=0, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG, dim=3
+        # )
+        # print("scattered w2", w2_out_scattered)
+        # # w2_out_scattered = ttnn.mul(w2_out_scattered, 0.0)
+        # w2_out_reduced = self.tt_ccl.line_all_gather(
+        #     w2_out_scattered, cluster_axis=0, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG, dim=3
+        # )
+        # print("reduced w2", w2_out_reduced)
+
         # w2_out_torch = ttnn.to_torch(
         #     w2_out,
         #     mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=(0, 3), mesh_shape=(8, 4)),

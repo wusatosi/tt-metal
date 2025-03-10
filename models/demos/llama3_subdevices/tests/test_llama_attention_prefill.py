@@ -137,6 +137,7 @@ def test_llama_attention_inference(
         mesh_device,
         n_tensors=0,
         n_layers=1,
+        mode="prefill",
     )
     mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
     crs = ttnn.CoreRangeSet([ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(6, 9))])

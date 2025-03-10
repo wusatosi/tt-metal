@@ -36,8 +36,6 @@ class TT_CCL:
             assert enable_persistent_fabric
 
         self.num_cbs = 2
-        self.from_remote_semaphore_handles = []
-        self.to_remote_semaphore_handles = []
 
         # Double buffered on each axis
         self.gather_semaphore_handles = [[], []]
@@ -175,7 +173,7 @@ class TT_CCL:
         )
         # ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
 
-        self.gather_idx[cluster_axis] = (self.gather_idx[cluster_axis] + 1) % self.num_cbs
+        # self.gather_idx[cluster_axis] = (self.gather_idx[cluster_axis] + 1) % self.num_cbs
         # self.buffer_idx[cluster_axis] = (self.buffer_idx[cluster_axis] + 1) % self.num_cbs
         return output_tensor_mesh
 
@@ -189,16 +187,20 @@ class TT_CCL:
             dim,
             cluster_axis=cluster_axis,
             mesh_device=self.mesh_device,
-            from_remote_multi_device_global_semaphore=self.from_remote_semaphore_handles[self.from_sem_flag],
-            to_remote_multi_device_global_semaphore=self.to_remote_semaphore_handles[self.to_sem_flag],
+            from_remote_multi_device_global_semaphore=self.from_semaphore_handles[cluster_axis][
+                self.gather_idx[cluster_axis]
+            ],
+            to_remote_multi_device_global_semaphore=self.to_semaphore_handles[cluster_axis][
+                self.gather_idx[cluster_axis]
+            ],
             math_op=math_op,
             memory_config=memory_config,
             topology=ttnn.Topology.Linear,
             num_links=num_links,
             subdevice_id=self.worker_sub_device_id,
         )
-        self.from_sem_flag = (self.from_sem_flag + 1) % self.num_cbs
-        self.to_sem_flag = (self.to_sem_flag + 1) % self.num_cbs
+        # self.from_sem_flag = (self.from_sem_flag + 1) % self.num_cbs
+        # self.to_sem_flag = (self.to_sem_flag + 1) % self.num_cbs
         ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
         return ttnn_tensor_out
 
@@ -216,7 +218,7 @@ class TT_CCL:
             enable_persistent_fabric_mode=self.enable_persistent_fabric,
         )
         self.gather_idx[cluster_axis] = (self.gather_idx[cluster_axis] + 1) % self.num_cbs
-        # ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
+        ttnn.synchronize_devices(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
         return ttnn_tensor_out
 
     def close(self):
