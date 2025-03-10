@@ -29,6 +29,8 @@ enum DispatchWriteOffsets {
     DISPATCH_WRITE_OFFSET_ETH_L1_CONFIG_BASE = 2,
 };
 
+constexpr uint32_t kDeviceToPrint = 0;
+
 uint32_t configure_rta_offsets_for_kernel_groups(
     uint32_t programmable_core_type_index,
     std::unordered_map<KernelHandle, std::shared_ptr<Kernel>>& kernels,
@@ -551,6 +553,30 @@ void assemble_runtime_args_commands(
     program_command_sequence.runtime_args_command_sequences = {};
     uint32_t command_count = 0;
     const DeviceCommandCalculator calculator;
+    if (device->id() == kDeviceToPrint) {
+        fmt::println(stderr, "{}", "{");
+        fmt::println(stderr, "  device {}", device->id());
+        fmt::println(stderr, "  program id {}", program.get_runtime_id());
+#if 0
+        for (size_t kernel_id = 0; kernel_id < program.num_kernels(); kernel_id++) {
+            auto kernel = detail::GetKernel(program, kernel_id);
+            fmt::println(stderr, "  {}", kernel->get_full_kernel_name());
+        }
+#endif
+        for (uint32_t programmable_core_type_index = 0;
+             programmable_core_type_index < hal.get_programmable_core_type_count();
+             programmable_core_type_index++) {
+            for (auto& kg : program.get_kernel_groups(programmable_core_type_index)) {
+                fmt::println(stderr, "  Kernel group targeting cores {}", kg->core_ranges);
+                for (auto& kernel_id : kg->kernel_ids) {
+                    if (kernel_id) {
+                        auto kernel = detail::GetKernel(program, *kernel_id);
+                        fmt::println(stderr, "    {}", kernel->get_full_kernel_name());
+                    }
+                }
+            }
+        }
+    }
 
     // Unique RTAs
     for (uint32_t programmable_core_type_index = 0;
@@ -650,6 +676,14 @@ void assemble_runtime_args_commands(
                                 .noc_xy_addr = device->get_noc_unicast_encoding(noc_index, virtual_core)});
                         }
                     }
+                    if (device->id() == kDeviceToPrint) {
+                        fmt::println(
+                            stderr,
+                            "  Sending unique RTAs size {} to core range {} - {} cores",
+                            kg->total_rta_size,
+                            core_range,
+                            core_range.size());
+                    }
                 }
                 uint32_t rta_offset = program.get_program_config(index).rta_offset;
                 generate_runtime_args_cmds(
@@ -734,6 +768,13 @@ void assemble_runtime_args_commands(
                             .noc_xy_addr =
                                 device->get_noc_multicast_encoding(noc_index, std::get<CoreRange>(mcast_dests.first)),
                             .num_mcast_dests = mcast_dests.second});
+                        if (device->id() == kDeviceToPrint) {
+                            fmt::println(
+                                stderr,
+                                "  Sending CRTAs size {} to core range {}",
+                                common_size,
+                                std::get<CoreRange>(mcast_dests.first));
+                        }
                     }
                 }
 
@@ -824,6 +865,13 @@ void assemble_device_commands(
                     auto& [range, dests] = dst_noc_info;
                     auto noc_xy_addr = device->get_noc_multicast_encoding(noc_index, std::get<CoreRange>(range));
                     uint32_t start_addr = transfer_info.dst_base_addr + program.get_program_config(index).sem_offset;
+                    if (device->id() == kDeviceToPrint) {
+                        fmt::println(
+                            stderr,
+                            "  Sending multicast semaphores size {} to {}",
+                            transfer_info.data.size(),
+                            std::get<CoreRange>(range));
+                    }
                     RecordDispatchData(program, DISPATCH_DATA_SEMAPHORE, transfer_info.data.size() * sizeof(uint32_t));
                     batched_transfers[std::make_pair(noc_xy_addr, dests)][start_addr] = std::vector<Transfer>{
                         {{.start = start_addr,
@@ -859,6 +907,13 @@ void assemble_device_commands(
                             device->get_noc_unicast_encoding(noc_index, std::get<CoreCoord>(dst_noc_info.first))});
                     unicast_sem_data[i].emplace_back(
                         transfer_info.data.data(), transfer_info.data.size() * sizeof(uint32_t));
+                    if (device->id() == kDeviceToPrint) {
+                        fmt::println(
+                            stderr,
+                            "  Sending unicast semaphores size {} to {}",
+                            transfer_info.data.size(),
+                            std::get<CoreCoord>(dst_noc_info.first));
+                    }
                 }
             }
             calculator.insert_write_packed_payloads<CQDispatchWritePackedUnicastSubCmd>(
@@ -918,6 +973,9 @@ void assemble_device_commands(
             auto noc_xy_addr = device->get_noc_multicast_encoding(noc_index, CoreRange(virtual_start, virtual_end));
             uint32_t start_addr = program.get_program_config(index).cb_offset;
             RecordDispatchData(program, DISPATCH_DATA_CB_CONFIG, max_index * sizeof(uint32_t));
+            if (device->id() == kDeviceToPrint) {
+                fmt::println(stderr, "  Sending multicast CBs size {} to {}", max_index * sizeof(uint32_t), core_range);
+            }
 
             batched_transfers[std::make_pair(noc_xy_addr, core_range.size())][start_addr] = std::vector<Transfer>{
                 {.start = start_addr,
@@ -972,6 +1030,10 @@ void assemble_device_commands(
                     .length = (uint16_t)size,
                     .num_mcast_dests = transfer_set.first.second,
                     .flags = CQ_DISPATCH_CMD_PACKED_WRITE_LARGE_FLAG_NONE});
+                if (device->id() == kDeviceToPrint) {
+                    fmt::println(
+                        stderr, "  Combined Sem/CB write size {} to noc_xy_addr {}", size, transfer_set.first.first);
+                }
 
                 // Modify the start addresses to be relative to the dispatch buffer.
                 uint32_t new_start =
@@ -1076,6 +1138,13 @@ void assemble_device_commands(
                 uint32_t aligned_length =
                     tt::align(kg_transfer_info.lengths[kernel_idx], hal.get_alignment(HalMemType::DRAM));
                 uint32_t padding = aligned_length - kg_transfer_info.lengths[kernel_idx];
+                if (device->id() == kDeviceToPrint) {
+                    fmt::println(
+                        stderr,
+                        "  Sending Kernel binary binary size {} to {}",
+                        aligned_length,
+                        std::get<CoreRange>(cores));
+                }
                 while (aligned_length != 0) {
                     if (kernel_bins_dispatch_subcmds.empty() ||
                         kernel_bins_dispatch_subcmds.back().size() == CQ_DISPATCH_CMD_PACKED_WRITE_LARGE_MAX_SUB_CMDS) {
@@ -1105,6 +1174,7 @@ void assemble_device_commands(
                         .flags = CQ_DISPATCH_CMD_PACKED_WRITE_LARGE_FLAG_NONE});
                     RecordDispatchData(
                         program, DISPATCH_DATA_BINARY, write_length, kg_transfer_info.riscvs[kernel_idx]);
+
                     kernel_config_buffer_offset += write_length;
 
                     kernel_bins_prefetch_subcmds.back().emplace_back(CQPrefetchRelayPagedPackedSubCmd{
@@ -1158,6 +1228,9 @@ void assemble_device_commands(
                 device->virtual_core_from_logical_core(core_range.start_coord, kernel_group->get_core_type());
             CoreCoord virtual_end =
                 device->virtual_core_from_logical_core(core_range.end_coord, kernel_group->get_core_type());
+            if (device->id() == kDeviceToPrint) {
+                fmt::println(stderr, "  Sending launch message size {} to {}", go_signal_sizeB, core_range);
+            }
 
             multicast_go_signal_sub_cmds.emplace_back(CQDispatchWritePackedMulticastSubCmd{
                 .noc_xy_addr = device->get_noc_multicast_encoding(noc_index, CoreRange(virtual_start, virtual_end)),
@@ -1195,6 +1268,13 @@ void assemble_device_commands(
                         unicast_go_signal_sub_cmds.emplace_back(CQDispatchWritePackedUnicastSubCmd{
                             .noc_xy_addr = device->get_noc_unicast_encoding(noc_index, virtual_coord)});
                         unicast_go_signal_data.emplace_back(launch_message_data, go_signal_sizeB);
+                        if (device->id() == kDeviceToPrint) {
+                            fmt::println(
+                                stderr,
+                                "  Sending launch message size {} to virtual coord {}",
+                                go_signal_sizeB,
+                                virtual_coord);
+                        }
                     }
                 }
             }
@@ -1434,6 +1514,9 @@ void assemble_device_commands(
              ->mcast;
 
     TT_ASSERT(device_command_sequence.size_bytes() == device_command_sequence.write_offset_bytes());
+    if (device->id() == kDeviceToPrint) {
+        fmt::println(stderr, "{}", "}");
+    }
 }
 
 void initialize_worker_config_buf_mgr(WorkerConfigBufferMgr& config_buffer_mgr) {
@@ -1452,6 +1535,8 @@ void initialize_worker_config_buf_mgr(WorkerConfigBufferMgr& config_buffer_mgr) 
 }
 
 void reserve_space_in_kernel_config_buffer(
+    uint32_t device_id,
+    uint32_t program_id,
     WorkerConfigBufferMgr& config_buffer_mgr,
     const std::vector<uint32_t>& program_config_sizes,
     ProgramBinaryStatus program_binary_status,
@@ -1482,6 +1567,23 @@ void reserve_space_in_kernel_config_buffer(
         if (!memory_reservation.first.need_sync) {
             dispatch_md.stall_first = false;
             dispatch_md.stall_before_program = true;
+            //   if (device_id == kDeviceToPrint) {
+            //      fmt::println(stderr, "Program {} launch message stall at {}, no ringbuffer stall", program_id,
+            //      reservation.first.sync_count);
+            // }
+        } else {
+            if (device_id == kDeviceToPrint) {
+                if (memory_reservation.first.sync_count - reservation.first.sync_count == 0) {
+                    uint32_t stall_distance =
+                        (expected_num_workers_completed - memory_reservation.first.sync_count) / num_program_workers;
+                    fmt::println(
+                        stderr,
+                        "Program {} Stall distance approximatedly {}, Ringbuffer too small",
+                        program_id,
+                        stall_distance,
+                        reservation.first.sync_count);
+                }
+            }
         }
 
         // TODO: config_buffer_mgr is stateful so code below restores original reservation state
