@@ -265,6 +265,7 @@ static inline json get_kernels_json(chip_id_t device_id, const Program& program)
     ret["compute_kernels"] = computeKernels;
     ret["datamovement_kernels"] = datamovementKernels;
     ret["kernel_sizes"] = kernelSizes;
+    ret["program_dispatch_stats"] = program.get_program_dispatch_stat_string();
     return ret;
 }
 

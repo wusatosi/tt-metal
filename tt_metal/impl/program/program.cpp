@@ -226,48 +226,51 @@ class Program_ {
     CommandQueue* get_last_used_command_queue() const;
     void populate_dispatch_data(IDevice* device);
 
-   private:
-       CommandQueue* last_used_command_queue_for_testing = nullptr;
+    std::string get_program_dispatch_stat_string() const { return this->program_dispatch_stat_string_; }
+    void set_program_dispatch_stat_string(std::string str) { this->program_dispatch_stat_string_ = std::move(str); }
 
-       // Buffers temporarily owned by the program
-       std::vector<std::shared_ptr<Buffer>> owned_buffer_pool = {};
+private:
+    CommandQueue* last_used_command_queue_for_testing = nullptr;
 
-       // The buffer that holds the kernel/binaries/etc for this program
-       std::unordered_map<chip_id_t, std::shared_ptr<Buffer>> kernels_buffer_;
-       ProgramTransferInfo program_transfer_info;
+    // Buffers temporarily owned by the program
+    std::vector<std::shared_ptr<Buffer>> owned_buffer_pool = {};
 
-       bool finalized_;
-       // Used only when devices do not have virtualization enabled and used to check that programs are only rerun on
-       // the same device
-       std::optional<uint64_t> cached_device_hash_;
+    // The buffer that holds the kernel/binaries/etc for this program
+    std::unordered_map<chip_id_t, std::shared_ptr<Buffer>> kernels_buffer_;
+    ProgramTransferInfo program_transfer_info;
 
-       // TODO: Should map based on the hash of the configured sub-devices
-       // This way we can cache it agnostic of the device
-       std::unordered_map<chip_id_t, std::unordered_map<SubDeviceManagerId, std::vector<SubDeviceId>>> sub_device_ids_;
+    bool finalized_;
+    // Used only when devices do not have virtualization enabled and used to check that programs are only rerun on
+    // the same device
+    std::optional<uint64_t> cached_device_hash_;
 
-       struct CircularBufferAllocator {
-           CircularBufferAllocator(const CoreRange& core_range_) : core_range(core_range_) {}
+    // TODO: Should map based on the hash of the configured sub-devices
+    // This way we can cache it agnostic of the device
+    std::unordered_map<chip_id_t, std::unordered_map<SubDeviceManagerId, std::vector<SubDeviceId>>> sub_device_ids_;
 
-           // Circular buffers are created and allocated at core range granularity
-           CoreRange core_range;
+    struct CircularBufferAllocator {
+        CircularBufferAllocator(const CoreRange& core_range_) : core_range(core_range_) {}
 
-           // Holds vector of addresses where circular buffers are allocated [start, end)
-           // There are multiple ranges because per core L1 regions are not in lockstep but circular buffers spanning
-           // multiple cores must share the same address To enable this, circular buffer address is the maximum address
-           // amongst all of its target cores This vector is sorted from lower to higher address spaces
-           std::vector<std::pair<uint64_t, uint64_t>> l1_regions;
+        // Circular buffers are created and allocated at core range granularity
+        CoreRange core_range;
 
-           // Returns address for next circular buffer
-           // Circular buffers are placed sequentially on a core so the next available address gets appended to the last
-           // L1 region
-           uint64_t get_cb_region_end() const { return this->l1_regions.empty() ? 0 : this->l1_regions.back().second; }
+        // Holds vector of addresses where circular buffers are allocated [start, end)
+        // There are multiple ranges because per core L1 regions are not in lockstep but circular buffers spanning
+        // multiple cores must share the same address To enable this, circular buffer address is the maximum address
+        // amongst all of its target cores This vector is sorted from lower to higher address spaces
+        std::vector<std::pair<uint64_t, uint64_t>> l1_regions;
 
-           // If address is the end of the last L1 region, the last region is extended by size bytes,
-           //  otherwise address must be higher than existing regions and a new L1 region [address, size) is added
-           void mark_address(uint64_t address, uint64_t size, uint64_t base_address);
+        // Returns address for next circular buffer
+        // Circular buffers are placed sequentially on a core so the next available address gets appended to the last
+        // L1 region
+        uint64_t get_cb_region_end() const { return this->l1_regions.empty() ? 0 : this->l1_regions.back().second; }
 
-           // Reset when circular buffer allocation is invalidated
-           void reset_available_addresses() { this->l1_regions.clear(); }
+        // If address is the end of the last L1 region, the last region is extended by size bytes,
+        //  otherwise address must be higher than existing regions and a new L1 region [address, size) is added
+        void mark_address(uint64_t address, uint64_t size, uint64_t base_address);
+
+        // Reset when circular buffer allocation is invalidated
+        void reset_available_addresses() { this->l1_regions.clear(); }
        };
 
     uint64_t id; // Need to make non-const due to move constructor
@@ -299,6 +302,8 @@ class Program_ {
     std::vector<ProgramConfig> program_configs_;
     // Counts how much space is needed for each core + each launch buffer msg queue.
     std::vector<uint32_t> program_config_sizes_;
+
+    std::string program_dispatch_stat_string_;
 
     // The rta_updates from one cached command sequence may reference data in another cached command sequence.
     std::unordered_map<uint64_t, ProgramCommandSequence> cached_program_command_sequences_;
@@ -519,6 +524,12 @@ std::unordered_map<KernelHandle, std::shared_ptr<Kernel>>& detail::Program_::get
 
 std::unordered_map<KernelHandle, std::shared_ptr<Kernel>>& Program::get_kernels(uint32_t programmable_core_type_index) {
     return pimpl_->get_kernels(programmable_core_type_index);
+}
+
+std::string Program::get_program_dispatch_stat_string() const { return pimpl_->get_program_dispatch_stat_string(); }
+
+void Program::set_program_dispatch_stat_string(std::string str) {
+    pimpl_->set_program_dispatch_stat_string(std::move(str));
 }
 
 KernelGroup *detail::Program_::kernels_on_core(const CoreCoord &core, uint32_t programmable_core_type_index) {
