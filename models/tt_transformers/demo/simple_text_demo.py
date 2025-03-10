@@ -644,7 +644,7 @@ def test_demo_text(
 
     # Benchmark targets
     supported_models = ["Llama3.2-1B", "Llama3.2-3B", "Llama3.1-8B", "Llama3.2-11B", "Llama3.1-70B"]
-    supported_devices = ["N150", "N300", "T3K", "TG"]
+    supported_devices = ["N150", "N300", "T3K", "TG", "P150x4"]
 
     tt_device_name = model_args.device_name
 
@@ -667,6 +667,7 @@ def test_demo_text(
             "N300_Llama3.1-8B": 1050,
             "T3K_Llama3.1-8B": 1050,
             "TG_Llama3.1-8B": 1050,
+            "P150x4_Llama3.1-8B": 1050,  # TODO Update target
             #
             "N150_Llama3.2-11B": 1050,  # TODO Update target
             "N300_Llama3.2-11B": 1050,  # TODO Update target
@@ -677,6 +678,7 @@ def test_demo_text(
             "N300_Llama3.1-70B": 1050,  # TODO Update target
             "T3K_Llama3.1-70B": 1050,  # TODO Update target
             "TG_Llama3.1-70B": 1050,  # TODO Update target
+            "P150x4_Llama3.1-70B": 1050,  # TODO Update target
         }[f"{tt_device_name}_{model_args.base_model_name}"]
 
         # Set the target decode timesfor every combination of device and model
@@ -695,6 +697,7 @@ def test_demo_text(
             "N300_Llama3.1-8B": 38,
             "T3K_Llama3.1-8B": 45,
             "TG_Llama3.1-8B": 45,  # TODO Update target
+            "P150x4_Llama3.1-8B": 40,  # TODO Update target
             #
             "N150_Llama3.2-11B": 23,
             "N300_Llama3.2-11B": 38,  # TODO Update target
@@ -703,6 +706,7 @@ def test_demo_text(
             #
             "T3K_Llama3.1-70B": 20,  # TODO Update target
             "TG_Llama3.1-70B": 20,  # TODO Update target
+            "P150x4_Llama3.1-70B": 20,  # TODO Update target
         }[f"{tt_device_name}_{model_args.base_model_name}"]
 
         target_decode_tok_s = target_decode_tok_s_u * batch_size
