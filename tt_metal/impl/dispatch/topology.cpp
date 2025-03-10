@@ -45,9 +45,9 @@ void increment_node_ids(DispatchKernelNode& node, uint32_t inc) {
 // Downstream: send data to tunnel and/or prefetch_d variant and/or dispatch_d
 //
 constexpr noc_selection_t k_prefetcher_noc = {
-    .non_dispatch_noc = tt::tt_metal::NOC::NOC_0,
-    .upstream_noc = tt::tt_metal::NOC::NOC_0,
-    .downstream_noc = tt::tt_metal::NOC::NOC_0,
+    .non_dispatch_noc = tt::tt_metal::NOC::NOC_1,
+    .upstream_noc = tt::tt_metal::NOC::NOC_1,
+    .downstream_noc = tt::tt_metal::NOC::NOC_1,
 };
 
 //
@@ -60,8 +60,8 @@ constexpr noc_selection_t k_prefetcher_noc = {
 // Downstream: relay data from dispatch_d to dispatch_h (return to host) and/or dispatch_s
 //
 constexpr noc_selection_t k_dispatcher_noc = {
-    .non_dispatch_noc = tt::tt_metal::NOC::NOC_0,
-    .upstream_noc = tt::tt_metal::NOC::NOC_1,
+    .non_dispatch_noc = tt::tt_metal::NOC::NOC_1,
+    .upstream_noc = tt::tt_metal::NOC::NOC_0,
     .downstream_noc = dispatch_downstream_noc,
 };
 
@@ -75,9 +75,9 @@ constexpr noc_selection_t k_dispatcher_noc = {
 // Downstream: relay data from dispatch_d to dispatch_h (return to host) and/or dispatch_s
 //
 constexpr noc_selection_t k_dispatcher_s_noc = {
-    .non_dispatch_noc = tt::tt_metal::NOC::NOC_1,
-    .upstream_noc = tt::tt_metal::NOC::NOC_1,
-    .downstream_noc = tt::tt_metal::NOC::NOC_1,
+    .non_dispatch_noc = tt::tt_metal::NOC::NOC_0,
+    .upstream_noc = tt::tt_metal::NOC::NOC_0,
+    .downstream_noc = tt::tt_metal::NOC::NOC_0,
 };
 
 // Must be on different NOCs because Dispatch+S may be running on the same
