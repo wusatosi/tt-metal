@@ -292,7 +292,7 @@ def run_llama3_demo(
     # Compile
     logger.info(f"Compiling model trace...")
     if layers == 1:
-        num_compile_iters = 24
+        num_compile_iters = 1
     else:
         num_compile_iters = 1
     for i in range(num_compile_iters):
@@ -408,7 +408,15 @@ def run_llama3_demo(
         iteration_time_start = time()
 
         # Execute trace
+        profiler.start("test_execute_trace", iteration=iteration)
+        profiler.start("test_execute_trace_1", iteration=iteration)
         ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
+
+        tt_out_torch = ttnn.to_torch(
+            ttnn.get_device_tensors(tt_out[0])[0],
+        )
+        profiler.end("test_execute_trace_1", iteration=iteration)
+
         tt_output_torch = ttnn.to_torch(
             tt_out_tok,
             mesh_composer=ttnn.ConcatMesh2dToTensor(
@@ -417,8 +425,11 @@ def run_llama3_demo(
                 mesh_shape=model_args.cluster_shape,
             ),
         )[0, 0, 0, :batch_size]
+        profiler.end("test_execute_trace", iteration=iteration)
         # Print out generated outputs for each user at the end of every iteration
-        iteration_time = time() - iteration_time_start
+        # iteration_time = time() - iteration_time_start
+        iteration_time_layer = profiler.get_duration(f"test_execute_trace_1", iteration=iteration)
+        iteration_time = profiler.get_duration(f"test_execute_trace", iteration=iteration)
 
         # Update current pos and mat idxs on host and send to device
         # TODO This is required for now since we cannot ttnn.plus_one(rot_mat_idxs) while it being uint32.
@@ -450,6 +461,7 @@ def run_llama3_demo(
             total_tokens_generated += 1
 
         tokens_per_second_per_user = 1 / iteration_time
+        tokens_per_second_per_user_layer = 1 / iteration_time_layer
 
         profiler.start(f"log_printing_iter_{iteration}", iteration=iteration)
         # Print out generated outputs for each user at the end of every iteration
@@ -466,7 +478,7 @@ def run_llama3_demo(
 
         # Always print perf at every iteration
         logger.info(
-            f"Iteration {iteration}: {1000*iteration_time:.0f}ms @ {tokens_per_second_per_user:.1f} tok/s/user ({batch_size*tokens_per_second_per_user:.1f} tok/s throughput)"
+            f"Iteration {iteration}: {1000*iteration_time:.0f}ms @ {tokens_per_second_per_user:.1f} or {tokens_per_second_per_user_layer} tok/s/user ({batch_size*tokens_per_second_per_user:.1f} tok/s throughput)"
         )
         tsu_threshold = 128 if layers == 1 else 28
         # assert tokens_per_second_per_user > tsu_threshold, "Throughput is less than 28 tokens per second per user"
@@ -522,7 +534,7 @@ def run_llama3_demo(
             1,  # repeat_batches
             1024,  # max_seq_len
             32,  # batch_size
-            1024,  # max_generated_tokens
+            5,  # max_generated_tokens
             False,  # paged_attention
             {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params  # TODO This will be serviced by vLLM
             {"top_k": 32, "top_p": 0.08, "seed": 42},  # sampling_params (argmax)

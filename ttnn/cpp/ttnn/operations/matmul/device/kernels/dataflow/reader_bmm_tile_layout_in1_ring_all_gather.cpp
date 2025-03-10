@@ -64,7 +64,7 @@ void kernel_main() {
     for (uint32_t b = 0; b < batch; ++b) {
         cb_reserve_back(sync_cb2, 1);
 #ifdef ENABLE_GLOBAL_CB
-        // experimental::remote_cb_wait_front(remote_cb_id, num_blocks);
+        experimental::remote_cb_wait_front(remote_cb_id, num_blocks);
 #endif
 
         cb_push_back(sync_cb2, 1);
@@ -89,7 +89,7 @@ void kernel_main() {
 
 #ifdef ENABLE_GLOBAL_CB
         cb_wait_front(sync_cb, 1);
-        // experimental::remote_cb_pop_front(remote_cb_id, num_blocks);
+        experimental::remote_cb_pop_front(remote_cb_id, num_blocks);
         cb_pop_front(sync_cb, 1);
 #endif
     }
