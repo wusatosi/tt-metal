@@ -285,12 +285,12 @@ class TtLlamaMLP(LightweightModule):
             # Reshape input to to fit on device and parallelize computation
             x = ttnn.reshape(x, [1, seq_len // 1024, 1024, -1])
         pc_1 = self.model_config["PREFILL_MLP_W1_W3_PRG_CONFIG"](seq_len)
-        pc_2 = self.model_config["PREFILL_MLP_W2_PRG_CONFIG"](seq_len)
+        pc_2 = None  # self.model_config["PREFILL_MLP_W2_PRG_CONFIG"](seq_len)
         pc_3 = self.model_config["PREFILL_MLP_W1_W3_PRG_CONFIG"](seq_len)
 
         # In decode mode (seqlen <= 32) do DRAM sharded matmuls
         # These use HiFi2; this drops 1 bit of the activations but would be FLOP-bound on 12 cores with HiFi4
-        print(pc_1, self.w1.shape)
+        print(pc_1, pc_3)
         w1_out = ttnn.linear(
             x,
             self.w1,
@@ -300,8 +300,9 @@ class TtLlamaMLP(LightweightModule):
                 else self.args.compute_kernel_config_hifi2_fp16
             ),
             dtype=ttnn.bfloat8_b,
-            program_config=pc_1,
+            # program_config=pc_1,
             memory_config=x.memory_config(),
+            core_grid=ttnn.CoreGrid(y=8, x=7),  # FIXME: validate on TG ttnn.CoreGrid(y=8, x=8) if not pc_1 else None,
         )
         # print("linear", w1_out)
 
@@ -313,10 +314,10 @@ class TtLlamaMLP(LightweightModule):
                 if self.four_bit_mlp
                 else self.args.compute_kernel_config_hifi2_fp16
             ),
-            core_grid=None,  # FIXME: validate on TG ttnn.CoreGrid(y=8, x=8) if not pc_3 else None,
             dtype=ttnn.bfloat8_b,
-            program_config=pc_3,
+            # program_config=pc_3,
             memory_config=x.memory_config(),
+            core_grid=ttnn.CoreGrid(y=8, x=4),
         )
 
         # ttnn.deallocate(x)
@@ -392,9 +393,10 @@ class TtLlamaMLP(LightweightModule):
             self.w2,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
             dtype=ttnn.bfloat8_b,
-            program_config=pc_2,
+            # program_config=pc_2,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
-            core_grid=None,  # FIXME: validate on TG ttnn.CoreGrid(y=8, x=8) if not pc_2 else None,
+            # core_grid=None,  # FIXME: validate on TG ttnn.CoreGrid(y=8, x=8) if not pc_2 else None,
+            core_grid=ttnn.CoreGrid(y=8, x=4),
         )
         # ttnn.synchronize_devices(self.mesh_device)
         # print("linear w2", w2_out)
