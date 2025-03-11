@@ -320,10 +320,12 @@ void Device::initialize_device_kernel_defines()
     const metal_SocDescriptor& soc_d = tt::Cluster::instance().get_soc_desc(this->id());
     auto pcie_cores = soc_d.get_pcie_cores();
     auto grid_size = this->grid_size();
-    this->device_kernel_defines_.emplace("PCIE_NOC_X", std::to_string(pcie_cores[0].x));
-    this->device_kernel_defines_.emplace("PCIE_NOC_Y", std::to_string(pcie_cores[0].y));
-    this->device_kernel_defines_.emplace("PCIE_NOC1_X", std::to_string(tt::tt_metal::hal.noc_coordinate(NOC::NOC_1, grid_size.x, pcie_cores[0].x)));
-    this->device_kernel_defines_.emplace("PCIE_NOC1_Y", std::to_string(tt::tt_metal::hal.noc_coordinate(NOC::NOC_1, grid_size.x, pcie_cores[0].y)));
+    if (pcie_cores.size() > 0) {
+        this->device_kernel_defines_.emplace("PCIE_NOC_X", std::to_string(pcie_cores[0].x));
+        this->device_kernel_defines_.emplace("PCIE_NOC_Y", std::to_string(pcie_cores[0].y));
+        this->device_kernel_defines_.emplace("PCIE_NOC1_X", std::to_string(tt::tt_metal::hal.noc_coordinate(NOC::NOC_1, grid_size.x, pcie_cores[0].x)));
+        this->device_kernel_defines_.emplace("PCIE_NOC1_Y", std::to_string(tt::tt_metal::hal.noc_coordinate(NOC::NOC_1, grid_size.x, pcie_cores[0].y)));
+    }
 }
 
 void Device::initialize_build() {
@@ -618,23 +620,25 @@ void Device::initialize_and_launch_firmware() {
     core_info_msg_t *core_info = (core_info_msg_t *) core_info_vec.data();
 
     const metal_SocDescriptor& soc_d = tt::Cluster::instance().get_soc_desc(this->id());
-    uint64_t pcie_chan_base_addr = tt::Cluster::instance().get_pcie_base_addr_from_device(this->id());
-    uint32_t num_host_channels = tt::Cluster::instance().get_num_host_channels(this->id());
-    uint64_t pcie_chan_end_addr = pcie_chan_base_addr;
-    for (int pcie_chan = 0; pcie_chan < num_host_channels; pcie_chan++) {
-        pcie_chan_end_addr += tt::Cluster::instance().get_host_channel_size(this->id(), pcie_chan);
-    }
-    core_info->noc_pcie_addr_base = pcie_chan_base_addr;
-    core_info->noc_pcie_addr_end = pcie_chan_end_addr;
-    core_info->noc_dram_addr_base = 0;
-    core_info->noc_dram_addr_end = soc_d.dram_core_size;
-
     const std::vector<CoreCoord> &pcie_cores = soc_d.get_pcie_cores();
     const std::vector<CoreCoord> &dram_cores = soc_d.get_dram_cores();
     const std::vector<CoreCoord> &eth_cores = soc_d.get_physical_ethernet_cores();
-    TT_ASSERT(
+        TT_ASSERT(
         pcie_cores.size() + dram_cores.size() + eth_cores.size() <= MAX_NON_WORKER_CORES,
         "Detected more pcie/dram/eth cores than fit in the device mailbox.");
+
+    if (pcie_cores.size() > 0) {
+        uint64_t pcie_chan_base_addr = tt::Cluster::instance().get_pcie_base_addr_from_device(this->id());
+        uint32_t num_host_channels = tt::Cluster::instance().get_num_host_channels(this->id());
+        uint64_t pcie_chan_end_addr = pcie_chan_base_addr;
+        for (int pcie_chan = 0; pcie_chan < num_host_channels; pcie_chan++) {
+            pcie_chan_end_addr += tt::Cluster::instance().get_host_channel_size(this->id(), pcie_chan);
+        }
+        core_info->noc_pcie_addr_base = pcie_chan_base_addr;
+        core_info->noc_pcie_addr_end = pcie_chan_end_addr;
+        core_info->noc_dram_addr_base = 0;
+        core_info->noc_dram_addr_end = soc_d.dram_core_size;
+    }
     for (int idx = 0; idx < MAX_NON_WORKER_CORES; idx++) {
         core_info->non_worker_cores[idx] = {CORE_COORD_INVALID, CORE_COORD_INVALID, AddressableCoreType::UNKNOWN};
     }
@@ -720,7 +724,7 @@ void Device::initialize_and_launch_firmware() {
     // Wait until fw init is done, ensures the next launch msg doesn't get
     // written while fw is still in init
     log_debug("Waiting for firmware init complete");
-    const int timeout_ms = 10000; // 10 seconds for now
+    const int timeout_ms = 16*10000; // 10 seconds for now
     try {
         llrt::internal_::wait_until_cores_done(this->id(), RUN_MSG_INIT, not_done_cores, timeout_ms);
     } catch (std::runtime_error &e) {

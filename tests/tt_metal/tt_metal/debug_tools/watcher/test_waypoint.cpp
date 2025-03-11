@@ -20,9 +20,11 @@ static void RunTest(WatcherFixture* fixture, Device* device) {
     // Set up program
     Program program = Program();
 
-    // Test runs on a 5x5 grid
+    // Test runs on a 5x5 grid or grid size limited
     CoreCoord xy_start = {0, 0};
-    CoreCoord xy_end = {4, 4};
+    CoreCoord grid_size = device->logical_grid_size();
+    CoreCoord xy_end = {4 < grid_size.x - 1 ? 4 : grid_size.x - 1, 4 < grid_size.y - 1 ? 4 : grid_size.y - 1};
+
 
     // Run a kernel that posts waypoints and waits on certain gating values to be written before
     // posting the next waypoint.

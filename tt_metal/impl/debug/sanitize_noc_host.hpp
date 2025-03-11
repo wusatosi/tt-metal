@@ -37,8 +37,8 @@ static bool coord_found_p(std::vector<CoreCoord>coords, CoreCoord core) {
 
 static bool coord_found_p(CoreCoord range, CoreCoord core) {
     return
-        core.x >= 1 && core.x <= range.x &&
-        core.y >= 1 && core.y <= range.y;
+        core.x >= 0 && core.x <= range.x - 1 &&
+        core.y >= 0 && core.y <= range.y - 1;
 }
 
 static string noc_address(CoreCoord core, uint64_t a, uint32_t l) {

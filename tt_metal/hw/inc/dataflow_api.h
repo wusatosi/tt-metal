@@ -661,12 +661,12 @@ uint64_t get_l1_noc_addr(const uint32_t id, const uint32_t page_size, const uint
     return noc_addr;
 }
 
-uint64_t get_system_memory_noc_addr(const uint32_t id, const uint32_t page_size, const uint32_t base_addr, const uint32_t offset = 0, uint8_t noc = noc_index) {
-    uint64_t pcie_core_noc_encoding = uint64_t(NOC_XY_PCIE_ENCODING(DYNAMIC_NOC_X(noc, PCIE_NOC_X), DYNAMIC_NOC_Y(noc, PCIE_NOC_Y), noc));
-    uint32_t addr = base_addr + page_size * id + offset;
-    uint64_t noc_addr = pcie_core_noc_encoding | addr;
-    return noc_addr;
-}
+// uint64_t get_system_memory_noc_addr(const uint32_t id, const uint32_t page_size, const uint32_t base_addr, const uint32_t offset = 0, uint8_t noc = noc_index) {
+//     uint64_t pcie_core_noc_encoding = uint64_t(NOC_XY_PCIE_ENCODING(DYNAMIC_NOC_X(noc, PCIE_NOC_X), DYNAMIC_NOC_Y(noc, PCIE_NOC_Y), noc));
+//     uint32_t addr = base_addr + page_size * id + offset;
+//     uint64_t noc_addr = pcie_core_noc_encoding | addr;
+//     return noc_addr;
+// }
 
 FORCE_INLINE
 std::uint64_t get_noc_addr(std::uint32_t addr, uint8_t noc = noc_index) {

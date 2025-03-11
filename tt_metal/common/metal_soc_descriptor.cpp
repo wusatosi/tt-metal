@@ -394,5 +394,5 @@ metal_SocDescriptor::metal_SocDescriptor(const tt_SocDescriptor& other, uint32_t
     this->load_dram_metadata_from_device_descriptor();
     this->generate_logical_eth_coords_mapping();
     this->generate_physical_routing_to_profiler_flat_id();
-    this->update_pcie_cores(board_type);
+    //this->update_pcie_cores(board_type);
 }
