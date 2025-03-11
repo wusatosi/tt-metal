@@ -279,8 +279,8 @@ class ResNet50TestInfra:
                 core_grid = ttnn.CoreGrid(y=8, x=10)
             elif is_wormhole_b0():
                 core_grid = ttnn.CoreGrid(y=5, x=6)  # untested due to unsupported batch20 on WH
-        elif self.batch_size == 32:
-            core_grid = ttnn.CoreGrid(y=10, x=13)
+        else:
+            core_grid = ttnn.CoreGrid(y=8, x=6)
         num_devices = 1 if isinstance(device, ttnn.Device) else device.get_num_devices()
         # torch tensor
         torch_input_tensor = self.torch_input_tensor if torch_input_tensor is None else torch_input_tensor

@@ -332,6 +332,23 @@ class resnet50Bottleneck:
             self.conv1_weight_tensor = ttnn.to_device(self.conv1_weight_tensor, device)
             self.conv1_bias_tensor = ttnn.to_device(self.conv1_bias_tensor, device)
 
+        print("PRE conv1")
+        conv_args = {
+            "bias_tensor": self.conv2_bias_tensor,
+            **conv_kwargs_1,
+            "compute_config": ttnn.init_device_compute_kernel_config(
+                device.arch(),
+                math_fidelity=self.model_config["MATH_FIDELITY"],
+                packer_l1_acc=packer_l1_acc,
+            ),
+            "conv_op_cache": conv_op_cache,
+            "return_output_dim": True,
+            "return_weights_and_bias": False,
+        }
+
+        for key, value in conv_args.items():
+            print(f"{key} = {value}")
+
         out, [input_height, input_width] = ttnn.conv2d(
             input_tensor=x,
             weight_tensor=self.conv1_weight_tensor,
@@ -459,6 +476,7 @@ class resnet50Bottleneck:
                 conv_kwargs_2["conv_config"].act_block_h_override = 0
 
         if not ttnn.is_tensor_storage_on_device(self.conv2_weight_tensor):
+            print("INSIDE IF")
             self.conv2_weight_tensor = ttnn.prepare_conv_weights(
                 weight_tensor=self.conv2_weight_tensor,
                 weights_format="OIHW",
@@ -476,6 +494,23 @@ class resnet50Bottleneck:
             self.conv2_weight_tensor = ttnn.to_device(self.conv2_weight_tensor, device)
             self.conv2_bias_tensor = ttnn.to_device(self.conv2_bias_tensor, device)
 
+        print("PRE conv2")
+        conv_args = {
+            "bias_tensor": self.conv2_bias_tensor,
+            **conv_kwargs_2,
+            "compute_config": ttnn.init_device_compute_kernel_config(
+                device.arch(),
+                math_fidelity=self.model_config["MATH_FIDELITY"],
+                packer_l1_acc=packer_l1_acc,
+            ),
+            "conv_op_cache": conv_op_cache,
+            "return_output_dim": True,
+            "return_weights_and_bias": False,
+        }
+
+        for key, value in conv_args.items():
+            print(f"{key} = {value}")
+        print("pre")
         out, [input_height, input_width] = ttnn.conv2d(
             input_tensor=out,
             weight_tensor=self.conv2_weight_tensor,
@@ -490,6 +525,7 @@ class resnet50Bottleneck:
             return_output_dim=True,
             return_weights_and_bias=False,
         )
+        print("posle")
 
         if layer_module and layer_module == "layer4_module1":
             if ops_parallel_config and "layer4_module1_input" not in ops_parallel_config:
@@ -793,14 +829,9 @@ class resnet50:
             self.fold_compute_grid_size = ttnn.CoreRangeSet(
                 {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(num_cores_x - 1, num_cores_y - 1))}
             )
-        elif self.batch_size == 32:
-            core_grid = ttnn.CoreRangeSet(
-                {
-                    ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(12, 8)),
-                    ttnn.CoreRange(ttnn.CoreCoord(0, 9), ttnn.CoreCoord(10, 9)),
-                }
-            )
-            self.fold_compute_grid_size = core_grid
+        self.fold_compute_grid_size = ttnn.CoreRangeSet(
+            {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(num_cores_x - 1, num_cores_y - 1))}
+        )
 
         conv_dummy_tensor = torch.rand((self.fold_output_shape), dtype=torch.bfloat16)
         conv_dummy_tensor = ttnn.from_torch(conv_dummy_tensor, layout=ttnn.ROW_MAJOR_LAYOUT)
