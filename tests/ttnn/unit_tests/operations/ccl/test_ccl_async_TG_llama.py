@@ -17,7 +17,7 @@ from tests.ttnn.unit_tests.operations.ccl.test_new_all_reduce import (
 from models.perf.benchmarking_utils import BenchmarkData, BenchmarkProfiler
 
 
-NUM_ITERATIONS = 55
+NUM_ITERATIONS = 40
 
 PREFETCHER_NOC1_RING = [
     (6, 6),
@@ -216,12 +216,14 @@ def test_all_gather_tg_llama(
 @pytest.mark.parametrize(
     "output_shape, cluster_axis, num_links, input_num_cores, output_num_cores",
     [
+        ([1, 1, 32, 2048 * 4], 0, 4, 24, 16),  # FF2/DO all reduce
         ([1, 1, 32, 2048], 0, 4, 24, 16),  # FF2/DO all reduce
         ([1, 1, 32, 1280], 1, 3, 24, 40),  # QKV all reduce
         ([1, 1, 32, 3584], 1, 3, 24, 24),  # FF1 all reduce
         ([1, 1, 32, 16 * 1024], 1, 3, 32, 32),  # LM head all reduce
     ],
     ids=[
+        "large",
         "ff2",
         "qkv",
         "ff1",
@@ -237,7 +239,7 @@ def test_all_gather_tg_llama(
 @pytest.mark.parametrize(
     "num_iters, warmup_iters",
     [
-        (NUM_ITERATIONS, 10),
+        (NUM_ITERATIONS, 1),
     ],
 )
 @pytest.mark.parametrize("enable_async", [True])

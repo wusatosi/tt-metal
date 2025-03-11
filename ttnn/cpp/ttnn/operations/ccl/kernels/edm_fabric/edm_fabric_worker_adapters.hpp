@@ -155,6 +155,7 @@ struct WorkerToFabricEdmSenderImpl {
     }
 
     FORCE_INLINE void wait_for_empty_write_slot() const {
+        DeviceZoneScopedN("wait_for_empty_write_slot");
         using namespace tt::fabric;
         if constexpr (USER_DEFINED_NUM_BUFFER_SLOTS) {
             while (distance_behind<EDM_NUM_BUFFER_SLOTS>(BufferPtr{static_cast<uint8_t>(*this->from_remote_buffer_slot_rdptr_ptr)}, BufferPtr{static_cast<uint8_t>(*this->buffer_slot_wrptr_ptr)}) < this->num_buffers_per_channel);
