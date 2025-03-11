@@ -42,6 +42,8 @@
 
 #include "work_executor.hpp"
 
+#include "profiler.hpp"
+
 namespace tt {
 
 namespace tt_metal {

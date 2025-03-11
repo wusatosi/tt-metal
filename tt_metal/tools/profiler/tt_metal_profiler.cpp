@@ -625,6 +625,12 @@ void InitDeviceProfiler(IDevice* device) {
 #endif
 }
 
+void DumpDeviceProfileResults(IDevice* device) {
+#ifdef TRACY_ENABLE
+    DumpDeviceProfileResults(device, ProfilerDumpState::NORMAL);
+#endif
+}
+
 void DumpDeviceProfileResults(IDevice* device, ProfilerDumpState state) {
 #if defined(TRACY_ENABLE)
     ZoneScoped;
@@ -651,6 +657,12 @@ void DumpDeviceProfileResults(IDevice* device, ProfilerDumpState state) {
         }
     });
 
+#endif
+}
+
+void DumpDeviceProfileResults(IDevice* device, std::vector<CoreCoord>& worker_cores) {
+#ifdef TRACY_ENABLE
+    DumpDeviceProfileResults(device, worker_cores, ProfilerDumpState::NORMAL);
 #endif
 }
 
