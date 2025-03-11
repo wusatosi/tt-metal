@@ -144,7 +144,7 @@ class TtLlamaMLP(LightweightModule):
             program_config=pc_1,
             memory_config=self.model_config["SHARDED_FF12_OUT_RING_MEMCFG"],
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
-            subdevice_id=self.worker_sub_device_id if mode == "decode" else None,
+            sub_device_id=self.worker_sub_device_id if mode == "decode" else None,
         )
 
         print("run w3_out")
@@ -159,7 +159,7 @@ class TtLlamaMLP(LightweightModule):
             program_config=pc_3,
             memory_config=self.model_config["SHARDED_FF12_OUT_RING_MEMCFG"],
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
-            subdevice_id=self.worker_sub_device_id if mode == "decode" else None,
+            sub_device_id=self.worker_sub_device_id if mode == "decode" else None,
         )
         ttnn.deallocate(x)
         # print("linear", w3_out)
@@ -258,7 +258,7 @@ class TtLlamaMLP(LightweightModule):
             else w2_in.memory_config(),
             core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_2 else None,
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
-            subdevice_id=self.worker_sub_device_id if mode == "decode" else None,
+            sub_device_id=self.worker_sub_device_id if mode == "decode" else None,
         )
         # print("linear", w2_out)
         ttnn.deallocate(w2_in)

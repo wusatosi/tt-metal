@@ -264,7 +264,6 @@ class TtLlamaAttention(LightweightModule):
         # QKV matmuls
         # Use HiFi2 for DRAM-sharded matmuls as they are otherwise flop-bound. Loses 1 bit of activation precision.
         ###
-        breakpoint()
         print(f"run QKV {self.worker_sub_device_id}")
         xqkv_fused_sharded = ttnn.matmul(
             x,
@@ -274,7 +273,7 @@ class TtLlamaAttention(LightweightModule):
             compute_kernel_config=self.compute_kernel_config_hifi2,
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
             # dtype=ttnn.bfloat16,
-            subdevice_id=self.worker_sub_device_id,
+            sub_device_id=self.worker_sub_device_id,
         )
         ttnn.deallocate(x)
         # print("done matmul")
@@ -410,7 +409,7 @@ class TtLlamaAttention(LightweightModule):
             compute_kernel_config=self.compute_kernel_config_hifi2,
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
             dtype=ttnn.bfloat8_b,
-            subdevice_id=self.worker_sub_device_id,
+            sub_device_id=self.worker_sub_device_id,
         )
         # [1, 1, 32, 2304]
         ttnn.deallocate(attn_output_cat)
