@@ -24,6 +24,7 @@ class TtLlamaAttention(LightweightModule):
         use_paged_kv_cache=False,
         prefetcher_setup=None,
         tt_ccl=None,
+        worker_sub_device_id=None,
     ):
         super().__init__()
 
@@ -54,6 +55,8 @@ class TtLlamaAttention(LightweightModule):
 
         self.prefetcher_setup = prefetcher_setup
         self.tt_ccl = tt_ccl
+
+        self.worker_sub_device_id = worker_sub_device_id
 
         # TODO: Fix this once all-gather supports < tile_size
         if self.TG:
@@ -261,6 +264,8 @@ class TtLlamaAttention(LightweightModule):
         # QKV matmuls
         # Use HiFi2 for DRAM-sharded matmuls as they are otherwise flop-bound. Loses 1 bit of activation precision.
         ###
+        breakpoint()
+        print(f"run QKV {self.worker_sub_device_id}")
         xqkv_fused_sharded = ttnn.matmul(
             x,
             self.wqkv,
@@ -269,6 +274,7 @@ class TtLlamaAttention(LightweightModule):
             compute_kernel_config=self.compute_kernel_config_hifi2,
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
             # dtype=ttnn.bfloat16,
+            subdevice_id=self.worker_sub_device_id,
         )
         ttnn.deallocate(x)
         # print("done matmul")
@@ -395,6 +401,7 @@ class TtLlamaAttention(LightweightModule):
             attn_output_cat_0, self.model_config["SHARDED_ATTN_WO_INPUT_RING_MEMCFG"]
         )
         attn_output_cat_0.deallocate(True)
+        print(f"run dense_out_ttnn {self.worker_sub_device_id}")
         dense_out_ttnn = ttnn.matmul(
             attn_output_cat,
             self.wo,
@@ -403,6 +410,7 @@ class TtLlamaAttention(LightweightModule):
             compute_kernel_config=self.compute_kernel_config_hifi2,
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
             dtype=ttnn.bfloat8_b,
+            subdevice_id=self.worker_sub_device_id,
         )
         # [1, 1, 32, 2304]
         ttnn.deallocate(attn_output_cat)

@@ -21,6 +21,8 @@ from models.demos.llama3_subdevices.tt.llama_embedding import TtLlamaEmbedding
 from tests.ttnn.unit_tests.operations.prefetcher_common import TtLlamaPrefetcherSetup
 from models.demos.llama3_subdevices.tt.llama_ccl import TT_CCL
 
+import pdb
+
 
 class TtTransformer(LightweightModule):
     def __init__(
@@ -87,6 +89,7 @@ class TtTransformer(LightweightModule):
                 use_paged_kv_cache=use_paged_kv_cache,
                 prefetcher_setup=self.prefetcher_setup,
                 tt_ccl=self.tt_ccl,
+                worker_sub_device_id=self.prefetcher_setup.worker_sub_device_id,
             )
             for i in tqdm(range(self.n_layers))
         ]

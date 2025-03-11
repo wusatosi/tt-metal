@@ -39,6 +39,7 @@ class TtLlamaMLP(LightweightModule):
         state_dict_prefix=None,
         prefetcher_setup=None,
         tt_ccl=None,
+        worker_sub_device_id=None,
     ):
         super().__init__()
 
@@ -49,6 +50,7 @@ class TtLlamaMLP(LightweightModule):
         self.model_config = model_config
         self.prefetcher_setup = prefetcher_setup
         self.tt_ccl = tt_ccl
+        self.worker_sub_device_id = worker_sub_device_id
         state_dict_prefix = state_dict_prefix or args.get_state_dict_prefix(self.__class__.__name__, layer_num)
         torch_weight = lambda name: torch.transpose(self.state_dict[f"{state_dict_prefix}.{name}.weight"], -2, -1)
 
@@ -130,6 +132,7 @@ class TtLlamaMLP(LightweightModule):
         # In decode mode (seqlen <= 32) do DRAM sharded matmuls
         # These use HiFi2; this drops 1 bit of the activations but would be FLOP-bound on 12 cores with HiFi4
         # #print(x.shape, self.w1.shape, self.w3.shape)
+        print("run w1_out")
         w1_out = ttnn.linear(
             x,
             self.w1,
@@ -141,8 +144,10 @@ class TtLlamaMLP(LightweightModule):
             program_config=pc_1,
             memory_config=self.model_config["SHARDED_FF12_OUT_RING_MEMCFG"],
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
+            subdevice_id=self.worker_sub_device_id if mode == "decode" else None,
         )
 
+        print("run w3_out")
         w3_out = ttnn.linear(
             x,
             self.w3,
@@ -154,6 +159,7 @@ class TtLlamaMLP(LightweightModule):
             program_config=pc_3,
             memory_config=self.model_config["SHARDED_FF12_OUT_RING_MEMCFG"],
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
+            subdevice_id=self.worker_sub_device_id if mode == "decode" else None,
         )
         ttnn.deallocate(x)
         # print("linear", w3_out)
@@ -240,6 +246,7 @@ class TtLlamaMLP(LightweightModule):
         ttnn.deallocate(w3_out_reduced)
         ttnn.deallocate(w1_out_reduced)
 
+        print("run w2_out")
         w2_out = ttnn.linear(
             w2_in,
             self.w2,
@@ -251,6 +258,7 @@ class TtLlamaMLP(LightweightModule):
             else w2_in.memory_config(),
             core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_2 else None,
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
+            subdevice_id=self.worker_sub_device_id if mode == "decode" else None,
         )
         # print("linear", w2_out)
         ttnn.deallocate(w2_in)

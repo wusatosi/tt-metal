@@ -25,6 +25,7 @@ class TtTransformerBlock(LightweightModule):
         use_paged_kv_cache=False,
         prefetcher_setup=None,
         tt_ccl=None,
+        worker_sub_device_id=None,
     ):
         super().__init__()
 
@@ -48,6 +49,8 @@ class TtTransformerBlock(LightweightModule):
         self.prefetcher_setup = prefetcher_setup
         self.tt_ccl = tt_ccl
 
+        self.worker_sub_device_id = worker_sub_device_id
+
         self.attention = TtLlamaAttention(
             mesh_device=mesh_device,
             state_dict=state_dict,
@@ -60,6 +63,7 @@ class TtTransformerBlock(LightweightModule):
             use_paged_kv_cache=use_paged_kv_cache,
             prefetcher_setup=prefetcher_setup,
             tt_ccl=tt_ccl,
+            worker_sub_device_id=self.worker_sub_device_id,
         )
         self.feed_forward = TtLlamaMLP(
             mesh_device=mesh_device,
@@ -71,6 +75,7 @@ class TtTransformerBlock(LightweightModule):
             model_config=self.model_config,
             prefetcher_setup=prefetcher_setup,
             tt_ccl=tt_ccl,
+            worker_sub_device_id=self.worker_sub_device_id,
         )
         self.attention_norm = DistributedNorm(
             RMSNorm(
