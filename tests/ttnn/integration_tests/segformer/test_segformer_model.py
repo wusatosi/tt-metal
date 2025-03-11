@@ -115,4 +115,4 @@ def test_segformer_model(
     ttnn_final_output = ttnn.to_torch(ttnn_output[0])
     torch_final_output = torch.permute(torch_output.last_hidden_state, (0, 2, 3, 1))
 
-    assert_with_pcc(torch_final_output, ttnn_final_output, pcc=0.929)
+    assert_with_pcc(torch_final_output, ttnn_final_output, pcc=0.931)
