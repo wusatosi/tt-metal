@@ -34,7 +34,7 @@ FORCE_INLINE void reload_from_cb_to_dst(
     uint32_t in0_block_w) {
     // Reconfigure input
     copy_tile_to_dst_init_short_with_dt(in1_cb_id, mm_partials_cb_id);
-    cb_wait_front(mm_partials_cb_id, out_subblock_num_tiles);
+    // cb_wait_front(mm_partials_cb_id, out_subblock_num_tiles);
 
     uint32_t start_dst_index = 0;
     uint32_t start_tile_index = 0;
@@ -54,13 +54,13 @@ inline void reblock_and_untilize(
     uint32_t interm_cb_id,
     uint32_t out_cb_id) {
     uint32_t num_tiles_in_row_of_subblocks = mulsi3(out_subblock_num_tiles, num_out_subblocks_in_col);
-    cb_wait_front(interm_cb_id, num_tiles_in_row_of_subblocks);
+    // cb_wait_front(interm_cb_id, num_tiles_in_row_of_subblocks);
 
     uint32_t within_block_index = 0;
     for (uint32_t h = 0; h < out_subblock_h; h++) {
         uint32_t block_offset = 0;
 
-        cb_reserve_back(out_cb_id, out_block_w);
+        // cb_reserve_back(out_cb_id, out_block_w);
         for (uint32_t n = 0; n < num_out_subblocks_in_col; n++) {
             tile_regs_acquire();
             for (uint32_t w = 0; w < out_subblock_w; w++) {
@@ -73,7 +73,7 @@ inline void reblock_and_untilize(
             tile_regs_release();
             block_offset += out_subblock_num_tiles;
         }
-        cb_push_back(out_cb_id, out_block_w);
+        // cb_push_back(out_cb_id, out_block_w);
 
         within_block_index += out_subblock_w;
     }
@@ -81,7 +81,6 @@ inline void reblock_and_untilize(
 }
 
 void MAIN {
-    // DPRINT << "Compute start" << ENDL();
 // RUNTIME ARGS
 #ifdef MATMUL_DRAM_SHARDED
     const bool is_worker_core = get_arg_val<uint32_t>(0) == 1;
@@ -110,6 +109,25 @@ void MAIN {
     constexpr uint32_t batch = get_compile_time_arg_val(13);                   // batch dim
     constexpr uint32_t out_block_num_tiles = get_compile_time_arg_val(14);     // number of tiles in out_block
     constexpr bool untilize_out = get_compile_time_arg_val(15);                // untilize output
+
+    // UNPACK((DPRINT << "========================================" << ENDL()));
+    // UNPACK((DPRINT << "in0_block_w = " << in0_block_w << ENDL()));
+    // UNPACK((DPRINT << "in0_num_subblocks = " << in0_num_subblocks << ENDL()));
+    // UNPACK((DPRINT << "in0_block_num_tiles = " << in0_block_num_tiles << ENDL()));
+    // UNPACK((DPRINT << "in0_subblock_num_tiles = " << in0_subblock_num_tiles << ENDL()));
+    // UNPACK((DPRINT << "in1_num_subblocks = " << in1_num_subblocks << ENDL()));
+    // UNPACK((DPRINT << "in1_block_num_tiles = " << in1_block_num_tiles << ENDL()));
+    // UNPACK((DPRINT << "in1_block_w = " << in1_block_w << ENDL()));
+    // UNPACK((DPRINT << "num_blocks_inner_dim = " << num_blocks_inner_dim << ENDL()));
+    // UNPACK((DPRINT << "num_blocks_w_dim = " << num_blocks_w_dim << ENDL()));
+    // UNPACK((DPRINT << "num_blocks_h_dim = " << num_blocks_h_dim << ENDL()));
+    // UNPACK((DPRINT << "out_subblock_h = " << out_subblock_h << ENDL()));
+    // UNPACK((DPRINT << "out_subblock_w = " << out_subblock_w << ENDL()));
+    // UNPACK((DPRINT << "out_subblock_num_tiles = " << out_subblock_num_tiles << ENDL()));
+    // UNPACK((DPRINT << "batch = " << batch << ENDL()));
+    // UNPACK((DPRINT << "out_block_num_tiles = " << out_block_num_tiles << ENDL()));
+    // UNPACK((DPRINT << "untilize_out = " << (uint16_t)untilize_out << ENDL()));
+    // UNPACK((DPRINT << "========================================" << ENDL()));
 
     constexpr uint32_t out_block_w = out_subblock_w * in1_num_subblocks;
 
@@ -150,12 +168,12 @@ void MAIN {
 #ifdef PACK_RELU
                 // for each batch we start with relu disabled so that intermediate results are not relu'd
                 if constexpr (batch > 1 || num_blocks_h_dim > 1 || num_blocks_w_dim > 1) {
-                    PACK((llk_pack_relu_config(ReluType::NO_RELU)));
+                    // PACK((llk_pack_relu_config(ReluType::NO_RELU)));
                 }
 #endif
 
                 if constexpr (batch > 1 || num_blocks_h_dim > 1 || num_blocks_w_dim > 1) {
-                    PACK((pack_reconfig_data_format(mm_partials_cb_id)));
+                    // PACK((pack_reconfig_data_format(mm_partials_cb_id)));
                 }
 
                 for (uint32_t block = 0; block < num_blocks_inner_dim; block++) {
@@ -164,12 +182,12 @@ void MAIN {
 #if not defined FUSE_BIAS and defined PACK_RELU
                     if (last_out) {
                         // if last block we pack the final result with relu enabled
-                        PACK((llk_pack_relu_config(ReluType::ZERO_RELU)));
+                        // PACK((llk_pack_relu_config(ReluType::ZERO_RELU)));
                     }
 #endif
 
-                    cb_wait_front(in0_cb_id, in0_block_num_tiles);
-                    cb_wait_front(in1_cb_id, in1_block_num_tiles);
+                    // cb_wait_front(in0_cb_id, in0_block_num_tiles);
+                    // cb_wait_front(in1_cb_id, in1_block_num_tiles);
 
                     int in0_index_subblock_offset = 0;
                     for (uint32_t in0_subblock = 0; in0_subblock < in0_num_subblocks; in0_subblock++) {
@@ -195,12 +213,12 @@ void MAIN {
                             uint32_t in0_index = in0_index_subblock_offset;  // offset into in0 block
                             uint32_t in1_index = in1_index_subblock_offset;  // offset into in1 block
                             // inner dim that we accumualte is the inner dim of in0/in1, which is in0_block_w
+                            WAYPOINT("AAAA");
                             for (uint32_t inner_dim_idx = 0; inner_dim_idx < in0_block_w; ++inner_dim_idx) {
                                 // matmul outer product of (out_subblock_h x out_subblock_w) tiles that fill dst
                                 // accumulation is done by iterating matmul_block across inner dim
                                 // in0_block_w is passed as innder dim (kt) to matmul_block, interally used to stride
                                 // in0
-                                // UNPACK(DPRINT << "matmul_block start" << ENDL());
                                 matmul_block(
                                     in0_cb_id,
                                     in1_cb_id,
@@ -213,8 +231,9 @@ void MAIN {
                                     in0_block_w);
                                 in0_index++;               // stride right by 1
                                 in1_index += in1_block_w;  // to stride down by 1 need to stride by in_per_core_w
-                                // (should be called in1_block_w)
+                                                           // (should be called in1_block_w)
                             }
+                            WAYPOINT("BBBB");
 
 #endif  // SKIP_COMPUTE
 
@@ -227,56 +246,56 @@ void MAIN {
 #endif
                                 tile_regs_commit();
                                 // Pack out to output buffer
-                                cb_reserve_back(mm_out_cb_id, out_subblock_num_tiles);
+                                // cb_reserve_back(mm_out_cb_id, out_subblock_num_tiles);
                                 tile_regs_wait();
 
 #if defined FP32_DEST_ACC_EN or defined PACKER_L1_ACC
-                                PACK((pack_reconfig_data_format(mm_out_cb_id)));
+                                // PACK((pack_reconfig_data_format(mm_out_cb_id)));
 #endif
 
 #ifdef PACKER_L1_ACC
 #ifdef FUSE_BIAS
                                 if (block == 0) {  // no accumulation for first iteration
-                                    PACK((llk_pack_reconfig_l1_acc(0)));
+                                    // PACK((llk_pack_reconfig_l1_acc(0)));
                                 } else {
-                                    PACK((llk_pack_reconfig_l1_acc(1)));
+                                    // PACK((llk_pack_reconfig_l1_acc(1)));
                                 }
 #else
-                                PACK((llk_pack_reconfig_l1_acc(0)));
+                                // PACK((llk_pack_reconfig_l1_acc(0)));
 #endif
 #endif
 
                                 uint32_t start_dst_index = 0;
-                                matmul_pack_tile(start_dst_index, mm_out_cb_id, out_subblock_num_tiles);
+                                // matmul_pack_tile(start_dst_index, mm_out_cb_id, out_subblock_num_tiles);
 
                                 tile_regs_release();
-                                cb_push_back(mm_out_cb_id, out_subblock_num_tiles);
+                                // cb_push_back(mm_out_cb_id, out_subblock_num_tiles);
 
                             } else {
                                 tile_regs_commit();
                                 // Wait for tiles in output buffer to be written out since interm and output share
                                 // memory
                                 if (block == 0) {
-                                    cb_reserve_back(out_cb_id, out_num_tiles_to_wait);
+                                    // cb_reserve_back(out_cb_id, out_num_tiles_to_wait);
                                     out_num_tiles_to_wait += out_subblock_num_tiles;
                                 }
                                 // Move partial result to interm buffer
-                                cb_reserve_back(mm_partials_cb_id, out_subblock_num_tiles);
+                                // cb_reserve_back(mm_partials_cb_id, out_subblock_num_tiles);
                                 tile_regs_wait();
 
 #ifdef PACKER_L1_ACC
                                 if (block == 0) {  // no accumulation for first iteration
-                                    PACK((llk_pack_reconfig_l1_acc(0)));
+                                    // PACK((llk_pack_reconfig_l1_acc(0)));
                                 } else if (block == 1) {
-                                    PACK((llk_pack_reconfig_l1_acc(1)));
+                                    // PACK((llk_pack_reconfig_l1_acc(1)));
                                 }
 #endif
 
                                 uint32_t start_dst_index = 0;
-                                matmul_pack_tile(start_dst_index, mm_partials_cb_id, out_subblock_num_tiles);
+                                // matmul_pack_tile(start_dst_index, mm_partials_cb_id, out_subblock_num_tiles);
 
                                 tile_regs_release();
-                                cb_push_back(mm_partials_cb_id, out_subblock_num_tiles);
+                                // cb_push_back(mm_partials_cb_id, out_subblock_num_tiles);
                             }
 
                             in1_index_subblock_offset += out_subblock_w;
@@ -289,7 +308,7 @@ void MAIN {
                     if (block < num_blocks_inner_dim - 1) {
                         // Wait for l1 accumulation to populate interm buffer,
                         // then pop to update fifo rd pointer
-                        cb_wait_front(mm_partials_cb_id, out_block_num_tiles);
+                        // cb_wait_front(mm_partials_cb_id, out_block_num_tiles);
                         cb_pop_front(mm_partials_cb_id, out_block_num_tiles);
                     }
                     // never reload when with bias, bias uses interm buffer
@@ -297,7 +316,7 @@ void MAIN {
 #else
                     // Last iteration does spill and reload to output buffer
                     if (block < num_blocks_inner_dim - 2) {
-                        cb_wait_front(mm_partials_cb_id, out_block_num_tiles);
+                        // cb_wait_front(mm_partials_cb_id, out_block_num_tiles);
                         cb_pop_front(mm_partials_cb_id, out_block_num_tiles);
                     }
                     if (block == num_blocks_inner_dim - 2) {
@@ -317,24 +336,24 @@ void MAIN {
 #ifdef FUSE_BIAS
 #ifdef PACK_RELU
                 // if last block we pack the final result with relu enabled
-                PACK((llk_pack_relu_config(ReluType::ZERO_RELU)));
+                // PACK((llk_pack_relu_config(ReluType::ZERO_RELU)));
 #endif
 #if defined FP32_DEST_ACC_EN or defined PACKER_L1_ACC
-                PACK((pack_reconfig_data_format(out_cb_id)));
+                // PACK((pack_reconfig_data_format(out_cb_id)));
 #endif
 #ifdef PACKER_L1_ACC
-                PACK((llk_pack_reconfig_l1_acc(0)));
+                // PACK((llk_pack_reconfig_l1_acc(0)));
 #endif
 
                 reconfig_data_format(in1_cb_id, mm_partials_cb_id, in0_cb_id, bias_cb_id);
                 add_bcast_rows_init_short(mm_partials_cb_id, bias_cb_id);
                 // reconfigure unpacker df for src B
-                cb_wait_front(bias_cb_id, in1_block_w);
+                // cb_wait_front(bias_cb_id, in1_block_w);
                 for (uint32_t in0_subblock = 0; in0_subblock < in0_num_subblocks; in0_subblock++) {
                     int in1_index_subblock_offset = 0;
                     for (uint32_t in1_subblock = 0; in1_subblock < in1_num_subblocks; in1_subblock++) {
                         // Redundant wait since we know data was just pushed
-                        cb_wait_front(mm_partials_cb_id, out_subblock_num_tiles);
+                        // cb_wait_front(mm_partials_cb_id, out_subblock_num_tiles);
                         tile_regs_acquire();
                         for (uint32_t i = 0, j = 0; j < out_subblock_h; j++) {
                             uint32_t bcast_tile_idx = in1_index_subblock_offset;
@@ -359,13 +378,13 @@ void MAIN {
 #endif
 
                         // Pack out to output buffer
-                        cb_reserve_back(untilize_mode_out_cb_id, out_subblock_num_tiles);
+                        // cb_reserve_back(untilize_mode_out_cb_id, out_subblock_num_tiles);
                         tile_regs_wait();
                         for (uint32_t i = 0; i < out_subblock_num_tiles; i++) {
                             pack_tile(i, untilize_mode_out_cb_id);
                         }
                         tile_regs_release();
-                        cb_push_back(untilize_mode_out_cb_id, out_subblock_num_tiles);
+                        // cb_push_back(untilize_mode_out_cb_id, out_subblock_num_tiles);
 
                         in1_index_subblock_offset += out_subblock_w;
                     }
@@ -376,15 +395,15 @@ void MAIN {
 #endif  // FUSE_BIAS
                 if constexpr (untilize_out) {
 #ifdef PACK_RELU
-                    PACK((llk_pack_relu_config(ReluType::NO_RELU)));
+                    // PACK((llk_pack_relu_config(ReluType::NO_RELU)));
 #endif  // PACK_RELU
 #ifndef FUSE_BIAS
                     reconfig_data_format_srca(in1_cb_id, mm_partials_cb_id);
 #if defined FP32_DEST_ACC_EN or defined PACKER_L1_ACC
-                    PACK((pack_reconfig_data_format(out_cb_id)));
+                    // PACK((pack_reconfig_data_format(out_cb_id)));
 #endif
 #ifdef PACKER_L1_ACC
-                    PACK((llk_pack_reconfig_l1_acc(0)));
+                    // PACK((llk_pack_reconfig_l1_acc(0)));
 #endif
 #endif  // FUSE_BIAS
                     pack_untilize_dst_init_short<out_subblock_w, out_block_w>(out_cb_id);
@@ -410,7 +429,5 @@ void MAIN {
             }
         }
     }
-    // DPRINT << "Compute end" << ENDL();
-    // MATH(DPRINT << "matmul_block end" << ENDL());
 }
 }  // namespace NAMESPACE
