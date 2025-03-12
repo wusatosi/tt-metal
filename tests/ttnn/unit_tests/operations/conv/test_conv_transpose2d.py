@@ -254,6 +254,7 @@ def test_simple_conv_t2d(
         ((1, 512, 64, 128), 2, (4, 4), (2, 2), (1, 1), (0, 0)),
         # ((1, 4, 4, 1), 1, (4, 4), (2, 2), (0, 0), (0, 0)),
         # ((1, 512, 64, 128), 2, (4, 4), (2, 2), (0, 0), (0, 0)),
+        # ((1, 4, 4, 1), 2, (4, 4), (2, 2), (1, 1), (0, 0)),
         # ((1, 4, 4, 1), 1, (4, 4), (2, 2), (1, 1), (0, 0)),
         # ((1, 32, 32, 1), 2, (4, 4), (2, 2), (1, 1), (0, 0)),
     ),
@@ -297,7 +298,7 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
     torch_out_golden_tensor = torch.nn.functional.conv_transpose2d(
         torch_input_tensor_nchw,
         torch_weight_tensor,
-        bias=None, #torch_bias_tensor.reshape(-1), # if has_bias else None,
+        bias=torch_bias_tensor.reshape(-1), # if has_bias else None,
         stride=stride,
         padding=padding,
         output_padding=output_padding,
@@ -310,19 +311,19 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
 
     # decompose conv_weight_shape
     # Permute IOHW to OIHW to run base conv2d
-    torch_weight_tensor_permute = torch.permute(torch_weight_tensor, (1, 0, 2, 3))
+    torch_weight_tensor_oihw = torch.permute(torch_weight_tensor, (1, 0, 2, 3))
     # Flip kernel to run base conv2d
-    torch_weight_tensor_permute = torch.flip(torch_weight_tensor_permute, [2, 3])
+    torch_weight_tensor_oihw = torch.flip(torch_weight_tensor_oihw, [2, 3])
 
     # original implementation 4 convolutions [2x2]
     # 4 convs!
     def split_knit_original(torch_input_tensor_nchw, torch_weight_tensor_permute, torch_bias_tensor, padding):
         conv_weights_decomposed = [
             # reversed order
-            torch_weight_tensor_permute[:, :, 1::2, 1::2], # w11, w13, w31, w33
-            torch_weight_tensor_permute[:, :, 1::2, 0::2], # w10, w12, w30, w32
-            torch_weight_tensor_permute[:, :, 0::2, 1::2], # w01, w03, w21, w23
-            torch_weight_tensor_permute[:, :, 0::2, 0::2], # w00, w02, w20, w22
+            torch_weight_tensor_permute[:, :, 1::2, 1::2], # 00 = w11, w13, w31, w33
+            torch_weight_tensor_permute[:, :, 1::2, 0::2], # 01 = w10, w12, w30, w32
+            torch_weight_tensor_permute[:, :, 0::2, 1::2], # 10 = w01, w03, w21, w23
+            torch_weight_tensor_permute[:, :, 0::2, 0::2], # 11 = w00, w02, w20, w22
         ]
 
         torch_split_knit_out_partial = []
@@ -351,7 +352,7 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
 
         return torch_split_knit_out
 
-    torch_split_knit_out = split_knit_original(torch_input_tensor_nchw, torch_weight_tensor_permute, torch_bias_tensor, padding)
+    torch_split_knit_out = split_knit_original(torch_input_tensor_nchw, torch_weight_tensor_oihw, torch_bias_tensor, padding)
 
     assert torch_out_golden_tensor.shape == torch_split_knit_out.shape
 
@@ -363,15 +364,15 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
 
     ##########
     # modified implementation x4 output channels 1 convolution [2x2]
-    def split_knit_modified(torch_input_tensor_nchw, torch_weight_tensor_permute, torch_bias_tensor, padding):
+    def split_knit_modified(torch_input_tensor_nchw, torch_weight_tensor_oihw, torch_bias_tensor, padding):
         conv_weights_decomposed_ = torch.zeros([output_channels * 4, input_channels, filter[0]//2, filter[1]//2])
 
         # reversed order
         for out_ch in range(output_channels):
-            conv_weights_decomposed_[out_ch * 4 + 0,:,:,:] = torch_weight_tensor_permute[out_ch, :, 1::2, 1::2] # w11, w13, w31, w33
-            conv_weights_decomposed_[out_ch * 4 + 1,:,:,:] = torch_weight_tensor_permute[out_ch, :, 1::2, 0::2] # w10, w12, w30, w32
-            conv_weights_decomposed_[out_ch * 4 + 2,:,:,:] = torch_weight_tensor_permute[out_ch, :, 0::2, 1::2] # w01, w03, w21, w23
-            conv_weights_decomposed_[out_ch * 4 + 3,:,:,:] = torch_weight_tensor_permute[out_ch, :, 0::2, 0::2] # w00, w02, w20, w22
+            conv_weights_decomposed_[out_ch * 4 + 0,:,:,:] = torch_weight_tensor_oihw[out_ch, :, 1::2, 1::2] # 00 = w11, w13, w31, w33
+            conv_weights_decomposed_[out_ch * 4 + 1,:,:,:] = torch_weight_tensor_oihw[out_ch, :, 1::2, 0::2] # 01 = w10, w12, w30, w32
+            conv_weights_decomposed_[out_ch * 4 + 2,:,:,:] = torch_weight_tensor_oihw[out_ch, :, 0::2, 1::2] # 10 = w01, w03, w21, w23
+            conv_weights_decomposed_[out_ch * 4 + 3,:,:,:] = torch_weight_tensor_oihw[out_ch, :, 0::2, 0::2] # 11 = w00, w02, w20, w22
 
         # update bias
         s = torch_bias_tensor.shape
@@ -402,7 +403,7 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
             torch_split_knit_out_ = torch_split_knit_out_[:,:,padding[0]:-1, padding[1]:-1]
         return [torch_split_knit_out_, conv_weights_decomposed_, torch_bias_tensor_]
 
-    [torch_split_knit_mod_out, torch_conv_weights_decomposed_, torch_bias_tensor_] = split_knit_modified(torch_input_tensor_nchw, torch_weight_tensor_permute, torch_bias_tensor, padding)
+    [torch_split_knit_mod_out, torch_conv_weights_decomposed_, torch_bias_tensor_] = split_knit_modified(torch_input_tensor_nchw, torch_weight_tensor_oihw, torch_bias_tensor, padding)
 
     assert torch_out_golden_tensor.shape == torch_split_knit_mod_out.shape
 
@@ -412,18 +413,86 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
     logger.info(f"PCC = {pcc_msg}. Threshold = {pcc}")
     assert passing, pcc_msg
 
+    ##########
+    # DM friendly modification
+
+    def split_knit_modified2(torch_input_tensor_nchw, torch_weight_tensor_oihw, torch_bias_tensor, padding):
+        conv_weights_decomposed_ = torch.zeros([output_channels * 4, input_channels, filter[0]//2, filter[1]//2])
+
+        # NEW order - | CH0 00, CH1 00, CH0 01, CH1 01, CH0 10, CH1 10, CH0 11, CH1 11|
+        for out_ch in range(output_channels):
+            conv_weights_decomposed_[0 + out_ch,:,:,:] = torch_weight_tensor_oihw[out_ch, :, 1::2, 1::2] # 00
+            conv_weights_decomposed_[2 + out_ch,:,:,:] = torch_weight_tensor_oihw[out_ch, :, 1::2, 0::2] # 01
+            conv_weights_decomposed_[4 + out_ch,:,:,:] = torch_weight_tensor_oihw[out_ch, :, 0::2, 1::2] # 10
+            conv_weights_decomposed_[6 + out_ch,:,:,:] = torch_weight_tensor_oihw[out_ch, :, 0::2, 0::2] # 11
+
+        # update bias
+        s = torch_bias_tensor.shape
+        torch_bias_tensor_ = torch_bias_tensor.reshape(-1).repeat_interleave(4)
+        torch_bias_tensor_ = torch_bias_tensor_.reshape(s[0], s[1], s[2], s[3] * 4)
+
+        torch_split_knit_out1 = torch.nn.functional.conv2d(
+            torch_input_tensor_nchw,
+            conv_weights_decomposed_,
+            bias=torch_bias_tensor_.reshape(-1),
+            stride=[x//2 for x in stride],
+            padding=(1,1),
+            dilation=1,
+            groups=1,
+        )
+
+        # interleave-back convs processed with decomposed filters
+        # todo fix shape hardcoding
+        torch_split_knit_out_ = torch.empty(torch_split_knit_out1.shape[0], torch_split_knit_out1.shape[2]* 2, torch_split_knit_out1.shape[3]*2, torch_split_knit_out1.shape[1]//4, dtype=torch_split_knit_out1.dtype) # ch last
+        torch_split_knit_out1 = torch_split_knit_out1.permute([0,2,3,1]) # ch last
+
+        # input layout:
+        # CH0 00, CH1 00, CH0 01, CH1 01, CH0 10, CH1 10, CH0 11, CH1 11
+
+        # output layout:
+        # CH0 00, CH1 00, CH0 01, CH1 01, .. CH0 0W, CH1 0W
+        # CH0 10, CH1 10, CH0 11, CH1 11, .. CH0 1W, CH1 1W
+        # ...
+        # CH0 H0, CH1 H0, CH0 H1, CH1 H1, .. CH0 HW, CH1 HW
+
+        for h in range(torch_split_knit_out1.shape[1]):
+            for w in range(torch_split_knit_out1.shape[2]):
+                # even rows
+                torch_split_knit_out_[0, h*2, w*2, :] = torch_split_knit_out1[0, h, w, 0:2]
+                torch_split_knit_out_[0, h*2, w*2+1, :] = torch_split_knit_out1[0, h, w, 2:4]
+                # odd rows
+                torch_split_knit_out_[0, h*2+1, w*2, :] = torch_split_knit_out1[0, h, w, 4:6]
+                torch_split_knit_out_[0, h*2+1, w*2+1, :] = torch_split_knit_out1[0, h, w, 6:8]
+
+        # remove padding, ideally should be done in the conv2d function with control on top/bottom and left/right padding
+        if (padding[0] != 0 or padding[1] != 0):
+            torch_split_knit_out_ = torch_split_knit_out_[:,padding[0]:-1, padding[1]:-1,:]
+
+        # return to channel first for torch comparison
+        torch_split_knit_out_ = torch_split_knit_out_.permute([0,3,1,2])
+        return [torch_split_knit_out_, conv_weights_decomposed_, torch_bias_tensor_]
+
+    [torch_split_knit_mod_out2, torch_conv_weights_decomposed_2, torch_bias_tensor_2] = split_knit_modified2(torch_input_tensor_nchw, torch_weight_tensor_oihw, torch_bias_tensor, padding)
+
+    assert torch_out_golden_tensor.shape == torch_split_knit_mod_out2.shape
+
+    # Validate torch split-knit /w fused output against golden torch
+    pcc = 0.999
+    passing, pcc_msg = check_with_pcc_without_tensor_printout(torch_out_golden_tensor, torch_split_knit_mod_out2, pcc=0.999)
+    logger.info(f"PCC = {pcc_msg}. Threshold = {pcc}")
+    assert passing, pcc_msg
 
 
     ##########
     # TTNN
 
-    weights_dtype = ttnn.bfloat8_b
-    activations_dtype = ttnn.bfloat8_b
+    weights_dtype = ttnn.bfloat16
+    activations_dtype = ttnn.bfloat16
     math_fidelity = ttnn.MathFidelity.HiFi4
     fp32_dest_acc_en = False
     packer_l1_acc = False
 
-    # Original transposed conv2d, run for perf numbers
+    # Original transposed conv2d, run for perf numbers, uses different input/outputs tensors - to cleanup
     run_conv_transpose2d(
         device,
         math_fidelity=ttnn.MathFidelity.LoFi,
@@ -459,13 +528,13 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
 
 
     tt_weight_tensor = ttnn.from_torch(
-        torch_conv_weights_decomposed_,
+        torch_conv_weights_decomposed_2,
         weights_dtype if weights_dtype != ttnn.bfloat8_b else ttnn.float32,
         mesh_mapper=None
     )
 
     tt_bias_tensor = ttnn.from_torch(
-        torch_bias_tensor_,
+        torch_bias_tensor_2,
         weights_dtype if weights_dtype != ttnn.bfloat8_b else ttnn.float32,
         mesh_mapper=None,
     )
@@ -510,29 +579,27 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
         return_output_dim=True,
         return_weights_and_bias=False,
     )
-
     tt_output_tensor = ttnn.to_torch(tt_output_tensor_on_device, mesh_composer=None)
     ttnn.synchronize_device(device)
 
-    # ## HOST FALLBACK
-    tt_output_tensor = tt_output_tensor.reshape([batch_size, out_h, out_w, output_channels*4])
-    tt_output_tensor = tt_output_tensor.permute(0, 3, 1, 2)
-    tt_split_knit_out_ = torch.empty(tt_output_tensor.shape[0], tt_output_tensor.shape[1]//4, tt_output_tensor.shape[2]* 2, tt_output_tensor.shape[3]*2, dtype=tt_output_tensor.dtype)
+    # ## HOST FALLBACK 2.0
+    tt_split_knit_out_ = torch.empty(tt_output_tensor.shape[0], out_h*2, out_w*2, tt_output_tensor.shape[3]//4, dtype=tt_output_tensor.dtype)
+    for h in range(out_h):
+        for w in range(out_w):
+            # for ch in range(output_channels):
+            # even rows
+            tt_split_knit_out_[0, h*2, w*2, :] = tt_output_tensor[0, 0, h*out_w + w, 0:2]
+            tt_split_knit_out_[0, h*2, w*2+1, :] = tt_output_tensor[0, 0, h*out_w + w, 2:4]
+            # odd rows
+            tt_split_knit_out_[0, h*2+1, w*2, :] = tt_output_tensor[0, 0, h*out_w + w, 4:6]
+            tt_split_knit_out_[0, h*2+1, w*2+1, :] = tt_output_tensor[0, 0, h*out_w + w, 6:8]
 
-
-
-    # is there permute/reshape to achieve this?
-    tt_split_knit_out_[:,:,0::2, 0::2] = tt_output_tensor[:,0,:]
-    tt_split_knit_out_[:,:,0::2, 1::2] = tt_output_tensor[:,1,:]
-    tt_split_knit_out_[:,:,1::2, 0::2] = tt_output_tensor[:,2,:]
-    tt_split_knit_out_[:,:,1::2, 1::2] = tt_output_tensor[:,3,:]
-
-    # remove padding, ideally should be done in the conv2d function with control on top/bottom and left/right padding
-    # no, after merging to 1 conv that approach wont work.
+    # todo merge this with upper loop
     if (padding[0] != 0 or padding[1] != 0):
-        tt_split_knit_out_ = tt_split_knit_out_[:,:,padding[0]:-1, padding[1]:-1]
+        tt_split_knit_out_ = tt_split_knit_out_[:,padding[0]:-1, padding[1]:-1,:]
     ## end of HOST FALLBACK
 
+    tt_split_knit_out_ = tt_split_knit_out_.permute(0, 3, 1, 2) # NCHW
     # Validate ttnn split-knit /w fused output against golden torch
     pcc = 0.999
     passing, pcc_msg = check_with_pcc_without_tensor_printout(torch_out_golden_tensor, tt_split_knit_out_, pcc=pcc)
