@@ -917,7 +917,7 @@ bool all_channels_drained(tt::fabric::EthChannelBuffer<RECEIVER_NUM_BUFFERS> &lo
  * channels every iteration unless it is unsafe/undesirable to do so (e.g. for performance reasons).
  */
 template <bool enable_packet_header_recording, bool enable_fabric_counters, uint8_t RECEIVER_NUM_BUFFERS, uint8_t SENDER_NUM_BUFFERS, size_t NUM_SENDER_CHANNELS>
-void run_fabric_edm_main_loop(
+void __attribute__ ((noinline)) run_fabric_edm_main_loop(
     tt::fabric::EthChannelBuffer<RECEIVER_NUM_BUFFERS> &local_receiver_channel,
     std::array<tt::fabric::EthChannelBuffer<SENDER_NUM_BUFFERS>, NUM_SENDER_CHANNELS> &local_sender_channels,
     std::array<tt::fabric::EdmChannelWorkerInterface<SENDER_NUM_BUFFERS>, NUM_SENDER_CHANNELS> &local_sender_channel_worker_interfaces,
@@ -1246,16 +1246,67 @@ void kernel_main() {
         auto connection_worker_info_ptr = reinterpret_cast<volatile tt::fabric::EDMChannelWorkerLocationInfo *>(
             local_sender_connection_info_addresses[i]);
         connection_worker_info_ptr->edm_rdptr = 0;
+        // uint8_t channel_worker_noc_cmd_buf = i == 0 ? write_at_cmd_buf : read_cmd_buf;
+        // new (&local_sender_channel_worker_interfaces[i]) tt::fabric::EdmChannelWorkerInterface<SENDER_NUM_BUFFERS>(
+        //     connection_worker_info_ptr,
+        //     reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(
+        //         local_sender_flow_control_semaphores[i]),
+        //     reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(connection_live_semaphore_ptr),
+        //     channel_worker_noc_cmd_buf);
+    }
 
-        new (&local_sender_channel_worker_interfaces[i])
+    // // unroll the sender channels so we can pass in different
+    // // sender channel 0
+    // for (uint8_t i = 0; i < NUM_SENDER_CHANNELS; i++) {
+    //     new (&local_sender_channel_worker_interfaces[i])
+    //         tt::fabric::EdmChannelWorkerInterface<SENDER_NUM_BUFFERS, false, write_at_cmd_buf, noc_index>(
+    //             reinterpret_cast<volatile tt::fabric::EDMChannelWorkerLocationInfo *>(
+    //                 local_sender_connection_info_addresses[i]),
+    //             reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(
+    //                 local_sender_flow_control_semaphores[i]),
+    //             reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(
+    //                 local_sender_connection_live_semaphore_addresses[i]));
+    // }
+        new (&local_sender_channel_worker_interfaces[0])
             tt::fabric::EdmChannelWorkerInterface<SENDER_NUM_BUFFERS, false, write_at_cmd_buf, noc_index>(
                 reinterpret_cast<volatile tt::fabric::EDMChannelWorkerLocationInfo *>(
-                    local_sender_connection_info_addresses[i]),
+                    local_sender_connection_info_addresses[0]),
                 reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(
-                    local_sender_flow_control_semaphores[i]),
+                    local_sender_flow_control_semaphores[0]),
                 reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(
-                    local_sender_connection_live_semaphore_addresses[i]));
-    }
+                    local_sender_connection_live_semaphore_addresses[0]));
+
+        new (&local_sender_channel_worker_interfaces[1])
+            tt::fabric::EdmChannelWorkerInterface<SENDER_NUM_BUFFERS, false, write_at_cmd_buf, noc_index>(
+                reinterpret_cast<volatile tt::fabric::EDMChannelWorkerLocationInfo *>(
+                    local_sender_connection_info_addresses[1]),
+                reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(
+                    local_sender_flow_control_semaphores[1]),
+                reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(
+                    local_sender_connection_live_semaphore_addresses[1]));
+
+    // // for (uint8_t i = 0; i < NUM_SENDER_CHANNELS; i++) {
+    //     new (&local_sender_channel_worker_interfaces[0])
+    //         tt::fabric::EdmChannelWorkerInterface<SENDER_NUM_BUFFERS, true, write_at_cmd_buf, noc_index>(
+    //             reinterpret_cast<volatile tt::fabric::EDMChannelWorkerLocationInfo *>(
+    //                 local_sender_connection_info_addresses[0]),
+    //             reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(
+    //                 local_sender_flow_control_semaphores[0]),
+    //             reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(
+    //                 local_sender_connection_live_semaphore_addresses[0]));
+    // // }
+
+    // // sender channel 1
+    // new (&local_sender_channel_worker_interfaces[1])
+    //     tt::fabric::EdmChannelWorkerInterface<SENDER_NUM_BUFFERS, true, write_at_cmd_buf+1, noc_index>(
+    //         reinterpret_cast<volatile tt::fabric::EDMChannelWorkerLocationInfo *>(
+    //             local_sender_connection_info_addresses[1]),
+    //         reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(
+    //             local_sender_flow_control_semaphores[1]),
+    //         reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(
+    //             local_sender_connection_live_semaphore_addresses[1]));
+
+
 
     WriteTransactionIdTracker<RECEIVER_NUM_BUFFERS, NUM_TRANSACTION_IDS> receiver_channel_trid_tracker;
 
