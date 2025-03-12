@@ -260,9 +260,9 @@ public:
         return this->tunnels_from_mmio_device.at(mmio_chip_id);
     }
 
-    void initialize_fabric_config(FabricConfig fabric_config);
+    tt::tt_fabric::ControlPlane* get_control_plane() const;
 
-    tt::tt_fabric::ControlPlane* get_control_plane() const { return control_plane_.get(); }
+    void initialize_fabric_config(FabricConfig fabric_config);
 
     // Returns whether we are running on Galaxy.
     bool is_galaxy_cluster() const;

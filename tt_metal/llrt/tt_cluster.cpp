@@ -943,6 +943,13 @@ std::unordered_set<CoreCoord> Cluster::get_active_ethernet_cores(
     return active_ethernet_cores;
 }
 
+tt::tt_fabric::ControlPlane* Cluster::get_control_plane() const {
+    if (control_plane_.get() == nullptr) {
+        TT_THROW("Control plane not initialized, need to call InitializeFabricConfig first");
+    }
+    return control_plane_.get();
+}
+
 void Cluster::initialize_fabric_config(FabricConfig fabric_config) {
     this->fabric_config_ = fabric_config;
     if (fabric_config != FabricConfig::DISABLED) {
@@ -953,7 +960,6 @@ void Cluster::initialize_fabric_config(FabricConfig fabric_config) {
     // Initialize control plane, does not configure kernels/routing tables
     // We always need a control plane for mapping of logical devices to physical devices
     this->initialize_control_plane();
-    this->control_plane_->convert_fabric_routing_table_to_chip_routing_table();
 }
 
 void Cluster::reserve_ethernet_cores_for_fabric_routers() {

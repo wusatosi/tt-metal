@@ -25,6 +25,19 @@ TEST_F(ControlPlaneFixture, TestTGControlPlaneInit) {
     auto control_plane = std::make_unique<ControlPlane>(tg_mesh_graph_desc_path.string());
 }
 
+TEST_F(ControlPlaneFixture, TestTGMeshAPIs) {
+    tt::tt_metal::detail::InitializeFabricConfig(tt::FabricConfig::DISABLED);
+    const auto control_plane = tt::Cluster::instance().get_control_plane();
+    auto user_meshes = control_plane->get_user_physical_mesh_ids();
+    EXPECT_EQ(user_meshes.size(), 1);
+    EXPECT_EQ(user_meshes[0], 4);
+    EXPECT_EQ(control_plane->get_physical_mesh_shape(0), tt::tt_metal::distributed::MeshShape(1, 1));
+    EXPECT_EQ(control_plane->get_physical_mesh_shape(1), tt::tt_metal::distributed::MeshShape(1, 1));
+    EXPECT_EQ(control_plane->get_physical_mesh_shape(2), tt::tt_metal::distributed::MeshShape(1, 1));
+    EXPECT_EQ(control_plane->get_physical_mesh_shape(3), tt::tt_metal::distributed::MeshShape(1, 1));
+    EXPECT_EQ(control_plane->get_physical_mesh_shape(4), tt::tt_metal::distributed::MeshShape(4, 8));
+}
+
 TEST_F(ControlPlaneFixture, TestTGFabricRoutes) {
     const std::filesystem::path tg_mesh_graph_desc_path =
         std::filesystem::path(tt::llrt::RunTimeOptions::get_instance().get_root_dir()) /

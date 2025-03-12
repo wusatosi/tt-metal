@@ -647,7 +647,8 @@ size_t ControlPlane::get_num_active_fabric_routers(mesh_id_t mesh_id, chip_id_t 
     return num_routers;
 }
 
-void ControlPlane::configure_routing_tables() const {
+void ControlPlane::configure_routing_tables() {
+    this->convert_fabric_routing_table_to_chip_routing_table();
     // Configure the routing tables on the chips
     TT_ASSERT(
         this->intra_mesh_routing_tables_.size() == this->inter_mesh_routing_tables_.size(),
@@ -662,6 +663,33 @@ void ControlPlane::configure_routing_tables() const {
         }
     }
 }
+
+std::vector<mesh_id_t> ControlPlane::get_user_physical_mesh_ids() const {
+    std::vector<mesh_id_t> physical_mesh_ids;
+    const auto user_chips = tt::Cluster::instance().get_user_chip_ethernet_coordinates();
+    for (int mesh_id = 0; mesh_id < this->logical_mesh_chip_id_to_physical_chip_id_mapping_.size(); mesh_id++) {
+        bool add_mesh = true;
+        for (int chip_id = 0; chip_id < this->logical_mesh_chip_id_to_physical_chip_id_mapping_[mesh_id].size();
+             chip_id++) {
+            if (user_chips.find(this->logical_mesh_chip_id_to_physical_chip_id_mapping_[mesh_id][chip_id]) ==
+                user_chips.end()) {
+                add_mesh = false;
+                break;
+            }
+        }
+        if (add_mesh) {
+            physical_mesh_ids.push_back(mesh_id);
+        }
+    }
+
+    return physical_mesh_ids;
+}
+
+tt::tt_metal::distributed::MeshShape ControlPlane::get_physical_mesh_shape(mesh_id_t mesh_id) const {
+    uint32_t x = this->routing_table_generator_->get_mesh_ns_size(mesh_id);
+    uint32_t y = this->routing_table_generator_->get_mesh_ew_size(mesh_id);
+    return tt::tt_metal::distributed::MeshShape(x, y);
+};
 
 void ControlPlane::print_routing_tables() const {
     std::stringstream ss;
