@@ -2169,16 +2169,11 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
             // in1
             std::vector<uint32_t> mm_in1_args = {
                 (std::uint32_t)core_type,
-                in1_buffer->address(),  // in1_tensor_addr
-                0,                      // ring_idx
-            };
-            std::vector<uint32_t> mm_in1_args_ = {
-                (std::uint32_t)core_type,
                 0,  // ring_idx
             };
-            add_rt_args_to_all_rt_args(all_mm_in1_args, mm_in1_args_, core_id);
-            mm_in1_args.insert(mm_in1_args.begin(), (std::uint32_t)core_id);
-            tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, mm_in1_args);
+            add_rt_args_to_all_rt_args(all_mm_in1_args, mm_in1_args, core_id);
+            // mm_in1_args.insert(mm_in1_args.begin(), (std::uint32_t)core_id);
+            tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, {(std::uint32_t)core_id});
 
             // compute
             std::vector<uint32_t> mm_kernel_args;
@@ -2235,16 +2230,11 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         /* in1 */
         std::vector<uint32_t> mm_in1_args = {
             (std::uint32_t)core_type,
-            in1_buffer->address(),  // in1_tensor_addr
-            i,                      // ring_idx
-        };
-        std::vector<uint32_t> mm_in1_args_ = {
-            (std::uint32_t)core_type,
             i,  // ring_idx
         };
-        add_rt_args_to_all_rt_args(all_mm_in1_args, mm_in1_args_, core_id);
-        mm_in1_args.insert(mm_in1_args.begin(), (std::uint32_t)core_id);
-        tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, mm_in1_args);
+        add_rt_args_to_all_rt_args(all_mm_in1_args, mm_in1_args, core_id);
+        // mm_in1_args.insert(mm_in1_args.begin(), (std::uint32_t)core_id);
+        tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, {(std::uint32_t)core_id});
 
         /* compute */
         std::vector<uint32_t> mm_kernel_compute_args = {
@@ -2283,16 +2273,11 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         // in1
         std::vector<uint32_t> mm_in1_args = {
             (std::uint32_t)core_type,
-            in1_buffer->address(),  // in1_tensor_addr
-            0,                      // ring_idx
-        };
-        std::vector<uint32_t> mm_in1_args_ = {
-            (std::uint32_t)core_type,
             0,  // ring_idx
         };
-        add_rt_args_to_all_rt_args(all_mm_in1_args, mm_in1_args_, core_id);
-        mm_in1_args.insert(mm_in1_args.begin(), (std::uint32_t)core_id);
-        tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, mm_in1_args);
+        add_rt_args_to_all_rt_args(all_mm_in1_args, mm_in1_args, core_id);
+        // mm_in1_args.insert(mm_in1_args.begin(), (std::uint32_t)core_id);
+        tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, {(std::uint32_t)core_id});
 
         // compute
         std::vector<uint32_t> mm_kernel_args;
@@ -2351,14 +2336,6 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
             }
 
             if (not src1_sharded) {
-                auto& writer_runtime_args_by_core = GetRuntimeArgs(program, mm_kernel_in1_sender_writer_id);
-                for (uint32_t i = 0; i < all_cores_vec.size(); ++i) {
-                    const auto& core = all_cores_vec[i];
-                    auto& writer_runtime_args = writer_runtime_args_by_core[core.x][core.y];
-
-                    /* in1 */
-                    writer_runtime_args[2] = src_buffer_b->address();
-                }
                 auto& writer_common_rt_args = GetCommonRuntimeArgs(program, mm_kernel_in1_sender_writer_id);
                 writer_common_rt_args[0] = src_buffer_b->address();
             }

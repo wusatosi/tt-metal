@@ -52,12 +52,6 @@ void kernel_main() {
 
     uint32_t rt_args_idx = 0;
     uint32_t core_id = get_arg_val<uint32_t>(rt_args_idx++);
-    // uint32_t core_type = get_arg_val<uint32_t>(rt_args_idx++);
-    // if (core_type == (uint32_t)CORE_TYPE::IDLE_CORE || core_type == (uint32_t)CORE_TYPE::HOP_CORE) {
-    //     return;
-    // }
-    // const uint32_t in1_tensor_addr = get_arg_val<uint32_t>(rt_args_idx++);
-    // const uint32_t ring_idx = get_arg_val<uint32_t>(rt_args_idx++);
 
     uint32_t common_rt_args_idx = 0;
     const uint32_t in1_tensor_addr = get_common_arg_val<uint32_t>(common_rt_args_idx++);
