@@ -1728,10 +1728,10 @@ uint32_t get_core_index(
         auto start_coord = core_range.start_coord;
         auto end_coord = core_range.end_coord;
         if (core_range.contains(core)) {
-            tt::log_info(
-                "get_core_index: {}",
-                core_range_start_id + (core.x - start_coord.x) +
-                    (core.y - start_coord.y) * (end_coord.x - start_coord.x + 1));
+            // tt::log_info(
+            //     "get_core_index: {}",
+            //     core_range_start_id + (core.x - start_coord.x) +
+            //         (core.y - start_coord.y) * (end_coord.x - start_coord.x + 1));
             return core_range_start_id + (core.x - start_coord.x) +
                    (core.y - start_coord.y) * (end_coord.x - start_coord.x + 1);
         }
@@ -2141,14 +2141,20 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         // tt::log_info("core : {}, core_is_in_all_worker_cores: {}", core, core_is_in_all_worker_cores);
 
         if (!core_is_in_all_worker_cores && !core_is_in_hop_cores) {  // not worker core and not hop core
+            tt::log_info("idle core_id: {}", core_id);
             auto core_type = CORE_TYPE::IDLE_CORE;                    // idle core
             // tt::log_info("IDLE : {}", core);
             // in0
-            std::vector<uint32_t> mm_kernel_in0_args = {(std::uint32_t)core_type};
-            add_rt_args_to_all_rt_args(all_mm_in0_args, mm_kernel_in0_args, core_id);
+            std::vector<uint32_t> mm_in0_args = {
+                (std::uint32_t)core_type,
+                0,  // ring_index
+                0,  // next_core_noc_x
+                0,  // next_core_noc_y
+                0};
+            add_rt_args_to_all_rt_args(all_mm_in0_args, mm_in0_args, core_id);
 
-            mm_kernel_in0_args.insert(mm_kernel_in0_args.begin(), (std::uint32_t)core_id);
-            tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, mm_kernel_in0_args);
+            mm_in0_args.insert(mm_in0_args.begin(), (std::uint32_t)core_id);
+            tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, mm_in0_args);
 
             // in1
             std::vector<uint32_t> mm_kernel_in1_sender_writer_args;
@@ -2183,6 +2189,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         const auto& core_noc = device->worker_core_from_logical_core(core);
 
         auto core_id = get_core_index(all_cores_info, core);
+        tt::log_info("worker core_id: {}", core_id);
 
         /* in0 */
         auto core_type = CORE_TYPE::WORKER_CORE;  // worker core
@@ -2231,6 +2238,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         const auto& core_noc = device->worker_core_from_logical_core(core);
 
         auto core_id = get_core_index(all_cores_info, core);
+        tt::log_info("hop core_id: {}", core_id);
 
         /* in0 */
         CoreCoord next_core = end_of_hop ? worker_cores_vec[num_cores - 1] : hop_cores_vec[i + 1];

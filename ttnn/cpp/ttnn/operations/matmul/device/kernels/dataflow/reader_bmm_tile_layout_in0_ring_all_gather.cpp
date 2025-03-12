@@ -57,19 +57,22 @@ void kernel_main() {
         (volatile tt_l1_ptr common_rt_args_info*)(common_rt_args_base + core_id * sizeof(common_rt_args_info));
 
     // DPRINT << "common_rt_args " << (uint)common_rt_args <<ENDL();
-    // DPRINT << "core_id " << (uint)core_id <<ENDL();
-    // DPRINT << "ring_size " << (uint)ring_size <<ENDL();
-    // DPRINT << "core_type " << (uint)common_rt_args->core_type << " " << core_type <<ENDL();
-    // DPRINT << "ring_index " << (uint)common_rt_args->ring_index << " " << ring_idx<<ENDL();
-    // DPRINT << "next_core_noc_x " << (uint)common_rt_args->next_core_noc_x <<" " << next_core_noc_x<<ENDL();
-    // DPRINT << "next_core_noc_y " << (uint)common_rt_args->next_core_noc_y <<" " << next_core_noc_y<<ENDL();
-    // DPRINT << "noc " << (uint)common_rt_args->noc <<" " << noc<<ENDL();
+    DPRINT << "core_id * sizeof(common_rt_args_info) " << (uint)core_id * sizeof(common_rt_args_info) << ENDL();
+    DPRINT << "ring_size " << (uint)ring_size << ENDL();
+    DPRINT << "core_type " << (uint)common_rt_args->core_type << " " << core_type << ENDL();
+    DPRINT << "ring_index " << (uint)common_rt_args->ring_index << " " << ring_idx << ENDL();
+    DPRINT << "next_core_noc_x " << (uint)common_rt_args->next_core_noc_x << " " << next_core_noc_x << ENDL();
+    DPRINT << "next_core_noc_y " << (uint)common_rt_args->next_core_noc_y << " " << next_core_noc_y << ENDL();
+    DPRINT << "noc " << (uint)common_rt_args->noc << " " << noc << ENDL();
 
+    // if (core_type != (uint32_t)CORE_TYPE::IDLE_CORE) {
     ASSERT(common_rt_args->core_type == core_type);
     ASSERT(common_rt_args->ring_index == ring_idx);
     ASSERT(common_rt_args->next_core_noc_x == next_core_noc_x);
     ASSERT(common_rt_args->next_core_noc_y == next_core_noc_y);
     ASSERT(common_rt_args->noc == noc);
+
+    // }
 
     // const uint32_t* unpadded_in0_shard_widths_in_tiles = (uint32_t*)get_arg_addr(rt_args_idx);
     // rt_args_idx += ring_size;
