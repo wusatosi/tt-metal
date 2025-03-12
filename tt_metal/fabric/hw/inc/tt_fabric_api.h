@@ -23,6 +23,11 @@ enum AsyncWriteMode : uint8_t {
     ALL = ADD_HEADER | ADD_PR | SEND_PR,
 };
 
+enum ClientDataMode : uint8_t {
+    PACKETIZED_DATA = 0x0,
+    RAW_DATA = 0x1,
+};
+
 enum RoutingType : uint8_t {
     ROUTING_TABLE,
     ROUTER_XY,
@@ -71,6 +76,7 @@ inline uint32_t get_next_hop_router_direction(
 }
 #endif
 
+template <ClientDataMode data_mode = ClientDataMode::PACKETIZED_DATA>
 inline void fabric_setup_pull_request(
     volatile tt_l1_ptr fabric_pull_client_interface_t* client_interface, uint32_t src_addr, uint32_t size) {
     uint32_t size_in_words = (size + PACKET_WORD_SIZE_BYTES - 1) >> 4;
@@ -86,16 +92,21 @@ inline void fabric_setup_pull_request(
     client_interface->local_pull_request.pull_request.words_read = 0;
     client_interface->local_pull_request.pull_request.ack_addr =
         xy_local_addr + (uint32_t)&client_interface->local_pull_request.pull_request.words_read;
-    client_interface->local_pull_request.pull_request.flags = FORWARD;
+    if constexpr (data_mode == ClientDataMode::PACKETIZED_DATA) {
+        client_interface->local_pull_request.pull_request.flags = FORWARD;
+    } else {
+        client_interface->local_pull_request.pull_request.flags = PACK_N_FORWARD;
+    }
 }
 
-template <RoutingType routing_type = RoutingType::ROUTER_XY>
+template <ClientDataMode data_mode = ClientDataMode::PACKETIZED_DATA, RoutingType routing_type = RoutingType::ROUTER_XY>
 inline void fabric_send_pull_request(
     volatile tt_l1_ptr fabric_pull_client_interface_t* client_interface,
     uint32_t routing,  // routing refers to the router noc xy to use when using ROUTER_XY,
                        // and the routing plane to use when using ROUTING_TABLE
     uint16_t dst_mesh_id,
-    uint16_t dst_dev_id) {
+    uint16_t dst_dev_id,
+    uint32_t header_id = 0) {
     uint64_t router_addr;
     if constexpr (routing_type == RoutingType::ROUTING_TABLE) {
         router_addr = ((uint64_t)get_next_hop_router_noc_xy(client_interface, routing, dst_mesh_id, dst_dev_id) << 32) |
@@ -103,7 +114,57 @@ inline void fabric_send_pull_request(
     } else {
         router_addr = get_noc_addr_helper(routing, FABRIC_ROUTER_REQ_QUEUE_START);
     }
-    tt_fabric_send_pull_request(router_addr, (volatile local_pull_request_t*)&client_interface->local_pull_request);
+
+    uint64_t noc_addr = router_addr + offsetof(chan_req_buf, wrptr);
+    uint32_t increment;
+    if constexpr (data_mode == ClientDataMode::PACKETIZED_DATA) {
+        increment = 1;
+    } else {
+        // when sending raw data, we reserve two request slots in router.
+        // first slot is pull request, second slot holds packet header
+        // since the client data buffer does not contain the packet header.
+        increment = 2;
+    }
+    noc_fast_atomic_increment<DM_DEDICATED_NOC, true>(
+        noc_index,
+        NCRISC_AT_CMD_BUF,
+        noc_addr,
+        NOC_UNICAST_WRITE_VC,
+        increment,
+        CHAN_REQ_BUF_LOG_SIZE,
+        false,
+        false,
+        (uint32_t)&client_interface->local_pull_request.wrptr.ptr);
+    while (!ncrisc_noc_nonposted_atomics_flushed(noc_index));
+    uint32_t wrptr = client_interface->local_pull_request.wrptr.ptr;
+    noc_addr = router_addr + offsetof(chan_req_buf, rdptr);
+    if constexpr (data_mode == ClientDataMode::RAW_DATA) {
+        uint32_t header_wrptr = (wrptr + 1) & CHAN_REQ_BUF_PTR_MASK;
+        while (1) {
+            noc_async_read_one_packet(noc_addr, (uint32_t)(&client_interface->local_pull_request.rdptr.ptr), 4);
+            noc_async_read_barrier();
+            if (!req_buf_ptrs_full(header_wrptr, client_interface->local_pull_request.rdptr.ptr)) {
+                break;
+            }
+        }
+        uint32_t header_wr_index = header_wrptr & CHAN_REQ_BUF_SIZE_MASK;
+        noc_addr = router_addr + offsetof(chan_req_buf, chan_req) + header_wr_index * sizeof(pull_request_t);
+        noc_async_write_one_packet(
+            (uint32_t)(&client_interface->header_buffer[header_id]), noc_addr, sizeof(pull_request_t), noc_index);
+    } else {
+        while (1) {
+            noc_async_read_one_packet(noc_addr, (uint32_t)(&client_interface->local_pull_request.rdptr.ptr), 4);
+            noc_async_read_barrier();
+            if (!req_buf_ptrs_full(wrptr, client_interface->local_pull_request.rdptr.ptr)) {
+                break;
+            }
+        }
+    }
+
+    uint32_t dest_wr_index = wrptr & CHAN_REQ_BUF_SIZE_MASK;
+    noc_addr = router_addr + offsetof(chan_req_buf, chan_req) + dest_wr_index * sizeof(pull_request_t);
+    noc_async_write_one_packet(
+        (uint32_t)(&client_interface->local_pull_request.pull_request), noc_addr, sizeof(pull_request_t), noc_index);
 }
 
 FORCE_INLINE void fabric_wait_for_pull_request_words_flushed(
@@ -127,14 +188,21 @@ inline void fabric_wait_for_pull_request_flushed(volatile tt_l1_ptr fabric_pull_
     fabric_wait_for_pull_request_words_flushed(client_interface, words_written);
 }
 
+template <typename T, ClientDataMode data_mode = ClientDataMode::PACKETIZED_DATA>
 inline void fabric_async_write_add_header(
+    T client_interface,
     uint32_t src_addr,  // source address in sender’s memory
     uint16_t dst_mesh_id,
     uint16_t dst_dev_id,
     uint64_t dst_addr,
-    uint32_t size  // number of bytes to write to remote destination
-) {
-    packet_header_t* packet_header = (packet_header_t*)(src_addr);
+    uint32_t size,  // number of bytes to write to remote destination
+    uint32_t header_id = 0) {
+    packet_header_t* packet_header;
+    if constexpr (data_mode == ClientDataMode::PACKETIZED_DATA) {
+        packet_header = (packet_header_t*)(src_addr);
+    } else {
+        packet_header = (packet_header_t*)&client_interface->header_buffer[header_id];
+    }
     packet_header->routing.flags = FORWARD;
     packet_header->routing.packet_size_bytes = size;
     packet_header->routing.dst_mesh_id = dst_mesh_id;
@@ -148,7 +216,10 @@ inline void fabric_async_write_add_header(
 #ifdef FVC_MODE_PULL
 // Write packetized data over fabric to dst_mesh, dst_dev.
 // Packet is at src_addr in sender L1.
-template <AsyncWriteMode mode = AsyncWriteMode::ALL, RoutingType routing_type = RoutingType::ROUTER_XY>
+template <
+    ClientDataMode data_mode = ClientDataMode::PACKETIZED_DATA,
+    AsyncWriteMode mode = AsyncWriteMode::ALL,
+    RoutingType routing_type = RoutingType::ROUTER_XY>
 inline void fabric_async_write(
     volatile tt_l1_ptr fabric_pull_client_interface_t* client_interface,
     uint32_t routing,   // routing refers to the router noc xy to use when using ROUTER_XY,
@@ -157,18 +228,24 @@ inline void fabric_async_write(
     uint16_t dst_mesh_id,
     uint16_t dst_dev_id,
     uint64_t dst_addr,
-    uint32_t size  // number of bytes to write to remote destination
-) {
+    uint32_t size,  // number of bytes to write to remote destination
+    uint32_t header_id = 0) {
     if constexpr (mode & AsyncWriteMode::ADD_HEADER) {
-        fabric_async_write_add_header(src_addr, dst_mesh_id, dst_dev_id, dst_addr, size);
+        fabric_async_write_add_header<decltype(client_interface), data_mode>(
+            client_interface, src_addr, dst_mesh_id, dst_dev_id, dst_addr, size, header_id);
     }
 
     if constexpr (mode & AsyncWriteMode::ADD_PR) {
-        fabric_setup_pull_request(client_interface, src_addr, size);
+        if constexpr (data_mode == ClientDataMode::PACKETIZED_DATA) {
+            fabric_setup_pull_request<data_mode>(client_interface, src_addr, size);
+        } else {
+            fabric_setup_pull_request<data_mode>(client_interface, src_addr, size - PACKET_HEADER_SIZE_BYTES);
+        }
     }
 
     if constexpr (mode & AsyncWriteMode::SEND_PR) {
-        fabric_send_pull_request<routing_type>(client_interface, routing, dst_mesh_id, dst_dev_id);
+        fabric_send_pull_request<data_mode, routing_type>(
+            client_interface, routing, dst_mesh_id, dst_dev_id, header_id);
     }
 }
 #else
@@ -230,7 +307,7 @@ inline void fabric_async_write_push_data(
     }
 }
 
-template <AsyncWriteMode mode = AsyncWriteMode::ALL>
+template <ClientDataMode data_mode = ClientDataMode::PACKETIZED_DATA, AsyncWriteMode mode = AsyncWriteMode::ALL>
 inline void fabric_async_write(
     volatile tt_l1_ptr fabric_push_client_interface_t* client_interface,
     uint32_t routing_plane,  // the network plane to use for this transaction
@@ -238,10 +315,11 @@ inline void fabric_async_write(
     uint16_t dst_mesh_id,
     uint16_t dst_dev_id,
     uint64_t dst_addr,
-    uint32_t size  // number of bytes to write to remote destination
-) {
+    uint32_t size,  // number of bytes to write to remote destination
+    uint32_t header_id = 0) {
     if constexpr (mode & AsyncWriteMode::ADD_HEADER) {
-        fabric_async_write_add_header(src_addr, dst_mesh_id, dst_dev_id, dst_addr, size);
+        fabric_async_write_add_header<decltype(client_interface), data_mode>(
+            client_interface, src_addr, dst_mesh_id, dst_dev_id, dst_addr, size, header_id);
     }
     if constexpr (mode & AsyncWriteMode::PUSH) {
         fabric_async_write_push_data(client_interface, src_addr, size);

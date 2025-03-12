@@ -845,12 +845,22 @@ typedef struct fvc_outbound_pull_state {
 
         return num_words_to_pull;
     }
-
-    FORCE_INLINE uint32_t pull_data_to_fvc_buffer(volatile pull_request_t* pull_request) {
+    template <bool packetized = true>
+    FORCE_INLINE uint32_t
+    pull_data_to_fvc_buffer(volatile pull_request_t* pull_request, volatile pull_request_t* header) {
         if (packet_in_progress == 0) {
             uint32_t size = pull_request->size;
-            packet_words_remaining = (size + PACKET_WORD_SIZE_BYTES - 1) >> 4;
-            packet_in_progress = 1;
+            if constexpr (packetized == false) {
+                packet_words_remaining = PACKET_HEADER_SIZE_WORDS + ((size + PACKET_WORD_SIZE_BYTES - 1) >> 4);
+                if (move_data_to_fvc_buffer<false>(header)) {
+                    packet_in_progress = 1;
+                } else {
+                    return 0;
+                }
+            } else {
+                packet_words_remaining = (size + PACKET_WORD_SIZE_BYTES - 1) >> 4;
+                packet_in_progress = 1;
+            }
         }
 
         uint32_t num_words_to_pull = get_num_words_to_pull(pull_request);
@@ -871,10 +881,13 @@ typedef struct fvc_outbound_pull_state {
         return num_words_to_pull;
     }
 
-    inline uint32_t move_data_to_fvc_buffer(volatile pull_request_t* pull_request) {
-        if (packet_in_progress == 0) {
-            packet_words_remaining = PACKET_HEADER_SIZE_WORDS;
-            packet_in_progress = 1;
+    template <bool packet = true>
+    FORCE_INLINE uint32_t move_data_to_fvc_buffer(volatile pull_request_t* pull_request) {
+        if constexpr (packet == true) {
+            if (packet_in_progress == 0) {
+                packet_words_remaining = PACKET_HEADER_SIZE_WORDS;
+                packet_in_progress = 1;
+            }
         }
 
         // if fvc does not have enough space, try again later.
@@ -2107,8 +2120,15 @@ inline void req_buf_advance_wrptr(chan_req_buf* req_buf) { req_buf_ptr_advance(&
 
 inline void req_buf_advance_rdptr(chan_req_buf* req_buf) {
     // clear valid before incrementing read pointer.
+    // PACK and FORWARD requests take 2 entries in request buffer.
+    // First entry is pull reqeust itself, second entry is packet header.
     uint32_t rd_index = req_buf->rdptr.ptr & CHAN_REQ_BUF_SIZE_MASK;
-    req_buf->chan_req[rd_index].bytes[47] = 0;
+    if (req_buf->chan_req[rd_index].pull_request.flags == PACK_N_FORWARD) {
+        req_buf->chan_req[rd_index].pull_request.flags = 0;
+        req_buf_ptr_advance(&(req_buf->rdptr));
+        rd_index = (rd_index + 1) & CHAN_REQ_BUF_SIZE_MASK;
+    }
+    req_buf->chan_req[rd_index].pull_request.flags = 0;
     req_buf_ptr_advance(&(req_buf->rdptr));
 }
 
