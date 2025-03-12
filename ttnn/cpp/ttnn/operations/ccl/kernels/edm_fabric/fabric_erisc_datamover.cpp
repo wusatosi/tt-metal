@@ -1015,11 +1015,39 @@ void __attribute__ ((noinline)) run_fabric_edm_main_loop(
 
 template <size_t NUM_SENDER_CHANNELS, uint8_t SENDER_NUM_BUFFERS>
 void __attribute__((noinline)) init_local_sender_channel_worker_interfaces(
+    std::array<tt::fabric::EthChannelBuffer<SENDER_NUM_BUFFERS>, NUM_SENDER_CHANNELS> &local_sender_channels,
+    std::array<tt::fabric::EthChannelBuffer<SENDER_NUM_BUFFERS>, NUM_SENDER_CHANNELS> &remote_sender_channels,
+    const size_t channel_buffer_size,
+    std::array<size_t, NUM_SENDER_CHANNELS> const &local_sender_buffer_addresses,
+    std::array<size_t, NUM_SENDER_CHANNELS> const &remote_sender_buffer_addresses,
     std::array<size_t, NUM_SENDER_CHANNELS>& local_sender_connection_live_semaphore_addresses,
     std::array<size_t, NUM_SENDER_CHANNELS>& local_sender_connection_info_addresses,
     std::array<tt::fabric::EdmChannelWorkerInterface<SENDER_NUM_BUFFERS>, NUM_SENDER_CHANNELS>&
         local_sender_channel_worker_interfaces,
     std::array<size_t, NUM_SENDER_CHANNELS>& local_sender_flow_control_semaphores) {
+
+    for (size_t i = 0; i < NUM_SENDER_CHANNELS; i++) {
+        auto connection_worker_info_ptr = reinterpret_cast<volatile tt::fabric::EDMChannelWorkerLocationInfo *>(
+            local_sender_connection_info_addresses[i]);
+        connection_worker_info_ptr->edm_rdptr = 0;
+    }
+
+    for (uint8_t i = 0; i < NUM_SENDER_CHANNELS; i++) {
+        new (&local_sender_channels[i]) tt::fabric::EthChannelBuffer<SENDER_NUM_BUFFERS>(
+            local_sender_buffer_addresses[i],
+            channel_buffer_size,
+            sizeof(PACKET_HEADER_TYPE),
+            0,  // For sender channels there is no eth_transaction_ack_word_addr because they don't send acks
+            i);
+        new (&remote_sender_channels[i]) tt::fabric::EthChannelBuffer<SENDER_NUM_BUFFERS>(
+            remote_sender_buffer_addresses[i],
+            channel_buffer_size,
+            sizeof(PACKET_HEADER_TYPE),
+            0,  // For sender channels there is no eth_transaction_ack_word_addr because they don't send acks
+            i);
+
+    }
+
     // for (uint8_t i = 0; i < NUM_SENDER_CHANNELS; i++) {
     //     auto connection_live_semaphore_ptr =
     //         reinterpret_cast<volatile tt_l1_ptr uint32_t
@@ -1229,11 +1257,11 @@ void kernel_main() {
         local_sender_channel_0_connection_semaphore_addr, local_sender_channel_1_connection_semaphore_addr};
     std::array<size_t, NUM_SENDER_CHANNELS> local_sender_connection_info_addresses = {
         local_sender_channel_0_connection_info_addr, local_sender_channel_1_connection_info_addr};
-    for (size_t i = 0; i < NUM_SENDER_CHANNELS; i++) {
-        auto connection_worker_info_ptr = reinterpret_cast<volatile tt::fabric::EDMChannelWorkerLocationInfo *>(
-            local_sender_connection_info_addresses[i]);
-        connection_worker_info_ptr->edm_rdptr = 0;
-    }
+    // for (size_t i = 0; i < NUM_SENDER_CHANNELS; i++) {
+    //     auto connection_worker_info_ptr = reinterpret_cast<volatile tt::fabric::EDMChannelWorkerLocationInfo *>(
+    //         local_sender_connection_info_addresses[i]);
+    //     connection_worker_info_ptr->edm_rdptr = 0;
+    // }
     auto downstream_edm_noc_interface =
         has_downstream_edm_buffer_connection
             ? tt::fabric::EdmToEdmSender<SENDER_NUM_BUFFERS, false, write_reg_cmd_buf, write_at_cmd_buf, noc_index>(
@@ -1269,24 +1297,12 @@ void kernel_main() {
                                         // can fit 2 eth_channel_syncs cfor ack
         receiver_channel_id);
 
-    uint32_t args_offset = 0;
-
-    for (uint8_t i = 0; i < NUM_SENDER_CHANNELS; i++) {
-        new (&local_sender_channels[i]) tt::fabric::EthChannelBuffer<SENDER_NUM_BUFFERS>(
-            local_sender_buffer_addresses[i],
-            channel_buffer_size,
-            sizeof(PACKET_HEADER_TYPE),
-            0,  // For sender channels there is no eth_transaction_ack_word_addr because they don't send acks
-            i);
-        new (&remote_sender_channels[i]) tt::fabric::EthChannelBuffer<SENDER_NUM_BUFFERS>(
-            remote_sender_buffer_addresses[i],
-            channel_buffer_size,
-            sizeof(PACKET_HEADER_TYPE),
-            0,  // For sender channels there is no eth_transaction_ack_word_addr because they don't send acks
-            i);
-
-    }
     init_local_sender_channel_worker_interfaces(
+        local_sender_channels,
+        remote_sender_channels,
+        channel_buffer_size,
+        local_sender_buffer_addresses,
+        remote_sender_buffer_addresses,
         local_sender_connection_live_semaphore_addresses,
         local_sender_connection_info_addresses,
         local_sender_channel_worker_interfaces,
