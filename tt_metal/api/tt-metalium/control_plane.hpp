@@ -5,7 +5,6 @@
 #pragma once
 
 #include "routing_table_generator.hpp"
-#include <tt-metalium/tt_metal.hpp>
 #include <tt-metalium/rtoptions.hpp>
 #include <tt-metalium/fabric_host_interface.h>
 

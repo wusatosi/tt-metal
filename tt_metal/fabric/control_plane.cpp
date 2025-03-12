@@ -54,12 +54,8 @@ ControlPlane::ControlPlane(const std::string& mesh_graph_desc_file) {
     // Initialize the control plane routers based on mesh graph
     this->initialize_from_mesh_graph_desc_file(mesh_graph_desc_file);
 
-    this->convert_fabric_routing_table_to_chip_routing_table();
-
     // Printing, only enabled with log_debug
     this->print_ethernet_channels();
-    // Printing, only enabled with log_debug
-    this->print_routing_tables();
 }
 
 std::vector<chip_id_t> ControlPlane::get_mesh_physical_chip_ids(
@@ -417,6 +413,8 @@ void ControlPlane::convert_fabric_routing_table_to_chip_routing_table() {
             }
         }
     }
+    // Printing, only enabled with log_debug
+    this->print_routing_tables();
 }
 
 void ControlPlane::write_routing_tables_to_chip(mesh_id_t mesh_id, chip_id_t chip_id) const {

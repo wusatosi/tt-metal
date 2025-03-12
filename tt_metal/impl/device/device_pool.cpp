@@ -18,7 +18,6 @@
 #include "dispatch_settings.hpp"
 #include "dprint_server.hpp"
 #include "host_api.hpp"
-#include "control_plane.hpp"
 #include <tt_metal.hpp>
 #include "tt_metal/impl/debug/noc_logging.hpp"
 #include "tt_metal/impl/debug/watcher_server.hpp"
@@ -292,13 +291,9 @@ void DevicePool::initialize_active_devices() const {
     // TODO: add handling of EDM
     FabricConfig fabric_config = tt::Cluster::instance().get_fabric_config();
     if (fabric_config == FabricConfig::FABRIC_2D || fabric_config == FabricConfig::FABRIC_2D_PUSH) {
-        // Initialize control plane, does not configure kernels/routing tables
-        // We always need a control plane for mapping of logical devices to physical devices
-        // TODO: add single device support
-        _inst->initialize_control_plane();  // not const
         // write routing tables to all ethernet cores
         // TODO: writing to device normally goes through cluster
-        this->control_plane->configure_routing_tables();
+        tt::Cluster::instance().get_control_plane()->configure_routing_tables();
         // Initialize fabric on mmio device
         for (const auto& dev : active_devices) {
             dev->init_fabric();
@@ -460,8 +455,10 @@ void DevicePool::wait_for_fabric_master_router_sync() const {
                 tt::Cluster::instance().get_virtual_eth_core_from_channel(dev->id(), fabric_master_router_chan);
             auto fabric_master_router_core = dev->logical_core_from_ethernet_core(virtual_eth_core);
 
-            auto [mesh_id, chip_id] = this->control_plane->get_mesh_chip_id_from_physical_chip_id(dev->id());
-            auto num_routers = this->control_plane->get_num_active_fabric_routers(mesh_id, chip_id);
+            auto [mesh_id, chip_id] =
+                tt::Cluster::instance().get_control_plane()->get_mesh_chip_id_from_physical_chip_id(dev->id());
+            auto num_routers =
+                tt::Cluster::instance().get_control_plane()->get_num_active_fabric_routers(mesh_id, chip_id);
             while (master_router_status[0] != num_routers) {
                 tt_metal::detail::ReadFromDeviceL1(
                     dev,
@@ -549,29 +546,6 @@ void DevicePool::init_firmware_on_active_devices() const {
 
     this->initialize_active_devices();
 }
-
-void DevicePool::initialize_control_plane() {
-    // Default mode, auto select mesh graph descriptor. In future, we can add a way for user to specify custom
-    // descriptors
-    std::string mesh_graph_descriptor;
-    switch (tt::Cluster::instance().get_cluster_type()) {
-        case tt::ClusterType::N150: mesh_graph_descriptor = "n150_mesh_graph_descriptor.yaml"; break;
-        case tt::ClusterType::N300: mesh_graph_descriptor = "n300_mesh_graph_descriptor.yaml"; break;
-        case tt::ClusterType::T3K: mesh_graph_descriptor = "t3k_mesh_graph_descriptor.yaml"; break;
-        case tt::ClusterType::GALAXY: mesh_graph_descriptor = "quanta_mesh_graph_descriptor.yaml"; break;
-        case tt::ClusterType::TG: mesh_graph_descriptor = "tg_mesh_graph_descriptor.yaml"; break;
-        default: TT_THROW("Unknown cluster type");
-    }
-    const std::filesystem::path mesh_graph_desc_path =
-        std::filesystem::path(tt::llrt::RunTimeOptions::get_instance().get_root_dir()) /
-        "tt_metal/fabric/mesh_graph_descriptors" / mesh_graph_descriptor;
-
-    this->control_plane = std::make_unique<tt::tt_fabric::ControlPlane>(mesh_graph_desc_path.string());
-}
-
-tt::tt_fabric::ControlPlane* DevicePool::get_control_plane() const {
-    return this->control_plane.get();
-}  // TODO: Don't use get to expose the raw pointer
 
 DevicePool::DevicePool() {
     ZoneScoped;

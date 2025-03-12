@@ -10,6 +10,7 @@
 #include <tt-metalium/metal_soc_descriptor.h>
 #include <tt-metalium/tt_backend_api_types.hpp>
 #include <tt-metalium/fabric_host_interface.h>
+#include <tt-metalium/control_plane.hpp>
 #include "umd/device/device_api_metal.h"
 #include "umd/device/tt_cluster_descriptor.h"
 #include "umd/device/tt_xy_pair.h"
@@ -261,6 +262,8 @@ public:
 
     void initialize_fabric_config(FabricConfig fabric_config);
 
+    tt::tt_fabric::ControlPlane* get_control_plane() const { return control_plane_.get(); }
+
     // Returns whether we are running on Galaxy.
     bool is_galaxy_cluster() const;
 
@@ -305,6 +308,9 @@ private:
 
     void initialize_ethernet_sockets();
 
+    // Initialize control plane, which has mapping of physical device id to MeshGraph config
+    void initialize_control_plane();
+
     // Set tunnels from mmio
     void set_tunnels_from_mmio_device();
 
@@ -345,6 +351,8 @@ private:
     void release_ethernet_cores_for_fabric_routers();
 
     FabricConfig fabric_config_ = FabricConfig::DISABLED;
+
+    std::unique_ptr<tt::tt_fabric::ControlPlane> control_plane_;
 
     // Tunnels setup in cluster
     std::map<chip_id_t, std::vector<std::vector<chip_id_t>>> tunnels_from_mmio_device = {};

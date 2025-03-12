@@ -950,6 +950,10 @@ void Cluster::initialize_fabric_config(FabricConfig fabric_config) {
     } else {
         this->release_ethernet_cores_for_fabric_routers();
     }
+    // Initialize control plane, does not configure kernels/routing tables
+    // We always need a control plane for mapping of logical devices to physical devices
+    this->initialize_control_plane();
+    this->control_plane_->convert_fabric_routing_table_to_chip_routing_table();
 }
 
 void Cluster::reserve_ethernet_cores_for_fabric_routers() {
@@ -1182,6 +1186,25 @@ uint32_t Cluster::get_mmio_device_tunnel_count(chip_id_t mmio_device) const {
 uint32_t Cluster::get_device_tunnel_depth(chip_id_t chip_id) const {
     chip_id_t mmio_device_id = this->get_associated_mmio_device(chip_id);
     return (mmio_device_id == chip_id) ? 0 : this->cluster_desc_->get_ethernet_link_distance(chip_id, mmio_device_id);
+}
+
+void Cluster::initialize_control_plane() {
+    // Default mode, auto select mesh graph descriptor. In future, we can add a way for user to specify custom
+    // descriptors
+    std::string mesh_graph_descriptor;
+    switch (this->cluster_type_) {
+        case tt::ClusterType::N150: mesh_graph_descriptor = "n150_mesh_graph_descriptor.yaml"; break;
+        case tt::ClusterType::N300: mesh_graph_descriptor = "n300_mesh_graph_descriptor.yaml"; break;
+        case tt::ClusterType::T3K: mesh_graph_descriptor = "t3k_mesh_graph_descriptor.yaml"; break;
+        case tt::ClusterType::GALAXY: mesh_graph_descriptor = "quanta_mesh_graph_descriptor.yaml"; break;
+        case tt::ClusterType::TG: mesh_graph_descriptor = "tg_mesh_graph_descriptor.yaml"; break;
+        default: TT_THROW("Unknown cluster type");
+    }
+    const std::filesystem::path mesh_graph_desc_path =
+        std::filesystem::path(tt::llrt::RunTimeOptions::get_instance().get_root_dir()) /
+        "tt_metal/fabric/mesh_graph_descriptors" / mesh_graph_descriptor;
+
+    control_plane_ = std::make_unique<tt::tt_fabric::ControlPlane>(mesh_graph_desc_path.string());
 }
 
 }  // namespace tt
