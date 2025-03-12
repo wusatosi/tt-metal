@@ -176,11 +176,11 @@ void MAIN {
     volatile tt_l1_ptr common_rt_args_info* common_rt_args =
         (volatile tt_l1_ptr common_rt_args_info*)(common_rt_args_base + core_id * sizeof(common_rt_args_info));
 
-    uint32_t core_type = get_arg_val<uint32_t>(rt_args_idx++);
+    uint32_t core_type = (uint32_t)common_rt_args->core_type;
     if (core_type == (uint32_t)CORE_TYPE::IDLE_CORE || core_type == (uint32_t)CORE_TYPE::HOP_CORE) {
         return;
     }
-    uint32_t ring_idx = get_arg_val<uint32_t>(rt_args_idx++);
+    uint32_t ring_idx = (uint32_t)common_rt_args->ring_index;
 
     // DPRINT << "in1_tensor_addr " << in1_tensor_addr << " " << in1_tensor_addr_ << ENDL();
     // DPRINT << "core_type " << (uint)common_rt_args->core_type << " " << core_type << ENDL();
