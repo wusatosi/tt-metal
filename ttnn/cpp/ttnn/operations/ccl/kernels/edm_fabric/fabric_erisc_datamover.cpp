@@ -1013,6 +1013,50 @@ void __attribute__ ((noinline)) run_fabric_edm_main_loop(
     DPRINT << "EDM Terminating\n";
 }
 
+template <size_t NUM_SENDER_CHANNELS, uint8_t SENDER_NUM_BUFFERS>
+void __attribute__((noinline)) init_local_sender_channel_worker_interfaces(
+    std::array<size_t, NUM_SENDER_CHANNELS>& local_sender_connection_live_semaphore_addresses,
+    std::array<size_t, NUM_SENDER_CHANNELS>& local_sender_connection_info_addresses,
+    std::array<tt::fabric::EdmChannelWorkerInterface<SENDER_NUM_BUFFERS>, NUM_SENDER_CHANNELS>&
+        local_sender_channel_worker_interfaces,
+    std::array<size_t, NUM_SENDER_CHANNELS>& local_sender_flow_control_semaphores) {
+    // for (uint8_t i = 0; i < NUM_SENDER_CHANNELS; i++) {
+    //     auto connection_live_semaphore_ptr =
+    //         reinterpret_cast<volatile tt_l1_ptr uint32_t
+    //         *const>(local_sender_connection_live_semaphore_addresses[i]);
+    //     auto connection_worker_info_ptr = reinterpret_cast<volatile tt::fabric::EDMChannelWorkerLocationInfo *>(
+    //         local_sender_connection_info_addresses[i]);
+    //     connection_worker_info_ptr->edm_rdptr = 0;
+    //     new (&local_sender_channel_worker_interfaces[i]) tt::fabric::EdmChannelWorkerInterface<SENDER_NUM_BUFFERS>(
+    //         connection_worker_info_ptr,
+    //         reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(
+    //             local_sender_flow_control_semaphores[i]),
+    //         reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(connection_live_semaphore_ptr));
+    // }
+    {
+        auto connection_live_semaphore_ptr =
+            reinterpret_cast<volatile tt_l1_ptr uint32_t* const>(local_sender_connection_live_semaphore_addresses[0]);
+        auto connection_worker_info_ptr = reinterpret_cast<volatile tt::fabric::EDMChannelWorkerLocationInfo*>(
+            local_sender_connection_info_addresses[0]);
+        connection_worker_info_ptr->edm_rdptr = 0;
+        new (&local_sender_channel_worker_interfaces[0]) tt::fabric::EdmChannelWorkerInterface<SENDER_NUM_BUFFERS>(
+            connection_worker_info_ptr,
+            reinterpret_cast<volatile tt_l1_ptr uint32_t* const>(local_sender_flow_control_semaphores[0]),
+            reinterpret_cast<volatile tt_l1_ptr uint32_t* const>(connection_live_semaphore_ptr));
+    }
+    {
+        auto connection_live_semaphore_ptr =
+            reinterpret_cast<volatile tt_l1_ptr uint32_t* const>(local_sender_connection_live_semaphore_addresses[1]);
+        auto connection_worker_info_ptr = reinterpret_cast<volatile tt::fabric::EDMChannelWorkerLocationInfo*>(
+            local_sender_connection_info_addresses[1]);
+        connection_worker_info_ptr->edm_rdptr = 0;
+        new (&local_sender_channel_worker_interfaces[1]) tt::fabric::EdmChannelWorkerInterface<SENDER_NUM_BUFFERS>(
+            connection_worker_info_ptr,
+            reinterpret_cast<volatile tt_l1_ptr uint32_t* const>(local_sender_flow_control_semaphores[1]),
+            reinterpret_cast<volatile tt_l1_ptr uint32_t* const>(connection_live_semaphore_ptr));
+    }
+}
+
 void kernel_main() {
     //
     // COMMON CT ARGS (not specific to sender or receiver)
@@ -1241,19 +1285,48 @@ void kernel_main() {
             0,  // For sender channels there is no eth_transaction_ack_word_addr because they don't send acks
             i);
 
-        auto connection_live_semaphore_ptr =
-            reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(local_sender_connection_live_semaphore_addresses[i]);
-        auto connection_worker_info_ptr = reinterpret_cast<volatile tt::fabric::EDMChannelWorkerLocationInfo *>(
-            local_sender_connection_info_addresses[i]);
-        connection_worker_info_ptr->edm_rdptr = 0;
-        // uint8_t channel_worker_noc_cmd_buf = i == 0 ? write_at_cmd_buf : read_cmd_buf;
-        // new (&local_sender_channel_worker_interfaces[i]) tt::fabric::EdmChannelWorkerInterface<SENDER_NUM_BUFFERS>(
-        //     connection_worker_info_ptr,
-        //     reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(
-        //         local_sender_flow_control_semaphores[i]),
-        //     reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(connection_live_semaphore_ptr),
-        //     channel_worker_noc_cmd_buf);
     }
+    init_local_sender_channel_worker_interfaces(
+        local_sender_connection_live_semaphore_addresses,
+        local_sender_connection_info_addresses,
+        local_sender_channel_worker_interfaces,
+        local_sender_flow_control_semaphores);
+    // // for (uint8_t i = 0; i < NUM_SENDER_CHANNELS; i++) {
+    // //     auto connection_live_semaphore_ptr =
+    // //         reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(local_sender_connection_live_semaphore_addresses[i]);
+    // //     auto connection_worker_info_ptr = reinterpret_cast<volatile tt::fabric::EDMChannelWorkerLocationInfo *>(
+    // //         local_sender_connection_info_addresses[i]);
+    // //     connection_worker_info_ptr->edm_rdptr = 0;
+    // //     new (&local_sender_channel_worker_interfaces[i]) tt::fabric::EdmChannelWorkerInterface<SENDER_NUM_BUFFERS>(
+    // //         connection_worker_info_ptr,
+    // //         reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(
+    // //             local_sender_flow_control_semaphores[i]),
+    // //         reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(connection_live_semaphore_ptr));
+    // // }
+    // {
+    // auto connection_live_semaphore_ptr =
+    //     reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(local_sender_connection_live_semaphore_addresses[0]);
+    // auto connection_worker_info_ptr = reinterpret_cast<volatile tt::fabric::EDMChannelWorkerLocationInfo *>(
+    //     local_sender_connection_info_addresses[0]);
+    // connection_worker_info_ptr->edm_rdptr = 0;
+    // new (&local_sender_channel_worker_interfaces[0]) tt::fabric::EdmChannelWorkerInterface<SENDER_NUM_BUFFERS>(
+    //     connection_worker_info_ptr,
+    //     reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(
+    //         local_sender_flow_control_semaphores[0]),
+    //     reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(connection_live_semaphore_ptr));
+    // }
+    // {
+    // auto connection_live_semaphore_ptr =
+    //     reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(local_sender_connection_live_semaphore_addresses[1]);
+    // auto connection_worker_info_ptr = reinterpret_cast<volatile tt::fabric::EDMChannelWorkerLocationInfo *>(
+    //     local_sender_connection_info_addresses[1]);
+    // connection_worker_info_ptr->edm_rdptr = 0;
+    // new (&local_sender_channel_worker_interfaces[1]) tt::fabric::EdmChannelWorkerInterface<SENDER_NUM_BUFFERS>(
+    //     connection_worker_info_ptr,
+    //     reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(
+    //         local_sender_flow_control_semaphores[1]),
+    //     reinterpret_cast<volatile tt_l1_ptr uint32_t *const>(connection_live_semaphore_ptr));
+    // }
 
     // // unroll the sender channels so we can pass in different
     // // sender channel 0
