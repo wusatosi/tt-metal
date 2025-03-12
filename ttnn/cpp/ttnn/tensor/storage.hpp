@@ -5,7 +5,6 @@
 #pragma once
 
 #include <memory>
-#include "tt-metalium/mesh_coord.hpp"
 #include "ttnn/tensor/types.hpp"
 #include "ttnn/tensor/tensor_spec.hpp"
 
@@ -42,13 +41,8 @@ struct OwnedStorage {
 
 // TODO: #17215 - Replace `DeviceStorage` with "mesh storage".
 struct DeviceStorage {
-    // TODO: come up with a better abstraction for this.
-    DistributedTensorConfig strategy;
-
     std::shared_ptr<Buffer> buffer;
     std::shared_ptr<distributed::MeshBuffer> mesh_buffer;
-    std::map<distributed::MeshCoordinate, TensorSpec> specs;
-
     DeviceStorage() = default;
     DeviceStorage(std::shared_ptr<Buffer> buffer_);
     DeviceStorage(std::shared_ptr<distributed::MeshBuffer> mesh_buffer_);

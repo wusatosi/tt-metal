@@ -118,23 +118,6 @@ bool operator==(const MeshCoordinate& lhs, const MeshCoordinate& rhs) {
 }
 bool operator!=(const MeshCoordinate& lhs, const MeshCoordinate& rhs) { return !(lhs == rhs); }
 
-bool operator<(const MeshCoordinate& lhs, const MeshCoordinate& rhs) {
-    TT_FATAL(
-        lhs.dims() == rhs.dims(),
-        "Cannot compare coordinates with different dimensions: {} != {}",
-        lhs.dims(),
-        rhs.dims());
-    for (size_t i = 0; i < lhs.dims(); ++i) {
-        if (lhs[i] != rhs[i]) {
-            return lhs[i] < rhs[i];
-        }
-    }
-    return false;
-}
-bool operator>(const MeshCoordinate& lhs, const MeshCoordinate& rhs) { return rhs < lhs; }
-bool operator<=(const MeshCoordinate& lhs, const MeshCoordinate& rhs) { return !(lhs > rhs); }
-bool operator>=(const MeshCoordinate& lhs, const MeshCoordinate& rhs) { return !(lhs < rhs); }
-
 std::ostream& operator<<(std::ostream& os, const MeshCoordinate& coord) {
     os << "MeshCoordinate([";
     for (size_t i = 0; i < coord.dims(); ++i) {
