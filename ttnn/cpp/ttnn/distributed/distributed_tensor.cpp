@@ -200,7 +200,8 @@ Tensor distribute_tensor(
 }
 
 Tensor aggregate_tensor(const Tensor& tensor, const MeshToTensor& composer) {
-    return composer.compose(get_device_tensors(tensor.cpu()));
+    return is_host_mesh_tensor(tensor) ? composer.compose(get_tensors_from_multi_device_storage(tensor))
+                                       : composer.compose({tensor});
 }
 
 }  // namespace ttnn::distributed
