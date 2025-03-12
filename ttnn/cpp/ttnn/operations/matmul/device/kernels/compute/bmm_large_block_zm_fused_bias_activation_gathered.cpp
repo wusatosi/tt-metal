@@ -11,9 +11,17 @@
 
 #include "compute_kernel_api/eltwise_unary/sfpu_split_includes.h"
 
+#include "debug/dprint.h"
+#include "debug/assert.h"
+
 namespace NAMESPACE {
 
 enum class CORE_TYPE : uint8_t { IDLE_CORE = 0, WORKER_CORE = 1, HOP_CORE = 2 };
+
+struct common_rt_args_info {
+    uint8_t core_type;
+    uint8_t ring_index;
+};
 
 FORCE_INLINE void reload_from_cb_to_dst(
     uint32_t in0_cb_id,
@@ -157,19 +165,28 @@ void MAIN {
 
     // Runtime args
     uint32_t rt_args_idx = 0;
-    uint32_t core_type = get_arg_val<uint32_t>(rt_args_idx++);
-    if (core_type == (uint32_t)CORE_TYPE::IDLE_CORE || core_type == (uint32_t)CORE_TYPE::HOP_CORE) {
-        return;
-    }
+    uint32_t core_id = get_arg_val<uint32_t>(rt_args_idx++);
 
     uint32_t common_rt_args_idx = 0;
     volatile tt_l1_ptr uint32_t* unpadded_in0_shard_widths_in_tiles =
         (volatile tt_l1_ptr uint32_t*)(get_common_arg_addr(common_rt_args_idx));
+    common_rt_args_idx += ring_size;
+    volatile tt_l1_ptr uint8_t* common_rt_args_base =
+        (volatile tt_l1_ptr uint8_t*)(get_common_arg_addr(common_rt_args_idx));
+    volatile tt_l1_ptr common_rt_args_info* common_rt_args =
+        (volatile tt_l1_ptr common_rt_args_info*)(common_rt_args_base + core_id * sizeof(common_rt_args_info));
 
+    uint32_t core_type = get_arg_val<uint32_t>(rt_args_idx++);
+    if (core_type == (uint32_t)CORE_TYPE::IDLE_CORE || core_type == (uint32_t)CORE_TYPE::HOP_CORE) {
+        return;
+    }
     uint32_t ring_idx = get_arg_val<uint32_t>(rt_args_idx++);
 
-    // const uint32_t* unpadded_in0_shard_widths_in_tiles = (uint32_t*)get_arg_addr(rt_args_idx);
-    // rt_args_idx += ring_size;
+    // DPRINT << "in1_tensor_addr " << in1_tensor_addr << " " << in1_tensor_addr_ << ENDL();
+    // DPRINT << "core_type " << (uint)common_rt_args->core_type << " " << core_type << ENDL();
+    // DPRINT << "ring_index " << (uint)common_rt_args->ring_index << " " << ring_idx << ENDL();
+    // ASSERT(common_rt_args->core_type == core_type);
+    // ASSERT(common_rt_args->ring_index == ring_idx);
 
     constexpr uint32_t out_block_w = out_subblock_w * in1_num_subblocks;
 

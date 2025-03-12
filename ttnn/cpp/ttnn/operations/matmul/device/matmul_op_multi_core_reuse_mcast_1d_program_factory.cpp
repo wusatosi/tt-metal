@@ -2128,6 +2128,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
     // store all cores rt into one single vector
     std::vector<std::vector<uint32_t>> all_mm_in0_args(all_cores.num_cores());
     std::vector<std::vector<uint32_t>> all_mm_in1_args(all_cores.num_cores());
+    std::vector<std::vector<uint32_t>> all_mm_compute_args(all_cores.num_cores());
     // for all the cores in the rect grid, we send one rt arg to determine if they are worker core
     auto all_cores_vec = corerange_to_cores(all_cores, std::nullopt, row_major);
     auto worker_cores_vec = corerange_to_cores(all_worker_cores, std::nullopt, row_major);
@@ -2176,23 +2177,19 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
             tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, {(std::uint32_t)core_id});
 
             // compute
-            std::vector<uint32_t> mm_kernel_args;
-            mm_kernel_args.push_back((std::uint32_t)core_type);
-            tt_metal::SetRuntimeArgs(program, mm_kernel, core, mm_kernel_args);
+            std::vector<uint32_t> mm_kernel_compute_args = {
+                (std::uint32_t)core_type,
+                i,  // ring_idx
+            };
+            add_rt_args_to_all_rt_args(all_mm_compute_args, mm_kernel_compute_args, core_id);
+            // mm_kernel_compute_args.insert(mm_kernel_compute_args.begin(), (std::uint32_t)core_id);
+            tt_metal::SetRuntimeArgs(program, mm_kernel, core, {(std::uint32_t)core_id});
 
             idle_cores.push_back(core);
         }
     }
 
     tt::log_info("idle_cores: {}", idle_cores);
-
-    // set common rt args for compute
-    std::vector<uint32_t> mm_kernel_compute_common_args;
-    mm_kernel_compute_common_args.insert(
-        mm_kernel_compute_common_args.end(),
-        unpadded_in0_shard_widths_in_tiles.begin(),
-        unpadded_in0_shard_widths_in_tiles.end());
-    SetCommonRuntimeArgs(program, mm_kernel, mm_kernel_compute_common_args);
 
     // std::vector<std::vector<uint32_t>> worker_mm_in1_args(num_cores);
     // std::vector<std::vector<uint32_t>> worker_mm_compute_args(num_cores);
@@ -2241,7 +2238,9 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
             (std::uint32_t)core_type,
             i,  // ring_idx
         };
-        tt_metal::SetRuntimeArgs(program, mm_kernel, core, mm_kernel_compute_args);
+        add_rt_args_to_all_rt_args(all_mm_compute_args, mm_kernel_compute_args, core_id);
+        // mm_kernel_compute_args.insert(mm_kernel_compute_args.begin(), (std::uint32_t)core_id);
+        tt_metal::SetRuntimeArgs(program, mm_kernel, core, {(std::uint32_t)core_id});
     }
 
     // Runtime args for hop cores
@@ -2280,9 +2279,13 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, {(std::uint32_t)core_id});
 
         // compute
-        std::vector<uint32_t> mm_kernel_args;
-        mm_kernel_args.push_back((std::uint32_t)core_type);
-        tt_metal::SetRuntimeArgs(program, mm_kernel, core, mm_kernel_args);
+        std::vector<uint32_t> mm_kernel_compute_args = {
+            (std::uint32_t)core_type,
+            i,  // ring_idx
+        };
+        add_rt_args_to_all_rt_args(all_mm_compute_args, mm_kernel_compute_args, core_id);
+        // mm_kernel_compute_args.insert(mm_kernel_compute_args.begin(), (std::uint32_t)core_id);
+        tt_metal::SetRuntimeArgs(program, mm_kernel, core, {(std::uint32_t)core_id});
     }
 
     tt::log_info("all_mm_in1_args: {}", all_mm_in1_args);
@@ -2301,6 +2304,15 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
     concated_all_mm_in1_args.insert(concated_all_mm_in1_args.begin(), in1_buffer->address());
     SetCommonRuntimeArgs(program, mm_kernel_in1_sender_writer_id, concated_all_mm_in1_args);
     tt::log_info("concated_all_mm_in1_args: {}", concated_all_mm_in1_args);
+
+    // set common rt args for compute
+    std::vector<uint32_t> concated_all_mm_compute_args = generate_common_rt_args_array(all_mm_compute_args);
+    concated_all_mm_compute_args.insert(
+        concated_all_mm_compute_args.begin(),
+        unpadded_in0_shard_widths_in_tiles.begin(),
+        unpadded_in0_shard_widths_in_tiles.end());
+    SetCommonRuntimeArgs(program, mm_kernel, concated_all_mm_compute_args);
+    tt::log_info("concated_all_mm_compute_args: {}", concated_all_mm_compute_args);
 
     auto override_runtime_arguments_callback =
         [mm_kernel_in0_id, mm_kernel_in1_sender_writer_id, cb_src0, cb_src1, cb_output, num_cores, all_cores_vec](
