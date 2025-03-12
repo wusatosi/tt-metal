@@ -506,13 +506,13 @@ get_compile_time_arg_val(0);
 0;
 #endif
 
-static constexpr size_t ETH_BYTES_TO_WORDS_SHIFT = 4;
-static constexpr size_t NUM_SENDER_CHANNELS = 2;
-static constexpr size_t num_workers_ctor = 1;
-static constexpr size_t num_messages_to_move_ctor_value = 1;
+constexpr size_t ETH_BYTES_TO_WORDS_SHIFT = 4;
+constexpr size_t NUM_SENDER_CHANNELS = 2;
+constexpr size_t num_workers_ctor = 1;
+constexpr size_t num_messages_to_move_ctor_value = 1;
 // Doesn't REALLY matter but for consistency I picked the next available ID
-static constexpr size_t receiver_channel_id = NUM_SENDER_CHANNELS;
-static constexpr size_t worker_info_offset_past_connection_semaphore = 32;
+constexpr size_t receiver_channel_id = NUM_SENDER_CHANNELS;
+constexpr size_t worker_info_offset_past_connection_semaphore = 32;
 
 
 /////////////////////////////////////////////
@@ -1085,14 +1085,83 @@ void __attribute__((noinline)) init_local_sender_channel_worker_interfaces(
     }
 }
 
+//
+// COMMON CT ARGS (not specific to sender or receiver)
+//
+constexpr bool is_handshake_sender = get_compile_time_arg_val(1) != 0;
+constexpr size_t handshake_addr = get_compile_time_arg_val(2);
+constexpr auto eth_transaction_ack_word_addr = handshake_addr + sizeof(eth_channel_sync_t);
+constexpr size_t channel_buffer_size = get_compile_time_arg_val(3);
+
+constexpr size_t SENDER_NUM_BUFFERS = get_compile_time_arg_val(4);
+constexpr size_t RECEIVER_NUM_BUFFERS = get_compile_time_arg_val(5);
+constexpr size_t local_sender_0_channel_address = get_compile_time_arg_val(6);
+constexpr size_t local_sender_channel_0_connection_info_addr = get_compile_time_arg_val(7);
+constexpr size_t local_sender_1_channel_address = get_compile_time_arg_val(8);
+constexpr size_t local_sender_channel_1_connection_info_addr = get_compile_time_arg_val(9);
+constexpr size_t local_receiver_channel_buffer_address = get_compile_time_arg_val(10);
+constexpr size_t remote_receiver_channel_buffer_address = get_compile_time_arg_val(11);
+constexpr size_t remote_sender_0_channel_address = get_compile_time_arg_val(12);
+constexpr size_t remote_sender_1_channel_address = get_compile_time_arg_val(13);
+
+template <uint8_t RECEIVER_NUM_BUFFERS, size_t NUM_SENDER_CHANNELS, uint8_t SENDER_NUM_BUFFERS>
+bool init_part1(
+    size_t& arg_idx,
+    tt::fabric::EdmToEdmSender<SENDER_NUM_BUFFERS>& downstream_edm_noc_interface,
+    tt::fabric::EthChannelBuffer<RECEIVER_NUM_BUFFERS>& local_receiver_channel,
+    tt::fabric::EthChannelBuffer<RECEIVER_NUM_BUFFERS>& remote_receiver_channel) {
+    const size_t local_sender_channel_1_connection_buffer_index_id = get_arg_val<uint32_t>(arg_idx++);
+    const bool has_downstream_edm_buffer_connection = get_arg_val<uint32_t>(arg_idx++) != 0;
+    const auto downstream_edm_buffer_base_address = get_arg_val<uint32_t>(arg_idx++);
+    const auto downstream_edm_noc_x = get_arg_val<uint32_t>(arg_idx++);
+    const auto downstream_edm_noc_y = get_arg_val<uint32_t>(arg_idx++);
+    const auto downstream_edm_semaphore_id = get_arg_val<uint32_t>(arg_idx++);  // TODO: Convert to semaphore ID
+    const auto downstream_edm_worker_registration_id = get_arg_val<uint32_t>(arg_idx++);
+    const auto downstream_edm_worker_location_info_address = get_arg_val<uint32_t>(arg_idx++);
+    const auto downstream_noc_interface_buffer_index_local_addr = get_arg_val<uint32_t>(arg_idx++);
+    const auto edm_forwarding_semaphore_address =
+        get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(get_arg_val<uint32_t>(arg_idx++));
+    const auto edm_teardown_semaphore_address =
+        get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(get_arg_val<uint32_t>(arg_idx++));
+
+    has_downstream_edm_buffer_connection
+        ? new (&downstream_edm_noc_interface) tt::fabric::EdmToEdmSender<SENDER_NUM_BUFFERS>(
+                //persistent_mode -> hardcode to false because for EDM -> EDM
+                // connections we must always use semaphore lookup
+                false,
+                downstream_edm_noc_x,
+                downstream_edm_noc_y,
+                downstream_edm_buffer_base_address,
+                SENDER_NUM_BUFFERS,
+                downstream_edm_semaphore_id,
+                downstream_edm_worker_registration_id,
+                downstream_edm_worker_location_info_address,
+                channel_buffer_size,
+                local_sender_channel_1_connection_buffer_index_id,
+                reinterpret_cast<volatile uint32_t *const>(edm_forwarding_semaphore_address),
+                reinterpret_cast<volatile uint32_t *const>(edm_teardown_semaphore_address),
+                downstream_noc_interface_buffer_index_local_addr)
+        : new (&downstream_edm_noc_interface) tt::fabric::EdmToEdmSender<SENDER_NUM_BUFFERS>();
+
+    new (&local_receiver_channel) tt::fabric::EthChannelBuffer<RECEIVER_NUM_BUFFERS>(
+        local_receiver_channel_buffer_address,
+        channel_buffer_size,
+        sizeof(PACKET_HEADER_TYPE),
+        eth_transaction_ack_word_addr,  // Assume for receiver channel, this address points to a chunk of memory that
+                                        // can fit 2 eth_channel_syncs cfor ack
+        receiver_channel_id);
+    new (&remote_receiver_channel) tt::fabric::EthChannelBuffer<RECEIVER_NUM_BUFFERS>(
+        remote_receiver_channel_buffer_address,
+        channel_buffer_size,
+        sizeof(PACKET_HEADER_TYPE),
+        eth_transaction_ack_word_addr,  // Assume for receiver channel, this address points to a chunk of memory that
+                                        // can fit 2 eth_channel_syncs cfor ack
+        receiver_channel_id);
+
+    return  has_downstream_edm_buffer_connection;
+}
+
 void kernel_main() {
-    //
-    // COMMON CT ARGS (not specific to sender or receiver)
-    //
-    static constexpr bool is_handshake_sender = get_compile_time_arg_val(1) != 0;
-    static constexpr size_t handshake_addr = get_compile_time_arg_val(2);
-    *reinterpret_cast<volatile uint32_t*>(handshake_addr) = 0;
-    auto eth_transaction_ack_word_addr = handshake_addr + sizeof(eth_channel_sync_t);
 
     // Initialize stream register state for credit management across the Ethernet link.
     // We make sure to do this before we handshake to guarantee that the registers are
@@ -1102,6 +1171,7 @@ void kernel_main() {
     init_ptr_val<to_sender_1_pkts_acked_id>(0);
     init_ptr_val<to_sender_0_pkts_completed_id>(0);
     init_ptr_val<to_sender_1_pkts_completed_id>(0);
+    *reinterpret_cast<volatile uint32_t*>(handshake_addr) = 0;
 
     static constexpr size_t DEFAULT_HANDSHAKE_CONTEXT_SWITCH_TIMEOUT = 0;
     if constexpr (is_handshake_sender) {
@@ -1113,18 +1183,6 @@ void kernel_main() {
     // the size of one of the buffers within a sender channel
     // For example if `channel_buffer_size` = 4k, with `SENDER_NUM_BUFFERS` = 2
     // then the total amount of buffering for that
-    static constexpr size_t channel_buffer_size = get_compile_time_arg_val(3);
-
-    static constexpr size_t SENDER_NUM_BUFFERS = get_compile_time_arg_val(4);
-    static constexpr size_t RECEIVER_NUM_BUFFERS = get_compile_time_arg_val(5);
-    static constexpr size_t local_sender_0_channel_address = get_compile_time_arg_val(6);
-    static constexpr size_t local_sender_channel_0_connection_info_addr = get_compile_time_arg_val(7);
-    static constexpr size_t local_sender_1_channel_address = get_compile_time_arg_val(8);
-    static constexpr size_t local_sender_channel_1_connection_info_addr = get_compile_time_arg_val(9);
-    static constexpr size_t local_receiver_channel_buffer_address = get_compile_time_arg_val(10);
-    static constexpr size_t remote_receiver_channel_buffer_address = get_compile_time_arg_val(11);
-    static constexpr size_t remote_sender_0_channel_address = get_compile_time_arg_val(12);
-    static constexpr size_t remote_sender_1_channel_address = get_compile_time_arg_val(13);
 
     DPRINT << "SENDER_NUM_BUFFERS: " << (uint32_t)SENDER_NUM_BUFFERS << "\n";
     DPRINT << "RECEIVER_NUM_BUFFERS: " << (uint32_t)RECEIVER_NUM_BUFFERS << "\n";
@@ -1200,28 +1258,70 @@ void kernel_main() {
         persistent_mode ? get_arg_val<uint32_t>(arg_idx++) :
         get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(get_arg_val<uint32_t>(arg_idx++));
 
-    const size_t local_sender_channel_1_connection_buffer_index_id = get_arg_val<uint32_t>(arg_idx++);
-
-
     // downstream EDM semaphore location
-    const bool has_downstream_edm_buffer_connection = get_arg_val<uint32_t>(arg_idx++) != 0;
-    const auto downstream_edm_buffer_base_address = get_arg_val<uint32_t>(arg_idx++);
-    const auto downstream_edm_noc_x = get_arg_val<uint32_t>(arg_idx++);
-    const auto downstream_edm_noc_y = get_arg_val<uint32_t>(arg_idx++);
-
     // remote address for flow control
-    const auto downstream_edm_semaphore_id = get_arg_val<uint32_t>(arg_idx++);  // TODO: Convert to semaphore ID
-    const auto downstream_edm_worker_registration_id = get_arg_val<uint32_t>(arg_idx++);
-    const auto downstream_edm_worker_location_info_address = get_arg_val<uint32_t>(arg_idx++);
-    const auto downstream_noc_interface_buffer_index_local_addr = get_arg_val<uint32_t>(arg_idx++);
+    tt::fabric::EthChannelBuffer<RECEIVER_NUM_BUFFERS> local_receiver_channel;
+    tt::fabric::EthChannelBuffer<RECEIVER_NUM_BUFFERS> remote_receiver_channel;
+    tt::fabric::EdmToEdmSender<SENDER_NUM_BUFFERS> downstream_edm_noc_interface;
 
     // Receiver channels local semaphore for managing flow control with the downstream EDM.
     // The downstream EDM should be sending semaphore updates to this address any time it can
     // accept a new message
-    const auto edm_forwarding_semaphore_address =
-        get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(get_arg_val<uint32_t>(arg_idx++));
-    const auto edm_teardown_semaphore_address =
-        get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(get_arg_val<uint32_t>(arg_idx++));
+    bool connect_to_downstream_edm = init_part1<RECEIVER_NUM_BUFFERS, NUM_SENDER_CHANNELS, SENDER_NUM_BUFFERS>(
+        arg_idx,
+        downstream_edm_noc_interface,
+        local_receiver_channel,
+        remote_receiver_channel);
+    // {
+    //     const size_t local_sender_channel_1_connection_buffer_index_id = get_arg_val<uint32_t>(arg_idx++);
+    //     const bool has_downstream_edm_buffer_connection = get_arg_val<uint32_t>(arg_idx++) != 0;
+    //     connect_to_downstream_edm = has_downstream_edm_buffer_connection;
+    //     const auto downstream_edm_buffer_base_address = get_arg_val<uint32_t>(arg_idx++);
+    //     const auto downstream_edm_noc_x = get_arg_val<uint32_t>(arg_idx++);
+    //     const auto downstream_edm_noc_y = get_arg_val<uint32_t>(arg_idx++);
+    //     const auto downstream_edm_semaphore_id = get_arg_val<uint32_t>(arg_idx++);  // TODO: Convert to semaphore ID
+    //     const auto downstream_edm_worker_registration_id = get_arg_val<uint32_t>(arg_idx++);
+    //     const auto downstream_edm_worker_location_info_address = get_arg_val<uint32_t>(arg_idx++);
+    //     const auto downstream_noc_interface_buffer_index_local_addr = get_arg_val<uint32_t>(arg_idx++);
+    //     const auto edm_forwarding_semaphore_address =
+    //         get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(get_arg_val<uint32_t>(arg_idx++));
+    //     const auto edm_teardown_semaphore_address =
+    //         get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(get_arg_val<uint32_t>(arg_idx++));
+
+    //     has_downstream_edm_buffer_connection
+    //         ? new (&downstream_edm_noc_interface) tt::fabric::EdmToEdmSender<SENDER_NUM_BUFFERS>(
+    //                 //persistent_mode -> hardcode to false because for EDM -> EDM
+    //                 // connections we must always use semaphore lookup
+    //                 false,
+    //                 downstream_edm_noc_x,
+    //                 downstream_edm_noc_y,
+    //                 downstream_edm_buffer_base_address,
+    //                 SENDER_NUM_BUFFERS,
+    //                 downstream_edm_semaphore_id,
+    //                 downstream_edm_worker_registration_id,
+    //                 downstream_edm_worker_location_info_address,
+    //                 channel_buffer_size,
+    //                 local_sender_channel_1_connection_buffer_index_id,
+    //                 reinterpret_cast<volatile uint32_t *const>(edm_forwarding_semaphore_address),
+    //                 reinterpret_cast<volatile uint32_t *const>(edm_teardown_semaphore_address),
+    //                 downstream_noc_interface_buffer_index_local_addr)
+    //         : new (&downstream_edm_noc_interface) tt::fabric::EdmToEdmSender<SENDER_NUM_BUFFERS>();
+
+    //     new (&local_receiver_channel) tt::fabric::EthChannelBuffer<RECEIVER_NUM_BUFFERS>(
+    //         local_receiver_channel_buffer_address,
+    //         channel_buffer_size,
+    //         sizeof(PACKET_HEADER_TYPE),
+    //         eth_transaction_ack_word_addr,  // Assume for receiver channel, this address points to a chunk of memory that
+    //                                         // can fit 2 eth_channel_syncs cfor ack
+    //         receiver_channel_id);
+    //     new (&remote_receiver_channel) tt::fabric::EthChannelBuffer<RECEIVER_NUM_BUFFERS>(
+    //         remote_receiver_channel_buffer_address,
+    //         channel_buffer_size,
+    //         sizeof(PACKET_HEADER_TYPE),
+    //         eth_transaction_ack_word_addr,  // Assume for receiver channel, this address points to a chunk of memory that
+    //                                         // can fit 2 eth_channel_syncs cfor ack
+    //         receiver_channel_id);
+    // }
 
     ////////////////////////
     // Sender runtime args
@@ -1262,40 +1362,7 @@ void kernel_main() {
     //         local_sender_connection_info_addresses[i]);
     //     connection_worker_info_ptr->edm_rdptr = 0;
     // }
-    auto downstream_edm_noc_interface =
-        has_downstream_edm_buffer_connection
-            ? tt::fabric::EdmToEdmSender<SENDER_NUM_BUFFERS>(
-                 //persistent_mode -> hardcode to false because for EDM -> EDM
-                 // connections we must always use semaphore lookup
-                  false,
-                  downstream_edm_noc_x,
-                  downstream_edm_noc_y,
-                  downstream_edm_buffer_base_address,
-                  SENDER_NUM_BUFFERS,
-                  downstream_edm_semaphore_id,
-                  downstream_edm_worker_registration_id,
-                  downstream_edm_worker_location_info_address,
-                  channel_buffer_size,
-                  local_sender_channel_1_connection_buffer_index_id,
-                  reinterpret_cast<volatile uint32_t *const>(edm_forwarding_semaphore_address),
-                  reinterpret_cast<volatile uint32_t *const>(edm_teardown_semaphore_address),
-                  downstream_noc_interface_buffer_index_local_addr)
-            : tt::fabric::EdmToEdmSender<SENDER_NUM_BUFFERS>();
 
-    auto local_receiver_channel = tt::fabric::EthChannelBuffer<RECEIVER_NUM_BUFFERS>(
-        local_receiver_channel_buffer_address,
-        channel_buffer_size,
-        sizeof(PACKET_HEADER_TYPE),
-        eth_transaction_ack_word_addr,  // Assume for receiver channel, this address points to a chunk of memory that
-                                        // can fit 2 eth_channel_syncs cfor ack
-        receiver_channel_id);
-    auto remote_receiver_channel = tt::fabric::EthChannelBuffer<RECEIVER_NUM_BUFFERS>(
-        remote_receiver_channel_buffer_address,
-        channel_buffer_size,
-        sizeof(PACKET_HEADER_TYPE),
-        eth_transaction_ack_word_addr,  // Assume for receiver channel, this address points to a chunk of memory that
-                                        // can fit 2 eth_channel_syncs cfor ack
-        receiver_channel_id);
 
     init_local_sender_channel_worker_interfaces(
         local_sender_channels,
@@ -1348,7 +1415,7 @@ void kernel_main() {
     WriteTransactionIdTracker<RECEIVER_NUM_BUFFERS, NUM_TRANSACTION_IDS> receiver_channel_trid_tracker;
 
 
-    if (has_downstream_edm_buffer_connection) {
+    if (connect_to_downstream_edm) {
         downstream_edm_noc_interface.open();
         *downstream_edm_noc_interface.from_remote_buffer_slot_rdptr_ptr = 0;
         ASSERT(*downstream_edm_noc_interface.from_remote_buffer_slot_rdptr_ptr == 0);
