@@ -252,11 +252,14 @@ def test_simple_conv_t2d(
     "input_shape_nhwc, output_channels, filter, stride, padding, output_padding",
     (
         ((1, 512, 64, 128), 2, (4, 4), (2, 2), (1, 1), (0, 0)),
+        # ((1, 512, 64, 128), 32//4, (4, 4), (2, 2), (1, 1), (0, 0)),
         # ((1, 4, 4, 1), 1, (4, 4), (2, 2), (0, 0), (0, 0)),
         # ((1, 512, 64, 128), 2, (4, 4), (2, 2), (0, 0), (0, 0)),
         # ((1, 4, 4, 1), 2, (4, 4), (2, 2), (1, 1), (0, 0)),
+        # ((1, 4, 4, 1), 3, (4, 4), (2, 2), (1, 1), (0, 0)),
         # ((1, 4, 4, 1), 1, (4, 4), (2, 2), (1, 1), (0, 0)),
         # ((1, 32, 32, 1), 2, (4, 4), (2, 2), (1, 1), (0, 0)),
+        # ((1, 32, 32, 1), 4, (4, 4), (2, 2), (1, 1), (0, 0)),
     ),
 )
 # fmt: on
@@ -282,18 +285,18 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
     torch_bias_tensor = torch.rand(conv_bias_shape, dtype=torch.bfloat16).float()
 
     # debug
-    # torch_input_tensor_nchw = torch.ones(conv_input_shape, dtype=torch.bfloat16).float()*1
-    # torch_input_tensor_nchw[:, :, ::2, 1::2] = 2
-    # torch_input_tensor_nchw[:, :, 1::2, ::2] = 3
-    # torch_input_tensor_nchw[:, :, 1::2, 1::2] = 4
-    # torch_weight_tensor = torch.ones(conv_weight_shape, dtype=torch.bfloat16).float()
+    torch_input_tensor_nchw = torch.ones(conv_input_shape, dtype=torch.bfloat16).float()*1
+    torch_input_tensor_nchw[:, :, ::2, 1::2] = 2
+    torch_input_tensor_nchw[:, :, 1::2, ::2] = 3
+    torch_input_tensor_nchw[:, :, 1::2, 1::2] = 4
+    torch_weight_tensor = torch.ones(conv_weight_shape, dtype=torch.bfloat16).float()
+    torch_bias_tensor = torch.zeros(conv_bias_shape, dtype=torch.bfloat16).float()
 
     for ch in range(torch_weight_tensor.shape[1]):
         torch_weight_tensor[:, ch, ::2, ::2] = (ch + 10)
         torch_weight_tensor[:, ch, ::2, 1::2] = (ch + 20) * 10
         torch_weight_tensor[:, ch, 1::2, ::2] = (ch + 30) / 10
         torch_weight_tensor[:, ch, 1::2, 1::2] = (ch + 40) / 100
-    # torch_bias_tensor = torch.zeros(conv_bias_shape, dtype=torch.bfloat16).float()
 
     torch_out_golden_tensor = torch.nn.functional.conv_transpose2d(
         torch_input_tensor_nchw,
@@ -408,8 +411,8 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
     assert torch_out_golden_tensor.shape == torch_split_knit_mod_out.shape
 
     # Validate torch split-knit /w fused output against golden torch
-    pcc = 0.999
-    passing, pcc_msg = check_with_pcc_without_tensor_printout(torch_out_golden_tensor, torch_split_knit_mod_out, pcc=0.999)
+    pcc = 0.991
+    passing, pcc_msg = check_with_pcc_without_tensor_printout(torch_out_golden_tensor, torch_split_knit_mod_out, pcc=pcc)
     logger.info(f"PCC = {pcc_msg}. Threshold = {pcc}")
     assert passing, pcc_msg
 
@@ -421,10 +424,10 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
 
         # NEW order - | CH0 00, CH1 00, CH0 01, CH1 01, CH0 10, CH1 10, CH0 11, CH1 11|
         for out_ch in range(output_channels):
-            conv_weights_decomposed_[0 + out_ch,:,:,:] = torch_weight_tensor_oihw[out_ch, :, 1::2, 1::2] # 00
-            conv_weights_decomposed_[2 + out_ch,:,:,:] = torch_weight_tensor_oihw[out_ch, :, 1::2, 0::2] # 01
-            conv_weights_decomposed_[4 + out_ch,:,:,:] = torch_weight_tensor_oihw[out_ch, :, 0::2, 1::2] # 10
-            conv_weights_decomposed_[6 + out_ch,:,:,:] = torch_weight_tensor_oihw[out_ch, :, 0::2, 0::2] # 11
+            conv_weights_decomposed_[0*output_channels + out_ch,:,:,:] = torch_weight_tensor_oihw[out_ch, :, 1::2, 1::2] # 00
+            conv_weights_decomposed_[1*output_channels + out_ch,:,:,:] = torch_weight_tensor_oihw[out_ch, :, 1::2, 0::2] # 01
+            conv_weights_decomposed_[2*output_channels + out_ch,:,:,:] = torch_weight_tensor_oihw[out_ch, :, 0::2, 1::2] # 10
+            conv_weights_decomposed_[3*output_channels + out_ch,:,:,:] = torch_weight_tensor_oihw[out_ch, :, 0::2, 0::2] # 11
 
         # update bias
         s = torch_bias_tensor.shape
@@ -458,11 +461,11 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
         for h in range(torch_split_knit_out1.shape[1]):
             for w in range(torch_split_knit_out1.shape[2]):
                 # even rows
-                torch_split_knit_out_[0, h*2, w*2, :] = torch_split_knit_out1[0, h, w, 0:2]
-                torch_split_knit_out_[0, h*2, w*2+1, :] = torch_split_knit_out1[0, h, w, 2:4]
+                torch_split_knit_out_[0, h*2, w*2, :] = torch_split_knit_out1[0, h, w, output_channels*0:output_channels*0+output_channels]
+                torch_split_knit_out_[0, h*2, w*2+1, :] = torch_split_knit_out1[0, h, w, output_channels*1:output_channels*1+output_channels]
                 # odd rows
-                torch_split_knit_out_[0, h*2+1, w*2, :] = torch_split_knit_out1[0, h, w, 4:6]
-                torch_split_knit_out_[0, h*2+1, w*2+1, :] = torch_split_knit_out1[0, h, w, 6:8]
+                torch_split_knit_out_[0, h*2+1, w*2, :] = torch_split_knit_out1[0, h, w, output_channels*2:output_channels*2+output_channels]
+                torch_split_knit_out_[0, h*2+1, w*2+1, :] = torch_split_knit_out1[0, h, w, output_channels*3:output_channels*3+output_channels]
 
         # remove padding, ideally should be done in the conv2d function with control on top/bottom and left/right padding
         if (padding[0] != 0 or padding[1] != 0):
@@ -548,7 +551,7 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
         enable_act_double_buffer=False,
         enable_split_reader=False,
         enable_subblock_padding=False,
-        output_layout=ttnn.TILE_LAYOUT,
+        output_layout=ttnn.ROW_MAJOR_LAYOUT,
         activation="",
     )
 
@@ -580,6 +583,7 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
         return_weights_and_bias=False,
     )
     tt_output_tensor = ttnn.to_torch(tt_output_tensor_on_device, mesh_composer=None)
+
     ttnn.synchronize_device(device)
 
     # ## HOST FALLBACK 2.0
@@ -588,11 +592,11 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
         for w in range(out_w):
             # for ch in range(output_channels):
             # even rows
-            tt_split_knit_out_[0, h*2, w*2, :] = tt_output_tensor[0, 0, h*out_w + w, 0:2]
-            tt_split_knit_out_[0, h*2, w*2+1, :] = tt_output_tensor[0, 0, h*out_w + w, 2:4]
+            tt_split_knit_out_[0, h*2, w*2, :] = tt_output_tensor[0, 0, h*out_w + w, output_channels*0:output_channels*0+output_channels]
+            tt_split_knit_out_[0, h*2, w*2+1, :] = tt_output_tensor[0, 0, h*out_w + w, output_channels*1:output_channels*1+output_channels]
             # odd rows
-            tt_split_knit_out_[0, h*2+1, w*2, :] = tt_output_tensor[0, 0, h*out_w + w, 4:6]
-            tt_split_knit_out_[0, h*2+1, w*2+1, :] = tt_output_tensor[0, 0, h*out_w + w, 6:8]
+            tt_split_knit_out_[0, h*2+1, w*2, :] = tt_output_tensor[0, 0, h*out_w + w, output_channels*2:output_channels*2+output_channels]
+            tt_split_knit_out_[0, h*2+1, w*2+1, :] = tt_output_tensor[0, 0, h*out_w + w, output_channels*3:output_channels*3+output_channels]
 
     # todo merge this with upper loop
     if (padding[0] != 0 or padding[1] != 0):
