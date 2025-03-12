@@ -1772,6 +1772,15 @@ std::vector<uint32_t> concat_rt_args(const std::vector<uint32_t>& rt_args) {
     return concatenated_rt_args;
 }
 
+std::vector<uint32_t> generate_common_rt_args_array(const std::vector<std::vector<uint32_t>>& all_rt_args) {
+    std::vector<uint32_t> flattened_all_args;
+    for (auto& rt_args : all_rt_args) {
+        flattened_all_args.insert(flattened_all_args.end(), rt_args.begin(), rt_args.end());
+    }
+    std::vector<uint32_t> concated_all_args = concat_rt_args(flattened_all_args);
+    return concated_all_args;
+}
+
 tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
     tt_metal::Program& program,
     const tt::tt_metal::Tensor& a,
@@ -1809,6 +1818,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
     uint32_t num_global_cb_receivers,
     const std::optional<tt::tt_metal::SubDeviceId>& sub_device_id) {
     const bool in1_is_dram_interleaved = in1_buffer->is_dram() && !b.is_sharded();
+    bool src1_sharded = b.is_sharded();
 
     /* Core setup */
     CoreRangeSet all_cores = {};
@@ -2117,6 +2127,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
 
     // store all cores rt into one single vector
     std::vector<std::vector<uint32_t>> all_mm_in0_args(all_cores.num_cores());
+    std::vector<std::vector<uint32_t>> all_mm_in1_args(all_cores.num_cores());
     // for all the cores in the rect grid, we send one rt arg to determine if they are worker core
     auto all_cores_vec = corerange_to_cores(all_cores, std::nullopt, row_major);
     auto worker_cores_vec = corerange_to_cores(all_worker_cores, std::nullopt, row_major);
@@ -2152,14 +2163,22 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
                 0,  // next_core_noc_y
                 0};
             add_rt_args_to_all_rt_args(all_mm_in0_args, mm_in0_args, core_id);
-
-            mm_in0_args.insert(mm_in0_args.begin(), (std::uint32_t)core_id);
-            tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, mm_in0_args);
+            // mm_in0_args.insert(mm_in0_args.begin(), (std::uint32_t)core_id);
+            tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, {(std::uint32_t)core_id});
 
             // in1
-            std::vector<uint32_t> mm_kernel_in1_sender_writer_args;
-            mm_kernel_in1_sender_writer_args.push_back((std::uint32_t)core_type);
-            tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, mm_kernel_in1_sender_writer_args);
+            std::vector<uint32_t> mm_in1_args = {
+                (std::uint32_t)core_type,
+                in1_buffer->address(),  // in1_tensor_addr
+                0,                      // ring_idx
+            };
+            std::vector<uint32_t> mm_in1_args_ = {
+                (std::uint32_t)core_type,
+                0,  // ring_idx
+            };
+            add_rt_args_to_all_rt_args(all_mm_in1_args, mm_in1_args_, core_id);
+            mm_in1_args.insert(mm_in1_args.begin(), (std::uint32_t)core_id);
+            tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, mm_in1_args);
 
             // compute
             std::vector<uint32_t> mm_kernel_args;
@@ -2210,8 +2229,8 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
             next_core_noc.y,  // next_core_noc_y
             noc};
         add_rt_args_to_all_rt_args(all_mm_in0_args, mm_in0_args, core_id);
-        mm_in0_args.insert(mm_in0_args.begin(), (std::uint32_t)core_id);
-        tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, mm_in0_args);
+        // mm_in0_args.insert(mm_in0_args.begin(), (std::uint32_t)core_id);
+        tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, {(std::uint32_t)core_id});
 
         /* in1 */
         std::vector<uint32_t> mm_in1_args = {
@@ -2219,6 +2238,12 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
             in1_buffer->address(),  // in1_tensor_addr
             i,                      // ring_idx
         };
+        std::vector<uint32_t> mm_in1_args_ = {
+            (std::uint32_t)core_type,
+            i,  // ring_idx
+        };
+        add_rt_args_to_all_rt_args(all_mm_in1_args, mm_in1_args_, core_id);
+        mm_in1_args.insert(mm_in1_args.begin(), (std::uint32_t)core_id);
         tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, mm_in1_args);
 
         /* compute */
@@ -2252,13 +2277,22 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
             next_core_noc.y,  // next_core_noc_y
             noc};
         add_rt_args_to_all_rt_args(all_mm_in0_args, mm_in0_args, core_id);
-        mm_in0_args.insert(mm_in0_args.begin(), (std::uint32_t)core_id);
-        tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, mm_in0_args);
+        // mm_in0_args.insert(mm_in0_args.begin(), (std::uint32_t)core_id);
+        tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, {(std::uint32_t)core_id});
 
         // in1
-        std::vector<uint32_t> mm_kernel_in1_sender_writer_args;
-        mm_kernel_in1_sender_writer_args.push_back((std::uint32_t)core_type);
-        tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, mm_kernel_in1_sender_writer_args);
+        std::vector<uint32_t> mm_in1_args = {
+            (std::uint32_t)core_type,
+            in1_buffer->address(),  // in1_tensor_addr
+            0,                      // ring_idx
+        };
+        std::vector<uint32_t> mm_in1_args_ = {
+            (std::uint32_t)core_type,
+            0,  // ring_idx
+        };
+        add_rt_args_to_all_rt_args(all_mm_in1_args, mm_in1_args_, core_id);
+        mm_in1_args.insert(mm_in1_args.begin(), (std::uint32_t)core_id);
+        tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, mm_in1_args);
 
         // compute
         std::vector<uint32_t> mm_kernel_args;
@@ -2266,20 +2300,22 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         tt_metal::SetRuntimeArgs(program, mm_kernel, core, mm_kernel_args);
     }
 
-    tt::log_info("all_mm_in0_args: {}", all_mm_in0_args);
-    std::vector<uint32_t> flattened_all_mm_in0_args;
-    for (auto& rt_args : all_mm_in0_args) {
-        flattened_all_mm_in0_args.insert(flattened_all_mm_in0_args.end(), rt_args.begin(), rt_args.end());
-    }
-    std::vector<uint32_t> concated_all_mm_in0_args = concat_rt_args(flattened_all_mm_in0_args);
+    tt::log_info("all_mm_in1_args: {}", all_mm_in1_args);
+
     // set common rt args for in0
+    std::vector<uint32_t> concated_all_mm_in0_args = generate_common_rt_args_array(all_mm_in0_args);
     concated_all_mm_in0_args.insert(
         concated_all_mm_in0_args.begin(),
         unpadded_in0_shard_widths_in_tiles.begin(),
         unpadded_in0_shard_widths_in_tiles.end());
     SetCommonRuntimeArgs(program, mm_kernel_in0_id, concated_all_mm_in0_args);
-    tt::log_info("flattened_all_mm_in0_args: {}", flattened_all_mm_in0_args);
-    tt::log_info("concated_all_mm_in0_args: {}", concated_all_mm_in0_args);
+    // tt::log_info("concated_all_mm_in0_args: {}", concated_all_mm_in0_args);
+
+    // set common rt args for in1
+    std::vector<uint32_t> concated_all_mm_in1_args = generate_common_rt_args_array(all_mm_in1_args);
+    concated_all_mm_in1_args.insert(concated_all_mm_in1_args.begin(), in1_buffer->address());
+    SetCommonRuntimeArgs(program, mm_kernel_in1_sender_writer_id, concated_all_mm_in1_args);
+    tt::log_info("concated_all_mm_in1_args: {}", concated_all_mm_in1_args);
 
     auto override_runtime_arguments_callback =
         [mm_kernel_in0_id, mm_kernel_in1_sender_writer_id, cb_src0, cb_src1, cb_output, num_cores, all_cores_vec](
@@ -2321,8 +2357,10 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
                     auto& writer_runtime_args = writer_runtime_args_by_core[core.x][core.y];
 
                     /* in1 */
-                    writer_runtime_args[1] = src_buffer_b->address();
+                    writer_runtime_args[2] = src_buffer_b->address();
                 }
+                auto& writer_common_rt_args = GetCommonRuntimeArgs(program, mm_kernel_in1_sender_writer_id);
+                writer_common_rt_args[0] = src_buffer_b->address();
             }
         };
 

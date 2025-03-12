@@ -12,6 +12,11 @@
 
 enum class CORE_TYPE : uint8_t { IDLE_CORE = 0, WORKER_CORE = 1, HOP_CORE = 2 };
 
+struct common_rt_args_info {
+    uint8_t core_type;
+    uint8_t ring_index;
+};
+
 template <bool DRAM, uint32_t tile_hw>
 void read_block_from_dram(
     uint32_t cb_id,
@@ -46,17 +51,35 @@ void kernel_main() {
     constexpr uint32_t batch = get_compile_time_arg_val(5);
 
     uint32_t rt_args_idx = 0;
-    uint32_t core_type = get_arg_val<uint32_t>(rt_args_idx++);
+    uint32_t core_id = get_arg_val<uint32_t>(rt_args_idx++);
+    // uint32_t core_type = get_arg_val<uint32_t>(rt_args_idx++);
+    // if (core_type == (uint32_t)CORE_TYPE::IDLE_CORE || core_type == (uint32_t)CORE_TYPE::HOP_CORE) {
+    //     return;
+    // }
+    // const uint32_t in1_tensor_addr = get_arg_val<uint32_t>(rt_args_idx++);
+    // const uint32_t ring_idx = get_arg_val<uint32_t>(rt_args_idx++);
+
+    uint32_t common_rt_args_idx = 0;
+    const uint32_t in1_tensor_addr = get_common_arg_val<uint32_t>(common_rt_args_idx++);
+    volatile tt_l1_ptr uint8_t* common_rt_args_base =
+        (volatile tt_l1_ptr uint8_t*)(get_common_arg_addr(common_rt_args_idx));
+    volatile tt_l1_ptr common_rt_args_info* common_rt_args =
+        (volatile tt_l1_ptr common_rt_args_info*)(common_rt_args_base + core_id * sizeof(common_rt_args_info));
+
+    uint32_t core_type = common_rt_args->core_type;
     if (core_type == (uint32_t)CORE_TYPE::IDLE_CORE || core_type == (uint32_t)CORE_TYPE::HOP_CORE) {
         return;
     }
-    // DPRINT << "core_type " << (uint)core_type <<ENDL();
-    // if (core_type == 0) {
-    //     return;
-    // }
-    // DPRINT << "core_type " << (uint)core_type <<ENDL();
-    const uint32_t in1_tensor_addr = get_arg_val<uint32_t>(rt_args_idx++);
-    const uint32_t ring_idx = get_arg_val<uint32_t>(rt_args_idx++);
+    uint32_t ring_idx = common_rt_args->ring_index;
+
+    // DPRINT << "in1_tensor_addr " << in1_tensor_addr << " " << in1_tensor_addr_ << ENDL();
+    // DPRINT << "core_type " << (uint)common_rt_args->core_type << " " << core_type << ENDL();
+    // DPRINT << "ring_index " << (uint)common_rt_args->ring_index << " " << ring_idx << ENDL();
+    // uint32_t core_type = (uint32_t)common_rt_args->core_type;
+    // uint32_t ring_idx = (uint32_t)common_rt_args->ring_index;
+    // ASSERT(in1_tensor_addr == in1_tensor_addr_);
+    // ASSERT(common_rt_args->core_type == core_type);
+    // ASSERT(common_rt_args->ring_index == ring_idx);
 
     constexpr uint32_t cb_id_in1 = tt::CBIndex::c_1;
     constexpr uint32_t sync_cb = tt::CBIndex::c_3;
