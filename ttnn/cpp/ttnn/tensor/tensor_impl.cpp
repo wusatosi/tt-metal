@@ -570,7 +570,9 @@ Tensor to_host_mesh_tensor(const Tensor& tensor, bool blocking, ttnn::QueueId cq
     const auto& mesh_buffer = storage.mesh_buffer;
     ttnn::MeshDevice* device = mesh_buffer->device();
     distributed::MeshCommandQueue& mesh_cq = device->mesh_command_queue(*cq_id);
-    const auto num_buffers = device->num_devices();
+    const auto num_rows = device->num_rows();
+    const auto num_cols = device->num_cols();
+    auto num_buffers = device->num_devices();
 
     // Initialize vector of host buffers that data will be read into
     std::vector<OwnedBuffer> buffers(num_buffers);
@@ -764,11 +766,13 @@ DeviceStorage replicate_to_mesh_buffer(
     mesh_device->mesh_command_queue(*cq_id).enqueue_write_mesh_buffer(
         mesh_buffer, data_to_write.data(), /*blocking=*/false);
 
+    DeviceStorage device_storage(mesh_buffer);
     std::map<distributed::MeshCoordinate, TensorSpec> specs;
     for (const auto& coord : distributed::MeshCoordinateRange(mesh_device->shape())) {
         specs.emplace(coord, tensor_spec);
     }
-    return DeviceStorage(mesh_buffer, specs, ReplicateTensor());
+    device_storage.specs = specs;
+    return device_storage;
 }
 
 template <typename T>
@@ -827,7 +831,10 @@ DeviceStorage shard_to_mesh_buffer(
 
     mesh_device->mesh_command_queue(*cq_id).enqueue_write_shards(mesh_buffer, shard_data_transfers, /*blocking=*/false);
 
-    return DeviceStorage(mesh_buffer, specs, storage.strategy);
+    DeviceStorage device_storage(mesh_buffer);
+    device_storage.specs = specs;
+    device_storage.strategy = storage.strategy;
+    return device_storage;
 }
 
 template <typename T>
