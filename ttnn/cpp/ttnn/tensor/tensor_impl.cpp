@@ -611,7 +611,7 @@ Tensor to_host_mesh_tensor(const Tensor& tensor, bool blocking, ttnn::QueueId cq
     }
     // Issue read
     {
-        ZoneScopedN("EnqueueWriteShards");
+        ZoneScopedN("EnqueueReadShards");
         mesh_cq.enqueue_read_shards(shard_data_transfers, mesh_buffer, blocking);
     }
 
