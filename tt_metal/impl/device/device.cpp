@@ -1045,6 +1045,10 @@ bool Device::close() {
             CoreCoord logical_core(x, y);
             CoreCoord worker_core = this->worker_core_from_logical_core(logical_core);
 
+            uint32_t l1_cache_val;
+            tt::Cluster::instance().read_core(&l1_cache_val, 4, tt_cxy_pair(this->id(), worker_core), 0x7c0);
+            std::cout << "L1 cache val on worker " << std::hex << l1_cache_val << std::dec << std::endl;
+
             if (cores_to_skip[mmio_device_id].find(worker_core) == cores_to_skip[mmio_device_id].end()) {
                 if (this->storage_only_cores_.find(logical_core) == this->storage_only_cores_.end()) {
                     tt::Cluster::instance().assert_risc_reset_at_core(tt_cxy_pair(this->id(), worker_core));
@@ -1062,7 +1066,22 @@ bool Device::close() {
                 TENSIX_ASSERT_SOFT_RESET &
                 static_cast<TensixSoftResetOptions>(
                     ~std::underlying_type<TensixSoftResetOptions>::type(TensixSoftResetOptions::BRISC));
+
+            uint32_t l1_cache_val;
+            tt::Cluster::instance().read_core(&l1_cache_val, 4, tt_cxy_pair(this->id(), virtual_eth_core), 0x7c0);
+            std::cout << "L1 cache val on active eth " << std::hex << l1_cache_val << std::dec << std::endl;
+
             tt::Cluster::instance().assert_risc_reset_at_core(tt_cxy_pair(this->id(), virtual_eth_core), reset_val);
+        }
+
+        for (const auto& eth_core : this->get_inactive_ethernet_cores()) {
+            CoreCoord virtual_eth_core = this->ethernet_core_from_logical_core(eth_core);
+
+            uint32_t l1_cache_val;
+            tt::Cluster::instance().read_core(&l1_cache_val, 4, tt_cxy_pair(this->id(), virtual_eth_core), 0x7c0);
+            std::cout << "L1 cache val on eth " << std::hex << l1_cache_val << std::dec << std::endl;
+
+            tt::Cluster::instance().assert_risc_reset_at_core(tt_cxy_pair(this->id(), virtual_eth_core));
         }
     }
 

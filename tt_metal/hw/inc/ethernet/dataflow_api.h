@@ -15,6 +15,7 @@
 #include "noc_nonblocking_api.h"
 #include "dataflow_api.h"
 #include "tunneling.h"
+#include "debug/ring_buffer.h"
 
 /**
  * Indicates if the ethernet transaction queue is busy ingesting a command at this moment,
@@ -292,6 +293,7 @@ void eth_wait_for_receiver_done(uint32_t wait_min = 0) {
         ((uint32_t)(&(erisc_info->channels[0].bytes_sent))) >> 4,
         1);
     uint32_t count = 0;
+    WATCHER_RING_BUFFER_PUSH(erisc_info->channels[0].bytes_sent);
     while (erisc_info->channels[0].bytes_sent != 0) {
         invalidate_l1_cache();
         if (count == wait_min) {

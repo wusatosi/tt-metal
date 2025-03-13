@@ -32,7 +32,6 @@ def tt_all_reduce(
 
     # N300 and T3K: reduce_scatter
     if 1 in list(mesh_device.shape):
-        print("Reduce")
         if input_tensor.is_sharded() and not sharded:
             input_tensor_sharded = input_tensor
             input_tensor = ttnn.sharded_to_interleaved(input_tensor_sharded, ttnn.L1_MEMORY_CONFIG)

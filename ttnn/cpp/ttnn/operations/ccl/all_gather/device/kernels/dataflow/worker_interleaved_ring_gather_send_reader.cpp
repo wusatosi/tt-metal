@@ -83,18 +83,6 @@ void kernel_main() {
 
     constexpr uint32_t cb_id_in0 = tt::CBIndex::c_0;
 
-    // #ifdef INTERLEAVED_MEM_LAYOUT
-    //     WATCHER_RING_BUFFER_PUSH(0xfacefeed);
-    // #elif defined SHARDED_MEM_LAYOUT
-    //     WATCHER_RING_BUFFER_PUSH(0xdeadbeef);
-    // #endif
-
-    // #ifdef ROW_MAJOR_LAYOUT
-    //     WATCHER_RING_BUFFER_PUSH(0x39);
-    // #elif defined TILED_LAYOUT
-    //     WATCHER_RING_BUFFER_PUSH(0x40);
-    // #endif
-
 #ifdef ROW_MAJOR_LAYOUT
 #ifdef INTERLEAVED_MEM_LAYOUT
     const InterleavedAddrGen<src_is_dram> s = {.bank_base_address = src_addr, .page_size = page_size};

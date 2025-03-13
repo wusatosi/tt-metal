@@ -180,7 +180,7 @@ private:
         // DPRINT << "E: inc " << HEX() << NOC_UNICAST_ADDR_X(edm_semaphore_addr) << " , " <<
         // NOC_UNICAST_ADDR_Y(edm_semaphore_addr) << DEC() << ENDL();
         noc_semaphore_inc(edm_semaphore_addr, 1);
-        WATCHER_RING_BUFFER_PUSH(noc_nonposted_atomics_acked[NOC_INDEX]);
+        // WATCHER_RING_BUFFER_PUSH(noc_nonposted_atomics_acked[NOC_INDEX]);
         this->buffer_index = (this->buffer_index == this->last_buffer_index) ? 0 : this->buffer_index + 1;
     }
 

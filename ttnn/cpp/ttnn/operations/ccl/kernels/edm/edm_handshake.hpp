@@ -72,6 +72,7 @@ FORCE_INLINE void sender_side_start(
     while (eth_txq_is_busy()) {
         asm volatile("nop");
     }
+    // while (eth_txq_is_busy());
     eth_send_bytes(handshake_register_address, handshake_register_address, 16);
 }
 
@@ -106,6 +107,7 @@ FORCE_INLINE void receiver_side_finish(
         asm volatile("nop");
     }
     eth_receiver_channel_done(0);
+    WATCHER_RING_BUFFER_PUSH(0xab01cd23);
 }
 }  // namespace handshake
 

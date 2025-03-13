@@ -312,9 +312,11 @@ void kernel_main() {
             }
         }
     }
-    WATCHER_RING_BUFFER_PUSH(0xfacefeed);
+    // WATCHER_RING_BUFFER_PUSH(0xfacefeed);
     ////////////////////////////////////////////////////////////////////////////////////
 
     sender.close();
-    WATCHER_RING_BUFFER_PUSH(noc_nonposted_atomics_acked[NOC_INDEX]);
+    // WATCHER_RING_BUFFER_PUSH(noc_nonposted_atomics_acked[noc_index]);
+    // WATCHER_RING_BUFFER_PUSH(0xdeadead);
+    // WATCHER_RING_BUFFER_PUSH(NOC_STATUS_READ_REG(noc_index, NIU_MST_ATOMIC_RESP_RECEIVED));
 }

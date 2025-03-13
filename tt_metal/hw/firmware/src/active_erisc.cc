@@ -85,7 +85,7 @@ int main() {
 
     while (1) {
         // Wait...
-        WAYPOINT("GW");
+        // WAYPOINT("GW");
 
         uint8_t go_message_signal = RUN_MSG_DONE;
         while ((go_message_signal = mailboxes->go_message.signal) != RUN_MSG_GO) {
@@ -101,7 +101,7 @@ int main() {
                 internal_::notify_dispatch_core_done(dispatch_addr);
             }
         }
-        WAYPOINT("GD");
+        // WAYPOINT("GD");
 
         {
             // Only include this iteration in the device profile if the launch message is valid. This is because all
@@ -124,7 +124,7 @@ int main() {
 
             // Run the ERISC kernel, no kernel config buffer on active eth
             if (enables & DISPATCH_CLASS_MASK_ETH_DM0) {
-                WAYPOINT("R");
+                // WAYPOINT("R");
                 // TODO: This currently runs on second risc on active eth cores but with newer drop of syseng FW
                 //  this will run on risc0
                 int index = static_cast<std::underlying_type<EthProcessorTypes>::type>(EthProcessorTypes::DM0);
@@ -133,7 +133,7 @@ int main() {
                 (*kernel_address)((uint32_t)kernel_address);
 
                 RECORD_STACK_USAGE();
-                WAYPOINT("D");
+                // WAYPOINT("D");
             }
 
             mailboxes->go_message.signal = RUN_MSG_DONE;
