@@ -149,7 +149,6 @@ public:
     inline void reinit_build_cache(const std::string& output_dir) override {
         this->reference_device()->reinit_build_cache(output_dir);
     }
-    const JitBuildEnv& build_env() const override;
     const string build_firmware_target_path(uint32_t programmable_core, uint32_t processor_class, int i) const override;
     const string build_kernel_target_path(uint32_t programmable_core, uint32_t processor_class, int i, const string& kernel_name) const override;
     const JitBuildState& build_firmware_state(uint32_t programmable_core, uint32_t processor_class, int i) const override;

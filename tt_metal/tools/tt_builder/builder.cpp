@@ -29,91 +29,91 @@ void BuilderTool::set_built_path(const std::string& new_built_path) {
 
 // TODO : This is copied from Device::initialize_build()::init_helper. Refactor this and place this in common utils
 // to be used by builder and jit build
-std::vector<std::shared_ptr<JitBuildState>> BuilderTool::get_build_states(
-    tt_metal::IDevice* device, int id, bool is_fw) {
-    CoreType dispatch_core_type = dispatch_core_manager::instance().get_dispatch_core_type(id);
-    uint32_t dispatch_message_addr = dispatch_constants::get(dispatch_core_type, num_hw_cqs)
-                                         .get_device_command_queue_addr(CommandQueueDeviceAddrType::DISPATCH_MESSAGE);
-    uint32_t num_build_states = hal.get_num_risc_processors();
+// std::vector<std::shared_ptr<JitBuildState>> BuilderTool::get_build_states(
+//     tt_metal::IDevice* device, int id, bool is_fw) {
+//     CoreType dispatch_core_type = dispatch_core_manager::instance().get_dispatch_core_type(id);
+//     uint32_t dispatch_message_addr = dispatch_constants::get(dispatch_core_type, num_hw_cqs)
+//                                          .get_device_command_queue_addr(CommandQueueDeviceAddrType::DISPATCH_MESSAGE);
+//     uint32_t num_build_states = hal.get_num_risc_processors();
 
-    std::vector<std::shared_ptr<JitBuildState>> build_states;
+//     std::vector<std::shared_ptr<JitBuildState>> build_states;
 
-    build_states.resize(num_build_states);
-    uint32_t programmable_core_type_count = hal.get_programmable_core_type_count();
-    if (is_fw) {
-        this->build_state_indices_.resize(programmable_core_type_count);
-    }
+//     build_states.resize(num_build_states);
+//     uint32_t programmable_core_type_count = hal.get_programmable_core_type_count();
+//     if (is_fw) {
+//         this->build_state_indices_.resize(programmable_core_type_count);
+//     }
 
-    uint32_t index = 0;
-    for (uint32_t programmable_core = 0; programmable_core < programmable_core_type_count; programmable_core++) {
-        HalProgrammableCoreType core_type = magic_enum::enum_value<HalProgrammableCoreType>(programmable_core);
-        uint32_t processor_class_count = hal.get_processor_classes_count(programmable_core);
-        if (is_fw) {
-            this->build_state_indices_[programmable_core].resize(processor_class_count);
-        }
-        for (uint32_t processor_class = 0; processor_class < processor_class_count; processor_class++) {
-            auto compute_proc_class = magic_enum::enum_cast<HalProcessorClassType>(processor_class);
-            bool is_compute_processor =
-                compute_proc_class.has_value() and compute_proc_class.value() == HalProcessorClassType::COMPUTE;
-            uint32_t processor_types_count = hal.get_processor_types_count(programmable_core, processor_class);
-            if (is_fw) {
-                this->build_state_indices_[programmable_core][processor_class] = {index, processor_types_count};
-            }
-            for (uint32_t processor_type = 0; processor_type < processor_types_count; processor_type++) {
-                switch (core_type) {
-                    case HalProgrammableCoreType::TENSIX: {
-                        if (is_compute_processor) {
-                            build_states[index] = std::make_shared<JitBuildCompute>(
-                                device->build_env(),
-                                JitBuiltStateConfig{
-                                    .processor_id = processor_type,
-                                    .is_fw = is_fw,
-                                    .dispatch_message_addr = dispatch_message_addr});
-                        } else {
-                            // TODO: Make .processor_id = processor_type when brisc and ncrisc are considered one
-                            // processor class
-                            build_states[index] = std::make_shared<JitBuildDataMovement>(
-                                device->build_env(),
-                                JitBuiltStateConfig{
-                                    .processor_id = processor_class,
-                                    .is_fw = is_fw,
-                                    .dispatch_message_addr = dispatch_message_addr});
-                        }
-                        break;
-                    }
-                    case HalProgrammableCoreType::ACTIVE_ETH: {
-                        // Cooperative means active erisc FW needs to context switch to base FW
-                        bool is_cooperative = device->arch() == ARCH::WORMHOLE_B0;
-                        build_states[index] = std::make_shared<JitBuildActiveEthernet>(
-                            device->build_env(),
-                            JitBuiltStateConfig{
-                                .processor_id = processor_class,
-                                .is_fw = is_fw,
-                                .dispatch_message_addr = dispatch_message_addr,
-                                .is_cooperative = is_cooperative});
-                        break;
-                    }
-                    case HalProgrammableCoreType::IDLE_ETH: {
-                        build_states[index] = std::make_shared<JitBuildIdleEthernet>(
-                            device->build_env(),
-                            JitBuiltStateConfig{
-                                .processor_id = processor_class,
-                                .is_fw = is_fw,
-                                .dispatch_message_addr = dispatch_message_addr});
-                        break;
-                    }
-                    default:
-                        TT_THROW(
-                            "Unsupported programable core type {} to initialize build states",
-                            magic_enum::enum_name(core_type));
-                }
-                index++;
-            }
-        }
-    }
+//     uint32_t index = 0;
+//     for (uint32_t programmable_core = 0; programmable_core < programmable_core_type_count; programmable_core++) {
+//         HalProgrammableCoreType core_type = magic_enum::enum_value<HalProgrammableCoreType>(programmable_core);
+//         uint32_t processor_class_count = hal.get_processor_classes_count(programmable_core);
+//         if (is_fw) {
+//             this->build_state_indices_[programmable_core].resize(processor_class_count);
+//         }
+//         for (uint32_t processor_class = 0; processor_class < processor_class_count; processor_class++) {
+//             auto compute_proc_class = magic_enum::enum_cast<HalProcessorClassType>(processor_class);
+//             bool is_compute_processor =
+//                 compute_proc_class.has_value() and compute_proc_class.value() == HalProcessorClassType::COMPUTE;
+//             uint32_t processor_types_count = hal.get_processor_types_count(programmable_core, processor_class);
+//             if (is_fw) {
+//                 this->build_state_indices_[programmable_core][processor_class] = {index, processor_types_count};
+//             }
+//             for (uint32_t processor_type = 0; processor_type < processor_types_count; processor_type++) {
+//                 switch (core_type) {
+//                     case HalProgrammableCoreType::TENSIX: {
+//                         if (is_compute_processor) {
+//                             build_states[index] = std::make_shared<JitBuildCompute>(
+//                                 device->build_env(),
+//                                 JitBuiltStateConfig{
+//                                     .processor_id = processor_type,
+//                                     .is_fw = is_fw,
+//                                     .dispatch_message_addr = dispatch_message_addr});
+//                         } else {
+//                             // TODO: Make .processor_id = processor_type when brisc and ncrisc are considered one
+//                             // processor class
+//                             build_states[index] = std::make_shared<JitBuildDataMovement>(
+//                                 device->build_env(),
+//                                 JitBuiltStateConfig{
+//                                     .processor_id = processor_class,
+//                                     .is_fw = is_fw,
+//                                     .dispatch_message_addr = dispatch_message_addr});
+//                         }
+//                         break;
+//                     }
+//                     case HalProgrammableCoreType::ACTIVE_ETH: {
+//                         // Cooperative means active erisc FW needs to context switch to base FW
+//                         bool is_cooperative = device->arch() == ARCH::WORMHOLE_B0;
+//                         build_states[index] = std::make_shared<JitBuildActiveEthernet>(
+//                             device->build_env(),
+//                             JitBuiltStateConfig{
+//                                 .processor_id = processor_class,
+//                                 .is_fw = is_fw,
+//                                 .dispatch_message_addr = dispatch_message_addr,
+//                                 .is_cooperative = is_cooperative});
+//                         break;
+//                     }
+//                     case HalProgrammableCoreType::IDLE_ETH: {
+//                         build_states[index] = std::make_shared<JitBuildIdleEthernet>(
+//                             device->build_env(),
+//                             JitBuiltStateConfig{
+//                                 .processor_id = processor_class,
+//                                 .is_fw = is_fw,
+//                                 .dispatch_message_addr = dispatch_message_addr});
+//                         break;
+//                     }
+//                     default:
+//                         TT_THROW(
+//                             "Unsupported programable core type {} to initialize build states",
+//                             magic_enum::enum_name(core_type));
+//                 }
+//                 index++;
+//             }
+//         }
+//     }
 
-    return build_states;
-}
+//     return build_states;
+// }
 
 void BuilderTool::build_firmware() {
     tt_metal::IDevice* device = tt_metal::CreateDevice(device_id);
