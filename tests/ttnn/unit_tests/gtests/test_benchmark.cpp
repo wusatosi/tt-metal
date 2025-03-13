@@ -115,8 +115,8 @@ std::vector<std::tuple<DataType, MathFidelity, bool>> matmul_configs = {
     // {DataType::BFLOAT16, MathFidelity::HiFi2, false},
     {DataType::BFLOAT16, MathFidelity::HiFi4, false},
     {DataType::BFLOAT8_B, MathFidelity::HiFi2, false},
-    // {DataType::BFLOAT8_B, MathFidelity::LoFi, false},
-    // {DataType::BFLOAT4_B, MathFidelity::LoFi, false},
+    {DataType::BFLOAT8_B, MathFidelity::LoFi, false},
+    {DataType::BFLOAT4_B, MathFidelity::LoFi, false},
     // TODO: Enable tracing
     //  {DataType::BFLOAT16, MathFidelity::HiFi2, true},
     //  {DataType::BFLOAT16, MathFidelity::HiFi4, true},
@@ -177,9 +177,12 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
         }
 
         for (const auto& shape : matmul_shapes) {
-            const int m = std::get<0>(shape);
-            const int k = std::get<1>(shape);
-            const int n = std::get<2>(shape);
+            int m = std::get<0>(shape);
+            int k = std::get<1>(shape);
+            int n = std::get<2>(shape);
+            m = m / 8 * std::get<1>(grid_size);
+            n = n / 8 * std::get<0>(grid_size);
+            k = k / 8 * std::get<0>(grid_size);
             const bool in0_sharded = std::get<3>(shape);
             const bool out_sharded = std::get<4>(shape);
             const int in0_block_w_div = std::get<5>(shape);
@@ -360,9 +363,9 @@ INSTANTIATE_TEST_SUITE_P(
     /*Prefix for the instantiated tests*/ MatmulTests,
     /*Test suite*/ Matmul2DHostPerfTestFixture,
     ::testing::Values(std::make_tuple(
-        /* grid_size */ std::make_tuple(4, 2),
+        /* grid_size */ std::make_tuple(8, 2),
         /* tile_h */ 32,
         /* tile_w */ 32,
-        /* num_warmup_iterations */ 1,
+        /* num_warmup_iterations */ 0,
         /* num_measurement_iterations */ 1,
         /* use_program_cache */ false)));
