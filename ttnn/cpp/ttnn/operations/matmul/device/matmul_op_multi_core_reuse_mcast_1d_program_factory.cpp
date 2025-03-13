@@ -1702,7 +1702,7 @@ std::vector<std::tuple<CoreRange, uint32_t, uint32_t>> build_all_cores_info(Core
         uint32_t core_range_size = core_range.grid_size().x * core_range.grid_size().y;
         all_cores_info.push_back(std::make_tuple(core_range, core_range_id++, core_range_size));
     }
-    tt::log_info("all_cores_info: {}", all_cores_info);
+    // tt::log_info("all_cores_info: {}", all_cores_info);
     return all_cores_info;
 }
 
@@ -1821,7 +1821,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
     // build the structure to store all_cores info, core_range, core_range_id, core_range_size
     std::vector<std::tuple<CoreRange, uint32_t, uint32_t>> all_cores_info = build_all_cores_info(all_cores);
 
-    // tt::log_info("all_cores: {}", all_cores);
+    tt::log_info("all_cores: {}", all_cores);
     constexpr bool row_major = true;
     CoreRangeSet all_worker_cores = a.shard_spec().value().grid;
     std::vector<CoreRange> ring_list = all_worker_cores.ranges();
@@ -2119,9 +2119,9 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
     auto all_cores_vec = corerange_to_cores(all_cores, std::nullopt, row_major);
     auto worker_cores_vec = corerange_to_cores(all_worker_cores, std::nullopt, row_major);
     auto hop_cores_vec = corerange_to_cores(hop_cores, std::nullopt, row_major);
-    tt::log_info("all_cores_vec: {}", all_cores_vec);
-    tt::log_info("worker_cores_vec: {}", worker_cores_vec);
-    tt::log_info("hop_cores_vec: {}", hop_cores_vec);
+    // tt::log_info("all_cores_vec: {}", all_cores_vec);
+    // tt::log_info("worker_cores_vec: {}", worker_cores_vec);
+    // tt::log_info("hop_cores_vec: {}", hop_cores_vec);
     std::vector<CoreCoord> idle_cores;
     for (uint32_t i = 0; i < all_cores_vec.size(); ++i) {
         auto core = all_cores_vec[i];
@@ -2139,7 +2139,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         // tt::log_info("core : {}, core_is_in_all_worker_cores: {}", core, core_is_in_all_worker_cores);
 
         if (!core_is_in_all_worker_cores && !core_is_in_hop_cores) {  // not worker core and not hop core
-            tt::log_info("idle core_id: {}", core_id);
+            // tt::log_info("idle core_id: {}", core_id);
             auto core_type = CORE_TYPE::IDLE_CORE;                    // idle core
             // tt::log_info("IDLE : {}", core);
             // in0
@@ -2151,7 +2151,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
                 0};
             add_rt_args_to_all_rt_args(all_mm_in0_args, mm_in0_args, core_id);
             // mm_in0_args.insert(mm_in0_args.begin(), (std::uint32_t)core_id);
-            tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, {(std::uint32_t)core_id});
+            // tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, {(std::uint32_t)core_id});
 
             // tt::log_info("in0 done");
             // in1
@@ -2161,7 +2161,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
             };
             add_rt_args_to_all_rt_args(all_mm_in1_args, mm_in1_args, core_id);
             // mm_in1_args.insert(mm_in1_args.begin(), (std::uint32_t)core_id);
-            tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, {(std::uint32_t)core_id});
+            // tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, {(std::uint32_t)core_id});
 
             // compute
             std::vector<uint32_t> mm_kernel_compute_args = {
@@ -2170,13 +2170,13 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
             };
             add_rt_args_to_all_rt_args(all_mm_compute_args, mm_kernel_compute_args, core_id);
             // mm_kernel_compute_args.insert(mm_kernel_compute_args.begin(), (std::uint32_t)core_id);
-            tt_metal::SetRuntimeArgs(program, mm_kernel, core, {(std::uint32_t)core_id});
+            // tt_metal::SetRuntimeArgs(program, mm_kernel, core, {(std::uint32_t)core_id});
 
             idle_cores.push_back(core);
         }
     }
 
-    tt::log_info("idle_cores: {}", idle_cores);
+    // tt::log_info("idle_cores: {}", idle_cores);
 
     // std::vector<std::vector<uint32_t>> worker_mm_in1_args(num_cores);
     // std::vector<std::vector<uint32_t>> worker_mm_compute_args(num_cores);
@@ -2187,7 +2187,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         const auto& core_noc = device->worker_core_from_logical_core(core);
 
         auto core_id = get_core_index(all_cores_info, core);
-        tt::log_info("worker core_id: {}", core_id);
+        // tt::log_info("worker core_id: {}", core_id);
 
         /* in0 */
         auto core_type = CORE_TYPE::WORKER_CORE;  // worker core
@@ -2209,7 +2209,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
             noc};
         add_rt_args_to_all_rt_args(all_mm_in0_args, mm_in0_args, core_id);
         // mm_in0_args.insert(mm_in0_args.begin(), (std::uint32_t)core_id);
-        tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, {(std::uint32_t)core_id});
+        // tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, {(std::uint32_t)core_id});
 
         /* in1 */
         std::vector<uint32_t> mm_in1_args = {
@@ -2218,7 +2218,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         };
         add_rt_args_to_all_rt_args(all_mm_in1_args, mm_in1_args, core_id);
         // mm_in1_args.insert(mm_in1_args.begin(), (std::uint32_t)core_id);
-        tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, {(std::uint32_t)core_id});
+        // tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, {(std::uint32_t)core_id});
 
         /* compute */
         std::vector<uint32_t> mm_kernel_compute_args = {
@@ -2227,7 +2227,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         };
         add_rt_args_to_all_rt_args(all_mm_compute_args, mm_kernel_compute_args, core_id);
         // mm_kernel_compute_args.insert(mm_kernel_compute_args.begin(), (std::uint32_t)core_id);
-        tt_metal::SetRuntimeArgs(program, mm_kernel, core, {(std::uint32_t)core_id});
+        // tt_metal::SetRuntimeArgs(program, mm_kernel, core, {(std::uint32_t)core_id});
     }
 
     // Runtime args for hop cores
@@ -2239,7 +2239,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         const auto& core_noc = device->worker_core_from_logical_core(core);
 
         auto core_id = get_core_index(all_cores_info, core);
-        tt::log_info("hop core_id: {}", core_id);
+        // tt::log_info("hop core_id: {}", core_id);
 
         /* in0 */
         CoreCoord next_core = end_of_hop ? worker_cores_vec[num_cores - 1] : hop_cores_vec[i + 1];
@@ -2254,7 +2254,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
             noc};
         add_rt_args_to_all_rt_args(all_mm_in0_args, mm_in0_args, core_id);
         // mm_in0_args.insert(mm_in0_args.begin(), (std::uint32_t)core_id);
-        tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, {(std::uint32_t)core_id});
+        // tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, {(std::uint32_t)core_id});
 
         // in1
         std::vector<uint32_t> mm_in1_args = {
@@ -2263,7 +2263,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         };
         add_rt_args_to_all_rt_args(all_mm_in1_args, mm_in1_args, core_id);
         // mm_in1_args.insert(mm_in1_args.begin(), (std::uint32_t)core_id);
-        tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, {(std::uint32_t)core_id});
+        // tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, {(std::uint32_t)core_id});
 
         // compute
         std::vector<uint32_t> mm_kernel_compute_args = {
@@ -2272,10 +2272,10 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         };
         add_rt_args_to_all_rt_args(all_mm_compute_args, mm_kernel_compute_args, core_id);
         // mm_kernel_compute_args.insert(mm_kernel_compute_args.begin(), (std::uint32_t)core_id);
-        tt_metal::SetRuntimeArgs(program, mm_kernel, core, {(std::uint32_t)core_id});
+        // tt_metal::SetRuntimeArgs(program, mm_kernel, core, {(std::uint32_t)core_id});
     }
 
-    tt::log_info("all_mm_in1_args: {}", all_mm_in1_args);
+    // tt::log_info("all_mm_in1_args: {}", all_mm_in1_args);
 
     // set common rt args for in0
     std::vector<uint32_t> concated_all_mm_in0_args = generate_common_rt_args_array(all_mm_in0_args);
@@ -2284,7 +2284,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         unpadded_in0_shard_widths_in_tiles.begin(),
         unpadded_in0_shard_widths_in_tiles.end());
     SetCommonRuntimeArgs(program, mm_kernel_in0_id, concated_all_mm_in0_args);
-    // tt::log_info("concated_all_mm_in0_args: {}", concated_all_mm_in0_args);
+    tt::log_info("concated_all_mm_in0_args: {}", concated_all_mm_in0_args);
 
     // set common rt args for in1
     std::vector<uint32_t> concated_all_mm_in1_args = generate_common_rt_args_array(all_mm_in1_args);
