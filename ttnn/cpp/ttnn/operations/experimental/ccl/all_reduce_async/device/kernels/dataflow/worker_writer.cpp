@@ -7,6 +7,7 @@
 #include "cpp/ttnn/operations/ccl/common/interpreter_backends/kernel_common/fabric_connection_manager.hpp"
 #include "cpp/ttnn/operations/ccl/common/interpreter_backends/kernel_common/noc_addr.hpp"
 #include "cpp/ttnn/operations/experimental/ccl/all_gather_async/device/kernels/minimal_ccl_common.hpp"
+#include "cpp/ttnn/operations/experimental/ccl/all_gather_async/device/kernels/transaction_id_tracker.hpp"
 #include <cstdint>
 #include <utility>
 
@@ -101,35 +102,43 @@ void kernel_main() {
     uint32_t core_id = 0;
     uint32_t writer_chip_offset = my_chip_id * num_tiles_per_core * tensor0_page_size;
 
+    // Transaction ID related constants/types
+    constexpr uint8_t NUM_TRANSACTION_IDS = 4;
+    WriteTransactionIdTracker<NUM_TRANSACTION_IDS, NUM_TRANSACTION_IDS> trid_tracker;
+
     while (tiles_read < num_tiles_to_read) {
         uint32_t num_tiles_to_read_this_core = std::min(num_tiles_per_core - shard_tile_id, packet_size_in_pages);
         num_tiles_to_read_this_core = std::min(num_tiles_to_read - tiles_read, num_tiles_to_read_this_core);
-        cb_wait_front(cb0_id, num_tiles_to_read_this_core);
-        size_t l1_read_addr = get_read_ptr(cb0_id);
+        if (trid_tracker.oldest_trid_flushed()) {
+            trid_tracker.pop_pages_for_oldest_trid();
+        }
+        if (trid_tracker.cb_next_slot_is_available()) {
+            auto [l1_read_addr, trid] = trid_tracker.get_next_cb_slot();
 
-        uint64_t noc0_dest_noc_addr =
-            get_noc_addr(core_noc_x[core_id], core_noc_y[core_id], reduction_input_addr + writer_chip_offset);
+            uint64_t noc0_dest_noc_addr =
+                get_noc_addr(core_noc_x[core_id], core_noc_y[core_id], reduction_input_addr + writer_chip_offset);
 
-        // Within-shard offset
-        noc0_dest_noc_addr += shard_tile_id * tensor0_page_size;
+            // Within-shard offset
+            noc0_dest_noc_addr += shard_tile_id * tensor0_page_size;
 
-        write_and_advance_local_read_address_for_fabric_write(
-            noc0_dest_noc_addr,
-            pkt_hdr_forward,
-            pkt_hdr_backward,
-            fabric_connection,
-            l1_read_addr,
-            num_tiles_to_read_this_core * tensor0_page_size);
-        noc_async_writes_flushed();
+            // trid also used to index packet headers
+            write_and_advance_local_read_address_for_fabric_write(
+                noc0_dest_noc_addr,
+                pkt_hdr_forward[trid],
+                pkt_hdr_backward[trid],
+                fabric_connection,
+                l1_read_addr,
+                num_tiles_to_read_this_core * tensor0_page_size trid.get());
 
-        cb_pop_front(cb0_id, num_tiles_to_read_this_core);
-        tiles_read += num_tiles_to_read_this_core;
-        shard_tile_id += num_tiles_to_read_this_core;
-        if (shard_tile_id >= num_tiles_per_core) {
-            shard_tile_id = 0;
-            core_id++;
+            tiles_read += num_tiles_to_read_this_core;
+            shard_tile_id += num_tiles_to_read_this_core;
+            if (shard_tile_id >= num_tiles_per_core) {
+                shard_tile_id = 0;
+                core_id++;
+            }
         }
     }
+    // noc_async_writes_flushed();
 
     // 2. mcast output ready semaphore
     auto* pkt_hdr = reinterpret_cast<PACKET_HEADER_TYPE*>(packet_header_buffer_seminc);
@@ -188,6 +197,7 @@ void kernel_main() {
         fabric_connection.close();
     }
 
+    trid_tracker.write_barrier();
     noc_async_write_barrier();
 
     // DPRINT << "writer done \n";

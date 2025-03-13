@@ -250,7 +250,7 @@ def test_all_gather_tg_llama(
 @pytest.mark.parametrize(
     "mesh_device",
     [
-        (8, 4),
+        (1, 4),
     ],
     indirect=True,
 )

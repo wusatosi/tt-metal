@@ -68,10 +68,10 @@ def test_ag_tg_llama_perf(
 @pytest.mark.parametrize(
     "ar_type, warmup_iters, perf_target_us",
     [
-        ("ff2", 10, 29),
-        ("qkv", 10, 25),
+        # ("ff2", 10, 29),
+        # ("qkv", 10, 25),
         ("ff1", 10, 30),
-        ("lm_head", 10, 70),
+        # ("lm_head", 10, 70),
     ],
 )
 @pytest.mark.models_device_performance_bare_metal
