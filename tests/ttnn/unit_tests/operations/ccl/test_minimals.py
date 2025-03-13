@@ -24,6 +24,7 @@ from tests.ttnn.unit_tests.operations.ccl.fusion_subtests.concat_fuse_test impor
 )
 
 from tests.ttnn.unit_tests.operations.ccl.fusion_subtests.all_reduce_test import run_all_reduce_impl
+from models.perf.benchmarking_utils import BenchmarkData, BenchmarkProfiler
 
 
 def run_allgather_only_with_trace(
@@ -527,8 +528,14 @@ def test_reduce_scatter(
         # ttnn.bfloat8_b,
     ],
 )
-@pytest.mark.parametrize("num_iters", [10])  # @pytest.mark.parametrize("num_iters, warmup_iters", [10])
+@pytest.mark.parametrize("num_iters, warmup_iters", [[100, 10]])
 @pytest.mark.parametrize("enable_async", [True])
+@pytest.mark.parametrize("trace_mode", [True])
+@pytest.mark.parametrize(
+    "device_params",
+    [{"trace_region_size": 23887872}],
+    indirect=True,
+)
 def test_concat_fuse(
     t3k_mesh_device,
     num_devices,
@@ -538,7 +545,7 @@ def test_concat_fuse(
     input_dtype,
     layout,
     num_iters,
-    # warmup_iters,
+    warmup_iters,
     use_program_cache,
     function_level_defaults,
     enable_async,
@@ -547,9 +554,9 @@ def test_concat_fuse(
     output_shard_shape,
     output_shard_grid,
     tensor_mem_layout,
-    # trace_mode,
+    trace_mode,
 ):
-    # profiler = BenchmarkProfiler()
+    profiler = BenchmarkProfiler()
     run_concat_fuse_impl(
         t3k_mesh_device,
         num_devices,
@@ -563,14 +570,14 @@ def test_concat_fuse(
         input_shard_shape,
         input_shard_grid,
         all_gather_topology=ttnn.Topology.Linear,
-        # warmup_iters=warmup_iters,
+        warmup_iters=warmup_iters,
         num_iters=num_iters,
         enable_async=enable_async,
         output_shard_shape=output_shard_shape,
         output_shard_grid=output_shard_grid,
         tensor_mem_layout=tensor_mem_layout,
-        # trace_mode=trace_mode,
-        # profiler=profiler,
+        trace_mode=trace_mode,
+        profiler=profiler,
     )
 
 

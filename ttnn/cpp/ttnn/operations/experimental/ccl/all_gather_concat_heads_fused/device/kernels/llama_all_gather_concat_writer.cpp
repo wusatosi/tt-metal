@@ -208,8 +208,6 @@ void kernel_main() {
         fabric_connection.close();
     }
 
-    noc_async_write_barrier();
-
     DPRINT << "DONE ALL GATHER\n";
     DPRINT << "START CONCAT HEADS\n";
 
@@ -265,5 +263,6 @@ void kernel_main() {
     }
 
     noc_async_read_barrier();
+    noc_async_write_barrier();
     DPRINT << "DONE\n";
 }
