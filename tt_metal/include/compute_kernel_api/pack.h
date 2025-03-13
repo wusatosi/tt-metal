@@ -35,8 +35,8 @@ namespace ckernel {
  *
  * | Argument       | Description                                       | Type     | Valid Range                                         | Required |
  * |----------------|---------------------------------------------------|----------|-----------------------------------------------------|----------|
- * | ifrom_dst      | The index of the tile in the DST register         | uint32_t | Must be less than the size of the DST register (16) | True     | 
- * | icb            | The identifier of the output circular buffer (CB) | uint32_t | 0 to 31                                             | True     | 
+ * | ifrom_dst      | The index of the tile in the DST register         | uint32_t | Must be less than the size of the DST register (16) | True     |
+ * | icb            | The identifier of the output circular buffer (CB) | uint32_t | 0 to 31                                             | True     |
  * | icb_tile       | The index of the tile in the output CB to copy to | uint32_t | Must be less than the size of the CB                | True     |
  */
  // clang-format on
@@ -71,8 +71,8 @@ ALWI void pack_tile(uint32_t ifrom_dst, uint32_t icb, std::uint32_t output_tile_
  *
  * | Argument       | Description                                       | Type     | Valid Range                                         | Required |
  * |----------------|---------------------------------------------------|----------|-----------------------------------------------------|----------|
- * | ifrom_dst      | The index of the tile in the DST register         | uint32_t | Must be less than the size of the DST register (16) | True     | 
- * | icb            | The identifier of the output circular buffer (CB) | uint32_t | 0 to 31                                             | True     | 
+ * | ifrom_dst      | The index of the tile in the DST register         | uint32_t | Must be less than the size of the DST register (16) | True     |
+ * | icb            | The identifier of the output circular buffer (CB) | uint32_t | 0 to 31                                             | True     |
  * | ntiles         | The number of tiles to copy from DST to CB        | uint32_t | Must be less than the size of the CB                | True     |
  */
  // clang-format on

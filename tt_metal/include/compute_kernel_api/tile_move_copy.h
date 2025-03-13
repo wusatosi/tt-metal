@@ -22,7 +22,7 @@ namespace ckernel {
  *
  * | Argument    | Description                                       | Type     | Valid Range                                        | Required |
  * |-------------|---------------------------------------------------|----------|----------------------------------------------------|----------|
- * | cbid        | The identifier of the input circular buffer (CB)  | uint32_t | 0 to 31                                            | False    | 
+ * | cbid        | The identifier of the input circular buffer (CB)  | uint32_t | 0 to 31                                            | False    |
  * | transpose   | Flag to perform transpose on SrcA                 | uint32_t | Any positive value will indicate tranpose is set   | False    |
  */
  // clang-format on
@@ -74,7 +74,7 @@ ALWI void copy_tile_to_dst_init_short_with_dt(uint32_t old_cbid, uint32_t new_cb
  * | Argument       | Description                                       | Data type | Valid range                                         | required |
  * |----------------|---------------------------------------------------|-----------|-----------------------------------------------------|----------|
  * | in_cb_id       | The identifier of the source circular buffer (CB) | uint32_t  | 0 to 31                                             | True     |
- * | in_tile_index  | The index of the tile to copy from the input CB   | uint32_t  | Must be less than the size of the CB                | True     | 
+ * | in_tile_index  | The index of the tile to copy from the input CB   | uint32_t  | Must be less than the size of the CB                | True     |
  * | dst_tile_index | The index of the tile in the DST register         | uint32_t  | Must be less than the size of the DST register (16) | True     |
  * */
  // clang-format on

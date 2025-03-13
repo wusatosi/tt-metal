@@ -24,7 +24,7 @@ namespace ckernel {
  * | Argument       | Description                                                                | Type     | Valid Range                                                 | Required |
  * |----------------|----------------------------------------------------------------------------|----------|-------------------------------------------------------------|----------|
  * | tile_index     | The index of the tile in DST register buffer to perform requested operation| uint32_t | Must be less than the size of the DST register buffer       | True     |
- * | mode           | 0, 1, 2, 3, and 4                                                          | uint32_t | 0, 1, 2, 3, 4 corresponding to add, mul, sub, div, and rsub | True     |         
+ * | mode           | 0, 1, 2, 3, and 4                                                          | uint32_t | 0, 1, 2, 3, 4 corresponding to add, mul, sub, div, and rsub | True     |
  * | param1         | fp32 value scalar encoded as uint32                                        | uint32_t | Must be less than the size of the DST register buffer       | True     |
  */
  // clang-format on

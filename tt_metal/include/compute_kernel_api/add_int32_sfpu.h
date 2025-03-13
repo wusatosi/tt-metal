@@ -29,8 +29,8 @@ namespace ckernel {
  *
  * | Argument              | Description                                                                 | Type     | Valid Range                                           | Required |
  * |-----------------------|-----------------------------------------------------------------------------|----------|-------------------------------------------------------|----------|
- * | idst0                 | The index of the tile in DST register buffer to use as first operand        | uint32_t | Must be less than the size of the DST register buffer | True     | 
- * | idst1                 | The index of the tile in DST register buffer to use as second operand       | uint32_t | Must be less than the size of the DST register buffer | True     | 
+ * | idst0                 | The index of the tile in DST register buffer to use as first operand        | uint32_t | Must be less than the size of the DST register buffer | True     |
+ * | idst1                 | The index of the tile in DST register buffer to use as second operand       | uint32_t | Must be less than the size of the DST register buffer | True     |
  * | sign_magnitude_format | Whether the Int32 values are in sign-magnitude format (not 2's complement)  | bool     |                                                       | False    |
  */
  // clang-format on
