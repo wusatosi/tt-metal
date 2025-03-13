@@ -817,6 +817,9 @@ bool LightMetalReplay::run() {
             execute(cmd);
         }
 
+        log_info(tt::LogMetalTrace, "KCM Going to call Synchronize now...");
+        Synchronize(this->device_);
+
         clear_object_maps();
 
         if (replay_manages_device) {
