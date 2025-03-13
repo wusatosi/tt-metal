@@ -11,6 +11,12 @@ import tempfile
 from loguru import logger
 import os
 from tests.ttnn.utils_for_testing import assert_with_pcc
+from models.demos.bert_tiny.demo.demo import run_bert_question_and_answering_inference
+
+from models.utility_functions import (
+    disable_compilation_reports,
+    disable_persistent_kernel_cache,
+)
 
 
 # Helper function to write binary file to a path
@@ -123,6 +129,41 @@ def test_sharded_move_op(device, reset_device, shape, enable_async, blocking, tm
     ttnn.light_metal_begin_capture()
 
     run_move_op(shape, device, tmp_path)
+
+    binary_data = ttnn.light_metal_end_capture()
+    write_binary_to_file(binary_data, tmp_path, inspect.currentframe().f_code.co_name)
+    reset_device_and_replay_binary(reset_device, device, binary_data)
+
+
+# Below test body is taken from bert_tiny/demo/demo.py, just add light-metal capture+replay e2e. Doesn't use metal-trace.
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
+@pytest.mark.parametrize("batch_size", [8])
+@pytest.mark.parametrize("sequence_size", [128])
+@pytest.mark.parametrize("model_name", ["mrm8488/bert-tiny-finetuned-squadv2"])
+@pytest.mark.parametrize("input_loc", ["models/demos/bert_tiny/demo/input_data.json"])
+def test_demo_bert_tiny(
+    input_loc,
+    batch_size,
+    sequence_size,
+    model_name,
+    model_location_generator,
+    device,
+    tmp_path,
+    reset_device,
+):
+    ttnn.light_metal_begin_capture()
+
+    disable_persistent_kernel_cache()
+    disable_compilation_reports()
+    run_bert_question_and_answering_inference(
+        device=device,
+        use_program_cache=False,
+        model_name=model_name,
+        batch_size=batch_size,
+        sequence_size=sequence_size,
+        model_location_generator=model_location_generator,
+        input_path=input_loc,
+    )
 
     binary_data = ttnn.light_metal_end_capture()
     write_binary_to_file(binary_data, tmp_path, inspect.currentframe().f_code.co_name)
