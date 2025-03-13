@@ -101,7 +101,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_reduce_async_minimal_multi_cor
     std::optional<CoreRangeSet> reserved_cores = output_tensor_cores;
     uint32_t num_workers_per_link = 1;
     const auto [sender_worker_core_range, sender_worker_cores] = choose_worker_cores(
-        num_links, num_workers_per_link, enable_persistent_fabric_mode, device, sub_device_id, reserved_cores);
+        num_links * 2, num_workers_per_link, enable_persistent_fabric_mode, device, sub_device_id, reserved_cores);
 
     tt::log_debug(tt::LogOp, "input_tensor_num_pages: {}", input_tensor_num_pages);
     tt::log_debug(tt::LogOp, "input_tensor_cores: {}", input_tensor_cores);
@@ -325,143 +325,158 @@ tt::tt_metal::operation::ProgramWithCallbacks all_reduce_async_minimal_multi_cor
             .compile_args = writer_compile_args});
 
     // Kernel Runtime Args
-    for (uint32_t link = 0; link < num_links; link++) {
-        CoreCoord core = sender_worker_cores[link];
-        CoreCoord drain_sync_core = device->worker_core_from_logical_core(core);
-        uint32_t worker_num_tiles_to_read = output_tensor_pages_in_link[link];
+    for (uint32_t direction = 0; direction < 2; direction++) {
+        for (uint32_t link = 0; link < num_links; link++) {
+            CoreCoord core = sender_worker_cores[link + direction * num_links];
+            CoreCoord drain_sync_core = device->worker_core_from_logical_core(sender_worker_cores[link]);
 
-        uint32_t input_first_core_tile_start_offset = input_tensor_tile_offset_per_link[link];
-        uint32_t output_first_core_tile_start_offset = 0;
+            uint32_t worker_num_tiles_to_read = output_tensor_pages_in_link[link];
 
-        std::vector<uint32_t> input_tensor_cores_x;
-        std::vector<uint32_t> input_tensor_cores_y;
-        std::vector<uint32_t> output_tensor_cores_x;
-        std::vector<uint32_t> output_tensor_cores_y;
-        for (uint32_t i = input_cores_idx_per_link[link].first; i < input_cores_idx_per_link[link].second; i++) {
-            auto this_core = device->worker_core_from_logical_core(input_cores_vec[i]);
-            input_tensor_cores_x.push_back(this_core.x);
-            input_tensor_cores_y.push_back(this_core.y);
-        }
-        for (uint32_t i = output_cores_per_link * link;
-             i < output_cores_per_link * link + num_output_cores_in_link[link];
-             i++) {
-            auto this_core = device->worker_core_from_logical_core(output_cores_vec[i]);
-            output_tensor_cores_x.push_back(this_core.x);
-            output_tensor_cores_y.push_back(this_core.y);
-        }
+            uint32_t input_first_core_tile_start_offset = input_tensor_tile_offset_per_link[link];
+            uint32_t output_first_core_tile_start_offset = 0;
 
-        std::optional<ttnn::ccl::SenderWorkerAdapterSpec> forward_fabric_connection =
-            line_topology.is_first_device_in_line(ttnn::ccl::EdmLineFabricOpInterface::Direction::BACKWARD)
-                ? std::nullopt
-                : std::optional<ttnn::ccl::SenderWorkerAdapterSpec>(local_fabric_handle->uniquely_connect_worker(
-                      device, ttnn::ccl::EdmLineFabricOpInterface::FORWARD));
-        std::optional<ttnn::ccl::SenderWorkerAdapterSpec> backward_fabric_connection =
-            line_topology.is_last_device_in_line(ttnn::ccl::EdmLineFabricOpInterface::Direction::BACKWARD)
-                ? std::nullopt
-                : std::optional<ttnn::ccl::SenderWorkerAdapterSpec>(local_fabric_handle->uniquely_connect_worker(
-                      device, ttnn::ccl::EdmLineFabricOpInterface::BACKWARD));
-
-        // Set reader runtime args
-        std::vector<uint32_t> reader_rt_args = {
-            input_tensor.buffer()->address(),    // tensor_address0
-            input_tensor_shard_num_pages,        // num_tiles_per_core
-            worker_num_tiles_to_read,            // num_tiles_to_read
-            input_first_core_tile_start_offset,  // first_core_tile_start_offset
-            input_tensor_cores_x.size(),         // num_cores
-        };
-        reader_rt_args.insert(reader_rt_args.end(), input_tensor_cores_x.begin(), input_tensor_cores_x.end());
-        reader_rt_args.insert(reader_rt_args.end(), input_tensor_cores_y.begin(), input_tensor_cores_y.end());
-        log_trace(tt::LogOp, "Reader Runtime Args:");
-        for (const auto& arg : reader_rt_args) {
-            log_trace(tt::LogOp, "\t{}", arg);
-        }
-        tt::tt_metal::SetRuntimeArgs(program, worker_sender_reader_kernel_id, {core}, reader_rt_args);
-
-        // Set writer runtime args
-        std::vector<uint32_t> mcast_start_x;
-        std::vector<uint32_t> mcast_start_y;
-        std::vector<uint32_t> mcast_end_x;
-        std::vector<uint32_t> mcast_end_y;
-
-        uint32_t num_mcast_cores = 0;
-        for (const auto& range : output_corerangeset_per_link[link].ranges()) {
-            auto start_core = device->worker_core_from_logical_core(range.start_coord);
-            auto end_core = device->worker_core_from_logical_core(range.end_coord);
-            num_mcast_cores += (end_core.x - start_core.x + 1) * (end_core.y - start_core.y + 1);
-            bool mcast_range_contains_self =
-                start_core.x <= core.x && core.x <= end_core.x && start_core.y <= core.y && core.y <= end_core.y;
-            if (mcast_range_contains_self) {
-                num_mcast_cores -= 1;
+            std::vector<uint32_t> input_tensor_cores_x;
+            std::vector<uint32_t> input_tensor_cores_y;
+            std::vector<uint32_t> output_tensor_cores_x;
+            std::vector<uint32_t> output_tensor_cores_y;
+            for (uint32_t i = input_cores_idx_per_link[link].first; i < input_cores_idx_per_link[link].second; i++) {
+                auto this_core = device->worker_core_from_logical_core(input_cores_vec[i]);
+                input_tensor_cores_x.push_back(this_core.x);
+                input_tensor_cores_y.push_back(this_core.y);
             }
-            if (writer_noc == tt::tt_metal::NOC::NOC_1) {
-                std::swap(start_core, end_core);
+            for (uint32_t i = output_cores_per_link * link;
+                 i < output_cores_per_link * link + num_output_cores_in_link[link];
+                 i++) {
+                auto this_core = device->worker_core_from_logical_core(output_cores_vec[i]);
+                output_tensor_cores_x.push_back(this_core.x);
+                output_tensor_cores_y.push_back(this_core.y);
             }
-            mcast_start_x.push_back(start_core.x);
-            mcast_start_y.push_back(start_core.y);
-            mcast_end_x.push_back(end_core.x);
-            mcast_end_y.push_back(end_core.y);
-        }
 
-        uint32_t out_ready_sem_wait_value = ring_size;
-        std::vector<uint32_t> writer_rt_args = {
-            reduction_cb_index,                   // tensor_address0
-            semaphore.address(),                  // out_ready_sem_bank_addr (absolute address)
-            output_tensor_shard_num_pages,        // num_tiles_per_core
-            worker_num_tiles_to_read,             // num_tiles_to_read
-            output_first_core_tile_start_offset,  // first_core_tile_start_offset
-            output_tensor_cores_x.size(),         // num_cores
-            num_mcast_cores,                      // num_mcast_cores
-            drain_sync_core.x,                    // out_ready_sem_noc0_x
-            drain_sync_core.y,                    // out_ready_sem_noc0_y
-            out_ready_sem_wait_value,             // out_ready_sem_wait_value
-            reduction_semaphore_ids[link],        // reduction_semaphore_id
-            mcast_start_x.size(),                 // num_mcast_ranges
-            link,                                 // link
-        };
-        writer_rt_args.insert(writer_rt_args.end(), output_tensor_cores_x.begin(), output_tensor_cores_x.end());
-        writer_rt_args.insert(writer_rt_args.end(), output_tensor_cores_y.begin(), output_tensor_cores_y.end());
+            std::optional<ttnn::ccl::SenderWorkerAdapterSpec> forward_fabric_connection = {};
+            if (direction == 0) {
+                forward_fabric_connection =
+                    line_topology.is_first_device_in_line(ttnn::ccl::EdmLineFabricOpInterface::Direction::BACKWARD)
+                        ? std::nullopt
+                        : std::optional<ttnn::ccl::SenderWorkerAdapterSpec>(
+                              local_fabric_handle->uniquely_connect_worker(
+                                  device, ttnn::ccl::EdmLineFabricOpInterface::FORWARD));
+            }
+            std::optional<ttnn::ccl::SenderWorkerAdapterSpec> backward_fabric_connection = {};
 
-        writer_rt_args.insert(writer_rt_args.end(), mcast_start_x.begin(), mcast_start_x.end());
-        writer_rt_args.insert(writer_rt_args.end(), mcast_start_y.begin(), mcast_start_y.end());
-        writer_rt_args.insert(writer_rt_args.end(), mcast_end_x.begin(), mcast_end_x.end());
-        writer_rt_args.insert(writer_rt_args.end(), mcast_end_y.begin(), mcast_end_y.end());
+            if (direction == 1) {
+                backward_fabric_connection =
+                    line_topology.is_last_device_in_line(ttnn::ccl::EdmLineFabricOpInterface::Direction::BACKWARD)
+                        ? std::nullopt
+                        : std::optional<ttnn::ccl::SenderWorkerAdapterSpec>(
+                              local_fabric_handle->uniquely_connect_worker(
+                                  device, ttnn::ccl::EdmLineFabricOpInterface::BACKWARD));
+            }
 
-        log_trace(tt::LogOp, "Writer Runtime Args:");
-        for (const auto& arg : writer_rt_args) {
-            log_trace(tt::LogOp, "\t{}", arg);
-        }
-        writer_rt_args.push_back(forward_fabric_connection.has_value());
-        if (forward_fabric_connection.has_value()) {
-            auto sender_worker_flow_control_semaphore_id = CreateSemaphore(program, {core}, 0);
-            auto sender_worker_teardown_semaphore_id = CreateSemaphore(program, {core}, 0);
-            auto sender_worker_buffer_index_semaphore_id = CreateSemaphore(program, {core}, 0);
-            append_worker_to_fabric_edm_sender_rt_args(
-                forward_fabric_connection.value(),
-                sender_worker_flow_control_semaphore_id,
-                sender_worker_teardown_semaphore_id,
-                sender_worker_buffer_index_semaphore_id,
-                writer_rt_args);
-        }
-        writer_rt_args.push_back(backward_fabric_connection.has_value());
-        if (backward_fabric_connection.has_value()) {
-            auto sender_worker_flow_control_semaphore_id = CreateSemaphore(program, {core}, 0);
-            auto sender_worker_teardown_semaphore_id = CreateSemaphore(program, {core}, 0);
-            auto sender_worker_buffer_index_semaphore_id = CreateSemaphore(program, {core}, 0);
-            append_worker_to_fabric_edm_sender_rt_args(
-                backward_fabric_connection.value(),
-                sender_worker_flow_control_semaphore_id,
-                sender_worker_teardown_semaphore_id,
-                sender_worker_buffer_index_semaphore_id,
-                writer_rt_args);
-        }
-        tt::tt_metal::SetRuntimeArgs(program, worker_sender_writer_kernel_id, {core}, writer_rt_args);
+            // Set reader runtime args
+            std::vector<uint32_t> reader_rt_args = {
+                input_tensor.buffer()->address(),    // tensor_address0
+                input_tensor_shard_num_pages,        // num_tiles_per_core
+                worker_num_tiles_to_read,            // num_tiles_to_read
+                input_first_core_tile_start_offset,  // first_core_tile_start_offset
+                input_tensor_cores_x.size(),         // num_cores
+            };
+            reader_rt_args.insert(reader_rt_args.end(), input_tensor_cores_x.begin(), input_tensor_cores_x.end());
+            reader_rt_args.insert(reader_rt_args.end(), input_tensor_cores_y.begin(), input_tensor_cores_y.end());
+            log_trace(tt::LogOp, "Reader Runtime Args:");
+            for (const auto& arg : reader_rt_args) {
+                log_trace(tt::LogOp, "\t{}", arg);
+            }
+            tt::tt_metal::SetRuntimeArgs(program, worker_sender_reader_kernel_id, {core}, reader_rt_args);
 
-        // Set reduction worker runtime args
-        std::vector<uint32_t> reduction_reader_rt_args = {
-            reduction_semaphore_ids[link],  // reduction_semaphore_id
-        };
-        tt::tt_metal::SetRuntimeArgs(
-            program, reduction_reader_kernel_id, output_corerangeset_per_link[link], reduction_reader_rt_args);
+            // Set writer runtime args
+            std::vector<uint32_t> mcast_start_x;
+            std::vector<uint32_t> mcast_start_y;
+            std::vector<uint32_t> mcast_end_x;
+            std::vector<uint32_t> mcast_end_y;
+
+            uint32_t num_mcast_cores = 0;
+            for (const auto& range : output_corerangeset_per_link[link].ranges()) {
+                auto start_core = device->worker_core_from_logical_core(range.start_coord);
+                auto end_core = device->worker_core_from_logical_core(range.end_coord);
+                num_mcast_cores += (end_core.x - start_core.x + 1) * (end_core.y - start_core.y + 1);
+                bool mcast_range_contains_self =
+                    start_core.x <= core.x && core.x <= end_core.x && start_core.y <= core.y && core.y <= end_core.y;
+                if (mcast_range_contains_self) {
+                    num_mcast_cores -= 1;
+                }
+                if (writer_noc == NOC::NOC_1) {
+                    std::swap(start_core, end_core);
+                }
+                mcast_start_x.push_back(start_core.x);
+                mcast_start_y.push_back(start_core.y);
+                mcast_end_x.push_back(end_core.x);
+                mcast_end_y.push_back(end_core.y);
+            }
+
+            uint32_t out_ready_sem_wait_value = ring_size;
+            std::vector<uint32_t> writer_rt_args = {
+                reduction_cb_index,                   // tensor_address0
+                semaphore.address(),                  // out_ready_sem_bank_addr (absolute address)
+                direction,                            // direction
+                output_tensor_shard_num_pages,        // num_tiles_per_core
+                worker_num_tiles_to_read,             // num_tiles_to_read
+                output_first_core_tile_start_offset,  // first_core_tile_start_offset
+                output_tensor_cores_x.size(),         // num_cores
+                num_mcast_cores,                      // num_mcast_cores
+                drain_sync_core.x,                    // out_ready_sem_noc0_x
+                drain_sync_core.y,                    // out_ready_sem_noc0_y
+                out_ready_sem_wait_value,             // out_ready_sem_wait_value
+                reduction_semaphore_ids[link],        // reduction_semaphore_id
+                mcast_start_x.size(),                 // num_mcast_ranges
+                link,                                 // link
+            };
+            writer_rt_args.insert(writer_rt_args.end(), output_tensor_cores_x.begin(), output_tensor_cores_x.end());
+            writer_rt_args.insert(writer_rt_args.end(), output_tensor_cores_y.begin(), output_tensor_cores_y.end());
+
+            writer_rt_args.insert(writer_rt_args.end(), mcast_start_x.begin(), mcast_start_x.end());
+            writer_rt_args.insert(writer_rt_args.end(), mcast_start_y.begin(), mcast_start_y.end());
+            writer_rt_args.insert(writer_rt_args.end(), mcast_end_x.begin(), mcast_end_x.end());
+            writer_rt_args.insert(writer_rt_args.end(), mcast_end_y.begin(), mcast_end_y.end());
+
+            log_trace(tt::LogOp, "Writer Runtime Args:");
+            for (const auto& arg : writer_rt_args) {
+                log_trace(tt::LogOp, "\t{}", arg);
+            }
+            writer_rt_args.push_back(forward_fabric_connection.has_value());
+            if (forward_fabric_connection.has_value()) {
+                auto sender_worker_flow_control_semaphore_id = CreateSemaphore(program, {core}, 0);
+                auto sender_worker_teardown_semaphore_id = CreateSemaphore(program, {core}, 0);
+                auto sender_worker_buffer_index_semaphore_id = CreateSemaphore(program, {core}, 0);
+                append_worker_to_fabric_edm_sender_rt_args(
+                    forward_fabric_connection.value(),
+                    sender_worker_flow_control_semaphore_id,
+                    sender_worker_teardown_semaphore_id,
+                    sender_worker_buffer_index_semaphore_id,
+                    writer_rt_args);
+            }
+            writer_rt_args.push_back(backward_fabric_connection.has_value());
+            if (backward_fabric_connection.has_value()) {
+                auto sender_worker_flow_control_semaphore_id = CreateSemaphore(program, {core}, 0);
+                auto sender_worker_teardown_semaphore_id = CreateSemaphore(program, {core}, 0);
+                auto sender_worker_buffer_index_semaphore_id = CreateSemaphore(program, {core}, 0);
+                append_worker_to_fabric_edm_sender_rt_args(
+                    backward_fabric_connection.value(),
+                    sender_worker_flow_control_semaphore_id,
+                    sender_worker_teardown_semaphore_id,
+                    sender_worker_buffer_index_semaphore_id,
+                    writer_rt_args);
+            }
+            tt::tt_metal::SetRuntimeArgs(program, worker_sender_writer_kernel_id, {core}, writer_rt_args);
+
+            // Set reduction worker runtime args
+            std::vector<uint32_t> reduction_reader_rt_args = {
+                reduction_semaphore_ids[link],  // reduction_semaphore_id
+            };
+            if (direction == 0) {
+                tt::tt_metal::SetRuntimeArgs(
+                    program, reduction_reader_kernel_id, output_corerangeset_per_link[link], reduction_reader_rt_args);
+            }
+        }
     }
 
     auto override_runtime_arguments_callback =

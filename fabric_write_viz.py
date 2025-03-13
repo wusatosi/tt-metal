@@ -238,8 +238,8 @@ if __name__ == "__main__":
     run_id = 30 * 2  # Replace with actual run ID
     zone_name = "MAIN-WRITE-LOOP"  # Replace with actual zone name
     risc_processor_type = "BRISC"  # Replace with actual RISC processor type
-    cores = [(21, 18), (21, 19), (21, 20), (21, 21)]
-    # cores = [(23, 23), (23, 24), (24, 23)]
+    # cores = [(21, 18), (21, 19), (21, 20), (21, 21), (21, 22), (21, 23), (21, 24), (21, 25)]
+    cores = [(23, 23), (23, 24), (24, 23), (23, 25), (24, 24), (24, 25)]
     clock_frequency = 900  # Clock frequency in MHz
 
     # Analyze wait durations and get the dataframe
