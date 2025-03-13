@@ -1215,6 +1215,10 @@ class TtModelArgs:
                 state_dict = model.state_dict()
             else:
                 state_dict = load_hf_state_dict(self.DEFAULT_CKPT_DIR)
+                # manually cast all weights to torch.bfloat16
+                for k, v in state_dict.items():
+                    state_dict[k] = v.to(torch.bfloat16)
+
             state_dict = standardize_hf_keys(state_dict)
             state_dict = convert_hf_to_meta(state_dict, self.head_dim)
         keys_dict = list(state_dict.keys())[:]
