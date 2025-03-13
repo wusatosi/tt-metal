@@ -29,7 +29,7 @@ enum DispatchWriteOffsets {
     DISPATCH_WRITE_OFFSET_ETH_L1_CONFIG_BASE = 2,
 };
 
-constexpr uint32_t kDeviceToPrint = 0;
+constexpr uint32_t kDeviceToPrint = 31;
 
 uint32_t configure_rta_offsets_for_kernel_groups(
     uint32_t programmable_core_type_index,
