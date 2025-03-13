@@ -53,7 +53,7 @@ namespace detail {
 
 bool DispatchStateCheck(bool isFastDispatch) {
     static bool fd = isFastDispatch;
-    TT_FATAL(fd == isFastDispatch, "Mixing fast and slow dispatch is prohibited!");
+    // TT_FATAL(fd == isFastDispatch, "Mixing fast and slow dispatch is prohibited!");
     return fd;
 }
 

@@ -736,7 +736,7 @@ void WaitProgramDone(IDevice* device, Program& program) {
     }
     // Wait for all cores to be done
     llrt::internal_::wait_until_cores_done(device_id, RUN_MSG_GO, not_done_cores);
-    DumpDeviceProfileResults(device, program);
+    // DumpDeviceProfileResults(device, program);
 }
 
 bool ConfigureDeviceWithProgram(IDevice* device, Program& program, bool fd_bootloader_mode) {

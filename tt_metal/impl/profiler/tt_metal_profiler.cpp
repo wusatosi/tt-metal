@@ -130,7 +130,8 @@ void syncDeviceHost(IDevice* device, CoreCoord logical_core, bool doHeader) {
             .noc = tt_metal::NOC::RISCV_0_default,
             .defines = kernel_defines});
 
-    EnqueueProgram(device->command_queue(), *sync_program, false);
+    // EnqueueProgram(device->command_queue(), *sync_program, false);
+    tt_metal::detail::LaunchProgram(device, *sync_program, false);
 
     std::filesystem::path output_dir = std::filesystem::path(get_profiler_logs_dir());
     std::filesystem::path log_path = output_dir / "sync_device_info.csv";
@@ -157,7 +158,7 @@ void syncDeviceHost(IDevice* device, CoreCoord logical_core, bool doHeader) {
         writeTimes[i] = (TracyGetCpuTime() - writeStart);
     }
 
-    Finish(device->command_queue());
+    tt_metal::detail::WaitProgramDone(device, *sync_program);
 
     log_info("SYNC PROGRAM FINISH IS DONE ON {}", device_id);
     if ((smallestHostime[device_id] == 0) || (smallestHostime[device_id] > hostStartTime)) {
@@ -384,19 +385,24 @@ void syncDeviceDevice(chip_id_t device_id_sender, chip_id_t device_id_receiver) 
             eth_receiver_core,
             tt_metal::EthernetConfig{.noc = tt_metal::NOC::RISCV_0_default, .compile_args = ct_args});
 
-        try {
-            tt::tt_metal::detail::CompileProgram(device_sender, program_sender);
-            tt::tt_metal::detail::CompileProgram(device_receiver, program_receiver);
-        } catch (std::exception& e) {
-            log_error("Failed compile: {}", e.what());
-            throw e;
-        }
+        // try {
+        // tt::tt_metal::detail::CompileProgram(device_sender, program_sender);
+        // tt::tt_metal::detail::CompileProgram(device_receiver, program_receiver);
+        //} catch (std::exception& e) {
+        // log_error("Failed compile: {}", e.what());
+        // throw e;
+        //}
 
-        tt_metal::EnqueueProgram(device_sender->command_queue(), program_sender, false);
-        tt_metal::EnqueueProgram(device_receiver->command_queue(), program_receiver, false);
+        tt_metal::detail::LaunchProgram(device_sender, program_sender, false);
+        tt_metal::detail::LaunchProgram(device_receiver, program_receiver, false);
+        // tt_metal::EnqueueProgram(->command_queue(), program_sender, false);
+        // tt_metal::EnqueueProgram(device_receiver->command_queue(), program_receiver, false);
 
-        tt_metal::Finish(device_sender->command_queue());
-        tt_metal::Finish(device_receiver->command_queue());
+        tt_metal::detail::WaitProgramDone(device_sender, program_sender);
+        tt_metal::detail::WaitProgramDone(device_receiver, program_receiver);
+
+        // tt_metal::Finish(device_sender->command_queue());
+        // tt_metal::Finish(device_receiver->command_queue());
 
         CoreCoord sender_core = {eth_sender_core.x, eth_sender_core.y};
         std::vector<CoreCoord> sender_cores = {
