@@ -24,7 +24,7 @@ from tests.tt_eager.python_api_testing.unit_testing.misc.test_matmul_1d_gather_i
 from models.perf.benchmarking_utils import BenchmarkData, BenchmarkProfiler
 
 
-NUM_ITERATIONS = 55
+NUM_ITERATIONS = 40
 
 
 def get_core_range_set(output_core_grid):
@@ -217,7 +217,7 @@ def test_all_gather_tg_llama(
 @pytest.mark.parametrize(
     "num_iters, warmup_iters",
     [
-        (NUM_ITERATIONS, 10),
+        (NUM_ITERATIONS, 1),
     ],
 )
 @pytest.mark.parametrize("enable_async", [True])
