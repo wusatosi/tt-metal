@@ -1,0 +1,60 @@
+---
+description: Guide on how to write error messages
+globs:
+alwaysApply: false
+---
+
+# Error Message Style Rules
+
+## Core Principles
+- ✅ Be specific about what went wrong
+- ✅ Explain why the error occurred
+- ✅ Include relevant variable values
+- ✅ Make messages actionable
+
+## Format Requirements
+- ✅ Include actual values that caused the error
+- ✅ State expected conditions and actual conditions
+- ✅ Provide guidance on how to fix the issue
+- ❌ Never use vague messages like "An error occurred"
+
+## Language Guidelines
+- ✅ Use simple, complete sentences
+- ✅ Use present tense for current issues
+- ✅ Use past tense for things that happened already
+- ✅ Use active voice when possible
+- ✅ Start with the most important words related to the issue
+- ❌ Avoid using ALL CAPS and exclamation points
+- ❌ Don't use the word "bad" — be specific about what's wrong
+- ❌ Avoid the word "please" — it makes required actions sound optional
+
+## Example Transformations
+
+❌ **Incorrect:**
+```cpp
+TT_FATAL(input_shape.rank() == 3, "Invalid input tensor dimensions.");
+```
+
+✅ **Correct:**
+```cpp
+TT_FATAL(input_shape.rank() == 3,
+         "Invalid input tensor: expected 3 dimensions, but found {}.",
+         input_shape.rank());
+```
+
+❌ **Incorrect:**
+```cpp
+TT_FATAL(head_size % TILE_WIDTH != 0, "Head size is invalid.");
+```
+
+✅ **Correct:**
+```cpp
+TT_FATAL(head_size % TILE_WIDTH != 0,
+         "Invalid head size: {}. The head size must be a multiple of tile width ({}). Please adjust the dimensions accordingly.",
+         head_size, TILE_WIDTH);
+```
+
+## Message Structure
+1. **What happened:** Clear statement of the error
+2. **Why it matters:** Brief explanation of the context
+3. **How to fix it:** Guidance on resolution

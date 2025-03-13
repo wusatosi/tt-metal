@@ -1,0 +1,42 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+## Parameter Passing
+- ✅ Pass complex types (vectors, tensors) by const reference
+- ✅ Use `tt::stl::Span` for array-like input parameters
+- ✅ Use `std::string_view` instead of `std::string` or `const char*`
+
+## Memory Management
+- ✅ Avoid dynamic allocations in frequently called functions
+- ✅ Use `std::array` or `std::tuple` for known sizes
+- ❌ Never use `std::move` when returning from functions (breaks RVO)
+- ❌ Never use `const T&&`, `const auto&&`, or return `const` values
+- ✅ Mark move constructors as `noexcept`
+- ✅ Use Copy-and-Swap idiom for assignment operators
+
+## Error Handling
+- ❌ Avoid `.at()` for vector access
+- ✅ Validate inputs with `TT_ASSERT` or `TT_FATAL`
+- ❌ Avoid STL calls that throw exceptions
+- ✅ Use early exit for contract checks
+
+## Code Organization
+- ❌ Avoid global classes, especially with mutexes/locks
+- ✅ Move function implementations to `.cpp` files
+- ✅ Put template implementations in `_inl.hpp` files
+- ❌ Never use `using namespace` in headers
+
+## API Design
+- ❌ Avoid boolean arguments in APIs
+- ✅ Use enum class with descriptive names instead
+- ✅ Consider power-of-2 enum values for flags
+
+## Variable Initialization
+- ✅ Always initialize primitive types at declaration
+- ✅ Initialize class member variables
+
+## Static Variables
+- ❌ Avoid `static` variables with non-trivial destructors
+- ✅ Use `tt::stl::Indestructible<T>` for static objects when needed

@@ -1,0 +1,20 @@
+---
+description: Add Operation | Step 3  - Basic python test
+globs:
+alwaysApply: false
+---
+## Instructions
+Follow step by step:
+1. Associate a python golden similarly to [losses.py](mdc:ttnn/ttnn/operations/losses.py)
+2. Add a simplest test that checks that the operation returns a tensor of the same shape as golden. Use [test_dropout.py](mdc:tests/ttnn/unit_tests/operations/test_dropout.py) as a reference.
+3. Build `./build_metal.sh --debug --build-all --enable-ccache`
+4. Run the test!!! Use `pytest path_to_test_file.py` and address any issues.
+
+Before proceeding to the next stage, enumerate instructions and ensure each was compelted.
+The step is only considered successful when the test passed.
+
+## Input:
+Build with operation that can be called from C++ or Python
+
+## Output:
+Build with operation that can be called from C++ or Python, that returns a tensor of a correct shape, validated with a pytest

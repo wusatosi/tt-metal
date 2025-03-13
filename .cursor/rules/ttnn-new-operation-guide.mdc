@@ -1,0 +1,19 @@
+---
+description: Step by step guide on adding new TT-NN operation
+globs:
+alwaysApply: false
+---
+The job of the agent is to add as much of useful and working scaffolding into the project as possible. There is no goal to develop the fully working operation requested by a user, but agent should do its best to help.
+
+### Instructions:
+Follow step by step
+1. Add operation scaffold in `ttnn/cpp/ttnn/operations/experimental`.
+2. Add operation pybinds
+3. Add simplest test
+
+### Input:
+User specifies what operation they need. Ideally they reference a function from pytorch or numpy.
+
+### Output:
+TT-NN operation implementation that can be called from C++ or Python
+Python unit test that validates operation behavior, comparing that it returns tensor of a valid shape

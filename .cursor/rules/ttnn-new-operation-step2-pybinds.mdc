@@ -1,0 +1,21 @@
+---
+description: Add Operation | Step 2  - PyBindings. Register in Python
+globs:
+alwaysApply: false
+---
+## Instructions
+Follow step by step:
+1. Create .hpp, .cpp with bindings for the developer operation, for reference use [dropout_pybind.hpp](mdc:ttnn/cpp/ttnn/operations/experimental/dropout/dropout_pybind.hpp) and [dropout_pybind.hpp](mdc:ttnn/cpp/ttnn/operations/experimental/dropout/dropout_pybind.hpp)
+2. Register .cpp in [CMakeLists.txt](mdc:ttnn/CMakeLists.txt)
+3. Update [experimental_pybind.cpp](mdc:ttnn/cpp/ttnn/operations/experimental/experimental_pybind.cpp)
+3. Build!!! Use `./build_metal.sh --debug --build-all --enable-ccache` and address any errors
+
+Before proceeding to the next stage, enumerate instructions and ensure each was compelted.
+Pybinds are only considered ready when the build succeeded.
+Do not proceed before its ready.
+
+## Input:
+Build with minimal operation setup that can be called from C++ and returns tensor of a valid shape.
+
+## Output:
+Build with operation that can be called from C++ or Python

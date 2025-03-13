@@ -1,0 +1,22 @@
+---
+description: Add Operation | Step 1  - Minimal scaffold
+globs:
+alwaysApply: false
+---
+## Instructions
+Follow step by step:
+1. Add operation scaffold in `ttnn/cpp/ttnn/operations/experimental`
+2. Create .hpp similar to [dropout.hpp](mdc:ttnn/cpp/ttnn/operations/experimental/dropout/dropout.hpp) , it must define operation structure with static `invoke` methdod and register it with ttnn::register_operation_with_auto_launch_op. Make sure to use proper includes of "ttnn/tensor/tensor.hpp" and "ttnn/decorators.hpp"
+3. Create .cpp file similar to [dropout.cpp](mdc:ttnn/cpp/ttnn/operations/experimental/dropout/dropout.cpp) . Its `invoke` implementation must be simplified to return `ttnn::zeroes(output_logical_shape)`. DO NOT PROVIDE OP IMPLEMENTATION! To use `ttnn::zeros` you must include `ttnn/operations/creation.hpp`. To get input tensor shape, you can use `Shape Tensor::get_logical_shape()`
+4. Register .cpp in [CMakeLists.txt](mdc:ttnn/CMakeLists.txt)
+5. Build!!!! Use `./build_metal.sh --debug --build-all --enable-ccache` and address any errors
+
+Before proceeding to the next stage, enumerate instructions and ensure each was compelted.
+Scaffold is only considered ready when the build succeeded.
+Do not proceed before its ready.
+
+## Input:
+User specifies what operation they need. Ideally they reference a function from pytorch or numpy.
+
+## Output:
+Working build with a registered TT-NN operation that can be called from C++ and returns a tensor of a correct shape.
