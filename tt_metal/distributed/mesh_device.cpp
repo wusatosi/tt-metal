@@ -141,6 +141,7 @@ std::shared_ptr<MeshDevice> MeshDevice::create(
     size_t num_command_queues,
     const DispatchCoreConfig& dispatch_core_config,
     tt::stl::Span<const std::uint32_t> l1_bank_remap) {
+    tt::llrt::RunTimeOptions::get_instance().set_kernels_nullified(true);
     auto scoped_devices = std::make_shared<ScopedDevices>(
         l1_small_size, trace_region_size, num_command_queues, dispatch_core_config, config);
     MeshContainer<IDevice*> devices(config.mesh_shape, scoped_devices->root_devices());
