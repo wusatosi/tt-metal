@@ -443,6 +443,23 @@ void LightMetalReplay::execute(const tt::tt_metal::flatbuffer::BufferCreateComma
             sub_device_id);
     }
 
+    // If debug address is present, ensure it matches value from capture-time.
+    if (cmd->debug_address()) {
+        bool match = buffer->address() == cmd->debug_address()->value();
+        log_debug(
+            tt::LogMetalTrace,
+            "LightMetalReplay(BufferCreate): capture_addr: 0x{:x} replay_addr: 0x{:x} unique_id: {} result: {}",
+            cmd->debug_address()->value(),
+            buffer->address(),
+            buffer->unique_id(),
+            match ? "PASS" : "FAIL");
+        TT_ASSERT(
+            buffer->address() == cmd->debug_address()->value(),
+            "Buffer address allocation mismatch. CaptureAddr: 0x{:x} != ReplayAddr: 0x{:x}",
+            cmd->debug_address()->value(),
+            buffer->address());
+    }
+
     add_buffer_to_map(cmd->global_id(), buffer);
     init_buffer_if_required(buffer, cmd->global_id());
 }

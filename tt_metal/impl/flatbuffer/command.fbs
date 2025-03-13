@@ -40,6 +40,7 @@ table BufferCreateCommand {
   shard_parameters: ShardSpecBuffer;
   bottom_up: BoolOptional;
   sub_device_id: Uint8Optional;
+  debug_address: Uint32Optional;  // Optional, store addr allocated for comparison at replay.
 }
 
 table BufferDeallocateCommand {

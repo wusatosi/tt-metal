@@ -123,6 +123,9 @@ void CaptureBufferCreate(
     auto sub_device_id_offset = sub_device_id.has_value() ? flatbuffer::CreateUint8Optional(fbb, **sub_device_id) : 0;
     auto shard_parameters_offset = to_flatbuffer(shard_parameters, fbb);
 
+    // For debug/comprison purposes at replay, store the address of the buffer.
+    auto debug_address = ctx.is_debug_mode() ? flatbuffer::CreateUint32Optional(fbb, buffer->address()) : 0;
+
     auto cmd = tt::tt_metal::flatbuffer::CreateBufferCreateCommand(
         fbb,
         buffer_global_id,
@@ -134,7 +137,8 @@ void CaptureBufferCreate(
         to_flatbuffer(buffer_layout),
         shard_parameters_offset,
         bottom_up_offset,
-        sub_device_id_offset);
+        sub_device_id_offset,
+        debug_address);
 
     CaptureCommand(tt::tt_metal::flatbuffer::CommandType::BufferCreateCommand, cmd.Union());
 }
@@ -256,6 +260,11 @@ void CaptureEnqueueReadBuffer(
     auto cmd = tt::tt_metal::flatbuffer::CreateEnqueueReadBufferCommand(
         ctx.get_builder(), cq_global_id, buffer_global_id, blocking);
     CaptureCommand(tt::tt_metal::flatbuffer::CommandType::EnqueueReadBufferCommand, cmd.Union());
+
+    // For blocking reads, when debug is enabled, store return data and auto-compare between capture/replay.
+    if (blocking && ctx.is_debug_mode()) {
+        CaptureLightMetalCompare(cq, buffer, dst, false /* is_user_data*/);
+    }
 }
 
 void CaptureFinish(CommandQueue& cq, tt::stl::Span<const SubDeviceId> sub_device_ids) {

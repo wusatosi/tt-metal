@@ -13,11 +13,14 @@
 #include <tt-metalium/program_impl.hpp>
 #include <tt-metalium/kernel.hpp>
 #include <host_api_call_guard.hpp>
+#include <tt-metalium/env_lib.hpp>
 
 namespace tt::tt_metal {
 inline namespace v0 {
 
-LightMetalCaptureContext::LightMetalCaptureContext() : is_tracing_(false), builder_() {}
+LightMetalCaptureContext::LightMetalCaptureContext() : is_tracing_(false), builder_(), debug_mode_(false) {
+    debug_mode_ = parse_env("TT_LIGHT_METAL_DEBUG", false);
+}
 
 // Singleton instance accessor
 LightMetalCaptureContext& LightMetalCaptureContext::get() {
@@ -26,6 +29,7 @@ LightMetalCaptureContext& LightMetalCaptureContext::get() {
 }
 
 bool LightMetalCaptureContext::is_tracing() const { return is_tracing_; }
+bool LightMetalCaptureContext::is_debug_mode() const { return debug_mode_; }
 
 void LightMetalCaptureContext::set_tracing(bool is_tracing) { is_tracing_ = is_tracing; }
 

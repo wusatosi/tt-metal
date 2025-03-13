@@ -39,6 +39,7 @@ public:
     static LightMetalCaptureContext& get();
 
     bool is_tracing() const;
+    bool is_debug_mode() const;
     void set_tracing(bool tracing);
 
     flatbuffers::FlatBufferBuilder& get_builder();
@@ -69,6 +70,7 @@ private:
     LightMetalCaptureContext();  // Private constructor
 
     bool is_tracing_ = false;
+    bool debug_mode_ = false;
     flatbuffers::FlatBufferBuilder builder_;
     std::vector<flatbuffers::Offset<tt::tt_metal::flatbuffer::Command>> cmds_vec_;
     std::vector<TraceDescriptorByTraceIdOffset> trace_descs_vec_;
