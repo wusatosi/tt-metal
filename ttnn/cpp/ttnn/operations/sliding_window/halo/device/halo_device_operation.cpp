@@ -96,7 +96,14 @@ operation::ProgramWithCallbacks HaloDeviceOperation::create_program(
     auto tensor_metadata = sliding_window::generate_tensor_metadata(
         pad_metadata, config_, reshard_num_cores_nhw_, is_in_tiled || is_out_tiled_);
     auto kernel_config = sliding_window::generate_halo_kernel_config_tensors(
-        tensor_metadata, shard_boundaries, is_block_sharded, transpose_mcast_, remote_read_, device);
+        config_,
+        op_trace_metadata,
+        tensor_metadata,
+        shard_boundaries,
+        is_block_sharded,
+        transpose_mcast_,
+        remote_read_,
+        device);
 
     const auto& pad_config1 = kernel_config[0];
     const auto& pad_config2 = kernel_config[1];

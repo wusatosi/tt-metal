@@ -1317,6 +1317,11 @@ tt::tt_metal::operation::ProgramWithCallbacks multi_core_optimized_conv_sharded_
         TT_THROW("Sharded input not supported for this conv yet!");
     }
 
+    std::cout << "reader_kernel: " << reader_kernel << std::endl;
+    std::cout << "compute_kernel: " << compute_kernel << std::endl;
+    std::cout << "writer_mcast_sender_kernel: " << writer_mcast_sender_kernel << std::endl;
+    std::cout << "writer_mcast_receiver_kernel: " << writer_mcast_receiver_kernel << std::endl;
+
     if (read_window_in_inner_loop) {
         const uint32_t window_size = filter_h * filter_w;
         in0_block_w *= window_size;
@@ -1337,8 +1342,8 @@ tt::tt_metal::operation::ProgramWithCallbacks multi_core_optimized_conv_sharded_
         (uint32_t)(src0_dram_buffer->buffer_type() == tt_metal::BufferType::DRAM ? 1 : 0),
         (uint32_t)stride_h,
         (uint32_t)stride_w,
-        (uint32_t)dilation_h,
-        (uint32_t)dilation_w,
+        (uint32_t)1,
+        (uint32_t)1,
         (uint32_t)conv_act_size_w,
         (uint32_t)conv_output_size_w,  // conv_output_w_last_index
         (uint32_t)conv_act_c_read_bytes,

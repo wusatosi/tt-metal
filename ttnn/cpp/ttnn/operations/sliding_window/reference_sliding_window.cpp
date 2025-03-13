@@ -21,6 +21,8 @@ owned_buffer::Buffer<bfloat16> ref_conv_op(
     const ttnn::Shape& input_nchw_shape,
     uint32_t stride_h,
     uint32_t stride_w,
+    uint32_t dilation_h,
+    uint32_t dilation_w,
     const std::vector<float>& filter_vector,
     const ttnn::Shape& filter_pyt_tensor_shape,
     const ttnn::Shape& out_golden_pyt_tensor_shape) {
@@ -45,7 +47,7 @@ owned_buffer::Buffer<bfloat16> ref_conv_op(
                 auto anchor = i * (input_h * input_w) + k * stride_h * input_w + l * stride_w;
                 for (int m = 0; m < filter_h; m++) {
                     for (int n = 0; n < filter_w; n++) {
-                        auto idx = anchor + m * input_w * stride_h + n * stride_w;
+                        auto idx = anchor + m * input_w * dilation_h + n * dilation_w;
                         if (idx >= input_padded_tensor_buf.size()) {
                             input_window.push_back(0);
                         } else {

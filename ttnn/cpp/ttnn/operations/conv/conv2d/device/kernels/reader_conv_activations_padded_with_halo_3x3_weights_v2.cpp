@@ -4,7 +4,25 @@
 
 #include <stdint.h>
 #include "dataflow_api.h"
+#include "debug/dprint.h"
+#include "debug/dprint_pages.h"
 #include "firmware_common.h"
+
+inline void print_bf16_pages(uint32_t l1_addr, uint32_t elts_per_page, uint32_t npages, uint32_t start = 0) {
+    volatile tt_l1_ptr uint16_t* ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(l1_addr) + start * elts_per_page;
+    for (uint32_t page = 0; page < npages; ++page) {
+        DPRINT << start + page << ": ";
+        for (uint32_t j = 0; j < elts_per_page; ++j, ++ptr) {
+            DPRINT << BF16(*ptr) << " ";
+        }
+        DPRINT << ENDL();
+    }
+}
+
+#define dump(a)                                       \
+    do {                                              \
+        DPRINT << "Act: " << #a " = " << a << ENDL(); \
+    } while (false)
 
 #define DILATION_W get_compile_time_arg_val(4)
 void kernel_main() {
@@ -99,31 +117,56 @@ void kernel_main() {
     constexpr uint32_t stride_w_bytes = dilation_w * conv_act_c_read_bytes;
 
     uint32_t start_reader_idx = 0;
+    dump(coalesced_read_bytes / 2);
+    print_bf16_pages(act_l1_read_addr, 32, 103);
     for (uint32_t bh = 0; bh < act_num_blocks_h; bh++) {
+        uint32_t cont_offset = 0;
         for (uint32_t outer = 0; outer < window_outer; outer++) {
             // Reset reader_idx to finish act_block_h_datums
             reader_idx = start_reader_idx;
 
+            uint32_t reader_idx_dil = 0;
             cb_reserve_back(cb_id_act, act_block_num_tiles_read);
             uint32_t l1_write_addr_act = get_write_ptr(cb_id_act);
-            uint32_t reader_offset = act_l1_read_addr + (reader_offsets[reader_offset_idx] * conv_act_c_read_bytes);
+            // uint32_t reader_offset = act_l1_read_addr + (reader_offsets[reader_offset_idx] * conv_act_c_read_bytes);
+            uint32_t reader_offset = act_l1_read_addr + cont_offset;
+            dump(reader_offset);
             // #pragma GCC unroll 4 // unroll didn't help, but act_block_h_datums (loop bound) being const does help
             uint32_t act_block_h_datums_read_curr =
                 bh == act_num_blocks_h - 1 ? act_block_h_datums_read_last_block : act_block_h_datums_read;
 
+            uint32_t prev_idx = 0;
             for (uint32_t bhd = 0; bhd < act_block_h_datums_read_curr; bhd++) {
                 // local read from reader_index + reader_offset;
                 uint32_t two_reader_indices = packed_reader_indices_ptr[reader_idx];
                 uint32_t reader_idx_1 = two_reader_indices & 0xffff;
                 uint32_t reader_idx_2 = two_reader_indices >> 16;
 
+                dump(reader_idx_1);
+                dump(reader_idx_2);
+                if (prev_idx != (reader_idx_1 - 1) && reader_idx_1 != 0) {
+                    cont_offset += conv_act_c_read_bytes * 2;
+                }
+                prev_idx = reader_idx_1;
+                if (prev_idx != (reader_idx_2 - 1)) {
+                    cont_offset += conv_act_c_read_bytes * 2;
+                }
+                prev_idx = reader_idx_2;
 #if DILATION_W == 1
+                // act_l1_offset = reader_offset + (reader_idx_dil * conv_act_c_read_bytes);
                 act_l1_offset = reader_offset + (reader_idx_1 * conv_act_c_read_bytes);
+                reader_idx_dil++;
+                // dump(reader_idx_dil);
                 noc_async_read_one_packet_with_state<true>(act_l1_offset, l1_write_addr_act);
+                print_bf16_pages(l1_write_addr_act, coalesced_read_bytes / 2, 1);
                 l1_write_addr_act += (coalesced_read_bytes + act_block_w_extra_align_bytes);
 
+                // act_l1_offset = reader_offset + (reader_idx_dil * conv_act_c_read_bytes);
                 act_l1_offset = reader_offset + (reader_idx_2 * conv_act_c_read_bytes);
+                reader_idx_dil++;
+                // dump(reader_idx_dil);
                 noc_async_read_one_packet_with_state<true>(act_l1_offset, l1_write_addr_act);
+                print_bf16_pages(l1_write_addr_act, coalesced_read_bytes / 2, 1);
                 l1_write_addr_act += (coalesced_read_bytes + act_block_w_extra_align_bytes);
 #else
                 act_l1_offset = reader_offset + (reader_idx_1 * conv_act_c_read_bytes);
@@ -141,7 +184,10 @@ void kernel_main() {
                 }
 #endif
                 reader_idx++;
+                cont_offset += conv_act_c_read_bytes * 2;
             }
+            dump(cont_offset / conv_act_c_read_bytes);
+            cont_offset += conv_act_c_read_bytes * 2;
             noc_async_read_barrier();
 
             cb_push_back(cb_id_act, act_block_num_tiles_read);

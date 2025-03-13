@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "sliding_window.hpp"
+#include <cstdint>
 #include <vector>
 #include <tt-metalium/assert.hpp>
 
@@ -215,6 +216,8 @@ std::vector<uint32_t> generate_op_trace_metadata(const SlidingWindowConfig& conf
     } else {
         uint32_t ceil_padding_h = config.get_ceil_pad_h();
         uint32_t ceil_padding_w = config.get_ceil_pad_w();
+        std::cout << "output shape = " << output_shape[0] << " " << output_shape[1] << " " << output_shape[2]
+                  << std::endl;
 
         uint32_t padded_input_h = config.input_hw.first + 2 * config.pad_hw.first + ceil_padding_h;
         uint32_t padded_input_w = config.input_hw.second + 2 * config.pad_hw.second + ceil_padding_w;
@@ -250,6 +253,8 @@ std::vector<ShardBoundary> generate_shard_boundaries(
     uint32_t dilated_window_w =
         config.window_hw.second + (config.dilation_hw.second - 1) * (config.window_hw.second - 1);
     uint32_t halo_with_pad_len = (dilated_window_h - 1) * padded_input_w + dilated_window_w - 1;
+    std::cout << "dilated_window_h: " << dilated_window_h << " dilated_window_w: " << dilated_window_w
+              << " padded_input_w: " << padded_input_w << " halo_with_pad_len: " << halo_with_pad_len << std::endl;
 
     if (config.is_bilinear) {
         halo_with_pad_len = (config.window_hw.first) * padded_input_w;
@@ -346,7 +351,47 @@ uint32_t generate_max_out_nsticks_per_core(const std::vector<ShardBoundary>& sha
     return max_out_nsticks_per_core;
 }
 
+std::vector<uint32_t> generate_dilated_idx_for_tensor_metadata(
+    const SlidingWindowConfig& config,
+    const ShardBoundary& shard_boundary,
+    const std::vector<PixelMetadata>& tensor_metadata,
+    const std::vector<uint32_t>& op_trace_metadata) {
+    auto [output_boundary, input_boundary] = shard_boundary;
+    std::vector<uint32_t> dilated_idx_for_tensor_metadata;
+    auto output_shape = config.get_output_shape();
+    uint32_t padded_input_h = config.input_hw.first + 2 * config.pad_hw.first + config.get_ceil_pad_h();
+    uint32_t padded_input_w = config.input_hw.second + 2 * config.pad_hw.second + config.get_ceil_pad_w();
+    std::cout << "padded_input_w: " << padded_input_w << std::endl;
+    auto [output_start, output_end] = output_boundary;
+    std::cout << "output_start: " << output_start << " output_end: " << output_end << std::endl;
+    for (auto i = output_start; i <= output_end; i++) {
+        auto anchor = op_trace_metadata[i];
+        for (auto fh = 0; fh < config.window_hw.first; fh++) {
+            for (auto fw = 0; fw < config.window_hw.second; fw++) {
+                auto dilated_idx =
+                    anchor + fh * padded_input_w * config.dilation_hw.first + fw * config.dilation_hw.second;
+                dilated_idx_for_tensor_metadata.push_back(dilated_idx);
+            }
+        }
+    }
+    sort(dilated_idx_for_tensor_metadata.begin(), dilated_idx_for_tensor_metadata.end());
+    dilated_idx_for_tensor_metadata.erase(
+        unique(dilated_idx_for_tensor_metadata.begin(), dilated_idx_for_tensor_metadata.end()),
+        dilated_idx_for_tensor_metadata.end());
+
+    std::cout << std::endl;
+    for (auto i = 0; i < dilated_idx_for_tensor_metadata.size(); i++) {
+        std::cout << dilated_idx_for_tensor_metadata[i] << " ";
+    }
+    std::cout << std::endl;
+    std::cout << std::endl;
+    return dilated_idx_for_tensor_metadata;
+}
+
 std::vector<std::vector<std::vector<uint16_t>>> generate_halo_kernel_config_tensors(
+generate_halo_kernel_config_tensors(
+    const SlidingWindowConfig& config,
+    const std::vector<uint32_t>& op_trace_metadata,
     const std::vector<PixelMetadata>& tensor_metadata,
     const std::vector<ShardBoundary>& shard_boundaries,
     bool is_block_sharded,
@@ -368,24 +413,49 @@ std::vector<std::vector<std::vector<uint16_t>>> generate_halo_kernel_config_tens
     uint32_t core_id = 0;
     for (auto [output_boundary, input_boundary] : shard_boundaries) {
         auto [input_start, input_end] = input_boundary;
-        for (uint32_t global_idx = input_start; global_idx <= input_end; ++global_idx) {
+        auto dilated_idxes = generate_dilated_idx_for_tensor_metadata(
+            config, shard_boundaries[core_id], tensor_metadata, op_trace_metadata);
+        auto dilated_idxes_strt = 0;
+        std::cout << "dilated_idxes size: " << dilated_idxes.size() << std::endl;
+        std::cout << "dilation hw: " << config.dilation_hw.first << " " << config.dilation_hw.second << std::endl;
+        std::cout << "input_start: " << input_start << " input_end: " << input_end
+                  << "input_size = " << input_end - input_start + 1 << std::endl;
+        auto [output_start, output_end] = output_boundary;
+        std::cout << "output_start: " << output_start << " output_end: " << output_end << std::endl;
+        uint32_t dst_local_idx = 0;
+        for (uint32_t global_idx = input_start; global_idx <= input_end; ++global_idx, dst_local_idx++) {
             uint32_t dst_core_id = core_id;
             uint32_t local_idx = global_idx - input_start;
-            auto [is_pad_stick, src_core_id, src_local_idx] = tensor_metadata[global_idx];
+            uint32_t input_idx = global_idx;
+            // if(config.dilation_hw.first > 1 || config.dilation_hw.second > 1) {
+            if (dilated_idxes_strt == dilated_idxes.size()) {
+                break;
+            }
+            input_idx = dilated_idxes[dilated_idxes_strt++];
+            local_idx = dst_local_idx;
+            // }
+            auto [is_pad_stick, src_core_id, src_local_idx] = tensor_metadata[input_idx];
             TT_ASSERT(local_idx < pad_local && src_local_idx < pad_local, "Index overflow");
             if (is_pad_stick) {
                 TT_ASSERT(src_local_idx == 0);
                 src_core_id = pad_local;
             }
-            if (per_core_gather_data.find({src_core_id, dst_core_id}) != per_core_gather_data.end()) {
-                auto& [src_start, dst_start, length] = per_core_gather_data[{src_core_id, dst_core_id}].back();
-                // src idx is 0 if it is a pad
-                if ((src_local_idx == (src_start + length) || is_pad_stick) && local_idx == (dst_start + length)) {
-                    ++length;
-                    continue;
-                }
+            if (config.dilation_hw.first > 1 || config.dilation_hw.second > 1) {
+            } else {
+                // if (per_core_gather_data.find({src_core_id, dst_core_id}) != per_core_gather_data.end()) {
+                //     auto& [src_start, dst_start, length] = per_core_gather_data[{src_core_id, dst_core_id}].back();
+                //     // src idx is 0 if it is a pad
+                //     if ((src_local_idx == (src_start + length) || is_pad_stick) && local_idx == (dst_start + length))
+                //     {
+                //         ++length;
+                //         // std::cout << "length" << std::endl;
+                //         continue;
+                //     }
+                // }
             }
             // insert new tuple
+            // std::cout << "src_core_id: " << src_core_id << " dst_core_id: " << dst_core_id << " src_local_idx: " <<
+            // src_local_idx << " local_idx: " << local_idx << std::endl;
             per_core_gather_data[{src_core_id, dst_core_id}].push_back({src_local_idx, local_idx, 1});
         }
         ++core_id;
@@ -433,7 +503,18 @@ std::vector<std::vector<std::vector<uint16_t>>> generate_halo_kernel_config_tens
             }
         }
     }
-
+    // for(auto i = 0; i < remote_config.size(); i++) {
+    //     std::cout << "remote_config: " << i << std::endl;
+    //     for(auto j = 0; j < remote_config[i].size(); j++) {
+    //         std::cout << "nocx: " << std::get<0>(remote_config[i][j].first) << " nocy: " <<
+    //         std::get<1>(remote_config[i][j].first) << " len: " << std::get<2>(remote_config[i][j].first) <<
+    //         std::endl; for(auto k = 0; k < remote_config[i][j].second.size(); k++) {
+    //             std::cout << "src_start: " << std::get<0>(remote_config[i][j].second[k]) << " dst_start: " <<
+    //             std::get<1>(remote_config[i][j].second[k]) << " length: " <<
+    //             std::get<2>(remote_config[i][j].second[k]) << std::endl;
+    //         }
+    //     }
+    // }
     // flatten and uniformize the lengths of each config list
     auto flatten_pad_config = [](auto& config) -> std::vector<std::vector<std::vector<uint16_t>>> {
         // Find max length for vector which is going to be processed on each core
@@ -623,6 +704,10 @@ std::vector<std::vector<uint16_t>> generate_sliding_window_op_config(
         }
         sharded_input_top_left_indices.push_back(local_top_left_indices);
     }
+    std::cout << "sharded_input_top_left_indices size[0]: " << sharded_input_top_left_indices[0].size() << std::endl;
+    for (auto i = 0; i < sharded_input_top_left_indices[0].size(); i++) {
+        std::cout << sharded_input_top_left_indices[0][i] << " ";
+    }
     if (pad_tile) {
         // Pad indices to tile-multiple
         for (size_t i = 0; i < sharded_input_top_left_indices.size(); i++) {
@@ -633,6 +718,10 @@ std::vector<std::vector<uint16_t>> generate_sliding_window_op_config(
                     sharded_input_top_left_indices[i].end(), extend_v.begin(), extend_v.end());
             }
         }
+    }
+    std::cout << "sharded_input_top_left_indices size[0]: " << sharded_input_top_left_indices[0].size() << std::endl;
+    for (auto i = 0; i < sharded_input_top_left_indices[0].size(); i++) {
+        std::cout << sharded_input_top_left_indices[0][i] << " ";
     }
     if (pad_cores) {
         uint32_t indices_length_per_core = sharded_input_top_left_indices[0].size();
@@ -652,6 +741,14 @@ std::vector<std::vector<uint16_t>> generate_sliding_window_op_config(
                     sharded_input_top_left_indices[core_idx].end(), extend_v.begin(), extend_v.end());
             }
         }
+    }
+    std::cout << "sharded_input_top_left_indices size[0]: " << sharded_input_top_left_indices[0].size() << std::endl;
+    for (auto i = 0; i < sharded_input_top_left_indices.size(); i++) {
+        std::cout << "core id = " << i << std::endl;
+        for (auto j = 0; j < sharded_input_top_left_indices[i].size(); j++) {
+            std::cout << sharded_input_top_left_indices[i][j] << " ";
+        }
+        std::cout << std::endl;
     }
     return sharded_input_top_left_indices;
 }

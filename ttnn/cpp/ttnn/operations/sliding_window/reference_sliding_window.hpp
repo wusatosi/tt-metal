@@ -24,6 +24,8 @@ tt::tt_metal::owned_buffer::Buffer<bfloat16> ref_conv_op(
     const ttnn::Shape& input_nchw_shape,
     uint32_t stride_h,
     uint32_t stride_w,
+    uint32_t dilation_h,
+    uint32_t dilation_w,
     const std::vector<float>& filter_vector,
     const ttnn::Shape& filter_pyt_tensor_shape,
     const ttnn::Shape& out_golden_pyt_tensor_shape);
