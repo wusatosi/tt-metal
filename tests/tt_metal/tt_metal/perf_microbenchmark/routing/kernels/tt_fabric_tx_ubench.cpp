@@ -214,7 +214,7 @@ void kernel_main() {
 
     while (true) {
         fabric_async_write<(ClientDataMode)data_mode, AsyncWriteMode::PUSH>(
-            client_interface,
+            (fabric_push_client_interface_t*)client_interface,
             0,                       // the network plane to use for this transaction
             data_buffer_start_addr,  // source address in sender’s memory
             dest_device >> 16,
