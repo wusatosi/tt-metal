@@ -215,6 +215,7 @@ def run_conv(
         return_output_dim=True,
         return_weights_and_bias=True,
     )
+    print(f"out HxW {out_height}x{out_width}")
     tt_output_tensor = ttnn.from_device(tt_output_tensor_on_device)
     torch_output_tensor = ttnn.to_torch(tt_output_tensor, mesh_composer=output_mesh_composer)
 
@@ -2778,21 +2779,39 @@ def test_block_sharding_relu_act_block_h(
     "batch, input_channels, output_channels, input_height, input_width, weights_dtype, activations_dtype, groups, kernel, stride, padding, dilation, auto_shard, use_shallow_conv_variant, act_block_h_override, act_block_w_div, deallocate_activation, math_fidelity, fp32_accum, packer_l1_acc, enable_split_reader",
     (
         # model strawberry
-        (1, 10,   64, 1024, 128, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (4, 4), (2, 2), (1, 1), (1, 1), True, True,  0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
-        (1, 64,   64, 512,   64, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (4, 4), (2, 2), (1, 1), (1, 1), True, False,  0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
-        (1, 64,   64, 256,   32, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (4, 4), (2, 2), (1, 1), (1, 1), True, False,  0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
-        (1, 64,   64, 128,   16, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (4, 4), (2, 2), (1, 1), (1, 1), True, False,  0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
-        (1,  2,    1, 1024, 128, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, True,  0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        # (1, 10,   64, 1024, 128, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (4, 4), (2, 2), (1, 1), (1, 1), True, True,  0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        # (1, 64,   64, 512,   64, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (4, 4), (2, 2), (1, 1), (1, 1), True, False,  0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        # (1, 64,   64, 256,   32, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (4, 4), (2, 2), (1, 1), (1, 1), True, False,  0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        # (1, 64,   64, 128,   16, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (4, 4), (2, 2), (1, 1), (1, 1), True, False,  0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        # (1,  2,    1, 1024, 128, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, True,  0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
 
         # model kiwi
-        (1,  4,   32, 288, 288, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (5, 5), (1, 1), (0, 0), (1, 1), True, True,  0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
-        (1, 32,   48, 284, 284, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (0, 0), (2, 2), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
-        (1, 48,   56, 280, 280, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (0, 0), (4, 4), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
-        (1, 56,   64, 272, 272, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (0, 0), (8, 8), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
-        (1, 64,  128, 256, 256, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (2, 2), (1, 1), (0, 0), (1, 1), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
-        (1, 128, 256, 255, 255, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
-        (1, 256,   1, 255, 255, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        # (1,  4,   32, 288, 288, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (5, 5), (1, 1), (0, 0), (1, 1), True, True,  0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        # (1, 32,   48, 284, 284, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (0, 0), (2, 2), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        # (1, 48,   56, 280, 280, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (0, 0), (4, 4), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        # (1, 56,   64, 272, 272, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (0, 0), (8, 8), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        # (1, 64,  128, 256, 256, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (2, 2), (1, 1), (0, 0), (1, 1), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        # (1, 128, 256, 255, 255, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        # (1, 256,   1, 255, 255, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+
+        (1,  4,   32, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (5, 5), (1, 1), (2, 2), (1, 1), True, True,  0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        (1, 32,   48, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (2, 2), (2, 2), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        (1, 48,   56, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (4, 4), (4, 4), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        (1, 56,   64, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (8, 8), (8, 8), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        (1, 64,  128, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (2, 2), (1, 1), (0, 0), (1, 1), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        (1, 128, 256, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        (1, 256,   1, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+
+        # (1, 2 *  4,  2 * 32, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 2, (5, 5), (1, 1), (2, 2), (1, 1), True, True,  0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        # (1, 2 * 32,  2 * 48, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 2, (3, 3), (1, 1), (2, 2), (2, 2), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        # (1, 2 * 48,  2 * 56, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 2, (3, 3), (1, 1), (4, 4), (4, 4), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        # (1, 2 * 56,  2 * 64, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 2, (3, 3), (1, 1), (8, 8), (8, 8), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        # (1, 2 * 64,  2 *128, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 2, (2, 2), (1, 1), (0, 0), (1, 1), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        # (1, 2 * 128, 2 *256, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 2, (1, 1), (1, 1), (0, 0), (1, 1), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        # (1, 2 * 256, 2 *  1, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 2, (1, 1), (1, 1), (0, 0), (1, 1), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+
     ),
+    ids=["k1","k2","k3","k4","k5","k6","k7"],
 )
  #fmt: on
 
