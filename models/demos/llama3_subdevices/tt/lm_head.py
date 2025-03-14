@@ -198,6 +198,7 @@ class LMHead(LightweightModule):
             # weight_l1.deallocate(True)
             # output.deallocate(True)
 
+        return outputs
         outputs_reduced = []
         for output in outputs:
             output_reduced = self.tt_ccl.line_all_reduce(
