@@ -16,24 +16,37 @@ namespace sfpu {
 
 template <bool APPROXIMATION_MODE, int ITERATIONS = 8>
 inline void calculate_bitwise_not() {
+    vInt zero_val = 0;
+    vInt one_val = 1;
 #pragma GCC unroll 0
     for (int d = 0; d < ITERATIONS; d++) {
-        vInt input = dst_reg[0];
-        vInt res;
+        vInt v = dst_reg[0];
 
-        v_if(input < 0) {
-            vInt unsigned_mag = input & 0x7FFFFFFF;
-            res = unsigned_mag - 1;
-        }
-        v_else {
-            res = setsgn(input, -1);
-            res = res + 1;
-        }
+        v_if(v == 0) { v = one_val; }
+        v_else { v = zero_val; }
         v_endif;
 
-        dst_reg[0] = res;
+        dst_reg[0] = v;
         dst_reg++;
     }
+    // #pragma GCC unroll 0
+    //     for (int d = 0; d < ITERATIONS; d++) {
+    //         vInt input = dst_reg[0];
+    //         vInt res;
+
+    //         v_if(input < 0) {
+    //             vInt unsigned_mag = input & 0x7FFFFFFF;
+    //             res = unsigned_mag - 1;
+    //         }
+    //         v_else {
+    //             res = setsgn(input, -1);
+    //             res = res + 1;
+    //         }
+    //         v_endif;
+
+    //         dst_reg[0] = res;
+    //         dst_reg++;
+    //     }
 }
 
 }  // namespace sfpu

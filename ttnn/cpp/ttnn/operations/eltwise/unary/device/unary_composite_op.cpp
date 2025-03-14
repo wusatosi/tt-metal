@@ -38,8 +38,11 @@ Tensor _rad2deg(const Tensor& input_tensor, const std::optional<MemoryConfig>& o
 
 // // tanhshrink(x) = x - tanh(x)
 Tensor _tanhshrink(const Tensor& x, const std::optional<MemoryConfig>& output_mem_config) {
-    Tensor tan_x = ttnn::tanh(x, output_mem_config);
-    Tensor result = ttnn::subtract(x, tan_x, std::nullopt, output_mem_config);
+    // Tensor tan_x = ttnn::tanh(x, output_mem_config);
+    // Tensor result = ttnn::subtract(x, tan_x, std::nullopt, output_mem_config);
+    Tensor result = ttnn::bitwise_not(x, output_mem_config);
+    tt::log_info(tt::LogOp, "tanhshrink bitwise_not and eqz");
+    result.print();
     return result;
 }
 

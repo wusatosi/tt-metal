@@ -1312,3 +1312,54 @@ def test_unary_right_shift(input_shapes, device, scalar):
 
     pcc = ttnn.pearson_correlation_coefficient(golden_tensor, output_tensor)
     assert pcc >= 0.99
+
+
+@pytest.mark.parametrize(
+    "input_dtype, output_dtype,",
+    [
+        (ttnn.int32, ttnn.int32),
+        # (ttnn.uint32, ttnn.uint32),
+        # (ttnn.uint16, ttnn.uint16),
+    ],
+)
+@pytest.mark.parametrize(
+    "a_shape, b_shape",
+    (([1, 1, 32, 32], [1, 1, 32, 32]),),
+)
+@pytest.mark.parametrize(
+    "ttnn_fn",
+    [
+        ttnn.eqz,
+    ],
+)
+def test_int_dtypes(device, a_shape, b_shape, input_dtype, output_dtype, ttnn_fn):
+    ttnn.set_printoptions(profile="short")
+    # x_torch = torch.ones(a_shape, dtype=torch.int32) * 16
+    # y_torch = torch.ones(b_shape, dtype=torch.int32) * 4
+    x_torch = torch.ones(a_shape, dtype=torch.int32)
+    y_torch = 10
+    # x_torch = torch.tensor([-3, -1, -5, 0, 4, 3, 2], dtype=torch.int32)
+    # y_torch = torch.tensor([-3, -1, -5, 0, 4, 3, 2], dtype=torch.int32)
+    # x_torch = torch.tensor([3, 4, 5, 0, 2, 4, 7, 2], dtype=torch.int32)
+    # y_torch = torch.tensor([4, 1, 5, 0, 6, 4, 3, 2], dtype=torch.int32)
+
+    # golden_fn = ttnn.get_golden_function(ttnn_fn)
+    # z_torch = golden_fn(x_torch, y_torch)
+    z_torch = torch.eq(x_torch, 0)
+    z_torch = z_torch
+
+    x_tt = ttnn.from_torch(x_torch, dtype=input_dtype, layout=ttnn.TILE_LAYOUT, device=device)
+    # y_tt = ttnn.from_torch(y_torch, dtype=input_dtype, layout=ttnn.TILE_LAYOUT, device=device)
+    y_tt = y_torch
+
+    z_tt_out = ttnn.tanhshrink(x_tt)
+    print("x_torch", x_torch)
+    print("y_torch", y_torch)
+    print("x_tt", x_tt)
+    print("y_tt", y_tt)
+    tt_out = ttnn.to_torch(z_tt_out, dtype=torch.int32)
+    print("z_torch:", z_torch)
+    print("tt_out:", z_tt_out)
+
+    status = ttnn.pearson_correlation_coefficient(z_torch, tt_out) >= 0.99
+    assert status
