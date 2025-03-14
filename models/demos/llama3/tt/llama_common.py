@@ -421,12 +421,12 @@ def sample_host(tt_input, mesh_device, temperature=0.6, top_p=0.08, on_host=True
 
 def get_padded_prefill_len(seq_len):
     """
-    If seq_len is less than 128, pad to 128
-    If seq_len is more than 128, pad to whichever is smaller: a power of 2 or a multiple of 2048
+    If seq_len is less than 256, pad to 256
+    If seq_len is more than 256, pad to whichever is smaller: a power of 2 or a multiple of 2048
     TODO: Generalize for max_mm_seq_len different from 2048
     """
-    if seq_len <= 128:
-        return 128
+    if seq_len <= 256:
+        return 256
     pow_2_pad = nearest_pow_2(seq_len)
     mult_2048_pad = 2048 * math.ceil(seq_len / 2048)
     min_extended_pad = min(pow_2_pad, mult_2048_pad)
