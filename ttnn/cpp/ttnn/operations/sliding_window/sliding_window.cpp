@@ -427,7 +427,7 @@ generate_halo_kernel_config_tensors(
             uint32_t dst_core_id = core_id;
             uint32_t local_idx = global_idx - input_start;
             uint32_t input_idx = global_idx;
-            // if(config.dilation_hw.first > 1 || config.dilation_hw.second > 1) {
+            // if (config.dilation_hw.first > 1 || config.dilation_hw.second > 1) {
             if (dilated_idxes_strt == dilated_idxes.size()) {
                 break;
             }
