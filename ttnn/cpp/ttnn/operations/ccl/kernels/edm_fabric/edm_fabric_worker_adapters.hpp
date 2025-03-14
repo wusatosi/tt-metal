@@ -189,6 +189,9 @@ struct WorkerToFabricEdmSenderImpl {
     FORCE_INLINE void send_payload_without_header_non_blocking_from_address(uint32_t source_address, size_t size_bytes) {
         send_payload_without_header_from_address_impl<ttnn::ccl::EDM_IO_BLOCKING_MODE::NON_BLOCKING>(source_address, size_bytes);
     }
+    FORCE_INLINE void send_payload_without_header_non_blocking_with_trid_from_address(uint32_t source_address, size_t size_bytes, uint8_t trid) {
+        send_payload_without_header_from_address_with_trid_impl<ttnn::ccl::EDM_IO_BLOCKING_MODE::NON_BLOCKING>(source_address, size_bytes, trid);
+    }
     FORCE_INLINE void send_payload_flush_blocking_from_address(uint32_t source_address, size_t size_bytes) {
         send_payload_from_address_impl<ttnn::ccl::EDM_IO_BLOCKING_MODE::FLUSH_BLOCKING>(source_address, size_bytes);
     }
@@ -336,6 +339,13 @@ private:
 
         // skip past the first part of the buffer which will be occupied by the packet header
         send_chunk_from_address<blocking_mode>(source_address, 1, size_bytes, buffer_address + sizeof(PACKET_HEADER_TYPE));
+    }
+    template <ttnn::ccl::EDM_IO_BLOCKING_MODE blocking_mode>
+    FORCE_INLINE void send_payload_without_header_from_address_with_trid_impl(uint32_t source_address, size_t size_bytes, uint8_t trid, uint8_t cmd_buf = write_cmd_buf) {
+        uint64_t buffer_address = this->compute_dest_buffer_slot_noc_addr();
+
+        // skip past the first part of the buffer which will be occupied by the packet header
+        send_chunk_from_address_with_trid<blocking_mode>(source_address, 1, size_bytes, buffer_address + sizeof(PACKET_HEADER_TYPE), trid, cmd_buf);
     }
     template <ttnn::ccl::EDM_IO_BLOCKING_MODE blocking_mode>
     FORCE_INLINE void send_payload_from_address_impl(uint32_t source_address, size_t size_bytes) {

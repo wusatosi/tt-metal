@@ -148,7 +148,7 @@ void kernel_main() {
             fabric_connection,
             l1_read_addr,
             num_tiles_to_read_this_core * tensor0_page_size,
-            0);
+            TransactionId(0));
         noc_async_writes_flushed();
 
         cb_pop_front(cb0_id, num_tiles_to_read_this_core);

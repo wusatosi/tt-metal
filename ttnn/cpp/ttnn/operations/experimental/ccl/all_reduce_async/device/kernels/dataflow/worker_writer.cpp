@@ -10,7 +10,7 @@
 #include "cpp/ttnn/operations/experimental/ccl/all_gather_async/device/kernels/transaction_id_tracker.hpp"
 #include <cstdint>
 #include <utility>
-
+#include <array>
 using address_t = uint32_t;
 
 ///////////////////////////////////////////////////
@@ -71,26 +71,30 @@ void kernel_main() {
     size_t arg_for_fab = arg_idx;
     auto fabric_connection = FabricConnectionManager::build_from_args(arg_idx);
 
+    constexpr uint32_t NUM_TRANSACTION_IDS = num_packet_headers_storable / 2;
     // packet header cb
-    cb_reserve_back(reserved_packet_header_cb_id, 1);
+    cb_reserve_back(reserved_packet_header_cb_id, NUM_TRANSACTION_IDS);
     auto packet_header_buffer_addr_forward = get_write_ptr(reserved_packet_header_cb_id);
-    cb_push_back(reserved_packet_header_cb_id, 1);
-    cb_reserve_back(reserved_packet_header_cb_id, 1);
+    cb_push_back(reserved_packet_header_cb_id, NUM_TRANSACTION_IDS);
+    cb_reserve_back(reserved_packet_header_cb_id, NUM_TRANSACTION_IDS);
     auto packet_header_buffer_addr_backward = get_write_ptr(reserved_packet_header_cb_id);
-    cb_push_back(reserved_packet_header_cb_id, 1);
-    cb_reserve_back(reserved_packet_header_cb_id, 1);
-    auto packet_header_buffer_seminc = get_write_ptr(reserved_packet_header_cb_id);
-    cb_push_back(reserved_packet_header_cb_id, 1);
+    cb_push_back(reserved_packet_header_cb_id, NUM_TRANSACTION_IDS);
+    cb_reserve_back(reserved_packet_header_cb_id, NUM_TRANSACTION_IDS);
+    auto packet_header_buffer_seminc = packet_header_buffer_addr_forward;
 
     // pre-populate packet headers
-    volatile PACKET_HEADER_TYPE* pkt_hdr_forward =
-        reinterpret_cast<volatile PACKET_HEADER_TYPE*>(packet_header_buffer_addr_forward);
-    volatile PACKET_HEADER_TYPE* pkt_hdr_backward =
-        reinterpret_cast<volatile PACKET_HEADER_TYPE*>(packet_header_buffer_addr_backward);
-    pkt_hdr_forward->to_chip_multicast(
-        tt::fabric::MulticastRoutingCommandHeader{1, static_cast<uint8_t>(num_targets_forward_direction)});
-    pkt_hdr_backward->to_chip_multicast(
-        tt::fabric::MulticastRoutingCommandHeader{1, static_cast<uint8_t>(num_targets_backward_direction)});
+    std::array<volatile PACKET_HEADER_TYPE*, NUM_TRANSACTION_IDS> pkt_hdrs_forward;
+    std::array<volatile PACKET_HEADER_TYPE*, NUM_TRANSACTION_IDS> pkt_hdrs_backward;
+    for (uint32_t i = 0; i < NUM_TRANSACTION_IDS; i++) {
+        pkt_hdrs_forward[i] = reinterpret_cast<volatile PACKET_HEADER_TYPE*>(
+            packet_header_buffer_addr_forward + i * sizeof(PACKET_HEADER_TYPE));
+        pkt_hdrs_backward[i] = reinterpret_cast<volatile PACKET_HEADER_TYPE*>(
+            packet_header_buffer_addr_backward + i * sizeof(PACKET_HEADER_TYPE));
+        pkt_hdrs_forward[i]->to_chip_multicast(
+            tt::fabric::MulticastRoutingCommandHeader{1, static_cast<uint8_t>(num_targets_forward_direction)});
+        pkt_hdrs_backward[i]->to_chip_multicast(
+            tt::fabric::MulticastRoutingCommandHeader{1, static_cast<uint8_t>(num_targets_backward_direction)});
+    }
 
     if (fabric_connection.is_logically_connected()) {
         fabric_connection.open();
@@ -103,17 +107,18 @@ void kernel_main() {
     uint32_t writer_chip_offset = my_chip_id * num_tiles_per_core * tensor0_page_size;
 
     // Transaction ID related constants/types
-    constexpr uint8_t NUM_TRANSACTION_IDS = 4;
-    WriteTransactionIdTracker<NUM_TRANSACTION_IDS, NUM_TRANSACTION_IDS> trid_tracker;
+    WriteTransactionIdTracker<NUM_TRANSACTION_IDS> trid_tracker(cb0_id);
 
     while (tiles_read < num_tiles_to_read) {
         uint32_t num_tiles_to_read_this_core = std::min(num_tiles_per_core - shard_tile_id, packet_size_in_pages);
         num_tiles_to_read_this_core = std::min(num_tiles_to_read - tiles_read, num_tiles_to_read_this_core);
-        if (trid_tracker.oldest_trid_flushed()) {
+        if (trid_tracker.has_unflushed_trid() && trid_tracker.oldest_trid_flushed()) {
+            DPRINT << "oldest_trid_flushed\n";
             trid_tracker.pop_pages_for_oldest_trid();
         }
-        if (trid_tracker.cb_next_slot_is_available()) {
-            auto [l1_read_addr, trid] = trid_tracker.get_next_cb_slot();
+        if (!trid_tracker.backpressured() && trid_tracker.cb_next_slot_is_available(num_tiles_to_read_this_core)) {
+            DPRINT << "cb_next_slot_is_available\n";
+            auto [l1_read_addr, trid] = trid_tracker.get_next_cb_slot(num_tiles_to_read_this_core);
 
             uint64_t noc0_dest_noc_addr =
                 get_noc_addr(core_noc_x[core_id], core_noc_y[core_id], reduction_input_addr + writer_chip_offset);
@@ -124,11 +129,12 @@ void kernel_main() {
             // trid also used to index packet headers
             write_and_advance_local_read_address_for_fabric_write(
                 noc0_dest_noc_addr,
-                pkt_hdr_forward[trid],
-                pkt_hdr_backward[trid],
+                pkt_hdrs_forward[trid.get()],
+                pkt_hdrs_backward[trid.get()],
                 fabric_connection,
                 l1_read_addr,
-                num_tiles_to_read_this_core * tensor0_page_size trid.get());
+                num_tiles_to_read_this_core * tensor0_page_size,
+                trid);
 
             tiles_read += num_tiles_to_read_this_core;
             shard_tile_id += num_tiles_to_read_this_core;
@@ -138,9 +144,13 @@ void kernel_main() {
             }
         }
     }
+    DPRINT << "DONE MAIN LOOP\n";
     // noc_async_writes_flushed();
+    trid_tracker.write_barrier();
+    DPRINT << "DONE write barrier\n";
 
     // 2. mcast output ready semaphore
+    // DO NOT MOVE THIS INITIALIZATION UP - MEMORY ALIASED WITH FORWARD PACKET HEADER
     auto* pkt_hdr = reinterpret_cast<PACKET_HEADER_TYPE*>(packet_header_buffer_seminc);
     uint64_t out_ready_sem_noc_addr_in_pkt =
         safe_get_noc_addr(out_ready_sem_noc0_x, out_ready_sem_noc0_y, out_ready_sem_bank_addr);
@@ -169,9 +179,12 @@ void kernel_main() {
         safe_get_noc_addr(out_ready_sem_noc0_x, out_ready_sem_noc0_y, out_ready_sem_bank_addr);
     noc_semaphore_inc(out_ready_sem_noc_addr, 1);
 
+    DPRINT << "Wait data ready\n";
     // 3. wait for mcast output ready semaphore
     while (*reinterpret_cast<volatile uint32_t*>(out_ready_sem_bank_addr) != out_ready_sem_wait_value);
+    DPRINT << "Data ready\n";
 
+    DPRINT << "Notify reducer\n";
     // loop over mcast ranges
     for (uint32_t i = 0; i < num_mcast_ranges; i++) {
         // Signal the reduction workers
