@@ -21,6 +21,7 @@ std::tuple<ttnn::Tensor, ttnn::Tensor, ttnn::Tensor> NLPCreateHeadsDecodeOperati
     const std::optional<const Tensor>& batch_offset,
     const std::optional<const uint32_t> slice_size,
     const std::optional<MemoryConfig>& memory_config,
+    const std::optional<const MemoryConfig>& k_memory_config,
     std::optional<std::array<Tensor, 3>> optional_output_tensors) {
     const uint32_t num_kv_heads_val = num_kv_heads.value_or(num_heads);
     const bool overlap_qk_coregrid_val = input_tensor.is_sharded() ? overlap_qk_coregrid.value_or(true) : true;
@@ -54,7 +55,8 @@ std::tuple<ttnn::Tensor, ttnn::Tensor, ttnn::Tensor> NLPCreateHeadsDecodeOperati
             overlap_qk_coregrid_val,
             input_on_subcoregrids,
             slice_size,
-            memory_config.value_or(input_tensor.memory_config())},
+            memory_config.value_or(input_tensor.memory_config()),
+            k_memory_config},
         {input_tensor},
         {batch_offset},
         optional_outputs,
@@ -70,6 +72,7 @@ std::tuple<ttnn::Tensor, ttnn::Tensor, ttnn::Tensor> NLPCreateHeadsDecodeOperati
     const std::optional<const Tensor>& batch_offset,
     const std::optional<const uint32_t> slice_size,
     const std::optional<MemoryConfig>& memory_config,
+    const std::optional<const MemoryConfig>& k_memory_config,
     std::optional<std::array<Tensor, 3>> optional_output_tensors) {
     return invoke(
         ttnn::DefaultQueueId,
@@ -80,6 +83,7 @@ std::tuple<ttnn::Tensor, ttnn::Tensor, ttnn::Tensor> NLPCreateHeadsDecodeOperati
         batch_offset,
         slice_size,
         memory_config,
+        k_memory_config,
         std::move(optional_output_tensors));
 }
 

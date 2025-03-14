@@ -73,6 +73,14 @@ void NLPCreateHeadsDecodeDeviceOperation::validate(
             this->output_mem_config.memory_layout == TensorMemoryLayout::HEIGHT_SHARDED,
         "Output tensor must be height sharded");
 
+    if (this->output_mem_config_k.has_value()) {
+        TT_FATAL(
+            this->output_mem_config_k.value().is_sharded() &&
+                this->output_mem_config_k.value().memory_layout == TensorMemoryLayout::HEIGHT_SHARDED,
+            "K output tensor must be height sharded");
+        TT_FATAL(this->output_mem_config_k.value().shard_spec.has_value(), "K output tensor must have shard spec");
+    }
+
     // Support maximum 32 heads for now
     TT_FATAL(this->num_q_heads <= 32, "There are {} q heads only 32 are supported", this->num_q_heads);
     TT_FATAL(
@@ -94,12 +102,15 @@ void NLPCreateHeadsDecodeDeviceOperation::validate(
     if (this->overlap_qk_coregrid) {
         TT_FATAL(num_cores >= num_users, "Grid Size is {}. Need at least 32 cores for decode", num_cores);
     } else {
-        TT_FATAL(
-            num_cores >= 2 * num_users,
-            "Input coregrid size is {}. Need cores atleast double of num_users for decode when q and k heads are not "
-            "overlapping "
-            "coregrid",
-            num_cores);
+        if (!this->output_mem_config_k.has_value()) {
+            TT_FATAL(
+                num_cores >= 2 * num_users,
+                "Input coregrid size is {}. Need cores atleast double of num_users for decode when q and k heads are "
+                "not "
+                "overlapping "
+                "coregrid",
+                num_cores);
+        }
     }
 }
 
@@ -124,7 +135,7 @@ std::vector<ttnn::TensorSpec> NLPCreateHeadsDecodeDeviceOperation::compute_outpu
     auto num_kv_heads_padded = ((this->num_q_heads - 1) / TILE_HEIGHT + 1) * TILE_HEIGHT;
 
     MemoryConfig q_mem_config = this->output_mem_config;
-    MemoryConfig k_mem_config = this->output_mem_config;
+    MemoryConfig k_mem_config = this->output_mem_config_k.value_or(this->output_mem_config);
     MemoryConfig v_mem_config = this->output_mem_config;
     CoreRangeSet q_shard_grid, k_shard_grid, v_shard_grid;
     if (!this->input_on_subcoregrids) {
@@ -133,8 +144,10 @@ std::vector<ttnn::TensorSpec> NLPCreateHeadsDecodeDeviceOperation::compute_outpu
         if (this->overlap_qk_coregrid) {
             k_shard_grid = q_shard_grid;
         } else {
-            k_shard_grid = tt::tt_metal::num_cores_to_corerangeset(
-                CoreCoord{batch % core_grid.x, batch / core_grid.x}, batch, core_grid, true);
+            if (!this->output_mem_config_k.has_value()) {
+                k_shard_grid = tt::tt_metal::num_cores_to_corerangeset(
+                    CoreCoord{batch % core_grid.x, batch / core_grid.x}, batch, core_grid, true);
+            }
         }
         v_shard_grid = q_shard_grid;
     } else {
@@ -150,15 +163,19 @@ std::vector<ttnn::TensorSpec> NLPCreateHeadsDecodeDeviceOperation::compute_outpu
             if (!q_plus_one_grid.ranges().empty()) {
                 start_core_coord = q_plus_one_grid.ranges().back().end_coord;
             }
-            k_shard_grid =
-                tt::tt_metal::num_cores_to_corerangeset_in_subcoregrids(start_core_coord, batch, input_core_grid, true);
+            if (!this->output_mem_config_k.has_value()) {
+                k_shard_grid = tt::tt_metal::num_cores_to_corerangeset_in_subcoregrids(
+                    start_core_coord, batch, input_core_grid, true);
+            }
         }
         v_shard_grid = q_shard_grid;
     }
     tt::tt_metal::ShardSpec q_shard_spec{q_shard_grid, {num_q_heads_padded, this->head_dim}};
     q_mem_config.shard_spec = q_shard_spec;
-    tt::tt_metal::ShardSpec k_shard_spec{k_shard_grid, {num_kv_heads_padded, this->head_dim}};
-    k_mem_config.shard_spec = k_shard_spec;
+    if (!this->output_mem_config_k.has_value()) {
+        tt::tt_metal::ShardSpec k_shard_spec{k_shard_grid, {num_kv_heads_padded, this->head_dim}};
+        k_mem_config.shard_spec = k_shard_spec;
+    }
     tt::tt_metal::ShardSpec v_shard_spec{v_shard_grid, {num_kv_heads_padded, this->head_dim}};
     v_mem_config.shard_spec = v_shard_spec;
 

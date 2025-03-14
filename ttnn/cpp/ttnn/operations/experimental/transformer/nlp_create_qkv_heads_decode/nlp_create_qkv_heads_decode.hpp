@@ -20,6 +20,7 @@ struct NLPCreateHeadsDecodeOperation {
         const std::optional<const Tensor>& batch_offset = std::nullopt,
         const std::optional<const uint32_t> slice_size = std::nullopt,
         const std::optional<MemoryConfig>& memory_config = std::nullopt,
+        const std::optional<const MemoryConfig>& k_memory_config = std::nullopt,
         std::optional<std::array<Tensor, 3>> optional_output_tensors = std::nullopt);
 
     static std::tuple<ttnn::Tensor, ttnn::Tensor, ttnn::Tensor> invoke(
@@ -30,6 +31,7 @@ struct NLPCreateHeadsDecodeOperation {
         const std::optional<const Tensor>& batch_offset = std::nullopt,
         const std::optional<const uint32_t> slice_size = std::nullopt,
         const std::optional<MemoryConfig>& memory_config = std::nullopt,
+        const std::optional<const MemoryConfig>& k_memory_config = std::nullopt,
         std::optional<std::array<Tensor, 3>> optional_output_tensors = std::nullopt);
 };
 
