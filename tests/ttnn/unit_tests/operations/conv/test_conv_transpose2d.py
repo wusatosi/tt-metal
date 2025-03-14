@@ -933,14 +933,17 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
 
     resharded_conv_output = ttnn.reshard(tt_output_tensor_on_device, memory_config)
     ttnn.synchronize_device(device)
-    tt_output_tensor = ttnn.to_torch(tt_output_tensor_on_device, mesh_composer=None)
+    # tt_output_tensor = ttnn.to_torch(tt_output_tensor_on_device, mesh_composer=None)
 
     # this fcks up some memory
     tt_knited_tensor = ttnn.conv_knit(resharded_conv_output, kernel_size[0], output_channels, out_w, conv2d_out_channels)
     resharded_conv_output.deallocate()
     tt_knited_tensor_out = ttnn.to_torch(tt_knited_tensor, mesh_composer=None)
 
-    #tt_output_tensor = ttnn.to_torch(tt_output_tensor_on_device, mesh_composer=None)
+    print("tt knitted tensor pre doing anything: ", tt_knited_tensor_out.shape)
+    print("first row: ", tt_knited_tensor_out[0, 0, :130, :])
+
+    tt_output_tensor = ttnn.to_torch(tt_output_tensor_on_device, mesh_composer=None)
 
     # ## HOST FALLBACK 2.0
     tt_split_knit_out_ = torch.empty(tt_output_tensor.shape[0], out_h*2, out_w*2, tt_output_tensor.shape[3]//4, dtype=tt_output_tensor.dtype)
@@ -954,33 +957,33 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
             tt_split_knit_out_[0, h*2+1, w*2, :] = tt_output_tensor[0, 0, h*out_w + w, output_channels*2:output_channels*2+output_channels]
             tt_split_knit_out_[0, h*2+1, w*2+1, :] = tt_output_tensor[0, 0, h*out_w + w, output_channels*3:output_channels*3+output_channels]
 
-    #print("ref_out_shape_after knitting: ", tt_split_knit_out_.shape)
-    #print("tt_knit out shape pre permute: ", tt_knited_tensor_out.shape)
+    print("ref_out_shape_after knitting: ", tt_split_knit_out_.shape)
+    print("tt_knit out shape pre permute: ", tt_knited_tensor_out.shape)
 
-    #tt_knited_tensor_out = tt_knited_tensor_out.permute(0, 3, 2, 1)
-    #print("tt_knit out shape pre reshape: ", tt_knited_tensor_out.shape)
+    tt_knited_tensor_out = tt_knited_tensor_out.permute(0, 3, 2, 1)
+    print("tt_knit out shape pre reshape: ", tt_knited_tensor_out.shape)
 
-    #tt_knited_tensor_out = tt_knited_tensor_out.reshape(tt_split_knit_out_.shape)
-    #print("tt_knit out shape pre reshape: ", tt_knited_tensor_out.shape)
+    tt_knited_tensor_out = tt_knited_tensor_out.reshape(tt_split_knit_out_.shape)
+    print("tt_knit out shape post reshape: ", tt_knited_tensor_out.shape)
 
-    # row_id = 4
-    #print("Shape check: ", tt_knited_tensor_out.shape, tt_split_knit_out_.shape)
-    # print("Pre unpadding tt_knited_tensor_out  is:", tt_knited_tensor_out[:, :, row_id, :])
-    # print("Pre unpadding reference split knit out is:", tt_split_knit_out_[:, :, row_id, :])
-    #pcc = 0.999
-    #print("Pre unpadding pcc check!")
-    #passing, pcc_msg = check_with_pcc_without_tensor_printout(tt_knited_tensor_out, tt_split_knit_out_, pcc=pcc)
-    #assert passing, pcc_msg
+    row_id = 0
+    # print("Shape check: ", tt_knited_tensor_out.shape, tt_split_knit_out_.shape)
+    #print("Pre unpadding TT_OUT is:", tt_knited_tensor_out[:, row_id, :, :])
+    print("Pre unpadding REF out is:", tt_split_knit_out_[:, row_id, :, :])
+    pcc = 0.999
+    print("Pre unpadding pcc check!")
+    # passing, pcc_msg = check_with_pcc_without_tensor_printout(tt_knited_tensor_out, tt_split_knit_out_, pcc=pcc)
+    # assert passing, pcc_msg
 
     # todo merge this with upper loop
     if (padding[0] != 0 or padding[1] != 0):
         tt_split_knit_out_ = tt_split_knit_out_[:,padding[0]:-1, padding[1]:-1,:]
-        #tt_knited_tensor_out = tt_knited_tensor_out[:,padding[0]:-1, padding[1]:-1,:]
+        tt_knited_tensor_out = tt_knited_tensor_out[:,padding[0]:-1, padding[1]:-1,:]
 
     ## end of HOST FALLBACK
 
     tt_split_knit_out_ = tt_split_knit_out_.permute(0, 3, 1, 2) # NCHW
-    #tt_knited_tensor_out = tt_knited_tensor_out.permute(0, 3, 1, 2) # NCHW
+    tt_knited_tensor_out = tt_knited_tensor_out.permute(0, 3, 1, 2) # NCHW
     # Validate ttnn split-knit /w fused output against golden torch
     pcc = 0.999
     passing, pcc_msg = check_with_pcc_without_tensor_printout(torch_out_golden_tensor, tt_split_knit_out_, pcc=pcc)

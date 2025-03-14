@@ -120,11 +120,11 @@ def test_conv_split_knit(device, input_shape_nhwc, num_output_channels_after_kni
     tt_knited_tensor_out = tt_knited_tensor_out.reshape(ref_knit_tensor_out.shape)
     print("Out shape is: ", tt_knited_tensor_out.shape)
 
-    row_id = 4
-    # print("TT output  is:", tt_knited_tensor_out[:, row_id, :, :])
-    # print("Ref is:", ref_knit_tensor_out[:, row_id, :, :])
+    row_id = 0
+    print("TT output  is:", tt_knited_tensor_out[:, row_id, :, :])
+    print("Ref is:", ref_knit_tensor_out[:, row_id, :, :])
 
     pcc = 0.999
     passing, pcc_msg = check_with_pcc_without_tensor_printout(tt_knited_tensor_out, ref_knit_tensor_out, pcc=pcc)
     logger.info(f"PCC = {pcc_msg}. Threshold = {pcc}")
-    # assert passing
+    assert passing
