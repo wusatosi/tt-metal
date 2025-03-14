@@ -54,12 +54,14 @@ jobs:
     steps:
       - uses: tenstorrent/tt-metal/.github/actions/checkout-with-submodule-lfs@main
       - uses: ./.github/actions/retry-command
+        if: ${{ inputs.arch != 'blackhole' }}
         with:
           timeout-seconds: 100
           max-retries: 10
           backoff-seconds: 60
           command: ./.github/scripts/cloud_utils/mount_weka.sh
       - uses: actions/download-artifact@v4
+        if: ${{ inputs.arch != 'blackhole' }}
         timeout-minutes: 10
         with:
           name: eager-dist-${{ matrix.os }}-any
