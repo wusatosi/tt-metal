@@ -27,15 +27,30 @@ std::unordered_map<int, std::vector<uint32_t>> get_cpu_cores_per_numa_node() {
     return cpu_cores_per_numa_node;
 }
 
-uint32_t get_cpu_core_for_physical_device(uint32_t physical_device_id, uint32_t logical_cpu_offset) {
+bool balanced_physical_device_numa() {
+    if (numa_available() != -1) {
+        int num_nodes = numa_max_node() + 1;
+        std::unordered_set<int> numa_nodes_for_cluster = {};
+        for (uint32_t device_id = 0; device_id < tt::Cluster::instance().number_of_devices(); device_id++) {
+            auto numa_node_for_device = tt::Cluster::instance().get_numa_node_for_device(device_id);
+            numa_nodes_for_cluster.insert(numa_node_for_device);
+        }
+        return numa_nodes_for_cluster.size() == num_nodes;
+    }
+    return false;
+}
+
+uint32_t get_cpu_core_for_physical_device(uint32_t physical_device_id) {
     static std::unordered_map<int, std::vector<uint32_t>> cpu_cores_per_numa_node = get_cpu_cores_per_numa_node();
     static std::unordered_map<int, int> logical_cpu_id_per_numa_node = {};
-
+    static bool devices_balanced_across_numa_nodes = balanced_physical_device_numa();
     // Initialize to an invalid value. Determine the NUMA Node based on the physical device id.
     // If a NUMA Node is not found, use a round robin policy.
     int numa_node = -1;
     if (physical_device_id < tt::Cluster::instance().number_of_devices()) {
-        numa_node = physical_device_id % 2;  // tt::Cluster::instance().get_numa_node_for_device(physical_device_id);
+        numa_node = devices_balanced_across_numa_nodes
+                        ? tt::Cluster::instance().get_numa_node_for_device(physical_device_id)
+                        : physical_device_id % 2;
     }
     if (cpu_cores_per_numa_node.find(numa_node) != cpu_cores_per_numa_node.end()) {
         auto& cpu_cores_on_node = cpu_cores_per_numa_node[numa_node];
@@ -43,7 +58,7 @@ uint32_t get_cpu_core_for_physical_device(uint32_t physical_device_id, uint32_t 
             logical_cpu_id_per_numa_node[numa_node] = 0;
         }
         std::cout << "NUMA NODE " << numa_node << " LOGICAL CPU ID: " << logical_cpu_id_per_numa_node[numa_node]
-                  << " NUM CORES IN NODE: " << cpu_cores_on_node.size() << std::endl;
+                  << std::endl;
         return cpu_cores_on_node[(logical_cpu_id_per_numa_node[numa_node]++) % cpu_cores_on_node.size()];
 
     } else {
@@ -137,13 +152,12 @@ private:
 // This executor should only be used to asynchronously process tasks for a specific TT-Device
 // (specified through the physical_device_id constructor argument).
 // The executor is NUMA aware, i.e. it will bind its worker thread to a NUMA node that is "closest"
-// to its physical device. The logical_cpu_offset constructor argument can be used to specify the
-// logical base offset within a NUMA node when binding the worker thread.
-// The CPU selection algorithm is:
-// CPUs[numa_node][(physical_device_id + logical_cpu_offset) % num_cores_on_numa_node]
+// to its physical device.
+// If all physical devices are on the same NUMA node, CPU cores will be assigned to minimize contention
+// across threads.
 class NumaAwareExecutor {
 public:
-    NumaAwareExecutor(uint32_t physical_device_id, uint32_t logical_cpu_offset) : tasks_() {
+    NumaAwareExecutor(uint32_t physical_device_id) : tasks_() {
         worker = std::thread([this]() {
             std::function<void()> task;  // Task container for this thread
             while (true) {
@@ -170,8 +184,7 @@ public:
             }
         });
 
-        auto cpu_core_for_worker =
-            thread_binding::get_cpu_core_for_physical_device(physical_device_id, logical_cpu_offset);
+        auto cpu_core_for_worker = thread_binding::get_cpu_core_for_physical_device(physical_device_id);
         thread_binding::set_worker_affinity(worker, cpu_core_for_worker);
         std::cout << "Bind Worker: " << physical_device_id << " to " << cpu_core_for_worker << std::endl;
     }
@@ -234,7 +247,7 @@ public:
         futures_.reserve(thread_count * 4);
         // Bind threads to CPU cores.
         for (int i = 0; i < thread_count; i++) {
-            auto cpu_id = thread_binding::get_cpu_core_for_physical_device(i, 0);
+            auto cpu_id = thread_binding::get_cpu_core_for_physical_device(i);
             auto task = [cpu_id]() {
                 pthread_t thread = pthread_self();
                 cpu_set_t cpuset;
@@ -287,7 +300,7 @@ public:
         }
         // Bind threads to CPU cores.
         for (int i = 0; i < thread_count; i++) {
-            auto cpu_id = thread_binding::get_cpu_core_for_physical_device(i, 0);
+            auto cpu_id = thread_binding::get_cpu_core_for_physical_device(i);
             auto task = [cpu_id]() {
                 pthread_t thread = pthread_self();
                 cpu_set_t cpuset;
@@ -331,21 +344,21 @@ class DeviceBoundThreadPool : public ThreadPool {
 public:
     // Constuctor accepting the physical device IDs this pool is bound to. Each thread will be tied to a device, and is
     // guaranteed to be bound to a CPU core on a NUMA Node "closest" to that device.
-    DeviceBoundThreadPool(const std::vector<tt::tt_metal::IDevice*>& physical_devices, uint32_t logical_cpu_offset) {
+    DeviceBoundThreadPool(const std::vector<tt::tt_metal::IDevice*>& physical_devices) {
         num_workers_ = physical_devices.size();
         workers_.reserve(num_workers_);
         for (uint32_t i = 0; i < num_workers_; i++) {
-            workers_.emplace_back(std::make_unique<NumaAwareExecutor>(physical_devices[i]->id(), logical_cpu_offset));
+            workers_.emplace_back(std::make_unique<NumaAwareExecutor>(physical_devices[i]->id()));
             phys_device_to_thread_id_[physical_devices[i]->id()] = i;
         }
     }
     // Constructor accepting the number of threads to spawn. The threads in this pool will be bound to a specific CPU
     // core but they are not guaranteed to be "close" to any physical device.
-    DeviceBoundThreadPool(uint32_t thread_count, uint32_t logical_cpu_offset) {
+    DeviceBoundThreadPool(uint32_t thread_count) {
         workers_.reserve(thread_count);
         num_workers_ = thread_count;
         for (uint32_t i = 0; i < thread_count; i++) {
-            workers_.emplace_back(std::make_unique<NumaAwareExecutor>(i, logical_cpu_offset));
+            workers_.emplace_back(std::make_unique<NumaAwareExecutor>(i));
             phys_device_to_thread_id_[i] = i;
         }
     }
@@ -391,13 +404,13 @@ std::shared_ptr<ThreadPool> create_distributed_boost_thread_pool(int num_threads
     return std::make_shared<thread_pool_impls::DistributedBoostThreadPool>(num_threads);
 }
 
-std::shared_ptr<ThreadPool> create_device_bound_thread_pool(int num_threads, uint32_t logical_cpu_offset) {
-    return std::make_shared<thread_pool_impls::DeviceBoundThreadPool>(num_threads, logical_cpu_offset);
+std::shared_ptr<ThreadPool> create_device_bound_thread_pool(int num_threads) {
+    return std::make_shared<thread_pool_impls::DeviceBoundThreadPool>(num_threads);
 }
 
 std::shared_ptr<ThreadPool> create_device_bound_thread_pool(
-    const std::vector<tt::tt_metal::IDevice*>& physical_devices, uint32_t logical_cpu_offset) {
-    return std::make_shared<thread_pool_impls::DeviceBoundThreadPool>(physical_devices, logical_cpu_offset);
+    const std::vector<tt::tt_metal::IDevice*>& physical_devices) {
+    return std::make_shared<thread_pool_impls::DeviceBoundThreadPool>(physical_devices);
 }
 
 }  // namespace tt::tt_metal
