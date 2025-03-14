@@ -638,10 +638,10 @@ typedef struct fvc_inbound_push_state {
             }
             uint32_t command = header_word_1[0];
             if (command & ASYNC_WR) {
+                uint32_t header_word_2 = buffer_start + (out_rdptr_inc<fvc_mode>(2) * PACKET_WORD_SIZE_BYTES);
                 issue_async_write(header_word_1[2], header_word_1[1]);
                 // for fused command issue the atomic inc before invalidating the current packet
                 if (command & ATOMIC_INC) {
-                    uint32_t header_word_2 = buffer_start + (out_rdptr_inc<fvc_mode>(2) * PACKET_WORD_SIZE_BYTES);
                     volatile async_wr_atomic_params* params =
                         (volatile async_wr_atomic_params*)((uint32_t)header_word_2 +
                                                            offsetof(packet_header_t, packet_parameters) - 32);

@@ -124,6 +124,7 @@ void kernel_main() {
     uint64_t dst_addr = ((uint64_t)noc_offset << 32 | target_address);
     if constexpr (mcast_data) {
         fabric_async_write_multicast_add_header(
+            client_interface,
             data_buffer_start_addr,  // source address in sender’s memory
             dest_device >> 16,
             dest_device & 0xFFFF,
@@ -171,7 +172,11 @@ void kernel_main() {
     while (true) {
         client_interface->local_pull_request.pull_request.words_read = 0;
         if constexpr (mcast_data) {
-            fabric_async_write_multicast<AsyncWriteMode::SEND_PR, RoutingType::ROUTING_TABLE>(
+            fabric_async_write_multicast<
+                decltype(client_interface),
+                (ClientDataMode)data_mode,
+                AsyncWriteMode::SEND_PR,
+                RoutingType::ROUTING_TABLE>(
                 client_interface,
                 0,                       // the network plane to use for this transaction
                 data_buffer_start_addr,  // source address in sender’s memory
