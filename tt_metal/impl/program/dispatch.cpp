@@ -37,7 +37,7 @@ void AddToDispatchLog(Program* program, const std::string& log) {
     std::lock_guard<std::mutex> lock(dispatch_log_mutex);
     dispatch_logs[program] += log + "\n";
 }
-uint32_t kDeviceToPrint = 0;
+uint32_t kDeviceToPrint = 31;
 
 void PrintProgram(Program* program, IDevice* device) {
     if (device->id() != kDeviceToPrint) {
