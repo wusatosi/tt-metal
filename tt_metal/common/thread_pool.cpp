@@ -44,8 +44,6 @@ uint32_t get_cpu_core_for_physical_device(uint32_t physical_device_id, uint32_t 
         if (logical_cpu_id_per_numa_node.find(numa_node) == logical_cpu_id_per_numa_node.end()) {
             logical_cpu_id_per_numa_node[numa_node] = 0;
         }
-        std::cout << "NUMA NODE " << numa_node << " LOGICAL CPU ID: " << logical_cpu_id_per_numa_node[numa_node]
-                  << " NUM CORES IN NODE: " << cpu_cores_on_node.size() << std::endl;
         return cpu_cores_on_node[(logical_cpu_id_per_numa_node[numa_node]++) % cpu_cores_on_node.size()];
 
     } else {
@@ -167,7 +165,9 @@ public:
             std::function<void()> task;  // Task container for this thread
             while (true) {
                 {
-                    while (counter_.load() == 0) {
+                    {
+                        std::unique_lock<std::mutex> lock(cv_mutex_);
+                        work_available_cv_.wait(lock, [this] { return counter_ or shutdown_; });
                     }
                     if (shutdown_) {
                         return;
@@ -182,39 +182,50 @@ public:
                         stored_exception_ = std::current_exception();
                     }
                 }
-                // Atomically decrement counter used to synchronize with main thread
-                // and notify the main thread if all tasks have completed
-                counter_.fetch_sub(1, std::memory_order_release);
+                {
+                    std::lock_guard lock(cv_mutex_);
+                    counter_--;
+                    work_done_cv_.notify_one();
+                }
             }
         });
 
         auto cpu_core_for_worker =
             thread_binding::get_cpu_core_for_physical_device(physical_device_id, logical_cpu_offset);
         thread_binding::set_worker_affinity(worker, cpu_core_for_worker);
-        std::cout << "Bind Worker: " << physical_device_id << " to " << cpu_core_for_worker << std::endl;
     }
 
     ~NumaAwareExecutor() {
         // Destructor called in main thread.
         // Wait to ensure that the worker thread has completed.
         this->wait();
-        shutdown_ = true;
-        counter_++;
+        {
+            std::lock_guard lock(cv_mutex_);
+            shutdown_ = true;
+            work_available_cv_.notify_one();
+        }
         worker.join();
     }
 
     void enqueue(std::function<void()>&& f) {
         tasks_.push(std::move(f));  // Move the task directly into queue
         // Light-Weight counter increment to track the number of tasks in flight
-        counter_++;
+        {
+            std::lock_guard lock(cv_mutex_);
+            counter_++;
+            work_available_cv_.notify_one();
+        }
     }
 
     std::exception_ptr wait() const {
         // Wait until all tasks have completed (counter_ == 0)
         // To avoid spinning, sleep until notified by the worker threads
         // or counter_ changes (this only happens with a spurious wakeup)
-        while (counter_.load(std::memory_order_acquire) > 0) {
+        {
+            std::unique_lock<std::mutex> lock(cv_mutex_);
+            work_done_cv_.wait(lock, [this] { return counter_ == 0; });
         }
+        // while (counter_.load(std::memory_order_acquire) > 0) {}
         // Return the stored exception to the caller.
         // If an exception was caught by the worker thread
         // it is the caller's responsibility to handle it.
@@ -226,7 +237,10 @@ public:
 private:
     TaskQueue tasks_;
     std::thread worker;
-    std::atomic<int> counter_ = 0;
+    int counter_ = 0;
+    std::condition_variable work_available_cv_;
+    mutable std::condition_variable work_done_cv_;
+    mutable std::mutex cv_mutex_;
     bool shutdown_ = false;
     mutable std::exception_ptr stored_exception_;
 };
