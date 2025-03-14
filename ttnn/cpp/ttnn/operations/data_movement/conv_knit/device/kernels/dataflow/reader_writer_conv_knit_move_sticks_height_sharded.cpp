@@ -11,23 +11,26 @@ void kernel_main() {
     constexpr uint32_t input_unit_size_in_bytes = get_compile_time_arg_val(2);  // stick size
     constexpr uint32_t num_input_channels = get_compile_time_arg_val(3);
     constexpr uint32_t input_width = get_compile_time_arg_val(4);
+    constexpr uint32_t num_output_channels = get_compile_time_arg_val(5);
 
     // Runtime-args
     const uint32_t num_sticks = get_arg_val<uint32_t>(0);
     const uint32_t num_rows = num_sticks / input_width;
 
     // temp, fixme
-    constexpr uint32_t padded_stick_num_elements = input_unit_size_in_bytes / 2;
-
-    constexpr uint32_t output_width = input_width * num_input_channels / 2;
+    constexpr uint32_t stick_num_elements = input_unit_size_in_bytes / 2;
+    constexpr uint32_t output_width = input_width * num_input_channels / (2 * num_output_channels);
 
     volatile tt_l1_ptr uint16_t* src_cb_ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(get_write_ptr(src_cb_id));
     volatile tt_l1_ptr uint16_t* dst_cb_ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(get_write_ptr(dst_cb_id));
 
+    DPRINT << "out_width: " << output_width << "num_input_channels: " << num_input_channels
+           << " num_output_channels: " << num_output_channels << " num_sticks: " << num_sticks << ENDL();
+
     uint32_t num_read = 0;
     for (uint32_t i = 0; i < num_sticks; i++) {
         for (uint32_t j = 0; j < num_input_channels / 2; j++) {
-            dst_cb_ptr[j * padded_stick_num_elements] = src_cb_ptr[j];
+            dst_cb_ptr[j * stick_num_elements] = src_cb_ptr[j];
         }
 
         // Copy the second half of the sticks to the destination in the row below
@@ -36,7 +39,7 @@ void kernel_main() {
 
         constexpr uint32_t second_half_offset = num_input_channels / 2;
         for (uint32_t j = second_half_offset; j < num_input_channels; j++) {
-            dst_cb_ptr_row_below[(j - second_half_offset) * padded_stick_num_elements] = src_cb_ptr[j];
+            dst_cb_ptr_row_below[(j - second_half_offset) * stick_num_elements] = src_cb_ptr[j];
         }
 
         src_cb_ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(
@@ -66,10 +69,10 @@ void kernel_main() {
     // for (uint32_t i = 0; i < 18; i++) {
     //         DPRINT << "ROW:" << ENDL();
     //     for (uint32_t j = 0; j < 130; j++) {
-    //             DPRINT << dst_cb_ptr[i * padded_stick_num_elements * 130 + j * padded_stick_num_elements + 0] << ",
-    //             addr: " <<  (uint32_t) &dst_cb_ptr[i * padded_stick_num_elements * 130 + j *
-    //             padded_stick_num_elements + 0] << ",";
-    //             //DPRINT << dst_cb_ptr[i * padded_stick_num_elements * 130 + j * padded_stick_num_elements + 1] <<
+    //             DPRINT << dst_cb_ptr[i * stick_num_elements * 130 + j * stick_num_elements + 0] << ",
+    //             addr: " <<  (uint32_t) &dst_cb_ptr[i * stick_num_elements * 130 + j *
+    //             stick_num_elements + 0] << ",";
+    //             //DPRINT << dst_cb_ptr[i * stick_num_elements * 130 + j * stick_num_elements + 1] <<
     //             ",";
     //     }
     //         DPRINT << "ROW END" << ENDL();

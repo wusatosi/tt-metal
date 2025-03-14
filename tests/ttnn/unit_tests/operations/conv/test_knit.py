@@ -17,10 +17,13 @@ torch.set_printoptions(linewidth=400, profile="full", sci_mode=False)
 
 
 @pytest.mark.parametrize(
-    "input_shape_nhwc",
-    (((1, 9, 65, 4)),),
+    "input_shape_nhwc, num_output_channels_after_knit",
+    (
+        ((1, 9, 65, 4), 1),
+        ((1, 9, 65, 8), 2),
+    ),
+    ids=("1_out_channels_after_knit", "2_out_channels_after_knit"),
 )
-@pytest.mark.parametrize("num_output_channels_after_knit", [1])
 def test_conv_split_knit(device, input_shape_nhwc, num_output_channels_after_knit):
     torch.manual_seed(0)
 
@@ -31,21 +34,51 @@ def test_conv_split_knit(device, input_shape_nhwc, num_output_channels_after_kni
 
     torch_input_tensor = torch.randn([1, 1, B * H * W, C], dtype=torch.bfloat16).float()
 
-    tensor_permuted = torch_input_tensor.reshape([B, H, W, C])
-    tensor_permuted = tensor_permuted.permute(0, 3, 1, 2)
+    # tensor_permuted = torch_input_tensor.reshape([B, H, W, C])
+    # tensor_permuted = tensor_permuted.permute(0, 3, 1, 2)
+
+    # new
+    # tt_split_knit_out_ = torch.empty(tt_output_tensor.shape[0], out_h*2, out_w*2, tt_output_tensor.shape[3]//4, dtype=tt_output_tensor.dtype)
 
     ref_knit_tensor_out = torch.empty(
-        tensor_permuted.shape[0],
-        tensor_permuted.shape[1] // C,
-        tensor_permuted.shape[2] * (C // 2),
-        tensor_permuted.shape[3] * (C // 2),
+        B,
+        H * 2,
+        W * 2,
+        C // 4,
         dtype=torch.bfloat16,
     )
 
-    ref_knit_tensor_out[:, :, 0::2, 0::2] = tensor_permuted[:, 0, :]
-    ref_knit_tensor_out[:, :, 0::2, 1::2] = tensor_permuted[:, 1, :]
-    ref_knit_tensor_out[:, :, 1::2, 0::2] = tensor_permuted[:, 2, :]
-    ref_knit_tensor_out[:, :, 1::2, 1::2] = tensor_permuted[:, 3, :]
+    for h in range(H):
+        for w in range(W):
+            ref_knit_tensor_out[0, h * 2, w * 2, :] = torch_input_tensor[
+                0,
+                0,
+                h * W + w,
+                num_output_channels_after_knit * 0 : num_output_channels_after_knit * 0
+                + num_output_channels_after_knit,
+            ]
+            ref_knit_tensor_out[0, h * 2, w * 2 + 1, :] = torch_input_tensor[
+                0,
+                0,
+                h * W + w,
+                num_output_channels_after_knit * 1 : num_output_channels_after_knit * 1
+                + num_output_channels_after_knit,
+            ]
+            # odd rows
+            ref_knit_tensor_out[0, h * 2 + 1, w * 2, :] = torch_input_tensor[
+                0,
+                0,
+                h * W + w,
+                num_output_channels_after_knit * 2 : num_output_channels_after_knit * 2
+                + num_output_channels_after_knit,
+            ]
+            ref_knit_tensor_out[0, h * 2 + 1, w * 2 + 1, :] = torch_input_tensor[
+                0,
+                0,
+                h * W + w,
+                num_output_channels_after_knit * 3 : num_output_channels_after_knit * 3
+                + num_output_channels_after_knit,
+            ]
 
     # pad torch_input_tensor channels to 32
 
@@ -75,16 +108,21 @@ def test_conv_split_knit(device, input_shape_nhwc, num_output_channels_after_kni
     )
 
     tt_input_tensor = ttnn.to_memory_config(tt_input_tensor, tt_mem_config)
-    tt_knited_tensor = ttnn.conv_knit(tt_input_tensor, 2, 1, W, C)
+
+    print(
+        f"Conv knit call: kernel height: {2}, num_output_channels: {C // 4}, input_width: {W}, num_input_channels: {C}"
+    )
+    tt_knited_tensor = ttnn.conv_knit(tt_input_tensor, 2, C // 4, W, C)
     ttnn.synchronize_device(device)
+    print(f"Shape check: ref_knit_tensor_out {ref_knit_tensor_out.shape} tt_knited_tensor {tt_knited_tensor.shape}")
 
     tt_knited_tensor_out = ttnn.to_torch(tt_knited_tensor, mesh_composer=None)
     tt_knited_tensor_out = tt_knited_tensor_out.reshape(ref_knit_tensor_out.shape)
     print("Out shape is: ", tt_knited_tensor_out.shape)
 
     row_id = 4
-    print("TT output  is:", tt_knited_tensor_out[:, :, row_id, :])
-    print("Ref is:", ref_knit_tensor_out[:, :, row_id, :])
+    # print("TT output  is:", tt_knited_tensor_out[:, row_id, :, :])
+    # print("Ref is:", ref_knit_tensor_out[:, row_id, :, :])
 
     pcc = 0.999
     passing, pcc_msg = check_with_pcc_without_tensor_printout(tt_knited_tensor_out, ref_knit_tensor_out, pcc=pcc)

@@ -98,7 +98,12 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
     auto dst_buffer = output_tensor.buffer();
 
     std::vector<uint32_t> kernel_compile_time_args = {
-        (std::uint32_t)src_cb_index, (std::uint32_t)out_cb_index, input_unit_size, num_input_channels, input_width};
+        (std::uint32_t)src_cb_index,
+        (std::uint32_t)out_cb_index,
+        input_unit_size,
+        num_input_channels,
+        input_width,
+        num_output_channels};
     tt::tt_metal::KernelHandle kernel_handle = tt::tt_metal::CreateKernel(
         program,
         "/localdev/ppopovic/tt-metal/ttnn/cpp/ttnn/operations/data_movement/conv_knit/device/kernels/dataflow/"
