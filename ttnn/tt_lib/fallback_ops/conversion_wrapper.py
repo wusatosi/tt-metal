@@ -54,6 +54,7 @@ def convert_tt_tensor_to_pt_tensor(tt_tensor, output_format):
         and tt_tensor.storage_type() == ttnn.StorageType.DEVICE
         and output_format["on_device"]
     ):
+        print("convert_tt_tensor_to_pt_tensor device {tt_tensor.device()}")
         output_format["device"] = tt_tensor.device()
 
     tt_tensor = tt_tensor.cpu()
@@ -149,6 +150,7 @@ def convert_tt_tensors_wrapper(func):
 
         # Set default output format
         if output_format.get("device", None) is None and output_format["on_device"]:
+            print(f"convert_tt_tensors_wrapper device {ttnn.GetDefaultDevice()}")
             output_format["device"] = ttnn.GetDefaultDevice()
 
         outputs = func(*new_args, **new_kwargs)

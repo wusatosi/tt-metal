@@ -26,6 +26,10 @@ def test_mnist_inference(device):
         tt_output = tt_convnet(tt_input)
         tt_output = tt2torch_tensor(tt_output)
 
+        print(pt_output.shape)
+        print(tt_output.shape)
+        print(pt_output)
+        print(tt_output)
         pcc_passing, pcc_output = comp_pcc(pt_output, tt_output)
         logger.info(f"Output {pcc_output}")
 
