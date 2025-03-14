@@ -131,8 +131,8 @@ struct WorkerToFabricEdmSenderImpl {
     }
 
     FORCE_INLINE void setup_edm_noc_cmd_buf(uint8_t cmd_buf) const {
-        uint64_t edm_noc_addr = get_noc_addr(this->edm_noc_x, this->edm_noc_y, 0);
-        noc_async_write_one_packet_with_trid_set_state(edm_noc_addr, cmd_buf);
+        uint64_t edm_noc_addr = get_noc_addr(this->edm_noc_x, this->edm_noc_y, 0, edm_to_local_chip_noc);
+        noc_async_write_one_packet_with_trid_set_state(edm_noc_addr, cmd_buf, edm_to_local_chip_noc);
     }
 
     FORCE_INLINE bool edm_has_space_for_packet() const {

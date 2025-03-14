@@ -7,13 +7,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-// #if defined(KERNEL_BUILD)
-// #include "fabric_edm_packet_header_common.hpp"
-// #endif
 
 namespace tt::tt_fabric {
 
-static constexpr uint8_t edm_to_local_chip_noc = 1;
+static constexpr uint8_t edm_to_local_chip_noc_index = 1;
 
 static constexpr uint8_t EDM_NOC_ADDR_LOCAL_BITS = 36;
 static constexpr uint8_t EDM_NOC_ADDR_NODE_ID_BITS = 6;
@@ -210,7 +207,7 @@ struct PacketHeaderBase {
             noc_address_components.first.x,
             noc_address_components.first.y,
             noc_address_components.second,
-            edm_to_local_chip_noc);
+            edm_to_local_chip_noc_index);
         NocUnicastCommandHeader modified_command_header = noc_unicast_command_header;
         modified_command_header.noc_address = noc_addr;
 
@@ -226,7 +223,7 @@ struct PacketHeaderBase {
             noc_address_components.first.x,
             noc_address_components.first.y,
             noc_address_components.second,
-            edm_to_local_chip_noc);
+            edm_to_local_chip_noc_index);
         NocUnicastInlineWriteCommandHeader modified_command_header = noc_unicast_command_header;
         modified_command_header.noc_address = noc_addr;
 
@@ -251,7 +248,7 @@ struct PacketHeaderBase {
             noc_address_components.first.x,
             noc_address_components.first.y,
             noc_address_components.second,
-            edm_to_local_chip_noc);
+            edm_to_local_chip_noc_index);
         NocUnicastAtomicIncCommandHeader modified_command_header = noc_unicast_atomic_inc_command_header;
         modified_command_header.noc_address = noc_addr;
 
@@ -287,7 +284,7 @@ struct PacketHeaderBase {
             noc_address_components.first.x,
             noc_address_components.first.y,
             noc_address_components.second,
-            edm_to_local_chip_noc);
+            edm_to_local_chip_noc_index);
 
         this->command_fields.unicast_write.noc_address = noc_addr;
         this->payload_size_bytes = payload_size_bytes;
@@ -302,7 +299,7 @@ struct PacketHeaderBase {
             noc_address_components.first.x,
             noc_address_components.first.y,
             noc_address_components.second,
-            edm_to_local_chip_noc);
+            edm_to_local_chip_noc_index);
 
         this->command_fields.unicast_inline_write.noc_address = noc_addr;
         this->command_fields.unicast_inline_write.value = noc_unicast_command_header.value;
@@ -330,7 +327,7 @@ struct PacketHeaderBase {
             noc_address_components.first.x,
             noc_address_components.first.y,
             noc_address_components.second,
-            edm_to_local_chip_noc);
+            edm_to_local_chip_noc_index);
 
         this->command_fields.unicast_seminc.noc_address = noc_addr;
         this->command_fields.unicast_seminc.val = noc_unicast_atomic_inc_command_header.val;
