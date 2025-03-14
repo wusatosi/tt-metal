@@ -251,18 +251,16 @@ def test_simple_conv_t2d(
 @pytest.mark.parametrize(
     "input_shape_nhwc, output_channels, filter, stride, padding, output_padding",
     (
+        ((1, 512, 64, 128), 1, (4, 4), (2, 2), (1, 1), (0, 0)),
         ((1, 512, 64, 128), 2, (4, 4), (2, 2), (1, 1), (0, 0)),
-        # ((1, 4, 4, 1), 1, (4, 4), (2, 2), (0, 0), (0, 0)),
-        # ((1, 512, 64, 128), 2, (4, 4), (2, 2), (0, 0), (0, 0)),
-        # ((1, 4, 4, 1), 1, (4, 4), (2, 2), (1, 1), (0, 0)),
-        # ((1, 32, 32, 1), 2, (4, 4), (2, 2), (1, 1), (0, 0)),
     ),
+    ids=("1_out_channels_after_knit", "2_out_channels_after_knit"),
 )
 # fmt: on
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 64 * 1024}], indirect=True)
 def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, filter, stride, padding, output_padding):
     batch_size, input_height, input_width, input_channels = input_shape_nhwc
-    print(f"{batch_size}, {input_height}, {input_width}, {input_channels}, {output_channels}, {filter}, {stride}, {padding}, {output_padding}")
+    print(f"bs={batch_size}, ih={input_height}, iw={input_width}, ic={input_channels}, oc={output_channels}, kernel={filter}, stride={stride}, padding={padding}, out_pad={output_padding}")
 
     groups = 1
     dilation = 1
@@ -418,7 +416,7 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
     # TTNN
 
     weights_dtype = ttnn.bfloat8_b
-    activations_dtype = ttnn.bfloat8_b
+    activations_dtype = ttnn.bfloat16
     math_fidelity = ttnn.MathFidelity.HiFi4
     fp32_dest_acc_en = False
     packer_l1_acc = False
@@ -479,7 +477,7 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
         enable_act_double_buffer=False,
         enable_split_reader=False,
         enable_subblock_padding=False,
-        output_layout=ttnn.TILE_LAYOUT,
+        output_layout=ttnn.ROW_MAJOR_LAYOUT,
         activation="",
     )
 
@@ -490,6 +488,7 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
         packer_l1_acc=packer_l1_acc,
     )
 
+    kernel_size = [x//2 for x in filter]
     [tt_output_tensor_on_device, [out_h, out_w]] = ttnn.conv2d(
         input_tensor=tt_input_tensor,
         weight_tensor=tt_weight_tensor,
@@ -499,7 +498,7 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
         batch_size = batch_size,
         input_height = input_height,
         input_width = input_width,
-        kernel_size=[x//2 for x in filter],
+        kernel_size=kernel_size,
         stride=[x//2 for x in stride],
         padding=padding,
         dilation=(dilation,dilation),
@@ -511,30 +510,71 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
         return_weights_and_bias=False,
     )
 
+    ttnn.synchronize_device(device)
+
+    core_range_set = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(6, 7)), ttnn.CoreRange(ttnn.CoreCoord(7, 0), ttnn.CoreCoord(7, 0))})
+    shard_shape = (
+                tt_output_tensor_on_device.padded_shape[2] // core_range_set.num_cores(),
+                tt_output_tensor_on_device.padded_shape[-1],)
+
+    memory_config = ttnn.MemoryConfig(
+        ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+        ttnn.BufferType.L1,
+        ttnn.ShardSpec(
+            core_range_set,
+            shard_shape,
+            ttnn.ShardOrientation.ROW_MAJOR,
+        ),
+    )
+
+    resharded_conv_output = ttnn.reshard(tt_output_tensor_on_device, memory_config)
+    ttnn.synchronize_device(device)
+    num_knit_input_channels = output_channels * 4
     tt_output_tensor = ttnn.to_torch(tt_output_tensor_on_device, mesh_composer=None)
+
+    # this fcks up some memory
+    tt_knited_tensor = ttnn.conv_knit(resharded_conv_output, kernel_size[0], output_channels, out_w, num_knit_input_channels)
+    resharded_conv_output.deallocate()
+
+    # tt_knited_tensor_out = ttnn.to_torch(tt_knited_tensor, mesh_composer=None)
+    # ttnn.synchronize_device(device)
+
     ttnn.synchronize_device(device)
 
     # ## HOST FALLBACK
     tt_output_tensor = tt_output_tensor.reshape([batch_size, out_h, out_w, output_channels*4])
     tt_output_tensor = tt_output_tensor.permute(0, 3, 1, 2)
     tt_split_knit_out_ = torch.empty(tt_output_tensor.shape[0], tt_output_tensor.shape[1]//4, tt_output_tensor.shape[2]* 2, tt_output_tensor.shape[3]*2, dtype=tt_output_tensor.dtype)
-
-
-
     # is there permute/reshape to achieve this?
     tt_split_knit_out_[:,:,0::2, 0::2] = tt_output_tensor[:,0,:]
     tt_split_knit_out_[:,:,0::2, 1::2] = tt_output_tensor[:,1,:]
     tt_split_knit_out_[:,:,1::2, 0::2] = tt_output_tensor[:,2,:]
     tt_split_knit_out_[:,:,1::2, 1::2] = tt_output_tensor[:,3,:]
+    print("ref_out_shape_after knitting: ", tt_split_knit_out_.shape)
+    # print("tt_knit out shape pre permute: ", tt_knited_tensor_out.shape)
+
+    # tt_knited_tensor_out = tt_knited_tensor_out.permute(0, 3, 2, 1)
+    # print("tt_knit out shape pre reshape: ", tt_knited_tensor_out.shape)
+
+    # tt_knited_tensor_out = tt_knited_tensor_out.reshape(tt_split_knit_out_.shape)
+    # print("tt_knit out shape pre reshape: ", tt_knited_tensor_out.shape)
+
+    # row_id = 4
+    # print("Shape check: ", tt_knited_tensor_out.shape, tt_split_knit_out_.shape)
+    # print("Pre unpadding tt_knited_tensor_out  is:", tt_knited_tensor_out[:, :, row_id, :])
+    # print("Pre unpadding reference split knit out is:", tt_split_knit_out_[:, :, row_id, :])
+
+    # pcc = 0.999
+    # passing, pcc_msg = check_with_pcc_without_tensor_printout(tt_knited_tensor_out, tt_split_knit_out_, pcc=pcc)
+    # assert passing, pcc_msg
 
     # remove padding, ideally should be done in the conv2d function with control on top/bottom and left/right padding
-    # no, after merging to 1 conv that approach wont work.
     if (padding[0] != 0 or padding[1] != 0):
         tt_split_knit_out_ = tt_split_knit_out_[:,:,padding[0]:-1, padding[1]:-1]
-    ## end of HOST FALLBACK
-
+        #tt_knited_tensor_out = tt_knited_tensor_out[:,:,padding[0]:-1, padding[1]:-1]
     # Validate ttnn split-knit /w fused output against golden torch
     pcc = 0.999
     passing, pcc_msg = check_with_pcc_without_tensor_printout(torch_out_golden_tensor, tt_split_knit_out_, pcc=pcc)
+    # passing, pcc_msg = check_with_pcc_without_tensor_printout(torch_out_golden_tensor, tt_knited_tensor_out, pcc=pcc)
     logger.info(f"PCC = {pcc_msg}. Threshold = {pcc}")
     assert passing, pcc_msg

@@ -16,7 +16,8 @@ struct ConvKnitOperation {
         const ttnn::Tensor& input_tensor,
         int kernel_height,
         int num_output_channels,
-        int input_width);
+        int input_width,
+        int num_input_channels);
 };
 
 }  // namespace operations::data_movement

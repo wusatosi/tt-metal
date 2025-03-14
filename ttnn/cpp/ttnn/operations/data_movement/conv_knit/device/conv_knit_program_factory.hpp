@@ -13,6 +13,6 @@ tt::tt_metal::operation::ProgramWithCallbacks conv_knit_multi_core(
     const Tensor& output_tensor,
     uint32_t kernel_height,
     uint32_t num_output_channels,
-    uint32_t input_width);
-
+    uint32_t input_width,
+    uint32_t num_input_channels);
 }

@@ -26,13 +26,16 @@ void bind_conv_knit(pybind11::module& module, const data_movement_sharded_operat
                int kernel_height,
                int num_output_channels,
                int input_width,
+               int num_input_channels,
                QueueId queue_id) -> ttnn::Tensor {
-                return self(queue_id, input_tensor, kernel_height, num_output_channels, input_width);
+                return self(
+                    queue_id, input_tensor, kernel_height, num_output_channels, input_width, num_input_channels);
             },
             py::arg("input_tensor").noconvert(),
             py::arg("kernel_height"),
             py::arg("num_output_channels"),
             py::arg("input_width"),
+            py::arg("num_input_channels"),
             py::kw_only(),
             py::arg("queue_id") = DefaultQueueId,
         });

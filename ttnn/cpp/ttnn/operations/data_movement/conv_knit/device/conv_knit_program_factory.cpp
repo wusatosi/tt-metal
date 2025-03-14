@@ -31,11 +31,14 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
     const Tensor& output_tensor,
     uint32_t kernel_height,
     uint32_t num_output_channels,
-    uint32_t input_width) {
+    uint32_t input_width,
+    uint32_t num_input_channels) {
     tt::tt_metal::Program program{};
 
     tt::DataFormat input_cb_data_format = tt::tt_metal::datatype_to_dataformat_converter(input_tensor.get_dtype());
     tt::DataFormat output_cb_data_format = tt::tt_metal::datatype_to_dataformat_converter(output_tensor.get_dtype());
+    log_info(
+        tt::LogOp, "Input data format is: {} Output data format is: {}", input_cb_data_format, output_cb_data_format);
 
     ShardSpec input_shard_spec = input_tensor.shard_spec().value();
     TensorMemoryLayout tensor_memory_layout = input_tensor.memory_config().memory_layout;  // needs to be height-sharded
@@ -44,7 +47,6 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
     uint32_t num_cores = all_cores.num_cores();
     std::vector<CoreCoord> cores = corerange_to_cores(all_cores, std::nullopt, rm_orientation);
 
-    uint32_t num_input_channels = input_tensor.get_logical_shape()[-1];
     log_info(tt::LogOp, "Num input channels is: {}", num_input_channels);
 
     uint32_t input_unit_size = input_shard_spec.shape[1] * input_tensor.element_size();
@@ -81,12 +83,16 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
             .set_globally_allocated_address(*input_tensor.buffer());
     auto cb_src = tt::tt_metal::CreateCircularBuffer(program, all_cores, src_cb_config);
     // todo: pp, support different page sizes for input and output
+
+    uint32_t output_unit_size = input_unit_size;
     tt::tt_metal::CircularBufferConfig out_cb_config =
         tt::tt_metal::CircularBufferConfig(
-            num_inputs_per_core_unpadded * input_unit_size, {{out_cb_index, output_cb_data_format}})
-            .set_page_size(out_cb_index, input_unit_size)
+            num_outputs_per_core_unpadded * output_unit_size, {{out_cb_index, output_cb_data_format}})
+            .set_page_size(out_cb_index, output_unit_size)
             .set_globally_allocated_address(*output_tensor.buffer());
+
     auto cb_output = tt::tt_metal::CreateCircularBuffer(program, all_cores, out_cb_config);
+    log_info(tt::LogOp, "Cb1 total size {}: CB2 total size {}", src_cb_config.total_size(), out_cb_config.total_size());
 
     auto src_buffer = input_tensor.buffer();
     auto dst_buffer = output_tensor.buffer();

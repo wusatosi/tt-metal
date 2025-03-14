@@ -38,8 +38,9 @@ void ConvKnitDeviceOperation::validate(const std::vector<Tensor>& input_tensors)
             input_tensor.get_logical_shape().to_array_4D()[1] == 1,
         "Knit operand shape needs to be in format: [1, 1, N * H * W, C]");
     // ShardSpec[0] needs to be divisible by input_width
-    // TT_FATAL(input_tensor.shard_spec().value().shape[0] % this->input_width == 0, "ShardSpec[0] needs to be divisible
-    // by input_width");
+    TT_FATAL(
+        input_tensor.shard_spec().value().shape[0] % this->input_width == 0,
+        "ShardSpec[0] needs to be divisible by input_width");
 }
 
 std::vector<ttnn::TensorSpec> ConvKnitDeviceOperation::compute_output_specs(
@@ -93,7 +94,12 @@ operation::ProgramWithCallbacks ConvKnitDeviceOperation::create_program(
     const auto& input_tensor = input_tensors.at(0);
     auto& output_tensor = output_tensors.at(0);
     return detail::conv_knit_multi_core(
-        input_tensor, output_tensor, this->kernel_height, this->num_output_channels, this->input_width);
+        input_tensor,
+        output_tensor,
+        this->kernel_height,
+        this->num_output_channels,
+        this->input_width,
+        this->num_input_channels);
 }
 
 }  // namespace ttnn::operations::data_movement
