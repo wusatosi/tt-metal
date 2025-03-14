@@ -294,6 +294,7 @@ class TtLlamaAttention(LightweightModule):
             num_heads=self.n_local_heads,
             num_kv_heads=self.n_local_kv_heads,
             memory_config=ttnn.L1_HEIGHT_SHARDED_MEMORY_CONFIG,
+            k_memory_config=self.model_config["CREATE_K_OUTPUT_MEMCFG"],
             overlap_qk_coregrid=False,
             batch_offset=self.batch_offset_tt_tensor,
             slice_size=self.slice_size,

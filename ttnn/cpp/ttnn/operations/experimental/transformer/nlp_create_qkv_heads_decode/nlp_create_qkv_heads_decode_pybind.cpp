@@ -26,6 +26,7 @@ void bind_nlp_create_qkv_heads_decode(pybind11::module& module) {
                const std::optional<const Tensor>& batch_offset,
                const std::optional<const uint32_t> slice_size,
                const std::optional<ttnn::MemoryConfig>& memory_config,
+               const std::optional<const ttnn::MemoryConfig>& k_memory_config,
                std::optional<std::array<Tensor, 3>> optional_output_tensors,
                QueueId queue_id) {
                 return self(
@@ -37,6 +38,7 @@ void bind_nlp_create_qkv_heads_decode(pybind11::module& module) {
                     batch_offset,
                     slice_size,
                     memory_config,
+                    k_memory_config,
                     optional_output_tensors);
             },
             pybind11::arg("input_tensor").noconvert(),
@@ -47,6 +49,7 @@ void bind_nlp_create_qkv_heads_decode(pybind11::module& module) {
             pybind11::arg("batch_offset").noconvert() = std::nullopt,
             pybind11::arg("slice_size").noconvert() = std::nullopt,
             pybind11::arg("memory_config") = std::nullopt,
+            pybind11::arg("k_memory_config") = std::nullopt,
             pybind11::arg("output_tensors") = std::nullopt,
             pybind11::arg("queue_id") = DefaultQueueId});
 }
