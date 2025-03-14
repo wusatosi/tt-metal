@@ -125,8 +125,12 @@ Tensor ExecuteMinimum::invoke(
 // maximum(a,b) = a + (b - a > 0 )*(b-a)
 Tensor ExecuteMaximum::invoke(
     const Tensor& input_a, const Tensor& input_b, const std::optional<MemoryConfig>& output_mem_config) {
+    input_a.print();
+    input_b.print();
     Tensor t_diff = ttnn::subtract(input_b, input_a, std::nullopt, output_mem_config);
+    t_diff.print();
     Tensor result = ttnn::where(t_diff, input_b, input_a);
+    result.print();
     return result;
 }
 
