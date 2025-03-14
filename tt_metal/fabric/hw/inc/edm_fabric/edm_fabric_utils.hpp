@@ -23,7 +23,8 @@ FORCE_INLINE void send_chunk_from_address_with_trid(
     uint8_t trid,
     uint8_t cmd_buf) {
     noc_async_write_one_packet_with_trid_with_state(
-        local_l1_address, remote_l1_write_addr, page_size * num_pages, trid, cmd_buf, edm_to_local_chip_noc);
+        local_l1_address, remote_l1_write_addr, page_size * num_pages, trid, cmd_buf, 1);
+    // local_l1_address, remote_l1_write_addr, page_size * num_pages, trid, cmd_buf, edm_to_local_chip_noc);
     // TODO: this barrier will no longer be functional since we are not incrementing noc counters, remove
     if constexpr (blocking_mode == EDM_IO_BLOCKING_MODE::FLUSH_BLOCKING) {
         noc_async_writes_flushed();

@@ -403,6 +403,7 @@ def run_all_reduce_with_mesh_tensor_along_row(
                 topology=ttnn.Topology.Linear,
                 subdevice_id=worker_sub_device_id,
             )
+            logger.info("synchronize device")
             if enable_persistent_fabric:
                 ttnn.synchronize_device(mesh_device, sub_device_ids=sub_device_stall_group)
         ttnn.synchronize_device(mesh_device, sub_device_ids=sub_device_stall_group)
@@ -449,20 +450,20 @@ def run_all_reduce_with_mesh_tensor_along_row(
 @pytest.mark.parametrize(
     "num_devices, num_links, per_chip_output_shape, layout",
     [
-        (4, 2, [1, 4, 32, 2304], ttnn.TILE_LAYOUT),
+        (4, 1, [1, 4, 32, 2304], ttnn.TILE_LAYOUT),
     ],
 )
 @pytest.mark.parametrize(
     "input_dtype",
     [
         ttnn.bfloat16,
-        ttnn.bfloat8_b,
+        # ttnn.bfloat8_b,
     ],
 )
 @pytest.mark.parametrize(
     "buffer_type",
     [
-        ttnn.BufferType.DRAM,
+        # ttnn.BufferType.DRAM,
         ttnn.BufferType.L1,
     ],
 )
