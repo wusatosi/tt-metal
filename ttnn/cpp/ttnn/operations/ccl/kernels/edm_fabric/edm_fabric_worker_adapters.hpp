@@ -189,6 +189,9 @@ struct WorkerToFabricEdmSenderImpl {
     FORCE_INLINE void send_payload_without_header_non_blocking_from_address(uint32_t source_address, size_t size_bytes) {
         send_payload_without_header_from_address_impl<ttnn::ccl::EDM_IO_BLOCKING_MODE::NON_BLOCKING>(source_address, size_bytes);
     }
+    FORCE_INLINE void send_payload_without_header_non_blocking_with_trid_from_worker_address(uint32_t source_address, size_t size_bytes, uint8_t trid) {
+        noc_async_write_one_packet_with_trid(source_address, source_address, size_bytes, trid);
+    }
     FORCE_INLINE void send_payload_without_header_non_blocking_with_trid_from_address(uint32_t source_address, size_t size_bytes, uint8_t trid) {
         send_payload_without_header_from_address_with_trid_impl<ttnn::ccl::EDM_IO_BLOCKING_MODE::NON_BLOCKING>(source_address, size_bytes, trid);
     }
@@ -211,6 +214,9 @@ struct WorkerToFabricEdmSenderImpl {
     }
     FORCE_INLINE void send_payload_non_blocking_from_address_with_trid(uint32_t source_address, size_t size_bytes, uint8_t trid) {
         send_payload_from_address_with_trid_impl<ttnn::ccl::EDM_IO_BLOCKING_MODE::NON_BLOCKING>(source_address, size_bytes, trid);
+    }
+    FORCE_INLINE void send_payload_non_blocking_from_address_with_trid_from_worker_address(uint32_t source_address, size_t size_bytes, uint8_t trid) {
+        send_payload_from_address_with_trid_from_worker_address_impl<ttnn::ccl::EDM_IO_BLOCKING_MODE::NON_BLOCKING>(source_address, size_bytes, trid);
     }
 
     static constexpr size_t edm_sender_channel_field_stride_bytes = 16;
@@ -355,6 +361,16 @@ private:
         ASSERT(tt::fabric::is_valid(*const_cast<PACKET_HEADER_TYPE*>(
             reinterpret_cast<volatile PACKET_HEADER_TYPE*>(source_address))));
         send_chunk_from_address<blocking_mode>(source_address, 1, size_bytes, buffer_address);
+        post_send_payload_increment_pointers();
+    }
+    template <ttnn::ccl::EDM_IO_BLOCKING_MODE blocking_mode>
+    FORCE_INLINE void send_payload_from_address_with_trid_from_worker_address_impl(uint32_t source_address, size_t size_bytes, uint8_t trid) {
+        uint64_t buffer_address = this->compute_dest_buffer_slot_noc_addr();
+
+        ASSERT(size_bytes <= this->buffer_size_bytes);
+        ASSERT(tt::fabric::is_valid(*const_cast<PACKET_HEADER_TYPE*>(
+            reinterpret_cast<volatile PACKET_HEADER_TYPE*>(source_address))));
+        noc_async_write_one_packet_with_trid(source_address, buffer_address, size_bytes, trid);
         post_send_payload_increment_pointers();
     }
     template <ttnn::ccl::EDM_IO_BLOCKING_MODE blocking_mode>

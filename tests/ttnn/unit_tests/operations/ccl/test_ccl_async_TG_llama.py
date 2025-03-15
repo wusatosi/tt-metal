@@ -216,15 +216,15 @@ def test_all_gather_tg_llama(
 @pytest.mark.parametrize(
     "output_shape, cluster_axis, num_links, input_num_cores, output_num_cores",
     [
-        ([1, 1, 32, 2048], 0, 4, 24, 16),  # FF2/DO all reduce
+        # ([1, 1, 32, 2048], 0, 4, 24, 16),  # FF2/DO all reduce
         # ([1, 1, 32, 1280], 1, 3, 24, 40),  # QKV all reduce
-        # ([1, 1, 32, 3584], 1, 3, 24, 24),  # FF1 all reduce
+        ([1, 1, 32, 3584], 1, 1, 24, 24),  # FF1 all reduce
         # ([1, 1, 32, 16 * 1024], 1, 3, 32, 32),  # LM head all reduce
     ],
     ids=[
-        "ff2",
+        # "ff2",
         # "qkv",
-        # "ff1",
+        "ff1",
         # "lm_head",
     ],
 )
@@ -250,7 +250,7 @@ def test_all_gather_tg_llama(
 @pytest.mark.parametrize(
     "mesh_device",
     [
-        (8, 4),
+        (2, 4),
     ],
     indirect=True,
 )

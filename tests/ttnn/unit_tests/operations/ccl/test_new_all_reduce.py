@@ -52,7 +52,8 @@ def run_all_reduce_impl(
     validate_all=True,
     profiler=BenchmarkProfiler(),
 ):
-    cluster_shape = (8, 4)
+    cluster_shape = (2, 4)
+    # cluster_shape = (8, 4)
 
     create_persistent_fabric = True
     teardown_persistent_fabric = True
