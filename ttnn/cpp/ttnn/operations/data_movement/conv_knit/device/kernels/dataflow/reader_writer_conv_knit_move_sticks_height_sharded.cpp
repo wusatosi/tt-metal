@@ -3,11 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <cstdint>
-#include <cstring>
-#include <typeindex>
 #include "tt_metal/hw/inc/utils/utils.h"
-
-#include "dprint.h"
 
 inline __attribute__((always_inline)) constexpr uint32_t log2_constexpr(uint32_t n) {
     uint32_t p = 0;
@@ -25,25 +21,20 @@ void kernel_main() {
     constexpr uint32_t num_input_channels = get_compile_time_arg_val(3);
     constexpr uint32_t input_width = get_compile_time_arg_val(4);
     constexpr uint32_t num_output_channels = get_compile_time_arg_val(5);
-
-    // Runtime-args
-    // make this constexpr uint16_t!
-    const uint16_t num_sticks = get_arg_val<uint32_t>(0);
+    constexpr uint32_t num_sticks = get_compile_time_arg_val(6);
 
     // temp, fixme
     constexpr uint32_t stick_num_elements = input_unit_size_in_bytes / 2;  // assuming hardcoded bfloat16
     constexpr uint32_t output_width = input_width * num_input_channels / (2 * num_output_channels);
+    constexpr uint32_t num_elements_to_write_in_dst_stick = num_output_channels;
+    constexpr uint32_t half_of_input_channels = num_input_channels / 2;
+    constexpr bool num_elements_to_write_in_dst_stick_is_power_of_2 = is_power_of_2(num_elements_to_write_in_dst_stick);
 
     volatile tt_l1_ptr uint16_t* src_cb_ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(get_write_ptr(src_cb_id));
     volatile tt_l1_ptr uint16_t* dst_cb_ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(get_write_ptr(dst_cb_id));
 
-    constexpr uint16_t num_elements_to_write_in_dst_stick = num_output_channels;
-    constexpr bool num_elements_to_write_in_dst_stick_is_power_of_2 = is_power_of_2(num_elements_to_write_in_dst_stick);
-    constexpr uint16_t half_of_input_channels = num_input_channels / 2;
-
     uint32_t num_input_sticks_read = 0;
-    // constexpr uint16_t ns_ce = 565;
-    for (uint16_t i = 0; i < num_sticks; i++) {
+    for (uint32_t i = 0; i < num_sticks; i++) {
         uint32_t written_in_dst_stick = 0;
         uint32_t stick_index = 0;
 

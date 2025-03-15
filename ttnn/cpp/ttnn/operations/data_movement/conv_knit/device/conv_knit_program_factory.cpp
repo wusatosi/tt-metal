@@ -23,9 +23,6 @@ using namespace tt::tt_metal;
 
 namespace ttnn::operations::data_movement::detail {
 
-// conv_knit_multi_core(const Tensor &input_tensor, const Tensor &output_tensor, uint32_t kernel_height, uint32_t
-// num_output_channels);
-
 operation::ProgramWithCallbacks conv_knit_multi_core(
     const Tensor& input_tensor,
     const Tensor& output_tensor,
@@ -52,27 +49,20 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
     uint32_t input_unit_size = input_shard_spec.shape[1] * input_tensor.element_size();
     uint32_t num_inputs_per_core_unpadded = input_shard_spec.shape[0];
     uint32_t num_inputs_height = input_tensor.volume() / input_tensor.get_padded_shape()[-1];
-    uint32_t num_inputs_last_core =
-        input_shard_spec.shape[0] - (tt::round_up(num_inputs_height, input_shard_spec.shape[0]) - num_inputs_height);
     log_info(
         tt::LogOp,
-        "Input unit size is {} num_inputs_per_core_unpadded is {} num_inputs_last_core is: {}",
+        "Input unit size is {} num_inputs_per_core_unpadded is {}",
         input_unit_size,
-        num_inputs_per_core_unpadded,
-        num_inputs_last_core);
+        num_inputs_per_core_unpadded);
 
     ShardSpec output_shard_spec = output_tensor.shard_spec().value();
     uint32_t num_outputs_per_core_unpadded = output_shard_spec.shape[0];
     uint32_t num_outputs_height = output_tensor.volume() / output_tensor.get_padded_shape()[-1];
-    uint32_t num_outputs_last_core =
-        output_shard_spec.shape[0] -
-        (tt::round_up(num_outputs_height, output_shard_spec.shape[0]) - num_outputs_height);
     log_info(
         tt::LogOp,
-        "Output unit size is {} num_outputs_per_core_unpadded is {} num_outputs_last_core is: {}",
+        "Output unit size is {} num_outputs_per_core_unpadded is {}",
         input_unit_size,
-        num_outputs_per_core_unpadded,
-        num_outputs_last_core);
+        num_outputs_per_core_unpadded);
 
     uint32_t src_cb_index = tt::CBIndex::c_0;
     uint32_t out_cb_index = tt::CBIndex::c_1;
@@ -103,23 +93,14 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
         input_unit_size,
         num_input_channels,
         input_width,
-        num_output_channels};
+        num_output_channels,
+        num_inputs_per_core_unpadded};
     tt::tt_metal::KernelHandle kernel_handle = tt::tt_metal::CreateKernel(
         program,
         "/localdev/ppopovic/tt-metal/ttnn/cpp/ttnn/operations/data_movement/conv_knit/device/kernels/dataflow/"
         "reader_writer_conv_knit_move_sticks_height_sharded.cpp",
         all_cores,
         tt::tt_metal::ReaderDataMovementConfig(kernel_compile_time_args));
-
-    CoreCoord end_core = cores[num_cores - 1];
-    for (const auto& core : cores) {
-        uint32_t num_inputs_per_core = num_inputs_per_core_unpadded;
-        if (core.x == end_core.x && core.y == end_core.y) {
-            num_inputs_per_core = num_inputs_last_core;
-        }
-
-        tt::tt_metal::SetRuntimeArgs(program, kernel_handle, core, {num_inputs_per_core});
-    }
 
     auto override_runtime_arguments_callback = [kernel_handle, cores, cb_src, cb_output](
                                                    const void* operation,
@@ -130,16 +111,6 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
         auto src_buffer = input_tensors.at(0).buffer();
         auto dst_buffer = output_tensors.at(0).buffer();
 
-        // todo: pp, support program cache
-
-        // auto& runtime_args_by_core = GetRuntimeArgs(program, kernel_handle);
-        // for (const auto& core : cores) {
-        //     auto& runtime_args = runtime_args_by_core[core.x][core.y];
-        //     runtime_args[0] = src_buffer->address();
-        //     if (partial_op) {
-        //         runtime_args[7] = starting_idx_h;
-        //     }
-        // }
         UpdateDynamicCircularBufferAddress(program, cb_src, *src_buffer);
         UpdateDynamicCircularBufferAddress(program, cb_output, *dst_buffer);
     };
