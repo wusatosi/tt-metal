@@ -24,7 +24,50 @@ using namespace tt::tt_metal;
 
 namespace ttnn::operations::data_movement::detail {
 
+// For some reason, math/pack trsics seem 25% faster then others for this workload.
+// Adjust the work split accoridingly.
+// Yields ~10% speedup.
+std::vector<uint32_t> split_work_math_pack_preference(uint32_t num_inputs_per_core_unpadded) {
+    uint32_t num_cores = 5;
+    std::vector<double> weights = {1.0, 1.0, 1.0, 1.25, 1.25};
+
+    double total_weight = 0.0;
+    for (double w : weights) {
+        total_weight += w;
+    }
+
+    std::vector<double> work_f(num_cores);
+    for (uint32_t i = 0; i < num_cores; ++i) {
+        work_f[i] = (weights[i] / total_weight) * num_inputs_per_core_unpadded;
+    }
+
+    std::vector<uint32_t> work_distribution(num_cores);
+    uint32_t assigned_work = 0;
+
+    for (uint32_t i = 0; i < num_cores; ++i) {
+        work_distribution[i] = static_cast<uint32_t>(std::round(work_f[i]));
+        assigned_work += work_distribution[i];
+    }
+
+    // Adjust rounding errors to make sure sum equals num_inputs_per_core_unpadded
+    int32_t diff = static_cast<int32_t>(num_inputs_per_core_unpadded) - static_cast<int32_t>(assigned_work);
+    for (uint32_t i = 0; diff != 0 && i < num_cores; ++i) {
+        if (diff > 0) {
+            work_distribution[i] += 1;
+            --diff;
+        } else if (diff < 0 && work_distribution[i] > 0) {
+            work_distribution[i] -= 1;
+            ++diff;
+        }
+    }
+
+    return work_distribution;
+}
+
 std::vector<uint32_t> split_work(uint32_t num_inputs_per_core_unpadded, uint32_t num_cores = 5) {
+    if (num_cores == 5) {
+        return split_work_math_pack_preference(num_inputs_per_core_unpadded);
+    }
     uint32_t base = num_inputs_per_core_unpadded / num_cores;
     uint32_t remainder = num_inputs_per_core_unpadded % num_cores;
 
