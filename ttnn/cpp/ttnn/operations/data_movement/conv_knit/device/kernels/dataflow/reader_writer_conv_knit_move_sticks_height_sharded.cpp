@@ -21,20 +21,27 @@ void kernel_main() {
     constexpr uint32_t num_input_channels = get_compile_time_arg_val(3);
     constexpr uint32_t input_width = get_compile_time_arg_val(4);
     constexpr uint32_t num_output_channels = get_compile_time_arg_val(5);
-    constexpr uint32_t num_sticks = get_compile_time_arg_val(6);
+    constexpr uint32_t num_sticks_for_all_riscvs = get_compile_time_arg_val(6);
+    constexpr uint32_t num_sticks_for_this_riscv = get_compile_time_arg_val(7);
+    constexpr uint32_t current_riscv_stick_starting_index = get_compile_time_arg_val(8);
 
     // temp, fixme
     constexpr uint32_t stick_num_elements = input_unit_size_in_bytes / 2;  // assuming hardcoded bfloat16
     constexpr uint32_t output_width = input_width * num_input_channels / (2 * num_output_channels);
     constexpr uint32_t num_elements_to_write_in_dst_stick = num_output_channels;
     constexpr uint32_t half_of_input_channels = num_input_channels / 2;
+    constexpr uint32_t num_widths_done_by_other_riscvs = current_riscv_stick_starting_index / input_width;
     constexpr bool num_elements_to_write_in_dst_stick_is_power_of_2 = is_power_of_2(num_elements_to_write_in_dst_stick);
 
     volatile tt_l1_ptr uint16_t* src_cb_ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(get_write_ptr(src_cb_id));
     volatile tt_l1_ptr uint16_t* dst_cb_ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(get_write_ptr(dst_cb_id));
+    src_cb_ptr += current_riscv_stick_starting_index * stick_num_elements;
+    dst_cb_ptr += num_widths_done_by_other_riscvs * output_width * stick_num_elements +
+                  current_riscv_stick_starting_index * 2 *
+                      stick_num_elements;  // move to adequate row in dst in addition to moving to the next sticks
 
-    uint32_t num_input_sticks_read = 0;
-    for (uint32_t i = 0; i < num_sticks; i++) {
+    uint32_t num_input_sticks_read = current_riscv_stick_starting_index - num_widths_done_by_other_riscvs * input_width;
+    for (uint32_t i = 0; i < num_sticks_for_this_riscv; i++) {
         uint32_t written_in_dst_stick = 0;
         uint32_t stick_index = 0;
 

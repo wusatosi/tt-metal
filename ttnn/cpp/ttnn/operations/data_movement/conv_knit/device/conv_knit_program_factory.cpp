@@ -7,6 +7,7 @@
 #include "tt-metalium/buffer_constants.hpp"
 #include "tt-metalium/circular_buffer_types.hpp"
 #include "tt-metalium/core_coord.hpp"
+#include "tt-metalium/kernel_types.hpp"
 #include "tt-metalium/logger.hpp"
 #include "tt-metalium/tt_backend_api_types.hpp"
 #include "ttnn/operations/data_movement/common/common.hpp"
@@ -22,6 +23,19 @@ using namespace tt::constants;
 using namespace tt::tt_metal;
 
 namespace ttnn::operations::data_movement::detail {
+
+std::vector<uint32_t> split_work(uint32_t num_inputs_per_core_unpadded, uint32_t num_cores = 5) {
+    uint32_t base = num_inputs_per_core_unpadded / num_cores;
+    uint32_t remainder = num_inputs_per_core_unpadded % num_cores;
+
+    std::vector<uint32_t> work_distribution(num_cores, base);
+
+    for (uint32_t i = 0; i < remainder; ++i) {
+        work_distribution[i] += 1;
+    }
+
+    return work_distribution;
+}
 
 operation::ProgramWithCallbacks conv_knit_multi_core(
     const Tensor& input_tensor,
@@ -84,8 +98,13 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
     auto cb_output = tt::tt_metal::CreateCircularBuffer(program, all_cores, out_cb_config);
     log_info(tt::LogOp, "Cb1 total size {}: CB2 total size {}", src_cb_config.total_size(), out_cb_config.total_size());
 
+    std::vector<uint32_t> num_sticks_per_riscv = split_work(num_inputs_per_core_unpadded, 2);  // NC and BR for now
+    log_info(tt::LogOp, "Num sticks per riscv: NC:{} BR:{}", num_sticks_per_riscv[0], num_sticks_per_riscv[1]);
+
     auto src_buffer = input_tensor.buffer();
     auto dst_buffer = output_tensor.buffer();
+
+    uint32_t current_riscv_stick_starting_index = 0;
 
     std::vector<uint32_t> kernel_compile_time_args = {
         (std::uint32_t)src_cb_index,
@@ -94,15 +113,29 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
         num_input_channels,
         input_width,
         num_output_channels,
-        num_inputs_per_core_unpadded};
-    tt::tt_metal::KernelHandle kernel_handle = tt::tt_metal::CreateKernel(
+        num_inputs_per_core_unpadded,
+        num_sticks_per_riscv[0],
+        current_riscv_stick_starting_index};
+    tt::tt_metal::KernelHandle nc_kernel_handle = tt::tt_metal::CreateKernel(
         program,
-        "/localdev/ppopovic/tt-metal/ttnn/cpp/ttnn/operations/data_movement/conv_knit/device/kernels/dataflow/"
+        "ttnn/cpp/ttnn/operations/data_movement/conv_knit/device/kernels/dataflow/"
         "reader_writer_conv_knit_move_sticks_height_sharded.cpp",
         all_cores,
         tt::tt_metal::ReaderDataMovementConfig(kernel_compile_time_args));
 
-    auto override_runtime_arguments_callback = [kernel_handle, cores, cb_src, cb_output](
+    current_riscv_stick_starting_index += num_sticks_per_riscv[0];
+    kernel_compile_time_args[7] = num_sticks_per_riscv[1];
+    kernel_compile_time_args[8] = current_riscv_stick_starting_index;
+    tt::tt_metal::KernelHandle br_kernel_handle = tt::tt_metal::CreateKernel(
+        program,
+        "ttnn/cpp/ttnn/operations/data_movement/conv_knit/device/kernels/dataflow/"
+        "reader_writer_conv_knit_move_sticks_height_sharded.cpp",
+        all_cores,
+        tt::tt_metal::WriterDataMovementConfig(kernel_compile_time_args));
+
+    current_riscv_stick_starting_index += num_sticks_per_riscv[1];
+
+    auto override_runtime_arguments_callback = [cb_src, cb_output](
                                                    const void* operation,
                                                    Program& program,
                                                    const std::vector<Tensor>& input_tensors,
