@@ -44,17 +44,17 @@ void kernel_main() {
     uint32_t num_input_sticks_read = 0;
     // constexpr uint16_t ns_ce = 565;
     for (uint16_t i = 0; i < num_sticks; i++) {
-        uint16_t written_in_dst_stick = 0;
-        uint16_t stick_index = 0;
+        uint32_t written_in_dst_stick = 0;
+        uint32_t stick_index = 0;
 
         // Copy the second half of the sticks to the destination in the row below
         volatile tt_l1_ptr uint16_t* dst_cb_ptr_row_below = dst_cb_ptr + output_width * stick_num_elements;
 
 #pragma GCC unroll 16
         for (uint32_t j = 0; j < half_of_input_channels; j++) {
-            dst_cb_ptr[stick_index * stick_num_elements + written_in_dst_stick] = src_cb_ptr[j];
-            dst_cb_ptr_row_below[stick_index * stick_num_elements + written_in_dst_stick] =
-                src_cb_ptr[j + half_of_input_channels];
+            uint32_t dst_index = stick_index * stick_num_elements + written_in_dst_stick;
+            dst_cb_ptr[dst_index] = src_cb_ptr[j];
+            dst_cb_ptr_row_below[dst_index] = src_cb_ptr[j + half_of_input_channels];
             written_in_dst_stick++;
 
             if constexpr (num_elements_to_write_in_dst_stick_is_power_of_2) {
