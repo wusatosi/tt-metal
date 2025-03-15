@@ -98,14 +98,23 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
     auto cb_output = tt::tt_metal::CreateCircularBuffer(program, all_cores, out_cb_config);
     log_info(tt::LogOp, "Cb1 total size {}: CB2 total size {}", src_cb_config.total_size(), out_cb_config.total_size());
 
-    std::vector<uint32_t> num_sticks_per_riscv = split_work(num_inputs_per_core_unpadded, 2);  // NC and BR for now
-    log_info(tt::LogOp, "Num sticks per riscv: NC:{} BR:{}", num_sticks_per_riscv[0], num_sticks_per_riscv[1]);
+    std::vector<uint32_t> num_sticks_per_riscv_5 = split_work(num_inputs_per_core_unpadded, 5);
+    log_info(
+        tt::LogOp,
+        "Num sticks per riscv: NC:{} BR:{} TR0:{} TR1:{} TR2:{}",
+        num_sticks_per_riscv_5[0],
+        num_sticks_per_riscv_5[1],
+        num_sticks_per_riscv_5[2],
+        num_sticks_per_riscv_5[3],
+        num_sticks_per_riscv_5[4]);
 
     auto src_buffer = input_tensor.buffer();
     auto dst_buffer = output_tensor.buffer();
 
     uint32_t current_riscv_stick_starting_index = 0;
 
+    std::map<std::string, std::string> defines;
+    defines["FIRST_DM_KERNEL"] = "1";
     std::vector<uint32_t> kernel_compile_time_args = {
         (std::uint32_t)src_cb_index,
         (std::uint32_t)out_cb_index,
@@ -114,17 +123,17 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
         input_width,
         num_output_channels,
         num_inputs_per_core_unpadded,
-        num_sticks_per_riscv[0],
+        num_sticks_per_riscv_5[0],
         current_riscv_stick_starting_index};
     tt::tt_metal::KernelHandle nc_kernel_handle = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/data_movement/conv_knit/device/kernels/dataflow/"
         "reader_writer_conv_knit_move_sticks_height_sharded.cpp",
         all_cores,
-        tt::tt_metal::ReaderDataMovementConfig(kernel_compile_time_args));
+        tt::tt_metal::ReaderDataMovementConfig(kernel_compile_time_args, defines));
 
-    current_riscv_stick_starting_index += num_sticks_per_riscv[0];
-    kernel_compile_time_args[7] = num_sticks_per_riscv[1];
+    current_riscv_stick_starting_index += num_sticks_per_riscv_5[0];
+    kernel_compile_time_args[7] = num_sticks_per_riscv_5[1];
     kernel_compile_time_args[8] = current_riscv_stick_starting_index;
     tt::tt_metal::KernelHandle br_kernel_handle = tt::tt_metal::CreateKernel(
         program,
@@ -133,7 +142,30 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
         all_cores,
         tt::tt_metal::WriterDataMovementConfig(kernel_compile_time_args));
 
-    current_riscv_stick_starting_index += num_sticks_per_riscv[1];
+    current_riscv_stick_starting_index += num_sticks_per_riscv_5[1];
+
+    kernel_compile_time_args[7] = num_sticks_per_riscv_5[2];           // unpack
+    kernel_compile_time_args[8] = current_riscv_stick_starting_index;  // unpack
+
+    current_riscv_stick_starting_index += num_sticks_per_riscv_5[2];
+    kernel_compile_time_args.push_back(0);
+    kernel_compile_time_args.push_back(0);
+    kernel_compile_time_args[9] = num_sticks_per_riscv_5[3];            // math
+    kernel_compile_time_args[10] = current_riscv_stick_starting_index;  // math
+
+    current_riscv_stick_starting_index += num_sticks_per_riscv_5[3];
+    kernel_compile_time_args.push_back(0);
+    kernel_compile_time_args.push_back(0);
+    kernel_compile_time_args[11] = num_sticks_per_riscv_5[4];           // pack
+    kernel_compile_time_args[12] = current_riscv_stick_starting_index;  // pack
+    current_riscv_stick_starting_index += num_sticks_per_riscv_5[4];
+
+    tt::tt_metal::KernelHandle compute_kernel_handle = tt::tt_metal::CreateKernel(
+        program,
+        "ttnn/cpp/ttnn/operations/data_movement/conv_knit/device/kernels/dataflow/"
+        "reader_writer_conv_knit_move_sticks_height_sharded.cpp",
+        all_cores,
+        tt::tt_metal::ComputeConfig{.compile_args = kernel_compile_time_args});
 
     auto override_runtime_arguments_callback = [cb_src, cb_output](
                                                    const void* operation,
