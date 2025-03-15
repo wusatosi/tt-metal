@@ -47,38 +47,20 @@ void kernel_main() {
         uint16_t written_in_dst_stick = 0;
         uint16_t stick_index = 0;
 
+        // Copy the second half of the sticks to the destination in the row below
+        volatile tt_l1_ptr uint16_t* dst_cb_ptr_row_below = dst_cb_ptr + output_width * stick_num_elements;
+
 #pragma GCC unroll 16
         for (uint32_t j = 0; j < half_of_input_channels; j++) {
             dst_cb_ptr[stick_index * stick_num_elements + written_in_dst_stick] = src_cb_ptr[j];
+            dst_cb_ptr_row_below[stick_index * stick_num_elements + written_in_dst_stick] =
+                src_cb_ptr[j + half_of_input_channels];
             written_in_dst_stick++;
 
             if constexpr (num_elements_to_write_in_dst_stick_is_power_of_2) {
                 uint16_t temp = written_in_dst_stick;
                 stick_index += (temp >> log2_constexpr(num_elements_to_write_in_dst_stick));
                 written_in_dst_stick = temp & (num_elements_to_write_in_dst_stick - 1);
-            } else {
-                stick_index += written_in_dst_stick / num_elements_to_write_in_dst_stick;
-                written_in_dst_stick %= num_elements_to_write_in_dst_stick;
-            }
-        }
-
-        // Copy the second half of the sticks to the destination in the row below
-        volatile tt_l1_ptr uint16_t* dst_cb_ptr_row_below = dst_cb_ptr + output_width * stick_num_elements;
-
-        written_in_dst_stick = 0;
-        stick_index = 0;
-
-#pragma GCC unroll 16
-        for (uint32_t j = 0; j < half_of_input_channels; j++) {
-            dst_cb_ptr_row_below[stick_index * stick_num_elements + written_in_dst_stick] =
-                src_cb_ptr[j + half_of_input_channels];
-            written_in_dst_stick++;
-
-            if constexpr (num_elements_to_write_in_dst_stick_is_power_of_2) {
-                constexpr uint32_t log2_num_elements_to_write_in_dst_stick =
-                    log2_constexpr(num_elements_to_write_in_dst_stick);
-                stick_index += (written_in_dst_stick >> log2_num_elements_to_write_in_dst_stick);
-                written_in_dst_stick &= (num_elements_to_write_in_dst_stick - 1);
             } else {
                 stick_index += written_in_dst_stick / num_elements_to_write_in_dst_stick;
                 written_in_dst_stick %= num_elements_to_write_in_dst_stick;
