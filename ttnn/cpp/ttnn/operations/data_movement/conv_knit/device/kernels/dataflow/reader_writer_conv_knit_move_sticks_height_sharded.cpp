@@ -3,7 +3,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <cstdint>
+#include <cstring>
+#include <typeindex>
+#include "tt_metal/hw/inc/utils/utils.h"
+
 #include "dprint.h"
+
+inline __attribute__((always_inline)) constexpr uint32_t log2_constexpr(uint32_t n) {
+    uint32_t p = 0;
+    while (n > 1) {
+        n >>= 1;
+        ++p;
+    }
+    return p;
+}
 
 void kernel_main() {
     constexpr uint32_t src_cb_id = get_compile_time_arg_val(0);
@@ -14,7 +27,8 @@ void kernel_main() {
     constexpr uint32_t num_output_channels = get_compile_time_arg_val(5);
 
     // Runtime-args
-    const uint32_t num_sticks = get_arg_val<uint32_t>(0);
+    // make this constexpr uint16_t!
+    const uint16_t num_sticks = get_arg_val<uint32_t>(0);
 
     // temp, fixme
     constexpr uint32_t stick_num_elements = input_unit_size_in_bytes / 2;  // assuming hardcoded bfloat16
@@ -23,50 +37,62 @@ void kernel_main() {
     volatile tt_l1_ptr uint16_t* src_cb_ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(get_write_ptr(src_cb_id));
     volatile tt_l1_ptr uint16_t* dst_cb_ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(get_write_ptr(dst_cb_id));
 
-    constexpr uint32_t num_elements_to_write_in_dst_stick = num_output_channels;
-    constexpr uint32_t half_of_input_channels = num_input_channels / 2;
+    constexpr uint16_t num_elements_to_write_in_dst_stick = num_output_channels;
+    constexpr bool num_elements_to_write_in_dst_stick_is_power_of_2 = is_power_of_2(num_elements_to_write_in_dst_stick);
+    constexpr uint16_t half_of_input_channels = num_input_channels / 2;
 
     uint32_t num_input_sticks_read = 0;
-    uint32_t num_sticks_to_traverse = num_sticks;
-    for (uint32_t i = 0; i < num_sticks_to_traverse; i++) {
-        uint32_t written_in_dst_stick = 0;
-        uint32_t stick_index = 0;
+    // constexpr uint16_t ns_ce = 565;
+    for (uint16_t i = 0; i < num_sticks; i++) {
+        uint16_t written_in_dst_stick = 0;
+        uint16_t stick_index = 0;
+
+#pragma GCC unroll 16
         for (uint32_t j = 0; j < half_of_input_channels; j++) {
             dst_cb_ptr[stick_index * stick_num_elements + written_in_dst_stick] = src_cb_ptr[j];
             written_in_dst_stick++;
-            if (written_in_dst_stick == num_elements_to_write_in_dst_stick) {
-                stick_index++;
-                written_in_dst_stick = 0;
+
+            if constexpr (num_elements_to_write_in_dst_stick_is_power_of_2) {
+                uint16_t temp = written_in_dst_stick;
+                stick_index += (temp >> log2_constexpr(num_elements_to_write_in_dst_stick));
+                written_in_dst_stick = temp & (num_elements_to_write_in_dst_stick - 1);
+            } else {
+                stick_index += written_in_dst_stick / num_elements_to_write_in_dst_stick;
+                written_in_dst_stick %= num_elements_to_write_in_dst_stick;
             }
         }
 
         // Copy the second half of the sticks to the destination in the row below
-        volatile tt_l1_ptr uint16_t* dst_cb_ptr_row_below = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(
-            reinterpret_cast<volatile tt_l1_ptr uint8_t*>(dst_cb_ptr) + output_width * input_unit_size_in_bytes);
+        volatile tt_l1_ptr uint16_t* dst_cb_ptr_row_below = dst_cb_ptr + output_width * stick_num_elements;
 
         written_in_dst_stick = 0;
         stick_index = 0;
+
+#pragma GCC unroll 16
         for (uint32_t j = 0; j < half_of_input_channels; j++) {
             dst_cb_ptr_row_below[stick_index * stick_num_elements + written_in_dst_stick] =
                 src_cb_ptr[j + half_of_input_channels];
             written_in_dst_stick++;
-            if (written_in_dst_stick == num_elements_to_write_in_dst_stick) {
-                stick_index++;
-                written_in_dst_stick = 0;
+
+            if constexpr (num_elements_to_write_in_dst_stick_is_power_of_2) {
+                constexpr uint32_t log2_num_elements_to_write_in_dst_stick =
+                    log2_constexpr(num_elements_to_write_in_dst_stick);
+                stick_index += (written_in_dst_stick >> log2_num_elements_to_write_in_dst_stick);
+                written_in_dst_stick &= (num_elements_to_write_in_dst_stick - 1);
+            } else {
+                stick_index += written_in_dst_stick / num_elements_to_write_in_dst_stick;
+                written_in_dst_stick %= num_elements_to_write_in_dst_stick;
             }
         }
 
-        src_cb_ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(
-            reinterpret_cast<volatile tt_l1_ptr uint8_t*>(src_cb_ptr) + input_unit_size_in_bytes);
-        dst_cb_ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(
-            reinterpret_cast<volatile tt_l1_ptr uint8_t*>(dst_cb_ptr) +
-            (2 * input_unit_size_in_bytes));  // we wrote 2 sticks in stick index, move it by 2
+        src_cb_ptr += stick_num_elements;
+        dst_cb_ptr += 2 * stick_num_elements;  // we wrote 2 sticks in stick index, move it by 2
         num_input_sticks_read++;
-        if (num_input_sticks_read == input_width) {
+
+        if (__builtin_expect(num_input_sticks_read == input_width, 0)) {
             num_input_sticks_read = 0;
             // skip row we have just written to
-            dst_cb_ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(
-                reinterpret_cast<volatile tt_l1_ptr uint8_t*>(dst_cb_ptr) + output_width * input_unit_size_in_bytes);
+            dst_cb_ptr += output_width * stick_num_elements;
         }
     }
 
