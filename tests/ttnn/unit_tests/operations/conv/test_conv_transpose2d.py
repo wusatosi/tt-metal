@@ -941,7 +941,7 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
     tt_knited_tensor_out = ttnn.to_torch(tt_knited_tensor, mesh_composer=None)
 
     print("tt knitted tensor pre doing anything: ", tt_knited_tensor_out.shape)
-    print("first row: ", tt_knited_tensor_out[0, 0, :130, :])
+    #print("first row: ", tt_knited_tensor_out[0, 0, :130, :])
 
     tt_output_tensor = ttnn.to_torch(tt_output_tensor_on_device, mesh_composer=None)
 
@@ -958,10 +958,10 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
             tt_split_knit_out_[0, h*2+1, w*2+1, :] = tt_output_tensor[0, 0, h*out_w + w, output_channels*3:output_channels*3+output_channels]
 
     print("ref_out_shape_after knitting: ", tt_split_knit_out_.shape)
-    print("tt_knit out shape pre permute: ", tt_knited_tensor_out.shape)
-
-    tt_knited_tensor_out = tt_knited_tensor_out.permute(0, 3, 2, 1)
     print("tt_knit out shape pre reshape: ", tt_knited_tensor_out.shape)
+
+    # tt_knited_tensor_out = tt_knited_tensor_out.permute(0, 3, 2, 1)
+    # print("tt_knit out shape pre reshape: ", tt_knited_tensor_out.shape)
 
     tt_knited_tensor_out = tt_knited_tensor_out.reshape(tt_split_knit_out_.shape)
     print("tt_knit out shape post reshape: ", tt_knited_tensor_out.shape)
@@ -969,11 +969,11 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
     row_id = 0
     # print("Shape check: ", tt_knited_tensor_out.shape, tt_split_knit_out_.shape)
     #print("Pre unpadding TT_OUT is:", tt_knited_tensor_out[:, row_id, :, :])
-    print("Pre unpadding REF out is:", tt_split_knit_out_[:, row_id, :, :])
+    #print("Pre unpadding REF out is:", tt_split_knit_out_[:, row_id, :, :])
     pcc = 0.999
     print("Pre unpadding pcc check!")
-    # passing, pcc_msg = check_with_pcc_without_tensor_printout(tt_knited_tensor_out, tt_split_knit_out_, pcc=pcc)
-    # assert passing, pcc_msg
+    passing, pcc_msg = check_with_pcc_without_tensor_printout(tt_knited_tensor_out, tt_split_knit_out_, pcc=pcc)
+    assert passing, pcc_msg
 
     # todo merge this with upper loop
     if (padding[0] != 0 or padding[1] != 0):
@@ -988,6 +988,6 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
     pcc = 0.999
     passing, pcc_msg = check_with_pcc_without_tensor_printout(torch_out_golden_tensor, tt_split_knit_out_, pcc=pcc)
     print("Final pcc check!")
-    #passing, pcc_msg = check_with_pcc_without_tensor_printout(torch_out_golden_tensor, tt_knited_tensor_out, pcc=pcc)
+    passing, pcc_msg = check_with_pcc_without_tensor_printout(torch_out_golden_tensor, tt_knited_tensor_out, pcc=pcc)
     logger.info(f"PCC = {pcc_msg}. Threshold = {pcc}")
     assert passing, pcc_msg
