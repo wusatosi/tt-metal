@@ -200,6 +200,8 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
     const auto& cores = corerange_to_cores(q_cores, num_cores, true);
 
     const auto& q_cores_updated = CoreRangeSet(CoreRange({1, 0}, {7, 0}));
+    tt::tt_metal::NOC reader_noc = tt::tt_metal::NOC::NOC_1;
+    tt::tt_metal::NOC writer_noc = tt::tt_metal::NOC::NOC_0;
 
     // cores for input
     const uint32_t in_num_cores = in_cores.num_cores();  // number of cores of the input
@@ -212,6 +214,12 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
     for (uint32_t i = 0; i < in_num_cores; ++i) {
         noc_x_coords.push_back(device->worker_core_from_logical_core(in_cores_vec[i]).x);
         noc_y_coords.push_back(device->worker_core_from_logical_core(in_cores_vec[i]).y);
+    }
+
+    // create concat semaphore for each link
+    std::vector<uint32_t> concat_semaphore_ids(num_links, 0);
+    for (uint32_t link = 0; link < num_links; link++) {
+        concat_semaphore_ids[link] = tt::tt_metal::CreateSemaphore(program, q_cores, 0);
     }
 
     std::vector<uint32_t> concat_reader_ct_args = {
@@ -232,7 +240,10 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
         "ttnn/cpp/ttnn/operations/experimental/ccl/all_gather_concat_heads_fused/device/kernels/"
         "llama_concat_reader.cpp",
         q_cores_updated,
-        tt::tt_metal::ReaderDataMovementConfig(concat_reader_ct_args));
+        tt::tt_metal::DataMovementConfig{
+            .processor = tt::tt_metal::DataMovementProcessor::RISCV_1,
+            .noc = reader_noc,
+            .compile_args = concat_reader_ct_args});
 
     concat_reader_ct_args[6] = 2;
     auto concat_reader_2_kernel_id = tt::tt_metal::CreateKernel(
@@ -240,12 +251,15 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
         "ttnn/cpp/ttnn/operations/experimental/ccl/all_gather_concat_heads_fused/device/kernels/"
         "llama_concat_reader.cpp",
         q_cores_updated,
-        tt::tt_metal::WriterDataMovementConfig(concat_reader_ct_args));
+        tt::tt_metal::DataMovementConfig{
+            .processor = tt::tt_metal::DataMovementProcessor::RISCV_0,
+            .noc = writer_noc,
+            .compile_args = concat_reader_ct_args});
 
     // KERNEL CREATION
     // Reader
-    auto reader_kernel_config = tt::tt_metal::ReaderDataMovementConfig{};
-    reader_kernel_config.compile_args = {
+
+    std::vector<uint32_t> all_gather_reader_ct_args = {
         ring_index,                 // my_chip_id
         src0_cb_index,              // cb0_id
         op_config.get_page_size(),  // tensor0_page_size
@@ -260,20 +274,19 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
         face_h,
         face_hw,
         tmp_cb_index};
-    log_trace(tt::LogOp, "Reader Compile Args:");
-    for (const auto& arg : reader_kernel_config.compile_args) {
-        log_trace(tt::LogOp, "\t{}", arg);
-    }
+
     auto worker_sender_reader_kernel_id = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/experimental/ccl/all_gather_concat_heads_fused/device/kernels/"
         "llama_all_gather_concat_reader.cpp",
         sender_worker_core_range,
-        reader_kernel_config);
+        tt::tt_metal::DataMovementConfig{
+            .processor = tt::tt_metal::DataMovementProcessor::RISCV_1,
+            .noc = reader_noc,
+            .compile_args = all_gather_reader_ct_args});
 
     // Writer
-    auto writer_kernel_config = tt::tt_metal::WriterDataMovementConfig{};
-    writer_kernel_config.compile_args = {
+    std::vector<uint32_t> all_gather_writer_ct_args = {
         ring_index,                       // my_chip_id
         reserved_packet_header_CB_index,  // reserved_packet_header_cb_id
         num_packet_headers_storable,      // num_packet_headers_storable
@@ -293,16 +306,16 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
         face_h,
         face_hw,
         tmp_cb_index};
-    log_trace(tt::LogOp, "Writer Compile Args:");
-    for (const auto& arg : writer_kernel_config.compile_args) {
-        log_trace(tt::LogOp, "\t{}", arg);
-    }
+
     auto worker_sender_writer_kernel_id = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/experimental/ccl/all_gather_concat_heads_fused/device/kernels/"
         "llama_all_gather_concat_writer.cpp",
         sender_worker_core_range,
-        writer_kernel_config);
+        tt::tt_metal::DataMovementConfig{
+            .processor = tt::tt_metal::DataMovementProcessor::RISCV_0,
+            .noc = writer_noc,
+            .compile_args = all_gather_writer_ct_args});
 
     // Kernel Runtime Args
     CoreCoord drain_sync_core;  // the first worker of each chip is the drain sync core, which contains the output ready
@@ -430,9 +443,22 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
             drain_sync_core.x,                     // out_ready_sem_noc0_x
             drain_sync_core.y,                     // out_ready_sem_noc0_y
             out_ready_sem_wait_value,              // out_ready_sem_wait_value
+            concat_semaphore_ids[link],
         };
+
+        auto start_coord = device->worker_core_from_logical_core({1, 0});
+        auto end_coord = device->worker_core_from_logical_core({7, 0});
+        if (writer_noc == tt::tt_metal::NOC::NOC_1) {
+            std::swap(start_coord, end_coord);
+        }
+        writer_rt_args.push_back(start_coord.x);
+        writer_rt_args.push_back(start_coord.y);
+        writer_rt_args.push_back(end_coord.x);
+        writer_rt_args.push_back(end_coord.y);
+
         writer_rt_args.insert(writer_rt_args.end(), output_tensor_cores_x.begin(), output_tensor_cores_x.end());
         writer_rt_args.insert(writer_rt_args.end(), output_tensor_cores_y.begin(), output_tensor_cores_y.end());
+
         log_trace(tt::LogOp, "Writer Runtime Args:");
         for (const auto& arg : writer_rt_args) {
             log_trace(tt::LogOp, "\t{}", arg);
@@ -453,7 +479,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
 
         tt::tt_metal::SetRuntimeArgs(program, worker_sender_writer_kernel_id, {core}, writer_rt_args);
     }
-
+    // TO DO MOVE INSIDE LINK LOOP
     /* rt for concat kernels*/
     uint32_t q_start_addr = temp_tensor.buffer()->address();
     for (uint32_t i = 0; i < num_cores; ++i) {
@@ -464,11 +490,8 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
         const auto& core = cores[i];
         if (core.x != 0 || core.y != 0) {
             std::vector<uint32_t> reader_runtime_args;
-            reader_runtime_args.reserve(2 + 2 * in_num_cores);
-            reader_runtime_args = {
-                in_tile_offset_by_batch,
-                q_start_addr,
-            };
+            reader_runtime_args.reserve(3 + 2 * in_num_cores);
+            reader_runtime_args = {in_tile_offset_by_batch, q_start_addr, concat_semaphore_ids[0]};
             reader_runtime_args.insert(reader_runtime_args.end(), noc_x_coords.begin(), noc_x_coords.end());
             reader_runtime_args.insert(reader_runtime_args.end(), noc_y_coords.begin(), noc_y_coords.end());
             reader_runtime_args.push_back(semaphore.address());
@@ -541,12 +564,12 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
                     auto& concat_reader_runtime_args = GetRuntimeArgs(program, concat_reader_kernel_id, core);
                     concat_reader_runtime_args[0] = in_tile_offset_by_batch;
                     concat_reader_runtime_args[1] = q_start_addr;
-                    concat_reader_runtime_args[66] = semaphore.address();
+                    concat_reader_runtime_args[67] = semaphore.address();
 
                     auto& concat_reader_2_runtime_args = GetRuntimeArgs(program, concat_reader_2_kernel_id, core);
                     concat_reader_2_runtime_args[0] = in_tile_offset_by_batch;
                     concat_reader_2_runtime_args[1] = q_start_addr;
-                    concat_reader_2_runtime_args[66] = semaphore.address();
+                    concat_reader_2_runtime_args[67] = semaphore.address();
                 }
             }
         };

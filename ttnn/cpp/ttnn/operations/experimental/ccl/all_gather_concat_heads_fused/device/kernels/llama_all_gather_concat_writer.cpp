@@ -47,12 +47,33 @@ void kernel_main() {
     const uint8_t out_ready_sem_noc0_x = get_arg_val<uint32_t>(arg_idx++);
     const uint8_t out_ready_sem_noc0_y = get_arg_val<uint32_t>(arg_idx++);
     uint32_t out_ready_sem_wait_value = get_arg_val<uint32_t>(arg_idx++);
+
+    const uint32_t concat_semaphore_send_addr = get_semaphore(get_arg_val<uint32_t>(arg_idx++));
+
+    uint32_t mcast_dest_noc_start_x = get_arg_val<uint32_t>(arg_idx++);
+    uint32_t mcast_dest_noc_start_y = get_arg_val<uint32_t>(arg_idx++);
+    uint32_t mcast_dest_noc_end_x = get_arg_val<uint32_t>(arg_idx++);
+    uint32_t mcast_dest_noc_end_y = get_arg_val<uint32_t>(arg_idx++);
+
+    DPRINT << "mcast_dest_noc_start_x: " << (uint32_t)mcast_dest_noc_start_x << ENDL();
+    DPRINT << "mcast_dest_noc_start_y: " << (uint32_t)mcast_dest_noc_start_y << ENDL();
+    DPRINT << "mcast_dest_noc_end_x: " << (uint32_t)mcast_dest_noc_end_x << ENDL();
+    DPRINT << "mcast_dest_noc_end_y: " << (uint32_t)mcast_dest_noc_end_y << ENDL();
+
+    DPRINT << "concat_semaphore_send_addr: " << (uint32_t)concat_semaphore_send_addr << ENDL();
+
     tt_l1_ptr uint32_t* core_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
     arg_idx += num_cores;
     tt_l1_ptr uint32_t* core_noc_y = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
     arg_idx += num_cores;
+
     size_t arg_for_fab = arg_idx;
     auto fabric_connection = FabricConnectionManager::build_from_args(arg_idx);
+
+    // Set up for mcasting to concat workers
+    volatile tt_l1_ptr uint32_t* concat_semaphore_send_addr_ptr =
+        reinterpret_cast<volatile tt_l1_ptr uint32_t*>(concat_semaphore_send_addr);
+    noc_semaphore_set(concat_semaphore_send_addr_ptr, VALID);
 
     DPRINT << "ct args: \n";
     DPRINT << "my_chip_id: " << (uint32_t)my_chip_id << "\n";
@@ -146,8 +167,7 @@ void kernel_main() {
         cb_wait_front(cb0_id, num_tiles_to_read_this_core);
         size_t l1_read_addr = get_read_ptr(cb0_id);
 
-        uint64_t noc0_dest_noc_addr =
-            get_noc_addr(core_noc_x[core_id], core_noc_y[core_id], tensor_address0, 0 /*noc_id*/);
+        uint64_t noc0_dest_noc_addr = get_noc_addr(core_noc_x[core_id], core_noc_y[core_id], tensor_address0, 0);
         noc0_dest_noc_addr += shard_tile_id * tensor0_page_size;
 
         write_and_advance_local_read_address_for_fabric_write(
@@ -204,9 +224,29 @@ void kernel_main() {
         DPRINT << "waitval done\n";
     }
 
+    DPRINT << " before get noc multicast addr\n";
+    const uint64_t concat_sem_rcv_addr = get_noc_multicast_addr(
+        mcast_dest_noc_start_x,
+        mcast_dest_noc_start_y,
+        mcast_dest_noc_end_x,
+        mcast_dest_noc_end_y,
+        concat_semaphore_send_addr);
+    DPRINT << "concat_sem_rcv_addr: " << (uint32_t)concat_sem_rcv_addr << ENDL();
+    DPRINT << "before noc semaphore set multicast\n";
+    noc_semaphore_set_multicast(
+        concat_semaphore_send_addr,
+        concat_sem_rcv_addr,
+        7,
+        false,  // linked = false
+        true);  // multicast_path_reserve = true
+    DPRINT << "after noc semaphore set multicast\n";
+
     if (fabric_connection.is_logically_connected()) {
+        DPRINT << "FABRIC IS LOGICALLY CONNECTED\n";
         fabric_connection.close();
+        DPRINT << "after closing fabric connection\n";
     }
+    DPRINT << "FABRIC IS NOT LOGICALLY CONNECTED\n";
 
     DPRINT << "DONE ALL GATHER\n";
     DPRINT << "START CONCAT HEADS\n";
@@ -234,13 +274,11 @@ void kernel_main() {
             // Read first phase
             if constexpr (PHASES_TO_READ == 0 || PHASES_TO_READ == 1) {
                 noc_async_read(qkv_read_addr, q_write_addr, SUBTILE_LINE_BYTES);
-                noc_async_read_barrier();
             }
             // Read second phase
             if constexpr (PHASES_TO_READ == 0 || PHASES_TO_READ == 2) {
                 noc_async_read(
                     qkv_read_addr + face_hw * ELEMENT_SIZE, q_write_addr + face_hw * ELEMENT_SIZE, SUBTILE_LINE_BYTES);
-                noc_async_read_barrier();
             }
 
             qkv_read_addr += tile_size;
@@ -256,6 +294,7 @@ void kernel_main() {
             }
         }
     }
+
     if (reset_global_semaphore) {
         const uint64_t dest_noc_addr = get_noc_addr(my_x[0], my_y[0], out_ready_sem_bank_addr);
         noc_inline_dw_write(dest_noc_addr, 0);
@@ -264,5 +303,6 @@ void kernel_main() {
 
     noc_async_read_barrier();
     noc_async_write_barrier();
+
     DPRINT << "DONE\n";
 }

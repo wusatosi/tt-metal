@@ -23,6 +23,12 @@ void kernel_main() {
 
     uint32_t in_tile_offset_by_head = get_arg_val<uint32_t>(0);
     uint32_t q_start_addr = get_arg_val<uint32_t>(1);
+    const uint32_t signal_semaphore_addr = get_semaphore(get_arg_val<uint32_t>(2));
+
+    DPRINT << "signal semaphore addr: " << (uint32_t)signal_semaphore_addr << ENDL();
+
+    volatile tt_l1_ptr uint32_t* signal_semaphore_addr_ptr =
+        reinterpret_cast<volatile tt_l1_ptr uint32_t*>(signal_semaphore_addr);
 
     constexpr uint32_t ELEMENT_SIZE = get_compile_time_arg_val(0);
     constexpr uint32_t SUBTILE_LINE_BYTES = get_compile_time_arg_val(1);
@@ -39,7 +45,7 @@ void kernel_main() {
 
     constexpr uint32_t temp_cb_id = get_compile_time_arg_val(10);
 
-    uint32_t sem_arg_start = 2 + 2 * in_num_cores;
+    uint32_t sem_arg_start = 3 + 2 * in_num_cores;
     uint32_t out_ready_sem_bank_addr = get_arg_val<uint32_t>(sem_arg_start);
     uint32_t out_ready_sem_wait_value = get_arg_val<uint32_t>(sem_arg_start + 1);
     uint32_t out_ready_sem_noc0_x = get_arg_val<uint32_t>(sem_arg_start + 2);
@@ -54,20 +60,12 @@ void kernel_main() {
     uint64_t out_ready_sem_noc_addr =
         safe_get_noc_addr(out_ready_sem_noc0_x, out_ready_sem_noc0_y, out_ready_sem_bank_addr);
 
-    cb_reserve_back(temp_cb_id, 1);
-    auto temp_writer_addr = get_write_ptr(temp_cb_id);
-    noc_async_read(out_ready_sem_noc_addr, temp_writer_addr, 2);
+    // 1. Wait for signal from All-Gather worker
+    noc_semaphore_wait(signal_semaphore_addr_ptr, VALID);
+    noc_semaphore_set(signal_semaphore_addr_ptr, 0);
 
-    volatile tt_l1_ptr uint16_t* tmp_ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(temp_writer_addr);
-    while (tmp_ptr[0] != out_ready_sem_wait_value) {
-        noc_async_read(out_ready_sem_noc_addr, temp_writer_addr, 2);
-        tmp_ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(temp_writer_addr);
-    }
-    noc_async_read_barrier();
-    cb_push_back(temp_cb_id, 1);
-
-    tt_l1_ptr uint32_t* in0_mcast_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(2));
-    tt_l1_ptr uint32_t* in0_mcast_noc_y = (tt_l1_ptr uint32_t*)(get_arg_addr(2 + in_num_cores));
+    tt_l1_ptr uint32_t* in0_mcast_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(3));
+    tt_l1_ptr uint32_t* in0_mcast_noc_y = (tt_l1_ptr uint32_t*)(get_arg_addr(3 + in_num_cores));
 
     // Q
     uint32_t cur_core_idx = 0;
@@ -109,5 +107,6 @@ void kernel_main() {
     }
 
     noc_async_read_barrier();
+
     DPRINT << "DONE\n";
 }

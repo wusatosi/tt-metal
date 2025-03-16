@@ -119,17 +119,9 @@ void kernel_main() {
     uint64_t out_ready_sem_noc_addr_concat =
         safe_get_noc_addr(out_ready_sem_noc0_x_concat, out_ready_sem_noc0_y_concat, out_ready_sem_bank_addr_concat);
 
-    cb_reserve_back(temp_cb_id, 1);
-    auto temp_writer_addr = get_write_ptr(temp_cb_id);
-    noc_async_read(out_ready_sem_noc_addr_concat, temp_writer_addr, 2);
-
-    volatile tt_l1_ptr uint16_t* tmp_ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(temp_writer_addr);
-    while (tmp_ptr[0] != out_ready_sem_wait_value_concat) {
-        noc_async_read(out_ready_sem_noc_addr_concat, temp_writer_addr, 2);
-        tmp_ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(temp_writer_addr);
+    while (*reinterpret_cast<volatile uint32_t*>(out_ready_sem_bank_addr_concat) != out_ready_sem_wait_value_concat) {
+        DPRINT << "waitval done\n";
     }
-    noc_async_read_barrier();
-    cb_push_back(temp_cb_id, 1);
 
     tt_l1_ptr uint32_t* in0_mcast_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(2 + concat_arg_start));
     tt_l1_ptr uint32_t* in0_mcast_noc_y = (tt_l1_ptr uint32_t*)(get_arg_addr(2 + in_num_cores + concat_arg_start));
@@ -154,13 +146,13 @@ void kernel_main() {
             // Read first phase
             if constexpr (PHASES_TO_READ == 0 || PHASES_TO_READ == 1) {
                 noc_async_read(qkv_read_addr, q_write_addr, SUBTILE_LINE_BYTES);
-                noc_async_read_barrier();
+                // noc_async_read_barrier();
             }
             // Read second phase
             if constexpr (PHASES_TO_READ == 0 || PHASES_TO_READ == 2) {
                 noc_async_read(
                     qkv_read_addr + face_hw * ELEMENT_SIZE, q_write_addr + face_hw * ELEMENT_SIZE, SUBTILE_LINE_BYTES);
-                noc_async_read_barrier();
+                // noc_async_read_barrier();
             }
 
             qkv_read_addr += tile_size;
@@ -178,5 +170,6 @@ void kernel_main() {
     }
 
     noc_async_read_barrier();
+
     DPRINT << "DONE\n";
 }
