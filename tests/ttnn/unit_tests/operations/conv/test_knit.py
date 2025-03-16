@@ -215,7 +215,7 @@ def test_conv_knit_and_crop(device, input_shape_nhwc, num_output_channels_after_
 
     ref_crop_tensor_out = ref_knit_tensor_out
 
-    print(f"Ref pre crop tensor shape: {ref_crop_tensor_out.shape}")
+    # print(f"Ref pre crop tensor shape: {ref_crop_tensor_out.shape}")
     ref_crop_tensor_out = ref_crop_tensor_out[:, crop_h:-1, crop_w:-1, :]
     print(f"Ref post crop tensor shape: {ref_crop_tensor_out.shape}")
 
@@ -295,16 +295,21 @@ def test_conv_knit_and_crop(device, input_shape_nhwc, num_output_channels_after_
     )
     ttnn.synchronize_device(device)
 
+    tt_out_cropped_tensor = ttnn.to_torch(tt_cropped_tensor, mesh_composer=None)
+    tt_out_cropped_tensor = tt_out_cropped_tensor.reshape(ref_crop_tensor_out.shape)
+    print("tt_out_cropped_tensor shape: ", tt_out_cropped_tensor.shape)
+    print(f"Ref post crop tensor shape: {ref_crop_tensor_out.shape}")
+
     # tt_knited_tensor_out = ttnn.to_torch(tt_knited_tensor, mesh_composer=None)
     # tt_knited_tensor_out = tt_knited_tensor_out.reshape(ref_knit_tensor_out.shape)
     # print("Out shape is: ", tt_knited_tensor_out.shape)
 
-    # row_id = 0
-    # print("TT output  is:", tt_knited_tensor_out[:, row_id, :, :])
-    # print("Ref is:", ref_knit_tensor_out[:, row_id, :, :])
+    # row_id = 1
+    # print("TT output  is:", tt_out_cropped_tensor[:, row_id, :, :])
+    # print("Ref is:", ref_crop_tensor_out[:, row_id, :, :])
 
     pcc = 0.999
-    # passing, pcc_msg = check_with_pcc_without_tensor_printout(tt_knited_tensor_out, ref_knit_tensor_out, pcc=pcc)
+    passing, pcc_msg = check_with_pcc_without_tensor_printout(tt_out_cropped_tensor, ref_crop_tensor_out, pcc=pcc)
 
-    # logger.info(f"PCC = {pcc_msg}. Threshold = {pcc}")
-    # assert passing
+    logger.info(f"PCC = {pcc_msg}. Threshold = {pcc}")
+    assert passing
