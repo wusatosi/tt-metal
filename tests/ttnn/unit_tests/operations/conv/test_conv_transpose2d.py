@@ -938,7 +938,7 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
     # this fcks up some memory
     tt_knited_tensor = ttnn.conv_knit(resharded_conv_output, kernel_size[0], output_channels, out_w, conv2d_out_channels)
     resharded_conv_output.deallocate()
-    tt_knited_tensor_out = ttnn.to_torch(tt_knited_tensor, mesh_composer=None)
+    #tt_knited_tensor_out = ttnn.to_torch(tt_knited_tensor, mesh_composer=None)
 
     #print("tt knitted tensor pre doing anything: ", tt_knited_tensor_out.shape)
     #print("first row: ", tt_knited_tensor_out[0, 0, :130, :])
@@ -965,13 +965,11 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
     tt_split_knit_out_[:, 1::2, ::2, :]  = reshaped[:, :, :, :, 2, :]  # Bottom-left
     tt_split_knit_out_[:, 1::2, 1::2, :] = reshaped[:, :, :, :, 3, :]  # Bottom-right
 
-    #print("ref_out_shape_after knitting: ", tt_split_knit_out_.shape)
     #print("tt_knit out shape pre reshape: ", tt_knited_tensor_out.shape)
 
     # tt_knited_tensor_out = tt_knited_tensor_out.permute(0, 3, 2, 1)
     # print("tt_knit out shape pre reshape: ", tt_knited_tensor_out.shape)
 
-    tt_knited_tensor_out = tt_knited_tensor_out.reshape(tt_split_knit_out_.shape)
     #print("tt_knit out shape post reshape: ", tt_knited_tensor_out.shape)
 
     row_id = 0
@@ -980,16 +978,46 @@ def test_conv_transpose2d_split_knit(device, input_shape_nhwc, output_channels, 
     #print("Pre unpadding REF out is:", tt_split_knit_out_[:, row_id, :, :])
     pcc = 0.999
     #print("Pre unpadding pcc check!")
-    passing, pcc_msg = check_with_pcc_without_tensor_printout(tt_knited_tensor_out, tt_split_knit_out_, pcc=pcc)
-    assert passing, pcc_msg
+    #passing, pcc_msg = check_with_pcc_without_tensor_printout(tt_knited_tensor_out, tt_split_knit_out_, pcc=pcc)
+    #assert passing, pcc_msg
 
     # todo merge this with upper loop
     print(f"Padding is: 0={padding[0]} 1={padding[1]}")
     print(f"Pre unpadding shape: {tt_split_knit_out_.shape}")
     if (padding[0] != 0 or padding[1] != 0):
         tt_split_knit_out_ = tt_split_knit_out_[:,padding[0]:-1, padding[1]:-1,:]
-        tt_knited_tensor_out = tt_knited_tensor_out[:,padding[0]:-1, padding[1]:-1,:]
+        #tt_knited_tensor_out = tt_knited_tensor_out[:,padding[0]:-1, padding[1]:-1,:]
     print(f"Post unpadding shape: {tt_split_knit_out_.shape}")
+
+    h_after_knit = out_h * 2
+    w_after_knit = out_w * 2
+    out_core_range_set = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 7))})
+    print("Setting up core range for num_cores: ", out_core_range_set.num_cores())
+    print(
+        f"Setting up ttnn:conv_crop pre_crop_tensor_h: {h_after_knit}, pre_crop_tensor_w: {w_after_knit}, post_crop_tensor_h: {tt_split_knit_out_.shape[1]}, post_crop_tensor_w: {tt_split_knit_out_.shape[2]}"
+    )
+    out_shard_shape = (
+        tt_split_knit_out_.shape[1] * tt_split_knit_out_.shape[2] // out_core_range_set.num_cores(),
+        tt_knited_tensor.padded_shape[3],
+    )
+
+    post_crop_mem_config = ttnn.MemoryConfig(
+        ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+        ttnn.BufferType.L1,
+        ttnn.ShardSpec(
+            out_core_range_set,
+            out_shard_shape,
+            ttnn.ShardOrientation.ROW_MAJOR,
+        ),
+    )
+
+    print(f"Setting up shard shape: {out_shard_shape}")
+    tt_knited_tensor = ttnn.conv_crop(
+        tt_knited_tensor, post_crop_mem_config, padding[0], padding[1], h_after_knit, w_after_knit
+    )
+    tt_knited_tensor_out = ttnn.to_torch(tt_knited_tensor, mesh_composer=None)
+    tt_knited_tensor_out = tt_knited_tensor_out.reshape(tt_split_knit_out_.shape)
+
 
     ## end of HOST FALLBACK
 

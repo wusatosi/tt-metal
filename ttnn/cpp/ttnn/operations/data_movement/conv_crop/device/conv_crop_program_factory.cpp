@@ -113,12 +113,12 @@ operation::ProgramWithCallbacks conv_crop_multi_core_same_width(
         auto core = local_cores[i];
         uint32_t local_units_per_core = std::min(local_units_left, local_units_per_shard);
         local_units_left -= local_units_per_core;
-        log_info(
-            tt::LogOp,
-            "Local units remainig for local core {} are: {} local units left are: {}",
-            i,
-            local_units_per_core,
-            local_units_left);
+        // log_info(
+        //     tt::LogOp,
+        //     "Local units remainig for local core {} are: {} local units left are: {}",
+        //     i,
+        //     local_units_per_core,
+        //     local_units_left);
         uint32_t local_units_per_kernel = tt::div_up(local_units_per_core, kernels.size());
         uint32_t local_start_offset = 0;
         for (const auto& kernel_id : kernels) {
@@ -140,11 +140,11 @@ operation::ProgramWithCallbacks conv_crop_multi_core_same_width(
                             pre_crop_w,
                             crop_w,
                             crop_h);
-                        log_info(
-                            tt::LogOp,
-                            "Remaining units post crop for remote core {} are: {}",
-                            remote_core_idx,
-                            remote_core_units_rem);
+                        // log_info(
+                        //     tt::LogOp,
+                        //     "Remaining units post crop for remote core {} are: {}",
+                        //     remote_core_idx,
+                        //     remote_core_units_rem);
                         bank_id = device->allocator()->get_bank_ids_from_logical_core(
                             remote_buffer_type, remote_cores[remote_core_idx])[0];
                         bank_offset = device->allocator()->get_bank_offset(remote_buffer_type, bank_id);
@@ -166,15 +166,15 @@ operation::ProgramWithCallbacks conv_crop_multi_core_same_width(
                          offset_in_remote_core * unit_size,
                          units_to_transfer_per_row * unit_size,
                          transfered_rows});
-                    log_info(
-                        tt::LogOp,
-                        "Offset in remote core bare: {} multiplied with unit size: {}",
-                        offset_in_remote_core,
-                        offset_in_remote_core * unit_size);
+                    // log_info(
+                    //     tt::LogOp,
+                    //     "Offset in remote core bare: {} multiplied with unit size: {}",
+                    //     offset_in_remote_core,
+                    //     offset_in_remote_core * unit_size);
                     // We want to transfer units_to_transfer post-croped units, convert that to pre-croped units to
                     // calculate offset. Number of rows is the same
                     offset_in_remote_core += transfered_rows * pre_crop_w;
-                    log_info(tt::LogOp, "Units to transfer: {}", units_to_transfer);
+                    // log_info(tt::LogOp, "Units to transfer: {}", units_to_transfer);
 
                     local_units_per_core -= units_to_transfer;
                     local_units_to_transfer -= units_to_transfer;
@@ -183,7 +183,7 @@ operation::ProgramWithCallbacks conv_crop_multi_core_same_width(
                 }
                 kernel_args[2] = num_transfers;
             }
-            log_info(tt::LogOp, "Kernel args for core: {} kernel are: {}", core, kernel_args);
+            // log_info(tt::LogOp, "Kernel args for core: {} kernel are: {}", core, kernel_args);
             SetRuntimeArgs(program, kernel_id, core, kernel_args);
         }
     }

@@ -51,6 +51,9 @@ void ConvCropDeviceOperation::validate(const std::vector<Tensor>& input_tensors)
     bool same_column_dim =
         input_tensor.memory_config().shard_spec.value().shape[1] == this->output_mem_config.shard_spec.value().shape[1];
     TT_FATAL(same_column_dim, "input and output tensors must have same shard_spec[1] dimension");
+    bool full_rows_in_input_shard_shape =
+        input_tensor.memory_config().shard_spec.value().shape[0] % pre_crop_width == 0;
+    TT_FATAL(full_rows_in_input_shard_shape, "input tensor shard_spec[0] must be multiple of pre_crop_width");
 }
 
 std::vector<ttnn::TensorSpec> ConvCropDeviceOperation::compute_output_specs(
