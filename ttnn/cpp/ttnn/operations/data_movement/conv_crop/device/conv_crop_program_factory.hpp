@@ -8,12 +8,6 @@
 
 namespace ttnn::operations::data_movement::detail {
 
-// start is inclusive, end is exclusive
-struct PageRange {
-    uint32_t start;
-    uint32_t end;
-};
-
 struct Stride {
     CoreCoord core;
     uint32_t data;
@@ -28,16 +22,7 @@ struct PageStride {
     bool skip;
 };
 
-struct CorePageRange {
-    CoreCoord core;
-    PageRange range;
-};
-
-struct CorePageStride {
-    CoreCoord core;
-    PageStride page_stride;
-};
-
-tt::tt_metal::operation::ProgramWithCallbacks conv_crop_multi_core(const Tensor& input, Tensor& output);
+tt::tt_metal::operation::ProgramWithCallbacks conv_crop_multi_core(
+    const Tensor& input, Tensor& output, int crop_height, int crop_width, int pre_crop_height, int pre_crop_width);
 
 }  // namespace ttnn::operations::data_movement::detail

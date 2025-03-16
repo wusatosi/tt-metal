@@ -25,13 +25,26 @@ void bind_conv_crop(pybind11::module& module, const data_movement_sharded_operat
             [](const data_movement_sharded_operation_t& self,
                const ttnn::Tensor& input_tensor,
                const MemoryConfig& output_memory_config,
-               const std::optional<Tensor>& output_tensor,
+               const int crop_height,
+               const int crop_width,
+               const int pre_crop_height,
+               const int pre_crop_width,
                QueueId queue_id) -> ttnn::Tensor {
-                return self(queue_id, input_tensor, output_memory_config, output_tensor);
+                return self(
+                    queue_id,
+                    input_tensor,
+                    output_memory_config,
+                    crop_height,
+                    crop_width,
+                    pre_crop_height,
+                    pre_crop_width);
             },
             py::arg("input_tensor").noconvert(),
             py::arg("output_memory_config"),
-            py::arg("output_tensor").noconvert() = std::nullopt,
+            py::arg("crop_height"),
+            py::arg("crop_width"),
+            py::arg("pre_crop_height"),
+            py::arg("pre_crop_width"),
             py::kw_only(),
             py::arg("queue_id") = DefaultQueueId,
 

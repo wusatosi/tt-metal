@@ -14,12 +14,20 @@ ttnn::Tensor ConvCropOperation::invoke(
     QueueId queue_id,
     const ttnn::Tensor& input_tensor,
     const MemoryConfig& memory_config,
-    const std::optional<Tensor>& optional_output_tensor) {
+    const int crop_height,
+    const int crop_width,
+    const int pre_crop_height,
+    const int pre_crop_width) {
     return operation::run(
-               ConvCropDeviceOperation{.output_mem_config = memory_config},
+               ConvCropDeviceOperation{
+                   .output_mem_config = memory_config,
+                   .crop_height = crop_height,
+                   .crop_width = crop_width,
+                   .pre_crop_height = pre_crop_height,
+                   .pre_crop_width = pre_crop_width},
                {input_tensor},
                {},
-               {optional_output_tensor})
+               {})
         .at(0);
 }
 

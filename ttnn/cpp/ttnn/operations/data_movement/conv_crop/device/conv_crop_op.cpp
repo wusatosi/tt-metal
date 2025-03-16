@@ -7,6 +7,8 @@
 #include <magic_enum/magic_enum.hpp>
 
 #include "conv_crop_program_factory.hpp"
+#include "tt-metalium/assert.hpp"
+#include "tt-metalium/buffer_constants.hpp"
 #include <tt-metalium/constants.hpp>
 #include <tt-metalium/work_split.hpp>
 
@@ -15,68 +17,59 @@ using namespace tt::tt_metal;
 
 namespace ttnn::operations::data_movement {
 
-void ConvCropDeviceOperation::validate_with_output_tensors(
-    const std::vector<Tensor>& input_tensors, const std::vector<std::optional<Tensor>>& output_tensors) const {
+void ConvCropDeviceOperation::validate(const std::vector<Tensor>& input_tensors) const {
     const auto& input_tensor = input_tensors.at(0);
     TT_FATAL(input_tensor.storage_type() == StorageType::DEVICE, "Operands to shard need to be on device!");
     TT_FATAL(input_tensor.buffer() != nullptr, "Operands to shard need to be allocated in buffers on device!");
-    TT_FATAL(input_tensor.is_sharded(), "input must be sharded");
+    // Rm assert for both, l1 assert for both
+    TT_FATAL(input_tensor.memory_config().buffer_type == BufferType::L1, "input tensor must be in L1 buffer");
+    TT_FATAL(this->output_mem_config.buffer_type == BufferType::L1, "output tensor must be in L1 buffer");
+    TT_FATAL(input_tensor.get_layout() == Layout::ROW_MAJOR, "input tensor must be in row major layout");
+    TT_FATAL(
+        input_tensor.logical_shape()[0] == 1 && input_tensor.logical_shape()[1] == 1,
+        "input tensor must be in [1, 1, N * H * W, C] format");
+    TT_FATAL(
+        input_tensor.memory_config().memory_layout == TensorMemoryLayout::HEIGHT_SHARDED,
+        "input tensor must be height sharded");
+    TT_FATAL(
+        this->output_mem_config.memory_layout == TensorMemoryLayout::HEIGHT_SHARDED,
+        "output tensor must be height sharded");
+    TT_FATAL(input_tensor.get_dtype() == DataType::BFLOAT16, "input tensor must be BFLOAT16");
 
-    bool has_output_tensor = output_tensors.size() == 1 && output_tensors[0].has_value();
-    if (has_output_tensor) {
-        const auto& output_tensor = output_tensors[0].value();
-        TT_FATAL(input_tensor.get_logical_shape() == output_tensor.get_logical_shape(), "Error");
-        TT_FATAL(input_tensor.get_dtype() == output_tensor.get_dtype(), "Error");
-        TT_FATAL(input_tensor.get_layout() == output_tensor.get_layout(), "Error");
-    }
-    const auto& out_mem_config =
-        has_output_tensor ? output_tensors[0].value().memory_config() : this->output_mem_config;
-    TT_FATAL(out_mem_config.is_sharded(), "output must be sharded");
+    int post_crop_height = this->pre_crop_height - this->crop_height * 2;  // removes first & last rows
+    int post_crop_width = this->pre_crop_width - this->crop_width * 2;     // removes first & last columns
 
-    if ((input_tensor.memory_config().memory_layout == TensorMemoryLayout::HEIGHT_SHARDED &&
-         out_mem_config.memory_layout == TensorMemoryLayout::HEIGHT_SHARDED)) {
-        TT_FATAL(
-            (input_tensor.memory_config().buffer_type == BufferType::L1 ||
-             out_mem_config.buffer_type == BufferType::L1),
-            "Resharding height shard to height shard must have at least one buffer in L1");
-    } else if ((input_tensor.memory_config().memory_layout == TensorMemoryLayout::WIDTH_SHARDED &&
-                out_mem_config.memory_layout == TensorMemoryLayout::WIDTH_SHARDED)) {
-        TT_FATAL(
-            (input_tensor.memory_config().buffer_type == BufferType::L1 ||
-             out_mem_config.buffer_type == BufferType::L1),
-            "Resharding width shard to width shard must have at least one buffer in L1");
-    } else {
-        TT_FATAL(out_mem_config.buffer_type == BufferType::L1, "Resharding requires output buffer to be in L1");
-    }
+    int total_hw_output_tensor = post_crop_height * post_crop_width;
+    TT_FATAL(
+        total_hw_output_tensor == this->output_mem_config.shard_spec.value().shape[0] *
+                                      this->output_mem_config.shard_spec.value().num_cores(),
+        "output tensor shape must match crop size");
 
-    if (input_tensor.get_layout() == Layout::ROW_MAJOR) {
-        if (input_tensor.memory_config().memory_layout == TensorMemoryLayout::WIDTH_SHARDED) {
-            bool same_row_size =
-                input_tensor.memory_config().shard_spec.value().shape[0] == out_mem_config.shard_spec.value().shape[0];
-            TT_FATAL(same_row_size, "row major must have shard_spec[0] be the same on both input and output");
-        } else {
-            bool same_height_size =
-                input_tensor.memory_config().shard_spec.value().shape[1] == out_mem_config.shard_spec.value().shape[1];
-            TT_FATAL(same_height_size, "row major must have shard_spec[1] be the same on both input and output");
-        }
-    }
+    int total_hw_pre_crop = this->pre_crop_height * this->pre_crop_width;
+    TT_FATAL(total_hw_pre_crop == input_tensor.get_logical_shape()[2], "input tensor shape must match pre crop size");
+
+    bool same_column_dim =
+        input_tensor.memory_config().shard_spec.value().shape[1] == this->output_mem_config.shard_spec.value().shape[1];
+    TT_FATAL(same_column_dim, "input and output tensors must have same shard_spec[1] dimension");
 }
 
 std::vector<ttnn::TensorSpec> ConvCropDeviceOperation::compute_output_specs(
-    const std::vector<Tensor>& input_tensors, const std::vector<std::optional<Tensor>>& output_tensors) const {
-    if (output_tensors.size() == 1 && output_tensors[0].has_value()) {
-        return {output_tensors[0]->get_tensor_spec()};
-    }
-
+    const std::vector<Tensor>& input_tensors) const {
     const auto& input_tensor = input_tensors.at(0);
+    int total_output_hw =
+        (this->pre_crop_height - this->crop_height * 2) * (this->pre_crop_width - this->crop_width * 2);
+
+    const Shape output_logical_shape = ttnn::Shape({1, 1, total_output_hw, input_tensor.get_logical_shape()[3]});
+    const Shape output_padded_shape = ttnn::Shape({1, 1, total_output_hw, input_tensor.get_padded_shape()[3]});
+
     return {TensorSpec(
-        input_tensor.get_logical_shape(),
+        output_logical_shape,
         TensorLayout::fromPaddedShape(
             input_tensor.get_dtype(),
             input_tensor.get_layout(),
             output_mem_config,
-            input_tensor.get_logical_shape(),
-            input_tensor.get_padded_shape()))};
+            output_logical_shape,
+            output_padded_shape))};
 }
 
 operation::ProgramWithCallbacks ConvCropDeviceOperation::create_program(
@@ -84,16 +77,7 @@ operation::ProgramWithCallbacks ConvCropDeviceOperation::create_program(
     const auto& input_tensor = input_tensors.at(0);
     auto& output_tensor = output_tensors.at(0);
     // each tensor has its respective shard_spec within its memory_config
-    return detail::conv_crop_multi_core(input_tensor, output_tensor);
+    return detail::conv_crop_multi_core(
+        input_tensor, output_tensor, crop_height, crop_width, pre_crop_height, pre_crop_width);
 }
-
-std::vector<Tensor> ConvCropDeviceOperation::create_output_tensors(
-    const std::vector<Tensor>& input_tensors, const std::vector<std::optional<Tensor>>& output_tensors) const {
-    if (output_tensors.size() == 1 && output_tensors[0].has_value()) {
-        return {output_tensors[0].value()};
-    }
-
-    return {create_device_tensor(compute_output_specs(input_tensors, output_tensors)[0], input_tensors.at(0).device())};
-}
-
 }  // namespace ttnn::operations::data_movement

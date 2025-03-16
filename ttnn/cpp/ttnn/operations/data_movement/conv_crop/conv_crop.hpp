@@ -15,7 +15,10 @@ struct ConvCropOperation {
         QueueId queue_id,
         const ttnn::Tensor& input_tensor,
         const MemoryConfig& memory_config,
-        const std::optional<Tensor>& optional_output_tensor);
+        const int crop_height,
+        const int crop_width,
+        const int pre_crop_height,
+        const int pre_crop_width);
 };
 
 }  // namespace operations::data_movement
