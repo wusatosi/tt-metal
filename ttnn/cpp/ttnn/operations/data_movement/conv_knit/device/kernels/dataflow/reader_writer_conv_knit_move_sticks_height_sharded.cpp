@@ -34,25 +34,26 @@ void kernel_main() {
 
     constexpr uint32_t src_cb_id = get_compile_time_arg_val(0);
 constexpr uint32_t dst_cb_id = get_compile_time_arg_val(1);
-constexpr uint32_t input_unit_size_in_bytes = get_compile_time_arg_val(2);  // stick size
-constexpr uint32_t num_input_channels = get_compile_time_arg_val(3);
-constexpr uint32_t input_width = get_compile_time_arg_val(4);
-constexpr uint32_t num_output_channels = get_compile_time_arg_val(5);
-constexpr uint32_t num_sticks_for_all_riscvs = get_compile_time_arg_val(6);
+constexpr uint32_t input_unit_size_in_bytes = get_compile_time_arg_val(2);   // input stick size
+constexpr uint32_t output_unit_size_in_bytes = get_compile_time_arg_val(3);  // output stick size
+constexpr uint32_t num_input_channels = get_compile_time_arg_val(4);
+constexpr uint32_t input_width = get_compile_time_arg_val(5);
+constexpr uint32_t num_output_channels = get_compile_time_arg_val(6);
+constexpr uint32_t num_sticks_for_all_riscvs = get_compile_time_arg_val(7);
 
 #if !defined(TRISC_MATH) && !defined(TRISC_PACK)
-constexpr uint32_t num_sticks_for_this_riscv = get_compile_time_arg_val(7);
-constexpr uint32_t current_riscv_stick_starting_index = get_compile_time_arg_val(8);
+constexpr uint32_t num_sticks_for_this_riscv = get_compile_time_arg_val(8);
+constexpr uint32_t current_riscv_stick_starting_index = get_compile_time_arg_val(9);
 #endif
 
 #if defined(TRISC_MATH)
-constexpr uint32_t num_sticks_for_this_riscv = get_compile_time_arg_val(9);
-constexpr uint32_t current_riscv_stick_starting_index = get_compile_time_arg_val(10);
+constexpr uint32_t num_sticks_for_this_riscv = get_compile_time_arg_val(10);
+constexpr uint32_t current_riscv_stick_starting_index = get_compile_time_arg_val(11);
 #endif
 
 #if defined(TRISC_PACK)
-constexpr uint32_t num_sticks_for_this_riscv = get_compile_time_arg_val(11);
-constexpr uint32_t current_riscv_stick_starting_index = get_compile_time_arg_val(12);
+constexpr uint32_t num_sticks_for_this_riscv = get_compile_time_arg_val(12);
+constexpr uint32_t current_riscv_stick_starting_index = get_compile_time_arg_val(13);
 #endif
 
 volatile tt_l1_ptr uint16_t* src_cb_ptr = nullptr;
@@ -141,17 +142,18 @@ dst_cb_ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(*data);  // fetch th
 #endif
 
 // temp, fixme
-constexpr uint32_t stick_num_elements = input_unit_size_in_bytes / 2;  // assuming hardcoded bfloat16
+constexpr uint32_t input_stick_num_elements = input_unit_size_in_bytes / 2;    // assuming hardcoded bfloat16
+constexpr uint32_t output_stick_num_elements = output_unit_size_in_bytes / 2;  // assuming hardcoded bfloat16
 constexpr uint32_t output_width = input_width * num_input_channels / (2 * num_output_channels);
 constexpr uint32_t num_elements_to_write_in_dst_stick = num_output_channels;
 constexpr uint32_t half_of_input_channels = num_input_channels / 2;
 constexpr uint32_t num_widths_done_by_other_riscvs = current_riscv_stick_starting_index / input_width;
 constexpr bool num_elements_to_write_in_dst_stick_is_power_of_2 = is_power_of_2(num_elements_to_write_in_dst_stick);
 
-src_cb_ptr += current_riscv_stick_starting_index * stick_num_elements;
-dst_cb_ptr += num_widths_done_by_other_riscvs * output_width * stick_num_elements +
+src_cb_ptr += current_riscv_stick_starting_index * input_stick_num_elements;
+dst_cb_ptr += num_widths_done_by_other_riscvs * output_width * output_stick_num_elements +
               current_riscv_stick_starting_index * 2 *
-                  stick_num_elements;  // move to adequate row in dst in addition to moving to the next sticks
+                  output_stick_num_elements;  // move to adequate row in dst in addition to moving to the next sticks
 
 uint32_t num_input_sticks_read = current_riscv_stick_starting_index - num_widths_done_by_other_riscvs * input_width;
 for (uint32_t i = 0; i < num_sticks_for_this_riscv; i++) {
@@ -159,11 +161,11 @@ for (uint32_t i = 0; i < num_sticks_for_this_riscv; i++) {
     uint32_t stick_index = 0;
 
     // Copy the second half of the sticks to the destination in the row below
-    volatile tt_l1_ptr uint16_t* dst_cb_ptr_row_below = dst_cb_ptr + output_width * stick_num_elements;
+    volatile tt_l1_ptr uint16_t* dst_cb_ptr_row_below = dst_cb_ptr + output_width * output_stick_num_elements;
 
 #pragma GCC unroll 16
         for (uint32_t j = 0; j < half_of_input_channels; j++) {
-            uint32_t dst_index = stick_index * stick_num_elements + written_in_dst_stick;
+            uint32_t dst_index = stick_index * output_stick_num_elements + written_in_dst_stick;
             dst_cb_ptr[dst_index] = src_cb_ptr[j];
             dst_cb_ptr_row_below[dst_index] = src_cb_ptr[j + half_of_input_channels];
             written_in_dst_stick++;
@@ -178,14 +180,14 @@ for (uint32_t i = 0; i < num_sticks_for_this_riscv; i++) {
             }
         }
 
-        src_cb_ptr += stick_num_elements;
-        dst_cb_ptr += 2 * stick_num_elements;  // we wrote 2 sticks in stick index, move it by 2
+        src_cb_ptr += input_stick_num_elements;
+        dst_cb_ptr += 2 * output_stick_num_elements;  // we wrote 2 sticks in stick index, move it by 2
         num_input_sticks_read++;
 
         if (__builtin_expect(num_input_sticks_read == input_width, 0)) {
             num_input_sticks_read = 0;
             // skip row we have just written to
-            dst_cb_ptr += output_width * stick_num_elements;
+            dst_cb_ptr += output_width * output_stick_num_elements;
         }
 }
 

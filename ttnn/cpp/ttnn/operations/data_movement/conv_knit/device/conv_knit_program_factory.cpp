@@ -115,10 +115,11 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
     ShardSpec output_shard_spec = output_tensor.shard_spec().value();
     uint32_t num_outputs_per_core_unpadded = output_shard_spec.shape[0];
     uint32_t num_outputs_height = output_tensor.volume() / output_tensor.get_padded_shape()[-1];
+    uint32_t output_unit_size = output_shard_spec.shape[1] * output_tensor.element_size();
     log_info(
         tt::LogOp,
         "Output unit size is {} num_outputs_per_core_unpadded is {}",
-        input_unit_size,
+        output_unit_size,
         num_outputs_per_core_unpadded);
 
     uint32_t src_cb_index = tt::CBIndex::c_0;
@@ -131,7 +132,6 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
     auto cb_src = tt::tt_metal::CreateCircularBuffer(program, all_cores, src_cb_config);
     // todo: pp, support different page sizes for input and output
 
-    uint32_t output_unit_size = input_unit_size;
     tt::tt_metal::CircularBufferConfig out_cb_config =
         tt::tt_metal::CircularBufferConfig(
             num_outputs_per_core_unpadded * output_unit_size, {{out_cb_index, output_cb_data_format}})
@@ -162,6 +162,7 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
         (std::uint32_t)src_cb_index,
         (std::uint32_t)out_cb_index,
         input_unit_size,
+        output_unit_size,
         num_input_channels,
         input_width,
         num_output_channels,
@@ -176,8 +177,8 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
         tt::tt_metal::ReaderDataMovementConfig(kernel_compile_time_args, defines));
 
     current_riscv_stick_starting_index += num_sticks_per_riscv_5[0];
-    kernel_compile_time_args[7] = num_sticks_per_riscv_5[1];
-    kernel_compile_time_args[8] = current_riscv_stick_starting_index;
+    kernel_compile_time_args[8] = num_sticks_per_riscv_5[1];
+    kernel_compile_time_args[9] = current_riscv_stick_starting_index;
     tt::tt_metal::KernelHandle br_kernel_handle = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/data_movement/conv_knit/device/kernels/dataflow/"
@@ -187,20 +188,20 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
 
     current_riscv_stick_starting_index += num_sticks_per_riscv_5[1];
 
-    kernel_compile_time_args[7] = num_sticks_per_riscv_5[2];           // unpack
-    kernel_compile_time_args[8] = current_riscv_stick_starting_index;  // unpack
+    kernel_compile_time_args[8] = num_sticks_per_riscv_5[2];           // unpack
+    kernel_compile_time_args[9] = current_riscv_stick_starting_index;  // unpack
 
     current_riscv_stick_starting_index += num_sticks_per_riscv_5[2];
     kernel_compile_time_args.push_back(0);
     kernel_compile_time_args.push_back(0);
-    kernel_compile_time_args[9] = num_sticks_per_riscv_5[3];            // math
-    kernel_compile_time_args[10] = current_riscv_stick_starting_index;  // math
+    kernel_compile_time_args[10] = num_sticks_per_riscv_5[3];           // math
+    kernel_compile_time_args[11] = current_riscv_stick_starting_index;  // math
 
     current_riscv_stick_starting_index += num_sticks_per_riscv_5[3];
     kernel_compile_time_args.push_back(0);
     kernel_compile_time_args.push_back(0);
-    kernel_compile_time_args[11] = num_sticks_per_riscv_5[4];           // pack
-    kernel_compile_time_args[12] = current_riscv_stick_starting_index;  // pack
+    kernel_compile_time_args[12] = num_sticks_per_riscv_5[4];           // pack
+    kernel_compile_time_args[13] = current_riscv_stick_starting_index;  // pack
     current_riscv_stick_starting_index += num_sticks_per_riscv_5[4];
 
     tt::tt_metal::KernelHandle compute_kernel_handle = tt::tt_metal::CreateKernel(
