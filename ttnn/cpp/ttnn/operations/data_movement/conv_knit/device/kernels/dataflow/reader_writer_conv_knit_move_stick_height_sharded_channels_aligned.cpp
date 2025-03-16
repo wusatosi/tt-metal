@@ -9,15 +9,6 @@
 
 #include "debug/dprint.h"
 
-inline __attribute__((always_inline)) constexpr uint32_t log2_constexpr(uint32_t n) {
-    uint32_t p = 0;
-    while (n > 1) {
-        n >>= 1;
-        ++p;
-    }
-    return p;
-}
-
 void kernel_main() {
     constexpr uint32_t src_cb_id = get_compile_time_arg_val(0);
     constexpr uint32_t dst_cb_id = get_compile_time_arg_val(1);
@@ -35,13 +26,8 @@ void kernel_main() {
     uint32_t dst_cb_ptr = get_write_ptr(dst_cb_id);
 
     // temp, fixme
-    constexpr uint32_t input_stick_num_elements = input_unit_size_in_bytes / 2;    // assuming hardcoded bfloat16
-    constexpr uint32_t output_stick_num_elements = output_unit_size_in_bytes / 2;  // assuming hardcoded bfloat16
     constexpr uint32_t output_width = input_width * num_input_channels / (2 * num_output_channels);
-    constexpr uint32_t num_elements_to_write_in_dst_stick = num_output_channels;
-    constexpr uint32_t half_of_input_channels = num_input_channels / 2;
     constexpr uint32_t num_widths_done_by_other_riscvs = current_riscv_stick_starting_index / input_width;
-    constexpr bool num_elements_to_write_in_dst_stick_is_power_of_2 = is_power_of_2(num_elements_to_write_in_dst_stick);
 
     src_cb_ptr += current_riscv_stick_starting_index * input_unit_size_in_bytes;
     dst_cb_ptr +=
