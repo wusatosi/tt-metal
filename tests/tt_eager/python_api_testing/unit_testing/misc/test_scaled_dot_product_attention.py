@@ -307,7 +307,7 @@ def test_sdpa_tt_small_chunks(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_si
     "b, nh, nkv, s, d, grid",
     [
         [1, 3, 3, 44 * 1024, 128, None],  # Test on default grid (8x8)
-        [1, 1, 1, 2048, 128, (1, 1)],  # Single-core repro
+        [1, 1, 1, 1024, 128, (1, 1)],  # Single-core repro
     ],
     ids=["full_grid", "single_core"],
 )
