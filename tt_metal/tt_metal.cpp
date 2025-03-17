@@ -363,6 +363,14 @@ std::map<chip_id_t, IDevice*> CreateDevices(
     const size_t trace_region_size,
     const DispatchCoreConfig& dispatch_core_config,
     const std::vector<uint32_t>& l1_bank_remap) {
+    log_info(
+        tt::LogMetalTrace,
+        "KCM CreateDevices() with num_hw_cqs: {} l1_small_size: {} trace_region_size: {} core_type: {}",
+        num_hw_cqs,
+        l1_small_size,
+        trace_region_size,
+        dispatch_core_config.get_core_type());
+
     ZoneScoped;
     bool is_galaxy = tt::Cluster::instance().is_galaxy_cluster();
     tt::DevicePool::initialize(device_ids, num_hw_cqs, l1_small_size, trace_region_size, dispatch_core_config);
@@ -913,10 +921,18 @@ IDevice* CreateDevice(
     const std::vector<uint32_t>& l1_bank_remap) {
     ZoneScoped;
     PUBLIC_API_ENTRY();
+    log_info(
+        tt::LogMetalTrace,
+        "KCM CreateDevice() with num_hw_cqs: {} l1_small_size: {} trace_region_size: {} core_type: {}",
+        num_hw_cqs,
+        l1_small_size,
+        trace_region_size,
+        dispatch_core_config.get_core_type());
 
     tt::DevicePool::initialize(
         {device_id}, num_hw_cqs, l1_small_size, trace_region_size, dispatch_core_config, l1_bank_remap);
     auto dev = tt::DevicePool::instance().get_active_device(device_id);
+    log_info(tt::LogMetalTrace, "KCM Done CreateDevice()");
     return dev;
 }
 
