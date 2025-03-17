@@ -39,10 +39,11 @@ Tensor where_impl(
             return ttnn::multiply(queue_id, condition, std::get<float>(value), std::nullopt, output_mem_config);
         }
     };
-
+    predicate.print();
     Tensor t2 = get_multiplied(ttnn::gtz(queue_id, predicate, output_mem_config), value_true);
+    t2.print();
     Tensor t1 = get_multiplied(ttnn::lez(queue_id, predicate, output_mem_config), value_false);
-
+    t1.print();
     if (output_tensor.has_value()) {
         ttnn::add(queue_id, t2, t1, std::nullopt, output_mem_config, output_tensor);
     } else {
