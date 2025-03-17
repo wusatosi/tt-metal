@@ -42,8 +42,8 @@ Tensor where_impl(
         }
     };
     predicate.print();
-    value_true.print();
-    value_false.print();
+    std::get<Tensor>(value_true).print();
+    std::get<Tensor>(value_false).print();
     Tensor t2 = get_multiplied(ttnn::gtz(queue_id, predicate, output_mem_config), value_true);
     t2.print();
     Tensor t1 = get_multiplied(ttnn::lez(queue_id, predicate, output_mem_config), value_false);
