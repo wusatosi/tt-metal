@@ -34,12 +34,16 @@ Tensor where_impl(
     std::optional<Tensor> output_tensor) {
     auto get_multiplied = [&](const Tensor& condition, const FloatOrTensor& value) -> Tensor {
         if (std::holds_alternative<Tensor>(value)) {
+            condition.print();
+            value.print();
             return ttnn::multiply(queue_id, condition, std::get<Tensor>(value), std::nullopt, output_mem_config);
         } else {
             return ttnn::multiply(queue_id, condition, std::get<float>(value), std::nullopt, output_mem_config);
         }
     };
     predicate.print();
+    value_true.print();
+    value_false.print();
     Tensor t2 = get_multiplied(ttnn::gtz(queue_id, predicate, output_mem_config), value_true);
     t2.print();
     Tensor t1 = get_multiplied(ttnn::lez(queue_id, predicate, output_mem_config), value_false);
