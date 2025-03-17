@@ -20,6 +20,7 @@ enum SfpuType {
     log,
     log_with_base,
     equal_zero,
+    eqz_int32,
     not_equal_zero,
     less_than_zero,
     greater_than_equal_zero,
