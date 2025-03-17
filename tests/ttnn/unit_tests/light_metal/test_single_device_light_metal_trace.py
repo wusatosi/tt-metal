@@ -11,7 +11,12 @@ import tempfile
 from loguru import logger
 import os
 from tests.ttnn.utils_for_testing import assert_with_pcc
+from tests.tt_eager.python_api_testing.unit_testing.misc.test_move_sharded import run_move_op
 from models.demos.bert_tiny.demo.demo import run_bert_question_and_answering_inference
+import os
+import numpy as np
+import random
+import hashlib
 
 from models.utility_functions import (
     disable_compilation_reports,
@@ -65,52 +70,177 @@ def test_buffer_read_write(device, reset_device, shape, tmp_path):
     reset_device_and_replay_binary(reset_device, device, binary_data)
 
 
+# This passes here and standalone.
+@pytest.mark.parametrize("shape", [[1, 1, 2, 2], (1, 1, 32, 32), [1, 3, 1024, 1024], (1, 1, 512, 512), (1, 3, 32, 32)])
+def test_single_op_single_input_buffer(device, reset_device, shape, tmp_path):
+    ttnn.light_metal_begin_capture()
+    logger.info("KCM Running single op (one buffer) test with shape: {}", shape)
+
+    # Create single buffer on device with random values
+    input_0_torch = torch.rand(tuple(shape), dtype=torch.float32)
+    input0 = ttnn.from_torch(input_0_torch, dtype=ttnn.float32)
+    input_0_dev = ttnn.to_device(input0, device, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+    # Must convert to tilized format for op.
+    input_0_dev_tilized = ttnn.to_layout(input_0_dev, ttnn.TILE_LAYOUT)
+
+    # Run a single op
+    output_device = ttnn.add(input_0_dev_tilized, input_0_dev_tilized)
+
+    # Read back the buffer to host and print for debug
+    output_host = ttnn.to_torch(output_device)
+    logger.info("output_host: shape: {} dtype: {} data: {}", output_host.shape, output_host.dtype, output_host)
+
+    # End Light Metal capture, write binary and replay from binary.
+    binary_data = ttnn.light_metal_end_capture()
+    write_binary_to_file(binary_data, tmp_path, inspect.currentframe().f_code.co_name)
+    reset_device_and_replay_binary(reset_device, device, binary_data)
+
+
+# This passes here and standalone.
+# This caught bug with needing to keep program cache disabled.
+# @pytest.mark.parametrize("shape", [[1, 1, 2, 2], (1, 1, 32, 32), [1, 3, 1024, 1024], (1, 1, 512, 512), (1, 3, 32, 32)])
+@pytest.mark.parametrize("shape", [[1, 1, 2, 2]])
+@pytest.mark.parametrize("enable_async", [False])
+def test_single_op_two_input_buffer(device, reset_device, shape, enable_async, tmp_path):
+    ttnn.light_metal_begin_capture()
+    logger.info("KCM Running single op (two buffer) test with shape: {}", shape)
+
+    device.enable_async(enable_async)
+    # Bug - something to do with program cache, dropping commands on subsequent runs.
+    # Nope, not subsequent runs, even just in same run. 2 inputs both use tilized kernel, it's skipped for 2nd input.
+    # device.enable_program_cache()
+
+    # Does it happen on just running single run?
+    # Is capture time test actually different?
+
+    # Create two inputs buffer on device with random values
+    input_0_torch = torch.rand(tuple(shape), dtype=torch.float32)
+    input0 = ttnn.from_torch(input_0_torch, dtype=ttnn.float32)
+    input_0_dev = ttnn.to_device(input0, device, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+    input_0_dev_tilized = ttnn.to_layout(input_0_dev, ttnn.TILE_LAYOUT)
+
+    input_1_torch = torch.rand(tuple(shape), dtype=torch.float32)
+    input1 = ttnn.from_torch(input_1_torch, dtype=ttnn.float32)
+    input_1_dev = ttnn.to_device(input1, device, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+    input_1_dev_tilized = ttnn.to_layout(input_1_dev, ttnn.TILE_LAYOUT)
+
+    # Run a single op with 2 input buffers.
+    output_device = ttnn.add(input_0_dev_tilized, input_1_dev_tilized)
+
+    # Read back the buffer to host and print for debug
+    output_host = ttnn.to_torch(output_device)
+    logger.info("output_host: shape: {} dtype: {} data: {}", output_host.shape, output_host.dtype, output_host)
+
+    # End Light Metal capture, write binary and replay from binary.
+    binary_data = ttnn.light_metal_end_capture()
+    write_binary_to_file(binary_data, tmp_path, inspect.currentframe().f_code.co_name)
+    reset_device_and_replay_binary(reset_device, device, binary_data)
+
+
 # Simple bringup single op test to see if everything uses host APIs and if it can be light-metal traced.
-@pytest.mark.parametrize("shape", [[1, 3, 1024, 1024], (1, 1, 512, 512), (1, 3, 32, 32)])
+@pytest.mark.parametrize(
+    "shape", [[1, 1, 32, 32], (1, 1, 32, 32), (1, 3, 32, 32), [1, 3, 1024, 1024], (1, 1, 512, 512), (1, 3, 32, 32)]
+)
+# @pytest.mark.parametrize("shape", [[1, 1, 2, 2]])
 @pytest.mark.parametrize("enable_async", [False])
 @pytest.mark.parametrize("blocking", [True])
 @pytest.mark.parametrize("device_params", [{"trace_region_size": 200000}])
 def test_single_op_test_light_metal_capture(device, reset_device, shape, enable_async, blocking, tmp_path):
+    logger.info("KCM Running single op test with shape: {}", shape)
     ttnn.light_metal_begin_capture()
 
     device.enable_async(enable_async)
-    device.enable_program_cache()
+    # device.enable_program_cache()
 
-    input_0_dev = ttnn.allocate_tensor_on_device(ttnn.Shape(shape), ttnn.bfloat16, ttnn.TILE_LAYOUT, device)
-    input_1_dev = ttnn.allocate_tensor_on_device(ttnn.Shape(shape), ttnn.bfloat16, ttnn.TILE_LAYOUT, device)
+    # Without this, no actual writes to device as input tensors.
+    use_debug_values = True
+    if use_debug_values:
+        input_0_torch = torch.ones(tuple(shape), dtype=torch.float32)
+        input0 = ttnn.from_torch(input_0_torch, dtype=ttnn.float32)
+        input_0_dev = ttnn.to_device(input0, device, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+        input_0_dev = ttnn.to_layout(input_0_dev, ttnn.TILE_LAYOUT)
+
+        input_1_torch = torch.ones(tuple(shape), dtype=torch.float32) * 2.0
+        input1 = ttnn.from_torch(input_1_torch, dtype=ttnn.float32)
+        input_1_dev = ttnn.to_device(input1, device, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+        input_1_dev = ttnn.to_layout(input_1_dev, ttnn.TILE_LAYOUT)
+    else:
+        input_0_dev = ttnn.allocate_tensor_on_device(ttnn.Shape(shape), ttnn.float32, ttnn.TILE_LAYOUT, device)
+        input_1_dev = ttnn.allocate_tensor_on_device(ttnn.Shape(shape), ttnn.float32, ttnn.TILE_LAYOUT, device)
+
+    # Higher level in TTNN .. BrianL.
+    # Print input tensor for debug.
+    input_0_host = ttnn.to_torch(input_0_dev)
+    input_1_host = ttnn.to_torch(input_1_dev)
+    logger.info("KCM input_0_dev: shape: {} dtype: {} data: {}", input_0_host.shape, input_0_host.dtype, input_0_host)
+    logger.info("KCM input_1_dev: shape: {} dtype: {} data: {}", input_1_host.shape, input_1_host.dtype, input_1_host)
+
     output_tensor = ttnn.add(input_0_dev, input_1_dev)
-
     ttnn_torch_output_tensor = ttnn.to_torch(output_tensor)
-    # logger.info("ttnn_torch_output_tensor: {}".format(ttnn_torch_output_tensor))
+
+    logger.info(
+        "KCM ttnn_torch_output_tensor: shape: {} dtype: {} data: {}",
+        ttnn_torch_output_tensor.shape,
+        ttnn_torch_output_tensor.dtype,
+        ttnn_torch_output_tensor,
+    )
 
     binary_data = ttnn.light_metal_end_capture()
     write_binary_to_file(binary_data, tmp_path, inspect.currentframe().f_code.co_name)
     reset_device_and_replay_binary(reset_device, device, binary_data)
 
-    # TODO (kmabee) - Add capture vs replay verification check
-
 
 # Simple bringup, multiple ops in chain
-@pytest.mark.parametrize("shape", [[1, 3, 1024, 1024], (1, 1, 512, 512), (1, 3, 32, 32)])
+# KCM - Disabled cache here, converted to input tensor writes, now pases!
+# @pytest.mark.parametrize("shape", [[1, 1, 32, 32], (1, 1, 32, 32), (1, 3, 32, 32), [1, 3, 1024, 1024], (1, 1, 512, 512), (1, 3, 32, 32)])
+@pytest.mark.parametrize("shape", [[1, 1, 2, 2]])
 @pytest.mark.parametrize("enable_async", [False])
 @pytest.mark.parametrize("blocking", [True])
 @pytest.mark.parametrize("device_params", [{"trace_region_size": 200000}])
 def test_chain_op_test_light_metal_capture(device, reset_device, shape, enable_async, blocking, tmp_path):
-    ttnn.light_metal_begin_capture()
+    logger.info("KCM Running chain op test with shape: {}", shape)
 
+    ttnn.light_metal_begin_capture()
     device.enable_async(enable_async)
     device.enable_program_cache()
-    input_0_dev = ttnn.allocate_tensor_on_device(ttnn.Shape(shape), ttnn.bfloat16, ttnn.TILE_LAYOUT, device)
-    input_1_dev = ttnn.allocate_tensor_on_device(ttnn.Shape(shape), ttnn.bfloat16, ttnn.TILE_LAYOUT, device)
+
+    input_0_torch = torch.rand(tuple(shape), dtype=torch.float32)
+    input0 = ttnn.from_torch(input_0_torch, dtype=ttnn.float32)
+    input_0_dev = ttnn.to_device(input0, device, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+    input_0_dev_tilized = ttnn.to_layout(input_0_dev, ttnn.TILE_LAYOUT)
+
+    input_1_torch = torch.rand(tuple(shape), dtype=torch.float32)
+    input1 = ttnn.from_torch(input_1_torch, dtype=ttnn.float32)
+    input_1_dev = ttnn.to_device(input1, device, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+    input_1_dev_tilized = ttnn.to_layout(input_1_dev, ttnn.TILE_LAYOUT)
 
     # Op chain to be traced
     def run_op_chain(input_0, input_1):
-        return ttnn.neg(ttnn.add(ttnn.mul(input_1, ttnn.neg(ttnn.gelu(input_0))), ttnn.relu(input_1)))
+        # return ttnn.neg(ttnn.add(ttnn.mul(input_1, ttnn.neg(ttnn.gelu(input_0))), ttnn.relu(input_1)))
+        # return ttnn.neg(ttnn.add(ttnn.mul(input_1, ttnn.neg(ttnn.gelu(input_0))), ttnn.relu(input_1)))
+        # return ttnn.add(input_0, ttnn.mul(input_0, input_1))
+        # return ttnn.relu(ttnn.add(input_0, ttnn.mul(input_0, input_1))) # Passes
+        # return ttnn.neg(ttnn.add(ttnn.mul(input_1, ttnn.neg(ttnn.gelu(input_0))), ttnn.relu(input_1)))
 
-    output_tensor = run_op_chain(input_0_dev, input_1_dev)
+        # This passes, removed the neg op.
+        # return ttnn.add(ttnn.mul(input_1, ttnn.neg(ttnn.gelu(input_0))), ttnn.relu(input_1))
+
+        # Original, this hits failure.
+        # return ttnn.neg(ttnn.add(ttnn.mul(input_1, ttnn.neg(ttnn.gelu(input_0))), ttnn.relu(input_1)))
+
+        # This fails. But if I remove ttnn.relu(input_1) and just use input_1, it passes.
+        return ttnn.neg(ttnn.add(ttnn.mul(input_1, input_0), ttnn.relu(input_1)))
+
+        # A = Neg(Gelu(input0)) # Independent
+        # B = Mul (A, input1)
+        # C = Relu(input1)      # Independent
+        # D = Add(B, C)
+        # E = Neg(d)
+
+    output_tensor = run_op_chain(input_0_dev_tilized, input_1_dev_tilized)
 
     ttnn_torch_output_tensor = ttnn.to_torch(output_tensor)
-    # logger.info("ttnn_torch_output_tensor: {}".format(ttnn_torch_output_tensor))
+    logger.info("ttnn_torch_output_tensor: {}".format(ttnn_torch_output_tensor))
 
     binary_data = ttnn.light_metal_end_capture()
     write_binary_to_file(binary_data, tmp_path, inspect.currentframe().f_code.co_name)
@@ -157,7 +287,7 @@ def test_demo_bert_tiny(
     disable_compilation_reports()
     run_bert_question_and_answering_inference(
         device=device,
-        use_program_cache=False,
+        use_program_cache=False,  # Not supported with Light Metal currently.
         model_name=model_name,
         batch_size=batch_size,
         sequence_size=sequence_size,
@@ -229,7 +359,7 @@ def create_common_conv_configs(device):
 # Test: Single Conv2D operation. Passes.
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
 @pytest.mark.parametrize("batch_size", [1])
-def test_ttnn_conv2d_simple(batch_size, device, reset_device, tmp_path):
+def test_ttnn_conv2d_simple(batch_size, device, reset_seeds, reset_device, tmp_path):
     ttnn.light_metal_begin_capture()
 
     # Create input tensor (3 channels, 32x32)
@@ -267,12 +397,20 @@ def test_ttnn_conv2d_simple(batch_size, device, reset_device, tmp_path):
         return_output_dim=True,
     )
 
-    output_host = ttnn.to_torch(output_tt)
+    # KCM numpy doesn't work with bfloat16, need to convert to float32 on host.
+    output_host = ttnn.to_torch(output_tt).to(torch.float32)
     print("Output tensor (host):")
     print("  Shape:", output_host.shape)
     print("  Stats: min =", output_host.min(), "max =", output_host.max(), "mean =", output_host.mean())
 
     assert output_host.shape[-1] == 8, "Output channel dimension mismatch."
+
+    # print("KCM output_tt dtype: ", output_tt.dtype)
+
+    # KCM Debug
+    np.set_printoptions(threshold=np.inf)
+    print(f"KCM conv2d output_host dtype: {output_host.dtype} shape:", output_host.shape)
+    print("KCM conv2d output_host :", output_host.numpy())
 
     binary_data = ttnn.light_metal_end_capture()
     write_binary_to_file(binary_data, tmp_path, inspect.currentframe().f_code.co_name)
@@ -511,7 +649,7 @@ class DummyResnet50FirstConv:
 # This test extracted ops up until first conv2d that is failing.
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
 @pytest.mark.parametrize("batch_size", [1])
-def test_resnet50_until_first_conv2d(batch_size, device, reset_device, tmp_path):
+def test_resnet50_until_first_conv2d(batch_size, reset_seeds, device, reset_device, tmp_path):
     ttnn.light_metal_begin_capture()
 
     # Create a dummy input tensor with shape matching the expected input.
@@ -526,7 +664,7 @@ def test_resnet50_until_first_conv2d(batch_size, device, reset_device, tmp_path)
 
     # In debug mode, we want to exit early. For downstream compatibility,
     # we return a dummy tensor with shape (batch, 1000). (This is just a hack.)
-    debug_mode = True
+    debug_mode = False
     if debug_mode:
         # Create a dummy tensor on host with the expected final shape.
         dummy_out = torch.zeros((x.shape[0], 1000), dtype=torch.bfloat16)
@@ -539,8 +677,17 @@ def test_resnet50_until_first_conv2d(batch_size, device, reset_device, tmp_path)
     write_binary_to_file(binary_data, tmp_path, inspect.currentframe().f_code.co_name)
     reset_device_and_replay_binary(reset_device, device, binary_data)
 
-    output_host = ttnn.to_torch(final_output)
-    print("Final output shape:", output_host.shape)
+    # output_host = ttnn.to_torch(final_output)
+    # print("Final output shape:", output_host.shape)
+
+    np.set_printoptions(threshold=np.inf)
+    output_host = ttnn.to_torch(final_output).to(torch.float32)
+    print(f"KCM conv2d output_host dtype: {output_host.dtype} shape:", output_host.shape)
+    print("KCM conv2d output_host :", output_host.numpy())
+    print("KCM output_tt dtype: ", final_output.dtype)
+
+    sha256_hash = hashlib.sha256(output_host.numpy().tobytes()).hexdigest()
+    print(f"KCM SHA-256 hash of tensor: {sha256_hash}")
 
 
 # This test aims to extract just the conv2d op from resnet that was failing.
@@ -664,7 +811,23 @@ def test_resnet50_first_conv2d_only(batch_size, device, reset_device, tmp_path):
 @pytest.mark.parametrize("batch_size", [1])
 @pytest.mark.parametrize("trim_params", [1])
 @pytest.mark.parametrize("increase_stride", [1])
-def test_resnet50_first_conv2d_only_repro(batch_size, trim_params, increase_stride, device, reset_device, tmp_path):
+@pytest.mark.parametrize("enable_async", [False])
+@pytest.mark.parametrize("blocking", [True])
+def test_resnet50_first_conv2d_only_repro(
+    batch_size, enable_async, blocking, reset_seeds, trim_params, increase_stride, device, reset_device, tmp_path
+):
+    # torch.manual_seed(42)
+    # random.seed(42)
+    # np.random.seed(42)
+
+    # Idea - fix 3 input tensors, but let others randomize
+    # Theory - op config issue, causing reading from garbage DRAM area?
+
+    # logger.info("KCM Setting fixed seed 213919")
+    # torch.manual_seed(213919)
+    # np.random.seed(213919)
+    # random.seed(213919)
+
     ttnn.light_metal_begin_capture()
 
     # Create a dummy activation tensor that represents the already-folded activation.
@@ -773,6 +936,128 @@ def test_resnet50_first_conv2d_only_repro(batch_size, trim_params, increase_stri
     weight_host = ttnn.to_torch(weight_tt)
     bias_host = ttnn.to_torch(bias_tt)
 
+    logger.info("KCM About to call conv2d")
+
+    # Now, call conv2d. With the trimmed conv_kwargs the op should run on a much smaller output tensor.
+    output_tt, dims = ttnn.conv2d(
+        input_tensor=act_tt,
+        weight_tensor=weight_tt,
+        bias_tensor=bias_tt,
+        **conv_kwargs,
+        conv_config=conv_config,
+        compute_config=compute_config,
+        conv_op_cache={},
+        memory_config=mem_config,
+        return_output_dim=True,
+    )
+    logger.info("KCM Done calling conv2d")
+    # breakpoint()
+
+    # KCM - DEBUG
+    np.set_printoptions(threshold=np.inf)
+    output_host = ttnn.to_torch(output_tt)
+    print(f"KCM conv2d output_host dtype: {output_host.dtype} shape:", output_host.shape)
+    print("KCM conv2d output_host :", output_host.numpy())
+    print("KCM output_tt dtype: ", output_tt.dtype)
+
+    sha256_hash = hashlib.sha256(output_host.numpy().tobytes()).hexdigest()
+    print(f"KCM SHA-256 hash of tensor: {sha256_hash}")
+
+    # TODO - Seeing some ND on few datums. Is it the same datums seen during replay?
+    # TODO - How to return only logical shape of buffer?
+
+    # Also try row-major then reading.
+
+    binary_data = ttnn.light_metal_end_capture()
+    write_binary_to_file(binary_data, tmp_path, inspect.currentframe().f_code.co_name)
+    reset_device_and_replay_binary(reset_device, device, binary_data)
+
+    # Downstream expects the channel dimension to be 64.
+    # assert output.shape[-1] == 64, "Output channel dimension mismatch"
+
+
+# Trimmed - also reproduces failure after reset.
+# This test aims to extract just the conv2d op from resnet that was failing.
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
+@pytest.mark.parametrize("batch_size", [1])
+@pytest.mark.parametrize("increase_stride", [1])
+@pytest.mark.parametrize("enable_async", [False])
+@pytest.mark.parametrize("blocking", [True])
+def test_resnet50_first_conv2d_only_repro_nd(
+    batch_size, enable_async, blocking, reset_seeds, increase_stride, device, reset_device, tmp_path
+):
+    # Create a dummy activation tensor that represents the already-folded activation.
+    # In production, the folded activation has shape [1, 1, 211600, 16].
+    # For simplicity, we simulate a small unfolded activation with shape (1, 1, 100, 16).
+    dummy_activation = torch.rand((batch_size, 1, 100, 16), dtype=torch.bfloat16)
+    act_tt = ttnn.from_torch(dummy_activation, ttnn.bfloat16)
+    act_tt = ttnn.to_device(act_tt, device)
+
+    # Use trimmed conv_kwargs that match the dummy activation.
+    conv_kwargs = {
+        "in_channels": 16,
+        "out_channels": 32,
+        "batch_size": 1,  # trimmed batch_size
+        "input_height": 100,  # matching dummy activation height
+        "input_width": 16,  # matching dummy activation width
+        "kernel_size": (4, 4),
+        "stride": (1, 1),
+        "padding": (0, 0),
+        "dilation": (1, 1),
+        "groups": 1,
+        "device": device,
+    }
+
+    # KCM - Quick change to reduce output size greatly.
+    if increase_stride:
+        conv_kwargs["stride"] = (2, 4)
+
+    # Trimmed conv_config with only the essential parameters.
+    conv_config = ttnn.Conv2dConfig(
+        dtype=ttnn.bfloat8_b,
+        weights_dtype=ttnn.bfloat8_b,
+        activation="relu",
+        input_channels_alignment=16,
+        act_block_h_override=100,
+        act_block_w_div=2,
+        shard_layout=ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+    )
+
+    compute_config = ttnn.init_device_compute_kernel_config(
+        device.arch(),
+        math_fidelity=ttnn.MathFidelity.LoFi,
+        math_approx_mode=True,
+        fp32_dest_acc_en=False,
+        packer_l1_acc=True,
+    )
+    mem_config = ttnn.L1_MEMORY_CONFIG
+
+    # Create dummy weight and bias tensors as in production.
+    # Weight shape (OIHW): (64, 16, 4, 4); Bias shape: (1,1,1,64)
+    weight = torch.rand((32, 16, 4, 4), dtype=torch.bfloat16)
+    bias = torch.rand((1, 1, 1, 32), dtype=torch.bfloat16)
+    weight_tt = ttnn.from_torch(weight, ttnn.bfloat16)
+    bias_tt = ttnn.from_torch(bias, ttnn.bfloat16)
+
+    # Prepare the weights using act_tt's memory config.
+    if not ttnn.is_tensor_storage_on_device(weight_tt):
+        weight_tt = ttnn.prepare_conv_weights(
+            weight_tensor=weight_tt,
+            weights_format="OIHW",
+            input_memory_config=act_tt.memory_config(),
+            input_layout=act_tt.get_layout(),
+            has_bias=True,
+            **conv_kwargs,
+        )
+        bias_tt = ttnn.prepare_conv_bias(
+            bias_tensor=bias_tt,
+            input_memory_config=act_tt.memory_config(),
+            input_layout=act_tt.get_layout(),
+            **conv_kwargs,
+        )
+    weight_tt = ttnn.to_device(weight_tt, device)
+    bias_tt = ttnn.to_device(bias_tt, device)
+
     # Now, call conv2d. With the trimmed conv_kwargs the op should run on a much smaller output tensor.
     output_tt, dims = ttnn.conv2d(
         input_tensor=act_tt,
@@ -786,12 +1071,11 @@ def test_resnet50_first_conv2d_only_repro(batch_size, trim_params, increase_stri
         return_output_dim=True,
     )
 
-    output = ttnn.to_torch(output_tt)
-    print("Output shape:", output.shape)
+    output_host = ttnn.to_torch(output_tt)
+    sha256_hash = hashlib.sha256(output_host.numpy().tobytes()).hexdigest()
 
-    binary_data = ttnn.light_metal_end_capture()
-    write_binary_to_file(binary_data, tmp_path, inspect.currentframe().f_code.co_name)
-    reset_device_and_replay_binary(reset_device, device, binary_data)
-
-    # Downstream expects the channel dimension to be 64.
-    assert output.shape[-1] == 64, "Output channel dimension mismatch"
+    np.set_printoptions(threshold=np.inf)
+    print(
+        f"KCM conv2d output_host dtype: {output_host.dtype} shape:", output_host.shape, " data: ", output_host.numpy()
+    )
+    print(f"KCM SHA-256 hash of tensor: {sha256_hash}")
