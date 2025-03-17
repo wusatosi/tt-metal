@@ -502,6 +502,7 @@ static constexpr uint32_t SWITCH_INTERVAL =
 #else
     0;
 #endif
+// static constexpr uint32_t SWITCH_INTERVAL = 100;
 
 static constexpr size_t ETH_BYTES_TO_WORDS_SHIFT = 4;
 static constexpr size_t NUM_SENDER_CHANNELS = 2;

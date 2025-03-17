@@ -368,13 +368,13 @@ private:
         ASSERT(tt::tt_fabric::is_valid(
             *const_cast<PACKET_HEADER_TYPE*>(reinterpret_cast<volatile PACKET_HEADER_TYPE*>(source_address))));
 
-        // uint64_t edm_noc_addr = get_noc_addr(this->edm_noc_x, this->edm_noc_y, 0);
-        // noc_async_write_one_packet_with_trid_set_state(edm_noc_addr, write_cmd_buf, 1);
-        // noc_async_write_one_packet_with_trid_with_state(
-        //     source_address, this->edm_buffer_addr, size_bytes, trid, write_cmd_buf, 1);
+        uint64_t edm_noc_addr = get_noc_addr(this->edm_noc_x, this->edm_noc_y, 1);
+        noc_async_write_one_packet_with_trid_set_state(edm_noc_addr, write_cmd_buf, 1);
+        noc_async_write_one_packet_with_trid_with_state(
+            source_address, this->edm_buffer_addr, size_bytes, trid, write_cmd_buf, 1);
 
-        uint64_t edm_noc_addr = get_noc_addr(this->edm_noc_x, this->edm_noc_y, this->edm_buffer_addr);
-        noc_async_write_one_packet_with_trid(source_address, edm_noc_addr, size_bytes, trid, 1);
+        // uint64_t edm_noc_addr = get_noc_addr(this->edm_noc_x, this->edm_noc_y, this->edm_buffer_addr);
+        // noc_async_write_one_packet_with_trid(source_address, edm_noc_addr, size_bytes, trid, 1);
 
         // send_chunk_from_address_with_trid<blocking_mode>(
         //     source_address, 1, size_bytes, this->edm_buffer_addr, trid, write_cmd_buf);

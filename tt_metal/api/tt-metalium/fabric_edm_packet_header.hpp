@@ -243,16 +243,18 @@ struct PacketHeaderBase {
     inline Derived& to_noc_unicast_atomic_inc(
         const NocUnicastAtomicIncCommandHeader& noc_unicast_atomic_inc_command_header) {
         this->noc_send_type = NOC_UNICAST_ATOMIC_INC;
-        auto noc_address_components = edm_get_noc_address_components(noc_unicast_atomic_inc_command_header.noc_address);
-        auto noc_addr = edm_safe_get_noc_addr(
-            noc_address_components.first.x,
-            noc_address_components.first.y,
-            noc_address_components.second,
-            edm_to_local_chip_noc_index);
-        NocUnicastAtomicIncCommandHeader modified_command_header = noc_unicast_atomic_inc_command_header;
-        modified_command_header.noc_address = noc_addr;
+        // auto noc_address_components =
+        // edm_get_noc_address_components(noc_unicast_atomic_inc_command_header.noc_address); auto noc_addr =
+        // edm_safe_get_noc_addr(
+        //     noc_address_components.first.x,
+        //     noc_address_components.first.y,
+        //     noc_address_components.second,
+        //     edm_to_local_chip_noc_index);
+        // NocUnicastAtomicIncCommandHeader modified_command_header = noc_unicast_atomic_inc_command_header;
+        // modified_command_header.noc_address = noc_addr;
 
-        this->command_fields.unicast_seminc = modified_command_header;
+        // this->command_fields.unicast_seminc = modified_command_header;
+        this->command_fields.unicast_seminc = noc_unicast_atomic_inc_command_header;
         this->payload_size_bytes = 0;
         return *static_cast<Derived*>(this);
     }
