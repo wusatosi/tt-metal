@@ -351,6 +351,9 @@ uint32_t generate_max_out_nsticks_per_core(const std::vector<ShardBoundary>& sha
     return max_out_nsticks_per_core;
 }
 
+uint32_t global_padded_input_w = 0;
+uint32_t global_window_w = 0;
+uint32_t global_dilation_w = 0;
 std::vector<uint32_t> generate_dilated_idx_for_tensor_metadata(
     const SlidingWindowConfig& config,
     const ShardBoundary& shard_boundary,
@@ -361,6 +364,9 @@ std::vector<uint32_t> generate_dilated_idx_for_tensor_metadata(
     auto output_shape = config.get_output_shape();
     uint32_t padded_input_h = config.input_hw.first + 2 * config.pad_hw.first + config.get_ceil_pad_h();
     uint32_t padded_input_w = config.input_hw.second + 2 * config.pad_hw.second + config.get_ceil_pad_w();
+    global_padded_input_w = padded_input_w;
+    global_window_w = config.window_hw.second;
+    global_dilation_w = config.dilation_hw.second;
     std::cout << "padded_input_w: " << padded_input_w << std::endl;
     auto [output_start, output_end] = output_boundary;
     std::cout << "output_start: " << output_start << " output_end: " << output_end << std::endl;
@@ -699,8 +705,14 @@ std::vector<std::vector<uint16_t>> generate_sliding_window_op_config(
             continue;
         }
         TT_ASSERT(input_shard_start == op_trace_metadata[output_shard_start]);
+        uint32_t idx = 0;
         for (size_t i = output_shard_start; i < output_shard_end + 1; i++) {
-            local_top_left_indices.push_back(op_trace_metadata[i] - op_trace_metadata[output_shard_start]);
+            local_top_left_indices.push_back(idx);
+            if ((op_trace_metadata[i] % global_padded_input_w) ==
+                (global_padded_input_w - (global_window_w - 1) * global_dilation_w - 1)) {
+                idx += global_dilation_w * (global_window_w - 1);
+            }
+            idx++;
         }
         sharded_input_top_left_indices.push_back(local_top_left_indices);
     }
