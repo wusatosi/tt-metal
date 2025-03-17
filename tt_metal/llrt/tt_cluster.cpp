@@ -946,13 +946,16 @@ std::unordered_set<CoreCoord> Cluster::get_active_ethernet_cores(
         // without links. Only risc1 on these cores is available for Metal and should not be classified as idle
         // to ensure that Metal does not try to program both riscs.
         const auto& soc_desc = get_soc_desc(chip_id);
-        std::set<uint32_t> logical_active_eth_channels = cluster_desc_->get_active_eth_channels(chip_id);
-        for (auto logical_active_eth_channel : logical_active_eth_channels) {
-            tt::umd::CoreCoord logical_active_eth =
-                soc_desc.get_eth_core_for_channel(logical_active_eth_channel, CoordSystem::LOGICAL);
-            active_ethernet_cores.insert(CoreCoord(logical_active_eth.x, logical_active_eth.y));
+        auto eth_connections = cluster_desc_->get_ethernet_connections();
+        if (eth_connections.find(chip_id) == eth_connections.end()) {
+            return active_ethernet_cores;
         }
 
+        for (auto eth_conn : eth_connections[chip_id]) {
+            auto eth_core = eth_conn.first;
+            tt::umd::CoreCoord logical_eth_core = soc_desc.get_eth_core_for_channel(eth_core, CoordSystem::LOGICAL);
+            active_ethernet_cores.insert(logical_eth_core);
+        }
     } else {
         const auto& connected_chips = this->get_ethernet_cores_grouped_by_connected_chips(chip_id);
         for (const auto& [other_chip_id, eth_cores] : connected_chips) {
