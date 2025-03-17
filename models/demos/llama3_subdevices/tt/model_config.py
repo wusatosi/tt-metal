@@ -233,7 +233,7 @@ class TtModelArgs:
             local_params = "LLAMA3_2_11B_PARAMS"
             self.model_name = "3.2-11B"
             self.rope_scaling_factor = 8  # shared with 3.1-8B
-        elif "3.1-70B" in LLAMA_DIR:
+        elif "3.1-70B" in LLAMA_DIR or "3.3-70B-Instruct" in LLAMA_DIR:
             local_params = "LLAMA3_1_70B_PARAMS"
             self.model_name = "3.1-70B"
             self.rope_scaling_factor = 8
@@ -386,7 +386,7 @@ class TtModelArgs:
             )
 
             self.model_config["DECODE_SAMPLING_INPUT_MEMCFG"] = ttnn.create_sharded_memory_config(
-                shape=(1, 1, self.max_batch_size, 32),
+                shape=(1, 1, max(self.max_batch_size, self.tile_size), self.tile_size),
                 core_grid=shard_grid,
                 strategy=ttnn.ShardStrategy.WIDTH,
                 orientation=ttnn.ShardOrientation.ROW_MAJOR,
