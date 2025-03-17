@@ -155,7 +155,7 @@ operation::ProgramWithCallbacks conv_crop_multi_core_same_width(
                     if (remote_core_idx == 0 && visited_first_remote_core == false) {
                         visited_first_remote_core = true;
                         // Skip first row
-                        offset_in_remote_core += pre_crop_w;
+                        offset_in_remote_core += pre_crop_w * crop_h;
                     }
 
                     uint32_t transfered_rows = units_to_transfer / post_crop_w;

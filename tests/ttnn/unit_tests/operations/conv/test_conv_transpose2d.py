@@ -1080,9 +1080,6 @@ def test_conv_transpose2d_split_knit_new(request, device, input_shape_nhwc, outp
     is_conv3 = "conv_transpose_3" in test_id
     is_conv2 = "conv_transpose_2" in test_id
 
-    if is_conv3:
-        pytest.skip("Skipping conv_transpose_3, cant find a shard spec that works :()")
-
     groups = 1
     dilation = 1
     assert groups == 1, "Groups not supported in split knit"
@@ -1281,6 +1278,11 @@ def test_conv_transpose2d_split_knit_new(request, device, input_shape_nhwc, outp
 
     conv2d_out_channels = output_channels * 4
     kernel_size = [x//2 for x in filter]
+
+    if is_conv3:
+        # Apply more padding if conv3, so we get a valid height shard spec for reshard that can be proplerly split on some number of cores
+        padding = (2, 2)
+
     [tt_output_tensor_on_device, [out_h, out_w]] = ttnn.conv2d(
         input_tensor=tt_input_tensor,
         weight_tensor=tt_weight_tensor,
@@ -1354,8 +1356,25 @@ def test_conv_transpose2d_split_knit_new(request, device, input_shape_nhwc, outp
         tt_output_tensor_on_device.deallocate()
         resharded_conv_output = ttnn.move(resharded_conv_output)
         ttnn.synchronize_device(device)
-    else:
-        resharded_conv_output = tt_output_tensor_on_device
+    elif is_conv3:
+        core_range_set = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(3, 7)), ttnn.CoreRange(ttnn.CoreCoord(4, 0), ttnn.CoreCoord(4, 4))})
+        shard_shape = (
+            tt_output_tensor_on_device.padded_shape[2] // core_range_set.num_cores(),
+            tt_output_tensor_on_device.padded_shape[-1],)
+        print("Setting up core range for num_cores: ", core_range_set.num_cores())
+        memory_config = ttnn.MemoryConfig(
+            ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+            ttnn.BufferType.L1,
+            ttnn.ShardSpec(
+                core_range_set,
+                shard_shape,
+                ttnn.ShardOrientation.ROW_MAJOR,
+            ),
+        )
+        resharded_conv_output = ttnn.reshard(tt_output_tensor_on_device, memory_config)
+        tt_output_tensor_on_device.deallocate()
+        resharded_conv_output = ttnn.move(resharded_conv_output)
+        ttnn.synchronize_device(device)
 
     print("Start with conv knit")
     tt_knited_tensor = ttnn.conv_knit(resharded_conv_output, kernel_size[0], output_channels, out_w, conv2d_out_channels)
@@ -1374,6 +1393,10 @@ def test_conv_transpose2d_split_knit_new(request, device, input_shape_nhwc, outp
     w_after_knit = out_w * 2
     h_after_crop = h_after_knit - 2 * padding[0]
     w_after_crop = w_after_knit - 2 * padding[1]
+    if is_conv3:
+        # Remove additional 2 units of padding
+        h_after_crop = h_after_crop - 2
+        w_after_crop = w_after_crop - 2
 
     out_core_range_set = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 7))})
     print("Setting up core range for num_cores: ", out_core_range_set.num_cores())
@@ -1396,9 +1419,19 @@ def test_conv_transpose2d_split_knit_new(request, device, input_shape_nhwc, outp
     )
 
     print(f"Setting up shard shape: {out_shard_shape}")
+
+    crop_h = padding[0]
+    crop_w = padding[1]
+    if is_conv3:
+        crop_h += 1
+        crop_w += 1
+
     tt_knited_tensor = ttnn.conv_crop(
-        tt_knited_tensor, post_crop_mem_config, padding[0], padding[1], h_after_knit, w_after_knit
+        tt_knited_tensor, post_crop_mem_config, crop_h, crop_w, h_after_knit, w_after_knit
     )
+
+    if is_conv3:
+        padding=(3, 3)
 
     tt_split_knit_out = ttnn.to_torch(tt_knited_tensor, mesh_composer=None)
     tt_split_knit_out = tt_split_knit_out.reshape([1, h_after_knit - 2 * padding[0], w_after_knit - 2 * padding[1], output_channels])
