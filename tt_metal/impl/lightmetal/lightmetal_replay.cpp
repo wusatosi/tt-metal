@@ -234,15 +234,51 @@ void LightMetalReplay::remove_cb_handle_from_map(uint32_t global_id) { cb_handle
 // Alternatively, user can manage device open/close and pass to replay library.
 void LightMetalReplay::setup_devices() {
     log_info(tt::LogMetalTrace, "LightMetalReplay(setup_devices) - Using hardcoded CreateDevices() as temp hack.");
+    log_info(tt::LogMetalTrace, "device_ : {}", device_ != nullptr);
     TT_FATAL(!device_, "Device already setup in LightMetalReplay, no need to call setup_devices()");
-    const size_t trace_region_size = 4096;  // Default is 0
-    const int device_id = 0;
-    // FIXME - Hack for resnet until this is captured in binary.
-    const auto dispatch_core_type = tt_metal::DispatchCoreType::ETH;
-    const chip_id_t mmio_device_id = 0;
-    auto devices_map =
-        tt::tt_metal::detail::CreateDevices({mmio_device_id}, 1, 24576, trace_region_size, dispatch_core_type);
-    this->device_ = devices_map.at(mmio_device_id);
+
+    int setup_device_vals = parse_env("SETUP_VALS", 0);
+    log_info(tt::LogMetalTrace, "LightMetalReplay using setup_device_vals: {}", setup_device_vals);
+
+    switch (setup_device_vals) {
+        // Default
+        case 0: {
+            const size_t trace_region_size = 200000;
+            const auto dispatch_core_type = tt_metal::DispatchCoreType::ETH;
+            const int l1_small_size = 16384;
+
+            const chip_id_t mmio_device_id = 0;
+            auto devices_map = tt::tt_metal::detail::CreateDevices(
+                {mmio_device_id}, 1, l1_small_size, trace_region_size, dispatch_core_type);
+            this->device_ = devices_map.at(mmio_device_id);
+            break;
+        }
+        // Resnet values
+        case 1: {
+            const size_t trace_region_size = 4096;
+            const auto dispatch_core_type = tt_metal::DispatchCoreType::ETH;
+            const int l1_small_size = 24576;
+
+            const chip_id_t mmio_device_id = 0;
+            auto devices_map = tt::tt_metal::detail::CreateDevices(
+                {mmio_device_id}, 1, l1_small_size, trace_region_size, dispatch_core_type);
+            this->device_ = devices_map.at(mmio_device_id);
+            break;
+        }
+        // Bert-Tiny values
+        case 2: {
+            const size_t trace_region_size = 0;
+            const auto dispatch_core_type = tt_metal::DispatchCoreType::ETH;
+            const int l1_small_size = 24576;
+
+            const chip_id_t mmio_device_id = 0;
+            auto devices_map = tt::tt_metal::detail::CreateDevices(
+                {mmio_device_id}, 1, l1_small_size, trace_region_size, dispatch_core_type);
+            this->device_ = devices_map.at(mmio_device_id);
+            break;
+        }
+        default: assert(false && "unsupported setup_device_vals value"); break;
+    }
 }
 
 // TODO (kmabee) - Hardcode for now, eventually capture/replay "systemdesc" from binary or let user call.
