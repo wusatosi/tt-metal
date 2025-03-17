@@ -49,7 +49,7 @@ public:
         std::atomic<int> num_workers_completed = 0;
         bool deallocated = false;      // Set to true if device side storage was deallocated
         bool dynamic_storage = false;  // Storage type can change, depending on op behaviour
-        bool track_ref_count = false;
+        bool track_ref_count = true;
         TensorAttributes(Storage storage, TensorSpec tensor_spec);
         TensorAttributes();
         ~TensorAttributes() = default;
