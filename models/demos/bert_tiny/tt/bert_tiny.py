@@ -5,6 +5,9 @@
 import torch
 import ttnn
 from models.experimental.functional_common.attention_mask_functions import get_extended_attention_mask
+from loguru import logger
+import numpy as np
+import hashlib
 
 
 def bert_attention(
@@ -207,7 +210,20 @@ def bert(
     *,
     parameters,
 ):
+    # Bfloat16 not supported for numpy, need to change to float32.
+    # intermediate_host = ttnn.to_torch(input_ids).to(torch.float32)
+    # sha256_hash = hashlib.sha256(intermediate_host.numpy().tobytes()).hexdigest()
+    # print("KCM_INTERMEDIATE_HOST_INPUT_IDS: ", intermediate_host)
+    # print(f"KCM SHA-256 hash of input_ids tensor: {sha256_hash}")
+
     word_embeddings = ttnn.embedding(input_ids, parameters.embeddings.word_embeddings.weight)
+
+    # Bfloat16 not supported for numpy, need to change to float32.
+    # intermediate_host = ttnn.to_torch(word_embeddings).to(torch.float32)
+    # sha256_hash = hashlib.sha256(intermediate_host.numpy().tobytes()).hexdigest()
+    # print("KCM_INTERMEDIATE_HOST_WORD_EMBEDDINGS: ", intermediate_host)
+    # print(f"KCM SHA-256 hash of word_embeddings tensor: {sha256_hash}")
+
     token_type_embeddings = ttnn.embedding(token_type_ids, parameters.embeddings.token_type_embeddings.weight)
     position_embeddings = ttnn.embedding(position_ids, parameters.embeddings.position_embeddings.weight)
     word_embeddings = ttnn.to_layout(word_embeddings, ttnn.TILE_LAYOUT)
@@ -223,6 +239,12 @@ def bert(
         epsilon=config.layer_norm_eps,
         memory_config=ttnn.L1_MEMORY_CONFIG,
     )
+
+    # Bfloat16 not supported for numpy, need to change to float32.
+    # intermediate_host = ttnn.to_torch(hidden_states).to(torch.float32)
+    # sha256_hash = hashlib.sha256(intermediate_host.numpy().tobytes()).hexdigest()
+    # print("KCM_INTERMEDIATE_HOST_HIDDEN_STATES: ", intermediate_host)
+    # print(f"KCM SHA-256 hash of hidden_states tensor: {sha256_hash}")
 
     hidden_states = bert_encoder(
         config,
