@@ -10,6 +10,8 @@
 #include "fabric_edm_types.hpp"
 #include <cstdint>
 
+#include "ttnn/cpp/ttnn/operations/ccl/common/interpreter_backends/kernel_common/noc_addr.hpp"
+
 // If the hop/distance counter equals to the below value, it indicates that it has
 // arrived at (atleast one of) the intended destination(s)
 static constexpr size_t DESTINATION_HOP_COUNT = 1;
@@ -93,35 +95,30 @@ FORCE_INLINE void execute_chip_unicast_to_local_chip(
     uint32_t payload_start_address = reinterpret_cast<size_t>(packet_start) + sizeof(PACKET_HEADER_TYPE);
 
     tt::tt_fabric::NocSendType noc_send_type = packet_start->noc_send_type;
+    DPRINT << "!!!!!!! " << ENDL();
     switch (noc_send_type) {
         case tt::tt_fabric::NocSendType::NOC_UNICAST_WRITE: {
             const auto dest_address = header.command_fields.unicast_write.noc_address;
 
-            // WAYPOINT("NAWW");
-            // while (!noc_cmd_buf_ready(1, write_cmd_buf));
-            // WAYPOINT("NAWD");
-            // uint32_t noc_cmd_field = NOC_CMD_CPY | NOC_CMD_WR | NOC_CMD_VC_STATIC |
-            // NOC_CMD_STATIC_VC(NOC_UNICAST_WRITE_VC) |
-            //                         0x0 |  // (linked ? NOC_CMD_VC_LINKED : 0x0)
-            //                         0x0 |  // (mcast ? (NOC_CMD_PATH_RESERVE | NOC_CMD_BRCST_PACKET) : 0x0)
-            //                         NOC_CMD_RESP_MARKED;
-
-            // NOC_CMD_BUF_WRITE_REG(1, write_cmd_buf, NOC_CTRL, noc_cmd_field);
-            // NOC_CMD_BUF_WRITE_REG(
-            //     1, write_cmd_buf, NOC_RET_ADDR_COORDINATE, (uint32_t)(dest_address >> NOC_ADDR_COORD_SHIFT) &
-            //     NOC_COORDINATE_MASK);
-
-            noc_async_write_one_packet_with_trid_set_state(dest_address, write_cmd_buf, 1);
-            noc_async_write_one_packet_with_trid_with_state(
-                payload_start_address, (uint32_t)dest_address, payload_size_bytes, transaction_id, write_cmd_buf, 1);
+            // noc_async_write_one_packet_with_trid_set_state(dest_address, write_cmd_buf, 1);
+            // noc_async_write_one_packet_with_trid_with_state(
+            //     payload_start_address, (uint32_t)dest_address, payload_size_bytes, transaction_id, write_cmd_buf, 1);
             // noc_async_write_one_packet_with_trid(
             //     payload_start_address,
             //     dest_address,
             //     payload_size_bytes,
             //     transaction_id,
             //     tt::tt_fabric::edm_to_local_chip_noc);
-            // noc_async_write_one_packet_with_trid(
-            //     payload_start_address, dest_address, payload_size_bytes, transaction_id, 1);
+
+            auto noc_address_components = get_noc_address_components(dest_address);
+            ASSERT(noc_address_components.first.x >= 16);
+            ASSERT(noc_address_components.first.y >= 16);
+
+            DPRINT << "edm local write x " << noc_address_components.first.x << " y " << noc_address_components.first.y
+                   << " addr " << noc_address_components.second << ENDL();
+
+            noc_async_write_one_packet_with_trid(
+                payload_start_address, dest_address, payload_size_bytes, transaction_id, 0);
         } break;
 
         case tt::tt_fabric::NocSendType::NOC_MULTICAST_WRITE: {
@@ -142,7 +139,7 @@ FORCE_INLINE void execute_chip_unicast_to_local_chip(
             const uint64_t dest_address = header.command_fields.unicast_seminc.noc_address;
             const auto increment = header.command_fields.unicast_seminc.val;
             // noc_semaphore_inc(dest_address, increment, tt::tt_fabric::edm_to_local_chip_noc);
-            noc_semaphore_inc(dest_address, increment, 0);
+            noc_semaphore_inc(dest_address, increment, 1);
 
         } break;
 
@@ -150,7 +147,7 @@ FORCE_INLINE void execute_chip_unicast_to_local_chip(
             const auto dest_address = header.command_fields.unicast_inline_write.noc_address;
             const auto value = header.command_fields.unicast_inline_write.value;
             // noc_inline_dw_write(dest_address, value, 0xF, tt::tt_fabric::edm_to_local_chip_noc);
-            noc_inline_dw_write(dest_address, value, 0xF, 0);
+            noc_inline_dw_write(dest_address, value, 0xF, 1);
         } break;
 
         case tt::tt_fabric::NocSendType::NOC_MULTICAST_ATOMIC_INC:

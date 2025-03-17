@@ -57,6 +57,8 @@ tt::tt_metal::operation::ProgramWithCallbacks all_reduce_async_minimal_multi_cor
     bool enable_persistent_fabric_mode) {
     tt::tt_metal::Program program{};
 
+    std::cout << "!!!!!!!!!!!!!!!!!!!!!" << std::endl;
+
     IDevice* device = input_tensor.device();
     bool is_first_chip = ring_index == 0;
     bool is_last_chip = ring_index == ring_size - 1;

@@ -450,7 +450,7 @@ def run_all_reduce_with_mesh_tensor_along_row(
 @pytest.mark.parametrize(
     "num_devices, num_links, per_chip_output_shape, layout",
     [
-        (4, 1, [1, 1, 32, 2304], ttnn.TILE_LAYOUT),
+        (4, 1, [1, 4, 32, 2304], ttnn.TILE_LAYOUT),
     ],
 )
 @pytest.mark.parametrize(
@@ -467,9 +467,9 @@ def run_all_reduce_with_mesh_tensor_along_row(
         ttnn.BufferType.L1,
     ],
 )
-@pytest.mark.parametrize("replication_factor", [1])  # 1, 8])
+@pytest.mark.parametrize("replication_factor", [8])  # 1, 8])
 @pytest.mark.parametrize("enable_async", [True])
-@pytest.mark.parametrize("mesh_device", [pytest.param((1, 4), id="8x4_grid")], indirect=True)
+@pytest.mark.parametrize("mesh_device", [pytest.param((8, 4), id="8x4_grid")], indirect=True)
 @pytest.mark.parametrize("math_op", [ttnn.ReduceType.Sum])
 def test_line_all_reduce_on_TG_rows_post_commit(
     mesh_device,

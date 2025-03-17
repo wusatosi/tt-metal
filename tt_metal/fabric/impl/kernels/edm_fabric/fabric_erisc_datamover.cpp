@@ -496,13 +496,13 @@ enum PacketLocalForwardType : uint8_t {
     PACKET_FORWARD_LOCAL_AND_REMOTE = 0x3
 };
 
-static constexpr uint32_t SWITCH_INTERVAL =
-#ifndef DEBUG_PRINT_ENABLED
-    get_compile_time_arg_val(0);
-#else
-    0;
-#endif
-// static constexpr uint32_t SWITCH_INTERVAL = 100;
+// static constexpr uint32_t SWITCH_INTERVAL =
+// #ifndef DEBUG_PRINT_ENABLED
+//     get_compile_time_arg_val(0);
+// #else
+//     0;
+// #endif
+static constexpr uint32_t SWITCH_INTERVAL = 100;
 
 static constexpr size_t ETH_BYTES_TO_WORDS_SHIFT = 4;
 static constexpr size_t NUM_SENDER_CHANNELS = 2;
