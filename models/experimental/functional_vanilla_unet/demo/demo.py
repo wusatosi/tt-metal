@@ -16,6 +16,7 @@ from models.experimental.functional_vanilla_unet.demo import demo_utils
 from tqdm import tqdm
 import os
 from skimage.io import imsave
+import numpy as np
 
 
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 32768}], indirect=True)
@@ -71,11 +72,15 @@ def test_unet_demo_single_image(device, reset_seeds, model_location_generator, u
                 x.permute(0, 2, 3, 1), device=device, dtype=ttnn.bfloat16, memory_config=ttnn.L1_MEMORY_CONFIG
             )
 
-            y_pred = ttnn_model(device, ttnn_input_tensor)
+            y_pred = ttnn_model(device, ttnn_input_tensor, False)
 
         # Convert predictions to numpy
         y_pred_np = y_pred.detach().cpu().numpy()
         y_true_np = y_true.detach().cpu().numpy()
+        unique_labels_y_true_np = np.unique(y_true_np)
+        unique_labels_y_pred_np = np.unique(y_pred_np)
+        print("Unique Labels in Dataset y_true_np:", unique_labels_y_true_np.shape)
+        print("Unique Labels in Dataset y_pred_np:", unique_labels_y_pred_np.shape)
 
         # Save the result
         image = demo_utils.gray2rgb(y_pred_np[0, 0])  # Grayscale to RGB
@@ -140,7 +145,7 @@ def test_unet_demo_imageset(device, reset_seeds, model_location_generator, use_t
             ttnn_input_tensor = ttnn.from_torch(
                 x.permute(0, 2, 3, 1), device=device, dtype=ttnn.bfloat16, memory_config=ttnn.L1_MEMORY_CONFIG
             )
-            y_pred = ttnn_model(device, ttnn_input_tensor)
+            y_pred = ttnn_model(device, ttnn_input_tensor, False)
         y_pred_np = y_pred.detach().cpu().numpy()
         pred_list.extend([y_pred_np[s] for s in range(y_pred_np.shape[0])])
 
