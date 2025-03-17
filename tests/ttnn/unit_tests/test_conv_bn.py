@@ -18,6 +18,35 @@ from ttnn.model_preprocessing import fold_batch_norm2d_into_conv2d
 import torch.nn as nn
 
 
+def fuse_conv_bn_weights(conv_w, conv_b, bn_rm, bn_rv, bn_eps, bn_w, bn_b):
+    if conv_b is None:
+        conv_b = torch.zeros_like(bn_rm)
+    if bn_w is None:
+        bn_w = torch.ones_like(bn_rm)
+    if bn_b is None:
+        bn_b = torch.zeros_like(bn_rm)
+    bn_var_rsqrt = torch.rsqrt(bn_rv + bn_eps)
+
+    conv_w = conv_w * (bn_w * bn_var_rsqrt).reshape([-1] + [1] * (len(conv_w.shape) - 1))
+    conv_b = (conv_b - bn_rm) * bn_var_rsqrt * bn_w + bn_b
+
+    return torch.nn.Parameter(conv_w), torch.nn.Parameter(conv_b)
+
+
+def fuse_conv_bn_eval(conv, bn):
+    """
+    Given a conv Module `A` and an batch_norm module `B`, returns a conv
+    module `C` such that C(x) == B(A(x)) in inference mode.
+    """
+    assert not (conv.training or bn.training), "Fusion only for eval!"
+
+    conv.weight, conv.bias = fuse_conv_bn_weights(
+        conv.weight, conv.bias, bn.running_mean, bn.running_var, bn.eps, bn.weight, bn.bias
+    )
+
+    return conv.weight, conv.bias
+
+
 def run_conv_l1(
     device,
     math_fidelity,
@@ -82,19 +111,26 @@ def run_conv_l1(
         stride=(stride_h, stride_w),
         padding=(pad_h, pad_w),
         groups=groups,
-    )
+    ).eval()
     conv.weight = nn.Parameter(torch.load("conv_weight.pt"))
     conv.bias = None
-    bn = nn.BatchNorm2d(num_features=output_channels)
-    # bn.weight = nn.Parameter(torch.load("scale.pt"))
-    # bn.bias = nn.Parameter(torch.load("shift.pt"))
+    bn = nn.BatchNorm2d(num_features=output_channels).eval()
+    bn.weight.data = nn.Parameter(torch.load("scale.pt"))
+    bn.bias.data = nn.Parameter(torch.load("shift.pt"))
+    bn.running_mean.data = nn.Parameter(torch.load("running_mean.pt"))
+    bn.running_var.data = nn.Parameter(torch.load("running_var.pt"))
+
+    torch_weight_tensor, torch_bias_tensor = fuse_conv_bn_eval(conv, bn)
+    # torch_weight_tensor, torch_bias_tensor = fold_batch_norm2d_into_conv2d(conv, bn)
+
+    conv.weight = torch_weight_tensor
+    conv.bias = torch_bias_tensor
 
     torch_out_golden_tensor = conv(torch_input_tensor_nchw)
-    torch_out_golden_tensor = bn(torch_out_golden_tensor)
+    # torch_out_golden_tensor = bn(torch_out_golden_tensor)
     relu = nn.ReLU()
     torch_out_golden_tensor = relu(torch_out_golden_tensor)
 
-    torch_weight_tensor, torch_bias_tensor = fold_batch_norm2d_into_conv2d(conv, bn)
     torch_bias_tensor = torch_bias_tensor.reshape(1, 1, 1, -1)
 
     output_shape_nhwc = [
