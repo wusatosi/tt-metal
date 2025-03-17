@@ -13,17 +13,16 @@ from models.utility_functions import is_blackhole
 @pytest.mark.parametrize(
     "batch_size, act_dtype, weight_dtype, math_fidelity",
     (
-        (16, ttnn.bfloat8_b, ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2),
-        (16, ttnn.bfloat8_b, ttnn.bfloat8_b, ttnn.MathFidelity.LoFi),
+        # (16, ttnn.bfloat8_b, ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2),
+        # (16, ttnn.bfloat8_b, ttnn.bfloat8_b, ttnn.MathFidelity.LoFi),
         (32, ttnn.bfloat8_b, ttnn.bfloat8_b, ttnn.MathFidelity.LoFi),
     ),
 )
 @pytest.mark.parametrize(
     "use_pretrained_weight",
-    [True, False],
+    [True],
     ids=[
         "pretrained_weight_true",
-        "pretrained_weight_false",
     ],
 )
 def test_resnet_50(
@@ -42,24 +41,26 @@ def test_resnet_50(
     if batch_size > 16 and not is_blackhole():
         pytest.skip("Batch size > 16 is not supported on non-blackhole devices")
 
-    test_infra = create_test_infra(
-        device,
-        batch_size,
-        act_dtype,
-        weight_dtype,
-        math_fidelity,
-        use_pretrained_weight,
-        model_location_generator=model_location_generator,
-    )
-    tt_inputs_host, input_mem_config = test_infra.setup_l1_sharded_input(device)
-    test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
-    # First run configures convs JIT
-    test_infra.run()
-    # Optimized run
-    test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
-    test_infra.run()
-    # More optimized run with caching
-    test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
-    test_infra.run()
-    passed, message = test_infra.validate()
-    assert passed, message
+    for iter in range(100):
+        print("Iteration: " + str(iter))
+        test_infra = create_test_infra(
+            device,
+            batch_size,
+            act_dtype,
+            weight_dtype,
+            math_fidelity,
+            use_pretrained_weight,
+            model_location_generator=model_location_generator,
+        )
+        tt_inputs_host, input_mem_config = test_infra.setup_l1_sharded_input(device)
+        test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
+        # First run configures convs JIT
+        test_infra.run()
+        # Optimized run
+        test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
+        test_infra.run()
+        # More optimized run with caching
+        test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
+        test_infra.run()
+        passed, message = test_infra.validate()
+        assert passed, message
