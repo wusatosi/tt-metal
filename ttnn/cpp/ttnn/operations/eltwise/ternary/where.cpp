@@ -35,7 +35,7 @@ Tensor where_impl(
     auto get_multiplied = [&](const Tensor& condition, const FloatOrTensor& value) -> Tensor {
         if (std::holds_alternative<Tensor>(value)) {
             condition.print();
-            value.print();
+            std::get<Tensor>(value).print();
             return ttnn::multiply(queue_id, condition, std::get<Tensor>(value), std::nullopt, output_mem_config);
         } else {
             return ttnn::multiply(queue_id, condition, std::get<float>(value), std::nullopt, output_mem_config);
