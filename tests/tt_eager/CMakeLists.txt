@@ -8,6 +8,7 @@ set(TT_EAGER_TESTS_OPS
     ops/test_layernorm_op.cpp
     ops/test_bcast_op.cpp
     ops/test_bmm_op.cpp
+    ops/test_sdpa.cpp
     # ops/test_pad_op.cpp                     # <- not called in run_tt_eager.py
     ops/test_sfpu.cpp
 )
