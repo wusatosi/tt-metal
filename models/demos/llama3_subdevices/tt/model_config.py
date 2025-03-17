@@ -1834,7 +1834,7 @@ def set_tg_attention_config(model_config, dim):
     )
     model_config["GATHER_USERS_MEMCFG"] = lambda mesh_cols: ttnn.create_sharded_memory_config(
         shape=(32, 128),  # mesh_cols = 4
-        core_grid=ttnn.num_cores_to_corerangeset_in_subcoregrids(start_core, 32, sub_core_grids, row_wise=True),
+        core_grid=ttnn.num_cores_to_corerangeset_in_subcoregrids(start_core, 4, sub_core_grids, row_wise=True),
         strategy=ttnn.ShardStrategy.HEIGHT,
         orientation=ttnn.ShardOrientation.ROW_MAJOR,
         use_height_and_width_as_shard_shape=True,

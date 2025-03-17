@@ -122,7 +122,7 @@ class TtLlamaRotarySetup(LightweightModule):
     def get_rot_idxs(self, position_idxs, on_host=False):
         assert isinstance(position_idxs, torch.Tensor), "Position ids must be a torch tensor"
         assert len(position_idxs.shape) == 1, "position idxs must be a [batch] tensor"
-        position_idxs = position_idxs.repeat(2)
+        position_idxs = position_idxs.repeat(2)  # [2*batch]
 
         batch = position_idxs.shape[0]
         position_idxs = position_idxs.reshape(1, batch)  # [1, 1, 1, batch]
@@ -130,8 +130,8 @@ class TtLlamaRotarySetup(LightweightModule):
         assert torch.min(position_idxs) >= 0, "position idxs must be non-negative"
 
         # Add padding if needed
-        pad_size = nearest_32(batch) - batch
-        position_idxs = torch.nn.functional.pad(position_idxs, (0, pad_size), "constant", 0)
+        # pad_size = nearest_32(batch) - batch
+        # position_idxs = torch.nn.functional.pad(position_idxs, (0, pad_size), "constant", 0)
         position_idxs = position_idxs.transpose(1, 0)
         position_idxs = torch.nn.functional.pad(position_idxs, (0, 31), "constant", 0)
 
@@ -142,7 +142,7 @@ class TtLlamaRotarySetup(LightweightModule):
                 layout=ttnn.ROW_MAJOR_LAYOUT,
                 mesh_mapper=ShardTensor2dMesh(
                     self.device,
-                    dims=(None, 0) if (self.num_devices == 32 and batch > 1) else (None, None),
+                    dims=(None, 0) if (self.num_devices == 32 and batch > 2) else (None, None),
                     mesh_shape=list(self.device.shape),
                 )
                 if self.is_mesh_device
@@ -157,7 +157,7 @@ class TtLlamaRotarySetup(LightweightModule):
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
                 mesh_mapper=ShardTensor2dMesh(
                     self.device,
-                    dims=(None, 0) if (self.num_devices == 32 and batch > 1) else (None, None),
+                    dims=(None, 0) if (self.num_devices == 32 and batch > 2) else (None, None),
                     mesh_shape=list(self.device.shape),
                 )
                 if self.is_mesh_device
