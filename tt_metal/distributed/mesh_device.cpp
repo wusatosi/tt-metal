@@ -640,18 +640,12 @@ void MeshDevice::end_trace(const uint8_t cq_id, const uint32_t tid) {
         device->end_trace(cq_id, tid);
     }
 }
-void MeshDevice::replay_trace(
-    const uint8_t cq_id, const uint32_t tid, const bool block_on_device, const bool block_on_worker_thread) {
+void MeshDevice::replay_trace(const uint8_t cq_id, const uint32_t tid, const bool blocking) {
     for (auto& device : scoped_devices_->root_devices()) {
-        device->replay_trace(cq_id, tid, block_on_device, false /* block_on_worker_thread */);
-    }
-    // If blocking, wait until worker threads have completed
-    if (block_on_worker_thread) {
-        for (auto& device : scoped_devices_->root_devices()) {
-            device->synchronize();
-        }
+        device->replay_trace(cq_id, tid, blocking);
     }
 }
+
 void MeshDevice::release_trace(const uint32_t tid) {
     for (auto& device : scoped_devices_->root_devices()) {
         device->release_trace(tid);
@@ -755,11 +749,7 @@ void MeshDevice::init_fabric() {
     TT_THROW("init_fabric_program() is not supported on MeshDevice - use individual devices instead");
     reference_device()->init_fabric();
 }
-void MeshDevice::synchronize() {
-    // Nothing to synchronize, as all work is executed by MeshDevice is synchronous.
-}
-WorkExecutorMode MeshDevice::get_worker_mode() { return WorkExecutorMode::SYNCHRONOUS; }
-bool MeshDevice::is_worker_queue_empty() const { return true; }
+
 void MeshDevice::push_work(std::function<void()> work, bool blocking) {
     // Execute inline synchronously.
     // Using a lock to provide the same call serialization guarantee as an async single device scheduling.
@@ -851,9 +841,6 @@ MeshSubDeviceManagerId MeshDevice::mesh_create_sub_device_manager(
             sub_device_manager_id = device->create_sub_device_manager(sub_devices, local_l1_size);
         });
     }
-    for (auto* device : devices) {
-        device->synchronize();
-    }
     return mesh_sub_device_manager_id;
 }
 
@@ -868,9 +855,6 @@ std::tuple<MeshSubDeviceManagerId, SubDeviceId> MeshDevice::mesh_create_sub_devi
         device->push_work([device, sub_devices, local_l1_size, &sub_device_manager_id, &fabric_sub_device_id]() {
             std::tie(sub_device_manager_id, fabric_sub_device_id) = device->create_sub_device_manager_with_fabric(sub_devices, local_l1_size);
         });
-    }
-    for (auto* device : devices){
-        device->synchronize();
     }
     return {mesh_sub_device_manager_id, fabric_sub_device_id};
 }

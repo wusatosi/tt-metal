@@ -25,7 +25,7 @@ void end_trace_capture(IDevice* device, uint32_t trace_id, QueueId cq_id) {
 
 void execute_trace(IDevice* device, uint32_t trace_id, QueueId cq_id, bool blocking) {
     ZoneScoped;
-    device->replay_trace(*cq_id, trace_id, blocking /* block_on_device */, blocking /* block_on_worker_thread */);
+    device->replay_trace(*cq_id, trace_id, blocking);
 }
 
 void release_trace(IDevice* device, uint32_t trace_id) {

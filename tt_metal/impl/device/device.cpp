@@ -59,10 +59,7 @@ Device::Device(
     bool minimal,
     uint32_t worker_thread_core,
     uint32_t completion_queue_reader_core) :
-    id_(device_id),
-    worker_thread_core_(worker_thread_core),
-    completion_queue_reader_core_(completion_queue_reader_core),
-    work_executor_(std::make_unique<WorkExecutor>(worker_thread_core, device_id)) {
+    id_(device_id), completion_queue_reader_core_(completion_queue_reader_core) {
     ZoneScoped;
     this->initialize(num_hw_cqs, l1_small_size, trace_region_size, l1_bank_remap, minimal);
 }
@@ -987,22 +984,18 @@ bool Device::initialize(const uint8_t num_hw_cqs, size_t l1_small_size, size_t t
     if (minimal)
         return true;
 
-    // Mark initialized before compiling and sending dispatch kernels to device because compilation expects device to be initialized
-    this->work_executor_->initialize();
+    // Mark initialized before compiling and sending dispatch kernels to device because compilation expects device to be
+    // initialized
     this->initialized_ = true;
 
     return true;
 }
 
 void Device::push_work(std::function<void()> work, bool blocking) {
-    if (not this->initialized_) {
-        if (!uninitialized_error_fired_) {
-            log_fatal("Attempting to push work to Device {} which is not initialized. Ignoring...", this->id_);
-            uninitialized_error_fired_ = true;
-        }
-        return;
-    }
-    this->work_executor_->push_work(std::move(work), blocking);
+    // Execute inline synchronously.
+    // Using a lock to provide the same call serialization guarantee as an async single device scheduling.
+    std::lock_guard lock(push_work_mutex_);
+    work();
 }
 
 bool Device::close() {
@@ -1018,7 +1011,6 @@ bool Device::close() {
         hw_command_queue->terminate();
     }
 
-    this->work_executor_->reset();
     tt_metal::detail::DumpDeviceProfileResults(this, ProfilerDumpState::LAST_CLOSE_DEVICE);
 
     sub_device_manager_tracker_.reset(nullptr);
@@ -1288,38 +1280,7 @@ CommandQueue& Device::command_queue(size_t cq_id) {
     return *command_queues_[cq_id];
 }
 
-void Device::synchronize() {
-    if (not this->initialized_) {
-        log_warning("Attempting to synchronize Device {} which is not initialized. Ignoring...", this->id_);
-        return;
-    }
-    this->work_executor_->synchronize();
-}
-
-void Device::set_worker_mode(const WorkExecutorMode& mode) { this->work_executor_->set_worker_mode(mode); }
-
-void Device::enable_async(bool enable) {
-    if (enable) {
-        tt::log_warning("Async mode is always disabled for a single device, ignoring enable_async call");
-    } else {
-        force_enable_async(false);
-    }
-}
-
-void Device::force_enable_async(bool enable) {
-    auto mode = enable ? WorkExecutorMode::ASYNCHRONOUS : WorkExecutorMode::SYNCHRONOUS;
-    this->set_worker_mode(mode);
-    // If a worker thread is spawned for a device, register/track it in a runtime structure.
-    // If a worker thread is destroyed, remove it from the structure.
-    // This is required for checking if a call is made from an application thread or a worker thread.
-    // See InWorkerThread().
-    if (enable) {
-        tt::DevicePool::instance().register_worker_thread_for_device(
-            this, this->work_executor_->get_worker_thread_id());
-    } else {
-        tt::DevicePool::instance().unregister_worker_thread_for_device(this);
-    }
-}
+void Device::enable_async(bool enable) {}
 
 bool Device::using_slow_dispatch() const {
     return !using_fast_dispatch();
@@ -1405,28 +1366,22 @@ void Device::load_trace(const uint8_t cq_id, const uint32_t trace_id, const Trac
     this->mark_allocations_unsafe();
 }
 
-void Device::replay_trace(
-    const uint8_t cq_id, const uint32_t tid, const bool block_on_device, const bool block_on_worker_thread) {
-    // If blocking, ensure that worker thread blocks until trace is completed
-    this->push_work(
-        [this, cq_id, tid, block_on_device]() mutable {
-            ZoneScoped;
-            TracyTTMetalReplayTrace(this->id(), tid);
-            constexpr bool check = false;
-            auto* active_sub_device_manager = sub_device_manager_tracker_->get_active_sub_device_manager();
-            const auto& trace_buffer = active_sub_device_manager->get_trace(tid);
-            TT_FATAL(
-                trace_buffer != nullptr,
-                "Trace instance {} must exist on device {}'s active sub-device manager {}",
-                tid,
-                this->id_,
-                active_sub_device_manager->id());
-            if constexpr (check) {
-                trace_buffer->validate();
-            }
-            EnqueueTrace(this->command_queue(cq_id), tid, block_on_device);
-        },
-        block_on_worker_thread);
+void Device::replay_trace(const uint8_t cq_id, const uint32_t tid, const bool blocking) {
+    ZoneScoped;
+    TracyTTMetalReplayTrace(this->id(), tid);
+    constexpr bool check = false;
+    auto* active_sub_device_manager = sub_device_manager_tracker_->get_active_sub_device_manager();
+    const auto& trace_buffer = active_sub_device_manager->get_trace(tid);
+    TT_FATAL(
+        trace_buffer != nullptr,
+        "Trace instance {} must exist on device {}'s active sub-device manager {}",
+        tid,
+        this->id_,
+        active_sub_device_manager->id());
+    if constexpr (check) {
+        trace_buffer->validate();
+    }
+    EnqueueTrace(this->command_queue(cq_id), tid, blocking);
 }
 
 void Device::release_trace(const uint32_t tid) {
@@ -1451,21 +1406,16 @@ std::shared_ptr<TraceBuffer> Device::get_trace(uint32_t tid) {
 
 void Device::enable_program_cache() {
     log_info(tt::LogMetal, "Enabling program cache on device {}", this->id_);
-    this->synchronize();
     program_cache_.enable();
 }
 void Device::disable_and_clear_program_cache() {
     log_info(tt::LogMetal, "Disabling and clearing program cache on device {}", this->id_);
-    this->synchronize();
     if (this->program_cache_.is_enabled()) {
         program_cache_.disable();
     }
     program_cache_.clear();
 }
-std::size_t Device::num_program_cache_entries() {
-    this->synchronize();
-    return program_cache_.num_entries();
-}
+std::size_t Device::num_program_cache_entries() { return program_cache_.num_entries(); }
 
 void Device::mark_allocations_unsafe() { this->allocator()->mark_allocations_unsafe(); }
 
@@ -1666,9 +1616,6 @@ std::vector<std::pair<transfer_info_cores, uint32_t>> Device::extract_dst_noc_mu
     }
     return dst_noc_multicast_info;
 }
-
-tt::WorkExecutorMode Device::get_worker_mode() { return work_executor_->get_worker_mode(); }
-bool Device::is_worker_queue_empty() const { return work_executor_->worker_queue.empty(); }
 
 }  // namespace tt_metal
 

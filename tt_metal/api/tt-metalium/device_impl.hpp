@@ -122,11 +122,7 @@ public:
     // Metal trace device capture mode
     void begin_trace(const uint8_t cq_id, const uint32_t tid) override;
     void end_trace(const uint8_t cq_id, const uint32_t tid) override;
-    void replay_trace(
-        const uint8_t cq_id,
-        const uint32_t tid,
-        const bool block_on_device,
-        const bool block_on_worker_thread) override;
+    void replay_trace(const uint8_t cq_id, const uint32_t tid, const bool blocking) override;
     void release_trace(const uint32_t tid) override;
     std::shared_ptr<TraceBuffer> get_trace(uint32_t tid) override;
     uint32_t get_trace_buffers_size() const override { return trace_buffers_size_; }
@@ -158,10 +154,6 @@ public:
     // Calls to enable_async are ignored in effort to forcefully disable async for single device use-cases
     // MeshDevice calls force_enable_async directly avoiding enable_async call for multi-device use-case
     void enable_async(bool enable) override;
-    void force_enable_async(bool enable);
-    void synchronize() override;
-    WorkExecutorMode get_worker_mode() override;
-    bool is_worker_queue_empty() const override;
 
     void push_work(std::function<void()> work, bool blocking) override;
 
@@ -217,8 +209,6 @@ private:
         std::unordered_map<chip_id_t, std::unordered_set<CoreCoord>>& my_dispatch_cores,
         std::unordered_map<chip_id_t, std::unordered_set<CoreCoord>>& other_dispatch_cores);
 
-    void set_worker_mode(const WorkExecutorMode& mode);
-
     void generate_device_bank_to_noc_tables();
 
     void mark_allocations_unsafe();
@@ -242,10 +232,6 @@ private:
     // Fabric program includes ethernet router kernel
     std::unique_ptr<Program> fabric_program_;
 
-    // Work Executor for this device - can asynchronously process host side work for
-    // all tasks scheduled on this device
-    std::unique_ptr<WorkExecutor> work_executor_;
-    uint32_t worker_thread_core_ = 0;
     uint32_t completion_queue_reader_core_ = 0;
     std::unique_ptr<SystemMemoryManager> sysmem_manager_;
     uint8_t num_hw_cqs_ = 1;
@@ -268,6 +254,7 @@ private:
     uint32_t trace_buffers_size_ = 0;
     bool uninitialized_error_fired_ =
         false;  // To avoid spam with warnings about calling Device methods when it's not initialized.
+    inline static std::recursive_mutex push_work_mutex_;
 };
 
 }  // namespace tt::tt_metal

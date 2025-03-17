@@ -177,7 +177,6 @@ TEST_F(MultiCommandQueueSingleDeviceFixture, TestAsyncRuntimeBufferDestructor) {
     TensorSpec tensor_spec(shape, tensor_layout);
     for (int loop = 0; loop < 100000; loop++) {
         auto input_buffer_dummy = tt::tt_metal::tensor_impl::allocate_buffer_on_device(device_, tensor_spec);
-        device_->synchronize();
     }
 }
 }  // namespace

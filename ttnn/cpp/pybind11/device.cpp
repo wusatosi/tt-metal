@@ -598,7 +598,6 @@ void device_module(py::module& m_device) {
                 Synchronize(device, cq_id.has_value() ? std::make_optional(**cq_id) : std::nullopt, sub_device_ids);
             });
             // Main thread stalls until worker is complete (full device and worker queue flush).
-            device->synchronize();
         },
         synchronize_device_doc.data(),
         py::arg("device"),

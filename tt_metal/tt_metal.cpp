@@ -872,23 +872,6 @@ void CompileProgram(IDevice* device, Program& program, bool fd_bootloader_mode) 
     program.compile(device, fd_bootloader_mode);
 }
 
-void SynchronizeWorkerThreads(const std::vector<IDevice*>& workers) {
-    if (tt::tt_metal::detail::InWorkerThread()) {
-        // Early exit if in a worker thread, since waiting for the worker
-        // queue to become empty inside a worker thread leads to a deadlock
-        // Synchronizing in a worker thread should be a nop by definition
-        return;
-    }
-    // Push empty work to threads and ensure its been picked up
-    for (auto target_device : workers) {
-        target_device->push_work([]() {});
-    }
-    // Block until work has been picked up, to flush the queue
-    for (auto target_device : workers) {
-        while (not target_device->is_worker_queue_empty());
-    }
-}
-
 }  // namespace detail
 
 size_t GetNumAvailableDevices() { return tt::Cluster::instance().number_of_user_devices(); }
@@ -1312,7 +1295,7 @@ void EndTraceCapture(IDevice* device, const uint8_t cq_id, const uint32_t tid) {
 void ReplayTrace(IDevice* device, const uint8_t cq_id, const uint32_t tid, const bool blocking) {
     LIGHT_METAL_TRACE_FUNCTION_ENTRY();
     LIGHT_METAL_TRACE_FUNCTION_CALL(CaptureReplayTrace, device, cq_id, tid, blocking);
-    device->replay_trace(cq_id, tid, blocking /* block_on_device */, blocking /* block_on_worker_thread */);
+    device->replay_trace(cq_id, tid, blocking);
 }
 
 void ReleaseTrace(IDevice* device, const uint32_t tid) {

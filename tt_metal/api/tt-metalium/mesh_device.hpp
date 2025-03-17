@@ -159,11 +159,7 @@ public:
     void end_trace(const uint8_t cq_id, const uint32_t tid) override;
 
     // TODO: `block_on_worker_thread` can be removed once we remove multi-threaded async dispatch
-    void replay_trace(
-        const uint8_t cq_id,
-        const uint32_t tid,
-        const bool block_on_device,
-        const bool block_on_worker_thread) override;
+    void replay_trace(const uint8_t cq_id, const uint32_t tid, const bool blocking) override;
     void release_trace(const uint32_t tid) override;
     std::shared_ptr<TraceBuffer> get_trace(uint32_t tid) override;
 
@@ -196,9 +192,6 @@ public:
     void init_fabric() override;
     bool close() override;
     void enable_async(bool enable) override;
-    void synchronize() override;
-    WorkExecutorMode get_worker_mode() override;
-    bool is_worker_queue_empty() const override;
     void push_work(std::function<void()> work, bool blocking) override;
     void enable_program_cache() override;
     void disable_and_clear_program_cache() override;
