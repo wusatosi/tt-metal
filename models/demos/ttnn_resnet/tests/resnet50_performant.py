@@ -38,6 +38,7 @@ def run_resnet50_inference(
     math_fidelity,
     model_location_generator,
 ):
+    logger.info("KCM before create_test_infra")
     test_infra = create_test_infra(
         device,
         device_batch_size,
@@ -48,6 +49,7 @@ def run_resnet50_inference(
         final_output_mem_config=ttnn.L1_MEMORY_CONFIG,
         model_location_generator=model_location_generator,
     )
+    logger.info("KCM before after")
 
     tt_inputs_host, input_mem_config = test_infra.setup_l1_sharded_input(device)
 

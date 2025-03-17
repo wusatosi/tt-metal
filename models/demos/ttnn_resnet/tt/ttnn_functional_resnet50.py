@@ -15,6 +15,9 @@ from typing import List
 from loguru import logger
 from tests.ttnn.utils_for_testing import assert_with_pcc
 
+import numpy as np
+import hashlib
+
 hardcoded_matmul_config_linear = {
     8: ttnn.MatmulMultiCoreReuseMultiCast1DProgramConfig(
         compute_with_storage_grid_size=(8, 4),
@@ -175,7 +178,7 @@ class resnet50Bottleneck:
         enable_subblock_padding=False,
     ):
         if self.downsample:
-            logger.debug(f"Running downsample")
+            logger.info(f"Running downsample")
             conv_kwargs = {
                 "in_channels": self.ds_conv_input_channels,
                 "out_channels": self.ds_conv_output_channels,
@@ -267,7 +270,7 @@ class resnet50Bottleneck:
         ops_parallel_config=None,
         layer_module=None,
     ):
-        logger.debug(
+        logger.info(
             f"==== Running {batch_size}, {input_height}, {input_width}, {self.conv1_input_channels}, {self.conv1_output_channels}"
         )
 
@@ -275,7 +278,7 @@ class resnet50Bottleneck:
         ds_input_width = input_width
 
         # conv1 is 1x1 conv
-        logger.debug(f"Running conv1")
+        logger.info(f"Running conv1")
         module_input_height = input_height
         module_input_width = input_width
         conv_kwargs_1 = {
@@ -382,7 +385,7 @@ class resnet50Bottleneck:
                     )
                     ops_parallel_config["layer4_module1_downsample"] = sharded_config
 
-        logger.debug(f"Running conv2")
+        logger.info(f"Running conv2")
 
         if layer_module and layer_module == "layer4_module1":
             if ops_parallel_config and "layer4_module1_input" in ops_parallel_config:
@@ -493,7 +496,7 @@ class resnet50Bottleneck:
                 ops_parallel_config["layer4_module1_input"] = sharded_config
 
         # conv3 is 1x1 conv
-        logger.debug(f"Running conv3")
+        logger.info(f"Running conv3")
         conv_kwargs_3 = {
             "in_channels": self.conv3_input_channels,
             "out_channels": self.conv3_output_channels,
@@ -853,11 +856,15 @@ class resnet50:
         is_first_run = False
         if not ops_parallel_config:
             is_first_run = True
-            logger.debug(f"==== First run")
+            logger.info(f"==== First run")
         else:
-            logger.debug(f"==== Optimized run")
+            logger.info(f"==== Optimized run")
 
-        logger.debug(f"==== fold on device")
+        logger.info(f"==== fold on device")
+
+        # Suppose input_tensor is already a TTNN tensor created from your torch tensor:
+        input_host = ttnn.to_torch(input_tensor)
+        print("KCM INTERMEDIATE_0_input:", input_host)
 
         # run fold
         fold_output_tensor = ttnn.fold(
@@ -871,12 +878,26 @@ class resnet50:
             grid_size=self.fold_compute_grid_size,
             override_memory_config=self.override_fold_mem_config,
         )
+
+        print("KCM_DEBUG Fold output tensor shape:", fold_output_tensor.shape)
+        print("KCM_DEBUG Fold output layout:", fold_output_tensor.get_layout())
+        print("KCM_DEBUG Fold memory config:", fold_output_tensor.memory_config())
+
+        # Read back the folded tensor to host for debugging/comparison
+        fold_output_host = ttnn.to_torch(fold_output_tensor)
+        print("KCM INTERMEDIATE_1_fold:", fold_output_host)
+
         n, c, h, w = fold_output_tensor.shape
         fold_output_tensor = ttnn.reshape(fold_output_tensor, (1, 1, n * c * h, w))
 
+        print("KCM_DEBUG Reshaped activation tensor shape:", fold_output_tensor.shape)
+
+        fold_output_host = ttnn.to_torch(fold_output_tensor)
+        # print("KCM INTERMEDIATE_2_reshape:", fold_output_host)
+
         ttnn.deallocate(input_tensor)
 
-        logger.debug(f"==== first conv")
+        logger.info(f"==== first conv")
 
         # first conv
         conv_kwargs = {
@@ -893,6 +914,8 @@ class resnet50:
             "device": device,
             "conv_config": self.conv1_config,
         }
+
+        print("KCM conv_kwargs: ", conv_kwargs)
 
         if not ttnn.is_tensor_storage_on_device(self.conv1_weight_tensor):
             self.conv1_weight_tensor = ttnn.prepare_conv_weights(
@@ -913,6 +936,25 @@ class resnet50:
             self.conv1_weight_tensor = ttnn.to_device(self.conv1_weight_tensor, device)
             self.conv1_bias_tensor = ttnn.to_device(self.conv1_bias_tensor, device)
 
+            conv1_weight_tensor_host = ttnn.to_torch(self.conv1_weight_tensor)
+            print("KCM INTERMEDIATE_3_weight_tensor:", conv1_weight_tensor_host)
+            conv1_bias_tensor_host = ttnn.to_torch(self.conv1_bias_tensor)
+            print("KCM INTERMEDIATE_4_bias_tensor:", conv1_bias_tensor_host)
+
+            fold_shape = fold_output_tensor.shape
+            print("KCM_DEBUG Fold output tensor shape:", fold_shape)
+            reshaped_tensor = ttnn.reshape(
+                fold_output_tensor, (1, 1, fold_shape[0] * fold_shape[1] * fold_shape[2], fold_shape[3])
+            )
+            print("KCM_DEBUG Reshaped activation tensor shape:", reshaped_tensor.shape)
+            print("KCM_DEBUG Conv kwargs:", conv_kwargs)
+
+            print("KCM_DEBUG Prepared weight layout:", self.conv1_weight_tensor.get_layout())
+            print("KCM_DEBUG Prepared bias layout:", self.conv1_bias_tensor.get_layout())
+
+        print("KCM_DEBUG Activation tensor for conv2d shape:", fold_output_tensor.shape)
+        print("KCM_DEBUG Activation tensor layout:", fold_output_tensor.get_layout())
+
         x, [x_height, x_width] = ttnn.conv2d(
             input_tensor=fold_output_tensor,
             weight_tensor=self.conv1_weight_tensor,
@@ -923,6 +965,26 @@ class resnet50:
             return_output_dim=True,
             return_weights_and_bias=False,
         )
+
+        # KCM - This causes reads , but the wrong size probably.
+        # Can we convert to row major before doing the read?
+        conv_output_row_major = ttnn.to_layout(x, layout=ttnn.ROW_MAJOR_LAYOUT)
+        conv_output_row_major_host = ttnn.to_torch(conv_output_row_major)
+        # print("KCM INTERMEDIATE_5a_conv2d_row_major: shape: {} {}", conv_output_row_major_host.shape, conv_output_row_major_host)
+
+        np.set_printoptions(threshold=np.inf)
+
+        intermediate_host = ttnn.to_torch(x)
+        # print("KCM INTERMEDIATE_5b_conv2d shape: {} {}", intermediate_host.shape, intermediate_host)
+        print(f"KCM conv2d output_host dtype: {intermediate_host.dtype} shape:", intermediate_host.shape)
+        # print("KCM conv2d output_host :", intermediate_host.numpy())
+        print("KCM output_tt dtype: ", intermediate_host.dtype)
+
+        sha256_hash = hashlib.sha256(intermediate_host.numpy().tobytes()).hexdigest()
+        print(f"KCM SHA-256 hash of tensor: {sha256_hash}")
+
+        # KCM - Early exit for debugging purposes.
+        return ttnn.from_torch(torch.zeros((x.shape[0], 1000), dtype=torch.bfloat16), ttnn.bfloat16)
 
         # Relu is fused with conv1
         if self.batch_size == 20:
@@ -939,6 +1001,10 @@ class resnet50:
             padding=[1, 1],
             dilation=[1, 1],
         )
+
+        # Instrument: Read back after first convolution
+        intermediate_host = ttnn.to_torch(x)
+        print("After max_pool2d, intermediate tensor:", intermediate_host)
 
         x_height = 56
         x_width = 56
@@ -977,7 +1043,8 @@ class resnet50:
         if not is_blackhole():
             x = ttnn.to_layout(x, ttnn.TILE_LAYOUT, dtype=self.model_config["ACTIVATIONS_DTYPE"])
 
-        logger.debug(f"==== Running layer 1 module 1")
+        # How to trim this test?
+        logger.info(f"==== Running layer 1 module 1")
         layer1_module1_input_shape = ttnn.Shape(x.padded_shape)
 
         reshard = is_blackhole()
@@ -1008,7 +1075,7 @@ class resnet50:
                 tile_layout=True,
             )
 
-        logger.debug(f"==== Running layer 1 module 2")
+        logger.info(f"==== Running layer 1 module 2")
         x, x_height, x_width = self.layer1_module2(
             x,
             device,
@@ -1023,7 +1090,7 @@ class resnet50:
             layer_module="layer1_module2",
         )
 
-        logger.debug(f"==== Running layer 1 module 3")
+        logger.info(f"==== Running layer 1 module 3")
         x, x_height, x_width = self.layer1_module3(
             x,
             device,
@@ -1066,7 +1133,7 @@ class resnet50:
             )
             x = ttnn.to_memory_config(x, mem_config)
 
-        logger.debug(f"==== Running layer 2 module 1")
+        logger.info(f"==== Running layer 2 module 1")
         x, x_height, x_width = self.layer2_module1(
             x,
             device,
@@ -1093,7 +1160,7 @@ class resnet50:
                 tile_layout=True,
             )
 
-        logger.debug(f"==== Running layer 2 module 2")
+        logger.info(f"==== Running layer 2 module 2")
         x, x_height, x_width = self.layer2_module2(
             x,
             device,
@@ -1108,7 +1175,7 @@ class resnet50:
             layer_module="layer2_module2",
         )
 
-        logger.debug(f"==== Running layer 2 module 3")
+        logger.info(f"==== Running layer 2 module 3")
         x, x_height, x_width = self.layer2_module3(
             x,
             device,
@@ -1123,7 +1190,7 @@ class resnet50:
             layer_module="layer2_module3",
         )
 
-        logger.debug(f"==== Running layer 2 module 4")
+        logger.info(f"==== Running layer 2 module 4")
         x, x_height, x_width = self.layer2_module4(
             x,
             device,
@@ -1162,7 +1229,7 @@ class resnet50:
             )
             x = ttnn.to_memory_config(x, mem_config)
 
-        logger.debug(f"==== Running layer 3 module 1")
+        logger.info(f"==== Running layer 3 module 1")
         x, x_height, x_width = self.layer3_module1(
             x,
             device,
@@ -1188,7 +1255,7 @@ class resnet50:
                 tile_layout=True,
             )
 
-        logger.debug(f"==== Running layer 3 module 2")
+        logger.info(f"==== Running layer 3 module 2")
         x, x_height, x_width = self.layer3_module2(
             x,
             device,
@@ -1202,7 +1269,7 @@ class resnet50:
             enable_subblock_padding=False,
         )
 
-        logger.debug(f"==== Running layer 3 module 3")
+        logger.info(f"==== Running layer 3 module 3")
         x, x_height, x_width = self.layer3_module3(
             x,
             device,
@@ -1217,7 +1284,7 @@ class resnet50:
             layer_module="layer3_module3",
         )
 
-        logger.debug(f"==== Running layer 3 module 4")
+        logger.info(f"==== Running layer 3 module 4")
         x, x_height, x_width = self.layer3_module4(
             x,
             device,
@@ -1232,7 +1299,7 @@ class resnet50:
             layer_module="layer3_module4",
         )
 
-        logger.debug(f"==== Running layer 3 module 5")
+        logger.info(f"==== Running layer 3 module 5")
         x, x_height, x_width = self.layer3_module5(
             x,
             device,
@@ -1247,7 +1314,7 @@ class resnet50:
             layer_module="layer3_module5",
         )
 
-        logger.debug(f"==== Running layer 3 module 6")
+        logger.info(f"==== Running layer 3 module 6")
         x, x_height, x_width = self.layer3_module6(
             x,
             device,
@@ -1296,7 +1363,7 @@ class resnet50:
             )
             x = ttnn.to_memory_config(x, shard_config)
 
-        logger.debug(f"==== Running layer 4 module 1")
+        logger.info(f"==== Running layer 4 module 1")
         x, x_height, x_width = self.layer4_module1(
             x,
             device,
@@ -1314,7 +1381,7 @@ class resnet50:
             layer_module="layer4_module1",
         )
 
-        logger.debug(f"==== Running layer 4 module 2")
+        logger.info(f"==== Running layer 4 module 2")
         x, x_height, x_width = self.layer4_module2(
             x,
             device,
@@ -1329,7 +1396,7 @@ class resnet50:
             layer_module="layer4_module2",
         )
 
-        logger.debug(f"==== Running layer 4 module 3")
+        logger.info(f"==== Running layer 4 module 3")
         x, x_height, x_width = self.layer4_module3(
             x,
             device,
