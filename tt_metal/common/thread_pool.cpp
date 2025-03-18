@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <boost/asio.hpp>
+#include <boost/lockfree/spsc_queue.hpp>
 #include <future>
 #include <iostream>
 #include <numa.h>
@@ -99,64 +100,6 @@ void set_process_priority(int requested_priority) {
 
 namespace threading_primitives {
 
-// Data Structure used to queue and submit tasks to custom thread-pool backends.
-// Implemented as a statically allocated ring buffer that holds a task in each slot.
-class TaskQueue {
-public:
-    TaskQueue() {
-        // Initialize ring buffer for traversal. Each node points to the subsequent node, except for the last one,
-        // which points to the head.
-        for (int node_idx = 0; node_idx < ring_buffer_size_; node_idx++) {
-            (node_idx < ring_buffer_size_ - 1) ? ring_buffer_[node_idx].next = (&ring_buffer_[node_idx + 1])
-                                               : ring_buffer_[node_idx].next = &(ring_buffer_[0]);
-        }
-        // Initialize head and tail ptrs to start of ring buffer.
-        head_ = ring_buffer_;
-        tail_ = ring_buffer_;
-    }
-    // Push task to queue (writer).
-    void push(std::function<void()>&& task) {
-        // Stall condition: this push will update the tail (wptr)
-        // to match the location of head (rptr). The current push can
-        // thus overwrite data that's being read. Stall until head
-        // has progressed (data has been read).
-        // A stall is only required when the ring_buffer_ backing the queue
-        // is full. Realistically, this should never happen, given the size
-        while (tail_.load()->next == head_.load());
-        tail_.load()->data = std::move(task);
-        tail_.store(tail_.load()->next);
-    }
-    // Pop task from queue (reader).
-    std::function<void()>&& pop() {
-        TaskQueue::Node* old_head = pop_head();
-        return std::move(old_head->data);
-    }
-
-private:
-    // Node object, representing a slot in the queue.
-    struct Node {
-        std::function<void()> data;
-        Node* next = nullptr;
-    };
-    // Read and write pointers for managing the queue.
-    std::atomic<Node*> head_;
-    std::atomic<Node*> tail_;
-
-    Node* pop_head() {
-        Node* old_head = head_.load();
-        if (old_head == tail_.load()) {
-            TT_THROW("Cannot pop tasks from an empty queue.");
-            return nullptr;  // Queue is empty
-        }
-        head_.store(old_head->next);
-        return old_head;
-    }
-    // Statically allocated ring buffer containing
-    // node objects, which contain handles to data
-    // and another node object to traverse ring buffer.
-    const static uint32_t ring_buffer_size_ = 65536;
-    Node ring_buffer_[ring_buffer_size_];
-};
 // NUMA + CPU Affinity aware executor, used by custom thread-pool implementations.
 // Contains:
 //  1. A TaskQueue where tasks can be submitted by the user, to be asynchronously executed
@@ -171,7 +114,7 @@ private:
 // across threads.
 class NumaAwareExecutor {
 public:
-    NumaAwareExecutor(uint32_t physical_device_id) : tasks_() {
+    NumaAwareExecutor(uint32_t physical_device_id) {
         // Set the priority for this process to 0 (niceness value in linux)
         thread_binding::set_process_priority(0);
         worker = std::thread([this]() {
@@ -194,7 +137,10 @@ public:
                     if (shutdown_) {
                         return;
                     }
-                    task = std::move(tasks_.pop());
+                    // Move task into container for this worker thread
+                    task = std::move(tasks_.front());
+                    // Remove task from queue
+                    tasks_.pop();
                 }
                 // Execute task with exception handling
                 try {
@@ -248,7 +194,7 @@ public:
     }
 
 private:
-    TaskQueue tasks_;
+    boost::lockfree::spsc_queue<std::function<void()>> tasks_{65536};
     std::thread worker;
     std::atomic<int> task_counter_ = 0;
     bool shutdown_ = false;
