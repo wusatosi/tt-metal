@@ -1341,8 +1341,7 @@ Matmul create_matmul_struct(
         parameters.transpose_a,
         parameters.transpose_b,
         output_tile,
-        parameters.global_cb,
-        parameters.sub_device_id};
+        parameters.global_cb};
 }
 
 Tensor matmul(
@@ -2298,8 +2297,7 @@ operation::ProgramWithCallbacks Matmul::create_program(
                     program_config.hop_cores,
                     this->untilize_out,
                     global_cb,
-                    program_config.num_global_cb_receivers,
-                    this->sub_device_id);
+                    program_config.num_global_cb_receivers);
             } else if constexpr (std::is_same_v<
                                      ProgramConfigType,
                                      MatmulMultiCoreReuseMultiCastDRAMShardedProgramConfig>) {
