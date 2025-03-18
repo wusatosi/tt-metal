@@ -512,7 +512,7 @@ def test_reduce_scatter(
             (32, 128),
             ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 0))}),
             (32, 128),
-            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 0))}),
+            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 3))}),
             ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
         ),
     ],
@@ -520,7 +520,7 @@ def test_reduce_scatter(
         "concat_heads",
     ],
 )
-@pytest.mark.parametrize("num_links", [1])
+@pytest.mark.parametrize("num_links", [3])
 @pytest.mark.parametrize(
     "input_dtype",
     [
@@ -536,8 +536,9 @@ def test_reduce_scatter(
     [{"trace_region_size": 23887872}],
     indirect=True,
 )
+@pytest.mark.parametrize("mesh_device", [pytest.param((8, 4), id="8x4_grid")], indirect=True)
 def test_concat_fuse(
-    t3k_mesh_device,
+    mesh_device,
     num_devices,
     output_shape,
     dim,
@@ -558,7 +559,7 @@ def test_concat_fuse(
 ):
     profiler = BenchmarkProfiler()
     run_concat_fuse_impl(
-        t3k_mesh_device,
+        mesh_device,
         num_devices,
         output_shape,
         dim,

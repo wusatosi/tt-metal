@@ -70,11 +70,6 @@ void kernel_main() {
     size_t arg_for_fab = arg_idx;
     auto fabric_connection = FabricConnectionManager::build_from_args(arg_idx);
 
-    // Set up for mcasting to concat workers
-    volatile tt_l1_ptr uint32_t* concat_semaphore_send_addr_ptr =
-        reinterpret_cast<volatile tt_l1_ptr uint32_t*>(concat_semaphore_send_addr);
-    noc_semaphore_set(concat_semaphore_send_addr_ptr, VALID);
-
     DPRINT << "ct args: \n";
     DPRINT << "my_chip_id: " << (uint32_t)my_chip_id << "\n";
     DPRINT << "reserved_packet_header_cb_id: " << (uint32_t)reserved_packet_header_cb_id << "\n";
@@ -224,30 +219,42 @@ void kernel_main() {
         DPRINT << "waitval done\n";
     }
 
-    DPRINT << " before get noc multicast addr\n";
-    const uint64_t concat_sem_rcv_addr = get_noc_multicast_addr(
-        mcast_dest_noc_start_x,
-        mcast_dest_noc_start_y,
-        mcast_dest_noc_end_x,
-        mcast_dest_noc_end_y,
-        concat_semaphore_send_addr);
-    DPRINT << "concat_sem_rcv_addr: " << (uint32_t)concat_sem_rcv_addr << ENDL();
-    DPRINT << "before noc semaphore set multicast\n";
-    noc_semaphore_set_multicast(
-        concat_semaphore_send_addr,
-        concat_sem_rcv_addr,
-        7,
-        false,  // linked = false
-        true);  // multicast_path_reserve = true
-    DPRINT << "after noc semaphore set multicast\n";
+    // Set up for mcasting to concat workers
+    if (wait_output_semaphore) {
+        volatile tt_l1_ptr uint32_t* concat_semaphore_send_addr_ptr =
+            reinterpret_cast<volatile tt_l1_ptr uint32_t*>(concat_semaphore_send_addr);
+        noc_semaphore_set(concat_semaphore_send_addr_ptr, VALID);
+    }
+
+    if (wait_output_semaphore) {
+        DPRINT << " before get noc multicast addr\n";
+        const uint64_t concat_sem_rcv_addr = get_noc_multicast_addr(
+            mcast_dest_noc_start_x,
+            mcast_dest_noc_start_y,
+            mcast_dest_noc_end_x,
+            mcast_dest_noc_end_y,
+            concat_semaphore_send_addr);
+        DPRINT << "concat_sem_rcv_addr: " << (uint32_t)concat_sem_rcv_addr << ENDL();
+        DPRINT << "before noc semaphore set multicast\n";
+        noc_semaphore_set_multicast(
+            concat_semaphore_send_addr,
+            concat_sem_rcv_addr,
+            7,
+            false,  // linked = false
+            true);  // multicast_path_reserve = true
+        DPRINT << "after noc semaphore set multicast\n";
+    }
 
     if (fabric_connection.is_logically_connected()) {
-        DPRINT << "FABRIC IS LOGICALLY CONNECTED\n";
         fabric_connection.close();
-        DPRINT << "after closing fabric connection\n";
     }
-    DPRINT << "FABRIC IS NOT LOGICALLY CONNECTED\n";
 
+    if (!wait_output_semaphore) {
+        volatile tt_l1_ptr uint32_t* signal_semaphore_addr_ptr =
+            reinterpret_cast<volatile tt_l1_ptr uint32_t*>(concat_semaphore_send_addr);
+        noc_semaphore_wait(signal_semaphore_addr_ptr, VALID);
+        // noc_semaphore_set(signal_semaphore_addr_ptr, 0);
+    }
     DPRINT << "DONE ALL GATHER\n";
     DPRINT << "START CONCAT HEADS\n";
 

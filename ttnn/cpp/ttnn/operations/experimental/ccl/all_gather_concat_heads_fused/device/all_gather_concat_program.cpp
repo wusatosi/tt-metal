@@ -199,7 +199,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
     const uint32_t num_cores = q_cores.num_cores();  // number of cores of the output
     const auto& cores = corerange_to_cores(q_cores, num_cores, true);
 
-    const auto& q_cores_updated = CoreRangeSet(CoreRange({1, 0}, {7, 0}));
+    const auto& q_cores_updated = CoreRangeSet(CoreRange({3, 0}, {7, 0}));
     tt::tt_metal::NOC reader_noc = tt::tt_metal::NOC::NOC_1;
     tt::tt_metal::NOC writer_noc = tt::tt_metal::NOC::NOC_0;
 
@@ -217,10 +217,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
     }
 
     // create concat semaphore for each link
-    std::vector<uint32_t> concat_semaphore_ids(num_links, 0);
-    for (uint32_t link = 0; link < num_links; link++) {
-        concat_semaphore_ids[link] = tt::tt_metal::CreateSemaphore(program, q_cores, 0);
-    }
+    uint32_t concat_semaphore_id = tt::tt_metal::CreateSemaphore(program, q_cores, 0);
 
     std::vector<uint32_t> concat_reader_ct_args = {
         (std::uint32_t)element_size,
@@ -410,7 +407,8 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
             log_trace(tt::LogOp, "\t{}", arg);
         }
         reader_rt_args[0] = reader_rt_args.size();
-        uint32_t in_tile_offset_by_batch_r = 0 < face_h ? 0 : (face_h)*sub_tile_line_bytes;
+        uint32_t in_tile_offset_by_batch_r =
+            link < face_h ? link * sub_tile_line_bytes : (link + face_h) * sub_tile_line_bytes;
         reader_rt_args.push_back(in_tile_offset_by_batch_r);
         reader_rt_args.push_back(temp_tensor.buffer()->address());
         for (auto nocx : noc_x_coords) {
@@ -423,6 +421,8 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
         reader_rt_args.push_back(ring_size * num_links);  // sem target value
         reader_rt_args.push_back(drain_sync_core.x);
         reader_rt_args.push_back(drain_sync_core.y);
+        reader_rt_args.push_back(link == 0);
+        reader_rt_args.push_back(concat_semaphore_id);
 
         tt::tt_metal::SetRuntimeArgs(program, worker_sender_reader_kernel_id, {core}, reader_rt_args);
 
@@ -443,7 +443,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
             drain_sync_core.x,                     // out_ready_sem_noc0_x
             drain_sync_core.y,                     // out_ready_sem_noc0_y
             out_ready_sem_wait_value,              // out_ready_sem_wait_value
-            concat_semaphore_ids[link],
+            concat_semaphore_id,
         };
 
         auto start_coord = device->worker_core_from_logical_core({1, 0});
@@ -466,7 +466,8 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
         append_fabric_connection_rt_arguments(forward_fabric_connection, core, program, writer_rt_args);
         append_fabric_connection_rt_arguments(backward_fabric_connection, core, program, writer_rt_args);
         writer_rt_args[0] = writer_rt_args.size();
-        uint32_t in_tile_offset_by_batch = 0 < face_h ? 0 : (face_h)*sub_tile_line_bytes;
+        uint32_t in_tile_offset_by_batch =
+            link < face_h ? link * sub_tile_line_bytes : (link + face_h) * sub_tile_line_bytes;
 
         writer_rt_args.push_back(in_tile_offset_by_batch);
         writer_rt_args.push_back(temp_tensor.buffer()->address());
@@ -479,7 +480,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
 
         tt::tt_metal::SetRuntimeArgs(program, worker_sender_writer_kernel_id, {core}, writer_rt_args);
     }
-    // TO DO MOVE INSIDE LINK LOOP
+
     /* rt for concat kernels*/
     uint32_t q_start_addr = temp_tensor.buffer()->address();
     for (uint32_t i = 0; i < num_cores; ++i) {
@@ -488,17 +489,17 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
         uint32_t in_tile_offset_by_batch = i < face_h ? i * sub_tile_line_bytes : (i + face_h) * sub_tile_line_bytes;
 
         const auto& core = cores[i];
-        if (core.x != 0 || core.y != 0) {
+        printf("core: %zu, %zu\n", core.x, core.y);
+        if (core.x != 0 && core.x != 1 && core.x != 2) {
             std::vector<uint32_t> reader_runtime_args;
             reader_runtime_args.reserve(3 + 2 * in_num_cores);
-            reader_runtime_args = {in_tile_offset_by_batch, q_start_addr, concat_semaphore_ids[0]};
+            reader_runtime_args = {in_tile_offset_by_batch, q_start_addr, concat_semaphore_id};
             reader_runtime_args.insert(reader_runtime_args.end(), noc_x_coords.begin(), noc_x_coords.end());
             reader_runtime_args.insert(reader_runtime_args.end(), noc_y_coords.begin(), noc_y_coords.end());
             reader_runtime_args.push_back(semaphore.address());
             reader_runtime_args.push_back(ring_size * num_links);  // sem target value
             reader_runtime_args.push_back(drain_sync_core.x);
             reader_runtime_args.push_back(drain_sync_core.y);
-
             tt::tt_metal::SetRuntimeArgs(program, concat_reader_kernel_id, core, reader_runtime_args);
             tt::tt_metal::SetRuntimeArgs(program, concat_reader_2_kernel_id, core, reader_runtime_args);
         }
@@ -538,38 +539,42 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
 
             uint32_t q_base_addr = temp_tensor.buffer()->address();
             uint32_t q_start_addr = q_base_addr;
+            uint32_t idx = 0;
             for (const auto& core : sender_worker_cores) {
                 auto& worker_reader_sender_runtime_args = worker_reader_sender_runtime_args_by_core[core.x][core.y];
                 worker_reader_sender_runtime_args[1] = input.buffer()->address();
                 uint32_t concat_args_index = worker_reader_sender_runtime_args[0];
+                uint32_t in_tile_offset_by_batch =
+                    idx < face_h ? idx * sub_tile_line_bytes : (idx + face_h) * sub_tile_line_bytes;
 
-                worker_reader_sender_runtime_args[concat_args_index] = 0;
+                worker_reader_sender_runtime_args[concat_args_index] = in_tile_offset_by_batch;
                 worker_reader_sender_runtime_args[concat_args_index + 1] = q_start_addr;
-                worker_reader_sender_runtime_args[88] = semaphore.address();
+                worker_reader_sender_runtime_args[worker_reader_sender_runtime_args.size() - 6] = semaphore.address();
 
                 auto& worker_writer_sender_runtime_args = worker_writer_sender_runtime_args_by_core[core.x][core.y];
                 worker_writer_sender_runtime_args[1] = q_start_addr;
                 worker_writer_sender_runtime_args[2] = semaphore.address();
                 uint32_t concat_args_index_2 = worker_writer_sender_runtime_args[0];
 
-                worker_writer_sender_runtime_args[concat_args_index_2] = 0;
+                worker_writer_sender_runtime_args[concat_args_index_2] = in_tile_offset_by_batch;
                 worker_writer_sender_runtime_args[concat_args_index_2 + 1] = q_start_addr;
+                idx++;
             }
 
             for (uint32_t i = 0; i < num_cores; ++i) {
-                if (cores[i].x != 0 || cores[i].y != 0) {
+                if (cores[i].x != 0 && cores[i].x != 1 && cores[i].x != 2) {
                     uint32_t in_tile_offset_by_batch =
                         i < face_h ? i * sub_tile_line_bytes : (i + face_h) * sub_tile_line_bytes;
                     const auto& core = cores[i];
                     auto& concat_reader_runtime_args = GetRuntimeArgs(program, concat_reader_kernel_id, core);
                     concat_reader_runtime_args[0] = in_tile_offset_by_batch;
                     concat_reader_runtime_args[1] = q_start_addr;
-                    concat_reader_runtime_args[67] = semaphore.address();
+                    concat_reader_runtime_args[concat_reader_runtime_args.size() - 4] = semaphore.address();
 
                     auto& concat_reader_2_runtime_args = GetRuntimeArgs(program, concat_reader_2_kernel_id, core);
                     concat_reader_2_runtime_args[0] = in_tile_offset_by_batch;
                     concat_reader_2_runtime_args[1] = q_start_addr;
-                    concat_reader_2_runtime_args[67] = semaphore.address();
+                    concat_reader_2_runtime_args[concat_reader_2_runtime_args.size() - 4] = semaphore.address();
                 }
             }
         };
