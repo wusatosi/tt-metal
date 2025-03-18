@@ -12,6 +12,44 @@
 
 enum class CORE_TYPE : uint8_t { IDLE_CORE = 0, WORKER_CORE = 1, HOP_CORE = 2 };
 
+struct ct_args_info {
+    uint8_t core_type;
+    uint8_t ring_index;
+};
+
+#ifdef RANGE_0  // 30 cores
+constexpr std::array<uint32_t, 24> compile_time_arg_array{
+    get_compile_time_arg_val(0),  get_compile_time_arg_val(1),  get_compile_time_arg_val(2),
+    get_compile_time_arg_val(3),  get_compile_time_arg_val(4),  get_compile_time_arg_val(5),
+    get_compile_time_arg_val(6),  get_compile_time_arg_val(7),  get_compile_time_arg_val(8),
+    get_compile_time_arg_val(9),  get_compile_time_arg_val(10), get_compile_time_arg_val(11),
+    get_compile_time_arg_val(12), get_compile_time_arg_val(13), get_compile_time_arg_val(14),
+    get_compile_time_arg_val(15), get_compile_time_arg_val(16), get_compile_time_arg_val(17),
+    get_compile_time_arg_val(18), get_compile_time_arg_val(19), get_compile_time_arg_val(20),
+    get_compile_time_arg_val(21), get_compile_time_arg_val(22), get_compile_time_arg_val(23)};
+#else  // 20
+constexpr std::array<uint32_t, 19> compile_time_arg_array{
+    get_compile_time_arg_val(0),
+    get_compile_time_arg_val(1),
+    get_compile_time_arg_val(2),
+    get_compile_time_arg_val(3),
+    get_compile_time_arg_val(4),
+    get_compile_time_arg_val(5),
+    get_compile_time_arg_val(6),
+    get_compile_time_arg_val(7),
+    get_compile_time_arg_val(8),
+    get_compile_time_arg_val(9),
+    get_compile_time_arg_val(10),
+    get_compile_time_arg_val(11),
+    get_compile_time_arg_val(12),
+    get_compile_time_arg_val(13),
+    get_compile_time_arg_val(14),
+    get_compile_time_arg_val(15),
+    get_compile_time_arg_val(16),
+    get_compile_time_arg_val(17),
+    get_compile_time_arg_val(18)};
+#endif
+
 template <bool DRAM, uint32_t tile_hw>
 void read_block_from_dram(
     uint32_t cb_id,
@@ -38,20 +76,54 @@ void read_block_from_dram(
 
 void kernel_main() {
     // Compile time args
-    constexpr const bool in1_is_dram_interleaved = get_compile_time_arg_val(0);
-    constexpr uint32_t in1_block_height_in_tiles = get_compile_time_arg_val(1);  // Padded block shape
-    constexpr uint32_t in1_block_width_in_tiles = get_compile_time_arg_val(2);
-    constexpr uint32_t in1_tensor_width_in_tiles = get_compile_time_arg_val(3);
-    constexpr uint32_t num_blocks = get_compile_time_arg_val(4);
-    constexpr uint32_t batch = get_compile_time_arg_val(5);
+    // constexpr const bool in1_is_dram_interleaved = get_compile_time_arg_val(0);
+    // constexpr uint32_t in1_block_height_in_tiles = get_compile_time_arg_val(1);  // Padded block shape
+    // constexpr uint32_t in1_block_width_in_tiles = get_compile_time_arg_val(2);
+    // constexpr uint32_t in1_tensor_width_in_tiles = get_compile_time_arg_val(3);
+    // constexpr uint32_t num_blocks = get_compile_time_arg_val(4);
+    // constexpr uint32_t batch = get_compile_time_arg_val(5);
 
-    uint32_t rt_args_idx = 0;
-    uint32_t core_type = get_arg_val<uint32_t>(rt_args_idx++);
+    uint32_t ct_args_idx = 0;
+    constexpr const bool in1_is_dram_interleaved = compile_time_arg_array[ct_args_idx++];
+    constexpr uint32_t in1_block_height_in_tiles = compile_time_arg_array[ct_args_idx++];  // Padded block shape
+    constexpr uint32_t in1_block_width_in_tiles = compile_time_arg_array[ct_args_idx++];
+    constexpr uint32_t in1_tensor_width_in_tiles = compile_time_arg_array[ct_args_idx++];
+    constexpr uint32_t num_blocks = compile_time_arg_array[ct_args_idx++];
+    constexpr uint32_t batch = compile_time_arg_array[ct_args_idx++];
+
+    const uint32_t start_core_x = compile_time_arg_array[ct_args_idx++];
+    const uint32_t start_core_y = compile_time_arg_array[ct_args_idx++];
+    const uint32_t NUM_CORES_X = compile_time_arg_array[ct_args_idx++];
+
+    volatile tt_l1_ptr uint8_t* ct_args_base = (volatile tt_l1_ptr uint8_t*)(&compile_time_arg_array[ct_args_idx]);
+    uint32_t core_id =
+        (get_absolute_logical_x() - start_core_x) + (get_absolute_logical_y() - start_core_y) * NUM_CORES_X;
+    volatile tt_l1_ptr ct_args_info* info =
+        (volatile tt_l1_ptr ct_args_info*)(ct_args_base + core_id * sizeof(ct_args_info));
+
+    uint32_t core_type = info->core_type;
     if (core_type == (uint32_t)CORE_TYPE::IDLE_CORE || core_type == (uint32_t)CORE_TYPE::HOP_CORE) {
         return;
     }
-    const uint32_t in1_tensor_addr = get_arg_val<uint32_t>(rt_args_idx++);
-    const uint32_t ring_idx = get_arg_val<uint32_t>(rt_args_idx++);
+    uint32_t ring_idx = info->ring_index;
+
+    uint32_t common_rt_args_idx = 0;
+    // const uint32_t start_core_x = get_common_arg_val<uint32_t>(common_rt_args_idx++);
+    // const uint32_t start_core_y = get_common_arg_val<uint32_t>(common_rt_args_idx++);
+    // const uint32_t NUM_CORES_X = get_common_arg_val<uint32_t>(common_rt_args_idx++);
+    // uint32_t core_id =
+    //     (get_absolute_logical_x() - start_core_x) + (get_absolute_logical_y() - start_core_y) * NUM_CORES_X;
+    const uint32_t in1_tensor_addr = get_common_arg_val<uint32_t>(common_rt_args_idx++);
+    // volatile tt_l1_ptr uint8_t* common_rt_args_base =
+    //     (volatile tt_l1_ptr uint8_t*)(get_common_arg_addr(common_rt_args_idx));
+    // volatile tt_l1_ptr common_rt_args_info* common_rt_args =
+    //     (volatile tt_l1_ptr common_rt_args_info*)(common_rt_args_base + core_id * sizeof(common_rt_args_info));
+
+    // uint32_t core_type = common_rt_args->core_type;
+    // if (core_type == (uint32_t)CORE_TYPE::IDLE_CORE || core_type == (uint32_t)CORE_TYPE::HOP_CORE) {
+    //     return;
+    // }
+    // uint32_t ring_idx = common_rt_args->ring_index;
 
     constexpr uint32_t cb_id_in1 = tt::CBIndex::c_1;
     constexpr uint32_t sync_cb = tt::CBIndex::c_3;
