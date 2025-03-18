@@ -10,9 +10,8 @@ void kernel_main() {
     uint32_t num_tiles = get_arg_val<uint32_t>(1);
     uint32_t start_id = get_arg_val<uint32_t>(2);
 
-    constexpr bool src_is_dram = get_compile_time_arg_val(0) == 1;
-
-    constexpr uint32_t cb_id_in0 = 0;
+    constexpr uint32_t cb_id_in0 = get_compile_time_arg_val(0);
+    constexpr bool src_is_dram = get_compile_time_arg_val(1) == 1;
 
     // ublocks size defined in tiles
     constexpr uint32_t onetile = 1;

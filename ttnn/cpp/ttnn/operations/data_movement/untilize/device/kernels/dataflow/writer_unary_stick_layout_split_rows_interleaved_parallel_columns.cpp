@@ -7,7 +7,7 @@
 
 void kernel_main() {
     // Constexpr
-    constexpr uint32_t cb_id_out0 = 16;
+
     constexpr uint32_t tile_height = 32;
 
     const uint32_t dst_addr = get_arg_val<uint32_t>(0);
@@ -20,6 +20,7 @@ void kernel_main() {
 
     constexpr bool dst_is_dram = get_compile_time_arg_val(0) == 1;
 #define stick_size_is_power_of_two get_compile_time_arg_val(1) == 1
+    constexpr uint32_t cb_id_out0 = get_compile_time_arg_val(3);
 
 #if (stick_size_is_power_of_two)
     constexpr uint32_t log_base_2_of_page_size = get_compile_time_arg_val(2);

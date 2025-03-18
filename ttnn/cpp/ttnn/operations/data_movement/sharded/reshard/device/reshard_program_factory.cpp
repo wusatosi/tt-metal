@@ -10,6 +10,7 @@
 #include <tt-metalium/util.hpp>
 #include <tt-metalium/host_api.hpp>
 #include <tt-metalium/allocator.hpp>
+#include "ttnn/operations/cb_utils.hpp"
 using namespace tt::constants;
 using namespace tt::tt_metal;
 
@@ -312,7 +313,6 @@ operation::ProgramWithCallbacks reshard_multi_core_same_width(const Tensor& inpu
 
     auto local_core_type = local_tensor.buffer()->core_type();
     auto remote_core_type = remote_tensor.buffer()->core_type();
-    constexpr uint32_t cb_index = tt::CBIndex::c_0;
     auto local_cores = corerange_to_cores(
         local_shard_spec.grid, std::nullopt, local_shard_spec.orientation == ShardOrientation::ROW_MAJOR);
     auto remote_cores = corerange_to_cores(
@@ -337,18 +337,16 @@ operation::ProgramWithCallbacks reshard_multi_core_same_width(const Tensor& inpu
             ? "ttnn/cpp/ttnn/operations/data_movement/sharded/device/kernels/dataflow/reshard_same_width_reader.cpp"
             : "ttnn/cpp/ttnn/operations/data_movement/sharded/device/kernels/dataflow/reshard_same_width_writer.cpp";
 
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+    auto [cb_index, cb_0] = tt::tt_metal::create_cb(
+        next_cb_index++, program, all_cores, unit_size, total_size / unit_size, data_format, local_tensor.buffer());
+
     bool interface_with_dram = (remote_core_type == CoreType::DRAM);
     tt::tt_metal::KernelHandle kernel_id_0 = tt::tt_metal::CreateKernel(
         program, kernel_name, all_cores, tt::tt_metal::ReaderDataMovementConfig({cb_index, interface_with_dram}));
 
     tt::tt_metal::KernelHandle kernel_id_1 = tt::tt_metal::CreateKernel(
         program, kernel_name, all_cores, tt::tt_metal::WriterDataMovementConfig({cb_index, interface_with_dram}));
-
-    tt::tt_metal::CircularBufferConfig cb_config =
-        tt::tt_metal::CircularBufferConfig(total_size, {{cb_index, data_format}})
-            .set_page_size(cb_index, unit_size)
-            .set_globally_allocated_address(*local_tensor.buffer());
-    auto cb_0 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_config);
 
     uint32_t remote_core_idx = 0;
     uint32_t remote_core_units_rem = remote_units_per_shard;
@@ -436,7 +434,6 @@ operation::ProgramWithCallbacks reshard_multi_core_generic(const Tensor& input, 
     auto grid = input.buffer()->buffer_type() == BufferType::DRAM ? device->dram_grid_size()
                                                                   : device->compute_with_storage_grid_size();
     auto input_core_type = input.buffer()->core_type();
-    uint32_t dst_cb_index = 16;
     auto cores =
         corerange_to_cores(all_cores, std::nullopt, output_shard_spec.orientation == ShardOrientation::ROW_MAJOR);
 
@@ -454,6 +451,10 @@ operation::ProgramWithCallbacks reshard_multi_core_generic(const Tensor& input, 
         total_size = output_shard_shape[0] * unit_size;
     }
 
+    uint32_t next_cb_index = CBIndex::c_0;
+    auto [dst_cb_index, cb_dst0] = tt::tt_metal::create_cb(
+        next_cb_index++, program, all_cores, unit_size, total_size / unit_size, data_format, output.buffer());
+
     tt::tt_metal::KernelHandle kernel_id_0 = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/data_movement/sharded/device/kernels/dataflow/reshard_reader.cpp",
@@ -465,12 +466,6 @@ operation::ProgramWithCallbacks reshard_multi_core_generic(const Tensor& input, 
         "ttnn/cpp/ttnn/operations/data_movement/sharded/device/kernels/dataflow/reshard_reader.cpp",
         all_cores,
         tt::tt_metal::WriterDataMovementConfig({dst_cb_index, (uint32_t)grid.x, (uint32_t)grid.y, page_size}));
-
-    tt::tt_metal::CircularBufferConfig cb_dst_config =
-        tt::tt_metal::CircularBufferConfig(total_size, {{dst_cb_index, data_format}})
-            .set_page_size(dst_cb_index, unit_size)
-            .set_globally_allocated_address(*output.buffer());
-    auto cb_dst0 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_dst_config);
 
     std::vector<uint32_t> physical_core_coords;
     physical_core_coords.reserve(grid.x * grid.y);
@@ -643,12 +638,9 @@ operation::ProgramWithCallbacks reshard_multi_core_same_height(const Tensor& inp
     const uint32_t remote_units_per_shard = remote_shard_spec.shape[0];                  // height
     const uint32_t total_size = remote_units_per_shard * unit_size;
 
-    constexpr uint32_t cb_index = tt::CBIndex::c_0;
-    tt::tt_metal::CircularBufferConfig cb_config =
-        tt::tt_metal::CircularBufferConfig(total_size, {{cb_index, data_format}})
-            .set_page_size(cb_index, unit_size)
-            .set_globally_allocated_address(*local_tensor.buffer());
-    auto cb_0 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_config);
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+    auto [cb_index, cb_0] = tt::tt_metal::create_cb(
+        next_cb_index++, program, all_cores, unit_size, total_size / unit_size, data_format, local_tensor.buffer());
 
     const std::string kernel_name =
         is_reader

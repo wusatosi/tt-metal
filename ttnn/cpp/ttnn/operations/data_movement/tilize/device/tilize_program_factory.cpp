@@ -67,20 +67,16 @@ operation::ProgramWithCallbacks tilize_single_core(const Tensor& a, Tensor& outp
     uint32_t num_leftover_tiles = num_tiles_in_row % num_tiles_per_block;
     uint32_t leftover_width_in_row = num_leftover_tiles * a.element_size();
 
-    uint32_t src0_cb_index = 0;
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+    uint32_t src0_cb_index = next_cb_index++;
     uint32_t num_input_tiles = num_tiles_per_block;
+    tt::tt_metal::create_cb(
+        src0_cb_index, program, core, input_single_tile_size, num_input_tiles, input_cb_data_format);
 
-    auto src0_cb_config = tt::tt_metal::CircularBufferConfig(
-                              num_input_tiles * input_single_tile_size, {{src0_cb_index, input_cb_data_format}})
-                              .set_page_size(src0_cb_index, input_single_tile_size);
-    auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, core, src0_cb_config);
-
-    uint32_t output_cb_index = tt::CBIndex::c_16;
+    uint32_t output_cb_index = next_cb_index++;
     uint32_t num_output_tiles = num_tiles_per_block;
-    auto cb_output_config = tt::tt_metal::CircularBufferConfig(
-                                num_output_tiles * output_single_tile_size, {{output_cb_index, output_cb_data_format}})
-                                .set_page_size(output_cb_index, output_single_tile_size);
-    auto cb_output = tt::tt_metal::CreateCircularBuffer(program, core, cb_output_config);
+    tt::tt_metal::create_cb(
+        output_cb_index, program, core, output_single_tile_size, num_output_tiles, output_cb_data_format);
 
     const std::array reader_kernel_args = {
         src0_buffer->address(),
@@ -98,7 +94,8 @@ operation::ProgramWithCallbacks tilize_single_core(const Tensor& a, Tensor& outp
     uint32_t src0_is_dram = src0_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0;
     uint32_t stick_size_is_power_of_two = is_power_of_two_at_least_32(stick_size);
     uint32_t log2_stick_size = stick_size_is_power_of_two ? (uint32_t)std::log2<decltype(stick_size)>(stick_size) : 0;
-    std::vector<uint32_t> reader_compile_time_args = {src0_is_dram, stick_size_is_power_of_two, log2_stick_size};
+    std::vector<uint32_t> reader_compile_time_args = {
+        src0_is_dram, stick_size_is_power_of_two, log2_stick_size, src0_cb_index};
 
     uint32_t out_is_dram = dst_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0;
     std::vector<uint32_t> writer_compile_time_args = {output_cb_index, out_is_dram};
@@ -120,8 +117,9 @@ operation::ProgramWithCallbacks tilize_single_core(const Tensor& a, Tensor& outp
 
     std::vector<uint32_t> compute_args = {
         num_tiles / num_tiles_per_block,  // per_core_block_cnt
-        num_tiles_per_block               // per_core_block_tile_cnt
-    };
+        num_tiles_per_block,              // per_core_block_tile_cnt
+        src0_cb_index,
+        output_cb_index};
 
     auto tilize_kernel_id = tt::tt_metal::CreateKernel(
         program,
@@ -195,16 +193,19 @@ operation::ProgramWithCallbacks tilize_multi_core_block(const Tensor& a, Tensor&
     uint32_t row_size_bytes = a.get_padded_shape()[-1] * a.element_size();  // Assuming bfloat16 dataformat
 
     const uint32_t onetile = 1;
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+    uint32_t src0_cb_index = next_cb_index++;
+    uint32_t output_cb_index = next_cb_index++;
+
     if (core_range.size() > 0) {
-        create_cb(
-            tt::CBIndex::c_0, program, core_range, input_single_tile_size, single_block_size, input_cb_data_format);
+        create_cb(src0_cb_index, program, core_range, input_single_tile_size, single_block_size, input_cb_data_format);
 
         create_cb(
-            tt::CBIndex::c_16, program, core_range, output_single_tile_size, single_block_size, output_cb_data_format);
+            output_cb_index, program, core_range, output_single_tile_size, single_block_size, output_cb_data_format);
     }
     if (has_cliff_col && has_cliff_row) {
         create_cb(
-            tt::CBIndex::c_0,
+            src0_cb_index,
             program,
             cliff_col_row_core_range,
             input_single_tile_size,
@@ -212,7 +213,7 @@ operation::ProgramWithCallbacks tilize_multi_core_block(const Tensor& a, Tensor&
             input_cb_data_format);
 
         create_cb(
-            tt::CBIndex::c_16,
+            output_cb_index,
             program,
             cliff_col_row_core_range,
             output_single_tile_size,
@@ -222,7 +223,7 @@ operation::ProgramWithCallbacks tilize_multi_core_block(const Tensor& a, Tensor&
 
     if (has_cliff_row) {
         create_cb(
-            tt::CBIndex::c_0,
+            src0_cb_index,
             program,
             cliff_row_core_range,
             input_single_tile_size,
@@ -230,7 +231,7 @@ operation::ProgramWithCallbacks tilize_multi_core_block(const Tensor& a, Tensor&
             input_cb_data_format);
 
         create_cb(
-            tt::CBIndex::c_16,
+            output_cb_index,
             program,
             cliff_row_core_range,
             output_single_tile_size,
@@ -239,16 +240,16 @@ operation::ProgramWithCallbacks tilize_multi_core_block(const Tensor& a, Tensor&
     }
 
     if (has_cliff_col) {
-        auto [src3_cb_index, cb_src3] = create_cb(
-            tt::CBIndex::c_0,
+        create_cb(
+            src0_cb_index,
             program,
             cliff_col_core_range,
             input_single_tile_size,
             single_block_size,
             input_cb_data_format);
 
-        auto [output3_cb_index, cb_output3] = create_cb(
-            tt::CBIndex::c_16,
+        create_cb(
+            output_cb_index,
             program,
             cliff_col_core_range,
             output_single_tile_size,
@@ -293,7 +294,8 @@ operation::ProgramWithCallbacks tilize_multi_core_block(const Tensor& a, Tensor&
         "reader_unary_pad_multicore_both_dims.cpp",
         all_cores,
         ReaderDataMovementConfig(
-            {src0_is_dram, log2_stick_size, total_num_rows, third_dim, tile_height, a.element_size()}, reader_defines));
+            {src0_is_dram, log2_stick_size, total_num_rows, third_dim, tile_height, a.element_size(), src0_cb_index},
+            reader_defines));
 
     // writer
     uint32_t out_is_dram = dst_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0;
@@ -302,7 +304,7 @@ operation::ProgramWithCallbacks tilize_multi_core_block(const Tensor& a, Tensor&
         program,
         "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/dataflow/writer_unary_interleaved_start_id_wh.cpp",
         all_cores,
-        WriterDataMovementConfig({tt::CBIndex::c_16, out_is_dram, num_tiles_2d, third_dim, total_tiles_per_row}));
+        WriterDataMovementConfig({output_cb_index, out_is_dram, num_tiles_2d, third_dim, total_tiles_per_row}));
 
     // compute
 
@@ -311,21 +313,30 @@ operation::ProgramWithCallbacks tilize_multi_core_block(const Tensor& a, Tensor&
             program,
             "ttnn/cpp/ttnn/operations/data_movement/tilize/device/kernels/compute/tilize_wh.cpp",
             core_range,
-            ComputeConfig{.compile_args = {single_block_size, single_block_size, third_dim}});
+            ComputeConfig{
+                .compile_args = {single_block_size, single_block_size, third_dim, src0_cb_index, output_cb_index}});
     }
     if (has_cliff_col && has_cliff_row) {
         auto tilize_col_row_cliff_kernel_id = CreateKernel(
             program,
             "ttnn/cpp/ttnn/operations/data_movement/tilize/device/kernels/compute/tilize_wh.cpp",
             cliff_col_row_core_range,
-            ComputeConfig{.compile_args = {single_block_size_cliff_col, single_block_size_cliff_row, third_dim}});
+            ComputeConfig{
+                .compile_args = {
+                    single_block_size_cliff_col,
+                    single_block_size_cliff_row,
+                    third_dim,
+                    src0_cb_index,
+                    output_cb_index}});
     }
     if (has_cliff_row) {
         auto tilize_row_cliff_kernel_id = CreateKernel(
             program,
             "ttnn/cpp/ttnn/operations/data_movement/tilize/device/kernels/compute/tilize_wh.cpp",
             cliff_row_core_range,
-            ComputeConfig{.compile_args = {single_block_size, single_block_size_cliff_row, third_dim}});
+            ComputeConfig{
+                .compile_args = {
+                    single_block_size, single_block_size_cliff_row, third_dim, src0_cb_index, output_cb_index}});
     }
 
     if (has_cliff_col) {
@@ -333,7 +344,9 @@ operation::ProgramWithCallbacks tilize_multi_core_block(const Tensor& a, Tensor&
             program,
             "ttnn/cpp/ttnn/operations/data_movement/tilize/device/kernels/compute/tilize_wh.cpp",
             cliff_col_core_range,
-            ComputeConfig{.compile_args = {single_block_size_cliff_col, single_block_size, third_dim}});
+            ComputeConfig{
+                .compile_args = {
+                    single_block_size_cliff_col, single_block_size, third_dim, src0_cb_index, output_cb_index}});
     }
 
     // RUNTIME ARGS
@@ -478,11 +491,12 @@ operation::ProgramWithCallbacks tilize_multi_core_interleaved(const Tensor& a, T
             }
         }
     }
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+    uint32_t src0_cb_index = next_cb_index++;
+    create_cb(src0_cb_index, program, all_cores, input_single_tile_size, ntiles_per_block, input_cb_data_format);
 
-    create_cb(tt::CBIndex::c_0, program, all_cores, input_single_tile_size, ntiles_per_block, input_cb_data_format);
-
-    auto [output_cb_index, _] = create_cb(
-        tt::CBIndex::c_16, program, all_cores, output_single_tile_size, ntiles_per_block, output_cb_data_format);
+    uint32_t output_cb_index = next_cb_index++;
+    create_cb(output_cb_index, program, all_cores, output_single_tile_size, ntiles_per_block, output_cb_data_format);
 
     Buffer* src0_buffer = a.buffer();
     Buffer* dst_buffer = output.buffer();
@@ -493,7 +507,7 @@ operation::ProgramWithCallbacks tilize_multi_core_interleaved(const Tensor& a, T
     uint32_t src0_is_dram = src0_buffer->buffer_type() == BufferType::DRAM ? 1 : 0;
     uint32_t stick_size_is_power_of_two = is_power_of_two_at_least_32(block_size_nbytes);
     uint32_t log2_stick_size = stick_size_is_power_of_two ? (uint32_t)std::log2(block_size_nbytes) : 0;
-    std::vector<uint32_t> reader_ct_args = {src0_is_dram, stick_size_is_power_of_two, log2_stick_size};
+    std::vector<uint32_t> reader_ct_args = {src0_is_dram, stick_size_is_power_of_two, log2_stick_size, src0_cb_index};
     KernelHandle unary_reader_kernel_id = CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/data_movement/tilize/device/kernels/dataflow/"
@@ -513,8 +527,9 @@ operation::ProgramWithCallbacks tilize_multi_core_interleaved(const Tensor& a, T
 
     /** compute
      */
-    std::vector<uint32_t> compute_args = {nblocks_per_core, ntiles_per_block};
-    std::vector<uint32_t> compute_args_cliff = {nblocks_per_core_cliff, ntiles_per_block};
+    std::vector<uint32_t> compute_args = {nblocks_per_core, ntiles_per_block, src0_cb_index, output_cb_index};
+    std::vector<uint32_t> compute_args_cliff = {
+        nblocks_per_core_cliff, ntiles_per_block, src0_cb_index, output_cb_index};
 
     if (core_range.ranges().size() > 0) {
         auto tilize_kernel_id = CreateKernel(
@@ -638,8 +653,9 @@ operation::ProgramWithCallbacks tilize_multi_core_sharded(const Tensor& input, T
     uint32_t num_cores_x = device->compute_with_storage_grid_size().x;
     uint32_t num_cores = all_cores.num_cores();
 
+    uint32_t next_cb_index = tt::CBIndex::c_0;
     auto [src0_cb_index, cb_src0] = create_cb(
-        tt::CBIndex::c_0,
+        next_cb_index++,
         program,
         all_cores,
         input_single_tile_size,
@@ -648,7 +664,7 @@ operation::ProgramWithCallbacks tilize_multi_core_sharded(const Tensor& input, T
         input.buffer());
 
     auto [output_cb_index, cb_output] = create_cb(
-        tt::CBIndex::c_16,
+        next_cb_index++,
         program,
         all_cores,
         output_single_tile_size,
@@ -678,7 +694,7 @@ operation::ProgramWithCallbacks tilize_multi_core_sharded(const Tensor& input, T
         tt::tt_metal::WriterDataMovementConfig(writer_compile_time_args));
 
     std::vector<uint32_t> compute_args = {
-        uint32_t(num_tiles_per_shard / num_tiles_per_row), uint32_t(num_tiles_per_row)};
+        uint32_t(num_tiles_per_shard / num_tiles_per_row), uint32_t(num_tiles_per_row), src0_cb_index, output_cb_index};
 
     auto untilize_kernel_id = tt::tt_metal::CreateKernel(
         program,

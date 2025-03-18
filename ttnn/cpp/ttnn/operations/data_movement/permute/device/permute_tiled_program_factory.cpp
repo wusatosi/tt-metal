@@ -384,6 +384,8 @@ PermuteDeviceOperation::MultiCoreTileRowInvariant::create(
     }
 
     std::vector<uint32_t> reader_compile_time_args = {
+        src0_cb_index,
+        padding_cb_index,
         (uint32_t)src_is_dram,
         num_writes,
         padding_val_packed,

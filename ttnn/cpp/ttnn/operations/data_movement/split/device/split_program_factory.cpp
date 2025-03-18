@@ -152,6 +152,11 @@ operation::ProgramWithCallbacks split_last_dim_two_chunks_tiled(
     uint32_t z_stride_read = num_tiles_per_z;
     uint32_t y_stride_read = per_core_tiles_y * num_cores_y;
 
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+    uint32_t src0_cb_index = next_cb_index++;
+    uint32_t num_input_tiles = 2;
+    tt::tt_metal::create_cb(src0_cb_index, program, all_cores, single_tile_size, num_input_tiles, cb_data_format);
+
     std::vector<uint32_t> reader_compile_time_args = {// interleaved accessor args
                                                       (std::uint32_t)tile_dtype_is_bfloat16,
                                                       // by default in dram
@@ -162,7 +167,8 @@ operation::ProgramWithCallbacks split_last_dim_two_chunks_tiled(
                                                       (std::uint32_t)per_core_tiles_x,  // out_num_tiles_per_tensor
                                                       (std::uint32_t)per_core_tiles_y,  // out_num_tiles_per_tensor
                                                       (std::uint32_t)z_stride_read,
-                                                      (std::uint32_t)y_stride_read};
+                                                      (std::uint32_t)y_stride_read,
+                                                      (std::uint32_t)src0_cb_index};
 
     uint32_t z_stride_write = num_tiles_per_z / num_chunks;
     uint32_t y_stride_write = per_core_tiles_y * (num_cores_c / num_chunks);
@@ -175,7 +181,8 @@ operation::ProgramWithCallbacks split_last_dim_two_chunks_tiled(
 
                                                       (std::uint32_t)(z / num_cores_z),
                                                       (std::uint32_t)z_stride_write,
-                                                      (std::uint32_t)y_stride_write
+                                                      (std::uint32_t)y_stride_write,
+                                                      (std::uint32_t)src0_cb_index
 
     };
 
@@ -192,13 +199,6 @@ operation::ProgramWithCallbacks split_last_dim_two_chunks_tiled(
         "writer_tm_tile_layout_split_two_chunks.cpp",
         all_cores,
         tt::tt_metal::WriterDataMovementConfig(writer_compile_time_args));
-
-    uint32_t src0_cb_index = 0;
-    uint32_t num_input_tiles = 2;
-    tt::tt_metal::CircularBufferConfig cb_src0_config =
-        tt::tt_metal::CircularBufferConfig(num_input_tiles * single_tile_size, {{src0_cb_index, cb_data_format}})
-            .set_page_size(src0_cb_index, single_tile_size);
-    auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_src0_config);
 
     setup_runtime(
         program,

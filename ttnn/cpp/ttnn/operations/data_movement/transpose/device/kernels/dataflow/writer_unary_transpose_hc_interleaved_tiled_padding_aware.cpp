@@ -17,14 +17,15 @@ void kernel_main() {
     constexpr bool dst_is_dram = get_compile_time_arg_val(0) == 1;
     constexpr uint32_t element_size = get_compile_time_arg_val(1);
     constexpr uint32_t cb_id_out0 = get_compile_time_arg_val(2);
-    constexpr uint32_t C = get_compile_time_arg_val(3);
-    constexpr uint32_t H = get_compile_time_arg_val(4);
-    constexpr uint32_t W = get_compile_time_arg_val(5);
-    constexpr uint32_t TILE_HEIGHT = get_compile_time_arg_val(6);
-    constexpr uint32_t TILE_WIDTH = get_compile_time_arg_val(7);
-    constexpr uint32_t FACE_HEIGHT = get_compile_time_arg_val(8);
-    constexpr uint32_t FACE_WIDTH = get_compile_time_arg_val(9);
-    constexpr bool needs_padding = get_compile_time_arg_val(10) == 1;
+    constexpr uint32_t cb_id_padding = get_compile_time_arg_val(3);
+    constexpr uint32_t C = get_compile_time_arg_val(4);
+    constexpr uint32_t H = get_compile_time_arg_val(5);
+    constexpr uint32_t W = get_compile_time_arg_val(6);
+    constexpr uint32_t TILE_HEIGHT = get_compile_time_arg_val(7);
+    constexpr uint32_t TILE_WIDTH = get_compile_time_arg_val(8);
+    constexpr uint32_t FACE_HEIGHT = get_compile_time_arg_val(9);
+    constexpr uint32_t FACE_WIDTH = get_compile_time_arg_val(10);
+    constexpr bool needs_padding = get_compile_time_arg_val(11) == 1;
 
     // Derived compile-time constants
     constexpr uint32_t TILE_HW = TILE_HEIGHT * TILE_WIDTH;
@@ -156,9 +157,9 @@ void kernel_main() {
 
     // add padding
     if constexpr (needs_padding) {
-        cb_wait_front(tt::CBIndex::c_1, 1);
+        cb_wait_front(cb_id_padding, 1);
 
-        uint32_t l1_read_ptr = get_read_ptr(tt::CBIndex::c_1);
+        uint32_t l1_read_ptr = get_read_ptr(cb_id_padding);
 
         constexpr uint32_t c_t = C_t - 1;
         constexpr uint8_t C_in_tile = C % TILE_HEIGHT;
@@ -198,6 +199,6 @@ void kernel_main() {
             }
         }
         noc_async_write_barrier();
-        cb_pop_front(tt::CBIndex::c_1, 1);
+        cb_pop_front(cb_id_padding, 1);
     }
 }

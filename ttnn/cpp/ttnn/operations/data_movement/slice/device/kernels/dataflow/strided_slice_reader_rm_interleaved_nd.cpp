@@ -7,8 +7,10 @@
 
 void kernel_main() {
     constexpr bool src0_is_dram = (bool)get_compile_time_arg_val(0);
-    constexpr uint32_t page_size = get_compile_time_arg_val(1);
-    constexpr uint32_t dims = get_compile_time_arg_val(2);
+    constexpr uint32_t cb_id_in0 = get_compile_time_arg_val(1);
+    constexpr uint32_t cb_id_out0 = get_compile_time_arg_val(2);
+    constexpr uint32_t page_size = get_compile_time_arg_val(3);
+    constexpr uint32_t dims = get_compile_time_arg_val(4);
 
     const uint32_t src_addr = get_arg_val<uint32_t>(0);
 
@@ -33,8 +35,6 @@ void kernel_main() {
 
     const InterleavedAddrGen<src0_is_dram> s0 = {.bank_base_address = src_addr, .page_size = page_size};
 
-    constexpr uint32_t cb_id_in0 = 0;
-    constexpr uint32_t cb_id_out0 = 24;
     uint32_t src_buffer_l1_addr = get_write_ptr(cb_id_in0);
     volatile tt_l1_ptr uint16_t* in_stick = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(src_buffer_l1_addr);
 

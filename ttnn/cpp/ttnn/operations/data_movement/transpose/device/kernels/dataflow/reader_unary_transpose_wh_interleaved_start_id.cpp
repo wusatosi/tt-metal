@@ -17,11 +17,10 @@ void kernel_main() {
     uint32_t HtWt = get_arg_val<uint32_t>(7);
 
     constexpr bool src_is_dram = get_compile_time_arg_val(0) == 1;
+    constexpr uint32_t cb_id_in0 = get_compile_time_arg_val(1);
     // uint32_t Ht  = (uint32_t)get_compile_time_arg_val(1);
     // uint32_t Wt  = (uint32_t)get_compile_time_arg_val(2);
     // uint32_t HtWt  = (uint32_t)get_compile_time_arg_val(3);
-
-    constexpr uint32_t cb_id_in0 = 0;
 
     // ublocks size defined in tiles
     constexpr uint32_t onetile = 1;

@@ -28,13 +28,13 @@ void kernel_main() {
     uint32_t wt = get_arg_val<uint32_t>(13);
 
     constexpr bool src0_is_dram = get_compile_time_arg_val(0) == 1;
-    constexpr uint32_t SUBTILE_LINE_BYTES = get_compile_time_arg_val(1);
-    constexpr uint32_t FLOAT32_DTYPE = get_compile_time_arg_val(2);
-    constexpr uint32_t ALIGNMENT = get_compile_time_arg_val(3);
+    constexpr uint32_t cb_id_in0 = get_compile_time_arg_val(1);
+    constexpr uint32_t SUBTILE_LINE_BYTES = get_compile_time_arg_val(2);
+    constexpr uint32_t FLOAT32_DTYPE = get_compile_time_arg_val(3);
+    constexpr uint32_t ALIGNMENT = get_compile_time_arg_val(4);
     constexpr bool MISALIGNED = ALIGNMENT > SUBTILE_LINE_BYTES;
 
     constexpr uint32_t onetile = 1;
-    constexpr uint32_t cb_id_in0 = 0;
 
     // The basic idea here is to iterate over output tiles (that will be over CT,WT) and H
     // this will generate a linearly incremented output address in the inner loop

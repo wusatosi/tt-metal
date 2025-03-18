@@ -15,14 +15,13 @@ void kernel_main() {
     uint32_t curr_n = get_arg_val<uint32_t>(6);
 
     constexpr bool src_is_dram = get_compile_time_arg_val(0) == 1;
-    constexpr uint32_t N = get_compile_time_arg_val(1);
-    constexpr uint32_t H = get_compile_time_arg_val(2);
-    constexpr uint32_t C = get_compile_time_arg_val(3);
-    constexpr uint32_t W_size_bytes = get_compile_time_arg_val(4);
+    constexpr uint32_t cb_in0 = get_compile_time_arg_val(1);
+    constexpr uint32_t N = get_compile_time_arg_val(2);
+    constexpr uint32_t H = get_compile_time_arg_val(3);
+    constexpr uint32_t C = get_compile_time_arg_val(4);
+    constexpr uint32_t W_size_bytes = get_compile_time_arg_val(5);
 
     constexpr uint32_t CH = C * H;
-
-    constexpr auto cb_in0 = tt::CBIndex::c_0;
 
     const uint32_t stick_size_bytes = W_size_bytes;
 

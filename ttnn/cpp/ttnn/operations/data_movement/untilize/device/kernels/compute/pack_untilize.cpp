@@ -9,10 +9,10 @@
 
 namespace NAMESPACE {
 void MAIN {
-    constexpr uint32_t per_core_block_cnt = get_compile_time_arg_val(0);
-    constexpr uint32_t per_core_block_tile_cnt = get_compile_time_arg_val(1);
-    constexpr uint32_t src_cb_id = get_compile_time_arg_val(2);
-    constexpr uint32_t out_cb_id = get_compile_time_arg_val(3);
+    constexpr uint32_t src_cb_id = get_compile_time_arg_val(0);
+    constexpr uint32_t out_cb_id = get_compile_time_arg_val(1);
+    constexpr uint32_t per_core_block_cnt = get_compile_time_arg_val(2);
+    constexpr uint32_t per_core_block_tile_cnt = get_compile_time_arg_val(3);
 
     pack_untilize_init<per_core_block_tile_cnt>(src_cb_id, out_cb_id);
 

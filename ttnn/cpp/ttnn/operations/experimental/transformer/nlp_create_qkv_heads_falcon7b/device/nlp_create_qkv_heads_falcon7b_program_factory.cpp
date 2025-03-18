@@ -71,8 +71,11 @@ tt::tt_metal::operation::ProgramWithCallbacks multi_core_nlp_create_qkv_heads_fa
     bool tile_dtype_is_bfloat16 = a.get_dtype() == tt::tt_metal::DataType::BFLOAT16;
     bool in0_is_dram = in0_buffer->buffer_type() == tt_metal::BufferType::DRAM ? 1 : 0;
     bool out_is_dram = q_buffer->buffer_type() == tt_metal::BufferType::DRAM ? 1 : 0;
+    uint32_t src0_cb_index = 0;
+
     std::vector<uint32_t> reader_compile_time_args = {
         // interleaved accessor args
+        src0_cb_index,
         (std::uint32_t)in0_is_dram,
     };
     std::vector<uint32_t> writer_compile_time_args = {
@@ -99,7 +102,6 @@ tt::tt_metal::operation::ProgramWithCallbacks multi_core_nlp_create_qkv_heads_fa
         tt_metal::WriterDataMovementConfig(writer_compile_time_args));
 
     // Create circular buffers
-    uint32_t src0_cb_index = 0;
     uint32_t cb0_num_tiles = per_tensor_tiles * 2;  // double buffer
     tt_metal::CircularBufferConfig cb_src0_config =
         tt_metal::CircularBufferConfig(cb0_num_tiles * single_tile_size, {{src0_cb_index, cb_data_format}})

@@ -25,9 +25,9 @@ void kernel_main() {
     constexpr uint32_t out_num_tiles_per_tensor_x = get_compile_time_arg_val(4);
     constexpr uint32_t z_stride = get_compile_time_arg_val(5);
     constexpr uint32_t y_stride = get_compile_time_arg_val(6);
+    constexpr uint32_t cb_id_in0 = get_compile_time_arg_val(7);
 
     constexpr uint32_t out_num_tensors = 1;
-    constexpr uint32_t cb_id_in0 = 0;
     uint32_t single_tile_size_bytes = get_tile_size(cb_id_in0);
 
     constexpr bool in0_is_dram_bool = in0_is_dram == 1;

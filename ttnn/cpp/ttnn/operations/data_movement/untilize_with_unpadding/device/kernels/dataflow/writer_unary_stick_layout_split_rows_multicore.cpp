@@ -8,7 +8,6 @@
 
 void kernel_main() {
     // Constexpr
-    constexpr uint32_t cb_id_out0 = 16;
     constexpr uint32_t tile_height = 32;
 
     const uint32_t dst_addr = get_arg_val<uint32_t>(0);
@@ -19,6 +18,7 @@ void kernel_main() {
 
     constexpr bool dst_is_dram = get_compile_time_arg_val(0) == 1;
     constexpr bool FLOAT32_DTYPE = get_compile_time_arg_val(3) == 1;
+    constexpr uint32_t cb_id_out0 = get_compile_time_arg_val(4);
 
     const uint32_t num_tiles_per_row = padded_X_size >> (FLOAT32_DTYPE ? 7 : 6);
 

@@ -112,31 +112,21 @@ void MAIN {
     constexpr uint32_t Ht = get_compile_time_arg_val(0);
     constexpr uint32_t Wt = get_compile_time_arg_val(1);
     constexpr uint32_t HtWt = get_compile_time_arg_val(2);
+    constexpr uint32_t cb_in = get_compile_time_arg_val(3);
+    constexpr uint32_t cb_tilize = get_compile_time_arg_val(4);
+    constexpr uint32_t cb_untilize = get_compile_time_arg_val(5);
+    constexpr uint32_t cb_out = get_compile_time_arg_val(6);
 #ifdef SHARDED
-    constexpr uint32_t num_hw_blocks_per_core = get_compile_time_arg_val(3);
-    constexpr uint32_t last_output_row_num_datums = get_compile_time_arg_val(4);
-    constexpr uint32_t pack_num_pages = get_compile_time_arg_val(5);
-    constexpr uint32_t pack_num_pages_last_col = get_compile_time_arg_val(6);
-    constexpr uint32_t pack_num_pages_last_row = get_compile_time_arg_val(7);
-    constexpr uint32_t pack_num_pages_last_row_col = get_compile_time_arg_val(8);
-
+    constexpr uint32_t num_hw_blocks_per_core = get_compile_time_arg_val(7);
+    constexpr uint32_t last_output_row_num_datums = get_compile_time_arg_val(8);
+    constexpr uint32_t pack_num_pages = get_compile_time_arg_val(9);
+    constexpr uint32_t pack_num_pages_last_col = get_compile_time_arg_val(10);
+    constexpr uint32_t pack_num_pages_last_row = get_compile_time_arg_val(11);
+    constexpr uint32_t pack_num_pages_last_row_col = get_compile_time_arg_val(12);
     constexpr bool use_narrow_row = last_output_row_num_datums < TILE_WIDTH ? true : false;
     constexpr uint32_t row_size = last_output_row_num_datums < TILE_WIDTH ? last_output_row_num_datums : TILE_WIDTH;
 #else
     uint32_t num_hw_blocks_per_core = get_arg_val<uint32_t>(0);
-#endif
-
-#ifdef SHARDED
-    constexpr auto cb_in = tt::CBIndex::c_24;
-    constexpr auto cb_tilize = tt::CBIndex::c_25;
-    constexpr auto cb_untilize = tt::CBIndex::c_26;
-    constexpr auto cb_out =
-        (Ht > 8) ? tt::CBIndex::c_27 : tt::CBIndex::c_16;  // temporary fix until pack_untilze is fully fixed
-#else
-    constexpr auto cb_in = tt::CBIndex::c_0;
-    constexpr auto cb_tilize = tt::CBIndex::c_24;
-    constexpr auto cb_untilize = tt::CBIndex::c_25;
-    constexpr auto cb_out = tt::CBIndex::c_16;
 #endif
 
     unary_op_init_common(cb_in, cb_out);

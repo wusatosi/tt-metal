@@ -13,8 +13,8 @@ void kernel_main() {
     constexpr uint32_t H_size_bytes = get_compile_time_arg_val(5);
     constexpr uint32_t l1_read_offset_bytes = get_compile_time_arg_val(6);
 
-    constexpr auto cb_out = tt::CBIndex::c_27;
-    constexpr auto cb_out0 = tt::CBIndex::c_16;
+    constexpr uint32_t cb_out = get_compile_time_arg_val(7);
+    constexpr uint32_t cb_out0 = get_compile_time_arg_val(8);
 
     const uint32_t stick_size_bytes = H_size_bytes;
 

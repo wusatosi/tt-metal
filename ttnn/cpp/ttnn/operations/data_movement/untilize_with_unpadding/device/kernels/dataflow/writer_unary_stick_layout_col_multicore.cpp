@@ -7,12 +7,11 @@
 #include "dataflow_api.h"
 
 void kernel_main() {
-    constexpr uint32_t cb_id_out0 = 16;
-
     const uint32_t total_num_rows = get_compile_time_arg_val(3);
     const uint32_t ncores = get_compile_time_arg_val(4);
     const uint32_t third_dim = get_compile_time_arg_val(5);
     const uint32_t tile_width = get_compile_time_arg_val(6);
+    constexpr uint32_t cb_id_out0 = get_compile_time_arg_val(7);
 
     const uint32_t dst_addr = get_arg_val<uint32_t>(0);
     const uint32_t unpadded_X_size = get_arg_val<uint32_t>(1);

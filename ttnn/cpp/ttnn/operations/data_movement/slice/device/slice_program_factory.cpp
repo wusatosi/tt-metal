@@ -4,6 +4,7 @@
 
 #include "optional"
 #include "ttnn/operations/math.hpp"
+#include "ttnn/operations/cb_utils.hpp"
 #include <tt-metalium/work_split.hpp>
 #include <tt-metalium/constants.hpp>
 #include <tt-metalium/util.hpp>
@@ -167,13 +168,11 @@ operation::ProgramWithCallbacks slice_rm_multi_core(
     TT_ASSERT(dst_buffer != nullptr, "Output buffer should be allocated on device!");
 
     bool src0_is_dram = src0_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0;
-    std::vector<uint32_t> reader_compile_time_args_vec = {(std::uint32_t)src0_is_dram};
     bool dst_is_dram = dst_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0;
 
     uint32_t src_stick_size = padded_row_size_bytes;
     uint32_t dst_stick_size = unpadded_row_size_bytes;
 
-    uint32_t src0_cb_index = 0;
     uint32_t max_read_size = 4096;
     uint32_t cb_page_size = dst_is_dram ? tt::round_up(unpadded_row_size_bytes, TILE_WIDTH)
                                         : tt::round_up(unpadded_row_size_bytes, TILE_WIDTH / 2);
@@ -186,13 +185,15 @@ operation::ProgramWithCallbacks slice_rm_multi_core(
             tt::tt_metal::merge_num_sticks_to_read(num_sticks_per_core_pad32, cb_page_size, max_read_size);
         num_read_per_barrier = num_sticks_per_core_pad32 / num_sticks_per_core_read;
     }
-    tt::tt_metal::CircularBufferConfig cb_src0_config =
-        tt::tt_metal::CircularBufferConfig(num_read_per_barrier * 2 * cb_page_size, {{src0_cb_index, cb_data_format}})
-            .set_page_size(src0_cb_index, cb_page_size);
-    auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, total_cores, cb_src0_config);
+
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+    uint32_t src0_cb_index = next_cb_index++;
+    tt::tt_metal::create_cb(
+        src0_cb_index, program, total_cores, cb_page_size, num_read_per_barrier * 2, cb_data_format);
 
     std::vector<uint32_t> writer_compile_time_args_vec = {(std::uint32_t)src0_cb_index, (std::uint32_t)dst_is_dram};
 
+    std::vector<uint32_t> reader_compile_time_args_vec = {(std::uint32_t)src0_cb_index, (std::uint32_t)src0_is_dram};
     tt::tt_metal::KernelHandle unary_reader_kernel_id = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/data_movement/slice/device/kernels/dataflow/"
@@ -297,17 +298,13 @@ operation::ProgramWithCallbacks slice_rm_strided_single_core_n_dims(
     uint32_t page_size_input = src_is_dram ? tt::round_up(input_shape[-1] * a.element_size(), TILE_WIDTH)
                                            : tt::round_up(input_shape[-1] * a.element_size(), TILE_WIDTH / 2);
 
-    tt::tt_metal::CircularBufferConfig cb_src0_config =
-        tt::tt_metal::CircularBufferConfig(1 * page_size_input, {{tt::CBIndex::c_0, cb_data_format}})
-            .set_page_size(tt::CBIndex::c_0, page_size_input);
-
-    tt::tt_metal::CircularBufferConfig cb_dst0_config =
-        tt::tt_metal::CircularBufferConfig(2 * page_size_output, {{tt::CBIndex::c_24, cb_data_format}})
-            .set_page_size(tt::CBIndex::c_24, page_size_output);
-
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+    uint32_t src0_cb_index = next_cb_index++;
+    uint32_t output_cb_index = next_cb_index++;
     CoreRange core({0, 0}, {0, 0});
-    auto cb_input_tensor = tt::tt_metal::CreateCircularBuffer(program, core, cb_src0_config);
-    auto cb_output_tensor = tt::tt_metal::CreateCircularBuffer(program, core, cb_dst0_config);
+
+    tt::tt_metal::create_cb(src0_cb_index, program, core, page_size_input, 1, cb_data_format);
+    tt::tt_metal::create_cb(output_cb_index, program, core, page_size_output, 2, cb_data_format);
 
     tt::tt_metal::KernelHandle unary_reader_kernel_id = tt::tt_metal::CreateKernel(
         program,
@@ -316,6 +313,8 @@ operation::ProgramWithCallbacks slice_rm_strided_single_core_n_dims(
         core,
         tt::tt_metal::ReaderDataMovementConfig({
             src_is_dram,
+            src0_cb_index,
+            output_cb_index,
             (uint32_t)page_size_input,
             (uint32_t)input_shape.rank(),
         }
@@ -328,6 +327,7 @@ operation::ProgramWithCallbacks slice_rm_strided_single_core_n_dims(
         core,
         tt::tt_metal::WriterDataMovementConfig({
             dst_is_dram,
+            output_cb_index,
             (uint32_t)page_size_output,
         }));
 
@@ -612,23 +612,26 @@ operation::ProgramWithCallbacks slice_rm_multi_core_sharded(
     uint32_t num_cores_y = compute_with_storage_grid_size.y;
     CoreRange total_cores({0, 0}, {num_cores_x - 1, num_cores_y - 1});
 
-    uint32_t src0_cb_index = 0;
-    tt::tt_metal::CircularBufferConfig cb_src0_config =
-        tt::tt_metal::CircularBufferConfig(shard_height_padded * stick_size_padded, {{src0_cb_index, cb_data_format}})
-            .set_page_size(src0_cb_index, stick_size_padded)
-            .set_globally_allocated_address(*a.buffer());
-    auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, total_cores, cb_src0_config);
+    uint32_t next_cb_index = tt::CBIndex::c_0;
 
-    uint32_t output_cb_index = tt::CBIndex::c_16;
-    tt::tt_metal::CircularBufferConfig cb_output_config =
-        tt::tt_metal::CircularBufferConfig(
-            shard_height_unpadded * stick_size_unpadded, {{output_cb_index, dst_cb_data_format}})
-            .set_page_size(output_cb_index, stick_size_unpadded)
-            .set_globally_allocated_address(*output.buffer());
-    auto cb_output = tt::tt_metal::CreateCircularBuffer(program, total_cores, cb_output_config);
+    auto [src0_cb_index, cb_src0] = tt::tt_metal::create_cb(
+        next_cb_index++, program, total_cores, stick_size_padded, shard_height_padded, cb_data_format, a.buffer());
+
+    auto [output_cb_index, cb_output] = tt::tt_metal::create_cb(
+        next_cb_index++,
+        program,
+        total_cores,
+        stick_size_unpadded,
+        shard_height_unpadded,
+        dst_cb_data_format,
+        output.buffer());
 
     std::vector<uint32_t> reader_ct_args = {
-        (std::uint32_t)stick_size_padded, (std::uint32_t)stick_size_unpadded, (std::uint32_t)shard_height_unpadded};
+        (std::uint32_t)src0_cb_index,
+        (std::uint32_t)output_cb_index,
+        (std::uint32_t)stick_size_padded,
+        (std::uint32_t)stick_size_unpadded,
+        (std::uint32_t)shard_height_unpadded};
 
     tt::tt_metal::KernelHandle unary_reader_kernel_id = tt::tt_metal::CreateKernel(
         program,
@@ -849,12 +852,11 @@ operation::ProgramWithCallbacks slice_tile_multi_core(
     tt::DataFormat cb_data_format = tt::tt_metal::datatype_to_dataformat_converter(a.get_dtype());
     uint32_t single_tile_size = tt::tt_metal::detail::TileSize(cb_data_format);
 
-    uint32_t src0_cb_index = 0;
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+    uint32_t src0_cb_index = next_cb_index++;
     uint32_t num_input_tiles = 2;
-    tt::tt_metal::CircularBufferConfig cb_src0_config =
-        tt::tt_metal::CircularBufferConfig(num_input_tiles * single_tile_size, {{src0_cb_index, cb_data_format}})
-            .set_page_size(src0_cb_index, single_tile_size);
-    auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, total_cores, cb_src0_config);
+
+    tt::tt_metal::create_cb(src0_cb_index, program, total_cores, single_tile_size, num_input_tiles, cb_data_format);
 
     std::uint32_t num_dims = static_cast<std::uint32_t>(a.get_padded_shape().rank());
 

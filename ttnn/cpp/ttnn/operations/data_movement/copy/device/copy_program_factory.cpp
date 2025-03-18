@@ -5,6 +5,7 @@
 #include <tt-metalium/work_split.hpp>
 #include <tt-metalium/util.hpp>
 #include "copy_device_operation.hpp"
+#include "ttnn/operations/cb_utils.hpp"
 #include "ttnn/operations/math.hpp"
 
 #include <tt-metalium/constants.hpp>
@@ -40,25 +41,20 @@ operation::ProgramWithCallbacks copy_multi_core(const Tensor& input, const Tenso
     auto [num_cores, all_cores, core_group_1, core_group_2, num_units_per_core_group_1, num_units_per_core_group_2] =
         tt::tt_metal::split_work_to_cores(compute_with_storage_grid_size, num_units);
 
-    uint32_t src0_cb_index = tt::CBIndex::c_0;
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+    uint32_t src0_cb_index = next_cb_index++;
     uint32_t num_input_units = 2;
     uint32_t aligned_input_unit_size = round_up_to_mul32(input_unit_size);
-    tt::tt_metal::CircularBufferConfig cb_src0_config =
-        tt::tt_metal::CircularBufferConfig(
-            num_input_units * aligned_input_unit_size, {{src0_cb_index, input_cb_data_format}})
-            .set_page_size(src0_cb_index, aligned_input_unit_size);
-    auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_src0_config);
+    tt::tt_metal::create_cb(
+        src0_cb_index, program, all_cores, aligned_input_unit_size, num_input_units, input_cb_data_format);
 
     uint32_t output_cb_index = src0_cb_index;  // same as input cb
     if (convert_dtype) {
-        output_cb_index = tt::CBIndex::c_16;
+        output_cb_index = next_cb_index++;
         uint32_t num_output_units = 2;
         uint32_t aligned_output_unit_size = round_up_to_mul32(output_unit_size);
-        tt::tt_metal::CircularBufferConfig output_cb_config =
-            tt::tt_metal::CircularBufferConfig(
-                num_output_units * aligned_output_unit_size, {{output_cb_index, output_cb_data_format}})
-                .set_page_size(output_cb_index, aligned_output_unit_size);
-        auto cb_output = tt::tt_metal::CreateCircularBuffer(program, all_cores, output_cb_config);
+        tt::tt_metal::create_cb(
+            output_cb_index, program, all_cores, aligned_output_unit_size, num_output_units, output_cb_data_format);
     }
 
     auto src_buffer = input.buffer();
@@ -105,7 +101,8 @@ operation::ProgramWithCallbacks copy_multi_core(const Tensor& input, const Tenso
         tt::tt_metal::WriterDataMovementConfig(writer_compile_time_args, kernel_defines));
 
     if (convert_dtype) {
-        std::vector<uint32_t> compute_kernel_args_group_1 = {num_units_per_core_group_1};
+        std::vector<uint32_t> compute_kernel_args_group_1 = {
+            num_units_per_core_group_1, src0_cb_index, output_cb_index};
         auto eltwise_unary_kernel_group_1 = tt::tt_metal::CreateKernel(
             program,
             "ttnn/cpp/ttnn/deprecated/tt_dnn/kernels/compute/eltwise_copy.cpp",
@@ -113,7 +110,8 @@ operation::ProgramWithCallbacks copy_multi_core(const Tensor& input, const Tenso
             tt::tt_metal::ComputeConfig{.compile_args = compute_kernel_args_group_1});
 
         if (!core_group_2.ranges().empty()) {
-            std::vector<uint32_t> compute_kernel_args_group_2 = {num_units_per_core_group_2};
+            std::vector<uint32_t> compute_kernel_args_group_2 = {
+                num_units_per_core_group_2, src0_cb_index, output_cb_index};
             auto eltwise_unary_kernel_group_2 = tt::tt_metal::CreateKernel(
                 program,
                 "ttnn/cpp/ttnn/deprecated/tt_dnn/kernels/compute/eltwise_copy.cpp",

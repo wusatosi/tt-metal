@@ -87,24 +87,20 @@ operation::ProgramWithCallbacks untilize_multi_core_parallelize_column_subgrid(
     CoreCoord end_core;
     std::vector<CoreCoord> cores_with_rtargs;
 
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+
     uint32_t num_input_tiles = ntiles_per_block * 2;
     auto [src0_cb_index, cb_src0] = create_cb(
-        tt::CBIndex::c_0, program, all_cores, input_single_tile_size, num_input_tiles, input_cb_data_format, nullptr);
+        next_cb_index++, program, all_cores, input_single_tile_size, num_input_tiles, input_cb_data_format, nullptr);
 
     uint32_t num_output_tiles = ntiles_per_block * 2;
     auto [output_cb_index, cb_output] = create_cb(
-        tt::CBIndex::c_16,
-        program,
-        all_cores,
-        output_single_tile_size,
-        num_output_tiles,
-        output_cb_data_format,
-        nullptr);
+        next_cb_index++, program, all_cores, output_single_tile_size, num_output_tiles, output_cb_data_format, nullptr);
 
     Buffer* src0_buffer = a.buffer();
     Buffer* dst_buffer = output.buffer();
     bool src0_is_dram = src0_buffer->buffer_type() == BufferType::DRAM ? 1 : 0;
-    std::vector<uint32_t> reader_ct_args = {(uint32_t)src0_is_dram};
+    std::vector<uint32_t> reader_ct_args = {src0_cb_index, (uint32_t)src0_is_dram};
 
     auto reader_kernel_id = CreateKernel(
         program,
@@ -119,7 +115,7 @@ operation::ProgramWithCallbacks untilize_multi_core_parallelize_column_subgrid(
         (uint32_t)out_is_dram,
         (uint32_t)stick_size_is_power_of_two,
         (uint32_t)log2_stick_size,
-    };
+        (uint32_t)output_cb_index};
 
     auto writer_kernel_id = CreateKernel(
         program,
@@ -131,10 +127,11 @@ operation::ProgramWithCallbacks untilize_multi_core_parallelize_column_subgrid(
     /** compute
      */
     std::vector<uint32_t> compute_args = {
-        (uint32_t)nblocks_per_core,  // per_core_block_cnt
-        (uint32_t)ntiles_per_block,  // per_block_ntiles
         (uint32_t)src0_cb_index,
-        (uint32_t)output_cb_index};
+        (uint32_t)output_cb_index,
+        (uint32_t)nblocks_per_core,  // per_core_block_cnt
+        (uint32_t)ntiles_per_block   // per_block_ntiles
+    };
 
     std::string compute_kernel(
         "ttnn/cpp/ttnn/operations/data_movement/untilize/device/kernels/compute/pack_untilize.cpp");
@@ -274,23 +271,19 @@ operation::ProgramWithCallbacks untilize_multi_core_parallelize_column(
     std::vector<CoreCoord> cores_with_rtargs;
 
     uint32_t num_input_tiles = ntiles_per_block * 2;
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+
     auto [src0_cb_index, cb_src0] = create_cb(
-        tt::CBIndex::c_0, program, all_cores, input_single_tile_size, num_input_tiles, input_cb_data_format, nullptr);
+        next_cb_index++, program, all_cores, input_single_tile_size, num_input_tiles, input_cb_data_format, nullptr);
 
     uint32_t num_output_tiles = ntiles_per_block * 2;
     auto [output_cb_index, cb_output] = create_cb(
-        tt::CBIndex::c_16,
-        program,
-        all_cores,
-        output_single_tile_size,
-        num_output_tiles,
-        output_cb_data_format,
-        nullptr);
+        next_cb_index++, program, all_cores, output_single_tile_size, num_output_tiles, output_cb_data_format, nullptr);
 
     Buffer* src0_buffer = a.buffer();
     Buffer* dst_buffer = output.buffer();
     bool src0_is_dram = src0_buffer->buffer_type() == BufferType::DRAM ? 1 : 0;
-    std::vector<uint32_t> reader_ct_args = {(uint32_t)src0_is_dram};
+    std::vector<uint32_t> reader_ct_args = {src0_cb_index, (uint32_t)src0_is_dram};
 
     auto unary_reader_kernel_id = CreateKernel(
         program,
@@ -305,7 +298,7 @@ operation::ProgramWithCallbacks untilize_multi_core_parallelize_column(
         (uint32_t)out_is_dram,
         (uint32_t)stick_size_is_power_of_two,
         (uint32_t)log2_stick_size,
-    };
+        (uint32_t)output_cb_index};
 
     auto unary_writer_kernel_id = CreateKernel(
         program,
@@ -317,15 +310,17 @@ operation::ProgramWithCallbacks untilize_multi_core_parallelize_column(
     /** compute
      */
     std::vector<uint32_t> compute_args = {
+        (uint32_t)src0_cb_index,
+        (uint32_t)output_cb_index,
         (uint32_t)nblocks_per_core,  // per_core_block_cnt
         (uint32_t)ntiles_per_block,  // per_block_ntiles
-        (uint32_t)src0_cb_index,
-        (uint32_t)output_cb_index};
+    };
     std::vector<uint32_t> compute_args_cliff = {
-        (uint32_t)nblocks_per_core_cliff,
-        (uint32_t)ntiles_per_block,  // per_block_ntiles
         (uint32_t)src0_cb_index,
-        (uint32_t)output_cb_index};
+        (uint32_t)output_cb_index,
+        (uint32_t)nblocks_per_core_cliff,
+        (uint32_t)ntiles_per_block  // per_block_ntiles
+    };
 
     std::string compute_kernel(
         "ttnn/cpp/ttnn/operations/data_movement/untilize/device/kernels/compute/pack_untilize.cpp");
@@ -499,17 +494,20 @@ operation::ProgramWithCallbacks untilize_multi_core_block(
         row_size_bytes = input_shape[-1] * a.element_size();
     }
 
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+    uint32_t src0_cb_index = next_cb_index++;
+    uint32_t output_cb_index = next_cb_index++;
+
     if (core_range.size() > 0) {
-        create_cb(
-            tt::CBIndex::c_0, program, core_range, input_single_tile_size, single_block_size, input_cb_data_format);
+        create_cb(src0_cb_index, program, core_range, input_single_tile_size, single_block_size, input_cb_data_format);
 
         create_cb(
-            tt::CBIndex::c_16, program, core_range, output_single_tile_size, single_block_size, output_cb_data_format);
+            output_cb_index, program, core_range, output_single_tile_size, single_block_size, output_cb_data_format);
     }
 
     if (has_cliff_col && has_cliff_row) {
         create_cb(
-            tt::CBIndex::c_0,
+            src0_cb_index,
             program,
             cliff_col_row_core_range,
             input_single_tile_size,
@@ -517,7 +515,7 @@ operation::ProgramWithCallbacks untilize_multi_core_block(
             input_cb_data_format);
 
         create_cb(
-            tt::CBIndex::c_16,
+            output_cb_index,
             program,
             cliff_col_row_core_range,
             output_single_tile_size,
@@ -527,7 +525,7 @@ operation::ProgramWithCallbacks untilize_multi_core_block(
 
     if (has_cliff_row) {
         create_cb(
-            tt::CBIndex::c_0,
+            src0_cb_index,
             program,
             cliff_row_core_range,
             input_single_tile_size,
@@ -535,7 +533,7 @@ operation::ProgramWithCallbacks untilize_multi_core_block(
             input_cb_data_format);
 
         create_cb(
-            tt::CBIndex::c_16,
+            output_cb_index,
             program,
             cliff_row_core_range,
             output_single_tile_size,
@@ -544,16 +542,16 @@ operation::ProgramWithCallbacks untilize_multi_core_block(
     }
 
     if (has_cliff_col) {
-        auto [src3_cb_index, cb_src3] = create_cb(
-            tt::CBIndex::c_0,
+        create_cb(
+            src0_cb_index,
             program,
             cliff_col_core_range,
             input_single_tile_size,
             single_block_size,
             input_cb_data_format);
 
-        auto [output3_cb_index, cb_output3] = create_cb(
-            tt::CBIndex::c_16,
+        create_cb(
+            output_cb_index,
             program,
             cliff_col_core_range,
             output_single_tile_size,
@@ -582,7 +580,7 @@ operation::ProgramWithCallbacks untilize_multi_core_block(
         program,
         "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/dataflow/reader_unary_interleaved_wh_multicore.cpp",
         all_cores,
-        ReaderDataMovementConfig({src0_is_dram, num_tiles_2d, third_dim, total_tiles_per_row}));
+        ReaderDataMovementConfig({src0_is_dram, num_tiles_2d, third_dim, total_tiles_per_row, src0_cb_index}));
 
     // writer
 
@@ -601,7 +599,7 @@ operation::ProgramWithCallbacks untilize_multi_core_block(
         "writer_unary_stick_layout_wh_multicore.cpp",
         all_cores,
         WriterDataMovementConfig(
-            {out_is_dram, log2_stick_size, total_num_rows, third_dim, TILE_HEIGHT}, writer_defines));
+            {out_is_dram, log2_stick_size, total_num_rows, third_dim, TILE_HEIGHT, output_cb_index}, writer_defines));
 
     // compute
 
@@ -612,7 +610,7 @@ operation::ProgramWithCallbacks untilize_multi_core_block(
             core_range,
             ComputeConfig{
                 .fp32_dest_acc_en = fp32_dest_acc_en,
-                .compile_args = {single_block_size, single_block_size, third_dim}});
+                .compile_args = {single_block_size, single_block_size, third_dim, src0_cb_index, output_cb_index}});
     }
     if (has_cliff_col && has_cliff_row) {
         auto tilize_col_row_cliff_kernel_id = CreateKernel(
@@ -621,7 +619,12 @@ operation::ProgramWithCallbacks untilize_multi_core_block(
             cliff_col_row_core_range,
             ComputeConfig{
                 .fp32_dest_acc_en = fp32_dest_acc_en,
-                .compile_args = {single_block_size_cliff_col, single_block_size_cliff_row, third_dim}});
+                .compile_args = {
+                    single_block_size_cliff_col,
+                    single_block_size_cliff_row,
+                    third_dim,
+                    src0_cb_index,
+                    output_cb_index}});
     }
     if (has_cliff_row) {
         auto tilize_row_cliff_kernel_id = CreateKernel(
@@ -630,7 +633,8 @@ operation::ProgramWithCallbacks untilize_multi_core_block(
             cliff_row_core_range,
             ComputeConfig{
                 .fp32_dest_acc_en = fp32_dest_acc_en,
-                .compile_args = {single_block_size, single_block_size_cliff_row, third_dim}});
+                .compile_args = {
+                    single_block_size, single_block_size_cliff_row, third_dim, src0_cb_index, output_cb_index}});
     }
 
     if (has_cliff_col) {
@@ -640,7 +644,8 @@ operation::ProgramWithCallbacks untilize_multi_core_block(
             cliff_col_core_range,
             ComputeConfig{
                 .fp32_dest_acc_en = fp32_dest_acc_en,
-                .compile_args = {single_block_size_cliff_col, single_block_size, third_dim}});
+                .compile_args = {
+                    single_block_size_cliff_col, single_block_size, third_dim, src0_cb_index, output_cb_index}});
     }
 
     // RUNTIME ARGS
@@ -857,9 +862,11 @@ operation::ProgramWithCallbacks untilize_multi_core(
         end_core = (*shard_spec.grid.ranges().begin()).end_coord;
     }
 
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+
     uint32_t num_input_tiles = src_sharded ? ntiles_per_block * nblocks_per_core : ntiles_per_block * 2;
     auto [src0_cb_index, cb_src0] = create_cb(
-        tt::CBIndex::c_0,
+        next_cb_index++,
         program,
         all_cores,
         input_single_tile_size,
@@ -869,7 +876,7 @@ operation::ProgramWithCallbacks untilize_multi_core(
 
     uint32_t num_output_tiles = out_sharded ? ntiles_per_block * nblocks_per_core : ntiles_per_block * 2;
     auto [output_cb_index, cb_output] = create_cb(
-        tt::CBIndex::c_16,
+        next_cb_index++,
         program,
         all_cores,
         output_single_tile_size,
@@ -895,7 +902,7 @@ operation::ProgramWithCallbacks untilize_multi_core(
             tt::tt_metal::ReaderDataMovementConfig(reader_ct_args));
     } else {
         bool src0_is_dram = src0_buffer->buffer_type() == BufferType::DRAM ? 1 : 0;
-        std::vector<uint32_t> reader_ct_args = {(uint32_t)src0_is_dram};
+        std::vector<uint32_t> reader_ct_args = {src0_cb_index, (uint32_t)src0_is_dram};
 
         unary_reader_kernel_id = CreateKernel(
             program,
@@ -918,7 +925,7 @@ operation::ProgramWithCallbacks untilize_multi_core(
         bool out_is_dram = dst_buffer->buffer_type() == BufferType::DRAM ? 1 : 0;
         if (src_block_sharded) {
             std::vector<uint32_t> writer_ct_args = {
-                (uint32_t)out_is_dram, (uint32_t)(input_cb_data_format == tt::DataFormat::Float32)};
+                (uint32_t)out_is_dram, (uint32_t)(input_cb_data_format == tt::DataFormat::Float32), output_cb_index};
             unary_writer_kernel_id = CreateKernel(
                 program,
                 "ttnn/cpp/ttnn/deprecated/tt_dnn/kernels/dataflow/writer_unary_stick_layout_interleaved_blocks.cpp",
@@ -931,7 +938,7 @@ operation::ProgramWithCallbacks untilize_multi_core(
                 (uint32_t)out_is_dram,
                 (uint32_t)stick_size_is_power_of_two,
                 (uint32_t)log2_stick_size,
-            };
+                (uint32_t)output_cb_index};
 
             unary_writer_kernel_id = CreateKernel(
                 program,
@@ -945,15 +952,17 @@ operation::ProgramWithCallbacks untilize_multi_core(
     /** compute
      */
     std::vector<uint32_t> compute_args = {
+        (uint32_t)src0_cb_index,
+        (uint32_t)output_cb_index,
         (uint32_t)nblocks_per_core,  // per_core_block_cnt
         (uint32_t)ntiles_per_block,  // per_block_ntiles
-        (uint32_t)src0_cb_index,
-        (uint32_t)output_cb_index};
+    };
     std::vector<uint32_t> compute_args_cliff = {
+        (uint32_t)src0_cb_index,
+        (uint32_t)output_cb_index,
         (uint32_t)nblocks_per_core_cliff,
         (uint32_t)ntiles_per_block,  // per_block_ntiles
-        (uint32_t)src0_cb_index,
-        (uint32_t)output_cb_index};
+    };
 
     std::string compute_kernel(
         "ttnn/cpp/ttnn/operations/data_movement/untilize/device/kernels/compute/pack_untilize.cpp");
@@ -1251,19 +1260,16 @@ operation::ProgramWithCallbacks untilize_single_core(
     tt::tt_metal::Buffer* dst_buffer = output.buffer();
     TT_ASSERT(dst_buffer != nullptr, "Output buffer should be allocated on device!");
 
-    uint32_t src0_cb_index = 0;
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+    uint32_t src0_cb_index = next_cb_index++;
     uint32_t num_input_tiles = num_tiles_per_block;
-    auto cb_src0_config = tt::tt_metal::CircularBufferConfig(
-                              num_input_tiles * input_single_tile_size, {{src0_cb_index, input_cb_data_format}})
-                              .set_page_size(src0_cb_index, input_single_tile_size);
-    auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, core, cb_src0_config);
+    tt::tt_metal::create_cb(
+        src0_cb_index, program, core, input_single_tile_size, num_input_tiles, input_cb_data_format);
 
-    uint32_t output_cb_index = tt::CBIndex::c_16;
+    uint32_t output_cb_index = next_cb_index++;
     uint32_t num_output_tiles = num_tiles_per_block;
-    auto cb_output_config = tt::tt_metal::CircularBufferConfig(
-                                num_output_tiles * output_single_tile_size, {{output_cb_index, output_cb_data_format}})
-                                .set_page_size(output_cb_index, output_single_tile_size);
-    auto cb_output = tt::tt_metal::CreateCircularBuffer(program, core, cb_output_config);
+    tt::tt_metal::create_cb(
+        output_cb_index, program, core, output_single_tile_size, num_output_tiles, output_cb_data_format);
 
     // Writer compile-time args
     const std::array writer_kernel_args = {
@@ -1278,7 +1284,7 @@ operation::ProgramWithCallbacks untilize_single_core(
         std::uint32_t{0}};
 
     bool src0_is_dram = src0_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0;
-    std::vector<uint32_t> reader_compile_time_args = {(std::uint32_t)src0_is_dram};
+    std::vector<uint32_t> reader_compile_time_args = {src0_cb_index, (std::uint32_t)src0_is_dram};
 
     bool out_is_dram = dst_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0;
     bool stick_size_is_power_of_two = is_power_of_two_at_least_32(stick_size);
@@ -1287,7 +1293,7 @@ operation::ProgramWithCallbacks untilize_single_core(
         (std::uint32_t)out_is_dram,
         (std::uint32_t)stick_size_is_power_of_two,
         (std::uint32_t)log2_stick_size,
-    };
+        (std::uint32_t)output_cb_index};
 
     // Tilized reader
     tt::tt_metal::KernelHandle unary_reader_kernel_id = tt::tt_metal::CreateKernel(
@@ -1305,10 +1311,11 @@ operation::ProgramWithCallbacks untilize_single_core(
         tt::tt_metal::WriterDataMovementConfig(writer_compile_time_args));
 
     std::vector<uint32_t> compute_args = {
+        uint32_t(src0_cb_index),
+        uint32_t(output_cb_index),
         uint32_t(num_tiles / num_tiles_per_block),  // per_core_block_cnt
         uint32_t(num_tiles_per_block),              // per_core_block_tile_cnt
-        uint32_t(src0_cb_index),
-        uint32_t(output_cb_index)};
+    };
 
     std::string compute_kernel(
         "ttnn/cpp/ttnn/operations/data_movement/untilize/device/kernels/compute/pack_untilize.cpp");
