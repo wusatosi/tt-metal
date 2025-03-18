@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <memory>
-#include <tt-metalium/control_plane.hpp>
 #include <tt-metalium/device_pool.hpp>
 #include <tt-metalium/fabric_host_interface.h>
 
@@ -11,8 +10,9 @@
 #include "tt_metal/llrt/tt_cluster.hpp"
 
 namespace tt::tt_fabric {
+namespace fabric_router_tests {
 
-TEST_F(FabricFixture, TestAsyncWrite) {
+TEST_F(Fabric2DFixture, TestAsyncWrite) {
     using tt::tt_metal::ShardedBufferConfig;
     using tt::tt_metal::ShardOrientation;
     using tt::tt_metal::ShardSpecBuffer;
@@ -26,7 +26,7 @@ TEST_F(FabricFixture, TestAsyncWrite) {
     std::pair<mesh_id_t, chip_id_t> end_mesh_chip_id;
     chip_id_t physical_end_device_id;
 
-    auto control_plane = tt::DevicePool::instance().get_control_plane();
+    auto control_plane = tt::Cluster::instance().get_control_plane();
 
     // Find a device with a neighbour in the East direction
     bool connection_found = false;
@@ -172,7 +172,7 @@ TEST_F(FabricFixture, TestAsyncWrite) {
     EXPECT_EQ(receiver_buffer_data, received_buffer_data);
 }
 
-TEST_F(FabricFixture, TestAtomicInc) {
+TEST_F(Fabric2DFixture, TestAtomicInc) {
     using tt::tt_metal::ShardedBufferConfig;
     using tt::tt_metal::ShardOrientation;
     using tt::tt_metal::ShardSpecBuffer;
@@ -186,7 +186,7 @@ TEST_F(FabricFixture, TestAtomicInc) {
     std::pair<mesh_id_t, chip_id_t> end_mesh_chip_id;
     chip_id_t physical_end_device_id;
 
-    auto control_plane = tt::DevicePool::instance().get_control_plane();
+    auto control_plane = tt::Cluster::instance().get_control_plane();
 
     // Find a device with a neighbour in the East direction
     bool connection_found = false;
@@ -331,7 +331,7 @@ TEST_F(FabricFixture, TestAtomicInc) {
     EXPECT_EQ(receiver_buffer_data, received_buffer_data);
 }
 
-TEST_F(FabricFixture, TestAsyncWriteAtomicInc) {
+TEST_F(Fabric2DFixture, TestAsyncWriteAtomicInc) {
     using tt::tt_metal::ShardedBufferConfig;
     using tt::tt_metal::ShardOrientation;
     using tt::tt_metal::ShardSpecBuffer;
@@ -345,7 +345,7 @@ TEST_F(FabricFixture, TestAsyncWriteAtomicInc) {
     std::pair<mesh_id_t, chip_id_t> end_mesh_chip_id;
     chip_id_t physical_end_device_id;
 
-    auto control_plane = tt::DevicePool::instance().get_control_plane();
+    auto control_plane = tt::Cluster::instance().get_control_plane();
 
     // Find a device with a neighbour in the East direction
     bool connection_found = false;
@@ -510,7 +510,7 @@ TEST_F(FabricFixture, TestAsyncWriteAtomicInc) {
     EXPECT_EQ(atomic_inc, received_buffer_data[0]);
 }
 
-TEST_F(FabricFixture, TestAsyncWriteMulticast) {
+TEST_F(Fabric2DFixture, TestAsyncWriteMulticast) {
     using tt::tt_metal::ShardedBufferConfig;
     using tt::tt_metal::ShardOrientation;
     using tt::tt_metal::ShardSpecBuffer;
@@ -527,7 +527,7 @@ TEST_F(FabricFixture, TestAsyncWriteMulticast) {
     auto routing_direction = RoutingDirection::E;
     mcast_hops[routing_direction] = 1;
 
-    auto control_plane = tt::DevicePool::instance().get_control_plane();
+    auto control_plane = tt::Cluster::instance().get_control_plane();
 
     // Find a device with enough neighbours in the specified direction
     bool connection_found = false;
@@ -731,7 +731,7 @@ TEST_F(FabricFixture, TestAsyncWriteMulticast) {
     }
 }
 
-TEST_F(FabricFixture, TestAsyncWriteMulticastMultidirectional) {
+TEST_F(Fabric2DFixture, TestAsyncWriteMulticastMultidirectional) {
     using tt::tt_metal::ShardedBufferConfig;
     using tt::tt_metal::ShardOrientation;
     using tt::tt_metal::ShardSpecBuffer;
@@ -749,7 +749,7 @@ TEST_F(FabricFixture, TestAsyncWriteMulticastMultidirectional) {
     mcast_hops[RoutingDirection::E] = 1;
     mcast_hops[RoutingDirection::W] = 2;
 
-    auto control_plane = tt::DevicePool::instance().get_control_plane();
+    auto control_plane = tt::Cluster::instance().get_control_plane();
 
     // Find a device with enough neighbours in the specified direction
     bool connection_found = false;
@@ -958,4 +958,5 @@ TEST_F(FabricFixture, TestAsyncWriteMulticastMultidirectional) {
     }
 }
 
+}  // namespace fabric_router_tests
 }  // namespace tt::tt_fabric
