@@ -6,7 +6,6 @@
 #include "compute_kernel_api.h"
 #include "tools/profiler/kernel_profiler.hpp"
 
-constexpr uint16_t THE_ID = 12345;
 namespace NAMESPACE {
 void MAIN {
     for (int i = 0; i < LOOP_COUNT; i++) {

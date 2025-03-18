@@ -109,7 +109,6 @@ void DeviceProfiler::readRiscProfilerResults(
             uint32_t coreFlatIDRead = 0;
             uint32_t runCounterRead = 0;
             uint32_t runHostCounterRead = 0;
-            bool runHostCounterDispatchSet = false;
 
             bool newRunStart = false;
 
@@ -129,9 +128,7 @@ void DeviceProfiler::readRiscProfilerResults(
                     riscNumRead = profile_buffer[index] & 0x7;
                     coreFlatIDRead = (profile_buffer[index] >> 3) & 0xFF;
                     runCounterRead = profile_buffer[index + 1] & 0xFFFF;
-                    if (!runHostCounterDispatchSet) {
-                        runHostCounterRead = (profile_buffer[index + 1] >> 16) & 0xFFFF;
-                    }
+                    runHostCounterRead = (profile_buffer[index + 1] >> 16) & 0xFFFF;
 
                     opname = getOpNameIfAvailable(device_id, runHostCounterRead);
 
@@ -212,16 +209,6 @@ void DeviceProfiler::readRiscProfilerResults(
                             index += kernel_profiler::PROFILER_L1_MARKER_UINT32_SIZE;
                             uint32_t data_H = profile_buffer[index];
                             uint32_t data_L = profile_buffer[index + 1];
-                            //std::string zone_name = "";
-                            //if (hash_to_zone_src_locations.find((uint16_t)timer_id) !=
-                                //hash_to_zone_src_locations.end()) {
-                                //std::stringstream source_info(hash_to_zone_src_locations[timer_id]);
-                                //getline(source_info, zone_name, ',');
-                                //if (zone_name.find("runtime_host_id_dispatch") != std::string::npos) {
-                                    //runHostCounterRead = data_L;
-                                    //runHostCounterDispatchSet = true;
-                                //}
-                            //}
                             logPacketData(
                                 log_file_ofs,
                                 noc_trace_json_log,
@@ -316,15 +303,17 @@ void DeviceProfiler::logPacketData(
             zone_phase = tracy::TTDeviceEventPhase::end;
         }
 
+        uint32_t tracy_run_host_id = run_host_id;
+        std::string tracy_zone_name = zone_name;
         if (zone_name.find("DISPATCH") != std::string::npos && risc_num == 1) {
-            run_host_id = dispatch_runtime_id;
-            zone_name = fmt::format("{}:CQ-DISPATCH", dispatch_runtime_id);
+            tracy_run_host_id = dispatch_runtime_id;
+            tracy_zone_name = fmt::format("{}:CQ-DISPATCH", dispatch_runtime_id);
         } else if (zone_name.find("BRISC-FW") == std::string::npos && zone_name.find("ERISC-FW") == std::string::npos) {
-            run_host_id = 0;
+            tracy_run_host_id = 0;
         }
 
         tracy::TTDeviceEvent event = tracy::TTDeviceEvent(
-            run_host_id,
+            tracy_run_host_id,
             device_id,
             core.x,
             core.y,
@@ -373,7 +362,6 @@ void DeviceProfiler::logPacketData(
     }
 
     firstTimestamp(timestamp);
-    return;
 
     logPacketDataToCSV(
         log_file_ofs,
@@ -694,9 +682,6 @@ void DeviceProfiler::dumpResults(
     ZoneScoped;
 
     auto device_id = device->id();
-    if (device_id < 4) {
-        return;
-    }
     device_core_frequency = tt::Cluster::instance().get_device_aiclk(device_id);
 
     generateZoneSourceLocationsHashes();

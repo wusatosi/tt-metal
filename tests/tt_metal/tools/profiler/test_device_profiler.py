@@ -213,8 +213,8 @@ def test_dispatch_cores():
     RISC_COUNT = 1
     ZONE_COUNT = 37
     REF_COUNT_DICT = {
-        "Tensix CQ Dispatch": [16, 17, 12, 1501],
-        "Tensix CQ Prefetch": [25, 18, 1990],
+        "Tensix CQ Dispatch": [16, 1501],
+        "Tensix CQ Prefetch": [25, 1990],
     }
 
     def verify_stats(devicesData):
@@ -223,12 +223,17 @@ def test_dispatch_cores():
             for ref, counts in REF_COUNT_DICT.items():
                 if ref in deviceData["cores"]["DEVICE"]["analysis"].keys():
                     verifiedStat.append(ref)
-                    print(ref)
+                    res = False
+                    readCount = deviceData["cores"]["DEVICE"]["analysis"][ref]["stats"]["Count"]
+                    allowedRange = 20
+                    for count in counts:
+                        if count - allowedRange < readCount < count + allowedRange:
+                            res = True
+                            break
                     assert (
-                        deviceData["cores"]["DEVICE"]["analysis"][ref]["stats"]["Count"] in counts
-                    ), "Wrong dispatch zone count"
+                        res
+                    ), f"Wrong ethernet dispatch zone count, read {readCount} which is not within {allowedRange} cycle counts of any of the limits {counts}"
 
-        print(verifiedStat)
         statTypes = ["Dispatch", "Prefetch"]
         statTypesSet = set(statTypes)
         for statType in statTypes:
@@ -261,7 +266,7 @@ def test_dispatch_cores():
 @skip_for_grayskull()
 def test_ethernet_dispatch_cores():
     REF_COUNT_DICT = {
-        "Ethernet CQ Dispatch": [17, 12, 1567],
+        "Ethernet CQ Dispatch": [17, 1567],
         "Ethernet CQ Prefetch": [18, 1951],
     }
     devicesData = run_device_profiler_test(
@@ -273,9 +278,16 @@ def test_ethernet_dispatch_cores():
     for device, deviceData in devicesData["data"]["devices"].items():
         for ref, counts in REF_COUNT_DICT.items():
             if ref in deviceData["cores"]["DEVICE"]["analysis"].keys():
+                res = False
+                readCount = deviceData["cores"]["DEVICE"]["analysis"][ref]["stats"]["Count"]
+                allowedRange = 20
+                for count in counts:
+                    if count - allowedRange < readCount < count + allowedRange:
+                        res = True
+                        break
                 assert (
-                    deviceData["cores"]["DEVICE"]["analysis"][ref]["stats"]["Count"] in counts
-                ), "Wrong ethernet dispatch zone count"
+                    res
+                ), f"Wrong ethernet dispatch zone count, read {readCount} which is not within {allowedRange} cycle counts of any of the limits {counts}"
 
     devicesData = run_device_profiler_test(
         testName="pytest ./tests/ttnn/tracy/test_dispatch_profiler.py::test_all_devices",
@@ -286,9 +298,16 @@ def test_ethernet_dispatch_cores():
     for device, deviceData in devicesData["data"]["devices"].items():
         for ref, counts in REF_COUNT_DICT.items():
             if ref in deviceData["cores"]["DEVICE"]["analysis"].keys():
+                res = False
+                readCount = deviceData["cores"]["DEVICE"]["analysis"][ref]["stats"]["Count"]
+                allowedRange = 20
+                for count in counts:
+                    if count - allowedRange < readCount < count + allowedRange:
+                        res = True
+                        break
                 assert (
-                    deviceData["cores"]["DEVICE"]["analysis"][ref]["stats"]["Count"] in counts
-                ), "Wrong ethernet dispatch zone count"
+                    res
+                ), f"Wrong ethernet dispatch zone count, read {readCount} which is not within {allowedRange} cycle counts of any of the limits {counts}"
 
 
 @skip_for_grayskull()

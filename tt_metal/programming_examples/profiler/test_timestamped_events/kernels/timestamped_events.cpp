@@ -4,7 +4,6 @@
 
 #include <cstdint>
 
-constexpr uint16_t THE_ID = 12345;
 void kernel_main() {
     for (int i = 0; i < LOOP_COUNT; i++) {
         DeviceZoneScopedN("TEST-FULL");
