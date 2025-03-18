@@ -58,10 +58,14 @@ void kernel_main() {
     // const uint32_t in1_tensor_addr = get_arg_val<uint32_t>(rt_args_idx++);
     // const uint32_t ring_idx = get_arg_val<uint32_t>(rt_args_idx++);
 
-    uint32_t rt_args_idx = 0;
-    uint32_t core_id = get_arg_val<uint32_t>(rt_args_idx++);
+    // uint32_t rt_args_idx = 0;
+    // uint32_t core_id = get_arg_val<uint32_t>(rt_args_idx++);
+    // uint32_t core_id = get_relative_logical_x() + get_relative_logical_y() * NUM_CORES_X;
 
     uint32_t common_rt_args_idx = 0;
+    const uint32_t NUM_CORES_X = get_common_arg_val<uint32_t>(common_rt_args_idx++);
+    uint32_t core_id = get_relative_logical_x() + get_relative_logical_y() * NUM_CORES_X;
+
     const uint32_t in1_tensor_addr = get_common_arg_val<uint32_t>(common_rt_args_idx++);
     volatile tt_l1_ptr uint8_t* common_rt_args_base =
         (volatile tt_l1_ptr uint8_t*)(get_common_arg_addr(common_rt_args_idx));

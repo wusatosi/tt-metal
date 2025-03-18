@@ -1723,15 +1723,12 @@ std::vector<std::tuple<CoreRange, uint32_t, uint32_t>> build_all_cores_info(Core
 
 uint32_t get_core_index(
     const std::vector<std::tuple<CoreRange, uint32_t, uint32_t>>& all_cores_info, const CoreCoord& core) {
-    uint32_t core_range_start_id = 0;
     for (auto& [core_range, core_range_id, core_range_size] : all_cores_info) {
         auto start_coord = core_range.start_coord;
         auto end_coord = core_range.end_coord;
         if (core_range.contains(core)) {
-            return core_range_start_id + (core.x - start_coord.x) +
-                   (core.y - start_coord.y) * (end_coord.x - start_coord.x + 1);
+            return (core.x - start_coord.x) + (core.y - start_coord.y) * (end_coord.x - start_coord.x + 1);
         }
-        core_range_start_id = core_range_start_id + core_range_size;
     }
     TT_THROW("cannot find the core in all cores!");
     return 0;
@@ -1768,7 +1765,7 @@ std::vector<uint32_t> concat_rt_args(const std::vector<uint32_t>& rt_args) {
     return concatenated_rt_args;
 }
 
-std::vector<uint32_t> generate_common_rt_args_array(const std::vector<std::vector<uint32_t>>& all_rt_args) {
+std::vector<uint32_t> generate_common_rt_args_array(std::vector<std::vector<uint32_t>>& all_rt_args) {
     std::vector<uint32_t> flattened_all_args;
     for (auto& rt_args : all_rt_args) {
         flattened_all_args.insert(flattened_all_args.end(), rt_args.begin(), rt_args.end());
@@ -1995,38 +1992,83 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         use_dedicated_noc ? tt_metal::NOC_MODE::DM_DEDICATED_NOC : tt_metal::NOC_MODE::DM_DYNAMIC_NOC;
 
     /* Create the kernels */
-    auto mm_kernel_in0_id = tt_metal::CreateKernel(
-        program,
-        "ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/reader_bmm_tile_layout_in0_ring_all_gather.cpp",
-        all_cores,
-        tt_metal::DataMovementConfig{
-            .processor = tt_metal::DataMovementProcessor::RISCV_1,
-            .noc = in0_noc,
-            .noc_mode = noc_mode,
-            .compile_args = in0_sender_compile_time_args});
+    // auto mm_kernel_in0_id = tt_metal::CreateKernel(
+    //     program,
+    //     "ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/reader_bmm_tile_layout_in0_ring_all_gather.cpp",
+    //     all_cores,
+    //     tt_metal::DataMovementConfig{
+    //         .processor = tt_metal::DataMovementProcessor::RISCV_1,
+    //         .noc = in0_noc,
+    //         .noc_mode = noc_mode,
+    //         .compile_args = in0_sender_compile_time_args});
 
-    auto mm_kernel_in1_sender_writer_id = tt_metal::CreateKernel(
-        program,
-        "ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/reader_bmm_tile_layout_in1_ring_all_gather.cpp",
-        all_cores,
-        tt_metal::DataMovementConfig{
-            .processor = tt_metal::DataMovementProcessor::RISCV_0,
-            .noc = in1_noc,
-            .noc_mode = noc_mode,
-            .compile_args = in1_sender_writer_compile_time_args,
-            .defines = mm_in1_kernel_defines});
+    // auto mm_kernel_in1_sender_writer_id = tt_metal::CreateKernel(
+    //     program,
+    //     "ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/reader_bmm_tile_layout_in1_ring_all_gather.cpp",
+    //     all_cores,
+    //     tt_metal::DataMovementConfig{
+    //         .processor = tt_metal::DataMovementProcessor::RISCV_0,
+    //         .noc = in1_noc,
+    //         .noc_mode = noc_mode,
+    //         .compile_args = in1_sender_writer_compile_time_args,
+    //         .defines = mm_in1_kernel_defines});
 
-    auto mm_kernel = tt_metal::CreateKernel(
-        program,
-        "ttnn/cpp/ttnn/operations/matmul/device/kernels/compute/bmm_large_block_zm_fused_bias_activation_gathered.cpp",
-        all_cores,
-        tt_metal::ComputeConfig{
-            .math_fidelity = math_fidelity,
-            .fp32_dest_acc_en = fp32_dest_acc_en,
-            .dst_full_sync_en = dst_full_sync_en,
-            .math_approx_mode = math_approx_mode,
-            .compile_args = compute_kernel_args,
-            .defines = mm_kernel_defines});
+    // auto mm_kernel = tt_metal::CreateKernel(
+    //     program,
+    //     "ttnn/cpp/ttnn/operations/matmul/device/kernels/compute/bmm_large_block_zm_fused_bias_activation_gathered.cpp",
+    //     all_cores,
+    //     tt_metal::ComputeConfig{
+    //         .math_fidelity = math_fidelity,
+    //         .fp32_dest_acc_en = fp32_dest_acc_en,
+    //         .dst_full_sync_en = dst_full_sync_en,
+    //         .math_approx_mode = math_approx_mode,
+    //         .compile_args = compute_kernel_args,
+    //         .defines = mm_kernel_defines});
+
+    std::vector<tt::tt_metal::KernelHandle> mm_kernel_in0_ids;
+    std::vector<tt::tt_metal::KernelHandle> mm_kernel_in1_sender_writer_ids;
+    std::vector<tt::tt_metal::KernelHandle> mm_kernels;
+    for (auto& core_range : all_cores.ranges()) {
+        tt::log_info("core_range: {}", core_range);
+
+        auto mm_kernel_in0_id = tt_metal::CreateKernel(
+            program,
+            "ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/reader_bmm_tile_layout_in0_ring_all_gather.cpp",
+            CoreRangeSet(core_range),
+            tt_metal::DataMovementConfig{
+                .processor = tt_metal::DataMovementProcessor::RISCV_1,
+                .noc = in0_noc,
+                .noc_mode = noc_mode,
+                .compile_args = in0_sender_compile_time_args});
+
+        auto mm_kernel_in1_sender_writer_id = tt_metal::CreateKernel(
+            program,
+            "ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/reader_bmm_tile_layout_in1_ring_all_gather.cpp",
+            CoreRangeSet(core_range),
+            tt_metal::DataMovementConfig{
+                .processor = tt_metal::DataMovementProcessor::RISCV_0,
+                .noc = in1_noc,
+                .noc_mode = noc_mode,
+                .compile_args = in1_sender_writer_compile_time_args,
+                .defines = mm_in1_kernel_defines});
+
+        auto mm_kernel = tt_metal::CreateKernel(
+            program,
+            "ttnn/cpp/ttnn/operations/matmul/device/kernels/compute/"
+            "bmm_large_block_zm_fused_bias_activation_gathered.cpp",
+            CoreRangeSet(core_range),
+            tt_metal::ComputeConfig{
+                .math_fidelity = math_fidelity,
+                .fp32_dest_acc_en = fp32_dest_acc_en,
+                .dst_full_sync_en = dst_full_sync_en,
+                .math_approx_mode = math_approx_mode,
+                .compile_args = compute_kernel_args,
+                .defines = mm_kernel_defines});
+
+        mm_kernel_in0_ids.push_back(mm_kernel_in0_id);
+        mm_kernel_in1_sender_writer_ids.push_back(mm_kernel_in1_sender_writer_id);
+        mm_kernels.push_back(mm_kernel);
+    }
 
     /* Create circular buffers */
     uint32_t src0_cb_index = tt::CBIndex::c_0;
@@ -2154,7 +2196,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
                 0};
             add_rt_args_to_all_rt_args(all_mm_in0_args, mm_in0_args, core_id);
             // mm_in0_args.insert(mm_in0_args.begin(), (std::uint32_t)core_id);
-            tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, {(std::uint32_t)core_id});
+            // tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, {(std::uint32_t)core_id});
 
             // // in1
             // std::vector<uint32_t> mm_kernel_in1_sender_writer_args;
@@ -2169,7 +2211,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
             };
             add_rt_args_to_all_rt_args(all_mm_in1_args, mm_in1_args, core_id);
             // mm_in1_args.insert(mm_in1_args.begin(), (std::uint32_t)core_id);
-            tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, {(std::uint32_t)core_id});
+            // tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, {(std::uint32_t)core_id});
 
             // // compute
             // std::vector<uint32_t> mm_kernel_args;
@@ -2183,7 +2225,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
             };
             add_rt_args_to_all_rt_args(all_mm_compute_args, mm_kernel_compute_args, core_id);
             // mm_kernel_compute_args.insert(mm_kernel_compute_args.begin(), (std::uint32_t)core_id);
-            tt_metal::SetRuntimeArgs(program, mm_kernel, core, {(std::uint32_t)core_id});
+            // tt_metal::SetRuntimeArgs(program, mm_kernel, core, {(std::uint32_t)core_id});
         }
     }
 
@@ -2227,7 +2269,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
             noc};
         add_rt_args_to_all_rt_args(all_mm_in0_args, mm_in0_args, core_id);
         // mm_in0_args.insert(mm_in0_args.begin(), (std::uint32_t)core_id);
-        tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, {(std::uint32_t)core_id});
+        // tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, {(std::uint32_t)core_id});
 
         // /* in1 */
         // std::vector<uint32_t> mm_in1_args = {
@@ -2245,7 +2287,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         };
         add_rt_args_to_all_rt_args(all_mm_in1_args, mm_in1_args, core_id);
         // mm_in1_args.insert(mm_in1_args.begin(), (std::uint32_t)core_id);
-        tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, {(std::uint32_t)core_id});
+        // tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, {(std::uint32_t)core_id});
 
         // /* compute */
         // std::vector<uint32_t> mm_kernel_compute_args = {
@@ -2266,7 +2308,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         };
         add_rt_args_to_all_rt_args(all_mm_compute_args, mm_kernel_compute_args, core_id);
         // mm_kernel_compute_args.insert(mm_kernel_compute_args.begin(), (std::uint32_t)core_id);
-        tt_metal::SetRuntimeArgs(program, mm_kernel, core, {(std::uint32_t)core_id});
+        // tt_metal::SetRuntimeArgs(program, mm_kernel, core, {(std::uint32_t)core_id});
     }
 
     // Runtime args for hop cores
@@ -2312,7 +2354,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
             noc};
         add_rt_args_to_all_rt_args(all_mm_in0_args, mm_in0_args, core_id);
         // mm_in0_args.insert(mm_in0_args.begin(), (std::uint32_t)core_id);
-        tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, {(std::uint32_t)core_id});
+        // tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, {(std::uint32_t)core_id});
 
         // in1
         std::vector<uint32_t> mm_in1_args = {
@@ -2321,7 +2363,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         };
         add_rt_args_to_all_rt_args(all_mm_in1_args, mm_in1_args, core_id);
         // mm_in1_args.insert(mm_in1_args.begin(), (std::uint32_t)core_id);
-        tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, {(std::uint32_t)core_id});
+        // tt_metal::SetRuntimeArgs(program, mm_kernel_in1_sender_writer_id, core, {(std::uint32_t)core_id});
 
         // compute
         std::vector<uint32_t> mm_kernel_compute_args = {
@@ -2330,37 +2372,82 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         };
         add_rt_args_to_all_rt_args(all_mm_compute_args, mm_kernel_compute_args, core_id);
         // mm_kernel_compute_args.insert(mm_kernel_compute_args.begin(), (std::uint32_t)core_id);
-        tt_metal::SetRuntimeArgs(program, mm_kernel, core, {(std::uint32_t)core_id});
+        // tt_metal::SetRuntimeArgs(program, mm_kernel, core, {(std::uint32_t)core_id});
     }
 
-    tt::log_info("all_mm_in1_args: {}", all_mm_in1_args);
+    uint32_t offset = 0;
+    for (uint32_t i = 0; i < all_cores_info.size(); ++i) {
+        // split the crta array in0 into core ranges
+        auto [core_range, core_range_id, core_range_size] = all_cores_info[i];
+        auto num_cores_x = core_range.end_coord.x - core_range.start_coord.x + 1;
+        std::vector<std::vector<uint32_t>> mm_in0_args_per_range(
+            all_mm_in0_args.begin() + offset, all_mm_in0_args.begin() + offset + core_range_size);
+
+        // set common rt args for in0
+        std::vector<uint32_t> concated_all_mm_in0_args = generate_common_rt_args_array(mm_in0_args_per_range);
+        concated_all_mm_in0_args.insert(
+            concated_all_mm_in0_args.begin(),
+            unpadded_in0_shard_widths_in_tiles.begin(),
+            unpadded_in0_shard_widths_in_tiles.end());
+        concated_all_mm_in0_args.insert(concated_all_mm_in0_args.begin(), (uint32_t)num_cores_x);
+        SetCommonRuntimeArgs(program, mm_kernel_in0_ids[i], concated_all_mm_in0_args);
+        tt::log_info("mm_in0_args_per_range: {}", mm_in0_args_per_range);
+
+        // split the crta array in1 into core ranges
+        std::vector<std::vector<uint32_t>> mm_in1_args_per_range(
+            all_mm_in1_args.begin() + offset, all_mm_in1_args.begin() + offset + core_range_size);
+
+        // set common rt args for in1
+        std::vector<uint32_t> concated_all_mm_in1_args = generate_common_rt_args_array(mm_in1_args_per_range);
+        concated_all_mm_in1_args.insert(concated_all_mm_in1_args.begin(), in1_buffer->address());
+        concated_all_mm_in1_args.insert(concated_all_mm_in1_args.begin(), (uint32_t)num_cores_x);
+        SetCommonRuntimeArgs(program, mm_kernel_in1_sender_writer_ids[i], concated_all_mm_in1_args);
+        tt::log_info("mm_in1_args_per_range: {}", mm_in1_args_per_range);
+
+        // split the crta array compute into core ranges
+        std::vector<std::vector<uint32_t>> all_mm_compute_args_per_range(
+            all_mm_compute_args.begin() + offset, all_mm_compute_args.begin() + offset + core_range_size);
+
+        // set common rt args for compute
+        std::vector<uint32_t> concated_all_mm_compute_args =
+            generate_common_rt_args_array(all_mm_compute_args_per_range);
+        concated_all_mm_compute_args.insert(
+            concated_all_mm_compute_args.begin(),
+            unpadded_in0_shard_widths_in_tiles.begin(),
+            unpadded_in0_shard_widths_in_tiles.end());
+        concated_all_mm_compute_args.insert(concated_all_mm_compute_args.begin(), (uint32_t)num_cores_x);
+        SetCommonRuntimeArgs(program, mm_kernels[i], concated_all_mm_compute_args);
+        tt::log_info("all_mm_compute_args_per_range: {}", all_mm_compute_args_per_range);
+
+        offset += core_range_size;
+    }
 
     // set common rt args for in0
-    std::vector<uint32_t> concated_all_mm_in0_args = generate_common_rt_args_array(all_mm_in0_args);
-    concated_all_mm_in0_args.insert(
-        concated_all_mm_in0_args.begin(),
-        unpadded_in0_shard_widths_in_tiles.begin(),
-        unpadded_in0_shard_widths_in_tiles.end());
-    SetCommonRuntimeArgs(program, mm_kernel_in0_id, concated_all_mm_in0_args);
+    // std::vector<uint32_t> concated_all_mm_in0_args = generate_common_rt_args_array(all_mm_in0_args);
+    // concated_all_mm_in0_args.insert(
+    //     concated_all_mm_in0_args.begin(),
+    //     unpadded_in0_shard_widths_in_tiles.begin(),
+    //     unpadded_in0_shard_widths_in_tiles.end());
+    // SetCommonRuntimeArgs(program, mm_kernel_in0_id, concated_all_mm_in0_args);
     // tt::log_info("concated_all_mm_in0_args: {}", concated_all_mm_in0_args);
 
     // set common rt args for in1
-    std::vector<uint32_t> concated_all_mm_in1_args = generate_common_rt_args_array(all_mm_in1_args);
-    concated_all_mm_in1_args.insert(concated_all_mm_in1_args.begin(), in1_buffer->address());
-    SetCommonRuntimeArgs(program, mm_kernel_in1_sender_writer_id, concated_all_mm_in1_args);
-    tt::log_info("concated_all_mm_in1_args: {}", concated_all_mm_in1_args);
+    // std::vector<uint32_t> concated_all_mm_in1_args = generate_common_rt_args_array(all_mm_in1_args);
+    // concated_all_mm_in1_args.insert(concated_all_mm_in1_args.begin(), in1_buffer->address());
+    // SetCommonRuntimeArgs(program, mm_kernel_in1_sender_writer_id, concated_all_mm_in1_args);
+    // tt::log_info("concated_all_mm_in1_args: {}", concated_all_mm_in1_args);
 
     // set common rt args for compute
-    std::vector<uint32_t> concated_all_mm_compute_args = generate_common_rt_args_array(all_mm_compute_args);
-    concated_all_mm_compute_args.insert(
-        concated_all_mm_compute_args.begin(),
-        unpadded_in0_shard_widths_in_tiles.begin(),
-        unpadded_in0_shard_widths_in_tiles.end());
-    SetCommonRuntimeArgs(program, mm_kernel, concated_all_mm_compute_args);
-    tt::log_info("concated_all_mm_compute_args: {}", concated_all_mm_compute_args);
+    // std::vector<uint32_t> concated_all_mm_compute_args = generate_common_rt_args_array(all_mm_compute_args);
+    // concated_all_mm_compute_args.insert(
+    //     concated_all_mm_compute_args.begin(),
+    //     unpadded_in0_shard_widths_in_tiles.begin(),
+    //     unpadded_in0_shard_widths_in_tiles.end());
+    // SetCommonRuntimeArgs(program, mm_kernel, concated_all_mm_compute_args);
+    // tt::log_info("concated_all_mm_compute_args: {}", concated_all_mm_compute_args);
 
     auto override_runtime_arguments_callback =
-        [mm_kernel_in0_id, mm_kernel_in1_sender_writer_id, cb_src0, cb_src1, cb_output, num_cores, all_cores_vec](
+        [mm_kernel_in1_sender_writer_ids, cb_src0, cb_src1, cb_output, num_cores, all_cores_vec](
             const void* operation,
             tt::tt_metal::Program& program,
             const std::vector<tt::tt_metal::Tensor>& input_tensors,
@@ -2403,8 +2490,12 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
             //     }
             // }
             if (not src1_sharded) {
-                auto& writer_common_rt_args = GetCommonRuntimeArgs(program, mm_kernel_in1_sender_writer_id);
-                writer_common_rt_args[0] = src_buffer_b->address();
+                for (const auto& in1_kernel : mm_kernel_in1_sender_writer_ids) {
+                    auto& writer_common_rt_args = GetCommonRuntimeArgs(program, in1_kernel);
+                    writer_common_rt_args[0] = src_buffer_b->address();
+                }
+                // auto& writer_common_rt_args = GetCommonRuntimeArgs(program, mm_kernel_in1_sender_writer_ids);
+                // writer_common_rt_args[0] = src_buffer_b->address();
             }
         };
 
