@@ -316,7 +316,7 @@ void DeviceProfiler::logPacketData(
             zone_phase = tracy::TTDeviceEventPhase::end;
         }
 
-        if (zone_name.find("DISPATCH") != std::string::npos) {
+        if (zone_name.find("DISPATCH") != std::string::npos && risc_num == 1) {
             run_host_id = dispatch_runtime_id;
             zone_name = fmt::format("{}:CQ-DISPATCH", dispatch_runtime_id);
         } else if (zone_name.find("BRISC-FW") == std::string::npos && zone_name.find("ERISC-FW") == std::string::npos) {
@@ -346,7 +346,8 @@ void DeviceProfiler::logPacketData(
     }
 
     if (packet_type == kernel_profiler::TS_DATA) {
-        if (last_event_it->zone_phase == tracy::TTDeviceEventPhase::begin &&
+        if (risc_num == 1 &&  // NCRISC
+            last_event_it->zone_phase == tracy::TTDeviceEventPhase::begin &&
             last_event_it->zone_name.find("DISPATCH") != std::string::npos) {
             if (zone_name.find("process_cmd") != std::string::npos) {
                 cmd_type = fmt::format("{}", magic_enum::enum_name((CQDispatchCmdId)data));
