@@ -410,7 +410,7 @@ Pool2D::MultiCore::cached_program_t Pool2D::MultiCore::create(
     auto pad_metadata = sliding_window::generate_pad_metadata(sliding_window_config);
     auto op_trace_metadata = sliding_window::generate_op_trace_metadata(sliding_window_config);
     auto shard_boundaries = sliding_window::generate_shard_boundaries(sliding_window_config, op_trace_metadata);
-    auto top_left_indices =
+    auto [top_left_indices_size, top_left_indices] =
         sliding_window::generate_sliding_window_op_config(op_trace_metadata, shard_boundaries, false, true);
     auto reader_indices =
         sliding_window::construct_on_host_config_tensor(top_left_indices, sliding_window_config, parallel_config);

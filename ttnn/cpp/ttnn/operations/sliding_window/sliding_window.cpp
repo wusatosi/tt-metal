@@ -4,6 +4,7 @@
 
 #include "sliding_window.hpp"
 #include <cstdint>
+#include <iostream>
 #include <vector>
 #include <tt-metalium/assert.hpp>
 
@@ -253,8 +254,8 @@ std::vector<ShardBoundary> generate_shard_boundaries(
     uint32_t dilated_window_w =
         config.window_hw.second + (config.dilation_hw.second - 1) * (config.window_hw.second - 1);
     uint32_t halo_with_pad_len = (dilated_window_h - 1) * padded_input_w + dilated_window_w - 1;
-    std::cout << "dilated_window_h: " << dilated_window_h << " dilated_window_w: " << dilated_window_w
-              << " padded_input_w: " << padded_input_w << " halo_with_pad_len: " << halo_with_pad_len << std::endl;
+    // std::cout << "dilated_window_h: " << dilated_window_h << " dilated_window_w: " << dilated_window_w
+    //           << " padded_input_w: " << padded_input_w << " halo_with_pad_len: " << halo_with_pad_len << std::endl;
 
     if (config.is_bilinear) {
         halo_with_pad_len = (config.window_hw.first) * padded_input_w;
@@ -354,6 +355,8 @@ uint32_t generate_max_out_nsticks_per_core(const std::vector<ShardBoundary>& sha
 uint32_t global_padded_input_w = 0;
 uint32_t global_window_w = 0;
 uint32_t global_dilation_w = 0;
+uint32_t global_core_idx = 0;
+std::vector<std::vector<std::vector<std::vector<uint16_t>>>> halo_op_to_idx_map;
 std::vector<uint32_t> generate_dilated_idx_for_tensor_metadata(
     const SlidingWindowConfig& config,
     const ShardBoundary& shard_boundary,
@@ -369,7 +372,7 @@ std::vector<uint32_t> generate_dilated_idx_for_tensor_metadata(
     global_dilation_w = config.dilation_hw.second;
     std::cout << "padded_input_w: " << padded_input_w << std::endl;
     auto [output_start, output_end] = output_boundary;
-    std::cout << "output_start: " << output_start << " output_end: " << output_end << std::endl;
+    // std::cout << "output_start: " << output_start << " output_end: " << output_end << std::endl;
     for (auto i = output_start; i <= output_end; i++) {
         auto anchor = op_trace_metadata[i];
         for (auto fh = 0; fh < config.window_hw.first; fh++) {
@@ -385,17 +388,37 @@ std::vector<uint32_t> generate_dilated_idx_for_tensor_metadata(
         unique(dilated_idx_for_tensor_metadata.begin(), dilated_idx_for_tensor_metadata.end()),
         dilated_idx_for_tensor_metadata.end());
 
-    std::cout << std::endl;
-    for (auto i = 0; i < dilated_idx_for_tensor_metadata.size(); i++) {
-        std::cout << dilated_idx_for_tensor_metadata[i] << " ";
+    for (auto fh = 0; fh < config.window_hw.first; fh++) {
+        std::vector<std::vector<uint16_t>> halo_op_to_idx_map_local;
+        for (auto i = output_start; i <= output_end; i++) {
+            auto anchor = op_trace_metadata[i];
+            std::vector<uint16_t> idx_map;
+            for (auto fw = 0; fw < config.window_hw.second; fw++) {
+                auto dilated_idx =
+                    anchor + fh * padded_input_w * config.dilation_hw.first + fw * config.dilation_hw.second;
+                auto it =
+                    find(dilated_idx_for_tensor_metadata.begin(), dilated_idx_for_tensor_metadata.end(), dilated_idx);
+                if (it != dilated_idx_for_tensor_metadata.end()) {
+                    idx_map.push_back(distance(dilated_idx_for_tensor_metadata.begin(), it));
+                } else {
+                    idx_map.push_back(0xFFFF);
+                }
+            }
+            halo_op_to_idx_map_local.push_back(idx_map);
+        }
+        halo_op_to_idx_map[global_core_idx].push_back(halo_op_to_idx_map_local);
     }
-    std::cout << std::endl;
-    std::cout << std::endl;
+    // std::cout << std::endl;
+    // for (auto i = 0; i < dilated_idx_for_tensor_metadata.size(); i++) {
+    //     std::cout << dilated_idx_for_tensor_metadata[i] << " ";
+    // }
+    // std::cout << std::endl;
+    // std::cout << std::endl;
+    global_core_idx++;
     return dilated_idx_for_tensor_metadata;
 }
 
 std::vector<std::vector<std::vector<uint16_t>>> generate_halo_kernel_config_tensors(
-generate_halo_kernel_config_tensors(
     const SlidingWindowConfig& config,
     const std::vector<uint32_t>& op_trace_metadata,
     const std::vector<PixelMetadata>& tensor_metadata,
@@ -415,19 +438,21 @@ generate_halo_kernel_config_tensors(
     std::map<uint32_pair_t, std::vector<std::tuple<uint32_t, uint32_t, uint32_t>>> per_core_gather_data;
 
     uint32_t num_cores_nhw = shard_boundaries.size();
-
+    // std::cout << "num_cores_nhw: " << num_cores_nhw << std::endl;
+    halo_op_to_idx_map.resize(num_cores_nhw);
+    global_core_idx = 0;
     uint32_t core_id = 0;
     for (auto [output_boundary, input_boundary] : shard_boundaries) {
         auto [input_start, input_end] = input_boundary;
         auto dilated_idxes = generate_dilated_idx_for_tensor_metadata(
             config, shard_boundaries[core_id], tensor_metadata, op_trace_metadata);
         auto dilated_idxes_strt = 0;
-        std::cout << "dilated_idxes size: " << dilated_idxes.size() << std::endl;
-        std::cout << "dilation hw: " << config.dilation_hw.first << " " << config.dilation_hw.second << std::endl;
-        std::cout << "input_start: " << input_start << " input_end: " << input_end
-                  << "input_size = " << input_end - input_start + 1 << std::endl;
+        // std::cout << "dilated_idxes size: " << dilated_idxes.size() << std::endl;
+        // std::cout << "dilation hw: " << config.dilation_hw.first << " " << config.dilation_hw.second << std::endl;
+        // std::cout << "input_start: " << input_start << " input_end: " << input_end
+        //           << "input_size = " << input_end - input_start + 1 << std::endl;
         auto [output_start, output_end] = output_boundary;
-        std::cout << "output_start: " << output_start << " output_end: " << output_end << std::endl;
+        // std::cout << "output_start: " << output_start << " output_end: " << output_end << std::endl;
         uint32_t dst_local_idx = 0;
         for (uint32_t global_idx = input_start; global_idx <= input_end; ++global_idx, dst_local_idx++) {
             uint32_t dst_core_id = core_id;
@@ -446,19 +471,18 @@ generate_halo_kernel_config_tensors(
                 TT_ASSERT(src_local_idx == 0);
                 src_core_id = pad_local;
             }
-            if (config.dilation_hw.first > 1 || config.dilation_hw.second > 1) {
-            } else {
-                // if (per_core_gather_data.find({src_core_id, dst_core_id}) != per_core_gather_data.end()) {
-                //     auto& [src_start, dst_start, length] = per_core_gather_data[{src_core_id, dst_core_id}].back();
-                //     // src idx is 0 if it is a pad
-                //     if ((src_local_idx == (src_start + length) || is_pad_stick) && local_idx == (dst_start + length))
-                //     {
-                //         ++length;
-                //         // std::cout << "length" << std::endl;
-                //         continue;
-                //     }
-                // }
+            // if (config.dilation_hw.first > 1 || config.dilation_hw.second > 1) {
+            // } else {
+            if (per_core_gather_data.find({src_core_id, dst_core_id}) != per_core_gather_data.end()) {
+                auto& [src_start, dst_start, length] = per_core_gather_data[{src_core_id, dst_core_id}].back();
+                // src idx is 0 if it is a pad
+                if ((src_local_idx == (src_start + length) || is_pad_stick) && local_idx == (dst_start + length)) {
+                    ++length;
+                    // std::cout << "length" << std::endl;
+                    continue;
+                }
             }
+            // }
             // insert new tuple
             // std::cout << "src_core_id: " << src_core_id << " dst_core_id: " << dst_core_id << " src_local_idx: " <<
             // src_local_idx << " local_idx: " << local_idx << std::endl;
@@ -689,37 +713,71 @@ generate_halo_kernel_config_tensors(
         flattened_remote_config[1]};
 }
 
-std::vector<std::vector<uint16_t>> generate_sliding_window_op_config(
+std::tuple<std::vector<uint16_t>, std::vector<std::vector<uint16_t>>> generate_sliding_window_op_config(
     const std::vector<uint32_t>& op_trace_metadata,
     const std::vector<ShardBoundary>& shard_boundaries,
     bool pad_tile,
     bool pad_cores) {
     std::vector<std::vector<uint16_t>> sharded_input_top_left_indices;
+    std::vector<uint16_t> sharded_input_top_left_indices_size;
+    uint32_t core_id = 0;
     for (const auto& item : shard_boundaries) {
         const auto& [output_shard_start, output_shard_end] = item.output_range;
         const auto& [input_shard_start, input_shard_end] = item.input_range;
         std::vector<uint16_t> local_top_left_indices;
         // sanity check
+        // std::cout << "output_shard_start: " << output_shard_start << " output_shard_end: " << output_shard_end
+        //           << std::endl;
         if (output_shard_start >= op_trace_metadata.size()) {
             // this core has no output
             continue;
         }
         TT_ASSERT(input_shard_start == op_trace_metadata[output_shard_start]);
-        uint32_t idx = 0;
-        for (size_t i = output_shard_start; i < output_shard_end + 1; i++) {
-            local_top_left_indices.push_back(idx);
-            if ((op_trace_metadata[i] % global_padded_input_w) ==
-                (global_padded_input_w - (global_window_w - 1) * global_dilation_w - 1)) {
-                idx += global_dilation_w * (global_window_w - 1);
-            }
-            idx++;
+        // std::cout << "halo_op_to_idx_map size: " << halo_op_to_idx_map.size() << std::endl;
+        // std::cout << "core_id: " << core_id * global_window_w << std::endl;
+        auto vec = halo_op_to_idx_map[core_id];
+        // sharded_input_top_left_indices_size.push_back({(uint16_t)vec[0].size()});
+        auto single_vec_size = vec[0].size() * global_window_w;
+        auto is_odd = false;
+        if (single_vec_size % 2) {
+            is_odd = true;
         }
+
+        if (is_odd) {
+            local_top_left_indices.push_back(single_vec_size + 1);
+        } else {
+            local_top_left_indices.push_back(single_vec_size);
+        }
+        std::cout << "vec[0].size(): " << vec[0].size() * global_window_w << std::endl;
+
+        local_top_left_indices.push_back(0);
+
+        for (const auto& i : vec) {
+            for (const auto& j : i) {
+                for (auto k : j) {
+                    local_top_left_indices.push_back(k);
+                }
+            }
+            if (is_odd) {
+                local_top_left_indices.push_back(0);
+            }
+        }
+        uint32_t idx = 0;
+        // for (size_t i = output_shard_start; i < output_shard_end + 1; i++) {
+        //     local_top_left_indices.push_back(idx);
+        //     if ((op_trace_metadata[i] % global_padded_input_w) ==
+        //         (global_padded_input_w - (global_window_w - 1) * global_dilation_w - 1)) {
+        //         idx += global_dilation_w * (global_window_w - 1);
+        //     }
+        //     idx++;
+        // }
         sharded_input_top_left_indices.push_back(local_top_left_indices);
+        core_id++;
     }
-    std::cout << "sharded_input_top_left_indices size[0]: " << sharded_input_top_left_indices[0].size() << std::endl;
-    for (auto i = 0; i < sharded_input_top_left_indices[0].size(); i++) {
-        std::cout << sharded_input_top_left_indices[0][i] << " ";
-    }
+    // std::cout << "sharded_input_top_left_indices size[0]: " << sharded_input_top_left_indices[0].size() << std::endl;
+    // for (auto i = 0; i < sharded_input_top_left_indices[0].size(); i++) {
+    //     std::cout << sharded_input_top_left_indices[0][i] << " ";
+    // }
     if (pad_tile) {
         // Pad indices to tile-multiple
         for (size_t i = 0; i < sharded_input_top_left_indices.size(); i++) {
@@ -731,10 +789,10 @@ std::vector<std::vector<uint16_t>> generate_sliding_window_op_config(
             }
         }
     }
-    std::cout << "sharded_input_top_left_indices size[0]: " << sharded_input_top_left_indices[0].size() << std::endl;
-    for (auto i = 0; i < sharded_input_top_left_indices[0].size(); i++) {
-        std::cout << sharded_input_top_left_indices[0][i] << " ";
-    }
+    // std::cout << "sharded_input_top_left_indices size[0]: " << sharded_input_top_left_indices[0].size() << std::endl;
+    // for (auto i = 0; i < sharded_input_top_left_indices[0].size(); i++) {
+    //     std::cout << sharded_input_top_left_indices[0][i] << " ";
+    // }
     if (pad_cores) {
         uint32_t indices_length_per_core = sharded_input_top_left_indices[0].size();
         for (uint32_t core_idx = 0; core_idx < shard_boundaries.size(); core_idx++) {
@@ -754,15 +812,16 @@ std::vector<std::vector<uint16_t>> generate_sliding_window_op_config(
             }
         }
     }
-    std::cout << "sharded_input_top_left_indices size[0]: " << sharded_input_top_left_indices[0].size() << std::endl;
-    for (auto i = 0; i < sharded_input_top_left_indices.size(); i++) {
-        std::cout << "core id = " << i << std::endl;
-        for (auto j = 0; j < sharded_input_top_left_indices[i].size(); j++) {
-            std::cout << sharded_input_top_left_indices[i][j] << " ";
-        }
-        std::cout << std::endl;
-    }
-    return sharded_input_top_left_indices;
+    // std::cout << "sharded_input_top_left_indices size[0]: " << sharded_input_top_left_indices[0].size() << std::endl;
+    // for (auto i = 0; i < sharded_input_top_left_indices.size(); i++) {
+    //     std::cout << "core id = " << i << std::endl;
+    //     for (auto j = 0; j < sharded_input_top_left_indices[i].size(); j++) {
+    //         std::cout << sharded_input_top_left_indices[i][j] << " ";
+    //     }
+    //     std::cout << std::endl;
+    // }
+    halo_op_to_idx_map.clear();
+    return {sharded_input_top_left_indices_size, sharded_input_top_left_indices};
 }
 
 std::vector<uint16_t> flatten(const std::vector<std::vector<uint16_t>>& input, uint32_t extend_with_zeroes) {

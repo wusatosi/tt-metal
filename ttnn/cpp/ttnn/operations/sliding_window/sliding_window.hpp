@@ -5,6 +5,7 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <string>
 #include <tuple>
 #include <fmt/core.h>
@@ -111,13 +112,15 @@ std::vector<PixelMetadata> generate_tensor_metadata(
     bool is_in_tiled = true);
 uint32_t generate_max_out_nsticks_per_core(const std::vector<ShardBoundary>& shard_boundaries);
 std::vector<std::vector<std::vector<uint16_t>>> generate_halo_kernel_config_tensors(
+    const SlidingWindowConfig& config,
+    const std::vector<uint32_t>& op_trace_metadata,
     const std::vector<PixelMetadata>& tensor_metadata,
     const std::vector<ShardBoundary>& shard_boundaries,
     bool is_block_sharded,
     bool transpose_mcast,
     bool remote_read,
     tt::tt_metal::IDevice* device);
-std::vector<std::vector<uint16_t>> generate_sliding_window_op_config(
+std::tuple<std::vector<uint16_t>, std::vector<std::vector<uint16_t>>> generate_sliding_window_op_config(
     const std::vector<uint32_t>& op_trace_metadata,
     const std::vector<ShardBoundary>& shard_boundaries,
     bool pad_tile = false,

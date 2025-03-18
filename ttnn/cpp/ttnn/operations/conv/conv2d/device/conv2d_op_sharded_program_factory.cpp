@@ -1912,8 +1912,9 @@ tt::tt_metal::operation::ProgramWithCallbacks multi_core_optimized_conv_sharded_
     auto op_trace_metadata = ttnn::operations::sliding_window::generate_op_trace_metadata(sliding_window_config);
     auto shard_boundaries =
         ttnn::operations::sliding_window::generate_shard_boundaries(sliding_window_config, op_trace_metadata);
-    auto conv_sharded_input_top_left_indices = ttnn::operations::sliding_window::generate_sliding_window_op_config(
-        op_trace_metadata, shard_boundaries, true, true);
+    auto [conv_sharded_input_top_left_indices_size, conv_sharded_input_top_left_indices] =
+        ttnn::operations::sliding_window::generate_sliding_window_op_config(
+            op_trace_metadata, shard_boundaries, true, true);
     // create sharded ttnn config tensors
     DataType indices_tt_dtype = DataType::UINT16;
     // For 2d convs, each core in a column or row share the same specs
