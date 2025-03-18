@@ -42,22 +42,17 @@ def test_run_yolov4_trace_2cqs_inference(
 
     inference_iter_count = 10
     inference_time_iter = []
-    for iter in range(0, inference_iter_count):
-        input_shape = (1, 3, 320, 320)
+    for _ in range(0, inference_iter_count):
+        input_shape = (1, 320, 320, 3)
         torch_input_tensor = torch.randn(input_shape, dtype=torch.float32)
-        n, c, h, w = torch_input_tensor.shape
-        torch_input_tensor = torch_input_tensor.permute(0, 2, 3, 1)
-        torch_input_tensor = torch_input_tensor.reshape(1, 1, h * w * n, c)
-        tt_inputs_host = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
-        tt_inputs_host = ttnn.pad(tt_inputs_host, [1, 1, n * h * w, 16], [0, 0, 0, 0], 0)
 
         t0 = time.time()
-        output = yolov4_trac2_2cq.execute_yolov4_trace_2cqs_inference(tt_inputs_host)
+        _ = yolov4_trac2_2cq.run_traced_inference(torch_input_tensor)
         t1 = time.time()
         inference_time_iter.append(t1 - t0)
     yolov4_trac2_2cq.release_yolov4_trace_2cqs_inference()
+
     inference_time_avg = round(sum(inference_time_iter) / len(inference_time_iter), 6)
-    # print(batch_size/inference_time_avg)
     logger.info(
         f"ttnn_yolov4_320x320_batch_size_{batch_size}. One inference iteration time (sec): {inference_time_avg}, FPS: {round(batch_size/inference_time_avg)}"
     )
