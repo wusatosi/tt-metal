@@ -701,6 +701,7 @@ class resnetBlock2D:
         #     hidden_states, self.conv2.conv.input_sharded_memory_config, hidden_states.dtype
         # )
 
+        hidden_states = ttnn.reallocate(hidden_states)
         hidden_states = nonlinearity(hidden_states, memory_config=ttnn.get_memory_config(hidden_states))
         # hidden_states = ttnn.to_layout(hidden_states, ttnn.ROW_MAJOR_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG)
         hidden_states = ttnn.sharded_to_interleaved(hidden_states, ttnn.L1_MEMORY_CONFIG, hidden_states.dtype)
