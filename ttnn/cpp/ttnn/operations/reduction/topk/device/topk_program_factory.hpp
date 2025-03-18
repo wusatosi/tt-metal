@@ -189,7 +189,7 @@ static inline std::tuple<uint16_t, uint16_t, uint16_t, uint16_t> cores_utilized(
     const uint32_t value_tile_size,
     const uint32_t index_tile_size) {
     const auto max_cores = core_range.end_coord.y - core_range.start_coord.y - 1;
-    for (uint16_t split_size = max_dim; split_size >= min_dim; split_size /= 2) {
+    for (uint16_t split_size = min_dim; split_size <= max_dim; split_size *= 2) {
         uint16_t rem = width % split_size;
         uint16_t num_cores = width / split_size + (rem > 0);
         uint32_t memory_cost_gather =
@@ -262,13 +262,13 @@ operation::ProgramWithCallbacks topk_multicore_interleaved(
         value_tile_size,
         index_tile_size);
 
-    auto all_cores_range_set = select_from_corerange(first_core_range_set, 0, num_cores - 1u, true);
+    auto all_cores_range_set = select_from_corerange(first_core_range_set, 0, num_cores - 1u, false);
 
-    auto local_cores_range_set = select_from_corerange(first_core_range_set, 0, num_cores - 2u, true);
-    auto local_cores = corerange_to_cores(local_cores_range_set, num_cores - 1u, true);
+    auto local_cores_range_set = select_from_corerange(first_core_range_set, 0, num_cores - 2u, false);
+    auto local_cores = corerange_to_cores(local_cores_range_set, num_cores - 1u, false);
 
-    auto final_cores_range_set = select_from_corerange(first_core_range_set, num_cores - 1u, num_cores - 1u, true);
-    auto final_core = corerange_to_cores(final_cores_range_set, 1u, true).at(0);
+    auto final_cores_range_set = select_from_corerange(first_core_range_set, num_cores - 1u, num_cores - 1u, false);
+    auto final_core = corerange_to_cores(final_cores_range_set, 1u, false).at(0);
 
     uint32_t Wt_local = local_topk_input_size / TILE_WIDTH;
     uint32_t Wt_final = final_topk_input_size / TILE_WIDTH;

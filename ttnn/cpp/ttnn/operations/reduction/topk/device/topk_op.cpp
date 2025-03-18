@@ -20,7 +20,7 @@ static inline bool verify_available_cores(
     const uint32_t index_tile_size) {
     const auto core_range = core_range_set.ranges().at(0);
     const auto max_cores = core_range.end_coord.y - core_range.start_coord.y - 1;
-    for (uint16_t split_size = max_dim; split_size >= min_dim; split_size /= 2) {
+    for (uint16_t split_size = min_dim; split_size <= max_dim; split_size *= 2) {
         uint16_t rem = width % split_size;
         uint16_t num_cores = width / split_size + (rem > 0);
         uint32_t memory_cost_gather =
@@ -124,7 +124,6 @@ operation::ProgramWithCallbacks TopK::create_program(
     const std::vector<Tensor>& input_tensors, std::vector<Tensor>& output_tensors) const {
     const auto& input_tensor = input_tensors.at(0);
     if (input_tensor.get_padded_shape()[dim] < topk_utils::multi_core_min_width) {
-        tt::log_info("create_program sub_core_grids: {}", this->sub_core_grids);
         return detail::topk_single_core_interleaved(
             input_tensor,
             this->k,
