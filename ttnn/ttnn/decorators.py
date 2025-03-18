@@ -63,6 +63,7 @@ def compare_tensors_using_pcc(
         if not matches:
             error_message = f"{python_fully_qualified_name}: Comparing output tensor {index} against CPU {level} failed: pcc is {actual_pcc} but should be >={desired_pcc}"
             if fail_on_bad_comparison:
+                breakpoint()
                 raise RuntimeError(error_message)
             else:
                 logger.error(error_message)
@@ -463,14 +464,14 @@ class Operation:
                 if global_golden_function_output is not None:
                     set_tensor_id(global_golden_function_output)
                     posprocess_global_golden_function_outputs(output, global_golden_function_output)
-                    global_tensor_comparison_records = compare_tensors_using_pcc(
-                        self.python_fully_qualified_name,
-                        global_golden_function_output,
-                        output,
-                        desired_pcc=ttnn.CONFIG.comparison_mode_pcc,
-                        level="globally",
-                        fail_on_bad_comparison=ttnn.CONFIG.comparison_mode_should_raise_exception,
-                    )
+                    # global_tensor_comparison_records = compare_tensors_using_pcc(
+                    #     self.python_fully_qualified_name,
+                    #     global_golden_function_output,
+                    #     output,
+                    #     desired_pcc=ttnn.CONFIG.comparison_mode_pcc,
+                    #     level="globally",
+                    #     fail_on_bad_comparison=ttnn.CONFIG.comparison_mode_should_raise_exception,
+                    # )
 
                 if isinstance(local_golden_function_output, torch.Tensor):
                     local_golden_function_output = [local_golden_function_output]

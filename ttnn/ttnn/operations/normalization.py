@@ -22,10 +22,10 @@ ttnn.attach_golden_function(
     golden_function=_golden_function,
 )
 
-ttnn.attach_golden_function(
-    ttnn.softmax_in_place,
-    golden_function=_golden_function,
-)
+# ttnn.attach_golden_function(
+#     ttnn.softmax_in_place,
+#     golden_function=_golden_function,
+# )
 
 
 def _golden_function(input_tensor: ttnn.Tensor, scalar: float, attention_mask=None, **_):

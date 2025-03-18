@@ -162,8 +162,8 @@ class resnetBlock2D:
             convs_input_height = input_height
             convs_input_width = input_width
             parameters.conv_shortcut.bias = torch.reshape(parameters.conv_shortcut.bias, (1, 1, 1, out_channels))
-            self.conv_shortcut_weights = ttnn.from_torch(parameters.conv_shortcut.weight, ttnn.float32)
-            self.conv_shortcut_bias = ttnn.from_torch(parameters.conv_shortcut.bias, ttnn.float32)
+            self.conv_shortcut_weights = parameters.conv_shortcut.weight
+            self.conv_shortcut_bias = parameters.conv_shortcut.bias
             self.conv_shortcut_in_channels = parameters.conv_shortcut.weight.shape[1]
             self.conv_shortcut_out_channels = parameters.conv_shortcut.weight.shape[0]
             self.conv_shortcut_input_height = convs_input_height
@@ -810,37 +810,63 @@ class resnetBlock2D:
                 "device": self.device,
                 "conv_config": conv_config,
             }
-            if not ttnn.is_tensor_storage_on_device(self.conv_shortcut_weights):
-                self.conv_shortcut_weights = ttnn.prepare_conv_weights(
-                    weight_tensor=self.conv_shortcut_weights,
-                    weights_format="OIHW",
-                    input_memory_config=input_tensor.memory_config(),
-                    input_layout=input_tensor.get_layout(),
-                    has_bias=True,
-                    **conv_kwargs_4,
-                )
-                self.conv_shortcut_bias = ttnn.prepare_conv_bias(
-                    bias_tensor=self.conv_shortcut_bias,
-                    input_memory_config=input_tensor.memory_config(),
-                    input_layout=input_tensor.get_layout(),
-                    **conv_kwargs_4,
-                )
-                self.conv_shortcut_weights = ttnn.to_device(self.conv_shortcut_weights, self.device)
-                self.conv_shortcut_bias = ttnn.to_device(self.conv_shortcut_bias, self.device)
+            # if not ttnn.is_tensor_storage_on_device(self.conv_shortcut_weights):
+            #     self.conv_shortcut_weights = ttnn.prepare_conv_weights(
+            #         weight_tensor=self.conv_shortcut_weights,
+            #         weights_format="OIHW",
+            #         input_memory_config=input_tensor.memory_config(),
+            #         input_layout=input_tensor.get_layout(),
+            #         has_bias=True,
+            #         **conv_kwargs_4,
+            #     )
+            #     self.conv_shortcut_bias = ttnn.prepare_conv_bias(
+            #         bias_tensor=self.conv_shortcut_bias,
+            #         input_memory_config=input_tensor.memory_config(),
+            #         input_layout=input_tensor.get_layout(),
+            #         **conv_kwargs_4,
+            #     )
+            #     self.conv_shortcut_weights = ttnn.to_device(self.conv_shortcut_weights, self.device)
+            #     self.conv_shortcut_bias = ttnn.to_device(self.conv_shortcut_bias, self.device)
 
-            [
-                input_tensor,
-                [_out_height, _out_width],
-            ] = ttnn.conv2d(
-                input_tensor=input_tensor,
-                weight_tensor=self.conv_shortcut_weights,
-                bias_tensor=self.conv_shortcut_bias,
-                **conv_kwargs_4,
-                compute_config=compute_config,
-                conv_op_cache=conv_cache,
-                return_output_dim=True,
-                return_weights_and_bias=False,
+            # [
+            #     input_tensor,
+            #     [_out_height, _out_width],
+            # ] = ttnn.conv2d(
+            #     input_tensor=input_tensor,
+            #     weight_tensor=self.conv_shortcut_weights,
+            #     bias_tensor=self.conv_shortcut_bias,
+            #     **conv_kwargs_4,
+            #     compute_config=compute_config,
+            #     conv_op_cache=conv_cache,
+            #     return_output_dim=True,
+            #     return_weights_and_bias=False,
+            # )
+
+            input_tensor_torch = ttnn.to_torch(input_tensor).to(torch.bfloat16)
+            input_tensor_torch = input_tensor_torch.reshape(2, 32, 32, 320)  # Change to HWC format for PyTorch conv2d
+            input_tensor_torch = input_tensor_torch.permute(0, 3, 1, 2)  # Change to NHWC format for PyTorch conv2d
+
+            torch_out = torch.conv2d(
+                input_tensor_torch,
+                self.conv_shortcut_weights,
+                self.conv_shortcut_bias.squeeze().squeeze().squeeze(),
+                stride=(1, 1),
+                padding=(0, 0),
+                dilation=(1, 1),
+                groups=1,
             )
+
+            breakpoint()
+
+            input_tensor = ttnn.from_torch(
+                torch_out,
+                ttnn.bfloat8_b,
+                layout=ttnn.TILE_LAYOUT,
+                device=self.device,
+                memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            )
+
+            breakpoint()
 
         if ttnn.get_memory_config(input_tensor) != ttnn.get_memory_config(hidden_states):
             input_tensor = ttnn.to_memory_config(input_tensor, ttnn.get_memory_config(hidden_states))

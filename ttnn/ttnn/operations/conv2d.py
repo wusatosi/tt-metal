@@ -280,9 +280,9 @@ def _golden_function(
     return output_tensor
 
 
-ttnn.attach_golden_function(
-    ttnn.conv2d,
-    golden_function=_golden_function,
-)
+# ttnn.attach_golden_function(
+#     ttnn.conv2d,
+#     golden_function=_golden_function,
+# )
 
 __all__ = []

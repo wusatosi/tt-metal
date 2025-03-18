@@ -536,13 +536,23 @@ class cross_attention:
             )
         else:
             # This needs to be updated when optional output tensors are available
-            attention_scores_temp = attention_scores
-            attention_scores = ttnn.multiply(
-                attention_scores_temp,
-                self.scale,
+            attention_scores_torch = ttnn.to_torch(attention_scores)
+            attention_scores_torch = torch.multiply(attention_scores_torch, ttnn.to_torch(self.scale))
+            attention_scores = ttnn.from_torch(
+                attention_scores_torch,
+                dtype=ttnn.bfloat8_b,
+                layout=ttnn.TILE_LAYOUT,
+                device=self.device,
                 memory_config=attention_scores.memory_config(),
             )
-            attention_scores_temp.deallocate()
+
+            # breakpoint()
+            # attention_scores = ttnn.multiply(
+            #     attention_scores,
+            #     self.scale,
+            #     memory_config=attention_scores.memory_config(),
+            # )
+            # breakpoint()
             attention_scores = ttnn.softmax_in_place(
                 attention_scores,
                 program_config=softmax_program_config,
