@@ -351,8 +351,8 @@ def run_multi_core_matmul_1d(
     "B, M, K, N, in0_dtype, in1_dtype, fidelity, packer_l1_acc, fp32_acc_mode, grid",
     [
         (1, 32, 2048, 3584, ttnn.bfloat8_b, ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, True, True, (8, 3)),
-        # (1, 32, 2048, 16 * 1024, ttnn.bfloat8_b, ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, False, False, (8, 4)),
-        # (1, 32, 7520, 8192, ttnn.bfloat8_b, ttnn.bfloat16, ttnn.MathFidelity.HiFi4, True, True, (6, 7)),
+        (1, 32, 2048, 16 * 1024, ttnn.bfloat8_b, ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, False, False, (8, 4)),
+        (1, 32, 7520, 8192, ttnn.bfloat8_b, ttnn.bfloat16, ttnn.MathFidelity.HiFi4, True, True, (6, 7)),
     ],
 )
 @pytest.mark.parametrize(
@@ -365,8 +365,8 @@ def run_multi_core_matmul_1d(
     "use_arbitrary_cores, hop_grid",
     [
         (False, None),
-        # (False, [(3, 6)]),
-        # (True, None),
+        (False, [(3, 6)]),
+        (True, None),
     ],
 )
 @pytest.mark.parametrize(
