@@ -65,6 +65,7 @@ def sample_model(device, dit, conditioning, **args):
             rope_cos_1HND=rope_cos_1HND,
             rope_sin_1HND=rope_sin_1HND,
             trans_mat=trans_mat,
+            N=N,
             uncond=False,
         )
 
@@ -76,6 +77,7 @@ def sample_model(device, dit, conditioning, **args):
             rope_cos_1HND=rope_cos_1HND,
             rope_sin_1HND=rope_sin_1HND,
             trans_mat=trans_mat,
+            N=N,
             uncond=True,
         )
 
@@ -91,7 +93,7 @@ def sample_model(device, dit, conditioning, **args):
     uncond_y_feat_1BLY, uncond_y_pool_11BX = dit.prepare_text_features(
         t5_feat=cond_null["y_feat"][0], t5_mask=cond_null["y_mask"][0]
     )
-    z_1BNI = dit.preprocess_input(z_BCTHW)
+    z_1BNI, N = dit.preprocess_input(z_BCTHW)
 
     for i in get_new_progress_bar(range(0, sample_steps), desc="Sampling"):
         sigma = sigma_schedule[i]
@@ -103,7 +105,7 @@ def sample_model(device, dit, conditioning, **args):
         z_1BNI = z_1BNI + dsigma * pred_1BNI
 
     # Postprocess z
-    z_BCTHW = dit.reverse_preprocess(z_1BNI, latent_t, latent_h, latent_w).float()
+    z_BCTHW = dit.reverse_preprocess(z_1BNI, latent_t, latent_h, latent_w, N).float()
     return dit_latents_to_vae_latents(z_BCTHW)
 
 
