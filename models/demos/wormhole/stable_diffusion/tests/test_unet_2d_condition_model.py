@@ -144,32 +144,34 @@ def test_unet_2d_condition_model_512x512(device, batch_size, in_channels, input_
         use_signpost = False
     if use_signpost:
         signpost(header="start")
-    ttnn_output_ = model(
-        input,
-        timestep=ttnn_timestep,
-        encoder_hidden_states=encoder_hidden_states,
-        class_labels=class_labels,
-        attention_mask=attention_mask,
-        cross_attention_kwargs=cross_attention_kwargs,
-        return_dict=return_dict,
-        config=config,
-    )
+    # ttnn_output_ = model(
+    #     input,
+    #     timestep=ttnn_timestep,
+    #     encoder_hidden_states=encoder_hidden_states,
+    #     class_labels=class_labels,
+    #     attention_mask=attention_mask,
+    #     cross_attention_kwargs=cross_attention_kwargs,
+    #     return_dict=return_dict,
+    #     config=config,
+    # )
     if use_signpost:
         signpost(header="stop")
     first_iter = time.time() - first_iter
     print(f"First iteration took {first_iter} seconds")
 
     second_iter = time.time()
-    ttnn_output = model(
-        input,
-        timestep=ttnn_timestep,
-        encoder_hidden_states=encoder_hidden_states,
-        class_labels=class_labels,
-        attention_mask=attention_mask,
-        cross_attention_kwargs=cross_attention_kwargs,
-        return_dict=return_dict,
-        config=config,
-    )
+    for i in range(10000):
+        print(f"Iteration {i}")
+        ttnn_output = model(
+            input,
+            timestep=ttnn_timestep,
+            encoder_hidden_states=encoder_hidden_states,
+            class_labels=class_labels,
+            attention_mask=attention_mask,
+            cross_attention_kwargs=cross_attention_kwargs,
+            return_dict=return_dict,
+            config=config,
+        )
     second_iter = time.time() - second_iter
     print(f"Second iteration took {second_iter} seconds")
     ttnn_output = ttnn_to_torch(ttnn_output)
