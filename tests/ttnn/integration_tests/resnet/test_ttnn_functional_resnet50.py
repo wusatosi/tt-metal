@@ -41,17 +41,17 @@ def test_resnet_50(
     if batch_size > 16 and not is_blackhole():
         pytest.skip("Batch size > 16 is not supported on non-blackhole devices")
 
-    for iter in range(100):
+    test_infra = create_test_infra(
+        device,
+        batch_size,
+        act_dtype,
+        weight_dtype,
+        math_fidelity,
+        use_pretrained_weight,
+        model_location_generator=model_location_generator,
+    )
+    for iter in range(1000):
         print("Iteration: " + str(iter))
-        test_infra = create_test_infra(
-            device,
-            batch_size,
-            act_dtype,
-            weight_dtype,
-            math_fidelity,
-            use_pretrained_weight,
-            model_location_generator=model_location_generator,
-        )
         tt_inputs_host, input_mem_config = test_infra.setup_l1_sharded_input(device)
         test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
         # First run configures convs JIT
