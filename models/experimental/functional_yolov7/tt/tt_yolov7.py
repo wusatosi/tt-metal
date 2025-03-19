@@ -279,9 +279,8 @@ class ttnn_detect:
                     d2 = ttnn.pow((d1 * 2), 2) * self.ttnn_anchor_grid[i : i + 1]
                     y_cat = ttnn.concat([c3, d2, e1], dim=2, memory_config=ttnn.L1_MEMORY_CONFIG)
                     y_cat = ttnn.permute(y_cat, (0, 1, 3, 4, 2), memory_config=ttnn.L1_MEMORY_CONFIG)
-                z.append(ttnn.reshape(y_cat, (bs, -1, self.no)))
-
-        out = (ttnn.concat(z, 1), x)
+                z.append(ttnn.reshape(y_cat, (bs, -1, self.no), memory_config=ttnn.L1_MEMORY_CONFIG))
+        out = (ttnn.concat(z, 1, memory_config=ttnn.L1_MEMORY_CONFIG), x)
         return out
 
 
