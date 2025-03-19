@@ -66,11 +66,10 @@ void kernel_main() {
     const uint32_t NUM_CORES_X = get_common_arg_val<uint32_t>(common_rt_args_idx++);
     uint32_t core_id = get_relative_logical_x() + get_relative_logical_y() * NUM_CORES_X;
 
-    DPRINT << "NUM_CORES_X " << NUM_CORES_X << ENDL();
-    DPRINT << "core_id " << core_id << ENDL();
+    // DPRINT << "NUM_CORES_X " << NUM_CORES_X << ENDL();
+    // DPRINT << "core_id " << core_id << ENDL();
 
     const uint32_t in1_tensor_addr = get_common_arg_val<uint32_t>(common_rt_args_idx++);
-    DPRINT << "in1_tensor_addr " << in1_tensor_addr << ENDL();
     volatile tt_l1_ptr uint8_t* common_rt_args_base =
         (volatile tt_l1_ptr uint8_t*)(get_common_arg_addr(common_rt_args_idx));
     volatile tt_l1_ptr common_rt_args_info* common_rt_args =

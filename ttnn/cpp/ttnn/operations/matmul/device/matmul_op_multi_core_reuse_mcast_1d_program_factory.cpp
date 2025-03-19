@@ -1723,12 +1723,15 @@ std::vector<std::tuple<CoreRange, uint32_t, uint32_t>> build_all_cores_info(Core
 
 uint32_t get_core_index(
     const std::vector<std::tuple<CoreRange, uint32_t, uint32_t>>& all_cores_info, const CoreCoord& core) {
+    uint32_t core_range_start_id = 0;
     for (auto& [core_range, core_range_id, core_range_size] : all_cores_info) {
         auto start_coord = core_range.start_coord;
         auto end_coord = core_range.end_coord;
         if (core_range.contains(core)) {
-            return (core.x - start_coord.x) + (core.y - start_coord.y) * (end_coord.x - start_coord.x + 1);
+            return core_range_start_id + (core.x - start_coord.x) +
+                   (core.y - start_coord.y) * (end_coord.x - start_coord.x + 1);
         }
+        core_range_start_id = core_range_start_id + core_range_size;
     }
     TT_THROW("cannot find the core in all cores!");
     return 0;

@@ -178,8 +178,8 @@ void MAIN {
     const uint32_t NUM_CORES_X = get_common_arg_val<uint32_t>(common_rt_args_idx++);
     uint32_t core_id = get_relative_logical_x() + get_relative_logical_y() * NUM_CORES_X;
 
-    DPRINT << "NUM_CORES_X " << NUM_CORES_X << ENDL();
-    DPRINT << "core_id " << core_id << ENDL();
+    // DPRINT << "NUM_CORES_X " << NUM_CORES_X << ENDL();
+    // DPRINT << "core_id " << core_id << ENDL();
 
     volatile tt_l1_ptr uint32_t* unpadded_in0_shard_widths_in_tiles =
         (volatile tt_l1_ptr uint32_t*)(get_common_arg_addr(common_rt_args_idx));

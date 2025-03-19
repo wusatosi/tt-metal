@@ -52,9 +52,6 @@ void kernel_main() {
     const uint32_t NUM_CORES_X = get_common_arg_val<uint32_t>(common_rt_args_idx++);
     uint32_t core_id = get_relative_logical_x() + get_relative_logical_y() * NUM_CORES_X;
 
-    DPRINT << "NUM_CORES_X " << NUM_CORES_X << ENDL();
-    DPRINT << "core_id " << core_id << ENDL();
-
     volatile tt_l1_ptr uint32_t* unpadded_in0_shard_widths_in_tiles =
         (volatile tt_l1_ptr uint32_t*)(get_common_arg_addr(common_rt_args_idx));
     common_rt_args_idx += ring_size;
@@ -64,6 +61,12 @@ void kernel_main() {
         (volatile tt_l1_ptr common_rt_args_info*)(common_rt_args_base + core_id * sizeof(common_rt_args_info));
 
     uint32_t core_type = (uint32_t)common_rt_args->core_type;
+
+    // DPRINT << "NUM_CORES_X " << NUM_CORES_X << " x " << (uint)get_relative_logical_x() << " y " <<
+    // (uint)get_relative_logical_y() <<  " core_id " << core_id << " core_type " << core_type<< ENDL();
+    DPRINT << " x " << (uint)get_relative_logical_x() << " y " << (uint)get_relative_logical_y() << " abs_x "
+           << (uint)get_absolute_logical_x() << " abs_y " << (uint)get_absolute_logical_y() << ENDL();
+
     if (core_type == (uint32_t)CORE_TYPE::IDLE_CORE) {
         return;
     }
