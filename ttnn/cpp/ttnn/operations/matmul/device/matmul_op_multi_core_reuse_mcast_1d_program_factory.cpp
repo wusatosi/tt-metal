@@ -2501,7 +2501,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
             if (not src1_sharded) {
                 for (const auto& in1_kernel : mm_kernel_in1_sender_writer_ids) {
                     auto& writer_common_rt_args = GetCommonRuntimeArgs(program, in1_kernel);
-                    writer_common_rt_args[1] = src_buffer_b->address();
+                    writer_common_rt_args[3] = src_buffer_b->address();
                 }
                 // auto& writer_common_rt_args = GetCommonRuntimeArgs(program, mm_kernel_in1_sender_writer_ids);
                 // writer_common_rt_args[0] = src_buffer_b->address();
