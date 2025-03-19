@@ -150,6 +150,14 @@ parameters = {
             [8, 3, 224, 224, 3, 3, 2, 2, 1, 1, 1, 1, False],
         ],
     },
+    "test_run_max_pool_yolov6x": {
+        "dtype": [ttnn.bfloat16, ttnn.bfloat8_b],
+        "input_specs": [
+            # Contains following parameters
+            # [batch_size, input_channels, input_height, input_width, kernel_height, kernel_width, stride_h, strid_w, pad_h, pad_w, dilation_h, dilation_w, ceil_mode]
+            [1, 320, 20, 20, 5, 5, 1, 1, 2, 2, 1, 1, False]
+        ],
+    },
 }
 
 
@@ -402,6 +410,46 @@ def test_run_max_pool_block_shard(device, dtype, input_spec):
 @pytest.mark.parametrize("memory_config", [ttnn.L1_MEMORY_CONFIG, ttnn.DRAM_MEMORY_CONFIG])
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
 def test_run_max_pool_mem_config(device, dtype, input_spec, memory_config):
+    (
+        batch_size,
+        input_channels,
+        input_height,
+        input_width,
+        kernel_height,
+        kernel_width,
+        stride_h,
+        strid_w,
+        pad_h,
+        pad_w,
+        dilation_h,
+        dilation_w,
+        ceil_mode,
+    ) = input_spec
+    run_max_pool2d(
+        batch_size,
+        input_channels,
+        input_height,
+        input_width,
+        kernel_height,
+        kernel_width,
+        stride_h,
+        strid_w,
+        pad_h,
+        pad_w,
+        dilation_h,
+        dilation_w,
+        dtype,
+        device,
+        ceil_mode=ceil_mode,
+        memory_config=memory_config,
+    )
+
+
+@pytest.mark.parametrize("input_spec", parameters["test_run_max_pool_yolov6x"]["input_specs"])
+@pytest.mark.parametrize("dtype", parameters["test_run_max_pool_yolov6x"]["dtype"])
+@pytest.mark.parametrize("memory_config", [ttnn.L1_MEMORY_CONFIG, ttnn.DRAM_MEMORY_CONFIG])
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
+def test_run_max_pool_yolov6x(device, dtype, input_spec, memory_config):
     (
         batch_size,
         input_channels,
