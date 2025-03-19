@@ -65,46 +65,51 @@ def interpolate_single_shape():
     ```
     """
     with ttnn.manage_device(0) as device:
-        # ttnn.enable_program_cache(device)
-        arg0 = ttnn.to_device(
-            ttnn.from_torch(torch.zeros((1, 1, 50, 224), dtype=torch.bfloat16), layout=ttnn.TILE_LAYOUT),
-            device,
-            memory_config=ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM),
-        )
-        arg1 = ttnn.to_device(
-            ttnn.from_torch(torch.zeros((1, 50, 100), dtype=torch.bfloat16), layout=ttnn.TILE_LAYOUT),
-            device,
-            memory_config=ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM),
-        )
-        arg2 = ttnn.to_device(
-            ttnn.from_torch(torch.zeros((1, 224, 448), dtype=torch.bfloat16), layout=ttnn.TILE_LAYOUT),
-            device,
-            memory_config=ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM),
-        )
-        t0 = ttnn.permute(arg0, (0, 1, 3, 2))
-        t1 = ttnn.reshape(t0, (1, 224, 50))
-        ttnn.deallocate(t0, False)
-        t2 = ttnn.matmul(t1, arg1)
-        ttnn.deallocate(t1, False)
-        t3 = ttnn.reshape(t2, (1, 1, 224, 100))
-        ttnn.deallocate(t2, False)
-        t4 = ttnn.permute(t3, (0, 1, 3, 2))
-        ttnn.deallocate(t3, False)
-        t5 = ttnn.reshape(t4, (1, 100, 224))
-        ttnn.deallocate(t4, False)
-        t6 = ttnn.matmul(t5, arg2)
-        ttnn.deallocate(t5, False)
-        t7 = ttnn.reshape(t6, (1, 1, 100, 448))
-        ttnn.deallocate(t6, False)
-        return t7
+        for run in range(100_000):
+            # ttnn.enable_program_cache(device)
+            arg0 = ttnn.to_device(
+                ttnn.from_torch(torch.randn((1, 1, 50, 224), dtype=torch.bfloat16), layout=ttnn.TILE_LAYOUT),
+                device,
+                memory_config=ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM),
+            )
+            arg1 = ttnn.to_device(
+                ttnn.from_torch(torch.randn((1, 50, 100), dtype=torch.bfloat16), layout=ttnn.TILE_LAYOUT),
+                device,
+                memory_config=ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM),
+            )
+            arg2 = ttnn.to_device(
+                ttnn.from_torch(torch.randn((1, 224, 448), dtype=torch.bfloat16), layout=ttnn.TILE_LAYOUT),
+                device,
+                memory_config=ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM),
+            )
+            t0 = ttnn.permute(arg0, (0, 1, 3, 2))
+            t1 = ttnn.reshape(t0, (1, 224, 50))
+            ttnn.deallocate(t0, False)
+            t2 = ttnn.matmul(t1, arg1)
+            ttnn.deallocate(t1, False)
+            t3 = ttnn.reshape(t2, (1, 1, 224, 100))
+            ttnn.deallocate(t2, False)
+            t4 = ttnn.permute(t3, (0, 1, 3, 2))
+            ttnn.deallocate(t3, False)
+            t5 = ttnn.reshape(t4, (1, 100, 224))
+            ttnn.deallocate(t4, False)
+            t6 = ttnn.matmul(t5, arg2)
+            ttnn.deallocate(t5, False)
+            t7 = ttnn.reshape(t6, (1, 1, 100, 448))
+            ttnn.deallocate(t6, False)
+            # return t7
+            print(t7)
+            with open("status.txt", "w") as f:
+                f.write(str(run))
 
 
 def main():
-    for run in range(100_000):
-        # parametrize()
-        print(interpolate_single_shape())
-        with open("status.txt", "w") as f:
-            f.write(str(run))
+    interpolate_single_shape()
+    # for run in range(100_000):
+    #     # parametrize()
+    #     print(interpolate_single_shape())
+    #     with open("status.txt", "w") as f:
+    #         f.write(str(run))
 
 
 main()
