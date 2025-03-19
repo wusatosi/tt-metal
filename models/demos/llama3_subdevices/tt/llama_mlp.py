@@ -301,7 +301,7 @@ class TtLlamaMLP(LightweightModule):
             ),
             dtype=ttnn.bfloat8_b,
             # program_config=pc_1,
-            memory_config=x.memory_config(),
+            memory_config=ttnn.L1_MEMORY_CONFIG,
             core_grid=ttnn.CoreGrid(y=8, x=7),  # FIXME: validate on TG ttnn.CoreGrid(y=8, x=8) if not pc_1 else None,
         )
         # print("linear", w1_out)
@@ -316,7 +316,7 @@ class TtLlamaMLP(LightweightModule):
             ),
             dtype=ttnn.bfloat8_b,
             # program_config=pc_3,
-            memory_config=x.memory_config(),
+            memory_config=ttnn.L1_MEMORY_CONFIG,
             core_grid=ttnn.CoreGrid(y=8, x=4),
         )
 
