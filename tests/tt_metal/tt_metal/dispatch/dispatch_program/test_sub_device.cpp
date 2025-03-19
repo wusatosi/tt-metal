@@ -132,6 +132,47 @@ TEST_F(CommandQueueSingleCardFixture, TensixTestSubDeviceBasicPrograms) {
     detail::DumpDeviceProfileResults(device);
 }
 
+TEST_F(CommandQueueSingleCardFixture, TensixTestSubDeviceBasicProgramsReuse) {
+    constexpr uint32_t k_num_iters = 5;
+    auto* device = devices_[0];
+    SubDevice sub_device_1(std::array{CoreRangeSet(CoreRange({0, 0}, {2, 2}))});
+    SubDevice sub_device_2(std::array{CoreRangeSet(std::vector{CoreRange({3, 3}, {3, 3}), CoreRange({4, 4}, {4, 4})})});
+    // sub-device 3 and 4 are supersets of sub-device 1 and 2 respectively
+    SubDevice sub_device_3(std::array{CoreRangeSet(std::vector{CoreRange({0, 0}, {2, 2}), CoreRange({5, 5}, {5, 5})})});
+    SubDevice sub_device_4(std::array{
+        CoreRangeSet(std::vector{CoreRange({3, 3}, {3, 3}), CoreRange({4, 4}, {4, 4}), CoreRange({6, 6}, {6, 6})})});
+    auto sub_device_manager_1 = device->create_sub_device_manager({sub_device_1, sub_device_2}, k_local_l1_size);
+    auto sub_device_manager_2 = device->create_sub_device_manager({sub_device_4, sub_device_3}, k_local_l1_size);
+    device->load_sub_device_manager(sub_device_manager_1);
+
+    auto [waiter_program, syncer_program, incrementer_program, global_sem] =
+        create_basic_sync_program(device, sub_device_1, sub_device_2);
+
+    // Run programs on sub-device manager 1
+    for (uint32_t i = 0; i < k_num_iters; i++) {
+        EnqueueProgram(device->command_queue(), waiter_program, false);
+        device->set_sub_device_stall_group({SubDeviceId{0}});
+        // Test blocking on one sub-device
+        EnqueueProgram(device->command_queue(), syncer_program, true);
+        EnqueueProgram(device->command_queue(), incrementer_program, false);
+        device->reset_sub_device_stall_group();
+    }
+    Synchronize(device);
+
+    // Rerun programs on sub-device manager 2
+    device->load_sub_device_manager(sub_device_manager_2);
+    for (uint32_t i = 0; i < k_num_iters; i++) {
+        EnqueueProgram(device->command_queue(), waiter_program, false);
+        device->set_sub_device_stall_group({SubDeviceId{1}});
+        // Test blocking on one sub-device
+        EnqueueProgram(device->command_queue(), syncer_program, true);
+        EnqueueProgram(device->command_queue(), incrementer_program, false);
+        device->reset_sub_device_stall_group();
+    }
+    Synchronize(device);
+    detail::DumpDeviceProfileResults(device);
+}
+
 TEST_F(CommandQueueSingleCardFixture, TensixActiveEthTestSubDeviceBasicEthPrograms) {
     auto* device = devices_[0];
     SubDevice sub_device_1(std::array{CoreRangeSet(CoreRange({0, 0}, {2, 2}))});
