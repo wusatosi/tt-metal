@@ -460,21 +460,19 @@ std::vector<std::vector<std::vector<uint16_t>>> generate_halo_kernel_config_tens
             uint32_t dst_core_id = core_id;
             uint32_t local_idx = global_idx - input_start;
             uint32_t input_idx = global_idx;
-            // if (config.dilation_hw.first > 1 || config.dilation_hw.second > 1) {
-            if (dilated_idxes_strt == dilated_idxes.size()) {
-                break;
+            if (config.dilation_hw.first > 1 && config.dilation_hw.second > 1) {
+                if (dilated_idxes_strt == dilated_idxes.size()) {
+                    break;
+                }
+                input_idx = dilated_idxes[dilated_idxes_strt++];
+                local_idx = dst_local_idx;
             }
-            input_idx = dilated_idxes[dilated_idxes_strt++];
-            local_idx = dst_local_idx;
-            // }
             auto [is_pad_stick, src_core_id, src_local_idx] = tensor_metadata[input_idx];
             TT_ASSERT(local_idx < pad_local && src_local_idx < pad_local, "Index overflow");
             if (is_pad_stick) {
                 TT_ASSERT(src_local_idx == 0);
                 src_core_id = pad_local;
             }
-            // if (config.dilation_hw.first > 1 || config.dilation_hw.second > 1) {
-            // } else {
             if (per_core_gather_data.find({src_core_id, dst_core_id}) != per_core_gather_data.end()) {
                 auto& [src_start, dst_start, length] = per_core_gather_data[{src_core_id, dst_core_id}].back();
                 // src idx is 0 if it is a pad
@@ -484,7 +482,6 @@ std::vector<std::vector<std::vector<uint16_t>>> generate_halo_kernel_config_tens
                     continue;
                 }
             }
-            // }
             // insert new tuple
             // std::cout << "src_core_id: " << src_core_id << " dst_core_id: " << dst_core_id << " src_local_idx: " <<
             // src_local_idx << " local_idx: " << local_idx << std::endl;
@@ -737,42 +734,47 @@ std::tuple<std::vector<uint16_t>, std::vector<std::vector<uint16_t>>> generate_s
         TT_ASSERT(input_shard_start == op_trace_metadata[output_shard_start]);
         // std::cout << "halo_op_to_idx_map size: " << halo_op_to_idx_map.size() << std::endl;
         // std::cout << "core_id: " << core_id * global_window_w << std::endl;
-        auto vec = halo_op_to_idx_map[core_id];
-        // sharded_input_top_left_indices_size.push_back({(uint16_t)vec[0].size()});
-        auto single_vec_size = vec[0].size() * global_window_w;
-        bool is_cont = false;
-        if (global_output_w >= global_dilation_w) {
-            is_cont = true;
-            single_vec_size = vec[0].size();
-        }
+        if (global_dilation_w > 1) {
+            auto vec = halo_op_to_idx_map[core_id];
+            // sharded_input_top_left_indices_size.push_back({(uint16_t)vec[0].size()});
+            auto single_vec_size = vec[0].size() * global_window_w;
+            bool is_cont = false;
+            if (global_output_w >= global_dilation_w) {
+                is_cont = true;
+                single_vec_size = vec[0].size();
+            }
 
-        auto is_odd = false;
-        if (single_vec_size % 2) {
-            is_odd = true;
-        }
+            auto is_odd = false;
+            if (single_vec_size % 2) {
+                is_odd = true;
+            }
 
-        if (is_odd) {
-            local_top_left_indices.push_back(single_vec_size + 1);
-        } else {
-            local_top_left_indices.push_back(single_vec_size);
-        }
-        // std::cout << "vec[0].size(): " << vec[0].size() * global_window_w << std::endl;
-        local_top_left_indices.push_back(is_cont);
+            if (is_odd) {
+                local_top_left_indices.push_back(single_vec_size + 1);
+            } else {
+                local_top_left_indices.push_back(single_vec_size);
+            }
+            // std::cout << "vec[0].size(): " << vec[0].size() * global_window_w << std::endl;
+            local_top_left_indices.push_back(is_cont);
 
-        for (const auto& i : vec) {
-            for (const auto& j : i) {
-                for (auto k : j) {
-                    local_top_left_indices.push_back(k);
-                    if (is_cont) {
-                        break;
+            for (const auto& i : vec) {
+                for (const auto& j : i) {
+                    for (auto k : j) {
+                        local_top_left_indices.push_back(k);
+                        if (is_cont) {
+                            break;
+                        }
                     }
                 }
+                if (is_odd) {
+                    local_top_left_indices.push_back(0);
+                }
             }
-            if (is_odd) {
-                local_top_left_indices.push_back(0);
+        } else {
+            for (size_t i = output_shard_start; i < output_shard_end + 1; i++) {
+                local_top_left_indices.push_back(op_trace_metadata[i] - op_trace_metadata[output_shard_start]);
             }
         }
-        uint32_t idx = 0;
         // for (size_t i = output_shard_start; i < output_shard_end + 1; i++) {
         //     local_top_left_indices.push_back(idx);
         //     if ((op_trace_metadata[i] % global_padded_input_w) ==
