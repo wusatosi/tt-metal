@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <cstdint>
+#include "debug/dprint.h"
 
 /**
  * NOC APIs are prefixed w/ "ncrisc" (legacy name) but there's nothing NCRISC specific, they can be used on BRISC or other RISCs
@@ -39,9 +40,17 @@ void kernel_main() {
 #endif
 
     // DRAM NOC src address
+    DPRINT << dram_src_noc_x << "\n";
+    DPRINT << dram_src_noc_y << "\n";
+    DPRINT << dram_dst_noc_x << "\n";
+    DPRINT << dram_dst_noc_y << "\n";
+    DPRINT << dram_buffer_src_addr << "\n";
+    DPRINT << dram_buffer_dst_addr << "\n";
     std::uint64_t dram_buffer_src_noc_addr = get_noc_addr(dram_src_noc_x, dram_src_noc_y, dram_buffer_src_addr);
     noc_async_read(dram_buffer_src_noc_addr, l1_buffer_addr, dram_buffer_size);
     noc_async_read_barrier();
+    DPRINT << l1_buffer_addr << "\n";
+    DPRINT << *(std::uint32_t *)(l1_buffer_addr + 4) << "\n";
 
     // DRAM NOC dst address
     std::uint64_t dram_buffer_dst_noc_addr = get_noc_addr(dram_dst_noc_x, dram_dst_noc_y, dram_buffer_dst_addr);

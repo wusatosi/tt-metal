@@ -447,6 +447,7 @@ void WriteToDeviceInterleavedContiguous(const Buffer &buffer, tt::stl::Span<cons
     int data_index = 0;
     for (int page_index = 0; page_index < num_pages; page_index++) {
         auto absolute_address = buffer.page_address(bank_index, page_index);
+        log_info("absolute address {}, page index {} page size {}", absolute_address, page_index, page_size);
         std::vector<uint8_t> page;
         page.insert(
             page.end(), host_buffer.begin() + data_index, host_buffer.begin() + data_index + page_size);
@@ -455,6 +456,9 @@ void WriteToDeviceInterleavedContiguous(const Buffer &buffer, tt::stl::Span<cons
             case BufferType::L1:
             case BufferType::L1_SMALL: {
                 auto noc_coordinates = buffer.noc_coordinates(bank_index);
+                log_info("noc {} {}", noc_coordinates.x, noc_coordinates.y);
+                log_info("data index {} page size {}", data_index, page_size);
+                log_info("data {} {}", page[0], page[4]);
                 llrt::write_hex_vec_to_core(device->id(), noc_coordinates, page, absolute_address);
             } break;
             default: TT_THROW("Unsupported buffer type to write to device!");
@@ -467,6 +471,7 @@ void WriteToDeviceInterleavedContiguous(const Buffer &buffer, tt::stl::Span<cons
 
 void WriteToDevice(Buffer &buffer, tt::stl::Span<const uint8_t> host_buffer) {
     ZoneScoped;
+    log_info("layout {}, buffer {} {}", (uint32_t)buffer.buffer_layout(), host_buffer[0], host_buffer[4]);
     if (buffer.buffer_layout() == TensorMemoryLayout::INTERLEAVED ||
         buffer.buffer_layout() == TensorMemoryLayout::SINGLE_BANK) {
         WriteToDeviceInterleavedContiguous(buffer, host_buffer);

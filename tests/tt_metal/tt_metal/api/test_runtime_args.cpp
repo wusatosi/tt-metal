@@ -108,7 +108,7 @@ bool verify_core_rt_args(Device *device, bool is_common, CoreCoord core, uint32_
     for (size_t i = 0; i < written_args.size(); i++) {
         uint32_t expected_result = written_args.at(i) + incr_val;
         bool got_expected_result = observed_args.at(i) == expected_result;
-        log_debug(tt::LogTest, "Validating {} Args. Core: {} at addr: 0x{:x} idx: {} - Expected: {} Observed: {}",
+        log_info(tt::LogTest, "Validating {} Args. Core: {} at addr: 0x{:x} idx: {} - Expected: {} Observed: {}",
             is_common ? "Common" : "Unique", core.str(), base_addr, i, expected_result, observed_args[i]);
         pass &= got_expected_result;
         EXPECT_TRUE(got_expected_result);
@@ -166,7 +166,7 @@ TEST_F(DeviceFixture, TensixLegallyModifyRTArgsDataMovement) {
     for (unsigned int id = 0; id < num_devices_; id++) {
         // First run the program with the initial runtime args
         CoreRange first_core_range(CoreCoord(0, 0), CoreCoord(1, 1));
-        CoreRange second_core_range(CoreCoord(3, 3), CoreCoord(5, 5));
+        CoreRange second_core_range(CoreCoord(1, 2), CoreCoord(1, 3));
         CoreRangeSet core_range_set(std::vector{first_core_range, second_core_range});
         auto program = unit_tests::runtime_args::initialize_program_data_movement_rta(this->devices_.at(id), core_range_set, 2);
         ASSERT_TRUE(program.num_kernels() == 1);
@@ -185,7 +185,7 @@ TEST_F(DeviceFixture, TensixLegallyModifyRTArgsDataMovement) {
         detail::WriteRuntimeArgsToDevice(this->devices_.at(id), program);
         tt_metal::detail::LaunchProgram(this->devices_.at(id), program);
         EXPECT_TRUE(unit_tests::runtime_args::verify_results(false, this->devices_.at(id), program, core_to_rt_args));
-
+        sleep(3);
         std::vector<uint32_t> second_runtime_args = {202, 505};
         SetRuntimeArgs(program, 0, first_core_range, second_runtime_args);
         detail::WriteRuntimeArgsToDevice(this->devices_.at(id), program);
@@ -197,7 +197,7 @@ TEST_F(DeviceFixture, TensixLegallyModifyRTArgsDataMovement) {
         }
         tt_metal::detail::LaunchProgram(this->devices_.at(id), program);
         EXPECT_TRUE(unit_tests::runtime_args::verify_results(false, this->devices_.at(id), program, core_to_rt_args));
-
+        sleep(3);
         auto program2 = unit_tests::runtime_args::initialize_program_data_movement_rta(this->devices_.at(id), core_range_set, 4, true);
         // Set common runtime args, automatically sent to all cores used by kernel.
         std::vector<uint32_t> common_runtime_args = {303, 606, 999, 1234};

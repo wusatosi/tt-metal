@@ -152,17 +152,17 @@ inline std::vector<std::uint32_t> create_random_vector_of_bfloat16(uint32_t num_
 
     std::vector<std::uint32_t> vec(num_bytes/sizeof(std::uint32_t), 0);
     for (int i = 0; i < vec.size(); i++) {
-        float num_1_float = rand_float() + offset;
-        float num_2_float = rand_float() + offset;
+        // float num_1_float = rand_float() + offset;
+        // float num_2_float = rand_float() + offset;
 
-        bfloat16 num_1_bfloat16 = bfloat16(num_1_float);
-        bfloat16 num_2_bfloat16 = bfloat16(num_2_float);
+        // bfloat16 num_1_bfloat16 = bfloat16(num_1_float);
+        // bfloat16 num_2_bfloat16 = bfloat16(num_2_float);
 
         //std::cout << "num_1_float: " << num_1_float << ", num_1_bfloat16 : " << num_1_bfloat16.to_float() << ", \t\t";
         //std::cout << "num_2_float: " << num_2_float << ", num_2_bfloat16 : " << num_2_bfloat16.to_float() << std::endl;
 
         // pack 2 uint16 into uint32
-        vec.at(i) = pack_two_bfloat16_into_uint32(std::pair<bfloat16, bfloat16>(num_1_bfloat16, num_2_bfloat16));
+        vec.at(i) = i; //pack_two_bfloat16_into_uint32(std::pair<bfloat16, bfloat16>(num_1_bfloat16, num_2_bfloat16));
     }
 
     return vec;

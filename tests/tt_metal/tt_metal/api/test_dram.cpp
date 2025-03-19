@@ -135,6 +135,9 @@ bool dram_single_core (DispatchFixture* fixture, tt_metal::Device *device, const
 
     std::vector<uint32_t> result_vec;
     fixture->ReadBuffer(device, output_dram_buffer, result_vec);
+    log_info("source {} {}",src_vec[0], src_vec[1]);
+    log_info("result {}",result_vec[0]);
+    log_info("l1 address {} input dram {}, output dram {}", cfg.l1_buffer_addr, input_dram_buffer_addr, output_dram_buffer_addr);
     return result_vec == src_vec;
 }
 }

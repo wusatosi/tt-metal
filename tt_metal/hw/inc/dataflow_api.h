@@ -119,7 +119,8 @@ template <bool DRAM>
 FORCE_INLINE
 uint32_t get_noc_xy(uint32_t bank_index, uint8_t noc = noc_index) {
     if constexpr (DRAM) {   // DRAM
-        return dram_bank_to_noc_xy[noc][bank_index];
+        //return dram_bank_to_noc_xy[noc][bank_index];
+        return (((3 << NOC_ADDR_NODE_ID_BITS) | (my_x[0])) << NOC_COORD_REG_OFFSET);
     } else {                // L1
         return l1_bank_to_noc_xy[noc][bank_index];
 

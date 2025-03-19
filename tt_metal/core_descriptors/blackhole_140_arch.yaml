@@ -9,7 +9,7 @@ blackhole:
   1:
     compute_with_storage_grid_range: # Logical only start and end [x, y]
       start: [0, 0]
-      end: [5, 3]
+      end: [1, 3]
 
     storage_cores: # Relative to grid of tensix cores
       []
@@ -23,7 +23,7 @@ blackhole:
   2:
     compute_with_storage_grid_range: # Logical only start and end [x, y]
       start: [0, 0]
-      end: [5, 3]
+      end: [1, 3]
 
     storage_cores: # Relative to grid of tensix cores
       []

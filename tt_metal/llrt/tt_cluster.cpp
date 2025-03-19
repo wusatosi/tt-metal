@@ -404,6 +404,7 @@ void Cluster::write_core(
         tt::watcher_sanitize_host_noc_write(soc_desc, {core.x, core.y}, addr, sz_in_bytes);
     }
     tt_cxy_pair virtual_core = soc_desc.convert_to_umd_coordinates(core);
+    log_info("write_core core {},{} size {} addr {} values {} {}", virtual_core.x, virtual_core.y, sz_in_bytes, addr, *(uint32_t *)mem_ptr, *((uint32_t *)mem_ptr + 1));
     this->driver_->write_to_device(mem_ptr, sz_in_bytes, virtual_core, addr, "LARGE_WRITE_TLB");
     if (this->cluster_desc_->is_chip_remote(chip_id)) {
         this->driver_->wait_for_non_mmio_flush(chip_id);

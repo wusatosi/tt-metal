@@ -114,11 +114,13 @@ TEST(NOC, TensixVerifyNocNodeIDs) {
             auto worker_core = device->worker_core_from_logical_core(CoreCoord(x, y));
             // Read register from specific node
             uint32_t node_id_regval;
-            node_id_regval = unit_tests::basic::test_noc::read_reg(device, CoreCoord(x, y), NOC_NODE_ID);
+
+            node_id_regval = unit_tests::basic::test_noc::read_reg(device, CoreCoord(x, y), NOC_CFG(NOC_ID_LOGICAL));
             ASSERT_NE(node_id_regval, unit_tests::basic::test_noc::init_value); // Need to make sure we read in valid reg
             // Check it matches software translated xy
             uint32_t my_x = node_id_regval & NOC_NODE_ID_MASK;
             uint32_t my_y = (node_id_regval >> NOC_ADDR_NODE_ID_BITS) & NOC_NODE_ID_MASK;
+            log_info("looking up core {},{} my_x,y are {},{}", worker_core.x, worker_core.y, my_x, my_y);
             EXPECT_EQ(my_x, worker_core.x);
             EXPECT_EQ(my_y, worker_core.y);
         }

@@ -544,6 +544,7 @@ void jit_build_genfiles_bank_to_noc_coord_descriptor(
     std::vector<CoreCoord>& l1_bank_map,
     std::vector<int32_t>& l1_bank_offset_map,
     uint32_t allocator_alignment) {
+    log_info("grid size {},{}", grid_size.x, grid_size.y);
     string output_string = generate_bank_to_noc_coord_descriptor_string(
         grid_size,
         dram_bank_map,

@@ -37,6 +37,7 @@ class DispatchFixture : public ::testing::Test {
     }
     void WriteBuffer(tt::tt_metal::Device* device, std::shared_ptr<tt::tt_metal::Buffer> in_buffer, std::vector<uint32_t> &src_vec){
         if (this->slow_dispatch_) {
+            tt::log_info("WriteBuffer {} {}", src_vec[0], src_vec[1]);
             tt::tt_metal::detail::WriteToBuffer(in_buffer, src_vec);
         } else {
             tt::tt_metal::CommandQueue& cq = device->command_queue();

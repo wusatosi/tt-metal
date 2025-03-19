@@ -60,6 +60,7 @@ num_banks_t compute_total_and_storage_only_num_l1_banks(const AllocatorConfig &a
     uint32_t num_l1_small_banks = (alloc_config.l1_small_size > 0) ? num_compute_and_storage_cores : 0;
     uint32_t num_l1_banks =
         num_compute_and_storage_cores + (num_banks_per_storage_core * num_storage_only_cores);
+    log_info("num l1 banks {}", num_l1_banks);
     return num_banks_t{
         .total = num_l1_banks + num_l1_small_banks,
         .num_l1_banks = num_l1_banks,

@@ -267,16 +267,19 @@ std::unique_ptr<Allocator> Device::initialize_allocator(size_t l1_small_size, si
     }
 
     for (const CoreCoord& core : tt::get_logical_compute_cores(id_, num_hw_cqs_, dispatch_core_type)) {
+        log_info("compute core {},{}", core.x, core.y);
         this->compute_cores_.insert(core);
         const auto noc_coord = this->worker_core_from_logical_core(core);
         config.core_type_from_noc_coord_table[noc_coord] = AllocCoreType::ComputeAndStore;
     }
     for (const CoreCoord& core : tt::get_logical_storage_cores(id_, num_hw_cqs_, dispatch_core_type)) {
+        log_info("storage core {},{}", core.x, core.y);
         this->storage_only_cores_.insert(core);
         const auto noc_coord = this->worker_core_from_logical_core(core);
         config.core_type_from_noc_coord_table[noc_coord] = AllocCoreType::StorageOnly;
     }
     for (const CoreCoord &core : tt::get_logical_dispatch_cores(id_, num_hw_cqs_, dispatch_core_type)) {
+        log_info("dispatch core {},{}", core.x, core.y);
         const auto noc_coord = this->physical_core_from_logical_core(core, dispatch_core_type);
         config.core_type_from_noc_coord_table[noc_coord] = AllocCoreType::Dispatch;
     }
