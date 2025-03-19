@@ -6,7 +6,7 @@ import pytest
 import torch
 import ttnn
 
-from tests.ttnn.utils_for_testing import assert_with_pcc
+from tests.ttnn.utils_for_testing import assert_with_pcc, check_with_pcc_without_tensor_printout
 from models.utility_functions import torch_random, is_wormhole_b0, skip_for_grayskull
 
 
@@ -411,3 +411,830 @@ def test_resnet50_linear(device, use_program_cache):
     tt_output_tensor = ttnn.from_device(tt_output_tensor_on_device)
     torch_output_tensor = ttnn.to_torch(tt_output_tensor)
     assert_with_pcc(torch_out_golden_tensor, torch_output_tensor[0, 0, :, :], pcc=0.99)
+
+
+@pytest.mark.parametrize(
+    "batch_size, m_size, k_size, n_size, use_bias",
+    (
+        [
+            1,
+            15,
+            2,
+            512,
+            True,
+        ],  # Pass 0.9999802290019737
+        [
+            1,
+            15,
+            512,
+            3,
+            False,
+        ],  # Fail 0.9886528491503691
+        [
+            1,
+            128,
+            96,
+            384,
+            True,
+        ],  # Pass 0.9989740151117935
+        [
+            1,
+            128,
+            384,
+            96,
+            True,
+        ],  # Pass 0.9917799252141851
+        [
+            1,
+            15,
+            2,
+            512,
+            True,
+        ],  # Pass 0.9999802290019737
+        [
+            1,
+            15,
+            512,
+            3,
+            False,
+        ],  # Fail 0.9886528491503691
+        [
+            1,
+            128,
+            96,
+            384,
+            True,
+        ],  # Pass 0.9989740151117935
+        [
+            1,
+            128,
+            384,
+            96,
+            True,
+        ],  # Pass 0.9917799252141851
+        [
+            1,
+            64,
+            384,
+            192,
+            False,
+        ],  # Pass 0.9922355546882979
+        [
+            1,
+            15,
+            2,
+            512,
+            True,
+        ],  # Pass 0.9999802290019737
+        [
+            1,
+            15,
+            512,
+            6,
+            False,
+        ],  # Fail 0.9854196796512332
+        [
+            1,
+            64,
+            192,
+            768,
+            True,
+        ],  # Pass 0.9974308863488353
+        [
+            1,
+            64,
+            768,
+            192,
+            True,
+        ],  # Fail 0.9751432152724281
+        [
+            1,
+            15,
+            2,
+            512,
+            True,
+        ],  # Pass 0.9999802290019737
+        [
+            1,
+            15,
+            512,
+            6,
+            False,
+        ],  # Fail 0.9854196796512332
+        [
+            1,
+            64,
+            192,
+            768,
+            True,
+        ],  # Pass 0.9974308863488353
+        [
+            1,
+            64,
+            768,
+            192,
+            True,
+        ],  # Fail 0.9751432152724281
+        [
+            1,
+            32,
+            768,
+            384,
+            False,
+        ],  # Fail 0.9749196192528397
+        [
+            1,
+            15,
+            2,
+            512,
+            True,
+        ],  # Pass 0.9999802290019737
+        [
+            1,
+            15,
+            512,
+            12,
+            False,
+        ],  # Fail 0.9878275462784933
+        [
+            1,
+            32,
+            384,
+            1536,
+            True,
+        ],  # Pass 0.995377131013824
+        [
+            1,
+            32,
+            1536,
+            384,
+            True,
+        ],  # Fail 0.9148823475165988
+        [
+            1,
+            15,
+            2,
+            512,
+            True,
+        ],  # Pass 0.9999802290019737
+        [
+            1,
+            15,
+            512,
+            12,
+            False,
+        ],  # Fail 0.9878275462784933
+        [
+            1,
+            32,
+            384,
+            1536,
+            True,
+        ],  # Pass 0.995377131013824
+        [
+            1,
+            32,
+            1536,
+            384,
+            True,
+        ],  # Fail 0.9148823475165988
+        [
+            1,
+            15,
+            2,
+            512,
+            True,
+        ],  # Pass 0.9999802290019737
+        [
+            1,
+            15,
+            512,
+            12,
+            False,
+        ],  # Fail 0.9878275462784933
+        [
+            1,
+            32,
+            384,
+            1536,
+            True,
+        ],  # Pass 0.995377131013824
+        [
+            1,
+            32,
+            1536,
+            384,
+            True,
+        ],  # Fail 0.9148823475165988
+        [
+            1,
+            15,
+            2,
+            512,
+            True,
+        ],  # Pass 0.9999802290019737
+        [
+            1,
+            15,
+            512,
+            12,
+            False,
+        ],  # Fail 0.9878275462784933
+        [
+            1,
+            32,
+            384,
+            1536,
+            True,
+        ],  # Pass 0.995377131013824
+        [
+            1,
+            32,
+            1536,
+            384,
+            True,
+        ],  # Fail 0.9148823475165988
+        [
+            1,
+            15,
+            2,
+            512,
+            True,
+        ],  # Pass 0.9999802290019737
+        [
+            1,
+            15,
+            512,
+            12,
+            False,
+        ],  # Fail 0.9878275462784933
+        [
+            1,
+            32,
+            384,
+            1536,
+            True,
+        ],  # Pass 0.995377131013824
+        [
+            1,
+            32,
+            1536,
+            384,
+            True,
+        ],  # Fail 0.9148823475165988
+        [
+            1,
+            15,
+            2,
+            512,
+            True,
+        ],  # Pass 0.9999802290019737
+        [
+            1,
+            15,
+            512,
+            12,
+            False,
+        ],  # Fail 0.9878275462784933
+        [
+            1,
+            32,
+            384,
+            1536,
+            True,
+        ],  # Pass 0.995377131013824
+        [
+            1,
+            32,
+            1536,
+            384,
+            True,
+        ],  # Fail 0.9148823475165988
+        [
+            1,
+            15,
+            2,
+            512,
+            True,
+        ],  # Pass 0.9999802290019737
+        [
+            1,
+            15,
+            512,
+            12,
+            False,
+        ],  # Fail 0.9878275462784933
+        [
+            1,
+            32,
+            384,
+            1536,
+            True,
+        ],  # Pass 0.995377131013824
+        [
+            1,
+            32,
+            1536,
+            384,
+            True,
+        ],  # Fail 0.9148823475165988
+        [
+            1,
+            15,
+            2,
+            512,
+            True,
+        ],  # Pass 0.9999802290019737
+        [
+            1,
+            15,
+            512,
+            12,
+            False,
+        ],  # Fail 0.9878275462784933
+        [
+            1,
+            32,
+            384,
+            1536,
+            True,
+        ],  # Pass 0.995377131013824
+        [
+            1,
+            32,
+            1536,
+            384,
+            True,
+        ],  # Fail 0.9148823475165988
+        [
+            1,
+            15,
+            2,
+            512,
+            True,
+        ],  # Pass 0.9999802290019737
+        [
+            1,
+            15,
+            512,
+            12,
+            False,
+        ],  # Fail 0.9878275462784933
+        [
+            1,
+            32,
+            384,
+            1536,
+            True,
+        ],  # Pass 0.995377131013824
+        [
+            1,
+            32,
+            1536,
+            384,
+            True,
+        ],  # Fail 0.9148823475165988
+        [
+            1,
+            15,
+            2,
+            512,
+            True,
+        ],  # Pass 0.9999802290019737
+        [
+            1,
+            15,
+            512,
+            12,
+            False,
+        ],  # Fail 0.9878275462784933
+        [
+            1,
+            32,
+            384,
+            1536,
+            True,
+        ],  # Pass 0.995377131013824
+        [
+            1,
+            32,
+            1536,
+            384,
+            True,
+        ],  # Fail 0.9148823475165988
+        [
+            1,
+            15,
+            2,
+            512,
+            True,
+        ],  # Pass 0.9999802290019737
+        [
+            1,
+            15,
+            512,
+            12,
+            False,
+        ],  # Fail 0.9878275462784933
+        [
+            1,
+            32,
+            384,
+            1536,
+            True,
+        ],  # Pass 0.995377131013824
+        [
+            1,
+            32,
+            1536,
+            384,
+            True,
+        ],  # Fail 0.9148823475165988
+        [
+            1,
+            15,
+            2,
+            512,
+            True,
+        ],  # Pass 0.9999802290019737
+        [
+            1,
+            15,
+            512,
+            12,
+            False,
+        ],  # Fail 0.9878275462784933
+        [
+            1,
+            32,
+            384,
+            1536,
+            True,
+        ],  # Pass 0.995377131013824
+        [
+            1,
+            32,
+            1536,
+            384,
+            True,
+        ],  # Fail 0.9148823475165988
+        [
+            1,
+            15,
+            2,
+            512,
+            True,
+        ],  # Pass 0.9999802290019737
+        [
+            1,
+            15,
+            512,
+            12,
+            False,
+        ],  # Fail 0.9878275462784933
+        [
+            1,
+            32,
+            384,
+            1536,
+            True,
+        ],  # Pass 0.995377131013824
+        [
+            1,
+            32,
+            1536,
+            384,
+            True,
+        ],  # Fail 0.9148823475165988
+        [
+            1,
+            15,
+            2,
+            512,
+            True,
+        ],  # Pass 0.9999802290019737
+        [
+            1,
+            15,
+            512,
+            12,
+            False,
+        ],  # Fail 0.9878275462784933
+        [
+            1,
+            32,
+            384,
+            1536,
+            True,
+        ],  # Pass 0.995377131013824
+        [
+            1,
+            32,
+            1536,
+            384,
+            True,
+        ],  # Fail 0.9148823475165988
+        [
+            1,
+            15,
+            2,
+            512,
+            True,
+        ],  # Pass 0.9999802290019737
+        [
+            1,
+            15,
+            512,
+            12,
+            False,
+        ],  # Fail 0.9878275462784933
+        [
+            1,
+            32,
+            384,
+            1536,
+            True,
+        ],  # Pass 0.995377131013824
+        [
+            1,
+            32,
+            1536,
+            384,
+            True,
+        ],  # Fail 0.9148823475165988
+        [
+            1,
+            15,
+            2,
+            512,
+            True,
+        ],  # Pass 0.9999802290019737
+        [
+            1,
+            15,
+            512,
+            12,
+            False,
+        ],  # Fail 0.9878275462784933
+        [
+            1,
+            32,
+            384,
+            1536,
+            True,
+        ],  # Pass 0.995377131013824
+        [
+            1,
+            32,
+            1536,
+            384,
+            True,
+        ],  # Fail 0.9148823475165988
+        [
+            1,
+            15,
+            2,
+            512,
+            True,
+        ],  # Pass 0.9999802290019737
+        [
+            1,
+            15,
+            512,
+            12,
+            False,
+        ],  # Fail 0.9878275462784933
+        [
+            1,
+            32,
+            384,
+            1536,
+            True,
+        ],  # Pass 0.995377131013824
+        [
+            1,
+            32,
+            1536,
+            384,
+            True,
+        ],  # Fail 0.9148823475165988
+        [
+            1,
+            15,
+            2,
+            512,
+            True,
+        ],  # Pass 0.9999802290019737
+        [
+            1,
+            15,
+            512,
+            12,
+            False,
+        ],  # Fail 0.9878275462784933
+        [
+            1,
+            32,
+            384,
+            1536,
+            True,
+        ],  # Pass 0.995377131013824
+        [
+            1,
+            32,
+            1536,
+            384,
+            True,
+        ],  # Fail 0.9148823475165988
+        [
+            1,
+            16,
+            1536,
+            768,
+            False,
+        ],  # Fail 0.9697500232808325
+        [
+            1,
+            15,
+            2,
+            512,
+            True,
+        ],  # Pass 0.9999802290019737
+        [
+            1,
+            15,
+            512,
+            24,
+            False,
+        ],  # Fail 0.9895349989160228
+        [
+            1,
+            16,
+            768,
+            3072,
+            True,
+        ],  # Fail 0.9744322475492426
+        [
+            1,
+            16,
+            3072,
+            768,
+            True,
+        ],  # Fail 0.9080540927852936
+        [
+            1,
+            15,
+            2,
+            512,
+            True,
+        ],  # Pass 0.9999802290019737
+        [
+            1,
+            15,
+            512,
+            24,
+            False,
+        ],  # Fail 0.9895349989160228
+        [
+            1,
+            16,
+            768,
+            3072,
+            True,
+        ],  # Fail 0.9744322475492426
+        [
+            1,
+            16,
+            3072,
+            768,
+            True,
+        ],  # Fail 0.9080540927852936
+    ),
+)
+# @pytest.mark.parametrize("use_bias", [True, False])
+def test_linear_swin_v2_s(
+    batch_size,
+    m_size,
+    k_size,
+    n_size,
+    use_bias,
+    *,
+    device,
+    reset_seeds,
+):
+    if device.core_grid.y == 7:
+        pytest.skip("Issue #6984: Compute Grid size too small")
+    input_shape_a = (batch_size, m_size, m_size, k_size)
+    input_shape_b = (k_size, n_size)
+
+    # torch_input_tensor_a = torch_random(input_shape_a, -0.1, 0.1, dtype=torch.float32)
+    # torch_input_tensor_b = torch_random(input_shape_b, -0.1, 0.1, dtype=torch.float32)
+    torch_input_tensor_a = torch.rand(input_shape_a)  # dtype=torch.float32)
+    torch_input_tensor_b = torch.rand(input_shape_b)  # , -0.1, 0.1, dtype=torch.float32)
+    if use_bias:
+        torch_bias = torch.rand((n_size,))
+    else:
+        torch_bias = None
+    torch_output_tensor = torch.nn.functional.linear(
+        torch_input_tensor_a, torch_input_tensor_b.T.contiguous(), bias=torch_bias
+    )
+
+    input_tensor_a = ttnn.from_torch(
+        torch_input_tensor_a,
+        dtype=ttnn.bfloat16,
+        device=device,
+        layout=ttnn.TILE_LAYOUT,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+    )
+    input_tensor_b = ttnn.from_torch(
+        torch_input_tensor_b,
+        dtype=ttnn.bfloat16,
+        device=device,
+        layout=ttnn.TILE_LAYOUT,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+    )
+    if use_bias:
+        bias = ttnn.from_torch(
+            torch_bias.reshape((1, n_size)),
+            device=device,
+            dtype=ttnn.bfloat16,
+            layout=ttnn.TILE_LAYOUT,
+            memory_config=ttnn.L1_MEMORY_CONFIG,
+        )
+    else:
+        bias = None
+
+    output_tensor = ttnn.linear(
+        input_tensor_a,
+        input_tensor_b,
+        bias=bias,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+    )
+
+    output_tensor = ttnn.to_torch(output_tensor)
+
+    assert_with_pcc(torch_output_tensor, output_tensor, 0.99)
+
+
+@pytest.mark.parametrize(
+    "batch_sizes, m_size, k_size, n_size",
+    (((1,), 1, 768, 1000),),  # Fail 0.9791592379335922
+)
+@pytest.mark.parametrize("use_bias", [True])
+def test_swin_v2_s_linear(
+    batch_sizes,
+    m_size,
+    k_size,
+    n_size,
+    use_bias,
+    *,
+    device,
+    reset_seeds,
+):
+    input_shape_a = (*batch_sizes, m_size, k_size)
+    input_shape_b = (k_size, n_size)
+    torch_input_tensor_a = torch.rand(input_shape_a)  # dtype=torch.float32)
+    torch_input_tensor_b = torch.rand(input_shape_b)  # , -0.1, 0.1, dtype=torch.float32)
+    if use_bias:
+        torch_bias = torch.rand((n_size,))
+    else:
+        torch_bias = None
+
+    torch_output_tensor = torch.nn.functional.linear(
+        torch_input_tensor_a, torch_input_tensor_b.T.contiguous(), bias=torch_bias
+    )
+
+    input_tensor_a = ttnn.from_torch(
+        torch_input_tensor_a,
+        dtype=ttnn.bfloat16,
+        device=device,
+        layout=ttnn.TILE_LAYOUT,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+    )
+    input_tensor_b = ttnn.from_torch(
+        torch_input_tensor_b,
+        dtype=ttnn.bfloat16,
+        device=device,
+        layout=ttnn.TILE_LAYOUT,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+    )
+    if use_bias:
+        bias = ttnn.from_torch(
+            torch_bias.reshape((1, n_size)),
+            device=device,
+            dtype=ttnn.bfloat16,
+            layout=ttnn.TILE_LAYOUT,
+            memory_config=ttnn.L1_MEMORY_CONFIG,
+        )
+    else:
+        bias = None
+
+    output_tensor = ttnn.linear(
+        input_tensor_a,
+        input_tensor_b,
+        bias=bias,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+    )
+    output_tensor = ttnn.to_torch(output_tensor)
+
+    assert_with_pcc(torch_output_tensor, output_tensor, 0.999)

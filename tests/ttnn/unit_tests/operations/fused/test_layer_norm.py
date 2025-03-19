@@ -118,3 +118,76 @@ def test_layer_norm_with_tile_layout(device, h, w):
     output_tensor = ttnn.to_torch(output_tensor)
 
     assert_with_pcc(torch_output_tensor, output_tensor, 0.9998)
+
+
+@pytest.mark.parametrize(
+    "n,c,h,w",
+    (
+        [1, 128, 128, 96],
+        [1, 128, 128, 96],
+        [1, 128, 128, 96],
+        [1, 128, 128, 96],
+        [1, 128, 128, 96],
+        [1, 64, 64, 192],
+        [1, 64, 64, 192],
+        [1, 64, 64, 192],
+        [1, 64, 64, 192],
+        [1, 64, 64, 192],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 32, 32, 384],
+        [1, 16, 16, 768],
+        [1, 16, 16, 768],
+        [1, 16, 16, 768],
+        [1, 16, 16, 768],
+        [1, 16, 16, 768],
+        [1, 16, 16, 768],
+    ),
+)
+def test_swin_v2_s_layer_norm(device, n, c, h, w, reset_seeds):
+    torch.manual_seed(0)
+
+    torch_input_tensor = torch.rand((n, c, h, w), dtype=torch.bfloat16)
+    torch_output_tensor = torch.nn.functional.layer_norm(torch_input_tensor, normalized_shape=[w])
+
+    input_tensor = ttnn.from_torch(torch_input_tensor, layout=ttnn.TILE_LAYOUT, device=device)
+    output_tensor = ttnn.layer_norm(input_tensor)
+    output_tensor = ttnn.to_layout(output_tensor, ttnn.ROW_MAJOR_LAYOUT)
+    output_tensor = ttnn.from_device(output_tensor)
+    output_tensor = ttnn.to_torch(output_tensor)
+
+    assert_with_pcc(torch_output_tensor, output_tensor, 0.9998)

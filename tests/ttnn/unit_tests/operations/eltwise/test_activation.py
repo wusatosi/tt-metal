@@ -392,3 +392,44 @@ def run_activation_test_threshold(device, h, w, scalar1, scalar2, ttnn_function,
 @pytest.mark.parametrize("w", [128])
 def test_threshold(device, h, w, value, threshold):
     run_activation_test_threshold(device, h, w, value, threshold, ttnn.threshold)
+
+
+@pytest.mark.parametrize(
+    "n,c,h,w",
+    (
+        [1, 128, 128, 384],
+        [1, 64, 64, 768],
+        [1, 32, 32, 1536],
+        [1, 16, 16, 3072],
+    ),
+)
+def test_gelu_swin_v2_s(device, n, c, h, w):
+    torch_input_tensor = torch.randn((n, c, h, w), dtype=torch.bfloat16)
+    golden_function = torch.nn.GELU()
+    torch_output_tensor = golden_function(torch_input_tensor)
+
+    input_tensor = ttnn.from_torch(torch_input_tensor, layout=ttnn.TILE_LAYOUT, device=device)
+    output_tensor = ttnn.gelu(input_tensor)
+    output_tensor = ttnn.to_layout(output_tensor, ttnn.ROW_MAJOR_LAYOUT)
+    output_tensor = ttnn.from_device(output_tensor)
+    output_tensor = ttnn.to_torch(output_tensor)
+
+    assert_with_pcc(torch_output_tensor, output_tensor, 0.99)
+
+
+@pytest.mark.parametrize(
+    "n,c,h,w",
+    ([1, 15, 15, 512],),
+)
+def test_relu_swin_v2_s(device, n, c, h, w):
+    torch_input_tensor = torch.randn((n, c, h, w), dtype=torch.bfloat16)
+    golden_function = torch.nn.ReLU()
+    torch_output_tensor = golden_function(torch_input_tensor)
+
+    input_tensor = ttnn.from_torch(torch_input_tensor, layout=ttnn.TILE_LAYOUT, device=device)
+    output_tensor = ttnn.relu(input_tensor)
+    output_tensor = ttnn.to_layout(output_tensor, ttnn.ROW_MAJOR_LAYOUT)
+    output_tensor = ttnn.from_device(output_tensor)
+    output_tensor = ttnn.to_torch(output_tensor)
+
+    assert_with_pcc(torch_output_tensor, output_tensor, 0.99)
