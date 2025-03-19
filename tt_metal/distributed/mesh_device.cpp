@@ -99,6 +99,7 @@ MeshDevice::ScopedDevices::ScopedDevices(
     size_t trace_region_size,
     size_t num_command_queues,
     const DispatchCoreConfig& dispatch_core_config) {
+    tt::tt_metal::detail::InitializeFabricConfig(tt::FabricConfig::FABRIC_1D);
     opened_devices_ = tt::tt_metal::detail::CreateDevices(
         device_ids, num_command_queues, l1_small_size, trace_region_size, dispatch_core_config);
 
@@ -114,6 +115,7 @@ MeshDevice::ScopedDevices::~ScopedDevices() {
             devices_to_close.push_back(device);
         }
         tt::DevicePool::instance().close_devices(devices_to_close, /*skip_synchronize=*/true);
+        tt::tt_metal::detail::InitializeFabricConfig(tt::FabricConfig::DISABLED);
     }
 }
 
