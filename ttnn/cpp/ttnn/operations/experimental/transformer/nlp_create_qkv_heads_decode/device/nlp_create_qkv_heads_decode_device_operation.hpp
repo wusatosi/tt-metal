@@ -58,6 +58,7 @@ struct NLPCreateHeadsDecodeDeviceOperation {
     const bool input_on_subcoregrids;
     std::optional<const uint32_t> slice_size;
     MemoryConfig output_mem_config;
+    std::optional<const MemoryConfig> output_mem_config_k;
 
     void validate(
         const std::vector<Tensor>& input_tensors,
@@ -74,7 +75,8 @@ struct NLPCreateHeadsDecodeDeviceOperation {
         "overlap_qk_coregrid",
         "input_on_subcoregrids",
         "slice_size",
-        "output_mem_config");
+        "output_mem_config",
+        "output_mem_config_k");
     const auto attribute_values() const {
         return std::forward_as_tuple(
             this->num_q_heads,
@@ -83,7 +85,8 @@ struct NLPCreateHeadsDecodeDeviceOperation {
             this->overlap_qk_coregrid,
             this->input_on_subcoregrids,
             this->slice_size,
-            this->output_mem_config);
+            this->output_mem_config,
+            this->output_mem_config_k);
     }
 };
 }  // namespace ttnn::operations::experimental::transformer
