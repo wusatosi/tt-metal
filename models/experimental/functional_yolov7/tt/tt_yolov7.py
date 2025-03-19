@@ -214,6 +214,13 @@ class ttnn_detect:
         self.na = len(anchors[0]) // 2
         self.grid = [ttnn.zeros([1])] * self.nl
         self.grid_tensors = grid_tensors
+        grid_tensors[0] = torch.permute(torch.tensor(grid_tensors[0]), (0, 1, 4, 2, 3))
+        grid_tensors[1] = torch.permute(torch.tensor(grid_tensors[1]), (0, 1, 4, 2, 3))
+        grid_tensors[2] = torch.permute(torch.tensor(grid_tensors[2]), (0, 1, 4, 2, 3))
+        grid_tensors[0] = torch.concat((grid_tensors[0], grid_tensors[0], grid_tensors[0]), dim=1)
+        grid_tensors[1] = torch.concat((grid_tensors[1], grid_tensors[1], grid_tensors[1]), dim=1)
+        grid_tensors[2] = torch.concat((grid_tensors[2], grid_tensors[2], grid_tensors[2]), dim=1)
+
         self.grid[0] = ttnn.from_torch(grid_tensors[0], dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT)
         self.grid[1] = ttnn.from_torch(grid_tensors[1], dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT)
         self.grid[2] = ttnn.from_torch(grid_tensors[2], dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT)
@@ -222,6 +229,7 @@ class ttnn_detect:
         self.anchors = ttnn.clone(a)
 
         self.anchor_grid = ttnn.reshape((ttnn.clone(a)), (self.nl, -1, 1, 1, 2))
+        self.ttnn_anchor_grid = ttnn.permute(self.anchor_grid, (0, 1, 4, 2, 3))
         self.stride = [8.0, 16.0, 32.0]
 
         self.m = []
@@ -241,31 +249,36 @@ class ttnn_detect:
         for i in range(self.nl):
             x[i] = self.m[i](self.device, x[i])
             bs, _, ny, nx = x[i].shape
+            x[i] = ttnn.to_layout(x[i], ttnn.TILE_LAYOUT)
+            y = ttnn.sigmoid(x[i])
 
-            x[i] = ttnn.from_device(x[i])
-            x[i] = ttnn.reshape(x[i], (bs, self.na, self.no, ny, nx))
-            x[i] = ttnn.to_device(x[i], self.device)
-            x[i] = ttnn.permute(x[i], (0, 1, 3, 4, 2))
+            #            x[i] = ttnn.from_device(x[i])
+            # x[i] = ttnn.reshape(x[i], (bs, self.na, self.no, ny, nx))
+            y = ttnn.reshape(y, (bs, self.na, self.no, ny, nx), memory_config=ttnn.L1_MEMORY_CONFIG)
+            #            x[i] = ttnn.to_device(x[i], self.device)
+            # x[i] = ttnn.permute(x[i], (0, 1, 3, 4, 2))
+            # y = ttnn.permute(y, (0, 1, 3, 4, 2))
 
             if not self.training:
-                x[i] = ttnn.to_layout(x[i], ttnn.TILE_LAYOUT)
-                y = ttnn.sigmoid(x[i])
+                # x[i] = ttnn.to_layout(x[i], ttnn.TILE_LAYOUT)
+                # y = ttnn.sigmoid(x[i])
 
                 if not torch.onnx.is_in_onnx_export():
-                    y = ttnn.permute(y, (0, 1, 4, 2, 3))
+                    # y = ttnn.permute(y, (0, 1, 4, 2, 3))
                     c1 = y[:, :, 0:2, :, :]
                     d1 = y[:, :, 2:4, :, :]
                     e1 = y[:, :, 4:, :, :]
-                    ttnn_grid = ttnn.permute(self.grid[i], (0, 1, 4, 2, 3))
-                    ttnn_grid = ttnn.concat((ttnn_grid, ttnn_grid, ttnn_grid), dim=1)
-                    c2 = c1 * 2 - 0.5 + ttnn_grid
+                    # ttnn_grid = ttnn.permute(self.grid[i], (0, 1, 4, 2, 3))
+                    # ttnn_grid = ttnn.concat((ttnn_grid, ttnn_grid, ttnn_grid), dim=1)
+                    # c2 = c1 * 2 - 0.5 + ttnn_grid
+                    c2 = c1 * 2 - 0.5 + self.grid[i]
                     c3 = c2 * self.stride[i]
 
-                    ttnn_anchor_grid = ttnn.permute(self.anchor_grid[i : i + 1], (0, 1, 4, 2, 3))
+                    # ttnn_anchor_grid = ttnn.permute(self.anchor_grid[i : i + 1], (0, 1, 4, 2, 3))
 
-                    d2 = ttnn.pow((d1 * 2), 2) * ttnn_anchor_grid
-                    y_cat = ttnn.concat([c3, d2, e1], dim=2)
-                    y_cat = ttnn.permute(y_cat, (0, 1, 3, 4, 2))
+                    d2 = ttnn.pow((d1 * 2), 2) * self.ttnn_anchor_grid[i : i + 1]
+                    y_cat = ttnn.concat([c3, d2, e1], dim=2, memory_config=ttnn.L1_MEMORY_CONFIG)
+                    y_cat = ttnn.permute(y_cat, (0, 1, 3, 4, 2), memory_config=ttnn.L1_MEMORY_CONFIG)
                 z.append(ttnn.reshape(y_cat, (bs, -1, self.no)))
 
         out = (ttnn.concat(z, 1), x)
