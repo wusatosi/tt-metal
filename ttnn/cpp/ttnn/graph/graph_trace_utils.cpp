@@ -268,19 +268,28 @@ uint32_t extract_l1_output_buffer_allocation_size_per_core(
     const auto& output_tensor_node =
         find_node_by_counter(trace, last_function_end_node->at(kConnections).at(0).get<int>());
     if (output_tensor_node == trace.end()) {
-        throw std::runtime_error("No tensor node connected to function_end found in the trace");
+        // TODO: This is a temporary fix to unblock forge optimizer development.
+        // A proper fix can be implemented once #19198 is resolved.
+        return 0;
+        // throw std::runtime_error("No tensor node connected to function_end found in the trace");
     }
 
     const auto& output_buffer_node =
         find_a_first_node_of_a_type_pointing_to_me(trace, kNodeBuffer, *output_tensor_node);
     if (output_buffer_node == trace.end()) {
-        throw std::runtime_error("No buffer node connected to tensor found in the trace");
+        // TODO: This is a temporary fix to unblock forge optimizer development.
+        // A proper fix can be implemented once #19198 is resolved.
+        return 0;
+        // throw std::runtime_error("No buffer node connected to tensor found in the trace");
     }
 
     const auto& output_buffer_allocate_node =
         find_a_first_node_of_a_type_pointing_to_me(trace, kNodeBufferAllocate, *output_buffer_node);
     if (output_buffer_allocate_node == trace.end()) {
-        throw std::runtime_error("No buffer_allocate node connected to buffer found in the trace");
+        // TODO: This is a temporary fix to unblock forge optimizer development.
+        // A proper fix can be implemented once #19198 is resolved.
+        return 0;
+        // throw std::runtime_error("No buffer_allocate node connected to buffer found in the trace");
     }
 
     uint32_t output_buffer_allocate_total_size =
