@@ -162,7 +162,7 @@ def test_fabric_edm_mcast_bw(
 @pytest.mark.parametrize("line_sync", [True])
 @pytest.mark.parametrize("line_size", [2])
 @pytest.mark.parametrize("packet_size", [4096])
-@pytest.mark.parametrize("num_links, expected_bw", [(1, 9.12), (2, 7.78)])
+@pytest.mark.parametrize("num_links, expected_bw", [(1, 9.28), (2, 7.78)])
 def test_fabric_edm_unicast_bw(
     num_mcasts,
     num_unicasts,
