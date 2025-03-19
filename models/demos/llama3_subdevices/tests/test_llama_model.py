@@ -122,7 +122,7 @@ def test_llama_model_inference(
         "llama31_70b": 0.9997,
     }[model_name]
 
-    iterations = 6 if layers == 1 else 5
+    iterations = 100 if layers == 1 else 200
 
     if layers is not None:
         model_args.n_layers = layers
@@ -142,7 +142,9 @@ def test_llama_model_inference(
         )
     }
 
-    prompts = ["Life is "] * model_args.max_batch_size
+    prompts = [
+        "This is a test. It's important to conduct tests to ensure everything is functioning correctly. Whether it's a new software application, a scientific experiment, or a simple task, testing helps us identify any issues and make improvements."
+    ] * model_args.max_batch_size
     if dummy_weights:
         encoded_prompts = [
             [128000, 2028, 374, 264, 1296]
@@ -242,7 +244,7 @@ def test_llama_model_inference(
             logger.info(f"[Llama3 Model] Generating token {i}")
 
             decode_input = model_args.prepare_residual_tensor_decode(
-                tt_decode_input,
+                pt_decode_input,
                 model_args.model_config["DECODE_RESIDUAL_MEMCFG"],
             )
 

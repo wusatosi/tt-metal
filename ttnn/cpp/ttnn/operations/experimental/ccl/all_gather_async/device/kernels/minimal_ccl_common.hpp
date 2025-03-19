@@ -25,7 +25,9 @@ FORCE_INLINE void write_and_advance_local_read_address_for_fabric_write(
     pkt_hdr_backward->to_noc_unicast_write(
         tt::tt_fabric::NocUnicastCommandHeader{noc0_dest_noc_addr}, payload_size_bytes);
 
-    noc_async_write(payload_l1_address, safe_get_noc_addr(dest_noc_xy.x, dest_noc_xy.y, dest_addr), payload_size_bytes);
+    noc_async_write(payload_l1_address, noc0_dest_noc_addr, payload_size_bytes);
+    DPRINT << "NOC X: " << (uint32_t)dest_noc_xy.x << ", NOC Y: " << (uint32_t)dest_noc_xy.y
+           << ", dest_addr: " << (uint32_t)dest_addr << ", payload_size_bytes: " << payload_size_bytes << "\n";
     if (fabric_connection.has_forward_connection()) {
         fabric_connection.get_forward_connection().wait_for_empty_write_slot();
         fabric_connection.get_forward_connection().send_payload_without_header_non_blocking_from_address(

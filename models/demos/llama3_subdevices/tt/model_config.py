@@ -308,7 +308,7 @@ class TtModelArgs:
             self.compute_kernel_config_lofi = ttnn.WormholeComputeKernelConfig(
                 math_fidelity=ttnn.MathFidelity.LoFi,
                 math_approx_mode=False,
-                fp32_dest_acc_en=False,
+                fp32_dest_acc_en=True,
                 packer_l1_acc=True,
                 dst_full_sync_en=True,
             )

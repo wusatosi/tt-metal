@@ -8,6 +8,7 @@ import torch
 import ttnn
 from models.common.lightweightmodule import LightweightModule
 from models.demos.llama3_subdevices.tt.llama_ccl import tt_all_reduce, tt_all_gather
+from tests.ttnn.unit_tests.operations.ccl.test_new_all_reduce import check_mesh_tensor_alloc
 
 
 class TtLlamaAttention(LightweightModule):
@@ -270,7 +271,7 @@ class TtLlamaAttention(LightweightModule):
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
             dtype=ttnn.bfloat16,
         )
-        ttnn.deallocate(x)
+        # ttnn.deallocate(x)
         # print("done matmul")
         # xqkv_fused_sharded -> [1, 1, 32, 12288 // 8]
 
@@ -369,13 +370,31 @@ class TtLlamaAttention(LightweightModule):
 
         # attn_output_1G4D = ttnn.to_memory_config(attn_output_1G4D_sharded, ttnn.DRAM_MEMORY_CONFIG)
         # attn_output_1G4D_sharded.deallocate(True)
+        # breakpoint()
+
+        # grid_offset = ttnn.CoreCoord(5, 0)
+        # grid_offset1 = ttnn.CoreCoord(5, 3)
+        # temp_mem_cfg = ttnn.create_sharded_memory_config(
+        #     shape=(32 * 32, 128 // 4),
+        #     core_grid=ttnn.CoreRangeSet([ttnn.CoreRange(grid_offset, grid_offset1)]),
+        #     strategy=ttnn.ShardStrategy.WIDTH,
+        #     use_height_and_width_as_shard_shape=True,
+        # )
+
+        # temp_out = self.tt_ccl.line_all_gather(
         attn_output_gathered_sharded = self.tt_ccl.line_all_gather(
             attn_output_1G4D_sharded,
             dim=1,
             cluster_axis=1,
             num_links=3,
+            # memory_config=temp_mem_cfg,
             memory_config=self.model_config["GATHER_USERS_MEMCFG"](list(self.mesh_device.shape)[1]),
+            sdpa=True,
         )
+
+        # attn_output_gathered_sharded = ttnn.to_memory_config(temp_out, self.model_config["GATHER_USERS_MEMCFG"](list(self.mesh_device.shape)[1]))
+
+        # check_mesh_tensor_alloc(attn_output_gathered_sharded)
         # ttnn.deallocate(attn_output_1G4D)
 
         # attn_output_gathered_sharded = ttnn.to_memory_config(
@@ -387,7 +406,7 @@ class TtLlamaAttention(LightweightModule):
             attn_output_gathered_sharded,
             num_heads=self.n_local_heads,
         )
-        ttnn.deallocate(attn_output_gathered_sharded)
+        # ttnn.deallocate(attn_output_gathered_sharded)
         # print("done concat heads")
 
         # Original matmul on each device [1, 1, 32, 1024] @ [1, 1, 1024, 2048]

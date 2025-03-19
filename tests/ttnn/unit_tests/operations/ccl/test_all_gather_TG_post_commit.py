@@ -246,6 +246,33 @@ def run_line_all_gather_on_TG_with_mesh_tensor_along_rows(
             input_shard_spec.orientation,
         )
     output_mem_config = ttnn.MemoryConfig(tensor_memory_layout, buffer_type=buffer_type, shard_spec=output_shard_spec)
+    compute_grid_size = mesh_device.compute_with_storage_grid_size()
+    ccl_sub_device_crs = ttnn.CoreRangeSet(
+        {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(compute_grid_size.x - 1, compute_grid_size.y - 1))}
+    )
+    worker_sub_device = ttnn.SubDevice(
+        [
+            ccl_sub_device_crs,
+        ]
+    )
+    # temp_mem_config = ttnn.MemoryConfig(
+    #     ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+    #     ttnn.BufferType.L1,
+    #     ttnn.ShardSpec(
+    #         ccl_sub_device_crs,
+    #         [32, 32*256],
+    #         ttnn.ShardOrientation.ROW_MAJOR,
+    #     ),
+    # )
+    # temp = ttnn.from_torch(
+    #     torch.ones(1, 1, 32, 32*256*compute_grid_size.x * compute_grid_size.y),
+    #     device=mesh_device,
+    #     dtype=ttnn.bfloat16,
+    #     memory_config=temp_mem_config,
+    #     layout=layout,
+    #     mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+    # )
+
     ttnn_tensor = ttnn.from_torch(
         full_input_tensor_unfractured,
         tile=ttnn.Tile(tile),
@@ -260,15 +287,6 @@ def run_line_all_gather_on_TG_with_mesh_tensor_along_rows(
 
     sub_device_stall_group = []
     if use_all_gather_async:
-        compute_grid_size = mesh_device.compute_with_storage_grid_size()
-        ccl_sub_device_crs = ttnn.CoreRangeSet(
-            {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(compute_grid_size.x - 1, compute_grid_size.y - 1))}
-        )
-        worker_sub_device = ttnn.SubDevice(
-            [
-                ccl_sub_device_crs,
-            ]
-        )
         worker_sub_device_id = ttnn.SubDeviceId(0)
         sub_device_stall_group = [worker_sub_device_id]
         if create_persistent_fabric:
@@ -366,6 +384,9 @@ def run_line_all_gather_on_TG_with_mesh_tensor_along_rows(
         eq, output = comp_pcc(tt_output_tensor, output_golden)
     if not eq:
         logger.error(f"output mismatch for tensor: {output}")
+
+    # temp_torch = ttnn.to_torch(temp, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))
+    # assert torch.all(temp_torch == 1), "temp tensor should be all ones"
 
     assert eq, f"FAILED: {output}"
 

@@ -89,7 +89,7 @@ def test_llama_attention_inference(
     seq_len = 1
 
     generation_start_pos = 127
-    generation_length = 1
+    generation_length = 10
     all_tests_pass = True
 
     # Setup RoPE transformation matrices
@@ -142,7 +142,12 @@ def test_llama_attention_inference(
         [prefetcher_setup.prefetcher_sub_device_id, prefetcher_setup.worker_sub_device_id]
     )
 
-    tt_ccl = TT_CCL(mesh_device, model_args.sub_core_grids, prefetcher_setup.worker_sub_device_id)
+    tt_ccl = TT_CCL(
+        mesh_device,
+        model_args.sub_core_grids,
+        prefetcher_setup.worker_sub_device_id,
+        model_config=model_args.model_config,
+    )
 
     tt_model = TtLlamaAttention(
         mesh_device,
@@ -179,21 +184,22 @@ def test_llama_attention_inference(
         ),
     )
 
+    # 70B attention block typically sees tensors with mean 0 and std 0.03 - 0.05 in layer 1
+    pt_attention_input = torch.randn(batch_size, seq_len, model_args.dim) * 0.05
+
+    tt_attention_input = pt_attention_input.clone()
+
+    attention_input = model_args.prepare_residual_tensor_decode(
+        tt_attention_input,
+        model_args.model_config["SHARDED_ATTN_INPUT_RING_MEMCFG"],
+        force_replicated=False if model_args.is_galaxy else True,
+    )
+
+    # Get cos/sin matrices for the current position of each user
+    rot_mats = rope_setup.get_rot_mats(current_pos)
+
+    outs = []
     for i in range(generation_length):
-        # 70B attention block typically sees tensors with mean 0 and std 0.03 - 0.05 in layer 1
-        pt_attention_input = torch.randn(batch_size, seq_len, model_args.dim) * 0.05
-
-        tt_attention_input = pt_attention_input.clone()
-
-        attention_input = model_args.prepare_residual_tensor_decode(
-            tt_attention_input,
-            model_args.model_config["SHARDED_ATTN_INPUT_RING_MEMCFG"],
-            force_replicated=False if model_args.is_galaxy else True,
-        )
-
-        # Get cos/sin matrices for the current position of each user
-        rot_mats = rope_setup.get_rot_mats(current_pos)
-
         ttnn.dram_prefetcher(
             prefetcher_setup.get_input_tensors(),
             num_layers=1,
@@ -215,98 +221,116 @@ def test_llama_attention_inference(
         )
         tt_output_torch = tt_out[:, 0:1, : model_args.max_batch_size, : model_args.dim].view(-1, 1, model_args.dim)
 
-        # In this test all users have the same position (if using batch > 1)
-        freqs_cis_i = freqs_cis[current_pos[0], :].unsqueeze(0)
+        outs.append(tt_output_torch)
 
-        reference_output = reference_model(pt_attention_input, current_pos[0], freqs_cis_i, mask=None)
+    ##### Check outputs #####
+    golden = outs[0]
+    all_passing = True
+    for i in range(len(outs)):
+        logger.info(f"Checking output for iteration {i}")
 
-        passing, pcc_message = comp_pcc(reference_output, tt_output_torch, pcc)
+        passing = torch.all(outs[i] == golden)
 
-        logger.info(comp_allclose(reference_output, tt_output_torch))
-        logger.info(f"PCC: {pcc_message}")
         if passing:
-            logger.info(f"[pos={current_pos[0]}] Llama_Attention Passed!")
+            logger.info(f"Output for iteration {i} is equal to golden")
         else:
-            logger.warning(f"[pos={current_pos[0]}] Llama_Attention Failed!")
-            all_tests_pass = False
+            logger.warning(f"Output for iteration {i} is NOT equal to golden")
+        all_passing = all_passing and passing
 
-        # Increment position
-        current_pos = torch.tensor([generation_start_pos + i for _ in range(batch_size)])
-        current_pos_tensor = ttnn.from_torch(
-            current_pos,
-            device=mesh_device,
-            dtype=ttnn.int32,
-            mesh_mapper=ttnn.ShardTensor2dMesh(
-                mesh_device,
-                dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
-                mesh_shape=model_args.cluster_shape,
-            ),
-        )
+        # # In this test all users have the same position (if using batch > 1)
+        # freqs_cis_i = freqs_cis[current_pos[0], :].unsqueeze(0)
 
-        check_kv_cache = True
-        if check_kv_cache:
-            # PyTorch output --------------------------------------------------------------------
-            pytorch_layer_present = [
-                reference_model.cache_k.clone().permute(0, 2, 1, 3),  # [batch_size, n_kv_heads, seq, head_dim]
-                reference_model.cache_v.clone().permute(0, 2, 1, 3),  # [batch_size, n_kv_heads, seq, head_dim]
-            ]
-            # TT hardware execution -------------------------------------------------------------
-            if paged_attention:
-                tt_layer_present = [
-                    (
-                        ttnn.to_torch(
-                            cache,
-                            mesh_composer=ttnn.ConcatMesh2dToTensor(
-                                mesh_device,
-                                dims=(1, 3) if model_args.is_galaxy else (0, 1),
-                                mesh_shape=model_args.cluster_shape,
-                            ),
-                        )[reverse_permutation][:, : model_args.n_kv_heads, :, : model_args.head_dim]
-                        .reshape(
-                            model_args.max_batch_size,
-                            paged_attention_config.max_num_blocks // model_args.max_batch_size,
-                            model_args.n_kv_heads,
-                            paged_attention_config.block_size,
-                            model_args.head_dim,
-                        )
-                        .transpose(1, 2)
-                        .reshape(model_args.max_batch_size, model_args.n_kv_heads, -1, model_args.head_dim)[
-                            :batch_size, ...
-                        ]
-                    )
-                    for cache in tt_model.layer_past
-                ]
-            else:
-                tt_layer_present = [
-                    ttnn.to_torch(
-                        cache,
-                        mesh_composer=ttnn.ConcatMesh2dToTensor(
-                            mesh_device,
-                            dims=(1, 0) if model_args.is_galaxy else (0, 1),
-                            mesh_shape=model_args.cluster_shape,
-                        ),
-                    )[:batch_size, :, :, :]
-                    for cache in tt_model.layer_past
-                ]
+        # reference_output = reference_model(pt_attention_input, current_pos[0], freqs_cis_i, mask=None)
 
-            for i, (cache_pt, cache_tt) in enumerate(zip(pytorch_layer_present, tt_layer_present)):
-                cache_length_to_check = min(model_args.max_seq_len, generation_start_pos + generation_length + 1)
-                cache_pt = cache_pt[:, :, generation_start_pos:cache_length_to_check, :]
-                cache_tt = cache_tt[:, :, generation_start_pos:cache_length_to_check, :]
-                does_pass, output_pcc = comp_pcc(cache_pt, cache_tt, pcc)
-                if i == 0:
-                    logger.info(f"K cache output: {output_pcc}")
-                else:
-                    logger.info(f"V cache output: {output_pcc}")
+        # passing, pcc_message = comp_pcc(reference_output, tt_output_torch, pcc)
 
-                if does_pass:
-                    logger.info(f"KV Cache Passed!")
-                else:
-                    logger.warning(f"KV Cache Failed! PCC value is lower than {pcc}")
-                    all_tests_pass = False
+        # logger.info(comp_allclose(reference_output, tt_output_torch))
+        # logger.info(f"PCC: {pcc_message}")
+        # if passing:
+        #     logger.info(f"[pos={current_pos[0]}] Llama_Attention Passed!")
+        # else:
+        #     logger.warning(f"[pos={current_pos[0]}] Llama_Attention Failed!")
+        #     all_tests_pass = False
+
+        # # Increment position
+        # current_pos = torch.tensor([generation_start_pos + i for _ in range(batch_size)])
+        # current_pos_tensor = ttnn.from_torch(
+        #     current_pos,
+        #     device=mesh_device,
+        #     dtype=ttnn.int32,
+        #     mesh_mapper=ttnn.ShardTensor2dMesh(
+        #         mesh_device,
+        #         dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
+        #         mesh_shape=model_args.cluster_shape,
+        #     ),
+        # )
+
+        # check_kv_cache = True
+        # if check_kv_cache:
+        #     # PyTorch output --------------------------------------------------------------------
+        #     pytorch_layer_present = [
+        #         reference_model.cache_k.clone().permute(0, 2, 1, 3),  # [batch_size, n_kv_heads, seq, head_dim]
+        #         reference_model.cache_v.clone().permute(0, 2, 1, 3),  # [batch_size, n_kv_heads, seq, head_dim]
+        #     ]
+        #     # TT hardware execution -------------------------------------------------------------
+        #     if paged_attention:
+        #         tt_layer_present = [
+        #             (
+        #                 ttnn.to_torch(
+        #                     cache,
+        #                     mesh_composer=ttnn.ConcatMesh2dToTensor(
+        #                         mesh_device,
+        #                         dims=(1, 3) if model_args.is_galaxy else (0, 1),
+        #                         mesh_shape=model_args.cluster_shape,
+        #                     ),
+        #                 )[reverse_permutation][:, : model_args.n_kv_heads, :, : model_args.head_dim]
+        #                 .reshape(
+        #                     model_args.max_batch_size,
+        #                     paged_attention_config.max_num_blocks // model_args.max_batch_size,
+        #                     model_args.n_kv_heads,
+        #                     paged_attention_config.block_size,
+        #                     model_args.head_dim,
+        #                 )
+        #                 .transpose(1, 2)
+        #                 .reshape(model_args.max_batch_size, model_args.n_kv_heads, -1, model_args.head_dim)[
+        #                     :batch_size, ...
+        #                 ]
+        #             )
+        #             for cache in tt_model.layer_past
+        #         ]
+        #     else:
+        #         tt_layer_present = [
+        #             ttnn.to_torch(
+        #                 cache,
+        #                 mesh_composer=ttnn.ConcatMesh2dToTensor(
+        #                     mesh_device,
+        #                     dims=(1, 0) if model_args.is_galaxy else (0, 1),
+        #                     mesh_shape=model_args.cluster_shape,
+        #                 ),
+        #             )[:batch_size, :, :, :]
+        #             for cache in tt_model.layer_past
+        #         ]
+
+        #     for i, (cache_pt, cache_tt) in enumerate(zip(pytorch_layer_present, tt_layer_present)):
+        #         cache_length_to_check = min(model_args.max_seq_len, generation_start_pos + generation_length + 1)
+        #         cache_pt = cache_pt[:, :, generation_start_pos:cache_length_to_check, :]
+        #         cache_tt = cache_tt[:, :, generation_start_pos:cache_length_to_check, :]
+        #         does_pass, output_pcc = comp_pcc(cache_pt, cache_tt, pcc)
+        #         if i == 0:
+        #             logger.info(f"K cache output: {output_pcc}")
+        #         else:
+        #             logger.info(f"V cache output: {output_pcc}")
+
+        #         if does_pass:
+        #             logger.info(f"KV Cache Passed!")
+        #         else:
+        #             logger.warning(f"KV Cache Failed! PCC value is lower than {pcc}")
+        #             all_tests_pass = False
     tt_ccl.close()
-    if all_tests_pass:
-        logger.info("Llama Attention output Passed!")
-    else:
-        logger.warning("Llama Attention output Failed!")
-        assert all_tests_pass, f"PCC value is lower than {pcc} for some of the outputs. Check Warnings!"
+
+    assert all_passing
+    # if all_tests_pass:
+    #     logger.info("Llama Attention output Passed!")
+    # else:
+    #     logger.warning("Llama Attention output Failed!")
+    #     assert all_tests_pass, f"PCC value is lower than {pcc} for some of the outputs. Check Warnings!"

@@ -104,6 +104,7 @@ ttnn::Tensor ExecuteAllReduceAsync::invoke(
         out_memory_config,
         num_preferred_links,
         worker_subdevice_id_opt,
+        std::nullopt,  // output_tensor
         true);
 }
 

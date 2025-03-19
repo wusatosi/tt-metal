@@ -381,6 +381,7 @@ Tensor all_gather_async(
     const std::optional<MemoryConfig>& memory_config,
     const std::optional<size_t> num_preferred_links,
     std::optional<tt::tt_metal::SubDeviceId> sub_device_id,
+    const std::optional<ttnn::Tensor>& buffer_tensor,
     bool enable_persistent_fabric_mode) {
     TT_FATAL(
         topology == ttnn::ccl::Topology::Linear,
@@ -400,7 +401,8 @@ Tensor all_gather_async(
         rank - 1,
         dim);
 
-    std::vector<Tensor> output_tensors = {Tensor(tt::tt_metal::operation::get_workers_for_op_output({input_tensor}))};
+    std::vector<Tensor> output_tensors = {
+        buffer_tensor.value_or(Tensor(tt::tt_metal::operation::get_workers_for_op_output({input_tensor})))};
     CoreCoord grid_size = devices[0]->compute_with_storage_grid_size();
     auto core_grid = CoreRange({0, 0}, {grid_size.x - 1, grid_size.y - 1});
     std::vector<GlobalSemaphore> semaphores = multi_device_global_semaphore.global_semaphores;

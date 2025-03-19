@@ -179,6 +179,7 @@ Tensor all_gather_async(
     const std::optional<MemoryConfig>& memory_config = std::nullopt,
     const std::optional<size_t> num_preferred_links = std::nullopt,
     std::optional<tt::tt_metal::SubDeviceId> sub_device_id = std::nullopt,
+    const std::optional<ttnn::Tensor>& buffer_tensor = std::nullopt,
     bool enable_persistent_fabric_mode = false);
 
 }  // namespace ccl

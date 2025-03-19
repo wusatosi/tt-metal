@@ -66,6 +66,7 @@ void bind_all_gather_async(pybind11::module& module, const ccl_operation_t& oper
                const std::optional<size_t> num_preferred_links,
                const std::optional<MemoryConfig>& memory_config,
                std::optional<tt::tt_metal::SubDeviceId> subdevice_id,
+               const std::optional<ttnn::Tensor>& buffer_tensor,
                bool enable_persistent_fabric_mode) -> ttnn::Tensor {
                 return self(
                     input_tensor,
@@ -77,6 +78,7 @@ void bind_all_gather_async(pybind11::module& module, const ccl_operation_t& oper
                     memory_config,                   // = std::nullopt,
                     num_preferred_links,             // = std::nullopt,
                     subdevice_id,                    // = std::nullopt,
+                    buffer_tensor,                   // = std::nullopt,
                     enable_persistent_fabric_mode);  // = false,
             },
             py::arg("input_tensor"),
@@ -89,6 +91,7 @@ void bind_all_gather_async(pybind11::module& module, const ccl_operation_t& oper
             py::arg("num_links") = std::nullopt,
             py::arg("memory_config") = std::nullopt,
             py::arg("subdevice_id") = std::nullopt,
+            py::arg("buffer_tensor") = std::nullopt,
             py::arg("enable_persistent_fabric_mode") = false});
 }
 

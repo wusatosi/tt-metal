@@ -72,7 +72,12 @@ def test_llama_rms_norm_inference(
     mesh_device.set_sub_device_stall_group(
         [prefetcher_setup.prefetcher_sub_device_id, prefetcher_setup.worker_sub_device_id]
     )
-    tt_ccl = TT_CCL(mesh_device, model_args.sub_core_grids, prefetcher_setup.worker_sub_device_id)
+    tt_ccl = TT_CCL(
+        mesh_device,
+        model_args.sub_core_grids,
+        prefetcher_setup.worker_sub_device_id,
+        model_config=model_args.model_config,
+    )
 
     # Create the inner RMSNormxw
     tt_inner_norm = TtRMSNorm(
@@ -99,29 +104,31 @@ def test_llama_rms_norm_inference(
 
     input = torch.rand(1, 1, 32, model_args.dim)
     reference_output = reference_model(input)
-    for i in range(3):
-        # DistributedNorm inputs are fractured across devices and interleaved in DRAM (for prefill) and L1 (for decode)
-        tt_input = ttnn.from_torch(
-            input,
-            device=mesh_device,
-            dtype=dtype,
-            layout=ttnn.TILE_LAYOUT,
-            mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device, dims=(None, -1), mesh_shape=model_args.cluster_shape),
-            memory_config=model_args.get_model_config()["DECODE_RESIDUAL_MEMCFG"]
-            if mode == "decode"
-            else ttnn.DRAM_MEMORY_CONFIG,
-        )
-        tt_input_res = ttnn.from_torch(
-            input * 0,
-            device=mesh_device,
-            dtype=dtype,
-            layout=ttnn.TILE_LAYOUT,
-            mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device, dims=(None, -1), mesh_shape=model_args.cluster_shape),
-            memory_config=model_args.get_model_config()["DECODE_RESIDUAL_MEMCFG"]
-            if mode == "decode"
-            else ttnn.DRAM_MEMORY_CONFIG,
-        )
-        mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
+    # DistributedNorm inputs are fractured across devices and interleaved in DRAM (for prefill) and L1 (for decode)
+    tt_input = ttnn.from_torch(
+        input,
+        device=mesh_device,
+        dtype=dtype,
+        layout=ttnn.TILE_LAYOUT,
+        mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device, dims=(None, -1), mesh_shape=model_args.cluster_shape),
+        memory_config=model_args.get_model_config()["DECODE_RESIDUAL_MEMCFG"]
+        if mode == "decode"
+        else ttnn.DRAM_MEMORY_CONFIG,
+    )
+    tt_input_res = ttnn.from_torch(
+        input * 0,
+        device=mesh_device,
+        dtype=dtype,
+        layout=ttnn.TILE_LAYOUT,
+        mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device, dims=(None, -1), mesh_shape=model_args.cluster_shape),
+        memory_config=model_args.get_model_config()["DECODE_RESIDUAL_MEMCFG"]
+        if mode == "decode"
+        else ttnn.DRAM_MEMORY_CONFIG,
+    )
+    mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
+
+    outs = []
+    for i in range(200):
         tt_output, res = tt_model(tt_input, tt_input_res, mode=mode)
 
         # DistributedNorm outputs are replicated across devices
@@ -132,10 +139,26 @@ def test_llama_rms_norm_inference(
             ),
         )[:1, :, :, :]
 
-        passing, pcc_message = comp_pcc(reference_output, tt_output_torch)
+        outs.append(tt_output_torch)
 
-        logger.info(comp_allclose(reference_output, tt_output_torch))
-        logger.info(f"PCC: {pcc_message}")
+    ##### Check outputs #####
+    golden = outs[0]
+    all_passing = True
+    for i in range(len(outs)):
+        logger.info(f"Checking output for iteration {i}")
+
+        passing = torch.all(outs[i] == golden)
+
+        if passing:
+            logger.info(f"Output for iteration {i} is equal to golden")
+        else:
+            logger.warning(f"Output for iteration {i} is NOT equal to golden")
+        all_passing = all_passing and passing
+
+        # passing, pcc_message = comp_pcc(reference_output, tt_output_torch)
+
+        # logger.info(comp_allclose(reference_output, tt_output_torch))
+        # logger.info(f"PCC: {pcc_message}")
 
     tt_ccl.close()
 

@@ -22,6 +22,7 @@ class TT_CCL:
         enable_persistent_fabric=True,
         create_persistent_fabric=True,
         teardown_persistent_fabric=True,
+        model_config=None,  # Used to create sub_device_manager
     ):
         self.mesh_device = mesh_device
         self.sub_device_crs = sub_device_crs
@@ -29,6 +30,7 @@ class TT_CCL:
         self.enable_persistent_fabric = enable_persistent_fabric
         self.create_persistent_fabric = create_persistent_fabric
         self.teardown_persistent_fabric = teardown_persistent_fabric
+        self.model_config = model_config
 
         if create_persistent_fabric:
             assert enable_persistent_fabric
@@ -51,10 +53,54 @@ class TT_CCL:
         self.buffer_idx = [0, 0]
 
         self.persistent_buffers = self.get_persistent_buffers()
+        self.all_gather_buffers = self.get_all_gather_buffers()
 
     def reset_gather_and_buffer_idx(self):
         self.gather_idx = [0, 0]
         self.buffer_idx = [0, 0]
+
+    def get_all_gather_buffers(self):
+        """
+        Currently, this is hardcoded with llama specific shapes.
+
+        Creates double buffered persistent CCL buffers for each cluster axis.
+
+        """
+
+        persistent_buffers = []
+        M = 32
+
+        # SDPA
+        tt_buffer = ttnn.from_torch(
+            torch.zeros((1, 32, M, 128)),
+            device=self.mesh_device,
+            layout=ttnn.TILE_LAYOUT,
+            dtype=ttnn.bfloat16,
+            memory_config=self.model_config["GATHER_USERS_MEMCFG"](list(self.mesh_device.shape)[1]),
+            mesh_mapper=ttnn.ReplicateTensorToMesh(self.mesh_device),
+        )
+        persistent_buffers.append(tt_buffer)
+
+        # Layernorm
+        grid_offset = ttnn.CoreCoord(1, 0)
+        tt_stats_sharded_config = ttnn.create_sharded_memory_config(
+            shape=(32, 128),
+            core_grid=ttnn.CoreRangeSet([ttnn.CoreRange(grid_offset, grid_offset)]),
+            strategy=ttnn.ShardStrategy.WIDTH,
+            use_height_and_width_as_shard_shape=True,
+        )
+
+        tt_buffer = ttnn.from_torch(
+            torch.zeros((1, 1, M, 128)),
+            device=self.mesh_device,
+            layout=ttnn.TILE_LAYOUT,
+            dtype=ttnn.bfloat16,
+            memory_config=tt_stats_sharded_config,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(self.mesh_device),
+        )
+        persistent_buffers.append(tt_buffer)
+
+        return persistent_buffers
 
     def get_persistent_buffers(self):
         """
@@ -117,7 +163,8 @@ class TT_CCL:
             persistent_buffers[cluster_axis].append(tt_buffer)
 
         # Create persistent buffer for lm_head
-        N_per_shard = (16 * 1024) // 16 * cluster_shape[cluster_axis]  # LM Head
+        num_cores_after_lm_head = 32  # Use 32 cores instead of 16 to reduce L1 memory usage per core
+        N_per_shard = (16 * 1024) // num_cores_after_lm_head * cluster_shape[cluster_axis]  # LM Head
         self.lm_head_buffer_mem_cfg = ttnn.MemoryConfig(
             ttnn.TensorMemoryLayout.WIDTH_SHARDED,
             ttnn.BufferType.L1,
@@ -132,7 +179,7 @@ class TT_CCL:
             torch.zeros((*cluster_shape, M, N_per_shard * num_cores)),
             device=self.mesh_device,
             layout=ttnn.TILE_LAYOUT,
-            dtype=ttnn.bfloat16,
+            dtype=ttnn.bfloat8_b,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
             mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=(0, 1), mesh_shape=cluster_shape),
         )
@@ -140,6 +187,14 @@ class TT_CCL:
         return persistent_buffers
 
     def line_all_reduce(self, input_tensor_mesh, cluster_axis, num_links, memory_config, lm_head=False):
+        # return self.line_all_reduce_host(
+        #     input_tensor_mesh,
+        #     cluster_axis,
+        #     num_links=num_links,
+        #     memory_config=memory_config,
+        # )
+
+        num_links = 1 if not lm_head else num_links
         if lm_head:
             persistent_buffer = ttnn.to_memory_config(self.tt_lm_head_buffer, self.lm_head_buffer_mem_cfg)
         else:
@@ -183,7 +238,20 @@ class TT_CCL:
         # ttnn.synchronize_device(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
         return ttnn_tensor_out
 
-    def line_all_gather(self, input_tensor_mesh, dim, cluster_axis, memory_config, num_links=1):
+    def line_all_gather(self, input_tensor_mesh, dim, cluster_axis, memory_config, num_links=1, sdpa=False):
+        # return self.line_all_gather_host(
+        #     input_tensor_mesh,
+        #     dim,
+        #     cluster_axis,
+        #     memory_config,
+        #     num_links=num_links,
+        # )
+        # ttnn.synchronize_device(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
+        num_links = 1
+        persistent_buffer = self.all_gather_buffers[0 if sdpa else 1]
+
+        # if sdpa:
+        #     persistent_buffer = None
         ttnn_tensor_out = ttnn.experimental.all_gather_async(
             input_tensor_mesh,
             dim,
@@ -195,9 +263,76 @@ class TT_CCL:
             memory_config=memory_config,
             subdevice_id=self.worker_sub_device_id,
             enable_persistent_fabric_mode=self.enable_persistent_fabric,
+            buffer_tensor=persistent_buffer,
         )
         self.gather_idx[cluster_axis] = (self.gather_idx[cluster_axis] + 1) % self.num_cbs
         # ttnn.synchronize_device(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
+        return ttnn_tensor_out
+
+    def line_all_reduce_host(self, input_tensor_mesh, cluster_axis, num_links, memory_config):
+        dim = 3
+
+        ##### Host side implementation #####
+        rs_output_tensor_mesh = self.line_reduce_scatter_host(
+            input_tensor_mesh,
+            memory_config,
+            dim,
+            cluster_axis,
+            num_links=num_links,
+            math_op=ttnn.ReduceType.Sum,
+        )
+
+        output_tensor_mesh = self.line_all_gather_host(
+            rs_output_tensor_mesh,
+            dim,
+            cluster_axis,
+            memory_config,
+            num_links=num_links,
+        )
+
+        return output_tensor_mesh
+
+    def line_reduce_scatter_host(
+        self, input_tensor_mesh, memory_config, dim, cluster_axis, num_links=1, math_op=ttnn.ReduceType.Sum
+    ):
+        ##### Host side implementation #####
+        dims = [0, 1]
+        torch_tensor_mesh = ttnn.to_torch(
+            input_tensor_mesh, mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=dims, mesh_shape=(8, 4))
+        )
+
+        torch_tensor_mesh = torch.sum(torch_tensor_mesh, dim=cluster_axis, keepdim=True)
+
+        dims[cluster_axis] = dim
+        ttnn_tensor_out = ttnn.from_torch(
+            torch_tensor_mesh,
+            device=self.mesh_device,
+            mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=dims, mesh_shape=(8, 4)),
+            dtype=ttnn.bfloat16,
+            memory_config=memory_config,
+            layout=ttnn.TILE_LAYOUT,
+        )
+
+        return ttnn_tensor_out
+
+    def line_all_gather_host(self, input_tensor_mesh, dim, cluster_axis, memory_config, num_links=1):
+        ##### Host side implementation #####
+        dims = [0, 0] if dim != 0 else [1, 1]
+        dims[cluster_axis] = dim
+        torch_tensor_mesh = ttnn.to_torch(
+            input_tensor_mesh, mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=dims, mesh_shape=(8, 4))
+        )
+
+        dims[cluster_axis] = None
+        ttnn_tensor_out = ttnn.from_torch(
+            torch_tensor_mesh,
+            device=self.mesh_device,
+            mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=dims, mesh_shape=(8, 4)),
+            dtype=ttnn.bfloat16,
+            memory_config=memory_config,
+            layout=ttnn.TILE_LAYOUT,
+        )
+
         return ttnn_tensor_out
 
     def close(self):
@@ -420,6 +555,8 @@ def tt_sharded_distributed_rmsnorm(
     )
     # ttnn.deallocate(tt_stats)
     # print("mem cfg")
+    # ttnn.synchronize_device(mesh_device)
+
     tt_global_stats_sharded = tt_ccl.line_all_gather(
         tt_stats, dim=3, cluster_axis=1, num_links=1, memory_config=tt_stats_sharded_config
     )
@@ -439,6 +576,6 @@ def tt_sharded_distributed_rmsnorm(
         program_config=ln_sharded_progcfg,
         stats=tt_global_stats_sharded,
     )
-    ttnn.deallocate(tt_global_stats_sharded)
+    # ttnn.deallocate(tt_global_stats_sharded)
     # print("rmsnorm post all gather", tt_out.shape)
     return tt_out, inp
