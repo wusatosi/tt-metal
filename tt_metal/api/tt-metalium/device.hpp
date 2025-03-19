@@ -115,6 +115,8 @@ public:
     virtual std::tuple<chip_id_t, CoreCoord> get_connected_ethernet_core(CoreCoord eth_core) const = 0;
     virtual std::vector<CoreCoord> get_ethernet_sockets(chip_id_t connected_chip_id) const = 0;
     virtual bool is_inactive_ethernet_core(CoreCoord logical_core) const = 0;
+    // Returns true if the core has an eth link to a core on the connected chip
+    virtual bool is_ethernet_link_up(CoreCoord logical_core) const = 0;
 
     virtual CoreCoord compute_with_storage_grid_size() const = 0;
 

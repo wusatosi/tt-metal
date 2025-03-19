@@ -88,6 +88,7 @@ public:
     std::tuple<chip_id_t, CoreCoord> get_connected_ethernet_core(CoreCoord eth_core) const override;
     std::vector<CoreCoord> get_ethernet_sockets(chip_id_t connected_chip_id) const override;
     bool is_inactive_ethernet_core(CoreCoord logical_core) const override;
+    bool is_ethernet_link_up(CoreCoord logical_core) const override;
 
     CoreCoord compute_with_storage_grid_size() const override;
 

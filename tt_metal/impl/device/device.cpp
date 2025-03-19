@@ -97,6 +97,10 @@ std::vector<CoreCoord> Device::get_ethernet_sockets(chip_id_t connected_chip_id)
     return tt::Cluster::instance().get_ethernet_sockets(this->id_, connected_chip_id);
 }
 
+bool Device::is_ethernet_link_up(CoreCoord logical_core) const {
+    return tt::Cluster::instance().is_ethernet_link_up(this->id_, logical_core);
+}
+
 bool Device::is_mmio_capable() const {
     return tt::Cluster::instance().get_associated_mmio_device(this->id_) == this->id_;
 }
