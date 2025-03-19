@@ -49,7 +49,8 @@ EdmLineFabricOpInterface::EdmLineFabricOpInterface(
     bool enable_persistent_mode,
     std::optional<size_t> desired_num_links,
     bool build_in_worker_connection_mode,
-    Topology topology) :
+    Topology topology,
+    const std::optional<tt::tt_fabric::FabricEriscDatamoverConfigOverride>& config_override) :
     device_sequence(device_sequence), programs(program_sequence) {
     if (topology == Topology::Ring) {
         TT_FATAL(device_sequence.size() > 2, "Ring topology only supports more than 2 devices");
@@ -58,7 +59,7 @@ EdmLineFabricOpInterface::EdmLineFabricOpInterface(
     static constexpr std::size_t edm_buffer_size =
         tt::tt_fabric::FabricEriscDatamoverBuilder::default_packet_payload_size_bytes +
         sizeof(tt::tt_fabric::PacketHeader);
-    const auto config = tt::tt_fabric::FabricEriscDatamoverConfig(edm_buffer_size, 1, 2, topology);
+    const auto config = tt::tt_fabric::FabricEriscDatamoverConfig(Topology::Linear);
     TT_ASSERT(device_sequence.size() == program_sequence.size());
 
     for (size_t i = 0; i < device_sequence.size(); i++) {
@@ -138,7 +139,8 @@ EdmLineFabricOpInterface::EdmLineFabricOpInterface(
                         config,
                         enable_persistent_mode,
                         build_in_worker_connection_mode,
-                        dateline));
+                        dateline,
+                        config_override));
 
                 log_trace(
                     tt::LogOp,
@@ -155,7 +157,8 @@ EdmLineFabricOpInterface::EdmLineFabricOpInterface(
                         config,
                         enable_persistent_mode,
                         build_in_worker_connection_mode,
-                        dateline));
+                        dateline,
+                        config_override));
             }
         };
 
@@ -226,7 +229,7 @@ EdmLineFabricOpInterface::EdmLineFabricOpInterface(
     static constexpr std::size_t edm_buffer_size =
         tt::tt_fabric::FabricEriscDatamoverBuilder::default_packet_payload_size_bytes +
         sizeof(tt::tt_fabric::PacketHeader);
-    const auto config = tt::tt_fabric::FabricEriscDatamoverConfig(edm_buffer_size, 1, 2, topology);
+    const auto config = tt::tt_fabric::FabricEriscDatamoverConfig(topology);
 
     log_trace(tt::LogOp, "device id={}", local_device->id());
     log_trace(tt::LogOp, "EDM Fabric Factory ctor on device: {}", local_device->id());
@@ -431,7 +434,7 @@ EdmLineFabricOpInterface::generate_ordered_termination_info_farthest_to_nearest(
     static constexpr std::size_t edm_buffer_size =
         tt::tt_fabric::FabricEriscDatamoverBuilder::default_packet_payload_size_bytes +
         sizeof(tt::tt_fabric::PacketHeader);
-    static const auto config = tt::tt_fabric::FabricEriscDatamoverConfig(edm_buffer_size, 1, 2);
+    static const auto config = tt::tt_fabric::FabricEriscDatamoverConfig(Topology::Linear);
     TT_ASSERT(device_sequence.size() > 0);
     const size_t num_hops = device_sequence.size() - 1;
     TT_ASSERT(num_hops > 0);

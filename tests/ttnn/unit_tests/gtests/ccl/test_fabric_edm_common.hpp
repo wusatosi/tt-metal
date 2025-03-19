@@ -453,7 +453,7 @@ bool RunLoopbackTest(
     const auto& worker_core = worker_cores.at(0);
     log_trace(tt::LogTest, "Worker {}. On Core x={},y={}", 0, worker_core.x, worker_core.y);
 
-    const auto& edm_config = tt::tt_fabric::FabricEriscDatamoverConfig(edm_buffer_size, 1, 2);
+    const auto& edm_config = tt::tt_fabric::FabricEriscDatamoverConfig(tt::tt_fabric::Topology::Linear);
     const std::vector<tt::tt_fabric::edm_termination_info_t>& edm_termination_infos =
         enable_persistent_fabric ? std::vector<tt::tt_fabric::edm_termination_info_t>{}
                                  : std::vector<tt::tt_fabric::edm_termination_info_t>{
@@ -1260,7 +1260,7 @@ int TestLoopbackEntrypoint(
         tt::tt_fabric::FabricEriscDatamoverBuilder::default_packet_payload_size_bytes + PACKET_HEADER_SIZE_BYTES;
     const chip_id_t local_chip_id = 0;
     const chip_id_t remote_chip_id = 1;
-    const auto& edm_config = tt::tt_fabric::FabricEriscDatamoverConfig(edm_buffer_size, 1, 2);
+    const auto& edm_config = tt::tt_fabric::FabricEriscDatamoverConfig(tt::tt_fabric::Topology::Linear);
     auto chip_0_edm_builder = tt::tt_fabric::FabricEriscDatamoverBuilder::build(
         sender_device,
         fabric_sender_program,
@@ -2510,6 +2510,11 @@ void RunRingDeadlockStabilityTestWithPersistentFabric(
     bool has_forward_connection,
     bool has_backward_connection,
     size_t packet_payload_size_bytes = tt::tt_fabric::FabricEriscDatamoverBuilder::default_packet_payload_size_bytes) {
+    TT_FATAL(
+        packet_payload_size_bytes <= tt::tt_fabric::FabricEriscDatamoverBuilder::default_packet_payload_size_bytes,
+        "Packet too big. Specified {} but max is {}",
+        packet_payload_size_bytes,
+        tt::tt_fabric::FabricEriscDatamoverBuilder::default_packet_payload_size_bytes);
     auto arch = tt::get_arch_from_string(tt::test_utils::get_umd_arch_name());
     auto num_devices = tt::tt_metal::GetNumAvailableDevices();
     if (num_devices != 8) {

@@ -21,6 +21,12 @@
 
 namespace tt::tt_fabric {
 
+struct FabricEriscDatamoverConfigOverride {
+    std::vector<size_t> sender_channel_slots;
+    std::vector<size_t> receiver_channel_slots;
+    size_t max_packet_size;
+};
+
 struct FabricEriscDatamoverConfig {
     static constexpr std::size_t num_sender_channels = 3;
     static constexpr std::size_t num_receiver_channels = 2;
@@ -50,10 +56,10 @@ struct FabricEriscDatamoverConfig {
     std::array<std::size_t, num_sender_channels> sender_channels_counters_address;
 
     // Packet header history buffer(s)
-    static constexpr std::size_t receiver_completed_packet_header_cb_size_headers = 32;
+    static constexpr std::size_t receiver_completed_packet_header_cb_size_headers = 8;
     static constexpr std::size_t receiver_completed_packet_header_cb_size_bytes =
         sizeof(tt::tt_fabric::PacketHeader) * receiver_completed_packet_header_cb_size_headers;
-    static constexpr std::size_t sender_completed_packet_header_cb_size_headers = 32;
+    static constexpr std::size_t sender_completed_packet_header_cb_size_headers = 8;
     static constexpr std::size_t sender_completed_packet_header_cb_size_bytes =
         sizeof(tt::tt_fabric::PacketHeader) * sender_completed_packet_header_cb_size_headers;
     std::array<std::size_t, num_receiver_channels> receivers_completed_packet_header_cb_address;
@@ -88,13 +94,10 @@ struct FabricEriscDatamoverConfig {
     std::size_t available_channel_buffering_space;
 
     FabricEriscDatamoverConfig(
-        std::size_t channel_buffer_size_bytes,
-        std::size_t sender_ratio_size,
-        std::size_t receiver_ratio_size,
-        Topology topology = Topology::Linear);
+        Topology topology, const std::optional<FabricEriscDatamoverConfigOverride>& config_override = std::nullopt);
 
     std::size_t channel_buffer_size_bytes = 0;
-    std::size_t channel_buffer_size_bytes_with_channel_sync = 0;
+    std::size_t channel_buffer_size_bytes_with_header = 0;
 
     std::array<std::size_t, num_sender_channels> sender_channels_size_bytes;
     std::array<std::size_t, num_receiver_channels> receiver_channels_size_bytes;
@@ -147,6 +150,7 @@ class FabricEriscDatamoverBuilder {
 public:
     static constexpr size_t default_firmware_context_switch_interval = 10000;
     // payload only, no header
+    //
     static constexpr size_t default_packet_payload_size_bytes = tt::tile_size(tt::DataFormat::Bfp8_b) * 4;
 
     static constexpr uint32_t num_virtual_channels = 2;
@@ -172,7 +176,8 @@ public:
         const FabricEriscDatamoverConfig& config,
         bool enable_persistent_mode,
         bool build_in_worker_connection_mode = false,
-        bool dateline_connection = false);
+        bool dateline_connection = false,
+        const std::optional<FabricEriscDatamoverConfigOverride>& config_override = std::nullopt);
 
     static FabricEriscDatamoverBuilder build(
         tt::tt_metal::IDevice* device,
@@ -183,7 +188,8 @@ public:
         const FabricEriscDatamoverConfig& config,
         bool enable_persistent_mode,
         bool build_in_worker_connection_mode = false,
-        bool dateline_connection = false);
+        bool dateline_connection = false,
+        const std::optional<FabricEriscDatamoverConfigOverride>& config_override = std::nullopt);
 
     [[nodiscard]] SenderWorkerAdapterSpec build_connection_to_worker_channel() const;
     [[nodiscard]] SenderWorkerAdapterSpec build_connection_to_fabric_channel(uint32_t vc) const;
