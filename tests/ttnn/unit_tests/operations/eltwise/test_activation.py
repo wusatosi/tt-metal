@@ -392,3 +392,13 @@ def run_activation_test_threshold(device, h, w, scalar1, scalar2, ttnn_function,
 @pytest.mark.parametrize("w", [128])
 def test_threshold(device, h, w, value, threshold):
     run_activation_test_threshold(device, h, w, value, threshold, ttnn.threshold)
+
+
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 32768}], indirect=True)
+def test_sigmoid_yolov10(device, reset_seeds, model_location_generator):
+    torch_input = torch.load("models/experimental/functional_yolov10/tt/sigmoid.pt")
+    torch_output = torch.sigmoid(torch_input)
+    ttnn_input = ttnn.from_torch(torch_input, device=device, layout=ttnn.TILE_LAYOUT)
+    ttnn_output = ttnn.sigmoid(ttnn_input)
+    ttnn_output = ttnn.to_torch(ttnn_output)
+    assert_with_pcc(torch_output, ttnn_output, pcc=0.99)
