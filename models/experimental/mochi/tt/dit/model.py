@@ -9,7 +9,7 @@ from models.experimental.mochi.tt.dit.block import AsymmetricJointBlock
 from models.experimental.mochi.tt.dit.final_layer import FinalLayer
 from models.experimental.mochi.tt.dit.embed import PatchEmbed
 from models.experimental.mochi.tt.common import to_tt_tensor, unsqueeze_to_4d, stack_cos_sin
-from models.demos.llama3.tt.llama_common import get_rot_transformation_mat
+from models.tt_transformers.tt.common import get_rot_transformation_mat
 
 from genmo.mochi_preview.dit.joint_model.layers import (
     TimestepEmbedder,

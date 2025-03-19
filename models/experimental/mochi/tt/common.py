@@ -2,7 +2,7 @@ import os
 import math
 import torch
 from pathlib import Path
-from models.demos.llama3.tt.llama_common import get_out_subblock_w
+from models.tt_transformers.tt.common import get_out_subblock_w
 from typing import Tuple, Optional
 import ttnn
 
