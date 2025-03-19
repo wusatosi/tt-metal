@@ -217,8 +217,8 @@ std::vector<uint32_t> generate_op_trace_metadata(const SlidingWindowConfig& conf
     } else {
         uint32_t ceil_padding_h = config.get_ceil_pad_h();
         uint32_t ceil_padding_w = config.get_ceil_pad_w();
-        std::cout << "output shape = " << output_shape[0] << " " << output_shape[1] << " " << output_shape[2]
-                  << std::endl;
+        // std::cout << "output shape = " << output_shape[0] << " " << output_shape[1] << " " << output_shape[2]
+        //           << std::endl;
 
         uint32_t padded_input_h = config.input_hw.first + 2 * config.pad_hw.first + ceil_padding_h;
         uint32_t padded_input_w = config.input_hw.second + 2 * config.pad_hw.second + ceil_padding_w;
@@ -356,6 +356,7 @@ uint32_t global_padded_input_w = 0;
 uint32_t global_window_w = 0;
 uint32_t global_dilation_w = 0;
 uint32_t global_core_idx = 0;
+uint32_t global_output_w = 0;
 std::vector<std::vector<std::vector<std::vector<uint16_t>>>> halo_op_to_idx_map;
 std::vector<uint32_t> generate_dilated_idx_for_tensor_metadata(
     const SlidingWindowConfig& config,
@@ -365,12 +366,13 @@ std::vector<uint32_t> generate_dilated_idx_for_tensor_metadata(
     auto [output_boundary, input_boundary] = shard_boundary;
     std::vector<uint32_t> dilated_idx_for_tensor_metadata;
     auto output_shape = config.get_output_shape();
+    global_output_w = output_shape[2];
     uint32_t padded_input_h = config.input_hw.first + 2 * config.pad_hw.first + config.get_ceil_pad_h();
     uint32_t padded_input_w = config.input_hw.second + 2 * config.pad_hw.second + config.get_ceil_pad_w();
     global_padded_input_w = padded_input_w;
     global_window_w = config.window_hw.second;
     global_dilation_w = config.dilation_hw.second;
-    std::cout << "padded_input_w: " << padded_input_w << std::endl;
+    // std::cout << "padded_input_w: " << padded_input_w << std::endl;
     auto [output_start, output_end] = output_boundary;
     // std::cout << "output_start: " << output_start << " output_end: " << output_end << std::endl;
     for (auto i = output_start; i <= output_end; i++) {
@@ -738,6 +740,12 @@ std::tuple<std::vector<uint16_t>, std::vector<std::vector<uint16_t>>> generate_s
         auto vec = halo_op_to_idx_map[core_id];
         // sharded_input_top_left_indices_size.push_back({(uint16_t)vec[0].size()});
         auto single_vec_size = vec[0].size() * global_window_w;
+        bool is_cont = false;
+        if (global_output_w >= global_dilation_w) {
+            is_cont = true;
+            single_vec_size = vec[0].size();
+        }
+
         auto is_odd = false;
         if (single_vec_size % 2) {
             is_odd = true;
@@ -748,14 +756,16 @@ std::tuple<std::vector<uint16_t>, std::vector<std::vector<uint16_t>>> generate_s
         } else {
             local_top_left_indices.push_back(single_vec_size);
         }
-        std::cout << "vec[0].size(): " << vec[0].size() * global_window_w << std::endl;
-
-        local_top_left_indices.push_back(0);
+        // std::cout << "vec[0].size(): " << vec[0].size() * global_window_w << std::endl;
+        local_top_left_indices.push_back(is_cont);
 
         for (const auto& i : vec) {
             for (const auto& j : i) {
                 for (auto k : j) {
                     local_top_left_indices.push_back(k);
+                    if (is_cont) {
+                        break;
+                    }
                 }
             }
             if (is_odd) {

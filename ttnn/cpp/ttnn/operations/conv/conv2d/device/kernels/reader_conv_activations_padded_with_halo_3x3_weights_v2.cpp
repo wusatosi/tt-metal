@@ -121,11 +121,15 @@ void kernel_main() {
 
     uint32_t start_reader_idx = 1;
     dump(coalesced_read_bytes / 2);
-    print_bf16_pages(act_l1_read_addr, 32, 103);
 
     uint32_t offsets[2 * weight_size_w];
     uint32_t packed_reader_indices_sz = packed_reader_indices_ptr[0] & 0xFFFF;
+    print_bf16_pages(act_l1_read_addr, conv_act_c_read_bytes / 2, (packed_reader_indices_sz + 2) * window_outer);
     dump(packed_reader_indices_sz);
+    dump(conv_act_c_read_bytes);
+    uint32_t is_cont = packed_reader_indices_ptr[0] >> 16;
+    dump(is_cont);
+    dump(act_block_w_extra_align_bytes);
     for (uint32_t bh = 0; bh < act_num_blocks_h; bh++) {
         uint32_t cont_offset = 0;
         for (uint32_t outer = 0; outer < window_outer; outer++) {
@@ -146,21 +150,48 @@ void kernel_main() {
                 bh == act_num_blocks_h - 1 ? act_block_h_datums_read_last_block : act_block_h_datums_read;
 
             // uint32_t prev_idx = 0xFFFFFFFF;
-            // dump(act_block_h_datums_read_curr);
+            dump(act_block_h_datums_read_curr);
+            dump(coalesced_read_bytes);
+            uint32_t two_reader_indices;
+            uint32_t reader_idx_1 = 0;
+            uint32_t reader_idx_2 = 0;
             for (uint32_t bhd = 0; bhd < act_block_h_datums_read_curr; bhd++) {
                 // local read from reader_index + reader_offset;
-                for (uint32_t i = 0; i < (window_inner * 2); i += 2) {
-                    uint32_t two_reader_indices = packed_reader_indices_ptr[reader_idx];
-                    uint32_t reader_idx_1 = two_reader_indices & 0xffff;
-                    uint32_t reader_idx_2 = two_reader_indices >> 16;
+                if (is_cont) {
+                    two_reader_indices = packed_reader_indices_ptr[reader_idx];
+                    reader_idx_1 = two_reader_indices & 0xffff;
+                    reader_idx_2 = two_reader_indices >> 16;
                     act_l1_offset = reader_offset + (reader_idx_1 * conv_act_c_read_bytes);
-                    noc_async_read_one_packet_with_state<true>(act_l1_offset, l1_write_addr_act);
-                    l1_write_addr_act += (coalesced_read_bytes + act_block_w_extra_align_bytes);
+                    for (uint32_t i = 0; i < window_inner; i++) {
+                        noc_async_read_one_packet_with_state<true>(act_l1_offset, l1_write_addr_act);
+                        l1_write_addr_act += (coalesced_read_bytes);
+                        act_l1_offset += stride_w_bytes;
+                    }
+                    l1_write_addr_act += act_block_w_extra_align_bytes;
                     act_l1_offset = reader_offset + (reader_idx_2 * conv_act_c_read_bytes);
-                    noc_async_read_one_packet_with_state<true>(act_l1_offset, l1_write_addr_act);
-                    l1_write_addr_act += (coalesced_read_bytes + act_block_w_extra_align_bytes);
+                    for (uint32_t i = 0; i < window_inner; i++) {
+                        noc_async_read_one_packet_with_state<true>(act_l1_offset, l1_write_addr_act);
+                        l1_write_addr_act += (coalesced_read_bytes);
+                        act_l1_offset += stride_w_bytes;
+                    }
+                    l1_write_addr_act += act_block_w_extra_align_bytes;
+                    DPRINT << "readeer_idx: " << reader_idx << "reader_idx_1: " << reader_idx_1
+                           << " reader_idx_2: " << reader_idx_2 << ENDL();
                     reader_idx++;
-                    // DPRINT << "reader_idx_1: " << reader_idx_1 << " reader_idx_2: " << reader_idx_2 << ENDL();
+                } else {
+                    for (uint32_t i = 0; i < (window_inner * 2); i += 2) {
+                        two_reader_indices = packed_reader_indices_ptr[reader_idx];
+                        reader_idx_1 = two_reader_indices & 0xffff;
+                        reader_idx_2 = two_reader_indices >> 16;
+                        act_l1_offset = reader_offset + (reader_idx_1 * conv_act_c_read_bytes);
+                        noc_async_read_one_packet_with_state<true>(act_l1_offset, l1_write_addr_act);
+                        l1_write_addr_act += (coalesced_read_bytes + act_block_w_extra_align_bytes);
+                        act_l1_offset = reader_offset + (reader_idx_2 * conv_act_c_read_bytes);
+                        noc_async_read_one_packet_with_state<true>(act_l1_offset, l1_write_addr_act);
+                        l1_write_addr_act += (coalesced_read_bytes + act_block_w_extra_align_bytes);
+                        // DPRINT << "reader_idx_1: " << reader_idx_1 << " reader_idx_2: " << reader_idx_2 << ENDL();
+                        reader_idx++;
+                    }
                 }
 
                 // dump(reader_idx_1);
@@ -193,11 +224,11 @@ void kernel_main() {
                 //     act_l1_offset += reader_offset + reader_idx1 * conv_act_c_read_bytes;
                 //     reader_idx1++;
                 // }
-                // noc_async_read_barrier();
-                // print_bf16_pages(
-                //     l1_write_addr_act - (2 * conv_act_c_read_bytes * window_inner),
-                //     (conv_act_c_read_bytes / 2) * window_inner,
-                //     2);
+                noc_async_read_barrier();
+                print_bf16_pages(
+                    l1_write_addr_act - (2 * conv_act_c_read_bytes * window_inner),
+                    (conv_act_c_read_bytes / 2) * window_inner,
+                    2);
 
                 // act_l1_offset = reader_offset + (reader_idx_1 * conv_act_c_read_bytes);
                 // for (uint32_t inner = 0; inner < weight_size_w; inner++) {
@@ -228,7 +259,7 @@ void kernel_main() {
         }
         reader_offset_idx = 0;
 
-        start_reader_idx += 16 * window_inner;
+        start_reader_idx += 16;
         dump(start_reader_idx);
 #ifdef SPLIT_READER
         start_reader_idx += act_block_h_datums_second_reader_read;
