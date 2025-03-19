@@ -175,8 +175,11 @@ void MAIN {
     // uint32_t core_id = get_arg_val<uint32_t>(rt_args_idx++);
 
     uint32_t common_rt_args_idx = 0;
+    const uint32_t start_core_x = get_common_arg_val<uint32_t>(common_rt_args_idx++);
+    const uint32_t start_core_y = get_common_arg_val<uint32_t>(common_rt_args_idx++);
     const uint32_t NUM_CORES_X = get_common_arg_val<uint32_t>(common_rt_args_idx++);
-    uint32_t core_id = get_relative_logical_x() + get_relative_logical_y() * NUM_CORES_X;
+    uint32_t core_id =
+        (get_absolute_logical_x() - start_core_x) + (get_absolute_logical_y() - start_core_y) * NUM_CORES_X;
 
     // DPRINT << "NUM_CORES_X " << NUM_CORES_X << ENDL();
     // DPRINT << "core_id " << core_id << ENDL();

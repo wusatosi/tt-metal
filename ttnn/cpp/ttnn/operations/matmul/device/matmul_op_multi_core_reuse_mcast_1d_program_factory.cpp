@@ -2393,6 +2393,8 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
             unpadded_in0_shard_widths_in_tiles.begin(),
             unpadded_in0_shard_widths_in_tiles.end());
         concated_all_mm_in0_args.insert(concated_all_mm_in0_args.begin(), (uint32_t)num_cores_x);
+        concated_all_mm_in0_args.insert(concated_all_mm_in0_args.begin(), (uint32_t)core_range.start_coord.y);
+        concated_all_mm_in0_args.insert(concated_all_mm_in0_args.begin(), (uint32_t)core_range.start_coord.x);
         SetCommonRuntimeArgs(program, mm_kernel_in0_ids[i], concated_all_mm_in0_args);
         tt::log_info("mm_in0_args_per_range: {}", mm_in0_args_per_range);
 
@@ -2404,6 +2406,8 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         std::vector<uint32_t> concated_all_mm_in1_args = generate_common_rt_args_array(mm_in1_args_per_range);
         concated_all_mm_in1_args.insert(concated_all_mm_in1_args.begin(), in1_buffer->address());
         concated_all_mm_in1_args.insert(concated_all_mm_in1_args.begin(), (uint32_t)num_cores_x);
+        concated_all_mm_in1_args.insert(concated_all_mm_in1_args.begin(), (uint32_t)core_range.start_coord.y);
+        concated_all_mm_in1_args.insert(concated_all_mm_in1_args.begin(), (uint32_t)core_range.start_coord.x);
         SetCommonRuntimeArgs(program, mm_kernel_in1_sender_writer_ids[i], concated_all_mm_in1_args);
         tt::log_info("mm_in1_args_per_range: {}", mm_in1_args_per_range);
 
@@ -2419,6 +2423,8 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
             unpadded_in0_shard_widths_in_tiles.begin(),
             unpadded_in0_shard_widths_in_tiles.end());
         concated_all_mm_compute_args.insert(concated_all_mm_compute_args.begin(), (uint32_t)num_cores_x);
+        concated_all_mm_compute_args.insert(concated_all_mm_compute_args.begin(), (uint32_t)core_range.start_coord.y);
+        concated_all_mm_compute_args.insert(concated_all_mm_compute_args.begin(), (uint32_t)core_range.start_coord.x);
         SetCommonRuntimeArgs(program, mm_kernels[i], concated_all_mm_compute_args);
         tt::log_info("all_mm_compute_args_per_range: {}", all_mm_compute_args_per_range);
 

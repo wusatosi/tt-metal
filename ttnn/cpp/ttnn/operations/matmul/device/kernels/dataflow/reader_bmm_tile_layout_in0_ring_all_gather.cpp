@@ -49,8 +49,11 @@ void kernel_main() {
     // uint32_t core_id = get_arg_val<uint32_t>(rt_args_idx++);
 
     uint32_t common_rt_args_idx = 0;
+    const uint32_t start_core_x = get_common_arg_val<uint32_t>(common_rt_args_idx++);
+    const uint32_t start_core_y = get_common_arg_val<uint32_t>(common_rt_args_idx++);
     const uint32_t NUM_CORES_X = get_common_arg_val<uint32_t>(common_rt_args_idx++);
-    uint32_t core_id = get_relative_logical_x() + get_relative_logical_y() * NUM_CORES_X;
+    uint32_t core_id =
+        (get_absolute_logical_x() - start_core_x) + (get_absolute_logical_y() - start_core_y) * NUM_CORES_X;
 
     volatile tt_l1_ptr uint32_t* unpadded_in0_shard_widths_in_tiles =
         (volatile tt_l1_ptr uint32_t*)(get_common_arg_addr(common_rt_args_idx));
