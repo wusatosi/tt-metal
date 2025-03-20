@@ -15,10 +15,55 @@ namespace NAMESPACE {
 
 enum class CORE_TYPE : uint8_t { IDLE_CORE = 0, WORKER_CORE = 1, HOP_CORE = 2 };
 
-struct common_rt_args_info {
+struct ct_args_info {
     uint8_t core_type;
     uint8_t ring_index;
 };
+
+#ifdef RANGE_0  // 30 cores
+constexpr std::array<uint32_t, 59> compile_time_arg_array{
+    get_compile_time_arg_val(0),  get_compile_time_arg_val(1),  get_compile_time_arg_val(2),
+    get_compile_time_arg_val(3),  get_compile_time_arg_val(4),  get_compile_time_arg_val(5),
+    get_compile_time_arg_val(6),  get_compile_time_arg_val(7),  get_compile_time_arg_val(8),
+    get_compile_time_arg_val(9),  get_compile_time_arg_val(10), get_compile_time_arg_val(11),
+    get_compile_time_arg_val(12), get_compile_time_arg_val(13), get_compile_time_arg_val(14),
+    get_compile_time_arg_val(15), get_compile_time_arg_val(16), get_compile_time_arg_val(17),
+    get_compile_time_arg_val(18), get_compile_time_arg_val(19), get_compile_time_arg_val(20),
+    get_compile_time_arg_val(21), get_compile_time_arg_val(22), get_compile_time_arg_val(23),
+    get_compile_time_arg_val(24), get_compile_time_arg_val(25), get_compile_time_arg_val(26),
+    get_compile_time_arg_val(27), get_compile_time_arg_val(28), get_compile_time_arg_val(29),
+    get_compile_time_arg_val(30), get_compile_time_arg_val(31), get_compile_time_arg_val(32),
+    get_compile_time_arg_val(33), get_compile_time_arg_val(34), get_compile_time_arg_val(35),
+    get_compile_time_arg_val(36), get_compile_time_arg_val(37), get_compile_time_arg_val(38),
+    get_compile_time_arg_val(39), get_compile_time_arg_val(40), get_compile_time_arg_val(41),
+    get_compile_time_arg_val(42), get_compile_time_arg_val(43), get_compile_time_arg_val(44),
+    get_compile_time_arg_val(45), get_compile_time_arg_val(46), get_compile_time_arg_val(47),
+    get_compile_time_arg_val(48), get_compile_time_arg_val(49), get_compile_time_arg_val(50),
+    get_compile_time_arg_val(51), get_compile_time_arg_val(52), get_compile_time_arg_val(53),
+    get_compile_time_arg_val(54), get_compile_time_arg_val(55), get_compile_time_arg_val(56),
+    get_compile_time_arg_val(57), get_compile_time_arg_val(58)};
+#else  // 20
+constexpr std::array<uint32_t, 54> compile_time_arg_array{
+    get_compile_time_arg_val(0),  get_compile_time_arg_val(1),  get_compile_time_arg_val(2),
+    get_compile_time_arg_val(3),  get_compile_time_arg_val(4),  get_compile_time_arg_val(5),
+    get_compile_time_arg_val(6),  get_compile_time_arg_val(7),  get_compile_time_arg_val(8),
+    get_compile_time_arg_val(9),  get_compile_time_arg_val(10), get_compile_time_arg_val(11),
+    get_compile_time_arg_val(12), get_compile_time_arg_val(13), get_compile_time_arg_val(14),
+    get_compile_time_arg_val(15), get_compile_time_arg_val(16), get_compile_time_arg_val(17),
+    get_compile_time_arg_val(18), get_compile_time_arg_val(19), get_compile_time_arg_val(20),
+    get_compile_time_arg_val(21), get_compile_time_arg_val(22), get_compile_time_arg_val(23),
+    get_compile_time_arg_val(24), get_compile_time_arg_val(25), get_compile_time_arg_val(26),
+    get_compile_time_arg_val(27), get_compile_time_arg_val(28), get_compile_time_arg_val(29),
+    get_compile_time_arg_val(30), get_compile_time_arg_val(31), get_compile_time_arg_val(32),
+    get_compile_time_arg_val(33), get_compile_time_arg_val(34), get_compile_time_arg_val(35),
+    get_compile_time_arg_val(36), get_compile_time_arg_val(37), get_compile_time_arg_val(38),
+    get_compile_time_arg_val(39), get_compile_time_arg_val(40), get_compile_time_arg_val(41),
+    get_compile_time_arg_val(42), get_compile_time_arg_val(43), get_compile_time_arg_val(44),
+    get_compile_time_arg_val(45), get_compile_time_arg_val(46), get_compile_time_arg_val(47),
+    get_compile_time_arg_val(48), get_compile_time_arg_val(49), get_compile_time_arg_val(50),
+    get_compile_time_arg_val(51), get_compile_time_arg_val(52), get_compile_time_arg_val(53),
+};
+#endif
 
 FORCE_INLINE void reload_from_cb_to_dst(
     uint32_t in0_cb_id,
@@ -138,65 +183,93 @@ FORCE_INLINE void update_rd_ptr_to_ring_index(
 
 void MAIN {
     // Compile time args
-    constexpr uint32_t in0_block_w = get_compile_time_arg_val(0);        // inner block size in tiles
-    constexpr uint32_t in0_num_subblocks = get_compile_time_arg_val(1);  // outer row block size (in inner row blocks)
+    // constexpr uint32_t in0_block_w = get_compile_time_arg_val(0);        // inner block size in tiles
+    // constexpr uint32_t in0_num_subblocks = get_compile_time_arg_val(1);  // outer row block size (in inner row
+    // blocks) constexpr uint32_t in0_block_num_tiles =
+    //     get_compile_time_arg_val(2);  // out_subblock_h*in0_block_w*in0_num_subblocks;
+    // constexpr uint32_t in0_subblock_num_tiles = get_compile_time_arg_val(3);  // out_subblock_h*in0_block_w
+    // constexpr uint32_t in1_num_subblocks =
+    //     get_compile_time_arg_val(4);  // outer column block size (in inner column blocks)
+    // constexpr uint32_t in1_block_num_tiles =
+    //     get_compile_time_arg_val(5);                                  // out_subblock_w*in0_block_w*
+    //     in1_num_subblocks;
+    // constexpr uint32_t in1_block_size_bytes = get_compile_time_arg_val(6);
+    // constexpr uint32_t in1_tensor_size_bytes = get_compile_time_arg_val(7);
+    // constexpr uint32_t in1_per_core_w = get_compile_time_arg_val(8);           // out_subblock_w*in1_num_subblocks
+    // constexpr uint32_t num_blocks = get_compile_time_arg_val(9);               // outer inner dim (in inner dim
+    // blocks) constexpr uint32_t out_subblock_h = get_compile_time_arg_val(10);          // inner row block size in
+    // tiles constexpr uint32_t out_subblock_w = get_compile_time_arg_val(11);          // inner column block size in
+    // tiles constexpr uint32_t out_subblock_num_tiles = get_compile_time_arg_val(12);  // out_subblock_h *
+    // out_subblock_w; constexpr uint32_t batch = get_compile_time_arg_val(13);                   // batch dim constexpr
+    // uint32_t out_block_num_tiles = get_compile_time_arg_val(14);     // number of tiles in out_block constexpr bool
+    // untilize_out = get_compile_time_arg_val(15);                // untilize output constexpr bool
+    // in1_is_dram_interleaved = get_compile_time_arg_val(16);     // in1 is in dram constexpr uint32_t ring_size =
+    // num_blocks;
+
+    uint32_t ct_args_idx = 0;
+    constexpr uint32_t in0_block_w = compile_time_arg_array[ct_args_idx++];  // inner block size in tiles
+    constexpr uint32_t in0_num_subblocks =
+        compile_time_arg_array[ct_args_idx++];  // outer row block size (in inner row blocks)
     constexpr uint32_t in0_block_num_tiles =
-        get_compile_time_arg_val(2);  // out_subblock_h*in0_block_w*in0_num_subblocks;
-    constexpr uint32_t in0_subblock_num_tiles = get_compile_time_arg_val(3);  // out_subblock_h*in0_block_w
+        compile_time_arg_array[ct_args_idx++];  // out_subblock_h*in0_block_w*in0_num_subblocks;
+    constexpr uint32_t in0_subblock_num_tiles = compile_time_arg_array[ct_args_idx++];  // out_subblock_h*in0_block_w
     constexpr uint32_t in1_num_subblocks =
-        get_compile_time_arg_val(4);  // outer column block size (in inner column blocks)
+        compile_time_arg_array[ct_args_idx++];  // outer column block size (in inner column blocks)
     constexpr uint32_t in1_block_num_tiles =
-        get_compile_time_arg_val(5);                                  // out_subblock_w*in0_block_w* in1_num_subblocks;
-    constexpr uint32_t in1_block_size_bytes = get_compile_time_arg_val(6);
-    constexpr uint32_t in1_tensor_size_bytes = get_compile_time_arg_val(7);
-    constexpr uint32_t in1_per_core_w = get_compile_time_arg_val(8);           // out_subblock_w*in1_num_subblocks
-    constexpr uint32_t num_blocks = get_compile_time_arg_val(9);               // outer inner dim (in inner dim blocks)
-    constexpr uint32_t out_subblock_h = get_compile_time_arg_val(10);          // inner row block size in tiles
-    constexpr uint32_t out_subblock_w = get_compile_time_arg_val(11);          // inner column block size in tiles
-    constexpr uint32_t out_subblock_num_tiles = get_compile_time_arg_val(12);  // out_subblock_h * out_subblock_w;
-    constexpr uint32_t batch = get_compile_time_arg_val(13);                   // batch dim
-    constexpr uint32_t out_block_num_tiles = get_compile_time_arg_val(14);     // number of tiles in out_block
-    constexpr bool untilize_out = get_compile_time_arg_val(15);                // untilize output
-    constexpr bool in1_is_dram_interleaved = get_compile_time_arg_val(16);     // in1 is in dram
+        compile_time_arg_array[ct_args_idx++];  // out_subblock_w*in0_block_w* in1_num_subblocks;
+    constexpr uint32_t in1_block_size_bytes = compile_time_arg_array[ct_args_idx++];
+    constexpr uint32_t in1_tensor_size_bytes = compile_time_arg_array[ct_args_idx++];
+    constexpr uint32_t in1_per_core_w = compile_time_arg_array[ct_args_idx++];  // out_subblock_w*in1_num_subblocks
+    constexpr uint32_t num_blocks = compile_time_arg_array[ct_args_idx++];      // outer inner dim (in inner dim blocks)
+    constexpr uint32_t out_subblock_h = compile_time_arg_array[ct_args_idx++];  // inner row block size in tiles
+    constexpr uint32_t out_subblock_w = compile_time_arg_array[ct_args_idx++];  // inner column block size in tiles
+    constexpr uint32_t out_subblock_num_tiles =
+        compile_time_arg_array[ct_args_idx++];                                       // out_subblock_h * out_subblock_w;
+    constexpr uint32_t batch = compile_time_arg_array[ct_args_idx++];                // batch dim
+    constexpr uint32_t out_block_num_tiles = compile_time_arg_array[ct_args_idx++];  // number of tiles in out_block
+    constexpr bool untilize_out = compile_time_arg_array[ct_args_idx++];             // untilize output
+    constexpr bool in1_is_dram_interleaved = compile_time_arg_array[ct_args_idx++];  // in1 is in dram
     constexpr uint32_t ring_size = num_blocks;
 
-    // // Runtime args
-    // uint32_t rt_args_idx = 0;
-    // uint32_t core_type = get_arg_val<uint32_t>(rt_args_idx++);
-    // if (core_type == (uint32_t)CORE_TYPE::IDLE_CORE || core_type == (uint32_t)CORE_TYPE::HOP_CORE) {
-    //     return;
-    // }
-    // uint32_t ring_idx = get_arg_val<uint32_t>(rt_args_idx++);
-    // const uint32_t* unpadded_in0_shard_widths_in_tiles = (uint32_t*)get_arg_addr(rt_args_idx);
-    // rt_args_idx += ring_size;
-
-    // Runtime args
-    // uint32_t rt_args_idx = 0;
-    // uint32_t core_id = get_arg_val<uint32_t>(rt_args_idx++);
-
-    uint32_t common_rt_args_idx = 0;
-    const uint32_t start_core_x = get_common_arg_val<uint32_t>(common_rt_args_idx++);
-    const uint32_t start_core_y = get_common_arg_val<uint32_t>(common_rt_args_idx++);
-    const uint32_t NUM_CORES_X = get_common_arg_val<uint32_t>(common_rt_args_idx++);
-    uint32_t core_id =
-        (get_absolute_logical_x() - start_core_x) + (get_absolute_logical_y() - start_core_y) * NUM_CORES_X;
-
-    // DPRINT << "NUM_CORES_X " << NUM_CORES_X << ENDL();
-    // DPRINT << "core_id " << core_id << ENDL();
+    const uint32_t start_core_x = compile_time_arg_array[ct_args_idx++];
+    const uint32_t start_core_y = compile_time_arg_array[ct_args_idx++];
+    const uint32_t NUM_CORES_X = compile_time_arg_array[ct_args_idx++];
 
     volatile tt_l1_ptr uint32_t* unpadded_in0_shard_widths_in_tiles =
-        (volatile tt_l1_ptr uint32_t*)(get_common_arg_addr(common_rt_args_idx));
-    common_rt_args_idx += ring_size;
-    volatile tt_l1_ptr uint8_t* common_rt_args_base =
-        (volatile tt_l1_ptr uint8_t*)(get_common_arg_addr(common_rt_args_idx));
-    volatile tt_l1_ptr common_rt_args_info* common_rt_args =
-        (volatile tt_l1_ptr common_rt_args_info*)(common_rt_args_base + core_id * sizeof(common_rt_args_info));
+        (volatile tt_l1_ptr uint32_t*)(&compile_time_arg_array[ct_args_idx]);
+    ct_args_idx += ring_size;
+    volatile tt_l1_ptr uint8_t* ct_args_base = (volatile tt_l1_ptr uint8_t*)(&compile_time_arg_array[ct_args_idx]);
+    uint32_t core_id =
+        (get_absolute_logical_x() - start_core_x) + (get_absolute_logical_y() - start_core_y) * NUM_CORES_X;
+    volatile tt_l1_ptr ct_args_info* info =
+        (volatile tt_l1_ptr ct_args_info*)(ct_args_base + core_id * sizeof(ct_args_info));
 
-    uint32_t core_type = (uint32_t)common_rt_args->core_type;
+    uint32_t core_type = (uint32_t)info->core_type;
     if (core_type == (uint32_t)CORE_TYPE::IDLE_CORE || core_type == (uint32_t)CORE_TYPE::HOP_CORE) {
         return;
     }
-    uint32_t ring_idx = (uint32_t)common_rt_args->ring_index;
+    uint32_t ring_idx = (uint32_t)info->ring_index;
+
+    // uint32_t common_rt_args_idx = 0;
+    // const uint32_t start_core_x = get_common_arg_val<uint32_t>(common_rt_args_idx++);
+    // const uint32_t start_core_y = get_common_arg_val<uint32_t>(common_rt_args_idx++);
+    // const uint32_t NUM_CORES_X = get_common_arg_val<uint32_t>(common_rt_args_idx++);
+    // uint32_t core_id =
+    //     (get_absolute_logical_x() - start_core_x) + (get_absolute_logical_y() - start_core_y) * NUM_CORES_X;
+
+    // volatile tt_l1_ptr uint32_t* unpadded_in0_shard_widths_in_tiles =
+    //     (volatile tt_l1_ptr uint32_t*)(get_common_arg_addr(common_rt_args_idx));
+    // common_rt_args_idx += ring_size;
+    // volatile tt_l1_ptr uint8_t* common_rt_args_base =
+    //     (volatile tt_l1_ptr uint8_t*)(get_common_arg_addr(common_rt_args_idx));
+    // volatile tt_l1_ptr common_rt_args_info* common_rt_args =
+    //     (volatile tt_l1_ptr common_rt_args_info*)(common_rt_args_base + core_id * sizeof(common_rt_args_info));
+
+    // uint32_t core_type = (uint32_t)common_rt_args->core_type;
+    // if (core_type == (uint32_t)CORE_TYPE::IDLE_CORE || core_type == (uint32_t)CORE_TYPE::HOP_CORE) {
+    //     return;
+    // }
+    // uint32_t ring_idx = (uint32_t)common_rt_args->ring_index;
 
     constexpr uint32_t out_block_w = out_subblock_w * in1_num_subblocks;
 

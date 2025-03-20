@@ -1961,6 +1961,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
     };
 
     /* Kernel defines */
+    std::map<string, string> mm_in0_kernel_defines;
     std::map<string, string> mm_in1_kernel_defines;
     std::map<string, string> mm_kernel_defines;
 
@@ -1993,85 +1994,6 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
     bool use_dedicated_noc = true;
     tt_metal::NOC_MODE noc_mode =
         use_dedicated_noc ? tt_metal::NOC_MODE::DM_DEDICATED_NOC : tt_metal::NOC_MODE::DM_DYNAMIC_NOC;
-
-    /* Create the kernels */
-    // auto mm_kernel_in0_id = tt_metal::CreateKernel(
-    //     program,
-    //     "ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/reader_bmm_tile_layout_in0_ring_all_gather.cpp",
-    //     all_cores,
-    //     tt_metal::DataMovementConfig{
-    //         .processor = tt_metal::DataMovementProcessor::RISCV_1,
-    //         .noc = in0_noc,
-    //         .noc_mode = noc_mode,
-    //         .compile_args = in0_sender_compile_time_args});
-
-    // auto mm_kernel_in1_sender_writer_id = tt_metal::CreateKernel(
-    //     program,
-    //     "ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/reader_bmm_tile_layout_in1_ring_all_gather.cpp",
-    //     all_cores,
-    //     tt_metal::DataMovementConfig{
-    //         .processor = tt_metal::DataMovementProcessor::RISCV_0,
-    //         .noc = in1_noc,
-    //         .noc_mode = noc_mode,
-    //         .compile_args = in1_sender_writer_compile_time_args,
-    //         .defines = mm_in1_kernel_defines});
-
-    // auto mm_kernel = tt_metal::CreateKernel(
-    //     program,
-    //     "ttnn/cpp/ttnn/operations/matmul/device/kernels/compute/bmm_large_block_zm_fused_bias_activation_gathered.cpp",
-    //     all_cores,
-    //     tt_metal::ComputeConfig{
-    //         .math_fidelity = math_fidelity,
-    //         .fp32_dest_acc_en = fp32_dest_acc_en,
-    //         .dst_full_sync_en = dst_full_sync_en,
-    //         .math_approx_mode = math_approx_mode,
-    //         .compile_args = compute_kernel_args,
-    //         .defines = mm_kernel_defines});
-
-    std::vector<tt::tt_metal::KernelHandle> mm_kernel_in0_ids;
-    std::vector<tt::tt_metal::KernelHandle> mm_kernel_in1_sender_writer_ids;
-    std::vector<tt::tt_metal::KernelHandle> mm_kernels;
-    for (auto& core_range : all_cores.ranges()) {
-        tt::log_info("core_range: {}", core_range);
-
-        auto mm_kernel_in0_id = tt_metal::CreateKernel(
-            program,
-            "ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/reader_bmm_tile_layout_in0_ring_all_gather.cpp",
-            CoreRangeSet(core_range),
-            tt_metal::DataMovementConfig{
-                .processor = tt_metal::DataMovementProcessor::RISCV_1,
-                .noc = in0_noc,
-                .noc_mode = noc_mode,
-                .compile_args = in0_sender_compile_time_args});
-
-        auto mm_kernel_in1_sender_writer_id = tt_metal::CreateKernel(
-            program,
-            "ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/reader_bmm_tile_layout_in1_ring_all_gather.cpp",
-            CoreRangeSet(core_range),
-            tt_metal::DataMovementConfig{
-                .processor = tt_metal::DataMovementProcessor::RISCV_0,
-                .noc = in1_noc,
-                .noc_mode = noc_mode,
-                .compile_args = in1_sender_writer_compile_time_args,
-                .defines = mm_in1_kernel_defines});
-
-        auto mm_kernel = tt_metal::CreateKernel(
-            program,
-            "ttnn/cpp/ttnn/operations/matmul/device/kernels/compute/"
-            "bmm_large_block_zm_fused_bias_activation_gathered.cpp",
-            CoreRangeSet(core_range),
-            tt_metal::ComputeConfig{
-                .math_fidelity = math_fidelity,
-                .fp32_dest_acc_en = fp32_dest_acc_en,
-                .dst_full_sync_en = dst_full_sync_en,
-                .math_approx_mode = math_approx_mode,
-                .compile_args = compute_kernel_args,
-                .defines = mm_kernel_defines});
-
-        mm_kernel_in0_ids.push_back(mm_kernel_in0_id);
-        mm_kernel_in1_sender_writer_ids.push_back(mm_kernel_in1_sender_writer_id);
-        mm_kernels.push_back(mm_kernel);
-    }
 
     /* Create circular buffers */
     uint32_t src0_cb_index = tt::CBIndex::c_0;
@@ -2192,11 +2114,10 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
             // mm_kernel_in0_args.push_back((std::uint32_t)core_type);
             // tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, mm_kernel_in0_args);
             std::vector<uint32_t> mm_in0_args = {
-                (std::uint32_t)core_type,
-                0,  // ring_index
-                0,  // next_core_noc_x
-                0,  // next_core_noc_y
-                0};
+                (std::uint32_t)(((std::uint32_t)core_type & 0xf) << 4),
+                0,   // ring_index/noc
+                0,   // next_core_noc_x
+                0};  // next_core_noc_y
             add_rt_args_to_all_rt_args(all_mm_in0_args, mm_in0_args, core_id);
             // mm_in0_args.insert(mm_in0_args.begin(), (std::uint32_t)core_id);
             // tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, {(std::uint32_t)core_id});
@@ -2265,11 +2186,10 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         //     mm_in0_args.end(), unpadded_in0_shard_widths_in_tiles.begin(), unpadded_in0_shard_widths_in_tiles.end());
         // tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, mm_in0_args);
         std::vector<uint32_t> mm_in0_args = {
-            (std::uint32_t)core_type,
-            i,                // ring_index
-            next_core_noc.x,  // next_core_noc_x
-            next_core_noc.y,  // next_core_noc_y
-            noc};
+            (std::uint32_t)(((std::uint32_t)core_type & 0xf) << 4 | noc & 0xf),
+            (std::uint32_t)i,  // ring_index
+            next_core_noc.x,   // next_core_noc_x
+            next_core_noc.y};  // next_core_noc_y
         add_rt_args_to_all_rt_args(all_mm_in0_args, mm_in0_args, core_id);
         // mm_in0_args.insert(mm_in0_args.begin(), (std::uint32_t)core_id);
         // tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, {(std::uint32_t)core_id});
@@ -2350,11 +2270,10 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         // tt_metal::SetRuntimeArgs(program, mm_kernel, core, mm_kernel_args);
 
         std::vector<uint32_t> mm_in0_args = {
-            (std::uint32_t)core_type,
-            0,                // ring_index
-            next_core_noc.x,  // next_core_noc_x
-            next_core_noc.y,  // next_core_noc_y
-            noc};
+            (std::uint32_t)(((std::uint32_t)core_type & 0xf) << 4 | noc & 0xf),
+            0,                 // ring_index
+            next_core_noc.x,   // next_core_noc_x
+            next_core_noc.y};  // next_core_noc_y
         add_rt_args_to_all_rt_args(all_mm_in0_args, mm_in0_args, core_id);
         // mm_in0_args.insert(mm_in0_args.begin(), (std::uint32_t)core_id);
         // tt_metal::SetRuntimeArgs(program, mm_kernel_in0_id, core, {(std::uint32_t)core_id});
@@ -2378,6 +2297,9 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         // tt_metal::SetRuntimeArgs(program, mm_kernel, core, {(std::uint32_t)core_id});
     }
 
+    std::vector<tt::tt_metal::KernelHandle> mm_kernel_in0_ids;
+    std::vector<tt::tt_metal::KernelHandle> mm_kernel_in1_sender_writer_ids;
+    std::vector<tt::tt_metal::KernelHandle> mm_kernels;
     uint32_t offset = 0;
     for (uint32_t i = 0; i < all_cores_info.size(); ++i) {
         // split the crta array in0 into core ranges
@@ -2395,8 +2317,21 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         concated_all_mm_in0_args.insert(concated_all_mm_in0_args.begin(), (uint32_t)num_cores_x);
         concated_all_mm_in0_args.insert(concated_all_mm_in0_args.begin(), (uint32_t)core_range.start_coord.y);
         concated_all_mm_in0_args.insert(concated_all_mm_in0_args.begin(), (uint32_t)core_range.start_coord.x);
-        SetCommonRuntimeArgs(program, mm_kernel_in0_ids[i], concated_all_mm_in0_args);
+        in0_sender_compile_time_args.insert(
+            in0_sender_compile_time_args.end(), concated_all_mm_in0_args.begin(), concated_all_mm_in0_args.end());
         tt::log_info("mm_in0_args_per_range: {}", mm_in0_args_per_range);
+
+        mm_in0_kernel_defines[i == 0 ? "RANGE_0" : "RANGE_1"] = "1";
+        auto mm_kernel_in0_id = tt_metal::CreateKernel(
+            program,
+            "ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/reader_bmm_tile_layout_in0_ring_all_gather.cpp",
+            CoreRangeSet(core_range),
+            tt_metal::DataMovementConfig{
+                .processor = tt_metal::DataMovementProcessor::RISCV_1,
+                .noc = in0_noc,
+                .noc_mode = noc_mode,
+                .compile_args = in0_sender_compile_time_args,
+                .defines = mm_in0_kernel_defines});
 
         // split the crta array in1 into core ranges
         std::vector<std::vector<uint32_t>> mm_in1_args_per_range(
@@ -2408,8 +2343,23 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         concated_all_mm_in1_args.insert(concated_all_mm_in1_args.begin(), (uint32_t)num_cores_x);
         concated_all_mm_in1_args.insert(concated_all_mm_in1_args.begin(), (uint32_t)core_range.start_coord.y);
         concated_all_mm_in1_args.insert(concated_all_mm_in1_args.begin(), (uint32_t)core_range.start_coord.x);
-        SetCommonRuntimeArgs(program, mm_kernel_in1_sender_writer_ids[i], concated_all_mm_in1_args);
+        in1_sender_writer_compile_time_args.insert(
+            in1_sender_writer_compile_time_args.end(),
+            concated_all_mm_in1_args.begin(),
+            concated_all_mm_in1_args.end());
         tt::log_info("mm_in1_args_per_range: {}", mm_in1_args_per_range);
+
+        mm_in1_kernel_defines[i == 0 ? "RANGE_0" : "RANGE_1"] = "1";
+        auto mm_kernel_in1_sender_writer_id = tt_metal::CreateKernel(
+            program,
+            "ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/reader_bmm_tile_layout_in1_ring_all_gather.cpp",
+            CoreRangeSet(core_range),
+            tt_metal::DataMovementConfig{
+                .processor = tt_metal::DataMovementProcessor::RISCV_0,
+                .noc = in1_noc,
+                .noc_mode = noc_mode,
+                .compile_args = in1_sender_writer_compile_time_args,
+                .defines = mm_in1_kernel_defines});
 
         // split the crta array compute into core ranges
         std::vector<std::vector<uint32_t>> all_mm_compute_args_per_range(
@@ -2425,10 +2375,35 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         concated_all_mm_compute_args.insert(concated_all_mm_compute_args.begin(), (uint32_t)num_cores_x);
         concated_all_mm_compute_args.insert(concated_all_mm_compute_args.begin(), (uint32_t)core_range.start_coord.y);
         concated_all_mm_compute_args.insert(concated_all_mm_compute_args.begin(), (uint32_t)core_range.start_coord.x);
-        SetCommonRuntimeArgs(program, mm_kernels[i], concated_all_mm_compute_args);
+        compute_kernel_args.insert(
+            compute_kernel_args.end(), concated_all_mm_compute_args.begin(), concated_all_mm_compute_args.end());
         tt::log_info("all_mm_compute_args_per_range: {}", all_mm_compute_args_per_range);
 
+        mm_kernel_defines[i == 0 ? "RANGE_0" : "RANGE_1"] = "1";
+        auto mm_kernel = tt_metal::CreateKernel(
+            program,
+            "ttnn/cpp/ttnn/operations/matmul/device/kernels/compute/"
+            "bmm_large_block_zm_fused_bias_activation_gathered.cpp",
+            CoreRangeSet(core_range),
+            tt_metal::ComputeConfig{
+                .math_fidelity = math_fidelity,
+                .fp32_dest_acc_en = fp32_dest_acc_en,
+                .dst_full_sync_en = dst_full_sync_en,
+                .math_approx_mode = math_approx_mode,
+                .compile_args = compute_kernel_args,
+                .defines = mm_kernel_defines});
+
+        mm_kernel_in0_ids.push_back(mm_kernel_in0_id);
+        mm_kernel_in1_sender_writer_ids.push_back(mm_kernel_in1_sender_writer_id);
+        mm_kernels.push_back(mm_kernel);
+
         offset += core_range_size;
+    }
+
+    if (!in1_is_dram_interleaved) {
+        for (uint32_t i = 0; i < all_cores_info.size(); ++i) {
+            SetCommonRuntimeArgs(program, mm_kernel_in1_sender_writer_ids[i], {in1_buffer->address()});
+        }
     }
 
     // set common rt args for in0
@@ -2501,7 +2476,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
             if (not src1_sharded) {
                 for (const auto& in1_kernel : mm_kernel_in1_sender_writer_ids) {
                     auto& writer_common_rt_args = GetCommonRuntimeArgs(program, in1_kernel);
-                    writer_common_rt_args[3] = src_buffer_b->address();
+                    writer_common_rt_args[0] = src_buffer_b->address();
                 }
                 // auto& writer_common_rt_args = GetCommonRuntimeArgs(program, mm_kernel_in1_sender_writer_ids);
                 // writer_common_rt_args[0] = src_buffer_b->address();
