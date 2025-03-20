@@ -67,7 +67,8 @@ def run_fabric_edm(
     logger.warning("removing file profile_log_device.csv")
     os.system(f"rm -rf {os.environ['TT_METAL_HOME']}/generated/profiler/.logs/profile_log_device.csv")
 
-    cmd = f"TT_METAL_DEVICE_PROFILER=1 \
+    # cmd = f"TT_METAL_DEVICE_PROFILER=1 \
+    cmd = f" \
             {os.environ['TT_METAL_HOME']}/build/test/ttnn/unit_tests_ttnn_fabric_edm \
                 {num_mcasts} \
                 {num_unicasts} \
