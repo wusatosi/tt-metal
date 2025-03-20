@@ -196,8 +196,10 @@ Tensor halo_op(
         if (!HaloDeviceOperation::sliding_window_max_out_nsticks_per_core.contains(sliding_window_hash)) {
             auto op_trace_metadata = sliding_window::generate_op_trace_metadata(config);
             auto shard_boundaries = sliding_window::generate_shard_boundaries(config, op_trace_metadata);
+            auto dilated_idxes =
+                sliding_window::generate_dilated_idx_for_tensor_metadata(config, shard_boundaries, op_trace_metadata);
             HaloDeviceOperation::sliding_window_max_out_nsticks_per_core.emplace(
-                sliding_window_hash, sliding_window::generate_max_out_nsticks_per_core(shard_boundaries));
+                sliding_window_hash, sliding_window::generate_max_out_nsticks_per_core(dilated_idxes));
         }
 
         uint32_t max_out_nsticks_per_core =

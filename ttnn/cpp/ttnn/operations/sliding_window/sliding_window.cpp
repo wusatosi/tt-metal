@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "sliding_window.hpp"
+#include <sys/types.h>
 #include <cstdint>
 #include <iostream>
 #include <vector>
@@ -26,6 +27,11 @@ bool SlidingWindowConfig::has_parallel_config() const {
 /**
  * Calculate the window op output shape, excludes the channel dimension since this config is independent of the depth.
  */
+
+uint32_t global_window_w = 0;
+uint32_t global_dilation_w = 0;
+uint32_t global_output_w = 0;
+
 ttnn::Shape SlidingWindowConfig::get_output_shape() const {
     if (is_transpose) {
         TT_FATAL(!ceil_mode, "ceil_mode is not supported for transposed operation");
@@ -222,6 +228,8 @@ std::vector<uint32_t> generate_op_trace_metadata(const SlidingWindowConfig& conf
 
         uint32_t padded_input_h = config.input_hw.first + 2 * config.pad_hw.first + ceil_padding_h;
         uint32_t padded_input_w = config.input_hw.second + 2 * config.pad_hw.second + ceil_padding_w;
+        global_dilation_w = config.dilation_hw.second;
+        global_window_w = config.window_hw.second;
         uint32_t i = 0;
         for (uint32_t b = 0; b < output_shape[0]; ++b) {
             for (uint32_t h = 0; h < output_shape[1]; ++h) {
@@ -342,82 +350,79 @@ std::vector<PixelMetadata> generate_tensor_metadata(
     return tensor_metadata;
 }
 
-uint32_t generate_max_out_nsticks_per_core(const std::vector<ShardBoundary>& shard_boundaries) {
-    // calculate max_out_nsticks_per_core
+uint32_t generate_max_out_nsticks_per_core(const std::vector<std::vector<uint32_t>>& dilated_idxes) {
     uint32_t max_out_nsticks_per_core = 0;
-    for (auto [_, in_shard] : shard_boundaries) {
-        auto [in_start, in_end] = in_shard;
-        max_out_nsticks_per_core = std::max(max_out_nsticks_per_core, in_end - in_start + 1);
+    for (auto dilated_idx : dilated_idxes) {
+        max_out_nsticks_per_core = std::max(max_out_nsticks_per_core, (uint32_t)dilated_idx.size());
     }
     return max_out_nsticks_per_core;
 }
 
-uint32_t global_padded_input_w = 0;
-uint32_t global_window_w = 0;
-uint32_t global_dilation_w = 0;
-uint32_t global_core_idx = 0;
-uint32_t global_output_w = 0;
 std::vector<std::vector<std::vector<std::vector<uint16_t>>>> halo_op_to_idx_map;
-std::vector<uint32_t> generate_dilated_idx_for_tensor_metadata(
+std::vector<std::vector<uint32_t>> generate_dilated_idx_for_tensor_metadata(
     const SlidingWindowConfig& config,
-    const ShardBoundary& shard_boundary,
-    const std::vector<PixelMetadata>& tensor_metadata,
+    const std::vector<ShardBoundary>& shard_boundaries,
     const std::vector<uint32_t>& op_trace_metadata) {
-    auto [output_boundary, input_boundary] = shard_boundary;
-    std::vector<uint32_t> dilated_idx_for_tensor_metadata;
-    auto output_shape = config.get_output_shape();
-    global_output_w = output_shape[2];
-    uint32_t padded_input_h = config.input_hw.first + 2 * config.pad_hw.first + config.get_ceil_pad_h();
-    uint32_t padded_input_w = config.input_hw.second + 2 * config.pad_hw.second + config.get_ceil_pad_w();
-    global_padded_input_w = padded_input_w;
-    global_window_w = config.window_hw.second;
-    global_dilation_w = config.dilation_hw.second;
-    // std::cout << "padded_input_w: " << padded_input_w << std::endl;
-    auto [output_start, output_end] = output_boundary;
-    // std::cout << "output_start: " << output_start << " output_end: " << output_end << std::endl;
-    for (auto i = output_start; i <= output_end; i++) {
-        auto anchor = op_trace_metadata[i];
-        for (auto fh = 0; fh < config.window_hw.first; fh++) {
-            for (auto fw = 0; fw < config.window_hw.second; fw++) {
-                auto dilated_idx =
-                    anchor + fh * padded_input_w * config.dilation_hw.first + fw * config.dilation_hw.second;
-                dilated_idx_for_tensor_metadata.push_back(dilated_idx);
-            }
-        }
-    }
-    sort(dilated_idx_for_tensor_metadata.begin(), dilated_idx_for_tensor_metadata.end());
-    dilated_idx_for_tensor_metadata.erase(
-        unique(dilated_idx_for_tensor_metadata.begin(), dilated_idx_for_tensor_metadata.end()),
-        dilated_idx_for_tensor_metadata.end());
-
-    for (auto fh = 0; fh < config.window_hw.first; fh++) {
-        std::vector<std::vector<uint16_t>> halo_op_to_idx_map_local;
+    std::vector<std::vector<uint32_t>> dilated_idxes;
+    uint32_t core_idx = 0;
+    halo_op_to_idx_map.resize(shard_boundaries.size());
+    for (auto shard_boundary : shard_boundaries) {
+        auto [output_boundary, input_boundary] = shard_boundary;
+        auto output_shape = config.get_output_shape();
+        std::vector<uint32_t> dilated_idx_for_tensor_metadata;
+        global_output_w = output_shape[2];
+        uint32_t padded_input_h = config.input_hw.first + 2 * config.pad_hw.first + config.get_ceil_pad_h();
+        uint32_t padded_input_w = config.input_hw.second + 2 * config.pad_hw.second + config.get_ceil_pad_w();
+        global_window_w = config.window_hw.second;
+        global_dilation_w = config.dilation_hw.second;
+        // std::cout << "padded_input_w: " << padded_input_w << std::endl;
+        auto [output_start, output_end] = output_boundary;
+        // std::cout << "output_start: " << output_start << " output_end: " << output_end << std::endl;
         for (auto i = output_start; i <= output_end; i++) {
             auto anchor = op_trace_metadata[i];
-            std::vector<uint16_t> idx_map;
-            for (auto fw = 0; fw < config.window_hw.second; fw++) {
-                auto dilated_idx =
-                    anchor + fh * padded_input_w * config.dilation_hw.first + fw * config.dilation_hw.second;
-                auto it =
-                    find(dilated_idx_for_tensor_metadata.begin(), dilated_idx_for_tensor_metadata.end(), dilated_idx);
-                if (it != dilated_idx_for_tensor_metadata.end()) {
-                    idx_map.push_back(distance(dilated_idx_for_tensor_metadata.begin(), it));
-                } else {
-                    idx_map.push_back(0xFFFF);
+            for (auto fh = 0; fh < config.window_hw.first; fh++) {
+                for (auto fw = 0; fw < config.window_hw.second; fw++) {
+                    auto dilated_idx =
+                        anchor + fh * padded_input_w * config.dilation_hw.first + fw * config.dilation_hw.second;
+                    dilated_idx_for_tensor_metadata.push_back(dilated_idx);
                 }
             }
-            halo_op_to_idx_map_local.push_back(idx_map);
         }
-        halo_op_to_idx_map[global_core_idx].push_back(halo_op_to_idx_map_local);
+        sort(dilated_idx_for_tensor_metadata.begin(), dilated_idx_for_tensor_metadata.end());
+        dilated_idx_for_tensor_metadata.erase(
+            unique(dilated_idx_for_tensor_metadata.begin(), dilated_idx_for_tensor_metadata.end()),
+            dilated_idx_for_tensor_metadata.end());
+
+        for (auto fh = 0; fh < config.window_hw.first; fh++) {
+            std::vector<std::vector<uint16_t>> halo_op_to_idx_map_local;
+            for (auto i = output_start; i <= output_end; i++) {
+                auto anchor = op_trace_metadata[i];
+                std::vector<uint16_t> idx_map;
+                for (auto fw = 0; fw < config.window_hw.second; fw++) {
+                    auto dilated_idx =
+                        anchor + fh * padded_input_w * config.dilation_hw.first + fw * config.dilation_hw.second;
+                    auto it = find(
+                        dilated_idx_for_tensor_metadata.begin(), dilated_idx_for_tensor_metadata.end(), dilated_idx);
+                    if (it != dilated_idx_for_tensor_metadata.end()) {
+                        idx_map.push_back(distance(dilated_idx_for_tensor_metadata.begin(), it));
+                    } else {
+                        idx_map.push_back(0xFFFF);
+                    }
+                }
+                halo_op_to_idx_map_local.push_back(idx_map);
+            }
+            halo_op_to_idx_map[core_idx].push_back(halo_op_to_idx_map_local);
+        }
+        // std::cout << std::endl;
+        // for (auto i = 0; i < dilated_idx_for_tensor_metadata.size(); i++) {
+        //     std::cout << dilated_idx_for_tensor_metadata[i] << " ";
+        // }
+        // std::cout << std::endl;
+        // std::cout << std::endl;
+        core_idx++;
+        dilated_idxes.push_back(dilated_idx_for_tensor_metadata);
     }
-    // std::cout << std::endl;
-    // for (auto i = 0; i < dilated_idx_for_tensor_metadata.size(); i++) {
-    //     std::cout << dilated_idx_for_tensor_metadata[i] << " ";
-    // }
-    // std::cout << std::endl;
-    // std::cout << std::endl;
-    global_core_idx++;
-    return dilated_idx_for_tensor_metadata;
+    return dilated_idxes;
 }
 
 std::vector<std::vector<std::vector<uint16_t>>> generate_halo_kernel_config_tensors(
@@ -441,14 +446,13 @@ std::vector<std::vector<std::vector<uint16_t>>> generate_halo_kernel_config_tens
 
     uint32_t num_cores_nhw = shard_boundaries.size();
     // std::cout << "num_cores_nhw: " << num_cores_nhw << std::endl;
-    halo_op_to_idx_map.resize(num_cores_nhw);
-    global_core_idx = 0;
+    // halo_op_to_idx_map.resize(num_cores_nhw);
     uint32_t core_id = 0;
+    auto dilated_idxes_ = generate_dilated_idx_for_tensor_metadata(config, shard_boundaries, op_trace_metadata);
     for (auto [output_boundary, input_boundary] : shard_boundaries) {
         auto [input_start, input_end] = input_boundary;
-        auto dilated_idxes = generate_dilated_idx_for_tensor_metadata(
-            config, shard_boundaries[core_id], tensor_metadata, op_trace_metadata);
         auto dilated_idxes_strt = 0;
+        auto dilated_idxes = dilated_idxes_[core_id];
         // std::cout << "dilated_idxes size: " << dilated_idxes.size() << std::endl;
         // std::cout << "dilation hw: " << config.dilation_hw.first << " " << config.dilation_hw.second << std::endl;
         // std::cout << "input_start: " << input_start << " input_end: " << input_end

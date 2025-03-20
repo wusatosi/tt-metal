@@ -103,6 +103,10 @@ struct PixelMetadata {
 
 std::vector<bool> generate_pad_metadata(const SlidingWindowConfig& config);
 std::vector<uint32_t> generate_op_trace_metadata(const SlidingWindowConfig& config);
+std::vector<std::vector<uint32_t>> generate_dilated_idx_for_tensor_metadata(
+    const SlidingWindowConfig& config,
+    const std::vector<ShardBoundary>& shard_boundaries,
+    const std::vector<uint32_t>& op_trace_metadata);
 std::vector<ShardBoundary> generate_shard_boundaries(
     const SlidingWindowConfig& config, const std::vector<uint32_t>& op_trace_metadata);
 std::vector<PixelMetadata> generate_tensor_metadata(
@@ -110,7 +114,7 @@ std::vector<PixelMetadata> generate_tensor_metadata(
     const SlidingWindowConfig& config,
     uint32_t reshard_num_cores_nhw = 0,
     bool is_in_tiled = true);
-uint32_t generate_max_out_nsticks_per_core(const std::vector<ShardBoundary>& shard_boundaries);
+uint32_t generate_max_out_nsticks_per_core(const std::vector<std::vector<uint32_t>>& dilated_idxes);
 std::vector<std::vector<std::vector<uint16_t>>> generate_halo_kernel_config_tensors(
     const SlidingWindowConfig& config,
     const std::vector<uint32_t>& op_trace_metadata,
