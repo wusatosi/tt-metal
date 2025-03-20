@@ -37,15 +37,22 @@ UnaryProgramFactory::cached_program_t UnaryProgramFactory::create(
     auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
     uint32_t num_cores_x = compute_with_storage_grid_size.x;
     uint32_t num_cores_y = compute_with_storage_grid_size.y;
-    auto [num_cores, all_cores, core_group_1, core_group_2, num_tiles_per_core_group_1, num_tiles_per_core_group_2] =
+    auto [_0, _1, core_group_1, core_group_2, num_tiles_per_core_group_1, num_tiles_per_core_group_2] =
         tt::tt_metal::split_work_to_cores(compute_with_storage_grid_size, num_tiles);
+
+    CoreRangeSet all_device_cores;
+    for (const auto& sub_device_id : device->get_sub_device_ids()) {
+        const auto& sub_device_workers = device->worker_cores(HalProgrammableCoreType::TENSIX, sub_device_id);
+        all_device_cores = all_device_cores.merge(sub_device_workers);
+    }
+    uint32_t num_all_cores = all_device_cores.num_cores();
 
     uint32_t src0_cb_index = tt::CBIndex::c_0;
     uint32_t num_input_tiles = 2;
     tt::tt_metal::CircularBufferConfig cb_src0_config =
         tt::tt_metal::CircularBufferConfig(num_input_tiles * single_tile_size, {{src0_cb_index, cb_data_format}})
             .set_page_size(src0_cb_index, single_tile_size);
-    auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_src0_config);
+    auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, all_device_cores, cb_src0_config);
 
     uint32_t output_cb_index = tt::CBIndex::c_2;
     uint32_t num_output_tiles = 2;
@@ -53,7 +60,7 @@ UnaryProgramFactory::cached_program_t UnaryProgramFactory::create(
         tt::tt_metal::CircularBufferConfig(
             num_output_tiles * single_tile_size_output, {{output_cb_index, cb_data_format_output}})
             .set_page_size(output_cb_index, single_tile_size_output);
-    auto cb_output = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_output_config);
+    auto cb_output = tt::tt_metal::CreateCircularBuffer(program, all_device_cores, cb_output_config);
 
     auto src_buffer = input.buffer();
 
@@ -67,13 +74,13 @@ UnaryProgramFactory::cached_program_t UnaryProgramFactory::create(
     tt::tt_metal::KernelHandle unary_reader_kernel_id = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/dataflow/reader_unary_interleaved_start_id.cpp",
-        all_cores,
+        all_device_cores,
         tt::tt_metal::ReaderDataMovementConfig(reader_compile_time_args));
 
     tt::tt_metal::KernelHandle unary_writer_kernel_id = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/dataflow/writer_unary_interleaved_start_id.cpp",
-        all_cores,
+        all_device_cores,
         tt::tt_metal::WriterDataMovementConfig(writer_compile_time_args));
 
     std::vector<UnpackToDestMode> unpack_to_dest_mode(NUM_CIRCULAR_BUFFERS, UnpackToDestMode::Default);
@@ -88,7 +95,7 @@ UnaryProgramFactory::cached_program_t UnaryProgramFactory::create(
     auto unary_compute_kernel_id = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/compute/eltwise_sfpu.cpp",
-        all_cores,
+        all_device_cores,
         tt::tt_metal::ComputeConfig{
             .math_fidelity = MathFidelity::HiFi4,
             .fp32_dest_acc_en = args.fp32_dest_acc_en,
@@ -97,7 +104,7 @@ UnaryProgramFactory::cached_program_t UnaryProgramFactory::create(
             .math_approx_mode = math_approx_mode,
             .defines = unary_defines});
 
-    for (uint32_t i = 0, num_tiles_written = 0; i < num_cores; i++) {
+    for (uint32_t i = 0, num_tiles_written = 0; i < num_all_cores; i++) {
         CoreCoord core = {i / num_cores_y, i % num_cores_y};
         uint32_t num_tiles_per_core = 0;
         if (core_group_1.contains(core)) {
@@ -105,7 +112,7 @@ UnaryProgramFactory::cached_program_t UnaryProgramFactory::create(
         } else if (core_group_2.contains(core)) {
             num_tiles_per_core = num_tiles_per_core_group_2;
         } else {
-            TT_ASSERT(false, "Core not in specified core ranges");
+            num_tiles_per_core = 0;
         }
 
         tt::tt_metal::SetRuntimeArgs(
@@ -120,7 +127,7 @@ UnaryProgramFactory::cached_program_t UnaryProgramFactory::create(
 
     return cached_program_t{
         std::move(program),
-        {unary_reader_kernel_id, unary_compute_kernel_id, unary_writer_kernel_id, num_cores, num_cores_y}};
+        {unary_reader_kernel_id, unary_compute_kernel_id, unary_writer_kernel_id, num_all_cores, num_cores_y}};
 }
 
 void UnaryProgramFactory::override_runtime_arguments(
@@ -131,7 +138,7 @@ void UnaryProgramFactory::override_runtime_arguments(
     auto& unary_reader_kernel_id = cached_program.shared_variables.unary_reader_kernel_id;
     auto& unary_compute_kernel_id = cached_program.shared_variables.unary_compute_kernel_id;
     auto& unary_writer_kernel_id = cached_program.shared_variables.unary_writer_kernel_id;
-    const uint32_t num_cores = cached_program.shared_variables.num_cores;
+    const uint32_t num_all_cores = cached_program.shared_variables.num_cores;
     const uint32_t num_cores_y = cached_program.shared_variables.num_cores_y;
 
     auto& program = cached_program.program;
@@ -144,10 +151,10 @@ void UnaryProgramFactory::override_runtime_arguments(
     tt::tt_metal::IDevice* device = input.device();
 
     auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
-    auto [_, all_cores, core_group_1, core_group_2, num_tiles_per_core_group_1, num_tiles_per_core_group_2] =
+    auto [_0, _1, core_group_1, core_group_2, num_tiles_per_core_group_1, num_tiles_per_core_group_2] =
         tt::tt_metal::split_work_to_cores(compute_with_storage_grid_size, num_tiles);
 
-    for (uint32_t i = 0, num_tiles_written = 0; i < num_cores; i++) {
+    for (uint32_t i = 0, num_tiles_written = 0; i < num_all_cores; i++) {
         CoreCoord core = {i / num_cores_y, i % num_cores_y};
 
         uint32_t num_tiles_per_core = 0;
@@ -156,7 +163,7 @@ void UnaryProgramFactory::override_runtime_arguments(
         } else if (core_group_2.contains(core)) {
             num_tiles_per_core = num_tiles_per_core_group_2;
         } else {
-            TT_ASSERT(false, "Core not in specified core ranges");
+            num_tiles_per_core = 0;
         }
 
         {
@@ -169,6 +176,7 @@ void UnaryProgramFactory::override_runtime_arguments(
         {
             auto& runtime_args = GetRuntimeArgs(program, unary_compute_kernel_id, core);
             runtime_args[0] = num_tiles_per_core;
+            runtime_args[1] = 1;
         }
 
         {
