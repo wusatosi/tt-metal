@@ -76,7 +76,9 @@ public:
     }
 
     // Doesn't return the message size, only the maximum eth payload size
-    [[nodiscard]] FORCE_INLINE size_t get_max_eth_payload_size() const { return this->max_eth_payload_size_in_bytes; }
+    [[nodiscard]] FORCE_INLINE size_t get_max_eth_payload_size() const {
+        return this->max_eth_payload_size_in_bytes + sizeof(PACKET_HEADER_TYPE);
+    }
 
     [[nodiscard]] FORCE_INLINE size_t get_id() const { return this->channel_id; }
 

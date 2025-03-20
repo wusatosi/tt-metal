@@ -548,12 +548,40 @@ FORCE_INLINE void send_next_data(
     tt::tt_fabric::EdmChannelWorkerInterface<SENDER_NUM_BUFFERS>& sender_worker_interface,
     OutboundReceiverChannelPointers<RECEIVER_NUM_BUFFERS>& outbound_to_receiver_channel_pointers,
     tt::tt_fabric::EthChannelBuffer<RECEIVER_NUM_BUFFERS>& receiver_buffer_channel,
-    uint8_t sender_channel_index) {
+    uint8_t sender_channel_index,
+    size_t num_packets_to_send = 1) {
     auto& remote_receiver_wrptr = outbound_to_receiver_channel_pointers.wrptr;
     auto& local_sender_wrptr = sender_worker_interface.local_wrptr;
     auto local_sender_wrptr_buffer_index = local_sender_wrptr.get_buffer_index();
 
     ASSERT(!internal_::eth_txq_is_busy(DEFAULT_ETH_TXQ));
+
+    // DPRINT << "send_next_data on channel " << (uint32_t)sender_channel_index << "\n";
+    // // Guaranteed to not wrap by caller
+    // uint8_t num_full_buffer_slots_to_send = num_packets_to_send - 1;
+    // size_t payload_size_bytes = static_cast<size_t>(num_full_buffer_slots_to_send) *
+    // sender_buffer_channel.get_max_eth_payload_size(); DPRINT << "\tnum_packets_to_send: " <<
+    // (uint32_t)num_packets_to_send << "\n"; DPRINT << "\tnum_full_buffer_slots_to_send: " <<
+    // (uint32_t)num_full_buffer_slots_to_send << "\n"; DPRINT << "\tpayload_size_bytes: " <<
+    // (uint32_t)payload_size_bytes << "\n"; ASSERT(sender_buffer_channel.get_max_eth_payload_size() == 4 * 1088 +
+    // sizeof(PACKET_HEADER_TYPE)); for (uint8_t i = 0; i < num_full_buffer_slots_to_send; i++) {
+    //     volatile tt_l1_ptr PACKET_HEADER_TYPE* pkt_header = reinterpret_cast<volatile tt_l1_ptr PACKET_HEADER_TYPE*>(
+    //         sender_buffer_channel.get_buffer_address(BufferIndex{static_cast<uint8_t>(local_sender_wrptr_buffer_index.get()
+    //         + i)}));
+    //     pkt_header->src_ch_id = sender_channel_index;
+    // }
+
+    // volatile auto* last_packet_header = reinterpret_cast<volatile PACKET_HEADER_TYPE*>(
+    //     sender_buffer_channel.get_buffer_address(BufferIndex{static_cast<uint8_t>(local_sender_wrptr_buffer_index.get()
+    //     + num_full_buffer_slots_to_send)}));
+    // DPRINT << "\tlast_packet_header buffer_index: " << (uint32_t)(local_sender_wrptr_buffer_index.get() +
+    // num_full_buffer_slots_to_send) << "\n"; DPRINT << "\tlast_packet_header addr: " <<(uint32_t)last_packet_header <<
+    // "\n"; ASSERT(tt::tt_fabric::is_valid(*const_cast<PACKET_HEADER_TYPE*>(last_packet_header))); payload_size_bytes
+    // += last_packet_header->get_payload_size_including_header(); DPRINT <<
+    // "\tlast_packet_header->get_payload_size_including_header(): " <<
+    // (uint32_t)last_packet_header->get_payload_size_including_header() << "\n"; DPRINT << "\tpayload_size_bytes: " <<
+    // (uint32_t)payload_size_bytes << "\n"; last_packet_header->src_ch_id = sender_channel_index;
+    // ASSERT(payload_size_bytes > 0);
 
     // TODO: TUNING - experiment with only conditionally breaking the transfer up into multiple packets if we are
     //       a certain threshold less than full packet
@@ -561,11 +589,23 @@ FORCE_INLINE void send_next_data(
     //       compare
     //       NOTE: if we always send full packet, then we don't need the second branch below dedicated for
     //             channel sync
-    volatile auto* pkt_header = reinterpret_cast<volatile PACKET_HEADER_TYPE*>(
-        sender_buffer_channel.get_buffer_address(local_sender_wrptr_buffer_index));
-    ASSERT(tt::tt_fabric::is_valid(*const_cast<PACKET_HEADER_TYPE*>(pkt_header)));
-    size_t payload_size_bytes = pkt_header->get_payload_size_including_header();
-    pkt_header->src_ch_id = sender_channel_index;
+    uint8_t num_full_buffer_slots_to_send = num_packets_to_send - 1;
+    size_t payload_size_bytes =
+        static_cast<size_t>(num_full_buffer_slots_to_send) * sender_buffer_channel.get_max_eth_payload_size();
+    for (uint8_t i = 0; i < num_full_buffer_slots_to_send; i++) {
+        volatile tt_l1_ptr PACKET_HEADER_TYPE* pkt_header =
+            reinterpret_cast<volatile tt_l1_ptr PACKET_HEADER_TYPE*>(sender_buffer_channel.get_buffer_address(
+                BufferIndex{static_cast<uint8_t>(local_sender_wrptr_buffer_index.get() + i)}));
+        pkt_header->src_ch_id = sender_channel_index;
+    }
+    volatile auto* last_packet_header =
+        reinterpret_cast<volatile PACKET_HEADER_TYPE*>(sender_buffer_channel.get_buffer_address(
+            BufferIndex{static_cast<uint8_t>(local_sender_wrptr_buffer_index.get() + num_full_buffer_slots_to_send)}));
+    // volatile auto* pkt_header = reinterpret_cast<volatile PACKET_HEADER_TYPE*>(
+    //     sender_buffer_channel.get_buffer_address(local_sender_wrptr_buffer_index));
+    ASSERT(tt::tt_fabric::is_valid(*const_cast<PACKET_HEADER_TYPE*>(last_packet_header)));
+    payload_size_bytes += last_packet_header->get_payload_size_including_header();
+    last_packet_header->src_ch_id = sender_channel_index;
 
     auto src_addr = sender_buffer_channel.get_buffer_address(local_sender_wrptr_buffer_index);
     auto dest_addr = receiver_buffer_channel.get_buffer_address(remote_receiver_wrptr.get_buffer_index());
@@ -573,13 +613,12 @@ FORCE_INLINE void send_next_data(
 
     // Note: We can only advance to the next buffer index if we have fully completed the send (both the payload and sync
     // messages)
-    local_sender_wrptr.increment();
+    local_sender_wrptr.increment_n(num_packets_to_send);
     // update the remote reg
-    static constexpr uint32_t words_to_forward = 1;
     while (internal_::eth_txq_is_busy(DEFAULT_ETH_TXQ)) {
     };
-    remote_update_ptr_val<to_receiver_pkts_sent_id>(words_to_forward);
-    remote_receiver_wrptr.increment();
+    remote_update_ptr_val<to_receiver_pkts_sent_id>(num_packets_to_send);
+    remote_receiver_wrptr.increment_n(num_packets_to_send);
 }
 
 /////////////////////////////////////////////
