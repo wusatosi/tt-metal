@@ -580,7 +580,7 @@ int main(int argc, char **argv) {
     device->enable_program_cache();
 
     // disable for now, unexpected freezes and crashes
-    // device->enable_async(true);
+    device->enable_async(true);
 
     struct CachedHostData {
         std::vector<uint32_t> data;

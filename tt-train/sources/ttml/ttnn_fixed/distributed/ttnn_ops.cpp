@@ -23,23 +23,12 @@ tt::tt_metal::Tensor all_reduce(const tt::tt_metal::Tensor& tensor) {
         throw std::logic_error("All reduce should not be called for a single device case");
     }
 
-    auto shape = tensor.get_logical_shape();
-    if (shape.rank() != 4U) {
-        throw std::logic_error("All reduce supports only 4D tensors");
-    }
-
-    auto reshaped_tensor = ttnn::reshape(tensor, core::create_shape({1, shape[0] * shape[1], shape[2], shape[3]}));
-    auto gathered_tensor = ttnn::all_gather(reshaped_tensor, 0);
-
-    auto reduced_tensor = ttnn::moreh_sum(
-        gathered_tensor,
-        0,
-        /* keep_dim */ true,
-        /* output */ std::nullopt,
+    return ttnn::experimental::all_reduce(
+        tensor,
+        ttnn::operations::reduction::ReduceType::Sum,
+        /* num_links */ 1,
         /* memory_config */ std::nullopt,
-        core::ComputeKernelConfig::precise());
-    reduced_tensor = ttnn::reshape(reduced_tensor, shape);
-    return reduced_tensor;
+        ttnn::ccl::Topology::Linear);
 }
 
 tt::tt_metal::Tensor scatter(const tt::tt_metal::Tensor& tensor, int dim) {
