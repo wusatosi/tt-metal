@@ -332,6 +332,19 @@ void HWCommandQueue::enqueue_program(Program& program, bool blocking) {
                 device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id);
         }
     }
+    fmt::println(stderr, "Program {}", program.get_runtime_id());
+    for (uint32_t programmable_core_type_index = 0;
+         programmable_core_type_index < hal.get_programmable_core_type_count();
+         programmable_core_type_index++) {
+        for (auto& kg : program.get_kernel_groups(programmable_core_type_index)) {
+            for (auto& kernel_id : kg->kernel_ids) {
+                if (kernel_id) {
+                    auto kernel = detail::GetKernel(program, *kernel_id);
+                    fmt::println(stderr, "  {}", kernel->get_full_kernel_name());
+                }
+            }
+        }
+    }
 
     auto& worker_launch_message_buffer_state = (*this->worker_launch_message_buffer_state_)[*sub_device_id];
     auto command = EnqueueProgramCommand(

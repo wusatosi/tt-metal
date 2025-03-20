@@ -130,6 +130,7 @@ int main(int argc, char *argv[]) {
     while (1) {
         WAYPOINT("W");
         notify_brisc_and_wait();
+        invalidate_l1_cache();
         DeviceZoneScopedMainN("NCRISC-FW");
 
         uint32_t launch_msg_rd_ptr = mailboxes->launch_msg_rd_ptr;

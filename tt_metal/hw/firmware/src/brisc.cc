@@ -31,6 +31,7 @@
 #include "debug/waypoint.h"
 #include "debug/dprint.h"
 #include "debug/stack_usage.h"
+#include "debug/ring_buffer.h"
 
 // clang-format on
 
@@ -451,6 +452,7 @@ int main() {
                 notify_dispatch_core_done(dispatch_addr, noc_index);
             }
         }
+        invalidate_l1_cache();
 
         WAYPOINT("GD");
 
@@ -481,6 +483,11 @@ int main() {
             // Invalidate the i$ now the kernels have loaded and before running
             volatile tt_reg_ptr uint32_t* cfg_regs = core.cfg_regs_base(0);
             cfg_regs[RISCV_IC_INVALIDATE_InvalidateAll_ADDR32] = RISCV_IC_BRISC_MASK | RISCV_IC_TRISC_ALL_MASK | RISCV_IC_NCRISC_MASK;
+            WATCHER_RING_BUFFER_PUSH(0x10000000 | (kernel_config_base + launch_msg_address->kernel_config.kernel_text_offset[static_cast<std::underlying_type<TensixProcessorTypes>::type>(TensixProcessorTypes::DM0) ]));
+            WATCHER_RING_BUFFER_PUSH(0x20000000 | (kernel_config_base + launch_msg_address->kernel_config.kernel_text_offset[static_cast<std::underlying_type<TensixProcessorTypes>::type>(TensixProcessorTypes::DM1) ]));
+            WATCHER_RING_BUFFER_PUSH(0x30000000 | (kernel_config_base + launch_msg_address->kernel_config.kernel_text_offset[static_cast<std::underlying_type<TensixProcessorTypes>::type>(TensixProcessorTypes::MATH0) ]));
+            WATCHER_RING_BUFFER_PUSH(0x40000000 | (kernel_config_base + launch_msg_address->kernel_config.kernel_text_offset[static_cast<std::underlying_type<TensixProcessorTypes>::type>(TensixProcessorTypes::MATH1) ]));
+            WATCHER_RING_BUFFER_PUSH(0x50000000 | (kernel_config_base + launch_msg_address->kernel_config.kernel_text_offset[static_cast<std::underlying_type<TensixProcessorTypes>::type>(TensixProcessorTypes::MATH2) ]));
 
             run_triscs(enables);
 

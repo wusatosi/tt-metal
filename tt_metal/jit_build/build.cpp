@@ -128,7 +128,7 @@ void JitBuildEnv::init(
     }
     common_flags += "-std=c++17 -flto -ffast-math ";
 
-    if (tt::llrt::RunTimeOptions::get_instance().get_riscv_debug_info_enabled()) {
+    if (true) { //tt::llrt::RunTimeOptions::get_instance().get_riscv_debug_info_enabled()) {
         common_flags += "-g ";
     }
 

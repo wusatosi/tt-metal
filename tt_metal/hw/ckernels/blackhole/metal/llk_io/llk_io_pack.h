@@ -11,6 +11,7 @@
 #include "stream_interface.h"
 #include "stream_io_map.h"
 #include "tools/profiler/kernel_profiler.hpp"
+#include "debug/ring_buffer.h"
 
 using namespace ckernel;
 
@@ -33,11 +34,21 @@ inline void llk_wait_for_free_tiles(const std::int32_t operand, const std::int32
     uint32_t tiles_received = get_local_cb_interface(output).tiles_received;
 
     std::int32_t free_tiles;
+    WAYPOINT("WFTW");
+    uint32_t count = 0;
+    bool sent = false;
     do {
         std::uint16_t tiles_acked = (std::uint16_t)reg_read((std::uint32_t)tiles_acked_ptr);
         std::uint32_t free_tiles_wrap = get_local_cb_interface(output).fifo_num_pages - (tiles_received - tiles_acked);
         free_tiles = (std::int32_t)free_tiles_wrap;
+        if (++count == 1000000 && !sent) {
+            sent = true;
+            WATCHER_RING_BUFFER_PUSH(free_tiles);
+            WATCHER_RING_BUFFER_PUSH(num_tiles);
+
+        }
     } while (free_tiles < num_tiles);
+    WAYPOINT("WFTD");
 }
 
 inline void llk_push_to_brisc(const std::int32_t operand, const std::int32_t num_tiles, const std::int32_t num_words) {

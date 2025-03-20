@@ -112,6 +112,7 @@ int main(int argc, char *argv[]) {
             }
             invalidate_l1_cache();
         }
+        invalidate_l1_cache();
         DeviceZoneScopedMainN("TRISC-FW");
 
         uint32_t launch_msg_rd_ptr = mailboxes->launch_msg_rd_ptr;
