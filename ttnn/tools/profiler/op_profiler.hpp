@@ -21,6 +21,8 @@
 #include "tracy/Tracy.hpp"
 #include "tracy/TracyC.h"
 
+#include <tt-metalium/host_api.hpp>
+
 using json = nlohmann::json;
 
 namespace tt {
@@ -427,6 +429,7 @@ inline std::string op_meta_data_serialized_json(
     const auto& operation_attributes,
     const auto& tensor_args,
     auto& tensor_return_value) {
+    tt::tt_metal::running_program(operation_id, device_id);
     const bool useCachedOps = std::getenv("TT_METAL_PROFILER_NO_CACHE_OP_INFO") == nullptr;
     auto program_hash = compute_program_hash<device_operation_t>(operation_attributes, tensor_args);
 

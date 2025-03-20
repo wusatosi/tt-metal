@@ -27,7 +27,7 @@
 #include <sub_device_types.hpp>
 #include <tt_stl/span.hpp>
 
-#include "tt_metal/tools/profiler/tt_metal_tracy.hpp"
+#include "tt_metal/impl/profiler/tt_metal_tracy.hpp"
 
 #include "tt_metal/impl/debug/watcher_server.hpp"
 #include "tt_metal/impl/dispatch/topology.hpp"
@@ -67,7 +67,7 @@ Device::Device(
     worker_thread_core_(worker_thread_core),
     completion_queue_reader_core_(completion_queue_reader_core),
     work_executor_(std::make_unique<WorkExecutor>(worker_thread_core, device_id)) {
-    ZoneScoped;
+    // ZoneScoped;
     this->initialize(num_hw_cqs, l1_small_size, trace_region_size, l1_bank_remap, minimal);
 }
 

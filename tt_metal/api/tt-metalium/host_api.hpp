@@ -941,6 +941,8 @@ void LoadTrace(IDevice* device, uint8_t cq_id, uint32_t trace_id, const TraceDes
 // clang-format on
 void DumpDeviceProfileResults(IDevice* device, const Program& program);
 
+void running_program(uint32_t operation_id, uint32_t device_id);
+
 // clang-format off
 /**
  * Enqueues a command to record an Event on the device for a given CQ, and updates the Event object for the user.

@@ -205,9 +205,9 @@ void profiler_noc_async_flush_posted_write(uint8_t noc = noc_index) {
 __attribute__((noinline)) void finish_profiler() {
     risc_finished_profiling();
 #if defined(COMPILE_FOR_ERISC) || defined(COMPILE_FOR_IDLE_ERISC) || defined(COMPILE_FOR_BRISC)
-    if (profiler_control_buffer[PROFILER_DONE] == 1) {
-        return;
-    }
+    // if (profiler_control_buffer[PROFILER_DONE] == 1) {
+    // return;
+    //}
     while (!profiler_control_buffer[DRAM_PROFILER_ADDRESS]);
     uint32_t core_flat_id = profiler_control_buffer[FLAT_ID];
     uint32_t profiler_core_count_per_dram = profiler_control_buffer[CORE_COUNT_PER_DRAM];
@@ -247,7 +247,8 @@ __attribute__((noinline)) void finish_profiler() {
                 mark_dropped_timestamps(hostIndex);
             }
 
-            if (do_noc) {
+            if (do_noc && profiler_control_buffer[PROFILER_DONE] == 0) {
+                // if (do_noc) {
                 const InterleavedAddrGen<true> s = {
                     .bank_base_address = profiler_control_buffer[DRAM_PROFILER_ADDRESS], .page_size = pageSize};
 
