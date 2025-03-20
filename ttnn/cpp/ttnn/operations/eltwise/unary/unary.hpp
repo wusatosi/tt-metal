@@ -53,6 +53,16 @@ struct ExecuteUnaryWithFloatParameter {
         const std::optional<Tensor>& optional_output_tensor = std::nullopt);
 };
 
+template <UnaryOpType unary_op_type>
+struct ExecuteUnaryComparisonOps {
+    static Tensor invoke(
+        QueueId queue_id,
+        const Tensor& input_tensor,
+        const float parameter,
+        const std::optional<MemoryConfig>& memory_config = std::nullopt,
+        const std::optional<Tensor>& optional_output_tensor = std::nullopt);
+};
+
 struct Sigmoid_accurate {
     static Tensor invoke(
         QueueId queue_id,
@@ -202,6 +212,11 @@ struct AsymmetricBinop {
         ttnn::operations::unary::                                                                  \
             ExecuteUnaryWithIntegerParameter<ttnn::operations::unary::UnaryOpType::operation_type, data_type>>();
 
+#define REGISTER_UNARY_OPERATION_COMPARISON_OPS(operation_name, operation_type)   \
+    constexpr auto operation_name = ttnn::register_operation_with_auto_launch_op< \
+        "ttnn::" #operation_name,                                                 \
+        ttnn::operations::unary::ExecuteUnaryComparisonOps<ttnn::operations::unary::UnaryOpType::operation_type>>();
+
 REGISTER_UNARY_OPERATION(acos, ACOS);
 REGISTER_UNARY_OPERATION(asin, ASIN);
 REGISTER_UNARY_OPERATION(atan, ATAN);
@@ -263,13 +278,14 @@ REGISTER_UNARY_OPERATION_WITH_FLOAT_PARAMETER(relu_min, RELU_MIN);
 REGISTER_UNARY_OPERATION_WITH_FLOAT_PARAMETER(unary_remainder, REMAINDER);
 REGISTER_UNARY_OPERATION_WITH_FLOAT_PARAMETER(unary_fmod, FMOD);
 REGISTER_UNARY_OPERATION_WITH_FLOAT_PARAMETER(fill, FILL);
-REGISTER_UNARY_OPERATION_WITH_FLOAT_PARAMETER(gt_unary, UNARY_GT);
 REGISTER_UNARY_OPERATION_WITH_FLOAT_PARAMETER(lt_unary, UNARY_LT);
 REGISTER_UNARY_OPERATION_WITH_FLOAT_PARAMETER(ne_unary, UNARY_NE);
 
 // Unaries with integer parameter
 REGISTER_UNARY_OPERATION_WITH_INTEGER_PARAMETER(power, POWER, uint32_t);
 REGISTER_UNARY_OPERATION_WITH_INTEGER_PARAMETER(round, ROUND, int32_t);
+
+REGISTER_UNARY_OPERATION_COMPARISON_OPS(gt_unary, UNARY_GT);
 
 // Other unaries
 constexpr auto identity =

@@ -72,6 +72,7 @@ enum class UnaryOpType {
     IDENTITY_UINT32,
     UNARY_NE,
     UNARY_GT,
+    UNARY_GT_INT32,
     UNARY_LT,
     TILED_PROD,
     TYPECAST,

@@ -5,7 +5,7 @@
 import pytest
 
 import torch
-
+import random
 import ttnn
 
 from tests.ttnn.utils_for_testing import assert_with_pcc, assert_equal
@@ -488,3 +488,29 @@ def test_unary_ceil(input_shapes, device):
     golden_tensor = golden_function(in_data1)
     output_tensor = ttnn.to_torch(output_tensor)
     assert_with_pcc(golden_tensor, output_tensor, 0.999)
+
+
+@pytest.mark.parametrize(
+    "input_shapes",
+    (
+        (torch.Size([1, 1, 32, 32])),
+        (torch.Size([1, 1, 320, 384])),
+        (torch.Size([1, 3, 320, 384])),
+    ),
+)
+@pytest.mark.parametrize(
+    "scalar",
+    {-5, -2, 7, 23},
+)
+def test_unary_gt_ttnn(input_shapes, scalar, device):
+    in_data = torch.randint(0, 100, input_shapes, dtype=torch.int32)
+    input_tensor = ttnn.from_torch(in_data, dtype=ttnn.int32, layout=ttnn.TILE_LAYOUT, device=device)
+    print(in_data)
+    cq_id = 0
+    output_tensor = ttnn.gt(input_tensor, scalar, queue_id=cq_id)
+    golden_function = ttnn.get_golden_function(ttnn.gt)
+    golden_tensor = golden_function(in_data, scalar)
+    print(golden_tensor)
+    print(ttnn.to_torch(output_tensor))
+    comp_pass = compare_pcc([output_tensor], [golden_tensor])
+    assert comp_pass

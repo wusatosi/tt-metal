@@ -75,6 +75,7 @@ enum SfpuType {
     topk_rebuild,
     unary_ne,
     unary_gt,
+    unary_gt_int32,
     unary_lt,
     softplus,
     tiled_prod,

@@ -160,9 +160,30 @@ template struct ExecuteUnaryWithFloatParameter<UnaryOpType::RELU_MIN>;
 template struct ExecuteUnaryWithFloatParameter<UnaryOpType::REMAINDER>;
 template struct ExecuteUnaryWithFloatParameter<UnaryOpType::FMOD>;
 template struct ExecuteUnaryWithFloatParameter<UnaryOpType::FILL>;
-template struct ExecuteUnaryWithFloatParameter<UnaryOpType::UNARY_GT>;
 template struct ExecuteUnaryWithFloatParameter<UnaryOpType::UNARY_LT>;
 template struct ExecuteUnaryWithFloatParameter<UnaryOpType::UNARY_NE>;
+
+template <UnaryOpType unary_op_type>
+Tensor ExecuteUnaryComparisonOps<unary_op_type>::invoke(
+    QueueId queue_id,
+    const Tensor& input_tensor,
+    const float parameter,
+    const std::optional<MemoryConfig>& memory_config,
+    const std::optional<Tensor>& optional_output_tensor) {
+    UnaryOpType op_type = UnaryOpType::UNARY_GT;
+    if (input_tensor.get_dtype() == DataType::INT32) {
+        op_type = UnaryOpType::UNARY_GT_INT32;
+    }
+
+    return detail::unary_impl(
+        queue_id,
+        input_tensor,
+        {UnaryWithParam{op_type, static_cast<float>(parameter)}},
+        memory_config,
+        optional_output_tensor);
+}
+
+template struct ExecuteUnaryComparisonOps<UnaryOpType::UNARY_GT>;
 
 Tensor Sigmoid_accurate::invoke(
     QueueId queue_id,
