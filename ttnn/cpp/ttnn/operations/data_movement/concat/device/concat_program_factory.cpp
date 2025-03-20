@@ -957,4 +957,188 @@ tt_metal::operation::ProgramWithCallbacks concat_multi_core(
     return {std::move(program), override_runtime_args_callback};
 }
 
+std::map<ttnn::DataType, uint32_t> data_type_to_size = {
+    {ttnn::DataType::BFLOAT16, 2},
+    {ttnn::DataType::FLOAT32, 4},
+    {ttnn::DataType::UINT32, 4},
+    {ttnn::DataType::UINT8, 1},
+};
+
+tt_metal::operation::ProgramWithCallbacks tiled_concat_multi_core(
+    const std::vector<Tensor>& input_tensors, const uint32_t dim, const Tensor& output) {
+    tt_metal::Program program = tt_metal::CreateProgram();
+
+    tt_metal::IDevice* device = output.device();
+
+    const tt::DataFormat cb_data_format = tt_metal::datatype_to_dataformat_converter(output.get_dtype());
+
+    const bool rm_layout =
+        output.get_layout() ==
+        Layout::ROW_MAJOR;  // Need to make sure this is changed such that output layout is ALWAYS Tiled
+    if (rm_layout) {
+        std::cout << "Warning: Output layout is ROW_MAJOR, but expected TILED" << std::endl;
+    } else {
+        std::cout << "Output layout is TILED" << std::endl;
+    }
+
+    uint32_t problem_size;
+    uint32_t single_page_size;
+    problem_size = output.volume();  // num elements to write, split these between cores
+    uint32_t height = output.get_padded_shape()[-2];
+    uint32_t width = output.get_padded_shape()[-1];
+    uint32_t input_element_size_bytes = data_type_to_size[output.get_dtype()];
+    uint32_t single_face_row_size = FACE_HEIGHT * input_element_size_bytes;
+    uint32_t cb_page_size = single_face_row_size + sizeof(uint16_t);
+
+    auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
+    uint32_t num_cores_x = compute_with_storage_grid_size.x;
+    uint32_t num_cores_y = compute_with_storage_grid_size.y;
+    auto [num_cores, all_cores, core_group_1, core_group_2, num_elems_per_core_group_1, num_elems_per_core_group_2] =
+        tt_metal::split_work_to_cores(compute_with_storage_grid_size, problem_size);
+
+    uint32_t num_input_tensors = input_tensors.size();
+
+    tt_metal::Buffer* dst_buffer = output.buffer();
+    TT_ASSERT(dst_buffer != nullptr, "Output buffer should be allocated on device!");
+
+    uint32_t src0_cb_index = 0;
+    uint32_t cb_multiplier = 2;
+    tt_metal::CircularBufferConfig cb_src0_config =
+        tt_metal::CircularBufferConfig(cb_multiplier * cb_page_size, {{src0_cb_index, cb_data_format}})
+            .set_page_size(src0_cb_index, cb_page_size);
+    auto cb_src0 = tt_metal::CreateCircularBuffer(program, all_cores, cb_src0_config);
+
+    uint32_t num_dims = output.get_padded_shape().rank();
+
+    std::vector<uint32_t> src_addr(num_input_tensors);
+    std::vector<bool> is_dram(num_input_tensors);
+    std::vector<uint32_t> num_pages_per_block(num_input_tensors);
+    std::vector<uint32_t> page_id_per_tensor(num_input_tensors);
+
+    std::vector<uint32_t> common_reader_kernel_args = {0, 0, 0};
+    common_reader_kernel_args.insert(common_reader_kernel_args.end(), src_addr.begin(), src_addr.end());
+    common_reader_kernel_args.insert(common_reader_kernel_args.end(), is_dram.begin(), is_dram.end());
+    common_reader_kernel_args.insert(
+        common_reader_kernel_args.end(), num_pages_per_block.begin(), num_pages_per_block.end());
+    if (rm_layout) {
+        common_reader_kernel_args.insert(
+            common_reader_kernel_args.end(), page_size_per_tensor.begin(), page_size_per_tensor.end());
+    }
+
+    // Reader compile-time args
+    // Data is 32 byte aligned
+    bool dst_is_dram = dst_buffer->buffer_type() == tt_metal::BufferType::DRAM ? 1 : 0;
+    std::vector<uint32_t> reader_compile_time_args = {
+        // interleaved accessor args
+        (std::uint32_t)src0_cb_index,
+        (std::uint32_t)num_input_tensors,
+    };
+
+    std::map<string, string> concat_defines;
+
+    if (rm_layout && dim == num_dims - 1) {
+        concat_defines["WIDTH_CONCAT"] = "1";
+    }
+
+    std::vector<uint32_t> writer_compile_time_args = {// interleaved accessor args
+                                                      (std::uint32_t)src0_cb_index,
+                                                      (std::uint32_t)dst_is_dram};
+
+    // Tilized reader
+    tt_metal::KernelHandle unary_reader_kernel_id = tt_metal::CreateKernel(
+        program,
+        "ttnn/cpp/ttnn/operations/data_movement/concat/device/kernels/dataflow/"
+        "reader_concat_tiled.cpp",
+        all_cores,
+        tt_metal::ReaderDataMovementConfig(reader_compile_time_args, concat_defines));
+
+    tt_metal::KernelHandle unary_writer_kernel_id = tt_metal::CreateKernel(
+        program,
+        "ttnn/cpp/ttnn/operations/data_movement/concat/device/kernels/dataflow/"
+        "writer_concat_tiled.cpp",
+        all_cores,
+        tt_metal::WriterDataMovementConfig(writer_compile_time_args));
+
+    uint32_t padded_height = tt::div_up(height, TILE_HEIGHT) * TILE_HEIGHT;
+    uint32_t padded_width = tt::div_up(width, TILE_HEIGHT) * TILE_HEIGHT;
+    uint32_t tiles_per_2d_tensor = padded_height / TILE_HEIGHT * padded_width / TILE_HEIGHT;
+    uint32_t tiles_per_tile_row = padded_width / TILE_HEIGHT;
+
+    const auto cores = grid_to_cores(num_cores, num_cores_x, num_cores_y);
+    uint32_t g1_num_cores = core_group_1.num_cores();
+    for (uint32_t i = 0, num_pages_written = 0; i < cores.size(); ++i) {
+        const CoreCoord& core = cores[i];
+        uint32_t num_elems_per_core = 0;
+        if (i < g1_num_cores) {
+            num_elems_per_core = num_elems_per_core_group_1;
+        } else {
+            num_elems_per_core = num_elems_per_core_group_2;
+        }
+        uint32_t block_id = num_pages_written / num_output_pages_per_block;
+        uint32_t id_within_block = num_pages_written % num_output_pages_per_block;
+        uint32_t curr_tensor = 0;
+        uint32_t curr_tensor_id = 0;
+        for (uint32_t j = 0; j < num_input_tensors; j++) {
+            page_id_per_tensor[j] = block_id * num_pages_per_block[j];
+            if (id_within_block == 0) {
+                continue;
+            } else if (id_within_block >= num_pages_per_block[j]) {
+                page_id_per_tensor[j] += num_pages_per_block[j];
+                id_within_block -= num_pages_per_block[j];
+                curr_tensor = j + 1;
+            } else {
+                page_id_per_tensor[j] += id_within_block;
+                curr_tensor = j;
+                curr_tensor_id = id_within_block;
+                id_within_block = 0;
+            }
+        }
+
+        std::vector<uint32_t> reader_kernel_args = common_reader_kernel_args;
+        reader_kernel_args[0] = num_elems_per_core;
+        reader_kernel_args[1] = curr_tensor;
+        reader_kernel_args[2] = curr_tensor_id;
+        reader_kernel_args.insert(reader_kernel_args.end(), page_id_per_tensor.begin(), page_id_per_tensor.end());
+
+        std::vector<uint32_t> writer_kernel_args;
+        if (rm_layout) {
+            writer_kernel_args = {
+                dst_buffer->address(), output.buffer()->page_size(), num_elems_per_core, num_pages_written};
+        } else {
+            // Here we need to pass rows and cols writing to as well as starting tile
+            writer_kernel_args = {dst_buffer->address(), num_elems_per_core, num_pages_written};
+        }
+        tt_metal::SetRuntimeArgs(program, unary_reader_kernel_id, core, reader_kernel_args);
+
+        tt_metal::SetRuntimeArgs(program, unary_writer_kernel_id, core, writer_kernel_args);
+        num_pages_written += num_elems_per_core;
+    }
+
+    auto override_runtime_args_callback = [unary_reader_kernel_id, unary_writer_kernel_id, cores](
+                                              const Program& program,
+                                              const std::vector<Buffer*>& input_buffers,
+                                              const std::vector<Buffer*>& output_buffers) {
+        std::vector<uint32_t> src_addrs(input_buffers.size());
+        for (uint32_t i = 0; i < input_buffers.size(); ++i) {
+            src_addrs[i] = input_buffers[i]->address();
+        }
+
+        auto dst_buffer = output_buffers.at(0);
+
+        for (const auto& core : cores) {
+            {
+                auto& runtime_args = GetRuntimeArgs(program, unary_reader_kernel_id, core);
+                std::copy(src_addrs.begin(), src_addrs.end(), runtime_args.data() + 3);
+            }
+
+            {
+                auto& runtime_args = GetRuntimeArgs(program, unary_writer_kernel_id, core);
+                runtime_args[0] = dst_buffer->address();
+            }
+        }
+    };
+
+    return {std::move(program), override_runtime_args_callback};
+}
+
 }  // namespace ttnn::operations::data_movement::detail

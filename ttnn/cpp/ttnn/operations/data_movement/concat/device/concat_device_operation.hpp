@@ -9,7 +9,7 @@
 
 namespace ttnn::operations::data_movement {
 
-enum class ConcatOpParallelizationStrategy { MULTI_CORE, SHARDED_MULTI_CORE };
+enum class ConcatOpParallelizationStrategy { MULTI_CORE, SHARDED_MULTI_CORE, TILED_MULTI_CORE };
 
 struct ConcatDeviceOperation {
     uint32_t dim;

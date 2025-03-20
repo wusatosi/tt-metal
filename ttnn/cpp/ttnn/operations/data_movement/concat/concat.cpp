@@ -23,7 +23,7 @@
 #include <utility>
 
 // toggle this to enable debug prints
-constexpr bool debug_concat = false;
+constexpr bool debug_concat = true;
 inline void concat_db_print(bool condition, const std::string& msg) {
     if constexpr (debug_concat) {
         if (condition) {
@@ -90,15 +90,29 @@ MassagedConcat build_untilize_rm_retilize_concat(
     return MassagedConcat(MassagedConcatParams{
         .predicate = [](const std::vector<ttnn::Tensor>& tensors, int dim, unsigned int groups) -> bool {
             // untilize_rm_retilize if the concat dim is padded for tilized tensors
-            bool res = std::any_of(tensors.begin(), tensors.end(), [&](const ttnn::Tensor& tensor) {
-                return tensor.get_layout() == ttnn::TILE_LAYOUT and
-                       tensor.get_logical_shape()[dim] != tensor.get_padded_shape()[dim];
-            });
+            // bool res = std::any_of(tensors.begin(), tensors.end(), [&](const ttnn::Tensor& tensor) {
+            //     return tensor.get_layout() == ttnn::TILE_LAYOUT and
+            //            tensor.get_logical_shape()[dim] != tensor.get_padded_shape()[dim];
+            // });
+            bool res = false;
+            for (const auto& tensor : tensors) {
+                if (tensor.get_layout() == ttnn::TILE_LAYOUT and
+                    tensor.get_logical_shape()[dim] != tensor.get_padded_shape()[dim]) {
+                    std::cout << "shape: " << tensor.get_logical_shape() << std::endl;
+                    std::cout << tensor.get_logical_shape()[dim] << " != " << tensor.get_padded_shape()[dim]
+                              << std::endl
+                              << std::endl;
+                    res = true;
+                    break;
+                }
+            }
             concat_db_print(res, "untilize_rm_retilize required");
-            return res;
+            // return res;
+            return false;
         },
         .pre_transform =
-            [queue_id, output_memory_config](const std::vector<ttnn::Tensor>& tensors, int dim, unsigned int groups) -> OwnedConcatArgs {
+            [queue_id, output_memory_config](
+                const std::vector<ttnn::Tensor>& tensors, int dim, unsigned int groups) -> OwnedConcatArgs {
             std::vector<ttnn::Tensor> itensors;
             itensors.reserve(tensors.size());
             std::transform(
@@ -137,8 +151,7 @@ MassagedConcat build_untilize_rm_retilize_concat(
                 });
             return std::make_tuple(itensors, dim, groups);
         },
-        .post_transform = [&logical_output_shape,
-                           queue_id](const ttnn::Tensor& output) -> ttnn::Tensor {
+        .post_transform = [&logical_output_shape, queue_id](const ttnn::Tensor& output) -> ttnn::Tensor {
             // now we have a rm tensor, so we need ensure its's padded to tile size and re-tilize it
             if (output.get_layout() != ttnn::TILE_LAYOUT) {
                 auto padded = pad_to_tile_vol(queue_id, output, 0.0f, true, output.memory_config());

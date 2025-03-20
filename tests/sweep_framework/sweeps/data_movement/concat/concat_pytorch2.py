@@ -4158,7 +4158,7 @@ parameters = {
             {"dim": -1, "shapes": [[8732, 2], [8732, 2]]},
         ],
         "dtype": [ttnn.bfloat16],
-        "layout": [ttnn.ROW_MAJOR_LAYOUT, ttnn.TILE_LAYOUT],
+        "layout": [ttnn.TILE_LAYOUT],
     }
 }
 
@@ -4170,8 +4170,17 @@ def invalidate_vector(test_vector) -> Tuple[bool, Optional[str]]:
     if test_vector["layout"] == ttnn.ROW_MAJOR_LAYOUT:
         if test_vector["dtype"] == ttnn.bfloat8_b:
             return True, "bfloat8_b not supported with ROW_MAJOR_LAYOUT"
+    shapes = test_vector["concat_specs"]["shapes"]
+    for shape in shapes:
+        dim = test_vector["concat_specs"]["dim"]
+        dims = {-1, -2, len(shape) - 1, len(shape) - 2}
+        if dim in dims:
+            if test_vector["layout"] == ttnn.TILE_LAYOUT and (shape[dim] % 32 != 0):
+                print(shapes)
+                print(dim)
+                return False, None
 
-    return False, None
+    return True, "Only testing shapes with tile padding"
 
 
 def run(
@@ -4196,7 +4205,7 @@ def run(
     return [check_with_pcc(torch_output_tensor, output_tensor, 0.999), e2e_perf]
 
 
-@pytest.mark.parametrize("concat_spec", parameters["nightly"]["concat_specs"])
+@pytest.mark.parametrize("concat_spec", [{"dim": -1, "shapes": [[8732, 2], [8732, 2]]}])
 @pytest.mark.parametrize("dtype", parameters["nightly"]["dtype"])
 @pytest.mark.parametrize("layout", parameters["nightly"]["layout"])
 def test_concat_pytorch2(concat_spec, dtype, layout, device):

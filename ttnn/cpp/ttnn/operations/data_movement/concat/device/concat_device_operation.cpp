@@ -21,7 +21,11 @@ ConcatOpParallelizationStrategy ConcatDeviceOperation::get_parallelization_strat
     if (input_tensors[0].is_sharded()) {
         return ConcatOpParallelizationStrategy::SHARDED_MULTI_CORE;
     } else {
-        return ConcatOpParallelizationStrategy::MULTI_CORE;
+        if (input_tensors[0].get_layout() == Layout::ROW_MAJOR) {
+            return ConcatOpParallelizationStrategy::MULTI_CORE;
+        } else {
+            return ConcatOpParallelizationStrategy::TILED_MULTI_CORE;
+        }
     }
 }
 
@@ -126,6 +130,10 @@ operation::ProgramWithCallbacks ConcatDeviceOperation::create_program(
         default: {
             TT_FATAL(this->groups == 1, "Groups > 1 not supported for ttnn.concat with interleaved input tensors");
             return detail::concat_multi_core(input_tensors, this->dim, output_tensors[0]);
+        }
+        case ConcatOpParallelizationStrategy::TILED_MULTI_CORE: {
+            TT_FATAL(this->groups == 1, "Groups > 1 not supported for ttnn.concat with interleaved input tensors");
+            return detail::tiled_concat_multi_core(input_tensors, this->dim, output_tensors[0]);
         }
     };
 }
