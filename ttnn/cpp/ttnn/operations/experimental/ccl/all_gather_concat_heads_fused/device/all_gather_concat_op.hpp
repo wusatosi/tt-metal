@@ -171,6 +171,20 @@ Tensor all_gather_concat(
     std::optional<tt::tt_metal::SubDeviceId> sub_device_id = std::nullopt,
     bool enable_persistent_fabric_mode = false);
 
+Tensor all_gather_concat(
+    const Tensor& input_tensor,
+    const uint32_t dim,
+    const uint32_t cluster_axis,
+    const MeshDevice& mesh_device,
+    std::unordered_map<chip_id_t, Tensor> temp_tensor_map,
+    const global_semaphore::MultiDeviceGlobalSemaphore& multi_device_global_semaphore,
+    const uint32_t num_heads,
+    const std::optional<uint32_t> num_links = std::nullopt,
+    const std::optional<MemoryConfig>& memory_config = std::nullopt,
+    const ttnn::ccl::Topology topology = ttnn::ccl::Topology::Ring,
+    std::optional<tt::tt_metal::SubDeviceId> sub_device_id = std::nullopt,
+    bool enable_persistent_fabric_mode = false);
+
 }  // namespace ccl
 }  // namespace experimental
 }  // namespace operations

@@ -354,6 +354,135 @@ Tensor all_gather_concat(
     return output_tensors.at(0);
 }
 
+Tensor all_gather_concat(
+    const Tensor& input_tensor,
+    const uint32_t dim,
+    const uint32_t cluster_axis,
+    const MeshDevice& mesh_device,
+    std::unordered_map<chip_id_t, Tensor> temp_tensor_map,
+    const global_semaphore::MultiDeviceGlobalSemaphore& multi_device_global_semaphore,
+    const uint32_t num_heads,
+    const std::optional<uint32_t> num_links,
+    const std::optional<MemoryConfig>& memory_config,
+    const ttnn::ccl::Topology topology,
+    std::optional<tt::tt_metal::SubDeviceId> sub_device_id,
+    bool enable_persistent_fabric_mode) {
+    TT_FATAL(
+        topology == ttnn::ccl::Topology::Linear,
+        "This all_gather API with cluster_axis is currently supported only for the Linear topology");
+    const auto mesh_view = mesh_device.get_view();
+    auto devices = input_tensor.get_workers();
+    uint32_t num_devices = (cluster_axis == 0) ? mesh_view.num_rows() : mesh_view.num_cols();
+
+    int32_t rank = input_tensor.get_logical_shape().rank();
+
+    int32_t gather_dim = (dim < 0) ? rank + dim : dim;
+    TT_FATAL(
+        gather_dim >= -rank && gather_dim <= rank - 1,
+        "Dimension input should be in between -{} and {}, but has {}",
+        rank,
+        rank - 1,
+        dim);
+
+    std::vector<Tensor> output_tensors = {Tensor(tt::tt_metal::operation::get_workers_for_op_output({input_tensor}))};
+    // create this semaphore for all cores since we don't know which core will be used for teardown draining
+    CoreCoord grid_size = devices[0]->compute_with_storage_grid_size();
+    auto core_grid = CoreRange({0, 0}, {grid_size.x - 1, grid_size.y - 1});
+    std::vector<GlobalSemaphore> semaphores = multi_device_global_semaphore.global_semaphores;
+
+    tt::tt_metal::operation::launch_op(
+        [gather_dim,
+         mesh_view,
+         cluster_axis,
+         temp_tensor_map,
+         num_links,
+         num_devices,
+         memory_config,
+         devices,
+         topology,
+         semaphores,
+         sub_device_id,
+         enable_persistent_fabric_mode,
+         num_heads](
+            const std::vector<Tensor>& input_tensors,
+            const std::vector<std::optional<const Tensor>>& optional_input_tensors,
+            const std::vector<std::optional<Tensor>>& optional_output_tensors) mutable -> std::vector<Tensor> {
+            const auto& input_tensor = input_tensors.at(0);
+
+            TT_FATAL(
+                mesh_view.is_mesh_2d(),
+                "all-gather invoked with cluster_axis API on >2D mesh, which is currently unsupported");
+            const auto coordinate = mesh_view.find_device(input_tensor.device()->id());
+            std::vector<IDevice*> devices = (cluster_axis == 0) ? mesh_view.get_devices_on_column(coordinate[1])
+                                                                : mesh_view.get_devices_on_row(coordinate[0]);
+
+            return tt::tt_metal::operation::run(
+                ttnn::ccl::all_gather_concat_detail::create_all_gather_concat_struct(
+                    input_tensor,
+                    gather_dim,
+                    temp_tensor_map,
+                    num_links.has_value() ? num_links.value() : 1,
+                    memory_config,
+                    devices,
+                    topology,
+                    semaphores,
+                    sub_device_id,
+                    enable_persistent_fabric_mode,
+                    num_heads),
+                {input_tensor});
+        },
+        {input_tensor},
+        output_tensors);
+
+    printf("after launch op HERE\n");
+    for (const auto& output_tensor : output_tensors) {
+        const auto& buffers = output_tensor.buffers();
+        const auto first_address = buffers.front()->address();
+        TT_FATAL(
+            std::all_of(
+                buffers.begin(),
+                buffers.end(),
+                [&first_address](const auto& buffer) {
+                    printf("for this output buffer address should be : %u\n", buffer->address());
+                    return buffer != nullptr && buffer->address() == first_address;
+                }),
+            "Output buffers for all_gather async must be lock-step allocated but some of the tensors were allocated at "
+            "different addresses across devices.");
+    }
+
+    const auto& in_buffers = input_tensor.buffers();
+    const auto in_first_address = in_buffers.front()->address();
+    TT_FATAL(
+        std::all_of(
+            in_buffers.begin(),
+            in_buffers.end(),
+            [&in_first_address](const auto& buffer) {
+                printf("for this input buffer address should be : %u\n", buffer->address());
+                return buffer != nullptr && buffer->address() == in_first_address;
+            }),
+        "Output buffers for all_gather async must be lock-step allocated but some of the tensors were allocated at "
+        "different addresses across devices.");
+
+    chip_id_t this_device_id = input_tensor.device()->id();
+
+    for (auto it = temp_tensor_map.begin(); it != temp_tensor_map.end(); ++it) {
+        const auto& buffers_temp = it->second.buffers();
+        const auto temp_first_address = buffers_temp.front()->address();
+        TT_FATAL(
+            std::all_of(
+                buffers_temp.begin(),
+                buffers_temp.end(),
+                [&temp_first_address](const auto& buffer) {
+                    printf("for this TEMP buffer address should be : %u\n", buffer->address());
+                    return buffer != nullptr && buffer->address() == temp_first_address;
+                }),
+            "TEMP buffers for all_gather async must be lock-step allocated but some of the tensors were allocated at "
+            "different addresses across devices.");
+    }
+
+    return output_tensors.at(0);
+}
+
 }  // namespace ccl
 }  // namespace experimental
 }  // namespace operations

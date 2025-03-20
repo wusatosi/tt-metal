@@ -570,6 +570,7 @@ def run_concat_fuse_impl(
         input_tensor_mesh_list.append(input_tensor_mesh)
 
     tt_out_tensor_list = []
+    print("input tensor shape: \n", input_tensor_mesh_list[0].shape)
     if trace_mode:
         tt_out_tensor = run_with_trace(
             mesh_device,
@@ -588,10 +589,11 @@ def run_concat_fuse_impl(
         tt_out_tensor_list.append(tt_out_tensor)
     else:
         for i in range(num_iters):
+            print("iteration: ", i)
             tt_out_tensor = ttnn.experimental.all_gather_concat(
-                input_tensor_mesh_list[0],
+                input_tensor_mesh_list[i],
                 dim,
-                multi_device_global_semaphore=ccl_semaphore_handles[0],
+                multi_device_global_semaphore=ccl_semaphore_handles[i],
                 num_links=num_links,
                 num_heads=8,
                 memory_config=output_mem_config,
@@ -608,7 +610,7 @@ def run_concat_fuse_impl(
     passed = True
     for tensor_index in range(len(tt_out_tensor_list)):
         tt_out_tensor = tt_out_tensor_list[tensor_index]
-        output_tensor = output_tensor_goldens_list[0]
+        output_tensor = output_tensor_goldens_list[tensor_index]
         output_tensor = output_tensor[:, :, :8, :]
         output_tensor_concat = output_tensor.reshape(1, 1, 32, 1024)
         for i, t in enumerate(ttnn.get_device_tensors(tt_out_tensor)):
