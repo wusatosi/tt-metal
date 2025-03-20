@@ -508,3 +508,63 @@ def test_unary_eqz_ttnn(input_shapes, device):
     golden_tensor = golden_function(in_data)
     comp_pass = compare_pcc([output_tensor], [golden_tensor])
     assert comp_pass
+
+
+@pytest.mark.parametrize(
+    "input_shapes",
+    (
+        (torch.Size([1, 1, 32, 32])),
+        (torch.Size([1, 1, 320, 384])),
+        (torch.Size([1, 3, 320, 384])),
+    ),
+)
+def test_unary_lez_ttnn(input_shapes, device):
+    in_data = torch.randint(-100, 100, input_shapes, dtype=torch.int32)
+    input_tensor = ttnn.from_torch(in_data, dtype=ttnn.int32, layout=ttnn.TILE_LAYOUT, device=device)
+
+    cq_id = 0
+    output_tensor = ttnn.lez(input_tensor, queue_id=cq_id)
+    golden_function = ttnn.get_golden_function(ttnn.lez)
+    golden_tensor = golden_function(in_data)
+    comp_pass = compare_pcc([output_tensor], [golden_tensor])
+    assert comp_pass
+
+
+@pytest.mark.parametrize(
+    "input_shapes",
+    (
+        (torch.Size([1, 1, 32, 32])),
+        (torch.Size([1, 1, 320, 384])),
+        (torch.Size([1, 3, 320, 384])),
+    ),
+)
+def test_unary_gez_ttnn(input_shapes, device):
+    in_data = torch.randint(-100, 100, input_shapes, dtype=torch.int32)
+    input_tensor = ttnn.from_torch(in_data, dtype=ttnn.int32, layout=ttnn.TILE_LAYOUT, device=device)
+
+    cq_id = 0
+    output_tensor = ttnn.gez(input_tensor, queue_id=cq_id)
+    golden_function = ttnn.get_golden_function(ttnn.gez)
+    golden_tensor = golden_function(in_data)
+    comp_pass = compare_pcc([output_tensor], [golden_tensor])
+    assert comp_pass
+
+
+@pytest.mark.parametrize(
+    "input_shapes",
+    (
+        (torch.Size([1, 1, 32, 32])),
+        (torch.Size([1, 1, 320, 384])),
+        (torch.Size([1, 3, 320, 384])),
+    ),
+)
+def test_unary_nez_ttnn(input_shapes, device):
+    in_data = torch.randint(-100, 100, input_shapes, dtype=torch.int32)
+    input_tensor = ttnn.from_torch(in_data, dtype=ttnn.int32, layout=ttnn.TILE_LAYOUT, device=device)
+
+    cq_id = 0
+    output_tensor = ttnn.nez(input_tensor, queue_id=cq_id)
+    golden_function = ttnn.get_golden_function(ttnn.nez)
+    golden_tensor = golden_function(in_data)
+    comp_pass = compare_pcc([output_tensor], [golden_tensor])
+    assert comp_pass

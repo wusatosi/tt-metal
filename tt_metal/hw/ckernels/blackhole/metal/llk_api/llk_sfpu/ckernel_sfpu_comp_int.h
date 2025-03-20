@@ -27,5 +27,47 @@ inline void calculate_eqz() {
     }
 }
 
+template <bool APPROXIMATION_MODE, int ITERATIONS = 8>
+inline void calculate_lez() {
+#pragma GCC unroll 0
+    for (int d = 0; d < ITERATIONS; d++) {
+        vInt v = dst_reg[0];
+        vInt val = 0;
+        v_if(v <= 0) { val = 1; }
+        v_endif;
+
+        dst_reg[0] = val;
+        dst_reg++;
+    }
+}
+
+template <bool APPROXIMATION_MODE, int ITERATIONS = 8>
+inline void calculate_gez() {
+#pragma GCC unroll 0
+    for (int d = 0; d < ITERATIONS; d++) {
+        vInt v = dst_reg[0];
+        vInt val = 0;
+        v_if(v >= 0) { val = 1; }
+        v_endif;
+
+        dst_reg[0] = val;
+        dst_reg++;
+    }
+}
+
+template <bool APPROXIMATION_MODE, int ITERATIONS = 8>
+inline void calculate_nez() {
+#pragma GCC unroll 0
+    for (int d = 0; d < ITERATIONS; d++) {
+        vInt v = dst_reg[0];
+        vInt val = 1;
+        v_if(v == 0) { val = 0; }
+        v_endif;
+
+        dst_reg[0] = val;
+        dst_reg++;
+    }
+}
+
 }  // namespace sfpu
 }  // namespace ckernel

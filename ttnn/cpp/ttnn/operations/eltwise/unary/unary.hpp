@@ -115,6 +115,30 @@ struct Eqz {
         const std::optional<Tensor>& optional_output_tensor = std::nullopt);
 };
 
+struct Lez {
+    static Tensor invoke(
+        QueueId queue_id,
+        const Tensor& input_tensor,
+        const std::optional<MemoryConfig>& memory_config = std::nullopt,
+        const std::optional<Tensor>& optional_output_tensor = std::nullopt);
+};
+
+struct Gez {
+    static Tensor invoke(
+        QueueId queue_id,
+        const Tensor& input_tensor,
+        const std::optional<MemoryConfig>& memory_config = std::nullopt,
+        const std::optional<Tensor>& optional_output_tensor = std::nullopt);
+};
+
+struct Nez {
+    static Tensor invoke(
+        QueueId queue_id,
+        const Tensor& input_tensor,
+        const std::optional<MemoryConfig>& memory_config = std::nullopt,
+        const std::optional<Tensor>& optional_output_tensor = std::nullopt);
+};
+
 struct Floor {
     static Tensor invoke(
         QueueId queue_id,
@@ -217,7 +241,6 @@ REGISTER_UNARY_OPERATION(cos, COS);
 REGISTER_UNARY_OPERATION(erfinv, ERFINV);
 REGISTER_UNARY_OPERATION(exp2, EXP2);
 REGISTER_UNARY_OPERATION(expm1, EXPM1);
-REGISTER_UNARY_OPERATION(gez, GEZ);
 REGISTER_UNARY_OPERATION(gtz, GTZ);
 REGISTER_UNARY_OPERATION(i0, I0);
 REGISTER_UNARY_OPERATION(i1, I1);
@@ -226,14 +249,12 @@ REGISTER_UNARY_OPERATION(isinf, ISINF);
 REGISTER_UNARY_OPERATION(isnan, ISNAN);
 REGISTER_UNARY_OPERATION(isneginf, ISNEGINF);
 REGISTER_UNARY_OPERATION(isposinf, ISPOSINF);
-REGISTER_UNARY_OPERATION(lez, LEZ);
 REGISTER_UNARY_OPERATION(log, LOG);
 REGISTER_UNARY_OPERATION(log10, LOG10);
 REGISTER_UNARY_OPERATION(log2, LOG2);
 REGISTER_UNARY_OPERATION(logical_not, LOGICAL_NOT_UNARY);
 REGISTER_UNARY_OPERATION(ltz, LTZ);
 REGISTER_UNARY_OPERATION(neg, NEG);
-REGISTER_UNARY_OPERATION(nez, NEZ);
 REGISTER_UNARY_OPERATION(reciprocal, RECIP);
 REGISTER_UNARY_OPERATION(relu, RELU);
 REGISTER_UNARY_OPERATION(relu6, RELU6);
@@ -283,6 +304,9 @@ constexpr auto identity =
     ttnn::register_operation_with_auto_launch_op<"ttnn::identity", ttnn::operations::unary::Identity>();
 constexpr auto abs = ttnn::register_operation_with_auto_launch_op<"ttnn::abs", ttnn::operations::unary::Abs>();
 constexpr auto eqz = ttnn::register_operation_with_auto_launch_op<"ttnn::eqz", ttnn::operations::unary::Eqz>();
+constexpr auto lez = ttnn::register_operation_with_auto_launch_op<"ttnn::lez", ttnn::operations::unary::Lez>();
+constexpr auto gez = ttnn::register_operation_with_auto_launch_op<"ttnn::gez", ttnn::operations::unary::Gez>();
+constexpr auto nez = ttnn::register_operation_with_auto_launch_op<"ttnn::nez", ttnn::operations::unary::Nez>();
 constexpr auto floor =
     ttnn::register_operation_with_auto_launch_op<"ttnn::floor", ttnn::operations::unary::Floor>();
 constexpr auto ceil = ttnn::register_operation_with_auto_launch_op<"ttnn::ceil", ttnn::operations::unary::Ceil>();
