@@ -4,6 +4,7 @@
 
 #include <tt-metalium/work_split.hpp>
 #include "ttnn/operations/math.hpp"
+#include "ttnn/operations/cb_utils.hpp"
 #include <tt-metalium/host_api.hpp>
 #include <tt-metalium/hal_exp.hpp>
 #include <tt-metalium/constants.hpp>
@@ -34,27 +35,22 @@ operation::ProgramWithCallbacks reshape_tile_single_core(const Tensor& a, Tensor
     tt::tt_metal::Buffer* dst_buffer = output.buffer();
     TT_ASSERT(dst_buffer != nullptr, "Output buffer should be allocated on device!");
 
-    uint32_t src0_cb_index = 0;
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+    uint32_t src0_cb_index = next_cb_index++;
     uint32_t num_input_tiles = 2;
-    tt::tt_metal::CircularBufferConfig cb_src0_config =
-        tt::tt_metal::CircularBufferConfig(num_input_tiles * single_tile_size, {{src0_cb_index, cb_data_format}})
-            .set_page_size(src0_cb_index, single_tile_size);
-    auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, core, cb_src0_config);
+    tt::tt_metal::create_cb(src0_cb_index, program, core, single_tile_size, num_input_tiles, cb_data_format);
 
     bool src0_is_dram = src0_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0;
     uint32_t alignment = src0_is_dram ? hal::get_dram_alignment() : hal::get_l1_alignment();
 
-    std::vector<uint32_t> reader_compile_time_args = {(std::uint32_t)src0_is_dram, alignment};
+    std::vector<uint32_t> reader_compile_time_args = {src0_cb_index, (std::uint32_t)src0_is_dram, alignment};
 
     bool dst_is_dram = dst_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0;
     std::vector<uint32_t> writer_compile_time_args = {(std::uint32_t)src0_cb_index, (std::uint32_t)dst_is_dram};
 
     if (alignment > (tt::constants::FACE_WIDTH * a.element_size())) {
-        uint32_t src1_cb_index = 1;
-        tt::tt_metal::CircularBufferConfig cb_src1_config =
-            tt::tt_metal::CircularBufferConfig(alignment, {{src1_cb_index, cb_data_format}})
-                .set_page_size(src1_cb_index, alignment);
-        auto cb_src1 = tt::tt_metal::CreateCircularBuffer(program, core, cb_src1_config);
+        uint32_t src1_cb_index = next_cb_index++;
+        tt::tt_metal::create_cb(src1_cb_index, program, core, alignment, 1, cb_data_format);
     }
 
     tt::tt_metal::KernelHandle unary_reader_kernel_id = tt::tt_metal::CreateKernel(
@@ -245,7 +241,8 @@ operation::ProgramWithCallbacks reshape_rm_multi_core(const Tensor& a, Tensor& o
         tt::tt_metal::split_work_to_cores(
             compute_with_storage_grid_size, old_stick_size > new_stick_size ? num_old_sticks : num_new_sticks);
 
-    uint32_t src0_cb_index = 0;
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+    uint32_t src0_cb_index = next_cb_index++;
     auto num_pages = num_sticks_per_core_group_1 > num_sticks_per_core_group_2 ? num_sticks_per_core_group_1
                                                                                : num_sticks_per_core_group_2;
     auto max_page_size = old_stick_size > new_stick_size ? old_stick_size : new_stick_size;
@@ -263,6 +260,7 @@ operation::ProgramWithCallbacks reshape_rm_multi_core(const Tensor& a, Tensor& o
     uint32_t new_old_stick_size_ratio =
         new_stick_size > old_stick_size ? new_stick_size / old_stick_size : old_stick_size / new_stick_size;
     std::vector<uint32_t> reader_ct_args = {
+        (std::uint32_t)src0_cb_index,
         (std::uint32_t)src0_is_dram,
         (std::uint32_t)old_stick_size,
         (std::uint32_t)old_stick_size_is_power_of_two,

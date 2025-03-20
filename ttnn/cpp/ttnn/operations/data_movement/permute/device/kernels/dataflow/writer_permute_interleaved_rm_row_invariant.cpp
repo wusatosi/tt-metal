@@ -6,10 +6,11 @@
 #include "dataflow_api.h"
 
 void kernel_main() {
-    constexpr bool dst_is_dram = (bool)get_compile_time_arg_val(0);
-    constexpr uint32_t N = get_compile_time_arg_val(1);
-    constexpr uint32_t page_size = get_compile_time_arg_val(2);
-    constexpr uint32_t num_rows = get_compile_time_arg_val(3);
+    constexpr uint32_t cb_id_out = get_compile_time_arg_val(0);
+    constexpr bool dst_is_dram = (bool)get_compile_time_arg_val(1);
+    constexpr uint32_t N = get_compile_time_arg_val(2);
+    constexpr uint32_t page_size = get_compile_time_arg_val(3);
+    constexpr uint32_t num_rows = get_compile_time_arg_val(4);
 
     const uint32_t dst_addr = get_arg_val<uint32_t>(0);
     const uint32_t start_row = get_arg_val<uint32_t>(1);
@@ -25,7 +26,7 @@ void kernel_main() {
         dest_strides[i - 3] = get_arg_val<uint32_t>(i + 2 * N);
     }
 
-    uint32_t src_buffer_l1_addr = get_write_ptr(tt::CBIndex::c_0);
+    uint32_t src_buffer_l1_addr = get_write_ptr(cb_id_out);
     uint32_t curr_addr = dst_addr;
     for (uint32_t row = start_row; row < end_row; ++row) {
         // Compute multi-dimensional index for the source row
@@ -49,11 +50,11 @@ void kernel_main() {
         for (uint32_t i = 0; i < N - 1; ++i) {
             dest_linear_idx += dest_multi_idx[i] * dest_strides[i];
         }
-        cb_wait_front(tt::CBIndex::c_0, 1);
-        uint32_t l1_read_addr = get_read_ptr(tt::CBIndex::c_0);
+        cb_wait_front(cb_id_out, 1);
+        uint32_t l1_read_addr = get_read_ptr(cb_id_out);
         uint64_t dst_noc_addr = get_noc_addr(dest_linear_idx, s0);
         noc_async_write(l1_read_addr, dst_noc_addr, page_size);
         noc_async_write_barrier();
-        cb_pop_front(tt::CBIndex::c_0, 1);
+        cb_pop_front(cb_id_out, 1);
     }
 }

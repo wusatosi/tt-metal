@@ -49,6 +49,9 @@ void kernel_main() {
     constexpr uint32_t w_blocks = get_compile_time_arg_val(21);
     constexpr bool needs_y_padding = (bool)get_compile_time_arg_val(22);
     constexpr uint32_t permuted_w_dim = get_compile_time_arg_val(23);
+    constexpr uint32_t cb_id_in0 = get_compile_time_arg_val(24);
+    constexpr uint32_t cb_out = get_compile_time_arg_val(25);
+    constexpr uint32_t cb_id_padding = get_compile_time_arg_val(26);
 
     //--------------------------------------------------------------------------
     // 2) Derived Constants (all constexpr)
@@ -72,8 +75,6 @@ void kernel_main() {
     constexpr uint32_t Y_t = H_p / TILE_HEIGHT;
     // For X dimension:
     constexpr uint32_t X_t = X_p / TILE_HEIGHT;
-
-    constexpr auto cb_out = tt::CBIndex::c_2;
 
     //--------------------------------------------------------------------------
     // 3) Runtime Arguments
@@ -123,7 +124,7 @@ void kernel_main() {
     // The stride for stepping along dimension `permuted_w_dim` in the final output
     uint32_t W_stride_tile = dest_tiled_strides[permuted_w_dim];
 
-    constexpr auto data_format = get_dataformat(tt::CBIndex::c_0);
+    constexpr auto data_format = get_dataformat(cb_id_in0);
     const InterleavedAddrGenFast<dst_is_dram> s = {
         .bank_base_address = dst_addr, .page_size = tile_bytes, .data_format = data_format};
 
@@ -265,8 +266,8 @@ void kernel_main() {
         // We'll reuse 'dest_multi_idx' for tile indexing
         dest_multi_idx[RANK - 2] = y_t;  // fix the tile dimension in the RANK-2 dimension
 
-        cb_wait_front(tt::CBIndex::c_3, 1);
-        uint32_t l1_read_ptr = get_read_ptr(tt::CBIndex::c_3);
+        cb_wait_front(cb_id_padding, 1);
+        uint32_t l1_read_ptr = get_read_ptr(cb_id_padding);
 
         for (uint32_t tile_idx = start_padding_tile_idx; tile_idx < end_padding_tile_idx; ++tile_idx) {
             // Unflatten 'tile_idx' => dest_multi_idx
@@ -305,6 +306,6 @@ void kernel_main() {
             }
         }
         noc_async_write_barrier();
-        cb_pop_front(tt::CBIndex::c_3, 1);
+        cb_pop_front(cb_id_padding, 1);
     }
 }

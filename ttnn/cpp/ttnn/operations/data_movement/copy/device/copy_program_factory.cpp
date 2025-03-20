@@ -102,7 +102,7 @@ operation::ProgramWithCallbacks copy_multi_core(const Tensor& input, const Tenso
 
     if (convert_dtype) {
         std::vector<uint32_t> compute_kernel_args_group_1 = {
-            num_units_per_core_group_1, src0_cb_index, output_cb_index};
+            src0_cb_index, output_cb_index, num_units_per_core_group_1};
         auto eltwise_unary_kernel_group_1 = tt::tt_metal::CreateKernel(
             program,
             "ttnn/cpp/ttnn/deprecated/tt_dnn/kernels/compute/eltwise_copy.cpp",
@@ -111,7 +111,7 @@ operation::ProgramWithCallbacks copy_multi_core(const Tensor& input, const Tenso
 
         if (!core_group_2.ranges().empty()) {
             std::vector<uint32_t> compute_kernel_args_group_2 = {
-                num_units_per_core_group_2, src0_cb_index, output_cb_index};
+                src0_cb_index, output_cb_index, num_units_per_core_group_2};
             auto eltwise_unary_kernel_group_2 = tt::tt_metal::CreateKernel(
                 program,
                 "ttnn/cpp/ttnn/deprecated/tt_dnn/kernels/compute/eltwise_copy.cpp",

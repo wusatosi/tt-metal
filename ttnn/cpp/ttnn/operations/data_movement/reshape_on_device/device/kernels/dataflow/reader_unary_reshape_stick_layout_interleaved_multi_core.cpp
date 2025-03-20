@@ -12,16 +12,15 @@ void kernel_main() {
     uint32_t num_sticks_per_cb_push = get_arg_val<uint32_t>(3);
     uint32_t start_id = get_arg_val<uint32_t>(4);
 
-    constexpr bool src_is_dram = get_compile_time_arg_val(0) == 1;
-    constexpr uint32_t old_stick_size = get_compile_time_arg_val(1);
+    constexpr auto cb_in0 = get_compile_time_arg_val(0);
+    constexpr bool src_is_dram = get_compile_time_arg_val(1) == 1;
+    constexpr uint32_t old_stick_size = get_compile_time_arg_val(2);
 
-    constexpr auto cb_in0 = tt::CBIndex::c_0;
-
-#define stick_size_is_pow2 get_compile_time_arg_val(2) == 1
+#define stick_size_is_pow2 get_compile_time_arg_val(3) == 1
 #if (stick_size_is_pow2)
-    constexpr uint32_t log_base_2_of_page_size = get_compile_time_arg_val(3);
+    constexpr uint32_t log_base_2_of_page_size = get_compile_time_arg_val(4);
 #else
-    constexpr uint32_t page_size = get_compile_time_arg_val(3);
+    constexpr uint32_t page_size = get_compile_time_arg_val(4);
 #endif
 #if (stick_size_is_pow2)
     const InterleavedPow2AddrGen<src_is_dram> s = {

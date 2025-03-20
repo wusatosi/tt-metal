@@ -52,9 +52,9 @@ void kernel_main() {
     constexpr uint32_t num_sticks_padded_read = get_compile_time_arg_val(18);
 #endif
 
-    constexpr uint32_t cb_in0 = tt::CBIndex::c_0;
-    constexpr uint32_t cb_pad = tt::CBIndex::c_1;
-    constexpr uint32_t cb_pad_align = tt::CBIndex::c_2;
+    constexpr uint32_t cb_in0 = get_compile_time_arg_val(23);
+    constexpr uint32_t cb_pad = get_compile_time_arg_val(24);
+    constexpr uint32_t cb_pad_align = get_compile_time_arg_val(25);
 
 #define stick_size_is_pow2 get_compile_time_arg_val(19) == 1
 #if (stick_size_is_pow2)

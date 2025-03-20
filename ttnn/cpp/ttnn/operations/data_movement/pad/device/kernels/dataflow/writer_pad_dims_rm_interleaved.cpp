@@ -20,13 +20,12 @@ void kernel_main() {
     const uint32_t dst_stick_offset = get_arg_val<uint32_t>(25);  // == start_src_stick_wi * elem_size
     const uint32_t num_local_W = get_arg_val<uint32_t>(26);
 
-    constexpr bool dst_is_dram = get_compile_time_arg_val(1) == 1;
-#define dst_stick_size_is_pow2 get_compile_time_arg_val(4) == 1
-
-    constexpr uint32_t cb_id = tt::CBIndex::c_0;
+    constexpr uint32_t cb_id = get_compile_time_arg_val(0);
+    constexpr bool dst_is_dram = get_compile_time_arg_val(2) == 1;
+#define dst_stick_size_is_pow2 get_compile_time_arg_val(5) == 1
 
     // #if (dst_stick_size_is_pow2)
-    //     constexpr uint32_t dst_log_base_2_of_page_size = get_compile_time_arg_val(5);
+    //     constexpr uint32_t dst_log_base_2_of_page_size = get_compile_time_arg_val(6);
     //     const InterleavedPow2AddrGen<dst_is_dram> s1 = {
     //         .bank_base_address = dst_addr,
     //         .log_base_2_of_page_size = dst_log_base_2_of_page_size

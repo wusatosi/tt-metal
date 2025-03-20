@@ -54,6 +54,8 @@ void kernel_main() {
     constexpr uint32_t rows_per_x = get_compile_time_arg_val(26);
     constexpr uint32_t misalignment = get_compile_time_arg_val(27);
     constexpr uint32_t read_alignment = get_compile_time_arg_val(28);
+    constexpr uint32_t cb_id_in0 = get_compile_time_arg_val(29);
+    constexpr uint32_t cb_id_padding = get_compile_time_arg_val(30);
 
     // ------------------------------------------------------------------------
     // 2) Derived Constants (kept as constexpr)
@@ -110,7 +112,7 @@ void kernel_main() {
     for (int i = RANK - 2; i >= 0; i--) {
         src_tiled_strides[i] = src_tiled_strides[i + 1] * input_tiled_shape[i + 1];
     }
-    constexpr auto data_format = get_dataformat(tt::CBIndex::c_0);
+    constexpr auto data_format = get_dataformat(cb_id_in0);
     const InterleavedAddrGenFast<src0_is_dram> s = {
         .bank_base_address = src_addr, .page_size = tile_bytes, .data_format = data_format};
 
@@ -181,8 +183,8 @@ void kernel_main() {
         }
 
         // Reserve a slot in the circular buffer, get L1 pointer
-        cb_reserve_back(tt::CBIndex::c_0, 1);
-        uint32_t src_buffer_l1_addr = get_write_ptr(tt::CBIndex::c_0);
+        cb_reserve_back(cb_id_in0, 1);
+        uint32_t src_buffer_l1_addr = get_write_ptr(cb_id_in0);
 
         // --------------------------------------------------------------------
         // 5.1) Async read for [x_start..x_end)
@@ -264,7 +266,7 @@ void kernel_main() {
 
         // Wait for reads to complete, push the tile
         noc_async_read_barrier();
-        cb_push_back(tt::CBIndex::c_0, 1);
+        cb_push_back(cb_id_in0, 1);
     }
 
     // ------------------------------------------------------------------------
@@ -272,9 +274,9 @@ void kernel_main() {
     // ------------------------------------------------------------------------
     if constexpr (needs_y_padding) {
         // We store one chunk of padding in c_3
-        cb_reserve_back(tt::CBIndex::c_3, 1);
-        uint32_t l1_write_addr = get_write_ptr(tt::CBIndex::c_3);
+        cb_reserve_back(cb_id_padding, 1);
+        uint32_t l1_write_addr = get_write_ptr(cb_id_padding);
         tt::data_movement::common::fill_with_val(l1_write_addr, num_writes, padding_val_packed);
-        cb_push_back(tt::CBIndex::c_3, 1);
+        cb_push_back(cb_id_padding, 1);
     }
 }

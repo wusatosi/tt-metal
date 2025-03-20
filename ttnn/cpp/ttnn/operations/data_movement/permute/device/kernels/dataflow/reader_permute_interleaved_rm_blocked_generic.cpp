@@ -6,18 +6,19 @@
 #include "dataflow_api.h"
 
 void kernel_main() {
-    constexpr bool src0_is_dram = (bool)get_compile_time_arg_val(0);
-    constexpr uint32_t N = get_compile_time_arg_val(1);
-    constexpr uint32_t input_cb_page_size = get_compile_time_arg_val(2);
-    constexpr uint32_t num_rows = get_compile_time_arg_val(3);
-    constexpr uint32_t x_dim = get_compile_time_arg_val(4);
-    constexpr uint32_t num_blocks_total = get_compile_time_arg_val(5);
-    constexpr uint32_t x_blocks = get_compile_time_arg_val(6);
-    constexpr uint32_t w_blocks = get_compile_time_arg_val(7);
-    constexpr uint32_t x_block_size = get_compile_time_arg_val(8);
-    constexpr uint32_t w_block_size = get_compile_time_arg_val(9);
-    constexpr uint32_t element_size = get_compile_time_arg_val(10);
-    constexpr uint32_t input_tensor_page_size = get_compile_time_arg_val(11);
+    constexpr uint32_t cb_id_in0 = get_compile_time_arg_val(0);
+    constexpr bool src0_is_dram = (bool)get_compile_time_arg_val(1);
+    constexpr uint32_t N = get_compile_time_arg_val(2);
+    constexpr uint32_t input_cb_page_size = get_compile_time_arg_val(3);
+    constexpr uint32_t num_rows = get_compile_time_arg_val(4);
+    constexpr uint32_t x_dim = get_compile_time_arg_val(5);
+    constexpr uint32_t num_blocks_total = get_compile_time_arg_val(6);
+    constexpr uint32_t x_blocks = get_compile_time_arg_val(7);
+    constexpr uint32_t w_blocks = get_compile_time_arg_val(8);
+    constexpr uint32_t x_block_size = get_compile_time_arg_val(9);
+    constexpr uint32_t w_block_size = get_compile_time_arg_val(10);
+    constexpr uint32_t element_size = get_compile_time_arg_val(11);
+    constexpr uint32_t input_tensor_page_size = get_compile_time_arg_val(12);
 
     // Precomputed constants: size of a 32 element block along the W dimension (measured in bytes)
     constexpr uint32_t w_block_size_bytes = w_block_size * element_size;
@@ -99,8 +100,8 @@ void kernel_main() {
         }
 
         // Reserve space in the circular buffer for the X-block length
-        cb_reserve_back(tt::CBIndex::c_0, x_block_size);
-        uint32_t src_buffer_l1_addr = get_write_ptr(tt::CBIndex::c_0);
+        cb_reserve_back(cb_id_in0, x_block_size);
+        uint32_t src_buffer_l1_addr = get_write_ptr(cb_id_in0);
 
         // We read in 'x_block_len' chunks along the X dimension
         uint32_t page_offset = 0;
@@ -119,6 +120,6 @@ void kernel_main() {
         // Wait for all async reads to complete before proceeding
         noc_async_read_barrier();
         // Push the filled block into the circular buffer
-        cb_push_back(tt::CBIndex::c_0, x_block_size);
+        cb_push_back(cb_id_in0, x_block_size);
     }
 }

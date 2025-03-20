@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "cpp/ttnn/operations/data_movement/permute/device/permute_device_operation.hpp"
+#include "ttnn/operations/cb_utils.hpp"
 #include <tt-metalium/work_split.hpp>
 #include <tt-metalium/hal_exp.hpp>
 
@@ -61,7 +62,8 @@ PermuteDeviceOperation::MultiCoreRowInvariant::cached_program_t PermuteDeviceOpe
 
     tt::tt_metal::IDevice* device = input_tensor.device();
 
-    uint32_t src0_cb_index = tt::CBIndex::c_0;
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+    uint32_t src0_cb_index = next_cb_index++;
     uint32_t num_input_pages_to_read = 2;
 
     uint32_t num_rows = input_tensor.volume() / input_tensor.get_logical_shape()[-1];
@@ -70,16 +72,14 @@ PermuteDeviceOperation::MultiCoreRowInvariant::cached_program_t PermuteDeviceOpe
     auto [num_cores, all_cores, core_group_1, core_group_2, num_tiles_per_core_group_1, num_tiles_per_core_group_2] =
         tt::tt_metal::split_work_to_cores(compute_with_storage_grid_size, num_rows);
 
-    tt::tt_metal::CircularBufferConfig cb_src0_config =
-        tt::tt_metal::CircularBufferConfig(
-            num_input_pages_to_read * input_rm_page_size, {{src0_cb_index, cb_data_format}})
-            .set_page_size(src0_cb_index, input_rm_page_size);
-    auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_src0_config);
+    tt::tt_metal::create_cb(
+        src0_cb_index, program, all_cores, input_rm_page_size, num_input_pages_to_read, cb_data_format);
 
     uint32_t N = operation_attributes.dims.size();
 
     bool src_is_dram = src_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0;
-    std::vector<uint32_t> reader_compile_time_args = {(uint32_t)src_is_dram, N, input_rm_page_size, num_rows};
+    std::vector<uint32_t> reader_compile_time_args = {
+        src0_cb_index, (uint32_t)src_is_dram, N, input_rm_page_size, num_rows};
 
     tt::tt_metal::KernelHandle unary_reader_kernel_id = tt::tt_metal::CreateKernel(
         program,
@@ -89,7 +89,8 @@ PermuteDeviceOperation::MultiCoreRowInvariant::cached_program_t PermuteDeviceOpe
         tt::tt_metal::ReaderDataMovementConfig(reader_compile_time_args));
 
     bool dst_is_dram = dst_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0;
-    std::vector<uint32_t> writer_compile_time_args = {(std::uint32_t)dst_is_dram, N, output_rm_page_size, num_rows};
+    std::vector<uint32_t> writer_compile_time_args = {
+        src0_cb_index, (std::uint32_t)dst_is_dram, N, output_rm_page_size, num_rows};
     tt::tt_metal::KernelHandle unary_writer_kernel_id = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/data_movement/permute/device/kernels/dataflow/"
@@ -189,9 +190,10 @@ PermuteDeviceOperation::MultiCoreBlockedGeneric::create(
 
     tt::tt_metal::IDevice* device = input_tensor.device();
 
-    uint32_t src0_cb_index = tt::CBIndex::c_0;
-    uint32_t src1_cb_index = tt::CBIndex::c_2;
-    uint32_t src2_cb_index = tt::CBIndex::c_1;
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+    uint32_t src0_cb_index = next_cb_index++;
+    uint32_t src1_cb_index = next_cb_index++;
+    uint32_t src2_cb_index = next_cb_index++;
     uint32_t num_input_pages_to_read = 2;
 
     // we are focused on reading one row at a time, in a pattern that allows us to write an entire output row at a time
@@ -222,27 +224,23 @@ PermuteDeviceOperation::MultiCoreBlockedGeneric::create(
     auto [num_cores, all_cores, core_group_1, core_group_2, num_tiles_per_core_group_1, num_tiles_per_core_group_2] =
         tt::tt_metal::split_work_to_cores(compute_with_storage_grid_size, num_blocks_total);
 
-    tt::tt_metal::CircularBufferConfig cb_src0_config =
-        tt::tt_metal::CircularBufferConfig(
-            num_input_pages_to_read * input_cb_page_size * x_block_size, {{src0_cb_index, cb_data_format}})
-            .set_page_size(src0_cb_index, input_cb_page_size);
-    auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_src0_config);
+    tt::tt_metal::create_cb(
+        src0_cb_index, program, all_cores, input_cb_page_size, num_input_pages_to_read * x_block_size, cb_data_format);
 
-    tt::tt_metal::CircularBufferConfig cb_src1_config =
-        tt::tt_metal::CircularBufferConfig(
-            num_input_pages_to_read * output_cb_page_size * w_block_size, {{src1_cb_index, cb_data_format}})
-            .set_page_size(src1_cb_index, output_cb_page_size);
-    auto cb_src1 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_src1_config);
+    tt::tt_metal::create_cb(
+        src1_cb_index, program, all_cores, output_cb_page_size, num_input_pages_to_read * w_block_size, cb_data_format);
 
-    tt::tt_metal::CircularBufferConfig cb_src2_config =
-        tt::tt_metal::CircularBufferConfig(
-            num_input_pages_to_read * x_block_size * w_block_size * input_tensor.element_size(),
-            {{src2_cb_index, cb_data_format}})
-            .set_page_size(src2_cb_index, x_block_size * w_block_size * input_tensor.element_size());
-    auto cb_src2 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_src2_config);
+    tt::tt_metal::create_cb(
+        src2_cb_index,
+        program,
+        all_cores,
+        x_block_size * w_block_size * input_tensor.element_size(),
+        num_input_pages_to_read,
+        cb_data_format);
 
     bool src_is_dram = src_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0;
     std::vector<uint32_t> reader_compile_time_args = {
+        src0_cb_index,
         (uint32_t)src_is_dram,
         N,
         input_cb_page_size,
@@ -265,6 +263,7 @@ PermuteDeviceOperation::MultiCoreBlockedGeneric::create(
 
     bool dst_is_dram = dst_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0;
     std::vector<uint32_t> writer_compile_time_args = {
+        src1_cb_index,
         (std::uint32_t)dst_is_dram,
         N,
         output_cb_page_size,
@@ -293,7 +292,8 @@ PermuteDeviceOperation::MultiCoreBlockedGeneric::create(
         all_cores,
         tt::tt_metal::WriterDataMovementConfig(writer_compile_time_args));
 
-    std::vector<uint32_t> compute_kernel_args = {x_block_size, w_block_size};
+    std::vector<uint32_t> compute_kernel_args = {
+        src0_cb_index, src2_cb_index, src1_cb_index, x_block_size, w_block_size};
     bool fp32_dest_acc_en = cb_data_format_output == tt::DataFormat::Float32;
     auto compute_kernel_id = tt::tt_metal::CreateKernel(
         program,

@@ -6,16 +6,16 @@
 #include "dataflow_api.h"
 
 void kernel_main() {
-    constexpr bool src_is_dram = get_compile_time_arg_val(0) == 1;
-    constexpr uint32_t N = get_compile_time_arg_val(1);
-    constexpr uint32_t page_size = get_compile_time_arg_val(2);
-    constexpr uint32_t num_tiles = get_compile_time_arg_val(3);
+    constexpr uint32_t cb_id_in0 = get_compile_time_arg_val(0);
+    constexpr bool src_is_dram = get_compile_time_arg_val(1) == 1;
+    constexpr uint32_t N = get_compile_time_arg_val(2);
+    constexpr uint32_t page_size = get_compile_time_arg_val(3);
+    constexpr uint32_t num_tiles = get_compile_time_arg_val(4);
 
     const uint32_t src_addr = get_arg_val<uint32_t>(0);
     const uint32_t start_tile = get_arg_val<uint32_t>(1);
     const uint32_t end_tile = get_arg_val<uint32_t>(2);
 
-    constexpr uint32_t cb_id_in0 = 0;
     // ublocks size defined in tiles
     constexpr uint32_t onetile = 1;
     const uint32_t tile_bytes = get_tile_size(cb_id_in0);

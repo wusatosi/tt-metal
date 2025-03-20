@@ -52,10 +52,9 @@ void kernel_main() {
     const uint32_t full_unpadded_X_nbytes = get_arg_val<uint32_t>(23);
     const uint32_t num_local_W = get_arg_val<uint32_t>(26);
 
-    constexpr bool src0_is_dram = get_compile_time_arg_val(0) == 1;
-#define src_stick_size_is_pow2 get_compile_time_arg_val(2) == 1
-
-    constexpr uint32_t cb_id = tt::CBIndex::c_0;
+    constexpr uint32_t cb_id = get_compile_time_arg_val(0);
+    constexpr bool src0_is_dram = get_compile_time_arg_val(1) == 1;
+#define src_stick_size_is_pow2 get_compile_time_arg_val(3) == 1
 
     // calculate the offset for alignment of padding in rows/sticks
     uint32_t l1_addr_partial = get_write_ptr(cb_id) + unpadded_X_nbytes;
@@ -63,7 +62,7 @@ void kernel_main() {
         32 - l1_addr_partial % 32;  // NOTE: this is fine with double buffering since offset will be same for each page
 
     // #if (src_stick_size_is_pow2)
-    //     constexpr uint32_t src_log_base_2_of_page_size = get_compile_time_arg_val(3);
+    //     constexpr uint32_t src_log_base_2_of_page_size = get_compile_time_arg_val(4);
     //     const InterleavedPow2AddrGen<src0_is_dram> s0 = {
     //         .bank_base_address = src_addr,
     //         .log_base_2_of_page_size = src_log_base_2_of_page_size

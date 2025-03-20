@@ -28,9 +28,9 @@ void MAIN {
     uint32_t start_block = get_arg_val<uint32_t>(0);
     uint32_t end_block = get_arg_val<uint32_t>(1);
 
-    constexpr auto cb_in = tt::CBIndex::c_0;
-    constexpr auto cb_tilize = tt::CBIndex::c_1;
-    constexpr auto cb_out = tt::CBIndex::c_2;
+    constexpr auto cb_in = get_compile_time_arg_val(0);
+    constexpr auto cb_tilize = get_compile_time_arg_val(1);
+    constexpr auto cb_out = get_compile_time_arg_val(2);
 
     unary_op_init_common(cb_in, cb_out);
 

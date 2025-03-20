@@ -18,15 +18,15 @@ void kernel_main() {
     uint32_t output_Ht = get_arg_val<uint32_t>(4);
     uint32_t output_Wt = get_arg_val<uint32_t>(5);
 
-    constexpr bool src0_is_dram = get_compile_time_arg_val(0) == 1;
-    constexpr uint32_t ALIGNMENT = get_compile_time_arg_val(1);
+    constexpr uint32_t cb_id_in0 = get_compile_time_arg_val(0);
+    constexpr bool src0_is_dram = get_compile_time_arg_val(1) == 1;
+    constexpr uint32_t ALIGNMENT = get_compile_time_arg_val(2);
 
     uint32_t num_sticks_per_input_tile_row = input_Wt << 5;  // Tile height is 32
     uint32_t num_sticks_per_output_tile_row = output_Wt << 5;
 
     constexpr uint32_t SUBTILE_LINE_BYTES = (16 << 1);
     constexpr uint32_t onetile = 1;
-    constexpr uint32_t cb_id_in0 = 0;
 
     constexpr bool MISALIGNED = ALIGNMENT > SUBTILE_LINE_BYTES;
     uint32_t intermed_l1_scratch = MISALIGNED ? get_write_ptr(1) : 0;

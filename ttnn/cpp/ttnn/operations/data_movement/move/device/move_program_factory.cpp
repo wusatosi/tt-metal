@@ -83,7 +83,8 @@ operation::ProgramWithCallbacks move_multi_core_with_overlap(const Tensor& input
         output.buffer()->size(), output.buffer()->page_size(), num_l1_banks, hal.get_alignment(HalMemType::L1));
 
     // CB is being used as temp L1 buffer to copy src data into before writing to dst
-    uint32_t cb_index = 0;
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+    uint32_t cb_index = next_cb_index++;
     uint32_t aligned_page_size = round_up_to_mul32(page_size);
     tt::tt_metal::CircularBufferConfig cb_config =
         tt::tt_metal::CircularBufferConfig(size_per_l1_bank, {{cb_index, cb_data_format}})
@@ -214,8 +215,9 @@ operation::ProgramWithCallbacks move_multi_core_sharded(const Tensor& input, Ten
         input_layout == output.get_layout() && input_dtype == output.get_dtype() &&
             shard_shape == output.shard_spec().value().shape && input_shape == output.get_logical_shape(),
         "Error");
-    const uint32_t src_cb_sharded = tt::CBIndex::c_0;
-    const uint32_t dst_cb_sharded = tt::CBIndex::c_1;
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+    uint32_t src_cb_sharded = next_cb_index++;
+    uint32_t dst_cb_sharded = next_cb_index++;
 
     uint32_t total_size_bytes = input.buffer()->aligned_size_per_bank();
     uint32_t page_size_bytes = input.buffer()->aligned_page_size();

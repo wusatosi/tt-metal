@@ -62,8 +62,8 @@ void kernel_main() {
     constexpr uint32_t num_sticks_padded_read = get_compile_time_arg_val(12);
 #endif
 
-    constexpr auto cb_pad = tt::CBIndex::c_1;
-    constexpr auto cb_out0 = tt::CBIndex::c_16;
+    constexpr uint32_t cb_pad = get_compile_time_arg_val(13);
+    constexpr uint32_t cb_out0 = get_compile_time_arg_val(14);
 
     uint32_t pad_val_addr = get_read_ptr(cb_pad);
     uint64_t pad_val_noc_addr = get_noc_addr(pad_val_addr);

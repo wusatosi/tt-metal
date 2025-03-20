@@ -12,14 +12,13 @@
 
 namespace NAMESPACE {
 void MAIN {
-    constexpr uint32_t x_block_size = get_compile_time_arg_val(0);
-    constexpr uint32_t w_block_size = get_compile_time_arg_val(1);
+    constexpr uint32_t cb_in = get_compile_time_arg_val(0);
+    constexpr uint32_t cb_tilize = get_compile_time_arg_val(1);
+    constexpr uint32_t cb_out = get_compile_time_arg_val(2);
+    constexpr uint32_t x_block_size = get_compile_time_arg_val(3);
+    constexpr uint32_t w_block_size = get_compile_time_arg_val(4);
 
     uint32_t num_blocks = get_arg_val<uint32_t>(0);
-
-    constexpr auto cb_in = tt::CBIndex::c_0;
-    constexpr auto cb_tilize = tt::CBIndex::c_1;
-    constexpr auto cb_out = tt::CBIndex::c_2;
 
     unary_op_init_common(cb_in, cb_out);
 

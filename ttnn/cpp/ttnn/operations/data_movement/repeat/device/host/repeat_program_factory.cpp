@@ -64,16 +64,11 @@ tt::tt_metal::operation::ProgramWithCallbacks rm_repeater_last_dim(
                              : (source_page_size_bytes & 0x3) == 0                    ? source_page_size_bytes * 4
                              : (source_page_size_bytes & 0x1) == 0                    ? source_page_size_bytes * 8
                                                                                       : source_page_size_bytes * 16;
-    uint32_t src0_cb_index = 0;
-    uint32_t src1_cb_index = 1;
-    tt::tt_metal::CircularBufferConfig cb_src0_config =
-        tt::tt_metal::CircularBufferConfig(cb_size_bytes, {{src0_cb_index, cb_data_format}})
-            .set_page_size(src0_cb_index, cb_size_bytes);
-    auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, total_cores, cb_src0_config);
-    tt::tt_metal::CircularBufferConfig cb_src1_config =
-        tt::tt_metal::CircularBufferConfig(cb_size_bytes, {{src1_cb_index, cb_data_format}})
-            .set_page_size(src1_cb_index, cb_size_bytes);
-    auto cb_src1 = tt::tt_metal::CreateCircularBuffer(program, total_cores, cb_src1_config);
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+    uint32_t src0_cb_index = next_cb_index++;
+    uint32_t src1_cb_index = next_cb_index++;
+    tt::tt_metal::create_cb(src0_cb_index, program, total_cores, cb_size_bytes, 1, cb_data_format);
+    tt::tt_metal::create_cb(src1_cb_index, program, total_cores, cb_size_bytes, 1, cb_data_format);
     bool source_page_is_pow_2 = tt::tt_metal::is_power_of_two_at_least_32(source_page_size_bytes);
     uint32_t source_page_pow_2 = source_page_is_pow_2 ? (std::uint32_t)std::log2(source_page_size_bytes) : 0;
     bool dest_page_is_pow_2 = tt::tt_metal::is_power_of_two_at_least_32(dest_page_size_bytes);
@@ -176,18 +171,12 @@ tt::tt_metal::operation::ProgramWithCallbacks rm_repeater(
     uint32_t number_of_rep_dim_pages = input_log_shape[1];
     uint32_t src0_is_dram = src_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0;
     uint32_t cb_size_bytes = READ_ALIGNMENT * 2 + page_size_bytes;
-    uint32_t src0_cb_index = 0;
-    uint32_t src1_cb_index = 1;
 
-    tt::tt_metal::CircularBufferConfig cb_src0_config =
-        tt::tt_metal::CircularBufferConfig(cb_size_bytes, {{src0_cb_index, cb_data_format}})
-            .set_page_size(src0_cb_index, cb_size_bytes);
-    auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, total_cores, cb_src0_config);
-
-    tt::tt_metal::CircularBufferConfig cb_src1_config =
-        tt::tt_metal::CircularBufferConfig(cb_size_bytes, {{src1_cb_index, cb_data_format}})
-            .set_page_size(src1_cb_index, cb_size_bytes);
-    auto cb_src1 = tt::tt_metal::CreateCircularBuffer(program, total_cores, cb_src1_config);
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+    uint32_t src0_cb_index = next_cb_index++;
+    uint32_t src1_cb_index = next_cb_index++;
+    tt::tt_metal::create_cb(src0_cb_index, program, total_cores, cb_size_bytes, 1, cb_data_format);
+    tt::tt_metal::create_cb(src1_cb_index, program, total_cores, cb_size_bytes, 1, cb_data_format);
 
     bool page_is_pow_2 = tt::tt_metal::is_power_of_two_at_least_32(page_size_bytes);
     uint32_t page_pow_2 = page_is_pow_2 ? (std::uint32_t)std::log2(page_size_bytes) : 0;

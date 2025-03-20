@@ -62,8 +62,9 @@ void kernel_main() {
     constexpr uint32_t FACE_HEIGHT = get_compile_time_arg_val(8);
     constexpr uint32_t FACE_WIDTH = get_compile_time_arg_val(9);
     constexpr bool needs_padding = (get_compile_time_arg_val(10) == 1);
-    constexpr uint32_t RANK = get_compile_time_arg_val(11);
-    constexpr uint32_t permuted_input_h_index = get_compile_time_arg_val(12);
+    constexpr uint32_t cb_id_padding = get_compile_time_arg_val(11);
+    constexpr uint32_t RANK = get_compile_time_arg_val(12);
+    constexpr uint32_t permuted_input_h_index = get_compile_time_arg_val(13);
 
     // ------------------------------------------------------------------------
     // 1) Read runtime arguments
@@ -282,8 +283,8 @@ void kernel_main() {
     // 7) Handle padding if needed
     // ------------------------------------------------------------------------
     if constexpr (needs_padding) {
-        cb_wait_front(tt::CBIndex::c_1, 1);
-        uint32_t l1_read_ptr = get_read_ptr(tt::CBIndex::c_1);
+        cb_wait_front(cb_id_padding, 1);
+        uint32_t l1_read_ptr = get_read_ptr(cb_id_padding);
 
         // We'll reuse 'dest_multi_idx' for tile indexing
         constexpr uint32_t x_t = output_H_tiled - 1;
@@ -330,6 +331,6 @@ void kernel_main() {
             }
         }
         noc_async_write_barrier();
-        cb_pop_front(tt::CBIndex::c_1, 1);
+        cb_pop_front(cb_id_padding, 1);
     }
 }
