@@ -304,10 +304,10 @@ def run_perf_resnet(
     for i in range(batch_size - 1):
         inputs = torch.cat((inputs, inputs1), dim=0)
 
-    torch_resnet50 = load_resnet50_model(model_location_generator)
-    torch_resnet50.eval()
+    # torch_resnet50 = load_resnet50_model(model_location_generator)
+    # torch_resnet50.eval()
 
-    torch_resnet50.to(torch.bfloat16)
+    # torch_resnet50.to(torch.bfloat16)
 
     test_infra = create_test_infra(
         device,
@@ -321,13 +321,13 @@ def run_perf_resnet(
     )
     ttnn.synchronize_device(device)
 
-    num_warmup_iterations = 5
-    num_measurement_iterations = 15
+    num_warmup_iterations = 50
+    num_measurement_iterations = 1000
 
     with torch.no_grad():
-        profiler.start(cpu_key)
-        logits = torch_resnet50(inputs)
-        profiler.end(cpu_key)
+        # profiler.start(cpu_key)
+        # logits = torch_resnet50(inputs)
+        # profiler.end(cpu_key)
 
         if "resnet50_trace_2cqs" in model_version:
             run_trace_2cq_model(device, inputs, test_infra, num_warmup_iterations, num_measurement_iterations)

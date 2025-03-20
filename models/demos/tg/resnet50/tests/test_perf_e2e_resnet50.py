@@ -118,6 +118,7 @@ def test_perf_2cqs(
     ((16, True, 0.0069, 60),),
     indirect=["enable_async_mode"],
 )
+# @pytest.mark.parametrize("mesh_device", [pytest.param((4, 4), id="1x8_line")], indirect=True)
 def test_perf_trace_2cqs(
     mesh_device,
     use_program_cache,
