@@ -13,11 +13,12 @@ import ttnn
 from loguru import logger
 import pytest
 from models.utility_functions import skip_for_grayskull, skip_for_wormhole_b0, skip_for_blackhole
+import matplotlib.pyplot as plt
 
 
 def fa_rand(*shape):
     normal_1 = torch.randn(shape)
-    normal_2 = torch.randn(shape) * 10
+    normal_2 = torch.randn(shape) * 100
     bernoulli = torch.bernoulli(torch.full(shape, 0.001))
     return normal_1 + normal_2 * bernoulli
 
@@ -31,6 +32,133 @@ def fa_rand(*shape):
     normal_2 = torch.randn(shape) * 10
     bernoulli = torch.bernoulli(torch.full(shape, 0.001))
     return normal_1 + normal_2 * bernoulli
+
+
+@pytest.mark.skip()
+def test_python_sdpa_noncausal():
+    """
+    Collect data on the distribution of inputs to the exp function
+    """
+    b, nh, s, d = 1, 1, 8192, 128
+    q_chunk_size, k_chunk_size = 256, 512
+
+    Q = fa_rand(b, nh, s, d)
+    K = fa_rand(b, nh, s, d)
+    V = fa_rand(b, nh, s, d)
+    # Q = torch.randn(b, nh, s, d)
+    # K = torch.randn(b, nh, s, d)
+    # V = torch.randn(b, nh, s, d)
+
+    # Initialize output tensor
+    output = torch.zeros_like(Q)
+
+    # Calculate number of chunks
+    num_q_chunks = math.ceil(s / q_chunk_size)
+    num_k_chunks = math.ceil(s / k_chunk_size)
+
+    # Scale factor for attention
+    scale = 1.0 / math.sqrt(d)
+
+    output = torch.zeros_like(Q)
+
+    exp_log = []
+
+    scores_log = []
+
+    # Process each batch and head
+    for bi in range(b):
+        for hi in range(nh):
+            # First pass: compute max scores for numerical stability
+            for q_idx in range(num_q_chunks):
+                q_start = q_idx * q_chunk_size
+                q_end = min(s, (q_idx + 1) * q_chunk_size)
+                q_chunk = Q[bi, hi, q_start:q_end, :]
+
+                prev_max = None
+                cur_max = None
+                prev_sum = None
+                cur_sum = None
+
+                cur_output = torch.zeros_like(q_chunk)
+
+                for k_idx in range(num_k_chunks):
+                    k_start = k_idx * k_chunk_size
+                    k_end = min(s, (k_idx + 1) * k_chunk_size)
+                    k_chunk = K[bi, hi, k_start:k_end, :]
+                    v_chunk = V[bi, hi, k_start:k_end, :]
+
+                    # Compute attention scores for this chunk pair
+                    scores = torch.matmul(q_chunk, k_chunk.transpose(-1, -2)) * scale
+
+                    # Update max score
+                    cur_max, _ = scores.max(dim=-1, keepdim=True)
+                    if k_idx > 0:
+                        cur_max = torch.maximum(prev_max, cur_max)
+
+                    score_minus_max = scores - cur_max
+                    scores_log.append(score_minus_max)
+                    sub_exp = torch.exp(score_minus_max)
+                    cur_sum = sub_exp.sum(dim=-1, keepdim=True)
+
+                    partial_out = torch.matmul(sub_exp, v_chunk)
+
+                    if k_idx > 0:
+                        prev_minus_cur_max = prev_max - cur_max
+                        exp_log.append(prev_minus_cur_max)
+                        exp_max_diff = torch.exp(prev_minus_cur_max)
+                        prev_sum *= exp_max_diff
+                        cur_sum += prev_sum
+                        cur_output *= exp_max_diff
+                        cur_output += partial_out
+                    else:
+                        cur_output = partial_out
+
+                    prev_sum = cur_sum
+                    prev_max = cur_max
+
+                cur_output *= 1.0 / prev_sum
+                output[bi, hi, q_start:q_end, :] = cur_output
+
+    # return output
+
+    gt_output = torch.nn.functional.scaled_dot_product_attention(Q, K, V, is_causal=False)
+    out_pass, out_pcc = comp_pcc(gt_output, output, 0.994)
+    logger.debug(f"python vs pytorch: {out_pcc}")
+    logger.debug(f"mse: {((gt_output - output) ** 2).mean()}")
+    assert out_pass
+
+    exp_log = torch.stack(exp_log)
+    exp_log = exp_log.reshape(-1)
+    # Sort exp_log values and print
+    sorted_exp_log, _ = torch.sort(exp_log)
+    logger.debug(f"sorted exp_log: {sorted_exp_log}")
+
+    # Create histogram and save as PNG
+    plt.figure(figsize=(10, 6))
+    plt.hist(sorted_exp_log.numpy(), bins=100, density=True)  # density=True normalizes to proportions
+    plt.title("Histogram of sorted_exp_log values")
+    plt.xlabel("Value")
+    plt.ylabel("Proportion")
+    plt.yscale("log")  # Set y-axis to log scale
+    plt.grid(True, alpha=0.3)
+    # Set y-axis minimum to ensure bins with small proportions are visible
+    plt.ylim(bottom=1e-6)  # Adjusted for proportion scale
+    plt.savefig("sorted_exp_log_histogram.png")
+    plt.close()
+
+    scores_log = torch.stack(scores_log)
+    scores_log = scores_log.reshape(-1)
+    sorted_scores_log, _ = torch.sort(scores_log)
+    plt.figure(figsize=(10, 6))
+    plt.hist(sorted_scores_log.numpy(), bins=100, density=True)  # density=True normalizes to proportions
+    plt.title("Histogram of sorted_scores_log values")
+    plt.xlabel("Value")
+    plt.ylabel("Proportion")
+    plt.yscale("log")  # Set y-axis to log scale
+    plt.grid(True, alpha=0.3)
+    plt.ylim(bottom=1e-6)  # Adjusted for proportion scale
+    plt.savefig("sorted_scores_log_histogram.png")
+    plt.close()
 
 
 def run_test_sdpa_tt(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dtype, use_high_precision_compute=False):
@@ -148,6 +276,29 @@ def test_sdpa_tt(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dtype):
 @skip_for_blackhole("Mismatching on BH, see #12349")
 @pytest.mark.skipif(is_watcher_enabled(), reason="Kernel OOM with watcher enabled")
 @skip_for_grayskull("Unsupported in GS since L1 runs OOM with most configs")
+@pytest.mark.parametrize("dtype", [ttnn.bfloat16], ids=["bf16"])
+@pytest.mark.parametrize("q_chunk_size", [256], ids=["q256"])
+@pytest.mark.parametrize("k_chunk_size", [512], ids=["k512"])
+@pytest.mark.parametrize(
+    "b, nh, nkv, s, d, grid",
+    [
+        [1, 3, 3, 44 * 1024, 128, None],  # Test on default grid (8x8)
+        [1, 1, 1, 1024, 128, (1, 1)],  # Single-core repro
+    ],
+    ids=["full_grid", "single_core"],
+)
+def test_sdpa_perf(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dtype, grid):
+    if (s % q_chunk_size != 0) or (s % k_chunk_size != 0):
+        pytest.skip("s must be divisible by q_chunk_size and k_chunk_size")
+    if nh == 8 and q_chunk_size == 128 and k_chunk_size == 128:
+        pytest.skip("Can cause OOM if profiling is enabled.")
+    ttnn.device.DisablePersistentKernelCache()
+    run_sdpa_noncausal(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dtype, use_mask=False, grid=grid)
+
+
+@skip_for_blackhole("Mismatching on BH, see #12349")
+@pytest.mark.skipif(is_watcher_enabled(), reason="Kernel OOM with watcher enabled")
+@skip_for_grayskull("Unsupported in GS since L1 runs OOM with most configs")
 @pytest.mark.parametrize("dtype", [ttnn.bfloat8_b, ttnn.bfloat16], ids=["bfp8", "bf16"])
 @pytest.mark.parametrize("q_chunk_size", [256], ids=["q128"])
 @pytest.mark.parametrize("k_chunk_size", [128], ids=["k128"])
@@ -217,13 +368,13 @@ def test_sdpa_tt_with_program_cache(device, b, nh, nkv, s, d, q_chunk_size, k_ch
     assert device.num_program_cache_entries() == 1
 
 
-def run_sdpa_noncausal(device, b, nh, nkv, sq, d, q_chunk_size, k_chunk_size, dtype, sk=None, use_mask=True):
+def run_sdpa_noncausal(device, b, nh, nkv, sq, d, q_chunk_size, k_chunk_size, dtype, sk=None, use_mask=True, grid=None):
     torch.manual_seed(1234)
     if sk is None:
         sk = sq
 
     program_config = ttnn.SDPAProgramConfig(
-        compute_with_storage_grid_size=device.compute_with_storage_grid_size(),
+        compute_with_storage_grid_size=grid or device.compute_with_storage_grid_size(),
         q_chunk_size=q_chunk_size,
         k_chunk_size=k_chunk_size,
         exp_approx_mode=False,
