@@ -2339,7 +2339,6 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
 
         // set common rt args for in1
         std::vector<uint32_t> concated_all_mm_in1_args = generate_common_rt_args_array(mm_in1_args_per_range);
-        concated_all_mm_in1_args.insert(concated_all_mm_in1_args.begin(), in1_buffer->address());
         concated_all_mm_in1_args.insert(concated_all_mm_in1_args.begin(), (uint32_t)num_cores_x);
         concated_all_mm_in1_args.insert(concated_all_mm_in1_args.begin(), (uint32_t)core_range.start_coord.y);
         concated_all_mm_in1_args.insert(concated_all_mm_in1_args.begin(), (uint32_t)core_range.start_coord.x);
@@ -2400,7 +2399,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         offset += core_range_size;
     }
 
-    if (!in1_is_dram_interleaved) {
+    if (in1_is_dram_interleaved) {
         for (uint32_t i = 0; i < all_cores_info.size(); ++i) {
             SetCommonRuntimeArgs(program, mm_kernel_in1_sender_writer_ids[i], {in1_buffer->address()});
         }

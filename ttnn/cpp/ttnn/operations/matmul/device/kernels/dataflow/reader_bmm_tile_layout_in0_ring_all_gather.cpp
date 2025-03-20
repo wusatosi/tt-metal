@@ -24,83 +24,34 @@ struct ct_args_info {
     uint8_t next_core_noc_y;
 };
 
-#ifdef RANGE_0  // 30 cores
-constexpr std::array<uint32_t, 62> compile_time_arg_array{
-    get_compile_time_arg_val(0),  get_compile_time_arg_val(1),  get_compile_time_arg_val(2),
-    get_compile_time_arg_val(3),  get_compile_time_arg_val(4),  get_compile_time_arg_val(5),
-    get_compile_time_arg_val(6),  get_compile_time_arg_val(7),  get_compile_time_arg_val(8),
-    get_compile_time_arg_val(9),  get_compile_time_arg_val(10), get_compile_time_arg_val(11),
-    get_compile_time_arg_val(12), get_compile_time_arg_val(13), get_compile_time_arg_val(14),
-    get_compile_time_arg_val(15), get_compile_time_arg_val(16), get_compile_time_arg_val(17),
-    get_compile_time_arg_val(18), get_compile_time_arg_val(19), get_compile_time_arg_val(20),
-    get_compile_time_arg_val(21), get_compile_time_arg_val(22), get_compile_time_arg_val(23),
-    get_compile_time_arg_val(24), get_compile_time_arg_val(25), get_compile_time_arg_val(26),
-    get_compile_time_arg_val(27), get_compile_time_arg_val(28), get_compile_time_arg_val(29),
-    get_compile_time_arg_val(30), get_compile_time_arg_val(31), get_compile_time_arg_val(32),
-    get_compile_time_arg_val(33), get_compile_time_arg_val(34), get_compile_time_arg_val(35),
-    get_compile_time_arg_val(36), get_compile_time_arg_val(37), get_compile_time_arg_val(38),
-    get_compile_time_arg_val(39), get_compile_time_arg_val(40), get_compile_time_arg_val(41),
-    get_compile_time_arg_val(42), get_compile_time_arg_val(43), get_compile_time_arg_val(44),
-    get_compile_time_arg_val(45), get_compile_time_arg_val(46), get_compile_time_arg_val(47),
-    get_compile_time_arg_val(48), get_compile_time_arg_val(49), get_compile_time_arg_val(50),
-    get_compile_time_arg_val(51), get_compile_time_arg_val(52), get_compile_time_arg_val(53),
-    get_compile_time_arg_val(54), get_compile_time_arg_val(55), get_compile_time_arg_val(56),
-    get_compile_time_arg_val(57), get_compile_time_arg_val(58), get_compile_time_arg_val(59),
-    get_compile_time_arg_val(60), get_compile_time_arg_val(61)};
-#else  // 20
-constexpr std::array<uint32_t, 52> compile_time_arg_array{
-    get_compile_time_arg_val(0),  get_compile_time_arg_val(1),  get_compile_time_arg_val(2),
-    get_compile_time_arg_val(3),  get_compile_time_arg_val(4),  get_compile_time_arg_val(5),
-    get_compile_time_arg_val(6),  get_compile_time_arg_val(7),  get_compile_time_arg_val(8),
-    get_compile_time_arg_val(9),  get_compile_time_arg_val(10), get_compile_time_arg_val(11),
-    get_compile_time_arg_val(12), get_compile_time_arg_val(13), get_compile_time_arg_val(14),
-    get_compile_time_arg_val(15), get_compile_time_arg_val(16), get_compile_time_arg_val(17),
-    get_compile_time_arg_val(18), get_compile_time_arg_val(19), get_compile_time_arg_val(20),
-    get_compile_time_arg_val(21), get_compile_time_arg_val(22), get_compile_time_arg_val(23),
-    get_compile_time_arg_val(24), get_compile_time_arg_val(25), get_compile_time_arg_val(26),
-    get_compile_time_arg_val(27), get_compile_time_arg_val(28), get_compile_time_arg_val(29),
-    get_compile_time_arg_val(30), get_compile_time_arg_val(31), get_compile_time_arg_val(32),
-    get_compile_time_arg_val(33), get_compile_time_arg_val(34), get_compile_time_arg_val(35),
-    get_compile_time_arg_val(36), get_compile_time_arg_val(37), get_compile_time_arg_val(38),
-    get_compile_time_arg_val(39), get_compile_time_arg_val(40), get_compile_time_arg_val(41),
-    get_compile_time_arg_val(42), get_compile_time_arg_val(43), get_compile_time_arg_val(44),
-    get_compile_time_arg_val(45), get_compile_time_arg_val(46), get_compile_time_arg_val(47),
-    get_compile_time_arg_val(48), get_compile_time_arg_val(49), get_compile_time_arg_val(50),
-    get_compile_time_arg_val(51)};
-#endif
-
 void kernel_main() {
     // Compile time args
-    // constexpr uint32_t shard_width_in_tiles = get_compile_time_arg_val(0);
-    // constexpr uint32_t shard_height_in_tiles = get_compile_time_arg_val(1);
-    // constexpr uint32_t batch = get_compile_time_arg_val(2);
+    constexpr uint32_t shard_width_in_tiles = get_compile_time_arg_val(0);
+    constexpr uint32_t shard_height_in_tiles = get_compile_time_arg_val(1);
+    constexpr uint32_t batch = get_compile_time_arg_val(2);
 
     // // All Gather specific
-    // constexpr uint32_t ring_size = get_compile_time_arg_val(3);
-    // uint32_t signal_semaphore_addr = get_semaphore(get_compile_time_arg_val(4));
-    uint32_t ct_args_idx = 0;
-    constexpr uint32_t shard_width_in_tiles = compile_time_arg_array[ct_args_idx++];
-    constexpr uint32_t shard_height_in_tiles = compile_time_arg_array[ct_args_idx++];
-    constexpr uint32_t batch = compile_time_arg_array[ct_args_idx++];
+    constexpr uint32_t ring_size = get_compile_time_arg_val(3);
+    uint32_t signal_semaphore_addr = get_semaphore(get_compile_time_arg_val(4));
 
-    // All Gather specific
-    constexpr uint32_t ring_size = compile_time_arg_array[ct_args_idx++];
-    uint32_t signal_semaphore_addr = get_semaphore(compile_time_arg_array[ct_args_idx++]);
+    const uint32_t start_core_x = get_compile_time_arg_val(5);
+    const uint32_t start_core_y = get_compile_time_arg_val(6);
+    const uint32_t NUM_CORES_X = get_compile_time_arg_val(7);
 
-    const uint32_t start_core_x = compile_time_arg_array[ct_args_idx++];
-    const uint32_t start_core_y = compile_time_arg_array[ct_args_idx++];
-    const uint32_t NUM_CORES_X = compile_time_arg_array[ct_args_idx++];
+    // DPRINT << "start_core_x " << (uint)start_core_x << ENDL();
+    // DPRINT << "start_core_y " << (uint)start_core_y << ENDL();
+    // DPRINT << "NUM_CORES_X " << (uint)NUM_CORES_X << ENDL();
 
     volatile tt_l1_ptr uint32_t* unpadded_in0_shard_widths_in_tiles =
-        (volatile tt_l1_ptr uint32_t*)(&compile_time_arg_array[ct_args_idx]);
-    ct_args_idx += ring_size;
-    volatile tt_l1_ptr uint8_t* ct_args_base = (volatile tt_l1_ptr uint8_t*)(&compile_time_arg_array[ct_args_idx]);
+        (volatile tt_l1_ptr uint32_t*)(&kernel_compile_time_args[8]);
+    constexpr uint32_t ct_args_idx = 8 + ring_size;
+    volatile tt_l1_ptr uint8_t* ct_args_base = (volatile tt_l1_ptr uint8_t*)(&kernel_compile_time_args[ct_args_idx]);
     uint32_t core_id =
         (get_absolute_logical_x() - start_core_x) + (get_absolute_logical_y() - start_core_y) * NUM_CORES_X;
     volatile tt_l1_ptr ct_args_info* info =
         (volatile tt_l1_ptr ct_args_info*)(ct_args_base + core_id * sizeof(ct_args_info));
 
-    uint32_t core_type = (uint32_t)info->core_type;
+    uint32_t core_type = (uint32_t)info->core_type_and_noc.core_type;
     if (core_type == (uint32_t)CORE_TYPE::IDLE_CORE) {
         return;
     }
@@ -108,7 +59,15 @@ void kernel_main() {
     uint32_t ring_idx = (uint32_t)info->ring_index;
     uint32_t next_core_noc_x = (uint32_t)info->next_core_noc_x;
     uint32_t next_core_noc_y = (uint32_t)info->next_core_noc_y;
-    uint32_t noc = (uint32_t)info->noc;
+    uint32_t noc = (uint32_t)info->core_type_and_noc.noc;
+
+    // DPRINT << "core_id " << (uint)core_id << ENDL();
+
+    // DPRINT << "core_type " << (uint)core_type << ENDL();
+    // DPRINT << "ring_idx " << (uint)ring_idx << ENDL();
+    // DPRINT << "next_core_noc_x " << (uint)next_core_noc_x << ENDL();
+    // DPRINT << "next_core_noc_y " << (uint)next_core_noc_y << ENDL();
+    // DPRINT << "noc " << (uint)noc << ENDL();
 
     // uint32_t common_rt_args_idx = 0;
     // const uint32_t start_core_x = get_common_arg_val<uint32_t>(common_rt_args_idx++);
