@@ -226,8 +226,9 @@ class ResNet50TestInfra:
 
         num_devices = 1 if isinstance(device, ttnn.Device) else device.get_num_devices()
         input_shape = (batch_size * num_devices, 3, 224, 224)
-
+        input_shape_rand = (256, 3, 224, 224)
         self.torch_input_tensor = torch.rand(input_shape, dtype=torch.float32)
+        input_tensor = torch.rand(input_shape_rand, dtype=torch.float32)
 
         parameters = preprocess_model_parameters(
             initialize_model=lambda: torch_model,
@@ -237,11 +238,11 @@ class ResNet50TestInfra:
 
         torch_model.to(torch.bfloat16)
         self.torch_input_tensor = self.torch_input_tensor.to(torch.bfloat16)
-
+        input_tensor = input_tensor.to(torch.bfloat16)
         ## golden
-
-        self.torch_output_tensor = torch_model(self.torch_input_tensor)
-
+        print("Run eval in create_test_infra")
+        self.torch_output_tensor = torch_model(input_tensor)
+        print("Done Run eval in create_test_infra")
         ## ttnn
 
         self.ttnn_resnet50_model = resnet50(

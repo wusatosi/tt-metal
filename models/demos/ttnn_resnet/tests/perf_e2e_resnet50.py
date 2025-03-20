@@ -307,13 +307,19 @@ def run_perf_resnet(
     image = hf_cat_image_sample_input
     image_processor = AutoImageProcessor.from_pretrained(model_name)
     inputs = image_processor(image, return_tensors="pt")
-
+    torch_inputs = image_processor(image, return_tensors="pt")
     inputs = inputs["pixel_values"].bfloat16()
+    torch_inputs = torch_inputs["pixel_values"].bfloat16()
     comments = f"{list(inputs.shape)[-2]}x{list(inputs.shape)[-1]}_batchsize{batch_size}"
 
     inputs1 = inputs
+
     for i in range(batch_size - 1):
         inputs = torch.cat((inputs, inputs1), dim=0)
+
+    torch_inputs1 = torch_inputs
+    for i in range(256 - 1):
+        torch_inputs = torch.cat((torch_inputs, torch_inputs1), dim=0)
 
     torch_resnet50 = load_resnet50_model(model_location_generator)
     torch_resnet50.eval()
@@ -336,10 +342,11 @@ def run_perf_resnet(
     num_measurement_iterations = 15
 
     with torch.no_grad():
+        print("Run eval in inference mode")
         profiler.start(cpu_key)
-        logits = torch_resnet50(inputs)
+        logits = torch_resnet50(torch_inputs)
         profiler.end(cpu_key)
-
+        print("Done run eval in inference mode")
         if "resnet50_trace_2cqs" in model_version:
             run_trace_2cq_model(device, inputs, test_infra, num_warmup_iterations, num_measurement_iterations)
         elif "resnet50_2cqs" in model_version:
