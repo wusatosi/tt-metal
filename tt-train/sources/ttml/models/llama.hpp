@@ -17,8 +17,8 @@ using RunnerType = common::transformer::RunnerType;
 using WeightTyingType = common::transformer::WeightTyingType;
 
 struct LlamaConfig {
-    uint32_t num_heads = 8;
-    uint32_t num_groups = 2;
+    uint32_t num_heads = 6;
+    uint32_t num_groups = 3;
     uint32_t embedding_dim = 384;  // embedding dimension, must be divisible by num_heads
     float dropout_prob = 0.0F;
     uint32_t num_blocks = 6;

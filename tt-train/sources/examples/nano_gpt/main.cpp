@@ -771,8 +771,10 @@ int main(int argc, char **argv) {
                          {"Learning rate", optimizer->get_lr()}});
                     loss_meter.reset();
                 }
-                if (!config.model_path.empty() && global_step % config.model_save_interval == 0) {
+                if (!config.model_path.empty() && (true || global_step % config.model_save_interval == 0)) {
+                    fmt::println("Saving model");
                     save_training_state(config.model_path, model, scheduler, "transformer", "adamw");
+                    std::exit(0);
                 }
 
                 if (global_step >= config.max_steps) {
