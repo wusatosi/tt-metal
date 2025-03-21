@@ -9,6 +9,38 @@ from tests.ttnn.utils_for_testing import assert_with_pcc
 from models.utility_functions import torch_random, run_for_wormhole_b0
 
 
+@pytest.mark.parametrize("batch_size", [2])
+@pytest.mark.parametrize("sentence_size", [8])
+@pytest.mark.parametrize("hidden_embedding_dim", [768])
+@pytest.mark.parametrize("vocabulary_size", [32000])
+@pytest.mark.parametrize("dtype", [ttnn.bfloat16])
+@pytest.mark.parametrize("input_mem_config", [ttnn.L1_MEMORY_CONFIG])
+@pytest.mark.parametrize("output_mem_config", [ttnn.L1_MEMORY_CONFIG])
+def test_sentence_bert_embedding(
+    device,
+    batch_size,
+    sentence_size,
+    hidden_embedding_dim,
+    vocabulary_size,
+    dtype,
+    input_mem_config,
+    output_mem_config,
+):
+    torch.manual_seed(1234)
+
+    torch_input_tensor = torch.randint(0, vocabulary_size - 1, (batch_size, sentence_size))
+    torch_weights = torch_random((vocabulary_size, hidden_embedding_dim), -0.1, 0.1, dtype=torch.bfloat16)
+    torch_output_tensor = torch.nn.functional.embedding(torch_input_tensor, torch_weights)
+
+    input_tensor = ttnn.to_device(ttnn.from_torch(torch_input_tensor), device, memory_config=input_mem_config)
+    weights = ttnn.to_device(ttnn.from_torch(torch_weights, dtype=dtype), device, memory_config=input_mem_config)
+
+    output_tensor = ttnn.embedding(input_tensor, weights, memory_config=output_mem_config, layout=ttnn.TILE_LAYOUT)
+    output_tensor = ttnn.to_torch(output_tensor)
+
+    assert_with_pcc(torch_output_tensor, output_tensor, 0.99)
+
+
 def test_base_case(device):
     torch.manual_seed(1234)
     indices = ttnn.to_device(ttnn.from_torch(torch.tensor([[1, 2, 4, 5], [4, 3, 2, 9]]), dtype=ttnn.uint32), device)

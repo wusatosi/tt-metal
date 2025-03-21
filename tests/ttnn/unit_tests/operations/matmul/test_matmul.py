@@ -13,6 +13,27 @@ from tests.ttnn.utils_for_testing import assert_with_pcc
 from models.utility_functions import skip_for_grayskull, is_wormhole_b0, is_grayskull, is_blackhole, run_for_wormhole_b0
 
 
+@pytest.mark.parametrize(
+    "input_shape_a, input_shape_b",
+    [
+        (
+            (2, 12, 8, 64),
+            (2, 12, 64, 8),
+        ),  # First test case
+        ((2, 12, 8, 8), (2, 12, 8, 64)),  # Second test case
+    ],
+)
+def test_matmul_sentence_BERT(device, input_shape_a, input_shape_b):
+    a = torch.randn(input_shape_a, dtype=torch.bfloat16)
+    b = torch.randn(input_shape_b, dtype=torch.bfloat16)
+    torch_out = torch.matmul(a, b)
+    ttnn_a = ttnn.from_torch(a, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device)
+    ttnn_b = ttnn.from_torch(b, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device)
+    ttnn_out = ttnn.matmul(ttnn_a, ttnn_b, memory_config=ttnn.L1_MEMORY_CONFIG)
+    ttnn_out = ttnn.to_torch(ttnn_out)
+    assert_with_pcc(torch_out, ttnn_out, 0.9999)
+
+
 def find_max_subblock(out_block_h, out_block_w):
     max_product = 0
     best_h = 1

@@ -10,6 +10,53 @@ from tests.ttnn.utils_for_testing import assert_with_pcc
 from models.utility_functions import torch_random, is_wormhole_b0, skip_for_grayskull
 
 
+@pytest.mark.parametrize(
+    "input_shape_a, input_shape_b, bias_shape",
+    [
+        ((2, 8, 768), (768, 768), (768)),  # First test case
+        ((2, 8, 768), (768, 3072), (3072)),  # Second test case
+        ((2, 8, 3072), (3072, 768), (768)),
+    ],
+)
+def test_linear_sentence_BERT(
+    input_shape_a,
+    input_shape_b,
+    bias_shape,
+    device,
+):
+    torch_input_tensor_a = torch_random(input_shape_a, -0.1, 0.1, dtype=torch.float32)
+    torch_input_tensor_b = torch_random(input_shape_b, -0.1, 0.1, dtype=torch.float32)
+
+    torch_bias = torch_random(bias_shape, -0.1, 0.1, dtype=torch.float32)
+    torch_output_tensor = torch.nn.functional.linear(
+        torch_input_tensor_a, torch_input_tensor_b.T.contiguous(), bias=torch_bias
+    )
+
+    input_tensor_a = ttnn.from_torch(
+        torch_input_tensor_a,
+        dtype=ttnn.bfloat16,
+        device=device,
+        layout=ttnn.TILE_LAYOUT,
+    )
+    input_tensor_b = ttnn.from_torch(
+        torch_input_tensor_b,
+        dtype=ttnn.bfloat16,
+        device=device,
+        layout=ttnn.TILE_LAYOUT,
+    )
+    bias = ttnn.from_torch(
+        torch_bias.reshape((1, bias_shape)),
+        device=device,
+        dtype=ttnn.bfloat16,
+        layout=ttnn.TILE_LAYOUT,
+    )
+
+    output_tensor = ttnn.linear(input_tensor_a, input_tensor_b, bias=bias, memory_config=ttnn.L1_MEMORY_CONFIG)
+    output_tensor = ttnn.to_torch(output_tensor)
+
+    assert_with_pcc(torch_output_tensor, output_tensor, 0.999)
+
+
 @pytest.mark.parametrize("batch_sizes", [(1,)])
 @pytest.mark.parametrize("m_size", [384])
 @pytest.mark.parametrize("k_size", [1024])
