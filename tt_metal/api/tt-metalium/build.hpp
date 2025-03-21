@@ -197,6 +197,8 @@ void jit_build(const JitBuildState& build, const JitBuildSettings* settings);
 void jit_build_set(const JitBuildStateSet& builds, const JitBuildSettings* settings);
 void jit_build_subset(const JitBuildStateSubset& builds, const JitBuildSettings* settings);
 
+std::string get_out_root(const std::string& tt_metal_root);
+
 void launch_build_step(const std::function<void()>& build_func, std::vector<std::shared_future<void>>& events);
 
 }  // namespace tt::tt_metal

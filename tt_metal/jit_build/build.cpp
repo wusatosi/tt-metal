@@ -35,6 +35,16 @@ void sync_events(auto& events) {
 
 namespace tt::tt_metal {
 
+// Returns the output root directory for the build. If TT_METAL_OUT_ROOT is set, use that, otherwise use the
+// tt_metal_root + "built/" directory.
+std::string get_out_root(const std::string& tt_metal_root) {
+    std::string TT_METAL_OUT_ROOT = getenv("TT_METAL_OUT_ROOT");
+    if (TT_METAL_OUT_ROOT.empty()) {
+        return tt_metal_root + "built/";
+    }
+    return TT_METAL_OUT_ROOT;
+}
+
 static std::string get_string_aliased_arch_lowercase(tt::ARCH arch) {
     switch (arch) {
         case tt::ARCH::GRAYSKULL: return "grayskull"; break;
@@ -68,7 +78,7 @@ void JitBuildEnv::init(
     uint32_t build_key, tt::ARCH arch, const std::map<std::string, std::string>& device_kernel_defines) {
     // Paths
     this->root_ = llrt::RunTimeOptions::get_instance().get_root_dir();
-    this->out_root_ = this->root_ + "built/";
+    this->out_root_ = get_out_root(this->root_);
     this->arch_ = arch;
     this->arch_name_ = get_string_lowercase(arch);
     this->aliased_arch_name_ = get_string_aliased_arch_lowercase(arch);
