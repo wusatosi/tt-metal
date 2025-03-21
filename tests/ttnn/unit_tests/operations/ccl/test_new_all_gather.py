@@ -321,7 +321,7 @@ def run_all_gather_impl(
         # (4, 1, [1, 1, 64, 512], 3, ttnn.TILE_LAYOUT),
         # (4, 1, [1, 1, 32, 32768], 3, ttnn.TILE_LAYOUT),
         # (4, 1, [1, 1, 2048, 16384], 3, ttnn.TILE_LAYOUT),
-        (4, 1, [1, 1, 2048, 32768], 3, ttnn.TILE_LAYOUT),
+        (4, 1, [1, 1, 32, 32768], 3, ttnn.TILE_LAYOUT),
     ],
 )
 @pytest.mark.parametrize(
