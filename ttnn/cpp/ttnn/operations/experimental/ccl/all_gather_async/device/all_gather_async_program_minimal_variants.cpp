@@ -81,7 +81,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
         input_tensor.device()->id(),
         is_first_chip,
         is_last_chip);
-
+    std::cout << "Building sockets" << std::endl;
     std::optional<ttnn::ccl::EdmLineFabricOpInterface> local_fabric_handle =
         ttnn::ccl::EdmLineFabricOpInterface::build_program_builder_worker_connection_fabric(
             device,
@@ -91,7 +91,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
             enable_persistent_fabric_mode,
             num_links,
             topology);
-
+    std::cout << "Done building sockets" << std::endl;
     // Get OP Config, topology config
     std::vector<Tensor> input_tensors = {input_tensor};
     std::vector<Tensor> output_tensors = {output_tensor};

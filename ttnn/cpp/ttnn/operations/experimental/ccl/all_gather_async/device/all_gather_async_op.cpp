@@ -18,12 +18,13 @@ AllGatherAsync create_all_gather_async_struct(
     const uint32_t dim,
     const uint32_t num_links,
     const std::optional<MemoryConfig>& memory_config,
-    const std::vector<IDevice*>& devices,
     const ttnn::ccl::Topology topology,
     const GlobalSemaphore& semaphore,
     std::optional<tt::tt_metal::SubDeviceId> sub_device_id,
     bool enable_persistent_fabric_mode) {
-    uint32_t num_devices = devices.size();
+    auto mesh_device = dynamic_cast<MeshDevice*>(input_tensor.get_workers()[0]);
+
+    uint32_t num_devices = mesh_device->get_devices().size();
 
     return ttnn::AllGatherAsync{
         dim,
@@ -119,6 +120,7 @@ AllGatherAsyncVersion AllGatherAsync::select_version(const Tensor& input_tensor)
     if (input_tensor_shape[0] == 1 && input_tensor_shape[1] == 1 && input_tensor_shape[2] == 32 &&
         input_tensor_buffer_layout == tt::tt_metal::TensorMemoryLayout::INTERLEAVED &&
         input_tensor_page_layout == tt::tt_metal::Layout::TILE && this->enable_persistent_fabric_mode) {
+        log_info(tt::LogOp, "Matching conditions for MINIMAL_INTERLEAVED_32, MINIMAL_INTERLEAVED_32 implementation");
         return AllGatherAsyncVersion::MINIMAL_INTERLEAVED_32;
     }
 
@@ -212,13 +214,13 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
         }
     }
     std::cout << "Done finding devices" << std::endl;
-    exit(0);
     switch (version) {
         case AllGatherAsyncVersion::MINIMAL_INTERLEAVED_32:
             log_info(
                 tt::LogOp,
                 "Detected all gather specialized shape. all_gather_async_minimal_interleaved_dim3_1_1_32_any is "
                 "called");
+            std::cout << "using minimal all gather" << std::endl;
             return all_gather_async_minimal_interleaved_dim3_1_1_32_any(
                 input_tensors[0],
                 forward_device,
@@ -317,25 +319,26 @@ Tensor all_gather_async(
     const ttnn::ccl::Topology topology,
     std::optional<tt::tt_metal::SubDeviceId> sub_device_id,
     bool enable_persistent_fabric_mode) {
+    std::cout << "Calling all gather" << std::endl;
+    auto shape = input_tensor.get_padded_shape();
+    std::cout << "Shape: " << shape[0] << " " << shape[1] << " " << shape[2] << " " << shape[3] << std::endl;
     TT_FATAL(
         std::getenv("TT_METAL_SLOW_DISPATCH_MODE") == nullptr,
         "all_gather_async op is only supported for Fast Dispatch");
-    auto devices = input_tensor.get_workers();
-    uint32_t num_devices = devices.size();
+    auto mesh_device = dynamic_cast<MeshDevice*>(input_tensor.get_workers()[0]);
+    TT_FATAL(mesh_device, "All Gather only works on a MeshDevice");
+    uint32_t num_devices = mesh_device->get_devices().size();
     TT_FATAL(num_devices > 1, "all_gather_async op will only work for num_devices > 1, but has {}", num_devices);
     ttnn::ccl::Topology ccl_topology = topology;
 
     if (num_devices == 2) {
         ccl_topology = ttnn::ccl::Topology::Linear;
     }
-    std::vector<Tensor> output_tensors = {Tensor(tt::tt_metal::operation::get_workers_for_op_output({input_tensor}))};
-
-    tt::log_debug(
-        tt::LogOp, "DEBUG: creating line_fabric with num devices: {}, num links: {}", devices.size(), num_links);
-    tt::log_debug(tt::LogOp, "DEBUG: line_fabric is created");
+    tt::log_info(tt::LogOp, "DEBUG: creating line_fabric with num devices: {}, num links: {}", num_devices, num_links);
+    tt::log_info(tt::LogOp, "DEBUG: line_fabric is created");
 
     // create this semaphore for all cores since we don't know which core will be used for teardown draining
-    CoreCoord grid_size = devices[0]->compute_with_storage_grid_size();
+    CoreCoord grid_size = mesh_device->compute_with_storage_grid_size();
     auto core_grid = CoreRange({0, 0}, {grid_size.x - 1, grid_size.y - 1});
 
     return tt::tt_metal::operation::run(
@@ -344,7 +347,6 @@ Tensor all_gather_async(
                    dim,
                    num_links,
                    memory_config,
-                   devices,
                    ccl_topology,
                    multi_device_global_semaphore,
                    sub_device_id,
@@ -417,7 +419,6 @@ Tensor all_gather_async(
                     gather_dim,
                     num_preferred_links.has_value() ? num_preferred_links.value() : 1,
                     memory_config,
-                    devices,
                     topology,
                     multi_device_global_semaphore,
                     sub_device_id,
