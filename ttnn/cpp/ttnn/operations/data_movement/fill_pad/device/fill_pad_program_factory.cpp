@@ -4,6 +4,7 @@
 
 #include "ttnn/operations/data_movement/fill_pad/device/fill_pad_op.hpp"
 #include "ttnn/operations/core/core.hpp"
+#include "ttnn/operations/cb_utils.hpp"
 #include <tt-metalium/host_api.hpp>
 #include <tt-metalium/work_split.hpp>
 #include <tt-metalium/constants.hpp>
@@ -49,11 +50,9 @@ tt::tt_metal::operation::ProgramWithCallbacks fill_pad_multi_core(const Tensor& 
     uint32_t g1_numcores = core_group_1.num_cores();
     uint32_t g2_numcores = core_group_2.num_cores();
 
-    constexpr uint32_t src0_cb_index = tt::CBIndex::c_0;
-    tt::tt_metal::CircularBufferConfig cb_src0_config =
-        tt::tt_metal::CircularBufferConfig(cb_page_size * 2, {{src0_cb_index, cb_data_format}})
-            .set_page_size(src0_cb_index, cb_page_size);
-    auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_src0_config);
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+    uint32_t src0_cb_index = next_cb_index++;
+    tt::tt_metal::create_cb(src0_cb_index, program, all_cores, cb_page_size, 2, cb_data_format);
 
     bool src_is_dram = tens_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0;
 

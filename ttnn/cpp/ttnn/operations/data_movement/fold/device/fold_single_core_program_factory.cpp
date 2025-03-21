@@ -9,6 +9,7 @@
 
 #include "fold_device_op.hpp"
 #include "ttnn/operations/math.hpp"
+#include "ttnn/operations/cb_utils.hpp"
 
 using namespace tt::tt_metal;
 
@@ -43,12 +44,10 @@ Fold::SingleCore::cached_program_t fold_single_core(
     bool dst_is_dram = (dst_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM);
 
     // Setup CB.
-    uint32_t cb_src0_index = tt::CBIndex::c_0;
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+    uint32_t cb_src0_index = next_cb_index++;
     uint32_t aligned_pixel_size = round_up_to_mul32(pixel_size);
-    tt::tt_metal::CircularBufferConfig cb_src0_config(
-        2 * cb_pages_per_dst_row * aligned_pixel_size, {{cb_src0_index, cb_data_format}});
-    cb_src0_config.set_page_size(cb_src0_index, aligned_pixel_size);
-    tt::tt_metal::CreateCircularBuffer(program, core, cb_src0_config);
+    tt::tt_metal::create_cb(cb_src0_index, program, core, aligned_pixel_size, 2 * cb_pages_per_dst_row, cb_data_format);
 
     // Since we only rejigger data around, we use a single CB in both reader and writer kernels.
     uint32_t cb_dst0_index = cb_src0_index;

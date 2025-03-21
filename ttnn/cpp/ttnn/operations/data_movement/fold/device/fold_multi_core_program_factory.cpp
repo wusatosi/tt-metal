@@ -9,6 +9,7 @@
 
 #include "fold_device_op.hpp"
 #include "ttnn/operations/math.hpp"
+#include "ttnn/operations/cb_utils.hpp"
 #include <tt-metalium/tt_align.hpp>
 
 using namespace tt::tt_metal;
@@ -39,21 +40,15 @@ Fold::MultiCore::cached_program_t fold_multi_core(
     uint32_t pixels_per_dst_row = stride_h * width;
 
     // input CB
-    uint32_t cb_src0_index = tt::CBIndex::c_0;
+    uint32_t next_src0_index = tt::CBIndex::c_0;
     uint32_t aligned_pixel_size = tt::align(pixel_size, hal.get_alignment(HalMemType::L1));
-    auto src_cb_config = CircularBufferConfig(num_pixels * aligned_pixel_size, {{cb_src0_index, cb_data_format}})
-                             .set_page_size(cb_src0_index, aligned_pixel_size)
-                             .set_globally_allocated_address(*input.buffer());
-    auto cb_src0 = CreateCircularBuffer(program, all_cores, src_cb_config);
+    auto [cb_src0_index, cb_src0] = tt::tt_metal::create_cb(
+        next_src0_index++, program, all_cores, aligned_pixel_size, num_pixels, cb_data_format, input.buffer());
 
     // output CB
-    uint32_t cb_dst0_index = tt::CBIndex::c_16;
     uint32_t aligned_dst_pixel_size = tt::align(dst_pixel_size, hal.get_alignment(HalMemType::L1));
-    auto dst_cb_config =
-        CircularBufferConfig(num_dst_pixels * aligned_dst_pixel_size, {{cb_dst0_index, cb_data_format}})
-            .set_page_size(cb_dst0_index, aligned_dst_pixel_size)
-            .set_globally_allocated_address(*output.buffer());
-    auto cb_dst0 = CreateCircularBuffer(program, all_cores, dst_cb_config);
+    auto [cb_dst0_index, cb_dst0] = tt::tt_metal::create_cb(
+        next_src0_index++, program, all_cores, aligned_dst_pixel_size, num_dst_pixels, cb_data_format, output.buffer());
 
     // Setup kernel
     // Set build optimization level to Os. O2 was slower.

@@ -6,6 +6,7 @@
 #include <tt-metalium/work_split.hpp>
 #include <tt-metalium/host_api.hpp>
 #include <tt-metalium/constants.hpp>
+#include "cpp/ttnn/operations/cb_utils.hpp"
 #include "cpp/ttnn/operations/data_movement/sharded/sharded_common.hpp"
 #include "cpp/ttnn/operations/data_movement/sharded_partial/interleaved_to_sharded_partial/device/interleaved_to_sharded_partial_op.hpp"
 #include <tt-metalium/tt_align.hpp>
@@ -88,18 +89,17 @@ operation::ProgramWithCallbacks interleaved_to_sharded_multi_core(
     }
 
     auto all_cores = shard_spec.grid;
-    uint32_t input_cb_index = tt::CBIndex::c_0;
-    uint32_t scratch_cb_index = tt::CBIndex::c_1;
-    uint32_t out_cb_index = input_cb_index;
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+    uint32_t scratch_cb_index = 32;
+    uint32_t input_cb_index = 32;
+    uint32_t out_cb_index = next_cb_index++;
     uint32_t num_input_units = num_units_per_shard;
     uint32_t output_page_size = tt::align(output_unit_size, dst_buffer->alignment());
     if (convert_df) {
-        out_cb_index = tt::CBIndex::c_16;
+        input_cb_index = out_cb_index;
+        out_cb_index = next_cb_index++;
         uint32_t input_page_size = tt::align(input_unit_size, src_buffer->alignment());
-        tt::tt_metal::CircularBufferConfig input_cb_out_config =
-            tt::tt_metal::CircularBufferConfig(num_input_units * input_page_size, {{input_cb_index, input_cb_data_format}})
-                .set_page_size(input_cb_index, input_page_size);
-        auto cb_input = tt::tt_metal::CreateCircularBuffer(program, all_cores, input_cb_out_config);
+        tt::tt_metal::create_cb(input_cb_index, program, all_cores, input_page_size, num_input_units, input_cb_data_format);
     }
     tt::tt_metal::CircularBufferConfig output_cb_out_config =
         tt::tt_metal::CircularBufferConfig(num_input_units * output_page_size, {{out_cb_index, output_cb_data_format}})
@@ -116,10 +116,8 @@ operation::ProgramWithCallbacks interleaved_to_sharded_multi_core(
         else {
             scratch_cb_page_size = tt::align(input_unit_size, dram_alignment);
         }
-        tt::tt_metal::CircularBufferConfig scratch_cb_out_config =
-            tt::tt_metal::CircularBufferConfig(4 * scratch_cb_page_size, {{scratch_cb_index, input_cb_data_format}})
-                .set_page_size(scratch_cb_index, scratch_cb_page_size);
-        auto cb_scratch = tt::tt_metal::CreateCircularBuffer(program, all_cores, scratch_cb_out_config);
+        scratch_cb_index = next_cb_index++;
+        tt::tt_metal::create_cb(scratch_cb_index, program, all_cores, scratch_cb_page_size, 4, input_cb_data_format);
     }
 
     tt::tt_metal::KernelHandle unary_reader_kernel_id;
@@ -159,11 +157,12 @@ operation::ProgramWithCallbacks interleaved_to_sharded_multi_core(
 
     tt::tt_metal::KernelHandle compute_kernel_id = 0;
     if (convert_df) {
+        std::vector<uint32_t> compute_compile_time_args = {input_cb_index, out_cb_index};
         compute_kernel_id = tt::tt_metal::CreateKernel(
             program,
             "ttnn/cpp/ttnn/operations/data_movement/sharded/device/kernels/compute/eltwise_copy.cpp",
             all_cores,
-            tt::tt_metal::ComputeConfig{});
+            tt::tt_metal::ComputeConfig{.compile_args = compute_compile_time_args});
     }
 
     uint32_t starting_idx_h = calculate_starting_idx_h(input, num_slices, slice_index);

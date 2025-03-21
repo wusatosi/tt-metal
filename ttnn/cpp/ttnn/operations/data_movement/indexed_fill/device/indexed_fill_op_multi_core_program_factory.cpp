@@ -7,6 +7,7 @@
 #include "ttnn/operations/data_movement/indexed_fill/device/indexed_fill_op.hpp"
 #include <tt-metalium/work_split.hpp>
 #include "ttnn/operations/math.hpp"
+#include "ttnn/operations/cb_utils.hpp"
 
 #include <tt-metalium/host_api.hpp>
 #include <tt-metalium/util.hpp>
@@ -34,24 +35,19 @@ operation::ProgramWithCallbacks indexed_fill_multi_core(
 
     // parallelize across batch
     uint32_t num_units = B;
-    uint32_t cb_index = 0;
-    uint32_t batch_cb_index = 1;
+    uint32_t next_cb_index = tt::CBIndex::c_0;
+    uint32_t cb_index = next_cb_index++;
+    uint32_t batch_cb_index = next_cb_index++;
 
     tt::DataFormat cb_data_format = tt::tt_metal::datatype_to_dataformat_converter(input_a.get_dtype());
 
     uint32_t page_size = input_a.get_padded_shape()[-1] * input_a.element_size();
     uint32_t rounded_page_size = round_up_to_mul32(page_size);
-    tt::tt_metal::CircularBufferConfig cb_src0_config =
-        tt::tt_metal::CircularBufferConfig(2 * rounded_page_size, {{cb_index, cb_data_format}})
-            .set_page_size(cb_index, rounded_page_size);
-    auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_src0_config);
+    tt::tt_metal::create_cb(cb_index, program, all_cores, rounded_page_size, 2, cb_data_format);
 
     tt::DataFormat batch_cb_data_format = tt::tt_metal::datatype_to_dataformat_converter(batch_ids.get_dtype());
     uint32_t batch_page_size = round_up_to_mul32(b * sizeof(uint32_t));
-    tt::tt_metal::CircularBufferConfig batch_cb_config =
-        tt::tt_metal::CircularBufferConfig(2 * batch_page_size, {{batch_cb_index, cb_data_format}})
-            .set_page_size(batch_cb_index, batch_page_size);
-    auto batch_cb = tt::tt_metal::CreateCircularBuffer(program, all_cores, batch_cb_config);
+    tt::tt_metal::create_cb(batch_cb_index, program, all_cores, batch_page_size, 2, cb_data_format);
 
     bool in0_is_dram = input_a.buffer()->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0;
     bool in1_is_dram = input_b.buffer()->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0;
