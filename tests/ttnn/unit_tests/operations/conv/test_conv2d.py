@@ -74,7 +74,7 @@ def run_conv(
     pad_h,
     pad_w,
     config_override,
-    dilation=1,
+    dilation_hw=(1, 1),
     use_shallow_conv_variant=False,
     transpose_shards=True,  # https://github.com/tenstorrent/tt-metal/issues/17897
     fp32_accum=False,
@@ -91,9 +91,11 @@ def run_conv(
     weight_mesh_mapper=None,
     output_mesh_composer=None,
     enable_split_reader=False,
+    enable_act_double_buffer=False,
     activation="",
     preprocess_weights_on_device=True,
     run_twice=False,
+    input_memory_config=None,
 ):
     if isinstance(device, ttnn.MeshDevice):
         assert input_mesh_mapper is not None, "Expected mesh mapper for input tensor when using device mesh"
@@ -132,7 +134,7 @@ def run_conv(
         bias=torch_bias_tensor.reshape(-1) if has_bias else None,
         stride=(stride_h, stride_w),
         padding=(pad_h, pad_w),
-        dilation=(dilation, dilation),
+        dilation=dilation_hw,
         groups=groups,
     )
     act_func = get_torch_act_func_from_string(activation)
@@ -158,6 +160,7 @@ def run_conv(
         torch_input_tensor,
         activations_dtype if activations_dtype == ttnn.float32 else ttnn.bfloat16,
         mesh_mapper=input_mesh_mapper,
+        memory_config=input_memory_config,
     )
 
     conv_config = ttnn.Conv2dConfig(
@@ -166,7 +169,7 @@ def run_conv(
         shard_layout=shard_layout if not auto_shard else None,
         input_channels_alignment=8 if use_shallow_conv_variant and not auto_shard else 32,
         deallocate_activation=deallocate_activation,
-        enable_act_double_buffer=False,
+        enable_act_double_buffer=enable_act_double_buffer,
         enable_split_reader=enable_split_reader,
         enable_subblock_padding=False,
         output_layout=output_layout,
@@ -203,7 +206,7 @@ def run_conv(
         kernel_size=(filter_height, filter_width),
         stride=(stride_h, stride_w),
         padding=(pad_h, pad_w),
-        dilation=(dilation, dilation),
+        dilation=dilation_hw,
         batch_size=batch_size,
         input_height=input_height,
         input_width=input_width,
@@ -227,7 +230,7 @@ def run_conv(
             kernel_size=(filter_height, filter_width),
             stride=(stride_h, stride_w),
             padding=(pad_h, pad_w),
-            dilation=(dilation, dilation),
+            dilation=dilation_hw,
             batch_size=batch_size,
             input_height=input_height,
             input_width=input_width,
@@ -2049,10 +2052,13 @@ def test_conv_core_nondivis(
 @pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
 @pytest.mark.parametrize("output_layout", [ttnn.TILE_LAYOUT])
 @pytest.mark.parametrize(
-    "filter, dilation, pad",
+    "filter_hw, dilation_hw, pad_hw",
     [
-        [3, 2, 2],
-        [3, 3, 3],
+        [(3, 3), (2, 2), (2, 2)],
+        [(3, 3), (3, 3), (3, 3)],
+        # [(3,3), (1,4), (3,3)],
+        # [(3,3), (4,1), (3,3)],
+        # [(3,3), (4,4), (3,3)],
     ],
 )
 def test_conv_dilation(
@@ -2069,11 +2075,11 @@ def test_conv_dilation(
     input_width,
     act_block_w_div,
     shard_layout,
-    filter,
+    filter_hw,
     stride,
-    pad,
+    pad_hw,
     output_layout,
-    dilation,
+    dilation_hw,
 ):
     config_override = {"act_block_w_div": act_block_w_div}
     run_conv(
@@ -2087,16 +2093,16 @@ def test_conv_dilation(
         input_channels,
         input_height,
         input_width,
-        filter,
-        filter,
+        filter_hw[0],
+        filter_hw[1],
         stride,
         stride,
-        pad,
-        pad,
+        pad_hw[0],
+        pad_hw[1],
         config_override,
         shard_layout=shard_layout,
         output_layout=output_layout,
-        dilation=dilation,
+        dilation_hw=dilation_hw,
         has_bias=False,
     )
 
@@ -2452,7 +2458,7 @@ def test_model_k_256x256(
         pad_w,
         None,
         shard_layout=shard_layout,
-        dilation=dilation,
+        dilation_hw=(dilation, dilation),
         auto_shard=auto_shard,
     )
 
@@ -2570,7 +2576,7 @@ def test_shallow_conv_with_tiled_input(device):
         kernel_size=(kernel_h, kernel_w),
         stride=stride,
         padding=pad,
-        dilation=dilation,
+        dilation_hw=(dilation, dilation),
         batch_size=batch_size,
         input_height=img_h,
         input_width=img_w,
@@ -2801,23 +2807,40 @@ def test_block_sharding_relu_act_block_h(
 
 # fmt: off
 @pytest.mark.parametrize(
-    "batch, input_channels, output_channels, input_height, input_width, weights_dtype, activations_dtype, groups, kernel, stride, padding, dilation, auto_shard, use_shallow_conv_variant, act_block_h_override, act_block_w_div, deallocate_activation, math_fidelity, fp32_accum, packer_l1_acc, enable_split_reader",
+    "batch, input_channels, output_channels, input_height, input_width, weights_dtype, activations_dtype, groups, kernel, stride, padding, dilation, auto_shard, use_shallow_conv_variant, act_block_h_override, act_block_w_div, deallocate_activation, math_fidelity, fp32_accum, packer_l1_acc, enable_split_reader, enable_act_double_buffer",
     (
-        # model strawberry
-        (1, 10,   64, 1024, 128, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (4, 4), (2, 2), (1, 1), (1, 1), True, True,  0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
-        (1, 64,   64, 512,   64, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (4, 4), (2, 2), (1, 1), (1, 1), True, False,  0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
-        (1, 64,   64, 256,   32, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (4, 4), (2, 2), (1, 1), (1, 1), True, False,  0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
-        (1, 64,   64, 128,   16, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (4, 4), (2, 2), (1, 1), (1, 1), True, False,  0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
-        (1,  2,    1, 1024, 128, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, True,  0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        # torch_conv2d:
+        (1, 32, 48, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (2, 2), (2, 2), True, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+        # # torch_split_knit_dilation: 4x
+        (1, 32, 48, 160, 160, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), HS, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+        # # torch_split_knit_grouped_dilation: 1x
+        (1, 128, 192, 160, 160, ttnn.bfloat8_b, ttnn.bfloat8_b, 4, (3, 3), (1, 1), (1, 1), (1, 1), HS, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+        # # torch_split_knit_dilation_h: 2x
+        (1, 32, 48, 160, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 2), (1, 2), HS, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+        # # torch_split_knit_grouped_dilation: 1x
+        (1, 64, 96, 160, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 2, (3, 3), (1, 1), (1, 2), (1, 2), HS, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
 
-        # model kiwi
-        (1,  4,   32, 288, 288, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (5, 5), (1, 1), (0, 0), (1, 1), True, True,  0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
-        (1, 32,   48, 284, 284, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (0, 0), (2, 2), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
-        (1, 48,   56, 280, 280, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (0, 0), (4, 4), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
-        (1, 56,   64, 272, 272, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (0, 0), (8, 8), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
-        (1, 64,  128, 256, 256, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (2, 2), (1, 1), (0, 0), (1, 1), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
-        (1, 128, 256, 255, 255, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
-        (1, 256,   1, 255, 255, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
+        # # # torch_conv2d:
+        (1, 48, 56, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (4, 4), (4, 4), True, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+        # # torch_split_knit_dilation: 16x
+        (1, 48, 56, 80, 80, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), HS, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+        # # torch_split_knit_grouped_dilation: 1x
+        (1, 768, 896, 80, 80, ttnn.bfloat8_b, ttnn.bfloat8_b, 16, (3, 3), (1, 1), (1, 1), (1, 1), True, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+        # # torch_split_knit_dilation_h: 4x
+        (1, 48, 56, 80, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 4), (1, 4), HS, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+        # # torch_split_knit_grouped_dilation: 1x
+        (1, 192, 224, 80, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 4, (3, 3), (1, 1), (1, 4), (1, 4), True, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+
+        # # torch_conv2d:
+        (1, 56, 64, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (8, 8), (8, 8), True, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+        # # torch_split_knit_dilation: 64x
+        (1, 56, 64, 40, 40, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), HS, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+        # # torch_split_knit_grouped_dilation: 1x
+        (1, 3584, 4096, 40, 40, ttnn.bfloat8_b, ttnn.bfloat8_b, 64, (3, 3), (1, 1), (1, 1), (1, 1), True, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+        # # torch_split_knit_dilation_h: 8x
+        (1, 56, 64, 40, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 8), (1, 8), HS, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+        # # torch_split_knit_grouped_dilation: 1x
+        (1, 448, 512, 40, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 8, (3, 3), (1, 1), (1, 8), (1, 8), True, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
     ),
 )
  #fmt: on
@@ -2846,7 +2869,8 @@ def test_conv2d_model_fruit(
     math_fidelity,
     fp32_accum,
     packer_l1_acc,
-    enable_split_reader
+    enable_split_reader,
+    enable_act_double_buffer
 ):
     config_override = {}
     config_override["act_block_h"] = act_block_h_override
@@ -2870,7 +2894,7 @@ def test_conv2d_model_fruit(
         pad_h=padding[0],
         pad_w=padding[1],
         config_override=config_override,
-        dilation=dilation[0],
+        dilation_hw=dilation,
         use_shallow_conv_variant=use_shallow_conv_variant,
         fp32_accum=fp32_accum,
         packer_l1_acc=packer_l1_acc,
@@ -2879,11 +2903,363 @@ def test_conv2d_model_fruit(
         debug=False,
         groups=groups,
         has_bias=True,
-        shard_layout=None,
-        auto_shard=auto_shard,
+        # shard_layout=HS,
+        # auto_shard=False,
+        shard_layout=None if auto_shard == True else auto_shard,
+        auto_shard=True if auto_shard == True else False,
         memory_config=None,
         input_mesh_mapper=None,
         weight_mesh_mapper=None,
         output_mesh_composer=None,
         enable_split_reader=enable_split_reader,
+        input_memory_config=None,
+        enable_act_double_buffer=enable_act_double_buffer,
     )
+
+
+
+# Split-Knit Conv2d with high dilation
+def torch_split_knit_dilation(torch_input_tensor_nchw, torch_weight_tensor_oihw, torch_bias_tensor, filter_hw, stride_hw, padding_hw, dilation_hw, groups):
+    assert groups == 1, "groups must be 1"
+    assert all(d % 2 == 0 for d in dilation_hw), "dilation must be even"
+    assert all(s == 1 for s in stride_hw), "stride must be 1"
+    assert padding_hw[0] == 0 or padding_hw[0] == dilation_hw[0], "padding must be 0 or equal to dilation"
+    assert padding_hw[1] == 0 or padding_hw[1] == dilation_hw[1], "padding must be 0 or equal to dilation"
+    assert padding_hw[0] == padding_hw[1], "padding must be equal"
+
+    assert torch_input_tensor_nchw.shape[2] % dilation_hw[0] == 0, "input height must be divisible by dilation"
+    assert torch_input_tensor_nchw.shape[3] % dilation_hw[1] == 0, "input width must be divisible by dilation"
+
+    # split
+    inputs_splited = []
+    for split_h in range(dilation_hw[0]):
+        for split_w in range(dilation_hw[1]):
+            inputs_splited.append(
+                torch_input_tensor_nchw[
+                    :,
+                    :,
+                    split_h::dilation_hw[0],
+                    split_w::dilation_hw[1],
+                ]
+            )
+
+    # conv2d
+    sk_padding_hw=(1,1) if padding_hw[0] > 0 else (0,0)
+    sk_dilation_hw=(1,1)
+    sk_groups=groups
+    """batch, input_channels, output_channels, input_height, input_width, weights_dtype, activations_dtype, groups, kernel, stride, padding, dilation")"""
+    print(f"# torch_split_knit_dilation: {len(inputs_splited)}x \n({inputs_splited[0].shape[0]}, {torch_weight_tensor_oihw.shape[1]}, {torch_weight_tensor_oihw.shape[0]}, {inputs_splited[0].shape[2]}, {inputs_splited[0].shape[3]}, ttnn.bfloat8_b, ttnn.bfloat8_b, {sk_groups}, ({torch_weight_tensor_oihw.shape[2]}, {torch_weight_tensor_oihw.shape[3]}), (1, 1), {sk_padding_hw}, {sk_dilation_hw}, True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),")
+
+    outs_splited = []
+    for input_splited in inputs_splited:
+        out_splited = torch.nn.functional.conv2d(
+            input_splited,
+            torch_weight_tensor_oihw,
+            bias=torch_bias_tensor.reshape(-1) if torch_bias_tensor is not None else None,
+            stride=stride_hw,
+            padding=sk_padding_hw,
+            dilation=sk_dilation_hw,
+            groups=sk_groups,
+        )
+        outs_splited.append(out_splited)
+
+    # knit
+    out_h = (torch_input_tensor_nchw.shape[2] + 2 * padding_hw[0] - dilation_hw[0] * (filter_hw[0] - 1) - 1) // stride_hw[0] + 1
+    out_w = (torch_input_tensor_nchw.shape[3] + 2 * padding_hw[1] - dilation_hw[1] * (filter_hw[1] - 1) - 1) // stride_hw[1] + 1
+    out_knitted = torch.zeros((torch_input_tensor_nchw.shape[0], torch_weight_tensor_oihw.shape[0], out_h, out_w))
+
+    for split_h in range(dilation_hw[0]):
+        for split_w in range(dilation_hw[1]):
+            out_knitted[:,:,split_h::dilation_hw[0],split_w::dilation_hw[1]] = outs_splited[split_h * dilation_hw[1] + split_w]
+
+
+    return out_knitted
+
+# Split-Knit Conv2d with high dilation, grouped conv2d approach
+def torch_split_knit_grouped_dilation(torch_input_tensor_nchw, torch_weight_tensor_oihw, torch_bias_tensor, filter_hw, stride_hw, padding_hw, dilation_hw, groups):
+    assert groups == 1, "groups must be 1"
+    assert all(d % 2 == 0 for d in dilation_hw), "dilation must be even"
+    assert all(s == 1 for s in stride_hw), "stride must be 1"
+    assert padding_hw[0] == 0 or padding_hw[0] == dilation_hw[0], "padding must be 0 or equal to dilation"
+    assert padding_hw[1] == 0 or padding_hw[1] == dilation_hw[1], "padding must be 0 or equal to dilation"
+    assert padding_hw[0] == padding_hw[1], "padding must be equal"
+
+    assert torch_input_tensor_nchw.shape[2] % dilation_hw[0] == 0, "input height must be divisible by dilation"
+    assert torch_input_tensor_nchw.shape[3] % dilation_hw[1] == 0, "input width must be divisible by dilation"
+
+    assert torch_input_tensor_nchw.shape[0] == 1, f"batch size must be 1"
+
+    in_channels = torch_input_tensor_nchw.shape[1]
+    out_channels = torch_weight_tensor_oihw.shape[0]
+
+    # split
+    inputs_grouped_splited = torch.zeros((torch_input_tensor_nchw.shape[0], dilation_hw[0] * dilation_hw[1] * torch_input_tensor_nchw.shape[1], torch_input_tensor_nchw.shape[2] // dilation_hw[0], torch_input_tensor_nchw.shape[3] // dilation_hw[1]))
+    torch_weight_tensor_oihw_grouped = torch.zeros((dilation_hw[0] * dilation_hw[1] * torch_weight_tensor_oihw.shape[0], torch_weight_tensor_oihw.shape[1], torch_weight_tensor_oihw.shape[2], torch_weight_tensor_oihw.shape[3]))
+    for split_h in range(dilation_hw[0]):
+        for split_w in range(dilation_hw[1]):
+            group_idx = split_h * dilation_hw[1] + split_w
+            inputs_grouped_splited[:, group_idx*in_channels:(group_idx+1)*in_channels ,:,:] =  torch_input_tensor_nchw[
+                    :,
+                    :,
+                    split_h::dilation_hw[0],
+                    split_w::dilation_hw[1],
+                ]
+            torch_weight_tensor_oihw_grouped[group_idx*out_channels:(group_idx+1)*out_channels,:,:,:] = torch_weight_tensor_oihw
+
+    sk_padding_hw=(1,1) if padding_hw[0] > 0 else (0,0)
+    sk_dilation_hw=(1,1)
+    sk_groups=dilation_hw[0] * dilation_hw[1]
+
+    # conv2d
+    out_splited = torch.nn.functional.conv2d(
+        inputs_grouped_splited,
+        torch_weight_tensor_oihw_grouped,
+        bias=torch_bias_tensor.reshape(-1).repeat(dilation_hw[0]*dilation_hw[1]) if torch_bias_tensor is not None else None,
+        stride=stride_hw,
+        padding=sk_padding_hw,
+        dilation=sk_dilation_hw,
+        groups=sk_groups
+    )
+
+    """batch, input_channels, output_channels, input_height, input_width, weights_dtype, activations_dtype, groups, kernel, stride, padding, dilation")"""
+    print(f"# torch_split_knit_grouped_dilation: 1x \n({inputs_grouped_splited.shape[0]}, {inputs_grouped_splited.shape[1]}, {out_splited.shape[1]}, {inputs_grouped_splited.shape[2]}, {inputs_grouped_splited.shape[3]}, ttnn.bfloat8_b, ttnn.bfloat8_b, {sk_groups}, ({torch_weight_tensor_oihw_grouped.shape[2]}, {torch_weight_tensor_oihw_grouped.shape[3]}), (1, 1), {sk_padding_hw}, {sk_dilation_hw}, True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),")
+
+    # knit
+    out_h = (torch_input_tensor_nchw.shape[2] + 2 * padding_hw[0] - dilation_hw[0] * (filter_hw[0] - 1) - 1) // stride_hw[0] + 1
+    out_w = (torch_input_tensor_nchw.shape[3] + 2 * padding_hw[1] - dilation_hw[1] * (filter_hw[1] - 1) - 1) // stride_hw[1] + 1
+    out_knitted = torch.zeros((torch_input_tensor_nchw.shape[0], torch_weight_tensor_oihw.shape[0], out_h, out_w))
+
+    # for out_channel in range(out_channels):
+    for split_h in range(dilation_hw[0]):
+        for split_w in range(dilation_hw[1]):
+            src_group_idx = split_h * dilation_hw[1] + split_w
+            out_knitted[:,:,split_h::dilation_hw[0],split_w::dilation_hw[1]] = out_splited[:,src_group_idx*out_channels:(src_group_idx+1)*out_channels,:,:]
+
+
+    return out_knitted
+
+# Split-Knit Conv2d with high dilation, height only
+def torch_split_knit_dilation_h(torch_input_tensor_nchw, torch_weight_tensor_oihw, torch_bias_tensor, filter_hw, stride_hw, padding_hw, dilation_hw, groups):
+    assert groups == 1, "groups must be 1"
+    assert all(d % 2 == 0 for d in dilation_hw), "dilation must be even"
+    assert all(s == 1 for s in stride_hw), "stride must be 1"
+    assert padding_hw[0] == 0 or padding_hw[0] == dilation_hw[0], "padding must be 0 or equal to dilation"
+    assert padding_hw[1] == 0 or padding_hw[1] == dilation_hw[1], "padding must be 0 or equal to dilation"
+    assert padding_hw[0] == padding_hw[1], "padding must be equal"
+
+    assert torch_input_tensor_nchw.shape[2] % dilation_hw[0] == 0, "input height must be divisible by dilation"
+
+    # split
+    inputs_splited = []
+    for split_h in range(dilation_hw[0]):
+        inputs_splited.append(
+            torch_input_tensor_nchw[
+                :,
+                :,
+                split_h::dilation_hw[0],
+                :,
+            ]
+        )
+
+    # conv2d
+    sk_padding_hw=(1,padding_hw[1]) if padding_hw[0] > 0 else (0,padding_hw[1])
+    sk_dilation_hw=(1,dilation_hw[1])
+    sk_groups=groups
+    """batch, input_channels, output_channels, input_height, input_width, weights_dtype, activations_dtype, groups, kernel, stride, padding, dilation")"""
+    print(f"# torch_split_knit_dilation_h: {len(inputs_splited)}x \n({inputs_splited[0].shape[0]}, {torch_weight_tensor_oihw.shape[1]}, {torch_weight_tensor_oihw.shape[0]}, {inputs_splited[0].shape[2]}, {inputs_splited[0].shape[3]}, ttnn.bfloat8_b, ttnn.bfloat8_b, {sk_groups}, ({torch_weight_tensor_oihw.shape[2]}, {torch_weight_tensor_oihw.shape[3]}), (1, 1), {sk_padding_hw}, {sk_dilation_hw}, True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),")
+
+    outs_splited = []
+    for input_splited in inputs_splited:
+        out_splited = torch.nn.functional.conv2d(
+            input_splited,
+            torch_weight_tensor_oihw,
+            bias=torch_bias_tensor.reshape(-1) if torch_bias_tensor is not None else None,
+            stride=stride_hw,
+            padding=sk_padding_hw,
+            dilation=sk_dilation_hw,
+            groups=sk_groups,
+        )
+        outs_splited.append(out_splited)
+
+    # knit
+    out_h = (torch_input_tensor_nchw.shape[2] + 2 * padding_hw[0] - dilation_hw[0] * (filter_hw[0] - 1) - 1) // stride_hw[0] + 1
+    out_w = (torch_input_tensor_nchw.shape[3] + 2 * padding_hw[1] - dilation_hw[1] * (filter_hw[1] - 1) - 1) // stride_hw[1] + 1
+    out_knitted = torch.zeros((torch_input_tensor_nchw.shape[0], torch_weight_tensor_oihw.shape[0], out_h, out_w))
+
+    for split_h in range(dilation_hw[0]):
+        out_knitted[:,:,split_h::dilation_hw[0],:] = outs_splited[split_h]
+
+    return out_knitted
+
+# Split-Knit Conv2d with high dilation, grouped conv2d approach, height-only
+def torch_split_knit_grouped_dilation_h(torch_input_tensor_nchw, torch_weight_tensor_oihw, torch_bias_tensor, filter_hw, stride_hw, padding_hw, dilation_hw, groups):
+    assert groups == 1, "groups must be 1"
+    assert all(d % 2 == 0 for d in dilation_hw), "dilation must be even"
+    assert all(s == 1 for s in stride_hw), "stride must be 1"
+
+    assert padding_hw[0] == 0 or padding_hw[0] == dilation_hw[0], "padding must be 0 or equal to dilation"
+    assert padding_hw[1] == 0 or padding_hw[1] == dilation_hw[1], "padding must be 0 or equal to dilation"
+    assert padding_hw[0] == padding_hw[1], "padding must be equal"
+
+    assert torch_input_tensor_nchw.shape[2] % dilation_hw[0] == 0, "input height must be divisible by dilation"
+    assert torch_input_tensor_nchw.shape[3] % dilation_hw[1] == 0, "input width must be divisible by dilation"
+
+    assert torch_input_tensor_nchw.shape[0] == 1, f"batch size must be 1"
+
+    in_channels = torch_input_tensor_nchw.shape[1]
+    out_channels = torch_weight_tensor_oihw.shape[0]
+
+    # split
+    inputs_grouped_splited = torch.zeros((torch_input_tensor_nchw.shape[0], dilation_hw[0] * torch_input_tensor_nchw.shape[1], torch_input_tensor_nchw.shape[2] // dilation_hw[0], torch_input_tensor_nchw.shape[3]))
+    torch_weight_tensor_oihw_grouped = torch.zeros((dilation_hw[0] * torch_weight_tensor_oihw.shape[0], torch_weight_tensor_oihw.shape[1], torch_weight_tensor_oihw.shape[2], torch_weight_tensor_oihw.shape[3]))
+    for split_h in range(dilation_hw[0]):
+        inputs_grouped_splited[:, split_h*in_channels:(split_h+1)*in_channels ,:,:] =  torch_input_tensor_nchw[
+                :,
+                :,
+                split_h::dilation_hw[0],
+                :,
+            ]
+        torch_weight_tensor_oihw_grouped[split_h*out_channels:(split_h+1)*out_channels,:,:,:] = torch_weight_tensor_oihw
+
+    # conv2d
+    sk_padding_hw=(1,padding_hw[1]) if padding_hw[0] > 0 else (0,padding_hw[1])
+    sk_dilation_hw=(1,dilation_hw[1])
+    sk_groups=dilation_hw[0]
+    out_splited = torch.nn.functional.conv2d(
+        inputs_grouped_splited,
+        torch_weight_tensor_oihw_grouped,
+        bias=torch_bias_tensor.reshape(-1).repeat(dilation_hw[0]) if torch_bias_tensor is not None else None,
+        stride=stride_hw,
+        padding=sk_padding_hw,
+        dilation=sk_dilation_hw,
+        groups=sk_groups,
+    )
+
+    """batch, input_channels, output_channels, input_height, input_width, weights_dtype, activations_dtype, groups, kernel, stride, padding, dilation")"""
+    print(f"# torch_split_knit_grouped_dilation: 1x \n({inputs_grouped_splited.shape[0]}, {inputs_grouped_splited.shape[1]}, {out_splited.shape[1]}, {inputs_grouped_splited.shape[2]}, {inputs_grouped_splited.shape[3]}, ttnn.bfloat8_b, ttnn.bfloat8_b, {sk_groups}, ({torch_weight_tensor_oihw_grouped.shape[2]}, {torch_weight_tensor_oihw_grouped.shape[3]}), (1, 1), {sk_padding_hw}, {sk_dilation_hw}, True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),")
+
+    # knit
+    out_h = (torch_input_tensor_nchw.shape[2] + 2 * padding_hw[0] - dilation_hw[0] * (filter_hw[0] - 1) - 1) // stride_hw[0] + 1
+    out_w = (torch_input_tensor_nchw.shape[3] + 2 * padding_hw[1] - dilation_hw[1] * (filter_hw[1] - 1) - 1) // stride_hw[1] + 1
+    out_knitted = torch.zeros((torch_input_tensor_nchw.shape[0], torch_weight_tensor_oihw.shape[0], out_h, out_w))
+
+    for split_h in range(dilation_hw[0]):
+        out_knitted[:,:,split_h::dilation_hw[0],:] = out_splited[:,split_h*out_channels:(split_h+1)*out_channels,:,:]
+
+    return out_knitted
+
+# fmt: off
+@pytest.mark.parametrize(
+    "input_shape_nchw, output_channels, filter_hw, stride_hw, padding_hw, dilation_hw",
+    (
+        ((1, 32, 320, 320), 48, (3, 3), (1, 1), (2, 2), (2, 2)),
+        ((1, 48, 320, 320), 56, (3, 3), (1, 1), (4, 4), (4, 4)),
+        ((1, 56, 320, 320), 64, (3, 3), (1, 1), (8, 8), (8, 8)),
+        ((1, 32, 320, 320), 48, (3, 3), (1, 1), (0, 0), (2, 2)),
+        ((1, 48, 320, 320), 56, (3, 3), (1, 1), (0, 0), (4, 4)),
+        ((1, 56, 320, 320), 64, (3, 3), (1, 1), (0, 0), (8, 8)),
+    ),
+)
+# fmt: on
+def test_conv2d_split_knit_dilation(
+    input_shape_nchw, torch_tensor_map, output_channels, filter_hw, stride_hw, padding_hw, dilation_hw
+):
+    has_bias = True
+    groups = 1
+    assert all(d % 2 == 0 for d in dilation_hw), "dilation must be even"
+    assert all(s == 1 for s in stride_hw), "stride must be 1"
+    assert groups == 1, "groups must be 1"
+
+    torch.manual_seed(0)
+    batch_size, input_channels, input_height, input_width = input_shape_nchw
+
+    conv_input_shape_nchw = (batch_size, input_channels, input_height, input_width)
+    conv_weight_shape_oihw = (output_channels, input_channels // groups, filter_hw[0], filter_hw[1])
+    conv_bias_shape = (1, 1, 1, output_channels)
+    torch_input_tensor_nchw = randomize_torch_tensor(torch_tensor_map, conv_input_shape_nchw)
+    # torch_input_tensor_nhwc = torch.permute(torch_input_tensor_nchw, (0, 2, 3, 1))
+
+    torch_weight_tensor_oihw = randomize_torch_tensor(torch_tensor_map, conv_weight_shape_oihw)
+    torch_bias_tensor = randomize_torch_tensor(torch_tensor_map, conv_bias_shape) if has_bias else None
+
+    torch_out_golden_tensor = torch.nn.functional.conv2d(
+        torch_input_tensor_nchw,
+        torch_weight_tensor_oihw,
+        bias=torch_bias_tensor.reshape(-1) if has_bias else None,
+        stride=stride_hw,
+        padding=padding_hw,
+        dilation=dilation_hw,
+        groups=groups,
+    )
+    """batch, input_channels, output_channels, input_height, input_width, weights_dtype, activations_dtype, groups, kernel, stride, padding, dilation")"""
+    print(
+        f"# torch_conv2d:\n({torch_input_tensor_nchw.shape[0]}, {torch_weight_tensor_oihw.shape[1]}, {torch_weight_tensor_oihw.shape[0]}, {torch_input_tensor_nchw.shape[2]}, {torch_input_tensor_nchw.shape[3]}, ttnn.bfloat8_b, ttnn.bfloat8_b, {1}, ({torch_weight_tensor_oihw.shape[2]}, {torch_weight_tensor_oihw.shape[3]}), (1, 1), {padding_hw}, {dilation_hw}, True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),"
+    )
+
+    # =================== Split-Knit Conv2d ===================
+    torch_split_knit_out = torch_split_knit_dilation(
+        torch_input_tensor_nchw,
+        torch_weight_tensor_oihw,
+        torch_bias_tensor,
+        filter_hw,
+        stride_hw,
+        padding_hw,
+        dilation_hw,
+        groups,
+    )
+    pcc = 0.999
+    passing, pcc_msg = check_with_pcc_without_tensor_printout(torch_out_golden_tensor, torch_split_knit_out, pcc=pcc)
+    logger.info(f"PCC = {pcc_msg}. Threshold = {pcc}")
+    assert passing, pcc_msg
+
+    # =================== Split-Knit Conv2d, grouped conv2d approach ===================
+    torch_split_knit_grouped_out = torch_split_knit_grouped_dilation(
+        torch_input_tensor_nchw,
+        torch_weight_tensor_oihw,
+        torch_bias_tensor,
+        filter_hw,
+        stride_hw,
+        padding_hw,
+        dilation_hw,
+        groups,
+    )
+    pcc = 0.999
+    grouped_passing, pcc_msg = check_with_pcc_without_tensor_printout(
+        torch_out_golden_tensor, torch_split_knit_grouped_out, pcc=pcc
+    )
+    logger.info(f"PCC = {pcc_msg}. Threshold = {pcc}")
+    assert grouped_passing, pcc_msg
+
+    # =================== Split-Knit Conv2d with height only ===================
+    torch_split_knit_h_out = torch_split_knit_dilation_h(
+        torch_input_tensor_nchw,
+        torch_weight_tensor_oihw,
+        torch_bias_tensor,
+        filter_hw,
+        stride_hw,
+        padding_hw,
+        dilation_hw,
+        groups,
+    )
+    height_passing, pcc_msg = check_with_pcc_without_tensor_printout(
+        torch_out_golden_tensor, torch_split_knit_h_out, pcc=pcc
+    )
+    logger.info(f"PCC = {pcc_msg}. Threshold = {pcc}")
+    assert height_passing, pcc_msg
+
+    # =================== Split-Knit Conv2d with height only, grouped conv2d approach =================
+    torch_split_knit_grouped_h_out = torch_split_knit_grouped_dilation_h(
+        torch_input_tensor_nchw,
+        torch_weight_tensor_oihw,
+        torch_bias_tensor,
+        filter_hw,
+        stride_hw,
+        padding_hw,
+        dilation_hw,
+        groups,
+    )
+    grouped_height_passing, pcc_msg = check_with_pcc_without_tensor_printout(
+        torch_out_golden_tensor, torch_split_knit_grouped_h_out, pcc=pcc
+    )
+    logger.info(f"PCC = {pcc_msg}. Threshold = {pcc}")
+    assert grouped_height_passing, pcc_msg

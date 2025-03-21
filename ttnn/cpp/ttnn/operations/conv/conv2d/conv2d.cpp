@@ -57,7 +57,7 @@ Result conv2d(
     const uint32_t output_height =
         ((input_height - kernel_size[0] - ((kernel_size[0] - 1) * (dilation[0] - 1)) + 2 * padding[0]) / stride[0]) + 1;
     const uint32_t output_width =
-        ((input_width - kernel_size[1] - ((kernel_size[0] - 1) * (dilation[0] - 1)) + 2 * padding[1]) / stride[1]) + 1;
+        ((input_width - kernel_size[1] - ((kernel_size[0] - 1) * (dilation[1] - 1)) + 2 * padding[1]) / stride[1]) + 1;
 
     DeviceComputeKernelConfig compute_config = compute_config_.value_or(get_conv_default_compute_kernel_config(device));
 
