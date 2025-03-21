@@ -195,7 +195,6 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
     // current device state. Write the finalized program command sequence to each
     // physical device tied to the program.
     for (auto& [device_range, program] : mesh_workload.get_programs()) {
-        std::cout << "Write program to: " << device_range << std::endl;
         auto& program_cmd_seq = mesh_workload.get_dispatch_cmds_for_program(program);
         program_dispatch::update_program_dispatch_commands(
             program,
@@ -272,13 +271,9 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
 }
 
 void MeshCommandQueue::finish(tt::stl::Span<const SubDeviceId> sub_device_ids) {
-    std::cout << "Calling finish" << std::endl;
     auto event = this->enqueue_record_event_to_host(sub_device_ids);
-
     std::unique_lock<std::mutex> lock(reads_processed_cv_mutex_);
-    std::cout << "Wait on cv " << std::endl;
     reads_processed_cv_.wait(lock, [this] { return num_outstanding_reads_.load() == 0; });
-    std::cout << "Done wait on cv " << std::endl;
 }
 
 void MeshCommandQueue::write_shard_to_device(
@@ -609,7 +604,6 @@ MeshEvent MeshCommandQueue::enqueue_record_event_helper(
     };
 
     for (const auto& coord : event.device_range()) {
-        std::cout << "Record Even to host " << mesh_device_->get_device(coord)->id() << std::endl;
         dispatch_thread_pool_->enqueue(
             [&dispatch_lambda, coord]() { dispatch_lambda(coord); }, mesh_device_->get_device(coord)->id());
     }
@@ -645,7 +639,6 @@ void MeshCommandQueue::read_completion_queue() {
         {
             std::unique_lock<std::mutex> lock(reader_thread_cv_mutex_);
             reader_thread_cv_.wait(lock, [this] { return num_outstanding_reads_ or exit_condition_; });
-            std::cout << "Got task" << std::endl;
         }
         if (exit_condition_) {
             return;
@@ -659,7 +652,6 @@ void MeshCommandQueue::read_completion_queue() {
                         if constexpr (std::is_same_v<T, MeshBufferReadDescriptor>) {
                             this->copy_buffer_data_to_user_space(mesh_read_descriptor);
                         } else {
-                            std::cout << "Read COmpletion queue event" << std::endl;
                             this->read_completion_queue_event(mesh_read_descriptor);
                         }
                     },
@@ -722,11 +714,9 @@ void MeshCommandQueue::read_completion_queue_event(MeshReadEventDescriptor& read
         auto device = mesh_device_->get_device(coord);
         chip_id_t mmio_device_id = tt::Cluster::instance().get_associated_mmio_device(device->id());
         uint16_t channel = tt::Cluster::instance().get_assigned_channel_for_device(device->id());
-        std::cout << "wait on " << device->id() << std::endl;
         device->sysmem_manager().completion_queue_wait_front(id_, exit_condition_);
         event_dispatch::read_events_from_completion_queue(
             read_event_descriptor.single_device_descriptor, mmio_device_id, channel, id_, device->sysmem_manager());
-        std::cout << "done wait on " << device->id() << std::endl;
     }
 }
 
@@ -784,7 +774,6 @@ void MeshCommandQueue::write_go_signal_to_unused_sub_grids(
     bool unicast_go_signals) {
     for (auto& device : this->mesh_device_->get_devices()) {
         if (chip_ids_in_workload.find(device->id()) == chip_ids_in_workload.end()) {
-            std::cout << "Send go signals to: " << device->id() << std::endl;
             write_go_signal(
                 id_,
                 mesh_device_,

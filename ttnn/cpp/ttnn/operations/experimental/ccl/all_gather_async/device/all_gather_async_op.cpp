@@ -23,7 +23,7 @@ AllGatherAsync create_all_gather_async_struct(
     std::optional<tt::tt_metal::SubDeviceId> sub_device_id,
     bool enable_persistent_fabric_mode) {
     uint32_t num_devices = input_tensor.device_storage().specs.size();
-    std::cout << "NUM DEVICES IN RING: " << num_devices << std::endl;
+    std::cout << "Global sem addr " << semaphore.address() << std::endl;
     return ttnn::AllGatherAsync{
         dim,
         num_links,
@@ -60,22 +60,6 @@ void AllGatherAsync::validate(const std::vector<Tensor>& input_tensors) const {
             input_tensor.memory_config().memory_layout == TensorMemoryLayout::HEIGHT_SHARDED,
         "Unsupported memory layout {}.",
         input_tensor.memory_config().memory_layout);
-}
-
-static void validate_output_tensor_allocation(const std::vector<Tensor>& output_tensors) {
-    for (const auto& output_tensor : output_tensors) {
-        const auto& buffers = output_tensor.buffers();
-        const auto first_address = buffers.front()->address();
-        TT_FATAL(
-            std::all_of(
-                buffers.begin(),
-                buffers.end(),
-                [&first_address](const auto& buffer) {
-                    return buffer != nullptr && buffer->address() == first_address;
-                }),
-            "Output buffers for all_gather async must be lock-step allocated but some of the tensors were allocated at "
-            "different addresses across devices.");
-    }
 }
 
 std::vector<ttnn::TensorSpec> AllGatherAsync::compute_output_specs(const std::vector<Tensor>& input_tensors) const {
@@ -204,23 +188,19 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
             device_index = i;
             if (i != 0) {
                 backward_device = devices.at(i - 1);
-                std::cout << "BWD DEVICE: " << backward_device.value()->id() << std::endl;
             } else if (topology == ttnn::ccl::Topology::Ring) {
                 backward_device = devices.at(num_devices - 1);
-                std::cout << "RING BWD DEVICE: " << backward_device.value()->id() << std::endl;
             }
             if (i != num_devices - 1) {
                 forward_device = devices.at(i + 1);
-                std::cout << "FWD DEVICE: " << forward_device.value()->id() << std::endl;
             } else if (topology == ttnn::ccl::Topology::Ring) {
                 forward_device = devices.at(0);
-                std::cout << "RING FWD DEVICE: " << forward_device.value()->id() << std::endl;
             }
         }
     }
     switch (version) {
         case AllGatherAsyncVersion::MINIMAL_INTERLEAVED_32:
-            log_info(
+            log_debug(
                 tt::LogOp,
                 "Detected all gather specialized shape. all_gather_async_minimal_interleaved_dim3_1_1_32_any is "
                 "called");
@@ -323,9 +303,7 @@ Tensor all_gather_async(
     const ttnn::ccl::Topology topology,
     std::optional<tt::tt_metal::SubDeviceId> sub_device_id,
     bool enable_persistent_fabric_mode) {
-    std::cout << "Calling all gather" << std::endl;
     auto shape = input_tensor.get_padded_shape();
-    std::cout << "Shape: " << shape[0] << " " << shape[1] << " " << shape[2] << " " << shape[3] << std::endl;
     TT_FATAL(
         std::getenv("TT_METAL_SLOW_DISPATCH_MODE") == nullptr,
         "all_gather_async op is only supported for Fast Dispatch");
@@ -338,8 +316,8 @@ Tensor all_gather_async(
     if (num_devices == 2) {
         ccl_topology = ttnn::ccl::Topology::Linear;
     }
-    tt::log_info(tt::LogOp, "DEBUG: creating line_fabric with num devices: {}, num links: {}", num_devices, num_links);
-    tt::log_info(tt::LogOp, "DEBUG: line_fabric is created");
+    tt::log_debug(tt::LogOp, "DEBUG: creating line_fabric with num devices: {}, num links: {}", num_devices, num_links);
+    tt::log_debug(tt::LogOp, "DEBUG: line_fabric is created");
 
     // create this semaphore for all cores since we don't know which core will be used for teardown draining
     CoreCoord grid_size = mesh_device->compute_with_storage_grid_size();

@@ -70,7 +70,6 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
     bool enable_persistent_fabric_mode) {
     tt::tt_metal::Program program{};
     const bool enable_async_output_tensor = false;
-    std::cout << "calling minimal interleaved impl " << sender_device->id() << std::endl;
     TT_FATAL(
         enable_persistent_fabric_mode,
         "only persistent fabric mode is supported for all_gather_async_minimal_interleaved_dim3_1_1_32_any");
@@ -91,14 +90,11 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
     size_t num_targets_forward = 0;
     size_t num_targets_backward = 0;
     if (topology == ccl::Topology::Linear) {
-        std::cout << "LINEAR SIZE: " << ring_size << " LINEAR INDEX " << ring_index << std::endl;
         LineTopology line_topology(ring_size, ring_index);
         num_targets_forward =
             line_topology.get_distance_to_end_of_line(ttnn::ccl::EdmLineFabricOpInterface::Direction::FORWARD);
         num_targets_backward =
             line_topology.get_distance_to_end_of_line(ttnn::ccl::EdmLineFabricOpInterface::Direction::BACKWARD);
-        std::cout << "Num targets fwd: " << num_targets_forward << " Num targets bwd: " << num_targets_backward
-                  << std::endl;
     } else if (topology == ccl::Topology::Ring) {
         // TODO: Commonize
         num_targets_forward = tt::div_up(ring_size - 1, 2);
@@ -112,15 +108,10 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
     uint32_t num_workers_per_link = 1;
     const auto [sender_worker_core_range, sender_worker_cores] =
         choose_worker_cores(num_links, num_workers_per_link, enable_persistent_fabric_mode, device, sub_device_id);
-    std::cout << "Worker cores: " << std::endl;
-    for (auto core : sender_worker_cores) {
-        std::cout << core.str() << std::endl;
-    }
 
     // L1 Scratch CB Creation
     const auto& edm_config = tt::tt_fabric::get_default_fabric_config();
     const size_t packet_size_bytes = edm_config.channel_buffer_size_bytes;
-    std::cout << "Packet size bytes: " << packet_size_bytes << std::endl;
     uint32_t l1_scratch_cb_page_size_bytes = op_config.get_page_size();
     uint32_t num_pages_per_packet = packet_size_bytes / l1_scratch_cb_page_size_bytes;
     uint32_t cb_num_pages = 3 * num_pages_per_packet;  // tripple buffering
@@ -201,21 +192,10 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
                                 // semaphore
     for (uint32_t link = 0; link < num_links; link++) {
         CoreCoord core = sender_worker_cores[link];
-        std::cout << "LINK: " << link << std::endl;
         if (link == 0) {
             // drain sync core is the first worker core
             drain_sync_core = device->worker_core_from_logical_core(core);
         }
-        // std::optional<tt::tt_fabric::SenderWorkerAdapterSpec> forward_fabric_connection =
-        //     !forward_device.has_value()
-        //         ? std::nullopt
-        //         : std::optional<tt::tt_fabric::SenderWorkerAdapterSpec>(local_fabric_handle->uniquely_connect_worker(
-        //               device, ttnn::ccl::EdmLineFabricOpInterface::FORWARD));
-        // std::optional<tt::tt_fabric::SenderWorkerAdapterSpec> backward_fabric_connection =
-        //     !backward_device.has_value()
-        //         ? std::nullopt
-        //         : std::optional<tt::tt_fabric::SenderWorkerAdapterSpec>(local_fabric_handle->uniquely_connect_worker(
-        //               device, ttnn::ccl::EdmLineFabricOpInterface::BACKWARD));
 
         // Set reader runtime args
         uint32_t base_pages_per_worker = input_tensor_num_pages / num_links;
@@ -227,10 +207,6 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
             input_tile_id_start,               // tile_id_start
             input_tile_id_end,                 // tile_id_end
         };
-        log_trace(tt::LogOp, "Reader Runtime Args:");
-        for (const auto& arg : reader_rt_args) {
-            log_trace(tt::LogOp, "\t{}", arg);
-        }
         tt::tt_metal::SetRuntimeArgs(program, worker_sender_reader_kernel_id, {core}, reader_rt_args);
 
         // Set writer runtime args
@@ -254,22 +230,21 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
         for (const auto& arg : writer_rt_args) {
             log_trace(tt::LogOp, "\t{}", arg);
         }
+
         if (forward_device.has_value()) {
-            std::cout << "Create FWD RT ARGS: " << sender_device->id() << " " << forward_device.value()->id()
-                      << std::endl;
+            writer_rt_args.push_back(1);
             tt::tt_fabric::append_fabric_connection_rt_args(
                 sender_device->id(), forward_device.value()->id(), link, program, {core}, writer_rt_args);
+        } else {
+            writer_rt_args.push_back(0);
         }
         if (backward_device.has_value()) {
-            std::cout << "Create BWD RT ARGS: " << sender_device->id() << " " << backward_device.value()->id()
-                      << std::endl;
+            writer_rt_args.push_back(1);
             tt::tt_fabric::append_fabric_connection_rt_args(
                 sender_device->id(), backward_device.value()->id(), link, program, {core}, writer_rt_args);
+        } else {
+            writer_rt_args.push_back(0);
         }
-
-        // append_fabric_connection_rt_args(forward_fabric_connection, core, program, writer_rt_args);
-        // append_fabric_connection_rt_args(backward_fabric_connection, core, program, writer_rt_args);
-
         tt::tt_metal::SetRuntimeArgs(program, worker_sender_writer_kernel_id, {core}, writer_rt_args);
     }
 
