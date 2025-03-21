@@ -141,6 +141,10 @@ struct EdmChannelWorkerInterface {
     //
     // local_wrptr trails from_remote_wrptr
     // we have new data if they aren't equal
+    [[nodiscard]] FORCE_INLINE uint8_t num_unsent_payloads() const {
+        return tt::tt_fabric::distance_behind<NUM_BUFFERS>(
+            local_wrptr.get_ptr(), BufferPtr{static_cast<uint8_t>(*remote_producer_wrptr)});
+    }
     [[nodiscard]] FORCE_INLINE bool has_unsent_payload() { return local_wrptr.get_ptr() != *remote_producer_wrptr; }
     [[nodiscard]] FORCE_INLINE bool has_unacked_sends() { return local_ackptr.get_ptr() != local_wrptr.get_ptr(); }
 

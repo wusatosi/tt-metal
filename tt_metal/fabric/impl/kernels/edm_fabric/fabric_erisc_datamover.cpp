@@ -335,6 +335,7 @@ private:
 };
 
 static constexpr uint32_t DEFAULT_ETH_TXQ = 0;
+constexpr size_t DEFAULT_NUM_ETH_TXQ_DATA_PACKET_ACCEPT_AHEAD = 32;
 
 // senders update this stream
 constexpr uint32_t to_receiver_0_pkts_sent_id = 0;
@@ -615,6 +616,7 @@ FORCE_INLINE void send_next_data(
     // messages)
     local_sender_wrptr.increment_n(num_packets_to_send);
     // update the remote reg
+
     while (internal_::eth_txq_is_busy(DEFAULT_ETH_TXQ)) {
     };
     remote_update_ptr_val<to_receiver_pkts_sent_id>(num_packets_to_send);
@@ -800,18 +802,26 @@ FORCE_INLINE void run_sender_channel_step(
     }
     if (can_send) {
         did_something = true;
-        auto packet_header = reinterpret_cast<PACKET_HEADER_TYPE*>(local_sender_channel.get_buffer_address(
-            local_sender_channel_worker_interface.local_wrptr.get_buffer_index()));
         if constexpr (enable_packet_header_recording) {
+            auto packet_header = reinterpret_cast<PACKET_HEADER_TYPE*>(local_sender_channel.get_buffer_address(
+                local_sender_channel_worker_interface.local_wrptr.get_buffer_index()));
             tt::tt_fabric::validate(*packet_header);
             packet_header_recorder.record_packet_header(reinterpret_cast<volatile uint32_t*>(packet_header));
         }
+        size_t num_packets_to_send = std::min<size_t>(
+            static_cast<size_t>(
+                SENDER_NUM_BUFFERS - local_sender_channel_worker_interface.local_wrptr.get_buffer_index().get()),
+            std::min<size_t>(
+                static_cast<size_t>(
+                    RECEIVER_NUM_BUFFERS - outbound_to_receiver_channel_pointers.wrptr.get_buffer_index().get()),
+                local_sender_channel_worker_interface.num_unsent_payloads()));
         send_next_data<SENDER_NUM_BUFFERS, RECEIVER_NUM_BUFFERS, to_receiver_pkts_sent_id>(
             local_sender_channel,
             local_sender_channel_worker_interface,
             outbound_to_receiver_channel_pointers,
             remote_receiver_channel,
-            sender_channel_index);
+            sender_channel_index,
+            num_packets_to_send);
     }
 
     // Process COMPLETIONs from receiver
@@ -1248,6 +1258,8 @@ void kernel_main() {
     init_ptr_val<to_sender_packets_completed_streams[0]>(0);
     init_ptr_val<to_sender_packets_completed_streams[1]>(0);
     init_ptr_val<to_sender_packets_completed_streams[2]>(0);
+
+    eth_txq_reg_write(DEFAULT_ETH_TXQ, ETH_TXQ_DATA_PACKET_ACCEPT_AHEAD, DEFAULT_NUM_ETH_TXQ_DATA_PACKET_ACCEPT_AHEAD);
 
     static constexpr size_t DEFAULT_HANDSHAKE_CONTEXT_SWITCH_TIMEOUT = 0;
     if constexpr (is_handshake_sender) {
