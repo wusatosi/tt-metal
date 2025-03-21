@@ -22,10 +22,8 @@ AllGatherAsync create_all_gather_async_struct(
     const GlobalSemaphore& semaphore,
     std::optional<tt::tt_metal::SubDeviceId> sub_device_id,
     bool enable_persistent_fabric_mode) {
-    auto mesh_device = dynamic_cast<MeshDevice*>(input_tensor.get_workers()[0]);
-
-    uint32_t num_devices = mesh_device->get_devices().size();
-
+    uint32_t num_devices = input_tensor.device_storage().specs.size();
+    std::cout << "NUM DEVICES IN RING: " << num_devices << std::endl;
     return ttnn::AllGatherAsync{
         dim,
         num_links,
@@ -183,12 +181,10 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
     const ttnn::MeshCoordinate& mesh_coord,
     const std::vector<Tensor>& input_tensors,
     std::vector<Tensor>& output_tensors) const {
-    tt::log_info(tt::LogOp, "DEBUG: create_program_at is called");
-
     auto mesh_device = dynamic_cast<MeshDevice*>(input_tensors[0].device());
     TT_FATAL(mesh_device, "The input tensor must be allocated on a MeshDevice.");
     auto current_device = mesh_device->get_device(mesh_coord);
-
+    tt::log_info(tt::LogOp, "DEBUG: create_program_at is called {} {}", mesh_coord, current_device->id());
     // Might be problematic based on how shapes are populated
     AllGatherAsyncVersion version = select_version(input_tensors[0]);
     log_trace(tt::LogOp, "version: {}", static_cast<uint32_t>(version));
@@ -196,40 +192,48 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
     std::optional<IDevice*> forward_device = std::nullopt;
     std::optional<IDevice*> backward_device = std::nullopt;
 
-    const auto& devices = mesh_device->get_devices();
+    std::vector<IDevice*> devices;
+    for (const auto& spec : input_tensors[0].device_storage().specs) {
+        devices.push_back(mesh_device->get_device(spec.first));
+    }
+
     uint32_t num_devices = devices.size();
-    std::cout << "Finding devices" << std::endl;
+    uint32_t device_index = 0;
     for (uint32_t i = 0; i < num_devices; ++i) {
         if (devices.at(i) == current_device) {
+            device_index = i;
             if (i != 0) {
                 backward_device = devices.at(i - 1);
+                std::cout << "BWD DEVICE: " << backward_device.value()->id() << std::endl;
             } else if (topology == ttnn::ccl::Topology::Ring) {
                 backward_device = devices.at(num_devices - 1);
+                std::cout << "RING BWD DEVICE: " << backward_device.value()->id() << std::endl;
             }
             if (i != num_devices - 1) {
                 forward_device = devices.at(i + 1);
+                std::cout << "FWD DEVICE: " << forward_device.value()->id() << std::endl;
             } else if (topology == ttnn::ccl::Topology::Ring) {
                 forward_device = devices.at(0);
+                std::cout << "RING FWD DEVICE: " << forward_device.value()->id() << std::endl;
             }
         }
     }
-    std::cout << "Done finding devices" << std::endl;
     switch (version) {
         case AllGatherAsyncVersion::MINIMAL_INTERLEAVED_32:
             log_info(
                 tt::LogOp,
                 "Detected all gather specialized shape. all_gather_async_minimal_interleaved_dim3_1_1_32_any is "
                 "called");
-            std::cout << "using minimal all gather" << std::endl;
             return all_gather_async_minimal_interleaved_dim3_1_1_32_any(
                 input_tensors[0],
+                current_device,
                 forward_device,
                 backward_device,
                 output_tensors[0],
                 this->dim,
                 this->num_links,
                 this->ring_size,
-                current_device->id(),
+                device_index,
                 this->topology,
                 this->semaphore,
                 this->sub_device_id,
@@ -245,7 +249,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
                 this->dim,
                 this->num_links,
                 this->ring_size,
-                current_device->id(),
+                device_index,
                 this->topology,
                 this->semaphore,
                 this->sub_device_id,
@@ -262,7 +266,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
                 this->dim,
                 this->num_links,
                 this->ring_size,
-                current_device->id(),
+                device_index,
                 this->topology,
                 this->semaphore,
                 this->sub_device_id,
@@ -327,7 +331,7 @@ Tensor all_gather_async(
         "all_gather_async op is only supported for Fast Dispatch");
     auto mesh_device = dynamic_cast<MeshDevice*>(input_tensor.get_workers()[0]);
     TT_FATAL(mesh_device, "All Gather only works on a MeshDevice");
-    uint32_t num_devices = mesh_device->get_devices().size();
+    uint32_t num_devices = input_tensor.device_storage().specs.size();
     TT_FATAL(num_devices > 1, "all_gather_async op will only work for num_devices > 1, but has {}", num_devices);
     ttnn::ccl::Topology ccl_topology = topology;
 
