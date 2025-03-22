@@ -423,6 +423,9 @@ std::vector<std::vector<uint32_t>> generate_dilated_idx_for_tensor_metadata(
                 uniquePixels.insert(row * padded_input_w + i);
             }
         }
+        uniquePixels =
+            std::set<int>(uniquePixels.lower_bound(input_boundary.start), uniquePixels.upper_bound(input_boundary.end));
+        uniquePixels = std::set<int>(uniquePixels.begin(), uniquePixels.upper_bound(input_boundary.end));
 
         for (auto fh = 0; fh < config.window_hw.first; fh++) {
             std::vector<std::vector<uint16_t>> halo_op_to_idx_map_local;
@@ -501,7 +504,7 @@ std::vector<std::vector<std::vector<uint16_t>>> generate_halo_kernel_config_tens
         // std::cout << "output_start: " << output_start << " output_end: " << output_end << std::endl;
         uint32_t dst_local_idx = 0;
         // TODO: handle dilation
-        for (uint32_t global_idx = input_start; dst_local_idx < dilated_idxes.size(); ++global_idx, dst_local_idx++) {
+        for (uint32_t global_idx = input_start; global_idx <= input_end; ++global_idx, dst_local_idx++) {
             uint32_t dst_core_id = core_id;
             uint32_t local_idx = global_idx - input_start;
             uint32_t input_idx = global_idx;
