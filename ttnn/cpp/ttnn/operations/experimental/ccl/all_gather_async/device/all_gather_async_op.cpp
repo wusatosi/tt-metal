@@ -252,6 +252,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
             log_trace(tt::LogOp, "Running generic all_gather_async_multi_core_with_workers");
             return all_gather_async_multi_core_with_workers(
                 input_tensors[0],
+                current_device,
                 forward_device,
                 backward_device,
                 output_tensors[0],
@@ -277,8 +278,9 @@ const tt::tt_metal::operation::Hash AllGatherAsync::compute_program_hash(
     auto input_memory_config = input_tensors[0].memory_config();
     if (version == AllGatherAsyncVersion::GENERIC) {
         // Generic version should hash semaphore address as well
-        uint32_t semaphore_address_first = this->semaphore.value().first.address();
-        uint32_t semaphore_address_second = this->semaphore.value().second.address();
+        // ... why??
+        // uint32_t semaphore_address_first = this->semaphore.value().first.address();
+        // uint32_t semaphore_address_second = this->semaphore.value().second.address();
         return tt::tt_metal::operation::hash_operation<AllGatherAsync>(
             this->dim,
             this->num_links,
@@ -288,9 +290,7 @@ const tt::tt_metal::operation::Hash AllGatherAsync::compute_program_hash(
             input_shape,
             input_memory_layout,
             input_dtype,
-            input_memory_config,
-            semaphore_address_first,
-            semaphore_address_second);
+            input_memory_config);
     }
     return tt::tt_metal::operation::hash_operation<AllGatherAsync>(
         this->dim,

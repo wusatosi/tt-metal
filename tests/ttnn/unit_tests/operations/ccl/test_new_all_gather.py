@@ -265,9 +265,7 @@ def run_all_gather_impl(
             tt_input_tensors.append(ttnn.Tensor(t, input_dtype).to(layout))
             logger.info(f"using device {mesh_device.get_devices()[i].id()}")
 
-        input_tensor_mesh = ttnn.aggregate_as_tensor(tt_input_tensors).to(
-            mesh_device,
-        )
+        input_tensor_mesh = ttnn.aggregate_as_tensor(tt_input_tensors).to(mesh_device, input_mem_config)
 
         input_tensor_mesh_list.append(input_tensor_mesh)
 
@@ -337,7 +335,7 @@ def run_all_gather_impl(
         tt_out_tensor = tt_out_tensor_list[tensor_index]
         output_tensor = output_tensor_goldens_list[tensor_index]
         for i, t in enumerate(ttnn.get_device_tensors(tt_out_tensor)):
-            if i >= 4:
+            if i >= num_devices:
                 continue
             tt_output_tensor = t.cpu().to(ttnn.ROW_MAJOR_LAYOUT).to_torch()
             logger.info(f"Checking for device {t.device().id()}")
@@ -350,10 +348,9 @@ def run_all_gather_impl(
                 logger.error(f"output mismatch for tensor {i}")
                 passed = False
 
-    for i in range(num_devices):
-        assert (
-            mesh_device.num_program_cache_entries() == 1 or mesh_device.num_program_cache_entries() == num_iters
-        ), f"Device {i} has {mesh_device.num_program_cache_entries()} program cache entries"
+    assert (
+        mesh_device.num_program_cache_entries() == 1 or mesh_device.num_program_cache_entries() == num_iters
+    ), f"Device {i} has {mesh_device.num_program_cache_entries()} program cache entries"
 
     if not passed:
         assert eq, f"{i} FAILED: {output}"
@@ -427,7 +424,7 @@ def test_all_gather(
     "num_devices, output_shape, dim, layout, input_shard_shape, input_shard_grid, output_shard_shape, output_shard_grid, tensor_mem_layout",
     [
         (
-            2,
+            8,
             [1, 1, 32, 256],
             3,
             ttnn.TILE_LAYOUT,
@@ -438,8 +435,8 @@ def test_all_gather(
             ttnn.TensorMemoryLayout.WIDTH_SHARDED,
         ),
         (
-            2,
-            [1, 1, 32, 256],
+            8,
+            [1, 1, 32, 512],
             3,
             ttnn.TILE_LAYOUT,
             (32, 64),
@@ -449,8 +446,8 @@ def test_all_gather(
             ttnn.TensorMemoryLayout.WIDTH_SHARDED,
         ),
         (
-            2,
-            [1, 1, 32, 256],
+            8,
+            [1, 1, 32, 1024],
             3,
             ttnn.TILE_LAYOUT,
             (32, 128),
@@ -460,8 +457,8 @@ def test_all_gather(
             ttnn.TensorMemoryLayout.WIDTH_SHARDED,
         ),
         (
-            2,
-            [1, 1, 64, 256],
+            8,
+            [1, 1, 256, 256],
             2,
             ttnn.TILE_LAYOUT,
             (32, 128),
@@ -471,8 +468,8 @@ def test_all_gather(
             ttnn.TensorMemoryLayout.WIDTH_SHARDED,
         ),
         (
-            2,
-            [1, 4, 32, 256],
+            8,
+            [1, 4, 32, 1024],
             3,
             ttnn.TILE_LAYOUT,
             (32, 128),
@@ -482,11 +479,11 @@ def test_all_gather(
             ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
         ),
         (
-            4,
+            8,
             [1, 4, 32, 1280],
             3,
             ttnn.TILE_LAYOUT,
-            (32, 320),
+            (32, 160),
             ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(1, 4))}),
             None,
             None,
@@ -503,7 +500,6 @@ def test_all_gather(
     ],
 )
 @pytest.mark.parametrize("num_iters", [8])
-@pytest.mark.parametrize("enable_async", [True])
 @pytest.mark.parametrize("dynamic_alloc_semaphore", [True, False])
 def test_all_gather_sharded(
     t3k_mesh_device,
@@ -516,7 +512,6 @@ def test_all_gather_sharded(
     num_iters,
     use_program_cache,
     function_level_defaults,
-    enable_async,
     input_shard_shape,
     input_shard_grid,
     output_shard_shape,
@@ -539,7 +534,6 @@ def test_all_gather_sharded(
         function_level_defaults,
         all_gather_topology=ttnn.Topology.Linear,
         num_iters=num_iters,
-        enable_async=enable_async,
         rand_tensor=True,
         input_shard_shape=input_shard_shape,
         input_shard_grid=input_shard_grid,

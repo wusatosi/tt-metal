@@ -5,6 +5,7 @@
 #pragma once
 
 #include <tt-metalium/program_impl.hpp>
+#include <tt-metalium/erisc_datamover_builder.hpp>
 
 namespace tt::tt_fabric {
 
