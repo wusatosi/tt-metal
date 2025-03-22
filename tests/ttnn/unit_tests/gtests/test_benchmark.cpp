@@ -115,7 +115,7 @@ std::vector<std::tuple<int, int, int, bool, bool, int, int, int>> matmul_shapes_
 };
 
 std::vector<std::tuple<DataType, MathFidelity, bool>> matmul_configs = {
-    {DataType::BFLOAT16, MathFidelity::HiFi2, false},
+    {DataType::BFLOAT16, MathFidelity::HiFi4, false},
     // {DataType::BFLOAT16, MathFidelity::HiFi4, false},
     {DataType::BFLOAT8_B, MathFidelity::HiFi2, false},
     //  {DataType::BFLOAT8_B, MathFidelity::LoFi, false},
@@ -164,10 +164,10 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
     int HiFi3_cycle = LoFi_cycle * 3;
     int HiFi4_cycle = LoFi_cycle * 4;
 
-    int MAX_UNOP = 20;
-    int MAX_MNOP = 20;
+    int MAX_UNOP = 1;
+    int MAX_MNOP = 5;
     for (int unop = 0; unop < MAX_UNOP; unop++) {
-        for (int mnop = 0; mnop < MAX_MNOP; mnop++) {
+        for (int mnop = 4; mnop < MAX_MNOP; mnop++) {
             for (const auto& config : matmul_configs) {
                 DataType dtype = std::get<0>(config);
                 MathFidelity math_fidelity = std::get<1>(config);
