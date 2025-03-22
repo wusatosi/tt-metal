@@ -154,13 +154,12 @@ struct OldInfraDeviceOperation {
         };
         using cached_program_t = ttnn::device_operation::CachedProgram<shared_variables_t>;
 
-        static cached_program_t create_at(
+        static cached_program_t create(
             const operation_attributes_t& operation_attributes,
-            const ttnn::MeshCoordinate& mesh_coord,
             const tensor_args_t& tensor_args,
             tensor_return_value_t& tensor_return_value) {
-            auto program_with_callbacks = operation_attributes.create_program_at(
-                mesh_coord, tensor_args.input_tensors, tensor_args.optional_input_tensors, tensor_return_value);
+            auto program_with_callbacks = operation_attributes.create_program(
+                tensor_args.input_tensors, tensor_args.optional_input_tensors, tensor_return_value);
             return cached_program_t{
                 std::move(program_with_callbacks.program),
                 shared_variables_t{
@@ -168,10 +167,9 @@ struct OldInfraDeviceOperation {
                     program_with_callbacks.override_runtime_arguments_callback}};
         }
 
-        static void override_runtime_arguments_at(
+        static void override_runtime_arguments(
             cached_program_t& cached_program,
             const operation_attributes_t& operation_attributes,
-            const ttnn::MeshCoordinate&,
             const tensor_args_t& tensor_args,
             tensor_return_value_t& tensor_return_value) {
             auto& override_addresses_callback = cached_program.shared_variables.override_addresses_callback;

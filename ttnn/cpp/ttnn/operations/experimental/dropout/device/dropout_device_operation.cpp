@@ -14,11 +14,7 @@ namespace ttnn::operations::experimental::dropout {
 
 DropoutDeviceOperation::program_factory_t DropoutDeviceOperation::select_program_factory(
     const operation_attributes_t& args, const tensor_args_t& tensor_args) {
-    if (args.use_per_device_seed) {
-        return program::DropoutProgramFactoryPerDeviceSeed{};
-    } else {
-        return program::DropoutProgramFactory{};
-    }
+    return program::DropoutProgramFactory{};
 }
 
 void DropoutDeviceOperation::validate_on_program_cache_hit(
@@ -142,7 +138,6 @@ DropoutDeviceOperation::invoke(
     float prob,
     float scale,
     uint32_t seed,
-    bool use_per_device_seed,
     DataType output_dtype,
     const MemoryConfig& output_memory_config,
     const std::optional<Tensor>& preallocated_output) {
@@ -151,7 +146,6 @@ DropoutDeviceOperation::invoke(
             .output_dtype = output_dtype,
             .output_memory_config = output_memory_config,
             .seed = seed,
-            .use_per_device_seed = use_per_device_seed,
             .prob = prob,
             .scale = scale,
         },
