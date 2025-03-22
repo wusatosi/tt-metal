@@ -5,41 +5,95 @@
 #include <stdint.h>
 #include "dataflow_api.h"
 
-#define ENABLE_DEBUG 0
+#define ENABLE_DEBUG 1
 
 #if ENABLE_DEBUG
 #include "debug/dprint.h"
 #include "debug/dprint_pages.h"
 #endif
 
-constexpr uint32_t weight_size_w = get_compile_time_arg_val(12);  // Input filter window width
-constexpr uint32_t weight_size_h = get_compile_time_arg_val(15);  // Input filter window width
-
-template <int window_height, int window_width>
-FORCE_INLINE void read_dilated_channels(
-    uint32_t& l1_write_addr_act,
-    const uint32_t act_l1_read_addr,
-    const uint32_t reader_channel_idx,
-    const uint32_t conv_act_c_bytes,
-    const uint32_t stride_h_bytes,
-    const uint32_t stride_w_bytes) {
-    uint32_t act_l1_read_addr_plus_offset = act_l1_read_addr + (reader_channel_idx * conv_act_c_bytes);
-#pragma GCC unroll weight_size_h
-    for (uint32_t outer = 0; outer < window_height; outer++) {
-        uint32_t act_l1_read_addr_row_offset = act_l1_read_addr_plus_offset;
-#pragma GCC unroll weight_size_w
-        for (uint32_t inner = 0; inner < window_width; inner++) {
-            // Read the partial depth.
-            noc_async_read_one_packet_with_state<true>(act_l1_read_addr_row_offset, l1_write_addr_act);
-            // Increment by full depth to go to the next pixel
-            l1_write_addr_act += conv_act_c_bytes;
-            act_l1_read_addr_row_offset += stride_w_bytes;
+inline void print_bf16_pages(uint32_t l1_addr, uint32_t elts_per_page, uint32_t npages, uint32_t start = 0) {
+    volatile tt_l1_ptr uint16_t* ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(l1_addr) + start * elts_per_page;
+    for (uint32_t page = 0; page < npages; ++page) {
+        DPRINT << start + page << ": ";
+        for (uint32_t j = 0; j < elts_per_page; ++j, ++ptr) {
+            DPRINT << BF16(*ptr) << " ";
         }
-        // Go to the next row
-        act_l1_read_addr_plus_offset += stride_h_bytes;
+        DPRINT << ENDL();
     }
 }
 
+#define dump(a)                                       \
+    do {                                              \
+        DPRINT << "Act: " << #a " = " << a << ENDL(); \
+    } while (false);
+
+constexpr uint32_t weight_size_w = get_compile_time_arg_val(12);  // Input filter window width
+constexpr uint32_t weight_size_h = get_compile_time_arg_val(15);  // Input filter window width
+
+template <int window_height, int window_width, bool is_first>
+FORCE_INLINE void read_dilated_channels(
+    uint32_t& l1_write_addr_act,
+    const uint32_t act_l1_read_addr,
+    const uint32_t conv_act_c_bytes,
+    const uint32_t stride_w_bytes,
+    const uint32_t packed_reader_indices_sz,
+    volatile uint32_t* packed_reader_indices_ptr,
+    const uint32_t reader_idx) {
+    uint32_t reader_idx_1;
+    uint32_t height_offset = reader_idx;
+#pragma GCC unroll weight_size_h
+    for (uint32_t outer = 0; outer < window_height; outer++) {
+        uint32_t two_reader_indices = packed_reader_indices_ptr[height_offset];
+        if constexpr (is_first) {
+            reader_idx_1 = two_reader_indices & 0xffff;
+        } else {
+            reader_idx_1 = two_reader_indices >> 16;
+        }
+        uint32_t act_l1_read_addr_offset = act_l1_read_addr + (reader_idx_1 * conv_act_c_bytes);
+#pragma GCC unroll weight_size_w
+        for (uint32_t inner = 0; inner < window_width; inner++) {
+            // Read the partial depth.
+            noc_async_read_one_packet_with_state<true>(act_l1_read_addr_offset, l1_write_addr_act);
+            // Increment by full depth to go to the next pixel
+            l1_write_addr_act += conv_act_c_bytes;
+            act_l1_read_addr_offset += stride_w_bytes;
+        }
+        // Go to the next row
+        height_offset += packed_reader_indices_sz;
+    }
+}
+
+template <int window_height, int window_width, bool is_first>
+FORCE_INLINE void read_dilated_channels_non_cont(
+    uint32_t& l1_write_addr_act,
+    const uint32_t act_l1_read_addr,
+    const uint32_t conv_act_c_bytes,
+    const uint32_t stride_w_bytes,
+    const uint32_t packed_reader_indices_sz,
+    volatile uint32_t* packed_reader_indices_ptr,
+    const uint32_t reader_idx) {
+    uint32_t reader_idx_1, two_reader_indices;
+    uint32_t height_offset = reader_idx;
+#pragma GCC unroll weight_size_h
+    for (uint32_t outer = 0; outer < window_height; outer++) {
+#pragma GCC unroll weight_size_w
+        for (uint32_t inner = 0; inner < window_width; inner++) {
+            two_reader_indices = packed_reader_indices_ptr[height_offset++];
+            if constexpr (is_first) {
+                reader_idx_1 = two_reader_indices & 0xffff;
+            } else {
+                reader_idx_1 = two_reader_indices >> 16;
+            }
+            uint32_t act_l1_read_addr_offset = act_l1_read_addr + (reader_idx_1 * conv_act_c_bytes);
+            // Read the partial depth.
+            noc_async_read_one_packet_with_state<true>(act_l1_read_addr_offset, l1_write_addr_act);
+            // Increment by full depth to go to the next pixel
+            l1_write_addr_act += conv_act_c_bytes;
+        }
+        height_offset += packed_reader_indices_sz;
+    }
+}
 FORCE_INLINE
 void read_channels(
     uint32_t& l1_write_addr_act,
@@ -149,7 +203,23 @@ void kernel_main() {
     noc_async_read_one_packet_set_state(get_noc_addr(act_l1_read_addr), coalesced_read_bytes);
 
     // Reset reader_idx to finish act_block_h_datums
-    uint32_t reader_idx = 0;
+    uint32_t reader_idx = 1;
+    // dump(coalesced_read_bytes / 2);
+
+    uint32_t packed_reader_indices_sz = (packed_reader_indices_ptr[0] & 0xFFFF);
+    // print_bf16_pages(act_l1_read_addr, conv_act_c_read_bytes / 2, (packed_reader_indices_sz + 2) * window_outer);
+    dump(packed_reader_indices_sz);
+    packed_reader_indices_sz /= 2;
+    dump(conv_act_c_read_bytes);
+    uint32_t is_cont = packed_reader_indices_ptr[0] >> 16;
+    dump(is_cont);
+    dump(act_block_w_extra_align_bytes);
+#if DILATION_W == 1
+    reader_idx = 0;
+#endif
+    uint32_t two_reader_indices;
+    uint32_t reader_idx_1;
+    uint32_t reader_idx_2;
     for (uint32_t nbh = 0; nbh < act_num_blocks_h; nbh++) {
         cb_reserve_back(cb_id_act_row_major_bfloat16, act_block_num_tiles);
         uint32_t l1_write_addr_act = get_write_ptr(cb_id_act_row_major_bfloat16);
@@ -181,20 +251,41 @@ void kernel_main() {
                 l1_write_addr_act += act_block_w_extra_align_bytes;
             }
 #else
-            read_dilated_channels<weight_size_h, weight_size_w>(
-                l1_write_addr_act,
-                act_l1_read_addr,
-                two_reader_indices & 0xffff,
-                conv_act_c_read_bytes,
-                stride_h_bytes,
-                stride_w_bytes);
-            read_dilated_channels<weight_size_h, weight_size_w>(
-                l1_write_addr_act,
-                act_l1_read_addr,
-                two_reader_indices >> 16,
-                conv_act_c_read_bytes,
-                stride_h_bytes,
-                stride_w_bytes);
+            if (is_cont) {
+                read_dilated_channels<weight_size_h, weight_size_w, true>(
+                    l1_write_addr_act,
+                    act_l1_read_addr,
+                    conv_act_c_read_bytes,
+                    stride_w_bytes,
+                    packed_reader_indices_sz,
+                    packed_reader_indices_ptr,
+                    reader_idx);
+                read_dilated_channels<weight_size_h, weight_size_w, false>(
+                    l1_write_addr_act,
+                    act_l1_read_addr,
+                    conv_act_c_read_bytes,
+                    stride_w_bytes,
+                    packed_reader_indices_sz,
+                    packed_reader_indices_ptr,
+                    reader_idx);
+            } else {
+                read_dilated_channels_non_cont<weight_size_h, weight_size_w, true>(
+                    l1_write_addr_act,
+                    act_l1_read_addr,
+                    conv_act_c_read_bytes,
+                    stride_w_bytes,
+                    packed_reader_indices_sz,
+                    packed_reader_indices_ptr,
+                    reader_idx);
+                read_dilated_channels_non_cont<weight_size_h, weight_size_w, false>(
+                    l1_write_addr_act,
+                    act_l1_read_addr,
+                    conv_act_c_read_bytes,
+                    stride_w_bytes,
+                    packed_reader_indices_sz,
+                    packed_reader_indices_ptr,
+                    reader_idx);
+            }
 #endif
             reader_idx++;
         }

@@ -199,7 +199,8 @@ Tensor halo_op(
             auto dilated_idxes =
                 sliding_window::generate_dilated_idx_for_tensor_metadata(config, shard_boundaries, op_trace_metadata);
             HaloDeviceOperation::sliding_window_max_out_nsticks_per_core.emplace(
-                sliding_window_hash, sliding_window::generate_max_out_nsticks_per_core(dilated_idxes));
+                sliding_window_hash,
+                sliding_window::generate_max_out_nsticks_per_core(shard_boundaries, dilated_idxes));
         }
 
         uint32_t max_out_nsticks_per_core =

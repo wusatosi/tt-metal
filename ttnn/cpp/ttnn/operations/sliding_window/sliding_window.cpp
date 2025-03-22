@@ -8,10 +8,13 @@
 #include <iostream>
 #include <vector>
 #include <tt-metalium/assert.hpp>
+#include <unordered_set>
 
 using namespace tt::tt_metal;
 
 namespace ttnn::operations::sliding_window {
+using std::find;
+
 std::size_t SlidingWindowConfig::get_hash() const { return std::hash<std::string>{}(to_string()); }
 
 /**
@@ -350,11 +353,28 @@ std::vector<PixelMetadata> generate_tensor_metadata(
     return tensor_metadata;
 }
 
-uint32_t generate_max_out_nsticks_per_core(const std::vector<std::vector<uint32_t>>& dilated_idxes) {
-    uint32_t max_out_nsticks_per_core = 0;
-    for (auto dilated_idx : dilated_idxes) {
-        max_out_nsticks_per_core = std::max(max_out_nsticks_per_core, (uint32_t)dilated_idx.size());
+uint32_t generate_max_out_nsticks_per_core(
+    const std::vector<ShardBoundary>& shard_boundaries, const std::vector<std::vector<uint32_t>>& dilated_idxes) {
+    int32_t max_out_nsticks_per_core = 0;
+    if (global_dilation_w > 1) {
+        for (auto& dilated_idx : dilated_idxes) {
+            max_out_nsticks_per_core = std::max(max_out_nsticks_per_core, (int32_t)dilated_idx.size());
+        }
+    } else {
+        for (auto [_, in_shard] : shard_boundaries) {
+            auto [in_start, in_end] = in_shard;
+            max_out_nsticks_per_core = std::max(max_out_nsticks_per_core, (int32_t)(in_end - in_start + 1));
+        }
     }
+    int32_t max_out_nsticks = 0;
+    for (auto [_, in_shard] : shard_boundaries) {
+        auto [in_start, in_end] = in_shard;
+        max_out_nsticks = std::max(max_out_nsticks, (int32_t)(in_end - in_start + 1));
+    }
+    std::cout << "max_out_sticks = " << max_out_nsticks << std::endl;
+    std::cout << "max_out_sticks_per_core = " << max_out_nsticks_per_core << std::endl;
+    std::cout << "percentage increase in space = "
+              << (max_out_nsticks_per_core - max_out_nsticks) * 100.0 / max_out_nsticks << std::endl;
     return max_out_nsticks_per_core;
 }
 
@@ -365,6 +385,7 @@ std::vector<std::vector<uint32_t>> generate_dilated_idx_for_tensor_metadata(
     const std::vector<uint32_t>& op_trace_metadata) {
     std::vector<std::vector<uint32_t>> dilated_idxes;
     uint32_t core_idx = 0;
+    halo_op_to_idx_map.clear();
     halo_op_to_idx_map.resize(shard_boundaries.size());
     for (auto shard_boundary : shard_boundaries) {
         auto [output_boundary, input_boundary] = shard_boundary;
@@ -392,6 +413,16 @@ std::vector<std::vector<uint32_t>> generate_dilated_idx_for_tensor_metadata(
         dilated_idx_for_tensor_metadata.erase(
             unique(dilated_idx_for_tensor_metadata.begin(), dilated_idx_for_tensor_metadata.end()),
             dilated_idx_for_tensor_metadata.end());
+        std::set<int> uniquePixels;
+        std::set<int> uniqueRows;
+        for (auto i = 0; i < dilated_idx_for_tensor_metadata.size(); i++) {
+            uniqueRows.insert(dilated_idx_for_tensor_metadata[i] / padded_input_w);
+        }
+        for (auto& row : uniqueRows) {
+            for (auto i = 0; i < padded_input_w; i++) {
+                uniquePixels.insert(row * padded_input_w + i);
+            }
+        }
 
         for (auto fh = 0; fh < config.window_hw.first; fh++) {
             std::vector<std::vector<uint16_t>> halo_op_to_idx_map_local;
@@ -401,16 +432,20 @@ std::vector<std::vector<uint32_t>> generate_dilated_idx_for_tensor_metadata(
                 for (auto fw = 0; fw < config.window_hw.second; fw++) {
                     auto dilated_idx =
                         anchor + fh * padded_input_w * config.dilation_hw.first + fw * config.dilation_hw.second;
-                    auto it = find(
-                        dilated_idx_for_tensor_metadata.begin(), dilated_idx_for_tensor_metadata.end(), dilated_idx);
-                    if (it != dilated_idx_for_tensor_metadata.end()) {
-                        idx_map.push_back(distance(dilated_idx_for_tensor_metadata.begin(), it));
+                    auto it = uniquePixels.find(dilated_idx);
+                    if (it != uniquePixels.end()) {
+                        idx_map.push_back(distance(uniquePixels.begin(), it));
                     } else {
                         idx_map.push_back(0xFFFF);
                     }
                 }
                 halo_op_to_idx_map_local.push_back(idx_map);
+                // for(auto i:idx_map) {
+                //     std::cout << i << " ";
+                // }
+                // std::cout << std::endl;
             }
+            // std::cout << std::endl;
             halo_op_to_idx_map[core_idx].push_back(halo_op_to_idx_map_local);
         }
         // std::cout << std::endl;
@@ -419,8 +454,13 @@ std::vector<std::vector<uint32_t>> generate_dilated_idx_for_tensor_metadata(
         // }
         // std::cout << std::endl;
         // std::cout << std::endl;
+        // std::cout << std::endl;
+        // for(auto i:uniquePixels) {
+        //     std::cout << i << " ";
+        // }
+        // std::cout << std::endl;
         core_idx++;
-        dilated_idxes.push_back(dilated_idx_for_tensor_metadata);
+        dilated_idxes.push_back(std::vector<uint32_t>(uniquePixels.begin(), uniquePixels.end()));
     }
     return dilated_idxes;
 }
@@ -460,7 +500,8 @@ std::vector<std::vector<std::vector<uint16_t>>> generate_halo_kernel_config_tens
         auto [output_start, output_end] = output_boundary;
         // std::cout << "output_start: " << output_start << " output_end: " << output_end << std::endl;
         uint32_t dst_local_idx = 0;
-        for (uint32_t global_idx = input_start; global_idx <= input_end; ++global_idx, dst_local_idx++) {
+        // TODO: handle dilation
+        for (uint32_t global_idx = input_start; dst_local_idx < dilated_idxes.size(); ++global_idx, dst_local_idx++) {
             uint32_t dst_core_id = core_id;
             uint32_t local_idx = global_idx - input_start;
             uint32_t input_idx = global_idx;
@@ -487,8 +528,6 @@ std::vector<std::vector<std::vector<uint16_t>>> generate_halo_kernel_config_tens
                 }
             }
             // insert new tuple
-            // std::cout << "src_core_id: " << src_core_id << " dst_core_id: " << dst_core_id << " src_local_idx: " <<
-            // src_local_idx << " local_idx: " << local_idx << std::endl;
             per_core_gather_data[{src_core_id, dst_core_id}].push_back({src_local_idx, local_idx, 1});
         }
         ++core_id;
@@ -536,18 +575,6 @@ std::vector<std::vector<std::vector<uint16_t>>> generate_halo_kernel_config_tens
             }
         }
     }
-    // for(auto i = 0; i < remote_config.size(); i++) {
-    //     std::cout << "remote_config: " << i << std::endl;
-    //     for(auto j = 0; j < remote_config[i].size(); j++) {
-    //         std::cout << "nocx: " << std::get<0>(remote_config[i][j].first) << " nocy: " <<
-    //         std::get<1>(remote_config[i][j].first) << " len: " << std::get<2>(remote_config[i][j].first) <<
-    //         std::endl; for(auto k = 0; k < remote_config[i][j].second.size(); k++) {
-    //             std::cout << "src_start: " << std::get<0>(remote_config[i][j].second[k]) << " dst_start: " <<
-    //             std::get<1>(remote_config[i][j].second[k]) << " length: " <<
-    //             std::get<2>(remote_config[i][j].second[k]) << std::endl;
-    //         }
-    //     }
-    // }
     // flatten and uniformize the lengths of each config list
     auto flatten_pad_config = [](auto& config) -> std::vector<std::vector<std::vector<uint16_t>>> {
         // Find max length for vector which is going to be processed on each core
@@ -724,6 +751,8 @@ std::tuple<std::vector<uint16_t>, std::vector<std::vector<uint16_t>>> generate_s
     std::vector<std::vector<uint16_t>> sharded_input_top_left_indices;
     std::vector<uint16_t> sharded_input_top_left_indices_size;
     uint32_t core_id = 0;
+    auto [op, ip] = shard_boundaries[0];
+    uint32_t common_output_range = op.end - op.start + 1;
     for (const auto& item : shard_boundaries) {
         const auto& [output_shard_start, output_shard_end] = item.output_range;
         const auto& [input_shard_start, input_shard_end] = item.input_range;
@@ -742,8 +771,13 @@ std::tuple<std::vector<uint16_t>, std::vector<std::vector<uint16_t>>> generate_s
             auto vec = halo_op_to_idx_map[core_id];
             // sharded_input_top_left_indices_size.push_back({(uint16_t)vec[0].size()});
             auto single_vec_size = vec[0].size() * global_window_w;
+            // std::cout << "vec[0].size(): " << vec[0].size() << std::endl;
             bool is_cont = false;
-            if (global_output_w >= global_dilation_w) {
+            // TODO: There is problem in last shard where the data is not contiguous
+            // need to correct this condition.
+            // if ((global_output_w >= global_dilation_w) && ((output_shard_end - output_shard_start + 1) ==
+            // common_output_range)) { if (global_output_w >= global_dilation_w) {
+            if (1) {
                 is_cont = true;
                 single_vec_size = vec[0].size();
             }
@@ -758,6 +792,8 @@ std::tuple<std::vector<uint16_t>, std::vector<std::vector<uint16_t>>> generate_s
             } else {
                 local_top_left_indices.push_back(single_vec_size);
             }
+            // std::cout << "is_odd: " << is_odd << std::endl;
+            // std::cout << "is_cont: " << is_cont << std::endl;
             // std::cout << "vec[0].size(): " << vec[0].size() * global_window_w << std::endl;
             local_top_left_indices.push_back(is_cont);
 
@@ -768,12 +804,21 @@ std::tuple<std::vector<uint16_t>, std::vector<std::vector<uint16_t>>> generate_s
                         if (is_cont) {
                             break;
                         }
+                        // std::cout << k << " ";
                     }
                 }
+                // std::cout << "local_top_left_indices size: " << local_top_left_indices.size() << std::endl;
                 if (is_odd) {
                     local_top_left_indices.push_back(0);
                 }
             }
+            // std::cout << "done with core_id: " << core_id << std::endl;
+            // for(auto i = 0; i < local_top_left_indices.size(); i++) {
+            //     std::cout << local_top_left_indices[i] << " ";
+            //     if(i % vec[0].size() == 0)
+            //         std::cout << std::endl;
+            // }
+            // std::cout << std::endl;
         } else {
             for (size_t i = output_shard_start; i < output_shard_end + 1; i++) {
                 local_top_left_indices.push_back(op_trace_metadata[i] - op_trace_metadata[output_shard_start]);

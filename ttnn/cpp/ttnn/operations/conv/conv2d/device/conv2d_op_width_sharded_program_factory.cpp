@@ -800,8 +800,8 @@ tt::tt_metal::operation::ProgramWithCallbacks multi_core_optimized_conv_width_sh
         (uint32_t)0,  // Never in DRAM
         (uint32_t)stride_h,
         (uint32_t)stride_w,
-        (uint32_t)1,
-        (uint32_t)1,
+        (uint32_t)dilation_h,
+        (uint32_t)dilation_w,
         (uint32_t)input_size_w,
         (uint32_t)conv_act_c_read_bytes,
         (uint32_t)filter_h,  // Input filter window height
