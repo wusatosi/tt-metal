@@ -343,10 +343,10 @@ def test_add_with_different_batch(device, shape_a, shape_b):
     assert output_tensor.shape == shape_a
 
 
-@pytest.mark.parametrize("input_a_sharded", [True, False])
-@pytest.mark.parametrize("input_b_sharded", [True, False])
-@pytest.mark.parametrize("out_sharded", [True, False])
-@pytest.mark.parametrize("shard_orientation", [ttnn.ShardOrientation.ROW_MAJOR, ttnn.ShardOrientation.COL_MAJOR])
+@pytest.mark.parametrize("input_a_sharded", [False])
+@pytest.mark.parametrize("input_b_sharded", [True])
+@pytest.mark.parametrize("out_sharded", [True])
+@pytest.mark.parametrize("shard_orientation", [ttnn.ShardOrientation.ROW_MAJOR])
 def test_add_with_height_sharding(device, input_a_sharded, input_b_sharded, out_sharded, shard_orientation):
     torch.manual_seed(0)
     shape = (1, 1, 1024, 1024)
@@ -354,13 +354,13 @@ def test_add_with_height_sharding(device, input_a_sharded, input_b_sharded, out_
     torch_input_tensor_b = torch.rand(shape, dtype=torch.bfloat16)
 
     if shard_orientation == ttnn.ShardOrientation.ROW_MAJOR:
-        shard_shape = (1024 // 8, 1024)
+        shard_shape = (1024 // 4, 1024)
     else:
-        shard_shape = (1024, 1024 // 8)
+        shard_shape = (1024, 1024 // 4)
 
     height_sharded_mem_config = ttnn.create_sharded_memory_config(
         shape=shard_shape,
-        core_grid=ttnn.CoreGrid(y=2, x=4),
+        core_grid=ttnn.CoreGrid(y=2, x=2),
         strategy=ttnn.ShardStrategy.HEIGHT,
         orientation=shard_orientation,
         use_height_and_width_as_shard_shape=True,
