@@ -95,22 +95,6 @@ void AllGatherAsync::validate_with_output_tensors(
     }
 }
 
-static void validate_output_tensor_allocation(const std::vector<Tensor>& output_tensors) {
-    for (const auto& output_tensor : output_tensors) {
-        const auto& buffers = output_tensor.buffers();
-        const auto first_address = buffers.front()->address();
-        TT_FATAL(
-            std::all_of(
-                buffers.begin(),
-                buffers.end(),
-                [&first_address](const auto& buffer) {
-                    return buffer != nullptr && buffer->address() == first_address;
-                }),
-            "Output buffers for all_gather async must be lock-step allocated but some of the tensors were allocated at "
-            "different addresses across devices.");
-    }
-}
-
 std::vector<ttnn::TensorSpec> AllGatherAsync::compute_output_specs(const std::vector<Tensor>& input_tensors) const {
     const auto& input_tensor = input_tensors[0];
     auto shape = input_tensor.get_padded_shape();  // TODO: Replace with get_logical_shape()
@@ -148,9 +132,11 @@ AllGatherAsyncVersion AllGatherAsync::select_version(const Tensor& input_tensor)
     log_trace(tt::LogOp, "[select_version] output_shard_num_cores: {}", output_shard_num_cores);
 
     // Check for minimal interleaved case
-    if (input_tensor_shape[0] == 1 && input_tensor_shape[1] == 1 && input_tensor_shape[2] == 32 &&
+    if (num_links == 1 &&  // 1 for T3K only
+        ((input_tensor_shape[0] * input_tensor_shape[1] * input_tensor_shape[2]) % 32 == 0 && dim < 3) &&
         input_tensor_buffer_layout == tt::tt_metal::TensorMemoryLayout::INTERLEAVED &&
         input_tensor_page_layout == tt::tt_metal::Layout::TILE && this->enable_persistent_fabric_mode) {
+        log_info(tt::LogOp, "Matching conditions for MINIMAL_INTERLEAVED_32, MINIMAL_INTERLEAVED_32 implementation");
         return AllGatherAsyncVersion::MINIMAL_INTERLEAVED_32;
     }
 
@@ -210,17 +196,25 @@ AllGatherAsyncVersion AllGatherAsync::select_version(const Tensor& input_tensor)
 }
 
 tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
-    const MeshCoordinate& coord, const std::vector<Tensor>& input_tensors, std::vector<Tensor>& output_tensors) const {
+    const ttnn::MeshCoordinate& mesh_coord,
+    const std::vector<Tensor>& input_tensors,
+    std::vector<Tensor>& output_tensors) const {
+    auto mesh_device = dynamic_cast<MeshDevice*>(input_tensors[0].device());
+    const auto target_device = mesh_device->get_device(mesh_coord);
+    AllGatherAsyncVersion version = select_version(input_tensors[0]);
+
     std::vector<IDevice*> devices;
     if (this->cluster_axis.has_value()) {
         const auto& mesh_view = input_tensors[0].mesh_device()->get_view();
-        devices = (this->cluster_axis.value() == 0) ? mesh_view.get_devices_on_column(coord[1])
-                                                    : mesh_view.get_devices_on_row(coord[0]);
+        devices = (this->cluster_axis.value() == 0) ? mesh_view.get_devices_on_column(mesh_coord[1])
+                                                    : mesh_view.get_devices_on_row(mesh_coord[0]);
     } else {
-        devices = input_tensors[0].mesh_device()->get_devices();
+        // Derive the devices from the tensor
+        for (const auto& spec : input_tensors[0].device_storage().specs) {
+            devices.push_back(mesh_device->get_device(spec.first));
+        }
     }
 
-    const auto* target_device = input_tensors[0].mesh_device()->get_device(coord);
     const int num_devices = devices.size();
     std::optional<IDevice*> forward_device = std::nullopt;
     std::optional<IDevice*> backward_device = std::nullopt;
@@ -241,18 +235,26 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
         }
     }
 
-    AllGatherAsyncVersion version = select_version(input_tensors[0]);
-
-    log_trace(tt::LogOp, "version: {}", static_cast<uint32_t>(version));
+    if (not this->semaphore.has_value()) {
+        TT_FATAL(
+            this->cores.has_value(),
+            "Must specify cores on which global semaphore must be allocated when a global semaphore is not provided.");
+        this->semaphore = std::make_pair(
+            ttnn::global_semaphore::create_global_semaphore(
+                mesh_device, this->cores.value(), 0, tt::tt_metal::BufferType::L1),
+            ttnn::global_semaphore::create_global_semaphore(
+                mesh_device, this->cores.value(), 0, tt::tt_metal::BufferType::L1));
+    }
 
     switch (version) {
         case AllGatherAsyncVersion::MINIMAL_INTERLEAVED_32:
-            log_trace(
+            log_debug(
                 tt::LogOp,
                 "Detected all gather specialized shape. all_gather_async_minimal_interleaved_dim3_1_1_32_any is "
                 "called");
             return all_gather_async_minimal_interleaved_dim3_1_1_32_any(
                 input_tensors[0],
+                target_device,
                 forward_device,
                 backward_device,
                 output_tensors[0],
@@ -261,7 +263,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
                 this->ring_size,
                 device_index,
                 this->topology,
-                this->semaphore,
+                this->semaphore.value(),
                 this->sub_device_id,
                 this->enable_persistent_fabric_mode);
 
@@ -277,7 +279,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
                 this->ring_size,
                 device_index,
                 this->topology,
-                this->semaphore,
+                this->semaphore.value(),
                 this->sub_device_id,
                 this->enable_persistent_fabric_mode);
 
@@ -286,6 +288,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
             log_trace(tt::LogOp, "Running generic all_gather_async_multi_core_with_workers");
             return all_gather_async_multi_core_with_workers(
                 input_tensors[0],
+                target_device,
                 forward_device,
                 backward_device,
                 output_tensors[0],
@@ -294,7 +297,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
                 this->ring_size,
                 device_index,
                 this->topology,
-                this->semaphore,
+                this->semaphore.value().first,
                 this->sub_device_id,
                 this->enable_persistent_fabric_mode);
     }
@@ -311,7 +314,9 @@ const tt::tt_metal::operation::Hash AllGatherAsync::compute_program_hash(
     auto input_memory_config = input_tensors[0].memory_config();
     if (version == AllGatherAsyncVersion::GENERIC) {
         // Generic version should hash semaphore address as well
-        uint32_t semaphore_address = this->semaphore.address();
+        // ... why??
+        // uint32_t semaphore_address_first = this->semaphore.value().first.address();
+        // uint32_t semaphore_address_second = this->semaphore.value().second.address();
         return tt::tt_metal::operation::hash_operation<AllGatherAsync>(
             this->dim,
             this->num_links,
@@ -321,8 +326,7 @@ const tt::tt_metal::operation::Hash AllGatherAsync::compute_program_hash(
             input_shape,
             input_memory_layout,
             input_dtype,
-            input_memory_config,
-            semaphore_address);
+            input_memory_config);
     }
     return tt::tt_metal::operation::hash_operation<AllGatherAsync>(
         this->dim,
@@ -349,60 +353,39 @@ Tensor all_gather_async(
     const ttnn::ccl::Topology topology,
     std::optional<tt::tt_metal::SubDeviceId> sub_device_id,
     bool enable_persistent_fabric_mode) {
+    auto shape = input_tensor.get_padded_shape();
     TT_FATAL(
         std::getenv("TT_METAL_SLOW_DISPATCH_MODE") == nullptr,
         "all_gather_async op is only supported for Fast Dispatch");
-    auto devices = input_tensor.mesh_device()->get_devices();
-    uint32_t num_devices = devices.size();
+    auto mesh_device = dynamic_cast<MeshDevice*>(input_tensor.get_workers()[0]);
+    TT_FATAL(mesh_device, "Input tensor to all_gather_async must be allocated on a MeshDevice");
+    uint32_t num_devices = input_tensor.device_storage().specs.size();
+
     TT_FATAL(num_devices > 1, "all_gather_async op will only work for num_devices > 1, but has {}", num_devices);
     ttnn::ccl::Topology ccl_topology = topology;
 
     if (num_devices == 2) {
         ccl_topology = ttnn::ccl::Topology::Linear;
     }
-    std::vector<Tensor> output_tensors = {Tensor(input_tensor.mesh_device())};
-
-    tt::log_debug(
-        tt::LogOp, "DEBUG: creating line_fabric with num devices: {}, num links: {}", devices.size(), num_links);
+    tt::log_debug(tt::LogOp, "DEBUG: creating line_fabric with num devices: {}, num links: {}", num_devices, num_links);
     tt::log_debug(tt::LogOp, "DEBUG: line_fabric is created");
 
-    // create this semaphore for all cores since we don't know which core will be used for teardown draining
-    CoreCoord grid_size = devices[0]->compute_with_storage_grid_size();
-    auto core_grid = CoreRange({0, 0}, {grid_size.x - 1, grid_size.y - 1});
-
-    tt::tt_metal::operation::launch_op(
-        [dim,
-         num_links,
-         num_devices,
-         memory_config,
-         devices,
-         ccl_topology,
-         multi_device_global_semaphore,
-         sub_device_id,
-         enable_persistent_fabric_mode](
-            const std::vector<Tensor>& input_tensors,
-            const std::vector<std::optional<const Tensor>>& optional_input_tensors,
-            const std::vector<std::optional<Tensor>>& optional_output_tensors) mutable -> std::vector<Tensor> {
-            const auto& input_tensor = input_tensors.at(0);
-
-            return tt::tt_metal::operation::run(
-                ttnn::AllGatherAsync(
-                    dim,
-                    num_links,
-                    num_devices,
-                    memory_config.value_or(input_tensor.memory_config()),
-                    ccl_topology,
-                    multi_device_global_semaphore,
-                    sub_device_id,
-                    enable_persistent_fabric_mode,
-                    /*cluster_axis=*/std::nullopt),
-                {input_tensor},
-                optional_input_tensors,
-                optional_output_tensors);
-        },
-        {input_tensor},
-        output_tensors);
-    return output_tensors.at(0);
+    std::pair<GlobalSemaphore, GlobalSemaphore> semaphores(
+        multi_device_global_semaphore, multi_device_global_semaphore);
+    return tt::tt_metal::operation::run(
+               ttnn::AllGatherAsync(
+                   dim,
+                   num_links,
+                   num_devices,
+                   memory_config.value_or(input_tensor.memory_config()),
+                   ccl_topology,
+                   semaphores,
+                   sub_device_id,
+                   /*cores=*/std::nullopt,
+                   enable_persistent_fabric_mode,
+                   /*cluster_axis=*/std::nullopt),
+               {input_tensor})
+        .at(0);
 }
 
 Tensor all_gather_async(
@@ -438,10 +421,8 @@ Tensor all_gather_async(
 
     std::vector<Tensor> output_tensors = {Tensor(input_tensor.mesh_device())};
     std::vector<std::optional<Tensor>> optional_output_tensors = {persistent_output_tensor};
-    auto devices = input_tensor.mesh_device()->get_devices();
-
-    CoreCoord grid_size = devices[0]->compute_with_storage_grid_size();
-    auto core_grid = CoreRange({0, 0}, {grid_size.x - 1, grid_size.y - 1});
+    std::pair<GlobalSemaphore, GlobalSemaphore> semaphores(
+        multi_device_global_semaphore, multi_device_global_semaphore);
 
     tt::tt_metal::operation::launch_op(
         [gather_dim,
@@ -450,7 +431,7 @@ Tensor all_gather_async(
          cluster_axis,
          num_devices,
          topology,
-         multi_device_global_semaphore,
+         semaphores,
          sub_device_id,
          enable_persistent_fabric_mode](
             const std::vector<Tensor>& input_tensors,
@@ -464,8 +445,9 @@ Tensor all_gather_async(
                     num_devices,
                     memory_config.value_or(input_tensor.memory_config()),
                     topology,
-                    multi_device_global_semaphore,
+                    semaphores,
                     sub_device_id,
+                    /*cores=*/std::nullopt,
                     enable_persistent_fabric_mode,
                     cluster_axis},
                 {input_tensor},
@@ -477,6 +459,46 @@ Tensor all_gather_async(
         {},  // optional_input_tensors
         optional_output_tensors);
     return output_tensors.at(0);
+}
+
+Tensor all_gather_async(
+    const Tensor& input_tensor,
+    const uint32_t dim,
+    const CoreRangeSet& cores,
+    const uint32_t num_links,
+    const std::optional<MemoryConfig>& memory_config,
+    const ttnn::ccl::Topology topology) {
+    TT_FATAL(
+        std::getenv("TT_METAL_SLOW_DISPATCH_MODE") == nullptr,
+        "all_gather_async op is only supported for Fast Dispatch");
+    auto mesh_device = dynamic_cast<MeshDevice*>(input_tensor.get_workers()[0]);
+    TT_FATAL(mesh_device, "All Gather only works on a MeshDevice");
+    uint32_t num_devices = input_tensor.device_storage().specs.size();
+    TT_FATAL(num_devices > 1, "all_gather_async op will only work for num_devices > 1, but has {}", num_devices);
+    ttnn::ccl::Topology ccl_topology = topology;
+
+    if (num_devices == 2) {
+        ccl_topology = ttnn::ccl::Topology::Linear;
+    }
+
+    tt::log_debug(tt::LogOp, "DEBUG: creating line_fabric with num devices: {}, num links: {}", num_devices, num_links);
+    tt::log_debug(tt::LogOp, "DEBUG: line_fabric is created");
+
+    std::optional<std::pair<GlobalSemaphore, GlobalSemaphore>> semaphores = std::nullopt;
+    return tt::tt_metal::operation::run(
+               ttnn::AllGatherAsync{
+                   dim,
+                   num_links,
+                   num_devices,
+                   memory_config.value_or(input_tensor.memory_config()),
+                   ccl_topology,
+                   semaphores,
+                   /*sub_device_id=*/std::nullopt,
+                   cores,
+                   true,
+                   /*cluster_axis*=*/std::nullopt},
+               {input_tensor})
+        .at(0);
 }
 
 }  // namespace ccl

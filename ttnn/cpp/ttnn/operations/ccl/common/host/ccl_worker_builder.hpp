@@ -68,6 +68,7 @@ std::vector<uint32_t> generate_edm_connection_rt_args(
 
 // TODO: eventually take a fabric handle
 void generate_multi_input_command_stream_kernel_rt_args(
+    uint32_t link,
     tt::tt_metal::Program& program,
     tt::tt_metal::KernelHandle kernel_id,
     std::vector<Tensor const*> const& tensors,
@@ -77,8 +78,8 @@ void generate_multi_input_command_stream_kernel_rt_args(
     CoreRangeSet const& worker_core_range,
     std::vector<ttnn::ccl::cmd::CclHostLowLevelWorkerCommand> const& ccl_command_stream0,
     std::optional<std::vector<ttnn::ccl::cmd::CclHostLowLevelWorkerCommand>> const& ccl_command_stream1,
-    std::optional<tt::tt_fabric::SenderWorkerAdapterSpec> const& forward_fabric_connections,
-    std::optional<tt::tt_fabric::SenderWorkerAdapterSpec> const& backward_fabric_connections,
+    std::optional<IDevice*> forward_device,
+    std::optional<IDevice*> backward_device,
     std::optional<std::unordered_map<const Tensor*, IDevice*>> const& tensor_device_override = std::nullopt,
     std::optional<std::vector<size_t>> const& tensor_indices = std::nullopt,
     ttnn::ccl::tensor_address_runtime_args_overrider *rt_args_overrider = nullptr);

@@ -1160,42 +1160,42 @@ static void create_final_reducer_worker_rt_args_not_end_of_line(
 
     for (size_t i = 0; i < final_reducer_worker_cores.size(); i++) {
         auto const& w_logical = final_reducer_worker_cores[i];
-        generate_multi_input_command_stream_kernel_rt_args(
-            builder_config.program,
-            builder_config.kernel_ids.get().final_reader,
-            {all_program_tensors.local_output_partial[LineDirection::FORWARD],
-             all_program_tensors.local_output_partial[LineDirection::BACKWARD]},
-            {builder_config.page_size, builder_config.page_size},
-            builder_config.device,
-            builder_config.pages_per_cb_packet,
-            {w_logical},
-            worker_command_streams_out.reader_cmds0.at(w_logical),
-            worker_command_streams_out.reader_cmds1.at(w_logical),
-            std::nullopt,
-            std::nullopt,
-            std::nullopt,
-            std::vector<size_t>{all_tensors.local_output_partial_index[LineDirection::FORWARD], all_tensors.local_output_partial_index[LineDirection::BACKWARD]},
-            &reader_rt_args_overrider_map[w_logical]);
+        // generate_multi_input_command_stream_kernel_rt_args(
+        //     builder_config.program,
+        //     builder_config.kernel_ids.get().final_reader,
+        //     {all_program_tensors.local_output_partial[LineDirection::FORWARD],
+        //      all_program_tensors.local_output_partial[LineDirection::BACKWARD]},
+        //     {builder_config.page_size, builder_config.page_size},
+        //     builder_config.device,
+        //     builder_config.pages_per_cb_packet,
+        //     {w_logical},
+        //     worker_command_streams_out.reader_cmds0.at(w_logical),
+        //     worker_command_streams_out.reader_cmds1.at(w_logical),
+        //     std::nullopt,
+        //     std::nullopt,
+        //     std::nullopt,
+        //     std::vector<size_t>{all_tensors.local_output_partial_index[LineDirection::FORWARD], all_tensors.local_output_partial_index[LineDirection::BACKWARD]},
+        //     &reader_rt_args_overrider_map[w_logical]);
         set_math_runtime_args(
             builder_config.program,
             builder_config.kernel_ids.get().math,
             w_logical,
             math_page_counts_out.at(w_logical));
-        generate_multi_input_command_stream_kernel_rt_args(
-            builder_config.program,
-            builder_config.kernel_ids.get().final_writer,
-            {all_program_tensors.local_final_output_tensor, nullptr},
-            {builder_config.page_size, builder_config.page_size},
-            builder_config.device,
-            builder_config.pages_per_cb_packet,
-            {w_logical},
-            worker_command_streams_out.writer_cmds0.at(w_logical),
-            ttnn::ccl::cmd::CclHostLowLevelCommandSequence{},
-            std::nullopt,
-            std::nullopt,
-            std::nullopt,
-            std::vector<size_t>{all_tensors.local_final_output_tensor_index},
-            &writer_rt_args_overrider_map[w_logical]);
+        // generate_multi_input_command_stream_kernel_rt_args(
+        //     builder_config.program,
+        //     builder_config.kernel_ids.get().final_writer,
+        //     {all_program_tensors.local_final_output_tensor, nullptr},
+        //     {builder_config.page_size, builder_config.page_size},
+        //     builder_config.device,
+        //     builder_config.pages_per_cb_packet,
+        //     {w_logical},
+        //     worker_command_streams_out.writer_cmds0.at(w_logical),
+        //     ttnn::ccl::cmd::CclHostLowLevelCommandSequence{},
+        //     std::nullopt,
+        //     std::nullopt,
+        //     std::nullopt,
+        //     std::vector<size_t>{all_tensors.local_final_output_tensor_index},
+        //     &writer_rt_args_overrider_map[w_logical]);
     }
 }
 
@@ -1233,46 +1233,46 @@ static void populate_partial_reduce_rt_args(
             auto const& w_logical = partial_reducer_worker_cores_vec[line_direction][i];
             // Reader kernel RT args
 
-            generate_multi_input_command_stream_kernel_rt_args(
-                builder_config.program.get(),
-                kernel_ids.partial_reader[line_direction],
-                std::vector<Tensor const*>{
-                    all_tensors.input_tensor, all_tensors.input_tensor_from_remote[line_direction]},
-                {builder_config.page_size, builder_config.page_size},
-                builder_config.device,
-                builder_config.pages_per_cb_packet,  // TODO: get from fabric
-                {w_logical},
-                worker_command_streams_out.reader_cmds0.at(w_logical),
-                worker_command_streams_out.reader_cmds1.at(w_logical),
-                std::nullopt,
-                std::nullopt,
-                std::nullopt,
-                std::vector<size_t>{all_tensors.input_tensor_index, all_tensors.input_tensor_from_remote_index.at(line_direction)},
-                &reader_rt_args_overrider_map[w_logical]);
+            // generate_multi_input_command_stream_kernel_rt_args(
+            //     builder_config.program.get(),
+            //     kernel_ids.partial_reader[line_direction],
+            //     std::vector<Tensor const*>{
+            //         all_tensors.input_tensor, all_tensors.input_tensor_from_remote[line_direction]},
+            //     {builder_config.page_size, builder_config.page_size},
+            //     builder_config.device,
+            //     builder_config.pages_per_cb_packet,  // TODO: get from fabric
+            //     {w_logical},
+            //     worker_command_streams_out.reader_cmds0.at(w_logical),
+            //     worker_command_streams_out.reader_cmds1.at(w_logical),
+            //     std::nullopt,
+            //     std::nullopt,
+            //     std::nullopt,
+            //     std::vector<size_t>{all_tensors.input_tensor_index, all_tensors.input_tensor_from_remote_index.at(line_direction)},
+            //     &reader_rt_args_overrider_map[w_logical]);
             set_math_runtime_args(
                 builder_config.program.get(), kernel_ids.math, w_logical, math_page_counts_out[w_logical]);
             auto output_tensor_ptrs = std::vector<Tensor const*>{
                 all_tensors.remote_output[line_direction], all_tensors.local_output_partial[line_direction]};
             auto output_tensor_indices = std::vector<size_t>{
                 all_tensors.remote_output_index.at(line_direction), all_tensors.local_output_partial_index.at(line_direction)};
-            generate_multi_input_command_stream_kernel_rt_args(
-                builder_config.program.get(),
-                kernel_ids.partial_writer[line_direction],
-                output_tensor_ptrs,
-                {builder_config.page_size, builder_config.page_size},
-                builder_config.device,
-                builder_config.pages_per_cb_packet,  // TODO: get from fabric
-                {w_logical},
-                worker_command_streams_out.writer_cmds0.at(w_logical),
-                worker_command_streams_out.writer_cmds1.at(w_logical),
-                fwd_fabric_connection,
-                bwd_fabric_connection,
-                std::unordered_map<const Tensor*, IDevice*>{
-                    {output_tensor_ptrs[0],
-                     line_direction == LineDirection::FORWARD ? builder_config.forward_device
-                                                              : builder_config.backward_device}},
-                output_tensor_indices,
-                &writer_rt_args_overrider_map[w_logical]);
+            // generate_multi_input_command_stream_kernel_rt_args(
+            //     builder_config.program.get(),
+            //     kernel_ids.partial_writer[line_direction],
+            //     output_tensor_ptrs,
+            //     {builder_config.page_size, builder_config.page_size},
+            //     builder_config.device,
+            //     builder_config.pages_per_cb_packet,  // TODO: get from fabric
+            //     {w_logical},
+            //     worker_command_streams_out.writer_cmds0.at(w_logical),
+            //     worker_command_streams_out.writer_cmds1.at(w_logical),
+            //     fwd_fabric_connection,
+            //     bwd_fabric_connection,
+            //     std::unordered_map<const Tensor*, IDevice*>{
+            //         {output_tensor_ptrs[0],
+            //          line_direction == LineDirection::FORWARD ? builder_config.forward_device
+            //                                                   : builder_config.backward_device}},
+            //     output_tensor_indices,
+            //     &writer_rt_args_overrider_map[w_logical]);
         }
     }
 }
@@ -1287,21 +1287,21 @@ static void create_worker_runtime_args_for_inactive_workers(
     log_trace(tt::LogOp, "CREATE WORKER (inactive - not end. Device={})", builder_config.device->id());
     auto const& inactive_cores_vec = builder_config.worker_cores.get().final_reducers_vec;
 
-    generate_multi_input_command_stream_kernel_rt_args(
-        builder_config.program.get(),
-        builder_config.kernel_ids.get().final_reader,
-        {nullptr, nullptr},
-        {0, 0},
-        builder_config.device,
-        0,  // TODO: get from fabric
-        inactive_cores,
-        ttnn::ccl::cmd::CclHostLowLevelCommandSequence{},
-        ttnn::ccl::cmd::CclHostLowLevelCommandSequence{},
-        std::nullopt,
-        std::nullopt,
-        std::nullopt,
-        std::vector<size_t>{},
-        &reader_rt_args_overrider_map[inactive_cores_vec[0]]);
+    // generate_multi_input_command_stream_kernel_rt_args(
+    //     builder_config.program.get(),
+    //     builder_config.kernel_ids.get().final_reader,
+    //     {nullptr, nullptr},
+    //     {0, 0},
+    //     builder_config.device,
+    //     0,  // TODO: get from fabric
+    //     inactive_cores,
+    //     ttnn::ccl::cmd::CclHostLowLevelCommandSequence{},
+    //     ttnn::ccl::cmd::CclHostLowLevelCommandSequence{},
+    //     std::nullopt,
+    //     std::nullopt,
+    //     std::nullopt,
+    //     std::vector<size_t>{},
+    //     &reader_rt_args_overrider_map[inactive_cores_vec[0]]);
 
     tt::tt_metal::SetRuntimeArgs(
         builder_config.program.get(),
@@ -1309,21 +1309,21 @@ static void create_worker_runtime_args_for_inactive_workers(
         inactive_cores,
         generate_reduce_op_kernel_rt_args(0));
 
-    generate_multi_input_command_stream_kernel_rt_args(
-        builder_config.program.get(),
-        builder_config.kernel_ids.get().final_writer,
-        {nullptr, nullptr},
-        {0, 0},
-        builder_config.device,
-        0,  // TODO: get from fabric
-        inactive_cores,
-        ttnn::ccl::cmd::CclHostLowLevelCommandSequence{},
-        ttnn::ccl::cmd::CclHostLowLevelCommandSequence{},
-        std::nullopt,
-        std::nullopt,
-        std::nullopt,
-        std::vector<size_t>{},
-        &writer_rt_args_overrider_map[inactive_cores_vec[0]]);
+    // generate_multi_input_command_stream_kernel_rt_args(
+    //     builder_config.program.get(),
+    //     builder_config.kernel_ids.get().final_writer,
+    //     {nullptr, nullptr},
+    //     {0, 0},
+    //     builder_config.device,
+    //     0,  // TODO: get from fabric
+    //     inactive_cores,
+    //     ttnn::ccl::cmd::CclHostLowLevelCommandSequence{},
+    //     ttnn::ccl::cmd::CclHostLowLevelCommandSequence{},
+    //     std::nullopt,
+    //     std::nullopt,
+    //     std::nullopt,
+    //     std::vector<size_t>{},
+    //     &writer_rt_args_overrider_map[inactive_cores_vec[0]]);
 
     for (size_t i = 1; i < inactive_cores_vec.size(); i++) {
         reader_rt_args_overrider_map[inactive_cores_vec[i]] = reader_rt_args_overrider_map[inactive_cores_vec[0]];
@@ -1589,38 +1589,38 @@ static void create_end_of_line_worker_runtime_args(
                 "Internal error. Expected reader command stream to be populated");
             bool has_in1_commands =
                 worker_command_streams.reader_cmds1.find(w_logical) != worker_command_streams.reader_cmds1.end();
-            generate_multi_input_command_stream_kernel_rt_args(
-                program,
-                kernel_ids.partial_reader[direction],
-                input_tensor_ptrs,
-                {builder_config.page_size, builder_config.page_size},
-                device,
-                builder_config.pages_per_cb_packet,
-                {w_logical},
-                worker_command_streams.reader_cmds0.at(w_logical),
-                has_in1_commands ? worker_command_streams.reader_cmds1.at(w_logical)
-                                 : std::vector<CclHostLowLevelWorkerCommand>{},
-                std::nullopt,
-                std::nullopt,
-                std::nullopt,
-                input_tensor_indices,
-                &reader_rt_args_overrider_map[w_logical]);
-            set_math_runtime_args(program, kernel_ids.math, w_logical, num_math_pages);
-            generate_multi_input_command_stream_kernel_rt_args(
-                program,
-                kernel_ids.partial_writer[direction],
-                {output_tensor_ptr, nullptr},
-                {builder_config.page_size, builder_config.page_size},
-                device,
-                builder_config.pages_per_cb_packet,
-                {w_logical},
-                worker_command_streams.writer_cmds0.at(w_logical),
-                std::vector<CclHostLowLevelWorkerCommand>{},
-                fwd_fabric_connection,
-                bwd_fabric_connection,
-                std::nullopt,
-                output_tensor_indices,
-                &writer_rt_args_overrider_map[w_logical]);
+            // generate_multi_input_command_stream_kernel_rt_args(
+            //     program,
+            //     kernel_ids.partial_reader[direction],
+            //     input_tensor_ptrs,
+            //     {builder_config.page_size, builder_config.page_size},
+            //     device,
+            //     builder_config.pages_per_cb_packet,
+            //     {w_logical},
+            //     worker_command_streams.reader_cmds0.at(w_logical),
+            //     has_in1_commands ? worker_command_streams.reader_cmds1.at(w_logical)
+            //                      : std::vector<CclHostLowLevelWorkerCommand>{},
+            //     std::nullopt,
+            //     std::nullopt,
+            //     std::nullopt,
+            //     input_tensor_indices,
+            //     &reader_rt_args_overrider_map[w_logical]);
+            // set_math_runtime_args(program, kernel_ids.math, w_logical, num_math_pages);
+            // generate_multi_input_command_stream_kernel_rt_args(
+            //     program,
+            //     kernel_ids.partial_writer[direction],
+            //     {output_tensor_ptr, nullptr},
+            //     {builder_config.page_size, builder_config.page_size},
+            //     device,
+            //     builder_config.pages_per_cb_packet,
+            //     {w_logical},
+            //     worker_command_streams.writer_cmds0.at(w_logical),
+            //     std::vector<CclHostLowLevelWorkerCommand>{},
+            //     fwd_fabric_connection,
+            //     bwd_fabric_connection,
+            //     std::nullopt,
+            //     output_tensor_indices,
+            //     &writer_rt_args_overrider_map[w_logical]);
         }
     }
 }

@@ -272,7 +272,6 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
 
 void MeshCommandQueue::finish(tt::stl::Span<const SubDeviceId> sub_device_ids) {
     auto event = this->enqueue_record_event_to_host(sub_device_ids);
-
     std::unique_lock<std::mutex> lock(reads_processed_cv_mutex_);
     reads_processed_cv_.wait(lock, [this] { return num_outstanding_reads_.load() == 0; });
 }
@@ -716,7 +715,6 @@ void MeshCommandQueue::read_completion_queue_event(MeshReadEventDescriptor& read
         chip_id_t mmio_device_id = tt::Cluster::instance().get_associated_mmio_device(device->id());
         uint16_t channel = tt::Cluster::instance().get_assigned_channel_for_device(device->id());
         device->sysmem_manager().completion_queue_wait_front(id_, exit_condition_);
-
         event_dispatch::read_events_from_completion_queue(
             read_event_descriptor.single_device_descriptor, mmio_device_id, channel, id_, device->sysmem_manager());
     }
