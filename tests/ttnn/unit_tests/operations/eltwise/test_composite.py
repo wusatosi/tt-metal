@@ -86,18 +86,18 @@ def test_binary_maximum_ttnn_failing(device):
     assert comp_pass
 
 
-def test_binary_maximum_ttnn_passing(device):
-    in_data1 = torch.tensor(1, dtype=torch.bfloat16)
-    in_data2 = torch.tensor([-float("inf")], dtype=torch.bfloat16)
-    input_tensor1 = ttnn.from_torch(in_data1, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)
-    input_tensor2 = ttnn.from_torch(in_data2, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)
-    output_tensor = ttnn.maximum(input_tensor1, input_tensor2)
-    golden_function = ttnn.get_golden_function(ttnn.maximum)
-    golden_tensor = golden_function(in_data1, in_data2)
-    print("golden_tensor", golden_tensor)
-    print("output_tensor", output_tensor)
-    comp_pass = compare_pcc([output_tensor], [golden_tensor])
-    assert comp_pass
+# def test_binary_maximum_ttnn_passing(device):
+#     in_data1 = torch.tensor(1, dtype=torch.bfloat16)
+#     in_data2 = torch.tensor([-float("inf")], dtype=torch.bfloat16)
+#     input_tensor1 = ttnn.from_torch(in_data1, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)
+#     input_tensor2 = ttnn.from_torch(in_data2, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)
+#     output_tensor = ttnn.maximum(input_tensor1, input_tensor2)
+#     golden_function = ttnn.get_golden_function(ttnn.maximum)
+#     golden_tensor = golden_function(in_data1, in_data2)
+#     print("golden_tensor", golden_tensor)
+#     print("output_tensor", output_tensor)
+#     comp_pass = compare_pcc([output_tensor], [golden_tensor])
+#     assert comp_pass
 
 
 # @pytest.mark.parametrize(

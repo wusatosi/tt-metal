@@ -30,8 +30,6 @@ void MAIN {
     constexpr auto cb_post_lhs = HAS_ACTIVATIONS(LHS) ? tt::CBIndex::c_3 : cb_pre_lhs;
     constexpr auto cb_post_rhs = HAS_ACTIVATIONS(RHS) ? tt::CBIndex::c_4 : cb_pre_rhs;
 
-    DPRINT << "Kernel code" << ENDL();
-
     unary_op_init_common(cb_post_lhs, cb_out);
 #ifdef PACK_RELU
     PACK((llk_pack_relu_config(ReluType::ZERO_RELU)));
@@ -47,6 +45,10 @@ void MAIN {
     for (uint32_t tile_id = 0; tile_id < num_tiles; ++tile_id) {
         PREPROCESS(LHS, cb_pre_lhs, cb_post_lhs, cb_out, num_tiles_per_cycle);
         cb_wait_front(cb_post_lhs, num_tiles_per_cycle);
+        // DPRINT << "Buffer c_0 : cb_pre_lhs" << ENDL();
+        // DPRINT << TSLICE(tt::CBIndex::c_0, 0, SliceRange::h0_w0_32()) << ENDL();
+        // DPRINT << "Buffer c_1 : cb_pre_rhs" << ENDL();
+        // DPRINT << TSLICE(tt::CBIndex::c_1, 0, SliceRange::h0_w0_32()) << ENDL();
 
         cb_reserve_back(cb_out, num_tiles_per_cycle);
 
@@ -74,6 +76,8 @@ void MAIN {
         tile_regs_release();
 
         cb_pop_front(cb_post_lhs, num_tiles_per_cycle);
+        // DPRINT << "Buffer c_2 : cb_out" << ENDL();
+        // DPRINT << TSLICE(tt::CBIndex::c_1, 0, SliceRange::h0_w0_32()) << ENDL();
         cb_push_back(cb_out, num_tiles_per_cycle);
     }
 }

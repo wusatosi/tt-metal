@@ -111,29 +111,45 @@ std::string get_kernel_file_path(KernelName kernel_name, bool is_sfpu) {
     constexpr std::string_view compute = "{}/compute/{}";
 
     switch (kernel_name) {
-        case KernelName::ReaderNoBcast: return fmt::format(dataflow, root, "reader_interleaved_no_bcast.cpp");
-        case KernelName::ReaderRowBcast: return fmt::format(dataflow, root, "reader_interleaved_row_bcast.cpp");
-        case KernelName::ReaderColBcast: return fmt::format(dataflow, root, "reader_interleaved_col_bcast.cpp");
-        case KernelName::ReaderScalarBcast: return fmt::format(dataflow, root, "reader_interleaved_scalar_bcast.cpp");
-        case KernelName::WriterNoBcast: return fmt::format(dataflow, root, "writer_interleaved_no_bcast.cpp");
-        case KernelName::WriterRowBcast: return fmt::format(dataflow, root, "writer_interleaved_row_bcast.cpp");
-        case KernelName::WriterColBcast: return fmt::format(dataflow, root, "writer_interleaved_col_bcast.cpp");
-        case KernelName::WriterScalarBcast: return fmt::format(dataflow, root, "writer_interleaved_scalar_bcast.cpp");
-        case KernelName::WriterScalar: return fmt::format(dataflow, root, "writer_interleaved_scalar.cpp");
+        case KernelName::ReaderNoBcast:
+            std::cout << "Reader : reader_interleaved_no_bcast" << std::endl;
+            return fmt::format(dataflow, root, "reader_interleaved_no_bcast.cpp");
+        case KernelName::ReaderRowBcast:
+            std::cout << "Reader : reader_interleaved_row_bcast" << std::endl;
+            return fmt::format(dataflow, root, "reader_interleaved_row_bcast.cpp");
+        case KernelName::ReaderColBcast:
+            std::cout << "Reader : reader_interleaved_col_bcast" << std::endl;
+            return fmt::format(dataflow, root, "reader_interleaved_col_bcast.cpp");
+        case KernelName::ReaderScalarBcast:
+            std::cout << "Reader : reader_interleaved_scalar_bcast" << std::endl;
+            return fmt::format(dataflow, root, "reader_interleaved_scalar_bcast.cpp");
+        case KernelName::WriterNoBcast:
+            std::cout << "Writer : writer_interleaved_no_bcast" << std::endl;
+            return fmt::format(dataflow, root, "writer_interleaved_no_bcast.cpp");
+        case KernelName::WriterRowBcast:
+            std::cout << "Writer : writer_interleaved_row_bcast" << std::endl;
+            return fmt::format(dataflow, root, "writer_interleaved_row_bcast.cpp");
+        case KernelName::WriterColBcast:
+            std::cout << "Writer : writer_interleaved_col_bcast" << std::endl;
+            return fmt::format(dataflow, root, "writer_interleaved_col_bcast.cpp");
+        case KernelName::WriterScalarBcast:
+            std::cout << "Writer : writer_interleaved_scalar_bcast" << std::endl;
+            return fmt::format(dataflow, root, "writer_interleaved_scalar_bcast.cpp");
+        case KernelName::WriterScalar:
+            std::cout << "Writer : writer_interleaved_scalar" << std::endl;
+            return fmt::format(dataflow, root, "writer_interleaved_scalar.cpp");
         case KernelName::ComputeNoBcast:
-            std::cout << "ComputeNoBcast type" << std::endl;
-            std::cout << "is_sfpu : " << (is_sfpu ? "eltwise_binary_sfpu_no_bcast.cpp" : "eltwise_binary_no_bcast.cpp")
-                      << std::endl;
+            std::cout << "ComputeNoBcast type : "
+                      << (is_sfpu ? "eltwise_binary_sfpu_no_bcast.cpp" : "eltwise_binary_no_bcast.cpp") << std::endl;
             return fmt::format(
                 compute, root, is_sfpu ? "eltwise_binary_sfpu_no_bcast.cpp" : "eltwise_binary_no_bcast.cpp");
         case KernelName::ComputeBcast:
-            std::cout << "ComputeBcast type" << std::endl;
-            std::cout << "is_sfpu : " << (is_sfpu ? "eltwise_binary_sfpu.cpp" : "eltwise_binary.cpp") << std::endl;
+            std::cout << "ComputeBcast type : " << (is_sfpu ? "eltwise_binary_sfpu.cpp" : "eltwise_binary.cpp")
+                      << std::endl;
             return fmt::format(compute, root, is_sfpu ? "eltwise_binary_sfpu.cpp" : "eltwise_binary.cpp");
         case KernelName::ComputeScalar:
-            std::cout << "ComputeScalar type" << std::endl;
-            std::cout << "is_sfpu : " << (is_sfpu ? "eltwise_binary_sfpu_scalar.cpp" : "eltwise_binary_scalar.cpp")
-                      << std::endl;
+            std::cout << "ComputeScalar type : "
+                      << (is_sfpu ? "eltwise_binary_sfpu_scalar.cpp" : "eltwise_binary_scalar.cpp") << std::endl;
             return fmt::format(compute, root, is_sfpu ? "eltwise_binary_sfpu_scalar.cpp" : "eltwise_binary_scalar.cpp");
         default: __builtin_unreachable();  // GCC 12 doesn't compile even though we exhaustively match
     }

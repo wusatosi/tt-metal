@@ -222,6 +222,10 @@ void set_or_update_runtime_arguments(
             }
         }
     }
+
+    std::cout << "a = " << std::endl;
+    a.print();
+
     const uint32_t num_cores_total =
         zero_start_grid ? compute_with_storage_grid.x * compute_with_storage_grid.y : all_device_cores.num_cores();
 
