@@ -474,12 +474,12 @@ static constexpr size_t header_size_bytes = sizeof(PacketHeader);
 // TODO: Should be piped from host to determine which packet header to use
 #define FABRIC_LOW_LATENCY_MODE 1
 
-// #if defined FABRIC_LOW_LATENCY_MODE and FABRIC_LOW_LATENCY_MODE == 1
+#if defined FABRIC_LOW_LATENCY_MODE and FABRIC_LOW_LATENCY_MODE == 1
 #define PACKET_HEADER_TYPE tt::tt_fabric::LowLatencyPacketHeader
 #define ROUTING_FIELDS_TYPE tt::tt_fabric::LowLatencyRoutingFields
-// #else
-// #define PACKET_HEADER_TYPE tt::tt_fabric::PacketHeader
-// #define ROUTING_FIELDS_TYPE tt::tt_fabric::RoutingFields
-// #endif
+#else
+#define PACKET_HEADER_TYPE tt::tt_fabric::PacketHeader
+#define ROUTING_FIELDS_TYPE tt::tt_fabric::RoutingFields
+#endif
 
 }  // namespace tt::tt_fabric

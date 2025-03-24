@@ -638,21 +638,7 @@ FORCE_INLINE bool can_forward_packet_completely(
     }
     return deliver_locally_only || downstream_edm_interface.edm_has_space_for_packet();
 }
-template <uint8_t SENDER_NUM_BUFFERS>
-FORCE_INLINE bool can_forward_packet_local_chip(
-    ROUTING_FIELDS_TYPE cached_routing_fields,
-    tt::tt_fabric::EdmToEdmSender<SENDER_NUM_BUFFERS>& downstream_edm_interface) {
-    // We always check if it is the terminal mcast packet value. We can do this because all unicast packets have the
-    // mcast terminal value masked in to the routing field. This simplifies the check here to a single compare.
-    bool deliver_locally_only;
-    if constexpr (std::is_same_v<ROUTING_FIELDS_TYPE, tt::tt_fabric::RoutingFields>) {
-        deliver_locally_only = cached_routing_fields.value == tt::tt_fabric::RoutingFields::LAST_MCAST_VAL;
-    } else if constexpr (std::is_same_v<ROUTING_FIELDS_TYPE, tt::tt_fabric::LowLatencyRoutingFields>) {
-        deliver_locally_only = (cached_routing_fields.value & tt::tt_fabric::LowLatencyRoutingFields::FIELD_MASK) ==
-                               tt::tt_fabric::LowLatencyRoutingFields::WRITE_ONLY;
-    }
-    return deliver_locally_only;
-}
+
 // !!!WARNING!!! - MAKE SURE CONSUMER HAS SPACE BEFORE CALLING
 template <uint8_t SENDER_NUM_BUFFERS>
 FORCE_INLINE void receiver_forward_packet(
@@ -662,19 +648,19 @@ FORCE_INLINE void receiver_forward_packet(
     tt::tt_fabric::EdmToEdmSender<SENDER_NUM_BUFFERS>& downstream_edm_interface,
     uint8_t transaction_id) {
     if constexpr (std::is_same_v<ROUTING_FIELDS_TYPE, tt::tt_fabric::RoutingFields>) {
-        // // If the packet is a terminal packet, then we can just deliver it locally
-        // bool start_distance_is_terminal_value =
-        //     (cached_routing_fields.value & tt::tt_fabric::RoutingFields::HOP_DISTANCE_MASK) ==
-        //     tt::tt_fabric::RoutingFields::LAST_HOP_DISTANCE_VAL;
-        // uint16_t payload_size_bytes = packet_start->payload_size_bytes;
-        // bool not_last_destination_device = cached_routing_fields.value !=
-        // tt::tt_fabric::RoutingFields::LAST_MCAST_VAL; if (not_last_destination_device) {
-        //     forward_payload_to_downstream_edm<SENDER_NUM_BUFFERS, enable_ring_support>(
-        //         packet_start, payload_size_bytes, cached_routing_fields, downstream_edm_interface, transaction_id);
-        // }
-        // if (start_distance_is_terminal_value) {
-        //     execute_chip_unicast_to_local_chip(packet_start, payload_size_bytes, transaction_id);
-        // }
+        // If the packet is a terminal packet, then we can just deliver it locally
+        bool start_distance_is_terminal_value =
+            (cached_routing_fields.value & tt::tt_fabric::RoutingFields::HOP_DISTANCE_MASK) ==
+            tt::tt_fabric::RoutingFields::LAST_HOP_DISTANCE_VAL;
+        uint16_t payload_size_bytes = packet_start->payload_size_bytes;
+        bool not_last_destination_device = cached_routing_fields.value != tt::tt_fabric::RoutingFields::LAST_MCAST_VAL;
+        if (not_last_destination_device) {
+            forward_payload_to_downstream_edm<SENDER_NUM_BUFFERS, enable_ring_support>(
+                packet_start, payload_size_bytes, cached_routing_fields, downstream_edm_interface, transaction_id);
+        }
+        if (start_distance_is_terminal_value) {
+            execute_chip_unicast_to_local_chip(packet_start, payload_size_bytes, transaction_id);
+        }
     } else if constexpr (std::is_same_v<ROUTING_FIELDS_TYPE, tt::tt_fabric::LowLatencyRoutingFields>) {
         uint32_t routing = cached_routing_fields.value & tt::tt_fabric::LowLatencyRoutingFields::FIELD_MASK;
         uint16_t payload_size_bytes = packet_start->payload_size_bytes;
