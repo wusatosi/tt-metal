@@ -5,7 +5,20 @@ if(NOT ENABLE_TRACY)
     # Stub Tracy::TracyClient to provide the headers which themselves provide stubs
     add_library(TracyClient INTERFACE)
     add_library(Tracy::TracyClient ALIAS TracyClient)
-    target_include_directories(TracyClient SYSTEM INTERFACE ${TRACY_HOME}/public)
+    target_include_directories(TracyClient SYSTEM INTERFACE "$<BUILD_INTERFACE:${TRACY_HOME}/public>")
+
+    target_sources(
+        TracyClient
+        INTERFACE
+            FILE_SET api
+            TYPE HEADERS
+            BASE_DIRS ${TRACY_HOME}/public
+            FILES
+                ${TRACY_HOME}/public/tracy/Tracy.hpp
+                ${TRACY_HOME}/public/common/TracyApi.h
+                ${TRACY_HOME}/public/common/TracyColor.hpp
+                ${TRACY_HOME}/public/common/TracySystem.hpp
+    )
     return()
 endif()
 

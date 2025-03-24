@@ -42,6 +42,30 @@ list(
     Unspecified # TODO: audit if there's anything we need to ship here
 )
 
+include(CMakePackageConfigHelpers)
+
+write_basic_package_version_file(
+    ${PROJECT_BINARY_DIR}/tt-metalium-config-version.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
+# Configure the Config file
+configure_package_config_file(
+    ${CMAKE_CURRENT_LIST_DIR}/packaging.d/tt-metalium-config.cmake.in
+    ${PROJECT_BINARY_DIR}/tt-metalium-config.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/tt-metalium
+)
+
+# Install the Config and ConfigVersion files
+install(
+    FILES
+        ${PROJECT_BINARY_DIR}/tt-metalium-config.cmake
+        ${PROJECT_BINARY_DIR}/tt-metalium-config-version.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/tt-metalium
+    COMPONENT metalium-dev
+)
+
 # Logically we should ship jit-build with metalium-runtime, but jit-build fails to split dbgsyms for now (lacking a Build ID on the binaries)
 cpack_add_component(jit-build GROUP metalium-jit)
 

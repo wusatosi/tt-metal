@@ -85,7 +85,16 @@ CPMAddPackage(NAME reflect GITHUB_REPOSITORY boost-ext/reflect GIT_TAG v1.1.1)
 if(reflect_ADDED)
     add_library(reflect INTERFACE)
     add_library(Reflect::Reflect ALIAS reflect)
-    target_include_directories(reflect SYSTEM INTERFACE ${reflect_SOURCE_DIR})
+    target_include_directories(reflect SYSTEM INTERFACE "$<BUILD_INTERFACE:${reflect_SOURCE_DIR}>")
+
+    target_sources(
+        reflect
+        INTERFACE
+            FILE_SET api
+            TYPE HEADERS
+            BASE_DIRS ${reflect_SOURCE_DIR}
+            FILES ${reflect_SOURCE_DIR}/reflect
+    )
 endif()
 
 ############################################################################################################################
