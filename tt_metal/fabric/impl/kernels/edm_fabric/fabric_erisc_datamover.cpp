@@ -647,7 +647,7 @@ FORCE_INLINE bool can_forward_packet_completely(
 template <uint8_t SENDER_NUM_BUFFERS>
 FORCE_INLINE void receiver_forward_packet(
     // TODO: have a separate cached copy of the packet header to save some additional L1 loads
-    volatile PACKET_HEADER_TYPE* packet_start,
+    volatile tt_l1_ptr PACKET_HEADER_TYPE* packet_start,
     ROUTING_FIELDS_TYPE cached_routing_fields,
     tt::tt_fabric::EdmToEdmSender<SENDER_NUM_BUFFERS>& downstream_edm_interface,
     uint8_t transaction_id) {
@@ -663,21 +663,24 @@ FORCE_INLINE void receiver_forward_packet(
                 packet_start, payload_size_bytes, cached_routing_fields, downstream_edm_interface, transaction_id);
         }
         if (start_distance_is_terminal_value) {
-            execute_chip_unicast_to_local_chip(packet_start, payload_size_bytes, transaction_id);
+            execute_chip_unicast_to_local_chip(
+                const_cast<tt_l1_ptr PACKET_HEADER_TYPE*>(packet_start), payload_size_bytes, transaction_id);
         }
     } else if constexpr (std::is_same_v<ROUTING_FIELDS_TYPE, tt::tt_fabric::LowLatencyRoutingFields>) {
         uint32_t routing = cached_routing_fields.value & tt::tt_fabric::LowLatencyRoutingFields::FIELD_MASK;
         uint16_t payload_size_bytes = packet_start->payload_size_bytes;
         switch (routing) {
             case tt::tt_fabric::LowLatencyRoutingFields::WRITE_ONLY:
-                execute_chip_unicast_to_local_chip(packet_start, payload_size_bytes, transaction_id);
+                execute_chip_unicast_to_local_chip(
+                    const_cast<tt_l1_ptr PACKET_HEADER_TYPE*>(packet_start), payload_size_bytes, transaction_id);
                 break;
             case tt::tt_fabric::LowLatencyRoutingFields::FORWARD_ONLY:
                 forward_payload_to_downstream_edm<SENDER_NUM_BUFFERS, enable_ring_support>(
                     packet_start, payload_size_bytes, cached_routing_fields, downstream_edm_interface, transaction_id);
                 break;
             case tt::tt_fabric::LowLatencyRoutingFields::WRITE_AND_FORWARD:
-                execute_chip_unicast_to_local_chip(packet_start, payload_size_bytes, transaction_id);
+                execute_chip_unicast_to_local_chip(
+                    const_cast<tt_l1_ptr PACKET_HEADER_TYPE*>(packet_start), payload_size_bytes, transaction_id);
                 forward_payload_to_downstream_edm<SENDER_NUM_BUFFERS, enable_ring_support>(
                     packet_start, payload_size_bytes, cached_routing_fields, downstream_edm_interface, transaction_id);
                 break;
@@ -857,10 +860,11 @@ void run_receiver_channel_step(
     bool unwritten_packets = !wr_sent_ptr.is_caught_up_to(ack_ptr);
     if (unwritten_packets) {
         auto receiver_buffer_index = wr_sent_ptr.get_buffer_index();
-        volatile auto packet_header =
+        volatile tt_l1_ptr PACKET_HEADER_TYPE* packet_header =
             local_receiver_channel.template get_packet_header<PACKET_HEADER_TYPE>(receiver_buffer_index);
 
-        ROUTING_FIELDS_TYPE cached_routing_fields = const_cast<PACKET_HEADER_TYPE*>(packet_header)->routing_fields;
+        ROUTING_FIELDS_TYPE cached_routing_fields =
+            const_cast<tt_l1_ptr PACKET_HEADER_TYPE*>(packet_header)->routing_fields;
         bool can_send_to_all_local_chip_receivers =
             can_forward_packet_completely(cached_routing_fields, downstream_edm_interface);
         bool trid_flushed = receiver_channel_trid_tracker.transaction_flushed(receiver_buffer_index);
