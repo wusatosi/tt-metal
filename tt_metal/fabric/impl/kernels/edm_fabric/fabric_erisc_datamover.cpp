@@ -1182,7 +1182,8 @@ void __attribute__((noinline)) init_local_sender_channel_worker_interfaces(
             connection_worker_info_ptr,
             reinterpret_cast<volatile tt_l1_ptr uint32_t* const>(local_sender_flow_control_semaphores[0]),
             reinterpret_cast<volatile tt_l1_ptr uint32_t* const>(connection_live_semaphore_ptr),
-            worker_sender0_sync_cmd_buf);
+            worker_sender0_sync_cmd_buf,
+            worker_sender0_sync_noc);
     }
     {
         auto connection_live_semaphore_ptr =
@@ -1194,7 +1195,8 @@ void __attribute__((noinline)) init_local_sender_channel_worker_interfaces(
             connection_worker_info_ptr,
             reinterpret_cast<volatile tt_l1_ptr uint32_t* const>(local_sender_flow_control_semaphores[1]),
             reinterpret_cast<volatile tt_l1_ptr uint32_t* const>(connection_live_semaphore_ptr),
-            worker_sender1_sync_cmd_buf);
+            worker_sender1_sync_cmd_buf,
+            worker_sender1_sync_noc);
     }
     if constexpr (NUM_SENDER_CHANNELS > 2) {
         {
@@ -1208,7 +1210,8 @@ void __attribute__((noinline)) init_local_sender_channel_worker_interfaces(
                     connection_worker_info_ptr,
                     reinterpret_cast<volatile tt_l1_ptr uint32_t* const>(local_sender_flow_control_semaphores[2]),
                     reinterpret_cast<volatile tt_l1_ptr uint32_t* const>(connection_live_semaphore_ptr),
-                    worker_sender2_sync_cmd_buf);
+                    worker_sender2_sync_cmd_buf,
+                    worker_sender2_sync_noc);
         }
     }
 }
@@ -1568,7 +1571,9 @@ void kernel_main() {
 
     if (has_downstream_edm_vc0_buffer_connection) {
         for (auto& downstream_edm_noc_interface : downstream_edm_noc_interfaces) {
-            downstream_edm_noc_interface.open();
+            downstream_edm_noc_interface.template open<
+                tt::tt_fabric::downstream_open_connection_read_noc,
+                tt::tt_fabric::downstream_open_connection_read_cmd_buf>();
             *downstream_edm_noc_interface.from_remote_buffer_slot_rdptr_ptr = 0;
             ASSERT(*downstream_edm_noc_interface.from_remote_buffer_slot_rdptr_ptr == 0);
         }

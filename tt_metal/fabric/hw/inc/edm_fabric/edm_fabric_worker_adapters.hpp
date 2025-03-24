@@ -141,11 +141,11 @@ struct WorkerToFabricEdmSenderImpl {
     }
 
     FORCE_INLINE void setup_edm_noc_cmd_buf(uint8_t data_cmd_buf, uint8_t sync_cmd_buf) const {
-        uint64_t edm_noc_addr = get_noc_addr(this->edm_noc_x, this->edm_noc_y, 0, edm_to_local_chip_noc);
-        noc_async_write_one_packet_with_trid_set_state(edm_noc_addr, data_cmd_buf, edm_to_local_chip_noc);
+        uint64_t edm_noc_addr = get_noc_addr(this->edm_noc_x, this->edm_noc_y, 0, edm_to_downstream_noc);
+        noc_async_write_one_packet_with_trid_set_state(edm_noc_addr, data_cmd_buf, edm_to_downstream_noc);
         const uint64_t noc_sem_addr =
-            get_noc_addr(this->edm_noc_x, this->edm_noc_y, this->edm_buffer_slot_wrptr_addr, edm_to_local_chip_noc);
-        noc_inline_dw_write_set_state(noc_sem_addr, 0xF, sync_cmd_buf, edm_to_local_chip_noc);
+            get_noc_addr(this->edm_noc_x, this->edm_noc_y, this->edm_buffer_slot_wrptr_addr, edm_to_downstream_noc);
+        noc_inline_dw_write_set_state(noc_sem_addr, 0xF, sync_cmd_buf, edm_to_downstream_noc);
     }
 
     FORCE_INLINE bool edm_has_space_for_packet() const {
@@ -227,13 +227,20 @@ struct WorkerToFabricEdmSenderImpl {
 
     static constexpr size_t edm_sender_channel_field_stride_bytes = 16;
 
+    template <uint8_t noc_async_read_noc = noc_index, uint8_t noc_async_read_cmd_buf = read_cmd_buf>
     void open() {
         const auto dest_noc_addr_coord_only = get_noc_addr(this->edm_noc_x, this->edm_noc_y, 0);
 
         const uint64_t remote_buffer_index_addr = dest_noc_addr_coord_only | edm_buffer_index_addr;
         ASSERT(remote_buffer_index_addr > 0);
         noc_async_read(
-            remote_buffer_index_addr, reinterpret_cast<size_t>(this->buffer_slot_wrptr_ptr), sizeof(uint32_t));
+            remote_buffer_index_addr,
+            reinterpret_cast<size_t>(this->buffer_slot_wrptr_ptr),
+            sizeof(uint32_t),
+            noc_async_read_noc,
+            noc_async_read_cmd_buf);
+        // noc_async_read(
+        //     remote_buffer_index_addr, reinterpret_cast<size_t>(this->buffer_slot_wrptr_ptr), sizeof(uint32_t));
 
         tt::tt_fabric::EDMChannelWorkerLocationInfo* worker_location_info_ptr =
             reinterpret_cast<tt::tt_fabric::EDMChannelWorkerLocationInfo*>(edm_worker_location_info_addr);
@@ -242,7 +249,13 @@ struct WorkerToFabricEdmSenderImpl {
             reinterpret_cast<size_t>(
                 edm_worker_location_info_addr + offsetof(tt::tt_fabric::EDMChannelWorkerLocationInfo, edm_rdptr));
         noc_async_read(
-            edm_rdptr_addr, reinterpret_cast<size_t>(this->from_remote_buffer_slot_rdptr_ptr), sizeof(uint32_t));
+            edm_rdptr_addr,
+            reinterpret_cast<size_t>(this->from_remote_buffer_slot_rdptr_ptr),
+            sizeof(uint32_t),
+            noc_async_read_noc,
+            noc_async_read_cmd_buf);
+        // noc_async_read(
+        //     edm_rdptr_addr, reinterpret_cast<size_t>(this->from_remote_buffer_slot_rdptr_ptr), sizeof(uint32_t));
         // TODO: Need to change byte enable to be word enable
         const uint64_t dest_edm_location_info_addr = dest_noc_addr_coord_only | edm_worker_location_info_addr;
         const uint64_t edm_teardown_semaphore_address_address =
@@ -417,7 +430,7 @@ private:
             send_chunk_from_address_with_trid<blocking_mode>(
                 source_address, 1, size_bytes, this->edm_buffer_addr, trid, this->data_noc_cmd_buf);
         }
-        post_send_payload_increment_pointers<true, enable_ring_support>(edm_to_local_chip_noc);
+        post_send_payload_increment_pointers<true, enable_ring_support>(edm_to_downstream_noc);
     }
 
     template <EDM_IO_BLOCKING_MODE blocking_mode>

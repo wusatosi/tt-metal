@@ -11,14 +11,20 @@
 namespace tt::tt_fabric {
 
 static constexpr uint8_t edm_to_local_chip_noc = 1;
+static constexpr uint8_t edm_to_downstream_noc = 0;
+static constexpr uint8_t worker_sender0_sync_noc = 0;
+static constexpr uint8_t worker_sender1_sync_noc = 0;
+static constexpr uint8_t worker_sender2_sync_noc = 0;
+static constexpr uint8_t downstream_open_connection_read_noc = 1;
 
 static constexpr uint8_t worker_sender0_sync_cmd_buf = write_reg_cmd_buf;
 static constexpr uint8_t worker_sender1_sync_cmd_buf = write_cmd_buf;
 static constexpr uint8_t worker_sender2_sync_cmd_buf = write_cmd_buf;
 
-static constexpr uint8_t downstream_data_cmd_buf = write_reg_cmd_buf;
+static constexpr uint8_t downstream_open_connection_read_cmd_buf = read_cmd_buf;
+static constexpr uint8_t downstream_data_cmd_buf = write_at_cmd_buf;
 static constexpr uint8_t downstream_sync_cmd_buf = read_cmd_buf;
-static constexpr uint8_t local_chip_data_cmd_buf = write_cmd_buf;
+static constexpr uint8_t local_chip_data_cmd_buf = write_reg_cmd_buf;
 
 enum EDM_IO_BLOCKING_MODE { FLUSH_BLOCKING, BLOCKING, NON_BLOCKING };
 
@@ -31,7 +37,7 @@ FORCE_INLINE void send_chunk_from_address_with_trid(
     uint8_t trid,
     uint8_t cmd_buf) {
     noc_async_write_one_packet_with_trid_with_state<false, false>(
-        local_l1_address, remote_l1_write_addr, page_size * num_pages, trid, cmd_buf, edm_to_local_chip_noc);
+        local_l1_address, remote_l1_write_addr, page_size * num_pages, trid, cmd_buf, edm_to_downstream_noc);
     // TODO: this barrier will no longer be functional since we are not incrementing noc counters, remove
     if constexpr (blocking_mode == EDM_IO_BLOCKING_MODE::FLUSH_BLOCKING) {
         noc_async_writes_flushed();

@@ -549,7 +549,7 @@ void noc_async_read_one_packet(
 // clang-format on
 template <uint32_t max_page_size>
 inline void noc_async_read(
-    std::uint64_t src_noc_addr, std::uint32_t dst_local_l1_addr, std::uint32_t size, uint8_t noc) {
+    std::uint64_t src_noc_addr, std::uint32_t dst_local_l1_addr, std::uint32_t size, uint8_t noc, uint8_t cmd_buf) {
     /*
         Read requests - use static VC
         Read responses - assigned VCs dynamically
@@ -561,7 +561,7 @@ inline void noc_async_read(
     } else {
         WAYPOINT("NARW");
         DEBUG_SANITIZE_NOC_READ_TRANSACTION(noc, src_noc_addr, dst_local_l1_addr, size);
-        ncrisc_noc_fast_read_any_len<noc_mode>(noc, read_cmd_buf, src_noc_addr, dst_local_l1_addr, size);
+        ncrisc_noc_fast_read_any_len<noc_mode>(noc, cmd_buf, src_noc_addr, dst_local_l1_addr, size);
         WAYPOINT("NARD");
     }
 }

@@ -110,6 +110,7 @@ struct EdmChannelWorkerInterface {
         remote_producer_wrptr(nullptr),
         connection_live_semaphore(nullptr),
         sender_sync_noc_cmd_buf(write_at_cmd_buf),
+        sender_sync_noc(noc_index),
         local_wrptr(),
         local_ackptr(),
         local_rdptr() {}
@@ -124,12 +125,14 @@ struct EdmChannelWorkerInterface {
         volatile EDMChannelWorkerLocationInfo* worker_location_info_ptr,
         volatile tt_l1_ptr uint32_t* const remote_producer_wrptr,
         volatile tt_l1_ptr uint32_t* const connection_live_semaphore,
-        uint8_t sender_sync_noc_cmd_buf) :
+        uint8_t sender_sync_noc_cmd_buf,
+        uint8_t sender_sync_noc) :
         worker_location_info_ptr(worker_location_info_ptr),
         cached_worker_semaphore_address(0),
         remote_producer_wrptr(remote_producer_wrptr),
         connection_live_semaphore(connection_live_semaphore),
         sender_sync_noc_cmd_buf(sender_sync_noc_cmd_buf),
+        sender_sync_noc(sender_sync_noc),
         local_wrptr(),
         local_ackptr(),
         local_rdptr() {
@@ -153,9 +156,13 @@ struct EdmChannelWorkerInterface {
     FORCE_INLINE void update_worker_copy_of_read_ptr(BufferPtr new_ptr_val) {
         if constexpr (enable_ring_support) {
             noc_inline_dw_write_with_state<true, false, false>(
-                new_ptr_val, this->cached_worker_semaphore_address, this->sender_sync_noc_cmd_buf);
+                new_ptr_val,
+                this->cached_worker_semaphore_address,
+                this->sender_sync_noc_cmd_buf,
+                this->sender_sync_noc);
         } else {
-            noc_inline_dw_write_with_state<false, false, false>(new_ptr_val, 0, this->sender_sync_noc_cmd_buf);
+            noc_inline_dw_write_with_state<false, false, false>(
+                new_ptr_val, 0, this->sender_sync_noc_cmd_buf, this->sender_sync_noc);
         }
     }
 
@@ -181,7 +188,8 @@ struct EdmChannelWorkerInterface {
         uint64_t worker_semaphore_address = get_noc_addr(
             (uint32_t)worker_info.worker_xy.x, (uint32_t)worker_info.worker_xy.y, worker_info.worker_semaphore_address);
         this->cached_worker_semaphore_address = worker_semaphore_address;
-        noc_inline_dw_write_set_state(worker_semaphore_address, 0xF, this->sender_sync_noc_cmd_buf);
+        noc_inline_dw_write_set_state(
+            worker_semaphore_address, 0xF, this->sender_sync_noc_cmd_buf, this->sender_sync_noc);
     }
 
     FORCE_INLINE bool all_eth_packets_acked() const { return this->local_ackptr.is_caught_up_to(this->local_wrptr); }
@@ -199,6 +207,7 @@ struct EdmChannelWorkerInterface {
     volatile tt_l1_ptr uint32_t* const remote_producer_wrptr;
     volatile tt_l1_ptr uint32_t* const connection_live_semaphore;
     uint8_t sender_sync_noc_cmd_buf;
+    uint8_t sender_sync_noc;
 
     ChannelBufferPointer<NUM_BUFFERS> local_wrptr;
     ChannelBufferPointer<NUM_BUFFERS> local_ackptr;

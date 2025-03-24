@@ -236,7 +236,11 @@ std::uint64_t get_noc_addr(std::uint32_t addr, uint8_t noc = noc_index) {
 // dataflow_api.h
 template <uint32_t max_page_size = NOC_MAX_BURST_SIZE + 1>
 void noc_async_read(
-    std::uint64_t src_noc_addr, std::uint32_t dst_local_l1_addr, std::uint32_t size, uint8_t noc = noc_index);
+    std::uint64_t src_noc_addr,
+    std::uint32_t dst_local_l1_addr,
+    std::uint32_t size,
+    uint8_t noc = noc_index,
+    uint8_t cmd_buf = read_cmd_buf);
 
 template <bool DRAM>
 struct InterleavedAddrGen {
