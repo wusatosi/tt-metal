@@ -5,6 +5,7 @@
 import os
 import pytest
 import torch
+import pdb
 
 import ttnn
 from models.utility_functions import comp_pcc
@@ -39,6 +40,50 @@ def test_tensor_preallocation_and_write_apis(
         tt_input_tensor_a = ttnn.Tensor(input_tensor_a, in_dtype).to(tensor_layout)
         ttnn.copy_host_to_device_tensor(tt_input_tensor_a, preallocated_tensor)
         readback = preallocated_tensor.cpu().to(ttnn.ROW_MAJOR_LAYOUT).to_torch()
+        allclose, output = comp_pcc(readback, input_tensor_a)
+        assert allclose, f"FAILED: {output}"
+
+
+@pytest.mark.parametrize(
+    "shape,padded_shape",
+    [
+        ((1, 10, 64, 96), (1, 10, 64, 128)),
+        ((32, 1, 64, 64), (32, 1, 64, 128)),
+        ((32, 3, 256, 256), (32, 3, 256, 512)),
+        ((16, 1, 1024, 1024), (16, 1, 1024, 2048)),
+    ],
+)
+@pytest.mark.parametrize("in_dtype", [ttnn.bfloat16])
+@pytest.mark.parametrize("mem_layout", [ttnn.TensorMemoryLayout.INTERLEAVED])
+@pytest.mark.parametrize("memory_location", [ttnn.BufferType.L1, ttnn.BufferType.DRAM])
+@pytest.mark.parametrize("tensor_layout", [ttnn.ROW_MAJOR_LAYOUT])  # Tensor must be ROW_MAJOR for padding
+@pytest.mark.parametrize("enable_async", (False, True))
+def test_padded_tensor_preallocation_and_write_apis(
+    enable_async, shape, padded_shape, in_dtype, mem_layout, memory_location, tensor_layout, device
+):
+    torch.manual_seed(0)
+    device.enable_async(enable_async)
+
+    # Preallocate tensor on device
+    preallocated_tensor = ttnn.allocate_tensor_on_device(
+        ttnn.Shape(padded_shape),
+        in_dtype,
+        tensor_layout,
+        device,
+        ttnn.MemoryConfig(memory_layout=mem_layout, buffer_type=memory_location),
+    )
+    for loop in range(5):
+        # Write to prreallocated tensor multiple times with padding
+        input_tensor_a = torch.randn(shape).bfloat16()
+        tt_input_tensor_a = ttnn.Tensor(input_tensor_a, in_dtype).to(tensor_layout)
+        tt_input_tensor_a = ttnn.pad(tt_input_tensor_a, list(padded_shape), [0, 0, 0, 0], 0)
+        ttnn.copy_host_to_device_tensor(tt_input_tensor_a, preallocated_tensor)
+        readback = preallocated_tensor.cpu().to(ttnn.ROW_MAJOR_LAYOUT).to_torch()
+
+        # Pad reference and compare
+        input_tensor_a = torch.nn.functional.pad(
+            input_tensor_a, (0, padded_shape[-1] - shape[-1], 0, padded_shape[-2] - shape[-2])
+        )
         allclose, output = comp_pcc(readback, input_tensor_a)
         assert allclose, f"FAILED: {output}"
 
@@ -81,6 +126,54 @@ def test_tensor_preallocation_and_write_apis(
             ttnn.to_torch(shard)
             for shard in ttnn.get_device_tensors(preallocated_tensor.cpu().to(ttnn.ROW_MAJOR_LAYOUT))
         ]
+        for readback_tensor in readback_tensors:
+            allclose, output = comp_pcc(readback_tensor, input_tensor_a)
+            assert allclose, f"FAILED: {output}"
+
+
+@pytest.mark.parametrize(
+    "shape, padded_shape", [((1, 10, 64, 96), (1, 10, 64, 128)), ((32, 3, 256, 256), (32, 3, 256, 512))]
+)
+@pytest.mark.parametrize("in_dtype", [ttnn.bfloat16])
+@pytest.mark.parametrize("mem_layout", [ttnn.TensorMemoryLayout.INTERLEAVED])
+@pytest.mark.parametrize("memory_location", [ttnn.BufferType.L1, ttnn.BufferType.DRAM])
+@pytest.mark.parametrize("tensor_layout", [ttnn.ROW_MAJOR_LAYOUT])
+@pytest.mark.parametrize("enable_async", (False, True))
+@pytest.mark.parametrize("mesh_device", ((1, 1), 4), indirect=True)
+def test_padded_tensor_preallocation_and_write_apis(
+    enable_async, shape, padded_shape, in_dtype, mem_layout, memory_location, tensor_layout, mesh_device
+):
+    torch.manual_seed(0)
+    mesh_device.enable_async(enable_async)
+
+    # Preallocate tensor on device
+    preallocated_tensor = ttnn.allocate_tensor_on_device(
+        ttnn.Shape(padded_shape),
+        in_dtype,
+        tensor_layout,
+        mesh_device,
+        ttnn.MemoryConfig(memory_layout=mem_layout, buffer_type=memory_location),
+    )
+    for loop in range(5):
+        # Write to prreallocated tensor multiple times with padding
+        input_tensor_a = torch.randn(shape).bfloat16()
+        tt_input_tensor_a = ttnn.from_torch(
+            input_tensor_a,
+            dtype=in_dtype,
+            layout=tensor_layout,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+        )
+        tt_input_tensor_a = ttnn.pad(tt_input_tensor_a, list(padded_shape), [0, 0, 0, 0], 0)
+        ttnn.copy_host_to_device_tensor(tt_input_tensor_a, preallocated_tensor)
+        readback_tensors = [
+            ttnn.to_torch(shard)
+            for shard in ttnn.get_device_tensors(preallocated_tensor.cpu().to(ttnn.ROW_MAJOR_LAYOUT))
+        ]
+
+        # Pad reference and compare
+        input_tensor_a = torch.nn.functional.pad(
+            input_tensor_a, (0, padded_shape[-1] - shape[-1], 0, padded_shape[-2] - shape[-2])
+        )
         for readback_tensor in readback_tensors:
             allclose, output = comp_pcc(readback_tensor, input_tensor_a)
             assert allclose, f"FAILED: {output}"
