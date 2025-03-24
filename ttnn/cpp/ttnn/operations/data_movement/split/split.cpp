@@ -27,16 +27,10 @@ std::vector<Tensor> split_dim_n_chunks_rm(
     const auto& input_shape = input_tensor.get_logical_shape();
     auto input_rank = input_shape.size();
 
-    const bool on_host =
-        input_tensor.storage_type() == StorageType::OWNED || input_tensor.storage_type() == StorageType::BORROWED;
-    std::optional<IDevice*> device = on_host ? std::nullopt : std::make_optional(input_tensor.device());
+    std::optional<IDevice*> device = std::make_optional(input_tensor.device());
 
     Tensor preprocessed = ttnn::unsqueeze_to_4D(input_tensor);  // ensure we're 4D before slicing
     dim += 4 - input_rank;                                      // convert to 4D index
-
-    if (!on_host && input_tensor.get_dtype() == DataType::BFLOAT16) {
-        preprocessed = preprocessed.cpu();  // bf16 tensors must be handled on host due to limitations in slice
-    }
 
     const auto& preproc_shape = preprocessed.get_logical_shape();
 
@@ -67,6 +61,11 @@ std::vector<Tensor> split_dim_n_chunks_rm(
             output_chunk = ttnn::squeeze_from_4D(output_chunk, input_rank);
         }
 
+        const bool on_host = input_tensor.is_host_tensor();
+        if (!on_host && input_tensor.get_dtype() == DataType::BFLOAT16) {
+            output_chunk = output_chunk.cpu();  // bf16 tensors must be handled on host due to limitations in slice
+        }
+
         tt::tt_metal::Layout layout = input_tensor.get_layout();
         if (device && (input_tensor.dtype() == DataType::BFLOAT16 || input_tensor.dtype() == DataType::UINT16) &&
             chunk_len % 2 != 0) {
@@ -92,7 +91,7 @@ std::vector<Tensor> impl_split_last_dim_two_chunks_tiled(const Tensor& input_ten
     auto padded_input_shape = ttnn::operations::experimental::auto_format::AutoFormat::pad_to_tile_shape(input_shape);
     ttnn::operations::experimental::auto_format::FormatParams input_format_params = {
         .pad_shape = padded_input_shape, .pad_value = 0.0, .target_layout = Layout::TILE};
-    return operation::run_with_autoformat(
+    return tt::tt_metal::operation::run_with_autoformat(
         SplitDeviceOperation{2, 3, mem_config}, {input_tensor}, {input_format_params}, {Layout::TILE, Layout::TILE});
 }
 
