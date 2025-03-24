@@ -856,31 +856,43 @@ void run_receiver_channel_step(
 
         ROUTING_FIELDS_TYPE cached_routing_fields = const_cast<PACKET_HEADER_TYPE*>(packet_header)->routing_fields;
 
-        uint32_t routing = cached_routing_fields.value & tt::tt_fabric::LowLatencyRoutingFields::FIELD_MASK;
-        uint16_t payload_size_bytes = packet_header->payload_size_bytes;
-        uint8_t trid = receiver_channel_trid_tracker.get_buffer_slot_trid(receiver_buffer_index);
-        bool forward_only = routing == tt::tt_fabric::LowLatencyRoutingFields::FORWARD_ONLY;
-        bool write_only = routing == tt::tt_fabric::LowLatencyRoutingFields::WRITE_ONLY;
-        // remove trid check since we can still enqueue noc cmd to cmd_buf
-        if (!forward_only) {
-            execute_chip_unicast_to_local_chip(packet_header, payload_size_bytes, trid);
-            if (!write_only) {
-                packet_header->routing_fields.value &= ~0x3;
-                packet_header->routing_fields.value |= tt::tt_fabric::LowLatencyRoutingFields::FORWARD_ONLY;
+        if constexpr (std::is_same_v<ROUTING_FIELDS_TYPE, tt::tt_fabric::RoutingFields>) {
+            bool can_send_to_all_local_chip_receivers =
+                can_forward_packet_completely(cached_routing_fields, downstream_edm_interface);
+            bool trid_flushed = receiver_channel_trid_tracker.transaction_flushed(receiver_buffer_index);
+            if (can_send_to_all_local_chip_receivers && trid_flushed) {
+                uint8_t trid = receiver_channel_trid_tracker.update_buffer_slot_to_next_trid_and_advance_trid_counter(
+                    receiver_buffer_index);
+                receiver_forward_packet(packet_header, cached_routing_fields, downstream_edm_interface, trid);
+                wr_sent_ptr.increment();
             }
-        }
+        } else {
+            uint32_t routing = cached_routing_fields.value & tt::tt_fabric::LowLatencyRoutingFields::FIELD_MASK;
+            uint16_t payload_size_bytes = packet_header->payload_size_bytes;
+            uint8_t trid = receiver_channel_trid_tracker.get_buffer_slot_trid(receiver_buffer_index);
+            bool forward_only = routing == tt::tt_fabric::LowLatencyRoutingFields::FORWARD_ONLY;
+            bool write_only = routing == tt::tt_fabric::LowLatencyRoutingFields::WRITE_ONLY;
+            bool trid_flushed = receiver_channel_trid_tracker.transaction_flushed(receiver_buffer_index);
+            if (!forward_only && trid_flushed) {
+                execute_chip_unicast_to_local_chip(packet_header, payload_size_bytes, trid);
+                if (!write_only) {
+                    packet_header->routing_fields.value &= ~(tt::tt_fabric::LowLatencyRoutingFields::FIELD_MASK);
+                    packet_header->routing_fields.value |= tt::tt_fabric::LowLatencyRoutingFields::FORWARD_ONLY;
+                }
+            }
 
-        bool can_forward_downstream_edm = downstream_edm_interface.edm_has_space_for_packet();
-        if (can_forward_downstream_edm && !write_only) {
-            forward_payload_to_downstream_edm<SENDER_NUM_BUFFERS, enable_ring_support>(
-                packet_header, payload_size_bytes, cached_routing_fields, downstream_edm_interface, trid);
-        }
+            bool can_forward_downstream_edm = downstream_edm_interface.edm_has_space_for_packet();
+            if (can_forward_downstream_edm && !write_only) {
+                forward_payload_to_downstream_edm<SENDER_NUM_BUFFERS, enable_ring_support>(
+                    packet_header, payload_size_bytes, cached_routing_fields, downstream_edm_interface, trid);
+            }
 
-        bool can_finish_forward_and_local_write = can_forward_downstream_edm || write_only;
-        if (can_finish_forward_and_local_write) {
-            uint8_t trid = receiver_channel_trid_tracker.update_buffer_slot_to_next_trid_and_advance_trid_counter(
-                receiver_buffer_index);
-            wr_sent_ptr.increment();
+            bool can_finish_forward_and_local_write = can_forward_downstream_edm || write_only;
+            if (can_finish_forward_and_local_write) {
+                uint8_t trid = receiver_channel_trid_tracker.update_buffer_slot_to_next_trid_and_advance_trid_counter(
+                    receiver_buffer_index);
+                wr_sent_ptr.increment();
+            }
         }
     }
 
