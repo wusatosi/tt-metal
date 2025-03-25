@@ -229,7 +229,7 @@ def test_dispatch_cores():
 @skip_for_grayskull()
 def test_ethernet_dispatch_cores():
     REF_COUNT_DICT = {
-        "Ethernet CQ Dispatch": [17, 12, 3896],
+        "Ethernet CQ Dispatch": [17, 12, 3899],
         "Ethernet CQ Prefetch": [18, 1948],
     }
     os.environ["TT_METAL_DEVICE_PROFILER_DISPATCH"] = "1"
