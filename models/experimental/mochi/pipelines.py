@@ -8,6 +8,8 @@ from genmo.mochi_preview.vae.vae_stats import dit_latents_to_vae_latents
 import numpy as np
 import random
 
+import ttnn
+
 from genmo.mochi_preview.pipelines import (
     MochiSingleGPUPipeline,
     move_to_device,
@@ -82,6 +84,8 @@ def sample_model(device, dit, conditioning, **args):
         )
 
         assert cond_z_1BNI.shape == uncond_z_1BNI.shape
+        cond_z_1BNI = ttnn.typecast(cond_z_1BNI, dtype=ttnn.float32)
+        uncond_z_1BNI = ttnn.typecast(uncond_z_1BNI, dtype=ttnn.float32)
         return uncond_z_1BNI + cfg_scale * (cond_z_1BNI - uncond_z_1BNI)
 
     # Preparation before first iteration
@@ -98,11 +102,29 @@ def sample_model(device, dit, conditioning, **args):
     for i in get_new_progress_bar(range(0, sample_steps), desc="Sampling"):
         sigma = sigma_schedule[i]
         dsigma = sigma - sigma_schedule[i + 1]
+        cfg_scale = cfg_schedule[i]
+
+        tt_cfg_scale = ttnn.from_torch(
+            torch.tensor(cfg_scale),
+            device=dit.mesh_device,
+            layout=ttnn.TILE_LAYOUT,
+            dtype=ttnn.float32,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(dit.mesh_device),
+        )
+        tt_dsigma = ttnn.from_torch(
+            torch.tensor(dsigma),
+            device=dit.mesh_device,
+            layout=ttnn.TILE_LAYOUT,
+            dtype=ttnn.float32,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(dit.mesh_device),
+        )
 
         sigma_B = torch.full([B], sigma, device=device)
-        pred_1BNI = model_fn(z_1BNI=z_1BNI, sigma_B=sigma_B, cfg_scale=cfg_schedule[i])
-        # assert pred_BCTHW.dtype == torch.float32
-        z_1BNI = z_1BNI + dsigma * pred_1BNI
+        pred_1BNI = model_fn(z_1BNI=z_1BNI, sigma_B=sigma_B, cfg_scale=tt_cfg_scale)
+
+        z_1BNI = ttnn.typecast(z_1BNI, dtype=ttnn.float32)
+        z_1BNI = z_1BNI + tt_dsigma * pred_1BNI
+        z_1BNI = ttnn.typecast(z_1BNI, dtype=ttnn.bfloat16)
 
     # Postprocess z
     z_BCTHW = dit.reverse_preprocess(z_1BNI, latent_t, latent_h, latent_w, N).float()
