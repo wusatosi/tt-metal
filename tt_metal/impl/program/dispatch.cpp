@@ -1317,6 +1317,7 @@ void assemble_device_commands(
                     for (auto y = core_range.start_coord.y; y <= core_range.end_coord.y; y++) {
                         CoreCoord virtual_coord =
                             device->virtual_core_from_logical_core(CoreCoord({x, y}), kernel_group->get_core_type());
+                        std::cout << "Virtual eth coord: " << CoreCoord({x, y}).str() << std::endl;
                         unicast_go_signal_sub_cmds.emplace_back(CQDispatchWritePackedUnicastSubCmd{
                             .noc_xy_addr = device->get_noc_unicast_encoding(noc_index, virtual_coord)});
                         unicast_go_signal_data.emplace_back(launch_message_data, go_signal_sizeB);

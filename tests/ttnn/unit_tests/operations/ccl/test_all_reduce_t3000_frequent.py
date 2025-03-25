@@ -125,6 +125,7 @@ def run_all_reduce_test(
     input_tensor_mesh = ttnn.aggregate_as_tensor(tt_input_tensors).to(mesh_device, mem_config)
     # Run the op
     for i in range(num_iters):
+        print("Call all reduce")
         output_tensor_mesh = ttnn.experimental.all_reduce(
             input_tensor_mesh,
             math_op=math_op,
@@ -132,8 +133,9 @@ def run_all_reduce_test(
             memory_config=mem_config,
             topology=topology,
         )
-
+        print("Done all reduce")
         ttnn.synchronize_device(mesh_device)
+        print("Sync")
         logger.info(f"Done iteration {i}")
 
     tt_out_tensors = ttnn.get_device_tensors(output_tensor_mesh)
@@ -241,67 +243,67 @@ def test_ring_all_reduce_post_commit(
     )
 
 
-# @skip_for_grayskull("Requires eth connected devices to run")
-# @pytest.mark.timeout(120)
-# @pytest.mark.parametrize(
-#     "num_devices, num_links",
-#     [
-#         (2, 1),
-#     ],
-# )
-# @pytest.mark.parametrize(
-#     "per_chip_output_shape",
-#     [
-#         ([2, 2, 64, 64]),
-#         ([1, 1, 64, 64]),
-#     ],
-# )
-# @pytest.mark.parametrize(
-#     "layout",
-#     [
-#         ttnn.TILE_LAYOUT,
-#     ],
-# )
-# @pytest.mark.parametrize(
-#     "input_dtype",
-#     [
-#         ttnn.bfloat16,
-#     ],
-# )
-# @pytest.mark.parametrize(
-#     "mem_config",
-#     [
-#         ttnn.MemoryConfig(buffer_type=ttnn.BufferType.DRAM),
-#     ],
-# )
-# @pytest.mark.parametrize("math_op", [ttnn.ReduceType.Sum])
-# @pytest.mark.parametrize("enable_async", [True])
-# def test_ring_all_reduce_post_commit_2chip(
-#     pcie_mesh_device,
-#     num_devices,
-#     per_chip_output_shape,
-#     num_links,
-#     math_op,
-#     input_dtype,
-#     layout,
-#     mem_config,
-#     use_program_cache,
-#     function_level_defaults,
-#     enable_async,
-#     num_iters=2,
-# ):
-#     run_all_reduce_test(
-#         pcie_mesh_device,
-#         num_devices,
-#         per_chip_output_shape,
-#         num_links,
-#         math_op,
-#         input_dtype,
-#         layout,
-#         mem_config,
-#         use_program_cache,
-#         function_level_defaults,
-#         num_iters=num_iters,
-#         enable_async=enable_async,
-#         topology=ttnn.Topology.Linear,
-#     )
+@skip_for_grayskull("Requires eth connected devices to run")
+@pytest.mark.timeout(120)
+@pytest.mark.parametrize(
+    "num_devices, num_links",
+    [
+        (2, 1),
+    ],
+)
+@pytest.mark.parametrize(
+    "per_chip_output_shape",
+    [
+        ([2, 2, 64, 64]),
+        ([1, 1, 64, 64]),
+    ],
+)
+@pytest.mark.parametrize(
+    "layout",
+    [
+        ttnn.TILE_LAYOUT,
+    ],
+)
+@pytest.mark.parametrize(
+    "input_dtype",
+    [
+        ttnn.bfloat16,
+    ],
+)
+@pytest.mark.parametrize(
+    "mem_config",
+    [
+        ttnn.MemoryConfig(buffer_type=ttnn.BufferType.DRAM),
+    ],
+)
+@pytest.mark.parametrize("math_op", [ttnn.ReduceType.Sum])
+@pytest.mark.parametrize("enable_async", [True])
+def test_ring_all_reduce_post_commit_2chip(
+    mesh_device,
+    num_devices,
+    per_chip_output_shape,
+    num_links,
+    math_op,
+    input_dtype,
+    layout,
+    mem_config,
+    use_program_cache,
+    function_level_defaults,
+    enable_async,
+    num_iters=2,
+):
+    run_all_reduce_test(
+        mesh_device,
+        num_devices,
+        per_chip_output_shape,
+        num_links,
+        math_op,
+        input_dtype,
+        layout,
+        mem_config,
+        use_program_cache,
+        function_level_defaults,
+        num_iters=num_iters,
+        enable_async=enable_async,
+        topology=ttnn.Topology.Linear,
+    )
