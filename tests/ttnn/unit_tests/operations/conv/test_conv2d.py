@@ -2809,38 +2809,120 @@ def test_block_sharding_relu_act_block_h(
 @pytest.mark.parametrize(
     "batch, input_channels, output_channels, input_height, input_width, weights_dtype, activations_dtype, groups, kernel, stride, padding, dilation, auto_shard, use_shallow_conv_variant, act_block_h_override, act_block_w_div, deallocate_activation, math_fidelity, fp32_accum, packer_l1_acc, enable_split_reader, enable_act_double_buffer",
     (
-        # torch_conv2d:
-        (1, 32, 48, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (2, 2), (2, 2), True, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
-        # # torch_split_knit_dilation: 4x
-        (1, 32, 48, 160, 160, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), HS, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
-        # # torch_split_knit_grouped_dilation: 1x
-        (1, 128, 192, 160, 160, ttnn.bfloat8_b, ttnn.bfloat8_b, 4, (3, 3), (1, 1), (1, 1), (1, 1), HS, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
-        # # torch_split_knit_dilation_h: 2x
-        (1, 32, 48, 160, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 2), (1, 2), HS, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
-        # # torch_split_knit_grouped_dilation: 1x
-        (1, 64, 96, 160, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 2, (3, 3), (1, 1), (1, 2), (1, 2), HS, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    #     # torch_conv2d:
+    #     (1, 32, 48, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (2, 2), (2, 2), True, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    #     # # torch_split_knit_dilation: 4x
+    #     (1, 32, 48, 160, 160, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), HS, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    #     # # torch_split_knit_grouped_dilation: 1x
+    #     (1, 128, 192, 160, 160, ttnn.bfloat8_b, ttnn.bfloat8_b, 4, (3, 3), (1, 1), (1, 1), (1, 1), HS, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    #     # # torch_split_knit_dilation_h: 2x
+    #     (1, 32, 48, 160, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 2), (1, 2), HS, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    #     # # torch_split_knit_grouped_dilation: 1x
+    #     (1, 64, 96, 160, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 2, (3, 3), (1, 1), (1, 2), (1, 2), HS, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
 
-        # # # torch_conv2d:
-        (1, 48, 56, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (4, 4), (4, 4), True, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
-        # # torch_split_knit_dilation: 16x
-        (1, 48, 56, 80, 80, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), HS, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
-        # # torch_split_knit_grouped_dilation: 1x
-        (1, 768, 896, 80, 80, ttnn.bfloat8_b, ttnn.bfloat8_b, 16, (3, 3), (1, 1), (1, 1), (1, 1), True, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
-        # # torch_split_knit_dilation_h: 4x
-        (1, 48, 56, 80, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 4), (1, 4), HS, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
-        # # torch_split_knit_grouped_dilation: 1x
-        (1, 192, 224, 80, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 4, (3, 3), (1, 1), (1, 4), (1, 4), True, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    #     # # # torch_conv2d:
+    #     (1, 48, 56, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (4, 4), (4, 4), True, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    #     # # torch_split_knit_dilation: 16x
+    #     (1, 48, 56, 80, 80, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), HS, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    #     # # torch_split_knit_grouped_dilation: 1x
+    #     (1, 768, 896, 80, 80, ttnn.bfloat8_b, ttnn.bfloat8_b, 16, (3, 3), (1, 1), (1, 1), (1, 1), True, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    #     # # torch_split_knit_dilation_h: 4x
+    #     (1, 48, 56, 80, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 4), (1, 4), HS, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    #     # # torch_split_knit_grouped_dilation: 1x
+    #     (1, 192, 224, 80, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 4, (3, 3), (1, 1), (1, 4), (1, 4), True, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
 
-        # # torch_conv2d:
-        (1, 56, 64, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (8, 8), (8, 8), True, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
-        # # torch_split_knit_dilation: 64x
-        (1, 56, 64, 40, 40, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), HS, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
-        # # torch_split_knit_grouped_dilation: 1x
-        (1, 3584, 4096, 40, 40, ttnn.bfloat8_b, ttnn.bfloat8_b, 64, (3, 3), (1, 1), (1, 1), (1, 1), True, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
-        # # torch_split_knit_dilation_h: 8x
-        (1, 56, 64, 40, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 8), (1, 8), HS, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
-        # # torch_split_knit_grouped_dilation: 1x
-        (1, 448, 512, 40, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 8, (3, 3), (1, 1), (1, 8), (1, 8), True, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    #     # # torch_conv2d:
+    #     (1, 56, 64, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (8, 8), (8, 8), True, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    #     # # torch_split_knit_dilation: 64x
+    #     (1, 56, 64, 40, 40, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), HS, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    #     # # torch_split_knit_grouped_dilation: 1x
+    #     (1, 3584, 4096, 40, 40, ttnn.bfloat8_b, ttnn.bfloat8_b, 64, (3, 3), (1, 1), (1, 1), (1, 1), True, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    #     # # torch_split_knit_dilation_h: 8x
+    #     (1, 56, 64, 40, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 8), (1, 8), HS, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    #     # # torch_split_knit_grouped_dilation: 1x
+    #     (1, 448, 512, 40, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 8, (3, 3), (1, 1), (1, 8), (1, 8), True, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+
+    # 320x320
+    # # torch_conv2d:
+    # (1, 32, 48, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (2, 2), (2, 2), HS, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, True, True),
+    # # torch_split_knit_dilation: 4x
+    # (1, 32, 48, 160, 160, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), HS, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, True, True),
+    # # torch_split_knit_batched_dilation: 1x
+    # (4, 32, 48, 160, 160, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), HS, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, True, True),
+    # # # torch_split_knit_grouped_dilation: 1x
+    # # (1, 128, 192, 160, 160, ttnn.bfloat8_b, ttnn.bfloat8_b, 4, (3, 3), (1, 1), (1, 1), (1, 1), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    # # # torch_split_knit_dilation_h: 2x
+    # # (1, 32, 48, 160, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 2), (1, 2), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    # # # torch_split_knit_grouped_dilation: 1x
+    # # (1, 64, 96, 160, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 2, (3, 3), (1, 1), (1, 2), (1, 2), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+
+    # # torch_conv2d:
+    # (1, 48, 56, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (4, 4), (4, 4), HS, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, True, True),
+    # # torch_split_knit_dilation: 16x
+    # (1, 48, 56, 80, 80, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), HS, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, True, True),
+    # # torch_split_knit_batched_dilation: 1x
+    # (16, 48, 56, 80, 80, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), HS, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, True, True),
+    # # # torch_split_knit_grouped_dilation: 1x
+    # # (1, 768, 896, 80, 80, ttnn.bfloat8_b, ttnn.bfloat8_b, 16, (3, 3), (1, 1), (1, 1), (1, 1), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    # # # torch_split_knit_dilation_h: 4x
+    # # (1, 48, 56, 80, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 4), (1, 4), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    # # # torch_split_knit_grouped_dilation: 1x
+    # # (1, 192, 224, 80, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 4, (3, 3), (1, 1), (1, 4), (1, 4), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+
+    # # torch_conv2d:
+    # (1, 56, 64, 320, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (8, 8), (8, 8), HS, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, True, True),
+    # # torch_split_knit_dilation: 64x
+    # (1, 56, 64, 40, 40, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), HS, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, True, True),
+    # # torch_split_knit_batched_dilation: 1x
+    # (64, 56, 64, 40, 40, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), HS, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, True, True),
+    # # # torch_split_knit_grouped_dilation: 1x
+    # # (1, 3584, 4096, 40, 40, ttnn.bfloat8_b, ttnn.bfloat8_b, 64, (3, 3), (1, 1), (1, 1), (1, 1), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    # # # torch_split_knit_dilation_h: 8x
+    # # (1, 56, 64, 40, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 8), (1, 8), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    # # # torch_split_knit_grouped_dilation: 1x
+    # # (1, 448, 512, 40, 320, ttnn.bfloat8_b, ttnn.bfloat8_b, 8, (3, 3), (1, 1), (1, 8), (1, 8), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+
+    # 1024x128, 256, 512
+    # torch_conv2d:
+    (1, 32, 48, 1024, 128*4, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (2, 2), (2, 2), HS, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, True, True),
+    # torch_split_knit_dilation: 4x
+    (1, 32, 48, 512, 64*4, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), HS, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, True, True),
+    # torch_split_knit_batched_dilation: 1x
+    (4, 32, 48, 512, 64*4, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), HS, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, True, True),
+    # # torch_split_knit_grouped_dilation: 1x
+    # (1, 128, 192, 512, 64, ttnn.bfloat8_b, ttnn.bfloat8_b, 4, (3, 3), (1, 1), (1, 1), (1, 1), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    # # torch_split_knit_dilation_h: 2x
+    # (1, 32, 48, 512, 128, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 2), (1, 2), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    # # torch_split_knit_grouped_dilation: 1x
+    # (1, 64, 96, 512, 128, ttnn.bfloat8_b, ttnn.bfloat8_b, 2, (3, 3), (1, 1), (1, 2), (1, 2), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+
+    # torch_conv2d:
+    (1, 48, 56, 1024, 128*4, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (4, 4), (4, 4), HS, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, True, True),
+    # torch_split_knit_dilation: 16x
+    (1, 48, 56, 256, 32*4, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), HS, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, True, True),
+    # torch_split_knit_batched_dilation: 1x
+    (16, 48, 56, 256, 32*4, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), HS, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, True, True),
+    # # torch_split_knit_grouped_dilation: 1x
+    # (1, 768, 896, 256, 32, ttnn.bfloat8_b, ttnn.bfloat8_b, 16, (3, 3), (1, 1), (1, 1), (1, 1), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    # # torch_split_knit_dilation_h: 4x
+    # (1, 48, 56, 256, 128, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 4), (1, 4), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    # # torch_split_knit_grouped_dilation: 1x
+    # (1, 192, 224, 256, 128, ttnn.bfloat8_b, ttnn.bfloat8_b, 4, (3, 3), (1, 1), (1, 4), (1, 4), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+
+    # torch_conv2d:
+    (1, 56, 64, 1024, 128*4, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (8, 8), (8, 8), HS, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, True, True),
+    # torch_split_knit_dilation: 64x
+    (1, 56, 64, 128, 16*4, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), HS, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, True, True),
+    # torch_split_knit_batched_dilation: 1x
+    (64, 56, 64, 128, 16*4, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), HS, False, 32*2, 1, True, ttnn.MathFidelity.LoFi, False, False, True, True),
+    # # torch_split_knit_grouped_dilation: 1x
+    # (1, 3584, 4096, 128, 16, ttnn.bfloat8_b, ttnn.bfloat8_b, 64, (3, 3), (1, 1), (1, 1), (1, 1), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    # # torch_split_knit_dilation_h: 8x
+    # (1, 56, 64, 128, 128, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 8), (1, 8), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+    # # torch_split_knit_grouped_dilation: 1x
+    # (1, 448, 512, 128, 128, ttnn.bfloat8_b, ttnn.bfloat8_b, 8, (3, 3), (1, 1), (1, 8), (1, 8), True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),
+
+
     ),
 )
  #fmt: on
@@ -2972,6 +3054,66 @@ def torch_split_knit_dilation(torch_input_tensor_nchw, torch_weight_tensor_oihw,
         for split_w in range(dilation_hw[1]):
             out_knitted[:,:,split_h::dilation_hw[0],split_w::dilation_hw[1]] = outs_splited[split_h * dilation_hw[1] + split_w]
 
+
+    return out_knitted
+
+
+# Split-Knit Conv2d with high dilation (batched)
+def torch_split_knit_batched_dilation(torch_input_tensor_nchw, torch_weight_tensor_oihw, torch_bias_tensor, filter_hw, stride_hw, padding_hw, dilation_hw, groups):
+    assert groups == 1, "groups must be 1"
+    assert all(d % 2 == 0 for d in dilation_hw), "dilation must be even"
+    assert all(s == 1 for s in stride_hw), "stride must be 1"
+    assert padding_hw[0] == 0 or padding_hw[0] == dilation_hw[0], "padding must be 0 or equal to dilation"
+    assert padding_hw[1] == 0 or padding_hw[1] == dilation_hw[1], "padding must be 0 or equal to dilation"
+    assert padding_hw[0] == padding_hw[1], "padding must be equal"
+
+    assert torch_input_tensor_nchw.shape[2] % dilation_hw[0] == 0, "input height must be divisible by dilation"
+    assert torch_input_tensor_nchw.shape[3] % dilation_hw[1] == 0, "input width must be divisible by dilation"
+
+    assert torch_input_tensor_nchw.shape[0] == 1, f"batch size must be 1"
+
+    # split
+    sk_batch=torch_input_tensor_nchw.shape[0] * dilation_hw[0] * dilation_hw[1]
+    inputs_grouped_splited = torch.zeros((sk_batch, torch_input_tensor_nchw.shape[1], torch_input_tensor_nchw.shape[2] // dilation_hw[0], torch_input_tensor_nchw.shape[3] // dilation_hw[1]))
+    for split_h in range(dilation_hw[0]):
+        for split_w in range(dilation_hw[1]):
+            batch_idx = split_h * dilation_hw[1] + split_w
+            inputs_grouped_splited[batch_idx,:,:,:] =  torch_input_tensor_nchw[
+                    :,
+                    :,
+                    split_h::dilation_hw[0],
+                    split_w::dilation_hw[1],
+                ]
+
+    sk_padding_hw=(1,1) if padding_hw[0] > 0 else (0,0)
+    sk_dilation_hw=(1,1)
+    sk_groups=1
+
+    # conv2d
+    out_splited = torch.nn.functional.conv2d(
+        inputs_grouped_splited,
+        torch_weight_tensor_oihw,
+        # bias=torch_bias_tensor.reshape(-1).repeat(dilation_hw[0]*dilation_hw[1]) if torch_bias_tensor is not None else None, # TBD if this is OK
+        bias=torch_bias_tensor.reshape(-1) if torch_bias_tensor is not None else None, # TBD if this is OK
+        stride=stride_hw,
+        padding=sk_padding_hw,
+        dilation=sk_dilation_hw,
+        groups=sk_groups
+    )
+
+    """batch, input_channels, output_channels, input_height, input_width, weights_dtype, activations_dtype, groups, kernel, stride, padding, dilation")"""
+    print(f"# torch_split_knit_batched_dilation: 1x \n({inputs_grouped_splited.shape[0]}, {inputs_grouped_splited.shape[1]}, {out_splited.shape[1]}, {inputs_grouped_splited.shape[2]}, {inputs_grouped_splited.shape[3]}, ttnn.bfloat8_b, ttnn.bfloat8_b, {sk_groups}, ({torch_weight_tensor_oihw.shape[2]}, {torch_weight_tensor_oihw.shape[3]}), (1, 1), {sk_padding_hw}, {sk_dilation_hw}, True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),")
+
+    # knit
+    out_h = (torch_input_tensor_nchw.shape[2] + 2 * padding_hw[0] - dilation_hw[0] * (filter_hw[0] - 1) - 1) // stride_hw[0] + 1
+    out_w = (torch_input_tensor_nchw.shape[3] + 2 * padding_hw[1] - dilation_hw[1] * (filter_hw[1] - 1) - 1) // stride_hw[1] + 1
+    out_knitted = torch.zeros((torch_input_tensor_nchw.shape[0], torch_weight_tensor_oihw.shape[0], out_h, out_w))
+
+    # for out_channel in range(out_channels):
+    for split_h in range(dilation_hw[0]):
+        for split_w in range(dilation_hw[1]):
+            src_batch_idx = split_h * dilation_hw[1] + split_w
+            out_knitted[:,:,split_h::dilation_hw[0],split_w::dilation_hw[1]] = out_splited[src_batch_idx,:,:,:]
 
     return out_knitted
 
@@ -3152,12 +3294,16 @@ def torch_split_knit_grouped_dilation_h(torch_input_tensor_nchw, torch_weight_te
 @pytest.mark.parametrize(
     "input_shape_nchw, output_channels, filter_hw, stride_hw, padding_hw, dilation_hw",
     (
-        ((1, 32, 320, 320), 48, (3, 3), (1, 1), (2, 2), (2, 2)),
-        ((1, 48, 320, 320), 56, (3, 3), (1, 1), (4, 4), (4, 4)),
-        ((1, 56, 320, 320), 64, (3, 3), (1, 1), (8, 8), (8, 8)),
-        ((1, 32, 320, 320), 48, (3, 3), (1, 1), (0, 0), (2, 2)),
-        ((1, 48, 320, 320), 56, (3, 3), (1, 1), (0, 0), (4, 4)),
-        ((1, 56, 320, 320), 64, (3, 3), (1, 1), (0, 0), (8, 8)),
+        # ((1, 32, 320, 320), 48, (3, 3), (1, 1), (2, 2), (2, 2)),
+        # ((1, 48, 320, 320), 56, (3, 3), (1, 1), (4, 4), (4, 4)),
+        # ((1, 56, 320, 320), 64, (3, 3), (1, 1), (8, 8), (8, 8)),
+        # ((1, 32, 320, 320), 48, (3, 3), (1, 1), (0, 0), (2, 2)),
+        # ((1, 48, 320, 320), 56, (3, 3), (1, 1), (0, 0), (4, 4)),
+        # ((1, 56, 320, 320), 64, (3, 3), (1, 1), (0, 0), (8, 8)),
+
+        ((1, 32, 1024, 128), 48, (3, 3), (1, 1), (2, 2), (2, 2)),
+        ((1, 48, 1024, 128), 56, (3, 3), (1, 1), (4, 4), (4, 4)),
+        ((1, 56, 1024, 128), 64, (3, 3), (1, 1), (8, 8), (8, 8)),
     ),
 )
 # fmt: on
@@ -3209,6 +3355,24 @@ def test_conv2d_split_knit_dilation(
     )
     pcc = 0.999
     passing, pcc_msg = check_with_pcc_without_tensor_printout(torch_out_golden_tensor, torch_split_knit_out, pcc=pcc)
+    logger.info(f"PCC = {pcc_msg}. Threshold = {pcc}")
+    assert passing, pcc_msg
+
+    # =================== Split-Knit Conv2d, batched conv2d approach ===================
+    torch_split_knit_batched_out = torch_split_knit_batched_dilation(
+        torch_input_tensor_nchw,
+        torch_weight_tensor_oihw,
+        torch_bias_tensor,
+        filter_hw,
+        stride_hw,
+        padding_hw,
+        dilation_hw,
+        groups,
+    )
+    pcc = 0.999
+    passing, pcc_msg = check_with_pcc_without_tensor_printout(
+        torch_out_golden_tensor, torch_split_knit_batched_out, pcc=pcc
+    )
     logger.info(f"PCC = {pcc_msg}. Threshold = {pcc}")
     assert passing, pcc_msg
 
