@@ -271,7 +271,7 @@ class Conv2DMatmulProfiler:
         :param e2e_ratio: End-to-end ratio.
         """
         if(matmul_ideal_execution_time == 0 and conv_ideal_execution_time == 0):
-            print("Matmul or Conv2D ideal execution time is 0. Cannot calculate CS and CC models.")
+            print("Matmul or Conv2D ideal execution time is 0. Cannot calculate CS and CC models. Please check if Conv2D begin/end are added in files.")
             return
         
         cs_model = (
@@ -315,10 +315,11 @@ def main(input_csv, output_csv, batch):
     return 0
 
 if __name__ == "__main__":
-    print("Please be aware that this script need's adjustments in order to work properly")
-    print("It's necessary to add blocks with labels (like you can see in files under this commit): ")
-    print("<Conv2D begin> and <Conv2D end> in file /tt-metal/ttnn/ttnn/operations/conv2d.py::conv2d")
-    print("<Conv2D begin Transpose> and <Conv2D end Transpose> /tt-metal/ttnn/ttnn/operations/transpose_conv2d.py::conv_transpose2d")
+    
+    print("Please note that this script requires adjustments to function properly.")
+    print("You must insert blocks with specific labels (as shown in the files within this commit):")
+    print("<Conv2D begin> and <Conv2D end> in the file /tt-metal/ttnn/ttnn/operations/conv2d.py::conv2d")
+    print("<Conv2D begin Transpose> and <Conv2D end Transpose> in the file /tt-metal/ttnn/ttnn/operations/transpose_conv2d.py::conv_transpose2d")
 
     main()
     
