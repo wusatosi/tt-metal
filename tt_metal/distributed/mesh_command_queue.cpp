@@ -168,13 +168,14 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
     bool unicast_go_signals = mesh_workload.runs_on_noc_unicast_only_cores();
     bool mcast_go_signals = mesh_workload.runs_on_noc_multicast_only_cores();
 
-    uint32_t max_eth_cores = mesh_device_->num_virtual_eth_cores(sub_device_id);
+    uint32_t num_virtual_eth_cores = 0;
 
     if (mcast_go_signals) {
         num_workers += mesh_device_->num_worker_cores(HalProgrammableCoreType::TENSIX, sub_device_id);
     }
     if (unicast_go_signals) {
-        num_workers += max_eth_cores;
+        num_virtual_eth_cores = mesh_device_->num_virtual_eth_cores(sub_device_id);
+        num_workers += num_virtual_eth_cores;
     }
 
     program_dispatch::ProgramDispatchMetadata dispatch_metadata;
@@ -208,7 +209,7 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
             sub_device_id,
             dispatch_metadata,
             mesh_workload.get_program_binary_status(mesh_device_id),
-            std::pair<bool, int>(unicast_go_signals, max_eth_cores));
+            std::pair<bool, int>(unicast_go_signals, num_virtual_eth_cores));
         if (sysmem_manager.get_bypass_mode()) {
             this->capture_program_trace_on_subgrid(
                 device_range, program_cmd_seq, dispatch_metadata.stall_first, dispatch_metadata.stall_before_program);

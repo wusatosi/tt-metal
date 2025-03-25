@@ -769,9 +769,8 @@ TEST(
                         split_dim,
 
                         // In this test we will have n stages with anywhere from 1 to 8 workers per stage (this will
-                        be
-                            // configurable)
-                            num_stages,
+                        // be configurable)
+                        num_stages,
                         num_workers_per_stage,
                         slices_per_stage,
                         data_format,
