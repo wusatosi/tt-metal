@@ -786,8 +786,7 @@ void MeshCommandQueue::write_go_signal_to_unused_sub_grids(
                 expected_num_workers_completed,
                 this->virtual_program_dispatch_core(),
                 mcast_go_signals,
-                unicast_go_signals,
-                mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id));
+                unicast_go_signals);
         }
     }
 }
@@ -832,8 +831,7 @@ void MeshCommandQueue::capture_go_signal_trace_on_unused_subgrids(
             expected_num_workers_completed,
             this->virtual_program_dispatch_core(),
             mcast_go_signals,
-            unicast_go_signals,
-            mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id));
+            unicast_go_signals);
         auto mesh_trace_md = MeshTraceStagingMetadata{
             unused_grid,
             unused_grid.start_coord(),

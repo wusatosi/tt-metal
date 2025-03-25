@@ -135,7 +135,6 @@ static Tensor all_gather_local_reduce(
         "Falling back to unoptimized version (all_gather + local reduce) as the input tensor shape {} is not handled "
         "by optimized version",
         shape);
-
     if (num_devices == 2) {
         // 2 devices == n300 == linear topology
         topology = ttnn::ccl::Topology::Linear;
@@ -270,50 +269,32 @@ Tensor all_reduce(
     TT_FATAL(
         std::getenv("TT_METAL_SLOW_DISPATCH_MODE") == nullptr, "All Reduce op is only supported for Fast Dispatch");
 
-    auto devices = input_tensor.mesh_device()->get_devices();
+    auto mesh_device = input_tensor.mesh_device();
+    std::vector<IDevice*> devices = {};
+    for (const auto& spec : input_tensor.device_storage().specs) {
+        devices.push_back(mesh_device->get_device(spec.first));
+    }
+
     uint32_t num_devices = devices.size();
     TT_FATAL(num_devices > 1, "all_reduce op will only work for num_devices > 1, but has {}", num_devices);
 
-    std::vector<Tensor> output_tensors = {Tensor(input_tensor.mesh_device())};
-    tt::tt_metal::operation::launch_op(
-        [binary_op_type,
-         num_links,
-         num_devices,
-         output_mem_config,
-         topology,
-         devices,
-         user_defined_num_workers,
-         user_defined_num_buffers_per_channel](
-            const std::vector<Tensor>& input_tensors,
-            const std::vector<std::optional<const Tensor>>& optional_input_tensors,
-            const std::vector<std::optional<Tensor>>& optional_output_tensors) mutable -> std::vector<Tensor> {
-            TT_FATAL(input_tensors.size() >= 1, "All reduce op expects an input tensor but it received none");
-            bool is_linear = topology == ttnn::ccl::Topology::Linear;
+    bool is_linear = topology == ttnn::ccl::Topology::Linear;
 
-            const auto& input_tensor = input_tensors.at(0);
+    // Choose the appropriate strategy
+    AllReduceStrategy strategy = choose_all_reduce_strategy(input_tensor, num_devices, num_links, topology);
 
-            // Choose the appropriate strategy
-            AllReduceStrategy strategy = choose_all_reduce_strategy(input_tensor, num_devices, num_links, topology);
-
-            // Run the selected all-reduce operation
-            Tensor result = run_all_reduce(
-                strategy,
-                input_tensor,
-                binary_op_type,
-                num_devices,
-                num_links,
-                output_mem_config,
-                user_defined_num_workers,
-                user_defined_num_buffers_per_channel,
-                devices,
-                topology);
-
-            return {result};
-        },
-        {input_tensor},
-        output_tensors);
-
-    return output_tensors.at(0);
+    // Run the selected all-reduce operation
+    return run_all_reduce(
+        strategy,
+        input_tensor,
+        binary_op_type,
+        num_devices,
+        num_links,
+        output_mem_config,
+        user_defined_num_workers,
+        user_defined_num_buffers_per_channel,
+        devices,
+        topology);
 }
 
 }  // namespace ccl
