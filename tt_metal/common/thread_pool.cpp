@@ -431,6 +431,12 @@ private:
     std::unordered_map<uint32_t, uint32_t> phys_device_to_thread_id_;
 };
 
+class SyncThreadPool : public ThreadPool {
+public:
+    void enqueue(std::function<void()>&& f, std::optional<uint32_t>) override { f(); }
+    void wait() override {}
+};
+
 }  // namespace thread_pool_impls
 
 std::shared_ptr<ThreadPool> create_boost_thread_pool(int num_threads) {
@@ -449,5 +455,7 @@ std::shared_ptr<ThreadPool> create_device_bound_thread_pool(
     const std::vector<tt::tt_metal::IDevice*>& physical_devices) {
     return std::make_shared<thread_pool_impls::DeviceBoundThreadPool>(physical_devices);
 }
+
+std::shared_ptr<ThreadPool> create_sync_thread_pool() { return std::make_shared<thread_pool_impls::SyncThreadPool>(); }
 
 }  // namespace tt::tt_metal
