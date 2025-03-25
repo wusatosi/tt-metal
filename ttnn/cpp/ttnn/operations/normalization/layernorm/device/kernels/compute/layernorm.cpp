@@ -14,6 +14,7 @@
 #include "compute_kernel_api/bcast.h"
 #include "compute_kernel_api/eltwise_binary.h"
 #include "compute_kernel_api/layernorm.h"
+#include "compute_kernel_api/matmul.h"
 
 ALWI void ACQ() { acquire_dst(); }
 ALWI void REL() { release_dst(); }
@@ -39,6 +40,7 @@ void MAIN {
     constexpr auto cb_out = tt::CBIndex::c_16;    // output
     constexpr auto cb_gamma = tt::CBIndex::c_5;
     constexpr auto cb_beta = tt::CBIndex::c_6;
+    constexpr auto cb_column_ones = tt::CBIndex::c_7;
 #if defined RMSNORM and not defined FUSE_PRE_ADD
     constexpr uint32_t cb_xmm = cb_in;  // x minus mean
 #else
@@ -59,6 +61,7 @@ void MAIN {
 #else
     constexpr uint32_t cb_x = cb_in;
 #endif
+    mm_init(cb_x, cb_column_ones, cb_ex);
 
 #ifdef FUSE_PRE_ADD
     binary_op_init_common(cb_in, cb_inb, cb_x);
@@ -68,12 +71,15 @@ void MAIN {
 
     cb_wait_front(cb_scaler, 1);  // comes from the reader
     cb_wait_front(cb_eps, 1);     // comes from the reader
+    cb_wait_front(cb_column_ones, 1);
 
     constexpr int cb_im_or_out = (do_gamma | do_beta) ? cb_fusion : cb_out;
 
     for (uint32_t ncht = 0; ncht < NCHt; ncht++) {
         constexpr int onetile = 1;
         constexpr int dst0 = 0;
+
+        // DPRINT << "fp32_enabled" << (uint32_t)DST_ACCUM_MODE << ENDL();
 
 /*
  * X + Y
@@ -84,11 +90,8 @@ void MAIN {
         add_tiles_init(cb_in, cb_inb);
         for (uint32_t wt = 0; wt < Wt; wt += blk) {
             ACQ();
-            // UNPACK(( { DPRINT  << "Waiting on cb_x" << ENDL(); } ));
             cb_wait_front(cb_in, blk);
-            // UNPACK(( { DPRINT  << "Waiting on cb_inb" << ENDL(); } ));
             cb_wait_front(cb_inb, blk);
-            // UNPACK(( { DPRINT  << "Done Waiting on cb_inb" << ENDL(); } ));
             cb_reserve_back(cb_x, blk);
             for (uint32_t j = 0; j < blk; j++) {
                 add_tiles(cb_in, cb_inb, j, j, j);
@@ -120,21 +123,37 @@ void MAIN {
          * E[x]
          * means = ttnn.sum(x, 3, True, None, None, 1.0/W) # -> NCH1
          */
-        ACQ();
         cb_reserve_back(cb_ex, onetile);
-        reduce_init_delta<false>(cb_x, cb_scaler, cb_ex);
+        mm_init_short(cb_x, cb_column_ones);
+        reconfig_data_format(cb_column_ones, cb_x);
+        ACQ();
         for (uint32_t wt = 0; wt < Wt; wt += blk) {
             cb_wait_front(cb_x, wt + blk);
             for (uint32_t j = 0; j < blk; j++) {
-                reduce_tile(cb_x, cb_scaler, wt + j, scaler0, dst0);
+                matmul_tiles(cb_x, cb_column_ones, wt + j, scaler0, dst0, 0);
             }
             // we don't pop cb_x until we compute Ex
         }
         pack_tile(dst0, cb_ex);
-        reduce_revert_delta(cb_ex);
+        // reduce_revert_delta(cb_ex);
         REL();
 
         cb_push_back(cb_ex, 1);
+
+        // Multiply by mean denominator
+        reconfig_data_format(cb_ex, cb_scaler);
+        cb_wait_front(cb_ex, 1);
+        cb_wait_front(cb_scaler, 1);
+        mul_tiles_init(cb_ex, cb_scaler);
+        ACQ();
+        mul_tiles(cb_ex, cb_scaler, 0, 0, dst0);
+        cb_pop_front(cb_ex, 1);
+        cb_reserve_back(cb_ex, 1);
+        pack_tile(dst0, cb_ex);
+        REL();
+        cb_push_back(cb_ex, 1);
+
+        cb_wait_front(cb_ex, 1);
 
         /*
          * x - E[x]
@@ -193,25 +212,36 @@ void MAIN {
             reconfig_data_format(cb_xmm2, cb_scaler);
         }
         cb_reserve_back(cb_ex2, 1);
-        reduce_init_delta<false>(cb_xmm2, cb_scaler, cb_ex2);
+        // reduce_init_delta<false>(cb_xmm2, cb_scaler, cb_ex2);
+        mm_init_short(cb_xmm2, cb_column_ones);
+        reconfig_data_format(cb_column_ones, cb_xmm2);
         ACQ();
         cb_wait_front(cb_xmm2, Wt);
         // cb_wait_front(cb_xmm, Wt);
         for (uint32_t wt = 0; wt < Wt; wt += blk) {
             // reduce
             for (uint32_t wtr = 0; wtr < blk; wtr++) {
-                reduce_tile(cb_xmm2, cb_scaler, wt + wtr, scaler0, dst0);
+                matmul_tiles(cb_xmm2, cb_column_ones, wt + wtr, scaler0, dst0, 0);
             }
             // reduce_tile(cb_xmm, cb_scaler, wt+wtr, scaler0, dst0);
         }
         cb_pop_front(cb_xmm2, Wt);
         pack_tile(dst0, cb_ex2);
-        reduce_revert_delta(cb_ex2);
+        // reduce_revert_delta(cb_ex2);
         REL();
 
         cb_push_back(cb_ex2, 1);
         cb_wait_front(cb_ex2, 1);
-
+        reconfig_data_format(cb_ex2, cb_scaler);
+        mul_tiles_init(cb_ex2, cb_scaler);
+        ACQ();
+        mul_tiles(cb_ex2, cb_scaler, 0, 0, dst0);
+        cb_pop_front(cb_ex2, 1);
+        cb_reserve_back(cb_ex2, 1);
+        pack_tile(dst0, cb_ex2);
+        REL();
+        cb_push_back(cb_ex2, 1);
+        cb_wait_front(cb_ex2, 1);
         /* Var(x) + eps
          * add epsilon E[(x-E[x])^2]+eps
          */

@@ -315,6 +315,12 @@ operation::ProgramWithCallbacks layernorm_multi_core(
         CircularBufferConfig(in2_t * bfloat16_tile_size, {{tt::CBIndex::c_2, tt::DataFormat::Float16_b}})
             .set_page_size(tt::CBIndex::c_2, bfloat16_tile_size);
     CreateCircularBuffer(program, all_cores, cb_in2_config);
+
+    CircularBufferConfig cb_in7_config =
+        CircularBufferConfig(in2_t * bfloat16_tile_size, {{tt::CBIndex::c_7, tt::DataFormat::Float16_b}})
+            .set_page_size(tt::CBIndex::c_7, bfloat16_tile_size);
+    CreateCircularBuffer(program, all_cores, cb_in7_config);
+
     CircularBufferConfig cb_in3_config =
         CircularBufferConfig(in3_t * bfloat16_tile_size, {{tt::CBIndex::c_3, tt::DataFormat::Float16_b}})
             .set_page_size(tt::CBIndex::c_3, bfloat16_tile_size);

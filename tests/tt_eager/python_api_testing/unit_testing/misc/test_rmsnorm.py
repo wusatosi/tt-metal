@@ -16,7 +16,7 @@ from tt_lib.utils import (
     untilize,
     is_close,
 )
-from models.utility_functions import is_wormhole_b0
+from models.utility_functions import is_wormhole_b0, comp_allclose, comp_pcc
 
 
 def rmsnorm(x, gamma, beta, eps):
@@ -63,7 +63,7 @@ def run_rmsnorm_tests(test_id, dtype, in0_mem_config, out_mem_config, device):
                 in0_mem_config,
             )
 
-        x = torch.rand((N, C, H, W)) * 2 - 0.95
+        x = torch.rand((N, C, H, W)) * 100 - 5
 
         ttx = ttnn.Tensor(
             tilize_to_list(x),
@@ -74,15 +74,31 @@ def run_rmsnorm_tests(test_id, dtype, in0_mem_config, out_mem_config, device):
             in0_mem_config,
         )
 
+        kernel_config = ttnn.WormholeComputeKernelConfig(
+            math_fidelity=ttnn.MathFidelity.HiFi4,
+            math_approx_mode=False,
+            fp32_dest_acc_en=True,
+            packer_l1_acc=False,
+        )
+
         if test_id == 0:
             logger.info("Running RMSN_NOGB")
-            ttz = ttnn.rms_norm(ttx, epsilon=epsf, memory_config=out_mem_config)
+            ttz = ttnn.rms_norm(ttx, epsilon=epsf, memory_config=out_mem_config, compute_kernel_config=kernel_config)
         elif test_id == 1:
             logger.info("Running RMSN_G")
-            ttz = ttnn.rms_norm(ttx, epsilon=epsf, weight=ttgamma, memory_config=out_mem_config)
+            ttz = ttnn.rms_norm(
+                ttx, epsilon=epsf, weight=ttgamma, memory_config=out_mem_config, compute_kernel_config=kernel_config
+            )
         elif test_id == 2:
             logger.info("Running RMSN_GB")
-            ttz = ttnn.rms_norm(ttx, epsilon=epsf, weight=ttgamma, bias=ttbeta, memory_config=out_mem_config)
+            ttz = ttnn.rms_norm(
+                ttx,
+                epsilon=epsf,
+                weight=ttgamma,
+                bias=ttbeta,
+                memory_config=out_mem_config,
+                compute_kernel_config=kernel_config,
+            )
         else:
             assert False
         logger.info("Done")
@@ -102,6 +118,8 @@ def run_rmsnorm_tests(test_id, dtype, in0_mem_config, out_mem_config, device):
         ref_rmsnorm = rmsnorm(x, gamma.flatten(), beta.flatten(), epsf)
 
         passing = is_close(tt_got_back, ref_rmsnorm)
+        print(comp_allclose(tt_got_back, ref_rmsnorm))
+        print(comp_pcc(tt_got_back, ref_rmsnorm))
         assert passing
 
 

@@ -67,9 +67,21 @@ void kernel_main() {
 
     // Generate constant tiles for layernorm compute
     {
+        // Scalar for scaling reduce_sum output is a column
         constexpr uint32_t cb_in_2 = tt::CBIndex::c_2;
         uint32_t scaler = get_arg_val<uint32_t>(4);
-        generate_reduce_scaler(cb_in_2, scaler);
+        generate_bcast_col_scalar(cb_in_2, scaler);
+    }
+    {
+        union {
+            float f;
+            uint32_t u;
+        } e;
+        e.f = 1.0f;
+        // Generate column of ones for reduce_sum as matmul
+        constexpr uint32_t cb_column_ones = tt::CBIndex::c_7;
+        uint32_t one_float = e.u;
+        generate_bcast_col_scalar(cb_column_ones, one_float);
     }
     constexpr uint32_t eps_cb_id = 3;
     const uint32_t eps = get_arg_val<uint32_t>(5);
