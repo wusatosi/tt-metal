@@ -718,7 +718,7 @@ void LaunchProgram(IDevice* device, Program& program, bool wait_until_cores_done
         }
     }  // Profiler scope end
     if (wait_until_cores_done) {
-        DumpDeviceProfileResults(device, program);
+        // DumpDeviceProfileResults(device, program);
     }
 }
 

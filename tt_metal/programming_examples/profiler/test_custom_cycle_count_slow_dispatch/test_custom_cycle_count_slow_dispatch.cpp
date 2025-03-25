@@ -67,8 +67,11 @@ int main(int argc, char** argv) {
         tt_metal::IDevice* device = tt_metal::CreateDevice(device_id);
 
         int loop_count = 2000;
-        pass &= RunCustomCycle(device, loop_count);
+        for (int i = 0; i < 1000; i++) {
+            pass &= RunCustomCycle(device, loop_count);
+        }
 
+        tt_metal::detail::DumpDeviceProfileResults(device);
         pass &= tt_metal::CloseDevice(device);
 
     } catch (const std::exception& e) {

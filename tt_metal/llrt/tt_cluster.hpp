@@ -59,6 +59,10 @@ public:
 
     static Cluster& instance();
 
+    void set_dma_enabled(bool value) {
+        tt::umd::Cluster* device = dynamic_cast<tt::umd::Cluster*>(driver_.get());
+        device->set_dma_enabled(value);
+    }
     // For TG Galaxy systems, mmio chips are gateway chips that are only used for dispatch, so user_devices are meant
     // for user facing host apis
     std::unordered_map<chip_id_t, eth_coord_t> get_user_chip_ethernet_coordinates() const;

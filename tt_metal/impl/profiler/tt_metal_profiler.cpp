@@ -461,6 +461,7 @@ void ProfilerSync(ProfilerSyncState state) {
     if (!getDeviceProfilerState()) {
         return;
     }
+    tt::Cluster::instance().set_dma_enabled(true);
     static chip_id_t first_connected_device_id = -1;
     if (state == ProfilerSyncState::INIT) {
         do_sync_on_close = true;
@@ -570,6 +571,7 @@ void ProfilerSync(ProfilerSyncState state) {
             setSyncInfo(first_connected_device_id, (std::pair<double, int64_t>){1.0, 0}, deviceDeviceSyncInfo);
         }
     }
+    tt::Cluster::instance().set_dma_enabled(false);
 
 #endif
 }
