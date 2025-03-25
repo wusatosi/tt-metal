@@ -27,7 +27,8 @@ class Mnist_like_model(nn.Module):
         x = self.pool2(F.relu(self.conv2(x)))
         x = self.pool4(F.relu(self.conv3(x)))
         x = self.pool5(F.relu(self.conv4(x)))
-        x = x.view(-1, 3 * 3 * 64)
-        x = F.relu(self.fc1(x))
+        x = x.view(-1, 1, 1, 3 * 3 * 64)
+        x = self.fc1(x)
+        x = F.relu(x)
         x = self.fc2(x)
         return x
