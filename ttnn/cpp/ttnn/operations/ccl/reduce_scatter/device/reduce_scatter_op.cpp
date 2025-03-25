@@ -82,7 +82,7 @@ tt::tt_metal::operation::ProgramWithCallbacks ReduceScatter::create_program_at(
             "be identified for a valid Reduce-scatter configuration. The input mesh tensor or Reduce-scatter arguments "
             "may be incorrect");
     }
-
+    chip_id_t target_device_id = input_tensors[0].mesh_device()->get_device(mesh_coord)->id();
     return ccl::reduce_scatter_detail::reduce_scatter_with_workers(
         input_tensors.at(0),
         output_tensors.at(0),
@@ -91,6 +91,7 @@ tt::tt_metal::operation::ProgramWithCallbacks ReduceScatter::create_program_at(
         this->num_links,
         this->ring_size,
         device_index,
+        target_device_id,
         receiver_device_id,
         sender_device_id,
         this->topology,

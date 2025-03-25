@@ -167,13 +167,14 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
     uint32_t num_workers = 0;
     bool unicast_go_signals = mesh_workload.runs_on_noc_unicast_only_cores();
     bool mcast_go_signals = mesh_workload.runs_on_noc_multicast_only_cores();
-    TT_FATAL(!unicast_go_signals, "Running a MeshWorkload on Ethernet Cores is not supported!");
-    TT_ASSERT(
-        mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id) == 0,
-        "MeshDevice should not report Ethernet Cores.");
+
+    uint32_t max_eth_cores = mesh_device_->num_virtual_eth_cores(sub_device_id);
 
     if (mcast_go_signals) {
         num_workers += mesh_device_->num_worker_cores(HalProgrammableCoreType::TENSIX, sub_device_id);
+    }
+    if (unicast_go_signals) {
+        num_workers += max_eth_cores;
     }
 
     program_dispatch::ProgramDispatchMetadata dispatch_metadata;
@@ -207,10 +208,7 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
             sub_device_id,
             dispatch_metadata,
             mesh_workload.get_program_binary_status(mesh_device_id),
-            std::pair<bool, int>(
-                unicast_go_signals,
-                mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id)));
-
+            std::pair<bool, int>(unicast_go_signals, max_eth_cores));
         if (sysmem_manager.get_bypass_mode()) {
             this->capture_program_trace_on_subgrid(
                 device_range, program_cmd_seq, dispatch_metadata.stall_first, dispatch_metadata.stall_before_program);
@@ -255,6 +253,9 @@ void MeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool b
             // to accurately update the launch msg ring buffer state post trace execution on all
             // mcast cores.
             trace_ctx_->descriptors[sub_device_id].num_traced_programs_needing_go_signal_multicast++;
+        }
+        if (unicast_go_signals) {
+            trace_ctx_->descriptors[sub_device_id].num_traced_programs_needing_go_signal_unicast++;
         }
         // Update the expected number of workers dispatch must wait on
         trace_ctx_->descriptors[sub_device_id].num_completion_worker_cores += num_workers;

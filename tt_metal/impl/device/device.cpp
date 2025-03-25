@@ -89,6 +89,10 @@ bool Device::is_inactive_ethernet_core(CoreCoord logical_core) const {
     return inactive_ethernet_cores.find(logical_core) != inactive_ethernet_cores.end();
 }
 
+uint32_t Device::num_virtual_eth_cores(SubDeviceId sub_device_id) const {
+    return this->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id);
+}
+
 std::tuple<chip_id_t, CoreCoord> Device::get_connected_ethernet_core(CoreCoord eth_core) const {
     return tt::Cluster::instance().get_connected_ethernet_core(std::make_tuple(this->id_, eth_core));
 }
@@ -1639,6 +1643,12 @@ tt::WorkExecutorMode Device::get_worker_mode() { return work_executor_->get_work
 bool Device::is_worker_queue_empty() const { return work_executor_->worker_queue.empty(); }
 
 std::shared_ptr<distributed::MeshDevice> Device::get_mesh_device() { return mesh_device.lock(); }
+
+void Device::simulate_ethernet_core_count(uint32_t num_ethernet_cores) {
+    simulated_ethernet_core_count_ = num_ethernet_cores;
+}
+
+uint32_t Device::simulated_ethernet_core_count() const { return simulated_ethernet_core_count_; }
 
 }  // namespace tt_metal
 

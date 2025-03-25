@@ -212,7 +212,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGather::create_program_at(
             input_tensors[0].mesh_device()->get_devices(),
             topology);
     }
-
+    chip_id_t target_device_id = input_tensors[0].mesh_device()->get_device(mesh_coord)->id();
     return all_gather_multi_core_with_workers(
         input_tensors[0],
         output_tensors[0],
@@ -220,6 +220,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGather::create_program_at(
         this->num_links,
         this->ring_size,
         device_index,
+        target_device_id,
         receiver_device_id,
         sender_device_id,
         this->topology,
@@ -240,7 +241,11 @@ Tensor all_gather(
     const ttnn::ccl::Topology topology) {
     TT_FATAL(
         std::getenv("TT_METAL_SLOW_DISPATCH_MODE") == nullptr, "all_gather op is only supported for Fast Dispatch");
-    auto devices = input_tensor.mesh_device()->get_devices();
+    auto mesh_device = input_tensor.mesh_device();
+    std::vector<IDevice*> devices = {};
+    for (const auto& spec : input_tensor.device_storage().specs) {
+        devices.push_back(mesh_device->get_device(spec.first));
+    }
     uint32_t num_devices = devices.size();
     TT_FATAL(num_devices > 1, "all_gather op will only work for num_devices > 1, but has {}", num_devices);
     ttnn::ccl::Topology ccl_topology = topology;

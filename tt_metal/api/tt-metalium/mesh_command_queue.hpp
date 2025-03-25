@@ -108,7 +108,6 @@ private:
     // 2. Bypass mode tracker.
     SystemMemoryManager& reference_sysmem_manager();
     MultiProducerSingleConsumerQueue<CompletionReaderVariant>& get_read_descriptor_queue(IDevice* device);
-
     // Shared across all MeshCommandQueue instances for a MeshDevice.
     std::shared_ptr<DispatchArray<LaunchMessageRingBufferState>> worker_launch_message_buffer_state_;
 

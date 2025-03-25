@@ -36,7 +36,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllReduce::create_program_at(
 
     auto [device_index, sender_device_id, receiver_device_id] = ccl::get_device_index_and_sender_receiver_ids(
         input_tensors[0].mesh_device()->get_device(coord), devices, topology);
-
+    chip_id_t target_device_id = input_tensors[0].mesh_device()->get_device(coord)->id();
     return ccl::reduce_scatter_detail::reduce_scatter_with_workers(
         input_tensors.at(0),
         output_tensors.at(0),
@@ -45,6 +45,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllReduce::create_program_at(
         this->num_links,
         this->ring_size,
         device_index,
+        target_device_id,
         receiver_device_id,
         sender_device_id,
         this->topology,

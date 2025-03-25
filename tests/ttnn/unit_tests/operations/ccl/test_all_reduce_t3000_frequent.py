@@ -114,7 +114,6 @@ def run_all_reduce_test(
     for i in range(num_devices):
         input_tensor = torch.rand(per_chip_output_shape).bfloat16()
         t = ttnn.from_torch(input_tensor, input_dtype, layout=layout)
-        t = t.to(mesh_device.get_device(mesh_device.get_device_ids()[i]), mem_config)
         tt_input_tensors.append(t)
         input_tensor = input_tensor.view(1, -1, input_tensor.shape[2], input_tensor.shape[3])
         input_tensors.append(input_tensor)
@@ -123,9 +122,10 @@ def run_all_reduce_test(
 
     assert len(tt_input_tensors) == num_devices
 
-    input_tensor_mesh = ttnn.aggregate_as_tensor(tt_input_tensors)
+    input_tensor_mesh = ttnn.aggregate_as_tensor(tt_input_tensors).to(mesh_device, mem_config)
     # Run the op
     for i in range(num_iters):
+        print("Call all reduce")
         output_tensor_mesh = ttnn.experimental.all_reduce(
             input_tensor_mesh,
             math_op=math_op,
@@ -133,8 +133,9 @@ def run_all_reduce_test(
             memory_config=mem_config,
             topology=topology,
         )
-
+        print("Done all reduce")
         ttnn.synchronize_device(mesh_device)
+        print("Sync")
         logger.info(f"Done iteration {i}")
 
     tt_out_tensors = ttnn.get_device_tensors(output_tensor_mesh)
@@ -278,7 +279,7 @@ def test_ring_all_reduce_post_commit(
 @pytest.mark.parametrize("math_op", [ttnn.ReduceType.Sum])
 @pytest.mark.parametrize("enable_async", [True])
 def test_ring_all_reduce_post_commit_2chip(
-    pcie_mesh_device,
+    mesh_device,
     num_devices,
     per_chip_output_shape,
     num_links,
@@ -292,7 +293,7 @@ def test_ring_all_reduce_post_commit_2chip(
     num_iters=2,
 ):
     run_all_reduce_test(
-        pcie_mesh_device,
+        mesh_device,
         num_devices,
         per_chip_output_shape,
         num_links,

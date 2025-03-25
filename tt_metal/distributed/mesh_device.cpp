@@ -109,7 +109,8 @@ MeshDevice::ScopedDevices::ScopedDevices(
         trace_region_size,
         dispatch_core_config,
         {},
-        /*init_profiler*/ false);
+        /*init_profiler*/ false,
+        true);
 
     for (auto device_id : device_ids) {
         devices_.push_back(opened_devices_.at(device_id));
@@ -573,6 +574,18 @@ std::vector<CoreCoord> MeshDevice::get_ethernet_sockets(chip_id_t connected_chip
     TT_THROW("get_ethernet_sockets() is not supported on MeshDevice - use individual devices instead");
 }
 
+uint32_t MeshDevice::num_virtual_eth_cores(SubDeviceId sub_device_id) const {
+    static uint32_t max_num_eth_cores = 0;
+    TT_FATAL(
+        *sub_device_id == 0,
+        "Virtualizing Ethernet Cores across a MeshDevice is not supported when a SubDeviceManager is loaded.");
+    if (not max_num_eth_cores) {
+        for (auto device : this->get_devices()) {
+            max_num_eth_cores = std::max(device->num_virtual_eth_cores(SubDeviceId{0}), max_num_eth_cores);
+        }
+    }
+    return max_num_eth_cores;
+}
 // Core and worker management methods (These are OK)
 CoreRangeSet MeshDevice::worker_cores(HalProgrammableCoreType core_type, SubDeviceId sub_device_id) const {
     return sub_device_manager_tracker_->get_active_sub_device_manager()->sub_device(sub_device_id).cores(core_type);

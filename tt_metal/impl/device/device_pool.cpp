@@ -205,7 +205,8 @@ void DevicePool::initialize(
     size_t trace_region_size,
     const DispatchCoreConfig& dispatch_core_config,
     tt::stl::Span<const std::uint32_t> l1_bank_remap,
-    bool init_profiler) noexcept {
+    bool init_profiler,
+    bool simulate_max_eth_core_count) noexcept {
     ZoneScoped;
     log_debug(tt::LogMetal, "DevicePool initialize");
     // Initialize the dispatch core manager, responsible for assigning dispatch cores
@@ -251,7 +252,7 @@ void DevicePool::initialize(
     }
 
     _inst->skip_remote_devices = skip;
-
+    _inst->simulate_max_ethernet_core_count_ = simulate_max_eth_core_count;
     _inst->add_devices_to_pool(device_ids);
     _inst->init_firmware_on_active_devices();
 
@@ -424,6 +425,19 @@ void DevicePool::add_devices_to_pool(const std::vector<chip_id_t>& device_ids) {
     for (const auto& device_id : devices_to_activate) {
         if (not this->is_device_active(device_id)) {
             this->activate_device(device_id);
+        }
+    }
+    if (simulate_max_ethernet_core_count_) {
+        std::size_t max_eth_core_count = 0;
+        for (const auto& device : this->devices) {
+            max_eth_core_count = std::max(
+                tt::Cluster::instance()
+                    .get_active_ethernet_cores(device->id(), /*skip_reserved_tunnel_cores*/ true)
+                    .size(),
+                max_eth_core_count);
+        }
+        for (auto& device : this->devices) {
+            dynamic_cast<Device*>(device.get())->simulate_ethernet_core_count(max_eth_core_count);
         }
     }
 
