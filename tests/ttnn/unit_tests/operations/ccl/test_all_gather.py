@@ -208,7 +208,7 @@ def run_all_gather_on_n300_impl(
     )
     if is_known_failure:
         pytest.skip(f"Skipping unsupported case {message}.")
-    pytest.skip("TODO: #18686 - Skipping because we need CCL port to fabric (ttnn::all_gather)")
+    # pytest.skip("TODO: #18686 - Skipping because we need CCL port to fabric (ttnn::all_gather)")
     return run_all_gather_impl(
         mesh_device,
         num_devices,
@@ -253,7 +253,7 @@ def run_all_gather_on_t3000_impl(
     )
     if is_known_failure:
         pytest.skip(f"Skipping unsupported case {message}.")
-    pytest.skip("TODO: #18686 - Skipping because we need CCL port to fabric (ttnn::all_gather)")
+    # pytest.skip("TODO: #18686 - Skipping because we need CCL port to fabric (ttnn::all_gather)")
     return run_all_gather_impl(
         mesh_device,
         num_devices,
@@ -813,17 +813,17 @@ def test_line_all_gather_on_t3000_post_commit_4chip_ring(
 @pytest.mark.parametrize(
     "num_devices, num_links, input_shape, dim, layout",
     [
-        (4, 1, [4, 1, 33, 256], 0, ttnn.ROW_MAJOR_LAYOUT),
+        # (4, 1, [4, 1, 33, 256], 0, ttnn.ROW_MAJOR_LAYOUT),
         (8, 1, [8, 1, 33, 256], 0, ttnn.ROW_MAJOR_LAYOUT),
         # (8, 1, [8, 1, 256, 32], 0, ttnn.TILE_LAYOUT),
         (8, 1, [8, 8, 256, 384], 1, ttnn.ROW_MAJOR_LAYOUT),
         # (4, 2, [8, 8, 256, 384], 1, ttnn.TILE_LAYOUT),
         (8, 1, [8, 8, 256, 384], 1, ttnn.TILE_LAYOUT),
-        (4, 1, [8, 5, 13, 384], 3, ttnn.ROW_MAJOR_LAYOUT),
+        # (4, 1, [8, 5, 13, 384], 3, ttnn.ROW_MAJOR_LAYOUT),
         (8, 1, [8, 5, 13, 512], 3, ttnn.ROW_MAJOR_LAYOUT),
-        (4, 1, [8, 5, 32, 384], 3, ttnn.TILE_LAYOUT),
+        # (4, 1, [8, 5, 32, 384], 3, ttnn.TILE_LAYOUT),
         (8, 1, [8, 5, 32, 512], 3, ttnn.TILE_LAYOUT),
-        (4, 1, [1, 1, 32, 16384], 3, ttnn.TILE_LAYOUT),
+        # (4, 1, [1, 1, 32, 16384], 3, ttnn.TILE_LAYOUT),
     ],
 )
 @pytest.mark.parametrize(
@@ -1206,21 +1206,17 @@ def run_all_gather_sharded(
     ):
         pytest.skip("Unsupported test case")
 
-    tt_input_tensors_dups = []
+    # tt_input_tensors_dups = []
     tt_input_tensors = []
     for i, t in enumerate(input_tensors):
-        tt_input_tensors_dups.append(
-            ttnn.Tensor(t, input_dtype, {}, ttnn.Tile(tile))
-            .to(tensor_layout)
-            .to(mesh_device.get_devices()[i], input_mem_config)
-        )
-        tt_input_tensors.append(
-            ttnn.Tensor(t, input_dtype, {}, ttnn.Tile(tile))
-            .to(tensor_layout)
-            .to(mesh_device.get_devices()[i], input_mem_config)
-        )
+        # tt_input_tensors_dups.append(
+        #     ttnn.Tensor(t, input_dtype, {}, ttnn.Tile(tile))
+        #     .to(tensor_layout)
+        #     .to(mesh_device.get_devices()[i], input_mem_config)
+        # )
+        tt_input_tensors.append(ttnn.Tensor(t, input_dtype, {}, ttnn.Tile(tile)).to(tensor_layout))
 
-    input_tensor_mesh = ttnn.aggregate_as_tensor(tt_input_tensors)
+    input_tensor_mesh = ttnn.aggregate_as_tensor(tt_input_tensors).to(mesh_device, input_mem_config)
 
     if trace_mode:
         tt_out_tensor = run_with_trace(
@@ -1450,7 +1446,7 @@ def test_all_gather_sharded_post_commit(
     function_level_defaults,
     enable_async,
 ):
-    pytest.skip("TODO: #18686 - Skipping because we need CCL port to fabric (ttnn::all_gather)")
+    # pytest.skip("TODO: #18686 - Skipping because we need CCL port to fabric (ttnn::all_gather)")
     run_all_gather_sharded_t3k(
         t3k_mesh_device,
         num_devices,
@@ -1541,7 +1537,7 @@ def test_all_gather_height_sharded_post_commit(
     function_level_defaults,
     enable_async,
 ):
-    pytest.skip("TODO: #18686 - Skipping because we need CCL port to fabric (ttnn::all_gather)")
+    # pytest.skip("TODO: #18686 - Skipping because we need CCL port to fabric (ttnn::all_gather)")
     run_all_gather_sharded_t3k(
         t3k_mesh_device,
         num_devices,

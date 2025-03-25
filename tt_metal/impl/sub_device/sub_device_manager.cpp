@@ -21,7 +21,7 @@
 
 #include "tt_metal/impl/dispatch/dispatch_query_manager.hpp"
 #include "tt_metal/impl/allocator/l1_banking_allocator.hpp"
-
+#include <tt-metalium/mesh_device.hpp>
 #include "tt_cluster.hpp"
 
 namespace tt::tt_metal {
@@ -307,6 +307,15 @@ void SubDeviceManager::populate_sub_allocators() {
 }
 
 void SubDeviceManager::populate_noc_data() {
+    const std::unordered_map<chip_id_t, std::vector<CoreCoord>> eth_cores_per_chip = {
+        {0, {CoreCoord(0, 8), CoreCoord(0, 1), CoreCoord(0, 14), CoreCoord(0, 0), CoreCoord(0, 15)}},
+        {1, {CoreCoord(0, 8), CoreCoord(0, 7), CoreCoord(0, 14), CoreCoord(0, 15), CoreCoord(0, 6)}},
+        {2, {CoreCoord(0, 8), CoreCoord(0, 7), CoreCoord(0, 6), CoreCoord(0, 14), CoreCoord(0, 15)}},
+        {3, {CoreCoord(0, 8), CoreCoord(0, 1), CoreCoord(0, 0), CoreCoord(0, 15), CoreCoord(0, 14)}},
+        {4, {CoreCoord(0, 7), CoreCoord(0, 0), CoreCoord(0, 6)}},
+        {5, {CoreCoord(0, 7), CoreCoord(0, 0), CoreCoord(0, 6)}},
+        {6, {CoreCoord(0, 7), CoreCoord(0, 0), CoreCoord(0, 6)}},
+        {7, {CoreCoord(0, 7), CoreCoord(0, 0), CoreCoord(0, 6)}}};
     uint32_t num_sub_devices = this->num_sub_devices();
     num_noc_mcast_txns_.resize(num_sub_devices);
     num_noc_unicast_txns_.resize(num_sub_devices);
@@ -332,11 +341,20 @@ void SubDeviceManager::populate_noc_data() {
         noc_unicast_data_start_index_[i] = idx;
 
         // TODO: Precompute number of eth cores and resize once
-        for (const auto& core_range : eth_cores.ranges()) {
-            noc_mcast_unicast_data_.resize(idx + core_range.size());
-            for (const auto& core : core_range) {
+        if (not dynamic_cast<distributed::MeshDevice*>(device_)) {
+            const auto& eth_cores_ordered = eth_cores_per_chip.at(device_->id());
+            noc_mcast_unicast_data_.resize(idx + eth_cores_ordered.size());
+            for (const auto& core : eth_cores_ordered) {
                 auto virtual_core = device_->virtual_core_from_logical_core(core, CoreType::ETH);
                 noc_mcast_unicast_data_[idx++] = device_->get_noc_unicast_encoding(noc_index, virtual_core);
+            }
+        } else {
+            for (const auto& core_range : eth_cores.ranges()) {
+                noc_mcast_unicast_data_.resize(idx + core_range.size());
+                for (const auto& core : core_range) {
+                    auto virtual_core = device_->virtual_core_from_logical_core(core, CoreType::ETH);
+                    noc_mcast_unicast_data_[idx++] = device_->get_noc_unicast_encoding(noc_index, virtual_core);
+                }
             }
         }
         num_noc_unicast_txns_[i] = idx - noc_unicast_data_start_index_[i];

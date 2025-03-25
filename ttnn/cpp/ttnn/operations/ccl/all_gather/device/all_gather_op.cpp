@@ -212,7 +212,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGather::create_program_at(
             input_tensors[0].mesh_device()->get_devices(),
             topology);
     }
-
+    chip_id_t target_device_id = input_tensors[0].mesh_device()->get_device(mesh_coord)->id();
     return all_gather_multi_core_with_workers(
         input_tensors[0],
         output_tensors[0],
@@ -220,6 +220,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGather::create_program_at(
         this->num_links,
         this->ring_size,
         device_index,
+        target_device_id,
         receiver_device_id,
         sender_device_id,
         this->topology,

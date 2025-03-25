@@ -102,7 +102,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherMatmul::create_program_at
         input_tensors[0].mesh_device()->get_device(mesh_coord),
         input_tensors[0].mesh_device()->get_devices(),
         this->all_gather_struct.topology);
-
+    chip_id_t target_device_id = input_tensors[0].mesh_device()->get_device(mesh_coord)->id();
     // Return the AllGatherMatmul program with callbacks
     return all_gather_matmul_multi_core_with_workers(
         input_tensors[0],   // input_tensor
@@ -118,6 +118,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherMatmul::create_program_at
         device_index,
         this->all_gather_struct.user_defined_num_workers,
         this->all_gather_struct.user_defined_num_buffers_per_channel,
+        target_device_id,
         receiver_device_id,
         sender_device_id,
         this->all_gather_struct.topology,
