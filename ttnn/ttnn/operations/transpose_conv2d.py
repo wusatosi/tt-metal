@@ -13,6 +13,11 @@ from ttnn.device import (
     is_grayskull,
     is_wormhole_b0,
 )
+try:
+    from tracy import signpost
+    use_signpost = True
+except ModuleNotFoundError:
+    use_signpost = False
 
 Conv2dConfig = ttnn._ttnn.operations.conv.Conv2dConfig
 
@@ -41,6 +46,8 @@ def conv_transpose2d(
     return_output_dim=False,
     return_weights_and_bias=False,
 ) -> Tuple[ttnn.Tensor, int, int, ttnn.Tensor, ttnn.Tensor]:
+    if use_signpost:
+        signpost(header="Conv2D begin Transpose")
     (
         conv_output,
         output_height,
@@ -67,7 +74,8 @@ def conv_transpose2d(
         groups=groups,
         mirror_kernel=mirror_kernel,
     )
-
+    if use_signpost:
+        signpost(header="Conv2D end Transpose")
     if return_output_dim and return_weights_and_bias:
         return conv_output, [output_height, output_width], [prepared_device_weight, prepared_device_bias]
     elif return_weights_and_bias:

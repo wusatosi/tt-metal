@@ -13,7 +13,11 @@ from ttnn.device import (
     is_grayskull,
     is_wormhole_b0,
 )
-
+try:
+    from tracy import signpost
+    use_signpost = True
+except ModuleNotFoundError:
+    use_signpost = False
 
 def _nearest_32(x):
     return math.ceil(x / 32) * 32
@@ -185,6 +189,8 @@ def conv2d(
     return_output_dim=False,
     return_weights_and_bias=False,
 ) -> Tuple[ttnn.Tensor, int, int, ttnn.Tensor, ttnn.Tensor]:
+    if use_signpost:
+        signpost(header="Conv2D begin")
     (
         conv_output,
         output_height,
@@ -211,6 +217,8 @@ def conv2d(
         memory_config=memory_config,
     )
 
+    if use_signpost:
+        signpost(header="Conv2D end")
     if return_output_dim and return_weights_and_bias:
         return conv_output, [output_height, output_width], [prepared_device_weight, prepared_device_bias]
     elif return_weights_and_bias:
