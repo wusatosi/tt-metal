@@ -138,8 +138,6 @@ void MeshWorkload::generate_dispatch_commands(MeshCommandQueue& mesh_cq) {
     // workload is enqueued.
     auto mesh_device = mesh_cq.device();
     for (auto& [device_range, program] : programs_) {
-        std::cout << "Generate Dispatch Commands for: " << device_range << " "
-                  << mesh_device->get_device(*(device_range.begin()))->id() << std::endl;
         program.generate_dispatch_commands(mesh_device);
     }
 }
