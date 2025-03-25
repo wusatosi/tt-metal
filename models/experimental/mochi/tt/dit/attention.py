@@ -104,9 +104,16 @@ class AsymmetricAttention(LightweightModule):
         self.proj_x_config = partial(matmul_config, k=dim_x, n=dim_x, in0_block_w=4, grid_size=(8, 8))
         self.mm_compute_kernel_config = ttnn.WormholeComputeKernelConfig(
             math_fidelity=ttnn.MathFidelity.HiFi2,
-            math_approx_mode=True,
+            math_approx_mode=False,
             fp32_dest_acc_en=True,
             packer_l1_acc=True,
+        )
+
+        self.rope_compute_kernel_config = ttnn.WormholeComputeKernelConfig(
+            math_fidelity=ttnn.MathFidelity.HiFi4,
+            math_approx_mode=False,
+            fp32_dest_acc_en=True,
+            packer_l1_acc=False,
         )
 
     def _create_rmsmorn(self, key):
@@ -275,11 +282,7 @@ class AsymmetricAttention(LightweightModule):
         B, M = x_1BNX.shape[1], x_1BNX.shape[2]
         assert B == 1, f"Batch size must be 1, got {B}"
         assert x_1BNX.shape[0] == 1, f"x dim0 must be 1, got {x_1BNX.shape[0]}"
-        # NOTE: I removed this check because with unpadded input reshape fails
-        # assert (
-        #     seq_x % self.X_MM_SEQ_LEN == 0
-        # ), f"Visual sequence length must be divisible by {self.X_MM_SEQ_LEN}, got {seq_x}"
-        x_1BNX = modulated_rmsnorm(x_1BNX, scale_x)
+        x_1BNX = modulated_rmsnorm(x_1BNX, scale_x, high_fidelity=True)
 
         """
         # When all-to-all is fast, move all-to-all below gather QKV.
@@ -300,6 +303,7 @@ class AsymmetricAttention(LightweightModule):
         """
 
         x_1BNX = self._seq_to_replicated_tensor(x_1BNX, N=N)
+
         qkv_x_1BNE = ttnn.linear(
             x_1BNX,
             self.qkv_x,
@@ -322,16 +326,24 @@ class AsymmetricAttention(LightweightModule):
 
         # Apply normalization and rotary embeddings to visual features
         q_x_BHND = self.q_norm_x(q_x_BHND, mode="prefill")
-        q_x_BHND = ttnn.experimental.rotary_embedding_llama(q_x_BHND, rope_cos, rope_sin, trans_mat)
+
+        q_x_BHND = ttnn.experimental.rotary_embedding_llama(
+            q_x_BHND, rope_cos, rope_sin, trans_mat, compute_kernel_config=self.rope_compute_kernel_config
+        )
+
         k_x_BHND = self.k_norm_x(k_x_BHND, mode="prefill")
-        k_x_BHND = ttnn.experimental.rotary_embedding_llama(k_x_BHND, rope_cos, rope_sin, trans_mat)
+
+        k_x_BHND = ttnn.experimental.rotary_embedding_llama(
+            k_x_BHND, rope_cos, rope_sin, trans_mat, compute_kernel_config=self.rope_compute_kernel_config
+        )
 
         # Process text features if present
         if B == 1:
             if not uncond:
                 # Process text features
-                # TODO: Removing until we support padded sequences
-                y_1BLY = modulated_rmsnorm(y_1BLY, scale_y)
+
+                y_1BLY = modulated_rmsnorm(y_1BLY, scale_y, high_fidelity=True)
+
                 q_y_BHND, k_y_BHND, v_y_BHND = self.run_qkv_y(y_1BLY)
             else:
                 q_y_BHND, k_y_BHND, v_y_BHND = None, None, None
@@ -370,8 +382,10 @@ class AsymmetricAttention(LightweightModule):
         assert q_x_BHND.shape[0] == B, "Batch size must be B"
         assert q_x_BHND.shape == k_x_BHND.shape == v_x_BHND.shape, "q_x, k_x, v_x must have the same shape"
         is_joint = q_y_BHLD is not None
+
         if is_joint:
             assert q_y_BHLD.shape == k_y_BHLD.shape == v_y_BHLD.shape, "q_y, k_y, v_y must have the same shape"
+
         # Set up compute kernel config for high-fidelity computations
         compute_kernel_config = ttnn.WormholeComputeKernelConfig(
             math_fidelity=ttnn.MathFidelity.HiFi2,
@@ -448,7 +462,6 @@ class AsymmetricAttention(LightweightModule):
 
         M = out_1BNX.shape[2]
 
-        # BUG: This linear clobbers `out_joint_1BLX` if padded and certain program configs are used
         proj_x = ttnn.all_gather(self.proj_x, dim=-1)
         out_1BNX = ttnn.linear(
             out_1BNX,
@@ -460,28 +473,27 @@ class AsymmetricAttention(LightweightModule):
             program_config=self.proj_x_config(m=M),
         )
 
-        out_joint = None  # Default None if uncond
-        if not uncond:
-            if self.update_y:
-                if self.num_devices > 1:
-                    out_joint_1BLX = ttnn.all_gather(
-                        out_joint_1BLX,
-                        dim=3,
-                    )
-                out_joint_1BLY = ttnn.linear(
+        # Project text features if needed
+        if not uncond and self.update_y:
+            if self.num_devices > 1:
+                out_joint_1BLX = ttnn.all_gather(
                     out_joint_1BLX,
-                    self.proj_y,
-                    bias=self.proj_y_bias,
-                    compute_kernel_config=self.mm_compute_kernel_config,
-                    core_grid=ttnn.CoreGrid(y=8, x=8),
-                    dtype=ttnn.bfloat16,
-                    memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                    dim=3,
                 )
-                out_joint = out_joint_1BLY
-            else:
-                out_joint = out_joint_1BLX
+            out_joint_1BLY = ttnn.linear(
+                out_joint_1BLX,
+                self.proj_y,
+                bias=self.proj_y_bias,
+                compute_kernel_config=self.mm_compute_kernel_config,
+                core_grid=ttnn.CoreGrid(y=8, x=8),
+                dtype=ttnn.bfloat16,
+                memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            )
 
-        return out_1BNX, out_joint
+        else:
+            out_joint_1BLY = None
+
+        return out_1BNX, out_joint_1BLY
 
     def forward(
         self,

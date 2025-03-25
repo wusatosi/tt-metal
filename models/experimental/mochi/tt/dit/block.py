@@ -1,6 +1,7 @@
 from typing import Optional, Tuple
 
 import ttnn
+import torch
 from models.common.lightweightmodule import LightweightModule
 
 from models.experimental.mochi.tt.common import col_parallel_linear
@@ -110,7 +111,9 @@ class AsymmetricJointBlock(LightweightModule):
                 seq_shard=False,
             )
 
-    def ff_block_x(self, x_1BNX: ttnn.Tensor, scale_x_B11X: ttnn.Tensor, gate_x_B11X: ttnn.Tensor) -> ttnn.Tensor:
+    def ff_block_x(
+        self, x_1BNX: ttnn.Tensor, scale_x_B11X: ttnn.Tensor, gate_x_B11X: ttnn.Tensor, high_fidelity: bool = False
+    ) -> ttnn.Tensor:
         """Feed-forward block for visual features.
 
         Args:
@@ -121,12 +124,17 @@ class AsymmetricJointBlock(LightweightModule):
         Returns:
             Tensor of shape (1, B, N, X)
         """
-        x_mod_1BNX = modulated_rmsnorm(x_1BNX, scale_x_B11X)
+        x_mod_1BNX = modulated_rmsnorm(x_1BNX, scale_x_B11X, high_fidelity=high_fidelity)
+
         x_res_shard_1BNX = self.mlp_x(x_mod_1BNX)
-        x_1BNX = residual_tanh_gated_rmsnorm(x_1BNX, x_res_shard_1BNX, gate_x_B11X)
+
+        x_1BNX = residual_tanh_gated_rmsnorm(x_1BNX, x_res_shard_1BNX, gate_x_B11X, high_fidelity=high_fidelity)
+
         return x_1BNX
 
-    def ff_block_y(self, y_1BLY: ttnn.Tensor, scale_y_B11Y: ttnn.Tensor, gate_y_B11Y: ttnn.Tensor) -> ttnn.Tensor:
+    def ff_block_y(
+        self, y_1BLY: ttnn.Tensor, scale_y_B11Y: ttnn.Tensor, gate_y_B11Y: ttnn.Tensor, high_fidelity: bool = True
+    ) -> ttnn.Tensor:
         """Feed-forward block for text features.
 
         Args:
@@ -137,14 +145,17 @@ class AsymmetricJointBlock(LightweightModule):
         Returns:
             Tensor of shape (1, B, L, Y)
         """
-        y_mod_1BLY = modulated_rmsnorm(y_1BLY, scale_y_B11Y)
+        y_mod_1BLY = modulated_rmsnorm(y_1BLY, scale_y_B11Y, high_fidelity=high_fidelity)
+
         y_res_shard_1BLY = self.mlp_y(y_mod_1BLY)
         if self.num_devices > 1:
             # Collect hidden-dim-fractured MLP outputs
             y_res_1BLY = ttnn.all_gather(y_res_shard_1BLY, dim=3)
         else:
             y_res_1BLY = y_res_shard_1BLY
-        y_1BLY = residual_tanh_gated_rmsnorm(y_1BLY, y_res_1BLY, gate_y_B11Y)
+
+        y_1BLY = residual_tanh_gated_rmsnorm(y_1BLY, y_res_1BLY, gate_y_B11Y, high_fidelity=high_fidelity)
+
         return y_1BLY
 
     def forward(
@@ -181,7 +192,7 @@ class AsymmetricJointBlock(LightweightModule):
 
         # Set up compute kernel config for high-fidelity computations
         compute_kernel_config = ttnn.WormholeComputeKernelConfig(
-            math_fidelity=ttnn.MathFidelity.HiFi2,
+            math_fidelity=ttnn.MathFidelity.HiFi4,
             math_approx_mode=False,
             fp32_dest_acc_en=True,
             packer_l1_acc=True,
@@ -206,7 +217,6 @@ class AsymmetricJointBlock(LightweightModule):
         gate_msa_x_B11X = mod_x_B11Z[:, :, :, self.hidden_size_x : 2 * self.hidden_size_x]
         scale_mlp_x_B11X = mod_x_B11Z[:, :, :, 2 * self.hidden_size_x : 3 * self.hidden_size_x]
         gate_mlp_x_B11X = mod_x_B11Z[:, :, :, 3 * self.hidden_size_x :]
-        # scale_msa_x, gate_msa_x, scale_mlp_x, gate_mlp_x = ttnn.split(mod_x, 4, dim=1)
 
         scale_msa_y_B11Y = None
         if not uncond:
@@ -220,12 +230,13 @@ class AsymmetricJointBlock(LightweightModule):
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
             )
             mod_y_B11C = ttnn.all_gather(mod_y_B11C, dim=3)
+
             if self.update_y:
                 scale_msa_y_B11Y = mod_y_B11C[:, :, :, : self.hidden_size_y]
                 gate_msa_y_B11Y = mod_y_B11C[:, :, :, self.hidden_size_y : 2 * self.hidden_size_y]
                 scale_mlp_y_B11Y = mod_y_B11C[:, :, :, 2 * self.hidden_size_y : 3 * self.hidden_size_y]
                 gate_mlp_y_B11Y = mod_y_B11C[:, :, :, 3 * self.hidden_size_y :]
-                # scale_msa_y, gate_msa_y, scale_mlp_y, gate_mlp_y = ttnn.split(mod_y, 4, dim=1)
+
             else:
                 scale_msa_y_B11Y = mod_y_B11C
 
@@ -243,9 +254,10 @@ class AsymmetricJointBlock(LightweightModule):
         )
 
         assert x_attn_1BMX.shape[2] == M
-        x_1BMX = residual_tanh_gated_rmsnorm(x_1BMX, x_attn_1BMX, gate_msa_x_B11X)
+        x_1BMX = residual_tanh_gated_rmsnorm(x_1BMX, x_attn_1BMX, gate_msa_x_B11X, high_fidelity=True)
+
         # MLP block
-        x_1BMX = self.ff_block_x(x_1BMX, scale_mlp_x_B11X, gate_mlp_x_B11X)
+        x_1BMX = self.ff_block_x(x_1BMX, scale_mlp_x_B11X, gate_mlp_x_B11X, high_fidelity=True)
 
         if not uncond:
             if self.num_devices > 1:
@@ -255,7 +267,8 @@ class AsymmetricJointBlock(LightweightModule):
                 y_attn_1BLY = y_attn_shard_1BLY
 
             if self.update_y:
-                y_1BLY = residual_tanh_gated_rmsnorm(y_1BLY, y_attn_1BLY, gate_msa_y_B11Y)
-                y_1BLY = self.ff_block_y(y_1BLY, scale_mlp_y_B11Y, gate_mlp_y_B11Y)
+                y_1BLY = residual_tanh_gated_rmsnorm(y_1BLY, y_attn_1BLY, gate_msa_y_B11Y, high_fidelity=True)
+
+                y_1BLY = self.ff_block_y(y_1BLY, scale_mlp_y_B11Y, gate_mlp_y_B11Y, high_fidelity=True)
 
         return x_1BMX, y_1BLY
