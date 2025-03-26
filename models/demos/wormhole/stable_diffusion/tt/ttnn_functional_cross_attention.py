@@ -527,6 +527,9 @@ class cross_attention:
                 dim=ttnn.BcastOpDim.HW,
                 memory_config=attention_scores.memory_config(),
             )
+
+            breakpoint()
+            attention_scores_temp.deallocate()
             attention_scores = ttnn.softmax_in_place(
                 attention_scores,
                 program_config=softmax_program_config,
