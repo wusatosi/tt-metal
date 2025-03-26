@@ -3117,6 +3117,142 @@ def torch_split_knit_batched_dilation(torch_input_tensor_nchw, torch_weight_tens
 
     return out_knitted
 
+
+# Split-Knit Conv2d with high dilation (batched)
+def ttnn_split_knit_batched_dilation(device, torch_input_tensor_nchw, torch_weight_tensor_oihw, torch_bias_tensor, filter_hw, stride_hw, padding_hw, dilation_hw, groups):
+    assert groups == 1, "groups must be 1"
+    assert all(d % 2 == 0 for d in dilation_hw), "dilation must be even"
+    assert all(s == 1 for s in stride_hw), "stride must be 1"
+    assert padding_hw[0] == 0 or padding_hw[0] == dilation_hw[0], "padding must be 0 or equal to dilation"
+    assert padding_hw[1] == 0 or padding_hw[1] == dilation_hw[1], "padding must be 0 or equal to dilation"
+    assert padding_hw[0] == padding_hw[1], "padding must be equal"
+
+    assert torch_input_tensor_nchw.shape[2] % dilation_hw[0] == 0, "input height must be divisible by dilation"
+    assert torch_input_tensor_nchw.shape[3] % dilation_hw[1] == 0, "input width must be divisible by dilation"
+
+    assert torch_input_tensor_nchw.shape[0] == 1, f"batch size must be 1"
+
+    weights_dtype = ttnn.bfloat8_b
+    activations_dtype = ttnn.bfloat8_b
+    math_fidelity = ttnn.MathFidelity.LoFi
+    fp32_dest_acc_en = False
+    packer_l1_acc = False
+
+    # split (host-side)
+    sk_batch=torch_input_tensor_nchw.shape[0] * dilation_hw[0] * dilation_hw[1]
+    torch_inputs_grouped_splited = torch.zeros((sk_batch, torch_input_tensor_nchw.shape[1], torch_input_tensor_nchw.shape[2] // dilation_hw[0], torch_input_tensor_nchw.shape[3] // dilation_hw[1]))
+    for split_h in range(dilation_hw[0]):
+        for split_w in range(dilation_hw[1]):
+            batch_idx = split_h * dilation_hw[1] + split_w
+            torch_inputs_grouped_splited[batch_idx,:,:,:] =  torch_input_tensor_nchw[
+                    :,
+                    :,
+                    split_h::dilation_hw[0],
+                    split_w::dilation_hw[1],
+                ]
+
+
+    torch_inputs_grouped_splited_nhwc  = torch.permute(torch_inputs_grouped_splited, (0, 2, 3, 1))
+
+    tt_input_tensor = ttnn.from_torch(
+        torch_inputs_grouped_splited_nhwc,
+        activations_dtype if activations_dtype == ttnn.float32 else ttnn.bfloat16,
+        mesh_mapper=None,
+    )
+
+    tt_weight_tensor = ttnn.from_torch(
+        torch_weight_tensor_oihw,
+        weights_dtype if weights_dtype != ttnn.bfloat8_b else ttnn.float32,
+        mesh_mapper=None
+    )
+
+    tt_bias_tensor = ttnn.from_torch(
+        torch_bias_tensor,
+        weights_dtype if weights_dtype != ttnn.bfloat8_b else ttnn.float32,
+        mesh_mapper=None,
+    )
+
+    sk_padding_hw=(1,1) if padding_hw[0] > 0 else (0,0)
+    sk_dilation_hw=(1,1)
+    sk_groups=1
+
+    conv_config = ttnn.Conv2dConfig(
+        dtype=activations_dtype,
+        weights_dtype=weights_dtype,
+        shard_layout=HS,
+        input_channels_alignment=32,
+        deallocate_activation=True,
+        enable_act_double_buffer=True,
+        enable_split_reader=True,
+        enable_subblock_padding=False,
+        # output_layout=ttnn.ROW_MAJOR_LAYOUT,
+        output_layout=ttnn.TILE_LAYOUT,
+        activation="",
+        act_block_h_override = 32*2,
+    )
+
+    compute_config = ttnn.init_device_compute_kernel_config(
+        device.arch(),
+        math_fidelity=math_fidelity,
+        fp32_dest_acc_en=fp32_dest_acc_en,
+        packer_l1_acc=packer_l1_acc,
+    )
+
+    print(f"torch_inputs_grouped_splited_nhwc: {torch_inputs_grouped_splited_nhwc.shape}")
+
+    # conv2d
+    [tt_output_splited_tensor_on_device, [out_h, out_w]] = ttnn.conv2d(
+        input_tensor=tt_input_tensor,
+        weight_tensor=tt_weight_tensor,
+        device=device,
+        in_channels=torch_inputs_grouped_splited_nhwc.shape[-1],
+        out_channels = torch_weight_tensor_oihw.shape[0],
+        batch_size = torch_inputs_grouped_splited_nhwc.shape[0],
+        input_height = torch_inputs_grouped_splited_nhwc.shape[1],
+        input_width = torch_inputs_grouped_splited_nhwc.shape[2],
+        kernel_size=filter_hw,
+        stride=stride_hw,
+        padding=sk_padding_hw,
+        dilation=sk_dilation_hw,
+        groups=sk_groups,
+        bias_tensor=tt_bias_tensor,
+        conv_config=conv_config,
+        compute_config=compute_config,
+        return_output_dim=True,
+        return_weights_and_bias=False,
+    )
+    # out_splited = torch.nn.functional.conv2d(
+    #     torch_inputs_grouped_splited,
+    #     torch_weight_tensor_oihw,
+    #     # bias=torch_bias_tensor.reshape(-1).repeat(dilation_hw[0]*dilation_hw[1]) if torch_bias_tensor is not None else None, # TBD if this is OK
+    #     bias=torch_bias_tensor.reshape(-1) if torch_bias_tensor is not None else None, # TBD if this is OK
+    #     stride=stride_hw,
+    #     padding=sk_padding_hw,
+    #     dilation=sk_dilation_hw,
+    #     groups=sk_groups
+    # )
+
+    tt_output_splited_tensor_on_device = tt_output_splited_tensor_on_device.reshape((torch_inputs_grouped_splited_nhwc.shape[0], out_h, out_w, -1))
+    ttnn.synchronize_device(device)
+
+    # host fallback
+    out_splited = ttnn.to_torch(tt_output_splited_tensor_on_device, mesh_composer=None)
+    out_splited = torch.permute(out_splited, (0, 3, 1, 2))
+
+
+    # knit (HOST)
+    full_out_h = (torch_input_tensor_nchw.shape[2] + 2 * padding_hw[0] - dilation_hw[0] * (filter_hw[0] - 1) - 1) // stride_hw[0] + 1
+    full_out_w = (torch_input_tensor_nchw.shape[3] + 2 * padding_hw[1] - dilation_hw[1] * (filter_hw[1] - 1) - 1) // stride_hw[1] + 1
+    out_knitted = torch.zeros((torch_input_tensor_nchw.shape[0], torch_weight_tensor_oihw.shape[0], full_out_h, full_out_w))
+
+    # for out_channel in range(out_channels):
+    for split_h in range(dilation_hw[0]):
+        for split_w in range(dilation_hw[1]):
+            src_batch_idx = split_h * dilation_hw[1] + split_w
+            out_knitted[:,:,split_h::dilation_hw[0],split_w::dilation_hw[1]] = out_splited[src_batch_idx,:,:,:]
+
+    return out_knitted
+
 # Split-Knit Conv2d with high dilation, grouped conv2d approach
 def torch_split_knit_grouped_dilation(torch_input_tensor_nchw, torch_weight_tensor_oihw, torch_bias_tensor, filter_hw, stride_hw, padding_hw, dilation_hw, groups):
     assert groups == 1, "groups must be 1"
@@ -3427,3 +3563,108 @@ def test_conv2d_split_knit_dilation(
     )
     logger.info(f"PCC = {pcc_msg}. Threshold = {pcc}")
     assert grouped_height_passing, pcc_msg
+
+
+# fmt: off
+@pytest.mark.parametrize(
+    "input_shape_nchw, output_channels, filter_hw, stride_hw, padding_hw, dilation_hw",
+    (
+        # ((1, 32, 320, 320), 48, (3, 3), (1, 1), (2, 2), (2, 2)),
+        # ((1, 48, 320, 320), 56, (3, 3), (1, 1), (4, 4), (4, 4)),
+        # ((1, 56, 320, 320), 64, (3, 3), (1, 1), (8, 8), (8, 8)),
+        # ((1, 32, 320, 320), 48, (3, 3), (1, 1), (0, 0), (2, 2)),
+        # ((1, 48, 320, 320), 56, (3, 3), (1, 1), (0, 0), (4, 4)),
+        # ((1, 56, 320, 320), 64, (3, 3), (1, 1), (0, 0), (8, 8)),
+
+        # ((1, 32, 1024, 64), 48, (3, 3), (1, 1), (2, 2), (2, 2)),
+        # ((1, 48, 1024, 64), 56, (3, 3), (1, 1), (4, 4), (4, 4)),
+        # ((1, 56, 1024, 64), 64, (3, 3), (1, 1), (8, 8), (8, 8)),
+
+        ((1, 32, 1024, 256), 48, (3, 3), (1, 1), (2, 2), (2, 2)),
+        ((1, 48, 1024, 256), 56, (3, 3), (1, 1), (4, 4), (4, 4)),
+        ((1, 56, 1024, 256), 64, (3, 3), (1, 1), (8, 8), (8, 8)),
+
+        # 1024x512 E   Out of Memory: Not enough space to allocate 35651584 B L1 buffer across 64 banks, where each bank needs to store 557056 B
+        # 1024x512 E   Out of Memory: Not enough space to allocate 70287360 B L1 buffer across 64 banks, where each bank needs to store 1098240 B
+        # 1024x512 E   Out of Memory: Not enough space to allocate 70287360 B L1 buffer across 64 banks, where each bank needs to store 1098240 B
+
+        # ((1, 32, 320, 320), 48, (3, 3), (1, 1), (2, 2), (2, 2)),
+        # ((1, 48, 320, 320), 56, (3, 3), (1, 1), (4, 4), (4, 4)),
+        # ((1, 56, 320, 320), 64, (3, 3), (1, 1), (8, 8), (8, 8)),
+    ),
+)
+# fmt: on
+
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 16 * 1024}], indirect=True)
+def test_conv2d_split_knit_batched_dilation(
+    device, input_shape_nchw, torch_tensor_map, output_channels, filter_hw, stride_hw, padding_hw, dilation_hw
+):
+    has_bias = True
+    groups = 1
+    assert all(d % 2 == 0 for d in dilation_hw), "dilation must be even"
+    assert all(s == 1 for s in stride_hw), "stride must be 1"
+    assert groups == 1, "groups must be 1"
+
+    torch.manual_seed(0)
+    batch_size, input_channels, input_height, input_width = input_shape_nchw
+
+    conv_input_shape_nchw = (batch_size, input_channels, input_height, input_width)
+    conv_weight_shape_oihw = (output_channels, input_channels // groups, filter_hw[0], filter_hw[1])
+    conv_bias_shape = (1, 1, 1, output_channels)
+    torch_input_tensor_nchw = randomize_torch_tensor(torch_tensor_map, conv_input_shape_nchw)
+    # torch_input_tensor_nhwc = torch.permute(torch_input_tensor_nchw, (0, 2, 3, 1))
+
+    torch_weight_tensor_oihw = randomize_torch_tensor(torch_tensor_map, conv_weight_shape_oihw)
+    torch_bias_tensor = randomize_torch_tensor(torch_tensor_map, conv_bias_shape) if has_bias else None
+
+    torch_out_golden_tensor = torch.nn.functional.conv2d(
+        torch_input_tensor_nchw,
+        torch_weight_tensor_oihw,
+        bias=torch_bias_tensor.reshape(-1) if has_bias else None,
+        stride=stride_hw,
+        padding=padding_hw,
+        dilation=dilation_hw,
+        groups=groups,
+    )
+    """batch, input_channels, output_channels, input_height, input_width, weights_dtype, activations_dtype, groups, kernel, stride, padding, dilation")"""
+    print(
+        f"# torch_conv2d:\n({torch_input_tensor_nchw.shape[0]}, {torch_weight_tensor_oihw.shape[1]}, {torch_weight_tensor_oihw.shape[0]}, {torch_input_tensor_nchw.shape[2]}, {torch_input_tensor_nchw.shape[3]}, ttnn.bfloat8_b, ttnn.bfloat8_b, {1}, ({torch_weight_tensor_oihw.shape[2]}, {torch_weight_tensor_oihw.shape[3]}), (1, 1), {padding_hw}, {dilation_hw}, True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),"
+    )
+
+    # =================== Split-Knit Conv2d, batched conv2d approach ===================
+    torch_split_knit_batched_out = torch_split_knit_batched_dilation(
+        torch_input_tensor_nchw,
+        torch_weight_tensor_oihw,
+        torch_bias_tensor,
+        filter_hw,
+        stride_hw,
+        padding_hw,
+        dilation_hw,
+        groups,
+    )
+    pcc = 0.999
+    passing, pcc_msg = check_with_pcc_without_tensor_printout(
+        torch_out_golden_tensor, torch_split_knit_batched_out, pcc=pcc
+    )
+    logger.info(f"PCC = {pcc_msg}. Threshold = {pcc}")
+    assert passing, pcc_msg
+
+    # =================== TTNN Split-Knit Conv2d, batched conv2d approach ===================
+
+    ttnn_split_knit_batched_out = ttnn_split_knit_batched_dilation(
+        device,
+        torch_input_tensor_nchw,
+        torch_weight_tensor_oihw,
+        torch_bias_tensor,
+        filter_hw,
+        stride_hw,
+        padding_hw,
+        dilation_hw,
+        groups,
+    )
+    pcc = 0.999
+    passing, pcc_msg = check_with_pcc_without_tensor_printout(
+        torch_out_golden_tensor, ttnn_split_knit_batched_out, pcc=pcc
+    )
+    logger.info(f"PCC = {pcc_msg}. Threshold = {pcc}")
+    assert passing, pcc_msg
