@@ -165,6 +165,7 @@ class CMakeBuild(build_ext):
 
 packages = find_namespace_packages(where="ttnn")
 packages = [item for item in packages if not item.startswith("cpp")]
+packages.append("runtime")
 packages.append("tt_metal")
 packages.append("ttnn.cpp")
 
@@ -187,12 +188,15 @@ setup(
     packages=packages,
     package_dir={
         "": "ttnn",  # only this is relevant in case of editable install mode
+        "runtime": "runtime",
         "tt_metal": "tt_metal",  # kernels depend on headers here
         "ttnn.cpp": "ttnn/cpp",
         "tt_lib.models": "models",  # make sure ttnn does not depend on model and remove!!!
     },
     package_data={
+        "runtime": ["*"],
         "ttnn.cpp": ["*.cpp", "*.hpp", "*.cc", "*.h"],
+        "tt_metal": ["*"],
     },
     include_package_data=True,
     long_description_content_type="text/markdown",
