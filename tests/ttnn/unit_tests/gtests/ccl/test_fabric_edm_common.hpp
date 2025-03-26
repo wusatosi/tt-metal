@@ -2335,10 +2335,15 @@ void RunWriteThroughputStabilityTestWithPersistentFabric(
     // Other boiler plate setup
     CoreRangeSet worker_cores = CoreRangeSet(CoreRange(CoreCoord(0, 0), CoreCoord(num_links - 1, 0)));
     auto worker_cores_vec = corerange_to_cores(worker_cores, std::nullopt, false);
-    std::vector<CoreCoord> dest_core_coord;
-    dest_core_coord.reserve(num_links);
+    std::vector<CoreCoord> dest_core_coord_top;
+    dest_core_coord_top.reserve(num_links);
     for (size_t l = 0; l < num_links; l++) {
-        dest_core_coord[l] = CoreCoord(0, l + 1);
+        dest_core_coord_top[l] = CoreCoord(0, l + 1);
+    }
+    std::vector<CoreCoord> dest_core_coord_bottom;
+    dest_core_coord_bottom.reserve(num_links);
+    for (size_t l = 0; l < num_links; l++) {
+        dest_core_coord_bottom[l] = CoreCoord(0, l + 5);
     }
     auto sync_core_coord = CoreCoord(0, 0);
 
@@ -2529,8 +2534,10 @@ void RunWriteThroughputStabilityTestWithPersistentFabric(
         worker_kernel_ids.push_back(worker_kernel_id);
         for (size_t l = 0; l < num_links; l++) {
             auto worker_core = worker_cores_vec[l];
-            const size_t dest_noc_x = device->worker_core_from_logical_core(dest_core_coord[l]).x;
-            const size_t dest_noc_y = device->worker_core_from_logical_core(dest_core_coord[l]).y;
+            const size_t dest_noc_x_top = device->worker_core_from_logical_core(dest_core_coord_top[l]).x;
+            const size_t dest_noc_y_top = device->worker_core_from_logical_core(dest_core_coord_top[l]).y;
+            const size_t dest_noc_x_bottom = device->worker_core_from_logical_core(dest_core_coord_bottom[l]).x;
+            const size_t dest_noc_y_bottom = device->worker_core_from_logical_core(dest_core_coord_bottom[l]).y;
             auto build_connection_args = [&local_device_fabric_handle, device, &program, &worker_core](
                                              bool is_connected_in_direction,
                                              ttnn::ccl::EdmLineFabricOpInterface::Direction direction,
@@ -2557,8 +2564,10 @@ void RunWriteThroughputStabilityTestWithPersistentFabric(
             std::vector<uint32_t> rt_args = {
                 dest_bank_addr,
                 packet_payload_size_bytes,
-                dest_noc_x,
-                dest_noc_y,
+                dest_noc_x_top,
+                dest_noc_y_top,
+                dest_noc_x_bottom,
+                dest_noc_y_bottom,
 
                 disable_sends_for_worker ? 0 : num_mcasts,
                 mcast_fwd_hops,
