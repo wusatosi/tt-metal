@@ -21,7 +21,6 @@ METALIUM_GUIDE.md @davorchap
 
 # Build stuff
 
-MANIFEST.in @tenstorrent/metalium-developers-infra
 setup.py @tenstorrent/metalium-developers-infra
 pyproject.toml @tenstorrent/metalium-developers-infra
 requirements*.txt @tenstorrent/metalium-developers-infra
