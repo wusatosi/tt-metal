@@ -84,20 +84,20 @@ def get_device_freq():
 
 matmul_shapes_bfloat16 = [
     (512, 512, 512, True, True, 1, 1, 1),
-    # (512, 1024, 1024, True, True, 1, 1, 1),
-    # (512, 1024, 2048, True, True, 1, 1, 1),
-    # (1024, 1024, 1024, True, True, 1, 1, 1),
-    # (1024, 1024, 2048, True, True, 1, 1, 1),
-    # (1024, 2048, 2048, True, True, 1, 1, 1),
-    # (2048, 2048, 2048, True, True, 1, 1, 1),
-    # (2048, 2048, 3072, True, True, 1, 1, 1),
-    # (2048, 3072, 3072, True, True, 2, 1, 1),
-    # (3072, 3072, 3072, True, True, 4, 1, 1),
-    # (3072, 3072, 4096, False, False, 2, 1, 1),
-    # (3072, 4096, 4096, False, False, 2, 1, 1),
-    # (4096, 4096, 4096, False, False, 1, 2, 2),
-    # (8192, 8192, 8192, False, False, 2, 4, 4),
-    # (16384, 16384, 16384, False, False, 4, 8, 8),
+    (512, 1024, 1024, True, True, 1, 1, 1),
+    (512, 1024, 2048, True, True, 1, 1, 1),
+    (1024, 1024, 1024, True, True, 1, 1, 1),
+    (1024, 1024, 2048, True, True, 1, 1, 1),
+    (1024, 2048, 2048, True, True, 1, 1, 1),
+    (2048, 2048, 2048, True, True, 1, 1, 1),
+    (2048, 2048, 3072, True, True, 1, 1, 1),
+    (2048, 3072, 3072, True, True, 2, 1, 1),
+    (3072, 3072, 3072, True, True, 4, 1, 1),
+    (3072, 3072, 4096, False, False, 2, 1, 1),
+    (3072, 4096, 4096, False, False, 2, 1, 1),
+    (4096, 4096, 4096, False, False, 1, 2, 2),
+    (8192, 8192, 8192, False, False, 2, 4, 4),
+    (16384, 16384, 16384, False, False, 4, 8, 8),
 ]
 
 matmul_shapes_bfloat8_b = [
@@ -138,10 +138,10 @@ matmul_shapes_bfloat4_b = [
 
 matmul_configs = [
     (ttnn.bfloat16, ttnn.MathFidelity.HiFi2, False),
-    # (ttnn.bfloat16, ttnn.MathFidelity.HiFi4, False),
-    # (ttnn.bfloat8_b, ttnn.MathFidelity.HiFi4, False),
-    # (ttnn.bfloat8_b, ttnn.MathFidelity.LoFi, False),
-    # (ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, False),
+    (ttnn.bfloat16, ttnn.MathFidelity.HiFi4, False),
+    (ttnn.bfloat8_b, ttnn.MathFidelity.HiFi4, False),
+    (ttnn.bfloat8_b, ttnn.MathFidelity.LoFi, False),
+    (ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, False),
     # (ttnn.bfloat16, ttnn.MathFidelity.HiFi2, True),
     # (ttnn.bfloat16, ttnn.MathFidelity.HiFi4, True),
     # (ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, True),
@@ -152,7 +152,7 @@ matmul_configs = [
 
 # @pytest.mark.skip(reason="WH didt hang, need to skip CI and run locally only")
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576, "trace_region_size": 3855488}], indirect=True)
-@pytest.mark.parametrize("grid_size", [(1, 1)])
+@pytest.mark.parametrize("grid_size", [(12, 10)])
 @pytest.mark.parametrize("tile_h", [32])
 @pytest.mark.parametrize("tile_w", [32])
 @pytest.mark.parametrize("num_warmup_iterations", [0])
