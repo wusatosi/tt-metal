@@ -39,6 +39,9 @@ struct AllGatherMatmul {
     /* Fusion Params */
     const CoreCoord all_gather_core_grid_offset;
 
+    /* Physical Devices this op runs on*/
+    std::vector<IDevice*> devices;
+
     /* General */
     void validate(
         const std::vector<Tensor>& input_tensors,

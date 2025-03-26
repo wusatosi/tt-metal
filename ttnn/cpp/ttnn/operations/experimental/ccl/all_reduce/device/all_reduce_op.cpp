@@ -32,11 +32,10 @@ tt::tt_metal::operation::ProgramWithCallbacks AllReduce::create_program_at(
     const ttnn::MeshCoordinate& coord,
     const std::vector<Tensor>& input_tensors,
     std::vector<Tensor>& output_tensors) const {
-    auto devices = input_tensors[0].mesh_device()->get_devices();
-
     auto [device_index, sender_device_id, receiver_device_id] = ccl::get_device_index_and_sender_receiver_ids(
-        input_tensors[0].mesh_device()->get_device(coord), devices, topology);
+        input_tensors[0].mesh_device()->get_device(coord), this->devices, topology);
     chip_id_t target_device_id = input_tensors[0].mesh_device()->get_device(coord)->id();
+
     return ccl::reduce_scatter_detail::reduce_scatter_with_workers(
         input_tensors.at(0),
         output_tensors.at(0),
@@ -158,7 +157,8 @@ static Tensor all_gather_local_reduce(
             .user_defined_num_buffers_per_channel = user_defined_num_buffers_per_channel,
             .output_mem_config = output_mem_config,
             .topology = topology,
-            .cluster_axis = std::nullopt},
+            .cluster_axis = std::nullopt,
+            .devices = devices},
         {reshaped_tensor});
 
     auto sum_tensor = ttnn::sum(gathered_tensor.at(0), 0);
@@ -195,7 +195,8 @@ static Tensor reduce_scatter_all_gather(
             .topology = topology,
             .user_defined_num_workers = user_defined_num_workers,
             .user_defined_num_buffers_per_channel = user_defined_num_buffers_per_channel,
-            .cluster_axis = std::nullopt},
+            .cluster_axis = std::nullopt,
+            .devices = devices},
         {input_tensor});
 
     const auto& gathered_tensor = tt::tt_metal::operation::run(
@@ -207,7 +208,8 @@ static Tensor reduce_scatter_all_gather(
             .user_defined_num_buffers_per_channel = user_defined_num_buffers_per_channel,
             .output_mem_config = output_mem_config,
             .topology = topology,
-            .cluster_axis = std::nullopt},
+            .cluster_axis = std::nullopt,
+            .devices = devices},
         {reduced_tensor.at(0)});
 
     return gathered_tensor.at(0);
