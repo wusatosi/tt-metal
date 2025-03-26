@@ -77,8 +77,8 @@ using namespace ckernel;
 
 int main(int argc, char *argv[]) {
     // disable_gathering();
-    // disable_branch_prediction();
-    // disable_riscv_out_of_order();
+    disable_branch_prediction();
+    disable_riscv_out_of_order();
     disable_prefetch();
     configure_l1_data_cache();
     DIRTY_STACK_MEMORY();
