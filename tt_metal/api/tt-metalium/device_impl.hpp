@@ -149,8 +149,8 @@ public:
     void init_command_queue_device() override;
 
     void init_fabric() override;
-    void simulate_ethernet_core_count(uint32_t num_ethernet_cores);
-    uint32_t simulated_ethernet_core_count() const;
+    void set_ethernet_core_count_on_dispatcher(uint32_t num_ethernet_cores);
+    uint32_t get_ethernet_core_count_on_dispatcher() const;
     // Puts device into reset
     bool close() override;
 
@@ -271,7 +271,7 @@ private:
     uint32_t trace_buffers_size_ = 0;
     bool uninitialized_error_fired_ =
         false;  // To avoid spam with warnings about calling Device methods when it's not initialized.
-    uint32_t simulated_ethernet_core_count_ = 0;
+    uint32_t ethernet_core_count_on_dispatcher_ = 0;
 };
 
 }  // namespace tt::tt_metal

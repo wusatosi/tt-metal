@@ -206,7 +206,9 @@ void DevicePool::initialize(
     const DispatchCoreConfig& dispatch_core_config,
     tt::stl::Span<const std::uint32_t> l1_bank_remap,
     bool init_profiler,
-    bool simulate_max_eth_core_count) noexcept {
+    bool use_max_eth_core_count_on_all_devices) noexcept {
+    // Issue #19729: use_max_eth_core_count_on_all_devices is a workaround
+    // to allow TT-Mesh Workload dispatch to target active ethernet cores.
     ZoneScoped;
     log_debug(tt::LogMetal, "DevicePool initialize");
     // Initialize the dispatch core manager, responsible for assigning dispatch cores
@@ -252,7 +254,7 @@ void DevicePool::initialize(
     }
 
     _inst->skip_remote_devices = skip;
-    _inst->simulate_max_ethernet_core_count_ = simulate_max_eth_core_count;
+    _inst->use_max_eth_core_count_on_all_devices_ = use_max_eth_core_count_on_all_devices;
     _inst->add_devices_to_pool(device_ids);
     _inst->init_firmware_on_active_devices();
 
@@ -427,7 +429,14 @@ void DevicePool::add_devices_to_pool(const std::vector<chip_id_t>& device_ids) {
             this->activate_device(device_id);
         }
     }
-    if (simulate_max_ethernet_core_count_) {
+    // Issue #19729: Workaround to allow TT-Mesh Workload dispatch to target active ethernet cores.
+    // Record the maximum number of active ethernet cores across all devices.
+    // TT-Mesh dispatch assumes that all physical devices in the Mesh have the maximum number of active
+    // ethernet cores (uniformity assumption)
+    // Dispatch firmware running on each physical device knows how many ethernet cores are actually
+    // available and will dispatch to/wait on the correct number of cores (effectively ignoring the
+    // value host dispatch provides, if its incorrect).
+    if (use_max_eth_core_count_on_all_devices_) {
         std::size_t max_eth_core_count = 0;
         for (const auto& device : this->devices) {
             max_eth_core_count = std::max(
@@ -437,7 +446,7 @@ void DevicePool::add_devices_to_pool(const std::vector<chip_id_t>& device_ids) {
                 max_eth_core_count);
         }
         for (auto& device : this->devices) {
-            dynamic_cast<Device*>(device.get())->simulate_ethernet_core_count(max_eth_core_count);
+            dynamic_cast<Device*>(device.get())->set_ethernet_core_count_on_dispatcher(max_eth_core_count);
         }
     }
 

@@ -356,7 +356,9 @@ std::map<chip_id_t, IDevice*> CreateDevices(
     const DispatchCoreConfig& dispatch_core_config,
     const std::vector<uint32_t>& l1_bank_remap,
     bool init_profiler,
-    bool simulate_max_eth_core_count) {
+    bool use_max_eth_core_count_on_all_devices) {
+    // Issue #19729: use_max_eth_core_count_on_all_devices is a workaround
+    // to allow TT-Mesh Workload dispatch to target active ethernet cores.
     ZoneScoped;
     bool is_galaxy = tt::Cluster::instance().is_galaxy_cluster();
     tt::DevicePool::initialize(
@@ -367,7 +369,7 @@ std::map<chip_id_t, IDevice*> CreateDevices(
         dispatch_core_config,
         {},
         init_profiler,
-        simulate_max_eth_core_count);
+        use_max_eth_core_count_on_all_devices);
     const auto devices = tt::DevicePool::instance().get_all_active_devices();
     std::map<chip_id_t, IDevice*> ret_devices;
     // Only include the mmio device in the active devices set returned to the caller if we are not running

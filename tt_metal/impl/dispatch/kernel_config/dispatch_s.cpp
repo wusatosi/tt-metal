@@ -68,19 +68,18 @@ void DispatchSKernel::GenerateDependentConfigs() {
 }
 
 void DispatchSKernel::CreateKernel() {
-    uint32_t virtualize_num_eth_cores =
-        dynamic_cast<Device*>(device_)->simulated_ethernet_core_count() &&
-        (tt::Cluster::instance().get_associated_mmio_device(device_->id()) != device_->id());
-    uint32_t num_virtual_active_eth_cores = 0;
-    uint32_t num_physical_active_eth_cores = 0;
+    // Issue #19729: Workaround to allow TT-Mesh Workload dispatch to target active ethernet cores.
+    // Num num_virtual_active_eth_cores is set if the user application requested virtualizing the
+    // number of ethernet cores across devices (to essentially fake uniformity). This value is the
+    // max number of ethernet cores acorss all chip in the cluster.
+    // num_physical_ethernet_cores is the number of actual available ethernet cores on the current device.
+    // virtualize_num_eth_cores is set if the number of virtual cores is greater than the number of actual
+    // ethernet cores in the chip.
+    uint32_t num_virtual_active_eth_cores = dynamic_cast<Device*>(device_)->get_ethernet_core_count_on_dispatcher();
+    uint32_t num_physical_active_eth_cores =
+        tt::Cluster::instance().get_active_ethernet_cores(device_->id(), /*skip_reserved_tunnel_cores*/ true).size();
+    bool virtualize_num_eth_cores = num_virtual_active_eth_cores > num_physical_active_eth_cores;
 
-    if (virtualize_num_eth_cores) {
-        num_virtual_active_eth_cores = dynamic_cast<Device*>(device_)->simulated_ethernet_core_count();
-        num_physical_active_eth_cores =
-            tt::Cluster::instance()
-                .get_active_ethernet_cores(device_->id(), /*skip_reserved_tunnel_cores*/ true)
-                .size();
-    }
     std::vector<uint32_t> compile_args = {
         static_config_.cb_base.value(),
         static_config_.cb_log_page_size.value(),

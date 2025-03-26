@@ -1644,11 +1644,11 @@ bool Device::is_worker_queue_empty() const { return work_executor_->worker_queue
 
 std::shared_ptr<distributed::MeshDevice> Device::get_mesh_device() { return mesh_device.lock(); }
 
-void Device::simulate_ethernet_core_count(uint32_t num_ethernet_cores) {
-    simulated_ethernet_core_count_ = num_ethernet_cores;
+void Device::set_ethernet_core_count_on_dispatcher(uint32_t num_ethernet_cores) {
+    ethernet_core_count_on_dispatcher_ = num_ethernet_cores;
 }
 
-uint32_t Device::simulated_ethernet_core_count() const { return simulated_ethernet_core_count_; }
+uint32_t Device::get_ethernet_core_count_on_dispatcher() const { return ethernet_core_count_on_dispatcher_; }
 
 }  // namespace tt_metal
 
