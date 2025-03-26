@@ -92,14 +92,16 @@ FORCE_INLINE void execute_chip_unicast_to_local_chip(
     tt_l1_ptr PACKET_HEADER_TYPE* const packet_start,
     uint16_t payload_size_bytes,
     uint32_t transaction_id,
-    uint8_t vc) {
+    uint8_t vc,
+    uint64_t hardcoded_dest) {
     const auto& header = *packet_start;
     uint32_t payload_start_address = reinterpret_cast<size_t>(packet_start) + sizeof(PACKET_HEADER_TYPE);
 
     tt::tt_fabric::NocSendType noc_send_type = header.noc_send_type;
     switch (noc_send_type) {
         case tt::tt_fabric::NocSendType::NOC_UNICAST_WRITE: {
-            const auto dest_address = header.command_fields.unicast_write.noc_address;
+            // const auto dest_address = header.command_fields.unicast_write.noc_address;
+            auto dest_address = hardcoded_dest;
             noc_async_write_one_packet_with_trid<false, false>(
                 payload_start_address,
                 dest_address,
@@ -107,7 +109,7 @@ FORCE_INLINE void execute_chip_unicast_to_local_chip(
                 transaction_id,
                 tt::tt_fabric::local_chip_data_cmd_buf,
                 tt::tt_fabric::edm_to_local_chip_noc,
-                vc);
+                1);
         } break;
 
         case tt::tt_fabric::NocSendType::NOC_MULTICAST_WRITE: {
@@ -127,14 +129,14 @@ FORCE_INLINE void execute_chip_unicast_to_local_chip(
         case tt::tt_fabric::NocSendType::NOC_UNICAST_ATOMIC_INC: {
             const uint64_t dest_address = header.command_fields.unicast_seminc.noc_address;
             const auto increment = header.command_fields.unicast_seminc.val;
-            noc_semaphore_inc(dest_address, increment, tt::tt_fabric::edm_to_local_chip_noc, vc);
+            noc_semaphore_inc(dest_address, increment, tt::tt_fabric::edm_to_local_chip_noc, 1);
 
         } break;
 
         case tt::tt_fabric::NocSendType::NOC_UNICAST_INLINE_WRITE: {
             const auto dest_address = header.command_fields.unicast_inline_write.noc_address;
             const auto value = header.command_fields.unicast_inline_write.value;
-            noc_inline_dw_write(dest_address, value, 0xF, tt::tt_fabric::edm_to_local_chip_noc, vc);
+            noc_inline_dw_write(dest_address, value, 0xF, tt::tt_fabric::edm_to_local_chip_noc, 1);
         } break;
 
         case tt::tt_fabric::NocSendType::NOC_MULTICAST_ATOMIC_INC:

@@ -159,15 +159,23 @@ void kernel_main() {
         auto fwd_y = fabric_connection.get_forward_connection().edm_noc_y;
         auto bwd_y = fabric_connection.get_backward_connection().edm_noc_y;
         if (fwd_y < bwd_y) {
-            noc0_dest_x_fwd = dest_noc_x_bottom;
-            noc0_dest_y_fwd = dest_noc_y_bottom;
-            noc0_dest_x_bwd = dest_noc_x_top;
-            noc0_dest_y_bwd = dest_noc_y_top;
-        } else {
+            // noc0_dest_x_fwd = dest_noc_x_bottom;
+            // noc0_dest_y_fwd = dest_noc_y_bottom;
+            // noc0_dest_x_bwd = dest_noc_x_top;
+            // noc0_dest_y_bwd = dest_noc_y_top;
             noc0_dest_x_fwd = dest_noc_x_top;
             noc0_dest_y_fwd = dest_noc_y_top;
             noc0_dest_x_bwd = dest_noc_x_bottom;
             noc0_dest_y_bwd = dest_noc_y_bottom;
+        } else {
+            // noc0_dest_x_fwd = dest_noc_x_top;
+            // noc0_dest_y_fwd = dest_noc_y_top;
+            // noc0_dest_x_bwd = dest_noc_x_bottom;
+            // noc0_dest_y_bwd = dest_noc_y_bottom;
+            noc0_dest_x_fwd = dest_noc_x_bottom;
+            noc0_dest_y_fwd = dest_noc_y_bottom;
+            noc0_dest_x_bwd = dest_noc_x_top;
+            noc0_dest_y_bwd = dest_noc_y_top;
         }
     } else {
         noc0_dest_x_fwd = dest_noc_x_top;
@@ -175,9 +183,14 @@ void kernel_main() {
         noc0_dest_x_bwd = dest_noc_x_bottom;
         noc0_dest_y_bwd = dest_noc_y_bottom;
     }
+    // noc0_dest_x_fwd = dest_noc_x_top;
+    // noc0_dest_y_fwd = dest_noc_y_top;
+    // noc0_dest_x_bwd = dest_noc_x_top;
+    // noc0_dest_y_bwd = dest_noc_y_top;
 
-    // DPRINT << "noc0_dest_x_fwd " << (uint)noc0_dest_x_fwd << " noc0_dest_y_fwd " <<  (uint)noc0_dest_y_fwd<<ENDL();
-    // DPRINT << "noc0_dest_x_bwd " << (uint)noc0_dest_x_bwd << " noc0_dest_y_bwd " <<  (uint)noc0_dest_y_bwd<<ENDL();
+    DPRINT << "noc0_dest_x_fwd " << (uint)noc0_dest_x_fwd << " noc0_dest_y_fwd " << (uint)noc0_dest_y_fwd << ENDL();
+    DPRINT << "noc0_dest_x_bwd " << (uint)noc0_dest_x_bwd << " noc0_dest_y_bwd " << (uint)noc0_dest_y_bwd << ENDL();
+    DPRINT << "dest_bank_addr " << (uint)dest_bank_addr << ENDL();
 
     {
         DeviceZoneScopedN("MAIN-TEST-BODY");
@@ -194,7 +207,7 @@ void kernel_main() {
                 noc_async_write(source_l1_buffer_address, dest_addr, packet_payload_size_bytes);
                 if (mcast_fwd) {
                     mcast_fwd_packet_header->to_noc_unicast_write(
-                        NocUnicastCommandHeader{noc0_dest_x_fwd}, packet_payload_size_bytes);
+                        NocUnicastCommandHeader{noc0_dest_addr_fwd}, packet_payload_size_bytes);
                     fabric_connection.get_forward_connection().wait_for_empty_write_slot();
                     // print_pkt_header(mcast_fwd_packet_header);
                     fabric_connection.get_forward_connection().send_payload_without_header_non_blocking_from_address(
