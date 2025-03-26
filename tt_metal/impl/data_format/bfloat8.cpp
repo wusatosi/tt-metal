@@ -77,6 +77,7 @@ std::vector<float> unpack_bfp8_tiles_into_float_vec(
     uint32_t num_float_in_tile = subtiles_in_tile_row * subtiles_in_tile_col * subtile_rows * subtile_cols;
     uint32_t fp32_element_index = 0;
     std::vector<float> float_vec;
+    std::cout << "ZZZZZZZZZZZZZZZZZZ\n";
     float_vec.resize(num_tiles * num_float_in_tile);
     for (int tile_index = 0; tile_index < num_tiles; ++tile_index) {
         for (int tr = 0; tr < subtiles_in_tile_row; ++tr) {
