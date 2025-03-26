@@ -1,0 +1,5 @@
+# UMD pulls in Luwen which has a data race
+# FIXME: Fix the data race and remove this suppression
+race:indicatif
+race:alloc::raw_vec::finish_grow
+race:console::term::Term::write_str

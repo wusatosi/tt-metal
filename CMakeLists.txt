@@ -318,6 +318,15 @@ install(
     COMPONENT jit-build
 )
 
+install(
+    FILES
+        .tsan.suppressions
+    DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/tt-metalium/validation
+    CONFIGURATIONS
+        TSan
+    COMPONENT metalium-validation
+)
+
 # Custom clean target for `built` folder for when new kernel changes are pulled
 add_custom_target(
     clean-built
