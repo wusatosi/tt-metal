@@ -3117,7 +3117,6 @@ def torch_split_knit_batched_dilation(torch_input_tensor_nchw, torch_weight_tens
 
     return out_knitted
 
-
 # Split-Knit Conv2d with high dilation (batched)
 def ttnn_split_knit_batched_dilation(device, torch_input_tensor_nchw, torch_weight_tensor_oihw, torch_bias_tensor, filter_hw, stride_hw, padding_hw, dilation_hw, groups):
     assert groups == 1, "groups must be 1"
@@ -3139,8 +3138,13 @@ def ttnn_split_knit_batched_dilation(device, torch_input_tensor_nchw, torch_weig
     packer_l1_acc = False
 
     # split (host-side)
-    sk_batch=torch_input_tensor_nchw.shape[0] * dilation_hw[0] * dilation_hw[1]
-    torch_inputs_grouped_splited = torch.zeros((sk_batch, torch_input_tensor_nchw.shape[1], torch_input_tensor_nchw.shape[2] // dilation_hw[0], torch_input_tensor_nchw.shape[3] // dilation_hw[1]))
+    sk_in_channels = torch_weight_tensor_oihw.shape[1]
+    sk_out_channels = torch_weight_tensor_oihw.shape[0]
+    sk_batch_size = torch_input_tensor_nchw.shape[0] * dilation_hw[0] * dilation_hw[1]
+    sk_input_height = torch_input_tensor_nchw.shape[2] // dilation_hw[0]
+    sk_input_width = torch_input_tensor_nchw.shape[3] // dilation_hw[1]
+    print(f"sk_batch_size {sk_batch_size}, sk_in_channels {sk_in_channels}, sk_out_channels {sk_out_channels}, sk_input_height {sk_input_height}, sk_input_width {sk_input_width}")
+    torch_inputs_grouped_splited = torch.zeros((sk_batch_size, torch_input_tensor_nchw.shape[1], torch_input_tensor_nchw.shape[2] // dilation_hw[0], torch_input_tensor_nchw.shape[3] // dilation_hw[1]))
     for split_h in range(dilation_hw[0]):
         for split_w in range(dilation_hw[1]):
             batch_idx = split_h * dilation_hw[1] + split_w
@@ -3152,13 +3156,14 @@ def ttnn_split_knit_batched_dilation(device, torch_input_tensor_nchw, torch_weig
                 ]
 
 
-    torch_inputs_grouped_splited_nhwc  = torch.permute(torch_inputs_grouped_splited, (0, 2, 3, 1))
 
-    tt_input_tensor = ttnn.from_torch(
-        torch_inputs_grouped_splited_nhwc,
+    tt_input_tensor_nchw = ttnn.from_torch(
+        torch_inputs_grouped_splited,
         activations_dtype if activations_dtype == ttnn.float32 else ttnn.bfloat16,
         mesh_mapper=None,
-    )
+    ).to(device)
+
+    tt_input_tensor = ttnn.permute(tt_input_tensor_nchw, (0, 2, 3, 1))
 
     tt_weight_tensor = ttnn.from_torch(
         torch_weight_tensor_oihw,
@@ -3198,18 +3203,16 @@ def ttnn_split_knit_batched_dilation(device, torch_input_tensor_nchw, torch_weig
         packer_l1_acc=packer_l1_acc,
     )
 
-    print(f"torch_inputs_grouped_splited_nhwc: {torch_inputs_grouped_splited_nhwc.shape}")
-
     # conv2d
     [tt_output_splited_tensor_on_device, [out_h, out_w]] = ttnn.conv2d(
         input_tensor=tt_input_tensor,
         weight_tensor=tt_weight_tensor,
         device=device,
-        in_channels=torch_inputs_grouped_splited_nhwc.shape[-1],
-        out_channels = torch_weight_tensor_oihw.shape[0],
-        batch_size = torch_inputs_grouped_splited_nhwc.shape[0],
-        input_height = torch_inputs_grouped_splited_nhwc.shape[1],
-        input_width = torch_inputs_grouped_splited_nhwc.shape[2],
+        in_channels=sk_in_channels,
+        out_channels=sk_out_channels,
+        batch_size=sk_batch_size,
+        input_height=sk_input_height,
+        input_width=sk_input_width,
         kernel_size=filter_hw,
         stride=stride_hw,
         padding=sk_padding_hw,
@@ -3232,7 +3235,8 @@ def ttnn_split_knit_batched_dilation(device, torch_input_tensor_nchw, torch_weig
     #     groups=sk_groups
     # )
 
-    tt_output_splited_tensor_on_device = tt_output_splited_tensor_on_device.reshape((torch_inputs_grouped_splited_nhwc.shape[0], out_h, out_w, -1))
+    print(f"tt_output_splited_tensor_on_device.shape {tt_output_splited_tensor_on_device.shape}")
+    tt_output_splited_tensor_on_device = tt_output_splited_tensor_on_device.reshape(sk_batch_size, out_h, out_w, tt_output_splited_tensor_on_device.shape[-1])
     ttnn.synchronize_device(device)
 
     # host fallback
