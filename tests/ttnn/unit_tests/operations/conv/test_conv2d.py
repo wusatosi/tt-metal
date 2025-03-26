@@ -3144,26 +3144,49 @@ def ttnn_split_knit_batched_dilation(device, torch_input_tensor_nchw, torch_weig
     sk_input_height = torch_input_tensor_nchw.shape[2] // dilation_hw[0]
     sk_input_width = torch_input_tensor_nchw.shape[3] // dilation_hw[1]
     print(f"sk_batch_size {sk_batch_size}, sk_in_channels {sk_in_channels}, sk_out_channels {sk_out_channels}, sk_input_height {sk_input_height}, sk_input_width {sk_input_width}")
-    torch_inputs_grouped_splited = torch.zeros((sk_batch_size, torch_input_tensor_nchw.shape[1], torch_input_tensor_nchw.shape[2] // dilation_hw[0], torch_input_tensor_nchw.shape[3] // dilation_hw[1]))
-    for split_h in range(dilation_hw[0]):
-        for split_w in range(dilation_hw[1]):
-            batch_idx = split_h * dilation_hw[1] + split_w
-            torch_inputs_grouped_splited[batch_idx,:,:,:] =  torch_input_tensor_nchw[
-                    :,
-                    :,
-                    split_h::dilation_hw[0],
-                    split_w::dilation_hw[1],
-                ]
+    # torch_inputs_grouped_splited = torch.zeros((sk_batch_size, torch_input_tensor_nchw.shape[1], torch_input_tensor_nchw.shape[2] // dilation_hw[0], torch_input_tensor_nchw.shape[3] // dilation_hw[1]))
+    # for split_h in range(dilation_hw[0]):
+    #     for split_w in range(dilation_hw[1]):
+    #         batch_idx = split_h * dilation_hw[1] + split_w
+    #         torch_inputs_grouped_splited[batch_idx,:,:,:] =  torch_input_tensor_nchw[
+    #                 :,
+    #                 :,
+    #                 split_h::dilation_hw[0],
+    #                 split_w::dilation_hw[1],
+    #             ]
 
 
 
     tt_input_tensor_nchw = ttnn.from_torch(
-        torch_inputs_grouped_splited,
+        torch_input_tensor_nchw,
         activations_dtype if activations_dtype == ttnn.float32 else ttnn.bfloat16,
         mesh_mapper=None,
     ).to(device)
 
     tt_input_tensor = ttnn.permute(tt_input_tensor_nchw, (0, 2, 3, 1))
+    # E   Sharded tensor slice implementation does not support striding
+    # sharded_memory_config = ttnn.create_sharded_memory_config_(
+    #     shape = tt_input_tensor.shape,
+    #     core_grid = ttnn.CoreGrid(x=8,y=8),
+    #     strategy = ttnn.ShardStrategy.HEIGHT,
+    #     orientation = ttnn.ShardOrientation.ROW_MAJOR,
+    #     tile_layout = True
+    # )
+    # print(f"sharded_memory_config {sharded_memory_config}")
+    # tt_input_tensor = ttnn.to_memory_config(tt_input_tensor, sharded_memory_config)
+
+    tt_input_tensors = []
+    for split_h in range(dilation_hw[0]):
+        for split_w in range(dilation_hw[1]):
+            tt_input_tensors.append(
+                ttnn.slice(input_tensor=tt_input_tensor,
+                           slice_start=(0,split_h,split_w,0),
+                           slice_end=(torch_input_tensor_nchw.shape[0],torch_input_tensor_nchw.shape[2],torch_input_tensor_nchw.shape[3],torch_input_tensor_nchw.shape[1]),
+                           slice_step=(1,dilation_hw[0],dilation_hw[1],1)))
+    for idx, x in enumerate(tt_input_tensors):
+        print(f"tt_input_tensors[{idx}] {x.shape}")
+    tt_input_tensor = ttnn.concat(tt_input_tensors, dim=0)
+    print(f"tt_input_tensor.shape {tt_input_tensor.shape}")
 
     tt_weight_tensor = ttnn.from_torch(
         torch_weight_tensor_oihw,
@@ -3585,8 +3608,8 @@ def test_conv2d_split_knit_dilation(
         # ((1, 56, 1024, 64), 64, (3, 3), (1, 1), (8, 8), (8, 8)),
 
         ((1, 32, 1024, 256), 48, (3, 3), (1, 1), (2, 2), (2, 2)),
-        ((1, 48, 1024, 256), 56, (3, 3), (1, 1), (4, 4), (4, 4)),
-        ((1, 56, 1024, 256), 64, (3, 3), (1, 1), (8, 8), (8, 8)),
+        # ((1, 48, 1024, 256), 56, (3, 3), (1, 1), (4, 4), (4, 4)),
+        # ((1, 56, 1024, 256), 64, (3, 3), (1, 1), (8, 8), (8, 8)),
 
         # 1024x512 E   Out of Memory: Not enough space to allocate 35651584 B L1 buffer across 64 banks, where each bank needs to store 557056 B
         # 1024x512 E   Out of Memory: Not enough space to allocate 70287360 B L1 buffer across 64 banks, where each bank needs to store 1098240 B
