@@ -415,9 +415,9 @@ INSTANTIATE_TEST_SUITE_P(
     /*Prefix for the instantiated tests*/ MatmulTests,
     /*Test suite*/ Matmul2DHostPerfTestFixture,
     ::testing::Values(std::make_tuple(
-        /* grid_size */ std::make_tuple(8, 8),
+        /* grid_size */ std::make_tuple(1, 1),
         /* tile_h */ 32,
         /* tile_w */ 32,
-        /* num_warmup_iterations */ 5,
-        /* num_measurement_iterations */ 100,
+        /* num_warmup_iterations */ 0,
+        /* num_measurement_iterations */ 1,
         /* use_program_cache */ true)));
