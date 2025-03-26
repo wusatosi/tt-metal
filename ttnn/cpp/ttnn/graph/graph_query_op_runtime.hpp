@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <type_traits>
 
 #include "ttnn/graph/graph_trace_utils.hpp"
 #include "ttnn/operations/trace.hpp"
@@ -38,16 +39,6 @@ static constexpr int NUM_TRACE_EXECUTIONS = 10;
  */
 template <typename Op, typename... Args>
 auto capture_op_trace(Op op, IDevice* device, Args&&... args) {
-    // helper lambda to transform TensorSpec to DeviceTensor
-    auto transform_arg = [device](auto&& arg) {
-        if constexpr (std::is_same_v<std::decay_t<decltype(arg)>, TensorSpec>) {
-            return create_device_tensor(arg, device);
-        } else {
-            return std::forward<decltype(arg)>(arg);
-        }
-    };
-    auto transformed_args = std::make_tuple(transform_arg(std::forward<Args>(args))...);
-
     device->enable_program_cache();
     {  // warm up the program cache - required for trace capture
         std::apply(op, transformed_args);
@@ -99,6 +90,54 @@ uint64_t execute_time_and_release_trace(TraceID trace_id, IDevice* device) {
     }
 }
 
+// These arguments *must* match both the args provided on the mlir side and the order of arguments in the invoke()
+// method for the op
+RuntimeQueryResponse predict_reshard_runtime(
+    const ttnn::Tensor& input_tensor, const ttnn::MemoryConfig& memory_config) {
+    if (!input_tensor.is_sharded()) {
+        return return RuntimeQueryResponse{
+            ExecutionStatus::Error, 0, "Reshard Runtime Model: Input tensor is not sharded"};
+    }
+    if (!memory_config.is_sharded()) {
+        return RuntimeQueryResponse{ExecutionStatus::Error, 0, "Reshard Runtime Model: No output shard spec provided"};
+    }
+
+    uint64_t num_tiles = input_tensor.volume() / (ttnn::TILE_SIZE * ttnn::TILE_SIZE);
+
+    auto model = load_mlpack_model(input_tensor.memory_config.memory_layout, memory_config.memory_layout);
+
+    auto input_shard_spec = input_tensor.shard_spec.value();
+    auto output_shard_spec = memory_config.shard_spec.value();
+
+    // get input and output grid (x,y) from shard spec
+
+    uint64_t runtime = model(input_grid_x, input_grid_y, output_grid_x, output_grid_y, num_tiles);
+    return RuntimeQueryResponse{ExecutionStatus::Success, runtime, ""};
+}
+
+RuntimeQueryResponse predict_matmul_runtime(
+    const Tensor& input_tensor_a,
+    const Tensor& input_tensor_b,
+    const bool transpose_a = false,
+    const bool transpose_b = false,
+    const std::optional<const MemoryConfig>& memory_config = std::nullopt,
+    const std::optional<const DataType> dtype = std::nullopt) {
+    return RuntimeQueryResponse{ExecutionStatus::Error, 0, "Matmul runtime model not yet implemented"};
+}
+
+// For ops that have offline runtime models, dispatch to the specific model. Otherwise, return an error
+// so the caller uses trace capture
+template <typename Op, typename... Args>
+auto get_runtime_from_model(Op op, Args&&... args) {
+    if constexpr (std::is_same_v<Op, ttnn::reshard>) {
+        return predict_reshard_runtime(std::forward<Args>(args));
+    } else if constexpr (std::is_same_v<Op, ttnn::matmul>) {
+        return predict_matmul_runtime(std::forward<Args>(args));
+    } else {
+        return RuntimeQueryResponse{ExecutionStatus::Error, 0, "Runtime model not yet implemented"};
+    }
+}
+
 /**
  * @brief Extracts a trace of the graph operations and returns the trace execution runtime.
  *
@@ -117,8 +156,24 @@ uint64_t execute_time_and_release_trace(TraceID trace_id, IDevice* device) {
  */
 template <typename Op, typename... Args>
 auto query_op_runtime(Op op, IDevice* device, Args&&... args) {
+    // helper lambda to transform TensorSpec to DeviceTensor
+    auto transform_arg = [device](auto&& arg) {
+        if constexpr (std::is_same_v<std::decay_t<decltype(arg)>, TensorSpec>) {
+            return create_device_tensor(arg, device);
+        } else {
+            return std::forward<decltype(arg)>(arg);
+        }
+    };
+    auto transformed_args = transform_arg(std::forward<Args>(args))...;
+
+    auto response = get_runtime_from_model(Op, transformed_args...);
+    if (response.status == ExecutionStatus::Success) {
+        return response;
+    }
+
+    // If an offline model is not available, or there was an error, fall back on trace capture
     try {
-        auto trace_id = capture_op_trace(op, device, std::forward<Args>(args)...);
+        auto trace_id = capture_op_trace(op, device, transformed_args...);
         auto runtime = execute_time_and_release_trace(trace_id, device);
         return RuntimeQueryResponse{ExecutionStatus::Success, runtime};
 
