@@ -4,6 +4,7 @@
 
 #include "ttnn/operations/ccl/all_gather/device/all_gather_op.hpp"
 #include "ttnn/operations/math.hpp"
+#include "ttnn/distributed/distributed_tensor_config.hpp"
 
 #include <tt-metalium/hal.hpp>
 #include <tt-metalium/mesh_coord.hpp>
@@ -235,9 +236,33 @@ Tensor all_gather(
     const std::optional<size_t> user_defined_num_workers,
     const std::optional<size_t> user_defined_num_buffers_per_channel,
     const ttnn::ccl::Topology topology) {
+    auto input_tensors = ttnn::distributed::get_device_tensors(input_tensor);
+    auto output_tensors = all_gather(
+        input_tensors,
+        dim,
+        num_links,
+        memory_config,
+        user_defined_num_workers,
+        user_defined_num_buffers_per_channel,
+        topology);
+    return ttnn::distributed::aggregate_as_tensor(output_tensors, tt::tt_metal::AllGatherTensor{});
+}
+
+std::vector<Tensor> all_gather(
+    const std::vector<Tensor>& input_tensors,
+    const int32_t dim,
+    const uint32_t num_links,
+    const std::optional<MemoryConfig>& memory_config,
+    const std::optional<size_t> user_defined_num_workers,
+    const std::optional<size_t> user_defined_num_buffers_per_channel,
+    const ttnn::ccl::Topology topology) {
     TT_FATAL(
         std::getenv("TT_METAL_SLOW_DISPATCH_MODE") == nullptr, "all_gather op is only supported for Fast Dispatch");
-    auto devices = input_tensor.get_workers();
+    std::vector<IDevice*> devices;
+    devices.reserve(input_tensors.size());
+    for (const auto& input_tensor : input_tensors) {
+        devices.push_back(input_tensor.device());
+    }
     uint32_t num_devices = devices.size();
     TT_FATAL(num_devices > 1, "all_gather op will only work for num_devices > 1, but has {}", num_devices);
     ttnn::ccl::Topology ccl_topology = topology;
@@ -246,7 +271,7 @@ Tensor all_gather(
         ccl_topology = ttnn::ccl::Topology::Linear;
     }
 
-    int32_t rank = input_tensor.get_logical_shape().rank();
+    int32_t rank = input_tensors[0].get_logical_shape().rank();
 
     int32_t gather_dim = (dim < 0) ? rank + dim : dim;
 
@@ -257,64 +282,59 @@ Tensor all_gather(
         rank - 1,
         dim);
 
-    std::vector<Tensor> output_tensors = {Tensor(tt::tt_metal::operation::get_workers_for_op_output({input_tensor}))};
-    tt::tt_metal::operation::launch_op(
-        [gather_dim,
-         num_links,
-         dim,
-         num_devices,
-         memory_config,
-         user_defined_num_workers,
-         user_defined_num_buffers_per_channel,
-         devices,
-         ccl_topology](
-            const std::vector<Tensor>& input_tensors,
-            const std::vector<std::optional<const Tensor>>& optional_input_tensors,
-            const std::vector<std::optional<Tensor>>& optional_output_tensors) mutable -> std::vector<Tensor> {
-            auto input_tensor = input_tensors.at(0);
-
-            ttnn::SmallVector<uint32_t> unpad_elements = {
-                input_tensor.get_logical_shape()[-4],
-                input_tensor.get_logical_shape()[-3],
-                input_tensor.get_logical_shape()[-2],
-                input_tensor.get_logical_shape()[-1]};
-            bool needs_padding = input_tensor.get_layout() == Layout::TILE &&
-                                 (input_tensor.get_logical_shape()[-2] % tt::constants::TILE_HEIGHT != 0 ||
-                                  input_tensor.get_logical_shape()[-1] % tt::constants::TILE_WIDTH != 0);
-            if (needs_padding) {
-                ttnn::SmallVector<std::pair<uint32_t, uint32_t>> padding = {{0, 0}, {0, 0}, {0, 0}, {0, 0}};
-                DataType original_dtype = input_tensor.get_dtype();
-                if (input_tensor.get_dtype() != DataType::BFLOAT16 && input_tensor.get_dtype() != DataType::FLOAT32) {
-                    input_tensor = ttnn::typecast(input_tensor, DataType::BFLOAT16);
+    std::vector<Tensor> output_tensors = std::vector<Tensor>(input_tensors.size());
+    for (uint32_t i = 0; i < input_tensors.size(); ++i) {
+        output_tensors[i] = Tensor(tt::tt_metal::operation::get_workers_for_op_output({input_tensors[i]}));
+        const Tensor& tensor_on_receiver = input_tensors[(i + 1) % input_tensors.size()];
+        const Tensor& tensor_on_sender = input_tensors[i == 0 ? input_tensors.size() - 1 : i - 1];
+        std::vector<Tensor> output_for_curr_device = {output_tensors[i]};
+        tt::tt_metal::operation::launch_op(
+            [=](const std::vector<Tensor>& input_tensors,
+                const std::vector<std::optional<const Tensor>>& optional_input_tensors,
+                const std::vector<std::optional<Tensor>>& optional_output_tensors) mutable {
+                auto input_tensor = input_tensors.at(0);
+                ttnn::SmallVector<uint32_t> unpad_elements = {
+                    input_tensor.get_logical_shape()[-4],
+                    input_tensor.get_logical_shape()[-3],
+                    input_tensor.get_logical_shape()[-2],
+                    input_tensor.get_logical_shape()[-1]};
+                bool needs_padding = input_tensor.get_layout() == Layout::TILE &&
+                                     (input_tensor.get_logical_shape()[-2] % tt::constants::TILE_HEIGHT != 0 ||
+                                      input_tensor.get_logical_shape()[-1] % tt::constants::TILE_WIDTH != 0);
+                if (needs_padding) {
+                    ttnn::SmallVector<std::pair<uint32_t, uint32_t>> padding = {{0, 0}, {0, 0}, {0, 0}, {0, 0}};
+                    DataType original_dtype = input_tensor.get_dtype();
+                    if (input_tensor.get_dtype() != DataType::BFLOAT16 &&
+                        input_tensor.get_dtype() != DataType::FLOAT32) {
+                        input_tensor = ttnn::typecast(input_tensor, DataType::BFLOAT16);
+                    }
+                    input_tensor = ttnn::pad(input_tensor, padding, 0, false, std::nullopt);
+                    if (original_dtype != input_tensor.get_dtype()) {
+                        input_tensor = ttnn::typecast(input_tensor, original_dtype);
+                    }
                 }
-                input_tensor = ttnn::pad(input_tensor, padding, 0, false, std::nullopt);
-                if (original_dtype != input_tensor.get_dtype()) {
-                    input_tensor = ttnn::typecast(input_tensor, original_dtype);
+                auto output_tensor = tt::tt_metal::operation::run(
+                    ttnn::ccl::all_gather_detail::create_all_gather_struct(
+                        input_tensor,
+                        gather_dim,
+                        num_links,
+                        memory_config,
+                        user_defined_num_workers,
+                        user_defined_num_buffers_per_channel,
+                        devices,
+                        ccl_topology),
+                    {input_tensor});
+
+                if (needs_padding) {
+                    return ttnn::ccl::unpad_output_tensor(output_tensor, num_devices, unpad_elements, dim);
+                } else {
+                    return output_tensor;
                 }
-            }
-
-            auto output_tensor = tt::tt_metal::operation::run(
-                ttnn::ccl::all_gather_detail::create_all_gather_struct(
-                    input_tensor,
-                    gather_dim,
-                    num_links,
-                    memory_config,
-                    user_defined_num_workers,
-                    user_defined_num_buffers_per_channel,
-                    devices,
-                    ccl_topology),
-                {input_tensor});
-
-            if (needs_padding) {
-                return ttnn::ccl::unpad_output_tensor(output_tensor, num_devices, unpad_elements, dim);
-            } else {
-                return output_tensor;
-            }
-        },
-        {input_tensor},
-        output_tensors);
-
-    return output_tensors.at(0);
+            },
+            {input_tensors[i]},
+            output_for_curr_device);
+    }
+    return output_tensors;
 }
 
 Tensor all_gather(
