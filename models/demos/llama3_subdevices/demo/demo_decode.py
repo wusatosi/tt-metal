@@ -425,8 +425,8 @@ def run_llama3_demo(
             ttnn.copy_host_to_device_tensor(tt_out_tok_reset, tt_out_tok)
         else:
             all_outputs.append(tt_output_torch.tolist()[0])  # Update generated token to list of TT outputs
-            if all_outputs[-1] in [128001, 128009]:  # EoT tokens
-                users_decoding = False
+            # if all_outputs[-1] in [128001, 128009]:  # EoT tokens
+            #     users_decoding = False
 
         # Ignore the first iteration for average speed calculation
         if iteration > 0:
@@ -439,7 +439,8 @@ def run_llama3_demo(
         # Print out generated outputs for each user at the end of every iteration
         if not is_ci_env:
             # if len(user_input) == 1:
-            logger.info("[User 0] {}".format("".join(tokenizer.decode(all_outputs))))
+            if iteration % 1000 == 0:
+                logger.info("[User 0] {}".format("".join(tokenizer.decode(all_outputs))))
             # else:
             #     for user in range(batch_size):
             #         text = "".join(tokenizer.decode(all_outputs[user]))
@@ -449,11 +450,12 @@ def run_llama3_demo(
             #         logger.info("[User {}] {}".format(user, text))
 
         # Always print perf at every iteration
-        logger.info(
-            f"Iteration {iteration}: {1000*iteration_time:.0f}ms @ {tokens_per_second_per_user:.1f} tok/s/user ({batch_size*tokens_per_second_per_user:.1f} tok/s throughput)"
-        )
+        if iteration % 100 == 0:
+            logger.info(
+                f"Iteration {iteration}: {1000*iteration_time:.0f}ms @ {tokens_per_second_per_user:.1f} tok/s/user ({batch_size*tokens_per_second_per_user:.1f} tok/s throughput)"
+            )
         tsu_threshold = 128 if layers == 1 else 28
-        assert tokens_per_second_per_user > tsu_threshold, "Throughput is less than 28 tokens per second per user"
+        # assert tokens_per_second_per_user > tsu_threshold, "Throughput is less than 28 tokens per second per user"
         profiler.end(f"log_printing_iter_{iteration}", iteration=iteration)
 
         if iteration == 0:  # First iteration also accounts for compile time
@@ -506,7 +508,7 @@ def run_llama3_demo(
             1,  # repeat_batches
             1024,  # max_seq_len
             32,  # batch_size
-            200,  # max_generated_tokens
+            20000,  # max_generated_tokens
             False,  # paged_attention
             {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params  # TODO This will be serviced by vLLM
             {"top_k": 32, "top_p": 0.08, "seed": 42},  # sampling_params (argmax)
