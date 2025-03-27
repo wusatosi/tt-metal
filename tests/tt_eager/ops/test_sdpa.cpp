@@ -34,19 +34,19 @@ int main(int argc, char** argv) {
         uint32_t b = 1;
         uint32_t nh = 1;
         uint32_t nkv = 1;
-        uint32_t s = 2048;
+        uint32_t s = 1024;
         uint32_t d = 128;
         uint32_t q_chunk_size = 256;
         uint32_t k_chunk_size = 512;
 
-        ttnn::Shape shape_q({b, nh, s, d});
-        ttnn::Shape shape_k({b, nkv, s, d});
-        ttnn::Shape shape_v({b, nkv, s, d});
+        ttnn::SimpleShape shape_q({b, nh, s, d});
+        ttnn::SimpleShape shape_k({b, nkv, s, d});
+        ttnn::SimpleShape shape_v({b, nkv, s, d});
 
         // Allocates a DRAM buffer on device populated with values specified by initialize
-        Tensor q = ttnn::random::random(shape_q).to_layout(Layout::TILE).to_device(device);
-        Tensor k = ttnn::random::random(shape_k).to_layout(Layout::TILE).to_device(device);
-        Tensor v = ttnn::random::random(shape_v).to_layout(Layout::TILE).to_device(device);
+        Tensor q = ttnn::random::random(shape_q).to(Layout::TILE).to(device);
+        Tensor k = ttnn::random::random(shape_k).to(Layout::TILE).to(device);
+        Tensor v = ttnn::random::random(shape_v).to(Layout::TILE).to(device);
 
         auto kernel_config = ttnn::WormholeComputeKernelConfig{MathFidelity::HiFi2, true, false, false, false};
 
