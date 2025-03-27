@@ -2201,7 +2201,8 @@ std::vector<Tensor> Matmul::create_output_tensors(
     return operation::default_create_output_tensors(*this, input_tensors, optional_output_tensors);
 }
 
-operation::ProgramWithCallbacks Matmul::create_program(
+operation::ProgramWithCallbacks Matmul::create_program_at(
+    const ttnn::MeshCoordinate& mesh_coord,
     const std::vector<Tensor>& input_tensors,
     const std::vector<std::optional<const Tensor>>& optional_input_tensors,
     std::vector<Tensor>& output_tensors) const {
@@ -2300,6 +2301,7 @@ operation::ProgramWithCallbacks Matmul::create_program(
                                      ProgramConfigType,
                                      MatmulMultiCoreReuseMultiCastDRAMShardedProgramConfig>) {
                 return matmul_multi_core_reuse_dram_sharded_optimized(
+                    mesh_coord,
                     input_tensor_a,
                     input_tensor_b,
                     bias,
