@@ -145,7 +145,7 @@ TEST_P(Matmul2DHangTestFixture, Matmul2DHangTest) {
                                             const ttnn::MemoryConfig in0_memory_config =
                                                 in0_sharded
                                                     ? ttnn::operations::data_movement::create_sharded_memory_config(
-                                                          ttnn::SimpleShape{1, 1, m, k},
+                                                          ttnn::Shape{1, 1, m, k},
                                                           ttnn::CoreRangeSet(ttnn::CoreRange(
                                                               CoreCoord(0, 0),
                                                               ttnn::CoreCoord(
@@ -160,7 +160,7 @@ TEST_P(Matmul2DHangTestFixture, Matmul2DHangTest) {
                                             ttnn::Tensor in0_t = Tensor::from_vector(
                                                 in0_data,
                                                 ttnn::TensorSpec(
-                                                    ttnn::SimpleShape({m, k}),
+                                                    ttnn::Shape({m, k}),
                                                     tt::tt_metal::TensorLayout(
                                                         dtype, tt::tt_metal::Layout::TILE, in0_memory_config)),
                                                 device);
@@ -175,7 +175,7 @@ TEST_P(Matmul2DHangTestFixture, Matmul2DHangTest) {
                                             ttnn::Tensor in1_t = Tensor::from_vector(
                                                 in1_data,
                                                 ttnn::TensorSpec(
-                                                    ttnn::SimpleShape({k, n}),
+                                                    ttnn::Shape({k, n}),
                                                     tt::tt_metal::TensorLayout(
                                                         dtype, tt::tt_metal::Layout::TILE, ttnn::DRAM_MEMORY_CONFIG)),
                                                 device);

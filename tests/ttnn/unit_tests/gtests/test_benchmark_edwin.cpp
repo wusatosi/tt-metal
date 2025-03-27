@@ -175,7 +175,7 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
     TT_ASSERT(
         use_program_cache,
         "If program cache is disabled, the test will have an unrealistically high dispatch overhead and will not be "
-        "representative of expected performance")
+        "representative of expected performance");
     if (use_program_cache) {
         device->enable_program_cache();
     }
@@ -249,7 +249,7 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
 
             const ttnn::MemoryConfig in0_memory_config =
                 in0_sharded ? ttnn::operations::data_movement::create_sharded_memory_config(
-                                  ttnn::SimpleShape{1, 1, m, k},
+                                  ttnn::Shape{1, 1, m, k},
                                   ttnn::CoreRangeSet(ttnn::CoreRange(
                                       CoreCoord(0, 0),
                                       ttnn::CoreCoord(std::get<0>(grid_size) - 1, std::get<1>(grid_size) - 1))),
@@ -262,7 +262,7 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
             ttnn::Tensor in0_t = Tensor::from_vector(
                 in0_data,
                 ttnn::TensorSpec(
-                    ttnn::SimpleShape({m, k}),
+                    ttnn::Shape({m, k}),
                     tt::tt_metal::TensorLayout(dtype, tt::tt_metal::Layout::TILE, in0_memory_config)),
                 device);
             // In1 is random data
@@ -275,7 +275,7 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
             ttnn::Tensor in1_t = Tensor::from_vector(
                 in1_data,
                 ttnn::TensorSpec(
-                    ttnn::SimpleShape({k, n}),
+                    ttnn::Shape({k, n}),
                     tt::tt_metal::TensorLayout(dtype, tt::tt_metal::Layout::TILE, ttnn::DRAM_MEMORY_CONFIG)),
                 device);
             ttnn::operations::matmul::MatmulMultiCoreReuseMultiCastProgramConfig program_config{
