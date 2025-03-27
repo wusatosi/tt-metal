@@ -2237,7 +2237,6 @@ operation::ProgramWithCallbacks Matmul::create_program_at(
                 TT_FATAL(!bias.has_value(), "Bias is not supported for MatmulMultiCoreReuseProgramConfig!");
                 // TODO: fuse_batch doesn't do anything for this variant! Code is
                 // doing fuse_batch=false
-                std::cout << "With Program reuse" << std::endl;
                 return bmm_multi_core_reuse_optimized(
                     input_tensor_a,
                     input_tensor_b,
@@ -2254,9 +2253,7 @@ operation::ProgramWithCallbacks Matmul::create_program_at(
                     /*fuse_batch=*/false,
                     this->untilize_out);
             } else if constexpr (std::is_same_v<ProgramConfigType, MatmulMultiCoreReuseMultiCastProgramConfig>) {
-                std::cout << "2D Optimized Matmul" << std::endl;
                 return matmul_multi_core_reuse_mcast_2d_optimized(
-                    mesh_coord,
                     input_tensor_a,
                     input_tensor_b,
                     bias,
@@ -2276,7 +2273,6 @@ operation::ProgramWithCallbacks Matmul::create_program_at(
                     program_config.fused_activation,
                     this->untilize_out);
             } else if constexpr (std::is_same_v<ProgramConfigType, MatmulMultiCoreReuseMultiCast1DProgramConfig>) {
-                std::cout << "1D Optimized Matmul" << std::endl;
                 return matmul_multi_core_reuse_mcast_1d_optimized(
                     input_tensor_a,
                     input_tensor_b,
@@ -2304,7 +2300,6 @@ operation::ProgramWithCallbacks Matmul::create_program_at(
             } else if constexpr (std::is_same_v<
                                      ProgramConfigType,
                                      MatmulMultiCoreReuseMultiCastDRAMShardedProgramConfig>) {
-                std::cout << "Dram Sharded matmul" << std::endl;
                 return matmul_multi_core_reuse_dram_sharded_optimized(
                     mesh_coord,
                     input_tensor_a,

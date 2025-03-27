@@ -71,7 +71,6 @@ tt::tt_metal::operation::ProgramWithCallbacks matmul_multi_core_reuse_dram_shard
     bool skip_in0_mcast,
     bool skip_write_back);
 tt::tt_metal::operation::ProgramWithCallbacks matmul_multi_core_reuse_mcast_2d_optimized(
-    const ttnn::MeshCoordinate& mesh_coord,
     const Tensor& input_tensor_a,
     const Tensor& input_tensor_b,
     const std::optional<const Tensor>& bias,
