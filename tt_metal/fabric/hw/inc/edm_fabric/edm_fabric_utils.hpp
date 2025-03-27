@@ -12,7 +12,7 @@ namespace tt::tt_fabric {
 
 static constexpr uint8_t edm_to_local_chip_noc = 1;
 
-static constexpr uint8_t worker_sender0_sync_cmd_buf = write_reg_cmd_buf;
+static constexpr uint8_t worker_sender0_sync_cmd_buf = write_cmd_buf;
 static constexpr uint8_t worker_sender1_sync_cmd_buf = write_cmd_buf;
 static constexpr uint8_t worker_sender2_sync_cmd_buf = write_cmd_buf;
 

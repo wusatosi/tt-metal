@@ -493,12 +493,14 @@ enum PacketLocalForwardType : uint8_t {
     PACKET_FORWARD_LOCAL_AND_REMOTE = 0x3
 };
 
-static constexpr uint32_t SWITCH_INTERVAL =
-#ifndef DEBUG_PRINT_ENABLED
-    get_compile_time_arg_val(0);
-#else
-    0;
-#endif
+// static constexpr uint32_t SWITCH_INTERVAL =
+// #ifndef DEBUG_PRINT_ENABLED
+//     get_compile_time_arg_val(0);
+// #else
+//     0;
+// #endif
+
+static constexpr uint32_t SWITCH_INTERVAL = 10;
 
 static constexpr bool enable_first_level_ack = get_compile_time_arg_val(1);
 static constexpr bool fuse_receiver_flush_and_completion_ptr = get_compile_time_arg_val(2);
@@ -1032,6 +1034,7 @@ void run_fabric_edm_main_loop(
                 return;
             }
         }
+
         did_something = false;
         for (size_t i = 0; i < DEFAULT_ITERATIONS_BETWEEN_CTX_SWITCH_AND_TEARDOWN_CHECKS; i++) {
             // Capture these to see if we made progress

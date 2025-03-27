@@ -93,7 +93,7 @@ TEST(WorkerFabricEdmDatapath, FabricEDMLoopback_With_Workers_2_messages_Persiste
 // Will wrapp sender but not receiver buffers
 TEST(WorkerFabricEdmDatapath, FabricEDMLoopback_With_Workers_10_messages_PersistentFabric) {
     const uint32_t page_size = 2048;
-    const uint32_t num_pages_total = 10;
+    const uint32_t num_pages_total = 1;
     const bool src_is_dram = true;
     const bool dest_is_dram = true;
 

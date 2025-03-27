@@ -326,6 +326,14 @@ private:
     template <bool stateful_api = false, bool enable_ring_support = false>
     FORCE_INLINE void update_edm_buffer_slot_wrptr(uint8_t noc = noc_index) {
         if constexpr (stateful_api) {
+            // const uint64_t noc_sem_addr =
+            //     get_noc_addr(this->edm_noc_x, this->edm_noc_y, this->edm_buffer_slot_wrptr_addr,
+            //     edm_to_local_chip_noc);
+            // noc_inline_dw_write_set_state(noc_sem_addr, 0xF, this->sync_noc_cmd_buf, edm_to_local_chip_noc);
+            // while (!noc_cmd_buf_ready(noc, this->sync_noc_cmd_buf));
+            // volatile uint32_t val = NOC_CMD_BUF_READ_REG(noc, this->sync_noc_cmd_buf, NOC_CTRL);
+            // DPRINT << "M " << (uint)val <<ENDL();
+
             if constexpr (enable_ring_support) {
                 noc_inline_dw_write_with_state<true, false, false>(
                     this->buffer_slot_wrptr, this->edm_buffer_slot_wrptr_addr, this->sync_noc_cmd_buf, noc);
@@ -333,6 +341,11 @@ private:
                 noc_inline_dw_write_with_state<false, false, false>(
                     this->buffer_slot_wrptr, 0, this->sync_noc_cmd_buf, noc);
             }
+
+            // while (!noc_cmd_buf_ready(noc, this->sync_noc_cmd_buf));
+            // val = NOC_CMD_BUF_READ_REG(noc, this->sync_noc_cmd_buf, NOC_CTRL);
+            // DPRINT << "N " << (uint)val <<ENDL();
+
         } else {
             const uint64_t noc_sem_addr =
                 get_noc_addr(this->edm_noc_x, this->edm_noc_y, this->edm_buffer_slot_wrptr_addr, noc);
