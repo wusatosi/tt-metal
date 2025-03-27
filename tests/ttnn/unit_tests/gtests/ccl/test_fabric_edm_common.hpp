@@ -2291,11 +2291,19 @@ void RunWriteThroughputStabilityTestWithPersistentFabric(
     } else {
         // Choosing pcie devices so that more links are supported. More links == more (likelihood of) congestion.
         if (line_size <= 4) {
-            devices_ = {
-                view.get_device(MeshCoordinate(0, 1)),
-                view.get_device(MeshCoordinate(0, 2)),
-                view.get_device(MeshCoordinate(1, 2)),
-                view.get_device(MeshCoordinate(1, 1))};
+            if (num_links == 2) {
+                devices_ = {
+                    view.get_device(MeshCoordinate(0, 1)),
+                    view.get_device(MeshCoordinate(0, 2)),
+                    view.get_device(MeshCoordinate(1, 2)),
+                    view.get_device(MeshCoordinate(1, 1))};
+            } else {
+                devices_ = {
+                    view.get_device(MeshCoordinate(0, 1)),
+                    view.get_device(MeshCoordinate(0, 2)),
+                    view.get_device(MeshCoordinate(0, 3)),
+                    view.get_device(MeshCoordinate(1, 3))};
+            }
         } else {
             devices_ = {
                 view.get_device(MeshCoordinate(0, 0)),
@@ -2337,10 +2345,31 @@ void RunWriteThroughputStabilityTestWithPersistentFabric(
     auto worker_cores_vec = corerange_to_cores(worker_cores, std::nullopt, false);
     std::vector<CoreCoord> dest_core_coord;
     dest_core_coord.reserve(num_links);
-    for (size_t l = 0; l < num_links; l++) {
-        dest_core_coord[l] = CoreCoord(0, l + 1);
+    if (line_size <= 4 && !use_tg) {
+        for (size_t l = 0; l < num_links; l++) {
+            dest_core_coord[l] = CoreCoord(0, 4 - l);
+        }
+    } else {
+        for (size_t l = 0; l < num_links; l++) {
+            dest_core_coord[l] = CoreCoord(0, l + 1);
+        }
     }
-    auto sync_core_coord = CoreCoord(0, 0);
+    // std::vector<CoreCoord> dest_core_coord_forward;
+    // std::vector<CoreCoord> dest_core_coord_backward;
+    // dest_core_coord_forward.reserve(num_links);
+    // dest_core_coord_backward.reserve(num_links);
+    // if (line_size <= 4 && !use_tg) {
+    //     for (size_t l = 0; l < num_links; l++) {
+    //         dest_core_coord_forward[l] = CoreCoord(5, 4 - l);
+    //         dest_core_coord_backward[l] = CoreCoord(5, 4 - l);
+    //     }
+    // } else {
+    //     for (size_t l = 0; l < num_links; l++) {
+    //         dest_core_coord_forward[l] = CoreCoord(0, l + 1);
+    //         dest_core_coord_backward[l] = CoreCoord(0, l + 1);
+    //     }
+    // }
+    auto sync_core_coord = worker_cores_vec.at(0);
 
     ttnn::SmallVector<std::shared_ptr<Buffer>> device_dest_buffers;
     device_dest_buffers.reserve(line_size);

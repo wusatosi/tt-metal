@@ -197,9 +197,13 @@ def run_fabric_edm(
     bw_threshold = 0.07
     if packet_size <= 2048 and fabric_mode != FabricTestMode.Linear:
         bw_threshold = 0.12
-    assert expected_bw - bw_threshold <= bandwidth <= expected_bw + bw_threshold, "Bandwidth mismatch"
+    assert (
+        expected_bw - bw_threshold <= bandwidth <= expected_bw + bw_threshold
+    ), f"Bandwidth mismatch. Expected: {expected_bw} B/c, Actual: {bandwidth} B/c"
     if expected_Mpps is not None:
-        assert expected_Mpps - 0.01 <= mega_packets_per_second <= expected_Mpps + 0.01, "Packets per second mismatch"
+        assert (
+            expected_Mpps - 0.01 <= mega_packets_per_second <= expected_Mpps + 0.01
+        ), f"Packets per second mismatch. Expected: {expected_Mpps} Mpps, Actual: {mega_packets_per_second} Mpps"
 
 
 @pytest.mark.parametrize("num_mcasts", [200000])
@@ -327,7 +331,7 @@ def test_fabric_4_chip_one_link_mcast_saturate_chip_to_chip_ring_bw(
 @pytest.mark.parametrize("line_sync", [True])
 @pytest.mark.parametrize("line_size", [4])
 @pytest.mark.parametrize("num_links", [1])
-@pytest.mark.parametrize("packet_size", [16, 2048, 4096])
+@pytest.mark.parametrize("packet_size", [16, 2048, 4096, 4 * 1088])
 def test_fabric_4chip_one_link_mcast_bw(
     num_mcasts,
     num_unicasts,
