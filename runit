@@ -1,0 +1,4 @@
+export ARCH_NAME=wormhole_b0; export TT_METAL_HOME=$(pwd); export PYTHONPATH=$(pwd); export WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml
+source python_env/bin/activate
+#source models/demos/yolov4/web_demo/server/run_uvicorn.sh
+source models/demos/yolov4/web_demo/server/run_uvicorn_640.sh
