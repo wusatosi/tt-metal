@@ -1084,10 +1084,14 @@ operation::ProgramWithCallbacks groupnorm_multi_core(
     using namespace CMAKE_UNIQUE_NAMESPACE;
 
     if (gamma.has_value()) {
-        TT_ASSERT(gamma.value().get_layout() == Layout::ROW_MAJOR);
+        TT_FATAL(
+            gamma.value().get_layout() == Layout::ROW_MAJOR,
+            "Gamma tensor must have ROW_MAJOR layout, but got a different layout");
     }
     if (beta.has_value()) {
-        TT_ASSERT(beta.value().get_layout() == Layout::ROW_MAJOR);
+        TT_FATAL(
+            beta.value().get_layout() == Layout::ROW_MAJOR,
+            "Beta tensor must have ROW_MAJOR layout, but got a different layout");
     }
 
     // convert data format
@@ -1106,7 +1110,11 @@ operation::ProgramWithCallbacks groupnorm_multi_core(
                                : tt::DataFormat::Float16_b;
     uint32_t datum_size_bytes = 2;  // bfloat16
 
-    TT_ASSERT(out_data_format == in_data_format && "input and output must be the same data format");
+    TT_FATAL(
+        out_data_format == in_data_format,
+        "Input and output must have the same data format, but got input: {} and output: {}",
+        in_data_format,
+        out_data_format);
 
     // tile sizes
     uint32_t in_single_tile_size = tt::tt_metal::detail::TileSize(in_data_format);
@@ -1132,8 +1140,8 @@ operation::ProgramWithCallbacks groupnorm_multi_core(
     uint32_t per_core_M_group_1 = H / num_cores_r;
     uint32_t per_core_M_group_2 = 0;
     uint32_t per_core_N = W / num_cores_c;
-    TT_ASSERT(H % num_cores_r == 0 && "width * height must be divisible by num_cores.y");
-    TT_ASSERT(W % num_cores_c == 0 && "channels must be divisible by num_cores.x");
+    TT_FATAL(H % num_cores_r == 0, "Width * height ({}) must be divisible by num_cores.y ({})", H, num_cores_r);
+    TT_FATAL(W % num_cores_c == 0, "Channels ({}) must be divisible by num_cores.x ({})", W, num_cores_c);
     uint32_t per_core_Mt_group_1 = per_core_M_group_1 / TILE_HEIGHT;
     uint32_t per_core_Mt_group_2 = 0;
     uint32_t per_core_Nt = (per_core_N + TILE_WIDTH - 1) / TILE_WIDTH;
@@ -1178,7 +1186,11 @@ operation::ProgramWithCallbacks groupnorm_multi_core(
         num_batches_per_core_group_2 = num_batches / num_cores_r;
         num_batches_per_core_group_1 = num_batches_per_core_group_2 + 1;
 
-        TT_ASSERT(Ht % num_batches == 0);
+        TT_FATAL(
+            Ht % num_batches == 0,
+            "Number of batches ({}) must be divisible by number of batches per core ({})",
+            Ht,
+            num_batches);
         uint32_t per_batch_tiles = Ht / num_batches;
         per_core_Mt_group_1 = num_batches_per_core_group_1 * per_batch_tiles;
         per_core_Mt_group_2 = num_batches_per_core_group_2 * per_batch_tiles;
@@ -1198,32 +1210,69 @@ operation::ProgramWithCallbacks groupnorm_multi_core(
     bool tilize_in = a.get_layout() == Layout::ROW_MAJOR;
     bool untilize_out = output.get_layout() == Layout::ROW_MAJOR;
 
-    TT_ASSERT(per_core_N % num_datum_row_per_group == 0);
-    TT_ASSERT(per_core_M_group_1 % TILE_HEIGHT == 0);
+    TT_FATAL(
+        per_core_N % num_datum_row_per_group == 0,
+        "per_core_N ({}) must be divisible by num_datum_row_per_group ({})",
+        per_core_N,
+        num_datum_row_per_group);
+    TT_FATAL(
+        per_core_M_group_1 % TILE_HEIGHT == 0,
+        "per_core_M ({}) must be divisible by TILE_HEIGHT ({})",
+        per_core_M_group_1,
+        TILE_HEIGHT);
     if (per_core_M_group_2 > 0) {
-        TT_ASSERT(per_core_M_group_2 % TILE_HEIGHT == 0);
+        TT_FATAL(
+            per_core_M_group_2 % TILE_HEIGHT == 0,
+            "per_core_M ({}) must be divisible by TILE_HEIGHT ({})",
+            per_core_M_group_2,
+            TILE_HEIGHT);
     }
     if (per_core_N != W) {
-        TT_ASSERT(per_core_N * num_cores_c == W);
-        // TT_ASSERT(per_core_M_group_1 * num_cores_r == H); TODO VASH
+        TT_FATAL(
+            per_core_N * num_cores_c == W,
+            "per_core_N ({}) * num_cores_c ({}) must equal W ({})",
+            per_core_N,
+            num_cores_c,
+            W);
+        // TT_FATAL(per_core_M_group_1 * num_cores_r == H, "TODO VASH"); // This is commented out in original
     }
 
-    TT_ASSERT(per_core_M_group_1 % TILE_HEIGHT == 0 && "per_core_M must be divisble by TILE_HEIGHT");
+    TT_FATAL(
+        per_core_M_group_1 % TILE_HEIGHT == 0,
+        "per_core_M ({}) must be divisible by TILE_HEIGHT ({})",
+        per_core_M_group_1,
+        TILE_HEIGHT);
     if (per_core_M_group_2 > 0) {
-        TT_ASSERT(per_core_M_group_2 % TILE_HEIGHT == 0 && "per_core_M must be divisble by TILE_HEIGHT");
+        TT_FATAL(
+            per_core_M_group_2 % TILE_HEIGHT == 0,
+            "per_core_M ({}) must be divisible by TILE_HEIGHT ({})",
+            per_core_M_group_2,
+            TILE_HEIGHT);
     }
 
-    TT_ASSERT(W % num_groups == 0 && "Tensor W must be divisble by num_groups");
-    TT_ASSERT(W % per_core_N == 0 && "W dim must be divisible by per_core_N");
+    TT_FATAL(W % num_groups == 0, "Tensor W ({}) must be divisible by num_groups ({})", W, num_groups);
+    TT_FATAL(W % per_core_N == 0, "W dim ({}) must be divisible by per_core_N ({})", W, per_core_N);
+
     if (num_batches < num_shards_r) {
-        TT_ASSERT(H % per_core_M_group_1 == 0 && "H dim must be divisible by per_core_M");
-        TT_ASSERT(
-            num_shards_r % num_batches == 0 && "number of cores in a full column must be divisible by num_batches");
+        TT_FATAL(H % per_core_M_group_1 == 0, "H dim ({}) must be divisible by per_core_M ({})", H, per_core_M_group_1);
+        TT_FATAL(
+            num_shards_r % num_batches == 0,
+            "Number of cores in a full column ({}) must be divisible by num_batches ({})",
+            num_shards_r,
+            num_batches);
     }
     if (num_groups >= num_shards_c) {
-        TT_ASSERT(num_groups % num_shards_c == 0 && "num_groups must be divisible by number of cores in a full row");
+        TT_FATAL(
+            num_groups % num_shards_c == 0,
+            "num_groups ({}) must be divisible by number of cores in a full row ({})",
+            num_groups,
+            num_shards_c);
     } else {
-        TT_ASSERT(num_shards_c % num_groups == 0 && "number of cores in a full row must be divisible by num_groups");
+        TT_FATAL(
+            num_shards_c % num_groups == 0,
+            "Number of cores in a full row ({}) must be divisible by num_groups ({})",
+            num_shards_c,
+            num_groups);
     }
 
     log_debug(tt::LogOp, "num_cores: {}", num_cores);
@@ -1253,52 +1302,62 @@ operation::ProgramWithCallbacks groupnorm_multi_core(
     log_debug(tt::LogOp, "num_subblocks_w: {}", num_subblocks_w);
     log_debug(tt::LogOp, "reader_repack_output: {}", reader_repack_output);
 
-    TT_ASSERT(
-        per_core_M_group_1 % num_batches_per_core_group_1 == 0 && "per_core_M height must be div by per_core_batch");
+    TT_FATAL(
+        per_core_M_group_1 % num_batches_per_core_group_1 == 0,
+        "per_core_M height ({}) must be divisible by num_batches_per_core ({})",
+        per_core_M_group_1,
+        num_batches_per_core_group_1);
     if (per_core_M_group_2 > 0) {
-        TT_ASSERT(
-            per_core_M_group_2 % num_batches_per_core_group_2 == 0 &&
-            "per_core_M height must be div by per_core_batch");
+        TT_FATAL(
+            per_core_M_group_2 % num_batches_per_core_group_2 == 0,
+            "per_core_M height ({}) must be divisible by num_batches_per_core ({})",
+            per_core_M_group_2,
+            num_batches_per_core_group_2);
     }
-    TT_ASSERT(W % num_groups == 0 && "tensor width must be divisible by num_groups!");
+    TT_FATAL(W % num_groups == 0, "Tensor width ({}) must be divisible by num_groups ({})", W, num_groups);
     // if (shard_orientation == ShardOrientation::ROW_MAJOR and num_groups_per_core == 1) {
     //     TT_FATAL(false, "VASH TODO");
-    // 	TT_ASSERT(
-    //         num_cores_c % num_groups == 0 &&
-    //         "for RM shard, when each group is split across cores, num_cores_c must be divisible by num_groups!");
+    // 	TT_FATAL(
+    //         num_cores_c % num_groups == 0,
+    //         "for RM shard, when each group is split across cores, num_cores_c ({}) must be divisible by num_groups
+    //         ({})", num_cores_c, num_groups);
     // } else if (shard_orientation == ShardOrientation::COL_MAJOR and num_groups_per_core == 1) {
     //     TT_FATAL(false, "VASH TODO");
-    //     TT_ASSERT(
-    //         num_cores_r % num_groups == 0 &&
-    //         "for CM shard, when each group is split across cores, num_cores_r must be divisible by num_groups!");
+    //     TT_FATAL(
+    //         num_cores_r % num_groups == 0,
+    //         "for CM shard, when each group is split across cores, num_cores_r ({}) must be divisible by num_groups
+    //         ({})", num_cores_r, num_groups);
     // }
 
     // if (per_core_N != W) {  // block sharded
     //     TT_FATAL(false, "VASH TODO");
     //     if (shard_orientation == ShardOrientation::ROW_MAJOR and num_batches_per_core == 1) {
-    //         TT_ASSERT(
-    //             num_cores_r % num_batches == 0 &&
-    //             "for RM shard, when each batch is split across cores, num_cores_r must be divisible by
-    //             num_batches!");
+    //         TT_FATAL(
+    //             num_cores_r % num_batches == 0,
+    //             "for RM shard, when each batch is split across cores, num_cores_r ({}) must be divisible by
+    //             num_batches ({})", num_cores_r, num_batches);
     //     } else if (shard_orientation == ShardOrientation::COL_MAJOR and num_groups_per_core == 1) {
-    //         TT_ASSERT(
-    //             num_cores_c % num_batches == 0 &&
-    //             "for CM shard, when each batch is split across cores, num_cores_c must be divisible by
-    //             num_batches!");
+    //         TT_FATAL(
+    //             num_cores_c % num_batches == 0,
+    //             "for CM shard, when each batch is split across cores, num_cores_c ({}) must be divisible by
+    //             num_batches ({})", num_cores_c, num_batches);
     //     }
     // } else {  // height sharded
     //     TT_FATAL(false, "VASH TODO");
     //     if (num_batches_per_core == 1) {
-    //         TT_ASSERT(
-    //             (num_cores_c * num_cores_r) % num_batches == 0 &&
-    //             "for height shard, number of cores must be divisible by num_batches!");
+    //         TT_FATAL(
+    //             (num_cores_c * num_cores_r) % num_batches == 0,
+    //             "for height shard, number of cores ({}) must be divisible by num_batches ({})",
+    //             num_cores_c * num_cores_r, num_batches);
     //     }
     // }
 
     if (input_mask.has_value()) {
-        TT_ASSERT(
-            input_mask.value().get_padded_shape()[3] == block_wt * TILE_WIDTH &&
-            "input mask must have the same width as block_wt");
+        TT_FATAL(
+            input_mask.value().get_padded_shape()[3] == block_wt * TILE_WIDTH,
+            "Input mask width ({}) must have the same width as block_wt * TILE_WIDTH ({})",
+            input_mask.value().get_padded_shape()[3],
+            block_wt * TILE_WIDTH);
     }
 
     // get addr
@@ -2198,6 +2257,7 @@ operation::ProgramWithCallbacks groupnorm_multi_core(
     auto cb_ex2pe = tt::tt_metal::CreateCircularBuffer(program, all_cores, ex2pe_cb_config);
 
     // Runtime Args
+    std::vector<KernelHandle> reader_kernel_ids;
     std::vector<KernelHandle> writer_kernel_ids;
     float winv_group_1 =
         1.0f / std::sqrt(num_rows_per_batch_per_core_group_1 * num_datum_row_per_group);  // bcast-w scaler
@@ -2349,9 +2409,11 @@ operation::ProgramWithCallbacks groupnorm_multi_core(
                 if (equal_batches_per_core || (core.x <= last_row_with_extra_batch)) {
                     tt::tt_metal::SetRuntimeArgs(
                         program, reader_mcast_sender_kernels_id_group_1, core, mcast_sender_args);
+                    reader_kernel_ids.push_back(reader_mcast_sender_kernels_id_group_1);
                 } else {
                     tt::tt_metal::SetRuntimeArgs(
                         program, reader_mcast_sender_kernels_id_group_2, core, mcast_sender_args);
+                    reader_kernel_ids.push_back(reader_mcast_sender_kernels_id_group_2);
                 }
             } else {  // mcast receiver
                 log_debug(tt::LogOp, "mcast receiver receive from coord: {} {}", group.front().x, group.front().y);
@@ -2367,9 +2429,11 @@ operation::ProgramWithCallbacks groupnorm_multi_core(
                 if (equal_batches_per_core || (core.x <= last_row_with_extra_batch)) {
                     tt::tt_metal::SetRuntimeArgs(
                         program, reader_mcast_receiver_kernels_id_group_1, core, mcast_receiver_args);
+                    reader_kernel_ids.push_back(reader_mcast_receiver_kernels_id_group_1);
                 } else {
                     tt::tt_metal::SetRuntimeArgs(
                         program, reader_mcast_receiver_kernels_id_group_2, core, mcast_receiver_args);
+                    reader_kernel_ids.push_back(reader_mcast_receiver_kernels_id_group_2);
                 }
             }
         }
@@ -2429,7 +2493,7 @@ operation::ProgramWithCallbacks groupnorm_multi_core(
         }
     }
 
-    auto override_runtime_args_callback = [writer_kernel_ids, num_cores, grid_size](
+    auto override_runtime_args_callback = [writer_kernel_ids, reader_kernel_ids, core_coords, mcast_groups](
                                               const void* operation,
                                               Program& program,
                                               const std::vector<Tensor>& input_tensors,
@@ -2439,18 +2503,17 @@ operation::ProgramWithCallbacks groupnorm_multi_core(
         auto gamma_tensor = optional_input_tensors.at(0);
         auto beta_tensor = optional_input_tensors.at(1);
         auto mask_tensor = optional_input_tensors.at(2);
-        // auto dst_buffer = output_tensors.at(0).buffer();
+        auto out_tensor = output_tensors.at(0);
+        auto input_tensor = input_tensors.at(0);
 
-        // UpdateDynamicCircularBufferAddress(program, cb_in0, *src_buffer_a);
-        // UpdateDynamicCircularBufferAddress(program, cb_output, *dst_buffer);
-
-        for (uint32_t i = 0; i < num_cores; ++i) {
-            CoreCoord core = {i % grid_size.x, i / grid_size.x};
+        for (uint32_t i = 0; i < core_coords.size(); ++i) {
+            CoreCoord core = core_coords[i];
 
             auto writer_kernel_id = writer_kernel_ids.at(i);
 
             auto& runtime_args = GetRuntimeArgs(program, writer_kernel_id, core);
 
+            runtime_args[3] = out_tensor.buffer()->address();
             if (gamma_tensor.has_value()) {
                 runtime_args[4] = gamma_tensor.value().buffer()->address();
             }
@@ -2459,6 +2522,19 @@ operation::ProgramWithCallbacks groupnorm_multi_core(
             }
             if (mask_tensor.has_value()) {
                 runtime_args[6] = mask_tensor.value().buffer()->address();
+            }
+        }
+
+        uint32_t reader_idx = 0;
+        for (uint32_t i = 0; i < mcast_groups.size(); ++i) {
+            auto group = mcast_groups[i];
+            for (uint32_t j = 0; j < group.size(); ++j) {
+                CoreCoord core = group[j];
+                auto reader_kernel_id = reader_kernel_ids.at(reader_idx);
+                auto& runtime_args = GetRuntimeArgs(program, reader_kernel_id, core);
+                runtime_args[0] = input_tensor.buffer()->address();
+                runtime_args[1] = out_tensor.buffer()->address();
+                reader_idx++;
             }
         }
     };
