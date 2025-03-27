@@ -58,7 +58,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_mcast_in0_in1(
     bool untilize_out,
     std::optional<ttnn::experimental::ccl::MatmulFusedOpSignaler>& fused_op_signaler) {
     using tt::tt_metal::TensorMemoryLayout;
-
+    std::cout << "Call create_program_mcast_in0_in1 " << std::endl;
     // currently only support transpose of the full tile
     bool in1_transpose_tile = in1_tile.get_transpose_of_faces() && in1_tile.get_transpose_within_face();
 
@@ -1319,6 +1319,7 @@ namespace operations {
 namespace matmul {
 
 tt::tt_metal::operation::ProgramWithCallbacks matmul_multi_core_reuse_mcast_2d_optimized_(
+    const ttnn::MeshCoordinate& mesh_coord,
     tt::tt_metal::Program& program,
     const Tensor& a,
     const Tensor& b,
@@ -1365,7 +1366,7 @@ tt::tt_metal::operation::ProgramWithCallbacks matmul_multi_core_reuse_mcast_2d_o
         bias_data_format = tt_metal::datatype_to_dataformat_converter(c.get_dtype());
     }
 
-    tt_metal::IDevice* device = a.device();
+    tt_metal::IDevice* device = a.mesh_device()->get_device(mesh_coord);  // a.device();
 
     uint32_t in0_single_tile_size = in0_tile.get_tile_size(in0_data_format);
     uint32_t in1_single_tile_size = in1_tile.get_tile_size(in1_data_format);
@@ -1471,6 +1472,7 @@ tt::tt_metal::operation::ProgramWithCallbacks matmul_multi_core_reuse_mcast_2d_o
 }
 
 tt::tt_metal::operation::ProgramWithCallbacks matmul_multi_core_reuse_mcast_2d_optimized(
+    const ttnn::MeshCoordinate& mesh_coord,
     const Tensor& a,
     const Tensor& b,
     const std::optional<const Tensor>& bias,
@@ -1493,6 +1495,7 @@ tt::tt_metal::operation::ProgramWithCallbacks matmul_multi_core_reuse_mcast_2d_o
     std::optional<ttnn::experimental::ccl::MatmulFusedOpSignaler> empty_fused_op_signaler;
 
     return matmul_multi_core_reuse_mcast_2d_optimized_(
+        mesh_coord,
         program,
         a,
         b,
@@ -1530,6 +1533,7 @@ tt::tt_metal::operation::ProgramWithCallbacks matmul_multi_core_reuse_mcast_2d_o
         std::get<MatmulMultiCoreReuseMultiCastProgramConfig>(program_config);
 
     return matmul_multi_core_reuse_mcast_2d_optimized_(
+        ttnn::MeshCoordinate{0, 0},
         program,
         a,
         b,

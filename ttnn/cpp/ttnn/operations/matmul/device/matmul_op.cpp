@@ -2201,7 +2201,8 @@ std::vector<Tensor> Matmul::create_output_tensors(
     return operation::default_create_output_tensors(*this, input_tensors, optional_output_tensors);
 }
 
-operation::ProgramWithCallbacks Matmul::create_program(
+operation::ProgramWithCallbacks Matmul::create_program_at(
+    const ttnn::MeshCoordinate& mesh_coord,
     const std::vector<Tensor>& input_tensors,
     const std::vector<std::optional<const Tensor>>& optional_input_tensors,
     std::vector<Tensor>& output_tensors) const {
@@ -2236,6 +2237,7 @@ operation::ProgramWithCallbacks Matmul::create_program(
                 TT_FATAL(!bias.has_value(), "Bias is not supported for MatmulMultiCoreReuseProgramConfig!");
                 // TODO: fuse_batch doesn't do anything for this variant! Code is
                 // doing fuse_batch=false
+                std::cout << "With Program reuse" << std::endl;
                 return bmm_multi_core_reuse_optimized(
                     input_tensor_a,
                     input_tensor_b,
@@ -2252,7 +2254,9 @@ operation::ProgramWithCallbacks Matmul::create_program(
                     /*fuse_batch=*/false,
                     this->untilize_out);
             } else if constexpr (std::is_same_v<ProgramConfigType, MatmulMultiCoreReuseMultiCastProgramConfig>) {
+                std::cout << "2D Optimized Matmul" << std::endl;
                 return matmul_multi_core_reuse_mcast_2d_optimized(
+                    mesh_coord,
                     input_tensor_a,
                     input_tensor_b,
                     bias,
@@ -2272,6 +2276,7 @@ operation::ProgramWithCallbacks Matmul::create_program(
                     program_config.fused_activation,
                     this->untilize_out);
             } else if constexpr (std::is_same_v<ProgramConfigType, MatmulMultiCoreReuseMultiCast1DProgramConfig>) {
+                std::cout << "1D Optimized Matmul" << std::endl;
                 return matmul_multi_core_reuse_mcast_1d_optimized(
                     input_tensor_a,
                     input_tensor_b,
@@ -2299,7 +2304,9 @@ operation::ProgramWithCallbacks Matmul::create_program(
             } else if constexpr (std::is_same_v<
                                      ProgramConfigType,
                                      MatmulMultiCoreReuseMultiCastDRAMShardedProgramConfig>) {
+                std::cout << "Dram Sharded matmul" << std::endl;
                 return matmul_multi_core_reuse_dram_sharded_optimized(
+                    mesh_coord,
                     input_tensor_a,
                     input_tensor_b,
                     bias,
