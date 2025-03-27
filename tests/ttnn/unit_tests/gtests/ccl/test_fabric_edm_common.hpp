@@ -82,8 +82,10 @@ public:
         if (arch_ == tt::ARCH::WORMHOLE_B0 and num_devices_ >= 2) {
             if (num_devices_ == TG_num_devices || num_devices_ == galaxy_6u_num_devices) {
                 mesh_device_ = MeshDevice::create(MeshDeviceConfig(MeshShape{8, 4}));
+            } else if (num_devices_ >= 8) {
+                mesh_device_ = MeshDevice::create(MeshDeviceConfig(MeshShape{2, 4}));
             } else {
-                mesh_device_ = MeshDevice::create(MeshDeviceConfig(MeshShape{2, 1}));
+                mesh_device_ = MeshDevice::create(MeshDeviceConfig(MeshShape{1, 2}));
             }
 
             std::vector<chip_id_t> ids(num_devices_, 0);
@@ -1224,7 +1226,7 @@ int TestLoopbackEntrypoint(
     auto view = test_fixture.mesh_device_->get_view();
 
     const auto& device_0 = view.get_device(MeshCoordinate(0, 0));
-    const auto& device_1 = view.get_device(MeshCoordinate(1, 0));
+    const auto& device_1 = view.get_device(MeshCoordinate(0, 1));
 
     const auto& active_eth_cores = device_0->get_active_ethernet_cores(true);
     auto eth_sender_core_iter = active_eth_cores.begin();
@@ -1320,27 +1322,27 @@ int TestLoopbackEntrypoint(
         // Run the test twice with a single fabric invocation
 
         std::vector<Program> second_programs(1);
-        // try {
-        //     success = RunLoopbackTest(
-        //         device_0,
-        //         device_1,
+        try {
+            success = RunLoopbackTest(
+                device_0,
+                device_1,
 
-        //         eth_sender_core,
-        //         eth_receiver_core,
+                eth_sender_core,
+                eth_receiver_core,
 
-        //         page_size,
-        //         num_pages_total,
-        //         src_is_dram,
-        //         dest_is_dram,
-        //         second_programs,
-        //         chip_0_edm_builder,
-        //         subdevice_managers,
-        //         enable_persistent_fabric);
-        // } catch (std::exception& e) {
-        //     log_error("Caught exception: {}", e.what());
-        //     test_fixture.TearDown();
-        //     return -1;
-        // }
+                page_size,
+                num_pages_total,
+                src_is_dram,
+                dest_is_dram,
+                second_programs,
+                chip_0_edm_builder,
+                subdevice_managers,
+                enable_persistent_fabric);
+        } catch (std::exception& e) {
+            log_error("Caught exception: {}", e.what());
+            test_fixture.TearDown();
+            return -1;
+        }
         // Wait for worker programs to finish
 
         auto d0_worker_subdevice = device_0->get_sub_device_ids()[TEST_WORKERS_SUBDEVICE_INDEX];

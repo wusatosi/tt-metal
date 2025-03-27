@@ -152,7 +152,7 @@ struct EdmChannelWorkerInterface {
     template <bool enable_ring_support>
     FORCE_INLINE void update_worker_copy_of_read_ptr(BufferPtr new_ptr_val) {
         // noc_inline_dw_write(this->cached_worker_semaphore_address, new_ptr_val);
-        noc_inline_dw_write_set_state(this->cached_worker_semaphore_address, 0xF, this->sender_sync_noc_cmd_buf);
+        // noc_inline_dw_write_set_state(this->cached_worker_semaphore_address, 0xF, this->sender_sync_noc_cmd_buf);
 
         while (!noc_cmd_buf_ready(0, this->sender_sync_noc_cmd_buf));
         volatile uint32_t val =
