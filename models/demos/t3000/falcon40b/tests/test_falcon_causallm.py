@@ -121,8 +121,8 @@ def run_test_FalconCausalLM_inference(
         past_key_values = ()
         tt_layer_past = ()
         for i in range(num_layers):
-            k_cache = torch.rand(batch, num_kv_heads, kv_cache_len, head_dim)
-            v_cache = torch.rand(batch, num_kv_heads, kv_cache_len, head_dim)
+            k_cache = torch.zeros(batch, num_kv_heads, kv_cache_len, head_dim)
+            v_cache = torch.zeros(batch, num_kv_heads, kv_cache_len, head_dim)
             past_key_values += (
                 (
                     torch.repeat_interleave(k_cache, num_attention_heads // num_kv_heads, 1),
