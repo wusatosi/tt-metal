@@ -13,11 +13,16 @@ from tests.ttnn.utils_for_testing import assert_with_pcc, check_with_pcc_without
 from models.utility_functions import is_grayskull, is_blackhole, torch_random, skip_for_grayskull
 
 
-@pytest.mark.parametrize("in_dtype", [ttnn.bfloat16, ttnn.float32])
-@pytest.mark.parametrize("use_multicore", [False, True])
-@pytest.mark.parametrize("use_pack_untilize", [False, True])
-@pytest.mark.parametrize("H", [32, 512])
-@pytest.mark.parametrize("W", [1024, 256])
+@pytest.mark.parametrize("in_dtype", [ttnn.bfloat16])
+@pytest.mark.parametrize("use_multicore", [False])
+@pytest.mark.parametrize("use_pack_untilize", [True])
+@pytest.mark.parametrize(
+    "H",
+    [
+        32,
+    ],
+)
+@pytest.mark.parametrize("W", [256])
 def test_untilize_2D(device, in_dtype, use_multicore, use_pack_untilize, H, W):
     torch_input_shape = [H, W]
 

@@ -93,10 +93,9 @@ void init_sync_registers() {
 }
 
 int main(int argc, char *argv[]) {
-    // Workaround for tt-metal#16439, making sure gathering is disabled
-#ifdef ARCH_BLACKHOLE
-    disable_gathering();
-#endif
+    disable_branch_prediction();
+    disable_riscv_out_of_order();
+    disable_prefetch();
     configure_l1_data_cache();
     DIRTY_STACK_MEMORY();
     WAYPOINT("I");
