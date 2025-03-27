@@ -118,6 +118,10 @@ UnaryShardedProgramFactory::cached_program_t UnaryShardedProgramFactory::create(
     bool math_approx_mode = std::all_of(
         args.op_chain.begin(), args.op_chain.end(), [](const auto& u) { return utils::get_op_approx_mode(u.op_type); });
     std::map<string, string> unary_defines = utils::get_block_defines(args.op_chain);
+    log_info(tt::LogOp, "Starting define print!");
+    for (const auto& pair : unary_defines) {
+        log_info(tt::LogOp, "Unary define: {} = {}", pair.first, pair.second);
+    }
     auto eltwise_unary_kernel_group_1_id = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/compute/eltwise_sfpu.cpp",

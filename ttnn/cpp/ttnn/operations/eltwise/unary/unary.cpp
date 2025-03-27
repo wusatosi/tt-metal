@@ -102,7 +102,6 @@ template struct ExecuteUnary<UnaryOpType::NEZ>;
 template struct ExecuteUnary<UnaryOpType::RECIP>;
 template struct ExecuteUnary<UnaryOpType::RELU>;
 template struct ExecuteUnary<UnaryOpType::RELU6>;
-template struct ExecuteUnary<UnaryOpType::SIGMOID>;
 template struct ExecuteUnary<UnaryOpType::SIGN>;
 template struct ExecuteUnary<UnaryOpType::SIGNBIT>;
 template struct ExecuteUnary<UnaryOpType::SILU>;
@@ -135,6 +134,7 @@ template struct ExecuteUnaryWithFastAndApproximateMode<UnaryOpType::ERF>;
 template struct ExecuteUnaryWithFastAndApproximateMode<UnaryOpType::ERFC>;
 template struct ExecuteUnaryWithFastAndApproximateMode<UnaryOpType::GELU>;
 template struct ExecuteUnaryWithFastAndApproximateMode<UnaryOpType::RSQRT>;
+template struct ExecuteUnaryWithFastAndApproximateMode<UnaryOpType::SIGMOID>;
 
 template <UnaryOpType unary_op_type>
 Tensor ExecuteUnaryWithFloatParameter<unary_op_type>::invoke(

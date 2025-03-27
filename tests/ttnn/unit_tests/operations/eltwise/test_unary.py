@@ -33,7 +33,8 @@ def run_unary_test_sharded(device, hw, out_channels, ttnn_function, pcc=0.9999):
     input_tensor = ttnn.from_torch(
         torch_input_tensor, layout=ttnn.TILE_LAYOUT, device=device, memory_config=memory_config
     )
-    output_tensor = ttnn_function(input_tensor)
+    output_tensor = ttnn_function(input_tensor, fast_and_approximate_mode=True)
+    # output_tensor = ttnn_function(input_tensor)
     output_tensor = ttnn.from_device(output_tensor)
     output_tensor = ttnn.to_torch(output_tensor)
 
@@ -45,4 +46,5 @@ def run_unary_test_sharded(device, hw, out_channels, ttnn_function, pcc=0.9999):
 @pytest.mark.parametrize("out_channels", [2])
 def test_sigmoid_two_out_channels(device, h, w, out_channels):
     torch.manual_seed(0)
+    # run_unary_test_sharded(device, h * w, out_channels, ttnn.exp, pcc=0.991)
     run_unary_test_sharded(device, h * w, out_channels, ttnn.sigmoid, pcc=0.991)
