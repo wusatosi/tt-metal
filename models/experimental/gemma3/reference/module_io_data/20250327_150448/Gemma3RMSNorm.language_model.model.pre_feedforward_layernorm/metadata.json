@@ -1,0 +1,45 @@
+{
+  "module": "Gemma3RMSNorm",
+  "class": "Gemma3RMSNorm",
+  "timestamp": "2025-03-27T15:05:32.865372",
+  "settings": {
+    "T_destination": "~T_destination",
+    "call_super_init": "False",
+    "dump_patches": "False",
+    "eps": "1e-06",
+    "training": "False",
+    "weight": {
+      "type": "tensor",
+      "shape": [
+        5376
+      ],
+      "dtype": "torch.bfloat16",
+      "path": "/proj_sw/user_dev/ppetrovic/tt-metal/models/experimental/gemma3/reference/module_io_data/20250327_150448/Gemma3RMSNorm.language_model.model.pre_feedforward_layernorm/setting_weight.pt"
+    }
+  },
+  "inputs": {
+    "args": [
+      {
+        "type": "tensor",
+        "shape": [
+          1,
+          281,
+          5376
+        ],
+        "dtype": "torch.bfloat16",
+        "path": "/proj_sw/user_dev/ppetrovic/tt-metal/models/experimental/gemma3/reference/module_io_data/20250327_150448/Gemma3RMSNorm.language_model.model.pre_feedforward_layernorm/inputs/arg_0.pt"
+      }
+    ],
+    "kwargs": {}
+  },
+  "outputs": {
+    "type": "tensor",
+    "shape": [
+      1,
+      281,
+      5376
+    ],
+    "dtype": "torch.bfloat16",
+    "path": "/proj_sw/user_dev/ppetrovic/tt-metal/models/experimental/gemma3/reference/module_io_data/20250327_150448/Gemma3RMSNorm.language_model.model.pre_feedforward_layernorm/outputs/output.pt"
+  }
+}

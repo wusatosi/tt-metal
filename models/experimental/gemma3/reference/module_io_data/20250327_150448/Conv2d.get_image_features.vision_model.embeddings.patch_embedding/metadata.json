@@ -1,0 +1,67 @@
+{
+  "module": "Conv2d",
+  "class": "Conv2d",
+  "timestamp": "2025-03-27T15:05:11.613215",
+  "settings": {
+    "T_destination": "~T_destination",
+    "bias": {
+      "type": "tensor",
+      "shape": [
+        1152
+      ],
+      "dtype": "torch.bfloat16",
+      "path": "/proj_sw/user_dev/ppetrovic/tt-metal/models/experimental/gemma3/reference/module_io_data/20250327_150448/Conv2d.get_image_features.vision_model.embeddings.patch_embedding/setting_bias.pt"
+    },
+    "call_super_init": "False",
+    "dilation": "(1, 1)",
+    "dump_patches": "False",
+    "groups": "1",
+    "in_channels": "3",
+    "kernel_size": "(14, 14)",
+    "out_channels": "1152",
+    "output_padding": "(0, 0)",
+    "padding": "valid",
+    "padding_mode": "zeros",
+    "stride": "(14, 14)",
+    "training": "False",
+    "transposed": "False",
+    "weight": {
+      "type": "tensor",
+      "shape": [
+        1152,
+        3,
+        14,
+        14
+      ],
+      "dtype": "torch.bfloat16",
+      "path": "/proj_sw/user_dev/ppetrovic/tt-metal/models/experimental/gemma3/reference/module_io_data/20250327_150448/Conv2d.get_image_features.vision_model.embeddings.patch_embedding/setting_weight.pt"
+    }
+  },
+  "inputs": {
+    "args": [
+      {
+        "type": "tensor",
+        "shape": [
+          1,
+          3,
+          896,
+          896
+        ],
+        "dtype": "torch.bfloat16",
+        "path": "/proj_sw/user_dev/ppetrovic/tt-metal/models/experimental/gemma3/reference/module_io_data/20250327_150448/Conv2d.get_image_features.vision_model.embeddings.patch_embedding/inputs/arg_0.pt"
+      }
+    ],
+    "kwargs": {}
+  },
+  "outputs": {
+    "type": "tensor",
+    "shape": [
+      1,
+      1152,
+      64,
+      64
+    ],
+    "dtype": "torch.bfloat16",
+    "path": "/proj_sw/user_dev/ppetrovic/tt-metal/models/experimental/gemma3/reference/module_io_data/20250327_150448/Conv2d.get_image_features.vision_model.embeddings.patch_embedding/outputs/output.pt"
+  }
+}

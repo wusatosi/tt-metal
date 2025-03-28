@@ -1976,6 +1976,11 @@ void Matmul::validate(
                 std::is_same_v<ProgramConfigType, MatmulMultiCoreReuseProgramConfig> ||
                 std::is_same_v<ProgramConfigType, MatmulMultiCoreReuseMultiCastProgramConfig> ||
                 std::is_same_v<ProgramConfigType, MatmulMultiCoreReuseMultiCast1DProgramConfig>) {
+                tt::log_info(
+                    "***** DEBUGLOGGING: padded shape {} / tile_shape {} % block_w {}",
+                    input_tensor_a.get_padded_shape()[-1],
+                    in0_tile_shape[1],
+                    program_config.in0_block_w);
                 TT_FATAL(
                     (input_tensor_a.get_padded_shape()[-1] / in0_tile_shape[1]) % program_config.in0_block_w == 0,
                     "Kt must be divisible by in0_block_w");

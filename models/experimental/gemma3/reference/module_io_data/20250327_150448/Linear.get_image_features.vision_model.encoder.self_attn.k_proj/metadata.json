@@ -1,0 +1,55 @@
+{
+  "module": "Linear",
+  "class": "Linear",
+  "timestamp": "2025-03-27T15:05:12.705827",
+  "settings": {
+    "T_destination": "~T_destination",
+    "bias": {
+      "type": "tensor",
+      "shape": [
+        1152
+      ],
+      "dtype": "torch.bfloat16",
+      "path": "/proj_sw/user_dev/ppetrovic/tt-metal/models/experimental/gemma3/reference/module_io_data/20250327_150448/Linear.get_image_features.vision_model.encoder.self_attn.k_proj/setting_bias.pt"
+    },
+    "call_super_init": "False",
+    "dump_patches": "False",
+    "in_features": "1152",
+    "out_features": "1152",
+    "training": "False",
+    "weight": {
+      "type": "tensor",
+      "shape": [
+        1152,
+        1152
+      ],
+      "dtype": "torch.bfloat16",
+      "path": "/proj_sw/user_dev/ppetrovic/tt-metal/models/experimental/gemma3/reference/module_io_data/20250327_150448/Linear.get_image_features.vision_model.encoder.self_attn.k_proj/setting_weight.pt"
+    }
+  },
+  "inputs": {
+    "args": [
+      {
+        "type": "tensor",
+        "shape": [
+          1,
+          4096,
+          1152
+        ],
+        "dtype": "torch.bfloat16",
+        "path": "/proj_sw/user_dev/ppetrovic/tt-metal/models/experimental/gemma3/reference/module_io_data/20250327_150448/Linear.get_image_features.vision_model.encoder.self_attn.k_proj/inputs/arg_0.pt"
+      }
+    ],
+    "kwargs": {}
+  },
+  "outputs": {
+    "type": "tensor",
+    "shape": [
+      1,
+      4096,
+      1152
+    ],
+    "dtype": "torch.bfloat16",
+    "path": "/proj_sw/user_dev/ppetrovic/tt-metal/models/experimental/gemma3/reference/module_io_data/20250327_150448/Linear.get_image_features.vision_model.encoder.self_attn.k_proj/outputs/output.pt"
+  }
+}

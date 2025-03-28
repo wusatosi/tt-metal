@@ -111,8 +111,10 @@ def create_tt_model(
 ):
     from models.tt_transformers.tt.model import Transformer
     from models.tt_transformers.tt.model_config import ModelArgs
+    from models.experimental.gemma3.ttnn_impl.gemma3_config import Gemma3TextTtModelArgs
 
-    tt_model_args = ModelArgs(
+    tt_model_args = Gemma3TextTtModelArgs(
+        "gemma-3-27b-it",
         mesh_device,
         instruct=instruct,
         max_batch_size=max_batch_size,
@@ -419,7 +421,7 @@ def prepare_generator_args(
         ModelOptimizations.accuracy,
     ],
 )
-@pytest.mark.parametrize("device_params", [{"trace_region_size": 23887872, "num_command_queues": 2}], indirect=True)
+@pytest.mark.parametrize("device_params", [{"trace_region_size": 23887872, "num_command_queues": 1}], indirect=True)
 @pytest.mark.parametrize(
     "mesh_device",
     [
@@ -460,8 +462,8 @@ def test_demo_text(
     if os.environ.get("MESH_DEVICE") == "TG" and batch_size not in [1, 32]:
         pytest.skip("TG only supports batch 1 and 32")
 
-    mesh_device.enable_async(True)
-    enable_trace = True  # Use tracing for better perf
+    mesh_device.enable_async(False)
+    enable_trace = False  # Use tracing for better perf
     print_to_file = False  # Enable this flag to print the output of all users to a file
 
     # Override parameters from command line if they are provided

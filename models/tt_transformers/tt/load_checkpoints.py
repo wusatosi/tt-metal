@@ -71,6 +71,8 @@ def map_hf_to_meta_keys(loaded_weights):
         "self_attn.q_proj.bias": "attention.wq.bias",
         "self_attn.k_proj.bias": "attention.wk.bias",
         "self_attn.v_proj.bias": "attention.wv.bias",
+        "self_attn.q_norm.weight": "attention.q_norm.weight",
+        "self_attn.k_norm.weight": "attention.k_norm.weight",
         # Feed forward module mappings
         "mlp.gate_proj.weight": "feed_forward.w1.weight",
         "mlp.up_proj.weight": "feed_forward.w3.weight",
@@ -97,6 +99,8 @@ def map_hf_to_meta_keys(loaded_weights):
         "model.layers.{layer}.self_attn.q_proj.bias": "layers.{layer}.attention.wq.bias",
         "model.layers.{layer}.self_attn.k_proj.bias": "layers.{layer}.attention.wk.bias",
         "model.layers.{layer}.self_attn.v_proj.bias": "layers.{layer}.attention.wv.bias",
+        "model.layers.{layer}.self_attn.q_norm.weight": "layers.{layer}.attention.q_norm.weight",
+        "model.layers.{layer}.self_attn.k_norm.weight": "layers.{layer}.attention.k_norm.weight",
         "model.layers.{layer}.mlp.gate_proj.weight": "layers.{layer}.feed_forward.w1.weight",
         "model.layers.{layer}.mlp.up_proj.weight": "layers.{layer}.feed_forward.w3.weight",
         "model.layers.{layer}.mlp.down_proj.weight": "layers.{layer}.feed_forward.w2.weight",
@@ -252,6 +256,8 @@ def map_meta_to_hf_keys(loaded_weights):
         "attention.wq.bias": "self_attn.q_proj.bias",
         "attention.wk.bias": "self_attn.k_proj.bias",
         "attention.wv.bias": "self_attn.v_proj.bias",
+        "attention.q_norm.weight": "self_attn.q_norm.weight",
+        "attention.k_norm.weight": "self_attn.k_norm.weight",
         # Feed forward module
         "feed_forward.w1.weight": "mlp.gate_proj.weight",
         "feed_forward.w3.weight": "mlp.up_proj.weight",
@@ -291,7 +297,7 @@ def map_meta_to_hf_keys(loaded_weights):
         # For submodule state dicts, try matching the end of the key
         matched = False
         for meta_pattern, hf_pattern in meta_to_hf_mappings.items():
-            if key.endswith(meta_pattern):
+            if key.endswith(meta_pattern) and key[-len(meta_pattern) :] != meta_pattern:
                 # Replace only the matching part at the end
                 prefix = key[: -len(meta_pattern)]
                 new_key = prefix + hf_pattern
@@ -318,6 +324,10 @@ def convert_meta_qkv_to_hf_format(loaded_weights, head_dim):
             # For biases: n_heads = tensor.shape[0] // head_dim
             n_heads = tensor.shape[0] // head_dim
             converted_weights[key] = permute(tensor.unsqueeze(-1), n_heads, tensor.shape[0], 1).squeeze(-1)
+        elif "q_norm.weight" in key or "k_norm.weight" in key:
+            # For layer norm weights: n_heads = tensor.shape[0] // head_dim
+            n_heads = tensor.shape[0] // head_dim
+            converted_weights[key] = permute(tensor, n_heads, tensor.shape[0], 1).squeeze(-1)
         else:
             # Keep all other weights unchanged
             converted_weights[key] = tensor

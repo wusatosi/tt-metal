@@ -9,6 +9,8 @@ import ttnn
 from models.common.lightweightmodule import LightweightModule
 from models.tt_transformers.tt.ccl import tt_all_reduce, tt_all_gather
 
+from loguru import logger
+
 
 class Attention(LightweightModule):
     def __init__(
@@ -228,7 +230,10 @@ class Attention(LightweightModule):
             # vLLM provides its own kv cache
             self.init_kv_cache(configuration, weight_cache_path)
 
-        self.scale = self.head_dim**-0.5
+        if configuration.query_pre_attn_scalar is not None:
+            self.scale = configuration.query_pre_attn_scalar**-0.5
+        else:
+            self.scale = self.head_dim**-0.5
 
     def init_kv_cache(self, configuration, weight_cache_path):
         """
@@ -545,12 +550,14 @@ class Attention(LightweightModule):
         # QKV matmuls
         ###
 
+        logger.debug(f"attention::forward_prefill.1")
         # reshaping long sequence to matmul fit on device
         if seq_len > self.MAX_QKV_MM_SEQ_LEN:
             if seq_len % self.MAX_QKV_MM_SEQ_LEN != 0:
                 raise ValueError(f"seq_len {seq_len} must be divisible by {self.MAX_QKV_MM_SEQ_LEN}")
             x_11SH = ttnn.reshape(x_11SH, [1, seq_len // self.MAX_QKV_MM_SEQ_LEN, self.MAX_QKV_MM_SEQ_LEN, -1])
 
+        logger.debug(f"attention::forward_prefill.2")
         xqkv_fused = ttnn.linear(
             x_11SH,
             self.wqkv,
@@ -564,6 +571,7 @@ class Attention(LightweightModule):
         if self.wqkv_bias_prefill is not None:
             xqkv_fused = xqkv_fused + self.wqkv_bias_prefill
 
+        logger.debug(f"attention::forward_prefill.3")
         xqkv_fused = tt_all_reduce(
             xqkv_fused,
             self.mesh_device,
@@ -574,11 +582,13 @@ class Attention(LightweightModule):
             dtype=self.ccl_dtype,
         )
 
+        logger.debug(f"attention::forward_prefill.4")
         if seq_len > self.MAX_QKV_MM_SEQ_LEN:
             xqkv_fused = ttnn.reshape(xqkv_fused, [1, 1, seq_len, -1])
 
         ttnn.deallocate(x_11SH)
 
+        logger.debug(f"attention::forward_prefill.5")
         # split qkv into heads
         (
             q_heads_1QSD_pre_rot,
@@ -598,9 +608,11 @@ class Attention(LightweightModule):
         # Rotary embeddings
         ###
 
+        logger.debug(f"attention::forward_prefill.6")
         if q_heads_1QSD_pre_rot.dtype != ttnn.bfloat16:  # Rotary embeddings require bfloat16 inputs
             q_heads_1QSD_pre_rot = ttnn.typecast(q_heads_1QSD_pre_rot, dtype=ttnn.bfloat16)
 
+        logger.debug(f"attention::forward_prefill.7")
         q_heads_1QSD = ttnn.experimental.rotary_embedding_llama(
             q_heads_1QSD_pre_rot,
             rot_mats[0],
@@ -610,9 +622,11 @@ class Attention(LightweightModule):
         )
         ttnn.deallocate(q_heads_1QSD_pre_rot)
 
+        logger.debug(f"attention::forward_prefill.8")
         if k_heads_1KSD_pre_rot.dtype != ttnn.bfloat16:  # Rotary embeddings require bfloat16 inputs
             k_heads_1KSD_pre_rot = ttnn.typecast(k_heads_1KSD_pre_rot, dtype=ttnn.bfloat16)
 
+        logger.debug(f"attention::forward_prefill.9")
         k_heads_1KSD = ttnn.experimental.rotary_embedding_llama(
             k_heads_1KSD_pre_rot,
             rot_mats[0],
@@ -631,6 +645,7 @@ class Attention(LightweightModule):
         k_heads_1KSD_8b = ttnn.typecast(k_heads_1KSD, dtype=self.model_config["KV_CACHE_DTYPE"])
         ttnn.deallocate(k_heads_1KSD)
 
+        logger.debug(f"attention::forward_prefill.10")
         # sharding k_fill to deal with update_cache memory limitation
         if seq_len >= self.min_kv_prefill_shard_seqlen and not self.TG and not page_table:
             k_fill = ttnn.interleaved_to_sharded(k_heads_1KSD_8b, self.model_config["KV_PREFILL_MEM_CFG"](seq_len))
@@ -641,6 +656,7 @@ class Attention(LightweightModule):
 
         ttnn.deallocate(v_heads_1VSD)
 
+        logger.debug(f"attention::forward_prefill.11")
         # sharding v_fill to deal with update_cache memory limitation
         if seq_len >= self.min_kv_prefill_shard_seqlen and not self.TG and not page_table:
             v_fill = ttnn.interleaved_to_sharded(v_heads_1VSD_8b, self.model_config["KV_PREFILL_MEM_CFG"](seq_len))
@@ -679,6 +695,7 @@ class Attention(LightweightModule):
             ttnn.deallocate(v_fill)
 
         # SDPA
+        logger.debug(f"attention::forward_prefill.12")
         q_heads_1QSD_8b = ttnn.typecast(q_heads_1QSD, dtype=self.model_config["ACTIVATION_DTYPE"] or ttnn.bfloat8_b)
         ttnn.deallocate(q_heads_1QSD)
 
@@ -702,6 +719,7 @@ class Attention(LightweightModule):
                 compute_kernel_config=self.model_config["SDPA_PREFILL_COMPUTE_KERNEL_CFG"],
                 program_config=self.model_config["SDPA_PROGCFG"](seq_len),
             )
+        logger.debug(f"attention::forward_prefill.12.a, shape: {attn_output_84SD.shape}")
 
         # deallocate keys and values
         ttnn.deallocate(q_heads_1QSD_8b)
@@ -709,20 +727,25 @@ class Attention(LightweightModule):
         ttnn.deallocate(v_heads_1VSD_8b)
 
         attn_output_1QSD = ttnn.reshape(attn_output_84SD, [1, self.n_local_heads, -1, self.head_dim])
+        logger.debug(f"attention::forward_prefill.12.b, shape: {attn_output_1QSD.shape}")
 
         ###
         # Output matmul
         ###
+        logger.debug(f"attention::forward_prefill.13")
         attn_output_11SH = ttnn.experimental.nlp_concat_heads(
             attn_output_1QSD,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
         )
+        logger.debug(f"attention::forward_prefill.13.a, shape: {attn_output_11SH.shape}")
         ttnn.deallocate(attn_output_1QSD)
         # reshaping long sequence to matmul fit on device
         if seq_len > 1024:
             attn_output_11SH = ttnn.reshape(attn_output_11SH, [1, seq_len // 1024, 1024, -1])
+        logger.debug(f"attention::forward_prefill.13.b, shape: {attn_output_11SH.shape}")
 
         # Non fused All Gather Matmul
+        logger.debug(f"attention::forward_prefill.14")
         if self.use_fused_all_gather_matmul:  # is true for Ring topology
             attn_output_11SH = ttnn.all_gather(
                 attn_output_11SH,
@@ -731,21 +754,29 @@ class Attention(LightweightModule):
                 topology=self.ccl_topology,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
             )
+        logger.debug(f"attention::forward_prefill.14.a, shape: {attn_output_11SH.shape}")
 
+        logger.debug(
+            f"attention::forward_prefill.15, seq_len: {seq_len}, dtype: {self.model_config['ACTIVATION_DTYPE']}"
+        )
         output_11SH = ttnn.linear(
             attn_output_11SH,
             self.wo,
             compute_kernel_config=self.model_config["LI_O_PREFILL_COMPUTE_KERNEL_CFG"],
-            dtype=self.model_config["ACTIVATION_DTYPE"] or ttnn.bfloat8_b,
+            dtype=ttnn.bfloat16,  # self.model_config["ACTIVATION_DTYPE"] or ttnn.bfloat8_b,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
             program_config=self.model_config["WO_PREFILL_PROGCFG"](seq_len),
         )
 
+        ttnn.synchronize_device(self.mesh_device)
+
+        logger.debug(f"attention::forward_prefill.15.a, seq_len: {seq_len}, shape: {output_11SH.shape}")
         if seq_len > 1024:
             output_11SH = ttnn.reshape(output_11SH, [1, 1, seq_len, -1])
         ttnn.deallocate(attn_output_11SH)
 
         # Reduce-scatter
+        logger.debug(f"attention::forward_prefill.16, shape: {output_11SH.shape}")
         if not self.use_fused_all_gather_matmul:
             output_11SH = tt_all_reduce(
                 output_11SH,
@@ -758,6 +789,8 @@ class Attention(LightweightModule):
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
                 dtype=self.ccl_dtype,
             )
+
+        logger.debug(f"attention::forward_prefill.17")
 
         return output_11SH
 

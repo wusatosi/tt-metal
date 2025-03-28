@@ -149,9 +149,6 @@ def test_multimodal_demo_text(
     profiler = BenchmarkProfiler()
     profiler.start("run")
 
-    ckpt_dir = os.environ["LLAMA_DIR"]
-    tokenizer_path = str(Path(ckpt_dir) / "tokenizer.model")
-
     mesh_device.enable_program_cache()
     mesh_device.enable_async(True)
 
@@ -165,6 +162,10 @@ def test_multimodal_demo_text(
         max_batch_size=max_batch_size,
         max_seq_len=max_seq_len,
     )
+
+    ckpt_dir = model_args.CKPT_DIR
+    tokenizer_path = str(Path(ckpt_dir) / "tokenizer.model")
+
     generator = Generator(model, model_args, mesh_device)
     tokenizer = Tokenizer(model_path=tokenizer_path)
     formatter = ChatFormat(tokenizer)

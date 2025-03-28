@@ -324,11 +324,20 @@ class ModelArgs:
                 self.CACHE_PATH = os.path.join(LLAMA_DIR, self.device_name)
             self.model_name = os.path.basename(LLAMA_DIR)  # May be overridden by config
         elif HF_MODEL:
-            self.CKPT_DIR = HF_MODEL
-            self.TOKENIZER_PATH = HF_MODEL
+            try:
+                from huggingface_hub import hf_hub_download
+
+                config_path = hf_hub_download(HF_MODEL, "config.json")
+                hf_model_dir = os.path.split(config_path)[0]
+            except ImportError as e:
+                logger.warning(f"Failed to use hf_hub_download to find model's cache: {e}")
+                hf_model_dir = os.path.join("model_cache", "--".join(["models"] + HF_MODEL.split("/")))
+
+            self.CKPT_DIR = hf_model_dir
+            self.TOKENIZER_PATH = hf_model_dir
             self.CACHE_PATH = os.getenv("TT_CACHE_PATH")
             if not self.CACHE_PATH:
-                self.CACHE_PATH = os.path.join("model_cache", HF_MODEL, self.device_name)
+                self.CACHE_PATH = os.path.join(hf_model_dir, self.device_name)
             self.model_name = HF_MODEL  # May be overridden by config
             self.from_hf_url = True
         else:
@@ -356,8 +365,8 @@ class ModelArgs:
         self.tokenizer_path = self.TOKENIZER_PATH + "/tokenizer.model"
 
         self.instruct = instruct
-        # If the weights file contain the keyword `instruct` also set self.instruct to true
-        if "instruct" in self.CKPT_DIR.lower():
+        # If the weights file contain the keyword `instruct` or 'it' also set self.instruct to true
+        if any(word in self.CKPT_DIR.lower() for word in ["instruct", "it"]):
             self.instruct = True
 
         # Check for supported batches since previous logic that contained the check was removed because it was unused
@@ -404,6 +413,8 @@ class ModelArgs:
                 "Qwen2.5-7B": {"N150": 4, "N300": 64, "T3K": 128, "TG": 128, "P150x4": 128},
                 "Qwen2.5-72B": {"N150": None, "N300": None, "T3K": 32, "TG": 128, "P150x4": 128},
                 "Phi-3.5-mini-instruct": {"N150": 128, "N300": 128, "T3K": 128, "TG": 128, "P150x4": 128},
+                # CALCULATE MAX_PREFILL_CHUNK_SIZE FOR GEMMA3-27B
+                "gemma-3-27b-it": {"N150": 4, "N300": 4, "T3K": 64, "TG": 128, "P150x4": 128},
                 "QwQ-32B": {"N150": None, "N300": None, "T3K": 64, "TG": 128, "P150x4": 128},
             }
             try:
@@ -650,7 +661,7 @@ class ModelArgs:
                 k=k_dim,
                 n=n_dim,
                 grid_size=self.find_prefill_grid(num_rows(seq_len), n_dim // self.tile_size),
-                in0_block_w=1 if self.is_galaxy else self.dim // 1024,
+                in0_block_w=4,  # if self.is_galaxy else self.dim // 1024,
                 fuse_batch=seq_len <= 1024,  # if self.is_galaxy else 2048),
             )
 
@@ -1784,7 +1795,13 @@ class ModelArgs:
                 config.num_layers = self.n_layers
                 model = AutoModelForCausalLM.from_config(config)
             else:
-                model = AutoModelForCausalLM.from_pretrained(self.CKPT_DIR)
+                if "gemma-3" in self.model_name:
+                    from transformers import Gemma3ForConditionalGeneration
+
+                    model = Gemma3ForConditionalGeneration.from_pretrained(self.CKPT_DIR)
+                    model = model.language_model
+                else:
+                    model = AutoModelForCausalLM.from_pretrained(self.CKPT_DIR)
             if wrap:
                 wrapper = HfModelWrapper(model, self.head_dim)
                 return wrapper

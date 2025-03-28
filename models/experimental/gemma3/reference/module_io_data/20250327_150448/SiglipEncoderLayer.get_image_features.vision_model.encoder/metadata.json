@@ -1,0 +1,42 @@
+{
+  "module": "SiglipEncoderLayer",
+  "class": "SiglipEncoderLayer",
+  "timestamp": "2025-03-27T15:05:15.122004",
+  "settings": {
+    "T_destination": "~T_destination",
+    "call_super_init": "False",
+    "dump_patches": "False",
+    "embed_dim": "1152",
+    "training": "False"
+  },
+  "inputs": {
+    "args": [
+      {
+        "type": "tensor",
+        "shape": [
+          1,
+          4096,
+          1152
+        ],
+        "dtype": "torch.bfloat16",
+        "path": "/proj_sw/user_dev/ppetrovic/tt-metal/models/experimental/gemma3/reference/module_io_data/20250327_150448/SiglipEncoderLayer.get_image_features.vision_model.encoder/inputs/arg_0.pt"
+      },
+      "None"
+    ],
+    "kwargs": {
+      "output_attentions": "False"
+    }
+  },
+  "outputs": [
+    {
+      "type": "tensor",
+      "shape": [
+        1,
+        4096,
+        1152
+      ],
+      "dtype": "torch.bfloat16",
+      "path": "/proj_sw/user_dev/ppetrovic/tt-metal/models/experimental/gemma3/reference/module_io_data/20250327_150448/SiglipEncoderLayer.get_image_features.vision_model.encoder/outputs/output_0.pt"
+    }
+  ]
+}

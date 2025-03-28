@@ -1,0 +1,52 @@
+{
+  "module": "Gemma3TextScaledWordEmbedding",
+  "class": "Gemma3TextScaledWordEmbedding",
+  "timestamp": "2025-03-27T15:05:11.486473",
+  "settings": {
+    "T_destination": "~T_destination",
+    "call_super_init": "False",
+    "dump_patches": "False",
+    "embed_scale": "73.32121111929344",
+    "embedding_dim": "5376",
+    "max_norm": "None",
+    "norm_type": "2.0",
+    "num_embeddings": "262208",
+    "padding_idx": "0",
+    "scale_grad_by_freq": "False",
+    "sparse": "False",
+    "training": "False",
+    "weight": {
+      "type": "tensor",
+      "shape": [
+        262208,
+        5376
+      ],
+      "dtype": "torch.bfloat16",
+      "path": "/proj_sw/user_dev/ppetrovic/tt-metal/models/experimental/gemma3/reference/module_io_data/20250327_150448/Gemma3TextScaledWordEmbedding.get_input_embeddings/setting_weight.pt"
+    }
+  },
+  "inputs": {
+    "args": [
+      {
+        "type": "tensor",
+        "shape": [
+          1,
+          281
+        ],
+        "dtype": "torch.int64",
+        "path": "/proj_sw/user_dev/ppetrovic/tt-metal/models/experimental/gemma3/reference/module_io_data/20250327_150448/Gemma3TextScaledWordEmbedding.get_input_embeddings/inputs/arg_0.pt"
+      }
+    ],
+    "kwargs": {}
+  },
+  "outputs": {
+    "type": "tensor",
+    "shape": [
+      1,
+      281,
+      5376
+    ],
+    "dtype": "torch.bfloat16",
+    "path": "/proj_sw/user_dev/ppetrovic/tt-metal/models/experimental/gemma3/reference/module_io_data/20250327_150448/Gemma3TextScaledWordEmbedding.get_input_embeddings/outputs/output.pt"
+  }
+}
