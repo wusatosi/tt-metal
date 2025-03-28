@@ -31,7 +31,7 @@ inline void llk_pack_mop_config(const uint32_t output) {
     const bool partial_face = get_output_partial_face(output_id) && IS_BFP_FORMAT((uint)pack_dst_format[output_id]);
     const bool narrow_tile = get_output_narrow_tile(output_id);
 
-    _llk_pack_mop_config_<untilize, zero_output, DstTileFaceLayout::RowMajor, tilize>(
+    _llk_pack_mop_config_<untilize, zero_output, ckernel::DstTileFaceLayout::RowMajor, tilize>(
         pack_dst_format[output_id], face_r_dim, tile_c_dim, num_faces, partial_face, narrow_tile);
 }
 
@@ -162,7 +162,7 @@ inline void llk_pack_init(const std::uint32_t pack_output = 16) {
     const bool partial_face = get_output_partial_face(output_id);
     const bool narrow_tile = get_output_narrow_tile(output_id);
 
-    _llk_pack_init_<untilize, zero_output, DstTileFaceLayout::RowMajor, false, tilize>(
+    _llk_pack_init_<untilize, zero_output, ckernel::DstTileFaceLayout::RowMajor, false, tilize>(
         pack_dst_format[output_id], face_r_dim, tile_c_dim, num_faces, partial_face, narrow_tile);
 
     ckernel::packer::set_packer_strides<untilize, tilize>(
@@ -306,7 +306,8 @@ inline void llk_init_packer_dest_offset_registers(const std::uint32_t pack_outpu
     const std::uint32_t face_r_dim = get_output_face_r_dim(output_id);
     const bool narrow_tile = get_output_narrow_tile(output_id);
 
-    _llk_init_packer_dest_offset_registers_<DST_SYNC_MODE, DstTileFaceLayout::RowMajor>(face_r_dim, narrow_tile);
+    _llk_init_packer_dest_offset_registers_<DST_SYNC_MODE, ckernel::DstTileFaceLayout::RowMajor>(
+        face_r_dim, narrow_tile);
 }
 
 template <bool untilize = false, bool is_fp32_dest_acc_en = false>
@@ -315,7 +316,8 @@ inline void llk_pack_dest_init(const std::uint32_t pack_output = 16) {
     const std::uint32_t face_r_dim = get_output_face_r_dim(output_id);
     const bool narrow_tile = get_output_narrow_tile(output_id);
 
-    _llk_pack_dest_init_<DST_SYNC_MODE, DstTileFaceLayout::RowMajor, is_fp32_dest_acc_en>(face_r_dim, narrow_tile);
+    _llk_pack_dest_init_<DST_SYNC_MODE, ckernel::DstTileFaceLayout::RowMajor, is_fp32_dest_acc_en>(
+        face_r_dim, narrow_tile);
 }
 
 template <bool mail2math = true, bool mail2pack = true>
@@ -340,7 +342,11 @@ inline void llk_pack_reconfig_data_format(const std::uint32_t new_output) {
     const bool partial_face = get_output_partial_face(output_id);
     const bool narrow_tile = get_output_narrow_tile(output_id);
 
-    _llk_pack_reconfig_data_format_<is_fp32_dest_acc_en, is_tile_dim_reconfig_en, DstTileFaceLayout::RowMajor, false>(
+    _llk_pack_reconfig_data_format_<
+        is_fp32_dest_acc_en,
+        is_tile_dim_reconfig_en,
+        ckernel::DstTileFaceLayout::RowMajor,
+        false>(
         pack_src_format[output_id],
         pack_dst_format[output_id],
         get_local_cb_interface(output_id).fifo_page_size,

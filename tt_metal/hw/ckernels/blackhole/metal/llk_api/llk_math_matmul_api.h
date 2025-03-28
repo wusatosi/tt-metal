@@ -28,7 +28,7 @@ inline void llk_math_matmul_init(
     const std::uint32_t in1_tile_r_dim = get_operand_tile_r_dim(in1_id);
     const std::uint32_t in1_tile_c_dim = get_operand_tile_c_dim(in1_id);
 
-    _llk_math_matmul_init_<NUM_FIDELITY_PHASES, DstTileFaceLayout::RowMajor>(
+    _llk_math_matmul_init_<NUM_FIDELITY_PHASES, ckernel::DstTileFaceLayout::RowMajor>(
         in0_tile_r_dim,
         in0_tile_c_dim,
         in1_tile_r_dim,
