@@ -317,6 +317,7 @@ void ControlPlane::initialize_from_mesh_graph_desc_file(const std::string& mesh_
         mesh_graph_desc_filename == "p100_mesh_graph_descriptor.yaml" ||
         mesh_graph_desc_filename == "p150_mesh_graph_descriptor.yaml" ||
         mesh_graph_desc_filename == "p150_x2_mesh_graph_descriptor.yaml" ||
+        mesh_graph_desc_filename == "p300_mesh_graph_descriptor.yaml" ||
         mesh_graph_desc_filename == "p150_x4_mesh_graph_descriptor.yaml") {
         // TODO: update to pick out chip automatically
         nw_chip_physical_id = 0;

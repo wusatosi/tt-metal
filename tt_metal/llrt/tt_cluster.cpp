@@ -187,6 +187,8 @@ void Cluster::generate_cluster_descriptor() {
                 } else if (this->cluster_desc_->get_all_chips().size() == 4) {
                     this->cluster_type_ = ClusterType::P150_X4;
                 }
+            } else if (board_type == BoardType::P300) {
+                this->cluster_type_ = ClusterType::P300;
             } else if (board_type == BoardType::UBB) {
                 this->cluster_type_ = ClusterType::GALAXY;
             }
@@ -1244,6 +1246,7 @@ void Cluster::initialize_control_plane() {
         case tt::ClusterType::P150: mesh_graph_descriptor = "p150_mesh_graph_descriptor.yaml"; break;
         case tt::ClusterType::P150_X2: mesh_graph_descriptor = "p150_x2_mesh_graph_descriptor.yaml"; break;
         case tt::ClusterType::P150_X4: mesh_graph_descriptor = "p150_x4_mesh_graph_descriptor.yaml"; break;
+        case tt::ClusterType::P300: mesh_graph_descriptor = "p300_mesh_graph_descriptor.yaml"; break;
         default: TT_THROW("Unknown cluster type"); // TODO: we could expose this as a custom mesh graph option
     }
     const std::filesystem::path mesh_graph_desc_path =

@@ -46,6 +46,7 @@ enum class ClusterType : std::uint8_t {
     P150 = 7,     // Blackhole single card, ethernet enabled
     P150_X2 = 8,  // 2 Blackhole single card, ethernet connected
     P150_X4 = 9,  // 4 Blackhole single card, ethernet connected
+    P300 = 10,    // 1 Blackhole card, ethernet connected
 };
 
 enum class EthRouterMode : uint32_t {
