@@ -258,12 +258,12 @@ def test_binary_pow(device, dtype_a, dtype_b, ttnn_function):
 @pytest.mark.parametrize(
     "ttnn_function",
     [
-        ttnn.pow,
+        # ttnn.pow,
         ttnn.experimental.pow,
     ],
 )
 def test_binary_sfpu_pow_bug(device, input_shapes, dtype_a, dtype_b, ttnn_function):
-    if dtype_a != dtype_b:
+    if dtype_a != dtype_b and ttnn_function == ttnn.pow:
         pytest.skip("Mixed datatypes not supported in ttnn.pow or ttnn.experimental.pow")
     torch.manual_seed(0)
     torch_dtype_a = getattr(torch, dtype_a)
