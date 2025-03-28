@@ -12,8 +12,8 @@
  *************************************************************************/
 
 template <
-    DataCopyType type,
-    BroadcastType src_b_bcast_type = BroadcastType::NONE,
+    ckernel::DataCopyType type,
+    ckernel::BroadcastType src_b_bcast_type = ckernel::BroadcastType::NONE,
     bool is_fp32_dest_acc_en = false,
     bool unpack_to_dest = false>
 inline void llk_math_eltwise_unary_datacopy(uint dst_index, uint operand = 0) {
@@ -23,8 +23,8 @@ inline void llk_math_eltwise_unary_datacopy(uint dst_index, uint operand = 0) {
 }
 
 template <
-    DataCopyType type,
-    BroadcastType src_b_bcast_type = BroadcastType::NONE,
+    ckernel::DataCopyType type,
+    ckernel::BroadcastType src_b_bcast_type = ckernel::BroadcastType::NONE,
     bool is_fp32_dest_acc_en = false,
     bool unpack_to_dest = false>
 inline void llk_math_eltwise_unary_datacopy_block(uint start_dst_index, uint ntiles, uint operand = 0) {
@@ -37,8 +37,8 @@ inline void llk_math_eltwise_unary_datacopy_block(uint start_dst_index, uint nti
 }
 
 template <
-    DataCopyType type,
-    BroadcastType src_b_bcast_type = BroadcastType::NONE,
+    ckernel::DataCopyType type,
+    ckernel::BroadcastType src_b_bcast_type = ckernel::BroadcastType::NONE,
     bool is_fp32_dest_acc_en = false,
     bool is_int_fpu_en = false,
     bool tilize = false>

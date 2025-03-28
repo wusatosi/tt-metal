@@ -61,7 +61,7 @@ inline void llk_pack_hw_configure(const llk_pack_params_t* pack_params) {
 template <
     bool untilize = false,
     bool is_fp32_dest_acc_en = false,
-    ReluType relu_type = ReluType::NO_RELU,
+    ckernel::ReluType relu_type = ckernel::ReluType::NO_RELU,
     std::uint32_t relu_threshold = 0,
     bool tilize = false>
 inline void llk_pack_hw_configure_disaggregated(std::uint32_t pack_output) {
@@ -100,7 +100,7 @@ inline void llk_pack_untilize_hw_configure(
 template <
     bool untilize = false,
     bool is_fp32_dest_acc_en = false,
-    ReluType relu_type = ReluType::NO_RELU,
+    ckernel::ReluType relu_type = ckernel::ReluType::NO_RELU,
     std::uint32_t relu_threshold = 0,
     bool tilize = false>
 inline void llk_pack_untilize_hw_configure_disaggregated(
@@ -115,7 +115,7 @@ inline void llk_pack_untilize_hw_configure_disaggregated(
     llk_pack_untilize_hw_configure<untilize, is_fp32_dest_acc_en, tilize>(&llk_pack_params, face_r_dim, num_faces);
 }
 
-template <bool untilize = false, PoolType type, ReduceDim dim, bool is_fp32_dest_acc_en = false>
+template <bool untilize = false, ckernel::PoolType type, ckernel::ReduceDim dim, bool is_fp32_dest_acc_en = false>
 inline void llk_pack_reduce_hw_configure(const llk_pack_params_t* pack_params) {
     const std::uint32_t output_id = get_output_id(pack_params->pack_output);
     const std::uint32_t face_r_dim = get_output_face_r_dim(output_id);
@@ -140,10 +140,10 @@ inline void llk_pack_reduce_hw_configure(const llk_pack_params_t* pack_params) {
 
 template <
     bool untilize = false,
-    PoolType type,
-    ReduceDim dim,
+    ckernel::PoolType type,
+    ckernel::ReduceDim dim,
     bool is_fp32_dest_acc_en = false,
-    ReluType relu_type = ReluType::NO_RELU,
+    ckernel::ReluType relu_type = ckernel::ReluType::NO_RELU,
     std::uint32_t relu_threshold = 0>
 inline void llk_pack_reduce_hw_configure_disaggregated(std::uint32_t pack_output) {
     llk_pack_params_t llk_pack_params = {
@@ -169,7 +169,7 @@ inline void llk_pack_init(const std::uint32_t pack_output = 16) {
         pack_src_format[output_id], pack_dst_format[output_id], tile_c_dim);
 
     // Program packer to pack out 16 datums per row
-    TT_SETADCXX(p_setadc::PAC, FACE_C_DIM - 1, 0x0);
+    TT_SETADCXX(ckernel::p_setadc::PAC, ckernel::FACE_C_DIM - 1, 0x0);
 }
 
 template <bool out_of_order_output, bool untilize>
@@ -209,9 +209,9 @@ template <
     std::uint32_t full_ct_dim = block_ct_dim,
     bool diagonal = false,
     bool narrow_row = false /* unused */,
-    std::uint32_t row_num_datums = TILE_C_DIM /* unused */>
+    std::uint32_t row_num_datums = ckernel::TILE_C_DIM /* unused */>
 inline void llk_pack_untilize_init(
-    std::uint32_t output, const std::uint32_t face_r_dim = FACE_R_DIM, const std::uint32_t num_faces = 4) {
+    std::uint32_t output, const std::uint32_t face_r_dim = ckernel::FACE_R_DIM, const std::uint32_t num_faces = 4) {
     static_assert(diagonal == false && "Diagonal packing is not supported for BH!");
     const std::uint32_t output_id = get_output_id(output);
 
@@ -219,13 +219,13 @@ inline void llk_pack_untilize_init(
         pack_src_format[output_id], pack_dst_format[output_id], face_r_dim, num_faces);
 
     if constexpr (narrow_row) {
-        TT_SETADCXX(p_setadc::PAC, row_num_datums - 1, 0x0);
+        TT_SETADCXX(ckernel::p_setadc::PAC, row_num_datums - 1, 0x0);
     } else {
-        TT_SETADCXX(p_setadc::PAC, FACE_C_DIM - 1, 0x0);
+        TT_SETADCXX(ckernel::p_setadc::PAC, ckernel::FACE_C_DIM - 1, 0x0);
     }
     // Pack row by row
     // if constexpr (diagonal) {
-    //     TT_SETADCXX(p_setadc::PAC, 1-1, 0x0);
+    //     TT_SETADCXX(ckernel::p_setadc::PAC, 1-1, 0x0);
     // } else {
     // }
 }
@@ -236,8 +236,8 @@ inline void llk_pack_untilize_uninit(std::uint32_t output) {
     uint x_stride = (uint)(pack_src_format[output_id] & 0x3) == (uint)DataFormat::Float32   ? 4
                     : (uint)(pack_src_format[output_id] & 0x3) == (uint)DataFormat::Float16 ? 2
                                                                                             : 1;
-    const uint z_stride = FACE_R_DIM * FACE_C_DIM * x_stride;
-    cfg_reg_rmw_tensix<PCK0_ADDR_CTRL_ZW_REG_0_Zstride_RMW>(z_stride);
+    const uint z_stride = ckernel::FACE_R_DIM * ckernel::FACE_C_DIM * x_stride;
+    ckernel::cfg_reg_rmw_tensix<PCK0_ADDR_CTRL_ZW_REG_0_Zstride_RMW>(z_stride);
 }
 
 template <
@@ -245,20 +245,20 @@ template <
     std::uint32_t full_ct_dim = block_ct_dim,
     bool diagonal = false,
     bool narrow_row = false /* unused */,
-    std::uint32_t row_num_datums = TILE_C_DIM /* unused */>
+    std::uint32_t row_num_datums = ckernel::TILE_C_DIM /* unused */>
 inline void llk_pack_untilize(
     std::uint32_t block_rt_dim,
     std::uint32_t output,
-    const std::uint32_t face_r_dim = FACE_R_DIM,
+    const std::uint32_t face_r_dim = ckernel::FACE_R_DIM,
     const std::uint32_t num_faces = 4,
     const std::uint32_t block_c_index = 0) {
     static_assert(diagonal == false && "Diagonal packing is not supported for BH!");
     const std::uint32_t output_id = get_output_id(output);
     std::uint32_t pack_tile_addr =
         get_local_cb_interface(output_id).fifo_wr_ptr - 1 +
-        SCALE_DATUM_SIZE(
+        ckernel::SCALE_DATUM_SIZE(
             pack_dst_format[output_id],
-            (block_c_index * ((num_faces > 2) ? num_faces / 2 : num_faces) * block_ct_dim * FACE_C_DIM)) /
+            (block_c_index * ((num_faces > 2) ? num_faces / 2 : num_faces) * block_ct_dim * ckernel::FACE_C_DIM)) /
             16;
 
     for (std::uint32_t block_rt = 0; block_rt < block_rt_dim; block_rt++) {
@@ -290,7 +290,7 @@ inline void llk_matmul_pack(
 
 inline void llk_packer_wait_for_math_done() { _llk_packer_wait_for_math_done_(); }
 
-template <uint WaitRes = p_stall::NONE>
+template <uint WaitRes = ckernel::p_stall::NONE>
 inline void llk_packer_set_math_semaphore() {
     _llk_packer_set_math_semaphore_<WaitRes>();
 }
@@ -370,7 +370,7 @@ TT_ALWAYS_INLINE void llk_pack_relu_config(const std::uint32_t config) { _llk_pa
 
 inline void llk_pack_reconfig_l1_acc(const std::uint32_t enable) { _llk_pack_reconfig_l1_acc_(enable); }
 
-template <bool untilize = false, ReduceDim dim>
+template <bool untilize = false, ckernel::ReduceDim dim>
 inline void llk_pack_reduce_mask_config() {
     _llk_pack_reduce_mask_config_<untilize, dim>();
 }
@@ -378,7 +378,7 @@ inline void llk_pack_reduce_mask_config() {
 inline void llk_pack_reduce_mask_clear() { _llk_pack_reduce_mask_clear_(); }
 
 // FIXME-WH-UPLIFT
-template <ReduceDim dim, bool at_kernel_start = false, bool revert = false, bool is_fp32_dest_acc_en = false>
+template <ckernel::ReduceDim dim, bool at_kernel_start = false, bool revert = false, bool is_fp32_dest_acc_en = false>
 inline void llk_pack_reduce_config_v2(uint32_t icb_out) {
     const bool untilize = false;
     if constexpr (at_kernel_start) {
@@ -391,7 +391,7 @@ inline void llk_pack_reduce_config_v2(uint32_t icb_out) {
         const std::uint32_t tile_size = get_local_cb_interface(output_id).fifo_page_size;
         const llk_relu_config_u relu_config = {
             .f = {
-                .ApplyRelu = (std::uint32_t)ReluType::NO_RELU,
+                .ApplyRelu = (std::uint32_t)ckernel::ReluType::NO_RELU,
                 .Threshold = 0,
             }};
 

@@ -12,7 +12,7 @@
 
 template <
     bool is_fp32_dest_acc_en = false,
-    StochRndType stoch_rnd_mode = StochRndType::None,
+    ckernel::StochRndType stoch_rnd_mode = ckernel::StochRndType::None,
     bool disable_src_zero_flag = false>
 inline void llk_unpack_A_hw_configure(
     const llk_unpack_A_params_t* unpack_A_params, const int within_face_16x16_transpose = 0) {
@@ -30,7 +30,7 @@ inline void llk_unpack_A_hw_configure(
 
 template <
     bool is_fp32_dest_acc_en = false,
-    StochRndType stoch_rnd_mode = StochRndType::None,
+    ckernel::StochRndType stoch_rnd_mode = ckernel::StochRndType::None,
     bool disable_src_zero_flag = false>
 inline void llk_unpack_A_hw_configure_disaggregated(
     const std::uint32_t unpA_operand, const int within_face_16x16_transpose = 0) {
@@ -40,9 +40,9 @@ inline void llk_unpack_A_hw_configure_disaggregated(
 }
 
 template <
-    BroadcastType BType = BroadcastType::NONE,
+    ckernel::BroadcastType BType = ckernel::BroadcastType::NONE,
     bool acc_to_dest = false,
-    EltwiseBinaryReuseDestType binary_reuse_dest = EltwiseBinaryReuseDestType::NONE,
+    ckernel::EltwiseBinaryReuseDestType binary_reuse_dest = ckernel::EltwiseBinaryReuseDestType::NONE,
     bool unpack_to_dest = false>
 inline void llk_unpack_A_mop_config(
     const bool transpose_of_faces,
@@ -56,15 +56,15 @@ inline void llk_unpack_A_mop_config(
 }
 
 template <
-    BroadcastType BType = BroadcastType::NONE,
+    ckernel::BroadcastType BType = ckernel::BroadcastType::NONE,
     bool acc_to_dest = false,
-    EltwiseBinaryReuseDestType binary_reuse_dest = EltwiseBinaryReuseDestType::NONE,
+    ckernel::EltwiseBinaryReuseDestType binary_reuse_dest = ckernel::EltwiseBinaryReuseDestType::NONE,
     bool unpack_to_dest = false>
 inline void llk_unpack_A_init(
     const std::uint32_t transpose_of_faces = 0,
     const std::uint32_t within_face_16x16_transpose = 0,
     const std::uint32_t operand = 0) {
-    cfg_reg_rmw_tensix<THCON_SEC0_REG2_Haloize_mode_RMW>(within_face_16x16_transpose);
+    ckernel::cfg_reg_rmw_tensix<THCON_SEC0_REG2_Haloize_mode_RMW>(within_face_16x16_transpose);
 
     const std::uint32_t operand_id = get_operand_id(operand);
     const std::uint32_t face_r_dim = get_operand_face_r_dim(operand_id);
@@ -86,9 +86,9 @@ inline void llk_unpack_A_init(
 }
 
 template <
-    BroadcastType BType = BroadcastType::NONE,
+    ckernel::BroadcastType BType = ckernel::BroadcastType::NONE,
     bool acc_to_dest = false,
-    EltwiseBinaryReuseDestType binary_reuse_dest = EltwiseBinaryReuseDestType::NONE,
+    ckernel::EltwiseBinaryReuseDestType binary_reuse_dest = ckernel::EltwiseBinaryReuseDestType::NONE,
     bool unpack_to_dest = false>
 inline void llk_unpack_A(
     const std::uint32_t operand, const std::uint32_t tile_index, const bool transpose_of_faces = 0) {
@@ -104,9 +104,9 @@ inline void llk_unpack_A(
 }
 
 template <
-    BroadcastType BType = BroadcastType::NONE,
+    ckernel::BroadcastType BType = ckernel::BroadcastType::NONE,
     bool acc_to_dest = false,
-    EltwiseBinaryReuseDestType binary_reuse_dest = EltwiseBinaryReuseDestType::NONE,
+    ckernel::EltwiseBinaryReuseDestType binary_reuse_dest = ckernel::EltwiseBinaryReuseDestType::NONE,
     bool unpack_to_dest = false>
 inline void llk_unpack_A_block(
     const std::uint32_t operand,

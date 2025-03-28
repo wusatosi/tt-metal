@@ -10,7 +10,7 @@
  * LLK UNPACK AB
  *************************************************************************/
 
-template <bool is_fp32_dest_acc_en = false, StochRndType stoch_rnd_mode = StochRndType::None>
+template <bool is_fp32_dest_acc_en = false, ckernel::StochRndType stoch_rnd_mode = ckernel::StochRndType::None>
 inline void llk_unpack_AB_hw_configure(
     const llk_unpack_AB_params_t* unpack_AB_params, const int within_face_16x16_transpose = 0) {
     // In0 -> unpA
@@ -33,7 +33,7 @@ inline void llk_unpack_AB_hw_configure(
         num_faces);
 }
 
-template <bool is_fp32_dest_acc_en = false, StochRndType stoch_rnd_mode = StochRndType::None>
+template <bool is_fp32_dest_acc_en = false, ckernel::StochRndType stoch_rnd_mode = ckernel::StochRndType::None>
 inline void llk_unpack_AB_hw_configure_disaggregated(
     const std::uint32_t unpA_operand, const std::uint32_t unpB_operand, const int within_face_16x16_transpose = 0) {
     const llk_unpack_AB_params_t unpack_AB_params = {.unpA_operand = unpA_operand, .unpB_operand = unpB_operand};
@@ -41,7 +41,7 @@ inline void llk_unpack_AB_hw_configure_disaggregated(
     llk_unpack_AB_hw_configure<is_fp32_dest_acc_en, stoch_rnd_mode>(&unpack_AB_params, within_face_16x16_transpose);
 }
 
-template <BroadcastType BType = BroadcastType::NONE>
+template <ckernel::BroadcastType BType = ckernel::BroadcastType::NONE>
 inline void llk_unpack_AB_mop_config(const bool transpose_of_faces = false, const std::uint32_t operand_id = 0) {
     const std::uint32_t num_faces = get_operand_num_faces(operand_id);
     const bool narrow_tile = get_operand_narrow_tile(operand_id);  // if narrow tile read face 0 twice for row broadcast
@@ -49,7 +49,7 @@ inline void llk_unpack_AB_mop_config(const bool transpose_of_faces = false, cons
     _llk_unpack_AB_mop_config_<BType>(transpose_of_faces, num_faces, narrow_tile);
 }
 
-template <BroadcastType BType = BroadcastType::NONE>
+template <ckernel::BroadcastType BType = ckernel::BroadcastType::NONE>
 inline void llk_unpack_AB_init(
     const std::uint32_t operandA,
     const std::uint32_t operandB,
@@ -64,7 +64,7 @@ inline void llk_unpack_AB_init(
     _llk_unpack_AB_init_<BType>(face_r_dim, num_faces, narrow_tile, transpose, acc_to_dest);
 }
 
-template <BroadcastType BType = BroadcastType::NONE>
+template <ckernel::BroadcastType BType = ckernel::BroadcastType::NONE>
 inline void llk_unpack_AB(
     const std::uint32_t operandA,
     const std::uint32_t operandB,
@@ -85,7 +85,7 @@ inline void llk_unpack_AB(
     WAYPOINT("UABD");
 }
 
-template <ReduceDim dim, BroadcastType BType = BroadcastType::NONE>
+template <ckernel::ReduceDim dim, ckernel::BroadcastType BType = ckernel::BroadcastType::NONE>
 inline void llk_unpack_AB_reduce_init(
     const std::uint32_t operandA,
     const std::uint32_t operandB,
@@ -100,10 +100,10 @@ inline void llk_unpack_AB_reduce_init(
 
     // REDUCE_ROW requires transpose itself; additionaly, within_face_16x16_transpose flag could require transpose;
     // if we have the flag set with REDUCE_ROW, we don't need to do anything
-    cfg_reg_rmw_tensix<THCON_SEC0_REG2_Haloize_mode_RMW>(
-        ReduceDim::REDUCE_ROW == dim ? !within_face_16x16_transpose : within_face_16x16_transpose);
+    ckernel::cfg_reg_rmw_tensix<THCON_SEC0_REG2_Haloize_mode_RMW>(
+        ckernel::ReduceDim::REDUCE_ROW == dim ? !within_face_16x16_transpose : within_face_16x16_transpose);
 
-    constexpr std::uint32_t UNP_SEL = p_setadc::UNP_AB;
+    constexpr std::uint32_t UNP_SEL = ckernel::p_setadc::UNP_AB;
     ckernel::unpacker::config_unpacker_x_end<UNP_SEL>(face_r_dim);
 
     _llk_unpack_AB_mop_config_<BType>(transpose > 0, num_faces, narrow_tile);  // transpose of faces 0,2,1,3
