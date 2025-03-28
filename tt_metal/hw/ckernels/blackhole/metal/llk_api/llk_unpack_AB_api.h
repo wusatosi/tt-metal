@@ -104,7 +104,7 @@ inline void llk_unpack_AB_reduce_init(
         ReduceDim::REDUCE_ROW == dim ? !within_face_16x16_transpose : within_face_16x16_transpose);
 
     constexpr std::uint32_t UNP_SEL = p_setadc::UNP_AB;
-    config_unpacker_x_end<UNP_SEL>(face_r_dim);
+    ckernel::unpacker::config_unpacker_x_end<UNP_SEL>(face_r_dim);
 
     _llk_unpack_AB_mop_config_<BType>(transpose > 0, num_faces, narrow_tile);  // transpose of faces 0,2,1,3
 }

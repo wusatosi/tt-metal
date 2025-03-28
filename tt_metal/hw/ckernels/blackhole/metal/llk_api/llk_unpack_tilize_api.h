@@ -61,7 +61,7 @@ inline void llk_unpack_tilize_uninit(const std::uint32_t operand, const std::uin
     cfg_reg_rmw_tensix<THCON_SEC0_REG0_TileDescriptor_ADDR32+1, 16, 0xffff0000>(Tile_z_dim);
 
     std::uint32_t operand_id = get_operand_id(operand);
-    unpack_config_u config = {0};
+    ckernel::unpacker::unpack_config_u config = {0};
 
     config.f.out_data_format = (uint)unpack_dst_format[operand_id];
     config.f.throttle_mode = 2;
@@ -116,7 +116,7 @@ inline void llk_unpack_tilizeA_B_hw_configure(
     // unpB -> srcB
     const uint32_t num_faces_b = get_operand_num_faces(unpB_operand_id);
     const uint32_t face_r_dim_b = get_operand_face_r_dim(unpB_operand_id);
-    configure_unpack_AB<false, is_fp32_dest_acc_en, false, false>(
+    ckernel::unpacker::configure_unpack_AB<false, is_fp32_dest_acc_en, false, false>(
         unpack_src_format[unpA_operand_id],
         unpack_src_format[unpB_operand_id],
         unpack_dst_format[unpA_operand_id],
@@ -198,8 +198,8 @@ inline void llk_unpack_tilizeA_B_init(
     TTI_NOP;
 
     //Unpack 1 row of 1x16 at a time for SrcA
-    config_unpacker_x_end<p_setadc::UNP_A>(1);
-    config_unpacker_x_end<p_setadc::UNP_B>(unpB_face_r_dim);
+    ckernel::unpacker::config_unpacker_x_end<p_setadc::UNP_A>(1);
+    ckernel::unpacker::config_unpacker_x_end<p_setadc::UNP_B>(unpB_face_r_dim);
 
     //Set Y stride for SrcA to be one 1x16 row of datums
     uint unpA_ch1_y_stride = SCALE_DATUM_SIZE(unpack_dst_format[operandA_id], FACE_C_DIM);

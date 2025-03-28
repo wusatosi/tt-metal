@@ -68,10 +68,10 @@ inline void llk_unpack_untilize_uninit(const std::uint32_t operand, const std::u
 
     WAYPOINT("UPUW");
     // Check that unpacker is done (all contexts freed up) before starting hw configuration
-    wait_for_idle();
+    ckernel::unpacker::wait_for_idle();
 
     // Reset address counters
-    unpacker_addr_counter_init();
+    ckernel::unpacker::unpacker_addr_counter_init();
 
     // Wait for cfg to be free to edit
     TTI_STALLWAIT(p_stall::STALL_CFG, p_stall::UNPACK);
