@@ -12,7 +12,7 @@ fi
 machine_number=$1
 start_iter=$2
 
-if $machine_number -lt 10; then
+if [[ $machine_number -lt 10 ]]; then
     machine_number="0$machine_number"
 fi
 
