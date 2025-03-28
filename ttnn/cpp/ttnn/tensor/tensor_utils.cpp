@@ -49,7 +49,6 @@ const ttnn::Shape infer_dims_for_reshape(const Tensor& tensor, tt::stl::Span<con
     if (index_of_negative_1 == -1) {
         TT_FATAL(new_volume == old_volume, "Invalid arguments to reshape");
     } else {
-        TT_FATAL(old_volume % new_volume == 0, "Invalid arguments to reshape");
         new_shape[index_of_negative_1] = old_volume / new_volume;
     }
 
