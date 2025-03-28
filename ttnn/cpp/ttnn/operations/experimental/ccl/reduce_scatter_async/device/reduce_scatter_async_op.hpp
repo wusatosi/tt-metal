@@ -33,7 +33,8 @@ struct ReduceScatterAsync {
         from_remote_sem(from_remote_sem),
         to_remote_sem(to_remote_sem),
         fabric_handle(fabric_handle),
-        sub_device_id(sub_device_id) {}
+        sub_device_id(sub_device_id),
+        cluster_axis(cluster_axis) {}
 
     const ttnn::operations::binary::BinaryOpType binary_op_type;
     const uint32_t scatter_dim;
@@ -87,6 +88,7 @@ tt::tt_metal::operation::ProgramWithCallbacks build_reduce_scatter_async_program
     Tensor& partial_output_tensor_to_backward_direction,
     std::optional<Tensor>& foreward_direction_remote_output_tensor,
     std::optional<Tensor>& backward_direction_remote_output_tensor,
+    IDevice* target_device,
     std::optional<IDevice*> forward_device,
     std::optional<IDevice*> backward_device,
     ttnn::operations::binary::BinaryOpType reduce_op,

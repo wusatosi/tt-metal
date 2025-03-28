@@ -145,15 +145,22 @@ tt::tt_metal::operation::MeshWorkloadWithCallbacks ReduceScatterAsync::create_me
 
 operation::ProgramWithCallbacks ReduceScatterAsync::create_program_at(
     const MeshCoordinate& coord, const std::vector<Tensor>& input_tensors, std::vector<Tensor>& output_tensors) const {
+    auto mesh_device = input_tensors[0].mesh_device();
+    const auto target_device = mesh_device->get_device(coord);
+
     std::vector<IDevice*> devices;
     if (this->cluster_axis.has_value()) {
+        // User specified the cluster-axis. Derive devices based on the current coordinate
+        // and the cluster-axis.
         const auto& mesh_view = input_tensors[0].mesh_device()->get_view();
         devices =
             (cluster_axis == 0) ? mesh_view.get_devices_on_column(coord[1]) : mesh_view.get_devices_on_row(coord[0]);
     } else {
-        devices = input_tensors[0].mesh_device()->get_devices();
+        // Derive the devices from the tensor.
+        for (const auto& spec : input_tensors[0].device_storage().specs) {
+            devices.push_back(mesh_device->get_device(spec.first));
+        }
     }
-    uint32_t num_devices = devices.size();
 
     auto [device_index, sender_device_id, receiver_device_id] = ccl::get_device_index_and_sender_receiver_ids(
         input_tensors[0].mesh_device()->get_device(coord), devices, topology);
@@ -190,8 +197,9 @@ operation::ProgramWithCallbacks ReduceScatterAsync::create_program_at(
         output_tensors.at(4),  // partial_output_tensor_backward_direction
         foreward_direction_remote_output_tensor,
         backward_direction_remote_output_tensor,
-        find_device(devices, sender_device_id),
+        target_device,
         find_device(devices, receiver_device_id),
+        find_device(devices, sender_device_id),
         this->binary_op_type,
         this->scatter_dim,
         this->ring_size,
@@ -255,8 +263,7 @@ Tensor reduce_scatter(
         std::getenv("TT_METAL_SLOW_DISPATCH_MODE") == nullptr, "reduce_scatter op is only supported for Fast Dispatch");
 
     ttnn::ccl::Topology ccl_topology = topology;
-    auto devices = input_tensor.mesh_device()->get_devices();
-    uint32_t num_devices = devices.size();
+    uint32_t num_devices = input_tensor.device_storage().specs.size();
     TT_FATAL(num_devices > 1, "reduce_scatter op will only work for num_devices > 1, but has {}", num_devices);
     if (num_devices == 2) {
         ccl_topology = ttnn::ccl::Topology::Linear;

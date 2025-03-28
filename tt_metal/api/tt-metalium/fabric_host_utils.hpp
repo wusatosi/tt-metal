@@ -5,12 +5,14 @@
 #pragma once
 
 #include <stdint.h>
+
+#include <tt-metalium/erisc_datamover_builder.hpp>
 #include <tt-metalium/program_impl.hpp>
 #include <vector>
 
-#include "core_coord.hpp"
-#include "fabric_host_interface.h"
-#include "system_memory_manager.hpp"
+#include <tt-metalium/core_coord.hpp>
+#include <tt-metalium/fabric_host_interface.h>
+#include <tt-metalium/system_memory_manager.hpp>
 
 namespace tt {
 namespace tt_metal {
@@ -19,6 +21,8 @@ class Program;
 }  // namespace tt
 
 namespace tt::tt_fabric {
+
+FabricEriscDatamoverConfig get_default_fabric_config();
 
 // Used to get the run-time args for estabilishing connection with the fabric router.
 // The API appends the connection specific run-time args to the set of exisiting

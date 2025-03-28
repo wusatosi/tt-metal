@@ -95,22 +95,6 @@ void AllGatherAsync::validate_with_output_tensors(
     }
 }
 
-static void validate_output_tensor_allocation(const std::vector<Tensor>& output_tensors) {
-    for (const auto& output_tensor : output_tensors) {
-        const auto& buffers = output_tensor.buffers();
-        const auto first_address = buffers.front()->address();
-        TT_FATAL(
-            std::all_of(
-                buffers.begin(),
-                buffers.end(),
-                [&first_address](const auto& buffer) {
-                    return buffer != nullptr && buffer->address() == first_address;
-                }),
-            "Output buffers for all_gather async must be lock-step allocated but some of the tensors were allocated at "
-            "different addresses across devices.");
-    }
-}
-
 std::vector<ttnn::TensorSpec> AllGatherAsync::compute_output_specs(const std::vector<Tensor>& input_tensors) const {
     const auto& input_tensor = input_tensors[0];
     auto shape = input_tensor.get_padded_shape();  // TODO: Replace with get_logical_shape()
@@ -221,16 +205,24 @@ tt::tt_metal::operation::MeshWorkloadWithCallbacks AllGatherAsync::create_mesh_w
 
 tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
     const MeshCoordinate& coord, const std::vector<Tensor>& input_tensors, std::vector<Tensor>& output_tensors) const {
+    auto mesh_device = input_tensors[0].mesh_device();
+    const auto target_device = mesh_device->get_device(coord);
+    AllGatherAsyncVersion version = select_version(input_tensors[0]);
+
     std::vector<IDevice*> devices;
     if (this->cluster_axis.has_value()) {
+        // User specified the cluster-axis. Derive devices based on the current coordinate
+        // and the cluster-axis.
         const auto& mesh_view = input_tensors[0].mesh_device()->get_view();
         devices = (this->cluster_axis.value() == 0) ? mesh_view.get_devices_on_column(coord[1])
                                                     : mesh_view.get_devices_on_row(coord[0]);
     } else {
-        devices = input_tensors[0].mesh_device()->get_devices();
+        // Derive the devices from the tensor.
+        for (const auto& spec : input_tensors[0].device_storage().specs) {
+            devices.push_back(mesh_device->get_device(spec.first));
+        }
     }
 
-    const auto* target_device = input_tensors[0].mesh_device()->get_device(coord);
     const int num_devices = devices.size();
     std::optional<IDevice*> forward_device = std::nullopt;
     std::optional<IDevice*> backward_device = std::nullopt;
@@ -251,8 +243,6 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
         }
     }
 
-    AllGatherAsyncVersion version = select_version(input_tensors[0]);
-
     log_trace(tt::LogOp, "version: {}", static_cast<uint32_t>(version));
 
     switch (version) {
@@ -263,6 +253,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
                 "called");
             return all_gather_async_minimal_interleaved_dim3_1_1_32_any(
                 input_tensors[0],
+                target_device,
                 forward_device,
                 backward_device,
                 output_tensors[0],
@@ -279,6 +270,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
             log_trace(tt::LogOp, "Detected all gather specialized shape. all_gather_async_llama_sharded is called");
             return all_gather_async_llama_sharded(
                 input_tensors[0],
+                target_device,
                 forward_device,
                 backward_device,
                 output_tensors[0],
@@ -296,6 +288,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
             log_trace(tt::LogOp, "Running generic all_gather_async_multi_core_with_workers");
             return all_gather_async_multi_core_with_workers(
                 input_tensors[0],
+                target_device,
                 forward_device,
                 backward_device,
                 output_tensors[0],
@@ -362,8 +355,7 @@ Tensor all_gather_async(
     TT_FATAL(
         std::getenv("TT_METAL_SLOW_DISPATCH_MODE") == nullptr,
         "all_gather_async op is only supported for Fast Dispatch");
-    auto devices = input_tensor.mesh_device()->get_devices();
-    uint32_t num_devices = devices.size();
+    uint32_t num_devices = input_tensor.device_storage().specs.size();
     TT_FATAL(num_devices > 1, "all_gather_async op will only work for num_devices > 1, but has {}", num_devices);
     ttnn::ccl::Topology ccl_topology = topology;
 
@@ -372,12 +364,11 @@ Tensor all_gather_async(
     }
     std::vector<Tensor> output_tensors = {Tensor(input_tensor.mesh_device())};
 
-    tt::log_debug(
-        tt::LogOp, "DEBUG: creating line_fabric with num devices: {}, num links: {}", devices.size(), num_links);
+    tt::log_debug(tt::LogOp, "DEBUG: creating line_fabric with num devices: {}, num links: {}", num_devices, num_links);
     tt::log_debug(tt::LogOp, "DEBUG: line_fabric is created");
 
     // create this semaphore for all cores since we don't know which core will be used for teardown draining
-    CoreCoord grid_size = devices[0]->compute_with_storage_grid_size();
+    CoreCoord grid_size = input_tensor.mesh_device()->compute_with_storage_grid_size();
     auto core_grid = CoreRange({0, 0}, {grid_size.x - 1, grid_size.y - 1});
 
     tt::tt_metal::operation::launch_op(
@@ -385,7 +376,6 @@ Tensor all_gather_async(
          num_links,
          num_devices,
          memory_config,
-         devices,
          ccl_topology,
          multi_device_global_semaphore,
          sub_device_id,
@@ -445,9 +435,8 @@ Tensor all_gather_async(
 
     std::vector<Tensor> output_tensors = {Tensor(input_tensor.mesh_device())};
     std::vector<std::optional<Tensor>> optional_output_tensors = {persistent_output_tensor};
-    auto devices = input_tensor.mesh_device()->get_devices();
 
-    CoreCoord grid_size = devices[0]->compute_with_storage_grid_size();
+    CoreCoord grid_size = input_tensor.mesh_device()->compute_with_storage_grid_size();
     auto core_grid = CoreRange({0, 0}, {grid_size.x - 1, grid_size.y - 1});
 
     tt::tt_metal::operation::launch_op(
