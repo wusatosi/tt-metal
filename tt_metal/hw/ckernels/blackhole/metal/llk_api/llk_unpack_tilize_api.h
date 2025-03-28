@@ -65,8 +65,8 @@ inline void llk_unpack_tilize_uninit(const std::uint32_t operand, const std::uin
 
     config.f.out_data_format = (uint)unpack_dst_format[operand_id];
     config.f.throttle_mode = 2;
-    TT_SETDMAREG(0, LOWER_HALFWORD(config.val[0]), 0, LO_16(p_gpr_unpack::TMP0));
-    TT_SETDMAREG(0, UPPER_HALFWORD(config.val[0]), 0, HI_16(p_gpr_unpack::TMP0));
+    TT_SETDMAREG(0, LOWER_HALFWORD(config.val[0]), 0, LO_16(ckernel::p_gpr_unpack::TMP0));
+    TT_SETDMAREG(0, UPPER_HALFWORD(config.val[0]), 0, HI_16(ckernel::p_gpr_unpack::TMP0));
     TTI_STALLWAIT(ckernel::p_stall::STALL_CFG, ckernel::p_stall::THCON);
     // Load unpack config[0]
     TTI_WRCFG(ckernel::p_gpr_unpack::TMP0,0,THCON_SEC0_REG2_Out_data_format_ADDR32);
