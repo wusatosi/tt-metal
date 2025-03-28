@@ -76,6 +76,15 @@ TEST_P(Matmul2DHangTestFixture, Matmul2DHangTest) {
                                         }
 
                                         std::cout << "Test = " << test_id << std::endl;
+                                        std::cout << "dt_a = " << dt_a << std::endl;
+                                        std::cout << "m_a = " << m_a << std::endl;
+                                        std::cout << "k_a = " << k_a << std::endl;
+                                        std::cout << "n_a = " << n_a << std::endl;
+                                        std::cout << "dt_b = " << dt_b << std::endl;
+                                        std::cout << "m_b = " << m_b << std::endl;
+                                        std::cout << "k_b = " << k_b << std::endl;
+                                        std::cout << "n_b = " << n_b << std::endl;
+                                        std::cout << "shard_flip = " << shard_flip << std::endl;
 
                                         // Resetting within c code hangs the system.
                                         // system("/home/software/syseng/bh/tt-smi -r 0");
