@@ -68,7 +68,7 @@ class TtLlamaMLP(LightweightModule):
             mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=dim, mesh_shape=args.cluster_shape),
             layout=ttnn.TILE_LAYOUT,
             memory_config=w2_mem_config if "w2" in name else w1_w3_mem_config,
-            # cache_file_name=cache_name(name),
+            cache_file_name=cache_name(name),
         )
 
         self.four_bit_mlp = args.optimizations.bfp4_mlp
@@ -84,8 +84,7 @@ class TtLlamaMLP(LightweightModule):
         self.w2 = as_sharded_tensor("w2_sharded", ttnn.bfloat8_b, dim=w2_dim)
         self.w3 = as_sharded_tensor("w3_sharded", ttnn.bfloat4_b if self.four_bit_mlp else ttnn.bfloat8_b, dim=w1_dim)
 
-        if tt_ccl.mode == "decode":
-            self.prefetch(prefetcher_setup, tt_ccl)
+        self.prefetch(prefetcher_setup, tt_ccl)
 
     def prefetch(self, prefetcher_setup, tt_ccl):
         self.prefetcher_setup = prefetcher_setup
@@ -95,9 +94,7 @@ class TtLlamaMLP(LightweightModule):
         self.tt_ccl = tt_ccl
 
     def forward(self, x: ttnn.Tensor, mode) -> ttnn.Tensor:
-        if mode == "prefill":
-            return self.forward_prefill(x, mode)
-
+        # breakpoint()
         pc_1 = self.model_config["FF1_3_TG_RING_PROGCFG"]
         pc_2 = self.model_config["FF2_TG_RING_PROGCFG"]
         pc_3 = self.model_config["FF1_3_TG_RING_PROGCFG"]
@@ -114,6 +111,7 @@ class TtLlamaMLP(LightweightModule):
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
             sub_device_id=self.prefetcher_setup.worker_sub_device_id if mode == "decode" else None,
         )
+        # breakpoint()
         w1_out_reduced = self.tt_ccl.llama_reduce_scatter(
             w1_out,
             cluster_axis=1,
@@ -178,7 +176,7 @@ class TtLlamaMLP(LightweightModule):
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
             sub_device_id=self.prefetcher_setup.worker_sub_device_id if mode == "decode" else None,
         )
-        ttnn.deallocate(w2_in)
+        # ttnn.deallocate(w2_in)
 
         w2_out_reduced = self.tt_ccl.line_all_reduce(
             w2_out, cluster_axis=0, num_links=3, memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"]
@@ -261,7 +259,7 @@ class TtLlamaMLP(LightweightModule):
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
             # core_grid=ttnn.CoreGrid(y=8, x=4),  # FIXME: validate on TG ttnn.CoreGrid(y=8, x=8) if not pc_2 else None,
         )
-        ttnn.deallocate(w2_in)
+        # ttnn.deallocate(w2_in)
         w2_out_reduced = self.tt_ccl.line_all_reduce(
             w2_out, cluster_axis=0, num_links=3, memory_config=ttnn.DRAM_MEMORY_CONFIG, buffer_key="FF2"
         )

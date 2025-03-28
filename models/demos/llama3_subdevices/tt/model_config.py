@@ -1063,8 +1063,8 @@ class TtModelArgs:
                 ]
             )
             self.model_config["REDUCE_SCATTER_INTERIM_MEMCFG"] = ttnn.create_sharded_memory_config(
-                shape=(32, 1024),
-                core_grid=PACKET_WORKER_CRS,
+                shape=(32, 512),
+                core_grid=self.sub_core_grids,
                 strategy=ttnn.ShardStrategy.WIDTH,
                 orientation=ttnn.ShardOrientation.ROW_MAJOR,
                 use_height_and_width_as_shard_shape=True,
