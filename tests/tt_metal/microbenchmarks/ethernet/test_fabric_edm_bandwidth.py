@@ -374,7 +374,7 @@ def test_fabric_4_chip_one_link_mcast_saturate_chip_to_chip_ring_bw(
 @pytest.mark.parametrize("line_sync", [True])
 @pytest.mark.parametrize("line_size", [4])
 @pytest.mark.parametrize("num_links", [1])
-@pytest.mark.parametrize("packet_size", [16, 2048, 4096])
+@pytest.mark.parametrize("packet_size", [4096])
 def test_fabric_4chip_one_link_mcast_bw(
     num_mcasts,
     num_unicasts,

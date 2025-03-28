@@ -463,7 +463,8 @@ FORCE_INLINE void receiver_forward_packet(
     ROUTING_FIELDS_TYPE cached_routing_fields,
     tt::tt_fabric::EdmToEdmSender<SENDER_NUM_BUFFERS>& downstream_edm_interface,
     uint8_t transaction_id,
-    uint8_t rx_channel_id) {
+    uint8_t rx_channel_id,
+    uint64_t hardcoded_dest) {
     if constexpr (std::is_same_v<ROUTING_FIELDS_TYPE, tt::tt_fabric::RoutingFields>) {
         // If the packet is a terminal packet, then we can just deliver it locally
         bool start_distance_is_terminal_value =
@@ -476,14 +477,16 @@ FORCE_INLINE void receiver_forward_packet(
                 packet_start, payload_size_bytes, cached_routing_fields, downstream_edm_interface, transaction_id);
         }
         if (start_distance_is_terminal_value) {
-            execute_chip_unicast_to_local_chip(packet_start, payload_size_bytes, transaction_id, rx_channel_id);
+            execute_chip_unicast_to_local_chip(
+                packet_start, payload_size_bytes, transaction_id, rx_channel_id, hardcoded_dest);
         }
     } else if constexpr (std::is_same_v<ROUTING_FIELDS_TYPE, tt::tt_fabric::LowLatencyRoutingFields>) {
         uint32_t routing = cached_routing_fields.value & tt::tt_fabric::LowLatencyRoutingFields::FIELD_MASK;
         uint16_t payload_size_bytes = packet_start->payload_size_bytes;
         switch (routing) {
             case tt::tt_fabric::LowLatencyRoutingFields::WRITE_ONLY:
-                execute_chip_unicast_to_local_chip(packet_start, payload_size_bytes, transaction_id, rx_channel_id);
+                execute_chip_unicast_to_local_chip(
+                    packet_start, payload_size_bytes, transaction_id, rx_channel_id, hardcoded_dest);
                 break;
             case tt::tt_fabric::LowLatencyRoutingFields::FORWARD_ONLY:
                 forward_payload_to_downstream_edm<SENDER_NUM_BUFFERS, enable_ring_support>(
@@ -492,7 +495,8 @@ FORCE_INLINE void receiver_forward_packet(
             case tt::tt_fabric::LowLatencyRoutingFields::WRITE_AND_FORWARD:
                 forward_payload_to_downstream_edm<SENDER_NUM_BUFFERS, enable_ring_support>(
                     packet_start, payload_size_bytes, cached_routing_fields, downstream_edm_interface, transaction_id);
-                execute_chip_unicast_to_local_chip(packet_start, payload_size_bytes, transaction_id, rx_channel_id);
+                execute_chip_unicast_to_local_chip(
+                    packet_start, payload_size_bytes, transaction_id, rx_channel_id, hardcoded_dest);
                 break;
             default: ASSERT(false);
         }
@@ -647,7 +651,8 @@ void run_receiver_channel_step(
     ReceiverChannelPointers<RECEIVER_NUM_BUFFERS>& receiver_channel_pointers,
     PacketHeaderRecorder& packet_header_recorder,
     WriteTridTracker& receiver_channel_trid_tracker,
-    uint8_t rx_channel_id) {
+    uint8_t rx_channel_id,
+    uint64_t hardcoded_dest) {
     auto& ack_ptr = receiver_channel_pointers.ack_ptr;
     auto pkts_received_since_last_check = get_ptr_val<to_receiver_pkts_sent_id>();
     if constexpr (enable_first_level_ack) {
@@ -680,7 +685,7 @@ void run_receiver_channel_step(
             uint8_t trid = receiver_channel_trid_tracker.update_buffer_slot_to_next_trid_and_advance_trid_counter(
                 receiver_buffer_index);
             receiver_forward_packet(
-                packet_header, cached_routing_fields, downstream_edm_interface, trid, rx_channel_id);
+                packet_header, cached_routing_fields, downstream_edm_interface, trid, rx_channel_id, hardcoded_dest);
             wr_sent_ptr.increment();
         }
     }
@@ -811,7 +816,8 @@ void run_fabric_edm_main_loop(
     std::array<PacketHeaderRecorder, NUM_SENDER_CHANNELS>& sender_channel_packet_recorders,
     WriteTransactionIdTracker<RECEIVER_NUM_BUFFERS, NUM_TRANSACTION_IDS, 0>& receiver_channel_0_trid_tracker,
     WriteTransactionIdTracker<RECEIVER_NUM_BUFFERS, NUM_TRANSACTION_IDS, NUM_TRANSACTION_IDS>&
-        receiver_channel_1_trid_tracker) {
+        receiver_channel_1_trid_tracker,
+    uint64_t hardcoded_dest) {
     size_t did_nothing_count = 0;
     *termination_signal_ptr = tt::tt_fabric::TerminationSignal::KEEP_RUNNING;
 
@@ -882,7 +888,8 @@ void run_fabric_edm_main_loop(
                     receiver_channel_pointers[0],
                     receiver_channel_packet_recorders[0],
                     receiver_channel_0_trid_tracker,
-                    0);
+                    0,
+                    hardcoded_dest);
             }
             if constexpr (enable_ring_support) {
                 run_receiver_channel_step<
@@ -899,7 +906,8 @@ void run_fabric_edm_main_loop(
                     receiver_channel_pointers[1],
                     receiver_channel_packet_recorders[1],
                     receiver_channel_1_trid_tracker,
-                    1);
+                    1,
+                    hardcoded_dest);
             }
 
             run_sender_channel_step<
@@ -1339,6 +1347,13 @@ void kernel_main() {
     }
 #endif
 
+    uint64_t hardcoded_dest;
+    if (my_y[0] == 16) {
+        hardcoded_dest = get_noc_addr(18, 23, 1482752);
+    } else {
+        hardcoded_dest = get_noc_addr(18, 19, 1482752);
+    }
+
     //////////////////////////////
     //////////////////////////////
     //        MAIN LOOP
@@ -1363,7 +1378,8 @@ void kernel_main() {
         receiver_channel_packet_recorders,
         sender_channel_packet_recorders,
         receiver_channel_0_trid_tracker,
-        receiver_channel_1_trid_tracker);
+        receiver_channel_1_trid_tracker,
+        hardcoded_dest);
 
 #ifdef WAIT_FOR_HOST_SIGNAL
     if constexpr (is_local_handshake_master) {

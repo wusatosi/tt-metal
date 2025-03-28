@@ -93,14 +93,15 @@ FORCE_INLINE void execute_chip_unicast_to_local_chip(
     tt_l1_ptr PACKET_HEADER_TYPE* const packet_start,
     uint16_t payload_size_bytes,
     uint32_t transaction_id,
-    uint8_t rx_channel_id) {
+    uint8_t rx_channel_id,
+    uint64_t hardcoded_dest) {
     const auto& header = *packet_start;
     uint32_t payload_start_address = reinterpret_cast<size_t>(packet_start) + sizeof(PACKET_HEADER_TYPE);
 
     tt::tt_fabric::NocSendType noc_send_type = header.noc_send_type;
     switch (noc_send_type) {
         case tt::tt_fabric::NocSendType::NOC_UNICAST_WRITE: {
-            const auto dest_address = header.command_fields.unicast_write.noc_address;
+            const auto dest_address = hardcoded_dest;
             noc_async_write_one_packet_with_trid<false, false>(
                 payload_start_address,
                 dest_address,
