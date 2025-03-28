@@ -34,7 +34,12 @@ const uint32_t STREAM_RESTART_CHECK_MASK = (0x1 << 3) - 1;
 
 const uint32_t MAX_TILES_PER_PHASE = 2048;
 
+// These values are defined in each core type's FW .cc file
+
+// Virtual X coordinate
 extern uint8_t my_x[NUM_NOCS];
+
+// Virtual Y coordinate
 extern uint8_t my_y[NUM_NOCS];
 
 inline void WRITE_REG(uint32_t addr, uint32_t val) {
@@ -178,6 +183,34 @@ inline void riscv_wait(uint32_t cycles) {
 inline __attribute__((always_inline)) void invalidate_l1_cache() {
 #if defined(ARCH_BLACKHOLE) && !defined(DISABLE_L1_DATA_CACHE)
     asm("fence");
+#endif
+}
+
+inline void disable_branch_prediction() {
+#if defined(ARCH_BLACKHOLE)
+    // Disable branch prediction
+    asm(R"ASM(
+        .option push
+        fence
+        li   t1, 0x2
+        csrrs zero, 0x7c0, t1
+        .option pop
+         )ASM" ::
+            : "t1");
+#endif
+}
+
+inline void disable_riscv_out_of_order() {
+#if defined(ARCH_BLACKHOLE)
+    // Disable branch prediction
+    asm(R"ASM(
+        .option push
+        fence
+        li   t1, 0x1
+        csrrs zero, 0x7c0, t1
+        .option pop
+         )ASM" ::
+            : "t1");
 #endif
 }
 
