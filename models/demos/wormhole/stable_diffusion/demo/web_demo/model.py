@@ -51,8 +51,12 @@ def tt_guide(noise_pred, guidance_scale):  # will return latents
     return noise_pred
 
 
-# Global variable for the Stable Diffusion model pipeline
+# Global variables for the Stable Diffusion model pipeline
 model_pipeline = None
+trace_id = None
+op_event = None
+ttnn_latents = None
+text_embeddings_tensor = None
 
 
 def create_model_pipeline(device, num_inference_steps, image_size=(256, 256)):
@@ -122,7 +126,6 @@ def create_model_pipeline(device, num_inference_steps, image_size=(256, 256)):
     rand_latents = torch.tensor(latents)
     rand_latents = ttnn.from_torch(rand_latents, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)
 
-    # ttnn_latents = ttnn.from_torch(ttnn_latents, dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT)
     ttnn_latent_model_input = ttnn.concat([rand_latents, rand_latents], dim=0)
     _tlist = []
     for t in ttnn_scheduler.timesteps:
@@ -134,8 +137,69 @@ def create_model_pipeline(device, num_inference_steps, image_size=(256, 256)):
 
     time_step = ttnn_scheduler.timesteps.tolist()
 
+    def capture_unet_trace():
+        text_embeddings_shape = [2, 77, 768]
+        rand_text_embeddings = torch.randn(text_embeddings_shape)
+        rand_text_embeddings = torch.nn.functional.pad(rand_text_embeddings, (0, 0, 0, 19))
+        rand_text_embeddings = ttnn.from_torch(rand_text_embeddings, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT)
+
+        text_embeddings_tensor = ttnn.allocate_tensor_on_device(
+            rand_text_embeddings.shape, ttnn.bfloat16, ttnn.TILE_LAYOUT, device, ttnn.L1_MEMORY_CONFIG
+        )
+
+        def model_forward(text_embeddings_tensor):
+            ttnn_latent_model_input = ttnn.concat([rand_latents, rand_latents], dim=0)
+            for index in tqdm(range(len(time_step))):
+                _t = _tlist[index]
+                t = time_step[index]
+                ttnn_output = model(
+                    ttnn_latent_model_input,
+                    timestep=_t,
+                    encoder_hidden_states=text_embeddings_tensor,
+                    class_labels=None,
+                    attention_mask=None,
+                    cross_attention_kwargs=None,
+                    return_dict=True,
+                    config=config,
+                )
+                noise_pred = tt_guide(ttnn_output, guidance_scale)
+                ttnn_latents_output = ttnn_scheduler.step(
+                    noise_pred, t, ttnn_latents_output if index > 0 else rand_latents
+                ).prev_sample
+                if index < len(time_step) - 1:
+                    ttnn_latent_model_input = ttnn.concat([ttnn_latents_output, ttnn_latents_output], dim=0)
+
+            return ttnn_latent_model_input
+
+        # COMPILE
+        ttnn_scheduler.set_timesteps(num_inference_steps)
+        op_event = ttnn.record_event(device, 0)
+        ttnn.wait_for_event(1, op_event)
+        ttnn.copy_host_to_device_tensor(rand_text_embeddings, text_embeddings_tensor, cq_id=1)
+        write_event = ttnn.record_event(device, 1)
+        ttnn.wait_for_event(0, write_event)
+        output = model_forward(text_embeddings_tensor)
+        ttnn.synchronize_device(device)
+
+        # CAPTURE
+        output.deallocate()
+        ttnn_scheduler.set_timesteps(num_inference_steps)
+        ttnn.wait_for_event(1, op_event)
+        ttnn.copy_host_to_device_tensor(rand_text_embeddings, text_embeddings_tensor, cq_id=1)
+        write_event = ttnn.record_event(device, 1)
+        ttnn.wait_for_event(0, write_event)
+
+        trace_id = ttnn.begin_trace_capture(device, cq_id=0)
+        output = model_forward(text_embeddings_tensor)
+        ttnn.end_trace_capture(device, trace_id, cq_id=0)
+        ttnn.synchronize_device(device)
+
+        return trace_id, op_event, output, text_embeddings_tensor
+
     # Function to generate an image from the given prompt
-    def _model_pipeline(input_prompt):
+    def _model_pipeline(input_prompt, trace_id, op_event, output, text_embeddings_tensor):
+        start = time.time()
+
         ttnn_scheduler.set_timesteps(num_inference_steps)
 
         experiment_name = f"interactive_{height}x{width}"
@@ -162,44 +226,23 @@ def create_model_pipeline(device, num_inference_steps, image_size=(256, 256)):
         # In practice, we can concatenate both into a single batch to avoid doing two forward passes.
         text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
         ttnn_text_embeddings = torch.nn.functional.pad(text_embeddings, (0, 0, 0, 19))
-        ttnn_text_embeddings = ttnn.from_torch(
-            ttnn_text_embeddings, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device
-        )
+        ttnn_text_embeddings = ttnn.from_torch(ttnn_text_embeddings, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT)
 
-        iter = 0
-        ttnn_latents = rand_latents
+        print("Executing trace...")
+        trace_start = time.time()
+        ttnn.wait_for_event(1, op_event)
+        ttnn.copy_host_to_device_tensor(ttnn_text_embeddings, text_embeddings_tensor, cq_id=1)
+        write_event = ttnn.record_event(device, 1)
+        ttnn.wait_for_event(0, write_event)
+        ttnn.execute_trace(device, trace_id, cq_id=0, blocking=False)
+        host_ttnn_latents = output.cpu(blocking=True)
+        trace_duration = time.time() - trace_start
+        print(f"Trace done! Time 51 iteration of Unet + scheduler on device took: {trace_duration}")
 
-        total_accum = 0
-        for index in tqdm(range(len(time_step))):
-            t0 = time.time()
-            ttnn_latent_model_input = ttnn.concat([ttnn_latents, ttnn_latents], dim=0)
-            _t = _tlist[index]
-            t = time_step[index]
-
-            with torch.no_grad():
-                ttnn_output = model(
-                    ttnn_latent_model_input,  # input
-                    timestep=_t,
-                    encoder_hidden_states=ttnn_text_embeddings,
-                    class_labels=None,
-                    attention_mask=None,
-                    cross_attention_kwargs=None,
-                    return_dict=True,
-                    config=config,
-                )
-
-            noise_pred = tt_guide(ttnn_output, guidance_scale)
-
-            ttnn_latents = ttnn_scheduler.step(noise_pred, t, ttnn_latents).prev_sample
-            total_accum += time.time() - t0
-            iter += 1
-        logger.info(f"Time taken for {iter} iterations: total: {total_accum:.3f}")
-
-        latents = ttnn.to_torch(ttnn_latents).to(torch.float32)
+        latents = ttnn.to_torch(host_ttnn_latents).to(torch.float32)
 
         latents = 1 / 0.18215 * latents
-        with torch.no_grad():
-            image = vae.decode(latents).sample
+        image = vae.decode(latents).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.detach().cpu().permute(0, 2, 3, 1).numpy()
@@ -210,10 +253,18 @@ def create_model_pipeline(device, num_inference_steps, image_size=(256, 256)):
         image_path = os.path.join("generated_images", random_filename)
         pil_images.save(image_path)
 
+        total_duration = time.time() - start
+        print(f"Image generated! Total time: {total_duration}")
+
         return image_path
 
     # warmup model pipeline
-    _model_pipeline(["ship"])
+    global trace_id
+    global ttnn_latents
+    global text_embeddings_tensor
+    global op_event
+    trace_id, op_event, ttnn_latents, text_embeddings_tensor = capture_unet_trace()
+
     global model_pipeline
     model_pipeline = _model_pipeline
 
@@ -221,11 +272,11 @@ def create_model_pipeline(device, num_inference_steps, image_size=(256, 256)):
 def warmup_model():
     # create device, these constants are specific to n150 & n300
     device_id = 0
-    device_params = {"l1_small_size": 32768}
+    device_params = {"l1_small_size": 32768, "trace_region_size": 806191104, "num_command_queues": 2}
     dispatch_core_type = ttnn.device.DispatchCoreType.WORKER
     if ("WH_ARCH_YAML" in os.environ) and os.environ["WH_ARCH_YAML"] == "wormhole_b0_80_arch_eth_dispatch.yaml":
         dispatch_core_type = ttnn.device.DispatchCoreType.ETH
-    dispatch_core_axis = ttnn.DispatchCoreAxis.ROW
+    dispatch_core_axis = ttnn.DispatchCoreAxis.COL if ttnn.get_arch_name() == "blackhole" else ttnn.DispatchCoreAxis.ROW
     dispatch_core_config = ttnn.DispatchCoreConfig(dispatch_core_type, dispatch_core_axis)
     device_params["dispatch_core_config"] = dispatch_core_config
     device = ttnn.CreateDevice(device_id=device_id, **device_params)
@@ -236,4 +287,4 @@ def warmup_model():
 
 
 def generate_image_from_prompt(prompt):
-    return model_pipeline([prompt])
+    return model_pipeline([prompt], trace_id, op_event, ttnn_latents, text_embeddings_tensor)
