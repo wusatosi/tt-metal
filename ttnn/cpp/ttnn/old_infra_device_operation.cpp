@@ -139,6 +139,7 @@ void OldInfraDeviceOperation<OutputTensors>::MeshWorkloadFactory::override_runti
     }
 
     for (auto& [range, callback] : cached_workload.shared_variables.per_program_callbacks) {
+        // std::cout << "Override args at: " << range << std::endl;
         auto& program = cached_workload.workload.get_programs().at(range);
         operation_attributes.override_runtime_arguments(
             callback, program, tensor_args.input_tensors, tensor_args.optional_input_tensors, tensor_return_value);

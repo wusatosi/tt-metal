@@ -48,7 +48,7 @@ def pad_to_dram_banks(num, lcm=32 * 12):
 
 
 def run_test_matmul_in1_dram_sharded(
-    device,
+    mesh_device,
     in0_sharded,
     out_sharded,
     in1_in_dram,
@@ -104,7 +104,7 @@ def run_test_matmul_in1_dram_sharded(
         buffer_type=ttnn.BufferType.L1,
     )
 
-    in1_shard_grid = ttnn.CoreCoord(device.dram_grid_size().x - 1, device.dram_grid_size().y - 1)
+    in1_shard_grid = ttnn.CoreCoord(mesh_device.dram_grid_size().x - 1, mesh_device.dram_grid_size().y - 1)
     in1_shard_grid = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), in1_shard_grid)})
     in1_shard_spec = ttnn.ShardSpec(in1_shard_grid, in1_shard_shape, ttnn.ShardOrientation.ROW_MAJOR)
     in1_mem_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.WIDTH_SHARDED, ttnn.BufferType.DRAM, in1_shard_spec)
@@ -115,20 +115,20 @@ def run_test_matmul_in1_dram_sharded(
     in0 = torch.randn(in0_shape).bfloat16().float()
     in1 = torch.randn(in1_shape).bfloat16().float()
 
-    in0_t = torch2tt_tensor(in0, device, tt_memory_config=interleaved_mem_config, tt_dtype=in0_dtype)
-    in1_t = torch2tt_tensor(in1, device, tt_memory_config=in1_mem_config, tt_dtype=in1_dtype)
+    in0_t = torch2tt_tensor(in0, mesh_device, tt_memory_config=interleaved_mem_config, tt_dtype=in0_dtype)
+    in1_t = torch2tt_tensor(in1, mesh_device, tt_memory_config=in1_mem_config, tt_dtype=in1_dtype)
 
     if has_bias:
         bias = torch.randn(bias_shape).bfloat16().float()
         bias_padded = bias.unsqueeze(2)
         bias_padded = torch.nn.functional.pad(bias_padded, (0, 0, 0, 32 - bias_padded.size(2)), "constant", 0)
-        bias_shard_grid = ttnn.CoreCoord(device.dram_grid_size().x - 1, device.dram_grid_size().y - 1)
+        bias_shard_grid = ttnn.CoreCoord(mesh_device.dram_grid_size().x - 1, mesh_device.dram_grid_size().y - 1)
         bias_shard_grid = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), bias_shard_grid)})
         bias_shard_spec = ttnn.ShardSpec(bias_shard_grid, bias_shard_shape, ttnn.ShardOrientation.ROW_MAJOR)
         bias_mem_config = ttnn.MemoryConfig(
             ttnn.TensorMemoryLayout.WIDTH_SHARDED, ttnn.BufferType.DRAM, bias_shard_spec
         )
-        bias_t = torch2tt_tensor(bias_padded, device, tt_memory_config=bias_mem_config, tt_dtype=ttnn.bfloat16)
+        bias_t = torch2tt_tensor(bias_padded, mesh_device, tt_memory_config=bias_mem_config, tt_dtype=ttnn.bfloat16)
 
     in0_t = ttnn.interleaved_to_sharded(
         in0_t,
@@ -183,7 +183,11 @@ def run_test_matmul_in1_dram_sharded(
     if has_bias:
         pt_out += bias
 
-    tt_out = tt2torch_tensor(output_t)
+    for tt_device in ttnn.get_device_tensors(output_t):
+        tt_out = ttnn.to_torch(tt_device)
+
+        passing, output = comp_pcc(pt_out, tt_out)
+        logger.info(output)
 
     passing, output = comp_pcc(pt_out, tt_out)
     logger.info(output)
@@ -227,7 +231,7 @@ def run_test_matmul_in1_dram_sharded(
     ],
 )
 def test_matmul_in1_dram_sharded_with_program_cache(
-    device,
+    mesh_device,
     in0_sharded,
     out_sharded,
     in1_in_dram,
@@ -246,7 +250,7 @@ def test_matmul_in1_dram_sharded_with_program_cache(
 ):
     for _ in range(2):
         run_test_matmul_in1_dram_sharded(
-            device,
+            mesh_device,
             in0_sharded,
             out_sharded,
             in1_in_dram,
@@ -270,12 +274,12 @@ def test_matmul_in1_dram_sharded_with_program_cache(
             memory_layout=ttnn.TensorMemoryLayout.INTERLEAVED,
             buffer_type=ttnn.BufferType.DRAM,
         )
-        tt_dummy_tensor = ttnn.Tensor(py_dummy_tensor, in0_dtype).to(ttnn.TILE_LAYOUT).to(device, mem_config)
-    assert device.num_program_cache_entries() == 3
+        tt_dummy_tensor = ttnn.Tensor(py_dummy_tensor, in0_dtype).to(ttnn.TILE_LAYOUT).to(mesh_device, mem_config)
+    assert mesh_device.num_program_cache_entries() == 3
 
 
 def run_test_matmul_in1_dram_sharded_mm_chain(
-    device,
+    mesh_device,
     in0_sharded,
     out_sharded,
     in1_in_dram,
@@ -333,13 +337,13 @@ def run_test_matmul_in1_dram_sharded_mm_chain(
     in0_shard_grid = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), in0_shard_grid)})
     in0_shard_spec = ttnn.ShardSpec(in0_shard_grid, in0_shard_shape, ttnn.ShardOrientation.ROW_MAJOR)
     in0_mem_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.WIDTH_SHARDED, ttnn.BufferType.L1, in0_shard_spec)
-    in0_t = torch2tt_tensor(in0, device, tt_memory_config=in0_mem_config, tt_dtype=in0_dtype)
+    in0_t = torch2tt_tensor(in0, mesh_device, tt_memory_config=in0_mem_config, tt_dtype=in0_dtype)
 
-    in1_shard_grid = ttnn.CoreCoord(device.dram_grid_size().x - 1, device.dram_grid_size().y - 1)
+    in1_shard_grid = ttnn.CoreCoord(mesh_device.dram_grid_size().x - 1, mesh_device.dram_grid_size().y - 1)
     in1_shard_grid = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), in1_shard_grid)})
     in1_shard_spec = ttnn.ShardSpec(in1_shard_grid, in1_shard_shape, ttnn.ShardOrientation.ROW_MAJOR)
     in1_mem_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.WIDTH_SHARDED, ttnn.BufferType.DRAM, in1_shard_spec)
-    in1_t = torch2tt_tensor(in1, device, tt_memory_config=in1_mem_config, tt_dtype=in1_dtype)
+    in1_t = torch2tt_tensor(in1, mesh_device, tt_memory_config=in1_mem_config, tt_dtype=in1_dtype)
 
     program_config = ttnn.MatmulMultiCoreReuseMultiCastDRAMShardedProgramConfig(
         in0_block_w=in0_block_w // 4,
@@ -385,13 +389,13 @@ def run_test_matmul_in1_dram_sharded_mm_chain(
 
     pt_out = in0 @ in1
 
-    tt_out = tt2torch_tensor(output_t)
+    for tt_out in ttnn.get_device_tensors(output_t):
+        tt_out = ttnn.to_torch(tt_device)
+        print(tt_out)
+        print(pt_out)
 
-    print(tt_out)
-    print(pt_out)
-
-    passing, output = comp_pcc(pt_out, tt_out)
-    logger.info(output)
+        passing, output = comp_pcc(pt_out, tt_out)
+        logger.info(output)
     assert True
 
 
@@ -418,7 +422,7 @@ def run_test_matmul_in1_dram_sharded_mm_chain(
     ],
 )
 def test_matmul_in1_dram_sharded_with_mm_chain(
-    device,
+    mesh_device,
     fidelity,
     has_bias,
     in0_dtype,
@@ -432,7 +436,7 @@ def test_matmul_in1_dram_sharded_with_mm_chain(
     N = 4096
     grid_size = (8, 2)
     run_test_matmul_in1_dram_sharded_mm_chain(
-        device,
+        mesh_device,
         True,
         True,
         True,
@@ -475,7 +479,7 @@ def test_matmul_in1_dram_sharded_with_mm_chain(
     ],
 )
 def test_matmul_2d_in1_dram_sharded(
-    device,
+    mesh_device,
     fidelity,
     has_bias,
     fp32_acc_mode,
@@ -540,7 +544,7 @@ def test_matmul_2d_in1_dram_sharded(
     )
 
     in0 = torch.randn(in0_shape).bfloat16().float()
-    in0_t = torch2tt_tensor(in0, device, tt_memory_config=interleaved_mem_config_DRAM, tt_dtype=ttnn.bfloat16)
+    in0_t = torch2tt_tensor(in0, mesh_device, tt_memory_config=interleaved_mem_config_DRAM, tt_dtype=ttnn.bfloat16)
     if in0_sharded:
         in0_t = ttnn.interleaved_to_sharded(
             in0_t,
@@ -551,23 +555,23 @@ def test_matmul_2d_in1_dram_sharded(
         )
 
     in1 = torch.randn(in1_shape).bfloat16().float()
-    in1_shard_grid = ttnn.CoreCoord(device.dram_grid_size().x - 1, device.dram_grid_size().y - 1)
+    in1_shard_grid = ttnn.CoreCoord(mesh_device.dram_grid_size().x - 1, mesh_device.dram_grid_size().y - 1)
     in1_shard_grid = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), in1_shard_grid)})
     in1_shard_spec = ttnn.ShardSpec(in1_shard_grid, in1_shard_shape, ttnn.ShardOrientation.ROW_MAJOR)
     in1_mem_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.WIDTH_SHARDED, ttnn.BufferType.DRAM, in1_shard_spec)
-    in1_t = torch2tt_tensor(in1, device, tt_memory_config=in1_mem_config, tt_dtype=ttnn.bfloat16)
+    in1_t = torch2tt_tensor(in1, mesh_device, tt_memory_config=in1_mem_config, tt_dtype=ttnn.bfloat16)
 
     if has_bias:
         bias = torch.ones(bias_shape).bfloat16().float()
         bias_padded = bias.unsqueeze(2)
         bias_padded = torch.nn.functional.pad(bias_padded, (0, 0, 0, 32 - bias_padded.size(2)), "constant", 0)
-        bias_shard_grid = ttnn.CoreCoord(device.dram_grid_size().x - 1, device.dram_grid_size().y - 1)
+        bias_shard_grid = ttnn.CoreCoord(mesh_device.dram_grid_size().x - 1, mesh_device.dram_grid_size().y - 1)
         bias_shard_grid = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), bias_shard_grid)})
         bias_shard_spec = ttnn.ShardSpec(bias_shard_grid, bias_shard_shape, ttnn.ShardOrientation.ROW_MAJOR)
         bias_mem_config = ttnn.MemoryConfig(
             ttnn.TensorMemoryLayout.WIDTH_SHARDED, ttnn.BufferType.DRAM, bias_shard_spec
         )
-        bias_t = torch2tt_tensor(bias_padded, device, tt_memory_config=bias_mem_config, tt_dtype=ttnn.bfloat16)
+        bias_t = torch2tt_tensor(bias_padded, mesh_device, tt_memory_config=bias_mem_config, tt_dtype=ttnn.bfloat16)
 
     program_config = ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
         compute_with_storage_grid_size=grid_size,

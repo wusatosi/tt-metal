@@ -326,6 +326,7 @@ def test_multi_device_multi_op(mesh_device):
     indirect=True,
 )
 def test_multi_device_data_parallel_matmul_op(mesh_device):
+    mesh_device.enable_program_cache()
     """Multidevice API: Data Parallel on matmul"""
     torch_input_a_tensor = torch.rand((mesh_device.get_num_devices(), 1, 32, 32), dtype=torch.bfloat16)
     torch_input_b_tensor = torch.rand((1, 1, 32, 32), dtype=torch.bfloat16)
@@ -343,7 +344,8 @@ def test_multi_device_data_parallel_matmul_op(mesh_device):
         device=mesh_device,
         mesh_mapper=ReplicateTensorToMesh(mesh_device),
     )
-    ttnn_output_tensor = ttnn_input_a_tensor @ ttnn_input_b_tensor
+    for i in range(2):
+        ttnn_output_tensor = ttnn_input_a_tensor @ ttnn_input_b_tensor
 
     ttnn_torch_output_tensor = ttnn.to_torch(ttnn_output_tensor, mesh_composer=ConcatMeshToTensor(mesh_device, dim=0))
     assert_with_pcc(ttnn_torch_output_tensor, torch_output_golden, pcc=0.993)

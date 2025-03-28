@@ -430,6 +430,7 @@ void handle_mesh_adapter_cache_hit(
                 using cached_mesh_workload_t = typename WorkloadFactory::cached_mesh_workload_t;
                 auto& cached_mesh_workload =
                     cached_program_factory.cached_program.template get<cached_mesh_workload_t>();
+                // std::cout << "Calling override" << std::endl;
                 WorkloadFactory::override_runtime_arguments(
                     cached_mesh_workload, operation_attributes, tensor_args, tensor_return_value);
                 return cached_mesh_workload.workload;
