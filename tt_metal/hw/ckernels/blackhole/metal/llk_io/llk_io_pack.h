@@ -12,8 +12,6 @@
 #include "stream_io_map.h"
 #include "tools/profiler/kernel_profiler.hpp"
 
-using namespace ckernel;
-
 // Blocking call to wait for free space needed to pack N tiles
 template <bool skip_sync = false, bool wait_for_blocks = false, bool brisc_pack = false>
 inline void llk_wait_for_free_tiles(const std::int32_t operand, const std::int32_t num_tiles) {
@@ -62,9 +60,9 @@ inline void llk_push_to_brisc(const std::int32_t operand, const std::int32_t num
     // Note that the consumer side of the circular buffer (the one reading from the buffer) is ok to use stale/delayed
     // version of the value at tiles_received_ptr This is because consumer is polling the value at tiles_received_ptr,
     // and it will eventually see the updated value
-    TT_SETDMAREG(0, tiles_received_new, 0, LO_16(p_gpr_pack::NUM_MSGS_RECEIVED));
-    TTI_STALLWAIT(p_stall::STALL_THCON, p_stall::PACK);  // wait for pack to finish
-    TT_STOREREG(p_gpr_pack::NUM_MSGS_RECEIVED, (uint32_t)&tiles_received_ptr_tensix[0]);
+    TT_SETDMAREG(0, tiles_received_new, 0, LO_16(ckernel::p_gpr_pack::NUM_MSGS_RECEIVED));
+    TTI_STALLWAIT(ckernel::p_stall::STALL_THCON, ckernel::p_stall::PACK);  // wait for pack to finish
+    TT_STOREREG(ckernel::p_gpr_pack::NUM_MSGS_RECEIVED, (uint32_t)&tiles_received_ptr_tensix[0]);
 }
 
 // Push N tiles to stream buffer (increment write pointer)

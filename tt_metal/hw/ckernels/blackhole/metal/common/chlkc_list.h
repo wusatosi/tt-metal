@@ -9,8 +9,6 @@
 #include "debug/fw_debug.h"
 #include "llk_param_structs.h"
 
-using namespace ckernel;
-
 #ifdef UCK_CHLKC_MATH
 // clang-format off
 #include "chlkc_dst_accum_mode.h"

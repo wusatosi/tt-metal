@@ -11,8 +11,6 @@
 #include "stream_io_map.h"
 #include "tools/profiler/kernel_profiler.hpp"
 
-using namespace ckernel;
-
 // Wait for N tiles available in the incoming stream
 inline void llk_wait_tiles(int operand, std::int32_t num_tiles) {
     // TODO(MO): Manually uncomment until issue #6619 is resolved
@@ -40,7 +38,7 @@ inline void llk_pop_tiles(
 
     get_local_cb_interface(input).tiles_acked += num_tiles;
     TT_SETDMAREG(0, get_local_cb_interface(input).tiles_acked, 0, LO_16(4));
-    TTI_STALLWAIT(p_stall::STALL_THCON, p_stall::UNPACK);
+    TTI_STALLWAIT(ckernel::p_stall::STALL_THCON, ckernel::p_stall::UNPACK);
     TT_STOREREG(4, (std::uint32_t)&tiles_acked_ptr[0]);
     get_local_cb_interface(input).fifo_rd_ptr += num_words;
 
