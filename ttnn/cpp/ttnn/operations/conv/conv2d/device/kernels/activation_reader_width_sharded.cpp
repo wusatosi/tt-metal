@@ -17,7 +17,7 @@
 constexpr uint32_t weight_size_h = get_compile_time_arg_val(7);
 constexpr uint32_t weight_size_w = get_compile_time_arg_val(8);
 // Only a part of the total channel depth (width) is used in one block.
-template <int window_height, int window_width>
+template <int window_height, int window_width, bool is_first>
 FORCE_INLINE void read_channels(
     uint32_t& l1_write_addr_act,
     const uint32_t act_l1_read_addr,
@@ -25,11 +25,22 @@ FORCE_INLINE void read_channels(
     const uint32_t conv_act_c_bytes,
     const uint32_t conv_act_c_read_bytes,
     const uint32_t stride_h_bytes,
-    const uint32_t stride_w_bytes) {
-    uint32_t act_l1_read_addr_plus_offset = act_l1_read_addr + (reader_channel_idx * conv_act_c_bytes);
+    const uint32_t stride_w_bytes,
+    const uint32_t packed_reader_indices_sz,
+    volatile uint32_t* packed_reader_indices_ptr,
+    const uint32_t reader_idx) {
+    uint32_t reader_idx_1, two_reader_indices;
+    uint32_t act_l1_read_addr_plus_offset;
+    uint32_t height_offset = reader_idx;
 #pragma GCC unroll weight_size_h
     for (uint32_t outer = 0; outer < window_height; outer++) {
-        uint32_t act_l1_read_addr_row_offset = act_l1_read_addr_plus_offset;
+        two_reader_indices = packed_reader_indices_ptr[height_offset];
+        if constexpr (is_first) {
+            reader_idx_1 = two_reader_indices & 0xffff;
+        } else {
+            reader_idx_1 = two_reader_indices >> 16;
+        }
+        uint32_t act_l1_read_addr_row_offset = act_l1_read_addr + (reader_idx_1 * conv_act_c_bytes);
 #pragma GCC unroll weight_size_w
         for (uint32_t inner = 0; inner < window_width; inner++) {
             // Read the partial depth.
@@ -39,7 +50,7 @@ FORCE_INLINE void read_channels(
             act_l1_read_addr_row_offset += stride_w_bytes;
         }
         // Go to the next row
-        act_l1_read_addr_plus_offset += stride_h_bytes;
+        height_offset += packed_reader_indices_sz;
     }
 }
 
@@ -139,32 +150,43 @@ void kernel_main() {
     uint32_t act_l1_read_addr = get_read_ptr(cb_id_sharded_act);
     noc_async_read_one_packet_set_state(get_noc_addr(act_l1_read_addr), conv_act_c_read_bytes);
 
+    uint32_t packed_reader_indices_sz = packed_reader_indices_ptr[0] & 0xFFFF;
+    packed_reader_indices_sz /= 2;
     // Reset reader_idx to finish act_block_h_datums
     for (uint32_t block_h_index = 0; block_h_index < act_num_blocks_h; block_h_index++) {
         act_l1_read_addr = get_read_ptr(cb_id_sharded_act);
         for (uint32_t block_w_index = 0; block_w_index < act_num_blocks_w; block_w_index++) {
             uint32_t reader_idx = block_h_index * (act_block_h_datums / 2);
+            if (dilation_w > 1) {
+                reader_idx++;
+            }
             cb_reserve_back(cb_id_act_row_major_bfloat16, act_block_num_tiles);
             if (this_core_id < num_input_cores) {
                 uint32_t l1_write_addr_act = get_write_ptr(cb_id_act_row_major_bfloat16);
                 for (uint32_t bh = 0; bh < act_block_h_datums / 2; bh++) {
                     uint32_t two_reader_indices = packed_reader_indices_ptr[reader_idx];
-                    read_channels<weight_size_h, weight_size_w>(
+                    read_channels<weight_size_h, weight_size_w, true>(
                         l1_write_addr_act,
                         act_l1_read_addr,
-                        two_reader_indices & 0xffff,
+                        1,
                         conv_act_c_bytes,
                         conv_act_c_read_bytes,
                         stride_h_bytes,
-                        stride_w_bytes);
-                    read_channels<weight_size_h, weight_size_w>(
+                        stride_w_bytes,
+                        packed_reader_indices_sz,
+                        packed_reader_indices_ptr,
+                        reader_idx);
+                    read_channels<weight_size_h, weight_size_w, false>(
                         l1_write_addr_act,
                         act_l1_read_addr,
-                        two_reader_indices >> 16,
+                        0,
                         conv_act_c_bytes,
                         conv_act_c_read_bytes,
                         stride_h_bytes,
-                        stride_w_bytes);
+                        stride_w_bytes,
+                        packed_reader_indices_sz,
+                        packed_reader_indices_ptr,
+                        reader_idx);
 
                     reader_idx++;
                 }
