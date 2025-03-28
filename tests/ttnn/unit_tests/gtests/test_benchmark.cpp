@@ -84,16 +84,17 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
     std::map<int, DataType> i_to_dt{{0, DataType::BFLOAT4_B}, {1, DataType::BFLOAT8_B}, {2, DataType::BFLOAT16}};
     std::map<int, MathFidelity> i_to_fi{{0, MathFidelity::LoFi}, {1, MathFidelity::HiFi2}, {2, MathFidelity::HiFi4}};
 
-    // SET START ID DEPENDING ON CORE GRID TO GET HANG.
+    // HANGPOINTS BEFORE DISABLING GATHERING & BH FEATURES
     // 1X1  start_id = 88;
     // 2X1  start_id = 4;
     // 1X2  start_id = 75;
     //
-    // 1X1 w/Milos's change start_id = 145;
-    // 2X1 w/Milos's change start_id = 145
-    // 1X2 w/Milos's change start_id = 145
+    // HANGPOINTS AFTER APPLYING out_block_w = per_core_N
+    // 1X1 w/Blackhole features off & //enable_gathering = 289;
+    // 1X2 w/Blackhole features off & //enable_gathering = 289;
+    // 2X1 w/Blackhole features off & //enable_gathering = 289;
     //
-    int start_id = 145;
+    int start_id = 289;
     int test_id = 0;
     for (int dt_a = 0; dt_a < 3; dt_a++) {
         for (int m_a = 1; m_a <= 6; m_a++) {
@@ -109,7 +110,7 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
                                             continue;
                                         }
 
-                                        std::cout << "Test = " << test_id << std::endl;
+                                        std::cout << test_id << std::endl;
 
                                         // Resetting within c code hangs the system.
                                         // system("/home/software/syseng/bh/tt-smi -r 0");
@@ -127,7 +128,7 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
                                             !shard_flip,
                                             2,
                                             2,
-                                            2));
+                                            1));
                                         configs.push_back(std::make_tuple(
                                             i_to_dt[dt_b],
                                             i_to_fi[dt_b],
@@ -138,7 +139,7 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
                                             shard_flip,
                                             2,
                                             2,
-                                            2));
+                                            1));
                                         for (auto& config : configs) {
                                             DataType dtype = std::get<0>(config);
                                             MathFidelity math_fidelity = std::get<1>(config);
@@ -165,12 +166,17 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
                                                 get_subblock_sizes(out_block_h, out_block_w, out_sharded);
 
                                             tt::log_info(
-                                                "M*K*N = {}*{}*{} out_subblock_h: {}, out_subblock_w: {}",
+                                                "M*K*N = {}*{}*{} out_subblock_h: {}, out_subblock_w: {}, out_block_h: "
+                                                "{}, out_block_w: {}, per_core_M: {}, per_core_N: {}",
                                                 m,
                                                 k,
                                                 n,
                                                 out_subblock_h,
-                                                out_subblock_w);
+                                                out_subblock_w,
+                                                out_block_h,
+                                                out_block_w,
+                                                per_core_M,
+                                                per_core_N);
 
                                             std::string in0_storage_type = in0_sharded ? "L1" : "DRAM";
                                             std::string in1_storage_type = "DRAM";
@@ -285,7 +291,7 @@ INSTANTIATE_TEST_SUITE_P(
     /*Prefix for the instantiated tests*/ MatmulTests,
     /*Test suite*/ Matmul2DHostPerfTestFixture,
     ::testing::Values(std::make_tuple(
-        /* grid_size */ std::make_tuple(1, 2),
+        /* grid_size */ std::make_tuple(1, 1),
         /* tile_h */ 32,
         /* tile_w */ 32,
         /* num_warmup_iterations */ 5,
