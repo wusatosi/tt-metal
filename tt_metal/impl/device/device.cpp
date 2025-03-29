@@ -1070,7 +1070,7 @@ bool Device::initialize(const uint8_t num_hw_cqs, size_t l1_small_size, size_t t
 
 void Device::push_work(std::function<void()> work, bool blocking) {
     if (not this->initialized_) {
-        log_warning("Attempting to push work to Device {} which is not initialized. Ignoring...", this->id_);
+        // log_warning("Attempting to push work to Device {} which is not initialized. Ignoring...", this->id_);
         return;
     }
     this->work_executor_.push_work(std::move(work), blocking);

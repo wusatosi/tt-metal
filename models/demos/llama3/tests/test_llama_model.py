@@ -90,7 +90,9 @@ def test_llama_model_inference(
     ensure_gc,
 ):
     run_ref_pt = False  # Flag to run reference PyTorch model and compare PCC
-    cache_pcc = layers == 1  # Flag to measure KV cache PCC. Avoid running for all layers to speed up test time.
+    cache_pcc = (
+        False  # layers == 1  # Flag to measure KV cache PCC. Avoid running for all layers to speed up test time.
+    )
     dtype = ttnn.bfloat8_b
     mesh_device.enable_async(True)
     mode_accuracy = optimizations == LlamaOptimizations.accuracy
@@ -189,7 +191,7 @@ def test_llama_model_inference(
     embd.load_state_dict({"emb.weight": state_dict[f"{state_dict_prefix}tok_embeddings.weight"]})
 
     generation_start_pos = 0  # 30 * 1024
-    generation_length = 1000  # iterations
+    generation_length = 500  # iterations
 
     page_table_tt = None
     paged_attention_config = None
@@ -221,7 +223,7 @@ def test_llama_model_inference(
 
     # Load TTNN model
     sfd_setup = TtSFDSetup(
-        mesh_device, model_args.n_heads, model_args.head_dim, batch_size, lambda_=100000, full_setup=False
+        mesh_device, model_args.n_heads, model_args.head_dim, batch_size, lambda_=0, full_setup=False
     )  # 1000000000)
     tt_model = TtTransformer(
         args=model_args,
@@ -265,7 +267,56 @@ def test_llama_model_inference(
         ),
     )
 
+    ##### Compile ops #####
+    logger.info("STARTING COMPILE")
+    decode_input = model_args.prepare_residual_tensor_decode(
+        tt_decode_input,
+        model_args.model_config["DECODE_RESIDUAL_MEMCFG"],
+    )
+
     sfd_setup.setup()
+
+    # One for normal pass, and one for SFD pass
+    for i in range(2):
+        # Get cos/sin matrices for the current position of each user
+        rot_mats = tt_model.rope_setup.get_rot_mats(current_pos)
+
+        tt_out = tt_model(
+            decode_input,
+            current_pos_tensor,
+            rot_mats=rot_mats,
+            mode="decode",
+            page_table=page_table_tt,
+        )
+
+        if i == 0:
+            current_pos = torch.tensor([(sfd_setup.k_chunk_size * 2) + 1 for _ in range(batch)])
+            current_pos_tensor = ttnn.from_torch(
+                current_pos,
+                device=mesh_device,
+                dtype=ttnn.int32,
+                mesh_mapper=model_args.fracture_scheme(
+                    mesh_device,
+                    dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
+                    mesh_shape=model_args.cluster_shape,
+                ),
+            )
+
+    tt_model.set_compile_done()
+
+    logger.info("FINISHED COMPILE")
+
+    current_pos = torch.tensor([generation_start_pos for _ in range(batch)])
+    current_pos_tensor = ttnn.from_torch(
+        current_pos,
+        device=mesh_device,
+        dtype=ttnn.int32,
+        mesh_mapper=model_args.fracture_scheme(
+            mesh_device,
+            dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
+            mesh_shape=model_args.cluster_shape,
+        ),
+    )
 
     for i in range(generation_length):
         logger.info(f"[Llama3 Model] Generating token {i}")

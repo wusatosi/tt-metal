@@ -44,6 +44,7 @@ class TtLlamaAttention(LightweightModule):
         self.MAX_QKV_MM_SEQ_LEN = configuration.MAX_QKV_MM_SEQ_LEN
         self.use_sfd = configuration.use_sfd
         self.sfd_setup = sfd_setup
+        self.done_compile = False
 
         self.num_device_groups = self.num_devices // self.n_kv_heads
         self.num_devices_per_group = self.n_kv_heads if self.TG else self.num_devices
@@ -331,12 +332,18 @@ class TtLlamaAttention(LightweightModule):
 
         self.sfd_setup.reset_skip_tensor()
 
+        if not self.done_compile:
+            self.sfd_setup.disable_speculation()
+
+        cur_pos_int = int(ttnn.get_device_tensors(current_pos)[0].cpu().to_torch())
+
         # keys, [max_batch_size, n_kv_heads // configuration.num_devices, max_seq_len, head_dim]
-        k_new = ttnn.to_memory_config(k_heads_1BKD, ttnn.DRAM_MEMORY_CONFIG)
-        v_new = ttnn.to_memory_config(v_heads_1BKD, ttnn.DRAM_MEMORY_CONFIG)
-        k_new, v_new = self.sfd_setup.consolidate_kv_cache(k_new, v_new)
-        k_heads_1BKD = ttnn.to_memory_config(k_new, k_heads_1BKD.memory_config())
-        v_heads_1BKD = ttnn.to_memory_config(v_new, v_heads_1BKD.memory_config())
+        if self.use_sfd and cur_pos_int > self.sfd_setup.k_chunk_size * 2:
+            k_new = ttnn.to_memory_config(k_heads_1BKD, ttnn.DRAM_MEMORY_CONFIG)
+            v_new = ttnn.to_memory_config(v_heads_1BKD, ttnn.DRAM_MEMORY_CONFIG)
+            k_new, v_new = self.sfd_setup.consolidate_kv_cache(k_new, v_new)
+            k_heads_1BKD = ttnn.to_memory_config(k_new, k_heads_1BKD.memory_config())
+            v_heads_1BKD = ttnn.to_memory_config(v_new, v_heads_1BKD.memory_config())
         ttnn.experimental.paged_update_cache(keys, k_heads_1BKD, update_idxs_tensor=current_pos, page_table=page_table)
         ttnn.experimental.paged_update_cache(
             values, v_heads_1BKD, update_idxs_tensor=current_pos, page_table=page_table
@@ -362,7 +369,6 @@ class TtLlamaAttention(LightweightModule):
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
             )
         else:
-            cur_pos_int = int(ttnn.get_device_tensors(current_pos)[0].cpu().to_torch())
             if self.use_sfd and cur_pos_int > self.sfd_setup.k_chunk_size * 2:
                 attn_output_1G4D = self.sfd_setup.run_speculative_flash_decode(
                     q_heads_1BQD,
@@ -383,6 +389,11 @@ class TtLlamaAttention(LightweightModule):
                 )
 
         ttnn.deallocate(q_heads_1BQD)
+
+        self.sfd_setup.set_skip_tensor()
+
+        if not self.done_compile:
+            self.sfd_setup.enable_speculation()
 
         attn_output_11BH = ttnn.to_memory_config(
             attn_output_1G4D,

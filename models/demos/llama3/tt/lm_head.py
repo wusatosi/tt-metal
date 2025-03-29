@@ -20,6 +20,7 @@ class LMHead(LightweightModule):
         state_dict_prefix,
         weight_cache_path,
         max_columns_per_device=128256 // 4,  # larger values per device lead to OOM or hangs
+        sfd_setup=None,
     ):
         super().__init__()
         self.args = args
@@ -28,6 +29,8 @@ class LMHead(LightweightModule):
         self.vocab_size = args.vocab_size
         self.padded_vocab_size = args.padded_vocab_size
         self.num_devices = args.num_devices
+        self.sfd_setup = sfd_setup
+        self.done_compile = False
 
         size_per_device = self.vocab_size // self.num_devices
 
@@ -127,10 +130,6 @@ class LMHead(LightweightModule):
             ]
 
     def forward(self, x: ttnn.Tensor):
-        for d in x.devices():
-            d.set_speculation_state(False, 0)
-            logger.info(f"Device {d.id()} speculation state: {d.get_speculation_state()}")
-
         x = ttnn.to_memory_config(x, ttnn.DRAM_MEMORY_CONFIG)
         outputs = []
         for weight, pc in zip(self.output_weights, self.program_configs):

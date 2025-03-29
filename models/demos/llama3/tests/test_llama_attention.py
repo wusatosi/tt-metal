@@ -198,6 +198,7 @@ class TtSFDSetup(torch.nn.Module):
 
         # Commit the priority tensor once to get the ops program cached without SKIP_COMPUTE
         commit_priority_tensor(self.tt_reset_priority_tensors, self.tt_skip_tensor, mesh_device)
+        # self.enable_speculation()
         self.done_first_run = False
 
     def run_speculative_flash_decode(
@@ -247,8 +248,7 @@ class TtSFDSetup(torch.nn.Module):
         tt_back_gt_md, tt_back_spec_md, tt_back_spec_lp_distance_md, tt_back_lp_norm_x_md = outputs
 
         # Commit the priority tensor
-        commit_priority_tensor(self.tt_priority_tensors, self.tt_skip_tensor, self.mesh_device)
-        set_devices_speculation_state(self.tt_skip_tensor, True)
+        # set_devices_speculation_state(self.tt_skip_tensor, True)
 
         return tt_back_gt_md
 
@@ -285,14 +285,17 @@ class TtSFDSetup(torch.nn.Module):
 
         return K_new, V_new
 
+    def disable_speculation(self):
+        set_devices_speculation_state(self.tt_skip_tensor, False)
+
+    def enable_speculation(self):
+        set_devices_speculation_state(self.tt_skip_tensor, True)
+
+    def set_skip_tensor(self):
+        # Set, so we skip ops after SFD
+        commit_priority_tensor(self.tt_priority_tensors, self.tt_skip_tensor, self.mesh_device)
+
     def reset_skip_tensor(self):
-        if not self.done_first_run:
-            for d in self.tt_skip_tensor.devices():
-                d.set_speculation_state(False, self.skip_tensor_address)
-                # logger.info(f"Device {d.id()} speculation state: {d.get_speculation_state()}")
-
-            self.done_first_run = True
-
         # Reset, so we don't skip SFD
         commit_priority_tensor(self.tt_reset_priority_tensors, self.tt_skip_tensor, self.mesh_device)
 

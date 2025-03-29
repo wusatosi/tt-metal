@@ -42,6 +42,9 @@ class TtTransformer(LightweightModule):
         self.model_config = args.get_model_config()
         self.grid_size = self.args.max_grid_size
         self.sfd_setup = sfd_setup
+
+        self.done_compile = False
+
         state_dict_prefix = args.get_state_dict_prefix("", None)
 
         self.embd = TtLlamaEmbedding(
@@ -102,7 +105,16 @@ class TtTransformer(LightweightModule):
             state_dict=state_dict,
             state_dict_prefix=state_dict_prefix,
             weight_cache_path=weight_cache_path,
+            sfd_setup=sfd_setup,
         )
+
+    def set_compile_done(self):
+        self.done_compile = True
+
+        for layer in self.layers:
+            layer.attention.done_compile = True
+
+        self.lm_head.done_compile = True
 
     def prepare_inputs_prefill(self, tokens, start_pos=0, page_table=None, chunk_page_table=None):
         """
@@ -361,6 +373,8 @@ class TtTransformer(LightweightModule):
         if get_last_token != -1:
             x = ttnn.slice(x, (0, 0, get_last_token, 0), (1, 1, get_last_token + 32, x.shape[-1]))
 
+        if not self.done_compile:
+            self.sfd_setup.disable_speculation()
         # Output norm
         x = self.norm(x, mode=mode)
 
