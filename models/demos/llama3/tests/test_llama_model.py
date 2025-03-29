@@ -301,7 +301,10 @@ def test_llama_model_inference(
             ),
         )
 
+        tt_model.set_run_sfd(True)
+
     tt_model.set_compile_done()
+    tt_model.set_run_sfd(False)
 
     logger.info("FINISHED COMPILE")
 
@@ -318,6 +321,8 @@ def test_llama_model_inference(
     )
 
     for i in range(generation_length):
+        if i + generation_start_pos > sfd_setup.k_chunk_size * 2:
+            tt_model.set_run_sfd(True)
         logger.info(f"[Llama3 Model] Generating token {i}")
 
         decode_input = model_args.prepare_residual_tensor_decode(
@@ -329,8 +334,6 @@ def test_llama_model_inference(
         rot_mats = tt_model.rope_setup.get_rot_mats(current_pos)
 
         # Run TT model
-        ttnn.synchronize_devices(mesh_device)
-
         t1 = time()
         tt_out = tt_model(
             decode_input,

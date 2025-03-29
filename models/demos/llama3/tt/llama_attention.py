@@ -43,6 +43,7 @@ class TtLlamaAttention(LightweightModule):
         self.num_all_gather_links = configuration.num_all_gather_links
         self.MAX_QKV_MM_SEQ_LEN = configuration.MAX_QKV_MM_SEQ_LEN
         self.use_sfd = configuration.use_sfd
+        self.run_sfd = False
         self.sfd_setup = sfd_setup
         self.done_compile = False
 
@@ -330,8 +331,6 @@ class TtLlamaAttention(LightweightModule):
         # k_heads, [seqlen, n_kv_heads, bsz, head_dim]
         # v_heads [seqlen, n_kv_heads, bsz, head_dim]
 
-        cur_pos_int = int(ttnn.get_device_tensors(current_pos)[0].cpu().to_torch())
-
         # keys, [max_batch_size, n_kv_heads // configuration.num_devices, max_seq_len, head_dim]
         ttnn.experimental.paged_update_cache(keys, k_heads_1BKD, update_idxs_tensor=current_pos, page_table=page_table)
         ttnn.experimental.paged_update_cache(
@@ -358,7 +357,7 @@ class TtLlamaAttention(LightweightModule):
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
             )
         else:
-            if self.use_sfd and cur_pos_int > self.sfd_setup.k_chunk_size * 2:
+            if self.run_sfd and self.use_sfd:  # and cur_pos_int > self.sfd_setup.k_chunk_size * 2:
                 attn_output_1G4D = self.sfd_setup.run_speculative_flash_decode(
                     q_heads_1BQD,
                     keys,
