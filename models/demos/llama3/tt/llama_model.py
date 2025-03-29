@@ -378,8 +378,9 @@ class TtTransformer(LightweightModule):
         if get_last_token != -1:
             x = ttnn.slice(x, (0, 0, get_last_token, 0), (1, 1, get_last_token + 32, x.shape[-1]))
 
-        if not self.done_compile:
-            self.sfd_setup.disable_speculation()
+        if mode == "decode":
+            if not self.done_compile:
+                self.sfd_setup.disable_speculation()
         # Output norm
         x = self.norm(x, mode=mode)
 

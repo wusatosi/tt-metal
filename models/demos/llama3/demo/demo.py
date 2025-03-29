@@ -188,7 +188,7 @@ def run_llama3_demo(
     instruct_mode,
     is_ci_env,
     print_to_file,
-    trace_mode=False,
+    trace_mode=True,
     use_events=False,
 ):
     # Creat batch output file
@@ -489,6 +489,7 @@ def run_llama3_demo(
             decode_input,
             ttnn.L1_MEMORY_CONFIG if model_args.is_galaxy else tt_model.args.model_config["DECODE_RESIDUAL_MEMCFG"],
         )
+        tt_model.set_run_sfd(True)
         tt_out = tt_model(
             decode_input,
             current_pos_tensor,
@@ -504,33 +505,38 @@ def run_llama3_demo(
                     tt_out, dim=3, num_links=2, cluster_axis=0, mesh_device=mesh_device, topology=ttnn.Topology.Linear
                 )
             else:
+                pass
                 tt_out_gathered = (
                     ttnn.all_gather(tt_out, dim=3, num_links=1, topology=ttnn.Topology.Linear)
                     if not tt_model.args.use_sfd
                     else tt_out
                 )
                 tt_out_gathered = tt_out_gathered[..., : model_args.vocab_size]
-            ttnn.deallocate(tt_out)
+            # ttnn.deallocate(tt_out)
         else:
             tt_out_gathered = tt_out
-        tt_out_rm = ttnn.untilize(tt_out_gathered, use_multicore=True)
-        ttnn.deallocate(tt_out_gathered)
+        tt_out_rm = None  # ttnn.untilize(tt_out_gathered, use_multicore=True)
+        # ttnn.deallocate(tt_out_gathered)
         if argmax_on_device:
+            pass
             tt_out_tok = ttnn.argmax(  # FIXME When ttnn.argmax supports multicore, avoid falling back to host
                 tt_out_rm, dim=3, use_multicore=False if batch_size > 1 else True, output_tensor=tt_out_tok
             )
             ttnn.deallocate(tt_out_rm)
         else:
             tt_out_tok_reset, _ = sample_host(
-                tt_out_rm,
+                tt_out,
                 mesh_device,
                 temperature=sampling_params["temperature"],
                 top_p=sampling_params["top_p"],
                 on_host=True,
+                sfd_setup=sfd_setup,
             )
             ttnn.copy_host_to_device_tensor(tt_out_tok_reset, tt_out_tok)
         ttnn.plus_one(current_pos_tensor)
         profiler.end(f"compile_trace_{batch_idx}")
+
+        tt_model.set_compile_done()
 
         # Capture Trace
         logger.info(f"Capturing model trace...")
@@ -554,18 +560,20 @@ def run_llama3_demo(
                     tt_out, dim=3, num_links=2, cluster_axis=0, mesh_device=mesh_device, topology=ttnn.Topology.Linear
                 )
             else:
+                pass
                 tt_out_gathered = (
                     ttnn.all_gather(tt_out, dim=3, num_links=1, topology=ttnn.Topology.Linear)
                     if not tt_model.args.use_sfd
                     else tt_out
                 )
                 tt_out_gathered = tt_out_gathered[..., : model_args.vocab_size]
-            ttnn.deallocate(tt_out)
+            # ttnn.deallocate(tt_out)
         else:
             tt_out_gathered = tt_out
-        tt_out_rm = ttnn.untilize(tt_out_gathered, use_multicore=True)
-        ttnn.deallocate(tt_out_gathered)
+        tt_out_rm = None  # ttnn.untilize(tt_out_gathered, use_multicore=True)
+        # ttnn.deallocate(tt_out_gathered)
         if argmax_on_device:
+            pass
             tt_out_tok = ttnn.argmax(
                 tt_out_rm, dim=3, use_multicore=False if batch_size > 1 else True, output_tensor=tt_out_tok
             )  # FIXME Multicore is not compatible with batch > 1
@@ -626,7 +634,7 @@ def run_llama3_demo(
             if use_events:
                 ttnn.wait_for_event(0, write_event)
             if trace_mode:
-                ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=True)
+                ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
             else:
                 decode_input = ttnn.unsqueeze_to_4D(tt_embd(tt_out_tok))
                 decode_input = ttnn.to_memory_config(decode_input, tt_model.args.model_config["DECODE_RESIDUAL_MEMCFG"])
@@ -649,18 +657,20 @@ def run_llama3_demo(
                             topology=ttnn.Topology.Linear,
                         )
                     else:
+                        pass
                         tt_out_gathered = (
                             ttnn.all_gather(tt_out, dim=3, num_links=1, topology=ttnn.Topology.Linear)
                             if not tt_model.args.use_sfd
                             else tt_out
                         )
                         tt_out_gathered = tt_out_gathered[..., : model_args.vocab_size]
-                    ttnn.deallocate(tt_out)
+                    # ttnn.deallocate(tt_out)
                 else:
                     tt_out_gathered = tt_out
-                tt_out_rm = ttnn.untilize(tt_out_gathered, use_multicore=True)
-                ttnn.deallocate(tt_out_gathered)
+                tt_out_rm = None  # ttnn.untilize(tt_out_gathered, use_multicore=True)
+                # ttnn.deallocate(tt_out_gathered)
                 if argmax_on_device:
+                    pass
                     tt_out_tok = ttnn.argmax(
                         tt_out_rm, dim=3, use_multicore=False if batch_size > 1 else True, output_tensor=tt_out_tok
                     )  # FIXME Multicore is not compatible with batch > 1
@@ -682,7 +692,7 @@ def run_llama3_demo(
                 ttnn.wait_for_event(1, op_event)
             if argmax_on_device:
                 tt_output_torch = ttnn.to_torch(
-                    tt_out_tok.cpu(blocking=True, cq_id=1),
+                    tt_out_tok.cpu(blocking=True, cq_id=0),
                     mesh_composer=ttnn.ConcatMesh2dToTensor(
                         mesh_device,
                         dims=(3, 1) if tt_model.args.is_galaxy else (1, -1),
@@ -690,8 +700,10 @@ def run_llama3_demo(
                     ),
                 )[0, 0, 0, :batch_size]
             else:
+                tt_out_cpu = tt_out.cpu(blocking=True, cq_id=0)
+                iteration_time = time() - iteration_time_start
                 tt_out_tok_reset, tt_output_torch = sample_host(
-                    tt_out_rm,
+                    tt_out_cpu,
                     mesh_device,
                     temperature=sampling_params["temperature"],
                     top_p=sampling_params["top_p"],
@@ -717,7 +729,6 @@ def run_llama3_demo(
                         users_decoding = False
 
             # Print out generated outputs for each user at the end of every iteration
-            iteration_time = time() - iteration_time_start
 
             # Ignore the first iteration for average speed calculation
             if iteration > 0:
@@ -1001,7 +1012,7 @@ def run_llama3_demo(
         # LlamaOptimizations.accuracy,
     ],
 )
-@pytest.mark.parametrize("device_params", [{"trace_region_size": 23887872, "num_command_queues": 2}], indirect=True)
+@pytest.mark.parametrize("device_params", [{"trace_region_size": 23887872, "num_command_queues": 1}], indirect=True)
 @pytest.mark.parametrize(
     "mesh_device",
     [
