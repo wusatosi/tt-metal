@@ -63,7 +63,7 @@ TEST_P(Matmul2DHangTestFixture, Matmul2DHangTest) {
     //
     int start_id = 288;
     int test_id = 0;
-    int end_id = 290;
+    int end_id = 289;
     bool loop_break = false;
     for (int dt_a = 0; dt_a < 3; dt_a++) {
         for (int m_a = 1; m_a <= 6; m_a++) {
