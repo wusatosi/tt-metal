@@ -2,12 +2,13 @@
 #include "ttnn/device.hpp"
 #include <vector>
 #include <utility>
-#include <boost/chrono.hpp>
 #include <iostream>
 #include <vector>
 #include <fstream>
 #include <string>
 #include <chrono>
+#include <stdlib.h>
+#include <map>
 
 #include <tt-metalium/logger.hpp>
 #include "ttnn_test_fixtures.hpp"
@@ -23,7 +24,7 @@
 #include "ttnn/cpp/ttnn/operations/data_movement/common/common.hpp"
 
 #include "ttnn/operations/matmul/matmul.hpp"
-
+#include "ttnn/operations/trace.hpp"
 class Matmul2DHangTestFixture : public ttnn::TTNNFixtureWithDevice,
                                 public testing::WithParamInterface<std::tuple<
                                     /* grid_size */ std::tuple<int, int>,
@@ -50,17 +51,20 @@ TEST_P(Matmul2DHangTestFixture, Matmul2DHangTest) {
     std::map<int, DataType> i_to_dt{{0, DataType::BFLOAT4_B}, {1, DataType::BFLOAT8_B}, {2, DataType::BFLOAT16}};
     std::map<int, MathFidelity> i_to_fi{{0, MathFidelity::LoFi}, {1, MathFidelity::HiFi2}, {2, MathFidelity::HiFi4}};
 
-    // SET START ID DEPENDING ON CORE GRID TO GET HANG.
+    // HANGPOINTS BEFORE DISABLING GATHERING & BH FEATURES
     // 1X1  start_id = 88;
     // 2X1  start_id = 4;
     // 1X2  start_id = 75;
     //
-    // 1X1 w/Milos's change start_id = 145;
-    // 2X1 w/Milos's change start_id = 145
-    // 1X2 w/Milos's change start_id = 145
+    // HANGPOINTS AFTER APPLYING out_block_w = per_core_N
+    // 1X1 w/Blackhole features off & //enable_gathering = 289;
+    // 1X2 w/Blackhole features off & //enable_gathering = 289;
+    // 2X1 w/Blackhole features off & //enable_gathering = 289;
     //
-    int start_id = 145;
+    int start_id = 288;
     int test_id = 0;
+    int end_id = 290;
+    bool loop_break = false;
     for (int dt_a = 0; dt_a < 3; dt_a++) {
         for (int m_a = 1; m_a <= 6; m_a++) {
             for (int k_a = 1; k_a <= 6; k_a++) {
@@ -75,16 +79,7 @@ TEST_P(Matmul2DHangTestFixture, Matmul2DHangTest) {
                                             continue;
                                         }
 
-                                        std::cout << "Test = " << test_id << std::endl;
-                                        std::cout << "dt_a = " << dt_a << std::endl;
-                                        std::cout << "m_a = " << m_a << std::endl;
-                                        std::cout << "k_a = " << k_a << std::endl;
-                                        std::cout << "n_a = " << n_a << std::endl;
-                                        std::cout << "dt_b = " << dt_b << std::endl;
-                                        std::cout << "m_b = " << m_b << std::endl;
-                                        std::cout << "k_b = " << k_b << std::endl;
-                                        std::cout << "n_b = " << n_b << std::endl;
-                                        std::cout << "shard_flip = " << shard_flip << std::endl;
+                                        std::cout << test_id << std::endl;
 
                                         // Resetting within c code hangs the system.
                                         // system("/home/software/syseng/bh/tt-smi -r 0");
@@ -102,7 +97,7 @@ TEST_P(Matmul2DHangTestFixture, Matmul2DHangTest) {
                                             !shard_flip,
                                             2,
                                             2,
-                                            2));
+                                            1));
                                         configs.push_back(std::make_tuple(
                                             i_to_dt[dt_b],
                                             i_to_fi[dt_b],
@@ -113,7 +108,7 @@ TEST_P(Matmul2DHangTestFixture, Matmul2DHangTest) {
                                             shard_flip,
                                             2,
                                             2,
-                                            2));
+                                            1));
                                         for (auto& config : configs) {
                                             DataType dtype = std::get<0>(config);
                                             MathFidelity math_fidelity = std::get<1>(config);
@@ -140,12 +135,17 @@ TEST_P(Matmul2DHangTestFixture, Matmul2DHangTest) {
                                                 get_subblock_sizes(out_block_h, out_block_w, out_sharded);
 
                                             tt::log_info(
-                                                "M*K*N = {}*{}*{} out_subblock_h: {}, out_subblock_w: {}",
+                                                "M*K*N = {}*{}*{} out_subblock_h: {}, out_subblock_w: {}, out_block_h: "
+                                                "{}, out_block_w: {}, per_core_M: {}, per_core_N: {}",
                                                 m,
                                                 k,
                                                 n,
                                                 out_subblock_h,
-                                                out_subblock_w);
+                                                out_subblock_w,
+                                                out_block_h,
+                                                out_block_w,
+                                                per_core_M,
+                                                per_core_N);
 
                                             std::string in0_storage_type = in0_sharded ? "L1" : "DRAM";
                                             std::string in1_storage_type = "DRAM";
@@ -245,14 +245,51 @@ TEST_P(Matmul2DHangTestFixture, Matmul2DHangTest) {
                                         }
 
                                         test_id++;
+                                        if (test_id >= end_id) {
+                                            std::cout << "HANGPOINT: " << test_id << std::endl;
+                                            loop_break = true;
+                                            break;
+                                        }
+                                        if (loop_break) {
+                                            break;
+                                        }
+                                    }
+                                    if (loop_break) {
+                                        break;
                                     }
                                 }
+                                if (loop_break) {
+                                    break;
+                                }
+                            }
+                            if (loop_break) {
+                                break;
                             }
                         }
+                        if (loop_break) {
+                            break;
+                        }
+                    }
+                    if (loop_break) {
+                        break;
                     }
                 }
+                if (loop_break) {
+                    break;
+                }
+            }
+            if (loop_break) {
+                break;
             }
         }
+        if (loop_break) {
+            break;
+        }
+    }
+    if (test_id >= end_id) {
+        std::cout << "HANGPOINT: " << test_id << std::endl;
+    } else {
+        std::cout << "Test completed successfully." << std::endl;
     }
 }
 
