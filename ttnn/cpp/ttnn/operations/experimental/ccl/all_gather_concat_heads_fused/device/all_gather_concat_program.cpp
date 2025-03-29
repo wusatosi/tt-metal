@@ -247,7 +247,9 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
     }
 
     // create concat semaphore for each link
-    uint32_t concat_semaphore_id = tt::tt_metal::CreateSemaphore(program, q_cores, 0);
+    uint32_t concat_semaphore_id_0 = tt::tt_metal::CreateSemaphore(program, q_cores, 0);
+    uint32_t concat_semaphore_id_1 = tt::tt_metal::CreateSemaphore(program, q_cores, 0);
+    uint32_t concat_semaphore_id_2 = tt::tt_metal::CreateSemaphore(program, q_cores, 0);
 
     std::vector<uint32_t> concat_reader_ct_args = {
         (std::uint32_t)element_size,
@@ -478,7 +480,9 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
         // reader_rt_args.push_back(drain_sync_core.x);
         // reader_rt_args.push_back(drain_sync_core.y);
         reader_rt_args.push_back(link == 0);
-        reader_rt_args.push_back(concat_semaphore_id);
+        reader_rt_args.push_back(concat_semaphore_id_0);
+        reader_rt_args.push_back(concat_semaphore_id_1);
+        reader_rt_args.push_back(concat_semaphore_id_2);
         reader_rt_args.insert(reader_rt_args.end(), nlp_local_core_x.begin(), nlp_local_core_x.end());
         reader_rt_args.insert(reader_rt_args.end(), nlp_local_core_y.begin(), nlp_local_core_y.end());
 
@@ -501,7 +505,10 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
             // drain_sync_core.x,                     // out_ready_sem_noc0_x
             // drain_sync_core.y,                     // out_ready_sem_noc0_y
             // out_ready_sem_wait_value,              // out_ready_sem_wait_value
-            concat_semaphore_id,
+            concat_semaphore_id_0,
+            concat_semaphore_id_1,
+            concat_semaphore_id_2
+
         };
         auto sem_mcast_range_1 = CoreRange({2, 0}, {3, 0});
         auto sem_mcast_range_2 = CoreRange({1, 1}, {3, 1});
@@ -574,7 +581,12 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
         if (is_worker_core == 0) {
             std::vector<uint32_t> reader_runtime_args;
             reader_runtime_args.reserve(3 + 2 * in_num_cores + 21);
-            reader_runtime_args = {in_tile_offset_by_batch, q_start_addr, concat_semaphore_id};
+            reader_runtime_args = {
+                in_tile_offset_by_batch,
+                q_start_addr,
+                concat_semaphore_id_0,
+                concat_semaphore_id_1,
+                concat_semaphore_id_2};
             reader_runtime_args.insert(reader_runtime_args.end(), noc_x_coords.begin(), noc_x_coords.end());
             reader_runtime_args.insert(reader_runtime_args.end(), noc_y_coords.begin(), noc_y_coords.end());
             reader_runtime_args.push_back(input_tensor.buffer()->address());

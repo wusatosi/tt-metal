@@ -97,16 +97,30 @@ void kernel_main() {
     uint32_t out_ready_sem_noc0_y_concat = 18;      // get_arg_val<uint32_t>(concat_arg_start + arg_sem_idx + 2);
     uint32_t is_drain_core = get_arg_val<uint32_t>(concat_arg_start + arg_sem_idx);
     const uint32_t signal_semaphore_addr = get_semaphore(get_arg_val<uint32_t>(concat_arg_start + arg_sem_idx + 1));
+    const uint32_t signal_semaphore_addr_1 = get_semaphore(get_arg_val<uint32_t>(concat_arg_start + arg_sem_idx + 2));
+    const uint32_t signal_semaphore_addr_2 = get_semaphore(get_arg_val<uint32_t>(concat_arg_start + arg_sem_idx + 3));
 
-    uint32_t local_arg = concat_arg_start + arg_sem_idx + 2;
+    uint32_t local_arg = concat_arg_start + arg_sem_idx + 4;
     tt_l1_ptr uint32_t* nlp_local_core_x = (tt_l1_ptr uint32_t*)(get_arg_addr(local_arg));
     local_arg += 8;
     tt_l1_ptr uint32_t* nlp_local_core_y = (tt_l1_ptr uint32_t*)(get_arg_addr(local_arg));
     local_arg += 8;
 
-    volatile tt_l1_ptr uint32_t* signal_semaphore_addr_ptr =
-        reinterpret_cast<volatile tt_l1_ptr uint32_t*>(signal_semaphore_addr);
-
+    auto wait = [&](uint32_t is_drain_core,
+                    uint32_t out_ready_sem_bank_addr_concat,
+                    uint32_t signal_semaphore_addr,
+                    uint32_t out_ready_sem_wait_value_concat) {
+        if (is_drain_core == 1) {
+            while (*reinterpret_cast<volatile uint32_t*>(out_ready_sem_bank_addr_concat) <
+                   out_ready_sem_wait_value_concat) {
+                DPRINT << "waitval done\n";
+            }
+        } else {
+            volatile tt_l1_ptr uint32_t* signal_semaphore_addr_ptr =
+                reinterpret_cast<volatile tt_l1_ptr uint32_t*>(signal_semaphore_addr);
+            noc_semaphore_wait(signal_semaphore_addr_ptr, VALID);
+        }
+    };
     auto batch_loop = [&](uint32_t head_size_num_tiles,
                           uint32_t q_start_addr,
                           uint32_t tensor_address0,
@@ -182,12 +196,13 @@ void kernel_main() {
                           bool nlp_local,
                           uint32_t start_local,
                           tt_l1_ptr uint32_t* core_noc_x,
-                          tt_l1_ptr uint32_t* core_noc_y) {
+                          tt_l1_ptr uint32_t* core_noc_y,
+                          uint32_t batch_start) {
         tt_l1_ptr uint32_t* in0_mcast_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(2 + concat_arg_start));
         tt_l1_ptr uint32_t* in0_mcast_noc_y = (tt_l1_ptr uint32_t*)(get_arg_addr(2 + in_num_cores + concat_arg_start));
 
         // Q
-        uint32_t cur_core_idx = batch_start_1;
+        uint32_t cur_core_idx = batch_start;
         uint32_t total_input_cores = in_num_cores;
         uint32_t num_tiles_per_core_concat = (head_size_num_tiles * batch) / total_input_cores;
 
@@ -205,40 +220,30 @@ void kernel_main() {
         uint32_t tile_size = head_size / head_size_num_tiles;
         const uint32_t cb_write_ptr_base = get_write_ptr(cb_id_q_out);
 
-        uint32_t start = nlp_local ? start_local : batch_start_1;
-        uint32_t end = nlp_local ? start_local + 8 : batch_end_1;
-        uint32_t idx_end = nlp_local ? 1 : batch_size;
-        for (uint32_t batch_range = 0; batch_range < idx_end; batch_range++) {
-            batch_loop(
-                head_size_num_tiles,
-                q_start_addr,
-                tensor_address0,
-                face_h,
-                SUBTILE_LINE_BYTES,
-                face_hw,
-                ELEMENT_SIZE,
-                cb_write_ptr_base,
-                qkv_read_addr,
-                tile_size,
-                num_tiles_read_cur_core,
-                cur_core_idx,
-                num_tiles_per_core_concat,
-                start,
-                end,
-                concat_arg_start,
-                local_count,
-                core_noc_x,
-                core_noc_y,
-                nlp_local,
-                phase);
-            start = batch_start_2;
-            end = batch_end_2;
-            cur_core_idx = batch_start_2;
-            qkv_read_addr = get_noc_addr(in0_mcast_noc_x[cur_core_idx], in0_mcast_noc_y[cur_core_idx], q_start_addr) +
-                            in_tile_offset_by_head;
-
-            num_tiles_read_cur_core = 0;
-        }
+        uint32_t start = nlp_local ? start_local : batch_start;
+        uint32_t end = nlp_local ? start_local + 8 : batch_start + 8;
+        batch_loop(
+            head_size_num_tiles,
+            q_start_addr,
+            tensor_address0,
+            face_h,
+            SUBTILE_LINE_BYTES,
+            face_hw,
+            ELEMENT_SIZE,
+            cb_write_ptr_base,
+            qkv_read_addr,
+            tile_size,
+            num_tiles_read_cur_core,
+            cur_core_idx,
+            num_tiles_per_core_concat,
+            start,
+            end,
+            concat_arg_start,
+            local_count,
+            core_noc_x,
+            core_noc_y,
+            nlp_local,
+            phase);
         noc_async_read_barrier();
     };
 
@@ -282,13 +287,15 @@ void kernel_main() {
         1,
         start_local,
         nlp_local_core_x,
-        nlp_local_core_y);
+        nlp_local_core_y,
+        start_local);
     DPRINT << "DONE LOCAL NLP\n";
 
     uint64_t out_ready_sem_noc_addr_concat =
         safe_get_noc_addr(out_ready_sem_noc0_x_concat, out_ready_sem_noc0_y_concat, out_ready_sem_bank_addr_concat);
 
     DPRINT << "is drain core: " << (uint32_t)is_drain_core << ENDL();
+    /*
     if (is_drain_core == 1) {
         while (*reinterpret_cast<volatile uint32_t*>(out_ready_sem_bank_addr_concat) !=
                out_ready_sem_wait_value_concat) {
@@ -297,6 +304,9 @@ void kernel_main() {
     } else {
         noc_semaphore_wait(signal_semaphore_addr_ptr, VALID);
     }
+    */
+    wait(is_drain_core, out_ready_sem_bank_addr_concat, signal_semaphore_addr, 6);
+    DPRINT << "AFTER WAIT 1\n";
 
     uint32_t phase = PHASES_TO_READ;
     nlp_concat(
@@ -315,7 +325,49 @@ void kernel_main() {
         0,
         start_local,
         nlp_local_core_x,
-        nlp_local_core_y);
+        nlp_local_core_y,
+        batch_start_1);
+
+    wait(is_drain_core, out_ready_sem_bank_addr_concat, signal_semaphore_addr_1, 9);
+    DPRINT << "AFTER WAIT 2\n";
+    nlp_concat(
+        head_size_num_tiles,
+        batch,
+        q_start_addr,
+        tensor_address0,
+        head_size,
+        cb_id_q_out,
+        face_h,
+        SUBTILE_LINE_BYTES,
+        phase,
+        face_hw,
+        ELEMENT_SIZE,
+        concat_arg_start,
+        0,
+        start_local,
+        nlp_local_core_x,
+        nlp_local_core_y,
+        batch_start_2);
+    wait(is_drain_core, out_ready_sem_bank_addr_concat, signal_semaphore_addr_2, 12);
+    DPRINT << "AFTER WAIT 3\n";
+    nlp_concat(
+        head_size_num_tiles,
+        batch,
+        q_start_addr,
+        tensor_address0,
+        head_size,
+        cb_id_q_out,
+        face_h,
+        SUBTILE_LINE_BYTES,
+        phase,
+        face_hw,
+        ELEMENT_SIZE,
+        concat_arg_start,
+        0,
+        start_local,
+        nlp_local_core_x,
+        nlp_local_core_y,
+        batch_start_2 + 8);
 
     DPRINT << "DONE\n";
 }

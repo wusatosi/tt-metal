@@ -50,6 +50,8 @@ void kernel_main() {
     uint32_t out_ready_sem_wait_value = 12;   // get_arg_val<uint32_t>(arg_idx++);
 
     const uint32_t concat_semaphore_send_addr = get_semaphore(get_arg_val<uint32_t>(arg_idx++));
+    const uint32_t concat_semaphore_send_addr_1 = get_semaphore(get_arg_val<uint32_t>(arg_idx++));
+    const uint32_t concat_semaphore_send_addr_2 = get_semaphore(get_arg_val<uint32_t>(arg_idx++));
 
     tt_l1_ptr uint32_t* core_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
     arg_idx += num_cores;
@@ -129,6 +131,41 @@ void kernel_main() {
     constexpr uint32_t batch_start_2 = get_compile_time_arg_val(22);
     constexpr uint32_t batch_end_2 = get_compile_time_arg_val(23);
     constexpr uint32_t start_local = get_compile_time_arg_val(24);
+
+    auto send_sem = [&](uint32_t concat_semaphore_send_addr,
+                        tt_l1_ptr uint32_t* mcast_dest_noc_start_x,
+                        tt_l1_ptr uint32_t* mcast_dest_noc_start_y,
+                        tt_l1_ptr uint32_t* mcast_dest_noc_end_x,
+                        tt_l1_ptr uint32_t* mcast_dest_noc_end_y,
+                        uint32_t sem_val) {
+        while (*reinterpret_cast<volatile uint32_t*>(out_ready_sem_bank_addr) < sem_val);
+
+        // Set up for mcasting to concat workers
+        volatile tt_l1_ptr uint32_t* concat_semaphore_send_addr_ptr =
+            reinterpret_cast<volatile tt_l1_ptr uint32_t*>(concat_semaphore_send_addr);
+        noc_semaphore_set(concat_semaphore_send_addr_ptr, VALID);
+        DPRINT << "concat_semaphore_send_addr: " << (uint32_t)concat_semaphore_send_addr;
+        DPRINT << "mcast indices 0: " << mcast_dest_noc_start_x[0] << " " << mcast_dest_noc_start_y[0] << " "
+               << mcast_dest_noc_end_x[0] << " " << mcast_dest_noc_end_y[0] << ENDL();
+        DPRINT << "mcast indices 1: " << mcast_dest_noc_start_x[1] << " " << mcast_dest_noc_start_y[1] << " "
+               << mcast_dest_noc_end_x[1] << " " << mcast_dest_noc_end_y[1] << ENDL();
+        DPRINT << "mcast indices 2: " << mcast_dest_noc_start_x[2] << " " << mcast_dest_noc_start_y[2] << " "
+               << mcast_dest_noc_end_x[2] << " " << mcast_dest_noc_end_y[2] << ENDL();
+        for (uint32_t i = 0; i < 3; i++) {
+            const uint64_t concat_sem_rcv_addr = get_noc_multicast_addr(
+                mcast_dest_noc_start_x[i],
+                mcast_dest_noc_start_y[i],
+                mcast_dest_noc_end_x[i],
+                mcast_dest_noc_end_y[i],
+                concat_semaphore_send_addr);
+            noc_semaphore_set_multicast(
+                concat_semaphore_send_addr,
+                concat_sem_rcv_addr,
+                i == 1 ? 3 : 2,
+                false,  // linked = false
+                true);  // multicast_path_reserve = true
+        }
+    };
 
     auto batch_loop = [&](uint32_t head_size_num_tiles,
                           uint32_t q_start_addr,
@@ -327,11 +364,12 @@ void kernel_main() {
 
     // 3. wait for mcast output ready semaphore
     if (wait_output_semaphore) {
-        while (*reinterpret_cast<volatile uint32_t*>(out_ready_sem_bank_addr) < out_ready_sem_wait_value);
+        while (*reinterpret_cast<volatile uint32_t*>(out_ready_sem_bank_addr) < 6);
         DPRINT << "waitval done\n";
     }
 
     // Set up for mcasting to concat workers
+    /*
     if (wait_output_semaphore) {
         volatile tt_l1_ptr uint32_t* concat_semaphore_send_addr_ptr =
             reinterpret_cast<volatile tt_l1_ptr uint32_t*>(concat_semaphore_send_addr);
@@ -353,6 +391,33 @@ void kernel_main() {
                 false,  // linked = false
                 true);  // multicast_path_reserve = true
         }
+    }
+    */
+    if (wait_output_semaphore) {
+        send_sem(
+            concat_semaphore_send_addr,
+            mcast_dest_noc_start_x,
+            mcast_dest_noc_start_y,
+            mcast_dest_noc_end_x,
+            mcast_dest_noc_end_y,
+            6);
+        DPRINT << "AFTER WAIT 1\n";
+        send_sem(
+            concat_semaphore_send_addr_1,
+            mcast_dest_noc_start_x,
+            mcast_dest_noc_start_y,
+            mcast_dest_noc_end_x,
+            mcast_dest_noc_end_y,
+            9);
+        DPRINT << "AFTER WAIT 2\n";
+        send_sem(
+            concat_semaphore_send_addr_2,
+            mcast_dest_noc_start_x,
+            mcast_dest_noc_start_y,
+            mcast_dest_noc_end_x,
+            mcast_dest_noc_end_y,
+            12);
+        DPRINT << "AFTER WAIT 3\n";
     }
 
     if (fabric_connection.is_logically_connected()) {
