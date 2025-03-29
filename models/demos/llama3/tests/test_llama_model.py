@@ -76,6 +76,7 @@ from time import time
     ],
     indirect=True,
 )
+@pytest.mark.parametrize("device_params", [{"trace_region_size": 23887872, "num_command_queues": 1}], indirect=True)
 def test_llama_model_inference(
     weights,
     layers,
@@ -190,8 +191,8 @@ def test_llama_model_inference(
     embd = HostEmbedding(model_args)
     embd.load_state_dict({"emb.weight": state_dict[f"{state_dict_prefix}tok_embeddings.weight"]})
 
-    generation_start_pos = 0  # 30 * 1024
-    generation_length = 1000  # iterations
+    generation_start_pos = 31 * 1024  # 30 * 1024
+    generation_length = 100  # iterations
 
     page_table_tt = None
     paged_attention_config = None
@@ -289,87 +290,106 @@ def test_llama_model_inference(
             page_table=page_table_tt,
         )
 
-        current_pos = torch.tensor([(sfd_setup.k_chunk_size * 2) + i + 1 for _ in range(batch)])
-        current_pos_tensor = ttnn.from_torch(
-            current_pos,
-            device=mesh_device,
-            dtype=ttnn.int32,
-            mesh_mapper=model_args.fracture_scheme(
-                mesh_device,
-                dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
-                mesh_shape=model_args.cluster_shape,
-            ),
-        )
+        # current_pos = torch.tensor([(sfd_setup.k_chunk_size * 2) + i + 1 for _ in range(batch)])
+        # current_pos_tensor = ttnn.from_torch(
+        #     current_pos,
+        #     device=mesh_device,
+        #     dtype=ttnn.int32,
+        #     mesh_mapper=model_args.fracture_scheme(
+        #         mesh_device,
+        #         dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
+        #         mesh_shape=model_args.cluster_shape,
+        #     ),
+        # )
+
+        tt_model.set_run_sfd(True)
 
     tt_model.set_compile_done()
+    tt_model.set_run_sfd(False)
 
     logger.info("FINISHED COMPILE")
 
-    current_pos = torch.tensor([generation_start_pos for _ in range(batch)])
-    current_pos_tensor = ttnn.from_torch(
-        current_pos,
-        device=mesh_device,
-        dtype=ttnn.int32,
-        mesh_mapper=model_args.fracture_scheme(
-            mesh_device,
-            dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
-            mesh_shape=model_args.cluster_shape,
-        ),
+    # current_pos = torch.tensor([generation_start_pos for _ in range(batch)])
+    # current_pos_tensor = ttnn.from_torch(
+    #     current_pos,
+    #     device=mesh_device,
+    #     dtype=ttnn.int32,
+    #     mesh_mapper=model_args.fracture_scheme(
+    #         mesh_device,
+    #         dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
+    #         mesh_shape=model_args.cluster_shape,
+    #     ),
+    # )
+
+    ##### Capture Trace #####
+    tt_model.set_run_sfd(False)
+    trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
+    tt_out = tt_model(
+        decode_input,
+        current_pos_tensor,
+        rot_mats=rot_mats,
+        mode="decode",
+        page_table=page_table_tt,
     )
+    ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
 
     for i in range(generation_length):
+        # if i + generation_start_pos > sfd_setup.k_chunk_size * 2:
+        #     tt_model.set_run_sfd(True)
         logger.info(f"[Llama3 Model] Generating token {i}")
 
-        decode_input = model_args.prepare_residual_tensor_decode(
-            tt_decode_input,
-            model_args.model_config["DECODE_RESIDUAL_MEMCFG"],
-        )
+        # decode_input = model_args.prepare_residual_tensor_decode(
+        #     tt_decode_input,
+        #     model_args.model_config["DECODE_RESIDUAL_MEMCFG"],
+        # )
 
         # Get cos/sin matrices for the current position of each user
-        rot_mats = tt_model.rope_setup.get_rot_mats(current_pos)
+        # rot_mats = tt_model.rope_setup.get_rot_mats(current_pos)
 
         # Run TT model
-        ttnn.synchronize_devices(mesh_device)
-
         t1 = time()
-        tt_out = tt_model(
-            decode_input,
-            current_pos_tensor,
-            rot_mats=rot_mats,
-            mode="decode",
-            page_table=page_table_tt,
-        )
+        # tt_out = tt_model(
+        #     decode_input,
+        #     current_pos_tensor,
+        #     rot_mats=rot_mats,
+        #     mode="decode",
+        #     page_table=page_table_tt,
+        # )
 
         # Convert ttnn tensor to torch tensor
         mesh_composer = ttnn.ConcatMesh2dToTensor(
             mesh_device, dims=(3, 1) if model_args.is_galaxy else (1, -1), mesh_shape=model_args.cluster_shape
         )
-        tt_output_torch = ttnn.to_torch(tt_out, mesh_composer=mesh_composer)
+
+        ttnn.execute_trace(mesh_device, trace_id, blocking=False, cq_id=0)
+        tt_out_cpu = tt_out.cpu(blocking=True, cq_id=0)
+        t2 = time()
+
+        tt_output_torch = ttnn.to_torch(tt_out_cpu, mesh_composer=mesh_composer)
         tt_output_torch = sfd_setup.get_correct_tensor(tt_output_torch)
         tt_output_torch = tt_output_torch.permute(2, 1, 0, 3).squeeze(2)[
             : model_args.max_batch_size, 0:1, : model_args.vocab_size
         ]
-        t2 = time()
         logger.info(f"T/s/u {1 / (t2 - t1)} and latency {t2 - t1}")
 
-        ttnn.deallocate(tt_out)
+        # ttnn.deallocate(tt_out)
 
         if run_ref_pt:  # Run reference model
             # In this test all users have the same position
             ref_output = reference_model(pt_decode_input, current_pos[0])
 
-        # Increment position
-        current_pos = torch.tensor([generation_start_pos + i + 1 for _ in range(batch)])
-        current_pos_tensor = ttnn.from_torch(
-            current_pos,
-            device=mesh_device,
-            dtype=ttnn.int32,
-            mesh_mapper=model_args.fracture_scheme(
-                mesh_device,
-                dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
-                mesh_shape=model_args.cluster_shape,
-            ),
-        )
+        # # Increment position
+        # current_pos = torch.tensor([generation_start_pos + i + 1 for _ in range(batch)])
+        # current_pos_tensor = ttnn.from_torch(
+        #     current_pos,
+        #     device=mesh_device,
+        #     dtype=ttnn.int32,
+        #     mesh_mapper=model_args.fracture_scheme(
+        #         mesh_device,
+        #         dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
+        #         mesh_shape=model_args.cluster_shape,
+        #     ),
+        # )
 
         # Append the generated token to the list of outputs
         if i in range(len(encoded_prompts[0])):

@@ -117,6 +117,10 @@ class TtTransformer(LightweightModule):
 
         self.lm_head.done_compile = True
 
+    def set_run_sfd(self, run_sfd):
+        for layer in self.layers:
+            layer.attention.run_sfd = run_sfd
+
     def prepare_inputs_prefill(self, tokens, start_pos=0, page_table=None, chunk_page_table=None):
         """
         Inputs are torch tensors or python types. This function returns ttnn
