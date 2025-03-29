@@ -19,7 +19,7 @@ std::pair<uint32_t, uint32_t> get_max_priority(uint32_t priority_addr, uint32_t 
     DPRINT << "priority_scalar_bytes: " << priority_scalar_bytes << ENDL();
 
     uint32_t max_priority = 0;
-    for (uint32_t i = 0; i < B; i++) {
+    for (uint32_t i = 0; i < 1; i++) {
         cb_reserve_back(cb_scratch_id, 1);
 
         uint32_t priority_cb_wr_ptr = get_write_ptr(cb_scratch_id);
@@ -38,7 +38,7 @@ std::pair<uint32_t, uint32_t> get_max_priority(uint32_t priority_addr, uint32_t 
     }
 
     uint32_t max_other_priority = 0;
-    for (uint32_t i = 0; i < B; i++) {
+    for (uint32_t i = 0; i < 1; i++) {
         cb_reserve_back(cb_scratch_id, 1);
 
         uint32_t other_priority_cb_wr_ptr = get_write_ptr(cb_scratch_id);

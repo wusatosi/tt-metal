@@ -112,6 +112,7 @@ class TtTransformer(LightweightModule):
         self.done_compile = True
 
         for layer in self.layers:
+            layer.done_compile = True
             layer.attention.done_compile = True
 
         self.lm_head.done_compile = True

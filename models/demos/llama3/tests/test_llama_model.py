@@ -191,7 +191,7 @@ def test_llama_model_inference(
     embd.load_state_dict({"emb.weight": state_dict[f"{state_dict_prefix}tok_embeddings.weight"]})
 
     generation_start_pos = 0  # 30 * 1024
-    generation_length = 500  # iterations
+    generation_length = 1000  # iterations
 
     page_table_tt = None
     paged_attention_config = None
@@ -223,7 +223,7 @@ def test_llama_model_inference(
 
     # Load TTNN model
     sfd_setup = TtSFDSetup(
-        mesh_device, model_args.n_heads, model_args.head_dim, batch_size, lambda_=0, full_setup=False
+        mesh_device, model_args.n_heads, model_args.head_dim, batch_size, lambda_=100000, full_setup=False
     )  # 1000000000)
     tt_model = TtTransformer(
         args=model_args,
@@ -289,18 +289,17 @@ def test_llama_model_inference(
             page_table=page_table_tt,
         )
 
-        if i == 0:
-            current_pos = torch.tensor([(sfd_setup.k_chunk_size * 2) + 1 for _ in range(batch)])
-            current_pos_tensor = ttnn.from_torch(
-                current_pos,
-                device=mesh_device,
-                dtype=ttnn.int32,
-                mesh_mapper=model_args.fracture_scheme(
-                    mesh_device,
-                    dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
-                    mesh_shape=model_args.cluster_shape,
-                ),
-            )
+        current_pos = torch.tensor([(sfd_setup.k_chunk_size * 2) + i + 1 for _ in range(batch)])
+        current_pos_tensor = ttnn.from_torch(
+            current_pos,
+            device=mesh_device,
+            dtype=ttnn.int32,
+            mesh_mapper=model_args.fracture_scheme(
+                mesh_device,
+                dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
+                mesh_shape=model_args.cluster_shape,
+            ),
+        )
 
     tt_model.set_compile_done()
 

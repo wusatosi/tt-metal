@@ -214,20 +214,6 @@ class TtSFDSetup(torch.nn.Module):
         tt_V = ttnn.to_memory_config(V, self.dram_memcfg)
 
         # self.reset_skip_tensor()
-        # self.tt_gathered_priority_tensors = create_multi_device_tensors(
-        #     read_multi_device_tensor(self.tt_priority_tensors)[::-1],
-        #     self.mesh_device,
-        #     self.dram_memcfg,
-        #     ttnn.TILE_LAYOUT,
-        #     ttnn.uint32,
-        # )
-        # Swap. priority tensor value of its pair device, same shape as priority_tensors
-        # FIXME: Leads to a hang eventually
-        self.tt_gathered_priority_tensors = ttnn.experimental.swap_tensor(
-            self.tt_priority_tensors, multi_device_global_semaphore=self.swap_semaphore_handles, num_links=1
-        )
-
-        # self.reset_skip_tensor()
 
         # Run speculative flash decode
         outputs = ttnn.experimental.speculative_scaled_dot_product_attention_decode(
@@ -251,6 +237,16 @@ class TtSFDSetup(torch.nn.Module):
         # set_devices_speculation_state(self.tt_skip_tensor, True)
 
         return tt_back_gt_md
+
+    def consolidate_tensor(self, tt_tensor):
+        tt_tensor_new = ttnn.experimental.consolidate_cache(
+            tt_tensor,
+            self.tt_priority_tensors,
+            self.tt_gathered_priority_tensors,
+            multi_device_global_semaphore=self.sfd_semaphore_handles,
+            num_links=1,
+        )
+        return tt_tensor_new
 
     def consolidate_kv_cache(self, K_mesh, V_mesh):
         # K_new = read_multi_device_tensor(K_mesh)
