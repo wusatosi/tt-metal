@@ -61,7 +61,7 @@ TEST_P(Matmul2DHangTestFixture, Matmul2DHangTest) {
     // 1X2 w/Blackhole features off & //enable_gathering = 289;
     // 2X1 w/Blackhole features off & //enable_gathering = 289;
     //
-    int start_id = 288;
+    int start_id = 289;
     int test_id = 0;
     int end_id = 289;
     bool loop_break = false;
