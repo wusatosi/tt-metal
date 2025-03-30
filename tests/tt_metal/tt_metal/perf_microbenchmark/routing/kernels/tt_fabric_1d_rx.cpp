@@ -28,7 +28,7 @@ void kernel_main() {
     volatile tt_l1_ptr uint32_t* poll_addr =
         reinterpret_cast<tt_l1_ptr uint32_t*>(target_address + packet_payload_size_bytes - 4);
     uint32_t mismatch_addr, mismatch_val, expected_val;
-    bool match;
+    bool match = true;
     uint64_t bytes_received = 0;
 
     zero_l1_buf(test_results, test_results_size_bytes);

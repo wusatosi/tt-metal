@@ -68,6 +68,9 @@ TEST_F(Fabric1DFixture, TestUnicastRaw) {
         test_results_address, test_results_size_bytes, target_address, 0 /* mcast_mode */
     };
 
+    std::map<string, string> defines;
+    defines["BENCHMARK_MODE"] = "";
+
     // Create the sender program
     auto sender_program = tt_metal::CreateProgram();
     auto sender_kernel = tt_metal::CreateKernel(
@@ -77,7 +80,8 @@ TEST_F(Fabric1DFixture, TestUnicastRaw) {
         tt_metal::DataMovementConfig{
             .processor = tt_metal::DataMovementProcessor::RISCV_0,
             .noc = tt_metal::NOC::RISCV_0_default,
-            .compile_args = compile_time_args});
+            .compile_args = compile_time_args,
+            .defines = defines});
 
     std::vector<uint32_t> sender_runtime_args = {
         packet_header_address,
@@ -130,7 +134,8 @@ TEST_F(Fabric1DFixture, TestUnicastRaw) {
         tt_metal::DataMovementConfig{
             .processor = tt_metal::DataMovementProcessor::RISCV_0,
             .noc = tt_metal::NOC::RISCV_0_default,
-            .compile_args = compile_time_args});
+            .compile_args = compile_time_args,
+            .defines = defines});
 
     tt_metal::SetRuntimeArgs(receiver_program, receiver_kernel, receiver_logical_core, receiver_runtime_args);
 
@@ -200,7 +205,7 @@ TEST_F(Fabric1DFixture, TestUnicastConnAPI) {
     uint32_t packet_header_address = 0x25000;
     uint32_t source_l1_buffer_address = 0x30000;
     uint32_t packet_payload_size_bytes = 4096;
-    uint32_t num_packets = 10;
+    uint32_t num_packets = 100000;
     uint32_t num_hops = 1;
     uint32_t test_results_address = 0x100000;
     uint32_t test_results_size_bytes = 128;
@@ -212,6 +217,9 @@ TEST_F(Fabric1DFixture, TestUnicastConnAPI) {
         test_results_address, test_results_size_bytes, target_address, 0 /* mcast_mode */
     };
 
+    std::map<string, string> defines;
+    defines["BENCHMARK_MODE"] = "";
+
     // Create the sender program
     auto sender_program = tt_metal::CreateProgram();
     auto sender_kernel = tt_metal::CreateKernel(
@@ -221,7 +229,8 @@ TEST_F(Fabric1DFixture, TestUnicastConnAPI) {
         tt_metal::DataMovementConfig{
             .processor = tt_metal::DataMovementProcessor::RISCV_0,
             .noc = tt_metal::NOC::RISCV_0_default,
-            .compile_args = compile_time_args});
+            .compile_args = compile_time_args,
+            .defines = defines});
 
     std::vector<uint32_t> sender_runtime_args = {
         packet_header_address,
@@ -249,7 +258,8 @@ TEST_F(Fabric1DFixture, TestUnicastConnAPI) {
         tt_metal::DataMovementConfig{
             .processor = tt_metal::DataMovementProcessor::RISCV_0,
             .noc = tt_metal::NOC::RISCV_0_default,
-            .compile_args = compile_time_args});
+            .compile_args = compile_time_args,
+            .defines = defines});
 
     tt_metal::SetRuntimeArgs(receiver_program, receiver_kernel, receiver_logical_core, receiver_runtime_args);
 
