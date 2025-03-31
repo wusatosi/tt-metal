@@ -15,7 +15,7 @@ start_iter=$2
 if [[ $machine_number -lt 10 ]]; then
     machine_number="0$machine_number"
 fi
-
+export LLAMA_DIR=/proj_sw/user_dev/llama31-70b-data/Meta-Llama-3.1-70B
 mkdir -p outputs
 # run the command in loop
 for ((i=$start_iter; i<6; i++)); do
