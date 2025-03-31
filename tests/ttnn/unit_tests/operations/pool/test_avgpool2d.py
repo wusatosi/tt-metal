@@ -128,3 +128,31 @@ def test_run_avg_pool(device, input_shape, kernel_size, stride, padding, dilatio
         shard_scheme=ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
         ceil_mode=ceil_mode,
     )
+
+
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
+@pytest.mark.parametrize(
+    "input_shape",  # NCHW
+    (
+        # Case: Yolov9c Model inputs.
+        [1, 256, 16, 16],
+        [1, 512, 80, 80],
+        [1, 512, 40, 40],
+    ),
+)
+@pytest.mark.parametrize("kernel_size, stride, padding, dilation, ceil_mode", [((2, 2), (2, 2), (0, 0), (1, 1), False)])
+def test_run_avg_pool_yolov9c(device, input_shape, kernel_size, stride, padding, dilation, ceil_mode):
+    if any(p > k // 2 for p, k in zip(padding, kernel_size)):
+        pytest.skip(
+            "Known issue with this combination of parameters - RuntimeError: pad should be at most half of kernel size."
+        )
+    run_avg_pool(
+        device,
+        input_shape,
+        kernel_size,
+        stride,
+        padding,
+        dilation,
+        shard_scheme=ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+        ceil_mode=ceil_mode,
+    )
