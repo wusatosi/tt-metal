@@ -38,7 +38,11 @@ from models.demos.llama3_subdevices.tt.llama_ccl import TT_CCL
     "batch_size",
     (1,),
 )
-@pytest.mark.parametrize("device_params", [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL}], indirect=True)
+@pytest.mark.parametrize(
+    "device_params",
+    [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL, "fabric_config": ttnn.FabricConfig.FABRIC_1D}],
+    indirect=True,
+)
 def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache, reset_seeds, ensure_gc):
     dtype = ttnn.bfloat8_b
     mode = "decode" if seq_len <= 32 else "prefill"
@@ -119,5 +123,4 @@ def test_llama_mlp_inference(seq_len, batch_size, mesh_device, use_program_cache
         logger.info("Llama_MLP Passed!")
     else:
         logger.warning("Llama_MLP Failed!")
-    tt_ccl.close()
     assert passing, f"Llama_MLP output does not meet PCC requirement {pcc_required}: {pcc_message}."

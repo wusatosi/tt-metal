@@ -39,6 +39,7 @@ from models.demos.llama3_subdevices.tt.llama_ccl import TT_CCL
         {
             "dispatch_core_axis": ttnn.DispatchCoreAxis.COL,
             "trace_region_size": 165136000,
+            "fabric_config": ttnn.FabricConfig.FABRIC_1D,
         }
     ],
     indirect=True,
@@ -176,8 +177,5 @@ def test_llama_decoder_same(
             else:
                 logger.warning(f"Output for iteration {i} is NOT equal to golden")
             all_passing = all_passing and passing
-
-    ##### Close CCL #####
-    tt_ccl.close()
 
     assert all_passing, "Not all outputs are equal to the golden output"

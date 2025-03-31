@@ -26,14 +26,9 @@ using AdaptedCachedMeshWorkload = tt::tt_metal::program_cache::detail::AdaptedCa
 template <typename TensorArgs>
 bool all_tensors_have_uniform_storage(const TensorArgs& tensor_args) {
     Tensor first_tensor = tt::stl::reflection::get_first_object_of_type<Tensor>(tensor_args);
-    const bool first_uniform = first_tensor.device_storage().is_uniform_storage();
+    bool first_uniform = first_tensor.device_storage().is_uniform_storage();
     tt::stl::reflection::visit_object_of_type<Tensor>(
-        [&](const Tensor& tensor) {
-            TT_FATAL(
-                tensor.device_storage().is_uniform_storage() == first_uniform,
-                "Expected either all or none of the tensors to have uniform storage.");
-        },
-        tensor_args);
+        [&](const Tensor& tensor) { first_uniform &= tensor.device_storage().is_uniform_storage(); }, tensor_args);
     return first_uniform;
 }
 
@@ -75,14 +70,13 @@ std::vector<ttnn::MeshCoordinate> extract_tensor_coordinates(const TensorArgs& t
         [](const auto& spec) { return spec.first; });
     tt::stl::reflection::visit_object_of_type<Tensor>(
         [&](const Tensor& tensor) {
-            TT_FATAL(
-                tensor.device_storage().specs.size() == tensor_coordinates.size(),
-                "Tensors with non-uniform storage must have the same number of coordinates");
-            auto tensor_coordinates_it = tensor_coordinates.begin();
-            for (const auto& [coord, _] : tensor.device_storage().specs) {
-                TT_FATAL(
-                    coord == *tensor_coordinates_it, "Tensors with non-uniform storage must have the same coordinates");
-                ++tensor_coordinates_it;
+            if (tensor.device_storage().specs.size() < tensor_coordinates.size()) {
+                tensor_coordinates = {};
+                std::transform(
+                    tensor.device_storage().specs.begin(),
+                    tensor.device_storage().specs.end(),
+                    std::back_inserter(tensor_coordinates),
+                    [](const auto& spec) { return spec.first; });
             }
         },
         tensor_args);

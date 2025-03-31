@@ -395,7 +395,6 @@ class TtTransformer(LightweightModule):
     def switch_mode(self, mode):
         if mode == "decode":
             if self.is_prefill_setup:
-                self.tt_ccl.close()
                 del self.tt_ccl
                 if self.prefetcher_setup is not None:
                     self.mesh_device.clear_loaded_sub_device_manager()
@@ -418,7 +417,6 @@ class TtTransformer(LightweightModule):
 
         else:
             if self.is_decode_setup:
-                self.tt_ccl.close()
                 del self.tt_ccl
                 if self.prefetcher_setup is not None:
                     self.mesh_device.clear_loaded_sub_device_manager()
@@ -492,6 +490,3 @@ class TtTransformer(LightweightModule):
             x = ttnn.slice(x, (0, 0, get_last_token, 0), (1, 1, get_last_token + 32, x.shape[-1]))
 
         return self.lm_head(x, None if mode == "prefill" else self.prefetcher_setup.worker_sub_device_id, mode=mode)
-
-    def __del__(self):
-        self.tt_ccl.close()

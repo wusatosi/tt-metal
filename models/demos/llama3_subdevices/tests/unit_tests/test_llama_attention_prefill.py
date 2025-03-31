@@ -255,7 +255,6 @@ def test_llama_attention_inference(
             else:
                 logger.warning(f"KV Cache Failed! PCC value is lower than {pcc}")
                 all_tests_pass = False
-    tt_ccl.close()
     if all_tests_pass:
         logger.info("Llama Attention output Passed!")
     else:

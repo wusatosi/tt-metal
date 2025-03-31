@@ -118,6 +118,4 @@ def test_llama_lm_head_inference(seq_len, batch_size, mesh_device, use_program_c
     else:
         logger.warning("Llama_LM_Head Failed!")
 
-    tt_ccl.close()
-
     assert passing, f"Llama_LM_Head output does not meet PCC requirement {pcc_required}: {pcc_message}."

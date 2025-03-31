@@ -56,7 +56,11 @@ from models.demos.llama3_subdevices.tt.llama_ccl import TT_CCL
         128,
     ),
 )
-@pytest.mark.parametrize("device_params", [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL}], indirect=True)
+@pytest.mark.parametrize(
+    "device_params",
+    [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL, "fabric_config": ttnn.FabricConfig.FABRIC_1D}],
+    indirect=True,
+)
 def test_llama_decoder_inference(
     max_seq_len,
     paged_attention,
@@ -190,7 +194,6 @@ def test_llama_decoder_inference(
         else:
             logger.warning("Llama Decoder Block Failed!")
             all_tests_pass = False
-    tt_ccl.close()
     if all_tests_pass:
         logger.info(f"All Llama decode iterations Passed!")
     else:

@@ -253,8 +253,6 @@ def test_llama_decoder_inference(
             ),
         )
 
-    tt_ccl.close()
-
     if all_tests_pass:
         logger.info(f"All {generation_length} Llama decode iterations Passed!")
     else:

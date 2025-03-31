@@ -3,13 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import ttnn
-from loguru import logger
 import torch
 
-from tests.ttnn.unit_tests.operations.ccl.test_ccl_common import (
-    teardown_fabric_interface,
-    create_global_semaphore,
-)
 from tests.ttnn.unit_tests.operations.ccl.test_new_all_reduce import check_mesh_tensor_alloc
 
 
@@ -52,14 +47,14 @@ class TT_CCL:
             for i in range(2):
                 for _ in range(self.num_cbs):
                     self.gather_semaphore_handles[i].append(
-                        create_global_semaphore(self.mesh_device, self.sub_device_crs, 0)
+                        ttnn.create_global_semaphore(self.mesh_device, self.sub_device_crs, 0)
                     )
                     if mode == "prefill":
                         self.from_semaphore_handles[i].append(
-                            create_global_semaphore(self.mesh_device, self.sub_device_crs, 0)
+                            ttnn.create_global_semaphore(self.mesh_device, self.sub_device_crs, 0)
                         )
                         self.to_semaphore_handles[i].append(
-                            create_global_semaphore(self.mesh_device, self.sub_device_crs, 0)
+                            ttnn.create_global_semaphore(self.mesh_device, self.sub_device_crs, 0)
                         )
 
             self.gather_idx = [0, 0]
@@ -545,11 +540,12 @@ class TT_CCL:
         return ttnn_tensor_out
 
     def close(self):
-        if self.enable_persistent_fabric and self.teardown_persistent_fabric:
-            logger.info("Tearing down persistent fabric interface")
-            self.mesh_device.reset_sub_device_stall_group()
-            teardown_fabric_interface(self.mesh_device)
-            logger.info("Done tearing down persistent fabric interface")
+        pass
+        # if self.enable_persistent_fabric and self.teardown_persistent_fabric:
+        #     logger.info("Tearing down persistent fabric interface")
+        #     self.mesh_device.reset_sub_device_stall_group()
+        #     teardown_fabric_interface(self.mesh_device)
+        #     logger.info("Done tearing down persistent fabric interface")
 
 
 def tt_distributed_rmsnorm(

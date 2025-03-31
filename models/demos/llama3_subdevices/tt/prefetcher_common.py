@@ -5,9 +5,6 @@ import ttnn
 import torch
 from loguru import logger
 from models.common.lightweightmodule import LightweightModule
-from tests.ttnn.unit_tests.operations.ccl.test_ccl_common import (
-    create_and_load_sub_device_manager_with_fabric_interface,
-)
 from tests.ttnn.unit_tests.operations.prefetcher_common import get_core_ranges
 
 
@@ -62,9 +59,8 @@ class TtLlamaPrefetcherSetup(LightweightModule):
 
         if mode == "prefill":
             self.all_sub_device = ttnn.SubDevice([self.all_core_range_set])
-            mesh_sub_device_manager_id = create_and_load_sub_device_manager_with_fabric_interface(
-                mesh_device, [self.all_sub_device], 0, 0, True
-            )
+            mesh_sub_device_manager_id = mesh_device.create_sub_device_manager([self.all_sub_device], 0)
+            mesh_device.load_sub_device_manager(mesh_sub_device_manager_id)
             self.mesh_sub_device_manager_id = mesh_sub_device_manager_id
             self.all_sub_device_id = ttnn.SubDeviceId(0)
             self.worker_sub_device_id = self.all_sub_device_id
@@ -85,9 +81,10 @@ class TtLlamaPrefetcherSetup(LightweightModule):
 
             self.prefetcher_sub_device = ttnn.SubDevice([self.sender_core_range_set])
             self.worker_sub_device = ttnn.SubDevice([self.worker_cores_range_set])
-            mesh_sub_device_manager_id = create_and_load_sub_device_manager_with_fabric_interface(
-                mesh_device, [self.prefetcher_sub_device, self.worker_sub_device], 1, 0, True
+            mesh_sub_device_manager_id = mesh_device.create_sub_device_manager(
+                [self.prefetcher_sub_device, self.worker_sub_device], 0
             )
+            mesh_device.load_sub_device_manager(mesh_sub_device_manager_id)
             self.mesh_sub_device_manager_id = mesh_sub_device_manager_id
             self.prefetcher_sub_device_id = ttnn.SubDeviceId(0)
             self.worker_sub_device_id = ttnn.SubDeviceId(1)
