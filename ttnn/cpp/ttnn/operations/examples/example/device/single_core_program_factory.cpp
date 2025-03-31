@@ -37,19 +37,36 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
         tt::tt_metal::split_work_to_cores(compute_with_storage_grid_size, num_tiles);
 
     uint32_t src0_cb_index = tt::CBIndex::c_0;
-    uint32_t num_input_tiles = 2;
+    uint32_t num_input_tiles = 1;
     tt::tt_metal::CircularBufferConfig cb_src0_config =
         tt::tt_metal::CircularBufferConfig(num_input_tiles * single_tile_size, {{src0_cb_index, cb_data_format}})
             .set_page_size(src0_cb_index, single_tile_size);
     auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_src0_config);
 
     uint32_t output_cb_index = tt::CBIndex::c_2;
-    uint32_t num_output_tiles = 2;
+    uint32_t num_output_tiles = 1;
     tt::tt_metal::CircularBufferConfig cb_output_config =
         tt::tt_metal::CircularBufferConfig(
             num_output_tiles * single_tile_size_output, {{output_cb_index, cb_data_format_output}})
             .set_page_size(output_cb_index, single_tile_size_output);
     auto cb_output = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_output_config);
+
+    tt::DataFormat cb_data_format_temp = tt::DataFormat::Float32;
+    uint32_t single_tile_size_temp = tt::tt_metal::detail::TileSize(cb_data_format_temp);
+
+    uint32_t temp1_cb_index = tt::CBIndex::c_24;
+    uint32_t temp2_cb_index = tt::CBIndex::c_25;
+    uint32_t num_temp_tiles = 1;
+
+    auto cb_temp1_config = tt::tt_metal::CircularBufferConfig(
+                               num_temp_tiles * single_tile_size_temp, {{temp1_cb_index, cb_data_format_temp}})
+                               .set_page_size(temp1_cb_index, single_tile_size_temp);
+    auto cb_tmp1 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_temp1_config);
+
+    auto cb_temp2_config = tt::tt_metal::CircularBufferConfig(
+                               num_temp_tiles * single_tile_size_temp, {{temp2_cb_index, cb_data_format_temp}})
+                               .set_page_size(temp2_cb_index, single_tile_size_temp);
+    auto cb_tmp2 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_temp2_config);
 
     bool src_is_dram = src_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0;
     std::vector<uint32_t> reader_compile_time_args = {(uint32_t)src_is_dram};
@@ -58,13 +75,13 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
 
     tt::tt_metal::KernelHandle unary_reader_kernel_id = tt::tt_metal::CreateKernel(
         program,
-        "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/dataflow/reader_unary_interleaved_start_id.cpp",
+        "ttnn/cpp/ttnn/operations/examples/example/device/kernels/dataflow/reader.cpp",
         all_cores,
         tt::tt_metal::ReaderDataMovementConfig(reader_compile_time_args));
 
     tt::tt_metal::KernelHandle unary_writer_kernel_id = tt::tt_metal::CreateKernel(
         program,
-        "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/dataflow/writer_unary_interleaved_start_id.cpp",
+        "ttnn/cpp/ttnn/operations/examples/example/device/kernels/dataflow/writer.cpp",
         all_cores,
         tt::tt_metal::WriterDataMovementConfig(writer_compile_time_args));
 
@@ -74,30 +91,21 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
     };
 
     bool math_approx_mode = false;
+
+    std::vector<UnpackToDestMode> unpack_to_dest_mode(NUM_CIRCULAR_BUFFERS, UnpackToDestMode::Default);
+    unpack_to_dest_mode[temp1_cb_index] = UnpackToDestMode::UnpackToDestFp32;
+    unpack_to_dest_mode[temp2_cb_index] = UnpackToDestMode::Default;
+
     auto eltwise_unary_kernel_group_1_id = tt::tt_metal::CreateKernel(
         program,
-        "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/compute/eltwise_sfpu.cpp",
+        "ttnn/cpp/ttnn/operations/examples/example/device/kernels/compute/eltwise_sfpu.cpp",
         core_group_1,
         tt::tt_metal::ComputeConfig{
             .math_fidelity = MathFidelity::HiFi4,
+            .fp32_dest_acc_en = true,
+            .unpack_to_dest_mode = unpack_to_dest_mode,
             .math_approx_mode = math_approx_mode,
             .compile_args = compute_kernel_args_group_1});
-
-    if (!core_group_2.ranges().empty()) {
-        std::vector<uint32_t> compute_kernel_args_group_2 = {
-            num_tiles_per_core_group_2,  // per_core_block_cnt
-            1                            // per_core_block_size
-        };
-
-        auto eltwise_unary_kernel_group_2_id = tt::tt_metal::CreateKernel(
-            program,
-            "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/compute/eltwise_sfpu.cpp",
-            core_group_2,
-            tt::tt_metal::ComputeConfig{
-                .math_fidelity = MathFidelity::HiFi4,
-                .math_approx_mode = math_approx_mode,
-                .compile_args = compute_kernel_args_group_2});
-    }
 
     for (uint32_t i = 0, num_tiles_written = 0; i < num_cores; i++) {
         CoreCoord core = {i / num_cores_y, i % num_cores_y};
