@@ -8,7 +8,6 @@ import torch
 
 from tests.ttnn.unit_tests.operations.ccl.test_ccl_common import (
     teardown_fabric_interface,
-    create_global_semaphore,
 )
 from tests.ttnn.unit_tests.operations.ccl.test_new_all_reduce import check_mesh_tensor_alloc
 
@@ -52,14 +51,14 @@ class TT_CCL:
             for i in range(2):
                 for _ in range(self.num_cbs):
                     self.gather_semaphore_handles[i].append(
-                        create_global_semaphore(self.mesh_device, self.sub_device_crs, 0)
+                        ttnn.create_global_semaphore(self.mesh_device, self.sub_device_crs)
                     )
                     if mode == "prefill":
                         self.from_semaphore_handles[i].append(
-                            create_global_semaphore(self.mesh_device, self.sub_device_crs, 0)
+                            ttnn.create_global_semaphore(self.mesh_device, self.sub_device_crs)
                         )
                         self.to_semaphore_handles[i].append(
-                            create_global_semaphore(self.mesh_device, self.sub_device_crs, 0)
+                            ttnn.create_global_semaphore(self.mesh_device, self.sub_device_crs)
                         )
 
             self.gather_idx = [0, 0]
