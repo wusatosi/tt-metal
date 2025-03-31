@@ -214,7 +214,7 @@ class TtLlamaMLP(LightweightModule):
             sub_device_id=self.worker_sub_device_id if mode == "decode" else None,
         )
         # print("linear", w2_out)
-        ttnn.deallocate(w2_in)
+        # ttnn.deallocate(w2_in)
 
         w2_out_reduced = self.tt_ccl.line_all_reduce(
             w2_out, cluster_axis=0, num_links=3, memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"]

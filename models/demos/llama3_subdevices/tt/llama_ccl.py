@@ -240,7 +240,7 @@ class TT_CCL:
         buffer_mem_cfg = self.model_config["REDUCE_SCATTER_INTERIM_MEMCFG"]
         for _ in range(self.num_cbs):
             tt_buffer = ttnn.from_torch(
-                torch.zeros((*cluster_shape, 32, 8192)),
+                torch.zeros((*cluster_shape, 32, 512 * 8)),
                 device=self.mesh_device,
                 layout=ttnn.TILE_LAYOUT,
                 dtype=ttnn.bfloat8_b,
