@@ -118,7 +118,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherMatmul::create_program(
         this->all_gather_core_grid_offset,
 
         /* Matmul Params */
-        {},  // Bias
+        optional_input_tensors[0],  // Bias
         this->matmul_struct.bcast_batch.value(),
         this->matmul_struct.compute_kernel_config.value(),
         this->matmul_struct.program_config.value(),
@@ -136,6 +136,7 @@ std::vector<ttnn::Tensor> all_gather_matmul(
     const ttnn::Tensor& weight_tensor,
     const uint32_t dim,
     const CoreCoord all_gather_core_grid_offset,
+    const std::optional<const Tensor>& bias,
     const uint32_t num_links,
     const std::optional<MemoryConfig>& memory_config_ag,
     std::optional<size_t> user_defined_num_workers,
@@ -151,12 +152,22 @@ std::vector<ttnn::Tensor> all_gather_matmul(
     TT_FATAL(
         std::getenv("TT_METAL_SLOW_DISPATCH_MODE") == nullptr, "AllGatherMatmul is only supported for Fast Dispatch");
 
+    std::vector<std::optional<const Tensor>> optional_input_tensors = {};
+    std::vector<Tensor> output_tensors;
     auto devices = input_tensor.get_workers();
-    std::vector<Tensor> output_tensors = {
-        ttnn::Tensor(tt::tt_metal::operation::get_workers_for_op_output({input_tensor, weight_tensor})),
-        ttnn::Tensor(tt::tt_metal::operation::get_workers_for_op_output({input_tensor, weight_tensor})),
-        ttnn::Tensor(tt::tt_metal::operation::get_workers_for_op_output({input_tensor, weight_tensor}))};
-    std::vector<std::optional<const ttnn::Tensor>> optional_input_tensors = {std::nullopt};
+    if (bias.has_value()) {
+        optional_input_tensors.push_back(bias.value());
+        output_tensors = {
+	    ttnn::Tensor(tt::tt_metal::operation::get_workers_for_op_output({input_tensor, weight_tensor}, {bias.value()})),
+            ttnn::Tensor(tt::tt_metal::operation::get_workers_for_op_output({input_tensor, weight_tensor}, {bias.value()})),
+            ttnn::Tensor(tt::tt_metal::operation::get_workers_for_op_output({input_tensor, weight_tensor}, {bias.value()}))};
+    } else {
+        optional_input_tensors.push_back(std::nullopt);
+        output_tensors = {
+	    ttnn::Tensor(tt::tt_metal::operation::get_workers_for_op_output({input_tensor, weight_tensor})),
+            ttnn::Tensor(tt::tt_metal::operation::get_workers_for_op_output({input_tensor, weight_tensor})),
+            ttnn::Tensor(tt::tt_metal::operation::get_workers_for_op_output({input_tensor, weight_tensor}))};
+    }
 
     tt::tt_metal::operation::launch_op(
         [dim,
