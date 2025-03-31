@@ -129,9 +129,9 @@ def run_test_LlamaModel_end_to_end(
     profiler.start(f"compile_time")
     tt_logits = tt_model(tt_inp_emb, rot_mat, prev_pos, cache_idxs=cache_idxs, mode="decode")
     tt_logits = ttnn.all_gather(tt_logits, dim=3, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG)
-    tt_logits_tensors = ttnn.get_device_tensors(tt_logits)
-    logits_rm = ttnn.to_layout(tt_logits_tensors[0], ttnn.ROW_MAJOR_LAYOUT)
-    logits = ttnn.to_torch(logits_rm)
+    tt_logits_tensors = tt_logits
+    logits_rm = ttnn.to_layout(tt_logits, ttnn.ROW_MAJOR_LAYOUT)
+    logits = ttnn.to_torch(ttnn.get_device_tensors(logits_rm)[0])
     profiler.end(f"compile_time")
     profiler.print()
     compile_iter_time = profiler.get("compile_time")
@@ -142,8 +142,7 @@ def run_test_LlamaModel_end_to_end(
     trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
     tt_logits = tt_model(tt_inp_emb, rot_mat, prev_pos, cache_idxs=cache_idxs, mode="decode")
     tt_logits = ttnn.all_gather(tt_logits, dim=3, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG)
-    tt_logits_tensors = ttnn.get_device_tensors(tt_logits)
-    logits_rm = ttnn.to_layout(tt_logits_tensors[0], ttnn.ROW_MAJOR_LAYOUT)
+    logits_rm = ttnn.to_layout(tt_logits, ttnn.ROW_MAJOR_LAYOUT)
     ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
 
     ##### Execute Trace #####
@@ -151,7 +150,7 @@ def run_test_LlamaModel_end_to_end(
     profiler.start(f"end_to_end_inference")
     for i in range(n_iters):
         ttnn.execute_trace(mesh_device, trace_id, blocking=False)
-        logits = ttnn.to_torch(logits_rm)
+        logits = ttnn.to_torch(ttnn.get_device_tensors(logits_rm)[0])
     profiler.end(f"end_to_end_inference")
     ttnn.release_trace(mesh_device, trace_id)
 

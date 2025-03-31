@@ -98,6 +98,7 @@ std::tuple<CoreRangeSet, std::vector<CoreCoord>> choose_worker_cores(
     const std::optional<tt::tt_metal::SubDeviceId>& sub_device_id);
 tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_multi_core_with_workers(
     const Tensor& input_tensor,
+    IDevice* sender_device,
     std::optional<IDevice*> forward_device,
     std::optional<IDevice*> backward_device,
     Tensor& output_tensor,

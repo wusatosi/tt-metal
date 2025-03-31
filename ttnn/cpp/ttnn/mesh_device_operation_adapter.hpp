@@ -109,9 +109,12 @@ struct MeshDeviceOperationAdapter {
             shared_variables[mesh_coordinate_range] = std::move(cached_program.shared_variables);
         } else {
             // Create separate programs for each device.
-            tt::log_warning(
-                tt::LogOp,
-                "Tensors that are distributed across mesh device unevenly negatively affect Op dispatch performance.");
+            if (!mesh_device_operation_utils::all_tensors_have_uniform_storage(tensor_args)) {
+                tt::log_warning(
+                    tt::LogOp,
+                    "Tensors that are distributed across mesh device unevenly negatively affect Op dispatch "
+                    "performance.");
+            }
             for (const auto& coord : mesh_device_operation_utils::extract_tensor_coordinates(tensor_args)) {
                 auto cached_program = make_program(coord);
                 const ttnn::MeshCoordinateRange coordinate_range(coord, coord);

@@ -210,17 +210,29 @@ AllGatherAsyncVersion AllGatherAsync::select_version(const Tensor& input_tensor)
 }
 
 tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
-    const MeshCoordinate& coord, const std::vector<Tensor>& input_tensors, std::vector<Tensor>& output_tensors) const {
+    const ttnn::MeshCoordinate& mesh_coord,
+    const std::vector<Tensor>& input_tensors,
+    std::vector<Tensor>& output_tensors) const {
+    // TODO (Issue #19569): Use create_mesh_workload instead, since the programs in the MeshWorkload
+    // share global semaphores.
+    auto mesh_device = input_tensors[0].mesh_device();
+    const auto target_device = mesh_device->get_device(mesh_coord);
+    AllGatherAsyncVersion version = select_version(input_tensors[0]);
+
     std::vector<IDevice*> devices;
     if (this->cluster_axis.has_value()) {
+        // User specified the cluster-axis. Derive devices based on the current coordinate
+        // and the cluster-axis.
         const auto& mesh_view = input_tensors[0].mesh_device()->get_view();
-        devices = (this->cluster_axis.value() == 0) ? mesh_view.get_devices_on_column(coord[1])
-                                                    : mesh_view.get_devices_on_row(coord[0]);
+        devices = (this->cluster_axis.value() == 0) ? mesh_view.get_devices_on_column(mesh_coord[1])
+                                                    : mesh_view.get_devices_on_row(mesh_coord[0]);
     } else {
-        devices = input_tensors[0].mesh_device()->get_devices();
+        // Derive the devices from the tensor.
+        for (const auto& spec : input_tensors[0].device_storage().specs) {
+            devices.push_back(mesh_device->get_device(spec.first));
+        }
     }
 
-    const auto* target_device = input_tensors[0].mesh_device()->get_device(coord);
     const int num_devices = devices.size();
     std::optional<IDevice*> forward_device = std::nullopt;
     std::optional<IDevice*> backward_device = std::nullopt;
@@ -240,10 +252,6 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
             }
         }
     }
-
-    AllGatherAsyncVersion version = select_version(input_tensors[0]);
-
-    log_trace(tt::LogOp, "version: {}", static_cast<uint32_t>(version));
 
     switch (version) {
         case AllGatherAsyncVersion::MINIMAL_INTERLEAVED_32:
@@ -286,6 +294,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
             log_trace(tt::LogOp, "Running generic all_gather_async_multi_core_with_workers");
             return all_gather_async_multi_core_with_workers(
                 input_tensors[0],
+                target_device,
                 forward_device,
                 backward_device,
                 output_tensors[0],
