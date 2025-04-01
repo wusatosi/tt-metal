@@ -221,7 +221,7 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
     // block
     uint32_t block_w = block_wt * TILE_WIDTH;
     uint32_t block_h = TILE_HEIGHT;
-    uint32_t num_blocks = 0;
+    uint32_t num_blocks = shard_spec.num_cores();
 
     auto bbox = shard_spec.grid.bounding_box();
     CoreCoord grid_size = {bbox.end_coord.x - bbox.start_coord.x + 1, bbox.end_coord.y - bbox.start_coord.y + 1};
@@ -229,7 +229,6 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
     if (bbox.start_coord.x != 0 || bbox.start_coord.y != 0) {
         grid_offset = bbox.start_coord;
     }
-    num_blocks = shard_spec.num_cores();
 
     // two-stage reduce
     bool use_two_stage_reduce = false;
@@ -261,31 +260,15 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
             storage_core_noc_y.back());
     }
 
-    // get sharded addr
-    auto in0_addr = a.buffer()->address();
-    uint32_t in1_addr;
-    bool b_sharded;
-    if (b) {
-        in1_addr = b.value().buffer()->address();
-    } else {
-        in1_addr = 0;
-    }
-    auto out_addr = output.buffer()->address();
-    // b addr
-    auto in1_dram_addr = b ? b.value().buffer()->address() : 0;
-    // num tiles for a
-    uint32_t num_tiles = a.volume() / TILE_HW;
-
+    auto gamma_dram_addr = gamma.has_value() ? gamma.value().buffer()->address() : 0;
     ////////////////////////////////////////////////////////////////////////////
     //                         Parameters Setup
     ////////////////////////////////////////////////////////////////////////////
     // block size for in0 (tensor a)
     uint32_t in0_block_tiles = block_wt;
-    // pre_all_gather_stats_block_tiles
-    uint32_t pre_all_gather_stats_block_tiles = 1;
     // post_all_gather_stats_block_tiles
-    uint32_t post_all_gather_stats_block_tiles = 1;
-    uint32_t num_distributed_devices = 1;
+    uint32_t post_all_gather_stats_block_tiles = stats.value().get_padded_shape()[-1] / TILE_WIDTH;
+    uint32_t num_distributed_devices = post_all_gather_stats_block_tiles;
 
     uint32_t in0_CB_tiles = in0_block_tiles;
     uint32_t in0_CB_size = in0_CB_tiles * in_single_tile_size;
@@ -295,22 +278,27 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
     uint32_t in2_CB_size = bfloat16_tile_size;
     // in3 - eps
     uint32_t in3_CB_size = bfloat16_tile_size;
+    // gamma
+    uint32_t in5_CB_size = in0_block_tiles * gamma_single_tile_size / 1;
+
     // itermediate buffers change later
     uint32_t x_CB_size = in0_block_tiles * single_tile_size;
     uint32_t xmm_CB_size = in0_block_tiles * single_tile_size;
     uint32_t ex_partial_CB_size = in0_block_tiles * single_tile_size / block_wt;
-    ex_partial_CB_size = ex_partial_CB_size * pre_all_gather_stats_block_tiles;
     uint32_t ex_CB_size = ex_partial_CB_size;
     uint32_t ex_global_CB_size = ex_partial_CB_size;
     uint32_t ex_external_CB_size = tt::div_up(Kt, block_wt) * single_tile_size;
     uint32_t xmm2_CB_size = in0_block_tiles * single_tile_size;
     uint32_t ex2pe_CB_size = single_tile_size;
-    uint32_t stats_cb_size = 0;
-    uint32_t stats_reduced_cb_size = 0;
+    uint32_t stats_cb_size = post_all_gather_stats_block_tiles * single_tile_size;
+    uint32_t stats_reduced_cb_size = single_tile_size;
     // output buffer size
-    uint32_t out_CB_size;
-    out_CB_size = pre_all_gather_stats_block_tiles * out_single_tile_size;
-    uint32_t out_reshard_CB_size = out_CB_size;
+    uint32_t pre_out_CB_size = out_single_tile_size;
+    uint32_t post_out_CB_size = in0_block_tiles * out_single_tile_size;
+    uint32_t out_reshard_CB_size = post_out_CB_size;
+    if (!skip_write_back) {
+        out_reshard_CB_size = block_wt_resharded * 1 * out_single_tile_size;
+    }
 
     ////////////////////////////////////////////////////////////////////////////
     //                      Application Setup
@@ -327,6 +315,7 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
     uint32_t num_blocks_second_stage = 0;
     if (use_two_stage_reduce) {
         num_blocks_first_stage = num_cores_x;
+        num_cores_all_to_all_second_stage = num_cores_y;
         num_cores_all_to_all = num_cores_y;
         num_blocks_second_stage = num_cores_y;
     }
@@ -334,10 +323,11 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
     if (use_two_stage_reduce) {
         ex_external_CB_size = (num_blocks_first_stage + num_blocks_second_stage - 1) * single_tile_size;
     }
-    ex_external_CB_size = ex_external_CB_size * pre_all_gather_stats_block_tiles;
+    ex_external_CB_size = ex_external_CB_size;
     uint32_t num_none_all_to_all_workers = num_blocks - num_cores_all_to_all;
 
     CoreCoord start_core = {0, 0};
+
     CoreRange sender_cores(start_core, start_core);
     CoreRangeSet all_to_all_cores;
     CoreRangeSet all_to_all_workers_except_sender;
@@ -420,10 +410,20 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
     }
     // Mcast args
     auto post_fusion_semaphore_core = CoreCoord(0, 0);
-    auto reduce_sender_semaphore_id = tt::tt_metal::CreateSemaphore(program, all_cores, INVALID);
+    auto pre_reduce_sender_semaphore_id = tt::tt_metal::CreateSemaphore(program, all_cores, INVALID);
+    auto post_reduce_sender_semaphore_id = tt::tt_metal::CreateSemaphore(program, all_cores, INVALID);
     auto reduce_receiver_semaphore_id = tt::tt_metal::CreateSemaphore(program, all_cores, INVALID);
     auto reduce_second_stage_semaphore_id = tt::tt_metal::CreateSemaphore(program, all_cores, INVALID);
     uint32_t post_fusion_semaphore_id = tt::tt_metal::CreateSemaphore(program, post_fusion_semaphore_core, 0);
+
+    // reader defines
+    std::map<string, string> reader_mcast_sender_defines;
+    std::map<string, string> reader_mcast_receiver_defines;
+    if (gamma.has_value()) {
+        reader_mcast_sender_defines["FUSE_GAMMA"] = "1";
+        reader_mcast_receiver_defines["FUSE_GAMMA"] = "1";
+    }
+
     // Create circular buffers
 
     // in1 sharded
@@ -487,7 +487,7 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
     // out
     uint32_t cb_to_allgather_writer = tt::CBIndex::c_9;
     tt::tt_metal::CircularBufferConfig output_cb_config =
-        tt::tt_metal::CircularBufferConfig(out_CB_size, {{cb_to_allgather_writer, out_data_format}})
+        tt::tt_metal::CircularBufferConfig(pre_out_CB_size, {{cb_to_allgather_writer, out_data_format}})
             .set_page_size(cb_to_allgather_writer, out_single_tile_size);
     CBHandle cb_output = 0;
     cb_output = tt::tt_metal::CreateCircularBuffer(program, all_cores, output_cb_config);
@@ -527,7 +527,7 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
     // reader compile time args
     std::vector<uint32_t> reader_mcast_sender_compile_time_args = {
         (std::uint32_t)reduce_receiver_semaphore_id,
-        (std::uint32_t)reduce_sender_semaphore_id,
+        (std::uint32_t)pre_reduce_sender_semaphore_id,
         (std::uint32_t)num_blocks,
         (std::uint32_t)num_cores_x_mcast,
         (std::uint32_t)num_cores_y_mcast,
@@ -542,7 +542,7 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
         (std::uint32_t)ex_cb_external2_index};
     std::vector<uint32_t> reader_mcast_receiver_all_to_all_compile_time_args = {
         (std::uint32_t)reduce_receiver_semaphore_id,
-        (std::uint32_t)reduce_sender_semaphore_id,
+        (std::uint32_t)pre_reduce_sender_semaphore_id,
         (std::uint32_t)num_blocks,
         (std::uint32_t)1,
         (std::uint32_t)num_cores_x_mcast,
@@ -557,7 +557,7 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
         (std::uint32_t)ex_cb_external2_index};
     std::vector<uint32_t> reader_mcast_receiver_compile_time_args = {
         (std::uint32_t)reduce_receiver_semaphore_id,
-        (std::uint32_t)reduce_sender_semaphore_id,
+        (std::uint32_t)pre_reduce_sender_semaphore_id,
         (std::uint32_t)num_blocks,
         (std::uint32_t)0,
         (std::uint32_t)1,
@@ -1083,7 +1083,7 @@ operation::ProgramWithCallbacks frmsnorm_post_multi_core_sharded(
     // block
     uint32_t block_w = block_wt * TILE_WIDTH;
     uint32_t block_h = 1 * TILE_HEIGHT;
-    uint32_t num_blocks = 0;
+    uint32_t num_blocks = shard_spec.num_cores();
 
     auto bbox = shard_spec.grid.bounding_box();
     CoreCoord grid_size = {bbox.end_coord.x - bbox.start_coord.x + 1, bbox.end_coord.y - bbox.start_coord.y + 1};
@@ -1091,7 +1091,6 @@ operation::ProgramWithCallbacks frmsnorm_post_multi_core_sharded(
     if (bbox.start_coord.x != 0 || bbox.start_coord.y != 0) {
         grid_offset = bbox.start_coord;
     }
-    num_blocks = shard_spec.num_cores();
 
     // two-stage reduce
     bool use_two_stage_reduce = false;
@@ -1124,22 +1123,11 @@ operation::ProgramWithCallbacks frmsnorm_post_multi_core_sharded(
             storage_core_noc_y.back());
     }
 
-    // get sharded addr
-    auto in0_addr = a.buffer()->address();
-    bool b_sharded;
-    auto out_addr = output.buffer()->address();
-    // b, gamma addr
-    auto in1_dram_addr = 0;
     auto gamma_dram_addr = gamma.has_value() ? gamma.value().buffer()->address() : 0;
-    // num tiles for a, gamma
-    uint32_t num_tiles = a.volume() / TILE_HW;
-    uint32_t num_gamma_tiles = gamma.has_value() ? gamma.value().volume() / TILE_HW : 0;
-
     ////////////////////////////////////////////////////////////////////////////
     //                         Parameters Setup
     ////////////////////////////////////////////////////////////////////////////
     // block size for in0 (tensor a)
-    uint32_t num_rows_per_all_to_all_worker = 1;
     uint32_t in0_block_tiles = block_wt;
     // post_all_gather_stats_block_tiles
     uint32_t post_all_gather_stats_block_tiles = 1;
@@ -1159,11 +1147,11 @@ operation::ProgramWithCallbacks frmsnorm_post_multi_core_sharded(
     uint32_t in3_CB_size = bfloat16_tile_size;
     // gamma
     uint32_t in5_CB_size = in0_block_tiles * gamma_single_tile_size / 1;
+
     // itermediate buffers change later
     uint32_t x_CB_size = in0_block_tiles * single_tile_size;
     uint32_t xmm_CB_size = in0_block_tiles * single_tile_size;
     uint32_t ex_partial_CB_size = in0_block_tiles * single_tile_size / block_wt;
-    ex_partial_CB_size = ex_partial_CB_size;
     uint32_t ex_CB_size = ex_partial_CB_size;
     uint32_t ex_global_CB_size = ex_partial_CB_size;
     uint32_t ex_external_CB_size = tt::div_up(Kt, block_wt) * single_tile_size;
@@ -1174,9 +1162,8 @@ operation::ProgramWithCallbacks frmsnorm_post_multi_core_sharded(
     stats_cb_size = post_all_gather_stats_block_tiles * single_tile_size;
     stats_reduced_cb_size = single_tile_size;
     // output buffer size
-    uint32_t out_CB_size;
-    out_CB_size = in0_block_tiles * out_single_tile_size;
-    uint32_t out_reshard_CB_size = out_CB_size;
+    uint32_t post_out_CB_size = in0_block_tiles * out_single_tile_size;
+    uint32_t out_reshard_CB_size = post_out_CB_size;
     if (!skip_write_back) {
         out_reshard_CB_size = block_wt_resharded * 1 * out_single_tile_size;
     }
@@ -1289,9 +1276,7 @@ operation::ProgramWithCallbacks frmsnorm_post_multi_core_sharded(
         not_all_to_all_workers = applyStartOffset(not_all_to_all_workers, grid_offset.value());
     }
     // Mcast args
-    auto reduce_sender_semaphore_id = tt::tt_metal::CreateSemaphore(program, all_cores, INVALID);
-    auto reduce_receiver_semaphore_id = tt::tt_metal::CreateSemaphore(program, all_cores, INVALID);
-    auto reduce_second_stage_semaphore_id = tt::tt_metal::CreateSemaphore(program, all_cores, INVALID);
+    auto post_reduce_sender_semaphore_id = tt::tt_metal::CreateSemaphore(program, all_cores, INVALID);
     // reader defines
     std::map<string, string> reader_mcast_sender_defines;
     std::map<string, string> reader_mcast_receiver_defines;
@@ -1312,7 +1297,7 @@ operation::ProgramWithCallbacks frmsnorm_post_multi_core_sharded(
     // out
     uint32_t output_cb_index = tt::CBIndex::c_1;
     tt::tt_metal::CircularBufferConfig output_cb_config =
-        tt::tt_metal::CircularBufferConfig(out_CB_size, {{output_cb_index, out_data_format}})
+        tt::tt_metal::CircularBufferConfig(post_out_CB_size, {{output_cb_index, out_data_format}})
             .set_page_size(output_cb_index, out_single_tile_size);
     if (skip_write_back) {
         output_cb_config = output_cb_config.set_globally_allocated_address(*output.buffer());
@@ -1396,13 +1381,13 @@ operation::ProgramWithCallbacks frmsnorm_post_multi_core_sharded(
 
     // reader compile time args
     std::vector<uint32_t> reader_mcast_sender_compile_time_args = {
-        (std::uint32_t)reduce_sender_semaphore_id,
+        (std::uint32_t)post_reduce_sender_semaphore_id,
         (std::uint32_t)num_blocks,
         (std::uint32_t)single_tile_size,
         (std::uint32_t)cb_stats_reduced_index,
         (std::uint32_t)ex_global_cb_index};
     std::vector<uint32_t> reader_mcast_receiver_compile_time_args = {
-        (std::uint32_t)reduce_sender_semaphore_id, ex_global_cb_index};
+        (std::uint32_t)post_reduce_sender_semaphore_id, ex_global_cb_index};
 
     tt::tt_metal::NOC reader_noc = tt::tt_metal::detail::GetPreferredNOCForDRAMRead(device->arch());
     tt::tt_metal::NOC writer_noc = tt::tt_metal::detail::GetPreferredNOCForDRAMWrite(device->arch());
