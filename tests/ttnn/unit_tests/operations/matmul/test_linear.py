@@ -10,6 +10,81 @@ from tests.ttnn.utils_for_testing import assert_with_pcc
 from models.utility_functions import torch_random, is_wormhole_b0, skip_for_grayskull
 
 
+def p(x, a="x"):
+    print(f"{a}'s  shape: {x.shape}")
+    print(f"{a}'s  layout: {x.layout}")
+    print(f"{a}'s  dtype: {x.dtype}")
+    print(f"{a}'s config: {x.memory_config()}")
+
+
+@pytest.mark.parametrize(
+    "input_shape_a, input_shape_b, bias_shape",
+    [
+        ((8, 384, 768), (768, 768), (768)),  # First test case
+        ((8, 384, 768), (768, 3072), (3072)),  # Second test case
+        ((8, 384, 3072), (3072, 768), (768)),
+    ],
+)
+def test_linear_sentence_BERT(
+    input_shape_a,
+    input_shape_b,
+    bias_shape,
+    device,
+):
+    torch_input_tensor_a = torch_random(input_shape_a, -0.1, 0.1, dtype=torch.float32)
+    torch_input_tensor_b = torch_random(input_shape_b, -0.1, 0.1, dtype=torch.float32)
+
+    torch_bias = torch_random(bias_shape, -0.1, 0.1, dtype=torch.float32)
+    torch_output_tensor = torch.nn.functional.linear(
+        torch_input_tensor_a, torch_input_tensor_b.T.contiguous(), bias=torch_bias
+    )
+
+    input_tensor_a = ttnn.from_torch(
+        torch_input_tensor_a,
+        dtype=ttnn.bfloat8_b,
+        device=device,
+        layout=ttnn.TILE_LAYOUT,
+    )
+    memory_config = ttnn.create_sharded_memory_config(
+        # ((input_tensor_a.shape[-1]//input_tensor_a.shape[0]),input_tensor_a.shape[1]),
+        input_tensor_a.shape,
+        core_grid=device.core_grid,
+        strategy=ttnn.ShardStrategy.BLOCK,
+        orientation=ttnn.ShardOrientation.ROW_MAJOR,
+        # use_height_and_width_as_shard_shape=True,
+    )
+    encoder_input = ttnn.to_memory_config(input_tensor_a, memory_config=memory_config)
+    p(encoder_input, "sharded_input")
+    input_tensor_b = ttnn.from_torch(
+        torch_input_tensor_b,
+        dtype=ttnn.bfloat8_b,
+        device=device,
+        layout=ttnn.TILE_LAYOUT,
+    )
+    bias = ttnn.from_torch(
+        torch_bias.reshape((1, bias_shape)),
+        device=device,
+        dtype=ttnn.bfloat8_b,
+        layout=ttnn.TILE_LAYOUT,
+    )
+    p(input_tensor_b, "weights")
+    p(bias, "bias")
+    output_tensor = ttnn.linear(
+        encoder_input,
+        input_tensor_b,
+        bias=bias,
+        memory_config=ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG,
+        dtype=ttnn.bfloat8_b,
+    )
+    p(output_tensor, "out linear")
+    print("after linear")  # HANGS HERE
+    # output_tensor = ttnn.from_device(output_tensor)
+    print("after linear2")
+    output_tensor = ttnn.to_torch(output_tensor)
+
+    assert_with_pcc(torch_output_tensor, output_tensor, 0.999)
+
+
 @pytest.mark.parametrize("batch_sizes", [(1,)])
 @pytest.mark.parametrize("m_size", [384])
 @pytest.mark.parametrize("k_size", [1024])
