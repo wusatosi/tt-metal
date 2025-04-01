@@ -396,17 +396,13 @@ std::vector<std::vector<uint32_t>> generate_dilated_idx_for_tensor_metadata(
         uint32_t padded_input_w = config.input_hw.second + 2 * config.pad_hw.second + config.get_ceil_pad_w();
         global_window_w = config.window_hw.second;
         global_dilation_w = config.dilation_hw.second;
-        // std::cout << "padded_input_w: " << padded_input_w << std::endl;
         auto [output_start, output_end] = output_boundary;
         // std::cout << "output_start: " << output_start << " output_end: " << output_end << std::endl;
         for (auto i = output_start; i <= output_end; i++) {
             auto anchor = op_trace_metadata[i];
             for (auto fh = 0; fh < config.window_hw.first; fh++) {
-                for (auto fw = 0; fw < config.window_hw.second; fw++) {
-                    auto dilated_idx =
-                        anchor + fh * padded_input_w * config.dilation_hw.first + fw * config.dilation_hw.second;
-                    dilated_idx_for_tensor_metadata.push_back(dilated_idx);
-                }
+                auto dilated_idx = anchor + fh * padded_input_w * config.dilation_hw.first;
+                dilated_idx_for_tensor_metadata.push_back(dilated_idx);
             }
         }
         sort(dilated_idx_for_tensor_metadata.begin(), dilated_idx_for_tensor_metadata.end());
@@ -432,7 +428,7 @@ std::vector<std::vector<uint32_t>> generate_dilated_idx_for_tensor_metadata(
             for (auto i = output_start; i <= output_end; i++) {
                 auto anchor = op_trace_metadata[i];
                 std::vector<uint16_t> idx_map;
-                for (auto fw = 0; fw < config.window_hw.second; fw++) {
+                for (auto fw = 0; fw < 1; fw++) {
                     auto dilated_idx =
                         anchor + fh * padded_input_w * config.dilation_hw.first + fw * config.dilation_hw.second;
                     auto it = uniquePixels.find(dilated_idx);
@@ -443,25 +439,9 @@ std::vector<std::vector<uint32_t>> generate_dilated_idx_for_tensor_metadata(
                     }
                 }
                 halo_op_to_idx_map_local.push_back(idx_map);
-                // for(auto i:idx_map) {
-                //     std::cout << i << " ";
-                // }
-                // std::cout << std::endl;
             }
-            // std::cout << std::endl;
             halo_op_to_idx_map[core_idx].push_back(halo_op_to_idx_map_local);
         }
-        // std::cout << std::endl;
-        // for (auto i = 0; i < dilated_idx_for_tensor_metadata.size(); i++) {
-        //     std::cout << dilated_idx_for_tensor_metadata[i] << " ";
-        // }
-        // std::cout << std::endl;
-        // std::cout << std::endl;
-        // std::cout << std::endl;
-        // for(auto i:uniquePixels) {
-        //     std::cout << i << " ";
-        // }
-        // std::cout << std::endl;
         core_idx++;
         dilated_idxes.push_back(std::vector<uint32_t>(uniquePixels.begin(), uniquePixels.end()));
     }
@@ -773,17 +753,7 @@ std::tuple<std::vector<uint16_t>, std::vector<std::vector<uint16_t>>> generate_s
         if (global_dilation_w > 1) {
             auto vec = halo_op_to_idx_map[core_id];
             // sharded_input_top_left_indices_size.push_back({(uint16_t)vec[0].size()});
-            auto single_vec_size = vec[0].size() * global_window_w;
-            // std::cout << "vec[0].size(): " << vec[0].size() << std::endl;
-            bool is_cont = false;
-            // TODO: There is problem in last shard where the data is not contiguous
-            // need to correct this condition.
-            // if ((global_output_w >= global_dilation_w) && ((output_shard_end - output_shard_start + 1) ==
-            // common_output_range)) { if (global_output_w >= global_dilation_w) {
-            if (1) {
-                is_cont = true;
-                single_vec_size = vec[0].size();
-            }
+            auto single_vec_size = vec[0].size();
 
             auto is_odd = false;
             if (single_vec_size % 2) {
@@ -795,19 +765,12 @@ std::tuple<std::vector<uint16_t>, std::vector<std::vector<uint16_t>>> generate_s
             } else {
                 local_top_left_indices.push_back(single_vec_size);
             }
-            // std::cout << "is_odd: " << is_odd << std::endl;
-            // std::cout << "is_cont: " << is_cont << std::endl;
-            // std::cout << "vec[0].size(): " << vec[0].size() * global_window_w << std::endl;
-            local_top_left_indices.push_back(is_cont);
 
+            local_top_left_indices.push_back(0);
             for (const auto& i : vec) {
                 for (const auto& j : i) {
                     for (auto k : j) {
                         local_top_left_indices.push_back(k);
-                        if (is_cont) {
-                            break;
-                        }
-                        // std::cout << k << " ";
                     }
                 }
                 // std::cout << "local_top_left_indices size: " << local_top_left_indices.size() << std::endl;

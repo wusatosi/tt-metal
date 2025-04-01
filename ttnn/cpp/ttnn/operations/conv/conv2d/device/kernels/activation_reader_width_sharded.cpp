@@ -21,7 +21,6 @@ template <int window_height, int window_width, bool is_first>
 FORCE_INLINE void read_channels(
     uint32_t& l1_write_addr_act,
     const uint32_t act_l1_read_addr,
-    const uint32_t reader_channel_idx,
     const uint32_t conv_act_c_bytes,
     const uint32_t conv_act_c_read_bytes,
     const uint32_t stride_h_bytes,
@@ -29,12 +28,11 @@ FORCE_INLINE void read_channels(
     const uint32_t packed_reader_indices_sz,
     volatile uint32_t* packed_reader_indices_ptr,
     const uint32_t reader_idx) {
-    uint32_t reader_idx_1, two_reader_indices;
-    uint32_t act_l1_read_addr_plus_offset;
+    uint32_t reader_idx_1;
     uint32_t height_offset = reader_idx;
 #pragma GCC unroll weight_size_h
     for (uint32_t outer = 0; outer < window_height; outer++) {
-        two_reader_indices = packed_reader_indices_ptr[height_offset];
+        uint32_t two_reader_indices = packed_reader_indices_ptr[height_offset];
         if constexpr (is_first) {
             reader_idx_1 = two_reader_indices & 0xffff;
         } else {
@@ -164,11 +162,9 @@ void kernel_main() {
             if (this_core_id < num_input_cores) {
                 uint32_t l1_write_addr_act = get_write_ptr(cb_id_act_row_major_bfloat16);
                 for (uint32_t bh = 0; bh < act_block_h_datums / 2; bh++) {
-                    uint32_t two_reader_indices = packed_reader_indices_ptr[reader_idx];
                     read_channels<weight_size_h, weight_size_w, true>(
                         l1_write_addr_act,
                         act_l1_read_addr,
-                        1,
                         conv_act_c_bytes,
                         conv_act_c_read_bytes,
                         stride_h_bytes,
@@ -179,7 +175,6 @@ void kernel_main() {
                     read_channels<weight_size_h, weight_size_w, false>(
                         l1_write_addr_act,
                         act_l1_read_addr,
-                        0,
                         conv_act_c_bytes,
                         conv_act_c_read_bytes,
                         stride_h_bytes,

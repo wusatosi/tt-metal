@@ -64,36 +64,6 @@ FORCE_INLINE void read_dilated_channels(
     }
 }
 
-template <int window_height, int window_width, bool is_first>
-FORCE_INLINE void read_dilated_channels_non_cont(
-    uint32_t& l1_write_addr_act,
-    const uint32_t act_l1_read_addr,
-    const uint32_t conv_act_c_bytes,
-    const uint32_t stride_w_bytes,
-    const uint32_t packed_reader_indices_sz,
-    volatile uint32_t* packed_reader_indices_ptr,
-    const uint32_t reader_idx) {
-    uint32_t reader_idx_1, two_reader_indices;
-    uint32_t height_offset = reader_idx;
-#pragma GCC unroll weight_size_h
-    for (uint32_t outer = 0; outer < window_height; outer++) {
-#pragma GCC unroll weight_size_w
-        for (uint32_t inner = 0; inner < window_width; inner++) {
-            two_reader_indices = packed_reader_indices_ptr[height_offset++];
-            if constexpr (is_first) {
-                reader_idx_1 = two_reader_indices & 0xffff;
-            } else {
-                reader_idx_1 = two_reader_indices >> 16;
-            }
-            uint32_t act_l1_read_addr_offset = act_l1_read_addr + (reader_idx_1 * conv_act_c_bytes);
-            // Read the partial depth.
-            noc_async_read_one_packet_with_state<true>(act_l1_read_addr_offset, l1_write_addr_act);
-            // Increment by full depth to go to the next pixel
-            l1_write_addr_act += conv_act_c_bytes;
-        }
-        height_offset += packed_reader_indices_sz;
-    }
-}
 FORCE_INLINE
 void read_channels(
     uint32_t& l1_write_addr_act,
@@ -211,8 +181,6 @@ void kernel_main() {
     dump(packed_reader_indices_sz);
     packed_reader_indices_sz /= 2;
     dump(conv_act_c_read_bytes);
-    uint32_t is_cont = packed_reader_indices_ptr[0] >> 16;
-    dump(is_cont);
     dump(act_block_w_extra_align_bytes);
 #if DILATION_W == 1
     reader_idx = 0;
@@ -251,41 +219,22 @@ void kernel_main() {
                 l1_write_addr_act += act_block_w_extra_align_bytes;
             }
 #else
-            if (is_cont) {
-                read_dilated_channels<weight_size_h, weight_size_w, true>(
-                    l1_write_addr_act,
-                    act_l1_read_addr,
-                    conv_act_c_read_bytes,
-                    stride_w_bytes,
-                    packed_reader_indices_sz,
-                    packed_reader_indices_ptr,
-                    reader_idx);
-                read_dilated_channels<weight_size_h, weight_size_w, false>(
-                    l1_write_addr_act,
-                    act_l1_read_addr,
-                    conv_act_c_read_bytes,
-                    stride_w_bytes,
-                    packed_reader_indices_sz,
-                    packed_reader_indices_ptr,
-                    reader_idx);
-            } else {
-                read_dilated_channels_non_cont<weight_size_h, weight_size_w, true>(
-                    l1_write_addr_act,
-                    act_l1_read_addr,
-                    conv_act_c_read_bytes,
-                    stride_w_bytes,
-                    packed_reader_indices_sz,
-                    packed_reader_indices_ptr,
-                    reader_idx);
-                read_dilated_channels_non_cont<weight_size_h, weight_size_w, false>(
-                    l1_write_addr_act,
-                    act_l1_read_addr,
-                    conv_act_c_read_bytes,
-                    stride_w_bytes,
-                    packed_reader_indices_sz,
-                    packed_reader_indices_ptr,
-                    reader_idx);
-            }
+            read_dilated_channels<weight_size_h, weight_size_w, true>(
+                l1_write_addr_act,
+                act_l1_read_addr,
+                conv_act_c_read_bytes,
+                stride_w_bytes,
+                packed_reader_indices_sz,
+                packed_reader_indices_ptr,
+                reader_idx);
+            read_dilated_channels<weight_size_h, weight_size_w, false>(
+                l1_write_addr_act,
+                act_l1_read_addr,
+                conv_act_c_read_bytes,
+                stride_w_bytes,
+                packed_reader_indices_sz,
+                packed_reader_indices_ptr,
+                reader_idx);
 #endif
             reader_idx++;
         }
