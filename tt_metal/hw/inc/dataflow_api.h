@@ -1411,6 +1411,12 @@ void noc_semaphore_wait(volatile tt_l1_ptr uint32_t* sem_addr, uint32_t val) {
     WAYPOINT("NSW");
     do {
         invalidate_l1_cache();
+#if defined(ARCH_WORMHOLE)
+            // Avoid hammering L1 while other cores are trying to work.
+            // Shouldn't be needed on Blackhole, because invalidate_l1_cache
+            // takes time.
+            asm volatile("nop; nop; nop; nop; nop");
+#endif
     } while ((*sem_addr) != val);
     WAYPOINT("NSD");
 }
@@ -1437,6 +1443,12 @@ void noc_semaphore_wait_min(volatile tt_l1_ptr uint32_t* sem_addr, uint32_t val)
     WAYPOINT("NSMW");
     do {
         invalidate_l1_cache();
+#if defined(ARCH_WORMHOLE)
+            // Avoid hammering L1 while other cores are trying to work.
+            // Shouldn't be needed on Blackhole, because invalidate_l1_cache
+            // takes time.
+            asm volatile("nop; nop; nop; nop; nop");
+#endif
     } while ((*sem_addr) < val);
     WAYPOINT("NSMD");
 }
