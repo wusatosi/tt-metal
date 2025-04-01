@@ -378,207 +378,213 @@ def test_demo_text(
 
     num_tokens_generated_decode = []
 
-    logger.info("Starting inference...")
-    for batch_idx, input_prompts in enumerate(repeat_batch_prompts):
-        logger.info(f"Processing batch {batch_idx}")
-        profiler.start(f"preprocess_prefill_inputs", iteration=batch_idx)
-        # Preprocess initial prompt inputs
-        try:
-            (
-                input_tokens_prefill_pt,
-                encoded_prompts,
-                decoding_pos,
-                prefill_lens,
-            ) = preprocess_inputs_prefill(
-                input_prompts,
-                tokenizer,
-                [model_args],
-                instruct,
-                max_generated_tokens,
-            )
-        except Exception as e:
-            logger.error(f"Error during preprocessing: {str(e)}")
+    # Receive user input for decoding loop
+    while input_prompt := input("Ask anything:\n"):
+        repeat_batch_prompts = [[input_prompt] * batch_size] * repeat_batches
 
-        max_encoded_prompt_len = max(len(p) for p in encoded_prompts)
-        assert (
-            max_generated_tokens + max_encoded_prompt_len <= max_seq_len
-        ), f"Prompt prefill tokens ({max_encoded_prompt_len}) + maximum number of decoded iterations ({max_generated_tokens}) needs to be <= than max_seq_len ({max_seq_len})"
-
-        profiler.end(f"preprocess_prefill_inputs", iteration=batch_idx)
-
-        # when doing repeating batches, set kv-caches to zero, to avoid context leaking
-        if batch_idx != 0:
-            for layer in model.layers:
-                k_cache, v_cache = layer.attention.layer_past
-                k_cache = ttnn.mul(k_cache, 0, output_tensor=k_cache)
-                v_cache = ttnn.mul(v_cache, 0, output_tensor=v_cache)
-        input_tokens_prefill_pt = torch.stack(input_tokens_prefill_pt).view(batch_size, -1)
-
-        logger.info("Starting prefill warmup...")
-        profiler.start(f"compile_prefill", iteration=batch_idx)
-        if batch_idx != 0:
-            model.switch_mode("prefill")
-
-        logits = generator.prefill_forward_text(
-            input_tokens_prefill_pt[0].unsqueeze(0),  # Just warmup prefill for 1 user
-            page_table=page_table,
-            kv_cache=tt_kv_cache,
-            prompt_lens=decoding_pos,
-        )
-        profiler.end(f"compile_prefill", iteration=batch_idx)
-        logger.info("Finished prefill warmup")
-
-        logger.info(f"Starting prefill...")
-        profiler.start(f"inference_prefill", iteration=batch_idx)
-        logits = generator.prefill_forward_text(
-            input_tokens_prefill_pt[0].unsqueeze(0),
-            page_table=page_table,
-            kv_cache=tt_kv_cache,
-            prompt_lens=decoding_pos,
-        )
-        prefilled_token = torch.argmax(logits, dim=-1)
-        profiler.end(f"inference_prefill", iteration=batch_idx)
-        logger.info(f"Prefill finished")
-        prefilled_token = prefilled_token.repeat(batch_size, 1)
-        # Keep track of generated outputs to print out every iteration
-        all_outputs = [encoded_prompts[b][: prefill_lens[b]] for b in range(batch_size)]
-        for user in range(batch_size):
-            user_tok = int(prefilled_token[0].item())
-            all_outputs[user].append(user_tok)
-        # print("Prefill outputs:", [tokenizer.decode(output) for output in all_outputs])
-        # model.tt_ccl.close()
-        # return True
-        user_done = [False] * batch_size  # Keeps track when a user reaches EoD token
-
-        # TODO Argmax on device is only supported for batch_size=1
-        argmax_on_device = True  # False if (batch_size > 1 or sampling_params["temperature"] != 0) else True
-
-        # Initial positions
-        current_pos = torch.tensor([decoding_pos[0] for b in range(batch_size)])
-
-        # Start decoding
-        iteration = 0
-        users_decoding = True
-
-        out_tok = prefilled_token  # .repeat(batch_size, 1)
-        try:
-            model.switch_mode("decode")
-        except Exception as e:
-            logger.error(f"Error switching to decode mode: {str(e)}")
-            model.tt_ccl.close()
-        logger.info(f"Starting decode loop...")
-
-        # Log total inference (accounting for compile_decode as well)
-        profiler.start(f"inference_decode", iteration=batch_idx)
-        while users_decoding:
-            if iteration == 0:  # First iteration also accounts for compile time
-                profiler.start(f"compile_decode", iteration=batch_idx)
-            else:
-                profiler.start(f"inference_decode_time_{iteration}", iteration=batch_idx)
-
-            # Run decode forward
+        logger.info("Starting inference...")
+        for batch_idx, input_prompts in enumerate(repeat_batch_prompts):
+            logger.info(f"Processing batch {batch_idx}")
+            profiler.start(f"preprocess_prefill_inputs", iteration=batch_idx)
+            # Preprocess initial prompt inputs
             try:
-                logits = generator.decode_forward_text(
-                    out_tok,
-                    current_pos,
-                    enable_trace=enable_trace,
-                    page_table=page_table,
-                    kv_cache=tt_kv_cache,
-                    argmax_on_device=argmax_on_device,
+                (
+                    input_tokens_prefill_pt,
+                    encoded_prompts,
+                    decoding_pos,
+                    prefill_lens,
+                ) = preprocess_inputs_prefill(
+                    input_prompts,
+                    tokenizer,
+                    [model_args],
+                    instruct,
+                    max_generated_tokens,
                 )
             except Exception as e:
-                logger.error(f"Error during decoding: {str(e)}")
-                break
+                logger.error(f"Error during preprocessing: {str(e)}")
 
-            # Get the next token
-            if argmax_on_device:
-                out_tok = logits.unsqueeze(1)
-                for b in range(1, 32):
-                    out_tok[b][0] = 0
-            else:
-                # TODO Fix use case with temperature > 0
-                _, out_tok = sample_host(
-                    logits,
-                    temperature=sampling_params["temperature"],
-                    top_p=sampling_params["top_p"],
-                    on_host=True,
+            max_encoded_prompt_len = max(len(p) for p in encoded_prompts)
+            assert (
+                max_generated_tokens + max_encoded_prompt_len <= max_seq_len
+            ), f"Prompt prefill tokens ({max_encoded_prompt_len}) + maximum number of decoded iterations ({max_generated_tokens}) needs to be <= than max_seq_len ({max_seq_len})"
+
+            profiler.end(f"preprocess_prefill_inputs", iteration=batch_idx)
+
+            # when doing repeating batches, set kv-caches to zero, to avoid context leaking
+            if batch_idx != 0:
+                for layer in model.layers:
+                    k_cache, v_cache = layer.attention.layer_past
+                    k_cache = ttnn.mul(k_cache, 0, output_tensor=k_cache)
+                    v_cache = ttnn.mul(v_cache, 0, output_tensor=v_cache)
+            input_tokens_prefill_pt = torch.stack(input_tokens_prefill_pt).view(batch_size, -1)
+
+            logger.info("Starting prefill warmup...")
+            profiler.start(f"compile_prefill", iteration=batch_idx)
+            if batch_idx != 0:
+                model.switch_mode("prefill")
+
+            logits = generator.prefill_forward_text(
+                input_tokens_prefill_pt[0].unsqueeze(0),  # Just warmup prefill for 1 user
+                page_table=page_table,
+                kv_cache=tt_kv_cache,
+                prompt_lens=decoding_pos,
+            )
+            profiler.end(f"compile_prefill", iteration=batch_idx)
+            logger.info("Finished prefill warmup")
+
+            logger.info(f"Starting prefill...")
+            profiler.start(f"inference_prefill", iteration=batch_idx)
+            logits = generator.prefill_forward_text(
+                input_tokens_prefill_pt[0].unsqueeze(0),
+                page_table=page_table,
+                kv_cache=tt_kv_cache,
+                prompt_lens=decoding_pos,
+            )
+            prefilled_token = torch.argmax(logits, dim=-1)
+            profiler.end(f"inference_prefill", iteration=batch_idx)
+            logger.info(f"Prefill finished")
+            prefilled_token = prefilled_token.repeat(batch_size, 1)
+            # Keep track of generated outputs to print out every iteration
+            all_outputs = [encoded_prompts[b][: prefill_lens[b]] for b in range(batch_size)]
+            for user in range(batch_size):
+                user_tok = int(prefilled_token[0].item())
+                all_outputs[user].append(user_tok)
+            # print("Prefill outputs:", [tokenizer.decode(output) for output in all_outputs])
+            # model.tt_ccl.close()
+            # return True
+            user_done = [False] * batch_size  # Keeps track when a user reaches EoD token
+
+            # TODO Argmax on device is only supported for batch_size=1
+            argmax_on_device = True  # False if (batch_size > 1 or sampling_params["temperature"] != 0) else True
+
+            # Initial positions
+            current_pos = torch.tensor([decoding_pos[0] for b in range(batch_size)])
+
+            # Start decoding
+            iteration = 0
+            users_decoding = True
+
+            out_tok = prefilled_token  # .repeat(batch_size, 1)
+            try:
+                model.switch_mode("decode")
+            except Exception as e:
+                logger.error(f"Error switching to decode mode: {str(e)}")
+                model.tt_ccl.close()
+            logger.info(f"Starting decode loop...")
+
+            # Log total inference (accounting for compile_decode as well)
+            profiler.start(f"inference_decode", iteration=batch_idx)
+            while users_decoding:
+                if iteration == 0:  # First iteration also accounts for compile time
+                    profiler.start(f"compile_decode", iteration=batch_idx)
+                else:
+                    profiler.start(f"inference_decode_time_{iteration}", iteration=batch_idx)
+
+                # Run decode forward
+                try:
+                    logits = generator.decode_forward_text(
+                        out_tok,
+                        current_pos,
+                        enable_trace=enable_trace,
+                        page_table=page_table,
+                        kv_cache=tt_kv_cache,
+                        argmax_on_device=argmax_on_device,
+                    )
+                except Exception as e:
+                    logger.error(f"Error during decoding: {str(e)}")
+                    break
+
+                # Get the next token
+                if argmax_on_device:
+                    out_tok = logits.unsqueeze(1)
+                    for b in range(1, 32):
+                        out_tok[b][0] = 0
+                else:
+                    # TODO Fix use case with temperature > 0
+                    _, out_tok = sample_host(
+                        logits,
+                        temperature=sampling_params["temperature"],
+                        top_p=sampling_params["top_p"],
+                        on_host=True,
+                    )
+
+                if iteration == 0:  # First iteration will account the compile time
+                    profiler.end(f"compile_decode", iteration=batch_idx)
+                    decode_iteration_time = profiler.get_duration("compile_decode", iteration=batch_idx)
+                else:
+                    profiler.end(f"inference_decode_time_{iteration}", iteration=batch_idx)
+                    decode_iteration_time = profiler.get_duration(
+                        f"inference_decode_time_{iteration}", iteration=batch_idx
+                    )
+
+                # Always print perf after every iteration
+                tokens_per_second_per_user = 1 / decode_iteration_time
+                logger.info(
+                    f"Iteration {iteration}: {1000*decode_iteration_time:.0f}ms @ {tokens_per_second_per_user:.1f} tok/s/user ({batch_size*tokens_per_second_per_user:.1f} tok/s throughput)"
                 )
 
-            if iteration == 0:  # First iteration will account the compile time
-                profiler.end(f"compile_decode", iteration=batch_idx)
-                decode_iteration_time = profiler.get_duration("compile_decode", iteration=batch_idx)
-            else:
-                profiler.end(f"inference_decode_time_{iteration}", iteration=batch_idx)
-                decode_iteration_time = profiler.get_duration(f"inference_decode_time_{iteration}", iteration=batch_idx)
+                current_pos += 1
 
-            # Always print perf after every iteration
-            tokens_per_second_per_user = 1 / decode_iteration_time
-            logger.info(
-                f"Iteration {iteration}: {1000*decode_iteration_time:.0f}ms @ {tokens_per_second_per_user:.1f} tok/s/user ({batch_size*tokens_per_second_per_user:.1f} tok/s throughput)"
-            )
-
-            current_pos += 1
-
-            # Save output token to print out later
-            for user in range(batch_size):
-                user_tok = out_tok[user].item()
-                if (
-                    user_tok not in tokenizer.stop_tokens and user_done[user] == False
-                ):  # Read until an eos token (e.g. <|eot_id|>); create_tokenizer adds stop_tokens to HF tokenizers
-                    all_outputs[user].append(user_tok)
-                else:
-                    if (
-                        stop_at_eos
-                    ):  # For performance gathering in CI, we want to sometimes force decoding for a fixed number of iterations
-                        user_done[user] = True
-                        logger.trace(f"[User {user}] Finished decoding at iteration {iteration}")
-                        if all(user_done):
-                            users_decoding = False
-
-            # Print out generated outputs for each user at the end of every iteration
-            if not is_ci_env:
+                # Save output token to print out later
                 for user in range(batch_size):
-                    text = "".join(tokenizer.decode(all_outputs[user]))
-                    if len(text) > 100:
-                        text = "..." + text[-97:]
-                    text = text.replace("\n", " ")
-                    logger.info("[User {}] {}".format(user, text))
-
-            iteration += 1
-
-            # Upper limit of generated tokens for each user
-            if iteration >= max_generated_tokens:
-                users_decoding = False
-
-            # Final print
-            if not users_decoding:
-                profiler.start(f"log_saving_file", iteration=batch_idx)
-                logger.info("Finished decoding, printing the final outputs...\n")
-                for i, (output, prompt) in enumerate(zip(all_outputs, input_prompts)):
-                    text = tokenizer.decode(output)
-                    prompt_including_assistant_tags = tokenizer.decode(
-                        model_args.encode_prompt(prompt, instruct=instruct)
-                    )
-                    text_after_prompt = text.replace(prompt_including_assistant_tags, "", 1)
-                    if print_to_file:
-                        with open(output_filename, "a") as f:
-                            f.write(
-                                f"\nbatch: {batch_idx} user: {i}\nprompt: {prompt} \noutput:\n{text_after_prompt}\n"
-                            )
+                    user_tok = out_tok[user].item()
+                    if (
+                        user_tok not in tokenizer.stop_tokens and user_done[user] == False
+                    ):  # Read until an eos token (e.g. <|eot_id|>); create_tokenizer adds stop_tokens to HF tokenizers
+                        all_outputs[user].append(user_tok)
                     else:
-                        # Strip leading newlines from output when sent to terminal
-                        short_prompt = (
-                            (prompt[:100] + "\n<long prompt not printed in full>\n" + prompt[-100:])
-                            if len(prompt) > 200
-                            else prompt
-                        )
-                        logger.info(
-                            f"\n==REPEAT BATCH {batch_idx}\n==USER {i} - PROMPT\n{short_prompt} \n==USER {i} - OUTPUT\n{text_after_prompt.strip()}\n"
-                        )
-                    break
-                profiler.end(f"log_saving_file", iteration=batch_idx)
+                        if (
+                            stop_at_eos
+                        ):  # For performance gathering in CI, we want to sometimes force decoding for a fixed number of iterations
+                            user_done[user] = True
+                            logger.trace(f"[User {user}] Finished decoding at iteration {iteration}")
+                            if all(user_done):
+                                users_decoding = False
 
-        num_tokens_generated_decode.append(iteration)  # Save the number of tokens generated for each repeat batch
+                # Print out generated outputs for each user at the end of every iteration
+                if not is_ci_env:
+                    for user in range(batch_size):
+                        text = "".join(tokenizer.decode(all_outputs[user]))
+                        if len(text) > 100:
+                            text = "..." + text[-97:]
+                        text = text.replace("\n", " ")
+                        logger.info("[User {}] {}".format(user, text))
+
+                iteration += 1
+
+                # Upper limit of generated tokens for each user
+                if iteration >= max_generated_tokens:
+                    users_decoding = False
+
+                # Final print
+                if not users_decoding:
+                    profiler.start(f"log_saving_file", iteration=batch_idx)
+                    logger.info("Finished decoding, printing the final outputs...\n")
+                    for i, (output, prompt) in enumerate(zip(all_outputs, input_prompts)):
+                        text = tokenizer.decode(output)
+                        prompt_including_assistant_tags = tokenizer.decode(
+                            model_args.encode_prompt(prompt, instruct=instruct)
+                        )
+                        text_after_prompt = text.replace(prompt_including_assistant_tags, "", 1)
+                        if print_to_file:
+                            with open(output_filename, "a") as f:
+                                f.write(
+                                    f"\nbatch: {batch_idx} user: {i}\nprompt: {prompt} \noutput:\n{text_after_prompt}\n"
+                                )
+                        else:
+                            # Strip leading newlines from output when sent to terminal
+                            short_prompt = (
+                                (prompt[:100] + "\n<long prompt not printed in full>\n" + prompt[-100:])
+                                if len(prompt) > 200
+                                else prompt
+                            )
+                            logger.info(
+                                f"\n==REPEAT BATCH {batch_idx}\n==USER {i} - PROMPT\n{short_prompt} \n==USER {i} - OUTPUT\n{text_after_prompt.strip()}\n"
+                            )
+                        break
+                    profiler.end(f"log_saving_file", iteration=batch_idx)
+
+            num_tokens_generated_decode.append(iteration)  # Save the number of tokens generated for each repeat batch
 
     profiler.end(f"inference_decode", iteration=batch_idx)
 

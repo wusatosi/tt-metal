@@ -345,124 +345,141 @@ def run_llama3_demo(
     ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
     ttnn.synchronize_device(mesh_device)
 
-    # Reset the decoding position for the proper run of the model
-    current_pos_reset = ttnn.from_torch(
-        current_pos,
-        dtype=ttnn.int32,
-        mesh_mapper=ttnn.ShardTensor2dMesh(
-            mesh_device,
-            dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
-            mesh_shape=model_args.cluster_shape,
-        ),
-    )
-
-    tt_out_tok_reset = ttnn.from_torch(
-        encoded_prompts_tensor_whole_sequence[:, :1].reshape(1, 1, 1, batch_size),
-        dtype=ttnn.uint32,
-        layout=ttnn.ROW_MAJOR_LAYOUT,
-        mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device, dims=(None, None), mesh_shape=model_args.cluster_shape),
-    )
-
-    # Reset the current position and output token tensors for the real decode run
-    ttnn.copy_host_to_device_tensor(current_pos_reset, current_pos_tensor)
-    ttnn.copy_host_to_device_tensor(tt_out_tok_reset, tt_out_tok)
-    rot_mat_idxs_reset = tt_model.rope_setup.get_rot_idxs(current_pos, on_host=True)
-    ttnn.copy_host_to_device_tensor(rot_mat_idxs_reset, rot_mat_idxs)
-
     profiler.end(f"capture_trace")
 
-    ttnn.synchronize_device(mesh_device)
+    # Receive user input for decoding loop
+    # First re-define all inputs & constants
+    while input_prompt := input("Ask anything:\n"):
+        input_prompts = [input_prompt] * batch_size
+        encoded_prompts = [tokenizer.encode(prompt, bos=True, eos=False) for prompt in input_prompts]
 
-    # Start decoding
-    iteration = 0
-    users_decoding = True  # reset to handle next batch
-    total_decoding_time = 0  # Track total decoding time
-    total_tokens_generated = 0  # Track total tokens generated
+        # Prefill by decode: start at first token; pad to 32 (tile size)
+        max_prompt_length = max([len(prompt) for prompt in encoded_prompts])
+        padded_token_prompts = [prompt + [128009] * (max_prompt_length - len(prompt)) for prompt in encoded_prompts]
+        encoded_prompts_tensor_whole_sequence = torch.tensor([padded_token_prompts[b] for b in range(batch_size)])
 
-    all_outputs = []
+        current_pos = torch.tensor([decoding_pos[b] for b in range(batch_size)])
 
-    logger.info(f"Starting decode loop...")
-    profiler.start(f"inference_decode", iteration=iteration)
-
-    while users_decoding:
-        if iteration == 0:  # First iteration also accounts for compile time
-            profiler.start(f"compile_decode", iteration=iteration)
-        iteration_time_start = time()
-
-        # Execute trace
-        ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
-        tt_out_tok_cpu = tt_out_tok.cpu(blocking=True, cq_id=0)
-        iteration_time = time() - iteration_time_start
-
-        # Update current pos and mat idxs on host and send to device
-        # TODO This is required for now since we cannot ttnn.plus_one(rot_mat_idxs) while it being uint32.
-        # If this tensor is int32, it won't be supported by ttnn.embedding
-        if not stress_test:
-            current_pos += 1
-        rot_mat_idxs_updated = tt_model.rope_setup.get_rot_idxs(current_pos, on_host=True)
-        ttnn.copy_host_to_device_tensor(rot_mat_idxs_updated, rot_mat_idxs)
-        # ttnn.synchronize_device(mesh_device)
-        # Write to host
-        tt_output_torch = ttnn.to_torch(
-            tt_out_tok_cpu,
-            mesh_composer=ttnn.ConcatMesh2dToTensor(
+        # Reset the decoding position for the proper run of the model
+        current_pos_reset = ttnn.from_torch(
+            current_pos,
+            dtype=ttnn.int32,
+            mesh_mapper=ttnn.ShardTensor2dMesh(
                 mesh_device,
-                dims=(3, 1),
+                dims=(None, 0) if (model_args.is_galaxy and batch_size > 1) else (None, None),
                 mesh_shape=model_args.cluster_shape,
             ),
-        )[0, 0, 0, :batch_size]
-        # Append the generated token to the list of outputs
-        if iteration in range(len(encoded_prompts[0])):
-            all_outputs.append(encoded_prompts[0][iteration])  # Update list of TT outputs
-            tt_out_tok_reset = ttnn.from_torch(
-                encoded_prompts_tensor_whole_sequence[:, iteration].reshape(1, 1, 1, batch_size),
-                dtype=ttnn.uint32,
-                layout=ttnn.ROW_MAJOR_LAYOUT,
-                mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device, dims=(None, None), mesh_shape=model_args.cluster_shape),
-            )
-            ttnn.copy_host_to_device_tensor(tt_out_tok_reset, tt_out_tok)
-        else:
-            all_outputs.append(tt_output_torch.tolist()[0])  # Update generated token to list of TT outputs
-            if all_outputs[-1] in [128001, 128009] and not stress_test:  # EoT tokens
-                users_decoding = False
-
-        # Ignore the first iteration for average speed calculation
-        if iteration > 0:
-            total_decoding_time += iteration_time
-            total_tokens_generated += 1
-
-        tokens_per_second_per_user = 1 / iteration_time
-
-        profiler.start(f"log_printing_iter_{iteration}", iteration=iteration)
-        # Print out generated outputs for each user at the end of every iteration
-        if not is_ci_env:
-            # if len(user_input) == 1:
-            logger.info("[User 0] {}".format("".join(tokenizer.decode(all_outputs))))
-            # else:
-            #     for user in range(batch_size):
-            #         text = "".join(tokenizer.decode(all_outputs[user]))
-            #         if len(text) > 100:
-            #             text = "..." + text[-97:]
-            #         text = text.replace("\n", " ")
-            #         logger.info("[User {}] {}".format(user, text))
-
-        # Always print perf at every iteration
-        logger.info(
-            f"Iteration {iteration}: {1000*iteration_time:.0f}ms @ {tokens_per_second_per_user:.1f} tok/s/user ({batch_size*tokens_per_second_per_user:.1f} tok/s throughput)"
         )
-        tsu_threshold = 128 if layers == 1 else 28
-        if not stress_test:
-            assert tokens_per_second_per_user > tsu_threshold, "Throughput is less than 28 tokens per second per user"
-        profiler.end(f"log_printing_iter_{iteration}", iteration=iteration)
 
-        if iteration == 0:  # First iteration also accounts for compile time
-            profiler.end(f"compile_decode", iteration=iteration)
+        tt_out_tok_reset = ttnn.from_torch(
+            encoded_prompts_tensor_whole_sequence[:, :1].reshape(1, 1, 1, batch_size),
+            dtype=ttnn.uint32,
+            layout=ttnn.ROW_MAJOR_LAYOUT,
+            mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device, dims=(None, None), mesh_shape=model_args.cluster_shape),
+        )
 
-        iteration += 1
+        # Reset the current position and output token tensors for the real decode run
+        ttnn.copy_host_to_device_tensor(current_pos_reset, current_pos_tensor)
+        ttnn.copy_host_to_device_tensor(tt_out_tok_reset, tt_out_tok)
+        rot_mat_idxs_reset = tt_model.rope_setup.get_rot_idxs(current_pos, on_host=True)
+        ttnn.copy_host_to_device_tensor(rot_mat_idxs_reset, rot_mat_idxs)
 
-        # Upper limit of generated tokens for each user (to avoid infinite generation in case eos is not seen)
-        if iteration >= max_generated_tokens:
-            users_decoding = False
+        ttnn.synchronize_device(mesh_device)
+
+        # Start decoding
+        iteration = 0
+        users_decoding = True  # reset to handle next batch
+        total_decoding_time = 0  # Track total decoding time
+        total_tokens_generated = 0  # Track total tokens generated
+
+        all_outputs = []
+
+        logger.info(f"Starting decode loop...")
+        profiler.start(f"inference_decode", iteration=iteration)
+
+        while users_decoding:
+            if iteration == 0:  # First iteration also accounts for compile time
+                profiler.start(f"compile_decode", iteration=iteration)
+            iteration_time_start = time()
+
+            # Execute trace
+            ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
+            tt_out_tok_cpu = tt_out_tok.cpu(blocking=True, cq_id=0)
+            iteration_time = time() - iteration_time_start
+
+            # Update current pos and mat idxs on host and send to device
+            # TODO This is required for now since we cannot ttnn.plus_one(rot_mat_idxs) while it being uint32.
+            # If this tensor is int32, it won't be supported by ttnn.embedding
+            if not stress_test:
+                current_pos += 1
+            rot_mat_idxs_updated = tt_model.rope_setup.get_rot_idxs(current_pos, on_host=True)
+            ttnn.copy_host_to_device_tensor(rot_mat_idxs_updated, rot_mat_idxs)
+            # ttnn.synchronize_device(mesh_device)
+            # Write to host
+            tt_output_torch = ttnn.to_torch(
+                tt_out_tok_cpu,
+                mesh_composer=ttnn.ConcatMesh2dToTensor(
+                    mesh_device,
+                    dims=(3, 1),
+                    mesh_shape=model_args.cluster_shape,
+                ),
+            )[0, 0, 0, :batch_size]
+            # Append the generated token to the list of outputs
+            if iteration in range(len(encoded_prompts[0])):
+                all_outputs.append(encoded_prompts[0][iteration])  # Update list of TT outputs
+                tt_out_tok_reset = ttnn.from_torch(
+                    encoded_prompts_tensor_whole_sequence[:, iteration].reshape(1, 1, 1, batch_size),
+                    dtype=ttnn.uint32,
+                    layout=ttnn.ROW_MAJOR_LAYOUT,
+                    mesh_mapper=ttnn.ShardTensor2dMesh(
+                        mesh_device, dims=(None, None), mesh_shape=model_args.cluster_shape
+                    ),
+                )
+                ttnn.copy_host_to_device_tensor(tt_out_tok_reset, tt_out_tok)
+            else:
+                all_outputs.append(tt_output_torch.tolist()[0])  # Update generated token to list of TT outputs
+                if all_outputs[-1] in [128001, 128009] and not stress_test:  # EoT tokens
+                    users_decoding = False
+
+            # Ignore the first iteration for average speed calculation
+            if iteration > 0:
+                total_decoding_time += iteration_time
+                total_tokens_generated += 1
+
+            tokens_per_second_per_user = 1 / iteration_time
+
+            profiler.start(f"log_printing_iter_{iteration}", iteration=iteration)
+            # Print out generated outputs for each user at the end of every iteration
+            if not is_ci_env:
+                # if len(user_input) == 1:
+                logger.info("[User 0] {}".format("".join(tokenizer.decode(all_outputs))))
+                # else:
+                #     for user in range(batch_size):
+                #         text = "".join(tokenizer.decode(all_outputs[user]))
+                #         if len(text) > 100:
+                #             text = "..." + text[-97:]
+                #         text = text.replace("\n", " ")
+                #         logger.info("[User {}] {}".format(user, text))
+
+            # Always print perf at every iteration
+            logger.info(
+                f"Iteration {iteration}: {1000*iteration_time:.0f}ms @ {tokens_per_second_per_user:.1f} tok/s/user ({batch_size*tokens_per_second_per_user:.1f} tok/s throughput)"
+            )
+            tsu_threshold = 128 if layers == 1 else 28
+            if not stress_test:
+                assert (
+                    tokens_per_second_per_user > tsu_threshold
+                ), "Throughput is less than 28 tokens per second per user"
+            profiler.end(f"log_printing_iter_{iteration}", iteration=iteration)
+
+            if iteration == 0:  # First iteration also accounts for compile time
+                profiler.end(f"compile_decode", iteration=iteration)
+
+            iteration += 1
+
+            # Upper limit of generated tokens for each user (to avoid infinite generation in case eos is not seen)
+            if iteration >= max_generated_tokens:
+                users_decoding = False
 
     # Release trace
     ttnn.release_trace(mesh_device, trace_id)
@@ -517,7 +534,7 @@ def run_llama3_demo(
             1,  # repeat_batches
             1024,  # max_seq_len
             32,  # batch_size
-            4*128*1024,  # max_generated_tokens (same index for stress test)
+            4 * 128 * 1024,  # max_generated_tokens (same index for stress test)
             False,  # paged_attention
             {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params  # TODO This will be serviced by vLLM
             {"top_k": 32, "top_p": 0.08, "seed": 42},  # sampling_params (argmax)
