@@ -24,13 +24,12 @@ void kernel_main() {
     constexpr uint32_t cb_gamma = get_compile_time_arg_val(8);
 
     // Data type CTs
-    constexpr bool stick_size_is_pow2 = get_compile_time_arg_val(9) == 1;
-    constexpr uint32_t stick_size = get_compile_time_arg_val(10);
-    constexpr bool FLOAT32_DTYPE_GAMMA = get_compile_time_arg_val(11) == 1;
+    constexpr uint32_t stick_size = get_compile_time_arg_val(9);
+    constexpr bool FLOAT32_DTYPE_GAMMA = get_compile_time_arg_val(10) == 1;
 
     // Reshard writer
-    constexpr uint32_t worker_core_stride_w_bytes = get_compile_time_arg_val(12);
-    constexpr uint32_t storage_core_stride_w_bytes = get_compile_time_arg_val(13);
+    constexpr uint32_t worker_core_stride_w_bytes = get_compile_time_arg_val(11);
+    constexpr uint32_t storage_core_stride_w_bytes = get_compile_time_arg_val(12);
     constexpr uint32_t block_ht = 1;
 
     const uint32_t gamma_addr = get_arg_val<uint32_t>(3);
