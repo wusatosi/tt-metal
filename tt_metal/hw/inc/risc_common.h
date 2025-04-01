@@ -228,16 +228,23 @@ inline void disable_prefetch() {
 #endif
 }
 
-inline void disable_l1_data_cache() {
+inline __attribute__((always_inline)) void configure_l1_data_cache() {
 #if defined(ARCH_BLACKHOLE)
-    // Disable branch prediction
+    // Disables Blackhole's L1 cache. Grayskull and Wormhole do not have L1 cache
+    // L1 cache can be disabled by setting `TT_METAL_DISABLE_L1_DATA_CACHE_RISCVS` env var
+    // export TT_METAL_DISABLE_L1_DATA_CACHE_RISCVS=<BR,NC,TR*,ER*>
     asm(R"ASM(
-        .option push
         fence
         li t1, 0x8
         csrrs zero, 0x7c0, t1
-        .option pop
-            )ASM" ::
+         )ASM" ::
+            : "t1");
+    // Disable gathering to stop HW from invalidating the data cache after 128 transactions
+    asm(R"ASM(
+        fence
+        lui  t1, 0x40
+        csrrs zero, 0x7c0, t1
+         )ASM" ::
             : "t1");
 #endif
 }

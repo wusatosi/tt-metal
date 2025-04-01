@@ -95,16 +95,14 @@ void init_sync_registers() {
 int main(int argc, char *argv[]) {
     // Workaround for tt-metal#16439, making sure gathering is disabled
 #ifdef ARCH_BLACKHOLE
-    // Disable instruction coalescing
-    disable_gathering();
     // Disable branch prediction. always go sequential
     disable_branch_prediction();
     // Enforce in-order execution of instructions
     disable_riscv_out_of_order();
     // Disable next line prefetch and branch-specific prefetching
     disable_prefetch();
-    // Disable low-cache
-    disable_l1_data_cache();
+    // Disable low-cache and instruction coalescing
+    configure_l1_data_cache();
 #endif
     DIRTY_STACK_MEMORY();
     WAYPOINT("I");
