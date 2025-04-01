@@ -75,6 +75,7 @@ class Gemma3TextTtModelArgs(ModelArgs):
         self.sliding_window_pattern = sliding_window_pattern
 
     def _set_params_from_dict(self, params):
+        params["text_config"]["_name_or_path"] = self.model_name
         super()._set_params_from_dict(params["text_config"])
 
     def load_state_dict(self):

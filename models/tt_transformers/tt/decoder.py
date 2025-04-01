@@ -77,7 +77,7 @@ class TransformerBlock(LightweightModule):
             args,
             TG=args.is_galaxy,
         )
-        self.ff_norm = DistributedNorm(
+        self.post_attn_norm = DistributedNorm(
             RMSNorm(
                 device=mesh_device,
                 dim=args.dim,
@@ -86,6 +86,36 @@ class TransformerBlock(LightweightModule):
                 weight_cache_path=None if args.dummy_weights else weight_cache_path,
                 weight_dtype=ttnn.bfloat16,
                 weight_key="ffn_norm",
+                is_distributed=self.args.is_distributed_norm,
+                sharded_program_config=self.model_config["SHARDED_NORM_ATTN_PRGM_CFG"],
+                sharded_output_config=self.model_config["SHARDED_ATTN_INPUT_MEMCFG"],
+                ccl_topology=self.args.ccl_topology(),
+            ),
+            args,
+        )
+        self.pre_ff_norm = RMSNorm(
+            device=mesh_device,
+            dim=args.dim,
+            state_dict=state_dict,
+            state_dict_prefix=args.get_state_dict_prefix("", layer_num),
+            weight_cache_path=None if args.dummy_weights else weight_cache_path,
+            weight_dtype=ttnn.bfloat16,
+            weight_key="pre_feedforward_layernorm",
+            is_distributed=self.args.is_distributed_norm,
+            sharded_program_config=self.model_config["SHARDED_NORM_MLP_PRGM_CFG"],
+            sharded_output_config=self.model_config["SHARDED_MLP_INPUT_MEMCFG"],
+            ccl_topology=self.args.ccl_topology(),
+        )
+
+        self.post_ff_norm = DistributedNorm(
+            RMSNorm(
+                device=mesh_device,
+                dim=args.dim,
+                state_dict=state_dict,
+                state_dict_prefix=args.get_state_dict_prefix("", layer_num),
+                weight_cache_path=None if args.dummy_weights else weight_cache_path,
+                weight_dtype=ttnn.bfloat16,
+                weight_key="post_feedforward_layernorm",
                 is_distributed=self.args.is_distributed_norm,
                 sharded_program_config=self.model_config["SHARDED_NORM_MLP_PRGM_CFG"],
                 sharded_output_config=self.model_config["SHARDED_MLP_INPUT_MEMCFG"],
@@ -114,7 +144,9 @@ class TransformerBlock(LightweightModule):
             x.memory_config() == skip_mem_cfg
         ), f"decoder input memcfg mismatch: {x.memory_config()} != {skip_mem_cfg}"
         # Norms take fractured inputs and output replicated across devices
+        ttnn.visualize_mesh_device(self.mesh_device, tensor=x)
         attn_in = self.attention_norm(x, mode)
+        ttnn.visualize_mesh_device(self.mesh_device, tensor=attn_in)
         # Attention takes replicated inputs and produces fractured outputs
         attn_out = self.attention.forward(
             attn_in,
@@ -127,18 +159,51 @@ class TransformerBlock(LightweightModule):
             chunk_start_idx=chunk_start_idx,
             kv_cache=kv_cache,
         )
+        ttnn.visualize_mesh_device(self.mesh_device, tensor=attn_out)
+
+        attn_out = self.post_attn_norm(attn_out, mode)  # [1, 1, 32, 2304], New part of Gemma
+
+        ttnn.visualize_mesh_device(self.mesh_device, tensor=attn_out)
+
+        x = ttnn.all_gather(
+            x,
+            dim=3,
+            num_links=1,
+            topology=self.args.ccl_topology(),
+            memory_config=self.model_config["SHARDED_MLP_INPUT_MEMCFG"],
+        )
+        ttnn.visualize_mesh_device(self.mesh_device, tensor=x)
+        # attn_out = ttnn.to_memory_config(attn_out, memory_config=skip_mem_cfg) # self.model_config["SHARDED_ATTN_INPUT_MEMCFG"])
+
         # Here x and attn_out are both fractured across devices
-        h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg, dtype=ttnn.bfloat16 if TG else None)
+        # h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg, dtype=ttnn.bfloat16 if TG else None)
+        h = ttnn.add(
+            x,
+            attn_out,
+            memory_config=self.model_config["SHARDED_MLP_INPUT_MEMCFG"],
+            dtype=ttnn.bfloat16 if TG else None,
+        )
+        ttnn.visualize_mesh_device(self.mesh_device, tensor=h)
+
         ttnn.deallocate(attn_out)
         if mode == "prefill":
             x.deallocate(True)
 
         # Norms take fractured inputs and output replicated across devices
-        ff_in = self.ff_norm(h, mode)
+        ff_in = self.pre_ff_norm(h, mode, True, True)
         if TG and mode == "decode":
             ff_in = ttnn.to_memory_config(ff_in, memory_config=self.model_config["MLP_ACT_MEMCFG"])
+
+        ttnn.visualize_mesh_device(self.mesh_device, tensor=ff_in)
+
         # MLP takes replicated inputs and produces fractured outputs
         ff_out = self.feed_forward.forward(ff_in, mode)
+
+        ttnn.visualize_mesh_device(self.mesh_device, tensor=ff_out)
+
+        ff_out = self.post_ff_norm(ff_out, mode)
+
+        ttnn.visualize_mesh_device(self.mesh_device, tensor=ff_out)
         # ff_out and h are both fractured across devices
         out = ttnn.add(
             h,

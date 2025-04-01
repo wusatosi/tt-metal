@@ -104,6 +104,8 @@ def map_hf_to_meta_keys(loaded_weights):
         "model.layers.{layer}.mlp.gate_proj.weight": "layers.{layer}.feed_forward.w1.weight",
         "model.layers.{layer}.mlp.up_proj.weight": "layers.{layer}.feed_forward.w3.weight",
         "model.layers.{layer}.mlp.down_proj.weight": "layers.{layer}.feed_forward.w2.weight",
+        "model.layers.{layer}.pre_feedforward_layernorm.weight": "layers.{layer}.pre_feedforward_layernorm.weight",
+        "model.layers.{layer}.post_feedforward_layernorm.weight": "layers.{layer}.post_feedforward_layernorm.weight",
     }
 
     meta_state_dict = {}
@@ -118,6 +120,9 @@ def map_hf_to_meta_keys(loaded_weights):
             template_key = "model.layers.{layer}." + ".".join(parts[3:])
             if template_key in hf_to_meta:
                 meta_state_dict[hf_to_meta[template_key].format(layer=layer_num)] = tensor
+        else:
+            # Keep original key if no mapping found
+            meta_state_dict[key] = tensor
 
     return meta_state_dict
 
@@ -324,10 +329,6 @@ def convert_meta_qkv_to_hf_format(loaded_weights, head_dim):
             # For biases: n_heads = tensor.shape[0] // head_dim
             n_heads = tensor.shape[0] // head_dim
             converted_weights[key] = permute(tensor.unsqueeze(-1), n_heads, tensor.shape[0], 1).squeeze(-1)
-        elif "q_norm.weight" in key or "k_norm.weight" in key:
-            # For layer norm weights: n_heads = tensor.shape[0] // head_dim
-            n_heads = tensor.shape[0] // head_dim
-            converted_weights[key] = permute(tensor, n_heads, tensor.shape[0], 1).squeeze(-1)
         else:
             # Keep all other weights unchanged
             converted_weights[key] = tensor

@@ -230,7 +230,7 @@ class Attention(LightweightModule):
             # vLLM provides its own kv cache
             self.init_kv_cache(configuration, weight_cache_path)
 
-        if configuration.query_pre_attn_scalar is not None:
+        if hasattr(configuration, "query_pre_attn_scalar"):
             self.scale = configuration.query_pre_attn_scalar**-0.5
         else:
             self.scale = self.head_dim**-0.5

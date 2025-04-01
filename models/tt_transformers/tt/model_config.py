@@ -415,6 +415,7 @@ class ModelArgs:
                 "Phi-3.5-mini-instruct": {"N150": 128, "N300": 128, "T3K": 128, "TG": 128, "P150x4": 128},
                 # CALCULATE MAX_PREFILL_CHUNK_SIZE FOR GEMMA3-27B
                 "gemma-3-27b-it": {"N150": 4, "N300": 4, "T3K": 64, "TG": 128, "P150x4": 128},
+                "gemma-2-2b-it": {"N150": 64, "N300": 128, "T3K": 128, "TG": 128, "P150x4": 128},
                 "QwQ-32B": {"N150": None, "N300": None, "T3K": 64, "TG": 128, "P150x4": 128},
             }
             try:
@@ -1855,7 +1856,8 @@ class ModelArgs:
         else:
             model = self.reference_transformer(wrap=False)
             layer = model.model.layers[0]
-            wrapper = HfDecoderWrapper(layer, self.head_dim)
+            rotary_emb = model.model.rotary_emb
+            wrapper = HfDecoderWrapper(layer, self.head_dim, rotary_emb)
             return wrapper
 
     def reference_attention(self):
@@ -2004,26 +2006,29 @@ class HfAttentionWrapper:
 
 
 class HfDecoderWrapper:
-    def __init__(self, decoder, head_dim):
+    def __init__(self, decoder, head_dim, rotary_emb):
         from transformers import DynamicCache
 
         self.decoder = decoder
         self.head_dim = head_dim
+        self.rotary_emb = rotary_emb
         self.past_key_values = DynamicCache()
 
     def forward(self, x, start_pos, freqs_cis_i, mask=None):
         position_ids = torch.tensor([list(range(start_pos, start_pos + x.shape[1]))] * x.shape[0])
+        position_embeddings = self.rotary_emb(x, position_ids)
         if mask is not None:
             while len(mask.shape) < 4:
                 mask = mask.unsqueeze(0)
-        output, self.past_key_values = self.decoder.forward(
+        output = self.decoder.forward(
             x,
+            position_embeddings=position_embeddings,
             past_key_value=self.past_key_values,
             use_cache=True,
             position_ids=position_ids,
             attention_mask=mask,
         )
-        return output
+        return output[0]
 
     def __call__(self, *args, **kwargs):
         return self.forward(*args, **kwargs)

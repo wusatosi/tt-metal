@@ -19,6 +19,8 @@ from models.utility_functions import (
 )
 from models.utility_functions import skip_for_grayskull
 
+from models.experimental.gemma3.ttnn_impl.gemma3_config import Gemma3TextTtModelArgs
+
 
 @torch.no_grad()
 @skip_for_grayskull("Requires wormhole_b0 to run")
@@ -67,6 +69,7 @@ def test_decoder_inference(
     dtype = ttnn.bfloat8_b
     mesh_device.enable_async(True)
 
+    # model_args = Gemma3TextTtModelArgs("gemma-3-27b-it", mesh_device, max_batch_size=batch_size, max_seq_len=max_seq_len)
     model_args = ModelArgs(mesh_device, max_batch_size=batch_size, max_seq_len=max_seq_len)
     model_args.n_layers = 1
 
