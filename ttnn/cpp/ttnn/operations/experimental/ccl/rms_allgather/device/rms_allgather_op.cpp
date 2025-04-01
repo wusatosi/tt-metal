@@ -271,33 +271,16 @@ std::vector<TensorSpec> RMSAllGather::compute_output_specs(const std::vector<Ten
     auto output_shape = input_tensor.get_logical_shape();
     auto output_padded_shape = input_tensor.get_padded_shape();
 
-    // WARNING!!!!! This line is ONLY true when only doing pre-allgather only
-    if (this->is_pre) {
-        output_shape[3] = input_tensor.get_tensor_spec().tile().get_tile_shape()[1] * this->ring_size;
-    }
-
     return std::visit(
         [&](const auto& program_config) -> std::vector<TensorSpec> {
             using ProgramConfigType = std::decay_t<decltype(program_config)>;
             if constexpr (std::is_same_v<
                               ProgramConfigType,
                               ttnn::operations::normalization::LayerNormShardedMultiCoreProgramConfig>) {
-                if (this->is_pre) {
-                    auto shard_spec = input_tensor.shard_spec().value();
-                    shard_spec.shape[1] = output_shape[3];
-                    CoreCoord grid_start_core = shard_spec.grid.bounding_box().start_coord;
-                    CoreRangeSet output_grid({CoreRange(grid_start_core, grid_start_core)});
-                    shard_spec.grid = output_grid;
-                    auto mem_config = this->output_mem_config;
-                    mem_config.shard_spec = shard_spec;
-                    return {TensorSpec(
-                        output_shape, TensorLayout(DataType::BFLOAT16, PageConfig(Layout::TILE), mem_config))};
-                } else {
-                    auto output_shard_spec = this->output_mem_config.shard_spec.value();
-                    auto input_shard_spec = input_tensor.shard_spec().value();
-                    if (output_shard_spec != input_shard_spec) {
-                        output_padded_shape[3] = output_shard_spec.shape[1] * output_shard_spec.num_cores();
-                    }
+                auto output_shard_spec = this->output_mem_config.shard_spec.value();
+                auto input_shard_spec = input_tensor.shard_spec().value();
+                if (output_shard_spec != input_shard_spec) {
+                    output_padded_shape[3] = output_shard_spec.shape[1] * output_shard_spec.num_cores();
                 }
                 if (program_config.inplace) {
                     return {input_tensor.get_tensor_spec()};
@@ -363,6 +346,8 @@ tt::tt_metal::operation::ProgramWithCallbacks RMSAllGather::create_program(
                     return frmsnorm_pre_multi_core_sharded(
                         a,
                         b,
+                        gamma,
+                        stats,
                         output_tensor,
                         this->eps,
                         program_config.compute_with_storage_grid_size,
@@ -401,6 +386,8 @@ tt::tt_metal::operation::ProgramWithCallbacks RMSAllGather::create_program(
                 return frmsnorm_pre_multi_core_sharded(
                     a,
                     b,
+                    gamma,
+                    stats,
                     output_tensor,
                     this->eps,
                     grid_size,

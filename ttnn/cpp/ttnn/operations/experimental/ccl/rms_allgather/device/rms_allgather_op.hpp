@@ -19,6 +19,8 @@ namespace ttnn::operations::fused::normalization {
 tt::tt_metal::operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
     const Tensor& a,
     const std::optional<const Tensor>& b,  // residual
+    const std::optional<const Tensor>& gamma,
+    const std::optional<const Tensor>& stats,
     Tensor& output,
     float eps,
     CoreCoord compute_grid_size,
