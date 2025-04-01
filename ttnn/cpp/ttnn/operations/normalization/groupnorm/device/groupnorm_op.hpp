@@ -8,6 +8,7 @@
 
 #include "ttnn/tensor/tensor.hpp"
 #include "ttnn/run_operation.hpp"
+#include "groupnorm_types.hpp"
 
 using namespace tt::constants;
 
@@ -26,6 +27,7 @@ Ref: https://pytorch.org/docs/stable/generated/torch.nn.GroupNorm.html
 >>> output = m(input)
 */
 
+<<<<<<< HEAD
 struct GroupNormShardedMultiCoreProgramConfig {
     CoreCoord compute_with_storage_grid_size;
     MathFidelity math_fidelity;
@@ -36,6 +38,23 @@ struct GroupNormShardedMultiCoreProgramConfig {
 };
 
 tt::tt_metal::operation::ProgramWithCallbacks groupnorm_multi_core_sharded(
+=======
+operation::ProgramWithCallbacks groupnorm_multi_core(
+    const Tensor& a,
+    const std::optional<const Tensor>& gamma,
+    const std::optional<const Tensor>& beta,
+    const std::optional<const Tensor>& input_mask,
+    Tensor& output,
+    float eps,
+    const uint32_t num_groups,
+    const uint32_t num_batches,
+    MathFidelity fidelity,
+    DataType im_data_format,
+    CoreCoord grid_size,
+    bool inplace,
+    uint32_t num_out_blocks);
+operation::ProgramWithCallbacks groupnorm_multi_core_sharded(
+>>>>>>> Trying to get the pybind to work
     const Tensor& a,
     const std::optional<const Tensor>& gamma,
     const std::optional<const Tensor>& beta,
@@ -48,12 +67,16 @@ tt::tt_metal::operation::ProgramWithCallbacks groupnorm_multi_core_sharded(
     tt::tt_metal::DataType im_data_format,
     CoreCoord grid_size,
     bool inplace);
-
 struct GroupNorm {
     float eps;
     uint32_t num_groups;
+<<<<<<< HEAD
     tt::tt_metal::MemoryConfig output_mem_config;
     GroupNormShardedMultiCoreProgramConfig program_config;
+=======
+    MemoryConfig output_mem_config;
+    GroupNormProgramConfig program_config;
+>>>>>>> Trying to get the pybind to work
 
     void validate(
         const std::vector<Tensor>& input_tensors,
