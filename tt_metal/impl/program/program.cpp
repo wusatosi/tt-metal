@@ -342,9 +342,10 @@ KernelHandle detail::Program_::add_kernel(const std::shared_ptr<Kernel>& kernel,
     // Id is unique across all kernels on all core types
     KernelHandle id = this->num_kernels();
     uint32_t index = hal_ref.get_programmable_core_type_index(programmable_core_type);
+    fmt::println(stderr, "Program {} index {} has core type count {}", fmt::ptr(this), index, core_to_kernel_group_index_table_[index].size());
+    TT_FATAL(core_to_kernel_group_index_table_[index].size() == 0, "Program has core types");
+    TT_FATAL(kernel_groups_[index].size() == 0, "Program has kernel groups");
     kernels_[index].insert({id, kernel});
-    kernel_groups_[index].resize(0);
-    core_to_kernel_group_index_table_[index].clear();
     return id;
 }
 
@@ -501,6 +502,7 @@ struct KernelGroupIntHasher {
 
 void detail::Program_::update_kernel_groups(uint32_t programmable_core_type_index) {
     if (core_to_kernel_group_index_table_[programmable_core_type_index].size() == 0) {
+        fmt::println(stderr, "Updating kernel group index for program {} core type index {}", fmt::ptr(this), programmable_core_type_index);
         bool erisc_is_idle = false;
 
         // Get the extent of the kernels in x, y

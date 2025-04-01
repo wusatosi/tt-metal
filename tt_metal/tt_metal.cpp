@@ -88,6 +88,8 @@ DataMovementConfigStatus CheckDataMovementConfig(
         data_movement_config_status.noc1_in_use = local_noc1_usage;
     };
 
+    #if 0
+
     // TODO (abhullar): Clean this up when brisc/ncrisc are moved to be one processor class with two data movement
     // processor types
     uint32_t dm0_idx =
@@ -124,6 +126,7 @@ DataMovementConfigStatus CheckDataMovementConfig(
             }
         }
     }
+    #endif
 
     return data_movement_config_status;
 }
