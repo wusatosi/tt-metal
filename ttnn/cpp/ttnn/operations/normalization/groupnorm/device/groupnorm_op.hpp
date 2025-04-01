@@ -27,18 +27,6 @@ Ref: https://pytorch.org/docs/stable/generated/torch.nn.GroupNorm.html
 >>> output = m(input)
 */
 
-<<<<<<< HEAD
-struct GroupNormShardedMultiCoreProgramConfig {
-    CoreCoord compute_with_storage_grid_size;
-    MathFidelity math_fidelity;
-    tt::tt_metal::DataType im_data_format;
-    tt::tt_metal::DataType out_data_format;
-    bool inplace;
-    tt::tt_metal::Layout output_layout;
-};
-
-tt::tt_metal::operation::ProgramWithCallbacks groupnorm_multi_core_sharded(
-=======
 operation::ProgramWithCallbacks groupnorm_multi_core(
     const Tensor& a,
     const std::optional<const Tensor>& gamma,
@@ -54,7 +42,6 @@ operation::ProgramWithCallbacks groupnorm_multi_core(
     bool inplace,
     uint32_t num_out_blocks);
 operation::ProgramWithCallbacks groupnorm_multi_core_sharded(
->>>>>>> Trying to get the pybind to work
     const Tensor& a,
     const std::optional<const Tensor>& gamma,
     const std::optional<const Tensor>& beta,
@@ -70,13 +57,8 @@ operation::ProgramWithCallbacks groupnorm_multi_core_sharded(
 struct GroupNorm {
     float eps;
     uint32_t num_groups;
-<<<<<<< HEAD
-    tt::tt_metal::MemoryConfig output_mem_config;
-    GroupNormShardedMultiCoreProgramConfig program_config;
-=======
     MemoryConfig output_mem_config;
     GroupNormProgramConfig program_config;
->>>>>>> Trying to get the pybind to work
 
     void validate(
         const std::vector<Tensor>& input_tensors,

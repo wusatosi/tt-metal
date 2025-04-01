@@ -83,36 +83,6 @@ ttnn::Tensor ExecuteGroupNorm::invoke(
     const MemoryConfig& dram_memory_config = tt::tt_metal::MemoryConfig{
         .memory_layout = tt::tt_metal::TensorMemoryLayout::INTERLEAVED, .buffer_type = tt::tt_metal::BufferType::DRAM};
     const MemoryConfig& output_mem_config = memory_config.value_or(dram_memory_config);
-<<<<<<< HEAD
-<<<<<<< HEAD
-
-    const ttnn::operations::normalization::GroupNormShardedMultiCoreProgramConfig& program_config = {
-        .compute_with_storage_grid_size = core_grid.value().to_CoreCoord(),
-        .math_fidelity = MathFidelity::HiFi4,
-        .im_data_format = DataType::BFLOAT16,
-        .out_data_format = DataType::BFLOAT16,
-        .inplace = inplace.value_or(false),
-        .output_layout = output_layout.value_or(input_tensor.get_layout())};
-
-    return tt::tt_metal::operation::run(
-=======
-    return operation::run(
->>>>>>> Trying to get the pybind to work
-               GroupNorm{
-                   .eps = epsilon,
-                   .num_groups = static_cast<uint32_t>(num_groups),
-                   .output_mem_config = output_mem_config,
-                   .program_config = program_config.value_or(GroupNormShardedMultiCoreProgramConfig{
-                       .compute_with_storage_grid_size = core_grid.value().to_CoreCoord(),
-                       .math_fidelity = MathFidelity::HiFi4,
-                       .im_data_format = DataType::BFLOAT16,
-                       .out_data_format = DataType::BFLOAT16,
-                       .inplace = inplace.value_or(false),
-                       .output_layout = output_layout.value_or(input_tensor.get_layout())})},
-               {input_tensor},
-               {gamma, beta, input_mask})
-        .at(0);
-=======
 
     if (input_tensor.is_sharded()) {
         const ttnn::operations::normalization::GroupNormShardedMultiCoreProgramConfig& program_config = {
@@ -150,7 +120,6 @@ ttnn::Tensor ExecuteGroupNorm::invoke(
                    {gamma, beta, input_mask})
             .at(0);
     }
->>>>>>> don't force user to specify program config for group norm
 }
 
 }  // namespace ttnn::operations::normalization
