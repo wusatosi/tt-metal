@@ -367,6 +367,9 @@ class Transformer(LightweightModule):
                 chunk_start_idx=chunk_start_idx,
                 kv_cache=kv_cache[i] if kv_cache is not None else None,
             )
+            print("Dumping profiler results after layer {}".format(i))
+            for device in self.mesh_device.get_devices():
+                ttnn.DumpDeviceProfiler(device)
 
         if mode == "prefill" and get_last_token == -1:
             return x
