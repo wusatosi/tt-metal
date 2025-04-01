@@ -196,6 +196,8 @@ class Generator:
     ):
         if self.model.is_decode_setup is False:
             self.model.switch_mode("decode")
+        if tokens.shape[0] == 1:
+            tokens = tokens.repeat(32, 1)
         kv_cache = kv_cache[0]
         decode_kwargs = {
             "current_pos": start_pos,
@@ -208,9 +210,9 @@ class Generator:
             tt_logits = self._easy_trace_text(**decode_kwargs)
         else:
             tt_logits = self._decode_forward_no_trace_text(**decode_kwargs)
-
+        ttnn.synchronize_device(self.model.mesh_device)
         if read_from_device:
-            return self.read_decode_output(tt_logits, tokens.shape[0], argmax_on_device)
+            return self.read_decode_output(tt_logits, 1, argmax_on_device)
         else:
             return tt_logits
 

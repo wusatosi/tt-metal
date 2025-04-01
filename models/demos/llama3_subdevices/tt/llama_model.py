@@ -218,7 +218,7 @@ class TtTransformer(LightweightModule):
         NOTE: Tokens and current_pos are padded to batch
         """
         B = tokens.shape[0]
-        # assert current_pos.shape[0] == B, "Batch size mismatch"
+        assert current_pos.shape[0] == B, "Batch size mismatch"
         assert B == self.args.max_batch_size, "Batch size must be equal to max_batch_size"
 
         # Necessary padding to be full tile sized when on device
@@ -376,7 +376,12 @@ class TtTransformer(LightweightModule):
 
         # Gather the output across all devices and untilize the tensor (for argmax)
         tt_logits = self.tt_ccl.line_all_gather(
-            tt_logits[0], dim=3, num_links=2, cluster_axis=0, memory_config=ttnn.DRAM_MEMORY_CONFIG
+            tt_logits[0],
+            dim=3,
+            num_links=2,
+            cluster_axis=0,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            buffer_key="SAMPLING",
         )
 
         tt_logits = ttnn.untilize(tt_logits, use_multicore=True, sub_core_grids=sub_core_grids)

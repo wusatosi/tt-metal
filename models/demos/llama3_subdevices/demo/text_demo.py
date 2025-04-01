@@ -171,13 +171,13 @@ def create_tt_model(
     [
         (  # Batch-1 run (Latency) - single user, small prompt
             "models/tt_transformers/demo/sample_prompts/input_data_questions_prefill_128.json",  # input_prompts
-            True,  # instruct mode
+            False,  # instruct mode
             1,  # repeat_batches
             1024,  # max_seq_len
             1,  # batch_size
             150,  # max_generated_tokens
-            False,  # paged_attention
-            {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params
+            True,  # paged_attention
+            {"page_block_size": 64, "page_max_num_blocks": 2048},  # page_params
             {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
             True,  # stop_at_eos
             False,  # ci_only
@@ -364,7 +364,7 @@ def test_demo_text(
     model_args, model, page_table, tt_kv_cache = create_tt_model(
         mesh_device,
         instruct=instruct,
-        max_batch_size=batch_size,
+        max_batch_size=32,
         optimizations=optimizations,
         max_seq_len=max_seq_len,
         page_params=page_params,
@@ -407,11 +407,11 @@ def test_demo_text(
         profiler.end(f"preprocess_prefill_inputs", iteration=batch_idx)
 
         # when doing repeating batches, set kv-caches to zero, to avoid context leaking
-        if batch_idx != 0:
-            for layer in model.layers:
-                k_cache, v_cache = layer.attention.layer_past
-                k_cache = ttnn.mul(k_cache, 0, output_tensor=k_cache)
-                v_cache = ttnn.mul(v_cache, 0, output_tensor=v_cache)
+        # if batch_idx != 0:
+        #     for layer in model.layers:
+        #         k_cache, v_cache = layer.attention.layer_past
+        #         k_cache = ttnn.mul(k_cache, 0, output_tensor=k_cache)
+        #         v_cache = ttnn.mul(v_cache, 0, output_tensor=v_cache)
         input_tokens_prefill_pt = torch.stack(input_tokens_prefill_pt).view(batch_size, -1)
 
         logger.info("Starting prefill warmup...")
@@ -439,7 +439,7 @@ def test_demo_text(
         prefilled_token = torch.argmax(logits, dim=-1)
         profiler.end(f"inference_prefill", iteration=batch_idx)
         logger.info(f"Prefill finished")
-        prefilled_token = prefilled_token.repeat(batch_size, 1)
+        prefilled_token = prefilled_token.repeat(32, 1)
         # Keep track of generated outputs to print out every iteration
         all_outputs = [encoded_prompts[b][: prefill_lens[b]] for b in range(batch_size)]
         for user in range(batch_size):
@@ -451,10 +451,10 @@ def test_demo_text(
         user_done = [False] * batch_size  # Keeps track when a user reaches EoD token
 
         # TODO Argmax on device is only supported for batch_size=1
-        argmax_on_device = True  # False if (batch_size > 1 or sampling_params["temperature"] != 0) else True
+        argmax_on_device = False  # False if (batch_size > 1 or sampling_params["temperature"] != 0) else True
 
         # Initial positions
-        current_pos = torch.tensor([decoding_pos[0] for b in range(batch_size)])
+        current_pos = torch.tensor([decoding_pos[0] for b in range(32)])
 
         # Start decoding
         iteration = 0
@@ -489,7 +489,7 @@ def test_demo_text(
             except Exception as e:
                 logger.error(f"Error during decoding: {str(e)}")
                 break
-
+            print("iteration", logits)
             # Get the next token
             if argmax_on_device:
                 out_tok = logits.unsqueeze(1)
