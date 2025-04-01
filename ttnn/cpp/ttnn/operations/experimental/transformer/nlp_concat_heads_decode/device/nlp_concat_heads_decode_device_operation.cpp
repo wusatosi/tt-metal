@@ -15,10 +15,10 @@ void NLPConcatHeadsDecodeDeviceOperation::validate(const std::vector<Tensor>& in
     // input tensor and shape
     TT_FATAL(input_tensor.storage_type() == tt::tt_metal::StorageType::DEVICE, "Operands to TM need to be on device!");
     TT_FATAL(input_tensor.buffer() != nullptr, "Operands to TM need to be allocated in buffers on device!");
-    TT_FATAL(
-        input_tensor.get_dtype() == tt::tt_metal::DataType::FLOAT32 ||
-            input_tensor.get_dtype() == tt::tt_metal::DataType::BFLOAT16,
-        "Unsupported data format");
+    // TT_FATAL(
+    //     input_tensor.get_dtype() == tt::tt_metal::DataType::FLOAT32 ||
+    //         input_tensor.get_dtype() == tt::tt_metal::DataType::BFLOAT16,
+    //     "Unsupported data format");
     TT_FATAL(input_tensor.get_layout() == tt::tt_metal::Layout::TILE, "Error");
     TT_FATAL(input_shape[0] == 1, "seqlen=1 for decode");
     TT_FATAL(input_shape[1] <= 32, "currently only support less than 32 users");

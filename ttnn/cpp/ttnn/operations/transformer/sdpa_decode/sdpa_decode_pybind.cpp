@@ -64,6 +64,7 @@ void py_bind_sdpa_decode(py::module& module) {
                const std::optional<const Tensor>& cur_pos_tensor,
                std::optional<float> scale,
                const std::optional<MemoryConfig>& memory_config,
+               const std::optional<const DataType> dtype,
                std::optional<SDPAProgramConfig> program_config,
                std::optional<DeviceComputeKernelConfig> compute_kernel_config,
                QueueId queue_id) {
@@ -78,6 +79,7 @@ void py_bind_sdpa_decode(py::module& module) {
                     cur_pos_tensor,
                     scale,
                     memory_config,
+                    dtype,
                     program_config,
                     compute_kernel_config);
             },
@@ -91,6 +93,7 @@ void py_bind_sdpa_decode(py::module& module) {
             py::arg("cur_pos_tensor").noconvert() = std::nullopt,
             py::arg("scale").noconvert() = std::nullopt,
             py::arg("memory_config").noconvert() = std::nullopt,
+            py::arg("dtype").noconvert() = std::nullopt,
             py::arg("program_config").noconvert() = std::nullopt,
             py::arg("compute_kernel_config").noconvert() = std::nullopt,
             py::arg("queue_id") = DefaultQueueId,

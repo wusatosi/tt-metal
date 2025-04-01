@@ -43,6 +43,7 @@ ttnn::Tensor ExecuteScaledDotProductAttentionDecode::invoke(
     const std::optional<const Tensor>& cur_pos_tensor,
     std::optional<float> scale,
     const std::optional<MemoryConfig>& memory_config,
+    const std::optional<const DataType> dtype,
     std::optional<SDPAProgramConfig> program_config,
     std::optional<DeviceComputeKernelConfig> compute_kernel_config) {
     auto arch = input_tensor_q.storage_type() == StorageType::DEVICE
@@ -75,6 +76,7 @@ ttnn::Tensor ExecuteScaledDotProductAttentionDecode::invoke(
                    .cur_pos = cur_pos,
                    .scale = scale,
                    .output_mem_config = memory_config.value_or(operation::DEFAULT_OUTPUT_MEMORY_CONFIG),
+                   .output_dtype = dtype.value_or(input_tensor_q.dtype()),
                    .program_config = program_config,
                    .compute_kernel_config = kernel_config_val,
                    .k_chunk_size = k_chunk_size,
@@ -96,6 +98,7 @@ ttnn::Tensor ExecuteScaledDotProductAttentionDecode::invoke(
     const std::optional<const Tensor>& cur_pos_tensor,
     std::optional<float> scale,
     const std::optional<MemoryConfig>& memory_config,
+    const std::optional<const DataType> dtype,
     std::optional<SDPAProgramConfig> program_config,
     std::optional<DeviceComputeKernelConfig> compute_kernel_config) {
     return invoke(
@@ -109,6 +112,7 @@ ttnn::Tensor ExecuteScaledDotProductAttentionDecode::invoke(
         cur_pos_tensor,
         scale,
         memory_config,
+        dtype,
         std::move(program_config),
         compute_kernel_config);
 }

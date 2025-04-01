@@ -18,6 +18,7 @@ struct ScaledDotProductAttentionDecode {
     std::vector<uint32_t> cur_pos;
     const std::optional<float> scale;
     const tt::tt_metal::MemoryConfig output_mem_config;
+    const DataType output_dtype;
     const std::optional<SDPAProgramConfig> program_config;
     const DeviceComputeKernelConfig compute_kernel_config;
     const uint32_t k_chunk_size;

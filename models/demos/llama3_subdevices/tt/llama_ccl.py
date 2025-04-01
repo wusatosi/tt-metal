@@ -99,7 +99,7 @@ class TT_CCL:
             torch.zeros((1, 32, M, 128)),
             device=self.mesh_device,
             layout=ttnn.TILE_LAYOUT,
-            dtype=ttnn.bfloat16,
+            dtype=ttnn.bfloat8_b,
             memory_config=self.model_config["GATHER_USERS_MEMCFG"](list(self.mesh_device.shape)[1]),
             mesh_mapper=ttnn.ReplicateTensorToMesh(self.mesh_device),
         )

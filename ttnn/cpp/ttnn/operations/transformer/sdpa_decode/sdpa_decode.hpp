@@ -23,6 +23,7 @@ struct ExecuteScaledDotProductAttentionDecode {
         const std::optional<const Tensor>& cur_pos_tensor = std::nullopt,
         std::optional<float> scale = std::nullopt,
         const std::optional<MemoryConfig>& memory_config = std::nullopt,
+        const std::optional<const DataType> dtype = std::nullopt,
         std::optional<SDPAProgramConfig> program_config = std::nullopt,
         std::optional<DeviceComputeKernelConfig> compute_kernel_config = std::nullopt);
 
@@ -36,6 +37,7 @@ struct ExecuteScaledDotProductAttentionDecode {
         const std::optional<const Tensor>& cur_pos_tensor = std::nullopt,
         std::optional<float> scale = std::nullopt,
         const std::optional<MemoryConfig>& memory_config = std::nullopt,
+        const std::optional<const DataType> dtype = std::nullopt,
         std::optional<SDPAProgramConfig> program_config = std::nullopt,
         std::optional<DeviceComputeKernelConfig> compute_kernel_config = std::nullopt);
 };

@@ -367,6 +367,7 @@ class TtLlamaAttention(LightweightModule):
                 program_config=self.model_config["SDPA_DECODE_PROGCFG"],
                 compute_kernel_config=self.model_config["SDPA_DECODE_COMPUTE_PROGCFG"],
                 memory_config=sdpa_out_mem_cfg,  # FIXME: why not L1 height sharded e.g. SCORES_BATCHED_MM_OUTPUT_MEMCFG?
+                dtype=ttnn.bfloat8_b,
             )
 
         ttnn.deallocate(q_heads_1BQD)

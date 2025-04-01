@@ -205,8 +205,8 @@ void ScaledDotProductAttentionDecode::validate(
 std::vector<TensorSpec> ScaledDotProductAttentionDecode::compute_output_specs(
     const std::vector<Tensor>& input_tensors) const {
     auto& input = input_tensors.at(0);
-    return {TensorSpec(
-        input.get_logical_shape(), TensorLayout(input.get_dtype(), PageConfig(Layout::TILE), output_mem_config))};
+    return {
+        TensorSpec(input.get_logical_shape(), TensorLayout(output_dtype, PageConfig(Layout::TILE), output_mem_config))};
 }
 
 operation::ProgramWithCallbacks ScaledDotProductAttentionDecode::create_program(
@@ -253,6 +253,7 @@ operation::Hash ScaledDotProductAttentionDecode::compute_program_hash(
     return operation::hash_operation<ScaledDotProductAttentionDecode>(
         this->scale,
         this->output_mem_config,
+        this->output_dtype,
         this->program_config,
         this->compute_kernel_config,
         this->k_chunk_size,
