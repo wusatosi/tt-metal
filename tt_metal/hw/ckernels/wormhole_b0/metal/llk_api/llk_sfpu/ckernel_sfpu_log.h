@@ -19,6 +19,7 @@ sfpi_inline void calculate_log_body(const uint log_base_scale_factor) {
     // Load From dest + "normalize to calculation range"
     ////////////////////////////
     vFloat in = dst_reg[0];
+    in = in + 1.0f;
     vFloat x = setexp(in, 127);  // set exp to exp bias (put in range of 1-2)
 
     // XXXXXX ask Namal? if we can derive the coefficients below to higher precision

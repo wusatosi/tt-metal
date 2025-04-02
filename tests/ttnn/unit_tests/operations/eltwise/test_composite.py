@@ -377,20 +377,99 @@ def test_unary_composite_log1p_ttnn(input_shapes, device):
     assert comp_pass
 
 
+def return_mem_config(mem_config_string):
+    if mem_config_string == "l1_interleaved":
+        return ttnn.L1_MEMORY_CONFIG
+    elif mem_config_string == "dram_interleaved":
+        return ttnn.DRAM_MEMORY_CONFIG
+    elif mem_config_string == "l1_height_sharded_rm":
+        return ttnn.create_sharded_memory_config(
+            shape=(1024 // 8, 1024),
+            core_grid=ttnn.CoreGrid(y=2, x=4),
+            strategy=ttnn.ShardStrategy.HEIGHT,
+            orientation=ttnn.ShardOrientation.ROW_MAJOR,
+            use_height_and_width_as_shard_shape=True,
+        )
+    elif mem_config_string == "l1_width_sharded_rm":
+        return ttnn.create_sharded_memory_config(
+            shape=(1024, 1024 // 8),
+            core_grid=ttnn.CoreGrid(y=2, x=4),
+            strategy=ttnn.ShardStrategy.WIDTH,
+            orientation=ttnn.ShardOrientation.ROW_MAJOR,
+            use_height_and_width_as_shard_shape=True,
+        )
+    elif mem_config_string == "l1_block_sharded_rm":
+        return ttnn.create_sharded_memory_config(
+            shape=(1024 // 2, 1024 // 4),
+            core_grid=ttnn.CoreGrid(y=2, x=4),
+            strategy=ttnn.ShardStrategy.BLOCK,
+            orientation=ttnn.ShardOrientation.ROW_MAJOR,
+            use_height_and_width_as_shard_shape=True,
+        )
+    elif mem_config_string == "l1_height_sharded_cm":
+        return ttnn.create_sharded_memory_config(
+            shape=(1024, 1024 // 8),
+            core_grid=ttnn.CoreGrid(y=2, x=4),
+            strategy=ttnn.ShardStrategy.HEIGHT,
+            orientation=ttnn.ShardOrientation.COL_MAJOR,
+            use_height_and_width_as_shard_shape=True,
+        )
+    elif mem_config_string == "l1_width_sharded_cm":
+        return ttnn.create_sharded_memory_config(
+            shape=(1024 // 8, 1024),
+            core_grid=ttnn.CoreGrid(y=2, x=4),
+            strategy=ttnn.ShardStrategy.WIDTH,
+            orientation=ttnn.ShardOrientation.COL_MAJOR,
+            use_height_and_width_as_shard_shape=True,
+        )
+    elif mem_config_string == "l1_block_sharded_cm":
+        return ttnn.create_sharded_memory_config(
+            shape=(1024 // 2, 1024 // 4),
+            core_grid=ttnn.CoreGrid(y=2, x=4),
+            strategy=ttnn.ShardStrategy.BLOCK,
+            orientation=ttnn.ShardOrientation.COL_MAJOR,
+            use_height_and_width_as_shard_shape=True,
+        )
+    raise ("Input mem_config_string is not valid!")
+
+
 @skip_for_grayskull()
 @pytest.mark.parametrize(
     "input_shapes",
     (
-        (torch.Size([1, 1, 32, 32])),
-        (torch.Size([1, 1, 320, 384])),
-        (torch.Size([1, 3, 320, 384])),
+        (torch.Size([1, 1, 102400, 32])),
+        # (torch.Size([1, 1, 32, 32])),
+        # (torch.Size([1, 1, 320, 384])),
+        # (torch.Size([1, 3, 320, 384])),
     ),
 )
 def test_unary_composite_mish_ttnn(input_shapes, device):
     in_data1 = torch.Tensor(size=input_shapes).uniform_(-20, 100).to(torch.bfloat16)
-    input_tensor1 = ttnn.from_torch(in_data1, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)
-    output_tensor = ttnn.mish(input_tensor1)
-    golden_function = ttnn.get_golden_function(ttnn.mish)
+    # in_data1 = torch.tensor([1, 1, 2, 2, 3, 4, 12, 0, 1, 0, 1],  dtype=torch.bfloat16)
+    shard_grid = ttnn.CoreRangeSet(
+        {
+            ttnn.CoreRange(
+                ttnn.CoreCoord(0, 0),
+                ttnn.CoreCoord(7, 7),
+            ),
+        }
+    )
+    n_cores = 64
+    N, H, W, C = in_data1.shape
+    shard_spec = ttnn.ShardSpec(shard_grid, [N * H * W // n_cores, C], ttnn.ShardOrientation.ROW_MAJOR)
+    input_mem_config = ttnn.MemoryConfig(
+        ttnn.types.TensorMemoryLayout.HEIGHT_SHARDED, ttnn.types.BufferType.L1, shard_spec
+    )
+    input_tensor1 = ttnn.from_torch(
+        in_data1,
+        dtype=ttnn.bfloat16,
+        layout=ttnn.TILE_LAYOUT,
+        device=device,
+        memory_config=input_mem_config,
+    )
+    # input_tensor1 = ttnn.from_torch(in_data1, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)
+    output_tensor = ttnn.sigmoid(input_tensor1)
+    golden_function = ttnn.get_golden_function(ttnn.sigmoid)
     golden_tensor = golden_function(in_data1)
 
     comp_pass = compare_pcc([output_tensor], [golden_tensor])
