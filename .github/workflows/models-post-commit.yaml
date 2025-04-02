@@ -36,8 +36,6 @@ jobs:
       LOGURU_LEVEL: INFO
     runs-on:
       - ${{ inputs.runner-label }}
-      - in-service
-      - cloud-virtual-machine
     steps:
       - name: ⬇️ Checkout
         uses: actions/checkout@v4
@@ -85,8 +83,6 @@ jobs:
       LOGURU_LEVEL: INFO
     runs-on:
       - ${{ inputs.runner-label }}
-      - in-service
-      - cloud-virtual-machine
     steps:
       - name: ⬇️ Checkout
         uses: actions/checkout@v4
