@@ -88,10 +88,10 @@ matmul_shapes_bfloat16 = [
     (2048, 2048, 2048, True, True, 1, 1, 1),
     (2048, 2048, 3072, True, True, 1, 1, 1),
     (2048, 3072, 3072, True, True, 2, 1, 1),
-    # (3072, 3072, 3072, True, True, 4, 1, 1),
-    # (3072, 3072, 4096, False, False, 2, 1, 1),
-    # (3072, 4096, 4096, False, False, 2, 1, 1),
-    # (4096, 4096, 4096, False, False, 1, 2, 2),
+    (3072, 3072, 3072, True, True, 4, 1, 1),
+    (3072, 3072, 4096, False, False, 2, 1, 1),
+    (3072, 4096, 4096, False, False, 2, 1, 1),
+    (4096, 4096, 4096, False, False, 1, 2, 2),
     # (8192, 8192, 8192, False, False, 2, 4, 4),
     # (16384, 16384, 16384, False, False, 4, 8, 8),
 ]
@@ -213,10 +213,10 @@ def test_matmul_2d_host_perf(
                 k = (k // 8) * grid_size[0]
 
                 in0_block_w = k // grid_size[0] // 32 // in0_block_w_div
-                per_core_M = m // grid_size[1] // tile_h // num_out_blocks_h
-                per_core_N = n // grid_size[0] // tile_w // num_out_blocks_w
-                out_block_h = per_core_M
-                out_block_w = per_core_N
+                per_core_M = m // grid_size[1] // tile_h
+                per_core_N = n // grid_size[0] // tile_w
+                out_block_h = per_core_M // num_out_blocks_h
+                out_block_w = per_core_N // num_out_blocks_w
                 out_subblock_h, out_subblock_w = get_subblock_sizes(out_block_h, out_block_w, out_sharded)
 
                 logger.info(f"M*K*N = {m}*{k}*{n} out_subblock_h: {out_subblock_h}, out_subblock_w: {out_subblock_w}")
