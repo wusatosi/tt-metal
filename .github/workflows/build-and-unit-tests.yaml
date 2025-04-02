@@ -65,8 +65,6 @@ jobs:
     name: ${{ inputs.arch }} ${{ inputs.runner-label }} ${{ matrix.test-group.name }}
     runs-on:
       - ${{ inputs.runner-label }}
-      - cloud-virtual-machine
-      - in-service
     env:
       ARCH_NAME: ${{ inputs.arch }}
       LOGURU_LEVEL: INFO

@@ -49,8 +49,6 @@ jobs:
       LOGURU_LEVEL: INFO
     runs-on:
       - ${{ inputs.runner-label }}
-      - in-service
-      - cloud-virtual-machine
     steps:
       - uses: tenstorrent/tt-metal/.github/actions/checkout-with-submodule-lfs@main
       - uses: ./.github/actions/retry-command
@@ -104,8 +102,6 @@ jobs:
       LOGURU_LEVEL: INFO
     runs-on:
       - ${{ inputs.runner-label }}
-      - in-service
-      - cloud-virtual-machine
     steps:
       - uses: tenstorrent/tt-metal/.github/actions/checkout-with-submodule-lfs@main
       - uses: ./.github/actions/retry-command
