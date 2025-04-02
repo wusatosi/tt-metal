@@ -213,10 +213,10 @@ def test_matmul_2d_host_perf(
                 k = (k // 8) * grid_size[0]
 
                 in0_block_w = k // grid_size[0] // 32 // in0_block_w_div
-                per_core_M = m // grid_size[1] // tile_h
-                per_core_N = n // grid_size[0] // tile_w
-                out_block_h = per_core_M // num_out_blocks_h
-                out_block_w = per_core_N // num_out_blocks_w
+                per_core_M = m // grid_size[1] // tile_h // num_out_blocks_h
+                per_core_N = n // grid_size[0] // tile_w // num_out_blocks_w
+                out_block_h = per_core_M
+                out_block_w = per_core_N
                 out_subblock_h, out_subblock_w = get_subblock_sizes(out_block_h, out_block_w, out_sharded)
 
                 logger.info(f"M*K*N = {m}*{k}*{n} out_subblock_h: {out_subblock_h}, out_subblock_w: {out_subblock_w}")
