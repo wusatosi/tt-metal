@@ -665,8 +665,8 @@ void Device::initialize_and_launch_firmware() {
     core_info->noc_dram_addr_base = 0;
     core_info->noc_dram_addr_end = soc_d.dram_core_size;
 
-    const std::vector<tt::umd::CoreCoord>& pcie_cores = soc_d.get_cores(CoreType::PCIE, soc_d.get_umd_coord_system());
-    const std::vector<tt::umd::CoreCoord>& dram_cores = soc_d.get_cores(CoreType::DRAM, soc_d.get_umd_coord_system());
+    const std::vector<tt::umd::CoreCoord>& pcie_cores = soc_d.get_cores(CoreType::PCIE, CoordSystem::VIRTUAL);
+    const std::vector<tt::umd::CoreCoord>& dram_cores = soc_d.get_cores(CoreType::DRAM, CoordSystem::VIRTUAL);
     const std::vector<tt::umd::CoreCoord>& eth_cores = soc_d.get_cores(CoreType::ETH, CoordSystem::PHYSICAL);
     // The SOC descriptor can list a dram core multiple times, depending on how GDDR is assigned to banks
     // Get a list of unique DRAM cores.

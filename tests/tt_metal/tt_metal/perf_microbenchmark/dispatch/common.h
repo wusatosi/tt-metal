@@ -123,7 +123,7 @@ DeviceData::DeviceData(
     this->amt_written = 0;
 
     const metal_SocDescriptor& soc_d = tt::Cluster::instance().get_soc_desc(device->id());
-    const std::vector<tt::umd::CoreCoord>& pcie_cores = soc_d.get_cores(CoreType::PCIE, soc_d.get_umd_coord_system());
+    const std::vector<tt::umd::CoreCoord>& pcie_cores = soc_d.get_cores(CoreType::PCIE, CoordSystem::VIRTUAL);
     for (const CoreCoord& core_coord : pcie_cores) {
         CoreCoord core = {core_coord.x, core_coord.y};
         // TODO: make this all work w/ phys coords
