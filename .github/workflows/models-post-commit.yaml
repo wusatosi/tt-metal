@@ -33,8 +33,6 @@ jobs:
     name: ${{ matrix.test-group.name }} ${{ inputs.arch }} ${{ inputs.runner-label }}
     runs-on:
       - ${{ inputs.runner-label }}
-      - in-service
-      - cloud-virtual-machine
     container:
       image: ${{ inputs.docker-image }}
       env:
@@ -83,8 +81,6 @@ jobs:
     name: models slow dispatch
     runs-on:
       - ${{ inputs.runner-label }}
-      - in-service
-      - cloud-virtual-machine
     container:
       image: ${{ inputs.docker-image }}
       env:
