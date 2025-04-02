@@ -46,6 +46,8 @@ RING_CRS = ttnn.CoreRangeSet(
 
 FF1_CRS = ttnn.num_cores_to_corerangeset_in_subcoregrids(ttnn.CoreCoord(1, 0), 28, SUB_DEVICE_CRS, row_wise=True)
 
+FF1_CRS_RS_OUT = ttnn.num_cores_to_corerangeset_in_subcoregrids(ttnn.CoreCoord(1, 0), 30, SUB_DEVICE_CRS, row_wise=True)
+
 NORM_CRS = ttnn.CoreRangeSet([ttnn.CoreRange(ttnn.CoreCoord(1, 0), ttnn.CoreCoord(2, 7))])
 
 LM_HEAD_CRS = ttnn.num_cores_to_corerangeset_in_subcoregrids(ttnn.CoreCoord(1, 0), 32, SUB_DEVICE_CRS, row_wise=True)
@@ -104,7 +106,7 @@ def run_all_reduce_impl(
         wrap_mesh = False
     else:
         all_reduce_topology = ttnn.Topology.Ring
-        wrap_mesh = True
+        wrap_mesh = False
 
     worker_sub_device = ttnn.SubDevice([SUB_DEVICE_CRS])
 
@@ -399,6 +401,8 @@ def test_all_reduce(
     use_program_cache,
     function_level_defaults,
 ):
+    if output_shape == [1, 1, 32, 16 * 1024] and input_dtype == ttnn.bfloat16:
+        pytest.skip("Skipping LM Head test with bfloat16 due to OOM")
     if len(mesh_device.get_devices()) != 32:
         pytest.skip("Not TG!")
 

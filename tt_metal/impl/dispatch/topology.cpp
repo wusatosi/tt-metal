@@ -3,25 +3,56 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "topology.hpp"
-#include "data_types.hpp"
-#include "dispatch_core_common.hpp"
-#include "kernel_config/fd_kernel.hpp"
+
 #include <device_pool.hpp>
-#include <memory>
-#include <tt_metal.hpp>
 #include <host_api.hpp>
+#include <tt-metalium/erisc_datamover_builder.hpp>
+#include <tt-metalium/mesh_graph.hpp>
+#include <tt_metal.hpp>
+#include <cstddef>
+#include <cstdint>
+#include <initializer_list>
+#include <map>
+#include <memory>
+#include <string>
 #include <unordered_map>
-#include "kernel_config/fd_kernel.hpp"
+#include <unordered_set>
+#include <utility>
+#include <variant>
+
+#include "assert.hpp"
+#include "command_queue_common.hpp"
+#include "control_plane.hpp"
+#include "core_coord.hpp"
+#include "data_types.hpp"
+#include "device.hpp"
+#include "dispatch/dispatch_core_manager.hpp"
+#include "dispatch_core_common.hpp"
+#include "dispatch_mem_map.hpp"
+#include "fabric_edm_packet_header.hpp"
+#include "fabric_host_interface.h"
+#include "fabric_types.hpp"
+#include "hal.hpp"
+#include "hal_types.hpp"
 #include "kernel_config/demux.hpp"
 #include "kernel_config/eth_router.hpp"
 #include "kernel_config/eth_tunneler.hpp"
-#include "fabric_host_interface.h"
-
+#include "kernel_config/fd_kernel.hpp"
+#include "kernel_types.hpp"
+#include "metal_soc_descriptor.h"
 #include "program_impl.hpp"
 #include "rtoptions.hpp"
+#include "span.hpp"
 #include "tt_cluster.hpp"
-#include <tt-metalium/erisc_datamover_builder.hpp>
-#include <tt-metalium/mesh_graph.hpp>
+#include <umd/device/tt_core_coordinates.h>
+#include <umd/device/tt_xy_pair.h>
+#include "utils.hpp"
+
+// hack for test_basic_fabric_apis.cpp
+// https://github.com/tenstorrent/tt-metal/issues/20000
+// TODO: delete this once tt_fabric_api.h fully support low latency feature
+extern "C" bool isFabricUnitTest() __attribute__((weak));
+bool isFabricUnitTest() { return false; }
 
 namespace tt::tt_metal {
 
@@ -878,6 +909,7 @@ void configure_dispatch_cores(IDevice* device) {
 std::unique_ptr<Program> create_and_compile_2d_fabric_program(IDevice* device, FabricConfig fabric_config) {
     std::unique_ptr<Program> fabric_program_ptr;
     std::uint32_t router_mask = 0;
+    auto control_plane = tt::Cluster::instance().get_control_plane();
 
     auto router_chans = tt::Cluster::instance().get_fabric_ethernet_channels(device->id());
     if (router_chans.empty()) {
@@ -903,11 +935,18 @@ std::unique_ptr<Program> create_and_compile_2d_fabric_program(IDevice* device, F
         0,                                                         // 2: test_results_size
         0,  // 3: timeout_mcycles * 1000 * 1000 * 4, // 3: timeout_cycles
         0,  // 4: is_master_router
+        0,  // 5: router direction
     };
 
     std::map<string, string> router_defines = {};
     if (fabric_config == FabricConfig::FABRIC_2D) {
         router_defines["FVC_MODE_PULL"] = "";
+    } else {
+        // TODO: delete or selectively set
+        //       https://github.com/tenstorrent/tt-metal/issues/20000
+        if (isFabricUnitTest()) {
+            router_defines["DISABLE_LOW_LATENCY_ROUTING"] = "";
+        }
     }
 
     // TODO: Manual clear of semaphore, move this to proper Metal sempahore apis
@@ -922,6 +961,9 @@ std::unique_ptr<Program> create_and_compile_2d_fabric_program(IDevice* device, F
         } else {
             router_compile_args[4] = 0;
         }
+        auto [mesh_id, chip_id] = control_plane->get_mesh_chip_id_from_physical_chip_id(device->id());
+        uint32_t direction = control_plane->get_eth_chan_direction(mesh_id, chip_id, router_chan);
+        router_compile_args[5] = direction;
         auto kernel = tt_metal::CreateKernel(
             *fabric_program_ptr,
             "tt_metal/fabric/impl/kernels/tt_fabric_router.cpp",
@@ -995,7 +1037,7 @@ std::unique_ptr<Program> create_and_compile_1d_fabric_program(IDevice* device, b
     static constexpr std::size_t edm_buffer_size =
         tt::tt_fabric::FabricEriscDatamoverBuilder::default_packet_payload_size_bytes +
         sizeof(tt::tt_fabric::PacketHeader);
-    const auto edm_config = tt::tt_fabric::FabricEriscDatamoverConfig(edm_buffer_size, 1, 2);
+    const auto edm_config = tt::tt_fabric::FabricEriscDatamoverConfig(edm_buffer_size);
 
     for (const auto& [direction, remote_chip_id] : chip_neighbors) {
         for (const auto& eth_chan : active_fabric_eth_channels[direction]) {

@@ -2,33 +2,43 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#include <device_pool.hpp>
 #include <device_impl.hpp>
-
+#include <device_pool.hpp>
 #include <numa.h>
-
+#include <pthread.h>
+#include <sched.h>
+#include <tracy/Tracy.hpp>
+#include <tt_metal.hpp>
+#include <unistd.h>  // Warning Linux Only, needed for _SC_NPROCESSORS_ONLN
 #include <algorithm>
 #include <cstdlib>
 #include <set>
 #include <utility>
 
-#include "env_lib.hpp"
-
+#include "control_plane.hpp"
+#include "core_coord.hpp"
 #include "dispatch_settings.hpp"
 #include "dprint_server.hpp"
-#include "host_api.hpp"
+#include "env_lib.hpp"
 #include "erisc_datamover_builder.hpp"
-#include <tt_metal.hpp>
+#include "fabric_edm_packet_header.hpp"
+#include "fabric_host_interface.h"
+#include "fabric_types.hpp"
+#include "hal.hpp"
+#include "hal_types.hpp"
+#include "host_api.hpp"
+#include "logger.hpp"
+#include "profiler_types.hpp"
+#include "rtoptions.hpp"
+#include "span.hpp"
+#include "tt_cluster.hpp"
 #include "tt_metal/impl/debug/noc_logging.hpp"
 #include "tt_metal/impl/debug/watcher_server.hpp"
-#include "tt_metal/impl/dispatch/topology.hpp"
 #include "tt_metal/impl/dispatch/dispatch_core_manager.hpp"
 #include "tt_metal/impl/dispatch/dispatch_query_manager.hpp"
+#include "tt_metal/impl/dispatch/topology.hpp"
 #include "tt_metal/jit_build/build_env_manager.hpp"
-
-#include "tt_cluster.hpp"
-
-#include <unistd.h>  // Warning Linux Only, needed for _SC_NPROCESSORS_ONLN
+#include <umd/device/tt_core_coordinates.h>
 
 using namespace tt::tt_metal;
 
@@ -448,7 +458,7 @@ void DevicePool::wait_for_fabric_router_sync() const {
         static constexpr std::size_t edm_buffer_size =
             tt::tt_fabric::FabricEriscDatamoverBuilder::default_packet_payload_size_bytes +
             sizeof(tt::tt_fabric::PacketHeader);
-        const auto edm_config = tt::tt_fabric::FabricEriscDatamoverConfig(edm_buffer_size, 1, 2);
+        const auto edm_config = tt::tt_fabric::FabricEriscDatamoverConfig(edm_buffer_size);
         std::vector<uint32_t> signal(1, tt::tt_fabric::EDMStatus::READY_FOR_TRAFFIC);
 
         auto wait_for_handshake = [&](IDevice* dev) {
@@ -712,7 +722,7 @@ void DevicePool::close_devices(const std::vector<IDevice*>& devices) {
         static constexpr std::size_t edm_buffer_size =
             tt::tt_fabric::FabricEriscDatamoverBuilder::default_packet_payload_size_bytes +
             sizeof(tt::tt_fabric::PacketHeader);
-        const auto edm_config = tt::tt_fabric::FabricEriscDatamoverConfig(edm_buffer_size, 1, 2);
+        const auto edm_config = tt::tt_fabric::FabricEriscDatamoverConfig(edm_buffer_size);
 
         auto fabric_router_sync_sem_addr = edm_config.termination_signal_address;
         for (const auto& dev : this->get_all_active_devices()) {
