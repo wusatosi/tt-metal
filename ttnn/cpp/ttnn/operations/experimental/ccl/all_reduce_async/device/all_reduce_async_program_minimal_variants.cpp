@@ -117,7 +117,9 @@ tt::tt_metal::operation::ProgramWithCallbacks all_reduce_async_minimal_multi_cor
     for (const auto& cr : sub_device_cores.ranges()) {
         const auto intersection = output_tensor_cores.intersection(cr);
         if (intersection.size() > 0) {
-            output_cores.push_back(intersection.bounding_box());
+            for (const auto& range : intersection.ranges()) {
+                output_cores.push_back(range);
+            }
         }
     }
     // output_cores_all is the bounding box of the output_tensor_cores but respecting boundaries of subdevice grids
