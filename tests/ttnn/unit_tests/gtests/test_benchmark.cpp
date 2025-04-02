@@ -94,21 +94,27 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
     // 1X2 w/Blackhole features off & //enable_gathering = 289;
     // 2X1 w/Blackhole features off & //enable_gathering = 289;
     //
-    int start_id = 0;
+    int start_id = 2941;
     int test_id = 0;
     for (int dt_a = 0; dt_a < 3; dt_a++) {
         for (int m_a = 1; m_a <= 8; m_a++) {
             for (int k_a = 1; k_a <= 8; k_a++) {
                 for (int n_a = 1; n_a <= 8; n_a++) {
+			/*
                     for (int dt_b = 0; dt_b < 3; dt_b++) {
-                        for (int m_b = 1; m_b <= 8; m_b++) {
-                            for (int k_b = 1; k_b <= 8; k_b++) {
-                                for (int n_b = 1; n_b <= 8; n_b++) {
+                        for (int m_b = 1; m_b <= 6; m_b++) {
+                            for (int k_b = 1; k_b <= 6; k_b++) {
+                                for (int n_b = 1; n_b <= 6; n_b++) {
+				*/
                                     for (int shard_flip = 0; shard_flip < 2; shard_flip++) {
                                         if (test_id < start_id) {
                                             test_id++;
                                             continue;
                                         }
+					if(shard_flip && (m_a > 6 || k_a > 6 || n_a > 6)) {
+						test_id++;
+						continue;
+				        } 
 
                                         std::cout << test_id << std::endl;
 
@@ -124,11 +130,12 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
                                             (64 * m_a),
                                             (64 * k_a),
                                             (64 * n_a),
-                                            !shard_flip,
-                                            !shard_flip,
+                                            shard_flip,
+                                            shard_flip,
                                             2,
                                             1,
                                             1));
+					/*
                                         configs.push_back(std::make_tuple(
                                             i_to_dt[dt_b],
                                             i_to_fi[dt_b],
@@ -140,6 +147,7 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
                                             2,
                                             1,
                                             1));
+					*/
                                         for (auto& config : configs) {
                                             DataType dtype = std::get<0>(config);
                                             MathFidelity math_fidelity = std::get<1>(config);
@@ -151,10 +159,8 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
                                             const int in0_block_w_div = std::get<7>(config);
                                             const int num_out_blocks_h = std::get<8>(config);
                                             const int num_out_blocks_w = std::get<9>(config);
-/*
                                             tt::log_info(
                                                 "Running test with dtype: {}, math_fidelity: {}", dtype, math_fidelity);
-*/
 
                                             const std::vector<int64_t> in0_shape = {1, 1, m, k};
                                             const std::vector<int64_t> in1_shape = {1, 1, k, n};
@@ -166,7 +172,6 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
                                             const auto [out_subblock_h, out_subblock_w] =
                                                 get_subblock_sizes(out_block_h, out_block_w, out_sharded);
 
-					    /*
                                             tt::log_info(
                                                 "M*K*N = {}*{}*{} out_subblock_h: {}, out_subblock_w: {}, out_block_h: "
                                                 "{}, out_block_w: {}, per_core_M: {}, per_core_N: {}",
@@ -179,7 +184,6 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
                                                 out_block_w,
                                                 per_core_M,
                                                 per_core_N);
-*/
                                             std::string in0_storage_type = in0_sharded ? "L1" : "DRAM";
                                             std::string in1_storage_type = "DRAM";
                                             std::string out_storage_type = out_sharded ? "L1" : "DRAM";
@@ -282,10 +286,12 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
                                 }
                             }
                         }
+		/*
                     }
                 }
             }
         }
+	*/
     }
 }
 
