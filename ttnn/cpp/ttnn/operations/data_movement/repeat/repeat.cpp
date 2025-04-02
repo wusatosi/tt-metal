@@ -9,7 +9,9 @@
 #include <tt-metalium/host_api.hpp>
 
 #include "ttnn/common/queue_id.hpp"
+#include "ttnn/operations/copy.hpp"
 #include "ttnn/operations/core/core.hpp"
+#include "ttnn/operations/data_movement/fill_pad/fill_pad.hpp"
 #include "ttnn/operations/data_movement/sharded/sharded_to_interleaved/sharded_to_interleaved.hpp"
 #include "ttnn/operations/data_movement/sharded/interleaved_to_sharded/interleaved_to_sharded.hpp"
 #include "ttnn/operations/data_movement/view/view.hpp"
@@ -173,6 +175,10 @@ ttnn::Tensor RepeatOperation::invoke(
         working_output_mem_config.memory_layout = TensorMemoryLayout::INTERLEAVED;
     }
 
+    if (working_tensor.get_dtype() == DataType::BFLOAT8_B) {
+        working_tensor = ttnn::typecast(working_tensor, DataType::BFLOAT16);
+    }
+
     // tiled -> RM
     if (working_tensor.layout() == ttnn::TILE_LAYOUT) {
         working_tensor =
@@ -196,11 +202,25 @@ ttnn::Tensor RepeatOperation::invoke(
         }
     }
 
+    auto debug_vec = working_tensor.to_vector<float>();
+    assert(std::none_of(debug_vec.begin(), debug_vec.end(), [](auto& x) { return x == 0; }));
+
     // RM -> OG page layout
     if (tensor.layout() == ttnn::TILE_LAYOUT) {
         working_tensor =
-            ttnn::to_layout(working_tensor, ttnn::TILE_LAYOUT, tensor.get_dtype(), std::nullopt, (IDevice*)nullptr);
+            ttnn::to_layout(working_tensor, ttnn::TILE_LAYOUT, std::nullopt, std::nullopt, (IDevice*)nullptr);
     }
+
+    auto debug_vec2 = working_tensor.to_vector<float>();
+    assert(std::none_of(debug_vec2.begin(), debug_vec2.end(), [](auto& x) { return x == 0; }));
+
+    if (tensor.get_dtype() == DataType::BFLOAT8_B) {
+        // working_tensor = ttnn::fill_implicit_tile_padding(working_tensor,0);
+        working_tensor = ttnn::typecast(working_tensor, DataType::BFLOAT8_B);
+    }
+
+    auto debug_vec3 = working_tensor.to_vector<float>();
+    assert(std::none_of(debug_vec3.begin(), debug_vec3.end(), [](auto& x) { return x == 0; }));
 
     // Interleaved to OG mem layout
     if (output_mem_config.is_sharded()) {

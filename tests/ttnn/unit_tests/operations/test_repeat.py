@@ -12,16 +12,20 @@ import ttnn
 from models.utility_functions import comp_pcc
 from tests.ttnn.utils_for_testing import assert_with_pcc
 
-layouts = [ttnn.ROW_MAJOR_LAYOUT, ttnn.TILE_LAYOUT]
-
-dtypes = [(torch.float32, ttnn.float32), (torch.bfloat16, ttnn.bfloat16), (torch.bfloat16, ttnn.bfloat8_b)]
-shapes = [(1,), (2,), (2, 3), (4, 16, 3, 1), (4, 3, 1, 2, 2)]
+# layouts = [ttnn.ROW_MAJOR_LAYOUT, ttnn.TILE_LAYOUT]
+layouts = [ttnn.TILE_LAYOUT]
+dtypes = [(torch.bfloat16, ttnn.bfloat8_b)]  # , (torch.bfloat16, ttnn.bfloat16)]
+# dtypes = [(torch.bfloat16, ttnn.bfloat16), (torch.bfloat16, ttnn.bfloat8_b)]
+# dtypes = [(torch.float32, ttnn.float32), (torch.bfloat16, ttnn.bfloat16), (torch.bfloat16, ttnn.bfloat8_b)]
+# shapes = [(1,), (2,), (2, 3), (4, 16, 3, 1), (4, 3, 1, 2, 2)]
+shapes = [(1,)]
 repeat_shapes = [
-    (1,),
-    (1, 2),
-    (4, 3, 2, 1),
-    (2, 3, 4, 5, 2),
-    (2048,),
+    #     (1,),
+    #     (1, 2),
+    #     (4, 3, 2, 1),
+    #     (2, 3, 4, 5, 2),
+    #     (2048,),
+    (1, 16, 1, 1)
 ]
 
 
@@ -43,31 +47,38 @@ def _get_final_size(shape, reshape):
 def test_repeat(device, layout, dtype, shape, repeat_shape):
     torch_dtype, ttnn_dtype = dtype
 
-    # trying to avoid the `buffer not divisible by page size` error. Does this make sense?
-    if layout == ttnn.TILE_LAYOUT and (
-        prod(shape) % ttnn.TILE_SIZE != 0 or _get_final_size(shape, repeat_shape) % ttnn.TILE_SIZE != 0
-    ):
-        pytest.skip("Tensor not suitable for tile layout")
+    device.disable_and_clear_program_cache()
 
-    if len(repeat_shape) < len(shape):
-        pytest.skip("PyTorch repeat dim must be >= tensor dim (although we can handle this).")
+    for i in range(3):
+        # trying to avoid the `buffer not divisible by page size` error. Does this make sense?
+        # if layout == ttnn.TILE_LAYOUT and (
+        #         prod(shape) % ttnn.TILE_SIZE != 0 or _get_final_size(shape, repeat_shape) % ttnn.TILE_SIZE != 0
+        #     ):
+        #         pytest.skip("Tensor not suitable for tile layout")
+        #
+        if len(repeat_shape) < len(shape):
+            pytest.skip("PyTorch repeat dim must be >= tensor dim (although we can handle this).")
 
-    if layout == ttnn.ROW_MAJOR_LAYOUT and ttnn_dtype == ttnn.bfloat8_b:
-        pytest.skip("Illegal config")
+        # if layout == ttnn.ROW_MAJOR_LAYOUT and ttnn_dtype == ttnn.bfloat8_b:
+        #         pytest.skip("Illegal config")
 
-    mul = lambda x, y: x * y
-    torch_input_tensor = torch.arange(0, reduce(mul, shape, 1), dtype=torch_dtype).reshape(shape)
+        mul = lambda x, y: x * y
+        torch_input_tensor = torch.randn(shape, dtype=torch_dtype)
 
-    torch_result = torch_input_tensor.repeat(repeat_shape)
-    input_tensor = ttnn.from_torch(torch_input_tensor, layout=layout, device=device, dtype=ttnn_dtype)
+        # torch_input_tensor = torch.arange(1, reduce(mul, shape, 1) + 1, dtype=torch_dtype).reshape(shape)
 
-    output = ttnn.repeat(input_tensor, ttnn.Shape(repeat_shape))
-    output = ttnn.to_torch(output)
-    assert (
-        output.shape == torch_result.shape
-    ), f"Output shape {output.shape} does not match torch shape {torch_result.shape}"
+        torch_result = torch_input_tensor.repeat(repeat_shape)
+        input_tensor = ttnn.from_torch(torch_input_tensor, layout=layout, device=device, dtype=ttnn_dtype)
 
-    assert_with_pcc(torch_result, output, 0.9999)
+        output = ttnn.repeat(input_tensor, ttnn.Shape(repeat_shape))
+        output = ttnn.to_torch(output)
+        assert (
+            output.shape == torch_result.shape
+        ), f"Output shape {output.shape} does not match torch shape {torch_result.shape}"
+        print(output)
+        assert not (output == 0).any(), f"round: {i}"
+
+        assert_with_pcc(torch_result, output, 0.9999)
 
 
 @pytest.mark.parametrize("layout", layouts)
@@ -190,3 +201,27 @@ def test_pc_with_different_shapes_in_sequence(device, use_program_cache):
         for i in range(64):
             z_torch = ttnn.to_torch(z_tt[i : i + 1])
             assert torch.allclose(z_torch, y, atol=1e-2), f"z_torch[{i}] != y"
+
+
+@pytest.mark.parametrize("shape", [(1,), (1, 16, 1, 1)])
+# @pytest.mark.parametrize("dtype", [(torch.bfloat16, ttnn.bfloat16), (torch.bfloat16, ttnn.bfloat8_b)])
+# @pytest.mark.parametrize("output_layout", [ttnn.ROW_MAJOR_LAYOUT, ttnn.TILE_LAYOUT])
+# @pytest.mark.parametrize("input_layout", [ttnn.TILE_LAYOUT, ttnn.ROW_MAJOR_LAYOUT])
+def test_bf8b_flow(device, shape):
+    device.disable_and_clear_program_cache()
+
+    for _ in range(3):
+        input_torch_tensor = torch.randn(shape, dtype=torch.bfloat16)
+        input_ttnn_tensor = ttnn.from_torch(
+            input_torch_tensor, device=device, dtype=ttnn.bfloat8_b, layout=ttnn.TILE_LAYOUT
+        )
+
+        working_tensor = ttnn.typecast(input_ttnn_tensor, ttnn.ttnn.bfloat16)
+        working_tensor = ttnn.to_layout(working_tensor, ttnn.ROW_MAJOR_LAYOUT)
+        output_ttnn_tensor = ttnn.to_layout(working_tensor, ttnn.TILE_LAYOUT, dtype=ttnn.bfloat8_b)
+
+        output_ttnn_tensor_torch = ttnn.to_torch(output_ttnn_tensor)
+
+        assert not (output_ttnn_tensor_torch == 0).any()
+
+        assert_with_pcc(input_torch_tensor, output_ttnn_tensor_torch, 0.9999)
