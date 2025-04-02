@@ -63,7 +63,6 @@ jobs:
   clang-tidy:
     name: 🤖 Clang Tidy
     needs: [ build-docker-image, determine-scan-type ]
-    if: ${{ needs.determine-scan-type.outputs.do-scan == 'true' }}
     runs-on:
       - build
       - clang-tidy
