@@ -417,11 +417,9 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
     uint32_t post_fusion_semaphore_id = tt::tt_metal::CreateSemaphore(program, post_fusion_semaphore_core, 0);
 
     // reader defines
-    std::map<string, string> reader_mcast_sender_defines;
-    std::map<string, string> reader_mcast_receiver_defines;
+    std::map<string, string> reader_mcast_defines;
     if (gamma.has_value()) {
-        reader_mcast_sender_defines["FUSE_GAMMA"] = "1";
-        reader_mcast_receiver_defines["FUSE_GAMMA"] = "1";
+        reader_mcast_defines["FUSE_GAMMA"] = "1";
     }
 
     // Create circular buffers
@@ -630,7 +628,9 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
         (std::uint32_t)pre_ex_cb_partial2_index,
         (std::uint32_t)pre_ex2_cb_index,
         (std::uint32_t)pre_add_out_cb_index,
-        (std::uint32_t)pre_ex_cb_external2_index};
+        (std::uint32_t)pre_ex_cb_external2_index,
+        (std::uint32_t)post_reduce_sender_semaphore_id,
+        (std::uint32_t)ex_global_cb_index};
     std::vector<uint32_t> reader_mcast_receiver_all_to_all_compile_time_args = {
         (std::uint32_t)reduce_receiver_semaphore_id,
         (std::uint32_t)pre_reduce_sender_semaphore_id,
@@ -645,7 +645,9 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
         (std::uint32_t)single_tile_size,
         (std::uint32_t)pre_ex_cb_partial2_index,
         (std::uint32_t)pre_ex2_cb_index,
-        (std::uint32_t)pre_ex_cb_external2_index};
+        (std::uint32_t)pre_ex_cb_external2_index,
+        (std::uint32_t)post_reduce_sender_semaphore_id,
+        (std::uint32_t)ex_global_cb_index};
     std::vector<uint32_t> reader_mcast_receiver_compile_time_args = {
         (std::uint32_t)reduce_receiver_semaphore_id,
         (std::uint32_t)pre_reduce_sender_semaphore_id,
@@ -660,8 +662,17 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
         (std::uint32_t)single_tile_size,
         (std::uint32_t)pre_ex_cb_partial2_index,
         (std::uint32_t)pre_ex2_cb_index,
-        (std::uint32_t)pre_ex_cb_external2_index};
+        (std::uint32_t)pre_ex_cb_external2_index,
+        (std::uint32_t)post_reduce_sender_semaphore_id,
+        (std::uint32_t)ex_global_cb_index};
 
+    // writer defines
+    std::map<string, string> writer_defines;
+    if (skip_write_back) {
+        writer_defines["SKIP_WRITE_BACK"] = "1";
+    }
+
+    // writer compile time args
     std::vector<uint32_t> writer_compile_time_args = {
         1,  // Gets overwritten in not all to all workers
         pre_in2_cb_index,
@@ -673,33 +684,38 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
         page_size,                            // tensor0_page_size
         num_targets_forward,                  // num_targets_forward_direction
         num_targets_backward,                 // num_targets_backward_direction
-        num_links};
+        num_links,
+        (std::uint32_t)gamma.has_value(),
+        (std::uint32_t)is_dram(gamma),
+        (std::uint32_t)block_wt,
+        output_reshard_cb_index,
+        output_cb_index,
+        in3_cb_index,
+        in4_cb_index,
+        in5_cb_index};
+
+    if (gamma.has_value() and gamma.value().get_layout() == Layout::ROW_MAJOR) {
+        auto gamma_stick_size = gamma.value().get_padded_shape()[-1] * gamma.value().element_size();
+        writer_compile_time_args.push_back(gamma_stick_size);
+    } else {
+        writer_compile_time_args.push_back(0);
+    }
+
+    writer_compile_time_args.push_back(gamma_cb_data_format == tt::DataFormat::Float32);
+
+    // write back compile time args
+    writer_compile_time_args.push_back(block_wt * out_single_tile_size);  // out_tensor_stride_w_bytes
+    writer_compile_time_args.push_back(
+        block_wt_resharded * out_single_tile_size);  // out_reshard_tensor_stride_w_bytes: how many bytes to skip to get
+                                                     // to the next data chunk
+
     // compute kernel compile time args
-    std::vector<uint32_t> all_to_all_except_top_compute_compile_time_args = {
-        num_blocks_first_stage,
-        block_wt,
-        subblock_wt,
-        num_subblocks_w,
+    std::vector<uint32_t> compute_compile_time_args = {
         1,
-        block_wt,
-        fp32_dest_acc_en,
-        num_blocks_second_stage,
-        pre_in2_cb_index,
-        pre_in4_cb_index,
-        pre_ex_cb_partial2_index,
-        pre_ex2_cb_index,
-        pre_add_out_cb_index,
-        pre_ex_cb_external2_index,
-        cb_to_allgather_writer,
-        pre_x_cb_index,
-        pre_in1_cb_index,
-        pre_in0_cb_index};
-    std::vector<uint32_t> not_all_to_all_compute_compile_time_args = {
         num_blocks_first_stage,
         block_wt,
         subblock_wt,
         num_subblocks_w,
-        0,
         block_wt,
         fp32_dest_acc_en,
         num_blocks_second_stage,
@@ -712,7 +728,17 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
         cb_to_allgather_writer,
         pre_x_cb_index,
         pre_in1_cb_index,
-        pre_in0_cb_index};
+        pre_in0_cb_index,
+        output_cb_index,
+        cb_stats_index,
+        in0_cb_index,
+        in3_cb_index,
+        in4_cb_index,
+        cb_var_index,
+        x_cb_index,
+        in5_cb_index,
+        cb_stats_reduced_index,
+        ex_global_cb_index};
 
     tt::tt_metal::NOC reader_noc = tt::tt_metal::detail::GetPreferredNOCForDRAMRead(device->arch());
     tt::tt_metal::NOC writer_noc = tt::tt_metal::detail::GetPreferredNOCForDRAMWrite(device->arch());
@@ -733,7 +759,8 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
         tt::tt_metal::DataMovementConfig{
             .processor = tt::tt_metal::DataMovementProcessor::RISCV_0,
             .noc = reader_noc,
-            .compile_args = reader_mcast_sender_compile_time_args});
+            .compile_args = reader_mcast_sender_compile_time_args,
+            .defines = reader_mcast_defines});
     KernelHandle reader_mcast_receiver_kernels_id_all_to_all = -1;
     KernelHandle reader_mcast_receiver_kernels_id = -1;
     if (use_mcast) {
@@ -744,7 +771,8 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
             tt::tt_metal::DataMovementConfig{
                 .processor = tt::tt_metal::DataMovementProcessor::RISCV_0,
                 .noc = reader_noc,
-                .compile_args = reader_mcast_receiver_all_to_all_compile_time_args});
+                .compile_args = reader_mcast_receiver_all_to_all_compile_time_args,
+                .defines = reader_mcast_defines});
     }
     if (num_none_all_to_all_workers > 0) {
         reader_mcast_receiver_kernels_id = CreateKernel(
@@ -754,7 +782,8 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
             tt::tt_metal::DataMovementConfig{
                 .processor = tt::tt_metal::DataMovementProcessor::RISCV_0,
                 .noc = reader_noc,
-                .compile_args = reader_mcast_receiver_compile_time_args});
+                .compile_args = reader_mcast_receiver_compile_time_args,
+                .defines = reader_mcast_defines});
     }
 
     // writer kernel + all gather kernel
@@ -769,10 +798,11 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
         tt::tt_metal::DataMovementConfig{
             .processor = tt::tt_metal::DataMovementProcessor::RISCV_1,
             .noc = writer_noc,
-            .compile_args = writer_compile_time_args});
+            .compile_args = writer_compile_time_args,
+            .defines = writer_defines});
     KernelHandle writer_mcast_receiver_kernels_id = -1;
     if (num_none_all_to_all_workers > 0) {
-        writer_compile_time_args.at(1) = 0;
+        writer_compile_time_args.at(0) = 0;
         writer_mcast_receiver_kernels_id = CreateKernel(
             program,
             writer_kernel,
@@ -780,12 +810,12 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
             tt::tt_metal::DataMovementConfig{
                 .processor = tt::tt_metal::DataMovementProcessor::RISCV_1,
                 .noc = writer_noc,
-                .compile_args = writer_compile_time_args});
+                .compile_args = writer_compile_time_args,
+                .defines = writer_defines});
     }
 
     // compute kernel
-    std::string compute_kernel_file;
-    compute_kernel_file =
+    std::string compute_kernel_file =
         "ttnn/cpp/ttnn/operations/experimental/ccl/rms_allgather/device/kernels/compute/"
         "rms_sharded_pre.cpp";
     KernelHandle compute_kernels_id = -1;
@@ -797,8 +827,9 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
             .math_fidelity = math_fidelity,
             .fp32_dest_acc_en = fp32_dest_acc_en,
             .math_approx_mode = math_approx_mode,
-            .compile_args = all_to_all_except_top_compute_compile_time_args});
+            .compile_args = compute_compile_time_args});
     if (num_none_all_to_all_workers > 0) {
+        compute_compile_time_args.at(0) = 0;
         compute_kernels_id = CreateKernel(
             program,
             compute_kernel_file,
@@ -807,7 +838,7 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
                 .math_fidelity = math_fidelity,
                 .fp32_dest_acc_en = fp32_dest_acc_en,
                 .math_approx_mode = math_approx_mode,
-                .compile_args = not_all_to_all_compute_compile_time_args});
+                .compile_args = compute_compile_time_args});
     }
 
     // Get AG worker cores
@@ -1535,18 +1566,8 @@ operation::ProgramWithCallbacks frmsnorm_post_multi_core_sharded(
         writer_defines["SKIP_WRITE_BACK"] = "1";
     }
     // writer compile time args
-    std::vector<uint32_t> writer_mcast_sender_compile_time_args = {
-        1,  // is_all_to_all_worker
-        (std::uint32_t)gamma.has_value(),
-        (std::uint32_t)is_dram(gamma),
-        (std::uint32_t)block_wt,
-        output_reshard_cb_index,
-        output_cb_index,
-        in3_cb_index,
-        in4_cb_index,
-        in5_cb_index};
-    std::vector<uint32_t> writer_mcast_receiver_compile_time_args = {
-        0,  // is_all_to_all_worker
+    std::vector<uint32_t> writer_compile_time_args = {
+        1,  // Gets overwritten in not all to all workers
         (std::uint32_t)gamma.has_value(),
         (std::uint32_t)is_dram(gamma),
         (std::uint32_t)block_wt,
@@ -1558,24 +1579,16 @@ operation::ProgramWithCallbacks frmsnorm_post_multi_core_sharded(
 
     if (gamma.has_value() and gamma.value().get_layout() == Layout::ROW_MAJOR) {
         auto gamma_stick_size = gamma.value().get_padded_shape()[-1] * gamma.value().element_size();
-        writer_mcast_sender_compile_time_args.push_back(gamma_stick_size);
-        writer_mcast_receiver_compile_time_args.push_back(gamma_stick_size);
+        writer_compile_time_args.push_back(gamma_stick_size);
     } else {
-        writer_mcast_sender_compile_time_args.push_back(0);
-        writer_mcast_receiver_compile_time_args.push_back(0);
+        writer_compile_time_args.push_back(0);
     }
 
-    writer_mcast_sender_compile_time_args.push_back(gamma_cb_data_format == tt::DataFormat::Float32);
-    writer_mcast_receiver_compile_time_args.push_back(gamma_cb_data_format == tt::DataFormat::Float32);
+    writer_compile_time_args.push_back(gamma_cb_data_format == tt::DataFormat::Float32);
 
     // write back compile time args
-    writer_mcast_sender_compile_time_args.push_back(block_wt * out_single_tile_size);  // out_tensor_stride_w_bytes
-    writer_mcast_sender_compile_time_args.push_back(
-        block_wt_resharded * out_single_tile_size);  // out_reshard_tensor_stride_w_bytes: how many bytes to skip to get
-                                                     // to the next data chunk
-
-    writer_mcast_receiver_compile_time_args.push_back(block_wt * out_single_tile_size);  // out_tensor_stride_w_bytes
-    writer_mcast_receiver_compile_time_args.push_back(
+    writer_compile_time_args.push_back(block_wt * out_single_tile_size);  // out_tensor_stride_w_bytes
+    writer_compile_time_args.push_back(
         block_wt_resharded * out_single_tile_size);  // out_reshard_tensor_stride_w_bytes: how many bytes to skip to get
                                                      // to the next data chunk
 
@@ -1591,10 +1604,11 @@ operation::ProgramWithCallbacks frmsnorm_post_multi_core_sharded(
         tt::tt_metal::DataMovementConfig{
             .processor = tt::tt_metal::DataMovementProcessor::RISCV_1,
             .noc = writer_noc,
-            .compile_args = writer_mcast_sender_compile_time_args,
+            .compile_args = writer_compile_time_args,
             .defines = writer_defines});
     KernelHandle writer_mcast_receiver_kernels_id = -1;
     if (num_none_all_to_all_workers > 0) {
+        writer_compile_time_args.at(0) = 0;
         writer_mcast_receiver_kernels_id = CreateKernel(
             program,
             writer_kernel,
@@ -1602,16 +1616,16 @@ operation::ProgramWithCallbacks frmsnorm_post_multi_core_sharded(
             tt::tt_metal::DataMovementConfig{
                 .processor = tt::tt_metal::DataMovementProcessor::RISCV_1,
                 .noc = writer_noc,
-                .compile_args = writer_mcast_receiver_compile_time_args,
+                .compile_args = writer_compile_time_args,
                 .defines = writer_defines});
     }
     // compute kernel compile time args
     std::vector<uint32_t> all_to_all_except_top_compute_compile_time_args = {
+        1,
         num_blocks_first_stage,
         block_wt,
         subblock_wt,
         num_subblocks_w,
-        1,
         block_wt,
         fp32_dest_acc_en,
         num_blocks_second_stage,
@@ -1626,11 +1640,11 @@ operation::ProgramWithCallbacks frmsnorm_post_multi_core_sharded(
         cb_stats_reduced_index,
         ex_global_cb_index};
     std::vector<uint32_t> not_all_to_all_compute_compile_time_args = {
+        0,
         num_blocks_first_stage,
         block_wt,
         subblock_wt,
         num_subblocks_w,
-        0,
         block_wt,
         fp32_dest_acc_en,
         num_blocks_second_stage,

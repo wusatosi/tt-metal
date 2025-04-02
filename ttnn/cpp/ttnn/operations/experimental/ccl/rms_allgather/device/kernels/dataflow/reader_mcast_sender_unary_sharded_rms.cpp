@@ -22,6 +22,8 @@ void kernel_main() {
     constexpr uint32_t cb_ex2 = get_compile_time_arg_val(11);
     constexpr uint32_t cb_ex2_global = get_compile_time_arg_val(12);  // E[x2] global reduce
     constexpr uint32_t cb_ex_external2 = get_compile_time_arg_val(13);
+    constexpr uint32_t post_reduce_sender_semaphore_id = get_compile_time_arg_val(14);
+    constexpr uint32_t cb_ex_global = get_compile_time_arg_val(15);
 
     const uint32_t mcast_dest_noc_start_x = get_arg_val<uint32_t>(0);
     const uint32_t mcast_dest_noc_start_y = get_arg_val<uint32_t>(1);

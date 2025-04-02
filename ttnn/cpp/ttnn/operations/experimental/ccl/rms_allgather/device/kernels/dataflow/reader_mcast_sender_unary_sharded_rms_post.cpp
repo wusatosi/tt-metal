@@ -8,8 +8,8 @@
 
 // split REDUCE across cores
 void kernel_main() {
-    uint32_t reduce_sender_semaphore_addr = get_semaphore(get_compile_time_arg_val(0));
-    constexpr uint32_t num_blocks = get_compile_time_arg_val(1);
+    constexpr uint32_t post_reduce_sender_semaphore_id = get_compile_time_arg_val(0) constexpr uint32_t num_blocks =
+        get_compile_time_arg_val(1);
     constexpr uint32_t tile_size = get_compile_time_arg_val(2);
     constexpr uint32_t cb_stats_reduced = get_compile_time_arg_val(3);  // [E[x], E[x^2]] local to sender
     constexpr uint32_t cb_ex_global = get_compile_time_arg_val(4);      // [E[x], E[X^2]] global to all cores
@@ -21,16 +21,15 @@ void kernel_main() {
 
     const uint64_t multicast_data_noc = get_noc_multicast_addr(
         mcast_dest_noc_start_x, mcast_dest_noc_start_y, mcast_dest_noc_end_x, mcast_dest_noc_end_y, 0);
-
-    const uint64_t reduce_sender_semaphore_noc_addr = multicast_data_noc | reduce_sender_semaphore_addr;
-
-    volatile tt_l1_ptr uint32_t* reduce_sender_semaphore_addr_ptr =
-        reinterpret_cast<volatile tt_l1_ptr uint32_t*>(reduce_sender_semaphore_addr);
+    uint32_t post_reduce_sender_semaphore_addr = get_semaphore(post_reduce_sender_semaphore_id);
+    const uint64_t post_reduce_sender_semaphore_noc_addr = multicast_data_noc | post_reduce_sender_semaphore_addr;
+    volatile tt_l1_ptr uint32_t* post_reduce_sender_semaphore_addr_ptr =
+        reinterpret_cast<volatile tt_l1_ptr uint32_t*>(post_reduce_sender_semaphore_addr);
     const auto& global_semaphore_set = [&]() __attribute__((always_inline)) {
-        *reduce_sender_semaphore_addr_ptr = VALID;
+        *post_reduce_sender_semaphore_addr_ptr = VALID;
 
         noc_semaphore_set_multicast_loopback_src(
-            reduce_sender_semaphore_addr, reduce_sender_semaphore_noc_addr, num_blocks, false, false);
+            post_reduce_sender_semaphore_addr, post_reduce_sender_semaphore_noc_addr, num_blocks, false, false);
     };
 
     const auto& global_reduce_sender = [&](const uint32_t cb_ex, const uint32_t cb_ex_global)

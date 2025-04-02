@@ -24,6 +24,28 @@ void kernel_main() {
     constexpr uint32_t num_targets_forward_direction = get_compile_time_arg_val(7);
     constexpr uint32_t num_targets_backward_direction = get_compile_time_arg_val(8);
     constexpr uint32_t num_links = get_compile_time_arg_val(9);
+
+    // post
+    constexpr bool fuse_gamma = get_compile_time_arg_val(10) == 1;
+    constexpr bool gamma_is_dram = get_compile_time_arg_val(11) == 1;
+    constexpr uint32_t block_w = get_compile_time_arg_val(12);
+
+    // Circular Buffer CTs
+    constexpr uint32_t cb_out_resharded = get_compile_time_arg_val(13);
+    constexpr uint32_t cb_out = get_compile_time_arg_val(14);
+    constexpr uint32_t eps_cb_id = get_compile_time_arg_val(15);
+    constexpr uint32_t post_cb_in_4 = get_compile_time_arg_val(16);
+    constexpr uint32_t cb_gamma = get_compile_time_arg_val(17);
+
+    // Data type CTs
+    constexpr uint32_t stick_size = get_compile_time_arg_val(18);
+    constexpr bool FLOAT32_DTYPE_GAMMA = get_compile_time_arg_val(19) == 1;
+
+    // Reshard writer
+    constexpr uint32_t worker_core_stride_w_bytes = get_compile_time_arg_val(20);
+    constexpr uint32_t storage_core_stride_w_bytes = get_compile_time_arg_val(21);
+    constexpr uint32_t block_ht = 1;
+
     size_t arg_idx = 0;
     const uint32_t scalar_w = get_arg_val<uint32_t>(arg_idx++);
     wh_generate_reduce_scaler<false>(cb_in_2, scalar_w);

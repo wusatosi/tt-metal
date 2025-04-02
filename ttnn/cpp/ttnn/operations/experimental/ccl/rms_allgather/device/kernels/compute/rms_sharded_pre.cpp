@@ -17,15 +17,16 @@
 // SPLIT REDUCE across Cores
 namespace NAMESPACE {
 void MAIN {
-    constexpr uint32_t num_blocks_first_stage = get_compile_time_arg_val(0);
-    constexpr uint32_t block_w = get_compile_time_arg_val(1);
-    constexpr uint32_t subblock_w_const = get_compile_time_arg_val(2);
-    constexpr uint32_t num_subblocks_w = get_compile_time_arg_val(3);
-    const bool is_allgather_worker = get_compile_time_arg_val(4) == 1;
+    const bool is_allgather_worker = get_compile_time_arg_val(0) == 1;
+    constexpr uint32_t num_blocks_first_stage = get_compile_time_arg_val(1);
+    constexpr uint32_t block_w = get_compile_time_arg_val(2);
+    constexpr uint32_t subblock_w_const = get_compile_time_arg_val(3);
+    constexpr uint32_t num_subblocks_w = get_compile_time_arg_val(4);
     constexpr uint32_t num_tiles_per_block = get_compile_time_arg_val(5);
     constexpr bool FLOAT32_DTYPE = get_compile_time_arg_val(6) == 1;
     constexpr uint32_t num_blocks_second_stage = get_compile_time_arg_val(7);
 
+    // Circular Buffers Pre
     constexpr uint32_t cb_scaler = get_compile_time_arg_val(8);
     constexpr uint32_t cb_scaler_global = get_compile_time_arg_val(9);
     constexpr uint32_t cb_ex_partial2 = get_compile_time_arg_val(10);
@@ -36,6 +37,19 @@ void MAIN {
     constexpr uint32_t cb_x = get_compile_time_arg_val(15);
     constexpr uint32_t cb_in1 = get_compile_time_arg_val(16);
     constexpr uint32_t cb_in0 = get_compile_time_arg_val(17);  // Input
+
+    // Circular Buffers Post
+
+    constexpr uint32_t cb_out = get_compile_time_arg_val(18);    // non reshard output or CB to resharder
+    constexpr uint32_t cb_stats = get_compile_time_arg_val(19);  // Input Stats Tensor
+    constexpr uint32_t cb_xmm = get_compile_time_arg_val(20);    // Input Tensor
+    constexpr uint32_t cb_eps = get_compile_time_arg_val(21);
+    constexpr uint32_t cb_scaler_global = get_compile_time_arg_val(22);
+    constexpr uint32_t cb_var = get_compile_time_arg_val(23);
+    constexpr uint32_t cb_im = get_compile_time_arg_val(24);
+    constexpr uint32_t cb_gamma = get_compile_time_arg_val(25);
+    constexpr uint32_t cb_stats_reduced = get_compile_time_arg_val(26);
+    constexpr uint32_t cb_ex_global = get_compile_time_arg_val(27);
 
     constexpr uint32_t num_blocks_second_stage_reduction = num_blocks_first_stage + num_blocks_second_stage - 1;
 

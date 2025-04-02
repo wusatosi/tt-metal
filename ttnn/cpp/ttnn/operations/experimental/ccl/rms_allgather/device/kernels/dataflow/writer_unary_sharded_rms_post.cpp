@@ -20,7 +20,7 @@ void kernel_main() {
     constexpr uint32_t cb_out_resharded = get_compile_time_arg_val(4);
     constexpr uint32_t cb_out = get_compile_time_arg_val(5);
     constexpr uint32_t eps_cb_id = get_compile_time_arg_val(6);
-    constexpr uint32_t cb_in_4 = get_compile_time_arg_val(7);
+    constexpr uint32_t post_cb_in_4 = get_compile_time_arg_val(7);
     constexpr uint32_t cb_gamma = get_compile_time_arg_val(8);
 
     // Data type CTs
@@ -44,7 +44,7 @@ void kernel_main() {
 
     if constexpr (is_all_to_all_worker) {
         const uint32_t scalar_c = get_arg_val<uint32_t>(0);
-        wh_generate_reduce_scaler<false>(cb_in_4, scalar_c);
+        wh_generate_reduce_scaler<false>(post_cb_in_4, scalar_c);
     }
 
     const uint32_t out_single_tile_size_bytes = get_tile_size(cb_out);

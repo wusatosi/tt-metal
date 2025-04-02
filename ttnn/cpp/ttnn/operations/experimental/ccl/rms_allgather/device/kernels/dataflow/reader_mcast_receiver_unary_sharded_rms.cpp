@@ -22,6 +22,8 @@ void kernel_main() {
     constexpr uint32_t cb_ex_partial2 = get_compile_time_arg_val(11);  // E[(x-E[x])^2] partial reduce
     constexpr uint32_t cb_ex2 = get_compile_time_arg_val(12);          // E[(x-E[x])^2] global reduce
     constexpr uint32_t cb_ex_external2 = get_compile_time_arg_val(13);
+    constexpr uint32_t semaphore_id = get_compile_time_arg_val(14);
+    constexpr uint32_t cb_ex_global = get_compile_time_arg_val(15);
 
     const uint32_t all_to_all_tile_offset_bytes = get_arg_val<uint32_t>(0);
     const bool is_second_stage_reader = get_arg_val<uint32_t>(1);
