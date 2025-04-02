@@ -170,14 +170,14 @@ def run_reduce_scatter_test(
     )
     worker_sub_device_id = ttnn.SubDeviceId(0)
     sub_device_stall_group = [worker_sub_device_id]
-    mesh_sub_device_manager_id = create_and_load_sub_device_manager_with_fabric_interface(
-        mesh_device,
-        [worker_sub_device],
-        0,
-        0,
-        enable_persistent_fabric,
-    )
-    mesh_device.set_sub_device_stall_group(sub_device_stall_group)
+    # mesh_sub_device_manager_id = create_and_load_sub_device_manager_with_fabric_interface(
+    #     mesh_device,
+    #     [worker_sub_device],
+    #     0,
+    #     0,
+    #     enable_persistent_fabric,
+    # )
+    # mesh_device.set_sub_device_stall_group(sub_device_stall_group)
 
     # create global semaphore handles
     ccl_semaphore_handles = [

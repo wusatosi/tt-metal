@@ -112,17 +112,6 @@ def run_all_reduce_impl(
 
     worker_sub_device_id = ttnn.SubDeviceId(0)
     sub_device_stall_group = [worker_sub_device_id]
-    if create_persistent_fabric:
-        mesh_sub_device_manager_id = create_and_load_sub_device_manager_with_fabric_interface(
-            mesh_device,
-            [worker_sub_device],
-            0,
-            0,
-            enable_persistent_fabric,
-            wrap_fabric_around_mesh=wrap_mesh,
-            topology=all_reduce_topology,
-        )
-        mesh_device.set_sub_device_stall_group(sub_device_stall_group)
 
     # create global semaphore handles
     num_buffers = 8
@@ -333,12 +322,7 @@ def run_all_reduce_impl(
             ), f"Device {i} has {mesh_device.get_devices()[i].num_program_cache_entries()} program cache entries"
 
     finally:
-        if enable_persistent_fabric and teardown_persistent_fabric:
-            mesh_device.reset_sub_device_stall_group()
-            t1 = time()
-            teardown_fabric_interface(mesh_device, wrap_fabric_around_mesh=wrap_mesh, topology=all_reduce_topology)
-            t2 = time()
-            logger.info(f"Teardown time: {t2 - t1}")
+        pass
 
 
 @skip_for_grayskull("Requires eth connected devices to run")
