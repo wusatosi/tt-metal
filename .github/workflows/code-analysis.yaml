@@ -110,25 +110,6 @@ jobs:
           path: docker-job # Here be dragons; keep it scoped to our desired volume, yet must be under github.workspace and be sure to clean up at the end
           clean: true
 
-      - name: Determine merge base
-        if: ${{ needs.determine-scan-type.outputs.do-full-scan != 'true' }}
-        run: |
-          echo "Current branch: ${{ github.ref_name }}"
-          MERGE_BASE=$(git merge-base ${{ github.ref_name }} origin/main)
-          echo "Merge base between ${{ github.ref_name }} and main: $MERGE_BASE"
-          echo "MERGE_BASE=$MERGE_BASE" >> $GITHUB_ENV
-
-      - name: Check out baseline
-        if: ${{ needs.determine-scan-type.outputs.do-full-scan != 'true' }}
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ env.MERGE_BASE }}
-          fetch-depth: 0
-          fetch-tags: true
-          submodules: recursive
-          path: docker-job # Here be dragons; keep it scoped to our desired volume, yet must be under github.workspace and be sure to clean up at the end
-          clean: true
-
       - name: Create shim
         run: |
           # Suppress clang-tidy to first get an up-to-date build tree
@@ -137,26 +118,6 @@ jobs:
       - name: 🔧 CMake configure
         run: |
           cmake --preset clang-tidy -DCMAKE_CXX_CLANG_TIDY="$(pwd)/clang-tidy-shim;--warnings-as-errors=*" -DCMAKE_C_CLANG_TIDY="$(pwd)/clang-tidy-shim;--warnings-as-errors=*"
-
-      - name: Prepare baseline ccache summary
-        if: ${{ needs.determine-scan-type.outputs.do-full-scan != 'true' }}
-        run: |
-          # Zero out the stats so we can see how we did this build
-          # NOTE: may be inaccurate if we have >1 build runner on the same machine, using the same local cache
-          ccache -z
-
-      - name: 🛠️ Baseline Build
-        if: ${{ needs.determine-scan-type.outputs.do-full-scan != 'true' }}
-        run: |
-          nice -n 19 cmake --build --preset clang-tidy --parallel 32
-
-      - name: Publish Ccache summary
-        if: ${{ needs.determine-scan-type.outputs.do-full-scan != 'true' }}
-        run: |
-          echo '## CCache Summary' >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          ccache -s >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Checkout repo
         uses: actions/checkout@v4
