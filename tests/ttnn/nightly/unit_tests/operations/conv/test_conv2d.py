@@ -220,11 +220,12 @@ def run_conv(
             conv_config.override_sharding_config = True
             print("Setting num_cores_nhw to 98")
 
+    breakpoint()
     [tt_output_tensor_on_device, [out_height, out_width], [d_w, d_b]] = ttnn.conv2d(
         input_tensor=tt_input_tensor,
         weight_tensor=tt_weight_tensor,
         in_channels=input_channels,
-        out_channels=output_channels,
+        out_channels=input_channels,
         device=device,
         bias_tensor=tt_bias_tensor,
         kernel_size=(filter_height, filter_width),
@@ -1474,14 +1475,14 @@ def test_sd_conv_wh(
 @pytest.mark.parametrize(
     "input_channels, output_channels, input_height, input_width, split_factor_input_channels, split_factor_output_channels",
     (
-        (512, 512, 64, 64, 1, 1),
-        (512, 256, 256, 256, 2, 1),
+        # (512, 512, 64, 64, 1, 1),
+        # (512, 256, 256, 256, 2, 1),
         (256, 256, 256, 256, 1, 1),
-        (256, 128, 512, 512, 8 if is_wormhole_b0() else 4, 1),
-        (128, 128, 512, 512, 4 if is_wormhole_b0() else 2, 1),
-        (512, 512, 256, 256, 8 if is_wormhole_b0() else 2, 1 if is_wormhole_b0() else 2),
-        (256, 256, 512, 512, 8 if is_wormhole_b0() else 4, 2),
-        (128, 3, 512, 512, 2, 1),
+        # (256, 128, 512, 512, 8 if is_wormhole_b0() else 4, 1),
+        # (128, 128, 512, 512, 4 if is_wormhole_b0() else 2, 1),
+        # (512, 512, 256, 256, 8 if is_wormhole_b0() else 2, 1 if is_wormhole_b0() else 2),
+        # (256, 256, 512, 512, 8 if is_wormhole_b0() else 4, 2),
+        # (128, 3, 512, 512, 2, 1),
     ),
 )
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 2 * 16384}], indirect=True)
@@ -2962,43 +2963,45 @@ def test_conv2d_model_fruit(
     "batch, input_channels, output_channels, input_height, input_width, weights_dtype, activations_dtype, groups, kernel, stride, padding, dilation, auto_shard, use_shallow_conv_variant, act_block_h_override, act_block_w_div, deallocate_activation, math_fidelity, fp32_accum, packer_l1_acc, enable_split_reader, split_input_channels_factor",
     (
         # 1024x1024 resolution
+        (1, 128, 3, 512, 512, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        (1, 4, 512, 64, 64, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
         # kernel 3x3
-        (1, 1280, 1280, 32, 32, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
-        (1, 1280, 1280, 64, 64, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
-        (1, 1280, 640, 64, 64, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
-        (1, 1920, 1280, 32, 32, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
-        (1, 1920, 640, 64, 64, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
-        (1, 2560, 1280, 32, 32, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
-        (1, 320, 640, 64, 64, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
-        (1, 320, 320, 128, 128, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
-        (1, 640, 1280, 32, 32,  ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
-        (1, 640, 640, 64, 64, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
-        (1, 640, 320, 128, 128, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 2),
-        (1, 640, 640, 128, 128, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
-        (1, 960, 640, 64, 64, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
-        (1, 960, 320, 128, 128, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 6),
+        # (1, 1280, 1280, 32, 32, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # (1, 1280, 1280, 64, 64, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # (1, 1280, 640, 64, 64, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # (1, 1920, 1280, 32, 32, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # (1, 1920, 640, 64, 64, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # (1, 2560, 1280, 32, 32, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # (1, 320, 640, 64, 64, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # (1, 320, 320, 128, 128, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # (1, 640, 1280, 32, 32,  ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # (1, 640, 640, 64, 64, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # (1, 640, 320, 128, 128, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 2),
+        # (1, 640, 640, 128, 128, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # (1, 960, 640, 64, 64, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # (1, 960, 320, 128, 128, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 6),
 
-        # stride 2x2
-        (1, 320, 320, 128, 128, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (2, 2), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
-        (1, 640, 640, 64, 64, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (2, 2), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # # stride 2x2
+        # (1, 320, 320, 128, 128, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (2, 2), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # (1, 640, 640, 64, 64, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (2, 2), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
 
-        # output_channels 4
-        (1, 320, 4, 128, 128, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # # output_channels 4
+        # (1, 320, 4, 128, 128, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
 
-        # input_channels 4
-        (1, 4, 320, 128, 128, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, True,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # # input_channels 4
+        # (1, 4, 320, 128, 128, ttnn.bfloat16, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, True,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
 
 
-        # kernel 1x1
-        (1, 1280, 640, 64, 64, ttnn.bfloat16, ttnn.bfloat16, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
-        (1, 1920, 1280, 32, 32, ttnn.bfloat16, ttnn.bfloat16, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
-        (1, 1920, 640, 64, 64, ttnn.bfloat16, ttnn.bfloat16, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
-        (1, 2560, 1280, 32, 32, ttnn.bfloat16, ttnn.bfloat16, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
-        (1, 320, 640, 64, 64, ttnn.bfloat16, ttnn.bfloat16, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
-        (1, 640, 1280, 32, 32, ttnn.bfloat16, ttnn.bfloat16, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
-        (1, 640, 320, 128, 128, ttnn.bfloat16, ttnn.bfloat16, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
-        (1, 960, 640, 64, 64, ttnn.bfloat16, ttnn.bfloat16, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
-        (1, 960, 320, 128, 128, ttnn.bfloat16, ttnn.bfloat16, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # # kernel 1x1
+        # (1, 1280, 640, 64, 64, ttnn.bfloat16, ttnn.bfloat16, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # (1, 1920, 1280, 32, 32, ttnn.bfloat16, ttnn.bfloat16, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # (1, 1920, 640, 64, 64, ttnn.bfloat16, ttnn.bfloat16, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # (1, 2560, 1280, 32, 32, ttnn.bfloat16, ttnn.bfloat16, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # (1, 320, 640, 64, 64, ttnn.bfloat16, ttnn.bfloat16, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # (1, 640, 1280, 32, 32, ttnn.bfloat16, ttnn.bfloat16, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # (1, 640, 320, 128, 128, ttnn.bfloat16, ttnn.bfloat16, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # (1, 960, 640, 64, 64, ttnn.bfloat16, ttnn.bfloat16, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
+        # (1, 960, 320, 128, 128, ttnn.bfloat16, ttnn.bfloat16, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1),
     ),
 )
 

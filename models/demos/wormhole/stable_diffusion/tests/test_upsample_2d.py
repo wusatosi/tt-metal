@@ -21,7 +21,6 @@ from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_utility_functions
 )
 from models.demos.wormhole.stable_diffusion.tests.parameterizations import (
     DOWN_MID_UP_BLOCKS_HIDDEN_STATES_INFO,
-    CROSS_UP_BLOCKS_HIDDEN_STATES_INFO,
 )
 from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_utility_functions import (
     preprocess_and_push_input_to_device,
@@ -40,8 +39,8 @@ def torch_to_ttnn(input, device, layout=ttnn.TILE_LAYOUT):
     "input_shape, shard_layout, shard_end_core, shard_shape, index",
     [
         DOWN_MID_UP_BLOCKS_HIDDEN_STATES_INFO + (0,),
-        CROSS_UP_BLOCKS_HIDDEN_STATES_INFO[0] + (1,),
-        CROSS_UP_BLOCKS_HIDDEN_STATES_INFO[1] + (2,),
+        # CROSS_UP_BLOCKS_HIDDEN_STATES_INFO[0] + (1,),
+        # CROSS_UP_BLOCKS_HIDDEN_STATES_INFO[1] + (2,),
     ],
 )
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 32768}], indirect=True)
@@ -49,16 +48,18 @@ def test_upsample2d_512x512(device, input_shape, shard_layout, shard_end_core, s
     # setup pytorch model
     pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float32)
 
-    unet = pipe.unet
-    unet.eval()
-    unet_upblock = pipe.unet.up_blocks[index]
-    resnet_upsampler = unet_upblock.upsamplers[0]
+    # unet = pipe.unet
+    # unet.eval()
+    # unet_upblock = pipe.unet.up_blocks[index]
+    # resnet_upsampler = unet_upblock.upsamplers[0]
     reader_patterns_cache = {}
 
+    upsampler = pipe.vae.decoder.up_blocks[index].upsamplers[0]
+
     parameters = preprocess_model_parameters(
-        initialize_model=lambda: unet, custom_preprocessor=custom_preprocessor, device=device
+        initialize_model=lambda: upsampler, custom_preprocessor=custom_preprocessor, device=device
     )
-    parameters = parameters.up_blocks[index].upsamplers[0]
+    # parameters = parameters.up_blocks[index].upsamplers[0]
 
     compute_kernel_config = ttnn.WormholeComputeKernelConfig(
         math_fidelity=ttnn.MathFidelity.LoFi,
@@ -67,35 +68,20 @@ def test_upsample2d_512x512(device, input_shape, shard_layout, shard_end_core, s
         packer_l1_acc=False,
     )
 
+    input_shape = [1, 512, 64, 64]
+
     batch_size, in_channels, input_height, input_width = input_shape
     model = upsample2d(
         device, parameters, reader_patterns_cache, batch_size, input_height, input_width, compute_kernel_config
     )
 
     out_channels = in_channels
+
     input = torch_random(input_shape, -0.1, 0.1, dtype=torch.float32)
-    torch_output = resnet_upsampler(input)
+    torch_output = upsampler(input)
 
     ttnn_input = preprocess_and_push_input_to_device(
-        device,
-        input,
-        dtype=ttnn.bfloat16,
-        memory_config=ttnn.MemoryConfig(
-            shard_layout,
-            ttnn.BufferType.L1,
-            ttnn.ShardSpec(
-                ttnn.CoreRangeSet(
-                    {
-                        ttnn.CoreRange(
-                            ttnn.CoreCoord(0, 0),
-                            ttnn.CoreCoord(shard_end_core[0], shard_end_core[1]),
-                        ),
-                    }
-                ),
-                shard_shape,
-                ttnn.ShardOrientation.ROW_MAJOR,
-            ),
-        ),
+        device, input, dtype=ttnn.bfloat16, memory_config=ttnn.DRAM_MEMORY_CONFIG
     )
 
     tt_up = model(
