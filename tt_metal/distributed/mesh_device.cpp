@@ -691,7 +691,7 @@ std::shared_ptr<MeshTraceBuffer> MeshDevice::get_mesh_trace(const MeshTraceId& t
     if (trace != trace_buffer_pool_.end()) {
         return trace->second;
     }
-    TT_THROW("Trace Instance with ID {} is not initialized", *trace_id);
+    TT_THROW("MeshDevice ID {} Trace Instance with ID {} is not initialized", this->id(), *trace_id);
 }
 
 void MeshDevice::begin_mesh_trace(uint8_t cq_id, const MeshTraceId& trace_id) {

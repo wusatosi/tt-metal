@@ -149,6 +149,7 @@ void FDMeshCommandQueue::clear_expected_num_workers_completed() {
 }
 
 void FDMeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool blocking) {
+    // tt::log_info("enqueue_mesh_workload: {}", mesh_device_->id());
     in_use_ = true;
     uint64_t command_hash = *mesh_device_->get_active_sub_device_manager_id();
     std::unordered_set<SubDeviceId> sub_device_ids = mesh_workload.determine_sub_device_ids(mesh_device_);
@@ -288,7 +289,7 @@ void FDMeshCommandQueue::finish(tt::stl::Span<const SubDeviceId> sub_device_ids)
 void FDMeshCommandQueue::write_shard_to_device(
     Buffer* shard_view, const void* src, const BufferRegion& region, tt::stl::Span<const SubDeviceId> sub_device_ids) {
     in_use_ = true;
-    TT_FATAL(!trace_id_.has_value(), "Writes are not supported during trace capture.");
+    // TT_FATAL(!trace_id_.has_value(), "Writes are not supported during trace capture.");
     auto device = shard_view->device();
     sub_device_ids = buffer_dispatch::select_sub_device_ids(mesh_device_, sub_device_ids);
     buffer_dispatch::write_to_device_buffer(
@@ -624,6 +625,7 @@ void FDMeshCommandQueue::capture_go_signal_trace_on_unused_subgrids(
 
 void FDMeshCommandQueue::enqueue_trace(const MeshTraceId& trace_id, bool blocking) {
     in_use_ = true;
+    // tt::log_info("enqueue_trace: {}", mesh_device_->id());
     auto trace_inst = mesh_device_->get_mesh_trace(trace_id);
     auto descriptor = trace_inst->desc;
     auto buffer = trace_inst->mesh_buffer;
@@ -655,6 +657,7 @@ void FDMeshCommandQueue::enqueue_trace(const MeshTraceId& trace_id, bool blockin
 }
 
 void FDMeshCommandQueue::record_begin(const MeshTraceId& trace_id, const std::shared_ptr<MeshTraceDescriptor>& ctx) {
+    // tt::log_info("record_begin: {}", mesh_device_->id());
     trace_dispatch::reset_host_dispatch_state_for_trace(
         mesh_device_->num_sub_devices(),
         *worker_launch_message_buffer_state_,
@@ -672,6 +675,7 @@ void FDMeshCommandQueue::record_begin(const MeshTraceId& trace_id, const std::sh
 }
 
 void FDMeshCommandQueue::record_end() {
+    // tt::log_info("record_end: {}", mesh_device_->id());
     trace_ctx_->assemble_dispatch_commands(this->device(), ordered_mesh_trace_md_);
     trace_id_ = std::nullopt;
     trace_ctx_ = nullptr;

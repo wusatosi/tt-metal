@@ -182,6 +182,8 @@ def prepare_generator_args(
         if isinstance(mesh_device, ttnn.MeshDevice) and data_parallel > 1
         else [mesh_device]
     )
+    for submesh in submesh_devices:
+        submesh.enable_program_cache()
     state_dict = None
 
     # Hybrid requires a model per submesh
