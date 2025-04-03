@@ -29,11 +29,13 @@ class VaeDecoder:
         self.output_height = output_height
         self.output_width = output_width
 
+        self.conv_in_out_channels = 512
+
         self.compute_config = ttnn.init_device_compute_kernel_config(
             self.device.arch(),
             math_fidelity=ttnn.MathFidelity.LoFi,
             math_approx_mode=True,
-            fp32_dest_acc_en=True,
+            fp32_dest_acc_en=False,
             packer_l1_acc=False,
         )
 
@@ -134,7 +136,7 @@ class VaeDecoder:
         )
         conv_kwargs_1 = {
             "in_channels": self.in_channels,
-            "out_channels": self.out_channels,
+            "out_channels": self.conv_in_out_channels,
             "batch_size": 1,
             "input_height": self.input_height,
             "input_width": self.input_width,
@@ -154,6 +156,8 @@ class VaeDecoder:
             compute_config=self.compute_config,
         )
 
+        hidden_states = ttnn.to_memory_config(hidden_states, ttnn.DRAM_MEMORY_CONFIG)
+        hidden_states = ttnn.reshape(hidden_states, [1, self.input_height, self.input_width, self.conv_in_out_channels])
         return hidden_states
 
 
@@ -161,7 +165,7 @@ class VaeDecoder:
 @pytest.mark.parametrize(
     "input_channels, input_height, input_width, out_channels, output_height, output_width, num_resnet_gn_blocks",
     [
-        (4, 64, 64, 4, 512, 512, [[1, 1, 1], [1, 1, 1], [4, 4, 4], [16, 32, 32]]),
+        (4, 64, 64, 3, 512, 512, [[1, 1, 1], [1, 1, 1], [4, 4, 4], [16, 32, 32]]),
     ],
 )
 def test_decoder(
@@ -197,6 +201,7 @@ def test_decoder(
     ttnn_input = ttnn.from_torch(
         torch_input.permute([0, 2, 3, 1]), device=device, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16
     )
+
     ttnn_output = ttnn_model(ttnn_input)
     ttnn_output = ttnn.permute(ttnn_output, [0, 3, 1, 2])
     result = ttnn.to_torch(ttnn_output)

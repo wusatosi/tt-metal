@@ -101,7 +101,6 @@ class UpsampleBlock:
 @pytest.mark.parametrize(
     "input_channels, input_height, input_width, out_channels, output_height, output_width, block_id",
     [
-        # passing
         (512, 64, 64, 512, 128, 128, 0),
         (512, 128, 128, 512, 256, 256, 1),
         (256, 256, 256, 256, 512, 512, 2),
