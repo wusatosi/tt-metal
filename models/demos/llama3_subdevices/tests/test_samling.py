@@ -113,7 +113,7 @@ def test_llama_sampling_inference(dtype, batch_size, mesh_device, use_program_ca
     mesh_device.set_sub_device_stall_group(
         [prefetcher_setup.prefetcher_sub_device_id, prefetcher_setup.worker_sub_device_id]
     )
-    tt_ccl = TT_CCL(mesh_device, model_args.sub_core_grids, prefetcher_setup.worker_sub_device_id)
+    tt_ccl = TT_CCL(mesh_device, model_args, prefetcher_setup.worker_sub_device_id)
 
     # Setup sampling
     tt_sampling = TTSampling(
