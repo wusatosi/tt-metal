@@ -116,7 +116,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
             }
         }
         // Even ring size will result in uneven fwd/backward distances
-        dynamic_alternate = ring_size % 2 == 0;
+        dynamic_alternate = false;
     }
 
     // Get worker cores, assuming 1 worker per link
@@ -356,7 +356,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_llama_sharded(
             }
         }
         // Even ring size will result in uneven fwd/backward distances
-        dynamic_alternate = ring_size % 2 == 0;
+        dynamic_alternate = false;
     }
 
     // Get worker cores, assuming 1 worker per link

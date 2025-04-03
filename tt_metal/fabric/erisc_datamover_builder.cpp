@@ -183,7 +183,7 @@ FabricEriscDatamoverConfig::FabricEriscDatamoverConfig(std::size_t channel_buffe
     size_t num_sender_buffer_slots = 8;
     size_t num_receiver_buffer_slots = 16;
     if (topology == Topology::Ring) {
-        num_sender_buffer_slots = 4;
+        num_sender_buffer_slots = 8;
         num_receiver_buffer_slots = 8;
     }
 

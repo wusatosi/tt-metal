@@ -101,7 +101,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_reduce_async_minimal_multi_cor
             }
         }
         // Even ring size will result in uneven fwd/backward distances
-        dynamic_alternate = ring_size % 2 == 0;
+        dynamic_alternate = false;
     }
 
     // Tensor Info

@@ -79,7 +79,8 @@ public:
         arch_ = tt::get_arch_from_string(tt::test_utils::get_umd_arch_name());
 
         num_devices_ = tt::tt_metal::GetNumAvailableDevices();
-        if (arch_ == tt::ARCH::WORMHOLE_B0 and num_devices_ >= 8 and tt::tt_metal::GetNumPCIeDevices() == 4) {
+        if (arch_ == tt::ARCH::WORMHOLE_B0 and num_devices_ >= 8 and
+            (tt::tt_metal::GetNumPCIeDevices() == 4 || tt::tt_metal::GetNumPCIeDevices() == galaxy_6u_num_devices)) {
             if (num_devices_ == TG_num_devices || num_devices_ == galaxy_6u_num_devices) {
                 mesh_device_ = MeshDevice::create(MeshDeviceConfig(MeshShape{8, 4}));
             } else {
@@ -2360,15 +2361,15 @@ void Run1DFabricPacketSendTest(
             if (topology == ttnn::ccl::Topology::Ring) {
                 devices_ = {
                     view.get_device(MeshCoordinate(0, 0)),
-                    view.get_device(MeshCoordinate(1, 0)),
-                    view.get_device(MeshCoordinate(1, 1)),
-                    view.get_device(MeshCoordinate(0, 1))};
+                    view.get_device(MeshCoordinate(0, 1)),
+                    view.get_device(MeshCoordinate(0, 2)),
+                    view.get_device(MeshCoordinate(0, 3))};
             } else {
                 devices_ = {
                     view.get_device(MeshCoordinate(0, 0)),
-                    view.get_device(MeshCoordinate(1, 0)),
-                    view.get_device(MeshCoordinate(2, 0)),
-                    view.get_device(MeshCoordinate(3, 0))};
+                    view.get_device(MeshCoordinate(0, 1)),
+                    view.get_device(MeshCoordinate(0, 2)),
+                    view.get_device(MeshCoordinate(0, 3))};
             }
         } else {
             if (topology == ttnn::ccl::Topology::Ring) {
@@ -2377,10 +2378,10 @@ void Run1DFabricPacketSendTest(
                     view.get_device(MeshCoordinate(1, 0)),
                     view.get_device(MeshCoordinate(2, 0)),
                     view.get_device(MeshCoordinate(3, 0)),
-                    view.get_device(MeshCoordinate(3, 1)),
-                    view.get_device(MeshCoordinate(2, 1)),
-                    view.get_device(MeshCoordinate(1, 1)),
-                    view.get_device(MeshCoordinate(0, 1))};
+                    view.get_device(MeshCoordinate(4, 0)),
+                    view.get_device(MeshCoordinate(5, 0)),
+                    view.get_device(MeshCoordinate(6, 0)),
+                    view.get_device(MeshCoordinate(7, 0))};
             } else {
                 devices_ = {
                     view.get_device(MeshCoordinate(0, 0)),
@@ -2397,20 +2398,20 @@ void Run1DFabricPacketSendTest(
         // Choosing pcie devices so that more links are supported. More links == more (likelihood of) congestion.
         if (line_size <= 4) {
             devices_ = {
-                view.get_device(MeshCoordinate(0, 1)),
-                view.get_device(MeshCoordinate(0, 2)),
-                view.get_device(MeshCoordinate(1, 2)),
-                view.get_device(MeshCoordinate(1, 1))};
-        } else {
-            devices_ = {
                 view.get_device(MeshCoordinate(0, 0)),
                 view.get_device(MeshCoordinate(0, 1)),
                 view.get_device(MeshCoordinate(0, 2)),
-                view.get_device(MeshCoordinate(0, 3)),
-                view.get_device(MeshCoordinate(1, 3)),
-                view.get_device(MeshCoordinate(1, 2)),
-                view.get_device(MeshCoordinate(1, 1)),
-                view.get_device(MeshCoordinate(1, 0))};
+                view.get_device(MeshCoordinate(0, 3))};
+        } else {
+            devices_ = {
+                view.get_device(MeshCoordinate(0, 0)),
+                view.get_device(MeshCoordinate(1, 0)),
+                view.get_device(MeshCoordinate(2, 0)),
+                view.get_device(MeshCoordinate(3, 0)),
+                view.get_device(MeshCoordinate(4, 0)),
+                view.get_device(MeshCoordinate(5, 0)),
+                view.get_device(MeshCoordinate(6, 0)),
+                view.get_device(MeshCoordinate(7, 0))};
         }
     }
     std::vector<IDevice*> devices;
@@ -2612,7 +2613,7 @@ void Run1DFabricPacketSendTest(
 
         // compute worker based on ethernet cores
         CoreRangeSet worker_cores = {};
-        if (use_tg and topology == ttnn::ccl::Topology::Linear) {
+        if (false) {
             std::vector<CoreCoord> ethernet_cores_virtual = compute_top_row_ethernet_cores(
                 device, has_forward_connection, has_backward_connection, forward_device, backward_device);
             worker_cores = get_optimal_worker_core_placement(device, ethernet_cores_virtual, num_links);
