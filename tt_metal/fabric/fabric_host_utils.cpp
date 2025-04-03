@@ -109,6 +109,12 @@ void append_fabric_connection_rt_args(
     std::advance(it, link_idx);
     auto fabric_router_channel = *it;
 
+    TT_FATAL((link_idx + 1) <= candidate_ethernet_cores.value().size(), "link idx out of bounds");
+
+    auto it = candidate_ethernet_cores.value().begin();
+    std::advance(it, link_idx);
+    auto fabric_router_channel = *it;
+
     const auto& edm_config = get_1d_fabric_config();
     CoreCoord fabric_router_virtual_core =
         tt::tt_metal::MetalContext::instance().get_cluster().get_virtual_eth_core_from_channel(
