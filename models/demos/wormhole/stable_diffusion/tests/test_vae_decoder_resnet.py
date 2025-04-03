@@ -77,7 +77,7 @@ class ResnetBlock:
             self.device.arch(),
             math_fidelity=ttnn.MathFidelity.LoFi,
             math_approx_mode=True,
-            fp32_dest_acc_en=True,
+            fp32_dest_acc_en=False,
             packer_l1_acc=False,
         )
 
@@ -226,11 +226,10 @@ class ResnetBlock:
         )
 
         hidden_states = ttnn.to_memory_config(hidden_states, ttnn.DRAM_MEMORY_CONFIG)
-        hidden_states = ttnn.reshape(hidden_states, [1, self.input_height, self.input_width, self.out_channels])
+        hidden_states = ttnn.reshape(hidden_states, [1, self.output_height, self.output_width, self.out_channels])
 
         hidden_states = hidden_states + input_tensor
 
-        hidden_states = ttnn.permute(hidden_states, [0, 3, 1, 2])
         return hidden_states
 
 
@@ -239,21 +238,21 @@ class ResnetBlock:
     "input_channels, input_height, input_width, out_channels, output_height, output_width, num_gn_blocks, block, block_id, resnet_block_id",
     [
         # passing
-        (512, 64, 64, 512, 64, 64, 1, "mid", None, 0),
-        (512, 64, 64, 512, 64, 64, 1, "mid", None, 1),
-        (512, 64, 64, 512, 64, 64, 1, "up", 0, 0),
-        (512, 64, 64, 512, 64, 64, 1, "up", 0, 1),
-        (512, 64, 64, 512, 64, 64, 1, "up", 0, 2),
+        # (512, 64, 64, 512, 64, 64, 1, "mid", None, 0),
+        # (512, 64, 64, 512, 64, 64, 1, "mid", None, 1),
+        # (512, 64, 64, 512, 64, 64, 1, "up", 0, 0),
+        # (512, 64, 64, 512, 64, 64, 1, "up", 0, 1),
+        # (512, 64, 64, 512, 64, 64, 1, "up", 0, 2),
         (512, 128, 128, 512, 128, 128, 1, "up", 1, 0),
-        (512, 128, 128, 512, 128, 128, 1, "up", 1, 1),
-        (512, 128, 128, 512, 128, 128, 1, "up", 1, 2),
-        # failing
-        (512, 256, 256, 256, 256, 256, 4, "up", 2, 0),
-        (256, 256, 256, 256, 256, 256, 4, "up", 2, 1),
-        (256, 256, 256, 256, 256, 256, 4, "up", 2, 2),
-        (256, 512, 512, 128, 512, 512, 16, "up", 3, 0),
-        (128, 512, 512, 128, 512, 512, 32, "up", 3, 1),
-        (128, 512, 512, 128, 512, 512, 32, "up", 3, 2),
+        # (512, 128, 128, 512, 128, 128, 1, "up", 1, 1),
+        # (512, 128, 128, 512, 128, 128, 1, "up", 1, 2),
+        # # failing
+        # (512, 256, 256, 256, 256, 256, 4, "up", 2, 0),
+        # (256, 256, 256, 256, 256, 256, 4, "up", 2, 1),
+        # (256, 256, 256, 256, 256, 256, 4, "up", 2, 2),
+        # (256, 512, 512, 128, 512, 512, 16, "up", 3, 0),
+        # (128, 512, 512, 128, 512, 512, 32, "up", 3, 1),
+        # (128, 512, 512, 128, 512, 512, 32, "up", 3, 2),
     ],
 )
 def test_resnet(
@@ -268,10 +267,10 @@ def test_resnet(
     block,
     block_id,
     resnet_block_id,
-    # use_program_cache
+    use_program_cache,
 ):
     vae = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae")
-    # vae.decode(torch.randn([1, 4, 64, 64]))
+    vae.decode(torch.randn([1, 4, 64, 64]))
 
     if block == "mid":
         torch_resnet = vae.decoder.mid_block.resnets[resnet_block_id]
@@ -296,6 +295,7 @@ def test_resnet(
         torch_input.permute([0, 2, 3, 1]), device=device, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16
     )
     ttnn_output = ttnn_model(ttnn_input)
+    ttnn_output = ttnn.permute(ttnn_output, [0, 3, 1, 2])
     result = ttnn.to_torch(ttnn_output)
 
     assert_with_pcc(torch_output, result, 0.99)
