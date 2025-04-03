@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <array>
+#include <cstdint>
 #include "ttnn/decorators.hpp"
 #include "ttnn/operations/core/compute_kernel/compute_kernel_config.hpp"
 
@@ -11,6 +13,8 @@ namespace ttnn::operations::experimental::deinterleave {
 
 struct DeinterleaveOperation {
     struct operation_attributes_t {
+        const uint32_t input_height;
+        const uint32_t input_width;
         const std::array<uint32_t, 2> stride_hw;
         const DeviceComputeKernelConfig compute_kernel_config;
     };
@@ -54,6 +58,8 @@ struct DeinterleaveOperation {
 
     static std::tuple<operation_attributes_t, tensor_args_t> invoke(
         const Tensor& input,
+        const uint32_t input_height,
+        const uint32_t input_width,
         const std::array<uint32_t, 2> stride_hw,
         const std::optional<DeviceComputeKernelConfig>& compute_kernel_config);
 };

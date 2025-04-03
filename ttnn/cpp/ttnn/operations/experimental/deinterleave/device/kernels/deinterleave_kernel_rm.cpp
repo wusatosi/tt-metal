@@ -6,88 +6,101 @@
 
 // #include "debug/dprint.h"  // required in all kernels using DPRINT
 
-constexpr uint32_t round_up_to_multiple_of_64(uint32_t value) { return (value + 63) & ~63; }
+#include <cstdint>
+#include "risc_common.h"
+
+template <typename T>
+void helper_print_cb(const uint32_t cb_id, const uint32_t height, const uint32_t width, const uint32_t stick_size) {
+    DPRINT << "dst " << "height=" << height << ";width=" << width << ";stick_size=" << stick_size << ENDL();
+    T* cb_ptr = reinterpret_cast<T*>(get_read_ptr(cb_id));
+    for (uint32_t h = 0; h < height; h++) {
+        for (uint32_t w = 0; w < width; w++) {
+            DPRINT << " <";
+            for (uint32_t c = 0; c < stick_size; c++) {
+                DPRINT << HEX() << *(cb_ptr + h * width * stick_size + w * stick_size + c) << DEC() << ",";
+            }
+            DPRINT << "> ";
+        }
+        DPRINT << ENDL();
+    }
+}
+
+template <typename T>
+void helper_clear_cb(
+    const uint32_t cb_id, const uint32_t height, const uint32_t width, const uint32_t stick_size, const T value) {
+    T* dst = reinterpret_cast<T*>(get_write_ptr(cb_id));
+    for (uint32_t h = 0; h < height; h++) {
+        for (uint32_t w = 0; w < width; w++) {
+            for (uint32_t c = 0; c < stick_size; c++) {
+                *dst = value;
+                dst++;
+            }
+        }
+    }
+}
 
 void kernel_main() {
-    // Deinterleaves input image in src cb to dest cb.
-    //
-    // The input data is expected to be interleaved in the following way:
-    //     A B A B A B
-    //     C D C D C D
-    //     A B A B A B
-    //     C D C D C D
-    // The output data is expected to be deinterleaved in the following way:
-    //     A A A A A A
-    //     B B B B B B
-    //     C C C C C C
-    //     D D D D D D
-    //
-    // Image width, height and number of channels are given as compile time arguments.
-    // Kernel processes AB or CD lines depending on the value of AB_notCD argument.
+    // if (noc_index == 0)
+    // {
+    //     DPRINT << "EARLY EXIT!" << ENDL();
+    //     return;
+    // }
 
     constexpr uint32_t src_cb_id = get_compile_time_arg_val(0);
     constexpr uint32_t dst_cb_id = get_compile_time_arg_val(1);
     constexpr uint32_t width = get_compile_time_arg_val(2);
     constexpr uint32_t height = get_compile_time_arg_val(3);
-    constexpr uint32_t stick_size = get_compile_time_arg_val(4);
-    constexpr uint32_t AB_notCD = get_compile_time_arg_val(5);
+    constexpr uint32_t stick_size_bytes = get_compile_time_arg_val(4);
+    constexpr uint32_t stride_h = get_compile_time_arg_val(5);
+    constexpr uint32_t stride_w = get_compile_time_arg_val(6);
+    constexpr uint32_t first_half = get_compile_time_arg_val(7);
 
-    // DPRINT << "Deinterelave" << src_cb_id <<  dst_cb_id << " " << width << " " << height << " " << stick_size <<
-    // AB_notCD << ENDL();
+    const uint32_t start_x = get_arg_val<uint32_t>(0) + VIRTUAL_TENSIX_START_X;  //
+    const uint32_t end_x = get_arg_val<uint32_t>(1) + VIRTUAL_TENSIX_START_X;    //
+    const uint32_t start_y = get_arg_val<uint32_t>(2) + VIRTUAL_TENSIX_START_Y;  //
+    const uint32_t end_y = get_arg_val<uint32_t>(3) + VIRTUAL_TENSIX_START_Y;    //
+    const uint32_t src_width_stride = get_arg_val<uint32_t>(4);
+    const uint32_t src_height_offset_to_next = get_arg_val<uint32_t>(5);
+    const uint32_t src_offset = get_arg_val<uint32_t>(6);
+    const uint32_t dst_stride = get_arg_val<uint32_t>(7);
+    const uint32_t dst_offset = get_arg_val<uint32_t>(8);
 
-    constexpr uint32_t stride = 2;
-    constexpr uint32_t stick_bytes = round_up_to_multiple_of_64(stick_size);
-    constexpr uint32_t line_size_bytes = width * stick_bytes;
-    constexpr uint32_t batch_size_bytes = height * line_size_bytes / stride / stride;
+    uint32_t stick_size = stick_size_bytes / 2;
 
-    // DPRINT << "batch_size_bytes" << batch_size_bytes << ENDL();
+    // handy for debug
+    // helper_print_cb<uint16_t>(src_cb_id, height, width, stick_size);
+    // helper_clear_cb<uint16_t>(dst_cb_id, height, width, stick_size, 0);
+    // helper_print_cb<uint16_t>(dst_cb_id, height, width, stick_size);
 
-    // src_noc_address points to the start of the first line (AB) or the second line (CD)
-    auto src_noc_address_odd = get_noc_addr(get_read_ptr(src_cb_id)) + (AB_notCD ? 0 : line_size_bytes) + stick_bytes;
-    auto src_noc_address_even = get_noc_addr(get_read_ptr(src_cb_id)) + (AB_notCD ? 0 : line_size_bytes);
-
-    // dst address points to the start of batch output in dst buffer (ABCD)
-    // even processes As or Cs, odd processes Bs or Ds
-    constexpr uint32_t dst_base_offset_even = (AB_notCD) ? 0 : 2 * batch_size_bytes;
-    constexpr uint32_t dst_base_offset_odd = (AB_notCD) ? batch_size_bytes : 3 * batch_size_bytes;
-    auto dst_address_even = get_write_ptr(dst_cb_id) + dst_base_offset_even;
-    auto dst_address_odd = get_write_ptr(dst_cb_id) + dst_base_offset_odd;
-
-    // DPRINT << "Deinterleave src_noc_address: " << src_noc_address << ENDL();
-    // DPRINT << "Deinterleave dst_address_even: " << dst_address_even << ENDL();
-
-    constexpr uint32_t h_start = (AB_notCD) ? 0 : 1;
-
-    // // DEBUG clear dst buffer
-    // uint8_t* dst = reinterpret_cast<uint8_t*>(get_write_ptr(dst_cb_id));
-    // for (uint32_t h = 0; h < height; h++) {
-    //     for (uint32_t w = 0; w < width; w++) {
-    //         for (uint32_t c = 0; c < stick_size; c++) {
-    //             *(dst + h * width * stick_size + w * stick_size + c) = -1;
-    //         }
-    //     }
-    // }
-
-    // Copy data from src to dst
-    for (uint32_t h = 0; h < height; h += stride) {
-        for (uint32_t w = 0; w < width; w += stride) {
-            // DPRINT << "from " << uint32_t (uint64_t(src_noc_address) - uint64_t(get_read_ptr(src_cb_id))) << " to "
-            //  << uint32_t (uint64_t(dst_address_odd) - uint64_t(reinterpret_cast<uint64_t*>(dst))) << ENDL();
-
-            // this order gave best performance. 70% utilization when single core
-            noc_async_read_one_packet(src_noc_address_odd, dst_address_odd, stick_size);
-            src_noc_address_odd += 2 * stick_bytes;
-            dst_address_odd += stick_bytes;
-            noc_async_read_one_packet(src_noc_address_even, dst_address_even, stick_size);
-            src_noc_address_even += 2 * stick_bytes;
-            dst_address_even += stick_bytes;
+    // Go through nodes (start_x, start_y) to (end_x, end_y)
+    // Copy your stick (dst_batch) to the dst buffer
+    // both DM0/DM1 read from all nodes, assuming that's creating uniform load to the NOC
+    // they split reading even/odd lines
+    // DPRINT << "NOC" << (uint32_t)noc_index << ENDL();
+    auto dst_address = get_write_ptr(dst_cb_id) + dst_offset;
+    for (uint32_t src_noc_y = start_y; src_noc_y < end_y; src_noc_y++) {
+        // DPRINT << "src_noc_y = " << src_noc_y << ENDL();
+        for (uint32_t src_noc_x = start_x; src_noc_x < end_x; src_noc_x++) {
+            // DPRINT << "src_noc_x = " << src_noc_x << ENDL();
+            // src_noc_address points to the start of the first line (AB) or the second line (CD)
+            auto src_noc_address = get_noc_addr(src_noc_x, src_noc_y, get_read_ptr(src_cb_id)) + src_offset;
+            // Copy half of data data from src to dst
+            for (uint32_t h = 0; h < height / 2; h += stride_h) {
+                for (uint32_t w = 0; w < width; w += stride_w) {
+                    noc_async_read_one_packet(src_noc_address, dst_address, stick_size_bytes);
+                    src_noc_address += src_width_stride;
+                    dst_address += stick_size_bytes;
+                }
+                // skip lines to the next src line
+                src_noc_address += src_height_offset_to_next;
+            }
+            dst_address += dst_stride / 2;  // / 2; // dst_stride - one src image in dst size
         }
-        // skip one line
-        src_noc_address_odd += line_size_bytes;
-        src_noc_address_even += line_size_bytes;
-        // DPRINT << "Deinterleave " << h << ENDL();
     }
     noc_async_read_barrier();
+
+    // handy for debug
+    // helper_print_cb<uint16_t>(dst_cb_id, height, width, stick_size);
 
     // DPRINT << "Deinterleave done" << ENDL();
 }

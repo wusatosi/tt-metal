@@ -11,6 +11,8 @@ namespace ttnn::operations::experimental::deinterleave {
 struct Deinterleave {
     static Tensor invoke(
         const Tensor& input,
+        const uint32_t input_height,
+        const uint32_t input_width,
         const std::array<uint32_t, 2> stride_hw,
         const std::optional<DeviceComputeKernelConfig>& compute_kernel_config);
 };

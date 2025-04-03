@@ -17,6 +17,27 @@ void DeinterleaveOperation::validate_inputs(
         input.memory_config().memory_layout == TensorMemoryLayout::HEIGHT_SHARDED,
         "Deinterleave: input must be HEIGHT_SHARDED");
     TT_FATAL(input.memory_config().shard_spec.has_value(), "Deinterleave: input must have shard_spec");
+    TT_FATAL(
+        input.memory_config().shard_spec.value().orientation == ShardOrientation::ROW_MAJOR,
+        "Deinterleave: input must have ROW_MAJOR orientation");
+
+    auto per_core_height = input.memory_config().shard_spec.value().shape[0] / operation_attributes.input_width;
+    TT_FATAL(
+        per_core_height >= 2 * operation_attributes.stride_hw[0],
+        "Deinterleave: per_core_height {} must be larger than {}",
+        per_core_height,
+        2 * operation_attributes.stride_hw[0]);
+    TT_FATAL(
+        per_core_height % (2 * operation_attributes.stride_hw[0]) == 0,
+        "Deinterleave: per_core_height {} must be div by {}",
+        per_core_height,
+        2 * operation_attributes.stride_hw[0]);
+    TT_FATAL(
+        per_core_height * operation_attributes.input_width == input.memory_config().shard_spec.value().shape[0],
+        "Deinterleave: per_core_height {} * input_width {} must be equal to input shard_spec shape {}",
+        per_core_height,
+        operation_attributes.input_width,
+        input.memory_config().shard_spec.value().shape[0]);
 }
 
 DeinterleaveOperation::program_factory_t DeinterleaveOperation::select_program_factory(
@@ -52,10 +73,14 @@ DeinterleaveOperation::tensor_return_value_t DeinterleaveOperation::create_outpu
 std::tuple<DeinterleaveOperation::operation_attributes_t, DeinterleaveOperation::tensor_args_t>
 DeinterleaveOperation::invoke(
     const Tensor& input,
+    const uint32_t input_height,
+    const uint32_t input_width,
     const std::array<uint32_t, 2> stride_hw,
     const std::optional<DeviceComputeKernelConfig>& compute_kernel_config) {
     return {
         operation_attributes_t{
+            input_height,
+            input_width,
             stride_hw,
             init_device_compute_kernel_config(input.device()->arch(), compute_kernel_config, MathFidelity::HiFi4),
         },

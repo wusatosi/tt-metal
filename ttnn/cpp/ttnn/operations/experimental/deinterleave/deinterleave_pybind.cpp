@@ -31,6 +31,8 @@ void bind_deinterleave_operation(py::module& module) {
         ttnn::pybind_arguments_t{
             py::arg("input"),
             py::kw_only(),
+            py::arg("input_height"),
+            py::arg("input_width"),
             py::arg("stride_hw") = std::array<uint32_t, 2>{2, 2},
             py::arg("compute_kernel_config") = std::nullopt,
         });
