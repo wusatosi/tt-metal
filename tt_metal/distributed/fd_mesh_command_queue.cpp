@@ -245,7 +245,11 @@ void FDMeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool
             std::pair<bool, int>(unicast_go_signals, num_virtual_eth_cores));
         if (sysmem_manager.get_bypass_mode()) {
             this->capture_program_trace_on_subgrid(
-                device_range, program_cmd_seq, dispatch_metadata.stall_first, dispatch_metadata.stall_before_program);
+                device_range,
+                program_cmd_seq,
+                dispatch_metadata.stall_first,
+                dispatch_metadata.stall_before_program,
+                mesh_workload.get_runtime_id());
             active_sub_grids.push_back(device_range);
         } else {
             this->write_program_cmds_to_subgrid(
@@ -605,12 +609,31 @@ void FDMeshCommandQueue::capture_program_trace_on_subgrid(
     const MeshCoordinateRange& sub_grid,
     ProgramCommandSequence& program_cmd_seq,
     bool stall_first,
-    bool stall_before_program) {
-    auto& sysmem_manager_for_trace = mesh_device_->get_device(sub_grid.start_coord())->sysmem_manager();
-    uint32_t sysmem_manager_offset = sysmem_manager_for_trace.get_issue_queue_write_ptr(id_);
-
+    bool stall_before_program,
+    uint32_t workload_runtime_id) {
     auto dispatch_core_config = dispatch_core_manager::instance().get_dispatch_core_config();
     CoreType dispatch_core_type = dispatch_core_config.get_core_type();
+#if defined(TRACY_ENABLE)
+    for (const auto& coord : sub_grid) {
+        auto& sysmem_manager_for_trace = mesh_device_->get_device(coord)->sysmem_manager();
+        uint32_t sysmem_manager_offset = sysmem_manager_for_trace.get_issue_queue_write_ptr(id_);
+
+        auto device = this->mesh_device_->get_device(coord);
+        for (auto& launch_msg : program_cmd_seq.go_signals) {
+            launch_msg->kernel_config.host_assigned_id = (workload_runtime_id << 10) | (device->id());
+        }
+        program_dispatch::write_program_command_sequence(
+            program_cmd_seq, sysmem_manager_for_trace, id_, dispatch_core_type, stall_first, stall_before_program);
+        auto mesh_trace_md = MeshTraceStagingMetadata{
+            MeshCoordinateRange(coord, coord),
+            sub_grid.start_coord(),
+            sysmem_manager_offset,
+            sysmem_manager_for_trace.get_issue_queue_write_ptr(id_) - sysmem_manager_offset};
+        ordered_mesh_trace_md_.push_back(mesh_trace_md);
+    }
+#else
+    auto& sysmem_manager_for_trace = mesh_device_->get_device(sub_grid.start_coord())->sysmem_manager();
+    uint32_t sysmem_manager_offset = sysmem_manager_for_trace.get_issue_queue_write_ptr(id_);
 
     program_dispatch::write_program_command_sequence(
         program_cmd_seq, sysmem_manager_for_trace, id_, dispatch_core_type, stall_first, stall_before_program);
@@ -620,6 +643,7 @@ void FDMeshCommandQueue::capture_program_trace_on_subgrid(
         sysmem_manager_offset,
         sysmem_manager_for_trace.get_issue_queue_write_ptr(id_) - sysmem_manager_offset};
     ordered_mesh_trace_md_.push_back(mesh_trace_md);
+#endif
 }
 
 void FDMeshCommandQueue::capture_go_signal_trace_on_unused_subgrids(
