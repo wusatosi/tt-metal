@@ -25,7 +25,8 @@ ttnn::Tensor ExecuteLlamaReduceScatter::invoke(
     const uint32_t cluster_axis,
     const MeshDevice& mesh_device,
     const uint32_t num_links,
-    const std::optional<ttnn::MemoryConfig>& memory_config) {
+    const std::optional<ttnn::MemoryConfig>& memory_config,
+    tt::tt_fabric::Topology topology) {
     bool enable_persistent_fabric = true;
 
     const auto mesh_view = mesh_device.get_view();
@@ -55,7 +56,7 @@ ttnn::Tensor ExecuteLlamaReduceScatter::invoke(
 
     std::vector<GlobalSemaphore> semaphores = cross_device_semaphore.global_semaphores;
     tt::tt_metal::operation::launch_op(
-        [dim, semaphores, subdevice_id, cluster_axis, ring_devices, memory_config, mesh_view, num_links](
+        [dim, semaphores, subdevice_id, cluster_axis, ring_devices, memory_config, mesh_view, num_links, topology](
             const std::vector<Tensor>& input_tensors,
             const std::vector<std::optional<const Tensor>>& optional_input_tensors,
             const std::vector<std::optional<Tensor>>& optional_output_tensors) mutable -> std::vector<Tensor> {
@@ -92,7 +93,8 @@ ttnn::Tensor ExecuteLlamaReduceScatter::invoke(
                 backward_device,
                 ring_devices,
                 num_links,
-                memory_config)};
+                memory_config,
+                topology)};
         },
         {input_tensor, intermediate_packet_buffer},
         output_tensors);

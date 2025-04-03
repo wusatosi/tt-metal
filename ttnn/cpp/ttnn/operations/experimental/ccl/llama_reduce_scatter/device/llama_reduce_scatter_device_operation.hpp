@@ -29,6 +29,7 @@ struct LlamaReduceScatterDeviceOperation {
         const uint32_t num_links;
         std::optional<IDevice*> forward_device;
         std::optional<IDevice*> backward_device;
+        tt::tt_fabric::Topology topology;
     };
     struct tensor_args_t {
         const Tensor input_tensor;
@@ -95,7 +96,8 @@ struct LlamaReduceScatterDeviceOperation {
         std::optional<IDevice*>& backward_device,
         const uint32_t ring_devices,
         const uint32_t num_links,
-        const std::optional<ttnn::MemoryConfig>& memory_config = std::nullopt);
+        const std::optional<ttnn::MemoryConfig>& memory_config = std::nullopt,
+        tt::tt_fabric::Topology topology = tt::tt_fabric::Topology::Linear);
 };
 }  // namespace ttnn::operations::experimental::ccl
 
