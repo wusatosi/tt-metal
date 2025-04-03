@@ -69,7 +69,7 @@ def run_reduce_scatter_test(
     num_links=3,
     scheme="random",
 ):
-    mesh_device.enable_async(True)
+    mesh_device.enable_async(False)
     mesh_device.enable_program_cache()
     num_pages_per_packet = 4
 
@@ -169,13 +169,13 @@ def run_reduce_scatter_test(
     )
     worker_sub_device_id = ttnn.SubDeviceId(0)
     sub_device_stall_group = [worker_sub_device_id]
-    mesh_sub_device_manager_id = create_and_load_sub_device_manager_with_fabric_interface(
-        mesh_device,
-        [worker_sub_device],
-        0,
-        0,
-        enable_persistent_fabric,
-    )
+    # mesh_sub_device_manager_id = create_and_load_sub_device_manager_with_fabric_interface(
+    #     mesh_device,
+    #     [worker_sub_device],
+    #     0,
+    #     0,
+    #     enable_persistent_fabric,
+    # )
     mesh_device.set_sub_device_stall_group(sub_device_stall_group)
 
     # create global semaphore handles
@@ -234,8 +234,8 @@ def run_reduce_scatter_test(
             tt_out_tensor_list.append(tt_out_tensor)
             ttnn.synchronize_device(mesh_device, sub_device_ids=sub_device_stall_group)
 
-    mesh_device.reset_sub_device_stall_group()
-    teardown_fabric_interface(mesh_device)
+    # mesh_device.reset_sub_device_stall_group()
+    # teardown_fabric_interface(mesh_device)
 
     passed = True
     first_failed_tensor_index = None
@@ -255,12 +255,10 @@ def run_reduce_scatter_test(
             failed_indices = torch.where(tt_torch_tensor != output_tensor_goldens_list[tensor_index])
             break
 
-    for i in range(num_devices_scatter * num_devices_fracture):
-        logger.info(f"Device {i} has {mesh_device.get_devices()[i].num_program_cache_entries()} program cache entries")
-        assert (
-            mesh_device.get_devices()[i].num_program_cache_entries() == 1
-            or mesh_device.get_devices()[i].num_program_cache_entries() == num_iters
-        ), f"Device {i} has {mesh_device.get_devices()[i].num_program_cache_entries()} program cache entries"
+    logger.info(f"Device has {mesh_device.num_program_cache_entries()} program cache entries")
+    assert (
+        mesh_device.num_program_cache_entries() == 1 or mesh_device.num_program_cache_entries() == num_iters
+    ), f"Device {i} has {mesh_device.num_program_cache_entries()} program cache entries"
 
     if not passed:
         logger.info(f"Failed indices: {failed_indices}")
@@ -268,7 +266,15 @@ def run_reduce_scatter_test(
 
 
 @pytest.mark.parametrize(
-    "device_params", [{"trace_region_size": 90000, "dispatch_core_axis": ttnn.DispatchCoreAxis.COL}], indirect=True
+    "device_params",
+    [
+        {
+            "trace_region_size": 90000,
+            "dispatch_core_axis": ttnn.DispatchCoreAxis.COL,
+            "fabric_config": ttnn.FabricConfig.FABRIC_1D,
+        }
+    ],
+    indirect=True,
 )
 @pytest.mark.parametrize("trace_mode", [True])
 @pytest.mark.parametrize(
@@ -303,7 +309,11 @@ def test_fabric_reduce_scatter_tg_trace(mesh_device, trace_mode):
     )
 
 
-@pytest.mark.parametrize("device_params", [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL}], indirect=True)
+@pytest.mark.parametrize(
+    "device_params",
+    [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL, "fabric_config": ttnn.FabricConfig.FABRIC_1D}],
+    indirect=True,
+)
 @pytest.mark.parametrize("trace_mode", [False])
 @pytest.mark.parametrize(
     "mesh_device",

@@ -5,14 +5,13 @@
 #pragma once
 
 #include <stdint.h>
-
+#include <tt-metalium/core_coord.hpp>
 #include <tt-metalium/erisc_datamover_builder.hpp>
 #include <tt-metalium/program_impl.hpp>
 #include <vector>
 
 #include <tt-metalium/core_coord.hpp>
 #include <tt-metalium/fabric_host_interface.h>
-#include <tt-metalium/system_memory_manager.hpp>
 
 namespace tt {
 namespace tt_metal {
