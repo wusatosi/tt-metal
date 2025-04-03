@@ -51,14 +51,15 @@ jobs:
       - ${{ inputs.runner-label }}
     steps:
       - uses: tenstorrent/tt-metal/.github/actions/checkout-with-submodule-lfs@main
-      - uses: ./.github/actions/retry-command
-        # For BH we use yyzo machines and they don't have MLPerf mounted
-        if: ${{ inputs.arch != 'blackhole' }}
-        with:
-          timeout-seconds: 100
-          max-retries: 10
-          backoff-seconds: 60
-          command: ./.github/scripts/cloud_utils/mount_weka.sh
+      # Commment out to try and disable weka
+      # - uses: ./.github/actions/retry-command
+      #   # For BH we use yyzo machines and they don't have MLPerf mounted
+      #   if: ${{ inputs.arch != 'blackhole' }}
+      #   with:
+      #     timeout-seconds: 100
+      #     max-retries: 10
+      #     backoff-seconds: 60
+      #     command: ./.github/scripts/cloud_utils/mount_weka.sh
       - uses: actions/download-artifact@v4
         timeout-minutes: 10
         with:
@@ -104,12 +105,12 @@ jobs:
       - ${{ inputs.runner-label }}
     steps:
       - uses: tenstorrent/tt-metal/.github/actions/checkout-with-submodule-lfs@main
-      - uses: ./.github/actions/retry-command
-        with:
-          timeout-seconds: 100
-          max-retries: 10
-          backoff-seconds: 60
-          command: ./.github/scripts/cloud_utils/mount_weka.sh
+      # - uses: ./.github/actions/retry-command
+      #   with:
+      #     timeout-seconds: 100
+      #     max-retries: 10
+      #     backoff-seconds: 60
+      #     command: ./.github/scripts/cloud_utils/mount_weka.sh
       - uses: actions/download-artifact@v4
         timeout-minutes: 10
         with:
