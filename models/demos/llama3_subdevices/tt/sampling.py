@@ -40,7 +40,7 @@ class TTSampling(LightweightModule):
         self.tt_indices_device_offsets = ttnn.from_torch(
             indices_device_offsets,
             device=self.mesh_device,
-            dtype=ttnn.uint32,
+            dtype=ttnn.int32,
             layout=ttnn.TILE_LAYOUT,
             mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=(None, None), mesh_shape=self.args.cluster_shape),
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
@@ -113,20 +113,20 @@ class TTSampling(LightweightModule):
             topk_indices_gathered, ttnn.DRAM_MEMORY_CONFIG
         )  # , dtype=ttnn.uint32 gives garbage results
         ttnn.deallocate(topk_indices_gathered)
-        topk_indices_gathered_interleaved_uint32 = ttnn.typecast(
-            topk_indices_gathered_interleaved, ttnn.uint32, sub_core_grids=self.args.sub_core_grids
+        # topk_indices_gathered_interleaved_uint32 = ttnn.typecast(
+        #     topk_indices_gathered_interleaved, ttnn.uint32, sub_core_grids=self.args.sub_core_grids
+        # )
+        # ttnn.deallocate(topk_indices_gathered_interleaved)
+        topk_indices_gathered_sharded_int32 = ttnn.to_memory_config(
+            topk_indices_gathered_interleaved, self.args.model_config["DECODE_SAMPLING_INPUT_MEMCFG"], dtype=ttnn.int32
         )
         ttnn.deallocate(topk_indices_gathered_interleaved)
-        topk_indices_gathered_sharded_uint32 = ttnn.to_memory_config(
-            topk_indices_gathered_interleaved_uint32, self.args.model_config["DECODE_SAMPLING_INPUT_MEMCFG"]
-        )
-        ttnn.deallocate(topk_indices_gathered_interleaved_uint32)
 
         # Add device offsets for global indices
         topk_global_indices = ttnn.add(
-            self.tt_indices_device_offsets, topk_indices_gathered_sharded_uint32, dtype=ttnn.uint32
+            self.tt_indices_device_offsets, topk_indices_gathered_sharded_int32, dtype=ttnn.int32
         )
-        ttnn.deallocate(topk_indices_gathered_sharded_uint32)
+        ttnn.deallocate(topk_indices_gathered_sharded_int32)
 
         topk_global_indices_interleaved = ttnn.to_memory_config(topk_global_indices, ttnn.DRAM_MEMORY_CONFIG)
         ttnn.deallocate(topk_global_indices)
