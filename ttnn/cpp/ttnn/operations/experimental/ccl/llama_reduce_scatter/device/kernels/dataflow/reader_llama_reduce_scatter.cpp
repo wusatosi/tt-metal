@@ -49,11 +49,17 @@ void kernel_main() {
     constexpr uint32_t packet_worker_end_x = get_compile_time_arg_val(16);
     constexpr uint32_t packet_worker_end_y = get_compile_time_arg_val(17);
     constexpr uint32_t num_sender_cores = get_compile_time_arg_val(18);
+    constexpr uint32_t total_num_read_txns = get_compile_time_arg_val(19);
 
     // Derived compile-time constants
     constexpr uint32_t input_tensor_cores = input_shard_cores_per_device * num_devices;
     constexpr uint32_t num_packets_total_per_device =
         (input_shard_cores_per_device * tiles_per_core_width + num_pages_per_packet - 1) / num_pages_per_packet;
+
+    // DPRINT << "input_shard_cores_per_device " << input_shard_cores_per_device <<ENDL();
+    // DPRINT << "tiles_per_core_width " << tiles_per_core_width <<ENDL();
+    // DPRINT << "num_pages_per_packet " << num_pages_per_packet <<ENDL();
+    // DPRINT << "num_packets_total_per_device " << num_packets_total_per_device <<ENDL();
 
     // Precompute constants for optimization
     constexpr uint32_t bytes_per_tile_group = tiles_per_core_width * page_size_bytes;
@@ -66,7 +72,7 @@ void kernel_main() {
         DEVICE_ORDER;  // this is code gen'd in the program factory using the defines
     constexpr uint8_t input_core_xy[input_tensor_cores][2] = INPUT_CORE_XY;
     constexpr uint8_t output_core_xy[output_cores_per_device][2] = OUTPUT_CORE_XY;
-    constexpr uint8_t schedule[num_packets_total_per_device][3] = SCHEDULE;
+    constexpr uint8_t schedule[total_num_read_txns][3] = SCHEDULE;
     constexpr uint32_t total_senders = num_sender_cores * other_devices;
 
     // Runtime arguments
@@ -82,6 +88,11 @@ void kernel_main() {
     // Bank base addresses (compute once)
     const uint32_t bank_base_address = get_write_ptr(input_tensor_cb_id);
 
+    // DPRINT << "sender_packet_start " << (uint)sender_packet_start << ENDL();
+    // DPRINT << "sender_packet_end " << (uint)sender_packet_end << ENDL();
+    // DPRINT << "sender_core " << (uint)sender_core << ENDL();
+    // DPRINT << "worker_core " << (uint)worker_core << ENDL();
+
     if (sender_core) {
         for (uint32_t target_device_id : device_order) {
             const uint32_t base_core = target_device_id * input_shard_cores_per_device;
@@ -90,6 +101,11 @@ void kernel_main() {
                 const uint8_t curr_core = base_core + schedule[packet_idx][0];
                 const uint32_t read_offset = schedule[packet_idx][1];
                 const uint32_t read_size = schedule[packet_idx][2];
+
+                // DPRINT << "curr_core " << (uint)curr_core << ENDL();
+                // DPRINT << "read_offset " << read_offset << ENDL();
+                // DPRINT << "read_size " << read_size << ENDL();
+                // DPRINT << "page_size_bytes " << page_size_bytes << ENDL();
 
                 const uint32_t x = input_core_xy[curr_core][x_index];
                 const uint32_t y = input_core_xy[curr_core][y_index];
@@ -126,6 +142,7 @@ void kernel_main() {
         }
         if (receiver_core) {
             // Precompute multicast semaphore address once
+#ifndef SKIP_MCAST
             const uint64_t multicast_semaphore_addr = static_noc_multicast_addr(
                 packet_worker_start_x,
                 packet_worker_start_y,
@@ -138,6 +155,9 @@ void kernel_main() {
                 receiver_semaphore_address,
                 multicast_semaphore_addr,
                 num_dests);  // could do different mcast for each device by having num_devices - 1 receiver cores
+#else
+            noc_semaphore_wait((uint32_t*)receiver_semaphore_address, total_senders);
+#endif
         } else {
             noc_semaphore_wait((uint32_t*)local_semaphore_address, total_senders);
         }

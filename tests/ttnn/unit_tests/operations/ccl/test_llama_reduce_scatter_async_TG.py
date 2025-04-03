@@ -69,38 +69,71 @@ def run_reduce_scatter_test(
     trace_mode,
     num_links=3,
     scheme="random",
+    use_regular_grid=False,
+    input_grid=None,
+    output_grid=None,
 ):
     mesh_device.enable_async(True)
     mesh_device.enable_program_cache()
     num_pages_per_packet = 4
 
+    # input, output, interm core range set
+    device = mesh_device.get_device(mesh_device.get_device_ids()[0])
+    compute_grid = (device.compute_with_storage_grid_size().x, device.compute_with_storage_grid_size().y)
+    subdevice_shard_cores_grid = ttnn.CoreRangeSet(
+        {
+            ttnn.CoreRange(
+                ttnn.CoreCoord(0, 0),
+                ttnn.CoreCoord(compute_grid[0] - 1, compute_grid[1] - 1),
+            ),
+        }
+    )
+    if input_grid is not None:
+        input_shard_cores_grid = ttnn.CoreRangeSet(
+            {
+                ttnn.CoreRange(
+                    ttnn.CoreCoord(0, 0),
+                    ttnn.CoreCoord(input_grid[0] - 1, input_grid[1] - 1),
+                ),
+            }
+        )
+    if output_grid is not None:
+        output_shard_cores_grid = ttnn.CoreRangeSet(
+            {
+                ttnn.CoreRange(
+                    ttnn.CoreCoord(0, 0),
+                    ttnn.CoreCoord(output_grid[0] - 1, output_grid[1] - 1),
+                ),
+            }
+        )
+        tensor_width_in_tiles = num_cores * shard_width
+        output_num_cores = output_grid[0] * output_grid[1]
+
+    # input, output, interm memory config
     sharded_mem_config = ttnn.MemoryConfig(
         ttnn.TensorMemoryLayout.WIDTH_SHARDED,
         ttnn.BufferType.L1,
         ttnn.ShardSpec(
-            RING_CRS,
+            input_shard_cores_grid if use_regular_grid else RING_CRS,
             [shard_height, shard_width],
             ttnn.ShardOrientation.ROW_MAJOR,
         ),
     )
-
-    output_mem_config = ttnn.MemoryConfig(
-        ttnn.TensorMemoryLayout.WIDTH_SHARDED,
-        ttnn.BufferType.L1,
-        ttnn.ShardSpec(
-            FF1_CRS_RS_OUT,
-            [shard_height, 32],
-            ttnn.ShardOrientation.ROW_MAJOR,
-        ),
-    )
-
-    # have to allocate a tensor for buffers that are written to across devices as there's no way to synchronize lifetime of buffers across devices
     packet_workers_persistent_mem_config = ttnn.MemoryConfig(
         ttnn.TensorMemoryLayout.WIDTH_SHARDED,
         ttnn.BufferType.L1,
         ttnn.ShardSpec(
-            SUB_DEVICE_CRS,
+            subdevice_shard_cores_grid if use_regular_grid else SUB_DEVICE_CRS,
             [shard_height, num_devices_scatter * num_pages_per_packet * 32],
+            ttnn.ShardOrientation.ROW_MAJOR,
+        ),
+    )
+    output_mem_config = ttnn.MemoryConfig(
+        ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        ttnn.BufferType.L1,
+        ttnn.ShardSpec(
+            output_shard_cores_grid if use_regular_grid else FF1_CRS_RS_OUT,
+            [shard_height, tensor_width_in_tiles // output_num_cores if use_regular_grid else 32],
             ttnn.ShardOrientation.ROW_MAJOR,
         ),
     )
@@ -162,7 +195,7 @@ def run_reduce_scatter_test(
         tt_intermediate_tensors_list.append(tt_intermediate)
 
     enable_persistent_fabric = True
-    ccl_sub_device_crs = SUB_DEVICE_CRS
+    ccl_sub_device_crs = subdevice_shard_cores_grid if input_grid is not None else SUB_DEVICE_CRS
     worker_sub_device = ttnn.SubDevice(
         [
             ccl_sub_device_crs,
@@ -337,4 +370,46 @@ def test_fabric_reduce_scatter_tg_no_trace(mesh_device, trace_mode):
         trace_mode,
         num_links=3,
         scheme="random",
+    )
+
+
+@pytest.mark.parametrize(
+    "device_params", [{"trace_region_size": 90000, "dispatch_core_axis": ttnn.DispatchCoreAxis.ROW}], indirect=True
+)
+@pytest.mark.parametrize("trace_mode", [True, False])
+@pytest.mark.parametrize(
+    "mesh_device",
+    [
+        (1, 2),
+    ],
+    indirect=True,
+)
+@pytest.mark.parametrize("shard_height", [32])
+@pytest.mark.parametrize("shard_width", [64])
+@pytest.mark.parametrize("input_grid", [(5, 4)])
+@pytest.mark.parametrize("output_grid", [(5, 2)])
+def test_fabric_reduce_scatter_regular_grid(
+    mesh_device, trace_mode, shard_height, shard_width, input_grid, output_grid
+):
+    dim = 3
+    num_devices_scatter = 2
+    num_devices_fracture = 1
+    num_cores = input_grid[0] * input_grid[1]
+    num_iters = 30
+
+    run_reduce_scatter_test(
+        mesh_device,
+        dim,
+        shard_height,
+        shard_width,
+        num_devices_scatter,
+        num_devices_fracture,
+        num_cores,
+        num_iters,
+        trace_mode,
+        num_links=1,
+        scheme="random",
+        use_regular_grid=True,
+        input_grid=input_grid,
+        output_grid=output_grid,
     )

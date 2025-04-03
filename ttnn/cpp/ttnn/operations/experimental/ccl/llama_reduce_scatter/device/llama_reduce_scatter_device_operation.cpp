@@ -25,48 +25,37 @@ void LlamaReduceScatterDeviceOperation::validate_on_program_cache_miss(
 
     TT_FATAL(attributes.dim == 3, "dim must be 1, got {}", attributes.dim);
     TT_FATAL(attributes.cluster_axis == 1, "cluster_axis must be 1, got {}", attributes.cluster_axis);
-    TT_FATAL(attributes.ring_devices == 4, "ring_devices must be 4, got {}", attributes.ring_devices);
+    TT_FATAL(
+        attributes.ring_devices == 4 or attributes.ring_devices == 2,
+        "ring_devices must be 4 or 2, got {}",
+        attributes.ring_devices);
     TT_FATAL(attributes.cross_device_semaphore.has_value(), "Cross device semaphore is not present");
 
     TT_FATAL(input_tensor.shard_spec().has_value(), "input_tensor must have a shard spec");
     TT_FATAL(
-        input_tensor.shard_spec().value().shape[0] == 32 && input_tensor.shard_spec().value().shape[1] == 160,
-        "input_tensor.shard_spec().value().shape ({}, {}) must be (32, 160)",
-        input_tensor.shard_spec().value().shape[0],
-        input_tensor.shard_spec().value().shape[1]);
+        input_tensor.shard_spec().value().shape[0] == 32,
+        "input_tensor shard height must be 32 but got {}",
+        input_tensor.shard_spec().value().shape[0]);
 
     TT_FATAL(
         tensor_args.intermediate_packet_buffer.shard_spec().has_value(),
         "intermediate_packet_buffer must have a shard spec");
     TT_FATAL(
-        tensor_args.intermediate_packet_buffer.shard_spec().value().shape[0] == 32 &&
-            tensor_args.intermediate_packet_buffer.shard_spec().value().shape[1] == 512,
-        "intermediate_packet_buffer.shard_spec().value().shape ({}, {}) must be (32, 512)",
-        tensor_args.intermediate_packet_buffer.shard_spec().value().shape[0],
-        tensor_args.intermediate_packet_buffer.shard_spec().value().shape[1]);
+        tensor_args.intermediate_packet_buffer.shard_spec().value().shape[0] == 32,
+        "intermediate_packet_buffer shard height must be 32 but got {}",
+        tensor_args.intermediate_packet_buffer.shard_spec().value().shape[0]);
     TT_FATAL(
         tensor_args.intermediate_packet_buffer.get_tensor_spec().tile().get_tile_shape() == tile_shape,
         "intermediate_packet_buffer must have the same tile shape ({}, {}) as input_tensor",
         tile_shape[0],
         tile_shape[1]);
-    TT_FATAL(
-        tensor_args.intermediate_packet_buffer.shard_spec().value().num_cores() >= 8,
-        "intermediate_packet_buffer must have at least 8 cores, got {}",
-        tensor_args.intermediate_packet_buffer.shard_spec().value().num_cores());
-
     if (attributes.output_mem_config.has_value()) {
         TT_FATAL(
             attributes.output_mem_config.value().shard_spec.has_value(), "output_mem_config must have a shard spec");
         TT_FATAL(
-            attributes.output_mem_config.value().shard_spec.value().shape[0] == 32 &&
-                attributes.output_mem_config.value().shard_spec.value().shape[1] == 32,
-            "output_mem_config.value().shard_spec.value().shape ({}, {}) must be (32, 32)",
-            attributes.output_mem_config.value().shard_spec.value().shape[0],
-            attributes.output_mem_config.value().shard_spec.value().shape[1]);
-        TT_FATAL(
-            attributes.output_mem_config.value().shard_spec.value().num_cores() == 30,
-            "output_mem_config must have 30 cores, got {}",
-            attributes.output_mem_config.value().shard_spec.value().num_cores());
+            attributes.output_mem_config.value().shard_spec.value().shape[0] == 32,
+            "output_mem_config shard height must be 32 but got {}",
+            attributes.output_mem_config.value().shard_spec.value().shape[0]);
     }
 }
 
@@ -80,7 +69,7 @@ LlamaReduceScatterDeviceOperation::spec_return_value_t LlamaReduceScatterDeviceO
     auto input_tensor = tensor_args.input_tensor;
     auto tile_shape = input_tensor.get_tensor_spec().tile().get_tile_shape();
     auto input_spec = input_tensor.get_tensor_spec();
-    auto input_shape = Shape({1, 1, 32, 3840});  // input_spec.logical_shape();;
+    auto input_shape = input_spec.logical_shape();  // input_spec.logical_shape();;
 
     uint32_t final_width = input_shape[attributes.dim] / attributes.ring_devices;
 
@@ -115,7 +104,9 @@ LlamaReduceScatterDeviceOperation::spec_return_value_t LlamaReduceScatterDeviceO
 
 LlamaReduceScatterDeviceOperation::tensor_return_value_t LlamaReduceScatterDeviceOperation::create_output_tensors(
     const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
+    tt::log_info("operation_attributes: {}", operation_attributes);
     auto output_spec = compute_output_specs(operation_attributes, tensor_args);
+
     auto tensor = create_device_tensor(output_spec, tensor_args.input_tensor.device());
     return tensor;
 }
