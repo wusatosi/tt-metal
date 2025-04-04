@@ -31,6 +31,8 @@ jobs:
         # model-type: [llm_javelin, cnn_javelin, other]
 
     name: "${{ matrix.test-group.name }}"
+    env:
+      ARCH_NAME: ${{ matrix.test-group.arch }}
     runs-on:
       - arch-wormhole_b0
       - N300
