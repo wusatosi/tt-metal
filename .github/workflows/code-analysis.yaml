@@ -142,7 +142,7 @@ jobs:
 
       - name: 🔍 Analyze code with clang-tidy
         run: |
-          nice -n 19 cmake --build --preset clang-tidy --parallel 32
+          nice -n 19 cmake --build --preset clang-tidy
 
       - name: Publish Ccache summary
         run: |
