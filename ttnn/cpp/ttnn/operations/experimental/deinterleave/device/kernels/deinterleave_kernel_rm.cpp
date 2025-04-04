@@ -39,12 +39,19 @@ void helper_clear_cb(
     }
 }
 
+// Target 8KB of data before a single barrier for 8x8 grid of readers
+template <uint32_t payload_size, uint32_t num_readers>
+constexpr uint32_t get_barrier_read_threshold() {
+    return ((512 / num_readers) * (1024 + 128)) / payload_size;
+}
+
 void kernel_main() {
     // if (noc_index == 0)
     // {
     //     DPRINT << "EARLY EXIT!" << ENDL();
     //     return;
     // }
+    // DPRINT << "NOC" << (uint32_t)noc_index << ENDL();
 
     constexpr uint32_t src_cb_id = get_compile_time_arg_val(0);
     constexpr uint32_t dst_cb_id = get_compile_time_arg_val(1);
@@ -67,6 +74,9 @@ void kernel_main() {
 
     uint32_t stick_size = stick_size_bytes / 2;
 
+    constexpr uint32_t barrier_threshold = get_barrier_read_threshold<stick_size_bytes, 2>();
+    uint32_t barrier_count = 0;
+
     // handy for debug
     // helper_print_cb<uint16_t>(src_cb_id, height, width, stick_size);
     // helper_clear_cb<uint16_t>(dst_cb_id, height, width, stick_size, 0);
@@ -84,12 +94,17 @@ void kernel_main() {
             // DPRINT << "src_noc_x = " << src_noc_x << ENDL();
             // src_noc_address points to the start of the first line (AB) or the second line (CD)
             auto src_noc_address = get_noc_addr(src_noc_x, src_noc_y, get_read_ptr(src_cb_id)) + src_offset;
+            noc_async_read_one_packet_set_state(src_noc_address, stick_size_bytes);
             // Copy half of data data from src to dst
             for (uint32_t h = 0; h < height / 2; h += stride_h) {
                 for (uint32_t w = 0; w < width; w += stride_w) {
-                    noc_async_read_one_packet(src_noc_address, dst_address, stick_size_bytes);
+                    noc_async_read_one_packet_with_state<true>(src_noc_address, dst_address);
                     src_noc_address += src_width_stride;
                     dst_address += stick_size_bytes;
+                    if (++barrier_count == barrier_threshold) {
+                        noc_async_read_barrier();
+                        barrier_count = 0;
+                    }
                 }
                 // skip lines to the next src line
                 src_noc_address += src_height_offset_to_next;
@@ -97,8 +112,8 @@ void kernel_main() {
             dst_address += dst_stride / 2;  // / 2; // dst_stride - one src image in dst size
         }
     }
-    noc_async_read_barrier();
 
+    noc_async_read_barrier();
     // handy for debug
     // helper_print_cb<uint16_t>(dst_cb_id, height, width, stick_size);
 

@@ -152,18 +152,9 @@ DeinterleaveOperation::ProgramFactory::cached_program_t DeinterleaveOperation::P
         uint32_t start_id = id_in_batch * num_src_cores;
         uint32_t start_y = start_id / device_grid.x;
         uint32_t start_x = start_id % device_grid.x;
-        uint32_t end_x = start_x + num_src_cores;
-        TT_FATAL(
-            end_x <= device_grid.x,
-            "Deinterleave: unsupported configuration. end_x {} cannot be larger than device_grid.x {}",
-            end_x,
-            device_grid.x);
-        uint32_t end_y = start_y + 1 + num_src_cores / device_grid.x;  // end_id / device_grid.x;
-        TT_FATAL(
-            end_y <= device_grid.y,
-            "Deinterleave: unsupported configuration. end_y {} cannot be larger than device_grid.y {}",
-            end_x,
-            device_grid.y);
+        uint32_t end_x = start_x + (num_src_cores % device_grid.x == 0 ? device_grid.x : num_src_cores % device_grid.x);
+        uint32_t end_y = start_y + (num_src_cores % device_grid.x == 0 ? num_src_cores / device_grid.x
+                                                                       : 1 + num_src_cores / device_grid.x);
 
         log_warning(
             tt::LogOp,
@@ -175,6 +166,23 @@ DeinterleaveOperation::ProgramFactory::cached_program_t DeinterleaveOperation::P
             end_y,
             end_x,
             dst_batch);
+        TT_FATAL(end_x > 0, "Deinterleave: end_x {} == 0", end_x);
+        TT_FATAL(end_y > 0, "Deinterleave: end_y {} == 0", end_y);
+
+        TT_FATAL(
+            end_x <= device_grid.x,
+            "Deinterleave: unsupported configuration. {} end_x {} cannot be larger than device_grid.x {}",
+            core,
+            end_x,
+            device_grid.x);
+
+        TT_FATAL(
+            end_y <= device_grid.y,
+            "Deinterleave: unsupported configuration. {} end_y {} cannot be larger than device_grid.y {}",
+            core,
+            end_y,
+            device_grid.y);
+
         log_warning(
             tt::LogOp,
             "src_width_stride {}, src_height_offset_to_next {}",
