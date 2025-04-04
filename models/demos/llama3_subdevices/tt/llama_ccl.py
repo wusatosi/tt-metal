@@ -505,7 +505,16 @@ class TT_CCL:
                 self.reduce_scatter_buffer_idx[cluster_axis] + 1
             ) % self.num_cbs
         # ttnn.synchronize_device(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
-        return ttnn_tensor_out
+        # ttnn_tensor_out = self.line_reduce_scatter_host(
+        #     input_tensor_mesh,
+        #     memory_config,
+        #     dim,
+        #     cluster_axis,
+        #     num_links=num_links,
+        #     math_op=math_op,
+        # )
+        # persistent_interim_buffer = None
+        return ttnn_tensor_out, persistent_interim_buffer
 
     def line_all_gather(self, input_tensor_mesh, dim, cluster_axis, memory_config, num_links=1, buffer_key=None):
         if self.mode == "prefill" and not self.enable_persistent_fabric:
@@ -571,18 +580,22 @@ class TT_CCL:
         torch_tensor_mesh = ttnn.to_torch(
             input_tensor_mesh, mesh_composer=ttnn.ConcatMesh2dToTensor(self.mesh_device, dims=dims, mesh_shape=(8, 4))
         )
-
         torch_tensor_mesh = torch.sum(torch_tensor_mesh, dim=cluster_axis, keepdim=True)
 
-        dims[cluster_axis] = dim
+        # pad the last dim with zeros
+        pad = torch.zeros((8, 1, 32, 3840 - torch_tensor_mesh.shape[-1]), dtype=torch_tensor_mesh.dtype)
+        pad = torch.randn(pad.shape)
+        torch_tensor_mesh = torch.cat((torch_tensor_mesh, pad), dim=-1)
+
         ttnn_tensor_out = ttnn.from_torch(
             torch_tensor_mesh,
             device=self.mesh_device,
-            mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=dims, mesh_shape=(8, 4)),
+            mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=[0, 3], mesh_shape=(8, 4)),
             dtype=dtype,
             memory_config=memory_config,
             layout=ttnn.TILE_LAYOUT,
         )
+        # breakpoint()
 
         return ttnn_tensor_out
 

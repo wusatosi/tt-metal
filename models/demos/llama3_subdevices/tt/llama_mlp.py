@@ -116,7 +116,7 @@ class TtLlamaMLP(LightweightModule):
             sub_device_id=self.prefetcher_setup.worker_sub_device_id if mode == "decode" else None,
         )
 
-        w1_out_reduced = self.tt_ccl.line_reduce_scatter(
+        w1_out_reduced, w1_interim = self.tt_ccl.line_reduce_scatter(
             w1_out,
             cluster_axis=1,
             num_links=3,
@@ -137,7 +137,7 @@ class TtLlamaMLP(LightweightModule):
         )
         ttnn.deallocate(x)
         try:
-            w3_out_reduced = self.tt_ccl.line_reduce_scatter(
+            w3_out_reduced, w3_interim = self.tt_ccl.line_reduce_scatter(
                 w3_out,
                 cluster_axis=1,
                 num_links=3,
@@ -157,8 +157,8 @@ class TtLlamaMLP(LightweightModule):
 
         # print("eltwise mul", w2_in)
 
-        ttnn.deallocate(w3_out_reduced)
-        ttnn.deallocate(w1_out_reduced)
+        # ttnn.deallocate(w3_out_reduced)
+        # ttnn.deallocate(w1_out_reduced)
 
         w2_in = self.tt_ccl.line_all_gather(
             ff1ff3,
@@ -168,7 +168,6 @@ class TtLlamaMLP(LightweightModule):
             memory_config=self.model_config["FF2_IN_RING_MEMCFG"],
             buffer_key="BINARY_MUL",
         )
-        ttnn.deallocate(ff1ff3)
 
         w2_out = ttnn.linear(
             w2_in,
@@ -181,6 +180,7 @@ class TtLlamaMLP(LightweightModule):
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
             sub_device_id=self.prefetcher_setup.worker_sub_device_id if mode == "decode" else None,
         )
+        ttnn.deallocate(ff1ff3)
 
         w2_out_reduced = self.tt_ccl.line_all_reduce(
             w2_out, cluster_axis=0, num_links=3, memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"]
@@ -188,7 +188,7 @@ class TtLlamaMLP(LightweightModule):
 
         ttnn.deallocate(w2_out)
 
-        return w2_out_reduced
+        return w2_out_reduced, w1_out_reduced, w3_out_reduced, w1_interim, w3_interim
 
     def forward_prefill(self, x: ttnn.Tensor, mode) -> ttnn.Tensor:
         """
