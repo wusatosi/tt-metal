@@ -78,7 +78,7 @@ jobs:
           install_wheel: true
           # run_args: ./tests/scripts/run_tests.sh --tt-arch ${{ matrix.test-group.arch }} --pipeline-type ${{ matrix.model-type }}_models_performance_${{ matrix.test-group.machine-type }}
           run_args: |
-            source ${{ github.workspace }}/tests/scripts/run_tests.sh
+            source ${{ github.workspace }}/tests/scripts/run_performance.sh
             ${{ matrix.test-group.cmd }}
       # TODO: Fix the pipeline before enabling notifications.
       #- uses: ./.github/actions/slack-report
