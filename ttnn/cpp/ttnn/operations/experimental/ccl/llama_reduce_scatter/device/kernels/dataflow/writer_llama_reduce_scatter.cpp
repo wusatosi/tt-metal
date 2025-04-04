@@ -163,6 +163,7 @@ void kernel_main() {
             fabric_connection.close();
         }
     } else if (worker_core) {
+#ifndef SKIP_WRITE_BACK
         constexpr uint8_t output_core_xy[output_cores_per_device][2] = OUTPUT_CORE_XY;
         uint64_t noc_addresses[num_pages_per_packet];
         uint32_t accumulator_l1_addresses[num_pages_per_packet];
@@ -193,5 +194,8 @@ void kernel_main() {
         }
         noc_async_write_barrier();
         cb_pop_front(accumulator_cb_id, num_pages_per_packet);
+#else
+        cb_wait_front(output_tensor_cb_id, num_pages_per_packet);
+#endif
     }
 }

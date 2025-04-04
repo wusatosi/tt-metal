@@ -602,6 +602,14 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
     tt::log_info("num_packet_worker_cores: {}", num_packet_worker_cores);
 
     auto writer_defines = reader_defines;
+    bool skip_write_back = output_cores == packet_worker_cores and num_pages_per_packet == tiles_per_core_width_output;
+
+    tt::log_info("skip_write_back: {}", skip_write_back);
+    tt::log_info("num_pages_per_packet: {}", num_pages_per_packet);
+    tt::log_info("tiles_per_core_width_output: {}", tiles_per_core_width_output);
+    if (skip_write_back) {
+        writer_defines["SKIP_WRITE_BACK"] = "1";
+    }
     tt::tt_metal::KernelHandle unary_writer_kernel_id = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/experimental/ccl/llama_reduce_scatter/device/kernels/dataflow/"
@@ -613,8 +621,9 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
             .compile_args = writer_compile_time_args,
             .defines = writer_defines});
 
+    auto output_cb_index = skip_write_back ? output_tensor_cb_id : accumulator_cb_index;
     const std::vector<uint32_t> compute_compile_time_args = {
-        fabric_receiver_cb_index, accumulator_cb_index, num_devices, tiles_per_core_width_output, num_pages_per_packet};
+        fabric_receiver_cb_index, output_cb_index, num_devices, tiles_per_core_width_output, num_pages_per_packet};
 
     bool fp32_dest_acc_en = cb_data_format == tt::DataFormat::Float32;
     const auto compute_kernel_file =

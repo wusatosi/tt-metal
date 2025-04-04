@@ -133,7 +133,10 @@ def run_reduce_scatter_test(
         ttnn.BufferType.L1,
         ttnn.ShardSpec(
             output_shard_cores_grid if use_regular_grid else FF1_CRS_RS_OUT,
-            [shard_height, tensor_width_in_tiles // output_num_cores if use_regular_grid else 32],
+            [
+                shard_height,
+                tensor_width_in_tiles // output_num_cores // num_devices_scatter if use_regular_grid else 32,
+            ],
             ttnn.ShardOrientation.ROW_MAJOR,
         ),
     )
