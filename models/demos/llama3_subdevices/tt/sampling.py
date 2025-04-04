@@ -123,7 +123,10 @@ class TTSampling(LightweightModule):
         ttnn.deallocate(topk_indices_gathered_interleaved)
 
         # Add device offsets for global indices
-        topk_global_indices = ttnn.add(
+        # topk_global_indices = ttnn.add(
+        #     self.tt_indices_device_offsets, topk_indices_gathered_sharded_int32, dtype=ttnn.int32
+        # )
+        topk_global_indices = ttnn.experimental.add(
             self.tt_indices_device_offsets, topk_indices_gathered_sharded_int32, dtype=ttnn.int32
         )
         ttnn.deallocate(topk_indices_gathered_sharded_int32)
