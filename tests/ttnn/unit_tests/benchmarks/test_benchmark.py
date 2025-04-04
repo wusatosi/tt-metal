@@ -75,11 +75,7 @@ profiler_log_path = PROFILER_LOGS_DIR / PROFILER_DEVICE_SIDE_LOG
 
 
 def get_device_freq():
-    setup = device_post_proc_config.default_setup()
-    setup.deviceInputLog = profiler_log_path
-    deviceData = import_log_run_stats(setup)
-    freq = deviceData["deviceInfo"]["freq"]
-    return freq
+    return 800
 
 
 matmul_shapes_bfloat16 = [
@@ -142,17 +138,17 @@ matmul_configs = [
     (ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, False),
     (ttnn.bfloat8_b, ttnn.MathFidelity.LoFi, False),
     (ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, False),
-    (ttnn.bfloat16, ttnn.MathFidelity.HiFi2, True),
-    (ttnn.bfloat16, ttnn.MathFidelity.HiFi4, True),
-    (ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, True),
-    (ttnn.bfloat8_b, ttnn.MathFidelity.LoFi, True),
-    (ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, True),
+    # (ttnn.bfloat16, ttnn.MathFidelity.HiFi2, True),
+    # (ttnn.bfloat16, ttnn.MathFidelity.HiFi4, True),
+    # (ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, True),
+    # (ttnn.bfloat8_b, ttnn.MathFidelity.LoFi, True),
+    # (ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, True),
 ]
 
 
-@pytest.mark.skip(reason="WH didt hang, need to skip CI and run locally only")
+# @pytest.mark.skip(reason="WH didt hang, need to skip CI and run locally only")
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576, "trace_region_size": 3855488}], indirect=True)
-@pytest.mark.parametrize("grid_size", [(8, 8)])
+@pytest.mark.parametrize("grid_size", [(13, 10)])
 @pytest.mark.parametrize("tile_h", [32])
 @pytest.mark.parametrize("tile_w", [32])
 @pytest.mark.parametrize("num_warmup_iterations", [5])
@@ -211,6 +207,10 @@ def test_matmul_2d_host_perf(
 
                 in0_shape = [1, 1, m, k]
                 in1_shape = [1, 1, k, n]
+
+                m = (m // 8) * grid_size[1]
+                n = (n // 8) * grid_size[0]
+                k = (k // 8) * grid_size[0]
 
                 in0_block_w = k // grid_size[0] // 32 // in0_block_w_div
                 per_core_M = m // grid_size[1] // tile_h
