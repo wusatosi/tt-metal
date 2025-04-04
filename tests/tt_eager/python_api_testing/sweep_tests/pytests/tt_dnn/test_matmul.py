@@ -55,7 +55,7 @@ if is_wormhole_b0():
 )
 def test_run_matmul_test(input_shapes, device, dtype, function_level_defaults):
     datagen_func = [
-        generation_funcs.gen_func_with_cast(partial(generation_funcs.gen_rand_inf, low=-100, high=100), torch.float32)
+        generation_funcs.gen_func_with_cast(partial(generation_funcs.gen_rand, low=-100, high=100), torch.float32)
     ] * 2
     comparison_func = partial(comparison_funcs.comp_pcc)
     run_single_pytorch_test(

@@ -853,7 +853,7 @@ void Device::clear_l1_state() {
         for (uint32_t y = 0; y < logical_grid_size.y; y++) {
             CoreCoord logical_core(x, y);
             detail::WriteToDeviceL1(this, logical_core, start_address, random_vec);
-            detail::WriteToDeviceL1(this, logical_core, 155648, zero_vec);
+            // detail::WriteToDeviceL1(this, logical_core, 155648, zero_vec);
         }
     }
 
