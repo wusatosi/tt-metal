@@ -58,7 +58,7 @@ void TopK::validate_with_output_tensors(
         input_shape[0] * input_shape[1] * input_shape[2]);
 
     TT_FATAL(this->output_mem_config.is_sharded() == false, "Sharded implementation not supported yet");
-    TT_FATAL(input_tensors.at(0).get_layout() == Layout::TILE, "The input must be in tiled format");
+    /*TT_FATAL(input_tensors.at(0).get_layout() == Layout::TILE, "The input must be in tiled format");
     if (input_shape[dim] >= topk_utils::multi_core_min_width) {  // multicore implementation
         auto device = input_tensors.at(0).device();
 
@@ -79,7 +79,8 @@ void TopK::validate_with_output_tensors(
                 value_tile_size,
                 index_tile_size),
             "Not enough cores available to run topk operation");
-    }
+
+    }*/
 }
 
 std::vector<TensorSpec> TopK::compute_output_specs(

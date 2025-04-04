@@ -204,7 +204,7 @@ def test_sum_4d_tensor_dims(device, batch_size, c, h, w, dim, keepdim):
 
 
 @pytest.mark.parametrize("dim1", [1])
-@pytest.mark.parametrize("dim2", [64 * 100])  # also check, 128256
+@pytest.mark.parametrize("dim2", [4 * 8192])  # also check, 128256
 @pytest.mark.parametrize("dim", [1])
 @pytest.mark.parametrize("k", [32])
 @pytest.mark.parametrize("largest", [True])

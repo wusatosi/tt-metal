@@ -161,6 +161,7 @@ void MAIN {
 
     ckernel::topk_tile_init();
     transpose_wh_init(input_val_cb_index, output_val_cb_index);
+    transpose_wh_init(input_ind_cb_index, output_ind_cb_index);
     /*
         process_and_sort_tiles(
                 input_val_cb_index,
@@ -193,14 +194,7 @@ void MAIN {
             transpose_wh_init_short(input_ind_cb_index);
             transpose_wh_tile(input_ind_cb_index, 0, 2);
             transpose_wh_tile(input_ind_cb_index, 1, 3);
-            /*
-                        copy_tile_to_dst_init_short_with_dt(transposed_ind_cb_index, transposed_val_cb_index);
-                        copy_tile(transposed_val_cb_index, 0, 0);
-                        copy_tile(transposed_val_cb_index, 1, 1);
 
-                        copy_tile_to_dst_init_short_with_dt(transposed_val_cb_index, transposed_ind_cb_index);
-                        copy_tile(transposed_ind_cb_index, 0, 2);
-                        copy_tile(transposed_ind_cb_index, 1, 3);*/
             count++;
 
             cb_pop_front(input_val_cb_index, 2);
@@ -211,23 +205,15 @@ void MAIN {
 
             reconfig_data_format_srca(input_val_cb_index);
             transpose_wh_init_short(input_val_cb_index);
-            transpose_wh_tile(input_val_cb_index, 1, 1);
+            transpose_wh_tile(input_val_cb_index, 0, 1);
 
             reconfig_data_format_srca(input_ind_cb_index);
             transpose_wh_init_short(input_ind_cb_index);
-            transpose_wh_tile(input_ind_cb_index, 1, 3);
-            /*
-                        copy_tile_to_dst_init_short_with_dt(transposed_ind_cb_index, transposed_val_cb_index);
-                        copy_tile(transposed_val_cb_index, 0, 1);
+            transpose_wh_tile(input_ind_cb_index, 0, 3);
 
-                        copy_tile_to_dst_init_short_with_dt(transposed_val_cb_index, transposed_ind_cb_index);
-                        copy_tile(transposed_ind_cb_index, 0, 3);
-            */
             cb_pop_front(input_val_cb_index, 1);
             cb_pop_front(input_ind_cb_index, 1);
         }
-
-        // print_loop(index++);//0
 
         // merge values - move larger 32 values into 0th dest and lower 32 values into 1st dest
         ckernel::topk_local_sort(0, (int)ascending, logk);
