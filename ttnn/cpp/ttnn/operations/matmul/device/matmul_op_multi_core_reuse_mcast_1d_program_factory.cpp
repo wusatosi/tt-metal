@@ -100,6 +100,8 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_mcast_in0(
     std::optional<ttnn::experimental::ccl::MatmulFusedOpSignaler>& fused_op_signaler) {
     using tt::tt_metal::num_cores_to_corerangeset;
 
+    std::cout << "here 1 " << std::endl;
+
     // currently only support transpose of the full tile
     bool in1_transpose_tile = in1_tile.get_transpose_of_faces() && in1_tile.get_transpose_within_face();
 
@@ -1001,6 +1003,8 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_mcast_in1(
     tt_metal::Program program{};
 
     bool fuse_op = false;
+
+    std::cout << "here 2 " << std::endl;
 
     uint32_t num_blocks = K / in0_block_w;
     // Only enable packer l1 accumulation when there are num_blocks > 2, otherwise
@@ -2252,6 +2256,8 @@ tt::tt_metal::operation::ProgramWithCallbacks matmul_multi_core_reuse_mcast_1d_o
     const std::optional<const tt::tt_metal::experimental::GlobalCircularBuffer>& global_cb,
     uint32_t num_global_cb_receivers,
     const std::optional<tt::tt_metal::SubDeviceId>& sub_device_id) {
+    std::cout << "here 2 " << std::endl;
+
     const auto &ashape = a.get_padded_shape(), bshape = b.get_padded_shape();
     auto in0_tile = a.get_tensor_spec().tile();
     auto in1_tile = b.get_tensor_spec().tile();

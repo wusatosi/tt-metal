@@ -50,10 +50,13 @@ Kernel::Kernel(
     defines_(defines) {
     this->register_kernel_with_watcher();
 
+    std::cout << "Kernel name " << kernel_src.name() << std::endl;
+
     size_t max_x = 0, max_y = 0;
     for (auto core_range : this->core_range_set_.ranges()) {
         auto start = core_range.start_coord;
         auto end = core_range.end_coord;
+        std::cout << "\t" << core_range.str() << std::endl;
         for (auto x = start.x; x <= end.x; x++) {
             for (auto y = start.y; y <= end.y; y++) {
                 CoreCoord logical_core({x, y});

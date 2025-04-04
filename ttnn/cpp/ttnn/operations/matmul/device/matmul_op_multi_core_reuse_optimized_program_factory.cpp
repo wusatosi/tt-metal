@@ -43,6 +43,8 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program(
     bool untilize_out) {
     tt_metal::Program program{};
 
+    std::cout << "here 13 " << std::endl;
+
     // TODO: We can generalize this into some special form of fuse batch, where we have B /= batch_scale_factor and M *=
     // batch_scale_factor
     uint32_t batch_scale_factor = per_core_M > M ? per_core_M / M : 1;
@@ -491,6 +493,8 @@ tt::tt_metal::operation::ProgramWithCallbacks matmul_multi_core_reuse_optimized_
     uint32_t per_core_N,
     bool fuse_batch,
     bool untilize_out) {
+    std::cout << "here 16 " << std::endl;
+
     const auto& ashape = a.get_padded_shape();
     const auto& bshape = b.get_padded_shape();
     auto in0_tile_shape = a.get_tensor_spec().tile().get_tile_shape();

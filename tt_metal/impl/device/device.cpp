@@ -832,12 +832,28 @@ void Device::clear_l1_state() {
     // Clear all clearable Tensix and Eth L1
     CoreCoord logical_grid_size = this->logical_grid_size();
     TT_ASSERT(this->l1_size_per_core() % sizeof(uint32_t) == 0);
-    std::vector<uint32_t> zero_vec(this->l1_size_per_core() / sizeof(uint32_t), 0);
+
+    uint32_t unreserved_base = hal_ref.get_dev_addr(HalProgrammableCoreType::TENSIX, HalL1MemAddrType::UNRESERVED);
+    uint32_t unreserved_size = hal_ref.get_dev_size(HalProgrammableCoreType::TENSIX, HalL1MemAddrType::UNRESERVED);
+
+    std::cout << "unres base " << std::hex << unreserved_base << std::dec << " unres size " << unreserved_size
+              << std::endl;
+
+    /*
+        On core [(x=0,y=0) - (x=12,y=9)] CB on 98304 base 57344
+        On core [(x=0,y=0) - (x=12,y=9)] CB on 155648 base 61440 -> BAD CB
+        On core [(x=0,y=0) - (x=12,y=9)] CB on 217088 base 430080
+    */
+    uint32_t bytes_to_clear = 61440;
+    std::vector<uint32_t> random_vec(this->l1_size_per_core() / sizeof(uint32_t), 0xdeadbeef);
+    std::vector<uint32_t> zero_vec(bytes_to_clear / sizeof(uint32_t), 0);
+
     constexpr uint32_t start_address = 0;
     for (uint32_t x = 0; x < logical_grid_size.x; x++) {
         for (uint32_t y = 0; y < logical_grid_size.y; y++) {
             CoreCoord logical_core(x, y);
-            detail::WriteToDeviceL1(this, logical_core, start_address, zero_vec);
+            detail::WriteToDeviceL1(this, logical_core, start_address, random_vec);
+            detail::WriteToDeviceL1(this, logical_core, 155648, zero_vec);
         }
     }
 

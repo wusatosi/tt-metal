@@ -938,6 +938,12 @@ void detail::Program_::allocate_circular_buffers(const IDevice* device) {
                         // `core_range` but also intersecting `cb_allocator.core_range`
                         continue;
                     }
+                    std::cout << "On core " << core_range.str() << " CB on " << computed_addr << " base "
+                              << circular_buffer->size() << std::endl;
+                    for (auto x : circular_buffer->buffer_indices()) {
+                        std::cout << "\twith index " << (uint32_t)x;
+                    }
+                    std::cout << "\n";
                     cb_allocator.mark_address(computed_addr, circular_buffer->size(), base_cb_address);
                 }
             }

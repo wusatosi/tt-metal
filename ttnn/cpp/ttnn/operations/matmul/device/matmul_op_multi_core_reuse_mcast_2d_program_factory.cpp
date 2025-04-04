@@ -59,6 +59,8 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_mcast_in0_in1(
     std::optional<ttnn::experimental::ccl::MatmulFusedOpSignaler>& fused_op_signaler) {
     using tt::tt_metal::TensorMemoryLayout;
 
+    std::cout << "here 5 " << std::endl;
+
     // currently only support transpose of the full tile
     bool in1_transpose_tile = in1_tile.get_transpose_of_faces() && in1_tile.get_transpose_within_face();
 
@@ -558,6 +560,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_mcast_in0_in1(
     tt::tt_metal::KernelHandle mm_kernel_in0_sender_id = 0;
     tt::tt_metal::KernelHandle mm_kernel_in0_mcast_cores_without_work_and_not_in_receiver_grid_id = 0;
     if (in0_block_sharded) {
+        std::cout << "A" << std::endl;
         mm_kernel_in0_sender_id = tt_metal::CreateKernel(
             program,
             "ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/"
@@ -569,6 +572,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_mcast_in0_in1(
                 .compile_args = in0_sender_compile_time_args,
                 .defines = mm_kernel_in0_sender_sharded_defines});
         if (in0_mcast_cores_without_work_and_not_in_receiver_grid.has_value()) {
+            std::cout << "A.1" << std::endl;
             in0_sender_compile_time_args[0] = 0;  // core_has_output_block_work
             in0_sender_compile_time_args[1] = 0;  // core_in_in0_receiver_mcast_grid
             mm_kernel_in0_mcast_cores_without_work_and_not_in_receiver_grid_id = tt_metal::CreateKernel(
@@ -587,7 +591,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_mcast_in0_in1(
             // Create semaphores
             fused_op_signaler->init_fused_op(program, device, in0_sender_interleaved);
         }
-
+        std::cout << "B.1" << std::endl;
         mm_kernel_in0_sender_id = tt_metal::CreateKernel(
             program,
             "ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/reader_bmm_tile_layout_in0_sender_padding.cpp",
@@ -626,6 +630,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_mcast_in0_in1(
 
     tt::tt_metal::KernelHandle mm_kernel_in0_receiver_id = 0;
     if (!in0_block_sharded and in0_receiver_interleaved.num_cores() > 0) {
+        std::cout << "C.1" << std::endl;
         mm_kernel_in0_receiver_id = tt_metal::CreateKernel(
             program,
             "ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/reader_bmm_tile_layout_in0_receiver.cpp",
@@ -641,6 +646,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_mcast_in0_in1(
     tt::tt_metal::KernelHandle mm_kernel_in0_receiver_other_noc_setup_id = mm_kernel_in0_receiver_id;
 
     if (in0_receiver_in1_receiver_interleaved_other_cores.has_value()) {
+        std::cout << "D.1" << std::endl;
         mm_kernel_in1_receiver_writer_other_noc_setup_id = tt_metal::CreateKernel(
             program,
             "ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/"
@@ -716,6 +722,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_mcast_in0_in1(
             .set_page_size(src0_cb_index, in0_single_tile_size)
             .set_tile_dims(src0_cb_index, in0_tile);
     if (in0_height_sharded) {
+        std::cout << "CB same as IN0 buffer " << in0_buffer->address() << std::endl;
         src0_cb_config.set_globally_allocated_address(*in0_buffer);
     }
     auto cb_src0 = tt_metal::CreateCircularBuffer(program, all_cores, src0_cb_config);
@@ -813,6 +820,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_mcast_in0_in1(
     }
 
     if (output_is_sharded) {
+        std::cout << "output buffer " << out_buffer->address() << std::endl;
         output_cb_config = output_cb_config.set_globally_allocated_address(*out_buffer);
     }
     auto cb_output = tt_metal::CreateCircularBuffer(program, CoreRangeSet({all_cores}), output_cb_config);
@@ -1339,6 +1347,8 @@ tt::tt_metal::operation::ProgramWithCallbacks matmul_multi_core_reuse_mcast_2d_o
     std::optional<UnaryWithParam> fused_activation,
     bool untilize_out,
     std::optional<ttnn::experimental::ccl::MatmulFusedOpSignaler>& fused_op_signaler) {
+    std::cout << "here 6 " << std::endl;
+
     const auto &ashape = a.get_padded_shape(), bshape = b.get_padded_shape();
     auto in0_tile = a.get_tensor_spec().tile();
     auto in1_tile = b.get_tensor_spec().tile();
@@ -1362,6 +1372,8 @@ tt::tt_metal::operation::ProgramWithCallbacks matmul_multi_core_reuse_mcast_2d_o
 
         bias_buffer = c.buffer();
 
+        std::cout << "Bias buffer " << bias_buffer->address() << std::endl;
+
         bias_data_format = tt_metal::datatype_to_dataformat_converter(c.get_dtype());
     }
 
@@ -1373,6 +1385,8 @@ tt::tt_metal::operation::ProgramWithCallbacks matmul_multi_core_reuse_mcast_2d_o
     tt_metal::Buffer* in1_buffer = b.buffer();
     TT_FATAL(in0_buffer->size() % in0_single_tile_size == 0, "Error");
     TT_FATAL(in1_buffer->size() % in1_single_tile_size == 0, "Error");
+
+    std::cout << "IN0 buffer " << in0_buffer->address() << " IN1 buffer " << in1_buffer->address() << std::endl;
 
     TT_FATAL(
         ashape[-1] == bshape[-2],
@@ -1428,6 +1442,7 @@ tt::tt_metal::operation::ProgramWithCallbacks matmul_multi_core_reuse_mcast_2d_o
     //                      Grayskull Device Setup
     ////////////////////////////////////////////////////////////////////////////
     tt_metal::Buffer* out_buffer = output.buffer();
+    std::cout << "out buffer " << out_buffer->address() << std::endl;
     TT_FATAL(out_buffer != nullptr, "Output buffer should be allocated on device!");
 
     ////////////////////////////////////////////////////////////////////////////

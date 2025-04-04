@@ -125,6 +125,7 @@ Tensor MatmulOperation::invoke(
         user_core_coord = CoreCoord(core_grid->x, core_grid->y);
     }
     bool user_run_batched = detail::is_input_batched(input_tensor_b.get_logical_shape());
+    std::cout << "IN HERE" << std::endl;
     return bound_matmul(
         input_tensor_a,
         input_tensor_b,

@@ -85,6 +85,8 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_dram_sharded(
     bool skip_compute,
     bool skip_in0_mcast,
     bool skip_write_back) {
+    std::cout << "here 9 " << std::endl;
+
     log_debug("math_fidelity: {}", math_fidelity);
     log_debug("fp32_dest_acc_en: {}", fp32_dest_acc_en);
     log_debug("math_approx_mode: {}", math_approx_mode);
@@ -904,6 +906,8 @@ tt::tt_metal::operation::ProgramWithCallbacks matmul_multi_core_reuse_dram_shard
     bool skip_compute,
     bool skip_in0_mcast,
     bool skip_write_back) {
+    std::cout << "here 11 " << std::endl;
+
     const auto &ashape = a.get_padded_shape(), bshape = b.get_padded_shape();
     auto in0_tile = a.get_tensor_spec().tile();
     auto in1_tile = b.get_tensor_spec().tile();
