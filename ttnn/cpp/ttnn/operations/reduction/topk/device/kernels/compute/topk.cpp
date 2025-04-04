@@ -9,6 +9,50 @@
 #include "compute_kernel_api/tile_move_copy.h"
 #include "compute_kernel_api/reconfig_data_format.h"
 #include "compute_kernel_api/pack.h"
+#include "debug/dprint.h"
+
+inline void print_loop(uint32_t count) {
+    UNPACK(DPRINT << "U-LOOP:" << (uint32_t)count << ENDL());
+    MATH(DPRINT << "M-LOOP:" << (uint32_t)count << ENDL());
+    PACK(DPRINT << "P-LOOP:" << (uint32_t)count << ENDL());
+}
+
+inline void print_full_tile_column0(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
+    UNPACK(DPRINT << "U=====!" << ENDL());
+    MATH(DPRINT << "M=====!" << ENDL());
+    PACK(DPRINT << "P=====!" << ENDL());
+    for (uint8_t r = 0; r < 32; ++r) {
+        SliceRange sr_left = SliceRange{.h0 = r, .h1 = (uint8_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 1, .ws = 1};
+        UNPACK(DPRINT << (uint)r << ": " << TileSlice(cb_id, tile_id, sr_left, false, untilize) << " ");
+        MATH(DPRINT << (uint)r << ": " << TileSlice(cb_id, tile_id, sr_left, false, untilize) << " ");
+        PACK(DPRINT << (uint)r << ": " << TileSlice(cb_id, tile_id, sr_left, false, untilize) << " ");
+    }
+    UNPACK(DPRINT << ENDL() << "U+++++!" << ENDL());
+    MATH(DPRINT << ENDL() << "M+++++!" << ENDL());
+    PACK(DPRINT << ENDL() << "P+++++!" << ENDL());
+}
+
+inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
+    UNPACK(DPRINT << "U=====!" << ENDL());
+    MATH(DPRINT << "M=====!" << ENDL());
+    PACK(DPRINT << "P=====!" << ENDL());
+    for (uint8_t r = 0; r < 32; ++r) {
+        SliceRange sr_left = SliceRange{.h0 = r, .h1 = (uint8_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 16, .ws = 1};
+        SliceRange sr_right = SliceRange{.h0 = r, .h1 = (uint8_t)(r + 1), .hs = 1, .w0 = 17, .w1 = 32, .ws = 1};
+        UNPACK(
+            DPRINT << (uint)r << ": " << TileSlice(cb_id, tile_id, sr_left, false, untilize) << " "
+                   << TileSlice(cb_id, tile_id, sr_right, true, untilize) << ENDL());
+        MATH(
+            DPRINT << (uint)r << ": " << TileSlice(cb_id, tile_id, sr_left, false, untilize) << " "
+                   << TileSlice(cb_id, tile_id, sr_right, true, untilize) << ENDL());
+        PACK(
+            DPRINT << (uint)r << ": " << TileSlice(cb_id, tile_id, sr_left, false, untilize) << " "
+                   << TileSlice(cb_id, tile_id, sr_right, true, untilize) << ENDL());
+    }
+    UNPACK(DPRINT << "U+++++!" << ENDL());
+    MATH(DPRINT << "M+++++!" << ENDL());
+    PACK(DPRINT << "P+++++!" << ENDL());
+}
 
 #include "topk_common_funcs.hpp"
 
@@ -18,20 +62,92 @@ int32_t topk_replay_init = 0;
 
 namespace NAMESPACE {
 
+void transpose_and_pack(uint32_t input_cb_index, uint32_t dest_cb_index, uint32_t total_tiles) {
+    reconfig_data_format_srca(input_cb_index);
+    transpose_wh_init_short(input_cb_index);
+    pack_reconfig_data_format(input_cb_index);
+
+    cb_wait_front(input_cb_index, total_tiles);
+    for (uint32_t i = 0; i < total_tiles; ++i) {
+        acquire_dst();
+        cb_reserve_back(dest_cb_index, 1);
+        transpose_wh_tile(input_cb_index, i, 0);
+        pack_tile(0, dest_cb_index);
+        cb_push_back(dest_cb_index, 1);
+        release_dst();
+    }
+    // cb_wait_front(input_cb_index, total_tiles);
+    cb_pop_front(input_cb_index, total_tiles);
+}
+
+void process_and_sort_tiles(
+    uint32_t input_cb_index,
+    uint32_t index_cb_index,
+    uint32_t input_transposed_cb_index,
+    uint32_t index_transposed_cb_index,
+    uint32_t max_size,
+    bool& ascending,
+    int logk) {
+    // copy two new tiles at a time since topk_local_sort can process 2 tiles at a time
+    for (uint32_t index = 0; index < max_size; index += 2) {
+        cb_wait_front(input_cb_index, 2);
+        cb_wait_front(index_cb_index, 2);
+
+        acquire_dst();
+        // local sort into k groups
+
+        reconfig_data_format_srca(input_cb_index);
+        transpose_wh_init_short(input_cb_index);
+        transpose_wh_tile(input_cb_index, 0, 0);
+        transpose_wh_tile(input_cb_index, 1, 1);
+
+        reconfig_data_format_srca(index_cb_index);
+        transpose_wh_init_short(index_cb_index);
+        transpose_wh_tile(index_cb_index, 0, 2);
+        transpose_wh_tile(index_cb_index, 1, 3);
+
+        cb_pop_front(input_cb_index, 2);
+        cb_pop_front(index_cb_index, 2);
+
+        // llk_topk_sort -> inplace
+        // ckernel::topk_local_sort(0, (int)ascending, logk);
+
+        cb_reserve_back(input_transposed_cb_index, 2);
+        cb_reserve_back(index_transposed_cb_index, 2);
+        // pack value tiles into cb_intermed0
+        pack_reconfig_data_format(input_transposed_cb_index);
+        pack_tile(0, input_transposed_cb_index);
+        pack_tile(1, input_transposed_cb_index);
+
+        // pack index tiles into cb_intermed1
+        pack_reconfig_data_format(index_transposed_cb_index);
+        pack_tile(2, index_transposed_cb_index);
+        pack_tile(3, index_transposed_cb_index);
+
+        release_dst();
+        // ascending = switch_dir ? !ascending : ascending;
+
+        cb_push_back(input_transposed_cb_index, 2);
+        cb_push_back(index_transposed_cb_index, 2);
+    }
+}
+
 void MAIN {
-    constexpr uint32_t input_cb_index = get_compile_time_arg_val(0);
-    constexpr uint32_t index_cb_index = get_compile_time_arg_val(1);
-    constexpr uint32_t input_transposed_cb_index = get_compile_time_arg_val(2);
-    constexpr uint32_t index_transposed_cb_index = get_compile_time_arg_val(3);
-    constexpr uint32_t values_cb_index = get_compile_time_arg_val(4);
-    constexpr uint32_t output_ind_cb_index = get_compile_time_arg_val(5);
-    constexpr uint32_t Ht = get_compile_time_arg_val(6);
-    constexpr uint32_t Wt = get_compile_time_arg_val(7);
-    constexpr uint32_t K = get_compile_time_arg_val(8);
-    constexpr uint32_t logk = get_compile_time_arg_val(9);
-    constexpr uint32_t logNk = get_compile_time_arg_val(10);
-    constexpr uint32_t largest = get_compile_time_arg_val(11);
-    constexpr uint32_t sorted = get_compile_time_arg_val(12);
+    constexpr uint32_t input_val_cb_index = get_compile_time_arg_val(0);
+    constexpr uint32_t input_ind_cb_index = get_compile_time_arg_val(1);
+    constexpr uint32_t transposed_val_cb_index = get_compile_time_arg_val(2);
+    constexpr uint32_t transposed_ind_cb_index = get_compile_time_arg_val(3);
+    constexpr uint32_t result_prep_val_cb_index = get_compile_time_arg_val(4);
+    constexpr uint32_t result_prep_ind_cb_index = get_compile_time_arg_val(5);
+    constexpr uint32_t output_val_cb_index = get_compile_time_arg_val(6);
+    constexpr uint32_t output_ind_cb_index = get_compile_time_arg_val(7);
+    constexpr uint32_t Ht = get_compile_time_arg_val(8);
+    constexpr uint32_t Wt = get_compile_time_arg_val(9);
+    constexpr uint32_t K = get_compile_time_arg_val(10);
+    constexpr uint32_t logk = get_compile_time_arg_val(11);
+    constexpr uint32_t logNk = get_compile_time_arg_val(12);
+    constexpr uint32_t largest = get_compile_time_arg_val(13);
+    constexpr uint32_t sorted = get_compile_time_arg_val(14);
 
     // dest indices for where to unpack the tiles for the llk
     // the input goes in index 0,1 and the index goes in index 2,3
@@ -39,63 +155,115 @@ void MAIN {
     constexpr uint32_t index_dest_start = 2;
     constexpr uint32_t input_dest_end = 1;
     constexpr uint32_t index_dest_end = 3;
-    constexpr uint32_t tiles_per_seq = (K + 31) / 32;
-    int end_phase = (K <= 64) ? logk - 1 : 5;
+    constexpr uint32_t output_tiles = (K + 31) / 32;
+    bool ascending = !largest;
     // init pack, compute and unpack
 
     ckernel::topk_tile_init();
-    transpose_wh_init(input_cb_index, input_transposed_cb_index);
-
-    bool switch_dir = (K == 64);
-    int seq_per_2tiles = std::max((2 * 32) / K, (uint32_t)2);
-
-    for (uint32_t ht = 0; ht < Ht; ++ht) {
-        bool ascending = !largest;
-
+    transpose_wh_init(input_val_cb_index, output_val_cb_index);
+    /*
         process_and_sort_tiles(
-            input_cb_index,
-            index_cb_index,
-            input_transposed_cb_index,
-            index_transposed_cb_index,
-            Wt,
-            switch_dir,
-            ascending,
-            end_phase);
+                input_val_cb_index,
+                input_ind_cb_index,
+                transposed_val_cb_index,
+                transposed_ind_cb_index,
+                (Ht*Wt),
+                ascending,
+                logk);
+                */
+    // skip first tile (acquired above), then iterate over remaining tiles
+    uint32_t index = 0;
+    uint32_t count = 0;
 
-        uint32_t num_k_sequences = (Wt * 32) / K;
+    cb_reserve_back(result_prep_val_cb_index, output_tiles);
+    cb_reserve_back(result_prep_ind_cb_index, output_tiles);
 
-        // iterative divide and conquer on pairs of tiles (bitonic topk merge and rebuild)
-        // first iteration we compare 0th and 1st tile, then 2nd and 3rd, etc. We get the sorted top 32 values in each
-        // pair. second iteration we compare 0th and 2nd tile, then 4th and 6th, etc. logNk iteration we compare 0th and
-        // Wt/2 tile single buffer as we can pack tiles back in-place
-        for (uint32_t m_iter = 0; m_iter < logNk; ++m_iter) {
-            process_iteration(
-                m_iter,
-                K,
-                Wt,
-                num_k_sequences,
-                tiles_per_seq,
-                input_transposed_cb_index,
-                index_transposed_cb_index,
-                input_dest_start,
-                input_dest_end,
-                index_dest_start,
-                index_dest_end,
-                largest,
-                switch_dir,
-                logk,
-                seq_per_2tiles,
-                largest);
+    acquire_dst();
+    for (; count < (Ht * Wt); count++) {
+        if (count == 0) {
+            cb_wait_front(input_val_cb_index, 2);
+            cb_wait_front(input_ind_cb_index, 2);
+
+            reconfig_data_format_srca(input_val_cb_index);
+            transpose_wh_init_short(input_val_cb_index);
+            transpose_wh_tile(input_val_cb_index, 0, 0);
+            transpose_wh_tile(input_val_cb_index, 1, 1);
+
+            reconfig_data_format_srca(input_ind_cb_index);
+            transpose_wh_init_short(input_ind_cb_index);
+            transpose_wh_tile(input_ind_cb_index, 0, 2);
+            transpose_wh_tile(input_ind_cb_index, 1, 3);
+            /*
+                        copy_tile_to_dst_init_short_with_dt(transposed_ind_cb_index, transposed_val_cb_index);
+                        copy_tile(transposed_val_cb_index, 0, 0);
+                        copy_tile(transposed_val_cb_index, 1, 1);
+
+                        copy_tile_to_dst_init_short_with_dt(transposed_val_cb_index, transposed_ind_cb_index);
+                        copy_tile(transposed_ind_cb_index, 0, 2);
+                        copy_tile(transposed_ind_cb_index, 1, 3);*/
+            count++;
+
+            cb_pop_front(input_val_cb_index, 2);
+            cb_pop_front(input_ind_cb_index, 2);
+        } else {
+            cb_wait_front(input_val_cb_index, 1);
+            cb_wait_front(input_ind_cb_index, 1);
+
+            reconfig_data_format_srca(input_val_cb_index);
+            transpose_wh_init_short(input_val_cb_index);
+            transpose_wh_tile(input_val_cb_index, 1, 1);
+
+            reconfig_data_format_srca(input_ind_cb_index);
+            transpose_wh_init_short(input_ind_cb_index);
+            transpose_wh_tile(input_ind_cb_index, 1, 3);
+            /*
+                        copy_tile_to_dst_init_short_with_dt(transposed_ind_cb_index, transposed_val_cb_index);
+                        copy_tile(transposed_val_cb_index, 0, 1);
+
+                        copy_tile_to_dst_init_short_with_dt(transposed_val_cb_index, transposed_ind_cb_index);
+                        copy_tile(transposed_ind_cb_index, 0, 3);
+            */
+            cb_pop_front(input_val_cb_index, 1);
+            cb_pop_front(input_ind_cb_index, 1);
         }
 
-        constexpr uint32_t Kt = K % TILE_WIDTH == 0 ? K / TILE_WIDTH : K / TILE_WIDTH + 1;
+        // print_loop(index++);//0
 
+        // merge values - move larger 32 values into 0th dest and lower 32 values into 1st dest
+        ckernel::topk_local_sort(0, (int)ascending, logk);
+    }
+
+    pack_reconfig_data_format(result_prep_val_cb_index);
+    pack_tile<true>(0, result_prep_val_cb_index, 0);
+    pack_reconfig_data_format(result_prep_ind_cb_index);
+    pack_tile<true>(2, result_prep_ind_cb_index, 0);
+    release_dst();
+
+    cb_push_back(result_prep_val_cb_index, output_tiles);
+    cb_push_back(result_prep_ind_cb_index, output_tiles);
+
+    // print_loop(123456);
+
+    // if(count == (Ht*Wt))
+    {
+        /*
+        process_tile_pair_out(
+            result_prep_val_cb_index,
+            result_prep_ind_cb_index,
+            result_prep_val_cb_index,
+            result_prep_ind_cb_index,
+            ascending,
+            K,
+            logk);
+    */
         // transpose value tiles and pack into output buffer
-        transpose_and_pack(input_transposed_cb_index, values_cb_index, Kt, Wt);
+        transpose_and_pack(result_prep_val_cb_index, output_val_cb_index, output_tiles);
 
         // transpose index tiles and pack into output buffer
-        transpose_and_pack(index_transposed_cb_index, output_ind_cb_index, Kt, Wt);
+        transpose_and_pack(result_prep_ind_cb_index, output_ind_cb_index, output_tiles);
     }
+
+    // print_loop(200000);
 }
 
 }  // namespace NAMESPACE

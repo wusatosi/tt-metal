@@ -3,56 +3,50 @@
 // SPDX-License-Identifier: Apache-2.0
 
 namespace NAMESPACE {
-void process_and_sort_tiles(
-    uint32_t input_cb_index,
-    uint32_t index_cb_index,
-    uint32_t input_transposed_cb_index,
-    uint32_t index_transposed_cb_index,
-    uint32_t Wt,
-    bool switch_dir,
-    bool& ascending,
-    int end_phase) {
-    cb_reserve_back(input_transposed_cb_index, Wt);
-    cb_reserve_back(index_transposed_cb_index, Wt);
 
-    // streaming in input and index tiles to transpose and bitonic local sort them, two tiles at a time
-    for (uint32_t wt = 0; wt < Wt; wt += 2) {
-        acquire_dst();
-        // local sort into k groups
-        cb_wait_front(input_cb_index, 2);
-        cb_wait_front(index_cb_index, 2);
+void process_tile_pair_out(
+    uint32_t transposed_val_cb_index,
+    uint32_t transposed_ind_cb_index,
+    uint32_t output_val_cb_index,
+    uint32_t output_ind_cb_index,
+    bool ascending,
+    uint32_t K,
+    uint32_t logk) {
+    cb_reserve_back(output_val_cb_index, 1);
+    cb_reserve_back(output_ind_cb_index, 1);
 
-        reconfig_data_format_srca(input_cb_index);
-        transpose_wh_init_short(input_cb_index);
-        transpose_wh_tile(input_cb_index, 0, 0);
-        transpose_wh_tile(input_cb_index, 1, 1);
+    acquire_dst();
 
-        reconfig_data_format_srca(index_cb_index);
-        transpose_wh_init_short(index_cb_index);
-        transpose_wh_tile(index_cb_index, 0, 2);
-        transpose_wh_tile(index_cb_index, 1, 3);
+    cb_wait_front(transposed_val_cb_index, 1);
+    cb_wait_front(transposed_ind_cb_index, 1);
 
-        // llk_topk_sort -> inplace
-        ckernel::topk_local_sort(0, (int)ascending, end_phase);
+    copy_tile_to_dst_init_short_with_dt(transposed_ind_cb_index, transposed_val_cb_index);
+    copy_tile(transposed_val_cb_index, 0, 0);
 
-        // pack value tiles into cb_intermed0
-        pack_reconfig_data_format(input_transposed_cb_index);
-        pack_tile(0, input_transposed_cb_index);
-        pack_tile(1, input_transposed_cb_index);
+    // unpack indices into dest
+    copy_tile_to_dst_init_short_with_dt(transposed_val_cb_index, transposed_ind_cb_index);
+    copy_tile(transposed_ind_cb_index, 0, 1);
 
-        // pack index tiles into cb_intermed1
-        pack_reconfig_data_format(index_transposed_cb_index);
-        pack_tile(2, index_transposed_cb_index);
-        pack_tile(3, index_transposed_cb_index);
+    // merge values - move larger 32 values into 0th dest and lower 32 values into 1st dest
+    // sort within the larger 32 values
+    ckernel::topk_rebuild(0, (uint32_t)ascending, 0, K, logk, true);
 
-        cb_pop_front(input_cb_index, 2);
-        cb_pop_front(index_cb_index, 2);
-        release_dst();
-        ascending = switch_dir ? !ascending : ascending;
-    }
+    // pack value tiles in-place in the single-buffered cb_intermed0, we only need the upper 32
+    // values for topk, which was in input_dest_start
+    pack_reconfig_data_format(output_val_cb_index);
+    pack_tile<true>(0, output_val_cb_index);
 
-    cb_push_back(input_transposed_cb_index, Wt);
-    cb_push_back(index_transposed_cb_index, Wt);
+    // pack index tiles in-place in the single-buffered cb_intermed1, we only need the upper 32
+    // values for topk, which was in index_dest_start
+    pack_reconfig_data_format(output_ind_cb_index);
+    pack_tile<true>(1, output_ind_cb_index);
+
+    cb_pop_front(transposed_val_cb_index, 1);
+    cb_pop_front(transposed_ind_cb_index, 1);
+    release_dst();
+
+    cb_push_back(output_val_cb_index, 1);
+    cb_push_back(output_ind_cb_index, 1);
 }
 
 void process_tile_pair(
@@ -264,21 +258,4 @@ void process_iteration(
     cb_push_back(index_transposed_cb_index, Wt);
 }
 
-void transpose_and_pack(uint32_t transposed_cb_index, uint32_t dest_cb_index, uint32_t Kt, uint32_t Wt) {
-    reconfig_data_format_srca(transposed_cb_index);
-    transpose_wh_init_short(transposed_cb_index);
-    pack_reconfig_data_format(transposed_cb_index);
-
-    cb_wait_front(transposed_cb_index, Kt);
-    for (uint32_t i = 0; i < Kt; ++i) {
-        acquire_dst();
-        cb_reserve_back(dest_cb_index, 1);
-        transpose_wh_tile(transposed_cb_index, i, 0);
-        pack_tile(0, dest_cb_index);
-        cb_push_back(dest_cb_index, 1);
-        release_dst();
-    }
-    cb_wait_front(transposed_cb_index, Wt);
-    cb_pop_front(transposed_cb_index, Wt);
-}
 }  // namespace NAMESPACE

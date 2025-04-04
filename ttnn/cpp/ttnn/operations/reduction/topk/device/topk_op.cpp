@@ -118,13 +118,8 @@ std::vector<Tensor> TopK::create_output_tensors(
 operation::ProgramWithCallbacks TopK::create_program(
     const std::vector<Tensor>& input_tensors, std::vector<Tensor>& output_tensors) const {
     const auto& input_tensor = input_tensors.at(0);
-    if (input_tensor.get_padded_shape()[dim] < topk_utils::multi_core_min_width) {
-        return detail::topk_single_core_interleaved(
-            input_tensor, this->k, this->dim, this->largest, this->sorted, output_tensors.at(0), output_tensors.at(1));
-    } else {
-        return detail::topk_multicore_interleaved(
-            input_tensor, this->k, this->dim, this->largest, this->sorted, output_tensors.at(0), output_tensors.at(1));
-    }
+    return detail::topk_single_core_interleaved(
+        input_tensor, this->k, this->dim, this->largest, this->sorted, output_tensors.at(0), output_tensors.at(1));
 }
 
 }  // namespace ttnn::operations::reduction
