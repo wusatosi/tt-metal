@@ -12,6 +12,10 @@ on:
       docker-image:
         required: true
         type: string
+      extra-tag:
+        required: false
+        type: string
+        default: "in-service"
 
 jobs:
   models-perf:
@@ -20,15 +24,20 @@ jobs:
       # so we try not to get hanging machines
       fail-fast: false
       matrix:
-        test-info: [
-          {name: "N300 WH B0", arch: wormhole_b0, runs-on: ["N300", "pipeline-perf", "bare-metal", "in-service"], machine-type: "bare_metal"},
+        test-group: [
+          # {name: "N300 WH B0", arch: wormhole_b0, runs-on: ["N300", "pipeline-perf", "bare-metal", "in-service"], machine-type: "bare_metal"},
+          { name: "cnn_javelin", arch: wormhole_b0, machine-type: bare-metal, cmd: run_singlecard_cnn_javelin_tests, timeout: 20, owner_id: U08DEGUJY3H}, #Temp: Rose Li
         ]
-        model-type: [llm_javelin, cnn_javelin, other]
-    name: "${{ matrix.model-type }} ${{ matrix.test-info.name }}"
-    defaults:
-      run:
-        shell: bash
-    runs-on: ${{ matrix.test-info.runs-on }}
+        # model-type: [llm_javelin, cnn_javelin, other]
+
+    name: "${{ matrix.test-group.name }}"
+    runs-on:
+      - arch-wormhole_b0
+      - N300
+      - pipeline-perf
+      - bare-metal
+      - ${{ inputs.extra-tag }}
+
     steps:
       - name: ⬇️ Checkout
         uses: actions/checkout@v4
@@ -49,28 +58,34 @@ jobs:
       - name: Enable Performance mode
         run: sudo cpupower frequency-set -g performance
       - name: Run performance regressions
-        timeout-minutes: 70
         uses: ./.github/actions/docker-run
+        timeout-minutes: 70
         env:
           LOGURU_LEVEL: INFO
         with:
           docker_image: ${{ inputs.docker-image }}
           docker_password: ${{ secrets.GITHUB_TOKEN }}
+          # TODO: do we need GTEST_OUTPUT? GITHUB_ACTIONS?
           docker_opts: |
             -v /mnt/MLPerf:/mnt/MLPerf:ro
             -e TT_METAL_HOME=${{ github.workspace }}
-            -e ARCH_NAME=${{ matrix.test-info.arch }}
+            -e ARCH_NAME=${{ matrix.test-group.arch }}
             -e LD_LIBRARY_PATH=${{ github.workspace }}/build/lib
-            -e GTEST_OUTPUT=xml:generated/test_reports/
+            -e GTEST_OUTPUT=xml:generated/test_reports/ 
             -e GITHUB_ACTIONS=true
           install_wheel: true
-          run_args: ./tests/scripts/run_tests.sh --tt-arch ${{ matrix.test-info.arch }} --pipeline-type ${{ matrix.model-type }}_models_performance_${{ matrix.test-info.machine-type }}
+          # run_args: ./tests/scripts/run_tests.sh --tt-arch ${{ matrix.test-group.arch }} --pipeline-type ${{ matrix.model-type }}_models_performance_${{ matrix.test-group.machine-type }}
+          run_args: |
+            source ${{ github.workspace }}/tests/scripts/run_tests.sh
+            ${{ matrix.test-group.cmd }}
       # TODO: Fix the pipeline before enabling notifications.
       #- uses: ./.github/actions/slack-report
       #  if: ${{ failure() }}
       #  with:
       #    slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+      
       - name: Check perf report exists
+        if: false
         id: check-perf-report
         if: ${{ !cancelled() }}
         run: |
@@ -79,12 +94,14 @@ jobs:
           ls -hal $PERF_REPORT_FILENAME
           echo "perf_report_filename=$PERF_REPORT_FILENAME" >> "$GITHUB_OUTPUT"
       - name: Upload perf report
+        if: false
         if: ${{ !cancelled() && steps.check-perf-report.conclusion == 'success' }}
         uses: actions/upload-artifact@v4
         timeout-minutes: 10
         with:
-          name: perf-report-csv-${{ matrix.model-type }}-${{ matrix.test-info.arch }}-${{ matrix.test-info.machine-type }}
+          name: perf-report-csv-${{ matrix.model-type }}-${{ matrix.test-group.arch }}-${{ matrix.test-group.machine-type }}
           path: "${{ steps.check-perf-report.outputs.perf_report_filename }}"
+      
       - uses: tenstorrent/tt-metal/.github/actions/upload-artifact-with-job-uuid@main
         timeout-minutes: 10
         if: ${{ !cancelled() }}

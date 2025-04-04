@@ -7,6 +7,28 @@ if [[ -z "$TT_METAL_HOME" ]]; then
   exit 1
 fi
 
+run_singlecard_cnn_javelin_tests() { # temp function name
+
+    # Record the start time
+    fail=0
+    start_time=$(date +%s)
+
+    echo "LOG_METAL: Running run_singlecard_cnn_javelin_tests"
+
+    WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml pytest -n auto models/demos/wormhole/mamba/tests -m "models_performance_bare_metal"; fail+=$?
+
+    ## Merge all the generated reports
+    python3 models/perf/merge_perf_results.py
+
+    # Record the end time
+    end_time=$(date +%s)
+    duration=$((end_time - start_time))
+    echo "LOG_METAL: run_singlecard_cnn_javelin_tests $duration seconds to complete"
+    if [[ $fail -ne 0 ]]; then
+    exit 1
+    fi
+}
+
 run_perf_models_other() {
     local tt_arch=$1
     local test_marker=$2
@@ -57,6 +79,12 @@ run_perf_models_cnn_javelin() {
 }
 
 main() {
+    # For CI pipeline - source func commands but don't execute tests if not invoked directly
+    if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+        echo "Script is being sourced, not executing main function"
+        return 0
+    fi
+
     # Parse the arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
