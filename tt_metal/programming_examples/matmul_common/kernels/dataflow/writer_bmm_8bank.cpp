@@ -30,7 +30,7 @@ void kernel_main() {
             for (uint32_t nt_C = 0; nt_C < Nt; ++nt_C) {  // output tile index of C
                 // bmm will generate C's tiles C=A*B, MN=MK*KN, in row major order, we just read them from CB and write
                 // out to DRAM
-                cb_wait_front(cb_id_out0, onetile);
+                ckernel::cb_wait_front(cb_id_out0, onetile);
                 uint32_t l1_read_addr = get_read_ptr(cb_id_out0);
                 noc_async_write_tile(itileC, s, l1_read_addr);
                 noc_async_write_barrier();  // This will wait until the write is done. As an alternative,
@@ -38,7 +38,7 @@ void kernel_main() {
                                             // until the write request is sent. In that case, you have to
                                             // use noc_async_write_barrier() at least once at the end of
                                             // data movement kernel to make sure all writes are done.
-                cb_pop_front(cb_id_out0, onetile);
+                ckernel::cb_pop_front(cb_id_out0, onetile);
                 // DPRINT << 'W' << 'C' << itileC << ' ' << 'a' << dst_addr << ENDL();
                 // DPRINT << itileC << ' ' << uint32_t(dst_noc_addr) << ENDL();
                 itileC++;

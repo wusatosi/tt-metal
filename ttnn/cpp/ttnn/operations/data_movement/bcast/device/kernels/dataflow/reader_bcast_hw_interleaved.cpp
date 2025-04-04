@@ -43,41 +43,41 @@ void kernel_main() {
     const InterleavedAddrGenFast<src0_is_dram> s0 = {
         .bank_base_address = src0_addr, .page_size = in0_tile_bytes, .data_format = in0_data_format};
 #else
-    cb_reserve_back(cb_id_in0, num_tiles);
-    cb_push_back(cb_id_in0, num_tiles);
+    ckernel::cb_reserve_back(cb_id_in0, num_tiles);
+    ckernel::cb_push_back(cb_id_in0, num_tiles);
 #endif
 
     const InterleavedAddrGenFast<src1_is_dram> s1 = {
         .bank_base_address = src1_addr, .page_size = in1_tile_bytes, .data_format = in1_data_format};
 
 #ifdef BCAST_SCALAR
-    cb_reserve_back(cb_id_in1, onetile);
+    ckernel::cb_reserve_back(cb_id_in1, onetile);
     l1_write_addr_in1 = get_write_ptr(cb_id_in1);
     noc_async_read_tile(i1, s1, l1_write_addr_in1);
     noc_async_read_barrier();
-    cb_push_back(cb_id_in1, onetile);
+    ckernel::cb_push_back(cb_id_in1, onetile);
 #endif
 
     for (uint32_t nc = 0; nc < NC; nc++) {
         for (uint32_t ht = 0; ht < Ht; ht++) {
             for (uint32_t wt = 0; wt < Wt; wt++) {
 #ifndef IN0_SHARDED
-                cb_reserve_back(cb_id_in0, onetile);
+                ckernel::cb_reserve_back(cb_id_in0, onetile);
                 l1_write_addr_in0 = get_write_ptr(cb_id_in0);
                 noc_async_read_tile(i, s0, l1_write_addr_in0);
                 noc_async_read_barrier();
-                cb_push_back(cb_id_in0, onetile);
+                ckernel::cb_push_back(cb_id_in0, onetile);
                 i++;  // input tile iterates over NC Ht Wt
 #endif
 
 #ifndef BCAST_SCALAR
                 // for each H,W-tile of the first tensor we push one tile from the second arg tile list
                 // but we don't advance the second tile index for H,W
-                cb_reserve_back(cb_id_in1, onetile);
+                ckernel::cb_reserve_back(cb_id_in1, onetile);
                 l1_write_addr_in1 = get_write_ptr(cb_id_in1);
                 noc_async_read_tile(i1, s1, l1_write_addr_in1);
                 noc_async_read_barrier();
-                cb_push_back(cb_id_in1, onetile);
+                ckernel::cb_push_back(cb_id_in1, onetile);
 #endif
             }  // wt loop
         }  // ht loop

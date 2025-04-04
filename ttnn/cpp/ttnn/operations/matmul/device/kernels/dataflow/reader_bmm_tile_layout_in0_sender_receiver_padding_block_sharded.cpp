@@ -107,7 +107,7 @@ void kernel_main() {
 
     noc_semaphore_set(in0_mcast_receiver_semaphore_addr_ptr, VALID);
 
-    cb_reserve_back(cb_id_in2, batch * in0_block_num_tiles);
+    ckernel::cb_reserve_back(cb_id_in2, batch * in0_block_num_tiles);
 
     uint32_t in0_tensor_shard_read_addr = get_read_ptr(cb_id_in2);
     uint32_t in0_tensor_read_addr = 0;
@@ -135,7 +135,7 @@ void kernel_main() {
                         block_id = fused_op_receiver.align_to_slice_and_sync(block, sender_id);
                     }
 
-                    cb_reserve_back(cb_id_in0, in0_block_num_tiles);
+                    ckernel::cb_reserve_back(cb_id_in0, in0_block_num_tiles);
 
                     // All cores in receiver grid need to participate in receiving regardless if they produce output
                     // work or not. Otherwise, data corruption since we mcast from and to the same CB (eg.
@@ -270,14 +270,14 @@ void kernel_main() {
                         // wait on in0 semaphore value to become VALID (set by mcast sender after it multicasts data)
                         noc_semaphore_wait(in0_mcast_receiver_semaphore_addr_ptr, VALID);
                     }
-                    cb_push_back(cb_id_in0, in0_block_num_tiles);
+                    ckernel::cb_push_back(cb_id_in0, in0_block_num_tiles);
 
                     // If core does not produce output block work, free cb_id_in0 immediately.
                     // This is necessary since mcast is in lockstep; this ensures write ptr addresses are synced
                     // properly for cores that only send and have no compute / writer active. Technically, don't have to
                     // do this if cb_id_in0 is not double buffered.
                     if constexpr (!core_has_output_block_work) {
-                        cb_pop_front(cb_id_in0, in0_block_num_tiles);
+                        ckernel::cb_pop_front(cb_id_in0, in0_block_num_tiles);
                     }
                 }
             }

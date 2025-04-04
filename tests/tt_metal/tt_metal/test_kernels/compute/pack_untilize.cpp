@@ -21,13 +21,13 @@ void MAIN {
 #endif
 
     for (uint32_t b = 0; b < per_core_block_cnt; ++b) {
-        cb_wait_front(tt::CBIndex::c_0, per_core_block_tile_cnt);
-        cb_reserve_back(tt::CBIndex::c_16, per_core_block_tile_cnt);
+        ckernel::cb_wait_front(tt::CBIndex::c_0, per_core_block_tile_cnt);
+        ckernel::cb_reserve_back(tt::CBIndex::c_16, per_core_block_tile_cnt);
 
         pack_untilize_block<per_core_block_tile_cnt>(tt::CBIndex::c_0, 1, tt::CBIndex::c_16);
 
-        cb_push_back(tt::CBIndex::c_16, per_core_block_tile_cnt);
-        cb_pop_front(tt::CBIndex::c_0, per_core_block_tile_cnt);
+        ckernel::cb_push_back(tt::CBIndex::c_16, per_core_block_tile_cnt);
+        ckernel::cb_pop_front(tt::CBIndex::c_0, per_core_block_tile_cnt);
     }
 
     pack_untilize_uninit(tt::CBIndex::c_16);

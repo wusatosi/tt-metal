@@ -27,14 +27,14 @@ void kernel_main() {
         for (uint32_t i = 0; i < num_tiles_per_read; i += ublock_size_tiles) {
             uint64_t src_noc_addr = get_noc_addr(src_noc_x, src_noc_y, src_addr);
 
-            cb_reserve_back(cb_id_in, ublock_size_tiles);
+            ckernel::cb_reserve_back(cb_id_in, ublock_size_tiles);
             uint32_t l1_write_addr = get_write_ptr(cb_id_in);
 
             noc_async_read(src_noc_addr, l1_write_addr, ublock_size_bytes);
 
             noc_async_read_barrier();
 
-            cb_push_back(cb_id_in, ublock_size_tiles);
+            ckernel::cb_push_back(cb_id_in, ublock_size_tiles);
             src_addr += ublock_size_bytes;
         }
     }

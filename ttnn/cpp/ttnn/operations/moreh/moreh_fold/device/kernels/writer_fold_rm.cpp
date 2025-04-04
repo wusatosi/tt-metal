@@ -19,11 +19,11 @@ void kernel_main() {
     const InterleavedAddrGen<output_is_dram> s = {.bank_base_address = output_addr, .page_size = output_cb_page_size};
 
     for (uint32_t i = start_id; i < start_id + num_units_per_core; i++) {
-        cb_wait_front(output_cb_id, onetile);
+        ckernel::cb_wait_front(output_cb_id, onetile);
         uint32_t l1_read_addr = get_read_ptr(output_cb_id);
         uint64_t dst_noc_addr = get_noc_addr(i, s);
         noc_async_write(l1_read_addr, dst_noc_addr, output_cb_page_size);
         noc_async_write_barrier();
-        cb_pop_front(output_cb_id, onetile);
+        ckernel::cb_pop_front(output_cb_id, onetile);
     }
 }

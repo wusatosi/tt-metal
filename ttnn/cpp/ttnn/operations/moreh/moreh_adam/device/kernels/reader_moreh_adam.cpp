@@ -7,7 +7,7 @@
 #include "dataflow_api.h"
 
 void fill_cb_with_value(uint32_t cb_id, uint32_t value) {
-    cb_reserve_back(cb_id, 1);
+    ckernel::cb_reserve_back(cb_id, 1);
 
 #if defined FP32_DEST_ACC_EN
     auto ptr = reinterpret_cast<uint32_t*>(get_write_ptr(cb_id));
@@ -21,7 +21,7 @@ void fill_cb_with_value(uint32_t cb_id, uint32_t value) {
     }
 #endif
 
-    cb_push_back(cb_id, 1);
+    ckernel::cb_push_back(cb_id, 1);
 }
 
 void kernel_main() {
@@ -108,36 +108,36 @@ void kernel_main() {
     constexpr uint32_t onetile = 1;
     uint32_t end_id = start_id + num_tiles_per_core;
     for (uint32_t i = start_id; i < end_id; ++i) {
-        cb_reserve_back(cb_id_param, onetile);
+        ckernel::cb_reserve_back(cb_id_param, onetile);
         uint32_t param_l1_write_addr = get_write_ptr(cb_id_param);
         noc_async_read_tile(i, param_addrg, param_l1_write_addr);
         noc_async_read_barrier();
-        cb_push_back(cb_id_param, onetile);
+        ckernel::cb_push_back(cb_id_param, onetile);
 
-        cb_reserve_back(cb_id_grad, onetile);
+        ckernel::cb_reserve_back(cb_id_grad, onetile);
         uint32_t grad_l1_write_addr = get_write_ptr(cb_id_grad);
         noc_async_read_tile(i, grad_addrg, grad_l1_write_addr);
         noc_async_read_barrier();
-        cb_push_back(cb_id_grad, onetile);
+        ckernel::cb_push_back(cb_id_grad, onetile);
 
-        cb_reserve_back(cb_id_exp_avg, onetile);
+        ckernel::cb_reserve_back(cb_id_exp_avg, onetile);
         uint32_t exp_avg_l1_write_addr = get_write_ptr(cb_id_exp_avg);
         noc_async_read_tile(i, exp_avg_addrg, exp_avg_l1_write_addr);
         noc_async_read_barrier();
-        cb_push_back(cb_id_exp_avg, onetile);
+        ckernel::cb_push_back(cb_id_exp_avg, onetile);
 
-        cb_reserve_back(cb_id_exp_avg_sq, onetile);
+        ckernel::cb_reserve_back(cb_id_exp_avg_sq, onetile);
         uint32_t exp_avg_sq_l1_write_addr = get_write_ptr(cb_id_exp_avg_sq);
         noc_async_read_tile(i, exp_avg_sq_addrg, exp_avg_sq_l1_write_addr);
         noc_async_read_barrier();
-        cb_push_back(cb_id_exp_avg_sq, onetile);
+        ckernel::cb_push_back(cb_id_exp_avg_sq, onetile);
 
 #ifdef AMSGRAD
-        cb_reserve_back(cb_id_max_exp_avg_sq, onetile);
+        ckernel::cb_reserve_back(cb_id_max_exp_avg_sq, onetile);
         uint32_t max_exp_avg_sq_l1_write_addr = get_write_ptr(cb_id_max_exp_avg_sq);
         noc_async_read_tile(i, max_exp_avg_sq_addrg, max_exp_avg_sq_l1_write_addr);
         noc_async_read_barrier();
-        cb_push_back(cb_id_max_exp_avg_sq, onetile);
+        ckernel::cb_push_back(cb_id_max_exp_avg_sq, onetile);
 #endif
     }
 }

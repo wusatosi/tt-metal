@@ -39,27 +39,27 @@ void kernel_main() {
     const InterleavedAddrGenFast<src2_is_dram> s2 = {
         .bank_base_address = src2_addr, .page_size = src2_tile_bytes, .data_format = src2_data_format};
 
-    cb_reserve_back(cb_id_in0, onetile);
+    ckernel::cb_reserve_back(cb_id_in0, onetile);
     l1_write_addr_in0 = get_write_ptr(cb_id_in0);
     noc_async_read_tile(0, s0, l1_write_addr_in0);
     noc_async_read_barrier();
-    cb_push_back(cb_id_in0, onetile);
+    ckernel::cb_push_back(cb_id_in0, onetile);
 
     for (uint32_t i = start_id; i < start_id + num_tiles; i++) {
         if (has_input_grad) {
-            cb_reserve_back(cb_id_in2, onetile);
+            ckernel::cb_reserve_back(cb_id_in2, onetile);
             l1_write_addr_in2 = get_write_ptr(cb_id_in2);
             noc_async_read_tile(i, s2, l1_write_addr_in2);
             noc_async_read_barrier();
-            cb_push_back(cb_id_in2, onetile);
+            ckernel::cb_push_back(cb_id_in2, onetile);
         }
 
         if (has_other_grad) {
-            cb_reserve_back(cb_id_in1, onetile);
+            ckernel::cb_reserve_back(cb_id_in1, onetile);
             l1_write_addr_in1 = get_write_ptr(cb_id_in1);
             noc_async_read_tile(i, s1, l1_write_addr_in1);
             noc_async_read_barrier();
-            cb_push_back(cb_id_in1, onetile);
+            ckernel::cb_push_back(cb_id_in1, onetile);
         }
     }
 }

@@ -129,8 +129,8 @@ void kernel_main() {
 
         for (uint32_t kt = 0; kt < Kt; kt++) {
             // read input, other tile
-            cb_reserve_back(cb_id_in0, onetile);
-            cb_reserve_back(cb_id_in1, onetile);
+            ckernel::cb_reserve_back(cb_id_in0, onetile);
+            ckernel::cb_reserve_back(cb_id_in1, onetile);
 
             uint32_t l1_write_addr_in0 = get_write_ptr(cb_id_in0);
             noc_async_read_tile(input_tidx, s0, l1_write_addr_in0);
@@ -139,8 +139,8 @@ void kernel_main() {
             noc_async_read_tile(other_tidx, s1, l1_write_addr_in1);
             noc_async_read_barrier();
 
-            cb_push_back(cb_id_in0, onetile);
-            cb_push_back(cb_id_in1, onetile);
+            ckernel::cb_push_back(cb_id_in0, onetile);
+            ckernel::cb_push_back(cb_id_in1, onetile);
 
             input_tidx += input_step_count;
             other_tidx += other_step_count;
@@ -148,18 +148,18 @@ void kernel_main() {
 #ifdef FUSE_BIAS
         if (!is_scalar_bias) {
             uint32_t bias_tidx = output_idxes[0];
-            cb_reserve_back(cb_id_in4, onetile);
+            ckernel::cb_reserve_back(cb_id_in4, onetile);
             uint32_t l1_write_addr_in4 = get_write_ptr(cb_id_in4);
             noc_async_read_tile(bias_tidx, s_bias, l1_write_addr_in4);
             noc_async_read_barrier();
-            cb_push_back(cb_id_in4, onetile);
+            ckernel::cb_push_back(cb_id_in4, onetile);
         } else {
             if (!scalar_bias_loaded) {
-                cb_reserve_back(cb_id_in4, onetile);
+                ckernel::cb_reserve_back(cb_id_in4, onetile);
                 uint32_t l1_write_addr_in4 = get_write_ptr(cb_id_in4);
                 noc_async_read_tile(0, s_bias, l1_write_addr_in4);
                 noc_async_read_barrier();
-                cb_push_back(cb_id_in4, onetile);
+                ckernel::cb_push_back(cb_id_in4, onetile);
                 scalar_bias_loaded = true;
             }
         }

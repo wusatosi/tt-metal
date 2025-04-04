@@ -20,11 +20,11 @@ void kernel_main() {
     const InterleavedAddrGenFast<output_is_dram> output_addrg = {
         .bank_base_address = dst_addr, .page_size = get_tile_size(dst_cb_id), .data_format = get_dataformat(dst_cb_id)};
 
-    cb_reserve_back(dst_cb_id, 1);
+    ckernel::cb_reserve_back(dst_cb_id, 1);
     uint32_t dst_cb_write_ptr = get_write_ptr(dst_cb_id);
 
     for (uint32_t i = start_id; i < end_id; ++i) {
-        cb_wait_front(intermed_cb_id, 1);
+        ckernel::cb_wait_front(intermed_cb_id, 1);
 
         uint32_t intermed_cb_read_ptr = get_read_ptr(intermed_cb_id);
         auto intermed_cb_addr = reinterpret_cast<float*>(intermed_cb_read_ptr);
@@ -32,7 +32,7 @@ void kernel_main() {
 #ifdef OUTPUT_DTYPE_FLOAT32
         noc_async_write_tile(i, output_addrg, intermed_cb_read_ptr);
         noc_async_write_barrier();
-        cb_pop_front(intermed_cb_id, 1);
+        ckernel::cb_pop_front(intermed_cb_id, 1);
 #endif
 
 #ifdef OUTPUT_DTYPE_BFLOAT16
@@ -47,7 +47,7 @@ void kernel_main() {
                 intermed_cb_addr += 1;
             }
         }
-        cb_pop_front(intermed_cb_id, 1);
+        ckernel::cb_pop_front(intermed_cb_id, 1);
 
         noc_async_write_tile(i, output_addrg, dst_cb_write_ptr);
         noc_async_write_barrier();

@@ -38,38 +38,38 @@ void MAIN {
         // tilize input via unpack and then pack
         tilize_init_short(cb_in, 1, cb_tilize);
 
-        cb_wait_front(cb_in, 1);
-        cb_reserve_back(cb_tilize, 1);
+        ckernel::cb_wait_front(cb_in, 1);
+        ckernel::cb_reserve_back(cb_tilize, 1);
 
         tilize_block(cb_in, 1, cb_tilize);
 
-        cb_push_back(cb_tilize, 1);
-        cb_pop_front(cb_in, 1);
+        ckernel::cb_push_back(cb_tilize, 1);
+        ckernel::cb_pop_front(cb_in, 1);
 
         tilize_uninit(cb_in, cb_tilize);
 
         // transpose input
-        cb_wait_front(cb_tilize, 1);
+        ckernel::cb_wait_front(cb_tilize, 1);
 
         transpose_wh_init_short(cb_tilize);
         pack_untilize_dst_init_short<1>(cb_out);
 
-        tile_regs_acquire();
+        ckernel:: tile_regs_acquire();
         transpose_wh_tile(cb_tilize, 0, 0);  // transpose call
-        tile_regs_commit();
+        ckernel:: tile_regs_commit();
 
         // pack and untilize
-        cb_reserve_back(cb_out, 1);
+        ckernel::cb_reserve_back(cb_out, 1);
 
-        tile_regs_wait();
+        ckernel::tile_regs_wait();
         pack_untilize_dst<1>(cb_out);  // pack call
-        tile_regs_release();
+        ckernel::tile_regs_release();
 
-        cb_push_back(cb_out, 1);
+        ckernel::cb_push_back(cb_out, 1);
 
         pack_untilize_uninit(cb_out);
 
-        cb_pop_front(cb_tilize, 1);
+        ckernel::cb_pop_front(cb_tilize, 1);
     }
 }
 }  // namespace NAMESPACE

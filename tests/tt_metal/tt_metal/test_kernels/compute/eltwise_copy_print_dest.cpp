@@ -21,21 +21,21 @@ void MAIN {
     cfg_reg_rmw_tensix<DEST_ACCESS_CFG_remap_addrs_RMW>(remap);
     cfg_reg_rmw_tensix<DEST_ACCESS_CFG_swizzle_32b_RMW>(swizzle);
 #endif
-    acquire_dst();
-    cb_wait_front(tt::CBIndex::c_0, per_core_tile_cnt);
-    cb_reserve_back(tt::CBIndex::c_16, per_core_tile_cnt);
+    ckernel::acquire_dst();
+    ckernel::cb_wait_front(tt::CBIndex::c_0, per_core_tile_cnt);
+    ckernel::cb_reserve_back(tt::CBIndex::c_16, per_core_tile_cnt);
 
     for (uint32_t b = 0; b < per_core_tile_cnt; ++b) {
-        copy_tile(tt::CBIndex::c_0, b, b);
+        ckernel:: copy_tile(tt::CBIndex::c_0, b, b);
         dprint_tensix_dest_reg(b);
     }
 
     for (uint32_t b = 0; b < per_core_tile_cnt; ++b) {
-        pack_tile(b, tt::CBIndex::c_16);
-        cb_pop_front(tt::CBIndex::c_0, 1);
-        cb_push_back(tt::CBIndex::c_16, 1);
+        ckernel:: pack_tile(b, tt::CBIndex::c_16);
+        ckernel::cb_pop_front(tt::CBIndex::c_0, 1);
+        ckernel::cb_push_back(tt::CBIndex::c_16, 1);
     }
 
-    release_dst();
+    ckernel:: release_dst();
 }
 }  // namespace NAMESPACE

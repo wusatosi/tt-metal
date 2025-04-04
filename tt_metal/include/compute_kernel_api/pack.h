@@ -12,7 +12,7 @@ namespace ckernel {
 /**
  * Copies a single tile from the DST register buffer at a specified index to a
  * specified CB at a given index. For the out_tile_index to be valid for this
- * call, cb_reserve_back(n) has to be called first to reserve at least some
+ * call, ckernel::cb_reserve_back(n) has to be called first to reserve at least some
  * number n > 0 of tiles in the output CB. out_tile_index = 0 then references
  * the first tile in the reserved section of the CB, up to index n - 1, which will
  * then be visible to the consumer in the same order after a cb_push_back call.
@@ -41,14 +41,14 @@ namespace ckernel {
  */
  // clang-format on
 template <bool out_of_order_output = false>
-ALWI void pack_tile(uint32_t ifrom_dst, uint32_t icb, std::uint32_t output_tile_index = 0) {
+ALWI void ckernel:: pack_tile(uint32_t ifrom_dst, uint32_t icb, std::uint32_t output_tile_index = 0) {
     PACK((llk_pack<out_of_order_output, false, DST_ACCUM_MODE>(ifrom_dst, icb, output_tile_index)));
 }
 
 // clang-format off
 /**
  * Copies a block of tiles from the DST register buffer at a start index to a
- * specified CB at a given start index. cb_reserve_back(n) had to be called first
+ * specified CB at a given start index. ckernel::cb_reserve_back(n) had to be called first
  * to reserve at least some number n>0 of tiles in the output CB. The out_tile_index = 0
  * then references the first tile in the reserved section of the CB, up to index n-1 that
  * will then be visible to the consumer in the same order after a cb_push_back call.

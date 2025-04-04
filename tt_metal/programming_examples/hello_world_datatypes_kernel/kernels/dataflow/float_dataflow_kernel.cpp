@@ -15,7 +15,7 @@ void kernel_main() {
     constexpr uint32_t cb_id = tt::CBIndex::c_0;  // index=0
     uint32_t size = get_tile_size(cb_id);
     uint32_t l1_addr = get_write_ptr(cb_id);
-    cb_reserve_back(cb_id, 0);
+    ckernel::cb_reserve_back(cb_id, 0);
     noc_async_read(noc_addr, l1_addr, size);
     noc_async_read_barrier();
 
@@ -23,5 +23,5 @@ void kernel_main() {
     DPRINT << "Master, I have retrieved the value stored on Device 0 DRAM. Here we go.  It is: " << F32(*data)
            << ENDL();
 
-    cb_push_back(cb_id, 0);
+    ckernel::cb_push_back(cb_id, 0);
 }

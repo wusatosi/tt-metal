@@ -20,7 +20,7 @@ void kernel_main() {
         uint32_t src_addr = buffer_src_addr;
         for (uint32_t i = 0; i < num_tiles; i += block_size_tiles) {
             std::uint64_t buffer_src_noc_addr = get_noc_addr_from_bank_id<true>(src_bank_id, src_addr);
-            cb_reserve_back(cb_id, block_size_tiles);
+            ckernel::cb_reserve_back(cb_id, block_size_tiles);
 
             if (j == 0) {
                 uint32_t l1_write_addr = get_write_ptr(cb_id);
@@ -28,7 +28,7 @@ void kernel_main() {
                 noc_async_read_barrier();
             }
 
-            cb_push_back(cb_id, block_size_tiles);
+            ckernel::cb_push_back(cb_id, block_size_tiles);
             src_addr += block_size_bytes;
         }
     }

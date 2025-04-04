@@ -48,7 +48,7 @@ void kernel_main() {
                 uint32_t base_tile_stick_id = base_tile_row_stick_id;
                 for (uint32_t w = 0; w < output_Wt; w++) {
                     uint32_t output_stick_id = base_tile_stick_id;  // Offset tile id of the current sub tile row
-                    cb_reserve_back(cb_id_in0, onetile);
+                    ckernel::cb_reserve_back(cb_id_in0, onetile);
                     for (uint32_t tile_h = 0; tile_h < 32; tile_h++) {
                         uint32_t input_tile_row_to_read = output_stick_id / num_sticks_per_input_tile_row;
                         uint32_t input_tile_col_to_read = output_stick_id % input_Wt;
@@ -103,7 +103,7 @@ void kernel_main() {
                     }
                     noc_async_read_barrier();
                     // notifies the unpacker that the buffer is populated
-                    cb_push_back(cb_id_in0, onetile);
+                    ckernel::cb_push_back(cb_id_in0, onetile);
 
                     base_tile_stick_id += 1;
                 }

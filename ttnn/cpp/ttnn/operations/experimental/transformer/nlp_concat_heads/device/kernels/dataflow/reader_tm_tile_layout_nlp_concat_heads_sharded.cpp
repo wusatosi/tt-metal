@@ -23,8 +23,8 @@ void kernel_main() {
 
     const uint32_t single_tile_size_bytes = get_tile_size(cb_id_in0);
 
-    cb_reserve_back(cb_id_in0, block_size);  // Redundant
-    cb_reserve_back(cb_id_out0, block_size);
+    ckernel::cb_reserve_back(cb_id_in0, block_size);  // Redundant
+    ckernel::cb_reserve_back(cb_id_out0, block_size);
 
     uint64_t noc_l1_read_addr = get_noc_addr(get_read_ptr(cb_id_in0)) + start_read_offset_bytes;
     uint32_t l1_write_addr = get_write_ptr(cb_id_out0) + start_write_offset_bytes;
@@ -40,5 +40,5 @@ void kernel_main() {
     }
 
     noc_async_read_barrier();
-    // cb_push_back(cb_id_out0, block_size);
+    // ckernel::cb_push_back(cb_id_out0, block_size);
 }

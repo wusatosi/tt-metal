@@ -30,11 +30,11 @@ void kernel_main() {
     for (uint32_t c = 0; c < C; c++) {
         for (uint32_t n = 0; n < N; n++) {
             for (uint32_t hw = 0; hw < HtWt; hw++) {
-                cb_reserve_back(cb_id_in0, onetile);
+                ckernel::cb_reserve_back(cb_id_in0, onetile);
                 uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
                 noc_async_read_tile(i, s, l1_write_addr);
                 noc_async_read_barrier();
-                cb_push_back(cb_id_in0, onetile);
+                ckernel::cb_push_back(cb_id_in0, onetile);
                 i++;
             }
             i += batch_step;

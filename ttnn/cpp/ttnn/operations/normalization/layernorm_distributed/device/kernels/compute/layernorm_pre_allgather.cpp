@@ -19,8 +19,8 @@
 #include "compute_kernel_api/eltwise_binary.h"
 #include "compute_kernel_api/layernorm.h"
 
-ALWI void ACQ() { acquire_dst(); }
-ALWI void REL() { release_dst(); }
+ALWI void ACQ() { ckernel::acquire_dst(); }
+ALWI void REL() { ckernel:: release_dst(); }
 
 namespace NAMESPACE {
 void MAIN {
@@ -37,7 +37,7 @@ void MAIN {
 
     constexpr uint32_t cb_x2 = tt::CBIndex::c_6;  // x**2
 
-    cb_wait_front(cb_reduce, 1);  // comes from the reader
+    ckernel::cb_wait_front(cb_reduce, 1);  // comes from the reader
 
     binary_op_init_common(cb_inp, cb_reduce, cb_x2);
 
@@ -52,15 +52,15 @@ void MAIN {
         pack_reconfig_data_format(cb_x2);
         mul_tiles_init(cb_inp, cb_inp);
         for (uint32_t wt = 0; wt < Wt; wt += blk) {
-            cb_wait_front(cb_inp, wt + blk);  // cumulative wait
-            cb_reserve_back(cb_x2, blk);
+            ckernel::cb_wait_front(cb_inp, wt + blk);  // cumulative wait
+            ckernel::cb_reserve_back(cb_x2, blk);
             ACQ();
             for (uint32_t wtr = 0; wtr < blk; wtr++) {
                 mul_tiles(cb_inp, cb_inp, wt + wtr, wt + wtr, wtr);
-                pack_tile(wtr, cb_x2, wt + wtr);
+                ckernel:: pack_tile(wtr, cb_x2, wt + wtr);
             }
             REL();
-            cb_push_back(cb_x2, blk);
+            ckernel::cb_push_back(cb_x2, blk);
         }
 
         /*
@@ -69,18 +69,18 @@ void MAIN {
         reconfig_data_format(cb_x2, cb_reduce);
         pack_reconfig_data_format(cb_out);
         reduce_init_delta<false>(cb_x2, cb_reduce, cb_out);
-        cb_wait_front(cb_x2, Wt);
-        cb_reserve_back(cb_out, onetile);
+        ckernel::cb_wait_front(cb_x2, Wt);
+        ckernel::cb_reserve_back(cb_out, onetile);
         ACQ();
         for (uint32_t wtr = 0; wtr < Wt; wtr++) {
             reduce_tile(cb_x2, cb_reduce, wtr, 0, dst0);
         }
-        pack_tile(dst0, cb_out, 0);
+        ckernel:: pack_tile(dst0, cb_out, 0);
         REL();
-        cb_push_back(cb_out, onetile);
-        cb_pop_front(cb_x2, Wt);
+        ckernel::cb_push_back(cb_out, onetile);
+        ckernel::cb_pop_front(cb_x2, Wt);
 
-        reduce_revert_delta(cb_out);
+        ckernel::reduce_revert_delta(cb_out);
 
 #ifndef RMSNORM
 
@@ -90,21 +90,21 @@ void MAIN {
         reconfig_data_format(cb_inp, cb_reduce);
         pack_reconfig_data_format(cb_out);
         reduce_init_delta<false>(cb_inp, cb_reduce, cb_out);
-        cb_reserve_back(cb_out, onetile);
+        ckernel::cb_reserve_back(cb_out, onetile);
         ACQ();
         for (uint32_t wtr = 0; wtr < Wt; wtr++) {
             reduce_tile(cb_inp, cb_reduce, wtr, 0, dst0);
         }
-        pack_tile(dst0, cb_out, 1);
+        ckernel:: pack_tile(dst0, cb_out, 1);
         REL();
-        cb_push_back(cb_out, onetile);
+        ckernel::cb_push_back(cb_out, onetile);
 
-        reduce_revert_delta(cb_out);
+        ckernel::reduce_revert_delta(cb_out);
 
 #endif
 
-        cb_pop_front(cb_inp, Wt);
+        ckernel::cb_pop_front(cb_inp, Wt);
     }
-    cb_pop_front(cb_reduce, 1);
+    ckernel::cb_pop_front(cb_reduce, 1);
 }
 }  // namespace NAMESPACE

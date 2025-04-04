@@ -62,7 +62,7 @@ ALWI void copy_tile_to_dst_init_short_with_dt(uint32_t old_cbid, uint32_t new_cb
  * Copies a single tile from the specified input CB and writes the result to
  * DST at a specified index. The function will employ unpacker to first unpack into SRC
  * registers and then perform move into DST registers, at a specified index.
- * For the in_tile_index to be valid for this call, cb_wait_front(n) had to be
+ * For the in_tile_index to be valid for this call, ckernel::cb_wait_front(n) had to be
  * previously called to ensure that at least some number n>0 of tiles are available
  * in the input CB. The CB index 0 then references the first tile in the received section of the CB,
  * up to index n-1 (in a FIFO order). The DST register buffer must be in acquired state via
@@ -78,7 +78,7 @@ ALWI void copy_tile_to_dst_init_short_with_dt(uint32_t old_cbid, uint32_t new_cb
  * | dst_tile_index | The index of the tile in the DST register         | uint32_t  | Must be less than the size of the DST register (16) | True     |
  * */
  // clang-format on
-ALWI void copy_tile(uint32_t in_cb_id, uint32_t in_tile_index, uint32_t dst_tile_index) {
+ALWI void ckernel:: copy_tile(uint32_t in_cb_id, uint32_t in_tile_index, uint32_t dst_tile_index) {
     UNPACK((llk_unpack_A<BroadcastType::NONE, false, EltwiseBinaryReuseDestType::NONE, UnpackToDestEn>(
         in_cb_id, in_tile_index)));
     MATH((llk_math_eltwise_unary_datacopy<A2D, BroadcastType::NONE, DST_ACCUM_MODE, UnpackToDestEn>(

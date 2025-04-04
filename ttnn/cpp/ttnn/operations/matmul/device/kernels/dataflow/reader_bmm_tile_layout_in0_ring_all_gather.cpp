@@ -48,7 +48,7 @@ void kernel_main() {
     constexpr uint32_t shard_size_bytes = shard_size_in_tiles * in0_single_tile_size_bytes;
 
     // Reserving/pushing the local shard is done in compute
-    cb_reserve_back(cb_id_in2, batch * (ring_size - 1) * shard_size_in_tiles);
+    ckernel::cb_reserve_back(cb_id_in2, batch * (ring_size - 1) * shard_size_in_tiles);
 
     uint32_t local_shard_read_addr = get_read_ptr(cb_id_in0);
     uint32_t l1_write_addr_in0 = get_write_ptr(cb_id_in2);
@@ -81,7 +81,7 @@ void kernel_main() {
 
             // Do stuff for matmul fusion here
             if (shard_cnt > 0) {
-                cb_push_back(cb_id_in2, shard_size_in_tiles);
+                ckernel::cb_push_back(cb_id_in2, shard_size_in_tiles);
             }
         }
     }

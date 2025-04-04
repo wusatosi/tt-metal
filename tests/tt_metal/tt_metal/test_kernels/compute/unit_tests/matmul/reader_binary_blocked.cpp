@@ -27,8 +27,8 @@ void kernel_main() {
         uint64_t src0_noc_addr = get_noc_addr_from_bank_id<true>(src0_dram_bank_id, src0_addr);
         uint64_t src1_noc_addr = get_noc_addr_from_bank_id<true>(src1_dram_bank_id, src1_addr);
 
-        cb_reserve_back(in0_cb, in0_block_tile_cnt);
-        cb_reserve_back(in1_cb, in1_block_tile_cnt);
+        ckernel::cb_reserve_back(in0_cb, in0_block_tile_cnt);
+        ckernel::cb_reserve_back(in1_cb, in1_block_tile_cnt);
 
         l1_write_addr_in0 = get_write_ptr(in0_cb);
         l1_write_addr_in1 = get_write_ptr(in1_cb);
@@ -40,8 +40,8 @@ void kernel_main() {
         auto ptr0 = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(l1_write_addr_in0);
         auto ptr1 = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(l1_write_addr_in1);
 
-        cb_push_back(in0_cb, in0_block_tile_cnt);
-        cb_push_back(in1_cb, in1_block_tile_cnt);
+        ckernel::cb_push_back(in0_cb, in0_block_tile_cnt);
+        ckernel::cb_push_back(in1_cb, in1_block_tile_cnt);
 
         src0_addr += in0_block_size_bytes;
         src1_addr += in1_block_size_bytes;

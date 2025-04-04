@@ -24,7 +24,7 @@ void kernel_main() {
     };
 
     uint32_t block_size = num_cb_tiles;
-    cb_reserve_back(cb_id, num_cb_tiles);
+    ckernel::cb_reserve_back(cb_id, num_cb_tiles);
     for (uint32_t block_idx = 0; block_idx < num_blocks; ++block_idx) {
         uint32_t cb_addr = get_write_ptr(cb_id);
         for (uint32_t i = 0; i < block_size; ++i) {

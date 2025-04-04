@@ -25,7 +25,7 @@ void kernel_main() {
 
     for (uint32_t tensor_id = 0; tensor_id < num_tensors; tensor_id++) {
         const uint32_t input_shard_cb = get_arg_val<uint32_t>(arg_index++);
-        cb_wait_front(input_shard_cb, num_pages_per_tensor);
+        ckernel::cb_wait_front(input_shard_cb, num_pages_per_tensor);
         uint32_t l1_read_addr = get_read_ptr(input_shard_cb);
         uint32_t page_id = 0;
         for (uint32_t page_id_input = 0; page_id_input < num_pages_per_tensor; page_id_input++) {
@@ -35,6 +35,6 @@ void kernel_main() {
             l1_read_addr += stick_size;
             page_id += num_tensors;
         }
-        cb_pop_front(input_shard_cb, num_pages_per_tensor);
+        ckernel::cb_pop_front(input_shard_cb, num_pages_per_tensor);
     }
 }

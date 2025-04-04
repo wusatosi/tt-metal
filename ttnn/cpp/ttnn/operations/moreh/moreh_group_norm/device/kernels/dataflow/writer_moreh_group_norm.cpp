@@ -92,7 +92,7 @@ void kernel_main() {
         if (mean_has_value) {
             const auto mean_dtype_bytes = mean_tile_bytes / (TILE_H * TILE_W);
             const auto mean_l1_read_ptr = get_read_ptr(cb_id_mean);
-            cb_wait_front(cb_id_mean, onetile);
+            ckernel::cb_wait_front(cb_id_mean, onetile);
             if (tilized_mean_rstd_idx_in_tile != 0) {
                 auto mean_ptr = reinterpret_cast<uint16_t*>(mean_l1_read_ptr);
                 mean_ptr[tilized_mean_rstd_idx_in_tile] = mean_ptr[0];
@@ -104,14 +104,14 @@ void kernel_main() {
                 mean_noc_addr + tilized_mean_rstd_idx_in_tile * mean_dtype_bytes,
                 mean_dtype_bytes);
             noc_async_write_barrier();
-            cb_pop_front(cb_id_mean, onetile);
+            ckernel::cb_pop_front(cb_id_mean, onetile);
         }
 
         // rstd (1, 1, N, num_groups)
         if (rstd_has_value) {
             const auto rstd_dtype_bytes = rstd_tile_bytes / (TILE_H * TILE_W);
             const auto rstd_l1_read_ptr = get_read_ptr(cb_id_rstd);
-            cb_wait_front(cb_id_rstd, onetile);
+            ckernel::cb_wait_front(cb_id_rstd, onetile);
             if (tilized_mean_rstd_idx_in_tile != 0) {
                 auto rstd_ptr = reinterpret_cast<uint16_t*>(rstd_l1_read_ptr);
                 rstd_ptr[tilized_mean_rstd_idx_in_tile] = rstd_ptr[0];
@@ -123,12 +123,12 @@ void kernel_main() {
                 rstd_noc_addr + tilized_mean_rstd_idx_in_tile * rstd_dtype_bytes,
                 rstd_dtype_bytes);
             noc_async_write_barrier();
-            cb_pop_front(cb_id_rstd, onetile);
+            ckernel::cb_pop_front(cb_id_rstd, onetile);
         }
 
         for (uint32_t inner_idx = 0; inner_idx < num_inner_tiles; inner_idx += block_size) {
             // output (N, C, H, W)
-            cb_wait_front(cb_id_output, block_size);
+            ckernel::cb_wait_front(cb_id_output, block_size);
             for (uint32_t r = 0; r < block_size; r++) {
                 output_tile_idx = tile_offset + outer_idx * num_inner_tiles + inner_idx + r;
                 if (output_is_dram) {
@@ -139,7 +139,7 @@ void kernel_main() {
                 }
             }
             noc_async_write_barrier();
-            cb_pop_front(cb_id_output, block_size);
+            ckernel::cb_pop_front(cb_id_output, block_size);
         }  // inner_idx loop
     }  // outer_idx loop
 

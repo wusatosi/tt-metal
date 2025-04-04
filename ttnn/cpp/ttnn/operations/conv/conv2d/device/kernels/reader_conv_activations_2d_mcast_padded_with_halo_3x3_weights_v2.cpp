@@ -151,7 +151,7 @@ void kernel_main() {
     // Reset reader_idx to finish act_block_h_datums
     uint32_t reader_idx = 0;
     for (uint32_t nbh = 0; nbh < act_num_blocks_h; nbh++) {
-        cb_reserve_back(cb_id_act_row_major_bfloat16, act_block_num_tiles);
+        ckernel::cb_reserve_back(cb_id_act_row_major_bfloat16, act_block_num_tiles);
         uint32_t l1_write_addr_act = get_write_ptr(cb_id_act_row_major_bfloat16);
 
         constexpr uint32_t stride_h_bytes = padded_conv_act_size_w * conv_act_c_read_bytes * dilation_h;
@@ -201,12 +201,12 @@ void kernel_main() {
         // incrementing num issued in one shot is actually slower
         // noc_async_read_inc_num_issued(num_issued_reads_per_block); // "false" on read
         noc_async_read_barrier();
-        cb_push_back(cb_id_act_row_major_bfloat16, act_block_num_tiles);
+        ckernel::cb_push_back(cb_id_act_row_major_bfloat16, act_block_num_tiles);
 
         // Round robin self-mcast and receive tilized act matrix in cb_id_act
         // Compute should function like regular mm
         for (uint32_t act_w_outer_i = 0; act_w_outer_i < act_w_num_outer; act_w_outer_i++) {
-            cb_reserve_back(cb_id_act, act_block_num_tiles);
+            ckernel::cb_reserve_back(cb_id_act, act_block_num_tiles);
             if (act_w_outer_i == act_mcast_sender_id) {
                 // MCAST SENDER: send entire tilized input to other cores in column
                 // wait until all act mcast destinations have atomically incremented the act semaphore_addr (i.e. its
@@ -218,7 +218,7 @@ void kernel_main() {
                 noc_semaphore_set(act_mcast_receiver_semaphore_addr_ptr, INVALID);
 
                 // compute tilizes and pops cb_id_act and pushes to tilized_in0_cb_id
-                cb_wait_front(tilized_in0_cb_id, act_block_num_tiles);
+                ckernel::cb_wait_front(tilized_in0_cb_id, act_block_num_tiles);
 
                 // Now we have the block in the CB address, we can mcast to dests!
                 uint32_t tilized_act_start_address = get_read_ptr(tilized_in0_cb_id);
@@ -268,9 +268,9 @@ void kernel_main() {
                 // wait on act semaphore value to become VALID (set by mcast sender after it multicasts data)
                 noc_semaphore_wait(act_mcast_receiver_semaphore_addr_ptr, VALID);
             }
-            cb_push_back(cb_id_act, act_block_num_tiles);
+            ckernel::cb_push_back(cb_id_act, act_block_num_tiles);
         }  // act_w_num_outer
-        cb_pop_front(tilized_in0_cb_id, act_block_num_tiles);
+        ckernel::cb_pop_front(tilized_in0_cb_id, act_block_num_tiles);
     }
     noc_async_write_barrier();
 }

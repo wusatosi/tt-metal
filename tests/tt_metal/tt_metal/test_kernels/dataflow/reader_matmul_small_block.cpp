@@ -30,8 +30,8 @@ void kernel_main() {
         std::uint64_t dram_buffer_src1_noc_addr =
             get_noc_addr_from_bank_id<true>(dram_src1_bank_id, dram_buffer_src1_addr);
 
-        cb_reserve_back(0, chunk_size_tiles);
-        cb_reserve_back(1, chunk_size_tiles);
+        ckernel::cb_reserve_back(0, chunk_size_tiles);
+        ckernel::cb_reserve_back(1, chunk_size_tiles);
         l1_write_addr_in0 = get_write_ptr(0);
         l1_write_addr_in1 = get_write_ptr(1);
 
@@ -40,8 +40,8 @@ void kernel_main() {
 
         noc_async_read_barrier();
 
-        cb_push_back(0, chunk_size_tiles);
-        cb_push_back(1, chunk_size_tiles);
+        ckernel::cb_push_back(0, chunk_size_tiles);
+        ckernel::cb_push_back(1, chunk_size_tiles);
 
         dram_buffer_src0_addr += chunk_size_bytes_0;
         dram_buffer_src1_addr += chunk_size_bytes_1;

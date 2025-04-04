@@ -1,4 +1,4 @@
 acquire_dst
 ===========
 
-.. doxygenfunction:: acquire_dst()
+.. doxygenfunction:: ckernel::acquire_dst()

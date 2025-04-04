@@ -173,7 +173,7 @@ ALWI void unpack_tilizeA_B_block(
  * The function will employ one unpacker to unpack and tilize data from the
  * first input CB into SRCA, and the second unpacker to unpack from the
  * second input CB into SRCB. For the tile_idx_b and block to be valid
- * for this call, cb_wait_front(n) had to be previously called on each
+ * for this call, ckernel::cb_wait_front(n) had to be previously called on each
  * input CB to ensure that at least some number n>0 of tiles are available
  * in the input CBs. The CB index 0 then references the first tile in the
  * received section of the CB, up to index n-1 (in a FIFO order). The DST

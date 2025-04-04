@@ -42,14 +42,14 @@ void kernel_main() {
         uint32_t u;
     } scalar;
     scalar.u = eps;
-    cb_reserve_back(cb_id_eps, onetile);
+    ckernel::cb_reserve_back(cb_id_eps, onetile);
 #ifdef FILL_WITH_VALUE_FLOAT
     FILL_WITH_VALUE_FLOAT(cb_id_eps, scalar.f);
 #endif
 #ifdef FILL_WITH_VALUE
     FILL_WITH_VALUE(cb_id_eps, eps);
 #endif
-    cb_push_back(cb_id_eps, onetile);
+    ckernel::cb_push_back(cb_id_eps, onetile);
 
     // Input tile offset
     uint32_t tile_offset = start_n * n_stride + start_c * c_stride + start_t;
@@ -61,11 +61,11 @@ void kernel_main() {
     for (uint32_t n = start_n; n < N && num_tiles_read < num_tiles; ++n, start_c = 0) {
         for (uint32_t c = start_c; c < C && num_tiles_read < num_tiles; ++c, start_t = 0) {
             for (uint32_t t = start_t; t < HtWt && num_tiles_read < num_tiles; ++t, ++num_tiles_read, ++tile_offset) {
-                cb_reserve_back(cb_id_src, onetile);
+                ckernel::cb_reserve_back(cb_id_src, onetile);
                 uint32_t l1_write_addr_src = get_write_ptr(cb_id_src);
                 noc_async_read_tile(tile_offset, src, l1_write_addr_src);
                 noc_async_read_barrier();
-                cb_push_back(cb_id_src, onetile);
+                ckernel::cb_push_back(cb_id_src, onetile);
             }
             tile_offset += next_channel_shift;
         }

@@ -22,7 +22,7 @@ void MAIN {
     constexpr uint32_t first_tile = 0;
 
     binary_op_init_common(tt::CBIndex::c_0, tt::CBIndex::c_1, tt::CBIndex::c_3);
-    cb_wait_front(cb_in1, onetile);
+    ckernel::cb_wait_front(cb_in1, onetile);
 
     for (uint32_t i = 0; i < num_output_tiles; i++) {
         bool enable_reload = false;
@@ -30,27 +30,27 @@ void MAIN {
             bool last_out = (j == num_input_tiles - 1);
             uint32_t cb_add = (enable_reload) ? (cb_intermed0) : (cb_in1);
 
-            cb_wait_front(cb_in0, onetile);
+            ckernel::cb_wait_front(cb_in0, onetile);
             if (enable_reload) {
-                cb_wait_front(cb_intermed0, onetile);
+                ckernel::cb_wait_front(cb_intermed0, onetile);
             }
 
-            tile_regs_acquire();
+            ckernel:: tile_regs_acquire();
             mul_tiles_init(cb_in0, cb_add);
             mul_tiles(cb_in0, cb_add, first_tile, first_tile, dst0);
-            tile_regs_commit();
+            ckernel:: tile_regs_commit();
 
-            cb_pop_front(cb_in0, onetile);
+            ckernel::cb_pop_front(cb_in0, onetile);
             if (enable_reload) {
-                cb_pop_front(cb_intermed0, onetile);
+                ckernel::cb_pop_front(cb_intermed0, onetile);
             }
 
             uint32_t cb_out = (last_out) ? (cb_out0) : (cb_intermed0);
-            cb_reserve_back(cb_out, onetile);
-            tile_regs_wait();
-            pack_tile(dst0, cb_out);
-            tile_regs_release();
-            cb_push_back(cb_out, onetile);
+            ckernel::cb_reserve_back(cb_out, onetile);
+            ckernel::tile_regs_wait();
+            ckernel:: pack_tile(dst0, cb_out);
+            ckernel::tile_regs_release();
+            ckernel::cb_push_back(cb_out, onetile);
             enable_reload = true;
         }
     }

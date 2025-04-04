@@ -35,13 +35,13 @@ void kernel_main() {
             for (uint32_t r = 0; r < single_block_size_row_arg; r++) {
                 uint32_t tile = start_id + dim * num_tiles_per_2d + c * total_tiles_per_row + r;
 #endif
-                cb_wait_front(cb_id_out, onetile);
+                ckernel::cb_wait_front(cb_id_out, onetile);
                 uint32_t l1_read_addr = get_read_ptr(cb_id_out);
 
                 noc_async_write_tile(tile, s, l1_read_addr);
 
                 noc_async_write_barrier();
-                cb_pop_front(cb_id_out, onetile);
+                ckernel::cb_pop_front(cb_id_out, onetile);
             }
         }
     }

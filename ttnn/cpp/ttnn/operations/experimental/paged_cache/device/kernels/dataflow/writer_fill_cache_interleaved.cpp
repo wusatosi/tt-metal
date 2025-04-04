@@ -46,7 +46,7 @@ void kernel_main() {
 
     const InterleavedAddrGen<page_table_is_dram> page_table_gen = {
         .bank_base_address = page_table_addr, .page_size = page_table_stick_size};
-    cb_reserve_back(cb_id_page_table, 1);
+    ckernel::cb_reserve_back(cb_id_page_table, 1);
     uint32_t page_table_cb_wr_ptr = get_write_ptr(cb_id_page_table);
     uint64_t page_table_noc_addr = get_noc_addr(batch_idx, page_table_gen);
     noc_async_read(page_table_noc_addr, page_table_cb_wr_ptr, page_table_stick_size);
@@ -59,7 +59,7 @@ void kernel_main() {
         uint32_t seq_tile_id = row_id % num_blocks_of_work_per_head;
         uint32_t physical_tile_id =
             virtual_seq_tile_id_to_physical_tile_id<num_heads, block_size_t, Wt>(seq_tile_id, cur_head, page_table_ptr);
-        cb_wait_front(cb_id_in, Wt);
+        ckernel::cb_wait_front(cb_id_in, Wt);
         uint32_t l1_read_addr = get_read_ptr(cb_id_in);
         for (uint32_t w = 0; w < Wt; ++w) {
             noc_async_write_tile(physical_tile_id, out_gen, l1_read_addr);
@@ -67,6 +67,6 @@ void kernel_main() {
             physical_tile_id += 1;
         }
         noc_async_write_barrier();
-        cb_pop_front(cb_id_in, Wt);
+        ckernel::cb_pop_front(cb_id_in, Wt);
     }
 }

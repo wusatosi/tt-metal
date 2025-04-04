@@ -24,12 +24,12 @@ void kernel_main() {
     for (uint32_t i = 0; i < num_tiles; i += ublock_size_tiles) {
         uint64_t dst_noc_addr = get_noc_addr(i, dst_addrgen);
 
-        cb_wait_front(cb_id, ublock_size_tiles);
+        ckernel::cb_wait_front(cb_id, ublock_size_tiles);
         uint32_t l1_read_ptr = get_read_ptr(cb_id);
         noc_async_write(l1_read_ptr, dst_noc_addr, tile_bytes);
 
         noc_async_write_barrier();
 
-        cb_pop_front(cb_id, ublock_size_tiles);
+        ckernel::cb_pop_front(cb_id, ublock_size_tiles);
     }
 }

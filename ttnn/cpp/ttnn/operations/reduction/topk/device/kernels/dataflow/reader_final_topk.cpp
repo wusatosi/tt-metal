@@ -31,8 +31,8 @@ void kernel_main() {
 
     for (uint32_t i = 0; i < Ht; ++i) {
         // Look for space in buffer
-        cb_reserve_back(final_values_cb_index, Wt_final);
-        cb_reserve_back(final_indices_cb_index, Wt_final);
+        ckernel::cb_reserve_back(final_values_cb_index, Wt_final);
+        ckernel::cb_reserve_back(final_indices_cb_index, Wt_final);
 
         // Data is unsent so label the sender semaphore as INVALID
         noc_semaphore_set(sender_semaphore_addr, INVALID);
@@ -44,7 +44,7 @@ void kernel_main() {
         noc_semaphore_set_multicast(receiver_semaphore, mcast_receiver_semaphore_noc_addr, num_dests);
         noc_semaphore_wait(sender_semaphore_addr, Wt_final);
 
-        cb_push_back(final_values_cb_index, Wt_final);
-        cb_push_back(final_indices_cb_index, Wt_final);
+        ckernel::cb_push_back(final_values_cb_index, Wt_final);
+        ckernel::cb_push_back(final_indices_cb_index, Wt_final);
     }
 }

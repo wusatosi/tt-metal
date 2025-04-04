@@ -18,11 +18,11 @@ void kernel_main() {
     constexpr uint32_t cb_id_in1 = get_compile_time_arg_val(1);
     constexpr uint32_t pad_cb = get_compile_time_arg_val(2);
 
-    cb_reserve_back(cb_id_in0, num_input_rows);
+    ckernel::cb_reserve_back(cb_id_in0, num_input_rows);
 
-    cb_reserve_back(cb_id_in1, num_padded_tiles_per_batch);
+    ckernel::cb_reserve_back(cb_id_in1, num_padded_tiles_per_batch);
 
-    cb_reserve_back(pad_cb, 1);
+    ckernel::cb_reserve_back(pad_cb, 1);
 
     uint64_t read_noc_addr = get_noc_addr(get_read_ptr(cb_id_in0));
     uint32_t write_addr = get_write_ptr(cb_id_in1);
@@ -41,10 +41,10 @@ void kernel_main() {
         write_addr += input_width_bytes;
     }
     noc_async_read_barrier();
-    cb_push_back(cb_id_in1, num_padded_tiles_per_batch);
+    ckernel::cb_push_back(cb_id_in1, num_padded_tiles_per_batch);
 
     for (uint32_t b = 1; b < num_batches; ++b) {
-        cb_reserve_back(cb_id_in1, num_padded_tiles_per_batch);
+        ckernel::cb_reserve_back(cb_id_in1, num_padded_tiles_per_batch);
         write_addr = get_write_ptr(cb_id_in1);
         noc_async_read(read_noc_addr, write_addr, input_block_size);
         read_noc_addr += input_block_size;
@@ -54,6 +54,6 @@ void kernel_main() {
             write_addr += input_width_bytes;
         }
         noc_async_read_barrier();
-        cb_push_back(cb_id_in1, num_padded_tiles_per_batch);
+        ckernel::cb_push_back(cb_id_in1, num_padded_tiles_per_batch);
     }
 }

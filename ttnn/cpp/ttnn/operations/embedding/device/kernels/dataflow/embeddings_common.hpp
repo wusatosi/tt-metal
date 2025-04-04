@@ -26,14 +26,14 @@ FORCE_INLINE constexpr void prepare_local_cache(
     uint32_t local_cache_cb, const T& weights, uint32_t weight_stick_size, uint32_t pad_token_arg_idx = 0) {
 #if defined PADDED
     pad_token = get_arg_val<uint32_t>(pad_token_arg_idx);
-    cb_reserve_back(local_cache_cb, 1);
+    ckernel::cb_reserve_back(local_cache_cb, 1);
     uint32_t local_pad_addr = get_write_ptr(local_cache_cb);
     uint64_t src_noc_addr = get_noc_addr(pad_token, weights);
     noc_async_read(src_noc_addr, local_pad_addr, weight_stick_size);
     noc_async_read_barrier();
     pad_noc_addr = get_noc_addr(local_pad_addr);
 #elif defined BINARY
-    cb_reserve_back(local_cache_cb, 2);
+    ckernel::cb_reserve_back(local_cache_cb, 2);
     uint32_t local_write_addr = get_write_ptr(local_cache_cb);
     uint64_t src_noc_addr = get_noc_addr(0, weights);
     noc_async_read(src_noc_addr, local_write_addr, weight_stick_size);

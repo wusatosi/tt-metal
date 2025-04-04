@@ -45,7 +45,7 @@ void kernel_main() {
         uint32_t padding_rows = num_rows == 32 ? 0 : 32 - num_rows;
         bool has_rows = (num_rows + padding_rows) > 0;
 
-        cb_reserve_back(cb_id_in0, single_block_size * has_rows);
+        ckernel::cb_reserve_back(cb_id_in0, single_block_size * has_rows);
         uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
 
         uint32_t original_addr = get_write_ptr(cb_id_in0);
@@ -72,7 +72,7 @@ void kernel_main() {
             l1_write_addr += width_size;
         }
 
-        cb_push_back(cb_id_in0, single_block_size * has_rows);
+        ckernel::cb_push_back(cb_id_in0, single_block_size * has_rows);
     };
 
     const uint32_t width_size = get_arg_val<uint32_t>(3);

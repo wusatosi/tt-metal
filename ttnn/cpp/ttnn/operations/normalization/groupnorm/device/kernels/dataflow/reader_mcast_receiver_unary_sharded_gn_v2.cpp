@@ -47,7 +47,7 @@ void kernel_main() {
     uint32_t in0_l1_read_addr = get_read_ptr(cb_in0);
     uint64_t noc_addr_in0 = get_noc_addr(in0_l1_read_addr);
     for (uint32_t m = 0; m < per_core_M; ++m) {
-        cb_reserve_back(cb_repack, per_core_N);
+        ckernel::cb_reserve_back(cb_repack, per_core_N);
         uint32_t l1_write_addr_repack = get_write_ptr(cb_repack);
         for (uint32_t i = 0; i < TILE_HEIGHT; ++i) {
             noc_async_read(noc_addr_in0, l1_write_addr_repack, per_core_N_bytes);
@@ -55,27 +55,27 @@ void kernel_main() {
             l1_write_addr_repack += per_core_N_bytes_with_stride;
         }
         noc_async_read_barrier();
-        cb_push_back(cb_repack, per_core_N);
+        ckernel::cb_push_back(cb_repack, per_core_N);
     }
 #endif
 
     for (uint32_t i = 0; i < num_batch_group; ++i) {
         for (uint32_t j = 0; j < 2; ++j) {
             // wait for local data ready
-            cb_wait_front(cb_ex_partial, 1);
+            ckernel::cb_wait_front(cb_ex_partial, 1);
             noc_semaphore_set(reduce_sender_semaphore_addr_ptr, INVALID);
-            cb_reserve_back(cb_ex_global, 1);
+            ckernel::cb_reserve_back(cb_ex_global, 1);
             noc_semaphore_inc(reduce_receiver_semaphore_noc_addr, 1);
             noc_semaphore_wait(reduce_sender_semaphore_addr_ptr, VALID);
-            cb_push_back(cb_ex_global, 1);
-            cb_pop_front(cb_ex_partial, 1);
+            ckernel::cb_push_back(cb_ex_global, 1);
+            ckernel::cb_pop_front(cb_ex_partial, 1);
         }
     }
 
 #if defined(READER_REPACK) and defined(UNTILIZE_OUT)
     uint32_t l1_write_addr_repack = get_write_ptr(cb_out0);
     for (uint32_t m = 0; m < per_core_M; ++m) {
-        cb_wait_front(cb_repack_out, per_core_N);
+        ckernel::cb_wait_front(cb_repack_out, per_core_N);
         uint32_t in0_l1_read_addr = get_read_ptr(cb_repack_out);
         uint64_t noc_addr_in0 = get_noc_addr(in0_l1_read_addr);
         for (uint32_t i = 0; i < TILE_HEIGHT; ++i) {
@@ -84,7 +84,7 @@ void kernel_main() {
             l1_write_addr_repack += per_core_N_bytes;
         }
         noc_async_read_barrier();
-        cb_pop_front(cb_repack_out, per_core_N);
+        ckernel::cb_pop_front(cb_repack_out, per_core_N);
     }
 #endif
 }

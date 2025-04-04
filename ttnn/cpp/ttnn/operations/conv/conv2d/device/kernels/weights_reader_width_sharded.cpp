@@ -71,7 +71,7 @@ void kernel_main() {
             // Stride = in_channels*out_channels*sizeof(elem)/num_cores.
             for (uint32_t remote_weight_block_index = 0; remote_weight_block_index < remote_weight_height_blocks;
                  remote_weight_block_index++) {
-                cb_reserve_back(cb_id_weight, weight_block_num_tiles);
+                ckernel::cb_reserve_back(cb_id_weight, weight_block_num_tiles);
                 if (is_active) {
                     uint32_t weight_write_l1_addr = get_write_ptr(cb_id_weight);
                     uint32_t weights_start_address = weight_write_l1_addr;
@@ -102,13 +102,13 @@ void kernel_main() {
                     }
                     noc_async_read_barrier();
                 }
-                cb_push_back(cb_id_weight, weight_block_num_tiles);
+                ckernel::cb_push_back(cb_id_weight, weight_block_num_tiles);
                 weight_block_start_tile_id += weight_next_block_other_core_stride_h;
             }
             weight_start_tile_id += weight_next_block_this_core_stride_h;
             if (to_load_bias) {
 #ifdef FUSE_BIAS
-                cb_reserve_back(bias_cb_id, weight_block_width_ntiles);
+                ckernel::cb_reserve_back(bias_cb_id, weight_block_width_ntiles);
                 uint32_t bias_l1_addr = get_write_ptr(bias_cb_id);
                 for (uint32_t weight_tile_w_i = 0; weight_tile_w_i < weight_block_width_ntiles; ++weight_tile_w_i) {
                     s_bias.noc_async_read_tile(bias_start_tile_id, bias_l1_addr);
@@ -116,7 +116,7 @@ void kernel_main() {
                     bias_start_tile_id += 1;
                 }
                 noc_async_read_barrier();
-                cb_push_back(bias_cb_id, weight_block_width_ntiles);
+                ckernel::cb_push_back(bias_cb_id, weight_block_width_ntiles);
 #endif
                 to_load_bias = false;
             }

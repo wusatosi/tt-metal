@@ -93,7 +93,7 @@ void kernel_main() {
                     for (uint32_t w_block = w_out_start; w_block < w_out_end; w_block += W_block_size) {
                         const uint32_t w_block_end = std::min(w_block + W_block_size, w_out_end);
                         // Now iterate through the sub-tile
-                        cb_reserve_back(cb_vol2col, num_patches);
+                        ckernel::cb_reserve_back(cb_vol2col, num_patches);
                         const uint32_t cb_write_ptr = get_write_ptr(cb_vol2col);
                         uint32_t cb_write_addr = cb_write_ptr;
                         for (uint32_t t = t_block; t < t_block_end; ++t) {
@@ -142,7 +142,7 @@ void kernel_main() {
                             }
                         }
                         noc_async_read_barrier();
-                        cb_push_back(cb_vol2col, num_patches);
+                        ckernel::cb_push_back(cb_vol2col, num_patches);
                         // End of w_block
                     }
                     // End of h_block

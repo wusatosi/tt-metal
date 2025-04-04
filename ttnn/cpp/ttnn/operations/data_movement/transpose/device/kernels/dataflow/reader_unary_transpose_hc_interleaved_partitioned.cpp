@@ -50,7 +50,7 @@ void kernel_main() {
     for (uint32_t t = 0; t < num_tiles; t++) {
         auto h32 = (h & 31);
 
-        cb_reserve_back(cb_id_in0, onetile);
+        ckernel::cb_reserve_back(cb_id_in0, onetile);
 
         uint32_t dest_tr0_l1 = get_write_ptr(cb_id_in0);
         // uint32_t save_dest = dest_tr0_l1;
@@ -147,7 +147,7 @@ void kernel_main() {
         noc_async_read_barrier();
 
         // notifies the unpacker that the buffer is populated
-        cb_push_back(cb_id_in0, onetile);
+        ckernel::cb_push_back(cb_id_in0, onetile);
         wt++;
         if (wt == WT) {  // End of row
             wt = 0;

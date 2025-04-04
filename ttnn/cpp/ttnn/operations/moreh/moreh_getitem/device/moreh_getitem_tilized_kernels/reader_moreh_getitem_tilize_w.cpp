@@ -156,7 +156,7 @@ void kernel_main() {
                     // read index tensor
                     tt::CBIndex idx_cb = index_cbs[dim];
 
-                    cb_reserve_back(idx_cb, 1);
+                    ckernel::cb_reserve_back(idx_cb, 1);
                     uint32_t index_l1_addr = get_write_ptr(idx_cb);
                     uint64_t index_noc_addr;
 
@@ -276,7 +276,7 @@ void kernel_main() {
                 }
             }
 
-            cb_reserve_back(cb_in0, 1);
+            ckernel::cb_reserve_back(cb_in0, 1);
             uint32_t l1_write_addr = get_write_ptr(cb_in0);
 
             Idx5d stick_index_5d = get_stick_indices(
@@ -313,7 +313,7 @@ void kernel_main() {
                 index_l1_ptr[0] = index_l1_ptr[w_index % num_elements_per_alignment];
             }
 
-            cb_push_back(cb_in0, 1);
+            ckernel::cb_push_back(cb_in0, 1);
         }
     }
 }

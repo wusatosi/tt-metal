@@ -51,7 +51,7 @@ void kernel_main() {
             uint32_t curr_block_trid = 1;
             uint32_t block_trid_to_wait = 1;
 
-            cb_reserve_back(cb_id, max_block_num_tiles);
+            ckernel::cb_reserve_back(cb_id, max_block_num_tiles);
 
             uint32_t l1_write_addr_offset = 0;
             uint32_t l1_write_addr_start = get_write_ptr(cb_id);
@@ -78,7 +78,7 @@ void kernel_main() {
                     num_free_blocks_in_buffer -= 1;
                 } else {
                     noc_async_read_barrier_with_trid(block_trid_to_wait);
-                    cb_push_back(cb_id, max_block_num_tiles);
+                    ckernel::cb_push_back(cb_id, max_block_num_tiles);
                     block_trid_to_wait =
                         block_trid_to_wait == total_num_blocks_in_buffer ? 1 : (block_trid_to_wait + 1);
                 }
@@ -94,7 +94,7 @@ void kernel_main() {
                         l1_write_addr = l1_buffer_start_addr;
                     }
 
-                    cb_reserve_back(
+                    ckernel::cb_reserve_back(
                         cb_id,
                         max_block_num_tiles *
                             2);  // Reserve two blocks of spcae to issue multiple block reads in parallel
@@ -103,7 +103,7 @@ void kernel_main() {
 
             // last block to wait
             noc_async_read_barrier_with_trid(block_trid_to_wait);
-            cb_push_back(cb_id, max_block_num_tiles);
+            ckernel::cb_push_back(cb_id, max_block_num_tiles);
         }
     }
 }

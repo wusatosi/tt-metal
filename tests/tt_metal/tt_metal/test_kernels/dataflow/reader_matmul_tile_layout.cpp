@@ -64,8 +64,8 @@ void kernel_main() {
         .log_base_2_of_page_size = tile_size_pow2_exponent};
 
     for (uint32_t b = 0; b < num_blocks; b++) {
-        cb_reserve_back(cb_id_in0, in0_block_num_tiles);
-        cb_reserve_back(cb_id_in1, in1_block_num_tiles);
+        ckernel::cb_reserve_back(cb_id_in0, in0_block_num_tiles);
+        ckernel::cb_reserve_back(cb_id_in1, in1_block_num_tiles);
 
         l1_write_addr_in0 = get_write_ptr(cb_id_in0);
         l1_write_addr_in1 = get_write_ptr(cb_id_in1);
@@ -98,7 +98,7 @@ void kernel_main() {
 
         noc_async_read_barrier();
 
-        cb_push_back(cb_id_in0, in0_block_num_tiles);
-        cb_push_back(cb_id_in1, in1_block_num_tiles);
+        ckernel::cb_push_back(cb_id_in0, in0_block_num_tiles);
+        ckernel::cb_push_back(cb_id_in1, in1_block_num_tiles);
     }
 }

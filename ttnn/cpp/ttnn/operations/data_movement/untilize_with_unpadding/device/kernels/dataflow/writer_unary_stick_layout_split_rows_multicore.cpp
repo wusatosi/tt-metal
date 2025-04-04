@@ -34,8 +34,8 @@ void kernel_main() {
 
     auto pop_blocks = [&](uint32_t num_blocks) {
         for (uint32_t i = 0; i < num_blocks; i++) {
-            cb_wait_front(cb_id_out0, num_tiles_per_row);
-            cb_pop_front(cb_id_out0, num_tiles_per_row);
+            ckernel::cb_wait_front(cb_id_out0, num_tiles_per_row);
+            ckernel::cb_pop_front(cb_id_out0, num_tiles_per_row);
         }
     };
 
@@ -43,7 +43,7 @@ void kernel_main() {
         uint32_t padding_rows = (tile_height - num_rows) & 31;
         bool has_rows = (num_rows + padding_rows) > 0;
 
-        cb_wait_front(cb_id_out0, num_tiles_per_row * has_rows);
+        ckernel::cb_wait_front(cb_id_out0, num_tiles_per_row * has_rows);
         uint32_t l1_read_addr = get_read_ptr(cb_id_out0);
         for (uint32_t k = 0; k < num_rows; k++) {
             uint64_t dst_noc_addr = get_noc_addr(base_stick_id + k, s);
@@ -54,7 +54,7 @@ void kernel_main() {
             noc_async_write_barrier();
             l1_read_addr += padded_X_size;
         }
-        cb_pop_front(cb_id_out0, num_tiles_per_row * has_rows);
+        ckernel::cb_pop_front(cb_id_out0, num_tiles_per_row * has_rows);
     };
 
     uint32_t stick_id = start_stick_id;

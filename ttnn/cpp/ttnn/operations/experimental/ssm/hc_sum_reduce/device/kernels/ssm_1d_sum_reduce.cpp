@@ -13,42 +13,42 @@
 constexpr uint32_t ONE_TILE = 1;
 
 FORCE_INLINE void transpose(uint32_t cb_in, uint32_t cb_out) {
-    cb_wait_front(cb_in, ONE_TILE);
+    ckernel::cb_wait_front(cb_in, ONE_TILE);
 
-    tile_regs_acquire();
-    tile_regs_wait();
+    ckernel:: tile_regs_acquire();
+    ckernel::tile_regs_wait();
 
     transpose_wh_init_short(cb_in);
     transpose_wh_tile(cb_in, 0, 0);
 
-    cb_reserve_back(cb_out, ONE_TILE);
-    pack_tile(0, cb_out);
+    ckernel::cb_reserve_back(cb_out, ONE_TILE);
+    ckernel:: pack_tile(0, cb_out);
 
-    tile_regs_commit();
-    tile_regs_release();
+    ckernel:: tile_regs_commit();
+    ckernel::tile_regs_release();
 
-    cb_push_back(cb_out, ONE_TILE);
-    cb_pop_front(cb_in, ONE_TILE);
+    ckernel::cb_push_back(cb_out, ONE_TILE);
+    ckernel::cb_pop_front(cb_in, ONE_TILE);
 }
 
 FORCE_INLINE void reduce(uint32_t cb_in, uint32_t cb_scalar, uint32_t cb_out) {
-    cb_wait_front(cb_in, ONE_TILE);
+    ckernel::cb_wait_front(cb_in, ONE_TILE);
 
-    tile_regs_acquire();
-    tile_regs_wait();
+    ckernel:: tile_regs_acquire();
+    ckernel::tile_regs_wait();
 
     reduce_init_delta<false, REDUCE_OP, REDUCE_DIM>(cb_in, cb_scalar, cb_out);
     reduce_tile(cb_in, cb_scalar, 0, 0, 0);
-    reduce_revert_delta<REDUCE_DIM>(cb_out);
+    ckernel::reduce_revert_delta<REDUCE_DIM>(cb_out);
 
-    cb_reserve_back(cb_out, ONE_TILE);
-    pack_tile(0, cb_out);
+    ckernel::cb_reserve_back(cb_out, ONE_TILE);
+    ckernel:: pack_tile(0, cb_out);
 
-    tile_regs_commit();
-    tile_regs_release();
+    ckernel:: tile_regs_commit();
+    ckernel::tile_regs_release();
 
-    cb_push_back(cb_out, ONE_TILE);
-    cb_pop_front(cb_in, ONE_TILE);
+    ckernel::cb_push_back(cb_out, ONE_TILE);
+    ckernel::cb_pop_front(cb_in, ONE_TILE);
 }
 
 namespace NAMESPACE {
@@ -64,10 +64,10 @@ void MAIN {
     constexpr uint32_t output_cb_id = get_compile_time_arg_val(5);
 
     reduce_init<true>(input_cb_id, scalar_cb_id, intermed_cb_id1);
-    reduce_revert_delta<REDUCE_DIM>(intermed_cb_id1);  // Required or else the first tile is wrong
+    ckernel::reduce_revert_delta<REDUCE_DIM>(intermed_cb_id1);  // Required or else the first tile is wrong
 
     for (uint32_t block_h_id = 0; block_h_id < input_num_blocks_h; block_h_id++) {
-        cb_wait_front(scalar_cb_id, ONE_TILE);
+        ckernel::cb_wait_front(scalar_cb_id, ONE_TILE);
 
         for (uint32_t output_idx = 0; output_idx < num_blocks; output_idx++) {
             for (uint32_t slice_idx = 0; slice_idx < TILE_WIDTH; slice_idx++) {

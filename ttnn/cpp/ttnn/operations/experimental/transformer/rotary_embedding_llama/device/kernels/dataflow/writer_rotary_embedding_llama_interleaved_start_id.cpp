@@ -31,7 +31,7 @@ void kernel_main() {
         for (uint32_t head_num = 0; head_num < n_heads; ++head_num) {
             for (uint32_t seq_tile = seq_t_start; seq_tile < seq_t_end; ++seq_tile) {
                 uint32_t output_curr_idx = batch_id * n_heads * Ht * Wt + head_num * Ht * Wt + seq_tile * Wt;
-                cb_wait_front(cb_id_out, Wt);
+                ckernel::cb_wait_front(cb_id_out, Wt);
                 // Write a row
                 uint32_t l1_read_addr = get_read_ptr(cb_id_out);
                 for (uint32_t j = 0; j < Wt; j++) {
@@ -40,7 +40,7 @@ void kernel_main() {
                     output_curr_idx++;
                 }
                 noc_async_write_barrier();
-                cb_pop_front(cb_id_out, Wt);
+                ckernel::cb_pop_front(cb_id_out, Wt);
             }
         }
     }

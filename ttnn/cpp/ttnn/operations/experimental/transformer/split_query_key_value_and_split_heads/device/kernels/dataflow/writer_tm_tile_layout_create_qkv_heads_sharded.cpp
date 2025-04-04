@@ -30,7 +30,7 @@ void kernel_main() {
         for (uint32_t k = 0; k < out_block_wt; k++) {  // 2
             uint32_t l1_read_addr_offset = 0;
             uint32_t l1_write_addr_out1 = get_write_ptr(cb_im0);
-            cb_reserve_back(cb_im0, block_ht);
+            ckernel::cb_reserve_back(cb_im0, block_ht);
             for (uint32_t i = 0; i < block_ht; i++) {  // 12
                 uint64_t src_noc_addr = get_noc_addr(
                     l1_read_addr + l1_read_addr_offset + src_noc_addr_offset_outer + src_noc_addr_offset_outer_most);
@@ -39,7 +39,7 @@ void kernel_main() {
                 l1_write_addr_out1 += single_tile_size_bytes;
             }
             noc_async_read_barrier();
-            cb_push_back(cb_im0, block_ht);
+            ckernel::cb_push_back(cb_im0, block_ht);
             src_noc_addr_offset_outer += single_tile_size_bytes;
         }
         src_noc_addr_offset_outer_most += out_block_wt_size_bytes;

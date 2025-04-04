@@ -46,7 +46,7 @@ void kernel_main() {
 
         auto read_tile_id = outer_id + inner_id + hw_tile_id;
         for (uint32_t j = 0; j < num_input_tiles; ++j) {
-            cb_reserve_back(cb_id_in0, onetile);
+            ckernel::cb_reserve_back(cb_id_in0, onetile);
             l1_write_addr_in0 = get_write_ptr(cb_id_in0);
             if (input_is_dram) {
                 noc_async_read_tile(read_tile_id, dram_input_addrg, l1_write_addr_in0);
@@ -54,7 +54,7 @@ void kernel_main() {
                 noc_async_read_tile(read_tile_id, l1_input_addrg, l1_write_addr_in0);
             }
             noc_async_read_barrier();
-            cb_push_back(cb_id_in0, onetile);
+            ckernel::cb_push_back(cb_id_in0, onetile);
             read_tile_id += input_tile_stride;
         }
     }

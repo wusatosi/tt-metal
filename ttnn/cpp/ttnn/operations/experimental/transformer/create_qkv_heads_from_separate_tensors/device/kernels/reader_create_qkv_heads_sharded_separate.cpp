@@ -48,7 +48,7 @@ void kernel_main() {
     constexpr uint32_t q_shard_wt_size_bytes = q_shard_wt * single_tile_size_bytes;  // tiles until next sequence
     constexpr uint32_t q_head_size_bytes = tiles_per_head * single_tile_size_bytes;
 
-    cb_reserve_back(cb_outq, q_num_tiles);
+    ckernel::cb_reserve_back(cb_outq, q_num_tiles);
     uint32_t head_offset = 0;
     for (uint32_t k = 0; k < q_num_heads_per_core; k++) {  // number of kv heads inside the shard
         uint32_t seq_tile_offset = 0;
@@ -61,7 +61,7 @@ void kernel_main() {
         head_offset += q_head_size_bytes;
     }
     noc_async_read_barrier();
-    cb_push_back(cb_outq, q_num_tiles);
+    ckernel::cb_push_back(cb_outq, q_num_tiles);
 
     // re-order k
     uint64_t kv_src_noc_addr = get_noc_addr(get_read_ptr(cb_inkv));
@@ -70,7 +70,7 @@ void kernel_main() {
     constexpr uint32_t k_head_size_bytes = tiles_per_head * single_tile_size_bytes;
     constexpr uint32_t kv_group_size_bytes = k_head_size_bytes * 2;
 
-    cb_reserve_back(cb_outk, k_num_tiles);
+    ckernel::cb_reserve_back(cb_outk, k_num_tiles);
     uint32_t k_write_addr = get_write_ptr(cb_outk);
     head_offset = 0;
     for (uint32_t k = 0; k < k_num_heads_per_core; k++) {  // number of k heads inside the shard
@@ -97,13 +97,13 @@ void kernel_main() {
         head_offset += kv_group_size_bytes;
     }
     noc_async_read_barrier();
-    cb_push_back(cb_outk, k_num_tiles);
+    ckernel::cb_push_back(cb_outk, k_num_tiles);
 
     // re-order v
     constexpr uint32_t v_num_tiles = k_num_tiles;
     constexpr uint32_t v_head_size_bytes = k_head_size_bytes;
     constexpr uint32_t v_num_heads_per_core = k_num_heads_per_core;
-    cb_reserve_back(cb_outv, v_num_tiles);
+    ckernel::cb_reserve_back(cb_outv, v_num_tiles);
     uint32_t v_write_addr = get_write_ptr(cb_outv);
     head_offset = k_head_size_bytes;                       // v1 is after one k head
     for (uint32_t k = 0; k < v_num_heads_per_core; k++) {  // number of kv heads inside the shard
@@ -117,5 +117,5 @@ void kernel_main() {
         head_offset += kv_group_size_bytes;
     }
     noc_async_read_barrier();
-    cb_push_back(cb_outv, v_num_tiles);
+    ckernel::cb_push_back(cb_outv, v_num_tiles);
 }

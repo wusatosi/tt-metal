@@ -54,7 +54,7 @@ void kernel_main() {
         experimental::resize_remote_sender_cb_interface(remote_cb_id, curr_block_size, noc_index);
 
         for (uint32_t block = 0; block < curr_num_blocks; ++block) {
-            cb_wait_front(cb_id, curr_block_num_tiles);
+            ckernel::cb_wait_front(cb_id, curr_block_num_tiles);
 
             uint32_t local_cb_addr = get_read_ptr(cb_id);
             experimental::remote_cb_reserve_back(remote_cb_id, 1);
@@ -67,7 +67,7 @@ void kernel_main() {
                 curr_coalesced_page_size,
                 noc);
 
-            cb_pop_front(cb_id, curr_block_num_tiles);
+            ckernel::cb_pop_front(cb_id, curr_block_num_tiles);
         }
         layer++;
     }

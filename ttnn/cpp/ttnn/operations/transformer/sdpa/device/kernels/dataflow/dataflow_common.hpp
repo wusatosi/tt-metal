@@ -73,7 +73,7 @@ void read_chunk_with_padding(
     */
     // Read Q chunk
     const uint32_t num_tiles = dst_rows * dst_cols;
-    cb_reserve_back(cb_id, num_tiles);
+    ckernel::cb_reserve_back(cb_id, num_tiles);
     const uint32_t base_write_ptr = get_write_ptr(cb_id);
     uint32_t outer_ptr_stride = transpose ? tile_bytes : dst_cols * tile_bytes;
     uint32_t inner_ptr_stride = transpose ? tile_bytes * dst_rows : tile_bytes;
@@ -94,7 +94,7 @@ void read_chunk_with_padding(
     }
     noc_async_read_barrier();
 
-    cb_push_back(cb_id, num_tiles);
+    ckernel::cb_push_back(cb_id, num_tiles);
 }
 
 template <uint32_t num_heads, uint32_t block_size_t, uint32_t Wt, bool is_dram = true>
@@ -112,7 +112,7 @@ void read_paged_chunk_with_padding(
     const volatile tt_l1_ptr uint32_t* const page_table_ptr,
     const bool transpose = false) {
     const uint32_t num_tiles = dst_rows * dst_cols;
-    cb_reserve_back(cb_id, num_tiles);
+    ckernel::cb_reserve_back(cb_id, num_tiles);
     const uint32_t base_write_ptr = get_write_ptr(cb_id);
 
     // Stride calculation based on transpose flag
@@ -138,11 +138,11 @@ void read_paged_chunk_with_padding(
         }
     }
     noc_async_read_barrier();
-    cb_push_back(cb_id, num_tiles);
+    ckernel::cb_push_back(cb_id, num_tiles);
 }
 
 template <uint32_t tile_bytes>
-void copy_tile(uint64_t noc_read_addr_base, uint32_t q_write_ptr_base, uint32_t src_tile_id, uint32_t dst_tile_id) {
+void ckernel:: copy_tile(uint64_t noc_read_addr_base, uint32_t q_write_ptr_base, uint32_t src_tile_id, uint32_t dst_tile_id) {
     noc_async_read(
         noc_read_addr_base + src_tile_id * tile_bytes, q_write_ptr_base + dst_tile_id * tile_bytes, tile_bytes);
 }
@@ -362,7 +362,7 @@ void fill_vertical_tile_bfp4(uint32_t cb_id, uint32_t tile_id, uint32_t unpad_co
 template <uint32_t cb_mask_in>
 void generate_causal_mask(uint32_t Sq_chunk_t, uint32_t Sk_chunk_t, uint32_t q_chunk, uint32_t k_chunk) {
     uint32_t mask_size_tiles = Sq_chunk_t * Sk_chunk_t;
-    cb_reserve_back(cb_mask_in, mask_size_tiles);
+    ckernel::cb_reserve_back(cb_mask_in, mask_size_tiles);
 
     uint32_t write_ptr_base = get_write_ptr(cb_mask_in);
     uint64_t noc_write_addr_base = get_noc_addr(write_ptr_base);
@@ -403,13 +403,13 @@ void generate_causal_mask(uint32_t Sq_chunk_t, uint32_t Sk_chunk_t, uint32_t q_c
         }
     }
     noc_async_read_barrier();
-    cb_push_back(cb_mask_in, mask_size_tiles);
+    ckernel::cb_push_back(cb_mask_in, mask_size_tiles);
 }
 
 template <uint32_t cb_mask_in>
 void generate_noncausal_padded_mask(uint32_t Sq_chunk_t, uint32_t Sk_chunk_t, uint32_t unpadded_Sk) {
     uint32_t mask_size_tiles = Sq_chunk_t * Sk_chunk_t;
-    cb_reserve_back(cb_mask_in, mask_size_tiles);
+    ckernel::cb_reserve_back(cb_mask_in, mask_size_tiles);
 
     uint32_t write_ptr_base = get_write_ptr(cb_mask_in);
     uint64_t noc_write_addr_base = get_noc_addr(write_ptr_base);
@@ -455,7 +455,7 @@ void generate_noncausal_padded_mask(uint32_t Sq_chunk_t, uint32_t Sk_chunk_t, ui
         }
     }
     noc_async_read_barrier();
-    cb_push_back(cb_mask_in, mask_size_tiles);
+    ckernel::cb_push_back(cb_mask_in, mask_size_tiles);
 }
 
 struct CatAddrGenerator {
@@ -534,7 +534,7 @@ void read_block(
     const uint32_t src_rows = src_slice.get_d2_size();
     const uint32_t src_cols = src_slice.get_d3_size();
     const uint32_t num_tiles = src_rows * src_cols;
-    cb_reserve_back(cb_id, num_tiles);
+    ckernel::cb_reserve_back(cb_id, num_tiles);
     const uint32_t base_write_ptr = get_write_ptr(cb_id);
     uint32_t outer_ptr_stride = transpose ? tile_bytes : src_cols * tile_bytes;
     uint32_t inner_ptr_stride = transpose ? tile_bytes * src_rows : tile_bytes;
@@ -555,7 +555,7 @@ void read_block(
         }
     }
     noc_async_read_barrier();
-    cb_push_back(cb_id, num_tiles);
+    ckernel::cb_push_back(cb_id, num_tiles);
 }
 
 void write_block(
@@ -573,7 +573,7 @@ void write_block(
 
     uint32_t barrier_count = 0;
 
-    cb_wait_front(cb_id, num_tiles);
+    ckernel::cb_wait_front(cb_id, num_tiles);
     for (uint32_t row = 0; row < dst_rows; ++row) {
         uint32_t read_ptr = base_read_ptr + row * outer_ptr_stride;
         for (uint32_t col = 0; col < dst_cols; ++col) {
@@ -589,5 +589,5 @@ void write_block(
         }
     }
     noc_async_write_barrier();
-    cb_pop_front(cb_id, num_tiles);
+    ckernel::cb_pop_front(cb_id, num_tiles);
 }

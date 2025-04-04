@@ -36,8 +36,8 @@ void kernel_main() {
             if (j > 0) {
                 // Induce some memory load to the CB, indicating that fewer pages are available
                 // for reservation (writer) and that more are available for popping (reader)
-                cb_reserve_back(i, j);
-                cb_push_back(i, j);
+                ckernel::cb_reserve_back(i, j);
+                ckernel::cb_push_back(i, j);
             }
 
             noc_semaphore_set(master_sem_addr, 1);
@@ -55,8 +55,8 @@ void kernel_main() {
 
             // snap back to alignment
             if (j > 0) {
-                cb_reserve_back(i, n_pages - j);
-                cb_push_back(i, n_pages - j);
+                ckernel::cb_reserve_back(i, n_pages - j);
+                ckernel::cb_push_back(i, n_pages - j);
             }
         }
     }

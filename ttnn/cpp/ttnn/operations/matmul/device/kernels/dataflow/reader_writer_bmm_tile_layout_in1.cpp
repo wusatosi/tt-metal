@@ -58,8 +58,8 @@ void kernel_main() {
 
 #ifdef IN1_SHARDED
     const uint32_t in1_num_tiles = batch * num_blocks * in1_block_h * in1_block_w;
-    cb_reserve_back(cb_id_in1, in1_num_tiles);
-    cb_push_back(cb_id_in1, in1_num_tiles);
+    ckernel::cb_reserve_back(cb_id_in1, in1_num_tiles);
+    ckernel::cb_push_back(cb_id_in1, in1_num_tiles);
 #else
     const uint32_t in1_single_tile_size_bytes = get_tile_size(cb_id_in1);
     const DataFormat in1_data_format = get_dataformat(cb_id_in1);
@@ -85,7 +85,7 @@ void kernel_main() {
 #ifndef IN1_SHARDED
         uint32_t in1_tensor_current_block_start_tile_id = in1_tensor_start_tile_id;
         for (uint32_t block = 0; block < num_blocks; ++block) {
-            cb_reserve_back(cb_id_in1, in1_block_num_tiles);
+            ckernel::cb_reserve_back(cb_id_in1, in1_block_num_tiles);
 
             l1_write_addr_in1 = get_write_ptr(cb_id_in1);
 
@@ -104,7 +104,7 @@ void kernel_main() {
 
             noc_async_read_barrier();
 
-            cb_push_back(cb_id_in1, in1_block_num_tiles);
+            ckernel::cb_push_back(cb_id_in1, in1_block_num_tiles);
         }
         if (bcast_B == 0) {
             in1_tensor_start_tile_id += KtNt;
@@ -119,7 +119,7 @@ void kernel_main() {
             for (uint32_t sbw = 0; sbw < out_num_subblocks_w; ++sbw) {
                 uint32_t out_tensor_sb_row_start_tile_id = out_tensor_sbw_start_tile_id;
 
-                cb_wait_front(cb_id_out0, out_subblock_tile_count);
+                ckernel::cb_wait_front(cb_id_out0, out_subblock_tile_count);
                 uint32_t l1_read_addr = get_read_ptr(cb_id_out0);
 
                 for (uint32_t h = 0; h < out_subblock_h; ++h) {
@@ -135,7 +135,7 @@ void kernel_main() {
                 }
 
                 noc_async_write_barrier();
-                cb_pop_front(cb_id_out0, out_subblock_tile_count);
+                ckernel::cb_pop_front(cb_id_out0, out_subblock_tile_count);
                 out_tensor_sbw_start_tile_id += out_tensor_next_subblock_stride_w;
             }
             out_tensor_sbh_start_tile_id += out_tensor_next_subblock_stride_h;
@@ -146,6 +146,6 @@ void kernel_main() {
 #endif
 
 #ifdef OUT_SHARDED
-    cb_wait_front(cb_id_out0, batch * out_num_subblocks_h * out_num_subblocks_w * out_subblock_w * out_subblock_h);
+    ckernel::cb_wait_front(cb_id_out0, batch * out_num_subblocks_h * out_num_subblocks_w * out_subblock_w * out_subblock_h);
 #endif
 }

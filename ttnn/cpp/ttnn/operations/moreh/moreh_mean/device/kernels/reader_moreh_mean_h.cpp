@@ -27,7 +27,7 @@ void kernel_main() {
 #ifdef REDUCE_SCALER
     constexpr uint32_t cb_id_in2 = tt::CBIndex::c_2;
     constexpr uint32_t scaler = get_compile_time_arg_val(4);
-    cb_reserve_back(cb_id_in2, 1);
+    ckernel::cb_reserve_back(cb_id_in2, 1);
     constexpr uint32_t num_zeros_reads = 2048 / MEM_ZEROS_SIZE;
     uint64_t zeros_noc_addr = get_noc_addr(MEM_ZEROS_BASE);
     uint32_t write_addr = get_write_ptr(cb_id_in2);
@@ -49,7 +49,7 @@ void kernel_main() {
             idx += 128;
         }
     }
-    cb_push_back(cb_id_in2, 1);
+    ckernel::cb_push_back(cb_id_in2, 1);
 #endif
 
     constexpr uint32_t cb_id_mask_h = tt::CBIndex::c_3;
@@ -66,11 +66,11 @@ void kernel_main() {
     for (uint32_t i = 0; i < num_cols; i++) {
         uint32_t curr_id = col_start_tile_id;
         for (uint32_t j = 0; j < Ht; j++) {
-            cb_reserve_back(cb_id_in0, onetile);
+            ckernel::cb_reserve_back(cb_id_in0, onetile);
             uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
             noc_async_read_tile(curr_id, s, l1_write_addr);
             noc_async_read_barrier();
-            cb_push_back(cb_id_in0, onetile);
+            ckernel::cb_push_back(cb_id_in0, onetile);
             curr_id += Wt;  // stride in H
         }
         w++;

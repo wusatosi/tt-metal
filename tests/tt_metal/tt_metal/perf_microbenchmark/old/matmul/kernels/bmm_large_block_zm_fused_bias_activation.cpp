@@ -49,22 +49,22 @@ void MAIN {
         for (uint32_t block = 0; block < num_blocks; block++) {
             bool last_out = block == (num_blocks - 1);
 
-            cb_wait_front(in0_cb_id, in0_block_num_tiles);
-            cb_wait_front(in1_cb_id, in1_block_num_tiles);
+            ckernel::cb_wait_front(in0_cb_id, in0_block_num_tiles);
+            ckernel::cb_wait_front(in1_cb_id, in1_block_num_tiles);
             int in0_index_subblock_offset = 0;
             for (uint32_t in0_subblock = 0; in0_subblock < in0_num_subblocks; in0_subblock++) {
                 int in1_index_subblock_offset = 0;
                 for (uint32_t in1_subblock = 0; in1_subblock < in1_num_subblocks; in1_subblock++) {
-                    acquire_dst();
+                    ckernel::acquire_dst();
 
                     if (enable_reload) {
                         // Reconfigure input
                         copy_tile_to_dst_init_short_with_dt(in1_cb_id, mm_partials_cb_id);
-                        cb_wait_front(mm_partials_cb_id, out_subblock_num_tiles);
+                        ckernel::cb_wait_front(mm_partials_cb_id, out_subblock_num_tiles);
                         for (uint32_t i = 0; i < out_subblock_num_tiles; i++) {
-                            copy_tile(mm_partials_cb_id, i, i);
+                            ckernel:: copy_tile(mm_partials_cb_id, i, i);
                         }
-                        cb_pop_front(mm_partials_cb_id, out_subblock_num_tiles);
+                        ckernel::cb_pop_front(mm_partials_cb_id, out_subblock_num_tiles);
                         // Reconfigure srcA back
                         mm_init_short_with_dt(in0_cb_id, in1_cb_id, mm_partials_cb_id);
                     }
@@ -90,22 +90,22 @@ void MAIN {
                     if (last_out) {
 #ifdef FUSE_BIAS
                         // Move matmul result to interm buffer
-                        cb_reserve_back(mm_bias_intermediate_cb_id, out_subblock_num_tiles);
+                        ckernel::cb_reserve_back(mm_bias_intermediate_cb_id, out_subblock_num_tiles);
                         for (uint32_t i = 0; i < out_subblock_num_tiles; i++) {
-                            pack_tile(i, mm_bias_intermediate_cb_id);
+                            ckernel:: pack_tile(i, mm_bias_intermediate_cb_id);
                         }
-                        cb_push_back(mm_bias_intermediate_cb_id, out_subblock_num_tiles);
-                        release_dst();
+                        ckernel::cb_push_back(mm_bias_intermediate_cb_id, out_subblock_num_tiles);
+                        ckernel:: release_dst();
 
                         // Redundant wait since we know data was just pushed
-                        cb_wait_front(mm_bias_intermediate_cb_id, out_subblock_num_tiles);
-                        cb_wait_front(bias_cb_id, in1_per_core_w);
+                        ckernel::cb_wait_front(mm_bias_intermediate_cb_id, out_subblock_num_tiles);
+                        ckernel::cb_wait_front(bias_cb_id, in1_per_core_w);
                         add_bcast_rows_init_short(mm_bias_intermediate_cb_id, bias_cb_id);
                         // reconfigure unpacker df for src B
                         reconfig_data_format(mm_bias_intermediate_cb_id, bias_cb_id);
                         // reconfigure packer df for out
                         pack_reconfig_data_format(out_cb_id);
-                        acquire_dst();
+                        ckernel::acquire_dst();
                         for (uint32_t i = 0, j = 0; j < out_subblock_h; j++) {
                             uint32_t bcast_tile_idx = in1_index_subblock_offset;
                             for (uint32_t k = 0; k < out_subblock_w; k++, i++) {
@@ -113,7 +113,7 @@ void MAIN {
                                 bcast_tile_idx++;
                             }
                         }
-                        cb_pop_front(mm_bias_intermediate_cb_id, out_subblock_num_tiles);
+                        ckernel::cb_pop_front(mm_bias_intermediate_cb_id, out_subblock_num_tiles);
                         // reconfigure init for matmul
                         mm_init_short(in0_cb_id, in1_cb_id);
                         // reconfigure unpacker df for src B
@@ -128,26 +128,26 @@ void MAIN {
                         }
 #endif
                         // Pack out to output buffer
-                        cb_reserve_back(out_cb_id, out_subblock_num_tiles);
+                        ckernel::cb_reserve_back(out_cb_id, out_subblock_num_tiles);
                         for (uint32_t i = 0; i < out_subblock_num_tiles; i++) {
-                            pack_tile(i, out_cb_id);
+                            ckernel:: pack_tile(i, out_cb_id);
                         }
-                        cb_push_back(out_cb_id, out_subblock_num_tiles);
+                        ckernel::cb_push_back(out_cb_id, out_subblock_num_tiles);
                     } else {
                         // Wait for tiles in output buffer to be written out since interm and output share memory
                         if (block == 0) {
-                            cb_reserve_back(out_cb_id, out_num_tiles_to_wait);
+                            ckernel::cb_reserve_back(out_cb_id, out_num_tiles_to_wait);
                             out_num_tiles_to_wait += out_subblock_num_tiles;
                         }
                         // Move partial result to interm buffer
-                        cb_reserve_back(mm_partials_cb_id, out_subblock_num_tiles);
+                        ckernel::cb_reserve_back(mm_partials_cb_id, out_subblock_num_tiles);
                         for (uint32_t i = 0; i < out_subblock_num_tiles; i++) {
-                            pack_tile(i, mm_partials_cb_id);
+                            ckernel:: pack_tile(i, mm_partials_cb_id);
                         }
-                        cb_push_back(mm_partials_cb_id, out_subblock_num_tiles);
+                        ckernel::cb_push_back(mm_partials_cb_id, out_subblock_num_tiles);
                     }
 
-                    release_dst();
+                    ckernel:: release_dst();
                     in1_index_subblock_offset += out_subblock_w;
                 }
                 in0_index_subblock_offset += in0_subblock_num_tiles;
@@ -157,8 +157,8 @@ void MAIN {
                 enable_reload = true;
             }
 
-            cb_pop_front(in0_cb_id, in0_block_num_tiles);
-            cb_pop_front(in1_cb_id, in1_block_num_tiles);
+            ckernel::cb_pop_front(in0_cb_id, in0_block_num_tiles);
+            ckernel::cb_pop_front(in1_cb_id, in1_block_num_tiles);
         }
     }
 }

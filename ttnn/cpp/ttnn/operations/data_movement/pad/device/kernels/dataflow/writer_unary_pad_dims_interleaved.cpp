@@ -27,7 +27,7 @@ void kernel_main() {
     const InterleavedAddrGenFast<dst_is_dram> s1 = {
         .bank_base_address = dst_addr, .page_size = tile_size, .data_format = data_format};
 
-    cb_reserve_back(cb_id_out1, 1);  // in this kernel we are not pushing anything into CBs, just using the space
+    ckernel::cb_reserve_back(cb_id_out1, 1);  // in this kernel we are not pushing anything into CBs, just using the space
 
     uint32_t pad_buffer_l1_addr = get_write_ptr(cb_id_out1);
 
@@ -53,11 +53,11 @@ void kernel_main() {
         for (uint32_t z = 0; z < num_unpadded_Z; z++) {
             for (uint32_t yt = 0; yt < num_unpadded_Yt; yt++) {
                 for (uint32_t xt = 0; xt < num_unpadded_Xt; xt++) {
-                    cb_wait_front(cb_id_out0, 1);
+                    ckernel::cb_wait_front(cb_id_out0, 1);
                     uint32_t src_buffer_l1_addr = get_read_ptr(cb_id_out0);
                     noc_async_write_tile(dst_tile_id, s1, src_buffer_l1_addr);
                     noc_async_write_barrier();
-                    cb_pop_front(cb_id_out0, 1);
+                    ckernel::cb_pop_front(cb_id_out0, 1);
                     dst_tile_id++;
                 }
                 pad_tiles(num_padded_Xt);

@@ -87,7 +87,7 @@ void non_blocking_read_and_forward(
     }
 
     current_page_in += num_pages_per_send;
-    cb_wait_front(cb_id, pages_to_send);
+    ckernel::cb_wait_front(cb_id, pages_to_send);
     forward_to_fabric_from_cb(
         total_pages_to_send,
         sender,
@@ -98,7 +98,7 @@ void non_blocking_read_and_forward(
         num_pages_per_send,
         current_page_in
         );
-    cb_pop_front(cb_id, pages_to_send);
+    ckernel::cb_pop_front(cb_id, pages_to_send);
 }
 
 // Worker core - Data Movement Writer -> Sends to Erisc Data Mover (sender side).
@@ -151,7 +151,7 @@ void kernel_main() {
     // header (for now we don't do that)
     constexpr size_t NORMALIZED_NOC_INDEX = 0;
 
-    cb_wait_front(cb_id_in0, 1);
+    ckernel::cb_wait_front(cb_id_in0, 1);
     auto a_packet_header_addr = get_read_ptr(cb_id_in0);
 
     if constexpr (read_mode == ReadMode::FULLY_ORDERED || read_mode == ReadMode::RATIOD_FORWARDING) {
@@ -161,16 +161,16 @@ void kernel_main() {
         while (current_page_in0 < total_pages_to_send || current_page_in1 < total_pages_to_send) {
             for (size_t read = 0; read < read_ratio0 && current_page_in0 < total_pages_to_send; current_page_in0 += num_pages_per_send, read++) {
                 uint32_t pages_to_send = std::min<uint32_t>(num_pages_per_send, total_pages_to_send - current_page_in0);
-                cb_wait_front(cb_id_in0, pages_to_send);
+                ckernel::cb_wait_front(cb_id_in0, pages_to_send);
                 non_blocking_read_and_forward(current_page_in0, cb_id_in0, dest_addr_gen0, sender, config, page_size, total_pages_to_send, num_pages_per_send);
-                cb_pop_front(cb_id_in0, pages_to_send);
+                ckernel::cb_pop_front(cb_id_in0, pages_to_send);
             }
 
             for (size_t read = 0; read < read_ratio1 && current_page_in1 < total_pages_to_send; current_page_in1 += num_pages_per_send, read++) {
                 uint32_t pages_to_send = std::min<uint32_t>(num_pages_per_send, total_pages_to_send - current_page_in1);
-                cb_wait_front(cb_id_in1, pages_to_send);
+                ckernel::cb_wait_front(cb_id_in1, pages_to_send);
                 non_blocking_read_and_forward(current_page_in1, cb_id_in1, dest_addr_gen1, sender, config, page_size, total_pages_to_send, num_pages_per_send);
-                cb_pop_front(cb_id_in1, pages_to_send);
+                ckernel::cb_pop_front(cb_id_in1, pages_to_send);
             }
         }
 

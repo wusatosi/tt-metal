@@ -61,14 +61,14 @@ void kernel_main() {
             .bank_base_address = gamma_addr, .page_size = gamma_tile_bytes, .data_format = gamma_data_format};
 
         uint32_t l1_write_addr_gamma = get_write_ptr(cb_gamma);
-        cb_reserve_back(cb_gamma, block_w);
+        ckernel::cb_reserve_back(cb_gamma, block_w);
         for (uint32_t w = 0; w < block_w; w++) {
             uint32_t tile_id = gamma_tile_start_id + w;
             noc_async_read_tile(tile_id, gamma, l1_write_addr_gamma);
             l1_write_addr_gamma += gamma_tile_bytes;
         }
         noc_async_read_barrier();
-        cb_push_back(cb_gamma, block_w);
+        ckernel::cb_push_back(cb_gamma, block_w);
     }
 
     if constexpr (fuse_beta) {
@@ -78,14 +78,14 @@ void kernel_main() {
             .bank_base_address = beta_addr, .page_size = beta_tile_bytes, .data_format = beta_data_format};
 
         uint32_t l1_write_addr_beta = get_write_ptr(cb_beta);
-        cb_reserve_back(cb_beta, block_w);
+        ckernel::cb_reserve_back(cb_beta, block_w);
         for (uint32_t w = 0; w < block_w; w++) {
             uint32_t tile_id = beta_tile_start_id + w;
             noc_async_read_tile(tile_id, beta, l1_write_addr_beta);
             l1_write_addr_beta += beta_tile_bytes;
         }
         noc_async_read_barrier();
-        cb_push_back(cb_beta, block_w);
+        ckernel::cb_push_back(cb_beta, block_w);
     }
 
 #ifndef SKIP_WRITE_BACK

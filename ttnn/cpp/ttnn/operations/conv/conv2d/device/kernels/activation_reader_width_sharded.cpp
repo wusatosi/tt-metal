@@ -144,7 +144,7 @@ void kernel_main() {
         act_l1_read_addr = get_read_ptr(cb_id_sharded_act);
         for (uint32_t block_w_index = 0; block_w_index < act_num_blocks_w; block_w_index++) {
             uint32_t reader_idx = block_h_index * (act_block_h_datums / 2);
-            cb_reserve_back(cb_id_act_row_major_bfloat16, act_block_num_tiles);
+            ckernel::cb_reserve_back(cb_id_act_row_major_bfloat16, act_block_num_tiles);
             if (this_core_id < num_input_cores) {
                 uint32_t l1_write_addr_act = get_write_ptr(cb_id_act_row_major_bfloat16);
                 for (uint32_t bh = 0; bh < act_block_h_datums / 2; bh++) {
@@ -175,7 +175,7 @@ void kernel_main() {
 
                 noc_async_read_barrier();
             }
-            cb_push_back(cb_id_act_row_major_bfloat16, act_block_num_tiles);
+            ckernel::cb_push_back(cb_id_act_row_major_bfloat16, act_block_num_tiles);
 
             // Round robin self-mcast and receive tilized act matrix in cb_id_act
             // Compute should function like regular mm
@@ -186,7 +186,7 @@ void kernel_main() {
             uint32_t sender_noc_y = 0;
 
             for (uint32_t act_w_outer_i = 0; act_w_outer_i < num_input_cores; act_w_outer_i++) {
-                cb_reserve_back(cb_id_act, act_block_num_tiles);
+                ckernel::cb_reserve_back(cb_id_act, act_block_num_tiles);
                 if (act_w_outer_i == this_core_id) {
                     // MCAST SENDER: send entire tilized input to other cores in column
                     // wait until all act mcast destinations have atomically incremented the act semaphore_addr (i.e.
@@ -199,7 +199,7 @@ void kernel_main() {
                     noc_semaphore_set(act_mcast_receiver_semaphore_addr_ptr, INVALID);
 
                     // // compute tilizes and pops cb_id_act and pushes to tilized_in0_cb_id
-                    cb_wait_front(tilized_in0_cb_id, act_block_num_tiles);
+                    ckernel::cb_wait_front(tilized_in0_cb_id, act_block_num_tiles);
 
                     // // Now we have the block in the CB address, we can mcast to dests!
                     uint32_t tilized_act_start_address = get_read_ptr(tilized_in0_cb_id);
@@ -250,7 +250,7 @@ void kernel_main() {
                     noc_semaphore_wait(act_mcast_receiver_semaphore_addr_ptr, VALID);
                 }
 
-                cb_push_back(cb_id_act, act_block_num_tiles);
+                ckernel::cb_push_back(cb_id_act, act_block_num_tiles);
 
                 sender_noc_x++;
                 if (sender_noc_x >= num_cores_x) {
@@ -259,7 +259,7 @@ void kernel_main() {
                 }
 
             }  // num_input_cores
-            cb_pop_front(tilized_in0_cb_id, act_block_num_tiles);
+            ckernel::cb_pop_front(tilized_in0_cb_id, act_block_num_tiles);
         }
     }
 }

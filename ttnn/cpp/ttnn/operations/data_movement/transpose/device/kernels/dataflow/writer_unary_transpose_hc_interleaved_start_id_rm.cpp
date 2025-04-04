@@ -31,7 +31,7 @@ void kernel_main() {
 
     uint32_t i_stick = start_id;
     for (uint32_t iter = 0; iter < num_sticks_per_core_read; ++iter) {
-        cb_wait_front(cb_out0, num_read_per_barrier);
+        ckernel::cb_wait_front(cb_out0, num_read_per_barrier);
         uint32_t l1_read_addr = get_read_ptr(cb_out0);
 
         for (uint32_t i = 0; i < num_read_per_barrier; ++i) {
@@ -41,6 +41,6 @@ void kernel_main() {
             i_stick += 1;
         }
         noc_async_write_barrier();
-        cb_pop_front(cb_out0, num_read_per_barrier);
+        ckernel::cb_pop_front(cb_out0, num_read_per_barrier);
     }
 }

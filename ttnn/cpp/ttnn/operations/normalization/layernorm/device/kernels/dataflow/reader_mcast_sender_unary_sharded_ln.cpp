@@ -94,7 +94,7 @@ void kernel_main() {
         const uint32_t cb_reduce_first_stage) __attribute__((always_inline)) {
         // global reduce
         // wait for local data ready
-        cb_wait_front(cb_partial, block_h);
+        ckernel::cb_wait_front(cb_partial, block_h);
         // inc semaphore of other cores, tell other all-to-all workers to start
         if constexpr (num_blocks > 1) {
             *reduce_sender_semaphore_addr_ptr = VALID;
@@ -119,7 +119,7 @@ void kernel_main() {
         // read from both stage
         for (uint32_t i = 0; i < num_tiles_per_worker; ++i) {
             // first stage
-            cb_reserve_back(cb_external, num_blocks_first_stage);
+            ckernel::cb_reserve_back(cb_external, num_blocks_first_stage);
             uint32_t l1_write_addr_external = get_write_ptr(cb_external);
             for (uint32_t block = 0; block < num_blocks_first_stage; ++block) {
                 uint64_t noc_addr_ex_par = remote_noc_addrs[block] | l1_read_addr_ex_par;
@@ -128,7 +128,7 @@ void kernel_main() {
             }
             l1_read_addr_ex_par += single_tile_size_bytes;
             noc_async_read_barrier();
-            cb_push_back(cb_external, num_blocks_first_stage);
+            ckernel::cb_push_back(cb_external, num_blocks_first_stage);
 
             // sync with second-stage all-to-all workers
             if constexpr (use_two_stage_reduce) {
@@ -138,7 +138,7 @@ void kernel_main() {
                 }
 
                 uint32_t curr_block_index = block_index_stride;
-                cb_reserve_back(cb_external, num_blocks_second_stage - 1);
+                ckernel::cb_reserve_back(cb_external, num_blocks_second_stage - 1);
                 for (uint32_t block = 0; block < num_blocks_second_stage - 1; ++block) {
                     uint64_t noc_addr_ex = remote_noc_addrs[curr_block_index] | l1_read_addr_ex;
                     noc_async_read_one_packet(noc_addr_ex, l1_write_addr_external, single_tile_size_bytes);
@@ -147,13 +147,13 @@ void kernel_main() {
                 }
                 l1_read_addr_ex += single_tile_size_bytes;
                 noc_async_read_barrier();
-                cb_push_back(cb_external, num_blocks_second_stage - 1);
+                ckernel::cb_push_back(cb_external, num_blocks_second_stage - 1);
             }
         }
 
         l1_read_addr_ex = get_read_ptr(cb_ex);
         uint32_t l1_write_addr_ex_global = get_write_ptr(cb_ex_global);
-        cb_wait_front(cb_ex, num_tiles_per_worker);
+        ckernel::cb_wait_front(cb_ex, num_tiles_per_worker);
 
         // sync with other all-to-all workers, on the same row
         if constexpr (num_all_to_all_workers_first_stage > 1) {
@@ -162,7 +162,7 @@ void kernel_main() {
         }
 
         // gather data to top row
-        cb_reserve_back(cb_ex_global, block_h);
+        ckernel::cb_reserve_back(cb_ex_global, block_h);
         for (uint32_t block = 0; block < num_all_to_all_workers_first_stage; ++block) {
             uint64_t noc_addr_ex = remote_noc_addrs[block] | l1_read_addr_ex;
             uint32_t num_tiles_bytes = block == num_all_to_all_workers_first_stage - 1 ? num_tiles_per_worker_last_bytes
@@ -178,7 +178,7 @@ void kernel_main() {
 
         // mcast
         uint32_t l1_read_addr_ex_global = get_read_ptr(cb_ex_global);
-        cb_push_back(cb_ex_global, block_h);
+        ckernel::cb_push_back(cb_ex_global, block_h);
         if constexpr (num_blocks > 1) {
             for (uint32_t block = 0; block < num_all_to_all_workers_first_stage; ++block) {
                 *reduce_sender_semaphore_addr_ptr = block + 2;

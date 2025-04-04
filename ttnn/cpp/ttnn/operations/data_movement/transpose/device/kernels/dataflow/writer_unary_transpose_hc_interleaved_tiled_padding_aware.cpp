@@ -88,7 +88,7 @@ void kernel_main() {
         uint32_t output_h = h * TILE_HEIGHT;
 
         // Synchronization and read address retrieval
-        cb_wait_front(cb_id_out0, 1);
+        ckernel::cb_wait_front(cb_id_out0, 1);
         uint32_t l1_read_addr = get_read_ptr(cb_id_out0);
 
         // Determine the number of faces in the height dimension
@@ -151,12 +151,12 @@ void kernel_main() {
         noc_async_write_barrier();
 
         // Remove the processed tile from the front of the buffer
-        cb_pop_front(cb_id_out0, 1);
+        ckernel::cb_pop_front(cb_id_out0, 1);
     }
 
     // add padding
     if constexpr (needs_padding) {
-        cb_wait_front(tt::CBIndex::c_1, 1);
+        ckernel::cb_wait_front(tt::CBIndex::c_1, 1);
 
         uint32_t l1_read_ptr = get_read_ptr(tt::CBIndex::c_1);
 
@@ -198,6 +198,6 @@ void kernel_main() {
             }
         }
         noc_async_write_barrier();
-        cb_pop_front(tt::CBIndex::c_1, 1);
+        ckernel::cb_pop_front(tt::CBIndex::c_1, 1);
     }
 }

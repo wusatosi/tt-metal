@@ -140,15 +140,15 @@ uint32_t ublock_size_bytes_1 = get_tile_size(cb_id_in1);
 uint32_t l1_write_addr_in0 = get_write_ptr(cb_id_in0);
 uint32_t l1_write_addr_in1 = get_write_ptr(cb_id_in1);
 
-cb_reserve_back(cb_id_in0, 1);
+ckernel::cb_reserve_back(cb_id_in0, 1);
 noc_async_read(src0_noc_addr, l1_write_addr_in0, ublock_size_bytes_0);
 noc_async_read_barrier();
-cb_push_back(cb_id_in0, 1);
+ckernel::cb_push_back(cb_id_in0, 1);
 
-cb_reserve_back(cb_id_in1, 1);
+ckernel::cb_reserve_back(cb_id_in1, 1);
 noc_async_read(src1_noc_addr, l1_write_addr_in1, ublock_size_bytes_1);
 noc_async_read_barrier();
-cb_push_back(cb_id_in1, 1);
+ckernel::cb_push_back(cb_id_in1, 1);
 ```
 
 The reader kernel reads in a one tile from each of the two source vectors that are stored in the DRAM, and stores these values in circular buffers in the given core, with each source vector having its own corresponding circular buffer.
@@ -160,23 +160,23 @@ binary_op_init_common(cb_in0, cb_in1, cb_out0);
 add_tiles_init(cb_in0, cb_in1);
 
 // wait for a block of tiles in each of input CBs
-cb_wait_front(cb_in0, 1);
-cb_wait_front(cb_in1, 1);
+ckernel::cb_wait_front(cb_in0, 1);
+ckernel::cb_wait_front(cb_in1, 1);
 
-tile_regs_acquire(); // acquire 8 tile registers
+ckernel:: tile_regs_acquire(); // acquire 8 tile registers
 
 add_tiles(cb_in0, cb_in1, 0, 0, 0);
 
-tile_regs_commit(); // signal the packer
+ckernel:: tile_regs_commit(); // signal the packer
 
-tile_regs_wait(); // packer waits here
-pack_tile(0, cb_out0);
-tile_regs_release(); // packer releases
+ckernel::tile_regs_wait(); // packer waits here
+ckernel:: pack_tile(0, cb_out0);
+ckernel::tile_regs_release(); // packer releases
 
-cb_pop_front(cb_in0, 1);
-cb_pop_front(cb_in1, 1);
+ckernel::cb_pop_front(cb_in0, 1);
+ckernel::cb_pop_front(cb_in1, 1);
 
-cb_push_back(cb_out0, 1);
+ckernel::cb_push_back(cb_out0, 1);
 ```
 
 In the compute kernel, a single tile is read from each of the circular buffers corresponding to the source data. These values are unpacked from their original data formats into unsigned integers. Then, `add_tiles()` computes the result of the addition between the two retrieved tiles. The result is then packed back into the original data format and written back to the corresponding circular buffer.
@@ -190,10 +190,10 @@ constexpr uint32_t cb_id_out0 = tt::CBIndex::c_16;
 uint32_t ublock_size_bytes = get_tile_size(cb_id_out0);
 uint32_t l1_read_addr = get_read_ptr(cb_id_out0);
 
-cb_wait_front(cb_id_out0, 1);
+ckernel::cb_wait_front(cb_id_out0, 1);
 noc_async_write(l1_read_addr, dst_noc_addr, ublock_size_bytes);
 noc_async_write_barrier();
-cb_pop_front(cb_id_out0, 1);
+ckernel::cb_pop_front(cb_id_out0, 1);
 ```
 
 At this point, the results of the addition are computed and stored in the circular buffers. We can now write these values to DRAM so that they can be accessed by the host.

@@ -34,13 +34,13 @@ void kernel_main() {
     const uint64_t noc_addr_1 = get_noc_addr(base_l1_read_addr_1);
     const uint32_t base_l1_write_addr = get_write_ptr(concat_cb);
 
-    cb_push_back(input0_cb, input0_num_tiles_height * input0_num_tiles_width);
-    cb_push_back(input1_cb, input1_num_tiles_height * input1_num_tiles_width);
+    ckernel::cb_push_back(input0_cb, input0_num_tiles_height * input0_num_tiles_width);
+    ckernel::cb_push_back(input1_cb, input1_num_tiles_height * input1_num_tiles_width);
 
     for (uint32_t i = 0; i < input0_num_tiles_height; i++) {
-        cb_reserve_back(concat_cb, output_num_tiles_width);
+        ckernel::cb_reserve_back(concat_cb, output_num_tiles_width);
 
-        cb_wait_front(input0_transpose_cb, input0_num_tiles_width);
+        ckernel::cb_wait_front(input0_transpose_cb, input0_num_tiles_width);
 
         uint32_t l1_read_addr = base_l1_read_addr_0;
         noc_async_read_one_packet_set_state(noc_addr_0, input0_stride);
@@ -53,9 +53,9 @@ void kernel_main() {
         }
 
         noc_async_read_barrier();
-        cb_pop_front(input0_transpose_cb, input0_num_tiles_width);
+        ckernel::cb_pop_front(input0_transpose_cb, input0_num_tiles_width);
 
-        cb_wait_front(input1_transpose_cb, input1_num_tiles_width);
+        ckernel::cb_wait_front(input1_transpose_cb, input1_num_tiles_width);
 
         l1_read_addr = base_l1_read_addr_1;
         noc_async_read_one_packet_set_state(noc_addr_1, input1_stride);
@@ -68,8 +68,8 @@ void kernel_main() {
         }
 
         noc_async_read_barrier();
-        cb_pop_front(input1_transpose_cb, input1_num_tiles_width);
+        ckernel::cb_pop_front(input1_transpose_cb, input1_num_tiles_width);
 
-        cb_push_back(concat_cb, output_num_tiles_width);
+        ckernel::cb_push_back(concat_cb, output_num_tiles_width);
     }
 }

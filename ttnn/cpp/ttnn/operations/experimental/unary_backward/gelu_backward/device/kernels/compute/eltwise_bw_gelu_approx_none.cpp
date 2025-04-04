@@ -38,19 +38,19 @@ void MAIN {
     square_tile_init();
 
     for (uint32_t block = 0; block < per_core_block_cnt; ++block) {
-        cb_reserve_back(cb_grad_in, per_core_block_size);
+        ckernel::cb_reserve_back(cb_grad_in, per_core_block_size);
 
         for (uint32_t i = 0; i < per_core_block_size; ++i) {
-            cb_wait_front(cb_grad_out, per_core_block_size);
-            cb_wait_front(cb_input, per_core_block_size);
+            ckernel::cb_wait_front(cb_grad_out, per_core_block_size);
+            ckernel::cb_wait_front(cb_input, per_core_block_size);
 
-            tile_regs_acquire();
-            tile_regs_wait();
+            ckernel:: tile_regs_acquire();
+            ckernel::tile_regs_wait();
 
-            copy_tile(cb_grad_out, i, 0);  // grad => tile 0
-            copy_tile(cb_input, i, 1);     // x => tile 1
-            copy_tile(cb_input, i, 2);     // x => tile 2
-            copy_tile(cb_input, i, 4);     // x => tile 7
+            ckernel:: copy_tile(cb_grad_out, i, 0);  // grad => tile 0
+            ckernel:: copy_tile(cb_input, i, 1);     // x => tile 1
+            ckernel:: copy_tile(cb_input, i, 2);     // x => tile 2
+            ckernel:: copy_tile(cb_input, i, 4);     // x => tile 7
 
             // Step 1: erf(x / sqrt(2))
             load_immediate_value(3, kAlpha);
@@ -88,18 +88,18 @@ void MAIN {
             //   tile[0] = grad
             //   tile[1] = cdf_term + pdf_term
             mul_binary_tile(0, 1);
-            pack_tile(0, cb_grad_in);
+            ckernel:: pack_tile(0, cb_grad_in);
 
             // // store to output
-            // pack_tile(0, cb_grad_in);
+            // ckernel:: pack_tile(0, cb_grad_in);
 
-            tile_regs_commit();
-            tile_regs_release();
+            ckernel:: tile_regs_commit();
+            ckernel::tile_regs_release();
 
-            cb_pop_front(cb_grad_out, per_core_block_size);
-            cb_pop_front(cb_input, per_core_block_size);
+            ckernel::cb_pop_front(cb_grad_out, per_core_block_size);
+            ckernel::cb_pop_front(cb_input, per_core_block_size);
         }
-        cb_push_back(cb_grad_in, per_core_block_size);
+        ckernel::cb_push_back(cb_grad_in, per_core_block_size);
     }
 }
 }  // namespace NAMESPACE

@@ -167,35 +167,35 @@ In `bmm_large_block_zm.cpp`,
 
 a.  **Preparing the Intermediate Buffer**:
 
-**Reserving Partial Results Space**: For a given block (excluding the last block), we reserve space for intermediate (ie. partial) results in the rear of the intermediate circular buffer with `cb_reserve_back(...)`.
+**Reserving Partial Results Space**: For a given block (excluding the last block), we reserve space for intermediate (ie. partial) results in the rear of the intermediate circular buffer with `ckernel::cb_reserve_back(...)`.
 Each consecutive subblock within this block will access this space, and contribute their partial results.
 
 ```cpp
-cb_reserve_back(tt::CBIndex::c_24, out_subblock_num_tiles);
+ckernel::cb_reserve_back(tt::CBIndex::c_24, out_subblock_num_tiles);
 ```
 
-**Storing Partial Results**: Partial results are stored via a packing mechanism with `pack_tile(...)` into the above reserved space.
+**Storing Partial Results**: Partial results are stored via a packing mechanism with `ckernel:: pack_tile(...)` into the above reserved space.
 
 ``` cpp
 for (uint32_t i = 0; i < out_subblock_num_tiles; i++) {
-    pack_tile(i, tt::CBIndex::c_24);
+    ckernel:: pack_tile(i, tt::CBIndex::c_24);
 }
-cb_push_back(tt::CBIndex::c_24, out_subblock_num_tiles);
+ckernel::cb_push_back(tt::CBIndex::c_24, out_subblock_num_tiles);
 ```
 
 b.  **Computing with Partial Results**:
 
-  **Result Retrieval**: During block computations after the first block, we retrieve the stored results `cb_wait_front(...)` for further computation. This retrieval, also known as \"reloading\" data, is the heart of our data reuse concept.
+  **Result Retrieval**: During block computations after the first block, we retrieve the stored results `ckernel::cb_wait_front(...)` for further computation. This retrieval, also known as \"reloading\" data, is the heart of our data reuse concept.
 
   It is leveraged only when our flag `enable_reload` is set to true. Recall from our understanding of circular buffers that there needs be synchronization that all tile work thus far be finished before contributing more partial results.
 
 ``` cpp
 if (enable_reload) {
-    cb_wait_front(tt::CBIndex::c_24, out_subblock_num_tiles);
+    ckernel::cb_wait_front(tt::CBIndex::c_24, out_subblock_num_tiles);
     for (uint32_t i = 0; i < out_subblock_num_tiles; i++) {
-        copy_tile(tt::CBIndex::c_24, i, i);
+        ckernel:: copy_tile(tt::CBIndex::c_24, i, i);
     }
-    cb_pop_front(tt::CBIndex::c_24, out_subblock_num_tiles);
+    ckernel::cb_pop_front(tt::CBIndex::c_24, out_subblock_num_tiles);
 }
 ```
 
@@ -224,7 +224,7 @@ for (uint32_t h = 0; h < out_subblock_h; h++) {
 
 c.  **Wrapping Up the Intermediate Buffer**:
 
- **Freeing Up Space**: After all partial results have been computed and stored in our output subblock, we have completed the cycle of reuse, so now we free up the space in the intermediate circular buffer with `cb_pop_front(...)`.
+ **Freeing Up Space**: After all partial results have been computed and stored in our output subblock, we have completed the cycle of reuse, so now we free up the space in the intermediate circular buffer with `ckernel::cb_pop_front(...)`.
 
 ## Conclusion
 

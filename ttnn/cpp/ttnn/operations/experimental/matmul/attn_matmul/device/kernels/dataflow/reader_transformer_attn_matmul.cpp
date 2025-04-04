@@ -69,26 +69,26 @@ void kernel_main() {
                 itileA = itileA_Mt;
                 itileB = itileB_Nt;
 
-                cb_reserve_back(cb_id_in0, Kt);
+                ckernel::cb_reserve_back(cb_id_in0, Kt);
                 for (uint32_t kt = 0; kt < Kt; kt++) {
                     // Read A's tile at (mt, kt)
                     uint32_t l1_write_addr_in0 = get_write_ptr(cb_id_in0);
                     noc_async_read_tile(itileA, s0, l1_write_addr_in0);
                     noc_async_read_barrier();
-                    cb_push_back(cb_id_in0, onetile);
+                    ckernel::cb_push_back(cb_id_in0, onetile);
 
                     itileA++;  // A is MK
                 }
 
-                cb_reserve_back(cb_id_intermed2, 1);
+                ckernel::cb_reserve_back(cb_id_intermed2, 1);
                 for (uint32_t tile_row_id = 0; tile_row_id < num_rows_in_one_tile; tile_row_id++) {
                     for (uint32_t kt = 0; kt < Kt; kt++) {
                         // Read B's tile at (kt, nt)
-                        cb_reserve_back(cb_id_in1, onetile);
+                        ckernel::cb_reserve_back(cb_id_in1, onetile);
                         uint32_t l1_write_addr_in1 = get_write_ptr(cb_id_in1);
                         noc_async_read_tile(itileB, s1, l1_write_addr_in1);
                         noc_async_read_barrier();
-                        cb_push_back(cb_id_in1, onetile);
+                        ckernel::cb_push_back(cb_id_in1, onetile);
 
 #if (transpose_hw_bool)
                         itileB++;  // Kt is in B[3], so it is contiguous in memory
@@ -98,16 +98,16 @@ void kernel_main() {
                     }  // Kt loop
 
                     // Read 32 untilized tiles and select correct rows to reconstruct single correct tile
-                    cb_wait_front(cb_id_intermed1, 1);
+                    ckernel::cb_wait_front(cb_id_intermed1, 1);
                     noc_async_read(get_noc_addr(cb_intermed1_addr), cb_intermed2_addr, bfloat16_row_bytes);
                     noc_async_read_barrier();
-                    cb_pop_front(cb_id_intermed1, 1);
+                    ckernel::cb_pop_front(cb_id_intermed1, 1);
                     cb_intermed1_addr += bfloat16_row_bytes;
                     cb_intermed2_addr += bfloat16_row_bytes;
 
                     itileB += in1_KtNt_skip;  // different depending on transpose_hw
                 }  // 32 tiles loop
-                cb_push_back(cb_id_intermed2, 1);
+                ckernel::cb_push_back(cb_id_intermed2, 1);
 
 // Next tile in Nt
 #if (transpose_hw_bool)

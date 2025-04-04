@@ -236,7 +236,7 @@ void kernel_main() {
     stream_state.local_buffer_base_addr = stream_buffer_addr;
 
     for (uint32_t i = 0; i < num_messages_to_forward; i++) {
-        cb_reserve_back(cb, 1);
+        ckernel::cb_reserve_back(cb, 1);
 
         while (!messages_are_available(stream_id, stream_state)) {
             asm volatile("nop");
@@ -248,7 +248,7 @@ void kernel_main() {
 
         copy_message_to_cb_blocking(cb, msg_addr, msg_size_bytes, stream_state);
 
-        cb_push_back(cb, 1);
+        ckernel::cb_push_back(cb, 1);
 
         stream_relay_tiles(stream_id, 1, msg_size_bytes >> 4);
         advance_stream_to_next_message(

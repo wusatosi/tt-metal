@@ -166,7 +166,7 @@ void kernel_main() {
             get_tilized_idx(mean_rstd_h_idx_in_tile, mean_rstd_w_idx_in_tile, TILE_H, TILE_W);
 
         // mean (1, 1, N, num_groups)
-        cb_reserve_back(cb_id_mean, onetile);
+        ckernel::cb_reserve_back(cb_id_mean, onetile);
         if (mean_is_dram) {
             noc_async_read_tile(mean_rstd_tile_idx, dram_mean_addrg, mean_l1_write_ptr);
         } else {
@@ -177,10 +177,10 @@ void kernel_main() {
             auto mean_ptr = reinterpret_cast<uint16_t*>(mean_l1_write_ptr);
             mean_ptr[0] = mean_ptr[tilized_mean_rstd_idx_in_tile];
         }
-        cb_push_back(cb_id_mean, onetile);
+        ckernel::cb_push_back(cb_id_mean, onetile);
 
         // rstd (1, 1, N, num_groups)
-        cb_reserve_back(cb_id_rstd, onetile);
+        ckernel::cb_reserve_back(cb_id_rstd, onetile);
         if (rstd_is_dram) {
             noc_async_read_tile(mean_rstd_tile_idx, dram_rstd_addrg, rstd_l1_write_ptr);
         } else {
@@ -191,30 +191,30 @@ void kernel_main() {
             auto rstd_ptr = reinterpret_cast<uint16_t*>(rstd_l1_write_ptr);
             rstd_ptr[0] = rstd_ptr[tilized_mean_rstd_idx_in_tile];
         }
-        cb_push_back(cb_id_rstd, onetile);
+        ckernel::cb_push_back(cb_id_rstd, onetile);
 
         for (uint32_t inner_idx = 0; inner_idx < num_inner_tiles; ++inner_idx) {
             // input (N, C, H, W)
             input_tile_idx = tile_offset + outer_idx * num_inner_tiles + inner_idx;
-            cb_reserve_back(cb_id_input, onetile);
+            ckernel::cb_reserve_back(cb_id_input, onetile);
             if (input_is_dram) {
                 noc_async_read_tile(input_tile_idx, dram_input_addrg, input_l1_write_ptr);
             } else {
                 noc_async_read_tile(input_tile_idx, l1_input_addrg, input_l1_write_ptr);
             }
             noc_async_read_barrier();
-            cb_push_back(cb_id_input, onetile);
+            ckernel::cb_push_back(cb_id_input, onetile);
 
             // output_grad (N, C, H, W)
             output_grad_tile_idx = input_tile_idx;
-            cb_reserve_back(cb_id_output_grad, onetile);
+            ckernel::cb_reserve_back(cb_id_output_grad, onetile);
             if (output_grad_is_dram) {
                 noc_async_read_tile(output_grad_tile_idx, dram_output_grad_addrg, output_grad_l1_write_ptr);
             } else {
                 noc_async_read_tile(output_grad_tile_idx, l1_output_grad_addrg, output_grad_l1_write_ptr);
             }
             noc_async_read_barrier();
-            cb_push_back(cb_id_output_grad, onetile);
+            ckernel::cb_push_back(cb_id_output_grad, onetile);
 
             if (gamma_has_value) {
                 // gamma (1, 1, 1, C)
@@ -222,7 +222,7 @@ void kernel_main() {
                 const auto gamma_tile_idx = gamma_c_idx / TILE_W;
                 const auto gamma_w_idx_in_tile = gamma_c_idx % TILE_W;
                 const auto tilized_gamma_idx_in_tile = get_tilized_idx(0, gamma_w_idx_in_tile, TILE_H, TILE_W);
-                cb_reserve_back(cb_id_gamma, onetile);
+                ckernel::cb_reserve_back(cb_id_gamma, onetile);
                 if (gamma_is_dram) {
                     noc_async_read_tile(gamma_tile_idx, dram_gamma_addrg, gamma_l1_write_ptr);
                 } else {
@@ -233,21 +233,21 @@ void kernel_main() {
                     auto gamma_ptr = reinterpret_cast<uint16_t*>(gamma_l1_write_ptr);
                     gamma_ptr[0] = gamma_ptr[tilized_gamma_idx_in_tile];
                 }
-                cb_push_back(cb_id_gamma, onetile);
+                ckernel::cb_push_back(cb_id_gamma, onetile);
             }
         }  // inner_idx loop
 
         for (uint32_t inner_idx = 0; inner_idx < num_inner_tiles; ++inner_idx) {
             // output_grad (N, C, H, W)
             output_grad_tile_idx = tile_offset + outer_idx * num_inner_tiles + inner_idx;
-            cb_reserve_back(cb_id_output_grad, onetile);
+            ckernel::cb_reserve_back(cb_id_output_grad, onetile);
             if (output_grad_is_dram) {
                 noc_async_read_tile(output_grad_tile_idx, dram_output_grad_addrg, output_grad_l1_write_ptr);
             } else {
                 noc_async_read_tile(output_grad_tile_idx, l1_output_grad_addrg, output_grad_l1_write_ptr);
             }
             noc_async_read_barrier();
-            cb_push_back(cb_id_output_grad, onetile);
+            ckernel::cb_push_back(cb_id_output_grad, onetile);
 
             if (gamma_has_value) {
                 // gamma (1, 1, 1, C)
@@ -255,7 +255,7 @@ void kernel_main() {
                 const auto gamma_tile_idx = gamma_c_idx / TILE_W;
                 const auto gamma_w_idx_in_tile = gamma_c_idx % TILE_W;
                 const auto tilized_gamma_idx_in_tile = get_tilized_idx(0, gamma_w_idx_in_tile, TILE_H, TILE_W);
-                cb_reserve_back(cb_id_gamma, onetile);
+                ckernel::cb_reserve_back(cb_id_gamma, onetile);
                 if (gamma_is_dram) {
                     noc_async_read_tile(gamma_tile_idx, dram_gamma_addrg, gamma_l1_write_ptr);
                 } else {
@@ -266,19 +266,19 @@ void kernel_main() {
                     auto gamma_ptr = reinterpret_cast<uint16_t*>(gamma_l1_write_ptr);
                     gamma_ptr[0] = gamma_ptr[tilized_gamma_idx_in_tile];
                 }
-                cb_push_back(cb_id_gamma, onetile);
+                ckernel::cb_push_back(cb_id_gamma, onetile);
             }
 
             // input (N, C, H, W)
             input_tile_idx = output_grad_tile_idx;
-            cb_reserve_back(cb_id_input, onetile);
+            ckernel::cb_reserve_back(cb_id_input, onetile);
             if (input_is_dram) {
                 noc_async_read_tile(input_tile_idx, dram_input_addrg, input_l1_write_ptr);
             } else {
                 noc_async_read_tile(input_tile_idx, l1_input_addrg, input_l1_write_ptr);
             }
             noc_async_read_barrier();
-            cb_push_back(cb_id_input, onetile);
+            ckernel::cb_push_back(cb_id_input, onetile);
         }  // inner_idx loop
     }  // outer_idx loop
 

@@ -54,13 +54,13 @@ void kernel_main() {
 #endif
 
     // Reserve and push the fill value into the circular buffer
-    cb_reserve_back(cb_id_0, 1);
+    ckernel::cb_reserve_back(cb_id_0, 1);
     uint32_t l1_write_addr = get_write_ptr(cb_id_0);
     volatile tt_l1_ptr uint32_t* l1_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(l1_write_addr);
     for (uint32_t i = 0; i < cb_page_size; i++) {
         l1_ptr[i] = fill_value;
     }
-    cb_push_back(cb_id_0, 1);
+    ckernel::cb_push_back(cb_id_0, 1);
 
     auto fill_pad_2d_tensor = [&](const uint32_t& tile_offset) {
         uint32_t start_col;

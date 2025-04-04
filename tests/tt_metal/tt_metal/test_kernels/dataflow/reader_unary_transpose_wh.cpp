@@ -31,12 +31,12 @@ void kernel_main() {
         for (uint32_t w = 0; w<Wt; w++) {
             for (uint32_t h = 0; h<Ht; h++) {
                 uint64_t src_noc_addr = get_noc_addr_from_bank_id<true>(src_dram_bank_id, src_addr);
-                cb_reserve_back(cb_id_in0, onetile);
+                ckernel::cb_reserve_back(cb_id_in0, onetile);
                 uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
                 noc_async_read(src_noc_addr, l1_write_addr, tile_bytes);
                 noc_async_read_barrier();
 
-                cb_push_back(cb_id_in0, onetile);
+                ckernel::cb_push_back(cb_id_in0, onetile);
                 src_addr += WtTileBytes;  // stride in H
             }  // Ht
             src_addr -= HtWtTileBytes;  // go back to H=0

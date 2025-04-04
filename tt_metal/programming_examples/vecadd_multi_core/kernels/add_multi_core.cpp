@@ -41,28 +41,28 @@ void MAIN {
     // Loop over the assigned tiles and perform the computation
     for (uint32_t i = start_tile_id; i < end_tile_id; i++) {
         // Wait until there is a tile in both input circular buffers
-        cb_wait_front(cb_in0, 1);
-        cb_wait_front(cb_in1, 1);
+        ckernel::cb_wait_front(cb_in0, 1);
+        ckernel::cb_wait_front(cb_in1, 1);
         // Make sure there is a valid register we can use.
-        tile_regs_acquire();
+        ckernel:: tile_regs_acquire();
         // Add the tiles from the input circular buffers and write the result to
         // the destination register
         add_tiles(cb_in0, cb_in1, 0, 0, dst_reg);
-        tile_regs_commit();
+        ckernel:: tile_regs_commit();
 
         // Make sure there is space in the output circular buffer
-        cb_reserve_back(cb_out0, 1);
-        tile_regs_wait();
+        ckernel::cb_reserve_back(cb_out0, 1);
+        ckernel::tile_regs_wait();
         // Copy the result from adding the tiles to the output circular buffer
-        pack_tile(dst_reg, cb_out0);
-        tile_regs_release();
+        ckernel:: pack_tile(dst_reg, cb_out0);
+        ckernel::tile_regs_release();
 
         // Mark the output tile as ready and pop the input tiles
-        cb_push_back(cb_out0, 1);
-        cb_pop_front(cb_in0, 1);
-        cb_pop_front(cb_in1, 1);
+        ckernel::cb_push_back(cb_out0, 1);
+        ckernel::cb_pop_front(cb_in0, 1);
+        ckernel::cb_pop_front(cb_in1, 1);
         // Release the held register
-        release_dst();
+        ckernel:: release_dst();
     }
 }
 }  // namespace NAMESPACE

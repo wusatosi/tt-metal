@@ -16,7 +16,7 @@ void generate_bcast_scaler() {
     } u;
     u.u = scaler;
     // DPRINT << "basic Scaler = " << F32(u.f) << ENDL();
-    cb_reserve_back(cb_in_2, 1);
+    ckernel::cb_reserve_back(cb_in_2, 1);
     auto ptr = reinterpret_cast<uint16_t*>(get_write_ptr(cb_in_2));
     for (int j = 0; j < 1024; j++) {
         ptr[j] = uint16_t(0);
@@ -27,7 +27,7 @@ void generate_bcast_scaler() {
             ptr[k * 256 + j] = uint16_t(u.u >> 16);
         }
     }
-    cb_push_back(cb_in_2, 1);
+    ckernel::cb_push_back(cb_in_2, 1);
 }
 
 void kernel_main() {
@@ -68,7 +68,7 @@ void kernel_main() {
     uint32_t i_tile = 0;
     for (uint32_t i = 0; i < num_tiles; i += blk) {
         uint32_t rem = blk;  // (i + blk > num_tiles) ? num_tiles - i : blk;
-        cb_reserve_back(cb_id_in0, rem);
+        ckernel::cb_reserve_back(cb_id_in0, rem);
         uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
 
         for (uint32_t r = 0; r < rem; r++) {
@@ -78,6 +78,6 @@ void kernel_main() {
             noc_async_read(src_noc_addr, addr, tile_bytes);  // TODO(AP): data type size
         }
         noc_async_read_barrier();
-        cb_push_back(cb_id_in0, rem);
+        ckernel::cb_push_back(cb_id_in0, rem);
     }
 }

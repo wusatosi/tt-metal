@@ -69,7 +69,7 @@ void kernel_main() {
     for (uint32_t i = 0; i < num_blks; ++i) {
         for (uint32_t j = 0; j < Wt; j += blk) {
             uint32_t rem = blk;  // (i + blk > num_tiles) ? num_tiles - i : blk;
-            cb_reserve_back(cb_id_in0, rem);
+            ckernel::cb_reserve_back(cb_id_in0, rem);
             uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
 
             for (uint32_t r = 0; r < rem; ++r) {
@@ -78,7 +78,7 @@ void kernel_main() {
                 l1_write_addr += src0_tile_bytes;
             }
             noc_async_read_barrier();
-            cb_push_back(cb_id_in0, rem);
+            ckernel::cb_push_back(cb_id_in0, rem);
         }
 
 #if FUSED_SCALE_MASK
@@ -87,7 +87,7 @@ void kernel_main() {
 // of slice of tensor that was assigned to our core, then we skip to next batch
 #if CAUSAL_MASK
         for (uint32_t j = 0; j < Wt; j += blk) {
-            cb_reserve_back(cb_id_attn, blk);
+            ckernel::cb_reserve_back(cb_id_attn, blk);
             uint32_t l1_write_addr = get_write_ptr(cb_id_attn);
             for (uint32_t wb = 0; wb < blk; ++wb) {
                 noc_async_read_tile(mask_id, addr_mask, l1_write_addr);
@@ -95,7 +95,7 @@ void kernel_main() {
                 ++mask_id;
             }
             noc_async_read_barrier();
-            cb_push_back(cb_id_attn, blk);
+            ckernel::cb_push_back(cb_id_attn, blk);
         }
         ++ht;
         ++mask_ht;
@@ -111,7 +111,7 @@ void kernel_main() {
         if (read_mask) {
             for (uint32_t j = 0; j < Wt; j += blk) {
                 // This is only executed every blk wts
-                cb_reserve_back(cb_id_attn, blk);
+                ckernel::cb_reserve_back(cb_id_attn, blk);
                 uint32_t l1_write_addr = get_write_ptr(cb_id_attn);
                 for (uint32_t wb = 0; wb < blk; ++wb) {
                     noc_async_read_tile(mask_id, addr_mask, l1_write_addr);
@@ -119,7 +119,7 @@ void kernel_main() {
                     ++mask_id;
                 }
                 noc_async_read_barrier();
-                cb_push_back(cb_id_attn, blk);
+                ckernel::cb_push_back(cb_id_attn, blk);
             }
             read_mask = false;
         }

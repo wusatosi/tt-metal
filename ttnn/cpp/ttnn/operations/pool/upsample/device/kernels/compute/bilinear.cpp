@@ -11,9 +11,9 @@
 template <uint32_t in_ntiles_c, uint32_t out_ntiles_c, uint32_t unpA_face_r_dim>
 inline void reduce_h_fused(
     const uint32_t in_cb_id, const uint32_t in_scalar_cb_id, const uint32_t in_ntiles_hwc, const uint32_t out_cb_id) {
-    cb_reserve_back(out_cb_id, 1);
-    tile_regs_acquire();
-    cb_wait_front(in_cb_id, 4);
+    ckernel::cb_reserve_back(out_cb_id, 1);
+    ckernel:: tile_regs_acquire();
+    ckernel::cb_wait_front(in_cb_id, 4);
     unpack_tilizeA_B_block(
         in_cb_id,
         in_scalar_cb_id,
@@ -24,14 +24,14 @@ inline void reduce_h_fused(
     for (uint32_t c_i = 0; c_i < in_ntiles_c; ++c_i) {
         reduce_tile_math(c_i, 2 /* reduce 1 or 2 faces */);
     }
-    cb_pop_front(in_cb_id, 4);
+    ckernel::cb_pop_front(in_cb_id, 4);
 
-    tile_regs_wait();
-    tile_regs_commit();
+    ckernel::tile_regs_wait();
+    ckernel:: tile_regs_commit();
     pack_untilize_dst<out_ntiles_c>(out_cb_id, 1, 0, 1, 2); /* pack 1 row (1x16 or 1x32) */
-    tile_regs_release();
+    ckernel::tile_regs_release();
 
-    cb_push_back(out_cb_id, 1);
+    ckernel::cb_push_back(out_cb_id, 1);
 }
 
 namespace NAMESPACE {
@@ -57,9 +57,9 @@ void MAIN {
         const uint32_t scalar_cb_id = (i % 2 == 0) ? in_scalar_cb_id1 : in_scalar_cb_id2;
 
         // Wait for the core to push data in cb
-        cb_wait_front(scalar_cb_id, 1);
+        ckernel::cb_wait_front(scalar_cb_id, 1);
         reduce_h_fused<in_ntiles_c, out_ntiles_c, window_size_hw>(cb_id, scalar_cb_id, in_ntiles_hwc, out_cb_id);
-        cb_pop_front(scalar_cb_id, 1);
+        ckernel::cb_pop_front(scalar_cb_id, 1);
     }
 }  // MAIN
 }  // namespace NAMESPACE

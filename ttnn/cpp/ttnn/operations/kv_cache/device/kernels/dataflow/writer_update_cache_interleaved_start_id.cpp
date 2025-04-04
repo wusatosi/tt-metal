@@ -38,7 +38,7 @@ void kernel_main() {
     uint32_t b = batch_start_id;
 
     for (uint32_t h = 0; h < num_batched_heads; ++h) {
-        cb_wait_front(untilized_input_cb_id, Wt);
+        ckernel::cb_wait_front(untilized_input_cb_id, Wt);
         uint64_t input_l1_read_addr = get_noc_addr(get_read_ptr(untilized_input_cb_id)) + batch_read_offset;
 
         for (uint32_t u = 0; u < u_count; ++u) {
@@ -46,19 +46,19 @@ void kernel_main() {
             // It introduces a double-buffered pipeline between compute and writer.
             for (uint32_t g = 0; g < granularity; ++g) {
                 // Wait on compute to untilize a block. Update that block in L1.
-                cb_wait_front(untilized_cache_cb_id, Wt);
-                cb_reserve_back(untilized_cache2_cb_id, Wt);
+                ckernel::cb_wait_front(untilized_cache_cb_id, Wt);
+                ckernel::cb_reserve_back(untilized_cache2_cb_id, Wt);
                 uint32_t cache_l1_write_addr = get_read_ptr(untilized_cache_cb_id) + offset;
                 noc_async_read(input_l1_read_addr, cache_l1_write_addr, Wbytes);
                 input_l1_read_addr += Wbytes;
                 noc_async_read_barrier();
-                cb_push_back(untilized_cache2_cb_id, Wt);
-                cb_pop_front(untilized_cache_cb_id, Wt);  // NEW
+                ckernel::cb_push_back(untilized_cache2_cb_id, Wt);
+                ckernel::cb_pop_front(untilized_cache_cb_id, Wt);  // NEW
             }
 
             for (uint32_t g = 0; g < granularity; ++g) {
                 // Wait on compute to tilize an updated block. Write that block to DRAM
-                cb_wait_front(cache_cb_id, Wt);
+                ckernel::cb_wait_front(cache_cb_id, Wt);
                 uint32_t out_l1_read_addr = get_read_ptr(cache_cb_id);
                 for (uint32_t curr_cache_id = cache_id; curr_cache_id < cache_id + Wt; ++curr_cache_id) {
                     noc_async_write_tile(curr_cache_id, s0, out_l1_read_addr);
@@ -71,10 +71,10 @@ void kernel_main() {
                     cache_id = cache_id - cache_total_num_tiles + cache_head_num_tiles;  // Start of next head
                 }
                 noc_async_writes_flushed();
-                cb_pop_front(cache_cb_id, Wt);
+                ckernel::cb_pop_front(cache_cb_id, Wt);
             }
         }
-        cb_pop_front(untilized_input_cb_id, Wt);
+        ckernel::cb_pop_front(untilized_input_cb_id, Wt);
     }
     // Delay syncing the writes to maximize perf.
     noc_async_write_barrier();

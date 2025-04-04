@@ -133,7 +133,7 @@ void kernel_main() {
         }
 
         // Wait for the transposed block data to be ready in the input CB
-        cb_wait_front(cb_id_in, w_block_size);
+        ckernel::cb_wait_front(cb_id_in, w_block_size);
         uint32_t transposed_buffer_read_addr = get_read_ptr(cb_id_in);
 
         // Iterate over the W dimension elements
@@ -162,6 +162,6 @@ void kernel_main() {
         noc_async_write_barrier();
 
         // Pop the block from the input circular buffer, as we're done writing it
-        cb_pop_front(cb_id_in, w_block_size);
+        ckernel::cb_pop_front(cb_id_in, w_block_size);
     }
 }

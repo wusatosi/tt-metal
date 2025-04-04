@@ -31,13 +31,13 @@ void kernel_main() {
 
     for (uint32_t row_idx = 0; row_idx < num_rows_per_core; ++row_idx) {
         const auto tile_idx = start_tile_idx + row_idx;
-        cb_wait_front(cb_id_output, 1);
+        ckernel::cb_wait_front(cb_id_output, 1);
         if (output_is_dram) {
             noc_async_write_tile(tile_idx, dram_output_addrg, output_l1_read_addr);
         } else {
             noc_async_write_tile(tile_idx, l1_output_addrg, output_l1_read_addr);
         }
         noc_async_write_barrier();
-        cb_pop_front(cb_id_output, 1);
+        ckernel::cb_pop_front(cb_id_output, 1);
     }
 }  // void kernel_main()

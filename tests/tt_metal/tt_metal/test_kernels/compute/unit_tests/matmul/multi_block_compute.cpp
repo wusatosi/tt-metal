@@ -27,20 +27,20 @@ void MAIN {
     // out = in0[r x k]*in1[k x c]
     mm_init(in0_cb, in1_cb, out_cb);
     for (uint32_t block_id = 0; block_id < num_blocks; block_id++) {
-        acquire_dst();
+        ckernel::acquire_dst();
         if (block_id > 0) {
             copy_tile_to_dst_init_short(partials_cb);
-            cb_wait_front(partials_cb, out_block_num_tiles);
+            ckernel::cb_wait_front(partials_cb, out_block_num_tiles);
             for (uint32_t i = 0; i < out_block_num_tiles; i++) {
-                copy_tile(partials_cb, i, i);
+                ckernel:: copy_tile(partials_cb, i, i);
             }
-            cb_pop_front(partials_cb, out_block_num_tiles);
+            ckernel::cb_pop_front(partials_cb, out_block_num_tiles);
             mm_init_short(in0_cb, in1_cb);
         }
         uint32_t out_tile_index = 0;
         uint32_t in0_index_r_offset = 0;
-        cb_wait_front(in0_cb, in0_block_num_tiles);
-        cb_wait_front(in1_cb, in1_block_num_tiles);
+        ckernel::cb_wait_front(in0_cb, in0_block_num_tiles);
+        ckernel::cb_wait_front(in1_cb, in1_block_num_tiles);
         for (uint32_t r = 0; r < out_r; r++) {
             for (uint32_t c = 0; c < out_c; c++) {
                 uint32_t in1_index_c_offset = 0;
@@ -54,21 +54,21 @@ void MAIN {
             }
             in0_index_r_offset += in0_k;
         }
-        cb_pop_front(in0_cb, in0_block_num_tiles);
-        cb_pop_front(in1_cb, in1_block_num_tiles);
+        ckernel::cb_pop_front(in0_cb, in0_block_num_tiles);
+        ckernel::cb_pop_front(in1_cb, in1_block_num_tiles);
 
         for (uint32_t tile_index = 0; tile_index < out_block_num_tiles; tile_index++) {
             if (block_id == last_block_id) {
-                cb_reserve_back(out_cb, out_block_num_tiles);
-                pack_tile(tile_index, out_cb);
-                cb_push_back(out_cb, out_block_num_tiles);
+                ckernel::cb_reserve_back(out_cb, out_block_num_tiles);
+                ckernel:: pack_tile(tile_index, out_cb);
+                ckernel::cb_push_back(out_cb, out_block_num_tiles);
             } else {
-                cb_reserve_back(partials_cb, out_block_num_tiles);
-                pack_tile(tile_index, partials_cb);
-                cb_push_back(partials_cb, out_block_num_tiles);
+                ckernel::cb_reserve_back(partials_cb, out_block_num_tiles);
+                ckernel:: pack_tile(tile_index, partials_cb);
+                ckernel::cb_push_back(partials_cb, out_block_num_tiles);
             }
         }
-        release_dst();
+        ckernel:: release_dst();
     }
 }
 }  // namespace NAMESPACE

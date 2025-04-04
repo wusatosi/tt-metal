@@ -36,7 +36,7 @@ void kernel_main() {
     uint64_t base_dst_noc_addr[tile_height];
 
     auto write_tiles = [&](const uint32_t& num_tiles, const uint32_t& width_size) {
-        cb_wait_front(cb_id_out0, num_tiles);
+        ckernel::cb_wait_front(cb_id_out0, num_tiles);
         uint32_t l1_read_addr = get_read_ptr(cb_id_out0);
         for (uint32_t k = 0; k < tile_height; k++) {
             uint64_t dst_noc_addr = base_dst_noc_addr[k];
@@ -45,7 +45,7 @@ void kernel_main() {
             base_dst_noc_addr[k] += width_size;
         }
         noc_async_write_barrier();
-        cb_pop_front(cb_id_out0, num_tiles);
+        ckernel::cb_pop_front(cb_id_out0, num_tiles);
     };
 
     uint32_t stick_id = start_stick_id;

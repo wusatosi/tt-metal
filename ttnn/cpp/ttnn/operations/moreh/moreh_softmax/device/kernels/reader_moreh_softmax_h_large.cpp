@@ -40,11 +40,11 @@ void kernel_main() {
         uint32_t nc_idx = curr_tile / Wt;
         uint32_t tile_idx = nc_idx * Ht * Wt + w_idx;
         for (uint32_t h = 0; h < Ht; h++) {
-            cb_reserve_back(cb_in, onetile);
+            ckernel::cb_reserve_back(cb_in, onetile);
             l1_write_addr_in = get_write_ptr(cb_in);
             noc_async_read_tile(tile_idx, src_in, l1_write_addr_in);
             noc_async_read_barrier();
-            cb_push_back(cb_in, onetile);
+            ckernel::cb_push_back(cb_in, onetile);
             tile_idx += Wt;
         }
 
@@ -52,11 +52,11 @@ void kernel_main() {
         nc_idx = curr_tile / Wt;
         tile_idx = nc_idx * Ht * Wt + w_idx;
         for (uint32_t h = 0; h < Ht; h++) {
-            cb_reserve_back(cb_in, onetile);
+            ckernel::cb_reserve_back(cb_in, onetile);
             l1_write_addr_in = get_write_ptr(cb_in);
             noc_async_read_tile(tile_idx, src_in, l1_write_addr_in);
             noc_async_read_barrier();
-            cb_push_back(cb_in, onetile);
+            ckernel::cb_push_back(cb_in, onetile);
             tile_idx += Wt;
         }
 
@@ -64,11 +64,11 @@ void kernel_main() {
         nc_idx = curr_tile / Wt;
         tile_idx = nc_idx * Ht * Wt + w_idx;
         for (uint32_t h = 0; h < Ht; h++) {
-            cb_reserve_back(cb_in, onetile);
+            ckernel::cb_reserve_back(cb_in, onetile);
             l1_write_addr_in = get_write_ptr(cb_in);
             noc_async_read_tile(tile_idx, src_in, l1_write_addr_in);
             noc_async_read_barrier();
-            cb_push_back(cb_in, onetile);
+            ckernel::cb_push_back(cb_in, onetile);
             tile_idx += Wt;
         }
 

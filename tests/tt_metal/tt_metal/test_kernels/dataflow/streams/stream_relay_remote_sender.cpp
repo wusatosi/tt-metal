@@ -321,7 +321,7 @@ void kernel_main() {
     uint32_t message_id = 0;
     uint32_t count = 0;
     for (uint32_t i = 0; i < num_messages_to_forward; i++) {
-        cb_wait_front(cb, 1);
+        ckernel::cb_wait_front(cb, 1);
         uint32_t src_addr = get_read_ptr(cb);
         stream_noc_write(
             stream_state,
@@ -337,7 +337,7 @@ void kernel_main() {
             hang_toggle_semaphore,
             message_id);
 
-        cb_pop_front(cb, 1);
+        ckernel::cb_pop_front(cb, 1);
         // if (count == 1000) {
         //   DPRINT << "Sent " << i << " messages\n";
         //   count = 0;

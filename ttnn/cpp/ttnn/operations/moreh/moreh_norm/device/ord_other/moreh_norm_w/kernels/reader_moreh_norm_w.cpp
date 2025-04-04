@@ -45,14 +45,14 @@ void kernel_main() {
     for (uint32_t row_idx = 0; row_idx < num_rows_per_core; ++row_idx) {
         for (uint32_t col_idx = 0; col_idx < Wt; ++col_idx) {
             const auto tile_idx = start_tile_idx + row_idx * Wt + col_idx;
-            cb_reserve_back(cb_id_input, 1);
+            ckernel::cb_reserve_back(cb_id_input, 1);
             if (input_is_dram) {
                 noc_async_read_tile(tile_idx, dram_input_addrg, input_l1_write_ptr);
             } else {
                 noc_async_read_tile(tile_idx, l1_input_addrg, input_l1_write_ptr);
             }
             noc_async_read_barrier();
-            cb_push_back(cb_id_input, 1);
+            ckernel::cb_push_back(cb_id_input, 1);
         }
     }
 

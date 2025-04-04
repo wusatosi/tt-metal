@@ -38,52 +38,52 @@ void MAIN {
             for (uint32_t nt_C = 0; nt_C < Nt; ++nt_C)  // output tile index of C
             {
                 for (uint32_t tile_row_id = 0; tile_row_id < num_rows_in_one_tile; ++tile_row_id) {
-                    tile_regs_acquire();
+                    ckernel:: tile_regs_acquire();
                     for (uint32_t kt = 0; kt < Kt; ++kt) {
                         if (tile_row_id == 0) {
-                            cb_wait_front(cb_in0, kt + 1);
+                            ckernel::cb_wait_front(cb_in0, kt + 1);
                         }
-                        cb_wait_front(cb_in1, onetile);
+                        ckernel::cb_wait_front(cb_in1, onetile);
 
                         matmul_tiles(cb_in0, cb_in1, kt, 0, 0, transpose_hw);
 
-                        cb_pop_front(cb_in1, onetile);
+                        ckernel::cb_pop_front(cb_in1, onetile);
                     }
-                    tile_regs_commit();
+                    ckernel:: tile_regs_commit();
 
-                    cb_reserve_back(cb_intermed0, onetile);
-                    tile_regs_wait();
-                    pack_tile(0, cb_intermed0);
-                    tile_regs_release();
-                    cb_push_back(cb_intermed0, onetile);
+                    ckernel::cb_reserve_back(cb_intermed0, onetile);
+                    ckernel::tile_regs_wait();
+                    ckernel:: pack_tile(0, cb_intermed0);
+                    ckernel::tile_regs_release();
+                    ckernel::cb_push_back(cb_intermed0, onetile);
 
                     // untilize tile and write to CBIndex::c_25
                     reconfig_data_format_srca(cb_in1, cb_intermed0);
-                    cb_wait_front(cb_intermed0, onetile);
+                    ckernel::cb_wait_front(cb_intermed0, onetile);
                     untilize_init_short(cb_intermed0);
-                    cb_reserve_back(cb_intermed1, onetile);
+                    ckernel::cb_reserve_back(cb_intermed1, onetile);
                     untilize_block(cb_intermed0, onetile, cb_intermed1);
-                    cb_push_back(cb_intermed1, onetile);
+                    ckernel::cb_push_back(cb_intermed1, onetile);
 
-                    cb_pop_front(cb_intermed0, onetile);
+                    ckernel::cb_pop_front(cb_intermed0, onetile);
                     untilize_uninit(cb_intermed0);
 
                     reconfig_data_format_srca(cb_intermed0, cb_in1);
                     mm_init_short(cb_in0, cb_in1, transpose_hw);
                 }
-                cb_pop_front(cb_in0, Kt);
+                ckernel::cb_pop_front(cb_in0, Kt);
 
                 // cb_intermed2 comes from reader; untilized row-major tile
                 pack_reconfig_data_format(cb_intermed1, out_cb_id);
-                cb_wait_front(cb_intermed2, onetile);
-                cb_reserve_back(out_cb_id, onetile);
+                ckernel::cb_wait_front(cb_intermed2, onetile);
+                ckernel::cb_reserve_back(out_cb_id, onetile);
 
                 // tilize CB::intermed2 and write to CBIndex::c_16
                 tilize_init_short_with_dt(cb_in1, cb_intermed2, onetile, out_cb_id);
                 tilize_block(cb_intermed2, onetile, out_cb_id);
-                cb_push_back(out_cb_id, onetile);
+                ckernel::cb_push_back(out_cb_id, onetile);
 
-                cb_pop_front(cb_intermed2, onetile);
+                ckernel::cb_pop_front(cb_intermed2, onetile);
                 tilize_uninit(cb_intermed2, out_cb_id);
 
                 pack_reconfig_data_format(out_cb_id, cb_intermed0);

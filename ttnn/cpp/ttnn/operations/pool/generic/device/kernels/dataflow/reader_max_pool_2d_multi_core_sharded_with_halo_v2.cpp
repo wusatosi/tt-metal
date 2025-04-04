@@ -66,12 +66,12 @@ void kernel_main() {
 
     // Reduce scalar = 1
     if (reader_id == 0) {
-        cb_reserve_back(in_scalar_cb_id, 1);
+        ckernel::cb_reserve_back(in_scalar_cb_id, 1);
 
         uint32_t bf16_one_u16 = bf16_one_u32 >> 16;
         // fill 1 row w/ scalar
         fill_with_val(get_write_ptr(in_scalar_cb_id), ROW_HW, bf16_one_u16);
-        cb_push_back(in_scalar_cb_id, 1);
+        ckernel::cb_push_back(in_scalar_cb_id, 1);
     }
 
     uint32_t in_l1_read_base_addr = get_read_ptr(in_shard_cb_id);
@@ -84,7 +84,7 @@ void kernel_main() {
     uint32_t npages_to_reserve = 1;
     uint32_t counter = reader_id;
     while (counter < reader_nindices) {
-        cb_reserve_back(in_cb_id, npages_to_reserve);
+        ckernel::cb_reserve_back(in_cb_id, npages_to_reserve);
         uint32_t out_l1_write_addr_base = get_write_ptr(in_cb_id);
         uint32_t out_l1_write_addr = out_l1_write_addr_base;
         uint16_t top_left_local_index = reader_indices_ptr[counter++];
@@ -99,6 +99,6 @@ void kernel_main() {
             counter++;  // interleave the indices
         }
         noc_async_read_barrier();
-        cb_push_back(in_cb_id, npages_to_reserve);
+        ckernel::cb_push_back(in_cb_id, npages_to_reserve);
     }
 }  // kernel_main()

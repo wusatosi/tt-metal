@@ -289,7 +289,7 @@ void kernel_main() {
         // Read # of row of tiles from previous core into local cb
         // noc_async_read_barrier
         // Push cb to compute for untilizing
-        cb_reserve_back(halo_prev_input_cb_index, halo_prev_num_tiles);
+        ckernel::cb_reserve_back(halo_prev_input_cb_index, halo_prev_num_tiles);
         uint32_t halo_prev_cb_write_addr = get_write_ptr(halo_prev_input_cb_index);
         uint32_t halo_prev_addr = halo_prev_start_addr + halo_prev_addr_offset;
         noc_async_read(
@@ -297,14 +297,14 @@ void kernel_main() {
             halo_prev_cb_write_addr,
             halo_prev_size_bytes);
         noc_async_read_barrier();
-        cb_push_back(halo_prev_input_cb_index, halo_prev_num_tiles);
+        ckernel::cb_push_back(halo_prev_input_cb_index, halo_prev_num_tiles);
     }
 
     if (halo_next_read_enabled) {
         // Read # of row of tiles from next core into local cb
         // noc_async_read_barrier
         // Push cb to compute for untilizing
-        cb_reserve_back(halo_next_input_cb_index, halo_next_num_tiles);
+        ckernel::cb_reserve_back(halo_next_input_cb_index, halo_next_num_tiles);
         uint32_t halo_next_cb_write_addr = get_write_ptr(halo_next_input_cb_index);
         uint32_t halo_next_addr = halo_next_start_addr + halo_next_addr_offset;
         noc_async_read(
@@ -312,7 +312,7 @@ void kernel_main() {
             halo_next_cb_write_addr,
             halo_next_size_bytes);
         noc_async_read_barrier();
-        cb_push_back(halo_next_input_cb_index, halo_next_num_tiles);
+        ckernel::cb_push_back(halo_next_input_cb_index, halo_next_num_tiles);
     }
 
     if (halo_prev_read_enabled) {
@@ -393,13 +393,13 @@ void kernel_main() {
     // untilize_downsampled_cb_index
     reader_pattern_index = 0;
     uint32_t untilize_block_offset = 0;
-    cb_reserve_back(untilize_downsampled_cb_index, num_output_tiles);
+    ckernel::cb_reserve_back(untilize_downsampled_cb_index, num_output_tiles);
     // DPRINT << "reserved tiles in untilize downsampled cb" << ENDL();
     uint32_t untilize_downsampled_cb_l1_write_addr = get_write_ptr(untilize_downsampled_cb_index);
     // num_untilized_input_blocks contains halo as well as local data
     for (uint32_t untilized_input_block_i = 0; untilized_input_block_i < num_untilized_input_blocks;
          untilized_input_block_i++) {
-        cb_wait_front(untilize_cb_index, num_tiles_untilized_input_block);  // 1 row of tiles
+        ckernel::cb_wait_front(untilize_cb_index, num_tiles_untilized_input_block);  // 1 row of tiles
         uint32_t untilize_block_l1_read_addr = get_read_ptr(untilize_cb_index);
         // untilize block is only 1 row of tiles
         while (reader_pattern[reader_pattern_index] < 32 + untilize_block_offset) {
@@ -418,10 +418,10 @@ void kernel_main() {
         // DPRINT << "waiting noc barrier" << ENDL();
         noc_async_read_barrier();
         // DPRINT << "downsampled 1 row of untilized cb buffer" << ENDL();
-        cb_pop_front(untilize_cb_index, num_tiles_untilized_input_block);
+        ckernel::cb_pop_front(untilize_cb_index, num_tiles_untilized_input_block);
         untilize_block_offset += 32;
     }
-    cb_push_back(untilize_downsampled_cb_index, num_output_tiles);  // to be tilized by compute kernel
+    ckernel::cb_push_back(untilize_downsampled_cb_index, num_output_tiles);  // to be tilized by compute kernel
     // wait for tilized cb
-    cb_wait_front(final_tilize_output_cb_index, num_output_tiles);  // wait we dont need this.. sharded output.
+    ckernel::cb_wait_front(final_tilize_output_cb_index, num_output_tiles);  // wait we dont need this.. sharded output.
 }

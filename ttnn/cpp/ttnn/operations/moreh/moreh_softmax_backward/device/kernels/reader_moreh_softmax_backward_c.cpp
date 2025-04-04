@@ -46,34 +46,34 @@ void kernel_main() {
         uint32_t dim_stride = inner_size;
         for (uint32_t d = 0; d < dim_size; d++) {
 #ifndef LOG
-            cb_reserve_back(cb_y, onetile);
+            ckernel::cb_reserve_back(cb_y, onetile);
             l1_write_addr_in = get_write_ptr(cb_y);
             noc_async_read_tile(tile_idx, y_in, l1_write_addr_in);
             noc_async_read_barrier();
-            cb_push_back(cb_y, onetile);
+            ckernel::cb_push_back(cb_y, onetile);
 #endif
 
-            cb_reserve_back(cb_dy, onetile);
+            ckernel::cb_reserve_back(cb_dy, onetile);
             l1_write_addr_in = get_write_ptr(cb_dy);
             noc_async_read_tile(tile_idx, dy_in, l1_write_addr_in);
             noc_async_read_barrier();
-            cb_push_back(cb_dy, onetile);
+            ckernel::cb_push_back(cb_dy, onetile);
             tile_idx += dim_stride;
         }
 
         tile_idx = outer_idx * outer_stride + inner_idx;
         for (uint32_t d = 0; d < dim_size; d++) {
-            cb_reserve_back(cb_dy, onetile);
+            ckernel::cb_reserve_back(cb_dy, onetile);
             l1_write_addr_in = get_write_ptr(cb_dy);
             noc_async_read_tile(tile_idx, dy_in, l1_write_addr_in);
             noc_async_read_barrier();
-            cb_push_back(cb_dy, onetile);
+            ckernel::cb_push_back(cb_dy, onetile);
 
-            cb_reserve_back(cb_y, onetile);
+            ckernel::cb_reserve_back(cb_y, onetile);
             l1_write_addr_in = get_write_ptr(cb_y);
             noc_async_read_tile(tile_idx, y_in, l1_write_addr_in);
             noc_async_read_barrier();
-            cb_push_back(cb_y, onetile);
+            ckernel::cb_push_back(cb_y, onetile);
 
             tile_idx += dim_stride;
         }

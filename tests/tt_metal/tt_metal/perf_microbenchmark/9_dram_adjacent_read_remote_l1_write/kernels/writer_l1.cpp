@@ -32,7 +32,7 @@ void kernel_main() {
 
     for (uint32_t block = 0; block < num_blocks; ++block) {  // Iterate over blocks
 
-        cb_wait_front(cb_id, block_num_tiles);
+        ckernel::cb_wait_front(cb_id, block_num_tiles);
 
         for (uint32_t core_id = 0; core_id < 2; ++core_id) {  // Iterate over two neighboring cores
             uint64_t l1_noc_write_addr_for_receiver_core = 0;
@@ -62,6 +62,6 @@ void kernel_main() {
 
         noc_async_write_barrier(noc);
 
-        cb_pop_front(cb_id, block_num_tiles);
+        ckernel::cb_pop_front(cb_id, block_num_tiles);
     }
 }

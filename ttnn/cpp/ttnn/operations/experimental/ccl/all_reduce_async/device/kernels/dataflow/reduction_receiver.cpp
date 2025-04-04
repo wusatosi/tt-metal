@@ -28,5 +28,5 @@ void kernel_main() {
     noc_semaphore_set(signal_semaphore_addr_ptr, 0);
 
     // 2. Signal compute kernel to start processing
-    cb_push_back(cb_id, total_num_reduction_tiles);
+    ckernel::cb_push_back(cb_id, total_num_reduction_tiles);
 }

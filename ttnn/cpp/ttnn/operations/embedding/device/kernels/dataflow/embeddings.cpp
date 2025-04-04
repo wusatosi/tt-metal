@@ -31,7 +31,7 @@ void kernel_main() {
 
     prepare_local_cache(cb_id_in2, weights, weight_stick_size, /*pad_token_arg_idx=*/6);
 
-    cb_reserve_back(cb_id_in1, 1);
+    ckernel::cb_reserve_back(cb_id_in1, 1);
     uint32_t input_l1_addr = get_write_ptr(cb_id_in1);
     volatile tt_l1_ptr input_token_t* input_l1_ptr = reinterpret_cast<volatile tt_l1_ptr input_token_t*>(input_l1_addr);
 
@@ -47,13 +47,13 @@ void kernel_main() {
             noc_async_read_barrier();
             read_indices = false;
         }
-        cb_reserve_back(cb_id_in0, 1);
+        ckernel::cb_reserve_back(cb_id_in0, 1);
         uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
         input_token_t token = input_l1_ptr[index];
         uint64_t src_noc_addr = get_token_noc_addr(token, weights);
         noc_async_read<weight_stick_size>(src_noc_addr, l1_write_addr, weight_stick_size);
         noc_async_read_barrier();
-        cb_push_back(cb_id_in0, 1);
+        ckernel::cb_push_back(cb_id_in0, 1);
 
         index++;
         if (index == rows_per_block) {

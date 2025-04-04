@@ -32,7 +32,7 @@ void kernel_main() {
     for (uint32_t i = start_id; i < end_id; ++i) {
         // output: (N, d1)
         // noc_id = nt * Wt + wt
-        cb_wait_front(cb_output, onetile);
+        ckernel::cb_wait_front(cb_output, onetile);
         uint32_t n = i / Wf;
         uint32_t w = (i % Wf) * FACE_WIDTH;
         uint32_t nt = n / TILE_HEIGHT;
@@ -48,6 +48,6 @@ void kernel_main() {
         noc_async_write(output_l1_write_addr, dst_noc_addr, NOC_MINIMUM_READ_SIZE);
         noc_async_write_barrier();
 
-        cb_pop_front(cb_output, onetile);
+        ckernel::cb_pop_front(cb_output, onetile);
     }
 }

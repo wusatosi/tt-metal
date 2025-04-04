@@ -17,11 +17,11 @@ inline void tilize_activation(
 
     for (uint32_t in0_subblock = 0; in0_subblock < in0_num_subblocks; in0_subblock++) {
         for (uint32_t h = 0; h < in0_subblock_h; h++) {
-            cb_wait_front(in0_cb, in0_block_w);
-            cb_reserve_back(out_cb, in0_block_w);
+            ckernel::cb_wait_front(in0_cb, in0_block_w);
+            ckernel::cb_reserve_back(out_cb, in0_block_w);
             tilize_block(in0_cb, in0_block_w, out_cb);
-            cb_push_back(out_cb, in0_block_w);
-            cb_pop_front(in0_cb, in0_block_w);
+            ckernel::cb_push_back(out_cb, in0_block_w);
+            ckernel::cb_pop_front(in0_cb, in0_block_w);
         }
     }
 
@@ -38,7 +38,7 @@ inline void reblock_and_untilize(
     uint32_t reblock_cb_id,
     uint32_t out_cb_id) {
     uint32_t num_tiles_in_row_of_subblocks = mulsi3(out_subblock_num_tiles, num_out_subblocks_in_col);
-    cb_wait_front(interm_cb_id, num_tiles_in_row_of_subblocks);
+    ckernel::cb_wait_front(interm_cb_id, num_tiles_in_row_of_subblocks);
 
     int within_block_index = 0;
     for (uint32_t h = 0; h < out_subblock_h; h++) {
@@ -46,39 +46,39 @@ inline void reblock_and_untilize(
 
         // Reblock
         copy_tile_to_dst_init_short(interm_cb_id);
-        cb_reserve_back(reblock_cb_id, out_block_w);
+        ckernel::cb_reserve_back(reblock_cb_id, out_block_w);
         for (uint32_t n = 0; n < num_out_subblocks_in_col; n++) {
             for (uint32_t w = 0; w < out_subblock_w; w++) {
                 uint32_t tile_index = block_offset + within_block_index + w;
-                acquire_dst();
-                copy_tile(interm_cb_id, tile_index, 0);
-                pack_tile(0, reblock_cb_id);
-                release_dst();
+                ckernel::acquire_dst();
+                ckernel:: copy_tile(interm_cb_id, tile_index, 0);
+                ckernel:: pack_tile(0, reblock_cb_id);
+                ckernel:: release_dst();
             }
             block_offset += out_subblock_num_tiles;
         }
-        cb_push_back(reblock_cb_id, out_block_w);
+        ckernel::cb_push_back(reblock_cb_id, out_block_w);
 
         // Untilize
         untilize_init_short(reblock_cb_id);
-        cb_wait_front(reblock_cb_id, out_block_w);
-        cb_reserve_back(out_cb_id, out_block_w);
+        ckernel::cb_wait_front(reblock_cb_id, out_block_w);
+        ckernel::cb_reserve_back(out_cb_id, out_block_w);
         untilize_block(reblock_cb_id, out_block_w, out_cb_id);
-        cb_pop_front(reblock_cb_id, out_block_w);
-        cb_push_back(out_cb_id, out_block_w);
+        ckernel::cb_pop_front(reblock_cb_id, out_block_w);
+        ckernel::cb_push_back(out_cb_id, out_block_w);
         untilize_uninit(reblock_cb_id);
 
         within_block_index += out_subblock_w;
     }
-    cb_pop_front(interm_cb_id, num_tiles_in_row_of_subblocks);
+    ckernel::cb_pop_front(interm_cb_id, num_tiles_in_row_of_subblocks);
 }
 
 inline void pack_matmul_subblock(uint32_t cb_id, uint32_t out_subblock_num_tiles) {
-    cb_reserve_back(cb_id, out_subblock_num_tiles);
+    ckernel::cb_reserve_back(cb_id, out_subblock_num_tiles);
     for (uint32_t i = 0; i < out_subblock_num_tiles; i++) {
-        pack_tile(i, cb_id);
+        ckernel:: pack_tile(i, cb_id);
     }
-    cb_push_back(cb_id, out_subblock_num_tiles);
+    ckernel::cb_push_back(cb_id, out_subblock_num_tiles);
 }
 
 namespace NAMESPACE {
@@ -141,25 +141,25 @@ void MAIN {
         if (tilize_in) {
             tilize_activation(in0_cb, in0_subblock_h, in0_block_w, in0_num_subblocks, tilize_mode_tilized_in0_cb);
             mm_init_short(tilize_mode_tilized_in0_cb, tt::CBIndex::c_1);
-            cb_wait_front(tilize_mode_tilized_in0_cb, in0_block_num_tiles);
+            ckernel::cb_wait_front(tilize_mode_tilized_in0_cb, in0_block_num_tiles);
         } else {
-            cb_wait_front(in0_cb, in0_block_num_tiles);
+            ckernel::cb_wait_front(in0_cb, in0_block_num_tiles);
         }
 
-        cb_wait_front(tt::CBIndex::c_1, in1_block_num_tiles);
+        ckernel::cb_wait_front(tt::CBIndex::c_1, in1_block_num_tiles);
         int in0_index_subblock_offset = 0;
         for (uint32_t in0_subblock = 0; in0_subblock < in0_num_subblocks; in0_subblock++) {
             int in1_index_subblock_offset = 0;
             for (uint32_t in1_subblock = 0; in1_subblock < in1_num_subblocks; in1_subblock++) {
-                acquire_dst();
+                ckernel::acquire_dst();
 
                 if (enable_reload) {
                     copy_tile_to_dst_init_short(matmul_partials_cb);
-                    cb_wait_front(matmul_partials_cb, out_subblock_num_tiles);
+                    ckernel::cb_wait_front(matmul_partials_cb, out_subblock_num_tiles);
                     for (uint32_t i = 0; i < out_subblock_num_tiles; i++) {
-                        copy_tile(matmul_partials_cb, i, i);
+                        ckernel:: copy_tile(matmul_partials_cb, i, i);
                     }
-                    cb_pop_front(matmul_partials_cb, out_subblock_num_tiles);
+                    ckernel::cb_pop_front(matmul_partials_cb, out_subblock_num_tiles);
                     mm_init_short(tilize_in ? tilize_mode_tilized_in0_cb : in0_cb, tt::CBIndex::c_1);
                 }
 
@@ -201,7 +201,7 @@ void MAIN {
                     pack_matmul_subblock(matmul_partials_cb, out_subblock_num_tiles);
                 }
 
-                release_dst();
+                ckernel:: release_dst();
 
                 in1_index_subblock_offset += out_subblock_w;
             }
@@ -229,11 +229,11 @@ void MAIN {
         }
 
         if (tilize_in) {
-            cb_pop_front(tilize_mode_tilized_in0_cb, in0_block_num_tiles);
+            ckernel::cb_pop_front(tilize_mode_tilized_in0_cb, in0_block_num_tiles);
         } else {
-            cb_pop_front(in0_cb, in0_block_num_tiles);
+            ckernel::cb_pop_front(in0_cb, in0_block_num_tiles);
         }
-        cb_pop_front(tt::CBIndex::c_1, in1_block_num_tiles);
+        ckernel::cb_pop_front(tt::CBIndex::c_1, in1_block_num_tiles);
     }
 }
 }  // namespace NAMESPACE

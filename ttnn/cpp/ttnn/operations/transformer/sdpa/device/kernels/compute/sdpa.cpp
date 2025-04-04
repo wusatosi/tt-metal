@@ -115,7 +115,7 @@ void MAIN {
                 uint32_t alias_mm2_prev_out = cb_out_im_A;
                 uint32_t alias_mm2_cur_out = cb_out_im_B;
 
-                cb_wait_front(cb_q_in, q_chunk_tiles);
+                ckernel::cb_wait_front(cb_q_in, q_chunk_tiles);
                 // loop while k_low < q_high
                 for (uint32_t k_chunk = 0; (k_chunk * Sk_chunk_t) < q_high_idx; ++k_chunk) {
                     const uint32_t k_low_idx = k_chunk * Sk_chunk_t;
@@ -207,14 +207,14 @@ void MAIN {
                         out_subblock_w,
                         false /*transpose*/);
 
-                    cb_pop_front(cb_qk_im, qk_chunk_tiles);
+                    ckernel::cb_pop_front(cb_qk_im, qk_chunk_tiles);
                     reconfig_data_format(alias_prev_max, alias_cur_max);
 
                     /* OUT_ACC += OUT_IM */
                     if (k_chunk > 0) {
                         /* cb_exp_max_diff = torch.exp(cb_prev_max - cb_cur_max) */
                         sub_exp_block(alias_prev_max, alias_cur_max, cb_exp_max_diff, Sq_chunk_t);
-                        cb_pop_front(alias_prev_max, Sq_chunk_t);
+                        ckernel::cb_pop_front(alias_prev_max, Sq_chunk_t);
 
                         /* cb_prev_sum *= cb_exp_max_diff */
                         mul_block_inplace(alias_prev_sum, cb_exp_max_diff, Sq_chunk_t);
@@ -241,9 +241,9 @@ void MAIN {
                 pack_reconfig_data_format(cb_out);
                 copy_block(alias_mm2_prev_out, cb_out, out_chunk_tiles);
 
-                cb_pop_front(cb_q_in, q_chunk_tiles);
+                ckernel::cb_pop_front(cb_q_in, q_chunk_tiles);
                 // free up cb_prev_max after K chunks
-                cb_pop_front(alias_prev_max, Sq_chunk_t);
+                ckernel::cb_pop_front(alias_prev_max, Sq_chunk_t);
             }
         }
     }

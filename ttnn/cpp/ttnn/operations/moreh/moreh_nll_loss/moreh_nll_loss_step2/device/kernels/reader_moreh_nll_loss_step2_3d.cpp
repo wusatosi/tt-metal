@@ -94,13 +94,13 @@ void kernel_main() {
             target_offset);
 
 #if defined(WEIGHT)
-        cb_reserve_back(cb_tmp_weight, onetile);
+        ckernel::cb_reserve_back(cb_tmp_weight, onetile);
 
         auto tmp_weight_l1_ptr = get_write_ptr<FP32_DEST_ACC_FTYPE>(cb_tmp_weight);
 #endif
 
-        cb_reserve_back(cb_tmp_input, onetile);
-        cb_wait_front(cb_target, onetile);
+        ckernel::cb_reserve_back(cb_tmp_input, onetile);
+        ckernel::cb_wait_front(cb_target, onetile);
 
         auto tmp_input_l1_ptr = get_write_ptr<FP32_DEST_ACC_FTYPE>(cb_tmp_input);
         auto target_l1_ptr = get_read_ptr<int32_t>(cb_target);
@@ -118,12 +118,12 @@ void kernel_main() {
                 uint32_t tilized_idx = get_tilized_idx(target_val, w + idx);
                 read_value(cb_input, addrg_input, noc_id, tilized_idx);
 
-                cb_wait_front(cb_input, onetile);
+                ckernel::cb_wait_front(cb_input, onetile);
                 auto input_l1_ptr = get_read_ptr<uint16_t>(cb_input);
 
                 tmp_input_l1_ptr[idx] = fp32_dest_acc_cast(input_l1_ptr[tilized_idx]);
 
-                cb_pop_front(cb_input, onetile);
+                ckernel::cb_pop_front(cb_input, onetile);
 #if defined(WEIGHT)
                 // read weight
                 // weight: (1, C)
@@ -133,11 +133,11 @@ void kernel_main() {
                     uint32_t tilized_idx = get_tilized_idx(0, target_val);
                     read_value(cb_weight, addrg_weight, noc_id, tilized_idx);
 
-                    cb_wait_front(cb_weight, onetile);
+                    ckernel::cb_wait_front(cb_weight, onetile);
                     auto weight_l1_ptr = get_read_ptr<uint16_t>(cb_weight);
 
                     tmp_weight_l1_ptr[idx] = fp32_dest_acc_cast(weight_l1_ptr[tilized_idx]);
-                    cb_pop_front(cb_weight, onetile);
+                    ckernel::cb_pop_front(cb_weight, onetile);
                 }
 #endif
             } else {
@@ -145,10 +145,10 @@ void kernel_main() {
                 tmp_input_l1_ptr[idx] = fp32_dest_acc_cast(0.0f);
             }
         }
-        cb_push_back(cb_tmp_input, onetile);
+        ckernel::cb_push_back(cb_tmp_input, onetile);
 #if defined(WEIGHT)
-        cb_push_back(cb_tmp_weight, onetile);
+        ckernel::cb_push_back(cb_tmp_weight, onetile);
 #endif
-        cb_pop_front(cb_target, onetile);
+        ckernel::cb_pop_front(cb_target, onetile);
     }
 }

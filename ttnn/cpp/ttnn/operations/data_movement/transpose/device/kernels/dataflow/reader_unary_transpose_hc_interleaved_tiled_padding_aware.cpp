@@ -60,19 +60,19 @@ void kernel_main() {
         } else {
             linear_tile_index = i;
         }
-        cb_reserve_back(cb_id_in0, onetile);
+        ckernel::cb_reserve_back(cb_id_in0, onetile);
         uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
         noc_async_read_tile(linear_tile_index, s, l1_write_addr);
         noc_async_read_barrier();
-        cb_push_back(cb_id_in0, onetile);
+        ckernel::cb_push_back(cb_id_in0, onetile);
     }
     if constexpr (needs_padding) {
         // Add padding
-        cb_reserve_back(tt::CBIndex::c_1, 1);
+        ckernel::cb_reserve_back(tt::CBIndex::c_1, 1);
         uint32_t l1_write_addr = get_write_ptr(tt::CBIndex::c_1);
         // Fill with padding value
         // if bfloat16 num_writes = FACE_WIDTH / (sizeof(uint32_t))/(element_size)
         tt::data_movement::common::fill_with_val(l1_write_addr, num_writes, padding_val_packed);
-        cb_push_back(tt::CBIndex::c_1, 1);
+        ckernel::cb_push_back(tt::CBIndex::c_1, 1);
     }
 }

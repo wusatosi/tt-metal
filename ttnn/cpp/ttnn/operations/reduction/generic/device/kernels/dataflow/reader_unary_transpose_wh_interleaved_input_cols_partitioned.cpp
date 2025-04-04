@@ -66,11 +66,11 @@ void kernel_main() {
             for (uint32_t k = i; k < chunk_end; ++k) {
 
 
-                cb_reserve_back(cb_id_in0, onetile);
+                ckernel::cb_reserve_back(cb_id_in0, onetile);
                 uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
                 noc_async_read_tile(curr_id, s, l1_write_addr);
                 noc_async_read_barrier();
-                cb_push_back(cb_id_in0, onetile);
+                ckernel::cb_push_back(cb_id_in0, onetile);
 
                 ++w;
 

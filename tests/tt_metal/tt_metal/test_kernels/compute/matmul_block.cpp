@@ -48,24 +48,24 @@ void MAIN {
         tt::CBIndex::c_0, tt::CBIndex::c_1, tt::CBIndex::c_16, false, dst_tile_cols, dst_tile_rows, block_tile_dim);
 #endif
 
-    acquire_dst();
+    ckernel::acquire_dst();
     for (uint32_t b = 0; b < block_cnt; ++b) {
-        cb_wait_front(tt::CBIndex::c_0, in0_block_tile_cnt);
-        cb_wait_front(tt::CBIndex::c_1, in1_block_tile_cnt);
+        ckernel::cb_wait_front(tt::CBIndex::c_0, in0_block_tile_cnt);
+        ckernel::cb_wait_front(tt::CBIndex::c_1, in1_block_tile_cnt);
 
         matmul_block(tt::CBIndex::c_0, tt::CBIndex::c_1, 0, 0, 0, false, dst_tile_cols, dst_tile_rows, block_tile_dim);
 
-        cb_pop_front(tt::CBIndex::c_0, in0_block_tile_cnt);
-        cb_pop_front(tt::CBIndex::c_1, in1_block_tile_cnt);
+        ckernel::cb_pop_front(tt::CBIndex::c_0, in0_block_tile_cnt);
+        ckernel::cb_pop_front(tt::CBIndex::c_1, in1_block_tile_cnt);
     }
 
     // Pack out
-    cb_reserve_back(tt::CBIndex::c_16, out_block_tile_cnt);
+    ckernel::cb_reserve_back(tt::CBIndex::c_16, out_block_tile_cnt);
     for (uint32_t i = 0; i < out_block_tile_cnt; ++i) {
-        pack_tile(i, tt::CBIndex::c_16);
+        ckernel:: pack_tile(i, tt::CBIndex::c_16);
     }
-    cb_push_back(tt::CBIndex::c_16, out_block_tile_cnt);
+    ckernel::cb_push_back(tt::CBIndex::c_16, out_block_tile_cnt);
 
-    release_dst();
+    ckernel:: release_dst();
 }
 }  // namespace NAMESPACE

@@ -39,7 +39,7 @@ void kernel_main() {
     const InterleavedAddrGen<input_is_dram> s0 = {.bank_base_address = input_addr, .page_size = input_cb_page_size};
 
     for (uint32_t row_id = start_id; row_id < start_id + num_units_per_core; row_id++) {
-        cb_reserve_back(output_cb_id, onetile);
+        ckernel::cb_reserve_back(output_cb_id, onetile);
         for (uint32_t elem_id = 0; elem_id < W; elem_id++) {
             uint32_t gid = row_id * W + elem_id;
             uint32_t nch = gid / W;
@@ -72,14 +72,14 @@ void kernel_main() {
                     // kernel_size_w, LH * LW}
                     uint32_t input_row_id = n * C * P + (c * P + ph * kernel_size_w + pw);
                     // Read entire row into input_cb
-                    cb_reserve_back(input_cb_id, onetile);
+                    ckernel::cb_reserve_back(input_cb_id, onetile);
                     uint32_t l1_write_addr = get_write_ptr(input_cb_id);
                     uint64_t src_noc_addr = get_noc_addr(input_row_id, s0);
                     noc_async_read(src_noc_addr, l1_write_addr, input_cb_page_size);
                     noc_async_read_barrier();
-                    cb_push_back(input_cb_id, onetile);
+                    ckernel::cb_push_back(input_cb_id, onetile);
 
-                    cb_wait_front(input_cb_id, onetile);
+                    ckernel::cb_wait_front(input_cb_id, onetile);
 #ifdef DTYPE_BFLOAT16
                     uint16_t* input_cb_ptr_uint16 = reinterpret_cast<uint16_t*>(get_read_ptr(input_cb_id));
                     uint16_t bfloat16_value = input_cb_ptr_uint16[lh * LW + lw];
@@ -92,7 +92,7 @@ void kernel_main() {
                     auto input_cb_ptr_float = reinterpret_cast<float*>(get_read_ptr(input_cb_id));
                     sum += input_cb_ptr_float[lh * LW + lw];
 #endif
-                    cb_pop_front(input_cb_id, onetile);
+                    ckernel::cb_pop_front(input_cb_id, onetile);
                 }
             }
 #ifdef DTYPE_BFLOAT16
@@ -105,6 +105,6 @@ void kernel_main() {
             output_cb_write_ptr[w] = sum;
 #endif
         }
-        cb_push_back(output_cb_id, onetile);
+        ckernel::cb_push_back(output_cb_id, onetile);
     }
 }

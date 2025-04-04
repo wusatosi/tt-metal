@@ -32,7 +32,7 @@ void kernel_main() {
         .bank_base_address = src_addr, .page_size = tile_size, .data_format = data_format};
 
     uint32_t src_tile_id = start_id;
-    cb_reserve_back(cb_id_in0, num_tiles);
+    ckernel::cb_reserve_back(cb_id_in0, num_tiles);
     uint32_t src_buffer_l1_addr = get_write_ptr(cb_id_in0);
     uint32_t seqlen_dim_id = 0;
 
@@ -59,5 +59,5 @@ void kernel_main() {
     }
 
     noc_async_read_barrier();
-    cb_push_back(cb_id_in0, num_tiles);
+    ckernel::cb_push_back(cb_id_in0, num_tiles);
 }

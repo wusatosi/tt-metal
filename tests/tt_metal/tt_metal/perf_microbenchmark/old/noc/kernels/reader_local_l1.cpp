@@ -15,7 +15,7 @@ void kernel_main() {
     constexpr uint32_t cb_id = 0;
     uint32_t single_tile_size_bytes = get_tile_size(cb_id);
     uint32_t cb_addr = get_write_ptr(cb_id);
-    cb_reserve_back(cb_id, cb_tile_cnt);
+    ckernel::cb_reserve_back(cb_id, cb_tile_cnt);
 
     {
         DeviceZoneScopedN("NOC-FOR-LOOP");

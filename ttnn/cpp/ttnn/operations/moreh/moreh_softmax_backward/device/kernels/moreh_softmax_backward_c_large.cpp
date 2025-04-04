@@ -50,7 +50,7 @@ void MAIN {
             // dy - sum * exp(y)
             sub_tiles_to_cb(cb_dy, cb_inter2, cb_dx);
         }
-        cb_pop_front(cb_sum, onetile);
+        ckernel::cb_pop_front(cb_sum, onetile);
 #else
         // compute sum(y * dy)
         for (uint32_t i = 0; i < dim_size; ++i) {
@@ -83,7 +83,7 @@ void MAIN {
             mul_tiles_and_negative_to_cb(cb_dy_m_sum, cb_y, cb_dx);
 #endif
         }
-        cb_pop_front(cb_sum, onetile);
+        ckernel::cb_pop_front(cb_sum, onetile);
 #endif
     }
 }

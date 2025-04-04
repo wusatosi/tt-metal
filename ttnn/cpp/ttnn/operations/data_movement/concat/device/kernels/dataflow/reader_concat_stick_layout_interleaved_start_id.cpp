@@ -53,7 +53,7 @@ void kernel_main() {
     uint32_t curr_tensor_id = start_tensor_id;
     // FIX RM CONCAT WIDTH
     for (uint32_t i = 0; i < num_pages; ++i) {
-        cb_reserve_back(cb_id_in, ublock_size_pages);
+        ckernel::cb_reserve_back(cb_id_in, ublock_size_pages);
         uint32_t l1_write_addr = get_write_ptr(cb_id_in);
 #ifdef WIDTH_CONCAT
         // For width concat we know we start at curr_tensor=0
@@ -89,6 +89,6 @@ void kernel_main() {
         }
 #endif
         noc_async_read_barrier();
-        cb_push_back(cb_id_in, ublock_size_pages);
+        ckernel::cb_push_back(cb_id_in, ublock_size_pages);
     }
 }

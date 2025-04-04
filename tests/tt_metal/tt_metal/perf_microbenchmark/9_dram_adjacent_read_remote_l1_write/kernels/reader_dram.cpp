@@ -58,7 +58,7 @@ void kernel_main() {
 #ifdef ARCH_GRAYSKULL
     for (uint32_t block = 0; block < num_blocks; ++block) {
         // Operand 1
-        cb_reserve_back(cb_id, block_num_tiles);
+        ckernel::cb_reserve_back(cb_id, block_num_tiles);
         auto l1_write_addr = get_write_ptr(cb_id);
 
         for (uint32_t h = 0; h < num_pages; ++h) {
@@ -68,7 +68,7 @@ void kernel_main() {
         }
 
         noc_async_read_barrier();
-        cb_push_back(cb_id, block_num_tiles);
+        ckernel::cb_push_back(cb_id, block_num_tiles);
     }
 #else
     constexpr uint32_t total_num_blocks_in_buffer = 3;
@@ -77,7 +77,7 @@ void kernel_main() {
     uint32_t curr_block_trid = 1;
     uint32_t block_trid_to_wait = 1;
 
-    cb_reserve_back(cb_id, block_num_tiles);
+    ckernel::cb_reserve_back(cb_id, block_num_tiles);
     uint32_t l1_write_addr_offset = 0;
     uint32_t l1_write_addr_start = get_write_ptr(cb_id);
     uint32_t l1_write_addr = l1_write_addr_start;
@@ -93,11 +93,11 @@ void kernel_main() {
 
         if (num_free_blocks_in_buffer == 2) {
             noc_async_read_barrier_with_trid(block_trid_to_wait);
-            cb_push_back(cb_id, block_num_tiles);
+            ckernel::cb_push_back(cb_id, block_num_tiles);
             // wait for next block trid
             block_trid_to_wait = block_trid_to_wait == 3 ? 1 : (block_trid_to_wait + 1);
             // reserve for next block
-            cb_reserve_back(cb_id, block_num_tiles * 2);
+            ckernel::cb_reserve_back(cb_id, block_num_tiles * 2);
         } else {
             num_free_blocks_in_buffer -= 1;
         }
@@ -113,6 +113,6 @@ void kernel_main() {
     }
     // last block to wait
     noc_async_read_barrier_with_trid(block_trid_to_wait);
-    cb_push_back(cb_id, block_num_tiles);
+    ckernel::cb_push_back(cb_id, block_num_tiles);
 #endif
 }

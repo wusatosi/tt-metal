@@ -30,7 +30,7 @@ void kernel_main() {
         u.u = scaler;
         // DPRINT << "TWH Scaler = " << F32(u.f) << ENDL();
         constexpr uint32_t cb_in_2 = 2;
-        cb_reserve_back(cb_in_2, 1);
+        ckernel::cb_reserve_back(cb_in_2, 1);
         auto ptr = reinterpret_cast<uint16_t*>(get_write_ptr(cb_in_2));
         for (int j = 0; j < 1024; j++) {
             ptr[j] = uint16_t(0);
@@ -41,7 +41,7 @@ void kernel_main() {
                 ptr[k * 256 + j] = uint16_t(u.u >> 16);
             }
         }
-        cb_push_back(cb_in_2, 1);
+        ckernel::cb_push_back(cb_in_2, 1);
     }
 
     uint32_t i_tile_N = 0;  // first tile in current batch
@@ -58,12 +58,12 @@ void kernel_main() {
         for (uint32_t w = 0; w < Wt; w++) {
             for (uint32_t h = 0; h < Ht; h++) {
                 uint64_t src_noc_addr = get_noc_addr(i_tile, s);
-                cb_reserve_back(cb_id_in0, onetile);
+                ckernel::cb_reserve_back(cb_id_in0, onetile);
                 uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
                 noc_async_read(src_noc_addr, l1_write_addr, tile_bytes);
                 noc_async_read_barrier();
 
-                cb_push_back(cb_id_in0, onetile);
+                ckernel::cb_push_back(cb_id_in0, onetile);
                 i_tile += Wt;  // stride in H
             }  // Ht
             i_tile -= HtWt;  // go back to H=0

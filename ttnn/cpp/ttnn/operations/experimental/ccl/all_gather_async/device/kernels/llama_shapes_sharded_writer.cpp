@@ -92,15 +92,15 @@ void kernel_main() {
     DPRINT << "fabric_connection arg 4" << get_arg_val<uint32_t>(arg_for_fab++) << "\n";
 
     // packet header cb
-    cb_reserve_back(reserved_packet_header_cb_id, 1);
+    ckernel::cb_reserve_back(reserved_packet_header_cb_id, 1);
     auto packet_header_buffer_addr_forward = get_write_ptr(reserved_packet_header_cb_id);
-    cb_push_back(reserved_packet_header_cb_id, 1);
-    cb_reserve_back(reserved_packet_header_cb_id, 1);
+    ckernel::cb_push_back(reserved_packet_header_cb_id, 1);
+    ckernel::cb_reserve_back(reserved_packet_header_cb_id, 1);
     auto packet_header_buffer_addr_backward = get_write_ptr(reserved_packet_header_cb_id);
-    cb_push_back(reserved_packet_header_cb_id, 1);
-    cb_reserve_back(reserved_packet_header_cb_id, 1);
+    ckernel::cb_push_back(reserved_packet_header_cb_id, 1);
+    ckernel::cb_reserve_back(reserved_packet_header_cb_id, 1);
     auto packet_header_buffer_seminc = get_write_ptr(reserved_packet_header_cb_id);
-    cb_push_back(reserved_packet_header_cb_id, 1);
+    ckernel::cb_push_back(reserved_packet_header_cb_id, 1);
     DPRINT << "packet_header_buffer_addr_forward: " << (uint32_t)packet_header_buffer_addr_forward << "\n";
     DPRINT << "packet_header_buffer_addr_backward: " << (uint32_t)packet_header_buffer_addr_backward << "\n";
     DPRINT << "packet_header_buffer_seminc: " << (uint32_t)packet_header_buffer_seminc << "\n";
@@ -125,7 +125,7 @@ void kernel_main() {
         DPRINT << "tiles_read: " << tiles_read << "\n";
         uint32_t num_tiles_to_read_this_core = std::min(num_tiles_per_core - shard_tile_id, packet_size_in_pages);
         num_tiles_to_read_this_core = std::min(num_tiles_to_read - tiles_read, num_tiles_to_read_this_core);
-        cb_wait_front(cb0_id, num_tiles_to_read_this_core);
+        ckernel::cb_wait_front(cb0_id, num_tiles_to_read_this_core);
         size_t l1_read_addr = get_read_ptr(cb0_id);
 
         uint64_t noc0_dest_noc_addr =
@@ -149,7 +149,7 @@ void kernel_main() {
             num_tiles_to_read_this_core * tensor0_page_size);
         noc_async_writes_flushed();
 
-        cb_pop_front(cb0_id, num_tiles_to_read_this_core);
+        ckernel::cb_pop_front(cb0_id, num_tiles_to_read_this_core);
         tiles_read += num_tiles_to_read_this_core;
         shard_tile_id += num_tiles_to_read_this_core;
         if (shard_tile_id >= num_tiles_per_core) {

@@ -26,11 +26,11 @@ void kernel_main() {
         uint32_t curr_out_block_num_tiles = out_block_num_tiles[l];
 
         for (uint32_t block = 0; block < curr_num_blocks; block++) {
-            cb_reserve_back(cb_id_in0, curr_block_num_tiles);
-            cb_push_back(cb_id_in0, curr_block_num_tiles);
+            ckernel::cb_reserve_back(cb_id_in0, curr_block_num_tiles);
+            ckernel::cb_push_back(cb_id_in0, curr_block_num_tiles);
         }
 
-        cb_wait_front(out_cb_id, curr_out_block_num_tiles);
-        cb_pop_front(out_cb_id, curr_out_block_num_tiles);
+        ckernel::cb_wait_front(out_cb_id, curr_out_block_num_tiles);
+        ckernel::cb_pop_front(out_cb_id, curr_out_block_num_tiles);
     }
 }

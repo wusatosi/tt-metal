@@ -42,19 +42,19 @@ void kernel_main() {
     for (uint32_t nc = 0; nc < NC; nc++) {
         for (uint32_t ht = 0; ht < Ht; ht++) {
             for (uint32_t wt = 0; wt < Wt; wt++) {
-                cb_reserve_back(cb_id_in0, onetile);
+                ckernel::cb_reserve_back(cb_id_in0, onetile);
                 l1_write_addr_in0 = get_write_ptr(cb_id_in0);
                 noc_async_read_tile(i, s0, l1_write_addr_in0);
                 noc_async_read_barrier();
-                cb_push_back(cb_id_in0, onetile);
+                ckernel::cb_push_back(cb_id_in0, onetile);
 
                 // for each W-tile of the first tensor we push one tile from the second arg tile list
                 // but we loop the second list around
-                cb_reserve_back(cb_id_in1, onetile);
+                ckernel::cb_reserve_back(cb_id_in1, onetile);
                 l1_write_addr_in1 = get_write_ptr(cb_id_in1);
                 noc_async_read_tile(i1, s1, l1_write_addr_in1);
                 noc_async_read_barrier();
-                cb_push_back(cb_id_in1, onetile);
+                ckernel::cb_push_back(cb_id_in1, onetile);
                 i1++;
                 i++;  // input tile iterates over NC Ht Wt
             }

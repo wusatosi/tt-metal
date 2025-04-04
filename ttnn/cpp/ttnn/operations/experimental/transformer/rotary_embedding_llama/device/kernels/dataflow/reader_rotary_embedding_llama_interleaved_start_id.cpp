@@ -59,11 +59,11 @@ void kernel_main() {
     uint32_t trans_mat_curr_idx = 0;
 
     // Read transformation matrix in CB (only once, because it will be reused)
-    cb_reserve_back(trans_mat_cb_id, onetile);
+    ckernel::cb_reserve_back(trans_mat_cb_id, onetile);
     uint32_t trans_mat_l1_write_addr = get_write_ptr(trans_mat_cb_id);
     noc_async_read_tile(trans_mat_curr_idx, s3, trans_mat_l1_write_addr);
     noc_async_read_barrier();
-    cb_push_back(trans_mat_cb_id, onetile);
+    ckernel::cb_push_back(trans_mat_cb_id, onetile);
 
     /*
         Read a ublock of tiles from src to CB, and then push the ublock to unpacker
@@ -76,8 +76,8 @@ void kernel_main() {
 
     for (uint32_t batch_id = batch_start; batch_id < batch_end; ++batch_id) {
 #if RELOAD_IMPL == 0
-        cb_reserve_back(sin_cb_id, my_cos_sin_tiles);
-        cb_reserve_back(cos_cb_id, my_cos_sin_tiles);
+        ckernel::cb_reserve_back(sin_cb_id, my_cos_sin_tiles);
+        ckernel::cb_reserve_back(cos_cb_id, my_cos_sin_tiles);
         uint32_t sin_l1_write_addr = get_write_ptr(sin_cb_id);
         uint32_t cos_l1_write_addr = get_write_ptr(cos_cb_id);
 #endif
@@ -89,13 +89,13 @@ void kernel_main() {
         for (uint32_t head_num = 0; head_num < n_heads; ++head_num) {
             for (uint32_t seq_tile = seq_t_start; seq_tile < seq_t_end; ++seq_tile) {
 #if RELOAD_IMPL == 1
-                cb_reserve_back(sin_cb_id, Wt);
-                cb_reserve_back(cos_cb_id, Wt);
+                ckernel::cb_reserve_back(sin_cb_id, Wt);
+                ckernel::cb_reserve_back(cos_cb_id, Wt);
                 uint32_t sin_l1_write_addr = get_write_ptr(sin_cb_id);
                 uint32_t cos_l1_write_addr = get_write_ptr(cos_cb_id);
 #endif
 
-                cb_reserve_back(input_cb_id, Wt);
+                ckernel::cb_reserve_back(input_cb_id, Wt);
                 uint32_t input_l1_write_addr = get_write_ptr(input_cb_id);
                 uint32_t input_curr_idx = batch_id * n_heads * Ht * Wt + head_num * Ht * Wt + seq_tile * Wt;
                 uint32_t cos_sin_curr_idx = batch_id * Ht * Wt + seq_tile * Wt;  // Does not depend on n_heads
@@ -119,15 +119,15 @@ void kernel_main() {
                 }
 
                 noc_async_read_barrier();
-                cb_push_back(input_cb_id, Wt);
+                ckernel::cb_push_back(input_cb_id, Wt);
 #if RELOAD_IMPL == 1
-                cb_push_back(sin_cb_id, Wt);
-                cb_push_back(cos_cb_id, Wt);
+                ckernel::cb_push_back(sin_cb_id, Wt);
+                ckernel::cb_push_back(cos_cb_id, Wt);
 #else
 
                 if (!done_sin_cos) {
-                    cb_push_back(sin_cb_id, Wt);
-                    cb_push_back(cos_cb_id, Wt);
+                    ckernel::cb_push_back(sin_cb_id, Wt);
+                    ckernel::cb_push_back(cos_cb_id, Wt);
 
                     // Update sin_cos_row_cnt
                     sin_cos_row_cnt++;

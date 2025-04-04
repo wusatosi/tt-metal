@@ -119,7 +119,7 @@ void kernel_main() {
                 const uint32_t out_row_tile_count = out_row_end_tile - out_row_start_tile;
                 uint32_t out_tile_id = out_tile_shape.id_of(nb, nq, out_row_start_tile, 0);
 
-                cb_wait_front(cb_out, out_chunk_tiles);
+                ckernel::cb_wait_front(cb_out, out_chunk_tiles);
                 barrier_count = 0;
                 uint32_t l1_read_addr = get_read_ptr(cb_out);
                 for (uint32_t row = 0; row < out_row_tile_count; ++row) {
@@ -135,7 +135,7 @@ void kernel_main() {
                     }
                 }
                 noc_async_write_barrier();
-                cb_pop_front(cb_out, out_chunk_tiles);
+                ckernel::cb_pop_front(cb_out, out_chunk_tiles);
             }
         }
     }

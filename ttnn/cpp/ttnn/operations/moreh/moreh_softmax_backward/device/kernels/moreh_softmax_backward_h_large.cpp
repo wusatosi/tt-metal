@@ -65,7 +65,7 @@ void MAIN {
             sub_tiles_to_cb(cb_dy, cb_inter2, cb_dx);
         }
 
-        cb_pop_front(cb_sum, onetile);
+        ckernel::cb_pop_front(cb_sum, onetile);
 #else
 
         // step 1, compute y * dy
@@ -102,7 +102,7 @@ void MAIN {
 #endif
         }
 
-        cb_pop_front(cb_sum, onetile);
+        ckernel::cb_pop_front(cb_sum, onetile);
 #endif
     }
 }

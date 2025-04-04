@@ -31,14 +31,14 @@ void kernel_main() {
                 for(uint32_t c = 0; c < inner_c; c++) {
                     uint64_t dst_noc_addr = get_noc_addr_from_bank_id<true>(dst_bank_id, dram_address_c);
 
-                    cb_wait_front(cb_id_out0, ublock_size_tiles);
+                    ckernel::cb_wait_front(cb_id_out0, ublock_size_tiles);
                     uint32_t l1_read_addr = get_read_ptr(cb_id_out0);
 
                     noc_async_write(l1_read_addr, dst_noc_addr, ublock_size_bytes);
 
                     noc_async_write_barrier();
 
-                    cb_pop_front(cb_id_out0, ublock_size_tiles);
+                    ckernel::cb_pop_front(cb_id_out0, ublock_size_tiles);
                     dram_address_c += ublock_size_bytes;
                 }
                 dram_address_r += stride_r;  // goto next row within sub-block

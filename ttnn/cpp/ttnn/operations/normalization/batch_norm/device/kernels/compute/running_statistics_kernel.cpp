@@ -30,10 +30,10 @@ void MAIN {
     constexpr uint32_t onetile = 1;
 
     for (uint32_t tile_id = 0; tile_id < num_tiles; ++tile_id) {
-        tile_regs_acquire();
+        ckernel:: tile_regs_acquire();
         // updated_running_stat = (1 − momentum) × running_stat + momentum × batch_stat
-        cb_wait_front(cb_one, 1);
-        cb_wait_front(cb_momentum, 1);
+        ckernel::cb_wait_front(cb_one, 1);
+        ckernel::cb_wait_front(cb_momentum, 1);
 
         if constexpr (old_running_mean_has_value) {
             sub_tiles_to_cb(cb_one, cb_momentum, cb_tmp1, 0, 0, 0, 0);               // 1 - momentum
@@ -47,13 +47,13 @@ void MAIN {
             mul_tiles_to_cb(cb_tmp1, cb_old_running_var, cb_tmp3, 0, 0, 1, 1);      // cb_tmp1 * running stats
             add_tiles_to_cb(cb_tmp2, cb_tmp3, cb_updated_running_var, 0, 0, 1, 1);  // cb_tmp2 + cb_tmp3
         }
-        tile_regs_commit();
-        tile_regs_wait();
-        pack_tile(0, cb_out0);
-        tile_regs_release();
-        cb_pop_front(cb_one, 1);
-        cb_pop_front(cb_momentum, 1);
-        cb_push_back(cb_out0, 1);
+        ckernel:: tile_regs_commit();
+        ckernel::tile_regs_wait();
+        ckernel:: pack_tile(0, cb_out0);
+        ckernel::tile_regs_release();
+        ckernel::cb_pop_front(cb_one, 1);
+        ckernel::cb_pop_front(cb_momentum, 1);
+        ckernel::cb_push_back(cb_out0, 1);
     }
 }
 }  // namespace NAMESPACE

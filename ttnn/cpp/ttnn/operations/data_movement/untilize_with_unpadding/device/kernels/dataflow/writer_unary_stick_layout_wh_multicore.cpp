@@ -33,7 +33,7 @@ void kernel_main() {
                            uint32_t single_block_size) {
         bool has_rows = (num_rows) > 0;
 
-        cb_wait_front(cb_id_out0, single_block_size * has_rows);
+        ckernel::cb_wait_front(cb_id_out0, single_block_size * has_rows);
         uint32_t l1_read_addr = get_write_ptr(cb_id_out0);
 
         for (uint32_t k = start_row_id; k < start_row_id + num_rows; k++) {
@@ -53,7 +53,7 @@ void kernel_main() {
             l1_read_addr += width_size;
         }
 
-        cb_pop_front(cb_id_out0, single_block_size * has_rows);
+        ckernel::cb_pop_front(cb_id_out0, single_block_size * has_rows);
     };
 
     const uint32_t width_size = get_arg_val<uint32_t>(2);

@@ -81,53 +81,53 @@ void kernel_main() {
         for (uint32_t c = start_c; c < C && num_tiles_written < num_tiles; ++c, start_t = 0) {
             for (uint32_t t = start_t; t < HtWt && num_tiles_written < num_tiles; ++t, ++num_tiles_written) {
                 // read a tile from src
-                cb_reserve_back(cb_id_src, onetile);
+                ckernel::cb_reserve_back(cb_id_src, onetile);
                 uint32_t l1_write_addr = get_write_ptr(cb_id_src);
                 noc_async_read_tile(tile_offset, src, l1_write_addr);
                 noc_async_read_barrier();
-                cb_push_back(cb_id_src, onetile);
+                ckernel::cb_push_back(cb_id_src, onetile);
 
                 if constexpr (old_running_mean_has_value) {
                     // read data
-                    cb_reserve_back(cb_id_old_running_mean, onetile);
+                    ckernel::cb_reserve_back(cb_id_old_running_mean, onetile);
                     uint32_t l1_old_running_mean_write_addr = get_write_ptr(cb_id_old_running_mean);
                     noc_async_read_tile(tile_offset, old_running_mean, l1_old_running_mean_write_addr);
                     noc_async_read_barrier();
                     FILL_TILE_WITH_FIRST_ELEMENT(cb_id_old_running_mean);
-                    cb_push_back(cb_id_old_running_mean, onetile);
+                    ckernel::cb_push_back(cb_id_old_running_mean, onetile);
 
                     // write data
-                    cb_wait_front(cb_id_updated_running_mean, onetile);
+                    ckernel::cb_wait_front(cb_id_updated_running_mean, onetile);
                     uint32_t l1_write_updated_mean_addr = get_read_ptr(cb_id_updated_running_mean);
                     noc_async_write_tile(tile_offset, old_running_mean, l1_write_updated_mean_addr);
                     noc_async_write_barrier();
-                    cb_pop_front(cb_id_updated_running_mean, onetile);
+                    ckernel::cb_pop_front(cb_id_updated_running_mean, onetile);
                 }
 
                 if constexpr (old_running_var_has_value) {
                     // read data
-                    cb_reserve_back(cb_id_old_running_var, onetile);
+                    ckernel::cb_reserve_back(cb_id_old_running_var, onetile);
                     uint32_t l1_old_running_var_write_addr = get_write_ptr(cb_id_old_running_var);
                     noc_async_read_tile(tile_offset, old_running_var, l1_old_running_var_write_addr);
                     noc_async_read_barrier();
                     FILL_TILE_WITH_FIRST_ELEMENT(cb_id_old_running_var);
-                    cb_push_back(cb_id_old_running_var, onetile);
+                    ckernel::cb_push_back(cb_id_old_running_var, onetile);
 
                     // write data
-                    cb_wait_front(cb_id_updated_running_var, onetile);
+                    ckernel::cb_wait_front(cb_id_updated_running_var, onetile);
                     uint32_t l1_write_updated_var_addr = get_read_ptr(cb_id_updated_running_var);
                     noc_async_write_tile(tile_offset, old_running_var, l1_write_updated_var_addr);
                     noc_async_write_barrier();
-                    cb_pop_front(cb_id_updated_running_var, onetile);
+                    ckernel::cb_pop_front(cb_id_updated_running_var, onetile);
                 }
                 ++tile_offset;
 
                 // write a tile to dst, since the dst shape is full, the tile offset simply grows linearly
-                cb_wait_front(cb_id_dst, onetile);
+                ckernel::cb_wait_front(cb_id_dst, onetile);
                 uint32_t l1_read_addr = get_read_ptr(cb_id_dst);
                 noc_async_write_tile(start_tile_id + num_tiles_written, dst, l1_read_addr);
                 noc_async_write_barrier();
-                cb_pop_front(cb_id_dst, onetile);
+                ckernel::cb_pop_front(cb_id_dst, onetile);
             }
             tile_offset += next_channel_shift;
         }

@@ -42,7 +42,7 @@ uint32_t virtual_seq_tile_id_to_physical_tile_id(
  *                   Generic Tile Manipulation Functions                       *
  ******************************************************************************/
 template <uint32_t tile_bytes>
-void copy_tile(uint64_t noc_read_addr_base, uint32_t q_write_ptr_base, uint32_t src_tile_id, uint32_t dst_tile_id) {
+void ckernel:: copy_tile(uint64_t noc_read_addr_base, uint32_t q_write_ptr_base, uint32_t src_tile_id, uint32_t dst_tile_id) {
     noc_async_read(
         noc_read_addr_base + src_tile_id * tile_bytes, q_write_ptr_base + dst_tile_id * tile_bytes, tile_bytes);
 }
@@ -139,7 +139,7 @@ template <
     uint32_t Sk_chunk_t>
 uint32_t read_mask_chunk(uint32_t PSt, uint32_t mask_start_tile_id, const InterleavedAddrGenFast<true> mask_reader) {
     // Read mask chunk
-    cb_reserve_back(cb_mask_in, mask_chunk_tiles);
+    ckernel::cb_reserve_back(cb_mask_in, mask_chunk_tiles);
     uint32_t mask_write_ptr = get_write_ptr(cb_mask_in);
     uint32_t barrier_count = 0;
     for (uint32_t row = 0; row < PNHt; ++row) {
@@ -156,7 +156,7 @@ uint32_t read_mask_chunk(uint32_t PSt, uint32_t mask_start_tile_id, const Interl
         }
     }
     noc_async_read_barrier();
-    cb_push_back(cb_mask_in, mask_chunk_tiles);
+    ckernel::cb_push_back(cb_mask_in, mask_chunk_tiles);
     mask_start_tile_id += mask_chunk_tiles;
     return mask_start_tile_id;
 }
@@ -204,7 +204,7 @@ void generate_mask(uint32_t k_num_chunks, uint32_t cur_pos) {
     uint32_t cur_pos_in_tile = cur_pos_in_chunk % 32;
     constexpr uint32_t NEG_INF = 0xFF80FF80;  // TODO: Make sure this is -inf
 
-    cb_reserve_back(cb_mask_in, total_read_tiles);
+    ckernel::cb_reserve_back(cb_mask_in, total_read_tiles);
 
     uint64_t noc_read_addr_base = get_noc_addr(get_read_ptr(cb_mask_in));
     uint32_t q_write_ptr_base = get_read_ptr(cb_mask_in);
@@ -249,7 +249,7 @@ void generate_mask(uint32_t k_num_chunks, uint32_t cur_pos) {
         }
     }
 
-    cb_push_back(cb_mask_in, total_read_tiles);
+    ckernel::cb_push_back(cb_mask_in, total_read_tiles);
 }
 
 /******************************************************************************
@@ -271,9 +271,9 @@ void worker_compute(
     uint32_t out_tile_id = 0;
 
     // Wait for compute to deliver output chunk
-    cb_wait_front(cb_out, out_chunk_tiles);
-    cb_wait_front(cb_out_m, PNHt);
-    cb_wait_front(cb_out_l, PNHt);
+    ckernel::cb_wait_front(cb_out, out_chunk_tiles);
+    ckernel::cb_wait_front(cb_out_m, PNHt);
+    ckernel::cb_wait_front(cb_out_l, PNHt);
 
     // Write output chunk to reducer
     constexpr uint32_t tile_bytes = get_tile_size(cb_out);
@@ -293,9 +293,9 @@ void worker_compute(
     noc_semaphore_inc(in0_sender_semaphore_noc_addr, 1);
 
     // pop front
-    cb_pop_front(cb_out, out_chunk_tiles);
-    cb_pop_front(cb_out_m, PNHt);
-    cb_pop_front(cb_out_l, PNHt);
+    ckernel::cb_pop_front(cb_out, out_chunk_tiles);
+    ckernel::cb_pop_front(cb_out_m, PNHt);
+    ckernel::cb_pop_front(cb_out_l, PNHt);
 }
 
 template <uint32_t cb_out, uint32_t out_chunk_tiles, uint32_t barrier_threshold>
@@ -393,7 +393,7 @@ void read_kv_mask_chunks(
     uint32_t barrier_count = 0;
     for (uint32_t k_chunk = k_chunk_start; k_chunk < k_chunk_end; ++k_chunk) {
         // Read K chunk transposed
-        cb_reserve_back(cb_k_in, k_chunk_tiles);
+        ckernel::cb_reserve_back(cb_k_in, k_chunk_tiles);
         uint32_t k_write_ptr = get_write_ptr(cb_k_in);
         barrier_count = 0;
         for (uint32_t col = 0; col < DHt; ++col) {
@@ -409,7 +409,7 @@ void read_kv_mask_chunks(
             }
         }
         noc_async_read_barrier();
-        cb_push_back(cb_k_in, k_chunk_tiles);
+        ckernel::cb_push_back(cb_k_in, k_chunk_tiles);
         k_start_tile_id += k_chunk_tiles;
 
         if constexpr (use_attention_mask) {
@@ -419,7 +419,7 @@ void read_kv_mask_chunks(
         }
 
         // Read V chunk
-        cb_reserve_back(cb_v_in, k_chunk_tiles);
+        ckernel::cb_reserve_back(cb_v_in, k_chunk_tiles);
         uint32_t v_write_ptr = get_write_ptr(cb_v_in);
         barrier_count = 0;
         uint32_t v_tile_id = v_start_tile_id;
@@ -435,7 +435,7 @@ void read_kv_mask_chunks(
             }
         }
         noc_async_read_barrier();
-        cb_push_back(cb_v_in, k_chunk_tiles);
+        ckernel::cb_push_back(cb_v_in, k_chunk_tiles);
         v_start_tile_id += k_chunk_tiles;
     }
 }

@@ -61,7 +61,7 @@ void kernel_main() {
     volatile uint32_t* semaphore_addr_ptr = reinterpret_cast<volatile uint32_t*>(semaphore_addr);
 
     // read a ublock of tiles from src to CB
-    cb_reserve_back(cb_id, num_pages);
+    ckernel::cb_reserve_back(cb_id, num_pages);
     uint32_t l1_write_addr = get_write_ptr(cb_id);
     for (uint32_t i = start_id; i < start_id + num_pages; ++i) {
         uint64_t src_noc_addr = get_noc_addr(i, src_addrgen);
@@ -69,7 +69,7 @@ void kernel_main() {
         noc_async_read_barrier();
         l1_write_addr += aligned_page_size;
     }
-    cb_push_back(cb_id, num_pages);
+    ckernel::cb_push_back(cb_id, num_pages);
 
     if (is_controller) {
         noc_semaphore_wait(semaphore_addr_ptr, control_value);
@@ -94,7 +94,7 @@ void kernel_main() {
         noc_semaphore_wait(semaphore_addr_ptr, control_value);
     }
 
-    cb_wait_front(cb_id, num_pages);
+    ckernel::cb_wait_front(cb_id, num_pages);
     uint32_t l1_read_addr = get_read_ptr(cb_id);
     for (uint32_t i = start_id; i < start_id + num_pages; ++i) {
         uint64_t dst_noc_addr = get_noc_addr(i, dst_addrgen);
@@ -102,5 +102,5 @@ void kernel_main() {
         noc_async_write_barrier();
         l1_read_addr += aligned_page_size;
     }
-    cb_pop_front(cb_id, num_pages);
+    ckernel::cb_pop_front(cb_id, num_pages);
 }

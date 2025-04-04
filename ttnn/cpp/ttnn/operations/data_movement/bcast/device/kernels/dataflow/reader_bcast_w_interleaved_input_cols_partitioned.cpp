@@ -52,20 +52,20 @@ void kernel_main() {
             {
                 // only read one tile in H per W-line of tiles
                 // So we push a total of NC*H tiles from src1
-                cb_reserve_back(cb_id_in1, onetile);
+                ckernel::cb_reserve_back(cb_id_in1, onetile);
                 l1_write_addr_in1 = get_write_ptr(cb_id_in1);
                 noc_async_read_tile(i_bcast, s1, l1_write_addr_in1);
                 noc_async_read_barrier();
-                cb_push_back(cb_id_in1, onetile);
+                ckernel::cb_push_back(cb_id_in1, onetile);
                 i_bcast++;
             }
 
             for (uint32_t wt = 0; wt < Wt; wt++) {
-                cb_reserve_back(cb_id_in0, onetile);
+                ckernel::cb_reserve_back(cb_id_in0, onetile);
                 l1_write_addr_in0 = get_write_ptr(cb_id_in0);
                 noc_async_read_tile(i, s0, l1_write_addr_in0);
                 noc_async_read_barrier();
-                cb_push_back(cb_id_in0, onetile);
+                ckernel::cb_push_back(cb_id_in0, onetile);
                 i++;
             }  // Wt loop
             i += Wt_skip;

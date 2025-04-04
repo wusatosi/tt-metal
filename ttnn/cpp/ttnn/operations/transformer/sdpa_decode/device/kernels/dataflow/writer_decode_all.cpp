@@ -59,7 +59,7 @@ void kernel_main() {
             cur_pos = cur_pos_arg;
         } else {
             constexpr uint32_t cb_index_id = tt::CBIndex::c_8;
-            cb_wait_front(cb_index_id, 1);
+            ckernel::cb_wait_front(cb_index_id, 1);
             uint32_t index_cb_ptr = get_read_ptr(cb_index_id);
             volatile tt_l1_ptr uint32_t* index_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(index_cb_ptr);
             cur_pos = index_ptr[cur_batch];
@@ -161,31 +161,31 @@ void kernel_main() {
             noc_semaphore_wait(in0_receiver_semaphore_addr_ptr, num_cores_to_wait);
             // noc_semaphore_set(in0_receiver_semaphore_addr_ptr, 0);
 
-            // cb_wait_front(cb_intermed_out, num_tiles_to_wait);
+            // ckernel::cb_wait_front(cb_intermed_out, num_tiles_to_wait);
             constexpr uint32_t q_read_size = out_chunk_tiles * tile_bytes_intermed;
             constexpr uint32_t ml_read_size = PNHt * tile_bytes_intermed;
             for (uint32_t block = 0; block < num_cores_to_wait; ++block) {
-                cb_reserve_back(cb_out_o, out_chunk_tiles);
-                cb_reserve_back(cb_m_in, PNHt);
-                cb_reserve_back(cb_l_in, PNHt);
+                ckernel::cb_reserve_back(cb_out_o, out_chunk_tiles);
+                ckernel::cb_reserve_back(cb_m_in, PNHt);
+                ckernel::cb_reserve_back(cb_l_in, PNHt);
 
                 uint32_t q_write_ptr = get_read_ptr(cb_out_o);
                 noc_async_read(intermed_l1_read_addr, q_write_ptr, q_read_size);
                 intermed_l1_read_addr += q_read_size;
                 noc_async_read_barrier();
-                cb_push_back(cb_out_o, out_chunk_tiles);
+                ckernel::cb_push_back(cb_out_o, out_chunk_tiles);
 
                 uint32_t m_write_ptr = get_read_ptr(cb_m_in);
                 noc_async_read(intermed_l1_read_addr, m_write_ptr, ml_read_size);
                 intermed_l1_read_addr += ml_read_size;
                 noc_async_read_barrier();
-                cb_push_back(cb_m_in, PNHt);
+                ckernel::cb_push_back(cb_m_in, PNHt);
 
                 uint32_t l_write_ptr = get_read_ptr(cb_l_in);
                 noc_async_read(intermed_l1_read_addr, l_write_ptr, ml_read_size);
                 intermed_l1_read_addr += ml_read_size;
                 noc_async_read_barrier();
-                cb_push_back(cb_l_in, PNHt);
+                ckernel::cb_push_back(cb_l_in, PNHt);
             }
         }
         // Offset for current batch
@@ -193,7 +193,7 @@ void kernel_main() {
 
         // Write entire out into its corresponding batch
         uint32_t out_tile_id = out_batch_offset;
-        cb_wait_front(cb_out, out_chunk_tiles);
+        ckernel::cb_wait_front(cb_out, out_chunk_tiles);
 
         if constexpr (num_kv_heads > 1) {
             // if gqa, we will need to write partial outputs for each head
@@ -272,6 +272,6 @@ void kernel_main() {
             }
         }
         noc_async_write_barrier();
-        cb_pop_front(cb_out, out_chunk_tiles);
+        ckernel::cb_pop_front(cb_out, out_chunk_tiles);
     }
 }

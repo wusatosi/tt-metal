@@ -28,56 +28,56 @@ void MAIN {
 
     unary_op_init_common(cb_in0, cb_out0);
 
-    cb_wait_front(cb_in1, 1);
+    ckernel::cb_wait_front(cb_in1, 1);
 
     for (uint32_t i = 0; i < num_output_tiles_per_core; i++) {
         // Initialize cb_intermed with cb_in1 (0)
-        tile_regs_acquire();  // MATH ACQ
+        ckernel:: tile_regs_acquire();  // MATH ACQ
         copy_tile_to_dst_init_short(cb_in1);
-        copy_tile(cb_in1, first_tile, dst0);
-        tile_regs_commit();  // MATH REL
+        ckernel:: copy_tile(cb_in1, first_tile, dst0);
+        ckernel:: tile_regs_commit();  // MATH REL
 
-        tile_regs_wait();  // isto to PACK
-        cb_reserve_back(cb_intermed, 1);
-        pack_tile(dst0, cb_intermed);
-        cb_push_back(cb_intermed, 1);
-        tile_regs_release();
+        ckernel::tile_regs_wait();  // isto to PACK
+        ckernel::cb_reserve_back(cb_intermed, 1);
+        ckernel:: pack_tile(dst0, cb_intermed);
+        ckernel::cb_push_back(cb_intermed, 1);
+        ckernel::tile_regs_release();
 
         for (uint32_t j = 0; j < num_tiles_to_cumsum; ++j) {
             // Copy intermediate sum to dst0
-            cb_wait_front(cb_intermed, 1);  // Wait for one tile
-            tile_regs_acquire();  // has to be after wait front, otherwise MATH will acquire lock and PACK wond be able
+            ckernel::cb_wait_front(cb_intermed, 1);  // Wait for one tile
+            ckernel:: tile_regs_acquire();  // has to be after wait front, otherwise MATH will acquire lock and PACK wond be able
                                   // to signal cb_intermed
             copy_tile_to_dst_init_short(cb_intermed);
-            copy_tile(cb_intermed, first_tile, dst0);
-            cb_pop_front(cb_intermed, 1);  // Pop one tile
+            ckernel:: copy_tile(cb_intermed, first_tile, dst0);
+            ckernel::cb_pop_front(cb_intermed, 1);  // Pop one tile
 
             // Copy input tile to dst1
-            cb_wait_front(cb_in0, 1);
+            ckernel::cb_wait_front(cb_in0, 1);
             copy_tile_to_dst_init_short(cb_in0);
-            copy_tile(cb_in0, first_tile, dst1);
-            cb_pop_front(cb_in0, 1);
+            ckernel:: copy_tile(cb_in0, first_tile, dst1);
+            ckernel::cb_pop_front(cb_in0, 1);
 
             // Add tiles in dst0 and dst1. Store result to dst0
             add_int32_tile_init();
             add_int32_tile(dst0, dst1);
-            tile_regs_commit();
+            ckernel:: tile_regs_commit();
 
             // Copy sum to intermediate CB
-            tile_regs_wait();
-            cb_reserve_back(cb_intermed, 1);
-            pack_tile(dst0, cb_intermed);
-            cb_push_back(cb_intermed, 1);
+            ckernel::tile_regs_wait();
+            ckernel::cb_reserve_back(cb_intermed, 1);
+            ckernel:: pack_tile(dst0, cb_intermed);
+            ckernel::cb_push_back(cb_intermed, 1);
 
             // Copy sum to output
-            cb_reserve_back(cb_out0, 1);
-            pack_tile(dst0, cb_out0);
-            cb_push_back(cb_out0, 1);
-            tile_regs_release();
+            ckernel::cb_reserve_back(cb_out0, 1);
+            ckernel:: pack_tile(dst0, cb_out0);
+            ckernel::cb_push_back(cb_out0, 1);
+            ckernel::tile_regs_release();
         }
-        cb_wait_front(cb_intermed, 1);
-        cb_pop_front(cb_intermed, 1);  // this solves blocking in cases where outer loop has multiple iterations
+        ckernel::cb_wait_front(cb_intermed, 1);
+        ckernel::cb_pop_front(cb_intermed, 1);  // this solves blocking in cases where outer loop has multiple iterations
     }
-    cb_pop_front(cb_in1, 1);
+    ckernel::cb_pop_front(cb_in1, 1);
 }
 }  // namespace NAMESPACE

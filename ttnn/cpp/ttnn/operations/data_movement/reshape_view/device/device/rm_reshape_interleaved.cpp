@@ -89,12 +89,12 @@ void kernel_main() {
     uint32_t writable = dest_page_size_bytes - write_start_offset;
     //cb_id_in0 is a CB source_read_size_bytes page size, 1 page
     //cb_id_in1 is a CB dest_page_size_bytes + allignment_to_64 page size, 1 page
-    cb_reserve_back(cb_id_in0, 1);
-    cb_reserve_back(cb_id_in1, 1);
+    ckernel::cb_reserve_back(cb_id_in0, 1);
+    ckernel::cb_reserve_back(cb_id_in1, 1);
     const uint32_t source_buffer = get_write_ptr(cb_id_in0);
     const uint32_t dest_buffer = get_write_ptr(cb_id_in1);
-    cb_push_back(cb_id_in1, 1);
-    cb_push_back(cb_id_in0, 1);
+    ckernel::cb_push_back(cb_id_in1, 1);
+    ckernel::cb_push_back(cb_id_in0, 1);
 
     uint64_t dst_noc_addr = get_noc_addr(write_page, d);
     uint64_t write_offset = (dst_noc_addr & OFFSET_16) + write_start_offset;

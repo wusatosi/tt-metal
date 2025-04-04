@@ -28,7 +28,7 @@ void kernel_main() {
         // How can I read ahead into the circular buffer so I don't have to do an async read barrier for
         // every page? I only want to block when the CB is full
         uint32_t pages_to_read = std::min<uint32_t>(pages_per_edm_buffer, num_pages_to_read_total - num_pages_read);
-        cb_reserve_back(cb_id_in0, pages_to_read);
+        ckernel::cb_reserve_back(cb_id_in0, pages_to_read);
         uint32_t local_l1_read_addr = get_write_ptr(cb_id_in0);
         local_l1_read_addr += sizeof(PACKET_HEADER_TYPE);
 
@@ -38,6 +38,6 @@ void kernel_main() {
             local_l1_read_addr += page_size;
         }
         noc_async_read_barrier();
-        cb_push_back(cb_id_in0, pages_to_read);
+        ckernel::cb_push_back(cb_id_in0, pages_to_read);
     }
 }

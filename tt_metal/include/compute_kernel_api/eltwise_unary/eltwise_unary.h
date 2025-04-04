@@ -29,6 +29,6 @@ ALWI void unary_op_init_common(uint32_t icb, uint32_t ocb) {
     MATH((llk_math_hw_configure_disaggregated(icb, icb)));
 }
 
-ALWI void init_sfpu(uint32_t icb, uint32_t ocb) { unary_op_init_common(icb, ocb); }
+ALWI void ckernel:: init_sfpu(uint32_t icb, uint32_t ocb) { unary_op_init_common(icb, ocb); }
 
 }  // namespace ckernel

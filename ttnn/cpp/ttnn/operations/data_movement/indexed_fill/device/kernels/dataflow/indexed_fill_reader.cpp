@@ -70,7 +70,7 @@ void kernel_main() {
 
     uint32_t end_id = start_id + batch_size_in_sticks;
     for (uint32_t i = start_id; i < end_id; ++i) {
-        cb_reserve_back(cb_id_in0, 1);
+        ckernel::cb_reserve_back(cb_id_in0, 1);
         uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
         uint64_t src_noc_addr;
         if (replace_batch) {
@@ -80,6 +80,6 @@ void kernel_main() {
         }
         noc_async_read(src_noc_addr, l1_write_addr, stick_size);
         noc_async_read_barrier();
-        cb_push_back(cb_id_in0, 1);
+        ckernel::cb_push_back(cb_id_in0, 1);
     }
 }

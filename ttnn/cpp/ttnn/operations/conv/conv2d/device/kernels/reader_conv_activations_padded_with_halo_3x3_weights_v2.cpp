@@ -104,7 +104,7 @@ void kernel_main() {
             // Reset reader_idx to finish act_block_h_datums
             reader_idx = start_reader_idx;
 
-            cb_reserve_back(cb_id_act, act_block_num_tiles_read);
+            ckernel::cb_reserve_back(cb_id_act, act_block_num_tiles_read);
             uint32_t l1_write_addr_act = get_write_ptr(cb_id_act);
             uint32_t reader_offset = act_l1_read_addr + (reader_offsets[reader_offset_idx] * conv_act_c_read_bytes);
             // #pragma GCC unroll 4 // unroll didn't help, but act_block_h_datums (loop bound) being const does help
@@ -144,7 +144,7 @@ void kernel_main() {
             }
             noc_async_read_barrier();
 
-            cb_push_back(cb_id_act, act_block_num_tiles_read);
+            ckernel::cb_push_back(cb_id_act, act_block_num_tiles_read);
 
             reader_offset_idx += window_inner;
         }

@@ -20,13 +20,13 @@ void kernel_main() {
     uint32_t dst_stick_id = start_dst_stick_id;
     for (uint32_t row_idx = 0; row_idx < num_rows_per_core; row_idx++) {
         for (uint32_t dst_col_idx = 0; dst_col_idx < dst_N; dst_col_idx++) {
-            cb_wait_front(cb_id, 1);
+            ckernel::cb_wait_front(cb_id, 1);
             uint32_t l1_addr = get_read_ptr(cb_id);
             uint64_t dst_noc_addr = get_noc_addr(dst_stick_id, s0);
             noc_async_write(l1_addr, dst_noc_addr, data_size_bytes);
             noc_async_write_barrier();
             dst_stick_id++;
-            cb_pop_front(cb_id, 1);
+            ckernel::cb_pop_front(cb_id, 1);
         }
     }
 }

@@ -41,7 +41,7 @@ void kernel_main() {
         auto read_tile_id = (dim == 0) ? (i) : (get_read_tile_id(i, reduce_tile_size, inner_tile_size));
         for (uint32_t j = 0; j < num_input_tiles; ++j) {
             if (input_granularity_index == 0) {
-                cb_reserve_back(cb_id_in0, input_granularity);
+                ckernel::cb_reserve_back(cb_id_in0, input_granularity);
                 l1_write_addr_in0 = get_write_ptr(cb_id_in0);
             }
             noc_async_read_tile(read_tile_id, input_addrg, l1_write_addr_in0);
@@ -50,7 +50,7 @@ void kernel_main() {
             input_granularity_index++;
             if (input_granularity_index == input_granularity) {
                 noc_async_read_barrier();
-                cb_push_back(cb_id_in0, input_granularity);
+                ckernel::cb_push_back(cb_id_in0, input_granularity);
                 input_granularity_index = 0;
             }
         }

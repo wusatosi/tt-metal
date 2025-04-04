@@ -20,19 +20,19 @@
 
 #define DEBUG_PRINT 0
 
-ALWI void ACQ() { acquire_dst(); }
-ALWI void REL() { release_dst(); }
+ALWI void ACQ() { ckernel::acquire_dst(); }
+ALWI void REL() { ckernel:: release_dst(); }
 
 inline void tilize_in(
     uint32_t in_cb_id, uint32_t in_subblock_h, uint32_t in_block_w, uint32_t in_num_subblocks, uint32_t out_cb_id) {
     tilize_init_short(in_cb_id, in_block_w, out_cb_id);
     for (uint32_t in_subblock = 0; in_subblock < in_num_subblocks; ++in_subblock) {
         for (uint32_t h = 0; h < in_subblock_h; ++h) {
-            cb_wait_front(in_cb_id, in_block_w);
-            cb_reserve_back(out_cb_id, in_block_w);
+            ckernel::cb_wait_front(in_cb_id, in_block_w);
+            ckernel::cb_reserve_back(out_cb_id, in_block_w);
             tilize_block(in_cb_id, in_block_w, out_cb_id);
-            cb_push_back(out_cb_id, in_block_w);
-            cb_pop_front(in_cb_id, in_block_w);
+            ckernel::cb_push_back(out_cb_id, in_block_w);
+            ckernel::cb_pop_front(in_cb_id, in_block_w);
         }
     }
     tilize_uninit(in_cb_id, out_cb_id);
@@ -49,48 +49,48 @@ inline void eltwise_mul_and_add_block_v2(
     uint32_t total_blocks) {
     uint32_t last_block_idx = total_blocks - 1;
     for (uint32_t i = 0; i < block_num_tiles; i++) {
-        cb_wait_front(in1_cb_id, 1);
-        cb_wait_front(in0_cb_id, 1);
-        cb_reserve_back(eltwise_mul_partials_cb_cb_id, 1);
+        ckernel::cb_wait_front(in1_cb_id, 1);
+        ckernel::cb_wait_front(in0_cb_id, 1);
+        ckernel::cb_reserve_back(eltwise_mul_partials_cb_cb_id, 1);
         mul_tiles_init(in0_cb_id, in1_cb_id);
         ACQ();
         mul_tiles(in0_cb_id, in1_cb_id, 0, 0, 0);
-        pack_tile(0, eltwise_mul_partials_cb_cb_id);
+        ckernel:: pack_tile(0, eltwise_mul_partials_cb_cb_id);
         REL();
-        cb_push_back(eltwise_mul_partials_cb_cb_id, 1);
-        cb_pop_front(in0_cb_id, 1);
-        cb_pop_front(in1_cb_id, 1);
+        ckernel::cb_push_back(eltwise_mul_partials_cb_cb_id, 1);
+        ckernel::cb_pop_front(in0_cb_id, 1);
+        ckernel::cb_pop_front(in1_cb_id, 1);
         if (idx == 0) {
             copy_tile_to_dst_init_short(eltwise_mul_partials_cb_cb_id);
             ACQ();
-            cb_wait_front(eltwise_mul_partials_cb_cb_id, 1);
-            cb_reserve_back(out_cb_id, 1);
-            copy_tile(eltwise_mul_partials_cb_cb_id, 0, 0);
-            pack_tile(0, out_cb_id);
+            ckernel::cb_wait_front(eltwise_mul_partials_cb_cb_id, 1);
+            ckernel::cb_reserve_back(out_cb_id, 1);
+            ckernel:: copy_tile(eltwise_mul_partials_cb_cb_id, 0, 0);
+            ckernel:: pack_tile(0, out_cb_id);
             REL();
-            cb_push_back(out_cb_id, 1);
-            cb_pop_front(eltwise_mul_partials_cb_cb_id, 1);
+            ckernel::cb_push_back(out_cb_id, 1);
+            ckernel::cb_pop_front(eltwise_mul_partials_cb_cb_id, 1);
         } else {
             add_tiles_init(eltwise_mul_partials_cb_cb_id, out_cb_id);
-            cb_wait_front(eltwise_mul_partials_cb_cb_id, 1);
-            cb_wait_front(out_cb_id, 1);
+            ckernel::cb_wait_front(eltwise_mul_partials_cb_cb_id, 1);
+            ckernel::cb_wait_front(out_cb_id, 1);
             ACQ();
             add_tiles(eltwise_mul_partials_cb_cb_id, out_cb_id, 0, 0, 0);
-            pack_tile(0, temp_sum_cb);
+            ckernel:: pack_tile(0, temp_sum_cb);
             REL();
-            cb_push_back(temp_sum_cb, 1);
-            cb_pop_front(eltwise_mul_partials_cb_cb_id, 1);
-            cb_pop_front(out_cb_id, 1);
+            ckernel::cb_push_back(temp_sum_cb, 1);
+            ckernel::cb_pop_front(eltwise_mul_partials_cb_cb_id, 1);
+            ckernel::cb_pop_front(out_cb_id, 1);
 
             copy_tile_to_dst_init_short(temp_sum_cb);
             ACQ();
-            cb_wait_front(temp_sum_cb, 1);
-            cb_reserve_back(out_cb_id, 1);
-            copy_tile(temp_sum_cb, 0, 0);
-            pack_tile(0, out_cb_id);
+            ckernel::cb_wait_front(temp_sum_cb, 1);
+            ckernel::cb_reserve_back(out_cb_id, 1);
+            ckernel:: copy_tile(temp_sum_cb, 0, 0);
+            ckernel:: pack_tile(0, out_cb_id);
             REL();
-            cb_push_back(out_cb_id, 1);
-            cb_pop_front(temp_sum_cb, 1);
+            ckernel::cb_push_back(out_cb_id, 1);
+            ckernel::cb_pop_front(temp_sum_cb, 1);
         }
     }
 }

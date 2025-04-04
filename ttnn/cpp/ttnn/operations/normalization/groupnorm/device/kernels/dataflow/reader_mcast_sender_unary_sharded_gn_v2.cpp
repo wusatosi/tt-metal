@@ -160,7 +160,7 @@ void kernel_main() {
     uint32_t in0_l1_read_addr = get_read_ptr(cb_in0);
     uint64_t noc_addr_in0 = get_noc_addr(in0_l1_read_addr);
     for (uint32_t m = 0; m < per_core_M; ++m) {
-        cb_reserve_back(cb_repack, per_core_N);
+        ckernel::cb_reserve_back(cb_repack, per_core_N);
         uint32_t l1_write_addr_repack = get_write_ptr(cb_repack);
         for (uint32_t i = 0; i < TILE_HEIGHT; ++i) {
             noc_async_read(noc_addr_in0, l1_write_addr_repack, per_core_N_bytes);
@@ -168,7 +168,7 @@ void kernel_main() {
             l1_write_addr_repack += per_core_N_bytes_with_stride;
         }
         noc_async_read_barrier();
-        cb_push_back(cb_repack, per_core_N);
+        ckernel::cb_push_back(cb_repack, per_core_N);
     }
 #endif
 
@@ -182,7 +182,7 @@ void kernel_main() {
         for (uint32_t m = 0; m < num_batch_group; ++m) {
             for (uint32_t n = 0; n < 2; ++n) {
                 // wait for local data ready
-                cb_wait_front(cb_ex_partial, 1);
+                ckernel::cb_wait_front(cb_ex_partial, 1);
 
                 // read self Ex partial - read a full tile for overwriting garbabge in L1
                 uint32_t l1_read_addr_ex_par = get_read_ptr(cb_ex_partial);
@@ -197,7 +197,7 @@ void kernel_main() {
                 noc_semaphore_set(reduce_receiver_semaphore_addr_ptr, 0);
 
                 // read data from other cores
-                cb_reserve_back(cb_ex_external, 1);
+                ckernel::cb_reserve_back(cb_ex_external, 1);
                 for (uint32_t i = 0; i < num_mcast_cores - 1; ++i) {
                     uint64_t noc_addr_ex_par =
                         get_noc_addr(noc_coord_x[i + 1], noc_coord_y[i + 1], l1_read_addr_ex_par);
@@ -205,11 +205,11 @@ void kernel_main() {
                     l1_write_addr_external += 16;
                     noc_async_read_barrier();
                 }
-                cb_push_back(cb_ex_external, 1);
+                ckernel::cb_push_back(cb_ex_external, 1);
 
                 // global reduce
-                cb_wait_front(cb_ex, 1);
-                cb_pop_front(cb_ex_partial, 1);
+                ckernel::cb_wait_front(cb_ex, 1);
+                ckernel::cb_pop_front(cb_ex_partial, 1);
 
                 // mcast to other cores
                 uint32_t l1_read_addr_ex = get_read_ptr(cb_ex);
@@ -250,7 +250,7 @@ void kernel_main() {
                         false);
                 }
                 noc_async_write_barrier();
-                cb_pop_front(cb_ex, 1);
+                ckernel::cb_pop_front(cb_ex, 1);
             }
         }
     }
@@ -258,7 +258,7 @@ void kernel_main() {
 #if defined(READER_REPACK) and defined(UNTILIZE_OUT)
     uint32_t l1_write_addr_repack = get_write_ptr(cb_out0);
     for (uint32_t m = 0; m < per_core_M; ++m) {
-        cb_wait_front(cb_repack_out, per_core_N);
+        ckernel::cb_wait_front(cb_repack_out, per_core_N);
         uint32_t in0_l1_read_addr = get_read_ptr(cb_repack_out);
         uint64_t noc_addr_in0 = get_noc_addr(in0_l1_read_addr);
         for (uint32_t i = 0; i < TILE_HEIGHT; ++i) {
@@ -267,7 +267,7 @@ void kernel_main() {
             l1_write_addr_repack += per_core_N_bytes;
         }
         noc_async_read_barrier();
-        cb_pop_front(cb_repack_out, per_core_N);
+        ckernel::cb_pop_front(cb_repack_out, per_core_N);
     }
 #endif
 }

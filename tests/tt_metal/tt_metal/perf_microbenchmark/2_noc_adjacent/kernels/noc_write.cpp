@@ -17,7 +17,7 @@ void kernel_main() {
     uint32_t transfer_size = get_tile_size(cb0_id) * tiles_per_transfer;
 
     uint32_t cb0_addr;
-    cb_reserve_back(cb0_id, 1);
+    ckernel::cb_reserve_back(cb0_id, 1);
     cb0_addr = get_write_ptr(cb0_id);
 
     for (uint32_t i = 0; i < iter_count; i++) {

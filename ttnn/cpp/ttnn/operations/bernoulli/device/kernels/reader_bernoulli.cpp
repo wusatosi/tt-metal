@@ -17,10 +17,10 @@ void kernel_main() {
         .bank_base_address = input_addr, .page_size = get_tile_size(in_cb_id), .data_format = get_dataformat(in_cb_id)};
 
     for (uint32_t i = start_id; i < end_id; ++i) {
-        cb_reserve_back(in_cb_id, 1);
+        ckernel::cb_reserve_back(in_cb_id, 1);
         uint32_t in_cb_write_ptr = get_write_ptr(in_cb_id);
         noc_async_read_tile(i, input_addrg, in_cb_write_ptr);
         noc_async_read_barrier();
-        cb_push_back(in_cb_id, 1);
+        ckernel::cb_push_back(in_cb_id, 1);
     }
 }

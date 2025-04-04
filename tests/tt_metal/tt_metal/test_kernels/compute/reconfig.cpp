@@ -24,12 +24,12 @@ void MAIN {
     binary_op_init_common(cb_in0, cb_in1, cb_out0);
     add_tiles_init_nof();
     for (uint32_t block = 0; block < num_tiles; ++block) {
-        cb_wait_front(cb_in0, ublock_size_tiles);
-        cb_wait_front(cb_in1, ublock_size_tiles);
-        cb_reserve_back(cb_out0, ublock_size_tiles);
-        cb_reserve_back(cb_out1, ublock_size_tiles);
+        ckernel::cb_wait_front(cb_in0, ublock_size_tiles);
+        ckernel::cb_wait_front(cb_in1, ublock_size_tiles);
+        ckernel::cb_reserve_back(cb_out0, ublock_size_tiles);
+        ckernel::cb_reserve_back(cb_out1, ublock_size_tiles);
 
-        acquire_dst();
+        ckernel::acquire_dst();
 
         // ------------------------- Copy to DEST -----------------------------
 
@@ -40,15 +40,15 @@ void MAIN {
         // This call will test copy_tile_to_dst_init_short as well
         copy_tile_to_dst_init_short_with_dt(cb_in0, cb_in2);
 
-        cb_wait_front(cb_in2, ublock_size_tiles);
+        ckernel::cb_wait_front(cb_in2, ublock_size_tiles);
 #if (BLOCK_COPY == 1)
         for (uint32_t u_cnt = 0; u_cnt < ublock_size_tiles; u_cnt++) {
-            copy_tile(cb_in2, 0, 0);
+            ckernel:: copy_tile(cb_in2, 0, 0);
         }
 #elif (BLOCK_COPY == 0)
         copy_block_matmul_partials(cb_in2, 0, 0, ublock_size_tiles);
 #endif
-        cb_pop_front(cb_in2, ublock_size_tiles);
+        ckernel::cb_pop_front(cb_in2, ublock_size_tiles);
 
         // -------------------- Addition with acc -----------------------------
 
@@ -100,12 +100,12 @@ void MAIN {
         pack_reconfig_l1_acc(false);
 
         matmul_pack_tile(0, cb_out1, ublock_size_tiles);
-        release_dst();
+        ckernel:: release_dst();
 
-        cb_pop_front(cb_in0, ublock_size_tiles);
-        cb_pop_front(cb_in1, ublock_size_tiles);
-        cb_push_back(cb_out0, ublock_size_tiles);
-        cb_push_back(cb_out1, ublock_size_tiles);
+        ckernel::cb_pop_front(cb_in0, ublock_size_tiles);
+        ckernel::cb_pop_front(cb_in1, ublock_size_tiles);
+        ckernel::cb_push_back(cb_out0, ublock_size_tiles);
+        ckernel::cb_push_back(cb_out1, ublock_size_tiles);
     }
 }
 }  // namespace NAMESPACE

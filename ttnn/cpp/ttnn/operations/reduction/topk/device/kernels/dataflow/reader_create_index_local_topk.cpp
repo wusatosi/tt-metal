@@ -12,7 +12,7 @@
  */
 FORCE_INLINE void generate_index_tile(const uint32_t cb_id, const uint32_t wt) {
     // TODO: investigate moving to compile time (binary size is at risk)
-    cb_reserve_back(cb_id, 1);
+    ckernel::cb_reserve_back(cb_id, 1);
     uint32_t write_addr = get_write_ptr(cb_id);
     volatile tt_l1_ptr uint32_t* ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(write_addr);
     uint16_t wt_offset = wt << 5;
@@ -29,7 +29,7 @@ FORCE_INLINE void generate_index_tile(const uint32_t cb_id, const uint32_t wt) {
             }
         }
     }
-    cb_push_back(cb_id, 1);
+    ckernel::cb_push_back(cb_id, 1);
 }
 
 void kernel_main() {
@@ -59,11 +59,11 @@ void kernel_main() {
     // double buffering four Wt_local sized CBs)
     for (uint32_t i = start_ht; i < Ht; ++i) {
         for (uint32_t j = start_wt; j < start_wt + Wt_local; ++j) {
-            cb_reserve_back(cb_id_in0, onetile);
+            ckernel::cb_reserve_back(cb_id_in0, onetile);
             uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
             noc_async_read_tile(i * Wt + j, s, l1_write_addr);
             noc_async_read_barrier();
-            cb_push_back(cb_id_in0, onetile);
+            ckernel::cb_push_back(cb_id_in0, onetile);
             generate_index_tile(cb_id_in1, j);  // index tensor tile at width chunk j
         }
     }

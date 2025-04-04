@@ -29,8 +29,8 @@ void kernel_main() {
         uint64_t src0_noc_addr = get_noc_addr_from_bank_id<true>(src0_dram_bank_id, src0_addr);
         uint64_t src1_noc_addr = get_noc_addr_from_bank_id<true>(src1_dram_bank_id, src1_addr);
 
-        cb_reserve_back(in0_cb, ublock_size_tiles);
-        cb_reserve_back(in1_cb, ublock_size_tiles);
+        ckernel::cb_reserve_back(in0_cb, ublock_size_tiles);
+        ckernel::cb_reserve_back(in1_cb, ublock_size_tiles);
 
         l1_write_addr_in0 = get_write_ptr(in0_cb);
         l1_write_addr_in1 = get_write_ptr(in1_cb);
@@ -40,8 +40,8 @@ void kernel_main() {
 
         noc_async_read_barrier();
 
-        cb_push_back(in0_cb, ublock_size_tiles);
-        cb_push_back(in1_cb, ublock_size_tiles);
+        ckernel::cb_push_back(in0_cb, ublock_size_tiles);
+        ckernel::cb_push_back(in1_cb, ublock_size_tiles);
 
         src0_addr += ublock_size_bytes_0;
         src1_addr += ublock_size_bytes_1;

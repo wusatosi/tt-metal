@@ -59,7 +59,7 @@ void kernel_main() {
     uint32_t curr_block_trid = 1;
     uint32_t block_trid_to_wait = 1;
 
-    cb_reserve_back(cb_id, block_num_tiles);
+    ckernel::cb_reserve_back(cb_id, block_num_tiles);
     for (uint32_t block = 0; block < num_blocks; ++block) {
         uint32_t l1_write_addr = get_write_ptr(cb_id);
 

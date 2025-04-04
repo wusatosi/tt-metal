@@ -105,12 +105,12 @@ void kernel_main() {
             // Chunked means that we have paged attention
             const InterleavedAddrGen<page_table_is_dram> page_table_gen = {
                 .bank_base_address = page_table_addr, .page_size = page_table_stick_size};
-            cb_reserve_back(cb_id_page_table, 1);
+            ckernel::cb_reserve_back(cb_id_page_table, 1);
             uint32_t page_table_cb_wr_ptr = get_write_ptr(cb_id_page_table);
             uint64_t page_table_noc_addr = get_noc_addr(nb, page_table_gen);
             noc_async_read(page_table_noc_addr, page_table_cb_wr_ptr, page_table_stick_size);
             noc_async_read_barrier();
-            cb_push_back(cb_id_page_table, 1);
+            ckernel::cb_push_back(cb_id_page_table, 1);
             page_table_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(page_table_cb_wr_ptr);
         }
 
@@ -220,7 +220,7 @@ void kernel_main() {
                         // Due to loop bounds, we should never have k_low >= q_high. Can simplify this conditional check
                         // Read mask chunk
                         // When a mask is provided, there will be no padding on q or kv.
-                        cb_reserve_back(cb_mask_in, mask_chunk_tiles);
+                        ckernel::cb_reserve_back(cb_mask_in, mask_chunk_tiles);
                         uint32_t mask_write_ptr = get_write_ptr(cb_mask_in);
                         barrier_count = 0;
                         mask_tile_id = mask_batch_offset + q_chunk * Sq_chunk_t * Skt /*row_offset*/ + k_chunk * Sk_chunk_t /*col_offset*/;
@@ -239,7 +239,7 @@ void kernel_main() {
                             mask_tile_id += Skt;
                         }
                         noc_async_read_barrier();
-                        cb_push_back(cb_mask_in, mask_chunk_tiles);
+                        ckernel::cb_push_back(cb_mask_in, mask_chunk_tiles);
                     }
 
                     if constexpr (is_chunked) {
@@ -276,7 +276,7 @@ void kernel_main() {
         }
 
         if constexpr (is_chunked) {
-            cb_pop_front(cb_id_page_table, 1);
+            ckernel::cb_pop_front(cb_id_page_table, 1);
         }
     }
 }

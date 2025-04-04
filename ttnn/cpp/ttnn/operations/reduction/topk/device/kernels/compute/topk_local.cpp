@@ -99,34 +99,34 @@ void MAIN {
         copy_tile_to_dst_init_short_with_dt(index_transposed_cb_index, input_transposed_cb_index);
         pack_reconfig_data_format(input_transposed_cb_index);
 
-        cb_wait_front(input_transposed_cb_index, Kt);
+        ckernel::cb_wait_front(input_transposed_cb_index, Kt);
         for (uint32_t i = 0; i < Kt; ++i) {
-            acquire_dst();
-            cb_reserve_back(values_cb_index, 1);
-            copy_tile(input_transposed_cb_index, i, 0);
-            pack_tile(0, values_cb_index);
-            cb_push_back(values_cb_index, 1);
-            release_dst();
+            ckernel::acquire_dst();
+            ckernel::cb_reserve_back(values_cb_index, 1);
+            ckernel:: copy_tile(input_transposed_cb_index, i, 0);
+            ckernel:: pack_tile(0, values_cb_index);
+            ckernel::cb_push_back(values_cb_index, 1);
+            ckernel:: release_dst();
         }
-        cb_wait_front(input_transposed_cb_index, Wt);
-        cb_pop_front(input_transposed_cb_index, Wt);
+        ckernel::cb_wait_front(input_transposed_cb_index, Wt);
+        ckernel::cb_pop_front(input_transposed_cb_index, Wt);
 
         // copy local chunk's topk index tiles into output buffer to send off to the gather core to get the final topk
         // indices
         reconfig_data_format_srca(index_transposed_cb_index);
         copy_tile_to_dst_init_short_with_dt(input_transposed_cb_index, index_transposed_cb_index);
         pack_reconfig_data_format(index_transposed_cb_index);
-        cb_wait_front(index_transposed_cb_index, Kt);
+        ckernel::cb_wait_front(index_transposed_cb_index, Kt);
         for (uint32_t i = 0; i < Kt; ++i) {
-            acquire_dst();
-            cb_reserve_back(output_ind_cb_index, 1);
-            copy_tile(index_transposed_cb_index, i, 0);
-            pack_tile(0, output_ind_cb_index);
-            cb_push_back(output_ind_cb_index, 1);
-            release_dst();
+            ckernel::acquire_dst();
+            ckernel::cb_reserve_back(output_ind_cb_index, 1);
+            ckernel:: copy_tile(index_transposed_cb_index, i, 0);
+            ckernel:: pack_tile(0, output_ind_cb_index);
+            ckernel::cb_push_back(output_ind_cb_index, 1);
+            ckernel:: release_dst();
         }
-        cb_wait_front(index_transposed_cb_index, Wt);
-        cb_pop_front(index_transposed_cb_index, Wt);
+        ckernel::cb_wait_front(index_transposed_cb_index, Wt);
+        ckernel::cb_pop_front(index_transposed_cb_index, Wt);
     }
 }
 }  // namespace NAMESPACE

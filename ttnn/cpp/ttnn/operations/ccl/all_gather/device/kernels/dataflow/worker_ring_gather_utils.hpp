@@ -77,7 +77,7 @@ FORCE_INLINE void write_and_send_chunk_write_to_tensor_segment(
         l1_read_addr += page_size * contig_pages;
     }
     noc_async_write_barrier();
-    cb_pop_front(cb_id, num_pages);
+    ckernel::cb_pop_front(cb_id, num_pages);
 }
 
 
@@ -95,7 +95,7 @@ FORCE_INLINE void write_and_send_chunk(
     const uint32_t& num_pages,
     const uint32_t& page_size,
     ccl::edm::WorkerToEdmSender<termination_mode> &sender_adapter) {
-    cb_wait_front(cb_id, num_pages);
+    ckernel::cb_wait_front(cb_id, num_pages);
     uint32_t l1_read_addr = get_read_ptr(cb_id);
     sender_adapter.send_payload_non_blocking(cb_id, num_pages, page_size);
 
@@ -130,7 +130,7 @@ FORCE_INLINE void write_and_send_chunk(
     const uint32_t& page_size,
     uint64_t remote_l1_write_addr,
     uint64_t eth_l1_sender_semaphore_addr) {
-    cb_wait_front(cb_id, num_pages);
+    ckernel::cb_wait_front(cb_id, num_pages);
     uint32_t l1_read_addr = get_read_ptr(cb_id);
     noc_async_write(l1_read_addr, remote_l1_write_addr, page_size * num_pages);
     noc_semaphore_inc(eth_l1_sender_semaphore_addr, 1);
@@ -163,7 +163,7 @@ FORCE_INLINE void write_chunk(
     const uint32_t& row_offset,
     const uint32_t& num_pages,
     const uint32_t& page_size) {
-    cb_wait_front(cb_id, num_pages);
+    ckernel::cb_wait_front(cb_id, num_pages);
     uint32_t l1_read_addr = get_read_ptr(cb_id);
     int32_t contig_pages = 1;
 
@@ -210,7 +210,7 @@ FORCE_INLINE void write_chunk(
         l1_read_addr += page_size * contig_pages;
     }
     noc_async_write_barrier();
-    cb_pop_front(cb_id, num_pages);
+    ckernel::cb_pop_front(cb_id, num_pages);
 }
 
 
@@ -227,7 +227,7 @@ FORCE_INLINE void write_chunk_legacy(
     const uint32_t& row_offset,
     const uint32_t& num_pages,
     const uint32_t& page_size) {
-    cb_wait_front(cb_id, num_pages);
+    ckernel::cb_wait_front(cb_id, num_pages);
     uint32_t l1_read_addr = get_read_ptr(cb_id);
     int32_t contig_pages = 1;
 
@@ -274,7 +274,7 @@ FORCE_INLINE void write_chunk_legacy(
         l1_read_addr += page_size * contig_pages;
     }
     noc_async_write_barrier();
-    cb_pop_front(cb_id, num_pages);
+    ckernel::cb_pop_front(cb_id, num_pages);
 }
 
 // read chunk from input tensor (local chip)
@@ -286,7 +286,7 @@ FORCE_INLINE void read_chunk_from_input_tensor(
     const uint32_t& num_pages,
     const uint32_t& page_size) {
     const uint32_t end_read_idx = input_page_idx + num_pages;
-    cb_reserve_back(cb_id, num_pages);
+    ckernel::cb_reserve_back(cb_id, num_pages);
     uint32_t local_l1_read_addr = get_write_ptr(cb_id);
     int32_t contig_pages = 1;
 
@@ -310,7 +310,7 @@ FORCE_INLINE void read_chunk_from_input_tensor(
         input_page_idx += contig_pages;
     }
     noc_async_read_barrier();
-    cb_push_back(cb_id, num_pages);
+    ckernel::cb_push_back(cb_id, num_pages);
 }
 
 // read chunk from output tensor (local chip)
@@ -327,7 +327,7 @@ FORCE_INLINE void read_chunk_from_output_tensor(
     const uint32_t& row_offset,
     const uint32_t& num_pages,
     const uint32_t& page_size) {
-    cb_reserve_back(cb_id, num_pages);
+    ckernel::cb_reserve_back(cb_id, num_pages);
     uint32_t local_l1_read_addr = get_write_ptr(cb_id);
     uint32_t contig_pages = 1;
     for (int32_t pages_remaining = num_pages; pages_remaining != 0; pages_remaining -= contig_pages) {
@@ -372,7 +372,7 @@ FORCE_INLINE void read_chunk_from_output_tensor(
         local_l1_read_addr += page_size * contig_pages;
     }
     noc_async_read_barrier();
-    cb_push_back(cb_id, num_pages);
+    ckernel::cb_push_back(cb_id, num_pages);
 }
 
 template <typename AddrGen>
@@ -390,7 +390,7 @@ FORCE_INLINE void read_chunk_from_output_tensor_v2(
     bool& last_page_of_worker) {
     // we expected caller to reset this and the last curr_page_idx when we set it true
     ASSERT(last_page_of_worker == false);
-    cb_reserve_back(cb_id, num_pages);
+    ckernel::cb_reserve_back(cb_id, num_pages);
     uint32_t local_l1_read_addr = get_write_ptr(cb_id);
     for (uint32_t i = 0; i < num_pages; ++i) {
 #ifdef ROW_MAJOR_LAYOUT
@@ -430,7 +430,7 @@ FORCE_INLINE void read_chunk_from_output_tensor_v2(
         local_l1_read_addr += page_size;
     }
     noc_async_read_barrier();
-    cb_push_back(cb_id, num_pages);
+    ckernel::cb_push_back(cb_id, num_pages);
 }
 
 template <typename AddrGen>
@@ -446,7 +446,7 @@ FORCE_INLINE void write_chunk_v2(
     const uint32_t num_pages,
     const uint32_t page_size,
     bool& last_page_of_worker) {
-    cb_wait_front(cb_id, num_pages);
+    ckernel::cb_wait_front(cb_id, num_pages);
     uint32_t l1_read_addr = get_read_ptr(cb_id);
     for (uint32_t i = 0; i < num_pages; ++i) {
 #ifdef ROW_MAJOR_LAYOUT
@@ -485,7 +485,7 @@ FORCE_INLINE void write_chunk_v2(
         l1_read_addr += page_size;
     }
     noc_async_write_barrier();
-    cb_pop_front(cb_id, num_pages);
+    ckernel::cb_pop_front(cb_id, num_pages);
 }
 
 template <typename AddrGen>
@@ -572,7 +572,7 @@ FORCE_INLINE void read_wrapped_chunk_from_output_tensor(
 
     // we expected caller to reset this and the last curr_page_idx when we set it true
     ASSERT(last_page_of_worker == false);
-    cb_reserve_back(cb_id, num_pages);
+    ckernel::cb_reserve_back(cb_id, num_pages);
 
     read_wrapped_chunk_from_output_tensor_to_address(
         curr_page_idx,
@@ -586,7 +586,7 @@ FORCE_INLINE void read_wrapped_chunk_from_output_tensor(
         num_pages,
         page_size,
         last_page_of_worker);
-    cb_push_back(cb_id, num_pages);
+    ckernel::cb_push_back(cb_id, num_pages);
 }
 
 
@@ -744,7 +744,7 @@ FORCE_INLINE void write_wrapped_chunk(
     const uint32_t page_size,
     bool& last_page_of_worker) {
 
-    cb_wait_front(cb_id, num_pages);
+    ckernel::cb_wait_front(cb_id, num_pages);
     uint32_t l1_read_addr = get_read_ptr(cb_id);
 
     int32_t contig_pages = 1;
@@ -791,5 +791,5 @@ FORCE_INLINE void write_wrapped_chunk(
         l1_read_addr += page_size * contig_pages;
     }
     noc_async_write_barrier();
-    cb_pop_front(cb_id, num_pages);
+    ckernel::cb_pop_front(cb_id, num_pages);
 }

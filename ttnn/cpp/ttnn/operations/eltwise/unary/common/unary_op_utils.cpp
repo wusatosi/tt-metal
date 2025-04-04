@@ -255,7 +255,7 @@ std::pair<string, string> get_op_init_and_func_default(UnaryOpType op_type, std:
         case UnaryOpType::GELU: op_init_and_name = {"gelu_tile_init();", fmt::format("gelu_tile({});", idst)}; break;
         case UnaryOpType::RSQRT: op_init_and_name = {"rsqrt_tile_init();", fmt::format("rsqrt_tile({});", idst)}; break;
         case UnaryOpType::RELU: op_init_and_name = {"relu_tile_init();", fmt::format("relu_tile({});", idst)}; break;
-        case UnaryOpType::SQRT: op_init_and_name = {"sqrt_tile_init();", fmt::format("sqrt_tile({});", idst)}; break;
+        case UnaryOpType::SQRT: op_init_and_name = {"sqrt_tile_init();", fmt::format("ckernel:: sqrt_tile({});", idst)}; break;
         case UnaryOpType::SIGMOID:
             op_init_and_name = {"sigmoid_tile_init();", fmt::format("sigmoid_tile({});", idst)};
             break;

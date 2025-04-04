@@ -23,13 +23,13 @@ void kernel_main() {
     constexpr uint32_t onetile = 1;
 
     const auto output_l1_read_addr = get_read_ptr(cb_id_output);
-    cb_wait_front(cb_id_output, onetile);
+    ckernel::cb_wait_front(cb_id_output, onetile);
     if (output_is_dram) {
         noc_async_write_tile(0, dram_output_addrg, output_l1_read_addr);
     } else {
         noc_async_write_tile(0, l1_output_addrg, output_l1_read_addr);
     }
     noc_async_write_barrier();
-    cb_pop_front(cb_id_output, onetile);
+    ckernel::cb_pop_front(cb_id_output, onetile);
 
 }  // void kernel_main()

@@ -10,56 +10,56 @@
 #include "compute_kernel_api/tilize.h"
 #include "compute_kernel_api/untilize.h"
 
-ALWI void ACQ() { acquire_dst(); }
-ALWI void REL() { release_dst(); }
+ALWI void ACQ() { ckernel::acquire_dst(); }
+ALWI void REL() { ckernel:: release_dst(); }
 
 ALWI void MUL_TILES(uint32_t in0_cb, uint32_t in1_cb, uint32_t out_cb, uint32_t num_tiles, uint32_t in1_idx) {
     // Multiply input by cos
-    cb_wait_front(in0_cb, num_tiles);
-    cb_wait_front(in1_cb, in1_idx + 1);
-    cb_reserve_back(out_cb, num_tiles);
+    ckernel::cb_wait_front(in0_cb, num_tiles);
+    ckernel::cb_wait_front(in1_cb, in1_idx + 1);
+    ckernel::cb_reserve_back(out_cb, num_tiles);
 
 #ifdef DECODE_MODE
     ACQ();
     mul_bcast_rows_init_short(in0_cb, in1_cb);
     mul_tiles_bcast_rows(in0_cb, in1_cb, 0, in1_idx, 0);
-    pack_tile(0, out_cb);
+    ckernel:: pack_tile(0, out_cb);
     REL();
-    cb_push_back(out_cb, num_tiles);
-    cb_pop_front(in0_cb, num_tiles);
+    ckernel::cb_push_back(out_cb, num_tiles);
+    ckernel::cb_pop_front(in0_cb, num_tiles);
 // We don't pop in1 in decode which is sin/cos since we don't stream
 #else
     ACQ();
     mul_tiles_init(in0_cb, in1_cb);
     mul_tiles(in0_cb, in1_cb, 0, 0, 0);
-    pack_tile(0, out_cb);
+    ckernel:: pack_tile(0, out_cb);
     REL();
-    cb_push_back(out_cb, num_tiles);
-    cb_pop_front(in0_cb, num_tiles);
-    cb_pop_front(in1_cb, num_tiles);
+    ckernel::cb_push_back(out_cb, num_tiles);
+    ckernel::cb_pop_front(in0_cb, num_tiles);
+    ckernel::cb_pop_front(in1_cb, num_tiles);
 #endif
 }
 
 ALWI void UNTILIZE_TILES(uint32_t in0_cb, uint32_t out_cb, uint32_t num_tiles) {
     untilize_init_short(in0_cb);
-    cb_wait_front(in0_cb, num_tiles);
-    cb_reserve_back(out_cb, num_tiles);
+    ckernel::cb_wait_front(in0_cb, num_tiles);
+    ckernel::cb_reserve_back(out_cb, num_tiles);
     untilize_block(in0_cb, num_tiles, out_cb);
-    cb_push_back(out_cb, num_tiles);
-    cb_pop_front(in0_cb, num_tiles);
+    ckernel::cb_push_back(out_cb, num_tiles);
+    ckernel::cb_pop_front(in0_cb, num_tiles);
     untilize_uninit(in0_cb);
 }
 
 ALWI void TILIZE_ROWS(uint32_t in0_cb, uint32_t sync_cb, uint32_t out_cb, uint32_t num_tiles) {
     tilize_init_short(in0_cb, num_tiles, out_cb);
-    cb_wait_front(sync_cb, num_tiles);
-    cb_reserve_back(out_cb, num_tiles);
+    ckernel::cb_wait_front(sync_cb, num_tiles);
+    ckernel::cb_reserve_back(out_cb, num_tiles);
     tilize_block(in0_cb, num_tiles, out_cb);
-    cb_push_back(out_cb, num_tiles);
+    ckernel::cb_push_back(out_cb, num_tiles);
 
     // Pop shared cbs after tilize
-    cb_pop_front(in0_cb, num_tiles);
-    cb_pop_front(sync_cb, num_tiles);
+    ckernel::cb_pop_front(in0_cb, num_tiles);
+    ckernel::cb_pop_front(sync_cb, num_tiles);
     tilize_uninit(in0_cb, out_cb);
 }
 
@@ -82,7 +82,7 @@ void MAIN {
 
     binary_op_init_common(in_cb, cos_cb, out_cb);
 
-    cb_wait_front(scalar_cb, onetile);
+    ckernel::cb_wait_front(scalar_cb, onetile);
 
     uint32_t updated_cos_cb = cos_cb;
     uint32_t updated_sin_cb = sin_cb;
@@ -109,15 +109,15 @@ void MAIN {
 #endif
             if (j < half_Wt) {
                 // Multiply half of the rotated input by scalar (-1)
-                cb_wait_front(rotated_in_cb, onetile);
-                cb_reserve_back(rotated_in_interm_cb, onetile);
+                ckernel::cb_wait_front(rotated_in_cb, onetile);
+                ckernel::cb_reserve_back(rotated_in_interm_cb, onetile);
                 ACQ();
                 mul_tiles_bcast_scalar_init_short(rotated_in_cb, scalar_cb);
                 mul_tiles_bcast_scalar(rotated_in_cb, scalar_cb, 0, 0, 0);
-                pack_tile(0, rotated_in_interm_cb);
+                ckernel:: pack_tile(0, rotated_in_interm_cb);
                 REL();
-                cb_push_back(rotated_in_interm_cb, onetile);
-                cb_pop_front(rotated_in_cb, onetile);
+                ckernel::cb_push_back(rotated_in_interm_cb, onetile);
+                ckernel::cb_pop_front(rotated_in_cb, onetile);
                 // Multiply rotated input by sin
                 MUL_TILES(rotated_in_interm_cb, updated_sin_cb, sin_interm_cb, onetile, in1_idx);
             } else {
@@ -129,18 +129,18 @@ void MAIN {
             MUL_TILES(in_cb, updated_cos_cb, cos_interm_cb, onetile, in1_idx);
 
             // Add applied sin/cos tensors
-            cb_wait_front(cos_interm_cb, onetile);
-            cb_wait_front(sin_interm_cb, onetile);
-            cb_reserve_back(out_cb, onetile);
+            ckernel::cb_wait_front(cos_interm_cb, onetile);
+            ckernel::cb_wait_front(sin_interm_cb, onetile);
+            ckernel::cb_reserve_back(out_cb, onetile);
 
             ACQ();
             add_tiles_init(cos_interm_cb, sin_interm_cb);
             add_tiles(cos_interm_cb, sin_interm_cb, 0, 0, 0);
-            pack_tile(0, out_cb);
+            ckernel:: pack_tile(0, out_cb);
             REL();
-            cb_push_back(out_cb, onetile);
-            cb_pop_front(cos_interm_cb, onetile);
-            cb_pop_front(sin_interm_cb, onetile);
+            ckernel::cb_push_back(out_cb, onetile);
+            ckernel::cb_pop_front(cos_interm_cb, onetile);
+            ckernel::cb_pop_front(sin_interm_cb, onetile);
         }
     }
 }

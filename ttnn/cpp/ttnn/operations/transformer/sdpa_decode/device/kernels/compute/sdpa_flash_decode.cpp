@@ -104,11 +104,11 @@ void MAIN {
             cur_pos = cur_pos_arg;
         } else {
             constexpr uint32_t cb_index_id = tt::CBIndex::c_8;
-            cb_wait_front(cb_index_id, 1);
+            ckernel::cb_wait_front(cb_index_id, 1);
             volatile uint32_t* index_addr_ptr;
-            cb_get_tile(cb_index_id, 0, &index_addr_ptr);
+            ckernel::cb_get_tile(cb_index_id, 0, &index_addr_ptr);
             cur_pos = index_addr_ptr[4 + cur_batch];
-            cb_release_tile(cb_index_id);
+            ckernel::cb_release_tile(cb_index_id);
         }
 
         if (cur_pos == UINT32_MAX) {
@@ -128,7 +128,7 @@ void MAIN {
     }
 
     mm_init(cb_q_in, cb_k_in, cb_out_final);
-    cb_wait_front(cb_q_in, q_chunk_tiles);
+    ckernel::cb_wait_front(cb_q_in, q_chunk_tiles);
 
     for (uint32_t cur_head_work = 0; cur_head_work < num_heads_per_core; ++cur_head_work) {
         flash_attention_loop<
@@ -218,14 +218,14 @@ void MAIN {
                     // copy tiles
                     // reconfig_data_format(cb_cur_max, cb_cur_max); // DEBUG
                     // pack_reconfig_data_format(cb_prev_max);
-                    cb_pop_front(cb_prev_max, Sq_chunk_t);
-                    cb_pop_front(cb_m_in, Sq_chunk_t);
+                    ckernel::cb_pop_front(cb_prev_max, Sq_chunk_t);
+                    ckernel::cb_pop_front(cb_m_in, Sq_chunk_t);
                     copy_block(cb_cur_max, cb_prev_max, Sq_chunk_t);
                     copy_block(cb_cur_sum, cb_prev_sum, Sq_chunk_t);
                 }
             }
             /* cb_cur_sum = 1.0 / cb_cur_sum */
-            cb_push_back(cb_cur_sum, Sq_chunk_t);
+            ckernel::cb_push_back(cb_cur_sum, Sq_chunk_t);
 
             reconfig_data_format(cb_cur_sum, cb_cur_sum);  // DEBUG
             pack_reconfig_data_format(cb_cur_sum);
@@ -239,10 +239,10 @@ void MAIN {
             copy_block(cb_out_accumulate_im, cb_out_final, out_chunk_tiles);
 
             // free up cb_prev_max after K chunks
-            cb_pop_front(cb_prev_max, Sq_chunk_t);
-            cb_pop_front(cb_prev_sum, Sq_chunk_t);
+            ckernel::cb_pop_front(cb_prev_max, Sq_chunk_t);
+            ckernel::cb_pop_front(cb_prev_sum, Sq_chunk_t);
         }
     }
-    cb_pop_front(cb_q_in, q_chunk_tiles);
+    ckernel::cb_pop_front(cb_q_in, q_chunk_tiles);
 }
 }  // namespace NAMESPACE

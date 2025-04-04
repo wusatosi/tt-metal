@@ -34,7 +34,7 @@ void kernel_main() {
     // reader copied the data from DRAM to CB buffer.
     // writer copy the data from CB buffer to DRAM.
     for (uint32_t i = 0; i < num_sticks; ++i) {
-        cb_wait_front(cb_id_out0, 1);
+        ckernel::cb_wait_front(cb_id_out0, 1);
         uint32_t curr_index = i % (in_width * in_height);
         uint32_t curr_batch = i / (in_width * in_height);
         uint32_t x = curr_index / in_width;
@@ -52,6 +52,6 @@ void kernel_main() {
             }
         }
         noc_async_write_barrier();
-        cb_pop_front(cb_id_out0, 1);
+        ckernel::cb_pop_front(cb_id_out0, 1);
     }
 }

@@ -60,7 +60,7 @@ ALWI void reduce_init_delta_math() {
 }
 
 template <ReduceDim reduce_dim = REDUCE_DIM>
-ALWI void reduce_revert_delta(uint32_t ocb) {
+ALWI void ckernel::reduce_revert_delta(uint32_t ocb) {
     PACK((llk_pack_reduce_config_v2<reduce_dim, false, true, DST_ACCUM_MODE>(ocb)));
 }
 

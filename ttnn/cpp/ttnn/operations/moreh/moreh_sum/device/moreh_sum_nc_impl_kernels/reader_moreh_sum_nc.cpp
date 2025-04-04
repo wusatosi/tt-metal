@@ -41,11 +41,11 @@ void kernel_main() {
     for (uint32_t i = start_id; i < start_id + num_output_tiles; i++) {
         auto read_tile_id = (dim == 0) ? (i) : (get_read_tile_id(i, reduce_tile_size, inner_tile_size));
         for (uint32_t j = 0; j < num_input_tiles; ++j) {
-            cb_reserve_back(cb_id_in0, onetile);
+            ckernel::cb_reserve_back(cb_id_in0, onetile);
             l1_write_addr_in0 = get_write_ptr(cb_id_in0);
             noc_async_read_tile(read_tile_id, input_addrg, l1_write_addr_in0);
             noc_async_read_barrier();
-            cb_push_back(cb_id_in0, onetile);
+            ckernel::cb_push_back(cb_id_in0, onetile);
             read_tile_id += inner_tile_size;
         }
     }

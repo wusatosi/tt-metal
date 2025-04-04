@@ -17,13 +17,13 @@ void kernel_main() {
     for (uint32_t i = 0; i < num_tiles; i += ublock_size_tiles) {
         uint64_t dst_noc_addr = get_noc_addr_from_bank_id<true>(dst_dram_bank_id_addr, dst_addr);
 
-        cb_wait_front(out_cb, ublock_size_tiles);
+        ckernel::cb_wait_front(out_cb, ublock_size_tiles);
         uint32_t l1_read_addr = get_read_ptr(out_cb);
         noc_async_write(l1_read_addr, dst_noc_addr, ublock_size_bytes);
 
         noc_async_write_barrier();
 
-        cb_pop_front(out_cb, ublock_size_tiles);
+        ckernel::cb_pop_front(out_cb, ublock_size_tiles);
         dst_addr += ublock_size_bytes;
     }
 }

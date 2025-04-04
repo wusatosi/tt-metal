@@ -101,7 +101,7 @@ void kernel_main() {
     for (uint32_t outer_idx = 0; outer_idx < num_rows_per_core; ++outer_idx) {
         // For E[x]
         for (uint32_t inner_idx = 0; inner_idx < num_inner_tiles; inner_idx += block_size) {
-            cb_reserve_back(cb_id_input, block_size);
+            ckernel::cb_reserve_back(cb_id_input, block_size);
             for (uint32_t r = 0; r < block_size; r++) {
                 input_tile_idx = tile_offset + outer_idx * num_inner_tiles + inner_idx + r;
                 if (input_is_dram) {
@@ -111,12 +111,12 @@ void kernel_main() {
                 }
             }
             noc_async_read_barrier();
-            cb_push_back(cb_id_input, block_size);
+            ckernel::cb_push_back(cb_id_input, block_size);
         }  // inner_idx loop
 
         // For Var[x]
         for (uint32_t inner_idx = 0; inner_idx < num_inner_tiles; inner_idx += block_size) {
-            cb_reserve_back(cb_id_input, block_size);
+            ckernel::cb_reserve_back(cb_id_input, block_size);
             for (uint32_t r = 0; r < block_size; r++) {
                 input_tile_idx = tile_offset + outer_idx * num_inner_tiles + inner_idx + r;
                 if (input_is_dram) {
@@ -126,12 +126,12 @@ void kernel_main() {
                 }
             }
             noc_async_read_barrier();
-            cb_push_back(cb_id_input, block_size);
+            ckernel::cb_push_back(cb_id_input, block_size);
         }  // inner_idx loop
 
         // For (x - E[x]) * (1.0/(sqrt(E[(x-E[x])^2] + eps)))
         for (uint32_t inner_idx = 0; inner_idx < num_inner_tiles; inner_idx += block_size) {
-            cb_reserve_back(cb_id_input, block_size);
+            ckernel::cb_reserve_back(cb_id_input, block_size);
             for (uint32_t r = 0; r < block_size; r++) {
                 input_tile_idx = tile_offset + outer_idx * num_inner_tiles + inner_idx + r;
                 if (input_is_dram) {
@@ -141,7 +141,7 @@ void kernel_main() {
                 }
             }
             noc_async_read_barrier();
-            cb_push_back(cb_id_input, block_size);
+            ckernel::cb_push_back(cb_id_input, block_size);
 
             // input (N, C, H, W)
             // input_tile_idx = n * C * Ht * Wt + c * Ht * Wt + h * Wt + w
@@ -151,7 +151,7 @@ void kernel_main() {
             if (gamma_has_value) {
                 uint32_t gamma_tile_idx;
                 const auto gamma_l1_write_ptr = get_write_ptr(cb_id_gamma);
-                cb_reserve_back(cb_id_gamma, block_size);
+                ckernel::cb_reserve_back(cb_id_gamma, block_size);
                 for (uint32_t r = 0; r < block_size; r++) {
                     input_tile_idx = tile_offset + outer_idx * num_inner_tiles + inner_idx + r;
                     gamma_tile_idx = get_gamma_beta_tile_idx(input_tile_idx, HtWt, C, TILE_W);
@@ -174,14 +174,14 @@ void kernel_main() {
                         gamma_ptr[0] = gamma_ptr[tilized_gamma_idx_in_tile];
                     }
                 }
-                cb_push_back(cb_id_gamma, block_size);
+                ckernel::cb_push_back(cb_id_gamma, block_size);
             }
 
             // beta (1, 1, 1, C)
             if (beta_has_value) {
                 uint32_t beta_tile_idx;
                 const auto beta_l1_write_ptr = get_write_ptr(cb_id_beta);
-                cb_reserve_back(cb_id_beta, block_size);
+                ckernel::cb_reserve_back(cb_id_beta, block_size);
                 for (uint32_t r = 0; r < block_size; r++) {
                     input_tile_idx = tile_offset + outer_idx * num_inner_tiles + inner_idx + r;
                     beta_tile_idx = get_gamma_beta_tile_idx(input_tile_idx, HtWt, C, TILE_W);
@@ -203,7 +203,7 @@ void kernel_main() {
                         beta_ptr[0] = beta_ptr[tilized_beta_idx_in_tile];
                     }
                 }
-                cb_push_back(cb_id_beta, block_size);
+                ckernel::cb_push_back(cb_id_beta, block_size);
             }
         }  // inner_idx loop
     }  // outer_idx loop

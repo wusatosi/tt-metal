@@ -142,8 +142,8 @@ void kernel_main() {
 
 //  READER
 #ifdef IN1_SHARDED
-    cb_reserve_back(cb_id_in1, in1_block_num_tiles * num_blocks_inner_dim);
-    cb_push_back(cb_id_in1, in1_block_num_tiles * num_blocks_inner_dim);
+    ckernel::cb_reserve_back(cb_id_in1, in1_block_num_tiles * num_blocks_inner_dim);
+    ckernel::cb_push_back(cb_id_in1, in1_block_num_tiles * num_blocks_inner_dim);
 #else
     uint32_t l1_write_addr_in1;
 
@@ -213,7 +213,7 @@ void kernel_main() {
                     }
 #ifdef IN1_DRAM_SHARDED
                     // Operand 1
-                    cb_reserve_back(cb_id_in1, in1_block_num_tiles);
+                    ckernel::cb_reserve_back(cb_id_in1, in1_block_num_tiles);
 
                     uint64_t in1_start_address =
                         get_write_ptr(cb_id_in1);  // copy start address of block, to be used for mcasting
@@ -257,7 +257,7 @@ void kernel_main() {
 #else
 #ifndef IN1_SHARDED
                     // Operand 1
-                    cb_reserve_back(cb_id_in1, in1_block_num_tiles);
+                    ckernel::cb_reserve_back(cb_id_in1, in1_block_num_tiles);
                     l1_write_addr_in1 = get_write_ptr(cb_id_in1);
                     uint64_t in1_start_address =
                         l1_write_addr_in1;  // copy start address of block, to be used for mcasting
@@ -318,7 +318,7 @@ void kernel_main() {
 #endif
 
 #ifndef IN1_SHARDED
-                    cb_push_back(cb_id_in1, in1_block_num_tiles);
+                    ckernel::cb_push_back(cb_id_in1, in1_block_num_tiles);
 #endif
                 }
 #ifdef FUSE_BIAS
@@ -326,7 +326,7 @@ void kernel_main() {
                 if ((b == 0 && bh == 0) || num_blocks_w_dim > 1) {
                     // Operand 1
 #ifndef BIAS_SHARDED
-                    cb_reserve_back(cb_id_in3, in1_block_w);
+                    ckernel::cb_reserve_back(cb_id_in3, in1_block_w);
                     l1_write_addr_in3 = get_write_ptr(cb_id_in3);
 
                     uint64_t in3_start_address =
@@ -413,10 +413,10 @@ void kernel_main() {
                         in1_mcast_receiver_semaphore_addr, in1_mcast_receiver_semaphore_noc_addr, in1_mcast_num_cores);
 #endif  // SKIP_MCAST
 
-                    cb_push_back(cb_id_in3, in1_block_w);
+                    ckernel::cb_push_back(cb_id_in3, in1_block_w);
 #else
-                    cb_reserve_back(cb_id_in3, in1_block_w);
-                    cb_push_back(cb_id_in3, in1_block_w);
+                    ckernel::cb_reserve_back(cb_id_in3, in1_block_w);
+                    ckernel::cb_push_back(cb_id_in3, in1_block_w);
 #endif  // BIAS_SHARDED
                 }
 #endif  // FUSE_BIAS
@@ -446,7 +446,7 @@ void kernel_main() {
                             subblock_tiles_addr_skip = padded_subblock_tiles_addr_skip;
                         }
 
-                        cb_wait_front(cb_id_out0, out_subblock_tile_count);
+                        ckernel::cb_wait_front(cb_id_out0, out_subblock_tile_count);
                         uint32_t l1_read_addr = get_read_ptr(cb_id_out0);
 
                         for (uint32_t h = 0; h < out_subblock_h_; ++h) {
@@ -466,20 +466,20 @@ void kernel_main() {
                         }
 
                         noc_async_write_barrier();
-                        cb_pop_front(cb_id_out0, out_subblock_tile_count);
+                        ckernel::cb_pop_front(cb_id_out0, out_subblock_tile_count);
                         out_tensor_sbw_start_tile_id += out_tensor_next_subblock_stride_w;
                     }
                     // Pop fully padded subblocks along the row
                     if (bw == num_blocks_w_dim_ - 1) {
-                        cb_wait_front(cb_id_out0, padded_block_tiles_w_skip);
-                        cb_pop_front(cb_id_out0, padded_block_tiles_w_skip);
+                        ckernel::cb_wait_front(cb_id_out0, padded_block_tiles_w_skip);
+                        ckernel::cb_pop_front(cb_id_out0, padded_block_tiles_w_skip);
                     }
                     out_tensor_sbh_start_tile_id += out_tensor_next_subblock_stride_h;
                 }
                 // Pop row(s) of fully padded subblocks
                 if (bh == num_blocks_h_dim - 1) {
-                    cb_wait_front(cb_id_out0, padded_block_tiles_h_skip);
-                    cb_pop_front(cb_id_out0, padded_block_tiles_h_skip);
+                    ckernel::cb_wait_front(cb_id_out0, padded_block_tiles_h_skip);
+                    ckernel::cb_pop_front(cb_id_out0, padded_block_tiles_h_skip);
                 }
 
 #endif
@@ -498,7 +498,7 @@ void kernel_main() {
     }
 
 #if OUT_SHARDED
-    cb_wait_front(
+    ckernel::cb_wait_front(
         cb_id_out0,
         batch * out_num_nonzero_subblocks_h * out_num_nonzero_subblocks_w * out_subblock_w * out_subblock_h);
 #endif

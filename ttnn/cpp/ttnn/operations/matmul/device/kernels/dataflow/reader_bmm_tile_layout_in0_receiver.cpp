@@ -38,7 +38,7 @@ void kernel_main() {
             for (uint32_t bw = 0; bw < num_blocks_w_dim; ++bw) {
                 for (uint32_t block = 0; block < num_blocks_inner_dim; ++block) {
                     // Operand 0
-                    cb_reserve_back(cb_id_in0, in0_block_num_tiles);
+                    ckernel::cb_reserve_back(cb_id_in0, in0_block_num_tiles);
 
                     // Set in0 semaphore value to INVALID
                     noc_semaphore_set(in0_mcast_receiver_semaphore_addr_ptr, INVALID);
@@ -49,7 +49,7 @@ void kernel_main() {
                     // wait on in0 semaphore value to become VALID (set by mcast sender after it multicasts data)
                     noc_semaphore_wait(in0_mcast_receiver_semaphore_addr_ptr, VALID);
 
-                    cb_push_back(cb_id_in0, in0_block_num_tiles);
+                    ckernel::cb_push_back(cb_id_in0, in0_block_num_tiles);
                 }
             }
         }

@@ -181,7 +181,7 @@ void kernel_main() {
         }
 
         // Reserve a slot in the circular buffer, get L1 pointer
-        cb_reserve_back(tt::CBIndex::c_0, 1);
+        ckernel::cb_reserve_back(tt::CBIndex::c_0, 1);
         uint32_t src_buffer_l1_addr = get_write_ptr(tt::CBIndex::c_0);
 
         // --------------------------------------------------------------------
@@ -264,7 +264,7 @@ void kernel_main() {
 
         // Wait for reads to complete, push the tile
         noc_async_read_barrier();
-        cb_push_back(tt::CBIndex::c_0, 1);
+        ckernel::cb_push_back(tt::CBIndex::c_0, 1);
     }
 
     // ------------------------------------------------------------------------
@@ -272,9 +272,9 @@ void kernel_main() {
     // ------------------------------------------------------------------------
     if constexpr (needs_y_padding) {
         // We store one chunk of padding in c_3
-        cb_reserve_back(tt::CBIndex::c_3, 1);
+        ckernel::cb_reserve_back(tt::CBIndex::c_3, 1);
         uint32_t l1_write_addr = get_write_ptr(tt::CBIndex::c_3);
         tt::data_movement::common::fill_with_val(l1_write_addr, num_writes, padding_val_packed);
-        cb_push_back(tt::CBIndex::c_3, 1);
+        ckernel::cb_push_back(tt::CBIndex::c_3, 1);
     }
 }

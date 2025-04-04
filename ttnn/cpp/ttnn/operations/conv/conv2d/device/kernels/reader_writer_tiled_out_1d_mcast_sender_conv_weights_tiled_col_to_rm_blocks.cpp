@@ -193,7 +193,7 @@ void kernel_main() {
                     // Do the second half of the reads for act
                     noc_async_read_one_packet_set_state(get_noc_addr(act_l1_read_addr), coalesced_read_bytes);
                     reader_idx = start_reader_idx;
-                    cb_reserve_back(cb_id_act_second_reader, act_block_num_tiles_read);
+                    ckernel::cb_reserve_back(cb_id_act_second_reader, act_block_num_tiles_read);
                     uint32_t l1_write_addr_act = get_write_ptr(cb_id_act_second_reader);
                     uint32_t act_block_h_datums_read_curr =
                         bh == out_num_blocks_h - 1 ? act_block_h_datums_read_last_block : act_block_h_datums_read;
@@ -214,12 +214,12 @@ void kernel_main() {
                         reader_idx++;
                     }
                     noc_async_read_barrier();
-                    cb_push_back(cb_id_act_second_reader, act_block_num_tiles_read);
+                    ckernel::cb_push_back(cb_id_act_second_reader, act_block_num_tiles_read);
 
                     reader_offset += window_outer_offset;
 
                     // Do weights read + mcast
-                    cb_reserve_back(cb_id_weight, weight_block_num_tiles);
+                    ckernel::cb_reserve_back(cb_id_weight, weight_block_num_tiles);
                     if (bh == 0) {
                         uint32_t weight_write_l1_addr = get_write_ptr(cb_id_weight);
                         uint32_t weight_row_start_tile_id = weight_current_block_start_tile_id + weight_h_offset;
@@ -290,14 +290,14 @@ void kernel_main() {
                         weight_current_block_start_tile_id += weight_next_block_stride_h;
                     }
 
-                    cb_push_back(cb_id_weight, weight_block_num_tiles);
+                    ckernel::cb_push_back(cb_id_weight, weight_block_num_tiles);
                 }  // for num_blocks_weight_h
                 weight_h_offset += weight_inner_block_stride_h;
             }  // for weight_block_height_num_outer
 
 #ifdef FUSE_BIAS
             if (load_bias) {
-                cb_reserve_back(bias_cb_id, bias_ntiles);
+                ckernel::cb_reserve_back(bias_cb_id, bias_ntiles);
                 uint32_t bias_l1_addr = get_write_ptr(bias_cb_id);
 
                 // mcast args
@@ -353,7 +353,7 @@ void kernel_main() {
                     false);
 #endif
 
-                cb_push_back(bias_cb_id, bias_ntiles);
+                ckernel::cb_push_back(bias_cb_id, bias_ntiles);
                 load_bias = false;
             }
 #endif
@@ -367,7 +367,7 @@ void kernel_main() {
                 for (uint32_t sbw = 0; sbw < out_num_subblocks_w; sbw++) {
                     uint32_t out_sb_row_start_tile_id = out_sbw_start_tile_id;
                     // wait for one subblock worth tiles
-                    cb_wait_front(cb_id_out0, out_subblock_tile_count);
+                    ckernel::cb_wait_front(cb_id_out0, out_subblock_tile_count);
                     uint32_t l1_read_addr = get_read_ptr(cb_id_out0);
                     for (uint32_t h = 0; h < out_subblock_h; h++) {
                         uint32_t out_tile_id = out_sb_row_start_tile_id;
@@ -392,7 +392,7 @@ void kernel_main() {
                     }  // out_subblock_h (ntiles)
                     noc_async_write_barrier();
                     // DPRINT << "Done writing subblock." << ENDL();
-                    cb_pop_front(cb_id_out0, out_subblock_tile_count);
+                    ckernel::cb_pop_front(cb_id_out0, out_subblock_tile_count);
                     out_sbw_start_tile_id += out_next_subblock_stride_w;
                     out_sbw_start_tile_id_w += out_subblock_w;
                 }  // out_num_subblocks_w
@@ -412,6 +412,6 @@ void kernel_main() {
     }  // out_num_blocks_w
 
 #ifdef SHARDED_OUT
-    cb_wait_front(cb_id_out0, output_rows_tiles);
+    ckernel::cb_wait_front(cb_id_out0, output_rows_tiles);
 #endif
 }

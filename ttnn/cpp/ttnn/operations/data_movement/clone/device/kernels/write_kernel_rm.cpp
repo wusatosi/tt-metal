@@ -29,11 +29,11 @@ void kernel_main() {
 
     uint32_t end_id = start_id + num_sticks;
     for (uint32_t i = start_id; i < end_id; ++i) {
-        cb_wait_front(dst_cb_id, 1);
+        ckernel::cb_wait_front(dst_cb_id, 1);
         uint32_t dst_cb_read_addr = get_read_ptr(dst_cb_id);
         uint64_t output_noc_addr = get_noc_addr(i, s);
         noc_async_write(dst_cb_read_addr, output_noc_addr, stick_size);
         noc_async_write_barrier();
-        cb_pop_front(dst_cb_id, 1);
+        ckernel::cb_pop_front(dst_cb_id, 1);
     }
 }

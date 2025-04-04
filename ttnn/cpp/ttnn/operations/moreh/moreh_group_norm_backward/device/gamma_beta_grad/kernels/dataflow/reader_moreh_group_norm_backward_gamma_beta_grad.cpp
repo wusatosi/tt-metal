@@ -137,26 +137,26 @@ void kernel_main() {
 
             // output_grad (N, C, H, W)
             output_grad_tile_idx = n_idx * CHtWt + c_idx * HtWt + htwt_idx + tile_offset;
-            cb_reserve_back(cb_id_output_grad, onetile);
+            ckernel::cb_reserve_back(cb_id_output_grad, onetile);
             if (input_is_dram) {
                 noc_async_read_tile(output_grad_tile_idx, dram_output_grad_addrg, output_grad_l1_write_ptr);
             } else {
                 noc_async_read_tile(output_grad_tile_idx, l1_output_grad_addrg, output_grad_l1_write_ptr);
             }
             noc_async_read_barrier();
-            cb_push_back(cb_id_output_grad, onetile);
+            ckernel::cb_push_back(cb_id_output_grad, onetile);
 
             if (gamma_grad_has_value) {
                 // input (N, C, H, W)
                 input_tile_idx = output_grad_tile_idx;
-                cb_reserve_back(cb_id_input, onetile);
+                ckernel::cb_reserve_back(cb_id_input, onetile);
                 if (input_is_dram) {
                     noc_async_read_tile(input_tile_idx, dram_input_addrg, input_l1_write_ptr);
                 } else {
                     noc_async_read_tile(input_tile_idx, l1_input_addrg, input_l1_write_ptr);
                 }
                 noc_async_read_barrier();
-                cb_push_back(cb_id_input, onetile);
+                ckernel::cb_push_back(cb_id_input, onetile);
 
                 // mean, rstd (1, 1, N, num_groups)
                 // mean_rstd_idx = n * num_groups + g
@@ -177,7 +177,7 @@ void kernel_main() {
                     get_tilized_idx(mean_rstd_h_idx_in_tile, mean_rstd_w_idx_in_tile, TILE_H, TILE_W);
 
                 // mean (1, 1, N, num_groups)
-                cb_reserve_back(cb_id_mean, onetile);
+                ckernel::cb_reserve_back(cb_id_mean, onetile);
                 if (mean_is_dram) {
                     noc_async_read_tile(mean_rstd_tile_idx, dram_mean_addrg, mean_l1_write_ptr);
                 } else {
@@ -188,10 +188,10 @@ void kernel_main() {
                     auto mean_ptr = reinterpret_cast<uint16_t*>(mean_l1_write_ptr);
                     mean_ptr[0] = mean_ptr[tilized_mean_rstd_idx_in_tile];
                 }
-                cb_push_back(cb_id_mean, onetile);
+                ckernel::cb_push_back(cb_id_mean, onetile);
 
                 // rstd (1, 1, N, num_groups)
-                cb_reserve_back(cb_id_rstd, onetile);
+                ckernel::cb_reserve_back(cb_id_rstd, onetile);
                 if (rstd_is_dram) {
                     noc_async_read_tile(mean_rstd_tile_idx, dram_rstd_addrg, rstd_l1_write_ptr);
                 } else {
@@ -202,7 +202,7 @@ void kernel_main() {
                     auto rstd_ptr = reinterpret_cast<uint16_t*>(rstd_l1_write_ptr);
                     rstd_ptr[0] = rstd_ptr[tilized_mean_rstd_idx_in_tile];
                 }
-                cb_push_back(cb_id_rstd, onetile);
+                ckernel::cb_push_back(cb_id_rstd, onetile);
             }  // gamma_grad_has_value
 
         }  // inner_idx loop

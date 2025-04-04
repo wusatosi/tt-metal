@@ -63,7 +63,7 @@ void kernel_main() {
                     subblock_tiles_addr_skip = padded_subblock_tiles_addr_skip;
                 }
 
-                cb_wait_front(cb_id_out0, out_subblock_tile_count);
+                ckernel::cb_wait_front(cb_id_out0, out_subblock_tile_count);
                 uint32_t l1_read_addr = get_read_ptr(cb_id_out0);
 
                 for (uint32_t h = 0; h < out_subblock_h_; h++) {
@@ -80,17 +80,17 @@ void kernel_main() {
                 }
 
                 noc_async_write_barrier();
-                cb_pop_front(cb_id_out0, out_subblock_tile_count);
+                ckernel::cb_pop_front(cb_id_out0, out_subblock_tile_count);
                 out_tensor_sbw_start_tile_id += out_tensor_next_subblock_stride_w;
             }
             // Pop fully padded subblocks along the row
-            cb_wait_front(cb_id_out0, padded_block_tiles_w_skip);
-            cb_pop_front(cb_id_out0, padded_block_tiles_w_skip);
+            ckernel::cb_wait_front(cb_id_out0, padded_block_tiles_w_skip);
+            ckernel::cb_pop_front(cb_id_out0, padded_block_tiles_w_skip);
             out_tensor_sbh_start_tile_id += out_tensor_next_subblock_stride_h;
         }
         // Pop row(s) of fully padded subblocks
-        cb_wait_front(cb_id_out0, padded_block_tiles_h_skip);
-        cb_pop_front(cb_id_out0, padded_block_tiles_h_skip);
+        ckernel::cb_wait_front(cb_id_out0, padded_block_tiles_h_skip);
+        ckernel::cb_pop_front(cb_id_out0, padded_block_tiles_h_skip);
         out_tensor_start_tile_id += MtNt;
     }
 }

@@ -10,10 +10,10 @@
 FORCE_INLINE void generate_inv_sqrt_hw_bcast_tile() {
     constexpr auto cb_fused_scale = tt::CBIndex::c_2;
     uint32_t u = get_arg_val<uint32_t>(1);
-    cb_reserve_back(cb_fused_scale, 1);
+    ckernel::cb_reserve_back(cb_fused_scale, 1);
     auto ptr = reinterpret_cast<uint16_t*>(get_write_ptr(cb_fused_scale));
     ptr[0] = u >> 16;
-    cb_push_back(cb_fused_scale, 1);
+    ckernel::cb_push_back(cb_fused_scale, 1);
 }
 
 void kernel_main() {
@@ -47,7 +47,7 @@ void kernel_main() {
         mask_id = mask_start_tile_id;
 
         for (uint32_t h = 0; h < mask_block_ht; h++) {
-            cb_reserve_back(cb_attn, block_wt);
+            ckernel::cb_reserve_back(cb_attn, block_wt);
             uint32_t l1_write_addr = get_write_ptr(cb_attn);
             for (uint32_t w = 0; w < block_wt; w++) {
                 noc_async_read_tile(mask_id, addr_mask, l1_write_addr);
@@ -55,7 +55,7 @@ void kernel_main() {
                 ++mask_id;
             }
             noc_async_read_barrier();
-            cb_push_back(cb_attn, block_wt);
+            ckernel::cb_push_back(cb_attn, block_wt);
 
             if (f == 0 && h == 0) {
                 generate_reduce_scaler(cb_reduce_scaler, reduce_scaler);
@@ -65,7 +65,7 @@ void kernel_main() {
 #elif defined(CAUSAL_MASK) && defined(SHARDED_CAUSAL_MASK)
     generate_reduce_scaler(cb_reduce_scaler, reduce_scaler);
 #else
-    cb_reserve_back(cb_attn, block_wt);
+    ckernel::cb_reserve_back(cb_attn, block_wt);
     uint32_t l1_write_addr = get_write_ptr(cb_attn);
     for (uint32_t w = 0; w < block_wt; w++) {
         noc_async_read_tile(mask_id, addr_mask, l1_write_addr);
@@ -73,7 +73,7 @@ void kernel_main() {
         ++mask_id;
     }
     noc_async_read_barrier();
-    cb_push_back(cb_attn, block_wt);
+    ckernel::cb_push_back(cb_attn, block_wt);
 
     generate_reduce_scaler(cb_reduce_scaler, reduce_scaler);
 #endif

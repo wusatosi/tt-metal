@@ -20,17 +20,17 @@ void MAIN {
     constexpr auto cb_input = tt::CBIndex::c_0;
     constexpr auto cb_output = tt::CBIndex::c_2;
     constexpr uint32_t one = 0x3f800000u;  // Represents 1.0f
-    init_sfpu(cb_input, cb_output);
+    ckernel:: init_sfpu(cb_input, cb_output);
 
     for (uint32_t block_index = 0; block_index < per_core_block_cnt; block_index++) {
-        cb_reserve_back(cb_output, per_core_block_dim);
+        ckernel::cb_reserve_back(cb_output, per_core_block_dim);
         for (uint32_t tile_index = 0; tile_index < per_core_block_dim; ++tile_index) {
-            cb_wait_front(cb_input, 1);
-            tile_regs_acquire();
+            ckernel::cb_wait_front(cb_input, 1);
+            ckernel:: tile_regs_acquire();
 
             // Pop tile after tile, copy to DST and pack
             copy_tile_to_dst_init_short(cb_input);
-            copy_tile(cb_input, 0, 0);
+            ckernel:: copy_tile(cb_input, 0, 0);
 
             exp_tile_init<1u>();
             exp_tile<1u>(0);
@@ -46,17 +46,17 @@ void MAIN {
             binary_dest_reuse_tiles<EltwiseBinaryType::ELWMUL, EltwiseBinaryReuseDestType::DEST_TO_SRCA>(
                 cb_input, 0, 0);
 
-            tile_regs_commit();
+            ckernel:: tile_regs_commit();
 
-            tile_regs_wait();
+            ckernel::tile_regs_wait();
 
-            pack_tile(0, cb_output);
+            ckernel:: pack_tile(0, cb_output);
 
-            tile_regs_release();
+            ckernel::tile_regs_release();
 
-            cb_pop_front(cb_input, 1);
+            ckernel::cb_pop_front(cb_input, 1);
         }
-        cb_push_back(cb_output, per_core_block_dim);
+        ckernel::cb_push_back(cb_output, per_core_block_dim);
     }
 }
 }  // namespace NAMESPACE

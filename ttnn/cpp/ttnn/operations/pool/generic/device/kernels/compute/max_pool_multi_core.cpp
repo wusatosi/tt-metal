@@ -26,10 +26,10 @@ inline void reduce_h_fused(
     constexpr uint32_t num_faces_in_tile = is_partial_tile ? 1 : 2;
     constexpr uint32_t num_out_rows = 1;
 
-    cb_reserve_back(out_cb_id, num_output_tiles);
+    ckernel::cb_reserve_back(out_cb_id, num_output_tiles);
     const uint32_t curr_in_cb_id = (split_reader && (in_stick_index & 0x1)) ? in_cb_id_1 : in_cb_id_0;
-    cb_wait_front(curr_in_cb_id, 1);
-    tile_regs_acquire();
+    ckernel::cb_wait_front(curr_in_cb_id, 1);
+    ckernel:: tile_regs_acquire();
     unpack_tilizeA_B_block(
         curr_in_cb_id,
         in_scalar_cb_id,
@@ -40,13 +40,13 @@ inline void reduce_h_fused(
     for (uint32_t c_i = 0; c_i < num_output_tiles; ++c_i) {
         reduce_tile_math(c_i, num_faces_in_tile /* reduce 1 or 2 faces */);
     }
-    cb_pop_front(curr_in_cb_id, 1);
-    tile_regs_wait();
-    tile_regs_commit();
+    ckernel::cb_pop_front(curr_in_cb_id, 1);
+    ckernel::tile_regs_wait();
+    ckernel:: tile_regs_commit();
     pack_untilize_dst<num_output_tiles>(
         out_cb_id, 1 /*out_subblock_h*/, 0, num_out_rows, num_faces_in_tile); /* pack 1 row (1x16 or 1x32) */
-    tile_regs_release();
-    cb_push_back(out_cb_id, num_output_tiles);
+    ckernel::tile_regs_release();
+    ckernel::cb_push_back(out_cb_id, num_output_tiles);
 }
 
 namespace NAMESPACE {
@@ -85,7 +85,7 @@ void MAIN {
         in_cb_id_0, in_scalar_cb_id, max_tiles_per_iter, out_cb_id, num_faces_in_tile, window_size_hw);
     pack_untilize_dst_init_short<in_ntiles_c>(out_cb_id, num_out_rows, num_faces_in_tile);
 
-    cb_wait_front(in_scalar_cb_id, 1);
+    ckernel::cb_wait_front(in_scalar_cb_id, 1);
     for (uint32_t i = 0; i < nsticks_per_core; ++i) {
         // perform the reduction over the first N - 1 whole chunks
         for (uint32_t b_i = 0; b_i < in_nblocks_c - 1; ++b_i) {
@@ -96,7 +96,7 @@ void MAIN {
         reduce_h_fused<partial_iter_output_tiles, is_partial_tile, split_reader, window_size_hw>(
             in_cb_id_0, in_cb_id_1, in_scalar_cb_id, i, out_cb_id);
     }
-    cb_pop_front(in_scalar_cb_id, 1);
+    ckernel::cb_pop_front(in_scalar_cb_id, 1);
 }
 
 }  // namespace NAMESPACE

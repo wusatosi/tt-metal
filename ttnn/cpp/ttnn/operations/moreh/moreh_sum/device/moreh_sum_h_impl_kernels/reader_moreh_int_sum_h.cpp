@@ -37,11 +37,11 @@ void kernel_main() {
     for (uint32_t i = 0; i < num_cols; i++) {
         uint32_t curr_id = col_start_tile_id;
         for (uint32_t j = 0; j < Ht; j++) {
-            cb_reserve_back(cb_id_in0, onetile);
+            ckernel::cb_reserve_back(cb_id_in0, onetile);
             uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
             noc_async_read_tile(curr_id, s, l1_write_addr);
             noc_async_read_barrier();
-            cb_push_back(cb_id_in0, onetile);
+            ckernel::cb_push_back(cb_id_in0, onetile);
             curr_id += Wt;  // stride in H
         }
         w++;

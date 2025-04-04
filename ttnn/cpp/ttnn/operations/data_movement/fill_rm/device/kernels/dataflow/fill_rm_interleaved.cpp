@@ -38,8 +38,8 @@ void kernel_main() {
     uint64_t replicate_dest_addr;
     uint32_t start_dram_addr_offset_for_tensor_row = 0;
 
-    cb_reserve_back(cb_id_in0, 16);  // in this kernel we are not pushing anything into CBs, just using the space
-    cb_reserve_back(cb_id_in1, 16);
+    ckernel::cb_reserve_back(cb_id_in0, 16);  // in this kernel we are not pushing anything into CBs, just using the space
+    ckernel::cb_reserve_back(cb_id_in1, 16);
     uint32_t l1_w_addr = get_write_ptr(cb_id_in0);
     uint32_t l1_zeros_addr = get_write_ptr(cb_id_in1);
     uint32_t w;

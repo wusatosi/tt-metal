@@ -69,23 +69,23 @@ void kernel_main() {
             for (uint32_t c = start_c; c < C && num_tiles_written < dst_num_tiles; ++c, start_th = 0) {
                 for (uint32_t th = start_th; th < Ht && num_tiles_written < dst_num_tiles; ++th, start_tw = 0) {
                     // read a tile from src
-                    cb_reserve_back(cb_id_src, onetile);
+                    ckernel::cb_reserve_back(cb_id_src, onetile);
 #if !SRC_SHARDED
                 uint32_t l1_write_addr = get_write_ptr(cb_id_src);
                 noc_async_read_tile(tile_offset + th, src, l1_write_addr);
                 noc_async_read_barrier();
 #endif
                 FILL_TILE_WITH_FIRST_COLUMN(cb_id_src);
-                cb_push_back(cb_id_src, onetile);
+                ckernel::cb_push_back(cb_id_src, onetile);
 
                 for (uint32_t tw = start_tw; tw < Wt && num_tiles_written < dst_num_tiles; ++tw, ++num_tiles_written) {
                     // write a tile to dst, since the dst shape is full, the tile offset simply grows linearly
-                    cb_wait_front(cb_id_dst, onetile);
+                    ckernel::cb_wait_front(cb_id_dst, onetile);
 #if !DST_SHARDED
                     uint32_t l1_read_addr = get_read_ptr(cb_id_dst);
                     noc_async_write_tile(start_tile_id + num_tiles_written, dst, l1_read_addr);
                     noc_async_write_barrier();
-                    cb_pop_front(cb_id_dst, onetile);
+                    ckernel::cb_pop_front(cb_id_dst, onetile);
 #endif
                 }
                 }

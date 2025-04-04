@@ -50,13 +50,13 @@ void MAIN {
 
         // Untilize halo input
         for (uint32_t b = 0; b < halo_prev_input_num_rows_of_tiles; ++b) {
-            cb_wait_front(halo_prev_input_cb_index, num_input_tiles_in_row);
-            cb_reserve_back(untilize_cb_index, num_input_tiles_in_row);
+            ckernel::cb_wait_front(halo_prev_input_cb_index, num_input_tiles_in_row);
+            ckernel::cb_reserve_back(untilize_cb_index, num_input_tiles_in_row);
 
             untilize_block(halo_prev_input_cb_index, num_input_tiles_in_row, untilize_cb_index);
 
-            cb_push_back(untilize_cb_index, num_input_tiles_in_row);
-            cb_pop_front(halo_prev_input_cb_index, num_input_tiles_in_row);
+            ckernel::cb_push_back(untilize_cb_index, num_input_tiles_in_row);
+            ckernel::cb_pop_front(halo_prev_input_cb_index, num_input_tiles_in_row);
         }
     }
 
@@ -64,14 +64,14 @@ void MAIN {
     // untilize_block(prev_core_input_cb_index, num_input_tiles_per_block, untilize_cb_index);
 
     // Untilize input
-    cb_pop_front(input_cb_index, local_input_offset_rows_of_tiles * num_input_tiles_in_row);
+    ckernel::cb_pop_front(input_cb_index, local_input_offset_rows_of_tiles * num_input_tiles_in_row);
     for (uint32_t b = 0; b < local_input_num_rows_of_tiles; ++b) {
-        cb_reserve_back(untilize_cb_index, num_input_tiles_in_row);
+        ckernel::cb_reserve_back(untilize_cb_index, num_input_tiles_in_row);
 
         untilize_block(input_cb_index, num_input_tiles_in_row, untilize_cb_index);
 
-        cb_push_back(untilize_cb_index, num_input_tiles_in_row);
-        cb_pop_front(input_cb_index, num_input_tiles_in_row);
+        ckernel::cb_push_back(untilize_cb_index, num_input_tiles_in_row);
+        ckernel::cb_pop_front(input_cb_index, num_input_tiles_in_row);
     }
 
     if (halo_next_enabled) {
@@ -80,33 +80,33 @@ void MAIN {
 
         // Untilize halo input
         for (uint32_t b = 0; b < halo_next_input_num_rows_of_tiles; ++b) {
-            cb_wait_front(halo_next_input_cb_index, num_input_tiles_in_row);
-            cb_reserve_back(untilize_cb_index, num_input_tiles_in_row);
+            ckernel::cb_wait_front(halo_next_input_cb_index, num_input_tiles_in_row);
+            ckernel::cb_reserve_back(untilize_cb_index, num_input_tiles_in_row);
 
             untilize_block(halo_next_input_cb_index, num_input_tiles_in_row, untilize_cb_index);
 
-            cb_push_back(untilize_cb_index, num_input_tiles_in_row);
-            cb_pop_front(halo_next_input_cb_index, num_input_tiles_in_row);
+            ckernel::cb_push_back(untilize_cb_index, num_input_tiles_in_row);
+            ckernel::cb_pop_front(halo_next_input_cb_index, num_input_tiles_in_row);
         }
     }
     untilize_uninit(input_cb_index);
 
     // Tilize downsampled input
-    cb_wait_front(untilize_downsampled_cb_index, num_output_tiles);
-    cb_reserve_back(tilize_out_cb_index, num_output_tiles);
+    ckernel::cb_wait_front(untilize_downsampled_cb_index, num_output_tiles);
+    ckernel::cb_reserve_back(tilize_out_cb_index, num_output_tiles);
 
     reconfig_data_format_srca(input_cb_index, untilize_downsampled_cb_index);
     tilize_init_short(untilize_downsampled_cb_index, num_output_tiles_in_row, tilize_out_cb_index);
     pack_reconfig_data_format(tilize_out_cb_index);
 
     for (uint32_t b = 0; b < num_output_rows_of_tiles; ++b) {
-        cb_wait_front(untilize_downsampled_cb_index, num_output_tiles_in_row);
-        cb_reserve_back(tilize_out_cb_index, num_output_tiles_in_row);
+        ckernel::cb_wait_front(untilize_downsampled_cb_index, num_output_tiles_in_row);
+        ckernel::cb_reserve_back(tilize_out_cb_index, num_output_tiles_in_row);
 
         tilize_block(untilize_downsampled_cb_index, num_output_tiles_in_row, tilize_out_cb_index);
 
-        cb_push_back(tilize_out_cb_index, num_output_tiles_in_row);
-        cb_pop_front(untilize_downsampled_cb_index, num_output_tiles_in_row);
+        ckernel::cb_push_back(tilize_out_cb_index, num_output_tiles_in_row);
+        ckernel::cb_pop_front(untilize_downsampled_cb_index, num_output_tiles_in_row);
     }
 }
 }  // namespace NAMESPACE

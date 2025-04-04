@@ -34,30 +34,30 @@ void MAIN {
             if (i == 0) {
                 copy_tile_to_cb(cb_in0, cb_max);
             } else {
-                cb_wait_front(cb_in0, onetile);
-                cb_wait_front(cb_max, onetile);
+                ckernel::cb_wait_front(cb_in0, onetile);
+                ckernel::cb_wait_front(cb_max, onetile);
 
-                tile_regs_acquire();
+                ckernel:: tile_regs_acquire();
 
                 copy_tile_init_with_dt(cb_in0);
-                copy_tile(cb_in0, 0, dst0);
+                ckernel:: copy_tile(cb_in0, 0, dst0);
 
                 copy_tile_init_with_dt(cb_max);
-                copy_tile(cb_max, 0, dst1);
+                ckernel:: copy_tile(cb_max, 0, dst1);
 
                 max_tile_init();
                 max_tile(dst0, dst1);
-                tile_regs_commit();
+                ckernel:: tile_regs_commit();
 
-                cb_pop_front(cb_max, onetile);
-                cb_reserve_back(cb_max, onetile);
+                ckernel::cb_pop_front(cb_max, onetile);
+                ckernel::cb_reserve_back(cb_max, onetile);
 
-                tile_regs_wait();
+                ckernel::tile_regs_wait();
                 pack_tile_with_dt(dst0, cb_max);
-                tile_regs_release();
+                ckernel::tile_regs_release();
 
-                cb_push_back(cb_max, onetile);
-                cb_pop_front(cb_in0, onetile);
+                ckernel::cb_push_back(cb_max, onetile);
+                ckernel::cb_pop_front(cb_in0, onetile);
             }
         }
 
@@ -89,7 +89,7 @@ void MAIN {
 #endif
 
         // step 3, compute final result
-        cb_wait_front(cb_recipsumexps, onetile);
+        ckernel::cb_wait_front(cb_recipsumexps, onetile);
         for (uint32_t i = 0; i < dim_size; ++i) {
 #ifdef LOG
 #ifdef SOFTMAX
@@ -122,8 +122,8 @@ void MAIN {
 #endif
         }
 
-        cb_pop_front(cb_recipsumexps, onetile);
-        cb_pop_front(cb_max, onetile);
+        ckernel::cb_pop_front(cb_recipsumexps, onetile);
+        ckernel::cb_pop_front(cb_max, onetile);
     }
 }
 }  // namespace NAMESPACE

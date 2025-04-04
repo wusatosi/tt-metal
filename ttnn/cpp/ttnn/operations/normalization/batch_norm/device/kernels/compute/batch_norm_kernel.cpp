@@ -31,95 +31,95 @@ ALWI void batchnorm_bcast_tiles(
     auto cb_scaled_output = (bias_has_value) ? cb_tmp_1 : cb_output_0;
 
     // 1/(sqrt(batch_var + eps))
-    cb_reserve_back(cb_den, onetile);
-    cb_wait_front(cb_batch_var, onetile);
+    ckernel::cb_reserve_back(cb_den, onetile);
+    ckernel::cb_wait_front(cb_batch_var, onetile);
 
-    tile_regs_acquire();
+    ckernel:: tile_regs_acquire();
     add_tiles_init_with_dt(cb_batch_var, cb_eps);
     add_tiles(cb_batch_var, cb_eps, 0, 0, dst0);
     rsqrt_tile_init();
     rsqrt_tile(dst0);
-    tile_regs_commit();
+    ckernel:: tile_regs_commit();
 
-    tile_regs_wait();
+    ckernel::tile_regs_wait();
     pack_tile_with_dt(dst0, cb_den);
-    tile_regs_release();
+    ckernel::tile_regs_release();
 
-    cb_pop_front(cb_batch_var, onetile);
-    cb_push_back(cb_den, onetile);
+    ckernel::cb_pop_front(cb_batch_var, onetile);
+    ckernel::cb_push_back(cb_den, onetile);
 
-    cb_wait_front(cb_bcast, onetile);
-    cb_wait_front(cb_den, onetile);
+    ckernel::cb_wait_front(cb_bcast, onetile);
+    ckernel::cb_wait_front(cb_den, onetile);
     if (weight_has_value) {
-        cb_wait_front(cb_weight, onetile);
+        ckernel::cb_wait_front(cb_weight, onetile);
     }
     if (bias_has_value) {
-        cb_wait_front(cb_bias, onetile);
+        ckernel::cb_wait_front(cb_bias, onetile);
     }
     for (uint32_t j = tile_start; j < freq; ++j) {
         // input - batch_mean
-        cb_wait_front(cb_other, onetile);
-        cb_reserve_back(cb_affine_or_out, onetile);
+        ckernel::cb_wait_front(cb_other, onetile);
+        ckernel::cb_reserve_back(cb_affine_or_out, onetile);
 
-        tile_regs_acquire();
+        ckernel:: tile_regs_acquire();
         sub_tiles_init(cb_other, cb_bcast);
         sub_tiles(cb_other, cb_bcast, 0, 0, 0);
 
         // (input - batch_mean)/(sqrt(batch_var + eps)) = result
         binary_dest_reuse_tiles_init<EltwiseBinaryType::ELWMUL, EltwiseBinaryReuseDestType::DEST_TO_SRCA>(cb_den);
         binary_dest_reuse_tiles<EltwiseBinaryType::ELWMUL, EltwiseBinaryReuseDestType::DEST_TO_SRCA>(cb_den, 0, 0);
-        tile_regs_commit();
+        ckernel:: tile_regs_commit();
 
-        tile_regs_wait();
+        ckernel::tile_regs_wait();
         pack_tile_with_dt(0, cb_affine_or_out);
-        tile_regs_release();
+        ckernel::tile_regs_release();
 
-        cb_push_back(cb_affine_or_out, onetile);
-        cb_pop_front(cb_other, onetile);
+        ckernel::cb_push_back(cb_affine_or_out, onetile);
+        ckernel::cb_pop_front(cb_other, onetile);
 
         // result = result * weight
         if (weight_has_value) {
-            cb_reserve_back(cb_scaled_output, onetile);
-            cb_wait_front(cb_affine_or_out, 1);
+            ckernel::cb_reserve_back(cb_scaled_output, onetile);
+            ckernel::cb_wait_front(cb_affine_or_out, 1);
 
-            tile_regs_acquire();
+            ckernel:: tile_regs_acquire();
             mul_tiles_init_with_dt(cb_affine_or_out, cb_weight);
             mul_tiles(cb_affine_or_out, cb_weight, 0, 0, dst0);
-            tile_regs_commit();
+            ckernel:: tile_regs_commit();
 
-            tile_regs_wait();
+            ckernel::tile_regs_wait();
             pack_tile_with_dt(dst0, cb_scaled_output);
-            tile_regs_release();
+            ckernel::tile_regs_release();
 
-            cb_pop_front(cb_affine_or_out, 1);
-            cb_push_back(cb_scaled_output, onetile);
+            ckernel::cb_pop_front(cb_affine_or_out, 1);
+            ckernel::cb_push_back(cb_scaled_output, onetile);
         }
 
         // result = result + bias
         if (bias_has_value) {
-            cb_reserve_back(cb_output_0, onetile);
-            cb_wait_front(cb_tmp_1, onetile);
+            ckernel::cb_reserve_back(cb_output_0, onetile);
+            ckernel::cb_wait_front(cb_tmp_1, onetile);
 
-            tile_regs_acquire();
+            ckernel:: tile_regs_acquire();
             add_tiles_init_with_dt(cb_tmp_1, cb_bias);
             add_tiles(cb_tmp_1, cb_bias, 0, 0, dst0);
-            tile_regs_commit();
+            ckernel:: tile_regs_commit();
 
-            tile_regs_wait();
+            ckernel::tile_regs_wait();
             pack_tile_with_dt(dst0, cb_output_0);
-            tile_regs_release();
+            ckernel::tile_regs_release();
 
-            cb_pop_front(cb_tmp_1, onetile);
-            cb_push_back(cb_output_0, onetile);
+            ckernel::cb_pop_front(cb_tmp_1, onetile);
+            ckernel::cb_push_back(cb_output_0, onetile);
         }
     }
-    cb_pop_front(cb_bcast, onetile);
-    cb_pop_front(cb_den, onetile);
+    ckernel::cb_pop_front(cb_bcast, onetile);
+    ckernel::cb_pop_front(cb_den, onetile);
     if (weight_has_value) {
-        cb_pop_front(cb_weight, onetile);
+        ckernel::cb_pop_front(cb_weight, onetile);
     }
     if (bias_has_value) {
-        cb_pop_front(cb_bias, onetile);
+        ckernel::cb_pop_front(cb_bias, onetile);
     }
 }
 
@@ -154,7 +154,7 @@ void MAIN {
     uint32_t remaining_iterations = (num_tiles + tile_start) % tile_freq;
 
     constexpr uint32_t onetile = 1;
-    cb_wait_front(cb_eps, onetile);
+    ckernel::cb_wait_front(cb_eps, onetile);
 
     for (uint32_t i = 0; i < complete_iterations; ++i, tile_start = 0) {
         batchnorm_bcast_tiles(
@@ -189,6 +189,6 @@ void MAIN {
             bias_has_value);
     }
 
-    cb_pop_front(cb_eps, onetile);
+    ckernel::cb_pop_front(cb_eps, onetile);
 }
 }  // namespace NAMESPACE

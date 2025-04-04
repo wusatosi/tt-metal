@@ -66,9 +66,9 @@ void MAIN {
             sub_tiles_to_cb(cb_dy, cb_inter2, cb_dx, w, 0, /*pop0=*/0, /*pop1=*/1);
         }
 
-        cb_pop_front(cb_sum, onetile);
-        cb_pop_front(cb_y, Wt);
-        cb_pop_front(cb_dy, Wt);
+        ckernel::cb_pop_front(cb_sum, onetile);
+        ckernel::cb_pop_front(cb_y, Wt);
+        ckernel::cb_pop_front(cb_dy, Wt);
 #else
         // step 1, compute y * dy
         for (uint32_t w = 0; w < Wt; ++w) {
@@ -97,9 +97,9 @@ void MAIN {
 #endif
         }
 
-        cb_pop_front(cb_sum, onetile);
-        cb_pop_front(cb_dy, Wt);
-        cb_pop_front(cb_y, Wt);
+        ckernel::cb_pop_front(cb_sum, onetile);
+        ckernel::cb_pop_front(cb_dy, Wt);
+        ckernel::cb_pop_front(cb_y, Wt);
 #endif
     }
 }

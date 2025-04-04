@@ -47,7 +47,7 @@ void kernel_main() {
     value val;
     val.u = fill_value;
 
-    cb_reserve_back(index_cb_id, onetile);
+    ckernel::cb_reserve_back(index_cb_id, onetile);
 
     uint32_t index_cb_reader = get_write_ptr(index_cb_id);
     uint64_t index_noc_addr = get_noc_addr(0, s1);
@@ -56,7 +56,7 @@ void kernel_main() {
     uint32_t* index_ptr = reinterpret_cast<uint32_t*>(index_cb_reader);
     if (is_last_dim) {
         for (uint32_t row_id = start_row_id; row_id < start_row_id + num_rows_per_core; row_id++) {
-            cb_reserve_back(src_cb_id, onetile);
+            ckernel::cb_reserve_back(src_cb_id, onetile);
             uint32_t src_cb_reader = get_write_ptr(src_cb_id);
             uint64_t input_noc_addr = get_noc_addr(row_id, s0);
             noc_async_read(input_noc_addr, src_cb_reader, input_page_size);
@@ -69,11 +69,11 @@ void kernel_main() {
                 input_ptr[current_index] = fill_value;
             }
 
-            cb_push_back(src_cb_id, onetile);
+            ckernel::cb_push_back(src_cb_id, onetile);
         }
     } else {
         for (uint32_t row_id = start_row_id; row_id < start_row_id + num_rows_per_core; row_id++) {
-            cb_reserve_back(src_cb_id, onetile);
+            ckernel::cb_reserve_back(src_cb_id, onetile);
             uint32_t src_cb_reader = get_write_ptr(src_cb_id);
             uint64_t input_noc_addr = get_noc_addr(row_id, s0);
             noc_async_read(input_noc_addr, src_cb_reader, input_page_size);
@@ -99,8 +99,8 @@ void kernel_main() {
                 }
 #endif
             }
-            cb_push_back(src_cb_id, onetile);
+            ckernel::cb_push_back(src_cb_id, onetile);
         }
     }
-    cb_push_back(index_cb_id, onetile);
+    ckernel::cb_push_back(index_cb_id, onetile);
 }

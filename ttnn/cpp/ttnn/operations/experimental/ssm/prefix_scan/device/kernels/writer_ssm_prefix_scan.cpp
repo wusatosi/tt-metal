@@ -19,7 +19,7 @@ void kernel_main() {
 
     const uint32_t hidden_state_len_bytes = hidden_state_len * NUM_BYTES_IN_BFLOAT16;
 
-    cb_wait_front(cb_out, num_tiles_per_core);
+    ckernel::cb_wait_front(cb_out, num_tiles_per_core);
 
     // This assumes we are updating h input tensor in-place
     uint32_t src_addr = get_read_ptr(cb_h_acc);

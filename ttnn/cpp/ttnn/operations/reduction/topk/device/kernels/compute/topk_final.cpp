@@ -47,12 +47,12 @@ void MAIN {
     int seq_per_2tiles = std::max((2 * 32) / K, (uint32_t)2);
 
     // init pack, compute and unpack
-    init_sfpu(input_cb_index, tt::CBIndex::c_16);
+    ckernel:: init_sfpu(input_cb_index, tt::CBIndex::c_16);
     ckernel::topk_tile_init();
 
     for (uint32_t ht = 0; ht < Ht; ++ht) {
-        cb_wait_front(input_cb_index, Wt);
-        cb_wait_front(index_cb_index, Wt);
+        ckernel::cb_wait_front(input_cb_index, Wt);
+        ckernel::cb_wait_front(index_cb_index, Wt);
 
         // have to use a different buffer than input_cb_index and index_cb_index as we pop/reserve/wait/push on tiles
         // for all the in-place operations we will end up racing with reader if both kernels use cb apis on the same
@@ -60,32 +60,32 @@ void MAIN {
         pack_reconfig_data_format(input_transposed_cb_index);
         // streaming in input and index tiles to transpose and bitonic local sort them, two tiles at a time
         for (uint32_t wt = 0; wt < Wt; wt++) {
-            acquire_dst();
+            ckernel::acquire_dst();
             // copy in inputs from input_cb_index - TODO: figure out how to optimize this out
-            cb_reserve_back(input_transposed_cb_index, 1);
-            copy_tile(input_cb_index, wt, 0);
+            ckernel::cb_reserve_back(input_transposed_cb_index, 1);
+            ckernel:: copy_tile(input_cb_index, wt, 0);
             // pack value tiles into cb_intermed2
-            pack_tile(0, input_transposed_cb_index);
-            release_dst();
+            ckernel:: pack_tile(0, input_transposed_cb_index);
+            ckernel:: release_dst();
         }
-        cb_push_back(input_transposed_cb_index, Wt);
-        cb_wait_front(input_transposed_cb_index, Wt);
-        cb_pop_front(input_cb_index, Wt);
+        ckernel::cb_push_back(input_transposed_cb_index, Wt);
+        ckernel::cb_wait_front(input_transposed_cb_index, Wt);
+        ckernel::cb_pop_front(input_cb_index, Wt);
 
         copy_tile_to_dst_init_short_with_dt(input_cb_index, index_cb_index);
         pack_reconfig_data_format(index_transposed_cb_index);
         for (uint32_t wt = 0; wt < Wt; wt++) {
-            acquire_dst();
+            ckernel::acquire_dst();
             // copy in inputs from index_cb_index
-            cb_reserve_back(index_transposed_cb_index, 1);
-            copy_tile(index_cb_index, wt, 0);
+            ckernel::cb_reserve_back(index_transposed_cb_index, 1);
+            ckernel:: copy_tile(index_cb_index, wt, 0);
             // pack value tiles into cb_intermed3
-            pack_tile(0, index_transposed_cb_index);
-            cb_push_back(index_transposed_cb_index, 1);
-            release_dst();
+            ckernel:: pack_tile(0, index_transposed_cb_index);
+            ckernel::cb_push_back(index_transposed_cb_index, 1);
+            ckernel:: release_dst();
         }
-        cb_wait_front(index_transposed_cb_index, Wt);
-        cb_pop_front(index_cb_index, Wt);
+        ckernel::cb_wait_front(index_transposed_cb_index, Wt);
+        ckernel::cb_pop_front(index_cb_index, Wt);
 
         uint32_t num_k_sequences = (Wt * 32) / K;
 

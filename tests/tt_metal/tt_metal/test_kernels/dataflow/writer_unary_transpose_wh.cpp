@@ -29,12 +29,12 @@ void kernel_main() {
         for (uint32_t w = 0; w<Wt; w++) {
             for (uint32_t h = 0; h<Ht; h++) {
                 uint64_t dst_noc_addr = get_noc_addr_from_bank_id<true>(dst_dram_bank_id, dst_addr);
-                cb_wait_front(cb_id_out0, ublock_size_tiles);
+                ckernel::cb_wait_front(cb_id_out0, ublock_size_tiles);
                 uint32_t l1_read_addr = get_read_ptr(cb_id_out0);
                 noc_async_write(l1_read_addr, dst_noc_addr, ublock_size_bytes);
                 noc_async_write_barrier();
 
-                cb_pop_front(cb_id_out0, ublock_size_tiles);
+                ckernel::cb_pop_front(cb_id_out0, ublock_size_tiles);
                 dst_addr += WtTileBytes;  // stride in H
             }  // Ht
             dst_addr -= HtWtTileBytes;      // go back to H=0

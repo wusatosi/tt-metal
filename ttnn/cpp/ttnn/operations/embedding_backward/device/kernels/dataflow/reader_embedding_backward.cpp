@@ -171,20 +171,20 @@ void kernel_main() {
             // Pass chunk_count to compute UNPACK
             chunk_count_ptr[0] = chunk_count;
 
-            cb_reserve_back(cb_grad, max_tiles_per_core);
+            ckernel::cb_reserve_back(cb_grad, max_tiles_per_core);
             uint32_t grad_write_ptr = get_write_ptr(cb_grad);
             for (uint32_t hidden_dim = 0; hidden_dim < tiles_per_core; hidden_dim++) {
                 noc_async_read_tile(grad_tile_idx + hidden_dim, grad_s, grad_write_ptr);
                 grad_write_ptr += grad_page_size;
             }
             noc_async_read_barrier();
-            cb_push_back(cb_grad, max_tiles_per_core);
+            ckernel::cb_push_back(cb_grad, max_tiles_per_core);
             grad_tile_idx += tiles_per_hidden;
 
             for (uint32_t chunk = 0; chunk < chunk_count; ++chunk) {
                 uint32_t chunk_idx = chunk_indexes[chunk];
 
-                cb_reserve_back(cb_mask, 1);
+                ckernel::cb_reserve_back(cb_mask, 1);
                 uint32_t mask_l1_addr = get_write_ptr(cb_mask);
                 generate_mask(index_l1_addr, chunk_idx, mask_l1_addr);
 
@@ -196,9 +196,9 @@ void kernel_main() {
                     DPRINT << chunk << ": " << idx << " -> " << msk << ENDL();
                 }
 #endif
-                cb_push_back(cb_mask, 1);
+                ckernel::cb_push_back(cb_mask, 1);
 
-                cb_reserve_back(cb_out_intermed, max_tiles_per_core);
+                ckernel::cb_reserve_back(cb_out_intermed, max_tiles_per_core);
                 uint32_t out_write_ptr = get_write_ptr(cb_out_intermed);
                 out_tile_idx = chunk_idx * tiles_per_hidden + hidden_offset;
                 for (uint32_t hidden_dim = 0; hidden_dim < tiles_per_core; hidden_dim++) {
@@ -206,16 +206,16 @@ void kernel_main() {
                     out_write_ptr += out_page_size;
                 }
                 noc_async_read_barrier();
-                cb_push_back(cb_out_intermed, max_tiles_per_core);
+                ckernel::cb_push_back(cb_out_intermed, max_tiles_per_core);
 
-                cb_wait_front(cb_id_out0, max_tiles_per_core);
+                ckernel::cb_wait_front(cb_id_out0, max_tiles_per_core);
                 uint32_t out_read_ptr = get_read_ptr(cb_id_out0);
                 for (uint32_t hidden_dim = 0; hidden_dim < tiles_per_core; hidden_dim++) {
                     noc_async_write_tile(out_tile_idx + hidden_dim, out_s, out_read_ptr);
                     out_read_ptr += out_page_size;
                 }
                 noc_async_write_barrier();
-                cb_pop_front(cb_id_out0, max_tiles_per_core);
+                ckernel::cb_pop_front(cb_id_out0, max_tiles_per_core);
             }  // chunk_count
         }  // seq_len_tiles
     }  // batch_size

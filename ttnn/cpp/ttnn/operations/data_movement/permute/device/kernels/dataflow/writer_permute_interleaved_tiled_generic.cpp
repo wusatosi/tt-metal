@@ -209,7 +209,7 @@ void kernel_main() {
         }
 
         // Wait for 1 tile from cb_out
-        cb_wait_front(cb_out, 1);
+        ckernel::cb_wait_front(cb_out, 1);
         uint32_t transposed_buffer_read_addr = get_read_ptr(cb_out);
 
         // ---------------------------------------------------------------------
@@ -250,7 +250,7 @@ void kernel_main() {
             }
         }
         noc_async_write_barrier();
-        cb_pop_front(cb_out, 1);
+        ckernel::cb_pop_front(cb_out, 1);
     }
 
     //--------------------------------------------------------------------------
@@ -265,7 +265,7 @@ void kernel_main() {
         // We'll reuse 'dest_multi_idx' for tile indexing
         dest_multi_idx[RANK - 2] = y_t;  // fix the tile dimension in the RANK-2 dimension
 
-        cb_wait_front(tt::CBIndex::c_3, 1);
+        ckernel::cb_wait_front(tt::CBIndex::c_3, 1);
         uint32_t l1_read_ptr = get_read_ptr(tt::CBIndex::c_3);
 
         for (uint32_t tile_idx = start_padding_tile_idx; tile_idx < end_padding_tile_idx; ++tile_idx) {
@@ -305,6 +305,6 @@ void kernel_main() {
             }
         }
         noc_async_write_barrier();
-        cb_pop_front(tt::CBIndex::c_3, 1);
+        ckernel::cb_pop_front(tt::CBIndex::c_3, 1);
     }
 }

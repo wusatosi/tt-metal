@@ -17,10 +17,10 @@ void MAIN {
     constexpr uint32_t dst0 = 0;
 
     binary_op_init_common(cb_in1, cb_in0, cb_out0);
-    cb_wait_front(cb_in1, onetile);
+    ckernel::cb_wait_front(cb_in1, onetile);
     for (uint32_t i = 0; i < num_output_tiles; i++) {
-        tile_regs_acquire();
-        cb_wait_front(cb_in0, onetile);
+        ckernel:: tile_regs_acquire();
+        ckernel::cb_wait_front(cb_in0, onetile);
         if (ht_need_bcast && wt_need_bcast) {
             add_bcast_scalar_init_short(cb_in1, cb_in0);
             add_tiles_bcast_scalar(cb_in1, cb_in0, 0, 0, dst0);
@@ -32,16 +32,16 @@ void MAIN {
             add_tiles_bcast_cols(cb_in1, cb_in0, 0, 0, dst0);
         } else {
             copy_tile_to_dst_init_short(cb_in0);
-            copy_tile(cb_in0, 0, dst0);
+            ckernel:: copy_tile(cb_in0, 0, dst0);
         }
-        tile_regs_commit();
-        cb_reserve_back(cb_out0, onetile);
-        tile_regs_wait();
-        pack_tile(dst0, cb_out0);
-        tile_regs_release();
-        cb_push_back(cb_out0, onetile);
-        cb_pop_front(cb_in0, onetile);
+        ckernel:: tile_regs_commit();
+        ckernel::cb_reserve_back(cb_out0, onetile);
+        ckernel::tile_regs_wait();
+        ckernel:: pack_tile(dst0, cb_out0);
+        ckernel::tile_regs_release();
+        ckernel::cb_push_back(cb_out0, onetile);
+        ckernel::cb_pop_front(cb_in0, onetile);
     }
-    cb_pop_front(cb_in1, onetile);
+    ckernel::cb_pop_front(cb_in1, onetile);
 }
 }  // namespace NAMESPACE

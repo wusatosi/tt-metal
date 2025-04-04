@@ -12,15 +12,15 @@ void process_and_sort_tiles(
     bool switch_dir,
     bool& ascending,
     int end_phase) {
-    cb_reserve_back(input_transposed_cb_index, Wt);
-    cb_reserve_back(index_transposed_cb_index, Wt);
+    ckernel::cb_reserve_back(input_transposed_cb_index, Wt);
+    ckernel::cb_reserve_back(index_transposed_cb_index, Wt);
 
     // streaming in input and index tiles to transpose and bitonic local sort them, two tiles at a time
     for (uint32_t wt = 0; wt < Wt; wt += 2) {
-        acquire_dst();
+        ckernel::acquire_dst();
         // local sort into k groups
-        cb_wait_front(input_cb_index, 2);
-        cb_wait_front(index_cb_index, 2);
+        ckernel::cb_wait_front(input_cb_index, 2);
+        ckernel::cb_wait_front(index_cb_index, 2);
 
         reconfig_data_format_srca(input_cb_index);
         transpose_wh_init_short(input_cb_index);
@@ -37,22 +37,22 @@ void process_and_sort_tiles(
 
         // pack value tiles into cb_intermed0
         pack_reconfig_data_format(input_transposed_cb_index);
-        pack_tile(0, input_transposed_cb_index);
-        pack_tile(1, input_transposed_cb_index);
+        ckernel:: pack_tile(0, input_transposed_cb_index);
+        ckernel:: pack_tile(1, input_transposed_cb_index);
 
         // pack index tiles into cb_intermed1
         pack_reconfig_data_format(index_transposed_cb_index);
-        pack_tile(2, index_transposed_cb_index);
-        pack_tile(3, index_transposed_cb_index);
+        ckernel:: pack_tile(2, index_transposed_cb_index);
+        ckernel:: pack_tile(3, index_transposed_cb_index);
 
-        cb_pop_front(input_cb_index, 2);
-        cb_pop_front(index_cb_index, 2);
-        release_dst();
+        ckernel::cb_pop_front(input_cb_index, 2);
+        ckernel::cb_pop_front(index_cb_index, 2);
+        ckernel:: release_dst();
         ascending = switch_dir ? !ascending : ascending;
     }
 
-    cb_push_back(input_transposed_cb_index, Wt);
-    cb_push_back(index_transposed_cb_index, Wt);
+    ckernel::cb_push_back(input_transposed_cb_index, Wt);
+    ckernel::cb_push_back(index_transposed_cb_index, Wt);
 }
 
 void process_tile_pair(
@@ -69,19 +69,19 @@ void process_tile_pair(
     uint32_t K,
     uint32_t logk,
     bool target_tiles_is_one) {
-    acquire_dst();
+    ckernel::acquire_dst();
 
     copy_tile_to_dst_init_short_with_dt(index_transposed_cb_index, input_transposed_cb_index);
-    copy_tile(input_transposed_cb_index, left_ind, input_dest_start);
+    ckernel:: copy_tile(input_transposed_cb_index, left_ind, input_dest_start);
     if (!target_tiles_is_one) {
-        copy_tile(input_transposed_cb_index, right_ind, input_dest_end);
+        ckernel:: copy_tile(input_transposed_cb_index, right_ind, input_dest_end);
     }
 
     // unpack indices into dest
     copy_tile_to_dst_init_short_with_dt(input_transposed_cb_index, index_transposed_cb_index);
-    copy_tile(index_transposed_cb_index, left_ind, index_dest_start);
+    ckernel:: copy_tile(index_transposed_cb_index, left_ind, index_dest_start);
     if (!target_tiles_is_one) {
-        copy_tile(index_transposed_cb_index, right_ind, index_dest_end);
+        ckernel:: copy_tile(index_transposed_cb_index, right_ind, index_dest_end);
     }
 
     // merge values - move larger 32 values into 0th dest and lower 32 values into 1st dest
@@ -103,7 +103,7 @@ void process_tile_pair(
     if (!target_tiles_is_one) {
         pack_tile<true>(index_dest_end, index_transposed_cb_index, right_ind);
     }
-    release_dst();
+    ckernel:: release_dst();
 }
 
 void process_tiles(
@@ -133,16 +133,16 @@ void process_tiles(
                 break;
             }
 
-            acquire_dst();
+            ckernel::acquire_dst();
 
             copy_tile_to_dst_init_short_with_dt(index_transposed_cb_index, input_transposed_cb_index);
-            copy_tile(input_transposed_cb_index, left_tile_id, input_dest_start);
-            copy_tile(input_transposed_cb_index, right_tile_id, input_dest_end);
+            ckernel:: copy_tile(input_transposed_cb_index, left_tile_id, input_dest_start);
+            ckernel:: copy_tile(input_transposed_cb_index, right_tile_id, input_dest_end);
 
             // unpack indices into dest
             copy_tile_to_dst_init_short_with_dt(input_transposed_cb_index, index_transposed_cb_index);
-            copy_tile(index_transposed_cb_index, left_tile_id, index_dest_start);
-            copy_tile(index_transposed_cb_index, right_tile_id, index_dest_end);
+            ckernel:: copy_tile(index_transposed_cb_index, left_tile_id, index_dest_start);
+            ckernel:: copy_tile(index_transposed_cb_index, right_tile_id, index_dest_end);
 
             // merge values - move larger 32 values into 0th dest and lower 32 values into 1st dest
             if (largest) {
@@ -164,7 +164,7 @@ void process_tiles(
             pack_reconfig_data_format(index_transposed_cb_index);
             pack_tile<true>(index_dest_start, index_transposed_cb_index, left_tile_id);
             pack_tile<true>(index_dest_end, index_transposed_cb_index, right_tile_id);
-            release_dst();
+            ckernel:: release_dst();
         }
     }
 }
@@ -186,8 +186,8 @@ void process_iteration(
     uint32_t logk,
     int& seq_per_2tiles,
     bool largest_param) {
-    cb_wait_front(input_transposed_cb_index, Wt);
-    cb_wait_front(index_transposed_cb_index, Wt);
+    ckernel::cb_wait_front(input_transposed_cb_index, Wt);
+    ckernel::cb_wait_front(index_transposed_cb_index, Wt);
 
     process_tiles(
         m_iter,
@@ -204,14 +204,14 @@ void process_iteration(
         largest_param,
         seq_per_2tiles);
 
-    cb_reserve_back(input_transposed_cb_index, Wt);
-    cb_reserve_back(index_transposed_cb_index, Wt);
+    ckernel::cb_reserve_back(input_transposed_cb_index, Wt);
+    ckernel::cb_reserve_back(index_transposed_cb_index, Wt);
 
-    cb_pop_front(input_transposed_cb_index, Wt);
-    cb_pop_front(index_transposed_cb_index, Wt);
+    ckernel::cb_pop_front(input_transposed_cb_index, Wt);
+    ckernel::cb_pop_front(index_transposed_cb_index, Wt);
 
-    cb_push_back(input_transposed_cb_index, Wt);
-    cb_push_back(index_transposed_cb_index, Wt);
+    ckernel::cb_push_back(input_transposed_cb_index, Wt);
+    ckernel::cb_push_back(index_transposed_cb_index, Wt);
 
     // we have decreased our search space by half
     num_k_sequences = num_k_sequences >> 1;
@@ -222,8 +222,8 @@ void process_iteration(
     seq_per_2tiles = (seq_per_2tiles == 2) ? 2 : seq_per_2tiles >> 1;
     bool ascending = !largest;
 
-    cb_wait_front(input_transposed_cb_index, Wt);
-    cb_wait_front(index_transposed_cb_index, Wt);
+    ckernel::cb_wait_front(input_transposed_cb_index, Wt);
+    ckernel::cb_wait_front(index_transposed_cb_index, Wt);
 
     for (uint32_t idx = 0; idx < num_k_sequences; idx += (seq_per_2tiles >> 1)) {
         for (uint32_t t = 0; t < tiles_per_seq; t++) {
@@ -254,14 +254,14 @@ void process_iteration(
         }
     }
 
-    cb_reserve_back(input_transposed_cb_index, Wt);
-    cb_reserve_back(index_transposed_cb_index, Wt);
+    ckernel::cb_reserve_back(input_transposed_cb_index, Wt);
+    ckernel::cb_reserve_back(index_transposed_cb_index, Wt);
 
-    cb_pop_front(input_transposed_cb_index, Wt);
-    cb_pop_front(index_transposed_cb_index, Wt);
+    ckernel::cb_pop_front(input_transposed_cb_index, Wt);
+    ckernel::cb_pop_front(index_transposed_cb_index, Wt);
 
-    cb_push_back(input_transposed_cb_index, Wt);
-    cb_push_back(index_transposed_cb_index, Wt);
+    ckernel::cb_push_back(input_transposed_cb_index, Wt);
+    ckernel::cb_push_back(index_transposed_cb_index, Wt);
 }
 
 void transpose_and_pack(uint32_t transposed_cb_index, uint32_t dest_cb_index, uint32_t Kt, uint32_t Wt) {
@@ -269,16 +269,16 @@ void transpose_and_pack(uint32_t transposed_cb_index, uint32_t dest_cb_index, ui
     transpose_wh_init_short(transposed_cb_index);
     pack_reconfig_data_format(transposed_cb_index);
 
-    cb_wait_front(transposed_cb_index, Kt);
+    ckernel::cb_wait_front(transposed_cb_index, Kt);
     for (uint32_t i = 0; i < Kt; ++i) {
-        acquire_dst();
-        cb_reserve_back(dest_cb_index, 1);
+        ckernel::acquire_dst();
+        ckernel::cb_reserve_back(dest_cb_index, 1);
         transpose_wh_tile(transposed_cb_index, i, 0);
-        pack_tile(0, dest_cb_index);
-        cb_push_back(dest_cb_index, 1);
-        release_dst();
+        ckernel:: pack_tile(0, dest_cb_index);
+        ckernel::cb_push_back(dest_cb_index, 1);
+        ckernel:: release_dst();
     }
-    cb_wait_front(transposed_cb_index, Wt);
-    cb_pop_front(transposed_cb_index, Wt);
+    ckernel::cb_wait_front(transposed_cb_index, Wt);
+    ckernel::cb_pop_front(transposed_cb_index, Wt);
 }
 }  // namespace NAMESPACE

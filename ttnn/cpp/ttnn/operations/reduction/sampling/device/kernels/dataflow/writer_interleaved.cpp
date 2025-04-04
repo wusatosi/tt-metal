@@ -117,15 +117,15 @@ void kernel_main() {
     generate_mask<cb_id_mask, one, ids_per_batch / 32>(one, k - 1);
 
     // get random number
-    cb_wait_front(rand_tile_index, 1);
+    ckernel::cb_wait_front(rand_tile_index, 1);
     uint32_t cb_rand_addr = get_write_ptr(rand_tile_index);
     volatile tt_l1_ptr uint16_t* rand_values = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(cb_rand_addr);
     uint16_t rand = rand_values[0];
 
     // wait for compute kernel
-    cb_wait_front(output_final_indices_rm_cb_index, 32);
-    cb_wait_front(output_local_values_cb_index, 1);
-    cb_wait_front(output_local_indices_cb_index, 1);
+    ckernel::cb_wait_front(output_final_indices_rm_cb_index, 32);
+    ckernel::cb_wait_front(output_local_values_cb_index, 1);
+    ckernel::cb_wait_front(output_local_indices_cb_index, 1);
 
     // Use cb as L1 scratch memory
     uint32_t cb_local_values_addr = get_write_ptr(output_local_values_cb_index);

@@ -29,7 +29,7 @@ void kernel_main() {
     const uint32_t padded_width_diff = (block_width_tiles - unpadded_block_width_tiles) * tile_bytes;
 
     uint32_t row_start_tile_id = start_id;
-    cb_wait_front(cb_id_out, block_num_tiles);
+    ckernel::cb_wait_front(cb_id_out, block_num_tiles);
     uint32_t l1_read_addr = get_read_ptr(cb_id_out);
     for (uint32_t h = 0; h < unpadded_block_height_tiles; h++) {
         uint32_t tile_id = row_start_tile_id;
@@ -42,5 +42,5 @@ void kernel_main() {
         l1_read_addr += padded_width_diff;
         row_start_tile_id += output_width_tiles;
     }
-    cb_pop_front(cb_id_out, block_num_tiles);
+    ckernel::cb_pop_front(cb_id_out, block_num_tiles);
 }

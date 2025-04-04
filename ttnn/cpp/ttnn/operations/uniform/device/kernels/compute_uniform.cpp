@@ -23,21 +23,21 @@ void MAIN {
     const uint32_t num_tiles = get_arg_val<uint32_t>(4);
     const uint32_t end_id = start_id + num_tiles;
 
-    init_sfpu(intermed_cb_id, intermed_cb_id);
+    ckernel:: init_sfpu(intermed_cb_id, intermed_cb_id);
 
     rand_tile_init(seed);
     for (uint32_t i = start_id; i < end_id; ++i) {
-        cb_reserve_back(intermed_cb_id, 1);
+        ckernel::cb_reserve_back(intermed_cb_id, 1);
 
-        tile_regs_acquire();
+        ckernel:: tile_regs_acquire();
         rand_tile(0, f2u_from.u, f2u_scale.u);
-        tile_regs_commit();
+        ckernel:: tile_regs_commit();
 
-        tile_regs_wait();
-        pack_tile(0, intermed_cb_id, 0);
-        tile_regs_release();
+        ckernel::tile_regs_wait();
+        ckernel:: pack_tile(0, intermed_cb_id, 0);
+        ckernel::tile_regs_release();
 
-        cb_push_back(intermed_cb_id, 1);
+        ckernel::cb_push_back(intermed_cb_id, 1);
     }
 }
 }  // namespace NAMESPACE

@@ -41,8 +41,8 @@ void kernel_main() {
     constexpr uint32_t head_offset_t = Wt * St;
 
     // Kick off compute
-    cb_reserve_back(input_cb_id, Wt);
-    cb_push_back(input_cb_id, Wt);
+    ckernel::cb_reserve_back(input_cb_id, Wt);
+    ckernel::cb_push_back(input_cb_id, Wt);
 
     const uint32_t cache_tile_bytes = get_tile_size(cache_cb_id);
     const DataFormat cache_data_format = get_dataformat(cache_cb_id);
@@ -60,13 +60,13 @@ void kernel_main() {
         const InterleavedAddrGen<index_is_dram> addrg = {
             .bank_base_address = index_tensor_addr, .page_size = index_stick_size_B};
 
-        cb_reserve_back(cb_index_id, 1);
+        ckernel::cb_reserve_back(cb_index_id, 1);
         uint32_t index_cb_wr_ptr = get_write_ptr(cb_index_id);
         // index_tensor has one page to read
         uint64_t tensor_index_noc_addr = get_noc_addr(0, addrg);
         noc_async_read(tensor_index_noc_addr, index_cb_wr_ptr, index_stick_size_B);
         noc_async_read_barrier();
-        cb_push_back(cb_index_id, 1);
+        ckernel::cb_push_back(cb_index_id, 1);
         volatile tt_l1_ptr uint32_t* index_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(index_cb_wr_ptr);
 
         const uint32_t update_idx = index_ptr[my_batch_idx];
@@ -77,12 +77,12 @@ void kernel_main() {
             if constexpr (is_paged_cache) {
                 const InterleavedAddrGen<page_table_is_dram> page_table_gen = {
                     .bank_base_address = page_table_tensor_addr, .page_size = page_table_stick_size};
-                cb_reserve_back(page_table_cb_id, 1);
+                ckernel::cb_reserve_back(page_table_cb_id, 1);
                 uint32_t page_table_cb_wr_ptr = get_write_ptr(page_table_cb_id);
                 uint64_t page_table_noc_addr = get_noc_addr(my_batch_idx, page_table_gen);
                 noc_async_read(page_table_noc_addr, page_table_cb_wr_ptr, page_table_stick_size);
                 noc_async_read_barrier();
-                cb_push_back(page_table_cb_id, 1);
+                ckernel::cb_push_back(page_table_cb_id, 1);
                 volatile tt_l1_ptr uint32_t* page_table_ptr =
                     reinterpret_cast<volatile tt_l1_ptr uint32_t*>(page_table_cb_wr_ptr);
 
@@ -110,7 +110,7 @@ void kernel_main() {
     }
 
     for (uint32_t cur_head = 0; cur_head < num_heads; ++cur_head) {
-        cb_reserve_back(cache_cb_id, Wt);
+        ckernel::cb_reserve_back(cache_cb_id, Wt);
         if (!skip_update) {
             uint32_t cache_l1_write_addr = get_write_ptr(cache_cb_id);
             for (uint32_t curr_cache_id = cache_id; curr_cache_id < cache_id + Wt; ++curr_cache_id) {
@@ -120,7 +120,7 @@ void kernel_main() {
 
             noc_async_read_barrier();
         }
-        cb_push_back(cache_cb_id, Wt);
+        ckernel::cb_push_back(cache_cb_id, Wt);
 
         cache_id += head_offset_t;
     }

@@ -54,7 +54,7 @@ void kernel_main() {
     uint32_t curr_tensor = start_tensor;
     uint32_t curr_tensor_id = start_tensor_id;
     for (uint32_t i = 0; i < num_tiles; ++i) {
-        cb_reserve_back(cb_id_in, ublock_size_tiles);
+        ckernel::cb_reserve_back(cb_id_in, ublock_size_tiles);
         uint32_t l1_write_addr = get_write_ptr(cb_id_in);
         if (is_dram[curr_tensor]) {
             noc_async_read_tile(tile_id_per_tensor[curr_tensor], dram_src_addr_gens[curr_tensor], l1_write_addr);
@@ -62,7 +62,7 @@ void kernel_main() {
             noc_async_read_tile(tile_id_per_tensor[curr_tensor], l1_src_addr_gens[curr_tensor], l1_write_addr);
         }
         noc_async_read_barrier();
-        cb_push_back(cb_id_in, ublock_size_tiles);
+        ckernel::cb_push_back(cb_id_in, ublock_size_tiles);
 
         tile_id_per_tensor[curr_tensor]++;
         curr_tensor_id++;

@@ -45,7 +45,7 @@ uint run_kernel() {
 #endif
 
 #ifdef UCK_CHLKC_UNPACK
-    zerosrc();
+    ckernel::zerosrc();
     chlkc_unpack::unpack_main();
 #endif
 

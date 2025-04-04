@@ -31,21 +31,21 @@ void kernel_main() {
     uint32_t i1 = 0;
     for (uint32_t i = 0; i < NCHtWt; i += onetile) {
         uint64_t src0_noc_addr = get_noc_addr_from_bank_id<true>(src0_bank_id, src0_addr);
-        cb_reserve_back(cb_id_in0, onetile);
+        ckernel::cb_reserve_back(cb_id_in0, onetile);
         l1_write_addr_in0 = get_write_ptr(cb_id_in0);
         noc_async_read(src0_noc_addr, l1_write_addr_in0, tile_bytes);
         noc_async_read_barrier();
-        cb_push_back(cb_id_in0, onetile);
+        ckernel::cb_push_back(cb_id_in0, onetile);
         src0_addr += tile_bytes;
 
         // for each W-tile of the first tensor we push one tile from the second arg tile list
         // but we loop the second list around
-        cb_reserve_back(cb_id_in1, onetile);
+        ckernel::cb_reserve_back(cb_id_in1, onetile);
         uint64_t src1_noc_addr = get_noc_addr_from_bank_id<true>(src1_bank_id, src1_addr);
         l1_write_addr_in1 = get_write_ptr(cb_id_in1);
         noc_async_read(src1_noc_addr, l1_write_addr_in1, tile_bytes);
         noc_async_read_barrier();
-        cb_push_back(cb_id_in1, onetile);
+        ckernel::cb_push_back(cb_id_in1, onetile);
         i1++;
         src1_addr += tile_bytes;
         if (i1 == Wt) {

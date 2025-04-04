@@ -63,12 +63,12 @@ void kernel_main() {
     const uint64_t w_mask_to_use = MASK_16;
     const uint64_t w_offset_to_use = OFFSET_16;
 
-    cb_reserve_back(cb_id_in0, 1);
-    cb_reserve_back(cb_id_in1, 1);
+    ckernel::cb_reserve_back(cb_id_in0, 1);
+    ckernel::cb_reserve_back(cb_id_in1, 1);
     uint32_t input_buffer = get_write_ptr(cb_id_in0);
     uint32_t alignment_buffer = get_write_ptr(cb_id_in1);
-    cb_push_back(cb_id_in1, 1);
-    cb_push_back(cb_id_in0, 1);
+    ckernel::cb_push_back(cb_id_in1, 1);
+    ckernel::cb_push_back(cb_id_in0, 1);
 
     alignment_buffer = align_address<w_alignment_requirement>(alignment_buffer, w_mask_to_use);  // aligned for writes
     input_buffer = align_address<r_alignment_requirement>(input_buffer, r_mask_to_use);          // aligned for reads

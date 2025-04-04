@@ -46,17 +46,17 @@ FORCE_INLINE void transpose_wh_tile_to_cb(uint32_t icb, uint32_t ocb, uint32_t i
     reconfig_data_format_srca(icb);
 #endif
     transpose_wh_init_short(icb);
-    tile_regs_acquire();
+    ckernel:: tile_regs_acquire();
     transpose_wh_tile(icb, itile, idst);
-    tile_regs_commit();
-    cb_reserve_back(ocb, onetile);
-    tile_regs_wait();
+    ckernel:: tile_regs_commit();
+    ckernel::cb_reserve_back(ocb, onetile);
+    ckernel::tile_regs_wait();
 #if defined FP32_DEST_ACC_EN
     pack_reconfig_data_format(ocb);
 #endif
-    pack_tile(idst, ocb);
-    tile_regs_release();
-    cb_push_back(ocb, onetile);
+    ckernel:: pack_tile(idst, ocb);
+    ckernel::tile_regs_release();
+    ckernel::cb_push_back(ocb, onetile);
 }
 
 FORCE_INLINE void transpose_tile(uint32_t& mm_src, bool transpose, bool need_mask, bool is_input) {
@@ -65,9 +65,9 @@ FORCE_INLINE void transpose_tile(uint32_t& mm_src, bool transpose, bool need_mas
     }
 
     if (need_mask) {
-        cb_wait_front(mm_src, onetile);
+        ckernel::cb_wait_front(mm_src, onetile);
         transpose_wh_tile_to_cb(mm_src, mm_src);
-        cb_pop_front(mm_src, onetile);
+        ckernel::cb_pop_front(mm_src, onetile);
     } else {
         uint32_t trans_src = (is_input) ? (cb_in0) : (cb_in1);
         mm_src = (is_input) ? (cb_intermed1) : (cb_intermed2);
@@ -76,14 +76,14 @@ FORCE_INLINE void transpose_tile(uint32_t& mm_src, bool transpose, bool need_mas
 }
 
 FORCE_INLINE void pack_onetile_to_cb(uint32_t ocb = 16, uint32_t idst = 0) {
-    cb_reserve_back(ocb, onetile);
-    tile_regs_wait();
+    ckernel::cb_reserve_back(ocb, onetile);
+    ckernel::tile_regs_wait();
 #if defined FP32_DEST_ACC_EN
     pack_reconfig_data_format(ocb);
 #endif
-    pack_tile(idst, ocb);
-    tile_regs_release();
-    cb_push_back(ocb, onetile);
+    ckernel:: pack_tile(idst, ocb);
+    ckernel::tile_regs_release();
+    ckernel::cb_push_back(ocb, onetile);
 }
 
 FORCE_INLINE void mask_tile_to_cb(
@@ -133,13 +133,13 @@ FORCE_INLINE void mask_tile_to_cb(
         }
 
         // mul input tile with mask tile
-        tile_regs_acquire();
+        ckernel:: tile_regs_acquire();
 #if defined FP32_DEST_ACC_EN
         reconfig_data_format(cb_in0, cb_mask);
 #endif
         mul_tiles_init(cb_in, cb_mask);
         mul_tiles(cb_in, cb_mask, 0, mask_tidx, 0);
-        tile_regs_commit();
+        ckernel:: tile_regs_commit();
 
         pack_onetile_to_cb(cb_intermed);
         mm_src = cb_intermed;
@@ -151,16 +151,16 @@ FORCE_INLINE void mask_tile_to_cb(
 FORCE_INLINE void bias_add(bool is_scalar_bias) {
     static bool scalar_bias_loaded = false;
     pack_onetile_to_cb(cb_intermed0);
-    cb_wait_front(cb_intermed0, onetile);
+    ckernel::cb_wait_front(cb_intermed0, onetile);
 
     if (is_scalar_bias && !scalar_bias_loaded) {
-        cb_wait_front(bias_cb_id, onetile);
+        ckernel::cb_wait_front(bias_cb_id, onetile);
         scalar_bias_loaded = true;
     } else {
-        cb_wait_front(bias_cb_id, onetile);
+        ckernel::cb_wait_front(bias_cb_id, onetile);
     }
 
-    tile_regs_acquire();
+    ckernel:: tile_regs_acquire();
     if (is_scalar_bias) {
 #if defined FP32_DEST_ACC_EN
         reconfig_data_format(cb_intermed0, bias_cb_id);
@@ -174,11 +174,11 @@ FORCE_INLINE void bias_add(bool is_scalar_bias) {
         add_bcast_rows_init_short(cb_intermed0, bias_cb_id);
         add_tiles_bcast_rows(cb_intermed0, bias_cb_id, 0, 0, 0);
     }
-    tile_regs_commit();
+    ckernel:: tile_regs_commit();
 
-    cb_pop_front(cb_intermed0, onetile);
+    ckernel::cb_pop_front(cb_intermed0, onetile);
     if (!is_scalar_bias) {
-        cb_pop_front(bias_cb_id, onetile);
+        ckernel::cb_pop_front(bias_cb_id, onetile);
     }
 }
 #endif
@@ -204,11 +204,11 @@ FORCE_INLINE void matmul_with_transpose_and_mask(
     }
 
     if (need_input_mask_h || need_input_mask_w) {
-        cb_wait_front(cb_in2, num_mask_tiles);
+        ckernel::cb_wait_front(cb_in2, num_mask_tiles);
     }
 
     if (need_other_mask_h || need_other_mask_w) {
-        cb_wait_front(cb_in3, num_mask_tiles);
+        ckernel::cb_wait_front(cb_in3, num_mask_tiles);
     }
 
 #pragma GCC unroll 0
@@ -231,8 +231,8 @@ FORCE_INLINE void matmul_with_transpose_and_mask(
             uint32_t mm_src0 = cb_in0;
             uint32_t mm_src1 = cb_in0;
 
-            cb_wait_front(cb_in0, onetile);
-            cb_wait_front(cb_in1, onetile);
+            ckernel::cb_wait_front(cb_in0, onetile);
+            ckernel::cb_wait_front(cb_in1, onetile);
 
             mm_src0 = cb_in0;
             mm_src1 = cb_in1;
@@ -266,23 +266,23 @@ FORCE_INLINE void matmul_with_transpose_and_mask(
             ////////////////////
             // matmul
             ////////////////////
-            tile_regs_acquire();
+            ckernel:: tile_regs_acquire();
             if (enable_reload) {
-                cb_wait_front(cb_intermed0, onetile);
+                ckernel::cb_wait_front(cb_intermed0, onetile);
 #if defined FP32_DEST_ACC_EN
                 reconfig_data_format_srca(cb_intermed0);
 #endif
                 copy_tile_to_dst_init_short(cb_intermed0);
-                copy_tile(cb_intermed0, 0, 0);
-                cb_pop_front(cb_intermed0, onetile);
+                ckernel:: copy_tile(cb_intermed0, 0, 0);
+                ckernel::cb_pop_front(cb_intermed0, onetile);
             }
 
             if (transpose_input || need_input_mask) {
-                cb_wait_front(mm_src0, onetile);
+                ckernel::cb_wait_front(mm_src0, onetile);
             }
 
             if (transpose_other || need_other_mask) {
-                cb_wait_front(mm_src1, onetile);
+                ckernel::cb_wait_front(mm_src1, onetile);
             }
 
             mm_init_short(mm_src0, mm_src1);
@@ -290,16 +290,16 @@ FORCE_INLINE void matmul_with_transpose_and_mask(
             reconfig_data_format(mm_src0, mm_src1);
 #endif
             matmul_tiles(mm_src0, mm_src1, 0, 0, 0, false);
-            tile_regs_commit();
+            ckernel:: tile_regs_commit();
 
-            cb_pop_front(cb_in0, onetile);
-            cb_pop_front(cb_in1, onetile);
+            ckernel::cb_pop_front(cb_in0, onetile);
+            ckernel::cb_pop_front(cb_in1, onetile);
 
             if (transpose_input || need_input_mask) {
-                cb_pop_front(mm_src0, onetile);
+                ckernel::cb_pop_front(mm_src0, onetile);
             }
             if (transpose_other || need_other_mask) {
-                cb_pop_front(mm_src1, onetile);
+                ckernel::cb_pop_front(mm_src1, onetile);
             }
 
             if (last_out) {
@@ -325,15 +325,15 @@ FORCE_INLINE void matmul_with_transpose_and_mask(
 FORCE_INLINE void matmul(uint32_t num_output_tiles, uint32_t Kt) {
     mm_init(cb_in0, cb_in1, cb_out0);
     for (uint32_t i = 0; i < num_output_tiles; ++i) {
-        tile_regs_acquire();
+        ckernel:: tile_regs_acquire();
         for (uint32_t kt = 0; kt < Kt; kt++) {
-            cb_wait_front(cb_in0, onetile);
-            cb_wait_front(cb_in1, onetile);
+            ckernel::cb_wait_front(cb_in0, onetile);
+            ckernel::cb_wait_front(cb_in1, onetile);
             matmul_tiles(cb_in0, cb_in1, 0, 0, 0, false);
-            cb_pop_front(cb_in0, onetile);
-            cb_pop_front(cb_in1, onetile);
+            ckernel::cb_pop_front(cb_in0, onetile);
+            ckernel::cb_pop_front(cb_in1, onetile);
         }
-        tile_regs_commit();
+        ckernel:: tile_regs_commit();
         pack_onetile_to_cb(cb_out0);
     }
 }

@@ -114,7 +114,7 @@ void kernel_main() {
                 // Reset reader_idx to finish act_block_h_datums
                 reader_idx = start_reader_idx;
 
-                cb_reserve_back(cb_id_act, act_block_num_tiles_read);
+                ckernel::cb_reserve_back(cb_id_act, act_block_num_tiles_read);
                 uint32_t l1_write_addr_act = get_write_ptr(cb_id_act);
                 uint32_t reader_offset = act_l1_read_addr + (reader_offsets[reader_offset_idx] * conv_act_c_read_bytes);
                 // #pragma GCC unroll 4 // unroll didn't help, but act_block_h_datums (loop bound) being const does help
@@ -142,7 +142,7 @@ void kernel_main() {
                     reader_idx++;
                 }
                 noc_async_read_barrier();
-                cb_push_back(cb_id_act, act_block_num_tiles_read);
+                ckernel::cb_push_back(cb_id_act, act_block_num_tiles_read);
 
                 reader_offset_idx += window_inner;
             }
@@ -172,7 +172,7 @@ void kernel_main() {
         for (uint32_t bh = 0; bh < act_num_blocks_h; bh++) {
             // Reset reader_idx to finish act_block_h_datums
             reader_idx = start_reader_idx;
-            cb_reserve_back(cb_id_act, act_block_num_tiles);
+            ckernel::cb_reserve_back(cb_id_act, act_block_num_tiles);
             uint32_t l1_write_addr_act = get_write_ptr(cb_id_act);
             for (uint32_t bhd = 0; bhd < act_block_h_datums; bhd++) {
 // when no read coalesing, main use case is window_inner == 1,
@@ -196,13 +196,13 @@ void kernel_main() {
                 reader_idx++;
             }
             noc_async_read_barrier();
-            cb_push_back(cb_id_act, act_block_num_tiles);
+            ckernel::cb_push_back(cb_id_act, act_block_num_tiles);
 
             reader_offset_idx += 3 * window_inner;
             for (uint32_t outer = 1; outer < window_outer; outer++) {
                 // Reset reader_idx to finish act_block_h_datums
                 reader_idx = start_reader_idx;
-                cb_reserve_back(cb_id_act, act_block_num_tiles);
+                ckernel::cb_reserve_back(cb_id_act, act_block_num_tiles);
                 uint32_t l1_write_addr_act = get_write_ptr(cb_id_act);
                 for (uint32_t bhd = 0; bhd < act_block_h_datums; bhd++) {
 // when no read coalesing, main use case is window_inner == 1,
@@ -224,7 +224,7 @@ void kernel_main() {
                     reader_idx++;
                 }
                 noc_async_read_barrier();
-                cb_push_back(cb_id_act, act_block_num_tiles);
+                ckernel::cb_push_back(cb_id_act, act_block_num_tiles);
 
                 reader_offset_idx += 3 * window_inner;
             }

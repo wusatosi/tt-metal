@@ -54,7 +54,7 @@ void kernel_main() {
                     //    DPRINT << "8B h=" << h << " ct=" << ct << " wt=" << wt << " W=" << W << " HW2=" << HW2 <<
                     //    ENDL();
 
-                    cb_reserve_back(operand0, onetile);
+                    ckernel::cb_reserve_back(operand0, onetile);
 
                     uint32_t dest_tr0_l1 = get_write_ptr(operand0);
                     uint32_t save_dest = dest_tr0_l1;
@@ -120,7 +120,7 @@ void kernel_main() {
                     noc_async_read_barrier();
 
                     // notifies the unpacker that the buffer is populated
-                    cb_push_back(operand0, onetile);
+                    ckernel::cb_push_back(operand0, onetile);
                 }
                 ctoffs += (HW2 << 5);  // since we increment ct, we need to mlutiply by 32
             }  // ct loop

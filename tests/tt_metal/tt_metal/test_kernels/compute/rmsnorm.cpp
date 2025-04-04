@@ -15,8 +15,8 @@
 #include "compute_kernel_api/eltwise_binary.h"
 #include "compute_kernel_api/layernorm.h"
 
-ALWI void ACQ() { acquire_dst(); }
-ALWI void REL() { release_dst(); }
+ALWI void ACQ() { ckernel::acquire_dst(); }
+ALWI void REL() { ckernel:: release_dst(); }
 
 namespace NAMESPACE {
 void MAIN {
@@ -56,8 +56,8 @@ void MAIN {
     constexpr auto cb_x = tt::CBIndex::c_0;
 #endif
 
-    cb_wait_front(cb_scaler, 1);  // comes from the reader
-    cb_wait_front(cb_eps, 1);     // comes from the reader
+    ckernel::cb_wait_front(cb_scaler, 1);  // comes from the reader
+    ckernel::cb_wait_front(cb_eps, 1);     // comes from the reader
 
     constexpr int cb_im_or_out = (do_gamma | do_beta) ? cb_fusion : tt::CBIndex::c_16;
 
@@ -73,19 +73,19 @@ void MAIN {
         for (uint32_t wt = 0; wt < Wt; wt += blk) {
             ACQ();
             // UNPACK(( { DPRINT  << "Waiting on cb_x" << ENDL(); } ));
-            cb_wait_front(cb_in, blk);
+            ckernel::cb_wait_front(cb_in, blk);
             // UNPACK(( { DPRINT  << "Waiting on cb_inb" << ENDL(); } ));
-            cb_wait_front(cb_inb, blk);
+            ckernel::cb_wait_front(cb_inb, blk);
             // UNPACK(( { DPRINT  << "Done Waiting on cb_inb" << ENDL(); } ));
-            cb_reserve_back(cb_x, blk);
+            ckernel::cb_reserve_back(cb_x, blk);
             for (uint32_t j = 0; j < blk; j++) {
                 add_tiles(cb_in, cb_inb, j, j, j);
-                pack_tile(j, cb_x);
+                ckernel:: pack_tile(j, cb_x);
             }
             REL();
-            cb_push_back(cb_x, blk);  // push the sum into the same buffer
-            cb_pop_front(cb_in, blk);
-            cb_pop_front(cb_inb, blk);
+            ckernel::cb_push_back(cb_x, blk);  // push the sum into the same buffer
+            ckernel::cb_pop_front(cb_in, blk);
+            ckernel::cb_pop_front(cb_inb, blk);
         }
         // by the end of this loop we should end up with Wt tiles in cb_x
 #endif
@@ -95,26 +95,26 @@ void MAIN {
          */
         mul_tiles_init(cb_x, cb_x);
         for (uint32_t wt = 0; wt < Wt; wt += blk) {
-            cb_wait_front(cb_x, wt + blk);
-            cb_reserve_back(cb_x2, blk);  // can probably use less space for this if we block
+            ckernel::cb_wait_front(cb_x, wt + blk);
+            ckernel::cb_reserve_back(cb_x2, blk);  // can probably use less space for this if we block
             ACQ();
             for (uint32_t wtr = 0; wtr < blk; wtr++) {
                 mul_tiles(cb_x, cb_x, wt + wtr, wt + wtr, wtr);
                 // mul_tiles(cb_xmm, cb_col1, wt+wtr, wt+wtr, wtr);
-                pack_tile(wtr, cb_x2);
+                ckernel:: pack_tile(wtr, cb_x2);
             }
-            cb_push_back(cb_x2, blk);
+            ckernel::cb_push_back(cb_x2, blk);
             REL();
         }
 
         /* Var(x)
          * compute E[(x)^2]
          */
-        cb_reserve_back(cb_ex2, 1);
+        ckernel::cb_reserve_back(cb_ex2, 1);
         reduce_init_delta<false>(cb_x2, cb_scaler, cb_ex2);
         ACQ();
-        cb_wait_front(cb_x2, Wt);
-        // cb_wait_front(cb_xmm, Wt);
+        ckernel::cb_wait_front(cb_x2, Wt);
+        // ckernel::cb_wait_front(cb_xmm, Wt);
         for (uint32_t wt = 0; wt < Wt; wt += blk) {
             // reduce
             for (uint32_t wtr = 0; wtr < blk; wtr++) {
@@ -122,13 +122,13 @@ void MAIN {
             }
             // reduce_tile(cb_xmm, cb_scaler, wt+wtr, scaler0, dst0);
         }
-        cb_pop_front(cb_x2, Wt);
-        reduce_revert_delta(cb_ex2);
-        pack_tile(dst0, cb_ex2);
+        ckernel::cb_pop_front(cb_x2, Wt);
+        ckernel::reduce_revert_delta(cb_ex2);
+        ckernel:: pack_tile(dst0, cb_ex2);
         REL();
 
-        cb_push_back(cb_ex2, 1);
-        cb_wait_front(cb_ex2, 1);
+        ckernel::cb_push_back(cb_ex2, 1);
+        ckernel::cb_wait_front(cb_ex2, 1);
 
         /* Var(x) + eps
          * add epsilon E[(x-E[x])^2]+eps
@@ -137,13 +137,13 @@ void MAIN {
         add_tiles_init(cb_ex2, cb_eps);
         add_tiles(cb_ex2, cb_eps, 0, 0, dst0);
 
-        cb_reserve_back(cb_ex2pe, 1);  // 1
+        ckernel::cb_reserve_back(cb_ex2pe, 1);  // 1
         sqrt_tile_init();
-        sqrt_tile(dst0);
+        ckernel:: sqrt_tile(dst0);
         recip_tile_init();
         recip_tile(dst0);
-        pack_tile(dst0, cb_ex2pe);
-        cb_push_back(cb_ex2pe, 1);
+        ckernel:: pack_tile(dst0, cb_ex2pe);
+        ckernel::cb_push_back(cb_ex2pe, 1);
         REL();
 
         /* ln(x) * gamma + beta (gamma and beta are optional)
@@ -151,62 +151,62 @@ void MAIN {
          * we have 1.0/sqrt( E[(x-E[x])^2] + eps) in cb_ex2pe
          * just need to bcast_mul xmm with cb_ex2pe
          */
-        cb_reserve_back(cb_ex2pe, 1);  // 2
-        cb_wait_front(cb_ex2pe, 1);
+        ckernel::cb_reserve_back(cb_ex2pe, 1);  // 2
+        ckernel::cb_wait_front(cb_ex2pe, 1);
         for (uint32_t wt = 0; wt < Wt; wt += blk) {
             // if (ht == 1) UNPACK(( DPRINT << "wt_2=" << wt << " " ));
             // if (ht == 1) UNPACK(( DPRINT << "rem_2=" << rem << ENDL() ));
-            cb_reserve_back(cb_im_or_out, blk);
+            ckernel::cb_reserve_back(cb_im_or_out, blk);
 
             ACQ();
             mul_bcast_cols_init_short(cb_x, cb_ex2pe);
             for (uint32_t wtr = 0; wtr < blk; wtr++) {
                 // cb_xmm[wt+wtr] since we pop Wt from cb_xmm after the entire loop
                 mul_tiles_bcast_cols(cb_x, cb_ex2pe, wt + wtr, 0, wtr);  // tile *= 1/(sum(exp(x)))
-                pack_tile(wtr, cb_im_or_out);  // pack either to intermediate (cb_fusion or out0)
+                ckernel:: pack_tile(wtr, cb_im_or_out);  // pack either to intermediate (cb_fusion or out0)
             }
-            cb_push_back(cb_im_or_out, blk);  // if no gamma/beta are provided, this will be passed on to the writer
+            ckernel::cb_push_back(cb_im_or_out, blk);  // if no gamma/beta are provided, this will be passed on to the writer
             REL();
 
             if (do_gamma) {
                 ACQ();
                 uint32_t cb_outg = do_beta ? cb_fusion : tt::CBIndex::c_16;
                 mul_bcast_rows_init_short(cb_fusion, cb_gamma);
-                cb_reserve_back(cb_outg, blk);
-                cb_wait_front(cb_gamma, wt + blk);  // we don't pop, TODO: only wait on first ht
-                cb_wait_front(cb_fusion, blk);
+                ckernel::cb_reserve_back(cb_outg, blk);
+                ckernel::cb_wait_front(cb_gamma, wt + blk);  // we don't pop, TODO: only wait on first ht
+                ckernel::cb_wait_front(cb_fusion, blk);
                 for (uint32_t wtr = 0; wtr < blk; wtr++) {
                     mul_tiles_bcast_rows(cb_fusion, cb_gamma, wtr, wt + wtr, wtr);  // tile *= 1/(sum(exp(x)))
-                    pack_tile(wtr, cb_outg);  // pack either to intermediate (cb_fusion or out0)
+                    ckernel:: pack_tile(wtr, cb_outg);  // pack either to intermediate (cb_fusion or out0)
                 }
-                cb_pop_front(cb_fusion, blk);
+                ckernel::cb_pop_front(cb_fusion, blk);
                 // we don't pop gamma
-                cb_push_back(cb_outg, blk);
+                ckernel::cb_push_back(cb_outg, blk);
                 // We don't pop gamma since it's 1,1,1,Wt and we reuse it for all NCHt
                 REL();
             }
             if (do_beta) {
                 ACQ();
                 add_bcast_rows_init_short(cb_fusion, cb_beta);
-                cb_reserve_back(tt::CBIndex::c_16, blk);
-                cb_wait_front(cb_beta, wt + blk);  // TODO: optimization - only wait on first ht
-                cb_wait_front(cb_fusion, blk);
+                ckernel::cb_reserve_back(tt::CBIndex::c_16, blk);
+                ckernel::cb_wait_front(cb_beta, wt + blk);  // TODO: optimization - only wait on first ht
+                ckernel::cb_wait_front(cb_fusion, blk);
                 for (uint32_t wtr = 0; wtr < blk; wtr++) {
                     add_tiles_bcast_rows(cb_fusion, cb_beta, wtr, wt + wtr, wtr);  // tile *= 1/(sum(exp(x)))
-                    pack_tile(wtr, tt::CBIndex::c_16);  // pack either to intermediate (cb_fusion or out0)
+                    ckernel:: pack_tile(wtr, tt::CBIndex::c_16);  // pack either to intermediate (cb_fusion or out0)
                 }
-                cb_pop_front(cb_fusion, blk);
+                ckernel::cb_pop_front(cb_fusion, blk);
                 // We don't pop beta since it's 1,1,1,Wt and we reuse it for all NCHt
-                cb_push_back(tt::CBIndex::c_16, blk);
+                ckernel::cb_push_back(tt::CBIndex::c_16, blk);
                 REL();
             }
         }
-        cb_pop_front(cb_ex2pe, 1);
-        cb_pop_front(cb_x, Wt);
+        ckernel::cb_pop_front(cb_ex2pe, 1);
+        ckernel::cb_pop_front(cb_x, Wt);
 
     }  // NCHt loop
-    // cb_pop_front(cb_scaler, 1); // optional for correctness
-    // cb_pop_front(cb_eps, 1); // optional for correctness
-    // cb_pop_front(cb_col1, 1); // optional for correctness
+    // ckernel::cb_pop_front(cb_scaler, 1); // optional for correctness
+    // ckernel::cb_pop_front(cb_eps, 1); // optional for correctness
+    // ckernel::cb_pop_front(cb_col1, 1); // optional for correctness
 }
 }  // namespace NAMESPACE

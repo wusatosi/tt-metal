@@ -58,7 +58,7 @@ void kernel_main() {
     // weight: (1, C)
     read_line(cb_weight, addrg_weight, weight_num_tile);
 
-    cb_wait_front(cb_weight, weight_num_tile);
+    ckernel::cb_wait_front(cb_weight, weight_num_tile);
     auto weight_l1_ptr = get_read_ptr<uint16_t>(cb_weight);
 #endif
 
@@ -83,8 +83,8 @@ void kernel_main() {
         uint32_t target_noc_id = nt;
         read_tile(cb_target, addrg_target, target_noc_id);
 
-        cb_reserve_back(cb_tmp_weight, onetile);
-        cb_wait_front(cb_target, onetile);
+        ckernel::cb_reserve_back(cb_tmp_weight, onetile);
+        ckernel::cb_wait_front(cb_target, onetile);
 
         auto tmp_weight_l1_ptr = get_write_ptr<FP32_DEST_ACC_FTYPE>(cb_tmp_weight);
         auto target_l1_ptr = get_read_ptr<int32_t>(cb_target);
@@ -111,8 +111,8 @@ void kernel_main() {
             }
         }
 
-        cb_push_back(cb_tmp_weight, onetile);
+        ckernel::cb_push_back(cb_tmp_weight, onetile);
 
-        cb_pop_front(cb_target, onetile);
+        ckernel::cb_pop_front(cb_target, onetile);
     }
 }

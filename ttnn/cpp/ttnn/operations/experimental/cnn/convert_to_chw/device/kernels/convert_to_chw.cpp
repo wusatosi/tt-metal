@@ -14,24 +14,24 @@ FORCE_INLINE void transpose(uint32_t cb_in, uint32_t cb_out) {
 
     pack_untilize_dst_init_short<ONE_TILE, 1, false, false, 32>(cb_out);
 
-    cb_wait_front(cb_in, ONE_TILE);
+    ckernel::cb_wait_front(cb_in, ONE_TILE);
 
-    tile_regs_acquire();
-    tile_regs_wait();
+    ckernel:: tile_regs_acquire();
+    ckernel::tile_regs_wait();
 
     transpose_wh_tile(cb_in, 0, 0);
 
-    cb_reserve_back(cb_out, ONE_TILE);
+    ckernel::cb_reserve_back(cb_out, ONE_TILE);
 
     pack_untilize_dst<ONE_TILE>(cb_out);
 
-    tile_regs_commit();
-    tile_regs_release();
+    ckernel:: tile_regs_commit();
+    ckernel::tile_regs_release();
 
     pack_untilize_uninit(cb_out);
 
-    cb_push_back(cb_out, ONE_TILE);
-    cb_pop_front(cb_in, ONE_TILE);
+    ckernel::cb_push_back(cb_out, ONE_TILE);
+    ckernel::cb_pop_front(cb_in, ONE_TILE);
 }
 
 namespace NAMESPACE {

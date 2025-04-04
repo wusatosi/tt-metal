@@ -35,40 +35,40 @@ void MAIN {
         binary_op_init_common(cb_logx, cb_decimal, cb_y);
     }
 
-    cb_wait_front(cb_decimal, onetile);  // comes from the reader
+    ckernel::cb_wait_front(cb_decimal, onetile);  // comes from the reader
 
     // Compute cb_x
     for (uint32_t tile_idx = 0; tile_idx < num_tiles; tile_idx++) {
         if (tile_idx == 0) {
-            tile_regs_acquire();
-            cb_wait_front(cb_input, onetile);  // comes from the reader
-            cb_reserve_back(cb_x, onetile);
+            ckernel:: tile_regs_acquire();
+            ckernel::cb_wait_front(cb_input, onetile);  // comes from the reader
+            ckernel::cb_reserve_back(cb_x, onetile);
 
             copy_tile_init(cb_input);
-            copy_tile(cb_input, 0, dst0);
-            cb_pop_front(cb_input, onetile);
-            tile_regs_commit();
+            ckernel:: copy_tile(cb_input, 0, dst0);
+            ckernel::cb_pop_front(cb_input, onetile);
+            ckernel:: tile_regs_commit();
 
-            tile_regs_wait();
-            pack_tile(dst0, cb_x);
-            cb_push_back(cb_x, onetile);
-            tile_regs_release();
+            ckernel::tile_regs_wait();
+            ckernel:: pack_tile(dst0, cb_x);
+            ckernel::cb_push_back(cb_x, onetile);
+            ckernel::tile_regs_release();
         } else {
-            tile_regs_acquire();
-            cb_wait_front(cb_input, onetile);  // comes from the reader
-            cb_wait_front(cb_x, onetile);
-            cb_reserve_back(cb_x, onetile);
+            ckernel:: tile_regs_acquire();
+            ckernel::cb_wait_front(cb_input, onetile);  // comes from the reader
+            ckernel::cb_wait_front(cb_x, onetile);
+            ckernel::cb_reserve_back(cb_x, onetile);
 
             add_tiles_init(cb_input, cb_x);
             add_tiles(cb_input, cb_x, 0, 0, dst0);
-            cb_pop_front(cb_x, onetile);
-            cb_pop_front(cb_input, onetile);
-            tile_regs_commit();
+            ckernel::cb_pop_front(cb_x, onetile);
+            ckernel::cb_pop_front(cb_input, onetile);
+            ckernel:: tile_regs_commit();
 
-            tile_regs_wait();
-            pack_tile(dst0, cb_x);
-            cb_push_back(cb_x, onetile);
-            tile_regs_release();
+            ckernel::tile_regs_wait();
+            ckernel:: pack_tile(dst0, cb_x);
+            ckernel::cb_push_back(cb_x, onetile);
+            ckernel::tile_regs_release();
         }
     }
     // x^p

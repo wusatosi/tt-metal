@@ -76,7 +76,7 @@ void kernel_main() {
         constexpr uint32_t mask_read_tile_offset_bytes = FLOAT32_DTYPE_GAMMA ? 1024 : 512;
 
         uint32_t l1_write_addr_gamma = get_write_ptr(cb_gamma);
-        cb_reserve_back(cb_gamma, block_w);
+        ckernel::cb_reserve_back(cb_gamma, block_w);
         for (uint32_t w = 0; w < block_w; w++) {
             uint32_t tile_id = gamma_tile_start_id + w;
             uint64_t gamma_noc_addr = get_noc_addr(tile_id, gamma);
@@ -88,7 +88,7 @@ void kernel_main() {
             l1_write_addr_gamma += gamma_tile_bytes;
         }
         noc_async_read_barrier();
-        cb_push_back(cb_gamma, block_w);
+        ckernel::cb_push_back(cb_gamma, block_w);
     }
 
     if constexpr (fuse_beta) {
@@ -104,7 +104,7 @@ void kernel_main() {
         uint32_t mask_read_tile_offset_bytes = FLOAT32_DTYPE_BETA ? 1024 : 512;
 
         uint32_t l1_write_addr_beta = get_write_ptr(cb_beta);
-        cb_reserve_back(cb_beta, block_w);
+        ckernel::cb_reserve_back(cb_beta, block_w);
         for (uint32_t w = 0; w < block_w; w++) {
             uint32_t tile_id = beta_tile_start_id + w;
             uint64_t beta_noc_addr = get_noc_addr(tile_id, beta);
@@ -115,7 +115,7 @@ void kernel_main() {
             l1_write_addr_beta += beta_tile_bytes;
         }
         noc_async_read_barrier();
-        cb_push_back(cb_beta, block_w);
+        ckernel::cb_push_back(cb_beta, block_w);
     }
 
 #ifndef SKIP_WRITE_BACK

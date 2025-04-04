@@ -32,7 +32,7 @@ void kernel_main() {
          * input_cb)} so multiply input image_row_begin with (2 * scale_h) */
         reader_idx = (2 * scale_h) * image_row_begin;
     }
-    cb_reserve_back(out_cb_id, out_nsticks_per_core);
+    ckernel::cb_reserve_back(out_cb_id, out_nsticks_per_core);
 
     for (uint32_t row_begin = image_row_begin; row_begin < image_row_end; ++row_begin) {
         for (uint32_t sh = 0; sh < scale_h; sh++) {
@@ -50,5 +50,5 @@ void kernel_main() {
     }
 
     noc_async_read_barrier();
-    cb_push_back(out_cb_id, out_nsticks_per_core);
+    ckernel::cb_push_back(out_cb_id, out_nsticks_per_core);
 }

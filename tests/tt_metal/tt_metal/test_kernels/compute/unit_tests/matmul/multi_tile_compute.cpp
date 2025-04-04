@@ -23,12 +23,12 @@ void MAIN {
     // we are looking at block
     // out = in0[r x k]*in1[k x c]
     mm_init(in0_cb, in1_cb, out_cb);
-    acquire_dst();
+    ckernel::acquire_dst();
 
     uint32_t out_tile_index = 0;
     uint32_t in0_index_r_offset = 0;
-    cb_wait_front(in0_cb, in0_num_tiles);
-    cb_wait_front(in1_cb, in1_num_tiles);
+    ckernel::cb_wait_front(in0_cb, in0_num_tiles);
+    ckernel::cb_wait_front(in1_cb, in1_num_tiles);
     for (uint32_t r = 0; r < out_r; r++) {
         for (uint32_t c = 0; c < out_c; c++) {
             uint32_t in1_index_c_offset = 0;
@@ -42,14 +42,14 @@ void MAIN {
         }
         in0_index_r_offset += in0_k;
     }
-    cb_pop_front(in0_cb, in0_num_tiles);
-    cb_pop_front(in1_cb, in1_num_tiles);
+    ckernel::cb_pop_front(in0_cb, in0_num_tiles);
+    ckernel::cb_pop_front(in1_cb, in1_num_tiles);
 
-    cb_reserve_back(out_cb, out_num_tiles);
+    ckernel::cb_reserve_back(out_cb, out_num_tiles);
     for (uint32_t tile_index = 0; tile_index < out_num_tiles; tile_index++) {
-        pack_tile(tile_index, out_cb);
+        ckernel:: pack_tile(tile_index, out_cb);
     }
-    cb_push_back(out_cb, out_num_tiles);
-    release_dst();
+    ckernel::cb_push_back(out_cb, out_num_tiles);
+    ckernel:: release_dst();
 }
 }  // namespace NAMESPACE

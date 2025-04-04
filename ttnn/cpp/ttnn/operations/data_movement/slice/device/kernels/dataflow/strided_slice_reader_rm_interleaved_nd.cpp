@@ -59,7 +59,7 @@ void kernel_main() {
         // Perform the read operation
         noc_async_read_page(base_linear_index, s0, src_buffer_l1_addr);
         // Reserve space in the output buffer
-        cb_reserve_back(cb_id_out0, 1);
+        ckernel::cb_reserve_back(cb_id_out0, 1);
         noc_async_read_barrier();
         for (uint32_t l = starts[dims - 1]; l < ends[dims - 1]; l += strides[dims - 1]) {
             // Write the element into the output buffer
@@ -68,7 +68,7 @@ void kernel_main() {
             out_stick[out_stick_id] = in_stick[l];  // Assuming you write one element at a time
             out_stick_id++;
         }
-        cb_push_back(cb_id_out0, 1);
+        ckernel::cb_push_back(cb_id_out0, 1);
         if constexpr (dims == 1) {
             break;  // If there's only one dimension, we're done
         } else {

@@ -16,25 +16,25 @@
         reconfig_data_format_srca(/*old*/ cb_post, /*new*/ cb_pre);    \
         pack_reconfig_data_format(/*old*/ cb_out, /*new*/ cb_post);    \
                                                                        \
-        cb_wait_front(cb_pre, per_core_block_size);                    \
-        cb_reserve_back(cb_post, per_core_block_size);                 \
+        ckernel::cb_wait_front(cb_pre, per_core_block_size);                    \
+        ckernel::cb_reserve_back(cb_post, per_core_block_size);                 \
                                                                        \
-        tile_regs_acquire();                                           \
+        ckernel:: tile_regs_acquire();                                           \
         for (uint32_t i = 0; i < per_core_block_size; ++i) {           \
             copy_tile_to_dst_init_short(cb_pre);                       \
-            copy_tile(cb_pre, i, i);                                   \
+            ckernel:: copy_tile(cb_pre, i, i);                                   \
             PROCESS_ACTIVATIONS(op, i);                                \
         }                                                              \
-        tile_regs_commit();                                            \
+        ckernel:: tile_regs_commit();                                            \
                                                                        \
-        tile_regs_wait();                                              \
+        ckernel::tile_regs_wait();                                              \
         for (uint32_t i = 0; i < per_core_block_size; ++i) {           \
-            pack_tile(i, cb_post);                                     \
+            ckernel:: pack_tile(i, cb_post);                                     \
         }                                                              \
-        tile_regs_release();                                           \
+        ckernel::tile_regs_release();                                           \
                                                                        \
-        cb_pop_front(cb_pre, per_core_block_size);                     \
-        cb_push_back(cb_post, per_core_block_size);                    \
+        ckernel::cb_pop_front(cb_pre, per_core_block_size);                     \
+        ckernel::cb_push_back(cb_post, per_core_block_size);                    \
                                                                        \
         reconfig_data_format_srca(/*old*/ cb_pre, /*new*/ cb_post);    \
         pack_reconfig_data_format(/*old*/ cb_post, /*new*/ cb_out);    \

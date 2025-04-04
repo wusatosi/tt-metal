@@ -33,8 +33,8 @@ void kernel_main() {
     const InterleavedAddrGenFast<cache_is_dram> s0 = {
         .bank_base_address = cache_addr, .page_size = cache_tile_bytes, .data_format = cache_data_format};
 #ifdef INPUT_SHARDED
-    cb_reserve_back(input_cb_id, Wt * num_batched_heads);
-    cb_push_back(input_cb_id, Wt * num_batched_heads);
+    ckernel::cb_reserve_back(input_cb_id, Wt * num_batched_heads);
+    ckernel::cb_push_back(input_cb_id, Wt * num_batched_heads);
 #else
     const InterleavedAddrGenFast<input_is_dram> s1 = {
         .bank_base_address = input_addr, .page_size = input_tile_bytes, .data_format = input_data_format};
@@ -46,7 +46,7 @@ void kernel_main() {
 
     for (uint32_t h = 0; h < num_batched_heads; ++h) {
 #ifndef INPUT_SHARDED
-        cb_reserve_back(input_cb_id, Wt);
+        ckernel::cb_reserve_back(input_cb_id, Wt);
         uint32_t input_l1_write_addr = get_write_ptr(input_cb_id);
         for (uint32_t i = 0; i < Wt; ++i) {
             noc_async_read_tile(input_id, s1, input_l1_write_addr);
@@ -54,10 +54,10 @@ void kernel_main() {
             input_id++;
         }
         noc_async_read_barrier();
-        cb_push_back(input_cb_id, Wt);
+        ckernel::cb_push_back(input_cb_id, Wt);
 #endif
         for (uint32_t u = 0; u < u_count; ++u) {
-            cb_reserve_back(cache_cb_id, Wt * granularity);
+            ckernel::cb_reserve_back(cache_cb_id, Wt * granularity);
             uint32_t cache_l1_write_addr = get_write_ptr(cache_cb_id);
             for (uint32_t g = 0; g < granularity; ++g) {
                 for (uint32_t curr_cache_id = cache_id; curr_cache_id < cache_id + Wt; ++curr_cache_id) {
@@ -73,7 +73,7 @@ void kernel_main() {
             }
 
             noc_async_read_barrier();
-            cb_push_back(cache_cb_id, Wt * granularity);
+            ckernel::cb_push_back(cache_cb_id, Wt * granularity);
         }
     }
 }

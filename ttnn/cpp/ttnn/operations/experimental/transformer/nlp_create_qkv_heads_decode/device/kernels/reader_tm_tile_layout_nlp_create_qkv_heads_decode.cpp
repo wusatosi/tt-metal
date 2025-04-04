@@ -40,13 +40,13 @@ void kernel_main() {
     if constexpr (use_batch_offset) {
         const InterleavedAddrGen<index_is_dram> addrg = {
             .bank_base_address = batch_offset_tensor_addr, .page_size = index_stick_size};
-        cb_reserve_back(cb_batch_offset_id, 1);
+        ckernel::cb_reserve_back(cb_batch_offset_id, 1);
         uint32_t index_cb_wr_ptr = get_write_ptr(cb_batch_offset_id);
         // Read the batch offset 1 page to read
         uint64_t batch_offset_index_noc_addr = get_noc_addr(0, addrg);
         noc_async_read(batch_offset_index_noc_addr, index_cb_wr_ptr, index_stick_size);
         noc_async_read_barrier();
-        cb_push_back(cb_batch_offset_id, 1);
+        ckernel::cb_push_back(cb_batch_offset_id, 1);
         volatile tt_l1_ptr uint32_t* index_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(index_cb_wr_ptr);
         // Always pick 1st value in tensor as batch offset
         device_batch_offset = index_ptr[0];

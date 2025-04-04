@@ -34,8 +34,8 @@ inline void reduce_h_fused_interm(
     constexpr uint32_t num_out_rows = 1;
 
     const uint32_t curr_in_cb_id = (split_reader && (in_stick_index & 0x1)) ? in_cb_id_1 : in_cb_id_0;
-    cb_wait_front(curr_in_cb_id, 1);
-    tile_regs_acquire();
+    ckernel::cb_wait_front(curr_in_cb_id, 1);
+    ckernel:: tile_regs_acquire();
     unpack_tilizeA_B_block(
         curr_in_cb_id,
         in_scalar_cb_id,
@@ -46,16 +46,16 @@ inline void reduce_h_fused_interm(
     for (uint32_t c_i = 0; c_i < num_output_tiles; ++c_i) {
         reduce_tile_math(c_i, num_faces_in_input_tile /* reduce 1 or 2 faces */);
     }
-    cb_pop_front(curr_in_cb_id, 1);
-    tile_regs_wait();
-    tile_regs_commit();
+    ckernel::cb_pop_front(curr_in_cb_id, 1);
+    ckernel::tile_regs_wait();
+    ckernel:: tile_regs_commit();
     pack_untilize_dst<num_output_tiles>(
         interm_cb_id,
         1 /*out_subblock_h*/,
         interm_index,
         num_out_rows,
         num_faces_in_output_tile); /* pack 1 row (1x16 or 1x32) */
-    tile_regs_release();
+    ckernel::tile_regs_release();
 }
 
 template <uint32_t num_output_tiles, bool is_partial_tile, uint32_t max_rows_for_reduction>
@@ -64,9 +64,9 @@ inline void reduce_h_fused(const uint32_t interm_cb_id, const uint32_t in_scalar
     constexpr uint32_t num_faces_in_output_tile = is_partial_tile ? 1 : 2;
     constexpr uint32_t num_out_rows = 1;
 
-    cb_reserve_back(out_cb_id, num_output_tiles);
-    cb_wait_front(interm_cb_id, 1);
-    tile_regs_acquire();
+    ckernel::cb_reserve_back(out_cb_id, num_output_tiles);
+    ckernel::cb_wait_front(interm_cb_id, 1);
+    ckernel:: tile_regs_acquire();
     unpack_tilizeA_B_block(
         interm_cb_id,
         in_scalar_cb_id,
@@ -77,13 +77,13 @@ inline void reduce_h_fused(const uint32_t interm_cb_id, const uint32_t in_scalar
     for (uint32_t c_i = 0; c_i < num_output_tiles; ++c_i) {
         reduce_tile_math(c_i, num_faces_in_input_tile /* reduce 1 or 2 faces */);
     }
-    cb_pop_front(interm_cb_id, 1);
-    tile_regs_wait();
-    tile_regs_commit();
+    ckernel::cb_pop_front(interm_cb_id, 1);
+    ckernel::tile_regs_wait();
+    ckernel:: tile_regs_commit();
     pack_untilize_dst<num_output_tiles>(
         out_cb_id, 1 /*out_subblock_h*/, 0, num_out_rows, num_faces_in_output_tile); /* pack 1 row (1x16 or 1x32) */
-    tile_regs_release();
-    cb_push_back(out_cb_id, num_output_tiles);
+    ckernel::tile_regs_release();
+    ckernel::cb_push_back(out_cb_id, num_output_tiles);
 }
 
 namespace NAMESPACE {
@@ -126,13 +126,13 @@ void MAIN {
         in_cb_id_0, in_scalar_cb_id, max_tiles_per_iter, interm_cb_id, num_faces_in_input_tile, max_rows_for_reduction);
 
     uint32_t interm_reduction_chunks = window_size_hw / max_rows_for_reduction;
-    cb_wait_front(in_scalar_cb_id, 1);
+    ckernel::cb_wait_front(in_scalar_cb_id, 1);
     for (uint32_t i = 0; i < nsticks_per_core_by_nblocks; ++i) {
         for (uint32_t b_i = 0; b_i < in_nblocks_c - 1; b_i++) {
             // perform the intermediate reductions over the first N - 1 whole chunks
             pack_untilize_uninit(interm_cb_id);
             pack_untilize_dst_init_short<max_tiles_per_iter>(interm_cb_id, num_out_rows, num_faces_in_output_tile);
-            cb_reserve_back(interm_cb_id, 1);
+            ckernel::cb_reserve_back(interm_cb_id, 1);
             for (uint32_t h = 0; h <= interm_reduction_chunks; h++) {
                 reduce_h_fused_interm<
                     max_tiles_per_iter,
@@ -141,7 +141,7 @@ void MAIN {
                     split_reader,
                     max_rows_for_reduction>(in_cb_id_0, in_cb_id_1, in_scalar_cb_id, i, h, interm_cb_id);
             }
-            cb_push_back(interm_cb_id, 1);
+            ckernel::cb_push_back(interm_cb_id, 1);
 
             // perform the final reduction over the first N - 1 whole chunks
             pack_untilize_uninit(out_cb_id);
@@ -153,7 +153,7 @@ void MAIN {
         // perform the intermediate reduction over chunk N (across the whole chunk even if the last chunk is partial)
         pack_untilize_uninit(interm_cb_id);
         pack_untilize_dst_init_short<max_tiles_per_iter>(interm_cb_id, num_out_rows, num_faces_in_output_tile);
-        cb_reserve_back(interm_cb_id, 1);
+        ckernel::cb_reserve_back(interm_cb_id, 1);
         for (uint32_t h = 0; h <= interm_reduction_chunks; h++) {
             reduce_h_fused_interm<
                 max_tiles_per_iter,
@@ -162,7 +162,7 @@ void MAIN {
                 split_reader,
                 max_rows_for_reduction>(in_cb_id_0, in_cb_id_1, in_scalar_cb_id, i, h, interm_cb_id);
         }
-        cb_push_back(interm_cb_id, 1);
+        ckernel::cb_push_back(interm_cb_id, 1);
 
         // perform the reduction over the either whole or partial chunk N
         pack_untilize_uninit(out_cb_id);
@@ -170,7 +170,7 @@ void MAIN {
         reduce_h_fused<partial_iter_output_tiles, is_partial_tile, max_rows_for_reduction>(
             interm_cb_id, in_scalar_cb_id, out_cb_id);
     }
-    cb_pop_front(in_scalar_cb_id, 1);
+    ckernel::cb_pop_front(in_scalar_cb_id, 1);
 }
 
 }  // namespace NAMESPACE

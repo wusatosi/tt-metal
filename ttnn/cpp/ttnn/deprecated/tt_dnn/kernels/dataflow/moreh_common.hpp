@@ -85,20 +85,20 @@ FORCE_INLINE InterleavedAddrGenFast<DRAM> InterleavedAddrGenFastHelper_(uint32_t
 
 template <typename AddrGen>
 FORCE_INLINE void noc_async_read_tile_helper(tt::CBIndex cb, uint32_t num_tiles, uint32_t tile_idx, AddrGen addr_gen) {
-    cb_reserve_back(cb, num_tiles);
+    ckernel::cb_reserve_back(cb, num_tiles);
     uint32_t addr = get_write_ptr(cb);
     noc_async_read_tile(tile_idx, addr_gen, addr);
     noc_async_read_barrier();
-    cb_push_back(cb, num_tiles);
+    ckernel::cb_push_back(cb, num_tiles);
 }
 
 template <typename AddrGen>
 FORCE_INLINE void noc_async_write_tile_helper(tt::CBIndex cb, uint32_t num_tiles, uint32_t tile_idx, AddrGen addr_gen) {
-    cb_wait_front(cb, num_tiles);
+    ckernel::cb_wait_front(cb, num_tiles);
     uint32_t l1_read_addr = get_read_ptr(cb);
     noc_async_write_tile(tile_idx, addr_gen, l1_read_addr);
     noc_async_write_barrier();
-    cb_pop_front(cb, num_tiles);
+    ckernel::cb_pop_front(cb, num_tiles);
 }
 
 FORCE_INLINE void generate_bcast_scaler(uint32_t cb_scaler, uint32_t scaler) {
@@ -107,7 +107,7 @@ FORCE_INLINE void generate_bcast_scaler(uint32_t cb_scaler, uint32_t scaler) {
         uint32_t u;
     } u;
     u.u = scaler;
-    cb_reserve_back(cb_scaler, 1);
+    ckernel::cb_reserve_back(cb_scaler, 1);
     auto ptr = reinterpret_cast<uint16_t*>(get_write_ptr(cb_scaler));
 
     for (int j = 0; j < 1024; j++) {
@@ -119,7 +119,7 @@ FORCE_INLINE void generate_bcast_scaler(uint32_t cb_scaler, uint32_t scaler) {
             ptr[k * 256 + j] = uint16_t(u.u >> 16);
         }
     }
-    cb_push_back(cb_scaler, 1);
+    ckernel::cb_push_back(cb_scaler, 1);
 }
 
 template <typename T>
@@ -139,7 +139,7 @@ FORCE_INLINE void process_data<uint16_t>(int cb_id, uint32_t value, int32_t num_
 }
 
 FORCE_INLINE void fill_cb_with_value(uint32_t cb_id, uint32_t value, int32_t num_of_elems = 1024) {
-    cb_reserve_back(cb_id, 1);
+    ckernel::cb_reserve_back(cb_id, 1);
     const DataFormat data_format = get_dataformat(cb_id);
     switch ((uint)data_format & 0x1F) {
         case ((uint8_t)DataFormat::Float32):
@@ -148,7 +148,7 @@ FORCE_INLINE void fill_cb_with_value(uint32_t cb_id, uint32_t value, int32_t num
         case ((uint8_t)DataFormat::Float16_b):
         default: process_data<uint16_t>(cb_id, value, num_of_elems); break;
     }
-    cb_push_back(cb_id, 1);
+    ckernel::cb_push_back(cb_id, 1);
 }
 
 FORCE_INLINE uint32_t get_tilized_idx(uint32_t h_idx, uint32_t w_idx, uint32_t tile_height, uint32_t tile_width) {
@@ -192,7 +192,7 @@ FORCE_INLINE void generate_mask_h(uint32_t cb_mask, uint32_t mask_h) {
     one.f = 1.0f;
     zero.f = 0.0f;
 
-    cb_reserve_back(cb_mask, 1);
+    ckernel::cb_reserve_back(cb_mask, 1);
     auto ptr = reinterpret_cast<uint16_t*>(get_write_ptr(cb_mask));
 
     for (uint32_t w = 0; w < 16; w++) {
@@ -251,7 +251,7 @@ FORCE_INLINE void generate_mask_h(uint32_t cb_mask, uint32_t mask_h) {
         }
     }
 
-    cb_push_back(cb_mask, 1);
+    ckernel::cb_push_back(cb_mask, 1);
 }
 
 FORCE_INLINE void generate_mask_w(uint32_t cb_mask, uint32_t mask_w) {
@@ -261,7 +261,7 @@ FORCE_INLINE void generate_mask_w(uint32_t cb_mask, uint32_t mask_w) {
     one.f = 1.0f;
     zero.f = 0.0f;
 
-    cb_reserve_back(cb_mask, 1);
+    ckernel::cb_reserve_back(cb_mask, 1);
     auto ptr = reinterpret_cast<uint16_t*>(get_write_ptr(cb_mask));
 
     for (uint32_t h = 0; h < 16; h++) {
@@ -320,7 +320,7 @@ FORCE_INLINE void generate_mask_w(uint32_t cb_mask, uint32_t mask_w) {
         }
     }
 
-    cb_push_back(cb_mask, 1);
+    ckernel::cb_push_back(cb_mask, 1);
 }
 
 // TODO: Template the generate_mask function to support different data types
@@ -331,7 +331,7 @@ FORCE_INLINE void generate_int_mask_h(uint32_t cb_mask, uint32_t mask_h) {
     one.u = 1;
     zero.u = 0;
 
-    cb_reserve_back(cb_mask, 1);
+    ckernel::cb_reserve_back(cb_mask, 1);
     auto ptr = reinterpret_cast<int32_t*>(get_write_ptr(cb_mask));
 
     for (uint32_t w = 0; w < 16; w++) {
@@ -390,7 +390,7 @@ FORCE_INLINE void generate_int_mask_h(uint32_t cb_mask, uint32_t mask_h) {
         }
     }
 
-    cb_push_back(cb_mask, 1);
+    ckernel::cb_push_back(cb_mask, 1);
 }
 
 FORCE_INLINE void generate_int_mask_w(uint32_t cb_mask, uint32_t mask_w) {
@@ -400,7 +400,7 @@ FORCE_INLINE void generate_int_mask_w(uint32_t cb_mask, uint32_t mask_w) {
     one.u = 1;
     zero.u = 0;
 
-    cb_reserve_back(cb_mask, 1);
+    ckernel::cb_reserve_back(cb_mask, 1);
     auto ptr = reinterpret_cast<int32_t*>(get_write_ptr(cb_mask));
 
     for (uint32_t h = 0; h < 16; h++) {
@@ -459,7 +459,7 @@ FORCE_INLINE void generate_int_mask_w(uint32_t cb_mask, uint32_t mask_w) {
         }
     }
 
-    cb_push_back(cb_mask, 1);
+    ckernel::cb_push_back(cb_mask, 1);
 }
 
 FORCE_INLINE void generate_mask_h_w(
@@ -473,7 +473,7 @@ FORCE_INLINE void generate_mask_h_w(
     const auto u16_one = uint16_t(one.u >> 16);
     const auto u16_zero = uint16_t(zero.u >> 16);
 
-    cb_reserve_back(cb_mask_h_w, 2);
+    ckernel::cb_reserve_back(cb_mask_h_w, 2);
 
     // mask_h
     // first tile ptr
@@ -593,7 +593,7 @@ FORCE_INLINE void generate_mask_h_w(
         }
     }
 
-    cb_push_back(cb_mask_h_w, 2);
+    ckernel::cb_push_back(cb_mask_h_w, 2);
 }
 
 FORCE_INLINE void generate_mask_h_w_if_needed(uint32_t cb_mask_h_w, uint32_t origin_h, uint32_t origin_w) {
@@ -685,7 +685,7 @@ FORCE_INLINE void generate_mask_tiles(
     const auto u16_one = uint16_t(one.u >> 16);
     const auto u16_zero = uint16_t(zero.u >> 16);
 
-    cb_reserve_back(cb_mask, num_mask_tiles);
+    ckernel::cb_reserve_back(cb_mask, num_mask_tiles);
 
     // mask_h
     // first tile ptr
@@ -815,7 +815,7 @@ FORCE_INLINE void generate_mask_tiles(
             mask_hw_ptr[i] = u16_zero;
         }
     }
-    cb_push_back(cb_mask, num_mask_tiles);
+    ckernel::cb_push_back(cb_mask, num_mask_tiles);
 }
 
 uint32_t get_tilized_idx(uint32_t h, uint32_t w) {
@@ -889,7 +889,7 @@ void read_tile(
     constexpr uint32_t onetile = 1;
 
     if (do_reserve) {
-        cb_reserve_back(cb_id, onetile);
+        ckernel::cb_reserve_back(cb_id, onetile);
     }
 
     // If the size is 0, it reads one tile.
@@ -904,7 +904,7 @@ void read_tile(
     noc_async_read_barrier();
 
     if (do_push_back) {
-        cb_push_back(cb_id, onetile);
+        ckernel::cb_push_back(cb_id, onetile);
     }
 }
 
@@ -919,7 +919,7 @@ void read_value(
     constexpr uint32_t onetile = 1;
 
     if (do_reserve) {
-        cb_reserve_back(cb_id, onetile);
+        ckernel::cb_reserve_back(cb_id, onetile);
     }
 
     uint32_t size = get_tile_size(cb_id) / 1024;
@@ -930,7 +930,7 @@ void read_value(
     noc_async_read_barrier();
 
     if (do_push_back) {
-        cb_push_back(cb_id, onetile);
+        ckernel::cb_push_back(cb_id, onetile);
     }
 }
 
@@ -938,7 +938,7 @@ void read_value(
 template <typename T>
 void read_line(uint32_t cb_id, T addrgen, uint32_t num_tiles, bool do_reserve = true, bool do_push_back = true) {
     if (do_reserve) {
-        cb_reserve_back(cb_id, num_tiles);
+        ckernel::cb_reserve_back(cb_id, num_tiles);
     }
 
     auto tile_bytes = get_tile_size(cb_id);
@@ -961,6 +961,6 @@ void read_line(uint32_t cb_id, T addrgen, uint32_t num_tiles, bool do_reserve = 
     }
 
     if (do_push_back) {
-        cb_push_back(cb_id, num_tiles);
+        ckernel::cb_push_back(cb_id, num_tiles);
     }
 }

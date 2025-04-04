@@ -23,11 +23,11 @@ void MAIN {
     // Run the outer loop
     for (uint32_t b = 0; b < outer_loop; ++b) {
         // Wait for num_single_transfer tiles to be available in in_cb
-        cb_wait_front(in_cb_id, num_single_transfer);
+        ckernel::cb_wait_front(in_cb_id, num_single_transfer);
         // Acquire DEST reg for MATH/PACK
-        acquire_dst();
+        ckernel::acquire_dst();
         // Reserve out_cb space for num_single_transfer tiles
-        cb_reserve_back(out_cb_id, num_single_transfer);
+        ckernel::cb_reserve_back(out_cb_id, num_single_transfer);
 
         // Copy num_single_transfer tiles from in_cb to DEST
         copy_block_matmul_partials(in_cb_id, 0, 0, num_single_transfer);
@@ -35,11 +35,11 @@ void MAIN {
         matmul_pack_tile(0, out_cb_id, num_single_transfer);
 
         // Release DEST reg marking compute/pack complete
-        release_dst();
+        ckernel:: release_dst();
         // Move rd ptr from in_cb by num_single_transfer places
-        cb_pop_front(in_cb_id, num_single_transfer);
+        ckernel::cb_pop_front(in_cb_id, num_single_transfer);
         // Move wr prt from out_cb by num_single_transfer places
-        cb_push_back(out_cb_id, num_single_transfer);
+        ckernel::cb_push_back(out_cb_id, num_single_transfer);
     }
 }
 }  // namespace NAMESPACE

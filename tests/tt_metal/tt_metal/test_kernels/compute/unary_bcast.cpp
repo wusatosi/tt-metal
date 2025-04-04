@@ -14,42 +14,42 @@ void MAIN {
     unary_bcast_init<BCAST_DIM_0>(tt::CBIndex::c_0, tt::CBIndex::c_16);
 
     for (uint32_t block_index = 0; block_index < per_core_block_cnt; block_index++) {
-        cb_wait_front(tt::CBIndex::c_0, per_core_block_dim);
-        acquire_dst();
+        ckernel::cb_wait_front(tt::CBIndex::c_0, per_core_block_dim);
+        ckernel::acquire_dst();
         for (uint32_t tile_index = 0; tile_index < per_core_block_dim; ++tile_index) {
             unary_bcast<BCAST_DIM_0>(tt::CBIndex::c_0, tile_index, tile_index);
         }
 
-        cb_pop_front(tt::CBIndex::c_0, per_core_block_dim);
-        cb_reserve_back(tt::CBIndex::c_16, per_core_block_dim);
+        ckernel::cb_pop_front(tt::CBIndex::c_0, per_core_block_dim);
+        ckernel::cb_reserve_back(tt::CBIndex::c_16, per_core_block_dim);
 
         for (uint32_t tile_index = 0; tile_index < per_core_block_dim; ++tile_index) {
-            pack_tile(tile_index, tt::CBIndex::c_16);
+            ckernel:: pack_tile(tile_index, tt::CBIndex::c_16);
         }
 
-        cb_push_back(tt::CBIndex::c_16, per_core_block_dim);
-        release_dst();
+        ckernel::cb_push_back(tt::CBIndex::c_16, per_core_block_dim);
+        ckernel:: release_dst();
     }
 
     reconfigure_unary_bcast<BCAST_DIM_0, BCAST_DIM_1>(
         tt::CBIndex::c_0, tt::CBIndex::c_1, tt::CBIndex::c_16, tt::CBIndex::c_17);
 
     for (uint32_t block_index = 0; block_index < per_core_block_cnt; block_index++) {
-        cb_wait_front(tt::CBIndex::c_1, per_core_block_dim);
-        acquire_dst();
+        ckernel::cb_wait_front(tt::CBIndex::c_1, per_core_block_dim);
+        ckernel::acquire_dst();
         for (uint32_t tile_index = 0; tile_index < per_core_block_dim; ++tile_index) {
             unary_bcast<BCAST_DIM_1>(tt::CBIndex::c_1, tile_index, tile_index);
         }
 
-        cb_pop_front(tt::CBIndex::c_1, per_core_block_dim);
-        cb_reserve_back(tt::CBIndex::c_17, per_core_block_dim);
+        ckernel::cb_pop_front(tt::CBIndex::c_1, per_core_block_dim);
+        ckernel::cb_reserve_back(tt::CBIndex::c_17, per_core_block_dim);
 
         for (uint32_t tile_index = 0; tile_index < per_core_block_dim; ++tile_index) {
-            pack_tile(tile_index, tt::CBIndex::c_17);
+            ckernel:: pack_tile(tile_index, tt::CBIndex::c_17);
         }
 
-        cb_push_back(tt::CBIndex::c_17, per_core_block_dim);
-        release_dst();
+        ckernel::cb_push_back(tt::CBIndex::c_17, per_core_block_dim);
+        ckernel:: release_dst();
     }
 }
 }  // namespace NAMESPACE

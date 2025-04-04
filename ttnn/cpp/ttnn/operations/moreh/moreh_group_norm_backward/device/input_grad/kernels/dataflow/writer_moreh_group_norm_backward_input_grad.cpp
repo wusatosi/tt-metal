@@ -38,14 +38,14 @@ void kernel_main() {
         for (uint32_t inner_idx = 0; inner_idx < num_inner_tiles; ++inner_idx) {
             // input_grad (N, C, H, W)
             input_grad_tile_idx = tile_offset + outer_idx * num_inner_tiles + inner_idx;
-            cb_wait_front(cb_id_input_grad, onetile);
+            ckernel::cb_wait_front(cb_id_input_grad, onetile);
             if (input_grad_is_dram) {
                 noc_async_write_tile(input_grad_tile_idx, dram_input_grad_addrg, input_grad_l1_read_ptr);
             } else {
                 noc_async_write_tile(input_grad_tile_idx, l1_input_grad_addrg, input_grad_l1_read_ptr);
             }
             noc_async_write_barrier();
-            cb_pop_front(cb_id_input_grad, onetile);
+            ckernel::cb_pop_front(cb_id_input_grad, onetile);
         }  // inner_idx loop
     }  // outer_idx loop
 

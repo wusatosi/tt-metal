@@ -129,7 +129,7 @@ void kernel_main() {
         const uint32_t cb_reduce_first_stage) __attribute__((always_inline)) {
         // global reduce
         // wait for local data ready
-        cb_wait_front(cb_partial, block_h);
+        ckernel::cb_wait_front(cb_partial, block_h);
 
         // inc mcast sender
         noc_semaphore_set(reduce_sender_semaphore_addr_ptr, INVALID);
@@ -152,7 +152,7 @@ void kernel_main() {
                 }
             }
             for (uint32_t i = 0; i < num_tiles_to_read; i++) {
-                cb_reserve_back(cb_external, num_blocks_first_stage);
+                ckernel::cb_reserve_back(cb_external, num_blocks_first_stage);
                 uint32_t l1_write_addr_external = get_write_ptr(cb_external);
                 for (uint32_t block = 0; block < num_blocks_first_stage; block++) {
                     uint64_t noc_addr_ex_par = remote_noc_addrs_first_stage[block] | l1_read_addr_ex_par;
@@ -161,7 +161,7 @@ void kernel_main() {
                 }
                 l1_read_addr_ex_par += single_tile_size_bytes;
                 noc_async_read_barrier();
-                cb_push_back(cb_external, num_blocks_first_stage);
+                ckernel::cb_push_back(cb_external, num_blocks_first_stage);
 
                 // read data from other cores - reduce first stage
                 if constexpr (use_two_stage_reduce) {
@@ -172,7 +172,7 @@ void kernel_main() {
                         }
 
                         // read data from other cores - second stage reduce
-                        cb_reserve_back(cb_external, num_blocks_second_stage - 1);
+                        ckernel::cb_reserve_back(cb_external, num_blocks_second_stage - 1);
                         for (uint32_t block = 0; block < num_blocks_second_stage - 1; ++block) {
                             uint64_t noc_addr_ex = remote_noc_addrs_second_stage[block + 1] | l1_read_addr_ex;
                             noc_async_read_one_packet(noc_addr_ex, l1_write_addr_external, single_tile_size_bytes);
@@ -180,10 +180,10 @@ void kernel_main() {
                         }
                         l1_read_addr_ex += single_tile_size_bytes;
                         noc_async_read_barrier();
-                        cb_push_back(cb_external, num_blocks_second_stage - 1);
+                        ckernel::cb_push_back(cb_external, num_blocks_second_stage - 1);
                     } else {
-                        cb_reserve_back(cb_external, num_blocks_second_stage - 1);
-                        cb_push_back(cb_external, num_blocks_second_stage - 1);
+                        ckernel::cb_reserve_back(cb_external, num_blocks_second_stage - 1);
+                        ckernel::cb_push_back(cb_external, num_blocks_second_stage - 1);
                     }
                 }
             }
@@ -192,25 +192,25 @@ void kernel_main() {
             if constexpr (use_two_stage_reduce) {
                 if (is_second_stage_reader) {  // gather data from a column of cores (if row major)
                     // sync with the mcast sender
-                    cb_wait_front(cb_ex, num_tiles_to_read);
+                    ckernel::cb_wait_front(cb_ex, num_tiles_to_read);
                     noc_semaphore_inc(reduce_receiver_semaphore_noc_addr, 1);
                 } else {
                     // sync with the gather worker
-                    cb_wait_front(cb_reduce_first_stage, num_tiles_to_read);
+                    ckernel::cb_wait_front(cb_reduce_first_stage, num_tiles_to_read);
                     noc_semaphore_inc(reduce_second_stage_receiver_semaphore_noc_addr, 1);
                 }
             } else {
                 // send result to other cores
-                cb_wait_front(cb_ex, num_tiles_to_read);
+                ckernel::cb_wait_front(cb_ex, num_tiles_to_read);
                 noc_semaphore_inc(reduce_receiver_semaphore_noc_addr, 1);
             }
         }
 
         for (uint32_t block = 0; block < num_all_to_all_workers; ++block) {
             uint32_t num_tiles = block == num_all_to_all_workers - 1 ? num_tiles_per_worker_last : num_tiles_per_worker;
-            cb_reserve_back(cb_ex_global, num_tiles);
+            ckernel::cb_reserve_back(cb_ex_global, num_tiles);
             noc_semaphore_wait_min(reduce_sender_semaphore_addr_ptr, block + 2);
-            cb_push_back(cb_ex_global, num_tiles);
+            ckernel::cb_push_back(cb_ex_global, num_tiles);
         }
     };
 #ifndef RMSNORM

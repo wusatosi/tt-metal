@@ -109,23 +109,23 @@ void kernel_main() {
         auto read_tile_id = get_output_grad_tile(
             i, input_grad_rank, output_grad_dim, output_grad_stride, input_grad_dim, input_grad_stride, need_bcast_dim);
 
-        cb_reserve_back(cb_id_input, 1);
+        ckernel::cb_reserve_back(cb_id_input, 1);
         const auto input_l1_write_ptr = get_write_ptr(cb_id_input);
         noc_async_read_tile(input_tile_id, input_addrg, input_l1_write_ptr);
         noc_async_read_barrier();
-        cb_push_back(cb_id_input, 1);
+        ckernel::cb_push_back(cb_id_input, 1);
 
-        cb_reserve_back(cb_id_output, 1);
+        ckernel::cb_reserve_back(cb_id_output, 1);
         const auto output_l1_write_ptr = get_write_ptr(cb_id_output);
         noc_async_read_tile(read_tile_id, output_addrg, output_l1_write_ptr);
         noc_async_read_barrier();
-        cb_push_back(cb_id_output, 1);
+        ckernel::cb_push_back(cb_id_output, 1);
 
-        cb_reserve_back(cb_id_output_grad, 1);
+        ckernel::cb_reserve_back(cb_id_output_grad, 1);
         const auto output_grad_l1_write_ptr = get_write_ptr(cb_id_output_grad);
         noc_async_read_tile(read_tile_id, output_grad_addrg, output_grad_l1_write_ptr);
         noc_async_read_barrier();
-        cb_push_back(cb_id_output_grad, 1);
+        ckernel::cb_push_back(cb_id_output_grad, 1);
     }
 
 }  // void kernel_main()

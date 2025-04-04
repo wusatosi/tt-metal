@@ -16,8 +16,8 @@
 #include "debug/dprint.h"
 #include "debug/dprint_tensix.h"
 
-ALWI void ACQ() { acquire_dst(); }
-ALWI void REL() { release_dst(); }
+ALWI void ACQ() { ckernel::acquire_dst(); }
+ALWI void REL() { ckernel:: release_dst(); }
 
 // for scale+mask+softmax:
 // bcast HW (mul by 1 tile)  example: (  [2,1,1024,64] * [1,1,32,32]  )
@@ -31,40 +31,40 @@ void calc_numeric_stable(
     // calculate max val per row
     ACQ();
     reconfig_data_format(cb_in, cb_bcast_scaler);
-    cb_reserve_back(cb_max, 1);
-    cb_wait_front(cb_bcast_scaler, 1);
+    ckernel::cb_reserve_back(cb_max, 1);
+    ckernel::cb_wait_front(cb_bcast_scaler, 1);
     reduce_init_delta<false, PoolType::MAX, ReduceDim::REDUCE_ROW>(cb_in, cb_bcast_scaler, cb_max);
     for (uint32_t wt = 0; wt < Wt; wt++) {
-        cb_wait_front(cb_in, wt + 1);
+        ckernel::cb_wait_front(cb_in, wt + 1);
         constexpr uint32_t bcast_scaler0 = 0;
-        reduce_tile<PoolType::MAX, ReduceDim::REDUCE_ROW>(cb_in, cb_bcast_scaler, wt, bcast_scaler0, 0);
+        ckernel::reduce_tile<PoolType::MAX, ReduceDim::REDUCE_ROW>(cb_in, cb_bcast_scaler, wt, bcast_scaler0, 0);
     }
-    reduce_revert_delta<ReduceDim::REDUCE_ROW>(cb_max);
-    pack_tile(0, cb_max);
-    cb_push_back(cb_max, 1);
+    ckernel::reduce_revert_delta<ReduceDim::REDUCE_ROW>(cb_max);
+    ckernel:: pack_tile(0, cb_max);
+    ckernel::cb_push_back(cb_max, 1);
     REL();
 
     // calculate x-max(x)
     exp_tile_init<EXP_APPROX>();
     reconfig_data_format_srcb(cb_max);
-    cb_wait_front(cb_max, 1);
+    ckernel::cb_wait_front(cb_max, 1);
     sub_bcast_cols_init_short(cb_in, cb_max);
     for (uint32_t wt = 0; wt < Wt; wt += ndst) {
         ACQ();
         for (uint32_t wt8 = 0; wt8 < ndst; wt8++) {
             sub_tiles_bcast_cols(cb_in, cb_max, wt + wt8, 0, wt8);
         }
-        cb_reserve_back(cb_out, ndst);
+        ckernel::cb_reserve_back(cb_out, ndst);
         for (uint32_t wt8 = 0; wt8 < ndst; wt8++) {
             exp_tile<EXP_APPROX>(wt8);  // exp on DST[0]
-            pack_tile(wt8, cb_out);     // reuse the exps buffer again, this time in a circular manner
+            ckernel:: pack_tile(wt8, cb_out);     // reuse the exps buffer again, this time in a circular manner
         }
-        cb_push_back(cb_out, ndst);
+        ckernel::cb_push_back(cb_out, ndst);
         REL();
     }
-    cb_pop_front(cb_in, Wt);
-    cb_pop_front(cb_max, 1);
-    cb_wait_front(cb_out, Wt);
+    ckernel::cb_pop_front(cb_in, Wt);
+    ckernel::cb_pop_front(cb_max, 1);
+    ckernel::cb_wait_front(cb_out, Wt);
 }
 
 namespace NAMESPACE {
@@ -98,10 +98,10 @@ void MAIN {
     constexpr auto cb_x = cb_exps;
 #endif
 
-    cb_wait_front(cb_bcast_scaler, 1);  // comes from the reader
+    ckernel::cb_wait_front(cb_bcast_scaler, 1);  // comes from the reader
 
 #if FUSED_SCALE_MASK
-    cb_wait_front(cb_fused_scale, 1);
+    ckernel::cb_wait_front(cb_fused_scale, 1);
 #endif
 
     constexpr int dst0 = 0;
@@ -115,14 +115,14 @@ void MAIN {
         for (uint32_t wt = 0; wt < Wt; wt += ndst) {
             // apply fused scale [*= 1/sqrt(...)]
             ACQ();
-            cb_wait_front(cb_in0, ndst);
-            cb_reserve_back(cb_scale_mask, ndst);
+            ckernel::cb_wait_front(cb_in0, ndst);
+            ckernel::cb_reserve_back(cb_scale_mask, ndst);
             for (uint32_t wt8 = 0; wt8 < ndst; wt8++) {
                 mul_tiles_bcast_scalar(cb_in0, cb_fused_scale, wt8, 0, wt8);  // mul bcast-HW -> DST[wt8]
-                pack_tile(wt8, cb_scale_mask);                                // reuse exps buffer
+                ckernel:: pack_tile(wt8, cb_scale_mask);                                // reuse exps buffer
             }
-            cb_push_back(cb_scale_mask, ndst);
-            cb_pop_front(cb_in0, ndst);
+            ckernel::cb_push_back(cb_scale_mask, ndst);
+            ckernel::cb_pop_front(cb_in0, ndst);
             REL();
         }
         reconfig_data_format(cb_scale_mask, cb_fused_attn);
@@ -138,30 +138,30 @@ void MAIN {
 #endif
         for (uint32_t wt = 0; wt < Wt; wt += ndst) {
             ACQ();
-            cb_wait_front(cb_scale_mask, ndst);
+            ckernel::cb_wait_front(cb_scale_mask, ndst);
 #ifdef CAUSAL_MASK
-            cb_wait_front(cb_fused_attn, wt + ndst);  // cumulative wait for up to Wt tiles
+            ckernel::cb_wait_front(cb_fused_attn, wt + ndst);  // cumulative wait for up to Wt tiles
             for (uint32_t wt8 = 0; wt8 < ndst; wt8++) {
                 add_tiles(cb_scale_mask, cb_fused_attn, wt8, wt + wt8, wt8);  // tile *= 1/(sum(exp(x)))
             }
 #else
             if (wait_mask) {
-                cb_wait_front(cb_fused_attn, wt + ndst);  // cumulative wait for up to Wt tiles, only at first ht
+                ckernel::cb_wait_front(cb_fused_attn, wt + ndst);  // cumulative wait for up to Wt tiles, only at first ht
             }
 
             for (uint32_t wt8 = 0; wt8 < ndst; wt8++) {
                 add_tiles_bcast_rows(cb_scale_mask, cb_fused_attn, wt8, wt + wt8, wt8);  // tile *= 1/(sum(exp(x)))
             }
 #endif
-            cb_pop_front(cb_scale_mask, ndst);
-            cb_reserve_back(cb_x, ndst);
+            ckernel::cb_pop_front(cb_scale_mask, ndst);
+            ckernel::cb_reserve_back(cb_x, ndst);
             for (uint32_t wt8 = 0; wt8 < ndst; wt8++) {
 #ifndef NUMERIC_STABLE
                 exp_tile<EXP_APPROX>(wt8);  // exp on DST[0]
 #endif
-                pack_tile(wt8, cb_x);  // reuse the exps buffer again, this time in a circular manner
+                ckernel:: pack_tile(wt8, cb_x);  // reuse the exps buffer again, this time in a circular manner
             }
-            cb_push_back(cb_x, ndst);
+            ckernel::cb_push_back(cb_x, ndst);
             REL();
         }
 
@@ -172,14 +172,14 @@ void MAIN {
 #endif
 
 #ifdef CAUSAL_MASK
-        cb_pop_front(cb_fused_attn, Wt);
+        ckernel::cb_pop_front(cb_fused_attn, Wt);
 #else
         if (wait_mask) {
             wait_mask = false;
         }
         ht++;
         if (ht == Ht) {
-            cb_pop_front(cb_fused_attn, Wt);
+            ckernel::cb_pop_front(cb_fused_attn, Wt);
             ht = 0;
             wait_mask = true;
         }
@@ -196,27 +196,27 @@ void MAIN {
         if (mask_padded_data) {
             for (uint32_t wt = 0; wt < Wt; wt += ndst) {
                 ACQ();
-                cb_wait_front(cb_in0, ndst);
+                ckernel::cb_wait_front(cb_in0, ndst);
                 for (uint32_t wt8 = 0; wt8 < ndst; ++wt8) {
                     if (wt == (Wt - ndst) && (wt8 == ndst - 1)) {
                         reconfig_data_format(cb_in0, cb_mask_padded);
                         add_bcast_rows_init_short(cb_in0, cb_mask_padded);
-                        cb_wait_front(cb_mask_padded, 1);
+                        ckernel::cb_wait_front(cb_mask_padded, 1);
                         add_tiles_bcast_rows(cb_in0, cb_mask_padded, wt8, 0, wt8);
                     } else {
-                        copy_tile(cb_in0, wt8, wt8);  // copy from c_in[0] to DST[0]
+                        ckernel:: copy_tile(cb_in0, wt8, wt8);  // copy from c_in[0] to DST[0]
                     }
                 }
-                cb_pop_front(cb_in0, ndst);
+                ckernel::cb_pop_front(cb_in0, ndst);
 
-                cb_reserve_back(cb_x, ndst);
+                ckernel::cb_reserve_back(cb_x, ndst);
                 for (uint32_t wt8 = 0; wt8 < ndst; ++wt8) {
 #ifndef NUMERIC_STABLE
                     exp_tile<EXP_APPROX>(wt8);  // exp on DST[0]
 #endif
-                    pack_tile(wt8, cb_x);  // DST[0]->cb_id[wt]
+                    ckernel:: pack_tile(wt8, cb_x);  // DST[0]->cb_id[wt]
                 }
-                cb_push_back(cb_x, ndst);
+                ckernel::cb_push_back(cb_x, ndst);
                 REL();
             }
 
@@ -234,18 +234,18 @@ void MAIN {
 #else
             for (uint32_t wt = 0; wt < Wt; wt += ndst) {
                 ACQ();
-                cb_wait_front(cb_in0, ndst);
+                ckernel::cb_wait_front(cb_in0, ndst);
                 for (uint32_t wt8 = 0; wt8 < ndst; ++wt8) {
-                    copy_tile(cb_in0, wt8, wt8);  // copy from c_in[0] to DST[0]
+                    ckernel:: copy_tile(cb_in0, wt8, wt8);  // copy from c_in[0] to DST[0]
                 }
-                cb_pop_front(cb_in0, ndst);
+                ckernel::cb_pop_front(cb_in0, ndst);
 
-                cb_reserve_back(cb_exps, ndst);
+                ckernel::cb_reserve_back(cb_exps, ndst);
                 for (uint32_t wt8 = 0; wt8 < ndst; ++wt8) {
                     exp_tile<EXP_APPROX>(wt8);  // exp on DST[0]
-                    pack_tile(wt8, cb_exps);    // DST[0]->cb_id[wt]
+                    ckernel:: pack_tile(wt8, cb_exps);    // DST[0]->cb_id[wt]
                 }
-                cb_push_back(cb_exps, ndst);
+                ckernel::cb_push_back(cb_exps, ndst);
                 REL();
             }
 #endif
@@ -255,22 +255,22 @@ void MAIN {
 #endif
 
         ACQ();
-        cb_reserve_back(cb_recipsumexps, onetile);
+        ckernel::cb_reserve_back(cb_recipsumexps, onetile);
         reduce_init_delta<false>(cb_exps, cb_bcast_scaler, cb_recipsumexps);
         for (uint32_t wt = 0; wt < Wt; wt++) {
-            cb_wait_front(cb_exps, wt + 1);        // must be a cumulative wait for correctness
+            ckernel::cb_wait_front(cb_exps, wt + 1);        // must be a cumulative wait for correctness
             constexpr uint32_t bcast_scaler0 = 0;  // 0th index from bcast_scaler CB
             reduce_tile(cb_exps, cb_bcast_scaler, wt, bcast_scaler0, dst0);
         }
-        reduce_revert_delta(cb_recipsumexps);
+        ckernel::reduce_revert_delta(cb_recipsumexps);
         recip_tile_init();
         recip_tile(dst0);  // DST[0] = 1/sum(exp(x))
-        pack_tile(dst0, cb_recipsumexps);
-        cb_push_back(cb_recipsumexps, 1);
+        ckernel:: pack_tile(dst0, cb_recipsumexps);
+        ckernel::cb_push_back(cb_recipsumexps, 1);
 
         REL();
 
-        cb_wait_front(cb_recipsumexps, 1);  // will reuse Wt times for bcast
+        ckernel::cb_wait_front(cb_recipsumexps, 1);  // will reuse Wt times for bcast
 
         reconfig_data_format(cb_exps, cb_recipsumexps);
         pack_reconfig_data_format(cb_out0);
@@ -279,20 +279,20 @@ void MAIN {
         mul_bcast_cols_init_short(cb_exps, cb_recipsumexps);
         for (uint32_t wt = 0; wt < Wt; wt += ndst) {
             ACQ();
-            cb_reserve_back(cb_out0, ndst);
+            ckernel::cb_reserve_back(cb_out0, ndst);
             for (uint32_t wt8 = 0; wt8 < ndst; wt8++) {
                 // wt+wt8 since we pop Wt after the entire loop
                 mul_tiles_bcast<BroadcastType::COL>(
                     cb_exps, cb_recipsumexps, wt + wt8, 0, wt8);  // tile *= 1/(sum(exp(x)))
-                pack_tile(wt8, cb_out0);
+                ckernel:: pack_tile(wt8, cb_out0);
             }
-            cb_push_back(cb_out0, ndst);
+            ckernel::cb_push_back(cb_out0, ndst);
             REL();
         }
-        cb_pop_front(cb_recipsumexps, 1);
-        cb_pop_front(cb_exps, Wt);
+        ckernel::cb_pop_front(cb_recipsumexps, 1);
+        ckernel::cb_pop_front(cb_exps, Wt);
     }  // NCHt loop
-    // cb_pop_front(cb_bcast_scaler, 1); // we don't actually have to do this
-    // cb_pop_front(cb_fused_scale, 1); // we don't actually have to do this
+    // ckernel::cb_pop_front(cb_bcast_scaler, 1); // we don't actually have to do this
+    // ckernel::cb_pop_front(cb_fused_scale, 1); // we don't actually have to do this
 }
 }  // namespace NAMESPACE

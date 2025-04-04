@@ -37,38 +37,38 @@ void MAIN {
     // Loop over the assigned tiles and perform the computation
     for (uint32_t i = 0; i < num_tile; i++) {
         // IMPORTANT: since there is no read kernel, and data is alraedy in circular buffers
-        // do not call cb_wait_front() because there is no wait.
-        // if calling cb_wait_front() here, the kernel will hang forever.
+        // do not call ckernel::cb_wait_front() because there is no wait.
+        // if calling ckernel::cb_wait_front() here, the kernel will hang forever.
 
         // Make sure there is a valid MATH thread register we can use.
-        tile_regs_acquire();
+        ckernel:: tile_regs_acquire();
 
         // Add the tiles from the input circular buffers and write the result to
         // the destination register
         add_tiles(cb_in0, cb_in1, 0, 0, dst_reg);
 
         // release lock on DST register by MATH thread
-        tile_regs_commit();
+        ckernel:: tile_regs_commit();
 
-        cb_pop_front(cb_in0, 1);
-        cb_pop_front(cb_in1, 1);
+        ckernel::cb_pop_front(cb_in0, 1);
+        ckernel::cb_pop_front(cb_in1, 1);
 
         // acquire an exclusive lock on the DST register for the PACK thread.
         // make sure MATH thread has committed the DST register earlier
-        tile_regs_wait();
+        ckernel::tile_regs_wait();
 
         //  Copy the result from adding the tiles to the output circular buffer
-        pack_tile(dst_reg, cb_out0);
+        ckernel:: pack_tile(dst_reg, cb_out0);
 
         // release lock on DST register by PACK thread
-        tile_regs_release();
+        ckernel::tile_regs_release();
 
-        // no need to call cb_reserve_back(cb_out0, 1)
+        // no need to call ckernel::cb_reserve_back(cb_out0, 1)
         // buffer because output circular buffer is pointed to already allocated L1 buffer
         // but it does not hurt to call it
 
         // Mark the output tile as ready and pop the input tiles
-        cb_push_back(cb_out0, 1);
+        ckernel::cb_push_back(cb_out0, 1);
     }
 }
 }  // namespace NAMESPACE

@@ -78,7 +78,7 @@ void kernel_main() {
 
                 // in0 DRAM -> L1 (activations in row major form)
                 // partial rows are read since multiple blocks can span along the rows
-                cb_reserve_back(in0_cb_id, in0_block_num_tiles);
+                ckernel::cb_reserve_back(in0_cb_id, in0_block_num_tiles);
                 uint32_t in0_write_l1_addr = get_write_ptr(in0_cb_id);
                 uint32_t in0_curr_block_row_id = in0_curr_block_start_row_id;
                 // loop over in0 block tiles along h
@@ -96,10 +96,10 @@ void kernel_main() {
                 noc_async_read_barrier();
 
                 in0_row_offset_bytes += in0_read_row_size_bytes;
-                cb_push_back(in0_cb_id, in0_block_num_tiles);
+                ckernel::cb_push_back(in0_cb_id, in0_block_num_tiles);
 
                 // in1 DRAM -> L1 (weights in tiled form)
-                cb_reserve_back(in1_cb_id, in1_block_num_tiles);
+                ckernel::cb_reserve_back(in1_cb_id, in1_block_num_tiles);
                 uint32_t in1_write_l1_addr = get_write_ptr(in1_cb_id);
                 uint32_t in1_row_start_tile_id = in1_current_block_start_tile_id;
                 // loop over in1 block tiles along h
@@ -117,7 +117,7 @@ void kernel_main() {
                 noc_async_read_barrier();
 
                 in1_current_block_start_tile_id += in1_next_block_stride_h;
-                cb_push_back(in1_cb_id, in1_block_num_tiles);
+                ckernel::cb_push_back(in1_cb_id, in1_block_num_tiles);
             }  // for in0_num_blocks_w
             in1_start_tile_id += in1_next_block_stride_w;
         }  // for in1_num_blocks_w

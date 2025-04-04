@@ -43,7 +43,7 @@ void kernel_main() {
     uint32_t start_t = start_remaining_2 % tiles_per_channel;
 
     // we only need to fill a tile with the scalar value once
-    cb_reserve_back(cb_id_src, onetile);
+    ckernel::cb_reserve_back(cb_id_src, onetile);
 #ifdef FILL_WITH_VALUE_FLOAT
     const auto float_ptr = reinterpret_cast<const float*>(&packed_scalar);
     FILL_WITH_VALUE_FLOAT(cb_id_src, *float_ptr);
@@ -51,7 +51,7 @@ void kernel_main() {
 #ifdef FILL_WITH_VALUE
     FILL_WITH_VALUE(cb_id_src, packed_scalar);
 #endif
-    cb_push_back(cb_id_src, onetile);
+    ckernel::cb_push_back(cb_id_src, onetile);
 
     uint32_t num_tiles_written = 0;
     for (uint32_t nd = start_d; nd < cND && num_tiles_written < dst_num_tiles; ++nd, start_n = 0) {
@@ -59,11 +59,11 @@ void kernel_main() {
             for (uint32_t c = start_c; c < C && num_tiles_written < dst_num_tiles; ++c, start_t = 0) {
                 for (uint32_t t = start_t; t < HtWt && num_tiles_written < dst_num_tiles; ++t, ++num_tiles_written) {
                     // write a tile to dst, since the dst shape is full, the tile offset simply grows linearly
-                    cb_wait_front(cb_id_dst, onetile);
+                    ckernel::cb_wait_front(cb_id_dst, onetile);
                     uint32_t l1_read_addr = get_read_ptr(cb_id_dst);
                     noc_async_write_tile(start_tile_id + num_tiles_written, dst, l1_read_addr);
                     noc_async_write_barrier();
-                    cb_pop_front(cb_id_dst, onetile);
+                    ckernel::cb_pop_front(cb_id_dst, onetile);
                 }
             }
         }

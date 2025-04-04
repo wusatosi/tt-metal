@@ -39,7 +39,7 @@ void kernel_main() {
     constexpr uint32_t barrier_threshold = get_barrier_read_threshold<tile_bytes, num_readers>();
     uint32_t barrier_count = 0;
     uint32_t curr_tile_id = start_id;
-    cb_reserve_back(cb_id_in0, block_num_tiles);
+    ckernel::cb_reserve_back(cb_id_in0, block_num_tiles);
     uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
     for (uint32_t h = 0; h < block_height_tiles; h++) {
         uint32_t tile_id = curr_tile_id;
@@ -56,5 +56,5 @@ void kernel_main() {
         curr_tile_id += input_width_offset_tiles;
     }
     noc_async_read_barrier();
-    cb_push_back(cb_id_in0, block_num_tiles);
+    ckernel::cb_push_back(cb_id_in0, block_num_tiles);
 }

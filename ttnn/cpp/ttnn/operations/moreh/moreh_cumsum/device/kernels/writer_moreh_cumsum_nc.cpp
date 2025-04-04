@@ -41,7 +41,7 @@ void kernel_main() {
         }
 
         for (uint32_t j = 0; j < num_tiles_to_cumsum; ++j) {
-            cb_wait_front(cb_id_out, onetile);
+            ckernel::cb_wait_front(cb_id_out, onetile);
             uint32_t l1_read_addr = get_read_ptr(cb_id_out);
             if (output_is_dram) {
                 noc_async_write_tile(write_tile_id, dram_output_addrg, l1_read_addr);
@@ -49,7 +49,7 @@ void kernel_main() {
                 noc_async_write_tile(write_tile_id, l1_output_addrg, l1_read_addr);
             }
             noc_async_write_barrier();
-            cb_pop_front(cb_id_out, onetile);
+            ckernel::cb_pop_front(cb_id_out, onetile);
             write_tile_id += offset;
         }
     }

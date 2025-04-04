@@ -31,14 +31,14 @@ void kernel_main() {
         tile_id = i_nc + Wt_read;
         for (uint32_t i = 0; i < Ht; i++) {
             for (uint32_t j = 0; j < Wt; j++) {
-                cb_wait_front(cb_id_out0, onetile);
+                ckernel::cb_wait_front(cb_id_out0, onetile);
                 uint32_t l1_read_addr = get_read_ptr(cb_id_out0);
 
                 noc_async_write_tile(tile_id, s, l1_read_addr);
 
                 noc_async_write_barrier();
 
-                cb_pop_front(cb_id_out0, onetile);
+                ckernel::cb_pop_front(cb_id_out0, onetile);
 
                 tile_id++;
             }

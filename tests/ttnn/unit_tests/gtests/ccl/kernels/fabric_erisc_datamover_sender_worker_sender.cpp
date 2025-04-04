@@ -114,12 +114,12 @@ void kernel_main() {
     constexpr size_t NORMALIZED_NOC_INDEX = 0;
 
     uint32_t buffer_index = 0;
-    cb_wait_front(cb_id_in0, 1);
+    ckernel::cb_wait_front(cb_id_in0, 1);
     auto a_packet_header_addr = get_read_ptr(cb_id_in0);
     for (uint32_t p = 0; p < total_pages_to_send; p += num_pages_per_send) {
         uint32_t pages_to_send = std::min<uint32_t>(num_pages_per_send, total_pages_to_send - p);
         sender.wait_for_empty_write_slot();
-        cb_wait_front(cb_id_in0, pages_to_send);
+        ckernel::cb_wait_front(cb_id_in0, pages_to_send);
 
         // bit of a hack to extract X/Y
         const auto dest_noc_address = get_noc_addr(p, dest_addr_gen, 0, NORMALIZED_NOC_INDEX);
@@ -140,7 +140,7 @@ void kernel_main() {
 
         sender.send_payload_blocking_from_address(packet_addr, packet_size);
         noc_async_writes_flushed();
-        cb_pop_front(cb_id_in0, pages_to_send);
+        ckernel::cb_pop_front(cb_id_in0, pages_to_send);
     }
 
     if constexpr (!mcast_mode) {

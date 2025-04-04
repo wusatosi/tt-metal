@@ -163,7 +163,7 @@ void kernel_main() {
                 for (uint32_t tile_row_id = 0; tile_row_id < num_rows_in_one_tile; tile_row_id++) {
                     for (uint32_t in0_block = 0; in0_block < in0_num_blocks_w;
                          in0_block++) {  // TODO: Must be 1; generalize to support inner dim blocking
-                        cb_reserve_back(cb_id_in1, in1_block_num_tiles);
+                        ckernel::cb_reserve_back(cb_id_in1, in1_block_num_tiles);
                         uint32_t l1_write_addr_in1 = get_write_ptr(cb_id_in1);
 
                         for (uint32_t in1_subblock = 0; in1_subblock < in1_num_subblocks;
@@ -288,12 +288,12 @@ void kernel_main() {
                                 noc_semaphore_wait(in1_mcast_receiver_semaphore_addr_ptr, VALID);
                             }
                             if (has_work_for_q_heads_bool) {
-                                cb_push_back(cb_id_in1, in1_block_num_tiles);
+                                ckernel::cb_push_back(cb_id_in1, in1_block_num_tiles);
                             } else {
                                 // Mcast is in lockstep; this makes write ptr addresses are synced properly for cores
                                 // that only send and have no compute / writer active
-                                cb_push_back(cb_id_in1, in1_block_num_tiles);
-                                cb_pop_front(cb_id_in1, in1_block_num_tiles);
+                                ckernel::cb_push_back(cb_id_in1, in1_block_num_tiles);
+                                ckernel::cb_pop_front(cb_id_in1, in1_block_num_tiles);
                             }
 
 #ifndef IN1_SHARDED

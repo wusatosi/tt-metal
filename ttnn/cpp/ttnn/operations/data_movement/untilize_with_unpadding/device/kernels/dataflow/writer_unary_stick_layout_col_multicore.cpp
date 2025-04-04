@@ -38,7 +38,7 @@ void kernel_main() {
         uint32_t onetile = 1;
         bool has_rows = (num_rows) > 0;
 
-        cb_wait_front(cb_id_out0, onetile * has_rows);
+        ckernel::cb_wait_front(cb_id_out0, onetile * has_rows);
         uint32_t l1_read_addr = get_write_ptr(cb_id_out0);
 
         for (uint32_t k = 0; k < num_rows; k++) {
@@ -57,13 +57,13 @@ void kernel_main() {
             noc_async_write_barrier();
 
             if (k > 0 && (k % tile_width == 0)) {
-                cb_pop_front(cb_id_out0, onetile * has_rows);
-                cb_wait_front(cb_id_out0, onetile * has_rows);
+                ckernel::cb_pop_front(cb_id_out0, onetile * has_rows);
+                ckernel::cb_wait_front(cb_id_out0, onetile * has_rows);
             }
             l1_read_addr += width_size;
         }
 
-        cb_pop_front(cb_id_out0, onetile * has_rows);
+        ckernel::cb_pop_front(cb_id_out0, onetile * has_rows);
     };
 
     const uint32_t size_per_row_per_block = get_arg_val<uint32_t>(3);

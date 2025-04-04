@@ -21,7 +21,7 @@ inline void write_tiles_in_block(
     uint32_t block_row_id = block_start_row_id;
     for (uint32_t tile_row_id = 0; tile_row_id < block_height_ntiles; tile_row_id++) {
         // We reserve back an entire row of tiles in a block and issue a bunch of reads
-        cb_wait_front(cb_id_out0, block_width_ntiles);
+        ckernel::cb_wait_front(cb_id_out0, block_width_ntiles);
         uint32_t l1_read_addr = get_read_ptr(cb_id_out0);
         for (uint32_t j = 0; j < TILE_HEIGHT; j++) {
             if (block_row_id >= num_rows_unpadded) {
@@ -33,7 +33,7 @@ inline void write_tiles_in_block(
             block_row_id++;
         }  // for tile_nrows
         noc_async_write_barrier();
-        cb_pop_front(cb_id_out0, block_width_ntiles);
+        ckernel::cb_pop_front(cb_id_out0, block_width_ntiles);
     }  // for block_height_ntiles
 }
 void kernel_main() {

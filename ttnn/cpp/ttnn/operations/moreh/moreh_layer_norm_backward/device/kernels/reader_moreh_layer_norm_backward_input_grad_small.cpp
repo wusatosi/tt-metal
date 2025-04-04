@@ -20,7 +20,7 @@ void read_mean_rstd(
     const uint32_t cb_tile_bytes = get_tile_size(cb_id);
     const auto cb_dtype_bytes = cb_tile_bytes / (TILE_HEIGHT * TILE_WIDTH);
 
-    cb_reserve_back(cb_id, onetile);
+    ckernel::cb_reserve_back(cb_id, onetile);
 
     uint32_t l1_write_addr = get_write_ptr(cb_id);
     auto l1_ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(l1_write_addr);
@@ -82,7 +82,7 @@ void read_mean_rstd(
         }
     }
 
-    cb_push_back(cb_id, onetile);
+    ckernel::cb_push_back(cb_id, onetile);
 }
 
 void kernel_main() {
@@ -200,27 +200,27 @@ void kernel_main() {
         // input (N, C, H, W)
         const uint32_t input_l1_write_ptr = get_write_ptr(cb_id_input);
         for (uint32_t inner_idx = 0; inner_idx < num_inner; inner_idx++) {
-            cb_reserve_back(cb_id_input, onetile);
+            ckernel::cb_reserve_back(cb_id_input, onetile);
             noc_async_read_tile(offs + inner_idx + tile_offset, input_addrg, input_l1_write_ptr);
             noc_async_read_barrier();
-            cb_push_back(cb_id_input, onetile);
+            ckernel::cb_push_back(cb_id_input, onetile);
         }  // inner_idx loop
 
         // output_grad (N, C, H, W)
         const uint32_t output_grad_l1_write_ptr = get_write_ptr(cb_id_output_grad);
         for (uint32_t inner_idx = 0; inner_idx < num_inner; inner_idx++) {
-            cb_reserve_back(cb_id_output_grad, onetile);
+            ckernel::cb_reserve_back(cb_id_output_grad, onetile);
             noc_async_read_tile(offs + inner_idx + tile_offset, output_grad_addrg, output_grad_l1_write_ptr);
             noc_async_read_barrier();
-            cb_push_back(cb_id_output_grad, onetile);
+            ckernel::cb_push_back(cb_id_output_grad, onetile);
 
             if (gamma_has_value) {
                 // gamma (1, 1, 1, W)
                 const uint32_t gamma_l1_write_ptr = get_write_ptr(cb_id_gamma);
-                cb_reserve_back(cb_id_gamma, onetile);
+                ckernel::cb_reserve_back(cb_id_gamma, onetile);
                 noc_async_read_tile(inner_idx, gamma_addrg, gamma_l1_write_ptr);
                 noc_async_read_barrier();
-                cb_push_back(cb_id_gamma, onetile);
+                ckernel::cb_push_back(cb_id_gamma, onetile);
             }  // gamma_has_value
 
         }  // num_inner loop

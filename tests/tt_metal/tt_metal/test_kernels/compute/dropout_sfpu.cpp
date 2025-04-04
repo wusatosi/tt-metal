@@ -16,27 +16,27 @@ void MAIN {
     uint32_t int_probability = get_compile_time_arg_val(3);
     uint32_t int_scale_factor = get_compile_time_arg_val(4);
 
-    init_sfpu(tt::CBIndex::c_0, tt::CBIndex::c_16);
+    ckernel:: init_sfpu(tt::CBIndex::c_0, tt::CBIndex::c_16);
     dropout_kernel_init(seed);
     for (uint32_t block_index = 0; block_index < per_core_block_cnt; block_index++) {
-        cb_reserve_back(tt::CBIndex::c_16, per_core_block_dim);
+        ckernel::cb_reserve_back(tt::CBIndex::c_16, per_core_block_dim);
         for (uint32_t tile_index = 0; tile_index < per_core_block_dim; ++tile_index) {
-            acquire_dst();
+            ckernel::acquire_dst();
 
             // Pop tile after tile, copy to DST and pack
-            cb_wait_front(tt::CBIndex::c_0, 1);
+            ckernel::cb_wait_front(tt::CBIndex::c_0, 1);
 
-            copy_tile(tt::CBIndex::c_0, 0, 0);
+            ckernel:: copy_tile(tt::CBIndex::c_0, 0, 0);
 
             dropout_tile(0, int_probability, int_scale_factor);
 
-            pack_tile(0, tt::CBIndex::c_16);
+            ckernel:: pack_tile(0, tt::CBIndex::c_16);
 
-            cb_pop_front(tt::CBIndex::c_0, 1);
+            ckernel::cb_pop_front(tt::CBIndex::c_0, 1);
 
-            release_dst();
+            ckernel:: release_dst();
         }
-        cb_push_back(tt::CBIndex::c_16, per_core_block_dim);
+        ckernel::cb_push_back(tt::CBIndex::c_16, per_core_block_dim);
     }
 }
 }  // namespace NAMESPACE

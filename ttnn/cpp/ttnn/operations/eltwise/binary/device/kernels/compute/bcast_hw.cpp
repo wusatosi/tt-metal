@@ -15,31 +15,31 @@ void MAIN {
     init_bcast<BCAST_LLKOP, BCAST_DIM>(tt::CBIndex::c_0, tt::CBIndex::c_1, tt::CBIndex::c_2);
 
 #ifdef BCAST_SCALAR
-    cb_wait_front(tt::CBIndex::c_1, onetile);
+    ckernel::cb_wait_front(tt::CBIndex::c_1, onetile);
 #endif
 
     for (uint32_t b = 0; b < B; b++) {
         for (uint32_t h = 0; h < Ht; h++) {
             for (uint32_t w = 0; w < Wt; w++) {
 #ifndef BCAST_SCALAR
-                cb_wait_front(tt::CBIndex::c_1, onetile);
+                ckernel::cb_wait_front(tt::CBIndex::c_1, onetile);
 #endif
-                cb_reserve_back(tt::CBIndex::c_2, onetile);
+                ckernel::cb_reserve_back(tt::CBIndex::c_2, onetile);
 
-                acquire_dst();
+                ckernel::acquire_dst();
 
-                cb_wait_front(tt::CBIndex::c_0, onetile);
+                ckernel::cb_wait_front(tt::CBIndex::c_0, onetile);
 
                 BCAST_OP<BroadcastType::SCALAR>(tt::CBIndex::c_0, tt::CBIndex::c_1, 0, 0, 0);
-                pack_tile(0, tt::CBIndex::c_2);
+                ckernel:: pack_tile(0, tt::CBIndex::c_2);
 
-                cb_pop_front(tt::CBIndex::c_0, onetile);
+                ckernel::cb_pop_front(tt::CBIndex::c_0, onetile);
 #ifndef BCAST_SCALAR
-                cb_pop_front(tt::CBIndex::c_1, onetile);
+                ckernel::cb_pop_front(tt::CBIndex::c_1, onetile);
 #endif
-                release_dst();
+                ckernel:: release_dst();
 
-                cb_push_back(tt::CBIndex::c_2, onetile);
+                ckernel::cb_push_back(tt::CBIndex::c_2, onetile);
             }
         }
     }

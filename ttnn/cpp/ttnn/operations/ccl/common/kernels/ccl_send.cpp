@@ -244,7 +244,7 @@ void kernel_main() {
 
     // Don't use CBs because there appears to be a bug if we have the same producer/consumer core to a given CB
     // Instead, open up the CB and use it as a raw scratch space6
-    cb_reserve_back(cb_id, packet_size_in_pages);
+    ckernel::cb_reserve_back(cb_id, packet_size_in_pages);
     const uint32_t local_l1_scratch_buffer_address = get_write_ptr(cb_id);
 
 #ifdef DEBUG_PRINT_ENABLED

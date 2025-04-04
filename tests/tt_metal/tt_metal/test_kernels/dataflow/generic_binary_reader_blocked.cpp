@@ -34,8 +34,8 @@ void kernel_main() {
     // We push one block of tiles of src0 and src1.
     // src0 and src1 can have different number of tiles per block.
     for (uint32_t b = 0; b < num_blocks; b += 1) {
-        cb_reserve_back(cb0_id, src0_num_tiles_per_block);
-        cb_reserve_back(cb1_id, src1_num_tiles_per_block);
+        ckernel::cb_reserve_back(cb0_id, src0_num_tiles_per_block);
+        ckernel::cb_reserve_back(cb1_id, src1_num_tiles_per_block);
         uint32_t l1_write0_addr = get_write_ptr(cb0_id);
         uint32_t l1_write1_addr = get_write_ptr(cb1_id);
         std::uint64_t dram_buffer_src1_noc_addr = get_noc_addr_from_bank_id<true>(dram_src1_bank_id, dram_buffer_src1_addr);
@@ -54,7 +54,7 @@ void kernel_main() {
         }
         noc_async_read_barrier();
         dram_buffer_src1_addr += src1_num_bytes_per_block;
-        cb_push_back(cb0_id, src0_num_tiles_per_block);
-        cb_push_back(cb1_id, src1_num_tiles_per_block);
+        ckernel::cb_push_back(cb0_id, src0_num_tiles_per_block);
+        ckernel::cb_push_back(cb1_id, src1_num_tiles_per_block);
     }
 }

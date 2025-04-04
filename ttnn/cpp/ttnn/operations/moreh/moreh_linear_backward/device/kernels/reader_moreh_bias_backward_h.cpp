@@ -38,11 +38,11 @@ void kernel_main() {
     for (uint32_t wt = 0; wt < Wt_per_core; ++wt) {
         uint32_t read_tile_id = start_id + wt;
         for (uint32_t b = 0; b < batch_num; ++b) {
-            cb_reserve_back(cb_id_in0, onetile);
+            ckernel::cb_reserve_back(cb_id_in0, onetile);
             l1_write_addr_in0 = get_write_ptr(cb_id_in0);
             noc_async_read_tile(read_tile_id, s0, l1_write_addr_in0);
             noc_async_read_barrier();
-            cb_push_back(cb_id_in0, onetile);
+            ckernel::cb_push_back(cb_id_in0, onetile);
             read_tile_id += Wt;
         }
     }

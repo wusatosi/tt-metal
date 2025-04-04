@@ -35,7 +35,7 @@ void kernel_main() {
     uint32_t out_num_tiles_read = in0_w_tiles;
 
     for (uint32_t c_dim = 0; c_dim < in0_c; c_dim++) {
-        cb_wait_front(cb_id_out0, out_num_tiles_read);
+        ckernel::cb_wait_front(cb_id_out0, out_num_tiles_read);
 
         for (uint32_t w_dim = 0; w_dim < in0_w_tiles; w_dim++) {
             noc_async_write_tile(out_tensor_tile_id, s, l1_read_addr);
@@ -46,5 +46,5 @@ void kernel_main() {
     }
 
     noc_async_write_barrier();
-    cb_pop_front(cb_id_out0, out_num_tiles_read);
+    ckernel::cb_pop_front(cb_id_out0, out_num_tiles_read);
 }

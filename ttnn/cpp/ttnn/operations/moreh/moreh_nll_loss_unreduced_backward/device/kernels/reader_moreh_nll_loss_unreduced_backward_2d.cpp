@@ -48,7 +48,7 @@ void kernel_main() {
     // weight: (1, C)
     read_line(cb_weight, addrg_weight, Ct);
 
-    cb_wait_front(cb_weight, Ct);
+    ckernel::cb_wait_front(cb_weight, Ct);
     auto weight_l1_ptr = get_read_ptr<uint16_t>(cb_weight);
 #endif
 
@@ -59,7 +59,7 @@ void kernel_main() {
 
     read_line(cb_output_grad, addrg_output_grad, Nt);
 
-    cb_wait_front(cb_output_grad, Nt);
+    ckernel::cb_wait_front(cb_output_grad, Nt);
 
     auto zero = float_to_bfloat16(0.0f);
 
@@ -72,8 +72,8 @@ void kernel_main() {
         auto target_noc_id = nt;
         read_tile(cb_target, addrg_target, target_noc_id);
 
-        cb_reserve_back(cb_input_grad, onetile);
-        cb_wait_front(cb_target, onetile);
+        ckernel::cb_reserve_back(cb_input_grad, onetile);
+        ckernel::cb_wait_front(cb_target, onetile);
 
         auto input_grad_l1_ptr = get_write_ptr<uint16_t>(cb_input_grad);
         auto target_l1_ptr = get_read_ptr<int32_t>(cb_target);
@@ -107,8 +107,8 @@ void kernel_main() {
             }
         }
 
-        cb_push_back(cb_input_grad, onetile);
+        ckernel::cb_push_back(cb_input_grad, onetile);
 
-        cb_pop_front(cb_target, onetile);
+        ckernel::cb_pop_front(cb_target, onetile);
     }
 }

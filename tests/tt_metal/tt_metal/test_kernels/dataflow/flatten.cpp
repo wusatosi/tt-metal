@@ -41,7 +41,7 @@ void kernel_main() {
         for (uint32_t j = 0; j < 32; j++) {
             uint32_t src_addr_ = src_addr + start_dram_addr_offset_for_tensor_row;
             for (uint32_t k = 0; k < num_tiles_c; k++) {
-                cb_reserve_back(cb_id_in0, 1);
+                ckernel::cb_reserve_back(cb_id_in0, 1);
                 uint64_t src_noc_addr = get_noc_addr_from_bank_id<true>(src_bank_id, src_addr_);
 
                 // Read one row of data
@@ -64,7 +64,7 @@ void kernel_main() {
 
                 src_addr_ += num_bytes_per_tile;
                 noc_async_read_barrier();
-                cb_push_back(cb_id_in0, 1);
+                ckernel::cb_push_back(cb_id_in0, 1);
 
             }  // End num_tiles_c loop
             start_dram_addr_offset_for_tensor_row += num_bytes_per_tile_row;

@@ -35,8 +35,8 @@ void kernel_main() {
     const InterleavedAddrGenFast<src0_is_dram> s0 = {
         .bank_base_address = src0_addr, .page_size = in0_tile_bytes, .data_format = in0_data_format};
 #else
-    cb_reserve_back(cb_id_in0, num_tiles);
-    cb_push_back(cb_id_in0, num_tiles);
+    ckernel::cb_reserve_back(cb_id_in0, num_tiles);
+    ckernel::cb_push_back(cb_id_in0, num_tiles);
 #endif
 
     generate_bcast_unary_scalar(cb_id_in1, packed_scalar);
@@ -45,11 +45,11 @@ void kernel_main() {
         uint32_t curr_id = base_start_id_HtWt + curr_id_from_base;
 
 #ifndef IN0_SHARDED
-        cb_reserve_back(cb_id_in0, onetile);
+        ckernel::cb_reserve_back(cb_id_in0, onetile);
         l1_write_addr_in0 = get_write_ptr(cb_id_in0);
         noc_async_read_tile(curr_id, s0, l1_write_addr_in0);
         noc_async_read_barrier();
-        cb_push_back(cb_id_in0, onetile);
+        ckernel::cb_push_back(cb_id_in0, onetile);
 #endif
 
         curr_id_from_base++;

@@ -39,7 +39,7 @@ void kernel_main() {
 
     for (uint32_t i = 0; i < num_sticks / 32; i++) {
         // We reserve back an entire tile row and issue a bunch of reads
-        cb_reserve_back(cb_id_in0, num_tiles_c);
+        ckernel::cb_reserve_back(cb_id_in0, num_tiles_c);
         uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
         for (uint32_t j = 0; j < 32; j++) {
             uint64_t src_noc_addr = get_noc_addr(stick_id, s);
@@ -49,6 +49,6 @@ void kernel_main() {
             stick_id++;
         }
         noc_async_read_barrier();
-        cb_push_back(cb_id_in0, num_tiles_c);
+        ckernel::cb_push_back(cb_id_in0, num_tiles_c);
     }
 }

@@ -23,10 +23,10 @@ void MAIN {
     constexpr uint32_t dst1 = 1;
 
     binary_op_init_common(cb_in0, cb_in0, cb_out0);
-    cb_wait_front(cb_scaler, onetile);
+    ckernel::cb_wait_front(cb_scaler, onetile);
 
     if (do_mask_h || do_mask_w) {
-        cb_wait_front(cb_mask_h_w, onetile * 2);
+        ckernel::cb_wait_front(cb_mask_h_w, onetile * 2);
     }
 
     bool enable_reload = false;
@@ -41,22 +41,22 @@ void MAIN {
                 bool do_mask = (do_mask_h && last_row) || (do_mask_w && last_col);
 
                 // get tile from reader
-                cb_wait_front(cb_in0, onetile);
+                ckernel::cb_wait_front(cb_in0, onetile);
 
                 if (do_mask) {
-                    tile_regs_acquire();
+                    ckernel:: tile_regs_acquire();
 #if defined FP32_DEST_ACC_EN
                     reconfig_data_format_srca(cb_in0);
 #endif
                     copy_tile_to_dst_init_short(cb_in0);
-                    copy_tile(cb_in0, 0, dst0);
+                    ckernel:: copy_tile(cb_in0, 0, dst0);
 
                     if (do_mask_h && last_row) {
 #if defined FP32_DEST_ACC_EN
                         reconfig_data_format_srca(cb_mask_h_w);
 #endif
                         copy_tile_to_dst_init_short(cb_mask_h_w);
-                        copy_tile(cb_mask_h_w, 0, dst1);
+                        ckernel:: copy_tile(cb_mask_h_w, 0, dst1);
                         mask_tile_init();
                         mask_tile(dst0, dst1);
                     }
@@ -66,35 +66,35 @@ void MAIN {
                         reconfig_data_format_srca(cb_mask_h_w);
 #endif
                         copy_tile_to_dst_init_short(cb_mask_h_w);
-                        copy_tile(cb_mask_h_w, 1, dst1);
+                        ckernel:: copy_tile(cb_mask_h_w, 1, dst1);
                         mask_tile_init();
                         mask_tile(dst0, dst1);
                     }
-                    tile_regs_commit();
+                    ckernel:: tile_regs_commit();
 
-                    tile_regs_wait();
-                    cb_reserve_back(cb_intermed0, onetile);
+                    ckernel::tile_regs_wait();
+                    ckernel::cb_reserve_back(cb_intermed0, onetile);
 #if defined FP32_DEST_ACC_EN
                     pack_reconfig_data_format(cb_intermed0);
 #endif
-                    pack_tile(dst0, cb_intermed0);
-                    cb_push_back(cb_intermed0, onetile);
-                    tile_regs_release();
+                    ckernel:: pack_tile(dst0, cb_intermed0);
+                    ckernel::cb_push_back(cb_intermed0, onetile);
+                    ckernel::tile_regs_release();
                 }
 
-                tile_regs_acquire();
+                ckernel:: tile_regs_acquire();
                 if (enable_reload) {
-                    cb_wait_front(cb_intermed1, onetile);
+                    ckernel::cb_wait_front(cb_intermed1, onetile);
 #if defined FP32_DEST_ACC_EN
                     reconfig_data_format_srca(cb_intermed1);
 #endif
                     copy_tile_to_dst_init_short(cb_intermed1);
-                    copy_tile(cb_intermed1, 0, 0);
-                    cb_pop_front(cb_intermed1, onetile);
+                    ckernel:: copy_tile(cb_intermed1, 0, 0);
+                    ckernel::cb_pop_front(cb_intermed1, onetile);
                 }
 
                 if (do_mask) {
-                    cb_wait_front(cb_intermed0, onetile);
+                    ckernel::cb_wait_front(cb_intermed0, onetile);
                 }
 
                 auto cb_reduce = (do_mask) ? (cb_intermed0) : (cb_in0);
@@ -103,33 +103,33 @@ void MAIN {
 #endif
                 reduce_init_delta<false>(cb_reduce, cb_scaler, cb_out0);
                 reduce_tile((do_mask) ? (cb_intermed0) : (cb_in0), cb_scaler, 0, 0, 0);
-                reduce_revert_delta(cb_out0);
+                ckernel::reduce_revert_delta(cb_out0);
 
                 if (do_mask) {
-                    cb_pop_front(cb_intermed0, onetile);
+                    ckernel::cb_pop_front(cb_intermed0, onetile);
                 }
 
-                cb_pop_front(cb_in0, onetile);
-                tile_regs_commit();
+                ckernel::cb_pop_front(cb_in0, onetile);
+                ckernel:: tile_regs_commit();
 
-                tile_regs_wait();
+                ckernel::tile_regs_wait();
                 if (last_out) {
-                    cb_reserve_back(cb_out0, onetile);
+                    ckernel::cb_reserve_back(cb_out0, onetile);
 #if defined FP32_DEST_ACC_EN
                     pack_reconfig_data_format(cb_out0);
 #endif
-                    pack_tile(0, cb_out0);
-                    cb_push_back(cb_out0, onetile);
+                    ckernel:: pack_tile(0, cb_out0);
+                    ckernel::cb_push_back(cb_out0, onetile);
 
                 } else {
-                    cb_reserve_back(cb_intermed1, onetile);
+                    ckernel::cb_reserve_back(cb_intermed1, onetile);
 #if defined FP32_DEST_ACC_EN
                     pack_reconfig_data_format(cb_intermed1);
 #endif
-                    pack_tile(0, cb_intermed1);
-                    cb_push_back(cb_intermed1, onetile);
+                    ckernel:: pack_tile(0, cb_intermed1);
+                    ckernel::cb_push_back(cb_intermed1, onetile);
                 }
-                tile_regs_release();
+                ckernel::tile_regs_release();
 
                 enable_reload = true;
                 num_tile_done++;

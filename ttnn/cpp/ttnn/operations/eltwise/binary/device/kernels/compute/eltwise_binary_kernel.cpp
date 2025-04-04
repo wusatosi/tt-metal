@@ -49,25 +49,25 @@ void MAIN {
 #ifdef SFPU_OP_INIT_PRE_IN0_0
         reconfig_data_format_srca(cb_inp0, cb_in0);
         pack_reconfig_data_format(cb_out0, cb_inp0);
-        cb_wait_front(cb_in0, per_core_block_size);
-        cb_reserve_back(cb_inp0, per_core_block_size);
+        ckernel::cb_wait_front(cb_in0, per_core_block_size);
+        ckernel::cb_reserve_back(cb_inp0, per_core_block_size);
 
-        tile_regs_acquire();
+        ckernel:: tile_regs_acquire();
         SFPU_OP_INIT_PRE_IN0_0
         for (uint32_t i = 0; i < per_core_block_size; ++i) {
-            copy_tile(cb_in0, i, i);  // copy from c_in[0] to DST[0]
+            ckernel:: copy_tile(cb_in0, i, i);  // copy from c_in[0] to DST[0]
             SFPU_OP_FUNC_PRE_IN0_0
         }
-        tile_regs_commit();
+        ckernel:: tile_regs_commit();
 
-        tile_regs_wait();
+        ckernel::tile_regs_wait();
         for (uint32_t i = 0; i < per_core_block_size; ++i) {
-            pack_tile(i, cb_inp0);  // DST[0]->cb
+            ckernel:: pack_tile(i, cb_inp0);  // DST[0]->cb
         }
-        tile_regs_release();
+        ckernel::tile_regs_release();
 
-        cb_pop_front(cb_in0, per_core_block_size);
-        cb_push_back(cb_inp0, per_core_block_size);
+        ckernel::cb_pop_front(cb_in0, per_core_block_size);
+        ckernel::cb_push_back(cb_inp0, per_core_block_size);
 #ifndef SFPU_OP_INIT_PRE_IN1_0
         reconfig_data_format_srca(cb_in0, cb_inp0);
         pack_reconfig_data_format(cb_inp0, cb_out0);
@@ -82,38 +82,38 @@ void MAIN {
         reconfig_data_format_srca(cb_in0, cb_in1);
         pack_reconfig_data_format(cb_inp0, cb_inp1);
 #endif
-        cb_wait_front(cb_in1, per_core_block_size);
-        cb_reserve_back(cb_inp1, per_core_block_size);
+        ckernel::cb_wait_front(cb_in1, per_core_block_size);
+        ckernel::cb_reserve_back(cb_inp1, per_core_block_size);
 
-        tile_regs_acquire();
+        ckernel:: tile_regs_acquire();
         SFPU_OP_INIT_PRE_IN1_0
         for (uint32_t i = 0; i < per_core_block_size; ++i) {
-            copy_tile(cb_in1, i, i);  // copy from c_in[0] to DST[0]
+            ckernel:: copy_tile(cb_in1, i, i);  // copy from c_in[0] to DST[0]
             SFPU_OP_FUNC_PRE_IN1_0
         }
-        tile_regs_commit();
+        ckernel:: tile_regs_commit();
 
-        tile_regs_wait();
+        ckernel::tile_regs_wait();
         for (uint32_t i = 0; i < per_core_block_size; ++i) {
-            pack_tile(i, cb_inp1);  // DST[0]->cb
+            ckernel:: pack_tile(i, cb_inp1);  // DST[0]->cb
         }
-        tile_regs_release();
+        ckernel::tile_regs_release();
 
-        cb_pop_front(cb_in1, per_core_block_size);
-        cb_push_back(cb_inp1, per_core_block_size);
+        ckernel::cb_pop_front(cb_in1, per_core_block_size);
+        ckernel::cb_push_back(cb_inp1, per_core_block_size);
         reconfig_data_format_srca(cb_in1, cb_inp0);
         pack_reconfig_data_format(cb_inp1, cb_out0);
 #endif
 
-        cb_wait_front(cb_inp0, per_core_block_size);
-        cb_wait_front(cb_inp1, per_core_block_size);
-        cb_reserve_back(cb_out0, per_core_block_size);
+        ckernel::cb_wait_front(cb_inp0, per_core_block_size);
+        ckernel::cb_wait_front(cb_inp1, per_core_block_size);
+        ckernel::cb_reserve_back(cb_out0, per_core_block_size);
 
 #if PRE_SCALE
         binary_op_specific_init<true, ELTWISE_OP_TYPE>(cb_inp0, cb_inp1);
 #endif
 
-        tile_regs_acquire();
+        ckernel:: tile_regs_acquire();
         for (uint32_t i = 0; i < per_core_block_size; ++i) {
             ELTWISE_OP(cb_inp0, cb_inp1, i, i, i);
 
@@ -126,17 +126,17 @@ void MAIN {
             SFPU_OP_CHAIN_0
 #endif
         }
-        tile_regs_commit();
+        ckernel:: tile_regs_commit();
 
-        tile_regs_wait();
+        ckernel::tile_regs_wait();
         for (uint32_t i = 0; i < per_core_block_size; ++i) {
-            pack_tile(i, cb_out0);
+            ckernel:: pack_tile(i, cb_out0);
         }
-        tile_regs_release();
+        ckernel::tile_regs_release();
 
-        cb_pop_front(cb_inp0, per_core_block_size);
-        cb_pop_front(cb_inp1, per_core_block_size);
-        cb_push_back(cb_out0, per_core_block_size);
+        ckernel::cb_pop_front(cb_inp0, per_core_block_size);
+        ckernel::cb_pop_front(cb_inp1, per_core_block_size);
+        ckernel::cb_push_back(cb_out0, per_core_block_size);
     }
 }
 }  // namespace NAMESPACE

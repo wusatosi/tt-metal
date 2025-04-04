@@ -65,12 +65,12 @@ void kernel_main() {
 #endif
 
     // Get scratchpads guaranteed to be allocated until the function terminates
-    cb_reserve_back(cb_id_in0, 1);
-    cb_reserve_back(cb_id_in1, 1);
+    ckernel::cb_reserve_back(cb_id_in0, 1);
+    ckernel::cb_reserve_back(cb_id_in1, 1);
     uint32_t input_buffer = get_write_ptr(cb_id_in0);
     uint32_t alignment_buffer = get_write_ptr(cb_id_in1);
-    cb_push_back(cb_id_in1, 1);
-    cb_push_back(cb_id_in0, 1);
+    ckernel::cb_push_back(cb_id_in1, 1);
+    ckernel::cb_push_back(cb_id_in0, 1);
 
     constexpr uint64_t r_mask_to_use = tensor_is_dram ? MASK_64 : MASK_16;
     constexpr uint64_t r_offset_to_use = tensor_is_dram ? OFFSET_64 : OFFSET_16;

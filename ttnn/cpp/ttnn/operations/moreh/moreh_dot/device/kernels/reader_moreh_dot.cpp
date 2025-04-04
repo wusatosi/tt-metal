@@ -69,7 +69,7 @@ void kernel_main() {
     constexpr uint32_t cb_id_in0 = 0;
     constexpr uint32_t cb_id_in1 = 1;
     constexpr uint32_t cb_id_in2 = 2;
-    cb_reserve_back(cb_id_in2, 1);
+    ckernel::cb_reserve_back(cb_id_in2, 1);
     if (scaler != 0) {
         auto ptr = reinterpret_cast<uint16_t*>(get_write_ptr(cb_id_in2));
         for (int j = 0; j < 1024; j++) {
@@ -82,7 +82,7 @@ void kernel_main() {
             }
         }
     }
-    cb_push_back(cb_id_in2, 1);
+    ckernel::cb_push_back(cb_id_in2, 1);
 
     uint32_t l1_write_addr_in0;
     uint32_t src0_tile_bytes = get_tile_size(cb_id_in0);
@@ -98,11 +98,11 @@ void kernel_main() {
     constexpr uint32_t onetile = 1;
     for (uint32_t i = start_id; i < start_id + num_tiles; i++) {
         bool last_tile = i == (start_id + num_tiles - 1);
-        cb_reserve_back(cb_id_in0, onetile);
+        ckernel::cb_reserve_back(cb_id_in0, onetile);
         l1_write_addr_in0 = get_write_ptr(cb_id_in0);
         noc_async_read_tile(i, s0, l1_write_addr_in0);
 
-        cb_reserve_back(cb_id_in1, onetile);
+        ckernel::cb_reserve_back(cb_id_in1, onetile);
         l1_write_addr_in1 = get_write_ptr(cb_id_in1);
         noc_async_read_tile(i, s1, l1_write_addr_in1);
 
@@ -113,7 +113,7 @@ void kernel_main() {
             mask_tile_in_reader(l1_write_addr_in1, mask_w, mask_h);
         }
 
-        cb_push_back(cb_id_in0, onetile);
-        cb_push_back(cb_id_in1, onetile);
+        ckernel::cb_push_back(cb_id_in0, onetile);
+        ckernel::cb_push_back(cb_id_in1, onetile);
     }
 }

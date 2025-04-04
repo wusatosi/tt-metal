@@ -56,10 +56,10 @@ void kernel_main() {
         noc_async_write_barrier();
     };
 
-    cb_wait_front(cb_stats_reduced, stats_tiles * block_h);
-    cb_reserve_back(cb_ex_global, block_h);
+    ckernel::cb_wait_front(cb_stats_reduced, stats_tiles * block_h);
+    ckernel::cb_reserve_back(cb_ex_global, block_h);
     global_reduce_sender(cb_stats_reduced, cb_ex_global);
-    cb_push_back(cb_ex_global, stats_tiles * block_h);
-    cb_pop_front(cb_stats_reduced, stats_tiles * block_h);
+    ckernel::cb_push_back(cb_ex_global, stats_tiles * block_h);
+    ckernel::cb_pop_front(cb_stats_reduced, stats_tiles * block_h);
     global_semaphore_set();
 }

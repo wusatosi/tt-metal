@@ -68,7 +68,7 @@ void kernel_main() {
 
     for (uint32_t ncht = 0; ncht < NCHt; ncht++) {
         for (uint32_t wt = 0; wt < Wt; wt += blk) {
-            cb_reserve_back(cb_id_in0, blk);
+            ckernel::cb_reserve_back(cb_id_in0, blk);
             uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
 
             for (uint32_t r = 0; r < blk; r++) {
@@ -76,18 +76,18 @@ void kernel_main() {
                 l1_write_addr += src0_tile_bytes;
             }
             noc_async_read_barrier();
-            cb_push_back(cb_id_in0, blk);
+            ckernel::cb_push_back(cb_id_in0, blk);
 
 #ifdef FUSE_PRE_ADD
             // TODO(AP): refactor the ifdefs
-            cb_reserve_back(cb_id_in1, blk);
+            ckernel::cb_reserve_back(cb_id_in1, blk);
             l1_write_addr = get_write_ptr(cb_id_in1);
             for (uint32_t r = 0; r < blk; r++) {
                 noc_async_read_tile(offs + wt + r + tile_offset, src_b, l1_write_addr);
                 l1_write_addr += src1_tile_bytes;
             }
             noc_async_read_barrier();
-            cb_push_back(cb_id_in1, blk);
+            ckernel::cb_push_back(cb_id_in1, blk);
 #endif
         }  // wt loop
 
@@ -96,27 +96,27 @@ void kernel_main() {
             for (uint32_t wt = 0; wt < Wt; wt += blk) {
 #ifdef FUSE_GAMMA
                 {
-                    cb_reserve_back(cb_id_gamma, blk);
+                    ckernel::cb_reserve_back(cb_id_gamma, blk);
                     uint32_t l1_write_addr = get_write_ptr(cb_id_gamma);
                     for (uint32_t r = 0; r < blk; r++) {
                         noc_async_read_tile(wt + r, addrg, l1_write_addr);
                         l1_write_addr += gamma_tile_bytes;
                     }
                     noc_async_read_barrier();
-                    cb_push_back(cb_id_gamma, blk);
+                    ckernel::cb_push_back(cb_id_gamma, blk);
                 }
 #endif
 
 #ifdef FUSE_BETA
                 {
-                    cb_reserve_back(cb_id_beta, blk);
+                    ckernel::cb_reserve_back(cb_id_beta, blk);
                     uint32_t l1_write_addr = get_write_ptr(cb_id_beta);
                     for (uint32_t r = 0; r < blk; r++) {
                         noc_async_read_tile(wt + r, addrb, l1_write_addr);
                         l1_write_addr += beta_tile_bytes;
                     }
                     noc_async_read_barrier();
-                    cb_push_back(cb_id_beta, blk);
+                    ckernel::cb_push_back(cb_id_beta, blk);
                 }
 #endif
             }  // wt loop

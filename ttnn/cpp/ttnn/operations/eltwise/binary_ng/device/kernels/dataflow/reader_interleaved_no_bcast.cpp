@@ -24,8 +24,8 @@ void kernel_main() {
     constexpr auto cb_id_src = tt::CBIndex::c_0;
 
 #if SRC_SHARDED
-    cb_reserve_back(cb_id_src, src_num_tiles);
-    cb_push_back(cb_id_src, src_num_tiles);
+    ckernel::cb_reserve_back(cb_id_src, src_num_tiles);
+    ckernel::cb_push_back(cb_id_src, src_num_tiles);
 #else
     constexpr uint32_t onetile = 1;
     constexpr bool src_is_dram = get_compile_time_arg_val(0) == 1;
@@ -63,11 +63,11 @@ void kernel_main() {
                 for (uint32_t th = start_th; th < Ht && num_tiles_read < dst_num_tiles; ++th, tile_offset += Wt) {
                     for (uint32_t tw = start_tw; tw < end_tw && num_tiles_read < dst_num_tiles;
                          ++tw, ++num_tiles_read) {
-                        cb_reserve_back(cb_id_src, onetile);
+                        ckernel::cb_reserve_back(cb_id_src, onetile);
                         uint32_t l1_write_addr_src = get_write_ptr(cb_id_src);
                         noc_async_read_tile(tile_offset + tw, src, l1_write_addr_src);
                         noc_async_read_barrier();
-                        cb_push_back(cb_id_src, onetile);
+                        ckernel::cb_push_back(cb_id_src, onetile);
                     }
                     if constexpr (!has_sharding) {
                         // next row of tiles should start at the first column

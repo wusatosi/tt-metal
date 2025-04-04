@@ -196,7 +196,7 @@ The following are APIs for using the remote circular buffers within kernels.
 
 Receiver APIs:
 
-* `remote_cb_wait_front(cb_id, num_pages)`
+* `remote_ckernel::cb_wait_front(cb_id, num_pages)`
 
   Used by a receiver core to wait for data from its sender core. Similar to `cb_wait_front`
 

@@ -33,11 +33,11 @@ void kernel_main() {
     for (uint32_t block_h_id = 0; block_h_id < input_num_blocks_h; block_h_id++) {
         uint32_t end_id = start_id + input_num_blocks_w_per_core;
         for (uint32_t i = start_id; i < end_id; i++) {
-            cb_reserve_back(cb_id_in0, onetile);
+            ckernel::cb_reserve_back(cb_id_in0, onetile);
             uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
             noc_async_read_tile((block_h_id * input_total_blocks_w) + i, s, l1_write_addr);
             noc_async_read_barrier();
-            cb_push_back(cb_id_in0, onetile);
+            ckernel::cb_push_back(cb_id_in0, onetile);
         }
     }
 }

@@ -50,7 +50,7 @@ void kernel_main() {
 
             for (uint32_t block = 0; block < num_blocks; ++block) {
                 {
-                    cb_wait_front(local_cb_id, max_block_num_tiles);
+                    ckernel::cb_wait_front(local_cb_id, max_block_num_tiles);
 
                     uint32_t local_cb_addr = get_read_ptr(local_cb_id);
                     experimental::remote_cb_push_back_and_write_pages(
@@ -62,7 +62,7 @@ void kernel_main() {
                         curr_coalesced_page_size,
                         noc);
 
-                    cb_pop_front(local_cb_id, max_block_num_tiles);
+                    ckernel::cb_pop_front(local_cb_id, max_block_num_tiles);
                 }
             }
         }

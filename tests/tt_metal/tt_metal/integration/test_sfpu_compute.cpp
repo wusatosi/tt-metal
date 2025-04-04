@@ -30,7 +30,7 @@ const map<string, std::map<string, string>> sfpu_op_to_op_name = {
     {"exponential", {{"SFPU_OP_CHAIN_0", "exp_tile_init(); exp_tile(0);"}}},
     {"reciprocal", {{"SFPU_OP_CHAIN_0", "recip_tile_init(); recip_tile(0);"}}},
     {"gelu", {{"SFPU_OP_CHAIN_0", "gelu_tile_init(); gelu_tile(0);"}}},
-    {"sqrt", {{"SFPU_OP_CHAIN_0", "sqrt_tile_init(); sqrt_tile(0);"}}},
+    {"sqrt", {{"SFPU_OP_CHAIN_0", "sqrt_tile_init(); ckernel:: sqrt_tile(0);"}}},
     {"sigmoid", {{"SFPU_OP_CHAIN_0", "sigmoid_tile_init(); sigmoid_tile(0);"}}},
     {"log", {{"SFPU_OP_CHAIN_0", "log_tile_init(); log_tile(0);"}}},
     {"tanh", {{"SFPU_OP_CHAIN_0", "tanh_tile_init(); tanh_tile(0);"}}},

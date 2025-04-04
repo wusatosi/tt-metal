@@ -48,18 +48,18 @@ void kernel_main() {
     for (uint32_t i = 0; i < N; i += onetile) {
         for (uint32_t w = 0; w < Wt; w++) {
             // read y
-            cb_reserve_back(cb_y, onetile);
+            ckernel::cb_reserve_back(cb_y, onetile);
             l1_write_addr_in = get_write_ptr(cb_y);
             noc_async_read_tile(curr_tile, y_in, l1_write_addr_in);
             noc_async_read_barrier();
-            cb_push_back(cb_y, onetile);
+            ckernel::cb_push_back(cb_y, onetile);
 
             // read dy
-            cb_reserve_back(cb_dy, onetile);
+            ckernel::cb_reserve_back(cb_dy, onetile);
             l1_write_addr_in = get_write_ptr(cb_dy);
             noc_async_read_tile(curr_tile, dy_in, l1_write_addr_in);
             noc_async_read_barrier();
-            cb_push_back(cb_dy, onetile);
+            ckernel::cb_push_back(cb_dy, onetile);
 
             curr_tile++;
         }

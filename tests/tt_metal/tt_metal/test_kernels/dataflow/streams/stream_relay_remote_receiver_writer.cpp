@@ -23,7 +23,7 @@ void kernel_main() {
 
     auto cb = tt::CBIndex::c_0;
     for (uint32_t i = 0; i < num_pages; i++) {
-        cb_wait_front(cb, 1);
+        ckernel::cb_wait_front(cb, 1);
         // NOTE THAT msg_hdr_size is doubled on host side to maintain alignment for DRAM reads/writes in THIS TEST ONLY
         uint32_t src_start = get_read_ptr(cb) + msg_hdr_size;
 
@@ -31,6 +31,6 @@ void kernel_main() {
         noc_async_write(src_start, dst_noc_addr, write_page_size);
 
         noc_async_write_barrier();
-        cb_pop_front(cb, 1);
+        ckernel::cb_pop_front(cb, 1);
     }
 }

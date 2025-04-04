@@ -51,18 +51,18 @@ void kernel_main() {
         noc_semaphore_wait(receiver_semaphore_addr, VALID);
         // write out topk values of the local chunk
         for (uint32_t i = 0; i < Kt; ++i) {
-            cb_wait_front(values_cb_index, onetile);
+            ckernel::cb_wait_front(values_cb_index, onetile);
             uint32_t l1_read_addr_val = get_read_ptr(values_cb_index);
             noc_async_write(l1_read_addr_val, noc_final_addr_values + i * tile_bytes_values, tile_bytes_values);
-            cb_pop_front(values_cb_index, onetile);
+            ckernel::cb_pop_front(values_cb_index, onetile);
         }
 
         // write out topk indices of the local chunk
         for (uint32_t i = 0; i < Kt; ++i) {
-            cb_wait_front(output_ind_cb_index, onetile);
+            ckernel::cb_wait_front(output_ind_cb_index, onetile);
             uint32_t l1_read_addr_ind = get_read_ptr(output_ind_cb_index);
             noc_async_write(l1_read_addr_ind, noc_value_addr_values + i * tile_bytes_ind, tile_bytes_ind);
-            cb_pop_front(output_ind_cb_index, onetile);
+            ckernel::cb_pop_front(output_ind_cb_index, onetile);
         }
         // since we're writing to a precise location we don't need the barrier until later
         noc_async_write_barrier();

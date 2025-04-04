@@ -41,7 +41,7 @@ void matmul_blocks(
     for (uint32_t in0_subblock = 0; in0_subblock < in0_num_subblocks; ++in0_subblock) {
         uint32_t in1_index_offset = 0;
         for (uint32_t in1_subblock = 0; in1_subblock < in1_num_subblocks; ++in1_subblock) {
-            tile_regs_acquire();
+            ckernel:: tile_regs_acquire();
 
             uint32_t dst_index = 0;
             uint32_t in0_index = in0_index_offset;
@@ -53,15 +53,15 @@ void matmul_blocks(
                 in0_index++;
                 in1_index += N;
             }
-            tile_regs_commit();
+            ckernel:: tile_regs_commit();
 
-            cb_reserve_back(out_cb, out_subblock_num_tiles);
-            tile_regs_wait();
+            ckernel::cb_reserve_back(out_cb, out_subblock_num_tiles);
+            ckernel::tile_regs_wait();
             for (uint32_t i = 0; i < out_subblock_num_tiles; i++) {
-                pack_tile(i, out_cb);
+                ckernel:: pack_tile(i, out_cb);
             }
-            tile_regs_release();
-            cb_push_back(out_cb, out_subblock_num_tiles);
+            ckernel::tile_regs_release();
+            ckernel::cb_push_back(out_cb, out_subblock_num_tiles);
             in1_index_offset += subblock_w;
         }
         in0_index_offset += subblock_h * in0_block_w;
@@ -79,20 +79,20 @@ void add_bias_inplace(uint32_t in0_cb, uint32_t in1_cb) {
     constexpr uint32_t dst_tiles = 1;
 
     add_bcast_rows_init_short(in0_cb, in1_cb);
-    cb_wait_front(in0_cb, num_tiles);
-    cb_wait_front(in1_cb, cols);
+    ckernel::cb_wait_front(in0_cb, num_tiles);
+    ckernel::cb_wait_front(in1_cb, cols);
     for (uint32_t i = 0; i < rows; ++i) {
         for (uint32_t j = 0; j < cols; ++j) {
-            tile_regs_acquire();
+            ckernel:: tile_regs_acquire();
             // Add jth tile of bias to each column j of in0_cb
             add_tiles_bcast_rows(in0_cb, in1_cb, 0, j, 0);
-            tile_regs_commit();
-            cb_pop_front(in0_cb, dst_tiles);
-            cb_reserve_back(in0_cb, dst_tiles);
-            tile_regs_wait();
-            pack_tile(0, in0_cb);
-            cb_push_back(in0_cb, dst_tiles);
-            tile_regs_release();
+            ckernel:: tile_regs_commit();
+            ckernel::cb_pop_front(in0_cb, dst_tiles);
+            ckernel::cb_reserve_back(in0_cb, dst_tiles);
+            ckernel::tile_regs_wait();
+            ckernel:: pack_tile(0, in0_cb);
+            ckernel::cb_push_back(in0_cb, dst_tiles);
+            ckernel::tile_regs_release();
         }
     }
 }
@@ -108,16 +108,16 @@ void add_block_inplace(uint32_t in0_cb, uint32_t in1_cb) {
 
     add_tiles_init(in0_cb, in1_cb);
     for (uint32_t i = 0; i < num_tiles; ++i) {
-        tile_regs_acquire();
+        ckernel:: tile_regs_acquire();
         add_tiles(in0_cb, in1_cb, 0, 0, 0);
-        tile_regs_commit();
-        cb_pop_front(in0_cb, dst_tiles);
-        cb_pop_front(in1_cb, dst_tiles);
-        cb_reserve_back(in0_cb, dst_tiles);
-        tile_regs_wait();
-        pack_tile(0, in0_cb);
-        cb_push_back(in0_cb, dst_tiles);
-        tile_regs_release();
+        ckernel:: tile_regs_commit();
+        ckernel::cb_pop_front(in0_cb, dst_tiles);
+        ckernel::cb_pop_front(in1_cb, dst_tiles);
+        ckernel::cb_reserve_back(in0_cb, dst_tiles);
+        ckernel::tile_regs_wait();
+        ckernel:: pack_tile(0, in0_cb);
+        ckernel::cb_push_back(in0_cb, dst_tiles);
+        ckernel::tile_regs_release();
     }
 }
 
@@ -180,11 +180,11 @@ void MAIN {
         // Process only assigned C_out blocks
         for (uint32_t c_out_block = c_out_block_start; c_out_block < c_out_block_end; c_out_block++) {
             // Wait for new weights and bias
-            cb_wait_front(cb_weight_tiled, weight_tiles);
+            ckernel::cb_wait_front(cb_weight_tiled, weight_tiles);
 
             if constexpr (use_bias) {
                 if (is_reducer) {
-                    cb_wait_front(cb_bias_tiled, matmul_N_t);
+                    ckernel::cb_wait_front(cb_bias_tiled, matmul_N_t);
                 }
             }
 
@@ -201,17 +201,17 @@ void MAIN {
                             uint32_t current_patch_rows = patch_rows_left < tt::constants::TILE_HEIGHT
                                                               ? patch_rows_left
                                                               : tt::constants::TILE_HEIGHT;
-                            cb_wait_front(cb_vol2col_rm, current_patch_rows);
-                            cb_reserve_back(cb_vol2col_tiled, matmul_K_t);
+                            ckernel::cb_wait_front(cb_vol2col_rm, current_patch_rows);
+                            ckernel::cb_reserve_back(cb_vol2col_tiled, matmul_K_t);
                             tilize_block(cb_vol2col_rm, matmul_K_t, cb_vol2col_tiled);
-                            cb_push_back(cb_vol2col_tiled, matmul_K_t);
-                            cb_pop_front(cb_vol2col_rm, current_patch_rows);
+                            ckernel::cb_push_back(cb_vol2col_tiled, matmul_K_t);
+                            ckernel::cb_pop_front(cb_vol2col_rm, current_patch_rows);
                             patch_rows_left -= current_patch_rows;
                         }
                         tilize_uninit(cb_vol2col_rm, cb_vol2col_tiled);
 
                         // Apply matmul blocks
-                        cb_wait_front(cb_vol2col_tiled, patch_tiles);
+                        ckernel::cb_wait_front(cb_vol2col_tiled, patch_tiles);
                         matmul_blocks(
                             cb_vol2col_tiled,
                             cb_weight_tiled,
@@ -225,31 +225,31 @@ void MAIN {
                             subblock_h,
                             subblock_w,
                             false /* transpose */);
-                        cb_pop_front(cb_vol2col_tiled, patch_tiles);
+                        ckernel::cb_pop_front(cb_vol2col_tiled, patch_tiles);
 
                         // Stall on matmul/bias to finish
-                        cb_wait_front(cb_matmul_interm_tiled, output_tiles);
+                        ckernel::cb_wait_front(cb_matmul_interm_tiled, output_tiles);
 
                         if (!is_reducer) {
                             // not reducer implies that we are a worker and there are multiple workers in this reduction
                             // group
 
                             // Signal to writer that we have partial results
-                            cb_reserve_back(cb_reduction_tiled, output_tiles);
-                            cb_push_back(cb_reduction_tiled, output_tiles);
+                            ckernel::cb_reserve_back(cb_reduction_tiled, output_tiles);
+                            ckernel::cb_push_back(cb_reduction_tiled, output_tiles);
 
                             // Wait for writer to ack that our data has been used
-                            cb_wait_front(cb_worker_ack_back, 1);
-                            cb_pop_front(cb_worker_ack_back, 1);
+                            ckernel::cb_wait_front(cb_worker_ack_back, 1);
+                            ckernel::cb_pop_front(cb_worker_ack_back, 1);
 
                             // Clear our partial results and continue
-                            cb_pop_front(cb_matmul_interm_tiled, output_tiles);
+                            ckernel::cb_pop_front(cb_matmul_interm_tiled, output_tiles);
                         } else {
                             // We are a reducer core. Note that num_workers can be 0, in which case there is no
                             // reduction.
                             for (uint32_t i = 0; i < num_workers; i++) {
                                 // Wait for writer to populate reduction buffer
-                                cb_wait_front(cb_reduction_tiled, output_tiles);
+                                ckernel::cb_wait_front(cb_reduction_tiled, output_tiles);
 
                                 // Add partial results from workers and pop them
                                 add_block_inplace<output_tiles>(cb_matmul_interm_tiled, cb_reduction_tiled);
@@ -264,13 +264,13 @@ void MAIN {
                             }
 
                             // After reduction (if any), untilize result
-                            cb_wait_front(cb_matmul_interm_tiled, output_tiles);
+                            ckernel::cb_wait_front(cb_matmul_interm_tiled, output_tiles);
                             untilize_init_short(cb_matmul_interm_tiled);
                             for (uint32_t patch_t = 0; patch_t < matmul_M_t; patch_t++) {
-                                cb_reserve_back(cb_matmul_result_rm, matmul_N_t);
+                                ckernel::cb_reserve_back(cb_matmul_result_rm, matmul_N_t);
                                 untilize_block(cb_matmul_interm_tiled, matmul_N_t, cb_matmul_result_rm);
-                                cb_push_back(cb_matmul_result_rm, matmul_N_t);
-                                cb_pop_front(cb_matmul_interm_tiled, matmul_N_t);
+                                ckernel::cb_push_back(cb_matmul_result_rm, matmul_N_t);
+                                ckernel::cb_pop_front(cb_matmul_interm_tiled, matmul_N_t);
                             }
                             untilize_uninit(cb_matmul_interm_tiled);
                         }
@@ -278,10 +278,10 @@ void MAIN {
                 }
             }
             // Free space for next block of weights
-            cb_pop_front(cb_weight_tiled, weight_tiles);
+            ckernel::cb_pop_front(cb_weight_tiled, weight_tiles);
             if constexpr (use_bias) {
                 if (is_reducer) {
-                    cb_pop_front(cb_bias_tiled, matmul_N_t);
+                    ckernel::cb_pop_front(cb_bias_tiled, matmul_N_t);
                 }
             }
         }

@@ -211,7 +211,7 @@ void kernel_main() {
                 DPRINT << "iter " << p << " curr_tile_id: " << curr_page_idx << ENDL();
 
                 DPRINT << "cb_wait_front\n";
-                cb_wait_front(cb_id, n_pages);
+                ckernel::cb_wait_front(cb_id, n_pages);
                 DPRINT << "cb_wait_front done\n";
                 size_t l1_read_addr = get_read_ptr(cb_id);
                 some_buffering_addr = l1_read_addr;
@@ -235,7 +235,7 @@ void kernel_main() {
                     tensor_addrgen);
 
                 DPRINT << "cb_pop_front\n";
-                cb_pop_front(cb_id, n_pages);
+                ckernel::cb_pop_front(cb_id, n_pages);
                 DPRINT << "cb_pop_front done\n";
             }
             DPRINT << "Packet loop done\n";

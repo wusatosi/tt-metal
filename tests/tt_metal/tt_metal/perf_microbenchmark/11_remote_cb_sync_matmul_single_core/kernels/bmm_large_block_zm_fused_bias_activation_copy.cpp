@@ -29,11 +29,11 @@ void MAIN {
     for (uint32_t l = 0; l < num_layers; ++l) {
         mm_block_init(in0_cb_id, in1_cb_id, out_cb_id, false, out_block_w, out_block_h, in0_block_w);
 
-        tile_regs_acquire();
+        ckernel:: tile_regs_acquire();
 
         for (uint32_t block = 0; block < num_blocks; block++) {
-            cb_wait_front(in0_cb_id, in0_block_num_tiles);
-            cb_wait_front(in1_cb_id, in1_block_num_tiles);
+            ckernel::cb_wait_front(in0_cb_id, in0_block_num_tiles);
+            ckernel::cb_wait_front(in1_cb_id, in1_block_num_tiles);
 
             // Compute output sub-block
             uint32_t dst_index = 0;  // start at 0, each call to matmul_block internally increments dst_index
@@ -59,22 +59,22 @@ void MAIN {
                                               // in1_block_w)
             }
 
-            cb_pop_front(in0_cb_id, in0_block_num_tiles);
-            cb_pop_front(in1_cb_id, in1_block_num_tiles);
+            ckernel::cb_pop_front(in0_cb_id, in0_block_num_tiles);
+            ckernel::cb_pop_front(in1_cb_id, in1_block_num_tiles);
 
             // sync with the in1 receiver, so that the receiver knows when to pop the global CB
-            cb_reserve_back(sync_cb_id, 1);
-            cb_push_back(sync_cb_id, 1);
+            ckernel::cb_reserve_back(sync_cb_id, 1);
+            ckernel::cb_push_back(sync_cb_id, 1);
         }
 
-        tile_regs_commit();
+        ckernel:: tile_regs_commit();
         // Pack out to output buffer
-        cb_reserve_back(out_cb_id, out_block_num_tiles);
-        tile_regs_wait();
+        ckernel::cb_reserve_back(out_cb_id, out_block_num_tiles);
+        ckernel::tile_regs_wait();
         uint32_t start_dst_index = 0;
         matmul_pack_tile(start_dst_index, out_cb_id, out_block_num_tiles);
-        tile_regs_release();
-        cb_push_back(out_cb_id, out_block_num_tiles);
+        ckernel::tile_regs_release();
+        ckernel::cb_push_back(out_cb_id, out_block_num_tiles);
     }
 }
 }  // namespace NAMESPACE

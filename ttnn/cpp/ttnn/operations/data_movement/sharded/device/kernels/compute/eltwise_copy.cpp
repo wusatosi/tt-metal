@@ -14,19 +14,19 @@ void MAIN {
 
     unary_op_init_common(tt::CBIndex::c_0, tt::CBIndex::c_16);
     for (uint32_t b = 0; b < per_core_tile_cnt; ++b) {
-        acquire_dst();
+        ckernel::acquire_dst();
 
         // Pop tile after tile, copy to DST and pack
-        cb_wait_front(tt::CBIndex::c_0, 1);
-        cb_reserve_back(tt::CBIndex::c_16, 1);
-        copy_tile(tt::CBIndex::c_0, 0, 0);
+        ckernel::cb_wait_front(tt::CBIndex::c_0, 1);
+        ckernel::cb_reserve_back(tt::CBIndex::c_16, 1);
+        ckernel:: copy_tile(tt::CBIndex::c_0, 0, 0);
 
-        pack_tile(0, tt::CBIndex::c_16);
+        ckernel:: pack_tile(0, tt::CBIndex::c_16);
 
-        cb_pop_front(tt::CBIndex::c_0, 1);
-        cb_push_back(tt::CBIndex::c_16, 1);
+        ckernel::cb_pop_front(tt::CBIndex::c_0, 1);
+        ckernel::cb_push_back(tt::CBIndex::c_16, 1);
 
-        release_dst();
+        ckernel:: release_dst();
     }
 }
 }  // namespace NAMESPACE

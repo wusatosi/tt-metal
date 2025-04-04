@@ -38,8 +38,8 @@ void kernel_main() {
     // Now we loop over all the tiles and read them into the circular buffers
     for (uint32_t i = 0; i < n_tiles; i++) {
         // First we make sure there is space in the circular buffers
-        cb_reserve_back(cb_in0, 1);
-        cb_reserve_back(cb_in1, 1);  // wait until we have 1 free slot. This blocks if the
+        ckernel::cb_reserve_back(cb_in0, 1);
+        ckernel::cb_reserve_back(cb_in1, 1);  // wait until we have 1 free slot. This blocks if the
                                      // other kernels cannot consume the tiles fast enough.
                                      // Deciding how large the buffer should be is a tradeoff.
         uint32_t cb_in0_addr = get_write_ptr(cb_in0);
@@ -55,8 +55,8 @@ void kernel_main() {
         // DPRINT << "cb_in0_addr: " << ptr << " " << *ptr;
 
         noc_async_read_barrier();  // Wait until tile reads are done
-        cb_push_back(cb_in0, 1);
-        cb_push_back(cb_in1, 1);  // mark the tiles as ready. From this point forward kernels
+        ckernel::cb_push_back(cb_in0, 1);
+        ckernel::cb_push_back(cb_in1, 1);  // mark the tiles as ready. From this point forward kernels
                                   // calling `cb_wait_front` will see this tile
     }
 }

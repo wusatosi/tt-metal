@@ -84,7 +84,7 @@ void kernel_main() {
     for (uint32_t w = 0; w < num_local_W; ++w) {
         for (uint32_t z = 0; z < num_total_Z; ++z) {
             for (uint32_t y = 0; y < num_local_Y; ++y) {
-                cb_reserve_back(cb_id, 1);
+                ckernel::cb_reserve_back(cb_id, 1);
                 uint32_t l1_addr = get_write_ptr(cb_id);
                 if (y >= num_local_unpadded_Y || z >= num_unpadded_Z || w >= num_unpadded_W) {
                     // this is fully padding
@@ -110,7 +110,7 @@ void kernel_main() {
                     ++src_stick_id;
                 }
                 noc_async_read_barrier();
-                cb_push_back(cb_id, 1);
+                ckernel::cb_push_back(cb_id, 1);
             }
         }
     }

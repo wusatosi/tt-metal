@@ -29,10 +29,10 @@ void kernel_main() {
     for (uint32_t ncht = 0; ncht < num_rows_per_core; ncht++) {
         // input_grad (N, C, H, W)
         for (uint32_t wt = 0; wt < Wt; wt++) {
-            cb_wait_front(cb_id_input_grad, onetile);
+            ckernel::cb_wait_front(cb_id_input_grad, onetile);
             noc_async_write_tile(offs + wt + tile_offset, input_grad_addrg, input_grad_l1_read_addr);
             noc_async_write_barrier();
-            cb_pop_front(cb_id_input_grad, onetile);
+            ckernel::cb_pop_front(cb_id_input_grad, onetile);
         }  // wt loop
         offs += Wt;
 

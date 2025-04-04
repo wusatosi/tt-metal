@@ -188,7 +188,7 @@ FORCE_INLINE void resize_remote_receiver_cb_interface(
 
 #ifndef COMPILE_FOR_TRISC
 
-FORCE_INLINE void remote_cb_wait_front(uint32_t cb_id, uint32_t num_pages) {
+FORCE_INLINE void remote_ckernel::cb_wait_front(uint32_t cb_id, uint32_t num_pages) {
     WAYPOINT("RCWF");
     RemoteReceiverCBInterface& remote_cb = get_remote_receiver_cb_interface(cb_id);
     uint32_t len_bytes = num_pages * remote_cb.fifo_page_size;

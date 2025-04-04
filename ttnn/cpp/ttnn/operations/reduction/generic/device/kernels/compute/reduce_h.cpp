@@ -14,7 +14,7 @@ void MAIN {
     uint32_t row_chunk = get_compile_time_arg_val(3);
 
     reduce_init<true>(tt::CBIndex::c_0, tt::CBIndex::c_2, tt::CBIndex::c_3);
-    cb_wait_front(tt::CBIndex::c_2, 1);  // scaler tile from the reader
+    ckernel::cb_wait_front(tt::CBIndex::c_2, 1);  // scaler tile from the reader
 
     constexpr int onetile = 1;
 
@@ -34,22 +34,22 @@ void MAIN {
 
             // reduction for one chunk
             // accumulation of Ht results in separate DST indexes
-            acquire_dst();
+            ckernel::acquire_dst();
             for (uint32_t ht = 0; ht < Ht; ++ht) {
                 reduce_dst_idx = 0;
                 for (uint32_t i = wt; i < chunk_end; ++i) {
-                    cb_wait_front(tt::CB::c_in0, onetile);
+                    ckernel::cb_wait_front(tt::CB::c_in0, onetile);
                     reduce_tile(tt::CB::c_in0, tt::CB::c_in2, 0, 0, reduce_dst_idx);
-                    cb_pop_front(tt::CB::c_in0, onetile);
+                    ckernel::cb_pop_front(tt::CB::c_in0, onetile);
                     ++reduce_dst_idx;
                 }
             }
             for (uint32_t i = wt; i < chunk_end; ++i) {
-                cb_reserve_back(tt::CBIndex::c_3, onetile);
-                pack_tile((i - wt), tt::CBIndex::c_3);
-                cb_push_back(tt::CBIndex::c_3, onetile);
+                ckernel::cb_reserve_back(tt::CBIndex::c_3, onetile);
+                ckernel:: pack_tile((i - wt), tt::CBIndex::c_3);
+                ckernel::cb_push_back(tt::CBIndex::c_3, onetile);
             }
-            release_dst();
+            ckernel:: release_dst();
         }
     }
 }

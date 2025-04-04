@@ -152,7 +152,7 @@ const InterleavedAddrGen<src_is_dram> s0 = {
     .page_size = stick_size
 };
 uint32_t stick_id = start_id;
-cb_reserve_back(cb_id_in0, shard_height);
+ckernel::cb_reserve_back(cb_id_in0, shard_height);
 uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
 DPRINT_DATA0(DPRINT << "Core (0," << current_core << "): ");
 for (uint32_t h = 0; h < shard_height; ++h) {
@@ -166,7 +166,7 @@ for (uint32_t h = 0; h < shard_height; ++h) {
 }
 DPRINT_DATA0(DPRINT << ENDL());
 noc_async_read_barrier();
-cb_push_back(cb_id_in0, shard_height);
+ckernel::cb_push_back(cb_id_in0, shard_height);
 ```
 
 The `InterleavedAddrGen` object allows us to retrieve the data stored in the DRAM by incrementing by stick size. The stick size determines the difference between addresses of each piece of source data in the DRAM buffer; its value in this case is the size of a `uint32_t` data type.

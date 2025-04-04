@@ -91,7 +91,7 @@ void kernel_main() {
 
     const uint32_t stick_size_bytes = W_size_bytes;
 
-    cb_reserve_back(cb_out0, num_sticks_per_core);
+    ckernel::cb_reserve_back(cb_out0, num_sticks_per_core);
     uint32_t l1_write_addr = get_write_ptr(cb_out0);
 
     uint32_t i_stick = start_id;
@@ -140,7 +140,7 @@ void kernel_main() {
     }
 
     noc_async_read_barrier();
-    cb_push_back(cb_out0, num_sticks_per_core);
+    ckernel::cb_push_back(cb_out0, num_sticks_per_core);
 
 #endif
 }

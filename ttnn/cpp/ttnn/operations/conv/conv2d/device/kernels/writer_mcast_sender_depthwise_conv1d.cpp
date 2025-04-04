@@ -145,7 +145,7 @@ void kernel_main() {
                      weight_tile_h_outer_i++) {
                     uint32_t weight_current_block_start_tile_id = weight_start_tile_id;
                     for (uint32_t block_weight_h = 0; block_weight_h < num_blocks_weight_h; block_weight_h++) {
-                        cb_reserve_back(cb_id_weight, weight_block_num_tiles);
+                        ckernel::cb_reserve_back(cb_id_weight, weight_block_num_tiles);
                         uint32_t weight_write_l1_addr = get_write_ptr(cb_id_weight);
                         uint32_t weight_row_start_tile_id = weight_current_block_start_tile_id + weight_h_offset;
 
@@ -212,15 +212,15 @@ void kernel_main() {
 
                         weight_current_block_start_tile_id += weight_next_block_stride_h;
 
-                        cb_push_back(cb_id_weight, weight_block_num_tiles);
+                        ckernel::cb_push_back(cb_id_weight, weight_block_num_tiles);
                     }  // for num_blocks_weight_h
                     weight_h_offset += weight_inner_block_stride_h;
                 }  // for weight_block_height_num_outer
 
                 read_weights = true;
             } else {
-                cb_reserve_back(cb_id_weight, total_weight_num_tiles);
-                cb_push_back(cb_id_weight, total_weight_num_tiles);
+                ckernel::cb_reserve_back(cb_id_weight, total_weight_num_tiles);
+                ckernel::cb_push_back(cb_id_weight, total_weight_num_tiles);
             }
         }  // out_num_blocks_h
         out_block_w_start_tile_id += out_next_block_stride_w;
@@ -230,6 +230,6 @@ void kernel_main() {
         weight_start_tile_id += weight_next_block_stride_w;
     }  // out_num_blocks_w
 #ifdef SHARDED_OUT
-    cb_wait_front(cb_id_out0, weight_block_num_tiles);
+    ckernel::cb_wait_front(cb_id_out0, weight_block_num_tiles);
 #endif
 }

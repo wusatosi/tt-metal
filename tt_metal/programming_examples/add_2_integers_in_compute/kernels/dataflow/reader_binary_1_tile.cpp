@@ -25,13 +25,13 @@ void kernel_main() {
     uint32_t l1_write_addr_in1 = get_write_ptr(cb_id_in1);
 
     // read ublocks from src0/src1 to CB0/CB1, then push ublocks to compute (unpacker)
-    cb_reserve_back(cb_id_in0, 1);
+    ckernel::cb_reserve_back(cb_id_in0, 1);
     noc_async_read(src0_noc_addr, l1_write_addr_in0, ublock_size_bytes_0);
     noc_async_read_barrier();
-    cb_push_back(cb_id_in0, 1);
+    ckernel::cb_push_back(cb_id_in0, 1);
 
-    cb_reserve_back(cb_id_in1, 1);
+    ckernel::cb_reserve_back(cb_id_in1, 1);
     noc_async_read(src1_noc_addr, l1_write_addr_in1, ublock_size_bytes_1);
     noc_async_read_barrier();
-    cb_push_back(cb_id_in1, 1);
+    ckernel::cb_push_back(cb_id_in1, 1);
 }

@@ -26,8 +26,8 @@ void kernel_main() {
 
     constexpr auto cb_id_src = tt::CBIndex::c_1;
 #if SRC_SHARDED
-    cb_reserve_back(cb_id_src, src_num_tiles);
-    cb_push_back(cb_id_src, src_num_tiles);
+    ckernel::cb_reserve_back(cb_id_src, src_num_tiles);
+    ckernel::cb_push_back(cb_id_src, src_num_tiles);
 #else
     constexpr bool src_is_dram = get_compile_time_arg_val(0) == 1;
     const uint32_t src_tile_bytes = get_tile_size(cb_id_src);
@@ -81,20 +81,20 @@ void kernel_main() {
                          ++tw, ++num_tiles_written) {
 #if !SRC_SHARDED
                     // read a tile from src
-                    cb_reserve_back(cb_id_src, onetile);
+                    ckernel::cb_reserve_back(cb_id_src, onetile);
                     uint32_t l1_write_addr = get_write_ptr(cb_id_src);
                     noc_async_read_tile(tile_offset + tw, src, l1_write_addr);
                     noc_async_read_barrier();
-                    cb_push_back(cb_id_src, onetile);
+                    ckernel::cb_push_back(cb_id_src, onetile);
 #endif
 
 #if !DST_SHARDED
                     // write a tile to dst, since the dst shape is full, the tile offset simply grows linearly
-                    cb_wait_front(cb_id_dst, onetile);
+                    ckernel::cb_wait_front(cb_id_dst, onetile);
                     uint32_t l1_read_addr = get_read_ptr(cb_id_dst);
                     noc_async_write_tile(dst_tile_offset + num_tiles_written, dst, l1_read_addr);
                     noc_async_write_barrier();
-                    cb_pop_front(cb_id_dst, onetile);
+                    ckernel::cb_pop_front(cb_id_dst, onetile);
 #endif
                     }
                 tile_offset += Wt;

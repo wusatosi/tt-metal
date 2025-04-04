@@ -59,7 +59,7 @@ void kernel_main() {
     uint32_t tile_id = tile_id_start;
     while (tile_id < tile_id_end) {
         DPRINT << "tile_id: " << tile_id << "\n";
-        cb_reserve_back(cb0_id, packet_size_in_pages);
+        ckernel::cb_reserve_back(cb0_id, packet_size_in_pages);
         const uint32_t l1_write_addr_base = get_write_ptr(cb0_id);
         uint32_t l1_write_addr = l1_write_addr_base;
 
@@ -71,7 +71,7 @@ void kernel_main() {
         }
 
         noc_async_read_barrier();
-        cb_push_back(cb0_id, packet_size_in_pages);
+        ckernel::cb_push_back(cb0_id, packet_size_in_pages);
     }
 
     DPRINT << "DONE \n";

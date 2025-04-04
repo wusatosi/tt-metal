@@ -17,7 +17,7 @@ void kernel_main() {
 
     for (uint32_t p = 0; p < num_pages_total; p += pages_per_edm_buffer) {
         uint32_t num_pages_to_send = std::min<uint32_t>(pages_per_edm_buffer, num_pages_total - p);
-        cb_wait_front(cb_id_in0, num_pages_to_send);
+        ckernel::cb_wait_front(cb_id_in0, num_pages_to_send);
         uint32_t l1_read_addr = get_read_ptr(cb_id_in0);
 
         for (uint32_t i = 0; i < num_pages_to_send; ++i) {
@@ -27,6 +27,6 @@ void kernel_main() {
         }
         noc_async_write_barrier();
 
-        cb_pop_front(cb_id_in0, num_pages_to_send);
+        ckernel::cb_pop_front(cb_id_in0, num_pages_to_send);
     }
 }

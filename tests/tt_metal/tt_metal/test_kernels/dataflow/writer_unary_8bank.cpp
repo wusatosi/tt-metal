@@ -25,13 +25,13 @@ void kernel_main() {
     for (uint32_t i = 0; i < num_tiles; i++) {
         uint64_t dst_noc_addr = get_noc_addr(i, s);
 
-        cb_wait_front(cb_id_out0, onetile);
+        ckernel::cb_wait_front(cb_id_out0, onetile);
         uint32_t l1_read_addr = get_read_ptr(cb_id_out0);
 
         noc_async_write_tile(i, s, l1_read_addr);
 
         noc_async_write_barrier();
 
-        cb_pop_front(cb_id_out0, onetile);
+        ckernel::cb_pop_front(cb_id_out0, onetile);
     }
 }

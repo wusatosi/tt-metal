@@ -27,11 +27,11 @@ void kernel_main() {
 
     for (uint32_t i = start_id; i < start_id + num_tiles; i++) {
         uint32_t write_tile_id = i;
-        cb_wait_front(cb_id_out, onetile);
+        ckernel::cb_wait_front(cb_id_out, onetile);
 
         uint32_t l1_read_addr = get_read_ptr(cb_id_out);
         noc_async_write_tile(write_tile_id, input_grad_addrg, l1_read_addr);
         noc_async_write_barrier();
-        cb_pop_front(cb_id_out, onetile);
+        ckernel::cb_pop_front(cb_id_out, onetile);
     }
 }

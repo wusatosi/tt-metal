@@ -20,16 +20,16 @@ void MAIN {
     // - uses reader_unary_transpose_wh
     // - transpose_wh each tile
     for (uint32_t n = 0; n < num_tiles; n++) {
-        cb_wait_front(cb_im0, 1);
-        cb_reserve_back(cb_out1, 1);
+        ckernel::cb_wait_front(cb_im0, 1);
+        ckernel::cb_reserve_back(cb_out1, 1);
 
-        acquire_dst();
+        ckernel::acquire_dst();
         transpose_wh_tile(cb_im0, 0, 0);
-        pack_tile(0, cb_out1);
-        release_dst();
+        ckernel:: pack_tile(0, cb_out1);
+        ckernel:: release_dst();
 
-        cb_push_back(cb_out1, 1);
-        cb_pop_front(cb_im0, 1);
+        ckernel::cb_push_back(cb_out1, 1);
+        ckernel::cb_pop_front(cb_im0, 1);
     }
 }
 }  // namespace NAMESPACE

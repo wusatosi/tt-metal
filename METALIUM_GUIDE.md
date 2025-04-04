@@ -126,21 +126,21 @@ kernel:
 namespace NAMESPACE {
 void MAIN {
   mm_init(tt::CBIndex::c_0, tt::CBIndex::c_1, tt::CBIndex::c_16);
-  acquire_dst();
+  ckernel::acquire_dst();
 
-  cb_wait_front(tt::CBIndex::c_0, /* number of tiles */ 1);
-  cb_wait_front(tt::CBIndex::c_1, /* number of tiles */ 1);
+  ckernel::cb_wait_front(tt::CBIndex::c_0, /* number of tiles */ 1);
+  ckernel::cb_wait_front(tt::CBIndex::c_1, /* number of tiles */ 1);
 
   matmul_tiles(tt::CBIndex::c_0, tt::CBIndex::c_1, 0, 0, 0, false);
 
-  cb_pop_front(tt::CBIndex::c_1, /* number of tiles */ 1);
-  cb_pop_front(tt::CBIndex::c_0, /* number of tiles */ 1);
+  ckernel::cb_pop_front(tt::CBIndex::c_1, /* number of tiles */ 1);
+  ckernel::cb_pop_front(tt::CBIndex::c_0, /* number of tiles */ 1);
 
-  cb_reserve_back(tt::CBIndex::c_16, /* number of tiles */ 1);
-  pack_tile(0, tt::CBIndex::c_16);
-  cb_push_back(tt::CBIndex::c_16, /* number of tiles */ 1);
+  ckernel::cb_reserve_back(tt::CBIndex::c_16, /* number of tiles */ 1);
+  ckernel:: pack_tile(0, tt::CBIndex::c_16);
+  ckernel::cb_push_back(tt::CBIndex::c_16, /* number of tiles */ 1);
 
-  release_dst();
+  ckernel:: release_dst();
 }
 }  // namespace NAMESPACE
 ```
@@ -149,14 +149,14 @@ It takes two matrix tiles from `tt::CBIndex::c_0` and `tt::CBIndex::c_0` L1 and
 conducts a single-tile matrix multiplication. Finally, it packs the result to
 `tt::CBIndex::c_16`.
 
-Note that tile registers are acquired by `acquire_dst()`, but actually we can
+Note that tile registers are acquired by `ckernel::acquire_dst()`, but actually we can
 use `tile_regs_..()` functions for the more fine-grained tile register lock
 mechanism. At the end of this section, we will explain more details.
 
 Even though it looks like a single Compute kernel,
 `tt::tt_metal::CreateKernel(..)` actually generates UNPACK, MATH, PACK kernels.
 To check the artifact of `tt::tt_metal::CreateKernel(..)`, we can intentionally
-add a syntax error like removing `p` from `pack_tile(..)`. Running the program
+add a syntax error like removing `p` from `ckernel:: pack_tile(..)`. Running the program
 with the syntax error will have a compile failure, which will dump the
 compilation command information like:
 ```
@@ -211,25 +211,25 @@ disappear from Unpack and Math kernels, but will be only shown in the Pack
 kernel.
 
 If you generate a Pack kernel for the above Compute kernel example, the
-preprocessed `cb_wait_front(..)` is empty:
+preprocessed `ckernel::cb_wait_front(..)` is empty:
 ```
-inline __attribute__((always_inline)) void cb_wait_front(uint32_t cbid, uint32_t ntiles) {
+inline __attribute__((always_inline)) void ckernel::cb_wait_front(uint32_t cbid, uint32_t ntiles) {
     ;
 }
 ```
 
 On the other hand, the UNPACK kernel has the following
-`cb_wait_front(..)`:
+`ckernel::cb_wait_front(..)`:
 ```
-inline __attribute__((always_inline)) void cb_wait_front(uint32_t cbid, uint32_t ntiles) {
+inline __attribute__((always_inline)) void ckernel::cb_wait_front(uint32_t cbid, uint32_t ntiles) {
     ( llk_wait_tiles(cbid, ntiles) );
 }
 ```
 
-Another interesting function is `acquire_dst()`:
+Another interesting function is `ckernel::acquire_dst()`:
 * The UNPACK kernel has an empty one:
 ```
-inline __attribute__((always_inline)) void acquire_dst() {
+inline __attribute__((always_inline)) void ckernel::acquire_dst() {
     ;
 
     ;
@@ -237,7 +237,7 @@ inline __attribute__((always_inline)) void acquire_dst() {
 ```
 * The MATH kernel waits for DEST available:
 ```
-inline __attribute__((always_inline)) void acquire_dst() {
+inline __attribute__((always_inline)) void ckernel::acquire_dst() {
     ( llk_math_wait_for_dest_available() );
 
     ;
@@ -245,7 +245,7 @@ inline __attribute__((always_inline)) void acquire_dst() {
 ```
 * The UNPACK kernel waits for the end of MATH kernel:
 ```
-inline __attribute__((always_inline)) void acquire_dst() {
+inline __attribute__((always_inline)) void ckernel::acquire_dst() {
     ;
 
     ( llk_packer_wait_for_math_done() );
@@ -254,14 +254,14 @@ inline __attribute__((always_inline)) void acquire_dst() {
 
 [Its implementation](https://github.com/tenstorrent/tt-metal/blob/6d4951a20ca4c392888f924f038ae0780a8cc656/tt_metal/include/compute_kernel_api/reg_api.h#L28-L32) matches the preprocessed code:
 ```
-ALWI void acquire_dst() {
+ALWI void ckernel::acquire_dst() {
     MATH(( llk_math_wait_for_dest_available()  ));
 
     PACK(( llk_packer_wait_for_math_done()  ));
 }
 ```
 
-Based on the implementation of `acquire_dst()`, if we use it, we can guess it
+Based on the implementation of `ckernel::acquire_dst()`, if we use it, we can guess it
 executes UNPACK, MATH, PACK in order, which will help you to follow the
 execution order and instructions that actually run on each kernel.
 
@@ -269,55 +269,55 @@ Actually, following `tile_regs_..()` functions provide the exact same mechanism
 but in a more fine-grained way:
 *  The MATH kernel can acquire the tile registers using:
 ```
-ALWI void tile_regs_acquire() {
+ALWI void ckernel:: tile_regs_acquire() {
     MATH(( llk_math_wait_for_dest_available()  ));
 }
 ```
 * The PACK kernel can wait for the end of MATH kernel using:
 ```
-ALWI void tile_regs_wait() {
+ALWI void ckernel::tile_regs_wait() {
     PACK(( llk_packer_wait_for_math_done()  ));
 }
 ```
-* `tile_regs_commit()` releases the lock from MATH kernel:
+* `ckernel:: tile_regs_commit()` releases the lock from MATH kernel:
 ```
-ALWI void tile_regs_commit() {
+ALWI void ckernel:: tile_regs_commit() {
     MATH(( llk_math_dest_section_done()  ));
 }
 ```
-* `tile_regs_release()` releases the lock from PACK kernel:
+* `ckernel::tile_regs_release()` releases the lock from PACK kernel:
 ```
-ALWI void tile_regs_release() {
+ALWI void ckernel::tile_regs_release() {
     PACK(( llk_pack_dest_section_done()  ));
 }
 ```
 
-We can replace `acquire_dst()` from the above example
+We can replace `ckernel::acquire_dst()` from the above example
 with `tile_regs_..()` functions like:
 ```
 namespace NAMESPACE {
 void MAIN {
   mm_init(tt::CBIndex::c_0, tt::CBIndex::c_1, tt::CBIndex::c_16);
 
-  cb_wait_front(tt::CBIndex::c_0, /* number of tiles */ 1);
-  cb_wait_front(tt::CBIndex::c_1, /* number of tiles */ 1);
+  ckernel::cb_wait_front(tt::CBIndex::c_0, /* number of tiles */ 1);
+  ckernel::cb_wait_front(tt::CBIndex::c_1, /* number of tiles */ 1);
 
-  tile_regs_acquire();
+  ckernel:: tile_regs_acquire();
 
   matmul_tiles(tt::CBIndex::c_0, tt::CBIndex::c_1, 0, 0, 0, false);
 
-  tile_regs_commit();
+  ckernel:: tile_regs_commit();
 
-  cb_pop_front(tt::CBIndex::c_1, /* number of tiles */ 1);
-  cb_pop_front(tt::CBIndex::c_0, /* number of tiles */ 1);
+  ckernel::cb_pop_front(tt::CBIndex::c_1, /* number of tiles */ 1);
+  ckernel::cb_pop_front(tt::CBIndex::c_0, /* number of tiles */ 1);
 
-  tile_regs_wait();
+  ckernel::tile_regs_wait();
 
-  cb_reserve_back(tt::CBIndex::c_16, /* number of tiles */ 1);
-  pack_tile(0, tt::CBIndex::c_16);
-  cb_push_back(tt::CBIndex::c_16, /* number of tiles */ 1);
+  ckernel::cb_reserve_back(tt::CBIndex::c_16, /* number of tiles */ 1);
+  ckernel:: pack_tile(0, tt::CBIndex::c_16);
+  ckernel::cb_push_back(tt::CBIndex::c_16, /* number of tiles */ 1);
 
-  tile_regs_release();
+  ckernel::tile_regs_release();
 }
 }  // namespace NAMESPACE
 ```
@@ -377,31 +377,31 @@ void MAIN {
     for(uint32_t block = 0; block < per_core_block_cnt; ++block) {
 
         // wait for a block of tiles in each of input CBs
-        cb_wait_front(cb_in0, per_core_block_size);
-        cb_wait_front(cb_in1, per_core_block_size);
+        ckernel::cb_wait_front(cb_in0, per_core_block_size);
+        ckernel::cb_wait_front(cb_in1, per_core_block_size);
 
-        tile_regs_acquire(); // acquire 8 tile registers
+        ckernel:: tile_regs_acquire(); // acquire 8 tile registers
         // add a block of tiles
         for(uint32_t i = 0; i < per_core_block_size; ++i)
         {
             add_tiles(cb_in0, cb_in1, i, i, i);
         }
-        tile_regs_commit(); // signal the packer
+        ckernel:: tile_regs_commit(); // signal the packer
 
-        tile_regs_wait(); // packer waits here
+        ckernel::tile_regs_wait(); // packer waits here
         // pack a block of tiles
         for(uint32_t i = 0; i < per_core_block_size; ++i)
         {
-            pack_tile(i, cb_out0);
+            ckernel:: pack_tile(i, cb_out0);
         }
-        tile_regs_release(); // packer releases
+        ckernel::tile_regs_release(); // packer releases
 
         // pop a block of tiles from each of input CBs
-        cb_pop_front(cb_in0, per_core_block_size);
-        cb_pop_front(cb_in1, per_core_block_size);
+        ckernel::cb_pop_front(cb_in0, per_core_block_size);
+        ckernel::cb_pop_front(cb_in1, per_core_block_size);
 
         // push a block of tiles to output CBIndex
-        cb_push_back(cb_out0, per_core_block_size);
+        ckernel::cb_push_back(cb_out0, per_core_block_size);
     }
 
 }

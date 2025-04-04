@@ -44,7 +44,7 @@ void kernel_main() {
         experimental::resize_remote_receiver_cb_interface(remote_cb_id, curr_block_size, noc_index);
 
         for (uint32_t block = 0; block < curr_num_blocks; ++block) {
-            experimental::remote_cb_wait_front(remote_cb_id, 1);
+            experimental::remote_ckernel::cb_wait_front(remote_cb_id, 1);
             experimental::remote_cb_pop_front(remote_cb_id, 1);
         }
     }

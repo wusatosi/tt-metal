@@ -22,12 +22,12 @@ void kernel_main() {
         .page_size = get_tile_size(intermed1_cb_id),
         .data_format = get_dataformat(intermed1_cb_id)};
 
-    cb_reserve_back(intermed1_cb_id, 1);
+    ckernel::cb_reserve_back(intermed1_cb_id, 1);
     uint32_t intermed1_cb_write_ptr = get_write_ptr(intermed1_cb_id);
 
     for (uint32_t i = start_id; i < end_id; ++i) {
-        cb_wait_front(in_cb_id, 1);
-        cb_wait_front(intermed_cb_id, 1);
+        ckernel::cb_wait_front(in_cb_id, 1);
+        ckernel::cb_wait_front(intermed_cb_id, 1);
 
         uint32_t intermed_cb_read_ptr = get_read_ptr(intermed_cb_id);
         uint32_t in_cb_read_ptr = get_read_ptr(in_cb_id);
@@ -69,8 +69,8 @@ void kernel_main() {
                 intermed_cb_addr += 1;
             }
         }
-        cb_pop_front(in_cb_id, 1);
-        cb_pop_front(intermed_cb_id, 1);
+        ckernel::cb_pop_front(in_cb_id, 1);
+        ckernel::cb_pop_front(intermed_cb_id, 1);
 
         noc_async_write_tile(i, output_addrg, intermed1_cb_write_ptr);
         noc_async_write_barrier();

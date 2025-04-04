@@ -56,19 +56,19 @@ void kernel_main() {
     for (uint32_t n = 0; n < num_output_tiles; n++) {
         for (uint32_t kt = 0; kt < Kt; kt++) {
             {  // Read A's tile at (mt, kt)
-                cb_reserve_back(cb_id_in0, onetile);
+                ckernel::cb_reserve_back(cb_id_in0, onetile);
                 uint32_t l1_write_addr_in0 = get_write_ptr(cb_id_in0);
                 noc_async_read_tile(itileA, s0, l1_write_addr_in0);
                 noc_async_read_barrier();
-                cb_push_back(cb_id_in0, onetile);
+                ckernel::cb_push_back(cb_id_in0, onetile);
             }
 
             {  // Read B's tile at (kt, nt)
-                cb_reserve_back(cb_id_in1, onetile);
+                ckernel::cb_reserve_back(cb_id_in1, onetile);
                 uint32_t l1_write_addr_in1 = get_write_ptr(cb_id_in1);
                 noc_async_read_tile(itileB, s1, l1_write_addr_in1);
                 noc_async_read_barrier();
-                cb_push_back(cb_id_in1, onetile);
+                ckernel::cb_push_back(cb_id_in1, onetile);
             }
             // DPRINT << "Pushed itileA=" << itileA << " itileB=" << itileB << ENDL();
 

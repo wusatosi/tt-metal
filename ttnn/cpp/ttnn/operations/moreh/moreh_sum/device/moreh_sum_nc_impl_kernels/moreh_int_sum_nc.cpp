@@ -24,19 +24,19 @@ void MAIN {
         bool enable_reload = false;
         for (uint32_t j = 0; j < num_input_tiles; ++j) {
             bool last_out = (j == num_input_tiles - 1);
-            tile_regs_acquire();
+            ckernel:: tile_regs_acquire();
             copy_tile_to_dst(cb_in0, idx0, dst0);
             if (enable_reload) {
                 copy_tile_to_dst(cb_intermed0, idx0, dst1);
                 sfpu_sum_int_init();
                 sfpu_add_int(dst0, dst1);
             }
-            tile_regs_commit();
+            ckernel:: tile_regs_commit();
 
-            tile_regs_wait();
+            ckernel::tile_regs_wait();
             uint32_t cb_out = (last_out) ? (cb_out0) : (cb_intermed0);
             pack_tile_from_dst(cb_out, dst0);
-            tile_regs_release();
+            ckernel::tile_regs_release();
             enable_reload = true;
         }
     }

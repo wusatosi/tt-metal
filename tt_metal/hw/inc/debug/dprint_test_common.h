@@ -30,7 +30,7 @@ inline void print_test_data() {
 #if !defined(COMPILE_FOR_ERISC) && !defined(COMPILE_FOR_IDLE_ERISC)
     // Eth cores don't have CBs, so don't try TSLICE printing.
     DPRINT << "SLICE:\n";
-    cb_wait_front(tt::CBIndex::c_0, 1);
+    ckernel::cb_wait_front(tt::CBIndex::c_0, 1);
 #if defined(COMPILE_FOR_BRISC) || defined(COMPILE_FOR_NCRISC)
     // Since brisc is writing to the CB before printing, should look at read pointer
     DPRINT << TSLICE(tt::CBIndex::c_0, 0, SliceRange::hw0_32_8(), TSLICE_INPUT_CB, TSLICE_RD_PTR) << ENDL();

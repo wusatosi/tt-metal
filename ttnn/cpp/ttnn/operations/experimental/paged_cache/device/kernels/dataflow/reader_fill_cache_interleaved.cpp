@@ -24,7 +24,7 @@ void kernel_main() {
     // uint32_t end_id = start_id + num_tiles;
     uint32_t tile_id = start_tile_id;
     for (uint32_t row_num = 0; row_num < num_rows; ++row_num) {
-        cb_reserve_back(cb_id_in, Wt);
+        ckernel::cb_reserve_back(cb_id_in, Wt);
         uint32_t l1_write_addr = get_write_ptr(cb_id_in);
         for (uint32_t w = 0; w < Wt; ++w) {
             noc_async_read_tile(tile_id, s, l1_write_addr);
@@ -32,6 +32,6 @@ void kernel_main() {
             tile_id++;
         }
         noc_async_read_barrier();
-        cb_push_back(cb_id_in, Wt);
+        ckernel::cb_push_back(cb_id_in, Wt);
     }
 }

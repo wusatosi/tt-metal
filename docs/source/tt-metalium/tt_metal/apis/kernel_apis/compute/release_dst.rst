@@ -1,4 +1,4 @@
 release_dst
 ===========
 
-.. doxygenfunction:: release_dst()
+.. doxygenfunction:: ckernel:: release_dst()

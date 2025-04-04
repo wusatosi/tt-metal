@@ -11,13 +11,13 @@
 // using noc_async_writes
 void generate_tile_with_value(uint32_t cb, uint32_t packed_value) {
     constexpr uint32_t onetile = 1U;
-    cb_reserve_back(cb, onetile);
+    ckernel::cb_reserve_back(cb, onetile);
     uint32_t* ptr = reinterpret_cast<uint32_t*>(get_write_ptr(cb));
     // 512 = 32x16
     for (uint32_t i = 0; i < 512U; ++i, ++ptr) {
         *ptr = packed_value;
     }
-    cb_push_back(cb, onetile);
+    ckernel::cb_push_back(cb, onetile);
 }
 
 void kernel_main() {
@@ -49,7 +49,7 @@ void kernel_main() {
 
     // generate mask tile
     if constexpr (do_mask_w) {
-        cb_reserve_back(cb_mask_w_idx, onetile);
+        ckernel::cb_reserve_back(cb_mask_w_idx, onetile);
         uint16_t* ptr = reinterpret_cast<uint16_t*>(get_write_ptr(cb_mask_w_idx));
         constexpr uint16_t one = 0x00003F80;  // (bfloat16)1.0 -> uint16_t
         constexpr uint16_t zero = 0x0;
@@ -61,7 +61,7 @@ void kernel_main() {
                 }
             }
         }
-        cb_push_back(cb_mask_w_idx, onetile);
+        ckernel::cb_push_back(cb_mask_w_idx, onetile);
     }
 
     // generate tiles to include scalar and epsilon
@@ -83,78 +83,78 @@ void kernel_main() {
         uint32_t idx = (start_row + i) * Wt;
 
 #ifdef EVERYTHING_FITS_IN_L1
-        cb_reserve_back(cb_input_idx, Wt);
+        ckernel::cb_reserve_back(cb_input_idx, Wt);
         uint32_t l1_write_addr = get_write_ptr(cb_input_idx);
         for (uint32_t j = 0; j < Wt; ++j) {
             noc_async_read_tile(idx + j, input_address_generator, l1_write_addr);
             l1_write_addr += tile_bytes;
         }
         noc_async_read_barrier();
-        cb_push_back(cb_input_idx, Wt);
+        ckernel::cb_push_back(cb_input_idx, Wt);
 
         if (i == 0) {
-            cb_reserve_back(cb_gamma_idx, Wt);
+            ckernel::cb_reserve_back(cb_gamma_idx, Wt);
             uint32_t l1_gamma_write_addr = get_write_ptr(cb_gamma_idx);
             for (uint32_t j = 0; j < Wt; ++j) {
                 noc_async_read_tile(j, gamma_address_generator, l1_gamma_write_addr);
                 l1_gamma_write_addr += tile_bytes;
             }
             noc_async_read_barrier();
-            cb_push_back(cb_gamma_idx, Wt);
+            ckernel::cb_push_back(cb_gamma_idx, Wt);
         }
 
 #elif defined(EVERYTHING_EXCEPT_GAMMA_FITS_IN_L1)
-        cb_reserve_back(cb_input_idx, Wt);
+        ckernel::cb_reserve_back(cb_input_idx, Wt);
         uint32_t l1_input_write_addr = get_write_ptr(cb_input_idx);
         for (uint32_t j = 0; j < Wt; ++j) {
             noc_async_read_tile(idx + j, input_address_generator, l1_input_write_addr);
             l1_input_write_addr += tile_bytes;
         }
         noc_async_read_barrier();
-        cb_push_back(cb_input_idx, Wt);
+        ckernel::cb_push_back(cb_input_idx, Wt);
 
         for (uint32_t j = 0; j < Wt; j += block_size) {
-            cb_reserve_back(cb_gamma_idx, block_size);
+            ckernel::cb_reserve_back(cb_gamma_idx, block_size);
             uint32_t l1_gamma_write_addr = get_write_ptr(cb_gamma_idx);
             for (uint32_t block_idx = 0; block_idx < block_size; ++block_idx) {
                 noc_async_read_tile(j + block_idx, gamma_address_generator, l1_gamma_write_addr);
                 l1_gamma_write_addr += tile_bytes;
             }
             noc_async_read_barrier();
-            cb_push_back(cb_gamma_idx, block_size);
+            ckernel::cb_push_back(cb_gamma_idx, block_size);
         }
 #else
         for (uint32_t j = 0; j < Wt; j += block_size) {
-            cb_reserve_back(cb_input_idx, block_size);
+            ckernel::cb_reserve_back(cb_input_idx, block_size);
             uint32_t l1_write_addr = get_write_ptr(cb_input_idx);
             for (uint32_t block_idx = 0; block_idx < block_size; ++block_idx) {
                 noc_async_read_tile(idx + j + block_idx, input_address_generator, l1_write_addr);
                 l1_write_addr += tile_bytes;
             }
             noc_async_read_barrier();
-            cb_push_back(cb_input_idx, block_size);
+            ckernel::cb_push_back(cb_input_idx, block_size);
         }
 
         for (uint32_t j = 0; j < Wt; j += block_size) {
-            cb_reserve_back(cb_input_idx, block_size);
+            ckernel::cb_reserve_back(cb_input_idx, block_size);
             uint32_t l1_write_addr = get_write_ptr(cb_input_idx);
             for (uint32_t block_idx = 0; block_idx < block_size; ++block_idx) {
                 noc_async_read_tile(idx + j + block_idx, input_address_generator, l1_write_addr);
                 l1_write_addr += tile_bytes;
             }
             noc_async_read_barrier();
-            cb_push_back(cb_input_idx, block_size);
+            ckernel::cb_push_back(cb_input_idx, block_size);
 
             // reading gamma to L1
             {
-                cb_reserve_back(cb_gamma_idx, block_size);
+                ckernel::cb_reserve_back(cb_gamma_idx, block_size);
                 uint32_t l1_write_addr = get_write_ptr(cb_gamma_idx);
                 for (uint32_t block_idx = 0; block_idx < block_size; ++block_idx) {
                     noc_async_read_tile(j + block_idx, gamma_address_generator, l1_write_addr);
                     l1_write_addr += tile_bytes;
                 }
                 noc_async_read_barrier();
-                cb_push_back(cb_gamma_idx, block_size);
+                ckernel::cb_push_back(cb_gamma_idx, block_size);
             }
         }
 #endif

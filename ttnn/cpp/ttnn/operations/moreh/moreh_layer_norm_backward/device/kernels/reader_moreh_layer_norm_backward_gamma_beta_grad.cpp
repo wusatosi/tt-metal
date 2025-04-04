@@ -20,7 +20,7 @@ void read_mean_rstd(
     const uint32_t cb_tile_bytes = get_tile_size(cb_id);
     const auto cb_dtype_bytes = cb_tile_bytes / (TILE_HEIGHT * TILE_WIDTH);
 
-    cb_reserve_back(cb_id, onetile);
+    ckernel::cb_reserve_back(cb_id, onetile);
 
     uint32_t l1_write_addr = get_write_ptr(cb_id);
     auto l1_ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(l1_write_addr);
@@ -82,7 +82,7 @@ void read_mean_rstd(
         }
     }
 
-    cb_push_back(cb_id, onetile);
+    ckernel::cb_push_back(cb_id, onetile);
 }
 
 void kernel_main() {
@@ -164,20 +164,20 @@ void kernel_main() {
         for (uint32_t outer_idx = 0; outer_idx < num_outer; outer_idx++) {
             // output_grad (N, C, H, W)
             const uint32_t dy_tile_idx = num_inner * outer_idx + w_idx + start_tile_idx;
-            cb_reserve_back(cb_id_output_grad, onetile);
+            ckernel::cb_reserve_back(cb_id_output_grad, onetile);
             uint32_t output_grad_l1_write_ptr = get_write_ptr(cb_id_output_grad);
             noc_async_read_tile(dy_tile_idx, output_grad_addrg, output_grad_l1_write_ptr);
             noc_async_read_barrier();
-            cb_push_back(cb_id_output_grad, onetile);
+            ckernel::cb_push_back(cb_id_output_grad, onetile);
 
             if (gamma_grad_has_value) {
                 // input (N, C, H, W)
                 const uint32_t x_tile_idx = num_inner * outer_idx + w_idx + start_tile_idx;
-                cb_reserve_back(cb_id_input, onetile);
+                ckernel::cb_reserve_back(cb_id_input, onetile);
                 uint32_t input_l1_write_ptr = get_write_ptr(cb_id_input);
                 noc_async_read_tile(x_tile_idx, input_addrg, input_l1_write_ptr);
                 noc_async_read_barrier();
-                cb_push_back(cb_id_input, onetile);
+                ckernel::cb_push_back(cb_id_input, onetile);
 
                 uint32_t mean_rstd_tile_offset = tile_offset / num_inner;
 

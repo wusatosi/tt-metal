@@ -18,7 +18,7 @@ void kernel_main() {
     const uint32_t number_blocks_per_core = get_compile_time_arg_val(3);
 
 #ifdef OUT_SHARDED
-    cb_wait_front(cb_id_in0, onetile);
+    ckernel::cb_wait_front(cb_id_in0, onetile);
 #else
 
     // single-tile ublocks
@@ -44,12 +44,12 @@ void kernel_main() {
                  i < end_id + num_tiles_per_2d * dim;
                  i = i + tiles_per_row) {
 #endif
-                cb_reserve_back(cb_id_in0, onetile);
+                ckernel::cb_reserve_back(cb_id_in0, onetile);
                 uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
                 noc_async_read_tile(i + k, s, l1_write_addr);
 
                 noc_async_read_barrier();
-                cb_push_back(cb_id_in0, onetile);
+                ckernel::cb_push_back(cb_id_in0, onetile);
             }
         }
     }

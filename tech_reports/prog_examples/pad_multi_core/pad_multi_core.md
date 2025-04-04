@@ -238,7 +238,7 @@ uint32_t src_start_col_idx = row_size_diff / 2;
 uint32_t src_end_col_idx = dst_N - src_start_col_idx;
 for (uint32_t i = 0; i < num_rows_per_core; i++) {
     for (uint32_t dst_col_idx = 0; dst_col_idx < dst_N; dst_col_idx++) {
-        cb_reserve_back(cb_id, 1);
+        ckernel::cb_reserve_back(cb_id, 1);
         uint32_t l1_addr = get_write_ptr(cb_id);
         if (dst_col_idx < src_start_col_idx || dst_col_idx >= src_end_col_idx) {
             uint64_t pad_noc_addr = get_noc_addr(0, s1);
@@ -250,7 +250,7 @@ for (uint32_t i = 0; i < num_rows_per_core; i++) {
             src_stick_id++;
         }
         noc_async_read_barrier();
-        cb_push_back(cb_id, 1);
+        ckernel::cb_push_back(cb_id, 1);
         l1_addr += data_size_bytes;
     }
 }
@@ -270,13 +270,13 @@ const InterleavedAddrGen<dst_is_dram> s1 = {
 uint32_t dst_stick_id = start_dst_stick_id;
 for (uint32_t row_idx = 0; row_idx < num_rows_per_core; row_idx++) {
     for (uint32_t dst_col_idx = 0; dst_col_idx < dst_N; dst_col_idx++) {
-        cb_wait_front(cb_id, 1);
+        ckernel::cb_wait_front(cb_id, 1);
         uint32_t l1_addr = get_read_ptr(cb_id);
         uint64_t dst_noc_addr = get_noc_addr(dst_stick_id, s0);
         noc_async_write(l1_addr, dst_noc_addr, data_size_bytes);
         noc_async_write_barrier();
         dst_stick_id++;
-        cb_pop_front(cb_id, 1);
+        ckernel::cb_pop_front(cb_id, 1);
     }
 }
 ```

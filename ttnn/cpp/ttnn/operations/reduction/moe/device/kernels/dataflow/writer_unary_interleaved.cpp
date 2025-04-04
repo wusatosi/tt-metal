@@ -28,7 +28,7 @@ void kernel_main() {
         .bank_base_address = dst_addr0, .page_size = tile_bytes, .data_format = data_format};
 
     uint32_t tile_id = 0;
-    cb_wait_front(out_cb_index, Ht * Kt);
+    ckernel::cb_wait_front(out_cb_index, Ht * Kt);
     uint32_t l1_read_addr = get_read_ptr(out_cb_index);
     for (uint32_t j = 0; j < Ht; ++j) {
         for (uint32_t i = 0; i < Kt; ++i) {
@@ -38,5 +38,5 @@ void kernel_main() {
         }
     }
     noc_async_write_barrier();
-    cb_pop_front(out_cb_index, Ht * Kt);
+    ckernel::cb_pop_front(out_cb_index, Ht * Kt);
 }

@@ -68,18 +68,18 @@ void kernel_main() {
         .bank_base_address = in1_tensor_addr, .page_size = in1_single_tile_size_bytes, .data_format = in1_data_format};
 
     for (uint32_t b = 0; b < batch; ++b) {
-        cb_reserve_back(sync_cb2, 1);
+        ckernel::cb_reserve_back(sync_cb2, 1);
 #ifdef ENABLE_GLOBAL_CB
-        experimental::remote_cb_wait_front(remote_cb_id, num_blocks);
+        experimental::remote_ckernel::cb_wait_front(remote_cb_id, num_blocks);
 #endif
 
-        cb_push_back(sync_cb2, 1);
+        ckernel::cb_push_back(sync_cb2, 1);
 
         if constexpr (in1_is_dram_interleaved) {
             for (uint32_t block = 0; block < num_blocks; ++block) {
                 uint32_t block_idx = (ring_idx + block) % num_blocks;
 
-                cb_reserve_back(cb_id_in1, in1_block_num_tiles);
+                ckernel::cb_reserve_back(cb_id_in1, in1_block_num_tiles);
                 read_block_from_dram(
                     cb_id_in1,
                     s1,
@@ -89,14 +89,14 @@ void kernel_main() {
                     in1_block_width_in_tiles,
                     in1_block_height_in_tiles,
                     in1_single_tile_size_bytes);
-                cb_push_back(cb_id_in1, in1_block_num_tiles);
+                ckernel::cb_push_back(cb_id_in1, in1_block_num_tiles);
             }
         }
 
 #ifdef ENABLE_GLOBAL_CB
-        cb_wait_front(sync_cb, 1);
+        ckernel::cb_wait_front(sync_cb, 1);
         experimental::remote_cb_pop_front(remote_cb_id, num_blocks);
-        cb_pop_front(sync_cb, 1);
+        ckernel::cb_pop_front(sync_cb, 1);
 #endif
     }
 

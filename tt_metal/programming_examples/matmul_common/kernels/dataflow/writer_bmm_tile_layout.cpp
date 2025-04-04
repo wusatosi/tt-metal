@@ -43,7 +43,7 @@ void kernel_main() {
             for (uint32_t sbw = 0; sbw < out_num_subblocks_w; sbw++) {
                 uint32_t out_tensor_sb_row_start_tile_id = out_tensor_sbw_start_tile_id;
 
-                cb_wait_front(cb_id_out0, out_subblock_tile_count);
+                ckernel::cb_wait_front(cb_id_out0, out_subblock_tile_count);
                 uint32_t l1_read_addr = get_read_ptr(cb_id_out0);
 
                 for (uint32_t h = 0; h < out_subblock_h; h++) {
@@ -64,7 +64,7 @@ void kernel_main() {
                                             // have to use noc_async_write_barrier() at
                                             // least once at the end of data movement kernel
                                             // to make sure all writes are done.
-                cb_pop_front(cb_id_out0, out_subblock_tile_count);
+                ckernel::cb_pop_front(cb_id_out0, out_subblock_tile_count);
                 out_tensor_sbw_start_tile_id += out_tensor_next_subblock_stride_w;
             }
             out_tensor_sbh_start_tile_id += out_tensor_next_subblock_stride_h;

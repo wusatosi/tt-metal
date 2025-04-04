@@ -24,12 +24,12 @@ void kernel_main() {
     for (uint32_t i = 0; i < num_tiles; i += ublock_size_tiles) {
         uint64_t src_noc_addr = get_noc_addr(i, src_addrgen);
 
-        cb_reserve_back(cb_id, ublock_size_tiles);
+        ckernel::cb_reserve_back(cb_id, ublock_size_tiles);
         uint32_t l1_write_addr = get_write_ptr(cb_id);
         noc_async_read(src_noc_addr, l1_write_addr, tile_bytes);
 
         noc_async_read_barrier();
 
-        cb_push_back(cb_id, ublock_size_tiles);
+        ckernel::cb_push_back(cb_id, ublock_size_tiles);
     }
 }

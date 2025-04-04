@@ -70,12 +70,12 @@ void kernel_main() {
 #endif
 
 #if defined(WEIGHT)
-    cb_reserve_back(cb_weight, weight_num_tile);
+    ckernel::cb_reserve_back(cb_weight, weight_num_tile);
 
     // weight: (1, C)
     read_line(cb_weight, addrg_weight, weight_num_tile);
 
-    cb_wait_front(cb_weight, weight_num_tile);
+    ckernel::cb_wait_front(cb_weight, weight_num_tile);
     auto weight_l1_ptr = get_read_ptr<uint16_t>(cb_weight);
 #endif
 
@@ -85,11 +85,11 @@ void kernel_main() {
         uint32_t target_noc_id = i;
         read_tile(cb_target, addrg_target, target_noc_id);
 
-        cb_wait_front(cb_target, onetile);
+        ckernel::cb_wait_front(cb_target, onetile);
         auto target_l1_ptr = get_read_ptr<int32_t>(cb_target);
 
 #if defined(WEIGHT)
-        cb_reserve_back(cb_tmp_weight, onetile);
+        ckernel::cb_reserve_back(cb_tmp_weight, onetile);
         auto tmp_weight_l1_ptr = get_write_ptr<FP32_DEST_ACC_FTYPE>(cb_tmp_weight);
 
         for (uint32_t h = 0; h < TILE_HEIGHT; h++) {
@@ -105,10 +105,10 @@ void kernel_main() {
                 tmp_weight_l1_ptr[tilized_idx] = fp32_dest_acc_cast(0.0f);
             }
         }
-        cb_push_back(cb_tmp_weight, onetile);
+        ckernel::cb_push_back(cb_tmp_weight, onetile);
 #endif
 
-        cb_reserve_back(cb_tmp_input, onetile);
+        ckernel::cb_reserve_back(cb_tmp_input, onetile);
         auto tmp_input_l1_ptr = get_write_ptr<FP32_DEST_ACC_FTYPE>(cb_tmp_input);
 
         for (uint32_t h = 0; h < TILE_HEIGHT; h++) {
@@ -128,12 +128,12 @@ void kernel_main() {
                         uint32_t tilized_idx = get_tilized_idx(h, w);
                         read_value(cb_input, addrg_input, noc_id, tilized_idx);
 
-                        cb_wait_front(cb_input, onetile);
+                        ckernel::cb_wait_front(cb_input, onetile);
                         auto input_l1_ptr = get_read_ptr<uint16_t>(cb_input);
 
                         tmp_input_l1_ptr[tilized_idx] = fp32_dest_acc_cast(input_l1_ptr[tilized_idx]);
 
-                        cb_pop_front(cb_input, onetile);
+                        ckernel::cb_pop_front(cb_input, onetile);
                         continue;
                     }
                 }
@@ -142,10 +142,10 @@ void kernel_main() {
             }
         }
 
-        cb_push_back(cb_tmp_input, onetile);
-        cb_pop_front(cb_target, onetile);
+        ckernel::cb_push_back(cb_tmp_input, onetile);
+        ckernel::cb_pop_front(cb_target, onetile);
     }
 #if defined(WEIGHT)
-    cb_pop_front(cb_weight, weight_num_tile);
+    ckernel::cb_pop_front(cb_weight, weight_num_tile);
 #endif
 }

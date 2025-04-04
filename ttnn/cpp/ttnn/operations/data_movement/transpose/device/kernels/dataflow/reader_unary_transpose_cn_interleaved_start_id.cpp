@@ -31,11 +31,11 @@ void kernel_main() {
     // read a ublock of tiles from src to CB, and then push the ublock to unpacker
     uint32_t tile_idx = start_id;
     for (uint32_t i = 0; i < num_tiles; ++i) {
-        cb_reserve_back(cb_id_in0, onetile);
+        ckernel::cb_reserve_back(cb_id_in0, onetile);
         uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
         noc_async_read_tile(tile_idx, s, l1_write_addr);
         noc_async_read_barrier();
-        cb_push_back(cb_id_in0, onetile);
+        ckernel::cb_push_back(cb_id_in0, onetile);
         tile_idx++;
         hw++;
         if (hw == HtWt) {

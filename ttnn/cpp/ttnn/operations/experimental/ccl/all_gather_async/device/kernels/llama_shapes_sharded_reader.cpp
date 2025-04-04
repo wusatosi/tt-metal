@@ -66,7 +66,7 @@ void kernel_main() {
         DPRINT << "tiles_read: " << tiles_read << "\n";
         uint32_t num_tiles_to_read_this_core =
             std::min(num_tiles_per_core - shard_tile_id, num_tiles_to_read - tiles_read);
-        cb_reserve_back(cb0_id, num_tiles_to_read_this_core);
+        ckernel::cb_reserve_back(cb0_id, num_tiles_to_read_this_core);
         const uint32_t l1_write_addr = get_write_ptr(cb0_id);
         uint64_t read_addr = get_noc_addr(core_noc_x[core_id], core_noc_y[core_id], tensor_address0);
         read_addr += shard_tile_id * tensor0_page_size;
@@ -74,7 +74,7 @@ void kernel_main() {
         noc_async_read(read_addr, l1_write_addr, num_tiles_to_read_this_core * tensor0_page_size);
         noc_async_read_barrier();
 
-        cb_push_back(cb0_id, num_tiles_to_read_this_core);
+        ckernel::cb_push_back(cb0_id, num_tiles_to_read_this_core);
         tiles_read += num_tiles_to_read_this_core;
         shard_tile_id = 0;
         core_id++;

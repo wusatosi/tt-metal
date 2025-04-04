@@ -25,11 +25,11 @@ inline void tilize_in(
     tilize_init_short(in_cb_id, in_block_w, out_cb_id);
     for (uint32_t in_subblock = 0; in_subblock < in_num_subblocks; ++in_subblock) {
         for (uint32_t h = 0; h < in_subblock_h; ++h) {
-            cb_wait_front(in_cb_id, in_block_w);
-            cb_reserve_back(out_cb_id, in_block_w);
+            ckernel::cb_wait_front(in_cb_id, in_block_w);
+            ckernel::cb_reserve_back(out_cb_id, in_block_w);
             tilize_block(in_cb_id, in_block_w, out_cb_id);
-            cb_push_back(out_cb_id, in_block_w);
-            cb_pop_front(in_cb_id, in_block_w);
+            ckernel::cb_push_back(out_cb_id, in_block_w);
+            ckernel::cb_pop_front(in_cb_id, in_block_w);
         }
     }
     tilize_uninit(in_cb_id, out_cb_id);
@@ -43,27 +43,27 @@ inline void reblock_and_untilize(
     uint32_t interm_cb_id,
     uint32_t out_cb_id) {
     uint32_t num_tiles_in_row_of_subblocks = mulsi3(out_subblock_num_tiles, num_out_subblocks_in_col);
-    cb_wait_front(interm_cb_id, num_tiles_in_row_of_subblocks);
+    ckernel::cb_wait_front(interm_cb_id, num_tiles_in_row_of_subblocks);
     uint32_t within_block_index = 0;
     for (uint32_t h = 0; h < out_subblock_h; h++) {
         uint32_t block_offset = 0;
-        cb_reserve_back(out_cb_id, out_block_w);
+        ckernel::cb_reserve_back(out_cb_id, out_block_w);
         for (uint32_t n = 0; n < num_out_subblocks_in_col; n++) {
-            tile_regs_acquire();
+            ckernel:: tile_regs_acquire();
             for (uint32_t w = 0; w < out_subblock_w; w++) {
                 uint32_t tile_index = block_offset + within_block_index + w;
-                copy_tile(interm_cb_id, tile_index, w);
+                ckernel:: copy_tile(interm_cb_id, tile_index, w);
             }
-            tile_regs_commit();
-            tile_regs_wait();
+            ckernel:: tile_regs_commit();
+            ckernel::tile_regs_wait();
             pack_untilize_dst<out_subblock_w, out_block_w>(out_cb_id, 1, n);
-            tile_regs_release();
+            ckernel::tile_regs_release();
             block_offset += out_subblock_num_tiles;
         }
-        cb_push_back(out_cb_id, out_block_w);
+        ckernel::cb_push_back(out_cb_id, out_block_w);
         within_block_index += out_subblock_w;
     }
-    cb_pop_front(interm_cb_id, num_tiles_in_row_of_subblocks);
+    ckernel::cb_pop_front(interm_cb_id, num_tiles_in_row_of_subblocks);
 }
 
 namespace NAMESPACE {
@@ -200,8 +200,8 @@ void MAIN {
                         out_subblock_h,
                         in0_block_w);
                 }
-                cb_wait_front(mm_in0_cb_id, in0_block_num_tiles);
-                cb_wait_front(in1_cb_id, in1_block_num_tiles);
+                ckernel::cb_wait_front(mm_in0_cb_id, in0_block_num_tiles);
+                ckernel::cb_wait_front(in1_cb_id, in1_block_num_tiles);
 
                 if (last_out) {
 #if defined PACK_RELU and not defined FUSE_BIAS
@@ -223,15 +223,15 @@ void MAIN {
                         if (enable_reload) {
                             // Reconfigure input
                             copy_tile_to_dst_init_short_with_dt(in1_cb_id, matmul_partials_cb);
-                            cb_wait_front(matmul_partials_cb, out_subblock_num_tiles);
-                            tile_regs_acquire();
+                            ckernel::cb_wait_front(matmul_partials_cb, out_subblock_num_tiles);
+                            ckernel:: tile_regs_acquire();
 
                             uint32_t start_dst_index = 0;
                             uint32_t start_tile_index = 0;
                             copy_block_matmul_partials(
                                 matmul_partials_cb, start_tile_index, start_dst_index, out_subblock_num_tiles);
 
-                            cb_pop_front(matmul_partials_cb, out_subblock_num_tiles);
+                            ckernel::cb_pop_front(matmul_partials_cb, out_subblock_num_tiles);
                             // Reconfigure srcA back
                             mm_block_init_short_with_dt(
                                 mm_in0_cb_id,
@@ -243,7 +243,7 @@ void MAIN {
                                 in0_block_w);
                         } else {
                             // just acquire
-                            tile_regs_acquire();
+                            ckernel:: tile_regs_acquire();
                         }
 
                         // Compute output sub-block
@@ -278,9 +278,9 @@ void MAIN {
                             }
                         }
 #endif
-                        tile_regs_commit();
-                        cb_reserve_back(curr_matmul_out_cb, out_subblock_num_tiles);
-                        tile_regs_wait();
+                        ckernel:: tile_regs_commit();
+                        ckernel::cb_reserve_back(curr_matmul_out_cb, out_subblock_num_tiles);
+                        ckernel::tile_regs_wait();
 
 #ifdef PACKER_L1_ACC
                         // no accumulation for first iteration, last iteration
@@ -303,8 +303,8 @@ void MAIN {
                         uint32_t start_dst_index = 0;
                         matmul_pack_tile(start_dst_index, curr_matmul_out_cb, out_subblock_num_tiles);
 
-                        tile_regs_release();
-                        cb_push_back(curr_matmul_out_cb, out_subblock_num_tiles);
+                        ckernel::tile_regs_release();
+                        ckernel::cb_push_back(curr_matmul_out_cb, out_subblock_num_tiles);
 
                         in1_index_subblock_offset += out_subblock_w;
                     }  // for in1_num_subblocks
@@ -321,8 +321,8 @@ void MAIN {
                 if (in0_block_w_i < in0_num_blocks_w - 1) {
                     // Wait for l1 accumulation to populate interm buffer,
                     // then pop to update fifo rd pointer
-                    cb_wait_front(matmul_partials_cb, out_block_num_tiles);
-                    cb_pop_front(matmul_partials_cb, out_block_num_tiles);
+                    ckernel::cb_wait_front(matmul_partials_cb, out_block_num_tiles);
+                    ckernel::cb_pop_front(matmul_partials_cb, out_block_num_tiles);
                     if constexpr (spill) {
                         UNPACK(get_local_cb_interface(matmul_partials_cb).fifo_rd_ptr = partials_cb_read_ptr);
                         PACK(get_local_cb_interface(matmul_partials_cb).fifo_wr_ptr = partials_cb_write_ptr);
@@ -333,8 +333,8 @@ void MAIN {
 #else
                 // Last iteration does spill and reload to output buffer
                 if (in0_block_w_i < in0_num_blocks_w - 2) {
-                    cb_wait_front(matmul_partials_cb, out_block_num_tiles);
-                    cb_pop_front(matmul_partials_cb, out_block_num_tiles);
+                    ckernel::cb_wait_front(matmul_partials_cb, out_block_num_tiles);
+                    ckernel::cb_pop_front(matmul_partials_cb, out_block_num_tiles);
                     if constexpr (spill) {
                         UNPACK(get_local_cb_interface(matmul_partials_cb).fifo_rd_ptr = partials_cb_read_ptr);
                         PACK(get_local_cb_interface(matmul_partials_cb).fifo_wr_ptr = partials_cb_write_ptr);
@@ -364,8 +364,8 @@ void MAIN {
                 }
 #endif
 
-                cb_pop_front(mm_in0_cb_id, in0_block_num_tiles);
-                cb_pop_front(in1_cb_id, in1_block_num_tiles);
+                ckernel::cb_pop_front(mm_in0_cb_id, in0_block_num_tiles);
+                ckernel::cb_pop_front(in1_cb_id, in1_block_num_tiles);
             }  // for in0_num_blocks_w
             if constexpr (matmul_partials_cb == mm_out_cb_id && partials_cb_uses_output) {
                 UNPACK(get_local_cb_interface(matmul_partials_cb).fifo_rd_ptr = partials_cb_read_ptr);
@@ -382,12 +382,12 @@ void MAIN {
             reconfig_data_format(in1_cb_id, matmul_partials_cb, mm_in0_cb_id, bias_cb_id);
             add_bcast_rows_init_short(matmul_partials_cb, bias_cb_id);
 
-            cb_wait_front(bias_cb_id, bias_ntiles_w);
-            cb_wait_front(matmul_partials_cb, out_block_num_tiles);
+            ckernel::cb_wait_front(bias_cb_id, bias_ntiles_w);
+            ckernel::cb_wait_front(matmul_partials_cb, out_block_num_tiles);
             for (uint32_t in0_subblock_i = 0; in0_subblock_i < in0_num_subblocks; ++in0_subblock_i) {
                 uint32_t in1_index_subblock_offset = 0;
                 for (uint32_t in1_subblock_i = 0; in1_subblock_i < in1_num_subblocks; ++in1_subblock_i) {
-                    tile_regs_acquire();
+                    ckernel:: tile_regs_acquire();
                     uint32_t i = 0;
                     for (uint32_t h = 0; h < out_subblock_h; ++h) {
                         uint32_t bcast_tile_i = bias_block_offset + in1_index_subblock_offset;
@@ -403,17 +403,17 @@ void MAIN {
                         SFPU_OP_FUNC_ACTIVATION
                     }
 #endif
-                    tile_regs_commit();
+                    ckernel:: tile_regs_commit();
                     // do not pop front bias as it may be used again for subsequent blocks
-                    cb_pop_front(matmul_partials_cb, out_subblock_num_tiles);
+                    ckernel::cb_pop_front(matmul_partials_cb, out_subblock_num_tiles);
 
-                    cb_reserve_back(untilize_mode_out_cb_id, out_subblock_num_tiles);
-                    tile_regs_wait();
+                    ckernel::cb_reserve_back(untilize_mode_out_cb_id, out_subblock_num_tiles);
+                    ckernel::tile_regs_wait();
                     for (uint32_t i = 0; i < out_subblock_num_tiles; i++) {
-                        pack_tile(i, untilize_mode_out_cb_id);
+                        ckernel:: pack_tile(i, untilize_mode_out_cb_id);
                     }
-                    tile_regs_release();
-                    cb_push_back(untilize_mode_out_cb_id, out_subblock_num_tiles);
+                    ckernel::tile_regs_release();
+                    ckernel::cb_push_back(untilize_mode_out_cb_id, out_subblock_num_tiles);
 
                     in1_index_subblock_offset += out_subblock_w;
                 }  // for in1_num_subblocks

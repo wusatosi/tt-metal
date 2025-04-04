@@ -30,7 +30,7 @@ void kernel_main() {
     constexpr uint32_t cb_id_in2 = 2;
 
     // Fill tile with zeros
-    cb_reserve_back(cb_id_in2, 1);
+    ckernel::cb_reserve_back(cb_id_in2, 1);
     uint32_t l1_zeros_addr_in2_noc = get_noc_addr(get_write_ptr(cb_id_in2));
 
     // in0 reader
@@ -39,7 +39,7 @@ void kernel_main() {
 
     uint32_t in0_tensor_current_block_start_tile_id = in0_tensor_start_tile_id;
     for (uint32_t block = 0; block < num_blocks; block++) {
-        cb_reserve_back(cb_id_in0, in0_block_num_tiles);
+        ckernel::cb_reserve_back(cb_id_in0, in0_block_num_tiles);
         l1_write_addr_in0 = get_write_ptr(cb_id_in0);
 
         uint32_t in0_tensor_row_start_tile_id = in0_tensor_current_block_start_tile_id;
@@ -64,6 +64,6 @@ void kernel_main() {
         // in0_tensor_current_block_start_tile_id += in0_tensor_next_block_stride;
         noc_async_read_barrier();
 
-        cb_push_back(cb_id_in0, in0_block_num_tiles);
+        ckernel::cb_push_back(cb_id_in0, in0_block_num_tiles);
     }
 }

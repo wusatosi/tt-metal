@@ -26,7 +26,7 @@ void kernel_main() {
 
     for (uint32_t n = 0; n < num_hw_blocks_per_core; n++) {
         for (uint32_t h = 0; h < Ht; ++h) {
-            cb_reserve_back(cb_in, Wt);
+            ckernel::cb_reserve_back(cb_in, Wt);
             uint32_t l1_write_addr = get_write_ptr(cb_in);
             uint32_t H_curr = h == Ht - 1 ? H_per_tile_last : H_per_tile;
             for (uint32_t h_datum = 0; h_datum < H_curr; ++h_datum) {
@@ -35,7 +35,7 @@ void kernel_main() {
                 read_noc_addr += stick_size_bytes;
             }
             noc_async_read_barrier();
-            cb_push_back(cb_in, Wt);
+            ckernel::cb_push_back(cb_in, Wt);
         }
     }
 }

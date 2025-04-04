@@ -39,29 +39,29 @@ void MAIN {
 
     binary_op_init_common(tt::CB::c_in0, tt::CB::c_in0, tt::CB::c_out0);
 
-    cb_wait_front(cb_one, onetile);      // comes from the reader
-    cb_wait_front(cb_decimal, onetile);  // comes from the reader
+    ckernel::cb_wait_front(cb_one, onetile);      // comes from the reader
+    ckernel::cb_wait_front(cb_decimal, onetile);  // comes from the reader
 
     constexpr uint32_t TILE_W = 32;
     const bool do_mask_w = (origin_w % TILE_W) != 0;
     const auto mask_w = do_mask_w ? (origin_w % TILE_W) : TILE_W;
 
     if (do_mask_w) {
-        cb_wait_front(cb_mask_w, onetile);  // comes from the reader
+        ckernel::cb_wait_front(cb_mask_w, onetile);  // comes from the reader
     }
     for (uint32_t row_idx = 0; row_idx < num_rows_per_core; ++row_idx) {
         for (uint32_t col_idx = 0; col_idx < Wt; ++col_idx) {
             // |x|
-            tile_regs_acquire();
-            cb_wait_front(cb_x, onetile);  // comes from the reader
-            cb_reserve_back(cb_xabs, onetile);
+            ckernel:: tile_regs_acquire();
+            ckernel::cb_wait_front(cb_x, onetile);  // comes from the reader
+            ckernel::cb_reserve_back(cb_xabs, onetile);
 
             copy_tile_init_with_dt(cb_x);
-            copy_tile(cb_x, 0, dst0);
+            ckernel:: copy_tile(cb_x, 0, dst0);
 
             if (do_mask_w && (col_idx == Wt - 1)) {
                 copy_tile_init_with_dt(cb_mask_w);
-                copy_tile(cb_mask_w, 0, dst1);
+                ckernel:: copy_tile(cb_mask_w, 0, dst1);
 
                 mask_tile_init();
                 mask_tile(dst0, dst1);
@@ -69,23 +69,23 @@ void MAIN {
 
             abs_tile_init();
             abs_tile(dst0);
-            tile_regs_commit();
+            ckernel:: tile_regs_commit();
 
-            tile_regs_wait();
+            ckernel::tile_regs_wait();
             pack_tile_with_dt(dst0, cb_xabs);
-            tile_regs_release();
+            ckernel::tile_regs_release();
 
-            cb_pop_front(cb_x, onetile);
-            cb_push_back(cb_xabs, onetile);
+            ckernel::cb_pop_front(cb_x, onetile);
+            ckernel::cb_push_back(cb_xabs, onetile);
 
             power_tile_to_cb(cb_xabs, cb_xpow, cb_logx, cb_decimal, cb_exp_lxmd, cb_y, p, p_is_negative);
         }
     }
 
-    cb_pop_front(cb_one, onetile);
-    cb_pop_front(cb_decimal, onetile);
+    ckernel::cb_pop_front(cb_one, onetile);
+    ckernel::cb_pop_front(cb_decimal, onetile);
     if (do_mask_w) {
-        cb_pop_front(cb_mask_w, onetile);
+        ckernel::cb_pop_front(cb_mask_w, onetile);
     }
 }  // void MAIN
 }  // namespace NAMESPACE

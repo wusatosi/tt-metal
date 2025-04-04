@@ -21,21 +21,21 @@ void MAIN {
     pack_untilize_dst_init_short<per_core_block_tile_cnt>(tt::CBIndex::c_16, num_rows_per_face, num_faces);
 
     for (uint32_t b = 0; b < per_core_block_cnt; ++b) {
-        cb_wait_front(tt::CBIndex::c_0, per_core_block_tile_cnt);
-        cb_reserve_back(tt::CBIndex::c_16, per_core_block_tile_cnt);
+        ckernel::cb_wait_front(tt::CBIndex::c_0, per_core_block_tile_cnt);
+        ckernel::cb_reserve_back(tt::CBIndex::c_16, per_core_block_tile_cnt);
 
-        tile_regs_acquire();
+        ckernel:: tile_regs_acquire();
         for (uint32_t i = 0; i < per_core_block_tile_cnt; ++i) {
-            copy_tile(tt::CBIndex::c_0, i, i);
+            ckernel:: copy_tile(tt::CBIndex::c_0, i, i);
         }
-        tile_regs_commit();
+        ckernel:: tile_regs_commit();
 
-        tile_regs_wait();
+        ckernel::tile_regs_wait();
         pack_untilize_dst<per_core_block_tile_cnt>(tt::CBIndex::c_16, 1, 0, num_rows_per_face, num_faces);
-        tile_regs_release();
+        ckernel::tile_regs_release();
 
-        cb_push_back(tt::CBIndex::c_16, per_core_block_tile_cnt);
-        cb_pop_front(tt::CBIndex::c_0, per_core_block_tile_cnt);
+        ckernel::cb_push_back(tt::CBIndex::c_16, per_core_block_tile_cnt);
+        ckernel::cb_pop_front(tt::CBIndex::c_0, per_core_block_tile_cnt);
     }
 
     pack_untilize_uninit(tt::CBIndex::c_16);

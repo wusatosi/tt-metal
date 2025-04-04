@@ -21,25 +21,25 @@ void MAIN {
 
     binary_op_init_common(cb_x, cb_clip_coef_clamped, cb_y);
 
-    cb_wait_front(cb_clip_coef_clamped, onetile);  // comes from the reader
+    ckernel::cb_wait_front(cb_clip_coef_clamped, onetile);  // comes from the reader
 
     // Compute cb_y
     for (uint32_t tile_idx = 0; tile_idx < num_tiles; tile_idx++) {
-        tile_regs_acquire();
-        cb_wait_front(cb_x, onetile);  // comes from the reader
-        cb_reserve_back(cb_y, onetile);
+        ckernel:: tile_regs_acquire();
+        ckernel::cb_wait_front(cb_x, onetile);  // comes from the reader
+        ckernel::cb_reserve_back(cb_y, onetile);
 
         mul_tiles_bcast_scalar_init_short(cb_x, cb_clip_coef_clamped);
         mul_tiles_bcast_scalar(cb_x, cb_clip_coef_clamped, 0, 0, dst0);
-        cb_pop_front(cb_x, onetile);
-        tile_regs_commit();
+        ckernel::cb_pop_front(cb_x, onetile);
+        ckernel:: tile_regs_commit();
 
-        tile_regs_wait();
-        pack_tile(dst0, cb_y);
-        cb_push_back(cb_y, onetile);
-        tile_regs_release();
+        ckernel::tile_regs_wait();
+        ckernel:: pack_tile(dst0, cb_y);
+        ckernel::cb_push_back(cb_y, onetile);
+        ckernel::tile_regs_release();
     }
 
-    cb_pop_front(cb_clip_coef_clamped, onetile);
+    ckernel::cb_pop_front(cb_clip_coef_clamped, onetile);
 }  // void MAIN
 }  // namespace NAMESPACE

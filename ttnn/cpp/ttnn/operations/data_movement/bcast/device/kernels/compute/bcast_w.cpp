@@ -18,22 +18,22 @@ void MAIN {
 
     for (uint32_t b = 0; b < B; b++) {
         for (uint32_t h = 0; h < Ht; h++) {
-            cb_wait_front(tt::CBIndex::c_1, onetile);
+            ckernel::cb_wait_front(tt::CBIndex::c_1, onetile);
             for (uint32_t w = 0; w < Wt; w++) {
-                cb_reserve_back(tt::CBIndex::c_16, onetile);
+                ckernel::cb_reserve_back(tt::CBIndex::c_16, onetile);
 
-                acquire_dst();
+                ckernel::acquire_dst();
 
-                cb_wait_front(tt::CBIndex::c_0, onetile);
+                ckernel::cb_wait_front(tt::CBIndex::c_0, onetile);
                 BCAST_OP<BroadcastType::COL>(tt::CBIndex::c_0, tt::CBIndex::c_1, 0, 0, 0);
-                pack_tile(0, tt::CBIndex::c_16);
-                cb_pop_front(tt::CBIndex::c_0, onetile);
+                ckernel:: pack_tile(0, tt::CBIndex::c_16);
+                ckernel::cb_pop_front(tt::CBIndex::c_0, onetile);
 
-                release_dst();
+                ckernel:: release_dst();
 
-                cb_push_back(tt::CBIndex::c_16, onetile);
+                ckernel::cb_push_back(tt::CBIndex::c_16, onetile);
             }
-            cb_pop_front(tt::CBIndex::c_1, onetile);
+            ckernel::cb_pop_front(tt::CBIndex::c_1, onetile);
         }
     }
 }

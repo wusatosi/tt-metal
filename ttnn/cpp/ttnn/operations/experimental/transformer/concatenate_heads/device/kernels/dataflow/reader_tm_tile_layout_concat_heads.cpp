@@ -35,7 +35,7 @@ void kernel_main() {
     uint32_t in0_tensor_current_tile_id = in0_tensor_tile_id;
 
     for (uint32_t c_dim = 0; c_dim < in0_c; c_dim++) {
-        cb_reserve_back(cb_id_in0, in0_w_tiles);
+        ckernel::cb_reserve_back(cb_id_in0, in0_w_tiles);
 
         in0_tensor_current_tile_id = in0_tensor_tile_id;
         for (uint32_t w_dim = 0; w_dim < in0_w_tiles; w_dim++) {
@@ -45,6 +45,6 @@ void kernel_main() {
         }
         in0_tensor_tile_id += in0_HtWt;
         noc_async_read_barrier();
-        cb_push_back(cb_id_in0, in0_w_tiles);
+        ckernel::cb_push_back(cb_id_in0, in0_w_tiles);
     }
 }

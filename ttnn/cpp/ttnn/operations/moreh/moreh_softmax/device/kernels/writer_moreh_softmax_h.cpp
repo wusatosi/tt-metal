@@ -27,7 +27,7 @@ void kernel_main() {
         uint32_t nc_idx = curr_tile / Wt;
         uint32_t tile_idx = nc_idx * Ht * Wt + w_idx;
 
-        cb_wait_front(cb_id_out, Ht);
+        ckernel::cb_wait_front(cb_id_out, Ht);
         auto l1_read_addr = get_read_ptr(cb_id_out);
         for (uint32_t h = 0; h < Ht; h++) {
             noc_async_write_tile(tile_idx, s, l1_read_addr);
@@ -35,7 +35,7 @@ void kernel_main() {
             tile_idx += Wt;
         }
         noc_async_write_barrier();
-        cb_pop_front(cb_id_out, Ht);
+        ckernel::cb_pop_front(cb_id_out, Ht);
         curr_tile += 1;
     }
 }

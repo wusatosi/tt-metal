@@ -34,193 +34,193 @@ void MAIN {
 
     // updated_running_stat = (1 − momentum) × running_stat + momentum × batch_stat
     for (uint32_t tile_id = 0; tile_id < num_tiles; ++tile_id) {
-        tile_regs_acquire();
-        cb_wait_front(cb_one, 1);
-        cb_wait_front(cb_momentum, 1);
+        ckernel:: tile_regs_acquire();
+        ckernel::cb_wait_front(cb_one, 1);
+        ckernel::cb_wait_front(cb_momentum, 1);
 
         if constexpr (old_running_mean_has_value) {
             // 1 - momentum
-            cb_reserve_back(cb_tmp1, onetile);
+            ckernel::cb_reserve_back(cb_tmp1, onetile);
             sub_binary_tile_init();
-            tile_regs_acquire();
-            tile_regs_wait();
+            ckernel:: tile_regs_acquire();
+            ckernel::tile_regs_wait();
             copy_tile_to_dst_init_short_with_dt(cb_momentum, cb_one);
             for (uint32_t i = 0; i < onetile; ++i) {
-                copy_tile(cb_one, i, i * 2);
+                ckernel:: copy_tile(cb_one, i, i * 2);
             }
             copy_tile_to_dst_init_short_with_dt(cb_one, cb_momentum);
             for (uint32_t i = 0; i < onetile; ++i) {
-                copy_tile(cb_momentum, i, i * 2 + 1);
+                ckernel:: copy_tile(cb_momentum, i, i * 2 + 1);
                 sub_binary_tile(i * 2, i * 2 + 1);
-                tile_regs_commit();
-                pack_tile(i * 2, cb_tmp1);
+                ckernel:: tile_regs_commit();
+                ckernel:: pack_tile(i * 2, cb_tmp1);
             }
-            tile_regs_release();
-            cb_push_back(cb_tmp1, onetile);
+            ckernel::tile_regs_release();
+            ckernel::cb_push_back(cb_tmp1, onetile);
 
             // momentum * batch stat
-            cb_wait_front(cb_batch_mean, onetile);
-            cb_reserve_back(cb_tmp2, onetile);
+            ckernel::cb_wait_front(cb_batch_mean, onetile);
+            ckernel::cb_reserve_back(cb_tmp2, onetile);
             mul_binary_tile_init();
-            tile_regs_acquire();
-            tile_regs_wait();
+            ckernel:: tile_regs_acquire();
+            ckernel::tile_regs_wait();
             copy_tile_to_dst_init_short_with_dt(cb_momentum, cb_batch_mean);
             for (uint32_t i = 0; i < onetile; ++i) {
-                copy_tile(cb_batch_mean, i, i * 2);
+                ckernel:: copy_tile(cb_batch_mean, i, i * 2);
             }
             copy_tile_to_dst_init_short_with_dt(cb_batch_mean, cb_momentum);
             for (uint32_t i = 0; i < onetile; ++i) {
-                copy_tile(cb_momentum, i, i * 2 + 1);
+                ckernel:: copy_tile(cb_momentum, i, i * 2 + 1);
                 mul_binary_tile(i * 2, i * 2 + 1);
-                tile_regs_commit();
-                pack_tile(i * 2, cb_tmp2);
+                ckernel:: tile_regs_commit();
+                ckernel:: pack_tile(i * 2, cb_tmp2);
             }
-            tile_regs_release();
-            cb_push_back(cb_tmp2, onetile);
-            cb_pop_front(cb_batch_mean, onetile);
+            ckernel::tile_regs_release();
+            ckernel::cb_push_back(cb_tmp2, onetile);
+            ckernel::cb_pop_front(cb_batch_mean, onetile);
 
             // cb_tmp1 * running stats --> (1 - momentum) * running stats
-            cb_wait_front(cb_tmp1, onetile);
-            cb_wait_front(cb_old_running_mean, onetile);
-            cb_reserve_back(cb_tmp3, onetile);
-            tile_regs_acquire();
-            tile_regs_wait();
+            ckernel::cb_wait_front(cb_tmp1, onetile);
+            ckernel::cb_wait_front(cb_old_running_mean, onetile);
+            ckernel::cb_reserve_back(cb_tmp3, onetile);
+            ckernel:: tile_regs_acquire();
+            ckernel::tile_regs_wait();
             copy_tile_to_dst_init_short_with_dt(cb_tmp1, cb_old_running_mean);
             for (uint32_t i = 0; i < onetile; ++i) {
-                copy_tile(cb_old_running_mean, i, i * 2);
+                ckernel:: copy_tile(cb_old_running_mean, i, i * 2);
             }
             copy_tile_to_dst_init_short_with_dt(cb_old_running_mean, cb_tmp1);
             for (uint32_t i = 0; i < onetile; ++i) {
-                copy_tile(cb_tmp1, i, i * 2 + 1);
+                ckernel:: copy_tile(cb_tmp1, i, i * 2 + 1);
                 mul_binary_tile(i * 2, i * 2 + 1);
-                tile_regs_commit();
-                pack_tile(i * 2, cb_tmp3);
+                ckernel:: tile_regs_commit();
+                ckernel:: pack_tile(i * 2, cb_tmp3);
             }
-            tile_regs_release();
-            cb_push_back(cb_tmp3, onetile);
-            cb_pop_front(cb_old_running_mean, onetile);
-            cb_pop_front(cb_tmp1, onetile);
+            ckernel::tile_regs_release();
+            ckernel::cb_push_back(cb_tmp3, onetile);
+            ckernel::cb_pop_front(cb_old_running_mean, onetile);
+            ckernel::cb_pop_front(cb_tmp1, onetile);
 
             // cb_tmp2 + cb_tmp3 --> (momentum * batch stat) + ((1 - momentum) * running stats)
-            cb_wait_front(cb_tmp2, onetile);
-            cb_wait_front(cb_tmp3, onetile);
+            ckernel::cb_wait_front(cb_tmp2, onetile);
+            ckernel::cb_wait_front(cb_tmp3, onetile);
 
-            cb_reserve_back(cb_updated_running_mean, onetile);
+            ckernel::cb_reserve_back(cb_updated_running_mean, onetile);
 
             add_binary_tile_init();
-            tile_regs_acquire();
-            tile_regs_wait();
+            ckernel:: tile_regs_acquire();
+            ckernel::tile_regs_wait();
             copy_tile_to_dst_init_short_with_dt(cb_tmp2, cb_tmp3);
             for (uint32_t i = 0; i < onetile; ++i) {
-                copy_tile(cb_tmp3, i, i * 2);
+                ckernel:: copy_tile(cb_tmp3, i, i * 2);
             }
             copy_tile_to_dst_init_short_with_dt(cb_tmp3, cb_tmp2);
             for (uint32_t i = 0; i < onetile; ++i) {
-                copy_tile(cb_tmp2, i, i * 2 + 1);
+                ckernel:: copy_tile(cb_tmp2, i, i * 2 + 1);
                 add_binary_tile(i * 2, i * 2 + 1);
-                tile_regs_commit();
-                pack_tile(i * 2, cb_updated_running_mean);
+                ckernel:: tile_regs_commit();
+                ckernel:: pack_tile(i * 2, cb_updated_running_mean);
             }
-            tile_regs_release();
-            cb_push_back(cb_updated_running_mean, onetile);
-            cb_pop_front(cb_tmp3, onetile);
-            cb_pop_front(cb_tmp2, onetile);
+            ckernel::tile_regs_release();
+            ckernel::cb_push_back(cb_updated_running_mean, onetile);
+            ckernel::cb_pop_front(cb_tmp3, onetile);
+            ckernel::cb_pop_front(cb_tmp2, onetile);
         }
         if constexpr (old_running_var_has_value) {
             // 1 - momentum
-            cb_reserve_back(cb_tmp1, onetile);
+            ckernel::cb_reserve_back(cb_tmp1, onetile);
             sub_binary_tile_init();
-            tile_regs_acquire();
-            tile_regs_wait();
+            ckernel:: tile_regs_acquire();
+            ckernel::tile_regs_wait();
             copy_tile_to_dst_init_short_with_dt(cb_momentum, cb_one);
             for (uint32_t i = 0; i < onetile; ++i) {
-                copy_tile(cb_one, i, i * 2);
+                ckernel:: copy_tile(cb_one, i, i * 2);
             }
             copy_tile_to_dst_init_short_with_dt(cb_one, cb_momentum);
             for (uint32_t i = 0; i < onetile; ++i) {
-                copy_tile(cb_momentum, i, i * 2 + 1);
+                ckernel:: copy_tile(cb_momentum, i, i * 2 + 1);
                 sub_binary_tile(i * 2, i * 2 + 1);
-                tile_regs_commit();
-                pack_tile(i * 2, cb_tmp1);
+                ckernel:: tile_regs_commit();
+                ckernel:: pack_tile(i * 2, cb_tmp1);
             }
-            tile_regs_release();
-            cb_push_back(cb_tmp1, onetile);
+            ckernel::tile_regs_release();
+            ckernel::cb_push_back(cb_tmp1, onetile);
 
             // momentum * batch stat
-            cb_wait_front(cb_batch_var, onetile);
-            cb_reserve_back(cb_tmp2, onetile);
+            ckernel::cb_wait_front(cb_batch_var, onetile);
+            ckernel::cb_reserve_back(cb_tmp2, onetile);
             mul_binary_tile_init();
-            tile_regs_acquire();
-            tile_regs_wait();
+            ckernel:: tile_regs_acquire();
+            ckernel::tile_regs_wait();
             copy_tile_to_dst_init_short_with_dt(cb_momentum, cb_batch_var);
             for (uint32_t i = 0; i < onetile; ++i) {
-                copy_tile(cb_batch_var, i, i * 2);
+                ckernel:: copy_tile(cb_batch_var, i, i * 2);
             }
             copy_tile_to_dst_init_short_with_dt(cb_batch_var, cb_momentum);
             for (uint32_t i = 0; i < onetile; ++i) {
-                copy_tile(cb_momentum, i, i * 2 + 1);
+                ckernel:: copy_tile(cb_momentum, i, i * 2 + 1);
                 mul_binary_tile(i * 2, i * 2 + 1);
-                tile_regs_commit();
-                pack_tile(i * 2, cb_tmp2);
+                ckernel:: tile_regs_commit();
+                ckernel:: pack_tile(i * 2, cb_tmp2);
             }
-            tile_regs_release();
-            cb_push_back(cb_tmp2, onetile);
-            cb_pop_front(cb_batch_var, onetile);
+            ckernel::tile_regs_release();
+            ckernel::cb_push_back(cb_tmp2, onetile);
+            ckernel::cb_pop_front(cb_batch_var, onetile);
 
             // cb_tmp1 * running stats --> (1 - momentum) * running stats
-            cb_wait_front(cb_tmp1, onetile);
-            cb_wait_front(cb_old_running_var, onetile);
-            cb_reserve_back(cb_tmp3, onetile);
-            tile_regs_acquire();
-            tile_regs_wait();
+            ckernel::cb_wait_front(cb_tmp1, onetile);
+            ckernel::cb_wait_front(cb_old_running_var, onetile);
+            ckernel::cb_reserve_back(cb_tmp3, onetile);
+            ckernel:: tile_regs_acquire();
+            ckernel::tile_regs_wait();
             copy_tile_to_dst_init_short_with_dt(cb_tmp1, cb_old_running_var);
             for (uint32_t i = 0; i < onetile; ++i) {
-                copy_tile(cb_old_running_var, i, i * 2);
+                ckernel:: copy_tile(cb_old_running_var, i, i * 2);
             }
             copy_tile_to_dst_init_short_with_dt(cb_old_running_var, cb_tmp1);
             for (uint32_t i = 0; i < onetile; ++i) {
-                copy_tile(cb_tmp1, i, i * 2 + 1);
+                ckernel:: copy_tile(cb_tmp1, i, i * 2 + 1);
                 mul_binary_tile(i * 2, i * 2 + 1);
-                tile_regs_commit();
-                pack_tile(i * 2, cb_tmp3);
+                ckernel:: tile_regs_commit();
+                ckernel:: pack_tile(i * 2, cb_tmp3);
             }
-            tile_regs_release();
-            cb_push_back(cb_tmp3, onetile);
-            cb_pop_front(cb_old_running_var, onetile);
-            cb_pop_front(cb_tmp1, onetile);
+            ckernel::tile_regs_release();
+            ckernel::cb_push_back(cb_tmp3, onetile);
+            ckernel::cb_pop_front(cb_old_running_var, onetile);
+            ckernel::cb_pop_front(cb_tmp1, onetile);
 
             // cb_tmp2 + cb_tmp3 --> (momentum * batch stat) + ((1 - momentum) * running stats)
-            cb_wait_front(cb_tmp2, onetile);
-            cb_wait_front(cb_tmp3, onetile);
+            ckernel::cb_wait_front(cb_tmp2, onetile);
+            ckernel::cb_wait_front(cb_tmp3, onetile);
 
-            cb_reserve_back(cb_updated_running_var, onetile);
+            ckernel::cb_reserve_back(cb_updated_running_var, onetile);
 
             add_binary_tile_init();
-            tile_regs_acquire();
-            tile_regs_wait();
+            ckernel:: tile_regs_acquire();
+            ckernel::tile_regs_wait();
             copy_tile_to_dst_init_short_with_dt(cb_tmp2, cb_tmp3);
             for (uint32_t i = 0; i < onetile; ++i) {
-                copy_tile(cb_tmp3, i, i * 2);
+                ckernel:: copy_tile(cb_tmp3, i, i * 2);
             }
             copy_tile_to_dst_init_short_with_dt(cb_tmp3, cb_tmp2);
             for (uint32_t i = 0; i < onetile; ++i) {
-                copy_tile(cb_tmp2, i, i * 2 + 1);
+                ckernel:: copy_tile(cb_tmp2, i, i * 2 + 1);
                 add_binary_tile(i * 2, i * 2 + 1);
-                tile_regs_commit();
-                pack_tile(i * 2, cb_updated_running_var);
+                ckernel:: tile_regs_commit();
+                ckernel:: pack_tile(i * 2, cb_updated_running_var);
             }
-            tile_regs_release();
-            cb_push_back(cb_updated_running_var, onetile);
-            cb_pop_front(cb_tmp3, onetile);
-            cb_pop_front(cb_tmp2, onetile);
+            ckernel::tile_regs_release();
+            ckernel::cb_push_back(cb_updated_running_var, onetile);
+            ckernel::cb_pop_front(cb_tmp3, onetile);
+            ckernel::cb_pop_front(cb_tmp2, onetile);
         }
     }
-    tile_regs_commit();
-    tile_regs_wait();
-    pack_tile(0, cb_out0);
-    tile_regs_release();
-    cb_pop_front(cb_momentum, 1);
-    cb_pop_front(cb_one, 1);
-    cb_push_back(cb_out0, 1);
+    ckernel:: tile_regs_commit();
+    ckernel::tile_regs_wait();
+    ckernel:: pack_tile(0, cb_out0);
+    ckernel::tile_regs_release();
+    ckernel::cb_pop_front(cb_momentum, 1);
+    ckernel::cb_pop_front(cb_one, 1);
+    ckernel::cb_push_back(cb_out0, 1);
 }
 }  // namespace NAMESPACE

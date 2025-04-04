@@ -21,13 +21,13 @@ void kernel_main() {
         .page_size = output_unit_size,
     };
     for (uint32_t i = start_id; i < start_id + num_rows_per_core; i++) {
-        cb_wait_front(src_cb_id, onetile);
+        ckernel::cb_wait_front(src_cb_id, onetile);
 
         uint32_t writer_ptr = get_read_ptr(src_cb_id);
         uint64_t output_noc_addr = get_noc_addr(i, s);
         noc_async_write(writer_ptr, output_noc_addr, output_unit_size);
         noc_async_write_barrier();
 
-        cb_pop_front(src_cb_id, onetile);
+        ckernel::cb_pop_front(src_cb_id, onetile);
     }
 }

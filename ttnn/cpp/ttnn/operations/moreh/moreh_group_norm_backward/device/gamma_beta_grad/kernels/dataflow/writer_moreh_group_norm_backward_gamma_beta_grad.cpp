@@ -69,7 +69,7 @@ void kernel_main() {
         if (gamma_grad_has_value) {
             // gamma_grad (1, 1, 1, C)
             const auto gamma_grad_dtype_bytes = gamma_grad_tile_bytes / (TILE_H * TILE_W);
-            cb_wait_front(cb_id_gamma_grad, onetile);
+            ckernel::cb_wait_front(cb_id_gamma_grad, onetile);
             if (tilized_gamma_beta_idx_in_tile != 0) {
                 auto gamma_grad_ptr = reinterpret_cast<uint16_t*>(gamma_grad_l1_read_ptr);
                 gamma_grad_ptr[tilized_gamma_beta_idx_in_tile] = gamma_grad_ptr[0];
@@ -82,13 +82,13 @@ void kernel_main() {
                 gamma_grad_noc_addr + tilized_gamma_beta_idx_in_tile * gamma_grad_dtype_bytes,
                 gamma_grad_dtype_bytes);
             noc_async_write_barrier();
-            cb_pop_front(cb_id_gamma_grad, onetile);
+            ckernel::cb_pop_front(cb_id_gamma_grad, onetile);
         }
 
         if (beta_grad_has_value) {
             // beta_grad (1, 1, 1, C)
             const auto beta_grad_dtype_bytes = beta_grad_tile_bytes / (TILE_H * TILE_W);
-            cb_wait_front(cb_id_beta_grad, onetile);
+            ckernel::cb_wait_front(cb_id_beta_grad, onetile);
             if (tilized_gamma_beta_idx_in_tile != 0) {
                 auto beta_grad_ptr = reinterpret_cast<uint16_t*>(beta_grad_l1_read_ptr);
                 beta_grad_ptr[tilized_gamma_beta_idx_in_tile] = beta_grad_ptr[0];
@@ -100,7 +100,7 @@ void kernel_main() {
                 beta_grad_noc_addr + tilized_gamma_beta_idx_in_tile * beta_grad_dtype_bytes,
                 beta_grad_dtype_bytes);
             noc_async_write_barrier();
-            cb_pop_front(cb_id_beta_grad, onetile);
+            ckernel::cb_pop_front(cb_id_beta_grad, onetile);
         }
 
     }  // outer_idx loop

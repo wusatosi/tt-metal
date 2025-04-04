@@ -36,14 +36,14 @@ void kernel_main() {
 
     prepare_local_cache(cb_id_in2, weights, weight_stick_size, /*pad_token_arg_idx=*/6);
 
-    cb_reserve_back(cb_id_in1, 1);
+    ckernel::cb_reserve_back(cb_id_in1, 1);
     uint32_t input_l1_addr = get_write_ptr(cb_id_in1);
     const uint32_t tile_size_bytes = get_tile_size(cb_id_in1);
     const DataFormat data_format = get_dataformat(cb_id_in1);
     volatile tt_l1_ptr input_token_t* input_l1_ptr = reinterpret_cast<volatile tt_l1_ptr input_token_t*>(input_l1_addr);
 
     auto read_block = [&](const uint32_t& token_idx, const uint32_t& width_size, const uint32_t& offset = 0) {
-        cb_reserve_back(cb_id_in0, 1);
+        ckernel::cb_reserve_back(cb_id_in0, 1);
         uint32_t weight_l1_addr = get_write_ptr(cb_id_in0);
         volatile tt_l1_ptr uint16_t* weight_l1_ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(weight_l1_addr);
         uint64_t src_noc_addr;
@@ -76,7 +76,7 @@ void kernel_main() {
 #endif
         noc_async_read(src_noc_addr, weight_l1_addr, width_size);
         noc_async_read_barrier();
-        cb_push_back(cb_id_in0, 1);
+        ckernel::cb_push_back(cb_id_in0, 1);
     };
 
     uint32_t curr_tile = tile_offset;

@@ -43,7 +43,7 @@ void kernel_main() {
         for (uint32_t sbw = 0; sbw < out_num_subblocks_w; ++sbw) {
             uint32_t out_sb_row_start_tile_id = out_sbw_start_tile_id;
             // wait for one subblock worth tiles
-            cb_wait_front(out_cb_id, out_subblock_tile_count);
+            ckernel::cb_wait_front(out_cb_id, out_subblock_tile_count);
             uint32_t l1_read_addr = get_read_ptr(out_cb_id);
             for (uint32_t h = 0; h < out_subblock_h; ++h) {
                 uint32_t out_tile_id = out_sb_row_start_tile_id;
@@ -56,7 +56,7 @@ void kernel_main() {
                 out_sb_row_start_tile_id += out_stride_h;
             }
             noc_async_write_barrier();
-            cb_pop_front(out_cb_id, out_subblock_tile_count);
+            ckernel::cb_pop_front(out_cb_id, out_subblock_tile_count);
             out_sbw_start_tile_id += out_next_subblock_stride_w;
         }
         out_sbh_start_tile_id += out_next_subblock_stride_h;

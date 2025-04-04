@@ -66,8 +66,8 @@ void kernel_main() {
     for (uint32_t image_row = 0; image_row < in_image_rows_per_core * scale_h; ++image_row) {
         x_index = x_index_compute;
         for (uint32_t j = 0; j < nsticks_to_process_on_core; j++) {
-            cb_reserve_back(out_cb_id, 4);
-            cb_reserve_back(in_scalar_cb_id, 1);
+            ckernel::cb_reserve_back(out_cb_id, 4);
+            ckernel::cb_reserve_back(in_scalar_cb_id, 1);
 
             x = x_index < 0 ? 0 : x_index;
             y = y_index < read_offset ? read_offset : y_index;
@@ -116,8 +116,8 @@ void kernel_main() {
 
             // push scaler and data into cb.
             noc_async_read_barrier();
-            cb_push_back(out_cb_id, 4);
-            cb_push_back(in_scalar_cb_id, 1);
+            ckernel::cb_push_back(out_cb_id, 4);
+            ckernel::cb_push_back(in_scalar_cb_id, 1);
             x_index += scale_w_inv * 2;
         }
         y_index += scale_h_inv;

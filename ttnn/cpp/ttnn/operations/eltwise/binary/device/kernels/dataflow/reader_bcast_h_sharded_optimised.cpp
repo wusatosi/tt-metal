@@ -36,17 +36,17 @@ void kernel_main() {
     uint32_t l1_write_addr_in0;
     uint32_t l1_write_addr_in1;
 
-    cb_push_back(cb_id_in0, Ht * Wt);
+    ckernel::cb_push_back(cb_id_in0, Ht * Wt);
     for (uint32_t b = 0; b < batch_b; b++) {
         for (uint32_t wt = 0; wt < Wt; wt += w_blk) {
-            cb_reserve_back(cb_id_in1, w_blk);
+            ckernel::cb_reserve_back(cb_id_in1, w_blk);
             l1_write_addr_in1 = get_write_ptr(cb_id_in1);
             for (uint32_t r = 0; r < w_blk; r++) {
                 noc_async_read_tile(offset + wt + r, s1, l1_write_addr_in1);
                 l1_write_addr_in1 += tile_bytes;
             }
             noc_async_read_barrier();
-            cb_push_back(cb_id_in1, w_blk);
+            ckernel::cb_push_back(cb_id_in1, w_blk);
         }
         offset += batch_offset;
     }

@@ -104,7 +104,7 @@ void kernel_main() {
                 for (uint32_t weight_tile_h_outer_i = 0; weight_tile_h_outer_i < weight_block_height_num_outer;
                      weight_tile_h_outer_i++) {
                     for (uint32_t block_weight_h = 0; block_weight_h < num_blocks_weight_h; block_weight_h++) {
-                        cb_reserve_back(cb_id_weight, weight_block_num_tiles);
+                        ckernel::cb_reserve_back(cb_id_weight, weight_block_num_tiles);
                         // Set weights semaphore value to INVALID
                         noc_semaphore_set(weights_mcast_receiver_semaphore_addr_ptr, INVALID);
 
@@ -119,13 +119,13 @@ void kernel_main() {
                         // data)
                         noc_semaphore_wait(weights_mcast_receiver_semaphore_addr_ptr, VALID);
 
-                        cb_push_back(cb_id_weight, weight_block_num_tiles);
+                        ckernel::cb_push_back(cb_id_weight, weight_block_num_tiles);
                     }  // for num_blocks_weight_h
                 }  // for weight_block_height_num_outer
 
 #ifdef FUSE_BIAS
                 if (load_bias) {
-                    cb_reserve_back(bias_cb_id, bias_ntiles);
+                    ckernel::cb_reserve_back(bias_cb_id, bias_ntiles);
 
                     // Set weights semaphore value to INVALID
                     noc_semaphore_set(weights_mcast_receiver_semaphore_addr_ptr, INVALID);
@@ -138,14 +138,14 @@ void kernel_main() {
                     // wait on weights semaphore value to become VALID (set by mcast sender after it multicasts data)
                     noc_semaphore_wait(weights_mcast_receiver_semaphore_addr_ptr, VALID);
 
-                    cb_push_back(bias_cb_id, bias_ntiles);
+                    ckernel::cb_push_back(bias_cb_id, bias_ntiles);
                     load_bias = false;
                 }
 #endif
                 read_weights = true;
             } else {
-                cb_reserve_back(cb_id_weight, total_weight_num_tiles);
-                cb_push_back(cb_id_weight, total_weight_num_tiles);
+                ckernel::cb_reserve_back(cb_id_weight, total_weight_num_tiles);
+                ckernel::cb_push_back(cb_id_weight, total_weight_num_tiles);
             }
 #ifndef SHARDED_OUT
             uint32_t out_sbh_start_tile_id = out_block_h_start_tile_id;
@@ -156,7 +156,7 @@ void kernel_main() {
                 for (uint32_t sbw = 0; sbw < out_num_subblocks_w; sbw++) {
                     uint32_t out_sb_row_start_tile_id = out_sbw_start_tile_id;
                     // wait for one subblock worth tiles
-                    cb_wait_front(cb_id_out0, out_subblock_tile_count);
+                    ckernel::cb_wait_front(cb_id_out0, out_subblock_tile_count);
                     uint32_t l1_read_addr = get_read_ptr(cb_id_out0);
                     for (uint32_t h = 0; h < out_subblock_h; h++) {
                         uint32_t out_tile_id = out_sb_row_start_tile_id;
@@ -181,7 +181,7 @@ void kernel_main() {
                     }  // out_subblock_h (ntiles)
                     noc_async_write_barrier();
                     // DPRINT << "Done writing subblock." << ENDL();
-                    cb_pop_front(cb_id_out0, out_subblock_tile_count);
+                    ckernel::cb_pop_front(cb_id_out0, out_subblock_tile_count);
                     out_sbw_start_tile_id += out_next_subblock_stride_w;
                     out_sbw_start_tile_id_w += out_subblock_w;
                 }  // out_num_subblocks_w
@@ -200,7 +200,7 @@ void kernel_main() {
     }  // out_num_blocks_w
 
 #ifdef SHARDED_OUT
-    cb_wait_front(
+    ckernel::cb_wait_front(
         cb_id_out0,
         out_subblock_tile_count * out_num_subblocks_h * out_num_subblocks_w * out_num_blocks_w * out_num_blocks_h);
 #endif

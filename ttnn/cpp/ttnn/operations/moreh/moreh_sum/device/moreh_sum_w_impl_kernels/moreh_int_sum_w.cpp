@@ -26,13 +26,13 @@ void MAIN {
     unary_op_init_common(cb_in0, cb_out0);
 
     if (do_mask_w) {
-        cb_wait_front(cb_mask_w, onetile);
+        ckernel::cb_wait_front(cb_mask_w, onetile);
     }
 
     for (uint32_t row = 0; row < num_rows; ++row) {
         constexpr bool is_single_wt = (Wt == 1);
         if (is_single_wt) {
-            tile_regs_acquire();
+            ckernel:: tile_regs_acquire();
             copy_tile_to_dst(cb_in0, idx0, dst0);
 
             if (do_mask_w) {
@@ -43,23 +43,23 @@ void MAIN {
 
             sfpu_sum_int_init();
             sfpu_sum_int_row(dst0);
-            tile_regs_commit();
+            ckernel:: tile_regs_commit();
 
-            tile_regs_wait();
+            ckernel::tile_regs_wait();
             pack_tile_from_dst(cb_out0, dst0);
-            tile_regs_release();
+            ckernel::tile_regs_release();
         } else {
             for (uint32_t wt = 0; wt < Wt; ++wt) {
                 if (wt == 0) {
-                    tile_regs_acquire();
+                    ckernel:: tile_regs_acquire();
                     copy_tile_to_dst(cb_in0, idx0, dst0);
-                    tile_regs_commit();
+                    ckernel:: tile_regs_commit();
 
-                    tile_regs_wait();
+                    ckernel::tile_regs_wait();
                     pack_tile_from_dst(cb_intermed0, dst0);
-                    tile_regs_release();
+                    ckernel::tile_regs_release();
                 } else {
-                    tile_regs_acquire();
+                    ckernel:: tile_regs_acquire();
                     copy_tile_to_dst(cb_in0, idx0, dst0);
                     if (wt == Wt - 1 && do_mask_w) {
                         copy_tile_to_dst(cb_mask_w, idx0, dst1, false);
@@ -70,23 +70,23 @@ void MAIN {
                     copy_tile_to_dst(cb_intermed0, idx0, dst1);
                     sfpu_sum_int_init();
                     sfpu_add_int(dst0, dst1);
-                    tile_regs_commit();
+                    ckernel:: tile_regs_commit();
 
-                    tile_regs_wait();
+                    ckernel::tile_regs_wait();
                     pack_tile_from_dst(cb_intermed0, dst0);
-                    tile_regs_release();
+                    ckernel::tile_regs_release();
                 }
             }
 
-            tile_regs_acquire();
+            ckernel:: tile_regs_acquire();
             copy_tile_to_dst(cb_intermed0, idx0, dst0);
             sfpu_sum_int_init();
             sfpu_sum_int_row(dst0);
-            tile_regs_commit();
+            ckernel:: tile_regs_commit();
 
-            tile_regs_wait();
+            ckernel::tile_regs_wait();
             pack_tile_from_dst(cb_out0, dst0);
-            tile_regs_release();
+            ckernel::tile_regs_release();
         }
     }
 }

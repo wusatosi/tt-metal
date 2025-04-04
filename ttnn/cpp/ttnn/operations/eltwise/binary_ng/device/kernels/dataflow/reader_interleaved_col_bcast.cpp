@@ -57,14 +57,14 @@ void kernel_main() {
         for (uint32_t n = start_n; n < N && num_tiles_read < dst_num_tiles; ++n, start_c = 0) {
             for (uint32_t c = start_c; c < C && num_tiles_read < dst_num_tiles; ++c, start_th = 0) {
                 for (uint32_t th = start_th; th < Ht && num_tiles_read < dst_num_tiles; ++th, start_tw = 0) {
-                    cb_reserve_back(cb_id_src, onetile);
+                    ckernel::cb_reserve_back(cb_id_src, onetile);
 #if !SRC_SHARDED
                 uint32_t l1_write_addr = get_write_ptr(cb_id_src);
                 noc_async_read_tile(tile_offset + th, src, l1_write_addr);
                 noc_async_read_barrier();
 #endif
                 FILL_TILE_WITH_FIRST_COLUMN(cb_id_src);
-                cb_push_back(cb_id_src, onetile);
+                ckernel::cb_push_back(cb_id_src, onetile);
 
                 num_tiles_read += Wt - start_tw;
                 }

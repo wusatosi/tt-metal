@@ -20,10 +20,10 @@ void kernel_main() {
 
     uint32_t end_id = start_id + num_tiles;
     for (uint32_t i = start_id; i < end_id; ++i) {
-        cb_wait_front(dst_cb_id, 1);
+        ckernel::cb_wait_front(dst_cb_id, 1);
         uint32_t dst_cb_read_addr = get_read_ptr(dst_cb_id);
         noc_async_write_tile(i, s, dst_cb_read_addr);
         noc_async_write_barrier();
-        cb_pop_front(dst_cb_id, 1);
+        ckernel::cb_pop_front(dst_cb_id, 1);
     }
 }

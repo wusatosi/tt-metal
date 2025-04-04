@@ -67,13 +67,13 @@ void MAIN {
 
         for (uint32_t m = 0; m < Mt; m++) {  // TODO: Must be 1; generalize to support batch > 32 (ie. Mt > 1)
             for (uint32_t in0_block = 0; in0_block < in0_num_blocks_w; in0_block++) { // TODO: Must be 1; generalize to support inner dim blocking
-                cb_wait_front(cb_in0, in0_block_num_tiles);
+                ckernel::cb_wait_front(cb_in0, in0_block_num_tiles);
 
                 for (uint32_t in1_block = 0; in1_block < in1_num_blocks; in1_block++) {
                     uint32_t in0_index_subblock_offset = 0;
                     for (uint32_t tile_row_id = 0; tile_row_id < num_rows_in_one_tile; tile_row_id++) {
-                        cb_wait_front(cb_in1, in1_block_num_tiles);
-                        cb_pop_front(cb_in1, num_kv_heads_skip);
+                        ckernel::cb_wait_front(cb_in1, in1_block_num_tiles);
+                        ckernel::cb_pop_front(cb_in1, num_kv_heads_skip);
 
 			// This init changes DEST mapping, hence needs to be called before MATH does any processing, so that it has correct DEST mapping.
                         pack_untilize_dst_init_short<intermediate_num_tiles>(cb_intermed0);
@@ -81,7 +81,7 @@ void MAIN {
                         for (uint32_t in1_subblock = 0; in1_subblock < in1_num_subblocks; in1_subblock++) { // TODO: Must be 1; need to review inner dim blocking and the untilizing
                             uint32_t in1_index_subblock_offset = 0;
 
-                            tile_regs_acquire();
+                            ckernel:: tile_regs_acquire();
 
                             #ifdef ARCH_GRAYSKULL
                             uint32_t dst_index = 0;
@@ -131,20 +131,20 @@ void MAIN {
                             // }
                             #endif
 
-                            tile_regs_commit();
+                            ckernel:: tile_regs_commit();
 
                             in1_index_subblock_offset += out_subblock_w;
                         } // in1_num_subblocks loop
-                        cb_pop_front(cb_in1, num_kv_heads_remaining);
+                        ckernel::cb_pop_front(cb_in1, num_kv_heads_remaining);
                         // TODO: Review inner dim blocking, untilizing, and in1_num_subblocks > 1 (with pack_untilize, can only untilize up to dst num tiles)
                         // This should normally be inside subblock loop and we pack out out_subblock_num_tiles
-                        cb_reserve_back(cb_intermed0, intermediate_num_tiles);
-                        tile_regs_wait();
+                        ckernel::cb_reserve_back(cb_intermed0, intermediate_num_tiles);
+                        ckernel::tile_regs_wait();
                         pack_untilize_dst<intermediate_num_tiles>(cb_intermed0);
                         pack_untilize_uninit(cb_intermed0);
 
-                        tile_regs_release();
-                        cb_push_back(cb_intermed0, intermediate_num_tiles);
+                        ckernel::tile_regs_release();
+                        ckernel::cb_push_back(cb_intermed0, intermediate_num_tiles);
 
                     }  // 32 tiles loop
 
@@ -155,19 +155,19 @@ void MAIN {
             // cb_intermed1 comes from reader; untilized row-major tile
             reconfig_data_format_srca(cb_in1, cb_intermed1);
             pack_reconfig_data_format(cb_intermed0, out_cb_id);
-            cb_wait_front(cb_intermed1, out_num_tiles);
+            ckernel::cb_wait_front(cb_intermed1, out_num_tiles);
 
-            cb_reserve_back(out_cb_id, out_num_tiles);
+            ckernel::cb_reserve_back(out_cb_id, out_num_tiles);
 
             // tilize CB::intermed1 and write to CBIndex::c_16
             tilize_init_short_with_dt(cb_in1, cb_intermed1, out_num_tiles, out_cb_id);
             tilize_block(cb_intermed1, out_num_tiles, out_cb_id);
-            cb_push_back(out_cb_id, out_num_tiles);
+            ckernel::cb_push_back(out_cb_id, out_num_tiles);
 
-            cb_pop_front(cb_intermed1, out_num_tiles);
+            ckernel::cb_pop_front(cb_intermed1, out_num_tiles);
             tilize_uninit(cb_intermed1, out_cb_id);
 
-            cb_pop_front(cb_in0, in0_block_num_tiles);
+            ckernel::cb_pop_front(cb_in0, in0_block_num_tiles);
         } // Mt loop
     }  // batch
 

@@ -27,11 +27,11 @@ inline void cb_wait_front_pack(int operand, std::int32_t num_tiles) {
 #include "compute_kernel_api/untilize.h"
 ALWI void UNTILIZE_TILES(uint32_t in0_cb, uint32_t out_cb, uint32_t num_tiles) {
     untilize_init(in0_cb, out_cb);
-    cb_wait_front(in0_cb, num_tiles);
-    cb_reserve_back(out_cb, num_tiles);
+    ckernel::cb_wait_front(in0_cb, num_tiles);
+    ckernel::cb_reserve_back(out_cb, num_tiles);
     untilize_block(in0_cb, num_tiles, out_cb);
-    cb_push_back(out_cb, num_tiles);
-    cb_pop_front(in0_cb, num_tiles);
+    ckernel::cb_push_back(out_cb, num_tiles);
+    ckernel::cb_pop_front(in0_cb, num_tiles);
     untilize_uninit(in0_cb);
 }
 namespace NAMESPACE {
@@ -45,7 +45,7 @@ void MAIN {
 #if defined(UCK_CHLKC_PACK)
     cb_wait_front_pack(cb_id, 1);
 #else
-    cb_wait_front(cb_id, 1);
+    ckernel::cb_wait_front(cb_id, 1);
 #endif
 
     // For tilized formats, also test untilizing them on device and make sure we can print.

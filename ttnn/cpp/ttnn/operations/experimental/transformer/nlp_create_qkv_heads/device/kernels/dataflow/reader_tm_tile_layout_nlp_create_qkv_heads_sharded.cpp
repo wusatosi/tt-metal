@@ -62,7 +62,7 @@ void kernel_main() {
         uint32_t kv_y = start_kv_y;
         uint32_t remote_kv_head_idx = remote_kv_head_start_idx;
         uint64_t kv_read_addr = get_noc_addr(in0_mcast_noc_x[kv_x], in0_mcast_noc_y[kv_y], kv_start_addr);
-        cb_reserve_back(cb_id_kv_out, num_kv_tiles);
+        ckernel::cb_reserve_back(cb_id_kv_out, num_kv_tiles);
         uint32_t kv_write_addr = get_write_ptr(cb_id_kv_out);
 
         // K or V
@@ -82,6 +82,6 @@ void kernel_main() {
             }
             noc_async_read_barrier();
         }
-        cb_push_back(cb_id_kv_out, num_kv_tiles);
+        ckernel::cb_push_back(cb_id_kv_out, num_kv_tiles);
     }
 }

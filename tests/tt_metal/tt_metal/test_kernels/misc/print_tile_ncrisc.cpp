@@ -23,9 +23,9 @@ void kernel_main() {
     constexpr uint32_t cb_intermed = tt::CBIndex::c_1;
     uint32_t is_tilized = get_arg_val<uint32_t>(0);
 
-    cb_wait_front(cb_id, 1);
+    ckernel::cb_wait_front(cb_id, 1);
     if (is_tilized) {
-        cb_wait_front(cb_intermed, 1);
+        ckernel::cb_wait_front(cb_intermed, 1);
     }
     DPRINT << WAIT{4};
     DPRINT << "Print tile from Data1:" << ENDL();

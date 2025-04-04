@@ -77,7 +77,7 @@ void kernel_main() {
             const uint32_t c_out_offset_t = c_out_block * matmul_N_t;
 
             // Read weights and bias for this block
-            cb_reserve_back(cb_weight_tiled, weight_tiles);
+            ckernel::cb_reserve_back(cb_weight_tiled, weight_tiles);
             uint32_t weight_write_ptr = get_write_ptr(cb_weight_tiled);
 
             for (uint32_t row = c_in_offset_t; row < c_in_offset_t + matmul_K_t; row++) {
@@ -88,11 +88,11 @@ void kernel_main() {
                 }
             }
             noc_async_read_barrier();
-            cb_push_back(cb_weight_tiled, weight_tiles);
+            ckernel::cb_push_back(cb_weight_tiled, weight_tiles);
 
             if constexpr (use_bias) {
                 if (is_reducer) {
-                    cb_reserve_back(cb_bias_tiled, matmul_N_t);
+                    ckernel::cb_reserve_back(cb_bias_tiled, matmul_N_t);
                     uint32_t bias_write_ptr = get_write_ptr(cb_bias_tiled);
                     for (uint32_t i = c_out_offset_t; i < c_out_offset_t + matmul_N_t; i++) {
                         uint32_t bias_idx = i;
@@ -100,7 +100,7 @@ void kernel_main() {
                         bias_write_ptr += tile_bytes;
                     }
                     noc_async_read_barrier();
-                    cb_push_back(cb_bias_tiled, matmul_N_t);
+                    ckernel::cb_push_back(cb_bias_tiled, matmul_N_t);
                 }
             }
 
@@ -117,7 +117,7 @@ void kernel_main() {
                         if (!is_reducer) {
                             // I'm a worker.
                             // Wait for compute to finish
-                            cb_wait_front(cb_reduction_tiled, output_tiles);
+                            ckernel::cb_wait_front(cb_reduction_tiled, output_tiles);
 
                             // Reset our semaphore
                             *local_semaphore_addr_ptr = 0;
@@ -129,9 +129,9 @@ void kernel_main() {
                             noc_semaphore_wait(local_semaphore_addr_ptr, 1);
 
                             // Hanshake with compute so it can continue
-                            cb_pop_front(cb_reduction_tiled, output_tiles);
-                            cb_reserve_back(cb_worker_ack_back, 1);
-                            cb_push_back(cb_worker_ack_back, 1);
+                            ckernel::cb_pop_front(cb_reduction_tiled, output_tiles);
+                            ckernel::cb_reserve_back(cb_worker_ack_back, 1);
+                            ckernel::cb_push_back(cb_worker_ack_back, 1);
                         } else {
                             // I'm a reducer.
                             // Wait for all workers to finish
@@ -144,7 +144,7 @@ void kernel_main() {
                             for (uint32_t worker_idx = 0; worker_idx < num_workers; worker_idx++) {
                                 // Read data from worker into reduction buffer
                                 // Stall if compute has not cleared buffer
-                                cb_reserve_back(cb_reduction_tiled, output_tiles);
+                                ckernel::cb_reserve_back(cb_reduction_tiled, output_tiles);
                                 uint32_t reduction_write_ptr = get_write_ptr(cb_reduction_tiled);
                                 uint64_t worker_output_read_addr = get_noc_addr(
                                     worker_core_xs[worker_idx], worker_core_ys[worker_idx], worker_output_read_ptr);
@@ -154,14 +154,14 @@ void kernel_main() {
                                     reduction_write_ptr += tile_bytes;
                                 }
                                 noc_async_read_barrier();
-                                cb_push_back(cb_reduction_tiled, output_tiles);
+                                ckernel::cb_push_back(cb_reduction_tiled, output_tiles);
 
                                 const uint64_t worker_semaphore_noc_addr = get_noc_addr(
                                     worker_core_xs[worker_idx], worker_core_ys[worker_idx], semaphore_addr);
                                 noc_semaphore_inc(worker_semaphore_noc_addr, 1);
                             }
 
-                            cb_wait_front(cb_matmul_result_rm, output_tiles);
+                            ckernel::cb_wait_front(cb_matmul_result_rm, output_tiles);
                             uint32_t cb_read_ptr = get_read_ptr(cb_matmul_result_rm);
 
                             for (uint32_t t = t_block; t < t_block_end; ++t) {
@@ -176,7 +176,7 @@ void kernel_main() {
                                 }
                             }
                             noc_async_write_barrier();
-                            cb_pop_front(cb_matmul_result_rm, output_tiles);
+                            ckernel::cb_pop_front(cb_matmul_result_rm, output_tiles);
                         }
                     }
                 }

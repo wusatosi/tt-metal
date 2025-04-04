@@ -12,13 +12,13 @@ void read_and_push_to_cb(const uint32_t cb_id, uint32_t num_tiles_per_cb, uint32
     for (uint32_t i = 0; i < num_tiles_per_cb; i += ublock_size_tiles) {
         // DRAM NOC src address
         std::uint64_t dram_buffer_src_noc_addr = get_noc_addr_from_bank_id<true>(bank_id, dram_buffer_src_addr);
-        cb_reserve_back(cb_id, ublock_size_tiles);
+        ckernel::cb_reserve_back(cb_id, ublock_size_tiles);
         uint32_t l1_write_addr = get_write_ptr(cb_id);
 
         noc_async_read(dram_buffer_src_noc_addr, l1_write_addr, ublock_size_bytes);
         noc_async_read_barrier();
 
-        cb_push_back(cb_id, ublock_size_tiles);
+        ckernel::cb_push_back(cb_id, ublock_size_tiles);
         dram_buffer_src_addr += ublock_size_bytes;
     }
 }

@@ -83,7 +83,7 @@ void kernel_main() {
 
         for (uint32_t m = 0; m < Mt; m++) {  // TODO: Must be 1; generalize to support batch > 32 (ie. Mt > 1)
             // TODO: Generalize to support inner dim blocking; in0 reads has to moved within num_rows_in_one_tile loop
-            cb_reserve_back(cb_id_in0, in0_block_w);
+            ckernel::cb_reserve_back(cb_id_in0, in0_block_w);
 #ifndef IN0_SHARDED
             in0_tensor_id = in0_Mt;
             uint32_t l1_write_addr_in0 = get_write_ptr(cb_id_in0);
@@ -97,9 +97,9 @@ void kernel_main() {
             noc_async_read_barrier();
 #endif
 
-            cb_push_back(cb_id_in0, in0_block_w);
+            ckernel::cb_push_back(cb_id_in0, in0_block_w);
 
-            cb_reserve_back(cb_id_intermed1, out_num_tiles);
+            ckernel::cb_reserve_back(cb_id_intermed1, out_num_tiles);
             uint32_t cb_intermed1_addr = get_write_ptr(cb_id_intermed1);
             for (uint32_t in1_block = 0; in1_block < in1_num_blocks; in1_block++) {
                 const bool last_out = in1_block == in1_num_blocks - 1;
@@ -115,13 +115,13 @@ void kernel_main() {
                          in1_subblock++) {  // TODO: Must be 1; to generalize, need to handle untilizing + reading for
                                             // subblocks
                         // Read 32 untilized tiles and select correct rows to reconstruct single correct tile
-                        cb_wait_front(cb_id_intermed0, intermediate_num_tiles);
+                        ckernel::cb_wait_front(cb_id_intermed0, intermediate_num_tiles);
                         noc_async_read(
                             get_noc_addr(get_read_ptr(cb_id_intermed0)) + row_offset_bytes,
                             cb_intermed1_addr_curr_block,
                             bfloat16_row_bytes_read);
                         noc_async_read_barrier();
-                        cb_pop_front(cb_id_intermed0, intermediate_num_tiles);
+                        ckernel::cb_pop_front(cb_id_intermed0, intermediate_num_tiles);
                         row_offset_bytes += bfloat16_row_bytes;
                         cb_intermed1_addr_curr_block += bfloat16_Nt_bytes;
                     }  // in1_num_subblocks loop
@@ -133,10 +133,10 @@ void kernel_main() {
                 cb_intermed1_addr += bfloat16_row_bytes;
 
             }  // in1_num_blocks loop
-            cb_push_back(cb_id_intermed1, out_num_tiles);
+            ckernel::cb_push_back(cb_id_intermed1, out_num_tiles);
 
 #ifndef OUT_SHARDED
-            cb_wait_front(cb_id_out, out_num_tiles);
+            ckernel::cb_wait_front(cb_id_out, out_num_tiles);
             uint32_t l1_read_addr_out = get_read_ptr(cb_id_out);
             for (uint32_t nt = 0; nt < Nt;
                  nt++) {  // TODO: Must be full MtNt; generalize to support Mt > 1 or blocks > 1
@@ -145,7 +145,7 @@ void kernel_main() {
                 out_tensor_id++;
             }
             noc_async_write_barrier();
-            cb_pop_front(cb_id_out, out_num_tiles);
+            ckernel::cb_pop_front(cb_id_out, out_num_tiles);
 #endif
         }  // Mt loop
 
@@ -155,6 +155,6 @@ void kernel_main() {
     }  // B loop
 
 #ifdef OUT_SHARDED
-    cb_wait_front(cb_id_out, out_num_tiles);
+    ckernel::cb_wait_front(cb_id_out, out_num_tiles);
 #endif
 }

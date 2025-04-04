@@ -36,7 +36,7 @@ void kernel_main() {
     };
     #endif
     uint32_t stick_id = start_id;
-    cb_reserve_back(cb_id_in0, block_height);
+    ckernel::cb_reserve_back(cb_id_in0, block_height);
     uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
     if (aligned) {
         for (uint32_t h = 0; h < block_height; ++h) {
@@ -46,7 +46,7 @@ void kernel_main() {
             l1_write_addr += padded_block_width_bytes;
         }
     } else {
-        cb_reserve_back(cb_id_in1, 1);
+        ckernel::cb_reserve_back(cb_id_in1, 1);
         uint32_t scratch_l1_write_addr = get_write_ptr(cb_id_in1);
         uint64_t scratch_l1_noc_read_addr = get_noc_addr(scratch_l1_write_addr + aligned_offset);
         for (uint32_t h = 0; h < block_height; ++h) {
@@ -60,5 +60,5 @@ void kernel_main() {
         }
     }
     noc_async_read_barrier();
-    cb_push_back(cb_id_in0, block_height);
+    ckernel::cb_push_back(cb_id_in0, block_height);
 }

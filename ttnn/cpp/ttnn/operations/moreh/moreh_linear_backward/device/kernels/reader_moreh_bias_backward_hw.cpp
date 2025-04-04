@@ -39,10 +39,10 @@ void kernel_main() {
 
     constexpr uint32_t onetile = 1;
     for (uint32_t i = start_id; i < start_id + num_tiles; i++) {
-        cb_reserve_back(cb_id_in0, onetile);
+        ckernel::cb_reserve_back(cb_id_in0, onetile);
         l1_write_addr_in0 = get_write_ptr(cb_id_in0);
         noc_async_read_tile(i, s0, l1_write_addr_in0);
         noc_async_read_barrier();
-        cb_push_back(cb_id_in0, onetile);
+        ckernel::cb_push_back(cb_id_in0, onetile);
     }
 }

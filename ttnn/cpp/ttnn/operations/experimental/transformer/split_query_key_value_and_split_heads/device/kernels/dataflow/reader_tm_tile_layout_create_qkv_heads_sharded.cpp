@@ -25,7 +25,7 @@ void kernel_main() {
     const DataFormat data_format = get_dataformat(cb_in0);
 
     // re-order q
-    cb_reserve_back(cb_out0, num_tiles_per_tensor);
+    ckernel::cb_reserve_back(cb_out0, num_tiles_per_tensor);
     uint32_t l1_read_addr = get_read_ptr(cb_in0);
     uint32_t l1_write_addr_out0 = get_write_ptr(cb_out0);
     uint32_t src_noc_addr_offset_outer = 0;
@@ -40,10 +40,10 @@ void kernel_main() {
         src_noc_addr_offset_outer += out_block_wt_size_bytes;
     }
     noc_async_read_barrier();
-    cb_push_back(cb_out0, num_tiles_per_tensor);
+    ckernel::cb_push_back(cb_out0, num_tiles_per_tensor);
 
     // re-order v
-    cb_reserve_back(cb_out2, num_tiles_per_tensor);
+    ckernel::cb_reserve_back(cb_out2, num_tiles_per_tensor);
     l1_read_addr += tensor_stride_size_bytes;
     l1_read_addr += tensor_stride_size_bytes;
     uint32_t l1_write_addr_out2 = get_write_ptr(cb_out2);
@@ -59,5 +59,5 @@ void kernel_main() {
         src_noc_addr_offset_outer += out_block_wt_size_bytes;
     }
     noc_async_read_barrier();
-    cb_push_back(cb_out2, num_tiles_per_tensor);
+    ckernel::cb_push_back(cb_out2, num_tiles_per_tensor);
 }

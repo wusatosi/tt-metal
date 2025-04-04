@@ -31,7 +31,7 @@ void kernel_main() {
 
     prepare_local_cache(cb_id_in2, weights, weight_block_size, /*pad_token_arg_idx=*/6);
 
-    cb_reserve_back(cb_id_in1, 1);
+    ckernel::cb_reserve_back(cb_id_in1, 1);
     uint32_t input_l1_addr = get_write_ptr(cb_id_in1);
 
     volatile tt_l1_ptr input_token_t* input_l1_ptr = reinterpret_cast<volatile tt_l1_ptr input_token_t*>(input_l1_addr);
@@ -43,7 +43,7 @@ void kernel_main() {
         noc_async_read<input_block_size_bytes>(noc_input_src_addr, input_l1_addr, input_block_size_bytes);
         noc_async_read_barrier();
 
-        cb_reserve_back(cb_id_in0, tiles_per_block);
+        ckernel::cb_reserve_back(cb_id_in0, tiles_per_block);
         uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
         for (uint32_t k = 0; k < tile_height; ++k) {
             input_token_t token = input_l1_ptr[k];
@@ -52,7 +52,7 @@ void kernel_main() {
             l1_write_addr += weight_block_size;
         }
         noc_async_read_barrier();
-        cb_push_back(cb_id_in0, tiles_per_block);
+        ckernel::cb_push_back(cb_id_in0, tiles_per_block);
 
         offset += input_block_size_bytes;
         if (offset == input_page_size) {

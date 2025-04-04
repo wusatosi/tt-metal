@@ -30,11 +30,11 @@ void kernel_main() {
 
     for (uint32_t i = 0; i < num_tiles; ++i) {
         // Copy Input
-        cb_reserve_back(cb_id_in0, 1);
+        ckernel::cb_reserve_back(cb_id_in0, 1);
         uint32_t src_buffer_l1_addr = get_write_ptr(cb_id_in0);
         noc_async_read_tile(src_tile_id, s0, src_buffer_l1_addr);
         noc_async_read_barrier();
-        cb_push_back(cb_id_in0, 1);
+        ckernel::cb_push_back(cb_id_in0, 1);
         src_tile_id++;
         for (uint32_t j = 0; j < num_dims; ++j) {
             id_per_dim[j]++;

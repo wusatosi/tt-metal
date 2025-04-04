@@ -27,7 +27,7 @@ void kernel_main() {
 
     for (uint32_t j = 0; j < num_repetitions; j++) {
         for (uint32_t i = 0; i < num_tiles; i += block_size_tiles) {
-            cb_reserve_back(cb_id, block_size_tiles);
+            ckernel::cb_reserve_back(cb_id, block_size_tiles);
 
             // Reset receiver's own semaphore value to INVALID
             noc_semaphore_set(receiver_semaphore_addr_ptr, INVALID);
@@ -38,7 +38,7 @@ void kernel_main() {
             // Wait on receiver's own semaphore value to become VALID (set by sender after it sends the data)
             noc_semaphore_wait(receiver_semaphore_addr_ptr, VALID);
 
-            cb_push_back(cb_id, block_size_tiles);
+            ckernel::cb_push_back(cb_id, block_size_tiles);
         }
     }
 }

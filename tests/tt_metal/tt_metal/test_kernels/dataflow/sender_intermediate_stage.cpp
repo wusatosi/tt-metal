@@ -37,9 +37,9 @@ void kernel_main() {
             noc_semaphore_wait(sender_semaphore_addr_ptr, 1);
 
             if (i > 0) {
-                cb_pop_front(cb_id, block_size_tiles);
+                ckernel::cb_pop_front(cb_id, block_size_tiles);
             }
-            cb_wait_front(cb_id, block_size_tiles);
+            ckernel::cb_wait_front(cb_id, block_size_tiles);
             uint32_t l1_addr = get_read_ptr(cb_id);
 
             // now we have the block in the CB (at l1_addr), we can send to receiver
@@ -62,6 +62,6 @@ void kernel_main() {
             // smaller transfers (<16KB), but for larger transfers it wouldn't make a difference
             // noc_async_write_barrier();
         }
-        cb_pop_front(cb_id, block_size_tiles);
+        ckernel::cb_pop_front(cb_id, block_size_tiles);
     }
 }

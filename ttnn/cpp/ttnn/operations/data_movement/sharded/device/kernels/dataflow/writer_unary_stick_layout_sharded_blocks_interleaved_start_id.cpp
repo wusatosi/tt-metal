@@ -29,7 +29,7 @@ void kernel_main() {
         .bank_base_address = dst_addr + input_width_offset_bytes, .page_size = stick_size};
 #endif
     uint32_t stick_id = start_id;
-    cb_wait_front(cb_id_out0, block_height);
+    ckernel::cb_wait_front(cb_id_out0, block_height);
     uint32_t l1_read_addr = get_read_ptr(cb_id_out0);
     for (uint32_t h = 0; h < block_height; ++h) {
         uint64_t dst_noc_addr = get_noc_addr(stick_id, s0);
@@ -38,5 +38,5 @@ void kernel_main() {
         l1_read_addr += padded_block_width_bytes;
         noc_async_write_barrier();
     }
-    cb_pop_front(cb_id_out0, block_height);
+    ckernel::cb_pop_front(cb_id_out0, block_height);
 }

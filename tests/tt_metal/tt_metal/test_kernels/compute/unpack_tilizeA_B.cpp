@@ -35,22 +35,22 @@ void MAIN {
     tilizeA_B_binary_init(tt::CBIndex::c_0, tt::CBIndex::c_1, per_core_block_tile_cnt, tt::CBIndex::c_16);
 
     for (uint32_t b = 0; b < per_core_block_cnt; ++b) {
-        cb_wait_front(tt::CBIndex::c_0, per_core_block_tile_cnt);
-        cb_wait_front(tt::CBIndex::c_1, per_core_block_tile_cnt);
-        cb_reserve_back(tt::CBIndex::c_16, per_core_block_tile_cnt);
+        ckernel::cb_wait_front(tt::CBIndex::c_0, per_core_block_tile_cnt);
+        ckernel::cb_wait_front(tt::CBIndex::c_1, per_core_block_tile_cnt);
+        ckernel::cb_reserve_back(tt::CBIndex::c_16, per_core_block_tile_cnt);
         unpack_tilizeA_B_block(tt::CBIndex::c_0, tt::CBIndex::c_1, per_core_block_tile_cnt, b);
 
         for (uint i = 0; i < per_core_block_tile_cnt; ++i) {
-            acquire_dst();
+            ckernel::acquire_dst();
             add_tiles_math(tt::CBIndex::c_0, tt::CBIndex::c_1, i, i, 0);
             // dprint_tensix_dest_reg(0);
-            pack_tile(0, tt::CBIndex::c_16);
-            release_dst();
+            ckernel:: pack_tile(0, tt::CBIndex::c_16);
+            ckernel:: release_dst();
         }
 
-        cb_push_back(tt::CBIndex::c_16, per_core_block_tile_cnt);
-        cb_pop_front(tt::CBIndex::c_0, per_core_block_tile_cnt);
-        cb_pop_front(tt::CBIndex::c_1, per_core_block_tile_cnt);
+        ckernel::cb_push_back(tt::CBIndex::c_16, per_core_block_tile_cnt);
+        ckernel::cb_pop_front(tt::CBIndex::c_0, per_core_block_tile_cnt);
+        ckernel::cb_pop_front(tt::CBIndex::c_1, per_core_block_tile_cnt);
     }
 }
 }  // namespace NAMESPACE

@@ -44,8 +44,8 @@ void kernel_main() {
             noc_semaphore_wait(master_sem_addr, 2);
             noc_semaphore_set(master_sem_addr, 0);
             if (j > 0) {
-                cb_wait_front(i, j);
-                cb_pop_front(i, j);
+                ckernel::cb_wait_front(i, j);
+                ckernel::cb_pop_front(i, j);
             }
             // Second level signal indicates "alignment pages". We signal back that we are
             // done processing this step
@@ -53,8 +53,8 @@ void kernel_main() {
 
             if (j > 0) {
                 // snap back to alignment
-                cb_wait_front(i, n_pages - j);
-                cb_pop_front(i, n_pages - j);
+                ckernel::cb_wait_front(i, n_pages - j);
+                ckernel::cb_pop_front(i, n_pages - j);
             }
         }
     }

@@ -56,7 +56,7 @@ void kernel_main() {
 
     uint32_t dst_page_id = 0;
     for (uint32_t i = 0; i < num_dst_rows; ++i) {
-        cb_wait_front(cb_id_out0, cb_pages_per_dst_row);
+        ckernel::cb_wait_front(cb_id_out0, cb_pages_per_dst_row);
         uint32_t src_addr = get_read_ptr(cb_id_out0);
 
         for (uint32_t j = 0; j < num_dst_cols; ++j) {
@@ -67,6 +67,6 @@ void kernel_main() {
         }
 
         noc_async_write_barrier();
-        cb_pop_front(cb_id_out0, cb_pages_per_dst_row);
+        ckernel::cb_pop_front(cb_id_out0, cb_pages_per_dst_row);
     }
 }

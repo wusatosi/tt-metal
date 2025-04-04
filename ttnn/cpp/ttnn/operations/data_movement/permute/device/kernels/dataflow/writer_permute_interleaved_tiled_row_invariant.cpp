@@ -226,7 +226,7 @@ void kernel_main() {
         uint32_t base_output_face_line_offset_bytes = output_face_line_offset * element_size;
 
         // 6d) Wait for data block
-        cb_wait_front(cb_id_out0, 1);
+        ckernel::cb_wait_front(cb_id_out0, 1);
         uint32_t base_l1_read_addr = get_read_ptr(cb_id_out0);
 
         // 6e) Loop over faces in the height dimension
@@ -275,14 +275,14 @@ void kernel_main() {
             }
         }
         noc_async_write_barrier();
-        cb_pop_front(cb_id_out0, 1);
+        ckernel::cb_pop_front(cb_id_out0, 1);
     }
 
     // ------------------------------------------------------------------------
     // 7) Handle padding if needed
     // ------------------------------------------------------------------------
     if constexpr (needs_padding) {
-        cb_wait_front(tt::CBIndex::c_1, 1);
+        ckernel::cb_wait_front(tt::CBIndex::c_1, 1);
         uint32_t l1_read_ptr = get_read_ptr(tt::CBIndex::c_1);
 
         // We'll reuse 'dest_multi_idx' for tile indexing
@@ -330,6 +330,6 @@ void kernel_main() {
             }
         }
         noc_async_write_barrier();
-        cb_pop_front(tt::CBIndex::c_1, 1);
+        ckernel::cb_pop_front(tt::CBIndex::c_1, 1);
     }
 }

@@ -9,6 +9,6 @@ void kernel_main() {
 
     constexpr uint32_t cb_id_in0 = get_compile_time_arg_val(0);
 
-    cb_reserve_back(cb_id_in0, num_units);
-    cb_push_back(cb_id_in0, num_units);
+    ckernel::cb_reserve_back(cb_id_in0, num_units);
+    ckernel::cb_push_back(cb_id_in0, num_units);
 }

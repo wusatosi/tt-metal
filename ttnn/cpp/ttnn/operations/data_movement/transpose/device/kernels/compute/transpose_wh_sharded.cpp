@@ -26,25 +26,25 @@ void MAIN {
     uint32_t tile_idx = 0;
     uint32_t tile_idx_N = 0;
 
-    cb_wait_front(cb_id_in, NHtWt);
-    cb_reserve_back(cb_id_out, NHtWt);
+    ckernel::cb_wait_front(cb_id_in, NHtWt);
+    ckernel::cb_reserve_back(cb_id_out, NHtWt);
     for (uint32_t n = 0; n < N; ++n) {
         tile_idx = tile_idx_N;
         for (uint32_t w = 0; w < Wt; ++w) {
             for (uint32_t h = 0; h < Ht; ++h) {
-                tile_regs_acquire();
+                ckernel:: tile_regs_acquire();
                 transpose_wh_tile(cb_id_in, tile_idx, 0);
-                tile_regs_commit();
-                tile_regs_wait();
-                pack_tile(0, cb_id_out);
-                tile_regs_release();
+                ckernel:: tile_regs_commit();
+                ckernel::tile_regs_wait();
+                ckernel:: pack_tile(0, cb_id_out);
+                ckernel::tile_regs_release();
                 tile_idx += Wt;
             }
             tile_idx = tile_idx - HtWt + 1;
         }
         tile_idx_N += HtWt;
     }
-    cb_push_back(cb_id_out, NHtWt);
-    cb_pop_front(cb_id_in, NHtWt);
+    ckernel::cb_push_back(cb_id_out, NHtWt);
+    ckernel::cb_pop_front(cb_id_in, NHtWt);
 }
 }  // namespace NAMESPACE

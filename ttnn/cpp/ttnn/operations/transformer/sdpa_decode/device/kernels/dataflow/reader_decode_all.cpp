@@ -67,13 +67,13 @@ void kernel_main() {
             constexpr uint32_t cb_index_id = tt::CBIndex::c_8;
             const InterleavedAddrGen<true> addrg = {.bank_base_address = pos_addr, .page_size = index_stick_size_B};
 
-            cb_reserve_back(cb_index_id, 1);
+            ckernel::cb_reserve_back(cb_index_id, 1);
             uint32_t index_cb_wr_ptr = get_write_ptr(cb_index_id);
             // index_tensor has one page to read
             uint64_t tensor_index_noc_addr = get_noc_addr(0, addrg);
             noc_async_read(tensor_index_noc_addr, index_cb_wr_ptr, index_stick_size_B);
             noc_async_read_barrier();
-            cb_push_back(cb_index_id, 1);
+            ckernel::cb_push_back(cb_index_id, 1);
             volatile tt_l1_ptr uint32_t* index_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(index_cb_wr_ptr);
             cur_pos = index_ptr[cur_batch];
         }
@@ -89,12 +89,12 @@ void kernel_main() {
         constexpr uint32_t cb_id_page_table = tt::CBIndex::c_9;
         const InterleavedAddrGen<true> page_table_gen = {
             .bank_base_address = page_table_addr, .page_size = page_table_page_size};
-        cb_reserve_back(cb_id_page_table, 1);
+        ckernel::cb_reserve_back(cb_id_page_table, 1);
         uint32_t page_table_cb_wr_ptr = get_write_ptr(cb_id_page_table);
         uint64_t page_table_noc_addr = get_noc_addr(cur_batch, page_table_gen);
         noc_async_read(page_table_noc_addr, page_table_cb_wr_ptr, page_table_page_size);
         noc_async_read_barrier();
-        cb_push_back(cb_id_page_table, 1);
+        ckernel::cb_push_back(cb_id_page_table, 1);
         page_table_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(page_table_cb_wr_ptr);
     }
     // Sequence length assignment
@@ -146,16 +146,16 @@ void kernel_main() {
         } else {
             q_read_addr = get_noc_addr(output_core_noc_x, output_core_noc_y, q_addr);
         }
-        cb_reserve_back(cb_q_in, q_chunk_tiles);
+        ckernel::cb_reserve_back(cb_q_in, q_chunk_tiles);
         uint32_t q_write_ptr = get_write_ptr(cb_q_in);
         noc_async_read(q_read_addr, q_write_ptr, q_chunk_tiles_bytes);
         noc_async_read_barrier();
-        cb_push_back(cb_q_in, q_chunk_tiles);
+        ckernel::cb_push_back(cb_q_in, q_chunk_tiles);
     } else {
         const InterleavedAddrGenFast<is_dram> q_reader = {
             .bank_base_address = q_addr, .page_size = q_tile_bytes, .data_format = q_data_format};
         uint32_t q_tile_id = q_batch_offset;
-        cb_reserve_back(cb_q_in, q_chunk_tiles);
+        ckernel::cb_reserve_back(cb_q_in, q_chunk_tiles);
         uint32_t q_write_ptr = get_write_ptr(cb_q_in);
         for (uint32_t tile = 0; tile < q_chunk_tiles; ++tile) {
             noc_async_read_tile(q_tile_id, q_reader, q_write_ptr);
@@ -167,7 +167,7 @@ void kernel_main() {
             }
         }
         noc_async_read_barrier();
-        cb_push_back(cb_q_in, q_chunk_tiles);
+        ckernel::cb_push_back(cb_q_in, q_chunk_tiles);
     }
 
     // Read the rest
@@ -190,7 +190,7 @@ void kernel_main() {
             for (uint32_t k_chunk = k_chunk_start; k_chunk < k_chunk_end; ++k_chunk) {
                 // Read K chunk in row-major order (to simplify page mapping). Write tiles to CB in transposed order.
                 const uint32_t k_chunk_start_row_num = k_chunk * Sk_chunk_t;
-                cb_reserve_back(cb_k_in, k_chunk_tiles);
+                ckernel::cb_reserve_back(cb_k_in, k_chunk_tiles);
                 uint32_t k_write_ptr = get_write_ptr(cb_k_in);
                 barrier_count = 0;
                 for (uint32_t row = 0; row < Sk_chunk_t; ++row) {
@@ -211,7 +211,7 @@ void kernel_main() {
                     }
                 }
                 noc_async_read_barrier();
-                cb_push_back(cb_k_in, k_chunk_tiles);
+                ckernel::cb_push_back(cb_k_in, k_chunk_tiles);
 
                 if constexpr (use_attention_mask) {
                     mask_start_tile_id = read_mask_chunk<
@@ -224,7 +224,7 @@ void kernel_main() {
                 }
 
                 // Read V chunk in row major order, write in row-major order
-                cb_reserve_back(cb_v_in, k_chunk_tiles);
+                ckernel::cb_reserve_back(cb_v_in, k_chunk_tiles);
                 uint32_t v_write_ptr = get_write_ptr(cb_v_in);
                 barrier_count = 0;
 
@@ -245,7 +245,7 @@ void kernel_main() {
                     }
                 }
                 noc_async_read_barrier();
-                cb_push_back(cb_v_in, k_chunk_tiles);
+                ckernel::cb_push_back(cb_v_in, k_chunk_tiles);
             }
 
         } else {

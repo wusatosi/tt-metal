@@ -23,8 +23,8 @@ void kernel_main() {
     constexpr uint32_t cb_id_in1 = tt::CBIndex::c_1;
     constexpr bool block_or_width_sharded = get_compile_time_arg_val(2) == 1;
 #ifdef IN0_SHARDED
-    cb_reserve_back(cb_id_in0, num_tiles);
-    cb_push_back(cb_id_in0, num_tiles);
+    ckernel::cb_reserve_back(cb_id_in0, num_tiles);
+    ckernel::cb_push_back(cb_id_in0, num_tiles);
 #else
     uint32_t l1_write_addr_in0;
     constexpr bool src0_is_dram = get_compile_time_arg_val(0) == 1;
@@ -34,8 +34,8 @@ void kernel_main() {
         .bank_base_address = src0_addr, .page_size = src0_tile_bytes, .data_format = src0_data_format};
 #endif
 #ifdef IN1_SHARDED
-    cb_reserve_back(cb_id_in1, num_tiles);
-    cb_push_back(cb_id_in1, num_tiles);
+    ckernel::cb_reserve_back(cb_id_in1, num_tiles);
+    ckernel::cb_push_back(cb_id_in1, num_tiles);
 #else
     uint32_t l1_write_addr_in1;
     uint32_t src1_tile_bytes = get_tile_size(cb_id_in1);
@@ -55,13 +55,13 @@ void kernel_main() {
             uint32_t tile_id = row_start_tile_id;
             for (uint32_t w = 0; w < block_width; w++) {
 #ifndef IN0_SHARDED
-                cb_reserve_back(cb_id_in0, onetile);
+                ckernel::cb_reserve_back(cb_id_in0, onetile);
                 l1_write_addr_in0 = get_write_ptr(cb_id_in0);
                 noc_async_read_tile(tile_id, s0, l1_write_addr_in0);
 #endif
 
 #ifndef IN1_SHARDED
-                cb_reserve_back(cb_id_in1, onetile);
+                ckernel::cb_reserve_back(cb_id_in1, onetile);
                 l1_write_addr_in1 = get_write_ptr(cb_id_in1);
                 noc_async_read_tile(tile_id, s1, l1_write_addr_in1);
 #endif
@@ -70,11 +70,11 @@ void kernel_main() {
                 noc_async_read_barrier();
 
 #ifndef IN0_SHARDED
-                cb_push_back(cb_id_in0, onetile);
+                ckernel::cb_push_back(cb_id_in0, onetile);
 #endif
 
 #ifndef IN1_SHARDED
-                cb_push_back(cb_id_in1, onetile);
+                ckernel::cb_push_back(cb_id_in1, onetile);
 #endif
             }
             row_start_tile_id += num_cores_y * block_width;
@@ -82,13 +82,13 @@ void kernel_main() {
     } else {
         for (uint32_t tile_id = start_id; tile_id < start_id + num_tiles; tile_id++) {
 #ifndef IN0_SHARDED
-            cb_reserve_back(cb_id_in0, onetile);
+            ckernel::cb_reserve_back(cb_id_in0, onetile);
             l1_write_addr_in0 = get_write_ptr(cb_id_in0);
             noc_async_read_tile(tile_id, s0, l1_write_addr_in0);
 #endif
 
 #ifndef IN1_SHARDED
-            cb_reserve_back(cb_id_in1, onetile);
+            ckernel::cb_reserve_back(cb_id_in1, onetile);
             l1_write_addr_in1 = get_write_ptr(cb_id_in1);
             noc_async_read_tile(tile_id, s1, l1_write_addr_in1);
 #endif
@@ -96,11 +96,11 @@ void kernel_main() {
             noc_async_read_barrier();
 
 #ifndef IN0_SHARDED
-            cb_push_back(cb_id_in0, onetile);
+            ckernel::cb_push_back(cb_id_in0, onetile);
 #endif
 
 #ifndef IN1_SHARDED
-            cb_push_back(cb_id_in1, onetile);
+            ckernel::cb_push_back(cb_id_in1, onetile);
 #endif
         }
     }

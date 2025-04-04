@@ -44,11 +44,11 @@ void kernel_main() {
             read_tile_id = i;
         }
         for (uint32_t j = 0; j < num_input_tiles; ++j) {
-            cb_reserve_back(cb_id_in0, onetile);
+            ckernel::cb_reserve_back(cb_id_in0, onetile);
             l1_write_addr_in0 = get_write_ptr(cb_id_in0);
             noc_async_read_tile(read_tile_id, dram_input_addrg, l1_write_addr_in0);
             noc_async_read_barrier();
-            cb_push_back(cb_id_in0, onetile);
+            ckernel::cb_push_back(cb_id_in0, onetile);
             read_tile_id += input_tile_offset;
         }
         if constexpr (dim != 0) {

@@ -10,5 +10,5 @@ void kernel_main() {
 
     constexpr uint32_t cb_id_out = get_compile_time_arg_val(0);
 
-    cb_wait_front(cb_id_out, num_units);
+    ckernel::cb_wait_front(cb_id_out, num_units);
 }

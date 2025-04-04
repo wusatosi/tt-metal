@@ -33,7 +33,7 @@ void kernel_main() {
     step_u.u = step;
 
     for (uint32_t t = 0; t < num_tiles; t++) {
-        cb_reserve_back(cb_out, 1);
+        ckernel::cb_reserve_back(cb_out, 1);
 
         uint32_t tile_idx = tile_offset + t;
 

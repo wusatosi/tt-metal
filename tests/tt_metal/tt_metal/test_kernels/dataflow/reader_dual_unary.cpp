@@ -15,13 +15,13 @@ inline void read_tiles(uint32_t num_tiles, uint32_t src_addr, uint32_t bank_id, 
     for (uint32_t i = 0; i < num_tiles; i += ublock_size_tiles) {
         uint64_t src_noc_addr = get_noc_addr_from_bank_id<true>(bank_id, src_addr);
 
-        cb_reserve_back(cb_id_in, ublock_size_tiles);
+        ckernel::cb_reserve_back(cb_id_in, ublock_size_tiles);
         uint32_t l1_write_addr = get_write_ptr(cb_id_in);
         noc_async_read(src_noc_addr, l1_write_addr, ublock_size_bytes);
 
         noc_async_read_barrier();
 
-        cb_push_back(cb_id_in, ublock_size_tiles);
+        ckernel::cb_push_back(cb_id_in, ublock_size_tiles);
         src_addr += ublock_size_bytes;
     }
 }

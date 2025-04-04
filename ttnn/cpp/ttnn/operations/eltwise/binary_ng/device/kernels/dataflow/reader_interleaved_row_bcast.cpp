@@ -56,12 +56,12 @@ void kernel_main() {
             for (uint32_t c = start_c; c < C && num_tiles_read < dst_num_tiles; ++c, start_th = 0) {
                 for (uint32_t th = start_th; th < Ht && num_tiles_read < dst_num_tiles; ++th, start_tw = 0) {
                     for (uint32_t tw = start_tw; tw < Wt && num_tiles_read < dst_num_tiles; ++tw, ++num_tiles_read) {
-                        cb_reserve_back(cb_id_src, onetile);
+                        ckernel::cb_reserve_back(cb_id_src, onetile);
                         uint32_t l1_write_addr_src = get_write_ptr(cb_id_src);
                         noc_async_read_tile(tile_offset + tw, src, l1_write_addr_src);
                         noc_async_read_barrier();
                         FILL_TILE_WITH_FIRST_ROW(cb_id_src);
-                        cb_push_back(cb_id_src, onetile);
+                        ckernel::cb_push_back(cb_id_src, onetile);
                     }
                 }
                 tile_offset += c_stride;

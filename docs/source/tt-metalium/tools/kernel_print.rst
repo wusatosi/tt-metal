@@ -97,8 +97,8 @@ formats for printing from CBs are ``DataFormat::Float32``, ``DataFormat::Float16
 
     void kernel_main() {
         // Assuming the tile we want to print from CBIndex::c_25 is from the front the CB, print must happen after
-        // this call. If the tile is from the back of the CB, then print must happen after cb_reserve_back().
-        cb_wait_front(CBIndex::c_25, 1);
+        // this call. If the tile is from the back of the CB, then print must happen after ckernel::cb_reserve_back().
+        ckernel::cb_wait_front(CBIndex::c_25, 1);
         ...
 
         // Extract a numpy slice `[0:32:16, 0:32:16]` from tile `0` from `CBIndex::c_25` and print it.
@@ -120,7 +120,7 @@ formats for printing from CBs are ``DataFormat::Float32``, ``DataFormat::Float16
         }
 
         ...
-        cb_pop_front(CBIndex::c_25, 1);
+        ckernel::cb_pop_front(CBIndex::c_25, 1);
     }
 
 .. note::

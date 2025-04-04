@@ -75,7 +75,7 @@ void kernel_main() {
 
         uint32_t j = 0;
         for (uint32_t w = w_start; w < w_end; w++, j++) {
-            cb_wait_front(cb_id_out0, 1);
+            ckernel::cb_wait_front(cb_id_out0, 1);
 
             if (element_size == 4) {
                 volatile tt_l1_ptr uint32_t* index_l1_ptr0 =
@@ -93,7 +93,7 @@ void kernel_main() {
                 index_l1_ptr1[j] = index_l1_ptr0[0];
             }
 
-            cb_pop_front(cb_id_out0, 1);
+            ckernel::cb_pop_front(cb_id_out0, 1);
         }
 
         uint64_t dst_noc_addr = get_noc_addr(noc_id, s0, noc_offset);

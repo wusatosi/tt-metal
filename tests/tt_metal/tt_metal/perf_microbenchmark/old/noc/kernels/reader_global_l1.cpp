@@ -18,7 +18,7 @@ void kernel_main() {
         .bank_base_address = l1_buffer_addr, .log_base_2_of_page_size = tile_size_pow2_exponent};
 
     uint32_t cb_addr;
-    cb_reserve_back(cb_id, cb_tile_cnt);
+    ckernel::cb_reserve_back(cb_id, cb_tile_cnt);
     cb_addr = get_write_ptr(cb_id);
 
     {

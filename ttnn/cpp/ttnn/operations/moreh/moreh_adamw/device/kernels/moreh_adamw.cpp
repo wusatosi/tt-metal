@@ -56,20 +56,20 @@ void MAIN {
     constexpr uint32_t weight_decay_tile = 4;
     constexpr uint32_t onetile = 1;
 
-    cb_wait_front(cb_scalar_args, 5);
-    cb_wait_front(cb_one, onetile);
-    cb_wait_front(cb_beta1_exponent, onetile);
-    cb_wait_front(cb_beta2_exponent, onetile);
+    ckernel::cb_wait_front(cb_scalar_args, 5);
+    ckernel::cb_wait_front(cb_one, onetile);
+    ckernel::cb_wait_front(cb_beta1_exponent, onetile);
+    ckernel::cb_wait_front(cb_beta2_exponent, onetile);
 
     binary_op_init_common(cb_param_in, cb_scalar_args, cb_param_out);
 
     for (uint32_t b = 0; b < per_core_tile_cnt; ++b) {
-        cb_wait_front(cb_param_in, onetile);
-        cb_wait_front(cb_grad_in, onetile);
-        cb_wait_front(cb_exp_avg_in, onetile);
-        cb_wait_front(cb_exp_avg_sq_in, onetile);
+        ckernel::cb_wait_front(cb_param_in, onetile);
+        ckernel::cb_wait_front(cb_grad_in, onetile);
+        ckernel::cb_wait_front(cb_exp_avg_in, onetile);
+        ckernel::cb_wait_front(cb_exp_avg_sq_in, onetile);
 #ifdef AMSGRAD
-        cb_wait_front(cb_max_exp_avg_sq_in, onetile);
+        ckernel::cb_wait_front(cb_max_exp_avg_sq_in, onetile);
 #endif
         // param = param - lr * weight_decay * param.
         // cb_tmp1 : weight_decay * cb_param_in
@@ -102,16 +102,16 @@ void MAIN {
         ////////////////////////////////////////////////////////////////////////
         // exp_avg_sq = exp_avg_sq * beta2 + grad * grad * (1 - beta2);
         // cb_tmp1 = (1 - beta2)
-        tile_regs_acquire();
-        cb_reserve_back(cb_tmp1, onetile);
+        ckernel:: tile_regs_acquire();
+        ckernel::cb_reserve_back(cb_tmp1, onetile);
         sub_tiles_init_with_dt(cb_one, cb_scalar_args);
         sub_tiles(cb_one, cb_scalar_args, first_tile, beta2_tile, dst0);
-        tile_regs_commit();
+        ckernel:: tile_regs_commit();
 
-        tile_regs_wait();
+        ckernel::tile_regs_wait();
         pack_tile_with_dt(dst0, cb_tmp1);
-        cb_push_back(cb_tmp1, onetile);
-        tile_regs_release();
+        ckernel::cb_push_back(cb_tmp1, onetile);
+        ckernel::tile_regs_release();
 
         // cb_tmp2 = grad * grad
         mul_tiles_to_cb(cb_grad_in, cb_grad_in, cb_tmp2, first_tile, first_tile, /*pop0=*/0, /*pop1=*/0);
@@ -137,44 +137,44 @@ void MAIN {
         // cb_beta2_exponent = pow(beta2, step); Calculated from host
 
         // cb_tmp1 = 1 / (1 - cb_beta2_exponent);
-        tile_regs_acquire();
-        cb_reserve_back(cb_tmp1, onetile);
+        ckernel:: tile_regs_acquire();
+        ckernel::cb_reserve_back(cb_tmp1, onetile);
         sub_tiles_init_with_dt(cb_one, cb_beta2_exponent);
         sub_tiles(cb_one, cb_beta2_exponent, first_tile, first_tile, dst0);
         recip_tile_init();
         recip_tile(dst0);
-        tile_regs_commit();
+        ckernel:: tile_regs_commit();
 
-        tile_regs_wait();
+        ckernel::tile_regs_wait();
         pack_tile_with_dt(dst0, cb_tmp1);
-        cb_push_back(cb_tmp1, onetile);
-        tile_regs_release();
+        ckernel::cb_push_back(cb_tmp1, onetile);
+        ckernel::tile_regs_release();
 
 #ifdef AMSGRAD
         // tmp_cb_max_exp_avg_sq = max(cb_max_exp_avg_sq_in, tmp_cb_exp_avg_sq);
-        tile_regs_acquire();
-        cb_reserve_back(tmp_cb_max_exp_avg_sq, onetile);
+        ckernel:: tile_regs_acquire();
+        ckernel::cb_reserve_back(tmp_cb_max_exp_avg_sq, onetile);
         copy_tile_init_with_dt(cb_max_exp_avg_sq_in);
-        copy_tile(cb_max_exp_avg_sq_in, first_tile, dst0);
+        ckernel:: copy_tile(cb_max_exp_avg_sq_in, first_tile, dst0);
         copy_tile_init_with_dt(tmp_cb_exp_avg_sq);
-        copy_tile(tmp_cb_exp_avg_sq, first_tile, dst1);
+        ckernel:: copy_tile(tmp_cb_exp_avg_sq, first_tile, dst1);
         max_tile_init();
         max_tile(dst0, dst1);
-        tile_regs_commit();
+        ckernel:: tile_regs_commit();
 
-        tile_regs_wait();
+        ckernel::tile_regs_wait();
         pack_tile_with_dt(dst0, tmp_cb_max_exp_avg_sq);
-        cb_push_back(tmp_cb_max_exp_avg_sq, onetile);
-        tile_regs_release();
+        ckernel::cb_push_back(tmp_cb_max_exp_avg_sq, onetile);
+        ckernel::tile_regs_release();
 
         // cb_max_exp_avg_sq_out
         copy_tile_to_cb(tmp_cb_max_exp_avg_sq, cb_max_exp_avg_sq_out, first_tile, /*pop=*/0);
 #endif
 
         // cb_tmp1 = sqrt(exp_avg_sq / cb_tmp1);
-        tile_regs_acquire();
-        cb_wait_front(cb_tmp1, onetile);
-        cb_reserve_back(cb_tmp1, onetile);
+        ckernel:: tile_regs_acquire();
+        ckernel::cb_wait_front(cb_tmp1, onetile);
+        ckernel::cb_reserve_back(cb_tmp1, onetile);
 #ifdef AMSGRAD
         mul_tiles_init_with_dt(tmp_cb_max_exp_avg_sq, cb_tmp1);
         mul_tiles(tmp_cb_max_exp_avg_sq, cb_tmp1, first_tile, first_tile, dst0);
@@ -183,51 +183,51 @@ void MAIN {
         mul_tiles(tmp_cb_exp_avg_sq, cb_tmp1, first_tile, first_tile, dst0);
 #endif
         sqrt_tile_init();
-        sqrt_tile(dst0);
-        tile_regs_commit();
+        ckernel:: sqrt_tile(dst0);
+        ckernel:: tile_regs_commit();
 
-        tile_regs_wait();
+        ckernel::tile_regs_wait();
         pack_tile_with_dt(dst0, cb_tmp1);
-        cb_pop_front(cb_tmp1, onetile);
-        cb_push_back(cb_tmp1, onetile);
+        ckernel::cb_pop_front(cb_tmp1, onetile);
+        ckernel::cb_push_back(cb_tmp1, onetile);
 #ifdef AMSGRAD
-        cb_pop_front(tmp_cb_max_exp_avg_sq, onetile);
+        ckernel::cb_pop_front(tmp_cb_max_exp_avg_sq, onetile);
 #endif
-        cb_pop_front(tmp_cb_exp_avg_sq, onetile);
-        tile_regs_release();
+        ckernel::cb_pop_front(tmp_cb_exp_avg_sq, onetile);
+        ckernel::tile_regs_release();
 
         // cb_tmp1 = 1 / (cb_tmp1 + eps)
-        tile_regs_acquire();
-        cb_wait_front(cb_tmp1, onetile);
-        cb_reserve_back(cb_tmp1, onetile);
+        ckernel:: tile_regs_acquire();
+        ckernel::cb_wait_front(cb_tmp1, onetile);
+        ckernel::cb_reserve_back(cb_tmp1, onetile);
         add_tiles_init_with_dt(cb_tmp1, cb_scalar_args);
         add_tiles(cb_tmp1, cb_scalar_args, first_tile, eps_tile, dst0);
         recip_tile_init();
         recip_tile(dst0);
-        tile_regs_commit();
+        ckernel:: tile_regs_commit();
 
-        tile_regs_wait();
+        ckernel::tile_regs_wait();
         pack_tile_with_dt(dst0, cb_tmp1);
-        cb_pop_front(cb_tmp1, onetile);
-        cb_push_back(cb_tmp1, onetile);
-        tile_regs_release();
+        ckernel::cb_pop_front(cb_tmp1, onetile);
+        ckernel::cb_push_back(cb_tmp1, onetile);
+        ckernel::tile_regs_release();
 
         // bias_correction1 = 1 - pow(beta1, step);
         // cb_beta1_exponent = pow(beta1, step); Calculated from host
 
         // cb_tmp2 = 1 / (1 - cb_beta1_exponent);
-        tile_regs_acquire();
-        cb_reserve_back(cb_tmp2, onetile);
+        ckernel:: tile_regs_acquire();
+        ckernel::cb_reserve_back(cb_tmp2, onetile);
         sub_tiles_init_with_dt(cb_one, cb_beta1_exponent);
         sub_tiles(cb_one, cb_beta1_exponent, first_tile, first_tile, dst0);
         recip_tile_init();
         recip_tile(dst0);
-        tile_regs_commit();
+        ckernel:: tile_regs_commit();
 
-        tile_regs_wait();
+        ckernel::tile_regs_wait();
         pack_tile_with_dt(dst0, cb_tmp2);
-        cb_push_back(cb_tmp2, onetile);
-        tile_regs_release();
+        ckernel::cb_push_back(cb_tmp2, onetile);
+        ckernel::tile_regs_release();
 
         // cb_tmp2 = lr * cb_tmp2;
         mul_tiles_to_cb(cb_scalar_args, cb_tmp2, cb_tmp2, lr_tile, first_tile, /*pop0=*/0, /*pop1=*/1);
@@ -241,18 +241,18 @@ void MAIN {
         // param = tmp_cb_param - cb_tmp1;
         sub_tiles_to_cb(tmp_cb_param, cb_tmp1, cb_param_out, first_tile, first_tile);
 
-        cb_pop_front(cb_param_in, onetile);
-        cb_pop_front(cb_grad_in, onetile);
-        cb_pop_front(cb_exp_avg_in, onetile);
-        cb_pop_front(cb_exp_avg_sq_in, onetile);
+        ckernel::cb_pop_front(cb_param_in, onetile);
+        ckernel::cb_pop_front(cb_grad_in, onetile);
+        ckernel::cb_pop_front(cb_exp_avg_in, onetile);
+        ckernel::cb_pop_front(cb_exp_avg_sq_in, onetile);
 #ifdef AMSGRAD
-        cb_pop_front(cb_max_exp_avg_sq_in, onetile);
+        ckernel::cb_pop_front(cb_max_exp_avg_sq_in, onetile);
 #endif
     }
 
-    cb_pop_front(cb_scalar_args, 5);
-    cb_pop_front(cb_one, onetile);
-    cb_pop_front(cb_beta1_exponent, onetile);
-    cb_pop_front(cb_beta2_exponent, onetile);
+    ckernel::cb_pop_front(cb_scalar_args, 5);
+    ckernel::cb_pop_front(cb_one, onetile);
+    ckernel::cb_pop_front(cb_beta1_exponent, onetile);
+    ckernel::cb_pop_front(cb_beta2_exponent, onetile);
 }  // void MAIN
 }  // namespace NAMESPACE

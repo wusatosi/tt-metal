@@ -42,8 +42,8 @@ void kernel_main() {
         uint64_t src0_noc_addr = get_noc_addr_from_bank_id<true>(src0_dram_bank_id, src0_addr);
         uint64_t src1_noc_addr = get_noc_addr_from_bank_id<true>(src1_dram_bank_id, src1_addr);
 
-        cb_reserve_back(cb_id_in0, in0_block_tile_cnt);
-        cb_reserve_back(cb_id_in1, in1_block_tile_cnt);
+        ckernel::cb_reserve_back(cb_id_in0, in0_block_tile_cnt);
+        ckernel::cb_reserve_back(cb_id_in1, in1_block_tile_cnt);
 
         l1_write_addr_in0 = get_write_ptr(cb_id_in0);
         l1_write_addr_in1 = get_write_ptr(cb_id_in1);
@@ -53,8 +53,8 @@ void kernel_main() {
 
         noc_async_read_barrier();
 
-        cb_push_back(cb_id_in0, in0_block_tile_cnt);
-        cb_push_back(cb_id_in1, in1_block_tile_cnt);
+        ckernel::cb_push_back(cb_id_in0, in0_block_tile_cnt);
+        ckernel::cb_push_back(cb_id_in1, in1_block_tile_cnt);
 
         src0_addr += in0_block_size_bytes;
         src1_addr += in1_block_size_bytes;
@@ -63,9 +63,9 @@ void kernel_main() {
     if (with_bias) {
         uint64_t src2_noc_addr = get_noc_addr_from_bank_id<true>(src2_dram_bank_id, src2_addr);
         l1_write_addr_in2 = get_write_ptr(cb_id_in2);
-        cb_reserve_back(cb_id_in2, in2_block_tile_cnt);
+        ckernel::cb_reserve_back(cb_id_in2, in2_block_tile_cnt);
         noc_async_read(src2_noc_addr, l1_write_addr_in2, in2_block_size_bytes);
         noc_async_read_barrier();
-        cb_push_back(cb_id_in2, in2_block_tile_cnt);
+        ckernel::cb_push_back(cb_id_in2, in2_block_tile_cnt);
     }
 }

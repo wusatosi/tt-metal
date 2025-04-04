@@ -13,7 +13,7 @@
  */
 FORCE_INLINE void generate_index_tile(const uint32_t cb_id, const uint32_t wt) {
     // TODO: investigate moving to compile time (binary size is at risk)
-    cb_reserve_back(cb_id, 1);
+    ckernel::cb_reserve_back(cb_id, 1);
     uint32_t write_addr = get_write_ptr(cb_id);
     volatile tt_l1_ptr uint32_t* ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(write_addr);
     uint16_t wt_offset = wt << 5;
@@ -30,7 +30,7 @@ FORCE_INLINE void generate_index_tile(const uint32_t cb_id, const uint32_t wt) {
             }
         }
     }
-    cb_push_back(cb_id, 1);
+    ckernel::cb_push_back(cb_id, 1);
 }
 
 void kernel_main() {
@@ -80,7 +80,7 @@ void kernel_main() {
     uint32_t tile_id_expert = 0;
     for (uint32_t i = 0; i < Ht; ++i) {
         // input
-        cb_reserve_back(cb_id_in0, Wt);
+        ckernel::cb_reserve_back(cb_id_in0, Wt);
         uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
         for (uint32_t j = 0; j < Wt; ++j) {
             noc_async_read_tile(tile_id, s0, l1_write_addr);
@@ -89,10 +89,10 @@ void kernel_main() {
             generate_index_tile(cb_intermed_index, j);
         }
         noc_async_read_barrier();
-        cb_push_back(cb_id_in0, Wt);
+        ckernel::cb_push_back(cb_id_in0, Wt);
 
         // topk mask
-        cb_reserve_back(cb_topk_mask, Kt);
+        ckernel::cb_reserve_back(cb_topk_mask, Kt);
         uint32_t l1_write_addr_topk = get_write_ptr(cb_topk_mask);
         for (uint32_t j = 0; j < Kt; ++j) {
             noc_async_read_tile(tile_id_topk, s1, l1_write_addr_topk);
@@ -100,10 +100,10 @@ void kernel_main() {
             tile_id_topk++;
         }
         noc_async_read_barrier();
-        cb_push_back(cb_topk_mask, Kt);
+        ckernel::cb_push_back(cb_topk_mask, Kt);
 
         // expert mask
-        cb_reserve_back(cb_expert_mask, Wt);
+        ckernel::cb_reserve_back(cb_expert_mask, Wt);
         uint32_t l1_write_addr_expert = get_write_ptr(cb_expert_mask);
         for (uint32_t j = 0; j < Wt; ++j) {
             noc_async_read_tile(tile_id_expert, s2, l1_write_addr_expert);
@@ -111,6 +111,6 @@ void kernel_main() {
             tile_id_expert++;
         }
         noc_async_read_barrier();
-        cb_push_back(cb_expert_mask, Wt);
+        ckernel::cb_push_back(cb_expert_mask, Wt);
     }
 }

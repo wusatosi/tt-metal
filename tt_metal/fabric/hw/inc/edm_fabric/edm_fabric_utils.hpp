@@ -57,15 +57,15 @@ FORCE_INLINE void send_chunk_from_address(
 template <EDM_IO_BLOCKING_MODE blocking_mode = EDM_IO_BLOCKING_MODE::BLOCKING>
 FORCE_INLINE void send_chunk(
     const uint32_t& cb_id, const uint32_t& num_pages, const uint32_t& page_size, uint64_t remote_l1_write_addr) {
-    cb_wait_front(cb_id, num_pages);
+    ckernel::cb_wait_front(cb_id, num_pages);
     uint32_t l1_read_addr = get_read_ptr(cb_id);
     noc_async_write(l1_read_addr, remote_l1_write_addr, page_size * num_pages);
     if constexpr (blocking_mode == EDM_IO_BLOCKING_MODE::FLUSH_BLOCKING) {
         noc_async_writes_flushed();
-        cb_pop_front(cb_id, num_pages);
+        ckernel::cb_pop_front(cb_id, num_pages);
     } else if constexpr (blocking_mode == EDM_IO_BLOCKING_MODE::BLOCKING) {
         noc_async_write_barrier();
-        cb_pop_front(cb_id, num_pages);
+        ckernel::cb_pop_front(cb_id, num_pages);
     }
 }
 

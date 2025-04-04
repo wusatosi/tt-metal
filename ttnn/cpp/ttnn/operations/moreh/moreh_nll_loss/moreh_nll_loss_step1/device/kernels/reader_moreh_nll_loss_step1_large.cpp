@@ -58,8 +58,8 @@ void kernel_main() {
         uint32_t target_noc_id = i;
         read_tile(cb_target, addrg_target, target_noc_id);
 
-        cb_reserve_back(cb_output, onetile);
-        cb_wait_front(cb_target, onetile);
+        ckernel::cb_reserve_back(cb_output, onetile);
+        ckernel::cb_wait_front(cb_target, onetile);
 
         auto output_l1_ptr = get_write_ptr<uint16_t>(cb_output);
         auto target_l1_ptr = get_read_ptr<int32_t>(cb_target);
@@ -77,12 +77,12 @@ void kernel_main() {
                         uint32_t weight_tilized_idx = get_tilized_idx(0, target_idx);
                         read_value(cb_weight, addrg_weight, noc_id, weight_tilized_idx);
 
-                        cb_wait_front(cb_weight, onetile);
+                        ckernel::cb_wait_front(cb_weight, onetile);
                         auto weight_l1_ptr = get_read_ptr<uint16_t>(cb_weight);
 
                         output_l1_ptr[inout_idx] = weight_l1_ptr[weight_tilized_idx];
 
-                        cb_pop_front(cb_weight, onetile);
+                        ckernel::cb_pop_front(cb_weight, onetile);
 #else
                         output_l1_ptr[inout_idx] = u16_one;
 #endif
@@ -94,8 +94,8 @@ void kernel_main() {
                 }
             }
         }
-        cb_push_back(cb_output, onetile);
+        ckernel::cb_push_back(cb_output, onetile);
 
-        cb_pop_front(cb_target, onetile);
+        ckernel::cb_pop_front(cb_target, onetile);
     }
 }

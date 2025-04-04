@@ -22,7 +22,7 @@ void kernel_main() {
     // Loop over all the tiles and write them to the output buffer
     for (uint32_t i = 0; i < n_tiles; i++) {
         // Make sure there is a tile in the circular buffer
-        cb_wait_front(cb_out0, 1);
+        ckernel::cb_wait_front(cb_out0, 1);
         uint32_t cb_out0_addr = get_read_ptr(cb_out0);
         // write the tile to DRAM
         noc_async_write_tile(i, c, cb_out0_addr);
@@ -32,6 +32,6 @@ void kernel_main() {
                                     // use noc_async_write_barrier() at least once at the end of
                                     // data movement kernel to make sure all writes are done.
         // Mark the tile as consumed
-        cb_pop_front(cb_out0, 1);
+        ckernel::cb_pop_front(cb_out0, 1);
     }
 }

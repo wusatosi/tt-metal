@@ -42,26 +42,26 @@ void kernel_main() {
 
     // clip_coef_clamped
     const auto clip_coef_clamped_l1_write_ptr = get_write_ptr(cb_id_clip_coef_clamped);
-    cb_reserve_back(cb_id_clip_coef_clamped, onetile);
+    ckernel::cb_reserve_back(cb_id_clip_coef_clamped, onetile);
     if (clip_coef_clamped_is_dram) {
         noc_async_read_tile(0, dram_clip_coef_clamped_addrg, clip_coef_clamped_l1_write_ptr);
     } else {
         noc_async_read_tile(0, l1_clip_coef_clamped_addrg, clip_coef_clamped_l1_write_ptr);
     }
     noc_async_read_barrier();
-    cb_push_back(cb_id_clip_coef_clamped, onetile);
+    ckernel::cb_push_back(cb_id_clip_coef_clamped, onetile);
 
     // input
     const auto input_l1_write_ptr = get_write_ptr(cb_id_input);
     for (uint32_t tile_idx = 0; tile_idx < num_tiles; ++tile_idx) {
-        cb_reserve_back(cb_id_input, onetile);
+        ckernel::cb_reserve_back(cb_id_input, onetile);
         if (input_is_dram) {
             noc_async_read_tile(tile_idx, dram_input_addrg, input_l1_write_ptr);
         } else {
             noc_async_read_tile(tile_idx, l1_input_addrg, input_l1_write_ptr);
         }
         noc_async_read_barrier();
-        cb_push_back(cb_id_input, onetile);
+        ckernel::cb_push_back(cb_id_input, onetile);
     }
 
 }  // void kernel_main()

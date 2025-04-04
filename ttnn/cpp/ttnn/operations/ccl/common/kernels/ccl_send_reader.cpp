@@ -160,7 +160,7 @@ void kernel_main() {
             uint32_t offset_into_worker_slice = 0;
             bool last_page_of_worker = false;
             for (uint32_t p = 0; p < command_tensor.worker_pages_per_slice; p += packet_size_in_pages) {
-                cb_reserve_back(cb_id, packet_size_in_pages);
+                ckernel::cb_reserve_back(cb_id, packet_size_in_pages);
                 const uint32_t local_l1_scratch_buffer_address =
                     get_write_ptr(cb_id) + sizeof(PACKET_HEADER_TYPE);
 
@@ -193,7 +193,7 @@ void kernel_main() {
                     payload_page_size,
                     last_page_of_worker);
 
-                cb_push_back(cb_id, packet_size_in_pages);
+                ckernel::cb_push_back(cb_id, packet_size_in_pages);
             }
         }
     }

@@ -113,12 +113,12 @@ void kernel_main() {
     const uint32_t out_base_l1_addr = get_write_ptr(out_cb_id);
 
     if constexpr (is_reader) {
-        cb_reserve_back(pad_cb_id, 1);
+        ckernel::cb_reserve_back(pad_cb_id, 1);
         const uint16_t pad_val = pad_val_u32;
         fill_with_val(get_write_ptr(pad_cb_id), stick_nbytes / elem_nbytes, pad_val);
-        cb_push_back(pad_cb_id, 1);
+        ckernel::cb_push_back(pad_cb_id, 1);
     } else {
-        cb_wait_front(pad_cb_id, 1);
+        ckernel::cb_wait_front(pad_cb_id, 1);
     }
 
     uint32_t padding_config_l1_addr = get_read_ptr(padding_config_cb_id);
@@ -140,11 +140,11 @@ void kernel_main() {
 
     // input shards
     if constexpr (is_reader) {
-        cb_reserve_back(src_cb_id, in_nsticks);
-        cb_push_back(src_cb_id, in_nsticks);
+        ckernel::cb_reserve_back(src_cb_id, in_nsticks);
+        ckernel::cb_push_back(src_cb_id, in_nsticks);
     }
 
-    cb_wait_front(in_cb_id, in_nsticks);  // make sure untilized data is available
+    ckernel::cb_wait_front(in_cb_id, in_nsticks);  // make sure untilized data is available
 
     // copy data as per remote config
     uint32_t config_data_l1_addr = get_read_ptr(remote_config_cb_id);

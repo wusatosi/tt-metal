@@ -17,16 +17,16 @@ void MAIN {
     // - uses reader_unary_transpose_wh
     // - transpose_wh each tile
     for (uint32_t n = 0; n < NHtWt; n++) {
-        cb_wait_front(tt::CBIndex::c_0, 1);
-        cb_reserve_back(tt::CBIndex::c_16, 1);
+        ckernel::cb_wait_front(tt::CBIndex::c_0, 1);
+        ckernel::cb_reserve_back(tt::CBIndex::c_16, 1);
 
-        acquire_dst();
+        ckernel::acquire_dst();
         transpose_wh_tile(tt::CBIndex::c_0, 0, 0);
-        pack_tile(0, tt::CBIndex::c_16);
-        release_dst();
+        ckernel:: pack_tile(0, tt::CBIndex::c_16);
+        ckernel:: release_dst();
 
-        cb_push_back(tt::CBIndex::c_16, 1);
-        cb_pop_front(tt::CBIndex::c_0, 1);
+        ckernel::cb_push_back(tt::CBIndex::c_16, 1);
+        ckernel::cb_pop_front(tt::CBIndex::c_0, 1);
     }
 }
 }  // namespace NAMESPACE

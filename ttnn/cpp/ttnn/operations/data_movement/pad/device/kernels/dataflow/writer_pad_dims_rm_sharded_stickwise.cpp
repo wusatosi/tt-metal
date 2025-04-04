@@ -42,7 +42,7 @@ void kernel_main() {
     constexpr auto output_shard_cb = get_compile_time_arg_val(4);
     constexpr auto padding_value_cb = get_compile_time_arg_val(5);
 
-    cb_reserve_back(output_shard_cb, padded_shard_height);
+    ckernel::cb_reserve_back(output_shard_cb, padded_shard_height);
     uint32_t output_shard_base_addr = get_write_ptr(output_shard_cb);
 
     fill_cb_with_padding_value<padding_value_num_bytes, padded_stick_bytes>(padding_value_cb, padding_value_as_u32);
@@ -53,7 +53,7 @@ void kernel_main() {
         noc_async_write(padding_value_base_addr, output_stick_noc_addr, padded_stick_bytes);
         noc_async_write_barrier();
 
-        cb_push_back(output_shard_cb, 1);
+        ckernel::cb_push_back(output_shard_cb, 1);
 
         output_stick_noc_addr += padded_stick_bytes;
     }

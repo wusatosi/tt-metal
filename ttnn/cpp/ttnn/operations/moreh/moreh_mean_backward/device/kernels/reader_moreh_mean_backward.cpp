@@ -95,10 +95,10 @@ void kernel_main() {
         auto read_tile_id = get_output_grad_tile(
             i, input_grad_rank, output_grad_dim, output_grad_stride, input_grad_dim, input_grad_stride, need_bcast_dim);
 
-        cb_reserve_back(cb_id_in0, onetile);
+        ckernel::cb_reserve_back(cb_id_in0, onetile);
         l1_write_addr_in0 = get_write_ptr(cb_id_in0);
         noc_async_read_tile(read_tile_id, output_grad_addrg, l1_write_addr_in0);
         noc_async_read_barrier();
-        cb_push_back(cb_id_in0, onetile);
+        ckernel::cb_push_back(cb_id_in0, onetile);
     }
 }

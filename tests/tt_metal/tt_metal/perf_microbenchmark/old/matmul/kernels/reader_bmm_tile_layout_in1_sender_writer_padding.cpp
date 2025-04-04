@@ -140,7 +140,7 @@ void kernel_main() {
         uint32_t in1_tensor_current_block_start_tile_id = in1_tensor_start_tile_id;
         for (uint32_t block = 0; block < num_blocks; block++) {
             // Operand 1
-            cb_reserve_back(cb_id_in1, in1_block_num_tiles);
+            ckernel::cb_reserve_back(cb_id_in1, in1_block_num_tiles);
             l1_write_addr_in1 = get_write_ptr(cb_id_in1);
 
             uint32_t in1_start_address = l1_write_addr_in1;  // copy start address of block, to be used for mcasting
@@ -204,7 +204,7 @@ void kernel_main() {
 
 #endif
 
-            cb_push_back(cb_id_in1, in1_block_num_tiles);
+            ckernel::cb_push_back(cb_id_in1, in1_block_num_tiles);
         }
 #ifdef FUSE_BIAS
         // Only read bias on first batch
@@ -213,7 +213,7 @@ void kernel_main() {
             *(in3_mcast_receiver_semaphore_addr_ptr) = VALID;
 #endif
             // Operand 1
-            cb_reserve_back(cb_id_in3, in1_block_w);
+            ckernel::cb_reserve_back(cb_id_in3, in1_block_w);
             l1_write_addr_in3 = get_write_ptr(cb_id_in3);
 
             uint32_t in3_start_address = l1_write_addr_in3;  // copy start address of block, to be used for mcasting
@@ -272,7 +272,7 @@ void kernel_main() {
 
 #endif
 
-            cb_push_back(cb_id_in3, in1_block_w);
+            ckernel::cb_push_back(cb_id_in3, in1_block_w);
         }
 #endif
         if (bcast_B == 0) {
@@ -297,7 +297,7 @@ void kernel_main() {
                     subblock_tiles_addr_skip = padded_subblock_tiles_addr_skip;
                 }
 
-                cb_wait_front(cb_id_out0, out_subblock_tile_count);
+                ckernel::cb_wait_front(cb_id_out0, out_subblock_tile_count);
                 uint32_t l1_read_addr = get_read_ptr(cb_id_out0);
 
                 for (uint32_t h = 0; h < out_subblock_h_; h++) {
@@ -315,17 +315,17 @@ void kernel_main() {
                 }
 
                 noc_async_write_barrier();
-                cb_pop_front(cb_id_out0, out_subblock_tile_count);
+                ckernel::cb_pop_front(cb_id_out0, out_subblock_tile_count);
                 out_tensor_sbw_start_tile_id += out_tensor_next_subblock_stride_w;
             }
             // Pop fully padded subblocks along the row
-            cb_wait_front(cb_id_out0, padded_block_tiles_w_skip);
-            cb_pop_front(cb_id_out0, padded_block_tiles_w_skip);
+            ckernel::cb_wait_front(cb_id_out0, padded_block_tiles_w_skip);
+            ckernel::cb_pop_front(cb_id_out0, padded_block_tiles_w_skip);
             out_tensor_sbh_start_tile_id += out_tensor_next_subblock_stride_h;
         }
         // Pop row(s) of fully padded subblocks
-        cb_wait_front(cb_id_out0, padded_block_tiles_h_skip);
-        cb_pop_front(cb_id_out0, padded_block_tiles_h_skip);
+        ckernel::cb_wait_front(cb_id_out0, padded_block_tiles_h_skip);
+        ckernel::cb_pop_front(cb_id_out0, padded_block_tiles_h_skip);
         out_tensor_start_tile_id += MtNt;
     }
 }

@@ -41,14 +41,14 @@ void kernel_main() {
 
         auto input_tile_idx = outer_idx * outer_stride + inner_idx;
         for (uint32_t d = 0; d < num_reduced_tiles_along_dim; ++d) {
-            cb_reserve_back(cb_id_input, 1);
+            ckernel::cb_reserve_back(cb_id_input, 1);
             if (input_is_dram) {
                 noc_async_read_tile(input_tile_idx, dram_input_addrg, input_l1_write_ptr);
             } else {
                 noc_async_read_tile(input_tile_idx, l1_input_addrg, input_l1_write_ptr);
             }
             noc_async_read_barrier();
-            cb_push_back(cb_id_input, 1);
+            ckernel::cb_push_back(cb_id_input, 1);
             input_tile_idx += inner_stride;
         }
 

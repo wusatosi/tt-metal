@@ -102,7 +102,7 @@ void kernel_main() {
                 // read in input data for current block
                 // in0 DRAM -> L1 (activations in tiled form)
                 // load block [in0_block_h_i, in0_block_w_i]
-                cb_reserve_back(in0_cb_id, in0_block_num_tiles);
+                ckernel::cb_reserve_back(in0_cb_id, in0_block_num_tiles);
                 uint32_t in0_write_l1_addr = get_write_ptr(in0_cb_id);
                 uint32_t in0_row_start_tile_id =
                     in0_block_h_i * in0_next_block_stride_h + in0_block_w_i * in0_next_block_stride_w;
@@ -120,10 +120,10 @@ void kernel_main() {
                 }
                 noc_async_read_barrier();
                 in0_current_block_start_tile_id += in0_next_block_stride_w;
-                cb_push_back(in0_cb_id, in0_block_num_tiles);
+                ckernel::cb_push_back(in0_cb_id, in0_block_num_tiles);
 
                 // in1 DRAM -> L1 (weights in tiled form)
-                cb_reserve_back(in1_cb_id, in1_block_num_tiles);
+                ckernel::cb_reserve_back(in1_cb_id, in1_block_num_tiles);
                 uint32_t in1_write_l1_addr = get_write_ptr(in1_cb_id);
                 uint32_t in1_row_start_tile_id =
                     in0_block_w_i * in1_next_block_stride_h + in1_block_w_i * in1_next_block_stride_w;
@@ -141,7 +141,7 @@ void kernel_main() {
                 }  // for in1_block_h
                 noc_async_read_barrier();
                 in1_current_block_start_tile_id += in1_next_block_stride_h;  // in1_width_ntiles * in1_block_h
-                cb_push_back(in1_cb_id, in1_block_num_tiles);
+                ckernel::cb_push_back(in1_cb_id, in1_block_num_tiles);
             }  // for in0_num_blocks_w
             in1_start_tile_id += in1_next_block_stride_w;  // in1_block_w
         }  // for in1_num_blocks_w

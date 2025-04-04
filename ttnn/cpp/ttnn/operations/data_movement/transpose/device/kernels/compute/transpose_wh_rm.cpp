@@ -16,26 +16,26 @@ ALWI void transpose_with_untilize(uint32_t cb_tilize, uint32_t cb_untilize, uint
 
     for (uint32_t w = 0; w < Wt; ++w) {
         transpose_wh_init_short(cb_tilize);
-        cb_reserve_back(cb_untilize, Ht);
+        ckernel::cb_reserve_back(cb_untilize, Ht);
         for (uint32_t h = 0; h < Ht; ++h) {
-            tile_regs_acquire();
+            ckernel:: tile_regs_acquire();
             transpose_wh_tile(cb_tilize, tile_idx, 0);
-            tile_regs_commit();
-            tile_regs_wait();
-            pack_tile(0, cb_untilize);
-            tile_regs_release();
+            ckernel:: tile_regs_commit();
+            ckernel::tile_regs_wait();
+            ckernel:: pack_tile(0, cb_untilize);
+            ckernel::tile_regs_release();
             tile_idx += Wt;
         }
         tile_idx = tile_idx - HtWt + 1;
-        cb_push_back(cb_untilize, Ht);
+        ckernel::cb_push_back(cb_untilize, Ht);
 
         // tilize
         untilize_init_short(cb_untilize);
-        cb_wait_front(cb_untilize, Ht);
-        cb_reserve_back(cb_out, Ht);
+        ckernel::cb_wait_front(cb_untilize, Ht);
+        ckernel::cb_reserve_back(cb_out, Ht);
         untilize_block(cb_untilize, Ht, cb_out);
-        cb_push_back(cb_out, Ht);
-        cb_pop_front(cb_untilize, Ht);
+        ckernel::cb_push_back(cb_out, Ht);
+        ckernel::cb_pop_front(cb_untilize, Ht);
         untilize_uninit(cb_untilize);
     }
 }
@@ -54,26 +54,26 @@ ALWI void transpose_with_pack_untilize_narrow_row(uint32_t cb_tilize, uint32_t c
     transpose_wh_init_short(cb_tilize);
     pack_untilize_dst_init_short<Ht, Ht, false, use_narrow_row, row_size>(cb_out);
     for (uint32_t w = 0; w < Wt; ++w) {
-        tile_regs_acquire();
+        ckernel:: tile_regs_acquire();
         for (uint32_t h = 0; h < Ht; ++h) {
             transpose_wh_tile(cb_tilize, tile_idx, h);
             tile_idx += Wt;
         }
 
-        tile_regs_commit();
+        ckernel:: tile_regs_commit();
 
         if (w == Wt - 1) {  // last row
-            cb_reserve_back(cb_out, pack_num_pages_last_row_col);
-            tile_regs_wait();
+            ckernel::cb_reserve_back(cb_out, pack_num_pages_last_row_col);
+            ckernel::tile_regs_wait();
             pack_untilize_dst<Ht, Ht, false, use_narrow_row, row_size>(cb_out);
-            tile_regs_release();
-            cb_push_back(cb_out, pack_num_pages_last_row_col);
+            ckernel::tile_regs_release();
+            ckernel::cb_push_back(cb_out, pack_num_pages_last_row_col);
         } else {
-            cb_reserve_back(cb_out, pack_num_pages_last_col);
-            tile_regs_wait();
+            ckernel::cb_reserve_back(cb_out, pack_num_pages_last_col);
+            ckernel::tile_regs_wait();
             pack_untilize_dst<Ht, Ht, false, use_narrow_row, row_size>(cb_out);
-            tile_regs_release();
-            cb_push_back(cb_out, pack_num_pages_last_col);
+            ckernel::tile_regs_release();
+            ckernel::cb_push_back(cb_out, pack_num_pages_last_col);
         }
         tile_idx = tile_idx - HtWt + 1;
     }
@@ -87,21 +87,21 @@ ALWI void transpose_with_pack_untilize(uint32_t cb_tilize, uint32_t cb_out) {
     transpose_wh_init_short(cb_tilize);
     pack_untilize_dst_init_short<Ht>(cb_out);
     for (uint32_t w = 0; w < Wt; ++w) {
-        tile_regs_acquire();
+        ckernel:: tile_regs_acquire();
         for (uint32_t h = 0; h < Ht; ++h) {
             transpose_wh_tile(cb_tilize, tile_idx, h);
             tile_idx += Wt;
         }
-        tile_regs_commit();
+        ckernel:: tile_regs_commit();
 
-        cb_reserve_back(cb_out, Ht);
-        tile_regs_wait();
+        ckernel::cb_reserve_back(cb_out, Ht);
+        ckernel::tile_regs_wait();
         pack_untilize_dst<Ht>(cb_out);
 
-        tile_regs_release();
-        cb_push_back(cb_out, Ht);
+        ckernel::tile_regs_release();
+        ckernel::cb_push_back(cb_out, Ht);
 
-        cb_wait_front(cb_out, Ht);
+        ckernel::cb_wait_front(cb_out, Ht);
         tile_idx = tile_idx - HtWt + 1;
     }
     pack_untilize_uninit(cb_out);
@@ -145,16 +145,16 @@ void MAIN {
         // tilize input
         tilize_init_short(cb_in, Wt, cb_tilize);
         for (uint32_t h = 0; h < Ht; ++h) {
-            cb_wait_front(cb_in, Wt);
-            cb_reserve_back(cb_tilize, Wt);
+            ckernel::cb_wait_front(cb_in, Wt);
+            ckernel::cb_reserve_back(cb_tilize, Wt);
             tilize_block(cb_in, Wt, cb_tilize);
-            cb_push_back(cb_tilize, Wt);
-            cb_pop_front(cb_in, Wt);
+            ckernel::cb_push_back(cb_tilize, Wt);
+            ckernel::cb_pop_front(cb_in, Wt);
         }
         tilize_uninit(cb_in, cb_tilize);
 
         // transpose
-        cb_wait_front(cb_tilize, HtWt);
+        ckernel::cb_wait_front(cb_tilize, HtWt);
         uint32_t tile_idx = 0;
         if constexpr (Ht > 8) {  // temporary fix until pack_untilze is fully fixed
             transpose_with_untilize<Wt, Ht, HtWt>(cb_tilize, cb_untilize, cb_out);
@@ -176,7 +176,7 @@ void MAIN {
             transpose_with_pack_untilize<Wt, Ht, HtWt>(cb_tilize, cb_out);
 #endif
         }
-        cb_pop_front(cb_tilize, HtWt);
+        ckernel::cb_pop_front(cb_tilize, HtWt);
     }
 }
 }  // namespace NAMESPACE

@@ -22,13 +22,13 @@ void kernel_main() {
     const uint32_t channel_size = total_tiles * STICK_SIZE;
 
     for (uint32_t i = 0; i < total_tiles; i++) {
-        cb_wait_front(cb_in_transpose, 1);
+        ckernel::cb_wait_front(cb_in_transpose, 1);
         for (uint32_t j = 0; j < C; j++) {
             const uint32_t l1_read_addr = base_l1_read_addr + (j * STICK_SIZE);
             const uint32_t l1_write_addr = base_l1_write_addr + (j * channel_size) + (i * STICK_SIZE);
             noc_async_read_one_packet_with_state<true>(l1_read_addr, l1_write_addr);
         }
-        cb_pop_front(cb_in_transpose, 1);
-        cb_push_back(cb_out, 1);
+        ckernel::cb_pop_front(cb_in_transpose, 1);
+        ckernel::cb_push_back(cb_out, 1);
     }
 }

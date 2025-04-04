@@ -27,7 +27,7 @@ void kernel_main() {
         for (uint32_t i = 0; i < num_tiles; i += block_size_tiles) {
             std::uint64_t buffer_dst_noc_addr = get_noc_addr_from_bank_id<true>(dst_bank_id, dst_addr);
 
-            cb_wait_front(cb_id, block_size_tiles);
+            ckernel::cb_wait_front(cb_id, block_size_tiles);
 
             if (j == 0) {
                 uint32_t l1_read_addr = get_read_ptr(cb_id);
@@ -41,7 +41,7 @@ void kernel_main() {
                 // }
             }
 
-            cb_pop_front(cb_id, block_size_tiles);
+            ckernel::cb_pop_front(cb_id, block_size_tiles);
             dst_addr += block_size_bytes;
         }
     }

@@ -23,7 +23,7 @@ void kernel_main() {
 #ifdef REDUCE_SCALER
     constexpr uint32_t cb_in_2 = 2;
     constexpr uint32_t scaler = get_compile_time_arg_val(1);
-    cb_reserve_back(cb_in_2, 1);
+    ckernel::cb_reserve_back(cb_in_2, 1);
     if (scaler != 0) {
         uint16_t u = uint16_t(scaler >> 16);
         auto ptr = reinterpret_cast<uint16_t*>(get_write_ptr(cb_in_2));
@@ -37,7 +37,7 @@ void kernel_main() {
             }
         }
     }
-    cb_push_back(cb_in_2, 1);
+    ckernel::cb_push_back(cb_in_2, 1);
 #endif
 
     uint32_t i_tile_N = 0;  // first tile in current batch
@@ -51,12 +51,12 @@ void kernel_main() {
         i_tile = i_tile_N;
         for (uint32_t w = 0; w < Wt; w++) {
             for (uint32_t h = 0; h < Ht; h++) {
-                cb_reserve_back(cb_id_in0, onetile);
+                ckernel::cb_reserve_back(cb_id_in0, onetile);
                 uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
                 noc_async_read_tile(i_tile, s, l1_write_addr);
                 noc_async_read_barrier();
 
-                cb_push_back(cb_id_in0, onetile);
+                ckernel::cb_push_back(cb_id_in0, onetile);
                 i_tile += Wt;  // stride in H
             }  // Ht
             i_tile -= HtWt;  // go back to H=0

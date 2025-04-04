@@ -55,7 +55,7 @@ void kernel_main() {
 
     uint64_t src_noc_addr = get_noc_addr(get_read_ptr(cb_in0));
     // re-order q
-    cb_reserve_back(cb_outq, q_num_tiles);
+    ckernel::cb_reserve_back(cb_outq, q_num_tiles);
 
     uint32_t q_write_addr = get_write_ptr(cb_outq);
     uint32_t src_noc_addr_offset_outer = 0;
@@ -77,11 +77,11 @@ void kernel_main() {
         group_addr_offset += group_t_size_bytes;
     }
     noc_async_read_barrier();
-    cb_push_back(cb_outq, q_num_tiles);
+    ckernel::cb_push_back(cb_outq, q_num_tiles);
 
     // re-order k
 
-    cb_reserve_back(cb_outk, k_num_tiles);
+    ckernel::cb_reserve_back(cb_outk, k_num_tiles);
     uint32_t k_write_addr = get_write_ptr(cb_outk);
     group_addr_offset = q_size_per_group_t_bytes;
     for (uint32_t k = 0; k < groups_per_block; k++) {  // number of kv heads inside the shard
@@ -117,10 +117,10 @@ void kernel_main() {
         group_addr_offset += group_t_size_bytes;
     }
     noc_async_read_barrier();
-    cb_push_back(cb_outk, k_num_tiles);
+    ckernel::cb_push_back(cb_outk, k_num_tiles);
 
     // re-order v
-    cb_reserve_back(cb_outv, v_num_tiles);
+    ckernel::cb_reserve_back(cb_outv, v_num_tiles);
     uint32_t v_write_addr = get_write_ptr(cb_outv);
     group_addr_offset = q_size_per_group_t_bytes + k_size_per_group_t_bytes;
     for (uint32_t k = 0; k < groups_per_block; k++) {  // number of kv heads inide the hard
@@ -138,5 +138,5 @@ void kernel_main() {
         group_addr_offset += group_t_size_bytes;
     }
     noc_async_read_barrier();
-    cb_push_back(cb_outv, v_num_tiles);
+    ckernel::cb_push_back(cb_outv, v_num_tiles);
 }

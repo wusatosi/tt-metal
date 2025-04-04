@@ -87,7 +87,7 @@ void kernel_main() {
     uint32_t i_stick = start_id;
     uint32_t curr_c = start_dim_offset[2], curr_h = start_dim_offset[1], curr_n = start_dim_offset[3];
     for (uint32_t iter = 0; iter < num_sticks_per_core;) {
-        cb_reserve_back(cb_in0, num_sticks_per_barrier);
+        ckernel::cb_reserve_back(cb_in0, num_sticks_per_barrier);
         uint32_t l1_write_addr = get_write_ptr(cb_in0);
 
         for (uint32_t i = 0; i < num_sticks_per_barrier && iter < num_sticks_per_core; ++i, ++iter) {
@@ -128,6 +128,6 @@ void kernel_main() {
             }
         }
         noc_async_read_barrier();
-        cb_push_back(cb_in0, num_sticks_per_barrier);
+        ckernel::cb_push_back(cb_in0, num_sticks_per_barrier);
     }
 }

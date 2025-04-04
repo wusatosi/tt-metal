@@ -49,13 +49,13 @@ void kernel_main() {
 
     auto pop_blocks = [&](uint32_t num_blocks) {
         for (uint32_t i = 0; i < num_blocks; i++) {
-            cb_wait_front(cb_id_out0, num_tiles_block_c);
-            cb_pop_front(cb_id_out0, num_tiles_block_c);
+            ckernel::cb_wait_front(cb_id_out0, num_tiles_block_c);
+            ckernel::cb_pop_front(cb_id_out0, num_tiles_block_c);
         }
     };
 
     auto write_block = [&](uint32_t base_stick_id, uint32_t num_rows, uint32_t offset, uint32_t block_size) {
-        cb_wait_front(cb_id_out0, num_tiles_block_c);
+        ckernel::cb_wait_front(cb_id_out0, num_tiles_block_c);
         uint32_t l1_read_addr = get_read_ptr(cb_id_out0);
         uint32_t curr_stick_id = base_stick_id;
         for (uint32_t k = 0; k < num_rows; k++) {
@@ -70,7 +70,7 @@ void kernel_main() {
             // Block write
             noc_async_write_barrier();
         }
-        cb_pop_front(cb_id_out0, num_tiles_block_c);
+        ckernel::cb_pop_front(cb_id_out0, num_tiles_block_c);
     };
 
     auto write_block_rows = [&](uint32_t num_rows_block, uint32_t base_stick_id) {

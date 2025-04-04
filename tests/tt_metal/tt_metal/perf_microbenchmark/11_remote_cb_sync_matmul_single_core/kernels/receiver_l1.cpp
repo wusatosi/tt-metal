@@ -48,13 +48,13 @@ void kernel_main() {
         experimental::align_local_cbs_to_remote_cb<1>(remote_cb_id, {cb_id_in1});
 
         for (uint32_t block = 0; block < curr_num_blocks; ++block) {
-            cb_reserve_back(cb_id_in1, curr_block_num_tiles);
-            experimental::remote_cb_wait_front(remote_cb_id, 1);
-            cb_push_back(cb_id_in1, curr_block_num_tiles);
+            ckernel::cb_reserve_back(cb_id_in1, curr_block_num_tiles);
+            experimental::remote_ckernel::cb_wait_front(remote_cb_id, 1);
+            ckernel::cb_push_back(cb_id_in1, curr_block_num_tiles);
             // wait for compute done
-            cb_wait_front(sync_cb_id, 1);
+            ckernel::cb_wait_front(sync_cb_id, 1);
             experimental::remote_cb_pop_front(remote_cb_id, 1);
-            cb_pop_front(sync_cb_id, 1);
+            ckernel::cb_pop_front(sync_cb_id, 1);
         }
     }
     experimental::update_remote_cb_config_in_l1(remote_cb_id);

@@ -9,7 +9,7 @@
 namespace ckernel {
 
 /**
- * @deprecated This function is deprecated, please use `tile_regs_acquire()` instead.
+ * @deprecated This function is deprecated, please use `ckernel:: tile_regs_acquire()` instead.
  * See https://github.com/tenstorrent/tt-metal/issues/5868#issuecomment-2101726935
  *
  * Acquires an exclusive lock on the internal DST register for the current
@@ -25,8 +25,8 @@ namespace ckernel {
  * How the destination register will be shared and synchronized between TRISC threads will depend on the compute kernel
  * configuration.
  */
-[[deprecated("Use tile_regs_acquire() instead")]]
-ALWI void acquire_dst() {
+[[deprecated("Use ckernel:: tile_regs_acquire() instead")]]
+ALWI void ckernel::acquire_dst() {
     MATH((llk_math_wait_for_dest_available()));
 
     PACK((llk_packer_wait_for_math_done()));
@@ -39,17 +39,17 @@ ALWI void acquire_dst() {
  * This register is an array of 16 tiles of 32x32 elements each.
  * This is a blocking function, i.e. this function will wait until the lock is acquired.
  */
-ALWI void tile_regs_acquire() { MATH((llk_math_wait_for_dest_available())); }
+ALWI void ckernel:: tile_regs_acquire() { MATH((llk_math_wait_for_dest_available())); }
 
 /**
  * Acquire an exclusive lock on the DST register for the PACK thread.
  * It waits for the MATH thread to commit the DST register.
  * This is a blocking function, i.e. this function will wait until the lock is acquired.
  */
-ALWI void tile_regs_wait() { PACK((llk_packer_wait_for_math_done())); }
+ALWI void ckernel::tile_regs_wait() { PACK((llk_packer_wait_for_math_done())); }
 
 /**
- * @deprecated This function is deprecated, please use `tile_regs_release()` instead.
+ * @deprecated This function is deprecated, please use `ckernel::tile_regs_release()` instead.
  * See https://github.com/tenstorrent/tt-metal/issues/5868#issuecomment-2101726935
  *
  * Releases the exclusive lock on the internal DST register for the current
@@ -61,8 +61,8 @@ ALWI void tile_regs_wait() { PACK((llk_packer_wait_for_math_done())); }
  * How the destination register will be shared and synchronized between TRISC threads will depend on the compute kernel
  * configuration.
  */
-[[deprecated("Use tile_regs_release() instead")]]
-ALWI void release_dst() {
+[[deprecated("Use ckernel::tile_regs_release() instead")]]
+ALWI void ckernel:: release_dst() {
     MATH((llk_math_dest_section_done()));
 
     PACK((llk_pack_dest_section_done()));
@@ -73,11 +73,11 @@ ALWI void release_dst() {
 /**
  * Release lock on DST register by MATH thread. The lock had to be previously acquired with tile_regs_acquire.
  */
-ALWI void tile_regs_commit() { MATH((llk_math_dest_section_done())); }
+ALWI void ckernel:: tile_regs_commit() { MATH((llk_math_dest_section_done())); }
 
 /**
  * Release lock on DST register by PACK thread. The lock had to be previously acquired with tile_regs_wait.
  */
-ALWI void tile_regs_release() { PACK((llk_pack_dest_section_done())); }
+ALWI void ckernel::tile_regs_release() { PACK((llk_pack_dest_section_done())); }
 
 }  // namespace ckernel

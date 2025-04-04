@@ -512,7 +512,7 @@ void try_advance_read_tensor_to_cb(command_context_t<Addrgen>& cmd_ctx) {
         cmd_ctx.command_tensor.worker_pages_per_slice - cmd_specific_ctx.offset_into_worker_slice);
 
     uint16_t contig_pages_advanced = 1;
-    cb_reserve_back(cmd_ctx.cb_id, cmd_ctx.packet_size_in_pages);
+    ckernel::cb_reserve_back(cmd_ctx.cb_id, cmd_ctx.packet_size_in_pages);
     const uint32_t l1_write_addr_base = get_write_ptr(cmd_ctx.cb_id);
     uint32_t l1_write_addr = l1_write_addr_base;
 
@@ -546,7 +546,7 @@ void try_advance_read_tensor_to_cb(command_context_t<Addrgen>& cmd_ctx) {
 
     noc_async_read_barrier();
 
-    cb_push_back(cmd_ctx.cb_id, cmd_ctx.packet_size_in_pages);
+    ckernel::cb_push_back(cmd_ctx.cb_id, cmd_ctx.packet_size_in_pages);
 }
 #endif
 
@@ -663,7 +663,7 @@ void try_advance_write_tensor_from_cb(command_context_t<Addrgen>& cmd_ctx) {
         cmd_ctx.command_tensor.worker_pages_per_slice - cmd_specific_ctx.offset_into_worker_slice);
     ASSERT(cmd_ctx.command_tensor.worker_pages_per_slice >= cmd_specific_ctx.offset_into_worker_slice);
 
-    cb_wait_front(cmd_ctx.cb_id, cmd_ctx.packet_size_in_pages);
+    ckernel::cb_wait_front(cmd_ctx.cb_id, cmd_ctx.packet_size_in_pages);
     size_t l1_read_addr = get_read_ptr(cmd_ctx.cb_id);
 
     uint16_t contig_pages_advanced = 1;
@@ -704,7 +704,7 @@ void try_advance_write_tensor_from_cb(command_context_t<Addrgen>& cmd_ctx) {
     }
     noc_async_writes_flushed();
 
-    cb_pop_front(cmd_ctx.cb_id, cmd_ctx.packet_size_in_pages);
+    ckernel::cb_pop_front(cmd_ctx.cb_id, cmd_ctx.packet_size_in_pages);
 }
 #endif
 
@@ -750,7 +750,7 @@ static void try_advance_noc_read_burst(
     ASSERT(noc_burst_ctx.current_noc_transfer <= noc_burst_ctx.num_transfers_total);
 
     noc_async_read_barrier();
-    cb_push_back(cb_id, packet_size_in_pages);
+    ckernel::cb_push_back(cb_id, packet_size_in_pages);
 }
 
 static void try_advance_noc_write_burst(
@@ -782,7 +782,7 @@ static void try_advance_noc_write_burst(
     }
     noc_async_writes_flushed();
 
-    cb_pop_front(cb_id, packet_size_in_pages);
+    ckernel::cb_pop_front(cb_id, packet_size_in_pages);
 }
 
 template <tt::tt_metal::TensorMemoryLayout TENSOR_LAYOUT, tt::tt_metal::Layout MEM_LAYOUT, typename Addrgen>
@@ -930,7 +930,7 @@ void kernel_main() {
     // TODO: move to common
     auto fabric_connection = FabricConnectionManager::build_from_args(arg_idx);
 
-    cb_reserve_back(reserved_packet_header_cb_id, num_packet_headers_storable);
+    ckernel::cb_reserve_back(reserved_packet_header_cb_id, num_packet_headers_storable);
     auto packet_header_buffer_addr0 = get_write_ptr(reserved_packet_header_cb_id);
     auto packet_header_buffer_addr1 =
         packet_header_buffer_addr0 + (num_packet_headers_storable >> 2) * sizeof(PACKET_HEADER_TYPE);

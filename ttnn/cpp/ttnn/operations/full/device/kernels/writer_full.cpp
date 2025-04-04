@@ -25,7 +25,7 @@ void kernel_main() {
     u val;
     val.u = fill_value;
 
-    cb_reserve_back(cb_value, onetile);
+    ckernel::cb_reserve_back(cb_value, onetile);
 
     uint32_t write_addr = get_write_ptr(cb_value);
 
@@ -47,12 +47,12 @@ void kernel_main() {
         ptr[i] = val.f;
     }
 #endif
-    cb_push_back(cb_value, 1);
+    ckernel::cb_push_back(cb_value, 1);
 
     const InterleavedAddrGenFast<true> s = {
         .bank_base_address = output_addr, .page_size = cb_page_size, .data_format = cb_data_format};
 
-    cb_wait_front(cb_value, 1);
+    ckernel::cb_wait_front(cb_value, 1);
 
     uint32_t end_id = start_id + num_tiles;
     for (std::uint32_t i = start_id; i < end_id; i++) {
@@ -60,5 +60,5 @@ void kernel_main() {
         noc_async_write_tile(i, s, cb_value_addr);
         noc_async_write_barrier();
     }
-    cb_pop_front(cb_value, 1);
+    ckernel::cb_pop_front(cb_value, 1);
 }

@@ -71,11 +71,11 @@ void kernel_main() {
             for (uint32_t j = 0; j < out_num_tiles_per_tensor_y; j++) {
                 for (uint32_t i = 0; i < out_num_tiles_per_tensor_x; i++) {
                     uint32_t tile_id = y_stride_cum + z_stride_cum + i;
-                    cb_wait_front(cb_id_out0, onetile);
+                    ckernel::cb_wait_front(cb_id_out0, onetile);
                     uint32_t l1_read_addr = get_read_ptr(cb_id_out0);
                     noc_async_write_tile(tile_id + out_tensor_tile_id, s, l1_read_addr);
                     noc_async_write_barrier();
-                    cb_pop_front(cb_id_out0, onetile);
+                    ckernel::cb_pop_front(cb_id_out0, onetile);
 #ifdef DEBUG
                     // DPRINT << "Writer for Bank: " << bank_id << " has Tile ID: " << tile_id + out_tensor_tile_id <<
                     // ENDL(); DPRINT << "Writer Address: " << l1_read_addr << ENDL() << ENDL();

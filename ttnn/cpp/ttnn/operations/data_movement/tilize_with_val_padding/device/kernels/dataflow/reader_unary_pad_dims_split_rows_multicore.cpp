@@ -41,11 +41,11 @@ void kernel_main() {
 
     auto pad_blocks = [&](uint32_t num_blocks) {
         for (uint32_t i = 0; i < num_blocks; i++) {
-            cb_reserve_back(cb_id_in0, num_tiles_per_row);
+            ckernel::cb_reserve_back(cb_id_in0, num_tiles_per_row);
             uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
             // pad the tile by reading values from zero buffer in L1
             fill_with_val(l1_write_addr, padded_X_size << 3, pad_value);
-            cb_push_back(cb_id_in0, num_tiles_per_row);
+            ckernel::cb_push_back(cb_id_in0, num_tiles_per_row);
         }
     };
 
@@ -53,7 +53,7 @@ void kernel_main() {
         uint32_t padding_rows = (tile_height - num_rows) & 31;
         bool has_rows = (num_rows + padding_rows) > 0;
 
-        cb_reserve_back(cb_id_in0, num_tiles_per_row * has_rows);
+        ckernel::cb_reserve_back(cb_id_in0, num_tiles_per_row * has_rows);
         uint32_t l1_write_addr = get_write_ptr(cb_id_in0);
         for (uint32_t k = 0; k < num_rows; k++) {
             uint64_t src_noc_addr = get_noc_addr(base_stick_id + k, s);
@@ -69,7 +69,7 @@ void kernel_main() {
         }
 
         fill_with_val(l1_write_addr, padding_rows * (padded_X_size >> 2), pad_value);
-        cb_push_back(cb_id_in0, num_tiles_per_row * has_rows);
+        ckernel::cb_push_back(cb_id_in0, num_tiles_per_row * has_rows);
     };
 
     uint32_t stick_id = start_stick_id;

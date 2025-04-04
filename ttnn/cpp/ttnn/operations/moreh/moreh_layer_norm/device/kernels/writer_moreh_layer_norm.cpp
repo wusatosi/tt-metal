@@ -22,7 +22,7 @@ void write_mean_rstd(
     const uint32_t cb_tile_bytes = get_tile_size(cb_id);
     const auto cb_dtype_bytes = cb_tile_bytes / (TILE_HEIGHT * TILE_WIDTH);
 
-    cb_wait_front(cb_id, onetile);
+    ckernel::cb_wait_front(cb_id, onetile);
 
     uint32_t output_l1_write_addr = get_read_ptr(cb_id);
     auto l1_ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(output_l1_write_addr);
@@ -81,7 +81,7 @@ void write_mean_rstd(
         noc_async_write_barrier();
     }
 
-    cb_pop_front(cb_id, onetile);
+    ckernel::cb_pop_front(cb_id, onetile);
 }
 
 void kernel_main() {
@@ -164,14 +164,14 @@ void kernel_main() {
 
         // output
         for (uint32_t inner_idx = 0; inner_idx < num_inner; inner_idx += block_size) {
-            cb_wait_front(cb_id_output, block_size);
+            ckernel::cb_wait_front(cb_id_output, block_size);
             auto output_l1_read_addr = get_read_ptr(cb_id_output);
             for (uint32_t r = 0; r < block_size; r++) {
                 noc_async_write_tile(offs + inner_idx + r + tile_offset, output_addrg, output_l1_read_addr);
                 output_l1_read_addr += output_tile_bytes;
             }
             noc_async_write_barrier();
-            cb_pop_front(cb_id_output, block_size);
+            ckernel::cb_pop_front(cb_id_output, block_size);
         }  // num_inner loop
 
         offs += num_inner;

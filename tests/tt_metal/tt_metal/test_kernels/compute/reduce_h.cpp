@@ -51,7 +51,7 @@ void MAIN {
     reduce_init_delta<at_start>(tt::CBIndex::c_0, tt::CBIndex::c_2, tt::CBIndex::c_16);
 #endif
 
-    cb_wait_front(tt::CBIndex::c_2, 1);  // scaler tile from the reader
+    ckernel::cb_wait_front(tt::CBIndex::c_2, 1);  // scaler tile from the reader
     for (uint32_t nc = 0; nc < NC; nc++) {
         constexpr int onetile = 1;
         int reduce_dst_idx = 0;
@@ -59,9 +59,9 @@ void MAIN {
             // tiles are expected to be coming in in NCWH order (H-contiguous)
             // reducing in W means out[0][w] = sum(h=0..H-1, in[h][w])
             // in this case we just sequentially add to accumulator all the H-tiles in a column
-            acquire_dst();
+            ckernel::acquire_dst();
             for (uint32_t ht = 0; ht < Ht; ++ht) {
-                cb_wait_front(tt::CBIndex::c_0, onetile);
+                ckernel::cb_wait_front(tt::CBIndex::c_0, onetile);
 #if (MATH_ONLY == 1)
                 UNPACK((llk_unpack_AB(tt::CBIndex::c_0, tt::CBIndex::c_2, 0, 0)));
                 // REDUCE_OP is expected to come from add_define
@@ -70,17 +70,17 @@ void MAIN {
                 // REDUCE_OP is expected to come from add_define
                 reduce_tile(tt::CBIndex::c_0, tt::CBIndex::c_2, 0, 0, reduce_dst_idx);
 #endif
-                cb_pop_front(tt::CBIndex::c_0, onetile);
+                ckernel::cb_pop_front(tt::CBIndex::c_0, onetile);
             }
 
-            cb_reserve_back(tt::CBIndex::c_16, onetile);
-            pack_tile(reduce_dst_idx, tt::CBIndex::c_16);
-            cb_push_back(tt::CBIndex::c_16, onetile);
-            release_dst();
+            ckernel::cb_reserve_back(tt::CBIndex::c_16, onetile);
+            ckernel:: pack_tile(reduce_dst_idx, tt::CBIndex::c_16);
+            ckernel::cb_push_back(tt::CBIndex::c_16, onetile);
+            ckernel:: release_dst();
         }
     }
 #ifdef SHORT_INIT
-    reduce_revert_delta(tt::CBIndex::c_16);
+    ckernel::reduce_revert_delta(tt::CBIndex::c_16);
 #endif
 }
 }  // namespace NAMESPACE

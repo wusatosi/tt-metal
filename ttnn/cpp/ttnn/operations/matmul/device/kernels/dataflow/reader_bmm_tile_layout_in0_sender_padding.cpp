@@ -80,8 +80,8 @@ void kernel_main() {
         constexpr uint32_t cb_id_in2 = 2;  // in0 sharded cb if extract_shard_sub_blocks
         noc_shard_read_start_addr = get_read_ptr(cb_id_in2);
     } else {
-        cb_reserve_back(cb_id_in0, shard_num_tiles);
-        cb_push_back(cb_id_in0, shard_num_tiles);
+        ckernel::cb_reserve_back(cb_id_in0, shard_num_tiles);
+        ckernel::cb_push_back(cb_id_in0, shard_num_tiles);
     }
 #else
     constexpr DataFormat in0_data_format = get_dataformat(cb_id_in0);
@@ -133,7 +133,7 @@ void kernel_main() {
                     }
 #ifndef IN0_SHARDED
                     // Operand 0
-                    cb_reserve_back(cb_id_in0, in0_block_num_tiles);
+                    ckernel::cb_reserve_back(cb_id_in0, in0_block_num_tiles);
                     uint32_t l1_write_addr_in0 = get_write_ptr(cb_id_in0);
 
 #ifndef SKIP_MCAST
@@ -161,7 +161,7 @@ void kernel_main() {
 #else
                     if constexpr (extract_shard_sub_blocks) {
                         // Operand 0
-                        cb_reserve_back(cb_id_in0, in0_block_num_tiles);
+                        ckernel::cb_reserve_back(cb_id_in0, in0_block_num_tiles);
                         uint32_t l1_write_addr_in0 = get_write_ptr(cb_id_in0);
 
 #ifndef SKIP_MCAST
@@ -217,10 +217,10 @@ void kernel_main() {
 #endif
 
 #ifndef IN0_SHARDED
-                    cb_push_back(cb_id_in0, in0_block_num_tiles);
+                    ckernel::cb_push_back(cb_id_in0, in0_block_num_tiles);
 #else
                     if constexpr (extract_shard_sub_blocks) {
-                        cb_push_back(cb_id_in0, in0_block_num_tiles);
+                        ckernel::cb_push_back(cb_id_in0, in0_block_num_tiles);
                     }
 #endif
                 }

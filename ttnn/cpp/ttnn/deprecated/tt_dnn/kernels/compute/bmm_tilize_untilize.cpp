@@ -35,11 +35,11 @@ inline void tilize_in(
     tilize_init_short(in_cb_id, in_block_w, out_cb_id);
     for (uint32_t in_subblock = 0; in_subblock < in_num_subblocks; ++in_subblock) {
         for (uint32_t h = 0; h < in_subblock_h; ++h) {
-            cb_wait_front(in_cb_id, in_block_w);
-            cb_reserve_back(out_cb_id, in_block_w);
+            ckernel::cb_wait_front(in_cb_id, in_block_w);
+            ckernel::cb_reserve_back(out_cb_id, in_block_w);
             tilize_block(in_cb_id, in_block_w, out_cb_id);
-            cb_push_back(out_cb_id, in_block_w);
-            cb_pop_front(in_cb_id, in_block_w);
+            ckernel::cb_push_back(out_cb_id, in_block_w);
+            ckernel::cb_pop_front(in_cb_id, in_block_w);
         }
     }
     tilize_uninit_with_dt(0, 1, out_cb_id);
@@ -58,7 +58,7 @@ inline void reblock_and_untilize(
     uint32_t reblock_cb_id,
     uint32_t out_cb_id) {
     uint32_t num_tiles_in_row_of_subblocks = mulsi3(out_subblock_num_tiles, num_out_subblocks_in_col);
-    cb_wait_front(interm_cb_id, num_tiles_in_row_of_subblocks);
+    ckernel::cb_wait_front(interm_cb_id, num_tiles_in_row_of_subblocks);
 
     int within_block_index = 0;
     for (uint32_t h = 0; h < out_subblock_h; h++) {
@@ -66,45 +66,45 @@ inline void reblock_and_untilize(
 
         // Reblock
         copy_tile_to_dst_init_short(interm_cb_id);
-        cb_reserve_back(reblock_cb_id, out_block_w);
+        ckernel::cb_reserve_back(reblock_cb_id, out_block_w);
         for (uint32_t n = 0; n < num_out_subblocks_in_col; n++) {
             for (uint32_t w = 0; w < out_subblock_w; w++) {
                 uint32_t tile_index = block_offset + within_block_index + w;
-                tile_regs_acquire();
-                copy_tile(interm_cb_id, tile_index, 0);
-                tile_regs_commit();
-                tile_regs_wait();
-                pack_tile(0, reblock_cb_id);
-                tile_regs_release();
+                ckernel:: tile_regs_acquire();
+                ckernel:: copy_tile(interm_cb_id, tile_index, 0);
+                ckernel:: tile_regs_commit();
+                ckernel::tile_regs_wait();
+                ckernel:: pack_tile(0, reblock_cb_id);
+                ckernel::tile_regs_release();
             }
             block_offset += out_subblock_num_tiles;
         }
-        cb_push_back(reblock_cb_id, out_block_w);
+        ckernel::cb_push_back(reblock_cb_id, out_block_w);
 
         // Untilize
         untilize_init_short(reblock_cb_id);
-        cb_wait_front(reblock_cb_id, out_block_w);
-        cb_reserve_back(out_cb_id, out_block_w);
+        ckernel::cb_wait_front(reblock_cb_id, out_block_w);
+        ckernel::cb_reserve_back(out_cb_id, out_block_w);
         untilize_block(reblock_cb_id, out_block_w, out_cb_id);
-        cb_pop_front(reblock_cb_id, out_block_w);
-        cb_push_back(out_cb_id, out_block_w);
+        ckernel::cb_pop_front(reblock_cb_id, out_block_w);
+        ckernel::cb_push_back(out_cb_id, out_block_w);
         untilize_uninit(reblock_cb_id);
 
         within_block_index += out_subblock_w;
     }
-    cb_pop_front(interm_cb_id, num_tiles_in_row_of_subblocks);
+    ckernel::cb_pop_front(interm_cb_id, num_tiles_in_row_of_subblocks);
 }  // reblock_and_untilize()
 
 #endif
 
 inline void pack_matmul_subblock(uint32_t cb_id, uint32_t out_subblock_num_tiles) {
-    cb_reserve_back(cb_id, out_subblock_num_tiles);
-    tile_regs_wait();
+    ckernel::cb_reserve_back(cb_id, out_subblock_num_tiles);
+    ckernel::tile_regs_wait();
     for (uint32_t i = 0; i < out_subblock_num_tiles; ++i) {
-        pack_tile(i, cb_id);
+        ckernel:: pack_tile(i, cb_id);
     }
-    tile_regs_release();
-    cb_push_back(cb_id, out_subblock_num_tiles);
+    ckernel::tile_regs_release();
+    ckernel::cb_push_back(cb_id, out_subblock_num_tiles);
 }
 
 namespace NAMESPACE {
@@ -158,26 +158,26 @@ void MAIN {
                 if (tilize_in0) {
                     tilize_in(in0_cb_id, in0_subblock_h, in0_block_w, in0_num_subblocks, tilized_in0_cb_id);
                     mm_init_short(tilized_in0_cb_id, in1_cb_id);
-                    cb_wait_front(tilized_in0_cb_id, in0_block_num_tiles);
+                    ckernel::cb_wait_front(tilized_in0_cb_id, in0_block_num_tiles);
                 } else {
-                    cb_wait_front(in0_cb_id, in0_block_num_tiles);
+                    ckernel::cb_wait_front(in0_cb_id, in0_block_num_tiles);
                 }
-                cb_wait_front(in1_cb_id, in1_block_num_tiles);
+                ckernel::cb_wait_front(in1_cb_id, in1_block_num_tiles);
                 int in0_index_subblock_offset = 0;
                 for (uint32_t in0_subblock_i = 0; in0_subblock_i < in0_num_subblocks; ++in0_subblock_i) {
                     int in1_index_subblock_offset = 0;
                     for (uint32_t in1_subblock_i = 0; in1_subblock_i < in1_num_subblocks; ++in1_subblock_i) {
-                        tile_regs_acquire();
+                        ckernel:: tile_regs_acquire();
                         if (enable_reload) {
                             // Reconfigure input
                             copy_tile_to_dst_init_short(matmul_partials_cb);
                             UNPACK((llk_unpack_reconfig_data_format(1, matmul_partials_cb, 0, 0)));
                             MATH((llk_math_reconfig_data_format(1, matmul_partials_cb, 0, 0)));
-                            cb_wait_front(matmul_partials_cb, out_subblock_num_tiles);
+                            ckernel::cb_wait_front(matmul_partials_cb, out_subblock_num_tiles);
                             for (uint32_t i = 0; i < out_subblock_num_tiles; ++i) {
-                                copy_tile(matmul_partials_cb, i, i);
+                                ckernel:: copy_tile(matmul_partials_cb, i, i);
                             }
-                            cb_pop_front(matmul_partials_cb, out_subblock_num_tiles);
+                            ckernel::cb_pop_front(matmul_partials_cb, out_subblock_num_tiles);
                             // Reconfigure srcA back
                             mm_init_short_with_dt(
                                 tilize_in0 ? tilized_in0_cb_id : in0_cb_id, in1_cb_id, matmul_partials_cb);
@@ -205,18 +205,18 @@ void MAIN {
 #ifdef FUSE_BIAS
                            // if bias is to be added, add it to the data in dst before packing into the out cb
                         if (last_out) {
-                            tile_regs_commit();
+                            ckernel:: tile_regs_commit();
                             // first move the current result from dst to interim CB
                             pack_matmul_subblock(out_for_bias_cb_id, out_subblock_num_tiles);
                             // reconfig unpacker df for src B
                             // reconfig_data_format(out_for_bias_cb_id, bias_cb_id);
                             // bcast add data from bias_cb_id
-                            cb_wait_front(bias_cb_id, bias_ntiles_w);
-                            cb_wait_front(out_for_bias_cb_id, out_subblock_num_tiles);
+                            ckernel::cb_wait_front(bias_cb_id, bias_ntiles_w);
+                            ckernel::cb_wait_front(out_for_bias_cb_id, out_subblock_num_tiles);
                             add_bcast_rows_init_short(out_for_bias_cb_id, bias_cb_id);
                             // reconfig packer df for out
                             // pack_reconfig_data_format(out_cb_id);
-                            tile_regs_acquire();
+                            ckernel:: tile_regs_acquire();
                             uint32_t i = 0;
                             for (uint32_t h = 0; h < out_subblock_h; ++h) {
                                 uint32_t bcast_tile_i = bias_block_offset + in1_index_subblock_offset;
@@ -227,7 +227,7 @@ void MAIN {
                                 }
                             }
                             // do not pop front bias as it may be used again for subsequent blocks
-                            cb_pop_front(out_for_bias_cb_id, out_subblock_num_tiles);
+                            ckernel::cb_pop_front(out_for_bias_cb_id, out_subblock_num_tiles);
                             // reconfig for matmul
                             mm_init_short(tilize_in0 ? tilized_in0_cb_id : in0_cb_id, in1_cb_id);
                             // reconfig unpacker df for srcB
@@ -244,7 +244,7 @@ void MAIN {
                         }
 #endif
 
-                        tile_regs_commit();
+                        ckernel:: tile_regs_commit();
 
                         auto curr_matmul_out_cb =
                             last_out ? (untilize_out ? untilize_mode_final_matmul_partials_cb : out_cb_id)
@@ -277,8 +277,8 @@ void MAIN {
                     enable_reload = true;
                 }
 
-                cb_pop_front(tilize_in0 ? tilized_in0_cb_id : in0_cb_id, in0_block_num_tiles);
-                cb_pop_front(in1_cb_id, in1_block_num_tiles);
+                ckernel::cb_pop_front(tilize_in0 ? tilized_in0_cb_id : in0_cb_id, in0_block_num_tiles);
+                ckernel::cb_pop_front(in1_cb_id, in1_block_num_tiles);
             }  // for in0_num_blocks_w
 #ifdef FUSE_BIAS
             bias_block_offset += in1_block_w;

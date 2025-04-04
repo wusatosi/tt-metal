@@ -9,7 +9,7 @@
 // Tile is assumed to have 16-bit elements
 // Scaler is assumed to be a 16-bit value double packed into a u32
 FORCE_INLINE void generate_reduce_scaler(const uint32_t cb_id, const uint32_t scaler) {
-    cb_reserve_back(cb_id, 1);
+    ckernel::cb_reserve_back(cb_id, 1);
 
     constexpr uint32_t num_zeros_reads = 2048 / MEM_ZEROS_SIZE;
     uint64_t zeros_noc_addr = get_noc_addr(MEM_ZEROS_BASE);
@@ -34,5 +34,5 @@ FORCE_INLINE void generate_reduce_scaler(const uint32_t cb_id, const uint32_t sc
         }
     }
 
-    cb_push_back(cb_id, 1);
+    ckernel::cb_push_back(cb_id, 1);
 }

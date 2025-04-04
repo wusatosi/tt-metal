@@ -9,22 +9,22 @@
 constexpr uint32_t ONE_TILE = 1;
 
 FORCE_INLINE void transpose(uint32_t cb_in, uint32_t cb_out) {
-    cb_wait_front(cb_in, ONE_TILE);
+    ckernel::cb_wait_front(cb_in, ONE_TILE);
 
-    tile_regs_acquire();
-    tile_regs_wait();
+    ckernel:: tile_regs_acquire();
+    ckernel::tile_regs_wait();
 
     transpose_wh_init_short(cb_in);
     transpose_wh_tile(cb_in, 0, 0);
 
-    cb_reserve_back(cb_out, ONE_TILE);
-    pack_tile(0, cb_out);
+    ckernel::cb_reserve_back(cb_out, ONE_TILE);
+    ckernel:: pack_tile(0, cb_out);
 
-    tile_regs_commit();
-    tile_regs_release();
+    ckernel:: tile_regs_commit();
+    ckernel::tile_regs_release();
 
-    cb_push_back(cb_out, ONE_TILE);
-    cb_pop_front(cb_in, ONE_TILE);
+    ckernel::cb_push_back(cb_out, ONE_TILE);
+    ckernel::cb_pop_front(cb_in, ONE_TILE);
 }
 
 namespace NAMESPACE {

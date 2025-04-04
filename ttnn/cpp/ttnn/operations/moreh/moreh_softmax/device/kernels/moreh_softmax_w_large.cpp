@@ -37,49 +37,49 @@ void MAIN {
             reduce_tile_to_cb<false, PoolType::MAX, REDUCE_DIM>(
                 cb_tmp, cb_bcast_scaler, cb_max, Wt, /*pop0=*/1, /*pop1=*/0);
         } else {
-            cb_reserve_back(cb_max, onetile);
+            ckernel::cb_reserve_back(cb_max, onetile);
 
-            tile_regs_acquire();
+            ckernel:: tile_regs_acquire();
             reduce_init_delta_with_dt<false, PoolType::MAX, REDUCE_DIM>(cb_max, cb_in0, cb_bcast_scaler);
             for (uint32_t w = 0; w < Wt - 1; ++w) {
-                cb_wait_front(cb_in0, onetile);
+                ckernel::cb_wait_front(cb_in0, onetile);
 
                 constexpr uint32_t bcast_scaler0 = 0;  // 0th index from bcast_scaler CB
-                reduce_tile<PoolType::MAX, REDUCE_DIM>(cb_in0, cb_bcast_scaler, 0, bcast_scaler0, dst0);
+                ckernel::reduce_tile<PoolType::MAX, REDUCE_DIM>(cb_in0, cb_bcast_scaler, 0, bcast_scaler0, dst0);
 
-                cb_pop_front(cb_in0, onetile);
+                ckernel::cb_pop_front(cb_in0, onetile);
             }
-            reduce_revert_delta(cb_max);
-            tile_regs_commit();
+            ckernel::reduce_revert_delta(cb_max);
+            ckernel:: tile_regs_commit();
 
-            tile_regs_wait();
+            ckernel::tile_regs_wait();
             pack_tile_with_dt(dst0, cb_max);
-            tile_regs_release();
+            ckernel::tile_regs_release();
 
-            cb_push_back(cb_max, onetile);
+            ckernel::cb_push_back(cb_max, onetile);
 
             mask_tile_to_cb(cb_in0, cb_mask, cb_tmp, 0, 0, /*pop0=*/1, /*popm=*/0);
 
-            cb_wait_front(cb_max, onetile);
-            cb_wait_front(cb_tmp, onetile);
+            ckernel::cb_wait_front(cb_max, onetile);
+            ckernel::cb_wait_front(cb_tmp, onetile);
 
-            tile_regs_acquire();
+            ckernel:: tile_regs_acquire();
             copy_tile_init_with_dt(cb_max);
-            copy_tile(cb_max, 0, dst0);
+            ckernel:: copy_tile(cb_max, 0, dst0);
 
             constexpr uint32_t bcast_scaler0 = 0;  // 0th index from bcast_scaler CB
             reduce_init_delta_with_dt<false, PoolType::MAX, REDUCE_DIM>(cb_max, cb_tmp, cb_bcast_scaler);
-            reduce_tile<PoolType::MAX, REDUCE_DIM>(cb_tmp, cb_bcast_scaler, 0, bcast_scaler0, dst0);
-            reduce_revert_delta(cb_max);
-            tile_regs_commit();
+            ckernel::reduce_tile<PoolType::MAX, REDUCE_DIM>(cb_tmp, cb_bcast_scaler, 0, bcast_scaler0, dst0);
+            ckernel::reduce_revert_delta(cb_max);
+            ckernel:: tile_regs_commit();
 
-            tile_regs_wait();
+            ckernel::tile_regs_wait();
             pack_tile_with_dt(dst0, cb_max);
-            tile_regs_release();
+            ckernel::tile_regs_release();
 
-            cb_pop_front(cb_max, onetile);
-            cb_pop_front(cb_tmp, onetile);
-            cb_push_back(cb_max, onetile);
+            ckernel::cb_pop_front(cb_max, onetile);
+            ckernel::cb_pop_front(cb_tmp, onetile);
+            ckernel::cb_push_back(cb_max, onetile);
         }
 
         // step 1
@@ -167,8 +167,8 @@ void MAIN {
 #endif
         }
 
-        cb_pop_front(cb_recipsumexps, onetile);
-        cb_pop_front(cb_max, onetile);
+        ckernel::cb_pop_front(cb_recipsumexps, onetile);
+        ckernel::cb_pop_front(cb_max, onetile);
     }
 }
 }  // namespace NAMESPACE

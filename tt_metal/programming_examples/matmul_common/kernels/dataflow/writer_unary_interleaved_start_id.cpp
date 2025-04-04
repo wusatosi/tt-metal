@@ -13,7 +13,7 @@ void kernel_main() {
     constexpr bool dst_is_dram = get_compile_time_arg_val(1) == 1;
 
 #ifdef OUT_SHARDED
-    cb_wait_front(cb_id_out, num_tiles);
+    ckernel::cb_wait_front(cb_id_out, num_tiles);
     return;
 #endif
 
@@ -32,7 +32,7 @@ void kernel_main() {
     uint32_t end_id = start_id + num_tiles;
     for (uint32_t i = start_id; i < end_id; ++i) {
 #endif
-        cb_wait_front(cb_id_out, onetile);
+        ckernel::cb_wait_front(cb_id_out, onetile);
         uint32_t l1_read_addr = get_read_ptr(cb_id_out);
         noc_async_write_tile(i, s, l1_read_addr);
         noc_async_write_barrier();  // This will wait until the write is done. As an alternative,
@@ -40,6 +40,6 @@ void kernel_main() {
                                     // until the write request is sent. In that case, you have to
                                     // use noc_async_write_barrier() at least once at the end of
                                     // data movement kernel to make sure all writes are done.
-        cb_pop_front(cb_id_out, onetile);
+        ckernel::cb_pop_front(cb_id_out, onetile);
     }
 }

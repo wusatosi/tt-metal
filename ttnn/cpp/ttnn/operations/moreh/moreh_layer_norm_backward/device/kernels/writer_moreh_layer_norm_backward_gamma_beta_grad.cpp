@@ -43,18 +43,18 @@ void kernel_main() {
     for (uint32_t w_idx = 0; w_idx < num_cols_per_core; w_idx++) {
         if (gamma_grad_has_value) {
             // gamma_grad (1, 1, 1, W)
-            cb_wait_front(cb_id_gamma_grad, onetile);
+            ckernel::cb_wait_front(cb_id_gamma_grad, onetile);
             noc_async_write_tile(w_idx + start_tile_idx, gamma_grad_addrg, gamma_grad_l1_read_addr);
             noc_async_write_barrier();
-            cb_pop_front(cb_id_gamma_grad, onetile);
+            ckernel::cb_pop_front(cb_id_gamma_grad, onetile);
         }  // gamma_grad_has_value
 
         if (beta_grad_has_value) {
             // beta_grad (1, 1, 1, W)
-            cb_wait_front(cb_id_beta_grad, onetile);
+            ckernel::cb_wait_front(cb_id_beta_grad, onetile);
             noc_async_write_tile(w_idx + start_tile_idx, beta_grad_addrg, beta_grad_l1_read_addr);
             noc_async_write_barrier();
-            cb_pop_front(cb_id_beta_grad, onetile);
+            ckernel::cb_pop_front(cb_id_beta_grad, onetile);
         }  // beta_grad_has_value
 
     }  // num_cols_per_core loop

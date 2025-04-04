@@ -31,7 +31,7 @@ void kernel_main() {
 
     // fill the sticks that aren't entirely padding with data from the input tensor
     for (uint32_t h = 0; h < unpadded_shard_height; h++) {
-        cb_wait_front(output_shard_cb, 1);  // wait for writer to fill this stick with padding
+        ckernel::cb_wait_front(output_shard_cb, 1);  // wait for writer to fill this stick with padding
 
         // FIXME: this isn't aligned. we need to do a memcpy for now. we can try
         // to do a noc_async_read later on with a trick.
@@ -49,7 +49,7 @@ void kernel_main() {
             output_stick_ptr[W_front_pad_bytes + i] = input_stick_ptr[i];
         }
 
-        cb_pop_front(output_shard_cb, 1);
+        ckernel::cb_pop_front(output_shard_cb, 1);
 
         input_stick_ptr += unpadded_stick_step;
         output_stick_ptr += padded_stick_step;

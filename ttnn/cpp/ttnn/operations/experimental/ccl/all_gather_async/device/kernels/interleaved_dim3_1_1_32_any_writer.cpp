@@ -80,15 +80,15 @@ void kernel_main() {
     DPRINT << "fabric_connection arg 4" << get_arg_val<uint32_t>(arg_for_fab++) << "\n";
 
     // packet header cb
-    cb_reserve_back(reserved_packet_header_cb_id, 1);
+    ckernel::cb_reserve_back(reserved_packet_header_cb_id, 1);
     auto packet_header_buffer_addr_forward = get_write_ptr(reserved_packet_header_cb_id);
-    cb_push_back(reserved_packet_header_cb_id, 1);
-    cb_reserve_back(reserved_packet_header_cb_id, 1);
+    ckernel::cb_push_back(reserved_packet_header_cb_id, 1);
+    ckernel::cb_reserve_back(reserved_packet_header_cb_id, 1);
     auto packet_header_buffer_addr_backward = get_write_ptr(reserved_packet_header_cb_id);
-    cb_push_back(reserved_packet_header_cb_id, 1);
-    cb_reserve_back(reserved_packet_header_cb_id, 1);
+    ckernel::cb_push_back(reserved_packet_header_cb_id, 1);
+    ckernel::cb_reserve_back(reserved_packet_header_cb_id, 1);
     auto packet_header_buffer_seminc = get_write_ptr(reserved_packet_header_cb_id);
-    cb_push_back(reserved_packet_header_cb_id, 1);
+    ckernel::cb_push_back(reserved_packet_header_cb_id, 1);
     DPRINT << "packet_header_buffer_addr_forward: " << (uint32_t)packet_header_buffer_addr_forward << "\n";
     DPRINT << "packet_header_buffer_addr_backward: " << (uint32_t)packet_header_buffer_addr_backward << "\n";
     DPRINT << "packet_header_buffer_seminc: " << (uint32_t)packet_header_buffer_seminc << "\n";
@@ -122,7 +122,7 @@ void kernel_main() {
     uint32_t tile_id = tile_id_start;
     while (tile_id < tile_id_end) {
         DPRINT << "tile_id: " << tile_id << "\n";
-        cb_wait_front(cb0_id, packet_size_in_pages);
+        ckernel::cb_wait_front(cb0_id, packet_size_in_pages);
         size_t l1_read_addr = get_read_ptr(cb0_id);
         uint32_t num_pages_to_read = std::min(tile_id_end - tile_id, packet_size_in_pages);
 
@@ -146,7 +146,7 @@ void kernel_main() {
         }
         noc_async_writes_flushed();
 
-        cb_pop_front(cb0_id, packet_size_in_pages);
+        ckernel::cb_pop_front(cb0_id, packet_size_in_pages);
     }
 
     // 2. mcast output ready semaphore

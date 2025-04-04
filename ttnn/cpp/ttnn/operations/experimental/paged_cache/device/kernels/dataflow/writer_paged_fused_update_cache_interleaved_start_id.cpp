@@ -57,7 +57,7 @@ void kernel_main() {
     bool skip_update = false;
 
     if constexpr (use_index_tensor) {
-        cb_wait_front(cb_index_id, 1);
+        ckernel::cb_wait_front(cb_index_id, 1);
         uint32_t index_cb_ptr = get_read_ptr(cb_index_id);
         volatile tt_l1_ptr uint32_t* index_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(index_cb_ptr);
         const uint32_t update_idx = index_ptr[my_batch_idx];
@@ -67,7 +67,7 @@ void kernel_main() {
             skip_update = true;
         } else {
             if constexpr (is_paged_cache) {
-                cb_wait_front(page_table_cb_id, 1);
+                ckernel::cb_wait_front(page_table_cb_id, 1);
                 uint32_t page_table_cb_rd_ptr = get_read_ptr(page_table_cb_id);
                 volatile tt_l1_ptr uint32_t* page_table_ptr =
                     reinterpret_cast<volatile tt_l1_ptr uint32_t*>(page_table_cb_rd_ptr);
@@ -88,22 +88,22 @@ void kernel_main() {
         }
     }
 
-    cb_wait_front(untilized_input_cb_id, Wt);  // input tensor
+    ckernel::cb_wait_front(untilized_input_cb_id, Wt);  // input tensor
     uint64_t input_l1_read_addr = get_noc_addr(get_read_ptr(untilized_input_cb_id));
 
     for (uint32_t cur_head = 0; cur_head < num_heads; ++cur_head) {
         // Wait on compute to untilize a block. Update that block in L1.
-        cb_wait_front(untilized_cache_cb_id, Wt);
-        cb_reserve_back(untilized_cache2_cb_id, Wt);
+        ckernel::cb_wait_front(untilized_cache_cb_id, Wt);
+        ckernel::cb_reserve_back(untilized_cache2_cb_id, Wt);
 
         uint32_t cache_l1_write_addr = get_read_ptr(untilized_cache_cb_id) + cache_tile_offset_B;
         noc_async_read(input_l1_read_addr, cache_l1_write_addr, Wbytes);
         noc_async_read_barrier();
-        cb_push_back(untilized_cache2_cb_id, Wt);
-        cb_pop_front(untilized_cache_cb_id, Wt);  // NEW
+        ckernel::cb_push_back(untilized_cache2_cb_id, Wt);
+        ckernel::cb_pop_front(untilized_cache_cb_id, Wt);  // NEW
 
         // Wait on compute to tilize an updated block. Write that block to DRAM
-        cb_wait_front(cache_cb_id, Wt);
+        ckernel::cb_wait_front(cache_cb_id, Wt);
         if (!skip_update) {
             uint32_t out_l1_read_addr = get_read_ptr(cache_cb_id);
             for (uint32_t curr_cache_id = cache_id; curr_cache_id < cache_id + Wt; ++curr_cache_id) {
@@ -113,7 +113,7 @@ void kernel_main() {
 
             noc_async_writes_flushed();
         }
-        cb_pop_front(cache_cb_id, Wt);
+        ckernel::cb_pop_front(cache_cb_id, Wt);
 
         if (!skip_update) {
             // Delay syncing the writes to maximize perf.
@@ -125,7 +125,7 @@ void kernel_main() {
         cache_id += head_offset_t;
     }
 
-    cb_pop_front(untilized_input_cb_id, Wt);
+    ckernel::cb_pop_front(untilized_input_cb_id, Wt);
 
     if (send_signal) {
         // send signal to start compute

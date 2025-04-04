@@ -37,19 +37,19 @@ void MAIN {
 #endif
 
     for (uint32_t block = 0; block < per_core_block_cnt; ++block) {
-        cb_wait_front(cb_inp0, per_core_block_size);
-        cb_wait_front(cb_inp1, per_core_block_size);
-        cb_reserve_back(cb_out0, per_core_block_size);
+        ckernel::cb_wait_front(cb_inp0, per_core_block_size);
+        ckernel::cb_wait_front(cb_inp1, per_core_block_size);
+        ckernel::cb_reserve_back(cb_out0, per_core_block_size);
 
-        tile_regs_acquire();
+        ckernel:: tile_regs_acquire();
 
 #if defined(DST_ACCUM_MODE) || defined(ELTWISE_DEST_REUSE_TYPE)
-        cb_wait_front(cb_in2, per_core_block_size);
+        ckernel::cb_wait_front(cb_in2, per_core_block_size);
         copy_tile_to_dst_init_short(cb_in2);
         for (uint32_t i = 0; i < per_core_block_size; ++i) {
-            copy_tile(cb_in2, i, i);  // copy from c_in[0] to DST[0]
+            ckernel:: copy_tile(cb_in2, i, i);  // copy from c_in[0] to DST[0]
         }
-        cb_pop_front(cb_in2, per_core_block_size);
+        ckernel::cb_pop_front(cb_in2, per_core_block_size);
 #endif
 
 #ifdef DST_ACCUM_MODE
@@ -76,17 +76,17 @@ void MAIN {
             SFPU_OP_CHAIN_0
 #endif
         }
-        tile_regs_commit();
+        ckernel:: tile_regs_commit();
 
-        tile_regs_wait();
+        ckernel::tile_regs_wait();
         for (uint32_t i = 0; i < per_core_block_size; ++i) {
-            pack_tile(i, cb_out0);
+            ckernel:: pack_tile(i, cb_out0);
         }
-        tile_regs_release();
+        ckernel::tile_regs_release();
 
-        cb_pop_front(cb_inp0, per_core_block_size);
-        cb_pop_front(cb_inp1, per_core_block_size);
-        cb_push_back(cb_out0, per_core_block_size);
+        ckernel::cb_pop_front(cb_inp0, per_core_block_size);
+        ckernel::cb_pop_front(cb_inp1, per_core_block_size);
+        ckernel::cb_push_back(cb_out0, per_core_block_size);
     }
 }
 }  // namespace NAMESPACE

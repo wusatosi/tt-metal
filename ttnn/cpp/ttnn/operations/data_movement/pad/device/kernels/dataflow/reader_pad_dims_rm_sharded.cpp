@@ -19,7 +19,7 @@ void kernel_main() {
     constexpr auto cb_in0 = tt::CBIndex::c_0;
     constexpr auto cb_out0 = tt::CBIndex::c_16;
 
-    cb_reserve_back(cb_out0, num_sticks_padded);
+    ckernel::cb_reserve_back(cb_out0, num_sticks_padded);
     uint32_t l1_read_addr = get_write_ptr(cb_in0);
     uint32_t l1_write_addr = get_write_ptr(cb_out0);
 
@@ -51,5 +51,5 @@ void kernel_main() {
     }
 
     noc_async_read_barrier();
-    cb_push_back(cb_out0, num_sticks_padded);
+    ckernel::cb_push_back(cb_out0, num_sticks_padded);
 }

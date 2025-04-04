@@ -84,34 +84,34 @@ void MAIN {
 #ifdef FUSE_PRE_ADD
     binary_op_init_common(cb_in0, cb_in1, cb_in);
     add_tiles_init(cb_in0, cb_in1);
-    cb_reserve_back(cb_in, num_tiles_per_block);
+    ckernel::cb_reserve_back(cb_in, num_tiles_per_block);
     for (uint32_t i = 0; i < block_h; i++) {
         index_subblock_w_offset = 0;
         for (uint32_t j = 0; j < num_subblocks_w; j++) {
-            tile_regs_acquire();
+            ckernel:: tile_regs_acquire();
             for (uint32_t w = 0; w < subblock_w; w++) {
                 index = w + index_subblock_w_offset + index_h_offset;
                 add_tiles(cb_in0, cb_in1, index, index, w);
             }
-            tile_regs_commit();
-            tile_regs_wait();
+            ckernel:: tile_regs_commit();
+            ckernel::tile_regs_wait();
             for (uint32_t i = 0; i < subblock_w; i++) {
-                pack_tile(i, cb_in);
+                ckernel:: pack_tile(i, cb_in);
             }
-            tile_regs_release();
+            ckernel::tile_regs_release();
             index_subblock_w_offset += subblock_w;
         }
         index_h_offset += block_w;
     }
-    cb_push_back(cb_in, num_tiles_per_block);
-    cb_wait_front(cb_in, num_tiles_per_block);
+    ckernel::cb_push_back(cb_in, num_tiles_per_block);
+    ckernel::cb_wait_front(cb_in, num_tiles_per_block);
     pack_reconfig_data_format(cb_in, cb_x2);
 #else
     binary_op_init_common(cb_in, cb_in, cb_x2);
 #endif
 
 #ifndef RMSNORM
-    cb_wait_front(cb_scaler, 1);
+    ckernel::cb_wait_front(cb_scaler, 1);
 #ifdef FUSE_PRE_ADD
     reconfig_data_format(cb_in0, cb_in, cb_in1, cb_scaler);
 #else
@@ -121,20 +121,20 @@ void MAIN {
     index_h_offset = 0;
     reduce_init_delta<false>(cb_in0, cb_scaler, cb_ex_partial2);
 
-    cb_reserve_back(cb_ex_partial2, block_h);
+    ckernel::cb_reserve_back(cb_ex_partial2, block_h);
     for (uint32_t i = 0; i < block_h; i++) {
-        tile_regs_acquire();
+        ckernel:: tile_regs_acquire();
         for (uint32_t w = 0; w < num_reduce_tiles_per_block_h; w++) {
             reduce_tile(cb_in, cb_scaler, w + index_h_offset, scaler0, dst0);
         }
-        tile_regs_commit();
-        tile_regs_wait();
-        pack_tile(dst0, cb_ex_partial2);
-        tile_regs_release();
+        ckernel:: tile_regs_commit();
+        ckernel::tile_regs_wait();
+        ckernel:: pack_tile(dst0, cb_ex_partial2);
+        ckernel::tile_regs_release();
         index_h_offset += block_w;
     }
-    reduce_revert_delta(cb_ex_partial2);
-    cb_push_back(cb_ex_partial2, block_h);
+    ckernel::reduce_revert_delta(cb_ex_partial2);
+    ckernel::cb_push_back(cb_ex_partial2, block_h);
     reconfig_data_format_srcb(cb_scaler, cb_in);
 #else
 #ifdef FUSE_PRE_ADD
@@ -145,69 +145,69 @@ void MAIN {
     // X^2
     mul_tiles_init(cb_in0, cb_in0);
     index_h_offset = 0;
-    cb_reserve_back(cb_x2, num_tiles_per_block);
+    ckernel::cb_reserve_back(cb_x2, num_tiles_per_block);
     for (uint32_t i = 0; i < block_h; i++) {
         index_subblock_w_offset = 0;
         for (uint32_t j = 0; j < num_subblocks_w; j++) {
-            tile_regs_acquire();
+            ckernel:: tile_regs_acquire();
             for (uint32_t w = 0; w < subblock_w; w++) {
                 index = w + index_subblock_w_offset + index_h_offset;
                 mul_tiles(cb_in, cb_in, index, index, w);
             }
-            tile_regs_commit();
-            tile_regs_wait();
+            ckernel:: tile_regs_commit();
+            ckernel::tile_regs_wait();
             for (uint32_t i = 0; i < subblock_w; i++) {
-                pack_tile(i, cb_x2);
+                ckernel:: pack_tile(i, cb_x2);
             }
-            tile_regs_release();
+            ckernel::tile_regs_release();
             index_subblock_w_offset += subblock_w;
         }
         index_h_offset += block_w;
     }
-    cb_push_back(cb_x2, num_tiles_per_block);
+    ckernel::cb_push_back(cb_x2, num_tiles_per_block);
 
     // E(x^2)
     reconfig_data_format_srca(cb_in, cb_x2);
     reconfig_data_format_srcb(cb_in, cb_scaler);
 
-    cb_wait_front(cb_x2, num_tiles_per_block);
+    ckernel::cb_wait_front(cb_x2, num_tiles_per_block);
 #ifdef RMSNORM
-    cb_wait_front(cb_scaler, 1);
+    ckernel::cb_wait_front(cb_scaler, 1);
 #endif  // RMSNORM
 
-    cb_reserve_back(cb_ex_partial2, block_h);  // RMS E(x2) #Layernorm //E(x) and E(x^2)
+    ckernel::cb_reserve_back(cb_ex_partial2, block_h);  // RMS E(x2) #Layernorm //E(x) and E(x^2)
 
     reduce_init_delta<false>(cb_x2, cb_scaler, cb_ex_partial2);
     index_h_offset = 0;
     for (uint32_t i = 0; i < block_h; i++) {
-        tile_regs_acquire();
+        ckernel:: tile_regs_acquire();
         for (uint32_t w = 0; w < num_reduce_tiles_per_block_h; w++) {
             reduce_tile(cb_x2, cb_scaler, w + index_h_offset, scaler0, dst0);
         }
 
-        tile_regs_commit();
-        tile_regs_wait();
-        pack_tile(dst0, cb_ex_partial2);
-        tile_regs_release();
+        ckernel:: tile_regs_commit();
+        ckernel::tile_regs_wait();
+        ckernel:: pack_tile(dst0, cb_ex_partial2);
+        ckernel::tile_regs_release();
         index_h_offset += block_w;
     }
-    reduce_revert_delta(cb_ex_partial2);
-    cb_pop_front(cb_x2, num_tiles_per_block);
-    cb_push_back(cb_ex_partial2, block_h);
+    ckernel::reduce_revert_delta(cb_ex_partial2);
+    ckernel::cb_pop_front(cb_x2, num_tiles_per_block);
+    ckernel::cb_push_back(cb_ex_partial2, block_h);
 
     // global reduce, cb_ex <-- cb_ex_external2, cb_ex_partial2
     if constexpr (is_allgather_worker) {
-        cb_wait_front(cb_scaler_global, 1);
+        ckernel::cb_wait_front(cb_scaler_global, 1);
         reconfig_data_format_srca(cb_x2, cb_ex_external2);
         reconfig_data_format_srcb(cb_scaler, cb_scaler_global);
         reduce_init_delta<false>(cb_ex_external2, cb_scaler_global, cb_reduction_out);
-        cb_reserve_back(cb_reduction_out, num_tiles_per_partial_result * num_tiles_per_allgather_worker);
+        ckernel::cb_reserve_back(cb_reduction_out, num_tiles_per_partial_result * num_tiles_per_allgather_worker);
 
         for (uint32_t i = 0; i < num_tiles_per_allgather_worker; i++) {  // loops over height
-            tile_regs_acquire();
+            ckernel:: tile_regs_acquire();
             for (uint32_t w = 0; w < num_tiles_per_partial_result * num_blocks_reduce;
                  w++) {  // Need to read this interleaved now, we have SUM(X) and SUM(X^2) interleaved
-                cb_wait_front(cb_ex_external2, 1);
+                ckernel::cb_wait_front(cb_ex_external2, 1);
                 reduce_tile(
                     cb_ex_external2,
                     cb_scaler_global,
@@ -215,18 +215,18 @@ void MAIN {
                     scaler0,
                     w % num_tiles_per_partial_result);  // E(x) and E(x^2) interleaved so we reduce each one into
                                                         // different dest reg
-                cb_pop_front(cb_ex_external2, 1);
+                ckernel::cb_pop_front(cb_ex_external2, 1);
             }
-            tile_regs_commit();
-            tile_regs_wait();
-            pack_tile(dst0, cb_reduction_out);
+            ckernel:: tile_regs_commit();
+            ckernel::tile_regs_wait();
+            ckernel:: pack_tile(dst0, cb_reduction_out);
 #ifndef RMSNORM
-            pack_tile(dst1, cb_reduction_out);
+            ckernel:: pack_tile(dst1, cb_reduction_out);
 #endif
-            tile_regs_release();
+            ckernel::tile_regs_release();
         }
-        reduce_revert_delta(cb_reduction_out);
-        cb_push_back(cb_reduction_out, num_tiles_per_partial_result * num_tiles_per_allgather_worker);
+        ckernel::reduce_revert_delta(cb_reduction_out);
+        ckernel::cb_push_back(cb_reduction_out, num_tiles_per_partial_result * num_tiles_per_allgather_worker);
     }
 }
 
