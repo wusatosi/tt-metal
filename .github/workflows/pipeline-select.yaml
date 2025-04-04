@@ -38,6 +38,10 @@ on:
         required: false
         type: boolean
         default: false
+      fd-unit:
+        required: false
+        type: boolean
+        default: false
 
 run-name: ${{ inputs.description }}
 jobs:
@@ -96,3 +100,18 @@ jobs:
       docker-image: ${{ needs.build-artifact.outputs.dev-docker-image }}
       build-artifact-name: ${{ needs.build-artifact.outputs.build-artifact-name }}
       wheel-artifact-name: ${{ needs.build-artifact.outputs.wheel-artifact-name }}
+  fast-dispatch-unit-tests:
+    if: ${{ inputs.fd-unit }}
+    needs: build-artifact
+    secrets: inherit
+    strategy:
+      fail-fast: false
+      matrix:
+        test-group: [
+          { arch: wormhole_b0, runner-label: N150 },
+        ]
+    uses: ./.github/workflows/fast-dispatch-build-and-unit-tests.yaml
+    with:
+      os: ubuntu-22.04
+      arch: ${{ matrix.test-group.arch }}
+      runner-label: ${{ matrix.test-group.runner-label }}
