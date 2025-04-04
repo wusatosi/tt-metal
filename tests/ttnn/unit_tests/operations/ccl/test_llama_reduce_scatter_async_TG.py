@@ -25,6 +25,7 @@ from tests.ttnn.unit_tests.operations.ccl.test_new_all_reduce import (
     NORM_CRS,
     check_mesh_tensor_alloc,
 )
+from tracy import signpost
 
 PACKET_WORKER_CRS = ttnn.CoreRangeSet(
     [
@@ -198,7 +199,7 @@ def run_reduce_scatter_test(
         tt_intermediate_tensors_list.append(tt_intermediate)
 
     enable_persistent_fabric = True
-    ccl_sub_device_crs = subdevice_shard_cores_grid if input_grid is not None else SUB_DEVICE_CRS
+    ccl_sub_device_crs = subdevice_shard_cores_grid if use_regular_grid is not None else SUB_DEVICE_CRS
     worker_sub_device = ttnn.SubDevice(
         [
             ccl_sub_device_crs,
@@ -254,7 +255,9 @@ def run_reduce_scatter_test(
         ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
         ttnn.synchronize_device(mesh_device)
 
+        signpost(header="start")
         ttnn.execute_trace(mesh_device, trace_id, blocking=False)
+        signpost(header="stop")
         ttnn.release_trace(mesh_device, trace_id)
         ttnn.synchronize_device(mesh_device)
     else:
@@ -287,6 +290,9 @@ def run_reduce_scatter_test(
             ),
         )
         eq, output_results = comp_pcc(tt_torch_tensor, output_tensor_goldens_list[tensor_index], 0.999)
+        # torch.set_printoptions(threshold=float("inf"))
+        print(tt_torch_tensor[0][0][0][0:320])
+        # print(output_tensor_goldens_list[tensor_index])
         logger.info(f"Output tensor {tensor_index} has result {output_results}")
         if not eq:
             passed = False
@@ -313,7 +319,7 @@ def run_reduce_scatter_test(
 @pytest.mark.parametrize(
     "mesh_device",
     [
-        (8, 4),
+        (1, 4),
     ],
     indirect=True,
 )
@@ -322,7 +328,7 @@ def test_fabric_reduce_scatter_tg_trace(mesh_device, trace_mode):
     shard_height = 32
     shard_width = 160
     num_devices_scatter = 4
-    num_devices_fracture = 8
+    num_devices_fracture = 1
     num_cores = 24
     num_iters = 30
     trace_mode = trace_mode
@@ -412,6 +418,48 @@ def test_fabric_reduce_scatter_regular_grid(
         trace_mode,
         num_links=1,
         scheme="random",
+        use_regular_grid=True,
+        input_grid=input_grid,
+        output_grid=output_grid,
+    )
+
+
+@pytest.mark.parametrize(
+    "device_params", [{"trace_region_size": 90000, "dispatch_core_axis": ttnn.DispatchCoreAxis.ROW}], indirect=True
+)
+@pytest.mark.parametrize("trace_mode", [False])
+@pytest.mark.parametrize(
+    "mesh_device",
+    [
+        (1, 4),
+    ],
+    indirect=True,
+)
+@pytest.mark.parametrize("shard_height", [32])
+@pytest.mark.parametrize("shard_width", [64])
+@pytest.mark.parametrize("input_grid", [(5, 4)])
+@pytest.mark.parametrize("output_grid", [(5, 1)])
+def test_fabric_reduce_scatter_regular_grid_perf(
+    mesh_device, trace_mode, shard_height, shard_width, input_grid, output_grid
+):
+    dim = 3
+    num_devices_scatter = 4
+    num_devices_fracture = 1
+    num_cores = input_grid[0] * input_grid[1]
+    num_iters = 1
+
+    run_reduce_scatter_test(
+        mesh_device,
+        dim,
+        shard_height,
+        shard_width,
+        num_devices_scatter,
+        num_devices_fracture,
+        num_cores,
+        num_iters,
+        trace_mode,
+        num_links=3,
+        scheme="sequential",
         use_regular_grid=True,
         input_grid=input_grid,
         output_grid=output_grid,

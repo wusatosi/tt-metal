@@ -92,6 +92,7 @@ void kernel_main() {
     // DPRINT << "sender_packet_end " << (uint)sender_packet_end << ENDL();
     // DPRINT << "sender_core " << (uint)sender_core << ENDL();
     // DPRINT << "worker_core " << (uint)worker_core << ENDL();
+    uint32_t total_push_tiles = 0;
 
     if (sender_core) {
         for (uint32_t target_device_id : device_order) {
@@ -118,9 +119,12 @@ void kernel_main() {
 
                 noc_async_read(shard_noc_addr, sender_read_addr, transfer_size);
                 noc_async_read_barrier();
+                // DPRINT << TSLICE(fabric_sender_cb_id, 0, SliceRange::h0_w0_32(), true, true) << ENDL();
                 cb_push_back(fabric_sender_cb_id, read_size);
+                total_push_tiles += read_size;
             }
         }
+        DPRINT << "total_push_tiles " << total_push_tiles << ENDL();
     } else if (worker_core) {
         // Calculate base addresses once
         const uint32_t base_input_tensor_addr = get_read_ptr(input_tensor_cb_id);
@@ -151,6 +155,7 @@ void kernel_main() {
                 local_semaphore_address);
 
             noc_semaphore_wait((uint32_t*)receiver_semaphore_address, total_senders);
+            DPRINT << TSLICE(fabric_receiver_cb_id, 0, SliceRange::h0_w0_32(), true, true) << ENDL();
             noc_semaphore_set_multicast(
                 receiver_semaphore_address,
                 multicast_semaphore_addr,

@@ -104,7 +104,6 @@ LlamaReduceScatterDeviceOperation::spec_return_value_t LlamaReduceScatterDeviceO
 
 LlamaReduceScatterDeviceOperation::tensor_return_value_t LlamaReduceScatterDeviceOperation::create_output_tensors(
     const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
-    tt::log_info("operation_attributes: {}", operation_attributes);
     auto output_spec = compute_output_specs(operation_attributes, tensor_args);
 
     auto tensor = create_device_tensor(output_spec, tensor_args.input_tensor.device());

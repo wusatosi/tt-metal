@@ -80,6 +80,8 @@ void kernel_main() {
     DPRINT << "sender_packet_start " << (uint)sender_packet_start << ENDL();
     DPRINT << "sender_packet_end " << (uint)sender_packet_end << ENDL();
 
+    uint32_t total_pop_tiles = 0;
+
     if (sender_core) {
         auto fabric_connection =
             FabricConnectionManager::build_from_args<FabricConnectionManager::BUILD_AND_OPEN_CONNECTION_START_ONLY>(
@@ -115,23 +117,28 @@ void kernel_main() {
                                                            : fabric_connection.get_backward_connection();
 
             uint32_t num_pages_sent = 0;
-            for (uint32_t packet = sender_packet_start; packet < sender_packet_end; packet++) {
+            uint32_t packet = sender_packet_start;
+            // for (uint32_t packet = sender_packet_start; packet < sender_packet_end; packet++) {
+            while (num_pages_sent < sender_total_num_pages) {
                 // Determine packet size based on whether it's the last packet
-                const uint32_t curr_packet_num_pages =
-                    packet == num_packets_total_per_device - 1 ? last_packet_num_pages : num_pages_per_packet;
+                auto num_pages_left = sender_total_num_pages - num_pages_sent;
+                const uint32_t curr_packet_num_pages = std::min(num_pages_per_packet, num_pages_left);
                 const uint32_t curr_packet_size_bytes = curr_packet_num_pages * page_size_bytes;
 
                 const uint32_t receiver_core_x = packet_worker_cores[packet][x_index];
                 const uint32_t receiver_core_y = packet_worker_cores[packet][y_index];
                 const uint64_t noc0_dest_noc_addr = get_noc_addr(receiver_core_x, receiver_core_y, packet_offset);
 
-                DPRINT << "packet " << (uint)packet << ENDL();
-                DPRINT << "last_packet_num_pages " << (uint)last_packet_num_pages << ENDL();
-                DPRINT << "num_pages_per_packet " << (uint)num_pages_per_packet << ENDL();
+                DPRINT << "receiver_core_x " << (uint)receiver_core_x << ENDL();
+                DPRINT << "receiver_core_y " << (uint)receiver_core_y << ENDL();
+                DPRINT << "noc0_dest_noc_addr " << (uint)noc0_dest_noc_addr << ENDL();
+                DPRINT << "curr_packet_num_pages " << (uint)curr_packet_num_pages << ENDL();
 
                 cb_wait_front(fabric_sender_cb_id, curr_packet_num_pages);
+                // DPRINT << TSLICE(fabric_sender_cb_id, 0, SliceRange::h0_w0_32(), true, true) << ENDL();
                 const auto sender_l1_addr = get_read_ptr(fabric_sender_cb_id);
 
+                // if (sender_packet_start != 0) {
                 unicast_packet_header->to_noc_unicast_write(
                     tt::tt_fabric::NocUnicastCommandHeader{noc0_dest_noc_addr}, curr_packet_size_bytes);
 
@@ -142,14 +149,18 @@ void kernel_main() {
 
                 fabric_conn.send_payload_flush_blocking_from_address(
                     (uint32_t)unicast_packet_header, packet_header_size);
+                // }
 
                 cb_pop_front(fabric_sender_cb_id, curr_packet_num_pages);
+                total_pop_tiles += curr_packet_num_pages;
 
                 num_pages_sent += curr_packet_num_pages;
-                DPRINT << "num_pages_sent " << (uint)num_pages_sent << ENDL();
-                if (num_pages_sent == sender_total_num_pages) {
-                    break;
-                }
+                // DPRINT << "num_pages_sent " << (uint)num_pages_sent << ENDL();
+                // DPRINT << "sender_total_num_pages " << (uint)sender_total_num_pages << ENDL();
+                // if (num_pages_sent == sender_total_num_pages) {
+                //     break;
+                // }
+                packet++;
             }
 
             // Write the mcast packet (forward)
@@ -158,6 +169,7 @@ void kernel_main() {
 
             fabric_conn.send_payload_flush_blocking_from_address((uint32_t)sem_inc_packet_header, packet_header_size);
         }
+        DPRINT << "total_pop_tiles " << total_pop_tiles << ENDL();
 
         if (fabric_connection.is_logically_connected()) {
             fabric_connection.close();

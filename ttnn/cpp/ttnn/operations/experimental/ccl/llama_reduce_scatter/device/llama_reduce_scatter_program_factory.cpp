@@ -283,7 +283,7 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
     auto& output_shape = output_tensor.get_logical_shape();
     auto& padded_output_shape = output_tensor.get_padded_shape();
     const auto& tile_shape = input_tensor.get_tensor_spec().tile().get_tile_shape();
-    const auto& face_shape = input_tensor.get_tensor_spec().tile().get_face_shape();
+    const auto& output_tile_shape = output_tensor.get_tensor_spec().tile().get_tile_shape();
     auto shard_spec = input_tensor.shard_spec().value();
     auto output_shard_spec = output_tensor.shard_spec().value();
     const auto& cross_device_semaphore = operation_attributes.cross_device_semaphore;
@@ -313,6 +313,9 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
     auto input_grid = shard_spec.grid;
     auto output_grid = output_shard_spec.grid;
 
+    tt::log_info("tiles_per_core_width: {}", tiles_per_core_width);
+    tt::log_info("tiles_per_core_width_output: {}", tiles_per_core_width_output);
+
     auto sub_device_cores = device->worker_cores(
         tt::tt_metal::HalProgrammableCoreType::TENSIX,
         operation_attributes.subdevice_id.value_or(device->get_sub_device_ids().at(0)));
@@ -329,11 +332,24 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
             num_links);
 
     auto fabric_max_packet_size = local_fabric_handle->get_edm_buffer_size_bytes();
-    const size_t packet_size_bytes = input_tensor.get_dtype() == DataType::BFLOAT16
-                                         ? std::bit_floor(fabric_max_packet_size)
-                                         : fabric_max_packet_size;
-    tt::log_info("fp16 packet_size_bytes(): {}", std::bit_floor(fabric_max_packet_size));
+    size_t packet_size_bytes = input_tensor.get_dtype() == DataType::BFLOAT16 ? std::bit_floor(fabric_max_packet_size)
+                                                                              : fabric_max_packet_size;
     uint32_t num_pages_per_packet = packet_size_bytes / input_page_size;
+
+    auto output_tensor_width_in_tiles = output_tensor.get_logical_shape()[-1] / output_tile_shape[1];
+    tt::log_info("output_tensor_width_in_tiles: {}", output_tensor_width_in_tiles);
+    auto per_worker_num_tiles = (output_tensor_width_in_tiles + num_links - 1) / num_links;
+    tt::log_info("per_worker_num_tiles: {}", per_worker_num_tiles);
+
+    if (per_worker_num_tiles < num_pages_per_packet) {  // if num_tiles per worker is smaller than packet size
+        packet_size_bytes = per_worker_num_tiles * input_page_size;
+        num_pages_per_packet = packet_size_bytes / input_page_size;
+    }
+
+    auto num_packets_to_send = (output_tensor_width_in_tiles + num_pages_per_packet - 1) / num_pages_per_packet;
+    auto num_packets_to_send_per_worker = (num_packets_to_send + num_links - 1) / num_links;
+    tt::log_info("num_packets_to_send_per_worker: {}", num_packets_to_send_per_worker);
+    tt::log_info("fp16 packet_size_bytes(): {}", std::bit_floor(fabric_max_packet_size));
 
     TT_FATAL(
         num_pages_per_packet % tiles_per_core_width == 0 || tiles_per_core_width > num_pages_per_packet,
@@ -357,11 +373,17 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
         num_packets_total_per_device,
         shard_spec.orientation == ShardOrientation::ROW_MAJOR);
 
+    tt::log_info("packet_worker_cores_grid: {}", packet_worker_cores_grid);
+    tt::log_info("num_packets_total_per_device: {}", num_packets_total_per_device);
+
     auto available_cores = sub_device_cores.subtract(packet_worker_cores_grid);
 
     auto sender_core_grid = detail::get_worker_cores(
         available_cores, num_workers_per_link * num_links, shard_spec.orientation == ShardOrientation::ROW_MAJOR);
     auto all_cores_grid = packet_worker_cores_grid.merge(sender_core_grid);
+
+    tt::log_info("sender_core_grid: {}", sender_core_grid);
+    tt::log_info("input_shard_cores_per_device: {}", input_shard_cores_per_device);
 
     auto schedule = detail::distribute_work_evenly(
         input_shard_cores_per_device, num_workers_per_link * num_links, tiles_per_core_width, num_pages_per_packet);
@@ -562,8 +584,6 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
     reader_defines["PACKET_WORKER_CORES"] = detail::cores_to_string(to_worker_cores(packet_worker_cores));
     reader_defines["SCHEDULE"] = schedule_string;
 
-    tt::log_info("PACKET_WORKER_CORES: {}", to_worker_cores(packet_worker_cores));
-
     // create local semaphore
     auto local_semaphore = tt::tt_metal::CreateSemaphore(program, all_cores_grid, INVALID);
 
@@ -599,11 +619,13 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
         packet_receiver_worker_core.x,
         packet_receiver_worker_core.y,
         num_packet_worker_cores};
-    tt::log_info("num_packet_worker_cores: {}", num_packet_worker_cores);
 
     auto writer_defines = reader_defines;
     bool skip_write_back = output_cores == packet_worker_cores and num_pages_per_packet == tiles_per_core_width_output;
 
+    tt::log_info("num_packet_worker_cores: {}", num_packet_worker_cores);
+    tt::log_info("output_cores: {}", output_cores);
+    tt::log_info("packet_worker_cores: {}", packet_worker_cores);
     tt::log_info("skip_write_back: {}", skip_write_back);
     tt::log_info("num_pages_per_packet: {}", num_pages_per_packet);
     tt::log_info("tiles_per_core_width_output: {}", tiles_per_core_width_output);
@@ -653,29 +675,35 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
     uint32_t writer_sender_packet_end_idx = 6;
     uint32_t sender_total_num_pages_idx = 7;
 
-    uint32_t sender_packet_start = 0;
+    uint32_t reader_sender_packet_start = 0;
+    uint32_t writer_sender_packet_start = 0;
     uint32_t sender_core_idx = 0;
 
     for (auto core : all_cores) {
         std::vector<uint32_t> writer_runtime_args = {
             cross_device_semaphore->address(), local_semaphore, false, false, 0, 0, 0, 0};
 
+        uint32_t num_shards_to_read_per_worker = schedule[sender_core_idx].size();
+
         if (sender_core_grid.contains(core)) {
             reader_runtime_args[is_reader_sender_core_idx] = true;
             reader_runtime_args[is_reader_worker_core_idx] = false;
             reader_runtime_args[is_reader_receiver_core_idx] = false;
-            reader_runtime_args[reader_sender_packet_start_idx] = sender_packet_start;
-            reader_runtime_args[reader_sender_packet_end_idx] = sender_packet_start + schedule[sender_core_idx].size();
+            reader_runtime_args[reader_sender_packet_start_idx] = reader_sender_packet_start;
+            reader_runtime_args[reader_sender_packet_end_idx] =
+                reader_sender_packet_start + num_shards_to_read_per_worker;
 
             writer_runtime_args[is_writer_sender_core_idx] = true;
             writer_runtime_args[is_writer_worker_core_idx] = false;
-            writer_runtime_args[writer_sender_packet_start_idx] = sender_packet_start;
-            writer_runtime_args[writer_sender_packet_end_idx] = sender_packet_start + schedule[sender_core_idx].size();
+            writer_runtime_args[writer_sender_packet_start_idx] = writer_sender_packet_start;
+            writer_runtime_args[writer_sender_packet_end_idx] =
+                writer_sender_packet_start + num_packets_to_send_per_worker;
             auto sender_total_num_pages = detail::get_total_num_pages_in_schedule(schedule[sender_core_idx]);
             writer_runtime_args[sender_total_num_pages_idx] = sender_total_num_pages;
             tt::log_info("sender_total_num_pages: {}", sender_total_num_pages);
 
-            sender_packet_start += schedule[sender_core_idx].size();
+            reader_sender_packet_start += num_shards_to_read_per_worker;
+            writer_sender_packet_start += num_packets_to_send_per_worker;
             sender_core_idx++;
 
             std::optional<tt::tt_fabric::SenderWorkerAdapterSpec> forward_fabric_connection =

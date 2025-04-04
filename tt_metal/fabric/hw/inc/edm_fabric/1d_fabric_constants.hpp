@@ -71,12 +71,12 @@ constexpr uint32_t DEFAULT_ITERATIONS_BETWEEN_CTX_SWITCH_AND_TEARDOWN_CHECKS = 3
 constexpr size_t DEFAULT_HANDSHAKE_CONTEXT_SWITCH_TIMEOUT = 0;
 
 // Compile Time args
-constexpr uint32_t SWITCH_INTERVAL =
-#ifndef DEBUG_PRINT_ENABLED
-    get_compile_time_arg_val(0);
-#else
-    0;
-#endif
+constexpr uint32_t SWITCH_INTERVAL = 100;
+// #ifndef DEBUG_PRINT_ENABLED
+//     get_compile_time_arg_val(0);
+// #else
+//     0;
+// #endif
 
 constexpr bool enable_first_level_ack = get_compile_time_arg_val(1);
 constexpr bool fuse_receiver_flush_and_completion_ptr = get_compile_time_arg_val(2);

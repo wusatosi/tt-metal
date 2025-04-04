@@ -24,6 +24,7 @@ void MAIN {
 
     // Wait for input data once before beginning processing
     cb_wait_front(fabric_receiver_cb_id, total_pages);
+    // UNPACK(( DPRINT << TSLICE(fabric_receiver_cb_id, 0, SliceRange::h0_w0_32(), true, true) << ENDL() ));
 
     // Reserve output space once before processing
     cb_reserve_back(accumulator_cb_id, num_pages_per_packet);
