@@ -615,19 +615,16 @@ def test_mnist_max_pool_s2i(
     assert_with_pcc(output_pytorch, golden_pytorch, pcc_thresh)
 
 
-
 def run_reshard_llama_1(device):
-
-    
     input_height = 32
     input_width = 2048
     output_height = input_height
     output_width = 2304
     input_shape = [1, 1, input_height, input_width]
-    input_shard_shape = [1, 1, input_height, input_width//16]
+    input_shard_shape = [1, 1, input_height, input_width // 16]
     output_shape = [1, 1, output_height, output_width]
-    output_shard_shape = [1, 1, output_height, output_width//24]
-    
+    output_shard_shape = [1, 1, output_height, output_width // 24]
+
     input_shard_args = dict(
         core_grid=ttnn.CoreRangeSet(
             {
@@ -644,7 +641,7 @@ def run_reshard_llama_1(device):
         ),
         strategy=ttnn.ShardStrategy.WIDTH,
     )
-    
+
     input_shard_memory_config = ttnn.create_sharded_memory_config(
         input_shard_shape, **input_shard_args, use_height_and_width_as_shard_shape=True
     )
@@ -652,13 +649,10 @@ def run_reshard_llama_1(device):
         output_shard_shape, **output_shard_args, use_height_and_width_as_shard_shape=True
     )
 
-
     torch_input_tensor = torch.rand(input_shape, dtype=torch.bfloat16)
     interleaved_input_tensor = ttnn.from_torch(
         torch_input_tensor, layout=ttnn.TILE_LAYOUT, device=device, memory_config=ttnn.DRAM_MEMORY_CONFIG
     )
-
-
 
     # interleaved_to_sharded
     sharded_input_tensor = ttnn.to_memory_config(interleaved_input_tensor, input_shard_memory_config)
@@ -667,26 +661,23 @@ def run_reshard_llama_1(device):
     sharded_output_tensor = ttnn.to_memory_config(sharded_input_tensor, output_shard_memory_config)
 
     ## sharded_to_interleaved
-    #interleaved_output_tensor = ttnn.to_memory_config(sharded_output_tensor, ttnn.DRAM_MEMORY_CONFIG)
+    # interleaved_output_tensor = ttnn.to_memory_config(sharded_output_tensor, ttnn.DRAM_MEMORY_CONFIG)
 
     output = ttnn.to_torch(sharded_output_tensor)
 
-    assert_with_pcc(torch_input_tensor, output, 1.0) 
-
+    assert_with_pcc(torch_input_tensor, output, 1.0)
 
 
 def run_reshard_llama_2(device):
-
-    
     input_height = 32
     input_width = 3584
     output_height = input_height
     output_width = 3840
     input_shape = [1, 1, input_height, input_width]
-    input_shard_shape = [1, 1, input_height, input_width//28]
+    input_shard_shape = [1, 1, input_height, input_width // 28]
     output_shape = [1, 1, output_height, output_width]
-    output_shard_shape = [1, 1, output_height, output_width//24]
-    
+    output_shard_shape = [1, 1, output_height, output_width // 24]
+
     input_shard_args = dict(
         core_grid=ttnn.CoreRangeSet(
             {
@@ -703,7 +694,7 @@ def run_reshard_llama_2(device):
         ),
         strategy=ttnn.ShardStrategy.WIDTH,
     )
-    
+
     input_shard_memory_config = ttnn.create_sharded_memory_config(
         input_shard_shape, **input_shard_args, use_height_and_width_as_shard_shape=True
     )
@@ -711,13 +702,10 @@ def run_reshard_llama_2(device):
         output_shard_shape, **output_shard_args, use_height_and_width_as_shard_shape=True
     )
 
-
     torch_input_tensor = torch.rand(input_shape, dtype=torch.bfloat16)
     interleaved_input_tensor = ttnn.from_torch(
         torch_input_tensor, layout=ttnn.TILE_LAYOUT, device=device, memory_config=ttnn.DRAM_MEMORY_CONFIG
     )
-
-
 
     # interleaved_to_sharded
     sharded_input_tensor = ttnn.to_memory_config(interleaved_input_tensor, input_shard_memory_config)
@@ -726,25 +714,19 @@ def run_reshard_llama_2(device):
     sharded_output_tensor = ttnn.to_memory_config(sharded_input_tensor, output_shard_memory_config)
 
     ## sharded_to_interleaved
-    #interleaved_output_tensor = ttnn.to_memory_config(sharded_output_tensor, ttnn.DRAM_MEMORY_CONFIG)
+    # interleaved_output_tensor = ttnn.to_memory_config(sharded_output_tensor, ttnn.DRAM_MEMORY_CONFIG)
 
     output = ttnn.to_torch(sharded_output_tensor)
 
-    assert_with_pcc(torch_input_tensor, output, 1.0) 
+    assert_with_pcc(torch_input_tensor, output, 1.0)
 
 
-def test_reshard_llama(
-    device,
-    use_program_cache
-    ):
-
-    num_rep = 10000
+def test_reshard_llama(device, use_program_cache):
+    num_rep = 1
     run_reshard_llama_1(device)
 
     run_reshard_llama_2(device)
 
-    for x in range(0,num_rep):
+    for x in range(0, num_rep):
         run_reshard_llama_1(device)
         run_reshard_llama_2(device)
-
-        

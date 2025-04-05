@@ -36,8 +36,8 @@ std::unordered_map<CoreCoord, std::vector<PageStride>> get_core_page_ranges(
         std::optional<std::pair<CoreCoord, uint32_t>> mapped_page = std::nullopt;
         if (host_page.has_value()) {
             TT_FATAL(host_page < host_page_to_input_page_mapping.size(), " Invalid host page");
-            auto input_page = host_page_to_input_page_mapping[host_page.value()];
             TT_FATAL(host_page < input_page_to_local_page_mapping.size(), " Invalid host page");
+            auto input_page = host_page_to_input_page_mapping[host_page.value()];
             auto local_input_page = input_page_to_local_page_mapping[host_page.value()];
             auto input_core =
                 input_buffer_page_mapping.all_cores_[input_buffer_page_mapping.dev_page_to_core_mapping_[input_page]];
@@ -63,7 +63,9 @@ std::unordered_map<CoreCoord, std::vector<PageStride>> get_core_page_ranges(
     for (auto output_core : output_cores) {
         ret_map.try_emplace(output_core, std::vector<PageStride>{});
 
+        TT_FATAL(output_core_id < output_core_to_vector_input_core_page.size(), " invalid core id");
         const auto& input_cores_with_pages = output_core_to_vector_input_core_page[output_core_id];
+
         auto it = input_cores_with_pages.begin();
         const auto end = input_cores_with_pages.end();
 
@@ -185,8 +187,8 @@ std::unordered_map<CoreCoord, std::vector<PageStride>> get_core_page_ranges(
                         data_stride = 0;
                     }
 
-                    TT_ASSERT(stride.core.x < full_grid.x and stride.core.y < full_grid.y);
-                    TT_ASSERT(data_stride < output_buffer->num_pages());
+                    TT_FATAL(stride.core.x < full_grid.x and stride.core.y < full_grid.y, "invalid stride core");
+                    TT_FATAL(data_stride < output_buffer->num_pages(), "Stride is too big");
                     auto stride_start = stride_it;
                     uint32_t num_strides = 1;
                     while (stride_it != end and stride_it->has_value()) {
