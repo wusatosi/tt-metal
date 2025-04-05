@@ -7,6 +7,7 @@
 #include "dataflow_api.h"
 #include "hostdevcommon/common_values.hpp"
 #include "cpp/ttnn/operations/ccl/kernel_common/worker_sync_utils.hpp"
+#include "debug/dprint.h"
 
 void kernel_main() {
     // READER
@@ -291,6 +292,8 @@ void kernel_main() {
 
                     // Now we have the block in the CB address, we can mcast to dests!
                     uint64_t in1_multicast_data_addr = in1_multicast_data_noc | in1_start_address;
+                    DPRINT << "in1_st " << in1_start_address << " in1_mcast_data_noc " << in1_multicast_data_noc
+                           << " combo " << in1_multicast_data_addr << ENDL();
 
                     // num_dests must not include source, since we are NOT really doing a local copy!
                     noc_async_write_multicast(

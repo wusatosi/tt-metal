@@ -8,6 +8,7 @@
 #include "compute_kernel_api/pack_untilize.h"
 #include "compute_kernel_api/tile_move_copy.h"
 #include "mod_div_lib.h"
+#include "debug/dprint.h"
 
 #ifdef FUSE_BIAS
 #include "compute_kernel_api/bcast.h"
@@ -21,6 +22,15 @@
 // Have to keep a copy because cannot import ttnn into tests/tt_metal.
 
 namespace NAMESPACE {
+
+inline void add_nops(const int num_nops) {
+    // DPRINT << "ADDING NOPS " << num_nops << ENDL();
+#pragma GCC urnoll num_nops
+    for (int i = 0; i < num_nops; i++) {
+        TTI_NOP;
+        // asm volatile("nop");
+    }
+}
 
 FORCE_INLINE void reload_from_cb_to_dst(
     uint32_t in0_cb_id,
@@ -194,6 +204,11 @@ void MAIN {
                             uint32_t in1_index = in1_index_subblock_offset;  // offset into in1 block
                             // inner dim that we accumualte is the inner dim of in0/in1, which is in0_block_w
                             for (uint32_t inner_dim_idx = 0; inner_dim_idx < in0_block_w; ++inner_dim_idx) {
+#ifdef MM_ADD_NOPS
+                                UNPACK(add_nops(UNPACK_NOPS));
+                                MATH(add_nops(MATH_NOPS));
+                                PACK(add_nops(PACK_NOPS));
+#endif
                                 // matmul outer product of (out_subblock_h x out_subblock_w) tiles that fill dst
                                 // accumulation is done by iterating matmul_block across inner dim
                                 // in0_block_w is passed as innder dim (kt) to matmul_block, interally used to stride
