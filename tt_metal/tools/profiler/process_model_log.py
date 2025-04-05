@@ -14,11 +14,35 @@ def get_profiler_folder(output_logs_subdir):
     return PROFILER_ARTIFACTS_DIR / output_logs_subdir
 
 
+def get_latest_profiler_sync_log_filename(output_logs_subdir):
+    output_report_dir = generate_reports_folder(get_profiler_folder(output_logs_subdir))
+    filename = output_report_dir / f".logs/sync_device_info.csv"
+    return filename
+
+
 def get_latest_ops_log_filename(output_logs_subdir):
     output_report_dir = generate_reports_folder(get_profiler_folder(output_logs_subdir))
     runDate = sorted(os.listdir(output_report_dir))[-1]
     filename = output_report_dir / runDate / f"ops_perf_results_{runDate}.csv"
     return filename
+
+
+def gather_device_skew_info(output_logs_subdir):
+    profiler_sync_log_filename = get_latest_profiler_sync_log_filename(output_logs_subdir)
+    profiler_sync_file_exists = os.path.exists(profiler_sync_log_filename)
+    results = None
+    if profiler_sync_file_exists:
+        profile_sync_file = pd.read_csv(profiler_sync_log_filename)
+        results = {}
+        results["device_frequency_ratio"] = {}
+        results["device_shift"] = {}
+
+        for _, row in profile_sync_file.iterrows():
+            device_id = row["device id"]
+            results["device_frequency_ratio"][device_id] = row["device_frequency_ratio"]
+            results["device_shift"][device_id] = row["device_shift"]
+
+    return results
 
 
 def post_process_ops_log(output_logs_subdir, columns, sum_vals=True, op_name="", has_signposts=False):

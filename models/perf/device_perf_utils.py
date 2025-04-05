@@ -12,6 +12,8 @@ from collections import defaultdict
 from tt_metal.tools.profiler.common import clear_profiler_runtime_artifacts
 from tt_metal.tools.profiler.process_model_log import (
     get_latest_ops_log_filename,
+    get_latest_profiler_sync_log_filename,
+    gather_device_skew_info,
     post_process_ops_log,
     run_device_profiler,
     get_samples_per_s,
@@ -63,12 +65,25 @@ def post_process_ops_log_detailed(
     filename = get_latest_ops_log_filename(output_logs_subdir)
     df = pd.read_csv(filename)
 
+    profiler_sync_log_filename = get_latest_profiler_sync_log_filename(output_logs_subdir)
+    profile_sync_info = gather_device_skew_info(profiler_sync_log_filename)
+    add_device_skew_info = profile_sync_info is not None
+    if add_device_skew_info:
+        columns.append("DEVICE FW START CYCLE")
+
+    per_device_times = defaultdict(lambda: defaultdict(list))
+    per_device_starts = defaultdict(list)
+    devices = set()
     if has_signposts:
         # there are explicit start and stop points in the model we want to measure between
         markers = df[df["OP TYPE"] == "signpost"]["OP CODE"]
         start = markers[markers == "start"].index[0]
         stop = markers[markers == "stop"].index[0]
         df = df.iloc[start + 1 : stop]
+        # breakpoint()
+        devices = set(int(df_row["DEVICE ID"]) for index, df_row in df.iterrows())
+        assert len(devices) > 0, "No devices found in the ops log"
+
     if op_name != "":
         df = df[df["OP CODE"] == op_name]
 
@@ -76,8 +91,10 @@ def post_process_ops_log_detailed(
         df = df.iloc[warmup_iters:]
 
     results = {}
+    per_device_results = defaultdict(dict)
     for col in columns:
         df_filtered = df[df[col] != "-"]
+        # breakpoint()
         if sum_vals:
             results[col] = df_filtered[col].astype(float).sum()
         else:
@@ -89,7 +106,17 @@ def post_process_ops_log_detailed(
             results[f"MAX {col}"] = df_filtered[col].astype(float).max()
             results[f"STD {col}"] = df_filtered[col].astype(float).std()
 
-    return results
+        for device in devices:
+            df_filtered_device = df[(df[col] != "-") & (df["DEVICE ID"] == device)]
+            per_device_results[device][f"ALL_TIMES {col}"] = df_filtered_device[col].astype(float)
+            per_device_results[device][f"AVG {col}"] = df_filtered_device[col].astype(float).mean()
+            per_device_results[device][f"MIN {col}"] = df_filtered_device[col].astype(float).min()
+            per_device_results[device][f"MAX {col}"] = df_filtered_device[col].astype(float).max()
+            per_device_results[device][f"STD {col}"] = df_filtered_device[col].astype(float).std()
+
+    breakpoint()
+
+    return results, per_device_results
 
 
 def run_device_perf_detailed(command, subdir, cols, op_name="", has_signposts=False, warmup_iters=0):
@@ -98,6 +125,7 @@ def run_device_perf_detailed(command, subdir, cols, op_name="", has_signposts=Fa
     clear_profiler_runtime_artifacts()
 
     results = {}
+    per_device_results = defaultdict(dict)
     for d_col in duration_cols:
         results[f"AVG {d_col}"] = 0
         results[f"MIN {d_col}"] = float("inf")
@@ -105,28 +133,48 @@ def run_device_perf_detailed(command, subdir, cols, op_name="", has_signposts=Fa
         results[f"STD {d_col}"] = 0
 
     run_device_profiler(command, subdir)
-    r = post_process_ops_log_detailed(
+    r, per_device_r = post_process_ops_log_detailed(
         subdir, duration_cols, op_name=op_name, has_signposts=has_signposts, detailed=True, warmup_iters=warmup_iters
     )
+
+    breakpoint()
     for d_col in duration_cols:
         results[f"AVG {d_col}"] = r[f"AVG {d_col}"]
         results[f"MIN {d_col}"] = r[f"MIN {d_col}"]
         results[f"MAX {d_col}"] = r[f"MAX {d_col}"]
         results[f"STD {d_col}"] = r[f"STD {d_col}"]
 
+        for device in per_device_r.keys():
+            per_device_results[device][f"AVG {d_col}"] = per_device_r[device][f"AVG {d_col}"]
+            per_device_results[device][f"MIN {d_col}"] = per_device_r[device][f"MIN {d_col}"]
+            per_device_results[device][f"MAX {d_col}"] = per_device_r[device][f"MAX {d_col}"]
+            per_device_results[device][f"STD {d_col}"] = per_device_r[device][f"STD {d_col}"]
+            # per_device_results[device][f"AVG_SKEW {d_col}"] = per_device_r[device][f"AVG_SKEW {d_col}"]
+            # per_device_results[device][f"MIN_SKEW {d_col}"] = per_device_r[device][f"MIN_SKEW {d_col}"]
+            # per_device_results[device][f"MAX_SKEW {d_col}"] = per_device_r[device][f"MAX_SKEW {d_col}"]
+            # per_device_results[device][f"STD_SKEW {d_col}"] = per_device_r[device][f"STD_SKEW {d_col}"]
+
     post_processed_results = defaultdict(dict)
+    post_processed_results_per_device = defaultdict(lambda: defaultdict(dict))
     for col, d_col in zip(cols, duration_cols):
         post_processed_results[col]["AVG"] = results[f"AVG {d_col}"]
         post_processed_results[col]["MIN"] = results[f"MIN {d_col}"]
         post_processed_results[col]["MAX"] = results[f"MAX {d_col}"]
         post_processed_results[col]["STD"] = results[f"STD {d_col}"]
 
+        for device in per_device_results.keys():
+            post_processed_results_per_device[device][col][f"AVG"] = per_device_results[device][f"AVG {d_col}"]
+            post_processed_results_per_device[device][col][f"MIN"] = per_device_results[device][f"MIN {d_col}"]
+            post_processed_results_per_device[device][col][f"MAX"] = per_device_results[device][f"MAX {d_col}"]
+            post_processed_results_per_device[device][col][f"STD"] = per_device_results[device][f"STD {d_col}"]
+
     logger.info(
         f"\nTest: {command}"
         f"\nPerformance statistics for op: {op_name}"
         f"\n{json.dumps(post_processed_results, indent=4)}"
+        f"\n{json.dumps(post_processed_results_per_device, indent=4)}"
     )
-    return post_processed_results
+    return post_processed_results, post_processed_results_per_device
 
 
 def check_device_perf(post_processed_results, margin, expected_perf_cols, assert_on_fail=False):
