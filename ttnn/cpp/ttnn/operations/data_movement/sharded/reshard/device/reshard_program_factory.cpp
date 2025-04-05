@@ -35,10 +35,17 @@ std::unordered_map<CoreCoord, std::vector<PageStride>> get_core_page_ranges(
         auto host_page = output_shard_to_host_mapping[output_page_id];
         std::optional<std::pair<CoreCoord, uint32_t>> mapped_page = std::nullopt;
         if (host_page.has_value()) {
+            TT_FATAL(host_page < host_page_to_input_page_mapping.size(), " Invalid host page");
             auto input_page = host_page_to_input_page_mapping[host_page.value()];
+            TT_FATAL(host_page < input_page_to_local_page_mapping.size(), " Invalid host page");
             auto local_input_page = input_page_to_local_page_mapping[host_page.value()];
             auto input_core =
                 input_buffer_page_mapping.all_cores_[input_buffer_page_mapping.dev_page_to_core_mapping_[input_page]];
+            TT_FATAL(input_page < input_buffer_page_mapping.dev_page_to_core_mapping_.size(), " Invalid input page");
+            TT_FATAL(
+                input_buffer_page_mapping.dev_page_to_core_mapping_[input_page] <
+                    input_buffer_page_mapping.all_cores_.size(),
+                " Invalid core index");
             mapped_page = std::make_optional<std::pair<CoreCoord, uint32_t>>({input_core, local_input_page});
         }
         output_core_to_vector_input_core_page[output_core_id].push_back(mapped_page);
