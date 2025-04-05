@@ -12,7 +12,6 @@ from collections import defaultdict
 from tt_metal.tools.profiler.common import clear_profiler_runtime_artifacts
 from tt_metal.tools.profiler.process_model_log import (
     get_latest_ops_log_filename,
-    get_latest_profiler_sync_log_filename,
     gather_device_skew_info,
     post_process_ops_log,
     run_device_profiler,
@@ -65,8 +64,7 @@ def post_process_ops_log_detailed(
     filename = get_latest_ops_log_filename(output_logs_subdir)
     df = pd.read_csv(filename)
 
-    profiler_sync_log_filename = get_latest_profiler_sync_log_filename(output_logs_subdir)
-    profile_sync_info = gather_device_skew_info(profiler_sync_log_filename)
+    profile_sync_info = gather_device_skew_info(output_logs_subdir)
     add_device_skew_info = profile_sync_info is not None
     if add_device_skew_info:
         columns.append("DEVICE FW START CYCLE")
@@ -113,6 +111,45 @@ def post_process_ops_log_detailed(
             per_device_results[device][f"MIN {col}"] = df_filtered_device[col].astype(float).min()
             per_device_results[device][f"MAX {col}"] = df_filtered_device[col].astype(float).max()
             per_device_results[device][f"STD {col}"] = df_filtered_device[col].astype(float).std()
+
+    breakpoint()
+    if add_device_skew_info:
+        col = "DEVICE FW START CYCLE"
+        for device in devices:
+            # initialize with placeholder values
+            df_filtered_device = df[(df[col] != "-") & (df["DEVICE ID"] == device)]
+            per_device_results[device][f"ALL_SKEW_TIMES"] = (
+                df_filtered_device[col].astype(float) + profile_sync_info["device_shift"][device]
+            )
+
+            # for i in range(len(per_device_results[device][f"ALL_SKEW_TIMES"])):
+            #     per_device_results[device][f"ALL_SKEW_TIMES"][i] = df_filtered_device[col].iloc[i] + profile_sync_info["device_shift"][device]
+
+        num_entries = len(per_device_results[next(iter(devices))][f"ALL_SKEW_TIMES"])
+        breakpoint()
+        for i in range(num_entries):
+            earliest_start = per_device_results[next(iter(devices))][f"ALL_SKEW_TIMES"].iloc[i]
+            latest_start = per_device_results[next(iter(devices))][f"ALL_SKEW_TIMES"].iloc[i]
+            # Calculate earliest/latest
+            for device in devices:
+                start_time = per_device_results[device][f"ALL_SKEW_TIMES"].iloc[i]
+                earliest_start = min(earliest_start, start_time)
+                latest_start = max(latest_start, start_time)
+
+            # Calculate per chip skew
+            for device in devices:
+                per_device_results[device][f"ALL_SKEW_TIMES"].iloc[i] = (
+                    per_device_results[f"ALL_SKEW_TIMES"][col].iloc[i] - earliest_start
+                )
+
+        breakpoint()
+        for device in devices:
+            per_device_results[device][f"SKEW_AVG "] = per_device_results[device][f"ALL_SKEW_TIMES"].mean()
+            per_device_results[device][f"SKEW_MIN "] = per_device_results[device][f"ALL_SKEW_TIMES"].min()
+            per_device_results[device][f"SKEW_MAX "] = per_device_results[device][f"ALL_SKEW_TIMES"].max()
+            per_device_results[device][f"SKEW_STD "] = per_device_results[device][f"ALL_SKEW_TIMES"].std()
+
+        breakpoint()
 
     breakpoint()
 

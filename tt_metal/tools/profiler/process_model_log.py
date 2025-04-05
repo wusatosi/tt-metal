@@ -16,7 +16,7 @@ def get_profiler_folder(output_logs_subdir):
 
 def get_latest_profiler_sync_log_filename(output_logs_subdir):
     output_report_dir = generate_reports_folder(get_profiler_folder(output_logs_subdir))
-    filename = output_report_dir / f".logs/sync_device_info.csv"
+    filename = output_report_dir / f"../.logs/sync_device_info.csv"
     return filename
 
 
