@@ -168,17 +168,18 @@ Result conv_transpose2d(
 
     log_debug(LogOp, "Padding : ({},{}) ({},{})", input_pad_top, input_pad_bottom, input_pad_left, input_pad_right);
 
+    const bool auto_shard = !input_tensor.is_sharded() && !conv_config.shard_layout.has_value();
     const bool mm_conv = use_matmul_for_1x1_conv(
         kernel_size,
         {1, 1},
         {input_pad_top + input_pad_bottom, input_pad_left + input_pad_right},
         dilation,
         groups,
-        conv_config);
+        conv_config,
+        auto_shard);
 
     const auto compute_grid_size = device->compute_with_storage_grid_size();
 
-    bool auto_shard = false;
     if (!input_tensor.is_sharded() && !conv_config.shard_layout.has_value()) {
         // In this case we deduce the shard layout.
         conv_config = determine_conv_config_for_auto_shard(
@@ -200,7 +201,6 @@ Result conv_transpose2d(
             groups,
             bias_tensor.has_value(),
             compute_config);
-        auto_shard = true;
     }
 
     // Call Halo Transpose

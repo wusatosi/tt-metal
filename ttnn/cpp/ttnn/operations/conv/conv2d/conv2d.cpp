@@ -61,7 +61,9 @@ Result conv2d(
     const std::optional<const MemoryConfig>& memory_config) {
     Conv2dConfig conv_config = conv_config_.value_or(Conv2dConfig());
     std::array<uint32_t, 4> padding_n4 = sliding_window::get_pair_n4_padding(padding);
-    const bool mm_conv = use_matmul_for_1x1_conv(kernel_size, stride, padding_n4, dilation, groups, conv_config);
+    const bool auto_shard = !input_tensor.is_sharded() && !conv_config.shard_layout.has_value();
+    const bool mm_conv =
+        use_matmul_for_1x1_conv(kernel_size, stride, padding_n4, dilation, groups, conv_config, auto_shard);
     auto [output_height, output_width] =
         calculate_output_image_size({input_height, input_width}, kernel_size, stride, padding_n4, dilation);
 
@@ -69,8 +71,7 @@ Result conv2d(
 
     const auto compute_grid_size = device->compute_with_storage_grid_size();
 
-    bool auto_shard = false;
-    if (!input_tensor.is_sharded() && !conv_config.shard_layout.has_value()) {
+    if (auto_shard) {
         // In this case we deduce the shard layout.
         conv_config = determine_conv_config_for_auto_shard(
             conv_config,
@@ -91,7 +92,6 @@ Result conv2d(
             groups,
             bias_tensor.has_value(),
             compute_config);
-        auto_shard = true;
     }
 
     ShardOrientation shard_orientation =
@@ -158,7 +158,8 @@ Result conv2d(
                 groups,
                 opt_conv_op_block_config.act_block_h_ntiles,
                 input_width,
-                true);
+                true,
+                mm_conv && auto_shard);
         }
     }
 
@@ -252,15 +253,6 @@ Result conv2d(
                     device);
             }
 
-            const uint32_t input_channels_padded = tt::round_up(in_channels, conv_config.input_channels_alignment);
-            // input_tensor_post_tm = ttnn::pad(
-            //     input_tensor_post_tm,
-            //     tt::tt_metal::Array4D({1, 1, input_tensor_post_tm.get_logical_shape()[-2], input_channels_padded}),
-            //     tt::tt_metal::Array4D({0, 0, 0, 0}),
-            //     0.0f,
-            //     true,
-            //     std::nullopt);
-            log_info(tt::LogOp, "Input tensor after padding: {} ", input_tensor_post_tm.get_logical_shape());
             //(1, 1, NHW, C) -> reshape (N, H/Kh, Kh, W/Kw, Kw, C) -> permute (N, H/Kh, W/Kw,  Kh,  Kw, C) -> reshape (N
             //* H/Kh * W/Kw,  Kh *  Kw * C)
             input_tensor_post_tm = ttnn::reshape(
@@ -271,7 +263,7 @@ Result conv2d(
                      kernel_size[0],
                      input_width / kernel_size[1],
                      kernel_size[1],
-                     input_channels_padded}));
+                     in_channels}));
             log_info(tt::LogOp, "Input tensor after reshape: {} ", input_tensor_post_tm.get_logical_shape());
             input_tensor_post_tm = ttnn::permute(input_tensor_post_tm, ttnn::SmallVector<int64_t>({0, 1, 3, 2, 4, 5}));
             log_info(tt::LogOp, "Input tensor after permute: {} ", input_tensor_post_tm.get_logical_shape());
@@ -281,19 +273,7 @@ Result conv2d(
                     {1,
                      1,
                      batch_size * (input_height / kernel_size[0]) * (input_width / kernel_size[1]),
-                     kernel_size[0] * kernel_size[1] * input_channels_padded}));
-            log_info(tt::LogOp, "Input tensor after reshape: {} ", input_tensor_post_tm.get_logical_shape());
-            // input_tensor_post_tm = ttnn::to_layout(
-            //     input_tensor_post_tm, Layout::TILE, conv_config.dtype, input_tensor_post_tm.memory_config(), device);
-            // log_info(tt::LogOp, "Input tensor after tile: {} ", input_tensor_post_tm.get_logical_shape());
-            // input_tensor_post_tm = ttnn::reshape(
-            //     input_tensor_post_tm,
-            //     ttnn::Shape(
-            //         {1,
-            //          1,
-            //          batch_size * (input_height / kernel_size[0]) * (input_width / kernel_size[1]),
-            //          kernel_size[0] * kernel_size[1] * in_channels}),
-            //     input_tensor_post_tm.get_padded_shape());
+                     kernel_size[0] * kernel_size[1] * in_channels}));
             log_info(tt::LogOp, "Input tensor after reshape: {} ", input_tensor_post_tm.get_logical_shape());
         }
 
