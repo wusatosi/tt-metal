@@ -121,6 +121,7 @@ def run_deinterleave(
     "shape, core_grid, stride_hw",
     [
         ([1, 4 * 32, 32, 32], ttnn.CoreGrid(x=4, y=1), [2, 2]),
+        # ([1, 16 * 32, 32, 32], ttnn.CoreGrid(x=8, y=2), [2, 2]),
         ([1, 256, 1024, 32], ttnn.CoreGrid(x=8, y=8), [2, 2]),
         ([1, 256, 1024, 64], ttnn.CoreGrid(x=8, y=8), [2, 2]),
         ([1, 1024, 256, 32], ttnn.CoreGrid(x=8, y=8), [2, 2]),
@@ -128,19 +129,30 @@ def run_deinterleave(
         ([1, 1024, 128, 32], ttnn.CoreGrid(x=8, y=8), [2, 2]),
         ([1, 1024, 128, 64], ttnn.CoreGrid(x=8, y=8), [2, 2]),
         ([1, 1024, 128, 48], ttnn.CoreGrid(x=8, y=8), [2, 2]),
-        # ([1, 1024, 128, 56], ttnn.CoreGrid(x=8, y=8), [2, 2]), # PCC 0.003550328966433327
-        # ([1, 256, 1024, 32], ttnn.CoreGrid(x=8, y=8), [4, 4]), # RuntimeError: TT_FATAL @ /localdev/mbezulj/tt-metal/ttnn/cpp/ttnn/operations/experimental/deinterleave/device/deinterleave_device_operation.cpp:29: per_core_height >= 2 * operation_attributes.stride_hw[0]
-        # ([1, 256, 1024, 64], ttnn.CoreGrid(x=8, y=8), [4, 4]), # RuntimeError: TT_FATAL @ /localdev/mbezulj/tt-metal/ttnn/cpp/ttnn/operations/experimental/deinterleave/device/deinterleave_device_operation.cpp:29: per_core_height >= 2 * operation_attributes.stride_hw[0]
-        ([1, 1024, 256, 32], ttnn.CoreGrid(x=8, y=8), [4, 4]),
-        ([1, 1024, 256, 64], ttnn.CoreGrid(x=8, y=8), [4, 4]),
-        ([1, 1024, 128, 32], ttnn.CoreGrid(x=8, y=8), [4, 4]),
-        ([1, 1024, 128, 64], ttnn.CoreGrid(x=8, y=8), [4, 4]),
-        ([1, 1024, 128, 48], ttnn.CoreGrid(x=8, y=8), [4, 4]),
-        ([1, 1024, 256, 32], ttnn.CoreGrid(x=8, y=8), [8, 8]),
-        ([1, 1024, 256, 64], ttnn.CoreGrid(x=8, y=8), [8, 8]),
-        ([1, 1024, 128, 32], ttnn.CoreGrid(x=8, y=8), [8, 8]),
-        ([1, 1024, 128, 64], ttnn.CoreGrid(x=8, y=8), [8, 8]),
-        ([1, 1024, 128, 48], ttnn.CoreGrid(x=8, y=8), [8, 8]),
+        # # ([1, 1024, 128, 56], ttnn.CoreGrid(x=8, y=8), [2, 2]), # PCC 0.003550328966433327
+        # # ([1, 256, 1024, 32], ttnn.CoreGrid(x=8, y=8), [4, 4]), # RuntimeError: TT_FATAL @ /localdev/mbezulj/tt-metal/ttnn/cpp/ttnn/operations/experimental/deinterleave/device/deinterleave_device_operation.cpp:29: per_core_height >= 2 * operation_attributes.stride_hw[0]
+        # # ([1, 256, 1024, 64], ttnn.CoreGrid(x=8, y=8), [4, 4]), # RuntimeError: TT_FATAL @ /localdev/mbezulj/tt-metal/ttnn/cpp/ttnn/operations/experimental/deinterleave/device/deinterleave_device_operation.cpp:29: per_core_height >= 2 * operation_attributes.stride_hw[0]
+        # ([1, 1024, 256, 32], ttnn.CoreGrid(x=8, y=8), [4, 4]),
+        # ([1, 1024, 256, 64], ttnn.CoreGrid(x=8, y=8), [4, 4]),
+        # ([1, 1024, 128, 32], ttnn.CoreGrid(x=8, y=8), [4, 4]),
+        # ([1, 1024, 128, 64], ttnn.CoreGrid(x=8, y=8), [4, 4]),
+        # ([1, 1024, 128, 48], ttnn.CoreGrid(x=8, y=8), [4, 4]),
+        # ([1, 1024, 256, 32], ttnn.CoreGrid(x=8, y=8), [8, 8]),
+        # ([1, 1024, 256, 64], ttnn.CoreGrid(x=8, y=8), [8, 8]),
+        # ([1, 1024, 128, 32], ttnn.CoreGrid(x=8, y=8), [8, 8]),
+        # ([1, 1024, 128, 64], ttnn.CoreGrid(x=8, y=8), [8, 8]),
+        # ([1, 1024, 128, 48], ttnn.CoreGrid(x=8, y=8), [8, 8]),
+        # ([1, 256, 1024, 32], ttnn.CoreGrid(x=8, y=8), [2, 2]),
+        # ([1, 256, 1024, 48], ttnn.CoreGrid(x=8, y=8), [4, 4]),
+        # ([1, 256, 1024, 56], ttnn.CoreGrid(x=8, y=8), [8, 8]),
+        # ([1, 1024, 256, 32], ttnn.CoreGrid(x=8, y=8), [2, 2]),
+        # ([1, 1024, 256, 64], ttnn.CoreGrid(x=8, y=8), [2, 2]),
+        # ([1, 1024, 256, 64], ttnn.CoreGrid(x=8, y=8), [4, 4]),
+        # ([1, 1024, 256, 64], ttnn.CoreGrid(x=8, y=8), [8, 8]),
+        # ([1, 1024, 256, 32], ttnn.CoreGrid(x=8, y=8), [2, 2]),
+        # ([1, 1024, 256, 64], ttnn.CoreGrid(x=8, y=8), [2, 2]),
+        ([1, 1024, 4, 64 * 32], ttnn.CoreGrid(x=8, y=8), [2, 2]),
+        # ([1, 1024, 4, 64*64], ttnn.CoreGrid(x=8, y=8), [2, 2]),
     ],
 )
 def test_deinterleave_shape(

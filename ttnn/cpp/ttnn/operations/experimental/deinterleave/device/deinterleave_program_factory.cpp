@@ -127,26 +127,6 @@ DeinterleaveOperation::ProgramFactory::cached_program_t DeinterleaveOperation::P
         // batch this core is processing [0-3]
         uint32_t dst_batch = my_id / cores_in_batch;
 
-        uint32_t src_width_stride = operation_attributes.stride_hw[1] * stick_size_bytes;
-        uint32_t src_height_offset_to_next =
-            (operation_attributes.stride_hw[0] - 1) * per_core_width * stick_size_bytes;
-
-        uint32_t src_datum_width_offset = (dst_batch % operation_attributes.stride_hw[0]) * stick_size_bytes;
-        uint32_t src_datum_height_offset =
-            (dst_batch / operation_attributes.stride_hw[1]) * per_core_width * stick_size_bytes;
-        uint32_t src_offset_dm0 = src_datum_width_offset + src_datum_height_offset;
-        uint32_t src_offset_dm1 = (per_core_height / 2 * per_core_width * aligned_input_unit_size) +
-                                  src_datum_width_offset + src_datum_height_offset;
-
-        uint32_t dst_height = per_core_height / operation_attributes.stride_hw[0];
-        uint32_t dst_width = per_core_width / operation_attributes.stride_hw[1];
-
-        // stride to move for one src_core output in the dst buffer
-        uint32_t dst_stride = dst_height * dst_width * stick_size_bytes;
-        // each data movement core reads half-src images from multiple cores to half-dst
-        uint32_t dst_offset_dm0 = 0;
-        uint32_t dst_offset_dm1 = dst_stride / 2;
-
         // id of this core in batch
         uint32_t id_in_batch = my_id % cores_in_batch;
         uint32_t start_id = id_in_batch * num_src_cores;
@@ -156,16 +136,49 @@ DeinterleaveOperation::ProgramFactory::cached_program_t DeinterleaveOperation::P
         uint32_t end_y = start_y + (num_src_cores % device_grid.x == 0 ? num_src_cores / device_grid.x
                                                                        : 1 + num_src_cores / device_grid.x);
 
+        // core should proccess data from start_xy to end_xy, but we dont want every core reading from the same source
+        // to start from the same point but offset and process the data in a round robin fashion. cores that read same
+        // srcs have same id_in_batch, but different dst_batch
+        uint32_t offset_x = (start_x + dst_batch) % device_grid.x;
+        uint32_t offset_y = start_y + (start_x + dst_batch) / device_grid.x;
+
+        // src offset are not affected by offset change, because we always read all data from one source and ordering
+        // here is not important.
+        uint32_t src_width_stride = operation_attributes.stride_hw[1] * stick_size_bytes;
+        uint32_t src_height_offset_to_next =
+            (operation_attributes.stride_hw[0] - 1) * per_core_width * stick_size_bytes;
+
+        uint32_t src_datum_width_offset = (dst_batch % operation_attributes.stride_hw[0]) * stick_size_bytes;
+        uint32_t src_datum_height_offset =
+            (dst_batch / operation_attributes.stride_hw[1]) * per_core_width * stick_size_bytes;
+
+        uint32_t src_offset_dm0 = src_datum_width_offset + src_datum_height_offset;
+        uint32_t src_offset_dm1 = (per_core_height / 2 * per_core_width * aligned_input_unit_size) +
+                                  src_datum_width_offset + src_datum_height_offset;
+
+        // stride to move for one src_core output in the dst buffer
+        uint32_t dst_height = per_core_height / operation_attributes.stride_hw[0];
+        uint32_t dst_width = per_core_width / operation_attributes.stride_hw[1];
+
+        uint32_t dst_stride = dst_height * dst_width * stick_size_bytes;
+        // dst offset now needs some adjustments
+        uint32_t dst_offset_dm0 = dst_batch * dst_stride;
+        uint32_t dst_offset_dm1 = dst_batch * dst_stride + dst_stride / 2;
+
         log_warning(
             tt::LogOp,
-            "DeinterleaveOperation::ProgramFactory::create; core: {} myid {}, start {}-{}, end {}-{}, batch {}",
+            "DeinterleaveOperation::ProgramFactory::create; core: {} myid {}, start {}-{}, end {}-{}, dst_batch {}, "
+            "id_in_batch {} offset {}-{}",
             core,
             my_id,
             start_y,
             start_x,
             end_y,
             end_x,
-            dst_batch);
+            dst_batch,
+            id_in_batch,
+            offset_y,
+            offset_x);
         TT_FATAL(end_x > 0, "Deinterleave: end_x {} == 0", end_x);
         TT_FATAL(end_y > 0, "Deinterleave: end_y {} == 0", end_y);
 
@@ -211,6 +224,9 @@ DeinterleaveOperation::ProgramFactory::cached_program_t DeinterleaveOperation::P
                 (uint32_t)src_offset_dm0,
                 (uint32_t)dst_stride,
                 (uint32_t)dst_offset_dm0,
+                (uint32_t)offset_x,
+                (uint32_t)offset_y,
+                (uint32_t)num_src_cores,
 
             });
         SetRuntimeArgs(
@@ -227,6 +243,9 @@ DeinterleaveOperation::ProgramFactory::cached_program_t DeinterleaveOperation::P
                 (uint32_t)src_offset_dm1,
                 (uint32_t)dst_stride,
                 (uint32_t)dst_offset_dm1,
+                (uint32_t)offset_x,
+                (uint32_t)offset_y,
+                (uint32_t)num_src_cores,
             });
     }
     // uint32_t start_id = 0;
