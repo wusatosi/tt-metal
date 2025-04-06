@@ -60,20 +60,35 @@ def test_run_matmul_test(input_shapes, device, dtype, function_level_defaults):
     ] * 2
     comparison_func = partial(comparison_funcs.comp_pcc)
 
-    for z in range(0, 100):
-        os.environ["TT_NOP_UNPACK"] = str(0)
-        os.environ["TT_NOP_MATH"] = str(0)
-        os.environ["TT_NOP_PACK"] = str(z)
-        run_single_pytorch_test(
-            "matmul",
-            input_shapes,
-            datagen_func,
-            comparison_func,
-            device,
-            {
-                "dtype": [dtype, dtype],
-                "layout": [ttnn.TILE_LAYOUT, ttnn.TILE_LAYOUT],
-                "input_mem_config": [ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM)] * 2,
-                "output_mem_config": ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM),
-            },
-        )
+    for q in range(0, 1):
+        for w in range(0, 1):
+            for e in range(0, 1):
+                for r in range(0, 1):
+                    for t in range(0, 1):
+                        for y in range(0, 1):
+                            for u in range(0, 100):
+                                os.environ["NOPS_UNPACK"] = str(q)
+                                os.environ["NOPS_MATH"] = str(w)
+                                os.environ["NOPS_PACK"] = str(e)
+                                os.environ["NOPS_IN0_SP"] = str(r)
+                                os.environ["NOPS_IN0_R"] = str(t)
+                                os.environ["NOPS_IN1_SWP"] = str(y)
+                                os.environ["NOPS_IN1_RWP"] = str(u)
+                                run_single_pytorch_test(
+                                    "matmul",
+                                    input_shapes,
+                                    datagen_func,
+                                    comparison_func,
+                                    device,
+                                    {
+                                        "dtype": [dtype, dtype],
+                                        "layout": [ttnn.TILE_LAYOUT, ttnn.TILE_LAYOUT],
+                                        "input_mem_config": [
+                                            ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM)
+                                        ]
+                                        * 2,
+                                        "output_mem_config": ttnn.MemoryConfig(
+                                            ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM
+                                        ),
+                                    },
+                                )

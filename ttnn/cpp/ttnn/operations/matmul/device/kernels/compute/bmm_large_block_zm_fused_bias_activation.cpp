@@ -181,6 +181,12 @@ void MAIN {
 
                     int in0_index_subblock_offset = 0;
                     for (uint32_t in0_subblock = 0; in0_subblock < in0_num_subblocks; in0_subblock++) {
+#ifdef MM_ADD_NOPS
+                        UNPACK(add_nops(NOPS_UNPACK));
+                        MATH(add_nops(NOPS_MATH));
+                        PACK(add_nops(NOPS_PACK));
+#endif
+
                         int in1_index_subblock_offset = 0;
                         for (uint32_t in1_subblock = 0; in1_subblock < in1_num_subblocks; in1_subblock++) {
                             tile_regs_acquire();
@@ -197,6 +203,10 @@ void MAIN {
                             }
 
 #ifndef SKIP_COMPUTE
+                            //  UNPACK(DPRINT << "UNPACK BEFORE MMBLOCK " << ENDL());
+                            //	MATH(DPRINT << "MATH BEFORE MMBLOCK " << ENDL());
+                            //	PACK(DPRINT << "PACK BEFORE MMBLOCK " << ENDL());
+
                             // Compute output sub-block
                             uint32_t dst_index =
                                 0;  // start at 0, each call to matmul_block internally increments dst_index
@@ -204,11 +214,6 @@ void MAIN {
                             uint32_t in1_index = in1_index_subblock_offset;  // offset into in1 block
                             // inner dim that we accumualte is the inner dim of in0/in1, which is in0_block_w
                             for (uint32_t inner_dim_idx = 0; inner_dim_idx < in0_block_w; ++inner_dim_idx) {
-#ifdef MM_ADD_NOPS
-                                UNPACK(add_nops(UNPACK_NOPS));
-                                MATH(add_nops(MATH_NOPS));
-                                PACK(add_nops(PACK_NOPS));
-#endif
                                 // matmul outer product of (out_subblock_h x out_subblock_w) tiles that fill dst
                                 // accumulation is done by iterating matmul_block across inner dim
                                 // in0_block_w is passed as innder dim (kt) to matmul_block, interally used to stride
@@ -228,6 +233,9 @@ void MAIN {
                                                            // (should be called in1_block_w)
                             }
 
+                            //  UNPACK(DPRINT << "UNPACK AFTER  MMBLOCK " << ENDL());
+                            //  MATH(DPRINT << "MATH AFTER MMBLOCK " << ENDL());
+                            //  PACK(DPRINT << "PACK AFTER MMBLOCK " << ENDL());
 #endif  // SKIP_COMPUTE
 
                             if (last_out) {

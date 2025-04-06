@@ -10,6 +10,7 @@
 #include "debug/dprint.h"
 
 void kernel_main() {
+    add_nops(NOPS_IN1_SWP);
     // READER
     uint32_t rt_args_idx = 0;
     // in1 tensor args
@@ -292,8 +293,6 @@ void kernel_main() {
 
                     // Now we have the block in the CB address, we can mcast to dests!
                     uint64_t in1_multicast_data_addr = in1_multicast_data_noc | in1_start_address;
-                    DPRINT << "in1_st " << in1_start_address << " in1_mcast_data_noc " << in1_multicast_data_noc
-                           << " combo " << in1_multicast_data_addr << ENDL();
 
                     // num_dests must not include source, since we are NOT really doing a local copy!
                     noc_async_write_multicast(

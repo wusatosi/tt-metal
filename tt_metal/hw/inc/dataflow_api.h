@@ -31,6 +31,15 @@
 #include "dataflow_api_addrgen.h"
 #include "tools/profiler/kernel_profiler.hpp"
 
+inline void add_nops(const int num_nops) {
+    DPRINT << "ADDING DF NOPS " << num_nops << ENDL();
+#pragma GCC urnoll num_nops
+    for (int i = 0; i < num_nops; i++) {
+        // TTI_NOP;
+        asm volatile("nop");
+    }
+}
+
 // clang-format off
 /**
  * Returns the absolute logical X coordinate value that this kernel is running on. The absolute coordinate

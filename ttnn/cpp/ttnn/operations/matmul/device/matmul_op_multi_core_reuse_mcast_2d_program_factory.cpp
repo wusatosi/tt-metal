@@ -15,11 +15,12 @@
 #include "ttnn/operations/matmul/device/matmul_op.hpp"
 #include "ttnn/operations/eltwise/unary/common/unary_op_utils.hpp"
 
+#define GETNOPS(X) std::getenv(X) ? std::stoi(std::getenv(X)) : 0;
+
 using namespace tt::constants;
 using namespace tt;
 using ttnn::operations::unary::UnaryOpType;
 using ttnn::operations::unary::UnaryWithParam;
-
 namespace reuse_mcast_optimized_helpers {
 
 tt::tt_metal::operation::ProgramWithCallbacks create_program_mcast_in0_in1(
@@ -497,6 +498,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_mcast_in0_in1(
     std::map<string, string> mm_kernel_defines;
     std::map<string, string> mm_kernel_in0_sender_sharded_defines;
     std::map<string, string> mm_kernel_in0_sender_interleaved_defines;
+    std::map<string, string> mm_kernel_in0_receiver_defines;
     std::map<string, string> mm_kernel_in1_sender_writer_defines;
     std::map<string, string> mm_kernel_in1_receiver_writer_defines;
     std::map<string, string> mm_kernel_in1_receiver_writer_other_noc_setup_defines;
@@ -525,15 +527,29 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_mcast_in0_in1(
         mm_kernel_defines["IN1_TRANSPOSE_TILE"] = "1";
     }
 
-    const uint32_t unpack_nops = std::getenv("TT_NOP_UNPACK") ? std::stoi(std::getenv("TT_NOP_UNPACK")) : 0;
-    const uint32_t math_nops = std::getenv("TT_NOP_MATH") ? std::stoi(std::getenv("TT_NOP_MATH")) : 0;
-    const uint32_t pack_nops = std::getenv("TT_NOP_UNPACK") ? std::stoi(std::getenv("TT_NOP_PACK")) : 0;
+    const uint32_t unpack_nops = GETNOPS("NOPS_UNPACK");
+    const uint32_t math_nops = GETNOPS("NOPS_MATH");
+    const uint32_t pack_nops = GETNOPS("NOPS_PACK");
+    const uint32_t in0_sp_nops = GETNOPS("NOPS_IN0_SP");
+    const uint32_t in0_r_nops = GETNOPS("NOPS_IN0_R");
+    const uint32_t in1_swp_nops = GETNOPS("NOPS_IN1_SWP");
+    const uint32_t in1_rwp_nops = GETNOPS("NOPS_IN1_RWP");
+
     std::cout << "Factory nops " << "Unpack " << unpack_nops << " Math " << math_nops << " Pack " << pack_nops
               << std::endl;
+
+    std::cout << "Factory nops " << "IN0_SP " << in0_sp_nops << " IN0_R " << in0_r_nops << " IN1_SWP " << in1_swp_nops
+              << " IN1_RWP " << in1_rwp_nops << std::endl;
+
     mm_kernel_defines["MM_ADD_NOPS"] = "1";
-    mm_kernel_defines["UNPACK_NOPS"] = std::to_string(unpack_nops);
-    mm_kernel_defines["MATH_NOPS"] = std::to_string(math_nops);
-    mm_kernel_defines["PACK_NOPS"] = std::to_string(pack_nops);
+    mm_kernel_defines["NOPS_UNPACK"] = std::to_string(unpack_nops);
+    mm_kernel_defines["NOPS_MATH"] = std::to_string(math_nops);
+    mm_kernel_defines["NOPS_PACK"] = std::to_string(pack_nops);
+    mm_kernel_in0_sender_interleaved_defines["NOPS_IN0_SP"] = std::to_string(in0_sp_nops);
+    mm_kernel_in0_receiver_defines["NOPS_IN0_R"] = std::to_string(in0_r_nops);
+    mm_kernel_in1_sender_writer_defines["NOPS_IN1_SWP"] = std::to_string(in1_swp_nops);
+    mm_kernel_in1_receiver_writer_defines["NOPS_IN1_RWP"] = std::to_string(in1_rwp_nops);
+    mm_kernel_in1_receiver_writer_other_noc_setup_defines["NOPS_IN1_RWP"] = std::to_string(in1_rwp_nops);
 
     bmm_op_utils::add_stagger_defines_if_needed(device->arch(), cores.size(), mm_kernel_defines);
 
@@ -649,7 +665,8 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_mcast_in0_in1(
             tt_metal::DataMovementConfig{
                 .processor = tt_metal::DataMovementProcessor::RISCV_1,
                 .noc = in0_noc,
-                .compile_args = in0_receiver_compile_time_args});
+                .compile_args = in0_receiver_compile_time_args,
+                .defines = mm_kernel_in0_receiver_defines});
     }
 
     tt::tt_metal::KernelHandle mm_kernel_in1_receiver_writer_other_noc_setup_id = mm_kernel_in1_receiver_writer_id;
@@ -675,7 +692,8 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_mcast_in0_in1(
             tt_metal::DataMovementConfig{
                 .processor = tt_metal::DataMovementProcessor::RISCV_1,
                 .noc = in0_split_noc,
-                .compile_args = in0_receiver_compile_time_args});
+                .compile_args = in0_receiver_compile_time_args,
+                .defines = mm_kernel_in0_receiver_defines});
     }
 
     // Compute kernel compile time args

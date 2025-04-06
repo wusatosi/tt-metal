@@ -9,6 +9,7 @@
 #include "cpp/ttnn/operations/ccl/kernel_common/worker_sync_utils.hpp"
 
 void kernel_main() {
+    add_nops(NOPS_IN0_SP);
     uint32_t rt_args_idx = 0;
     // in0 tensor args
     const uint32_t in0_tensor_addr = get_arg_val<uint32_t>(rt_args_idx++);

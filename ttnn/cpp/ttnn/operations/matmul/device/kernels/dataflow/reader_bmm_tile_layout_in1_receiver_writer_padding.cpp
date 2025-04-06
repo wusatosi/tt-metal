@@ -6,8 +6,10 @@
 
 #include "dataflow_api.h"
 #include "hostdevcommon/common_values.hpp"
+#include "debug/dprint.h"
 
 void kernel_main() {
+    add_nops(NOPS_IN1_RWP);
     // READER
     uint32_t rt_args_idx = 0;
     // in1 mcast args
