@@ -85,73 +85,91 @@ def post_process_ops_log_detailed(
     if op_name != "":
         df = df[df["OP CODE"] == op_name]
 
-    if warmup_iters > 0:
-        df = df.iloc[warmup_iters:]
-
-    results = {}
-    per_device_results = defaultdict(dict)
+    results = defaultdict(dict)
+    per_device_results = defaultdict(lambda: defaultdict(dict))
     for col in columns:
-        df_filtered = df[df[col] != "-"]
-        # breakpoint()
+        df_without_warmup = df.iloc[warmup_iters:]
+        df_filtered = df_without_warmup[df_without_warmup[col] != "-"]
         if sum_vals:
-            results[col] = df_filtered[col].astype(float).sum()
+            results[col][f"ALL"] = df_filtered[col].astype(float).sum()
         else:
-            results[col] = df_filtered[col].astype(float).to_numpy()
+            results[col][f"ALL"] = df_filtered[col].astype(float).to_numpy()
 
         if detailed:
-            results[f"AVG {col}"] = df_filtered[col].astype(float).mean()
-            results[f"MIN {col}"] = df_filtered[col].astype(float).min()
-            results[f"MAX {col}"] = df_filtered[col].astype(float).max()
-            results[f"STD {col}"] = df_filtered[col].astype(float).std()
+            results[col][f"AVG"] = df_filtered[col].astype(float).mean()
+            results[col][f"MIN"] = df_filtered[col].astype(float).min()
+            results[col][f"MAX"] = df_filtered[col].astype(float).max()
+            results[col][f"STD"] = df_filtered[col].astype(float).std()
 
         for device in devices:
             df_filtered_device = df[(df[col] != "-") & (df["DEVICE ID"] == device)]
-            per_device_results[device][f"ALL_TIMES {col}"] = df_filtered_device[col].astype(float)
-            per_device_results[device][f"AVG {col}"] = df_filtered_device[col].astype(float).mean()
-            per_device_results[device][f"MIN {col}"] = df_filtered_device[col].astype(float).min()
-            per_device_results[device][f"MAX {col}"] = df_filtered_device[col].astype(float).max()
-            per_device_results[device][f"STD {col}"] = df_filtered_device[col].astype(float).std()
+            if warmup_iters > 0:
+                df_filtered_device = df_filtered_device.iloc[warmup_iters:]
+            per_device_results[device][col][f"ALL"] = df_filtered_device[col].astype(float)
+            per_device_results[device][col][f"AVG"] = df_filtered_device[col].astype(float).mean()
+            per_device_results[device][col][f"MIN"] = df_filtered_device[col].astype(float).min()
+            per_device_results[device][col][f"MAX"] = df_filtered_device[col].astype(float).max()
+            per_device_results[device][col][f"STD"] = df_filtered_device[col].astype(float).std()
 
-    breakpoint()
     if add_device_skew_info:
+        SKIPPED_INITIAL_ITERS = 2
         col = "DEVICE FW START CYCLE"
         for device in devices:
             # initialize with placeholder values
-            df_filtered_device = df[(df[col] != "-") & (df["DEVICE ID"] == device)]
-            per_device_results[device][f"ALL_SKEW_TIMES"] = (
+            df_filtered_device = df[(df[col] != "-") & (df["DEVICE ID"].astype(int) == device)]
+            per_device_results[device]["SKEW"][f"ALL"] = (
                 df_filtered_device[col].astype(float) + profile_sync_info["device_shift"][device]
             )
+            per_device_results[device]["SKEW_STEADY_STATE"][f"ALL"] = per_device_results[device]["SKEW"][f"ALL"].iloc[
+                SKIPPED_INITIAL_ITERS:
+            ]
+            if len(df_filtered_device) == 0:
+                logger.warning(f"No entries found for device {device}, skipping...")
+                continue
 
             # for i in range(len(per_device_results[device][f"ALL_SKEW_TIMES"])):
             #     per_device_results[device][f"ALL_SKEW_TIMES"][i] = df_filtered_device[col].iloc[i] + profile_sync_info["device_shift"][device]
 
-        num_entries = len(per_device_results[next(iter(devices))][f"ALL_SKEW_TIMES"])
-        breakpoint()
+        num_entries = len(per_device_results[next(iter(devices))]["SKEW"][f"ALL"])
         for i in range(num_entries):
-            earliest_start = per_device_results[next(iter(devices))][f"ALL_SKEW_TIMES"].iloc[i]
-            latest_start = per_device_results[next(iter(devices))][f"ALL_SKEW_TIMES"].iloc[i]
+            logger.info(f"i: {i}")
+            earliest_start = per_device_results[next(iter(devices))]["SKEW"][f"ALL"].iloc[i]
+            latest_start = per_device_results[next(iter(devices))]["SKEW"][f"ALL"].iloc[i]
             # Calculate earliest/latest
             for device in devices:
-                start_time = per_device_results[device][f"ALL_SKEW_TIMES"].iloc[i]
+                if len(per_device_results[device]["SKEW"][f"ALL"]) == 0:
+                    logger.warning(f"No entries found for device {device}, skipping...")
+                    continue
+                start_time = per_device_results[device]["SKEW"][f"ALL"].iloc[i]
                 earliest_start = min(earliest_start, start_time)
                 latest_start = max(latest_start, start_time)
 
             # Calculate per chip skew
             for device in devices:
-                per_device_results[device][f"ALL_SKEW_TIMES"].iloc[i] = (
-                    per_device_results[f"ALL_SKEW_TIMES"][col].iloc[i] - earliest_start
+                if len(per_device_results[device]["SKEW"][f"ALL"]) == 0:
+                    logger.warning(f"No entries found for device {device}, skipping...")
+                    continue
+                per_device_results[device]["SKEW"][f"ALL"].iloc[i] = (
+                    per_device_results[device]["SKEW"][f"ALL"].iloc[i] - earliest_start
                 )
 
-        breakpoint()
         for device in devices:
-            per_device_results[device][f"SKEW_AVG "] = per_device_results[device][f"ALL_SKEW_TIMES"].mean()
-            per_device_results[device][f"SKEW_MIN "] = per_device_results[device][f"ALL_SKEW_TIMES"].min()
-            per_device_results[device][f"SKEW_MAX "] = per_device_results[device][f"ALL_SKEW_TIMES"].max()
-            per_device_results[device][f"SKEW_STD "] = per_device_results[device][f"ALL_SKEW_TIMES"].std()
-
-        breakpoint()
-
-    breakpoint()
+            per_device_results[device]["SKEW"][f"AVG"] = per_device_results[device]["SKEW"][f"ALL"].mean()
+            per_device_results[device]["SKEW"][f"MIN"] = per_device_results[device]["SKEW"][f"ALL"].min()
+            per_device_results[device]["SKEW"][f"MAX"] = per_device_results[device]["SKEW"][f"ALL"].max()
+            per_device_results[device]["SKEW"][f"STD"] = per_device_results[device]["SKEW"][f"ALL"].std()
+            per_device_results[device]["SKEW_STEADY_STATE"][f"AVG"] = (
+                per_device_results[device]["SKEW"][f"ALL"].iloc[SKIPPED_INITIAL_ITERS:].mean()
+            )
+            per_device_results[device]["SKEW_STEADY_STATE"][f"MIN"] = (
+                per_device_results[device]["SKEW"][f"ALL"].iloc[SKIPPED_INITIAL_ITERS:].min()
+            )
+            per_device_results[device]["SKEW_STEADY_STATE"][f"MAX"] = (
+                per_device_results[device]["SKEW"][f"ALL"].iloc[SKIPPED_INITIAL_ITERS:].max()
+            )
+            per_device_results[device]["SKEW_STEADY_STATE"][f"STD"] = (
+                per_device_results[device]["SKEW"][f"ALL"].iloc[SKIPPED_INITIAL_ITERS:].std()
+            )
 
     return results, per_device_results
 
@@ -161,50 +179,72 @@ def run_device_perf_detailed(command, subdir, cols, op_name="", has_signposts=Fa
 
     clear_profiler_runtime_artifacts()
 
-    results = {}
-    per_device_results = defaultdict(dict)
+    results = defaultdict(dict)
+    per_device_results = defaultdict(lambda: defaultdict(dict))
     for d_col in duration_cols:
-        results[f"AVG {d_col}"] = 0
-        results[f"MIN {d_col}"] = float("inf")
-        results[f"MAX {d_col}"] = -float("inf")
-        results[f"STD {d_col}"] = 0
+        results[d_col][f"AVG"] = 0
+        results[d_col][f"MIN"] = float("inf")
+        results[d_col][f"MAX"] = -float("inf")
+        results[d_col][f"STD"] = 0
 
     run_device_profiler(command, subdir)
     r, per_device_r = post_process_ops_log_detailed(
         subdir, duration_cols, op_name=op_name, has_signposts=has_signposts, detailed=True, warmup_iters=warmup_iters
     )
 
-    breakpoint()
     for d_col in duration_cols:
-        results[f"AVG {d_col}"] = r[f"AVG {d_col}"]
-        results[f"MIN {d_col}"] = r[f"MIN {d_col}"]
-        results[f"MAX {d_col}"] = r[f"MAX {d_col}"]
-        results[f"STD {d_col}"] = r[f"STD {d_col}"]
+        results[d_col][f"AVG"] = r[d_col][f"AVG"]
+        results[d_col][f"MIN"] = r[d_col][f"MIN"]
+        results[d_col][f"MAX"] = r[d_col][f"MAX"]
+        results[d_col][f"STD"] = r[d_col][f"STD"]
 
-        for device in per_device_r.keys():
-            per_device_results[device][f"AVG {d_col}"] = per_device_r[device][f"AVG {d_col}"]
-            per_device_results[device][f"MIN {d_col}"] = per_device_r[device][f"MIN {d_col}"]
-            per_device_results[device][f"MAX {d_col}"] = per_device_r[device][f"MAX {d_col}"]
-            per_device_results[device][f"STD {d_col}"] = per_device_r[device][f"STD {d_col}"]
-            # per_device_results[device][f"AVG_SKEW {d_col}"] = per_device_r[device][f"AVG_SKEW {d_col}"]
-            # per_device_results[device][f"MIN_SKEW {d_col}"] = per_device_r[device][f"MIN_SKEW {d_col}"]
-            # per_device_results[device][f"MAX_SKEW {d_col}"] = per_device_r[device][f"MAX_SKEW {d_col}"]
-            # per_device_results[device][f"STD_SKEW {d_col}"] = per_device_r[device][f"STD_SKEW {d_col}"]
+        for device, results in per_device_r.items():
+            per_device_results[device][d_col][f"AVG"] = results[d_col][f"AVG"]
+            per_device_results[device][d_col][f"MIN"] = results[d_col][f"MIN"]
+            per_device_results[device][d_col][f"MAX"] = results[d_col][f"MAX"]
+            per_device_results[device][d_col][f"STD"] = results[d_col][f"STD"]
 
-    post_processed_results = defaultdict(dict)
-    post_processed_results_per_device = defaultdict(lambda: defaultdict(dict))
+    post_processed_results = {}  # defaultdict(dict)
+    post_processed_results_per_device = {}  # defaultdict(lambda: defaultdict(dict))
     for col, d_col in zip(cols, duration_cols):
-        post_processed_results[col]["AVG"] = results[f"AVG {d_col}"]
-        post_processed_results[col]["MIN"] = results[f"MIN {d_col}"]
-        post_processed_results[col]["MAX"] = results[f"MAX {d_col}"]
-        post_processed_results[col]["STD"] = results[f"STD {d_col}"]
+        post_processed_results[col] = {}
+        post_processed_results[col]["AVG"] = results[d_col][f"AVG"]
+        post_processed_results[col]["MIN"] = results[d_col][f"MIN"]
+        post_processed_results[col]["MAX"] = results[d_col][f"MAX"]
+        post_processed_results[col]["STD"] = results[d_col][f"STD"]
 
-        for device in per_device_results.keys():
-            post_processed_results_per_device[device][col][f"AVG"] = per_device_results[device][f"AVG {d_col}"]
-            post_processed_results_per_device[device][col][f"MIN"] = per_device_results[device][f"MIN {d_col}"]
-            post_processed_results_per_device[device][col][f"MAX"] = per_device_results[device][f"MAX {d_col}"]
-            post_processed_results_per_device[device][col][f"STD"] = per_device_results[device][f"STD {d_col}"]
+        for device, pd_results in per_device_results.items():
+            if device not in post_processed_results_per_device:
+                post_processed_results_per_device[device] = {}
+            if col not in post_processed_results_per_device[device]:
+                post_processed_results_per_device[device][col] = {}
+            post_processed_results_per_device[device][col][f"AVG"] = pd_results[d_col][f"AVG"]
+            post_processed_results_per_device[device][col][f"MIN"] = pd_results[d_col][f"MIN"]
+            post_processed_results_per_device[device][col][f"MAX"] = pd_results[d_col][f"MAX"]
+            post_processed_results_per_device[device][col][f"STD"] = pd_results[d_col][f"STD"]
 
+    for device, pd_results in per_device_r.items():
+        if "SKEW" not in pd_results:
+            continue
+        assert "SKEW_STEADY_STATE" in pd_results
+        if device not in post_processed_results_per_device:
+            post_processed_results_per_device[device] = {}
+        post_processed_results_per_device[device]["SKEW"] = {}
+        post_processed_results_per_device[device]["SKEW_STEADY_STATE"] = {}
+        post_processed_results_per_device[device]["SKEW"]["ALL"] = list(
+            pd_results["SKEW"]["ALL"]
+        )  # To make it json serializable
+        post_processed_results_per_device[device]["SKEW"]["AVG"] = pd_results["SKEW"]["AVG"]
+        post_processed_results_per_device[device]["SKEW"]["MIN"] = pd_results["SKEW"]["MIN"]
+        post_processed_results_per_device[device]["SKEW"]["MAX"] = pd_results["SKEW"]["MAX"]
+        post_processed_results_per_device[device]["SKEW"]["STD"] = pd_results["SKEW"]["STD"]
+
+        post_processed_results_per_device[device]["SKEW_STEADY_STATE"]["AVG"] = pd_results["SKEW_STEADY_STATE"]["AVG"]
+        post_processed_results_per_device[device]["SKEW_STEADY_STATE"]["MIN"] = pd_results["SKEW_STEADY_STATE"]["MIN"]
+        post_processed_results_per_device[device]["SKEW_STEADY_STATE"]["MAX"] = pd_results["SKEW_STEADY_STATE"]["MAX"]
+        post_processed_results_per_device[device]["SKEW_STEADY_STATE"]["STD"] = pd_results["SKEW_STEADY_STATE"]["STD"]
+
+    breakpoint()
     logger.info(
         f"\nTest: {command}"
         f"\nPerformance statistics for op: {op_name}"

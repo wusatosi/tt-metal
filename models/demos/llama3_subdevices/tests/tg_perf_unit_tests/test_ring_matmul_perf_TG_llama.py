@@ -37,7 +37,7 @@ def test_ring_mm_tg_llama_perf(
 
     profiler.start("run")
     profiler.start(step_name)
-    results = run_device_perf_detailed(command, subdir, cols, op_name, has_signposts=True)
+    results, per_device_results = run_device_perf_detailed(command, subdir, cols, op_name, has_signposts=True)
     profiler.end(step_name)
     profiler.end("run")
 
@@ -46,6 +46,16 @@ def test_ring_mm_tg_llama_perf(
     measured_max_us = results[cols[0]]["MAX"] / 1000
     measured_avg_us = results[cols[0]]["AVG"] / 1000
     measured_std_us = results[cols[0]]["STD"] / 1000
+
+    for device in per_device_results:
+        measured_min_us_device = per_device_results[device][f"MIN {cols[0]}"] / 1000
+        measured_max_us_device = per_device_results[device][f"MAX {cols[0]}"] / 1000
+        measured_avg_us_device = per_device_results[device][f"AVG {cols[0]}"] / 1000
+        measured_std_us_device = per_device_results[device][f"STD {cols[0]}"] / 1000
+        logger.info(f"Device {device} performance: {measured_avg_us_device:.3f} us")
+        logger.info(f"Device {device} performance: {measured_min_us_device:.3f} us")
+        logger.info(f"Device {device} performance: {measured_max_us_device:.3f} us")
+        logger.info(f"Device {device} performance: {measured_std_us_device:.3f} us")
 
     logger.info(f"Measured performance: {measured_avg_us:.3f} us vs. target: {perf_target_us} us")
 

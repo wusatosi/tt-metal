@@ -39,7 +39,9 @@ def test_ag_tg_llama_perf(
 
     profiler.start("run")
     profiler.start(step_name)
-    results = run_device_perf_detailed(command, subdir, cols, op_name, has_signposts=True, warmup_iters=warmup_iters)
+    results, per_device_results = run_device_perf_detailed(
+        command, subdir, cols, op_name, has_signposts=True, warmup_iters=warmup_iters
+    )
     profiler.end(step_name)
     profiler.end("run")
 
@@ -92,11 +94,14 @@ def test_ar_tg_llama_perf(
     )
     cols = ["DEVICE KERNEL"]
     op_name = "AllReduceAsync"
-    warmup_iters = warmup_iters * 32  # 5 iterations per device
+    num_devices = 8
+    warmup_iters = warmup_iters  # * num_devices # 5 iterations per device
 
     profiler.start("run")
     profiler.start(step_name)
-    results = run_device_perf_detailed(command, subdir, cols, op_name, has_signposts=True, warmup_iters=warmup_iters)
+    results, per_device_results = run_device_perf_detailed(
+        command, subdir, cols, op_name, has_signposts=True, warmup_iters=warmup_iters
+    )
     profiler.end(step_name)
     profiler.end("run")
 
@@ -105,6 +110,29 @@ def test_ar_tg_llama_perf(
     measured_max_us = results[cols[0]]["MAX"] / 1000
     measured_avg_us = results[cols[0]]["AVG"] / 1000
     measured_std_us = results[cols[0]]["STD"] / 1000
+
+    for device, pd_results in per_device_results.items():
+        measured_min_us_device = pd_results[cols[0]][f"MIN"] / 1000
+        measured_max_us_device = pd_results[cols[0]][f"MAX"] / 1000
+        measured_avg_us_device = pd_results[cols[0]][f"AVG"] / 1000
+        measured_std_us_device = pd_results[cols[0]][f"STD"] / 1000
+        logger.info(f"Device {device} performance (avg): {measured_avg_us_device:.3f} us")
+        logger.info(f"Device {device} performance (min): {measured_min_us_device:.3f} us")
+        logger.info(f"Device {device} performance (max): {measured_max_us_device:.3f} us")
+        logger.info(f"Device {device} performance (std): {measured_std_us_device:.3f} us")
+        breakpoint()
+        if "SKEW" in pd_results:
+            logger.info(f"Device {device} skew: {pd_results['SKEW']['ALL']}")
+            logger.info(f"Device {device} skew avg: {pd_results['SKEW']['AVG']}")
+            logger.info(f"Device {device} skew min: {pd_results['SKEW']['MIN']}")
+            logger.info(f"Device {device} skew max: {pd_results['SKEW']['MAX']}")
+            logger.info(f"Device {device} skew std: {pd_results['SKEW']['STD']}")
+            # assert "ALL" in pd_results['SKEW_STEADY_STATE']
+            # logger.info(f"Device {device} skew_steady_state {pd_results['SKEW_STEADY_STATE']['ALL']}")
+            logger.info(f"Device {device} skew_steady_stateavg: {pd_results['SKEW_STEADY_STATE']['AVG']}")
+            logger.info(f"Device {device} skew_steady_statemin: {pd_results['SKEW_STEADY_STATE']['MIN']}")
+            logger.info(f"Device {device} skew_steady_statemax: {pd_results['SKEW_STEADY_STATE']['MAX']}")
+            logger.info(f"Device {device} skew_steady_statestd: {pd_results['SKEW_STEADY_STATE']['STD']}")
 
     logger.info(f"Measured performance: {measured_avg_us:.3f} us vs. target: {perf_target_us} us")
 
