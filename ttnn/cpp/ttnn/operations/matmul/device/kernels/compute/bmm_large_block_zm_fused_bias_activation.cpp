@@ -302,6 +302,9 @@ void MAIN {
                             in1_index_subblock_offset += out_subblock_w;
                         }
                         in0_index_subblock_offset += in0_subblock_num_tiles;
+                        if (block > 16 || b > 0) {
+                            DPRINT << b << " " << block << " " << in0_subblock << ENDL();
+                        }
                     }
 
 #ifdef PACKER_L1_ACC
