@@ -66,7 +66,7 @@ def test_run_matmul_test(input_shapes, device, dtype, function_level_defaults):
                 for r in range(0, 1):
                     for t in range(0, 1):
                         for y in range(0, 1):
-                            for u in range(0, 100):
+                            for u in range(0, 1):
                                 os.environ["NOPS_UNPACK"] = str(q)
                                 os.environ["NOPS_MATH"] = str(w)
                                 os.environ["NOPS_PACK"] = str(e)

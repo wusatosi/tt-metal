@@ -32,7 +32,7 @@
 #include "tools/profiler/kernel_profiler.hpp"
 
 inline void add_nops(const int num_nops) {
-    DPRINT << "ADDING DF NOPS " << num_nops << ENDL();
+    // DPRINT << "ADDING DF NOPS " << num_nops << ENDL();
 #pragma GCC urnoll num_nops
     for (int i = 0; i < num_nops; i++) {
         // TTI_NOP;

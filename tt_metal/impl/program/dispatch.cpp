@@ -275,7 +275,7 @@ uint32_t finalize_kernel_bins(
     uint32_t& kernel_text_offset,
     uint32_t& kernel_text_size) {
     uint32_t l1_alignment = hal_ref.get_alignment(HalMemType::L1);
-
+    std::cout << "Base offset " << base_offset << std::endl;
     uint32_t max_offset = 0;
     for (auto& kg : kernel_groups) {
         uint32_t offset = base_offset;
@@ -342,6 +342,7 @@ uint32_t finalize_kernel_bins(
     }
     kernel_text_offset = base_offset;
     kernel_text_size = max_offset - base_offset;
+    std::cout << "kernel text size " << kernel_text_size << std::endl;
     return max_offset;
 }
 
