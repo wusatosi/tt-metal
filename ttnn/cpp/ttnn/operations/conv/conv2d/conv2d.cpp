@@ -10,6 +10,10 @@
 
 #include <tt-metalium/buffer_constants.hpp>
 
+#include "tt-metalium/logger.hpp"
+#include "ttnn/operations/data_movement/pad/pad.hpp"
+#include "ttnn/operations/data_movement/permute/permute.hpp"
+#include "ttnn/tensor/enum_types.hpp"
 #include "ttnn/tensor/tensor.hpp"
 #include "ttnn/tensor/types.hpp"
 
@@ -60,7 +64,6 @@ Result conv2d(
     const bool mm_conv = use_matmul_for_1x1_conv(kernel_size, stride, padding_n4, dilation, groups, conv_config);
     auto [output_height, output_width] =
         calculate_output_image_size({input_height, input_width}, kernel_size, stride, padding_n4, dilation);
-
 
     DeviceComputeKernelConfig compute_config = compute_config_.value_or(get_conv_default_compute_kernel_config(device));
 
@@ -158,11 +161,7 @@ Result conv2d(
                 true);
         }
     }
-    // if 1x1 conv w/ stride 1, convert input tensor to tile layout if required
-    if (mm_conv) {
-        input_tensor_post_tm = ttnn::to_layout(
-            input_tensor_post_tm, Layout::TILE, conv_config.dtype, input_tensor_post_tm.memory_config(), device);
-    }
+
     // call optimized conv op or matmul micro op
     bool input_is_on_device = ttnn::is_tensor_on_device_or_multidevice(input_tensor_post_tm);
     TT_ASSERT(input_is_on_device);
@@ -243,6 +242,69 @@ Result conv2d(
         }
         return {conv_output, output_height, output_width, weight_tensor_on_device, bias_tensor_on_device};
     } else {
+        if (kernel_size[0] != 1 || kernel_size[1] != 1) {
+            if (input_tensor_post_tm.layout() == Layout::TILE) {
+                input_tensor_post_tm = ttnn::to_layout(
+                    input_tensor_post_tm,
+                    Layout::ROW_MAJOR,
+                    conv_config.dtype,
+                    input_tensor_post_tm.memory_config(),
+                    device);
+            }
+
+            const uint32_t input_channels_padded = tt::round_up(in_channels, conv_config.input_channels_alignment);
+            // input_tensor_post_tm = ttnn::pad(
+            //     input_tensor_post_tm,
+            //     tt::tt_metal::Array4D({1, 1, input_tensor_post_tm.get_logical_shape()[-2], input_channels_padded}),
+            //     tt::tt_metal::Array4D({0, 0, 0, 0}),
+            //     0.0f,
+            //     true,
+            //     std::nullopt);
+            log_info(tt::LogOp, "Input tensor after padding: {} ", input_tensor_post_tm.get_logical_shape());
+            //(1, 1, NHW, C) -> reshape (N, H/Kh, Kh, W/Kw, Kw, C) -> permute (N, H/Kh, W/Kw,  Kh,  Kw, C) -> reshape (N
+            //* H/Kh * W/Kw,  Kh *  Kw * C)
+            input_tensor_post_tm = ttnn::reshape(
+                input_tensor_post_tm,
+                ttnn::Shape(
+                    {batch_size,
+                     input_height / kernel_size[0],
+                     kernel_size[0],
+                     input_width / kernel_size[1],
+                     kernel_size[1],
+                     input_channels_padded}));
+            log_info(tt::LogOp, "Input tensor after reshape: {} ", input_tensor_post_tm.get_logical_shape());
+            input_tensor_post_tm = ttnn::permute(input_tensor_post_tm, ttnn::SmallVector<int64_t>({0, 1, 3, 2, 4, 5}));
+            log_info(tt::LogOp, "Input tensor after permute: {} ", input_tensor_post_tm.get_logical_shape());
+            input_tensor_post_tm = ttnn::reshape(
+                input_tensor_post_tm,
+                ttnn::Shape(
+                    {1,
+                     1,
+                     batch_size * (input_height / kernel_size[0]) * (input_width / kernel_size[1]),
+                     kernel_size[0] * kernel_size[1] * input_channels_padded}));
+            log_info(tt::LogOp, "Input tensor after reshape: {} ", input_tensor_post_tm.get_logical_shape());
+            // input_tensor_post_tm = ttnn::to_layout(
+            //     input_tensor_post_tm, Layout::TILE, conv_config.dtype, input_tensor_post_tm.memory_config(), device);
+            // log_info(tt::LogOp, "Input tensor after tile: {} ", input_tensor_post_tm.get_logical_shape());
+            // input_tensor_post_tm = ttnn::reshape(
+            //     input_tensor_post_tm,
+            //     ttnn::Shape(
+            //         {1,
+            //          1,
+            //          batch_size * (input_height / kernel_size[0]) * (input_width / kernel_size[1]),
+            //          kernel_size[0] * kernel_size[1] * in_channels}),
+            //     input_tensor_post_tm.get_padded_shape());
+            log_info(tt::LogOp, "Input tensor after reshape: {} ", input_tensor_post_tm.get_logical_shape());
+        }
+
+        if (input_tensor_post_tm.layout() == Layout::ROW_MAJOR) {
+            input_tensor_post_tm = ttnn::to_layout(
+                input_tensor_post_tm, Layout::TILE, conv_config.dtype, input_tensor_post_tm.memory_config(), device);
+        }
+
+        // log_info(tt::LogOp, "Weights on device: {} ", weight_tensor_on_device.get_logical_shape());
+        // log_info(tt::LogOp, "Weights on device physical: {} ", weight_tensor_on_device.get_padded_shape());
+
         // run conv as matmul
         std::optional<ttnn::operations::matmul::MatmulProgramConfig> program_config = std::nullopt;
         std::optional<MemoryConfig> mm_output_memory_config = std::nullopt;

@@ -679,7 +679,7 @@ void detail::Program_::update_kernel_groups(uint32_t programmable_core_type_inde
                                                 cb_ids += std::to_string(i);
                                             }
                                         }
-                                        log_warning(
+                                        log_debug(
                                             tt::LogMetal,
                                             "Circular buffer indices are not contiguous starting at 0. This will hurt "
                                             "dispatch performance. Non-contiguous indices: {}. "
