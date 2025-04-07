@@ -200,6 +200,7 @@ RUN mkdir -p /tmp/cba \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-utils \
     bc \
+    libclang-17-dev \
     clang-tidy-17 \
     curl \
     dialog \
@@ -214,6 +215,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcapstone-dev \
     libgtest-dev \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /tmp/iwyu \
+    && wget -O /tmp/iwyu/iwyu.tar.gz https://github.com/include-what-you-use/include-what-you-use/archive/refs/tags/0.21.tar.gz \
+    && tar -xzf /tmp/iwyu/iwyu.tar.gz -C /tmp/iwyu --strip-components=1 \
+    && cmake -S /tmp/iwyu/ -B /tmp/iwyu/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang-17 -DCMAKE_CXX_COMPILER=clang++-17 \
+    && cmake --build /tmp/iwyu/build --parallel \
+    && cmake --install /tmp/iwyu/build \
+    && rm -rf /tmp/iwyu
+
 
 RUN git config --global --add safe.directory '*'
 
@@ -247,7 +257,7 @@ COPY /tests/sweep_framework/requirements-sweeps.txt ${TT_METAL_INFRA_DIR}/tt-met
 COPY /tt_metal/python_env/requirements-dev.txt ${TT_METAL_INFRA_DIR}/tt-metal/tt_metal/python_env/.
 
 RUN python3 -m pip config set global.extra-index-url https://download.pytorch.org/whl/cpu && \
-    python3 -m pip install setuptools wheel && \
+    python3 -m pip install setuptools wheel==0.45.1 && \
     python3 -m pip install -r ${TT_METAL_INFRA_DIR}/tt-metal/tt_metal/python_env/requirements-dev.txt && \
     python3 -m pip install -r ${TT_METAL_INFRA_DIR}/tt-metal/docs/requirements-docs.txt
 
@@ -274,6 +284,7 @@ RUN apt-get remove -y gdb || true \
     && rm -rf /tmp/gdb-build
 
 # Install dev deps
+# libgl1-mesa-glx is needed for Yolo models https://github.com/tenstorrent/tt-metal/pull/19899
 RUN apt-get update && apt-get install -y --no-install-recommends \
     acl \
     emacs \
@@ -281,6 +292,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     nano \
     openssh-server \
     vim \
+    libgl1-mesa-glx \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 #############################################################
