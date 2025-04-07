@@ -3094,3 +3094,98 @@ def test_conv2d_sdxl(
             output_mesh_composer=None,
             enable_split_reader=enable_split_reader,
         )
+
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
+@pytest.mark.parametrize(
+    " output_channels, input_channels, input_height, input_width, filter_height, filter_width, stride_h, stride_w, pad_h, pad_w, shard_layout, config_override, use_shallow_conv_variant, groups",
+    ((64, 64, 400, 400, 3, 3, 2, 2, 1, 1, HS, None, False, 1),
+    (64, 64, 200, 200, 3, 3, 1, 1, 1, 1, HS, None, False, 1),
+    (128, 64, 200, 200, 3, 3, 2, 2, 1, 1, HS, None, False, 1),
+    (128, 128, 100, 100, 3, 3, 1, 1, 1, 1, HS, None, False, 1),
+    (256, 128, 100, 100, 3, 3, 2, 2, 1, 1, HS, None, False, 1),
+    (256, 256, 50, 50, 3, 3, 1, 1, 1, 1, HS, None, False, 1),
+    (256, 64, 200, 200, 1, 1, 1, 1, 0,0, HS, None, False, 1),
+    (256, 128, 100, 100, 1, 1, 1, 1, 0,0, HS, None, False, 1),
+    (256, 256, 50, 50, 1, 1, 1, 1, 0,0, HS, None, False, 1),
+    (256, 256, 200, 200, 3, 3, 1, 1, 1,1, BS, None, False, 1),
+    (256, 256, 100, 100, 3, 3, 1, 1, 1,1, HS, None, False, 1),
+    (256, 256, 50, 50, 3, 3, 1, 1, 1,1, HS, None, False, 1),
+    (80, 256, 200, 200, 1, 1, 1, 1, 0,0, HS, None, False, 1),
+    (72, 256, 200, 200, 1, 1, 1, 1, 0,0, HS, None, False, 1),
+    (16, 256, 200, 200, 1, 1, 1, 1, 0,0, HS, None, False, 1),
+    (80, 256, 100, 100, 1, 1, 1, 1, 0,0, HS, None, False, 1),
+    (72, 256, 100, 100, 1, 1, 1, 1, 0,0, HS, None, False, 1),
+    (16, 256, 100, 100, 1, 1, 1, 1, 0,0, HS, None, False, 1),
+    (80, 256, 50, 50, 1, 1, 1, 1, 0,0, HS, None, False, 1),
+    (72, 256, 50, 50, 1, 1, 1, 1, 0,0, HS, None, False, 1),
+    (16, 256, 50, 50, 1, 1, 1, 1, 0,0, HS, None, False, 1),
+
+))
+
+@pytest.mark.parametrize(
+    "weights_dtype",
+    [ttnn.bfloat16, ttnn.bfloat8_b],
+)
+@pytest.mark.parametrize(
+    "batch_size",
+    [1],
+)
+@pytest.mark.parametrize(
+    "activations_dtype",
+    [ttnn.bfloat8_b, ttnn.bfloat16],
+)
+@pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
+@pytest.mark.parametrize("output_layout", [ttnn.TILE_LAYOUT])
+@pytest.mark.parametrize("auto_shard", [True, False], ids=[ "auto_shard","no_auto_shard"])
+def test_pointpillars(
+    device,
+    torch_tensor_map,
+    use_program_cache,
+    math_fidelity,
+    activations_dtype,
+    weights_dtype,
+    batch_size,
+    output_channels,
+    input_channels,
+    input_height,
+    input_width,
+    filter_height,
+    filter_width,
+    stride_h,
+    stride_w,
+    pad_h,
+    pad_w,
+    shard_layout,
+    config_override,
+    use_shallow_conv_variant,
+    groups,
+    output_layout,
+    auto_shard,
+):
+    if device.core_grid.y == 7:
+        pytest.skip("This test is not supported for N300")
+    if batch_size == 8:
+        pytest.skip("OOM issue for batch_size 8")
+    run_conv(
+        device,
+        torch_tensor_map,
+        math_fidelity,
+        activations_dtype,
+        weights_dtype,
+        batch_size,
+        output_channels,
+        input_channels,
+        input_height,
+        input_width,
+        filter_height,
+        filter_width,
+        stride_h,
+        stride_w,
+        (pad_h, pad_w),
+        config_override,
+        shard_layout=shard_layout,
+        use_shallow_conv_variant=use_shallow_conv_variant,
+        groups=groups,
+        output_layout=output_layout,
+        auto_shard=auto_shard,
+    )
