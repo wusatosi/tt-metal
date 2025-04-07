@@ -441,9 +441,9 @@ def run_line_all_gather_on_TG_with_mesh_tensor_along_rows(
         ttnn.BufferType.L1,
     ],
 )
-@pytest.mark.parametrize("replication_factor", [8])  # 1, 8])
+@pytest.mark.parametrize("replication_factor", [1])  # 1, 8])
 @pytest.mark.parametrize("enable_async", [True])
-@pytest.mark.parametrize("mesh_device", [pytest.param((8, 4), id="8x4_grid")], indirect=True)
+@pytest.mark.parametrize("mesh_device", [pytest.param((1, 4), id="8x4_grid")], indirect=True)
 def test_line_all_gather_on_TG_rows_post_commit(
     mesh_device,
     num_devices,

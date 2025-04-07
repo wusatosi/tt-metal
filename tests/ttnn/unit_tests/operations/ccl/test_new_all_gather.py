@@ -364,6 +364,11 @@ def run_all_gather_impl(
 )
 @pytest.mark.parametrize("num_iters", [10])
 @pytest.mark.parametrize("enable_async", [True])
+@pytest.mark.parametrize(
+    "device_params",
+    [{"trace_region_size": 23887872, "dispatch_core_axis": ttnn.DispatchCoreAxis.COL}],
+    indirect=True,
+)
 def test_all_gather(
     t3k_mesh_device,
     # pcie_mesh_device,
@@ -390,6 +395,7 @@ def test_all_gather(
         use_program_cache,
         function_level_defaults,
         all_gather_topology=ttnn.Topology.Linear,
+        trace_mode=True,
         num_iters=num_iters,
         enable_async=enable_async,
         rand_tensor=True,

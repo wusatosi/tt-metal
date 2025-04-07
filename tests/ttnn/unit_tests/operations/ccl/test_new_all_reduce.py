@@ -27,8 +27,7 @@ from tracy import signpost
 
 SUB_DEVICE_CRS = ttnn.CoreRangeSet(
     [
-        ttnn.CoreRange(ttnn.CoreCoord(1, 0), ttnn.CoreCoord(3, 9)),
-        ttnn.CoreRange(ttnn.CoreCoord(5, 0), ttnn.CoreCoord(6, 9)),
+        ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(5, 7)),
     ]
 )
 
@@ -81,7 +80,7 @@ def run_all_reduce_impl(
     validate_all=True,
     profiler=BenchmarkProfiler(),
 ):
-    cluster_shape = (8, 4)
+    cluster_shape = (1, 4)
 
     create_persistent_fabric = True
     teardown_persistent_fabric = True

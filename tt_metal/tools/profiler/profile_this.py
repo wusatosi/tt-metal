@@ -22,6 +22,7 @@ from tt_metal.tools.profiler.common import (
 def profile_command(test_command, output_folder, name_append, collect_noc_traces):
     currentEnvs = dict(os.environ)
     currentEnvs["TT_METAL_DEVICE_PROFILER"] = "1"
+    currentEnvs["TT_METAL_PROFILER_SYNC"] = "1"
 
     options = ""
     if output_folder:

@@ -120,7 +120,6 @@ def test_ar_tg_llama_perf(
         logger.info(f"Device {device} performance (min): {measured_min_us_device:.3f} us")
         logger.info(f"Device {device} performance (max): {measured_max_us_device:.3f} us")
         logger.info(f"Device {device} performance (std): {measured_std_us_device:.3f} us")
-        breakpoint()
         if "SKEW" in pd_results:
             logger.info(f"Device {device} skew: {pd_results['SKEW']['ALL']}")
             logger.info(f"Device {device} skew avg: {pd_results['SKEW']['AVG']}")
