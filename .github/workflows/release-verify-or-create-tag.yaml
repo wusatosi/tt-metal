@@ -62,11 +62,10 @@ jobs:
             const version = '${{ steps.get-version-number.outputs.version }}';
             const { repo, owner } = context.repo;
 
-            // Get latest commit SHA on default branch
-            const defaultBranch = (await github.rest.repos.get({
-              owner,
-              repo
-            })).data.default_branch;
+            console.log(`Creating tag ${version}...`);
+            console.log(`Repository: ${repo}`);
+            console.log(`Owner: ${owner}`);
+            console.log(`SHA: ${{ github.sha }}`);
 
             // Create the annotated tag object
             const tag = await github.rest.git.createTag({
@@ -86,12 +85,19 @@ jobs:
             const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
             await sleep(2000);
 
-            // Create the tag ref
-            await github.rest.git.createRef({
-              owner,
-              repo,
-              ref: `refs/tags/${version}`,
-              sha: tag.data.sha
-            });
-
-            core.info(`✅ Annotated tag ${version} created.`);
+            try {
+              await github.rest.git.createRef({
+                owner,
+                repo,
+                ref: `refs/tags/${version}`,
+                sha: tag.data.sha
+              });
+              console.log(`✅ Ref refs/tags/${version} created.`);
+            } catch (error) {
+              console.error("❌ Error creating ref:", error.message);
+              if (error.response) {
+                console.error("Status:", error.status);
+                console.error("Body:", JSON.stringify(error.response.data, null, 2));
+              }
+              throw error;
+            }
