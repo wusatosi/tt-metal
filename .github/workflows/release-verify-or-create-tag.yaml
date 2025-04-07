@@ -98,14 +98,20 @@ jobs:
                 console.log(tag);
                 console.log(tag.data.sha);
                 console.log(`refs/tags/${version}`);
-                const ref = await github.rest.git.createRef({
-                  owner: owner,
-                  repo: repo,
-                  ref: `refs/tags/${version}`,
-                  sha: tag.data.sha,
-                });
-                console.log("Ref created");
-                console.log(ref);
+                try {
+                  const ref = await github.rest.git.createRef({
+                    owner: owner,
+                    repo: repo,
+                    ref: `refs/tags/${version}`,
+                    sha: tag.data.sha,
+                  });
+                  console.log("Ref created");
+                  console.log(ref);
+                } catch (e) {
+                  console.error(e);
+                  console.error("Received an error that's not 404 Not Found for a tag");
+                  throw e;
+                }
               } else {
                 console.error(e);
                 console.error("Received an error that's not 404 Not Found for a tag");
