@@ -118,8 +118,8 @@ def post_process_ops_log_detailed(
             # initialize with placeholder values
             df_filtered_device = df[(df[col] != "-") & (df["DEVICE ID"].astype(int) == device)]
             per_device_results[device]["SKEW"][f"ALL"] = (
-                df_filtered_device[col].astype(float) + profile_sync_info["device_shift"][device]
-            )
+                df_filtered_device[col].astype(float) * profile_sync_info["device_frequency_ratio"][device]
+            ) + profile_sync_info["device_shift"][device]
             per_device_results[device]["SKEW_STEADY_STATE"][f"ALL"] = per_device_results[device]["SKEW"][f"ALL"].iloc[
                 SKIPPED_INITIAL_ITERS:
             ]
@@ -244,7 +244,6 @@ def run_device_perf_detailed(command, subdir, cols, op_name="", has_signposts=Fa
         post_processed_results_per_device[device]["SKEW_STEADY_STATE"]["MAX"] = pd_results["SKEW_STEADY_STATE"]["MAX"]
         post_processed_results_per_device[device]["SKEW_STEADY_STATE"]["STD"] = pd_results["SKEW_STEADY_STATE"]["STD"]
 
-    breakpoint()
     logger.info(
         f"\nTest: {command}"
         f"\nPerformance statistics for op: {op_name}"
