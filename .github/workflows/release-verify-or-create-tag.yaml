@@ -73,7 +73,6 @@ jobs:
               console.log("Tag already exists");
             } catch (e) {
               console.log("Logging github API error");
-              console.log(e);
               const { response: { status, data: { message } } } = e;
 
               const isMissingTag = status === 404 && message == "Not Found";
