@@ -77,10 +77,10 @@ void kernel_main() {
     uint32_t sender_packet_end = get_arg_val<uint32_t>(rt_arg_idx++);
     uint32_t sender_total_num_pages = get_arg_val<uint32_t>(rt_arg_idx++);
 
-    DPRINT << "sender_packet_start " << (uint)sender_packet_start << ENDL();
-    DPRINT << "sender_packet_end " << (uint)sender_packet_end << ENDL();
+    // DPRINT << "sender_packet_start " << (uint)sender_packet_start << ENDL();
+    // DPRINT << "sender_packet_end " << (uint)sender_packet_end << ENDL();
 
-    uint32_t total_pop_tiles = 0;
+    // uint32_t total_pop_tiles = 0;
 
     if (sender_core) {
         auto fabric_connection =
@@ -129,10 +129,11 @@ void kernel_main() {
                 const uint32_t receiver_core_y = packet_worker_cores[packet][y_index];
                 const uint64_t noc0_dest_noc_addr = get_noc_addr(receiver_core_x, receiver_core_y, packet_offset);
 
-                DPRINT << "receiver_core_x " << (uint)receiver_core_x << ENDL();
-                DPRINT << "receiver_core_y " << (uint)receiver_core_y << ENDL();
-                DPRINT << "noc0_dest_noc_addr " << (uint)noc0_dest_noc_addr << ENDL();
-                DPRINT << "curr_packet_num_pages " << (uint)curr_packet_num_pages << ENDL();
+                // DPRINT << "receiver_core_x " << (uint)receiver_core_x << ENDL();
+                // DPRINT << "receiver_core_y " << (uint)receiver_core_y << ENDL();
+                // DPRINT << "noc0_dest_noc_addr " << (uint)noc0_dest_noc_addr << ENDL();
+                // DPRINT << "curr_packet_num_pages " << (uint)curr_packet_num_pages << ENDL();
+                // DPRINT << "curr_packet_num_pages " << curr_packet_num_pages << ENDL();
 
                 cb_wait_front(fabric_sender_cb_id, curr_packet_num_pages);
                 // DPRINT << TSLICE(fabric_sender_cb_id, 0, SliceRange::h0_w0_32(), true, true) << ENDL();
@@ -152,7 +153,7 @@ void kernel_main() {
                 // }
 
                 cb_pop_front(fabric_sender_cb_id, curr_packet_num_pages);
-                total_pop_tiles += curr_packet_num_pages;
+                // total_pop_tiles += curr_packet_num_pages;
 
                 num_pages_sent += curr_packet_num_pages;
                 // DPRINT << "num_pages_sent " << (uint)num_pages_sent << ENDL();
@@ -169,7 +170,7 @@ void kernel_main() {
 
             fabric_conn.send_payload_flush_blocking_from_address((uint32_t)sem_inc_packet_header, packet_header_size);
         }
-        DPRINT << "total_pop_tiles " << total_pop_tiles << ENDL();
+        // DPRINT << "total_pop_tiles " << total_pop_tiles << ENDL();
 
         if (fabric_connection.is_logically_connected()) {
             fabric_connection.close();

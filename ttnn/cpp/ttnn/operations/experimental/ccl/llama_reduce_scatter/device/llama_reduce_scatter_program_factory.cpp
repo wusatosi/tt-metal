@@ -227,12 +227,12 @@ uint32_t get_total_num_pages_in_schedule(const std::vector<ReadRequest>& schedul
     return total;
 }
 
-uint32_t max_packets_per_worker(const std::vector<std::vector<ReadRequest>>& schedule) {
-    uint32_t max_packets_per_worker = 0;
+uint32_t max_shards_per_worker(const std::vector<std::vector<ReadRequest>>& schedule) {
+    uint32_t max_shards_per_worker = 0;
     for (const auto& worker_schedule : schedule) {
-        max_packets_per_worker = std::max(max_packets_per_worker, (uint32_t)worker_schedule.size());
+        max_shards_per_worker = std::max(max_shards_per_worker, (uint32_t)worker_schedule.size());
     }
-    return max_packets_per_worker;
+    return max_shards_per_worker;
 }
 
 CoreRangeSet get_worker_cores(const CoreRangeSet& available_cores, const uint32_t num_workers, bool row_wise) {
@@ -282,7 +282,7 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
     auto& output_tensor = tensor_return_value;
     auto& output_shape = output_tensor.get_logical_shape();
     auto& padded_output_shape = output_tensor.get_padded_shape();
-    const auto& tile_shape = input_tensor.get_tensor_spec().tile().get_tile_shape();
+    const auto& input_tile_shape = input_tensor.get_tensor_spec().tile().get_tile_shape();
     const auto& output_tile_shape = output_tensor.get_tensor_spec().tile().get_tile_shape();
     auto shard_spec = input_tensor.shard_spec().value();
     auto output_shard_spec = output_tensor.shard_spec().value();
@@ -305,11 +305,11 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
 
     uint32_t shard_height = shard_spec.shape[0];
     uint32_t shard_width = shard_spec.shape[1];
-    uint32_t tiles_per_core_width = shard_width / tile_shape[1];
+    uint32_t tiles_per_core_width = shard_width / input_tile_shape[1];
 
     uint32_t shard_height_output = output_shard_spec.shape[0];
     uint32_t shard_width_output = output_shard_spec.shape[1];
-    uint32_t tiles_per_core_width_output = shard_width_output / tile_shape[1];
+    uint32_t tiles_per_core_width_output = shard_width_output / input_tile_shape[1];
     auto input_grid = shard_spec.grid;
     auto output_grid = output_shard_spec.grid;
 
@@ -336,6 +336,7 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
                                                                               : fabric_max_packet_size;
     uint32_t num_pages_per_packet = packet_size_bytes / input_page_size;
 
+    auto input_tensor_width_in_tiles = input_tensor.get_logical_shape()[-1] / input_tile_shape[1];
     auto output_tensor_width_in_tiles = output_tensor.get_logical_shape()[-1] / output_tile_shape[1];
     tt::log_info("output_tensor_width_in_tiles: {}", output_tensor_width_in_tiles);
     auto per_worker_num_tiles = (output_tensor_width_in_tiles + num_links - 1) / num_links;
@@ -425,9 +426,9 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
             {{packet_header_cb_index, DataFormat::RawUInt32}})
             .set_page_size(packet_header_cb_index, packet_header_size_bytes);
 
-    uint32_t max_packets_per_worker = detail::max_packets_per_worker(schedule);
-    uint32_t num_packets_total = max_packets_per_worker * (num_devices - 1);
-    uint32_t num_packet_pages_total = num_packets_total * num_pages_per_packet;
+    // uint32_t max_shards_per_worker = detail::max_shards_per_worker(schedule);
+    // uint32_t num_shards_total = max_shards_per_worker * (num_devices - 1);
+    // uint32_t num_pages_total = num_shards_total * num_pages_per_packet;
 
     // There is one sender from link, and each sender splits the packet workload for each device
     // For llama there are 3 senders, and each device sends 30 pages to each other device
@@ -454,7 +455,7 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
     */
     tt::tt_metal::CircularBufferConfig fabric_sender_cb_config =
         tt::tt_metal::CircularBufferConfig(
-            num_packet_pages_total * input_page_size, {{fabric_sender_cb_index, cb_data_format}})
+            per_worker_num_tiles * input_page_size * (num_devices - 1), {{fabric_sender_cb_index, cb_data_format}})
             .set_page_size(fabric_sender_cb_index, input_page_size);
 
     // buffer for receiving packets from the other devices.
@@ -660,20 +661,21 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
     uint32_t local_page = 0;
 
     std::vector<uint32_t> reader_runtime_args = {
-        cross_device_semaphore->address(), local_semaphore, false, false, 0, false, 0, 0};
+        cross_device_semaphore->address(), local_semaphore, false, false, 0, false, 0, 0, 0};
     uint32_t is_reader_sender_core_idx = 2;
     uint32_t is_reader_worker_core_idx = 3;
     uint32_t is_linear_input_packet_start_idx = 4;
     uint32_t is_reader_receiver_core_idx = 5;
     uint32_t reader_sender_packet_start_idx = 6;
     uint32_t reader_sender_packet_end_idx = 7;
+    uint32_t reader_sender_total_num_pages_idx = 8;
 
     uint32_t is_writer_sender_core_idx = 2;
     uint32_t is_writer_worker_core_idx = 3;
     uint32_t is_linear_output_page_start_idx = 4;
     uint32_t writer_sender_packet_start_idx = 5;
     uint32_t writer_sender_packet_end_idx = 6;
-    uint32_t sender_total_num_pages_idx = 7;
+    uint32_t writer_sender_total_num_pages_idx = 7;
 
     uint32_t reader_sender_packet_start = 0;
     uint32_t writer_sender_packet_start = 0;
@@ -686,20 +688,22 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
         uint32_t num_shards_to_read_per_worker = schedule[sender_core_idx].size();
 
         if (sender_core_grid.contains(core)) {
+            auto sender_total_num_pages = detail::get_total_num_pages_in_schedule(schedule[sender_core_idx]);
+
             reader_runtime_args[is_reader_sender_core_idx] = true;
             reader_runtime_args[is_reader_worker_core_idx] = false;
             reader_runtime_args[is_reader_receiver_core_idx] = false;
             reader_runtime_args[reader_sender_packet_start_idx] = reader_sender_packet_start;
             reader_runtime_args[reader_sender_packet_end_idx] =
                 reader_sender_packet_start + num_shards_to_read_per_worker;
+            reader_runtime_args[reader_sender_total_num_pages_idx] = sender_total_num_pages;
 
             writer_runtime_args[is_writer_sender_core_idx] = true;
             writer_runtime_args[is_writer_worker_core_idx] = false;
             writer_runtime_args[writer_sender_packet_start_idx] = writer_sender_packet_start;
             writer_runtime_args[writer_sender_packet_end_idx] =
                 writer_sender_packet_start + num_packets_to_send_per_worker;
-            auto sender_total_num_pages = detail::get_total_num_pages_in_schedule(schedule[sender_core_idx]);
-            writer_runtime_args[sender_total_num_pages_idx] = sender_total_num_pages;
+            writer_runtime_args[writer_sender_total_num_pages_idx] = sender_total_num_pages;
             tt::log_info("sender_total_num_pages: {}", sender_total_num_pages);
 
             reader_sender_packet_start += num_shards_to_read_per_worker;

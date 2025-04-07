@@ -82,31 +82,43 @@ void kernel_main() {
     bool worker_core = (bool)get_arg_val<uint32_t>(rt_arg_idx++);
     uint32_t linear_input_packet_start_idx = get_arg_val<uint32_t>(rt_arg_idx++);
     bool receiver_core = (bool)get_arg_val<uint32_t>(rt_arg_idx++);
-    uint32_t sender_packet_start = get_arg_val<uint32_t>(rt_arg_idx++);
-    uint32_t sender_packet_end = get_arg_val<uint32_t>(rt_arg_idx++);
+    uint32_t sender_shard_start = get_arg_val<uint32_t>(rt_arg_idx++);
+    uint32_t sender_shard_end = get_arg_val<uint32_t>(rt_arg_idx++);
+    uint32_t sender_total_num_pages = get_arg_val<uint32_t>(rt_arg_idx++);
 
     // Bank base addresses (compute once)
     const uint32_t bank_base_address = get_write_ptr(input_tensor_cb_id);
 
-    // DPRINT << "sender_packet_start " << (uint)sender_packet_start << ENDL();
-    // DPRINT << "sender_packet_end " << (uint)sender_packet_end << ENDL();
+    // DPRINT << "sender_shard_start " << (uint)sender_shard_start << ENDL();
+    // DPRINT << "sender_shard_end " << (uint)sender_shard_end << ENDL();
     // DPRINT << "sender_core " << (uint)sender_core << ENDL();
     // DPRINT << "worker_core " << (uint)worker_core << ENDL();
-    uint32_t total_push_tiles = 0;
+    // uint32_t total_push_tiles = 0;
+
+    uint32_t sender_read_addr = get_write_ptr(fabric_sender_cb_id);
 
     if (sender_core) {
         for (uint32_t target_device_id : device_order) {
             const uint32_t base_core = target_device_id * input_shard_cores_per_device;
 
-            for (uint32_t packet_idx = sender_packet_start; packet_idx < sender_packet_end; packet_idx++) {
-                const uint8_t curr_core = base_core + schedule[packet_idx][0];
-                const uint32_t read_offset = schedule[packet_idx][1];
-                const uint32_t read_size = schedule[packet_idx][2];
+            uint32_t num_pages_read = 0;
+            uint32_t num_pages_reserve_push = 0;
+            uint32_t shard_idx = sender_shard_start;
+            // for (uint32_t shard_idx = sender_shard_start; shard_idx < sender_shard_end; shard_idx++) {
+            while (num_pages_read < sender_total_num_pages) {
+                const uint8_t curr_core = base_core + schedule[shard_idx][0];
+                const uint32_t read_offset = schedule[shard_idx][1];
+                const uint32_t read_size = schedule[shard_idx][2];
+                num_pages_reserve_push += read_size;
+
+                auto num_pages_left = sender_total_num_pages - num_pages_read;
+                const uint32_t curr_packet_num_pages = std::min(num_pages_per_packet, num_pages_left);
 
                 // DPRINT << "curr_core " << (uint)curr_core << ENDL();
                 // DPRINT << "read_offset " << read_offset << ENDL();
                 // DPRINT << "read_size " << read_size << ENDL();
-                // DPRINT << "page_size_bytes " << page_size_bytes << ENDL();
+                // DPRINT << "curr_packet_num_pages " << curr_packet_num_pages << ENDL();
+                // DPRINT << "num_pages_reserve_push " << num_pages_reserve_push << ENDL();
 
                 const uint32_t x = input_core_xy[curr_core][x_index];
                 const uint32_t y = input_core_xy[curr_core][y_index];
@@ -114,17 +126,23 @@ void kernel_main() {
                 const uint64_t shard_noc_addr = get_noc_addr(x, y, offset_address);
                 const uint32_t transfer_size = read_size * page_size_bytes;
 
-                cb_reserve_back(fabric_sender_cb_id, read_size);
-                const uint32_t sender_read_addr = get_write_ptr(fabric_sender_cb_id);
-
+                cb_reserve_back(fabric_sender_cb_id, num_pages_reserve_push);
                 noc_async_read(shard_noc_addr, sender_read_addr, transfer_size);
-                noc_async_read_barrier();
-                // DPRINT << TSLICE(fabric_sender_cb_id, 0, SliceRange::h0_w0_32(), true, true) << ENDL();
-                cb_push_back(fabric_sender_cb_id, read_size);
-                total_push_tiles += read_size;
+
+                if (num_pages_reserve_push >= curr_packet_num_pages) {
+                    noc_async_read_barrier();
+                    // DPRINT << "num_pages_reserve_push " << num_pages_reserve_push << ENDL();
+                    cb_push_back(fabric_sender_cb_id, num_pages_reserve_push);
+                    num_pages_reserve_push = 0;
+                }
+
+                sender_read_addr += transfer_size;
+                num_pages_read += read_size;
+                shard_idx++;
+                // total_push_tiles += read_size;
             }
         }
-        DPRINT << "total_push_tiles " << total_push_tiles << ENDL();
+        // DPRINT << "total_push_tiles " << total_push_tiles << ENDL();
     } else if (worker_core) {
         // Calculate base addresses once
         const uint32_t base_input_tensor_addr = get_read_ptr(input_tensor_cb_id);
