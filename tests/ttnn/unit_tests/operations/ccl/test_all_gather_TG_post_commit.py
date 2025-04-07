@@ -460,6 +460,7 @@ def test_line_all_gather_on_TG_rows_post_commit(
         num_all_gather_instances=replication_factor,
         cluster_axis=1,
         use_all_gather_async=True,
+        enable_persistent_fabric=True,
     )
 
 
@@ -524,4 +525,5 @@ def test_line_all_gather_on_TG_cols_post_commit(
         num_all_gather_instances=replication_factor,
         cluster_axis=0,
         use_all_gather_async=True,
+        enable_persistent_fabric=True,
     )

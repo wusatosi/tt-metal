@@ -50,7 +50,9 @@ from tests.ttnn.unit_tests.operations.ccl.test_ccl_common import (
 @pytest.mark.parametrize("enable_async", [True])
 @pytest.mark.parametrize("mesh_device", [pytest.param((8, 4), id="8x4_grid")], indirect=True)
 @pytest.mark.parametrize("math_op", [ttnn.ReduceType.Sum])
-@pytest.mark.parametrize("device_params", [{"trace_region_size": 10281600}], indirect=True)
+@pytest.mark.parametrize(
+    "device_params", [{"trace_region_size": 10281600, "fabric_config": ttnn.FabricConfig.FABRIC_1D}], indirect=True
+)
 def test_line_reduce_scatter_on_TG_rows_post_commit(
     mesh_device,
     num_devices,
@@ -126,6 +128,7 @@ def test_line_reduce_scatter_on_TG_rows_post_commit(
 @pytest.mark.parametrize("replication_factor", [4])
 @pytest.mark.parametrize("mesh_device", [pytest.param((8, 4), id="8x4_grid")], indirect=True)
 @pytest.mark.parametrize("math_op", [ttnn.ReduceType.Sum])
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D}], indirect=True)
 def test_line_reduce_scatter_on_TG_cols_post_commit(
     mesh_device,
     num_devices,
