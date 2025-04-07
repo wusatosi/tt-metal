@@ -49,10 +49,26 @@ def run_deinterleave(
     input_dtype = "bfloat16"
     torch_input = 2 * torch.rand(size=shape_nhwc, dtype=get_lib_dtype(torch, input_dtype)) - 1
     # torch_input = torch.ones(size=shape_nhwc, dtype=get_lib_dtype(torch, input_dtype))
-    # torch_input[:, ::2, ::2, :] = 100 + torch.range(0, shape_nhwc[-1]-1, dtype=get_lib_dtype(torch, input_dtype))
+    # torch_input[:, ::2, ::2, :] = 100# + torch.range(0, shape_nhwc[-1]-1, dtype=get_lib_dtype(torch, input_dtype))
     # torch_input[:, ::2, 1::2, :] = 200
     # torch_input[:, 1::2, ::2, :] = 300
     # torch_input[:, 1::2, 1::2, :] = 400
+    # for b in range (shape_nhwc[0]):
+    #     for h in range(shape_nhwc[1]):
+    #         for w in range(shape_nhwc[2]):
+    #             for c in range(shape_nhwc[3]):
+    #                 if (w % 2 == 0) and (h % 2 == 0):
+    #                     base = 100
+    #                 elif (w % 2 == 1) and (h % 2 == 0):
+    #                     base = 200
+    #                 elif (w % 2 == 0) and (h % 2 == 1):
+    #                     base = 300
+    #                 elif (w % 2 == 1) and (h % 2 == 1):
+    #                     base = 400
+    #                 if (c == 0):
+    #                     torch_input[b, h, w, c] = base
+    #                 else:
+    #                     torch_input[b, h, w, c] = base + h * 10 + w
 
     # move to 1,1, NHW, C as in conv2ds
     torch_input_view = torch_input.reshape(1, 1, shape_nhwc[0] * shape_nhwc[1] * shape_nhwc[2], shape_nhwc[3])
@@ -144,11 +160,11 @@ def run_deinterleave(
         # ([1, 1024, 128, 48], ttnn.CoreGrid(x=8, y=8), [8, 8]),
         # ([1, 256, 1024, 32], ttnn.CoreGrid(x=8, y=8), [2, 2]),
         # ([1, 256, 1024, 48], ttnn.CoreGrid(x=8, y=8), [4, 4]),
-        # ([1, 256, 1024, 56], ttnn.CoreGrid(x=8, y=8), [8, 8]),
+        # ([1, 256, 1024, 56], ttnn.CoreGrid(x=8, y=8), [8, 8]), # RuntimeError: TT_FATAL @ /localdev/mbezulj/tt-metal/ttnn/cpp/ttnn/operations/experimental/deinterleave/device/deinterleave_device_operation.cpp:29: per_core_height >= operation_attributes.stride_hw[0]
         # ([1, 1024, 256, 32], ttnn.CoreGrid(x=8, y=8), [2, 2]),
         # ([1, 1024, 256, 64], ttnn.CoreGrid(x=8, y=8), [2, 2]),
-        # ([1, 1024, 256, 64], ttnn.CoreGrid(x=8, y=8), [4, 4]),
-        # ([1, 1024, 256, 64], ttnn.CoreGrid(x=8, y=8), [8, 8]),
+        ([1, 1024, 256, 64], ttnn.CoreGrid(x=8, y=8), [4, 4]),
+        ([1, 1024, 256, 64], ttnn.CoreGrid(x=8, y=8), [8, 8]),
         # ([1, 1024, 256, 32], ttnn.CoreGrid(x=8, y=8), [2, 2]),
         # ([1, 1024, 256, 64], ttnn.CoreGrid(x=8, y=8), [2, 2]),
         ([1, 1024, 4, 64 * 32], ttnn.CoreGrid(x=8, y=8), [2, 2]),

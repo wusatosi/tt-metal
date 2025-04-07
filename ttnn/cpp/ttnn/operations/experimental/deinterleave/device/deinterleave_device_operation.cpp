@@ -23,15 +23,15 @@ void DeinterleaveOperation::validate_inputs(
 
     auto per_core_height = input.memory_config().shard_spec.value().shape[0] / operation_attributes.input_width;
     TT_FATAL(
-        per_core_height >= 2 * operation_attributes.stride_hw[0],
+        per_core_height >= operation_attributes.stride_hw[0],
         "Deinterleave: per_core_height {} must be larger than {}",
         per_core_height,
-        2 * operation_attributes.stride_hw[0]);
+        operation_attributes.stride_hw[0]);
     TT_FATAL(
-        per_core_height % (2 * operation_attributes.stride_hw[0]) == 0,
+        per_core_height % (operation_attributes.stride_hw[0]) == 0,
         "Deinterleave: per_core_height {} must be div by {}",
         per_core_height,
-        2 * operation_attributes.stride_hw[0]);
+        operation_attributes.stride_hw[0]);
     TT_FATAL(
         per_core_height * operation_attributes.input_width == input.memory_config().shard_spec.value().shape[0],
         "Deinterleave: per_core_height {} * input_width {} must be equal to input shard_spec shape {}",
