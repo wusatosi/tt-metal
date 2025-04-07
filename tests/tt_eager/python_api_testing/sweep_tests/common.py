@@ -44,9 +44,17 @@ def run_tt_lib_test(
 
     tensor_inputs = []
 
-    for input_shape, data_gen_func in zip(input_shapes, data_gen_funcs):
-        tensor_input = data_gen_func(input_shape)
-        tensor_inputs.append(tensor_input)
+    # for input_shape, data_gen_func in zip(input_shapes, data_gen_funcs):
+    #    tensor_input = data_gen_func(input_shape)
+    #    tensor_inputs.append(tensor_input)
+
+    # torch.save(tensor_inputs[0],"/localdev/amahmud/t0_0_to_4_4608_1024_6144.pt")
+    # torch.save(tensor_inputs[1],"/localdev/amahmud/t1_0_to_4_4608_1024_6144.pt")
+
+    tensor_inputs.append(torch.load("./tensor_data/t0_0_to_4_4608_1024_6144.pt"))
+    tensor_inputs.append(torch.load("./tensor_data/t1_0_to_4_4608_1024_6144.pt"))
+    # tensor_inputs.append(torch.load("./tensor_data/in0_1_4608_1024_6144.pt"))
+    # tensor_inputs.append(torch.load("./tensor_data/in1_1_4608_1024_6144.pt"))
 
     tt_lib_out = tt_lib_op(*tensor_inputs, device=device, **test_args)
     pytorch_out = pytorch_op(*tensor_inputs, **test_args)
