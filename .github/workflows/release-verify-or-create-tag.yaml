@@ -92,11 +92,18 @@ jobs:
                   }
                 });
                 console.log("Tag created, now creating ref");
-                github.rest.git.createRef({
+                console.log(owner);
+                console.log(repo);
+                console.log(version);
+                console.log(tag);
+                console.log(tag.data.sha);
+                const ref = await github.rest.git.createRef({
                   owner: owner,
                   repo: repo,
                   ref: `refs/tags/${version}`,
                   sha: tag.data.sha,
+                });
+                console.log("Created ref:", ref);
                 });
               } else {
                 console.error(e);
