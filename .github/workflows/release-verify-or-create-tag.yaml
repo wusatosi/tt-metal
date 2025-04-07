@@ -78,6 +78,7 @@ jobs:
               const isMissingTag = status === 404 && message == "Not Found";
 
               if (isMissingTag) {
+                console.log("Creating tag");
                 const tag = await github.rest.git.createTag({
                   owner: owner,
                   repo: repo,
@@ -90,6 +91,7 @@ jobs:
                     email: "info@tenstorrent.com",
                   }
                 });
+                console.log("Tag created, now creating ref");
                 github.rest.git.createRef({
                   owner: owner,
                   repo: repo,
