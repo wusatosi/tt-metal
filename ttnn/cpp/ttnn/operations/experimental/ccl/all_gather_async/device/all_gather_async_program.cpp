@@ -144,6 +144,9 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_multi_core_with_w
     TT_FATAL(enable_persistent_fabric_mode, "{} can only be called with persistent fabric", __FUNCTION__);
 
     tt::tt_metal::Program program{};
+
+    auto mesh_device = input_tensor.mesh_device();
+
     const bool enable_async_output_tensor = false;
     const bool lower_command_stream_to_noc_commands =
         ttnn::ccl::worker_detail::can_command_stream_be_lowered_to_noc_commands(input_tensor);
@@ -164,8 +167,8 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_multi_core_with_w
 
     // Get worker cores, assuming 1 worker per link
     uint32_t num_workers_per_link = 1;
-    const auto [sender_worker_core_range, sender_worker_cores] = choose_worker_cores(
-        num_links, num_workers_per_link, enable_persistent_fabric_mode, sender_device, sub_device_id);
+    const auto [sender_worker_core_range, sender_worker_cores] =
+        choose_worker_cores(num_links, num_workers_per_link, enable_persistent_fabric_mode, mesh_device, sub_device_id);
 
     // L1 Scratch CB Creation
     const auto& edm_config = tt::tt_fabric::get_default_fabric_config();
@@ -260,7 +263,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_multi_core_with_w
         CoreCoord core = sender_worker_cores[link];
         if (link == 0) {
             // drain sync core is the first worker core
-            drain_sync_core = sender_device->worker_core_from_logical_core(core);
+            drain_sync_core = mesh_device->worker_core_from_logical_core(core);
         }
         std::size_t worker_tensor_slice_index = link;
 

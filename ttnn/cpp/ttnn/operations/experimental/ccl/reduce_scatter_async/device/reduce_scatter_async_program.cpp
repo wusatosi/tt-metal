@@ -2153,7 +2153,7 @@ operation::ProgramWithCallbacks reduce_scatter_async_on_instantiated_edm_fabric(
     const std::optional<SubDeviceId>& sub_device_id) {
     using namespace ttnn::ccl::worker_detail;
     bool do_dynamic_fabric_bringup_and_teardown = fabric_mode == fabric_lifetime_mode::TRANSIENT;
-
+    auto mesh_device = input_tensor.mesh_device();
     // Constants/ "Globals"
     constexpr auto math_in0_cb = tt::CBIndex::c_0;
     constexpr auto math_in1_cb = tt::CBIndex::c_1;
@@ -2177,7 +2177,7 @@ operation::ProgramWithCallbacks reduce_scatter_async_on_instantiated_edm_fabric(
     size_t fabric_buffer_size_pages = packet_size_bytes / get_page_size(input_tensor);
     auto const& topology_config = LineTopology(line_size, line_index);
 
-    auto const& worker_cores = select_worker_cores(topology, num_links, target_device, sub_device_id);
+    auto const& worker_cores = select_worker_cores(topology, num_links, mesh_device, sub_device_id);
 
     constexpr size_t local_input_tensor_idx = 0;
     constexpr size_t local_final_output_tensor_idx = 1;
@@ -2246,7 +2246,7 @@ operation::ProgramWithCallbacks reduce_scatter_async_on_instantiated_edm_fabric(
 
 
     initialize_op_internal_tensor_syncs(
-        program, target_device, neighbour_devices, all_tensors, worker_cores, from_remote_sems, to_remote_sem);
+        program, mesh_device, neighbour_devices, all_tensors, worker_cores, from_remote_sems, to_remote_sem);
 
     validate_tensors(all_tensors, topology_config);
 

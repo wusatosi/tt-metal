@@ -318,9 +318,9 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create_at(
     auto input_grid = shard_spec.grid;
     auto output_grid = output_shard_spec.grid;
 
-    auto sub_device_cores = target_device->worker_cores(
+    auto sub_device_cores = mesh_device->worker_cores(
         tt::tt_metal::HalProgrammableCoreType::TENSIX,
-        operation_attributes.subdevice_id.value_or(target_device->get_sub_device_ids().at(0)));
+        operation_attributes.subdevice_id.value_or(mesh_device->get_sub_device_ids().at(0)));
 
     tt::tt_metal::Program program{};
 
@@ -502,10 +502,10 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create_at(
 
     const uint32_t chip_id = ring_index;
 
-    auto to_worker_cores = [target_device](const std::vector<CoreCoord>& cores) -> std::vector<CoreCoord> {
+    auto to_worker_cores = [mesh_device](const std::vector<CoreCoord>& cores) -> std::vector<CoreCoord> {
         std::vector<CoreCoord> worker_cores;
         for (const auto& core : cores) {
-            worker_cores.push_back(target_device->worker_core_from_logical_core(core));
+            worker_cores.push_back(mesh_device->worker_core_from_logical_core(core));
         }
         return worker_cores;
     };

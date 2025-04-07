@@ -297,6 +297,9 @@ def run_line_all_gather_on_TG_with_mesh_tensor_along_rows(
         )
         worker_sub_device_id = ttnn.SubDeviceId(0)
         sub_device_stall_group = [worker_sub_device_id]
+        sub_device_manager = mesh_device.create_sub_device_manager([worker_sub_device], 0)
+        mesh_device.load_sub_device_manager(sub_device_manager)
+        mesh_device.set_sub_device_stall_group(sub_device_stall_group)
         # create global semaphore handles
         ccl_semaphore_handles = [
             ttnn.create_global_semaphore(mesh_device, ccl_sub_device_crs, 0) for _ in range(NUM_BUFFERS)
@@ -357,6 +360,8 @@ def run_line_all_gather_on_TG_with_mesh_tensor_along_rows(
         raise e
     finally:
         pass
+
+    mesh_device.reset_sub_device_stall_group()
 
     # ttnn.visualize_mesh_device(mesh_device, tensor=ttnn_tensor_out)
     tt_output_tensor = ttnn.to_torch(

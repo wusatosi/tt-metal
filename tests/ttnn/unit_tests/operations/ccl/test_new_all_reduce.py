@@ -282,6 +282,7 @@ def run_all_reduce_impl(
             signpost("start")
             tt_outs = run_op(num_iters, store_all_results=validate_all)
             signpost("stop")
+        mesh_device.reset_sub_device_stall_group()
 
         ##################################
         ##### Validation
@@ -319,14 +320,7 @@ def run_all_reduce_impl(
             mesh_device.num_program_cache_entries() == 1 + reshard_op_cnt
             or mesh_device.num_program_cache_entries() == num_iters + reshard_op_cnt
         ), f"Device {i} has {mesh_device.num_program_cache_entries()} program cache entries"
-
     finally:
-        # if enable_persistent_fabric and teardown_persistent_fabric:
-        #     mesh_device.reset_sub_device_stall_group()
-        #     t1 = time()
-        #     teardown_fabric_interface(mesh_device, wrap_fabric_around_mesh=wrap_mesh, topology=all_reduce_topology)
-        #     t2 = time()
-        #     logger.info(f"Teardown time: {t2 - t1}")
         pass
 
 

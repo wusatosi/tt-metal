@@ -69,6 +69,9 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
     const std::optional<tt::tt_metal::SubDeviceId>& sub_device_id,
     bool enable_persistent_fabric_mode) {
     tt::tt_metal::Program program{};
+
+    auto mesh_device = input_tensor.mesh_device();
+
     const bool enable_async_output_tensor = false;
     TT_FATAL(
         enable_persistent_fabric_mode,
@@ -112,8 +115,8 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
 
     // Get worker cores, assuming 1 worker per link
     uint32_t num_workers_per_link = 1;
-    const auto [sender_worker_core_range, sender_worker_cores] = choose_worker_cores(
-        num_links, num_workers_per_link, enable_persistent_fabric_mode, sender_device, sub_device_id);
+    const auto [sender_worker_core_range, sender_worker_cores] =
+        choose_worker_cores(num_links, num_workers_per_link, enable_persistent_fabric_mode, mesh_device, sub_device_id);
 
     // L1 Scratch CB Creation
     const auto& edm_config = tt::tt_fabric::get_default_fabric_config();
@@ -200,7 +203,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
         CoreCoord core = sender_worker_cores[link];
         if (link == 0) {
             // drain sync core is the first worker core
-            drain_sync_core = sender_device->worker_core_from_logical_core(core);
+            drain_sync_core = mesh_device->worker_core_from_logical_core(core);
         }
 
         // Set reader runtime args
@@ -299,6 +302,9 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_llama_sharded(
     const std::optional<tt::tt_metal::SubDeviceId>& sub_device_id,
     bool enable_persistent_fabric_mode) {
     tt::tt_metal::Program program{};
+
+    auto mesh_device = input_tensor.mesh_device();
+
     const bool enable_async_output_tensor = false;
     TT_FATAL(
         enable_persistent_fabric_mode, "only persistent fabric mode is supported for all_gather_async_llama_sharded");
@@ -341,8 +347,8 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_llama_sharded(
 
     // Get worker cores, assuming 1 worker per link
     uint32_t num_workers_per_link = 1;
-    const auto [sender_worker_core_range, sender_worker_cores] = choose_worker_cores(
-        num_links, num_workers_per_link, enable_persistent_fabric_mode, sender_device, sub_device_id);
+    const auto [sender_worker_core_range, sender_worker_cores] =
+        choose_worker_cores(num_links, num_workers_per_link, enable_persistent_fabric_mode, mesh_device, sub_device_id);
 
     // Tensor Info
     const auto input_tensor_num_pages = input_tensor.buffer()->num_pages();
@@ -467,14 +473,14 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_llama_sharded(
         for (uint32_t i = input_tile_id_start / input_tensor_shard_num_pages;
              i < (input_tile_id_end + input_tensor_shard_num_pages - 1) / input_tensor_shard_num_pages;
              i++) {
-            auto this_core = sender_device->worker_core_from_logical_core(input_cores_vec[i]);
+            auto this_core = mesh_device->worker_core_from_logical_core(input_cores_vec[i]);
             input_tensor_cores_x.push_back(this_core.x);
             input_tensor_cores_y.push_back(this_core.y);
         }
         for (uint32_t i = input_tile_id_start / output_tensor_shard_num_pages;
              i < (input_tile_id_end + output_tensor_shard_num_pages - 1) / output_tensor_shard_num_pages;
              i++) {
-            auto this_core = sender_device->worker_core_from_logical_core(output_cores_this_device[i]);
+            auto this_core = mesh_device->worker_core_from_logical_core(output_cores_this_device[i]);
             output_tensor_cores_x.push_back(this_core.x);
             output_tensor_cores_y.push_back(this_core.y);
         }
@@ -491,7 +497,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_llama_sharded(
 
         if (link == 0) {
             // drain sync core is the first worker core
-            drain_sync_core = sender_device->worker_core_from_logical_core(core);
+            drain_sync_core = mesh_device->worker_core_from_logical_core(core);
         }
         // Set reader runtime args
         std::vector<uint32_t> reader_rt_args = {
