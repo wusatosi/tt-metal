@@ -53,13 +53,6 @@ void kernel_main() {
     constexpr uint32_t num_packet_worker_cores = get_compile_time_arg_val(16);
 
     // Derived compile-time constants
-    constexpr uint32_t input_tensor_cores = input_shard_cores_per_device * num_devices;
-    constexpr uint32_t num_packets_total_per_device =
-        (input_shard_cores_per_device * tiles_per_core_width + num_pages_per_packet - 1) / num_pages_per_packet;
-    constexpr uint32_t last_packet_num_pages =
-        (input_shard_cores_per_device * tiles_per_core_width % num_pages_per_packet == 0)
-            ? num_pages_per_packet
-            : input_shard_cores_per_device * tiles_per_core_width % num_pages_per_packet;
     constexpr size_t packet_header_size = sizeof(PACKET_HEADER_TYPE);
 
     // Precomputed constants for better optimization
@@ -129,8 +122,8 @@ void kernel_main() {
                 const uint32_t receiver_core_y = packet_worker_cores[packet][y_index];
                 const uint64_t noc0_dest_noc_addr = get_noc_addr(receiver_core_x, receiver_core_y, packet_offset);
 
-                // DPRINT << "receiver_core_x " << (uint)receiver_core_x << ENDL();
-                // DPRINT << "receiver_core_y " << (uint)receiver_core_y << ENDL();
+                DPRINT << "receiver_core_x " << (uint)receiver_core_x << ENDL();
+                DPRINT << "receiver_core_y " << (uint)receiver_core_y << ENDL();
                 // DPRINT << "noc0_dest_noc_addr " << (uint)noc0_dest_noc_addr << ENDL();
                 // DPRINT << "curr_packet_num_pages " << (uint)curr_packet_num_pages << ENDL();
                 // DPRINT << "curr_packet_num_pages " << curr_packet_num_pages << ENDL();
@@ -170,6 +163,7 @@ void kernel_main() {
 
             fabric_conn.send_payload_flush_blocking_from_address((uint32_t)sem_inc_packet_header, packet_header_size);
         }
+        DPRINT << "writer done" << ENDL();
         // DPRINT << "total_pop_tiles " << total_pop_tiles << ENDL();
 
         if (fabric_connection.is_logically_connected()) {
@@ -200,6 +194,8 @@ void kernel_main() {
         }
 
         cb_wait_front(accumulator_cb_id, num_pages_per_packet);
+
+        DPRINT << "worker_core wait" << ENDL();
 
         // Process all tiles
         for (uint32_t tile = 0; tile < num_packets; tile++) {

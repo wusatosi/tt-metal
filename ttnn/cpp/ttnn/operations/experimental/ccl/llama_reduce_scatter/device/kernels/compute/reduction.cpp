@@ -58,5 +58,7 @@ void MAIN {
 
     cb_pop_front(fabric_receiver_cb_id, total_pages);
     cb_push_back(accumulator_cb_id, num_pages_per_packet);
+
+    DPRINT << "reduction done" << ENDL();
 }
 }  // namespace NAMESPACE

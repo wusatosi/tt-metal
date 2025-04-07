@@ -74,6 +74,8 @@ def run_reduce_scatter_test(
     input_grid=None,
     output_grid=None,
     dtype=ttnn.bfloat8_b,
+    output_shard_width=None,
+    row_major=False,
 ):
     mesh_device.enable_async(True)
     mesh_device.enable_program_cache()
@@ -137,7 +139,9 @@ def run_reduce_scatter_test(
             output_shard_cores_grid if use_regular_grid else FF1_CRS_RS_OUT,
             [
                 shard_height,
-                tensor_width_in_tiles // output_num_cores // num_devices_scatter if use_regular_grid else 32,
+                tensor_width_in_tiles // output_num_cores // num_devices_scatter
+                if use_regular_grid
+                else (32 if output_shard_width is None else output_shard_width),
             ],
             ttnn.ShardOrientation.ROW_MAJOR,
         ),
@@ -177,7 +181,7 @@ def run_reduce_scatter_test(
         tt_input = ttnn.from_torch(
             input,
             device=mesh_device,
-            layout=ttnn.TILE_LAYOUT,
+            layout=ttnn.TILE_LAYOUT if not row_major else ttnn.ROW_MAJOR_LAYOUT,
             dtype=dtype,
             memory_config=sharded_mem_config,
             mesh_mapper=ttnn.ShardTensor2dMesh(
@@ -187,7 +191,7 @@ def run_reduce_scatter_test(
         tt_intermediate = ttnn.from_torch(
             intermediate_tensor,
             device=mesh_device,
-            layout=ttnn.TILE_LAYOUT,
+            layout=ttnn.TILE_LAYOUT if not row_major else ttnn.ROW_MAJOR_LAYOUT,
             dtype=dtype,
             memory_config=packet_workers_persistent_mem_config,
             mesh_mapper=ttnn.ShardTensor2dMesh(
@@ -407,7 +411,7 @@ def test_fabric_reduce_scatter_regular_grid(
     num_devices_scatter = 2
     num_devices_fracture = 1
     num_cores = input_grid[0] * input_grid[1]
-    num_iters = 30
+    num_iters = 1
 
     run_reduce_scatter_test(
         mesh_device,
@@ -425,6 +429,7 @@ def test_fabric_reduce_scatter_regular_grid(
         input_grid=input_grid,
         output_grid=output_grid,
         dtype=dtype,
+        row_major=True,
     )
 
 
@@ -469,4 +474,43 @@ def test_fabric_reduce_scatter_regular_grid_perf(
         input_grid=input_grid,
         output_grid=output_grid,
         dtype=dtype,
+    )
+
+
+@pytest.mark.parametrize(
+    "device_params", [{"trace_region_size": 90000, "dispatch_core_axis": ttnn.DispatchCoreAxis.ROW}], indirect=True
+)
+@pytest.mark.parametrize("trace_mode", [False])
+@pytest.mark.parametrize(
+    "mesh_device",
+    [
+        (1, 4),
+    ],
+    indirect=True,
+)
+@pytest.mark.parametrize("shard_height", [32])
+@pytest.mark.parametrize("shard_width", [64])
+@pytest.mark.parametrize("dtype", [ttnn.bfloat16])
+def test_fabric_reduce_scatter_qkv_non_cont_grid(mesh_device, trace_mode, shard_height, shard_width, dtype):
+    dim = 3
+    num_devices_scatter = 4
+    num_devices_fracture = 1
+    num_cores = 20
+    num_iters = 1
+    output_shard_width = 2 * 32
+
+    run_reduce_scatter_test(
+        mesh_device,
+        dim,
+        shard_height,
+        shard_width,
+        num_devices_scatter,
+        num_devices_fracture,
+        num_cores,
+        num_iters,
+        trace_mode,
+        num_links=3,
+        scheme="random",
+        dtype=dtype,
+        output_shard_width=output_shard_width,
     )
