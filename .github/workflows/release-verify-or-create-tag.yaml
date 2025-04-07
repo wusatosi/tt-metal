@@ -99,20 +99,6 @@ jobs:
                 console.log(tag.data.sha);
                 console.log(`refs/tags/${version}`);
 
-                let tagExists = false;
-                try {
-                  await github.rest.git.getRef({
-                    owner,
-                    repo,
-                    ref: `tags/${version}`,
-                  });
-                  tagExists = true;
-                } catch (error) {
-                  if (error.status !== 404) throw error;
-                }
-                if (tagExists) {
-                  console.log("Tag already exists");
-                }
                 try {
                   const ref = await github.rest.git.createRef({
                     owner: owner,
