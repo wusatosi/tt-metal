@@ -30,16 +30,17 @@ jobs:
       # so we try not to get hanging machines
       fail-fast: false
       matrix:
+        arch: [ "wormhole_b0" ]
         test-group: [
           {name: fabric unit tests, cmd: ./tests/scripts/run_cpp_fabric_tests.sh },
           {name: fabric sanity tests, cmd: ./tests/scripts/run_cpp_fabric_sanity_tests.sh },
         ]
-    name: ${{ inputs.arch }} ${{ inputs.runner-label }} ${{ matrix.test-group.name }}
+    name: ${{ matrix.arch }} ${{ inputs.runner-label }} ${{ matrix.test-group.name }}
     runs-on: ${{ startsWith(inputs.runner-label, 'tt-beta-ubuntu') && fromJSON(format('["{0}"]', inputs.runner-label)) || fromJSON(format('["{0}", "in-service", "cloud-virtual-machine"]', inputs.runner-label)) }}
     container:
       image: ${{ inputs.docker-image || 'docker-image-unresolved' }}
       env:
-        ARCH_NAME: ${{ inputs.arch }}
+        ARCH_NAME: ${{ matrix.arch }}
         LOGURU_LEVEL: INFO
         LD_LIBRARY_PATH: /work/build/lib
         PYTHONPATH: /work
@@ -65,6 +66,516 @@ jobs:
         timeout-minutes: ${{ inputs.timeout }}
         run: |
           ${{ matrix.test-group.cmd }}
+      - uses: ./.github/actions/slack-report
+        if: ${{ failure() }}
+        with:
+          slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          owner: U06CXU895AP # Michael Chiou
+      - uses: tenstorrent/tt-metal/.github/actions/upload-artifact-with-job-uuid@main
+        timeout-minutes: 10
+        if: ${{ !cancelled() }}
+        with:
+          path: /work/generated/test_reports/
+          prefix: "test_reports_"
+      - name: Generate system logs on failure
+        uses: ./.github/actions/generate-system-logs
+        if: ${{ failure() }}
+      - name: Generate gtest annotations on failure
+        uses: ./.github/actions/generate-gtest-failure-message
+        if: ${{ failure() }}
+        with:
+          path: /work/generated/test_reports/
+
+  async-write-sanity-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [ "wormhole_b0" ]
+        params:
+          - { num_src_endpoints: "20", benchmark: "", init_level: "" }
+          - { num_src_endpoints: "8",  benchmark: "--benchmark", init_level: "" }
+          - { num_src_endpoints: "20", benchmark: "", init_level: "--metal_fabric_init_level 1" }
+          - { num_src_endpoints: "8",  benchmark: "--benchmark", init_level: "--metal_fabric_init_level 1" }
+    name: ${{ matrix.arch }} ${{ inputs.runner-label }} Async Write Sanity Tests
+    runs-on: ${{ startsWith(inputs.runner-label, 'tt-beta-ubuntu') && fromJSON(format('["{0}"]', inputs.runner-label)) || fromJSON(format('["{0}", "in-service", "cloud-virtual-machine"]', inputs.runner-label)) }}
+    container:
+      image: ${{ inputs.docker-image || 'docker-image-unresolved' }}
+      env:
+        TT_METAL_CLEAR_L: 1
+        ARCH_NAME: ${{ matrix.arch }}
+        LOGURU_LEVEL: INFO
+        LD_LIBRARY_PATH: /work/build/lib
+        PYTHONPATH: /work
+        TT_METAL_HOME: /work
+        TT_METAL_SLOW_DISPATCH_MODE: 1
+        GTEST_OUTPUT: xml:/work/generated/test_reports/
+      volumes:
+        - ${{ github.workspace }}/docker-job:/work
+        - /dev/hugepages-1G:/dev/hugepages-1G
+      options: "--device /dev/tenstorrent"
+    defaults:
+      run:
+        shell: bash
+        working-directory: /work
+    steps:
+      - name: ⬇️  Setup Job
+        uses: tenstorrent/tt-metal/.github/actions/setup-job@main
+        timeout-minutes: 10
+        with:
+          build-artifact-name: ${{ inputs.build-artifact-name }}
+          wheel-artifact-name: ${{ inputs.wheel-artifact-name }}
+      - name: "Run Async Write Tests"
+        timeout-minutes: ${{ inputs.timeout }}
+        run: |
+          echo "LOG_FABRIC: Test: num_src_endpoints=${{ matrix.params.num_src_endpoints }}, benchmark='${{ matrix.params.benchmark }}', init_level='${{ matrix.params.init_level }}'"
+          TT_METAL_SLOW_DISPATCH_MODE=1 ./build/test/tt_metal/perf_microbenchmark/routing/test_tt_fabric_sanity_${ARCH_NAME} \
+            --fabric_command 1 --board_type n300 --data_kb_per_tx 10 --num_dest_endpoints 8 --num_links 16 \
+            --num_src_endpoints ${{ matrix.params.num_src_endpoints }} ${{ matrix.params.benchmark }} ${{ matrix.params.init_level }}
+      - uses: ./.github/actions/slack-report
+        if: ${{ failure() }}
+        with:
+          slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          owner: U06CXU895AP # Michael Chiou
+      - uses: tenstorrent/tt-metal/.github/actions/upload-artifact-with-job-uuid@main
+        timeout-minutes: 10
+        if: ${{ !cancelled() }}
+        with:
+          path: /work/generated/test_reports/
+          prefix: "test_reports_"
+      - name: Generate system logs on failure
+        uses: ./.github/actions/generate-system-logs
+        if: ${{ failure() }}
+      - name: Generate gtest annotations on failure
+        uses: ./.github/actions/generate-gtest-failure-message
+        if: ${{ failure() }}
+        with:
+          path: /work/generated/test_reports/
+
+  async-write-mcast-sanity-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [ "wormhole_b0" ]
+        params:
+          - { e_depth: "--e_depth 1", w_depth: "", init_level: "" }
+          - { e_depth: "", w_depth: "--w_depth 1", init_level: "" }
+          - { e_depth: "--e_depth 1", w_depth: "", init_level: "--metal_fabric_init_level 1" }
+    name: ${{ matrix.arch }} ${{ inputs.runner-label }} Async Write Mcast Sanity Tests
+    runs-on: ${{ startsWith(inputs.runner-label, 'tt-beta-ubuntu') && fromJSON(format('["{0}"]', inputs.runner-label)) || fromJSON(format('["{0}", "in-service", "cloud-virtual-machine"]', inputs.runner-label)) }}
+    container:
+      image: ${{ inputs.docker-image || 'docker-image-unresolved' }}
+      env:
+        TT_METAL_CLEAR_L: 1
+        ARCH_NAME: ${{ matrix.arch }}
+        LOGURU_LEVEL: INFO
+        LD_LIBRARY_PATH: /work/build/lib
+        PYTHONPATH: /work
+        TT_METAL_HOME: /work
+        TT_METAL_SLOW_DISPATCH_MODE: 1
+        GTEST_OUTPUT: xml:/work/generated/test_reports/
+      volumes:
+        - ${{ github.workspace }}/docker-job:/work
+        - /dev/hugepages-1G:/dev/hugepages-1G
+      options: "--device /dev/tenstorrent"
+    defaults:
+      run:
+        shell: bash
+        working-directory: /work
+    steps:
+      - name: ⬇️  Setup Job
+        uses: tenstorrent/tt-metal/.github/actions/setup-job@main
+        timeout-minutes: 10
+        with:
+          build-artifact-name: ${{ inputs.build-artifact-name }}
+          wheel-artifact-name: ${{ inputs.wheel-artifact-name }}
+      - name: "Run Async Write Mcast Tests"
+        timeout-minutes: ${{ inputs.timeout }}
+        run: |
+          echo "LOG_FABRIC: e_depth='${{ matrix.params.e_depth }}', w_depth='${{ matrix.params.w_depth }}', init_level='${{ matrix.params.init_level }}'"
+          TT_METAL_SLOW_DISPATCH_MODE=1 ./build/test/tt_metal/perf_microbenchmark/routing/test_tt_fabric_sanity_${ARCH_NAME} \
+            --fabric_command 1 --board_type n300 --data_kb_per_tx 10 --num_src_endpoints 20 --num_dest_endpoints 8 --num_links 16 \
+            ${{ matrix.params.e_depth }} ${{ matrix.params.w_depth }} ${{ matrix.params.init_level }}
+      - uses: ./.github/actions/slack-report
+        if: ${{ failure() }}
+        with:
+          slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          owner: U06CXU895AP # Michael Chiou
+      - uses: tenstorrent/tt-metal/.github/actions/upload-artifact-with-job-uuid@main
+        timeout-minutes: 10
+        if: ${{ !cancelled() }}
+        with:
+          path: /work/generated/test_reports/
+          prefix: "test_reports_"
+      - name: Generate system logs on failure
+        uses: ./.github/actions/generate-system-logs
+        if: ${{ failure() }}
+      - name: Generate gtest annotations on failure
+        uses: ./.github/actions/generate-gtest-failure-message
+        if: ${{ failure() }}
+        with:
+          path: /work/generated/test_reports/
+
+  atomic-inc-sanity-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [ "wormhole_b0" ]
+        params:
+          - { init_level: "" }
+          - { init_level: "--metal_fabric_init_level 1" }
+    name: ${{ matrix.arch }} ${{ inputs.runner-label }} Atomic Inc Sanity Tests
+    runs-on: ${{ startsWith(inputs.runner-label, 'tt-beta-ubuntu') && fromJSON(format('["{0}"]', inputs.runner-label)) || fromJSON(format('["{0}", "in-service", "cloud-virtual-machine"]', inputs.runner-label)) }}
+    container:
+      image: ${{ inputs.docker-image || 'docker-image-unresolved' }}
+      env:
+        TT_METAL_CLEAR_L: 1
+        ARCH_NAME: ${{ matrix.arch }}
+        LOGURU_LEVEL: INFO
+        LD_LIBRARY_PATH: /work/build/lib
+        PYTHONPATH: /work
+        TT_METAL_HOME: /work
+        TT_METAL_SLOW_DISPATCH_MODE: 1
+        GTEST_OUTPUT: xml:/work/generated/test_reports/
+      volumes:
+        - ${{ github.workspace }}/docker-job:/work
+        - /dev/hugepages-1G:/dev/hugepages-1G
+      options: "--device /dev/tenstorrent"
+    defaults:
+      run:
+        shell: bash
+        working-directory: /work
+    steps:
+      - name: ⬇️  Setup Job
+        uses: tenstorrent/tt-metal/.github/actions/setup-job@main
+        timeout-minutes: 10
+        with:
+          build-artifact-name: ${{ inputs.build-artifact-name }}
+          wheel-artifact-name: ${{ inputs.wheel-artifact-name }}
+      - name: "Run Atomic Inc Tests"
+        timeout-minutes: ${{ inputs.timeout }}
+        run: |
+          echo "LOG_FABRIC: init_level='${{ matrix.params.init_level }}'"
+          TT_METAL_SLOW_DISPATCH_MODE=1 ./build/test/tt_metal/perf_microbenchmark/routing/test_tt_fabric_sanity_${ARCH_NAME} \
+            --fabric_command 64 --board_type n300 --data_kb_per_tx 10 --num_src_endpoints 20 --num_dest_endpoints 8 --num_links 16 \
+            ${{ matrix.params.init_level }}
+      - uses: ./.github/actions/slack-report
+        if: ${{ failure() }}
+        with:
+          slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          owner: U06CXU895AP # Michael Chiou
+      - uses: tenstorrent/tt-metal/.github/actions/upload-artifact-with-job-uuid@main
+        timeout-minutes: 10
+        if: ${{ !cancelled() }}
+        with:
+          path: /work/generated/test_reports/
+          prefix: "test_reports_"
+      - name: Generate system logs on failure
+        uses: ./.github/actions/generate-system-logs
+        if: ${{ failure() }}
+      - name: Generate gtest annotations on failure
+        uses: ./.github/actions/generate-gtest-failure-message
+        if: ${{ failure() }}
+        with:
+          path: /work/generated/test_reports/
+
+  async-write-atomic-inc-sanity-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [ "wormhole_b0" ]
+        params:
+          - { init_level: "" }
+          - { init_level: "--metal_fabric_init_level 1" }
+    name: ${{ matrix.arch }} ${{ inputs.runner-label }} Async Write Atomic Inc Sanity Tests
+    runs-on: ${{ startsWith(inputs.runner-label, 'tt-beta-ubuntu') && fromJSON(format('["{0}"]', inputs.runner-label)) || fromJSON(format('["{0}", "in-service", "cloud-virtual-machine"]', inputs.runner-label)) }}
+    container:
+      image: ${{ inputs.docker-image || 'docker-image-unresolved' }}
+      env:
+        TT_METAL_CLEAR_L: 1
+        ARCH_NAME: ${{ matrix.arch }}
+        LOGURU_LEVEL: INFO
+        LD_LIBRARY_PATH: /work/build/lib
+        PYTHONPATH: /work
+        TT_METAL_HOME: /work
+        TT_METAL_SLOW_DISPATCH_MODE: 1
+        GTEST_OUTPUT: xml:/work/generated/test_reports/
+      volumes:
+        - ${{ github.workspace }}/docker-job:/work
+        - /dev/hugepages-1G:/dev/hugepages-1G
+      options: "--device /dev/tenstorrent"
+    defaults:
+      run:
+        shell: bash
+        working-directory: /work
+    steps:
+      - name: ⬇️  Setup Job
+        uses: tenstorrent/tt-metal/.github/actions/setup-job@main
+        timeout-minutes: 10
+        with:
+          build-artifact-name: ${{ inputs.build-artifact-name }}
+          wheel-artifact-name: ${{ inputs.wheel-artifact-name }}
+      - name: "Run Async Write Atomic Inc Tests"
+        timeout-minutes: ${{ inputs.timeout }}
+        run: |
+          echo "LOG_FABRIC: init_level='${{ matrix.params.init_level }}'"
+          TT_METAL_SLOW_DISPATCH_MODE=1 ./build/test/tt_metal/perf_microbenchmark/routing/test_tt_fabric_sanity_${ARCH_NAME} \
+            --fabric_command 65 --board_type n300 --data_kb_per_tx 10 --num_src_endpoints 20 --num_dest_endpoints 8 --num_links 16 \
+            ${{ matrix.params.init_level }}
+      - uses: ./.github/actions/slack-report
+        if: ${{ failure() }}
+        with:
+          slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          owner: U06CXU895AP # Michael Chiou
+      - uses: tenstorrent/tt-metal/.github/actions/upload-artifact-with-job-uuid@main
+        timeout-minutes: 10
+        if: ${{ !cancelled() }}
+        with:
+          path: /work/generated/test_reports/
+          prefix: "test_reports_"
+      - name: Generate system logs on failure
+        uses: ./.github/actions/generate-system-logs
+        if: ${{ failure() }}
+      - name: Generate gtest annotations on failure
+        uses: ./.github/actions/generate-gtest-failure-message
+        if: ${{ failure() }}
+        with:
+          path: /work/generated/test_reports/
+
+  async-write-with-push-router-sanity-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [ "wormhole_b0" ]
+        params:
+          - { data_kb_per_tx: "600", endpoints: "", benchmark: "", init_level: "" }
+          - { data_kb_per_tx: "10",  endpoints: "--num_src_endpoints 8 --num_dest_endpoints 8 --num_links 16", benchmark: "--benchmark", init_level: "" }
+          - { data_kb_per_tx: "600", endpoints: "", benchmark: "", init_level: "--metal_fabric_init_level 1" }
+          - { data_kb_per_tx: "10",  endpoints: "--num_src_endpoints 8 --num_dest_endpoints 8 --num_links 16", benchmark: "--benchmark", init_level: "--metal_fabric_init_level 1" }
+    name: ${{ matrix.arch }} ${{ inputs.runner-label }} Async Write with Push Router Tests
+    runs-on: ${{ startsWith(inputs.runner-label, 'tt-beta-ubuntu') && fromJSON(format('["{0}"]', inputs.runner-label)) || fromJSON(format('["{0}", "in-service", "cloud-virtual-machine"]', inputs.runner-label)) }}
+    container:
+      image: ${{ inputs.docker-image || 'docker-image-unresolved' }}
+      env:
+        TT_METAL_CLEAR_L: 1
+        ARCH_NAME: ${{ matrix.arch }}
+        LOGURU_LEVEL: INFO
+        LD_LIBRARY_PATH: /work/build/lib
+        PYTHONPATH: /work
+        TT_METAL_HOME: /work
+        TT_METAL_SLOW_DISPATCH_MODE: 1
+        GTEST_OUTPUT: xml:/work/generated/test_reports/
+      volumes:
+        - ${{ github.workspace }}/docker-job:/work
+        - /dev/hugepages-1G:/dev/hugepages-1G
+      options: "--device /dev/tenstorrent"
+    defaults:
+      run:
+        shell: bash
+        working-directory: /work
+    steps:
+      - name: ⬇️  Setup Job
+        uses: tenstorrent/tt-metal/.github/actions/setup-job@main
+        timeout-minutes: 10
+        with:
+          build-artifact-name: ${{ inputs.build-artifact-name }}
+          wheel-artifact-name: ${{ inputs.wheel-artifact-name }}
+      - name: "Run Async Write w/Push Router Tests"
+        timeout-minutes: ${{ inputs.timeout }}
+        run: |
+          echo "LOG_FABRIC: data_kb_per_tx='${{ matrix.params.data_kb_per_tx }}', endpoints='${{ matrix.params.endpoints }}', benchmark='${{ matrix.params.benchmark }}', init_level='${{ matrix.params.init_level }}'"
+          TT_METAL_SLOW_DISPATCH_MODE=1 ./build/test/tt_metal/perf_microbenchmark/routing/test_tt_fabric_sanity_${ARCH_NAME} \
+            --fabric_command 1 --board_type n300 --push_router \
+            --data_kb_per_tx ${{ matrix.params.data_kb_per_tx }} ${{ matrix.params.endpoints }} ${{ matrix.params.benchmark }} ${{ matrix.params.init_level }}
+      - uses: ./.github/actions/slack-report
+        if: ${{ failure() }}
+        with:
+          slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          owner: U06CXU895AP # Michael Chiou
+      - uses: tenstorrent/tt-metal/.github/actions/upload-artifact-with-job-uuid@main
+        timeout-minutes: 10
+        if: ${{ !cancelled() }}
+        with:
+          path: /work/generated/test_reports/
+          prefix: "test_reports_"
+      - name: Generate system logs on failure
+        uses: ./.github/actions/generate-system-logs
+        if: ${{ failure() }}
+      - name: Generate gtest annotations on failure
+        uses: ./.github/actions/generate-gtest-failure-message
+        if: ${{ failure() }}
+        with:
+          path: /work/generated/test_reports/
+
+  async-write-mcast-with-push-router-sanity-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [ "wormhole_b0" ]
+        params:
+          - { init_level: "", e_depth: "--e_depth 1", w_depth: "" }
+          - { init_level: "", e_depth: "", w_depth: "--w_depth 1" }
+          - { init_level: "--metal_fabric_init_level 1", e_depth: "--e_depth 1", w_depth: "" }
+    name: ${{ matrix.arch }} ${{ inputs.runner-label }} Async Write Mcast with Push Router Tests
+    runs-on: ${{ startsWith(inputs.runner-label, 'tt-beta-ubuntu') && fromJSON(format('["{0}"]', inputs.runner-label)) || fromJSON(format('["{0}", "in-service", "cloud-virtual-machine"]', inputs.runner-label)) }}
+    container:
+      image: ${{ inputs.docker-image || 'docker-image-unresolved' }}
+      env:
+        TT_METAL_CLEAR_L: 1
+        ARCH_NAME: ${{ matrix.arch }}
+        LOGURU_LEVEL: INFO
+        LD_LIBRARY_PATH: /work/build/lib
+        PYTHONPATH: /work
+        TT_METAL_HOME: /work
+        TT_METAL_SLOW_DISPATCH_MODE: 1
+        GTEST_OUTPUT: xml:/work/generated/test_reports/
+      volumes:
+        - ${{ github.workspace }}/docker-job:/work
+        - /dev/hugepages-1G:/dev/hugepages-1G
+      options: "--device /dev/tenstorrent"
+    defaults:
+      run:
+        shell: bash
+        working-directory: /work
+    steps:
+      - name: ⬇️  Setup Job
+        uses: tenstorrent/tt-metal/.github/actions/setup-job@main
+        timeout-minutes: 10
+        with:
+          build-artifact-name: ${{ inputs.build-artifact-name }}
+          wheel-artifact-name: ${{ inputs.wheel-artifact-name }}
+      - name: "Run Async Write Mcast w/Push Router Tests"
+        timeout-minutes: ${{ inputs.timeout }}
+        run: |
+          echo "LOG_FABRIC: e_depth='${{ matrix.params.e_depth }}', w_depth='${{ matrix.params.w_depth }}', init_level='${{ matrix.params.init_level }}'"
+          TT_METAL_SLOW_DISPATCH_MODE=1 ./build/test/tt_metal/perf_microbenchmark/routing/test_tt_fabric_sanity_${ARCH_NAME} \
+            --fabric_command 1 --board_type n300 --data_kb_per_tx 600 --num_links 16 --push_router \
+            ${{ matrix.params.e_depth }} ${{ matrix.params.w_depth }} ${{ matrix.params.init_level }}
+      - uses: ./.github/actions/slack-report
+        if: ${{ failure() }}
+        with:
+          slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          owner: U06CXU895AP # Michael Chiou
+      - uses: tenstorrent/tt-metal/.github/actions/upload-artifact-with-job-uuid@main
+        timeout-minutes: 10
+        if: ${{ !cancelled() }}
+        with:
+          path: /work/generated/test_reports/
+          prefix: "test_reports_"
+      - name: Generate system logs on failure
+        uses: ./.github/actions/generate-system-logs
+        if: ${{ failure() }}
+      - name: Generate gtest annotations on failure
+        uses: ./.github/actions/generate-gtest-failure-message
+        if: ${{ failure() }}
+        with:
+          path: /work/generated/test_reports/
+
+  atomic-inc-with-push-router-sanity-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [ "wormhole_b0" ]
+        params:
+          - { init_level: "", data_kb_per_tx: "600" }
+          - { init_level: "--metal_fabric_init_level 1", data_kb_per_tx: "600" }
+    name: ${{ matrix.arch }} ${{ inputs.runner-label }} Atomic Inc with Push Router Tests
+    runs-on: ${{ startsWith(inputs.runner-label, 'tt-beta-ubuntu') && fromJSON(format('["{0}"]', inputs.runner-label)) || fromJSON(format('["{0}", "in-service", "cloud-virtual-machine"]', inputs.runner-label)) }}
+    container:
+      image: ${{ inputs.docker-image || 'docker-image-unresolved' }}
+      env:
+        TT_METAL_CLEAR_L: 1
+        ARCH_NAME: ${{ matrix.arch }}
+        LOGURU_LEVEL: INFO
+        LD_LIBRARY_PATH: /work/build/lib
+        PYTHONPATH: /work
+        TT_METAL_HOME: /work
+        TT_METAL_SLOW_DISPATCH_MODE: 1
+        GTEST_OUTPUT: xml:/work/generated/test_reports/
+      volumes:
+        - ${{ github.workspace }}/docker-job:/work
+        - /dev/hugepages-1G:/dev/hugepages-1G
+      options: "--device /dev/tenstorrent"
+    defaults:
+      run:
+        shell: bash
+        working-directory: /work
+    steps:
+      - name: ⬇️  Setup Job
+        uses: tenstorrent/tt-metal/.github/actions/setup-job@main
+        timeout-minutes: 10
+        with:
+          build-artifact-name: ${{ inputs.build-artifact-name }}
+          wheel-artifact-name: ${{ inputs.wheel-artifact-name }}
+      - name: "Run Atomic Inc w/Push Router Tests"
+        timeout-minutes: ${{ inputs.timeout }}
+        run: |
+          echo "LOG_FABRIC: data_kb_per_tx='${{ matrix.params.data_kb_per_tx }}', init_level='${{ matrix.params.init_level }}'"
+          TT_METAL_SLOW_DISPATCH_MODE=1 ./build/test/tt_metal/perf_microbenchmark/routing/test_tt_fabric_sanity_${ARCH_NAME} \
+            --fabric_command 64 --board_type n300 --push_router \
+            --data_kb_per_tx ${{ matrix.params.data_kb_per_tx }} ${{ matrix.params.init_level }}
+      - uses: ./.github/actions/slack-report
+        if: ${{ failure() }}
+        with:
+          slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          owner: U06CXU895AP # Michael Chiou
+      - uses: tenstorrent/tt-metal/.github/actions/upload-artifact-with-job-uuid@main
+        timeout-minutes: 10
+        if: ${{ !cancelled() }}
+        with:
+          path: /work/generated/test_reports/
+          prefix: "test_reports_"
+      - name: Generate system logs on failure
+        uses: ./.github/actions/generate-system-logs
+        if: ${{ failure() }}
+      - name: Generate gtest annotations on failure
+        uses: ./.github/actions/generate-gtest-failure-message
+        if: ${{ failure() }}
+        with:
+          path: /work/generated/test_reports/
+
+  async-write-atomic-inc-with-push-router-sanity-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [ "wormhole_b0" ]
+        params:
+          - { init_level: "", data_kb_per_tx: "600" }
+          - { init_level: "--metal_fabric_init_level 1", data_kb_per_tx: "600" }
+    name: ${{ matrix.arch }} ${{ inputs.runner-label }} Async Write Atomic Inc with Push Router Tests
+    runs-on: ${{ startsWith(inputs.runner-label, 'tt-beta-ubuntu') && fromJSON(format('["{0}"]', inputs.runner-label)) || fromJSON(format('["{0}", "in-service", "cloud-virtual-machine"]', inputs.runner-label)) }}
+    container:
+      image: ${{ inputs.docker-image || 'docker-image-unresolved' }}
+      env:
+        TT_METAL_CLEAR_L: 1
+        ARCH_NAME: ${{ matrix.arch }}
+        LOGURU_LEVEL: INFO
+        LD_LIBRARY_PATH: /work/build/lib
+        PYTHONPATH: /work
+        TT_METAL_HOME: /work
+        TT_METAL_SLOW_DISPATCH_MODE: 1
+        GTEST_OUTPUT: xml:/work/generated/test_reports/
+      volumes:
+        - ${{ github.workspace }}/docker-job:/work
+        - /dev/hugepages-1G:/dev/hugepages-1G
+      options: "--device /dev/tenstorrent"
+    defaults:
+      run:
+        shell: bash
+        working-directory: /work
+    steps:
+      - name: ⬇️  Setup Job
+        uses: tenstorrent/tt-metal/.github/actions/setup-job@main
+        timeout-minutes: 10
+        with:
+          build-artifact-name: ${{ inputs.build-artifact-name }}
+          wheel-artifact-name: ${{ inputs.wheel-artifact-name }}
+      - name: "Run Async Write Atomic Inc w/Push Router Tests"
+        timeout-minutes: ${{ inputs.timeout }}
+        run: |
+          echo "LOG_FABRIC: data_kb_per_tx='${{ matrix.params.data_kb_per_tx }}', init_level='${{ matrix.params.init_level }}'"
+          TT_METAL_SLOW_DISPATCH_MODE=1 ./build/test/tt_metal/perf_microbenchmark/routing/test_tt_fabric_sanity_${ARCH_NAME} \
+            --fabric_command 65 --board_type n300 --push_router \
+            --data_kb_per_tx ${{ matrix.params.data_kb_per_tx }} ${{ matrix.params.init_level }}
       - uses: ./.github/actions/slack-report
         if: ${{ failure() }}
         with:
