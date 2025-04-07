@@ -1,0 +1,89 @@
+name: "Common Container Workflow"
+
+on:
+  workflow_call:
+    inputs:
+      arch:
+        required: true
+        type: string
+      runner-label:
+        required: true
+        type: string
+      docker-image:
+        required: true
+        type: string
+      timeout:
+        required: false
+        type: number
+        default: 10
+      build-artifact-name:
+        required: true
+        type: string
+      wheel-artifact-name:
+        required: true
+        type: string
+      test-name:
+        required: true
+        type: string
+      test-command:
+        required: true
+        type: string
+
+jobs:
+  test-runner:
+    name: ${{ inputs.test-name }}
+    runs-on: ${{ startsWith(inputs.runner-label, 'tt-beta-ubuntu') && fromJSON(format('["{0}"]', inputs.runner-label)) || fromJSON(format('["{0}", "in-service", "cloud-virtual-machine"]', inputs.runner-label)) }}
+    container:
+      image: ${{ inputs.docker-image || 'docker-image-unresolved' }}
+      env:
+        LOGURU_LEVEL: INFO
+        LD_LIBRARY_PATH: /work/build/lib
+        PYTHONPATH: /work
+        TT_METAL_HOME: /work
+        TT_METAL_SLOW_DISPATCH_MODE: 1
+        GTEST_OUTPUT: xml:/work/generated/test_reports/
+        ARCH_NAME: ${{ inputs.arch }}
+      volumes:
+        - ${{ github.workspace }}/docker-job:/work
+        - /dev/hugepages-1G:/dev/hugepages-1G
+      options: "--device /dev/tenstorrent"
+    defaults:
+      run:
+        shell: bash
+        working-directory: /work
+    steps:
+      - name: ⬇️  Setup Job
+        uses: tenstorrent/tt-metal/.github/actions/setup-job@main
+        timeout-minutes: 10
+        with:
+          build-artifact-name: ${{ inputs.build-artifact-name }}
+          wheel-artifact-name: ${{ inputs.wheel-artifact-name }}
+
+      - name: ${{ inputs.test-name }}
+        timeout-minutes: ${{ inputs.timeout }}
+        run: |
+          echo "LOG_FABRIC: Running ${{ inputs.test-name }}..."
+          ${{ inputs.test-command }}
+
+      - uses: ./.github/actions/slack-report
+        if: ${{ failure() }}
+        with:
+          slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          owner: U06CXU895AP # Michael Chiou
+
+      - uses: tenstorrent/tt-metal/.github/actions/upload-artifact-with-job-uuid@main
+        timeout-minutes: 10
+        if: ${{ !cancelled() }}
+        with:
+          path: /work/generated/test_reports/
+          prefix: "test_reports_"
+
+      - name: Generate system logs on failure
+        uses: ./.github/actions/generate-system-logs
+        if: ${{ failure() }}
+
+      - name: Generate gtest annotations on failure
+        uses: ./.github/actions/generate-gtest-failure-message
+        if: ${{ failure() }}
+        with:
+          path: /work/generated/test_reports/
