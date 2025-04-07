@@ -441,7 +441,7 @@ def test_fabric_reduce_scatter_regular_grid(
 )
 @pytest.mark.parametrize("shard_height", [32])
 @pytest.mark.parametrize("shard_width", [64])
-@pytest.mark.parametrize("input_grid", [(5, 4)])
+@pytest.mark.parametrize("input_grid", [(5, 5)])
 @pytest.mark.parametrize("output_grid", [(5, 1)])
 @pytest.mark.parametrize("dtype", [ttnn.bfloat16])
 def test_fabric_reduce_scatter_regular_grid_perf(
@@ -450,7 +450,7 @@ def test_fabric_reduce_scatter_regular_grid_perf(
     dim = 3
     num_devices_scatter = 4
     num_devices_fracture = 1
-    num_cores = input_grid[0] * input_grid[1]
+    num_cores = input_grid[0] * input_grid[1] - 5  # test padding
     num_iters = 1
 
     run_reduce_scatter_test(

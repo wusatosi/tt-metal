@@ -72,6 +72,9 @@ LlamaReduceScatterDeviceOperation::spec_return_value_t LlamaReduceScatterDeviceO
     auto input_shape = input_spec.logical_shape();  // input_spec.logical_shape();;
 
     uint32_t final_width = input_shape[attributes.dim] / attributes.ring_devices;
+    TT_FATAL(
+        input_shape[attributes.dim] % attributes.ring_devices == 0,
+        "input shape width must be divisible by num_devices");
 
     auto output_shape = input_shape;
     output_shape[attributes.dim] = final_width;
