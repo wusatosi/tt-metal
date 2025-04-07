@@ -284,7 +284,7 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
     auto& padded_output_shape = output_tensor.get_padded_shape();
     const auto& input_tile_shape = input_tensor.get_tensor_spec().tile().get_tile_shape();
     const auto& output_tile_shape = output_tensor.get_tensor_spec().tile().get_tile_shape();
-    auto shard_spec = input_tensor.shard_spec().value();
+    auto input_shard_spec = input_tensor.shard_spec().value();
     auto output_shard_spec = output_tensor.shard_spec().value();
     const auto& cross_device_semaphore = operation_attributes.cross_device_semaphore;
 
@@ -303,14 +303,14 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
     const auto& op_config = ttnn::ccl::CCLOpConfig(input_tensors, output_tensors, ttnn::ccl::Topology::Linear);
     LineTopology line_topology(ring_size, ring_index);
 
-    uint32_t shard_height = shard_spec.shape[0];
-    uint32_t shard_width = shard_spec.shape[1];
-    uint32_t tiles_per_core_width = shard_width / input_tile_shape[1];
+    uint32_t input_shard_height = input_shard_spec.shape[0];
+    uint32_t input_shard_width = input_shard_spec.shape[1];
+    uint32_t tiles_per_core_width = input_shard_width / input_tile_shape[1];
 
-    uint32_t shard_height_output = output_shard_spec.shape[0];
-    uint32_t shard_width_output = output_shard_spec.shape[1];
-    uint32_t tiles_per_core_width_output = shard_width_output / input_tile_shape[1];
-    auto input_grid = shard_spec.grid;
+    uint32_t output_shard_height = output_shard_spec.shape[0];
+    uint32_t output_shard_width = output_shard_spec.shape[1];
+    uint32_t tiles_per_core_width_output = output_shard_width / input_tile_shape[1];
+    auto input_grid = input_shard_spec.grid;
     auto output_grid = output_shard_spec.grid;
 
     tt::log_info("tiles_per_core_width: {}", tiles_per_core_width);
@@ -360,7 +360,7 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
     tt::log_info("packet_size_bytes(): {}", packet_size_bytes);
     tt::log_info("page_size(): {}", op_config.get_page_size());
 
-    uint32_t ncores_input = shard_spec.num_cores();
+    uint32_t ncores_input = input_shard_spec.num_cores();
     uint32_t input_shard_cores_per_device = ncores_input / num_devices;
     uint32_t output_cores_per_device = output_grid.num_cores();
     uint32_t num_workers_per_link = 1;
@@ -372,7 +372,7 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
     auto packet_worker_cores_grid = detail::get_worker_cores(
         intermediate_packet_buffer_grid,
         num_packets_total_per_device,
-        shard_spec.orientation == ShardOrientation::ROW_MAJOR);
+        input_shard_spec.orientation == ShardOrientation::ROW_MAJOR);
 
     tt::log_info("packet_worker_cores_grid: {}", packet_worker_cores_grid);
     tt::log_info("num_packets_total_per_device: {}", num_packets_total_per_device);
@@ -380,7 +380,7 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
     auto available_cores = sub_device_cores.subtract(packet_worker_cores_grid);
 
     auto sender_core_grid = detail::get_worker_cores(
-        available_cores, num_workers_per_link * num_links, shard_spec.orientation == ShardOrientation::ROW_MAJOR);
+        available_cores, num_workers_per_link * num_links, input_shard_spec.orientation == ShardOrientation::ROW_MAJOR);
     auto all_cores_grid = packet_worker_cores_grid.merge(sender_core_grid);
 
     tt::log_info("sender_core_grid: {}", sender_core_grid);
@@ -528,15 +528,15 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
     auto cb_accumulator_handle = tt::tt_metal::CreateCircularBuffer(program, all_cores_grid, accumulator_cb_config);
 
     auto input_cores =
-        corerange_to_cores(input_grid, std::nullopt, shard_spec.orientation == ShardOrientation::ROW_MAJOR);
+        corerange_to_cores(input_grid, std::nullopt, input_shard_spec.orientation == ShardOrientation::ROW_MAJOR);
     auto output_cores =
-        corerange_to_cores(output_grid, std::nullopt, shard_spec.orientation == ShardOrientation::ROW_MAJOR);
+        corerange_to_cores(output_grid, std::nullopt, input_shard_spec.orientation == ShardOrientation::ROW_MAJOR);
     auto sender_cores =
-        corerange_to_cores(sender_core_grid, std::nullopt, shard_spec.orientation == ShardOrientation::ROW_MAJOR);
+        corerange_to_cores(sender_core_grid, std::nullopt, input_shard_spec.orientation == ShardOrientation::ROW_MAJOR);
     auto all_cores =
-        corerange_to_cores(all_cores_grid, std::nullopt, shard_spec.orientation == ShardOrientation::ROW_MAJOR);
+        corerange_to_cores(all_cores_grid, std::nullopt, input_shard_spec.orientation == ShardOrientation::ROW_MAJOR);
     auto packet_worker_cores = corerange_to_cores(
-        packet_worker_cores_grid, std::nullopt, shard_spec.orientation == ShardOrientation::ROW_MAJOR);
+        packet_worker_cores_grid, std::nullopt, input_shard_spec.orientation == ShardOrientation::ROW_MAJOR);
     auto packet_receiver_core = packet_worker_cores.at(0);
 
     const uint32_t chip_id = ring_index;

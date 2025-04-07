@@ -73,6 +73,7 @@ def run_reduce_scatter_test(
     use_regular_grid=False,
     input_grid=None,
     output_grid=None,
+    dtype=ttnn.bfloat8_b,
 ):
     mesh_device.enable_async(True)
     mesh_device.enable_program_cache()
@@ -177,7 +178,7 @@ def run_reduce_scatter_test(
             input,
             device=mesh_device,
             layout=ttnn.TILE_LAYOUT,
-            dtype=ttnn.bfloat8_b,
+            dtype=dtype,
             memory_config=sharded_mem_config,
             mesh_mapper=ttnn.ShardTensor2dMesh(
                 mesh_device, dims=(0, 1), mesh_shape=[num_devices_fracture, num_devices_scatter]
@@ -187,7 +188,7 @@ def run_reduce_scatter_test(
             intermediate_tensor,
             device=mesh_device,
             layout=ttnn.TILE_LAYOUT,
-            dtype=ttnn.bfloat8_b,
+            dtype=dtype,
             memory_config=packet_workers_persistent_mem_config,
             mesh_mapper=ttnn.ShardTensor2dMesh(
                 mesh_device, dims=(0, 1), mesh_shape=[num_devices_fracture, num_devices_scatter]
@@ -282,6 +283,7 @@ def run_reduce_scatter_test(
     passed = True
     first_failed_tensor_index = None
     failed_indices = []
+    expected_pcc = 0.999 if dtype == ttnn.bfloat8_b else 0.9999
     for tensor_index in range(len(tt_out_tensor_list)):
         tt_torch_tensor = ttnn.to_torch(
             tt_out_tensor_list[tensor_index],
@@ -289,7 +291,7 @@ def run_reduce_scatter_test(
                 mesh_device, mesh_shape=[num_devices_fracture, num_devices_scatter], dims=(0, 1)
             ),
         )
-        eq, output_results = comp_pcc(tt_torch_tensor, output_tensor_goldens_list[tensor_index], 0.999)
+        eq, output_results = comp_pcc(tt_torch_tensor, output_tensor_goldens_list[tensor_index], expected_pcc)
         # torch.set_printoptions(threshold=float("inf"))
         print(tt_torch_tensor[0][0][0][0:320])
         # print(output_tensor_goldens_list[tensor_index])
@@ -397,8 +399,9 @@ def test_fabric_reduce_scatter_tg_no_trace(mesh_device, trace_mode):
 @pytest.mark.parametrize("shard_width", [64])
 @pytest.mark.parametrize("input_grid", [(5, 4)])
 @pytest.mark.parametrize("output_grid", [(5, 2)])
+@pytest.mark.parametrize("dtype", [ttnn.bfloat16])
 def test_fabric_reduce_scatter_regular_grid(
-    mesh_device, trace_mode, shard_height, shard_width, input_grid, output_grid
+    mesh_device, trace_mode, shard_height, shard_width, input_grid, output_grid, dtype
 ):
     dim = 3
     num_devices_scatter = 2
@@ -421,6 +424,7 @@ def test_fabric_reduce_scatter_regular_grid(
         use_regular_grid=True,
         input_grid=input_grid,
         output_grid=output_grid,
+        dtype=dtype,
     )
 
 
@@ -439,8 +443,9 @@ def test_fabric_reduce_scatter_regular_grid(
 @pytest.mark.parametrize("shard_width", [64])
 @pytest.mark.parametrize("input_grid", [(5, 4)])
 @pytest.mark.parametrize("output_grid", [(5, 1)])
+@pytest.mark.parametrize("dtype", [ttnn.bfloat16])
 def test_fabric_reduce_scatter_regular_grid_perf(
-    mesh_device, trace_mode, shard_height, shard_width, input_grid, output_grid
+    mesh_device, trace_mode, shard_height, shard_width, input_grid, output_grid, dtype
 ):
     dim = 3
     num_devices_scatter = 4
@@ -459,8 +464,9 @@ def test_fabric_reduce_scatter_regular_grid_perf(
         num_iters,
         trace_mode,
         num_links=3,
-        scheme="sequential",
+        scheme="random",
         use_regular_grid=True,
         input_grid=input_grid,
         output_grid=output_grid,
+        dtype=dtype,
     )
