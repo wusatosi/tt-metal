@@ -54,6 +54,7 @@ from ttnn import ShardTensor2dMesh, ConcatMesh2dToTensor
 @pytest.mark.parametrize("replication_factor", [8])
 @pytest.mark.parametrize("enable_async", [True])
 @pytest.mark.parametrize("mesh_device", [pytest.param((8, 4), id="8x4_grid")], indirect=True)
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D}], indirect=True)
 def test_line_all_gather_sharded_on_TG_rows_post_commit(
     mesh_device,
     num_devices,
@@ -96,6 +97,8 @@ def test_line_all_gather_sharded_on_TG_rows_post_commit(
         num_iters=num_iters,
         num_all_gather_instances=replication_factor,
         cluster_axis=1,
+        use_all_gather_async=True,
+        enable_persistent_fabric=True,
     )
 
 
@@ -185,6 +188,7 @@ def test_line_all_gather_sharded_on_TG_rows_post_commit(
 @pytest.mark.parametrize("replication_factor", [4])
 @pytest.mark.parametrize("enable_async", [True])
 @pytest.mark.parametrize("mesh_device", [pytest.param((8, 4), id="8x4_grid")], indirect=True)
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D}], indirect=True)
 def test_line_all_gather_sharded_on_TG_cols_post_commit(
     mesh_device,
     num_devices,
@@ -228,6 +232,8 @@ def test_line_all_gather_sharded_on_TG_cols_post_commit(
         input_shard_spec=input_shard_spec,
         num_all_gather_instances=replication_factor,
         cluster_axis=0,
+        use_all_gather_async=True,
+        enable_persistent_fabric=True,
     )
 
 
@@ -259,6 +265,7 @@ def test_line_all_gather_sharded_on_TG_cols_post_commit(
 @pytest.mark.parametrize("enable_async", [True])
 @pytest.mark.parametrize("replication_factor", [4])  # 1, 4])
 @pytest.mark.parametrize("mesh_device", [pytest.param((8, 4), id="8x4_grid")], indirect=True)
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D}], indirect=True)
 def test_line_all_gather_on_TG_cols_nightly(
     mesh_device,
     num_devices,
@@ -292,4 +299,6 @@ def test_line_all_gather_on_TG_cols_nightly(
         num_iters=num_iters,
         num_all_gather_instances=replication_factor,
         cluster_axis=0,
+        use_all_gather_async=True,
+        enable_persistent_fabric=True,
     )
