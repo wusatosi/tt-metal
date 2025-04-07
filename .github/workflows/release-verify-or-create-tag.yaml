@@ -97,13 +97,11 @@ jobs:
                 console.log(version);
                 console.log(tag);
                 console.log(tag.data.sha);
-                const ref = await github.rest.git.createRef({
+                github.rest.git.createRef({
                   owner: owner,
                   repo: repo,
                   ref: `refs/tags/${version}`,
                   sha: tag.data.sha,
-                });
-                console.log("Created ref:", ref);
                 });
               } else {
                 console.error(e);
