@@ -338,7 +338,9 @@ def run_line_all_gather_on_TG_with_mesh_tensor_along_rows(
     except Exception as e:
         logger.error(f"Exception: {e}")
         raise e
-    mesh_device.reset_sub_device_stall_group()
+    finally:
+        mesh_device.reset_sub_device_stall_group()
+
     # ttnn.visualize_mesh_device(mesh_device, tensor=ttnn_tensor_out)
     tt_output_tensor = ttnn.to_torch(
         ttnn_tensor_out, mesh_composer=ConcatMesh2dToTensor(mesh_device, mesh_shape=mesh_shape, dims=concat_dims)

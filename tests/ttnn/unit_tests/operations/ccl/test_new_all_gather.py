@@ -307,6 +307,8 @@ def run_all_gather_impl(
             or mesh_device.get_devices()[i].num_program_cache_entries() == num_iters
         ), f"Device {i} has {mesh_device.get_devices()[i].num_program_cache_entries()} program cache entries"
 
+    mesh_device.reset_sub_device_stall_group()
+
     if not passed:
         assert eq, f"{i} FAILED: {output}"
 

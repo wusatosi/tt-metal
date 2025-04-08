@@ -96,6 +96,8 @@ def run_all_reduce_test(
         ttnn.synchronize_device(mesh_device, sub_device_ids=sub_device_stall_group)
     ttnn.synchronize_device(mesh_device, sub_device_ids=sub_device_stall_group)
 
+    mesh_device.reset_sub_device_stall_group()
+
     tt_out_tensors = ttnn.get_device_tensors(output_tensor_mesh)
     logger.info(f"Compare")
     golden_canonical_out_tensor = torch.sum(unchunked_input_tensor, 0, keepdim=True)
@@ -369,7 +371,7 @@ def run_all_reduce_with_mesh_tensor_along_row(
     except Exception as e:
         raise e
     finally:
-        pass
+        mesh_device.reset_sub_device_stall_group()
 
     tt_out_tensors = ttnn.get_device_tensors(output_tensor_mesh)
     logger.info(f"Compare")
