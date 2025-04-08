@@ -539,14 +539,6 @@ class TT_CCL:
 
         return ttnn_tensor_out
 
-    def close(self):
-        pass
-        # if self.enable_persistent_fabric and self.teardown_persistent_fabric:
-        #     logger.info("Tearing down persistent fabric interface")
-        #     self.mesh_device.reset_sub_device_stall_group()
-        #     teardown_fabric_interface(self.mesh_device)
-        #     logger.info("Done tearing down persistent fabric interface")
-
 
 def tt_distributed_rmsnorm(
     inp,
