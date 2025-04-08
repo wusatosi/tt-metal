@@ -8,7 +8,7 @@ from models.demos.llama3_subdevices.tt.llama_ccl import tt_sharded_distributed_r
 
 
 class DistributedNorm(LightweightModule):
-    def __init__(self, norm, args, TG=False, tt_ccl=None):
+    def __init__(self, norm, args, TG=False, tt_ccl=None, output_memcnfg=None):
         self.norm = norm
         self.args = args
         self.tt_ccl = tt_ccl
@@ -38,6 +38,7 @@ class DistributedNorm(LightweightModule):
                 inplace=False,
             )
             self.ln_sharded_stats_memcfg = None
+            self.ln_sharded_output_memcnfg = output_memcnfg
             # ttnn.create_sharded_memory_config(
             #     shape=[1, 1, 32, 32 * 4],
             #     core_grid=ttnn.CoreGrid(y=1, x=1),
@@ -65,6 +66,7 @@ class DistributedNorm(LightweightModule):
                     ln_sharded_progcfg=self.ln_prg_cfg,
                     ln_sharded_stats_memcfg=self.ln_sharded_stats_memcfg,
                     tt_ccl=self.tt_ccl,
+                    ln_sharded_output_memcnfg=self.ln_sharded_output_memcnfg,
                 )
             else:
                 return tt_distributed_rmsnorm(

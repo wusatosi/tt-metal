@@ -591,6 +591,7 @@ def tt_sharded_distributed_rmsnorm(
     ln_sharded_progcfg,
     ln_sharded_stats_memcfg,
     tt_ccl=None,
+    ln_sharded_output_memcnfg=None,
 ):
     # inp = ttnn.to_memory_config(inp, memory_config=ln_sharded_input_memcfg)
 
@@ -626,6 +627,7 @@ def tt_sharded_distributed_rmsnorm(
         epsilon=epsilon,
         weight=gamma,
         stats=tt_stats,
+        memory_config=ln_sharded_output_memcnfg,
         is_pre=False,
     )
     tt_ccl.gather_idx[cluster_axis] = (tt_ccl.gather_idx[cluster_axis] + 1) % tt_ccl.num_cbs
