@@ -334,6 +334,9 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
     uint32_t input_page_size = slice_on_height ? tile_size(cb_data_format) / num_devices : tile_size(cb_data_format);
     uint32_t output_page_size = slice_on_height ? tile_size(cb_data_format) / num_devices : tile_size(cb_data_format);
 
+    uint32_t input_tile_size = tile_size(cb_data_format);
+    uint32_t output_tile_size = tile_size(cb_data_format);
+
     // Get OP Config, topology config
     std::vector<Tensor> input_tensors = {input_tensor};
     std::vector<Tensor> output_tensors = {output_tensor};
@@ -367,11 +370,13 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
     size_t packet_size_bytes = input_tensor.get_dtype() == DataType::BFLOAT16 ? std::bit_floor(fabric_max_packet_size)
                                                                               : fabric_max_packet_size;
     uint32_t num_pages_per_packet = packet_size_bytes / input_page_size;
+    uint32_t num_tiles_per_packet = packet_size_bytes / input_tile_size;
     auto per_worker_num_pages =
         (output_tensor_width_in_pages * output_tensor_height_in_pages + num_links - 1) / num_links;
     if (per_worker_num_pages < num_pages_per_packet) {  // if num_tiles per worker is smaller than packet size
         packet_size_bytes = per_worker_num_pages * input_page_size;
         num_pages_per_packet = packet_size_bytes / input_page_size;
+        num_tiles_per_packet = packet_size_bytes / input_tile_size;
     }
     auto num_packets_to_send =
         (output_tensor_width_in_pages * output_tensor_height_in_pages + num_pages_per_packet - 1) /
@@ -523,7 +528,9 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
     tt::tt_metal::CircularBufferConfig fabric_receiver_cb_config =
         tt::tt_metal::CircularBufferConfig(
             num_pages_per_packet * num_devices * input_page_size, {{fabric_receiver_cb_index, cb_data_format}})
-            .set_page_size(fabric_receiver_cb_index, input_page_size)
+            .set_page_size(
+                fabric_receiver_cb_index,
+                input_tile_size)  // change to be tile-sized page always since we need to pass to llk
             .set_globally_allocated_address(*packet_buffer);
 
     // After reduction, the data will be packed into the accumulator cb
@@ -539,7 +546,9 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
         tt::tt_metal::CircularBufferConfig(
             buffering_factor * num_pages_per_packet * output_pages_per_core_width * input_page_size * num_devices,
             {{accumulator_cb_index, cb_data_format}})
-            .set_page_size(accumulator_cb_index, input_page_size);
+            .set_page_size(
+                accumulator_cb_index,
+                output_tile_size);  // change to be tile-sized page always since we need to pass to llk
 
     auto cb_input_tensor_handle =
         tt::tt_metal::CreateCircularBuffer(program, all_cores_grid, cb_input_tensor_config);  // input buffer
@@ -677,7 +686,12 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
 
     auto output_cb_index = skip_write_back ? output_tensor_cb_id : accumulator_cb_index;
     const std::vector<uint32_t> compute_compile_time_args = {
-        fabric_receiver_cb_index, output_cb_index, num_devices, output_pages_per_core_width, num_pages_per_packet};
+        fabric_receiver_cb_index,
+        output_cb_index,
+        num_devices,
+        output_pages_per_core_width,
+        num_pages_per_packet,
+        num_tiles_per_packet};
 
     bool fp32_dest_acc_en = cb_data_format == tt::DataFormat::Float32;
     const auto compute_kernel_file =

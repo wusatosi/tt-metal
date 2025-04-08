@@ -13,6 +13,7 @@ void MAIN {
     constexpr uint32_t num_devices = get_compile_time_arg_val(2);
     constexpr uint32_t tiles_per_core_width_output = get_compile_time_arg_val(3);
     constexpr uint32_t num_pages_per_packet = get_compile_time_arg_val(4);
+    constexpr uint32_t num_tiles_per_packet = get_compile_time_arg_val(5);
 
     // Derived compile-time constants
     constexpr uint32_t total_pages = num_devices * num_pages_per_packet;
@@ -24,7 +25,12 @@ void MAIN {
 
     // Wait for input data once before beginning processing
     cb_wait_front(fabric_receiver_cb_id, total_pages);
-    // UNPACK(( DPRINT << TSLICE(fabric_receiver_cb_id, 0, SliceRange::h0_w0_32(), true, true) << ENDL() ));
+    // for (uint32_t i=0; i<4;++i) {
+    //     for (uint8_t j=0; j<32;++j)
+    //         UNPACK(( DPRINT << TSLICE(fabric_receiver_cb_id, i, SliceRange{.h0 = j, .h1 = uint8_t(j+1), .hs = 1, .w0
+    //         = 0, .w1 = 32, .ws = 1}) << ENDL() ));
+    //     DPRINT << ENDL();
+    // }
 
     // Reserve output space once before processing
     cb_reserve_back(accumulator_cb_id, num_pages_per_packet);
@@ -33,17 +39,21 @@ void MAIN {
     tile_regs_acquire();
 
     // Pre-calculate page indices for each device pair to avoid repetitive calculations in inner loop
-    for (uint32_t page_group = 0; page_group < num_pages_per_packet; page_group++) {
+    for (uint32_t page_group = 0; page_group < num_tiles_per_packet; page_group++) {
         // Process pairs of devices (0+1, 2+3, etc.)
         for (uint32_t device_pair = 0; device_pair < num_device_pairs; device_pair++) {
             const uint32_t first_device_id = device_pair * 2;
             const uint32_t second_device_id = first_device_id + 1;
 
             // Calculate indices once
-            const uint32_t first_index = first_device_id * num_pages_per_packet + page_group;
-            const uint32_t second_index = second_device_id * num_pages_per_packet + page_group;
+            const uint32_t first_index = first_device_id * num_tiles_per_packet + page_group;
+            const uint32_t second_index = second_device_id * num_tiles_per_packet + page_group;
 
             add_tiles(fabric_receiver_cb_id, fabric_receiver_cb_id, first_index, second_index, page_group);
+
+            // UNPACK (( DPRINT << TSLICE(fabric_receiver_cb_id, first_index, SliceRange::h0_w0_32()) << ENDL() ));
+            // UNPACK (( DPRINT << TSLICE(fabric_receiver_cb_id, second_index, SliceRange::h0_w0_32()) << ENDL() ));
+            // DPRINT << ENDL();
         }
     }
 
@@ -51,13 +61,16 @@ void MAIN {
 
     // Pack output tiles
     tile_regs_wait();
-    for (uint32_t page_group = 0; page_group < num_pages_per_packet; page_group++) {
+    for (uint32_t page_group = 0; page_group < num_tiles_per_packet; page_group++) {
         pack_tile(page_group, accumulator_cb_id, page_group);
     }
     tile_regs_release();
 
     cb_pop_front(fabric_receiver_cb_id, total_pages);
     cb_push_back(accumulator_cb_id, num_pages_per_packet);
+
+    cb_wait_front(accumulator_cb_id, num_pages_per_packet);
+    // UNPACK (( DPRINT << TSLICE(accumulator_cb_id, 0, SliceRange::h0_w0_32()) << ENDL() ));
 
     DPRINT << "reduction done" << ENDL();
 }

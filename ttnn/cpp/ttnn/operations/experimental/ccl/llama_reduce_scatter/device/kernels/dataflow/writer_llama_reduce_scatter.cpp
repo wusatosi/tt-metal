@@ -129,7 +129,11 @@ void kernel_main() {
                 // DPRINT << "curr_packet_num_pages " << curr_packet_num_pages << ENDL();
 
                 cb_wait_front(fabric_sender_cb_id, curr_packet_num_pages);
-                // DPRINT << TSLICE(fabric_sender_cb_id, 0, SliceRange::h0_w0_32(), true, true) << ENDL();
+                // for (uint32_t i=0; i<2;++i) {
+                // for (uint8_t j=0; j<32;++j)
+                //     DPRINT << TSLICE(fabric_sender_cb_id, i, SliceRange{.h0 = j, .h1 = uint8_t(j+1), .hs = 1, .w0 =
+                //     0, .w1 = 32, .ws = 1}, true, true, true, false) << ENDL();
+                // }
                 const auto sender_l1_addr = get_read_ptr(fabric_sender_cb_id);
 
                 // if (sender_packet_start != 0) {
@@ -194,6 +198,12 @@ void kernel_main() {
         }
 
         cb_wait_front(accumulator_cb_id, num_pages_per_packet);
+
+        // for (uint32_t i=0; i<2;++i) {
+        // for (uint8_t j=0; j<32;++j)
+        //     DPRINT << TSLICE(accumulator_cb_id, i, SliceRange{.h0 = j, .h1 = uint8_t(j+1), .hs = 1, .w0 = 0, .w1 =
+        //     32, .ws = 1}, true, true, true, false) << ENDL();
+        // }
 
         DPRINT << "worker_core wait" << ENDL();
 

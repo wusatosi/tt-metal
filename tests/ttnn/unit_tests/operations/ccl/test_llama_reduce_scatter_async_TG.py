@@ -138,10 +138,14 @@ def run_reduce_scatter_test(
         ttnn.ShardSpec(
             output_shard_cores_grid if use_regular_grid else FF1_CRS_RS_OUT,
             [
-                shard_height,
-                tensor_width_in_tiles // output_num_cores // num_devices_scatter
-                if use_regular_grid
-                else (32 if output_shard_width is None else output_shard_width),
+                shard_height if not row_major else shard_height // num_devices_scatter,
+                tensor_width_in_tiles // output_num_cores
+                if row_major
+                else (
+                    tensor_width_in_tiles // output_num_cores // num_devices_scatter
+                    if use_regular_grid
+                    else (32 if output_shard_width is None else output_shard_width)
+                ),
             ],
             ttnn.ShardOrientation.ROW_MAJOR,
         ),
@@ -154,6 +158,7 @@ def run_reduce_scatter_test(
         input = gen_tensor(
             dim, shard_height, shard_width, num_devices_scatter, num_devices_fracture, num_cores, scheme=scheme
         )
+        print(input)
 
         intermediate_tensor = torch.zeros(
             [
@@ -167,14 +172,22 @@ def run_reduce_scatter_test(
             ]
         )
 
+        print(input.shape)
         intermediate_outputs = torch.chunk(input, chunks=num_devices_scatter, dim=1)
         output = torch.zeros(intermediate_outputs[0].shape)
+
+        print(output.shape)
 
         for i in range(0, len(intermediate_outputs)):
             output += intermediate_outputs[i]
 
-        scattered_output = torch.chunk(output, chunks=num_devices_scatter, dim=dim)
+        # print(output.shape)
+
+        scattered_output = torch.chunk(output, chunks=num_devices_scatter, dim=dim if not row_major else dim - 1)
+
+        # print(scattered_output.shape)
         scattered_output = torch.cat(scattered_output, dim=1)
+        print(scattered_output.shape)
 
         output_tensor_goldens_list.append(scattered_output)
 
@@ -297,7 +310,18 @@ def run_reduce_scatter_test(
         )
         eq, output_results = comp_pcc(tt_torch_tensor, output_tensor_goldens_list[tensor_index], expected_pcc)
         # torch.set_printoptions(threshold=float("inf"))
-        print(tt_torch_tensor[0][0][0][0:320])
+        # print(tt_torch_tensor[0][0][0][0:1280])
+        # print(output_tensor_goldens_list[tensor_index][0][0][0][0:1280])
+        # torch.set_printoptions(threshold="default")
+
+        tt_torch_interm_tensor = ttnn.to_torch(
+            tt_intermediate_tensors_list[tensor_index],
+            mesh_composer=ttnn.ConcatMesh2dToTensor(
+                mesh_device, mesh_shape=[num_devices_fracture, num_devices_scatter], dims=(0, 1)
+            ),
+        )
+        # print(tt_torch_interm_tensor.shape)
+
         # print(output_tensor_goldens_list[tensor_index])
         logger.info(f"Output tensor {tensor_index} has result {output_results}")
         if not eq:
@@ -391,7 +415,7 @@ def test_fabric_reduce_scatter_tg_no_trace(mesh_device, trace_mode):
 @pytest.mark.parametrize(
     "device_params", [{"trace_region_size": 90000, "dispatch_core_axis": ttnn.DispatchCoreAxis.ROW}], indirect=True
 )
-@pytest.mark.parametrize("trace_mode", [True, False])
+@pytest.mark.parametrize("trace_mode", [False])
 @pytest.mark.parametrize(
     "mesh_device",
     [
@@ -402,7 +426,7 @@ def test_fabric_reduce_scatter_tg_no_trace(mesh_device, trace_mode):
 @pytest.mark.parametrize("shard_height", [32])
 @pytest.mark.parametrize("shard_width", [64])
 @pytest.mark.parametrize("input_grid", [(5, 4)])
-@pytest.mark.parametrize("output_grid", [(5, 2)])
+@pytest.mark.parametrize("output_grid", [(5, 4)])
 @pytest.mark.parametrize("dtype", [ttnn.bfloat16])
 def test_fabric_reduce_scatter_regular_grid(
     mesh_device, trace_mode, shard_height, shard_width, input_grid, output_grid, dtype

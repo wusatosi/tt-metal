@@ -67,7 +67,7 @@ void kernel_main() {
     // constexpr uint32_t per_core_num_pages_in_width_bytes = per_core_width_in_pages * page_size_bytes;
     constexpr uint32_t num_dests =
         (packet_worker_end_x - packet_worker_start_x + 1) * (packet_worker_end_y - packet_worker_start_y + 1);
-    constexpr uint32_t chip_id_offset = slice_on_height ? 0 : chip_id * num_pages_per_packet * page_size_bytes;
+    constexpr uint32_t chip_id_offset = chip_id * num_pages_per_packet * page_size_bytes;
 
     constexpr uint32_t other_devices = num_devices - 1;
     constexpr uint8_t device_order[other_devices] =
@@ -211,6 +211,12 @@ void kernel_main() {
         }
 
         noc_async_read_barrier();
+        // for (uint32_t i=0; i<4;++i) {
+        //     for (uint8_t j=0; j<32;++j)
+        //         DPRINT << TSLICE(fabric_receiver_cb_id, i, SliceRange{.h0 = j, .h1 = uint8_t(j+1), .hs = 1, .w0 = 0,
+        //         .w1 = 32, .ws = 1}, true, true, true, false) << ENDL();
+        // }
+
         cb_push_back(fabric_receiver_cb_id, num_pages_per_packet * num_devices);
 
         DPRINT << "receiver done" << ENDL();

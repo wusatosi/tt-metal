@@ -23,6 +23,8 @@ void LlamaReduceScatterDeviceOperation::validate_on_program_cache_miss(
     auto tile_shape = input_tensor.get_tensor_spec().tile().get_tile_shape();
     auto input_spec = input_tensor.get_tensor_spec();
 
+    bool row_major_layout = input_tensor.get_layout() == Layout::ROW_MAJOR;
+
     TT_FATAL(attributes.dim == 3, "dim must be 1, got {}", attributes.dim);
     TT_FATAL(attributes.cluster_axis == 1, "cluster_axis must be 1, got {}", attributes.cluster_axis);
     TT_FATAL(
@@ -52,10 +54,17 @@ void LlamaReduceScatterDeviceOperation::validate_on_program_cache_miss(
     if (attributes.output_mem_config.has_value()) {
         TT_FATAL(
             attributes.output_mem_config.value().shard_spec.has_value(), "output_mem_config must have a shard spec");
-        TT_FATAL(
-            attributes.output_mem_config.value().shard_spec.value().shape[0] == 32,
-            "output_mem_config shard height must be 32 but got {}",
-            attributes.output_mem_config.value().shard_spec.value().shape[0]);
+        if (row_major_layout) {
+            TT_FATAL(
+                attributes.output_mem_config.value().shard_spec.value().shape[0] % attributes.ring_devices == 0,
+                "output_mem_config shard height in row major must be divisible by num devices but got {}",
+                attributes.output_mem_config.value().shard_spec.value().shape[0]);
+        } else {
+            TT_FATAL(
+                attributes.output_mem_config.value().shard_spec.value().shape[0] == 32,
+                "output_mem_config shard height must be 32 but got {}",
+                attributes.output_mem_config.value().shard_spec.value().shape[0]);
+        }
     }
 }
 
@@ -71,13 +80,20 @@ LlamaReduceScatterDeviceOperation::spec_return_value_t LlamaReduceScatterDeviceO
     auto input_spec = input_tensor.get_tensor_spec();
     auto input_shape = input_spec.logical_shape();  // input_spec.logical_shape();;
 
+    bool row_major_layout = input_tensor.get_layout() == Layout::ROW_MAJOR;
+
     uint32_t final_width = input_shape[attributes.dim] / attributes.ring_devices;
+    uint32_t final_height = input_shape[attributes.dim - 1] / attributes.ring_devices;
     TT_FATAL(
         input_shape[attributes.dim] % attributes.ring_devices == 0,
         "input shape width must be divisible by num_devices");
 
     auto output_shape = input_shape;
-    output_shape[attributes.dim] = final_width;
+    if (row_major_layout) {
+        output_shape[attributes.dim - 1] = final_height;
+    } else {
+        output_shape[attributes.dim] = final_width;
+    }
     if (attributes.output_mem_config.has_value()) {
         return {TensorSpec(
             Shape(output_shape),
