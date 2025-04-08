@@ -159,7 +159,6 @@ def run_reduce_scatter_test(
         tt_input_tensors_list.append(tt_input)
         tt_intermediate_tensors_list.append(tt_intermediate)
 
-    enable_persistent_fabric = True
     ccl_sub_device_crs = SUB_DEVICE_CRS
     worker_sub_device = ttnn.SubDevice(
         [

@@ -28,8 +28,6 @@ def run_all_reduce_test(
     enable_async=True,
     num_iters=1,
     topology=ttnn.Topology.Linear,
-    # New ccl-async and persistent fabric params
-    enable_persistent_fabric=False,
 ):
     if len(mesh_device.get_device_ids()) < num_devices:
         pytest.skip(
@@ -95,8 +93,7 @@ def run_all_reduce_test(
             topology=topology,
             subdevice_id=worker_sub_device_id,
         )
-        if enable_persistent_fabric:
-            ttnn.synchronize_device(mesh_device, sub_device_ids=sub_device_stall_group)
+        ttnn.synchronize_device(mesh_device, sub_device_ids=sub_device_stall_group)
     ttnn.synchronize_device(mesh_device, sub_device_ids=sub_device_stall_group)
 
     tt_out_tensors = ttnn.get_device_tensors(output_tensor_mesh)
@@ -203,7 +200,6 @@ def test_ring_all_reduce_post_commit(
         function_level_defaults,
         num_iters=num_iters,
         enable_async=enable_async,
-        enable_persistent_fabric=True,
     )
 
 
@@ -271,7 +267,6 @@ def test_ring_all_reduce_post_commit_2chip(
         num_iters=num_iters,
         enable_async=enable_async,
         topology=ttnn.Topology.Linear,
-        enable_persistent_fabric=True,
     )
 
 
@@ -290,8 +285,6 @@ def run_all_reduce_with_mesh_tensor_along_row(
     num_all_reduce_instances: int = 1,
     num_iters: int = 1,
     cluster_axis: int = 0,
-    # New ccl-async and persistent fabric params
-    enable_persistent_fabric=False,
 ):
     mem_config = ttnn.MemoryConfig(buffer_type=buffer_type)
 
@@ -371,8 +364,7 @@ def run_all_reduce_with_mesh_tensor_along_row(
                 topology=ttnn.Topology.Linear,
                 subdevice_id=worker_sub_device_id,
             )
-            if enable_persistent_fabric:
-                ttnn.synchronize_device(mesh_device, sub_device_ids=sub_device_stall_group)
+            ttnn.synchronize_device(mesh_device, sub_device_ids=sub_device_stall_group)
         ttnn.synchronize_device(mesh_device, sub_device_ids=sub_device_stall_group)
     except Exception as e:
         raise e
@@ -468,7 +460,6 @@ def test_line_all_reduce_on_TG_rows_post_commit(
         num_iters=num_iters,
         num_all_reduce_instances=replication_factor,
         cluster_axis=1,
-        enable_persistent_fabric=True,
     )
 
 
@@ -529,5 +520,4 @@ def test_line_all_reduce_on_TG_cols_post_commit(
         num_iters=num_iters,
         num_all_reduce_instances=replication_factor,
         cluster_axis=0,
-        enable_persistent_fabric=True,
     )

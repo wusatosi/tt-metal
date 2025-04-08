@@ -66,7 +66,6 @@ def run_with_trace(
     dim,
     num_links,
     output_mem_config,
-    enable_persistent_fabric,
     multi_device_global_semaphore,
     num_iter=20,
     subdevice_id=None,
@@ -81,7 +80,6 @@ def run_with_trace(
         memory_config=output_mem_config,
         topology=all_gather_topology,
         subdevice_id=subdevice_id,
-        enable_persistent_fabric_mode=enable_persistent_fabric,
     )
     ttnn.synchronize_device(mesh_device)
 
@@ -97,7 +95,6 @@ def run_with_trace(
             memory_config=output_mem_config,
             topology=all_gather_topology,
             subdevice_id=subdevice_id,
-            enable_persistent_fabric_mode=enable_persistent_fabric,
         )
     ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
     ttnn.synchronize_device(mesh_device)
@@ -135,7 +132,6 @@ def run_all_gather_impl(
     use_cluster_axis_api=False,
     cluster_axis=None,
 ):
-    enable_persistent_fabric = True
     if num_iters < 1:
         pytest.fail("num_iters must be >= 1")
     # Use Async mode based on test input config
@@ -253,7 +249,6 @@ def run_all_gather_impl(
             dim,
             num_links,
             output_mem_config,
-            enable_persistent_fabric,
             multi_device_global_semaphore=ccl_semaphore_handles[0],
             num_iter=num_iters,
             subdevice_id=worker_sub_device_id,
@@ -271,7 +266,6 @@ def run_all_gather_impl(
                     topology=all_gather_topology,
                     multi_device_global_semaphore=ccl_semaphore_handles[i],
                     subdevice_id=worker_sub_device_id,
-                    enable_persistent_fabric_mode=enable_persistent_fabric,
                     num_preferred_links=num_links,
                 )
 
@@ -284,7 +278,6 @@ def run_all_gather_impl(
                     memory_config=output_mem_config,
                     topology=all_gather_topology,
                     subdevice_id=worker_sub_device_id,
-                    enable_persistent_fabric_mode=enable_persistent_fabric,
                 )
             tt_out_tensor_list.append(tt_out_tensor)
 
@@ -639,7 +632,6 @@ def test_line_all_gather_async_on_T3K_cols_persistent_fabric_post_commit(
         num_all_gather_instances=replication_factor,
         cluster_axis=0,
         use_all_gather_async=True,
-        enable_persistent_fabric=True,
     )
 
 
@@ -707,7 +699,6 @@ def test_line_all_gather_async_on_T3K_rows_persistent_fabric_post_commit(
         num_all_gather_instances=replication_factor,
         cluster_axis=1,
         use_all_gather_async=True,
-        enable_persistent_fabric=True,
     )
 
 
@@ -789,7 +780,6 @@ def test_line_all_gather_async_on_T3K_back_to_back_cols_and_rows_persistent_fabr
         num_all_gather_instances=replication_factor1,
         cluster_axis=0,
         use_all_gather_async=True,
-        enable_persistent_fabric=True,
     )
 
     run_line_all_gather_on_TG_with_mesh_tensor_along_rows(
@@ -809,5 +799,4 @@ def test_line_all_gather_async_on_T3K_back_to_back_cols_and_rows_persistent_fabr
         num_all_gather_instances=replication_factor2,
         cluster_axis=1,
         use_all_gather_async=True,
-        enable_persistent_fabric=True,
     )

@@ -24,7 +24,6 @@ def run_allgather_only_with_trace(
     dim,
     num_links,
     output_mem_config,
-    enable_persistent_fabric,
     multi_device_global_semaphore,
     num_iter=20,
     subdevice_id=None,
@@ -39,7 +38,6 @@ def run_allgather_only_with_trace(
         memory_config=output_mem_config,
         topology=all_gather_topology,
         subdevice_id=subdevice_id,
-        enable_persistent_fabric_mode=enable_persistent_fabric,
     )
     ttnn.synchronize_device(mesh_device)
 
@@ -55,7 +53,6 @@ def run_allgather_only_with_trace(
             memory_config=output_mem_config,
             topology=all_gather_topology,
             subdevice_id=subdevice_id,
-            enable_persistent_fabric_mode=enable_persistent_fabric,
         )
     ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
     ttnn.synchronize_device(mesh_device)
@@ -89,7 +86,6 @@ def run_all_gather_impl(
     output_shard_grid=None,
     tensor_mem_layout=None,
 ):
-    enable_persistent_fabric = True
     if num_iters < 1:
         pytest.fail("num_iters must be >= 1")
     # Use Async mode based on test input config
@@ -188,7 +184,6 @@ def run_all_gather_impl(
             dim,
             num_links,
             output_mem_config,
-            enable_persistent_fabric,
             multi_device_global_semaphore=ccl_semaphore_handles[0],
             num_iter=num_iters,
             subdevice_id=worker_sub_device_id,
@@ -204,7 +199,6 @@ def run_all_gather_impl(
                 memory_config=output_mem_config,
                 topology=all_gather_topology,
                 subdevice_id=worker_sub_device_id,
-                enable_persistent_fabric_mode=enable_persistent_fabric,
             )
             tt_out_tensor_list.append(tt_out_tensor)
 
@@ -234,8 +228,7 @@ def run_all_gather_impl(
             or mesh_device.get_devices()[i].num_program_cache_entries() == num_iters
         ), f"Device {i} has {mesh_device.get_devices()[i].num_program_cache_entries()} program cache entries"
 
-    if enable_persistent_fabric:
-        mesh_device.reset_sub_device_stall_group()
+    mesh_device.reset_sub_device_stall_group()
 
     if not passed:
         assert eq, f"{i} FAILED: {output}"
