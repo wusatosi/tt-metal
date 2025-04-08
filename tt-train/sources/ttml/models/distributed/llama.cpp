@@ -93,7 +93,9 @@ DistributedLlama::DistributedLlama(const LlamaConfig& config) {
     register_module(ln_fc, "ln_fc");
     register_module(fc, "fc");
 
-    initialize_weights(*this);
+    // DEBUG
+    // speed up initialization to debug faster
+    // initialize_weights(*this);
 }
 
 autograd::TensorPtr DistributedLlama::operator()(

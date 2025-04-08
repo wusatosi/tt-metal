@@ -440,6 +440,12 @@ int main(int argc, char **argv) {
     bool enable_wandb = true;
     bool ddp = false;
     bool enable_tp = false;
+
+    // -c tt-train/configs/training_shakespeare_8b_llama3_tensor_parallel.yaml -w 0 -p 1
+    enable_wandb = false;
+    enable_tp = true;
+    config_name = std::string(CONFIGS_FOLDER) + "/training_shakespeare_8b_llama3_tensor_parallel.yaml";
+
     app.add_option("-c,--config", config_name, "Yaml Config name")->default_val(config_name);
     app.add_option("-e,--eval", is_eval, "Is evaluation")->default_val(is_eval);
     app.add_option("-t,--add_time_to_name", add_time_to_name, "Add time to run name")->default_val(add_time_to_name);
@@ -745,6 +751,7 @@ int main(int argc, char **argv) {
     };
 
     auto get_loss_value = [device](const TensorPtr &loss) {
+        fmt::print("Getting loss value\n");
         ttml::core::MeshToXTensorVariant<float> composer = ttml::core::VectorMeshToXTensor<float>(device->shape());
         auto loss_xtensors = ttml::core::to_xtensor(loss->get_value(), composer);
         // sum of loss xtensors
@@ -752,7 +759,7 @@ int main(int argc, char **argv) {
             std::accumulate(loss_xtensors.begin(), loss_xtensors.end(), 0.0F, [](float acc, auto &xtensor) {
                 return acc + xtensor(0);
             });
-
+        fmt::println("Loss before reduction: {}", loss_float);
         return loss_float / static_cast<float>(loss_xtensors.size());
     };
 

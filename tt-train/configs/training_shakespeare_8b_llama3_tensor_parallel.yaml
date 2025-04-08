@@ -20,6 +20,7 @@ training_config:
     num_blocks: 32
     vocab_size: 96
     max_sequence_length: 8192
+    # max_sequence_length: 4096
     runner_type: memory_efficient
   tokenizer_type: bpe
   tokenizer_path: data/tinyllama-tokenizer.json

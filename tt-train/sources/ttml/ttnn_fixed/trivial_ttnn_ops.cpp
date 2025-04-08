@@ -5,6 +5,7 @@
 #include "trivial_ttnn_ops.hpp"
 
 #include <core/ttnn_all_includes.hpp>
+#include <ttnn/operations/moreh/moreh_softmax/moreh_softmax.hpp>
 
 #include "autograd/auto_context.hpp"
 #include "core/compute_kernel_config.hpp"
@@ -35,12 +36,20 @@ tt::tt_metal::Tensor log_softmax(const tt::tt_metal::Tensor& t, int dim) {
 // Stable softmax implementation
 // ttnn::softmax also exists, but it is not stable (even after max subtraction optimization)
 tt::tt_metal::Tensor softmax(const tt::tt_metal::Tensor& t, int dim) {
-    return ttnn::softmax(
+    return ttnn::moreh_softmax(
         t,
-        /* dim */ dim,
-        /*memory_config */ std::nullopt,
-        ttml::core::ComputeKernelConfig::softmax(),
-        /*stable*/ true);
+        dim,
+        /* output tensor */ std::nullopt,
+        ttnn::operations::moreh::moreh_softmax::MorehSoftmaxOp::SOFTMAX,
+        ttnn::operations::moreh::moreh_softmax::MorehSoftmaxOpParallelizationStrategy::NONE,
+        /* memory config */ std::nullopt,
+        /* device_compute_kernel_config */ core::ComputeKernelConfig::softmax());
+    // return ttnn::softmax(
+    //     t,
+    //     /* dim */ dim,
+    //     /*memory_config */ std::nullopt,
+    //     ttml::core::ComputeKernelConfig::softmax(),
+    //     /*stable*/ true);
 }
 
 tt::tt_metal::Tensor divide(const tt::tt_metal::Tensor& a, const tt::tt_metal::Tensor& b) {
