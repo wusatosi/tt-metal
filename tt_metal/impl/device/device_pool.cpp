@@ -273,7 +273,10 @@ void DevicePool::initialize(
 
     tt::tt_metal::MetalContext::instance().get_cluster().set_internal_routing_info_for_ethernet_cores(
         true, target_mmio_ids);
-    _inst->wait_for_fabric_router_sync();
+
+    if (initialize_fabric_and_dispatch_fw) {
+        _inst->wait_for_fabric_router_sync();
+    }
     // Fabric is running here. This means that we cannot run any user programs on ethernet cores.
 }
 
@@ -663,7 +666,9 @@ void DevicePool::init_firmware_on_active_devices() const {
     if (init_profiler) {
         _inst->init_profiler();
     }
-    this->initialize_active_devices();
+    if (initialize_fabric_and_dispatch_fw) {
+        this->initialize_active_devices();
+    }
     // At this point, Fabric and Fast Dispatch are running on specific cores
     // Fabric will only be running on Ethernet Cores, and only if the user specifies a fabric config
     // Fast dispatch will run on tensix or eth cores

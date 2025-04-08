@@ -138,7 +138,8 @@ MeshDevice::ScopedDevices::ScopedDevices(
         dispatch_core_config,
         {},
         /*init_profiler*/ false,
-        /*use_max_eth_core_count_on_all_devices*/ true);
+        /*use_max_eth_core_count_on_all_devices*/ true,
+        /* initialize_fabric_and_dispatch_fw false*/);
 
     for (auto device_id : device_ids) {
         devices_.push_back(opened_devices_.at(device_id));
@@ -201,18 +202,31 @@ std::shared_ptr<MeshDevice> MeshDevice::create(
     size_t num_command_queues,
     const DispatchCoreConfig& dispatch_core_config,
     tt::stl::Span<const std::uint32_t> l1_bank_remap) {
+    std::cout << "Creating Scoped Devices here" << std::endl;
     auto scoped_devices = std::make_shared<ScopedDevices>(
         l1_small_size, trace_region_size, num_command_queues, dispatch_core_config, config);
+    // At this point, device pool is initialized but profiler is not enabled - we have not sent any synchronization
+    // kernels to any cores (syncdevicedevice)
+
     auto root_devices = scoped_devices->root_devices();
     MeshContainer<IDevice*> devices(config.mesh_shape(), root_devices);
+    // This is a host only operation, where we create a MeshDevice on top of physical devices (and this MeshDevice looks
+    // like a single device to the user)
     auto mesh_device = std::make_shared<MeshDevice>(
         std::move(scoped_devices), std::make_unique<MeshDeviceView>(devices), std::shared_ptr<MeshDevice>());
-
+    // This step needs to be done before profiler is initialized
     mesh_device->initialize(num_command_queues, l1_small_size, trace_region_size, l1_bank_remap);
     for (auto device : root_devices) {
         dynamic_cast<Device*>(device)->mesh_device = mesh_device;
     }
+    // Manually init profiler from MeshDevice: this will run kernels on ethernet
+    // But ethernet cores are already running fabric.
     DevicePool::instance().init_profiler();
+
+    // Init fabric and dispatch fw after profiler is initialized
+    // DevicePool::instance().initialize_active_devices();
+    // DevicePool::instance().wait_for_fabric_router_sync();
+
     return mesh_device;
 }
 
