@@ -25,12 +25,17 @@ void kernel_main() {
     constexpr uint32_t semaphore_id = get_compile_time_arg_val(14);
     constexpr uint32_t cb_ex_global = get_compile_time_arg_val(15);
 
-    const uint32_t all_to_all_tile_offset_bytes = get_arg_val<uint32_t>(0);
-    const bool is_second_stage_reader = get_arg_val<uint32_t>(1);
-    const uint32_t start_x = get_arg_val<uint32_t>(2);
-    const uint32_t start_y = get_arg_val<uint32_t>(3);
-    volatile tt_l1_ptr uint32_t* in0_remote_noc_x = (volatile tt_l1_ptr uint32_t*)(get_arg_addr(4));
-    volatile tt_l1_ptr uint32_t* in0_remote_noc_y = (volatile tt_l1_ptr uint32_t*)(get_arg_addr(4 + num_x));
+    size_t arg_idx = 0;
+    const uint32_t all_to_all_tile_offset_bytes = get_arg_val<uint32_t>(arg_idx++);
+    const bool is_second_stage_reader = get_arg_val<uint32_t>(arg_idx++);
+    const uint32_t start_x = get_arg_val<uint32_t>(arg_idx++);
+    const uint32_t start_y = get_arg_val<uint32_t>(arg_idx++);
+    volatile tt_l1_ptr uint32_t* in0_remote_noc_x = (volatile tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
+    volatile tt_l1_ptr uint32_t* in0_remote_noc_y = (volatile tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx + num_x));
+    uint32_t post_reduce_sender_semaphore_addr = get_semaphore(semaphore_id);
+
+    volatile tt_l1_ptr uint32_t* post_reduce_sender_semaphore_addr_ptr =
+        reinterpret_cast<volatile tt_l1_ptr uint32_t*>(post_reduce_sender_semaphore_addr);
 
     const DataFormat data_format = get_dataformat(cb_ex_partial2);          // data format
 
@@ -142,4 +147,10 @@ void kernel_main() {
         cb_wait_front(cb_ex2, 1);
         noc_semaphore_inc(reduce_second_stage_receiver_semaphore_noc_addr, 1);
     }
+    // inc mcast sender
+    noc_semaphore_set(post_reduce_sender_semaphore_addr_ptr, INVALID);
+    // inc remote sem
+    cb_reserve_back(cb_ex_global, 1);
+    noc_semaphore_wait(post_reduce_sender_semaphore_addr_ptr, VALID);
+    cb_push_back(cb_ex_global, 1);
 }

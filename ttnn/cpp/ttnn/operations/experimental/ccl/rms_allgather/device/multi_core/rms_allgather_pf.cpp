@@ -118,11 +118,18 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
             num_links,
             topology);
     uint32_t page_size = 0;
+    uint32_t output_page_size = 0;
     tt::DataFormat in_data_format = tt::tt_metal::datatype_to_dataformat_converter(a.get_dtype());
+    tt::DataFormat out_data_format = tt::tt_metal::datatype_to_dataformat_converter(output.get_dtype());
     if (a.get_layout() == Layout::TILE) {
         page_size = a.tensor_spec().tile().get_tile_size(in_data_format);
     } else {
         page_size = a.buffer()->page_size();
+    }
+    if (output.get_layout() == Layout::TILE) {
+        output_page_size = output.tensor_spec().tile().get_tile_size(out_data_format);
+    } else {
+        output_page_size = output.buffer()->page_size();
     }
 
     size_t num_targets_forward = 0;
@@ -157,7 +164,7 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
 
     // L1 Scratch CB Creation
     const size_t packet_size_bytes = local_fabric_handle->get_edm_buffer_size_bytes();
-    uint32_t l1_scratch_cb_page_size_bytes = page_size;
+    uint32_t l1_scratch_cb_page_size_bytes = output_page_size;
     uint32_t num_pages_per_packet = packet_size_bytes / l1_scratch_cb_page_size_bytes;
     uint32_t cb_num_pages =
         input_tensor_num_pages / num_links +
@@ -192,7 +199,6 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
         }
     }
 
-    tt::DataFormat out_data_format = tt::tt_metal::datatype_to_dataformat_converter(output.get_dtype());
     tt::DataFormat cb_data_format = fp32_dest_acc_en ? tt::DataFormat::Float32 : tt::DataFormat::Float16_b;
     tt::DataFormat gamma_cb_data_format =
         gamma.has_value() ? tt::tt_metal::datatype_to_dataformat_converter(gamma.value().get_dtype())
@@ -490,15 +496,8 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
     CBHandle cb_output = 0;
     tt::tt_metal::CreateCircularBuffer(program, all_cores, output_cb_config);
 
-    uint32_t pre_src0_cb_index = tt::CBIndex::c_10;
-    tt::tt_metal::CircularBufferConfig cb_src0_config =
-        tt::tt_metal::CircularBufferConfig(
-            cb_num_pages * l1_scratch_cb_page_size_bytes, {{pre_src0_cb_index, in_data_format}})
-            .set_page_size(pre_src0_cb_index, l1_scratch_cb_page_size_bytes);
-    tt::tt_metal::CBHandle cb_src0_workers = CreateCircularBuffer(program, all_cores, cb_src0_config);
-
     // Set aside a buffer we can use for storing packet headers in (particularly for atomic incs)
-    const auto pre_reserved_packet_header_CB_index = tt::CBIndex::c_11;
+    const auto pre_reserved_packet_header_CB_index = tt::CBIndex::c_10;
     static constexpr auto num_packet_headers_storable = 8;
     static constexpr auto packet_header_size_bytes = sizeof(tt::tt_fabric::PacketHeader);
     tt::tt_metal::CircularBufferConfig cb_reserved_packet_header_config =
@@ -516,21 +515,23 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
         cb_add_out = tt::tt_metal::CreateCircularBuffer(program, all_cores, add_out_cb_config);
 
         tt::tt_metal::CircularBufferConfig in1_cb_config =
-            tt::tt_metal::CircularBufferConfig(in1_CB_size, {{pre_in1_cb_index, in_data_format}})
+            tt::tt_metal::CircularBufferConfig(
+                in1_CB_size,
+                {{pre_in1_cb_index, tt::tt_metal::datatype_to_dataformat_converter(b.value().get_dtype())}})
                 .set_page_size(pre_in1_cb_index, in_single_tile_size)
                 .set_globally_allocated_address(*b.value().buffer());
         cb_in1 = tt::tt_metal::CreateCircularBuffer(program, all_cores, in1_cb_config);
     }
     // post
     //  ex_global
-    uint32_t ex_global_cb_index = tt::CBIndex::c_12;
+    uint32_t ex_global_cb_index = tt::CBIndex::c_11;
     tt::tt_metal::CircularBufferConfig ex_global_cb_config =
         tt::tt_metal::CircularBufferConfig(ex_global_CB_size, {{ex_global_cb_index, cb_data_format}})
             .set_page_size(ex_global_cb_index, single_tile_size);
     tt::tt_metal::CreateCircularBuffer(program, all_cores, ex_global_cb_config);
 
     // out
-    uint32_t output_cb_index = tt::CBIndex::c_13;
+    uint32_t output_cb_index = tt::CBIndex::c_12;
     tt::tt_metal::CircularBufferConfig post_output_cb_config =
         tt::tt_metal::CircularBufferConfig(post_out_CB_size, {{output_cb_index, out_data_format}})
             .set_page_size(output_cb_index, out_single_tile_size);
@@ -540,7 +541,7 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
     CBHandle post_cb_output = tt::tt_metal::CreateCircularBuffer(program, all_cores, post_output_cb_config);
 
     // gamma
-    uint32_t in5_cb_index = tt::CBIndex::c_14;
+    uint32_t in5_cb_index = tt::CBIndex::c_13;
     if (gamma.has_value()) {
         tt::tt_metal::CircularBufferConfig in5_cb_config =
             tt::tt_metal::CircularBufferConfig(in5_CB_size, {{in5_cb_index, gamma_cb_data_format}})
@@ -549,7 +550,7 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
     }
 
     // in0 sharded
-    uint32_t in0_cb_index = tt::CBIndex::c_15;
+    uint32_t in0_cb_index = tt::CBIndex::c_14;
     tt::tt_metal::CircularBufferConfig post_in0_cb_config =
         tt::tt_metal::CircularBufferConfig(in0_CB_size, {{in0_cb_index, in_data_format}})
             .set_page_size(in0_cb_index, in_single_tile_size)
@@ -557,14 +558,14 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
     auto post_cb_in0 = tt::tt_metal::CreateCircularBuffer(program, all_cores, post_in0_cb_config);
 
     // in3 eps
-    uint32_t in3_cb_index = tt::CBIndex::c_16;
+    uint32_t in3_cb_index = tt::CBIndex::c_15;
     tt::tt_metal::CircularBufferConfig in3_cb_config =
         tt::tt_metal::CircularBufferConfig(in3_CB_size, {{in3_cb_index, tt::DataFormat::Float16_b}})
             .set_page_size(in3_cb_index, bfloat16_tile_size);
     tt::tt_metal::CreateCircularBuffer(program, all_cores, in3_cb_config);
 
     // in4 scaler-c
-    uint32_t in4_cb_index = tt::CBIndex::c_17;
+    uint32_t in4_cb_index = tt::CBIndex::c_16;
     tt::tt_metal::CircularBufferConfig post_in4_cb_config =
         tt::tt_metal::CircularBufferConfig(in2_CB_size, {{in4_cb_index, tt::DataFormat::Float16_b}})
             .set_page_size(in4_cb_index, bfloat16_tile_size);
@@ -572,14 +573,14 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
 
     // x
     uint32_t x_cb_index;
-    x_cb_index = tt::CBIndex::c_18;
+    x_cb_index = tt::CBIndex::c_17;
     tt::tt_metal::CircularBufferConfig post_x_cb_config =
         tt::tt_metal::CircularBufferConfig(x_CB_size, {{x_cb_index, cb_data_format}})
             .set_page_size(x_cb_index, single_tile_size);
     tt::tt_metal::CreateCircularBuffer(program, all_cores, post_x_cb_config);
 
     // cb_var
-    uint32_t cb_var_index = tt::CBIndex::c_19;
+    uint32_t cb_var_index = tt::CBIndex::c_18;
     tt::tt_metal::CircularBufferConfig cb_var_config =
         tt::tt_metal::CircularBufferConfig(ex_global_CB_size, {{cb_var_index, cb_data_format}})
             .set_page_size(cb_var_index, single_tile_size);
@@ -587,7 +588,7 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
 
     // cb_stats_reduced
     uint32_t cb_stats_reduced_index;
-    cb_stats_reduced_index = tt::CBIndex::c_20;
+    cb_stats_reduced_index = tt::CBIndex::c_19;
     tt::tt_metal::CircularBufferConfig stats_reduced_cb_config =
         tt::tt_metal::CircularBufferConfig(stats_reduced_cb_size, {{cb_stats_reduced_index, cb_data_format}})
             .set_page_size(cb_stats_reduced_index, single_tile_size);
@@ -595,14 +596,14 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
 
     // cb_stats
     uint32_t cb_stats_index;
-    cb_stats_index = tt::CBIndex::c_21;
+    cb_stats_index = tt::CBIndex::c_20;
     tt::tt_metal::CircularBufferConfig stats_cb_config =
         tt::tt_metal::CircularBufferConfig(stats_cb_size, {{cb_stats_index, cb_data_format}})
             .set_page_size(cb_stats_index, single_tile_size)
             .set_globally_allocated_address(*stats.value().buffer());
     auto post_cb_stats = tt::tt_metal::CreateCircularBuffer(program, sender_cores, stats_cb_config);
 
-    uint32_t output_reshard_cb_index = tt::CBIndex::c_22;
+    uint32_t output_reshard_cb_index = tt::CBIndex::c_21;
     tt::tt_metal::CircularBufferConfig output_reshard_cb_config =
         tt::tt_metal::CircularBufferConfig(out_reshard_CB_size, {{output_reshard_cb_index, out_data_format}})
             .set_page_size(output_reshard_cb_index, out_single_tile_size);
@@ -630,7 +631,8 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
         (std::uint32_t)pre_add_out_cb_index,
         (std::uint32_t)pre_ex_cb_external2_index,
         (std::uint32_t)post_reduce_sender_semaphore_id,
-        (std::uint32_t)ex_global_cb_index};
+        (std::uint32_t)ex_global_cb_index,
+        (std::uint32_t)cb_stats_reduced_index};
     std::vector<uint32_t> reader_mcast_receiver_all_to_all_compile_time_args = {
         (std::uint32_t)reduce_receiver_semaphore_id,
         (std::uint32_t)pre_reduce_sender_semaphore_id,
@@ -681,7 +683,7 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
         // all gather parameters
         pre_reserved_packet_header_CB_index,  // reserved_packet_header_cb_id
         num_pages_per_packet,                 // packet_size_in_pages
-        page_size,                            // tensor0_page_size
+        output_page_size,                     // tensor0_page_size
         num_targets_forward,                  // num_targets_forward_direction
         num_targets_backward,                 // num_targets_backward_direction
         num_links,
@@ -908,7 +910,7 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
         } else {
             all_to_all_worker_tile_offset_size_bytes = (width_index)*single_tile_size;
         }
-
+        uint32_t gamma_tile_start_id = width_index * block_wt;
         uint32_t num_reduce_tiles_per_block_h = block_wt;
         // account for padding
         if (width_index == last_core_width_index) {
@@ -927,6 +929,8 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
                 is_second_stage_reader = false;
             }
             compute_args.push_back((uint32_t)is_second_stage_reader);
+            compute_args.push_back((uint32_t)(!(use_two_stage_reduce && (!is_second_stage_reader))));
+            compute_args.push_back((uint32_t)num_distributed_devices);
             tt::tt_metal::SetRuntimeArgs(program, compute_kernels_id_all_to_all, core, compute_args);
         } else {
             tt::tt_metal::SetRuntimeArgs(program, compute_kernels_id, core, compute_args);
@@ -1041,6 +1045,59 @@ operation::ProgramWithCallbacks frmsnorm_pre_multi_core_sharded(
             append_fabric_connection_rt_args(backward_fabric_connection, core, program, all_gather_rts);
         }
         // Set writer runtime args
+
+        std::vector<uint32_t> write_back_writer_args;
+
+        uint32_t num_storage_cores = all_storage_cores.num_cores();
+
+        write_back_writer_args.push_back(
+            current_storage_core_offset * out_single_tile_size);  // storage_core_start_offset
+
+        uint32_t current_worker_num_segments_to_write_back = 0;
+        uint32_t worker_core_current_offset = 0;
+
+        while (worker_core_current_offset <
+               block_wt) {  // Continue until all worker core data has been written to corresponding storage cores
+            uint32_t num_tiles_available_at_current_storage_core = block_wt_resharded - current_storage_core_offset;
+            uint32_t num_tiles_left_on_current_worker_core = block_wt - worker_core_current_offset;
+            uint32_t num_tiles_to_write_back =
+                std::min(num_tiles_left_on_current_worker_core, num_tiles_available_at_current_storage_core);
+            current_worker_num_segments_to_write_back += 1;
+
+            tt::log_debug(
+                "New segment for worker core {}, Worker core offset: {}, Storage core offset: {}, Num tiles to "
+                "write "
+                "back: {}",
+                i,
+                worker_core_current_offset,
+                current_storage_core_offset,
+                num_tiles_to_write_back);
+
+            write_back_writer_args.push_back(num_tiles_to_write_back);                   // num_bytes_to_write_back
+            write_back_writer_args.push_back(storage_core_noc_x[current_storage_core]);  // current_storage_core_noc_x
+            write_back_writer_args.push_back(storage_core_noc_y[current_storage_core]);  // current_storage_core_noc_y
+
+            worker_core_current_offset += num_tiles_to_write_back;
+            current_storage_core_offset += num_tiles_to_write_back;
+
+            if (current_storage_core_offset >= block_wt_resharded) {
+                current_storage_core += 1;        // Move to next storage core
+                current_storage_core_offset = 0;  // Reset offset on new storage core
+
+                TT_ASSERT(
+                    current_storage_core <= num_storage_cores,
+                    "current_storage_core {} is exceeding number of storage cores {}",
+                    current_storage_core,
+                    num_storage_cores);
+            }
+        }
+        TT_ASSERT(
+            worker_core_current_offset == block_wt,
+            "All worker core data should be written, but worker_core_current_offset {} != block_wt {}",
+            worker_core_current_offset,
+            block_wt);
+
+        write_back_writer_args.insert(write_back_writer_args.begin(), current_worker_num_segments_to_write_back);
 
         if ((not use_two_stage_reduce and width_index < num_cores_all_to_all) or
             (use_two_stage_reduce and width_index_two_stage < 1)) {
@@ -1851,15 +1908,15 @@ operation::ProgramWithCallbacks frmsnorm_post_multi_core_sharded(
             std::vector<uint32_t> writer_mcast_sender_args;
             if (use_two_stage_reduce) {
                 if (width_index < 1) {
+                    writer_mcast_sender_args.push_back(packed_winv_value);
                     writer_mcast_sender_args.push_back(packed_cinv_value);
-                    writer_mcast_sender_args.push_back(packed_winv_value);
                 } else {
-                    writer_mcast_sender_args.push_back(packed_cinv_value_one);
                     writer_mcast_sender_args.push_back(packed_winv_value);
+                    writer_mcast_sender_args.push_back(packed_cinv_value_one);
                 }
             } else {
-                writer_mcast_sender_args.push_back(packed_cinv_value);
                 writer_mcast_sender_args.push_back(packed_winv_value);
+                writer_mcast_sender_args.push_back(packed_cinv_value);
             }
             writer_mcast_sender_args.push_back(e.u);
             writer_mcast_sender_args.push_back(gamma_dram_addr);

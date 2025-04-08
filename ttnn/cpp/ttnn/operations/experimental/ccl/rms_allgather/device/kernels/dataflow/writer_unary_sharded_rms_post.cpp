@@ -43,7 +43,7 @@ void kernel_main() {
 #endif
 
     if constexpr (is_all_to_all_worker) {
-        const uint32_t scalar_c = get_arg_val<uint32_t>(0);
+        const uint32_t scalar_c = get_arg_val<uint32_t>(1);
         wh_generate_reduce_scaler<false>(post_cb_in_4, scalar_c);
     }
 

@@ -8,8 +8,8 @@
 
 // split REDUCE across cores
 void kernel_main() {
-    constexpr uint32_t post_reduce_sender_semaphore_id = get_compile_time_arg_val(0) constexpr uint32_t num_blocks =
-        get_compile_time_arg_val(1);
+    constexpr uint32_t post_reduce_sender_semaphore_id = get_compile_time_arg_val(0);
+    constexpr uint32_t num_blocks = get_compile_time_arg_val(1);
     constexpr uint32_t tile_size = get_compile_time_arg_val(2);
     constexpr uint32_t cb_stats_reduced = get_compile_time_arg_val(3);  // [E[x], E[x^2]] local to sender
     constexpr uint32_t cb_ex_global = get_compile_time_arg_val(4);      // [E[x], E[X^2]] global to all cores
