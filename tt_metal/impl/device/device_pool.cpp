@@ -267,15 +267,14 @@ void DevicePool::initialize(
 
     _inst->skip_remote_devices = skip;
     _inst->use_max_eth_core_count_on_all_devices_ = use_max_eth_core_count_on_all_devices;
+
     _inst->add_devices_to_pool(device_ids);
     _inst->init_firmware_on_active_devices();
 
     tt::tt_metal::MetalContext::instance().get_cluster().set_internal_routing_info_for_ethernet_cores(
         true, target_mmio_ids);
     _inst->wait_for_fabric_router_sync();
-    if (init_profiler) {
-        _inst->init_profiler();
-    }
+    // Fabric is running here. This means that we cannot run any user programs on ethernet cores.
 }
 
 void DevicePool::initialize_host(IDevice* dev) const {
@@ -285,7 +284,7 @@ void DevicePool::initialize_host(IDevice* dev) const {
     // hugepage). Need to do this before FW init so we know what dispatch cores to reset.
     if (this->using_fast_dispatch) {
         detail::DispatchStateCheck(true);
-        dev->init_command_queue_host();
+        dev->init_command_queue_host();  // Host only
     } else {
         detail::DispatchStateCheck(false);
         TT_ASSERT(dev->num_hw_cqs() == 1, "num_hw_cqs must be 1 in slow dispatch");
@@ -296,9 +295,11 @@ void DevicePool::initialize_host(IDevice* dev) const {
     watcher_init(dev->id());
 
     // TODO: as optimization, investigate removing all this call for already initialized devivces
+    // Turning on all tensix cores
     if (!llrt::RunTimeOptions::get_instance().get_skip_reset_cores_on_init()) {
         dev->reset_cores();
     }
+    // Laumnching Base FW on Tensix and Eth Cores
     dev->initialize_and_launch_firmware();
 
     watcher_attach(dev->id());
@@ -657,8 +658,15 @@ void DevicePool::init_firmware_on_active_devices() const {
             }
         }
     }
-
+    // At this point base FW is running on all tensix and worker cores, which have been turned on
+    // Profiler programs can only run after base FW is initialized, but they must run before Fabric is loaded.
+    if (init_profiler) {
+        _inst->init_profiler();
+    }
     this->initialize_active_devices();
+    // At this point, Fabric and Fast Dispatch are running on specific cores
+    // Fabric will only be running on Ethernet Cores, and only if the user specifies a fabric config
+    // Fast dispatch will run on tensix or eth cores
 }
 
 DevicePool::DevicePool() {
@@ -725,7 +733,7 @@ void DevicePool::close_devices(const std::vector<IDevice*>& devices, bool skip_s
     std::vector<chip_id_t> devices_to_close;
 
     ZoneScoped;
-    detail::ProfilerSync(ProfilerSyncState::CLOSE_DEVICE);
+    // At this point, fabric and fast dispatch are running.
     // Loop over all devices and add remote devices to devices_to_close
     // For Galaxy if an mmio device's tunnels are being closed, close the mmio device as well
     std::unordered_set<chip_id_t> mmio_devices_to_close;
@@ -819,7 +827,9 @@ void DevicePool::close_devices(const std::vector<IDevice*>& devices, bool skip_s
                 dev, fabric_master_router_core, fabric_router_sync_sem_addr, master_router_terminate, CoreType::ETH);
         }
     }
-
+    // At this point, fabric is terminated but ethernet cores are still up.
+    detail::ProfilerSync(ProfilerSyncState::CLOSE_DEVICE);
+    // This turns off active ethernet cores.
     tt::tt_metal::MetalContext::instance().get_cluster().set_internal_routing_info_for_ethernet_cores(false);
     for (const auto& dev_id : devices_to_close) {
         auto dev = tt::DevicePool::instance().get_active_device(dev_id);
