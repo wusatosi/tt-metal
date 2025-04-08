@@ -72,7 +72,9 @@ class TtLlamaPrefetcherSetup(LightweightModule):
             self.all_sub_device = ttnn.SubDevice([self.all_core_range_set])
             self.all_sub_device_id = ttnn.SubDeviceId(0)
             self.worker_sub_device_id = self.all_sub_device_id
-            self.mesh_sub_device_manager_id_prefill = mesh_device.create_sub_device_manager([self.all_sub_device], 0)
+            if mesh_sub_device_manager_id_prefill is None:
+                mesh_sub_device_manager_id_prefill = mesh_device.create_sub_device_manager([self.all_sub_device], 0)
+            self.mesh_sub_device_manager_id_prefill = mesh_sub_device_manager_id_prefill
             mesh_device.load_sub_device_manager(self.mesh_sub_device_manager_id_prefill)
             mesh_device.set_sub_device_stall_group([self.worker_sub_device_id])
         else:
@@ -94,9 +96,11 @@ class TtLlamaPrefetcherSetup(LightweightModule):
             self.worker_sub_device = ttnn.SubDevice([self.worker_cores_range_set])
             self.prefetcher_sub_device_id = ttnn.SubDeviceId(0)
             self.worker_sub_device_id = ttnn.SubDeviceId(1)
-            self.mesh_sub_device_manager_id_decode = mesh_device.create_sub_device_manager(
-                [self.prefetcher_sub_device, self.worker_sub_device], 0
-            )
+            if mesh_sub_device_manager_id_decode is None:
+                mesh_sub_device_manager_id_decode = mesh_device.create_sub_device_manager(
+                    [self.prefetcher_sub_device, self.worker_sub_device], 0
+                )
+            self.mesh_sub_device_manager_id_decode = mesh_sub_device_manager_id_decode
             mesh_device.load_sub_device_manager(self.mesh_sub_device_manager_id_decode)
             mesh_device.set_sub_device_stall_group([self.prefetcher_sub_device_id, self.worker_sub_device_id])
 
