@@ -403,7 +403,7 @@ void syncDeviceDevice(chip_id_t device_id_sender, chip_id_t device_id_receiver) 
         constexpr std::uint16_t sample_count = 240;
         constexpr std::uint16_t sample_size = 16;
         constexpr std::uint16_t channel_count = 1;
-
+        // If fabric is enabled, active_eth_cores is empty.
         const auto& active_eth_cores = device_sender->get_active_ethernet_cores(true);
         auto eth_sender_core_iter = active_eth_cores.begin();
         tt_xy_pair eth_receiver_core;
@@ -555,7 +555,7 @@ void ProfilerSync(ProfilerSyncState state) {
                     if (first_connected_device_id == -1 and !doSync) {
                         first_connected_device_id = sender_device_id;
                     }
-                    syncDeviceHost(sender_device, SYNC_CORE, true);
+                    syncDeviceHost(sender_device, SYNC_CORE, true);  // Safe - On Tensix core
                 }
             }
         }
