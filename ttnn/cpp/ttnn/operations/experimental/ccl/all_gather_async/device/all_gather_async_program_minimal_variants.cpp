@@ -96,7 +96,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
         choose_worker_cores(num_links, num_workers_per_link, enable_persistent_fabric_mode, device, sub_device_id);
 
     // L1 Scratch CB Creation
-    const auto& edm_config = tt::tt_fabric::get_default_fabric_config();
+    const auto& edm_config = tt::tt_fabric::get_1d_fabric_config();
     const size_t packet_size_bytes = edm_config.channel_buffer_size_bytes;
     uint32_t l1_scratch_cb_page_size_bytes = op_config.get_page_size();
     uint32_t num_pages_per_packet = packet_size_bytes / l1_scratch_cb_page_size_bytes;
@@ -322,7 +322,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_llama_sharded(
     tt::log_debug(tt::LogOp, "output_tensor_shard_num_pages: {}", output_tensor_shard_num_pages);
 
     // L1 Scratch CB Creation
-    const auto& edm_config = tt::tt_fabric::get_default_fabric_config();
+    const auto& edm_config = tt::tt_fabric::get_1d_fabric_config();
     const size_t packet_size_bytes = edm_config.channel_buffer_size_bytes;
     uint32_t l1_scratch_cb_page_size_bytes = op_config.get_page_size();
     uint32_t num_pages_per_packet = packet_size_bytes / l1_scratch_cb_page_size_bytes;
