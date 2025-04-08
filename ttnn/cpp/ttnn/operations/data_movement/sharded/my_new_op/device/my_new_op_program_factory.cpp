@@ -2,348 +2,182 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#include <math.h>
-
-#include "ttnn/operations/math.hpp"
+#include <cstdint>
 #include <tt-metalium/work_split.hpp>
-#include <tt-metalium/host_api.hpp>
-#include <tt-metalium/constants.hpp>
-#include "cpp/ttnn/operations/data_movement/sharded/sharded_common.hpp"
-#include "cpp/ttnn/operations/data_movement/sharded_partial/interleaved_to_sharded_partial/device/interleaved_to_sharded_partial_op.hpp"
-#include <tt-metalium/tt_align.hpp>
-#include <tt-metalium/hal.hpp>
+#include "my_new_op_operation.hpp"
 
-using namespace tt::constants;
-using namespace tt::tt_metal;
+namespace ttnn::operations::data_movement {
 
-namespace ttnn::operations::data_movement::detail {
+MyNewOpDeviceOperation::MyDeviceProgramFactory::cached_program_t MyNewOpDeviceOperation::MyDeviceProgramFactory::create(
+    const operation_attributes_t& operation_attributes,
+    const tensor_args_t& tensor_args,
+    tensor_return_value_t& tensor_return_value) {
+    using namespace tt;
+    using namespace tt::tt_metal;
 
-operation::ProgramWithCallbacks my_new_op_multi_core(
-    const Tensor& input, const Tensor& output, bool keep_l1_aligned, uint32_t num_slices, uint32_t slice_index) {
+    const auto& input_tensor_a = tensor_args.input_tensor_a;
+    const auto& input_tensor_b = tensor_args.input_tensor_b;
+    auto& output_tensor = tensor_return_value;
+
+    auto src_buffer_a = input_tensor_a.buffer();
+    auto src_buffer_b = input_tensor_b.buffer();
+    auto dst_buffer = output_tensor.buffer();
+
+    float scalar = operation_attributes.input_scalar;
+    uint32_t casted_scalar = std::bit_cast<uint32_t>(scalar);
+
     tt::tt_metal::Program program{};
-    keep_l1_aligned = true;
-    uint32_t num_units, num_units_per_shard, input_unit_size, output_unit_size, num_units_per_shard_width,
-        num_units_per_shard_height, num_units_offset, num_units_per_row, num_units_per_shard_height_last,
-        num_units_per_shard_width_last, padded_offset_bytes;
 
-    tt::tt_metal::IDevice* device = input.device();
+    tt::DataFormat cb0_data_format = tt::tt_metal::datatype_to_dataformat_converter(input_tensor_a.get_dtype());
+    uint32_t single_tile_size = tt::tt_metal::detail::TileSize(cb0_data_format);
+    tt::DataFormat cb1_data_format = tt::tt_metal::datatype_to_dataformat_converter(input_tensor_b.get_dtype());
+    tt::DataFormat cb_data_format_output = tt::tt_metal::datatype_to_dataformat_converter(output_tensor.get_dtype());
+    uint32_t single_tile_size_output = tt::tt_metal::detail::TileSize(cb_data_format_output);
 
-    tt::DataFormat input_cb_data_format = tt::tt_metal::datatype_to_dataformat_converter(input.get_dtype());
-    tt::DataFormat output_cb_data_format = tt::tt_metal::datatype_to_dataformat_converter(output.get_dtype());
+    uint32_t num_tiles = input_tensor_a.volume() / tt::constants::TILE_HW;
 
-    auto shard_spec = output.shard_spec().value();
-    auto shard_strategy = output.memory_config().memory_layout;
+    tt::tt_metal::IDevice* device = input_tensor_a.device();
 
-    bool rm_orientation = shard_spec.orientation == ShardOrientation::ROW_MAJOR;
+    CoreCoord compute_with_storage_grid_size = device->compute_with_storage_grid_size();
+    uint32_t num_cores_x = compute_with_storage_grid_size.x;
+    uint32_t num_cores_y = compute_with_storage_grid_size.y;
+    auto [num_cores, all_cores, core_group_1, core_group_2, num_tiles_per_core_group_1, num_tiles_per_core_group_2] =
+        tt::tt_metal::split_work_to_cores(compute_with_storage_grid_size, num_tiles);
 
-    CoreCoord end_core = (*shard_spec.grid.ranges().rbegin()).end_coord;
+    uint32_t src0_cb_index = tt::CBIndex::c_0;
+    uint32_t src1_cb_index = tt::CBIndex::c_1;
+    uint32_t output_cb_index = tt::CBIndex::c_2;
 
-    bool convert_df = input_cb_data_format != output_cb_data_format;
-    auto src_buffer = input.buffer();
-    auto dst_buffer = output.buffer();
-    bool src_is_dram = src_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0;
-    bool is_blackhole = (input.device()->arch() == tt::ARCH::BLACKHOLE);
+    uint32_t num_input_tiles = num_tiles_per_core_group_1;
+    tt::tt_metal::CircularBufferConfig cb_src0_config =
+        tt::tt_metal::CircularBufferConfig(num_input_tiles * single_tile_size, {{src0_cb_index, cb0_data_format}})
+            .set_page_size(src0_cb_index, single_tile_size);
+    auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_src0_config);
 
-    if (input.get_layout() == Layout::TILE) {
-        num_units = input.volume() / TILE_HW;
-        input_unit_size = tt::tt_metal::detail::TileSize(input_cb_data_format);
-        output_unit_size = tt::tt_metal::detail::TileSize(output_cb_data_format);
-        TT_FATAL(
-            shard_spec.shape[0] % TILE_HEIGHT == 0 && shard_spec.shape[1] % TILE_WIDTH == 0,
-            "Shard shape {} must be tile {}x{} sized!",
-            shard_spec.shape,
-            TILE_HEIGHT,
-            TILE_WIDTH);
-        num_units_per_shard_height = shard_spec.shape[0] / TILE_HEIGHT;
-        num_units_per_shard_width = shard_spec.shape[1] / TILE_WIDTH;
-        num_units_per_shard = num_units_per_shard_height * num_units_per_shard_width;
-        num_units_per_row = input.get_padded_shape()[-1] / TILE_WIDTH;
-        num_units_offset = num_units_per_row;
-        uint32_t num_units_height = input.volume() / input.get_padded_shape()[-1] / TILE_HEIGHT / num_slices;
-        num_units_per_shard_height_last =
-            num_units_per_shard_height -
-            (tt::round_up(num_units_height, num_units_per_shard_height) - num_units_height);
-        num_units_per_shard_width_last =
-            num_units_per_shard_width -
-            (tt::round_up(num_units_per_row, num_units_per_shard_width) - num_units_per_row);
-        padded_offset_bytes = (num_units_per_shard_width - num_units_per_shard_width_last) * input_unit_size;
-    } else {
-        num_units = (input.volume() / input.get_padded_shape()[-1] / shard_spec.shape[0]) *
-                    (input.get_padded_shape()[-1] / shard_spec.shape[1]);
-        input_unit_size = shard_spec.shape[1] * input.element_size();
-        output_unit_size = shard_spec.shape[1] * output.element_size();
-        num_units_per_shard_height = shard_spec.shape[0];
-        num_units_per_shard_width = 1;
-        num_units_per_shard = num_units_per_shard_height * num_units_per_shard_width;
-        num_units_per_row = input.get_padded_shape()[-1] * input.element_size();
-        num_units_offset = 1;
-        uint32_t num_units_height = input.volume() / input.get_padded_shape()[-1];
-        num_units_per_shard_height_last =
-            num_units_per_shard_height -
-            (tt::round_up(num_units_height, num_units_per_shard_height) - num_units_height);
-        // TODO: Use a different variable name. Units refers to pages, but this is being used as size
-        num_units_per_shard_width_last =
-            input_unit_size - (tt::round_up(num_units_per_row, input_unit_size) - num_units_per_row);
-        // Adjust accordingly to l1 alignment, do it for all archs
-        if (keep_l1_aligned) {
-            padded_offset_bytes = tt::align(input_unit_size, hal::get_l1_alignment());
-        } else {
-            padded_offset_bytes = tt::align(input_unit_size, input.buffer()->alignment());
-        }
-    }
+    tt::tt_metal::CircularBufferConfig cb_src1_config =
+        tt::tt_metal::CircularBufferConfig(num_input_tiles * single_tile_size, {{src1_cb_index, cb1_data_format}})
+            .set_page_size(src1_cb_index, single_tile_size);
+    auto cb_src1 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_src1_config);
 
-    auto all_cores = shard_spec.grid;
-    uint32_t input_cb_index = tt::CBIndex::c_0;
-    uint32_t scratch_cb_index = tt::CBIndex::c_1;
-    uint32_t out_cb_index = input_cb_index;
-    uint32_t num_input_units = num_units_per_shard;
-    uint32_t output_page_size = tt::align(output_unit_size, dst_buffer->alignment());
-    if (convert_df) {
-        out_cb_index = tt::CBIndex::c_16;
-        uint32_t input_page_size = tt::align(input_unit_size, src_buffer->alignment());
-        tt::tt_metal::CircularBufferConfig input_cb_out_config =
-            tt::tt_metal::CircularBufferConfig(
-                num_input_units * input_page_size, {{input_cb_index, input_cb_data_format}})
-                .set_page_size(input_cb_index, input_page_size);
-        auto cb_input = tt::tt_metal::CreateCircularBuffer(program, all_cores, input_cb_out_config);
-    }
-    tt::tt_metal::CircularBufferConfig output_cb_out_config =
-        tt::tt_metal::CircularBufferConfig(num_input_units * output_page_size, {{out_cb_index, output_cb_data_format}})
-            .set_page_size(out_cb_index, output_page_size)
-            .set_globally_allocated_address(*output.buffer());
-    auto cb_output = tt::tt_metal::CreateCircularBuffer(program, all_cores, output_cb_out_config);
-    uint32_t dram_alignment = hal::get_dram_alignment();
-    if (src_is_dram && input_unit_size % dram_alignment != 0 or is_blackhole or keep_l1_aligned) {
-        uint32_t scratch_cb_page_size;
-        // scratchpad going to be used to align DRAM (64B) to L1 (16B)
-        if (is_blackhole) {
-            scratch_cb_page_size = tt::align(input_unit_size, hal::get_l1_alignment());
-        } else {
-            scratch_cb_page_size = tt::align(input_unit_size, dram_alignment);
-        }
-        tt::tt_metal::CircularBufferConfig scratch_cb_out_config =
-            tt::tt_metal::CircularBufferConfig(4 * scratch_cb_page_size, {{scratch_cb_index, input_cb_data_format}})
-                .set_page_size(scratch_cb_index, scratch_cb_page_size);
-        auto cb_scratch = tt::tt_metal::CreateCircularBuffer(program, all_cores, scratch_cb_out_config);
-    }
+    uint32_t num_output_tiles = 1;
+    tt::tt_metal::CircularBufferConfig cb_output_config =
+        tt::tt_metal::CircularBufferConfig(
+            num_output_tiles * single_tile_size_output, {{output_cb_index, cb_data_format_output}})
+            .set_page_size(output_cb_index, single_tile_size_output);
+    auto cb_output = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_output_config);
 
-    tt::tt_metal::KernelHandle unary_reader_kernel_id;
-    if (input.get_layout() == Layout::TILE) {
-        std::vector<uint32_t> reader_compile_time_args = {
-            (std::uint32_t)input_cb_index, (std::uint32_t)src_is_dram, all_cores.num_cores()};
+    std::vector<uint32_t> reader_compile_time_args = {src0_cb_index, src1_cb_index};
+    std::vector<uint32_t> writer_compile_time_args = {output_cb_index};
 
-        unary_reader_kernel_id = tt::tt_metal::CreateKernel(
-            program,
-            "ttnn/cpp/ttnn/operations/data_movement/sharded/device/kernels/dataflow/"
-            "reader_unary_sharded_blocks_interleaved_start_id.cpp",
-            all_cores,
-            tt::tt_metal::ReaderDataMovementConfig(reader_compile_time_args));
-    } else {
-        bool src_stick_size_is_power_of_two = is_power_of_two_at_least_32(num_units_per_row);
-        uint32_t src_log2_stick_size = src_stick_size_is_power_of_two ? (std::uint32_t)log2(num_units_per_row) : 0;
-        std::vector<uint32_t> reader_compile_time_args = {
-            (std::uint32_t)input_cb_index,
-            (std::uint32_t)scratch_cb_index,
-            (std::uint32_t)src_is_dram,
-            (std::uint32_t)src_stick_size_is_power_of_two,
-            (std::uint32_t)src_log2_stick_size};
+    tt::tt_metal::KernelHandle unary_reader_kernel_id = tt::tt_metal::CreateKernel(
+        program,
+        "ttnn/cpp/ttnn/operations/data_movement/sharded/my_new_op/device/kernels/dataflow/my_new_op_reader.cpp",
+        all_cores,
+        tt::tt_metal::ReaderDataMovementConfig(reader_compile_time_args));
 
-        unary_reader_kernel_id = tt::tt_metal::CreateKernel(
-            program,
-            "ttnn/cpp/ttnn/operations/data_movement/sharded/device/kernels/dataflow/"
-            "reader_unary_stick_layout_sharded_blocks_interleaved_start_id.cpp",
-            all_cores,
-            tt::tt_metal::ReaderDataMovementConfig(reader_compile_time_args));
-    }
-
-    std::vector<uint32_t> writer_compile_time_args = {out_cb_index};
     tt::tt_metal::KernelHandle unary_writer_kernel_id = tt::tt_metal::CreateKernel(
         program,
-        "ttnn/cpp/ttnn/operations/data_movement/sharded/device/kernels/dataflow/writer_unary_sharded.cpp",
+        "ttnn/cpp/ttnn/operations/data_movement/sharded/my_new_op/device/kernels/dataflow/my_new_op_writer.cpp",
         all_cores,
         tt::tt_metal::WriterDataMovementConfig(writer_compile_time_args));
 
-    tt::tt_metal::KernelHandle compute_kernel_id = 0;
-    if (convert_df) {
-        compute_kernel_id = tt::tt_metal::CreateKernel(
+    std::vector<uint32_t> compute_kernel_args_group_1 = {
+        src0_cb_index, src1_cb_index, output_cb_index, casted_scalar, num_tiles_per_core_group_1};
+
+    bool math_approx_mode = false;
+    auto eltwise_unary_kernel_group_1_id = tt::tt_metal::CreateKernel(
+        program,
+        "ttnn/cpp/ttnn/operations/data_movement/sharded/my_new_op/device/kernels/compute/my_new_op_compute.cpp",
+        all_cores,
+        tt::tt_metal::ComputeConfig{
+            .math_fidelity = MathFidelity::HiFi4,
+            .math_approx_mode = math_approx_mode,
+            .compile_args = compute_kernel_args_group_1});
+
+    auto eltwise_unary_kernel_group_2_id = eltwise_unary_kernel_group_1_id;
+    if (!core_group_2.ranges().empty()) {
+        std::vector<uint32_t> compute_kernel_args_group_2 = {
+            src0_cb_index, src1_cb_index, output_cb_index, casted_scalar, num_tiles_per_core_group_2};
+
+        eltwise_unary_kernel_group_2_id = tt::tt_metal::CreateKernel(
             program,
-            "ttnn/cpp/ttnn/operations/data_movement/sharded/device/kernels/compute/eltwise_copy.cpp",
-            all_cores,
-            tt::tt_metal::ComputeConfig{});
+            "ttnn/cpp/ttnn/operations/data_movement/sharded/my_new_op/device/kernels/compute/my_new_op_compute.cpp",
+            core_group_2,
+            tt::tt_metal::ComputeConfig{
+                .math_fidelity = MathFidelity::HiFi4,
+                .math_approx_mode = math_approx_mode,
+                .compile_args = compute_kernel_args_group_2});
     }
 
-    uint32_t starting_idx_h = calculate_starting_idx_h(input, num_slices, slice_index);
-    uint32_t curr_idx_h = 0;
-    uint32_t curr_idx_w = 0;
-
-    const auto cores = corerange_to_cores(shard_spec.grid, std::nullopt, rm_orientation);
-    for (const auto& core : cores) {
-        uint32_t curr_num_units_per_shard = num_units_per_shard;
-        if (input.get_layout() == Layout::TILE) {
-            uint32_t shard_height = num_units_per_shard_height;
-            uint32_t shard_width = num_units_per_shard_width;
-            uint32_t padded_offset = 0;
-            if (shard_strategy == TensorMemoryLayout::HEIGHT_SHARDED) {
-                if (core == end_core) {
-                    shard_height = num_units_per_shard_height_last;
-                }
-            } else if (shard_strategy == TensorMemoryLayout::WIDTH_SHARDED) {
-                if (core == end_core) {
-                    shard_width = num_units_per_shard_width_last;
-                    padded_offset = padded_offset_bytes;
-                }
-            } else if (shard_strategy == TensorMemoryLayout::BLOCK_SHARDED) {
-                if (rm_orientation) {
-                    if (core.x == end_core.x) {
-                        shard_width = num_units_per_shard_width_last;
-                        padded_offset = padded_offset_bytes;
-                    }
-                    if (core.y == end_core.y) {
-                        shard_height = num_units_per_shard_height_last;
-                    }
-                } else {
-                    if (core.y == end_core.y) {
-                        shard_width = num_units_per_shard_width_last;
-                        padded_offset = padded_offset_bytes;
-                    }
-                    if (core.x == end_core.x) {
-                        shard_height = num_units_per_shard_height_last;
-                    }
-                }
-            }
-            curr_num_units_per_shard = shard_height * num_units_per_shard_width;
-            tt::tt_metal::SetRuntimeArgs(
-                program,
-                unary_reader_kernel_id,
-                core,
-                {src_buffer->address(),
-                 shard_height,
-                 shard_width,
-                 padded_offset,
-                 num_units_offset,
-                 curr_num_units_per_shard,
-                 curr_idx_h + curr_idx_w,
-                 starting_idx_h});
-            curr_idx_w += num_units_per_shard_width;
-            if (curr_idx_w >= num_units_per_row) {
-                curr_idx_w = 0;
-                curr_idx_h += num_units_per_row * num_units_per_shard_height;
-            }
+    for (uint32_t i = 0, num_tiles_written = 0; i < num_cores; i++) {
+        CoreCoord core = {i / num_cores_y, i % num_cores_y};
+        uint32_t num_tiles_per_core = 0;
+        if (core_group_1.contains(core)) {
+            num_tiles_per_core = num_tiles_per_core_group_1;
+        } else if (core_group_2.contains(core)) {
+            num_tiles_per_core = num_tiles_per_core_group_2;
         } else {
-            uint32_t shard_height = num_units_per_shard_height;
-            uint32_t shard_width = input_unit_size;
-            if (shard_strategy == TensorMemoryLayout::HEIGHT_SHARDED) {
-                if (core.x == end_core.x && core.y == end_core.y) {
-                    shard_height = num_units_per_shard_height_last;
-                    curr_num_units_per_shard = shard_height * num_units_per_shard_width;
-                }
-            } else if (shard_strategy == TensorMemoryLayout::WIDTH_SHARDED) {
-                if (core.x == end_core.x && core.y == end_core.y) {
-                    shard_width = num_units_per_shard_width_last;
-                }
-            } else if (shard_strategy == TensorMemoryLayout::BLOCK_SHARDED) {
-                if (rm_orientation) {
-                    if (core.x == end_core.x) {
-                        shard_width = num_units_per_shard_width_last;
-                    }
-                    if (core.y == end_core.y) {
-                        shard_height = num_units_per_shard_height_last;
-                        curr_num_units_per_shard = shard_height * num_units_per_shard_width;
-                    }
-                } else {
-                    if (core.y == end_core.y) {
-                        shard_width = num_units_per_shard_width_last;
-                    }
-                    if (core.x == end_core.x) {
-                        shard_height = num_units_per_shard_height_last;
-                        curr_num_units_per_shard = shard_height * num_units_per_shard_width;
-                    }
-                }
-            }
-
-            uint32_t dram_alignment = hal::get_dram_alignment();
-            uint32_t l1_alignment = hal::get_l1_alignment();
-            bool aligned =
-                (src_is_dram ? (curr_idx_w % dram_alignment == 0) && (padded_offset_bytes % dram_alignment == 0)
-                             : true);
-            // for blackhole and keep_l1_aligned cases, always enforce unaligned kernel call
-            aligned = aligned and !(is_blackhole);
-            uint32_t aligned_width_offset, aligned_shard_width, aligned_offset;
-            if (!aligned) {
-                // TODO: is this right, leaving non BH case the same for now, should investigate
-                if (!is_blackhole) {
-                    aligned_width_offset = tt::round_down(curr_idx_w, dram_alignment);
-                } else {
-                    if (src_is_dram) {
-                        aligned_width_offset = tt::round_down(curr_idx_w, dram_alignment);
-                    } else {
-                        aligned_width_offset = tt::round_down(curr_idx_w, l1_alignment);
-                    }
-                }
-                aligned_offset = curr_idx_w - aligned_width_offset;
-                aligned_shard_width = aligned_offset + shard_width;
-            } else {
-                aligned_width_offset = curr_idx_w;
-                aligned_shard_width = shard_width;
-                aligned_offset = 0;
-            }
-
-            tt::tt_metal::SetRuntimeArgs(
-                program,
-                unary_reader_kernel_id,
-                core,
-                {src_buffer->address(),
-                 num_units_per_row,
-                 shard_height,
-                 shard_width,
-                 padded_offset_bytes,
-                 static_cast<uint32_t>(aligned),
-                 aligned_width_offset,
-                 aligned_shard_width,
-                 aligned_offset,
-                 curr_idx_h});
-            curr_idx_w += input_unit_size;
-            if (curr_idx_w >= num_units_per_row) {
-                curr_idx_w = 0;
-                curr_idx_h += num_units_per_shard_height;
-            }
+            TT_ASSERT(false, "Core not in specified core ranges");
         }
-        tt::tt_metal::SetRuntimeArgs(program, unary_writer_kernel_id, core, {curr_num_units_per_shard});
-        if (convert_df) {
-            tt::tt_metal::SetRuntimeArgs(program, compute_kernel_id, core, {curr_num_units_per_shard});
-        }
+
+        tt::tt_metal::SetRuntimeArgs(
+            program,
+            unary_reader_kernel_id,
+            core,
+            {src_buffer_a->address(),
+             num_tiles_written,
+             src_buffer_b->address(),
+             num_tiles_written,
+             num_tiles_per_core});
+        tt::tt_metal::SetRuntimeArgs(
+            program, unary_writer_kernel_id, core, {dst_buffer->address(), num_tiles_written, num_tiles_per_core});
+        num_tiles_written += num_tiles_per_core;
     }
 
-    auto override_runtime_arguments_callback =
-        [unary_reader_kernel_id, unary_writer_kernel_id, cb_output, cores, num_slices](
-            const void* operation,
-            Program& program,
-            const std::vector<Tensor>& input_tensors,
-            const std::vector<std::optional<const Tensor>>&,
-            const std::vector<Tensor>& output_tensors) {
-            auto src_buffer = input_tensors.at(0).buffer();
-            auto dst_buffer = output_tensors.at(0).buffer();
-
-            bool partial_op = num_slices > 1;
-            uint32_t starting_idx_h = 0;
-            if (partial_op) {
-                uint32_t runtime_slice_index =
-                    static_cast<const InterleavedToShardedPartialDeviceOperation*>(operation)->slice_index;
-                starting_idx_h = calculate_starting_idx_h(input_tensors.at(0), num_slices, runtime_slice_index);
-            }
-
-            auto& runtime_args_by_core = GetRuntimeArgs(program, unary_reader_kernel_id);
-            for (const auto& core : cores) {
-                auto& runtime_args = runtime_args_by_core[core.x][core.y];
-                runtime_args[0] = src_buffer->address();
-                if (partial_op) {
-                    runtime_args[7] = starting_idx_h;
-                }
-            }
-            UpdateDynamicCircularBufferAddress(program, cb_output, *dst_buffer);
-        };
-
-    return {.program = std::move(program), .override_runtime_arguments_callback = override_runtime_arguments_callback};
+    return {
+        std::move(program),
+        {.reader_kernel_id = unary_reader_kernel_id,
+         .writer_kernel_id = unary_writer_kernel_id,
+         .compute_kernel_id_1 = eltwise_unary_kernel_group_1_id,
+         .compute_kernel_id_2 = eltwise_unary_kernel_group_2_id,
+         .num_cores = num_cores,
+         .num_cores_y = num_cores_y}};
 }
 
-}  // namespace ttnn::operations::data_movement::detail
+void MyNewOpDeviceOperation::MyDeviceProgramFactory::override_runtime_arguments(
+    cached_program_t& cached_program,
+    const operation_attributes_t& operation_attributes,
+    const tensor_args_t& tensor_args,
+    tensor_return_value_t& tensor_return_value) {
+    auto& program = cached_program.program;
+    auto& reader_kernel_id = cached_program.shared_variables.reader_kernel_id;
+    auto& writer_kernel_id = cached_program.shared_variables.writer_kernel_id;
+    auto& compute_kernel_id_1 = cached_program.shared_variables.compute_kernel_id_1;
+    auto& compute_kernel_id_2 = cached_program.shared_variables.compute_kernel_id_2;
+    auto& num_cores = cached_program.shared_variables.num_cores;
+    auto& num_cores_y = cached_program.shared_variables.num_cores_y;
+
+    const auto& input_tensor_a = tensor_args.input_tensor_a;
+    const auto& input_tensor_b = tensor_args.input_tensor_b;
+    auto& output_tensor = tensor_return_value;
+
+    auto src_buffer_a = input_tensor_a.buffer();
+    auto src_buffer_b = input_tensor_b.buffer();
+    auto dst_buffer = output_tensor.buffer();
+
+    for (uint32_t i = 0; i < num_cores; i++) {
+        tt::tt_metal::CoreCoord core = {i / num_cores_y, i % num_cores_y};
+        {
+            auto& runtime_args = GetRuntimeArgs(program, reader_kernel_id, core);
+            runtime_args[0] = src_buffer_a->address();
+            runtime_args[2] = src_buffer_b->address();
+        }
+
+        {
+            auto& runtime_args = GetRuntimeArgs(program, writer_kernel_id, core);
+            runtime_args[0] = dst_buffer->address();
+        }
+    }
+}
+
+}  // namespace ttnn::operations::data_movement

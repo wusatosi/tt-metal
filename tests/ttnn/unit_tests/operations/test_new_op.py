@@ -4,27 +4,30 @@
 
 import ttnn
 import torch
-from ttnn.distributed.distributed import get_mesh_device_core_grid
+import pytest
+from tests.ttnn.utils_for_testing import assert_with_pcc
 
 
+@pytest.mark.parametrize("mesh_device", [1], indirect=True)
 def test_my_op(mesh_device):
-    input_tensor_shape = (1, 1, 512, 512)
+    input_tensor_shape = (128, 128)
 
-    core_grid = get_mesh_device_core_grid(mesh_device)
+    torch_input_tensor1 = torch.ones(input_tensor_shape) * 7
+    tensor1 = ttnn.from_torch(torch_input_tensor1, ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=mesh_device)
 
-    l1_shard_grid = ttnn.CoreRangeSet(
-        {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(core_grid.x - 1, core_grid.y - 1))}
-    )
-    l1_h, l1_w = input_tensor_shape[2] // core_grid.x, input_tensor_shape[3] // core_grid.y
+    torch_input_tensor2 = torch.ones(input_tensor_shape) * 2
+    tensor2 = ttnn.from_torch(torch_input_tensor2, ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=mesh_device)
 
-    shard_spec = ttnn.ShardSpec(l1_shard_grid, [l1_h, l1_w], ttnn.ShardOrientation.ROW_MAJOR)
+    scalar = 2
 
-    sharded_mem_config = ttnn.MemoryConfig(
-        ttnn.types.TensorMemoryLayout.BLOCK_SHARDED, ttnn.types.BufferType.L1, shard_spec
-    )
+    torch_output_tensor = torch.sqrt(torch_input_tensor1 + torch_input_tensor2) * scalar
 
-    torch_input_tensor = torch.randn(input_tensor_shape)
-    tensor = ttnn.from_torch(torch_input_tensor, ttnn.bfloat16, layout=ttnn.TILE_LAYOUT)
-    tensor = ttnn.to_device(tensor, mesh_device)
+    ttnn_output = ttnn.my_new_op(tensor1, tensor2, scalar)
+    ttnn_output_tensor = ttnn.to_torch(ttnn_output)
 
-    ttnn.my_new_op(tensor, sharded_mem_config, ttnn.bfloat16, keep_l1_aligned=True)
+    valid_pcc = 0.95
+    print(f"ttnn_output_tensor: {ttnn_output_tensor}")
+    print(f"torch_output_tensor: {torch_output_tensor}")
+    pcc_passed, pcc_message = assert_with_pcc(ttnn_output_tensor, torch_output_tensor, pcc=valid_pcc)
+    print(pcc_message)
+    print(f"pcc_passed: {pcc_passed}")
