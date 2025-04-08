@@ -20,7 +20,6 @@ struct ExecuteFusedRMSNorm {
         const ttnn::Tensor& input_tensor,
         const ttnn::operations::normalization::LayerNormProgramConfig& program_config,
         const uint32_t cluster_axis,
-        const MeshDevice& mesh_device,
         const GlobalSemaphore& semaphore,
         const std::optional<ttnn::Tensor>& persistent_output_tensor = std::nullopt,
         const std::optional<size_t> num_preferred_links = std::nullopt,

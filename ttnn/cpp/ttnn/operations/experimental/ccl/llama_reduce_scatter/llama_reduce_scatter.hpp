@@ -20,7 +20,6 @@ struct ExecuteLlamaReduceScatter {
         const GlobalSemaphore& cross_device_semaphore,
         const tt::tt_metal::SubDeviceId& subdevice_id,
         const uint32_t cluster_axis,
-        const MeshDevice& mesh_device,
         const uint32_t num_links,
         const std::optional<ttnn::MemoryConfig>& memory_config = std::nullopt);
 };

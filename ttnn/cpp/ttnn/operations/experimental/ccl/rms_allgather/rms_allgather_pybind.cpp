@@ -29,7 +29,6 @@ void bind_fused_rms_1_1_32_8192(py::module& module) {
             py::arg("input_tensor"),
             py::arg("program_config"),
             py::arg("cluster_axis"),
-            py::arg("mesh_device"),
             py::arg("global_semaphore"),  // TODO: Build this internally
             py::kw_only(),
             // all gather

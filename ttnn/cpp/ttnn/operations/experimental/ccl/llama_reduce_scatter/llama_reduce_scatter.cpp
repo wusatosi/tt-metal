@@ -23,10 +23,9 @@ ttnn::Tensor ExecuteLlamaReduceScatter::invoke(
     const GlobalSemaphore& cross_device_semaphore,
     const tt::tt_metal::SubDeviceId& subdevice_id,
     const uint32_t cluster_axis,
-    const MeshDevice& mesh_device,
     const uint32_t num_links,
     const std::optional<ttnn::MemoryConfig>& memory_config) {
-    const auto& mesh_view = mesh_device.get_view();
+    const auto& mesh_view = input_tensor.mesh_device()->get_view();
     const uint32_t ring_devices = (cluster_axis == 0) ? mesh_view.num_rows() : mesh_view.num_cols();
     TT_FATAL(ring_devices > 1, "reduce_scatter async op will only work for ring_devices > 1, but has {}", ring_devices);
 

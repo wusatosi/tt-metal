@@ -185,7 +185,6 @@ def run_reduce_scatter_test(
             ccl_semaphore_handles[0],
             worker_sub_device_id,
             cluster_axis=1,
-            mesh_device=mesh_device,
             num_links=num_links,
             memory_config=output_mem_config,
         )
@@ -200,7 +199,6 @@ def run_reduce_scatter_test(
                 ccl_semaphore_handles[0],
                 worker_sub_device_id,
                 cluster_axis=1,
-                mesh_device=mesh_device,
                 num_links=num_links,
                 memory_config=output_mem_config,
             )
@@ -222,7 +220,6 @@ def run_reduce_scatter_test(
                 ccl_semaphore_handles[i],
                 worker_sub_device_id,
                 cluster_axis=1,
-                mesh_device=mesh_device,
                 num_links=num_links,
                 memory_config=output_mem_config,
             )
