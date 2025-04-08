@@ -22,6 +22,8 @@ from models.utility_functions import skip_for_grayskull
 from models.demos.llama3_subdevices.tt.prefetcher_common import TtLlamaPrefetcherSetup
 from models.demos.llama3_subdevices.tt.llama_ccl import TT_CCL
 
+from tracy import signpost
+
 
 @torch.no_grad()
 @skip_for_grayskull("Requires wormhole_b0 to run")
@@ -52,8 +54,9 @@ from models.demos.llama3_subdevices.tt.llama_ccl import TT_CCL
 @pytest.mark.parametrize(
     "max_seq_len",
     (
-        # 4096,
-        128,
+        4096,
+        # 128,
+        # 2048,
     ),
 )
 @pytest.mark.parametrize("device_params", [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL}], indirect=True)
@@ -88,7 +91,7 @@ def test_llama_decoder_inference(
     reference_model.load_state_dict(partial_state_dict)
 
     generation_start_pos = 0
-    generation_length = 1
+    generation_length = 2
     all_tests_pass = True
 
     # pre-compute the rotational embedding matrix and send to device
@@ -173,7 +176,11 @@ def test_llama_decoder_inference(
         attn_mask_torch = torch.triu(attn_mask, diagonal=1)
         ref_output = reference_model(pt_decode_input, positions[0], freqs_cis_i, mask=attn_mask_torch)
         # Run TT model
+        if i == 1:
+            signpost("DECODER_4K")
         tt_out, _ = tt_model(decode_input, None, None, rot_mats, user_id=0, mode="prefill", page_table=page_table_tt)
+        if i == 1:
+            signpost("DECODER_4K")
         tt_out = ttnn.to_torch(
             tt_out,
             mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(1, 3), mesh_shape=model_args.cluster_shape),

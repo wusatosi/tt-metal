@@ -23,6 +23,8 @@ from models.tt_transformers.tt.common import (
 from models.perf.benchmarking_utils import BenchmarkProfiler
 from models.demos.utils.llm_demo_utils import create_benchmark_data
 
+from tracy import signpost
+
 
 def load_and_cache_context(context_url, cache_dir, max_length=None):
     cache_file = cache_dir / hashlib.md5(context_url.encode()).hexdigest()
@@ -111,7 +113,7 @@ def create_tt_model(
         optimizations=optimizations,
         max_seq_len=max_seq_len,
     )
-    # tt_model_args.n_layers = 1
+    tt_model_args.n_layers = 1
     state_dict = tt_model_args.load_state_dict()
 
     page_table = None
@@ -209,11 +211,11 @@ def create_tt_model(
             False,  # ci_only
         ),
         (  # Long-context run - Single user, long prompt (adapted to the model being used and architecture)
-            "models/tt_transformers/demo/sample_prompts/input_data_long_64k.json",  # input_prompts
+            "models/tt_transformers/demo/sample_prompts/input_data_long_4k.json",  # input_prompts
             True,  # instruct mode
             1,  # repeat_batches
             128 * 1024,  # max_seq_len
-            1,  # batch_size
+            32,  # batch_size
             200,  # max_generated_tokens
             True,  # paged_attention
             {"page_block_size": 32, "page_max_num_blocks": 2048},  # page_params
@@ -444,7 +446,7 @@ def test_demo_text(
             logger.info("Finished prefill warmup")
 
         logger.info(f"Starting prefill...")
-
+        signpost("RUN_PREFILL_4K")
         profiler.start(f"inference_prefill", iteration=batch_idx)
 
         logits = generator.prefill_forward_text(

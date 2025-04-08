@@ -71,8 +71,10 @@ class TT_CCL:
                 self.all_gather_buffers = self.get_all_gather_buffers()
                 self.reduce_scatter_buffers = self.get_decode_reduce_scatter_buffers()
             if mode == "prefill":
-                self.persistent_buffers = self.get_prefill_reduce_scatter_buffers()
-                self.all_gather_buffers = self.get_prefill_all_gather_buffers()
+                # seqlen = 2048
+                seqlen = 4098  # TODO parametrize!
+                self.persistent_buffers = self.get_prefill_reduce_scatter_buffers(seqlen)
+                self.all_gather_buffers = self.get_prefill_all_gather_buffers(seqlen)
 
     def reset_gather_and_buffer_idx(self):
         self.gather_idx = [0, 0]
@@ -267,7 +269,7 @@ class TT_CCL:
 
         return persistent_buffers
 
-    def get_prefill_reduce_scatter_buffers(self):
+    def get_prefill_reduce_scatter_buffers(self, seqlen=128):
         """
         Currently, this is hardcoded with llama specific shapes.
 
@@ -285,11 +287,13 @@ class TT_CCL:
 
         M = 128 if self.mode == "prefill" else 32
         buffers_dict = {
-            "QKV": [(1, 1, 128, 1280), (1, 1, 128, 1280 // 4)],
-            "WO": [(1, 1, 128, 2048), (1, 1, 128, 2048 // 8)],
-            "FF1": [(1, 1, 128, 3584), (1, 1, 128, 3584 // 4)],
-            "FF3": [(1, 1, 128, 3584), (1, 1, 128, 3584 // 4)],
-            "FF2": [(1, 1, 128, 2048), (1, 1, 128, 2048 // 8)],
+            "QKV": [(1, 1, seqlen, 1280), (1, 1, seqlen, 1280 // 4)],
+            "WO": [(1, 1, seqlen, 2048), (1, 1, seqlen, 2048 // 8)],
+            "FF1": [(1, 1, seqlen, 3584), (1, 1, seqlen, 3584 // 4)],
+            "FF3": [(1, 1, seqlen, 3584), (1, 1, seqlen, 3584 // 4)],
+            # "FF1": [(1, 2, 1024, 3584), (1, 2, 1024, 3584 // 4)],
+            # "FF3": [(1, 2, 1024, 3584), (1, 2, 1024, 3584 // 4)],
+            "FF2": [(1, 1, seqlen, 2048), (1, 1, seqlen, 2048 // 8)],
         }
         for key, shape in buffers_dict.items():
             tt_buffers = []
@@ -330,7 +334,7 @@ class TT_CCL:
 
         return persistent_buffers
 
-    def get_prefill_all_gather_buffers(self):
+    def get_prefill_all_gather_buffers(self, seqlen=128):
         """
         Currently, this is hardcoded with llama specific shapes.
 
@@ -342,12 +346,12 @@ class TT_CCL:
 
         M = 128 if self.mode == "prefill" else 32
         buffers_dict = {
-            "QKV": [(1, 1, 128, 1280)],
-            "WO": [(1, 1, 128, 2048)],
-            "FF1": [(1, 1, 128, 3584)],
-            "FF3": [(1, 1, 128, 3584)],
-            "FF2": [(1, 1, 128, 2048)],
-            "LAYERNORM": [(1, 1, 128, 128)],
+            "QKV": [(1, 1, seqlen, 1280)],
+            "WO": [(1, 1, seqlen, 2048)],
+            "FF1": [(1, 1, seqlen, 3584)],
+            "FF3": [(1, 1, seqlen, 3584)],
+            "FF2": [(1, 1, seqlen, 2048)],
+            "LAYERNORM": [(1, 1, seqlen, 128)],
             # "SAMPLING": [(1, 1, 32, 128 * 1024)]
         }
         for key, shape in buffers_dict.items():
@@ -628,6 +632,7 @@ def tt_distributed_rmsnorm(
     tt_stats = ttnn.rms_norm_pre_all_gather(inp, compute_kernel_config=compute_kernel_config, dtype=ttnn.bfloat16)
     padded_shape = (1, 1, inp.shape[-2], 32)
 
+    breakpoint()
     tt_stats_gathered = tt_ccl.line_all_gather(
         tt_stats, dim=3, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG, buffer_key="LAYERNORM"
     )
@@ -635,6 +640,7 @@ def tt_distributed_rmsnorm(
     # tt_stats.deallocate(True)
 
     # Run distributed rmsnorm part 2
+    breakpoint()
     tt_out = ttnn.rms_norm_post_all_gather(
         inp, tt_stats_gathered, epsilon=epsilon, weight=gamma, compute_kernel_config=compute_kernel_config
     )

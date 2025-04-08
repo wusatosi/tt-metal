@@ -480,8 +480,10 @@ class TtModelArgs:
                 out_subblock_h=1,  # Must be divisible by per_core_M
                 out_subblock_w=4,  # Must be divisible by per_core_N, out_subblock_w * out_subblock_h <= 4
                 per_core_M=max(
-                    1, 4 if seq_len >= 2048 else seq_len // self.tile_size // 4  # 8 rows
+                    1, 8 if seq_len >= 2048 else seq_len // self.tile_size // 8  # 8~10 rows
                 ),  # M / TILE_HEIGHT / Grid_Size (dynamic based on seqlen)
+                # n=28672 / cluster_shape[0] = 8 == 3584
+                # N = 3584 / 32 = 112 / 7 = 16
                 per_core_N=math.ceil(self.hidden_dim / self.cluster_shape[0] / 32 / 7),  # N / TILE_WIDTH / grid width
                 transpose_mcast=False,
                 fused_activation=None,
@@ -491,11 +493,14 @@ class TtModelArgs:
                 "PREFILL_MLP_W2_PRG_CONFIG"
             ] = lambda seq_len: ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
                 compute_with_storage_grid_size=(7, 10),
-                in0_block_w=8,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
+                in0_block_w=7,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
+                # in0_block_w=14,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
                 out_subblock_h=1,  # Must be divisible by per_core_M
-                out_subblock_w=2,  # Must be divisible by per_core_N, out_subblock_w * out_subblock_h <= 4
-                per_core_M=1,
-                per_core_N=10,  # N / TILE_WIDTH / grid width
+                out_subblock_w=4,  # Must be divisible by per_core_N, out_subblock_w * out_subblock_h <= 4
+                per_core_M=max(
+                    1, 8 if seq_len >= 2048 else seq_len // self.tile_size // 8  # 8~10 rows
+                ),  # M / TILE_HEIGHT / Grid_Size (dynamic based on seqlen)
+                per_core_N=math.ceil(self.dim / self.cluster_shape[1] / 32 / 4),  # N / TILE_WIDTH / grid width
                 transpose_mcast=False,
                 fused_activation=None,
                 fuse_batch=seq_len <= 2048,
@@ -540,14 +545,19 @@ class TtModelArgs:
             self.qkv_size = self.head_dim * (2 * self.n_kv_heads + self.n_heads)
             self.min_kv_prefill_shard_seqlen = (self.tile_size * 8 * 8) / (self.n_kv_heads // self.cluster_shape[1])
             self.model_config["XQKV_PREFILL_PROGCFG"] = lambda seq_len: ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
-                compute_with_storage_grid_size=(7, 10),
+                # compute_with_storage_grid_size=(4, 8),
+                compute_with_storage_grid_size=(8, 8),
+                # in0_block_w=4,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
                 in0_block_w=8,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
                 out_subblock_h=1,  # Must be divisible by per_core_M
                 out_subblock_w=2,  # Must be divisible by per_core_N, out_subblock_w * out_subblock_h <= 4
                 per_core_M=max(
-                    1, 4 if seq_len >= 2048 else seq_len // self.tile_size // 10  # 8 rows
+                    # 1, 4 if seq_len >= 2048 else seq_len // self.tile_size // 4  # 8 rows
+                    1,
+                    8 if seq_len >= 2048 else seq_len // self.tile_size // 8,  # 8 rows
                 ),  # M / TILE_HEIGHT / Grid_Size (dynamic based on seqlen)
-                per_core_N=math.ceil(1280 / 32 / 7),  # N / TILE_WIDTH / grid width
+                per_core_N=math.ceil(self.qkv_size / self.cluster_shape[1] / 32 / 8),  # N / TILE_WIDTH / grid width
+                # per_core_N=math.ceil(self.qkv_size / self.cluster_shape[0] / 32 / 8),  # N / TILE_WIDTH / grid width
                 transpose_mcast=False,
                 fused_activation=None,
                 fuse_batch=seq_len <= 2048,
