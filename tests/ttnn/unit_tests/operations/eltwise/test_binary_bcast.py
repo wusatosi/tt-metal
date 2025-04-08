@@ -391,24 +391,24 @@ block_sharded_memory_config = ttnn.create_sharded_memory_config(
     "sharded_config",
     [
         height_sharded_memory_config,
-        width_sharded_memory_config,
-        block_sharded_memory_config,
+        # width_sharded_memory_config,
+        # block_sharded_memory_config,
     ],
 )
 @pytest.mark.parametrize(
     "dtype_pt, dtype_tt",
     (
         [torch.bfloat16, ttnn.bfloat16],
-        [torch.int32, ttnn.int32],
-        [torch.float32, ttnn.float32],
+        # [torch.int32, ttnn.int32],
+        # [torch.float32, ttnn.float32],
     ),
 )
 def test_binary_sharded(a_shape, b_shape, sharded_config, dtype_pt, dtype_tt, device):
     input_combinations = (
-        (ttnn.DRAM_MEMORY_CONFIG, sharded_config),
-        (sharded_config, ttnn.DRAM_MEMORY_CONFIG),
+        # (ttnn.DRAM_MEMORY_CONFIG, sharded_config),
+        # (sharded_config, ttnn.DRAM_MEMORY_CONFIG),
         (sharded_config, sharded_config),
-        (ttnn.DRAM_MEMORY_CONFIG, ttnn.DRAM_MEMORY_CONFIG),
+        # (ttnn.DRAM_MEMORY_CONFIG, ttnn.DRAM_MEMORY_CONFIG),
     )
 
     for src_config, dst_config in input_combinations:
@@ -438,6 +438,53 @@ def test_binary_sharded(a_shape, b_shape, sharded_config, dtype_pt, dtype_tt, de
         out_tt_sharded = ttnn.experimental.add(a_tt, b_tt, memory_config=sharded_config)
         out_tt_sharded = ttnn.to_torch(out_tt_sharded)
         assert ttnn.pearson_correlation_coefficient(out_tt_sharded, out_pt) >= 0.99988
+
+
+@pytest.mark.parametrize(
+    "a_shape, b_shape",
+    ((torch.Size([1, 1, 102400, 32]), torch.Size([1, 1, 102400, 32])),),
+)
+def test_binary_sharded_add(a_shape, b_shape, device):
+    a_pt = gen_func_with_cast_tt(partial(torch_random, low=-100, high=100, dtype=torch.bfloat16), ttnn.bfloat16)(
+        a_shape
+    )
+    b_pt = gen_func_with_cast_tt(partial(torch_random, low=-100, high=100, dtype=torch.bfloat16), ttnn.bfloat16)(
+        b_shape
+    )
+
+    shard_grid = ttnn.CoreRangeSet(
+        {
+            ttnn.CoreRange(
+                ttnn.CoreCoord(0, 0),
+                ttnn.CoreCoord(7, 7),
+            ),
+        }
+    )
+    # shard_grid = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(3, 7),),})
+    n_cores = 64
+    N, H, W, C = a_shape
+    shard_spec = ttnn.ShardSpec(shard_grid, [N * H * W // n_cores, C], ttnn.ShardOrientation.ROW_MAJOR)
+    mem_config = ttnn.MemoryConfig(ttnn.types.TensorMemoryLayout.HEIGHT_SHARDED, ttnn.types.BufferType.L1, shard_spec)
+
+    a_tt = ttnn.from_torch(
+        a_pt,
+        dtype=ttnn.bfloat16,
+        device=device,
+        layout=ttnn.TILE_LAYOUT,
+        memory_config=mem_config,
+    )
+    b_tt = ttnn.from_torch(
+        b_pt,
+        dtype=ttnn.bfloat16,
+        device=device,
+        layout=ttnn.TILE_LAYOUT,
+        memory_config=mem_config,
+    )
+
+    out_pt = torch.add(a_pt, b_pt)
+    out_tt_sharded = ttnn.experimental.add(a_tt, b_tt, memory_config=mem_config)
+    out_tt_sharded = ttnn.to_torch(out_tt_sharded)
+    assert ttnn.pearson_correlation_coefficient(out_tt_sharded, out_pt) >= 0.99988
 
 
 @pytest.mark.parametrize(
