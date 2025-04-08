@@ -145,6 +145,8 @@ class RunTimeOptions {
 
     bool skip_eth_cores_with_retrain = false;
 
+    bool use_numa_node_based_thread_binding = false;
+
     RunTimeOptions();
 
 public:
@@ -339,6 +341,8 @@ public:
     inline bool get_erisc_iram_enabled() { return erisc_iram_enabled; }
 
     inline bool get_skip_eth_cores_with_retrain() { return skip_eth_cores_with_retrain; }
+
+    inline bool get_use_numa_node_based_thread_binding() { return use_numa_node_based_thread_binding; }
 
 private:
     // Helper functions to parse feature-specific environment vaiables.

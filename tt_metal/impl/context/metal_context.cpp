@@ -38,6 +38,11 @@ void MetalContext::initialize(
     dispatch_query_manager_ = std::make_unique<DispatchQueryManager>(num_hw_cqs);
     tt_metal::DispatchSettings::initialize(cluster_);
 
+    // Assign CPU cores to threads, done by CpuAllocator
+    auto all_devices = cluster_.all_chip_ids();
+    cpu_core_allocator_ = std::make_unique<CpuAllocator>(
+        all_devices, tt::llrt::RunTimeOptions::get_instance().get_use_numa_node_based_thread_binding(), num_hw_cqs);
+
     // TODO: Move FW, fabric, dispatch init here
 }
 

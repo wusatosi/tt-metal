@@ -44,6 +44,7 @@ using namespace tt::tt_metal;
 
 namespace tt {
 
+#if 0
 namespace device_cpu_allocator {
 std::unordered_map<int, std::vector<uint32_t>> get_cpu_cores_per_numa_node(std::unordered_set<uint32_t>& free_cores) {
     std::unordered_map<int, std::vector<uint32_t>> cpu_cores_per_numa_node = {};
@@ -159,7 +160,7 @@ std::unordered_map<uint32_t, uint32_t> get_device_id_to_core_map(
 }
 
 void bind_current_thread_to_free_cores(const std::unordered_set<uint32_t>& free_cores) {
-    cpu_set_t cpuset;
+    cp_set_t cpuset;
     pthread_t current_thread = pthread_self();
     CPU_ZERO(&cpuset);
 
@@ -176,6 +177,7 @@ void bind_current_thread_to_free_cores(const std::unordered_set<uint32_t>& free_
 }
 
 }  // namespace device_cpu_allocator
+#endif
 
 DevicePool* DevicePool::_inst = nullptr;
 
@@ -361,8 +363,10 @@ void DevicePool::activate_device(chip_id_t id) {
     auto device = get_device(id);
     if (!device) {
         log_debug(tt::LogMetal, "DevicePool new device {}", id);
-        int worker_core_thread_core = this->worker_thread_to_cpu_core_map.at(id);
-        int completion_queue_reader_core = this->completion_queue_reader_to_cpu_core_map.at(id);
+        // int worker_core_thread_core = this->worker_thread_to_cpu_core_map.at(id);
+        // int completion_queue_reader_core = this->completion_queue_reader_to_cpu_core_map.at(id);
+        int worker_core_thread_core = tt::tt_metal::MetalContext::instance().get_worker_thread_cpu_core(id);
+        int completion_queue_reader_core = tt::tt_metal::MetalContext::instance().get_cq_reader_cpu_core(id);
         device = new Device(
             id,
             this->num_hw_cqs,
@@ -635,6 +639,7 @@ DevicePool::DevicePool() {
     for (int i = 0; i < tt::tt_metal::MetalContext::instance().get_cluster().number_of_devices(); i++) {
         all_device_ids.emplace_back((chip_id_t)i);
     }
+    /*
     std::unordered_set<uint32_t> free_cores = {};
     this->worker_thread_to_cpu_core_map = device_cpu_allocator::get_device_id_to_core_map(
         all_device_ids,
@@ -646,6 +651,7 @@ DevicePool::DevicePool() {
         // Bind main thread to cores not being used by workers
         device_cpu_allocator::bind_current_thread_to_free_cores(free_cores);
     }
+    */
 }
 
 IDevice* DevicePool::get_active_device(chip_id_t device_id) const {

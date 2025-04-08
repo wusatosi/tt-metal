@@ -13,6 +13,7 @@
 #include <string>
 
 #include "assert.hpp"
+#include "common/env_lib.hpp"
 #include <umd/device/tt_core_coordinates.h>
 
 using std::vector;
@@ -175,6 +176,8 @@ RunTimeOptions::RunTimeOptions() {
     if (getenv("TT_METAL_ENABLE_ERISC_IRAM")) {
         this->erisc_iram_enabled = true;
     }
+
+    use_numa_node_based_thread_binding = tt::parse_env("TT_METAL_NUMA_BASED_AFFINITY", false);
 }
 
 const std::string& RunTimeOptions::get_root_dir() {

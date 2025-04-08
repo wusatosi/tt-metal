@@ -13,6 +13,7 @@
 #include <llrt/tt_cluster.hpp>
 #include <impl/dispatch/dispatch_core_manager.hpp>
 #include <impl/dispatch/dispatch_query_manager.hpp>
+#include <impl/context/cpu_allocator.hpp>
 
 #include <unordered_map>
 #include <unordered_set>
@@ -39,6 +40,12 @@ public:
     void initialize(
         const DispatchCoreConfig& dispatch_core_config, uint8_t num_hw_cqs, const BankMapping& l1_bank_remap);
 
+    // Access mapping from device_id to cpu core. TODO: remove these when WorkExecutor is pulled into MetalContext.
+    uint32_t get_worker_thread_cpu_core(chip_id_t device_id) {
+        return cpu_core_allocator_->worker_thread_cpu_core(device_id);
+    };
+    uint32_t get_cq_reader_cpu_core(chip_id_t device_id) { return cpu_core_allocator_->cq_reader_cpu_core(device_id); }
+
 private:
     friend class tt::stl::Indestructible<MetalContext>;
     MetalContext();
@@ -53,6 +60,8 @@ private:
     Cluster cluster_;
     std::unique_ptr<dispatch_core_manager> dispatch_core_manager_;
     std::unique_ptr<DispatchQueryManager> dispatch_query_manager_;
+
+    std::unique_ptr<CpuAllocator> cpu_core_allocator_;
 };
 
 }  // namespace tt::tt_metal
