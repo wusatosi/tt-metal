@@ -47,8 +47,7 @@ def test_conv_row_major_hang(device):
         memory_config=ttnn.DRAM_MEMORY_CONFIG,
     )
 
-    # Can we print these and flush to stdout?
-
+    # Hang here when using ROW_MAJOR inputs.
     logger.info("Before from_device")
     output_tensor = ttnn.from_device(output)
     logger.info("Output tensor shape: ", output_tensor.shape)
