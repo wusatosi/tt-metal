@@ -6,7 +6,11 @@ from loguru import logger
 
 
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 16384 * 2}], indirect=True)
-def test_conv_row_major_hang(device):
+@pytest.mark.parametrize(
+    "input_layout",
+    [pytest.param(ttnn.TILE_LAYOUT, id="TILE_LAYOUT"), pytest.param(ttnn.ROW_MAJOR_LAYOUT, id="ROW_MAJOR_LAYOUT")],
+)
+def test_conv_row_major_hang(device, input_layout):
     batch_size = 1
     dilation = (1, 1)
     groups = 1
@@ -24,12 +28,12 @@ def test_conv_row_major_hang(device):
     torch_input = torch.randn(input_shape, dtype=torch.bfloat16)
     torch_weight = torch.randn(weight_shape, dtype=torch.bfloat16)
 
-    # Move inputs to device in row-major, keep weights in system memory.
-    tt_input = ttnn.from_torch(torch_input, device=device, layout=ttnn.TILE_LAYOUT)
+    # Move inputs to device with specified layout, keep weights in system memory.
+    tt_input = ttnn.from_torch(torch_input, device=device, layout=input_layout)
     tt_weight = ttnn.from_torch(torch_weight)
 
     # Perform the convolution
-    logger.info("Running conv2d now...")
+    logger.info(f"Running conv2d w/ input_layout: {input_layout}")
     output = ttnn.conv2d(
         input_tensor=tt_input,
         weight_tensor=tt_weight,
@@ -50,4 +54,4 @@ def test_conv_row_major_hang(device):
     # Hang here when using ROW_MAJOR inputs.
     logger.info("Before from_device")
     output_tensor = ttnn.from_device(output)
-    logger.info("Output tensor shape: ", output_tensor.shape)
+    logger.info(f"Output tensor shape: {output_tensor.shape}")
