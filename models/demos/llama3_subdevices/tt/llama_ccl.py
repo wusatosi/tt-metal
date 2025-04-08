@@ -346,7 +346,7 @@ class TT_CCL:
 
         M = 128 if self.mode == "prefill" else 32
         buffers_dict = {
-            "QKV": [(1, 1, seqlen, 1280)],
+            "QKV": [(1, 1, seqlen + 32, 1280)],
             "WO": [(1, 1, seqlen, 2048)],
             "FF1": [(1, 1, seqlen, 3584)],
             "FF3": [(1, 1, seqlen, 3584)],
@@ -632,15 +632,20 @@ def tt_distributed_rmsnorm(
     tt_stats = ttnn.rms_norm_pre_all_gather(inp, compute_kernel_config=compute_kernel_config, dtype=ttnn.bfloat16)
     padded_shape = (1, 1, inp.shape[-2], 32)
 
-    breakpoint()
+    # breakpoint()
     tt_stats_gathered = tt_ccl.line_all_gather(
-        tt_stats, dim=3, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG, buffer_key="LAYERNORM"
+        # tt_stats, dim=3, cluster_axis=1, num_links=1, memory_config=ttnn.DRAM_MEMORY_CONFIG, buffer_key="LAYERNORM"
+        tt_stats,
+        dim=3,
+        cluster_axis=1,
+        num_links=1,
+        memory_config=ttnn.DRAM_MEMORY_CONFIG,  # , buffer_key="LAYERNORM"
     )
 
     # tt_stats.deallocate(True)
 
     # Run distributed rmsnorm part 2
-    breakpoint()
+    # breakpoint()
     tt_out = ttnn.rms_norm_post_all_gather(
         inp, tt_stats_gathered, epsilon=epsilon, weight=gamma, compute_kernel_config=compute_kernel_config
     )

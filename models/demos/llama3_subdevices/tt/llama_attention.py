@@ -455,6 +455,10 @@ class TtLlamaAttention(LightweightModule):
             program_config=self.model_config["XQKV_PREFILL_PROGCFG"](seq_len),
         )
 
+        if seq_len > 2048:
+            xqkv_fused = ttnn.reshape(xqkv_fused, [1, 1, seq_len, -1])
+
+        # breakpoint()
         xqkv_fused = self.tt_ccl.line_all_reduce(
             xqkv_fused,
             cluster_axis=1,
@@ -462,10 +466,7 @@ class TtLlamaAttention(LightweightModule):
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
             buffer_key="QKV",
         )
-
-        if seq_len > 2048:
-            xqkv_fused = ttnn.reshape(xqkv_fused, [1, 1, seq_len, -1])
-
+        # breakpoint()
         # ttnn.deallocate(x_11SH)
 
         # split qkv into heads
