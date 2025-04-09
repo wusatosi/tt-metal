@@ -39,6 +39,8 @@ static Tensor create_config_tensor(
     const uint32_t input_nsticks_per_core = shard_spec.shape[0];
 
     std::vector<std::vector<int>> core_range;
+    auto logical_cores = corerange_to_cores(
+        shard_spec.grid, shard_spec.num_cores(), shard_spec.orientation == ShardOrientation::ROW_MAJOR);
     auto ranges = shard_spec.grid.ranges();
     // in case of height sharding and shards arranged in column major order, get cores where shard are placed.
     if (is_col_major && is_height_sharded) {
@@ -66,8 +68,8 @@ static Tensor create_config_tensor(
                     logical_core_to_stick_map.push_back(core_range[in_core][0]);
                     logical_core_to_stick_map.push_back(core_range[in_core][1]);
                 } else {
-                    logical_core_to_stick_map.push_back(in_core);
-                    logical_core_to_stick_map.push_back(0);
+                    logical_core_to_stick_map.push_back(logical_cores[in_core].x);
+                    logical_core_to_stick_map.push_back(logical_cores[in_core].y);
                 }
                 logical_core_to_stick_map.push_back(curr_stick);
             }
@@ -91,7 +93,7 @@ static Tensor create_config_tensor(
                     CoreCoord(logical_core_to_stick_map[j], logical_core_to_stick_map[j + 1]));
             } else {
                 core_coords = device->worker_core_from_logical_core(
-                    CoreCoord(logical_core_to_stick_map[j] % ncores_x, logical_core_to_stick_map[j] / ncores_x));
+                    CoreCoord(logical_core_to_stick_map[j], logical_core_to_stick_map[j + 1]));
             }
             // Combine the x and y coordinates of the core into a single 16-bit value.
             // The x coordinate is shifted left by 8 bits and added to the y coordinate.
