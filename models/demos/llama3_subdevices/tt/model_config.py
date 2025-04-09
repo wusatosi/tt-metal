@@ -931,7 +931,7 @@ class TtModelArgs:
             self.model_config["LM_HEAD_PREFILL_PROGCFG"] = self.matmul_1d_config_from_tensor_shapes(
                 in0_shape=(1, 1, 32, 2048),
                 in1_shape=(1, 1, 2048, 16384),
-                grid=ttnn.CoreGrid(x=7, y=7),  # (7,10) leads to hangs
+                grid=ttnn.CoreGrid(x=4, y=4),  # (x=7, y=7),  # (7,10) leads to hangs
                 act=None,
                 is_fp32_accumulate=False,
                 # overwrite_subblock_w=1,

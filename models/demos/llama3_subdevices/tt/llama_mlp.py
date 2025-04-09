@@ -7,6 +7,8 @@ import ttnn
 from models.common.lightweightmodule import LightweightModule
 import torch.nn.functional as F
 
+from loguru import logger
+
 
 def pad_to_next_multiple(tensor):
     # Get the current size of the last two dimensions
@@ -252,6 +254,7 @@ class TtLlamaMLP(LightweightModule):
             # Reshape input to to fit on device and parallelize computation
             w1_out_reduced = ttnn.reshape(w1_out_reduced, [1, seq_len // 1024, 1024, -1])
             w3_out_reduced = ttnn.reshape(w3_out_reduced, [1, seq_len // 1024, 1024, -1])
+
         w2_in = ttnn.mul(
             w1_out_reduced,
             w3_out_reduced,
@@ -259,11 +262,19 @@ class TtLlamaMLP(LightweightModule):
             dtype=ttnn.bfloat8_b,
             memory_config=w1_out.memory_config(),
         )
+
+        if seq_len >= 1024:
+            # Reshape tensors again to pass CCL validation Dim1 = 1
+            w2_in = ttnn.reshape(w2_in, [1, 1, seq_len, -1])
+
         w2_in_gathered = self.tt_ccl.line_all_gather(
             w2_in, cluster_axis=1, num_links=3, memory_config=w3_out.memory_config(), buffer_key="FF3", dim=3
         )
-        # ttnn.deallocate(w3_out)
-        # ttnn.deallocate(w1_out)
+
+        if seq_len >= 1024:
+            # Reshape tensors back again
+            w2_in_gathered = ttnn.reshape(w2_in_gathered, [1, seq_len // 1024, 1024, -1])
+
         w2_out = ttnn.linear(
             w2_in_gathered,
             self.w2,
@@ -274,17 +285,22 @@ class TtLlamaMLP(LightweightModule):
             # core_grid=ttnn.CoreGrid(y=8, x=4),  # FIXME: validate on TG ttnn.CoreGrid(y=8, x=8) if not pc_2 else None,
         )
         ttnn.deallocate(w2_in)
+
         if seq_len >= 1024:
             # Reshape tensors again to pass CCL validation Dim1 = 1
             w2_out = ttnn.reshape(w2_out, [1, 1, seq_len, -1])
         w2_out_reduced = self.tt_ccl.line_all_reduce(
             w2_out, cluster_axis=0, num_links=3, memory_config=ttnn.DRAM_MEMORY_CONFIG, buffer_key="FF2"
         )
+        if seq_len >= 1024:
+            # Reshape tensors back again
+            w2_out_reduced = ttnn.reshape(w2_out_reduced, [1, seq_len // 1024, 1024, -1])
 
         original_shape = w2_out_reduced.shape
         w2_out_reduced = ttnn.reshape(
             w2_out_reduced, (1, 1, original_shape[-4] * original_shape[-3] * original_shape[-2], original_shape[-1])
         )
 
+        logger.info("Finished MLP")
         # ttnn.deallocate(w2_out)
         return w2_out_reduced

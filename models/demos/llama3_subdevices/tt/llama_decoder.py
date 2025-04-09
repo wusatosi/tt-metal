@@ -8,6 +8,8 @@ from models.common.rmsnorm import RMSNorm
 from models.common.lightweightmodule import LightweightModule
 from models.demos.llama3_subdevices.tt.distributed_norm import DistributedNorm
 
+from loguru import logger
+
 
 class TtTransformerBlock(LightweightModule):
     def __init__(
@@ -161,6 +163,7 @@ class TtTransformerBlock(LightweightModule):
             chunk_start_idx=chunk_start_idx,
             kv_cache=kv_cache,
         )
+        logger.info("Finished attn")
         # print("attention done", attn_out)
 
         # Norms take fractured inputs and output replicated across devices
@@ -180,10 +183,12 @@ class TtTransformerBlock(LightweightModule):
         else:
             ff_in_sharded = ff_in
         ff_out = self.feed_forward.forward(ff_in_sharded, mode)
+        logger.info("Finished mlp")
         # print("feed forward done", ff_out)
         # if self.layer_num == self.n_layers - 1:
         out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)  # , dtype=ttnn.bfloat16)
         # ff_out.deallocate(True)
         # else:
         #     out = ff_out
+        logger.info("Finished decoder")
         return out, h  # fractured across devices

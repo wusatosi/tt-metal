@@ -7,6 +7,8 @@ import torch
 import ttnn
 from models.common.lightweightmodule import LightweightModule
 
+from loguru import logger
+
 
 class LMHead(LightweightModule):
     def __init__(
@@ -182,6 +184,7 @@ class LMHead(LightweightModule):
                     sub_device_id=worker_sub_device_id,
                 )
             else:
+                logger.info("Doing lm head MM")
                 output = ttnn.linear(
                     x,
                     weight_l1,
@@ -190,6 +193,8 @@ class LMHead(LightweightModule):
                     program_config=self.prefill_pc,
                     dtype=ttnn.bfloat8_b,
                 )
+
+            logger.info("Finished lm head MM")
             # ttnn.synchronize_device(self.mesh_device, sub_device_ids=[self.tt_ccl.worker_sub_device_id])
 
             outputs.append(output)
@@ -207,4 +212,5 @@ class LMHead(LightweightModule):
 
         # ttnn.synchronize_device(self.mesh_device, sub_device_ids=[self.tt_ccl.worker_sub_device_id])
 
+        logger.info("LM head reduce finished")
         return outputs_reduced
