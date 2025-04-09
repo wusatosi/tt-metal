@@ -757,8 +757,9 @@ void DeviceProfiler::dumpResults(
                 if (auto mesh_buffer = output_dram_buffer.get_mesh_buffer()) {
                     auto mesh_device = mesh_buffer->device();
                     auto device_coord = mesh_device->get_view().find_device(device->id());
-                    distributed::ReadShard(
-                        mesh_device->mesh_command_queue(), profile_buffer, mesh_buffer, device_coord);
+                    tt_metal::detail::ReadFromBuffer(*output_dram_buffer_ptr, profile_buffer);
+                    // distributed::ReadShard(
+                    //     mesh_device->mesh_command_queue(), profile_buffer, mesh_buffer, device_coord);
                 } else {
                     EnqueueReadBuffer(device->command_queue(), *output_dram_buffer_ptr, profile_buffer, true);
                 }

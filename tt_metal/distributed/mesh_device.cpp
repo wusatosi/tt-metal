@@ -139,7 +139,7 @@ MeshDevice::ScopedDevices::ScopedDevices(
         {},
         /*init_profiler*/ false,
         /*use_max_eth_core_count_on_all_devices*/ true,
-        /* initialize_fabric_and_dispatch_fw false*/);
+        /* initialize_fabric_and_dispatch_fw */ false);
 
     for (auto device_id : device_ids) {
         devices_.push_back(opened_devices_.at(device_id));
@@ -224,8 +224,8 @@ std::shared_ptr<MeshDevice> MeshDevice::create(
     DevicePool::instance().init_profiler();
 
     // Init fabric and dispatch fw after profiler is initialized
-    // DevicePool::instance().initialize_active_devices();
-    // DevicePool::instance().wait_for_fabric_router_sync();
+    DevicePool::instance().initialize_active_devices();
+    DevicePool::instance().wait_for_fabric_router_sync();
 
     return mesh_device;
 }

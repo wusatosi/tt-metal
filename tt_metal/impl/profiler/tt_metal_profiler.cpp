@@ -178,15 +178,8 @@ void syncDeviceHost(IDevice* device, CoreCoord logical_core, bool doHeader) {
             .noc = tt_metal::NOC::RISCV_0_default,
             .defines = kernel_defines});
 
-    // Using MeshDevice APIs if the current device is managed by MeshDevice
-    if (auto mesh_device = device->get_mesh_device()) {
-        auto device_coord = mesh_device->get_view().find_device(device_id);
-        distributed::MeshWorkload workload;
-        workload.add_program(distributed::MeshCoordinateRange(device_coord, device_coord), std::move(sync_program));
-        distributed::EnqueueMeshWorkload(mesh_device->mesh_command_queue(), workload, false);
-    } else {
-        EnqueueProgram(device->command_queue(), sync_program, false);
-    }
+    tt_metal::detail::LaunchProgram(
+        device, sync_program, false /* wait_until_cores_done */, true /* force_slow_dispatch */);
 
     std::filesystem::path output_dir = std::filesystem::path(get_profiler_logs_dir());
     std::filesystem::path log_path = output_dir / "sync_device_info.csv";
@@ -214,13 +207,25 @@ void syncDeviceHost(IDevice* device, CoreCoord logical_core, bool doHeader) {
         writeTimes[i] = (TracyGetCpuTime() - writeStart);
     }
 
-    if (auto mesh_device = device->get_mesh_device()) {
-        mesh_device->mesh_command_queue().finish();
-    } else {
-        Finish(device->command_queue());
-    }
+    tt_metal::detail::WaitProgramDone(device, sync_program, false);
 
     log_info("SYNC PROGRAM FINISH IS DONE ON {}", device_id);
+
+    if (std::getenv("TT_METAL_SLOW_DISPATCH_MODE") == nullptr) {
+        launch_msg_t readback_launch_msg;
+        tt::tt_metal::MetalContext::instance().get_cluster().read_core(
+            &readback_launch_msg,
+            sizeof(launch_msg_t),
+            tt_cxy_pair(device->id(), core),
+            device->get_dev_addr(core, HalL1MemAddrType::LAUNCH));
+        readback_launch_msg.kernel_config.mode = DISPATCH_MODE_DEV;
+        tt::tt_metal::MetalContext::instance().get_cluster().write_core(
+            &readback_launch_msg,
+            sizeof(launch_msg_t),
+            tt_cxy_pair(device->id(), core),
+            device->get_dev_addr(core, HalL1MemAddrType::LAUNCH));
+    }
+
     if ((smallestHostime[device_id] == 0) || (smallestHostime[device_id] > hostStartTime)) {
         smallestHostime[device_id] = hostStartTime;
     }
@@ -404,7 +409,7 @@ void syncDeviceDevice(chip_id_t device_id_sender, chip_id_t device_id_receiver) 
         constexpr std::uint16_t sample_size = 16;
         constexpr std::uint16_t channel_count = 1;
         // If fabric is enabled, active_eth_cores is empty.
-        const auto& active_eth_cores = device_sender->get_active_ethernet_cores(true);
+        const auto& active_eth_cores = device_sender->get_active_ethernet_cores(false);
         auto eth_sender_core_iter = active_eth_cores.begin();
         tt_xy_pair eth_receiver_core;
         tt_xy_pair eth_sender_core;
@@ -520,8 +525,7 @@ void ProfilerSync(ProfilerSyncState state) {
         for (int sender_device_id = 0; sender_device_id < TOTAL_DEVICE_COUNT; sender_device_id++) {
             if (tt::DevicePool::instance().is_device_active(sender_device_id)) {
                 auto sender_device = tt::DevicePool::instance().get_active_device(sender_device_id);
-                const auto& active_eth_cores = sender_device->get_active_ethernet_cores(true);
-
+                const auto& active_eth_cores = sender_device->get_active_ethernet_cores(false);
                 chip_id_t receiver_device_id;
                 tt_xy_pair receiver_eth_core;
                 bool doSync = true;
@@ -756,13 +760,15 @@ void DumpDeviceProfileResults(
     if (getDeviceProfilerState()) {
         if (state != ProfilerDumpState::LAST_CLOSE_DEVICE) {
             const auto USE_FAST_DISPATCH = std::getenv("TT_METAL_SLOW_DISPATCH_MODE") == nullptr;
-            if (USE_FAST_DISPATCH) {
-                if (auto mesh_device = device->get_mesh_device()) {
-                    mesh_device->mesh_command_queue().finish();
-                } else {
-                    Finish(device->command_queue());
-                }
-            }
+            // std::cout << "Call finish" << std::endl;
+            // if (USE_FAST_DISPATCH) {
+            //     if (auto mesh_device = device->get_mesh_device()) {
+            //         mesh_device->mesh_command_queue().finish();
+            //     } else {
+            //         Finish(device->command_queue());
+            //     }
+            // }
+            // std::cout << "Done call finish" << std::endl;
         } else {
             if (tt::llrt::RunTimeOptions::get_instance().get_profiler_do_dispatch_cores()) {
                 auto device_id = device->id();

@@ -54,7 +54,8 @@ std::map<chip_id_t, IDevice*> CreateDevices(
     const tt_metal::DispatchCoreConfig& dispatch_core_config = tt_metal::DispatchCoreConfig{},
     const std::vector<uint32_t>& l1_bank_remap = {},
     bool init_profiler = true,
-    bool use_max_eth_core_count_on_all_devices = false);
+    bool use_max_eth_core_count_on_all_devices = false,
+    bool initialize_fabric_and_dispatch_fw = true);
 
 void CloseDevices(const std::map<chip_id_t, IDevice*>& devices);
 

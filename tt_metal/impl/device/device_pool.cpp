@@ -221,7 +221,8 @@ void DevicePool::initialize(
     const DispatchCoreConfig& dispatch_core_config,
     tt::stl::Span<const std::uint32_t> l1_bank_remap,
     bool init_profiler,
-    bool use_max_eth_core_count_on_all_devices) noexcept {
+    bool use_max_eth_core_count_on_all_devices,
+    bool initialize_fabric_and_dispatch_fw) noexcept {
     // Issue #19729: use_max_eth_core_count_on_all_devices is a workaround
     // to allow TT-Mesh Workload dispatch to target active ethernet cores.
     ZoneScoped;
@@ -237,6 +238,8 @@ void DevicePool::initialize(
     _inst->trace_region_size = trace_region_size;
     _inst->num_hw_cqs = num_hw_cqs;
     _inst->l1_bank_remap.assign(l1_bank_remap.begin(), l1_bank_remap.end());
+    _inst->init_profiler_ = init_profiler;
+    _inst->initialize_fabric_and_dispatch_fw_ = initialize_fabric_and_dispatch_fw;
     // Track the thread where the Device Pool was created. Certain functions
     // modifying the state of this instance, for example those responsible for
     // (un)registering worker threads, can only be called in the creation thread
@@ -663,10 +666,10 @@ void DevicePool::init_firmware_on_active_devices() const {
     }
     // At this point base FW is running on all tensix and worker cores, which have been turned on
     // Profiler programs can only run after base FW is initialized, but they must run before Fabric is loaded.
-    if (init_profiler) {
-        _inst->init_profiler();
+    if (init_profiler_) {
+        this->init_profiler();
     }
-    if (initialize_fabric_and_dispatch_fw) {
+    if (initialize_fabric_and_dispatch_fw_) {
         this->initialize_active_devices();
     }
     // At this point, Fabric and Fast Dispatch are running on specific cores
@@ -833,6 +836,10 @@ void DevicePool::close_devices(const std::vector<IDevice*>& devices, bool skip_s
         }
     }
     // At this point, fabric is terminated but ethernet cores are still up.
+    for (const auto& dev : this->get_all_active_devices()) {
+        tt_metal::detail::DumpDeviceProfileResults(dev);
+    }
+
     detail::ProfilerSync(ProfilerSyncState::CLOSE_DEVICE);
     // This turns off active ethernet cores.
     tt::tt_metal::MetalContext::instance().get_cluster().set_internal_routing_info_for_ethernet_cores(false);
