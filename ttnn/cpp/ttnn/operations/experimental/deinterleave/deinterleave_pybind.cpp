@@ -34,6 +34,7 @@ void bind_deinterleave_operation(py::module& module) {
             py::arg("input_height"),
             py::arg("input_width"),
             py::arg("stride_hw") = std::array<uint32_t, 2>{2, 2},
+            py::arg("barrier_threshold") = 0,
             py::arg("compute_kernel_config") = std::nullopt,
         });
 }

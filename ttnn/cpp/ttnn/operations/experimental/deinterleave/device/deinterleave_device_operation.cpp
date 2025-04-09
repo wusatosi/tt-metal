@@ -76,12 +76,14 @@ DeinterleaveOperation::invoke(
     const uint32_t input_height,
     const uint32_t input_width,
     const std::array<uint32_t, 2> stride_hw,
+    const uint32_t barrier_threshold,
     const std::optional<DeviceComputeKernelConfig>& compute_kernel_config) {
     return {
         operation_attributes_t{
             input_height,
             input_width,
             stride_hw,
+            barrier_threshold,
             init_device_compute_kernel_config(input.device()->arch(), compute_kernel_config, MathFidelity::HiFi4),
         },
         tensor_args_t{input},

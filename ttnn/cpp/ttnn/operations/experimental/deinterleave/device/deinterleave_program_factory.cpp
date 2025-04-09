@@ -79,7 +79,7 @@ DeinterleaveOperation::ProgramFactory::cached_program_t DeinterleaveOperation::P
         (uint32_t)stick_size_bytes,
         (uint32_t)operation_attributes.stride_hw[0],
         (uint32_t)operation_attributes.stride_hw[1],
-        (uint32_t)1  // first half
+        (uint32_t)operation_attributes.barrier_threshold,
     };
 
     writer_compile_time_args = {
@@ -90,7 +90,7 @@ DeinterleaveOperation::ProgramFactory::cached_program_t DeinterleaveOperation::P
         (uint32_t)stick_size_bytes,
         (uint32_t)operation_attributes.stride_hw[0],
         (uint32_t)operation_attributes.stride_hw[1],
-        (uint32_t)0  // second half
+        (uint32_t)operation_attributes.barrier_threshold,
     };
 
     auto read_kernel_id = CreateKernel(

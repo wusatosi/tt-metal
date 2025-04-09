@@ -79,7 +79,9 @@ void kernel_main() {
     constexpr uint32_t stick_size_bytes = get_compile_time_arg_val(4);
     constexpr uint32_t stride_h = get_compile_time_arg_val(5);
     constexpr uint32_t stride_w = get_compile_time_arg_val(6);
-    constexpr uint32_t first_half = get_compile_time_arg_val(7);
+    constexpr uint32_t barrier_threshold = get_compile_time_arg_val(7) != 0
+                                               ? get_compile_time_arg_val(7)
+                                               : get_barrier_read_threshold<stick_size_bytes, 2>();
 
     static_assert(stick_size_bytes <= NOC_MAX_BURST_SIZE, "stick size too big, cannot use one_packet API for reads");
     const uint32_t start_x = get_arg_val<uint32_t>(0) + VIRTUAL_TENSIX_START_X;  //
@@ -98,7 +100,7 @@ void kernel_main() {
 
     uint32_t stick_size = stick_size_bytes / 2;
 
-    constexpr uint32_t barrier_threshold = get_barrier_read_threshold<stick_size_bytes, 2>();
+    // constexpr uint32_t barrier_threshold = get_barrier_read_threshold<stick_size_bytes, 2>();
     uint32_t barrier_count = 0;
 
     // handy for debug
