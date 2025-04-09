@@ -452,7 +452,8 @@ def test_demo_text(
         pytest.skip("CI only runs the CI-only tests")
 
     # TODO: Remove this once all batch sizes are supported on TG
-    if os.environ.get("MESH_DEVICE") == "TG" and batch_size not in [1, 32]:
+    mesh_device_name = os.environ.get("MESH_DEVICE")
+    if mesh_device_name == "TG" and batch_size not in [1, 32]:
         pytest.skip("TG only supports batch 1 and 32")
 
     mesh_device.enable_async(True)
@@ -813,10 +814,23 @@ def test_demo_text(
 
     # Benchmark targets
     supported_models = ["Llama3.2-1B", "Llama3.2-3B", "Llama3.1-8B", "Llama3.2-11B", "Llama3.1-70B"]
-    supported_devices = ["N150", "P150", "P300", "N300", "P150x4", "T3K", "TG"]
+    supported_devices = [
+        "N150",
+        "P150",
+        "P300",
+        "N300",
+        "N300_DP_2",
+        "P150x4",
+        "T3K",
+        "T3K_DP_4",
+        "T3K_DP_8",
+        "TG",
+        "TG_DP_4",
+    ]
 
-    tt_device_name = model_args[0].device_name
+    tt_device_name = model_args[0].device_name if data_parallel == 1 else f"{mesh_device_name}_DP_{data_parallel}"
 
+    # TODO: Add targets
     if model_args[0].base_model_name in supported_models:
         assert tt_device_name in supported_devices, f"Device {tt_device_name} not supported"
 
