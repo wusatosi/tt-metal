@@ -9,7 +9,7 @@
 
 namespace ttnn::operations::examples {
 struct MyOperation {
-    static Tensor invoke(const Tensor& input_tensor_a, const Tensor& input_tensor_b, const int input_scalar);
+    static Tensor invoke(const Tensor& input_tensor_a, const Tensor& input_tensor_b, const float input_scalar);
 };
 }  // namespace ttnn::operations::examples
 

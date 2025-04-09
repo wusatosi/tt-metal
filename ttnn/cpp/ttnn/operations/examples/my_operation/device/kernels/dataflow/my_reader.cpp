@@ -9,6 +9,7 @@
 #include "dataflow_api_addrgen.h"
 #include "debug/dprint.h"
 #include "hostdevcommon/kernel_structs.h"
+#include "ttnn/cpp/ttnn/deprecated/tt_dnn/kernels/dataflow/generate_reduce_scaler.hpp"
 
 void kernel_main() {
     uint32_t src0_addr = get_arg_val<uint32_t>(0);
@@ -23,8 +24,10 @@ void kernel_main() {
 
     constexpr uint32_t cb_id_in0 = get_compile_time_arg_val(0);
     constexpr uint32_t cb_id_in1 = get_compile_time_arg_val(1);
+    constexpr uint32_t cb_id_scalar0 = get_compile_time_arg_val(2);
 
-    const uint32_t ublock_size_tiles = get_compile_time_arg_val(2);
+    const uint32_t ublock_size_tiles = get_compile_time_arg_val(3);
+    const uint32_t scalar = get_compile_time_arg_val(4);
 
     const InterleavedAddrGenFast<true> s0 = {
         .bank_base_address = src0_addr,
@@ -54,6 +57,8 @@ void kernel_main() {
 
         cb_push_back(cb_id_in0, ublock_size_tiles);
         cb_push_back(cb_id_in1, ublock_size_tiles);
+
+        generate_reduce_scaler(cb_id_scalar0, scalar);
 
         src0_tile_id += ublock_size_tiles;
         src1_tile_id += ublock_size_tiles;

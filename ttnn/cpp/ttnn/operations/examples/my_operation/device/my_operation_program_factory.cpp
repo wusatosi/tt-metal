@@ -7,6 +7,11 @@ MyDeviceOperation::MyDeviceProgramFactory::cached_program_t MyDeviceOperation::M
     const operation_attributes_t& operation_attributes,
     const tensor_args_t& tensor_args,
     tensor_return_value_t& tensor_return_value) {
+    const union input_scalar_t {
+        float f;
+        uint32_t u;
+    } input_scalar = {operation_attributes.input_scalar};
+
     const auto& input_tensor_a = tensor_args.input_tensor_a;
     const auto& input_tensor_b = tensor_args.input_tensor_b;
 
@@ -37,9 +42,14 @@ MyDeviceOperation::MyDeviceProgramFactory::cached_program_t MyDeviceOperation::M
     // source and output buffers for the reader
     uint32_t src0_cb_index = tt::CBIndex::c_0;
     uint32_t src1_cb_index = tt::CBIndex::c_1;
-    uint32_t output_cb_index = tt::CBIndex::c_2;
+    // buffer for scalar converted to tile format
+    uint32_t scalar0_cb_index = tt::CBIndex::c_2;
 
-    uint32_t mul_cb_index = tt::CBIndex::c_3;
+    // intermediate buffer for add+sqrt result
+    uint32_t sqrt_cb_index = tt::CBIndex::c_3;
+
+    // output after multiply
+    uint32_t output_cb_index = tt::CBIndex::c_4;
 
     uint32_t num_input_tiles = num_tiles * 2;
     uint32_t num_output_tiles = num_tiles * 2;
@@ -54,19 +64,25 @@ MyDeviceOperation::MyDeviceProgramFactory::cached_program_t MyDeviceOperation::M
             .set_page_size(src1_cb_index, single_tile_size);
     auto cb_src1 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_src1_config);
 
+    tt::tt_metal::CircularBufferConfig cb_scalar0_config =
+        tt::tt_metal::CircularBufferConfig(num_input_tiles * single_tile_size, {{scalar0_cb_index, cb_data_format}})
+            .set_page_size(scalar0_cb_index, single_tile_size);
+    auto cb_scalar0 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_scalar0_config);
+
+    tt::tt_metal::CircularBufferConfig cb_sqrt_config =
+        tt::tt_metal::CircularBufferConfig(num_input_tiles * single_tile_size, {{sqrt_cb_index, cb_data_format}})
+            .set_page_size(sqrt_cb_index, single_tile_size);
+    auto cb_sqrt = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_sqrt_config);
+
     tt::tt_metal::CircularBufferConfig cb_output_config =
         tt::tt_metal::CircularBufferConfig(
             num_output_tiles * single_tile_size_output, {{output_cb_index, cb_data_format_output}})
             .set_page_size(output_cb_index, single_tile_size_output);
     auto cb_output = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_output_config);
 
-    tt::tt_metal::CircularBufferConfig cb_mul_config =
-        tt::tt_metal::CircularBufferConfig(num_input_tiles * single_tile_size, {{mul_cb_index, cb_data_format}})
-            .set_page_size(mul_cb_index, single_tile_size);
-    auto cb_mul = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_mul_config);
-
     // create reader and writer kernels
-    std::vector<uint32_t> reader_compile_time_args = {src0_cb_index, src1_cb_index, 1};
+    std::vector<uint32_t> reader_compile_time_args = {
+        src0_cb_index, src1_cb_index, scalar0_cb_index, 1, input_scalar.u};
     std::vector<uint32_t> writer_compile_time_args = {output_cb_index, 1};
 
     tt::tt_metal::KernelHandle reader_kernel = tt::tt_metal::CreateKernel(
@@ -83,21 +99,9 @@ MyDeviceOperation::MyDeviceProgramFactory::cached_program_t MyDeviceOperation::M
 
     // create compute kernel
     std::vector<uint32_t> compute_compile_time_args_1 = {
-        num_tiles_per_core_group_1,
-        16,
-        0x40000000,  // 2.0f in uint32_t
-        src0_cb_index,
-        src1_cb_index,
-        output_cb_index,
-        mul_cb_index};
+        num_tiles_per_core_group_1, 16, src0_cb_index, src1_cb_index, scalar0_cb_index, sqrt_cb_index, output_cb_index};
     std::vector<uint32_t> compute_compile_time_args_2 = {
-        num_tiles_per_core_group_2,
-        16,
-        0x40000000,  // 2.0f in uint32_t
-        src0_cb_index,
-        src1_cb_index,
-        output_cb_index,
-        mul_cb_index};
+        num_tiles_per_core_group_2, 16, src0_cb_index, src1_cb_index, scalar0_cb_index, sqrt_cb_index, output_cb_index};
 
     auto compute_kernel_1 = tt::tt_metal::CreateKernel(
         program,

@@ -50,7 +50,7 @@ MyDeviceOperation::tensor_return_value_t MyDeviceOperation::create_output_tensor
 }
 
 std::tuple<MyDeviceOperation::operation_attributes_t, MyDeviceOperation::tensor_args_t> MyDeviceOperation::invoke(
-    const Tensor& input_tensor_a, const Tensor& input_tensor_b, const int input_scalar) {
+    const Tensor& input_tensor_a, const Tensor& input_tensor_b, const float input_scalar) {
     return {operation_attributes_t{input_scalar}, tensor_args_t{input_tensor_a, input_tensor_b}};
 }
 

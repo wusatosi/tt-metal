@@ -17,7 +17,7 @@ namespace ttnn::operations::examples {
 
 struct MyDeviceOperation {
     struct operation_attributes_t {
-        const int input_scalar;
+        const float input_scalar;
     };
 
     struct tensor_args_t {
@@ -69,7 +69,7 @@ struct MyDeviceOperation {
         const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args);
 
     static std::tuple<operation_attributes_t, tensor_args_t> invoke(
-        const Tensor& input_tensor_a, const Tensor& input_tensor_b, const int input_scalar);
+        const Tensor& input_tensor_a, const Tensor& input_tensor_b, const float input_scalar);
 };
 
 }  // namespace ttnn::operations::examples

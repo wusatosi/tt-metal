@@ -10,68 +10,62 @@
 #include "compute_kernel_api/eltwise_unary/sqrt.h"
 #include "debug/dprint.h"
 
+namespace NAMESPACE {
 ALWI void sqrt_add_mul(uint32_t num_of_tiles) {
-    DPRINT << "Doing op for " << num_of_tiles << " tiles" << ENDL();
+    constexpr auto cb_in0 = get_compile_time_arg_val(2);
+    constexpr auto cb_in1 = get_compile_time_arg_val(3);
+    constexpr auto cb_scalar0 = get_compile_time_arg_val(4);
+    constexpr auto cb_sqrt = get_compile_time_arg_val(5);
+    constexpr auto cb_out0 = get_compile_time_arg_val(6);
 
-    const uint32_t scalar = get_compile_time_arg_val(2);
+    // add A and B
+    DPRINT << "sqrt(A+B)" << ENDL();
+    ckernel::binary_op_init_common(cb_in0, cb_in1, cb_sqrt);
 
-    constexpr auto cb_in0 = get_compile_time_arg_val(3);
-    constexpr auto cb_in1 = get_compile_time_arg_val(4);
-
-    constexpr auto cb_out0 = get_compile_time_arg_val(5);
-
-    constexpr auto cb_inp0 = get_compile_time_arg_val(6);
-
-    // copy B to dest
-    DPRINT << "B to Dest" << ENDL();
+    cb_wait_front(cb_in0, num_of_tiles);
     cb_wait_front(cb_in1, num_of_tiles);
     ckernel::tile_regs_acquire();
-    ckernel::copy_tile_init(cb_in1);
-    for (uint32_t i = 0; i < num_of_tiles; i++) {
-        ckernel::copy_tile(cb_in1, i, i);
-    }
 
-    // multiply by scalar
-    DPRINT << "Multiplying" << ENDL();
-    ckernel::binop_with_scalar_tile_init();
+    ckernel::add_tiles_init(cb_in0, cb_in1);
     for (uint32_t i = 0; i < num_of_tiles; i++) {
-        ckernel::mul_unary_tile(i, scalar);
-    }
-    ckernel::tile_regs_commit();
-    cb_pop_front(cb_in1, num_of_tiles);
-
-    // push to intermediate buffer C
-    DPRINT << "Pushing to C" << ENDL();
-    cb_reserve_back(cb_inp0, num_of_tiles);
-    ckernel::tile_regs_wait();
-    for (uint32_t i = 0; i < num_of_tiles; i++) {
-        ckernel::pack_tile(i, cb_inp0, i);
-    }
-    ckernel::tile_regs_release();
-    cb_push_back(cb_inp0, num_of_tiles);
-
-    // add A and C and take sqrt
-    DPRINT << "Adding A and C and taking sqrt" << ENDL();
-    cb_wait_front(cb_in0, num_of_tiles);
-    cb_wait_front(cb_inp0, num_of_tiles);
-    ckernel::tile_regs_acquire();
-
-    ckernel::add_tiles_init(cb_in0, cb_inp0);
-    for (uint32_t i = 0; i < num_of_tiles; i++) {
-        ckernel::add_tiles(cb_in0, cb_inp0, i, i, i);
+        ckernel::add_tiles(cb_in0, cb_in1, i, i, i);
     }
 
     ckernel::sqrt_tile_init();
-    for (uint32_t i = 0; i < num_of_tiles; i++) {
-        ckernel::sqrt_tile(i);
-    }
 
     ckernel::tile_regs_commit();
     cb_pop_front(cb_in0, num_of_tiles);
-    cb_pop_front(cb_inp0, num_of_tiles);
+    cb_pop_front(cb_in1, num_of_tiles);
+
+    // push intermediate result
+    DPRINT << "Push sqrt(A+B)" << ENDL();
+    cb_reserve_back(cb_sqrt, num_of_tiles);
+    ckernel::tile_regs_wait();
+    for (uint32_t i = 0; i < num_of_tiles; i++) {
+        ckernel::pack_tile(i, cb_sqrt, i);
+    }
+    ckernel::tile_regs_release();
+    cb_push_back(cb_sqrt, num_of_tiles);
+
+    // multiply with scalar
+    DPRINT << "sqrt(A+B)*C" << ENDL();
+    ckernel::binary_op_init_common(cb_scalar0, cb_sqrt, cb_out0);
+
+    cb_wait_front(cb_scalar0, num_of_tiles);
+    cb_wait_front(cb_sqrt, num_of_tiles);
+    ckernel::tile_regs_acquire();
+
+    ckernel::mul_tiles_init(cb_scalar0, cb_sqrt);
+    for (uint32_t i = 0; i < num_of_tiles; i++) {
+        ckernel::mul_tiles(cb_scalar0, cb_sqrt, i, i, i);
+    }
+
+    ckernel::tile_regs_commit();
+    cb_pop_front(cb_scalar0, num_of_tiles);
+    cb_pop_front(cb_sqrt, num_of_tiles);
 
     // move to out
-    DPRINT << "Moving to output" << ENDL();
+    DPRINT << "Push output" << ENDL();
     cb_reserve_back(cb_out0, num_of_tiles);
     ckernel::tile_regs_wait();
     for (uint32_t i = 0; i < num_of_tiles; i++) {
@@ -81,7 +75,6 @@ ALWI void sqrt_add_mul(uint32_t num_of_tiles) {
     cb_push_back(cb_out0, num_of_tiles);
 }
 
-namespace NAMESPACE {
 void MAIN {
     uint32_t per_core_tile_cnt = get_compile_time_arg_val(0);
     uint32_t per_core_block_size = get_compile_time_arg_val(1);
