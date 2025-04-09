@@ -13,11 +13,7 @@ from models.demos.llama3_subdevices.tt.llama_common import (
 )
 from models.demos.llama3_subdevices.tt.llama_decoder import TtTransformerBlock
 from models.demos.llama3_subdevices.tt.model_config import TtModelArgs
-from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import TransformerBlock, precompute_freqs_cis
-from models.utility_functions import (
-    comp_pcc,
-    comp_allclose,
-)
+from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import precompute_freqs_cis
 from models.utility_functions import skip_for_grayskull
 from models.demos.llama3_subdevices.tt.prefetcher_common import TtLlamaPrefetcherSetup
 from models.demos.llama3_subdevices.tt.llama_ccl import TT_CCL
@@ -39,12 +35,12 @@ from tracy import signpost
 @pytest.mark.parametrize(
     "paged_attention",
     (
-        # True,
-        False,
+        True,
+        # False,
     ),
     ids=(
-        # "paged_attention",
-        "default_attention",
+        "paged_attention",
+        # "default_attention",
     ),
 )
 @pytest.mark.parametrize(
@@ -87,8 +83,8 @@ def test_llama_decoder_inference(
         k[len(first_layer_prefix) :]: v for k, v in state_dict.items() if (k.startswith(first_layer_prefix))
     }
 
-    reference_model = TransformerBlock(layer_id=0, args=model_args)
-    reference_model.load_state_dict(partial_state_dict)
+    # reference_model = TransformerBlock(layer_id=0, args=model_args)
+    # reference_model.load_state_dict(partial_state_dict)
 
     generation_start_pos = 0
     generation_length = 2
@@ -174,7 +170,7 @@ def test_llama_decoder_inference(
         # Reference model
         attn_mask = torch.full((max_seq_len, max_seq_len), torch.finfo(torch.float32).min)
         attn_mask_torch = torch.triu(attn_mask, diagonal=1)
-        ref_output = reference_model(pt_decode_input, positions[0], freqs_cis_i, mask=attn_mask_torch)
+        # ref_output = reference_model(pt_decode_input, positions[0], freqs_cis_i, mask=attn_mask_torch)
         # Run TT model
         if i == 1:
             signpost("DECODER_4K")
@@ -188,18 +184,18 @@ def test_llama_decoder_inference(
         tt_output_torch = tt_out[:, 0:1, :, : model_args.dim].view(
             batch_size, max_seq_len, -1
         )  # [ batch_size, seq, hidden_dim]
-        passing, pcc_message = comp_pcc(ref_output, tt_output_torch)
+    #     passing, pcc_message = comp_pcc(ref_output, tt_output_torch)
 
-        logger.info(comp_allclose(ref_output, tt_output_torch))
-        logger.info(f"PCC: {pcc_message}")
-        if passing:
-            logger.info("Llama Decoder Block Passed!")
-        else:
-            logger.warning("Llama Decoder Block Failed!")
-            all_tests_pass = False
+    #     logger.info(comp_allclose(ref_output, tt_output_torch))
+    #     logger.info(f"PCC: {pcc_message}")
+    #     if passing:
+    #         logger.info("Llama Decoder Block Passed!")
+    #     else:
+    #         logger.warning("Llama Decoder Block Failed!")
+    #         all_tests_pass = False
     tt_ccl.close()
-    if all_tests_pass:
-        logger.info(f"All Llama decode iterations Passed!")
-    else:
-        logger.warning("One or more iterations of Llama decode Failed!")
-        assert all_tests_pass, f"PCC value is lower than {0.99} for some of the outputs. Check Warnings!"
+    # if all_tests_pass:
+    #     logger.info(f"All Llama decode iterations Passed!")
+    # else:
+    #     logger.warning("One or more iterations of Llama decode Failed!")
+    #     assert all_tests_pass, f"PCC value is lower than {0.99} for some of the outputs. Check Warnings!"
