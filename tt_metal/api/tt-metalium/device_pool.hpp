@@ -52,6 +52,9 @@ public:
         const tt_metal::DispatchCoreConfig& dispatch_core_config,
         tt::stl::Span<const std::uint32_t> l1_bank_remap = {}) noexcept;
 
+    // Initialize state for activated devices
+    void initialize_active_devices() const;
+    void wait_for_fabric_router_sync() const;
     tt_metal::IDevice* get_active_device(chip_id_t device_id) const;
     std::vector<tt_metal::IDevice*> get_all_active_devices() const;
     bool close_device(chip_id_t device_id);
@@ -80,7 +83,8 @@ private:
     std::thread::id device_pool_creation_thread_id;
     bool skip_remote_devices;
     std::unordered_set<uint32_t> firmware_built_keys;
-
+    bool init_profiler_;
+    bool initialize_fabric_and_dispatch_fw_;
     // Determine which CPU cores the worker threads need to be placed on for each device
     std::unordered_map<uint32_t, uint32_t> worker_thread_to_cpu_core_map;
     std::unordered_map<uint32_t, uint32_t> completion_queue_reader_to_cpu_core_map;
@@ -89,10 +93,7 @@ private:
     void activate_device(chip_id_t id);
     // Initialize state on the host for this device
     void initialize_host(tt_metal::IDevice* dev) const;
-    // Initialize state for activated devices
-    void initialize_active_devices() const;
     void add_devices_to_pool(const std::vector<chip_id_t>& device_ids);
-    void wait_for_fabric_router_sync() const;
     tt_metal::IDevice* get_device(chip_id_t id) const;
 
     static DevicePool* _inst;

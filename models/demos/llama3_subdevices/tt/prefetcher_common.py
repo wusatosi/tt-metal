@@ -90,7 +90,7 @@ class TtLlamaPrefetcherSetup(LightweightModule):
             # self.global_circular_buffer = ttnn.create_global_circular_buffer(
             #     self.mesh_device, self.sender_receiver_mapping, self.global_cb_size
             # )
-            # logger.info(f"GlobalCB size {self.global_cb_size}")
+            logger.info(f"GlobalCB size {self.global_cb_size}")
             self.global_circular_buffer = None  # Global CB will only be allocated before decode runs
             self.prefetcher_sub_device = ttnn.SubDevice([self.sender_core_range_set])
             self.worker_sub_device = ttnn.SubDevice([self.worker_cores_range_set])
@@ -107,6 +107,7 @@ class TtLlamaPrefetcherSetup(LightweightModule):
         self.tensors = []
         self.tensor_addrs = []  # List of buffer addresses
         self.save_tensor_addresses = save_tensor_addresses
+        logger.info("Done running TtLlamaPrefetcherSetup")
 
     def create_global_cb(self):
         if not hasattr(self, "global_circular_buffer") or self.global_circular_buffer is None:

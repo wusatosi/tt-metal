@@ -743,7 +743,7 @@ void DeviceProfiler::dumpResults(
                     tt_metal::detail::ReadFromBuffer(output_dram_buffer, profile_buffer);
                 }
             } else {
-                EnqueueReadBuffer(device->command_queue(), output_dram_buffer, profile_buffer, true);
+                tt_metal::detail::ReadFromBuffer(output_dram_buffer, profile_buffer);
             }
         } else {
             if (state != ProfilerDumpState::LAST_CLOSE_DEVICE) {

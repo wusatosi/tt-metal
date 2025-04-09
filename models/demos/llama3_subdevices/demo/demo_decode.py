@@ -32,7 +32,7 @@ from models.demos.llama3_subdevices.tt.model_config import LlamaOptimizations
 TSU_PERF_DROP_LIMIT_COUNT = 5
 
 # Constants for TSU thresholds based on the number of layers
-TSU_THRESHOLDS = {1: {"min": 340, "max": 355}, 80: {"min": 39, "max": 41}}
+TSU_THRESHOLDS = {1: {"min": 340, "max": 355}, 80: {"min": 39, "max": 41}, 10: {"min": 39, "max": 41}}
 
 
 def load_and_cache_context(context_url, cache_dir, max_length=None):
@@ -152,6 +152,7 @@ def run_llama3_demo(
         batch_prompts.append([input_prompts[(j + i) % len(input_prompts)] for j in range(len(input_prompts))])
 
     # Load model args, weights, and tokenizer
+    print("Create model args")
     model_args = TtModelArgs(
         mesh_device,
         instruct=instruct_mode,
@@ -161,9 +162,9 @@ def run_llama3_demo(
         dummy_weights=dummy_weights,
     )
     model_args.n_layers = layers
-
+    print("Done create model args")
     tokenizer = Tokenizer(model_args.tokenizer_path)
-
+    print("Done create tokenizer")
     # Check max sequence length compatibility with model and architecture. Refer to README for more information
     llama_model_name = model_args.model_name  # ["3.2-1B", "3.2-3B", "3.1-8B", "3.2-11B", "3.1-70B"]
     tt_device_name = model_args.device_name  # ["N150", "N300", "T3K", "TG"]
@@ -176,7 +177,7 @@ def run_llama3_demo(
     profiler.start("weight_loading")
     state_dict = model_args.load_state_dict()
     profiler.end("weight_loading")
-
+    logger.info("Done loading weights...")
     page_table_tt = None
     if paged_attention:
         # Implied shuffling of blocks

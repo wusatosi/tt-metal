@@ -115,7 +115,7 @@ def device(request, device_params):
 
     yield device
 
-    ttnn.DumpDeviceProfiler(device)
+    # ttnn.DumpDeviceProfiler(device)
     ttnn.close_device(device)
 
 
@@ -133,8 +133,8 @@ def pcie_devices(request, device_params):
 
     yield [devices[i] for i in range(num_devices)]
 
-    for device in devices.values():
-        ttnn.DumpDeviceProfiler(device)
+    # for device in devices.values():
+    #     ttnn.DumpDeviceProfiler(device)
 
     ttnn.CloseDevices(devices)
 
@@ -153,8 +153,8 @@ def all_devices(request, device_params):
 
     yield [devices[i] for i in range(num_devices)]
 
-    for device in devices.values():
-        ttnn.DumpDeviceProfiler(device)
+    # for device in devices.values():
+    #     ttnn.DumpDeviceProfiler(device)
 
     ttnn.CloseDevices(devices)
 
@@ -228,8 +228,8 @@ def mesh_device(request, silicon_arch_name, device_params):
     logger.debug(f"multidevice with {mesh_device.get_num_devices()} devices is created")
     yield mesh_device
 
-    for device in mesh_device.get_devices():
-        ttnn.DumpDeviceProfiler(device)
+    # for device in mesh_device.get_devices():
+    #     ttnn.DumpDeviceProfiler(device)
 
     ttnn.close_mesh_device(mesh_device)
     reset_fabric(fabric_config)
@@ -264,8 +264,8 @@ def pcie_mesh_device(request, silicon_arch_name, silicon_arch_wormhole_b0, devic
     logger.debug(f"multidevice with {mesh_device.get_num_devices()} devices is created")
     yield mesh_device
 
-    for device in mesh_device.get_devices():
-        ttnn.DumpDeviceProfiler(device)
+    # for device in mesh_device.get_devices():
+    #     ttnn.DumpDeviceProfiler(device)
 
     ttnn.close_mesh_device(mesh_device)
     reset_fabric(fabric_config)
@@ -290,8 +290,8 @@ def n300_mesh_device(request, silicon_arch_name, silicon_arch_wormhole_b0, devic
     logger.debug(f"multidevice with {mesh_device.get_num_devices()} devices is created")
     yield mesh_device
 
-    for device in mesh_device.get_devices():
-        ttnn.DumpDeviceProfiler(device)
+    # for device in mesh_device.get_devices():
+    #     ttnn.DumpDeviceProfiler(device)
 
     ttnn.close_mesh_device(mesh_device)
     reset_fabric(fabric_config)
@@ -317,8 +317,8 @@ def t3k_mesh_device(request, silicon_arch_name, silicon_arch_wormhole_b0, device
     logger.debug(f"multidevice with {mesh_device.get_num_devices()} devices is created")
     yield mesh_device
 
-    for device in mesh_device.get_devices():
-        ttnn.DumpDeviceProfiler(device)
+    # for device in mesh_device.get_devices():
+    #     ttnn.DumpDeviceProfiler(device)
 
     ttnn.close_mesh_device(mesh_device)
     reset_fabric(fabric_config)

@@ -267,7 +267,6 @@ void DevicePool::initialize(
     tt::tt_metal::MetalContext::instance().get_cluster().set_internal_routing_info_for_ethernet_cores(
         true, target_mmio_ids);
     _inst->wait_for_fabric_router_sync();
-    _inst->init_profiler_devices();
 }
 
 void DevicePool::initialize_host(IDevice* dev) const {
@@ -623,7 +622,7 @@ void DevicePool::init_firmware_on_active_devices() const {
             }
         }
     }
-
+    this->init_profiler_devices();
     this->initialize_active_devices();
 }
 
@@ -784,7 +783,12 @@ void DevicePool::close_devices(const std::vector<IDevice*>& devices) {
                 dev, fabric_master_router_core, fabric_router_sync_sem_addr, master_router_terminate, CoreType::ETH);
         }
     }
+    // At this point, fabric is terminated but ethernet cores are still up.
+    for (const auto& dev : this->get_all_active_devices()) {
+        tt_metal::detail::DumpDeviceProfileResults(dev);
+    }
 
+    detail::ProfilerSync(ProfilerSyncState::CLOSE_DEVICE);
     tt::tt_metal::MetalContext::instance().get_cluster().set_internal_routing_info_for_ethernet_cores(false);
     for (const auto& dev_id : devices_to_close) {
         auto dev = tt::DevicePool::instance().get_active_device(dev_id);

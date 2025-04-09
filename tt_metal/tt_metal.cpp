@@ -388,6 +388,7 @@ std::map<chip_id_t, IDevice*> CreateDevices(
     ZoneScoped;
     bool is_galaxy = tt::tt_metal::MetalContext::instance().get_cluster().is_galaxy_cluster();
     tt::DevicePool::initialize(device_ids, num_hw_cqs, l1_small_size, trace_region_size, dispatch_core_config);
+
     const auto devices = tt::DevicePool::instance().get_all_active_devices();
     std::map<chip_id_t, IDevice*> ret_devices;
     // Only include the mmio device in the active devices set returned to the caller if we are not running
@@ -765,7 +766,7 @@ void WaitProgramDone(IDevice* device, Program& program) {
     }
     // Wait for all cores to be done
     llrt::internal_::wait_until_cores_done(device_id, RUN_MSG_GO, not_done_cores);
-    DumpDeviceProfileResults(device, program);
+    // DumpDeviceProfileResults(device, program);
 }
 
 bool ConfigureDeviceWithProgram(IDevice* device, Program& program, bool fd_bootloader_mode) {
