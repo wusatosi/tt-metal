@@ -2,25 +2,24 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-import pytest
-import torch
-import random
+import json
 import os
-import numpy as np
+import random
+import signal
+import time
+from datetime import datetime
 from functools import partial
 from operator import contains, eq, getitem
 from pathlib import Path
-import json
-import multiprocess
-import signal
-import time
-import psutil
-from datetime import datetime
 
+import multiprocess
+import numpy as np
+import psutil
+import pytest
+import torch
 from loguru import logger
 
-from tests.scripts.common import run_process_and_get_result
-from tests.scripts.common import get_updated_device_params
+from tests.scripts.common import get_updated_device_params, run_process_and_get_result
 
 
 @pytest.fixture(scope="function")
@@ -310,7 +309,7 @@ def t3k_mesh_device(request, silicon_arch_name, silicon_arch_wormhole_b0, device
     fabric_config = updated_device_params.pop("fabric_config", None)
     set_fabric(fabric_config)
     mesh_device = ttnn.open_mesh_device(
-        mesh_shape=ttnn.MeshShape(1, 8),
+        mesh_shape=ttnn.MeshShape(8, 1),
         **updated_device_params,
     )
 
