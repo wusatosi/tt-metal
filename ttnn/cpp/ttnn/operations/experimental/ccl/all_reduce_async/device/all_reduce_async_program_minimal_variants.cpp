@@ -58,7 +58,8 @@ tt::tt_metal::operation::ProgramWithCallbacks all_reduce_async_minimal_multi_cor
     const std::optional<tt::tt_metal::SubDeviceId>& sub_device_id,
     bool enable_persistent_fabric_mode) {
     tt::tt_metal::Program program{};
-
+    std::cout << "Call AR on " << input_tensor.device()->id() << std::endl;
+    std::cout << "Num links: " << num_links << std::endl;
     IDevice* device = input_tensor.device();
     bool is_first_chip = ring_index == 0;
     bool is_last_chip = ring_index == ring_size - 1;
@@ -76,6 +77,9 @@ tt::tt_metal::operation::ProgramWithCallbacks all_reduce_async_minimal_multi_cor
     auto [num_targets_forward, num_targets_backward, dynamic_alternate] =
         ccl::get_forward_backward_configuration(ring_size, ring_index, topology);
 
+    std::cout << "Num Targets FWD: " << num_targets_forward << " Num Targets BWD: " << num_targets_backward
+              << std::endl;
+
     // Tensor Info
     const auto input_tensor_num_pages = input_tensor.buffer()->num_pages();
     const auto input_tensor_cores = input_tensor.memory_config().shard_spec->grid;
@@ -91,6 +95,8 @@ tt::tt_metal::operation::ProgramWithCallbacks all_reduce_async_minimal_multi_cor
     auto sub_device_cores = device->worker_cores(
         tt::tt_metal::HalProgrammableCoreType::TENSIX, sub_device_id.value_or(device->get_sub_device_ids().at(0)));
 
+    std::cout << "Num Sub Device Cores: " << sub_device_cores.size() << std::endl;
+
     std::vector<CoreRange> output_cores;
     for (const auto& cr : sub_device_cores.ranges()) {
         const auto intersection = output_tensor_cores.intersection(cr);
@@ -98,34 +104,40 @@ tt::tt_metal::operation::ProgramWithCallbacks all_reduce_async_minimal_multi_cor
             output_cores.push_back(intersection.bounding_box());
         }
     }
+    std::cout << "Num Output Cores: " << output_cores.size() << std::endl;
+    std::cout << "Num Input Cores: " << input_tensor_cores.size() << std::endl;
+
     // output_cores_all is the bounding box of the output_tensor_cores but respecting boundaries of subdevice grids
     CoreRangeSet output_cores_all(output_cores);
 
     CoreRangeSet reserved_cores = output_cores_all;
     auto available_cores = sub_device_cores.subtract(reserved_cores);
+    std::cout << "Num available cores: " << available_cores.size() << std::endl;
     // Get worker cores, assuming 1 worker per link
     uint32_t num_workers_per_link = 1;
     const auto [sender_worker_core_range, sender_worker_cores] =
         ar_choose_worker_cores(num_links, num_workers_per_link, enable_persistent_fabric_mode, available_cores);
-
+    std::cout << "Num sender worker cores: " << sender_worker_cores.size() << std::endl;
     constexpr bool has_work = 1;
 
     // output_cores_unused is the cores that should do no work
     auto output_cores_unused = output_cores_all.subtract(output_tensor_cores);
+    std::cout << "Num output cores unused: " << output_cores_unused.size() << std::endl;
     // all_cores is both sender and worker cores
     auto all_cores = output_cores_all.merge(sender_worker_core_range);
 
-    tt::log_debug(tt::LogOp, "input_tensor_num_pages: {}", input_tensor_num_pages);
-    tt::log_debug(tt::LogOp, "input_tensor_cores: {}", input_tensor_cores);
-    tt::log_debug(tt::LogOp, "input_tensor_shard_shape: {}", input_tensor_shard_shape);
-    tt::log_debug(tt::LogOp, "input_tensor_shard_num_pages: {}", input_tensor_shard_num_pages);
-    tt::log_debug(tt::LogOp, "output_tensor_cores: {}", output_tensor_cores);
-    tt::log_debug(tt::LogOp, "output_tensor_shard_shape: {}", output_tensor_shard_shape);
-    tt::log_debug(tt::LogOp, "output_tensor_shard_num_pages: {}", output_tensor_shard_num_pages);
+    tt::log_info(tt::LogOp, "input_tensor_num_pages: {}", input_tensor_num_pages);
+    tt::log_info(tt::LogOp, "input_tensor_cores: {}", input_tensor_cores);
+    tt::log_info(tt::LogOp, "input_tensor_shard_shape: {}", input_tensor_shard_shape);
+    tt::log_info(tt::LogOp, "input_tensor_shard_num_pages: {}", input_tensor_shard_num_pages);
+    tt::log_info(tt::LogOp, "output_tensor_cores: {}", output_tensor_cores);
+    tt::log_info(tt::LogOp, "output_tensor_shard_shape: {}", output_tensor_shard_shape);
+    tt::log_info(tt::LogOp, "output_tensor_shard_num_pages: {}", output_tensor_shard_num_pages);
 
     // L1 Scratch CB Creation
     const auto& edm_config = tt::tt_fabric::get_1d_fabric_config();
     const size_t packet_size_bytes = edm_config.channel_buffer_size_bytes;
+    std::cout << "Packet Size Bytes: " << packet_size_bytes << std::endl;
     uint32_t l1_scratch_cb_page_size_bytes = op_config.get_page_size();
     uint32_t num_pages_per_packet = packet_size_bytes / l1_scratch_cb_page_size_bytes;
     uint32_t cb_num_pages = tt::div_up(output_tensor_cores.num_cores(), num_links) * output_tensor_shard_num_pages;
@@ -344,6 +356,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_reduce_async_minimal_multi_cor
     // Kernel Runtime Args
     for (uint32_t link = 0; link < num_links; link++) {
         CoreCoord core = sender_worker_cores[link];
+        std::cout << "Set RTAs for Link: " << link << " Core: " << core.str() << std::endl;
         CoreCoord drain_sync_core = device->worker_core_from_logical_core(core);
         uint32_t worker_num_tiles_to_read = output_tensor_pages_in_link[link];
 
@@ -377,9 +390,9 @@ tt::tt_metal::operation::ProgramWithCallbacks all_reduce_async_minimal_multi_cor
         };
         reader_rt_args.insert(reader_rt_args.end(), input_tensor_cores_x.begin(), input_tensor_cores_x.end());
         reader_rt_args.insert(reader_rt_args.end(), input_tensor_cores_y.begin(), input_tensor_cores_y.end());
-        log_trace(tt::LogOp, "Reader Runtime Args:");
+        log_info(tt::LogOp, "Reader Runtime Args:");
         for (const auto& arg : reader_rt_args) {
-            log_trace(tt::LogOp, "\t{}", arg);
+            log_info(tt::LogOp, "\t{}", arg);
         }
         tt::tt_metal::SetRuntimeArgs(program, worker_sender_reader_kernel_id, {core}, reader_rt_args);
 
@@ -432,11 +445,6 @@ tt::tt_metal::operation::ProgramWithCallbacks all_reduce_async_minimal_multi_cor
         writer_rt_args.insert(writer_rt_args.end(), mcast_end_x.begin(), mcast_end_x.end());
         writer_rt_args.insert(writer_rt_args.end(), mcast_end_y.begin(), mcast_end_y.end());
 
-        log_trace(tt::LogOp, "Writer Runtime Args:");
-        for (const auto& arg : writer_rt_args) {
-            log_trace(tt::LogOp, "\t{}", arg);
-        }
-
         writer_rt_args.push_back(forward_device.has_value());
         if (forward_device.has_value()) {
             tt::tt_fabric::append_fabric_connection_rt_args(
@@ -447,6 +455,10 @@ tt::tt_metal::operation::ProgramWithCallbacks all_reduce_async_minimal_multi_cor
         if (backward_device.has_value()) {
             tt::tt_fabric::append_fabric_connection_rt_args(
                 device->id(), backward_device.value()->id(), link, program, {core}, writer_rt_args);
+        }
+        log_info(tt::LogOp, "Writer Runtime Args:");
+        for (const auto& arg : writer_rt_args) {
+            log_info(tt::LogOp, "\t{}", arg);
         }
 
         tt::tt_metal::SetRuntimeArgs(program, worker_sender_writer_kernel_id, {core}, writer_rt_args);
