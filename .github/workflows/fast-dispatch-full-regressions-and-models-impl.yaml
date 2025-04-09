@@ -12,6 +12,10 @@ on:
       docker-image:
         required: true
         type: string
+      extra-tag:
+        required: false
+        type: string
+        default: "in-service"
 
 jobs:
   fd-nightly:
@@ -25,7 +29,7 @@ jobs:
             {
               name: "WH N150 ttnn nightly",
               arch: wormhole_b0,
-              runs-on: ["cloud-virtual-machine", "N150", "in-service"],
+              runs-on: ["cloud-virtual-machine", "N150", "${{ inputs.extra-tag }}"],
               cmd: tests/scripts/single_card/nightly/run_ttnn.sh,
               timeout: 70
             }, # Nathan Sidwell
@@ -85,7 +89,7 @@ jobs:
     defaults:
       run:
         shell: bash
-    runs-on: ["cloud-virtual-machine", "in-service", "${{ matrix.card }}"]
+    runs-on: ["cloud-virtual-machine", "${{ inputs.extra-tag }}", "${{ matrix.card }}"]
     steps:
       - name: ⬇️ Checkout
         uses: actions/checkout@v4
@@ -162,7 +166,7 @@ jobs:
     defaults:
       run:
         shell: bash
-    runs-on: ["cloud-virtual-machine", "in-service", "${{ matrix.card }}"]
+    runs-on: ["cloud-virtual-machine", "${{ inputs.extra-tag }}", "${{ matrix.card }}"]
     steps:
       - name: ⬇️ Checkout
         uses: actions/checkout@v4
