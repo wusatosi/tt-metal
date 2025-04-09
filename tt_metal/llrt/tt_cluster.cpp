@@ -299,7 +299,6 @@ void Cluster::open_driver(const bool &skip_driver_allocs) {
             all_chips_set,
             num_host_mem_ch_per_mmio_device,
             skip_driver_allocs,
-            clean_system_resources,
             perform_harvesting);
 
         // Adding this check is a workaround for current UMD bug that only uses this getter to populate private metadata
