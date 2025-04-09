@@ -115,7 +115,7 @@ int main(int argc, char *argv[]) {
 
     my_logical_x_ = mailboxes->core_info.absolute_logical_x;
     my_logical_y_ = mailboxes->core_info.absolute_logical_y;
-    
+
     dbg_init_runtime_dump();
 
     // Cleanup profiler buffer incase we never get the go message
@@ -167,9 +167,9 @@ int main(int argc, char *argv[]) {
         for (uint32_t i = 1; i < 8; i++) {
             dbg_write_runtime_dump(i, semaphore_read(i));
         }
-        dbg_write_runtime_dump(8, dbg_read_debug_bus(DEBUG_BUS_TRISC0_PC));
-        dbg_write_runtime_dump(9, dbg_read_debug_bus(DEBUG_BUS_TRISC1_PC));
-        dbg_write_runtime_dump(10, dbg_read_debug_bus(DEBUG_BUS_TRISC2_PC));
+        dbg_write_runtime_dump(8, dbg_read_debug_bus(DEBUG_BUS_DEBUG_TENSIX_IN_6_ID_EX_PC__29_0_WORD));
+        dbg_write_runtime_dump(9, dbg_read_debug_bus(DEBUG_BUS_DEBUG_TENSIX_IN_7_ID_EX_PC__29_0_WORD));
+        dbg_write_runtime_dump(10, dbg_read_debug_bus(DEBUG_BUS_DEBUG_TENSIX_IN_8_ID_EX_PC__29_0_WORD));
         dbg_close_runtime_dump(1);
         int index = static_cast<std::underlying_type<TensixProcessorTypes>::type>(TensixProcessorTypes::MATH0) + thread_id;
         void (*kernel_address)(uint32_t) = (void (*)(uint32_t))
