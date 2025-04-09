@@ -998,6 +998,16 @@ void assemble_device_commands(
     const auto& program_transfer_info = program.get_program_transfer_info();
     // Multicast Semaphore Cmd
     uint32_t num_multicast_semaphores = program_transfer_info.multicast_semaphores.size();
+    {
+        auto programmable_core_index = hal_ref.get_programmable_core_type_index(HalProgrammableCoreType::ACTIVE_ETH);
+        if (programmable_core_index != -1) {
+            if (!program.get_kernel_groups(programmable_core_index).empty()) {
+                TT_FATAL(
+                    tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_config() == FabricConfig::DISABLED,
+                    "Can't fast dispatch to active ethernet when fabric is enabled");
+            }
+        }
+    }
 
     if (num_multicast_semaphores > 0) {
         uint32_t index = hal_ref.get_programmable_core_type_index(HalProgrammableCoreType::TENSIX);
