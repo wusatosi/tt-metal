@@ -18,8 +18,6 @@ from models.demos.llama3_subdevices.tt.llama_embedding import TtLlamaEmbedding
 from models.demos.llama3_subdevices.tt.prefetcher_common import TtLlamaPrefetcherSetup
 from models.demos.llama3_subdevices.tt.llama_ccl import TT_CCL
 
-from loguru import logger
-
 
 class TtTransformer(LightweightModule):
     def __init__(
@@ -522,7 +520,6 @@ class TtTransformer(LightweightModule):
                 chunk_start_idx=chunk_start_idx,
                 kv_cache=kv_cache[i] if kv_cache is not None else None,
             )
-        logger.info("Finished all decoder layers")
         # ttnn.deallocate(h)
         if mode == "decode":
             ttnn.deallocate(garbage_tensor)
@@ -540,8 +537,6 @@ class TtTransformer(LightweightModule):
         if get_last_token != -1:
             x = x[:, :, get_last_token:, :]
 
-        logger.info("Doing lm_head..")
-        breakpoint()
         return self.lm_head(x, None if mode == "prefill" else self.prefetcher_setup.worker_sub_device_id, mode=mode)
 
     def __del__(self):

@@ -7,8 +7,6 @@ import ttnn
 from models.common.lightweightmodule import LightweightModule
 import torch.nn.functional as F
 
-from loguru import logger
-
 
 def pad_to_next_multiple(tensor):
     # Get the current size of the last two dimensions
@@ -240,10 +238,22 @@ class TtLlamaMLP(LightweightModule):
             w3_out = ttnn.reshape(w3_out, [1, 1, seq_len, -1])
         try:
             w1_out_reduced = self.tt_ccl.line_reduce_scatter(
-                w1_out, cluster_axis=1, num_links=3, memory_config=w1_out.memory_config(), buffer_key="FF1", dim=3
+                # w1_out, cluster_axis=1, num_links=3, memory_config=w1_out.memory_config(), buffer_key="FF1", dim=3
+                w1_out,
+                cluster_axis=1,
+                num_links=1,
+                memory_config=w1_out.memory_config(),
+                buffer_key="FF1",
+                dim=3,
             )
             w3_out_reduced = self.tt_ccl.line_reduce_scatter(
-                w3_out, cluster_axis=1, num_links=3, memory_config=w3_out.memory_config(), buffer_key="FF3", dim=3
+                # w3_out, cluster_axis=1, num_links=3, memory_config=w3_out.memory_config(), buffer_key="FF3", dim=3
+                w3_out,
+                cluster_axis=1,
+                num_links=1,
+                memory_config=w3_out.memory_config(),
+                buffer_key="FF3",
+                dim=3,
             )
 
         except Exception as e:
@@ -301,6 +311,5 @@ class TtLlamaMLP(LightweightModule):
             w2_out_reduced, (1, 1, original_shape[-4] * original_shape[-3] * original_shape[-2], original_shape[-1])
         )
 
-        logger.info("Finished MLP")
         # ttnn.deallocate(w2_out)
         return w2_out_reduced

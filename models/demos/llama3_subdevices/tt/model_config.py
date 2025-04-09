@@ -494,7 +494,6 @@ class TtModelArgs:
             ] = lambda seq_len: ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
                 compute_with_storage_grid_size=(7, 10),
                 in0_block_w=7,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
-                # in0_block_w=14,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
                 out_subblock_h=1,  # Must be divisible by per_core_M
                 out_subblock_w=4,  # Must be divisible by per_core_N, out_subblock_w * out_subblock_h <= 4
                 per_core_M=max(
