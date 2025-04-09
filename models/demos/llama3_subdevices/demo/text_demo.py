@@ -23,8 +23,6 @@ from models.tt_transformers.tt.common import (
 from models.perf.benchmarking_utils import BenchmarkProfiler
 from models.demos.utils.llm_demo_utils import create_benchmark_data
 
-from tracy import signpost
-
 
 def load_and_cache_context(context_url, cache_dir, max_length=None):
     cache_file = cache_dir / hashlib.md5(context_url.encode()).hexdigest()
@@ -446,7 +444,6 @@ def test_demo_text(
             logger.info("Finished prefill warmup")
 
         logger.info(f"Starting prefill...")
-        signpost("RUN_PREFILL_4K")
         profiler.start(f"inference_prefill", iteration=batch_idx)
 
         logits = generator.prefill_forward_text(
