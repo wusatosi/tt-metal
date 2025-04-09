@@ -61,6 +61,7 @@ jobs:
       matrix:
         platform: [
           "tt-beta-ubuntu-2204-n150-large-stable-debug",
+          "tt-beta-ubuntu-2204-n300-large-stable-debug",
         ]
     uses: ./.github/workflows/smoke.yaml
     with:
@@ -77,6 +78,7 @@ jobs:
       matrix:
         test-group: [
           { arch: wormhole_b0, runner-label: tt-beta-ubuntu-2204-n150-large-stable-debug },
+          { arch: wormhole_b0, runner-label: tt-beta-ubuntu-2204-n300-large-stable-debug },
         ]
     uses: ./.github/workflows/build-and-unit-tests.yaml
     with:
@@ -94,6 +96,7 @@ jobs:
       matrix:
         test-group: [
           { arch: wormhole_b0, runner-label: tt-beta-ubuntu-2204-n150-large-stable-debug },
+          { arch: wormhole_b0, runner-label: tt-beta-ubuntu-2204-n300-large-stable-debug },
         ]
     uses: ./.github/workflows/fast-dispatch-build-and-unit-tests.yaml
     with:
@@ -127,6 +130,7 @@ jobs:
       matrix:
         test-group: [
           { arch: wormhole_b0, runner-label: tt-beta-ubuntu-2204-n150-large-stable-debug },
+          { arch: wormhole_b0, runner-label: tt-beta-ubuntu-2204-n300-large-stable-debug },
         ]
     uses: ./.github/workflows/ttnn-post-commit.yaml
     with:
@@ -144,6 +148,7 @@ jobs:
       matrix:
         test-group: [
           { arch: wormhole_b0, runner-label: tt-beta-ubuntu-2204-n150-large-stable-debug },
+          { arch: wormhole_b0, runner-label: tt-beta-ubuntu-2204-n300-large-stable-debug },
         ]
     uses: ./.github/workflows/models-post-commit.yaml
     with:
@@ -160,6 +165,8 @@ jobs:
       matrix:
         test-group: [
           { arch: wormhole_b0, runner-label: tt-beta-ubuntu-2204-n150-large-stable-debug },
+          { arch: wormhole_b0, runner-label: tt-beta-ubuntu-2204-n300-large-stable-debug },
+
         ]
     uses: ./.github/workflows/cpp-post-commit.yaml
     with:
@@ -176,6 +183,8 @@ jobs:
       matrix:
         test-group: [
           { arch: wormhole_b0, runner-label: tt-beta-ubuntu-2204-n150-large-stable-debug },
+          { arch: wormhole_b0, runner-label: tt-beta-ubuntu-2204-n300-large-stable-debug },
+
         ]
     uses: ./.github/workflows/tt-train-post-commit.yaml
     with:
@@ -190,6 +199,7 @@ jobs:
       matrix:
         test-group: [
           { arch: wormhole_b0, runner-label: tt-beta-ubuntu-2204-n150-large-stable-debug },
+          { arch: wormhole_b0, runner-label: tt-beta-ubuntu-2204-n300-large-stable-debug },
         ]
     uses: ./.github/workflows/run-profiler-regression.yaml
     secrets: inherit
