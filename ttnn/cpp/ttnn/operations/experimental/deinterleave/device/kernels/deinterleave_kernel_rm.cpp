@@ -80,6 +80,8 @@ void kernel_main() {
     constexpr uint32_t stride_h = get_compile_time_arg_val(5);
     constexpr uint32_t stride_w = get_compile_time_arg_val(6);
     constexpr uint32_t first_half = get_compile_time_arg_val(7);
+    constexpr uint32_t num_of_dm_cores = 2;
+    constexpr uint32_t num_src_cores = stride_h * stride_w / num_of_dm_cores;
 
     static_assert(stick_size_bytes <= NOC_MAX_BURST_SIZE, "stick size too big, cannot use one_packet API for reads");
     const uint32_t start_x = get_arg_val<uint32_t>(0) + VIRTUAL_TENSIX_START_X;  //
@@ -93,7 +95,6 @@ void kernel_main() {
     const uint32_t dst_offset = get_arg_val<uint32_t>(8);
     const uint32_t offset_x = get_arg_val<uint32_t>(9) + VIRTUAL_TENSIX_START_X;
     const uint32_t offset_y = get_arg_val<uint32_t>(10) + VIRTUAL_TENSIX_START_Y;
-    const uint32_t num_src_cores = get_arg_val<uint32_t>(11);
     const uint32_t dst_rollover_offset = get_arg_val<uint32_t>(12);
 
     uint32_t stick_size = stick_size_bytes / 2;
@@ -116,22 +117,37 @@ void kernel_main() {
     // both DM0/DM1 read from all nodes, assuming that's creating uniform load to the NOC
     // they split reading even/odd lines
     DPRINT << "NOC" << (uint32_t)noc_index << "; T=" << barrier_threshold << "; ssb=" << stick_size_bytes << ENDL();
-    auto dst_address = get_write_ptr(dst_cb_id) + dst_offset;
-
-    uint32_t src_noc_x = offset_x;
-    uint32_t src_noc_y = offset_y;
 
     // DPRINT << "num_src_cores = " << num_src_cores
     //     << "; s=(" << start_y << "-" << start_x << ")"
     //     << "; e=(" << end_y << "-" <<end_x << ")"
     //     << "; o=(" << offset_y << "-" << offset_x << ")" << ENDL();
 
-    for (uint32_t src_core = 0; src_core < num_src_cores; src_core += 2) {
-        // DPRINT << "** src " << src_noc_y << "-" << src_noc_x << "; dst=" << dst_address - get_write_ptr(dst_cb_id) <<
-        // ENDL(); src_noc_address points to the start of the first line (AB) or the second line (CD)
-        auto src_noc_address = get_noc_addr(src_noc_x, src_noc_y, get_read_ptr(src_cb_id)) + src_offset;
+    // precompute addresses to avoid recomputing them in the critical loop
+    uint64_t src_address_start[num_src_cores] = {0};
+    uint32_t dst_address_start[num_src_cores] = {0};
+    uint32_t src_noc_x = offset_x;
+    uint32_t src_noc_y = offset_y;
+    uint32_t dst_address_base = get_write_ptr(dst_cb_id) + dst_offset;
+    for (uint32_t src_core = 0; src_core < num_src_cores; src_core++) {
+        src_address_start[src_core] = get_noc_addr(src_noc_x, src_noc_y, get_read_ptr(src_cb_id) + src_offset);
+        dst_address_start[src_core] = dst_address_base;
+        dst_address_base += num_of_dm_cores * dst_size_bytes;
+        src_noc_x += num_of_dm_cores;
+        if (src_noc_x >= end_x) {
+            src_noc_x = start_x + src_noc_x - end_x;
+            src_noc_y++;
+            if (src_noc_y >= end_y) {  // rollover
+                src_noc_y = start_y;
+                dst_address_base = get_write_ptr(dst_cb_id) + dst_rollover_offset;
+            }
+        }
+    }
+
+    for (uint32_t src_core = 0; src_core < num_src_cores; src_core++) {
+        uint64_t src_noc_address = src_address_start[src_core];
         noc_async_read_one_packet_set_state(src_noc_address, stick_size_bytes);
-        // Copy half of data data from src to dst
+        uint32_t dst_address = dst_address_start[src_core];
         for (uint32_t h = 0; h < height; h += stride_h) {
             for (uint32_t w = 0; w < width; w += stride_w) {
                 noc_async_read_one_packet_with_state<true>(src_noc_address, dst_address);
@@ -145,31 +161,6 @@ void kernel_main() {
             // skip lines to the next src line
             src_noc_address += src_height_offset_to_next;
         }
-        dst_address += dst_size_bytes;  // / 2;  // / 2; // dst_stride - one src image in dst size
-
-        // iterate over src cores, with wrapping
-        // to figure out better place for this!
-        src_noc_x += 2;
-        if (src_noc_x >= end_x) {
-            src_noc_x = start_x + src_noc_x - end_x;
-            src_noc_y++;
-            if (src_noc_y >= end_y) {  // rollover
-                src_noc_y = start_y;
-                // auto old = dst_address;
-                dst_address = get_write_ptr(dst_cb_id) + dst_rollover_offset;
-                // DPRINT << "reset dst_address from " << old - get_write_ptr(dst_cb_id) << " to " << dst_address -
-                // get_write_ptr(dst_cb_id) << ENDL();
-            }
-        }
-
-        // // // to do - handle this in a better way!
-        // auto upper_limit = get_write_ptr(dst_cb_id) + dst_size_bytes * 4;
-        // if (dst_address > upper_limit) {
-
-        //     DPRINT << dst_address << " > " << upper_limit << ENDL();
-        //     dst_address = get_write_ptr(dst_cb_id) + (dst_address - upper_limit);
-        //     DPRINT << "reset dst_address to " << dst_address << ENDL();
-        // }
     }
 
     noc_async_read_barrier();
