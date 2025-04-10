@@ -306,7 +306,8 @@ class Program_ {
     friend std::shared_ptr<CircularBuffer> GetCircularBuffer(const Program &program, CBHandle id);
     friend void ValidateCircularBufferRegion(const Program &program, const IDevice* device);
 
-    friend KernelHandle AddKernel(Program &program, const std::shared_ptr<Kernel>& kernel, const HalProgrammableCoreType core_type);
+    friend KernelHandle AddKernel(
+        Program& program, const std::shared_ptr<Kernel>& kernel, HalProgrammableCoreType core_type);
 
     KernelHandle add_kernel(const std::shared_ptr<Kernel>& kernel, const HalProgrammableCoreType &core_type);
 
