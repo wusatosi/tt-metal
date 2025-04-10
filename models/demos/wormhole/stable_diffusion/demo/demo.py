@@ -19,6 +19,7 @@ from diffusers import (
     AutoencoderKL,
     UNet2DConditionModel,
 )
+from diffusers import StableDiffusionPipeline
 from models.utility_functions import skip_for_grayskull
 from models.utility_functions import (
     enable_persistent_kernel_cache,
@@ -434,6 +435,7 @@ def run_demo_inference_diffusiondb(
 
     height, width = image_size
 
+    pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float32)
     torch_device = "cpu"
     # 1. Load the autoencoder model which will be used to decode the latents into image space.
     vae = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae")
@@ -484,6 +486,7 @@ def run_demo_inference_diffusiondb(
     ttnn_scheduler.set_timesteps(num_inference_steps)
 
     latents = latents * ttnn_scheduler.init_noise_sigma
+
     rand_latents = torch.tensor(latents)
     rand_latents = ttnn.from_torch(rand_latents, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)
 
@@ -504,6 +507,10 @@ def run_demo_inference_diffusiondb(
         experiment_name = f"diffusiondb_{i}__{height}x{width}"
         ttnn_scheduler.set_timesteps(num_inference_steps)
         input_prompt = [f"{data_1k['prompt'][i]}"]
+
+        with torch.no_grad():  # No need to track gradients during inference
+            image_cpu = pipe(input_prompt, num_inference_steps=50, latents=latents).images[0]
+            image_cpu.save("cpu_image.png")
 
         image = np.array(data_1k["image"][i])
         ref_images = Image.fromarray(image)
@@ -578,7 +585,7 @@ def run_demo_inference_diffusiondb(
         ttnn_output_path = f"{experiment_name}_ttnn.png"
         pil_images.save(ttnn_output_path)
 
-        ttnn_paths = [ttnn_output_path, ttnn_output_path]
+        ttnn_paths = ["cpu_image.png", "cpu_image.png"]
         ttnn_images = preprocess_images(ttnn_paths)
         ref_paths = [ref_img_path, ref_img_path]
         ref_images = preprocess_images(ref_paths)
