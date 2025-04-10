@@ -41,10 +41,11 @@ def torch_deinterleave_to_batch(torch_input_nhwc, stride_hw):
 
 
 def run_deinterleave(
+    device,
     shape_nhwc,
     input_memory_config,
     stride_hw,
-    device,
+    barrier_threshold=0,
 ):
     input_dtype = "bfloat16"
     torch_input = 2 * torch.rand(size=shape_nhwc, dtype=get_lib_dtype(torch, input_dtype)) - 1
@@ -99,6 +100,7 @@ def run_deinterleave(
         stride_hw=stride_hw,
         input_height=shape_nhwc[1],
         input_width=shape_nhwc[2],
+        barrier_threshold=barrier_threshold,
     )
 
     torch_output = ttnn.to_torch(ttnn_output)  # .reshape(shape)
@@ -171,11 +173,13 @@ def run_deinterleave(
         # ([1, 1024, 4, 64*64], ttnn.CoreGrid(x=8, y=8), [2, 2]),
     ],
 )
+# @pytest.mark.parametrize("barrier_threshold", [1,2,4,8,16,32,64,128,256])
 def test_deinterleave_shape(
+    device,
     shape,
     core_grid,
     stride_hw,
-    device,
+    barrier_threshold=0,
 ):
     torch.manual_seed(2025)
 
@@ -189,8 +193,9 @@ def test_deinterleave_shape(
     print(f"Memory config: {memory_config}")
 
     run_deinterleave(
+        device,
         shape,
         memory_config,
         stride_hw,
-        device,
+        barrier_threshold,
     )
