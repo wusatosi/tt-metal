@@ -21,7 +21,6 @@ DeinterleaveOperation::ProgramFactoryToBatch::cached_program_t DeinterleaveOpera
     using namespace tt::tt_metal;
     using namespace tt;
 
-    TT_FATAL(operation_attributes.to_batch == true, "Deinterleave: bad configuration.");
     Program program;
 
     const auto& input = tensor_args.input;
@@ -221,8 +220,7 @@ DeinterleaveOperation::ProgramFactoryToBatch::cached_program_t DeinterleaveOpera
         log_warning(
             tt::LogOp,
             "DeinterleaveOperation::ProgramFactoryToBatch::create; core: {} myid {}, start {}-{}, end {}-{}, dst_batch "
-            "{}, "
-            "id_in_batch {} offset_dm0 {}-{} offset_dm1 {}-{}",
+            "{}, id_in_batch {} offset_dm0 {}-{} offset_dm1 {}-{}",
             core,
             my_id,
             start.y,
