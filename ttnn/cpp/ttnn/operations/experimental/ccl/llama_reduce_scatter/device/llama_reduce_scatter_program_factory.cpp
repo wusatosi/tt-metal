@@ -284,8 +284,7 @@ LlamaReduceScatterDeviceOperation::LlamaReduceScatterAdd::create(
 
     tt::tt_metal::Program program{};
 
-    const auto& edm_config = tt::tt_fabric::get_default_fabric_config();
-    const size_t packet_size_bytes = edm_config.channel_buffer_size_bytes;
+    const size_t packet_size_bytes = tt::tt_fabric::get_1d_fabric_config().channel_buffer_size_bytes;
     uint32_t num_pages_per_packet = packet_size_bytes / input_page_size;
 
     uint32_t ncores_input = shard_spec.num_cores();
