@@ -46,16 +46,16 @@ void kernel_main() {
         .bank_base_address = dst_addr1, .page_size = tile_bytes_ind, .data_format = data_format_ind};
 
     // Get Kt rows of values and then Kt rows of indices from compute kernel
-    uint32_t l1_read_addr_val = get_read_ptr(output_val_cb_index);
-    uint32_t l1_read_addr_ind = get_read_ptr(output_ind_cb_index);
     for (uint32_t i = 0; i < Kt; ++i) {
         // topk values
         cb_wait_front(output_val_cb_index, onetile);
+        uint32_t l1_read_addr_val = get_read_ptr(output_val_cb_index);
         noc_async_write_tile(i, interleaved_accessor0, l1_read_addr_val);
         noc_async_write_barrier();
         cb_pop_front(output_val_cb_index, onetile);
 
         cb_wait_front(output_ind_cb_index, onetile);
+        uint32_t l1_read_addr_ind = get_read_ptr(output_ind_cb_index);
         noc_async_write_tile(i, interleaved_accessor1, l1_read_addr_ind);
         noc_async_write_barrier();
         cb_pop_front(output_ind_cb_index, onetile);

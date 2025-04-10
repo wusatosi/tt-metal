@@ -63,6 +63,12 @@ std::vector<Tensor> post_topk_transform_tensor(
     Shape final_lshape = original_lshape;
     final_lshape[dim] = std::min(original_lshape[dim], k);
 
+    std::cout << "TopK result vector contents:" << std::endl;
+    std::cout << "Values tensor (result[0]): " << std::endl;
+    result[0].print();
+    std::cout << "Indices tensor (result[1]): " << std::endl;
+    result[1].print();
+
     // case 1 : K is not a supported shape
     if (adjusted_k != k) {
         auto output_shape = result[0].get_padded_shape();

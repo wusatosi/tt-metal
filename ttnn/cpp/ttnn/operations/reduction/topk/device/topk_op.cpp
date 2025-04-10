@@ -119,8 +119,19 @@ std::vector<Tensor> TopK::create_output_tensors(
 operation::ProgramWithCallbacks TopK::create_program(
     const std::vector<Tensor>& input_tensors, std::vector<Tensor>& output_tensors) const {
     const auto& input_tensor = input_tensors.at(0);
-    return detail::topk_single_core_interleaved(
+
+    auto retValue = detail::topk_single_core_interleaved(
         input_tensor, this->k, this->dim, this->largest, this->sorted, output_tensors.at(0), output_tensors.at(1));
+
+    std::cout << "================================" << std::endl;
+    std::cout << "TopK result vector contents:" << std::endl;
+    std::cout << "Values tensor (result[0]): " << std::endl;
+    output_tensors[0].print();
+    std::cout << "Indices tensor (result[1]): " << std::endl;
+    output_tensors[1].print();
+    std::cout << "================================" << std::endl;
+
+    return retValue;
 }
 
 }  // namespace ttnn::operations::reduction

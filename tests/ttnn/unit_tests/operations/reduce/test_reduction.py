@@ -204,9 +204,9 @@ def test_sum_4d_tensor_dims(device, batch_size, c, h, w, dim, keepdim):
 
 
 @pytest.mark.parametrize("dim1", [1])
-@pytest.mark.parametrize("dim2", [4 * 8192])  # also check, 128256
+@pytest.mark.parametrize("dim2", [32 * 3])  # 4 * 8192])  # also check, 128256
 @pytest.mark.parametrize("dim", [1])
-@pytest.mark.parametrize("k", [32])
+@pytest.mark.parametrize("k", [64])
 @pytest.mark.parametrize("largest", [True])
 @pytest.mark.parametrize("dtype", [ttnn.bfloat16])  # , ttnn.bfloat8_b])
 def test_2d_topk(device, dim1, dim2, dim, k, largest, dtype):
@@ -215,16 +215,17 @@ def test_2d_topk(device, dim1, dim2, dim, k, largest, dtype):
     torch_dtype = torch.bfloat16
 
     input = torch.randn(shape, dtype=torch_dtype)
-    # print("Input Tensor:\n", input)
+    print("Input Tensor:\n", input)
 
     pyt_topk_values, pyt_topk_indices = torch.topk(input, k, dim=dim, largest=largest, sorted=True)
-    # print("PyTorch Top-K Values:\n", pyt_topk_values)
-    # print("PyTorch Top-K Indices:\n", pyt_topk_indices)
+    print("PyTorch Top-K Values:\n", pyt_topk_values)
+    print("PyTorch Top-K Indices:\n", pyt_topk_indices)
 
     ttnn_input = ttnn.from_torch(input, dtype, layout=ttnn.Layout.TILE, device=device)
     ttnn_topk_values, ttnn_topk_indices = ttnn.topk(ttnn_input, k, dim=dim, largest=largest, sorted=True)
-    # print("TTNN Top-K Values:\n", ttnn_topk_values)
-    # print("TTNN Top-K Indices:\n", ttnn_topk_indices)
+    print("\n=== TTNN Tensor Types ===")
+    print(f"ttnn_topk_values dtype: {ttnn_topk_values.get_dtype()}")
+    print(f"ttnn_topk_indices dtype: {ttnn_topk_indices.get_dtype()}")
 
     desired_shape = [dim1, dim2]
     desired_shape[dim] = k
@@ -233,7 +234,11 @@ def test_2d_topk(device, dim1, dim2, dim, k, largest, dtype):
     assert list(ttnn_topk_indices.shape) == desired_shape
 
     ttnn_torch_values = ttnn.to_torch(ttnn_topk_values)
-    ttnn_torch_indices = ttnn.to_torch(ttnn_topk_indices).to(torch.int64)
+    # Only convert to int64 at the last moment for PyTorch compatibility
+    ttnn_torch_indices = ttnn.to_torch(ttnn_topk_indices).to(torch.int32)  # Keep unsigned as long as possible
+    print("\n=== PyTorch Tensor Types ===")
+    print(f"ttnn_torch_values dtype: {ttnn_torch_values.dtype}")
+    print(f"ttnn_torch_indices dtype: {ttnn_torch_indices.dtype}")
     print("TTNN Torch Values:\n", ttnn_torch_values)
     print("TTNN Torch Indices:\n", ttnn_torch_indices)
 
@@ -242,8 +247,10 @@ def test_2d_topk(device, dim1, dim2, dim, k, largest, dtype):
     else:
         pcc_values = 1.0
 
-    ttnn_torch_gather_from_indices = torch.gather(input, dim, ttnn_torch_indices.to(torch.int64))
-    # print("Gathered Values from Indices:\n", ttnn_torch_gather_from_indices)
+    # Convert to int64 only for torch.gather which requires signed indices
+    ttnn_torch_gather_from_indices = torch.gather(
+        input, dim, ttnn_torch_indices.to(torch.int64)  # Convert to signed only for PyTorch API compatibility
+    )
 
     cosine = torch.nn.CosineSimilarity(dim=dim)
     ttnn_torch_cosine = torch.mean(cosine(pyt_topk_values, ttnn_torch_gather_from_indices))

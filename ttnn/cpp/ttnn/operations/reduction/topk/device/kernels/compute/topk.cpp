@@ -12,9 +12,9 @@
 #include "debug/dprint.h"
 
 inline void print_loop(uint32_t count) {
-    UNPACK(DPRINT << "U-LOOP:" << (uint32_t)count << ENDL());
+    // UNPACK(DPRINT << "U-LOOP:" << (uint32_t)count << ENDL());
     MATH(DPRINT << "M-LOOP:" << (uint32_t)count << ENDL());
-    PACK(DPRINT << "P-LOOP:" << (uint32_t)count << ENDL());
+    // PACK(DPRINT << "P-LOOP:" << (uint32_t)count << ENDL());
 }
 
 inline void print_full_tile_column0(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
@@ -76,7 +76,6 @@ void transpose_and_pack(uint32_t input_cb_index, uint32_t dest_cb_index, uint32_
         cb_push_back(dest_cb_index, 1);
         release_dst();
     }
-    // cb_wait_front(input_cb_index, total_tiles);
     cb_pop_front(input_cb_index, total_tiles);
 }
 
@@ -173,14 +172,15 @@ void MAIN {
                 logk);
                 */
     // skip first tile (acquired above), then iterate over remaining tiles
-    uint32_t index = 0;
-    uint32_t count = 0;
 
     cb_reserve_back(result_prep_val_cb_index, output_tiles);
     cb_reserve_back(result_prep_ind_cb_index, output_tiles);
 
-    acquire_dst();
-    for (; count < (Ht * Wt); count++) {
+    print_loop(output_tiles);
+    uint32_t ktiles_saved = 0;
+    for (uint32_t count = 0; count < (Ht * Wt); count++) {
+        acquire_dst();
+
         if (count == 0) {
             cb_wait_front(input_val_cb_index, 2);
             cb_wait_front(input_ind_cb_index, 2);
@@ -195,11 +195,11 @@ void MAIN {
             transpose_wh_tile(input_ind_cb_index, 0, 2);
             transpose_wh_tile(input_ind_cb_index, 1, 3);
 
-            count++;
-
             cb_pop_front(input_val_cb_index, 2);
             cb_pop_front(input_ind_cb_index, 2);
+            count++;
         } else {
+            print_loop(100000 + count);
             cb_wait_front(input_val_cb_index, 1);
             cb_wait_front(input_ind_cb_index, 1);
 
@@ -215,41 +215,52 @@ void MAIN {
             cb_pop_front(input_ind_cb_index, 1);
         }
 
-        // merge values - move larger 32 values into 0th dest and lower 32 values into 1st dest
-        ckernel::topk_local_sort(0, (int)ascending, logk);
+        for (uint32_t index = 0; index < output_tiles; index++) {
+            if (ktiles_saved > index) {
+                print_loop(1000 + index);
+                reconfig_data_format_srca(result_prep_val_cb_index);
+                copy_tile_init(result_prep_val_cb_index);
+                copy_tile(result_prep_val_cb_index, index, 0);
+                reconfig_data_format_srca(result_prep_ind_cb_index);
+                copy_tile_init(result_prep_ind_cb_index);
+                copy_tile(result_prep_ind_cb_index, index, 2);
+            }
+
+            // merge values - move larger 32 values into 0th dest and lower 32 values into 1st dest
+            ckernel::topk_local_sort(0, (int)ascending, 5);
+
+            print_loop(1100 + index);
+            pack_reconfig_data_format(result_prep_val_cb_index);
+            pack_tile<true>(0, result_prep_val_cb_index, index);
+            pack_reconfig_data_format(result_prep_ind_cb_index);
+            pack_tile<true>(2, result_prep_ind_cb_index, index);
+
+            if (output_tiles > ktiles_saved) {
+                ktiles_saved++;  // for tile above
+            }
+
+            // save remainder tile in resul_prep CB if we don't have enough tiles saved yes, otherwise discard
+            if (output_tiles > ktiles_saved) {
+                index++;  // increment index once here to avoid overwriting the tile we just added above
+                print_loop(1200 + index);
+                pack_reconfig_data_format(result_prep_val_cb_index);
+                pack_tile<true>(1, result_prep_val_cb_index, index);
+                pack_reconfig_data_format(result_prep_ind_cb_index);
+                pack_tile<true>(3, result_prep_ind_cb_index, index);
+                index = output_tiles;  // terminating condition for this loop
+                ktiles_saved++;        // for tile added within this if statement
+            }
+        }
+        release_dst();
     }
-
-    pack_reconfig_data_format(result_prep_val_cb_index);
-    pack_tile<true>(0, result_prep_val_cb_index, 0);
-    pack_reconfig_data_format(result_prep_ind_cb_index);
-    pack_tile<true>(2, result_prep_ind_cb_index, 0);
-    release_dst();
-
     cb_push_back(result_prep_val_cb_index, output_tiles);
     cb_push_back(result_prep_ind_cb_index, output_tiles);
 
-    // print_loop(123456);
+    // transpose value tiles and pack into output buffer
+    transpose_and_pack(result_prep_val_cb_index, output_val_cb_index, output_tiles);
 
-    // if(count == (Ht*Wt))
-    {
-        /*
-        process_tile_pair_out(
-            result_prep_val_cb_index,
-            result_prep_ind_cb_index,
-            result_prep_val_cb_index,
-            result_prep_ind_cb_index,
-            ascending,
-            K,
-            logk);
-    */
-        // transpose value tiles and pack into output buffer
-        transpose_and_pack(result_prep_val_cb_index, output_val_cb_index, output_tiles);
-
-        // transpose index tiles and pack into output buffer
-        transpose_and_pack(result_prep_ind_cb_index, output_ind_cb_index, output_tiles);
-    }
-
-    // print_loop(200000);
+    // transpose index tiles and pack into output buffer
+    transpose_and_pack(result_prep_ind_cb_index, output_ind_cb_index, output_tiles);
 }
 
 }  // namespace NAMESPACE

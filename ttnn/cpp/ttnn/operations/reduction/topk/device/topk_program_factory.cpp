@@ -90,6 +90,8 @@ operation::ProgramWithCallbacks topk_single_core_interleaved(
 
     uint32_t input_cb_tile_count = cb_in_units;
     uint32_t transposed_cb_tile_count = 2 * input_cb_tile_count;
+    uint32_t result_prep_cb_tile_count = 2 * Ktiles;  // intermediate output
+    uint32_t output_cb_tile_count = 2 * Ktiles;       // final output
 
     // Print circular buffer configuration
     std::cout << "  Number of CB units: " << num_cb_unit << std::endl;
@@ -135,7 +137,7 @@ operation::ProgramWithCallbacks topk_single_core_interleaved(
     uint32_t result_prep_val_cb_index = tt::CBIndex::c_24;
     tt::tt_metal::CircularBufferConfig result_prep_val_cb_config =
         tt::tt_metal::CircularBufferConfig(
-            cb_in_units * value_tile_size, {{result_prep_val_cb_index, input_cb_data_format}})
+            result_prep_cb_tile_count * value_tile_size, {{result_prep_val_cb_index, input_cb_data_format}})
             .set_page_size(result_prep_val_cb_index, input_tile_size);
     auto cb_input_result_prep_tiles = tt::tt_metal::CreateCircularBuffer(program, core, result_prep_val_cb_config);
 
@@ -143,7 +145,7 @@ operation::ProgramWithCallbacks topk_single_core_interleaved(
     uint32_t result_prep_ind_cb_index = tt::CBIndex::c_25;
     tt::tt_metal::CircularBufferConfig result_prep_ind_cb_config =
         tt::tt_metal::CircularBufferConfig(
-            cb_in_units * index_tile_size, {{result_prep_ind_cb_index, output_ind_cb_data_format}})
+            result_prep_cb_tile_count * index_tile_size, {{result_prep_ind_cb_index, output_ind_cb_data_format}})
             .set_page_size(result_prep_ind_cb_index, index_tile_size);
     auto cb_index_result_prep_tiles = tt::tt_metal::CreateCircularBuffer(program, core, result_prep_ind_cb_config);
 
@@ -151,7 +153,7 @@ operation::ProgramWithCallbacks topk_single_core_interleaved(
     uint32_t output_val_cb_index = tt::CBIndex::c_16;
     tt::tt_metal::CircularBufferConfig output_val_cb_config =
         tt::tt_metal::CircularBufferConfig(
-            cb_in_units * value_tile_size, {{output_val_cb_index, output_val_cb_data_format}})
+            output_cb_tile_count * value_tile_size, {{output_val_cb_index, output_val_cb_data_format}})
             .set_page_size(output_val_cb_index, value_tile_size);
     auto cb_values_tensor = tt::tt_metal::CreateCircularBuffer(program, core, output_val_cb_config);
 
@@ -159,7 +161,7 @@ operation::ProgramWithCallbacks topk_single_core_interleaved(
     uint32_t output_ind_cb_index = tt::CBIndex::c_17;
     tt::tt_metal::CircularBufferConfig output_ind_cb_config =
         tt::tt_metal::CircularBufferConfig(
-            cb_in_units * index_tile_size, {{output_ind_cb_index, output_ind_cb_data_format}})
+            output_cb_tile_count * index_tile_size, {{output_ind_cb_index, output_ind_cb_data_format}})
             .set_page_size(output_ind_cb_index, index_tile_size);
     auto cb_output_ind_tensor = tt::tt_metal::CreateCircularBuffer(program, core, output_ind_cb_config);
 
