@@ -202,3 +202,28 @@ def test_unary_max_fp32_opt(input_shapes, device):
     ttnn.maximum(tt_in, scalar, output_tensor=tt_out, queue_id=cq_id)
     comp_pass = compare_equal([tt_out], [golden])
     assert comp_pass
+
+
+@pytest.mark.parametrize(
+    "input_shape",
+    (
+        (torch.Size([1, 1, 32, 32])),
+        (torch.Size([5, 9, 64, 64])),
+    ),
+)
+def test_unary_max_bf8b(device, input_shape):
+    scalar = 5.5
+    num_elements = torch.prod(torch.tensor(input_shape)).item()
+    torch_input = torch.linspace(100, -100, num_elements, dtype=torch.bfloat16)
+    torch_input = torch_input[:num_elements].reshape(input_shape)
+    input_tensor = ttnn.from_torch(torch_input, dtype=ttnn.bfloat8_b, layout=ttnn.TILE_LAYOUT, device=device)
+    torch_input = ttnn.to_torch(input_tensor)
+
+    golden_function = ttnn.get_golden_function(ttnn.maximum)
+    golden = golden_function(torch_input, torch.full(input_shape, scalar), device=device)
+
+    output_tensor = ttnn.maximum(input_tensor, scalar)
+    output_tensor = ttnn.to_torch(output_tensor)
+
+    assert_with_pcc(golden, output_tensor, 0.9999)
+    assert torch.allclose(golden, output_tensor)

@@ -348,3 +348,33 @@ def test_binary_max_fp32_opt(input_shapes, low_a, high_a, low_b, high_b, device)
     ttnn.maximum(tt_in_a, tt_in_b, output_tensor=tt_out, queue_id=cq_id)
     comp_pass = compare_equal([tt_out], [golden])
     assert comp_pass
+
+
+@pytest.mark.parametrize(
+    "input_shape",
+    (
+        (torch.Size([1, 1, 32, 32])),
+        (torch.Size([5, 9, 64, 64])),
+    ),
+)
+def test_binary_max_bf8b(device, input_shape):
+    num_elements = torch.prod(torch.tensor(input_shape)).item()
+
+    torch_input_a = torch.linspace(100, -100, num_elements, dtype=torch.bfloat16)
+    torch_input_a = torch_input_a[:num_elements].reshape(input_shape)
+    input_tensor_a = ttnn.from_torch(torch_input_a, dtype=ttnn.bfloat8_b, layout=ttnn.TILE_LAYOUT, device=device)
+    torch_input_a = ttnn.to_torch(input_tensor_a)
+
+    torch_input_b = torch.linspace(300, -300, num_elements, dtype=torch.bfloat16)
+    torch_input_b = torch_input_a[:num_elements].reshape(input_shape)
+    input_tensor_b = ttnn.from_torch(torch_input_b, dtype=ttnn.bfloat8_b, layout=ttnn.TILE_LAYOUT, device=device)
+    torch_input_b = ttnn.to_torch(input_tensor_b)
+
+    golden_function = ttnn.get_golden_function(ttnn.maximum)
+    golden = golden_function(torch_input_a, torch_input_b, device=device)
+
+    output_tensor = ttnn.maximum(input_tensor_a, input_tensor_b)
+    output_tensor = ttnn.to_torch(output_tensor)
+
+    assert_with_pcc(golden, output_tensor, 0.9999)
+    assert torch.allclose(golden, output_tensor)
