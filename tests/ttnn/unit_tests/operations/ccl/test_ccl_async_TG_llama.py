@@ -18,6 +18,11 @@ from tests.ttnn.unit_tests.operations.ccl.test_new_all_reduce import (
     LM_HEAD_CRS,
     QKV_CRS,
     FF1_CRS,
+    FF1_CRS_RS_OUT,
+    SUB_DEVICE_CRS,
+)
+from tests.ttnn.unit_tests.operations.ccl.test_llama_reduce_scatter_async_TG import (
+    run_reduce_scatter_impl,
 )
 from tests.tt_eager.python_api_testing.unit_testing.misc.test_matmul_1d_gather_in0 import (
     PREFETCHER_NOC1_GRID,
@@ -265,6 +270,88 @@ def test_all_reduce_tg_llama(
         output_num_cores,
         output_core_range_set,
         output_dtype=output_dtype,
+        num_iters=num_iters,
+        warmup_iters=warmup_iters,
+        enable_async=enable_async,
+        trace_mode=trace_mode,
+        validate_all=False,
+        profiler=profiler,
+    )
+
+
+@skip_for_grayskull("Requires eth connected devices to run")
+@pytest.mark.parametrize(
+    "input_shape, output_shape, dim, num_links, input_num_cores, input_core_range_set, interm_core_range_set, output_num_cores, output_core_range_set, dtype",
+    [
+        (
+            [1, 1, 32, 3840],
+            [1, 1, 32, 960],
+            3,
+            3,
+            24,
+            RING_CRS,
+            SUB_DEVICE_CRS,
+            30,
+            FF1_CRS_RS_OUT,
+            ttnn.bfloat8_b,
+        ),  # FF2/DO reduce-scatter
+    ],
+    ids=[
+        "mlp",
+    ],
+)
+@pytest.mark.parametrize(
+    "num_iters, warmup_iters",
+    [
+        (NUM_ITERATIONS, 10),
+    ],
+)
+@pytest.mark.parametrize("enable_async", [True])
+@pytest.mark.parametrize("trace_mode", [True])
+@pytest.mark.parametrize(
+    "device_params",
+    [{"trace_region_size": 90000, "dispatch_core_axis": ttnn.DispatchCoreAxis.COL}],
+    indirect=True,
+)
+@pytest.mark.parametrize(
+    "mesh_device",
+    [
+        (1, 4),
+    ],
+    indirect=True,
+)
+def test_reduce_scatter_tg_llama(
+    mesh_device,
+    input_shape,
+    output_shape,
+    dim,
+    dtype,
+    num_links,
+    input_num_cores,
+    input_core_range_set,
+    output_num_cores,
+    output_core_range_set,
+    num_iters,
+    warmup_iters,
+    enable_async,
+    trace_mode,
+    use_program_cache,
+    function_level_defaults,
+    ensure_devices_tg,
+):
+    profiler = BenchmarkProfiler()
+
+    run_reduce_scatter_impl(
+        mesh_device,
+        input_shape,
+        output_shape,
+        dim,
+        dtype,
+        num_links,
+        input_num_cores,
+        input_core_range_set,
+        output_num_cores,
+        output_core_range_set,
         num_iters=num_iters,
         warmup_iters=warmup_iters,
         enable_async=enable_async,
