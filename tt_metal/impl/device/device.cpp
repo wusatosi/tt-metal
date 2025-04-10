@@ -1074,6 +1074,7 @@ void Device::init_command_queue_device() {
             sub_device_manager_tracker_->get_active_sub_device_manager()->num_sub_devices(),
             sub_device_manager_tracker_->get_active_sub_device_manager()->noc_mcast_unicast_data());
     }
+    dispatch_firmware_active_ = true;
 }
 
 void Device::init_fabric() {
@@ -1158,7 +1159,9 @@ bool Device::close() {
         hw_command_queue->terminate();
     }
 
+    dispatch_firmware_active_ = false;
     this->work_executor_->reset();
+
     tt_metal::detail::DumpDeviceProfileResults(this, ProfilerDumpState::LAST_CLOSE_DEVICE);
 
     sub_device_manager_tracker_.reset(nullptr);
