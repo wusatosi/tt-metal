@@ -12,7 +12,7 @@
 
 namespace ttnn::operations::experimental::deinterleave {
 
-DeinterleaveOperation::ProgramFactory::cached_program_t DeinterleaveOperation::ProgramFactory::create(
+DeinterleaveOperation::ProgramFactoryToBatch::cached_program_t DeinterleaveOperation::ProgramFactoryToBatch::create(
     const operation_attributes_t& operation_attributes,
     const tensor_args_t& tensor_args,
     tensor_return_value_t& output) {
@@ -21,6 +21,7 @@ DeinterleaveOperation::ProgramFactory::cached_program_t DeinterleaveOperation::P
     using namespace tt::tt_metal;
     using namespace tt;
 
+    TT_FATAL(operation_attributes.to_batch == true, "Deinterleave: bad configuration.");
     Program program;
 
     const auto& input = tensor_args.input;
@@ -66,7 +67,7 @@ DeinterleaveOperation::ProgramFactory::cached_program_t DeinterleaveOperation::P
     auto per_core_height = input.memory_config().shard_spec.value().shape[0] / operation_attributes.input_width;
     log_info(
         tt::LogOp,
-        "DeinterleaveOperation::ProgramFactory::create; stride_hw: {}; per core height {} per_core_width {}",
+        "DeinterleaveOperation::ProgramFactoryToBatch::create; stride_hw: {}; per core height {} per_core_width {}",
         operation_attributes.stride_hw,
         per_core_height,
         per_core_width);
@@ -219,7 +220,8 @@ DeinterleaveOperation::ProgramFactory::cached_program_t DeinterleaveOperation::P
 
         log_warning(
             tt::LogOp,
-            "DeinterleaveOperation::ProgramFactory::create; core: {} myid {}, start {}-{}, end {}-{}, dst_batch {}, "
+            "DeinterleaveOperation::ProgramFactoryToBatch::create; core: {} myid {}, start {}-{}, end {}-{}, dst_batch "
+            "{}, "
             "id_in_batch {} offset_dm0 {}-{} offset_dm1 {}-{}",
             core,
             my_id,
@@ -307,7 +309,7 @@ DeinterleaveOperation::ProgramFactory::cached_program_t DeinterleaveOperation::P
     return {std::move(program), {read_kernel_id, write_kernel_id, worker_grid}};
 }
 
-void DeinterleaveOperation::ProgramFactory::override_runtime_arguments(
+void DeinterleaveOperation::ProgramFactoryToBatch::override_runtime_arguments(
     cached_program_t& cached_program,
     const operation_attributes_t& operation_attributes,
     const tensor_args_t& tensor_args,

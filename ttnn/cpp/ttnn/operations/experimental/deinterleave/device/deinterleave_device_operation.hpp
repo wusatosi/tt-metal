@@ -16,6 +16,7 @@ struct DeinterleaveOperation {
         const uint32_t input_height;
         const uint32_t input_width;
         const std::array<uint32_t, 2> stride_hw;
+        const bool to_batch;
         const uint32_t barrier_threshold;
         const DeviceComputeKernelConfig compute_kernel_config;
     };
@@ -27,7 +28,7 @@ struct DeinterleaveOperation {
     using spec_return_value_t = TensorSpec;
     using tensor_return_value_t = Tensor;
 
-    struct ProgramFactory {
+    struct ProgramFactoryToBatch {
         struct shared_variables_t {
             tt::tt_metal::KernelHandle read_kernel_id;
             tt::tt_metal::KernelHandle write_kernel_id;
@@ -48,7 +49,27 @@ struct DeinterleaveOperation {
             tensor_return_value_t& output);
     };
 
-    using program_factory_t = std::variant<ProgramFactory>;
+    struct ProgramFactoryLocal {
+        struct shared_variables_t {
+            tt::tt_metal::KernelHandle read_kernel_id;
+            tt::tt_metal::KernelHandle write_kernel_id;
+            tt::tt_metal::CoreRangeSet worker_grid;
+        };
+
+        using cached_program_t = ttnn::device_operation::CachedProgram<shared_variables_t>;
+
+        static cached_program_t create(
+            const operation_attributes_t& operation_attributes,
+            const tensor_args_t& tensor_args,
+            tensor_return_value_t& output);
+
+        static void override_runtime_arguments(
+            cached_program_t& cached_program,
+            const operation_attributes_t& operation_attributes,
+            const tensor_args_t& tensor_args,
+            tensor_return_value_t& output);
+    };
+    using program_factory_t = std::variant<ProgramFactoryToBatch, ProgramFactoryLocal>;
 
     static void validate_inputs(const operation_attributes_t&, const tensor_args_t&);
     static program_factory_t select_program_factory(const operation_attributes_t&, const tensor_args_t&);
@@ -62,6 +83,7 @@ struct DeinterleaveOperation {
         const uint32_t input_height,
         const uint32_t input_width,
         const std::array<uint32_t, 2> stride_hw,
+        const bool to_batch,
         const uint32_t barrier_threshold,
         const std::optional<DeviceComputeKernelConfig>& compute_kernel_config);
 };

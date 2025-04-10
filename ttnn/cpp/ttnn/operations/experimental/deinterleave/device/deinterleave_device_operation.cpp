@@ -9,8 +9,12 @@ void DeinterleaveOperation::validate_inputs(
     const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
     const auto& input = tensor_args.input;
 
-    TT_FATAL(input.get_dtype() == DataType::BFLOAT16, "Deinterleave: input must be BFLOAT16");
-    TT_FATAL(input.get_layout() == Layout::ROW_MAJOR, "Deinterleave: input must be ROW_MAJOR");
+    TT_FATAL(
+        input.get_dtype() == DataType::BFLOAT16,
+        "Deinterleave: input must be BFLOAT16");  // BFP8 requires untilizing/tilizing in the deinterleaving loop
+    TT_FATAL(
+        input.get_layout() == Layout::ROW_MAJOR,
+        "Deinterleave: input must be ROW_MAJOR");  // TILE requires untilizing/tilizing in the deinterleaving loop
     TT_FATAL(input.storage_type() == StorageType::DEVICE, "Deinterleave: input must be on device");
     TT_FATAL(input.buffer() != nullptr, "Deinterleave: input must be allocated in buffer on device");
     TT_FATAL(
@@ -42,7 +46,11 @@ void DeinterleaveOperation::validate_inputs(
 
 DeinterleaveOperation::program_factory_t DeinterleaveOperation::select_program_factory(
     const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
-    return ProgramFactory{};
+    if (operation_attributes.to_batch) {
+        return ProgramFactoryToBatch{};
+    } else {
+        return ProgramFactoryLocal{};
+    }
 }
 
 void DeinterleaveOperation::validate_on_program_cache_miss(
@@ -76,6 +84,7 @@ DeinterleaveOperation::invoke(
     const uint32_t input_height,
     const uint32_t input_width,
     const std::array<uint32_t, 2> stride_hw,
+    const bool to_batch,
     const uint32_t barrier_threshold,
     const std::optional<DeviceComputeKernelConfig>& compute_kernel_config) {
     return {
@@ -83,6 +92,7 @@ DeinterleaveOperation::invoke(
             input_height,
             input_width,
             stride_hw,
+            to_batch,
             barrier_threshold,
             init_device_compute_kernel_config(input.device()->arch(), compute_kernel_config, MathFidelity::HiFi4),
         },
