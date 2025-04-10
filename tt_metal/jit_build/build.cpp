@@ -720,7 +720,11 @@ void JitBuildState::compile_one(
 
         cmd += fmt::format("-{} ", settings->get_compiler_opt_level());
     } else {
-        cmd += fmt::format("-{} ", this->default_compile_opt_level_);
+        if (this->is_fw_) {
+            cmd += fmt::format("-O2 ");
+        } else {
+            cmd += fmt::format("-{} ", this->default_compile_opt_level_);
+        }
     }
 
     // Append common args provided by the build state
