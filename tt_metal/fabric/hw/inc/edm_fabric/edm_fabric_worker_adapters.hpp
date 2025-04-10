@@ -106,6 +106,8 @@ struct WorkerToFabricEdmSenderImpl {
         uint32_t local_buffer_index_addr,
         uint8_t data_noc_cmd_buf = write_reg_cmd_buf,
         uint8_t sync_noc_cmd_buf = write_at_cmd_buf) :
+        edm_noc_addr_base(get_noc_addr(edm_worker_x, edm_worker_y, 0)),
+        edm_noc_addr_base_local_chip_noc(get_noc_addr(edm_worker_x, edm_worker_y, 0, edm_to_local_chip_noc)),
         edm_buffer_addr(edm_buffer_base_addr),
         edm_buffer_slot_wrptr_addr(
             connected_to_persistent_fabric ? edm_l1_sem_id
@@ -140,10 +142,9 @@ struct WorkerToFabricEdmSenderImpl {
     }
 
     FORCE_INLINE void setup_edm_noc_cmd_buf(uint8_t data_cmd_buf, uint8_t sync_cmd_buf) const {
-        uint64_t edm_noc_addr = get_noc_addr(this->edm_noc_x, this->edm_noc_y, 0, edm_to_local_chip_noc);
-        noc_async_write_one_packet_with_trid_set_state(edm_noc_addr, data_cmd_buf, edm_to_local_chip_noc);
-        const uint64_t noc_sem_addr =
-            get_noc_addr(this->edm_noc_x, this->edm_noc_y, this->edm_buffer_slot_wrptr_addr, edm_to_local_chip_noc);
+        noc_async_write_one_packet_with_trid_set_state(
+            edm_noc_addr_base_local_chip_noc, data_cmd_buf, edm_to_local_chip_noc);
+        const uint64_t noc_sem_addr = edm_noc_addr_base_local_chip_noc | this->edm_buffer_slot_wrptr_addr;
         noc_inline_dw_write_set_state(noc_sem_addr, 0xF, sync_cmd_buf, edm_to_local_chip_noc);
     }
 
@@ -233,7 +234,7 @@ struct WorkerToFabricEdmSenderImpl {
     // Must be called alongside (before) open_finish().
     template <bool posted = false>
     void open_start() {
-        const auto dest_noc_addr_coord_only = get_noc_addr(this->edm_noc_x, this->edm_noc_y, 0);
+        const auto dest_noc_addr_coord_only = this->edm_noc_addr_base;
 
         const uint64_t remote_buffer_index_addr = dest_noc_addr_coord_only | edm_buffer_index_addr;
         ASSERT(remote_buffer_index_addr > 0);
@@ -318,6 +319,8 @@ struct WorkerToFabricEdmSenderImpl {
         close_finish();
     }
 
+    uint64_t edm_noc_addr_base;
+    uint64_t edm_noc_addr_base_local_chip_noc;
     uint32_t edm_buffer_addr;
 
     std::array<uint32_t, EDM_NUM_BUFFER_SLOTS> edm_buffer_slot_addrs;
@@ -357,7 +360,7 @@ struct WorkerToFabricEdmSenderImpl {
 
 private:
     template <bool stateful_api = false, bool enable_ring_support = false>
-    FORCE_INLINE void update_edm_buffer_slot_wrptr(uint8_t noc = noc_index) {
+    FORCE_INLINE void update_edm_buffer_slot_wrptr(uint8_t noc = noc_index = noc_index) {
         if constexpr (stateful_api) {
             if constexpr (enable_ring_support) {
                 noc_inline_dw_write_with_state<true, false, true>(
@@ -385,6 +388,7 @@ private:
     FORCE_INLINE void advance_buffer_slot_wrptr() {
         if constexpr (USER_DEFINED_NUM_BUFFER_SLOTS) {
             this->buffer_slot_wrptr = wrap_increment<BUFFER_SLOT_PTR_WRAP>(this->buffer_slot_wrptr);
+            this->edm_buffer_addr = this->edm_buffer_slot_addrs[this->get_buffer_slot_index()];
         } else {
             uint8_t wrptr = this->buffer_slot_wrptr;
             this->buffer_slot_wrptr = !(wrptr == ((this->num_buffers_per_channel * 2) - 1)) ? wrptr + 1 : 0;
@@ -395,10 +399,9 @@ private:
 
     FORCE_INLINE uint64_t compute_dest_buffer_slot_noc_addr() const {
         if constexpr (USER_DEFINED_NUM_BUFFER_SLOTS) {
-            return get_noc_addr(
-                this->edm_noc_x, this->edm_noc_y, this->edm_buffer_slot_addrs[this->get_buffer_slot_index()]);
+            return this->edm_noc_addr_base | this->edm_buffer_slot_addrs[this->get_buffer_slot_index()];
         } else {
-            return get_noc_addr(this->edm_noc_x, this->edm_noc_y, this->edm_buffer_addr);
+            return this->edm_noc_addr_base | this->edm_buffer_addr;
         }
     }
 
@@ -441,12 +444,7 @@ private:
             *const_cast<PACKET_HEADER_TYPE*>(reinterpret_cast<volatile PACKET_HEADER_TYPE*>(source_address))));
         if constexpr (USER_DEFINED_NUM_BUFFER_SLOTS) {
             send_chunk_from_address_with_trid<blocking_mode>(
-                source_address,
-                1,
-                size_bytes,
-                this->edm_buffer_slot_addrs[this->get_buffer_slot_index()],
-                trid,
-                this->data_noc_cmd_buf);
+                source_address, 1, size_bytes, this->edm_buffer_addr, trid, this->data_noc_cmd_buf);
         } else {
             send_chunk_from_address_with_trid<blocking_mode>(
                 source_address, 1, size_bytes, this->edm_buffer_addr, trid, this->data_noc_cmd_buf);
