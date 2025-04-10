@@ -26,7 +26,7 @@ void bind_deinterleave_operation(py::module& module) {
 
     bind_registered_operation(
         module,
-        ttnn::experimental::deinterleave,
+        ttnn::experimental::deinterleave_to_batch,
         doc,
         ttnn::pybind_arguments_t{
             py::arg("input"),

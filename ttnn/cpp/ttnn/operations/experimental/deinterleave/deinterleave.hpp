@@ -21,8 +21,8 @@ struct Deinterleave {
 
 namespace ttnn {
 namespace experimental {
-constexpr auto deinterleave = ttnn::register_operation_with_auto_launch_op<
-    "ttnn::experimental::deinterleave",
+constexpr auto deinterleave_to_batch = ttnn::register_operation_with_auto_launch_op<
+    "ttnn::experimental::deinterleave_to_batch",
     ttnn::operations::experimental::deinterleave::Deinterleave>();
 }
 }  // namespace ttnn

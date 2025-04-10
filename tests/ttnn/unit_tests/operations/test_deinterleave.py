@@ -94,7 +94,7 @@ def run_deinterleave(
     print(f"shard_shape {input_memory_config.shard_spec.shape}")
     print(f"shard_spec mode {input_memory_config.shard_spec.mode}")
 
-    ttnn_output = ttnn.experimental.deinterleave(
+    ttnn_output = ttnn.experimental.deinterleave_to_batch(
         ttnn_input,
         compute_kernel_config=compute_kernel_options,
         stride_hw=stride_hw,
