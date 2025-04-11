@@ -812,6 +812,7 @@ void run_fabric_edm_main_loop(
     WriteTransactionIdTracker<RECEIVER_NUM_BUFFERS, NUM_TRANSACTION_IDS, NUM_TRANSACTION_IDS>&
         receiver_channel_1_trid_tracker) {
     size_t did_nothing_count = 0;
+    bool quick_routing_mode = false;
     *termination_signal_ptr = tt::tt_fabric::TerminationSignal::KEEP_RUNNING;
 
     // May want to promote to part of the handshake but for now we just initialize in this standalone way
@@ -937,8 +938,12 @@ void run_fabric_edm_main_loop(
 
         if (did_something) {
             did_nothing_count = 0;
+            quick_routing_mode = false;
+        } else if (quick_routing_mode) {
+            run_routing_without_noc_sync();
         } else {
             if (did_nothing_count++ > SWITCH_INTERVAL) {
+                quick_routing_mode = true;
                 did_nothing_count = 0;
                 // shouldn't do noc counter sync since we are not incrementing them
                 run_routing_without_noc_sync();
