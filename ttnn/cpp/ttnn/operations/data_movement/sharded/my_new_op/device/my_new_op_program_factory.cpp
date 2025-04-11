@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <tt-metalium/work_split.hpp>
+#include <tt-metalium/constants.hpp>
 #include "my_new_op_operation.hpp"
 
 namespace ttnn::operations::data_movement {
@@ -14,6 +15,7 @@ MyNewOpDeviceOperation::MyDeviceProgramFactory::cached_program_t MyNewOpDeviceOp
     tensor_return_value_t& tensor_return_value) {
     using namespace tt;
     using namespace tt::tt_metal;
+    using namespace tt::constants;
 
     const auto& input_tensor_a = tensor_args.input_tensor_a;
     const auto& input_tensor_b = tensor_args.input_tensor_b;
@@ -39,7 +41,6 @@ MyNewOpDeviceOperation::MyDeviceProgramFactory::cached_program_t MyNewOpDeviceOp
     tt::tt_metal::IDevice* device = input_tensor_a.device();
 
     CoreCoord compute_with_storage_grid_size = device->compute_with_storage_grid_size();
-    uint32_t num_cores_x = compute_with_storage_grid_size.x;
     uint32_t num_cores_y = compute_with_storage_grid_size.y;
     auto [num_cores, all_cores, core_group_1, core_group_2, num_tiles_per_core_group_1, num_tiles_per_core_group_2] =
         tt::tt_metal::split_work_to_cores(compute_with_storage_grid_size, num_tiles);
@@ -48,38 +49,89 @@ MyNewOpDeviceOperation::MyDeviceProgramFactory::cached_program_t MyNewOpDeviceOp
     uint32_t src1_cb_index = tt::CBIndex::c_1;
     uint32_t output_cb_index = tt::CBIndex::c_2;
 
-    uint32_t num_input_tiles = num_tiles_per_core_group_1;
+    std::optional<ShardSpec> shard_spec = std::nullopt;
+    bool src0_sharded = input_tensor_a.memory_config().is_sharded();
+    bool src1_sharded = input_tensor_b.memory_config().is_sharded();
+    bool out_sharded = output_tensor.memory_config().is_sharded();
+
+    bool block_or_width_sharded = false;
+
+    if (src0_sharded) {
+        shard_spec = input_tensor_a.shard_spec().value();
+        block_or_width_sharded = input_tensor_a.memory_config().memory_layout != TensorMemoryLayout::HEIGHT_SHARDED;
+    } else if (src1_sharded) {
+        shard_spec = input_tensor_b.shard_spec().value();
+        block_or_width_sharded = input_tensor_b.memory_config().memory_layout != TensorMemoryLayout::HEIGHT_SHARDED;
+    } else if (out_sharded) {
+        shard_spec = output_tensor.shard_spec().value();
+        block_or_width_sharded = output_tensor.memory_config().memory_layout != TensorMemoryLayout::HEIGHT_SHARDED;
+    }
+
+    uint32_t num_tiles_per_shard = 0;
+    if (shard_spec.has_value()) {
+        num_tiles_per_shard = shard_spec.value().shape[0] * shard_spec.value().shape[1] / TILE_HW;
+    }
+
+    uint32_t num_input_tiles = src0_sharded ? num_tiles_per_shard : num_tiles_per_core_group_1;
     tt::tt_metal::CircularBufferConfig cb_src0_config =
         tt::tt_metal::CircularBufferConfig(num_input_tiles * single_tile_size, {{src0_cb_index, cb0_data_format}})
             .set_page_size(src0_cb_index, single_tile_size);
+    if (src0_sharded) {
+        cb_src0_config = cb_src0_config.set_globally_allocated_address(*input_tensor_a.buffer());
+    }
     auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_src0_config);
 
     tt::tt_metal::CircularBufferConfig cb_src1_config =
         tt::tt_metal::CircularBufferConfig(num_input_tiles * single_tile_size, {{src1_cb_index, cb1_data_format}})
             .set_page_size(src1_cb_index, single_tile_size);
+    if (src1_sharded) {
+        cb_src1_config = cb_src1_config.set_globally_allocated_address(*input_tensor_b.buffer());
+    }
     auto cb_src1 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_src1_config);
 
-    uint32_t num_output_tiles = 1;
+    uint32_t num_output_tiles = (out_sharded || block_or_width_sharded) ? num_tiles_per_shard : 1;
     tt::tt_metal::CircularBufferConfig cb_output_config =
         tt::tt_metal::CircularBufferConfig(
             num_output_tiles * single_tile_size_output, {{output_cb_index, cb_data_format_output}})
             .set_page_size(output_cb_index, single_tile_size_output);
+    if (out_sharded) {
+        cb_output_config = cb_output_config.set_globally_allocated_address(*output_tensor.buffer());
+    }
     auto cb_output = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_output_config);
 
-    std::vector<uint32_t> reader_compile_time_args = {src0_cb_index, src1_cb_index};
-    std::vector<uint32_t> writer_compile_time_args = {output_cb_index};
+    std::map<string, string> reader_defines;
+    if (src0_sharded) {
+        reader_defines["IN0_SHARDED"] = "1";
+    }
+    if (src1_sharded) {
+        reader_defines["IN1_SHARDED"] = "1";
+    }
+    std::map<string, string> writer_defines;
+    if (out_sharded) {
+        writer_defines["OUT_SHARDED"] = "1";
+    }
+
+    const uint32_t input0_is_dram = input_tensor_a.buffer()->buffer_type() == BufferType::DRAM ? 1 : 0;
+    const uint32_t input1_is_dram = input_tensor_b.buffer()->buffer_type() == BufferType::DRAM ? 1 : 0;
+    const uint32_t output_is_dram = output_tensor.buffer()->buffer_type() == BufferType::DRAM ? 1 : 0;
+
+    std::vector<uint32_t> reader_compile_time_args = {src0_cb_index, src1_cb_index, input0_is_dram, input1_is_dram};
+    std::vector<uint32_t> writer_compile_time_args = {output_cb_index, output_is_dram};
+
+    auto reader_config = tt::tt_metal::ReaderDataMovementConfig(reader_compile_time_args, reader_defines);
+    auto writer_config = tt::tt_metal::WriterDataMovementConfig(writer_compile_time_args, writer_defines);
 
     tt::tt_metal::KernelHandle unary_reader_kernel_id = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/data_movement/sharded/my_new_op/device/kernels/dataflow/my_new_op_reader.cpp",
         all_cores,
-        tt::tt_metal::ReaderDataMovementConfig(reader_compile_time_args));
+        reader_config);
 
     tt::tt_metal::KernelHandle unary_writer_kernel_id = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/data_movement/sharded/my_new_op/device/kernels/dataflow/my_new_op_writer.cpp",
         all_cores,
-        tt::tt_metal::WriterDataMovementConfig(writer_compile_time_args));
+        writer_config);
 
     std::vector<uint32_t> compute_kernel_args_group_1 = {
         src0_cb_index, src1_cb_index, output_cb_index, casted_scalar, num_tiles_per_core_group_1};
@@ -152,8 +204,6 @@ void MyNewOpDeviceOperation::MyDeviceProgramFactory::override_runtime_arguments(
     auto& program = cached_program.program;
     auto& reader_kernel_id = cached_program.shared_variables.reader_kernel_id;
     auto& writer_kernel_id = cached_program.shared_variables.writer_kernel_id;
-    auto& compute_kernel_id_1 = cached_program.shared_variables.compute_kernel_id_1;
-    auto& compute_kernel_id_2 = cached_program.shared_variables.compute_kernel_id_2;
     auto& num_cores = cached_program.shared_variables.num_cores;
     auto& num_cores_y = cached_program.shared_variables.num_cores_y;
 

@@ -10,15 +10,23 @@ from tests.ttnn.utils_for_testing import assert_with_pcc
 
 @pytest.mark.parametrize("mesh_device", [1], indirect=True)
 def test_my_op(mesh_device):
-    input_tensor_shape = (128, 128)
+    input_tensor_shape = (6400 * 32, 32)
+
+    mem_config = ttnn.create_sharded_memory_config(
+        input_tensor_shape, ttnn.CoreGrid(x=8, y=8), ttnn.ShardStrategy.HEIGHT
+    )
 
     torch_input_tensor1 = torch.ones(input_tensor_shape) * 7
-    tensor1 = ttnn.from_torch(torch_input_tensor1, ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=mesh_device)
+    tensor1 = ttnn.from_torch(
+        torch_input_tensor1, ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=mesh_device, memory_config=mem_config
+    )
 
     torch_input_tensor2 = torch.ones(input_tensor_shape) * 2
-    tensor2 = ttnn.from_torch(torch_input_tensor2, ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=mesh_device)
+    tensor2 = ttnn.from_torch(
+        torch_input_tensor2, ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=mesh_device, memory_config=mem_config
+    )
 
-    scalar = 2
+    scalar = 5
 
     torch_output_tensor = torch.sqrt(torch_input_tensor1 + torch_input_tensor2) * scalar
 
