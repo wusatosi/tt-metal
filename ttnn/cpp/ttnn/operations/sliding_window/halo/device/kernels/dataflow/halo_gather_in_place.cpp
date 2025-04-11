@@ -224,9 +224,6 @@ void kernel_main() {
         cb_push_back(src_cb_id, in_npages);
     }
 
-    uint32_t semaphore_addr = 0;
-    semaphore_addr = get_semaphore(semaphore_id);
-
     // make sure untilized data is available
     // for wide tensors a temp CB must be used due to implementation of the untilize LLK function vs pack_untilize
     if (untilize_temp_cb_id && local_config_cb_id) {
@@ -266,16 +263,29 @@ void kernel_main() {
     noc_async_read_barrier();
     noc_async_write_barrier();
 
-    for (uint16_t noc = 0; noc < num_cores; ++noc) {
-        const uint64_t ref_semaphore_noc_addr = get_noc_addr(core_noc_x[noc], core_noc_y[noc], semaphore_addr);
-        noc_semaphore_inc(ref_semaphore_noc_addr, 1);
+    uint32_t semaphore_addr = get_semaphore(semaphore_id);
+    const uint64_t semaphore_noc_addr = get_noc_addr(core_noc_x[0], core_noc_y[0], semaphore_addr);
+    noc_semaphore_inc(semaphore_noc_addr, 1);
+    if (my_noc_x == core_noc_x[0] && my_noc_y == core_noc_y[0] && local_config_cb_id) {
+        volatile tt_l1_ptr uint32_t* semaphore_noc_addr_ptr =
+            reinterpret_cast<volatile tt_l1_ptr uint32_t*>(semaphore_noc_addr);
+        noc_semaphore_wait(semaphore_noc_addr_ptr, 2 * num_cores);
+
+        const uint64_t mcast_noc_addr = get_noc_multicast_addr(18, 18, 25, 25, semaphore_addr);
+
+        noc_semaphore_set_multicast(
+            semaphore_addr,
+            mcast_noc_addr,
+            63,  // num_cores - 1 ?
+            false,
+            false);
     }
 
     if constexpr (padding_config_cb_id) {
-        const uint64_t my_semaphore_noc_addr = get_noc_addr(my_noc_x, my_noc_y, semaphore_addr);
-        volatile tt_l1_ptr uint32_t* my_semaphore_noc_addr_ptr =
-            reinterpret_cast<volatile tt_l1_ptr uint32_t*>(my_semaphore_noc_addr);
-        noc_semaphore_wait(my_semaphore_noc_addr_ptr, 2 * num_cores);
+        const uint64_t semaphore_noc_addr = get_noc_addr(my_noc_x, my_noc_y, semaphore_addr);
+        volatile tt_l1_ptr uint32_t* semaphore_noc_addr_ptr =
+            reinterpret_cast<volatile tt_l1_ptr uint32_t*>(semaphore_noc_addr);
+        noc_semaphore_wait(semaphore_noc_addr_ptr, 2 * num_cores);
 
         // construct the pad stick in its buffer
         cb_reserve_back(pad_cb_id, 1);
@@ -302,10 +312,10 @@ void kernel_main() {
     }
 
     if constexpr (remote_config_cb_id && remote_temp_cb_id) {
-        const uint64_t my_semaphore_noc_addr = get_noc_addr(my_noc_x, my_noc_y, semaphore_addr);
-        volatile tt_l1_ptr uint32_t* my_semaphore_noc_addr_ptr =
-            reinterpret_cast<volatile tt_l1_ptr uint32_t*>(my_semaphore_noc_addr);
-        noc_semaphore_wait(my_semaphore_noc_addr_ptr, 2 * num_cores);
+        const uint64_t semaphore_noc_addr = get_noc_addr(my_noc_x, my_noc_y, semaphore_addr);
+        volatile tt_l1_ptr uint32_t* semaphore_noc_addr_ptr =
+            reinterpret_cast<volatile tt_l1_ptr uint32_t*>(semaphore_noc_addr);
+        noc_semaphore_wait(semaphore_noc_addr_ptr, 2 * num_cores);
 
         const uint32_t temp_base_l1_addr = get_read_ptr(remote_temp_cb_id);
         uint32_t config_data_l1_addr = get_read_ptr(remote_config_cb_id);

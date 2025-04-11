@@ -469,7 +469,6 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
     const bool is_block_sharded = input_tensor.memory_config().memory_layout == TensorMemoryLayout::BLOCK_SHARDED;
     const bool is_width_sharded = input_tensor.memory_config().memory_layout == TensorMemoryLayout::WIDTH_SHARDED;
 
-    uint32_t semaphore_id = 0;
     uint32_t remote_temp_cb_id = 0;
     std::vector<uint32_t> output_tensor_cores_x;
     std::vector<uint32_t> output_tensor_cores_y;
@@ -493,8 +492,6 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
         CBHandle remote_temp_cb = CreateCircularBuffer(program, all_cores, remote_temp_cb_config);
     }
 
-    semaphore_id = tt::tt_metal::CreateSemaphore(program, all_cores, 0);
-
     const bool is_rm_orientation = input_tensor.shard_spec()->orientation == ShardOrientation::ROW_MAJOR;
     const auto cores = corerange_to_cores(all_cores, std::nullopt, is_rm_orientation);
     for (const auto& core : cores) {
@@ -503,8 +500,8 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
         output_tensor_cores_y.push_back(worker.y);
     }
 
-    // create semaphore
-    semaphore_id = tt::tt_metal::CreateSemaphore(program, all_cores, 0);
+    // create semaphores
+    uint32_t semaphore_id = tt::tt_metal::CreateSemaphore(program, all_cores, 0);
 
     auto aligned_input_nstick_nbytes = out_stick_nbytes;
     log_debug(tt::LogOp, "out_stick_nbytes = {}", out_stick_nbytes);
