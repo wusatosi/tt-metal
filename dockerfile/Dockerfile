@@ -34,6 +34,49 @@ RUN mkdir -p /tmp/boost \
     && ./b2 install --prefix=/usr/local \
     && rm -rf /tmp/boost
 
+ARG GTEST_VERSION=1.13.0
+RUN mkdir -p /tmp/gtest \
+    && wget -O /tmp/gtest/gtest-${GTEST_VERSION}.tar.gz "https://github.com/google/googletest/archive/refs/tags/v${GTEST_VERSION}.tar.gz" \
+    && tar -xzf /tmp/gtest/gtest-${GTEST_VERSION}.tar.gz -C /tmp/gtest --strip-components=1 \
+    && cmake \
+         -S /tmp/gtest \
+         -B /tmp/gtest/build \
+         -DCMAKE_BUILD_TYPE=Release \
+         -DBUILD_SHARED_LIBS=OFF \
+    && make -C /tmp/gtest/build -j$(nproc) \
+    && make -C /tmp/gtest/build install \
+    && rm -rf /tmp/gtest
+
+ARG FLATBUFFERS_VERSION=24.3.25
+RUN mkdir -p /tmp/flatbuffers \
+    && wget -O /tmp/flatbuffers/flatbuffers-${FLATBUFFERS_VERSION}.tar.gz "https://github.com/google/flatbuffers/archive/refs/tags/v${FLATBUFFERS_VERSION}.tar.gz" \
+    && tar -xzf /tmp/flatbuffers/flatbuffers-${FLATBUFFERS_VERSION}.tar.gz -C /tmp/flatbuffers --strip-components=1 \
+    && cmake \
+         -S /tmp/flatbuffers \
+         -B /tmp/flatbuffers/build \
+         -DCMAKE_BUILD_TYPE=Release \
+         -DFLATBUFFERS_BUILD_FLATC=ON \
+         -DFLATBUFFERS_BUILD_TESTS=OFF \
+         -DFLATBUFFERS_SKIP_MONSTER_EXTRA=ON \
+         -DFLATBUFFERS_STRICT_MODE=ON \
+    && make -C /tmp/flatbuffers/build -j$(nproc) \
+    && make -C /tmp/flatbuffers/build install \
+    && rm -rf /tmp/flatbuffers
+
+ARG BENCHMARK_VERSION=1.9.1
+RUN mkdir -p /tmp/benchmark \
+    && wget -O /tmp/benchmark/benchmark-${BENCHMARK_VERSION}.tar.gz "https://github.com/google/benchmark/archive/refs/tags/v${BENCHMARK_VERSION}.tar.gz" \
+    && tar -xzf /tmp/benchmark/benchmark-${BENCHMARK_VERSION}.tar.gz -C /tmp/benchmark --strip-components=1 \
+    && cmake \
+         -S /tmp/benchmark \
+         -B /tmp/benchmark/build \
+         -DCMAKE_BUILD_TYPE=Release \
+         -DCMAKE_MESSAGE_LOG_LEVEL=NOTICE \
+         -DBENCHMARK_ENABLE_TESTING=OFF \
+    && make -C /tmp/benchmark/build -j$(nproc) \
+    && make -C /tmp/benchmark/build install \
+    && rm -rf /tmp/benchmark
+
 ARG FMT_VERSION=11.0.1
 RUN mkdir -p /tmp/fmt \
     && wget -O /tmp/fmt/fmt-${FMT_VERSION}.tar.gz "https://github.com/fmtlib/fmt/archive/${FMT_VERSION}.tar.gz" \
@@ -80,21 +123,20 @@ RUN mkdir -p /tmp/range-v3 \
     && rm -rf /tmp/range-v3
 
 
-# libstdc++ vs libc++ issue arises
-#ARG YAML_VERSION=0.8.0
-#RUN mkdir -p /tmp/yaml \
-#    && wget -O /tmp/yaml/yaml-${YAML_VERSION}.tar.gz "https://github.com/jbeder/yaml-cpp/archive/refs/tags/${YAML_VERSION}.tar.gz" \
-#    && tar -xzf /tmp/yaml/yaml-${YAML_VERSION}.tar.gz -C /tmp/yaml --strip-components=1 \
-#    && cmake \
-#         -S /tmp/yaml \
-#         -B /tmp/yaml/build \
-#         -DCMAKE_BUILD_TYPE=Release \
-#         -DYAML_CPP_BUILD_TESTS=OFF \
-#         -DYAML_CPP_BUILD_TOOLS=OFF \
-#         -DYAML_BUILD_SHARED_LIBS=OFF \
-#    && make -C /tmp/yaml/build -j$(nproc) \
-#    && make -C /tmp/yaml/build install \
-#    && rm -rf /tmp/yaml
+ARG YAML_VERSION=0.8.0
+RUN mkdir -p /tmp/yaml \
+    && wget -O /tmp/yaml/yaml-${YAML_VERSION}.tar.gz "https://github.com/jbeder/yaml-cpp/archive/refs/tags/${YAML_VERSION}.tar.gz" \
+    && tar -xzf /tmp/yaml/yaml-${YAML_VERSION}.tar.gz -C /tmp/yaml --strip-components=1 \
+    && cmake \
+         -S /tmp/yaml \
+         -B /tmp/yaml/build \
+         -DCMAKE_BUILD_TYPE=Release \
+         -DYAML_CPP_BUILD_TESTS=OFF \
+         -DYAML_CPP_BUILD_TOOLS=OFF \
+         -DYAML_BUILD_SHARED_LIBS=OFF \
+    && make -C /tmp/yaml/build -j$(nproc) \
+    && make -C /tmp/yaml/build install \
+    && rm -rf /tmp/yaml
 
 ARG JSON_VERSION=3.11.3
 RUN mkdir -p /tmp/json \

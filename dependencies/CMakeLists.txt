@@ -4,6 +4,13 @@
 set(CMAKE_C_CLANG_TIDY "")
 set(CMAKE_CXX_CLANG_TIDY "")
 
+# If you use LIBCXX you can't mix with precompiled system libraries.
+# Force the option off to avoid foot shooting.
+if(ENABLE_LIBCXX AND CPM_USE_LOCAL_PACKAGES)
+    set(CPM_USE_LOCAL_PACKAGES OFF)
+    message(WARNING "ENABLE_LIBCXX is set to ON, CPM_USE_LOCAL_PACKAGES is forced to OFF")
+endif()
+
 ############################################################################################################################
 # Boost
 ############################################################################################################################
