@@ -314,6 +314,8 @@ FORCE_INLINE void remote_cb_push_back_and_write_pages(
 
     uint32_t dest_addr;
 
+    // static int count=0;
+
     uint32_t next_receiver_start_addr_offset = 0;
     volatile tt_l1_ptr uint32_t* pages_sent_ptr =
         reinterpret_cast<volatile tt_l1_ptr uint32_t*>(remote_cb.aligned_pages_sent_ptr);
@@ -322,6 +324,8 @@ FORCE_INLINE void remote_cb_push_back_and_write_pages(
     for (uint32_t i = 0; i < num_receivers; ++i) {
         uint32_t src_addr = local_cb_addr + next_receiver_start_addr_offset;
         dest_addr = fifo_wr_ptr;
+
+        // if (count==0)
 
         uint32_t remote_noc_xy = uint32_t(
             NOC_XY_ENCODING(DYNAMIC_NOC_X(noc, remote_noc_xy_ptr[0]), DYNAMIC_NOC_Y(noc, remote_noc_xy_ptr[1])));
@@ -334,32 +338,32 @@ FORCE_INLINE void remote_cb_push_back_and_write_pages(
             for (uint32_t w = 0; w < coalesced_num_pages_per_row; ++w) {
                 dest_noc_addr = get_noc_addr_helper(remote_noc_xy, dest_addr);
 
-                if ((dest_addr + coalesced_page_size) > fifo_limit_page_aligned) {
-                    uint32_t first_len_bytes = fifo_limit_page_aligned - dest_addr;
-                    uint32_t second_len_bytes = coalesced_page_size - first_len_bytes;
+                // if ((dest_addr + coalesced_page_size) > fifo_limit_page_aligned) {
+                //     uint32_t first_len_bytes = fifo_limit_page_aligned - dest_addr;
+                //     uint32_t second_len_bytes = coalesced_page_size - first_len_bytes;
 
-                    if (first_len_bytes != 0) {
-                        noc_async_write_one_packet(src_addr, dest_noc_addr, first_len_bytes, noc);
-                        src_addr += first_len_bytes;
-                    }
+                //     if (first_len_bytes != 0) {
+                //         noc_async_write_one_packet(src_addr, dest_noc_addr, first_len_bytes, noc);
+                //         src_addr += first_len_bytes;
+                //     }
 
-                    dest_addr = fifo_start_addr;
-                    dest_noc_addr = get_noc_addr_helper(remote_noc_xy, dest_addr);
+                //     dest_addr = fifo_start_addr;
+                //     dest_noc_addr = get_noc_addr_helper(remote_noc_xy, dest_addr);
 
-                    noc_async_write_one_packet(src_addr, dest_noc_addr, second_len_bytes, noc);
+                //     noc_async_write_one_packet(src_addr, dest_noc_addr, second_len_bytes, noc);
 
-                    src_addr += second_len_bytes;
-                    dest_addr += second_len_bytes;
-                    dest_noc_addr = get_noc_addr_helper(remote_noc_xy, dest_addr);
+                //     src_addr += second_len_bytes;
+                //     dest_addr += second_len_bytes;
+                //     dest_noc_addr = get_noc_addr_helper(remote_noc_xy, dest_addr);
 
-                    noc_async_write_one_packet_set_state(dest_noc_addr, coalesced_page_size, noc);
+                //     noc_async_write_one_packet_set_state(dest_noc_addr, coalesced_page_size, noc);
 
-                } else {
-                    noc_async_write_one_packet_with_state(src_addr, dest_noc_addr, noc);
+                // } else {
+                noc_async_write_one_packet_with_state(src_addr, dest_noc_addr, noc);
 
-                    src_addr += coalesced_page_size;
-                    dest_addr += coalesced_page_size;
-                }
+                src_addr += coalesced_page_size;
+                dest_addr += coalesced_page_size;
+                // }
             }
             src_addr = prev_src_addr + next_block_row_stride;
         }
@@ -376,6 +380,8 @@ FORCE_INLINE void remote_cb_push_back_and_write_pages(
         dest_addr = fifo_start_addr;
     }
     remote_cb.fifo_wr_ptr = dest_addr;
+
+    // count=1;
 }
 
 #endif

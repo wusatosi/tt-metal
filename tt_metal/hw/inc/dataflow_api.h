@@ -812,7 +812,7 @@ void noc_async_write_multicast_one_packet(
 template <bool non_posted = true>
 FORCE_INLINE void noc_async_write_one_packet_set_state(
     std::uint64_t dst_noc_addr, std::uint32_t size, uint8_t noc = noc_index, uint8_t vc = NOC_UNICAST_WRITE_VC) {
-    RECORD_NOC_EVENT_WITH_ADDR(NocEventType::WRITE_SET_STATE, dst_noc_addr, size, vc);
+    // RECORD_NOC_EVENT_WITH_ADDR(NocEventType::WRITE_SET_STATE, dst_noc_addr, size, vc);
 
     WAYPOINT("NWPW");
     while (!noc_cmd_buf_ready(noc, write_cmd_buf));
@@ -841,12 +841,12 @@ FORCE_INLINE void noc_async_write_one_packet_set_state(
 template <bool non_posted = true>
 FORCE_INLINE void noc_async_write_one_packet_with_state(
     std::uint32_t src_local_l1_addr, std::uint32_t dst_noc_addr, uint8_t noc = noc_index) {
-    RECORD_NOC_EVENT_WITH_ADDR(NocEventType::WRITE_WITH_STATE, 0ull, 0, -1);
+    // RECORD_NOC_EVENT_WITH_ADDR(NocEventType::WRITE_WITH_STATE, 0ull, 0, -1);
 
     if constexpr (non_posted) {
         if constexpr (noc_mode == DM_DYNAMIC_NOC) {
-            inc_noc_counter_val<proc_type, NocBarrierType::NONPOSTED_WRITES_NUM_ISSUED>(noc, 1);
-            inc_noc_counter_val<proc_type, NocBarrierType::NONPOSTED_WRITES_ACKED>(noc, 1);
+            // inc_noc_counter_val<proc_type, NocBarrierType::NONPOSTED_WRITES_NUM_ISSUED>(noc, 1);
+            // inc_noc_counter_val<proc_type, NocBarrierType::NONPOSTED_WRITES_ACKED>(noc, 1);
         }
     }
     WAYPOINT("NWPW");
@@ -854,7 +854,7 @@ FORCE_INLINE void noc_async_write_one_packet_with_state(
     WAYPOINT("NWPD");
 
     // In order to sanitize, need to grab full noc addr + xfer size from state.
-    DEBUG_SANITIZE_NOC_WRITE_TRANSACTION_WITH_ADDR_AND_SIZE_STATE(noc, dst_noc_addr, src_local_l1_addr);
+    // DEBUG_SANITIZE_NOC_WRITE_TRANSACTION_WITH_ADDR_AND_SIZE_STATE(noc, dst_noc_addr, src_local_l1_addr);
 
     NOC_CMD_BUF_WRITE_REG(noc, write_cmd_buf, NOC_TARG_ADDR_LO, src_local_l1_addr);
     NOC_CMD_BUF_WRITE_REG(noc, write_cmd_buf, NOC_RET_ADDR_LO, dst_noc_addr);
@@ -862,8 +862,8 @@ FORCE_INLINE void noc_async_write_one_packet_with_state(
 
     if constexpr (non_posted) {
         if constexpr (noc_mode == DM_DEDICATED_NOC) {
-            noc_nonposted_writes_num_issued[noc] += 1;
-            noc_nonposted_writes_acked[noc] += 1;  // num_dests
+            // noc_nonposted_writes_num_issued[noc] += 1;
+            // noc_nonposted_writes_acked[noc] += 1;  // num_dests
         }
     }
 }
@@ -1685,7 +1685,7 @@ void noc_async_read_tile_dram_sharded_with_state(
 
     uint32_t src_addr_;
     if constexpr (noc_mode == DM_DYNAMIC_NOC) {
-        inc_noc_counter_val<proc_type, NocBarrierType::READS_NUM_ISSUED>(noc, 1);
+        // inc_noc_counter_val<proc_type, NocBarrierType::READS_NUM_ISSUED>(noc, 1);
     }
     src_addr_ = src_base_addr + src_addr;
 

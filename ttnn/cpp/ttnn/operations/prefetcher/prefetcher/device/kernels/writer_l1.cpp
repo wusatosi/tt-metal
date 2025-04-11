@@ -35,6 +35,14 @@ void kernel_main() {
         (uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_tensors)));  // Kt / num_blocks = in_block_h;
 
     uint32_t noc = noc_index;
+    uint32_t fifo_wr_ptrs[num_tensors];
+
+    RemoteSenderCBInterface& remote_cb = get_remote_sender_cb_interface(remote_cb_id);
+    DPRINT << "fifo_start_addr " << remote_cb.fifo_start_addr << ENDL();
+    uint32_t fifo_size = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(remote_cb.config_ptr)[3];
+    DPRINT << "fifo_size " << fifo_size << ENDL();
+    DPRINT << "fifo_limit " << remote_cb.fifo_start_addr + fifo_size << ENDL();
+
     for (uint32_t layer = 0; layer < num_layers; layer++) {
         for (uint32_t t = 0; t < num_tensors; t++) {
             uint32_t curr_coalesced_page_size = coalesced_page_sizes[t];
@@ -47,6 +55,11 @@ void kernel_main() {
 
             experimental::resize_remote_sender_cb_interface<true>(remote_cb_id, curr_block_size_per_receiver, noc);
             experimental::remote_cb_reserve_back(remote_cb_id, num_blocks);
+
+            uint32_t fifo_wr_ptr = remote_cb.fifo_wr_ptr;
+            DPRINT << "layer " << layer << " t " << t << " fifo_wr_ptr " << fifo_wr_ptr << ENDL();
+
+            fifo_wr_ptrs[t] = fifo_wr_ptr;
 
             for (uint32_t block = 0; block < num_blocks; ++block) {
                 {
@@ -67,6 +80,12 @@ void kernel_main() {
             }
         }
     }
+
+    DPRINT << " fifo_wr_ptr " << remote_cb.fifo_wr_ptr << ENDL();
+
+    // for (uint32_t t = 0; t < num_tensors; t++) {
+
+    // }
 
     experimental::remote_cb_sender_barrier(remote_cb_id);
 
