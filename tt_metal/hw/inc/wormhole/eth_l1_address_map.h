@@ -29,6 +29,7 @@ struct address_map {
 
     // Sizes
     static constexpr std::int32_t FIRMWARE_SIZE = 32 * 1024;
+    static constexpr std::int32_t KERNEL_CODE_SIZE = 17312;
     static constexpr std::int32_t COMMAND_Q_SIZE = 4 * 1024;
     static constexpr std::int32_t DATA_BUFFER_SIZE_HOST = 4 * 1024;
     static constexpr std::int32_t DATA_BUFFER_SIZE_ETH = 4 * 1024;

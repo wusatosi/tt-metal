@@ -222,6 +222,9 @@ void JitBuildEnv::init(
     if (tt::llrt::RunTimeOptions::get_instance().get_hw_cache_invalidation_enabled()) {
         this->defines_ += "-DENABLE_HW_CACHE_INVALIDATION ";
     }
+    if (tt::llrt::RunTimeOptions::get_instance().get_erisc_iram_enabled()) {
+        this->defines_ += "-DENABLE_ACTIVE_ERISC_IRAM ";
+    }
 
     // Includes
     // TODO(pgk) this list is insane
