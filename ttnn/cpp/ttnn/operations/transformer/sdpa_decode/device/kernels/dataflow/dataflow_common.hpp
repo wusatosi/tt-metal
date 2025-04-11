@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include "dataflow_api.h"
 #include <vector>
+#include "tools/profiler/kernel_profiler.hpp"
 
 /******************************************************************************
  *                                                                             *

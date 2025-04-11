@@ -209,6 +209,7 @@ void MAIN {
             // cb_prev_max and cb_prev_sum should contain m_1 and l_1
 
             if (k_chunk_end - k_chunk_start < k_num_chunks) {
+                DeviceZoneScopedN("SDPA reduce loop");
                 // This indicates that there are computes done by other workers. Needs to wait for them and send to
                 // reducer's compute
                 for (uint32_t i = 0; i < num_cores_to_wait; i++) {
@@ -252,6 +253,7 @@ void MAIN {
                     copy_block(cb_cur_sum, cb_prev_sum, Sq_chunk_t);
                 }
             }
+            DeviceZoneScopedN("SDPA-REDUCE-TAIL");
 
             /* cb_cur_sum = 1.0 / cb_cur_sum */
             cb_push_back(cb_cur_sum, Sq_chunk_t);

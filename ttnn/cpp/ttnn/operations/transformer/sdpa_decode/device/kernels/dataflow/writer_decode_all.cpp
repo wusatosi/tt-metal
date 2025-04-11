@@ -122,9 +122,16 @@ void kernel_main() {
     constexpr uint32_t cb_out_l = tt::CBIndex::c_18;
 
     // generate and send scaler to compute
-    generate_bcast_unary_scalar(cb_scale_in, scale_val);
-    generate_reduce_scaler(cb_identity_scale_in, identity_scalar_packed);
+    {
+        DeviceZoneScopedN("GENERATE-SCALE");
+        generate_bcast_unary_scalar(cb_scale_in, scale_val);
+    }
+    {
+        DeviceZoneScopedN("GENERATE-IDENTITY-SCALE");
+        generate_reduce_scaler(cb_identity_scale_in, identity_scalar_packed);
+    }
     if (is_worker) {
+        DeviceZoneScopedN("WORKER");
         ASSERT(num_heads_per_core == 1);  // if there are workers, then head must be split across workers so there
                                           // should not be more than one head per core
         worker_compute<out_chunk_tiles, cb_out_worker, cb_out_m, cb_out_l, cb_intermed_out, PNHt>(
@@ -150,6 +157,7 @@ void kernel_main() {
 
     // generate and send mask to compute if causal
     if constexpr (is_causal) {
+        DeviceZoneScopedN("GENERATE-MASK");
         generate_mask<cb_mask_in, PNHt>(k_num_chunks, Sk_chunk_t_dynamic, cur_pos);
     }
 
@@ -157,6 +165,7 @@ void kernel_main() {
          cur_head < cur_head_group * num_heads_per_core + num_heads_per_core;
          ++cur_head) {
         if (k_chunk_end - k_chunk_start < k_num_chunks) {
+            DeviceZoneScopedN("WRITER-REDUCE-LOOP");
             ASSERT(num_heads_per_core == 1);  // if there are workers, then head must be split across workers so there
                                               // should not be more than one head per core
             // This indicates that there are computes done by other workers. Needs to wait for them and send to
@@ -193,6 +202,7 @@ void kernel_main() {
                 cb_push_back(cb_l_in, PNHt);
             }
         }
+        DeviceZoneScopedN("WRITER-REDUCE-TAIL");
         // Offset for current batch
         const uint32_t out_batch_offset = cur_batch * out_chunk_tiles;
 
