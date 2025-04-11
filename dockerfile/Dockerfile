@@ -24,6 +24,9 @@ RUN mkdir -p /usr/local/bin && wget -O /tmp/ccache.tar.xz https://github.com/cca
     tar -xf /tmp/ccache.tar.xz -C /usr/local/bin --strip-components=1 && \
     rm /tmp/ccache.tar.xz
 
+# Bringing this in for patches
+COPY /dependencies /opt/tt_metal_infra/dependencies
+
 ARG BOOST_VERSION=1.86.0
 RUN mkdir -p /tmp/boost \
     && BOOST_VERSION_UNDERSCORE=$(echo ${BOOST_VERSION} | sed 's/\./_/g') \
@@ -127,6 +130,8 @@ ARG YAML_VERSION=0.8.0
 RUN mkdir -p /tmp/yaml \
     && wget -O /tmp/yaml/yaml-${YAML_VERSION}.tar.gz "https://github.com/jbeder/yaml-cpp/archive/refs/tags/${YAML_VERSION}.tar.gz" \
     && tar -xzf /tmp/yaml/yaml-${YAML_VERSION}.tar.gz -C /tmp/yaml --strip-components=1 \
+    && cd /tmp/yaml \
+    && patch -p1 < /opt/tt_metal_infra/dependencies/yaml-cpp.patch \
     && cmake \
          -S /tmp/yaml \
          -B /tmp/yaml/build \
