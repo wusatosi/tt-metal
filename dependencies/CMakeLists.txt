@@ -228,6 +228,11 @@ if(flatbuffers_ADDED)
     # Few files including idl_gen_dart.cpp:175:18, Possibly related: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=105329
     target_compile_options(flatc PRIVATE -Wno-restrict)
     target_compile_options(flatbuffers PRIVATE -Wno-restrict)
+
+    if(NOT TARGET FlatBuffers::FlatBuffers)
+        add_library(FlatBuffers::FlatBuffers ALIAS flatbuffers::flatbuffers)
+    endif()
+
 endif()
 
 ############################################################################################################################
