@@ -37,6 +37,7 @@ void kernel_main() {
 
     for (uint32_t layer = 0; layer < num_layers; layer++) {
         for (uint32_t t = 0; t < num_tensors; t++) {
+            DeviceZoneScopedN("tensor");
             uint32_t curr_page_size = page_sizes[t];
             uint32_t curr_block_num_pages = block_num_pages[t];
             uint32_t curr_block_num_tiles = block_num_tiles[t];
@@ -51,7 +52,10 @@ void kernel_main() {
             uint32_t curr_block_trid = 1;
             uint32_t block_trid_to_wait = 1;
 
-            cb_reserve_back(cb_id, max_block_num_tiles);
+            {
+                DeviceZoneScopedN("cb reserve");
+                cb_reserve_back(cb_id, max_block_num_tiles);
+            }
 
             uint32_t l1_write_addr_offset = 0;
             uint32_t l1_write_addr_start = get_write_ptr(cb_id);
@@ -62,6 +66,7 @@ void kernel_main() {
             uint32_t l1_write_addr = l1_write_addr_start;
 
             for (uint32_t block = 0; block < num_blocks; block++) {
+                // DeviceZoneScopedN("block");
                 // Set trid for current block
                 noc_async_read_tile_dram_sharded_set_trid(curr_block_trid);
 
@@ -102,7 +107,10 @@ void kernel_main() {
             }
 
             // last block to wait
-            noc_async_read_barrier_with_trid(block_trid_to_wait);
+            {
+                // DeviceZoneScopedN("last wait");
+                noc_async_read_barrier_with_trid(block_trid_to_wait);
+            }
             cb_push_back(cb_id, max_block_num_tiles);
         }
     }

@@ -49,6 +49,8 @@ void kernel_main() {
 
     // Reserving/pushing the local shard is done in compute
     cb_reserve_back(cb_id_in2, batch * (ring_size - 1) * shard_size_in_tiles);
+    cb_push_back(cb_id_in2, batch * (ring_size - 1) * shard_size_in_tiles);
+    return;
 
     uint32_t local_shard_read_addr = get_read_ptr(cb_id_in0);
     uint32_t l1_write_addr_in0 = get_write_ptr(cb_id_in2);

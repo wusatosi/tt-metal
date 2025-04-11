@@ -1897,6 +1897,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
     if (use_global_cb) {
         mm_in1_kernel_defines["ENABLE_GLOBAL_CB"] = "1";
         mm_kernel_defines["ENABLE_GLOBAL_CB"] = "1";
+        // mm_kernel_defines["SKIP_COMPUTE"] = "1";
     }
 
     if (fused_activation.has_value()) {

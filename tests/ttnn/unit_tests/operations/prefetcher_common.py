@@ -571,10 +571,10 @@ def run_prefetcher_mm(
                 outputs_l1.append(output_t)
 
             # Send outputs to DRAM to so that we don't run out of L1 memory when testing for large number of layers
-            for t in range(num_tensors):
-                outputs_dram.append(ttnn.to_memory_config(outputs_l1[t], ttnn.DRAM_MEMORY_CONFIG))
+            # for t in range(num_tensors):
+            #     outputs_dram.append(ttnn.to_memory_config(outputs_l1[t], ttnn.DRAM_MEMORY_CONFIG))
         device.reset_sub_device_stall_group()
-        return outputs_dram
+        return outputs_l1
 
     ##### Compile Model #####
     logger.info("Compiling model")
