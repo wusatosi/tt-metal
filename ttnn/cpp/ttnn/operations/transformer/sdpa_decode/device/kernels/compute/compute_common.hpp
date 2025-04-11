@@ -534,6 +534,7 @@ void flash_attention_loop(
         reconfig_data_format(cb_q_in, cb_k_in);  // DEBUG
         pack_reconfig_data_format(cb_qk_im);
 
+        DPRINT << "1" << ENDL();
         cb_matmul_blocks(
             cb_q_in,
             cb_k_in,
@@ -550,6 +551,7 @@ void flash_attention_loop(
             true /*transpose*/);
 
         /* QK *= SCALE */
+        DPRINT << "2" << ENDL();
         mul_block_bcast_scalar_inplace(cb_qk_im, cb_scale_in, qk_chunk_tiles);
 
         if constexpr (is_causal) {
@@ -571,6 +573,7 @@ void flash_attention_loop(
         reduce_c<PoolType::MAX, ReduceDim::REDUCE_ROW, cb_qk_im, cb_identity_scale_in, cb_cur_max, Sq_chunk_t>(
             Sk_chunk_t);
 
+        DPRINT << "3" << ENDL();
         if (k_chunk > k_chunk_start) {
             reconfig_data_format(cb_cur_max, cb_prev_max);
             max_block_inplace(cb_cur_max, cb_prev_max, Sq_chunk_t);
@@ -580,12 +583,15 @@ void flash_attention_loop(
         reconfig_data_format(cb_qk_im, cb_cur_max);
         pack_reconfig_data_format(cb_qk_im);
         sub_exp_block_bcast_cols_inplace(cb_qk_im, cb_cur_max, Sq_chunk_t, Sk_chunk_t);
+        DPRINT << "4" << ENDL();
 
         /* cb_cur_sum = sum(cb_qk_im, dim=-1) */
         reconfig_data_format(cb_qk_im, cb_identity_scale_in);
         pack_reconfig_data_format(cb_cur_sum);
         reduce_c<PoolType::SUM, ReduceDim::REDUCE_ROW, cb_qk_im, cb_identity_scale_in, cb_cur_sum, Sq_chunk_t>(
             Sk_chunk_t);
+
+        DPRINT << "5" << ENDL();
 
         /* OUT_IM = QK @ V_CHUNK */
         reconfig_data_format(cb_qk_im, cb_v_in);  // DEBUG
@@ -606,12 +612,14 @@ void flash_attention_loop(
             false /*transpose*/);
         reconfig_data_format_srca(cb_out_im);
         cb_pop_front(cb_qk_im, qk_chunk_tiles);
+        DPRINT << "6" << ENDL();
 
         /* OUT_ACC += OUT_IM */
         if (k_chunk == k_chunk_start) {
             reconfig_data_format_srca(cb_out_im);
             pack_reconfig_data_format(cb_out_accumulate_im);
             copy_block(cb_out_im, cb_out_accumulate_im, out_chunk_tiles);
+            DPRINT << "7" << ENDL();
         } else {
             reconfig_data_format(cb_prev_max, cb_cur_max);  // DEBUG
             pack_reconfig_data_format(cb_exp_max_diff);
@@ -652,4 +660,5 @@ void flash_attention_loop(
             copy_block(cb_cur_sum, cb_out_l, Sq_chunk_t);
         }
     }
+    DPRINT << "FLASH D" << ENDL();
 }
