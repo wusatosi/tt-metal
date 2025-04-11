@@ -22,6 +22,8 @@ option(ENABLE_TTNN_SHARED_SUBLIBS "Use shared libraries for ttnn to speed up inc
 option(TT_ENABLE_LIGHT_METAL_TRACE "Enable Light Metal Trace" ON)
 option(ENABLE_COVERAGE "Enable code coverage instrumentation" OFF)
 
+option(TT_UMD_BUILD_SIMULATION "Force UMD to include its simulation harnessing" ON)
+
 ###########################################################################################
 
 if(CMAKE_CXX_CLANG_TIDY AND TT_UNITY_BUILDS)
