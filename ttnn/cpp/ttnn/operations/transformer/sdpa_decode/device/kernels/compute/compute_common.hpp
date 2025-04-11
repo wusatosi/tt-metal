@@ -17,6 +17,8 @@
 #include "compute_kernel_api/reduce.h"
 #include "tools/profiler/kernel_profiler.hpp"
 
+auto sr = SliceRange{.h0 = 0, .h1 = 16, .hs = 2, .w0 = 0, .w1 = 32, .ws = 8};
+
 /******************************************************************************
  *                                                                             *
  *                   Common Functions for Compute Kernels                      *
@@ -123,7 +125,7 @@ void recip_block_inplace(uint32_t in_cb, uint32_t num_tiles) {
         acquire_dst();
         copy_tile(in_cb, 0, 0);
         cb_pop_front(in_cb, 1);
-        recip_tile(0);
+        recip_tile(0, VectorMode::R);
         cb_reserve_back(in_cb, 1);
         pack_tile(0, in_cb);
         cb_push_back(in_cb, 1);
@@ -156,7 +158,7 @@ void sub_exp_block_bcast_cols_inplace(uint32_t in0_cb, uint32_t in1_cb, uint32_t
             tile_regs_acquire();
             for (uint32_t j = 0; j < dst_tiles; ++j) {
                 sub_tiles_bcast_cols(in0_cb, in1_cb, j, i, j);
-                exp_tile<true>(j);
+                exp_tile<true>(j, VectorMode::R);
             }
             tile_regs_commit();
             cb_pop_front(in0_cb, dst_tiles);
@@ -533,7 +535,9 @@ void flash_attention_loop(
         /* QK = Q_CHUNK @ K_CHUNK */
         reconfig_data_format(cb_q_in, cb_k_in);  // DEBUG
         pack_reconfig_data_format(cb_qk_im);
+        // UNPACK(( DPRINT << TileSlice(cb_q_in, 0, sr, true, true) << ENDL() ));
 
+        DPRINT << "1" << ENDL();
         cb_matmul_blocks(
             cb_q_in,
             cb_k_in,
@@ -550,7 +554,9 @@ void flash_attention_loop(
             true /*transpose*/);
 
         /* QK *= SCALE */
+        DPRINT << "2" << ENDL();
         mul_block_bcast_scalar_inplace(cb_qk_im, cb_scale_in, qk_chunk_tiles);
+        // PACK(( DPRINT << TileSlice(cb_qk_im, 0, sr, true, true) << ENDL() ));
 
         if constexpr (is_causal) {
             // For decode, we only apply mask at the last chunk for causal mode
@@ -558,6 +564,7 @@ void flash_attention_loop(
                 /* QK += MASK */
                 reconfig_data_format(cb_qk_im, cb_mask_in);
                 add_block_inplace<false>(cb_qk_im, cb_mask_in, qk_chunk_tiles);
+                // UNPACK(( DPRINT << TileSlice(cb_qk_im, 0, sr, true, true) << ENDL() ));
             }
         } else {
             if constexpr (use_attention_mask) {
@@ -571,6 +578,7 @@ void flash_attention_loop(
         reduce_c<PoolType::MAX, ReduceDim::REDUCE_ROW, cb_qk_im, cb_identity_scale_in, cb_cur_max, Sq_chunk_t>(
             Sk_chunk_t);
 
+        DPRINT << "3" << ENDL();
         if (k_chunk > k_chunk_start) {
             reconfig_data_format(cb_cur_max, cb_prev_max);
             max_block_inplace(cb_cur_max, cb_prev_max, Sq_chunk_t);
@@ -580,6 +588,7 @@ void flash_attention_loop(
         reconfig_data_format(cb_qk_im, cb_cur_max);
         pack_reconfig_data_format(cb_qk_im);
         sub_exp_block_bcast_cols_inplace(cb_qk_im, cb_cur_max, Sq_chunk_t, Sk_chunk_t);
+        DPRINT << "4" << ENDL();
 
         /* cb_cur_sum = sum(cb_qk_im, dim=-1) */
         reconfig_data_format(cb_qk_im, cb_identity_scale_in);
@@ -587,9 +596,12 @@ void flash_attention_loop(
         reduce_c<PoolType::SUM, ReduceDim::REDUCE_ROW, cb_qk_im, cb_identity_scale_in, cb_cur_sum, Sq_chunk_t>(
             Sk_chunk_t);
 
+        DPRINT << "5" << ENDL();
+
         /* OUT_IM = QK @ V_CHUNK */
         reconfig_data_format(cb_qk_im, cb_v_in);  // DEBUG
         pack_reconfig_data_format(cb_out_im);
+        // UNPACK(( DPRINT << TileSlice(cb_qk_im, 0, sr, true, true) << ENDL() ));
         cb_matmul_blocks(
             cb_qk_im,
             cb_v_in,
@@ -606,12 +618,14 @@ void flash_attention_loop(
             false /*transpose*/);
         reconfig_data_format_srca(cb_out_im);
         cb_pop_front(cb_qk_im, qk_chunk_tiles);
+        DPRINT << "6" << ENDL();
 
         /* OUT_ACC += OUT_IM */
         if (k_chunk == k_chunk_start) {
             reconfig_data_format_srca(cb_out_im);
             pack_reconfig_data_format(cb_out_accumulate_im);
             copy_block(cb_out_im, cb_out_accumulate_im, out_chunk_tiles);
+            DPRINT << "7" << ENDL();
         } else {
             reconfig_data_format(cb_prev_max, cb_cur_max);  // DEBUG
             pack_reconfig_data_format(cb_exp_max_diff);
@@ -652,4 +666,5 @@ void flash_attention_loop(
             copy_block(cb_cur_sum, cb_out_l, Sq_chunk_t);
         }
     }
+    DPRINT << "FLASH D" << ENDL();
 }

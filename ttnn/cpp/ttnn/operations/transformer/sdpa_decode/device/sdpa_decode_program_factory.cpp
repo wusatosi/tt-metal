@@ -327,20 +327,29 @@ operation::ProgramWithCallbacks sdpa_decode_multi_core(
 
     const auto half_tile = tt::tt_metal::Tile({16, 32});
     const auto full_tile = tt::tt_metal::Tile({32, 32});
+    constexpr bool use_half_tile = true;
 
-    const auto q_tile = full_tile;
+    auto q_tile = full_tile;
     const auto k_tile = full_tile;
     const auto v_tile = full_tile;
-    const auto mask_tile = full_tile;
+    auto mask_tile = full_tile;
 
-    const auto out_tile = full_tile;
+    auto out_tile = full_tile;
 
-    // const auto scalar_tile = half_tile;
-    // const auto im_tile = half_tile;
-    // const auto stats_tile = full_tile;
-    const auto scalar_tile = full_tile;
-    const auto im_tile = full_tile;
-    const auto stats_tile = full_tile;
+    auto scalar_tile = full_tile;
+    auto im_tile = full_tile;
+    auto stats_tile = full_tile;
+
+    if (use_half_tile) {
+        q_tile = half_tile;
+        mask_tile = half_tile;
+
+        // out_tile = half_tile;
+
+        scalar_tile = half_tile;
+        im_tile = half_tile;
+        stats_tile = half_tile;
+    }
 
     uint32_t q_tile_size = q_tile.get_tile_size(q_df);
     uint32_t k_tile_size = k_tile.get_tile_size(k_df);

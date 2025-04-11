@@ -131,7 +131,7 @@ void MAIN {
         num_cores_to_wait = k_num_chunks - 1;
     }
 
-    mm_init(cb_q_in, cb_k_in, cb_out_final);
+    mm_init(cb_q_in, cb_k_in, cb_qk_im);
     cb_wait_front(cb_q_in, q_chunk_tiles);
 
 #ifdef DYNAMIC_CHUNK_SIZE
