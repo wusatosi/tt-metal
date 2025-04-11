@@ -63,6 +63,7 @@ void batch_loop(
     for (uint32_t q = start; q < end; ++q) {
         uint32_t wptr_offset = q < face_h ? q * SUBTILE_LINE_BYTES : (q + face_h) * SUBTILE_LINE_BYTES;
         uint32_t q_write_addr = cb_write_ptr_base + wptr_offset;
+        DPRINT << "q_write_addr: " << (uint32_t)wptr_offset << ENDL();
         for (uint32_t i = 0; i < head_size_num_tiles; ++i) {
             // Read first phase
             if (phase == 0 || phase == 1) {
@@ -75,15 +76,19 @@ void batch_loop(
             }
             qkv_read_addr += tile_size;
             q_write_addr += tile_size;
+            DPRINT << "q_write_addr: " << (uint32_t)tile_size * i << ENDL();
+            DPRINT << "qkv_read_addr: " << (uint32_t)tile_size * i << ENDL();
             num_tiles_read_cur_core++;
 
             if (num_tiles_read_cur_core == num_tiles_per_core_concat) {
                 cur_core_idx++;
                 local_count++;
+                DPRINT << "qkv_read_addr: " << (uint32_t)in_tile_offset_by_head << ENDL();
                 qkv_read_addr =
                     get_noc_addr(in0_mcast_noc_x[cur_core_idx], in0_mcast_noc_y[cur_core_idx], q_start_addr) +
                     in_tile_offset_by_head;
                 if (nlp_local) {
+                    DPRINT << "qkv_read_addr: " << (uint32_t)in_tile_offset_by_head << ENDL();
                     qkv_read_addr = get_noc_addr(core_noc_x[local_count], core_noc_y[local_count], tensor_address0) +
                                     in_tile_offset_by_head;
                 }
@@ -115,8 +120,13 @@ void nlp_concat(
                              in_tile_offset_by_head;
     uint32_t local_count = 0;
     if (nlp_local) {
+        DPRINT << "local_count: " << (uint32_t)local_count << "\n";
+        DPRINT << "qkv_read_addr: " << (uint32_t)(in_tile_offset_by_head) << "\n";
         qkv_read_addr =
             get_noc_addr(core_noc_x[local_count], core_noc_y[local_count], tensor_address0) + in_tile_offset_by_head;
+    } else {
+        DPRINT << "cur_core_idx: " << (uint32_t)cur_core_idx << "\n";
+        DPRINT << "qkv_read_addr: " << (uint32_t)(in_tile_offset_by_head) << "\n";
     }
 
     uint32_t num_tiles_read_cur_core = 0;
@@ -150,6 +160,8 @@ void nlp_concat(
         cur_core_idx = batch_start_2;
         qkv_read_addr = get_noc_addr(in0_mcast_noc_x[cur_core_idx], in0_mcast_noc_y[cur_core_idx], q_start_addr) +
                         in_tile_offset_by_head;
+        DPRINT << "cur_core_idx: " << (uint32_t)cur_core_idx << "\n";
+        DPRINT << "qkv_read_addr: " << (uint32_t)(in_tile_offset_by_head) << "\n";
 
         num_tiles_read_cur_core = 0;
     }
@@ -220,7 +232,18 @@ void kernel_main() {
         shard_tile_id = 0;
         core_id++;
     }
-
+    DPRINT << "before local\n";
+    for (uint32_t i = 0; i < 8; i++) {
+        DPRINT << "core_noc_x[i], core_noc_y[i]: " << (uint32_t)core_noc_x[i] << " " << (uint32_t)core_noc_y[i] << "\n";
+        DPRINT << "tensor_address0: " << (uint32_t)tensor_address0 << "\n";
+        uint64_t test_read_addr = get_noc_addr(core_noc_x[i], core_noc_y[i], tensor_address0);
+        DPRINT << "test_read_addr: " << (uint64_t)test_read_addr << "\n";
+        volatile tt_l1_ptr uint16_t* dst_noc3 = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(test_read_addr);
+        for (uint16_t value = 0; value < 16; value++) {
+            DPRINT << "value at " << (uint16_t)value << " is: " << BF16((uint16_t)dst_noc3[value]) << ENDL();
+        }
+    }
+    /*
     nlp_concat(
         batch,
         q_start_addr,
@@ -243,6 +266,7 @@ void kernel_main() {
     noc_semaphore_wait(signal_semaphore_addr_ptr, VALID);
 
     uint32_t phase = PHASES_TO_READ;
+    DPRINT << "before remote\n";
     nlp_concat(
         batch,
         q_start_addr,
@@ -258,4 +282,5 @@ void kernel_main() {
         in0_mcast_noc_x,
         in0_mcast_noc_y,
         in_tile_offset_by_head);
+    */
 }

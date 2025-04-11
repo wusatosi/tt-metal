@@ -36,13 +36,30 @@ using namespace ccl;
 
 struct llama_config {
     CoreRange nlp_only_core_range_1 = CoreRange({1, 1}, {3, 1});  // cores that are used for NLP op only
-    CoreRange nlp_only_core_range_2 = CoreRange({1, 2}, {2, 2});
+    CoreRange nlp_only_core_range_2 = CoreRange({5, 0}, {6, 0});
     uint32_t num_cores_input_tensor = 8;
     CoreRange sem_mcast_range_1 =
         CoreRange({2, 0}, {3, 0});  // cores waiting for all gather op to finish to start nlp op
     CoreRange sem_mcast_range_2 = CoreRange({1, 1}, {3, 1});
-    CoreRange sem_mcast_range_3 = CoreRange({1, 2}, {2, 2});
-    uint32_t num_semaphore_ranges = 3;
+    CoreRange sem_mcast_range_3 = CoreRange({5, 0}, {6, 0});
+    uint32_t num_semaphore_ranges = 8;
+
+    CoreRange core_range_1 = CoreRange(CoreCoord{6, 6}, CoreCoord{6, 6});
+    CoreRange core_range_2 = CoreRange(CoreCoord{6, 7}, CoreCoord{6, 7});
+    CoreRange core_range_3 = CoreRange(CoreCoord{6, 9}, CoreCoord{6, 9});
+    CoreRange core_range_4 = CoreRange(CoreCoord{6, 0}, CoreCoord{6, 0});
+    CoreRange core_range_5 = CoreRange(CoreCoord{6, 1}, CoreCoord{6, 1});
+    CoreRange core_range_6 = CoreRange(CoreCoord{6, 2}, CoreCoord{6, 2});
+    CoreRange core_range_7 = CoreRange(CoreCoord{6, 4}, CoreCoord{6, 4});
+    CoreRange core_range_8 = CoreRange(CoreCoord{6, 5}, CoreCoord{6, 5});
+    CoreRange core_range_9 = CoreRange(CoreCoord{5, 5}, CoreCoord{5, 5});
+    CoreRange core_range_10 = CoreRange(CoreCoord{5, 6}, CoreCoord{5, 6});
+    CoreRange core_range_11 = CoreRange(CoreCoord{5, 7}, CoreCoord{5, 7});
+    CoreRange core_range_12 = CoreRange(CoreCoord{5, 9}, CoreCoord{5, 9});
+    CoreRange core_range_13 = CoreRange(CoreCoord{5, 0}, CoreCoord{5, 0});
+    CoreRange core_range_14 = CoreRange(CoreCoord{5, 1}, CoreCoord{5, 1});
+    CoreRange core_range_15 = CoreRange(CoreCoord{5, 2}, CoreCoord{5, 2});
+    CoreRange core_range_16 = CoreRange(CoreCoord{5, 4}, CoreCoord{5, 4});
 };
 
 void append_fabric_connection_rt_arguments(
@@ -294,7 +311,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
         program,
         "ttnn/cpp/ttnn/operations/experimental/ccl/all_gather_concat_heads_fused/device/kernels/"
         "llama_concat_reader.cpp",
-        q_cores_updated,
+        q_cores,
         tt::tt_metal::DataMovementConfig{
             .processor = tt::tt_metal::DataMovementProcessor::RISCV_1,
             .noc = reader_noc,
@@ -305,7 +322,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
         program,
         "ttnn/cpp/ttnn/operations/experimental/ccl/all_gather_concat_heads_fused/device/kernels/"
         "llama_concat_reader.cpp",
-        q_cores_updated,
+        q_cores,
         tt::tt_metal::DataMovementConfig{
             .processor = tt::tt_metal::DataMovementProcessor::RISCV_0,
             .noc = writer_noc,
@@ -524,10 +541,19 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
             concat_semaphore_id,
         };
 
+        // auto sem_mcast_ranges = CoreRangeSet(std::vector{
+        //     llama_configuration.sem_mcast_range_1,
+        //     llama_configuration.sem_mcast_range_2,
+        //      llama_configuration.sem_mcast_range_3});
         auto sem_mcast_ranges = CoreRangeSet(std::vector{
-            llama_configuration.sem_mcast_range_1,
-            llama_configuration.sem_mcast_range_2,
-            llama_configuration.sem_mcast_range_3});
+            llama_configuration.core_range_1,
+            llama_configuration.core_range_2,
+            llama_configuration.core_range_3,
+            llama_configuration.core_range_4,
+            llama_configuration.core_range_5,
+            llama_configuration.core_range_6,
+            llama_configuration.core_range_7,
+            llama_configuration.core_range_8});
         std::vector<uint32_t> mcast_start_x;
         std::vector<uint32_t> mcast_start_y;
         std::vector<uint32_t> mcast_end_x;
@@ -580,6 +606,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
         // in_tile_offset_by_batch is the start address of each batch in the input tile. The first face_h batches are in
         // the upper half of the tile and rest are in the lower half of tile.
         uint32_t in_tile_offset_by_batch = i < face_h ? i * sub_tile_line_bytes : (i + face_h) * sub_tile_line_bytes;
+        printf("in_tile_offset_by_batch: %u for i %u and face_h %u\n", in_tile_offset_by_batch, i, face_h);
 
         const auto& core = cores[i];
         std::vector<uint32_t> input_cores_x;

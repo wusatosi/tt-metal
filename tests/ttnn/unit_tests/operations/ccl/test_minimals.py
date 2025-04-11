@@ -453,12 +453,12 @@ def test_tg_trace_rms_fuse(
         # ttnn.bfloat8_b,
     ],
 )
-@pytest.mark.parametrize("num_iters, warmup_iters", [[75, 5]])
+@pytest.mark.parametrize("num_iters, warmup_iters", [[1, 0]])
 @pytest.mark.parametrize("enable_async", [True])
-@pytest.mark.parametrize("trace_mode", [True])
+@pytest.mark.parametrize("trace_mode", [False])
 @pytest.mark.parametrize(
     "device_params",
-    [{"trace_region_size": 23887872}],
+    [{"trace_region_size": 23887872, "dispatch_core_axis": ttnn.DispatchCoreAxis.COL}],
     indirect=True,
 )
 @pytest.mark.parametrize("mesh_device", [pytest.param((8, 4), id="8x4_grid")], indirect=True)

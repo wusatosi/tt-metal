@@ -65,16 +65,20 @@ void batch_loop(
     for (uint32_t q = start; q < end; ++q) {
         uint32_t wptr_offset = q < face_h ? q * SUBTILE_LINE_BYTES : (q + face_h) * SUBTILE_LINE_BYTES;
         uint32_t q_write_addr = cb_write_ptr_base + wptr_offset;
+        DPRINT << "q_write_addr: " << (uint32_t)wptr_offset << ENDL();
         for (uint32_t i = 0; i < head_size_num_tiles; ++i) {
             noc_async_read(
                 qkv_read_addr + face_hw * ELEMENT_SIZE, q_write_addr + face_hw * ELEMENT_SIZE, SUBTILE_LINE_BYTES);
 
             qkv_read_addr += tile_size;
             q_write_addr += tile_size;
+            DPRINT << "q_write_addr: " << (uint32_t)tile_size * i << ENDL();
+            DPRINT << "qkv_read_addr: " << (uint32_t)tile_size * i << ENDL();
             num_tiles_read_cur_core++;
 
             if (num_tiles_read_cur_core == num_tiles_per_core_concat) {
                 cur_core_idx++;
+                DPRINT << "qkv_read_addr: " << (uint32_t)in_tile_offset_by_head << ENDL();
                 qkv_read_addr =
                     get_noc_addr(in0_mcast_noc_x[cur_core_idx], in0_mcast_noc_y[cur_core_idx], q_start_addr) +
                     in_tile_offset_by_head;
@@ -100,7 +104,8 @@ void nlp_concat(
 
     uint64_t qkv_read_addr = get_noc_addr(in0_mcast_noc_x[cur_core_idx], in0_mcast_noc_y[cur_core_idx], q_start_addr) +
                              in_tile_offset_by_head;
-
+    DPRINT << "cur_core_idx: " << (uint32_t)cur_core_idx << "\n";
+    DPRINT << "qkv_read_addr: " << (uint32_t)(in_tile_offset_by_head) << "\n";
     uint32_t num_tiles_read_cur_core = 0;
     uint32_t q_write_addr = 0;
     const uint32_t cb_write_ptr_base = get_write_ptr(cb_id_q_out);
@@ -127,6 +132,8 @@ void nlp_concat(
         cur_core_idx = batch_start_2;
         qkv_read_addr = get_noc_addr(in0_mcast_noc_x[cur_core_idx], in0_mcast_noc_y[cur_core_idx], q_start_addr) +
                         in_tile_offset_by_head;
+        DPRINT << "cur_core_idx: " << (uint32_t)cur_core_idx << "\n";
+        DPRINT << "qkv_read_addr: " << (uint32_t)(in_tile_offset_by_head) << "\n";
     }
 
     noc_async_read_barrier();
@@ -287,7 +294,7 @@ void kernel_main() {
     }
 
     if (wait_output_semaphore) {
-        for (uint32_t i = 0; i < 3; i++) {
+        for (uint32_t i = 0; i < 8; i++) {
             const uint64_t concat_sem_rcv_addr = get_noc_multicast_addr(
                 mcast_dest_noc_start_x[i],
                 mcast_dest_noc_start_y[i],
@@ -297,7 +304,8 @@ void kernel_main() {
             noc_semaphore_set_multicast(
                 concat_semaphore_send_addr,
                 concat_sem_rcv_addr,
-                i == 1 ? 3 : 2,
+                // i == 1 ? 3 : 2,
+                1,
                 false,  // linked = false
                 true);  // multicast_path_reserve = true
         }
@@ -312,7 +320,7 @@ void kernel_main() {
             reinterpret_cast<volatile tt_l1_ptr uint32_t*>(concat_semaphore_send_addr);
         noc_semaphore_wait(signal_semaphore_addr_ptr, VALID);
     }
-
+    /*
     nlp_concat(
         batch,
         q_start_addr,
@@ -325,6 +333,7 @@ void kernel_main() {
         in0_mcast_noc_y,
         in_tile_offset_by_head);
 
+    */
     if (reset_global_semaphore) {
         *reinterpret_cast<volatile tt_l1_ptr uint32_t*>(out_ready_sem_bank_addr) = 0;
     }
