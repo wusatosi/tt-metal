@@ -132,10 +132,9 @@ inline auto invoke_binary_ng(
         const std::vector activations(post_activations.begin(), post_activations.end());
         const std::optional lhs_activation =
             lhs_activations.empty() ? std::nullopt : std::optional{lhs_activations.front()};
-
         if constexpr (requires { detail::preprocess_inputs(binary_op_type, lhs, rhs); }) {
             auto [a, b] = detail::preprocess_inputs(binary_op_type, lhs, rhs);
-
+            tt::log_info(tt::LogOp, " ****** using use_legacy if");
             return ttnn::prim::binary(
                 queue_id, a, b, binary_op_type, dtype, memory_config, output, activations, lhs_activation);
         } else {
