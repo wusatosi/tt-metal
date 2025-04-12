@@ -1,9 +1,10 @@
-// SPDX-FileCopyrightText: © 2023 Tenstorrent Inc.
+// SPDX-FileCopyrightText: 2023 Tenstorrent Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 
 #include <array>
 #include <cstdint>
+#include <iostream>
 #include <optional>
 #include <string>
 #include <utility>
@@ -55,6 +56,140 @@ Result conv2d(
     const std::optional<const Conv2dConfig>& conv_config_,
     const std::optional<const DeviceComputeKernelConfig>& compute_config_,
     const std::optional<const MemoryConfig>& memory_config) {
+    // Debug prints
+    std::cout << "KCM CPP ttnn::conv2d parameters: " << std::endl;
+    std::cout << "input_tensor shape=[" << input_tensor.get_logical_shape()[0] << ", "
+              << input_tensor.get_logical_shape()[1] << ", " << input_tensor.get_logical_shape()[2] << ", "
+              << input_tensor.get_logical_shape()[3] << "]" << std::endl;
+
+    std::cout << "weight_tensor shape=[" << weight_tensor.get_logical_shape()[0] << ", "
+              << weight_tensor.get_logical_shape()[1] << ", " << weight_tensor.get_logical_shape()[2] << ", "
+              << weight_tensor.get_logical_shape()[3] << "]" << std::endl;
+
+    std::cout << "in_channels=" << in_channels << ", out_channels=" << out_channels << std::endl;
+    std::cout << "device=" << device << std::endl;
+
+    std::cout << "bias_tensor=";
+    if (bias_tensor.has_value()) {
+        std::cout << "[";
+        const auto& bias_shape = bias_tensor.value().get_logical_shape();
+        for (size_t i = 0; i < bias_shape.size(); ++i) {
+            if (i > 0) {
+                std::cout << ", ";
+            }
+            std::cout << bias_shape[i];
+        }
+        std::cout << "]";
+    } else {
+        std::cout << "None";
+    }
+    std::cout << std::endl;
+
+    std::cout << "kernel_size=[" << kernel_size[0] << ", " << kernel_size[1] << "]" << std::endl;
+    std::cout << "stride=[" << stride[0] << ", " << stride[1] << "]" << std::endl;
+
+    // Handle different types of padding
+    std::cout << "padding=";
+    std::visit(
+        [](auto&& arg) {
+            using ArgType = std::decay_t<decltype(arg)>;
+            if constexpr (std::is_same_v<ArgType, std::array<uint32_t, 2>>) {
+                std::cout << "[" << arg[0] << ", " << arg[1] << "]";
+            } else if constexpr (std::is_same_v<ArgType, std::array<uint32_t, 4>>) {
+                std::cout << "[" << arg[0] << ", " << arg[1] << ", " << arg[2] << ", " << arg[3] << "]";
+            }
+        },
+        padding);
+    std::cout << std::endl;
+
+    std::cout << "dilation=[" << dilation[0] << ", " << dilation[1] << "]" << std::endl;
+    std::cout << "groups=" << groups << std::endl;
+    std::cout << "batch_size=" << batch_size << std::endl;
+    std::cout << "input_height=" << input_height << std::endl;
+    std::cout << "input_width=" << input_width << std::endl;
+
+    // Print all Conv2dConfig fields
+    std::cout << "Conv2dConfig=" << std::endl;
+    std::cout << "{" << std::endl;
+
+    // Print data types
+    Conv2dConfig config = conv_config_.value_or(Conv2dConfig{});
+    std::cout << "  dtype=";
+    switch (config.dtype) {
+        case tt::tt_metal::DataType::BFLOAT16: std::cout << "BFLOAT16"; break;
+        case tt::tt_metal::DataType::BFLOAT8_B: std::cout << "BFLOAT8_B"; break;
+        case tt::tt_metal::DataType::FLOAT32: std::cout << "FLOAT32"; break;
+        default: std::cout << "OTHER"; break;
+    }
+    std::cout << std::endl;
+
+    std::cout << "  weights_dtype=";
+    switch (config.weights_dtype) {
+        case tt::tt_metal::DataType::BFLOAT16: std::cout << "BFLOAT16"; break;
+        case tt::tt_metal::DataType::BFLOAT8_B: std::cout << "BFLOAT8_B"; break;
+        case tt::tt_metal::DataType::FLOAT32: std::cout << "FLOAT32"; break;
+        default: std::cout << "OTHER"; break;
+    }
+    std::cout << std::endl;
+
+    std::cout << "  input_channels_alignment=" << config.input_channels_alignment << std::endl;
+    std::cout << "  deallocate_activation=" << (config.deallocate_activation ? "true" : "false") << std::endl;
+    std::cout << "  reallocate_halo_output=" << (config.reallocate_halo_output ? "true" : "false") << std::endl;
+    std::cout << "  act_block_h_override=" << config.act_block_h_override << std::endl;
+    std::cout << "  act_block_w_div=" << config.act_block_w_div << std::endl;
+    std::cout << "  reshard_if_not_optimal=" << (config.reshard_if_not_optimal ? "true" : "false") << std::endl;
+    std::cout << "  override_sharding_config=" << (config.override_sharding_config ? "true" : "false") << std::endl;
+
+    // Print core_grid if available
+    std::cout << "  core_grid=";
+    if (config.core_grid.has_value()) {
+        std::cout << "[CORE_GRID_DEFINED]";  // Simplified representation
+    } else {
+        std::cout << "None";
+    }
+    std::cout << std::endl;
+
+    // Print output_layout enum
+    std::cout << "  output_layout=";
+    switch (config.output_layout) {
+        case Layout::ROW_MAJOR: std::cout << "ROW_MAJOR"; break;
+        case Layout::TILE: std::cout << "TILE"; break;
+        case Layout::INVALID: std::cout << "INVALID"; break;
+        default: std::cout << "UNKNOWN"; break;
+    }
+    std::cout << std::endl;
+
+    std::cout << "  activation=\"" << config.activation << "\"" << std::endl;
+    std::cout << "  transpose_shards=" << (config.transpose_shards ? "true" : "false") << std::endl;
+    std::cout << "  preprocess_weights_on_device=" << (config.preprocess_weights_on_device ? "true" : "false")
+              << std::endl;
+    std::cout << "  always_preprocess_weights=" << (config.always_preprocess_weights ? "true" : "false") << std::endl;
+    std::cout << "  enable_act_double_buffer=" << (config.enable_act_double_buffer ? "true" : "false") << std::endl;
+    std::cout << "  enable_weights_double_buffer=" << (config.enable_weights_double_buffer ? "true" : "false")
+              << std::endl;
+    std::cout << "  enable_split_reader=" << (config.enable_split_reader ? "true" : "false") << std::endl;
+    std::cout << "  enable_subblock_padding=" << (config.enable_subblock_padding ? "true" : "false") << std::endl;
+    std::cout << "  in_place=" << (config.in_place ? "true" : "false") << std::endl;
+
+    std::cout << "  shard_layout=";
+    if (config.shard_layout.has_value()) {
+        auto shard_layout = config.shard_layout.value();
+        // Convert the TensorMemoryLayout enum to string instead of trying to stream it directly
+        switch (shard_layout) {
+            case TensorMemoryLayout::INTERLEAVED: std::cout << "INTERLEAVED"; break;
+            case TensorMemoryLayout::SINGLE_BANK: std::cout << "SINGLE_BANK"; break;
+            case TensorMemoryLayout::HEIGHT_SHARDED: std::cout << "HEIGHT_SHARDED"; break;
+            case TensorMemoryLayout::WIDTH_SHARDED: std::cout << "WIDTH_SHARDED"; break;
+            case TensorMemoryLayout::BLOCK_SHARDED: std::cout << "BLOCK_SHARDED"; break;
+            default: std::cout << "UNKNOWN"; break;
+        }
+    } else {
+        std::cout << "None";
+    }
+    std::cout << std::endl;
+
+    std::cout << "}" << std::endl;
+
     Conv2dConfig conv_config = conv_config_.value_or(Conv2dConfig());
     std::array<uint32_t, 4> padding_n4 = sliding_window::get_pair_n4_padding(padding);
     const bool mm_conv = use_matmul_for_1x1_conv(kernel_size, stride, padding_n4, dilation, groups, conv_config);
@@ -301,6 +436,23 @@ Result Conv2dOperation::invoke(
     const std::optional<const Conv2dConfig>& conv_config_,
     const std::optional<const DeviceComputeKernelConfig>& compute_config_,
     const std::optional<const MemoryConfig>& memory_config) {
+    // Debug prints for IDevice overload
+    // std::cout << "[IDevice] ttnn::conv2d::invoke parameters: ";
+    // std::cout << "input_tensor shape=[" << input_tensor.get_logical_shape()[0] << ", "
+    //           << input_tensor.get_logical_shape()[1] << ", " << input_tensor.get_logical_shape()[2] << ", "
+    //           << input_tensor.get_logical_shape()[3] << "], ";
+
+    // std::cout << "weight_tensor shape=[" << weight_tensor.get_logical_shape()[0] << ", "
+    //           << weight_tensor.get_logical_shape()[1] << ", " << weight_tensor.get_logical_shape()[2] << ", "
+    //           << weight_tensor.get_logical_shape()[3] << "], ";
+
+    // std::cout << "in_channels=" << in_channels << ", out_channels=" << out_channels << ", ";
+    // std::cout << "batch_size=" << batch_size << ", ";
+    // std::cout << "input_height=" << input_height << ", input_width=" << input_width << ", ";
+    // std::cout << "kernel_size=(" << kernel_size[0] << ", " << kernel_size[1] << "), ";
+    // std::cout << "stride=(" << stride[0] << ", " << stride[1] << "), ";
+    // std::cout << "groups=" << groups << std::endl;
+
     return conv2d(
         input_tensor,
         weight_tensor,
@@ -340,6 +492,23 @@ Result Conv2dOperation::invoke(
     const std::optional<const Conv2dConfig>& conv_config_,
     const std::optional<const DeviceComputeKernelConfig>& compute_config_,
     const std::optional<const MemoryConfig>& memory_config) {
+    // Debug prints for MeshDevice overload
+    // std::cout << "[MeshDevice] ttnn::conv2d::invoke parameters: ";
+    // std::cout << "input_tensor shape=[" << input_tensor.get_logical_shape()[0] << ", "
+    //           << input_tensor.get_logical_shape()[1] << ", " << input_tensor.get_logical_shape()[2] << ", "
+    //           << input_tensor.get_logical_shape()[3] << "], ";
+
+    // std::cout << "weight_tensor shape=[" << weight_tensor.get_logical_shape()[0] << ", "
+    //           << weight_tensor.get_logical_shape()[1] << ", " << weight_tensor.get_logical_shape()[2] << ", "
+    //           << weight_tensor.get_logical_shape()[3] << "], ";
+
+    // std::cout << "in_channels=" << in_channels << ", out_channels=" << out_channels << ", ";
+    // std::cout << "batch_size=" << batch_size << ", ";
+    // std::cout << "input_height=" << input_height << ", input_width=" << input_width << ", ";
+    // std::cout << "kernel_size=(" << kernel_size[0] << ", " << kernel_size[1] << "), ";
+    // std::cout << "stride=(" << stride[0] << ", " << stride[1] << "), ";
+    // std::cout << "groups=" << groups << std::endl;
+
     return conv2d(
         input_tensor,
         weight_tensor,

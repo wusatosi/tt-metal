@@ -36,6 +36,7 @@ def mesh_device_fixture():
     device_id = 0
     assert device_id < num_devices, "CreateDevice not supported for non-mmio device"
     device = ttnn.CreateDevice(device_id=device_id, l1_small_size=32768)
+    print("KCM using mesh device")
     ttnn.SetDefaultDevice(device)
 
     device_name = "Unknown"
@@ -225,6 +226,7 @@ def run_conv2d_short_sweep(
         torch_input_dtype = torch.bfloat16 if input_dtype == ttnn.DataType(ttnn.bfloat16) else torch.float32
         torch_weight_dtype = torch.bfloat16 if weights_dtype == ttnn.DataType(ttnn.bfloat16) else torch.float32
 
+    print("KCM input_height: ", input_height)
     conv_input_shape = [batch_size, input_channels, input_height, input_width]
     conv_weight_shape = [output_channels, input_channels // groups, kernel_height, kernel_width]
     conv_bias_shape = [1, 1, 1, output_channels]
@@ -259,6 +261,7 @@ def run_conv2d_short_sweep(
         input_layout = ttnn.Layout(input_layout)
         input_dtype = ttnn.DataType(input_dtype)
         input_memory_config = ttnn.DRAM_MEMORY_CONFIG if input_buffer_type == "dram" else ttnn.L1_MEMORY_CONFIG
+        # This is responsible for the different shaope.
         torch_input_tensor = torch.reshape(
             torch_input_tensor, (1, 1, batch_size * input_height * input_width, input_channels)
         )
@@ -276,6 +279,7 @@ def run_conv2d_short_sweep(
             weights_dtype=weights_dtype,
             output_layout=output_layout,
             preprocess_weights_on_device=True,
+            reallocate_halo_output=True,  # To match tt-mlir, hang
         )
     else:
         tt_weight_tensor = ttnn.from_torch(torch_weight_tensor, ttnn.bfloat16)
@@ -288,13 +292,31 @@ def run_conv2d_short_sweep(
         )
 
     start_time = start_measuring_time()
+
+    # Print and flush a message
+    import sys
+
+    print(f"Running conv2d from is_forge_suite: {is_forge_suite}", file=sys.stdout, flush=True)
+
+    print(
+        f"ttnn.conv2d parameters: input_tensor={tt_input_tensor.shape}, weight_tensor={tt_weight_tensor.shape}, "
+        f"in_channels={input_channels}, out_channels={output_channels}, device={device}, "
+        f"bias_tensor={'None' if tt_bias_tensor is None else tt_bias_tensor.shape}, "
+        f"kernel_size=({kernel_height}, {kernel_width}), stride=({stride_h}, {stride_w}), "
+        f"padding=({pad_h}, {pad_w}), dilation=({dilation_h}, {dilation_w}), batch_size={batch_size}, "
+        f"input_height={input_height}, input_width={input_width}, groups={groups}, "
+        f"conv_config={conv_config}",
+        file=sys.stdout,
+        flush=True,
+    )
+
     [tt_output_tensor_on_device, [out_height, out_width], [weights_device, bias_device]] = ttnn.conv2d(
         input_tensor=tt_input_tensor,
         weight_tensor=tt_weight_tensor,
         in_channels=input_channels,
         out_channels=output_channels,
         device=device,
-        bias_tensor=tt_bias_tensor,
+        bias_tensor=tt_bias_tensor,  # New here
         kernel_size=(kernel_height, kernel_width),
         stride=(stride_h, stride_w),
         padding=(pad_h, pad_w),
@@ -303,10 +325,12 @@ def run_conv2d_short_sweep(
         input_height=input_height,
         input_width=input_width,
         groups=groups,
-        conv_config=conv_config,
-        return_output_dim=True,
-        return_weights_and_bias=True,
+        conv_config=conv_config,  # New here.
+        return_output_dim=True,  # New here.
+        return_weights_and_bias=True,  # New here.
     )
+
+    print(f"Getting conv2d output from device from is_forge_suite: {is_forge_suite}", file=sys.stdout, flush=True)
 
     tt_output_tensor = ttnn.from_device(tt_output_tensor_on_device)
     torch_output_tensor = ttnn.to_torch(tt_output_tensor)

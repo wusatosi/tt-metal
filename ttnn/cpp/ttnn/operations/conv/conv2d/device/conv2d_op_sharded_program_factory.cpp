@@ -405,6 +405,9 @@ tt::tt_metal::operation::ProgramWithCallbacks multi_core_optimized_conv_sharded_
     tt_metal::IDevice* device = a.device();
     TT_FATAL(a.get_layout() == Layout::ROW_MAJOR, "Conv activation should be in row major layout");
     TT_FATAL(a.memory_config().is_sharded(), "Conv activation must be sharded.");
+
+    std::cout << "KCM output_channels: " << output_channels << " b.get_padded_shape()[3]: " << b.get_padded_shape()[3]
+              << std::endl;
     TT_FATAL(output_channels <= b.get_padded_shape()[3], "Invalid weight shape. Incorrect weight tensor.");
     uint32_t act_block_h_ntiles = block_config.act_block_h_ntiles;
     uint32_t act_block_w_ntiles = block_config.act_block_w_ntiles;
