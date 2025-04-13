@@ -69,6 +69,15 @@ inline auto create_async_output_tensors(
             "implement create_async_optional_output_tensors.");
 
         return operation_t::create_async_optional_output_tensors(std::forward<decltype(args)>(args)...);
+    } else if constexpr (std::is_same_v<std::decay_t<execute_on_worker_thread_return_t>, Tensors>) {
+        constexpr bool custom_create_async_outputs =
+            requires(const operation_t& t) { t.create_async_output_tensors(std::forward<decltype(args)>(args)...); };
+        static_assert(
+            custom_create_async_outputs,
+            "If the operation returns a vector of Tensors, it must "
+            "implement create_async_output_tensors.");
+
+        return operation_t::create_async_output_tensors(std::forward<decltype(args)>(args)...);
     } else if constexpr (std::is_same_v<std::decay_t<execute_on_worker_thread_return_t>, Tensor>) {
         return std::vector{Tensor(tt::tt_metal::operation::get_workers_for_op_output(inputs, optional_inputs))};
 
@@ -407,7 +416,7 @@ consteval void assert_operation_in_correct_namespace() {
                 tt::stl::reflection::fixed_string_substring<0, prim_namespace.size()>(cpp_fully_qualified_name);
             static_assert(
                 not tt::stl::reflection::fixed_string_equals(namespace_substring, prim_namespace),
-                "Composite operations must not be in the `ttnn::prim` namespace.");
+                "Composite operations must not be in the `ttnn::prim` namespace. {} {}");
         }
     }
 }

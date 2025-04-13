@@ -12,7 +12,8 @@
 
 namespace ttnn::operations::experimental::deinterleave {
 
-DeinterleaveOperation::ProgramFactoryToBatch::cached_program_t DeinterleaveOperation::ProgramFactoryToBatch::create(
+DeinterleaveToBatchOperation::ProgramFactoryToBatch::cached_program_t
+DeinterleaveToBatchOperation::ProgramFactoryToBatch::create(
     const operation_attributes_t& operation_attributes,
     const tensor_args_t& tensor_args,
     tensor_return_value_t& output) {
@@ -21,7 +22,10 @@ DeinterleaveOperation::ProgramFactoryToBatch::cached_program_t DeinterleaveOpera
     using namespace tt::tt_metal;
     using namespace tt;
 
-    TT_FATAL(operation_attributes.to_batch == true, "Deinterleave: bad configuration.");
+    // TT_FATAL(operation_attributes.to_batch == true, "Deinterleave: bad configuration.");
+    // TT_FATAL(outputs.size() != 1, "Deinterleave: outputs.size() must be 1 in to_batch mode");
+    // auto& output = outputs[0];
+
     Program program;
 
     const auto& input = tensor_args.input;
@@ -67,7 +71,8 @@ DeinterleaveOperation::ProgramFactoryToBatch::cached_program_t DeinterleaveOpera
     auto per_core_height = input.memory_config().shard_spec.value().shape[0] / operation_attributes.input_width;
     log_info(
         tt::LogOp,
-        "DeinterleaveOperation::ProgramFactoryToBatch::create; stride_hw: {}; per core height {} per_core_width {}",
+        "DeinterleaveToBatchOperation::ProgramFactoryToBatch::create; stride_hw: {}; per core height {} per_core_width "
+        "{}",
         operation_attributes.stride_hw,
         per_core_height,
         per_core_width);
@@ -220,7 +225,8 @@ DeinterleaveOperation::ProgramFactoryToBatch::cached_program_t DeinterleaveOpera
 
         log_warning(
             tt::LogOp,
-            "DeinterleaveOperation::ProgramFactoryToBatch::create; core: {} myid {}, start {}-{}, end {}-{}, dst_batch "
+            "DeinterleaveToBatchOperation::ProgramFactoryToBatch::create; core: {} myid {}, start {}-{}, end {}-{}, "
+            "dst_batch "
             "{}, "
             "id_in_batch {} offset_dm0 {}-{} offset_dm1 {}-{}",
             core,
@@ -309,7 +315,7 @@ DeinterleaveOperation::ProgramFactoryToBatch::cached_program_t DeinterleaveOpera
     return {std::move(program), {read_kernel_id, write_kernel_id, worker_grid}};
 }
 
-void DeinterleaveOperation::ProgramFactoryToBatch::override_runtime_arguments(
+void DeinterleaveToBatchOperation::ProgramFactoryToBatch::override_runtime_arguments(
     cached_program_t& cached_program,
     const operation_attributes_t& operation_attributes,
     const tensor_args_t& tensor_args,
@@ -318,8 +324,8 @@ void DeinterleaveOperation::ProgramFactoryToBatch::override_runtime_arguments(
     const auto& read_kernel_id = cached_program.shared_variables.read_kernel_id;
     const auto& write_kernel_id = cached_program.shared_variables.write_kernel_id;
 
-    auto input_buffer_address = tensor_args.input.buffer()->address();
-    auto output_buffer_address = output.buffer()->address();
+    // auto input_buffer_address = tensor_args.input.buffer()->address();
+    // auto output_buffer_address = output[0].buffer()->address();
 
     TT_FATAL(false, "to resolve overriding runtime args");
     // std::vector<std::vector<uint32_t>>& reader_args = GetRuntimeArgs(program, read_kernel_id);

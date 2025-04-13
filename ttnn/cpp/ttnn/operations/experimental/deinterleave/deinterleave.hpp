@@ -19,7 +19,15 @@ struct DeinterleaveToBatch {
 };
 
 struct DeinterleaveLocal {
-    static Tensor invoke(
+    static std::vector<Tensor> invoke(
+        const Tensor& input,
+        const uint32_t input_height,
+        const uint32_t input_width,
+        const std::array<uint32_t, 2> stride_hw,
+        const uint32_t barrier_threshold,
+        const std::optional<DeviceComputeKernelConfig>& compute_kernel_config);
+
+    static std::vector<Tensor> create_async_output_tensors(
         const Tensor& input,
         const uint32_t input_height,
         const uint32_t input_width,
