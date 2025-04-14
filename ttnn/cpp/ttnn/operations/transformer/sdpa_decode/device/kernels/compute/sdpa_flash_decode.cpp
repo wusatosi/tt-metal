@@ -267,6 +267,7 @@ void MAIN {
             pack_reconfig_data_format(cb_out_accumulate_im);
             mul_block_bcast_cols_inplace(cb_out_accumulate_im, cb_cur_sum, Sq_chunk_t, DHt);
             pack_reconfig_data_format(cb_out_final);
+            PACK((llk_pack_init(cb_qk_im)));
             copy_block(cb_out_accumulate_im, cb_out_final, out_chunk_tiles);
 
             // free up cb_prev_max after K chunks
