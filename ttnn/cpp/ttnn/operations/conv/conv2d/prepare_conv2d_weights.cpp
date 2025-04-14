@@ -391,22 +391,41 @@ static Tensor conv_depthwise_weight_bcast_helper(
     DataType output_dtype) {
     tt::tt_metal::owned_buffer::Buffer<T> output_buffer =
         tt::tt_metal::owned_buffer::create<T>(output_weight_shape.volume());
-    auto conv_weight_tensor_buffer = tt::tt_metal::borrowed_buffer::get_as<T>(conv_weight_tensor);
-    // Copy the original weight tensor to the output tensor
-    for (int i = 0; i < output_weight_shape[0]; i++) {
-        for (int j = 0; j < output_weight_shape[1]; j++) {
-            for (int k = 0; k < output_weight_shape[2]; k++) {
-                for (int l = 0; l < output_weight_shape[3]; l++) {
-                    auto value_flat_input_index = tt::tt_metal::compute_flat_indices(
-                        ttnn::SmallVector<int>{i, 0, k, l}, compute_strides(original_weight_shape));
-                    auto value = conv_weight_tensor_buffer[value_flat_input_index];
-                    auto output_flat_input_index = tt::tt_metal::compute_flat_indices(
-                        ttnn::SmallVector<int>{i, j, k, l}, compute_strides(output_weight_shape));
-                    output_buffer[output_flat_input_index] = value;
+    std::cout << "KCM inside conv_depthwise_weight_bcast_helper getting tensor buffer" << std::endl;
+
+    // Modified to handle both OwnedStorage and BorrowedStorage
+    auto process_with_buffer = [&](auto&& buffer) {
+        // Copy the original weight tensor to the output tensor
+        for (int i = 0; i < output_weight_shape[0]; i++) {
+            for (int j = 0; j < output_weight_shape[1]; j++) {
+                for (int k = 0; k < output_weight_shape[2]; k++) {
+                    for (int l = 0; l < output_weight_shape[3]; l++) {
+                        auto value_flat_input_index = tt::tt_metal::compute_flat_indices(
+                            ttnn::SmallVector<int>{i, 0, k, l}, compute_strides(original_weight_shape));
+                        auto value = buffer[value_flat_input_index];
+                        auto output_flat_input_index = tt::tt_metal::compute_flat_indices(
+                            ttnn::SmallVector<int>{i, j, k, l}, compute_strides(output_weight_shape));
+                        output_buffer[output_flat_input_index] = value;
+                    }
                 }
             }
         }
-    }
+    };
+
+    // Handle different storage types
+    std::visit(
+        [&process_with_buffer](auto&& storage) {
+            using StorageType = std::decay_t<decltype(storage)>;
+            std::cout << "KCM storage type: " << typeid(StorageType).name() << std::endl;
+            if constexpr (std::is_same_v<StorageType, tt::tt_metal::OwnedStorage>) {
+                process_with_buffer(tt::tt_metal::owned_buffer::get_as<T>(storage.buffer));
+            } else if constexpr (std::is_same_v<StorageType, tt::tt_metal::BorrowedStorage>) {
+                process_with_buffer(tt::tt_metal::borrowed_buffer::get_as<T>(storage.buffer));
+            } else {
+                TT_THROW("Unsupported storage type for depthwise convolution");
+            }
+        },
+        conv_weight_tensor.get_storage());
 
     auto output_tensor = Tensor(
         std::move(tt::tt_metal::OwnedStorage{std::move(output_buffer)}),

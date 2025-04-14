@@ -267,6 +267,11 @@ def run_conv2d_short_sweep(
         )
         weights_dtype = ttnn.DataType(weights_dtype)
         tt_weight_tensor = ttnn.from_torch(torch_weight_tensor, weights_dtype)
+
+        # Hack to force OwnedStorage to repro bug.
+        device_tensor = ttnn.to_device(tt_weight_tensor, device)
+        tt_weight_tensor = ttnn.from_device(device_tensor)
+
         if has_bias:
             tt_bias_tensor = ttnn.from_torch(torch_bias_tensor, weights_dtype)
         output_layout = ttnn.Layout(output_layout)
