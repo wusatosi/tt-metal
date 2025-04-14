@@ -22,6 +22,7 @@ class ResnetBlock:
         conv1_channel_split_factors,
         conv2_channel_split_factors,
     ):
+        # print(f"ResnetBlock initialized with in_channels: {in_channels}, out_channels: {out_channels}, input height: {input_height}, input width: {input_width}, norm1_num_blocks: {norm1_num_blocks}, norm2_num_blocks: {norm2_num_blocks}, conv1_channel_split_factors: {conv1_channel_split_factors}, conv2_channel_split_factors: {conv2_channel_split_factors}")
         self.device = device
         self.in_channels = in_channels
         self.out_channels = out_channels

@@ -7,6 +7,7 @@ from models.demos.wormhole.stable_diffusion.tt.vae.ttnn_vae_utils import (
     get_default_conv_config,
     prepare_split_conv_weights_bias,
     split_conv_and_run,
+    prepare_group_norm,
 )
 
 from models.utility_functions import is_wormhole_b0
@@ -25,12 +26,13 @@ class VaeDecoder:
         output_height,
         output_width,
         conv_in_channel_split_factor=(1, 1),
-        conv_out_channel_split_factor=(8, 2),
+        conv_out_channel_split_factor=(2, 1),
     ):
         self.device = device
         self.in_channels = in_channels
         self.input_height = input_height
         self.input_width = input_width
+        self.mid_channels = mid_channels
         self.out_channels = out_channels
         self.output_height = output_height
         self.output_width = output_width
@@ -116,6 +118,20 @@ class VaeDecoder:
             input_width,
         )
 
+        self.norm_num_blocks = 16
+        self.norm_grid_core = ttnn.CoreGrid(y=4, x=8)
+        (
+            self.norm_input_mask,
+            self.norm_weights,
+            self.norm_bias,
+        ) = prepare_group_norm(
+            self.device,
+            128,
+            self.norm_grid_core,
+            torch_decoder.conv_norm_out.weight,
+            torch_decoder.conv_norm_out.bias,
+        )
+
         # conv out
         self.conv_out_weights, self.conv_out_bias = prepare_split_conv_weights_bias(
             128,
@@ -128,42 +144,60 @@ class VaeDecoder:
 
     def __call__(self, hidden_states):
         # conv in
-        # hidden_states = split_conv_and_run(
-        #     hidden_states,
-        #     self.conv_in_weights,
-        #     self.conv_in_bias,
-        #     self.device,
-        #     self.out_channels,
-        #     self.input_height,
-        #     self.input_width,
-        #     self.out_channels,
-        #     self.conv_in_channel_split_factor[0],
-        #     self.conv_in_channel_split_factor[1],
-        #     self.compute_config,
-        #     self.conv_config,
-        # )
-
-        hidden_states = self.midblock(hidden_states)
-        # upblocks
-        for upblock in self.upblocks:
-            breakpoint()
-            hidden_states = upblock(hidden_states)
-
-        hidden_states = ttnn.silu(hidden_states)
-        # conv out
         hidden_states = split_conv_and_run(
             hidden_states,
-            self.conv_out_weights,
-            self.conv_out_bias,
+            self.conv_in_weights,
+            self.conv_in_bias,
             self.device,
-            128,
-            self.output_height,
-            self.output_width,
-            3,
-            self.conv_out_channel_split_factor[0],
-            self.conv_out_channel_split_factor[1],
+            self.in_channels,
+            self.input_height,
+            self.input_width,
+            self.mid_channels,
+            self.conv_in_channel_split_factor[0],
+            self.conv_in_channel_split_factor[1],
             self.compute_config,
             self.conv_config,
         )
+
+        hidden_states = ttnn.to_memory_config(hidden_states, ttnn.DRAM_MEMORY_CONFIG)
+
+        hidden_states = self.midblock(hidden_states)
+
+        # upblocks
+        for upblock in self.upblocks:
+            hidden_states = upblock(hidden_states)
+
+        hidden_states = ttnn.typecast(hidden_states, ttnn.bfloat16)
+
+        hidden_states = ttnn.group_norm(
+            hidden_states,
+            num_groups=32,
+            input_mask=self.norm_input_mask,
+            weight=self.norm_weights,
+            bias=self.norm_bias,
+            epsilon=1e-6,
+            core_grid=self.norm_grid_core,
+            dtype=ttnn.bfloat8_b,
+            inplace=False,
+            num_out_blocks=self.norm_num_blocks,
+        )
+
+        # hidden_states = ttnn.silu(hidden_states)
+        # conv out
+        # hidden_states = split_conv_and_run(
+        #     hidden_states,
+        #     self.conv_out_weights,
+        #     self.conv_out_bias,
+        #     self.device,
+        #     128,
+        #     self.output_height,
+        #     self.output_width,
+        #     3,
+        #     self.conv_out_channel_split_factor[0],
+        #     self.conv_out_channel_split_factor[1],
+        #     self.compute_config,
+        #     self.conv_config,
+        # )
+        hidden_states = ttnn.reshape(hidden_states, [1, self.output_height, self.output_width, 128])
 
         return hidden_states

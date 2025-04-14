@@ -19,7 +19,7 @@ class UpDecoderBlock:
         upsample_conv_channel_split_factors,
     ):
         self.resnets = []
-        for i in range(2):
+        for i in range(3):
             self.resnets.append(
                 ResnetBlock(
                     torch_upblock.resnets[i],
@@ -41,6 +41,8 @@ class UpDecoderBlock:
                 torch_upblock.upsamplers[0],
                 device,
                 out_channels,
+                input_height,
+                input_width,
                 out_channels,
                 output_height,
                 output_width,
@@ -48,10 +50,11 @@ class UpDecoderBlock:
                 upsample_conv_channel_split_factors[1],
             )
 
-        print("UpDecoderBlock initialized")
-
     def __call__(self, hidden_states):
+        counter = 1
         for resnet in self.resnets:
+            print(f"Resnet {counter}")
+            counter += 1
             hidden_states = resnet(hidden_states)
 
         if self.upsample:

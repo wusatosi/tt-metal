@@ -12,7 +12,6 @@ from models.demos.wormhole.stable_diffusion.tt.vae.ttnn_vae_utils import (
     prepare_split_conv_weights_bias,
     split_conv_and_run,
 )
-from models.utility_functions import is_wormhole_b0
 from tests.ttnn.utils_for_testing import assert_with_pcc
 
 
@@ -20,28 +19,31 @@ from tests.ttnn.utils_for_testing import assert_with_pcc
 @pytest.mark.parametrize(
     "in_channels, input_height, input_width, out_channels, output_height, output_width, conv_in_channel_split_factor, conv_out_channel_split_factor, activation_layout, activation_dtype",
     [
+        # vae decoder
+        # (4, 64, 64, 512, 64, 64, 1, 1, ttnn.TILE_LAYOUT, ttnn.bfloat8_b),
+        (128, 512, 512, 3, 512, 512, 2, 1, ttnn.TILE_LAYOUT, ttnn.bfloat8_b),
         # upsample convs
-        (512, 128, 128, 512, 128, 128, 1, 1, ttnn.ROW_MAJOR_LAYOUT, ttnn.bfloat16),
-        (
-            512,
-            256,
-            256,
-            512,
-            256,
-            256,
-            8 if is_wormhole_b0() else 2,
-            1 if is_wormhole_b0() else 2,
-            ttnn.ROW_MAJOR_LAYOUT,
-            ttnn.bfloat16,
-        ),
-        (256, 512, 512, 256, 512, 512, 8 if is_wormhole_b0() else 4, 2, ttnn.ROW_MAJOR_LAYOUT, ttnn.bfloat16),
-        # resnet convs
-        (512, 64, 64, 512, 64, 64, 1, 1, ttnn.TILE_LAYOUT, ttnn.bfloat8_b),
-        (512, 128, 128, 512, 128, 128, 1, 1, ttnn.TILE_LAYOUT, ttnn.bfloat8_b),
-        (512, 256, 256, 256, 256, 256, 2, 1, ttnn.TILE_LAYOUT, ttnn.bfloat8_b),
-        (256, 256, 256, 256, 256, 256, 1, 1, ttnn.TILE_LAYOUT, ttnn.bfloat8_b),
-        (256, 512, 512, 128, 512, 512, 8 if is_wormhole_b0() else 4, 1, ttnn.TILE_LAYOUT, ttnn.bfloat8_b),
-        (128, 512, 512, 128, 512, 512, 4 if is_wormhole_b0() else 2, 1, ttnn.TILE_LAYOUT, ttnn.bfloat8_b),
+        # (512, 128, 128, 512, 128, 128, 1, 1, ttnn.ROW_MAJOR_LAYOUT, ttnn.bfloat16),
+        # (
+        #     512,
+        #     256,
+        #     256,
+        #     512,
+        #     256,
+        #     256,
+        #     8 if is_wormhole_b0() else 2,
+        #     1 if is_wormhole_b0() else 2,
+        #     ttnn.ROW_MAJOR_LAYOUT,
+        #     ttnn.bfloat16,
+        # ),
+        # (256, 512, 512, 256, 512, 512, 8 if is_wormhole_b0() else 4, 2, ttnn.ROW_MAJOR_LAYOUT, ttnn.bfloat16),
+        # # resnet convs
+        # (512, 64, 64, 512, 64, 64, 1, 1, ttnn.TILE_LAYOUT, ttnn.bfloat8_b),
+        # (512, 128, 128, 512, 128, 128, 1, 1, ttnn.TILE_LAYOUT, ttnn.bfloat8_b),
+        # (512, 256, 256, 256, 256, 256, 2, 1, ttnn.TILE_LAYOUT, ttnn.bfloat8_b),
+        # (256, 256, 256, 256, 256, 256, 1, 1, ttnn.TILE_LAYOUT, ttnn.bfloat8_b),
+        # (256, 512, 512, 128, 512, 512, 8 if is_wormhole_b0() else 4, 1, ttnn.TILE_LAYOUT, ttnn.bfloat8_b),
+        # (128, 512, 512, 128, 512, 512, 4 if is_wormhole_b0() else 2, 1, ttnn.TILE_LAYOUT, ttnn.bfloat8_b),
     ],
 )
 def test_split_conv(

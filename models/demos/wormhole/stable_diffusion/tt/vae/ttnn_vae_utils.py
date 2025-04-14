@@ -97,6 +97,9 @@ def split_conv_and_run(
     padding=1,
     return_weights_and_bias=False,
 ):
+    print(
+        f"Splitting conv with in_channels: {in_channels}, out_channels: {out_channels}, kernel_size: {kernel_size}, padding: {padding}, conv_in_channel_split_factor: {conv_in_channel_split_factor}, conv_out_channel_split_factor: {conv_out_channel_split_factor}, input height: {input_height}, input width: {input_width}"
+    )
     split_input_channels = in_channels // conv_in_channel_split_factor
     split_output_channels = out_channels // conv_out_channel_split_factor
 
@@ -181,7 +184,6 @@ def split_conv_and_run(
 
 def prepare_group_norm(device, in_channels, core_grid, torch_weights, torch_bias, num_groups=32):
     num_cores_across_channel = core_grid.y
-
     torch_input_mask = ttnn.create_group_norm_input_mask(in_channels, num_groups, num_cores_across_channel)
     input_mask = ttnn.from_torch(
         torch_input_mask,

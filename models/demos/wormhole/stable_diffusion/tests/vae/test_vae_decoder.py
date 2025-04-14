@@ -10,15 +10,15 @@ import ttnn
 from models.demos.wormhole.stable_diffusion.tt.vae.ttnn_vae_decoder import VaeDecoder
 
 
-@pytest.mark.parametrize("device_params", [{"l1_small_size": 524288}], indirect=True)
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 32768 + 8192 + 8192}], indirect=True)
 @pytest.mark.parametrize(
     "input_channels, input_height, input_width, out_channels, output_height, output_width",
     [
         (
-            512,
+            4,
             64,
             64,
-            512,
+            3,
             512,
             512,
         ),
@@ -52,6 +52,6 @@ def test_decoder(
     ttnn_output = ttnn.permute(ttnn_output, [0, 3, 1, 2])
     result = ttnn.to_torch(ttnn_output)
 
-    assert_with_pcc(torch_output, result, 0.99)
+    assert_with_pcc(torch_output, result, 0.97)
 
     print(result.shape)

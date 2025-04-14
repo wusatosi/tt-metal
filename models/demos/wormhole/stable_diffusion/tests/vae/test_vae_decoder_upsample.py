@@ -46,6 +46,8 @@ def test_upsample(
         torch_upsample,
         device,
         input_channels,
+        input_height,
+        input_width,
         out_channels,
         output_height,
         output_width,

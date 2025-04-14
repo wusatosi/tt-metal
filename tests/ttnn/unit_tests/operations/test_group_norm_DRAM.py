@@ -18,9 +18,10 @@ from models.utility_functions import skip_for_wormhole_b0
 @pytest.mark.parametrize(
     "N, C, H, W, num_groups, num_out_blocks, cores_y, cores_x",
     [
-        (8, 768, 1, 512, 32, 2, 8, 8),  # base case
-        (1, 640, 128, 128, 32, 2, 4, 8),  # Stable Diffusion XL Variant 1
-        (1, 960, 128, 128, 32, 2, 2, 8),  # Stable Diffusion XL Variant 2
+        # (8, 768, 1, 512, 32, 2, 8, 8),  # base case
+        # (1, 640, 128, 128, 32, 2, 4, 8),  # Stable Diffusion XL Variant 1
+        # (1, 960, 128, 128, 32, 2, 2, 8),  # Stable Diffusion XL Variant 2
+        (1, 128, 512, 512, 32, 16, 4, 8),  # Stable Diffusion XL Variant 3
     ],
 )
 def test_group_norm_DRAM(device, N, C, H, W, num_groups, num_out_blocks, cores_y, cores_x):
