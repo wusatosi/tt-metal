@@ -7,6 +7,8 @@ from tests.ttnn.utils_for_testing import assert_with_pcc
 import pytest
 import ttnn
 
+from tracy import signpost
+
 from models.demos.wormhole.stable_diffusion.tt.vae.ttnn_vae_decoder import VaeDecoder
 
 
@@ -48,9 +50,12 @@ def test_decoder(
         torch_input.permute([0, 2, 3, 1]), device=device, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16
     )
 
+    signpost("start")
     ttnn_output = ttnn_model(ttnn_input)
+    ttnn_output = ttnn.reshape(ttnn_output, [1, output_height, output_width, out_channels])
     ttnn_output = ttnn.permute(ttnn_output, [0, 3, 1, 2])
     result = ttnn.to_torch(ttnn_output)
+    signpost("end")
 
     assert_with_pcc(torch_output, result, 0.97)
 

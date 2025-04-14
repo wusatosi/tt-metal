@@ -161,12 +161,14 @@ class VaeDecoder:
 
         hidden_states = ttnn.to_memory_config(hidden_states, ttnn.DRAM_MEMORY_CONFIG)
 
+        # midblock
         hidden_states = self.midblock(hidden_states)
 
         # upblocks
         for upblock in self.upblocks:
             hidden_states = upblock(hidden_states)
 
+        # groupnorm
         hidden_states = ttnn.typecast(hidden_states, ttnn.bfloat16)
 
         hidden_states = ttnn.group_norm(
@@ -182,22 +184,21 @@ class VaeDecoder:
             num_out_blocks=self.norm_num_blocks,
         )
 
-        # hidden_states = ttnn.silu(hidden_states)
+        hidden_states = ttnn.silu(hidden_states)
         # conv out
-        # hidden_states = split_conv_and_run(
-        #     hidden_states,
-        #     self.conv_out_weights,
-        #     self.conv_out_bias,
-        #     self.device,
-        #     128,
-        #     self.output_height,
-        #     self.output_width,
-        #     3,
-        #     self.conv_out_channel_split_factor[0],
-        #     self.conv_out_channel_split_factor[1],
-        #     self.compute_config,
-        #     self.conv_config,
-        # )
-        hidden_states = ttnn.reshape(hidden_states, [1, self.output_height, self.output_width, 128])
+        hidden_states = split_conv_and_run(
+            hidden_states,
+            self.conv_out_weights,
+            self.conv_out_bias,
+            self.device,
+            128,
+            self.output_height,
+            self.output_width,
+            3,
+            self.conv_out_channel_split_factor[0],
+            self.conv_out_channel_split_factor[1],
+            self.compute_config,
+            self.conv_config,
+        )
 
         return hidden_states

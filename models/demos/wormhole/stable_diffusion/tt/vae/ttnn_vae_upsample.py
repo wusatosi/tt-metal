@@ -93,5 +93,4 @@ class UpsampleBlock:
             hidden_states = conv_result
 
         hidden_states = ttnn.to_memory_config(hidden_states, ttnn.DRAM_MEMORY_CONFIG)
-        hidden_states = ttnn.reshape(hidden_states, [1, self.output_height, self.output_width, self.out_channels])
         return hidden_states

@@ -51,10 +51,7 @@ class UpDecoderBlock:
             )
 
     def __call__(self, hidden_states):
-        counter = 1
         for resnet in self.resnets:
-            print(f"Resnet {counter}")
-            counter += 1
             hidden_states = resnet(hidden_states)
 
         if self.upsample:

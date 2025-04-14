@@ -22,7 +22,6 @@ class ResnetBlock:
         conv1_channel_split_factors,
         conv2_channel_split_factors,
     ):
-        # print(f"ResnetBlock initialized with in_channels: {in_channels}, out_channels: {out_channels}, input height: {input_height}, input width: {input_width}, norm1_num_blocks: {norm1_num_blocks}, norm2_num_blocks: {norm2_num_blocks}, conv1_channel_split_factors: {conv1_channel_split_factors}, conv2_channel_split_factors: {conv2_channel_split_factors}")
         self.device = device
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -101,9 +100,13 @@ class ResnetBlock:
 
     def __call__(self, input_tensor, groups=32, eps=1e-5):
         hidden_states = input_tensor
-        hidden_states = ttnn.to_layout(hidden_states, ttnn.ROW_MAJOR_LAYOUT)
-        hidden_states = ttnn.reshape(hidden_states, [1, 1, self.input_height * self.input_width, self.in_channels])
-        hidden_states = ttnn.tilize_with_zero_padding(hidden_states, use_multicore=True)
+
+        # prepare groupnrom 1
+        if hidden_states.shape[1] != 1:
+            hidden_states = ttnn.reshape(hidden_states, [1, 1, self.input_height * self.input_width, self.in_channels])
+
+        if hidden_states.dtype != ttnn.bfloat16:
+            hidden_states = ttnn.typecast(hidden_states, ttnn.bfloat16)
 
         # groupnorm 1
         hidden_states = ttnn.group_norm(
@@ -138,10 +141,11 @@ class ResnetBlock:
             self.conv_config,
         )
 
-        # groupnorm 2
+        # prepare groupnorm 2
         hidden_states = ttnn.to_memory_config(hidden_states, ttnn.DRAM_MEMORY_CONFIG)
         hidden_states = ttnn.typecast(hidden_states, ttnn.bfloat16)
 
+        # groupnorm 2
         hidden_states = ttnn.group_norm(
             hidden_states,
             num_groups=groups,

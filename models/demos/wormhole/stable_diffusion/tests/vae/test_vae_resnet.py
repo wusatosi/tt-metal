@@ -14,11 +14,11 @@ from models.utility_functions import is_wormhole_b0
 @pytest.mark.parametrize(
     "input_channels, input_height, input_width, out_channels, norm_num_blocks, conv1_channel_split_factors, conv2_channel_split_factors, block, block_id, resnet_block_id",
     [
-        # (512, 64, 64, 512, (1, 1), (1, 1), (1, 1), "mid", None, 0),
+        (512, 64, 64, 512, (1, 1), (1, 1), (1, 1), "mid", None, 0),
         # (512, 64, 64, 512, (1, 1), (1, 1), (1, 1), "mid", None, 1),
         # (512, 64, 64, 512, (1, 1), (1, 1), (1, 1), "up", 0, 0),
         # (512, 64, 64, 512, (1, 1), (1, 1), (1, 1), "up", 0, 1),
-        (512, 64, 64, 512, (1, 1), (1, 1), (1, 1), "up", 0, 2),
+        # (512, 64, 64, 512, (1, 1), (1, 1), (1, 1), "up", 0, 2),
         # (512, 128, 128, 512, (1, 1), (1, 1), (1, 1), "up", 1, 0),
         # (512, 128, 128, 512, (1, 1), (1, 1), (1, 1), "up", 1, 1),
         # (512, 128, 128, 512, (1, 1), (1, 1), (1, 1), "up", 1, 2),
