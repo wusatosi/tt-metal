@@ -3,14 +3,11 @@ from models.demos.wormhole.stable_diffusion.tt.vae.ttnn_vae_midblock import MidB
 from models.demos.wormhole.stable_diffusion.tt.vae.ttnn_vae_upblock import UpDecoderBlock
 
 from models.demos.wormhole.stable_diffusion.tt.vae.ttnn_vae_utils import (
-    get_default_compute_config,
-    get_default_conv_config,
-    prepare_split_conv_weights_bias,
-    split_conv_and_run,
     prepare_group_norm,
 )
 
 from models.utility_functions import is_wormhole_b0
+from models.demos.wormhole.stable_diffusion.tt.vae.ttnn_conv_block import ConvBlock
 
 
 class VaeDecoder:
@@ -29,27 +26,17 @@ class VaeDecoder:
         conv_out_channel_split_factor=(2, 1),
     ):
         self.device = device
-        self.in_channels = in_channels
-        self.input_height = input_height
-        self.input_width = input_width
-        self.mid_channels = mid_channels
-        self.out_channels = out_channels
-        self.output_height = output_height
-        self.output_width = output_width
-        self.conv_in_channel_split_factor = conv_in_channel_split_factor
-        self.conv_out_channel_split_factor = conv_out_channel_split_factor
-
-        self.compute_config = get_default_compute_config(device)
-        self.conv_config = get_default_conv_config()
 
         # conv in
-        self.conv_in_weights, self.conv_in_bias = prepare_split_conv_weights_bias(
+        self.conv_in = ConvBlock(
+            torch_decoder.conv_in,
+            device,
             in_channels,
+            input_height,
+            input_width,
             mid_channels,
             conv_in_channel_split_factor[0],
             conv_in_channel_split_factor[1],
-            torch_decoder.conv_in.weight,
-            torch_decoder.conv_in.bias.unsqueeze(0).unsqueeze(0).unsqueeze(0),
         )
 
         in_channels = mid_channels
@@ -133,31 +120,20 @@ class VaeDecoder:
         )
 
         # conv out
-        self.conv_out_weights, self.conv_out_bias = prepare_split_conv_weights_bias(
+        self.conv_out = ConvBlock(
+            torch_decoder.conv_out,
+            device,
             128,
+            output_height,
+            output_width,
             3,
             conv_out_channel_split_factor[0],
             conv_out_channel_split_factor[1],
-            torch_decoder.conv_out.weight,
-            torch_decoder.conv_out.bias.unsqueeze(0).unsqueeze(0).unsqueeze(0),
         )
 
     def __call__(self, hidden_states):
         # conv in
-        hidden_states = split_conv_and_run(
-            hidden_states,
-            self.conv_in_weights,
-            self.conv_in_bias,
-            self.device,
-            self.in_channels,
-            self.input_height,
-            self.input_width,
-            self.mid_channels,
-            self.conv_in_channel_split_factor[0],
-            self.conv_in_channel_split_factor[1],
-            self.compute_config,
-            self.conv_config,
-        )
+        hidden_states = self.conv_in(hidden_states)
 
         hidden_states = ttnn.to_memory_config(hidden_states, ttnn.DRAM_MEMORY_CONFIG)
 
@@ -186,19 +162,6 @@ class VaeDecoder:
 
         hidden_states = ttnn.silu(hidden_states)
         # conv out
-        hidden_states = split_conv_and_run(
-            hidden_states,
-            self.conv_out_weights,
-            self.conv_out_bias,
-            self.device,
-            128,
-            self.output_height,
-            self.output_width,
-            3,
-            self.conv_out_channel_split_factor[0],
-            self.conv_out_channel_split_factor[1],
-            self.compute_config,
-            self.conv_config,
-        )
+        hidden_states = self.conv_out(hidden_states)
 
         return hidden_states
