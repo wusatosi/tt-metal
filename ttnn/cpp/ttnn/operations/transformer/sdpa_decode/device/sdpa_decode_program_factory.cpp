@@ -344,7 +344,7 @@ operation::ProgramWithCallbacks sdpa_decode_multi_core(
         q_tile = half_tile;
         mask_tile = half_tile;
 
-        out_tile = half_tile;
+        // out_tile = half_tile;
 
         scalar_tile = half_tile;
         im_tile = half_tile;

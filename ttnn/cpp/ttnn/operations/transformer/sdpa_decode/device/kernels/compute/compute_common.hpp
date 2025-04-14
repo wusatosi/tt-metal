@@ -17,6 +17,8 @@
 #include "compute_kernel_api/reduce.h"
 #include "tools/profiler/kernel_profiler.hpp"
 
+auto sr = SliceRange{.h0 = 0, .h1 = 16, .hs = 2, .w0 = 0, .w1 = 32, .ws = 8};
+
 /******************************************************************************
  *                                                                             *
  *                   Common Functions for Compute Kernels                      *
@@ -533,6 +535,7 @@ void flash_attention_loop(
         /* QK = Q_CHUNK @ K_CHUNK */
         reconfig_data_format(cb_q_in, cb_k_in);  // DEBUG
         pack_reconfig_data_format(cb_qk_im);
+        // UNPACK(( DPRINT << TileSlice(cb_q_in, 0, sr, true, true) << ENDL() ));
 
         DPRINT << "1" << ENDL();
         cb_matmul_blocks(
@@ -553,6 +556,7 @@ void flash_attention_loop(
         /* QK *= SCALE */
         DPRINT << "2" << ENDL();
         mul_block_bcast_scalar_inplace(cb_qk_im, cb_scale_in, qk_chunk_tiles);
+        // PACK(( DPRINT << TileSlice(cb_qk_im, 0, sr, true, true) << ENDL() ));
 
         if constexpr (is_causal) {
             // For decode, we only apply mask at the last chunk for causal mode
@@ -560,6 +564,7 @@ void flash_attention_loop(
                 /* QK += MASK */
                 reconfig_data_format(cb_qk_im, cb_mask_in);
                 add_block_inplace<false>(cb_qk_im, cb_mask_in, qk_chunk_tiles);
+                // UNPACK(( DPRINT << TileSlice(cb_qk_im, 0, sr, true, true) << ENDL() ));
             }
         } else {
             if constexpr (use_attention_mask) {
@@ -596,6 +601,7 @@ void flash_attention_loop(
         /* OUT_IM = QK @ V_CHUNK */
         reconfig_data_format(cb_qk_im, cb_v_in);  // DEBUG
         pack_reconfig_data_format(cb_out_im);
+        // UNPACK(( DPRINT << TileSlice(cb_qk_im, 0, sr, true, true) << ENDL() ));
         cb_matmul_blocks(
             cb_qk_im,
             cb_v_in,
@@ -612,6 +618,14 @@ void flash_attention_loop(
             false /*transpose*/);
         reconfig_data_format_srca(cb_out_im);
         cb_pop_front(cb_qk_im, qk_chunk_tiles);
+        // PACK(( DPRINT << TileSlice(cb_qk_im, 0, sr, true, true) << ENDL() ));
+        // PACK(( DPRINT << TileSlice(cb_qk_im, 1, sr, true, true) << ENDL() ));
+        // PACK(( DPRINT << TileSlice(cb_qk_im, 2, sr, true, true) << ENDL() ));
+        // PACK(( DPRINT << TileSlice(cb_qk_im, 3, sr, true, true) << ENDL() ));
+        // PACK(( DPRINT << TileSlice(cb_out_im, 0, sr, true, true) << ENDL() ));
+        // PACK(( DPRINT << TileSlice(cb_out_im, 1, sr, true, true) << ENDL() ));
+        // PACK(( DPRINT << TileSlice(cb_out_im, 2, sr, true, true) << ENDL() ));
+        // PACK(( DPRINT << TileSlice(cb_out_im, 3, sr, true, true) << ENDL() ));
         DPRINT << "6" << ENDL();
 
         /* OUT_ACC += OUT_IM */
