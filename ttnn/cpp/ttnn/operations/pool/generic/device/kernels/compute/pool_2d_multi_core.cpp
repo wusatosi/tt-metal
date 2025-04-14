@@ -8,13 +8,22 @@
 #include "compute_kernel_api/reduce.h"
 #include "compute_kernel_api/pack_untilize.h"
 
-#define DEBUG_PRINT 0
+#define DEBUG_PRINT 1
 
 #if DEBUG_PRINT == 1
 #include "debug/dprint.h"
 #include "debug/dprint_pages.h"
 #include "debug/dprint_tensix.h"
 #endif
+
+inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
+    DPRINT_PACK(DPRINT << "======" << ENDL());
+    for (uint32_t r = 0; r < 32; ++r) {
+        SliceRange sr = SliceRange{.h0 = (uint8_t)r, .h1 = (uint8_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
+        DPRINT_PACK(DPRINT << r << " " << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL());
+    }
+    DPRINT_PACK(DPRINT << "++++++" << ENDL());
+}
 
 template <uint32_t num_output_tiles, bool is_partial_tile, uint32_t split_reader, uint32_t unpA_face_r_dim>
 inline void reduce_h_fused(
@@ -40,6 +49,7 @@ inline void reduce_h_fused(
     for (uint32_t c_i = 0; c_i < num_output_tiles; ++c_i) {
         reduce_tile_math(c_i, num_faces_in_tile /* reduce 1 or 2 faces */);
     }
+    // print_full_tile(out_cb_id, 0);
     cb_pop_front(curr_in_cb_id, 1);
     tile_regs_wait();
     tile_regs_commit();
@@ -47,6 +57,8 @@ inline void reduce_h_fused(
         out_cb_id, 1 /*out_subblock_h*/, 0, num_out_rows, num_faces_in_tile); /* pack 1 row (1x16 or 1x32) */
     tile_regs_release();
     cb_push_back(out_cb_id, num_output_tiles);
+    DPRINT_PACK(DPRINT << "num_output_tiles " << num_output_tiles << ENDL());
+    print_full_tile(out_cb_id, 0);
 }
 
 namespace NAMESPACE {
