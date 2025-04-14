@@ -204,6 +204,7 @@ class resnet50Bottleneck:
                     enable_weights_double_buffer=True if input_width < 56 else False,
                     enable_split_reader=enable_split_reader,
                     enable_subblock_padding=enable_subblock_padding,
+                    in_place=True,
                 ),
             }
 
@@ -295,6 +296,7 @@ class resnet50Bottleneck:
                 else ttnn.TensorMemoryLayout.BLOCK_SHARDED,
                 reshard_if_not_optimal=reshard_if_not_optimal,
                 transpose_shards=transpose_shards,
+                in_place=True,
             ),
         }
 
@@ -410,6 +412,7 @@ class resnet50Bottleneck:
                 enable_weights_double_buffer=True,
                 enable_split_reader=enable_split_reader,
                 enable_subblock_padding=enable_subblock_padding,
+                in_place=True,
             ),
         }
 
@@ -507,6 +510,7 @@ class resnet50Bottleneck:
                 else ttnn.TensorMemoryLayout.BLOCK_SHARDED,
                 reshard_if_not_optimal=reshard_if_not_optimal,
                 transpose_shards=transpose_shards,
+                in_place=True,
             ),
         }
 
@@ -709,6 +713,7 @@ class resnet50:
             enable_subblock_padding=False,
             shard_layout=ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
             reshard_if_not_optimal=False,
+            in_place=True,
         )
         self.conv1_compute_config = ttnn.init_device_compute_kernel_config(
             device.arch(),
@@ -926,6 +931,7 @@ class resnet50:
             stride=[2, 2],
             padding=[1, 1],
             dilation=[1, 1],
+            in_place_halo=True,
         )
 
         x_height = 56
