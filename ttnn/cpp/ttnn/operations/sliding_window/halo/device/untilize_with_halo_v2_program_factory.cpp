@@ -469,9 +469,6 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
     const bool is_block_sharded = input_tensor.memory_config().memory_layout == TensorMemoryLayout::BLOCK_SHARDED;
     const bool is_width_sharded = input_tensor.memory_config().memory_layout == TensorMemoryLayout::WIDTH_SHARDED;
 
-    uint32_t remote_temp_cb_id = 0;
-    std::vector<uint32_t> output_tensor_cores_x;
-    std::vector<uint32_t> output_tensor_cores_y;
     int32_t in_out_buffer_start_delta = max_out_nsticks_per_core - input_npages;
     if (!skip_untilize) {
         in_out_buffer_start_delta = 0;
@@ -483,6 +480,7 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
     TT_ASSERT(!remote_read, "remote_read is not supported for in place operation");
 
     // create the remote temp CB
+    uint32_t remote_temp_cb_id = 0;
     if (max_ref_size > 0) {
         remote_temp_cb_id = cb_indices.get_next_cb_id();
         auto remote_temp_cb_config =
@@ -492,16 +490,36 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
         CBHandle remote_temp_cb = CreateCircularBuffer(program, all_cores, remote_temp_cb_config);
     }
 
+    // create semaphores
+    uint32_t semaphore_id = tt::tt_metal::CreateSemaphore(program, all_cores, 0);
+
     const bool is_rm_orientation = input_tensor.shard_spec()->orientation == ShardOrientation::ROW_MAJOR;
     const auto cores = corerange_to_cores(all_cores, std::nullopt, is_rm_orientation);
+    int32_t num_cores_x = device->compute_with_storage_grid_size().x;
+    int32_t num_active_cores = cores.size();
+    int32_t num_cores_rectangular = tt::round_up(num_active_cores, num_cores_x);
+    int32_t num_noop_cores = num_cores_rectangular - num_active_cores;
+    printf(
+        "num_cores_x = %d, num_active_cores = %d, num_cores_rectangular = %d, num_noop_cores = %d\n",
+        num_cores_x,
+        num_active_cores,
+        num_cores_rectangular,
+        num_noop_cores);
+    std::vector<uint32_t> output_tensor_cores_x;
+    std::vector<uint32_t> output_tensor_cores_y;
     for (const auto& core : cores) {
         auto worker = device->worker_core_from_logical_core(core);
         output_tensor_cores_x.push_back(worker.x);
         output_tensor_cores_y.push_back(worker.y);
     }
 
-    // create semaphores
-    uint32_t semaphore_id = tt::tt_metal::CreateSemaphore(program, all_cores, 0);
+    auto core_id_to_noc_coords = [is_block_sharded, transpose_mcast, device](uint32_t core_id) -> CoreCoord {
+        auto num_cores_x = device->compute_with_storage_grid_size().x;
+        auto core_coord = is_block_sharded ? (transpose_mcast ? CoreCoord(core_id, 0) : CoreCoord(0, core_id))
+                                           : CoreCoord(core_id % num_cores_x, core_id / num_cores_x);
+        return device->worker_core_from_logical_core(core_coord);
+    };
+    CoreCoord noc_00 = core_id_to_noc_coords(0);
 
     auto aligned_input_nstick_nbytes = out_stick_nbytes;
     log_debug(tt::LogOp, "out_stick_nbytes = {}", out_stick_nbytes);
