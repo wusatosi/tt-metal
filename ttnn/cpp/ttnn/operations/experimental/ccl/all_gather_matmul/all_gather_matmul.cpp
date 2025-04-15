@@ -25,7 +25,7 @@ std::vector<ttnn::Tensor> ExecuteAllGatherMatmul::invoke(
     const std::optional<const std::string>& activation,
     const std::optional<const DeviceComputeKernelConfig> compute_kernel_config,
     const std::optional<const ttnn::CoreGrid> core_grid) {
-    return ttnn::operations::experimental::ccl::all_gather_matmul(
+    return ttnn::prim::experimental::ccl::all_gather_matmul(
         input_tensor,
         weight_tensor,
         dim,

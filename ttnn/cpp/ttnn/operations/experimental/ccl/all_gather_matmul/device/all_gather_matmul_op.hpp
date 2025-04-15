@@ -28,30 +28,50 @@ namespace ttnn {
 namespace experimental {
 
 struct AllGatherMatmul {
-    /* All Gather Params */
-    const ttnn::AllGather all_gather_struct;
+    struct operation_attributes_t {
+        /* All Gather Params */
+        const ttnn::AllGather all_gather_struct;
 
-    /* Matmul Params */
-    const operations::matmul::Matmul matmul_struct;
+        /* Matmul Params */
+        const operations::matmul::MatmulArgs matmul_struct;
 
-    /* Fusion Params */
-    const CoreCoord all_gather_core_grid_offset;
+        /* Fusion Params */
+        const CoreCoord all_gather_core_grid_offset;
+    };
 
-    /* General */
-    void validate(
-        const std::vector<Tensor>& input_tensors,
-        const std::vector<std::optional<const Tensor>>& optional_input_tensors,
-        const std::vector<std::optional<Tensor>>& optional_output_tensors = {std::nullopt}) const;
-    std::vector<ttnn::TensorSpec> compute_output_specs(const std::vector<Tensor>& input_tensors) const;
-    std::vector<Tensor> create_output_tensors(const std::vector<Tensor>& input_tensors) const;
-    tt::tt_metal::ProgramDescriptor create_program(
-        const std::vector<Tensor>& input_tensors,
-        const std::vector<std::optional<const Tensor>>& optional_input_tensors,
-        std::vector<Tensor>& output_tensors) const;
-    static constexpr auto attribute_names = std::forward_as_tuple("all_gather_struct", "all_gather_core_grid_offset");
-    const auto attribute_values() const {
-        return std::forward_as_tuple(this->all_gather_struct, this->all_gather_core_grid_offset);
-    }
+    struct tensor_args_t {
+        Tensor input_tensor;
+        Tensor weight_tensor;
+        Tensor all_gather_output;
+        Tensor datacopy_output;
+    };
+
+    using spec_return_value_t = std::vector<TensorSpec>;
+    using tensor_return_value_t = std::vector<Tensor>;
+
+    static void validate(const operation_attributes_t&, const tensor_args_t&);
+    static tt::tt_metal::ProgramDescriptor create_program(
+        const operation_attributes_t&, const tensor_args_t&, tensor_return_value_t&);
+    static spec_return_value_t compute_output_specs(const operation_attributes_t&, const tensor_args_t&);
+    static tensor_return_value_t create_output_tensors(const operation_attributes_t&, const tensor_args_t&);
+
+    static std::tuple<operation_attributes_t, tensor_args_t> invoke(
+        const Tensor& input_tensor,
+        const Tensor& weight_tensor,
+        const uint32_t dim,
+        const CoreCoord all_gather_core_grid_offset,
+        const uint32_t num_links = 1,
+        const std::optional<MemoryConfig>& memory_config_ag = std::nullopt,
+        const std::optional<size_t> user_defined_num_workers = std::nullopt,
+        const std::optional<size_t> user_defined_num_buffers_per_channel = std::nullopt,
+        const std::optional<MemoryConfig>& memory_config_mm = std::nullopt,
+        const bool transpose_a = false,
+        const bool transpose_b = false,
+        const std::optional<const DataType> dtype = std::nullopt,
+        const std::optional<const operations::matmul::MatmulProgramConfig>& program_config = std::nullopt,
+        const std::optional<const std::string>& activation = std::nullopt,
+        const std::optional<const ttnn::DeviceComputeKernelConfig> compute_kernel_config = std::nullopt,
+        const std::optional<const ttnn::CoreGrid> core_grid = std::nullopt);
 };
 
 tt::tt_metal::ProgramDescriptor all_gather_matmul_multi_core_with_workers(
@@ -80,31 +100,9 @@ tt::tt_metal::ProgramDescriptor all_gather_matmul_multi_core_with_workers(
     const operations::matmul::MatmulProgramConfig& program_config,
     bool untilize_out);
 }  // namespace experimental
-
-namespace operations {
-namespace experimental {
-namespace ccl {
-
-std::vector<Tensor> all_gather_matmul(
-    const Tensor& input_tensor,
-    const Tensor& weight_tensor,
-    const uint32_t dim,
-    const CoreCoord all_gather_core_grid_offset,
-    const uint32_t num_links = 1,
-    const std::optional<MemoryConfig>& memory_config_ag = std::nullopt,
-    const std::optional<size_t> user_defined_num_workers = std::nullopt,
-    const std::optional<size_t> user_defined_num_buffers_per_channel = std::nullopt,
-    const std::optional<MemoryConfig>& memory_config_mm = std::nullopt,
-    const bool transpose_a = false,
-    const bool transpose_b = false,
-    const std::optional<const DataType> dtype = std::nullopt,
-    const std::optional<const operations::matmul::MatmulProgramConfig>& program_config = std::nullopt,
-    const std::optional<const std::string>& activation = std::nullopt,
-    const std::optional<const ttnn::DeviceComputeKernelConfig> compute_kernel_config = std::nullopt,
-    const std::optional<const ttnn::CoreGrid> core_grid = std::nullopt);
-
-}  // namespace ccl
-}  // namespace experimental
-}  // namespace operations
-
 }  // namespace ttnn
+
+namespace ttnn::prim::experimental::ccl {
+constexpr auto all_gather_matmul =
+    ttnn::register_operation<"ttnn::prim::experimental::ccl::all_gather_matmul", ttnn::experimental::AllGatherMatmul>();
+}  // namespace ttnn::prim::experimental::ccl

@@ -119,21 +119,30 @@ class AllGatherConfig {
 };
 
 struct AllGather {
-    const uint32_t dim;
-    const uint32_t num_links;
-    const uint32_t ring_size;
-    const uint32_t ring_index;
-    const std::optional<size_t> user_defined_num_workers;
-    const std::optional<size_t> user_defined_num_buffers_per_channel;
-    const std::optional<chip_id_t> receiver_device_id;
-    const std::optional<chip_id_t> sender_device_id;
-    const MemoryConfig output_mem_config;
-    const ccl::Topology topology;
+    struct operation_attributes_t {
+        const uint32_t dim;
+        const uint32_t num_links;
+        const uint32_t ring_size;
+        const uint32_t ring_index;
+        const std::optional<size_t> user_defined_num_workers;
+        const std::optional<size_t> user_defined_num_buffers_per_channel;
+        const std::optional<chip_id_t> receiver_device_id;
+        const std::optional<chip_id_t> sender_device_id;
+        const MemoryConfig output_mem_config;
+        const ccl::Topology topology;
+    };
 
-    void validate(const std::vector<Tensor> &input_tensors) const;
-    std::vector<ttnn::TensorSpec> compute_output_specs(const std::vector<Tensor> &input_tensors) const;
-    std::vector<Tensor> create_output_tensors(const std::vector<Tensor> &input_tensors) const;
-    tt::tt_metal::operation::ProgramWithCallbacks create_program(const std::vector<Tensor>& input_tensors, std::vector<Tensor> &output_tensors) const;
+    using tensor_args_t = Tensor;
+
+    using spec_return_value_t = TensorSpec;
+    using tensor_return_value_t = Tensor;
+
+    static void validate(const operation_attributes_t& attr, const tensor_args_t& tensor_args);
+    static spec_return_value_t compute_output_specs(const operation_attributes_t& attr, const tensor_args_t& tensor_args);
+    static tensor_return_value_t create_output_tensors(const operation_attributes_t& attr, const tensor_args_t& tensor_args);
+    static tt::tt_metal::ProgramDescriptor create_program(const operation_attributes_t& attr, const tensor_args_t& tensor_args, tensor_return_value_t& output_tensors);
+
+    static std::tuple<operation_attributes_t, tensor_args_t> invoke(const AllGather::operation_attributes_t& attr, const Tensor& input_tensor);
 };
 
 namespace ccl{
@@ -152,7 +161,7 @@ AllGather create_all_gather_struct(
 } // namespace ccl
 
 // All Gather Variants
-tt::tt_metal::operation::ProgramWithCallbacks all_gather_full_shard_grid(
+tt::tt_metal::ProgramDescriptor all_gather_full_shard_grid(
     const Tensor& input_tensor,
     Tensor& output_tensor,
     const uint32_t dim,
@@ -164,7 +173,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_full_shard_grid(
     const std::optional<chip_id_t> receiver_device_id,
     const std::optional<chip_id_t> sender_device_id,
     ccl::Topology topology);
-tt::tt_metal::operation::ProgramWithCallbacks all_gather_multi_core_with_workers(
+tt::tt_metal::ProgramDescriptor all_gather_multi_core_with_workers(
     const Tensor& input_tensor,
     Tensor& output_tensor,
     const uint32_t dim,
@@ -176,7 +185,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_multi_core_with_workers
     ccl::Topology topology,
     const std::optional<size_t> user_defined_num_workers,
     const std::optional<size_t> user_defined_num_buffers_per_channel);
-tt::tt_metal::operation::ProgramWithCallbacks all_gather_multi_core_with_workers_helper(
+tt::tt_metal::ProgramDescriptor all_gather_multi_core_with_workers_helper(
     tt::tt_metal::Program& program,
     const Tensor& input_tensor,
     Tensor& output_tensor,
@@ -198,7 +207,7 @@ namespace operations {
 namespace ccl {
 
 Tensor all_gather(
-    const Tensor& input_tensor,
+    Tensor input_tensor,
     const int32_t dim,
     const uint32_t num_links = 1,
     const std::optional<MemoryConfig>& memory_config = std::nullopt,
@@ -207,7 +216,7 @@ Tensor all_gather(
     const ttnn::ccl::Topology topology = ttnn::ccl::Topology::Ring);
 
 Tensor all_gather(
-    const Tensor& input_tensor,
+    Tensor input_tensor,
     const int32_t dim,
     const uint32_t cluster_axis,
     const MeshDevice& mesh_device,
@@ -221,3 +230,7 @@ Tensor all_gather(
 } // namespace operations
 
 }  // namespace ttnn
+
+namespace ttnn::prim {
+constexpr auto all_gather = ttnn::register_operation<"ttnn::prim::all_gather", ttnn::AllGather>();
+}  // namespace ttnn::prim
