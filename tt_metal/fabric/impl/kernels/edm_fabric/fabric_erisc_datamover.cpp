@@ -377,15 +377,17 @@ FORCE_INLINE void send_next_data(
     // Note: We can only advance to the next buffer index if we have fully completed the send (both the payload and sync
     // messages)
     local_sender_wrptr.increment();
+
+    // TODO: Put in fn
+    remote_receiver_buffer_index =
+        BufferIndex{wrap_increment<RECEIVER_NUM_BUFFERS>(remote_receiver_buffer_index.get())};
+    remote_receiver_num_free_slots--;
+
     // update the remote reg
     static constexpr uint32_t words_to_forward = 1;
     while (internal_::eth_txq_is_busy(DEFAULT_ETH_TXQ)) {
     };
     remote_update_ptr_val<to_receiver_pkts_sent_id>(words_to_forward);
-    // TODO: Put in fn
-    remote_receiver_buffer_index =
-        BufferIndex{wrap_increment<RECEIVER_NUM_BUFFERS>(remote_receiver_buffer_index.get())};
-    remote_receiver_num_free_slots--;
 }
 
 /////////////////////////////////////////////
