@@ -98,6 +98,7 @@ class Attention:
             dtype=ttnn.bfloat8_b,
             inplace=False,
             num_out_blocks=self.norm_num_blocks,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
         )
 
         query = ttnn.linear(

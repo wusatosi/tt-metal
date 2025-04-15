@@ -82,6 +82,7 @@ def test_vae_resnet(
     )
     ttnn_output = ttnn_model(ttnn_input)
 
+    ttnn_output = ttnn.reshape(ttnn_output, [1, input_height, input_width, out_channels])
     ttnn_output = ttnn.permute(ttnn_output, [0, 3, 1, 2])
     ttnn_output = ttnn.to_torch(ttnn_output)
 

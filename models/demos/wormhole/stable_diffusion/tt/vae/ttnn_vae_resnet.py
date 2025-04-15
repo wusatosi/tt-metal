@@ -119,6 +119,7 @@ class ResnetBlock:
             dtype=ttnn.bfloat8_b,
             inplace=False,
             num_out_blocks=self.norm1_num_blocks,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
         )
 
         # silu 1
@@ -142,6 +143,7 @@ class ResnetBlock:
             dtype=ttnn.bfloat8_b,
             inplace=False,
             num_out_blocks=self.norm2_num_blocks,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
         )
 
         # silu 2
