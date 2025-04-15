@@ -531,9 +531,10 @@ void flash_attention_loop(
     bool apply_mask_at_last_chunk  // for causal mode, optionally apply mask at the last chunk
 ) {
     DeviceZoneScopedN("FLASHLOOP");
+    uint32_t cb_out_mm = cb_out_accumulate_im;
+
     for (uint32_t k_chunk = k_chunk_start; k_chunk < k_chunk_end; ++k_chunk) {
         /* QK = Q_CHUNK @ K_CHUNK */
-        reconfig_data_format(cb_q_in, cb_k_in);  // DEBUG
         pack_reconfig_data_format(cb_qk_im);
         // UNPACK(( DPRINT << TileSlice(cb_q_in, 0, sr, true, true) << ENDL() ));
 
@@ -599,13 +600,12 @@ void flash_attention_loop(
         DPRINT << "5" << ENDL();
 
         /* OUT_IM = QK @ V_CHUNK */
-        reconfig_data_format(cb_qk_im, cb_v_in);  // DEBUG
-        pack_reconfig_data_format(cb_out_im);
+        pack_reconfig_data_format(cb_out_mm);
         // UNPACK(( DPRINT << TileSlice(cb_qk_im, 0, sr, true, true) << ENDL() ));
         cb_matmul_blocks(
             cb_qk_im,
             cb_v_in,
-            cb_out_im,
+            cb_out_mm,
             Sq_chunk_t,
             DHt,
             Sk_chunk_t,
@@ -616,16 +616,12 @@ void flash_attention_loop(
             out_subblock_h,
             out_subblock_w,
             false /*transpose*/);
-        reconfig_data_format_srca(cb_out_im);
         cb_pop_front(cb_qk_im, qk_chunk_tiles);
         DPRINT << "6" << ENDL();
 
         /* OUT_ACC += OUT_IM */
         if (k_chunk == k_chunk_start) {
-            reconfig_data_format_srca(cb_out_im);
-            pack_reconfig_data_format(cb_out_accumulate_im);
-            copy_block(cb_out_im, cb_out_accumulate_im, out_chunk_tiles);
-            DPRINT << "7" << ENDL();
+            cb_out_mm = cb_out_im;
         } else {
             reconfig_data_format(cb_prev_max, cb_cur_max);  // DEBUG
             pack_reconfig_data_format(cb_exp_max_diff);
@@ -654,13 +650,14 @@ void flash_attention_loop(
 
         if (k_chunk < k_chunk_end - 1 || do_reduce) {
             // Set cb_prev_sum and cb_prev_max
-            reconfig_data_format(cb_cur_max, cb_cur_max);  // DEBUG
+            reconfig_data_format_srca(cb_cur_max);  // DEBUG
             pack_reconfig_data_format(cb_prev_max);
             copy_block(cb_cur_max, cb_prev_max, Sq_chunk_t);
             copy_block(cb_cur_sum, cb_prev_sum, Sq_chunk_t);
 
         } else {
             // Write o, m, l into cb_out
+            reconfig_data_format_srca(cb_out_accumulate_im);
             copy_block(cb_out_accumulate_im, cb_out_o, out_chunk_tiles);
             copy_block(cb_cur_max, cb_out_m, Sq_chunk_t);
             copy_block(cb_cur_sum, cb_out_l, Sq_chunk_t);
