@@ -496,12 +496,14 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
     const bool is_rm_orientation = input_tensor.shard_spec()->orientation == ShardOrientation::ROW_MAJOR;
     const auto cores = corerange_to_cores(all_cores, std::nullopt, is_rm_orientation);
     int32_t num_cores_x = device->compute_with_storage_grid_size().x;
+    int32_t num_cores_y = device->compute_with_storage_grid_size().y;
     int32_t num_active_cores = cores.size();
     int32_t num_cores_rectangular = tt::round_up(num_active_cores, num_cores_x);
     int32_t num_noop_cores = num_cores_rectangular - num_active_cores;
     printf(
-        "num_cores_x = %d, num_active_cores = %d, num_cores_rectangular = %d, num_noop_cores = %d\n",
+        "num_cores_x = %d, num_cores_y = %d, num_active_cores = %d, num_cores_rectangular = %d, num_noop_cores = %d\n",
         num_cores_x,
+        num_cores_y,
         num_active_cores,
         num_cores_rectangular,
         num_noop_cores);
