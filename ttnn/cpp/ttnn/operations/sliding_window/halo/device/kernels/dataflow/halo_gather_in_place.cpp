@@ -278,7 +278,7 @@ void kernel_main() {
         DPRINT << "PAST 00 WAIT" << ENDL();
 
         const uint64_t mcast_noc_addr = get_noc_multicast_addr(
-            noc_00_x, noc_00_y, noc_00_x + rectangular_x, noc_00_y + rectangular_y, semaphore_addr);
+            noc_00_x, noc_00_y, noc_00_x + rectangular_x - 1, noc_00_y + rectangular_y - 1, semaphore_addr);
 
         DPRINT << "noc_00_x = " << noc_00_x << ", noc_00_y = " << noc_00_y << ENDL();
         DPRINT << "rectangular_x = " << rectangular_x << ", rectangular_y = " << rectangular_y << ENDL();

@@ -528,6 +528,9 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
     rectangular_cores_set.insert(CoreRange(CoreCoord(0, 0), CoreCoord(rectangular_x - 1, rectangular_y - 1)));
     CoreRangeSet rectangular_cores(rectangular_cores_set);
 
+    printf("%s\n", all_cores.str().c_str());
+    printf("%s\n", rectangular_cores.str().c_str());
+
     // create semaphores
     uint32_t semaphore_id = tt::tt_metal::CreateSemaphore(program, rectangular_cores, 0);
 
