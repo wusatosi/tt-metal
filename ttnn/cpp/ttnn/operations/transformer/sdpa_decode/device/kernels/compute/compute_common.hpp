@@ -29,7 +29,7 @@ auto sr = SliceRange{.h0 = 0, .h1 = 16, .hs = 2, .w0 = 0, .w1 = 32, .ws = 8};
  *                   Generic Compute Functions                                 *
  ******************************************************************************/
 void max_block_inplace(uint32_t in0, uint32_t in1, uint32_t num_tiles) {
-    DeviceZoneScopedN("max_block_inplace");
+    // DeviceZoneScopedN("max_block_inplace");
     // inputs come in full, outputs go out full
     copy_tile_to_dst_init_short(in0);
     max_tile_init();
@@ -53,7 +53,7 @@ void max_block_inplace(uint32_t in0, uint32_t in1, uint32_t num_tiles) {
 }
 
 void max_block(uint32_t in0, uint32_t in1, uint32_t out_cb, uint32_t num_tiles) {
-    DeviceZoneScopedN("max_block");
+    // DeviceZoneScopedN("max_block");
     // inputs come in full, outputs go out full
     copy_tile_to_dst_init_short(in0);
     max_tile_init();
@@ -77,7 +77,7 @@ void max_block(uint32_t in0, uint32_t in1, uint32_t out_cb, uint32_t num_tiles) 
 
 template <PoolType pool_type, ReduceDim reduce_dim, uint32_t in0_cb, uint32_t scale_cb, uint32_t rows>
 void reduce_c(uint32_t out_cb, uint32_t cols) {
-    DeviceZoneScopedN("reduce_c");
+    // DeviceZoneScopedN("reduce_c");
     // Precondition: in0_cb has rows*cols produced. in0_cb has tiles in row-major order
     // Precondition: scale_cb has 1 produced
     // Precondition: out_cb has rows free
@@ -113,7 +113,7 @@ void reduce_c(uint32_t out_cb, uint32_t cols) {
 }
 
 void recip_block_inplace(uint32_t in_cb, uint32_t num_tiles) {
-    DeviceZoneScopedN("recip_block_inplace");
+    // DeviceZoneScopedN("recip_block_inplace");
     // Precondition: in_cb has num_tiles produced
     // Postcondition: in_cb has num_tiles produced
     copy_tile_to_dst_init_short(in_cb);
@@ -134,7 +134,7 @@ void recip_block_inplace(uint32_t in_cb, uint32_t num_tiles) {
 }
 
 void sub_exp_block_bcast_cols_inplace(uint32_t in0_cb, uint32_t in1_cb, uint32_t rows, uint32_t cols) {
-    DeviceZoneScopedN("sub_exp_block_bcast_cols_inplace");
+    // DeviceZoneScopedN("sub_exp_block_bcast_cols_inplace");
     // Precondition: in0_cb has rows*cols produced
     // Precondition: in1_cb has rows produced
     // Postcondition: in0_cb has rows*cols produced
@@ -174,7 +174,7 @@ void sub_exp_block_bcast_cols_inplace(uint32_t in0_cb, uint32_t in1_cb, uint32_t
 }
 
 void mul_block_bcast_cols_inplace(uint32_t in0_cb, uint32_t in1_cb, uint32_t rows, uint32_t cols) {
-    DeviceZoneScopedN("mul_block_bcast_cols_inplace");
+    // DeviceZoneScopedN("mul_block_bcast_cols_inplace");
     // Precondition: in0_cb has rows*cols produced
     // Precondition: in1_cb has rows produced
     // Postcondition: in0_cb has rows*cols produced
@@ -200,7 +200,7 @@ void mul_block_bcast_cols_inplace(uint32_t in0_cb, uint32_t in1_cb, uint32_t row
 }
 
 void mul_block_bcast_scalar_inplace(uint32_t in0_cb, uint32_t in1_scalar_cb, uint32_t num_tiles) {
-    DeviceZoneScopedN("mul_block_bcast_scalar_inplace");
+    // DeviceZoneScopedN("mul_block_bcast_scalar_inplace");
     // Precondition: in0_cb has num_tiles produced
     // Precondition: in1_scalar_cb has 1 produced
     // Postcondition: in0_cb has num_tiles produced
@@ -238,7 +238,7 @@ void mul_block_bcast_scalar_inplace(uint32_t in0_cb, uint32_t in1_scalar_cb, uin
 
 template <bool pop_in1>
 void add_block_inplace(uint32_t in0_cb, uint32_t in1_cb, uint32_t num_tiles) {
-    DeviceZoneScopedN("add_block_inplace");
+    // DeviceZoneScopedN("add_block_inplace");
     // Precondition: in0_cb and in1_cb have num_tiles produced
     // Postcondition: in0_cb has num_tiles produced
     // Postcondition: in1_cb has num_tiles consumed
@@ -264,7 +264,7 @@ void add_block_inplace(uint32_t in0_cb, uint32_t in1_cb, uint32_t num_tiles) {
 }
 
 void add_block(uint32_t in0_cb, uint32_t in1_cb, uint32_t out_cb, uint32_t num_tiles) {
-    DeviceZoneScopedN("add_block");
+    // DeviceZoneScopedN("add_block");
     // Precondition: in0_cb and in1_cb have num_tiles produced
     // Postcondition: in0_cb has num_tiles produced
     // Postcondition: in1_cb has num_tiles consumed
@@ -287,7 +287,7 @@ void add_block(uint32_t in0_cb, uint32_t in1_cb, uint32_t out_cb, uint32_t num_t
 }
 
 void mul_block_inplace(uint32_t in0_cb, uint32_t in1_cb, uint32_t num_tiles) {
-    DeviceZoneScopedN("mul_block_inplace");
+    // DeviceZoneScopedN("mul_block_inplace");
     // Precondition: in0_cb and in1_cb have num_tiles produced
     // Postcondition: in0_cb has num_tiles produced
     // Postcondition: in1_cb has num_tiles produced
@@ -308,7 +308,7 @@ void mul_block_inplace(uint32_t in0_cb, uint32_t in1_cb, uint32_t num_tiles) {
 }
 
 void sub_exp_block(uint32_t in0_cb, uint32_t in1_cb, uint32_t out_cb, uint32_t num_tiles) {
-    DeviceZoneScopedN("sub_exp_block");
+    // DeviceZoneScopedN("sub_exp_block");
     // Precondition: in0_cb and in1_cb have num_tiles produced
     // Postcondition: out_cb has num_tiles produced
     // Postcondition: in0_cb and in1_cb has num_tiles produced
@@ -330,7 +330,7 @@ void sub_exp_block(uint32_t in0_cb, uint32_t in1_cb, uint32_t out_cb, uint32_t n
 }
 
 void copy_block(uint32_t in_cb, uint32_t out_cb, uint32_t num_tiles) {
-    DeviceZoneScopedN("copy_block");
+    // DeviceZoneScopedN("copy_block");
     // Precondition: in_cb has num_tiles produced
     // Precondition: out_cb has num_tiles free
     // Postcondition: in_cb has num_tiles consumed
@@ -367,7 +367,7 @@ ALWI void cb_matmul_blocks(
     const uint32_t& subblock_h,
     const uint32_t& subblock_w,
     const bool& transpose) {
-    DeviceZoneScopedN("cb_matmul_blocks");
+    // DeviceZoneScopedN("cb_matmul_blocks");
     // precondition: in0_cb has M*K produced
     // preconditino: in1_cb has K*N produced
     // postcondition: in0_cb is full, in1_cb is empty
@@ -384,7 +384,7 @@ ALWI void cb_matmul_blocks(
     uint32_t in0_index_offset = 0;
 
     {
-        DeviceZoneScopedN("llk_loop");
+        // DeviceZoneScopedN("llk_loop");
         for (uint32_t in0_subblock = 0; in0_subblock < in0_num_subblocks; ++in0_subblock) {
             uint32_t in1_index_offset = 0;
             for (uint32_t in1_subblock = 0; in1_subblock < in1_num_subblocks; ++in1_subblock) {
