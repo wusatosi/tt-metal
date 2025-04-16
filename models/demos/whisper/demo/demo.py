@@ -389,18 +389,19 @@ def run_demo_whisper_for_conditional_generation_inference(input_path, ttnn_model
     total_ttft = 0
     total_decode_throughput = 0
     num_warmup_runs = 1
-    for i in range(num_inputs):
-        input_file_path = input_data[i]
-        samplerate, data = wavfile.read(input_file_path)
+    for j in tqdm(range(30000), desc="stress test iters"):
+        for i in range(num_inputs):
+            input_file_path = input_data[i]
+            samplerate, data = wavfile.read(input_file_path)
 
-        # perform model inference
-        ttnn_output, ttft, avg_decode_throughput = model_pipeline(
-            data, samplerate, stream=False, return_perf_metrics=True
-        )
-        if i >= num_warmup_runs:  # Exclude first compile run
-            total_ttft += ttft
-            total_decode_throughput += avg_decode_throughput
-        logger.info(f"Model Output (Input {i+1}): {ttnn_output}")
+            # perform model inference
+            ttnn_output, ttft, avg_decode_throughput = model_pipeline(
+                data, samplerate, stream=False, return_perf_metrics=True
+            )
+            if i >= num_warmup_runs:  # Exclude first compile run
+                total_ttft += ttft
+                total_decode_throughput += avg_decode_throughput
+            logger.info(f"Model Output (Input {i+1}): {ttnn_output}")
 
     avg_ttft = total_ttft / (num_inputs - num_warmup_runs)
     avg_decode_throughput = total_decode_throughput / (num_inputs - num_warmup_runs)
