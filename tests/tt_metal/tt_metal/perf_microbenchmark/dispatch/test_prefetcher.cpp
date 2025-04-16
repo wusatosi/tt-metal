@@ -2353,6 +2353,8 @@ void configure_for_single_chip(
         0,
         0,
         DispatchMemMap::get(DISPATCH_CORE_TYPE).get_dispatch_stream_index(0),
+        DispatchMemMap::get(DISPATCH_CORE_TYPE)
+            .get_device_command_queue_addr(CommandQueueDeviceAddrType::NOC_SHARING_ATOMIC),
     };
 
     CoreCoord phys_upstream_from_dispatch_core = split_prefetcher_g ? phys_prefetch_d_core : phys_prefetch_core_g;
