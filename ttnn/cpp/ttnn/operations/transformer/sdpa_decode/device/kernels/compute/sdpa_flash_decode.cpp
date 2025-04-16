@@ -237,8 +237,9 @@ void MAIN {
 
                     // reconfig_data_format(cb_out_accumulate_im, cb_exp_max_diff); // DEBUG
                     // pack_reconfig_data_format(cb_out_accumulate_im);
-                    mul_block_bcast_cols_inplace(cb_out_accumulate_im, cb_exp_max_diff, Sq_chunk_t, DHt);
-                    mul_block_bcast_cols_inplace(cb_out_accumulate_im_2, cb_exp_max_diff_2, Sq_chunk_t, DHt);
+                    mul_block_bcast_cols(cb_out_accumulate_im, cb_exp_max_diff, cb_out_accumulate_im, Sq_chunk_t, DHt);
+                    mul_block_bcast_cols(
+                        cb_out_accumulate_im_2, cb_exp_max_diff_2, cb_out_accumulate_im_2, Sq_chunk_t, DHt);
 
                     // reconfig_data_format(cb_out_accumulate_im, cb_out_accumulate_im_2);
                     // pack_reconfig_data_format(cb_out_accumulate_im);
@@ -262,10 +263,8 @@ void MAIN {
 
             /* cb_out_accumulate_im *= cb_prev_sum */
             reconfig_data_format(cb_out_accumulate_im, cb_prev_sum);  // DEBUG
-            pack_reconfig_data_format(cb_out_accumulate_im);
-            mul_block_bcast_cols_inplace(cb_out_accumulate_im, cb_prev_sum, Sq_chunk_t, DHt);
             pack_reconfig_data_format(cb_out_final);
-            copy_block(cb_out_accumulate_im, cb_out_final, out_chunk_tiles);
+            mul_block_bcast_cols(cb_out_accumulate_im, cb_prev_sum, cb_out_final, Sq_chunk_t, DHt);
 
             // free up cb_prev_max after K chunks
             cb_pop_front(cb_prev_max, Sq_chunk_t);
