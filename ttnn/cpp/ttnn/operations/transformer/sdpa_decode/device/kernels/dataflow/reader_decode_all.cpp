@@ -56,11 +56,14 @@ void kernel_main() {
     if (q_addr == 0) {
         return;
     }
+
+    DeviceZoneScopedN("READER");
     // Get cur_pos
     constexpr uint32_t cur_pos_base = St * 32 - 1;
     uint32_t cur_pos = cur_pos_base;  // default to non-causal, which we do attention on the entire kv cache. In this
                                       // case we set cur_pos to the last position
     if constexpr (is_causal) {
+        DeviceZoneScopedN("cur_pos");
         // using UINT32_MAX as a flag to indicate that cur_pos is not provided as a list
         if (cur_pos_arg != UINT32_MAX) {
             cur_pos = cur_pos_arg;
@@ -184,6 +187,7 @@ void kernel_main() {
 
     volatile tt_l1_ptr uint32_t* page_table_ptr;
     if constexpr (is_paged_attention) {
+        DeviceZoneScopedN("READ-PAGE-TABLE");
         constexpr uint32_t cb_id_page_table = tt::CBIndex::c_9;
         const InterleavedAddrGen<true> page_table_gen = {
             .bank_base_address = page_table_addr, .page_size = page_table_page_size};

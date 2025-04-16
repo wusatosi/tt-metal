@@ -31,6 +31,7 @@ inline uint8_t nearest_pow_of_2_up_to_8(uint32_t x) {
 
 inline std::tuple<uint32_t, uint32_t, uint32_t, uint32_t> get_runtime_args(
     int cur_pos, int cur_batch, int core_num, int num_cores_per_batch, uint32_t k_chunk_size) {
+    DeviceZoneScopedN("get_runtime_args");
     uint32_t valid_seq_len = nearest_n(cur_pos + 1, k_chunk_size);
     uint32_t pst_value = valid_seq_len / tt::constants::TILE_HEIGHT;
     uint32_t num_chunks_value = valid_seq_len / k_chunk_size;
@@ -60,6 +61,8 @@ inline std::tuple<uint32_t, uint32_t, uint32_t, uint32_t> get_runtime_args(
 
 template <uint32_t Sk_chunk_t, uint32_t max_size>
 inline uint32_t get_dynamic_Sk_chunk_t(int cur_pos) {
+    DeviceZoneScopedN("dynamic_chunk_size");
+
     if constexpr (Sk_chunk_t == 0) {
         // Cur_pos + 1 for position, but -1 for divup, so cancels out
         // ie. divup(a, b) = (a - 1) / b + 1
