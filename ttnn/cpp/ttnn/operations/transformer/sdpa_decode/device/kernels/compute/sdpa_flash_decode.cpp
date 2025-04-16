@@ -255,17 +255,15 @@ void MAIN {
             }
             DeviceZoneScopedN("SDPA-REDUCE-TAIL");
 
-            /* cb_cur_sum = 1.0 / cb_cur_sum */
-            cb_push_back(cb_cur_sum, Sq_chunk_t);
+            /* cb_prev_sum = 1.0 / cb_prev_sum */
+            reconfig_data_format(cb_prev_sum, cb_prev_sum);  // DEBUG
+            pack_reconfig_data_format(cb_prev_sum);
+            recip_block_inplace(cb_prev_sum, Sq_chunk_t);
 
-            reconfig_data_format(cb_cur_sum, cb_cur_sum);  // DEBUG
-            pack_reconfig_data_format(cb_cur_sum);
-            recip_block_inplace(cb_cur_sum, Sq_chunk_t);
-
-            /* cb_out_accumulate_im *= cb_cur_sum */
-            reconfig_data_format(cb_out_accumulate_im, cb_cur_sum);  // DEBUG
+            /* cb_out_accumulate_im *= cb_prev_sum */
+            reconfig_data_format(cb_out_accumulate_im, cb_prev_sum);  // DEBUG
             pack_reconfig_data_format(cb_out_accumulate_im);
-            mul_block_bcast_cols_inplace(cb_out_accumulate_im, cb_cur_sum, Sq_chunk_t, DHt);
+            mul_block_bcast_cols_inplace(cb_out_accumulate_im, cb_prev_sum, Sq_chunk_t, DHt);
             pack_reconfig_data_format(cb_out_final);
             copy_block(cb_out_accumulate_im, cb_out_final, out_chunk_tiles);
 
