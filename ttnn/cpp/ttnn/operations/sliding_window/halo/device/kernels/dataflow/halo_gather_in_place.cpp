@@ -269,36 +269,22 @@ void kernel_main() {
     uint32_t semaphore_addr = get_semaphore(semaphore_id);
     const uint64_t semaphore_noc_addr = get_noc_addr(noc_00_x, noc_00_y, semaphore_addr);
     noc_semaphore_inc(semaphore_noc_addr, 1);
-    DPRINT << "SEMAPHORE INC" << ENDL();
     if (my_noc_x == noc_00_x && my_noc_y == noc_00_y && local_config_cb_id) {
-        DPRINT << "00 WAITING" << ENDL();
         volatile tt_l1_ptr uint32_t* semaphore_noc_addr_ptr =
             reinterpret_cast<volatile tt_l1_ptr uint32_t*>(semaphore_noc_addr);
         noc_semaphore_wait(semaphore_noc_addr_ptr, 2 * num_active_cores);
-        DPRINT << "PAST 00 WAIT" << ENDL();
 
         const uint64_t mcast_noc_addr = get_noc_multicast_addr(
             noc_00_x, noc_00_y, noc_00_x + rectangular_x - 1, noc_00_y + rectangular_y - 1, semaphore_addr);
 
-        DPRINT << "noc_00_x = " << noc_00_x << ", noc_00_y = " << noc_00_y << ENDL();
-        DPRINT << "rectangular_x = " << rectangular_x << ", rectangular_y = " << rectangular_y << ENDL();
-
-        DPRINT << "MULTICASTING" << ENDL();
-        noc_semaphore_set_multicast(
-            semaphore_addr,
-            mcast_noc_addr,
-            rectangular_x * rectangular_y - 1,  // -1 because we don't include the core sending the multicast
-            false,
-            false);
+        noc_semaphore_set_multicast(semaphore_addr, mcast_noc_addr, rectangular_x * rectangular_y - 1);
     }
 
     if constexpr (padding_config_cb_id) {
-        DPRINT << "PAD WAITING" << ENDL();
         const uint64_t semaphore_noc_addr = get_noc_addr(my_noc_x, my_noc_y, semaphore_addr);
         volatile tt_l1_ptr uint32_t* semaphore_noc_addr_ptr =
             reinterpret_cast<volatile tt_l1_ptr uint32_t*>(semaphore_noc_addr);
         noc_semaphore_wait(semaphore_noc_addr_ptr, 2 * num_active_cores);
-        DPRINT << "PAST PAD WAIT" << ENDL();
 
         // construct the pad stick in its buffer
         cb_reserve_back(pad_cb_id, 1);
@@ -325,12 +311,10 @@ void kernel_main() {
     }
 
     if constexpr (remote_config_cb_id && remote_temp_cb_id) {
-        DPRINT << "REMOTE WAITING" << ENDL();
         const uint64_t semaphore_noc_addr = get_noc_addr(my_noc_x, my_noc_y, semaphore_addr);
         volatile tt_l1_ptr uint32_t* semaphore_noc_addr_ptr =
             reinterpret_cast<volatile tt_l1_ptr uint32_t*>(semaphore_noc_addr);
         noc_semaphore_wait(semaphore_noc_addr_ptr, 2 * num_active_cores);
-        DPRINT << "PAST REMOTE WAIT" << ENDL();
 
         const uint32_t temp_base_l1_addr = get_read_ptr(remote_temp_cb_id);
         uint32_t config_data_l1_addr = get_read_ptr(remote_config_cb_id);
@@ -346,4 +330,6 @@ void kernel_main() {
     noc_async_read_barrier();
     noc_async_write_barrier();
     noc_async_atomic_barrier();
+
+    DPRINT << "END OF KERNEL" << ENDL();
 }
