@@ -654,11 +654,8 @@ std::tuple<uint32_t, uint32_t, uint32_t, uint32_t> flash_attention_loop(
 
         if (k_chunk < k_chunk_end - 1 || do_reduce) {
             // Set cb_prev_sum and cb_prev_max
-            reconfig_data_format_srca(cb_cur_max);  // DEBUG
-            pack_reconfig_data_format(cb_prev_max);
-            copy_block(cb_cur_max, cb_prev_max, Sq_chunk_t);
-            copy_block(cb_cur_sum, cb_prev_sum, Sq_chunk_t);
-
+            std::swap(cb_cur_max, cb_prev_max);
+            std::swap(cb_cur_sum, cb_prev_sum);
         } else {
             // Write o, m, l into cb_out
             reconfig_data_format_srca(cb_out_accumulate_im);

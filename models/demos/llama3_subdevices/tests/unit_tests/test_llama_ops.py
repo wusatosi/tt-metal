@@ -225,7 +225,7 @@ def test_llama_tg_ScaledDotProductAttentionDecode(
 )
 @pytest.mark.parametrize(
     "chunk_sizes, cur_positions",
-    (([0, 128, 256, 512], [31, 63, 95, 127, 255, 511, 1023, 4095]),),
+    (([0, 128, 256, 512], [31, 63, 95, 127, 255, 511, 1023, 2559, 4095]),),
 )
 def test_llama_tg_ScaledDotProductAttentionDecodeSweep(
     mesh_device,
