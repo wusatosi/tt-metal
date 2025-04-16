@@ -75,8 +75,8 @@ void max_block(uint32_t in0, uint32_t in1, uint32_t out_cb, uint32_t num_tiles) 
     cb_push_back(out_cb, num_tiles);
 }
 
-template <PoolType pool_type, ReduceDim reduce_dim, uint32_t in0_cb, uint32_t scale_cb, uint32_t out_cb, uint32_t rows>
-void reduce_c(uint32_t cols) {
+template <PoolType pool_type, ReduceDim reduce_dim, uint32_t in0_cb, uint32_t scale_cb, uint32_t rows>
+void reduce_c(uint32_t out_cb, uint32_t cols) {
     DeviceZoneScopedN("reduce_c");
     // Precondition: in0_cb has rows*cols produced. in0_cb has tiles in row-major order
     // Precondition: scale_cb has 1 produced
@@ -507,15 +507,15 @@ template <
     uint32_t cb_qk_im,
     uint32_t cb_out_im,
     uint32_t cb_out_accumulate_im,
-    uint32_t cb_cur_max,
-    uint32_t cb_prev_max,
-    uint32_t cb_cur_sum,
-    uint32_t cb_prev_sum,
+    uint32_t cb_max_1,
+    uint32_t cb_max_2,
+    uint32_t cb_sum_1,
+    uint32_t cb_sum_2,
     uint32_t cb_exp_max_diff,
     uint32_t cb_out_o,
     uint32_t cb_out_m,
     uint32_t cb_out_l>
-void flash_attention_loop(
+std::tuple<uint32_t, uint32_t, uint32_t, uint32_t> flash_attention_loop(
     // Runtime parameters
     uint32_t k_chunk_start,
     uint32_t k_chunk_end,
@@ -532,6 +532,10 @@ void flash_attention_loop(
 ) {
     DeviceZoneScopedN("FLASHLOOP");
     uint32_t cb_out_mm = cb_out_accumulate_im;
+    uint32_t cb_cur_max = cb_max_1;
+    uint32_t cb_prev_max = cb_max_2;
+    uint32_t cb_cur_sum = cb_sum_1;
+    uint32_t cb_prev_sum = cb_sum_2;
 
     for (uint32_t k_chunk = k_chunk_start; k_chunk < k_chunk_end; ++k_chunk) {
         /* QK = Q_CHUNK @ K_CHUNK */
@@ -576,8 +580,8 @@ void flash_attention_loop(
 
         reconfig_data_format(cb_qk_im, cb_identity_scale_in);
         pack_reconfig_data_format(cb_cur_max);
-        reduce_c<PoolType::MAX, ReduceDim::REDUCE_ROW, cb_qk_im, cb_identity_scale_in, cb_cur_max, Sq_chunk_t>(
-            Sk_chunk_t);
+        reduce_c<PoolType::MAX, ReduceDim::REDUCE_ROW, cb_qk_im, cb_identity_scale_in, Sq_chunk_t>(
+            cb_cur_max, Sk_chunk_t);
 
         DPRINT << "3" << ENDL();
         if (k_chunk > k_chunk_start) {
@@ -594,8 +598,8 @@ void flash_attention_loop(
         /* cb_cur_sum = sum(cb_qk_im, dim=-1) */
         reconfig_data_format(cb_qk_im, cb_identity_scale_in);
         pack_reconfig_data_format(cb_cur_sum);
-        reduce_c<PoolType::SUM, ReduceDim::REDUCE_ROW, cb_qk_im, cb_identity_scale_in, cb_cur_sum, Sq_chunk_t>(
-            Sk_chunk_t);
+        reduce_c<PoolType::SUM, ReduceDim::REDUCE_ROW, cb_qk_im, cb_identity_scale_in, Sq_chunk_t>(
+            cb_cur_sum, Sk_chunk_t);
 
         DPRINT << "5" << ENDL();
 
@@ -664,4 +668,5 @@ void flash_attention_loop(
         }
     }
     DPRINT << "FLASH D" << ENDL();
+    return {cb_cur_max, cb_prev_max, cb_cur_sum, cb_prev_sum};
 }
