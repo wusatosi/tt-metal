@@ -102,13 +102,12 @@ def test_segformer_overlap_patch_embeddings(
         layout=ttnn.ROW_MAJOR_LAYOUT,
     )
 
-    # adjust padding if necessary
-    if num_channels < 16:
-        ttnn_input_tensor = ttnn.pad(ttnn_input_tensor, [batch_size, height, width, 16], [0, 0, 0, 0], 0)
-    elif num_channels > 16 and num_channels % 32 != 0:
-        ttnn_input_tensor = ttnn.pad(
-            ttnn_input_tensor, [batch_size, height, width, num_channels + (32 - num_channels % 32)], [0, 0, 0, 0], 0
-        )
+    # if num_channels < 8:
+    #     ttnn_input_tensor = ttnn.pad(ttnn_input_tensor, [batch_size, height, width, 8], [0, 0, 0, 0], 0)
+    # elif num_channels > 8 and num_channels < 16:
+    #     ttnn_input_tensor = ttnn.pad(ttnn_input_tensor, [batch_size, height, width, 8], [0, 0, 0, 0], 0)
+    # elif num_channels > 16 and num_channels % 32 != 0:
+    #     ttnn_input_tensor = ttnn.pad(ttnn_input_tensor, [batch_size, height, width, (num_channels // 32 + 1) * 32], [0, 0, 0, 0], 0)
 
     ttnn_input_tensor = ttnn.to_device(ttnn_input_tensor, device=device, memory_config=ttnn.L1_MEMORY_CONFIG)
 

@@ -44,7 +44,7 @@ class Conv:
             activation=self.activation,
             shard_layout=self.shard_layout,
             # TODO: investigate performance implications of shallow conv
-            input_channels_alignment=16 if input_tensor.shape[3] <= 16 else 32,
+            # input_channels_alignment=8, #if input_tensor.shape[3] <= 16 else 32,
             transpose_shards=False,
             reshard_if_not_optimal=self.reshard,
             deallocate_activation=self.deallocate,
