@@ -490,9 +490,7 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
         CBHandle remote_temp_cb = CreateCircularBuffer(program, all_cores, remote_temp_cb_config);
     }
 
-    // create semaphores
-    uint32_t semaphore_id = tt::tt_metal::CreateSemaphore(program, all_cores, 0);
-
+    // compute the number of noop cores
     const bool is_rm_orientation = input_tensor.shard_spec()->orientation == ShardOrientation::ROW_MAJOR;
     const auto cores = corerange_to_cores(all_cores, std::nullopt, is_rm_orientation);
     int32_t num_cores_x = device->compute_with_storage_grid_size().x;
@@ -507,14 +505,11 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
         num_active_cores,
         num_cores_rectangular,
         num_noop_cores);
-    std::vector<uint32_t> output_tensor_cores_x;
-    std::vector<uint32_t> output_tensor_cores_y;
     for (const auto& core : cores) {
         auto worker = device->worker_core_from_logical_core(core);
-        output_tensor_cores_x.push_back(worker.x);
-        output_tensor_cores_y.push_back(worker.y);
     }
 
+    // find the noc coordinate of core 0,0
     auto core_id_to_noc_coords = [is_block_sharded, transpose_mcast, device](uint32_t core_id) -> CoreCoord {
         auto num_cores_x = device->compute_with_storage_grid_size().x;
         auto core_coord = is_block_sharded ? (transpose_mcast ? CoreCoord(core_id, 0) : CoreCoord(0, core_id))
@@ -522,6 +517,19 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
         return device->worker_core_from_logical_core(core_coord);
     };
     CoreCoord noc_00 = core_id_to_noc_coords(0);
+
+    // create the rectangular core range
+    uint32_t rectangular_x = num_cores_x;
+    uint32_t rectangular_y = num_noop_cores ? num_active_cores / num_cores_x + 1 : num_active_cores / num_cores_x;
+    printf("rectangular_x = %d, rectangular_y = %d\n", rectangular_x, rectangular_y);
+    uint32_t last_row_active_x = num_noop_cores ? num_active_cores % num_cores_x : num_cores_x;
+    printf("last_row_active_x: %d\n", last_row_active_x);
+    std::set<CoreRange> rectangular_cores_set;
+    rectangular_cores_set.insert(CoreRange(CoreCoord(0, 0), CoreCoord(rectangular_x - 1, rectangular_y - 1)));
+    CoreRangeSet rectangular_cores(rectangular_cores_set);
+
+    // create semaphores
+    uint32_t semaphore_id = tt::tt_metal::CreateSemaphore(program, rectangular_cores, 0);
 
     auto aligned_input_nstick_nbytes = out_stick_nbytes;
     log_debug(tt::LogOp, "out_stick_nbytes = {}", out_stick_nbytes);
@@ -544,12 +552,16 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
         input_npages,
         out_stick_nbytes,
         is_block_sharded,
-        remote_read,
         (uint32_t)(transpose_mcast ? 1 : 0),
         is_width_sharded,
         aligned_input_nstick_nbytes,
-        true,
-        cores.size(),
+        remote_read,
+        num_active_cores,
+        noc_00.x,
+        noc_00.y,
+        rectangular_x,
+        rectangular_y,
+        last_row_active_x,
         semaphore_id,
         in_out_buffer_start_delta,
         temp_cb_id,
@@ -563,7 +575,7 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
     KernelHandle reader_kernel_id0 = CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/sliding_window/halo/device/kernels/dataflow/halo_gather_in_place.cpp",
-        all_cores,
+        rectangular_cores,
         DataMovementConfig{
             .processor = DataMovementProcessor::RISCV_0, .noc = NOC::RISCV_0_default, .compile_args = reader_ct_args});
 
@@ -571,19 +583,18 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
     reader_ct_args[1] = 0;
     reader_ct_args[2] = 0;
     reader_ct_args[3] = 0;
-    reader_ct_args[16] = false;
     KernelHandle reader_kernel_id = CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/sliding_window/halo/device/kernels/dataflow/halo_gather_in_place.cpp",
-        all_cores,
+        rectangular_cores,
         DataMovementConfig{
             .processor = DataMovementProcessor::RISCV_1, .noc = NOC::RISCV_1_default, .compile_args = reader_ct_args});
 
-    std::vector<uint32_t> reader_rt_args;
-    reader_rt_args.insert(reader_rt_args.end(), output_tensor_cores_x.begin(), output_tensor_cores_x.end());
-    reader_rt_args.insert(reader_rt_args.end(), output_tensor_cores_y.begin(), output_tensor_cores_y.end());
-    SetRuntimeArgs(program, reader_kernel_id0, all_cores, reader_rt_args);
-    SetRuntimeArgs(program, reader_kernel_id, all_cores, reader_rt_args);
+    // std::vector<uint32_t> reader_rt_args;
+    // reader_rt_args.insert(reader_rt_args.end(), output_tensor_cores_x.begin(), output_tensor_cores_x.end());
+    // reader_rt_args.insert(reader_rt_args.end(), output_tensor_cores_y.begin(), output_tensor_cores_y.end());
+    // SetRuntimeArgs(program, reader_kernel_id0, all_cores, reader_rt_args);
+    // SetRuntimeArgs(program, reader_kernel_id, all_cores, reader_rt_args);
 
     if (!capture_buffers) {
         padding_config_buffer = nullptr;

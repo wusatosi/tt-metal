@@ -191,23 +191,22 @@ void kernel_main() {
     constexpr uint32_t in_npages = get_compile_time_arg_val(9);      // number of sticks
     constexpr uint32_t stick_nbytes = get_compile_time_arg_val(10);  // stick size in bytes (post untilize)
     constexpr uint32_t is_block_sharded = get_compile_time_arg_val(11);
-    constexpr bool is_col_major = get_compile_time_arg_val(13) == 1;
-    constexpr uint32_t is_width_sharded = get_compile_time_arg_val(14);
-    constexpr uint32_t input_aligned_page_size = get_compile_time_arg_val(15);
-    constexpr uint32_t remote_read = get_compile_time_arg_val(16);  // Unused parameter
-    constexpr uint32_t num_cores = get_compile_time_arg_val(17);
-    constexpr uint32_t semaphore_id = get_compile_time_arg_val(18);
-    constexpr uint32_t in_out_buffer_start_delta = get_compile_time_arg_val(19);
+    constexpr bool is_col_major = get_compile_time_arg_val(12) == 1;
+    constexpr uint32_t is_width_sharded = get_compile_time_arg_val(13);
+    constexpr uint32_t input_aligned_page_size = get_compile_time_arg_val(14);
+    constexpr uint32_t remote_read = get_compile_time_arg_val(15);  // Unused parameter
+    constexpr uint32_t num_active_cores = get_compile_time_arg_val(16);
+    constexpr uint32_t noc_00_x = get_compile_time_arg_val(17);
+    constexpr uint32_t noc_00_y = get_compile_time_arg_val(18);
+    constexpr uint32_t rectangular_x = get_compile_time_arg_val(19);
+    constexpr uint32_t rectangular_y = get_compile_time_arg_val(20);
+    constexpr uint32_t last_row_active_x = get_compile_time_arg_val(21);
+    constexpr uint32_t semaphore_id = get_compile_time_arg_val(22);
+    constexpr uint32_t in_out_buffer_start_delta = get_compile_time_arg_val(23);
     constexpr uint32_t untilize_temp_cb_id =
-        get_compile_time_arg_val(20);  // temp buffer for in place untilize with wide tensors
-    constexpr uint32_t tile_cols = get_compile_time_arg_val(21);
-    constexpr uint32_t tile_rows = get_compile_time_arg_val(22);
-
-    uint32_t arg_idx = 0;
-    tt_l1_ptr uint32_t* core_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
-    arg_idx += num_cores;
-    tt_l1_ptr uint32_t* core_noc_y = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
-    arg_idx += num_cores;
+        get_compile_time_arg_val(24);  // temp buffer for in place untilize with wide tensors
+    constexpr uint32_t tile_cols = get_compile_time_arg_val(25);
+    constexpr uint32_t tile_rows = get_compile_time_arg_val(26);
 
     constexpr uint32_t elem_nbytes = sizeof(uint16_t);
     constexpr uint16_t pad_core_id = 0xFFFF;
@@ -215,6 +214,10 @@ void kernel_main() {
 
     const uint16_t my_noc_x = NOC_X(my_x[noc_index]);
     const uint16_t my_noc_y = NOC_Y(my_y[noc_index]);
+    if (my_noc_x >= noc_00_x + last_row_active_x && my_noc_y >= noc_00_y + rectangular_y) {  // noop cores
+        return;
+    }
+
     const uint32_t in_base_l1_addr = get_read_ptr(in_cb_id);
     const uint32_t out_base_l1_addr = get_write_ptr(out_cb_id);
     const uint32_t untilize_temp_l1_addr = get_read_ptr(untilize_temp_cb_id);
@@ -264,28 +267,38 @@ void kernel_main() {
     noc_async_write_barrier();
 
     uint32_t semaphore_addr = get_semaphore(semaphore_id);
-    const uint64_t semaphore_noc_addr = get_noc_addr(core_noc_x[0], core_noc_y[0], semaphore_addr);
+    const uint64_t semaphore_noc_addr = get_noc_addr(noc_00_x, noc_00_y, semaphore_addr);
     noc_semaphore_inc(semaphore_noc_addr, 1);
-    if (my_noc_x == core_noc_x[0] && my_noc_y == core_noc_y[0] && local_config_cb_id) {
+    DPRINT << "SEMAPHORE INC" << ENDL();
+    if (my_noc_x == noc_00_x && my_noc_y == noc_00_y && local_config_cb_id) {
+        DPRINT << "00 WAITING" << ENDL();
         volatile tt_l1_ptr uint32_t* semaphore_noc_addr_ptr =
             reinterpret_cast<volatile tt_l1_ptr uint32_t*>(semaphore_noc_addr);
-        noc_semaphore_wait(semaphore_noc_addr_ptr, 2 * num_cores);
+        noc_semaphore_wait(semaphore_noc_addr_ptr, 2 * num_active_cores);
+        DPRINT << "PAST 00 WAIT" << ENDL();
 
-        const uint64_t mcast_noc_addr = get_noc_multicast_addr(18, 18, 25, 25, semaphore_addr);
+        const uint64_t mcast_noc_addr = get_noc_multicast_addr(
+            noc_00_x, noc_00_y, noc_00_x + rectangular_x, noc_00_y + rectangular_y, semaphore_addr);
 
+        DPRINT << "noc_00_x = " << noc_00_x << ", noc_00_y = " << noc_00_y << ENDL();
+        DPRINT << "rectangular_x = " << rectangular_x << ", rectangular_y = " << rectangular_y << ENDL();
+
+        DPRINT << "MULTICASTING" << ENDL();
         noc_semaphore_set_multicast(
             semaphore_addr,
             mcast_noc_addr,
-            63,  // num_cores - 1 ?
+            rectangular_x * rectangular_y - 1,  // -1 because we don't include the core sending the multicast
             false,
             false);
     }
 
     if constexpr (padding_config_cb_id) {
+        DPRINT << "PAD WAITING" << ENDL();
         const uint64_t semaphore_noc_addr = get_noc_addr(my_noc_x, my_noc_y, semaphore_addr);
         volatile tt_l1_ptr uint32_t* semaphore_noc_addr_ptr =
             reinterpret_cast<volatile tt_l1_ptr uint32_t*>(semaphore_noc_addr);
-        noc_semaphore_wait(semaphore_noc_addr_ptr, 2 * num_cores);
+        noc_semaphore_wait(semaphore_noc_addr_ptr, 2 * num_active_cores);
+        DPRINT << "PAST PAD WAIT" << ENDL();
 
         // construct the pad stick in its buffer
         cb_reserve_back(pad_cb_id, 1);
@@ -312,10 +325,12 @@ void kernel_main() {
     }
 
     if constexpr (remote_config_cb_id && remote_temp_cb_id) {
+        DPRINT << "REMOTE WAITING" << ENDL();
         const uint64_t semaphore_noc_addr = get_noc_addr(my_noc_x, my_noc_y, semaphore_addr);
         volatile tt_l1_ptr uint32_t* semaphore_noc_addr_ptr =
             reinterpret_cast<volatile tt_l1_ptr uint32_t*>(semaphore_noc_addr);
-        noc_semaphore_wait(semaphore_noc_addr_ptr, 2 * num_cores);
+        noc_semaphore_wait(semaphore_noc_addr_ptr, 2 * num_active_cores);
+        DPRINT << "PAST REMOTE WAIT" << ENDL();
 
         const uint32_t temp_base_l1_addr = get_read_ptr(remote_temp_cb_id);
         uint32_t config_data_l1_addr = get_read_ptr(remote_config_cb_id);
