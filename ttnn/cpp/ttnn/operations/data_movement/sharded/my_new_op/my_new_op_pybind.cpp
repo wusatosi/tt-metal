@@ -23,49 +23,24 @@ void bind_my_new_op(pybind11::module& module, const data_movement_sharded_operat
         ttnn::pybind_overload_t{
             [](const data_movement_sharded_operation_t& self,
                const ttnn::Tensor& input_tensor,
-               const std::variant<CoreCoord, CoreRangeSet>& grid,
-               const std::array<uint32_t, 2>& shard_shape,
-               tt::tt_metal::TensorMemoryLayout shard_scheme,
-               tt::tt_metal::ShardOrientation shard_orientation,
-               const std::optional<ttnn::DataType>& output_dtype,
-               QueueId queue_id,
-               const std::optional<bool>& keep_l1_aligned) -> ttnn::Tensor {
+               const ttnn::Tensor& input2_tensor,
+               const float& scalar_multiplier,
+               //    const MemoryConfig& sharded_memory_config,
+               //    const std::optional<ttnn::DataType>& output_dtype,
+               QueueId queue_id) -> ttnn::Tensor {
                 return self(
                     queue_id,
                     input_tensor,
-                    grid,
-                    shard_shape,
-                    shard_scheme,
-                    shard_orientation,
-                    output_dtype,
-                    keep_l1_aligned);
+                    input2_tensor,
+                    scalar_multiplier);  //, sharded_memory_config, output_dtype);
             },
             py::arg("input_tensor").noconvert(),
-            py::arg("grid"),
-            py::arg("shard_shape"),
-            py::arg("shard_scheme"),
-            py::arg("shard_orientation"),
-            py::arg("output_dtype") = std::nullopt,
+            py::arg("input2_tensor").noconvert(),
+            py::arg("scalar_multiplier").noconvert(),
+            // py::arg("sharded_memory_config"),
+            // py::arg("output_dtype") = std::nullopt,
             py::kw_only(),
             py::arg("queue_id") = DefaultQueueId,
-            py::arg("keep_l1_aligned") = false,
-
-        },
-        ttnn::pybind_overload_t{
-            [](const data_movement_sharded_operation_t& self,
-               const ttnn::Tensor& input_tensor,
-               const MemoryConfig& sharded_memory_config,
-               const std::optional<ttnn::DataType>& output_dtype,
-               QueueId queue_id,
-               const std::optional<bool>& keep_l1_aligned) -> ttnn::Tensor {
-                return self(queue_id, input_tensor, sharded_memory_config, output_dtype, keep_l1_aligned);
-            },
-            py::arg("input_tensor").noconvert(),
-            py::arg("sharded_memory_config"),
-            py::arg("output_dtype") = std::nullopt,
-            py::kw_only(),
-            py::arg("queue_id") = DefaultQueueId,
-            py::arg("keep_l1_aligned") = false,
 
         });
 }

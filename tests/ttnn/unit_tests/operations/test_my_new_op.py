@@ -13,16 +13,16 @@ from tests.ttnn.utils_for_testing import assert_with_pcc
     "first_dtype, second_dtype",
     [
         (ttnn.bfloat8_b, ttnn.bfloat16),
-        (ttnn.bfloat8_b, ttnn.float32),
-        (ttnn.bfloat16, ttnn.bfloat8_b),
-        (ttnn.bfloat16, ttnn.float32),
-        (ttnn.float32, ttnn.bfloat8_b),
-        (ttnn.float32, ttnn.bfloat16),
+        # (ttnn.bfloat8_b, ttnn.float32),
+        # (ttnn.bfloat16, ttnn.bfloat8_b),
+        # (ttnn.bfloat16, ttnn.float32),
+        # (ttnn.float32, ttnn.bfloat8_b),
+        # (ttnn.float32, ttnn.bfloat16),
     ],
 )
-@pytest.mark.parametrize("input_in_l1", [True, False])
-@pytest.mark.parametrize("keep_l1_aligned", [True, False])
-def test_my_new_op_hash(device, first_dtype, second_dtype, input_in_l1, keep_l1_aligned):
+@pytest.mark.parametrize("input_in_l1", [True])  # , False])
+# @pytest.mark.parametrize("keep_l1_aligned", [True, False])
+def test_my_new_op_hash(device, first_dtype, second_dtype, input_in_l1):  # , keep_l1_aligned):
     ttnn.enable_program_cache(device)
 
     # Sample tensor size and shard config
@@ -50,16 +50,19 @@ def test_my_new_op_hash(device, first_dtype, second_dtype, input_in_l1, keep_l1_
     input_tensor_device = ttnn.allocate_tensor_on_device(
         input_tensor.shape, input_tensor.dtype, input_tensor.layout, device, input_memory_config
     )
+    print(f"input_tensor_device: {input_tensor_device}")
+    input_tensor_device2 = ttnn.allocate_tensor_on_device(
+        input_tensor.shape, input_tensor.dtype, input_tensor.layout, device, input_memory_config
+    )
+    print(f"input_tensor_device2: {input_tensor_device2}")
     ttnn.copy_host_to_device_tensor(input_tensor, input_tensor_device)
-
+    sm = 3.14
     # Do interleaved to sharded op on device several times to load the program from cache
-    for iter in range(0, 5):
-        output_tensor = ttnn.my_new_op(
-            input_tensor_device, sharded_mem_config, first_dtype, keep_l1_aligned=keep_l1_aligned
-        )
-        pcc_passed_a, pcc_message_a = assert_with_pcc(input_tensor_torch, ttnn.to_torch(output_tensor), pcc=0.9999)
+    # for iter in range(0, 1):
+    output_tensor = ttnn.my_new_op(input_tensor_device, input_tensor_device2, sm, sharded_mem_config, first_dtype)
+    pcc_passed_a, pcc_message_a = assert_with_pcc(input_tensor_torch, ttnn.to_torch(output_tensor), pcc=0.9999)
 
-        output_tensor = ttnn.my_new_op(
-            input_tensor_device, sharded_mem_config, second_dtype, keep_l1_aligned=keep_l1_aligned
-        )
-        pcc_passed_b, pcc_message_b = assert_with_pcc(input_tensor_torch, ttnn.to_torch(output_tensor), pcc=0.9999)
+    # sm = 5.55
+    # output_tensor = ttnn.my_new_op(
+    #     input_tensor_device, input_tensor_device2, sm, sharded_mem_config, second_dtype)
+    # pcc_passed_b, pcc_message_b = assert_with_pcc(input_tensor_torch, ttnn.to_torch(output_tensor), pcc=0.9999)

@@ -14,18 +14,10 @@ struct MyNewOpOperation {
     static ttnn::Tensor invoke(
         QueueId queue_id,
         const ttnn::Tensor& input_tensor,
-        const MemoryConfig& sharded_memory_config,
-        const std::optional<DataType>& data_type_arg,
-        const std::optional<bool>& keep_l1_aligned = std::nullopt);
-    static ttnn::Tensor invoke(
-        QueueId queue_id,
-        const ttnn::Tensor& input_tensor,
-        const std::variant<CoreCoord, CoreRangeSet>& grid,
-        const std::array<uint32_t, 2> shard_shape,
-        const TensorMemoryLayout shard_scheme,
-        const tt::tt_metal::ShardOrientation shard_orientation,
-        const std::optional<DataType>& data_type_arg,
-        const std::optional<bool>& keep_l1_aligned = std::nullopt);
+        const ttnn::Tensor& input2_tensor,
+        const float scalar_multiplier);  //,
+                                         // const MemoryConfig& sharded_memory_config,
+                                         // const std::optional<DataType>& data_type_arg);
 };
 
 }  // namespace operations::data_movement

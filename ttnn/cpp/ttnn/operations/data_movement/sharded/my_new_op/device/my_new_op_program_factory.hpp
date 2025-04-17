@@ -10,9 +10,9 @@ namespace ttnn::operations::data_movement::detail {
 
 tt::tt_metal::operation::ProgramWithCallbacks my_new_op_multi_core(
     const Tensor& a,
+    const Tensor& b,
     const Tensor& output,
-    bool keep_l1_aligned = false,
+    float scalar_multiplier = 1.0f,
     uint32_t num_slices = 1,
     uint32_t slice_index = 0);
-
 }
