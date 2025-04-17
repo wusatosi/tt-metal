@@ -131,7 +131,8 @@ std::vector<ttnn::TensorSpec> AllGatherConcat::compute_output_specs(const std::v
     Shape output_shape({sequence_length, 1, batch, hidden_dim});
     return {TensorSpec(
         output_shape,
-        tt::tt_metal::TensorLayout(input_tensor.get_dtype(), tt::tt_metal::Layout::TILE, this->output_mem_config))};
+        tt::tt_metal::TensorLayout(
+            input_tensor.get_dtype(), tt::tt_metal::Layout::ROW_MAJOR, this->output_mem_config))};
 }
 
 tt::tt_metal::operation::ProgramWithCallbacks AllGatherConcat::create_program(

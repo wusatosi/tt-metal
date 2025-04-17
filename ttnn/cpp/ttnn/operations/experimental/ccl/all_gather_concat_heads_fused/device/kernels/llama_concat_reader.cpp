@@ -22,7 +22,7 @@ constexpr uint32_t cb_id_q_out = get_compile_time_arg_val(2);
 constexpr uint32_t head_size = get_compile_time_arg_val(3);
 constexpr uint32_t batch = get_compile_time_arg_val(4);
 constexpr uint32_t head_size_num_tiles = get_compile_time_arg_val(5);
-constexpr uint32_t PHASES_TO_READ =
+constexpr uint32_t ROWS_TO_READ =
     get_compile_time_arg_val(6);  // 0 to read all phases, 1 to read only first phase, 2 to read only second phase
 
 constexpr uint32_t in_num_cores = get_compile_time_arg_val(7);
@@ -35,6 +35,8 @@ constexpr uint32_t batch_end_1 = get_compile_time_arg_val(12);
 constexpr uint32_t batch_start_2 = get_compile_time_arg_val(13);
 constexpr uint32_t batch_end_2 = get_compile_time_arg_val(14);
 constexpr uint32_t start_local = get_compile_time_arg_val(15);
+// constexpr uint32_t input_row_size = 128;//get_compile_time_arg_val(9);
+// constexpr uint32_t output_row_size = 256;//get_compile_time_arg_val(10);
 constexpr uint32_t tile_size = get_compile_time_arg_val(16);
 constexpr uint32_t num_tiles_per_core_concat = head_size_num_tiles;
 void batch_loop(
@@ -54,38 +56,19 @@ void batch_loop(
     bool nlp_local,
     uint32_t in_tile_offset_by_head,
     uint32_t second_half_core,
-    uint32_t second_core_start_tile) {
+    uint32_t second_core_start_tile,
+    uint32_t start_row) {
+    uint32_t q_write_addr = cb_write_ptr_base + start * 128;
     for (uint32_t q = start; q < end; ++q) {
-        uint32_t wptr_offset = q < face_h ? q * SUBTILE_LINE_BYTES : (q + face_h) * SUBTILE_LINE_BYTES;
-        uint32_t q_write_addr = cb_write_ptr_base + wptr_offset;
-        for (uint32_t i = head_size_num_tiles * second_half_core;
-             i < head_size_num_tiles * second_half_core + head_size_num_tiles;
-             ++i) {
-            // Read first phase
-            if constexpr (PHASES_TO_READ == 0 || PHASES_TO_READ == 1) {
-                noc_async_read(qkv_read_addr, q_write_addr, SUBTILE_LINE_BYTES);
-            }
-            // Read second phase
-            if constexpr (PHASES_TO_READ == 0 || PHASES_TO_READ == 2) {
-                noc_async_read(
-                    qkv_read_addr + face_hw * ELEMENT_SIZE, q_write_addr + face_hw * ELEMENT_SIZE, SUBTILE_LINE_BYTES);
-            }
-            qkv_read_addr += tile_size;
-            q_write_addr += tile_size;
-            num_tiles_read_cur_core++;
-
-            if (num_tiles_read_cur_core == num_tiles_per_core_concat) {
-                cur_core_idx++;
-                local_count++;
-                qkv_read_addr =
-                    get_noc_addr(in0_mcast_noc_x[cur_core_idx], in0_mcast_noc_y[cur_core_idx], q_start_addr) +
-                    in_tile_offset_by_head + second_core_start_tile;
-                if (nlp_local) {
-                    qkv_read_addr = get_noc_addr(core_noc_x[local_count], core_noc_y[local_count], tensor_address0) +
-                                    in_tile_offset_by_head + second_core_start_tile;
-                }
-                num_tiles_read_cur_core = 0;
-            }
+        noc_async_read(qkv_read_addr, q_write_addr, 128);
+        q_write_addr += 128;
+        cur_core_idx++;
+        local_count++;
+        qkv_read_addr = get_noc_addr(in0_mcast_noc_x[cur_core_idx], in0_mcast_noc_y[cur_core_idx], q_start_addr) +
+                        128 * second_half_core + start_row * 256;
+        if (nlp_local) {
+            qkv_read_addr = get_noc_addr(core_noc_x[local_count], core_noc_y[local_count], tensor_address0) +
+                            128 * second_half_core + start_row * 256;
         }
     }
 };
@@ -104,24 +87,31 @@ void nlp_concat(
     tt_l1_ptr uint32_t* in0_mcast_noc_y,
     uint32_t in_tile_offset_by_head,
     uint32_t second_half_core,
-    uint32_t second_core_start_tile) {
+    uint32_t second_core_start_tile,
+    uint32_t start_row) {
     // Q
-    uint32_t cur_core_idx = batch_start_1;
+    uint32_t start = nlp_local ? start_local : batch_start_1;
+    uint32_t end = nlp_local ? start_local + 4 : batch_start_1 + (batch_end_1 - batch_start_1) / 2;
+    uint32_t idx_end = nlp_local ? 1 : batch_size;
+    uint32_t local_count = 0;
+    if (ROWS_TO_READ == 2) {
+        start = nlp_local ? start_local + 4 : batch_start_1 + (batch_end_1 - batch_start_1) / 2;
+        end = nlp_local ? start_local + 8 : batch_end_1;
+        local_count = 4;
+    }
+
+    uint32_t cur_core_idx = start;
 
     uint64_t qkv_read_addr = get_noc_addr(in0_mcast_noc_x[cur_core_idx], in0_mcast_noc_y[cur_core_idx], q_start_addr) +
-                             in_tile_offset_by_head + second_core_start_tile;
-    uint32_t local_count = 0;
+                             128 * second_half_core + start_row * 256;
+
     if (nlp_local) {
         qkv_read_addr = get_noc_addr(core_noc_x[local_count], core_noc_y[local_count], tensor_address0) +
-                        in_tile_offset_by_head + second_core_start_tile;
+                        128 * second_half_core + start_row * 256;
     }
     uint32_t num_tiles_read_cur_core = 0;
     uint32_t q_write_addr = 0;
     const uint32_t cb_write_ptr_base = get_write_ptr(cb_id_q_out);
-
-    uint32_t start = nlp_local ? start_local : batch_start_1;
-    uint32_t end = nlp_local ? start_local + 8 : batch_end_1;
-    uint32_t idx_end = nlp_local ? 1 : batch_size;
 
     for (uint32_t batch_range = 0; batch_range < idx_end; batch_range++) {
         batch_loop(
@@ -141,12 +131,17 @@ void nlp_concat(
             nlp_local,
             in_tile_offset_by_head,
             second_half_core,
-            second_core_start_tile);
+            second_core_start_tile,
+            start_row);
         start = batch_start_2;
-        end = batch_end_2;
-        cur_core_idx = batch_start_2;
+        end = batch_start_2 + (batch_end_2 - batch_start_2) / 2;
+        if (ROWS_TO_READ == 2) {
+            start = batch_start_2 + (batch_end_2 - batch_start_2) / 2;
+            end = batch_end_2;
+        }
+        cur_core_idx = start;
         qkv_read_addr = get_noc_addr(in0_mcast_noc_x[cur_core_idx], in0_mcast_noc_y[cur_core_idx], q_start_addr) +
-                        in_tile_offset_by_head + second_core_start_tile;
+                        128 * second_half_core + start_row * 256;
 
         num_tiles_read_cur_core = 0;
     }
@@ -172,6 +167,7 @@ void kernel_main() {
 
     uint32_t arg_idx = 5 + 2 * in_num_cores;
     uint32_t second_half_core = get_arg_val<uint32_t>(arg_idx);
+    uint32_t start_row = get_arg_val<uint32_t>(arg_idx + 1);
     tt_l1_ptr uint32_t* in0_mcast_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(5));
     tt_l1_ptr uint32_t* in0_mcast_noc_y = (tt_l1_ptr uint32_t*)(get_arg_addr(5 + in_num_cores));
 
@@ -193,11 +189,12 @@ void kernel_main() {
         in0_mcast_noc_y,
         in_tile_offset_by_head,
         second_half_core,
-        second_core_start_tile);
-    if (PHASES_TO_READ == 1) {
+        second_core_start_tile,
+        start_row);
+    if (ROWS_TO_READ == 1) {
         noc_semaphore_wait(signal_semaphore_addr_ptr, 1);
         noc_semaphore_set(signal_semaphore_addr_ptr, 0);
-    } else if (PHASES_TO_READ == 2) {
+    } else if (ROWS_TO_READ == 2) {
         noc_semaphore_wait(signal_semaphore_addr_ptr2, 1);
         noc_semaphore_set(signal_semaphore_addr_ptr2, 0);
     }
@@ -216,5 +213,6 @@ void kernel_main() {
         in0_mcast_noc_y,
         in_tile_offset_by_head,
         second_half_core,
-        second_core_start_tile);
+        second_core_start_tile,
+        start_row);
 }
