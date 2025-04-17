@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "deinterleave.hpp"
+#include "ttnn/run_operation.hpp"
 
 #include "device/deinterleave_device_operation.hpp"
 
@@ -20,7 +21,7 @@ Tensor DeinterleaveToBatch::invoke(
     return t;
 }
 
-std::vector<Tensor> DeinterleaveLocal::invoke(
+OptionalTensors DeinterleaveLocal::invoke(
     const Tensor& input,
     const uint32_t input_height,
     const uint32_t input_width,
@@ -31,7 +32,8 @@ std::vector<Tensor> DeinterleaveLocal::invoke(
         input, input_height, input_width, stride_hw, barrier_threshold, compute_kernel_config);
 }
 
-std::vector<Tensor> DeinterleaveLocal::create_async_output_tensors(
+OptionalTensors DeinterleaveLocal::create_async_optional_output_tensors(
+    // std::vector<Tensor> DeinterleaveLocal::create_async_output_tensors(
     const Tensor& input,
     const uint32_t input_height,
     const uint32_t input_width,
@@ -40,15 +42,7 @@ std::vector<Tensor> DeinterleaveLocal::create_async_output_tensors(
     const std::optional<DeviceComputeKernelConfig>& compute_kernel_config) {
     tt::log_warning(tt::LogOp, "DeinterleaveLocal::create_async_output_tensors");
 
-    return ttnn::operations::experimental::deinterleave::DeinterleaveLocalOperation::create_output_tensors(
-        {
-            input_height,
-            input_width,
-            stride_hw,
-            barrier_threshold,
-            init_device_compute_kernel_config(input.device()->arch(), compute_kernel_config, MathFidelity::HiFi4),
-        },
-        {input});
+    return {std::optional<Tensor>(tt::tt_metal::operation::get_workers_for_op_output({input}))};
 }
 
 }  // namespace ttnn::operations::experimental::deinterleave

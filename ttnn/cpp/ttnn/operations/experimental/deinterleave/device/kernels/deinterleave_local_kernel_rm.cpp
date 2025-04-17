@@ -3,10 +3,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "dataflow_api.h"
+#include <stdint.h>
+#include <array>
 
 // #include "debug/dprint.h"  // required in all kernels using DPRINT
 
 constexpr uint32_t round_up_to_multiple_of_64(uint32_t value) { return (value + 63) & ~63; }
+
+void print_uint64(uint64_t number) {
+    DPRINT << "uint64: 0x" << HEX() << (number >> 32) << (number & 0xFFFFFFFF) << DEC() << ENDL();
+}
 
 void kernel_main() {
     // Deinterleaves input image in src cb to dest cb.
@@ -27,58 +33,63 @@ void kernel_main() {
     //     D D D
     //
     // Image width, height and number of channels are given as compile time arguments.
-    // Kernel processes AB or CD lines depending on the value of AB_notCD argument.
+    // Kernel processes AB or CD lines depending on
 
-    constexpr uint32_t src_cb_id = get_compile_time_arg_val(0);
-    constexpr uint32_t dst_cb_id = get_compile_time_arg_val(1);
-    constexpr uint32_t width = get_compile_time_arg_val(2);
-    constexpr uint32_t height = get_compile_time_arg_val(3);
-    constexpr uint32_t stick_size_bytes = get_compile_time_arg_val(4);
-    constexpr uint32_t stride_h = get_compile_time_arg_val(5);
-    constexpr uint32_t stride_w = get_compile_time_arg_val(6);
-    constexpr uint32_t AB_notCD = get_compile_time_arg_val(7);
+    constexpr uint64_t src_base_address = get_compile_time_arg_val(0);
+    constexpr uint32_t src_width = get_compile_time_arg_val(1);
+    constexpr uint32_t src_height = get_compile_time_arg_val(2);
+    constexpr uint32_t stick_size_bytes = get_compile_time_arg_val(3);
+    constexpr uint32_t stride_h = get_compile_time_arg_val(4);
+    constexpr uint32_t stride_w = get_compile_time_arg_val(5);
 
-    // DPRINT << "Deinterelave" << src_cb_id <<  dst_cb_id << " " << width << " " << height << " " << stick_size <<
-    // AB_notCD << ENDL();
+    // constexpr auto dst_addresses = get_dst_addresses<6, stride_h, stride_w>();
 
-    constexpr uint32_t line_size_bytes = width * stick_size_bytes;
-    constexpr uint32_t batch_size_bytes = height * line_size_bytes / stride_h / stride_w;
+    std::array<uint32_t, stride_h / 2 * stride_w> dst_addresses;
+    for (uint32_t h = 0; h < stride_h / 2; h++) {  // stride_h / 2 for two DM cores
+        for (uint32_t w = 0; w < stride_w; w++) {
+            const uint32_t out_idx = h * stride_w + w;
+            dst_addresses[out_idx] = get_common_arg_val<uint32_t>(out_idx);
 
-    // src_noc_address points to the start of the first line (AB) or the second line (CD)
-    // src_noc_address_even points to A or C
-    // src_noc_address_odd points to B or D
-    auto src_noc_address_odd =
-        get_noc_addr(get_read_ptr(src_cb_id)) + (AB_notCD ? 0 : line_size_bytes) + stick_size_bytes;
-    auto src_noc_address_even = get_noc_addr(get_read_ptr(src_cb_id)) + (AB_notCD ? 0 : line_size_bytes);
+            DPRINT << "out_idx= " << out_idx << "; h= " << h << "; w= " << w << "; dst_address= " << HEX()
+                   << dst_addresses[out_idx] << DEC() << ENDL();
+        }
+    }
+    constexpr uint32_t src_line_size_bytes = src_width * stick_size_bytes;
+    // constexpr uint32_t dst_line_size_bytes = width / stride_w * stick_size_bytes;
 
-    // dst address points to the start of batch output in dst buffer (ABCD)
-    // even processes As or Cs, odd processes Bs or Ds
-    // dst_address_even points to A or C
-    // dst_address_odd points to B or D
-    constexpr uint32_t dst_base_offset_even = (AB_notCD) ? 0 : 2 * batch_size_bytes;
-    constexpr uint32_t dst_base_offset_odd = (AB_notCD) ? batch_size_bytes : 3 * batch_size_bytes;
-    auto dst_address_even = get_write_ptr(dst_cb_id) + dst_base_offset_even;
-    auto dst_address_odd = get_write_ptr(dst_cb_id) + dst_base_offset_odd;
-
-    constexpr uint32_t h_start = (AB_notCD) ? 0 : 1;
+    // base address would point to first and second row for two DM cores respectively
+    const uint64_t src_base_noc_address = get_noc_addr(src_base_address);
 
     // Copy data from src to dst
-    for (uint32_t h = h_start; h < height; h += stride_h) {
-        for (uint32_t w = 0; w < width; w += stride_w) {
-            // this order gave best performance. 70% utilization when single core
-            noc_async_read_one_packet(src_noc_address_odd, dst_address_odd, stick_size_bytes);
-            src_noc_address_odd += 2 * stick_size_bytes;
-            dst_address_odd += stick_size_bytes;
-            noc_async_read_one_packet(src_noc_address_even, dst_address_even, stick_size_bytes);
-            src_noc_address_even += 2 * stick_size_bytes;
-            dst_address_even += stick_size_bytes;
-        }
-        // skip one line
-        src_noc_address_odd += line_size_bytes;
-        src_noc_address_even += line_size_bytes;
-        // DPRINT << "Deinterleave " << h << ENDL();
-    }
-    noc_async_read_barrier();
+    // h/2 as we divide work between two DM cores
+    uint32_t dst_offset = 0;
+    uint64_t src_address = src_base_noc_address;
 
-    // DPRINT << "Deinterleave done" << ENDL();
+    for (uint32_t h = 0; h < src_height / 2; h++) {
+        // dst_h_selector is the index of the destination address for the current row
+        // that is combined with column to get the final output buffer
+        uint32_t dst_h_selector = h & (stride_h / 2 - 1);
+        // uint32_t dst_h_selector = (h / 2) % stride_h;
+
+        for (uint32_t w = 0; w < src_width; w += stride_w) {
+            for (uint32_t datum = 0; datum < stride_w; datum++) {
+                const uint32_t dst_idx = dst_h_selector * stride_w + datum;
+                DPRINT << "dst_idx = " << dst_idx << "; datum = " << datum << "; dst_h_selector = " << dst_h_selector
+                       << "; h = " << h << ENDL();
+                const uint32_t dst_address = dst_addresses[dst_idx] + dst_offset;
+                noc_async_read_one_packet(src_address, dst_address, stick_size_bytes);
+                noc_async_read_barrier();
+                src_address += stick_size_bytes;
+            }
+            dst_offset += stick_size_bytes;
+            // noc_async_read_one_packet_set_state(src_noc_address, stick_size_bytes);
+            // noc_async_read_one_packet_with_state<true>(src_noc_address, );
+        }
+        // skip one row, that is processed by the other DM core
+        src_address += src_line_size_bytes;
+        print_uint64(src_address - src_base_noc_address);
+    }
+    DPRINT << "stick_size_bytes=" << stick_size_bytes << ENDL();
+
+    DPRINT << "Deinterleave done" << ENDL();
 }

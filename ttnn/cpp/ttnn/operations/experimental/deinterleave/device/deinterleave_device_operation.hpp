@@ -80,7 +80,7 @@ struct DeinterleaveLocalOperation {
     };
 
     using spec_return_value_t = TensorSpec;
-    using tensor_return_value_t = std::vector<Tensor>;
+    using tensor_return_value_t = OptionalTensors;  // std::vector<Tensor>;
 
     struct ProgramFactoryToBatch {
         struct shared_variables_t {

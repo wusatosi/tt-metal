@@ -158,34 +158,50 @@ void DeinterleaveLocalOperation::validate_on_program_cache_hit(
 DeinterleaveLocalOperation::spec_return_value_t DeinterleaveLocalOperation::compute_output_specs(
     const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
     const auto& input = tensor_args.input;
-    tt::log_warning(tt::LogOp, "DeinterleaveLocal::compute_output_specs");
+    tt::log_warning(
+        tt::LogOp, "DeinterleaveLocal::compute_output_specs; operation_attributes {}", operation_attributes);
 
-    auto output_shard_shape = ttnn::Shape(
-        {input.memory_config().shard_spec.value().shape[0] / operation_attributes.stride_hw[0] /
-             operation_attributes.stride_hw[1],
-         input.memory_config().shard_spec.value().shape[1]});
+    auto input_shard_shape = input.memory_config().shard_spec.value().shape;
 
-    auto output_memory_config = create_sharded_memory_config(
-        output_shard_shape,
-        tensor_args.input.shard_spec()->grid,
-        data_movement::ShardStrategy::HEIGHT,  // stay height sharded
-        ShardOrientation::ROW_MAJOR);
+    tt::log_warning(
+        tt::LogOp, "DeinterleaveLocal::compute_output_specs; input.input_shard_shape {}", input_shard_shape);
+
+    std::array<uint32_t, 2> output_shard_shape = {
+        input.memory_config().shard_spec.value().shape[0] / operation_attributes.stride_hw[0] /
+            operation_attributes.stride_hw[1],
+        input.memory_config().shard_spec.value().shape[1]};
+
+    tt::log_warning(tt::LogOp, "DeinterleaveLocal::output_shard_shape {}", output_shard_shape);
+
+    auto output_shard_spec = tt::tt_metal::ShardSpec(
+        input.shard_spec()->grid, output_shard_shape, input.memory_config().shard_spec.value().orientation);
+
+    auto output_memory_config =
+        ttnn::MemoryConfig(input.memory_config().memory_layout, ttnn::BufferType::L1, output_shard_spec);
+
+    tt::log_warning(tt::LogOp, "DeinterleaveLocal::output_memory_config {}", output_memory_config);
 
     TT_FATAL(
-        input.get_logical_shape()[1] % operation_attributes.stride_hw[0] == 0,
+        input.get_logical_shape()[0] * input.get_logical_shape()[1] * input.get_logical_shape()[2] ==
+            operation_attributes.input_height * operation_attributes.input_width,
+        "Deinterleave: input shape {} must be equal to operation_attributes input shape {}",
+        input.get_logical_shape()[0] * input.get_logical_shape()[1] * input.get_logical_shape()[2],
+        operation_attributes.input_height * operation_attributes.input_width);
+    TT_FATAL(
+        operation_attributes.input_height % operation_attributes.stride_hw[0] == 0,
         "Deinterleave: input height {} must be divisible by stride_hw[0] {}",
-        input.get_logical_shape()[1],
+        operation_attributes.input_height,
         operation_attributes.stride_hw[0]);
     TT_FATAL(
-        input.get_logical_shape()[2] % operation_attributes.stride_hw[1] == 0,
+        operation_attributes.input_width % operation_attributes.stride_hw[1] == 0,
         "Deinterleave: input width {} must be divisible by stride_hw[1] {}",
-        input.get_logical_shape()[2],
+        operation_attributes.input_width,
         operation_attributes.stride_hw[1]);
 
     auto output_shape = ttnn::Shape(
         {input.get_logical_shape()[0],
-         input.get_logical_shape()[1] / operation_attributes.stride_hw[0],
-         input.get_logical_shape()[2] / operation_attributes.stride_hw[1],
+         input.get_logical_shape()[1],
+         input.get_logical_shape()[2] / (operation_attributes.stride_hw[0] * operation_attributes.stride_hw[1]),
          input.get_logical_shape()[3]});
 
     auto tensor_spec = TensorSpec(
@@ -201,7 +217,7 @@ DeinterleaveLocalOperation::tensor_return_value_t DeinterleaveLocalOperation::cr
     auto spec = compute_output_specs(operation_attributes, tensor_args);
 
     tt::log_warning(tt::LogOp, "DeinterleaveLocal::create_output_tensors");
-    std::vector<Tensor> output;
+    OptionalTensors output;
     for (auto i = 0; i < operation_attributes.stride_hw[0] * operation_attributes.stride_hw[1]; i++) {
         output.push_back(create_device_tensor(spec, tensor_args.input.device()));
     }
@@ -230,20 +246,3 @@ DeinterleaveLocalOperation::invoke(
 }
 
 }  // namespace ttnn::operations::experimental::deinterleave
-
-// template<int N>
-// struct print_constexpr;
-// void debug()
-// {
-//     #include "ttnn/device_operation.hpp"
-//     #include "ttnn/decorators.hpp"
-//     static constexpr auto is_primitive =
-//     ttnn::decorators::PrimitiveOperationConcept<ttnn::operations::experimental::deinterleave::DeinterleaveToBatchOperation>;
-//     using print_x = print_constexpr<is_primitive>;
-
-//     if constexpr (is_primitive) {
-//         static_assert(false, "DeinterleaveOperationToBatch is a primitive operation");
-//     } else {
-//         static_assert(false, "DeinterleaveOperationToBatch is a composite operation");
-//     }
-// }
