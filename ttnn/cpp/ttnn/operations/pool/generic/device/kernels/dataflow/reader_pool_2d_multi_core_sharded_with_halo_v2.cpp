@@ -61,7 +61,7 @@ void kernel_main() {
 
     if (reader_id == 0) {
         cb_reserve_back(in_scalar_cb_id, 1);
-        fill_with_val(get_write_ptr(in_scalar_cb_id), TILE_WIDTH, bf16_scalar >> 16);
+        fill_with_val(get_write_ptr(in_scalar_cb_id), 1024, bf16_scalar >> 16);
         cb_push_back(in_scalar_cb_id, 1);
     }
 

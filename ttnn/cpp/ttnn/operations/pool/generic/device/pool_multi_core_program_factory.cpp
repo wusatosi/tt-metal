@@ -89,8 +89,6 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
     auto grid_size = device->compute_with_storage_grid_size();
     auto all_cores = input.shard_spec().value().grid;
     uint32_t ncores = all_cores.num_cores();
-    auto core_range = all_cores;
-    auto core_range_cliff = CoreRangeSet();
     uint32_t in_nhw_per_core = input.shard_spec()->shape[0];
     uint32_t out_nhw_per_core = output.shard_spec()->shape[0];
 
@@ -178,9 +176,13 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
         tt::constants::TILE_HW);  // NOTE: ceil to tile size since triscs work with tilesize instead of pagesize
     uint32_t in_cb_pagesize = in_nbytes * in_cb_page_padded;
     uint32_t in_cb_npages = multi_buffering_factor * nblocks;
-
     tt::tt_metal::create_cb(in_cb_id_0, program, all_cores, in_cb_pagesize, in_cb_npages, in_df);
     log_debug(tt::LogOp, "CB {} :: PS = {}, NP = {}", in_cb_id_0, in_cb_pagesize, in_cb_npages);
+
+    // tilized input
+    uint32_t in_cb_id_tilized_0 = next_cb_index++;
+    tt::tt_metal::create_cb(in_cb_id_tilized_0, program, all_cores, in_cb_pagesize, in_cb_npages, in_df);
+    log_debug(tt::LogOp, "CB {} :: PS = {}, NP = {}", in_cb_id_tilized_0, in_cb_pagesize, in_cb_npages);
 
     if (split_reader) {
         in_cb_id_1 = next_cb_index++;
@@ -373,7 +375,8 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
         in_scalar_cb_id,
         out_cb_id,
         max_pool_partials_cb_id,
-        in_one_cb_id};
+        in_one_cb_id,
+        in_cb_id_tilized_0};
 
     auto compute_config = tt::tt_metal::ComputeConfig{
         .math_fidelity = MathFidelity::HiFi4,
@@ -390,7 +393,7 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
         compute_kernel_fname = "ttnn/cpp/ttnn/operations/pool/generic/device/kernels/compute/pool_2d_multi_core.cpp";
     }
 
-    auto compute_kernel = CreateKernel(program, compute_kernel_fname, core_range, compute_config);
+    auto compute_kernel = CreateKernel(program, compute_kernel_fname, all_cores, compute_config);
 
     // Capture reader_indices_buffer to cache this with the program
     return {

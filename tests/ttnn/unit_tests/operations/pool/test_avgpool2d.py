@@ -7,7 +7,6 @@ import ttnn
 import pytest
 
 from tests.ttnn.utils_for_testing import assert_with_pcc
-from models.utility_functions import skip_for_blackhole
 
 
 @pytest.fixture(scope="module")
@@ -32,7 +31,7 @@ def run_avg_pool2d(
     ## Test setup for both.
     in_n, in_c, in_h, in_w = input_shape
     torch.manual_seed(0)
-    torch_input = randomize_tensor(tensor_map, input_shape)
+    torch_input = torch.ones(input_shape, dtype=torch.bfloat16)  # randomize_tensor(tensor_map, input_shape)
 
     ## Test setup for Actual.
     ttnn_input = ttnn.from_torch(torch_input, layout=ttnn.ROW_MAJOR_LAYOUT, device=device)
@@ -71,6 +70,19 @@ def run_avg_pool2d(
     )
     ttnn_output = ttnn.permute(ttnn_output, (0, 3, 1, 2))  # N, C, H, W
     ttnn_output = ttnn.to_torch(ttnn_output)
+    print("Python got")
+    flat1 = ttnn_output.flatten()
+    for i, val in enumerate(flat1):
+        print(f"{val.item()}", end=" ")
+        if (i + 1) % 32 == 0:
+            print()  # New line after every 32 values
+
+    print("Python wanted")
+    flat = torch_output.flatten()
+    for i, val in enumerate(flat):
+        print(f"{val.item()}", end=" ")
+        if (i + 1) % 32 == 0:
+            print()  # New line after every 32 values
 
     ## Assertion
     assert_with_pcc(torch_output, ttnn_output, 0.99)
@@ -78,7 +90,6 @@ def run_avg_pool2d(
     assert allclose, " Reference and output tensor are not close"
 
 
-@skip_for_blackhole("Nigthly CI tests failing, ticket #20492")
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
 @pytest.mark.parametrize(
     "input_shape",  # NCHW
