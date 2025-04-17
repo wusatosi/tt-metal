@@ -96,7 +96,8 @@ void BatchNormOperation::validate_on_program_cache_miss(
             "bias tensor must be interleaved");
     }
 
-    validate_on_program_cache_hit(operation_attributes, tensor_args);
+    // validate_on_program_cache_hit(operation_attributes, tensor_args);
+    validate_tensors(operation_attributes, tensor_args);
 };
 
 void BatchNormOperation::validate_on_program_cache_hit(

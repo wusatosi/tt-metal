@@ -335,15 +335,31 @@ from models.utility_functions import skip_for_grayskull
 @pytest.mark.parametrize(
     "input_shapes",
     [
-        torch.Size([1, 1280, 7, 7]),
+        torch.Size([1, 1280, 23, 32]),
+        # torch.Size([1, 23, 32, 32]),
+        # torch.Size([2, 64, 32, 32]),
+        # torch.Size([3, 5, 64, 120]),
     ],
 )
 @pytest.mark.parametrize("mem_layout", [ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.TensorMemoryLayout.HEIGHT_SHARDED])
 def test_batch_norm_program_cache_and_default(input_shapes, mem_layout, device):
     N, H, W, C = input_shapes
-    in_data, input_tensor = data_gen_with_range_batch_norm(input_shapes, 5, 10, device, is_input=True)
-    mean_data, mean_tensor = data_gen_with_range_batch_norm(input_shapes, 4, 10, device)
-    var_data, var_tensor = data_gen_with_range_batch_norm(input_shapes, 4, 20, device)
+
+    in_data, input_tensor = data_gen_with_range_batch_norm([1, 1280, 23, 32], -5, 10, device, is_input=True)
+    mean_data, mean_tensor = data_gen_with_range_batch_norm([1, 1280, 23, 32], -4, 10, device)
+    var_data, var_tensor = data_gen_with_range_batch_norm([1, 1280, 23, 32], -4, 20, device)
+
+    in_data_1, input_tensor_1 = data_gen_with_range_batch_norm([1, 23, 32, 32], -5, 10, device, is_input=True)
+    mean_data_1, mean_tensor_1 = data_gen_with_range_batch_norm([1, 23, 32, 32], -4, 10, device)
+    var_data_1, var_tensor_1 = data_gen_with_range_batch_norm([1, 23, 32, 32], -4, 20, device)
+    bias_data_1, bias_tensor_1 = data_gen_with_range_batch_norm([1, 23, 32, 32], -4, 10, device)
+    weight_data_1, weight_tensor_1 = data_gen_with_range_batch_norm([1, 23, 32, 32], -4, 10, device)
+
+    in_data_2, input_tensor_2 = data_gen_with_range_batch_norm([2, 64, 32, 32], -5, 10, device, is_input=True)
+    mean_data_2, mean_tensor_2 = data_gen_with_range_batch_norm([2, 64, 32, 32], -4, 10, device)
+    var_data_2, var_tensor_2 = data_gen_with_range_batch_norm([2, 64, 32, 32], -4, 20, device)
+    bias_data_2, bias_tensor_2 = data_gen_with_range_batch_norm([2, 64, 32, 32], -4, 10, device)
+    weight_data_2, weight_tensor_2 = data_gen_with_range_batch_norm([2, 64, 32, 32], -4, 10, device)
 
     grid_size = ttnn.CoreGrid(y=1, x=8)
     grid_coord = ttnn.CoreCoord(grid_size.x - 1, grid_size.y - 1)
@@ -355,9 +371,113 @@ def test_batch_norm_program_cache_and_default(input_shapes, mem_layout, device):
     if mem_layout is not ttnn.TensorMemoryLayout.INTERLEAVED:
         pytest.xfail("Input tensors to batch norm must be interleaved")
 
+    print("1 : first shape, no weights, no bias")
+    tt_output_tensor_on_device = ttnn.batch_norm(
+        input_tensor_1, running_mean=mean_tensor_1, running_var=var_tensor_1, memory_config=sharded_mem_config
+    )
+    torch_result = torch.nn.functional.batch_norm(input=in_data_1, running_mean=mean_data_1, running_var=var_data_1)
+    tt_output = ttnn.to_torch(tt_output_tensor_on_device)
+    print("\n Test result : ", compare_results_batch_norm([tt_output], [torch_result]))
+
+    print("2 : second shape, no weights, no bias")
+    tt_output_tensor_on_device = ttnn.batch_norm(
+        input_tensor_2, running_mean=mean_tensor_2, running_var=var_tensor_2, memory_config=sharded_mem_config
+    )
+    torch_result = torch.nn.functional.batch_norm(input=in_data_2, running_mean=mean_data_2, running_var=var_data_2)
+    tt_output = ttnn.to_torch(tt_output_tensor_on_device)
+    print("\n Test result : ", compare_results_batch_norm([tt_output], [torch_result]))
+
+    print("3 : first shape, yes weights, no bias")
+    tt_output_tensor_on_device = ttnn.batch_norm(
+        input_tensor_1,
+        running_mean=mean_tensor_1,
+        running_var=var_tensor_1,
+        weight=weight_tensor_1,
+        memory_config=sharded_mem_config,
+    )
+    torch_result = torch.nn.functional.batch_norm(
+        input=in_data_1, running_mean=mean_data_1, running_var=var_data_1, weight=weight_data_1
+    )
+    tt_output = ttnn.to_torch(tt_output_tensor_on_device)
+    print("\n Test result : ", compare_results_batch_norm([tt_output], [torch_result]))
+
+    print("4 : first shape, yes weights, yes bias")
+    tt_output_tensor_on_device = ttnn.batch_norm(
+        input_tensor_1,
+        running_mean=mean_tensor_1,
+        running_var=var_tensor_1,
+        weight=weight_tensor_1,
+        bias=bias_tensor_1,
+        memory_config=sharded_mem_config,
+    )
+    torch_result = torch.nn.functional.batch_norm(
+        input=in_data_1, running_mean=mean_data_1, running_var=var_data_1, weight=weight_data_1, bias=bias_data_1
+    )
+    tt_output = ttnn.to_torch(tt_output_tensor_on_device)
+    print("\n Test result : ", compare_results_batch_norm([tt_output], [torch_result]))
+
+    print("5 : first shape, no weights, yes bias")
+    tt_output_tensor_on_device = ttnn.batch_norm(
+        input_tensor_1,
+        running_mean=mean_tensor_1,
+        running_var=var_tensor_1,
+        bias=bias_tensor_1,
+        memory_config=sharded_mem_config,
+    )
+    torch_result = torch.nn.functional.batch_norm(
+        input=in_data_1, running_mean=mean_data_1, running_var=var_data_1, bias=bias_data_1
+    )
+    tt_output = ttnn.to_torch(tt_output_tensor_on_device)
+    print("\n Test result : ", compare_results_batch_norm([tt_output], [torch_result]))
+
+    print("6 : second shape, yes weights, no bias")
+    tt_output_tensor_on_device = ttnn.batch_norm(
+        input_tensor_2,
+        running_mean=mean_tensor_2,
+        running_var=var_tensor_2,
+        weight=weight_tensor_2,
+        memory_config=sharded_mem_config,
+    )
+    torch_result = torch.nn.functional.batch_norm(
+        input=in_data_2, running_mean=mean_data_2, running_var=var_data_2, weight=weight_data_2
+    )
+    tt_output = ttnn.to_torch(tt_output_tensor_on_device)
+    print("\n Test result : ", compare_results_batch_norm([tt_output], [torch_result]))
+
+    print("7 : second shape, yes weights, yes bias")
+    tt_output_tensor_on_device = ttnn.batch_norm(
+        input_tensor_2,
+        running_mean=mean_tensor_2,
+        running_var=var_tensor_2,
+        weight=weight_tensor_2,
+        bias=bias_tensor_2,
+        memory_config=sharded_mem_config,
+    )
+    torch_result = torch.nn.functional.batch_norm(
+        input=in_data_2, running_mean=mean_data_2, running_var=var_data_2, weight=weight_data_2, bias=bias_data_2
+    )
+    tt_output = ttnn.to_torch(tt_output_tensor_on_device)
+    print("\n Test result : ", compare_results_batch_norm([tt_output], [torch_result]))
+
+    print("8 : second shape, no weights, yes bias")
+    tt_output_tensor_on_device = ttnn.batch_norm(
+        input_tensor_2,
+        running_mean=mean_tensor_2,
+        running_var=var_tensor_2,
+        bias=bias_tensor_2,
+        memory_config=sharded_mem_config,
+    )
+    torch_result = torch.nn.functional.batch_norm(
+        input=in_data_2, running_mean=mean_data_2, running_var=var_data_2, bias=bias_data_2
+    )
+    tt_output = ttnn.to_torch(tt_output_tensor_on_device)
+    print("\n Test result : ", compare_results_batch_norm([tt_output], [torch_result]))
+
+    print("9")
     tt_output_tensor_on_device = ttnn.batch_norm(
         input_tensor, running_mean=mean_tensor, running_var=var_tensor, memory_config=sharded_mem_config
     )
+
     tt_output = ttnn.to_torch(tt_output_tensor_on_device)
     torch_result = torch.nn.functional.batch_norm(input=in_data, running_mean=mean_data, running_var=var_data)
     comp_BN_Output = compare_results_batch_norm([tt_output], [torch_result])
