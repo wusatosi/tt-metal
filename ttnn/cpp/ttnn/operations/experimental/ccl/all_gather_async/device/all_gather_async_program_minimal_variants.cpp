@@ -332,7 +332,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
     const uint32_t ring_index,
     ccl::Topology topology,
     const std::vector<GlobalSemaphore>& semaphore,
-    const std::optional<SubDeviceId>& sub_device_id,
+    const std::optional<tt::tt_metal::SubDeviceId>& sub_device_id,
     bool enable_persistent_fabric_mode) {
     tt::tt_metal::Program program{};
     std::optional<experimental::ccl::AllGatherFusedOpSignaler> empty_fused_op_signaler;
@@ -365,7 +365,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
     const uint32_t ring_index,
     ccl::Topology topology,
     const std::vector<GlobalSemaphore>& semaphore,
-    const std::optional<SubDeviceId>& sub_device_id,
+    const std::optional<tt::tt_metal::SubDeviceId>& sub_device_id,
     bool enable_persistent_fabric_mode,
     std::optional<experimental::ccl::AllGatherFusedOpSignaler>& fused_op_signaler,
     const CoreCoord core_grid_offset) {
@@ -404,7 +404,8 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
             backward_device.value_or(nullptr),
             &program,
             enable_persistent_fabric_mode,
-            num_links);
+            num_links,
+            topology);
 
     LineTopology line_topology(ring_size, ring_index);
 
@@ -434,11 +435,11 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
     tt::tt_metal::CircularBufferConfig cb_src0_config =
         tt::tt_metal::CircularBufferConfig(cb_num_pages * l1_scratch_cb_page_size_bytes, {{src0_cb_index, df}})
             .set_page_size(src0_cb_index, l1_scratch_cb_page_size_bytes);
-    CBHandle cb_src0_workers = CreateCircularBuffer(program, sender_worker_core_range, cb_src0_config);
+    tt::tt_metal::CBHandle cb_src0_workers = CreateCircularBuffer(program, sender_worker_core_range, cb_src0_config);
     // Set aside a buffer we can use for storing packet headers in (particularly for atomic incs)
     const auto reserved_packet_header_CB_index = tt::CB::c_in1;
     static constexpr auto num_packet_headers_storable = 8;
-    static constexpr auto packet_header_size_bytes = sizeof(tt::fabric::PacketHeader);
+    static constexpr auto packet_header_size_bytes = sizeof(tt::tt_fabric::PacketHeader);
     tt::tt_metal::CircularBufferConfig cb_reserved_packet_header_config =
         tt::tt_metal::CircularBufferConfig(
             num_packet_headers_storable * packet_header_size_bytes * 2,
@@ -513,15 +514,15 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
             // drain sync core is the first worker core
             drain_sync_core = device->worker_core_from_logical_core(core);
         }
-        std::optional<ttnn::ccl::SenderWorkerAdapterSpec> forward_fabric_connection =
-            line_topology.is_first_device_in_line(ttnn::ccl::EdmLineFabricOpInterface::Direction::BACKWARD)
+        std::optional<tt::tt_fabric::SenderWorkerAdapterSpec> forward_fabric_connection =
+            !forward_device.has_value()
                 ? std::nullopt
-                : std::optional<ttnn::ccl::SenderWorkerAdapterSpec>(local_fabric_handle->uniquely_connect_worker(
+                : std::optional<tt::tt_fabric::SenderWorkerAdapterSpec>(local_fabric_handle->uniquely_connect_worker(
                       device, ttnn::ccl::EdmLineFabricOpInterface::FORWARD));
-        std::optional<ttnn::ccl::SenderWorkerAdapterSpec> backward_fabric_connection =
-            line_topology.is_last_device_in_line(ttnn::ccl::EdmLineFabricOpInterface::Direction::BACKWARD)
+        std::optional<tt::tt_fabric::SenderWorkerAdapterSpec> backward_fabric_connection =
+            !backward_device.has_value()
                 ? std::nullopt
-                : std::optional<ttnn::ccl::SenderWorkerAdapterSpec>(local_fabric_handle->uniquely_connect_worker(
+                : std::optional<tt::tt_fabric::SenderWorkerAdapterSpec>(local_fabric_handle->uniquely_connect_worker(
                       device, ttnn::ccl::EdmLineFabricOpInterface::BACKWARD));
 
         /* All gather fusion */

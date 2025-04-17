@@ -156,7 +156,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
     const uint32_t ring_index,
     ccl::Topology topology,
     const std::vector<GlobalSemaphore>& semaphore,
-    const std::optional<SubDeviceId>& sub_device_id,
+    const std::optional<tt::tt_metal::SubDeviceId>& sub_device_id,
     bool enable_persistent_fabric_mode);
 tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleaved_dim3_1_1_any_any_helper(
     tt::tt_metal::Program& program,
@@ -170,7 +170,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
     const uint32_t ring_index,
     ccl::Topology topology,
     const std::vector<GlobalSemaphore>& semaphore,
-    const std::optional<SubDeviceId>& sub_device_id,
+    const std::optional<tt::tt_metal::SubDeviceId>& sub_device_id,
     bool enable_persistent_fabric_mode,
     std::optional<experimental::ccl::AllGatherFusedOpSignaler>& fused_op_signaler,
     const CoreCoord core_grid_offset = CoreCoord(0, 0));

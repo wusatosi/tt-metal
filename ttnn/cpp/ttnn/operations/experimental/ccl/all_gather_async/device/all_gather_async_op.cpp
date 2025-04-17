@@ -173,7 +173,7 @@ std::vector<ttnn::TensorSpec> AllGatherAsync::compute_output_specs(const std::ve
 }
 
 std::vector<Tensor> AllGatherAsync::create_output_tensors(const std::vector<Tensor>& input_tensors) const {
-    return operation::default_create_output_tensors(*this, input_tensors, {});
+    return tt::tt_metal::operation::default_create_output_tensors(*this, input_tensors, {});
 }
 
 AllGatherAsyncVersion AllGatherAsync::select_version(const Tensor& input_tensor) const {
@@ -362,7 +362,7 @@ tt::tt_metal::operation::Hash AllGatherAsync::compute_program_hash(const std::ve
     if (version == AllGatherAsyncVersion::GENERIC) {
         // Generic version should hash semaphore address as well
         uint32_t semaphore_address = this->semaphore.at(this->ring_index).address();
-        return tt::tt_metaloperation::hash_operation<AllGatherAsync>(
+        return tt::tt_metal::operation::hash_operation<AllGatherAsync>(
             this->dim,
             this->num_links,
             this->ring_size,
@@ -421,8 +421,6 @@ Tensor all_gather_async(
     // create this semaphore for all cores since we don't know which core will be used for teardown draining
     CoreCoord grid_size = devices[0]->compute_with_storage_grid_size();
     auto core_grid = CoreRange({0, 0}, {grid_size.x - 1, grid_size.y - 1});
-
-    std::vector<GlobalSemaphore> semaphores = multi_device_global_semaphore.global_semaphores;
 
     tt::tt_metal::operation::launch_op(
         [dim,
