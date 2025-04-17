@@ -359,7 +359,10 @@ std::vector<tt_metal::Program> build(const ConnectedDevicesHelper& device_helper
             "tests/tt_metal/tt_metal/test_kernels/dataflow/unit_tests/erisc/"
             "ethernet_write_worker_latency_ubench_sender.cpp",
             CoreCoord(link.sender.x, link.sender.y),
-            tt_metal::EthernetConfig{.noc = tt_metal::NOC::RISCV_0_default, .compile_args = eth_ct_args});
+            tt_metal::EthernetConfig{
+                .noc = tt_metal::NOC::RISCV_0_default,
+                .compile_args = eth_ct_args,
+                .opt_level = tt_metal::KernelBuildOptLevel::Ofast});
         tt_metal::SetRuntimeArgs(
             sender_program, sender_kernel, CoreCoord(link.sender.x, link.sender.y), eth_sender_rt_args);
 
@@ -368,7 +371,10 @@ std::vector<tt_metal::Program> build(const ConnectedDevicesHelper& device_helper
             "tests/tt_metal/tt_metal/test_kernels/dataflow/unit_tests/erisc/"
             "ethernet_write_worker_latency_ubench_receiver.cpp",
             CoreCoord(link.receiver.x, link.receiver.y),
-            tt_metal::EthernetConfig{.noc = tt_metal::NOC::RISCV_0_default, .compile_args = eth_ct_args});
+            tt_metal::EthernetConfig{
+                .noc = tt_metal::NOC::RISCV_0_default,
+                .compile_args = eth_ct_args,
+                .opt_level = tt_metal::KernelBuildOptLevel::Ofast});
         tt_metal::SetRuntimeArgs(
             receiver_program, receiver_kernel, CoreCoord(link.receiver.x, link.receiver.y), eth_receiver_rt_args);
     }
