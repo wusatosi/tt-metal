@@ -202,7 +202,7 @@ void kernel_main() {
     constexpr uint32_t noc_BR_y = get_compile_time_arg_val(20);
     constexpr uint32_t rectangular_x = get_compile_time_arg_val(21);
     constexpr uint32_t rectangular_y = get_compile_time_arg_val(22);
-    constexpr uint32_t last_row_active_x = get_compile_time_arg_val(23);
+    constexpr uint32_t last_active_x = get_compile_time_arg_val(23);
     constexpr uint32_t semaphore_id = get_compile_time_arg_val(24);
     constexpr uint32_t in_out_buffer_start_delta = get_compile_time_arg_val(25);
     constexpr uint32_t untilize_temp_cb_id =
@@ -216,13 +216,7 @@ void kernel_main() {
 
     const uint16_t my_noc_x = NOC_X(my_x[noc_index]);
     const uint16_t my_noc_y = NOC_Y(my_y[noc_index]);
-    DPRINT << "my_noc_x = " << my_noc_x << " my_noc_y = " << my_noc_y << ENDL();
-    if (my_noc_x >= noc_TL_x + last_row_active_x && my_noc_y >= noc_TL_y + rectangular_y - 1) {  // noop cores
-        uint32_t semaphore_addr = get_semaphore(semaphore_id);
-        const uint64_t semaphore_noc_addr = get_noc_addr(noc_TL_x, noc_TL_y, semaphore_addr);
-        volatile tt_l1_ptr uint32_t* semaphore_noc_addr_ptr =
-            reinterpret_cast<volatile tt_l1_ptr uint32_t*>(semaphore_noc_addr);
-        noc_semaphore_wait(semaphore_noc_addr_ptr, 2 * num_active_cores);
+    if (my_noc_x > last_active_x && my_noc_y == noc_BR_y) {  // noop cores
         return;
     }
 

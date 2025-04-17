@@ -498,13 +498,6 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
     int32_t num_active_cores = cores.size();
     int32_t num_cores_rectangular = tt::round_up(num_active_cores, num_cores_x);
     int32_t num_noop_cores = num_cores_rectangular - num_active_cores;
-    printf(
-        "num_cores_x = %d, num_cores_y = %d, num_active_cores = %d, num_cores_rectangular = %d, num_noop_cores = %d\n",
-        num_cores_x,
-        num_cores_y,
-        num_active_cores,
-        num_cores_rectangular,
-        num_noop_cores);
     for (const auto& core : cores) {
         auto worker = device->worker_core_from_logical_core(core);
     }
@@ -521,18 +514,12 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
     // create the rectangular core range
     uint32_t rectangular_x = num_cores_x;
     uint32_t rectangular_y = num_noop_cores ? num_active_cores / num_cores_x + 1 : num_active_cores / num_cores_x;
-    printf("rectangular_x = %d, rectangular_y = %d\n", rectangular_x, rectangular_y);
     CoreCoord last_active_coord = core_id_to_noc_coords(num_active_cores - 1);
-    uint32_t last_row_active_x = last_active_coord.x;
-    printf("last_row_active_x: %d\n", last_row_active_x);
+    uint32_t last_active_x = last_active_coord.x;
     std::set<CoreRange> rectangular_cores_set;
     rectangular_cores_set.insert(CoreRange(CoreCoord(0, 0), CoreCoord(rectangular_x - 1, rectangular_y - 1)));
     CoreRangeSet rectangular_cores(rectangular_cores_set);
-    CoreCoord noc_BR = device->worker_core_from_logical_core(CoreCoord(rectangular_x - 1, rectangular_y - 1));
-    printf("noc_BR: (%ld, %ld)\n", noc_BR.x, noc_BR.y);
-
-    printf("%s\n", all_cores.str().c_str());
-    printf("%s\n", rectangular_cores.str().c_str());
+    CoreCoord noc_BR = core_id_to_noc_coords(rectangular_x * rectangular_y - 1);
 
     // create semaphores
     uint32_t semaphore_id = tt::tt_metal::CreateSemaphore(program, rectangular_cores, 0);
@@ -569,7 +556,7 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
         noc_BR.y,
         rectangular_x,
         rectangular_y,
-        last_row_active_x,
+        last_active_x,
         semaphore_id,
         in_out_buffer_start_delta,
         temp_cb_id,
