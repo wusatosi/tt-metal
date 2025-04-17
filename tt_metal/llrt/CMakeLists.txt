@@ -65,7 +65,6 @@ set(LLRT_SRC
     llrt.cpp
     core_descriptor.cpp
     rtoptions.cpp
-    tlb_config.cpp
     tt_cluster.cpp
     tt_elffile.cpp
     tt_memory.cpp

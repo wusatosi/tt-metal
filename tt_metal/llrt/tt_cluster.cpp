@@ -35,7 +35,6 @@
 #include "llrt/hal.hpp"
 #include "sanitize_noc_host.hpp"
 #include "tracy/Tracy.hpp"
-#include "tt_metal/llrt/tlb_config.hpp"
 #include <umd/device/cluster.h>
 #include <umd/device/hugepage.h>
 #include <umd/device/tt_cluster_descriptor.h>
@@ -327,13 +326,6 @@ void Cluster::start_driver(tt_device_params &device_params) const {
     device_params.init_device = true;
 
     TT_FATAL(this->sdesc_per_chip_.size(), "Descriptor must be loaded. Try open_driver()");
-
-    if (this->target_type_ == TargetDevice::Silicon && device_params.init_device) {
-        for (const auto [mmio_device_id, _]: this->cluster_desc_->get_chips_with_mmio()) {
-            ll_api::configure_static_tlbs(
-                this->arch_, mmio_device_id, this->get_soc_desc(mmio_device_id), *this->driver_);
-        }
-    }
 
     this->driver_->start_device(device_params);
 }
