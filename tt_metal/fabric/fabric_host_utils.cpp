@@ -47,7 +47,8 @@ Topology get_1d_topology(const tt::tt_metal::FabricConfig& fabric_config) {
         case tt::tt_metal::FabricConfig::FABRIC_2D:
         case tt::tt_metal::FabricConfig::FABRIC_2D_PUSH:
         case tt::tt_metal::FabricConfig::CUSTOM:
-            TT_THROW("Unsupported fabric config for 1D: {}", magic_enum::enum_name(fabric_config));
+            // TT_THROW("Unsupported fabric config for 1D: {}", magic_enum::enum_name(fabric_config));
+            break;
     }
     return tt::tt_fabric::Topology::Linear;
 }
