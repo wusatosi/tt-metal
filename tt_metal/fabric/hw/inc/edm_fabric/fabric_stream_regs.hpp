@@ -33,21 +33,30 @@ FORCE_INLINE void increment_local_update_ptr_val(uint8_t stream_id, int32_t val)
 }
 
 template <uint32_t stream_id>
-constexpr FORCE_INLINE uint32_t get_stream_reg_addr() {
+constexpr FORCE_INLINE uint32_t get_stream_reg_read_addr() {
+    return STREAM_REG_ADDR(stream_id, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_REG_INDEX);
+}
+
+FORCE_INLINE uint32_t get_stream_reg_read_addr(uint8_t stream_id) {
+    return STREAM_REG_ADDR(stream_id, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_REG_INDEX);
+}
+
+template <uint32_t stream_id>
+constexpr FORCE_INLINE uint32_t get_stream_reg_write_addr() {
     return STREAM_REG_ADDR(stream_id, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_UPDATE_REG_INDEX);
 }
 
-FORCE_INLINE uint32_t get_stream_reg_addr(uint8_t stream_id) {
+FORCE_INLINE uint32_t get_stream_reg_write_addr(uint8_t stream_id) {
     return STREAM_REG_ADDR(stream_id, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_UPDATE_REG_INDEX);
 }
 
 template <uint32_t stream_id>
 FORCE_INLINE void remote_update_ptr_val(int32_t val) {
-    constexpr uint32_t addr = get_stream_reg_addr<stream_id>();
+    constexpr uint32_t addr = get_stream_reg_write_addr<stream_id>();
     internal_::eth_write_remote_reg_no_txq_check(DEFAULT_ETH_TXQ, addr, val << REMOTE_DEST_BUF_WORDS_FREE_INC);
 }
 FORCE_INLINE void remote_update_ptr_val(uint32_t stream_id, int32_t val) {
-    const uint32_t addr = get_stream_reg_addr(stream_id);
+    const uint32_t addr = get_stream_reg_write_addr(stream_id);
     internal_::eth_write_remote_reg_no_txq_check(DEFAULT_ETH_TXQ, addr, val << REMOTE_DEST_BUF_WORDS_FREE_INC);
 }
 

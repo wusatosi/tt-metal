@@ -490,7 +490,7 @@ FORCE_INLINE void establish_connection(
     uint32_t stream_id = std::numeric_limits<uint32_t>::max()) {
     if constexpr (UPDATE_STREAM_REG_ON_PRODUCER_WRPTR_UPDATE) {
         ASSERT(stream_id != std::numeric_limits<uint32_t>::max());
-        local_sender_channel_worker_interface.cache_producer_noc_addr(get_stream_reg_addr(stream_id));
+        local_sender_channel_worker_interface.cache_producer_noc_addr(get_stream_reg_write_addr(stream_id));
     } else {
         local_sender_channel_worker_interface.cache_producer_noc_addr();
     }
@@ -554,13 +554,15 @@ void run_sender_channel_step(
     volatile tt::tt_fabric::EdmFabricSenderChannelCounters* sender_channel_counters,
     PacketHeaderRecorder& packet_header_recorder,
     bool& channel_connection_established,
-    uint8_t sender_channel_index) {
+    uint8_t sender_channel_index,
+    uint32_t sender_channel_messages_received_credits_stream_id) {
     // If the receiver has space, and we have one or more packets unsent from producer, then send one
     // TODO: convert to loop to send multiple packets back to back (or support sending multiple packets in one shot)
     //       when moving to stream regs to manage rd/wr ptrs
     // TODO: update to be stream reg based. Initialize to space available and simply check for non-zero
     bool receiver_has_space_for_packet = outbound_to_receiver_channel_pointers.has_space_for_packet();
-    bool has_unsent_packet = local_sender_channel_worker_interface.has_unsent_payload();
+    bool has_unsent_packet = get_ptr_val(sender_channel_messages_received_credits_stream_id) !=
+                             0;  // local_sender_channel_worker_interface.has_unsent_payload();
     bool can_send = receiver_has_space_for_packet && has_unsent_packet;
     if constexpr (enable_first_level_ack) {
         bool sender_backpressured_from_sender_side =
@@ -586,6 +588,7 @@ void run_sender_channel_step(
             outbound_to_receiver_channel_pointers,
             remote_receiver_channel,
             sender_channel_index);
+        increment_local_update_ptr_val(sender_channel_messages_received_credits_stream_id, -1);
     }
 
     // Process COMPLETIONs from receiver
@@ -850,6 +853,12 @@ void run_fabric_edm_main_loop(
     std::array<bool, NUM_SENDER_CHANNELS> channel_connection_established =
         initialize_array<NUM_SENDER_CHANNELS, bool, false>();
 
+    // std::array<uint32_t, NUM_SENDER_CHANNELS> sender_channel_1_slots_written_stream_ids = {
+    //     init_ptr_val<WorkerToFabricEdmSenderImpl<0>::default_worker_to_erisc_sender_channel_credits_stream_id>(0);
+    //     init_ptr_val<sender_channel_1_slots_written_stream_id>(0);
+    //     init_ptr_val<sender_channel_2_slots_written_stream_id>(0);
+    // }
+
     // This value defines the number of loop iterations we perform of the main control sequence before exiting
     // to check for termination and context switch. Removing the these checks from the inner loop can drastically
     // improve performance. The value of 32 was chosen somewhat empirically and then raised up slightly.
@@ -896,7 +905,8 @@ void run_fabric_edm_main_loop(
                 sender_channel_counters_ptrs[0],
                 sender_channel_packet_recorders[0],
                 channel_connection_established[0],
-                0);
+                0,
+                WorkerToFabricEdmSenderImpl<0>::default_worker_to_erisc_sender_channel_credits_stream_id);
             if constexpr (!dateline_connection) {
                 run_receiver_channel_step<
                     enable_packet_header_recording,
@@ -947,7 +957,8 @@ void run_fabric_edm_main_loop(
                 sender_channel_counters_ptrs[1],
                 sender_channel_packet_recorders[1],
                 channel_connection_established[1],
-                1);
+                1,
+                sender_channel_1_slots_written_stream_id);
             if constexpr (enable_ring_support && !dateline_connection) {
                 run_sender_channel_step<
                     enable_packet_header_recording,
@@ -964,7 +975,8 @@ void run_fabric_edm_main_loop(
                     sender_channel_counters_ptrs[2],
                     sender_channel_packet_recorders[2],
                     channel_connection_established[2],
-                    2);
+                    2,
+                    sender_channel_2_slots_written_stream_id);
             }
 
         }
@@ -972,7 +984,7 @@ void run_fabric_edm_main_loop(
         if (did_something) {
             did_nothing_count = 0;
         } else {
-            if (did_nothing_count++ > 10000) {  // SWITCH_INTERVAL) {
+            if (did_nothing_count++ > SWITCH_INTERVAL) {
                 did_nothing_count = 0;
                 // shouldn't do noc counter sync since we are not incrementing them
                 run_routing_without_noc_sync();
@@ -1080,6 +1092,10 @@ void kernel_main() {
 
     init_ptr_val<sender_1_free_slots_stream_id>(SENDER_NUM_BUFFERS);
     init_ptr_val<sender_2_free_slots_stream_id>(SENDER_NUM_BUFFERS);
+
+    init_ptr_val<WorkerToFabricEdmSenderImpl<0>::default_worker_to_erisc_sender_channel_credits_stream_id>(0);
+    init_ptr_val<sender_channel_1_slots_written_stream_id>(0);
+    init_ptr_val<sender_channel_2_slots_written_stream_id>(0);
 
     if constexpr (is_handshake_sender) {
         erisc::datamover::handshake::sender_side_start(handshake_addr, DEFAULT_HANDSHAKE_CONTEXT_SWITCH_TIMEOUT);
@@ -1313,6 +1329,7 @@ void kernel_main() {
             reinterpret_cast<volatile uint32_t* const>(edm_vc0_forwarding_semaphore_address),
             reinterpret_cast<volatile uint32_t* const>(edm_vc0_teardown_semaphore_address),
             downstream_vc0_noc_interface_buffer_index_local_addr,
+            sender_channel_1_slots_written_stream_id,
             receiver_channel_forwarding_data_cmd_buf_ids[0],
             receiver_channel_forwarding_sync_cmd_buf_ids[0]);
     }
@@ -1334,6 +1351,7 @@ void kernel_main() {
                 reinterpret_cast<volatile uint32_t* const>(edm_vc1_forwarding_semaphore_address),
                 reinterpret_cast<volatile uint32_t* const>(edm_vc1_teardown_semaphore_address),
                 downstream_vc1_noc_interface_buffer_index_local_addr,
+                sender_channel_2_slots_written_stream_id,
                 receiver_channel_forwarding_data_cmd_buf_ids[1],
                 receiver_channel_forwarding_sync_cmd_buf_ids[1]);
         }
@@ -1472,6 +1490,7 @@ void kernel_main() {
                 local_handshake_master_eth_chan,
                 (uint32_t)termination_signal_ptr,
                 *termination_signal_ptr);
+            noc_async_write_barrier();
         }
     }
 

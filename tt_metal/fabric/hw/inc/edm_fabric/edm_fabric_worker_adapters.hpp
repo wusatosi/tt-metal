@@ -39,6 +39,8 @@ namespace tt::tt_fabric {
  */
 template <uint8_t EDM_NUM_BUFFER_SLOTS = 0>
 struct WorkerToFabricEdmSenderImpl {
+    static constexpr uint32_t default_worker_to_erisc_sender_channel_credits_stream_id = 16;
+    static constexpr bool USE_STREAM_REGISTERS_FOR_CREDITS_TO_ERISC = true;
     static constexpr bool USER_DEFINED_NUM_BUFFER_SLOTS = EDM_NUM_BUFFER_SLOTS != 0;
     static constexpr bool IS_POW2_NUM_BUFFERS = USER_DEFINED_NUM_BUFFER_SLOTS && is_power_of_2(EDM_NUM_BUFFER_SLOTS);
     static constexpr size_t BUFFER_SLOT_PTR_WRAP = EDM_NUM_BUFFER_SLOTS * 2;
@@ -86,6 +88,7 @@ struct WorkerToFabricEdmSenderImpl {
             writer_send_sem_addr,
             worker_teardown_sem_addr,
             worker_buffer_index_semaphore_addr,
+            default_worker_to_erisc_sender_channel_credits_stream_id,
             write_reg_cmd_buf,
             write_at_cmd_buf);
     }
@@ -104,12 +107,12 @@ struct WorkerToFabricEdmSenderImpl {
         volatile uint32_t* const from_remote_buffer_slot_rdptr_ptr,
         volatile uint32_t* const worker_teardown_addr,
         uint32_t local_buffer_index_addr,
+        uint32_t sender_channel_credits_stream_id,
         uint8_t data_noc_cmd_buf = write_reg_cmd_buf,
         uint8_t sync_noc_cmd_buf = write_at_cmd_buf) :
         edm_buffer_addr(edm_buffer_base_addr),
         edm_buffer_slot_wrptr_addr(
-            connected_to_persistent_fabric ? edm_l1_sem_id
-                                           : get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(edm_l1_sem_id)),
+            STREAM_REG_ADDR(sender_channel_credits_stream_id, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_UPDATE_REG_INDEX)),
         edm_connection_handshake_l1_addr(
             connected_to_persistent_fabric
                 ? edm_connection_handshake_l1_id
@@ -358,18 +361,23 @@ struct WorkerToFabricEdmSenderImpl {
 private:
     template <bool stateful_api = false, bool enable_ring_support = false>
     FORCE_INLINE void update_edm_buffer_slot_wrptr(uint8_t noc = noc_index) {
+        uint32_t value;
+        if constexpr (USE_STREAM_REGISTERS_FOR_CREDITS_TO_ERISC) {
+            value = 1 << REMOTE_DEST_BUF_WORDS_FREE_INC;
+        } else {
+            value = this->buffer_slot_wrptr;
+        }
         if constexpr (stateful_api) {
             if constexpr (enable_ring_support) {
                 noc_inline_dw_write_with_state<true, false, true>(
-                    this->buffer_slot_wrptr, this->edm_buffer_slot_wrptr_addr, this->sync_noc_cmd_buf, noc);
+                    value, this->edm_buffer_slot_wrptr_addr, this->sync_noc_cmd_buf, noc);
             } else {
-                noc_inline_dw_write_with_state<false, false, true>(
-                    this->buffer_slot_wrptr, 0, this->sync_noc_cmd_buf, noc);
+                noc_inline_dw_write_with_state<false, false, true>(value, 0, this->sync_noc_cmd_buf, noc);
             }
         } else {
             const uint64_t noc_sem_addr =
                 get_noc_addr(this->edm_noc_x, this->edm_noc_y, this->edm_buffer_slot_wrptr_addr, noc);
-            noc_inline_dw_write(noc_sem_addr, this->buffer_slot_wrptr, 0xf, noc);
+            noc_inline_dw_write(noc_sem_addr, value, 0xf, noc);
         }
     }
 
