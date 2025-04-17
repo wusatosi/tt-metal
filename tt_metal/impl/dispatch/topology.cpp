@@ -1129,7 +1129,8 @@ std::unique_ptr<Program> create_and_compile_1d_fabric_program(IDevice* device, F
                 edm_config,
                 true,
                 false,
-                is_dateline);
+                is_dateline,
+                control_plane->routing_direction_to_eth_direction(direction));
             edm_builders.insert({eth_chan, edm_builder});
         }
     }
@@ -1185,6 +1186,17 @@ std::unique_ptr<Program> create_and_compile_1d_fabric_program(IDevice* device, F
     } else {
         connect_downstream_builders(RoutingDirection::N, RoutingDirection::S);
         connect_downstream_builders(RoutingDirection::E, RoutingDirection::W);
+        if (edm_config.topology == Topology::Mesh) {
+            connect_downstream_builders(RoutingDirection::N, RoutingDirection::E);
+            connect_downstream_builders(RoutingDirection::N, RoutingDirection::W);
+            connect_downstream_builders(RoutingDirection::S, RoutingDirection::E);
+            connect_downstream_builders(RoutingDirection::S, RoutingDirection::W);
+        }
+    }
+
+    std::map<string, string> defines = {};
+    if (edm_config.topology == Topology::Mesh) {
+        defines["FABRIC_2D"] = "";
     }
 
     for (auto& [eth_chan, edm_builder] : edm_builders) {
@@ -1200,6 +1212,21 @@ std::unique_ptr<Program> create_and_compile_1d_fabric_program(IDevice* device, F
 
         auto eth_logical_core = soc_desc.get_eth_core_for_channel(eth_chan, CoordSystem::LOGICAL);
 
+        log_debug(
+            tt::LogDevice,
+            "MeshId {}, Chip Id {}, Eth Channel {}, Direction {}",
+            mesh_chip_id.first,
+            mesh_chip_id.second,
+            eth_chan,
+            edm_builder.get_direction());
+        std::ostringstream oss;
+        oss << "[";
+        for (auto val : edm_kernel_rt_args) {
+            oss << " 0x" << std::hex << val;
+        }
+        oss << " ]";
+        log_debug(tt::LogDevice, "EDM RT Args {}", oss.str());
+
         if (is_local_handshake_master) {
             std::vector<uint32_t> router_zero_buf(1, 0);
             detail::WriteToDeviceL1(
@@ -1213,6 +1240,7 @@ std::unique_ptr<Program> create_and_compile_1d_fabric_program(IDevice* device, F
             tt::tt_metal::EthernetConfig{
                 .noc = tt_metal::NOC::NOC_0,
                 .compile_args = eth_sender_ct_args,
+                .defines = defines,
                 .opt_level = tt::tt_metal::KernelBuildOptLevel::O3});
 
         tt::tt_metal::SetRuntimeArgs(*fabric_program_ptr, eth_sender_kernel, eth_logical_core, edm_kernel_rt_args);
@@ -1227,7 +1255,8 @@ std::unique_ptr<Program> create_and_compile_fabric_program(IDevice* device) {
     if (tt_fabric::is_1d_fabric_config(fabric_config)) {
         return create_and_compile_1d_fabric_program(device, fabric_config);
     } else if (tt_fabric::is_2d_fabric_config(fabric_config)) {
-        return create_and_compile_2d_fabric_program(device, fabric_config);
+        // return create_and_compile_2d_fabric_program(device, fabric_config);
+        return create_and_compile_1d_fabric_program(device, fabric_config);
     }
     return nullptr;
 }

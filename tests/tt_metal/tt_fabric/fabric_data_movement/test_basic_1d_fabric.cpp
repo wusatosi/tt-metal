@@ -57,6 +57,9 @@ TEST_F(Fabric1DFixture, TestUnicastRaw) {
     chip_id_t src_physical_device_id = control_plane->get_physical_chip_id_from_mesh_chip_id(src_mesh_chip_id);
     chip_id_t dst_physical_device_id = control_plane->get_physical_chip_id_from_mesh_chip_id(dst_mesh_chip_id);
 
+    tt::log_info(tt::LogTest, "Src MeshId {} ChipId {}", src_mesh_chip_id.first, src_mesh_chip_id.second);
+    tt::log_info(tt::LogTest, "Dst MeshId {} ChipId {}", dst_mesh_chip_id.first, dst_mesh_chip_id.second);
+
     // get a port to connect to
     std::set<chan_id_t> eth_chans = control_plane->get_active_fabric_eth_channels_in_direction(
         src_mesh_chip_id.first, src_mesh_chip_id.second, RoutingDirection::E);
@@ -65,6 +68,8 @@ TEST_F(Fabric1DFixture, TestUnicastRaw) {
     }
 
     auto edm_port = *(eth_chans.begin());
+    auto edm_direction =
+        control_plane->get_eth_chan_direction(src_mesh_chip_id.first, src_mesh_chip_id.second, edm_port);
     CoreCoord edm_eth_core = tt::tt_metal::MetalContext::instance().get_cluster().get_virtual_eth_core_from_channel(
         src_physical_device_id, edm_port);
 
@@ -76,10 +81,12 @@ TEST_F(Fabric1DFixture, TestUnicastRaw) {
     auto receiver_noc_encoding =
         tt::tt_metal::MetalContext::instance().hal().noc_xy_encoding(receiver_virtual_core.x, receiver_virtual_core.y);
 
+    const auto edm_config = get_1d_fabric_config();
+
     // test parameters
     uint32_t packet_header_address = 0x25000;
     uint32_t source_l1_buffer_address = 0x30000;
-    uint32_t packet_payload_size_bytes = 4096;
+    uint32_t packet_payload_size_bytes = edm_config.topology == Topology::Mesh ? 2048 : 4096;
     uint32_t num_packets = 10;
     uint32_t num_hops = 1;
     uint32_t test_results_address = 0x100000;
@@ -113,18 +120,17 @@ TEST_F(Fabric1DFixture, TestUnicastRaw) {
         num_hops};
 
     // append the EDM connection rt args
-    const auto edm_config = get_1d_fabric_config();
-
+    const auto sender_channel = edm_config.topology == Topology::Mesh ? edm_direction : 0;
     tt::tt_fabric::SenderWorkerAdapterSpec edm_connection = {
         .edm_noc_x = edm_eth_core.x,
         .edm_noc_y = edm_eth_core.y,
-        .edm_buffer_base_addr = edm_config.sender_channels_base_address[0],
-        .num_buffers_per_channel = edm_config.sender_channels_num_buffers[0],
-        .edm_l1_sem_addr = edm_config.sender_channels_local_flow_control_semaphore_address[0],
-        .edm_connection_handshake_addr = edm_config.sender_channels_connection_semaphore_address[0],
-        .edm_worker_location_info_addr = edm_config.sender_channels_worker_conn_info_base_address[0],
+        .edm_buffer_base_addr = edm_config.sender_channels_base_address[sender_channel],
+        .num_buffers_per_channel = edm_config.sender_channels_num_buffers[sender_channel],
+        .edm_l1_sem_addr = edm_config.sender_channels_local_flow_control_semaphore_address[sender_channel],
+        .edm_connection_handshake_addr = edm_config.sender_channels_connection_semaphore_address[sender_channel],
+        .edm_worker_location_info_addr = edm_config.sender_channels_worker_conn_info_base_address[sender_channel],
         .buffer_size_bytes = edm_config.channel_buffer_size_bytes,
-        .buffer_index_semaphore_id = edm_config.sender_channels_buffer_index_semaphore_address[0],
+        .buffer_index_semaphore_id = edm_config.sender_channels_buffer_index_semaphore_address[sender_channel],
         .persistent_fabric = true};
 
     auto worker_flow_control_semaphore_id = tt_metal::CreateSemaphore(sender_program, sender_logical_core, 0);

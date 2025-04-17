@@ -30,9 +30,9 @@ Topology get_1d_topology(tt::tt_metal::FabricConfig fabric_config) {
     switch (fabric_config) {
         case tt::tt_metal::FabricConfig::FABRIC_1D: return tt::tt_fabric::Topology::Linear;
         case tt::tt_metal::FabricConfig::FABRIC_1D_RING: return tt::tt_fabric::Topology::Ring;
+        case tt::tt_metal::FabricConfig::FABRIC_2D_PUSH: return tt::tt_fabric::Topology::Mesh;
         case tt::tt_metal::FabricConfig::DISABLED:
         case tt::tt_metal::FabricConfig::FABRIC_2D:
-        case tt::tt_metal::FabricConfig::FABRIC_2D_PUSH:
         case tt::tt_metal::FabricConfig::CUSTOM:
             TT_THROW("Unsupported fabric config for 1D: {}", magic_enum::enum_name(fabric_config));
     }

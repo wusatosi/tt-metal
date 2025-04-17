@@ -314,6 +314,7 @@ void DevicePool::initialize_active_devices() const {
     if (tt_fabric::is_1d_fabric_config(fabric_config) || tt_fabric::is_2d_fabric_config(fabric_config)) {
         log_info(tt::LogMetal, "Initializing Fabric");
         if (tt_fabric::is_2d_fabric_config(fabric_config)) {
+            // TODO: need to write routing tables for unified 2d fabric.
             // write routing tables to all ethernet cores
             tt::tt_metal::MetalContext::instance()
                 .get_cluster()
@@ -497,7 +498,7 @@ void DevicePool::add_devices_to_pool(const std::vector<chip_id_t>& device_ids) {
 void DevicePool::wait_for_fabric_router_sync() const {
     FabricConfig fabric_config = tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_config();
     auto control_plane = tt::tt_metal::MetalContext::instance().get_cluster().get_control_plane();
-    if (tt_fabric::is_1d_fabric_config(fabric_config)) {
+    if (tt_fabric::is_1d_fabric_config(fabric_config) || tt_fabric::is_2d_fabric_config(fabric_config)) {
         const auto edm_config = tt_fabric::get_1d_fabric_config();
         std::vector<uint32_t> signal(1, tt::tt_fabric::EDMStatus::READY_FOR_TRAFFIC);
 
@@ -770,7 +771,7 @@ void DevicePool::close_devices(const std::vector<IDevice*>& devices, bool skip_s
     // Terminate fabric routers
     FabricConfig fabric_config = tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_config();
     auto control_plane = tt::tt_metal::MetalContext::instance().get_cluster().get_control_plane();
-    if (tt_fabric::is_1d_fabric_config(fabric_config)) {
+    if (tt_fabric::is_1d_fabric_config(fabric_config) || tt_fabric::is_2d_fabric_config(fabric_config)) {
         std::vector<uint32_t> signal(1, tt::tt_fabric::TerminationSignal::IMMEDIATELY_TERMINATE);
         static constexpr std::size_t edm_buffer_size =
             tt::tt_fabric::FabricEriscDatamoverBuilder::default_packet_payload_size_bytes +
