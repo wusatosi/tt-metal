@@ -280,8 +280,7 @@ void kernel_main() {
             reinterpret_cast<volatile tt_l1_ptr uint32_t*>(semaphore_noc_addr);
         noc_semaphore_wait(semaphore_noc_addr_ptr, 2 * num_active_cores);
 
-        const uint64_t mcast_noc_addr = get_noc_multicast_addr(
-            noc_00_x, noc_00_y, noc_00_x + rectangular_x - 1, noc_00_y + rectangular_y - 1, semaphore_addr);
+        const uint64_t mcast_noc_addr = get_noc_multicast_addr(noc_00_x, noc_00_y, 15, 11, semaphore_addr);
         DPRINT << "multicast coords: " << noc_00_x << " " << noc_00_y << " " << noc_00_x + rectangular_x - 1 << " "
                << noc_00_y + rectangular_y - 1 << ENDL();
 
