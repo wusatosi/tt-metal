@@ -113,7 +113,7 @@ void ScaledDotProductAttentionDecode::validate(
                 cur_pos_tensor.get_layout());
             const auto cur_pos_shape = cur_pos_tensor.get_padded_shape();
             TT_FATAL(
-                cur_pos_shape[0] == B, "cur_pos must have batch size equal to Q, got {} and {}", cur_pos_shape[0], B);
+                cur_pos_shape[-1] == B, "cur_pos must have batch size equal to Q, got {} and {}", cur_pos_shape[0], B);
         }
 
         TT_FATAL(optional_input_tensors.at(1).has_value(), "Must have page_table tensor for paged attention");

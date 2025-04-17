@@ -64,6 +64,7 @@ void kernel_main() {
             uint32_t index_cb_ptr = get_read_ptr(cb_index_id);
             volatile tt_l1_ptr uint32_t* index_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(index_cb_ptr);
             cur_pos = index_ptr[cur_batch];
+            DPRINT << cur_pos << ENDL();
         }
 
         if (cur_pos == UINT32_MAX) {
