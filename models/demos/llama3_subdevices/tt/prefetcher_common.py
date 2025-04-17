@@ -96,12 +96,12 @@ class TtLlamaPrefetcherSetup(LightweightModule):
             # without stalling on the weight prefetch
             # calculated by fitting two largest tensor with extra room, ff2 has 391680B per global CB bank, ff1 has 207360B, plus 16320B gap (one block)
             # TODO: Above calculation is not accurate, need to find a better lower bound
-            self.global_cb_size = 600 * 1088
+            self.global_cb_size = 750 * 1088
             self.sender_receiver_mapping = list(zip(self.all_sender_cores, self.all_receiver_cores))
             # self.global_circular_buffer = ttnn.create_global_circular_buffer(
             #     self.mesh_device, self.sender_receiver_mapping, self.global_cb_size
             # )
-            # logger.info(f"GlobalCB size {self.global_cb_size}")
+            logger.info(f"GlobalCB size {self.global_cb_size}")
             self.global_circular_buffer = None  # Global CB will only be allocated before decode runs
             self.prefetcher_sub_device = ttnn.SubDevice([self.sender_core_range_set])
             self.worker_sub_device = ttnn.SubDevice([self.worker_cores_range_set])

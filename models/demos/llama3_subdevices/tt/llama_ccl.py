@@ -181,12 +181,12 @@ class TT_CCL:
                 ttnn.ShardOrientation.ROW_MAJOR,
             ),
         )
-        for _ in range(self.num_cbs):
+        for _ in range(1):
             tt_buffer = ttnn.from_torch(
                 torch.zeros((*cluster_shape, M, N_per_shard * num_cores)),
                 device=self.mesh_device,
                 layout=ttnn.TILE_LAYOUT,
-                dtype=ttnn.bfloat16,
+                dtype=ttnn.bfloat8_b,
                 memory_config=buffer_mem_cfg,
                 mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=(0, 1), mesh_shape=cluster_shape),
             )
@@ -194,7 +194,7 @@ class TT_CCL:
 
         # Create persistent buffers for cluster axis 1
         cluster_axis = 1
-        N_per_shard = 3840 // 24 * cluster_shape[cluster_axis]  # FF1/FF3/QKV
+        N_per_shard = 1280 // 10 * cluster_shape[cluster_axis]  # QKV
         buffer_mem_cfg = ttnn.MemoryConfig(
             ttnn.TensorMemoryLayout.WIDTH_SHARDED,
             ttnn.BufferType.L1,
@@ -204,12 +204,12 @@ class TT_CCL:
                 ttnn.ShardOrientation.ROW_MAJOR,
             ),
         )
-        for _ in range(self.num_cbs):
+        for _ in range(1):
             tt_buffer = ttnn.from_torch(
                 torch.zeros((*cluster_shape, M, N_per_shard * num_cores)),
                 device=self.mesh_device,
                 layout=ttnn.TILE_LAYOUT,
-                dtype=ttnn.bfloat16,
+                dtype=ttnn.bfloat8_b,
                 memory_config=buffer_mem_cfg,
                 mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=(0, 1), mesh_shape=cluster_shape),
             )
@@ -371,7 +371,7 @@ class TT_CCL:
             if lm_head:
                 persistent_buffer = self.tt_lm_head_buffer_l1
             else:
-                persistent_buffer = self.persistent_buffers[cluster_axis][self.buffer_idx[cluster_axis]]
+                persistent_buffer = self.persistent_buffers[cluster_axis][0]
 
             output_tensor_mesh = ttnn.experimental.all_reduce_async(
                 input_tensor_mesh,
@@ -451,7 +451,7 @@ class TT_CCL:
                 return ttnn_tensor_out
 
         self.gather_idx[cluster_axis] = (self.gather_idx[cluster_axis] + 1) % self.num_cbs
-        self.buffer_idx[cluster_axis] = (self.buffer_idx[cluster_axis] + 1) % self.num_cbs
+        # self.buffer_idx[cluster_axis] = (self.buffer_idx[cluster_axis] + 1) % self.num_cbs
         return output_tensor_mesh
 
     def line_reduce_scatter(
