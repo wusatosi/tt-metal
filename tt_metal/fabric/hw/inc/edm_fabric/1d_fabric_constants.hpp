@@ -142,7 +142,7 @@ constexpr size_t sender_2_completed_packet_header_cb_address = get_compile_time_
 constexpr size_t sender_2_completed_packet_header_cb_size_headers =
     get_compile_time_arg_val(MAIN_CT_ARGS_START_IDX + 43);
 
-constexpr size_t SPECIAL_MARKER_0_IDX = MAIN_CT_ARGS_START_IDX + 44;
+constexpr size_t SPECIAL_MARKER_0_IDX = MAIN_CT_ARGS_START_IDX + 45;
 constexpr size_t SPECIAL_MARKER_0 = 0x00c0ffee;
 static_assert(
     !SPECIAL_MARKER_CHECK_ENABLED || get_compile_time_arg_val(SPECIAL_MARKER_0_IDX) == SPECIAL_MARKER_0,
@@ -236,5 +236,6 @@ static constexpr uint8_t worker_handshake_noc = sender_channel_ack_noc_ids[0];
 constexpr bool local_chip_noc_equals_downstream_noc =
     receiver_channel_forwarding_noc_ids[0] == receiver_channel_local_write_noc_ids[0];
 static constexpr uint8_t local_chip_data_cmd_buf = receiver_channel_local_write_cmd_buf_ids[0];
+constexpr size_t forward_and_local_write_noc_vc = get_compile_time_arg_val(MAIN_CT_ARGS_START_IDX + 44);
 
 }  // namespace tt::tt_fabric

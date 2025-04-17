@@ -512,6 +512,7 @@ std::vector<uint32_t> FabricEriscDatamoverBuilder::get_compile_time_args() const
         ct_args.push_back(
             config.receiver_channel_local_write_cmd_buf_ids[i]);  // maps to receiver_channel_local_write_cmd_buf_ids
     }
+    ct_args.push_back(config.edm_noc_vc);
 
     // Special marker to help with identifying misalignment bugs
     ct_args.push_back(0x10c0ffee);
