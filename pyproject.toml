@@ -47,3 +47,6 @@ include = '^.*(ttnn|tests/scripts|tests/ttnn|tests/tt_eager/python_api_testing|t
 line-length = 120
 
 [tool.setuptools_scm]
+
+[tool.cibuildwheel]
+manylinux-x86_64-image = "dockerfile/manylinux_wheel.Dockerfile"  # relative path
