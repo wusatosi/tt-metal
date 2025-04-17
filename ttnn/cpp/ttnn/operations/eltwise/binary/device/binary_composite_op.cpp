@@ -313,7 +313,7 @@ Tensor ExecuteDiv::invoke(
             }
             return result;
         }
-
+        tt::log_info(tt::LogOp, " ****** div input is not fp32");
         Tensor a = typecast(queue_id, input_a, DataType::FLOAT32);
         Tensor b = typecast(queue_id, input_b, DataType::FLOAT32);
 
@@ -328,6 +328,7 @@ Tensor ExecuteDiv::invoke(
         }
 
         if (!accurate_mode) {  // If input_b is non-zero tensor
+            tt::log_info(tt::LogOp, " ****** div not accurate_mode");
             return typecast(queue_id, result, input_dtype, std::nullopt, output_tensor);
         }
 

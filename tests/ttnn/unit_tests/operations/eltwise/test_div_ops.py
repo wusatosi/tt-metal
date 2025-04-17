@@ -9,6 +9,7 @@ import pytest
 from models.utility_functions import torch_random
 from functools import partial
 from tests.tt_eager.python_api_testing.sweep_tests.generation_funcs import gen_func_with_cast_tt
+from tests.ttnn.utils_for_testing import assert_with_pcc
 
 
 @pytest.mark.parametrize(
@@ -186,3 +187,63 @@ def test_unary_fmod(input_shapes, scalar, device):
         assert ttnn.pearson_correlation_coefficient(torch_output_tensor, output_tensor) >= 0.999
     else:
         assert torch.allclose(output_tensor, torch_output_tensor, atol=0.001, rtol=0)
+
+
+@pytest.mark.parametrize(
+    "input_shapes",
+    ((torch.Size([1, 2, 32, 960])),),
+)
+@pytest.mark.parametrize(
+    "input_range",
+    [
+        {"high": 100, "low": 1},
+    ],
+)
+def test_div_width_sharded(device, input_shapes, input_range):
+    high = input_range["high"]
+    low = input_range["low"]
+    in_data1 = torch.rand((input_shapes), dtype=torch.bfloat16) * (high - low + 10) + low
+    in_data2 = torch.rand((input_shapes), dtype=torch.bfloat16) * (high - low) + low
+    # in_data1 = torch.ones((input_shapes), dtype=torch.bfloat16) * 4
+    # in_data2 = torch.ones((input_shapes), dtype=torch.bfloat16) * 2
+    shard_grid = ttnn.CoreRangeSet(
+        {
+            ttnn.CoreRange((0, 0), (7, 7)),
+        }
+    )
+    shard_spec = ttnn.ShardSpec(shard_grid, [64, 32], ttnn.ShardOrientation.ROW_MAJOR, ttnn.ShardMode.PHYSICAL)
+    input_mem_config = ttnn.MemoryConfig(
+        ttnn.types.TensorMemoryLayout.WIDTH_SHARDED, ttnn.types.BufferType.L1, shard_spec
+    )
+
+    input_tensor1 = ttnn.from_torch(
+        in_data1,
+        dtype=ttnn.bfloat16,
+        layout=ttnn.TILE_LAYOUT,
+        device=device,
+        memory_config=input_mem_config,
+    )
+
+    input_tensor2 = ttnn.from_torch(
+        in_data2,
+        dtype=ttnn.bfloat16,
+        layout=ttnn.TILE_LAYOUT,
+        device=device,
+        memory_config=input_mem_config,
+    )
+    output_tensor = ttnn.div(
+        input_tensor1,
+        input_tensor2,
+        memory_config=input_mem_config,
+    )
+
+    output_tensor = ttnn.to_torch(output_tensor)
+    golden_function = ttnn.get_golden_function(ttnn.div)
+    golden_tensor = golden_function(in_data1, in_data2)
+
+    # print("golden_tensor", golden_tensor)
+    print("output_tensor", output_tensor)
+    print(torch.max(torch.abs(output_tensor - golden_tensor)))
+    print(torch.argmax(torch.abs(output_tensor - golden_tensor)))
+    pcc, pcc_msg = assert_with_pcc(golden_tensor, output_tensor, 0.999)
+    assert pcc

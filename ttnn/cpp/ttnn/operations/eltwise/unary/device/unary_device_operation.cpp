@@ -6,7 +6,6 @@
 
 #include <magic_enum/magic_enum.hpp>
 #include <tt-metalium/constants.hpp>
-#include "ttnn/operations/eltwise/unary/common/unary_op_utils.hpp"
 #include "ttnn/tensor/tensor_utils.hpp"
 #include "tools/profiler/op_profiler.hpp"
 
@@ -198,8 +197,7 @@ tt::stl::hash::hash_t UnaryDeviceOperation::compute_program_hash(
         args,
         program_factory.index(),
         input_tensor.dtype(),
-        std::get<DeviceStorage>(input_tensor.storage()).memory_config(),
-        input_shape.volume());
+        std::get<DeviceStorage>(input_tensor.storage()).memory_config());
 
     return hash;
 }

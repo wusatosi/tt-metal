@@ -10,6 +10,7 @@
 #include <tt-metalium/hal.hpp>
 #include <tt-metalium/util.hpp>
 #include <tt-metalium/host_api.hpp>
+#include "ttnn/operations/eltwise/unary/common/unary_op_types.hpp"
 #include "ttnn/operations/eltwise/unary/common/unary_op_utils.hpp"
 
 namespace ttnn::operations::unary::program {
@@ -46,12 +47,26 @@ UnaryShardedProgramFactory::cached_program_t UnaryShardedProgramFactory::create(
 
     uint32_t input_tile_size = tt::tt_metal::detail::TileSize(act_df);
     uint32_t output_tile_size = tt::tt_metal::detail::TileSize(out_df);
+    tt::log_info(tt::LogOp, " ****** using unary shard in {} out {}", input_tile_size, output_tile_size);
 
-    TT_FATAL(input_tile_size == output_tile_size, "Input and output tile size should be same");
+    // tt::log_info(tt::LogOp, " ****** args.op_chain[0] {} ", args.op_chain[0].op_type);
+
+    tt::log_info(
+        tt::LogOp,
+        " ****** args.op_chain[0] == UnaryOpType::TYPECAST {} ",
+        args.op_chain[0].op_type == UnaryOpType::TYPECAST);
+
+    if (args.op_chain[0].op_type != UnaryOpType::TYPECAST) {
+        TT_FATAL(
+            (input_tile_size == output_tile_size),
+            "Input and output tile size should be same in_tile {}B ; out_tile {}B",
+            input_tile_size,
+            output_tile_size);
+    }
 
     uint32_t num_tile_per_core = 0;
 
-    if (input.get_dtype() == DataType::BFLOAT8_B) {
+    if (input.get_dtype() == DataType::BFLOAT8_B || input.get_dtype() == DataType::BFLOAT4_B) {
         uint32_t ntiles_along_width = std::ceil(shard_spec.shape[1] / (float)tt::constants::TILE_WIDTH);
         uint32_t ntiles_along_height = std::ceil(shard_spec.shape[0] / (float)tt::constants::TILE_HEIGHT);
         num_tile_per_core = ntiles_along_width * ntiles_along_height;
@@ -81,14 +96,20 @@ UnaryShardedProgramFactory::cached_program_t UnaryShardedProgramFactory::create(
 
     // output sharded CB
     uint32_t out_cb_id = tt::CBIndex::c_2;
+    uint32_t aligned_output_tile_nbytes =
+        round_up_to_mul32(output_tile_size);  // will have issue if the page is not multiple of 32
+    uint32_t out_cb_pagesize = aligned_output_tile_nbytes;
+    uint32_t out_cb_npages = num_tile_per_core * buffering_factor;
     tt::tt_metal::CircularBufferConfig out_cb_config =
-        tt::tt_metal::CircularBufferConfig(in_cb_pagesize * in_cb_npages, {{out_cb_id, out_df}})
-            .set_page_size(out_cb_id, in_cb_pagesize)
+        tt::tt_metal::CircularBufferConfig(out_cb_pagesize * out_cb_npages, {{out_cb_id, out_df}})
+            .set_page_size(out_cb_id, out_cb_pagesize)
             .set_globally_allocated_address(*output.buffer());
     auto out_cb = tt::tt_metal::CreateCircularBuffer(program, all_cores, out_cb_config);
 
     log_debug(tt::LogOp, "input_cb: {}, npages: {}, pagesize: {}", in_cb_id, in_cb_npages, in_cb_pagesize);
+    log_debug(tt::LogOp, "out_cb_id: {}, npages: {}, pagesize: {}", out_cb_id, out_cb_npages, out_cb_pagesize);
     log_debug(tt::LogOp, "input_tile_size: {}", input_tile_size);
+    log_debug(tt::LogOp, "output_tile_size: {}", output_tile_size);
 
     auto src_buffer = input.buffer();
     auto dst_buffer = output.buffer();
@@ -115,6 +136,7 @@ UnaryShardedProgramFactory::cached_program_t UnaryShardedProgramFactory::create(
     };
 
     std::vector<UnpackToDestMode> unpack_to_dest_mode(NUM_CIRCULAR_BUFFERS, UnpackToDestMode::Default);
+    // tt::log_info(tt::LogOp, " ****** preserve_fp32_precision {}", args.preserve_fp32_precision);
     if (args.preserve_fp32_precision) {
         unpack_to_dest_mode[in_cb_id] = UnpackToDestMode::UnpackToDestFp32;
     }
