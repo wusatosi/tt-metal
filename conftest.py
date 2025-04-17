@@ -111,6 +111,7 @@ def device(request, device_params):
     assert device_id < num_devices, "CreateDevice not supported for non-mmio device"
     updated_device_params = get_updated_device_params(device_params)
     device = ttnn.CreateDevice(device_id=device_id, **updated_device_params)
+    ttnn.enable_program_cache(device)
     ttnn.SetDefaultDevice(device)
 
     yield device

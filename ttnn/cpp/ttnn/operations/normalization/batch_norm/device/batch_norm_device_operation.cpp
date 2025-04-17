@@ -61,6 +61,8 @@ BatchNormOperation::program_factory_t BatchNormOperation::select_program_factory
 
 void BatchNormOperation::validate_on_program_cache_miss(
     const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
+    tt::log_info(tt::LogOp, "**************************** Inside validate_on_program_cache_miss");
+
     const auto& [input, batch_mean, batch_var, weight, bias, output] = tensor_args;
 
     TT_FATAL(input.get_layout() == Layout::TILE, "Input tensor must be must be tilized");
@@ -94,11 +96,12 @@ void BatchNormOperation::validate_on_program_cache_miss(
             "bias tensor must be interleaved");
     }
 
-    validate_tensors(operation_attributes, tensor_args);
+    validate_on_program_cache_hit(operation_attributes, tensor_args);
 };
 
 void BatchNormOperation::validate_on_program_cache_hit(
     const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
+    tt::log_info(tt::LogOp, "**************************** Inside validate_on_program_cache_hit");
     validate_tensors(operation_attributes, tensor_args);
 };
 
