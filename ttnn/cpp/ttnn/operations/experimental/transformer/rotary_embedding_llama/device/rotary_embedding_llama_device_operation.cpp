@@ -101,7 +101,9 @@ void RotaryEmbeddingLlama::validate(const std::vector<Tensor>& input_tensors) co
         // Checks for cos and sin
         TT_FATAL(
             cos.get_logical_shape()[0] == 1 && cos.get_logical_shape()[-1] == head_dim,
-            "Cos dims must match input dims");
+            "Cos dims must match input dims: cos.shape = {}, head_dim = {}",
+            cos.get_logical_shape(),
+            head_dim);
         // Check num_heads in cos/sin
         TT_FATAL(
             cos.get_logical_shape()[1] == input_tensor.get_logical_shape()[1] || cos.get_logical_shape()[1] == 1,
