@@ -62,6 +62,8 @@ void kernel_main() {
     // h/2 as we divide work between two DM cores
     uint64_t src_address = src_base_noc_address;
 
+    noc_async_read_one_packet_set_state(src_base_noc_address, stick_size_bytes);
+
     for (uint32_t h = 0; h < src_height / 2; h++) {
         // dst_h_selector is the index of the destination address for the current row
         // that is combined with column to get the final output buffer
@@ -86,9 +88,9 @@ void kernel_main() {
                 //     DPRINT << "dst_offset = " << dst_offset << "; dst_idx = " << dst_idx << "; h = " << h <<  "; w =
                 //     " << w << "; datum = " << datum <<  ENDL();
                 // }
-                const uint32_t dst_address = dst_addresses[dst_idx] + dst_offset;
-                noc_async_read_one_packet(src_address, dst_address, stick_size_bytes);
-                noc_async_read_barrier();
+                const uint32_t dst_address =
+                    dst_addresses[dst_idx] + dst_offset;  // to try increasing dst_addresses[dst_idx] directly
+                noc_async_read_one_packet_with_state<true>(src_address, dst_address);
                 src_address += stick_size_bytes;
             }
             dst_offset += stick_size_bytes;
@@ -97,9 +99,10 @@ void kernel_main() {
         }
         // skip one row, that is processed by the other DM core
         src_address += src_line_size_bytes;
-        print_uint64(src_address - src_base_noc_address);
+        // print_uint64(src_address - src_base_noc_address);
+        noc_async_read_barrier();  // to optimize position
     }
-    DPRINT << "stick_size_bytes=" << stick_size_bytes << ENDL();
+    // DPRINT << "stick_size_bytes=" << stick_size_bytes << ENDL();
 
-    DPRINT << "Deinterleave done" << ENDL();
+    // DPRINT << "Deinterleave done" << ENDL();
 }
