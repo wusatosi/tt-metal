@@ -522,7 +522,8 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
     uint32_t rectangular_x = num_cores_x;
     uint32_t rectangular_y = num_noop_cores ? num_active_cores / num_cores_x + 1 : num_active_cores / num_cores_x;
     printf("rectangular_x = %d, rectangular_y = %d\n", rectangular_x, rectangular_y);
-    uint32_t last_row_active_x = num_noop_cores ? num_active_cores % num_cores_x : num_cores_x;
+    CoreCoord last_active_coord = core_id_to_noc_coords(num_active_cores - 1);
+    uint32_t last_row_active_x = last_active_coord.x;
     printf("last_row_active_x: %d\n", last_row_active_x);
     std::set<CoreRange> rectangular_cores_set;
     rectangular_cores_set.insert(CoreRange(CoreCoord(0, 0), CoreCoord(rectangular_x - 1, rectangular_y - 1)));
