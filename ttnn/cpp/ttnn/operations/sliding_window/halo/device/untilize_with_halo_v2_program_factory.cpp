@@ -516,7 +516,7 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
                                            : CoreCoord(core_id % num_cores_x, core_id / num_cores_x);
         return device->worker_core_from_logical_core(core_coord);
     };
-    CoreCoord noc_00 = core_id_to_noc_coords(0);
+    CoreCoord noc_TL = core_id_to_noc_coords(0);
 
     // create the rectangular core range
     uint32_t rectangular_x = num_cores_x;
@@ -528,7 +528,6 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
     std::set<CoreRange> rectangular_cores_set;
     rectangular_cores_set.insert(CoreRange(CoreCoord(0, 0), CoreCoord(rectangular_x - 1, rectangular_y - 1)));
     CoreRangeSet rectangular_cores(rectangular_cores_set);
-
     CoreCoord noc_BR = device->worker_core_from_logical_core(CoreCoord(rectangular_x - 1, rectangular_y - 1));
     printf("noc_BR: (%ld, %ld)\n", noc_BR.x, noc_BR.y);
 
@@ -564,8 +563,10 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
         aligned_input_nstick_nbytes,
         remote_read,
         num_active_cores,
-        noc_00.x,
-        noc_00.y,
+        noc_TL.x,
+        noc_TL.y,
+        noc_BR.x,
+        noc_BR.y,
         rectangular_x,
         rectangular_y,
         last_row_active_x,
