@@ -513,23 +513,53 @@ public:
     }
 };
 
+struct LowLatencyMeshRoutingFields {
+    static constexpr uint32_t FIELD_WIDTH = 8;
+    static constexpr uint32_t FIELD_MASK = 0b1111;
+    static constexpr uint32_t NOOP = 0b0000;
+    static constexpr uint32_t FORWARD_EAST = 0b0001;
+    static constexpr uint32_t FORWARD_WEST = 0b0010;
+    static constexpr uint32_t FORWARD_NORTH = 0b0100;
+    static constexpr uint32_t FORWARD_SOUTH = 0b1000;
+    static constexpr uint32_t WRITE_AND_FORWARD_EW = 0b0011;
+    static constexpr uint32_t WRITE_AND_FORWARD_NS = 0b1100;
+    uint32_t hop_index;
+    uint8_t value[32];
+};
+
+struct LowLatencyMeshPacketHeader : public PacketHeaderBase<LowLatencyMeshPacketHeader> {
+    LowLatencyMeshRoutingFields routing_fields;
+
+    inline void to_chip_unicast_impl(uint8_t distance_in_hops) {}
+    inline void to_chip_multicast_impl(const MulticastRoutingCommandHeader& chip_multicast_command_header) {}
+
+    inline void to_chip_unicast_impl(uint8_t distance_in_hops) volatile {}
+    inline void to_chip_multicast_impl(const MulticastRoutingCommandHeader& chip_multicast_command_header) volatile {}
+};
+
 // TODO: When we remove the 32B padding requirement, reduce to 16B size check
 static_assert(sizeof(PacketHeader) == 32, "sizeof(PacketHeader) is not equal to 32B");
 // Host code still hardcoded to sizeof(PacketHeader) so we need to keep this check
 static_assert(
     sizeof(LowLatencyPacketHeader) == sizeof(PacketHeader), "sizeof(LowLatencyPacketHeader) is not equal to 32B");
-
-static constexpr size_t header_size_bytes = sizeof(PacketHeader);
+static_assert(sizeof(LowLatencyMeshPacketHeader) == 64, "sizeof(LowLatencyPacketHeader) is not equal to 64B");
 
 // TODO: Should be piped from host to determine which packet header to use
 #define FABRIC_LOW_LATENCY_MODE 1
 
+#ifdef FABRIC_2D
+static constexpr size_t header_size_bytes = sizeof(LowLatencyMeshPacketHeader);
+#define PACKET_HEADER_TYPE tt::tt_fabric::LowLatencyMeshPacketHeader
+#define ROUTING_FIELDS_TYPE tt::tt_fabric::LowLatencyMeshRoutingFields
+#else
+static constexpr size_t header_size_bytes = sizeof(PacketHeader);
 #if defined FABRIC_LOW_LATENCY_MODE and FABRIC_LOW_LATENCY_MODE == 1
 #define PACKET_HEADER_TYPE tt::tt_fabric::LowLatencyPacketHeader
 #define ROUTING_FIELDS_TYPE tt::tt_fabric::LowLatencyRoutingFields
 #else
 #define PACKET_HEADER_TYPE tt::tt_fabric::PacketHeader
 #define ROUTING_FIELDS_TYPE tt::tt_fabric::RoutingFields
+#endif
 #endif
 
 }  // namespace tt::tt_fabric
