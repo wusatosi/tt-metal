@@ -1520,13 +1520,9 @@ void detail::ProgramImpl::update_runtime_info_from_descriptor(ProgramDescriptor&
         }
     }
 
-    bool should_invalidate_cb_allocation = false;
     for (size_t circular_buffers_idx = 0; circular_buffers_idx < circular_buffers_.size(); ++circular_buffers_idx) {
         auto& circular_buffer = circular_buffers_[circular_buffers_idx];
         auto& descriptor_cb = descriptor.cbs.at(circular_buffers_idx);
-        if (!circular_buffer->globally_allocated()) {
-            should_invalidate_cb_allocation |= circular_buffer->config().total_size() != descriptor_cb.total_size;
-        }
         circular_buffer->config() = CircularBufferConfig(descriptor_cb);
         if (descriptor_cb.global_circular_buffer) {
             circular_buffer->set_global_circular_buffer(*descriptor_cb.global_circular_buffer);
@@ -1534,10 +1530,6 @@ void detail::ProgramImpl::update_runtime_info_from_descriptor(ProgramDescriptor&
         if (circular_buffer->globally_allocated()) {
             circular_buffer->assign_global_address();
         }
-    }
-
-    if (should_invalidate_cb_allocation) {
-        invalidate_circular_buffer_allocation();
     }
 }
 

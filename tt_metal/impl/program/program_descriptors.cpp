@@ -123,6 +123,7 @@ size_t ProgramDescriptor::calculate_program_hash() const {
         }
         hash = hash_combine(hash, cb.buffer != nullptr);
         hash = hash_combine(hash, cb.global_circular_buffer != nullptr);
+        hash = hash_combine(hash, cb.buffer ? 0 : cb.total_size);
         return hash;
     };
 
