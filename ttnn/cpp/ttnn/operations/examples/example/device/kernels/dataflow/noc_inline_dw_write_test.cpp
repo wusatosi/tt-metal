@@ -15,8 +15,8 @@ void dprint_be_binary(uint32_t be32) {
 }
 
 void check_dram_status(uint64_t noc_addr, uint8_t cb_id) {
-    auto l1_write_addr = get_write_ptr(cb_id);
     cb_reserve_back(cb_id, 1);
+    auto l1_write_addr = get_write_ptr(cb_id);
     noc_async_read(noc_addr, l1_write_addr, 64, noc_index);  // read one row in face0 (4-byte)
     noc_async_read_barrier();
     cb_push_back(cb_id, 1);
