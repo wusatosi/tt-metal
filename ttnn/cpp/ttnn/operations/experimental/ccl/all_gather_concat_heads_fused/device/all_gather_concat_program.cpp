@@ -169,21 +169,16 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
     auto sender_worker_cores = corerange_to_cores(sender_worker_core_range, 3, true);
     // Tensor Info
     const uint32_t logical_dim_2 = 8;
-    // const auto input_tensor_num_pages = input_tensor.get_logical_shape()[0] *  input_tensor.get_logical_shape()[1] *
-    // logical_dim_2;
-    const auto input_tensor_num_pages = 64;  // input_tensor.buffer()->num_pages();
+    const auto input_tensor_num_pages =
+        input_tensor.get_logical_shape()[0] * input_tensor.get_logical_shape()[1] * logical_dim_2;
     const auto input_tensor_cores = input_tensor.memory_config().shard_spec->grid;
     const auto input_tensor_shard_shape = input_tensor.memory_config().shard_spec->shape;
-    // const auto input_tensor_shard_num_pages = logical_dim_2;
-    const auto input_tensor_shard_num_pages = 8;  // input_tensor_shard_shape[0] * input_tensor_shard_shape[1] /
-                                                  // TILE_HW;
+    const auto input_tensor_shard_num_pages = logical_dim_2;
 
     const auto output_interm_tensor_cores = temp_tensor.memory_config().shard_spec->grid;
     const auto output_interm_tensor_shard_shape = temp_tensor.memory_config().shard_spec->shape;
-    const auto output_interm_tensor_shard_num_pages = 8;
-    // output_interm_tensor_shard_shape[0] * output_interm_tensor_shard_shape[1] / TILE_HW;
+    const auto output_interm_tensor_shard_num_pages = logical_dim_2;
     const auto row_size = input_tensor.get_padded_shape()[-1] / 2 * output_tensor.element_size();
-    ;
 
     tt::log_debug(tt::LogOp, "input_tensor_num_pages: {}", input_tensor_num_pages);
     tt::log_debug(tt::LogOp, "input_tensor_cores: {}", input_tensor_cores);
@@ -249,8 +244,8 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
 
     uint32_t q_output_cb_index = tt::CBIndex::c_16;
     tt::tt_metal::CircularBufferConfig cb_q_output_config =
-        tt::tt_metal::CircularBufferConfig(32 * 128, {{q_output_cb_index, df}})
-            .set_page_size(q_output_cb_index, 128)
+        tt::tt_metal::CircularBufferConfig(output_tensor.get_padded_shape()[-2] * row_size, {{q_output_cb_index, df}})
+            .set_page_size(q_output_cb_index, row_size)
             .set_globally_allocated_address(*output_tensor.buffer());
     auto cb_q_output = tt::tt_metal::CreateCircularBuffer(program, q_cores, cb_q_output_config);
 
@@ -303,25 +298,17 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
     uint32_t concat_semaphore_id2 = tt::tt_metal::CreateSemaphore(program, sem_cores_updated, 0);
 
     std::vector<uint32_t> concat_reader_ct_args = {
-        (std::uint32_t)element_size,
-        (std::uint32_t)sub_tile_line_bytes,
         q_output_cb_index,
-        head_size,
-        batch,
-        llama_configuration.num_tiles_reshard,
         first_phase,
         in_num_cores,
-        face_h,
-        face_hw,
         batch_size,
         batch_start_1,
         batch_end_1,
         batch_start_2,
         batch_end_2,
         start_local,
-        tile_size,
-        // input_tensor_shard_shape[-1] * element_size,
-        // output_tensor_shard_shape[-1] * element_size,
+        input_tensor_shard_shape[1] * input_tensor.element_size(),
+        output_tensor_shard_shape[1] * output_tensor.element_size(),
     };
 
     auto concat_reader_kernel_id = tt::tt_metal::CreateKernel(
@@ -334,7 +321,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
             .noc = reader_noc,
             .compile_args = concat_reader_ct_args});
 
-    concat_reader_ct_args[6] = second_phase;
+    concat_reader_ct_args[1] = second_phase;
     auto concat_reader_2_kernel_id = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/experimental/ccl/all_gather_concat_heads_fused/device/kernels/"
@@ -573,13 +560,9 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
         is_worker_core = is_worker_core || (core.x == 3 && core.y == 0);
         if (is_worker_core == 0) {
             std::vector<uint32_t> reader_runtime_args;
-            reader_runtime_args.reserve(7 + 2 * in_num_cores);
+            reader_runtime_args.reserve(6 + 2 * in_num_cores);
             reader_runtime_args = {
-                in_tile_offset_by_batch,
-                q_start_addr,
-                input_tensor.buffer()->address(),
-                concat_semaphore_id,
-                concat_semaphore_id2};
+                q_start_addr, input_tensor.buffer()->address(), concat_semaphore_id, concat_semaphore_id2};
             reader_runtime_args.insert(reader_runtime_args.end(), noc_x_coords.begin(), noc_x_coords.end());
             reader_runtime_args.insert(reader_runtime_args.end(), noc_y_coords.begin(), noc_y_coords.end());
             reader_runtime_args.push_back(second_half_core);
@@ -638,16 +621,13 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
 
             for (uint32_t i = 0; i < num_concat_worker_cores; ++i) {
                 const auto& core = cores[i];
-                uint32_t in_tile_offset_by_batch = get_tile_offset_by_batch(i, face_h, sub_tile_line_bytes);
                 auto& concat_reader_runtime_args = GetRuntimeArgs(program, concat_reader_kernel_id, core);
-                concat_reader_runtime_args[0] = in_tile_offset_by_batch;
-                concat_reader_runtime_args[1] = q_start_addr;
-                concat_reader_runtime_args[2] = input.buffer()->address();
+                concat_reader_runtime_args[0] = q_start_addr;
+                concat_reader_runtime_args[1] = input.buffer()->address();
 
                 auto& concat_reader_2_runtime_args = GetRuntimeArgs(program, concat_reader_2_kernel_id, core);
-                concat_reader_2_runtime_args[0] = in_tile_offset_by_batch;
-                concat_reader_2_runtime_args[1] = q_start_addr;
-                concat_reader_2_runtime_args[2] = input.buffer()->address();
+                concat_reader_2_runtime_args[0] = q_start_addr;
+                concat_reader_2_runtime_args[1] = input.buffer()->address();
             }
         };
     return {.program = std::move(program), .override_runtime_arguments_callback = override_runtime_arguments_callback};
