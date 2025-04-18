@@ -6,6 +6,7 @@
 #include "cpp/ttnn/deprecated/tt_dnn/kernels/compute/moreh_common.hpp"
 #include "compute_kernel_api/eltwise_unary/sfpu_split_includes.h"
 #include "compute_kernel_api/eltwise_unary/eltwise_unary.h"
+#include "compute_kernel_api/eltwise_unary/sqrt.h"
 
 #include <cstdint>
 
@@ -49,12 +50,17 @@ ALWI void batchnorm_bcast_tiles(
 
         add_binary_tile(i * 2, i * 2 + 1);
     }
-    rsqrt_tile_init();
+    sqrt_tile_init();
     for (uint32_t i = 0; i < onetile; ++i) {
-        rsqrt_tile(i * 2);
+        sqrt_tile(i * 2);
+    }
+    recip_tile_init();
+    for (uint32_t i = 0; i < onetile; ++i) {
+        recip_tile(i * 2);
 
         pack_tile(i * 2, cb_den);
     }
+
     tile_regs_commit();
     tile_regs_release();
     cb_push_back(cb_den, onetile);
