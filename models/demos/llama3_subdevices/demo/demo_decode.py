@@ -26,6 +26,13 @@ from models.demos.llama3_subdevices.tt.sampling import TTSampling
 from models.perf.benchmarking_utils import BenchmarkProfiler, BenchmarkData
 from models.demos.llama3_subdevices.tt.model_config import LlamaOptimizations
 
+from tt_metal.tools.profiler.common import PROFILER_LOGS_DIR, PROFILER_DEVICE_SIDE_LOG
+
+PROFILER_LOG_PATH = PROFILER_LOGS_DIR / PROFILER_DEVICE_SIDE_LOG
+
+from tt_metal.tools.profiler.process_device_log import import_log_run_stats
+import tt_metal.tools.profiler.device_post_proc_config as device_post_proc_config
+
 # Maximum number of times `tokens_per_second_per_user` is allowed to be outside the `tsu_range`
 # before triggering an assertion failure. Allows occasional dips while ensuring
 # stable performance without breaking CI prematurely.
@@ -33,6 +40,20 @@ TSU_PERF_DROP_LIMIT_COUNT = 5
 
 # Constants for TSU thresholds based on the number of layers
 TSU_THRESHOLDS = {1: {"min": 355, "max": 375}, 10: {"min": 180, "max": 200}, 80: {"min": 40, "max": 44}}
+
+
+def get_device_freq():
+    setup = device_post_proc_config.default_setup()
+    setup.deviceInputLog = PROFILER_LOG_PATH
+    deviceData = import_log_run_stats(setup)
+    freq = deviceData["deviceInfo"]["freq"]
+    return freq
+
+
+def check_frequency(target=1000, margin=0.05):
+    device_freq_mhz = get_device_freq() / 1000
+    logger.info(f"Device frequency: {device_freq_mhz} MHz")
+    # assert device_freq_mhz >= target * (1 - margin) and device_freq_mhz <= target * (1 + margin), f"Device frequency is not within {margin*100}% of {target} MHz"
 
 
 def load_and_cache_context(context_url, cache_dir, max_length=None):
@@ -112,6 +133,7 @@ def run_llama3_demo(
     layers,
     stress_test,
     start_pos,
+    frequency_checks,
 ):
     # Creat batch output file
     benchmark_data = BenchmarkData()
@@ -417,10 +439,16 @@ def run_llama3_demo(
             profiler.start(f"compile_decode", iteration=iteration)
         iteration_time_start = time()
 
+        if frequency_checks:
+            check_frequency()
+
         # Execute trace
         ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
         tt_out_tok_cpu = tt_out_tok.cpu(blocking=True, cq_id=0)
         iteration_time = time() - iteration_time_start
+
+        if frequency_checks:
+            check_frequency()
 
         # Update current pos and mat idxs on host and send to device
         # TODO This is required for now since we cannot ttnn.plus_one(rot_mat_idxs) while it being uint32.
@@ -538,7 +566,7 @@ def run_llama3_demo(
 # optimization (LlamaOptimizations): Optimization level to use for the model (performance or accuracy)
 # FAKE_DEVICE (str): Fake device to use for testing (N150, N300, T3K, TG). Usage: `export FAKE_DEVICE=N150`, will enable running a single-chip demo on a multi-chip system.
 @pytest.mark.parametrize(
-    "weights, layers, input_prompts, instruct, repeat_batches, max_seq_len, batch_size, max_generated_tokens, paged_attention, page_params, sampling_params, stress_test, start_pos",
+    "weights, layers, input_prompts, instruct, repeat_batches, max_seq_len, batch_size, max_generated_tokens, paged_attention, page_params, sampling_params, stress_test, start_pos, frequency_checks",
     [
         (  # full demo, batch 32
             "instruct",
@@ -554,6 +582,7 @@ def run_llama3_demo(
             {"top_k": 32, "top_p": 0.08, "seed": 42},  # sampling_params (argmax)
             False,  # stress_test
             0,  # start_pos
+            True,  # frequency_checks
         ),
         (  # quick 1L demo
             "random",
@@ -569,6 +598,7 @@ def run_llama3_demo(
             {"top_k": 32, "top_p": 0.08, "seed": 42},  # sampling_params (argmax)
             False,  # stress_test
             0,  # start_pos
+            True,  # frequency_checks
         ),
         (  # Stress test: batch-32 very long generations but at same token index
             "instruct",
@@ -584,6 +614,7 @@ def run_llama3_demo(
             {"top_k": 32, "top_p": 0.08, "seed": 42},  # sampling_params (argmax)
             True,  # stress_test
             0,  # start_pos
+            True,  # frequency_checks
         ),
         (  # full demo, long generation test
             "instruct",
@@ -599,6 +630,7 @@ def run_llama3_demo(
             {"top_k": 32, "top_p": 0.08, "seed": 42},  # sampling_params (argmax)
             True,  # stress_test
             0,  # start_pos
+            True,  # frequency_checks
         ),
         (  # 10 layers for devive perf measurements
             "instruct",
@@ -614,6 +646,7 @@ def run_llama3_demo(
             {"top_k": 32, "top_p": 0.08, "seed": 42},  # sampling_params (argmax)
             False,  # stress_test
             127,  # start_pos
+            True,  # frequency_checks
         ),
     ],
     ids=[
@@ -657,6 +690,7 @@ def test_llama_demo(
     sampling_params,
     stress_test,
     start_pos,
+    frequency_checks,
     optimizations,
     mesh_device,
     use_program_cache,
@@ -698,4 +732,5 @@ def test_llama_demo(
         layers=layers,
         stress_test=stress_test,
         start_pos=start_pos,
+        frequency_checks=frequency_checks,
     )
