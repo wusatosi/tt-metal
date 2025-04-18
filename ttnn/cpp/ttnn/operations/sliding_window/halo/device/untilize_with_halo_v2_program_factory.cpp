@@ -490,36 +490,57 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
         CBHandle remote_temp_cb = CreateCircularBuffer(program, all_cores, remote_temp_cb_config);
     }
 
+    // noc conversion function
+    auto core_id_to_noc_coords = [is_block_sharded, transpose_mcast, device](uint32_t core_id) -> CoreCoord {
+        auto num_cores_x = device->compute_with_storage_grid_size().x;
+        auto core_coord = CoreCoord(core_id % num_cores_x, core_id / num_cores_x);
+        return device->worker_core_from_logical_core(core_coord);
+    };
+
+    // find the noc coordinate of core 0,0
+    CoreCoord noc_TL = core_id_to_noc_coords(0);
+
     // compute the number of noop cores
     const bool is_rm_orientation = input_tensor.shard_spec()->orientation == ShardOrientation::ROW_MAJOR;
     const auto cores = corerange_to_cores(all_cores, std::nullopt, is_rm_orientation);
     int32_t num_cores_x = device->compute_with_storage_grid_size().x;
     int32_t num_cores_y = device->compute_with_storage_grid_size().y;
     int32_t num_active_cores = cores.size();
-    int32_t num_cores_rectangular = tt::round_up(num_active_cores, num_cores_x);
-    int32_t num_noop_cores = num_cores_rectangular - num_active_cores;
-    for (const auto& core : cores) {
-        auto worker = device->worker_core_from_logical_core(core);
-    }
-
-    // find the noc coordinate of core 0,0
-    auto core_id_to_noc_coords = [is_block_sharded, transpose_mcast, device](uint32_t core_id) -> CoreCoord {
-        auto num_cores_x = device->compute_with_storage_grid_size().x;
-        auto core_coord = is_block_sharded ? (transpose_mcast ? CoreCoord(core_id, 0) : CoreCoord(0, core_id))
-                                           : CoreCoord(core_id % num_cores_x, core_id / num_cores_x);
-        return device->worker_core_from_logical_core(core_coord);
-    };
-    CoreCoord noc_TL = core_id_to_noc_coords(0);
+    int32_t num_cores_rectangular = is_block_sharded ? num_active_cores : tt::round_up(num_active_cores, num_cores_x);
+    int32_t num_noop_cores = is_block_sharded ? 0 : num_cores_rectangular - num_active_cores;
+    printf("all_cores: %s\n", all_cores.str().c_str());
+    TT_FATAL(
+        !is_block_sharded || all_cores.ranges().size() == 1,
+        "for block sharding the implementation depends on the assumption that there is only 1 core range");
+    CoreCoord last_active_coord = is_block_sharded
+                                      ? device->worker_core_from_logical_core(all_cores.ranges()[0].end_coord)
+                                      : core_id_to_noc_coords(num_active_cores - 1);
+    printf("last_active_coord = (%ld, %ld)\n", last_active_coord.x, last_active_coord.y);
+    uint32_t last_active_x = last_active_coord.x;
 
     // create the rectangular core range
-    uint32_t rectangular_x = num_cores_x;
-    uint32_t rectangular_y = num_noop_cores ? num_active_cores / num_cores_x + 1 : num_active_cores / num_cores_x;
-    CoreCoord last_active_coord = core_id_to_noc_coords(num_active_cores - 1);
-    uint32_t last_active_x = last_active_coord.x;
+    uint32_t rectangular_x = is_block_sharded ? all_cores.ranges()[0].end_coord.x + 1 : num_cores_x;
+    uint32_t rectangular_y =
+        is_block_sharded ? all_cores.ranges()[0].end_coord.y + 1
+                         : (num_noop_cores ? num_active_cores / num_cores_x + 1 : num_active_cores / num_cores_x);
+    printf(
+        "num_cores_x = %d, num_cores_y = %d, num_active_cores = %d, num_cores_rectangular = %d, num_noop_cores = %d\n",
+        num_cores_x,
+        num_cores_y,
+        num_active_cores,
+        num_cores_rectangular,
+        num_noop_cores);
+    printf("rectangular_x = %d, rectangular_y = %d\n", rectangular_x, rectangular_y);
+    printf("noc_TL = (%ld, %ld)\n", noc_TL.x, noc_TL.y);
     std::set<CoreRange> rectangular_cores_set;
-    rectangular_cores_set.insert(CoreRange(CoreCoord(0, 0), CoreCoord(rectangular_x - 1, rectangular_y - 1)));
+    if (is_block_sharded) {
+        rectangular_cores_set.insert(all_cores.ranges()[0]);
+    } else {
+        rectangular_cores_set.insert(CoreRange(CoreCoord(0, 0), CoreCoord(rectangular_x - 1, rectangular_y - 1)));
+    }
     CoreRangeSet rectangular_cores(rectangular_cores_set);
-    CoreCoord noc_BR = core_id_to_noc_coords(rectangular_x * rectangular_y - 1);
+    CoreCoord noc_BR = is_block_sharded ? last_active_coord : core_id_to_noc_coords(rectangular_x * rectangular_y - 1);
+    printf("noc_BR = (%ld, %ld)\n", noc_BR.x, noc_BR.y);
 
     // create semaphores
     uint32_t semaphore_id = tt::tt_metal::CreateSemaphore(program, rectangular_cores, 0);
