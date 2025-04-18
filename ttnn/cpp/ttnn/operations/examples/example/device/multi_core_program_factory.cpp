@@ -6,7 +6,7 @@
 #include <tt-metalium/work_split.hpp>
 
 namespace ttnn::operations::examples {
-ExampleDeviceOperation::MultiCore::cached_program_t ExampleDeviceOperation::MultiCore::create(
+NocInlineDeviceOperation::MultiCore::cached_program_t NocInlineDeviceOperation::MultiCore::create(
     const operation_attributes_t& operation_attributes,
     const tensor_args_t& tensor_args,
     tensor_return_value_t& tensor_return_value) {
@@ -126,7 +126,7 @@ ExampleDeviceOperation::MultiCore::cached_program_t ExampleDeviceOperation::Mult
          .num_cores_y = num_cores_y}};
 }
 
-void ExampleDeviceOperation::MultiCore::override_runtime_arguments(
+void NocInlineDeviceOperation::MultiCore::override_runtime_arguments(
     cached_program_t& cached_program,
     const operation_attributes_t& operation_attributes,
     const tensor_args_t& tensor_args,
