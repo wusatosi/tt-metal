@@ -58,7 +58,7 @@ NocInlineDeviceOperation::SingleCore::cached_program_t NocInlineDeviceOperation:
 
     tt::tt_metal::KernelHandle unary_writer_kernel_id = tt::tt_metal::CreateKernel(
         program,
-        "ttnn/cpp/ttnn/operations/examples/example/device/kernels/dataflow/reader_noc_inline_dw_write_test.cpp",
+        "ttnn/cpp/ttnn/operations/examples/example/device/kernels/dataflow/noc_inline_dw_write_test.cpp",
         all_cores,
         tt::tt_metal::DataMovementConfig{
             .processor = tt_metal::DataMovementProcessor::RISCV_0, .noc = tt_metal::NOC::NOC_0});
