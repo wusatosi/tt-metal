@@ -147,8 +147,8 @@ struct WorkerToFabricEdmSenderImpl {
 
     FORCE_INLINE bool edm_has_space_for_packet() const {
         if constexpr (USER_DEFINED_NUM_BUFFER_SLOTS) {
-            return (this->buffer_slot_write_counter.counter - *this->from_remote_buffer_slot_read_counter_ptr) <
-                   EDM_NUM_BUFFER_SLOTS;
+            return (this->buffer_slot_write_counter.counter - *this->from_remote_buffer_slot_read_counter_ptr) !=
+                   (EDM_NUM_BUFFER_SLOTS);
         } else {
             return (this->buffer_slot_write_counter.counter - *this->from_remote_buffer_slot_read_counter_ptr) <
                    this->num_buffers_per_channel;

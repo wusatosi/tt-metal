@@ -290,8 +290,8 @@ FORCE_INLINE void init_ptr_val(int32_t val) {
  */
 template <uint8_t RECEIVER_NUM_BUFFERS>
 struct OutboundReceiverChannelPointers {
+    uint32_t num_free_slots = RECEIVER_NUM_BUFFERS;
     BufferIndex remote_receiver_buffer_index{0};
-    uint8_t num_free_slots = RECEIVER_NUM_BUFFERS;
 
     FORCE_INLINE bool has_space_for_packet() const { return num_free_slots; }
 };
