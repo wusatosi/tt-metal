@@ -51,9 +51,11 @@ void kernel_main() {
     senders_to_controller_sem_ptr[0] = 0;
 
     // wait for host's signal
-    auto host_to_controller_sem_ptr =
-        reinterpret_cast<volatile tt_l1_ptr uint32_t*>(worker_config.host_to_controller_sem_address);
-    noc_semaphore_wait(host_to_controller_sem_ptr, 1);
+    if (worker_config.wait_for_host_signal) {
+        auto host_to_controller_sem_ptr =
+            reinterpret_cast<volatile tt_l1_ptr uint32_t*>(worker_config.host_to_controller_sem_address);
+        noc_semaphore_wait(host_to_controller_sem_ptr, 1);
+    }
 
     uint32_t num_remote_controllers = 0;
     for (auto i = 0; i < NUM_DIRECTIONS; i++) {

@@ -14,6 +14,7 @@ struct ControllerWorkerConfig {
 
     static ControllerWorkerConfig build_from_args(std::size_t& arg_idx) {
         uint32_t base_address = get_arg_val<uint32_t>(arg_idx++);
+        uint32_t wait_for_host_signal = get_arg_val<uint32_t>(arg_idx++);
         uint32_t num_sender_workers = get_arg_val<uint32_t>(arg_idx++);
         uint32_t num_mcast_dests = get_arg_val<uint32_t>(arg_idx++);
         uint32_t mcast_encoding = get_arg_val<uint32_t>(arg_idx++);
@@ -21,11 +22,13 @@ struct ControllerWorkerConfig {
         tt_l1_ptr uint32_t* hops_count = reinterpret_cast<tt_l1_ptr uint32_t*>(get_arg_addr(arg_idx));
         arg_idx += NUM_DIRECTIONS;
 
-        return ControllerWorkerConfig(base_address, num_sender_workers, num_mcast_dests, mcast_encoding, hops_count);
+        return ControllerWorkerConfig(
+            base_address, wait_for_host_signal, num_sender_workers, num_mcast_dests, mcast_encoding, hops_count);
     }
 
     ControllerWorkerConfig(
         uint32_t base_address,
+        uint32_t wait_for_host_signal,
         uint32_t num_sender_workers,
         uint32_t num_mcast_dests,
         uint32_t mcast_encoding,
@@ -38,6 +41,7 @@ struct ControllerWorkerConfig {
         this->worker_usable_base_address = base_address + WORKER_USABLE_BASE_ADDRESS_OFFSET;
         this->packet_header_buffer_address = this->worker_usable_base_address + MASTER_EDM_STATUS_SIZE_BYTES;
 
+        this->wait_for_host_signal = wait_for_host_signal;
         this->num_sender_workers = num_sender_workers;
         this->num_mcast_dests = num_mcast_dests;
         this->mcast_encoding = mcast_encoding;
@@ -56,6 +60,7 @@ struct ControllerWorkerConfig {
     uint32_t packet_header_buffer_address = 0;
 
     // test params
+    uint32_t wait_for_host_signal = 0;
     uint32_t num_sender_workers = 0;
     uint32_t num_mcast_dests = 0;
     uint32_t mcast_encoding = 0;

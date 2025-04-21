@@ -101,6 +101,13 @@ uint32_t time_seed = 0;
 // fold fabric connections at the corner chips to make an outer ring (could be useful for T3K)
 bool wrap_around_mesh = false;
 
+bool enable_ring = false;
+
+// Metal fabric initialization level
+// 0: No fabric initialization (setup via test framework)
+// 1: Initialize metal fabric with default settings
+uint32_t metal_fabric_init_level;
+
 tt::tt_fabric::FabricEriscDatamoverConfig get_edm_config() {
     constexpr std::size_t edm_buffer_size =
         tt::tt_fabric::FabricEriscDatamoverBuilder::default_packet_payload_size_bytes +
@@ -172,8 +179,12 @@ struct TestBoard {
         physical_chip_ids.resize(num_available_devices);
         std::iota(physical_chip_ids.begin(), physical_chip_ids.end(), chip_id_offset);
 
-        // TODO: for now, launch only as a custom fabric setting
-        tt::tt_metal::detail::InitializeFabricConfig(tt::tt_metal::FabricConfig::CUSTOM);
+        if (metal_fabric_init_level == 0) {
+            tt::tt_metal::detail::InitializeFabricConfig(tt::tt_metal::FabricConfig::CUSTOM);
+        } else if (metal_fabric_init_level == 1) {
+            tt::tt_metal::detail::InitializeFabricConfig(
+                enable_ring ? tt::tt_metal::FabricConfig::FABRIC_1D_RING : tt::tt_metal::FabricConfig::FABRIC_1D);
+        }
 
         IDevice_handle_map = tt::tt_metal::detail::CreateDevices(physical_chip_ids);
         tensix_unreserved_base_address =
@@ -186,7 +197,9 @@ struct TestBoard {
 
         _generate_chip_neighbors_map();
 
-        _generate_handshake_sequence();
+        if (metal_fabric_init_level == 0) {
+            _generate_router_handshake_chip_sequence();
+        }
     }
 
     bool is_valid_chip_id(chip_id_t physical_chip_id) {
@@ -391,7 +404,7 @@ struct TestBoard {
         return physical_chip_matrix[y][x];
     }
 
-    void _generate_handshake_sequence() {
+    void _generate_router_handshake_chip_sequence() {
         std::set<chip_id_t> mmio_chip_ids;
         for (const auto& chip_id : physical_chip_ids) {
             mmio_chip_ids.insert(
@@ -695,7 +708,11 @@ struct TestDevice {
         for (const auto& dir : routing_directions) {
             hops_count[dir] = test_board.get_max_hops_in_direction(physical_chip_id, dir);
         }
-        auto runtime_args = _get_controller_worker_rtas(hops_count);
+
+        // controller only needs to wait for the host signal for custom fabric setup
+        // otherwise the fabric routers are already up and running by the time these kernels start
+        uint32_t wait_for_host_signal = metal_fabric_init_level == 0 ? 1 : 0;
+        auto runtime_args = _get_controller_worker_rtas(wait_for_host_signal, hops_count);
 
         // loop in the order of the routing directions since map isnt guaranteed to preserve order
         for (const auto& dir : routing_directions) {
@@ -714,12 +731,14 @@ struct TestDevice {
         }
 
         std::vector<uint32_t> zero_buf(SEMAPHORE_SIZE_BYTES / 4, 0);
-        tt_metal::detail::WriteToDeviceL1(
-            IDevice_handle,
-            worker_core,
-            tensix_unreserved_base_address + HOST_TO_CONTROLLER_SEM_OFFSET,
-            zero_buf,
-            CoreType::WORKER);
+        if (wait_for_host_signal) {
+            tt_metal::detail::WriteToDeviceL1(
+                IDevice_handle,
+                worker_core,
+                tensix_unreserved_base_address + HOST_TO_CONTROLLER_SEM_OFFSET,
+                zero_buf,
+                CoreType::WORKER);
+        }
         tt_metal::detail::WriteToDeviceL1(
             IDevice_handle,
             worker_core,
@@ -832,7 +851,9 @@ struct TestDevice {
     }
 
     void compile_program() {
-        compile_fabric_router_kernels();
+        if (metal_fabric_init_level == 0) {
+            compile_fabric_router_kernels();
+        }
         compile_sender_worker_kernels();
         compile_receiever_worker_kernels();
         // compile controller at the end, since it needs info about number of senders
@@ -906,15 +927,16 @@ struct TestDevice {
     }
 
     std::vector<uint32_t> _get_controller_worker_rtas(
-        std::unordered_map<tt_fabric::RoutingDirection, uint32_t> hops_count) {
+        uint32_t wait_for_host_signal, std::unordered_map<tt_fabric::RoutingDirection, uint32_t> hops_count) {
         std::vector<uint32_t> controller_rtas = {
-            tensix_unreserved_base_address, sender_worker_virtual_cores.size(), worker_logical_cores.size()};
+            tensix_unreserved_base_address, wait_for_host_signal, sender_worker_virtual_cores.size()};
 
         // mcast encoding
         auto core_range_virtual_start = IDevice_handle->worker_core_from_logical_core(worker_logical_cores.front());
         auto core_range_virtual_end = IDevice_handle->worker_core_from_logical_core(worker_logical_cores.back());
         uint32_t mcast_encoding = tt::tt_metal::MetalContext::instance().hal().noc_multicast_encoding(
             core_range_virtual_start.x, core_range_virtual_start.y, core_range_virtual_end.x, core_range_virtual_end.y);
+        controller_rtas.push_back(worker_logical_cores.size());
         controller_rtas.push_back(mcast_encoding);
 
         std::vector<uint32_t> hops;
@@ -1201,6 +1223,8 @@ int main(int argc, char** argv) {
     benchmark_mode = test_args::has_command_option(input_args, "--benchmark_mode");
     verbose_mode = test_args::has_command_option(input_args, "--verbose");
 
+    metal_fabric_init_level = test_args::get_command_option_uint32(input_args, "--metal_fabric_init_level", 0);
+
     bool pass = true;
 
     if (default_prng_seed == prng_seed) {
@@ -1224,6 +1248,12 @@ int main(int argc, char** argv) {
 
     try {
         test_board.init(board_type);
+
+        if (metal_fabric_init_level == 0) {
+            log_info(LogTest, "Running test with custom fabric setup mode");
+        } else if (metal_fabric_init_level == 1) {
+            log_info(LogTest, "Running test with fabric setup at device init");
+        }
 
         // TODO: query the upper limit on the number of routing planes
         if (num_routing_planes > max_num_routing_planes) {
@@ -1345,23 +1375,25 @@ int main(int argc, char** argv) {
             test_device->launch_program();
         }
 
-        log_info(LogTest, "Programs launched, waiting for fabric routers sync");
-        for (const auto& chip_id : test_board.handshake_seq_chip_ids) {
-            test_devices[chip_id]->wait_for_fabric_router_sync();
+        if (metal_fabric_init_level == 0) {
+            log_info(LogTest, "Programs launched, waiting for fabric routers sync");
+            for (const auto& chip_id : test_board.handshake_seq_chip_ids) {
+                test_devices[chip_id]->wait_for_fabric_router_sync();
+            }
+
+            // do the signalling from host before the routers are kicked off to listen for traffic
+            log_info(LogTest, "Router sync done, notifying controllers");
+            for (const auto& [_, test_device] : test_devices) {
+                test_device->notify_controller_worker();
+            }
+
+            log_info(LogTest, "Controllers notified, notifying routers");
+            for (const auto& chip_id : test_board.handshake_seq_chip_ids) {
+                test_devices[chip_id]->notify_fabric_routers();
+            }
         }
 
-        // do the signalling from host before the routers are kicked off to listen for traffic
-        log_info(LogTest, "Router sync done, notifying controllers");
-        for (const auto& [_, test_device] : test_devices) {
-            test_device->notify_controller_worker();
-        }
-
-        log_info(LogTest, "Controllers notified, notifying routers");
-        for (const auto& chip_id : test_board.handshake_seq_chip_ids) {
-            test_devices[chip_id]->notify_fabric_routers();
-        }
-
-        log_info(LogTest, "Routers notified, waiting for sender workers to finish");
+        log_info(LogTest, "Routers running, waiting for sender workers to finish");
         for (const auto& [_, test_device] : test_devices) {
             test_device->wait_for_sender_workers();
         }
@@ -1371,12 +1403,14 @@ int main(int argc, char** argv) {
             test_device->wait_for_receiver_workers();
         }
 
-        log_info(LogTest, "Receiver workers done, terminating fabric routers");
-        for (const auto& [_, test_device] : test_devices) {
-            test_device->terminate_fabric_routers();
+        if (metal_fabric_init_level == 0) {
+            log_info(LogTest, "Receiver workers done, terminating fabric routers");
+            for (const auto& [_, test_device] : test_devices) {
+                test_device->terminate_fabric_routers();
+            }
         }
 
-        log_info(LogTest, "Routers terminated, waiting for programs to finish");
+        log_info(LogTest, "Waiting for programs to finish");
         for (const auto& [_, test_device] : test_devices) {
             test_device->wait_for_program_done();
         }
