@@ -147,10 +147,10 @@ struct WorkerToFabricEdmSenderImpl {
 
     FORCE_INLINE bool edm_has_space_for_packet() const {
         if constexpr (USER_DEFINED_NUM_BUFFER_SLOTS) {
-            return (this->buffer_slot_write_counter - *this->from_remote_buffer_slot_read_counter_ptr) <
+            return (this->buffer_slot_write_counter.counter - *this->from_remote_buffer_slot_read_counter_ptr) <
                    EDM_NUM_BUFFER_SLOTS;
         } else {
-            return (this->buffer_slot_write_counter - *this->from_remote_buffer_slot_read_counter_ptr) <
+            return (this->buffer_slot_write_counter.counter - *this->from_remote_buffer_slot_read_counter_ptr) <
                    this->num_buffers_per_channel;
         }
     }
@@ -273,8 +273,10 @@ struct WorkerToFabricEdmSenderImpl {
     // Must be called alongside (after) open_start().
     void open_finish() {
         noc_async_read_barrier();
-        this->buffer_slot_write_counter = *this->worker_teardown_addr;
-        this->buffer_slot_index = *this->buffer_slot_index_ptr;
+        this->buffer_slot_write_counter.counter = *this->worker_teardown_addr;
+        if constexpr (!IS_POW2_NUM_BUFFERS) {
+            this->buffer_slot_write_counter.index = BufferIndex{(uint8_t)*this->buffer_slot_index_ptr};
+        }
         *this->worker_teardown_addr = 0;
         if constexpr (!USER_DEFINED_NUM_BUFFER_SLOTS) {
             this->edm_buffer_addr =
@@ -302,7 +304,9 @@ struct WorkerToFabricEdmSenderImpl {
 
         // buffer index stored at location after handshake addr
         const uint64_t remote_buffer_index_addr = dest_noc_addr_coord_only | edm_buffer_index_addr;
-        noc_inline_dw_write(remote_buffer_index_addr, this->buffer_slot_index);
+        if constexpr (!IS_POW2_NUM_BUFFERS) {
+            noc_inline_dw_write(remote_buffer_index_addr, this->get_buffer_slot_index());
+        }
     }
 
     // Advanced usage API:
@@ -341,8 +345,9 @@ struct WorkerToFabricEdmSenderImpl {
 
     // TODO: keep a local copy that we use during the lifetime of the channel to avoid repeated L1 reads
     volatile tt_l1_ptr uint32_t* buffer_slot_index_ptr;
-    uint8_t buffer_slot_index;
-    size_t buffer_slot_write_counter;
+    // TODO: All the specialized logic regarding the buffer slot index will be cleaned up once we have a compile time
+    // value for the number of buffer slots for worker->fabric
+    ChannelCounter<EDM_NUM_BUFFER_SLOTS> buffer_slot_write_counter;
 
     uint16_t buffer_size_bytes;
     uint8_t num_buffers_per_channel;
@@ -361,32 +366,33 @@ private:
         if constexpr (stateful_api) {
             if constexpr (enable_ring_support) {
                 noc_inline_dw_write_with_state<true, false, true>(
-                    this->buffer_slot_write_counter,
+                    this->buffer_slot_write_counter.counter,
                     this->edm_buffer_slot_write_counter_addr,
                     this->sync_noc_cmd_buf,
                     noc);
             } else {
                 noc_inline_dw_write_with_state<false, false, true>(
-                    this->buffer_slot_write_counter, 0, this->sync_noc_cmd_buf, noc);
+                    this->buffer_slot_write_counter.counter, 0, this->sync_noc_cmd_buf, noc);
             }
         } else {
             const uint64_t noc_sem_addr =
                 get_noc_addr(this->edm_noc_x, this->edm_noc_y, this->edm_buffer_slot_write_counter_addr, noc);
-            noc_inline_dw_write(noc_sem_addr, this->buffer_slot_write_counter, 0xf, noc);
+            noc_inline_dw_write(noc_sem_addr, this->buffer_slot_write_counter.counter, 0xf, noc);
         }
     }
 
-    FORCE_INLINE uint8_t get_buffer_slot_index() const { return this->buffer_slot_index; }
+    FORCE_INLINE uint8_t get_buffer_slot_index() const { return this->buffer_slot_write_counter.get_buffer_index(); }
 
     FORCE_INLINE void advance_buffer_slot_write_counter() {
         if constexpr (USER_DEFINED_NUM_BUFFER_SLOTS) {
-            this->buffer_slot_index = wrap_increment<EDM_NUM_BUFFER_SLOTS>(this->buffer_slot_index);
+            this->buffer_slot_write_counter.increment();
         } else {
-            this->buffer_slot_index = wrap_increment(this->buffer_slot_index, this->num_buffers_per_channel);
+            this->buffer_slot_write_counter.counter++;
+            this->buffer_slot_write_counter.index =
+                BufferIndex{wrap_increment(this->buffer_slot_write_counter.index.get(), this->num_buffers_per_channel)};
             this->edm_buffer_addr =
                 this->edm_buffer_base_addr + (this->get_buffer_slot_index() * this->buffer_size_bytes);
         }
-        this->buffer_slot_write_counter++;
     }
 
     FORCE_INLINE uint64_t compute_dest_buffer_slot_noc_addr() const {
