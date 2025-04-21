@@ -1956,7 +1956,11 @@ def test_binary_add_uint16_bcast(input_shape_a, input_shape_b, low_a, high_a, lo
     "input_a_val, input_b_val",
     [
         (756, 100),
-        (32768, 65535),
+        (0, 0),
+        (-5, 5),
+        (-32768, 32767),
+        (0, 32767),
+        (-32768, 0),
         (11, 1),
     ],
 )
