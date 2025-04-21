@@ -384,15 +384,33 @@ class TtLlamaAttention(LightweightModule):
         #     attn_output_gathered, self.model_config["GATHER_USERS_MEMCFG"](list(self.mesh_device.shape)[1])
         # )
         # ttnn.deallocate(attn_output_gathered)
-
-        attn_output_cat = self.tt_ccl.all_gather_concat(
+        # attn_output_1G4D_sharded = ttnn.to_layout(attn_output_1G4D_sharded, ttnn.ROW_MAJOR_LAYOUT)
+        print("before untilize\n")
+        print(attn_output_1G4D_sharded)
+        attn_output_1G4D_sharded_rm = ttnn.untilize_with_unpadding(
             attn_output_1G4D_sharded,
+            output_tensor_end=(0, 7, 31, 127),
+            memory_config=sdpa_out_mem_cfg,
+        )
+        print("after untilize\n")
+        print(attn_output_1G4D_sharded_rm)
+        # ttnn.untilize_with_unpadding(attn_output_1G4D_sharded, use_multicore=True, sub_core_grids=ttnn.CoreRangeSet(
+        #        [
+        #            ttnn.CoreRange(ttnn.CoreCoord(1, 0), ttnn.CoreCoord(3, 1)),
+        #            ttnn.CoreRange(ttnn.CoreCoord(1, 2), ttnn.CoreCoord(2, 2)),
+        #        ]
+        #    ))
+        print("before all gather concat same data before\n")
+        attn_output_cat = self.tt_ccl.all_gather_concat(
+            attn_output_1G4D_sharded_rm,
             dim=1,
             cluster_axis=1,
             num_links=3,
             memory_config=self.model_config["SHARDED_ATTN_WO_INPUT_RING_MEMCFG"],
             num_heads=self.n_local_heads,
         )
+        print("after all gather concat\n")
+        print(attn_output_cat)
         # print("done concat heads")
 
         # Original matmul on each device [1, 1, 32, 1024] @ [1, 1, 1024, 2048]

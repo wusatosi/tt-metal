@@ -75,16 +75,11 @@ void nlp_concat(
     uint32_t start_row) {
     // Q
     uint32_t start = nlp_local ? start_local : batch_start_1;
-    uint32_t end = nlp_local ? start_local + 4 : batch_start_1 + (batch_end_1 - batch_start_1) / 2;
+    uint32_t end = nlp_local ? start_local + 8 : batch_end_1;
     uint32_t idx_end = nlp_local ? 1 : batch_size;
     uint32_t local_count = 0;
-    if (ROWS_TO_READ == 2) {
-        start = nlp_local ? start_local + 4 : batch_start_1 + (batch_end_1 - batch_start_1) / 2;
-        end = nlp_local ? start_local + 8 : batch_end_1;
-        local_count = 4;
-    }
 
-    uint32_t cur_core_idx = start;
+    uint32_t cur_core_idx = batch_start_1;
 
     uint64_t qkv_read_addr = get_noc_addr(in0_mcast_noc_x[cur_core_idx], in0_mcast_noc_y[cur_core_idx], q_start_addr) +
                              output_row_size * second_half_core + start_row * input_row_size;
@@ -114,12 +109,9 @@ void nlp_concat(
             second_half_core,
             start_row);
         start = batch_start_2;
-        end = batch_start_2 + (batch_end_2 - batch_start_2) / 2;
-        if (ROWS_TO_READ == 2) {
-            start = batch_start_2 + (batch_end_2 - batch_start_2) / 2;
-            end = batch_end_2;
-        }
-        cur_core_idx = start;
+        end = batch_end_2;
+
+        cur_core_idx = batch_start_2;
         qkv_read_addr = get_noc_addr(in0_mcast_noc_x[cur_core_idx], in0_mcast_noc_y[cur_core_idx], q_start_addr) +
                         output_row_size * second_half_core + start_row * input_row_size;
     }
@@ -183,4 +175,5 @@ void kernel_main() {
         in0_mcast_noc_y,
         second_half_core,
         start_row);
+    cb_push_back(cb_id_q_out, 2);
 }

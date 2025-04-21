@@ -328,7 +328,7 @@ def run_concat_fuse_impl(
         output_tensor = output_tensor[:, :, :8, :]
         output_tensor_concat = output_tensor.reshape(1, 1, 32, 1024)
         for i, t in enumerate(ttnn.get_device_tensors(tt_out_tensor)):
-            tt_output_tensor = t.cpu().to_torch()
+            tt_output_tensor = t.cpu().to(ttnn.ROW_MAJOR_LAYOUT).to_torch()
             logger.info(f"Checking for device {t.device().id()}")
 
             if input_dtype == ttnn.bfloat16:

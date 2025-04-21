@@ -245,9 +245,15 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
     uint32_t q_output_cb_index = tt::CBIndex::c_16;
     tt::tt_metal::CircularBufferConfig cb_q_output_config =
         tt::tt_metal::CircularBufferConfig(output_tensor.get_padded_shape()[-2] * row_size, {{q_output_cb_index, df}})
-            .set_page_size(q_output_cb_index, row_size)
+            .set_page_size(q_output_cb_index, single_tile_size)
             .set_globally_allocated_address(*output_tensor.buffer());
     auto cb_q_output = tt::tt_metal::CreateCircularBuffer(program, q_cores, cb_q_output_config);
+
+    uint32_t pre_tilize_cb_index = tt::CBIndex::c_17;
+    tt::tt_metal::CircularBufferConfig cb_pre_tilize_config =
+        tt::tt_metal::CircularBufferConfig(output_tensor.get_padded_shape()[-2] * row_size, {{pre_tilize_cb_index, df}})
+            .set_page_size(pre_tilize_cb_index, single_tile_size);
+    auto cb_pre_tilize = tt::tt_metal::CreateCircularBuffer(program, q_cores, cb_pre_tilize_config);
 
     llama_config llama_configuration;
     std::vector<CoreRange> q_cores_vector;
@@ -298,7 +304,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
     uint32_t concat_semaphore_id2 = tt::tt_metal::CreateSemaphore(program, sem_cores_updated, 0);
 
     std::vector<uint32_t> concat_reader_ct_args = {
-        q_output_cb_index,
+        pre_tilize_cb_index,
         first_phase,
         in_num_cores,
         batch_size,
@@ -321,6 +327,26 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
             .noc = reader_noc,
             .compile_args = concat_reader_ct_args});
 
+    std::vector<uint32_t> tilize_ct_args = {
+        q_output_cb_index,
+    };
+    auto tilize_kernel_id = tt::tt_metal::CreateKernel(
+        program,
+        "ttnn/cpp/ttnn/operations/experimental/ccl/all_gather_concat_heads_fused/device/kernels/"
+        "tilize_writer.cpp",
+        q_cores_updated,
+        tt::tt_metal::DataMovementConfig{
+            .processor = tt::tt_metal::DataMovementProcessor::RISCV_0,
+            .noc = writer_noc,
+            .compile_args = tilize_ct_args});
+
+    auto tilize_compute_kernel_id = tt::tt_metal::CreateKernel(
+        program,
+        "ttnn/cpp/ttnn/operations/experimental/ccl/all_gather_concat_heads_fused/device/kernels/tilize_compute.cpp",
+        q_cores_updated,
+        tt::tt_metal::ComputeConfig{.compile_args = {1, 2}});
+
+    /*
     concat_reader_ct_args[1] = second_phase;
     auto concat_reader_2_kernel_id = tt::tt_metal::CreateKernel(
         program,
@@ -331,7 +357,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
             .processor = tt::tt_metal::DataMovementProcessor::RISCV_0,
             .noc = writer_noc,
             .compile_args = concat_reader_ct_args});
-
+    */
     // KERNEL CREATION
     // Reader
 
@@ -569,7 +595,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
             reader_runtime_args.push_back(i / 2);
 
             tt::tt_metal::SetRuntimeArgs(program, concat_reader_kernel_id, core, reader_runtime_args);
-            tt::tt_metal::SetRuntimeArgs(program, concat_reader_2_kernel_id, core, reader_runtime_args);
+            // tt::tt_metal::SetRuntimeArgs(program, concat_reader_2_kernel_id, core, reader_runtime_args);
         }
     }
     uint32_t num_concat_worker_cores = llama_configuration.concat_num_cores;
@@ -582,7 +608,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
          cb_q_output,
          cores,
          concat_reader_kernel_id,
-         concat_reader_2_kernel_id,
+         // concat_reader_2_kernel_id,
          face_h,
          sub_tile_line_bytes](
             const void* operation,
@@ -625,9 +651,9 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
                 concat_reader_runtime_args[0] = q_start_addr;
                 concat_reader_runtime_args[1] = input.buffer()->address();
 
-                auto& concat_reader_2_runtime_args = GetRuntimeArgs(program, concat_reader_2_kernel_id, core);
-                concat_reader_2_runtime_args[0] = q_start_addr;
-                concat_reader_2_runtime_args[1] = input.buffer()->address();
+                // auto& concat_reader_2_runtime_args = GetRuntimeArgs(program, concat_reader_2_kernel_id, core);
+                // concat_reader_2_runtime_args[0] = q_start_addr;
+                // concat_reader_2_runtime_args[1] = input.buffer()->address();
             }
         };
     return {.program = std::move(program), .override_runtime_arguments_callback = override_runtime_arguments_callback};

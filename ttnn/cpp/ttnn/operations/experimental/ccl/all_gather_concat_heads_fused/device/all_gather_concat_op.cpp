@@ -93,8 +93,7 @@ void AllGatherConcat::validate(const std::vector<Tensor>& input_tensors) const {
     CoreCoord grid_size = input_tensors[0].device()->compute_with_storage_grid_size();
     TT_FATAL(grid_size.x >= 3 && grid_size.y >= 3, "Input core grid out of bound!");
     TT_FATAL(
-        padded_input_shape[0] == 1 && padded_input_shape[1] == 8 && padded_input_shape[2] == 32 &&
-            padded_input_shape[3] == 128,
+        padded_input_shape[0] == 1 && padded_input_shape[1] == 8 && padded_input_shape[3] == 128,
         "Unsupported input shape, should be [1, 8, 32, 128]!");
 }
 
@@ -131,8 +130,7 @@ std::vector<ttnn::TensorSpec> AllGatherConcat::compute_output_specs(const std::v
     Shape output_shape({sequence_length, 1, batch, hidden_dim});
     return {TensorSpec(
         output_shape,
-        tt::tt_metal::TensorLayout(
-            input_tensor.get_dtype(), tt::tt_metal::Layout::ROW_MAJOR, this->output_mem_config))};
+        tt::tt_metal::TensorLayout(input_tensor.get_dtype(), tt::tt_metal::Layout::TILE, this->output_mem_config))};
 }
 
 tt::tt_metal::operation::ProgramWithCallbacks AllGatherConcat::create_program(
