@@ -24,8 +24,10 @@ void kernel_main() {
 
 #ifndef BENCHMARK_MODE
     std::array<uint32_t, MAX_NUM_SENDERS_PER_RECEIVER> sender_seeds;
+    std::array<uint32_t, MAX_NUM_SENDERS_PER_RECEIVER> expected_values;
     std::array<tt_l1_ptr uint32_t*, MAX_NUM_SENDERS_PER_RECEIVER> payload_start_addresses;
     std::array<volatile tt_l1_ptr uint32_t*, MAX_NUM_SENDERS_PER_RECEIVER> poll_addresses;
+    std::array<uint32_t, MAX_NUM_SENDERS_PER_RECEIVER> num_processed_packets;
 
     // setup seed and addresses
     for (uint32_t i = 0; i < MAX_NUM_SENDERS_PER_RECEIVER; i++) {
@@ -33,10 +35,12 @@ void kernel_main() {
             continue;
         }
 
-        sender_seeds[i] = worker_config.time_seed ^ worker_config.sender_ids[i];
+        sender_seeds[i] = prng_next(worker_config.time_seed ^ worker_config.sender_ids[i]);
+        expected_values[i] = sender_seeds[i] + (worker_config.packet_payload_size_bytes / 16) - 1;
         payload_start_addresses[i] = reinterpret_cast<tt_l1_ptr uint32_t*>(worker_config.target_addresses[i]);
         poll_addresses[i] = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(
             worker_config.target_addresses[i] + worker_config.packet_payload_size_bytes - 4);
+        num_processed_packets[i] = 0;
     }
 #endif
 
@@ -44,19 +48,24 @@ void kernel_main() {
     bool match = true;
     uint64_t bytes_received = 0;
 
-    // for each packet, check in every direction so that we can validate packets before
-    // the sender wrap arounds
-    for (uint32_t packet_id = 0; packet_id < worker_config.num_packets; packet_id++) {
+    bool packets_left = true;
+    while (packets_left) {
+        packets_left = false;
+
         for (uint32_t i = 0; i < MAX_NUM_SENDERS_PER_RECEIVER; i++) {
-            if (worker_config.sender_ids[i] == INVALID_SENDER_ID) {
+            // skip if invalid sender or if all packets for this sender have been processed
+            if (worker_config.sender_ids[i] == INVALID_SENDER_ID ||
+                num_processed_packets[i] == worker_config.num_packets) {
                 continue;
             }
 
-#ifndef BENCHMARK_MODE
-            sender_seeds[i] = prng_next(sender_seeds[i]);
-            uint32_t expected_val = sender_seeds[i] + (worker_config.packet_payload_size_bytes / 16) - 1;
+            packets_left = true;
 
-            while (expected_val != *poll_addresses[i]);
+#ifndef BENCHMARK_MODE
+            // skip this sender for now and check if there are packets from any other senders
+            if (expected_values[i] != *poll_addresses[i]) {
+                continue;
+            }
 
             match = check_packet_data(
                 payload_start_addresses[i],
@@ -64,11 +73,13 @@ void kernel_main() {
                 sender_seeds[i],
                 mismatch_addr,
                 mismatch_val,
-                expected_val);
+                expected_values[i]);
             if (!match) {
                 break;
             }
 
+            sender_seeds[i] = prng_next(sender_seeds[i]);
+            expected_values[i] = sender_seeds[i] + (worker_config.packet_payload_size_bytes / 16) - 1;
             payload_start_addresses[i] += worker_config.packet_payload_size_bytes / 4;
             poll_addresses[i] += worker_config.packet_payload_size_bytes / 4;
             // reset addresses if next packet runs out of bounds
@@ -79,6 +90,8 @@ void kernel_main() {
                     worker_config.target_addresses[i] + worker_config.packet_payload_size_bytes - 4);
             }
 #endif
+
+            num_processed_packets[i]++;
             bytes_received += worker_config.packet_payload_size_bytes;
         }
 
@@ -86,6 +99,51 @@ void kernel_main() {
             break;
         }
     }
+
+    /*
+        // for each packet, check in every direction so that we can validate packets before
+        // the sender wrap arounds
+        for (uint32_t packet_id = 0; packet_id < worker_config.num_packets; packet_id++) {
+            for (uint32_t i = 0; i < MAX_NUM_SENDERS_PER_RECEIVER; i++) {
+                if (worker_config.sender_ids[i] == INVALID_SENDER_ID) {
+                    continue;
+                }
+
+    #ifndef BENCHMARK_MODE
+                sender_seeds[i] = prng_next(sender_seeds[i]);
+                uint32_t expected_val = sender_seeds[i] + (worker_config.packet_payload_size_bytes / 16) - 1;
+
+                while (expected_val != *poll_addresses[i]);
+
+                match = check_packet_data(
+                    payload_start_addresses[i],
+                    worker_config.packet_payload_size_bytes / 16,
+                    sender_seeds[i],
+                    mismatch_addr,
+                    mismatch_val,
+                    expected_val);
+                if (!match) {
+                    break;
+                }
+
+                payload_start_addresses[i] += worker_config.packet_payload_size_bytes / 4;
+                poll_addresses[i] += worker_config.packet_payload_size_bytes / 4;
+                // reset addresses if next packet runs out of bounds
+                if ((uint32_t)payload_start_addresses[i] + worker_config.packet_payload_size_bytes >
+                    worker_config.target_addresses[i] + L1_BUFFER_SIZE_PER_SENDER_BYTES) {
+                    payload_start_addresses[i] = reinterpret_cast<tt_l1_ptr
+    uint32_t*>(worker_config.target_addresses[i]); poll_addresses[i] = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(
+                        worker_config.target_addresses[i] + worker_config.packet_payload_size_bytes - 4);
+                }
+    #endif
+                bytes_received += worker_config.packet_payload_size_bytes;
+            }
+
+            if (!match) {
+                break;
+            }
+        }
+    */
 
     if (!match) {
         test_results[TT_FABRIC_STATUS_INDEX] = TT_FABRIC_STATUS_DATA_MISMATCH;

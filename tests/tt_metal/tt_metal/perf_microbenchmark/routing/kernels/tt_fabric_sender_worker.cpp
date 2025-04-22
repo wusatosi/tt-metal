@@ -74,10 +74,6 @@ void kernel_main() {
     zero_l1_buf(test_results, TEST_RESULTS_SIZE_BYTES);
     test_results[TT_FABRIC_STATUS_INDEX] = TT_FABRIC_STATUS_STARTED;
 
-    uint64_t noc_dest_addr_l = get_noc_addr_helper(worker_config.receiver_noc_encoding, worker_config.target_address);
-    uint64_t noc_dest_addr_h = noc_dest_addr_l + L1_BUFFER_SIZE_PER_SENDER_BYTES;
-    uint64_t noc_dest_addr = noc_dest_addr_l;
-
     // notify controller worker that this sender is ready
     uint64_t controller_sem_noc_address =
         get_noc_addr_helper(worker_config.controller_noc_encoding, worker_config.senders_to_controller_sem_address);
@@ -88,6 +84,9 @@ void kernel_main() {
         reinterpret_cast<volatile tt_l1_ptr uint32_t*>(worker_config.controller_to_workers_sem_address);
     noc_semaphore_wait(controller_to_workers_sem_ptr, 1);
 
+    uint64_t noc_dest_addr_l = get_noc_addr_helper(worker_config.receiver_noc_encoding, worker_config.target_address);
+    uint64_t noc_dest_addr_h = noc_dest_addr_l + L1_BUFFER_SIZE_PER_SENDER_BYTES;
+    uint64_t noc_dest_addr = noc_dest_addr_l;
     for (auto i = 0; i < NUM_DIRECTIONS; i++) {
         if (worker_config.hops_count[i] == 0) {
             continue;
@@ -100,6 +99,24 @@ void kernel_main() {
             noc_dest_addr,
             worker_config.is_mcast_enabled[i],
             worker_config.hops_count[i]);
+    }
+
+    tt_l1_ptr uint32_t* start_addr = reinterpret_cast<tt_l1_ptr uint32_t*>(worker_config.payload_buffer_address);
+    fill_packet_data(start_addr, worker_config.packet_payload_size_bytes / 16, 0);
+    // send warm-up packets to saturate buffers
+    for (auto warmup_iter = 0; warmup_iter < 1000; warmup_iter++) {
+        for (auto i = 0; i < NUM_DIRECTIONS; i++) {
+            if (worker_config.hops_count[i] == 0) {
+                continue;
+            }
+
+            send_packet(
+                fabric_connection_handles[i],
+                packet_headers[i],
+                worker_config.payload_buffer_address,
+                worker_config.packet_payload_size_bytes,
+                noc_dest_addr);
+        }
     }
 
     uint64_t start_timestamp = get_timestamp();

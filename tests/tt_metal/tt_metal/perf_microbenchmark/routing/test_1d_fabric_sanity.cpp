@@ -455,7 +455,11 @@ struct TestDevice {
     std::vector<CoreCoord> sender_worker_virtual_cores;
     // [sender_chip_id] -> {(routing_plane_id)}
     std::unordered_map<chip_id_t, std::set<uint32_t>> receiver_workers_config;
-    std::vector<CoreCoord> receiver_worker_virtual_cores;
+    // {(virtual_core, num_senders)}
+    std::vector<std::pair<CoreCoord, uint32_t>> receiver_worker_virtual_cores;
+
+    std::vector<std::vector<uint32_t>> sender_workers_results;
+    std::vector<std::vector<uint32_t>> receiver_workers_results;
 
     // For now, max_num_routing_planes workers are reserved as senders
     // and 2 as misc workers, rest can be used as receivers
@@ -828,7 +832,8 @@ struct TestDevice {
     void compile_receiever_worker_kernels() {
         for (const auto& [sender_physical_chip_id, routing_plane_ids] : receiver_workers_config) {
             auto worker_core = _get_receiver_worker_core(sender_physical_chip_id);
-            receiver_worker_virtual_cores.push_back(IDevice_handle->worker_core_from_logical_core(worker_core));
+            receiver_worker_virtual_cores.push_back(
+                std::make_pair(IDevice_handle->worker_core_from_logical_core(worker_core), routing_plane_ids.size()));
             auto kernel_handle = tt_metal::CreateKernel(
                 program_handle,
                 receiver_kernel_src,
@@ -879,7 +884,7 @@ struct TestDevice {
     void wait_for_receiver_workers() {
         // poll the test results register
         // should poll the controller kernel instead?
-        for (const auto& core : receiver_worker_virtual_cores) {
+        for (const auto& [core, _] : receiver_worker_virtual_cores) {
             while (true) {
                 auto status = tt::llrt::read_hex_vec_from_core(
                     physical_chip_id, core, tensix_unreserved_base_address + TEST_RESULTS_ADDRESS_OFFSET, 4);
@@ -890,14 +895,100 @@ struct TestDevice {
         }
     }
 
-    void collect_results() {
-        // status should be 'pass'
-        // number of packets should match the global settings
+    bool collect_results() {
+        // sender results
+        for (const auto& sender_core : sender_worker_virtual_cores) {
+            auto results = tt::llrt::read_hex_vec_from_core(
+                physical_chip_id,
+                sender_core,
+                tensix_unreserved_base_address + TEST_RESULTS_ADDRESS_OFFSET,
+                TEST_RESULTS_SIZE_BYTES);
+            if (verbose_mode) {
+                log_info(
+                    LogTest,
+                    "[Device: Phys: {}] Sender: {}, status: {}",
+                    physical_chip_id,
+                    sender_core,
+                    tt_fabric_status_to_string(results[TT_FABRIC_STATUS_INDEX]));
+            }
+            if (results[TT_FABRIC_STATUS_INDEX] != TT_FABRIC_STATUS_PASS) {
+                log_fatal(
+                    LogTest,
+                    "[Device: Phys: {}] Sender: {} failed, aborting further results collection",
+                    physical_chip_id,
+                    sender_core);
+                return false;
+            }
+            sender_workers_results.push_back(std::move(results));
+        }
 
-        // for rx kernels it should be multiplied by the number of senders (one chip but multiple links)
+        // receiver results
+        for (const auto& [receiver_core, _] : receiver_worker_virtual_cores) {
+            auto results = tt::llrt::read_hex_vec_from_core(
+                physical_chip_id,
+                receiver_core,
+                tensix_unreserved_base_address + TEST_RESULTS_ADDRESS_OFFSET,
+                TEST_RESULTS_SIZE_BYTES);
+            if (verbose_mode) {
+                log_info(
+                    LogTest,
+                    "[Device: Phys: {}] Receiver: {}, status: {}",
+                    physical_chip_id,
+                    receiver_core,
+                    tt_fabric_status_to_string(results[TT_FABRIC_STATUS_INDEX]));
+            }
+
+            if (results[TT_FABRIC_STATUS_INDEX] != TT_FABRIC_STATUS_PASS) {
+                log_fatal(
+                    LogTest,
+                    "[Device: Phys: {}] Receiver: {} failed, aborting further results collection",
+                    physical_chip_id,
+                    receiver_core);
+                return false;
+            }
+            receiver_workers_results.push_back(std::move(results));
+        }
+
+        return true;
     }
 
-    void validate_results() {}
+    bool validate_results() {
+        uint64_t sender_expected_num_bytes = packet_payload_size_bytes * num_packets;
+        for (auto i = 0; i < sender_worker_virtual_cores.size(); i++) {
+            uint64_t sender_num_bytes = ((uint64_t)sender_workers_results[i][TT_FABRIC_WORD_CNT_INDEX + 1] << 32) |
+                                        sender_workers_results[i][TT_FABRIC_WORD_CNT_INDEX];
+            if (sender_num_bytes != sender_expected_num_bytes) {
+                log_fatal(
+                    LogTest,
+                    "[Device: Phys: {}] Sender: {}, expected bytes {} do not match transferred bytes {}, aborting",
+                    physical_chip_id,
+                    sender_worker_virtual_cores[i],
+                    sender_expected_num_bytes,
+                    sender_num_bytes);
+                return false;
+            }
+        }
+
+        for (auto i = 0; i < receiver_worker_virtual_cores.size(); i++) {
+            // num_senders * num_packets * packet_payload_size_bytes
+            uint64_t receiver_expected_num_bytes =
+                receiver_worker_virtual_cores[i].second * num_packets * packet_payload_size_bytes;
+            uint64_t receiver_num_bytes = ((uint64_t)receiver_workers_results[i][TT_FABRIC_WORD_CNT_INDEX + 1] << 32) |
+                                          receiver_workers_results[i][TT_FABRIC_WORD_CNT_INDEX];
+            if (receiver_num_bytes != receiver_expected_num_bytes) {
+                log_fatal(
+                    LogTest,
+                    "[Device: Phys: {}] Receiver: {}, expected bytes {} do not match processed bytes {}, aborting",
+                    physical_chip_id,
+                    receiver_worker_virtual_cores[i].first,
+                    receiver_expected_num_bytes,
+                    receiver_num_bytes);
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     void wait_for_program_done() { tt_metal::detail::WaitProgramDone(IDevice_handle, program_handle); }
 
@@ -1027,150 +1118,6 @@ struct TestFabricTraffic {
             rx_logical_cores.push_back(rx_logical_core);
             rx_virtual_cores.push_back(rx_device->IDevice_handle->worker_core_from_logical_core(rx_logical_core));
         }
-    }
-
-    void build_worker_kernels() {
-        // TODO get these propagated from the command line args
-        uint32_t packet_header_address = 0x25000;
-        uint32_t source_l1_buffer_address = 0x30000;
-        uint32_t packet_payload_size_bytes = 4096;
-        uint32_t num_packets = 5;
-        uint32_t test_results_address = 0x100000;
-        uint32_t test_results_size_bytes = 128;
-        uint32_t target_address = 0x30000;
-        uint32_t notfication_address = 0x24000;
-
-        std::map<string, string> defines;
-        std::vector<uint32_t> zero_buf(1, 0);
-
-        // build sender kernel
-        std::vector<uint32_t> compile_args = {test_results_address, test_results_size_bytes, target_address};
-
-        std::vector<uint32_t> tx_runtime_args = {
-            packet_header_address,
-            source_l1_buffer_address,
-            packet_payload_size_bytes,
-            num_packets,
-            num_hops,
-            rx_devices[0]->get_noc_encoding(rx_logical_cores[0]),
-            time_seed,
-        };
-
-        auto edm_rt_args = tx_device->generate_edm_connection_rt_args(tx_eth_chan, {tx_logical_core});
-        for (auto& arg : edm_rt_args) {
-            tx_runtime_args.push_back(arg);
-        }
-
-        // zero out host notification address
-        tt::llrt::write_hex_vec_to_core(tx_device->chip_id, tx_virtual_core, zero_buf, notfication_address);
-
-        auto tx_kernel = tt_metal::CreateKernel(
-            tx_device->program_handle,
-            tx_kernel_src,
-            {tx_logical_core},
-            tt_metal::DataMovementConfig{
-                .processor = tt_metal::DataMovementProcessor::RISCV_0,
-                .noc = tt_metal::NOC::RISCV_0_default,
-                .compile_args = compile_args,
-                .defines = defines});
-
-        tt_metal::SetRuntimeArgs(tx_device->program_handle, tx_kernel, tx_logical_core, tx_runtime_args);
-
-        std::cout << "num hops: " << num_hops << std::endl;
-
-        log_info(
-            LogTest,
-            "[Device: Phys: {}] TX running on: logical: x={},y={}, virtual: x{},y={}, Eth chan: {}",
-            tx_device->chip_id,
-            tx_logical_core.x,
-            tx_logical_core.y,
-            tx_virtual_core.x,
-            tx_virtual_core.y,
-            (uint32_t)tx_eth_chan);
-
-        // build receiver kernel(s)
-        std::vector<uint32_t> rx_runtime_args = {packet_payload_size_bytes, num_packets, time_seed};
-
-        auto rx_kernel = tt_metal::CreateKernel(
-            rx_devices[0]->program_handle,
-            rx_kernel_src,
-            {rx_logical_cores[0]},
-            tt_metal::DataMovementConfig{
-                .processor = tt_metal::DataMovementProcessor::RISCV_0,
-                .noc = tt_metal::NOC::RISCV_0_default,
-                .compile_args = compile_args,
-                .defines = defines});
-
-        tt_metal::SetRuntimeArgs(rx_devices[0]->program_handle, rx_kernel, rx_logical_cores[0], rx_runtime_args);
-
-        log_info(
-            LogTest,
-            "[Device: Phys: {}] RX running on: logical: x={},y={}, virtual: x{},y={}",
-            rx_devices[0]->chip_id,
-            rx_logical_cores[0].x,
-            rx_logical_cores[0].y,
-            rx_virtual_cores[0].x,
-            rx_virtual_cores[0].y);
-    }
-
-    void notify_tx_worker() {
-        uint32_t notfication_address = 0x24000;
-        std::vector<uint32_t> start_signal(1, 1);
-        tt::llrt::write_hex_vec_to_core(tx_device->chip_id, tx_virtual_core, start_signal, notfication_address);
-    }
-
-    bool collect_results() {
-        uint32_t test_results_address = 0x100000;
-        bool pass = true;
-
-        // collect tx results
-        // TODO: avoid invoking the device handle directly
-        CoreCoord tx_virtual_core = tx_device->IDevice_handle->worker_core_from_logical_core(tx_logical_core);
-        tx_results = tt::llrt::read_hex_vec_from_core(tx_device->chip_id, tx_virtual_core, test_results_address, 128);
-        log_info(
-            LogTest,
-            "[Device: Phys: {}] TX status = {}",
-            tx_device->chip_id,
-            tt_fabric_status_to_string(tx_results[TT_FABRIC_STATUS_INDEX]));
-        pass &= (tx_results[TT_FABRIC_STATUS_INDEX] == TT_FABRIC_STATUS_PASS);
-
-        // collect rx results
-        // TODO: avoid invoking the device handle directly
-        for (auto i = 0; i < rx_devices.size(); i++) {
-            CoreCoord rx_virtual_core =
-                rx_devices[i]->IDevice_handle->worker_core_from_logical_core(rx_logical_cores[i]);
-            rx_results.push_back(
-                tt::llrt::read_hex_vec_from_core(rx_devices[i]->chip_id, rx_virtual_core, test_results_address, 128));
-            log_info(
-                LogTest,
-                "[Device: Phys: {}] RX{} status = {}",
-                rx_devices[i]->chip_id,
-                i,
-                tt_fabric_status_to_string(rx_results[i][TT_FABRIC_STATUS_INDEX]));
-            pass &= (rx_results[i][TT_FABRIC_STATUS_INDEX] == TT_FABRIC_STATUS_PASS);
-        }
-
-        return pass;
-    }
-
-    bool validate_results() {
-        bool pass = true;
-        uint64_t num_tx_bytes =
-            ((uint64_t)tx_results[TT_FABRIC_WORD_CNT_INDEX + 1] << 32) | tx_results[TT_FABRIC_WORD_CNT_INDEX];
-        uint64_t num_rx_bytes;
-
-        // tally-up data words and number of packets from rx and tx
-        for (auto i = 0; i < rx_results.size(); i++) {
-            num_rx_bytes =
-                ((uint64_t)rx_results[i][TT_FABRIC_WORD_CNT_INDEX + 1] << 32) | rx_results[i][TT_FABRIC_WORD_CNT_INDEX];
-            pass &= (num_tx_bytes == num_rx_bytes);
-
-            if (!pass) {
-                break;
-            }
-        }
-
-        return pass;
     }
 
     void print_result_summary() {
@@ -1434,15 +1381,25 @@ int main(int argc, char** argv) {
 
         log_info(LogTest, "Programs finished, collecting results");
         for (const auto& [_, test_device] : test_devices) {
-            test_device->collect_results();
+            pass &= test_device->collect_results();
+            if (!pass) {
+                break;
+            }
         }
 
         log_info(LogTest, "Results collected, closing devices");
         test_board.close_devices();
 
-        log_info(LogTest, "Closed devices, validating results");
-        for (const auto& [_, test_device] : test_devices) {
-            test_device->validate_results();
+        if (pass) {
+            log_info(LogTest, "Closed devices, validating results");
+            for (const auto& [_, test_device] : test_devices) {
+                pass &= test_device->validate_results();
+                if (!pass) {
+                    break;
+                }
+            }
+        } else {
+            log_fatal(LogTest, "Skipped result validation since test failed");
         }
 
         // TODO: print result summary
