@@ -142,16 +142,16 @@ void kernel_main() {
     DPRINT << "packet size in pages: " << (uint32_t)packet_size_in_pages << "\n";
 
     bool cur_is_forward = num_targets_forward_direction > num_targets_backward_direction;
-    uint32_t forward_hops = num_targets_forward_direction;
-    uint32_t backward_hops = num_targets_backward_direction;
+    uint32_t forward_hops = 1;
+    uint32_t backward_hops = 1;
     uint32_t dst_ring_id;
     for (uint32_t i = 0; i < ring_size - 1; ++i) {
         if (cur_is_forward) {
             pkt_hdr_forward->to_chip_unicast(forward_hops);
-            forward_hops--;
+            forward_hops++;
         } else {
             pkt_hdr_backward->to_chip_unicast(backward_hops);
-            backward_hops--;
+            backward_hops++;
         }
 
         for (uint32_t out_row_id = out_row_start; out_row_id < out_row_end; out_row_id++) {
