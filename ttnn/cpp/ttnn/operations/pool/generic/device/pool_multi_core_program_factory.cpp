@@ -104,7 +104,7 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
     // CBs
     uint32_t multi_buffering_factor = 2;
 
-    uint32_t split_reader = 1;
+    uint32_t split_reader = 0;
 
     // scalar CB as coefficient of reduce
     using tt::tt_metal::CBHandle;

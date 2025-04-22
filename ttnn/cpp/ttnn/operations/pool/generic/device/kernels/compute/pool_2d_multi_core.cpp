@@ -20,7 +20,7 @@ inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize 
     DPRINT_PACK(DPRINT << "======" << ENDL());
     for (uint32_t r = 0; r < 32; ++r) {
         SliceRange sr = SliceRange{.h0 = (uint8_t)r, .h1 = (uint8_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
-        DPRINT_PACK(DPRINT << r << " " << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL());
+        DPRINT_UNPACK(DPRINT << r << " " << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL());
     }
     DPRINT_PACK(DPRINT << "++++++" << ENDL());
 }
@@ -50,29 +50,34 @@ inline void reduce_h_fused(
     constexpr uint32_t num_faces_in_tile = is_partial_tile ? 1 : 2;
     constexpr uint32_t num_out_rows = 1;
     const uint32_t curr_in_cb_id = (split_reader && (in_stick_index & 0x1)) ? in_cb_id_1 : in_cb_id_0;
-    int reduce_dst_idx = 0;
-
-    tilize_in(curr_in_cb_id, num_output_tiles, in_cb_id_tilized_0);
-
+    int reduce_dst_idx = 1;
+    // tilize_in(curr_in_cb_id, num_output_tiles, in_cb_id_tilized_0);
     cb_reserve_back(out_cb_id, num_output_tiles);
     tile_regs_acquire();
-    reduce_init_short(in_cb_id_tilized_0, in_scalar_cb_id, out_cb_id);
-    for (uint32_t c_i = 0; c_i < num_output_tiles; ++c_i) {
-        cb_wait_front(in_cb_id_tilized_0, 1);
-        reduce_tile(in_cb_id_tilized_0, in_scalar_cb_id, 0, 0, reduce_dst_idx++);
-        cb_pop_front(in_cb_id_tilized_0, 1);
+
+    cb_wait_front(curr_in_cb_id, num_output_tiles);
+
+    static_assert(REDUCE_OP == PoolType::MAX || REDUCE_OP == PoolType::SUM, "Only supports REDUCE_OP = MAX or Sum");
+    constexpr bool neginf_srca_maxpool = (REDUCE_OP == PoolType::MAX) ? true : false;
+    constexpr bool zero_srca_avgpool = (REDUCE_OP == PoolType::SUM) ? true : false;
+    reduce_init<true>(curr_in_cb_id, in_scalar_cb_id, out_cb_id);
+    tilizeA_B_reduce_init<neginf_srca_maxpool, zero_srca_avgpool>(
+        curr_in_cb_id, in_scalar_cb_id, num_output_tiles, out_cb_id, num_faces_in_tile, unpA_face_r_dim);
+
+    for (uint32_t c_i = 0; c_i < num_output_tiles; c_i++) {
+        reduce_tile_faces(curr_in_cb_id, in_scalar_cb_id, c_i, 0, c_i, num_faces_in_tile);
+        // dprint_tensix_dest_reg(c_i);
     }
-    tile_regs_commit();
-    // print_full_tile(in_scalar_cb_id, 0);
-    // print_full_tile_math(out_cb_id, 0);
-    // print_full_tile(out_cb_id, 0);
+    cb_pop_front(curr_in_cb_id, num_output_tiles);
+
     tile_regs_wait();
+    tile_regs_commit();
     pack_untilize_dst_init_short<num_output_tiles>(out_cb_id, num_out_rows, num_faces_in_tile);
+
     pack_untilize_dst<num_output_tiles>(
         out_cb_id, 1 /*out_subblock_h*/, 0, num_out_rows, num_faces_in_tile); /* pack 1 row (1x16 or 1x32) */
     tile_regs_release();
     cb_push_back(out_cb_id, num_output_tiles);
-    // print_full_tile(out_cb_id, 0);
 }
 
 namespace NAMESPACE {
@@ -113,7 +118,7 @@ void MAIN {
     constexpr bool neginf_srca_maxpool = (REDUCE_OP == PoolType::MAX) ? true : false;
     constexpr bool zero_srca_avgpool = (REDUCE_OP == PoolType::SUM) ? true : false;
 
-    reduce_init<false>(in_cb_id_tilized_0, in_scalar_cb_id, out_cb_id);
+    reduce_init<true>(in_cb_id_0, in_scalar_cb_id, out_cb_id);
     cb_wait_front(in_scalar_cb_id, 1);
     for (uint32_t i = 0; i < nsticks_per_core; ++i) {
         // perform the reduction over the first N - 1 whole chunks
