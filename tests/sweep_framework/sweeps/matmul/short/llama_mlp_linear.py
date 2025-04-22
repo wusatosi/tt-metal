@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: © 2023 Tenstorrent Inc.
+# SPDX-FileCopyrightText: 2023 Tenstorrent Inc.
 
 # SPDX-License-Identifier: Apache-2.0
 
@@ -42,9 +42,14 @@ from models.utility_functions import (
         16384,
     ],
 )
-@pytest.mark.parametrize("batch_size", [1])
-def test_ff1(device, seq_len, batch_size):
-    in0_shape = (batch_size, seq_len // 1024, 1024, 2048) if seq_len > 1024 else (batch_size, 1, seq_len, 2048)
+@pytest.mark.parametrize("use_matmul", [True, False], ids=["matmul", "linear"])
+@pytest.mark.parametrize("split_sequence", [True, False], ids=["split_sequence", "no_split_sequence"])
+@pytest.mark.parametrize("l1_activations", [True, False], ids=["l1_activations", "dram_activations"])
+def test_ff1(device, seq_len, use_matmul, split_sequence, l1_activations):
+    if split_sequence and seq_len <= 1024:
+        pytest.skip("Sequence length must be greater than 1024 when split_sequence is True")
+
+    in0_shape = (1, seq_len // 1024, 1024, 2048) if split_sequence else (1, 1, seq_len, 2048)
     in1_shape = (1, 1, 2048, 3584)
 
     in0_torch = torch.randn(in0_shape)
@@ -56,7 +61,7 @@ def test_ff1(device, seq_len, batch_size):
         in0_torch,
         device=device,
         dtype=ttnn.bfloat8_b,
-        memory_config=ttnn.DRAM_MEMORY_CONFIG,
+        memory_config=ttnn.L1_MEMORY_CONFIG if l1_activations else ttnn.DRAM_MEMORY_CONFIG,
         layout=ttnn.TILE_LAYOUT,
     )
 
@@ -82,31 +87,56 @@ def test_ff1(device, seq_len, batch_size):
         ),
         layout=ttnn.TILE_LAYOUT,
     )
-
-    out_tt = ttnn.linear(
-        in0_tt,
-        in1_tt,
-        compute_kernel_config=ttnn.WormholeComputeKernelConfig(
-            math_fidelity=ttnn.MathFidelity.LoFi,
-            math_approx_mode=False,
-            fp32_dest_acc_en=False,
-            packer_l1_acc=True,
-            dst_full_sync_en=True,
-        ),
-        program_config=ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
-            compute_with_storage_grid_size=(7, 10),
-            in0_block_w=8,
-            out_subblock_h=1,
-            out_subblock_w=4,
-            out_block_h=8,
-            out_block_w=16,
-            per_core_M=8,
-            per_core_N=16,
-            transpose_mcast=False,
-            fused_activation=None,
-            fuse_batch=False,
-        ),
-    )
+    if use_matmul:
+        out_tt = ttnn.matmul(
+            in0_tt,
+            in1_tt,
+            compute_kernel_config=ttnn.WormholeComputeKernelConfig(
+                math_fidelity=ttnn.MathFidelity.LoFi,
+                math_approx_mode=False,
+                fp32_dest_acc_en=False,
+                packer_l1_acc=True,
+                dst_full_sync_en=True,
+            ),
+            program_config=ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
+                compute_with_storage_grid_size=(8, 10),
+                in0_block_w=8,
+                out_subblock_h=1,
+                out_subblock_w=4,
+                out_block_h=8,
+                out_block_w=16,
+                per_core_M=8,
+                per_core_N=16,
+                transpose_mcast=False,
+                fused_activation=None,
+                fuse_batch=False,
+            ),
+        )
+    else:
+        out_tt = ttnn.linear(
+            in0_tt,
+            in1_tt,
+            compute_kernel_config=ttnn.WormholeComputeKernelConfig(
+                math_fidelity=ttnn.MathFidelity.LoFi,
+                math_approx_mode=False,
+                fp32_dest_acc_en=False,
+                packer_l1_acc=True,
+                dst_full_sync_en=True,
+            ),
+            program_config=ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
+                compute_with_storage_grid_size=(8, 10),
+                in0_block_w=8,
+                out_subblock_h=1,
+                out_subblock_w=4,
+                out_block_h=8,
+                out_block_w=16,
+                per_core_M=8,
+                per_core_N=16,
+                transpose_mcast=False,
+                fused_activation=None,
+                fuse_batch=False,
+            ),
+        )
 
     out_torch = ttnn.to_torch(out_tt)
     passed, msg = comp_pcc(golden, out_torch, 0.99)
@@ -140,9 +170,13 @@ def test_ff1(device, seq_len, batch_size):
         16384,
     ],
 )
-@pytest.mark.parametrize("batch_size", [1])
-def test_ff2(device, seq_len, batch_size):
-    in0_shape = (batch_size, seq_len // 1024, 1024, 3584) if seq_len > 1024 else (batch_size, 1, seq_len, 3584)
+@pytest.mark.parametrize("use_matmul", [True, False], ids=["matmul", "linear"])
+@pytest.mark.parametrize("split_sequence", [True, False], ids=["split_sequence", "no_split_sequence"])
+def test_ff2(device, seq_len, use_matmul, split_sequence):
+    if split_sequence and seq_len <= 1024:
+        pytest.skip("Sequence length must be greater than 1024 when split_sequence is True")
+
+    in0_shape = (1, seq_len // 1024, 1024, 3584) if split_sequence else (1, 1, seq_len, 3584)
     in1_shape = (1, 1, 3584, 2048)
 
     in0_torch = torch.randn(in0_shape)
@@ -181,30 +215,56 @@ def test_ff2(device, seq_len, batch_size):
         layout=ttnn.TILE_LAYOUT,
     )
 
-    out_tt = ttnn.linear(
-        in0_tt,
-        in1_tt,
-        compute_kernel_config=ttnn.WormholeComputeKernelConfig(
-            math_fidelity=ttnn.MathFidelity.LoFi,
-            math_approx_mode=False,
-            fp32_dest_acc_en=False,
-            packer_l1_acc=True,
-            dst_full_sync_en=True,
-        ),
-        program_config=ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
-            compute_with_storage_grid_size=(7, 10),
-            in0_block_w=8,
-            out_subblock_h=1,
-            out_subblock_w=2,
-            out_block_h=8,
-            out_block_w=10,
-            per_core_M=8,
-            per_core_N=10,
-            transpose_mcast=False,
-            fused_activation=None,
-            fuse_batch=False,
-        ),
-    )
+    if use_matmul:
+        out_tt = ttnn.matmul(
+            in0_tt,
+            in1_tt,
+            compute_kernel_config=ttnn.WormholeComputeKernelConfig(
+                math_fidelity=ttnn.MathFidelity.LoFi,
+                math_approx_mode=False,
+                fp32_dest_acc_en=False,
+                packer_l1_acc=True,
+                dst_full_sync_en=True,
+            ),
+            program_config=ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
+                compute_with_storage_grid_size=(7, 10),
+                in0_block_w=8,
+                out_subblock_h=1,
+                out_subblock_w=2,
+                out_block_h=8,
+                out_block_w=10,
+                per_core_M=8,
+                per_core_N=10,
+                transpose_mcast=False,
+                fused_activation=None,
+                fuse_batch=False,
+            ),
+        )
+    else:
+        out_tt = ttnn.linear(
+            in0_tt,
+            in1_tt,
+            compute_kernel_config=ttnn.WormholeComputeKernelConfig(
+                math_fidelity=ttnn.MathFidelity.LoFi,
+                math_approx_mode=False,
+                fp32_dest_acc_en=False,
+                packer_l1_acc=True,
+                dst_full_sync_en=True,
+            ),
+            program_config=ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
+                compute_with_storage_grid_size=(7, 10),
+                in0_block_w=8,
+                out_subblock_h=1,
+                out_subblock_w=2,
+                out_block_h=8,
+                out_block_w=10,
+                per_core_M=8,
+                per_core_N=10,
+                transpose_mcast=False,
+                fused_activation=None,
+                fuse_batch=False,
+            ),
+        )
 
     out_torch = ttnn.to_torch(out_tt)
     passed, msg = comp_pcc(golden, out_torch, 0.99)
