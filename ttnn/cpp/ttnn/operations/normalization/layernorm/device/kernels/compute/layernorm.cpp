@@ -11,9 +11,12 @@
 #define BCAST_DIM BroadcastType::COL
 
 #include "compute_kernel_api/reduce.h"
+#include "compute_kernel_api/matmul.h"
 #include "compute_kernel_api/bcast.h"
 #include "compute_kernel_api/eltwise_binary.h"
 #include "compute_kernel_api/layernorm.h"
+#include "debug/dprint.h"
+#include "debug/dprint_pages.h"
 
 ALWI void ACQ() { acquire_dst(); }
 ALWI void REL() { release_dst(); }
@@ -28,6 +31,7 @@ void MAIN {
     constexpr bool FLOAT32_DTYPE = get_compile_time_arg_val(4) == 1;
 
     constexpr uint32_t onetile = 1;
+
     // reserve one tile for zeros on cb_in2
     // TODO(AP): check that if DST is indeed zeroed by release_dst (and initially), we can use it as zeroes
 
@@ -67,6 +71,7 @@ void MAIN {
 #endif
 
     cb_wait_front(cb_scaler, 1);  // comes from the reader
+    UNPACK(tt::compute::common::print_full_tile(cb_scaler, 0, true));
     cb_wait_front(cb_eps, 1);     // comes from the reader
 
     constexpr int cb_im_or_out = (do_gamma | do_beta) ? cb_fusion : cb_out;
@@ -84,11 +89,8 @@ void MAIN {
         add_tiles_init(cb_in, cb_inb);
         for (uint32_t wt = 0; wt < Wt; wt += blk) {
             ACQ();
-            // UNPACK(( { DPRINT  << "Waiting on cb_x" << ENDL(); } ));
             cb_wait_front(cb_in, blk);
-            // UNPACK(( { DPRINT  << "Waiting on cb_inb" << ENDL(); } ));
             cb_wait_front(cb_inb, blk);
-            // UNPACK(( { DPRINT  << "Done Waiting on cb_inb" << ENDL(); } ));
             cb_reserve_back(cb_x, blk);
             for (uint32_t j = 0; j < blk; j++) {
                 add_tiles(cb_in, cb_inb, j, j, j);
@@ -122,16 +124,19 @@ void MAIN {
          */
         ACQ();
         cb_reserve_back(cb_ex, onetile);
-        reduce_init_delta<false>(cb_x, cb_scaler, cb_ex);
+        // reduce_init_delta<false>(cb_x, cb_scaler, cb_ex);
+        mm_init(cb_x, cb_scaler, cb_ex);
+
         for (uint32_t wt = 0; wt < Wt; wt += blk) {
             cb_wait_front(cb_x, wt + blk);
             for (uint32_t j = 0; j < blk; j++) {
-                reduce_tile(cb_x, cb_scaler, wt + j, scaler0, dst0);
+                // reduce_tile(cb_x, cb_scaler, wt + j, scaler0, dst0);
+                matmul_tiles(cb_x, cb_scaler, wt + j, scaler0, dst0, false);
             }
             // we don't pop cb_x until we compute Ex
         }
         pack_tile(dst0, cb_ex);
-        reduce_revert_delta(cb_ex);
+        //        reduce_revert_delta(cb_ex);
         REL();
 
         cb_push_back(cb_ex, 1);
@@ -140,10 +145,9 @@ void MAIN {
          * x - E[x]
          * compute xmm=x-mean. Reuse cb_x since we didn't pop anything from it
          */
-        if constexpr (FLOAT32_DTYPE) {
-            reconfig_data_format(cb_x, cb_ex);
-        }
+        reconfig_data_format(cb_x, cb_ex);
         cb_wait_front(cb_ex, 1);  // should have 1 tile
+        UNPACK(tt::compute::common::print_full_tile(cb_ex, 0, true));
         cb_reserve_back(cb_xmm, Wt);
         sub_bcast_cols_init_short(cb_x, cb_ex);
         for (uint32_t wt = 0; wt < Wt; wt += blk) {
@@ -166,6 +170,7 @@ void MAIN {
         /* (x - E[x])^2
          * compute temp = xmm*xmm = (x-E[x])^2
          */
+        reconfig_data_format(cb_xmm, cb_xmm);
         mul_tiles_init(cb_xmm, cb_xmm);
         for (uint32_t wt = 0; wt < Wt; wt += blk) {
             cb_wait_front(cb_xmm, wt + blk);  // cumulative wait
@@ -173,7 +178,6 @@ void MAIN {
             ACQ();
             for (uint32_t wtr = 0; wtr < blk; wtr++) {
                 mul_tiles(cb_xmm, cb_xmm, wt + wtr, wt + wtr, wtr);
-                // mul_tiles(cb_xmm, cb_col1, wt+wtr, wt+wtr, wtr);
                 pack_tile(wtr, cb_xmm2);
             }
             cb_push_back(cb_xmm2, blk);
@@ -189,11 +193,12 @@ void MAIN {
          * IIRC E[x^2] - E[x]^2 trick was unstable
          * TODO(AP): can save space here by reusing CB
          */
-        if constexpr (FLOAT32_DTYPE) {
-            reconfig_data_format(cb_xmm2, cb_scaler);
-        }
+        cb_wait_front(cb_xmm2, 1);  // cumulative wait
+        UNPACK(tt::compute::common::print_full_tile(cb_xmm2, 0, true));
+        reconfig_data_format(cb_xmm2, cb_scaler);
         cb_reserve_back(cb_ex2, 1);
         reduce_init_delta<false>(cb_xmm2, cb_scaler, cb_ex2);
+        // mm_init(cb_xmm2, cb_scaler, cb_ex2);
         ACQ();
         cb_wait_front(cb_xmm2, Wt);
         // cb_wait_front(cb_xmm, Wt);
@@ -201,8 +206,8 @@ void MAIN {
             // reduce
             for (uint32_t wtr = 0; wtr < blk; wtr++) {
                 reduce_tile(cb_xmm2, cb_scaler, wt + wtr, scaler0, dst0);
+                // matmul_tiles(cb_xmm2,cb_scaler , wt + wtr, scaler0, dst0, false);
             }
-            // reduce_tile(cb_xmm, cb_scaler, wt+wtr, scaler0, dst0);
         }
         cb_pop_front(cb_xmm2, Wt);
         pack_tile(dst0, cb_ex2);
@@ -211,13 +216,12 @@ void MAIN {
 
         cb_push_back(cb_ex2, 1);
         cb_wait_front(cb_ex2, 1);
+        UNPACK(tt::compute::common::print_full_tile(cb_ex2, 0, true));
 
         /* Var(x) + eps
          * add epsilon E[(x-E[x])^2]+eps
          */
-        if constexpr (FLOAT32_DTYPE) {
-            reconfig_data_format(cb_ex2, cb_eps);
-        }
+        reconfig_data_format(cb_ex2, cb_eps);
         ACQ();
         add_tiles_init(cb_ex2, cb_eps);
         add_tiles(cb_ex2, cb_eps, 0, 0, dst0);

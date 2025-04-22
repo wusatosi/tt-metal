@@ -44,9 +44,20 @@ def run_layer_norm_tests(
         torch.set_printoptions(threshold=float("inf"))
 
         print(x[0, :32, :32])
-        val = torch.mean(x, dim=-1, keepdim=True)
-        # print(val)
+        # Saves the first tile
+        torch_mean = torch.mean(x[0, :32, :], dim=-1, keepdim=True)
+        with open("7_mm_mean_only_tensor_output.txt", "w") as f:
+            f.write(str(torch_mean))
+        torch_var = torch.var(x[0, :32, :], dim=-1, keepdim=True)
+        with open("7_reduce_var_only_tensor_output.txt", "w") as f:
+            f.write(str(torch_var))
 
+        torch_mean = torch_mean.repeat(1, 1, 768)
+        print(torch_mean.shape)
+        xmm = torch.sub(x[0, :32, :32], torch_mean[0, :32, :32])
+        xmm = torch.square(xmm)
+        with open("7_xmm_tensor_output.txt", "w") as f:
+            f.write(str(xmm))
         tt_x = ttnn.from_torch(x, dtype=dtype[0], layout=dlayout[0], device=device)
         tt_weight = ttnn.from_torch(weight, dtype=dtype[0], layout=dlayout[0], device=device)
         tt_bias = ttnn.from_torch(bias, dtype=dtype[0], layout=dlayout[0], device=device)
