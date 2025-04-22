@@ -59,7 +59,7 @@ inline void reduce_h_fused(
     reduce_init_short(in_cb_id_tilized_0, in_scalar_cb_id, out_cb_id);
     for (uint32_t c_i = 0; c_i < num_output_tiles; ++c_i) {
         cb_wait_front(in_cb_id_tilized_0, 1);
-        reduce_tile(in_cb_id_tilized_0, in_scalar_cb_id, 0, 0, reduce_dst_idx++, num_faces_in_tile);
+        reduce_tile(in_cb_id_tilized_0, in_scalar_cb_id, 0, 0, reduce_dst_idx++);
         cb_pop_front(in_cb_id_tilized_0, 1);
     }
     tile_regs_commit();
