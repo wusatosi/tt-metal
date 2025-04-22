@@ -18,18 +18,26 @@ inline void calculate_binary_max_min(const uint dst_offset) {
     for (int d = 0; d < ITERATIONS; d++) {
         constexpr uint dst_tile_size = 64;
 
-        TTI_SFPLOAD(p_sfpu::LREG0, 0, ADDR_MOD_7, 0);                          // a
-        TT_SFPLOAD(p_sfpu::LREG1, 0, ADDR_MOD_7, dst_offset * dst_tile_size);  // b
+        TTI_SFPLOAD(p_sfpu::LREG0, 6, ADDR_MOD_7, 0);                          // a
+        TT_SFPLOAD(p_sfpu::LREG1, 6, ADDR_MOD_7, dst_offset * dst_tile_size);  // b
 
-        // Swap and store maximum in lreg1, minimum in lreg0
-        TTI_SFPSWAP(0, p_sfpu::LREG1, p_sfpu::LREG0, 1);
-        TTI_SFPNOP;
+        TTI_SFPIADD(
+            0,
+            p_sfpu::LREG1,
+            p_sfpu::LREG0,
+            4);  // set to 4 instead of 8 or 6 since these modes modify the condition code reg of sfpu, so it might
+                 // affect results
+        TTI_SFPSTORE(p_sfpu::LREG0, 6, ADDR_MOD_7, 0);
 
-        if constexpr (IS_MAX_OP) {
-            TTI_SFPSTORE(p_sfpu::LREG1, 0, ADDR_MOD_7, 0);
-        } else {
-            TTI_SFPSTORE(p_sfpu::LREG0, 0, ADDR_MOD_7, 0);
-        }
+        // // Swap and store maximum in lreg1, minimum in lreg0
+        // TTI_SFPSWAP(0, p_sfpu::LREG1, p_sfpu::LREG0, 1);
+        // TTI_SFPNOP;
+
+        // if constexpr (IS_MAX_OP) {
+        //     TTI_SFPSTORE(p_sfpu::LREG1, 0, ADDR_MOD_7, 0);
+        // } else {
+        //     TTI_SFPSTORE(p_sfpu::LREG0, 0, ADDR_MOD_7, 0);
+        // }
         dst_reg++;
     }
 }
