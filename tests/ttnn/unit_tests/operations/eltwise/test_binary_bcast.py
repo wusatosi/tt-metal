@@ -1955,18 +1955,18 @@ def test_binary_add_uint16_bcast(input_shape_a, input_shape_b, low_a, high_a, lo
 @pytest.mark.parametrize(
     "input_a_val, input_b_val",
     [
-        (756, 100),
         (0, 0),
-        (-5, 5),
-        (-32768, 32767),
-        (0, 32767),
-        (-32768, 0),
+        (0, 1),
+        (1, 0),
         (11, 1),
+        (30000, 30000),
+        (32767, 1),
+        (65535, 0),
     ],
 )
 def test_binary_add_fill_val_uint16(input_shapes, input_a_val, input_b_val, device):
-    torch_input_a = torch.ones(input_shapes, dtype=torch.int16) * input_a_val
-    torch_input_b = torch.ones(input_shapes, dtype=torch.int16) * input_b_val
+    torch_input_a = torch.ones(input_shapes, dtype=torch.int32) * input_a_val
+    torch_input_b = torch.ones(input_shapes, dtype=torch.int32) * input_b_val
 
     golden_function = ttnn.get_golden_function(ttnn.add)
     golden = golden_function(torch_input_a, torch_input_b, device=device)
@@ -1988,9 +1988,13 @@ def test_binary_add_fill_val_uint16(input_shapes, input_a_val, input_b_val, devi
     )
 
     tt_result = ttnn.minimum(tt_in_a, tt_in_b, use_legacy=False)
-    result = ttnn.to_torch(tt_result)
-    torch.set_printoptions(threshold=10000)
+    tt_result = ttnn.typecast(tt_result, dtype=ttnn.uint32)
+    result = ttnn.to_torch(tt_result, dtype=torch.int32)
+    # torch.set_printoptions(threshold=10000)
+    print(tt_in_a)
+    print(tt_in_b)
     print(golden)
+    print(tt_result)
     print(result)
 
     comp_pass = compare_equal([tt_result], [golden])
