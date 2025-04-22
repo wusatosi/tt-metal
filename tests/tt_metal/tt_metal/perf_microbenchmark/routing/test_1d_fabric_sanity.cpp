@@ -1220,6 +1220,7 @@ int main(int argc, char** argv) {
 
     mcast_mode = test_args::has_command_option(input_args, "--mcast_mode");
     bidirectional_mode = test_args::has_command_option(input_args, "--bidirectional_mode");
+    all_to_all_mode = test_args::has_command_option(input_args, "--all_to_all_mode");
     benchmark_mode = test_args::has_command_option(input_args, "--benchmark_mode");
     verbose_mode = test_args::has_command_option(input_args, "--verbose");
 
@@ -1234,6 +1235,20 @@ int main(int argc, char** argv) {
     global_rng.seed(prng_seed);
     time_seed = std::chrono::system_clock::now().time_since_epoch().count();
     packet_payload_size_bytes = packet_payload_size_kb * 1024;
+
+    // for all-to-all mode, reset test settings to default and enable mcast mode
+    if (all_to_all_mode) {
+        test_device_id_l = default_test_device_id_l;
+        test_device_id_r = default_test_device_id_r;
+        num_sender_chips = default_num_sender_chips;
+        for (const auto& dir : routing_directions) {
+            global_hops_counts[dir] = default_num_hops;
+        }
+        num_routing_planes = max_num_routing_planes;
+        bidirectional_mode = false;
+
+        mcast_mode = true;
+    }
 
     // if hops in any direction is specified, reset the ones that are not specified
     bool hops_set = std::any_of(
@@ -1317,10 +1332,12 @@ int main(int argc, char** argv) {
                 std::unordered_map<tt_fabric::RoutingDirection, uint32_t> sender_chip_hops_counts;
                 for (const auto& [dir, hops] : global_hops_counts) {
                     sender_chip_hops_counts[dir] =
-                        hops == default_num_hops ? test_board.get_random_hops_in_direction(sender_chip_id, dir) : hops;
+                        all_to_all_mode            ? test_board.get_max_hops_in_direction(sender_chip_id, dir)
+                        : hops == default_num_hops ? test_board.get_random_hops_in_direction(sender_chip_id, dir)
+                                                   : hops;
                 }
 
-                // the sender operates in the globally set mode mcast mode (either unicast or mcast)
+                // the sender operates in the globally set mcast mode (either unicast or mcast)
                 test_devices[sender_chip_id]->update_sender_worker_hops(
                     routing_plane_id, sender_chip_hops_counts, mcast_mode);
 
