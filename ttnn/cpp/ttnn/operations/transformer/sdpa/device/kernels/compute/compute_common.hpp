@@ -10,6 +10,7 @@
 #include "compute_kernel_api.h"
 #include "compute_kernel_api/eltwise_binary.h"
 #include "compute_kernel_api/eltwise_unary/exp.h"
+#include "compute_kernel_api/eltwise_unary/negative.h"
 #include "compute_kernel_api/eltwise_unary/recip.h"
 #include "compute_kernel_api/bcast.h"
 #include "compute_kernel_api/tile_move_copy.h"
@@ -103,19 +104,61 @@ void sub_exp_block_bcast_cols_inplace(uint32_t in1_cb) {
     // Precondition: in1_cb has rows produced
     // Postcondition: in0_cb has rows*cols produced
     // Postcondition: in1_cb has rows produced
-    sub_bcast_cols_init_short(in0_cb, in1_cb);
-    exp_tile_init<true, true>();
-    cb_wait_front(in0_cb, rows * cols);
-    cb_wait_front(in1_cb, rows);
 
+    /*
+        First, do sub_bcast_cols with packer relu set to sanitize input for exp
+        Perf of this section when negate removed: 7.6 µs
+    */
     constexpr uint32_t dst_tiles = SUB_EXP_GRANULARITY;
     constexpr uint32_t granularity = cols >> LOG2_SUB_EXP_GRANULARITY;
     uint32_t in0_index = 0;
+
+    sub_bcast_cols_init_short(in0_cb, in1_cb);
+    // 88.5 = BF16(0x42B1)
+    // Configure PACK to clip outputs between 0 and 88.5
+    PACK(llk_pack_relu_config(0x42B10000 | (uint32_t)ReluType::MAX_THRESHOLD_RELU));
+
+    exp_tile_init<true, true>();
+    negative_tile_init();
+    cb_wait_front(in0_cb, rows * cols);
+    cb_wait_front(in1_cb, rows);
+
     for (uint32_t i = 0; i < rows; ++i) {
         for (uint32_t u = 0; u < granularity; u++) {
             tile_regs_acquire();
             for (uint32_t j = 0; j < dst_tiles; ++j) {
                 sub_tiles_bcast_cols(in0_cb, in1_cb, in0_index, i, j);
+                // Negate output to allow PACK clipping
+                negative_tile(j);
+                in0_index++;
+            }
+            tile_regs_commit();
+            tile_regs_wait();
+            for (uint32_t j = 0; j < dst_tiles; ++j) {
+                pack_tile(j, in0_cb);
+            }
+            tile_regs_release();
+        }
+    }
+    cb_pop_front(in0_cb, rows * cols);
+    cb_reserve_back(in0_cb, rows * cols);
+    cb_push_back(in0_cb, rows * cols);
+
+    /*
+        Do EXP without input sanitization
+        Perf of this section when negate removed: 9.65 µs
+    */
+    copy_tile_to_dst_init_short(in0_cb);
+    PACK(llk_pack_relu_config(ReluType::NO_RELU));
+    cb_wait_front(in0_cb, rows * cols);
+    in0_index = 0;
+    for (uint32_t i = 0; i < rows; ++i) {
+        for (uint32_t u = 0; u < granularity; u++) {
+            tile_regs_acquire();
+            for (uint32_t j = 0; j < dst_tiles; ++j) {
+                copy_tile(in0_cb, in0_index, j);
+                // Negate input for exp
+                // negative_tile(j);
                 exp_tile<true, true>(j);
                 in0_index++;
             }
