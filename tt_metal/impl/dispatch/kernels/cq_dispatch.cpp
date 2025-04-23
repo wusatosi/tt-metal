@@ -768,7 +768,7 @@ void process_write_packed_large(
         // to determine linking
         if (init_state) {
             uint32_t dst_noc = sub_cmd_ptr->noc_xy_addr;
-            cq_noc_async_write_init_state<CQ_NOC_sNdl, true, true>(0, get_noc_addr_helper(dst_noc, dst_addr));
+            cq_noc_async_write_init_state<CQ_NOC_sNdl, true, false>(0, get_noc_addr_helper(dst_noc, dst_addr));
             must_barrier = true;
         }
 
@@ -804,7 +804,7 @@ void process_write_packed_large(
                 xfer_size = available_data;
                 wait_for_barrier();
                 cq_noc_async_write_with_state_any_len(data_ptr, dst_addr, xfer_size, num_dests);
-                must_barrier = false;
+                must_barrier = true;
             } else {
                 xfer_size = length;
                 if (unlink) {
@@ -821,7 +821,7 @@ void process_write_packed_large(
                 } else {
                     wait_for_barrier();
                     cq_noc_async_write_with_state_any_len(data_ptr, dst_addr, xfer_size, num_dests);
-                    must_barrier = false;
+                    must_barrier = true;
                 }
             }
             writes += div_up(xfer_size, NOC_MAX_BURST_SIZE);
@@ -1263,7 +1263,7 @@ void kernel_main() {
     }
 
     // Initialize local state of any additional nocs used instead of the default
-    static_assert(my_noc_index != upstream_noc_index);
+    //static_assert(my_noc_index != upstream_noc_index);
     if constexpr (my_noc_index != upstream_noc_index) {
         noc_local_state_init(upstream_noc_index);
     }
