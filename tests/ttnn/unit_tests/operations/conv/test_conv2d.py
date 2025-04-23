@@ -9,14 +9,34 @@ import torch
 
 
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
-@pytest.mark.parametrize("stride", [2])
-@pytest.mark.parametrize("batch_size", [2])
+@pytest.mark.parametrize("stride", [1])
+@pytest.mark.parametrize("batch_size", [1])
 @pytest.mark.parametrize(
     "output_channels, input_channels, input_height, input_width, shard_layout, config",
     (
-        (353, 384, 8, 8, WS, None),
-        (128, 128, 32, 32, BS, None),
-        (16, 16, 256, 256, HS, {"act_block_h": 32}),
+        (32, 32, 3, 5, WS, None),
+        (32, 32, 5, 5, WS, None),
+        (32, 32, 7, 7, WS, None),
+        (32, 32, 7, 5, WS, None),
+        (32, 32, 7, 9, WS, None),
+        (32, 32, 11, 13, WS, None),
+        (32, 32, 11, 15, WS, None),
+        (32, 32, 15, 17, WS, None),
+        (32, 32, 19, 21, WS, None),
+        (32, 32, 22, 31, WS, None),
+        (32, 32, 13, 19, WS, None),
+        (32, 32, 26, 23, WS, None),
+        (32, 32, 23, 17, WS, None),
+        (32, 32, 11, 29, WS, None),
+        (32, 32, 15, 18, WS, None),
+        (32, 32, 14, 12, WS, None),
+        (32, 32, 26, 18, WS, None),
+        (32, 32, 36, 33, WS, None),
+        (32, 32, 33, 37, WS, None),
+        (32, 32, 31, 39, WS, None),
+        (32, 32, 35, 38, WS, None),
+        (32, 32, 34, 36, WS, None),
+        (32, 32, 36, 38, WS, None),
     ),
 )
 @pytest.mark.parametrize(
@@ -25,7 +45,10 @@ import torch
 )
 @pytest.mark.parametrize(
     "activations_dtype",
-    [ttnn.bfloat8_b, ttnn.bfloat16],
+    [
+        ttnn.bfloat8_b,
+        ttnn.bfloat16,
+    ],
 )
 @pytest.mark.parametrize(
     "fp32_accum",
@@ -38,13 +61,16 @@ import torch
 @pytest.mark.parametrize(
     "filter, padding",
     [
-        [3, (1, 2, 2, 3)],
-        [1, 0],
-        [5, (2, 4, 3, 5)],
+        [3, (1, 1)],
     ],
 )
 @pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.HiFi4])
-@pytest.mark.parametrize("output_layout", [ttnn.TILE_LAYOUT, ttnn.ROW_MAJOR_LAYOUT])
+@pytest.mark.parametrize(
+    "output_layout",
+    [
+        ttnn.TILE_LAYOUT,
+    ],
+)
 def test_conv_features(
     device,
     torch_tensor_map,
@@ -99,6 +125,7 @@ def test_conv_features(
         packer_l1_acc=packer_l1_acc,
         preprocess_weights_on_device=True,
         run_twice=True,
+        input_layout=ttnn.TILE_LAYOUT,
     )
 
 

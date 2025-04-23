@@ -209,7 +209,7 @@ def run_conv(
 
     tt_input_tensor = ttnn.from_torch(
         torch_input_tensor,
-        activations_dtype if activations_dtype == ttnn.float32 else ttnn.bfloat16,
+        activations_dtype,
         mesh_mapper=input_mesh_mapper,
         layout=input_layout,
     )
