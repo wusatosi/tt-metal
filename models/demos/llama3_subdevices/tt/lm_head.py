@@ -46,14 +46,19 @@ class LMHead(LightweightModule):
         if args.is_galaxy:
             num_splits = 1
             cache_file_name = (
-                None if args.dummy_weights else weight_cache_path / f"output_lm_head_{num_splits}_split_shard_0_dram"
+                None
+                if args.dummy_weights
+                else weight_cache_path / f"output_lm_head_{num_splits}_split_shard_0_dram_sharded"
             )
             padded_lm_head = torch.zeros(1, 1, args.dim, self.padded_vocab_size)
             padded_lm_head[:, :, :, : self.vocab_size] = torch_output_weights
 
             if args.is_70b:
-                memory_config = ttnn.DRAM_MEMORY_CONFIG
+                print("is_70b")
+                memory_config = args.create_dram_sharded_mem_config(k=args.dim // 4, n=self.padded_vocab_size // 8)
+                print(f"memory_config {memory_config}")
             else:
+                print(f"dim {args.dim}")
                 memory_config = (
                     ttnn.DRAM_MEMORY_CONFIG
                     if args.dim == 2048
@@ -161,7 +166,7 @@ class LMHead(LightweightModule):
 
         return [output]
 
-    def forward(self, x: ttnn.Tensor, worker_sub_device_id, mode):
+    def forward(self, x: ttnn.Tensor, prefetcher_sub_device_id, mode, mesh_composer=None):
         # workaround for OOM issue
         # if mode == "prefill":
         #     return self.forward_on_host(x)
@@ -171,7 +176,16 @@ class LMHead(LightweightModule):
         for weight, pc in zip(self.output_weights, self.program_configs):
             weight_l1 = weight  # ttnn.to_memory_config(weight, self.args.model_config["LM_HEAD_RING_MEMCFG"])
             if mode == "decode":
+                print(f"decode1 {x.memory_config()}")
+                # breakpoint()
+                # ttnn.synchronize_device(self.mesh_device)
                 x = ttnn.to_memory_config(x, self.args.model_config["SHARDED_LM_HEAD_INPUT_32_RING_MEMCFG"])
+                print(f"decode2 {x.memory_config()}")
+                print(f"decode2 {self.output_memory_config}")
+                ttnn.device.dump_device_memory_state(
+                    self.mesh_device.get_device(self.mesh_device.get_device_ids()[0]), "before_"
+                )
+                # breakpoint()
                 output = ttnn.linear(
                     x,
                     weight_l1,
@@ -179,8 +193,25 @@ class LMHead(LightweightModule):
                     program_config=pc,
                     memory_config=self.output_memory_config,
                     dtype=ttnn.bfloat8_b,
-                    sub_device_id=worker_sub_device_id,
+                    sub_device_id=prefetcher_sub_device_id,
                 )
+                # breakpoint()
+                ttnn.device.dump_device_memory_state(
+                    self.mesh_device.get_device(self.mesh_device.get_device_ids()[0]), "after_"
+                )
+                output = ttnn.to_memory_config(output, self.args.model_config["LM_HEAD_RESHARD_OUT_RING_MEMCFG"])
+                print(f"decode3 {output.memory_config()}")
+                # breakpoint()
+
+                # breakpoint()
+                # mesh_composer = ttnn.ConcatMesh2dToTensor(
+                #     self.mesh_device, dims=(0, 1), mesh_shape=self.args.cluster_shape
+                # )
+                # x_hosts = ttnn.to_torch(x, mesh_composer=mesh_composer)[0:1,0:1,...]
+                # weight_l1_host  =  ttnn.to_torch(weight_l1, mesh_composer=mesh_composer)[0:1,0:1,...]
+                # output_device =  ttnn.to_torch(output, mesh_composer=mesh_composer)[0:1,0:1,...]
+                # output_host  = x_hosts @ weight_l1_host
+                # assert_with_pcc(output_host, output_device, 0.999)
             else:
                 output = ttnn.linear(
                     x,

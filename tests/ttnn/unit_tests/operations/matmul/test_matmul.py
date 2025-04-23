@@ -11,6 +11,7 @@ import ttnn
 from models.utility_functions import comp_pcc
 from tests.ttnn.utils_for_testing import assert_with_pcc
 from models.utility_functions import skip_for_grayskull, is_wormhole_b0, is_grayskull, is_blackhole, run_for_wormhole_b0
+from tests.ttnn.unit_tests.operations.prefetcher_common import get_core_ranges
 
 
 def find_max_subblock(out_block_h, out_block_w):
@@ -2260,3 +2261,316 @@ def test_sharded_matmul_with_multiple_out_block_values(device, out_block_h, out_
     )
     output_tensor = ttnn.to_torch(output_tensor)
     assert_with_pcc(torch_output_tensor, output_tensor, pcc=pcc)
+
+
+@run_for_wormhole_b0()
+@pytest.mark.parametrize(
+    "device_params",
+    [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL}],
+    indirect=True,
+)
+@pytest.mark.parametrize("mesh_device", [pytest.param((1, 1), id="1x1_grid")], indirect=True)
+@pytest.mark.parametrize("m", [32])
+@pytest.mark.parametrize("k", [2048])
+@pytest.mark.parametrize("n", [16384])
+@pytest.mark.parametrize("num_cores", [8])
+@pytest.mark.parametrize("in1_dtype", [ttnn.bfloat8_b])
+@pytest.mark.parametrize("out_dtype", [ttnn.bfloat8_b])
+def test_matmul_in1_dram_sharded_llama_prefetcher_grid(
+    mesh_device, m, k, n, num_cores, in1_dtype, out_dtype, use_program_cache
+):
+    device = mesh_device.get_device(mesh_device.get_device_ids()[0])
+    device_grid = (device.compute_with_storage_grid_size().x, device.compute_with_storage_grid_size().y)
+    if device_grid != (7, 10):
+        pytest.skip("Skipping test_run_prefetcher because it only works with a 7x10 grid")
+
+    ##### Setup up sub devices #####
+    num_reader_cores = 12
+    num_global_cb_receivers = 2
+
+    (
+        LLAMA_PREFETCHER_GRID,
+        dram_cores,
+        all_sender_cores,
+        active_receiver_cores_list,
+        all_receiver_cores,
+        LLAMA_WORKER_GRID,
+        mm_optimised_ring_cores,
+        hop_grid,
+    ) = get_core_ranges(num_reader_cores, num_global_cb_receivers, is_functional_test=False)
+
+    prefetcher_core_range_set = ttnn.CoreRangeSet(
+        [ttnn.CoreRange(core_coord, core_coord) for core_coord in LLAMA_PREFETCHER_GRID]
+    )
+
+    # print(prefetcher_core_range_set)
+    # print(LLAMA_WORKER_GRID)
+
+    prefetcher_sub_device = ttnn.SubDevice([prefetcher_core_range_set])
+    worker_sub_device = ttnn.SubDevice([LLAMA_WORKER_GRID])
+    prefetcher_sub_device_id = ttnn.SubDeviceId(0)
+    worker_sub_device_id = ttnn.SubDeviceId(1)
+    mesh_sub_device_manager_id = mesh_device.create_sub_device_manager([prefetcher_sub_device, worker_sub_device], 0)
+    mesh_device.load_sub_device_manager(mesh_sub_device_manager_id)
+    mesh_device.set_sub_device_stall_group([prefetcher_sub_device_id])
+
+    ##### Setup up inputs #####
+    num_banks = 12
+    n_padded = pad_to_dram_banks(n, 32, 32 * num_banks)
+
+    in0_shape = [1, 1, m, k]
+    in1_shape = [1, 1, k, n]
+    in0_shard_shape = [m, k // num_cores]
+    in1_shard_shape = [k, n_padded // num_banks]
+    out_shard_shape = [m, n_padded // num_banks]
+
+    print(out_shard_shape)
+
+    in0_block_w = k // num_cores // 32
+    out_block_h = m // 32
+    out_block_w = n // num_cores // 32
+
+    in0 = torch.randn(in0_shape).bfloat16().float()
+    in1 = torch.randn(in1_shape).bfloat16().float()
+
+    in0_shard_grid = LLAMA_PREFETCHER_GRID[:num_cores]
+    core_range_set = ttnn.CoreRangeSet(
+        [
+            ttnn.CoreRange(
+                ttnn.CoreCoord(coord.x, coord.y),
+                ttnn.CoreCoord(coord.x, coord.y),
+            )
+            for coord in in0_shard_grid
+        ]
+    )
+    out_core_range_set = ttnn.CoreRangeSet(
+        [
+            ttnn.CoreRange(
+                ttnn.CoreCoord(coord.x, coord.y),
+                ttnn.CoreCoord(coord.x, coord.y),
+            )
+            for coord in LLAMA_PREFETCHER_GRID
+        ]
+    )
+
+    in0_memory_config = ttnn.MemoryConfig(
+        ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        ttnn.BufferType.L1,
+        ttnn.ShardSpec(
+            core_range_set,
+            [in0_shard_shape[0], in0_shard_shape[1]],
+            ttnn.ShardOrientation.ROW_MAJOR,
+        ),
+    )
+
+    # reshard from LN grid to prefetcher grid
+    in0_reshard_shard_shape = [m, k // 16]
+    in0_reshard_memory_config1 = ttnn.MemoryConfig(
+        ttnn.TensorMemoryLayout.INTERLEAVED,
+        ttnn.BufferType.DRAM,
+    )
+    in0_reshard_memory_config = ttnn.MemoryConfig(
+        ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        ttnn.BufferType.L1,
+        ttnn.ShardSpec(
+            LLAMA_WORKER_GRID,
+            [in0_reshard_shard_shape[0], in0_reshard_shard_shape[1]],
+            ttnn.ShardOrientation.ROW_MAJOR,
+        ),
+    )
+    in0_reshard_t = ttnn.from_torch(
+        in0,
+        dtype=ttnn.bfloat16,
+        layout=ttnn.TILE_LAYOUT,
+        device=device,
+        memory_config=in0_reshard_memory_config,
+    )
+
+    in1_shard_grid = ttnn.CoreCoord(device.dram_grid_size().x - 1, device.dram_grid_size().y - 1)
+    in1_shard_grid = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), in1_shard_grid)})
+    in1_shard_spec = ttnn.ShardSpec(in1_shard_grid, in1_shard_shape, ttnn.ShardOrientation.ROW_MAJOR)
+    in1_memory_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.WIDTH_SHARDED, ttnn.BufferType.DRAM, in1_shard_spec)
+    in1_t = ttnn.from_torch(
+        in1,
+        dtype=in1_dtype,
+        layout=ttnn.TILE_LAYOUT,
+        device=device,
+        memory_config=in1_memory_config,
+    )
+
+    program_config = ttnn.MatmulMultiCoreReuseMultiCastDRAMShardedProgramConfig(
+        in0_block_w=in0_block_w // 4,
+        per_core_M=out_block_h,
+        per_core_N=out_block_w,
+        fused_activation=None,
+    )
+
+    compute_kernel_config = ttnn.WormholeComputeKernelConfig(
+        math_fidelity=ttnn.MathFidelity.HiFi2,
+        math_approx_mode=False,
+        fp32_dest_acc_en=False,
+        packer_l1_acc=True,
+    )
+
+    output_mem_config = ttnn.MemoryConfig(
+        ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        ttnn.BufferType.L1,
+        ttnn.ShardSpec(
+            out_core_range_set,
+            [out_shard_shape[0], out_shard_shape[1]],
+            ttnn.ShardOrientation.ROW_MAJOR,
+        ),
+    )
+
+    # reshard from prefetcher grid to worker grid
+    output_reshard_mem_config1 = ttnn.MemoryConfig(
+        ttnn.TensorMemoryLayout.INTERLEAVED,
+        ttnn.BufferType.DRAM,
+    )
+    out_reshard_shard_shape = [m, n // 8]
+    output_reshard_mem_config2 = ttnn.MemoryConfig(
+        ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        ttnn.BufferType.L1,
+        ttnn.ShardSpec(
+            LLAMA_WORKER_GRID,
+            [out_reshard_shard_shape[0], out_reshard_shard_shape[1]],
+            ttnn.ShardOrientation.ROW_MAJOR,
+        ),
+    )
+
+    for i in range(3):
+        in0_t = ttnn.to_memory_config(in0_reshard_t, in0_reshard_memory_config1)  # worker_sub_device_id
+
+        mesh_device.set_sub_device_stall_group([worker_sub_device_id])
+
+        in0_t = ttnn.to_memory_config(in0_t, in0_memory_config)  # prefetcher_sub_device_id
+
+        mesh_device.set_sub_device_stall_group([prefetcher_sub_device_id])
+        # in0_t_host = ttnn.to_torch(in0_t)
+        # assert_with_pcc(in0_t_host, in0, 0.9999)
+
+        # in0_t = ttnn.to_memory_config(in0_reshard_t, in0_memory_config)
+
+        output_t = ttnn.matmul(
+            in0_t,
+            in1_t,
+            program_config=program_config,
+            memory_config=output_mem_config,
+            dtype=out_dtype,
+            compute_kernel_config=compute_kernel_config,
+            sub_device_id=prefetcher_sub_device_id,
+        )
+
+        output_t1 = ttnn.to_memory_config(output_t, output_reshard_mem_config1)  # prefetcher_sub_device_id
+
+        mesh_device.set_sub_device_stall_group([prefetcher_sub_device_id])
+        # if i == 2:
+        #     output_t_host = ttnn.to_torch(output_t1)
+        #     assert_with_pcc(output_t_host, in0 @ in1, 0.999)
+
+        output_t = ttnn.to_memory_config(output_t1, output_reshard_mem_config2)  # worker_sub_device_id
+        output_tensor = ttnn.to_torch(output_t)
+
+        if i == 2:
+            pt_out = in0 @ in1
+            if in1_dtype == ttnn.bfloat4_b:
+                expected_pcc = 0.993
+            else:
+                expected_pcc = 0.999
+            assert_with_pcc(pt_out, output_tensor, expected_pcc)
+            print("pcc passed!")
+
+    mesh_device.clear_loaded_sub_device_manager()
+    mesh_device.remove_sub_device_manager(mesh_sub_device_manager_id)
+
+
+# @run_for_wormhole_b0()
+# @pytest.mark.parametrize(
+#     "device_params",
+#     [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL}],
+#     indirect=True,
+# )
+# @pytest.mark.parametrize("mesh_device", [pytest.param((1, 1), id="1x1_grid")], indirect=True)
+# @pytest.mark.parametrize("m", [32])
+# @pytest.mark.parametrize("k", [2304])
+# def test_matmul_in1_dram_sharded_llama_prefetcher_grid(
+#     mesh_device, m, k,
+# ):
+#     device = mesh_device.get_device(mesh_device.get_device_ids()[0])
+#     device_grid = (device.compute_with_storage_grid_size().x, device.compute_with_storage_grid_size().y)
+#     if device_grid != (7, 10):
+#         pytest.skip("Skipping test_run_prefetcher because it only works with a 7x10 grid")
+
+#     num_banks = 12
+#     k_padded = pad_to_dram_banks(k, 32, 32 * num_banks)
+
+#     in0_shape = [1, 1, m, k]
+
+#     in0 = torch.randn(in0_shape).bfloat16().float()
+
+#     in0_reshard_memory_config = ttnn.create_sharded_memory_config(
+#         shape=(m, k),
+#         core_grid=ttnn.CoreGrid(x=2, y=6),
+#         strategy=ttnn.ShardStrategy.WIDTH,
+#         orientation=ttnn.ShardOrientation.ROW_MAJOR,
+#     )
+#     print(in0_reshard_memory_config)
+#     in0_reshard_t = ttnn.from_torch(
+#         in0,
+#         dtype=ttnn.bfloat16,
+#         layout=ttnn.TILE_LAYOUT,
+#         device=device,
+#         memory_config=in0_reshard_memory_config,
+#     )
+#     print(in0_reshard_t.shape)
+
+#     output_shard_grid = ttnn.CoreCoord(device.dram_grid_size().x - 1, device.dram_grid_size().y - 1)
+#     output_shard_grid = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), output_shard_grid)})
+#     output_shard_spec = ttnn.ShardSpec(output_shard_grid, (32, k_padded // 12), ttnn.ShardOrientation.ROW_MAJOR)
+#     output_reshard_mem_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.WIDTH_SHARDED, ttnn.BufferType.DRAM, output_shard_spec)
+
+#     print(output_reshard_mem_config)
+
+#     output_t = ttnn.reshard(in0_reshard_t, output_reshard_mem_config)
+#     output_tensor = ttnn.to_torch(output_t)
+
+# @run_for_wormhole_b0()
+# @pytest.mark.parametrize(
+#     "device_params",
+#     [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL}],
+#     indirect=True,
+# )
+# @pytest.mark.parametrize("mesh_device", [pytest.param((1, 1), id="1x1_grid")], indirect=True)
+# @pytest.mark.parametrize("m", [32])
+# @pytest.mark.parametrize("k", [2048])
+# def test_matmul_in1_dram_sharded_llama_prefetcher_grid(
+#     mesh_device, m, k,
+# ):
+#     device = mesh_device.get_device(mesh_device.get_device_ids()[0])
+#     device_grid = (device.compute_with_storage_grid_size().x, device.compute_with_storage_grid_size().y)
+#     if device_grid != (7, 10):
+#         pytest.skip("Skipping test_run_prefetcher because it only works with a 7x10 grid")
+
+#     input_shape = [1, 1, 1, 96]
+#     input_layout = ttnn.ROW_MAJOR_LAYOUT
+#     input_shard_grid = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(2, 0))})
+#     input_shard_shape = (1, 32)
+#     input_shard_orientation = ttnn.ShardOrientation.ROW_MAJOR
+#     input_sharding_scheme = ttnn.TensorMemoryLayout.WIDTH_SHARDED
+#     input_buffer_type = ttnn.BufferType.L1
+
+#     output_shard_grid = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(1, 0))})
+#     output_shard_shape = (1, 48)
+#     output_shard_orientation = ttnn.ShardOrientation.ROW_MAJOR
+#     output_sharding_scheme = ttnn.TensorMemoryLayout.WIDTH_SHARDED
+#     output_buffer_type = ttnn.BufferType.DRAM
+
+#     input_shard_spec = ttnn.ShardSpec(input_shard_grid, input_shard_shape, input_shard_orientation)
+#     input_mem_config = ttnn.MemoryConfig(input_sharding_scheme, input_buffer_type, input_shard_spec)
+#     output_shard_spec = ttnn.ShardSpec(output_shard_grid, output_shard_shape, output_shard_orientation)
+#     output_mem_config = ttnn.MemoryConfig(output_sharding_scheme, output_buffer_type, output_shard_spec)
+
+#     input = torch.randn(input_shape).bfloat16()
+#     input_tensor = ttnn.Tensor(input, ttnn.bfloat16, device=device, layout=input_layout, mem_config=input_mem_config)
+
+#     output_tensor = ttnn.reshard(input_tensor, output_mem_config)

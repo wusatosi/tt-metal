@@ -122,6 +122,7 @@ class TtLlamaMLP(LightweightModule):
             num_links=3,
             memory_config=self.model_config["REDUCE_SCATTER_OUT_MEMCFG"],
         )
+        # ttnn.deallocate(w1_out)
 
         w3_out = ttnn.linear(
             x,
@@ -146,6 +147,8 @@ class TtLlamaMLP(LightweightModule):
         except Exception as e:
             print(e)
             self.tt_ccl.close()
+
+        # ttnn.deallocate(w3_out)
 
         ff1ff3 = ttnn.mul(
             w1_out_reduced,
@@ -181,6 +184,8 @@ class TtLlamaMLP(LightweightModule):
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
             sub_device_id=self.prefetcher_setup.worker_sub_device_id if mode == "decode" else None,
         )
+
+        # ttnn.deallocate(w2_in)
 
         w2_out_reduced = self.tt_ccl.line_all_reduce(
             w2_out, cluster_axis=0, num_links=3, memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"]

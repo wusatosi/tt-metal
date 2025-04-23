@@ -79,13 +79,18 @@ void kernel_main() {
         cb_push_back(cb_id_in1, in1_block_num_tiles);
     }
 #else
+#ifdef SKIP_WRITE_BACK
+    constexpr uint32_t total_num_blocks_in_buffer = 2;
+    constexpr uint32_t total_num_trid = 2;
+#else
     constexpr uint32_t total_num_blocks_in_buffer = 3;
-    constexpr uint32_t total_num_trid = 4;
+    constexpr uint32_t total_num_trid = 3;
+#endif
     uint32_t num_free_blocks_in_buffer = total_num_blocks_in_buffer;
     uint32_t curr_block_trid = 1;
     uint32_t block_trid_to_wait = 1;
 
-    cb_reserve_back(cb_id_in1, in1_block_num_tiles);
+    cb_reserve_back(cb_id_in1, in1_block_num_tiles * total_num_blocks_in_buffer);
     uint32_t l1_write_addr_in1_offset = 0;
     uint32_t l1_write_addr_in1_start = get_write_ptr(cb_id_in1);
     l1_write_addr_in1 = l1_write_addr_in1_start;
@@ -99,13 +104,13 @@ void kernel_main() {
             l1_write_addr_in1 += in1_page_size;
         }
 
-        if (num_free_blocks_in_buffer == 2) {
+        if (num_free_blocks_in_buffer == total_num_blocks_in_buffer - 1) {
             noc_async_read_barrier_with_trid(block_trid_to_wait);
             cb_push_back(cb_id_in1, in1_block_num_tiles);
             // wait for next block trid
-            block_trid_to_wait = block_trid_to_wait == 3 ? 1 : (block_trid_to_wait + 1);
+            block_trid_to_wait = block_trid_to_wait == total_num_blocks_in_buffer ? 1 : (block_trid_to_wait + 1);
             // reserve for next block
-            cb_reserve_back(cb_id_in1, in1_block_num_tiles * 2);
+            cb_reserve_back(cb_id_in1, in1_block_num_tiles * (total_num_blocks_in_buffer - 1));
         } else {
             num_free_blocks_in_buffer -= 1;
         }

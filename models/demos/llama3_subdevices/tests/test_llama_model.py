@@ -91,14 +91,14 @@ def test_llama_model_inference(
     page_params,
     optimizations,
     mesh_device,
-    use_program_cache,
+    # use_program_cache,
     reset_seeds,
     ensure_gc,
 ):
     run_ref_pt = True  # Flag to run reference PyTorch model and compare PCC
     cache_pcc = layers == 1  # Flag to measure KV cache PCC. Avoid running for all layers to speed up test time.
     dtype = ttnn.bfloat8_b
-    mesh_device.enable_async(True)
+    # mesh_device.enable_async(True)
     mode_accuracy = optimizations == LlamaOptimizations.accuracy
     instruct = True if weights == "instruct" else False
     dummy_weights = True if weights == "random" else False
@@ -257,6 +257,10 @@ def test_llama_model_inference(
             # Get cos/sin matrices for the current position of each user
             rot_mats = tt_model.rope_setup.get_rot_mats(current_pos)
 
+            # Convert ttnn tensor to torch tensor
+            mesh_composer = ttnn.ConcatMesh2dToTensor(
+                mesh_device, dims=(3, 1) if model_args.is_galaxy else (1, -1), mesh_shape=model_args.cluster_shape
+            )
             # Run TT model
             tt_out = tt_model(
                 decode_input,
@@ -264,11 +268,7 @@ def test_llama_model_inference(
                 rot_mats=rot_mats,
                 mode="decode",
                 page_table=page_table_tt,
-            )
-
-            # Convert ttnn tensor to torch tensor
-            mesh_composer = ttnn.ConcatMesh2dToTensor(
-                mesh_device, dims=(3, 1) if model_args.is_galaxy else (1, -1), mesh_shape=model_args.cluster_shape
+                mesh_composer=mesh_composer,
             )
 
             outs = [ttnn.to_torch(out, mesh_composer=mesh_composer) for out in tt_out]

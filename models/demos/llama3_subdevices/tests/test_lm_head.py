@@ -48,7 +48,7 @@ def test_llama_lm_head_inference(seq_len, batch_size, mesh_device, use_program_c
 
     mesh_device.enable_async(True)
 
-    model_args = TtModelArgs(mesh_device, max_batch_size=batch_size, max_seq_len=seq_len, dummy_weights=True)
+    model_args = TtModelArgs(mesh_device, max_batch_size=batch_size, max_seq_len=seq_len, dummy_weights=False)
     model_args.n_layers = 1
     state_dict = model_args.load_state_dict()
 
@@ -68,11 +68,15 @@ def test_llama_lm_head_inference(seq_len, batch_size, mesh_device, use_program_c
         n_layers=model_args.n_layers,
     )
 
+    # prefetcher_setup.create_global_cb()
+
     mesh_device.set_sub_device_stall_group(
         [prefetcher_setup.prefetcher_sub_device_id, prefetcher_setup.worker_sub_device_id]
     )
 
     tt_ccl = TT_CCL(mesh_device, model_args, prefetcher_setup.worker_sub_device_id)
+
+    # del prefetcher_setup.global_circular_buffer
 
     tt_model = LMHead(
         args=model_args,
@@ -99,7 +103,10 @@ def test_llama_lm_head_inference(seq_len, batch_size, mesh_device, use_program_c
     )
 
     logger.info("Run Llama_LM_Head")
-    tt_outputs = tt_model(tt_input)
+
+    # Pre-allocated output of AllReduce in LM Head to avoid memory cloberring
+    tt_ccl.tt_lm_head_buffer_l1 = ttnn.to_memory_config(tt_ccl.tt_lm_head_buffer, tt_ccl.lm_head_buffer_mem_cfg)
+    tt_outputs = tt_model(tt_input, prefetcher_setup.prefetcher_sub_device_id, "decode")
     tt_outputs = [
         ttnn.to_torch(
             tt_output,

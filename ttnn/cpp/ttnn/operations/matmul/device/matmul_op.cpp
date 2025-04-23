@@ -2122,18 +2122,21 @@ std::vector<ttnn::TensorSpec> Matmul::compute_output_specs(
                         per_core_N % tile_width_ratio == 0,
                         "per_core_N must be divisible by override output tile width");
 
-                    uint32_t num_blocks_y = (M - 1) / per_core_M + 1;
-                    uint32_t num_blocks_x = (N - 1) / per_core_N + 1;
-                    uint32_t num_cores = num_blocks_x * num_blocks_y;
-                    auto end_core = input_tensor_a.shard_spec()->grid.bounding_box().end_coord;
-                    auto grid_size = CoreCoord{end_core.x + 1, end_core.y + 1};
-                    CoreRangeSet all_cores = num_cores_to_corerangeset(num_cores, grid_size, true);
-                    ShardSpec shard_spec = ShardSpec{
-                        all_cores,
-                        {per_core_M * in0_tile_shape[0], per_core_N * in1_tile_shape[1]},
-                        ShardOrientation::ROW_MAJOR};
                     auto mem_config = this->output_mem_config;
-                    mem_config.shard_spec = shard_spec;
+                    log_info("mem_config: {}", mem_config);
+                    if (!mem_config.shard_spec.has_value()) {
+                        uint32_t num_blocks_y = (M - 1) / per_core_M + 1;
+                        uint32_t num_blocks_x = (N - 1) / per_core_N + 1;
+                        uint32_t num_cores = num_blocks_x * num_blocks_y;
+                        auto end_core = input_tensor_a.shard_spec()->grid.bounding_box().end_coord;
+                        auto grid_size = CoreCoord{end_core.x + 1, end_core.y + 1};
+                        CoreRangeSet all_cores = num_cores_to_corerangeset(num_cores, grid_size, true);
+                        ShardSpec shard_spec = ShardSpec{
+                            all_cores,
+                            {per_core_M * in0_tile_shape[0], per_core_N * in1_tile_shape[1]},
+                            ShardOrientation::ROW_MAJOR};
+                        mem_config.shard_spec = shard_spec;
+                    }
                     return {TensorSpec(
                         output_shape,
                         TensorLayout(output_dtype.value(), PageConfig(output_layout, output_tile), mem_config))};
@@ -2343,7 +2346,8 @@ operation::ProgramWithCallbacks Matmul::create_program(
                     this->untilize_out,
                     false,
                     false,
-                    false);
+                    false,
+                    this->sub_device_id);
             } else if constexpr (std::is_same_v<ProgramConfigType, MatmulMultiCoreNonOptimizedReuseProgramConfig>) {
                 TT_FATAL(
                     !bias.has_value(),

@@ -104,10 +104,18 @@ void MAIN {
     constexpr uint32_t num_blocks_h_dim = get_compile_time_arg_val(9);         // outer inner dim (in inner dim blocks)
     constexpr uint32_t out_subblock_h = get_compile_time_arg_val(10);          // inner row block size in tiles
     constexpr uint32_t out_subblock_w = get_compile_time_arg_val(11);          // inner column block size in tiles
+#ifdef DRAM_SHARDED_MM_AND_SKIP_WRITE_BACK
+    uint32_t out_subblock_num_tiles = get_compile_time_arg_val(12);  // out_subblock_h * out_subblock_w;
+    uint32_t out_subblock_num_tiles_non_last = out_subblock_num_tiles;
+#else
     constexpr uint32_t out_subblock_num_tiles = get_compile_time_arg_val(12);  // out_subblock_h * out_subblock_w;
+#endif
     constexpr uint32_t batch = get_compile_time_arg_val(13);                   // batch dim
     constexpr uint32_t out_block_num_tiles = get_compile_time_arg_val(14);     // number of tiles in out_block
     constexpr bool untilize_out = get_compile_time_arg_val(15);                // untilize output
+#ifdef DRAM_SHARDED_MM_AND_SKIP_WRITE_BACK
+    constexpr uint32_t out_subblock_num_tiles_last = get_compile_time_arg_val(16);
+#endif
 
     constexpr uint32_t out_block_w = out_subblock_w * in1_num_subblocks;
 
@@ -173,6 +181,13 @@ void MAIN {
                     for (uint32_t in0_subblock = 0; in0_subblock < in0_num_subblocks; in0_subblock++) {
                         int in1_index_subblock_offset = 0;
                         for (uint32_t in1_subblock = 0; in1_subblock < in1_num_subblocks; in1_subblock++) {
+#ifdef DRAM_SHARDED_MM_AND_SKIP_WRITE_BACK
+                            if (in0_subblock == in0_num_subblocks - 1 && in1_subblock == in1_num_subblocks - 1) {
+                                out_subblock_num_tiles = out_subblock_num_tiles_last;
+                            } else {
+                                out_subblock_num_tiles = out_subblock_num_tiles_non_last;
+                            }
+#endif
                             tile_regs_acquire();
                             if (enable_reload) {
                                 reload_from_cb_to_dst(
@@ -253,10 +268,12 @@ void MAIN {
                                 tile_regs_commit();
                                 // Wait for tiles in output buffer to be written out since interm and output share
                                 // memory
+#ifndef DRAM_SHARDED_MM_AND_SKIP_WRITE_BACK
                                 if (block == 0) {
                                     cb_reserve_back(out_cb_id, out_num_tiles_to_wait);
                                     out_num_tiles_to_wait += out_subblock_num_tiles;
                                 }
+#endif
                                 // Move partial result to interm buffer
                                 cb_reserve_back(mm_partials_cb_id, out_subblock_num_tiles);
                                 tile_regs_wait();

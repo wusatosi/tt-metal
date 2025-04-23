@@ -170,6 +170,7 @@ class TtTransformerBlock(LightweightModule):
 
         # MLP takes replicated inputs and produces fractured outputs
         ff_out = self.feed_forward.forward(ff_in_sharded, mode)
+        # ff_in_sharded.deallocate(True)
         # print("feed forward done", ff_out)
         # if self.layer_num == self.n_layers - 1:
         out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)  # , dtype=ttnn.bfloat16)

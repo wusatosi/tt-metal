@@ -9,7 +9,7 @@
 
 #include "debug/dprint.h"
 
-constexpr bool skip_ptr_update = true;
+constexpr bool skip_ptr_update = false;
 
 void kernel_main() {
     // Compile time args

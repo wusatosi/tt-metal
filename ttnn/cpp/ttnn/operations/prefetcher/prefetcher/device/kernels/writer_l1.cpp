@@ -8,7 +8,7 @@
 #include "remote_circular_buffer_api.h"
 #include "debug/dprint.h"
 
-constexpr bool skip_ptr_update = true;
+constexpr bool skip_ptr_update = false;
 
 uint32_t increment_arg_idx(uint32_t& arg_idx, uint32_t num_args = 1) {
     uint32_t old_arg_idx = arg_idx;
@@ -75,9 +75,9 @@ void kernel_main() {
     experimental::update_remote_cb_config_in_l1(remote_cb_id);
 
     // reset noc counters here because we didn't properly update ptrs for better perf.
-    if (noc_mode == DM_DEDICATED_NOC) {
-        ncrisc_noc_counters_init();
-    } else {
-        dynamic_noc_local_state_init();
-    }
+    // if (noc_mode == DM_DEDICATED_NOC) {
+    //     ncrisc_noc_counters_init();
+    // } else {
+    //     dynamic_noc_local_state_init();
+    // }
 }

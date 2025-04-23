@@ -499,8 +499,10 @@ class TtTransformer(LightweightModule):
         chunk_start_idx=None,
         get_last_token=-1,
         kv_cache=None,
+        mesh_composer=None,
     ):
         if mode == "decode":
+            # breakpoint()
             self.prefetcher_setup.create_global_cb()
             garbage_tensor = ttnn.dram_prefetcher(
                 self.tt_tensors,
@@ -543,7 +545,18 @@ class TtTransformer(LightweightModule):
         if get_last_token != -1:
             x = x[:, :, get_last_token:, :]
 
-        return self.lm_head(x, None if mode == "prefill" else self.prefetcher_setup.worker_sub_device_id, mode=mode)
+        if mode == "decode":
+            # del self.prefetcher_setup.global_circular_buffer
+            # breakpoint()
+            self.mesh_device.set_sub_device_stall_group(
+                [self.prefetcher_setup.prefetcher_sub_device_id, self.prefetcher_setup.worker_sub_device_id]
+            )
+        return self.lm_head(
+            x,
+            None if mode == "prefill" else self.prefetcher_setup.prefetcher_sub_device_id,
+            mode=mode,
+            mesh_composer=mesh_composer,
+        )
 
     def __del__(self):
         self.tt_ccl.close()
