@@ -1165,7 +1165,14 @@ void kernel_main() {
     ///////////////////////
     // Common runtime args:
     ///////////////////////
+#ifdef FABRIC_2D
+    const size_t local_sender_channel_0_connection_semaphore_addr = get_arg_val<uint32_t>(arg_idx++);
+    const size_t local_sender_channel_1_connection_semaphore_addr = get_arg_val<uint32_t>(arg_idx++);
+    const size_t local_sender_channel_2_connection_semaphore_addr = get_arg_val<uint32_t>(arg_idx++);
+    const size_t local_sender_channel_3_connection_semaphore_addr = get_arg_val<uint32_t>(arg_idx++);
+    const size_t local_sender_channel_4_connection_semaphore_addr = get_arg_val<uint32_t>(arg_idx++);
 
+#else
     const size_t local_sender_channel_0_connection_semaphore_addr =
         persistent_mode ? get_arg_val<uint32_t>(arg_idx++)
                         : get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(get_arg_val<uint32_t>(arg_idx++));
@@ -1173,16 +1180,9 @@ void kernel_main() {
         get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(get_arg_val<uint32_t>(arg_idx++));
     const size_t local_sender_channel_2_connection_semaphore_addr =
         get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(get_arg_val<uint32_t>(arg_idx++));
-    const size_t local_sender_channel_3_connection_semaphore_addr =
-        get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(get_arg_val<uint32_t>(arg_idx++));
-    const size_t local_sender_channel_4_connection_semaphore_addr =
-        get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(get_arg_val<uint32_t>(arg_idx++));
-
-    // unused - can later remove
-    const size_t local_sender_channel_0_connection_buffer_index_addr =
-        persistent_mode ? get_arg_val<uint32_t>(arg_idx++)
-                        : get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(get_arg_val<uint32_t>(arg_idx++));
-
+    arg_idx += 2;
+#endif
+    const size_t local_sender_channel_0_connection_buffer_index_id = get_arg_val<uint32_t>(arg_idx++);
     const size_t local_sender_channel_1_connection_buffer_index_id = get_arg_val<uint32_t>(arg_idx++);
     const size_t local_sender_channel_2_connection_buffer_index_id = get_arg_val<uint32_t>(arg_idx++);
     const size_t local_sender_channel_3_connection_buffer_index_id = get_arg_val<uint32_t>(arg_idx++);
@@ -1207,6 +1207,7 @@ void kernel_main() {
     // 2D has 3 downstream EDMs. We have 4 directions, E/W/N/S at bytes 0, 1, 2, 3 respectively.
     // Depending on the Receiver Channel direction, Respective/remaining 3 outgoing directions'
     // semaphores are populated in respective 3 bytes of these two variables.
+    // UC, make these 4 each for the 4 downstream edm connections. 3 on vc0, 1 on vc 1
     const auto edm_vc0_forwarding_semaphore = get_arg_val<uint32_t>(arg_idx++);
     const auto edm_vc0_teardown_semaphore = get_arg_val<uint32_t>(arg_idx++);
 
@@ -1233,6 +1234,13 @@ void kernel_main() {
     ////////////////////////
     // Sender runtime args
     ////////////////////////
+#ifdef FABRIC_2D
+    auto sender0_worker_semaphore_ptr = reinterpret_cast<volatile uint32_t*>(get_arg_val<uint32_t>(arg_idx++));
+    auto sender1_worker_semaphore_ptr = reinterpret_cast<volatile uint32_t*>(get_arg_val<uint32_t>(arg_idx++));
+    auto sender2_worker_semaphore_ptr = reinterpret_cast<volatile uint32_t*>(get_arg_val<uint32_t>(arg_idx++));
+    auto sender3_worker_semaphore_ptr = reinterpret_cast<volatile uint32_t*>(get_arg_val<uint32_t>(arg_idx++));
+    auto sender4_worker_semaphore_ptr = reinterpret_cast<volatile uint32_t*>(get_arg_val<uint32_t>(arg_idx++));
+#else
     auto sender0_worker_semaphore_ptr = reinterpret_cast<volatile uint32_t*>(
         persistent_mode ? get_arg_val<uint32_t>(arg_idx++)
                         : get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(get_arg_val<uint32_t>(arg_idx++)));
@@ -1240,11 +1248,13 @@ void kernel_main() {
         get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(get_arg_val<uint32_t>(arg_idx++)));
     auto sender2_worker_semaphore_ptr = reinterpret_cast<volatile uint32_t*>(
         get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(get_arg_val<uint32_t>(arg_idx++)));
-    auto sender3_worker_semaphore_ptr = reinterpret_cast<volatile uint32_t*>(
-        get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(get_arg_val<uint32_t>(arg_idx++)));
-    auto sender4_worker_semaphore_ptr = reinterpret_cast<volatile uint32_t*>(
-        get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(get_arg_val<uint32_t>(arg_idx++)));
-
+    arg_idx += 2;
+#endif
+    // unused - can later remove
+    const size_t local_sender_channel_0_connection_buffer_index_addr =
+        persistent_mode ? local_sender_channel_0_connection_buffer_index_id
+                        : get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(
+                              get_arg_val<uint32_t>(local_sender_channel_0_connection_buffer_index_id));
     if constexpr (persistent_mode) {
         // UC: Need to handle this properly.
         //     In 2D, local sender is not always on channel 0.
@@ -1346,8 +1356,9 @@ void kernel_main() {
                 const auto edm_vc0_teardown_semaphore_address =
                     get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(edm_vc0_teardown_semaphore >> (edm_index * 8));
                 new (&downstream_edm_noc_interfaces[edm_index]) tt::tt_fabric::EdmToEdmSender<SENDER_NUM_BUFFERS>(
-                    // persistent_mode -> hardcode to false because for EDM -> EDM
-                    //  connections we must always use semaphore lookup
+                    // persistent_mode -> hardcode to false for 1D because for 1D, EDM -> EDM
+                    // connections we must always use semaphore lookup
+                    // For 2D, downstream_edm_vc0_semaphore_id,
                     false,
                     (downstream_edm_vc0_noc_x >> (edm_index * 8)) & 0xFF,
                     (downstream_edm_vc0_noc_y >> (edm_index * 8)) & 0xFF,

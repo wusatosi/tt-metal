@@ -1122,7 +1122,8 @@ std::unique_ptr<Program> create_and_compile_1d_fabric_program(IDevice* device, F
                 edm_config,
                 true,
                 false,
-                is_dateline);
+                is_dateline,
+                control_plane->routing_direction_to_eth_direction(direction));
             edm_builders.insert({eth_chan, edm_builder});
         }
     }
