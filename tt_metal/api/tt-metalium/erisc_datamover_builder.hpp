@@ -254,7 +254,7 @@ public:
         downstream_edm_vcs_worker_registration_address;
     std::array<std::optional<size_t>, FabricEriscDatamoverConfig::max_downstream_edms>
         downstream_edm_vcs_worker_location_info_address;
-    std::array<std::optional<size_t>, FabricEriscDatamoverConfig::num_sender_channels_2d>
+    std::array<size_t, FabricEriscDatamoverConfig::num_sender_channels_2d>
         downstream_vcs_sender_channel_buffer_index_semaphore_id;
 
     bool enable_persistent_mode = false;

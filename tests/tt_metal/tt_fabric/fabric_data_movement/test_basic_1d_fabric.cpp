@@ -59,6 +59,9 @@ TEST_F(Fabric1DFixture, TestUnicastRaw) {
     chip_id_t src_physical_device_id = control_plane->get_physical_chip_id_from_mesh_chip_id(src_mesh_chip_id);
     chip_id_t dst_physical_device_id = control_plane->get_physical_chip_id_from_mesh_chip_id(dst_mesh_chip_id);
 
+    tt::log_info(tt::LogTest, "Src MeshId {} ChipId {}", src_mesh_chip_id.first, src_mesh_chip_id.second);
+    tt::log_info(tt::LogTest, "Dst MeshId {} ChipId {}", dst_mesh_chip_id.first, dst_mesh_chip_id.second);
+
     // get a port to connect to
     std::set<chan_id_t> eth_chans = control_plane->get_active_fabric_eth_channels_in_direction(
         src_mesh_chip_id.first, src_mesh_chip_id.second, RoutingDirection::E);
