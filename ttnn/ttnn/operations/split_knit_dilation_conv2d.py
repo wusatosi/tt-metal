@@ -164,6 +164,37 @@ def torch_split_knit_batched_dilation(
     return out_knitted
 
 
+def torch_knit_dilation(
+    out_splited,
+    torch_input_tensor_nchw,
+    out_channels,
+    filter_hw,
+    stride_hw,
+    padding_hw,
+    dilation_hw,
+):
+    assert isinstance(out_splited, torch.Tensor), "out_splited must be a torch.Tensor"
+    out_splited = torch.permute(out_splited, (0, 3, 1, 2))
+
+    # knit (HOST)
+    full_out_h = (
+        torch_input_tensor_nchw.shape[2] + 2 * padding_hw[0] - dilation_hw[0] * (filter_hw[0] - 1) - 1
+    ) // stride_hw[0] + 1
+    full_out_w = (
+        torch_input_tensor_nchw.shape[3] + 2 * padding_hw[1] - dilation_hw[1] * (filter_hw[1] - 1) - 1
+    ) // stride_hw[1] + 1
+    out_knitted = torch.zeros([torch_input_tensor_nchw.shape[0], out_channels, full_out_h, full_out_w])
+
+    # for out_channel in range(out_channels):
+    for split_h in range(dilation_hw[0]):
+        for split_w in range(dilation_hw[1]):
+            src_batch_idx = split_h * dilation_hw[1] + split_w
+            out_knitted[:, :, split_h :: dilation_hw[0], split_w :: dilation_hw[1]] = out_splited[
+                src_batch_idx, :, :, :
+            ]
+    return out_knitted
+
+
 # Split-Knit Conv2d with high dilation (batched)
 @ttnn.register_python_operation(name="ttnn.experimental.split_knit_batch_dilation_conv2d")
 def ttnn_split_knit_batched_dilation(
@@ -190,7 +221,7 @@ def ttnn_split_knit_batched_dilation(
     assert torch_input_tensor_nchw.shape[0] == 1, f"batch size must be 1"
 
     weights_dtype = ttnn.bfloat8_b
-    activations_dtype = ttnn.bfloat8_b
+    activations_dtype = ttnn.bfloat16  # the only supported dtype for split/deinterleave
     math_fidelity = ttnn.MathFidelity.LoFi
     fp32_dest_acc_en = False
     packer_l1_acc = False
@@ -204,31 +235,42 @@ def ttnn_split_knit_batched_dilation(
     print(
         f"sk_batch_size {sk_batch_size}, sk_in_channels {sk_in_channels}, sk_out_channels {sk_out_channels}, sk_input_height {sk_input_height}, sk_input_width {sk_input_width}"
     )
-    torch_inputs_grouped_splited = torch.zeros(
-        (
-            sk_batch_size,
-            torch_input_tensor_nchw.shape[1],
-            torch_input_tensor_nchw.shape[2] // dilation_hw[0],
-            torch_input_tensor_nchw.shape[3] // dilation_hw[1],
-        )
-    )
-    for split_h in range(dilation_hw[0]):
-        for split_w in range(dilation_hw[1]):
-            batch_idx = split_h * dilation_hw[1] + split_w
-            torch_inputs_grouped_splited[batch_idx, :, :, :] = torch_input_tensor_nchw[
-                :,
-                :,
-                split_h :: dilation_hw[0],
-                split_w :: dilation_hw[1],
-            ]
 
-    tt_input_tensor_nchw = ttnn.from_torch(
-        torch_inputs_grouped_splited,
-        activations_dtype if activations_dtype == ttnn.float32 else ttnn.bfloat16,
+    torch_input_tensor_nhwc = torch.permute(torch_input_tensor_nchw, (0, 2, 3, 1))
+
+    og_shape_nchw = torch_input_tensor_nchw.shape
+
+    tt_input_tensor_nhwc = ttnn.from_torch(
+        torch_input_tensor_nhwc,
+        # activations_dtype if activations_dtype == ttnn.float32 else ttnn.bfloat16,
+        activations_dtype,
         mesh_mapper=None,
     ).to(device)
 
-    tt_input_tensor = ttnn.permute(tt_input_tensor_nchw, (0, 2, 3, 1))
+    memory_config = ttnn.create_sharded_memory_config_(
+        shape=[
+            tt_input_tensor_nhwc.shape[0] * tt_input_tensor_nhwc.shape[1] * tt_input_tensor_nhwc.shape[2],
+            tt_input_tensor_nhwc.shape[3],
+        ],
+        core_grid=ttnn.CoreGrid(x=8, y=8),
+        orientation=ttnn.ShardOrientation.ROW_MAJOR,
+        strategy=ttnn.ShardStrategy.HEIGHT,
+    )
+    tt_input_tensor_nhwc = ttnn.to_memory_config(tt_input_tensor_nhwc, memory_config)
+
+    tt_input_tensor = ttnn.experimental.deinterleave_to_batch(
+        tt_input_tensor_nhwc,
+        compute_kernel_config=ttnn.WormholeComputeKernelConfig(
+            math_fidelity=ttnn.MathFidelity.HiFi4,
+            math_approx_mode=False,
+            fp32_dest_acc_en=False,
+            packer_l1_acc=False,
+        ),
+        stride_hw=dilation_hw,
+        input_height=og_shape_nchw[2],
+        input_width=og_shape_nchw[3],
+        # barrier_threshold=barrier_threshold,
+    )
 
     tt_weight_tensor = ttnn.from_torch(
         torch_weight_tensor_oihw, weights_dtype if weights_dtype != ttnn.bfloat8_b else ttnn.float32, mesh_mapper=None
@@ -253,10 +295,10 @@ def ttnn_split_knit_batched_dilation(
         enable_act_double_buffer=True,
         enable_split_reader=True,
         enable_subblock_padding=False,
-        # output_layout=ttnn.ROW_MAJOR_LAYOUT,
+        # output_layout=ttnn.ROW_MAJOR_LAYOUT, # preferred, but OOM
         output_layout=ttnn.TILE_LAYOUT,
         activation="",
-        act_block_h_override=32 * 2,
+        act_block_h_override=32 * 16,
     )
 
     compute_config = ttnn.init_device_compute_kernel_config(
@@ -287,45 +329,28 @@ def ttnn_split_knit_batched_dilation(
         return_output_dim=True,
         return_weights_and_bias=False,
     )
-    # out_splited = torch.nn.functional.conv2d(
-    #     torch_inputs_grouped_splited,
-    #     torch_weight_tensor_oihw,
-    #     # bias=torch_bias_tensor.reshape(-1).repeat(dilation_hw[0]*dilation_hw[1]) if torch_bias_tensor is not None else None, # TBD if this is OK
-    #     bias=torch_bias_tensor.reshape(-1) if torch_bias_tensor is not None else None, # TBD if this is OK
-    #     stride=stride_hw,
-    #     padding=sk_padding_hw,
-    #     dilation=sk_dilation_hw,
-    #     groups=sk_groups
-    # )
 
-    print(f"tt_output_splited_tensor_on_device.shape {tt_output_splited_tensor_on_device.shape}")
+    # reshape output from (1,1,NHW,C) to (N,H,W,C)
     tt_output_splited_tensor_on_device = tt_output_splited_tensor_on_device.reshape(
         sk_batch_size, out_h, out_w, tt_output_splited_tensor_on_device.shape[-1]
     )
+
+    # KNIT host fallback starts here
     ttnn.synchronize_device(device)
 
-    # host fallback
     out_splited = ttnn.to_torch(tt_output_splited_tensor_on_device, mesh_composer=None)
-    out_splited = torch.permute(out_splited, (0, 3, 1, 2))
 
-    # knit (HOST)
-    full_out_h = (
-        torch_input_tensor_nchw.shape[2] + 2 * padding_hw[0] - dilation_hw[0] * (filter_hw[0] - 1) - 1
-    ) // stride_hw[0] + 1
-    full_out_w = (
-        torch_input_tensor_nchw.shape[3] + 2 * padding_hw[1] - dilation_hw[1] * (filter_hw[1] - 1) - 1
-    ) // stride_hw[1] + 1
-    out_knitted = torch.zeros(
-        (torch_input_tensor_nchw.shape[0], torch_weight_tensor_oihw.shape[0], full_out_h, full_out_w)
+    out_knitted = torch_knit_dilation(
+        out_splited,
+        torch_input_tensor_nchw,
+        torch_weight_tensor_oihw.shape[0],
+        filter_hw,
+        stride_hw,
+        padding_hw,
+        dilation_hw,
     )
 
-    # for out_channel in range(out_channels):
-    for split_h in range(dilation_hw[0]):
-        for split_w in range(dilation_hw[1]):
-            src_batch_idx = split_h * dilation_hw[1] + split_w
-            out_knitted[:, :, split_h :: dilation_hw[0], split_w :: dilation_hw[1]] = out_splited[
-                src_batch_idx, :, :, :
-            ]
+    print(f"{out_knitted.shape=}")
 
     return out_knitted
 
