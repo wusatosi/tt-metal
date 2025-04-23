@@ -416,6 +416,8 @@ void DispatchKernel::CreateKernel() {
         device_->virtual_noc0_coordinate(noc_selection_.downstream_noc, downstream_virtual_core);
     auto downstream_s_virtual_noc_coords =
         device_->virtual_noc0_coordinate(noc_selection_.downstream_noc, downstream_s_virtual_core);
+    auto my_upstream_virtual_noc_coords =
+        device_->virtual_noc0_coordinate(noc_selection_.non_dispatch_noc, upstream_virtual_core);
 
     std::map<string, string> defines = {
         {"MY_NOC_X", std::to_string(my_virtual_noc_coords.x)},
@@ -423,6 +425,8 @@ void DispatchKernel::CreateKernel() {
         {"UPSTREAM_NOC_INDEX", std::to_string(noc_selection_.upstream_noc)},
         {"UPSTREAM_NOC_X", std::to_string(upstream_virtual_noc_coords.x)},
         {"UPSTREAM_NOC_Y", std::to_string(upstream_virtual_noc_coords.y)},
+        {"MY_UPSTREAM_NOC_X", std::to_string(my_upstream_virtual_noc_coords.x)},
+        {"MY_UPSTREAM_NOC_Y", std::to_string(my_upstream_virtual_noc_coords.y)},
         {"DOWNSTREAM_NOC_X", std::to_string(downstream_virtual_noc_coords.x)},
         {"DOWNSTREAM_NOC_Y", std::to_string(downstream_virtual_noc_coords.y)},
         {"DOWNSTREAM_SLAVE_NOC_X", std::to_string(downstream_s_virtual_noc_coords.x)},
