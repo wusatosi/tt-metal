@@ -496,7 +496,6 @@ def test_falcon7b_attention_softmax_sequence(
     compute_grid_size = device.compute_with_storage_grid_size()
     if num_cores > (compute_grid_size.x * compute_grid_size.y):
         pytest.skip(f"Need {num_cores} cores to run this test but core grid is {compute_grid_size}")
-    device.enable_async(async_mode)
     grid_size = (8, 8)
     num_heads = 64
 

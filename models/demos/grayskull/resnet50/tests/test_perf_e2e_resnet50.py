@@ -40,12 +40,11 @@ def test_perf(
 @pytest.mark.models_performance_bare_metal
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 32768, "trace_region_size": 1332224}], indirect=True)
 @pytest.mark.parametrize(
-    "batch_size, enable_async_mode, expected_inference_time, expected_compile_time",
+    "batch_size, expected_inference_time, expected_compile_time",
     (
         (20, True, 0.0068, 20),
         (20, False, 0.0068, 20),
     ),
-    indirect=["enable_async_mode"],
 )
 def test_perf_trace(
     device,
@@ -54,17 +53,15 @@ def test_perf_trace(
     expected_inference_time,
     expected_compile_time,
     hf_cat_image_sample_input,
-    enable_async_mode,
     model_location_generator,
 ):
-    mode = "async" if enable_async_mode else "sync"
     run_perf_resnet(
         batch_size,
         expected_inference_time,
         expected_compile_time,
         hf_cat_image_sample_input,
         device,
-        f"resnet50_trace_{mode}",
+        f"resnet50_trace",
         model_location_generator,
     )
 
