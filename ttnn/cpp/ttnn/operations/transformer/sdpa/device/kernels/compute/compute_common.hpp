@@ -112,6 +112,7 @@ void sub_exp_block_bcast_cols_inplace(uint32_t in1_cb) {
     constexpr uint32_t dst_tiles = SUB_EXP_GRANULARITY;
     constexpr uint32_t granularity = cols >> LOG2_SUB_EXP_GRANULARITY;
     uint32_t in0_index = 0;
+    uint32_t out_index = 0;
 
     sub_bcast_cols_init_short(in0_cb, in1_cb);
     // 88.5 = BF16(0x42B1)
@@ -135,23 +136,20 @@ void sub_exp_block_bcast_cols_inplace(uint32_t in1_cb) {
             tile_regs_commit();
             tile_regs_wait();
             for (uint32_t j = 0; j < dst_tiles; ++j) {
-                pack_tile(j, in0_cb);
+                pack_tile<true>(j, in0_cb, out_index);
+                out_index++;
             }
             tile_regs_release();
         }
     }
-    cb_pop_front(in0_cb, rows * cols);
-    cb_reserve_back(in0_cb, rows * cols);
-    cb_push_back(in0_cb, rows * cols);
-
     /*
         Do EXP without input sanitization
         Perf of this section when negate removed: 9.65 µs
     */
     copy_tile_to_dst_init_short(in0_cb);
     PACK(llk_pack_relu_config(ReluType::NO_RELU));
-    cb_wait_front(in0_cb, rows * cols);
     in0_index = 0;
+    out_index = 0;
     for (uint32_t i = 0; i < rows; ++i) {
         for (uint32_t u = 0; u < granularity; u++) {
             tile_regs_acquire();
@@ -165,7 +163,8 @@ void sub_exp_block_bcast_cols_inplace(uint32_t in1_cb) {
             tile_regs_commit();
             tile_regs_wait();
             for (uint32_t j = 0; j < dst_tiles; ++j) {
-                pack_tile(j, in0_cb);
+                pack_tile<true>(j, in0_cb, out_index);
+                out_index++;
             }
             tile_regs_release();
         }

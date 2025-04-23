@@ -184,10 +184,6 @@ void MAIN {
                     sub_exp_block_bcast_cols_inplace<cb_qk_im, Sq_chunk_t, Sk_chunk_t>(alias_cur_max);
 
                     /* cb_cur_sum = sum(cb_qk_im, dim=-1) */
-                    /**
-                     * DEBUG: Use matml_reduce instead of reduce_sum for 6µs speedup. Still experimental, not robust.
-                     * matmul_reduce has a hardcoded matmul config for the performance test case shapes.
-                     */
                     matmul_reduce<cb_qk_im, cb_col_identity, Sq_chunk_t, Sk_chunk_t>(alias_cur_sum);
 
                     // reduce_c<
