@@ -213,6 +213,23 @@ def run_conv(
         mesh_mapper=input_mesh_mapper,
         layout=input_layout,
     )
+    # Pad the input tensor to the required size with non-zero values
+    tt_input_tensor_padded = ttnn.pad(tt_input_tensor, ((0, 0), (0, 0), (0, 0), (0, 30)), value=100)
+
+    print(
+        "Input tensor shape post padding: ",
+        tt_input_tensor_padded.shape,
+        "padded shape: ",
+        tt_input_tensor_padded.padded_shape,
+    )
+
+    # tt_input_tensor_padded = ttnn.reshape(tt_input_tensor_padded, tt_input_tensor.shape, ttnn.Shape([tt_input_tensor.shape[0], tt_input_tensor.shape[1], tt_input_tensor.shape[2], 32]))
+
+    tt_input_tensor = tt_input_tensor_padded
+    tt_input_tensor = ttnn.to_device(tt_input_tensor, device)
+
+    print(f"Input tensor shape: {tt_input_tensor.shape=}")
+    print(f"Weight tensor shape: {tt_input_tensor.padded_shape=}")
 
     conv_config = ttnn.Conv2dConfig(
         dtype=activations_dtype,
@@ -3432,12 +3449,13 @@ def test_conv2d_ws_program_cache(
 @pytest.mark.parametrize(
     "batch, input_channels, output_channels, input_height, input_width, weights_dtype, activations_dtype, groups, kernel, stride, padding, dilation, auto_shard, use_shallow_conv_variant, act_block_h_override, act_block_w_div, deallocate_activation, math_fidelity, fp32_accum, packer_l1_acc, enable_split_reader, shard_layout",
     (
-        (1,  2,    1, 2560, 128, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (1, 1), (1, 1), (0, 0), (1, 1), False, False,  0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, HS),
+        (1,  2,    1, 2560, 128, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (1, 1), (1, 1), (0, 0), (1, 1), False, False,  0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, HS), #pcc failing
+        (1,  2,    1, 2560, 128, ttnn.bfloat8_b, ttnn.bfloat16, 1, (1, 1), (1, 1), (0, 0), (1, 1), False, False,  0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, HS), #pcc ok
     ),
 )
 
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 8*1024}], indirect=True)
-def test_conv2d_model_2560_128(
+def test_conv2d_model_2560_128_fruit(
     device,
     torch_tensor_map,
     batch,
