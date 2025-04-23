@@ -159,8 +159,8 @@ void JitBuildEnv::init(
     string common_flags;
     switch (arch) {
         case ARCH::GRAYSKULL: common_flags = "-mcpu=tt-gs "; break;
-        case ARCH::WORMHOLE_B0: common_flags = "-mcpu=tt-wh "; break;
-        case ARCH::BLACKHOLE: common_flags = "-mcpu=tt-bh -fno-rvtt-sfpu-replay "; break;
+        case ARCH::WORMHOLE_B0: common_flags = "-mcpu=tt-wh -frvtt-sfpu-replay-buffer-size=16 "; break;
+        case ARCH::BLACKHOLE: common_flags = "-mcpu=tt-bh -frvtt-sfpu-replay-buffer-size=16 "; break;
         default: TT_ASSERT(false, "Invalid arch"); break;
     }
     common_flags += "-std=c++17 -flto -ffast-math ";
