@@ -154,3 +154,64 @@ def test_split_knit_batched_dilation_conv2d(
     )
     logger.info(f"PCC = {pcc_msg}. Threshold = {pcc}")
     assert passing, pcc_msg
+
+
+# fmt: off
+@pytest.mark.parametrize(
+    "input_shape_nchw, output_channels, filter_hw, stride_hw, padding_hw, dilation_hw, pcc",
+    (
+        ((1, 32, 1024, 128), 48, (3, 3), (1, 1), (2, 2), (2, 2), 0.999), # pass
+    ),
+)
+# fmt: on
+
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 16 * 1024}], indirect=True)
+def test_split_knit_local_dilation_conv2d(
+    device, input_shape_nchw, torch_tensor_map, output_channels, filter_hw, stride_hw, padding_hw, dilation_hw, pcc
+):
+    has_bias = True
+    groups = 1
+    assert all(d % 2 == 0 for d in dilation_hw), "dilation must be even"
+    assert all(s == 1 for s in stride_hw), "stride must be 1"
+    assert groups == 1, "groups must be 1"
+
+    torch.manual_seed(0)
+    batch_size, input_channels, input_height, input_width = input_shape_nchw
+
+    conv_input_shape_nchw = (batch_size, input_channels, input_height, input_width)
+    conv_weight_shape_oihw = (output_channels, input_channels // groups, filter_hw[0], filter_hw[1])
+    conv_bias_shape = (1, 1, 1, output_channels)
+    torch_input_tensor_nchw = randomize_torch_tensor(torch_tensor_map, conv_input_shape_nchw)
+    torch_weight_tensor_oihw = randomize_torch_tensor(torch_tensor_map, conv_weight_shape_oihw)
+    torch_bias_tensor = randomize_torch_tensor(torch_tensor_map, conv_bias_shape) if has_bias else None
+
+    torch_out_golden_tensor = torch.nn.functional.conv2d(
+        torch_input_tensor_nchw,
+        torch_weight_tensor_oihw,
+        bias=torch_bias_tensor.reshape(-1) if has_bias else None,
+        stride=stride_hw,
+        padding=padding_hw,
+        dilation=dilation_hw,
+        groups=groups,
+    )
+    """batch, input_channels, output_channels, input_height, input_width, weights_dtype, activations_dtype, groups, kernel, stride, padding, dilation")"""
+    print(
+        f"# torch_conv2d:\n({torch_input_tensor_nchw.shape[0]}, {torch_weight_tensor_oihw.shape[1]}, {torch_weight_tensor_oihw.shape[0]}, {torch_input_tensor_nchw.shape[2]}, {torch_input_tensor_nchw.shape[3]}, ttnn.bfloat8_b, ttnn.bfloat8_b, {1}, ({torch_weight_tensor_oihw.shape[2]}, {torch_weight_tensor_oihw.shape[3]}), (1, 1), {padding_hw}, {dilation_hw}, True, False, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False, True),"
+    )
+
+    ttnn_split_knit_batched_out = ttnn.experimental.split_knit_local_dilation_conv2d(
+        device,
+        torch_input_tensor_nchw,
+        torch_weight_tensor_oihw,
+        torch_bias_tensor,
+        filter_hw,
+        stride_hw,
+        padding_hw,
+        dilation_hw,
+        groups,
+    )
+    passing, pcc_msg = check_with_pcc_without_tensor_printout(
+        torch_out_golden_tensor, ttnn_split_knit_batched_out, pcc=pcc
+    )
+    logger.info(f"PCC = {pcc_msg}. Threshold = {pcc}")
+    assert passing, pcc_msg
