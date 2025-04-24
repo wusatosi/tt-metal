@@ -6,6 +6,14 @@ import math
 import torch
 import ttnn
 from models.common.lightweightmodule import LightweightModule
+from loguru import logger
+
+
+def round_up(a, b):
+    """
+    Round up a to the nearest multiple of b
+    """
+    return b * math.ceil(a / b)
 
 
 class LMHead(LightweightModule):
@@ -52,7 +60,23 @@ class LMHead(LightweightModule):
             padded_lm_head[:, :, :, : self.vocab_size] = torch_output_weights
 
             if args.is_70b:
-                memory_config = ttnn.DRAM_MEMORY_CONFIG
+                # memory_config = ttnn.DRAM_MEMORY_CONFIG
+                device = self.mesh_device.get_device(mesh_device.get_device_ids()[0])
+                K = args.dim // 4
+                N = self.padded_vocab_size // 8
+                num_cores = 24
+                N_per_shard = round_up(math.ceil(N / num_cores), ttnn.TILE_SIZE)
+                N_per_shard_in_dram = N_per_shard * 2
+                in1_shard_shape = [K, N_per_shard_in_dram]
+                in1_shard_grid = ttnn.CoreCoord(device.dram_grid_size().x - 1, device.dram_grid_size().y - 1)
+                in1_shard_grid = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), in1_shard_grid)})
+                in1_shard_spec = ttnn.ShardSpec(in1_shard_grid, in1_shard_shape, ttnn.ShardOrientation.ROW_MAJOR)
+                memory_config = ttnn.MemoryConfig(
+                    ttnn.TensorMemoryLayout.WIDTH_SHARDED, ttnn.BufferType.DRAM, in1_shard_spec
+                )
+
+                # memory_config = args.create_dram_sharded_mem_config(k=args.dim // 4, n=self.padded_vocab_size // 8)
+                logger.info("memory_config: {}", memory_config)
             else:
                 memory_config = (
                     ttnn.DRAM_MEMORY_CONFIG
@@ -115,6 +139,9 @@ class LMHead(LightweightModule):
         if args.is_galaxy:
             self.program_configs = [args.model_config["LM_HEAD_TG_RING_PROGCFG"]] * num_splits
             self.output_memory_config = args.model_config["LM_HEAD_OUT_RING_MEMCFG"]
+
+            logger.info("program_configs: {}", self.program_configs)
+            logger.info("output_memory_config: {}", self.output_memory_config)
         else:
             self.program_configs = [
                 args.dram_matmul_config(
@@ -171,6 +198,7 @@ class LMHead(LightweightModule):
         for weight, pc in zip(self.output_weights, self.program_configs):
             weight_l1 = weight  # ttnn.to_memory_config(weight, self.args.model_config["LM_HEAD_RING_MEMCFG"])
             if mode == "decode":
+                # breakpoint()
                 x = ttnn.to_memory_config(x, self.args.model_config["SHARDED_LM_HEAD_INPUT_32_RING_MEMCFG"])
                 output = ttnn.linear(
                     x,
@@ -181,6 +209,7 @@ class LMHead(LightweightModule):
                     dtype=ttnn.bfloat8_b,
                     sub_device_id=worker_sub_device_id,
                 )
+                output = ttnn.to_memory_config(output, self.args.model_config["LM_HEAD_OUT_RING_RESHARD_MEMCFG"])
             else:
                 output = ttnn.linear(
                     x,
