@@ -99,7 +99,7 @@ def test_ff1(device, seq_len, use_matmul, split_sequence, l1_activations):
                 dst_full_sync_en=True,
             ),
             program_config=ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
-                compute_with_storage_grid_size=(8, 10),
+                compute_with_storage_grid_size=(7, 10),
                 in0_block_w=8,
                 out_subblock_h=1,
                 out_subblock_w=4,
@@ -124,7 +124,7 @@ def test_ff1(device, seq_len, use_matmul, split_sequence, l1_activations):
                 dst_full_sync_en=True,
             ),
             program_config=ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
-                compute_with_storage_grid_size=(8, 10),
+                compute_with_storage_grid_size=(7, 10),
                 in0_block_w=8,
                 out_subblock_h=1,
                 out_subblock_w=4,
