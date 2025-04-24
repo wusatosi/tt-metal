@@ -4,6 +4,7 @@
 
 import ttnn
 import torch
+import math
 from loguru import logger
 from typing import List
 from collections import defaultdict
@@ -19,13 +20,25 @@ from llama_models.llama3.reference_impl.generation import (
 )
 from models.tt_transformers.tt.common import (
     copy_host_to_device,
-    get_padded_prefill_len,
+    nearest_pow_2,
     num_blocks_in_seq,
     get_block_size,
     get_max_prefill_chunk_size,
 )
 
 from models.tt_transformers.tt.generator import SamplingParams
+
+
+def get_padded_prefill_len(seq_len):
+    """
+    Returns the padded prefill length for the given sequence length.
+    """
+    if seq_len < 128:
+        return 128
+    pow_2_pad = nearest_pow_2(seq_len)
+    mult_2048_pad = 2048 * math.ceil(seq_len / 2048)
+    min_extended_pad = max(min(pow_2_pad, mult_2048_pad), 1024)
+    return min_extended_pad
 
 
 class Generator:
