@@ -212,6 +212,7 @@ def run_conv(
         activations_dtype,
         mesh_mapper=input_mesh_mapper,
         layout=input_layout,
+        device=device if input_layout == ttnn.TILE_LAYOUT else None,
     )
 
     conv_config = ttnn.Conv2dConfig(
