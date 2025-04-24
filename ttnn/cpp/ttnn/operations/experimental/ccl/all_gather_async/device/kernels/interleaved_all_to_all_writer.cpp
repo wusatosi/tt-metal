@@ -61,8 +61,6 @@ void kernel_main() {
     const uint8_t out_ready_sem_noc0_x = get_arg_val<uint32_t>(arg_idx++);
     const uint8_t out_ready_sem_noc0_y = get_arg_val<uint32_t>(arg_idx++);
     uint32_t out_ready_sem_wait_value = get_arg_val<uint32_t>(arg_idx++);
-    const tt_l1_ptr uint32_t* device_schedule = (tt_l1_ptr uint32_t*)get_arg_addr(arg_idx);
-    arg_idx += (ring_size - 1);  // Length of device_schedule
     size_t arg_for_fab = arg_idx;
     auto fabric_connection = FabricConnectionManager::build_from_args(arg_idx);
 
@@ -134,17 +132,24 @@ void kernel_main() {
     DPRINT << "tensor -> CB: " << (uint32_t)cb0_id << "\n";
     DPRINT << "packet size in pages: " << (uint32_t)packet_size_in_pages << "\n";
 
+    bool cur_is_forward = num_targets_forward_direction > num_targets_backward_direction;
+    uint32_t forward_hops = 1;
+    uint32_t backward_hops = 1;
+    uint32_t dst_ring_id;
     for (uint32_t i = 0; i < ring_size - 1; ++i) {
         DeviceZoneScopedN("WriteToDevice");
-        const uint32_t dst_ring_id = device_schedule[i];
-        const uint32_t forward_distance = (dst_ring_id - my_ring_id + ring_size) % ring_size;
-        const uint32_t backward_distance = (my_ring_id - dst_ring_id + ring_size) % ring_size;
-        const bool cur_is_forward = forward_distance <= num_targets_forward_direction;
-
+        if (forward_hops == num_targets_forward_direction + 1) {
+            cur_is_forward = false;
+        }
+        if (backward_hops == num_targets_backward_direction + 1) {
+            cur_is_forward = true;
+        }
         if (cur_is_forward) {
-            pkt_hdr_forward->to_chip_unicast(forward_distance);
+            pkt_hdr_forward->to_chip_unicast(forward_hops);
+            forward_hops++;
         } else {
-            pkt_hdr_backward->to_chip_unicast(backward_distance);
+            pkt_hdr_backward->to_chip_unicast(backward_hops);
+            backward_hops++;
         }
 
         for (uint32_t out_row_id = out_row_start; out_row_id < out_row_end; out_row_id++) {

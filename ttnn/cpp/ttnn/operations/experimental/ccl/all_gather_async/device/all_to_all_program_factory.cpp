@@ -208,22 +208,6 @@ tt::tt_metal::operation::ProgramWithCallbacks all_to_all_async_minimal(
         input_shard_row_tiles = input_row_device_stride;
     }
 
-    /**
-     * Set device schedule v3.5.
-     * This was manually derived to be somewhat optimal.
-     */
-    std::vector<std::vector<uint32_t>> device_schedule = {
-        {4, 1, 7, 6, 2, 3, 5},
-        {5, 3, 2, 0, 7, 6, 4},
-        {0, 6, 3, 1, 4, 7, 5},
-        {2, 7, 5, 4, 0, 1, 6},
-        {3, 2, 0, 5, 6, 7, 1},
-        {6, 4, 1, 7, 3, 2, 0},
-        {7, 5, 4, 2, 0, 3, 1},
-        {1, 0, 6, 3, 4, 5, 2}};
-
-    auto my_schedule = device_schedule.at(ring_index);
-
     // Kernel Runtime Args
     CoreCoord drain_sync_core;  // the first worker of each chip is the drain sync core, which contains the output ready
                                 // semaphore
@@ -257,7 +241,6 @@ tt::tt_metal::operation::ProgramWithCallbacks all_to_all_async_minimal(
         for (const auto& arg : reader_rt_args) {
             log_trace(tt::LogOp, "\t{}", arg);
         }
-        reader_rt_args.insert(reader_rt_args.end(), my_schedule.begin(), my_schedule.end());
         tt::tt_metal::SetRuntimeArgs(program, worker_sender_reader_kernel_id, {core}, reader_rt_args);
 
         // Set writer runtime args
@@ -285,7 +268,6 @@ tt::tt_metal::operation::ProgramWithCallbacks all_to_all_async_minimal(
             drain_sync_core.y,
             out_ready_sem_wait_value,
         };
-        writer_rt_args.insert(writer_rt_args.end(), my_schedule.begin(), my_schedule.end());
         log_trace(tt::LogOp, "Writer Runtime Args:");
         for (const auto& arg : writer_rt_args) {
             log_trace(tt::LogOp, "\t{}", arg);
