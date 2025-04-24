@@ -62,32 +62,6 @@ Tensor* get_tensor(T& maybe_tensor) {
     return output_tensor;
 }
 
-void check_output(auto& output_tensors, const std::vector<IDevice*>& workers) {
-    for (auto& output_tensor_like : output_tensors) {
-        auto output_tensor = get_tensor(output_tensor_like);
-        if (!output_tensor) {
-            continue;
-        }
-        TT_FATAL(
-            output_tensor->workers.size(),
-            "Worker threads must be specified for outputs populated by launch_op. This API can only be used for "
-            "creating output tensors on device.");
-        TT_FATAL(
-            output_tensor->workers == workers,
-            "Worker threads must be consistent across all outputs populated by launch_op.");
-    }
-}
-
-auto& get_workers(auto& output_tensors) {
-    for (auto& output_tensor_like : output_tensors) {
-        Tensor* output_tensor = get_tensor(output_tensor_like);
-        if (output_tensor) {
-            return output_tensor->workers;
-        }
-    }
-    TT_THROW("Workers not found in output tensors.");
-}
-
 }  // namespace detail
 }  // namespace tt::tt_metal::operation
 
