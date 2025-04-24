@@ -140,4 +140,5 @@ void kernel_main() {
         cb_wait_front(cb_ex2, 1);
         noc_semaphore_inc(reduce_second_stage_receiver_semaphore_noc_addr, 1);
     }
+    noc_async_atomic_barrier();
 }
