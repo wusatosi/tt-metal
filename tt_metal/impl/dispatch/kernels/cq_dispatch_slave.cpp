@@ -43,6 +43,7 @@ constexpr uint32_t max_num_go_signal_noc_data_entries =
 constexpr uint32_t virtualize_unicast_cores = get_compile_time_arg_val(12);
 constexpr uint32_t num_virtual_unicast_cores = get_compile_time_arg_val(13);
 constexpr uint32_t num_physical_unicast_cores = get_compile_time_arg_val(14);
+constexpr uint32_t noc_sharing_atomic = get_compile_time_arg_val(15);
 
 constexpr uint32_t upstream_noc_xy = uint32_t(NOC_XY_ENCODING(UPSTREAM_NOC_X, UPSTREAM_NOC_Y));
 constexpr uint32_t dispatch_d_noc_xy = uint32_t(NOC_XY_ENCODING(DOWNSTREAM_NOC_X, DOWNSTREAM_NOC_Y));
@@ -63,6 +64,7 @@ static uint32_t worker_count_update_for_dispatch_d[max_num_worker_sems] = {0};
 static uint32_t go_signal_noc_data[max_num_go_signal_noc_data_entries];
 
 static uint32_t num_worker_sems = 1;
+static volatile tt_l1_ptr uint32_t* const noc_atomic_ptr = (volatile tt_l1_ptr uint32_t*)(noc_sharing_atomic);
 
 FORCE_INLINE
 void dispatch_s_wr_reg_cmd_buf_init() {
@@ -220,15 +222,50 @@ void process_go_signal_mcast_cmd() {
 
     if (cmd->mcast.num_mcast_txns > 0) {
         // Setup registers before waiting for workers so only the NOC_CMD_CTRL register needs to be touched after.
-        uint64_t dst_noc_addr_multicast =
-            get_noc_addr_helper(go_signal_noc_data[go_signal_noc_data_idx++], mcast_go_signal_addr);
+        uint32_t dst_noc = go_signal_noc_data[go_signal_noc_data_idx++];
         uint32_t num_dests = go_signal_noc_data[go_signal_noc_data_idx++];
+        // lock_no_atomic is only supported on wormhole. TODO: use real atomics and support this on blackhole.
+#if defined(ARCH_WORMHOLE)
+        volatile uint32_t* worker_sem = (volatile uint32_t*)STREAM_REG_ADDR(
+            cmd->mcast.wait_stream, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_REG_INDEX);
+        if (stream_wrap_gt(cmd->mcast.wait_count, *worker_sem)) {
+            // We're currently waiting for workers. Send a linked multicast to the first group of
+            // workers so the first multicast once the workers are ready doesn't
+            // need to do a path reservation. Normally keeping a path
+            // reservation open arbitrarily long could cause deadlocks or poor
+            // performance, but this code is the only user of
+            // NOC_DISPATCH_MULTICAST_WRITE_VC on this NOC (NOC 1).
+            uint64_t fake_noc_addr_multicast = get_noc_addr_helper(dst_noc, MEM_DISPATCH_NOOP);
+            constexpr bool linked = true;
+            cq_noc_async_write_init_state<CQ_NOC_SNDL, true, linked>(
+                ((uint32_t)aligned_go_signal_storage) + MEM_DISPATCH_NOOP, fake_noc_addr_multicast, sizeof(uint32_t));
+
+            if constexpr (!distributed_dispatcher) {
+                // Prevent dispatch_d from submitting commands to cmdbuf 3 while
+                // we have a path reservation, as a hardware issue would cause
+                // both those commands and the later multicast to hang.
+                lock_no_atomic(noc_atomic_ptr, dispatch_s_lock_index);
+            }
+            cq_noc_async_write_with_state<CQ_NOC_sndl, CQ_NOC_wait>(0, 0, 0);
+            noc_nonposted_writes_acked[noc_index] += num_dests;
+            noc_nonposted_writes_num_issued[noc_index]++;
+        }
+#endif
+
+        // Setup registers before waiting for workers so only the NOC_CMD_CTRL register needs to be touched after.
+        uint64_t dst_noc_addr_multicast = get_noc_addr_helper(dst_noc, mcast_go_signal_addr);
         cq_noc_async_write_init_state<CQ_NOC_SNDL, true>(
             (uint32_t)aligned_go_signal_storage, dst_noc_addr_multicast, sizeof(uint32_t));
         noc_nonposted_writes_acked[noc_index] += num_dests;
 
         wait_for_workers(cmd);
         cq_noc_async_write_with_state<CQ_NOC_sndl, CQ_NOC_wait>(0, 0, 0);
+                if constexpr (!distributed_dispatcher) {
+            #if defined(ARCH_WORMHOLE)
+                        // This is safe to do even if the lock wasn't taken.
+                        unlock_no_atomic(noc_atomic_ptr, dispatch_s_lock_index);
+            #endif
+                    }
         // Send GO signal to remaining destinations. Only the destination NOC needs to be modified.
         for (uint32_t i = 1, num_mcasts = cmd->mcast.num_mcast_txns; i < num_mcasts; ++i) {
             uint64_t dst = get_noc_addr_helper(go_signal_noc_data[go_signal_noc_data_idx++], mcast_go_signal_addr);

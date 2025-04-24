@@ -193,6 +193,8 @@ void DispatchKernel::GenerateStaticConfigs() {
     } else {
         TT_FATAL(false, "DispatchKernel must be one of (or both) H and D variants");
     }
+    static_config_.noc_sharing_atomic =
+        my_dispatch_constants.get_device_command_queue_addr(CommandQueueDeviceAddrType::NOC_SHARING_ATOMIC);
 }
 
 void DispatchKernel::GenerateDependentConfigs() {
@@ -411,10 +413,12 @@ void DispatchKernel::CreateKernel() {
         num_virtual_active_eth_cores,
         num_physical_active_eth_cores,
 
+        static_config_.noc_sharing_atomic.value(),
+
         static_config_.is_d_variant.value(),
         static_config_.is_h_variant.value(),
     };
-    TT_ASSERT(compile_args.size() == 42);
+    TT_ASSERT(compile_args.size() == 43);
     auto my_virtual_core = device_->virtual_core_from_logical_core(logical_core_, GetCoreType());
     auto upstream_virtual_core =
         device_->virtual_core_from_logical_core(dependent_config_.upstream_logical_core.value(), GetCoreType());
@@ -440,8 +444,8 @@ void DispatchKernel::CreateKernel() {
         {"UPSTREAM_NOC_X", std::to_string(upstream_virtual_noc_coords.x)},
         {"UPSTREAM_NOC_Y", std::to_string(upstream_virtual_noc_coords.y)},
         {"OTHER_UPSTREAM_NOC_INDEX", std::to_string(noc_selection_.upstream_noc)},
-        {"OTHER_UPSTREAM_NOC_X", std::to_string(upstream_virtual_noc_coords.x)},
-        {"OTHER_UPSTREAM_NOC_Y", std::to_string(upstream_virtual_noc_coords.y)},
+        {"OTHER_UPSTREAM_NOC_X", std::to_string(other_upstream_virtual_noc_coords.x)},
+        {"OTHER_UPSTREAM_NOC_Y", std::to_string(other_upstream_virtual_noc_coords.y)},
         {"DOWNSTREAM_NOC_X", std::to_string(downstream_virtual_noc_coords.x)},
         {"DOWNSTREAM_NOC_Y", std::to_string(downstream_virtual_noc_coords.y)},
         {"DOWNSTREAM_SLAVE_NOC_X", std::to_string(downstream_s_virtual_noc_coords.x)},

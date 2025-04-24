@@ -55,6 +55,29 @@ uint32_t wrap_gt(uint32_t a, uint32_t b) {
     return diff > 0;
 }
 
+#if defined(ARCH_WORMHOLE)
+constexpr uint32_t dispatch_lock_index = 0;
+constexpr uint32_t dispatch_s_lock_index = 1;
+// TODO: Use real atomics on blackhole. Making these implementation work there wouldn't be efficient.
+FORCE_INLINE void lock_no_atomic(volatile tt_l1_ptr uint32_t* addr, uint32_t i) {
+    auto byte_ptr = reinterpret_cast<volatile tt_l1_ptr uint8_t*>(addr);
+    // Peterson's lock
+    uint32_t j = 1 - i;
+    byte_ptr[i] = 1;
+    auto turn = byte_ptr + 2;
+    *turn = j;  // you go first
+    // wait until either you don’t want in, or it’s your turn
+    while (byte_ptr[j] && *turn == j) { /* busy‑wait */
+    }
+}
+
+FORCE_INLINE void unlock_no_atomic(volatile tt_l1_ptr uint32_t* addr, uint32_t i) {
+    auto byte_ptr = reinterpret_cast<volatile tt_l1_ptr uint8_t*>(addr);
+    byte_ptr[i] = 0;
+}
+#endif
+
+
 // The fast CQ noc commands write a subset of the NOC registers for each transaction
 // leveraging the fact that many transactions re-use certain values (eg, length)
 // Since there are a variety of dispatch paradigms, which values get reused
@@ -380,9 +403,16 @@ FORCE_INLINE void move_rd_to_next_block(uint32_t& rd_block_idx) {
     rd_block_idx &= cb_blocks - 1;
 }
 
-template <uint8_t noc_idx, uint32_t noc_xy, uint32_t sem_id, uint32_t cb_pages_per_block, uint32_t cb_blocks>
+template <uint8_t noc_idx, uint32_t noc_xy, uint32_t sem_id, uint32_t cb_pages_per_block, uint32_t cb_blocks,
+    typename LockCallbackType = void>
 FORCE_INLINE void move_rd_to_next_block_and_release_pages(uint32_t& block_noc_writes_to_clear, uint32_t& rd_block_idx) {
+    if constexpr (!std::is_void_v<LockCallbackType>) {
+        LockCallbackType::lock();
+    }
     cb_block_release_pages<noc_idx, noc_xy, sem_id, cb_pages_per_block>(block_noc_writes_to_clear);
+    if constexpr (!std::is_void_v<LockCallbackType>) {
+        LockCallbackType::unlock();
+    }
     move_rd_to_next_block<cb_blocks>(rd_block_idx);
 }
 
