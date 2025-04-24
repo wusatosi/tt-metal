@@ -124,8 +124,8 @@ ParallelConfig determine_parallel_config(
     uint32_t max_num_cores = compute_grid_size.x * compute_grid_size.y;
     CoreRangeSet grid;
     if (shard_layout == TensorMemoryLayout::HEIGHT_SHARDED) {
-        uint32_t num_cores_nhw = find_closest_largest_divisor_with_num_padding_and_mult(
-            out_nhw_ntiles, max_num_cores, act_block_h_override_ntiles);
+        uint32_t num_cores_nhw = 63; /* find_closest_largest_divisor_with_num_padding_and_mult(
+             out_nhw_ntiles, max_num_cores, act_block_h_override_ntiles); */
         grid = tt::tt_metal::num_cores_to_corerangeset(num_cores_nhw, compute_grid_size, true);
     } else if (shard_layout == TensorMemoryLayout::BLOCK_SHARDED) {
         uint32_t start_divisor =
