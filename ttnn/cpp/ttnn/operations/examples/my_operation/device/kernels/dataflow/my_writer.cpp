@@ -7,16 +7,12 @@
 
 #include "dataflow_api.h"
 #include "dataflow_api_addrgen.h"
-#include "debug/dprint.h"
 #include "hostdevcommon/kernel_structs.h"
 
 void kernel_main() {
     uint32_t dst_addr = get_arg_val<uint32_t>(0);
     uint32_t dst_start_tile_id = get_arg_val<uint32_t>(1);
     uint32_t num_tiles = get_arg_val<uint32_t>(2);
-
-    DPRINT << "Writer args: " << ENDL() << "dst_addr: " << dst_addr << ENDL()
-           << "dst_start_tile_id: " << dst_start_tile_id << ENDL() << "num_tiles: " << num_tiles << ENDL();
 
     constexpr uint32_t cb_id_out0 = get_compile_time_arg_val(0);
 
@@ -42,6 +38,4 @@ void kernel_main() {
 
         dst_tile_id += ublock_size_tiles;
     }
-
-    DPRINT << "Writer done" << ENDL();
 }

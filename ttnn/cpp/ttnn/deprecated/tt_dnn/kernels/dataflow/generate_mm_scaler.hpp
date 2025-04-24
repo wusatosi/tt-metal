@@ -25,7 +25,7 @@ FORCE_INLINE void generate_mm_scaler(const uint32_t cb_id, const uint32_t scaler
     }
     noc_async_read_barrier();
 
-    uint32_t single_packed_scalar = scaler & 0xFFFF;
+    uint32_t single_packed_scalar = (scaler & 0xFFFF0000) >> 16;
     for (int i = 0; i < 128; i += 8) {
         ptr[i] = single_packed_scalar;
     }

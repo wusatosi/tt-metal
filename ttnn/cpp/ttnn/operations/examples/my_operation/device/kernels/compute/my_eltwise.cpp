@@ -1,5 +1,6 @@
 #include <cstdint>
 
+#include "compute_kernel_api/bcast.h"
 #include "compute_kernel_api/common.h"
 #include "compute_kernel_api/reg_api.h"
 #include "compute_kernel_api/tile_move_copy.h"
@@ -8,7 +9,6 @@
 #include "compute_kernel_api/eltwise_unary/eltwise_unary.h"
 #include "compute_kernel_api/eltwise_unary/sfpu_split_includes.h"
 #include "compute_kernel_api/eltwise_unary/sqrt.h"
-#include "debug/dprint.h"
 
 namespace NAMESPACE {
 ALWI void sqrt_add_mul(uint32_t num_of_tiles) {
@@ -18,27 +18,30 @@ ALWI void sqrt_add_mul(uint32_t num_of_tiles) {
     constexpr auto cb_sqrt = get_compile_time_arg_val(5);
     constexpr auto cb_out0 = get_compile_time_arg_val(6);
 
-    // add A and B
-    DPRINT << "sqrt(A+B)" << ENDL();
+    // add and sqrt step
     ckernel::binary_op_init_common(cb_in0, cb_in1, cb_sqrt);
 
     cb_wait_front(cb_in0, num_of_tiles);
     cb_wait_front(cb_in1, num_of_tiles);
     ckernel::tile_regs_acquire();
 
+    // add two tiles
     ckernel::add_tiles_init(cb_in0, cb_in1);
     for (uint32_t i = 0; i < num_of_tiles; i++) {
         ckernel::add_tiles(cb_in0, cb_in1, i, i, i);
     }
 
+    // take square root of sum
     ckernel::sqrt_tile_init();
+    for (uint32_t i = 0; i < num_of_tiles; i++) {
+        ckernel::sqrt_tile(i);
+    }
 
     ckernel::tile_regs_commit();
     cb_pop_front(cb_in0, num_of_tiles);
     cb_pop_front(cb_in1, num_of_tiles);
 
-    // push intermediate result
-    DPRINT << "Push sqrt(A+B)" << ENDL();
+    // push result to intermediate buffer
     cb_reserve_back(cb_sqrt, num_of_tiles);
     ckernel::tile_regs_wait();
     for (uint32_t i = 0; i < num_of_tiles; i++) {
@@ -47,25 +50,25 @@ ALWI void sqrt_add_mul(uint32_t num_of_tiles) {
     ckernel::tile_regs_release();
     cb_push_back(cb_sqrt, num_of_tiles);
 
-    // multiply with scalar
-    DPRINT << "sqrt(A+B)*C" << ENDL();
-    ckernel::binary_op_init_common(cb_scalar0, cb_sqrt, cb_out0);
+    // multiply step
+    ckernel::binary_op_init_common(cb_sqrt, cb_scalar0, cb_out0);
 
     cb_wait_front(cb_scalar0, num_of_tiles);
     cb_wait_front(cb_sqrt, num_of_tiles);
     ckernel::tile_regs_acquire();
 
-    ckernel::mul_tiles_init(cb_scalar0, cb_sqrt);
+    // scalar is tile with multiplier in 1st col
+    // use appropriate bcast function for multiply
+    ckernel::mul_bcast_cols_init_short(cb_sqrt, cb_scalar0);
     for (uint32_t i = 0; i < num_of_tiles; i++) {
-        ckernel::mul_tiles(cb_scalar0, cb_sqrt, i, i, i);
+        ckernel::mul_tiles_bcast_cols(cb_sqrt, cb_scalar0, i, i, i);
     }
 
     ckernel::tile_regs_commit();
     cb_pop_front(cb_scalar0, num_of_tiles);
     cb_pop_front(cb_sqrt, num_of_tiles);
 
-    // move to out
-    DPRINT << "Push output" << ENDL();
+    // push to output
     cb_reserve_back(cb_out0, num_of_tiles);
     ckernel::tile_regs_wait();
     for (uint32_t i = 0; i < num_of_tiles; i++) {
@@ -82,15 +85,9 @@ void MAIN {
     uint32_t full_blocks = per_core_tile_cnt / per_core_block_size;
     uint32_t remainder = per_core_tile_cnt % per_core_block_size;
 
-    DPRINT << "Compute params:" << ENDL() << "per_core_tile_cnt: " << per_core_tile_cnt << ENDL()
-           << "per_core_block_size: " << per_core_block_size << ENDL() << "full_blocks: " << full_blocks << ENDL()
-           << "remainder: " << remainder << ENDL();
-
     for (uint32_t i = 0; i < full_blocks; i++) {
         sqrt_add_mul(per_core_block_size);
     }
     sqrt_add_mul(remainder);
-
-    DPRINT << "Compute done" << ENDL();
 }
 }  // namespace NAMESPACE
