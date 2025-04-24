@@ -387,7 +387,16 @@ def run_multi_core_matmul_1d(
             dst_full_sync_en=True,
         )
 
-    signpost("start")
+    output_t = ttnn.matmul(
+        in0_t,
+        in1_t,
+        program_config=program_config,
+        memory_config=output_sharded_mem_config,
+        compute_kernel_config=compute_kernel_config,
+        dtype=output_dtype,
+    )
+
+    trace_id = ttnn.begin_trace_capture(device, cq_id=0)
     for _ in range(num_iters):
         output_t = ttnn.matmul(
             in0_t,
@@ -397,6 +406,12 @@ def run_multi_core_matmul_1d(
             compute_kernel_config=compute_kernel_config,
             dtype=output_dtype,
         )
+    ttnn.end_trace_capture(device, trace_id, cq_id=0)
+
+    ##### Run Trace #####
+    logger.info("Running trace")
+    signpost("start")
+    ttnn.execute_trace(device, trace_id, cq_id=0, blocking=True)
     signpost("stop")
 
     tt_out = ttnn.to_torch(output_t)
@@ -1005,16 +1020,15 @@ def test_matmul_1d_ring_llama_perf(
 )
 @pytest.mark.parametrize(
     "num_iters",
-    [5],
+    [50],
 )
 @pytest.mark.parametrize(
     "device_params",
-    [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL}],
+    [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL, "trace_region_size": 23887872}],
     indirect=True,
 )
-@pytest.mark.parametrize("mesh_device", [pytest.param((1, 1), id="1x1_grid")], indirect=True)
 def test_matmul_1d_ring_llama_lm_head(
-    mesh_device,
+    device,
     in0_dtype,
     in1_dtype,
     output_dtype,
@@ -1033,7 +1047,6 @@ def test_matmul_1d_ring_llama_lm_head(
     use_program_cache,
     function_level_defaults,
 ):
-    device = mesh_device.get_device(mesh_device.get_device_ids()[0])
     # Only run these tests on unharvested TG
     device_grid = (device.compute_with_storage_grid_size().x, device.compute_with_storage_grid_size().y)
     if device_grid != (7, 10):
