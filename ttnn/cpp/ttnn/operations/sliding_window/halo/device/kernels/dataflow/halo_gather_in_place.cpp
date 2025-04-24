@@ -136,26 +136,26 @@ void copy_sticks_async(
             uint64_t dst_addr = base_addr + dst_offset;
             uint32_t src_addr = in_base_l1_addr + src_offset;
 
-            // bool is_forward_copy = dst_local_idx > src_local_idx + in_out_buffer_start_delta &&
-            //                        dst_local_idx <= src_local_idx + in_out_buffer_start_delta + nsticks;
-            // bool is_overlap_copy = (dst_local_idx > src_local_idx + in_out_buffer_start_delta &&
-            //                         dst_local_idx <= src_local_idx + in_out_buffer_start_delta + nsticks) ||
-            //                        (dst_local_idx + nsticks >= src_local_idx + in_out_buffer_start_delta &&
-            //                         dst_local_idx + nsticks < src_local_idx + in_out_buffer_start_delta + nsticks);
-            // if (is_overlap_copy) {      // dst and src data overlaps, stick by stick copy is necessary
-            //     if (is_forward_copy) {  // dst data is being moved "in front" of the source data, reverse
-            //                             // ordering of stick by stick copy is necessary
-            //         for (int16_t k = nsticks - 1; k >= 0; k--) {
-            //             noc_async_write(src_addr + k * stick_nbytes, dst_addr + k * stick_nbytes, stick_nbytes);
-            //         }
-            //     } else {
-            //         for (uint16_t k = 0; k < nsticks; k++) {
-            //             noc_async_write(src_addr + k * stick_nbytes, dst_addr + k * stick_nbytes, stick_nbytes);
-            //         }
-            //     }
-            // } else {
-            noc_async_write(src_addr, dst_addr, size);
-            //}
+            bool is_forward_copy = dst_local_idx > src_local_idx + in_out_buffer_start_delta &&
+                                   dst_local_idx <= src_local_idx + in_out_buffer_start_delta + nsticks;
+            bool is_overlap_copy = (dst_local_idx > src_local_idx + in_out_buffer_start_delta &&
+                                    dst_local_idx <= src_local_idx + in_out_buffer_start_delta + nsticks) ||
+                                   (dst_local_idx + nsticks >= src_local_idx + in_out_buffer_start_delta &&
+                                    dst_local_idx + nsticks < src_local_idx + in_out_buffer_start_delta + nsticks);
+            if (is_overlap_copy) {      // dst and src data overlaps, stick by stick copy is necessary
+                if (is_forward_copy) {  // dst data is being moved "in front" of the source data, reverse
+                                        // ordering of stick by stick copy is necessary
+                    for (int16_t k = nsticks - 1; k >= 0; k--) {
+                        noc_async_write(src_addr + k * stick_nbytes, dst_addr + k * stick_nbytes, stick_nbytes);
+                    }
+                } else {
+                    for (uint16_t k = 0; k < nsticks; k++) {
+                        noc_async_write(src_addr + k * stick_nbytes, dst_addr + k * stick_nbytes, stick_nbytes);
+                    }
+                }
+            } else {
+                noc_async_write(src_addr, dst_addr, size);
+            }
         }
 
         i += length;
