@@ -32,7 +32,7 @@ def test_resnetblock2d(
     device, temb_shape, input_shape, down_block_id, resnet_id, conv_shortcut, split_in, block, pcc, use_program_cache
 ):
     pipe = DiffusionPipeline.from_pretrained(
-        "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float32, use_safetensors=True, variant="fp16"
+        "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float32, use_safetensors=True
     )
     unet = pipe.unet
     unet.eval()

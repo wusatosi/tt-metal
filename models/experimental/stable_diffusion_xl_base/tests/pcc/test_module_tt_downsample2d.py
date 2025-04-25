@@ -23,7 +23,7 @@ from models.experimental.stable_diffusion_xl_base.tt.sdxl_utility import (
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
 def test_downsample2d(device, input_shape, down_block_id, stride, padding, dilation, pcc, use_program_cache):
     pipe = DiffusionPipeline.from_pretrained(
-        "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float32, use_safetensors=True, variant="fp16"
+        "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float32, use_safetensors=True
     )
     unet = pipe.unet
     unet.eval()

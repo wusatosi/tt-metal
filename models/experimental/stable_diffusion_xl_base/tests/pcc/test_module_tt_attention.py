@@ -24,7 +24,7 @@ def test_attention(
     device, input_shape, encoder_shape, attn_id, down_block_id, query_dim, num_attn_heads, out_dim, use_program_cache
 ):
     pipe = DiffusionPipeline.from_pretrained(
-        "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float32, use_safetensors=True, variant="fp16"
+        "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float32, use_safetensors=True
     )
     unet = pipe.unet
     unet.eval()

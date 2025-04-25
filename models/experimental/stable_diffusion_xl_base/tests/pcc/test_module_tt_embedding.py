@@ -13,7 +13,7 @@ from models.utility_functions import torch_random
 @pytest.mark.parametrize("input_shape, module_path", [((2, 320), "time_embedding"), ((2, 2816), "add_embedding")])
 def test_embedding(device, input_shape, module_path, use_program_cache):
     pipe = DiffusionPipeline.from_pretrained(
-        "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float32, use_safetensors=True, variant="fp16"
+        "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float32, use_safetensors=True
     )
     unet = pipe.unet
     unet.eval()

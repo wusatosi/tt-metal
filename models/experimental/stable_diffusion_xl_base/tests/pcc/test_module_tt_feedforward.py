@@ -20,7 +20,7 @@ from models.utility_functions import torch_random
 )
 def test_feedforward(device, input_shape, block_id, transformer_block_id, use_program_cache):
     pipe = DiffusionPipeline.from_pretrained(
-        "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float32, use_safetensors=True, variant="fp16"
+        "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float32, use_safetensors=True
     )
     unet = pipe.unet
     unet.eval()

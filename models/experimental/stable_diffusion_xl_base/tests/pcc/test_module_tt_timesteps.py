@@ -15,7 +15,7 @@ from models.utility_functions import torch_random
 )
 def test_timesteps(device, input_shape, module_path, num_channels, use_program_cache):
     pipe = DiffusionPipeline.from_pretrained(
-        "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float32, use_safetensors=True, variant="fp16"
+        "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float32, use_safetensors=True
     )
     unet = pipe.unet
     unet.eval()
