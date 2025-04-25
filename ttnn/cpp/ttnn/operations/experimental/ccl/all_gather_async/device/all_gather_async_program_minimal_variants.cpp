@@ -294,6 +294,14 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_llama_sharded(
     auto [num_targets_forward, num_targets_backward, dynamic_alternate] =
         ccl::get_forward_backward_configuration(ring_size, ring_index, topology);
 
+    uint32_t dict_index = 0;
+    if (num_targets_forward == 2) {
+        dict_index = 1;
+    } else if (num_targets_forward == 1) {
+        dict_index = 2;
+    } else if (num_targets_forward == 0) {
+        dict_index = 3;
+    }
     // Get worker cores, assuming 1 worker per link
     uint32_t num_workers_per_link = 1;
     const auto [sender_worker_core_range, sender_worker_cores] =
@@ -307,6 +315,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_llama_sharded(
     const auto output_tensor_cores = output_tensor.memory_config().shard_spec->grid;
     const auto output_tensor_shard_shape = output_tensor.memory_config().shard_spec->shape;
     const auto output_tensor_shard_num_pages = output_tensor_shard_shape[0] * output_tensor_shard_shape[1] / TILE_HW;
+    printf("output_tensor_shard_num_pages: %u\n", output_tensor_shard_num_pages);
 
     tt::log_debug(tt::LogOp, "input_tensor_num_pages: {}", input_tensor_num_pages);
     tt::log_debug(tt::LogOp, "input_tensor_cores: {}", input_tensor_cores);
@@ -390,18 +399,34 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_llama_sharded(
     auto input_cores_vec = corerange_to_cores(input_tensor_cores, std::nullopt, true);
     auto output_cores_vec = corerange_to_cores(output_tensor_cores, std::nullopt, true);
     auto cores_per_device = output_cores_vec.size() + ring_size - 1 / ring_size;
-    uint32_t start_core_index_for_device = output_cores_vec.size() / ring_size * ring_index;
+    std::vector<uint32_t> start_core_indices = {0, 7, 15, 22};
+    std::vector<uint32_t> end_core_indices = {7, 14, 22, 29};
+    uint32_t start_core_index_for_device =
+        start_core_indices[dict_index];  // output_cores_vec.size() / ring_size * ring_index;
     uint32_t end_core_index_for_device = start_core_index_for_device + cores_per_device;
-    TT_FATAL(
-        output_cores_vec.size() % ring_size == 0 || output_cores_vec.size() == 1,
-        "output sharded cores ( {} ) must be divisible by num_links ( {} ) or 1 for this work distribution scheme",
-        output_cores_vec.size(),
-        ring_size);
+    printf("output_cores_vec.size(): %zu\n", output_cores_vec.size());
+    printf("ring_size : %u\n", ring_size);
+    printf("ring_index: %u\n", ring_index);
+    printf("cores_per_device: %zu\n", cores_per_device);
+    printf("their start core vs mine: %u, %u\n", start_core_index_for_device, start_core_indices[dict_index]);
+    printf("their end core vs mine: %u, %u\n", end_core_index_for_device, end_core_indices[dict_index]);
+
+    // TT_FATAL(
+    //     output_cores_vec.size() % ring_size == 0 || output_cores_vec.size() == 1,
+    //     "output sharded cores ( {} ) must be divisible by num_links ( {} ) or 1 for this work distribution scheme",
+    //     output_cores_vec.size(),
+    //     ring_size);
     auto output_cores_this_device = std::vector<CoreCoord>(
         output_cores_vec.begin() + start_core_index_for_device, output_cores_vec.begin() + end_core_index_for_device);
     log_trace(tt::LogOp, "output_cores_this_device: {}", output_cores_this_device);
     for (uint32_t link = 0; link < num_links; link++) {
         CoreCoord core = sender_worker_cores[link];
+        uint32_t start_two = 0;
+        if (dict_index == 0 || dict_index == 2) {
+            start_two = link == 1 ? 1 : 0;
+        } else {
+            start_two = link == 1 ? 0 : 1;
+        }
 
         // construct input and output core x and y
         uint32_t base_pages_per_worker = input_tensor_num_pages / num_links;
@@ -425,6 +450,12 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_llama_sharded(
             input_tensor_cores_x.push_back(this_core.x);
             input_tensor_cores_y.push_back(this_core.y);
         }
+        printf(
+            "for device %u, and link %u, i start and end are: %u, %u\n",
+            dict_index,
+            link,
+            input_tile_id_start / output_tensor_shard_num_pages,
+            (input_tile_id_end + output_tensor_shard_num_pages - 1) / output_tensor_shard_num_pages);
         for (uint32_t i = input_tile_id_start / output_tensor_shard_num_pages;
              i < (input_tile_id_end + output_tensor_shard_num_pages - 1) / output_tensor_shard_num_pages;
              i++) {
@@ -497,7 +528,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_llama_sharded(
             tt::tt_fabric::append_fabric_connection_rt_args(
                 sender_device->id(), backward_device.value()->id(), link, program, {core}, writer_rt_args);
         }
-
+        writer_rt_args.push_back(start_two);
         tt::tt_metal::SetRuntimeArgs(program, worker_sender_writer_kernel_id, {core}, writer_rt_args);
     }
 

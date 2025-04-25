@@ -61,6 +61,7 @@ void kernel_main() {
         FabricConnectionManager::build_from_args<FabricConnectionManager::BUILD_AND_OPEN_CONNECTION_START_ONLY>(
             arg_idx);
 
+    uint32_t start_two = get_arg_val<uint32_t>(arg_idx++);
     // packet header cb
     cb_reserve_back(reserved_packet_header_cb_id, 1);
     auto packet_header_buffer_addr_forward = get_write_ptr(reserved_packet_header_cb_id);
@@ -88,16 +89,25 @@ void kernel_main() {
     uint32_t tiles_read = 0;
     uint32_t shard_tile_id = first_core_tile_start_offset;
     uint32_t core_id = 0;
+    DPRINT << "num_tiles_per_core: " << (uint32_t)num_tiles_per_core << ENDL();
+    DPRINT << "num_tiles_to_read:" << (uint32_t)num_tiles_to_read << ENDL();
     while (tiles_read < num_tiles_to_read) {
-        uint32_t num_tiles_to_read_this_core = std::min(num_tiles_per_core - shard_tile_id, packet_size_in_pages);
+        DPRINT << "shard_tile_id: " << (uint32_t)shard_tile_id << ENDL();
+        // uint32_t num_tiles_to_read_this_core = std::min(num_tiles_per_core - shard_tile_id, packet_size_in_pages);
+        uint32_t num_tiles_to_read_this_core =
+            start_two == 1 ? 2 : std::min(num_tiles_per_core - shard_tile_id, packet_size_in_pages);
+        DPRINT << "start two: " << (uint32_t)start_two << ENDL();
+        start_two = 0;
         num_tiles_to_read_this_core = std::min(num_tiles_to_read - tiles_read, num_tiles_to_read_this_core);
+        DPRINT << "num_tiles_to_read_this_core: " << (uint32_t)num_tiles_to_read_this_core << ENDL();
         cb_wait_front(cb0_id, num_tiles_to_read_this_core);
         size_t l1_read_addr = get_read_ptr(cb0_id);
 
         uint64_t noc0_dest_noc_addr =
             get_noc_addr(core_noc_x[core_id], core_noc_y[core_id], tensor_address0, 0 /*noc_id*/);
         noc0_dest_noc_addr += shard_tile_id * tensor0_page_size;
-
+        DPRINT << "writing to core id: " << (uint32_t)core_id << " which is " << core_noc_x[core_id] << " "
+               << core_noc_y[core_id] << ENDL();
         // This issues a flush barrier
         write_and_advance_local_read_address_for_fabric_write(
             noc0_dest_noc_addr,
