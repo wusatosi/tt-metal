@@ -83,6 +83,51 @@ void bind_all_gather_async(pybind11::module& module, const ccl_operation_t& oper
             py::arg("subdevice_id") = std::nullopt});
 }
 
+template <typename ccl_operation_t>
+void bind_all_to_all_async(pybind11::module& module, const ccl_operation_t& operation, const char* doc) {
+    namespace py = pybind11;
+
+    bind_registered_operation(
+        module,
+        operation,
+        doc,
+        ttnn::pybind_overload_t{
+            [](const ccl_operation_t& self,
+               const ttnn::Tensor& input_tensor,
+               ttnn::Tensor& persistent_intermediate_buffer,
+               ttnn::Tensor& persistent_output_buffer,
+               const int32_t in_dim,
+               const int32_t out_dim,
+               const std::vector<global_semaphore::MultiDeviceGlobalSemaphore>& multi_device_global_semaphores,
+               const uint32_t num_links,
+               const std::optional<ttnn::MemoryConfig>& memory_config,
+               const ttnn::ccl::Topology topology,
+               std::optional<tt::tt_metal::SubDeviceId> subdevice_id) -> ttnn::Tensor {
+                return self(
+                    input_tensor,
+                    persistent_intermediate_buffer,
+                    persistent_output_buffer,
+                    in_dim,
+                    out_dim,
+                    multi_device_global_semaphores,
+                    num_links,
+                    memory_config,
+                    topology,
+                    subdevice_id);
+            },
+            py::arg("input_tensor"),
+            py::arg("persistent_intermediate_buffer"),
+            py::arg("persistent_output_buffer"),
+            py::arg("in_dim"),
+            py::arg("out_dim"),
+            py::arg("multi_device_global_semaphores"),
+            py::kw_only(),
+            py::arg("num_links") = 1,
+            py::arg("memory_config") = std::nullopt,
+            py::arg("topology") = ttnn::ccl::Topology::Ring,
+            py::arg("subdevice_id") = std::nullopt});
+}
+
 }  // namespace detail
 
 void py_bind_all_gather_async(pybind11::module& module) {
