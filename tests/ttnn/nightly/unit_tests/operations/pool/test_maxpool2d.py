@@ -268,7 +268,7 @@ def run_max_pool(
     "act_shape",  ## NCHW
     (
         (  ## resnet shapes
-            [1, 64, 112, 112],
+            # [1, 64, 112, 112],
             # [4, 64, 112, 112],
             # [8, 64, 112, 112],
             # [16, 64, 112, 112],
@@ -317,6 +317,7 @@ def run_max_pool(
             # # partial grid tests
             # [1, 32, 10, 10],  # BH
             # [1, 32, 6, 6],  # WH
+            [8, 64, 112, 112],
         )
     ),
 )
@@ -343,23 +344,23 @@ def run_max_pool(
 @pytest.mark.parametrize(
     "stride",
     (
-        (1, 1),
-        # (2, 2),
+        # (1, 1),
+        (2, 2),
     ),
 )
 @pytest.mark.parametrize("dilation", ((1, 1),))  ## default
 @pytest.mark.parametrize(
     "dtype",
     [
-        ttnn.bfloat16,
-        # ttnn.bfloat8_b,
+        # ttnn.bfloat16,
+        ttnn.bfloat8_b,
     ],
 )
 @pytest.mark.parametrize(
     "ceil_mode",
     [
-        False,
-        # True,
+        # False,
+        True,
     ],
 )
 def test_run_max_pool(

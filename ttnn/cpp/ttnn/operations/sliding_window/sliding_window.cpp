@@ -898,7 +898,13 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
         return flattened_config;
     };
 
-    auto flatten_local_config = [in_place, max_out_nsticks_per_core, in_nsticks_per_core, is_in_tiled](
+    int32_t in_out_shard_size_delta =
+        (in_place && is_in_tiled)
+            ? 0
+            : max_out_nsticks_per_core - in_nsticks_per_core;  // for in place with tilized data we untilize
+                                                               // directly into the output buffer so delta is zero
+
+    auto flatten_local_config = [in_place, max_out_nsticks_per_core, in_nsticks_per_core, in_out_shard_size_delta](
                                     auto& config) -> std::vector<std::vector<std::vector<uint16_t>>> {
         // find max length
         size_t max_len = 0;
@@ -913,12 +919,14 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
         max_len += 6;  // account for the key tuple and null plug
 
         std::vector<std::vector<std::vector<uint16_t>>> flattened_config(2);
-        int32_t in_out_shard_size_delta =
-            (in_place && is_in_tiled)
-                ? 0
-                : max_out_nsticks_per_core - in_nsticks_per_core;  // for in place with tilized data we untilize
-                                                                   // directly into the output buffer so delta is zero
+
+        // printf("in_nsticks_per_core: %d\n", in_nsticks_per_core);
+        // printf("max_out_nsticks_per_core: %d\n", max_out_nsticks_per_core);
+        printf("in_out_shard_size_delta: %d\n", in_out_shard_size_delta);
+        printf("---LOCAL CONFIG---\n");
+        int core = 0;
         for (const auto& [key, data] : config) {
+            printf("    core: %d\n", core);
             auto [nocx, nocy, len] = key;
             std::vector<std::vector<uint16_t>> flat_data(2, std::vector<uint16_t>(max_len, 0));
             flat_data[0][0] = nocx;
@@ -952,6 +960,11 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
                         rev_i_end = i;
                         break;
                     }
+                    printf(
+                        "        dst_rel_src: %d, dst: %d, size: %d\n",
+                        src_start + in_out_shard_size_delta,
+                        dst_start,
+                        length);
                     flat_data[0][idx1++] = src_start;
                     flat_data[0][idx1++] = dst_start;
                     flat_data[0][idx1++] = length;
@@ -961,6 +974,11 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
                      --i) {  // reverse direction local config in region where input / output shards overlap (for in
                              // place operation)
                     auto [src_start, dst_start, length] = data[i];
+                    printf(
+                        "        dst_rel_src: %d, dst: %d, size: %d\n",
+                        src_start + in_out_shard_size_delta,
+                        dst_start,
+                        length);
                     flat_data[0][idx1++] = src_start;
                     flat_data[0][idx1++] = dst_start;
                     flat_data[0][idx1++] = length;
@@ -968,14 +986,17 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
                 }
             }
 
+            core++;
             flattened_config[0].emplace_back(std::move(flat_data[0]));
             flattened_config[1].emplace_back(std::move(flat_data[1]));
         }
         return flattened_config;
     };
 
-    auto flatten_remote_config = [in_place, core_id_to_noc_coords, &device](
-                                     auto& config) -> std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> {
+    auto flatten_remote_config = [in_place, core_id_to_noc_coords, &device, in_out_shard_size_delta](
+                                     auto& config,
+                                     std::vector<std::vector<std::vector<uint16_t>>> flattened_local_config)
+        -> std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> {
         // find max length
         size_t max_len = 0;
         for (const auto& core_config : config) {
@@ -998,7 +1019,9 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
         CoreCoord noc_00 = core_id_to_noc_coords(0);
         int max_ref_size = 0;  // track the max remote ref size for sizing the remote temp tensor
         int core = 0;
+        printf("---REMOTE CONFIG---\n");
         for (const auto& core_config : config) {
+            printf("    core: %d\n", core);
             std::vector<std::vector<uint16_t>> flat_data(2, std::vector<uint16_t>(max_len, 0));
             uint32_t idx1 = 0, idx2 = 0;
             uint32_t len_idx1 = 0, len_idx2 = 0;
@@ -1016,6 +1039,31 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
                 len_idx2 = idx2;
                 flat_data[1][idx2++] = 0;
                 int ref_ind = nocx - noc_00.x + (nocy - noc_00.y) * num_cores_x;
+                printf("        ref ind: %d\n", ref_ind);
+                int local_count = flattened_local_config[0][ref_ind][2] / 3;
+                // for (int i = 0; i < local_count; ++i) {
+                //     printf("        src: %d, dst: %d, size: %d\n", flattened_local_config[0][ref_ind][3 + 3 * i],
+                //         flattened_local_config[0][ref_ind][4 + 3 * i],
+                //         flattened_local_config[0][ref_ind][5 + 3 * i]);
+                // }
+                int first_local_dst_relative_src = flattened_local_config[0][ref_ind][3] + in_out_shard_size_delta;
+                int last_local_dst_relative_src =
+                    flattened_local_config[0][ref_ind][3 + 3 * (local_count - 1)] + in_out_shard_size_delta;
+                int first_local_size = flattened_local_config[0][ref_ind][5];
+                int last_local_size = flattened_local_config[0][ref_ind][5 + 3 * (local_count - 1)];
+                int low_local_bound;
+                int high_local_bound;
+                bool forward_local;
+                if (first_local_dst_relative_src < last_local_dst_relative_src) {
+                    low_local_bound = first_local_dst_relative_src;
+                    high_local_bound = last_local_dst_relative_src + last_local_size - 1;
+                    forward_local = true;
+                } else {
+                    low_local_bound = last_local_dst_relative_src;
+                    high_local_bound = first_local_dst_relative_src + first_local_size - 1;
+                    forward_local = false;
+                }
+                printf("            low_local_bound: %d, high_local_bound: %d\n", low_local_bound, high_local_bound);
                 for (size_t i = 0; i < subdata.size(); ++i) {
                     auto [src_start, dst_start, length] = subdata[i];
                     if (vector_id || in_place) {
@@ -1024,6 +1072,17 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
                         flat_data[0][idx1++] = length;
                         flat_data[0][len_idx1] += 3;
                         ref_size += length;
+
+                        int no_wait = false;
+                        if (dst_start > high_local_bound || dst_start + length - 1 < low_local_bound) {
+                            no_wait = true;
+                        }
+                        printf(
+                            "            src: %d, dst: %d, size: %d, no_wait: %d\n",
+                            src_start,
+                            dst_start,
+                            length,
+                            no_wait);
                     } else {
                         flat_data[1][idx2++] = src_start;
                         flat_data[1][idx2++] = dst_start;
@@ -1047,7 +1106,7 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
 
     auto flattened_pad_config = flatten_pad_config(pad_config);
     auto flattened_local_config = flatten_local_config(local_config);
-    auto [flattened_remote_config, max_ref_size] = flatten_remote_config(remote_config);
+    auto [flattened_remote_config, max_ref_size] = flatten_remote_config(remote_config, flattened_local_config);
 
     auto align_config = [](auto& config, size_t align_granularity = 1, uint16_t align_value = 0) {
         size_t max_len = 0;
