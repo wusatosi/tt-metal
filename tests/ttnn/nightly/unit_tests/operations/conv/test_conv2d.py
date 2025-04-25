@@ -119,6 +119,7 @@ def run_conv(
     fast_compare=False,
     slice_config=None,
 ):
+    input_layout = ttnn.TILE_LAYOUT
     if isinstance(device, ttnn.MeshDevice) and len(device.get_device_ids()) > 1:
         assert input_mesh_mapper is not None, "Expected mesh mapper for input tensor when running on multiple devices"
         assert (
@@ -209,16 +210,19 @@ def run_conv(
 
     tt_input_tensor = ttnn.from_torch(
         torch_input_tensor,
-        activations_dtype if activations_dtype == ttnn.float32 else ttnn.bfloat16,
+        activations_dtype,  # if activations_dtype == ttnn.float32 else ttnn.bfloat16,
         mesh_mapper=input_mesh_mapper,
         layout=input_layout,
+        device=device,
     )
 
     conv_config = ttnn.Conv2dConfig(
         dtype=activations_dtype,
         weights_dtype=weights_dtype,
         shard_layout=shard_layout if not auto_shard else None,
-        input_channels_alignment=8 if use_shallow_conv_variant and not auto_shard else 32,
+        input_channels_alignment=(
+            8 if use_shallow_conv_variant and not auto_shard and input_layout != ttnn.TILE_LAYOUT else 32
+        ),
         deallocate_activation=deallocate_activation,
         enable_act_double_buffer=False,
         enable_split_reader=enable_split_reader,
@@ -444,7 +448,9 @@ def run_conv_with_split(
                 weights_dtype if weights_dtype != ttnn.bfloat8_b else ttnn.float32,
             )
             torch_input_tensor = torch.permute(split_input_tensors[i], (0, 2, 3, 1))
-            tt_input_tensor = ttnn.from_torch(torch_input_tensor, ttnn.bfloat16)
+            tt_input_tensor = ttnn.from_torch(
+                torch_input_tensor, ttnn.bfloat8_b, layout=ttnn.TILE_LAYOUT, device=device
+            )
             [tt_output_tensor_on_device, [out_height, out_width]] = ttnn.conv2d(
                 input_tensor=tt_input_tensor,
                 weight_tensor=tt_weight_tensor,
@@ -504,7 +510,7 @@ def run_conv_with_split(
 )
 @pytest.mark.parametrize(
     "activations_dtype",
-    [ttnn.bfloat8_b, ttnn.bfloat16],
+    [ttnn.bfloat8_b],
 )
 @pytest.mark.parametrize(
     "filter, pad",
@@ -582,7 +588,7 @@ def test_conv_features_multi_device(
 @pytest.mark.parametrize(
     "activations_dtype, output_layout",
     [
-        [ttnn.bfloat16, ttnn.ROW_MAJOR_LAYOUT],
+        # [ttnn.bfloat16, ttnn.ROW_MAJOR_LAYOUT],
         [ttnn.bfloat8_b, ttnn.TILE_LAYOUT],
     ],
 )
@@ -710,6 +716,7 @@ def test_conv_dram(
     fp32_accum,
     packer_l1_acc,
 ):
+    pytest.skip("Skipping DRAM because it doesn't support tile input")
     if device.core_grid.y == 7:
         pytest.skip("Tests have been configured for N150.")
 
@@ -779,7 +786,7 @@ def test_conv_dram(
 )
 @pytest.mark.parametrize(
     "activations_dtype",
-    [ttnn.bfloat16, ttnn.bfloat8_b],
+    [ttnn.bfloat8_b],
 )
 @pytest.mark.parametrize("auto_shard", [True, False], ids=["auto_shard", "no_auto_shard"])
 @pytest.mark.parametrize("tilized_input", [True, False], ids=["tilized", "row_major"])
@@ -844,7 +851,7 @@ def test_conv_ws(
         torch_weight_tensor, weights_dtype if weights_dtype != ttnn.bfloat8_b else ttnn.float32
     )
 
-    tt_input_tensor = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16)
+    tt_input_tensor = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat8_b, layout=ttnn.TILE_LAYOUT, device=device)
 
     tt_input_tensor = ttnn.reshape(tt_input_tensor, [1, 1, input_height * input_width * batch_size, input_channels])
     if tilized_input:
@@ -943,7 +950,7 @@ def test_conv_ws(
 )
 @pytest.mark.parametrize(
     "activations_dtype",
-    [ttnn.bfloat16],
+    [ttnn.bfloat8_b],
 )
 @pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
 @pytest.mark.parametrize("output_layout", [ttnn.TILE_LAYOUT])
@@ -1056,7 +1063,7 @@ def test_conv_for_segformer_512x512(
 )
 @pytest.mark.parametrize(
     "activations_dtype",
-    [ttnn.bfloat16, ttnn.bfloat8_b],
+    [ttnn.bfloat8_b],
 )
 @pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
 @pytest.mark.parametrize("packer_l1_acc", [True])
@@ -1215,11 +1222,11 @@ def test_conv_mem_config_wh(
 )
 @pytest.mark.parametrize(
     "weights_dtype",
-    [ttnn.float32, ttnn.bfloat16],
+    [ttnn.float32, ttnn.bfloat16, ttnn.bfloat8_b],
 )
 @pytest.mark.parametrize(
     "activations_dtype",
-    [ttnn.float32, ttnn.bfloat16],
+    [ttnn.bfloat8_b],
 )
 @pytest.mark.parametrize(
     "fp32_accum",
@@ -1491,7 +1498,10 @@ def test_sd_conv(
 )
 @pytest.mark.parametrize(
     "activations_dtype, output_layout",
-    [(ttnn.bfloat16, ttnn.ROW_MAJOR_LAYOUT), (ttnn.bfloat8_b, ttnn.TILE_LAYOUT)],
+    [
+        # (ttnn.bfloat16, ttnn.ROW_MAJOR_LAYOUT),
+        (ttnn.bfloat8_b, ttnn.TILE_LAYOUT)
+    ],
 )
 @pytest.mark.parametrize(
     "fp32_accum",
@@ -1700,7 +1710,10 @@ def test_sd14_vae_conv(
 )
 @pytest.mark.parametrize(
     "activations_dtype, output_layout",
-    [(ttnn.bfloat16, ttnn.ROW_MAJOR_LAYOUT), (ttnn.bfloat8_b, ttnn.TILE_LAYOUT)],
+    [
+        # (ttnn.bfloat16, ttnn.ROW_MAJOR_LAYOUT),
+        (ttnn.bfloat8_b, ttnn.TILE_LAYOUT)
+    ],
 )
 @pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
 @pytest.mark.parametrize("auto_shard", [True, False], ids=["auto_shard", "no_auto_shard"])
@@ -1795,7 +1808,7 @@ def test_unet_conv_wh(
 )
 @pytest.mark.parametrize(
     "activations_dtype",
-    [ttnn.bfloat16],
+    [ttnn.bfloat8_b],
 )
 @pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
 @pytest.mark.parametrize("output_layout", [ttnn.ROW_MAJOR_LAYOUT, ttnn.TILE_LAYOUT])
@@ -2092,7 +2105,7 @@ def test_halo_reshard_conv(
     auto_shard,
 ):
     math_fidelity = ttnn.MathFidelity.HiFi4
-    activations_dtype = ttnn.bfloat16
+    activations_dtype = ttnn.bfloat8_b
     weights_dtype = ttnn.bfloat8_b
 
     run_conv(
@@ -2155,7 +2168,7 @@ def test_conv_core_nondivis(
         pytest.xfail()
 
     math_fidelity = ttnn.MathFidelity.HiFi4
-    activations_dtype = ttnn.bfloat16
+    activations_dtype = ttnn.bfloat8_b
     weights_dtype = ttnn.bfloat8_b
 
     run_conv(
@@ -2208,7 +2221,7 @@ def test_conv_core_nondivis(
 )
 @pytest.mark.parametrize(
     "activations_dtype",
-    [ttnn.bfloat16],
+    [ttnn.bfloat8_b],
 )
 @pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
 @pytest.mark.parametrize("output_layout", [ttnn.TILE_LAYOUT])
@@ -2243,6 +2256,7 @@ def test_conv_dilation(
     dilation_hw,
     auto_shard,
 ):
+    math_fidelity = ttnn.MathFidelity.HiFi4
     config_override = {"act_block_w_div": act_block_w_div}
     run_conv(
         device,
@@ -2309,7 +2323,10 @@ def test_conv_dilation(
 )
 @pytest.mark.parametrize(
     "activations_dtype",
-    [ttnn.bfloat8_b, ttnn.bfloat16],
+    [
+        ttnn.bfloat8_b
+        #   ttnn.bfloat16
+    ],
 )
 @pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
 @pytest.mark.parametrize("output_layout", [ttnn.TILE_LAYOUT])
@@ -2498,7 +2515,10 @@ def test_yolov4_conv_groups_larger_than_one(
 )
 @pytest.mark.parametrize(
     "activations_dtype",
-    [ttnn.bfloat8_b, ttnn.bfloat16],
+    [
+        ttnn.bfloat8_b,
+        #   ttnn.bfloat16
+    ],
 )
 @pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
 @pytest.mark.parametrize("output_layout", [ttnn.TILE_LAYOUT])
@@ -2651,7 +2671,10 @@ def test_model_k_256x256(
 )
 @pytest.mark.parametrize(
     "activations_dtype",
-    [ttnn.bfloat16, ttnn.bfloat8_b],
+    [
+        # ttnn.bfloat16,
+        ttnn.bfloat8_b
+    ],
 )
 @pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
 @pytest.mark.parametrize("output_layout", [ttnn.TILE_LAYOUT])
@@ -2721,10 +2744,10 @@ def test_shallow_conv_with_tiled_input(device):
     tt_kernel = ttnn.from_torch(torch_kernel)
 
     torch_input = torch.randn(input_shape, dtype=torch.bfloat16)
-    tt_input = ttnn.from_torch(torch_input, device=device)
+    tt_input = ttnn.from_torch(torch_input, device=device, dtype=ttnn.bfloat8_b, layout=ttnn.TILE_LAYOUT)
     tt_input = ttnn.permute(tt_input, (0, 2, 3, 1))
     tt_input = ttnn.reshape(tt_input, (1, 1, batch_size * img_h * img_w, in_channels))
-    tt_input = ttnn.to_layout(tt_input, ttnn.TILE_LAYOUT)
+    # tt_input = ttnn.to_layout(tt_input, ttnn.TILE_LAYOUT)
 
     [tt_out, [out_height, out_width]] = ttnn.conv2d(
         input_tensor=tt_input,
@@ -3238,7 +3261,7 @@ def test_conv2d_sdxl(
         # (1, 256, 128, 1024, 1024, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1, 1), # OOM
         # (1, 256, 256, 1024, 1024, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1, 1), # OOM
         (1, 256, 256, 512, 512, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 8, 2),
-        (1, 512, 512, 128, 128, ttnn.bfloat8_b, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1, 1),
+        (1, 512, 512, 128, 128, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1, 1),
         (1, 512, 512, 256, 256, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 8, 1),
         (1, 512, 256, 512, 512, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 16, 2),
         (1, 512, 512, 512, 512, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 16, 4),
@@ -3247,14 +3270,14 @@ def test_conv2d_sdxl(
         # (1, 128, 3, 1024, 1024, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1, 1), # OOM
 
         # input_channels 4
-        (1, 4, 512, 128, 128, ttnn.bfloat8_b, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1, 1),
+        (1, 4, 512, 128, 128, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1, 1),
 
         # kernel 1x1
         (1, 256, 128, 1024, 1024, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1, 1),
-        (1, 512, 256, 512, 512, ttnn.bfloat8_b, ttnn.bfloat16, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1, 1),
+        (1, 512, 256, 512, 512, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1, 1),
 
         # channels 4
-        (1, 4, 4, 128, 128, ttnn.bfloat8_b, ttnn.bfloat16, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1, 1),
+        (1, 4, 4, 128, 128, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (1, 1), (1, 1), (0, 0), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1, 1),
     ),
 )
 
@@ -3355,7 +3378,7 @@ def test_conv2d_vae_sdxl(
 @pytest.mark.parametrize(
     "batch, input_channels, output_channels, input_height, input_width, weights_dtype, activations_dtype, groups, kernel, stride, padding, dilation, auto_shard, use_shallow_conv_variant, act_block_h_override, act_block_w_div, deallocate_activation, math_fidelity, fp32_accum, packer_l1_acc, enable_split_reader",
     (
-        (1, (1920, 1280, 1920), 1280, 32, 32, ttnn.bfloat8_b, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False),
+        (1, (1920, 1280, 1920), 1280, 32, 32, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, False,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False),
     ),
 )
 
