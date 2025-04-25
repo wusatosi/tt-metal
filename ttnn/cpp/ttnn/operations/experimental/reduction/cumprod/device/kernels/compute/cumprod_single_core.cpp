@@ -31,28 +31,29 @@ void MAIN {
 
     unary_op_init_common(cb_in, cb_out);
 
-    cb_wait_front(cb_one, 1);
+    cb_wait_front(cb_one, ONE_TILE);
 
-    for (uint32_t i = 0; i < num_rows; i++) {
+    // TODO(jbbieniekTT): the following algorithm is to be explained.
+    for (unsigned i = 0; i < num_rows; i++) {
         tile_regs_acquire();
         copy_tile_to_dst_init_short(cb_one);
-        copy_tile(cb_one, first_tile, TILE_DEST);
+        copy_tile(cb_one, FIRST_TILE, TILE_DEST);
         tile_regs_commit();
 
         pack_reconfig_data_format(cb_intermed);
         tile_regs_wait();
-        cb_reserve_back(cb_intermed, 1);
+        cb_reserve_back(cb_intermed, ONE_TILE);
         pack_tile(TILE_DEST, cb_intermed);
-        cb_push_back(cb_intermed, 1);
+        cb_push_back(cb_intermed, ONE_TILE);
         tile_regs_release();
 
         for (uint32_t j = 0; j < tiles_per_row; j++) {
             reconfig_data_format(cb_in, cb_intermed);
-            cb_wait_front(cb_in, 1);
+            cb_wait_front(cb_in, ONE_TILE);
             // copy_tile_to_dst_init_short(cb_in);
             // copy_tile(cb_in, first_tile, TILE_DEST);
 
-            cb_wait_front(cb_intermed, 1);
+            cb_wait_front(cb_intermed, ONE_TILE);
             // copy_tile_to_dst_init_short(cb_intermed);
             // copy_tile(cb_intermed, first_tile, TILE_ACC);
 
@@ -63,29 +64,29 @@ void MAIN {
 
             tile_regs_commit();
 
-            cb_pop_front(cb_in, 1);
-            cb_pop_front(cb_intermed, 1);
+            cb_pop_front(cb_in, ONE_TILE);
+            cb_pop_front(cb_intermed, ONE_TILE);
 
             tile_regs_wait();
 
-            cb_reserve_back(cb_out, 1);
+            cb_reserve_back(cb_out, ONE_TILE);
             pack_reconfig_data_format(cb_out);
             pack_tile(TILE_DEST, cb_out);
-            cb_push_back(cb_out, 1);
+            cb_push_back(cb_out, ONE_TILE);
 
-            cb_reserve_back(cb_intermed, 1);
+            cb_reserve_back(cb_intermed, ONE_TILE);
             pack_reconfig_data_format(cb_intermed);
             pack_tile(TILE_DEST, cb_intermed);
-            cb_push_back(cb_intermed, 1);
+            cb_push_back(cb_intermed, ONE_TILE);
 
             tile_regs_release();
         }
 
-        cb_wait_front(cb_intermed, 1);
-        cb_pop_front(cb_intermed, 1);
+        cb_wait_front(cb_intermed, ONE_TILE);
+        cb_pop_front(cb_intermed, ONE_TILE);
     }
 
-    cb_pop_front(cb_one, 1);
+    cb_pop_front(cb_one, ONE_TILE);
 }
 
 }  // namespace NAMESPACE

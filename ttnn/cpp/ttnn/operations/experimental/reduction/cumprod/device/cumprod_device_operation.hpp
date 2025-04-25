@@ -50,6 +50,7 @@ struct CumprodDeviceOperation {
             KernelHandle cumprod_reader_kernel_id;
             KernelHandle cumprod_compute_kernel_id;
             KernelHandle cumprod_writer_kernel_id;
+            CoreCoord storage_grid_size;
         };
 
         using cached_program_t = ttnn::device_operation::CachedProgram<shared_variables_t>;
@@ -69,13 +70,13 @@ struct CumprodDeviceOperation {
             Program& program,
             const DataType& dtype,
             const CumprodCB& cumprod_cb,
-            const CoreCoord& core,
+            const CoreRangeSet& core_range_set,
             const uint32_t& tiles_num);
 
         static KernelHandle create_kernel(
             Program& program,
             const char* kernel_path,
-            const CoreCoord& core,
+            const CoreRangeSet& core_range_set,
             const std::variant<DataMovementConfig, ComputeConfig, EthernetConfig>& config,
             const std::vector<uint32_t>& runtime_args = {});
 

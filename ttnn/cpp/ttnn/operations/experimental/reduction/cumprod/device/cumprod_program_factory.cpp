@@ -55,20 +55,54 @@ CumprodDeviceOperation::SingleCoreCumprodProgramFactory::create(
     const auto& input_tensor{tensor_args.input_tensor};
     auto& output_tensor{tensor_return_value};
     const auto& input_shape{input_tensor.get_padded_shape()};
+    const uint32_t input_rank{input_shape.rank()};
+    const int32_t dim{
+        (operation_attributes.dim >= 0) ? operation_attributes.dim : (input_rank + operation_attributes.dim)};
+
+    const uint32_t tiles_per_row{input_shape[dim]};
+    const uint32_t num_rows{tensor_args.input_tensor.volume() / 1024 / tiles_per_row};
+    const uint32_t PHi{calc_phi(input_shape, dim)};
+    const uint32_t PLo{calc_plo(input_shape, dim)};
+    const uint32_t HtWt{calc_htwt(input_shape)};
 
     Program program{};
 
     IDevice* device{input_tensor.device()};
+    const auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
+    const uint32_t total_number_of_cores = compute_with_storage_grid_size.y * compute_with_storage_grid_size.x;
+
+    const uint32_t all_work_units{PLo * PHi * HtWt};
+    const uint32_t work_units_per_core{all_work_units / total_number_of_cores};
+    const uint32_t work_units_per_core_remainder{all_work_units % total_number_of_cores};
+
+    CoreRangeSet core_range_set{};
+    uint32_t cores_x{compute_with_storage_grid_size.x};
+    uint32_t cores_y{compute_with_storage_grid_size.y};
+    if (all_work_units < total_number_of_cores) {
+        cores_x = all_work_units % compute_with_storage_grid_size.x;
+        cores_y = all_work_units / compute_with_storage_grid_size.x;
+        if (cores_y == 0 && cores_x == 0) {
+            core_range_set = CoreRangeSet{CoreCoord{0, 0}};
+        } else if (cores_y == 0) {
+            core_range_set = CoreRangeSet{CoreRange{{0, 0}, {cores_x - 1, 0}}};
+        } else {
+            core_range_set = CoreRangeSet{CoreRange{{0, 0}, {compute_with_storage_grid_size.x - 1, cores_x}}};
+            if (cores_y > 0) {
+                core_range_set = core_range_set.merge(CoreRangeSet{CoreRange{{0, cores_y}, {cores_x, cores_y}}});
+            }
+        }
+    } else {
+        core_range_set = CoreRangeSet{
+            CoreRange{{0, 0}, {compute_with_storage_grid_size.x - 1, compute_with_storage_grid_size.y - 1}}};
+    }
 
     auto src_buffer{input_tensor.buffer()};
     auto dst_buffer{output_tensor.buffer()};
 
-    constexpr CoreCoord core{0, 0};
-
-    auto cb_src{create_cb(program, input_tensor.get_dtype(), CumprodCB::SRC, core, 1)};
-    auto cb_acc{create_cb(program, input_tensor.get_dtype(), CumprodCB::ACC, core, 1)};
-    auto cb_one{create_cb(program, input_tensor.get_dtype(), CumprodCB::ONE, core, 1)};
-    auto cb_dst{create_cb(program, input_tensor.get_dtype(), CumprodCB::DST, core, 1)};
+    auto cb_src{create_cb(program, input_tensor.get_dtype(), CumprodCB::SRC, core_range_set, 1)};
+    auto cb_acc{create_cb(program, input_tensor.get_dtype(), CumprodCB::ACC, core_range_set, 1)};
+    auto cb_one{create_cb(program, input_tensor.get_dtype(), CumprodCB::ONE, core_range_set, 1)};
+    auto cb_dst{create_cb(program, input_tensor.get_dtype(), CumprodCB::DST, core_range_set, 1)};
 
     const uint32_t src_is_dram{src_buffer->buffer_type() == BufferType::DRAM ? 1 : 0};
     const uint32_t dst_is_dram{dst_buffer->buffer_type() == BufferType::DRAM ? 1 : 0};
@@ -80,35 +114,50 @@ CumprodDeviceOperation::SingleCoreCumprodProgramFactory::create(
     const uint32_t height_tiles{input_shape[2] / constants::TILE_HEIGHT};
     const uint32_t width_tiles{input_shape[3] / constants::TILE_WIDTH};
 
-    const uint32_t input_rank{input_tensor.get_padded_shape().rank()};
-    const int32_t dim{
-        (operation_attributes.dim >= 0) ? operation_attributes.dim : (input_rank + operation_attributes.dim)};
-
     const ReaderDataMovementConfig reader_config{};
     const ComputeConfig compute_config{
         .math_fidelity = MathFidelity::HiFi4, .fp32_dest_acc_en = false, .math_approx_mode = false, .compile_args = {}};
     const WriterDataMovementConfig writer_config{};
 
-    const uint32_t tiles_per_row{input_tensor.get_padded_shape()[dim]};
-    const uint32_t num_rows{input_tensor.volume() / tt::constants::TILE_HW / tiles_per_row};
-    const uint32_t PHi{mul_higher_ranks(input_tensor.get_padded_shape(), dim)};
-    const uint32_t PLo{mul_lower_ranks(input_tensor.get_padded_shape(), dim)};
-    const uint32_t HtWt{calc_htwt(input_tensor.get_padded_shape())};
-
     auto cumprod_reader_kernel_id{create_kernel(
         program,
         KERNEL_PATHS[0],
-        core,
+        core_range_set,
         reader_config,
-        {src_buffer->address(), num_rows, tiles_per_row, PHi, PLo, HtWt})};
-    auto cumprod_compute_sc_kernel_id{
-        create_kernel(program, KERNEL_PATHS[1], core, compute_config, {PHi * PLo * HtWt, tiles_per_row})};
+        {src_buffer->address(),
+         num_rows,
+         tiles_per_row,
+         PHi,
+         PLo,
+         HtWt,
+         total_number_of_cores,
+         compute_with_storage_grid_size.x,
+         compute_with_storage_grid_size.y})};
+    auto cumprod_compute_sc_kernel_id{create_kernel(
+        program,
+        KERNEL_PATHS[1],
+        core_range_set,
+        compute_config,
+        {PHi * PLo * HtWt, tiles_per_row, total_number_of_cores})};
     auto cumprod_writer_kernel_id{create_kernel(
         program,
         KERNEL_PATHS[2],
-        core,
+        core_range_set,
         writer_config,
-        {dst_buffer->address(), num_rows, tiles_per_row, PHi, PLo, HtWt})};
+        {dst_buffer->address(),
+         num_rows,
+         tiles_per_row,
+         PHi,
+         PLo,
+         HtWt,
+         total_number_of_cores,
+         compute_with_storage_grid_size.x,
+         compute_with_storage_grid_size.y})};
+
+    // TODO(jbbieniekTT): the following algorithm is to be explained.
+    for (uint32_t core{0}) {
+        //
+    }
 
     return {
         std::move(program),
@@ -127,7 +176,7 @@ CBHandle CumprodDeviceOperation::SingleCoreCumprodProgramFactory::create_cb(
     Program& program,
     const DataType& dtype,
     const CumprodCB& cumprod_cb,
-    const CoreCoord& core,
+    const CoreRangeSet& core_range_set,
     const uint32_t& num_tiles) {
     using tt::tt_metal::detail::TileSize;
     const uint32_t cb_id{static_cast<uint32_t>(cumprod_cb)};
@@ -135,18 +184,18 @@ CBHandle CumprodDeviceOperation::SingleCoreCumprodProgramFactory::create_cb(
     const uint32_t single_tile_size{TileSize(cb_data_format)};
     const auto cb_config{CircularBufferConfig{num_tiles * single_tile_size, {{cb_id, cb_data_format}}}.set_page_size(
         cb_id, single_tile_size)};
-    return CreateCircularBuffer(program, core, cb_config);
+    return CreateCircularBuffer(program, core_range_set, cb_config);
 }
 
 KernelHandle CumprodDeviceOperation::SingleCoreCumprodProgramFactory::create_kernel(
     Program& program,
     const char* kernel_path,
-    const CoreCoord& core,
+    const CoreRangeSet& core_range_set,
     const std::variant<DataMovementConfig, ComputeConfig, EthernetConfig>& config,
     const std::vector<uint32_t>& runtime_args) {
-    auto kernel_id{CreateKernel(program, kernel_path, core, config)};
+    auto kernel_id{CreateKernel(program, kernel_path, core_range_set, config)};
 
-    SetRuntimeArgs(program, kernel_id, core, runtime_args);
+    SetRuntimeArgs(program, kernel_id, core_range_set, runtime_args);
 
     return kernel_id;
 }
