@@ -93,7 +93,6 @@ class LMHead(LightweightModule):
                         layout=ttnn.TILE_LAYOUT,
                         dtype=dtype,
                         memory_config=memory_config,
-                        cache_file_name=cache_file_name,
                     )
                 )
         else:
@@ -198,7 +197,6 @@ class LMHead(LightweightModule):
         for weight, pc in zip(self.output_weights, self.program_configs):
             weight_l1 = weight  # ttnn.to_memory_config(weight, self.args.model_config["LM_HEAD_RING_MEMCFG"])
             if mode == "decode":
-                # breakpoint()
                 x = ttnn.to_memory_config(x, self.args.model_config["SHARDED_LM_HEAD_INPUT_32_RING_MEMCFG"])
                 output = ttnn.linear(
                     x,
