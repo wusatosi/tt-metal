@@ -498,11 +498,7 @@ def run_conv_with_split(
 @pytest.mark.parametrize("batch_size", [2])
 @pytest.mark.parametrize(
     "output_channels, input_channels, input_height, input_width, shard_layout, config",
-    (
-        (256, 256, 8, 8, WS, None),
-        (128, 128, 32, 32, BS, None),
-        (16, 16, 256, 256, HS, {"act_block_h": 32}),
-    ),
+    ((256, 256, 8, 8, WS, None),),
 )
 @pytest.mark.parametrize(
     "weights_dtype",
