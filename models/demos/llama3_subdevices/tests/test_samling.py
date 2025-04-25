@@ -82,8 +82,11 @@ def reference_sampling(input_tensor, sampling_params, num_devices, padded_vocab_
     ],
     indirect=True,
 )
-# @pytest.mark.parametrize("sampling_params", [{"top_k": 32, "top_p": 0.08, "seed": 42},], indirect=True)
-@pytest.mark.parametrize("device_params", [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL}], indirect=True)
+@pytest.mark.parametrize(
+    "device_params",
+    [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL, "fabric_config": ttnn.FabricConfig.FABRIC_1D}],
+    indirect=True,
+)
 def test_llama_sampling_inference(dtype, batch_size, mesh_device, use_program_cache, reset_seeds):
     sampling_params = {"top_k": 32, "top_p": 0.08, "seed": 42}
     mesh_device.enable_async(True)

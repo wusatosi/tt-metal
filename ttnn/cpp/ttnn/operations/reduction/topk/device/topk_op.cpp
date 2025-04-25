@@ -158,7 +158,7 @@ operation::ProgramWithCallbacks TopK::create_program(
     // tensor size, so it can handle larger input tensor sizes.
     // TODO: implement new topk implementation for multicore
     multicore_supported &= topk_utils::verify_multi_core_cost(
-        input_tensors, input_shape[this->dim], 64, input_shape[this->dim] / 2, this->k);
+        input_tensors, input_shape[this->dim], 64, input_shape[this->dim] / 2, this->k, this->sub_core_grids);
 
     multicore_supported &= (this->k <= 64);  // old implementation cannot handle k>64
 

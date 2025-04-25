@@ -47,37 +47,6 @@ class TTSampling(LightweightModule):
         )
 
     def forward(self, x: ttnn.Tensor):
-        # # Fall back to host for now
-        # out_torchs_list = ttnn.to_torch(x, mesh_composer=ttnn.ListMeshToTensor(self.mesh_device))
-
-        # topk_values_list = []
-        # topk_indices_list = []
-        # for i in range(len(out_torchs_list)):
-        #     if i % 4 == 0:
-        #         topk_values_device, topk_indices_device = out_torchs_list[i].topk(k=32, dim=-1)
-        #         topk_values_list.append(topk_values_device)
-        #         topk_indices_list.append(topk_indices_device)
-
-        # topk_values_tensor = torch.cat(topk_values_list, dim=3)
-        # topk_indices_tensor = torch.cat(topk_indices_list, dim=3)
-
-        # topk_values = ttnn.from_torch(
-        #     topk_values_tensor,
-        #     device=self.mesh_device,
-        #     dtype=ttnn.bfloat16,
-        #     layout=ttnn.TILE_LAYOUT,
-        #     mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=(-1, None), mesh_shape=self.args.cluster_shape),
-        #     memory_config=ttnn.DRAM_MEMORY_CONFIG,
-        # )
-        # topk_indices = ttnn.from_torch(
-        #     topk_indices_tensor,
-        #     device=self.mesh_device,
-        #     dtype=ttnn.uint16,
-        #     layout=ttnn.TILE_LAYOUT,
-        #     mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=(-1, None), mesh_shape=self.args.cluster_shape),
-        #     memory_config=ttnn.DRAM_MEMORY_CONFIG,
-        # )
-
         # Local top k
         topk_values, topk_indices = ttnn.topk(x, k=32, dim=-1, sub_core_grids=self.args.sub_core_grid_topk)
         ttnn.deallocate(x)
@@ -106,21 +75,16 @@ class TTSampling(LightweightModule):
         )
         ttnn.deallocate(topk_indices)
 
-        # # Convert indices to uint32
+        # # Convert indices to int32
         # topk_indices_gathered_interleaved = ttnn.to_memory_config(
         #     topk_indices_gathered, ttnn.DRAM_MEMORY_CONFIG
-        # )  # , dtype=ttnn.uint32 gives garbage results
-        # ttnn.deallocate(topk_indices_gathered)
-        # # topk_indices_gathered_interleaved_uint32 = ttnn.typecast(
-        # #     topk_indices_gathered_interleaved, ttnn.uint32, sub_core_grids=self.args.sub_core_grids
-        # # )
-        # # ttnn.deallocate(topk_indices_gathered_interleaved)
+        # )  # , dtype=ttnn.int32 gives garbage results
+        # topk_indices_gathered_interleaved_uint32 = ttnn.typecast(
+        #     topk_indices_gathered_interleaved, ttnn.int32, sub_core_grids=self.args.sub_core_grids
+        # )
         # topk_indices_gathered_sharded_int32 = ttnn.to_memory_config(
         #     topk_indices_gathered_interleaved, self.args.model_config["DECODE_SAMPLING_INPUT_MEMCFG"], dtype=ttnn.int32 # Conversion to in32 give garbage values
         # )
-        # ttnn.deallocate(topk_indices_gathered_interleaved)
-
-        breakpoint()
 
         topk_indices_gathered_sharded = ttnn.to_memory_config(
             topk_indices_gathered, self.args.model_config["DECODE_SAMPLING_INPUT_MEMCFG"]
@@ -128,19 +92,18 @@ class TTSampling(LightweightModule):
         ttnn.deallocate(topk_indices_gathered)
 
         # Add device offsets for global indices
-        # topk_global_indices = ttnn.add(
-        #     self.tt_indices_device_offsets, topk_indices_gathered_sharded_int32, dtype=ttnn.int32
-        # )
         topk_global_indices = ttnn.add(self.tt_indices_device_offsets, topk_indices_gathered_sharded, dtype=ttnn.int32)
         ttnn.deallocate(topk_indices_gathered_sharded)
 
         breakpoint()
 
         topk_global_indices_interleaved = ttnn.to_memory_config(topk_global_indices, ttnn.DRAM_MEMORY_CONFIG)
-        ttnn.deallocate(topk_global_indices)
+        # do not deallocate topk_global_indices
 
         # Untilize
-        topk_global_indices_interleaved_untilised = ttnn.untilize(topk_global_indices_interleaved)
+        topk_global_indices_interleaved_untilised = ttnn.untilize(
+            topk_global_indices_interleaved, sub_core_grids=self.args.sub_core_grids
+        )
         ttnn.deallocate(topk_global_indices_interleaved)
 
         # Sampling
