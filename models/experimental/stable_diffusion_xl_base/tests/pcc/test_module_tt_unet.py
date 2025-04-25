@@ -65,7 +65,7 @@ def prepare_ttnn_tensors(
 @pytest.mark.parametrize(
     "input_shape, timestep_shape, encoder_shape, temb_shape, time_ids_shape",
     [
-        ((1, 4, 128, 128), (1,), (1, 77, 2048), (1, 1280), (1, 6)),
+        ((2, 4, 128, 128), (2,), (2, 77, 2048), (2, 1280), (2, 6)),
     ],
 )
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 4 * 16384}], indirect=True)
@@ -91,7 +91,7 @@ def test_unet(
     torch_timestep_tensor = torch_random(timestep_shape, -0.1, 0.1, dtype=torch.float32)
     torch_temb_tensor = torch_random(temb_shape, -0.1, 0.1, dtype=torch.float32)
     torch_encoder_tensor = torch_random(encoder_shape, -0.1, 0.1, dtype=torch.float32)
-    torch_time_ids = torch.tensor([1024, 1024, 0, 0, 1024, 1024])
+    torch_time_ids = torch.tensor([[1024, 1024, 0, 0, 1024, 1024], [1024, 1024, 0, 0, 1024, 1024]])
 
     added_cond_kwargs = {
         "text_embeds": torch_temb_tensor,
@@ -118,25 +118,25 @@ def test_unet(
     import tracy
 
     tracy.signpost("Compilation pass")
-    _, _ = tt_unet.forward(
-        ttnn_input_tensor,
-        [B, C, H, W],
-        timestep=ttnn_timestep_tensor,
-        encoder_hidden_states=ttnn_encoder_tensor,
-        added_cond_kwargs=ttnn_added_cond_kwargs,
-    )
+    # _, _ = tt_unet.forward(
+    #     ttnn_input_tensor,
+    #     [B, C, H, W],
+    #     timestep=ttnn_timestep_tensor,
+    #     encoder_hidden_states=ttnn_encoder_tensor,
+    #     added_cond_kwargs=ttnn_added_cond_kwargs,
+    # )
 
-    (
-        ttnn_input_tensor,
-        [B, C, H, W],
-        ttnn_timestep_tensor,
-        ttnn_encoder_tensor,
-        ttnn_added_cond_kwargs,
-    ) = prepare_ttnn_tensors(
-        device, torch_input_tensor, torch_timestep_tensor, torch_temb_tensor, torch_encoder_tensor, torch_time_ids
-    )
+    # (
+    #     ttnn_input_tensor,
+    #     [B, C, H, W],
+    #     ttnn_timestep_tensor,
+    #     ttnn_encoder_tensor,
+    #     ttnn_added_cond_kwargs,
+    # ) = prepare_ttnn_tensors(
+    #     device, torch_input_tensor, torch_timestep_tensor, torch_temb_tensor, torch_encoder_tensor, torch_time_ids
+    # )
 
-    tracy.signpost("Second pass")
+    # tracy.signpost("Second pass")
     ttnn_output_tensor, output_shape = tt_unet.forward(
         ttnn_input_tensor,
         [B, C, H, W],
@@ -149,4 +149,4 @@ def test_unet(
     output_tensor = output_tensor.reshape(B, output_shape[1], output_shape[2], output_shape[0])
     output_tensor = torch.permute(output_tensor, (0, 3, 1, 2))
 
-    assert_with_pcc(torch_output_tensor, output_tensor, 0.985)
+    assert_with_pcc(torch_output_tensor, output_tensor, 0.999)

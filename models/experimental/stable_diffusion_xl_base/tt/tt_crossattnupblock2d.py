@@ -10,7 +10,17 @@ from models.experimental.stable_diffusion_xl_base.tt.tt_upsample2d import TtUpsa
 
 
 class TtCrossAttnUpBlock2D(nn.Module):
-    def __init__(self, device, state_dict, module_path, query_dim, num_attn_heads, out_dim, has_upsample=False):
+    def __init__(
+        self,
+        device,
+        state_dict,
+        module_path,
+        query_dim,
+        num_attn_heads,
+        out_dim,
+        has_upsample=False,
+        has_dram_norm=False,
+    ):
         super().__init__()
 
         num_layers = 3
@@ -25,7 +35,16 @@ class TtCrossAttnUpBlock2D(nn.Module):
             )
 
         for i in range(num_layers):
-            self.resnets.append(TtResnetBlock2D(device, state_dict, f"{module_path}.resnets.{i}", True))
+            self.resnets.append(
+                TtResnetBlock2D(
+                    device,
+                    state_dict,
+                    f"{module_path}.resnets.{i}",
+                    True,
+                    split_in=2 if i == 1 else 1,
+                    dram_norm=(has_dram_norm and i == 0),
+                )
+            )
 
         self.upsamplers = (
             TtUpsample2D(device, state_dict, f"{module_path}.upsamplers.0", (1, 1), (1, 1), (1, 1), 1)

@@ -13,7 +13,7 @@ from models.utility_functions import torch_random
 @pytest.mark.parametrize(
     "input_shape, temb_shape, encoder_shape, query_dim, num_attn_heads, out_dim",
     [
-        ((1, 1280, 32, 32), (1, 1280), (1, 77, 2048), 1280, 20, 1280),
+        ((2, 1280, 32, 32), (2, 1280), (2, 77, 2048), 1280, 20, 1280),
     ],
 )
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
@@ -70,4 +70,4 @@ def test_crossattnmid(
     output_tensor = output_tensor.reshape(B, output_shape[1], output_shape[2], output_shape[0])
     output_tensor = torch.permute(output_tensor, (0, 3, 1, 2))
 
-    assert_with_pcc(torch_output_tensor, output_tensor, 0.973)
+    assert_with_pcc(torch_output_tensor, output_tensor, 0.983)

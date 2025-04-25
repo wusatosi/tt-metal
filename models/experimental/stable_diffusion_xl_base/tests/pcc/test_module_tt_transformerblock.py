@@ -11,17 +11,26 @@ from models.utility_functions import torch_random
 
 
 @pytest.mark.parametrize(
-    "input_shape, encoder_shape, down_block_id, block_id, query_dim, num_attn_heads, out_dim",
+    "input_shape, encoder_shape, down_block_id, block_id, query_dim, num_attn_heads, out_dim, pcc",
     [
-        ((1, 4096, 640), (1, 77, 2048), 1, 0, 640, 10, 640),
-        ((1, 4096, 640), (1, 77, 2048), 1, 1, 640, 10, 640),
-        ((1, 1024, 1280), (1, 77, 2048), 2, 0, 1280, 20, 1280),
-        ((1, 1024, 1280), (1, 77, 2048), 2, 1, 1280, 20, 1280),
+        ((2, 4096, 640), (2, 77, 2048), 1, 0, 640, 10, 640, 0.999),
+        ((2, 4096, 640), (2, 77, 2048), 1, 1, 640, 10, 640, 0.999),
+        ((2, 1024, 1280), (2, 77, 2048), 2, 0, 1280, 20, 1280, 0.999),
+        ((2, 1024, 1280), (2, 77, 2048), 2, 1, 1280, 20, 1280, 0.998),
     ],
 )
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
 def test_transformerblock(
-    device, input_shape, encoder_shape, down_block_id, block_id, query_dim, num_attn_heads, out_dim, use_program_cache
+    device,
+    input_shape,
+    encoder_shape,
+    down_block_id,
+    block_id,
+    query_dim,
+    num_attn_heads,
+    out_dim,
+    pcc,
+    use_program_cache,
 ):
     pipe = DiffusionPipeline.from_pretrained(
         "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float32, use_safetensors=True, variant="fp16"
@@ -45,7 +54,7 @@ def test_transformerblock(
     torch_output_tensor = torch_transformerblock(torch_input_tensor, None, torch_encoder_tensor).unsqueeze(0)
 
     ttnn_input_tensor = ttnn.from_torch(
-        torch_input_tensor,
+        torch_input_tensor.unsqueeze(0),
         dtype=ttnn.bfloat16,
         device=device,
         layout=ttnn.TILE_LAYOUT,
@@ -61,4 +70,4 @@ def test_transformerblock(
     ttnn_output_tensor = tt_transformerblock.forward(ttnn_input_tensor, None, ttnn_encoder_tensor)
     output_tensor = ttnn.to_torch(ttnn_output_tensor)
 
-    assert_with_pcc(torch_output_tensor, output_tensor, 0.998)
+    assert_with_pcc(torch_output_tensor, output_tensor, pcc)

@@ -16,7 +16,7 @@ class TtDownBlock2D(nn.Module):
         self.resnets = []
 
         for i in range(num_layers):
-            self.resnets.append(TtResnetBlock2D(device, state_dict, f"{module_path}.resnets.{i}"))
+            self.resnets.append(TtResnetBlock2D(device, state_dict, f"{module_path}.resnets.{i}", dram_norm=(i == 0)))
 
         self.downsamplers = TtDownsample2D(
             device, state_dict, f"{module_path}.downsamplers.0", (2, 2), (1, 1), (1, 1), 1

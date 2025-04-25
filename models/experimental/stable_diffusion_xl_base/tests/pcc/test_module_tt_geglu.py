@@ -14,8 +14,8 @@ from functools import reduce
 @pytest.mark.parametrize(
     "input_shape, module_path",
     [
-        ((1024, 1280), "down_blocks.2.attentions.0.transformer_blocks.0.ff.net.0"),
-        ((4096, 640), "down_blocks.1.attentions.0.transformer_blocks.0.ff.net.0"),
+        ((2, 1024, 1280), "down_blocks.2.attentions.0.transformer_blocks.0.ff.net.0"),
+        ((2, 4096, 640), "down_blocks.1.attentions.0.transformer_blocks.0.ff.net.0"),
     ],
 )
 def test_geglu(device, input_shape, module_path, use_program_cache):
@@ -41,7 +41,7 @@ def test_geglu(device, input_shape, module_path, use_program_cache):
     torch_output_tensor = torch_geglu(torch_input_tensor)
 
     ttnn_input_tensor = ttnn.from_torch(
-        torch_input_tensor.unsqueeze(0).unsqueeze(0),
+        torch_input_tensor.unsqueeze(1),
         dtype=ttnn.bfloat16,
         device=device,
         layout=ttnn.TILE_LAYOUT,

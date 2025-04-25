@@ -13,21 +13,21 @@ from models.utility_functions import torch_random
 @pytest.mark.parametrize(
     "input_shape, temb_shape, down_block_id, resnet_id, conv_shortcut, split_in, block, pcc",
     [
-        ((1, 320, 128, 128), (1, 1280), 0, 0, False, 1, "down_blocks", 0.999),
-        ((1, 320, 64, 64), (1, 1280), 1, 0, True, 1, "down_blocks", 0.998),
-        ((1, 640, 64, 64), (1, 1280), 1, 1, False, 1, "down_blocks", 0.995),
-        ((1, 640, 32, 32), (1, 1280), 2, 0, True, 1, "down_blocks", 0.997),
-        ((1, 1280, 32, 32), (1, 1280), 2, 1, False, 1, "down_blocks", 0.993),
-        ((1, 960, 128, 128), (1, 1280), 2, 0, True, 6, "up_blocks", 0.991),
-        ((1, 640, 128, 128), (1, 1280), 2, 1, True, 2, "up_blocks", 0.997),
-        ((1, 2560, 32, 32), (1, 1280), 0, 0, True, 1, "up_blocks", 0.988),
-        ((1, 1920, 32, 32), (1, 1280), 0, 2, True, 1, "up_blocks", 0.991),
-        ((1, 1920, 64, 64), (1, 1280), 1, 0, True, 1, "up_blocks", 0.985),
-        ((1, 1280, 64, 64), (1, 1280), 1, 1, True, 1, "up_blocks", 0.993),
-        ((1, 960, 64, 64), (1, 1280), 1, 2, True, 1, "up_blocks", 0.996),
+        ((2, 320, 128, 128), (2, 1280), 0, 0, False, 1, "down_blocks", 0.999),
+        ((2, 320, 64, 64), (2, 1280), 1, 0, True, 1, "down_blocks", 0.999),
+        ((2, 640, 64, 64), (2, 1280), 1, 1, False, 1, "down_blocks", 0.996),
+        ((2, 640, 32, 32), (2, 1280), 2, 0, True, 1, "down_blocks", 0.997),
+        ((2, 1280, 32, 32), (2, 1280), 2, 1, False, 1, "down_blocks", 0.994),
+        ((2, 960, 128, 128), (2, 1280), 2, 0, True, 6, "up_blocks", 0.991),
+        ((2, 640, 128, 128), (2, 1280), 2, 1, True, 2, "up_blocks", 0.997),
+        ((2, 2560, 32, 32), (2, 1280), 0, 0, True, 1, "up_blocks", 0.99),
+        ((2, 1920, 32, 32), (2, 1280), 0, 2, True, 1, "up_blocks", 0.992),
+        ((2, 1920, 64, 64), (2, 1280), 1, 0, True, 1, "up_blocks", 0.985),
+        ((2, 1280, 64, 64), (2, 1280), 1, 1, True, 1, "up_blocks", 0.993),
+        ((2, 960, 64, 64), (2, 1280), 1, 2, True, 1, "up_blocks", 0.996),
     ],
 )
-@pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 2 * 16384}], indirect=True)
 def test_resnetblock2d(
     device, temb_shape, input_shape, down_block_id, resnet_id, conv_shortcut, split_in, block, pcc, use_program_cache
 ):

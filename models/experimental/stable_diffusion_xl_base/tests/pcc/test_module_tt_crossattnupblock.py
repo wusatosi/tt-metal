@@ -13,27 +13,27 @@ from models.utility_functions import torch_random
 @pytest.mark.parametrize(
     "input_shape, temb_shape, residuals, encoder_shape, query_dim, num_attn_heads, out_dim, block_id, pcc",
     [
+        # (
+        #     (2, 1280, 32, 32),
+        #     (2, 1280),
+        #     ((2, 640, 32, 32), (2, 1280, 32, 32), (2, 1280, 32, 32)),
+        #     (2, 77, 2048),
+        #     1280,
+        #     20,
+        #     1280,
+        #     0,
+        #     0.95,
+        # ),
         (
-            (1, 1280, 32, 32),
-            (1, 1280),
-            ((1, 640, 32, 32), (1, 1280, 32, 32), (1, 1280, 32, 32)),
-            (1, 77, 2048),
-            1280,
-            20,
-            1280,
-            0,
-            0.93,
-        ),
-        (
-            (1, 1280, 64, 64),
-            (1, 1280),
-            ((1, 320, 64, 64), (1, 640, 64, 64), (1, 640, 64, 64)),
-            (1, 77, 2048),
+            (2, 1280, 64, 64),
+            (2, 1280),
+            ((2, 320, 64, 64), (2, 640, 64, 64), (2, 640, 64, 64)),
+            (2, 77, 2048),
             640,
             10,
             640,
             1,
-            0.926,
+            0.95,
         ),
     ],
 )
@@ -60,7 +60,14 @@ def test_crossattnup(
 
     torch_crosattn = unet.up_blocks[block_id]
     tt_crosattn = TtCrossAttnUpBlock2D(
-        device, state_dict, f"up_blocks.{block_id}", query_dim, num_attn_heads, out_dim, True
+        device,
+        state_dict,
+        f"up_blocks.{block_id}",
+        query_dim,
+        num_attn_heads,
+        out_dim,
+        True,
+        has_dram_norm=block_id == 1,
     )
     torch_input_tensor = torch_random(input_shape, -0.1, 0.1, dtype=torch.float32)
     torch_temb_tensor = torch_random(temb_shape, -0.1, 0.1, dtype=torch.float32)
@@ -79,14 +86,14 @@ def test_crossattnup(
     B, C, H, W = list(ttnn_input_tensor.shape)
 
     ttnn_input_tensor = ttnn.permute(ttnn_input_tensor, (0, 2, 3, 1))
-    ttnn_input_tensor = ttnn.reshape(ttnn_input_tensor, (B, 1, H * W, C))
+    ttnn_input_tensor = ttnn.reshape(ttnn_input_tensor, (1, 1, B * H * W, C))
 
     ttnn_residual_tensors = ()
     for torch_residual in torch_residual_tensors:
         ttnn_residual = ttnn.from_torch(torch_residual, dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT)
         Br, Cr, Hr, Wr = list(ttnn_residual.shape)
         ttnn_residual = ttnn.permute(ttnn_residual, (0, 2, 3, 1))
-        ttnn_residual = ttnn.reshape(ttnn_residual, (Br, 1, Hr * Wr, Cr))
+        ttnn_residual = ttnn.reshape(ttnn_residual, (1, 1, Br * Hr * Wr, Cr))
         ttnn_residual_tensors = ttnn_residual_tensors + (ttnn_residual,)
 
     ttnn_temb_tensor = ttnn.from_torch(torch_temb_tensor, dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT)

@@ -6,7 +6,8 @@ import torch.nn as nn
 import ttnn
 
 from models.experimental.stable_diffusion_xl_base.tt.sdxl_utility import (
-    prepare_conv_params,
+    prepare_split_conv_params,
+    split_conv2d,
 )
 
 
@@ -34,9 +35,16 @@ class TtUpsample2D(nn.Module):
         weights = state_dict[f"{module_path}.conv.weight"]
         bias = state_dict[f"{module_path}.conv.bias"].unsqueeze(0).unsqueeze(0).unsqueeze(0)
 
-        self.compute_config, self.conv_config, self.tt_weights, self.tt_bias, self.conv_params = prepare_conv_params(
-            device, weights, bias, ttnn.bfloat8_b
-        )
+        # self.compute_config, self.conv_config, self.tt_weights, self.tt_bias, self.conv_params = prepare_conv_params(
+        #     device, weights, bias, ttnn.bfloat8_b
+        # )
+        (
+            self.compute_config,
+            self.conv_config,
+            self.tt_weights,
+            self.tt_bias,
+            self.conv_params,
+        ) = prepare_split_conv_params(device, weights, bias, 2, 2, ttnn.bfloat8_b, act_block_h_override=32)
 
     def interpolate(self, hidden_states):
         hidden_states = ttnn.upsample(hidden_states, (self.scale_factor, self.scale_factor))
@@ -47,28 +55,24 @@ class TtUpsample2D(nn.Module):
         hidden_states, input_shape = self.interpolate(hidden_states)
         B, C, H, W = input_shape
 
-        [hidden_states, [H, W], [d_w, d_b]] = ttnn.conv2d(
-            input_tensor=hidden_states,
-            weight_tensor=self.tt_weights,
-            in_channels=self.conv_params["input_channels"],
-            out_channels=self.conv_params["output_channels"],
+        hidden_states = ttnn.to_layout(hidden_states, ttnn.ROW_MAJOR_LAYOUT)
+        hidden_states = ttnn.move(hidden_states)
+        hidden_states, [C, H, W], [d_w, d_b] = split_conv2d(
             device=self.device,
-            bias_tensor=self.tt_bias,
-            kernel_size=self.conv_params["kernel_size"],
+            hidden_states=hidden_states,
+            input_shape=[B, C, H, W],
+            conv_weights=self.tt_weights,
+            conv_bias=self.tt_bias,
+            split_in=2,
+            split_out=2,
+            compute_config=self.compute_config,
+            conv_config=self.conv_config,
+            conv_params=self.conv_params,
             stride=self.stride,
             padding=self.padding,
             dilation=self.dilation,
-            batch_size=B,
-            input_height=H,
-            input_width=W,
-            conv_config=self.conv_config,
-            compute_config=self.compute_config,
             groups=self.groups,
-            memory_config=None,
-            return_output_dim=True,
-            return_weights_and_bias=True,
         )
-        C = self.conv_params["output_channels"]
         self.tt_weights = d_w
         self.tt_bias = d_b
 

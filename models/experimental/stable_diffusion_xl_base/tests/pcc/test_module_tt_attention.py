@@ -13,10 +13,10 @@ from models.utility_functions import torch_random
 @pytest.mark.parametrize(
     "input_shape, encoder_shape, attn_id, down_block_id, query_dim, num_attn_heads, out_dim",
     [
-        ((1, 4096, 640), None, 1, 1, 640, 10, 640),
-        ((1, 4096, 640), (1, 77, 2048), 2, 1, 640, 10, 640),
-        ((1, 1024, 1280), None, 1, 2, 1280, 20, 1280),
-        ((1, 1024, 1280), (1, 77, 2048), 2, 2, 1280, 20, 1280),
+        ((2, 4096, 640), None, 1, 1, 640, 10, 640),
+        ((2, 4096, 640), (2, 77, 2048), 2, 1, 640, 10, 640),
+        ((2, 1024, 1280), None, 1, 2, 1280, 20, 1280),
+        ((2, 1024, 1280), (2, 77, 2048), 2, 2, 1280, 20, 1280),
     ],
 )
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
@@ -68,6 +68,7 @@ def test_attention(
         else None
     )
     ttnn_output_tensor = tt_attention.forward(ttnn_input_tensor, None, ttnn_encoder_tensor)
+    print(ttnn_output_tensor.shape)
     output_tensor = ttnn.to_torch(ttnn_output_tensor)
 
     assert_with_pcc(torch_output_tensor, output_tensor, 0.999)

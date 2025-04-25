@@ -16,7 +16,14 @@ class TtUpBlock2D(nn.Module):
 
         for i in range(num_layers):
             self.resnets.append(
-                TtResnetBlock2D(device, state_dict, f"{module_path}.resnets.{i}", True, 6 if i == 0 else 2)
+                TtResnetBlock2D(
+                    device,
+                    state_dict,
+                    f"{module_path}.resnets.{i}",
+                    True,
+                    split_in=(6 if i == 0 else 2),
+                    dram_norm=True,
+                )
             )
 
     def forward(self, hidden_states, res_hidden_states_tuple, input_shape, temb):

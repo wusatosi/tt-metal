@@ -13,9 +13,9 @@ from models.utility_functions import torch_random
 @pytest.mark.parametrize(
     "input_shape, block_id, transformer_block_id",
     [
-        ((1024, 1280), 2, 0),
-        ((4096, 640), 1, 0),
-        ((4096, 640), 1, 1),
+        ((2, 1024, 1280), 2, 0),
+        ((2, 4096, 640), 1, 0),
+        ((2, 4096, 640), 1, 1),
     ],
 )
 def test_feedforward(device, input_shape, block_id, transformer_block_id, use_program_cache):
@@ -36,7 +36,7 @@ def test_feedforward(device, input_shape, block_id, transformer_block_id, use_pr
     torch_output_tensor = torch_ff(torch_input_tensor)
 
     ttnn_input_tensor = ttnn.from_torch(
-        torch_input_tensor.unsqueeze(0).unsqueeze(0),
+        torch_input_tensor.unsqueeze(1),
         dtype=ttnn.bfloat16,
         device=device,
         layout=ttnn.TILE_LAYOUT,

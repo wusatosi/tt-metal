@@ -15,7 +15,7 @@ from models.experimental.stable_diffusion_xl_base.tt.sdxl_utility import (
 
 
 @pytest.mark.parametrize(
-    "input_shape, down_block_id, pcc", [((1, 320, 128, 128), 0, 0.998), ((1, 640, 64, 64), 1, 0.996)]
+    "input_shape, down_block_id, pcc", [((2, 320, 128, 128), 0, 0.999), ((2, 640, 64, 64), 1, 0.998)]
 )
 @pytest.mark.parametrize("stride", [(2, 2)])
 @pytest.mark.parametrize("padding", [(1, 1)])
@@ -39,7 +39,7 @@ def test_downsample2d(device, input_shape, down_block_id, stride, padding, dilat
     torch_output_tensor = torch_downsample(torch_input_tensor)
 
     ttnn_input_tensor = to_channel_last_ttnn(
-        torch_input_tensor, ttnn.bfloat16, device, ttnn.L1_MEMORY_CONFIG, ttnn.TILE_LAYOUT
+        torch_input_tensor, ttnn.bfloat16, device, ttnn.DRAM_MEMORY_CONFIG, ttnn.TILE_LAYOUT
     )
     ttnn_output_tensor, output_shape = tt_downsample.forward(ttnn_input_tensor, input_shape)
     output_tensor = from_channel_last_ttnn(

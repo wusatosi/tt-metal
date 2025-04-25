@@ -13,8 +13,8 @@ from models.utility_functions import torch_random
 @pytest.mark.parametrize(
     "input_shape, encoder_shape, down_block_id, query_dim, num_attn_heads, out_dim, pcc",
     [
-        ((1, 640, 64, 64), (1, 77, 2048), 1, 640, 10, 640, 0.999),
-        ((1, 1280, 32, 32), (1, 77, 2048), 2, 1280, 20, 1280, 0.995),
+        ((2, 640, 64, 64), (2, 77, 2048), 1, 640, 10, 640, 0.999),
+        ((2, 1280, 32, 32), (2, 77, 2048), 2, 1280, 20, 1280, 0.997),
     ],
 )
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
@@ -47,7 +47,7 @@ def test_transformermodel(
     B, C, H, W = list(ttnn_input_tensor.shape)
 
     ttnn_input_tensor = ttnn.permute(ttnn_input_tensor, (0, 2, 3, 1))
-    ttnn_input_tensor = ttnn.reshape(ttnn_input_tensor, (B, 1, H * W, C))
+    ttnn_input_tensor = ttnn.reshape(ttnn_input_tensor, (1, 1, B * H * W, C))
 
     ttnn_encoder_tensor = ttnn.from_torch(
         torch_encoder_tensor,

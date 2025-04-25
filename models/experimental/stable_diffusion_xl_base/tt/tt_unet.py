@@ -2,7 +2,9 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
+import torch.nn.functional as F
 import torch.nn as nn
+import torch
 import ttnn
 
 from models.experimental.stable_diffusion_xl_base.tt.tt_timesteps import TtTimesteps
@@ -18,8 +20,6 @@ from models.experimental.stable_diffusion_xl_base.tt.tt_upblock2d import TtUpBlo
 
 from models.experimental.stable_diffusion_xl_base.tt.sdxl_utility import (
     prepare_conv_params,
-    prepare_gn_beta_gamma,
-    prepare_gn_mask,
 )
 
 
@@ -49,14 +49,16 @@ class TtUNet2DConditionModel(nn.Module):
 
         self.up_blocks = []
         self.up_blocks.append(TtCrossAttnUpBlock2D(device, state_dict, "up_blocks.0", 1280, 20, 1280, True))
-        self.up_blocks.append(TtCrossAttnUpBlock2D(device, state_dict, "up_blocks.1", 640, 10, 640, True))
+        self.up_blocks.append(
+            TtCrossAttnUpBlock2D(device, state_dict, "up_blocks.1", 640, 10, 640, True, has_dram_norm=True)
+        )
         self.up_blocks.append(TtUpBlock2D(device, state_dict, "up_blocks.2"))
 
         conv_weights_in = state_dict["conv_in.weight"]
         conv_bias_in = state_dict["conv_in.bias"].unsqueeze(0).unsqueeze(0).unsqueeze(0)
 
-        norm_weights_out = state_dict["conv_norm_out.weight"]
-        norm_bias_out = state_dict["conv_norm_out.bias"]
+        self.norm_weights_out = state_dict["conv_norm_out.weight"]
+        self.norm_bias_out = state_dict["conv_norm_out.bias"]
 
         conv_weights_out = state_dict["conv_out.weight"]
         conv_bias_out = state_dict["conv_out.bias"].unsqueeze(0).unsqueeze(0).unsqueeze(0)
@@ -76,12 +78,12 @@ class TtUNet2DConditionModel(nn.Module):
         self.norm_groups = 32
         self.norm_eps = 1e-5
 
-        self.gamma_t, self.beta_t = prepare_gn_beta_gamma(
-            device, norm_weights_out, norm_bias_out, self.norm_core_grid.y
-        )
-        self.input_mask = prepare_gn_mask(
-            self.device, norm_weights_out.shape[0], self.norm_groups, self.norm_core_grid.y
-        )
+        # self.gamma_t, self.beta_t = prepare_gn_beta_gamma(
+        #     device, norm_weights_out, norm_bias_out, self.norm_core_grid.y
+        # )
+        # self.input_mask = prepare_gn_mask(
+        #     self.device, norm_weights_out.shape[0], self.norm_groups, self.norm_core_grid.y
+        # )
 
     def forward(self, sample, input_shape, timestep, encoder_hidden_states, added_cond_kwargs):
         B, C, H, W = input_shape
@@ -168,29 +170,49 @@ class TtUNet2DConditionModel(nn.Module):
 
         sample = ttnn.to_layout(sample, ttnn.ROW_MAJOR_LAYOUT)
 
-        grid_coord = ttnn.CoreCoord(self.norm_core_grid.x - 1, self.norm_core_grid.y - 1)
-        shard_grid = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), grid_coord)})
-        shard_shape = B * H * W // self.norm_core_grid.x, C // self.norm_core_grid.y
-        shard_spec = ttnn.ShardSpec(shard_grid, shard_shape, ttnn.ShardOrientation.COL_MAJOR)
-        sharded_mem_config = ttnn.MemoryConfig(
-            ttnn.types.TensorMemoryLayout.BLOCK_SHARDED, ttnn.types.BufferType.L1, shard_spec
-        )
-        sample = ttnn.to_memory_config(sample, sharded_mem_config)
-
-        sample = ttnn.group_norm(
+        sample = ttnn.to_torch(sample)
+        sample = sample.reshape(B, H, W, C)
+        sample = torch.permute(sample, (0, 3, 1, 2))
+        sample = F.group_norm(
             sample,
             num_groups=self.norm_groups,
-            input_mask=self.input_mask,
-            weight=self.gamma_t,
-            bias=self.beta_t,
-            memory_config=sharded_mem_config,
-            core_grid=self.norm_core_grid,
-            epsilon=self.norm_eps,
+            weight=self.norm_weights_out,
+            bias=self.norm_bias_out,
+            eps=self.norm_eps,
         )
+        sample = torch.permute(sample, (0, 2, 3, 1))
+        sample = sample.reshape(1, 1, B * H * W, C)
+        sample = ttnn.from_torch(
+            sample,
+            dtype=ttnn.bfloat16,
+            device=self.device,
+            layout=ttnn.TILE_LAYOUT,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+        )
+
+        # grid_coord = ttnn.CoreCoord(self.norm_core_grid.x - 1, self.norm_core_grid.y - 1)
+        # shard_grid = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), grid_coord)})
+        # shard_shape = B * H * W // self.norm_core_grid.x, C // self.norm_core_grid.y
+        # shard_spec = ttnn.ShardSpec(shard_grid, shard_shape, ttnn.ShardOrientation.COL_MAJOR)
+        # sharded_mem_config = ttnn.MemoryConfig(
+        #     ttnn.types.TensorMemoryLayout.BLOCK_SHARDED, ttnn.types.BufferType.L1, shard_spec
+        # )
+        # sample = ttnn.to_memory_config(sample, sharded_mem_config)
+
+        # sample = ttnn.group_norm(
+        #     sample,
+        #     num_groups=self.norm_groups,
+        #     input_mask=self.input_mask,
+        #     weight=self.gamma_t,
+        #     bias=self.beta_t,
+        #     memory_config=sharded_mem_config,
+        #     core_grid=self.norm_core_grid,
+        #     epsilon=self.norm_eps,
+        # )
 
         sample = ttnn.silu(sample)
 
-        sample = ttnn.sharded_to_interleaved(sample, ttnn.DRAM_MEMORY_CONFIG)
+        # sample = ttnn.sharded_to_interleaved(sample, ttnn.DRAM_MEMORY_CONFIG)
         self.conv_config.shard_layout = sample.memory_config().memory_layout if sample.is_sharded() else None
         self.conv_config.act_block_h_override = 32 if sample.is_sharded() else 0
 

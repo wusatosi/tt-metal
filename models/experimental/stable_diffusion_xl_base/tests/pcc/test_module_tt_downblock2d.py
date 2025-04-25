@@ -13,7 +13,7 @@ from models.utility_functions import torch_random
 @pytest.mark.parametrize(
     "input_shape, temb_shape",
     [
-        ((1, 320, 128, 128), (1, 1280)),
+        ((2, 320, 128, 128), (2, 1280)),
     ],
 )
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
@@ -51,4 +51,4 @@ def test_downblock2d(device, temb_shape, input_shape, use_program_cache):
     output_tensor = output_tensor.reshape(input_shape[0], output_shape[1], output_shape[2], output_shape[0])
     output_tensor = torch.permute(output_tensor, (0, 3, 1, 2))
 
-    assert_with_pcc(torch_output_tensor, output_tensor, 0.994)
+    assert_with_pcc(torch_output_tensor, output_tensor, 0.998)

@@ -14,12 +14,12 @@ from models.experimental.stable_diffusion_xl_base.tt.sdxl_utility import (
 )
 
 
-@pytest.mark.parametrize("input_shape, up_block_id", [((1, 1280, 32, 32), 0), ((1, 640, 64, 64), 1)])
+@pytest.mark.parametrize("input_shape, up_block_id, pcc", [((1, 1280, 32, 32), 0, 0.996), ((1, 640, 64, 64), 1, 0.998)])
 @pytest.mark.parametrize("stride", [(1, 1)])
 @pytest.mark.parametrize("padding", [(1, 1)])
 @pytest.mark.parametrize("dilation", [(1, 1)])
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
-def test_upsample2d(device, input_shape, up_block_id, stride, padding, dilation, use_program_cache):
+def test_upsample2d(device, input_shape, up_block_id, stride, padding, dilation, pcc, use_program_cache):
     pipe = DiffusionPipeline.from_pretrained(
         "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float32, use_safetensors=True, variant="fp16"
     )
@@ -37,11 +37,11 @@ def test_upsample2d(device, input_shape, up_block_id, stride, padding, dilation,
     torch_output_tensor = torch_upsample(torch_input_tensor)
 
     ttnn_input_tensor = to_channel_last_ttnn(
-        torch_input_tensor, ttnn.bfloat16, device, ttnn.L1_MEMORY_CONFIG, ttnn.ROW_MAJOR_LAYOUT
+        torch_input_tensor, ttnn.bfloat16, device, ttnn.DRAM_MEMORY_CONFIG, ttnn.ROW_MAJOR_LAYOUT
     )
     ttnn_output_tensor, output_shape = tt_upsample.forward(ttnn_input_tensor)
     output_tensor = from_channel_last_ttnn(
         ttnn_output_tensor, [input_shape[0], output_shape[1], output_shape[2], output_shape[0]]
     )
 
-    assert_with_pcc(torch_output_tensor, output_tensor, 0.996)
+    assert_with_pcc(torch_output_tensor, output_tensor, pcc)

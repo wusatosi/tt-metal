@@ -58,7 +58,7 @@ class TtAttention(nn.Module):
     def forward(self, hidden_states, attention_mask, encoder_hidden_states=None):
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
-        B = list(hidden_states.shape)[0]
+        B = list(hidden_states.shape)[-3]
 
         query = ttnn.linear(
             hidden_states,
