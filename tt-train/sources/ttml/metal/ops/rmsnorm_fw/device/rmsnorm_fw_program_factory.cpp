@@ -203,8 +203,8 @@ RMSNormForwardProgramFactory::cached_program_t RMSNormForwardProgramFactory::cre
     // -------------------------------------------------------------------------
     // 1) Setup device, data formats, tile sizes, and compute split
     // -------------------------------------------------------------------------
-    const auto& input = tensor_args.input;
-    const auto& gamma = tensor_args.gamma;
+    const auto& input = tensor_args.input.get();
+    const auto& gamma = tensor_args.gamma.get();
 
     auto* device = input.device();
 
@@ -456,8 +456,8 @@ void RMSNormForwardProgramFactory::override_runtime_arguments(
     uint32_t num_cores = shared_vars.num_cores;
     uint32_t num_cores_y = shared_vars.num_cores_y;
 
-    const auto& input_tensor = tensor_args.input;
-    const auto& gamma_tensor = tensor_args.gamma;
+    const auto& input_tensor = tensor_args.input.get();
+    const auto& gamma_tensor = tensor_args.gamma.get();
     auto* input_buffer = input_tensor.buffer();
     auto* gamma_buffer = gamma_tensor.buffer();
 

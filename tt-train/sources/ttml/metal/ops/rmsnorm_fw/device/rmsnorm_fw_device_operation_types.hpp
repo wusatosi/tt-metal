@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <functional>
+
 #include "metal/ttnn_all_includes.hpp"
 
 namespace ttml::metal::ops::rmsnorm_fw::device {
@@ -14,8 +16,8 @@ struct operation_attributes_t {
 };
 
 struct tensor_args_t {
-    const ttnn::Tensor& input;
-    const ttnn::Tensor& gamma;
+    std::reference_wrapper<const ttnn::Tensor> input;
+    std::reference_wrapper<const ttnn::Tensor> gamma;
 
     std::optional<ttnn::Tensor> preallocated_rms;
     std::optional<ttnn::Tensor> preallocated_output;

@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <functional>
 #include <unordered_map>
 
 #include <tt-metalium/program.hpp>
@@ -25,9 +26,11 @@ private:
         program{program}, shared_variables{shared_variables} {}
 
 public:
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
     tt::tt_metal::Program& program;
 
     // Cached program needs to share shared_variables between create and override_runtime_arguments functions
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
     shared_variables_t& shared_variables;
 
     CachedProgram(tt::tt_metal::Program&& program, shared_variables_t&& shared_variables) :

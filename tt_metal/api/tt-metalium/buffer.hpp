@@ -303,13 +303,13 @@ private:
 
     DeviceAddr translate_page_address(uint64_t offset, uint32_t bank_id) const;
 
-    IDevice* const device_;
-    const DeviceAddr size_;  // Size in bytes
-    const BufferType buffer_type_;
-    const TensorMemoryLayout buffer_layout_;
-    const bool bottom_up_;
-    const std::optional<SubDeviceId> sub_device_id_;
-    const bool owns_data_;
+    IDevice* device_;
+    DeviceAddr size_;  // Size in bytes
+    BufferType buffer_type_;
+    TensorMemoryLayout buffer_layout_;
+    bool bottom_up_;
+    std::optional<SubDeviceId> sub_device_id_;
+    bool owns_data_;
 
     std::optional<SubDeviceManagerId> sub_device_manager_id_;
     Allocator* allocator_;
@@ -334,12 +334,12 @@ private:
 BufferPageMapping generate_buffer_page_mapping(const Buffer& buffer);
 
 using HostDataType = std::variant<
-    const std::shared_ptr<std::vector<uint8_t>>,
-    const std::shared_ptr<std::vector<uint16_t>>,
-    const std::shared_ptr<std::vector<int32_t>>,
-    const std::shared_ptr<std::vector<uint32_t>>,
-    const std::shared_ptr<std::vector<float>>,
-    const std::shared_ptr<std::vector<bfloat16>>,
+    std::shared_ptr<std::vector<uint8_t>>,
+    std::shared_ptr<std::vector<uint16_t>>,
+    std::shared_ptr<std::vector<int32_t>>,
+    std::shared_ptr<std::vector<uint32_t>>,
+    std::shared_ptr<std::vector<float>>,
+    std::shared_ptr<std::vector<bfloat16>>,
     const void*>;
 
 }  // namespace tt::tt_metal
