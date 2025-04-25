@@ -923,10 +923,10 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
         // printf("in_nsticks_per_core: %d\n", in_nsticks_per_core);
         // printf("max_out_nsticks_per_core: %d\n", max_out_nsticks_per_core);
         printf("in_out_shard_size_delta: %d\n", in_out_shard_size_delta);
-        printf("---LOCAL CONFIG---\n");
+        // printf("---LOCAL CONFIG---\n");
         int core = 0;
         for (const auto& [key, data] : config) {
-            printf("    core: %d\n", core);
+            // printf("    core: %d\n", core);
             auto [nocx, nocy, len] = key;
             std::vector<std::vector<uint16_t>> flat_data(2, std::vector<uint16_t>(max_len, 0));
             flat_data[0][0] = nocx;
@@ -960,11 +960,11 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
                         rev_i_end = i;
                         break;
                     }
-                    printf(
-                        "        dst_rel_src: %d, dst: %d, size: %d\n",
-                        src_start + in_out_shard_size_delta,
-                        dst_start,
-                        length);
+                    // printf(
+                    //     "        dst_rel_src: %d, dst: %d, size: %d\n",
+                    //     src_start + in_out_shard_size_delta,
+                    //     dst_start,
+                    //     length);
                     flat_data[0][idx1++] = src_start;
                     flat_data[0][idx1++] = dst_start;
                     flat_data[0][idx1++] = length;
@@ -974,11 +974,11 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
                      --i) {  // reverse direction local config in region where input / output shards overlap (for in
                              // place operation)
                     auto [src_start, dst_start, length] = data[i];
-                    printf(
-                        "        dst_rel_src: %d, dst: %d, size: %d\n",
-                        src_start + in_out_shard_size_delta,
-                        dst_start,
-                        length);
+                    // printf(
+                    //     "        dst_rel_src: %d, dst: %d, size: %d\n",
+                    //     src_start + in_out_shard_size_delta,
+                    //     dst_start,
+                    //     length);
                     flat_data[0][idx1++] = src_start;
                     flat_data[0][idx1++] = dst_start;
                     flat_data[0][idx1++] = length;

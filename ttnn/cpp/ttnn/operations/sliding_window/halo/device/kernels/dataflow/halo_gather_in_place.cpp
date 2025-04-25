@@ -25,17 +25,18 @@ inline bool fill_with_val(uint32_t begin_addr, uint32_t n, uint16_t val) {
 }
 
 template <uint32_t stick_nbytes, uint32_t input_aligned_page_size>
-void copy_sticks_async_to_temp(
+void copy_sticks_async_to_temp_or_final(
     const tt_l1_ptr uint16_t* config_data,
     const uint16_t my_noc_x,
     const uint16_t my_noc_y,
     const uint32_t in_base_l1_addr,
+    const uint32_t temp_base_l1_addr,
     const uint32_t out_base_l1_addr) {
     int i = 0;
     int length = config_data[i + 2];
 
-    const uint64_t base_addr = get_noc_addr(my_noc_x, my_noc_y, out_base_l1_addr);
-    uint64_t dst_addr = base_addr;
+    const uint64_t base_addr_temp = get_noc_addr(my_noc_x, my_noc_y, temp_base_l1_addr);
+    uint64_t dst_addr_temp = base_addr_temp;
 
     while (length) {
         length = config_data[i + 2];
@@ -48,12 +49,13 @@ void copy_sticks_async_to_temp(
 
             uint32_t src_addr = in_base_l1_addr + src_offset;
             if constexpr (stick_nbytes == input_aligned_page_size) {
-                noc_async_write(src_addr, dst_addr, size);
-                dst_addr += size;  // remote sticks from each config entry are written contiguously into the temp buffer
+                noc_async_write(src_addr, dst_addr_temp, size);
+                dst_addr_temp +=
+                    size;  // remote sticks from each config entry are written contiguously into the temp buffer
             } else {
                 for (uint16_t k = 0; k < nsticks; k++) {
-                    noc_async_write(src_addr, dst_addr, stick_nbytes);
-                    dst_addr += stick_nbytes;
+                    noc_async_write(src_addr, dst_addr_temp, stick_nbytes);
+                    dst_addr_temp += stick_nbytes;
                     src_addr += input_aligned_page_size;
                 }
             }
@@ -73,12 +75,12 @@ void copy_sticks_async_from_temp(
     const tt_l1_ptr uint16_t* config_data,
     const uint16_t my_noc_x,
     const uint16_t my_noc_y,
-    const uint32_t in_base_l1_addr,
+    const uint32_t temp_base_l1_addr,
     const uint32_t out_base_l1_addr) {
     int i = 0;
     int length = config_data[i + 2];
 
-    uint64_t src_addr = in_base_l1_addr;
+    uint64_t src_addr = temp_base_l1_addr;
 
     while (length) {
         uint16_t noc_x = ((is_block_sharded && !is_col_major) || is_width_sharded) ? my_noc_x : config_data[i + 0];
@@ -110,7 +112,7 @@ void copy_sticks_async_from_temp(
 }
 
 template <uint32_t stick_nbytes, uint32_t input_aligned_page_size>
-void copy_sticks_async(
+void copy_sticks_async_local(
     const tt_l1_ptr uint16_t* config_data,
     const uint16_t my_noc_x,
     const uint16_t my_noc_y,
@@ -249,13 +251,13 @@ void kernel_main() {
     }
     cb_wait_front(in_cb_id, in_npages);
 
-    // copy remote sticks to temp buffer
+    // copy remote sticks to temp buffer or their final destinations
     if constexpr (remote_config_cb_id && remote_temp_cb_id) {
         const uint32_t temp_base_l1_addr = get_write_ptr(remote_temp_cb_id);
         uint32_t config_data_l1_addr = get_read_ptr(remote_config_cb_id);
         const tt_l1_ptr uint16_t* config_data = reinterpret_cast<const tt_l1_ptr uint16_t*>(config_data_l1_addr);
-        copy_sticks_async_to_temp<stick_nbytes, input_aligned_page_size>(
-            config_data, my_noc_x, my_noc_y, in_base_l1_addr, temp_base_l1_addr);
+        copy_sticks_async_to_temp_or_final<stick_nbytes, input_aligned_page_size>(
+            config_data, my_noc_x, my_noc_y, in_base_l1_addr, temp_base_l1_addr, out_base_l1_addr);
     }
 
     noc_async_read_barrier();
@@ -265,7 +267,7 @@ void kernel_main() {
     if constexpr (local_config_cb_id) {
         uint32_t config_data_l1_addr = get_read_ptr(local_config_cb_id);
         const tt_l1_ptr uint16_t* config_data = reinterpret_cast<const tt_l1_ptr uint16_t*>(config_data_l1_addr);
-        copy_sticks_async<stick_nbytes, input_aligned_page_size>(
+        copy_sticks_async_local<stick_nbytes, input_aligned_page_size>(
             config_data, my_noc_x, my_noc_y, in_base_l1_addr, out_base_l1_addr, in_out_buffer_start_delta);
     }
 
