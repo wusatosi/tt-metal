@@ -76,6 +76,8 @@ constexpr uint8_t upstream_noc_index = UPSTREAM_NOC_INDEX;
 constexpr uint32_t upstream_noc_xy = uint32_t(NOC_XY_ENCODING(UPSTREAM_NOC_X, UPSTREAM_NOC_Y));
 constexpr uint32_t downstream_noc_xy = uint32_t(NOC_XY_ENCODING(DOWNSTREAM_NOC_X, DOWNSTREAM_NOC_Y));
 constexpr uint32_t dispatch_s_noc_xy = uint32_t(NOC_XY_ENCODING(DOWNSTREAM_SLAVE_NOC_X, DOWNSTREAM_SLAVE_NOC_Y));
+constexpr uint8_t other_upstream_noc_index = OTHER_UPSTREAM_NOC_INDEX;
+constexpr uint32_t other_upstream_noc_xy = uint32_t(NOC_XY_ENCODING(OTHER_UPSTREAM_NOC_X, OTHER_UPSTREAM_NOC_Y));
 constexpr uint8_t my_noc_index = NOC_INDEX;
 constexpr uint32_t my_noc_xy = uint32_t(NOC_XY_ENCODING(MY_NOC_X, MY_NOC_Y));
 constexpr uint64_t pcie_noc_xy =
@@ -787,8 +789,8 @@ void process_write_packed_large(
                     mcasts += num_dests * writes;
                     writes = 0;
                     move_rd_to_next_block_and_release_pages<
-                        upstream_noc_index,
-                        upstream_noc_xy,
+                        other_upstream_noc_index,
+                        other_upstream_noc_xy,
                         upstream_dispatch_cb_sem_id,
                         dispatch_cb_pages_per_block,
                         dispatch_cb_blocks>(block_noc_writes_to_clear, rd_block_idx);
@@ -849,8 +851,8 @@ void process_write_packed_large(
                     pad_size -= orphan_size;
                 }
                 move_rd_to_next_block_and_release_pages<
-                    upstream_noc_index,
-                    upstream_noc_xy,
+                    other_upstream_noc_index,
+                    other_upstream_noc_xy,
                     upstream_dispatch_cb_sem_id,
                     dispatch_cb_pages_per_block,
                     dispatch_cb_blocks>(block_noc_writes_to_clear, rd_block_idx);
@@ -1263,9 +1265,9 @@ void kernel_main() {
     }
 
     // Initialize local state of any additional nocs used instead of the default
-    static_assert(my_noc_index != upstream_noc_index);
-    if constexpr (my_noc_index != upstream_noc_index) {
-        noc_local_state_init(upstream_noc_index);
+    static_assert(my_noc_index != other_upstream_noc_index);
+    if constexpr (my_noc_index != other_upstream_noc_index) {
+        noc_local_state_init(other_upstream_noc_index);
     }
 
     for (size_t i = 0; i < max_num_worker_sems; i++) {
