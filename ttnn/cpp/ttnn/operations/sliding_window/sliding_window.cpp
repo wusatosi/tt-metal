@@ -1004,13 +1004,13 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
             for (const auto& [key, subdata] : core_config) {
                 curr_len +=
                     in_place
-                        ? 3 + 3 * subdata.size()
+                        ? 3 + 4 * subdata.size()
                         : 3 + (3 * (subdata.size() / 2 + 1));  // For split reader, 3 for source[nocx, nocy, length] and
                                                                // each vector is (3 * data.size() / 2 + 1).
             }
             max_len = std::max(max_len, curr_len);
         }
-        max_len += 3;  // account for the null plug
+        max_len += in_place ? 4 : 3;  // account for the null plug
 
         std::vector<std::vector<std::vector<uint16_t>>> flattened_config(2);
         int num_cores_x = device->compute_with_storage_grid_size().x;
@@ -1066,33 +1066,44 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
                 printf("            low_local_bound: %d, high_local_bound: %d\n", low_local_bound, high_local_bound);
                 for (size_t i = 0; i < subdata.size(); ++i) {
                     auto [src_start, dst_start, length] = subdata[i];
-                    if (vector_id || in_place) {
-                        flat_data[0][idx1++] = src_start;
-                        flat_data[0][idx1++] = dst_start;
-                        flat_data[0][idx1++] = length;
-                        flat_data[0][len_idx1] += 3;
-                        ref_size += length;
-
+                    if (in_place) {
                         int no_wait = false;
                         if (dst_start > high_local_bound || dst_start + length - 1 < low_local_bound) {
                             no_wait = true;
                         }
+
+                        flat_data[0][idx1++] = src_start;
+                        flat_data[0][idx1++] = dst_start;
+                        flat_data[0][idx1++] = length;
+                        flat_data[0][idx1++] = no_wait;
+                        flat_data[0][len_idx1] += 4;
+                        ref_size += length;  // TODO: we can reduce the size of the temp buffer now
+
                         printf(
                             "            src: %d, dst: %d, size: %d, no_wait: %d\n",
                             src_start,
                             dst_start,
                             length,
                             no_wait);
+
+                        idx1 = flat_data[0][len_idx1] ? idx1 : idx1 - 4;  // TODO: should this be 3 or 4
                     } else {
-                        flat_data[1][idx2++] = src_start;
-                        flat_data[1][idx2++] = dst_start;
-                        flat_data[1][idx2++] = length;
-                        flat_data[1][len_idx2] += 3;
+                        if (vector_id) {
+                            flat_data[0][idx1++] = src_start;
+                            flat_data[0][idx1++] = dst_start;
+                            flat_data[0][idx1++] = length;
+                            flat_data[0][len_idx1] += 3;
+                        } else {
+                            flat_data[1][idx2++] = src_start;
+                            flat_data[1][idx2++] = dst_start;
+                            flat_data[1][idx2++] = length;
+                            flat_data[1][len_idx2] += 3;
+                        }
+                        vector_id = (vector_id + 1) % 2;
+                        idx1 = flat_data[0][len_idx1] ? idx1 : idx1 - 3;
+                        idx2 = flat_data[1][len_idx2] ? idx2 : idx2 - 3;
                     }
-                    vector_id = (vector_id + 1) % 2;
                 }
-                idx1 = flat_data[0][len_idx1] ? idx1 : idx1 - 3;
-                idx2 = flat_data[1][len_idx2] ? idx2 : idx2 - 3;
             }
 
             flattened_config[0].emplace_back(std::move(flat_data[0]));

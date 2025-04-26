@@ -8,7 +8,7 @@
 #include "compile_time_args.h"
 #include "dataflow_api.h"
 
-#define ENABLE_DEBUG 0
+#define ENABLE_DEBUG 1
 
 #if ENABLE_DEBUG
 #include "debug/dprint_pages.h"
@@ -24,7 +24,12 @@ inline bool fill_with_val(uint32_t begin_addr, uint32_t n, uint16_t val) {
     return true;
 }
 
-template <uint32_t stick_nbytes, uint32_t input_aligned_page_size>
+template <
+    uint32_t stick_nbytes,
+    uint32_t input_aligned_page_size,
+    bool is_block_sharded,
+    bool is_width_sharded,
+    bool is_col_major>
 void copy_sticks_async_to_temp_or_final(
     const tt_l1_ptr uint16_t* config_data,
     const uint16_t my_noc_x,
@@ -39,11 +44,20 @@ void copy_sticks_async_to_temp_or_final(
     uint64_t dst_addr_temp = base_addr_temp;
 
     while (length) {
+        uint16_t noc_x = ((is_block_sharded && !is_col_major) || is_width_sharded) ? my_noc_x : config_data[i + 0];
+        uint16_t noc_y = ((is_block_sharded && is_col_major) || is_width_sharded) ? my_noc_y : config_data[i + 1];
         length = config_data[i + 2];
+        // DPRINT << "copy_sticks_async_to_temp_or_final: noc_x: " << noc_x << ", noc_y: " << noc_y
+        //        << ", length: " << length << ENDL();
         i += 3;
-        for (uint16_t j = 0; j < length; j += 3) {
+        for (uint16_t j = 0; j < length; j += 4) {
             uint16_t src_local_idx = config_data[i + j + 0];
+            uint16_t dst_local_idx = config_data[i + j + 1];
             uint16_t nsticks = config_data[i + j + 2];
+            uint16_t no_wait = config_data[i + j + 3];
+            // DPRINT << "copy_sticks_async_to_temp_or_final: src_local_idx: " << src_local_idx
+            //        << ", dst_local_idx: " << dst_local_idx << ", nsticks: " << nsticks
+            //        << ", no_wait: " << no_wait << ENDL();
             uint32_t size = nsticks * stick_nbytes;
             uint32_t src_offset = src_local_idx * input_aligned_page_size;
 
@@ -88,7 +102,7 @@ void copy_sticks_async_from_temp(
         length = config_data[i + 2];
         i += 3;
         const uint64_t base_addr = get_noc_addr(noc_x, noc_y, out_base_l1_addr);
-        for (uint16_t j = 0; j < length; j += 3) {
+        for (uint16_t j = 0; j < length; j += 4) {
             uint16_t dst_local_idx = config_data[i + j + 1];
             uint16_t nsticks = config_data[i + j + 2];
             uint32_t size = nsticks * stick_nbytes;
@@ -256,8 +270,12 @@ void kernel_main() {
         const uint32_t temp_base_l1_addr = get_write_ptr(remote_temp_cb_id);
         uint32_t config_data_l1_addr = get_read_ptr(remote_config_cb_id);
         const tt_l1_ptr uint16_t* config_data = reinterpret_cast<const tt_l1_ptr uint16_t*>(config_data_l1_addr);
-        copy_sticks_async_to_temp_or_final<stick_nbytes, input_aligned_page_size>(
-            config_data, my_noc_x, my_noc_y, in_base_l1_addr, temp_base_l1_addr, out_base_l1_addr);
+        copy_sticks_async_to_temp_or_final<
+            stick_nbytes,
+            input_aligned_page_size,
+            is_block_sharded,
+            is_width_sharded,
+            is_col_major>(config_data, my_noc_x, my_noc_y, in_base_l1_addr, temp_base_l1_addr, out_base_l1_addr);
     }
 
     noc_async_read_barrier();
@@ -288,6 +306,7 @@ void kernel_main() {
         const uint64_t mcast_noc_addr = get_noc_multicast_addr(noc_TL_x, noc_TL_y, noc_BR_x, noc_BR_y, semaphore_addr);
 
         noc_semaphore_set_multicast(semaphore_addr, mcast_noc_addr, rectangular_x * rectangular_y - 1);
+        DPRINT << "multicast sent" << ENDL();
     }
 
     // wait for multicast
