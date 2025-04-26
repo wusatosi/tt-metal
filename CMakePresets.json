@@ -54,6 +54,18 @@
         "targets": ["all"]
       },
       {
+        "name": "profiler",
+        "configurePreset": "default",
+        "configuration": "Profiler",
+        "targets": ["all"]
+      },
+      {
+        "name": "profiler-with-deb-info",
+        "configurePreset": "default",
+        "configuration": "ProfilerWithDebInfo",
+        "targets": ["all"]
+      },
+      {
         "name": "clang-tidy",
         "configurePreset": "clang-tidy",
         "configuration": "RelWithDebInfo",
