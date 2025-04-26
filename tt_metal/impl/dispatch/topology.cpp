@@ -140,9 +140,9 @@ constexpr noc_selection_t k_packet_queue_noc = {
 
 // clang-format off
 static const std::vector<DispatchKernelNode> single_chip_arch_1cq = {
-    {0, 0, 0, 0, PREFETCH_HD, {x, x, x, x}, {1, 2, x, x}, k_prefetcher_noc},
-    {1, 0, 0, 0, DISPATCH_HD, {0, x, x, x}, {2, x, x, x}, k_dispatcher_noc},
-    {2, 0, 0, 0, DISPATCH_S, {0, x, x, x}, {1, x, x, x}, k_dispatcher_s_noc},
+    {0, 0, 0, 0, DISPATCH_HD, {1, x, x, x}, {2, x, x, x}, k_dispatcher_noc},
+    {1, 0, 0, 0, PREFETCH_HD, {x, x, x, x}, {0, 2, x, x}, k_prefetcher_noc},
+    {2, 0, 0, 0, DISPATCH_S, {1, x, x, x}, {0, x, x, x}, k_dispatcher_s_noc},
 };
 
 static const std::vector<DispatchKernelNode> single_chip_arch_2cq = {
@@ -153,12 +153,12 @@ static const std::vector<DispatchKernelNode> single_chip_arch_2cq = {
 };
 
 static const std::vector<DispatchKernelNode> single_chip_arch_2cq_dispatch_s = {
-    {0, 0, 0, 0, PREFETCH_HD, {x, x, x, x}, {1, 4, x, x}, k_prefetcher_noc},
-    {1, 0, 0, 0, DISPATCH_HD, {0, x, x, x}, {4, x, x, x}, k_dispatcher_noc},
-    {2, 0, 0, 1, PREFETCH_HD, {x, x, x, x}, {3, 5, x, x}, k_prefetcher_noc},
-    {3, 0, 0, 1, DISPATCH_HD, {2, x, x, x}, {5, x, x, x}, k_dispatcher_noc},
-    {4, 0, 0, 0, DISPATCH_S, {0, x, x, x}, {1, x, x, x}, k_dispatcher_s_noc},
-    {5, 0, 0, 1, DISPATCH_S, {2, x, x, x}, {3, x, x, x}, k_dispatcher_s_noc},
+    {0, 0, 0, 0, DISPATCH_HD, {1, x, x, x}, {4, x, x, x}, k_dispatcher_noc},
+    {1, 0, 0, 0, PREFETCH_HD, {x, x, x, x}, {0, 4, x, x}, k_prefetcher_noc},
+    {2, 0, 0, 1, DISPATCH_HD, {3, x, x, x}, {5, x, x, x}, k_dispatcher_noc},
+    {3, 0, 0, 1, PREFETCH_HD, {x, x, x, x}, {2, 5, x, x}, k_prefetcher_noc},
+    {4, 0, 0, 0, DISPATCH_S, {1, x, x, x}, {0, x, x, x}, k_dispatcher_s_noc},
+    {5, 0, 0, 1, DISPATCH_S, {3, x, x, x}, {2, x, x, x}, k_dispatcher_s_noc},
 };
 
 static const std::vector<DispatchKernelNode> two_chip_arch_1cq = {
