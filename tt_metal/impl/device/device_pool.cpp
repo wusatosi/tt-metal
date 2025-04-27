@@ -272,8 +272,10 @@ void DevicePool::initialize(
 }
 
 void DevicePool::initialize_fabric_and_dispatch_fw() const {
+    log_info(tt::LogMetal, "Initialize_fabric_and_dispatch_fw");
     this->initialize_active_devices();
     this->wait_for_fabric_router_sync();
+    sleep(20);
 }
 
 void DevicePool::initialize_host(IDevice* dev) const {
