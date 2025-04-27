@@ -214,6 +214,7 @@ static bool check_if_riscs_on_specified_core_done(chip_id_t chip_id, const CoreC
         run_mailbox_read_val = read_hex_vec_from_core(chip_id, core, go_msg_addr & ~0x3, sizeof(uint32_t));
         go_msg_t* core_status = (go_msg_t*)(run_mailbox_read_val.data());
         uint8_t run = core_status->signal;
+        // log_info(tt::LogMetal, "Mailbox status is: {}", run);
         if (run != run_state && run != RUN_MSG_DONE) {
             fprintf(
                 stderr,

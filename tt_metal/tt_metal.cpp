@@ -768,6 +768,7 @@ void LaunchProgram(IDevice* device, Program& program, bool wait_until_cores_done
         if (wait_until_cores_done) {
             // Wait for all cores to be done
             llrt::internal_::wait_until_cores_done(device_id, RUN_MSG_GO, not_done_cores);
+            log_info(tt::LogMetalTrace, "CORES DONE");
         }
     }  // Profiler scope end
     if (wait_until_cores_done) {
