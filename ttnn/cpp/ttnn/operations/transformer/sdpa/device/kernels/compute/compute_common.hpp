@@ -332,7 +332,6 @@ void matmul_blocks(
 
 template <uint32_t in0_cb, uint32_t in1_cb, uint32_t M, uint32_t K>
 void matmul_reduce(const uint32_t& out_cb) {
-    DeviceZoneScopedN("MATMUL_REDUCE");
     // precondition: in0_cb has M*K produced
     // preconditino: in1_cb has K*N produced
     // postcondition: in0_cb is full, in1_cb is empty
