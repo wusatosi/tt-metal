@@ -1,33 +1,25 @@
----
 
-# Vision Transformer (ViT) model
+# DEIT Tiny Wormhole Demo
 
-## Introduction
+## DEIT Model Overview
 
-The Vision Transformer (ViT) model was proposed in "An Image is Worth 16x16 Words, Transformers for Image Recognition at Scale".
-It’s the first paper that successfully trains a Transformer encoder on ImageNet, attaining very good results compared to familiar convolutional architectures.
-https://huggingface.co/docs/transformers/en/model_doc/vit
+The Data-efficient Image Transformer (DEIT) model is a variant of the Vision Transformer (ViT) that focuses on training efficiency and performance. It was introduced in the paper "Training data-efficient image transformers & distillation through attention." DEIT achieves competitive results on ImageNet while requiring fewer resources and training data.
 
+For more details, refer to the official documentation: [DEIT Model Documentation](https://huggingface.co/docs/transformers/en/model_doc/deit)
 
 ## How to Run
 
-To run the demo for question answering using the Bloom model, follow these instructions:
+To run the demo for the DEIT model, follow these instructions:
 
--  For Imagenet-21K to test inference accuracy, use the following command to run the demo:
+
+- For the inference overall runtime (end-2-end), use the following command:
 
   ```sh
-  pytest --disable-warnings  models/demos/wormhole/deit_tiny/demo/demo_deit_ttnn_inference_perf_e2e_2cq_trace.py
+  pytest --disable-warnings models/demos/wormhole/deit_tiny/demo/demo_deit_ttnn_inference_perf_e2e_2cq_trace.py
   ```
 
--  For the inference overall rutime (end-2-end), use the following command to run the demo:
+- For running the inference device OPs analysis, use the following command:
 
   ```sh
-  pytest --disable-warnings  models/demos/wormhole/deit_tiny/demo/demo_deit_ttnn_imagenet_inference.py
-  ```
-
--  For running the inference device OPs analysis, use the following command to run the demo:
-
-  ```sh
-build_metal.sh --enable-profiler # need build to enable the profiler
-python -m tracy -p -r -v -m pytest --disable-warnings  models/demos/wormhole/deit_tiny/demo/demo_deit_ttnn_inference_device_OPs.py
+  pytest --disable-warnings models/demos/wormhole/deit_tiny/demo/demo_deit_ttnn_inference_device_OPs.py
   ```

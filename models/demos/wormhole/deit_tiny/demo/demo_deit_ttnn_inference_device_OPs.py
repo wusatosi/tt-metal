@@ -30,13 +30,14 @@ os.environ["TTNN_CONFIG_OVERRIDES"] = '{"enable_fast_runtime_mode": true}'
 
 
 @pytest.mark.skipif(is_blackhole(), reason="Unsupported on BH")
+@pytest.mark.parametrize("batch_size", [1, 2, 3, 4, 5, 6, 7, 8])
 @pytest.mark.models_performance_bare_metal
 @pytest.mark.models_performance_virtual_machine
-def test_deit(device, use_program_cache):
+def test_deit(device, use_program_cache, batch_size):
     torch.manual_seed(0)
 
     model_name = "facebook/deit-tiny-distilled-patch16-224"
-    batch_size = 1
+    batch_size = batch_size
     sequence_size = 224
 
     config = transformers.DeiTConfig.from_pretrained(model_name)
@@ -106,11 +107,11 @@ def test_deit(device, use_program_cache):
             {
                 ttnn.CoreRange(
                     ttnn.CoreCoord(0, 0),
-                    ttnn.CoreCoord(batch_size - 1, 0),
+                    ttnn.CoreCoord(batch_size - 1, 3),
                 ),
             }
         )
-        n_cores = batch_size
+        n_cores = batch_size * 3
         shard_spec = ttnn.ShardSpec(shard_grid, [N * H * W // n_cores, C], ttnn.ShardOrientation.ROW_MAJOR)
 
         output = None

@@ -120,7 +120,7 @@ def run_trace_2cq_model(device, test_infra, num_warmup_iterations, num_measureme
         op_event = ttnn.record_event(device, 0)
         ttnn.execute_trace(device, tid, cq_id=0, blocking=False)
         outputs.append(tt_output_res.cpu(blocking=False))
-    ttnn.synchronize_device(device)
+        ttnn.synchronize_device(device)
     profiler.end(f"run")
     if use_signpost:
         signpost(header="stop")
@@ -130,18 +130,19 @@ def run_trace_2cq_model(device, test_infra, num_warmup_iterations, num_measureme
 
 
 @pytest.mark.skipif(is_blackhole(), reason="Unsupported on BH")
+@pytest.mark.parametrize("batch_size", [1, 2, 3, 4, 5, 6, 7])
 @pytest.mark.models_performance_bare_metal
 @pytest.mark.models_performance_virtual_machine
 @pytest.mark.parametrize(
     "device_params", [{"l1_small_size": 32768, "num_command_queues": 2, "trace_region_size": 1700000}], indirect=True
 )
-def test_deit(device, use_program_cache):
+def test_deit(device, use_program_cache, batch_size):
     torch.manual_seed(0)
 
     profiler.clear()
     disable_persistent_kernel_cache()
 
-    batch_size = 1
+    batch_size = batch_size
 
     first_key = f"first_iter_batchsize{batch_size}"
     second_key = f"second_iter_batchsize{batch_size}"
