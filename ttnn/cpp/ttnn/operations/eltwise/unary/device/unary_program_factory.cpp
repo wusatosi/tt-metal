@@ -42,6 +42,14 @@ UnaryProgramFactory::cached_program_t UnaryProgramFactory::create(
     uint32_t num_cores_y = compute_with_storage_grid_size.y;
     auto [num_cores, all_cores, core_group_1, core_group_2, num_tiles_per_core_group_1, num_tiles_per_core_group_2] =
         tt::tt_metal::split_work_to_cores(compute_with_storage_grid_size, num_tiles);
+
+    tt::log_info(tt::LogOp, " ****** using num_cores {}", num_cores);
+    tt::log_info(tt::LogOp, " ****** using all_cores {}", all_cores);
+    tt::log_info(tt::LogOp, " ****** using core_group_1 {}", core_group_1);
+    tt::log_info(tt::LogOp, " ****** using core_group_2 {}", core_group_2);
+    tt::log_info(tt::LogOp, " ****** using num_tiles_per_core_group_1 {}", num_tiles_per_core_group_1);
+    tt::log_info(tt::LogOp, " ****** using num_tiles_per_core_group_2 {}", num_tiles_per_core_group_2);
+
     uint32_t src0_cb_index = tt::CBIndex::c_0;
     uint32_t num_input_tiles = 2;
     tt::tt_metal::CircularBufferConfig cb_src0_config =

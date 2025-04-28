@@ -283,12 +283,14 @@ std::tuple<uint32_t, CoreRangeSet, CoreRangeSet, CoreRangeSet, uint32_t, uint32_
         target_num_cores = units_to_divide;
         all_cores = num_cores_to_corerangeset(target_num_cores, grid_size, row_wise);
     }
-
+    tt::log_info(tt::LogOp, " ****** using work split");
     CoreRangeSet core_group_1;
     CoreRangeSet core_group_2;
-    uint32_t units_per_core_group_1 = units_to_divide / target_num_cores;
+    uint32_t units_per_core_group_1 = units_to_divide / target_num_cores;  // 101 / 64 = 1
+    tt::log_info(tt::LogOp, " ****** units_per_core_group_1 {}", units_per_core_group_1);
     uint32_t units_per_core_group_2 = 0;
-    uint32_t num_cores_with_more_work = units_to_divide % target_num_cores;
+    uint32_t num_cores_with_more_work = units_to_divide % target_num_cores;  // 101 % 64 = 37
+    tt::log_info(tt::LogOp, " ****** num_cores_with_more_work {}", num_cores_with_more_work);
     // Evenly divided units to all target cores
     if (units_to_divide % target_num_cores == 0) {
         core_group_1 = all_cores;
@@ -298,9 +300,15 @@ std::tuple<uint32_t, CoreRangeSet, CoreRangeSet, CoreRangeSet, uint32_t, uint32_
     // which is implicitly assumed in the following logic
     else {
         // Group of cores that do more work
-        uint32_t num_core_group_1_cores = num_cores_with_more_work;
-        uint32_t num_core_group_2_cores = target_num_cores - num_core_group_1_cores;
+        uint32_t num_core_group_1_cores = num_cores_with_more_work;                   // 37
+        uint32_t num_core_group_2_cores = target_num_cores - num_core_group_1_cores;  // 64 - 37 = 27
+        tt::log_info(tt::LogOp, " ****** num_core_group_1_cores {}", num_core_group_1_cores);
+        tt::log_info(tt::LogOp, " ****** num_core_group_2_cores {}", num_core_group_2_cores);
         core_group_1 = num_cores_to_corerangeset(num_core_group_1_cores, grid_size, row_wise);
+        tt::log_info(tt::LogOp, " ****** core_group_1 {}", core_group_1);
+        // {[(x=0,y=0) - (x=3,y=7)], [(x=4,y=0) - (x=4,y=4)]}
+        // 32 cores , 5 cores = 37 cores
+        tt::log_info(tt::LogOp, " ****** core_group_1.size() {}", core_group_1.size());
         const auto& last_core_group_1 = (*core_group_1.ranges().rbegin()).end_coord;
         if (row_wise) {
             // Start in the same row
@@ -312,21 +320,29 @@ std::tuple<uint32_t, CoreRangeSet, CoreRangeSet, CoreRangeSet, uint32_t, uint32_
             else {
                 core_group_2 = num_cores_to_corerangeset(
                     {0, last_core_group_1.y + 1}, num_core_group_2_cores, grid_size, row_wise);
+                tt::log_info(tt::LogOp, " ****** core_group_2 {}", core_group_2);
             }
         } else {
             // Start in the same column
             if (last_core_group_1.y != num_cores_y - 1) {
                 core_group_2 = num_cores_to_corerangeset(
                     {last_core_group_1.x, last_core_group_1.y + 1}, num_core_group_2_cores, grid_size, row_wise);
+                tt::log_info(tt::LogOp, "1 ****** core_group_2 {}", core_group_2);
+                //  {[(x=4,y=5) - (x=4,y=7)], [(x=5,y=0) - (x=7,y=7)]}
+                // 3 cores , 24 cores
             }
             // Start in the next column
             else {
                 core_group_2 = num_cores_to_corerangeset(
                     {last_core_group_1.x + 1, 0}, num_core_group_2_cores, grid_size, row_wise);
+                tt::log_info(tt::LogOp, "2 ****** core_group_2 {}", core_group_2);
             }
         }
+        tt::log_info(tt::LogOp, " ****** end1 units_per_core_group_2 {}", units_per_core_group_2);
         units_per_core_group_2 = units_per_core_group_1;
         units_per_core_group_1++;
+        tt::log_info(tt::LogOp, " ****** units_per_core_group_2 {}", units_per_core_group_2);
+        tt::log_info(tt::LogOp, " ****** end2 units_per_core_group_1 {}", units_per_core_group_1);
     }
 
     return std::make_tuple(
