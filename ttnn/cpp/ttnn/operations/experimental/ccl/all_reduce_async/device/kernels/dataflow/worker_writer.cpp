@@ -52,6 +52,11 @@ void kernel_main() {
     const uint32_t num_mcast_ranges = get_arg_val<uint32_t>(arg_idx++);
     const uint32_t link = get_arg_val<uint32_t>(arg_idx++);
 
+    uint32_t lm_head = 0;
+    if (num_tiles_to_read >= 128) {
+        lm_head = 0;
+    }
+
     // Set up for mcasting to reduction workers
     volatile tt_l1_ptr uint32_t* reduction_semaphore_send_addr_ptr =
         reinterpret_cast<volatile tt_l1_ptr uint32_t*>(reduction_semaphore_send_addr);
@@ -147,9 +152,9 @@ void kernel_main() {
     uint64_t out_ready_sem_noc_addr_in_pkt =
         safe_get_noc_addr(out_ready_sem_noc0_x, out_ready_sem_noc0_y, out_ready_sem_bank_addr);
     // Write the mcast packet (forward)
-    if (fabric_connection.has_forward_connection()) {
+    if (lm_head == 0 && fabric_connection.has_forward_connection()) {
         // reuse the forward direction data packets for the semaphore inc
-        auto* pkt_hdr_fwd = reinterpret_cast<PACKET_HEADER_TYPE*>(packet_header_buffer_addr_forward);
+        auto* pkt_hdr_fwd = reinterpret_cast<volatile tt_l1_ptr PACKET_HEADER_TYPE*>(packet_header_buffer_addr_forward);
         pkt_hdr_fwd->to_noc_unicast_atomic_inc(tt::tt_fabric::NocUnicastAtomicIncCommandHeader{
             out_ready_sem_noc_addr_in_pkt,
             static_cast<uint16_t>(1),  // increment 1
@@ -161,9 +166,10 @@ void kernel_main() {
             reinterpret_cast<uint32_t>(pkt_hdr_fwd), sizeof(PACKET_HEADER_TYPE));
     }
     // Write the mcast packet (backward)
-    if (fabric_connection.has_backward_connection()) {
+    if (lm_head == 0 && fabric_connection.has_backward_connection()) {
         // reuse the backward direction data packets for the semaphore inc
-        auto* pkt_hdr_bwd = reinterpret_cast<PACKET_HEADER_TYPE*>(packet_header_buffer_addr_backward);
+        auto* pkt_hdr_bwd =
+            reinterpret_cast<volatile tt_l1_ptr PACKET_HEADER_TYPE*>(packet_header_buffer_addr_backward);
         pkt_hdr_bwd->to_noc_unicast_atomic_inc(tt::tt_fabric::NocUnicastAtomicIncCommandHeader{
             out_ready_sem_noc_addr_in_pkt,
             static_cast<uint16_t>(1),  // increment 1
@@ -184,7 +190,9 @@ void kernel_main() {
     }
 
     // 3. wait for mcast output ready semaphore
-    while (*reinterpret_cast<volatile tt_l1_ptr uint32_t*>(out_ready_sem_bank_addr) != out_ready_sem_wait_value);
+    if (lm_head == 0) {
+        while (*reinterpret_cast<volatile tt_l1_ptr uint32_t*>(out_ready_sem_bank_addr) != out_ready_sem_wait_value);
+    }
 
     // loop over mcast ranges
     for (uint32_t i = 0; i < num_mcast_ranges; i++) {
