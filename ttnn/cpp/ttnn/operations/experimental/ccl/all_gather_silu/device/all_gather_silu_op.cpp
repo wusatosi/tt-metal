@@ -61,9 +61,6 @@ void AllGatherSilu::validate(const std::vector<Tensor>& input_tensors) const {
         input_tensor_memory_config.shard_spec->shape[0] == 32 &&
         input_tensor_memory_config.shard_spec->shape[1] == 32 && output_mem_config.shard_spec->shape[0] == 32 &&
         output_mem_config.shard_spec->shape[1] == 160 && input_shard_num_cores == 30 && output_shard_num_cores == 24) {
-        printf("shape validated\n");
-    } else {
-        printf("shape not validated\n");
     }
     /*
     TT_FATAL(
@@ -84,9 +81,7 @@ void AllGatherSilu::validate(const std::vector<Tensor>& input_tensors) const {
 std::vector<ttnn::TensorSpec> AllGatherSilu::compute_output_specs(const std::vector<Tensor>& input_tensors) const {
     const auto& input_tensor = input_tensors[0];
     auto shape = input_tensor.get_padded_shape();  // TODO: Replace with get_logical_shape()
-    printf(" whis -> ring size: %u\n", this->ring_size);
     shape[this->dim] *= 4;
-    printf("output shape: %u %u, %u, %u\n", shape[0], shape[1], shape[2], shape[3]);
     return {TensorSpec(
         shape,
         tt::tt_metal::TensorLayout(input_tensor.get_dtype(), tt::tt_metal::Layout::TILE, this->output_mem_config))};
@@ -189,16 +184,10 @@ Tensor all_gather_silu(
         "This all_gather API with cluster_axis is currently supported only for the Linear topology");
     const auto mesh_view = mesh_device.get_view();
     uint32_t num_devices = (cluster_axis == 0) ? mesh_view.num_rows() : mesh_view.num_cols();
-    printf("cluster axis: %u\n", cluster_axis);
-    printf("mesh_view.num_rows(): %zu\n", mesh_view.num_rows());
-    printf("mesh_view.num_cols(): %zu\n", mesh_view.num_cols());
-    printf("num_devices: %u\n", num_devices);
 
     int32_t rank = input_tensor.get_logical_shape().rank();
-    printf("rank: %u\n", rank);
 
     int32_t gather_dim = (dim < 0) ? rank + dim : dim;
-    printf("gather dim: %u\n", gather_dim);
     TT_FATAL(
         gather_dim >= -rank && gather_dim <= rank - 1,
         "Dimension input should be in between -{} and {}, but has {}",

@@ -87,7 +87,6 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
     auto [num_targets_forward, num_targets_backward, dynamic_alternate] =
         ccl::get_forward_backward_configuration(ring_size, ring_index, topology);
     llama_config llama_configuration;
-    printf("ring index: %u\n", ring_index);
 
     // Get worker cores, assuming 1 worker per link
     uint32_t num_workers_per_link = 1;
@@ -104,7 +103,6 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
     const auto input_tensor_shard_num_pages = input_tensor_shard_shape[0] * input_tensor_shard_shape[1] / TILE_HW;
     const auto output_tensor_cores = buffer_tensor.memory_config().shard_spec->grid;
     const auto output_tensor_shard_shape = buffer_tensor.memory_config().shard_spec->shape;
-    printf("output_tensor_shard_shape: %u, %u\n", output_tensor_shard_shape[0], output_tensor_shard_shape[1]);
     const auto output_tensor_shard_num_pages = output_tensor_shard_shape[0] * output_tensor_shard_shape[1] / TILE_HW;
 
     // Reshard info
@@ -112,8 +110,6 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
     auto reshard_tensor_shard_shape = output_tensor.memory_config().shard_spec->shape;
     uint32_t reshard_out_tiles_per_core = reshard_tensor_shard_shape[1] / tile_shape[1];
     uint32_t reshard_in_tiles_per_core = output_tensor_shard_shape[1] / tile_shape[1];
-    printf("reshard_out_tiles_per_core (should be 5): %u\n", reshard_out_tiles_per_core);
-    printf("reshard_in_tiles_per_core (should be 4): %u\n", reshard_in_tiles_per_core);
     // reshard kernel
     auto reshard_worker_grid = output_tensor.shard_spec().value().grid;
     auto reshard_cores = corerange_to_cores(reshard_worker_grid, reshard_worker_grid.num_cores(), true);
@@ -133,6 +129,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
     uint32_t cb_num_pages =
         input_tensor_num_pages / num_links +
         1;  // We are dealing with small shapes, so assuming all pages for a worker can be fit into the CB
+
     uint32_t src0_cb_index = tt::CB::c_in0;
     tt::DataFormat df = tt::tt_metal::datatype_to_dataformat_converter(input_tensor.get_dtype());
     tt::tt_metal::CircularBufferConfig cb_src0_config =
@@ -215,25 +212,15 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
                                 // semaphore
     auto input_cores_vec = corerange_to_cores(input_tensor_cores, std::nullopt, true);
     auto output_cores_vec = corerange_to_cores(output_tensor_cores, std::nullopt, true);
-    auto cores_per_device = 8;  // output_cores_vec.size();// + ring_size - 1 / ring_size;
-    printf("cores per device: %d\n", cores_per_device);
-    // uint32_t start_core_index_for_device = output_cores_vec.size() / ring_size * ring_index;
+    auto cores_per_device = 8;
     std::vector<uint32_t> start_core_indices = {0, 7, 15, 22};
-    uint32_t start_core_index_for_device = num_links == 3 ? start_core_indices[ring_index] : ring_index * 8;
+    uint32_t start_core_index_for_device = start_core_indices[ring_index];
     uint32_t end_core_index_for_device = start_core_index_for_device + cores_per_device;
 
-    // TT_FATAL(
-    //     output_cores_vec.size() % ring_size == 0 || output_cores_vec.size() == 1,
-    //     "output sharded cores ( {} ) must be divisible by num_links ( {} ) or 1 for this work distribution scheme",
-    //     output_cores_vec.size(),
-    //     ring_size);
     auto output_cores_this_device = std::vector<CoreCoord>(
         output_cores_vec.begin() + start_core_index_for_device, output_cores_vec.begin() + end_core_index_for_device);
-    for (auto o : output_cores_this_device) {
-        printf("core in output_cores_this_device: %zu, %zu\n", o.x, o.y);
-    }
+
     log_trace(tt::LogOp, "output_cores_this_device: {}", output_cores_this_device);
-    printf("SINGLE TILE SIZE IS: %u\n", single_tile_size);
     auto reshard_kernel_config = tt::tt_metal::ReaderDataMovementConfig{};
     reshard_kernel_config.compile_args = {q_output_cb_index, single_tile_size};
 
@@ -254,9 +241,6 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
         auto end_core = mesh_device->worker_core_from_logical_core(range.end_coord);
         if (writer_kernel_config.noc == tt::tt_metal::NOC::NOC_1) {
             std::swap(start_core, end_core);
-        } else if (writer_kernel_config.noc == tt::tt_metal::NOC::NOC_0) {
-        } else {
-            printf("getting noc is wrong\n");
         }
         mcast_start_x.push_back(start_core.x);
         mcast_start_y.push_back(start_core.y);
@@ -268,13 +252,18 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
     for (uint32_t link = 0; link < num_links; link++) {
         CoreCoord core = sender_worker_cores[link];
         uint32_t start_two = 0;
-        if (ring_index == 0 || ring_index == 2) {
-            start_two = link == 1 ? 1 : 0;
-        } else {
-            start_two = link == 1 ? 0 : 1;
+        if (num_links == 3) {
+            if (ring_index == 0 || ring_index == 2) {
+                start_two = link == 1 ? 1 : 0;
+            } else {
+                start_two = link == 1 ? 0 : 1;
+            }
         }
-        if (num_links == 4) {
-            start_two = 0;
+
+        else if (num_links == 4) {
+            if (ring_index == 1 || ring_index == 3) {
+                start_two = link == 0;
+            }
         }
 
         // construct input and output core x and y
@@ -282,6 +271,17 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
         uint32_t remainder = input_tensor_num_pages % num_links;
         uint32_t input_tile_id_start = link * base_pages_per_worker + std::min(link, remainder);
         uint32_t input_tile_id_end = (link + 1) * base_pages_per_worker + std::min(link + 1, remainder);
+        bool ends_6_tiles = ring_index % 2 == 0;
+        bool starts_6_tiles = ring_index % 2 == 1;
+        uint32_t worker_6_tiles = ends_6_tiles ? 3 : 0;
+        if (num_links == 4 && ends_6_tiles) {
+            input_tile_id_start = link * (base_pages_per_worker + 1);
+            input_tile_id_end =
+                link == worker_6_tiles ? input_tile_id_start + 6 : (link + 1) * (base_pages_per_worker + 1);
+        } else if (num_links == 4 && starts_6_tiles) {
+            input_tile_id_start = link == worker_6_tiles ? 0 : (link - 1) * (base_pages_per_worker + 1) + 6;
+            input_tile_id_end = link == worker_6_tiles ? input_tile_id_start + 6 : input_tile_id_start + 8;
+        }
 
         uint32_t worker_num_tiles_to_read = input_tile_id_end - input_tile_id_start;
         uint32_t input_first_core_tile_start_offset = input_tile_id_start % input_tensor_shard_num_pages;
@@ -305,13 +305,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
             incr = 2;
             num_cores_per_link = 2;
         }
-        for (uint32_t i = start_value; i < start_value + num_cores_per_link;
-             i++) {  // 3 is num_tiles_per_device / num_links;
-            printf(
-                "logical core at index %u is %zu %zu\n",
-                i,
-                output_cores_this_device[i].x,
-                output_cores_this_device[i].y);
+        for (uint32_t i = start_value; i < start_value + num_cores_per_link; i++) {
             auto this_core = mesh_device->worker_core_from_logical_core(output_cores_this_device[i]);
             output_tensor_cores_x.push_back(this_core.x);
             output_tensor_cores_y.push_back(this_core.y);
@@ -401,30 +395,16 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
         std::vector<uint32_t> tiles_from_cur_core;
         while (tiles_so_far < reshard_out_tiles_per_core) {
             auto this_reshard_core = mesh_device->worker_core_from_logical_core(output_cores_vec[core_idx]);
-            // printf("this reshard_core x and y %zu, %zu\n", this_reshard_core.x, this_reshard_core.y);
             reshard_cores_x.push_back(this_reshard_core.x);
             reshard_cores_y.push_back(this_reshard_core.y);
             uint32_t incr_value = std::min(remaining_in_core, reshard_out_tiles_per_core - tiles_so_far);
             tiles_so_far += incr_value;
             tiles_from_cur_core.push_back(incr_value);
             remaining_in_core -= incr_value;
-            // printf("incr value: %u\n", incr_value);
-            // printf("tiles_so_far: %u\n", tiles_so_far);
-            // printf("remaining in core: %u\n", remaining_in_core);
             if (remaining_in_core == 0) {
                 core_idx++;
                 remaining_in_core = reshard_in_tiles_per_core;
             }
-        }
-        for (uint32_t j = 0; j < reshard_cores_x.size(); j++) {
-            printf(
-                "worker core at index %u in core %zu %zu reads %u tiles from core %u, %u\n",
-                i,
-                reshard_core.x,
-                reshard_core.y,
-                tiles_from_cur_core[j],
-                reshard_cores_x[j],
-                reshard_cores_y[j]);
         }
         std::vector<uint32_t> reshard_rt_args = {
             i,
