@@ -295,7 +295,7 @@ target_link_libraries(
         fmt::fmt-header-only
         span
         small_vector
-        TracyClient
+        Tracy::Wrapper
         nlohmann_json::nlohmann_json
         TT::Metalium::HostDevCommon
         Reflect::Reflect
@@ -400,7 +400,7 @@ install(
     TARGETS
         reflect
         magic_enum
-        TracyClient
+        TracyWrapper
         span
         small_vector
     EXPORT Metalium

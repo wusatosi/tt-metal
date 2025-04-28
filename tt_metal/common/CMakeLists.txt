@@ -37,7 +37,7 @@ target_link_libraries(
         umd::device
         simde::simde
     PRIVATE
-        Tracy::TracyClient
+        Tracy::Wrapper
         TT::Metalium::HostDevCommon
         yaml-cpp::yaml-cpp
         Boost::asio

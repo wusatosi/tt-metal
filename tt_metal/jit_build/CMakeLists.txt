@@ -16,7 +16,7 @@ target_link_libraries(
         TT::Metalium::Common
         Metalium::Metal::Impl
         Metalium::Metal::LLRT
-        Tracy::TracyClient
+        Tracy::Wrapper
         Taskflow::Taskflow
         TT::Metalium::HostDevCommon
 )

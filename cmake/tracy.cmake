@@ -37,6 +37,16 @@ set(TRACY_HOME ${PROJECT_SOURCE_DIR}/tt_metal/third_party/tracy)
 set(TRACY_ENABLE OFF) # We'll enable it conditionally
 add_subdirectory(${TRACY_HOME} EXCLUDE_FROM_ALL SYSTEM)
 
+set(USE_TRACY "$<OR:$<CONFIG:Profiler,ProfilerWithDebInfo>,$<BOOL:${ENABLE_TRACY}>>") # Keep ENABLE_TRACY for backwards compatibility for now
+add_library(TracyWrapper INTERFACE)
+add_library(Tracy::Wrapper ALIAS TracyWrapper)
+# Propagate the include dirs from Tracy::TracyClient unconditionally; upstream headers will stub out the content.
+target_include_directories(TracyWrapper SYSTEM INTERFACE
+  $<TARGET_PROPERTY:Tracy::TracyClient,INTERFACE_INCLUDE_DIRECTORIES>
+)
+# Only link TracyClient if we're using it to prevent the linker from wanting it.
+target_link_libraries(TracyWrapper INTERFACE $<${USE_TRACY}:Tracy::TracyClient>)
+
 set_target_properties(
     TracyClient
     PROPERTIES
@@ -50,7 +60,6 @@ set_target_properties(
             "tracy"
 )
 
-set(USE_TRACY "$<OR:$<CONFIG:Profiler,ProfilerWithDebInfo>,$<BOOL:${ENABLE_TRACY}>>") # Keep ENABLE_TRACY for backwards compatibility for now
 target_compile_definitions(TracyClient PUBLIC
   "$<${USE_TRACY}:TRACY_ENABLE>"
 )

@@ -84,7 +84,7 @@ target_link_libraries(
     PRIVATE
         HAL::wormhole
         HAL::blackhole
-        Tracy::TracyClient
+        Tracy::Wrapper
         nlohmann_json::nlohmann_json
         Reflect::Reflect
         yaml-cpp::yaml-cpp

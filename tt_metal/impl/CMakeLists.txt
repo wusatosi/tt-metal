@@ -102,7 +102,7 @@ target_link_libraries(
     impl
     PUBLIC
         common
-        Tracy::TracyClient
+        Tracy::Wrapper
     PRIVATE
         Boost::smart_ptr
         FlatBuffers::FlatBuffers
