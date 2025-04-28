@@ -856,7 +856,7 @@ void Device::initialize_and_launch_firmware() {
     core_info->worker_grid_size_y = this->logical_grid_size().y;
 
     // Download to worker cores
-    log_debug("Initializing firmware");
+    log_info("Initializing firmware");
     CoreCoord grid_size = this->logical_grid_size();
     std::unordered_set<CoreCoord> not_done_cores;
 
@@ -921,6 +921,7 @@ void Device::initialize_and_launch_firmware() {
 
     // Barrier between L1 writes above and deassert below
     tt::tt_metal::MetalContext::instance().get_cluster().l1_barrier(this->id());
+    sleep(20);
 
     // Deassert worker cores
     TensixSoftResetOptions reset_val;
@@ -939,14 +940,14 @@ void Device::initialize_and_launch_firmware() {
 
     // Wait until fw init is done, ensures the next launch msg doesn't get
     // written while fw is still in init
-    log_debug("Waiting for firmware init complete");
+    log_info("Waiting for firmware init complete");
     const int timeout_ms = 10000; // 10 seconds for now
     try {
         llrt::internal_::wait_until_cores_done(this->id(), RUN_MSG_INIT, not_done_cores, timeout_ms);
     } catch (std::runtime_error &e) {
         TT_THROW("Device {} init: failed to initialize FW! Try resetting the board.", this->id());
     }
-    log_debug("Firmware init complete");
+    log_info("Firmware init complete");
 }
 
 void Device::clear_l1_state() {

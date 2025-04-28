@@ -100,10 +100,12 @@ void write_launch_msg_to_core(chip_id_t chip, const CoreCoord core, launch_msg_t
 
     msg->kernel_config.mode = DISPATCH_MODE_HOST;
 
+    log_info(tt::LogMetal, "write_launch_msg_to_core");
     uint64_t launch_addr = base_addr + offsetof(launch_msg_t, kernel_config);
     // TODO: Get this from the hal. Need to modify the write_launch_msg_to_core API to get the LM and Go signal addr from the hal.
     uint64_t go_addr = base_addr + sizeof(launch_msg_t) * launch_msg_buffer_num_entries;
 
+    log_info(tt::LogMetal, "msg->kernel_config size {}", sizeof(kernel_config_msg_t));
     tt::tt_metal::MetalContext::instance().get_cluster().write_core(
         (void*)&msg->kernel_config, sizeof(kernel_config_msg_t), tt_cxy_pair(chip, core), launch_addr);
     tt_driver_atomics::sfence();
@@ -256,7 +258,7 @@ void wait_until_cores_done(
 
         // Print not-done cores
         if (loop_count % 1000 == 0) {
-            log_debug(tt::LogMetal, "Not done phys cores: {}", fmt::join(not_done_phys_cores, " "));
+            log_info(tt::LogMetal, "Not done phys cores: {}", fmt::join(not_done_phys_cores, " "));
             usleep(100000);
         }
 
@@ -266,7 +268,7 @@ void wait_until_cores_done(
             bool is_done = llrt::internal_::check_if_riscs_on_specified_core_done(device_id, phys_core, run_state);
 
             if (is_done) {
-                log_debug(tt::LogMetal, "Phys cores just done: {}", phys_core.str());
+                log_info(tt::LogMetal, "Phys cores just done: {}", phys_core.str());
                 it = not_done_phys_cores.erase(it);
             } else {
                 ++it;
