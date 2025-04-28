@@ -43,29 +43,44 @@ def run_test_sdpa_tt(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dtype
         exp_approx_mode=False,
     )
 
-    if use_high_precision_compute:
-        compute_kernel_config = ttnn.WormholeComputeKernelConfig(
-            math_fidelity=ttnn.MathFidelity.HiFi4,
-            math_approx_mode=False,
-            fp32_dest_acc_en=True,
-            packer_l1_acc=False,
-        )
-    else:
-        compute_kernel_config = ttnn.WormholeComputeKernelConfig(
-            math_fidelity=ttnn.MathFidelity.HiFi2,
-            math_approx_mode=True,
-            fp32_dest_acc_en=False,
-            packer_l1_acc=False,
-        )
+    # if use_high_precision_compute:
+    #     compute_kernel_config = ttnn.WormholeComputeKernelConfig(
+    #         math_fidelity=ttnn.MathFidelity.HiFi4,
+    #         math_approx_mode=False,
+    #         fp32_dest_acc_en=True,
+    #         packer_l1_acc=False,
+    #     )
+    # else:
+    compute_kernel_config = ttnn.WormholeComputeKernelConfig(
+        math_fidelity=ttnn.MathFidelity.HiFi4,
+        math_approx_mode=False,
+        fp32_dest_acc_en=True,
+        packer_l1_acc=False,
+    )
 
-    Q = fa_rand(b, nh, s, d)
-    K = fa_rand(b, nkv, s, d)
-    V = fa_rand(b, nkv, s, d)
+    # Q = fa_rand(b, nh, s, d) * 3.5 + .1
+    # K = fa_rand(b, nkv, s, d) * 27 + 1.5
+    # V = fa_rand(b, nkv, s, d) * 0.3
+
+    # Q = torch.randn(b, nh, s, d) * 3.5
+    # K = torch.randn(b, nkv, s, d) * 27 + 1.5
+    # V = torch.randn(b, nkv, s, d) * 0.25
+
+    from pathlib import Path
+
+    tensor_dir = Path("qwen_tensors")
+    Q = torch.load(tensor_dir / "Q.pt")
+    K = torch.load(tensor_dir / "K.pt")
+    V = torch.load(tensor_dir / "V.pt")
 
     # Print shapes of all inputs along with input names
     logger.debug(f"Q: {Q.shape}")
     logger.debug(f"K: {K.shape}")
     logger.debug(f"V: {V.shape}")
+
+    print(f"Q: {Q.min():.1f} < {Q.mean():.1f} ± {Q.std():.1f} < {Q.max():.1f}")
+    print(f"K: {K.min():.1f} < {K.mean():.1f} ± {K.std():.1f} < {K.max():.1f}")
+    print(f"V: {V.min():.1f} < {V.mean():.1f} ± {V.std():.1f} < {V.max():.1f}")
 
     tt_Q = ttnn.from_torch(Q, dtype=dtype, layout=ttnn.TILE_LAYOUT, device=device)
     tt_K = ttnn.from_torch(K, dtype=dtype, layout=ttnn.TILE_LAYOUT, device=device)
@@ -84,7 +99,7 @@ def run_test_sdpa_tt(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dtype
 
     out_pass, out_pcc = comp_pcc(gt, tt_back, 0.994)
     logger.debug(f"python vs pytorch: {out_pcc}")
-    logger.debug(f"mse: {((gt - tt_back) ** 2).mean()}")
+    logger.debug(f"mse: {((gt - tt_back) ** 2).mean().item()}")
     assert out_pass
 
 
@@ -123,7 +138,7 @@ def test_sdpa_tt_padded(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dt
 @skip_for_grayskull("Unsupported in GS since L1 runs OOM with most configs")
 @pytest.mark.parametrize("dtype", [ttnn.bfloat4_b, ttnn.bfloat8_b, ttnn.bfloat16], ids=["bfp4", "bfp8", "bf16"])
 @pytest.mark.parametrize("q_chunk_size", [128, 256], ids=["q128", "q256"])
-@pytest.mark.parametrize("k_chunk_size", [128, 256], ids=["k128", "k256"])
+@pytest.mark.parametrize("k_chunk_size", [128, 256, 512], ids=["k128", "k256", "k512"])
 @pytest.mark.parametrize(
     "b, nh, nkv, s, d",
     (
@@ -132,6 +147,7 @@ def test_sdpa_tt_padded(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dt
         [1, 71, 1, 2048, 64],  # Falcon-7B
         [8, 8, 1, 2048, 128],  # Llama2-70B large batch
         [1, 8, 1, 8192, 128],  # Llama2-70B large sequence
+        [1, 28, 4, 4096, 128],  # Qwen2.5-7B prefill
     ),
 )
 def test_sdpa_tt(device, b, nh, nkv, s, d, q_chunk_size, k_chunk_size, dtype):
