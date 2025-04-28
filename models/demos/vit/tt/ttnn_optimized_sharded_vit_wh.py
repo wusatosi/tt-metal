@@ -63,9 +63,11 @@ def update_model_config(config, batch_size):
         ),
         "ff1_matmul_program_config": ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
             compute_with_storage_grid_size=(core_grid.x, core_grid.y),
-            in0_block_w=int(dim_t__x / 2),  # 2,
+            # in0_block_w=int(dim_t__x / 2),  # 2,
+            in0_block_w=4,  # 4, -20us
             out_subblock_h=1,
-            out_subblock_w=int(4 * dim_t__x / 4),  # 4,
+            # out_subblock_w=int(4 * dim_t__x / 4),  # 4,
+            out_subblock_w=8,  # -10
             per_core_M=seqL_t,  # 7,
             per_core_N=int(4 * dim_t__x),  # 16,
             transpose_mcast=False,
