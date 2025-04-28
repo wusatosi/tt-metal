@@ -5,6 +5,8 @@ import torch
 from tqdm import tqdm
 from diffusers import DiffusionPipeline
 from loguru import logger
+import ttnn
+from models.experimental.stable_diffusion_xl_base.tt.tt_unet import TtUNet2DConditionModel
 
 
 # Copied from sdxl pipeline
@@ -69,7 +71,13 @@ def retrieve_timesteps(
 
 @torch.no_grad()
 def run_demo_inference(
-    device, prompt, num_inference_steps, default_sample_size, vae_scale_factor, guidance_scale, classifier_free_guidance
+    ttnn_device,
+    prompt,
+    num_inference_steps,
+    default_sample_size,
+    vae_scale_factor,
+    guidance_scale,
+    classifier_free_guidance,
 ):
     torch.manual_seed(0)
 
@@ -97,6 +105,9 @@ def run_demo_inference(
         torch_dtype=torch.bfloat16,
         use_safetensors=True,
     )
+
+    # 2. Load tt_unet
+    tt_unet = TtUNet2DConditionModel(ttnn_device, pipeline.unet.state_dict(), "unet")
 
     lora_scale = None
     # in case of classifier free guidance:
@@ -136,6 +147,20 @@ def run_demo_inference(
 
     # Prepare timesteps
     timesteps, num_inference_steps = retrieve_timesteps(pipeline.scheduler, num_inference_steps, cpu_device, None, None)
+
+    # Convert timesteps to ttnn
+    ttnn_timesteps = []
+    for t in timesteps:
+        scalar_tensor = torch.tensor(t).unsqueeze(0)
+        ttnn_timesteps.append(
+            ttnn.from_torch(
+                scalar_tensor,
+                dtype=ttnn.bfloat16,
+                device=ttnn_device,
+                layout=ttnn.TILE_LAYOUT,
+                memory_config=ttnn.L1_MEMORY_CONFIG,
+            )
+        )
 
     num_channels_latents = pipeline.unet.config.in_channels
     assert num_channels_latents == 4, f"num_channels_latents is {num_channels_latents}, but it should be 4"
@@ -179,32 +204,75 @@ def run_demo_inference(
     add_text_embeds = add_text_embeds.to(cpu_device)
     add_time_ids = add_time_ids.to(cpu_device)
 
-    # We dont have timestep cond!
-    for i, t in tqdm(enumerate(timesteps), total=len(timesteps)):
-        latent_model_input = torch.cat([latents] * 2) if classifier_free_guidance else latents
-        latent_model_input = pipeline.scheduler.scale_model_input(latent_model_input, t)
+    # encoder hidden states
+    ttnn_prompt_embeds = ttnn.from_torch(
+        prompt_embeds,
+        dtype=ttnn.bfloat16,
+        device=ttnn_device,
+        layout=ttnn.TILE_LAYOUT,
+        memory_config=ttnn.DRAM_MEMORY_CONFIG,
+    )
 
-        added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
-        noise_pred = pipeline.unet(
+    ttnn_add_text_embeds = ttnn.from_torch(
+        add_text_embeds,
+        dtype=ttnn.bfloat16,
+        device=ttnn_device,
+        layout=ttnn.TILE_LAYOUT,
+        memory_config=ttnn.DRAM_MEMORY_CONFIG,
+    )
+    print("add time ids: ", add_time_ids, " shape: ", add_time_ids.shape)
+    ttnn_add_time_ids = ttnn.from_torch(
+        add_time_ids.squeeze(0),
+        dtype=ttnn.bfloat16,
+        device=ttnn_device,
+        layout=ttnn.TILE_LAYOUT,
+        memory_config=ttnn.DRAM_MEMORY_CONFIG,
+    )
+
+    print("ttnn time ids: ", ttnn_add_time_ids)
+
+    ttnn_added_cond_kwargs = {
+        "text_embeds": ttnn_add_text_embeds,
+        "time_ids": ttnn_add_time_ids,
+    }
+
+    # We dont have timestep cond!
+    print("Starting ttnn inference...")
+    for i, t in tqdm(enumerate(ttnn_timesteps), total=len(ttnn_timesteps)):
+        print(f"Processing iterations {i}")
+        latent_model_input = torch.cat([latents] * 2) if classifier_free_guidance else latents
+        latent_model_input = pipeline.scheduler.scale_model_input(latent_model_input, timesteps[i])
+
+        B, C, H, W = latent_model_input.shape
+        ttnn_latent_model_input = ttnn.from_torch(
             latent_model_input,
-            t,
-            encoder_hidden_states=prompt_embeds,
-            timestep_cond=None,
-            cross_attention_kwargs=None,
-            added_cond_kwargs=added_cond_kwargs,
-            return_dict=False,
+            dtype=ttnn.bfloat16,
+            device=ttnn_device,
+            layout=ttnn.TILE_LAYOUT,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+        )
+
+        ttnn_latent_model_input = ttnn.permute(ttnn_latent_model_input, (0, 2, 3, 1))
+        ttnn_latent_model_input = ttnn.reshape(ttnn_latent_model_input, (1, 1, B * H * W, C))
+
+        ttnn_noise_pred, output_shape = tt_unet.forward(
+            ttnn_latent_model_input,
+            [B, C, H, W],
+            timestep=t,
+            encoder_hidden_states=ttnn_prompt_embeds,
+            added_cond_kwargs=ttnn_added_cond_kwargs,
         )[0]
+
+        noise_pred = ttnn.to_torch(ttnn_noise_pred)
+        noise_pred = noise_pred.reshape(B, output_shape[1], output_shape[2], output_shape[0])
+        noise_pred = torch.permute(noise_pred, (0, 3, 1, 2))
 
         # perform guidance
         if classifier_free_guidance:
             noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
             noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
         # guidance rescale is 0, skip next step
-        latents_dtype = latents.dtype
-        latents = pipeline.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
-        if latents.dtype != latents_dtype:
-            if torch.backends.mps.is_available():
-                latents = latents.to(latents_dtype)
+        latents = pipeline.scheduler.step(noise_pred, timesteps[i], latents, **extra_step_kwargs, return_dict=False)[0]
 
     # VAE upcasting to float32 is happening in the reference SDXL demo if VAE dtype is float16. If it's bfloat16, it will not be upcasted.
     has_latents_mean = hasattr(pipeline.vae.config, "latents_mean") and pipeline.vae.config.latents_mean is not None
@@ -229,7 +297,7 @@ def run_demo_inference(
 # For non classifier free guidance do:
 # - classifier_free_guidance = False
 # - guidance_scale = 1.0
-@pytest.mark.parametrize("device_params", [{"l1_small_size": 32768}], indirect=True)
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 4 * 16384}], indirect=True)
 @pytest.mark.parametrize(
     "prompt",
     (
@@ -252,14 +320,21 @@ def run_demo_inference(
 )
 @pytest.mark.parametrize(
     "classifier_free_guidance",
-    ((True),),
+    ((False),),
 )
 @pytest.mark.parametrize(
     "guidance_scale",
-    ((5),),
+    ((1),),
 )
 def test_demo(
-    device, prompt, num_inference_steps, default_sample_size, vae_scale_factor, guidance_scale, classifier_free_guidance
+    device,
+    use_program_cache,
+    prompt,
+    num_inference_steps,
+    default_sample_size,
+    vae_scale_factor,
+    guidance_scale,
+    classifier_free_guidance,
 ):
     return run_demo_inference(
         device,
