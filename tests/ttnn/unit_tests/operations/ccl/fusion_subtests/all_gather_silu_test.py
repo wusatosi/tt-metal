@@ -202,7 +202,7 @@ def run_all_gather_silu_impl(
             ttnn.BufferType.L1,
             ttnn.ShardSpec(
                 intermediate_core_range_set,
-                [32, 160],
+                [32, 128],
                 ttnn.ShardOrientation.ROW_MAJOR,
             ),
         )

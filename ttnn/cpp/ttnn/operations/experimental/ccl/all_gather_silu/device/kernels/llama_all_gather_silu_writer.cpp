@@ -29,7 +29,7 @@ constexpr bool dynamic_alternate = get_compile_time_arg_val(8);
 constexpr uint32_t num_max_targets = std::max(num_targets_forward_direction, num_targets_backward_direction);
 constexpr uint32_t num_sync_targets_forward = dynamic_alternate ? num_max_targets : num_targets_forward_direction;
 constexpr uint32_t num_sync_targets_backward = dynamic_alternate ? num_max_targets : num_targets_backward_direction;
-
+constexpr uint32_t num_sem_ranges = get_compile_time_arg_val(9);
 /*
  * CCL Send will present various operating modes. Although there is only a single send kernel, it may (compile time)
  * dispatch implementations depending on those invocation parameters.
@@ -52,10 +52,21 @@ void kernel_main() {
     const uint8_t out_ready_sem_noc0_x = get_arg_val<uint32_t>(arg_idx++);
     const uint8_t out_ready_sem_noc0_y = get_arg_val<uint32_t>(arg_idx++);
     uint32_t out_ready_sem_wait_value = get_arg_val<uint32_t>(arg_idx++);
+
+    const uint32_t reshard_semaphore_send_addr = get_semaphore(get_arg_val<uint32_t>(arg_idx++));
+
     tt_l1_ptr uint32_t* core_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
     arg_idx += num_cores;
     tt_l1_ptr uint32_t* core_noc_y = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
     arg_idx += num_cores;
+    tt_l1_ptr uint32_t* mcast_dest_noc_start_x = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
+    arg_idx += num_sem_ranges;
+    tt_l1_ptr uint32_t* mcast_dest_noc_start_y = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
+    arg_idx += num_sem_ranges;
+    tt_l1_ptr uint32_t* mcast_dest_noc_end_x = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
+    arg_idx += num_sem_ranges;
+    tt_l1_ptr uint32_t* mcast_dest_noc_end_y = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
+    arg_idx += num_sem_ranges;
     size_t arg_for_fab = arg_idx;
     constexpr bool connect_to_fabric_when_creating = true;
     auto fabric_connection =
@@ -163,6 +174,36 @@ void kernel_main() {
     if (wait_output_semaphore) {
         while (*reinterpret_cast<volatile tt_l1_ptr uint32_t*>(out_ready_sem_bank_addr) < out_ready_sem_wait_value);
     }
+
+    // mcast semaphore to reshard cores
+    if (wait_output_semaphore) {
+        volatile tt_l1_ptr uint32_t* reshard_semaphore_send_addr_ptr =
+            reinterpret_cast<volatile tt_l1_ptr uint32_t*>(reshard_semaphore_send_addr);
+        noc_semaphore_set(reshard_semaphore_send_addr_ptr, 1);
+        if (reshard_semaphore_send_addr_ptr[0] != 1) {
+            noc_semaphore_set(reshard_semaphore_send_addr_ptr, 1);
+        }
+        uint32_t mcast_dest_num = 2;
+        for (uint32_t i = 0; i < num_sem_ranges; i++) {
+            if (i > 2) {
+                mcast_dest_num += 2;
+            }
+            DPRINT << "mcast_dest_num: " << (uint32_t)mcast_dest_num << " for i " << (uint32_t)i << ENDL();
+            const uint64_t reshard_sem_rcv_addr = get_noc_multicast_addr(
+                mcast_dest_noc_start_x[i],
+                mcast_dest_noc_start_y[i],
+                mcast_dest_noc_end_x[i],
+                mcast_dest_noc_end_y[i],
+                reshard_semaphore_send_addr);
+            noc_semaphore_set_multicast(
+                reshard_semaphore_send_addr,
+                reshard_sem_rcv_addr,
+                mcast_dest_num,
+                false,  // linked = false
+                true);  // multicast_path_reserve = true
+        }
+    }
+    DPRINT << "after mcast send\n";
 
     // 4. global semaphore reset
     if (reset_global_semaphore) {

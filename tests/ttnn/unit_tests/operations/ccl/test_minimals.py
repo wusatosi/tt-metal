@@ -589,7 +589,7 @@ def test_concat_fuse(
             ttnn.TILE_LAYOUT,
             (32, 32),
             ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(5, 4))}),
-            (32, 128),
+            (32, 160),
             ttnn.CoreRangeSet(
                 [
                     ttnn.CoreRange(ttnn.CoreCoord(6, 6), ttnn.CoreCoord(6, 6)),
@@ -616,7 +616,7 @@ def test_concat_fuse(
                     ttnn.CoreRange(ttnn.CoreCoord(2, 4), ttnn.CoreCoord(2, 4)),
                     ttnn.CoreRange(ttnn.CoreCoord(2, 5), ttnn.CoreCoord(2, 5)),
                     ttnn.CoreRange(ttnn.CoreCoord(2, 9), ttnn.CoreCoord(2, 9)),
-                    ttnn.CoreRange(ttnn.CoreCoord(3, 0), ttnn.CoreCoord(4, 2)),
+                    # ttnn.CoreRange(ttnn.CoreCoord(3, 0), ttnn.CoreCoord(4, 2)),
                 ]
             ),
             ttnn.TensorMemoryLayout.WIDTH_SHARDED,

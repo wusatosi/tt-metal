@@ -34,7 +34,18 @@ using namespace tt::constants;
 namespace ttnn {
 
 using namespace ccl;
+struct llama_config {
+    CoreRange sem_drain_core = CoreRange({0, 1}, {0, 1});
+    std::array<CoreRange, 6> semaphore_mcast_ranges = {
+        CoreRange({1, 0}, {2, 0}),   // 2
+        CoreRange({1, 9}, {2, 9}),   // 2
+        CoreRange({5, 9}, {6, 9}),   // 2
+        CoreRange({1, 4}, {2, 5}),   // 4
+        CoreRange({5, 0}, {6, 2}),   // 6
+        CoreRange({5, 4}, {6, 7})};  // 8
 
+    uint32_t num_semaphore_ranges = 6;
+};
 tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
     const Tensor& input_tensor,
     const Tensor& buffer_tensor,
@@ -55,7 +66,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
     if (!mesh_device) {
         mesh_device = input_tensor.device();
     }
-
+    auto buffer_address = buffer_tensor.buffer()->address();
     const bool enable_async_output_tensor = false;
     const bool enable_persistent_fabric_mode = true;
 
@@ -70,26 +81,42 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
 
     // Get OP Config, topology config
     std::vector<Tensor> input_tensors = {input_tensor};
+    std::vector<Tensor> buffer_tensors = {buffer_tensor};
     std::vector<Tensor> output_tensors = {output_tensor};
-    const auto& op_config = ttnn::ccl::CCLOpConfig(input_tensors, output_tensors, topology);
+    const auto& op_config = ttnn::ccl::CCLOpConfig(input_tensors, buffer_tensors, topology);
     auto [num_targets_forward, num_targets_backward, dynamic_alternate] =
         ccl::get_forward_backward_configuration(ring_size, ring_index, topology);
-
+    llama_config llama_configuration;
     printf("ring index: %u\n", ring_index);
 
     // Get worker cores, assuming 1 worker per link
     uint32_t num_workers_per_link = 1;
-    const auto [sender_worker_core_range, sender_worker_cores] =
-        choose_worker_cores(num_links, num_workers_per_link, enable_persistent_fabric_mode, mesh_device, sub_device_id);
+    // const auto [sender_worker_core_range, sender_worker_cores] =
+    //     choose_worker_cores(num_links, num_workers_per_link, enable_persistent_fabric_mode, mesh_device,
+    //     sub_device_id);
+    auto sender_worker_core_range = CoreRangeSet(CoreRange({0, 1}, {0, num_links}));
+    auto sender_worker_cores = corerange_to_cores(sender_worker_core_range, num_links, true);
 
     // Tensor Info
     const auto input_tensor_num_pages = input_tensor.buffer()->num_pages();
     const auto input_tensor_cores = input_tensor.memory_config().shard_spec->grid;
     const auto input_tensor_shard_shape = input_tensor.memory_config().shard_spec->shape;
     const auto input_tensor_shard_num_pages = input_tensor_shard_shape[0] * input_tensor_shard_shape[1] / TILE_HW;
-    const auto output_tensor_cores = output_tensor.memory_config().shard_spec->grid;
-    const auto output_tensor_shard_shape = output_tensor.memory_config().shard_spec->shape;
+    const auto output_tensor_cores = buffer_tensor.memory_config().shard_spec->grid;
+    const auto output_tensor_shard_shape = buffer_tensor.memory_config().shard_spec->shape;
+    printf("output_tensor_shard_shape: %u, %u\n", output_tensor_shard_shape[0], output_tensor_shard_shape[1]);
     const auto output_tensor_shard_num_pages = output_tensor_shard_shape[0] * output_tensor_shard_shape[1] / TILE_HW;
+
+    // Reshard info
+    const auto& tile_shape = input_tensor.get_tensor_spec().tile().get_tile_shape();
+    auto reshard_tensor_shard_shape = output_tensor.memory_config().shard_spec->shape;
+    uint32_t reshard_out_tiles_per_core = reshard_tensor_shard_shape[1] / tile_shape[1];
+    uint32_t reshard_in_tiles_per_core = output_tensor_shard_shape[1] / tile_shape[1];
+    printf("reshard_out_tiles_per_core (should be 5): %u\n", reshard_out_tiles_per_core);
+    printf("reshard_in_tiles_per_core (should be 4): %u\n", reshard_in_tiles_per_core);
+    // reshard kernel
+    auto reshard_worker_grid = output_tensor.shard_spec().value().grid;
+    auto reshard_cores = corerange_to_cores(reshard_worker_grid, reshard_worker_grid.num_cores(), true);
 
     tt::log_debug(tt::LogOp, "input_tensor_num_pages: {}", input_tensor_num_pages);
     tt::log_debug(tt::LogOp, "input_tensor_cores: {}", input_tensor_cores);
@@ -124,8 +151,25 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
     auto reserved_packet_header_CB_handle =
         CreateCircularBuffer(program, sender_worker_core_range, cb_reserved_packet_header_config);
 
+    uint32_t single_tile_size =
+        tt::tt_metal::detail::TileSize(tt::tt_metal::datatype_to_dataformat_converter(input_tensor.get_dtype()));
+    uint32_t q_output_cb_index = tt::CBIndex::c_16;
+    tt::tt_metal::CircularBufferConfig cb_q_output_config =
+        tt::tt_metal::CircularBufferConfig(reshard_out_tiles_per_core * single_tile_size, {{q_output_cb_index, df}})
+            .set_page_size(q_output_cb_index, single_tile_size)
+            .set_globally_allocated_address(*output_tensor.buffer());
+    auto cb_q_output = tt::tt_metal::CreateCircularBuffer(program, reshard_worker_grid, cb_q_output_config);
+
     // KERNEL CREATION
     // Reader
+    std::vector<CoreRange> sem_cores_vector;
+    sem_cores_vector.push_back(llama_configuration.sem_drain_core);
+    for (auto cr : llama_configuration.semaphore_mcast_ranges) {
+        sem_cores_vector.push_back(cr);
+    }
+    const auto& sem_cores_updated = CoreRangeSet(sem_cores_vector);
+    uint32_t reshard_semaphore_id = tt::tt_metal::CreateSemaphore(program, sem_cores_updated, 0);
+
     auto reader_kernel_config = tt::tt_metal::ReaderDataMovementConfig{};
     reader_kernel_config.compile_args = {
         ring_index,                 // my_chip_id
@@ -153,7 +197,8 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
         op_config.get_page_size(),        // tensor0_page_size
         num_targets_forward,              // num_targets_forward_direction
         num_targets_backward,             // num_targets_backward_direction
-        dynamic_alternate                 // dynamic_alternate
+        dynamic_alternate,                // dynamic_alternate
+        llama_configuration.num_semaphore_ranges,
     };
     log_trace(tt::LogOp, "Writer Compile Args:");
     for (const auto& arg : writer_kernel_config.compile_args) {
@@ -174,8 +219,9 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
     printf("cores per device: %d\n", cores_per_device);
     // uint32_t start_core_index_for_device = output_cores_vec.size() / ring_size * ring_index;
     std::vector<uint32_t> start_core_indices = {0, 7, 15, 22};
-    uint32_t start_core_index_for_device = start_core_indices[ring_index];
+    uint32_t start_core_index_for_device = num_links == 3 ? start_core_indices[ring_index] : ring_index * 8;
     uint32_t end_core_index_for_device = start_core_index_for_device + cores_per_device;
+
     // TT_FATAL(
     //     output_cores_vec.size() % ring_size == 0 || output_cores_vec.size() == 1,
     //     "output sharded cores ( {} ) must be divisible by num_links ( {} ) or 1 for this work distribution scheme",
@@ -187,6 +233,37 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
         printf("core in output_cores_this_device: %zu, %zu\n", o.x, o.y);
     }
     log_trace(tt::LogOp, "output_cores_this_device: {}", output_cores_this_device);
+    printf("SINGLE TILE SIZE IS: %u\n", single_tile_size);
+    auto reshard_kernel_config = tt::tt_metal::ReaderDataMovementConfig{};
+    reshard_kernel_config.compile_args = {q_output_cb_index, single_tile_size};
+
+    auto reshard_kernel_id = tt::tt_metal::CreateKernel(
+        program,
+        "ttnn/cpp/ttnn/operations/experimental/ccl/all_gather_silu/device/kernels/llama_all_gather_silu_reshard.cpp",
+        reshard_worker_grid,
+        reshard_kernel_config);
+
+    auto sem_mcast_ranges = CoreRangeSet(llama_configuration.semaphore_mcast_ranges);
+    std::vector<uint32_t> mcast_start_x;
+    std::vector<uint32_t> mcast_start_y;
+    std::vector<uint32_t> mcast_end_x;
+    std::vector<uint32_t> mcast_end_y;
+
+    for (const auto& range : sem_mcast_ranges.ranges()) {
+        auto start_core = mesh_device->worker_core_from_logical_core(range.start_coord);
+        auto end_core = mesh_device->worker_core_from_logical_core(range.end_coord);
+        if (writer_kernel_config.noc == tt::tt_metal::NOC::NOC_1) {
+            std::swap(start_core, end_core);
+        } else if (writer_kernel_config.noc == tt::tt_metal::NOC::NOC_0) {
+        } else {
+            printf("getting noc is wrong\n");
+        }
+        mcast_start_x.push_back(start_core.x);
+        mcast_start_y.push_back(start_core.y);
+        mcast_end_x.push_back(end_core.x);
+        mcast_end_y.push_back(end_core.y);
+    }
+
     uint32_t start_value = 0;
     for (uint32_t link = 0; link < num_links; link++) {
         CoreCoord core = sender_worker_cores[link];
@@ -195,6 +272,9 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
             start_two = link == 1 ? 1 : 0;
         } else {
             start_two = link == 1 ? 0 : 1;
+        }
+        if (num_links == 4) {
+            start_two = 0;
         }
 
         // construct input and output core x and y
@@ -220,7 +300,13 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
             input_tensor_cores_y.push_back(this_core.y);
         }
         uint32_t incr = start_two ? 3 : 2;
-        for (uint32_t i = start_value; i < start_value + 3; i++) {  // 3 is num_tiles_per_device / num_links;
+        uint32_t num_cores_per_link = 3;
+        if (num_links == 4) {
+            incr = 2;
+            num_cores_per_link = 2;
+        }
+        for (uint32_t i = start_value; i < start_value + num_cores_per_link;
+             i++) {  // 3 is num_tiles_per_device / num_links;
             printf(
                 "logical core at index %u is %zu %zu\n",
                 i,
@@ -267,7 +353,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
         bool reset_global_semaphore = (link == 0) && !enable_async_output_tensor;
         uint32_t out_ready_sem_wait_value = (dynamic_alternate ? (ring_size + 1) : ring_size) * num_links;
         std::vector<uint32_t> writer_rt_args = {
-            output_tensor.buffer()->address(),    // tensor_address0
+            buffer_address,                       // tensor_address0
             semaphore.address(),                  // out_ready_sem_bank_addr (absolute address)
             output_tensor_shard_num_pages,        // num_tiles_per_core
             worker_num_tiles_to_read,             // num_tiles_to_read
@@ -278,6 +364,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
             drain_sync_core.x,                    // out_ready_sem_noc0_x
             drain_sync_core.y,                    // out_ready_sem_noc0_y
             out_ready_sem_wait_value,             // out_ready_sem_wait_value
+            reshard_semaphore_id,
         };
         writer_rt_args.insert(writer_rt_args.end(), output_tensor_cores_x.begin(), output_tensor_cores_x.end());
         writer_rt_args.insert(writer_rt_args.end(), output_tensor_cores_y.begin(), output_tensor_cores_y.end());
@@ -285,6 +372,10 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
         for (const auto& arg : writer_rt_args) {
             log_trace(tt::LogOp, "\t{}", arg);
         }
+        writer_rt_args.insert(writer_rt_args.end(), mcast_start_x.begin(), mcast_start_x.end());
+        writer_rt_args.insert(writer_rt_args.end(), mcast_start_y.begin(), mcast_start_y.end());
+        writer_rt_args.insert(writer_rt_args.end(), mcast_end_x.begin(), mcast_end_x.end());
+        writer_rt_args.insert(writer_rt_args.end(), mcast_end_y.begin(), mcast_end_y.end());
 
         writer_rt_args.push_back(forward_device.has_value());
         if (forward_device.has_value()) {
@@ -300,15 +391,70 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
         tt::tt_metal::SetRuntimeArgs(program, worker_sender_writer_kernel_id, {core}, writer_rt_args);
     }
 
+    uint32_t core_idx = 0;
+    uint32_t remaining_in_core = reshard_in_tiles_per_core;
+    for (uint32_t i = 0; i < reshard_worker_grid.num_cores(); i++) {
+        auto reshard_core = reshard_cores[i];
+        uint32_t tiles_so_far = 0;
+        std::vector<uint32_t> reshard_cores_x;
+        std::vector<uint32_t> reshard_cores_y;
+        std::vector<uint32_t> tiles_from_cur_core;
+        while (tiles_so_far < reshard_out_tiles_per_core) {
+            auto this_reshard_core = mesh_device->worker_core_from_logical_core(output_cores_vec[core_idx]);
+            // printf("this reshard_core x and y %zu, %zu\n", this_reshard_core.x, this_reshard_core.y);
+            reshard_cores_x.push_back(this_reshard_core.x);
+            reshard_cores_y.push_back(this_reshard_core.y);
+            uint32_t incr_value = std::min(remaining_in_core, reshard_out_tiles_per_core - tiles_so_far);
+            tiles_so_far += incr_value;
+            tiles_from_cur_core.push_back(incr_value);
+            remaining_in_core -= incr_value;
+            // printf("incr value: %u\n", incr_value);
+            // printf("tiles_so_far: %u\n", tiles_so_far);
+            // printf("remaining in core: %u\n", remaining_in_core);
+            if (remaining_in_core == 0) {
+                core_idx++;
+                remaining_in_core = reshard_in_tiles_per_core;
+            }
+        }
+        for (uint32_t j = 0; j < reshard_cores_x.size(); j++) {
+            printf(
+                "worker core at index %u in core %zu %zu reads %u tiles from core %u, %u\n",
+                i,
+                reshard_core.x,
+                reshard_core.y,
+                tiles_from_cur_core[j],
+                reshard_cores_x[j],
+                reshard_cores_y[j]);
+        }
+        std::vector<uint32_t> reshard_rt_args = {
+            i,
+            buffer_address,  // input address
+            reshard_cores_x.size(),
+            reshard_semaphore_id};
+        reshard_rt_args.insert(reshard_rt_args.end(), reshard_cores_x.begin(), reshard_cores_x.end());
+        reshard_rt_args.insert(reshard_rt_args.end(), reshard_cores_y.begin(), reshard_cores_y.end());
+        reshard_rt_args.insert(reshard_rt_args.end(), tiles_from_cur_core.begin(), tiles_from_cur_core.end());
+        tt::tt_metal::SetRuntimeArgs(program, reshard_kernel_id, reshard_core, reshard_rt_args);
+    }
     auto override_runtime_arguments_callback =
-        [worker_sender_reader_kernel_id, worker_sender_writer_kernel_id, semaphore, sender_worker_cores](
+        [worker_sender_reader_kernel_id,
+         worker_sender_writer_kernel_id,
+         reshard_kernel_id,
+         semaphore,
+         sender_worker_cores,
+         reshard_cores,
+         cb_q_output](
             const void* operation,
             Program& program,
             const std::vector<Tensor>& input_tensors,
             const std::vector<std::optional<const Tensor>>& optional_input_tensors,
             const std::vector<Tensor>& output_tensors) {
             const auto& input = input_tensors[0];
+            const auto& buffer_tensor = input_tensors[1];
             const auto& output = output_tensors[0];
+            auto dst_buffer_query = output.buffer();
+
+            UpdateDynamicCircularBufferAddress(program, cb_q_output, *dst_buffer_query);
 
             auto semaphore = static_cast<const ttnn::AllGatherSilu*>(operation)->semaphore;
 
@@ -317,14 +463,20 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
             // update senders
             auto& worker_reader_sender_runtime_args_by_core = GetRuntimeArgs(program, worker_sender_reader_kernel_id);
             auto& worker_writer_sender_runtime_args_by_core = GetRuntimeArgs(program, worker_sender_writer_kernel_id);
+            auto& reshard_runtime_args_by_core = GetRuntimeArgs(program, reshard_kernel_id);
             for (const auto& core : sender_worker_cores) {
                 // reader
                 auto& worker_reader_sender_runtime_args = worker_reader_sender_runtime_args_by_core[core.x][core.y];
                 worker_reader_sender_runtime_args[0] = input.buffer()->address();
                 // writer
                 auto& worker_writer_sender_runtime_args = worker_writer_sender_runtime_args_by_core[core.x][core.y];
-                worker_writer_sender_runtime_args[0] = output.buffer()->address();
+                worker_writer_sender_runtime_args[0] = buffer_tensor.buffer()->address();
                 worker_writer_sender_runtime_args[1] = semaphore.address();
+            }
+
+            for (const auto& r_core : reshard_cores) {
+                auto& reshard_runtime_args = reshard_runtime_args_by_core[r_core.x][r_core.y];
+                reshard_runtime_args[1] = buffer_tensor.buffer()->address();
             }
         };
 
