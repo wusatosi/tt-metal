@@ -11,6 +11,7 @@
 #include <tt-metalium/buffer_types.hpp>
 
 #include "tt-metalium/assert.hpp"
+#include "tt-metalium/bfloat16.hpp"
 #include "tt-metalium/logger.hpp"
 #include "tt-metalium/math.hpp"
 #include "ttnn/operations/data_movement/slice/slice.hpp"
@@ -25,6 +26,9 @@
 #include "ttnn/operations/matmul/matmul.hpp"
 #include "ttnn/operations/sliding_window/halo/halo.hpp"
 #include "ttnn/operations/sliding_window/sliding_window.hpp"
+#include "ttnn/operations/data_movement/permute/permute.hpp"
+#include "ttnn/operations/data_movement/pad/pad.hpp"
+#include "ttnn/operations/data_movement/view/view.hpp"
 #include "ttnn/operations/core/core.hpp"
 #include "ttnn/operations/data_movement/move/move.hpp"
 #include "ttnn/operations/experimental/slice_write/slice_write.hpp"
@@ -343,10 +347,58 @@ Result conv2d_DRAM(
     return {dram_output_tensor, output_height, output_width, weight_tensor_on_device, bias_tensor_on_device};
 }
 
+ttnn::Tensor convert_tensors_for_1x1_conv(
+    const ttnn::Tensor& input_tensor,
+    uint32_t in_channels,
+    uint32_t out_channels,
+    uint32_t batch_size,
+    uint32_t input_height,
+    uint32_t input_width,
+    std::array<uint32_t, 2> kernel_size,
+    std::array<uint32_t, 2> stride) {
+    ttnn::Tensor in = input_tensor;
+    // auto in_shape = in.get_padded_shape();
+    // std::cout << "in_shape[0]: " << in_shape[0] << ", in_shape[1]: " << in_shape[1] << ", in_shape[2]: " <<
+    // in_shape[2]
+    //           << ", in_shape[3]: " << in_shape[3] << std::endl;
+    auto in_padded_channels = in_channels;
+    in = ttnn::reshape(
+        in,
+        ttnn::Shape(
+            {batch_size, input_height / stride[0], stride[0], input_width / stride[1], stride[1], in_padded_channels}));
+    // in_shape = in.get_logical_shape();
+    // std::cout << "in_shape[0]: " << in_shape[0] << ", in_shape[1]: " << in_shape[1] << ", in_shape[2]: " <<
+    // in_shape[2]
+    //           << ", in_shape[3]: " << in_shape[3] << ", in_shape[4]: " << in_shape[4]
+    //           << ", in_shape[5]: " << in_shape[5] << std::endl;
+    in = ttnn::permute(in, ttnn::SmallVector<int64_t>({0, 1, 3, 2, 4, 5}));
+    // in_shape = in.get_padded_shape();
+    // std::cout << "in_shape[0]: " << in_shape[0] << ", in_shape[1]: " << in_shape[1] << ", in_shape[2]: " <<
+    // in_shape[2]
+    //           << ", in_shape[3]: " << in_shape[3] << ", in_shape[4]: " << in_shape[4]
+    //           << ", in_shape[5]: " << in_shape[5] << std::endl;
+    in = ttnn::reshape(
+        in,
+        ttnn::Shape(
+            {batch_size,
+             input_height / stride[0],
+             input_width / stride[1],
+             (in_padded_channels)*stride[0] * stride[1]}));
+    // in_shape = in.get_padded_shape();
+    // std::cout << "in_shape[0]: " << in_shape[0] << ", in_shape[1]: " << in_shape[1] << ", in_shape[2]: " <<
+    // in_shape[2]
+    //           << ", in_shape[3]: " << in_shape[3] << std::endl;
+    // in_shape = in.get_logical_shape();
+    // std::cout << "logical shape: " << "in_shape[0]: " << in_shape[0] << ", in_shape[1]: " << in_shape[1]
+    //           << ", in_shape[2]: " << in_shape[2] << ", in_shape[3]: " << in_shape[3] << std::endl;
+
+    return in;
+}
+
 template <typename T>
 Result conv2d_L1(
     QueueId queue_id,
-    const ttnn::Tensor& input_tensor,
+    const ttnn::Tensor& input_tensor_,
     const ttnn::Tensor& weight_tensor,
     T* device,
     uint32_t in_channels,
@@ -365,7 +417,19 @@ Result conv2d_L1(
     const std::optional<const MemoryConfig>& memory_config) {
     Conv2dConfig conv_config = conv_config_.value_or(Conv2dConfig());
     std::array<uint32_t, 4> padding_n4 = sliding_window::get_pair_n4_padding(padding);
-    const bool mm_conv = use_matmul_for_1x1_conv(kernel_size, stride, padding_n4, dilation, groups, conv_config);
+    auto input_tensor = input_tensor_;
+    bool mm_conv = use_matmul_for_1x1_conv(kernel_size, stride, padding_n4, dilation, groups, conv_config);
+    if ((stride[0] == kernel_size[0] && stride[1] == kernel_size[1]) && (stride[0] >= 16 && stride[1] >= 16)) {
+        std::cout << "Converting tensors for 1x1 conv" << std::endl;
+        input_tensor = convert_tensors_for_1x1_conv(
+            input_tensor_, in_channels, out_channels, batch_size, input_height, input_width, kernel_size, stride);
+        input_height = input_height / stride[0];
+        input_width = input_width / stride[1];
+        stride = {1, 1};
+        kernel_size = {1, 1};
+        in_channels = in_channels * kernel_size[0] * kernel_size[1];
+        mm_conv = true;
+    }
     auto [output_height, output_width] =
         calculate_output_image_size({input_height, input_width}, kernel_size, stride, padding_n4, dilation);
 
@@ -448,6 +512,7 @@ Result conv2d_L1(
                 opt_conv_op_block_config.act_block_h_ntiles,
                 input_width,
                 bias_tensor.has_value(),
+                mm_conv,
                 true);
         } else {
             tie(weight_tensor_on_device, bias_tensor_on_device) = prepare_conv_weights_biases_on_device(
@@ -463,7 +528,8 @@ Result conv2d_L1(
                 groups,
                 opt_conv_op_block_config.act_block_h_ntiles,
                 input_width,
-                bias_tensor.has_value());
+                bias_tensor.has_value(),
+                mm_conv);
         }
     }
     // if 1x1 conv w/ stride 1, convert input tensor to tile layout if required
@@ -584,7 +650,6 @@ Result conv2d_L1(
         if (memory_config.has_value() && memory_config.value() != matmul_output.memory_config()) {
             matmul_output = ttnn::to_memory_config(matmul_output, memory_config.value(), std::nullopt);
         }
-
         return {matmul_output, output_height, output_width, weight_tensor_on_device, bias_tensor_on_device};
     }
 }

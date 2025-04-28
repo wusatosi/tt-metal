@@ -613,6 +613,11 @@ std::tuple<ttnn::Tensor, ParallelConfig, ParallelConfig> shard_or_reshard_tensor
     input_tensor = ttnn::reshape(input_tensor, flattened_input_shape, flattened_padded_input_shape);
     const ttnn::Shape input_shape = flattened_input_shape;
 
+    std::cout << "input shape: " << input_shape[0] << ", " << input_shape[1] << ", " << input_shape[2] << ", "
+              << input_shape[3] << std::endl;
+    std::cout << "needs_shard_or_reshard: " << needs_shard_or_reshard << std::endl;
+    std::cout << "input_tensor_on_device: " << input_tensor_on_device << std::endl;
+
     if (needs_shard_or_reshard) {
         uint32_t tensor_height = input_shape[2];
         uint32_t tensor_width = input_shape[3];
@@ -630,6 +635,7 @@ std::tuple<ttnn::Tensor, ParallelConfig, ParallelConfig> shard_or_reshard_tensor
         // In case we are in auto sharded codepath and convolution maps to matmul
         // Skip sharding of the input tensor and run the matmul out of interleaved tensor.
         bool auto_shard_mm = auto_shard && is_mm_conv;
+        std::cout << "auto_shard_mm: " << auto_shard_mm << std::endl;
         if (input_tensor_on_device) {
             if (is_mm_conv && input_tensor.layout() == Layout::ROW_MAJOR &&
                 parallel_config.shard_scheme != TensorMemoryLayout::HEIGHT_SHARDED) {
@@ -891,9 +897,10 @@ Conv2dConfig determine_conv_config_for_auto_shard(
     if (width.size < winning_config.size && !is_mm_conv) {
         winning_config = width;
     }
+    winning_config = block;
 
-    log_debug(LogOp, "Core counts H: {} B: {}, W: {}", height.core_count, block.core_count, width.core_count);
-    log_debug(
+    log_info(LogOp, "Core counts H: {} B: {}, W: {}", height.core_count, block.core_count, width.core_count);
+    log_info(
         LogOp, "Selected shard layout: {}, size: {}", winning_config.conv_config.shard_layout, winning_config.size);
 
     return winning_config.conv_config;
