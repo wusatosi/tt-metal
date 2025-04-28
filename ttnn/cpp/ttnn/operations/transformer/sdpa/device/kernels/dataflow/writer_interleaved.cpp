@@ -126,17 +126,17 @@ void kernel_main() {
                 uint32_t l1_read_addr = get_read_ptr(cb_out);
                 for (uint32_t row = 0; row < out_row_tile_count; ++row) {
                     for (uint32_t col = 0; col < DHt; ++col) {
-                        noc_async_write_tile(out_tile_id, out_writer, l1_read_addr);
+                        // noc_async_write_tile(out_tile_id, out_writer, l1_read_addr);
                         ++out_tile_id;
                         l1_read_addr += tile_bytes;
 
                         if (++barrier_count == barrier_threshold) {
-                            noc_async_writes_flushed();
+                            // noc_async_writes_flushed();
                             barrier_count = 0;
                         }
                     }
                 }
-                noc_async_write_barrier();
+                // noc_async_write_barrier();
                 cb_pop_front(cb_out, out_chunk_tiles);
             }
         }

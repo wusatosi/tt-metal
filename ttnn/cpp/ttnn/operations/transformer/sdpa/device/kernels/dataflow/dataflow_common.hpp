@@ -82,17 +82,17 @@ void read_chunk_with_padding(
     for (uint32_t row = 0; row < src_rows; ++row) {
         uint32_t write_ptr = base_write_ptr + row * outer_ptr_stride;
         for (uint32_t col = 0; col < src_cols; ++col) {
-            noc_async_read_tile(start_tile_id, reader, write_ptr);
+            // noc_async_read_tile(start_tile_id, reader, write_ptr);
             start_tile_id += 1;
             write_ptr += inner_ptr_stride;
 
             if (++barrier_count == barrier_threshold) {
-                noc_async_read_barrier();
+                // noc_async_read_barrier();
                 barrier_count = 0;
             }
         }
     }
-    noc_async_read_barrier();
+    // noc_async_read_barrier();
 
     cb_push_back(cb_id, num_tiles);
 }
@@ -127,23 +127,23 @@ void read_paged_chunk_with_padding(
             virtual_row_num, cur_head, page_table_ptr);
 
         for (uint32_t col = 0; col < src_cols; ++col) {
-            noc_async_read_tile(physical_tile_id, reader, write_ptr);
+            // noc_async_read_tile(physical_tile_id, reader, write_ptr);
             physical_tile_id += 1;
             write_ptr += inner_ptr_stride;
 
             if (++barrier_count == barrier_threshold) {
-                noc_async_read_barrier();
+                // noc_async_read_barrier();
                 barrier_count = 0;
             }
         }
     }
-    noc_async_read_barrier();
+    // noc_async_read_barrier();
     cb_push_back(cb_id, num_tiles);
 }
 
 template <uint32_t tile_bytes>
 void copy_tile(uint64_t noc_read_addr_base, uint32_t q_write_ptr_base, uint32_t src_tile_id, uint32_t dst_tile_id) {
-    noc_async_read(
+    // noc_async_read(
         noc_read_addr_base + src_tile_id * tile_bytes, q_write_ptr_base + dst_tile_id * tile_bytes, tile_bytes);
 }
 
@@ -157,10 +157,10 @@ void fill_tile(uint32_t cb_id, uint32_t tile_id, uint32_t val) {
 
         // Fill tile with zeros
         for (uint32_t i = 0; i < num_zeros_reads; ++i) {
-            noc_async_read(zeros_noc_addr, write_addr, MEM_ZEROS_SIZE);
+            // noc_async_read(zeros_noc_addr, write_addr, MEM_ZEROS_SIZE);
             write_addr += MEM_ZEROS_SIZE;
         }
-        noc_async_read_barrier();
+        // noc_async_read_barrier();
     } else {
         // Fill 2 uint16 datums in each writes to optimize for performance
         volatile tt_l1_ptr uint32_t* ptr =
@@ -309,7 +309,7 @@ void generate_causal_mask(uint32_t Sq_chunk_t, uint32_t Sk_chunk_t, uint32_t q_c
             }
         }
     }
-    noc_async_read_barrier();
+    // noc_async_read_barrier();
     cb_push_back(cb_mask_in, mask_size_tiles);
 }
 
@@ -362,7 +362,7 @@ void generate_noncausal_padded_mask(uint32_t Sq_chunk_t, uint32_t Sk_chunk_t, ui
             }
         }
     }
-    noc_async_read_barrier();
+    // noc_async_read_barrier();
     cb_push_back(cb_mask_in, mask_size_tiles);
 }
 
@@ -391,12 +391,12 @@ struct CatAddrGenerator {
     uint32_t maybe_read_tile(uint32_t d0, uint32_t d1, uint32_t d2, uint32_t d3, uint32_t dst_addr) const {
         if (d2 < first_shape.shape[2]) {
             uint32_t tile_id = first_shape.id_of(d0, d1, d2, d3);
-            noc_async_read_tile(tile_id, first_reader, dst_addr);
+            // noc_async_read_tile(tile_id, first_reader, dst_addr);
             return 1;
         } else if (d2 >= first_seq_padded && (d2 - first_seq_padded) < second_shape.shape[2]) {
             uint32_t adjusted_seq = d2 - first_seq_padded;
             uint32_t tile_id = second_shape.id_of(d0, d1, adjusted_seq, d3);
-            noc_async_read_tile(tile_id, second_reader, dst_addr);
+            // noc_async_read_tile(tile_id, second_reader, dst_addr);
             return 1;
         }
         return 0;
@@ -405,12 +405,12 @@ struct CatAddrGenerator {
     uint32_t maybe_write_tile(uint32_t d0, uint32_t d1, uint32_t d2, uint32_t d3, uint32_t src_addr) const {
         if (d2 < first_shape.shape[2]) {
             uint32_t tile_id = first_shape.id_of(d0, d1, d2, d3);
-            noc_async_write_tile(tile_id, first_reader, src_addr);
+            // noc_async_write_tile(tile_id, first_reader, src_addr);
             return 1;
         } else if (d2 >= first_seq_padded && (d2 - first_seq_padded) < second_shape.shape[2]) {
             uint32_t adjusted_seq = d2 - first_seq_padded;
             uint32_t tile_id = second_shape.id_of(d0, d1, adjusted_seq, d3);
-            noc_async_write_tile(tile_id, second_reader, src_addr);
+            // noc_async_write_tile(tile_id, second_reader, src_addr);
             return 1;
         }
         return 0;
@@ -457,12 +457,12 @@ void read_block(
             write_ptr += inner_ptr_stride;
             barrier_count += did_read;
             if (barrier_count == barrier_threshold) {
-                noc_async_read_barrier();
+                // noc_async_read_barrier();
                 barrier_count = 0;
             }
         }
     }
-    noc_async_read_barrier();
+    // noc_async_read_barrier();
     cb_push_back(cb_id, num_tiles);
 }
 
@@ -491,11 +491,11 @@ void write_block(
 
             barrier_count += did_write;
             if (barrier_count == barrier_threshold) {
-                noc_async_writes_flushed();
+                // noc_async_writes_flushed();
                 barrier_count = 0;
             }
         }
     }
-    noc_async_write_barrier();
+    // noc_async_write_barrier();
     cb_pop_front(cb_id, num_tiles);
 }
