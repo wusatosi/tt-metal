@@ -547,7 +547,7 @@ static_assert(sizeof(LowLatencyMeshPacketHeader) == 64, "sizeof(LowLatencyPacket
 // TODO: Should be piped from host to determine which packet header to use
 #define FABRIC_LOW_LATENCY_MODE 1
 
-#ifdef FABRIC_2D
+#ifdef FABRIC_2D_XX
 static constexpr size_t header_size_bytes = sizeof(LowLatencyMeshPacketHeader);
 #define PACKET_HEADER_TYPE tt::tt_fabric::LowLatencyMeshPacketHeader
 #define ROUTING_FIELDS_TYPE tt::tt_fabric::LowLatencyMeshRoutingFields

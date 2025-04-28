@@ -355,6 +355,7 @@ FabricEriscDatamoverBuilder::FabricEriscDatamoverBuilder(
         sender_channels_buffer_index_semaphore_id,
 
     const FabricEriscDatamoverConfig& config,
+    eth_chan_directions direction,
     bool enable_persistent_mode,
     bool build_in_worker_connection_mode,
     bool dateline_connection) :
@@ -362,6 +363,7 @@ FabricEriscDatamoverBuilder::FabricEriscDatamoverBuilder(
     my_noc_x(my_noc_x),
     my_noc_y(my_noc_y),
     config(config),
+    direction(direction),
     my_chip_id(my_chip_id),
     peer_chip_id(peer_chip_id),
     handshake_address(tt::round_up(
@@ -473,7 +475,9 @@ std::vector<uint32_t> FabricEriscDatamoverBuilder::get_compile_time_args() const
         config.senders_completed_packet_header_cb_address[3],
         FabricEriscDatamoverConfig::sender_completed_packet_header_cb_size_headers,
         config.senders_completed_packet_header_cb_address[4],
-        FabricEriscDatamoverConfig::sender_completed_packet_header_cb_size_headers};
+        FabricEriscDatamoverConfig::sender_completed_packet_header_cb_size_headers,
+        config.topology == Topology::Mesh,
+        this->direction};
 }
 
 std::vector<uint32_t> FabricEriscDatamoverBuilder::get_runtime_args() const {
@@ -490,7 +494,7 @@ std::vector<uint32_t> FabricEriscDatamoverBuilder::get_runtime_args() const {
         this->downstream_vcs_sender_channel_buffer_index_semaphore_id[3],
         this->downstream_vcs_sender_channel_buffer_index_semaphore_id[4],
 
-        this->downstream_edm_vcs_buffer_base_address[1] != std::nullopt,
+        this->downstream_edms_connected,
         this->downstream_edm_vcs_buffer_base_address[1].value_or(0),
         this->downstream_edm_vcs_noc_x[1].value_or(0),
         this->downstream_edm_vcs_noc_y[1].value_or(0),
@@ -640,6 +644,7 @@ FabricEriscDatamoverBuilder FabricEriscDatamoverBuilder::build(
             sender_channels_buffer_index_semaphore_id,
 
             config,
+            direction,
             enable_persistent_mode,
             build_in_worker_connection_mode,
             dateline_connection);
@@ -675,6 +680,7 @@ FabricEriscDatamoverBuilder FabricEriscDatamoverBuilder::build(
             sender_channels_buffer_index_semaphore_id,
 
             config,
+            direction,
             enable_persistent_mode,
             dateline_connection);
     }
@@ -726,42 +732,86 @@ SenderWorkerAdapterSpec FabricEriscDatamoverBuilder::build_connection_to_fabric_
 void FabricEriscDatamoverBuilder::connect_to_downstream_edm(const FabricEriscDatamoverBuilder& downstream_edm) {
     TT_FATAL(
         !this->build_in_worker_connection_mode, "Tried to connect two EDMs to each other in worker connection mode");
+    const auto ds_noc_x = downstream_edm.get_noc_x();
+    const auto ds_noc_y = downstream_edm.get_noc_y();
+    eth_chan_directions ds_dir = downstream_edm.get_direction();
 
-    bool mesh = config.topology == Topology::Mesh;
-    uint32_t downstream_edms =
-        mesh ? FabricEriscDatamoverConfig::num_sender_channels_2d : FabricEriscDatamoverConfig::num_sender_channels;
-    for (uint32_t i = 1; i < downstream_edms; i++) {
-        if (i == 0) {
-            // this->downstream_edm_vcs_noc_x[0] = this->my_noc_x;
-            // this->downstream_edm_vcs_noc_y[0] = this->my_noc_y;
-            // this->downstream_edm_vcs_buffer_base_address[0] = 0;
-            // this->downstream_edm_vcs_semaphore_address[0] = 0;
-            // this->downstream_edm_vcs_worker_registration_address[0] = 0;
-            // this->downstream_edm_vcs_worker_location_info_address[0] = 0;
-            // if (mesh == false) {
-            //     this->downstream_vcs_sender_channel_buffer_index_semaphore_id[0] =
-            //         this->sender_channels_buffer_index_semaphore_id[0];
-            // }
-        } else {
-            const auto adapter_spec = downstream_edm.build_connection_to_fabric_channel(i);
+    log_info(
+        tt::LogTest,
+        "EDM at x={}, y={}, Direction={} :: Connecting to downstream EDM at x={}, y={}, VC={}, Direction={}",
+        my_noc_x,
+        my_noc_y,
+        direction,
+        ds_noc_x,
+        ds_noc_y,
+        0,
+        ds_dir);
 
-            log_trace(
-                tt::LogTest,
-                "Connecting to downstream EDM at x={}, y={} VC={}",
-                adapter_spec.edm_noc_x,
-                adapter_spec.edm_noc_y,
-                i);
+    // VC 0
+    auto ds_edm_send_chan = config.topology == Topology::Mesh ? this->direction : 1;
+    auto adapter_spec = downstream_edm.build_connection_to_fabric_channel(ds_edm_send_chan);
 
-            this->downstream_edm_vcs_noc_x[i] = adapter_spec.edm_noc_x;
-            this->downstream_edm_vcs_noc_y[i] = adapter_spec.edm_noc_y;
-            this->downstream_edm_vcs_buffer_base_address[i] = adapter_spec.edm_buffer_base_addr;
-            this->downstream_edm_vcs_semaphore_address[i] = adapter_spec.edm_l1_sem_addr;
-            this->downstream_edm_vcs_worker_registration_address[i] = adapter_spec.edm_connection_handshake_addr;
-            this->downstream_edm_vcs_worker_location_info_address[i] = adapter_spec.edm_worker_location_info_addr;
-            this->downstream_vcs_sender_channel_buffer_index_semaphore_id[i] = adapter_spec.buffer_index_semaphore_id;
+    if (config.topology == Topology::Mesh) {
+        uint32_t val = this->downstream_edm_vcs_noc_x[1].value_or(0);
+        val |= (ds_noc_x << (ds_dir * 8));
+        this->downstream_edm_vcs_noc_x[1] = val;
+
+        val = this->downstream_edm_vcs_noc_y[1].value_or(0);
+        val |= (ds_noc_y << (ds_dir * 8));
+        this->downstream_edm_vcs_noc_y[1] = val;
+
+        this->downstream_edms_connected |= 0x1 << ds_dir;
+    } else {
+        this->downstream_edm_vcs_noc_x[1] = ds_noc_x;
+        this->downstream_edm_vcs_noc_y[1] = ds_noc_y;
+        this->downstream_vcs_sender_channel_buffer_index_semaphore_id[1] = adapter_spec.buffer_index_semaphore_id;
+        this->downstream_edms_connected = 1;
+    }
+
+    this->downstream_edm_vcs_buffer_base_address[1] = adapter_spec.edm_buffer_base_addr;
+    this->downstream_edm_vcs_semaphore_address[1] = adapter_spec.edm_l1_sem_addr;
+    this->downstream_edm_vcs_worker_registration_address[1] = adapter_spec.edm_connection_handshake_addr;
+    this->downstream_edm_vcs_worker_location_info_address[1] = adapter_spec.edm_worker_location_info_addr;
+
+    // VC 1
+    ds_edm_send_chan = config.topology == Topology::Mesh ? FabricEriscDatamoverConfig::num_sender_channels_2d - 1
+                                                         : FabricEriscDatamoverConfig::num_sender_channels - 1;
+    adapter_spec = downstream_edm.build_connection_to_fabric_channel(ds_edm_send_chan);
+
+    bool connect_vc1 = (this->direction == eth_chan_directions::EAST && ds_dir == eth_chan_directions::WEST) ||
+                       (this->direction == eth_chan_directions::WEST && ds_dir == eth_chan_directions::EAST) ||
+                       (this->direction == eth_chan_directions::NORTH && ds_dir == eth_chan_directions::SOUTH) ||
+                       (this->direction == eth_chan_directions::SOUTH && ds_dir == eth_chan_directions::NORTH);
+
+    if (connect_vc1) {
+        log_info(
+            tt::LogTest,
+            "EDM at x={}, y={}, Direction={} :: Connecting to downstream EDM at x={}, y={}, VC={}, Direction={}",
+            my_noc_x,
+            my_noc_y,
+            direction,
+            ds_noc_x,
+            ds_noc_y,
+            1,
+            ds_dir);
+
+        this->downstream_edm_vcs_noc_x[2] = ds_noc_x;
+        this->downstream_edm_vcs_noc_y[2] = ds_noc_y;
+        this->downstream_edm_vcs_buffer_base_address[2] = adapter_spec.edm_buffer_base_addr;
+        this->downstream_edm_vcs_semaphore_address[2] = adapter_spec.edm_l1_sem_addr;
+        this->downstream_edm_vcs_worker_registration_address[2] = adapter_spec.edm_connection_handshake_addr;
+        this->downstream_edm_vcs_worker_location_info_address[2] = adapter_spec.edm_worker_location_info_addr;
+        if (config.topology != Topology::Mesh) {
+            this->downstream_vcs_sender_channel_buffer_index_semaphore_id[2] = adapter_spec.buffer_index_semaphore_id;
         }
     }
 }
+
+eth_chan_directions FabricEriscDatamoverBuilder::get_direction() const { return this->direction; }
+
+size_t FabricEriscDatamoverBuilder::get_noc_x() const { return this->my_noc_x; }
+
+size_t FabricEriscDatamoverBuilder::get_noc_y() const { return this->my_noc_y; }
 
 void FabricEriscDatamoverBuilder::teardown_from_host(
     tt::tt_metal::IDevice* d, tt::tt_fabric::TerminationSignal termination_signal) const {

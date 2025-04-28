@@ -152,6 +152,7 @@ public:
     static constexpr size_t default_firmware_context_switch_interval = 10000;
     // payload only, no header
     static constexpr size_t default_packet_payload_size_bytes = tt::tile_size(tt::DataFormat::Bfp8_b) * 4;
+    static constexpr size_t default_mesh_packet_payload_size_bytes = tt::tile_size(tt::DataFormat::Bfp8_b) * 2;
 
     FabricEriscDatamoverBuilder(
         const CoreCoord& my_eth_core_logical,
@@ -172,6 +173,7 @@ public:
             sender_channels_buffer_index_semaphore_id,
 
         const FabricEriscDatamoverConfig& config,
+        eth_chan_directions direction,
         bool enable_persistent_mode,
         bool build_in_worker_connection_mode = false,
         bool dateline_connection = false);
@@ -196,6 +198,11 @@ public:
     [[nodiscard]] std::vector<uint32_t> get_runtime_args() const;
 
     void connect_to_downstream_edm(const FabricEriscDatamoverBuilder& downstream_edm);
+    void connect_to_downstream_edm_mesh(const FabricEriscDatamoverBuilder& downstream_edm);
+
+    eth_chan_directions get_direction() const;
+    size_t get_noc_x() const;
+    size_t get_noc_y() const;
 
     void dump_to_log() const {
         // TODO
@@ -232,6 +239,8 @@ public:
     size_t termination_signal_ptr = 0;
     size_t edm_local_sync_ptr = 0;
     size_t edm_status_ptr = 0;
+    eth_chan_directions direction = eth_chan_directions::EAST;
+    size_t downstream_edms_connected = 0;
 
     // Semaphore IDs
     // this is the receiver channel's local sem for flow controlling with downstream fabric sender

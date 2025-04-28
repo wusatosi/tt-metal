@@ -193,10 +193,12 @@ constexpr size_t sender_3_completed_packet_header_cb_address = get_compile_time_
 constexpr size_t sender_3_completed_packet_header_cb_size_headers = get_compile_time_arg_val(53);
 constexpr size_t sender_4_completed_packet_header_cb_address = get_compile_time_arg_val(54);
 constexpr size_t sender_4_completed_packet_header_cb_size_headers = get_compile_time_arg_val(55);
+constexpr size_t is_2d_fabric = get_compile_time_arg_val(56);
+constexpr size_t my_direction = get_compile_time_arg_val(57);
 
 #ifdef WAIT_FOR_HOST_SIGNAL
-constexpr bool is_local_handshake_master = get_compile_time_arg_val(56);
-constexpr uint32_t local_handshake_master_eth_chan = get_compile_time_arg_val(57);
-constexpr uint32_t num_local_edms = get_compile_time_arg_val(58);
-constexpr uint32_t edm_channels_mask = get_compile_time_arg_val(59);
+constexpr bool is_local_handshake_master = get_compile_time_arg_val(58);
+constexpr uint32_t local_handshake_master_eth_chan = get_compile_time_arg_val(59);
+constexpr uint32_t num_local_edms = get_compile_time_arg_val(60);
+constexpr uint32_t edm_channels_mask = get_compile_time_arg_val(61);
 #endif

@@ -1173,11 +1173,20 @@ std::unique_ptr<Program> create_and_compile_1d_fabric_program(IDevice* device, F
     } else {
         connect_downstream_builders(RoutingDirection::N, RoutingDirection::S);
         connect_downstream_builders(RoutingDirection::E, RoutingDirection::W);
+        if (edm_config.topology == Topology::Mesh) {
+            connect_downstream_builders(RoutingDirection::N, RoutingDirection::E);
+            connect_downstream_builders(RoutingDirection::N, RoutingDirection::W);
+            connect_downstream_builders(RoutingDirection::S, RoutingDirection::E);
+            connect_downstream_builders(RoutingDirection::S, RoutingDirection::W);
+        }
     }
 
     // TODO: this will not be needed once tests are migrated and should be the default behavior
     std::map<string, string> defines = {};
     defines["WAIT_FOR_HOST_SIGNAL"] = "";
+    if (edm_config.topology == Topology::Mesh) {
+        defines["FABRIC_2D"] = "";
+    }
 
     for (const auto& [eth_chan, edm_builder] : edm_builders) {
         const std::vector<uint32_t> edm_kernel_rt_args = edm_builder.get_runtime_args();
@@ -1188,6 +1197,21 @@ std::unique_ptr<Program> create_and_compile_1d_fabric_program(IDevice* device, F
         eth_sender_ct_args.push_back(master_edm_chan);
         eth_sender_ct_args.push_back(num_edm_chans);
         eth_sender_ct_args.push_back(edm_channels_mask);
+
+        log_debug(
+            tt::LogDevice,
+            "MeshId {}, Chip Id {}, Eth Channel {}, Direction {}",
+            mesh_chip_id.first,
+            mesh_chip_id.second,
+            eth_chan,
+            edm_builder.get_direction());
+        std::ostringstream oss;
+        oss << "[";
+        for (auto val : edm_kernel_rt_args) {
+            oss << " 0x" << std::hex << val;
+        }
+        oss << " ]";
+        log_debug(tt::LogDevice, "EDM RT Args {}", oss.str());
 
         auto eth_logical_core = tt::tt_metal::MetalContext::instance()
                                     .get_cluster()
@@ -1219,7 +1243,8 @@ std::unique_ptr<Program> create_and_compile_fabric_program(IDevice* device) {
     if (tt_fabric::is_1d_fabric_config(fabric_config)) {
         return create_and_compile_1d_fabric_program(device, fabric_config);
     } else if (tt_fabric::is_2d_fabric_config(fabric_config)) {
-        return create_and_compile_2d_fabric_program(device, fabric_config);
+        // return create_and_compile_2d_fabric_program(device, fabric_config);
+        return create_and_compile_1d_fabric_program(device, fabric_config);
     }
     return nullptr;
 }
