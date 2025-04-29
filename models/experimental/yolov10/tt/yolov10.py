@@ -50,7 +50,7 @@ class TtnnYolov10:
     def __call__(self, input_tensor):
         conv1_out = self.conv1(input_tensor)
         conv2_out = self.conv2(conv1_out)
-        features1 = self.c2f_1(conv2_out)
+        features1 = self.c2f_1(conv2_out, memory_config=ttnn.DRAM_MEMORY_CONFIG)
         conv3_out = self.conv3(features1)
         features2 = self.c2f_2(conv3_out)
         down1 = self.scdown_1(features2)
