@@ -187,6 +187,8 @@ void MAIN {
                     pack_reconfig_data_format(cb_qk_im);
                     sub_exp_block_bcast_cols_inplace<cb_qk_im, Sq_chunk_t, Sk_chunk_t>(alias_cur_max);
 
+                    reconfig_data_format(cb_qk_im, cb_identity_scale_in);
+                    pack_reconfig_data_format(alias_cur_sum);
                     /* cb_cur_sum = sum(cb_qk_im, dim=-1) */
                     reduce_c<
                         PoolType::SUM,
