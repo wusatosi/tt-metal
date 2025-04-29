@@ -336,6 +336,7 @@ def run_all_to_all_impl(
     trace_mode=False,
     mem_config=None,
     do_check=True,
+    reuse_inputs=False,
 ):
     if num_iters < 1:
         pytest.fail("num_iters must be >= 1")
@@ -408,7 +409,7 @@ def run_all_to_all_impl(
     input_tensor_mesh_list = []
     output_tensor_goldens_list = []
 
-    for i in range(num_iters):
+    for i in range(num_iters if not reuse_inputs else 1):
         output_tensor = torch.rand(logical_shape).bfloat16()
         # shard_shape = list(logical_shape)
         # shard_shape[in_dim] = shard_shape[in_dim] // num_devices
@@ -448,7 +449,7 @@ def run_all_to_all_impl(
     else:
         for i in range(num_iters):
             tt_out_tensor = ttnn.experimental.all_to_all_async(
-                input_tensor_mesh_list[i],
+                input_tensor_mesh_list[i if not reuse_inputs else 0],
                 persistent_intermediate_buffer=persistent_intermediate_buffers[i],
                 persistent_output_buffer=persistent_output_buffers[i],
                 in_dim=in_dim,
@@ -469,7 +470,7 @@ def run_all_to_all_impl(
     if do_check:
         for tensor_index in range(len(tt_out_tensor_list)):
             tt_out_tensor = tt_out_tensor_list[tensor_index]
-            output_tensors = output_tensor_goldens_list[tensor_index]
+            output_tensors = output_tensor_goldens_list[tensor_index if not reuse_inputs else 0]
             for i, t in enumerate(ttnn.get_device_tensors(tt_out_tensor)):
                 tt_output_tensor = t.cpu().to(ttnn.ROW_MAJOR_LAYOUT).to_torch()
                 output_tensor = output_tensors[i]
@@ -515,7 +516,11 @@ def run_all_to_all_impl(
     ],
 )
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
-@pytest.mark.parametrize("num_iters, do_check", [(2, True), (6, False), (3, True)], ids=["check", "perf", "stress"])
+@pytest.mark.parametrize(
+    "num_iters, do_check, reuse_inputs",
+    [(2, True, False), (6, False, False), (20, False, True)],
+    ids=["check", "perf", "stress"],
+)
 @pytest.mark.parametrize("enable_async", [True])
 def test_all_to_all(
     t3k_mesh_device,
@@ -532,6 +537,7 @@ def test_all_to_all(
     function_level_defaults,
     enable_async,
     do_check,
+    reuse_inputs,
 ):
     run_all_to_all_impl(
         t3k_mesh_device,
@@ -550,4 +556,5 @@ def test_all_to_all(
         mem_config=mem_config,
         do_check=do_check,
         trace_mode=False,
+        reuse_inputs=reuse_inputs,
     )
