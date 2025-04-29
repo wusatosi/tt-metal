@@ -58,12 +58,7 @@ def test_sd3(
         spatial_sequence_length=4096,
     )
 
-    prompt = (
-        "An epic, high-definition cinematic shot of a rustic snowy cabin glowing "
-        "warmly at dusk, nestled in a serene winter landscape. Surrounded by gentle "
-        "snow-covered pines and delicate falling snowflakes - captured in a rich, "
-        "atmospheric, wide-angle scene with deep cinematic depth and warmth."
-    )
+    prompt = "A beautiful landscape."
 
     while True:
         new_prompt = input("Enter the input prompt, or q to exit:")
