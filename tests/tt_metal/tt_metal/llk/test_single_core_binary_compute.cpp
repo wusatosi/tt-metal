@@ -41,13 +41,8 @@
 #include "umd/device/types/arch.h"
 #include <tt-metalium/utils.hpp>
 
-namespace tt {
-namespace tt_metal {
-class IDevice;
-}  // namespace tt_metal
-}  // namespace tt
-
 namespace tt::tt_metal {
+class IDevice;
 
 using std::map;
 using std::vector;
@@ -271,22 +266,22 @@ bool single_core_binary(tt_metal::IDevice* device, const SingleCoreBinaryConfig&
         reader_kernel,
         test_config.core,
         {
-            (uint32_t)input0_dram_byte_address,
-            (uint32_t)0,  // dram bank id
-            (uint32_t)input1_dram_byte_address,
-            (uint32_t)0,  // dram bank id
-            (uint32_t)test_config.num_tiles,
-            (uint32_t)input2_dram_byte_address,
-            (uint32_t)0,  // dram bank id
+            input0_dram_byte_address,
+            0,  // dram bank id
+            input1_dram_byte_address,
+            0,  // dram bank id
+            static_cast<std::uint32_t>(test_config.num_tiles),
+            input2_dram_byte_address,
+            0,  // dram bank id
         });
     tt_metal::SetRuntimeArgs(
         program,
         writer_kernel,
         test_config.core,
         {
-            (uint32_t)output_dram_byte_address,
-            (uint32_t)0,  // dram bank id
-            (uint32_t)test_config.num_tiles,
+            output_dram_byte_address,
+            0,  // dram bank id
+            static_cast<std::uint32_t>(test_config.num_tiles),
         });
 
     tt_metal::detail::LaunchProgram(device, program);
@@ -303,325 +298,125 @@ bool single_core_binary(tt_metal::IDevice* device, const SingleCoreBinaryConfig&
 }
 }  // namespace unit_tests::compute::binary
 
-TEST_F(DeviceFixture, TensixBinaryComputeSingleCoreSingleTileAdd) {
-    for (uint8_t i = uint8_t(MathFidelity::LoFi); i <= uint8_t(MathFidelity::HiFi4); i++) {
-        if (i == 1) {
-            continue;
-        }
-        unit_tests::compute::binary::SingleCoreBinaryConfig test_config = {
-            .tile_byte_size = 2 * 32 * 32,
-            .l1_input_data_format = tt::DataFormat::Float16_b,
-            .l1_output_data_format = tt::DataFormat::Float16_b,
-            .core = CoreCoord(0, 0),
-            .binary_op = "add",
-            .math_fidelity = MathFidelity(i)};
-        test_config.num_tiles = 1;
-        tt::log_info(tt::LogTest, "Math Fidelity = {}", i);
-        for (unsigned int id = 0; id < num_devices_; id++) {
-            ASSERT_TRUE(unit_tests::compute::binary::single_core_binary(devices_.at(id), test_config));
+using TensixBinaryComputeSingleCoreTestParameters = std::tuple<MathFidelity, std::string, std::int32_t, bool>;
+using TensixBinaryComputeSingleCoreDestAccTestParameters = std::tuple<MathFidelity, std::string>;
+
+namespace {
+std::string ConvertToCamelCase(std::string_view input) {
+    std::string result;
+    result.reserve(input.size());
+    bool capitalize = true;
+
+    for (auto ch : input) {
+        if (ch == '_') {
+            capitalize = true;
+        } else {
+            result += capitalize ? std::toupper(ch) : ch;
+            capitalize = false;
         }
     }
+
+    return result;
 }
 
-TEST_F(DeviceFixture, TensixBinaryComputeSingleCoreSingleTileSub) {
-    for (uint8_t i = uint8_t(MathFidelity::LoFi); i <= uint8_t(MathFidelity::HiFi4); i++) {
-        if (i == 1) {
-            continue;
-        }
-        unit_tests::compute::binary::SingleCoreBinaryConfig test_config = {
-            .tile_byte_size = 2 * 32 * 32,
-            .l1_input_data_format = tt::DataFormat::Float16_b,
-            .l1_output_data_format = tt::DataFormat::Float16_b,
-            .core = CoreCoord(0, 0),
-            .binary_op = "sub",
-            .math_fidelity = MathFidelity(i)};
-        test_config.num_tiles = 1;
-        tt::log_info(tt::LogTest, "Math Fidelity = {}", i);
-        for (unsigned int id = 0; id < num_devices_; id++) {
-            ASSERT_TRUE(unit_tests::compute::binary::single_core_binary(devices_.at(id), test_config));
-        }
+auto getFidelityName = [](MathFidelity fidelity) -> std::string {
+    static const std::string fidelityNames[] = {
+        "LoFi",   // Fidelity::LoFi
+        "",       // Fidelity::Invalid
+        "HiFi2",  // Fidelity::HiFi2
+        "HiFi3",  // Fidelity::HiFi3
+        "HiFi4"   // Fidelity::HiFi4
+    };
+    assert(fidelity >= MathFidelity::LoFi && fidelity <= MathFidelity::HiFi4);
+    return fidelityNames[static_cast<int>(fidelity)];
+};
+
+std::string TensixBinaryComputeSingleCoreTestNameGenerator(
+    const ::testing::TestParamInfo<TensixBinaryComputeSingleCoreTestParameters>& configuration) {
+    auto [math_fidelity, binary_op, number_of_tiles, is_full_init] = configuration.param;
+    std::string math_fidelity_name = getFidelityName(math_fidelity);
+    binary_op[0] = std::toupper(binary_op[0]);
+    std::string result =
+        ConvertToCamelCase(binary_op) + "_" + math_fidelity_name + "_" + std::to_string(number_of_tiles) + "Tiles";
+    if (is_full_init) {
+        result += "_FullInit";
     }
+    return result;
 }
 
-TEST_F(DeviceFixture, TensixBinaryComputeSingleCoreSingleTileMul) {
-    for (uint8_t i = uint8_t(MathFidelity::LoFi); i <= uint8_t(MathFidelity::HiFi4); i++) {
-        if (i == 1) {
-            continue;
-        }
-        unit_tests::compute::binary::SingleCoreBinaryConfig test_config = {
-            .tile_byte_size = 2 * 32 * 32,
-            .l1_input_data_format = tt::DataFormat::Float16_b,
-            .l1_output_data_format = tt::DataFormat::Float16_b,
-            .core = CoreCoord(0, 0),
-            .binary_op = "mul",
-            .math_fidelity = MathFidelity(i)};
-        test_config.num_tiles = 1;
-        tt::log_info(tt::LogTest, "Math Fidelity = {}", i);
-        for (unsigned int id = 0; id < num_devices_; id++) {
-            ASSERT_TRUE(unit_tests::compute::binary::single_core_binary(devices_.at(id), test_config));
-        }
+std::string TensixBinaryComputeSingleCoreDestAccTestNameGenerator(
+    const ::testing::TestParamInfo<TensixBinaryComputeSingleCoreDestAccTestParameters>& configuration) {
+    auto [math_fidelity, binary_op] = configuration.param;
+    std::string math_fidelity_name = getFidelityName(math_fidelity);
+    binary_op[0] = std::toupper(binary_op[0]);
+    std::string result = ConvertToCamelCase(binary_op) + "_" + math_fidelity_name + "_4Tiles";
+    return result;
+}
+};  // namespace
+
+class TensixBinaryComputeSingleCoreFixture
+    : public DeviceFixture,
+      public testing::WithParamInterface<TensixBinaryComputeSingleCoreTestParameters> {};
+
+TEST_P(TensixBinaryComputeSingleCoreFixture, AllOpsTest) {
+    const auto [math_fidelity, binary_op, number_of_tiles, is_full_init] = GetParam();
+    unit_tests::compute::binary::SingleCoreBinaryConfig test_config = {
+        .num_tiles = number_of_tiles,
+        .tile_byte_size = 2 * 32 * 32,
+        .l1_input_data_format = tt::DataFormat::Float16_b,
+        .l1_output_data_format = tt::DataFormat::Float16_b,
+        .core = CoreCoord(0, 0),
+        .binary_op = binary_op,
+        .full_init = is_full_init,
+        .math_fidelity = math_fidelity,
+    };
+    ASSERT_EQ(num_devices_, devices_.size());
+    for (unsigned int id = 0; id < num_devices_; id++) {
+        ASSERT_TRUE(unit_tests::compute::binary::single_core_binary(devices_[id], test_config));
     }
-}
+};
 
-TEST_F(DeviceFixture, TensixBinaryComputeSingleCoreSingleTileAddFullInit) {
-    for (uint8_t i = uint8_t(MathFidelity::LoFi); i <= uint8_t(MathFidelity::HiFi4); i++) {
-        if (i == 1) {
-            continue;
-        }
-        unit_tests::compute::binary::SingleCoreBinaryConfig test_config = {
-            .tile_byte_size = 2 * 32 * 32,
-            .l1_input_data_format = tt::DataFormat::Float16_b,
-            .l1_output_data_format = tt::DataFormat::Float16_b,
-            .core = CoreCoord(0, 0),
-            .binary_op = "add",
-            .full_init = true,
-            .math_fidelity = MathFidelity(i)};
-        test_config.num_tiles = 1;
-        tt::log_info(tt::LogTest, "Math Fidelity = {}", i);
-        for (unsigned int id = 0; id < num_devices_; id++) {
-            ASSERT_TRUE(unit_tests::compute::binary::single_core_binary(devices_.at(id), test_config));
-        }
-    }
-}
+INSTANTIATE_TEST_CASE_P(
+    AllTensixBinaryOps,
+    TensixBinaryComputeSingleCoreFixture,
+    testing::Combine(
+        testing::Values(MathFidelity::LoFi, MathFidelity::HiFi2, MathFidelity::HiFi3, MathFidelity::HiFi4),
+        testing::Values("add", "sub", "mul", "add_with_dest_reuse", "sub_with_dest_reuse", "mul_with_dest_reuse"),
+        testing::Values(1, 2, 4),
+        testing::Values(true, false)),
+    TensixBinaryComputeSingleCoreTestNameGenerator);
 
-TEST_F(DeviceFixture, TensixBinaryComputeSingleCoreSingleTileSubFullInit) {
-    for (uint8_t i = uint8_t(MathFidelity::LoFi); i <= uint8_t(MathFidelity::HiFi4); i++) {
-        if (i == 1) {
-            continue;
-        }
-        unit_tests::compute::binary::SingleCoreBinaryConfig test_config = {
-            .tile_byte_size = 2 * 32 * 32,
-            .l1_input_data_format = tt::DataFormat::Float16_b,
-            .l1_output_data_format = tt::DataFormat::Float16_b,
-            .core = CoreCoord(0, 0),
-            .binary_op = "sub",
-            .full_init = true,
-            .math_fidelity = MathFidelity(i)};
-        test_config.num_tiles = 1;
-        tt::log_info(tt::LogTest, "Math Fidelity = {}", i);
-        for (unsigned int id = 0; id < num_devices_; id++) {
-            ASSERT_TRUE(unit_tests::compute::binary::single_core_binary(devices_.at(id), test_config));
-        }
-    }
-}
+class TensixBinaryComputeSingleCoreMultiTileDestAccFixture
+    : public DeviceFixture,
+      public testing::WithParamInterface<TensixBinaryComputeSingleCoreDestAccTestParameters> {};
 
-TEST_F(DeviceFixture, TensixBinaryComputeSingleCoreSingleTileMulFullInit) {
-    for (uint8_t i = uint8_t(MathFidelity::LoFi); i <= uint8_t(MathFidelity::HiFi4); i++) {
-        if (i == 1) {
-            continue;
-        }
-        unit_tests::compute::binary::SingleCoreBinaryConfig test_config = {
-            .tile_byte_size = 2 * 32 * 32,
-            .l1_input_data_format = tt::DataFormat::Float16_b,
-            .l1_output_data_format = tt::DataFormat::Float16_b,
-            .core = CoreCoord(0, 0),
-            .binary_op = "mul",
-            .full_init = true,
-            .math_fidelity = MathFidelity(i)};
-        test_config.num_tiles = 1;
-        tt::log_info(tt::LogTest, "Math Fidelity = {}", i);
-        for (unsigned int id = 0; id < num_devices_; id++) {
-            ASSERT_TRUE(unit_tests::compute::binary::single_core_binary(devices_.at(id), test_config));
-        }
-    }
-}
-
-TEST_F(DeviceFixture, TensixBinaryComputeSingleCoreMultiTileAddWithDestReuse) {
-    for (uint8_t i = uint8_t(MathFidelity::LoFi); i <= uint8_t(MathFidelity::HiFi4); i++) {
-        if (i == 1) {
-            continue;
-        }
-        unit_tests::compute::binary::SingleCoreBinaryConfig test_config = {
-            .tile_byte_size = 2 * 32 * 32,
-            .l1_input_data_format = tt::DataFormat::Float16_b,
-            .l1_output_data_format = tt::DataFormat::Float16_b,
-            .core = CoreCoord(0, 0),
-            .binary_op = "add_with_dest_reuse",
-            .math_fidelity = MathFidelity(i)};
-        test_config.num_tiles = 4;
-        tt::log_info(tt::LogTest, "Math Fidelity = {}", i);
-        for (unsigned int id = 0; id < num_devices_; id++) {
-            ASSERT_TRUE(unit_tests::compute::binary::single_core_binary(devices_.at(id), test_config));
-        }
-    }
-}
-
-TEST_F(DeviceFixture, TensixBinaryComputeSingleCoreMultiTileSubWithDestReuse) {
-    for (uint8_t i = uint8_t(MathFidelity::LoFi); i <= uint8_t(MathFidelity::HiFi4); i++) {
-        if (i == 1) {
-            continue;
-        }
-        unit_tests::compute::binary::SingleCoreBinaryConfig test_config = {
-            .tile_byte_size = 2 * 32 * 32,
-            .l1_input_data_format = tt::DataFormat::Float16_b,
-            .l1_output_data_format = tt::DataFormat::Float16_b,
-            .core = CoreCoord(0, 0),
-            .binary_op = "sub_with_dest_reuse",
-            .math_fidelity = MathFidelity(i)};
-        test_config.num_tiles = 4;
-        tt::log_info(tt::LogTest, "Math Fidelity = {}", i);
-        for (unsigned int id = 0; id < num_devices_; id++) {
-            ASSERT_TRUE(unit_tests::compute::binary::single_core_binary(devices_.at(id), test_config));
-        }
-    }
-}
-
-TEST_F(DeviceFixture, TensixBinaryComputeSingleCoreMultiTileMulWithDestReuse) {
-    for (uint8_t i = uint8_t(MathFidelity::LoFi); i <= uint8_t(MathFidelity::HiFi4); i++) {
-        if (i == 1) {
-            continue;
-        }
-        unit_tests::compute::binary::SingleCoreBinaryConfig test_config = {
-            .tile_byte_size = 2 * 32 * 32,
-            .l1_input_data_format = tt::DataFormat::Float16_b,
-            .l1_output_data_format = tt::DataFormat::Float16_b,
-            .core = CoreCoord(0, 0),
-            .binary_op = "mul_with_dest_reuse",
-            .math_fidelity = MathFidelity(i)};
-        test_config.num_tiles = 4;
-        tt::log_info(tt::LogTest, "Math Fidelity = {}", i);
-        for (unsigned int id = 0; id < num_devices_; id++) {
-            ASSERT_TRUE(unit_tests::compute::binary::single_core_binary(devices_.at(id), test_config));
-        }
-    }
-}
-
-TEST_F(DeviceFixture, TensixBinaryComputeSingleCoreMultiTileAdd) {
-    for (uint8_t i = uint8_t(MathFidelity::LoFi); i <= uint8_t(MathFidelity::HiFi4); i++) {
-        if (i == 1) {
-            continue;
-        }
-        unit_tests::compute::binary::SingleCoreBinaryConfig test_config = {
-            .tile_byte_size = 2 * 32 * 32,
-            .l1_input_data_format = tt::DataFormat::Float16_b,
-            .l1_output_data_format = tt::DataFormat::Float16_b,
-            .core = CoreCoord(0, 0),
-            .binary_op = "add",
-            .math_fidelity = MathFidelity(i)};
-        test_config.num_tiles = 4;
-        tt::log_info(tt::LogTest, "Math Fidelity = {}", i);
-        for (unsigned int id = 0; id < num_devices_; id++) {
-            ASSERT_TRUE(unit_tests::compute::binary::single_core_binary(devices_.at(id), test_config));
-        }
-    }
-}
-
-TEST_F(DeviceFixture, TensixBinaryComputeSingleCoreMultiTileSub) {
-    for (uint8_t i = uint8_t(MathFidelity::LoFi); i <= uint8_t(MathFidelity::HiFi4); i++) {
-        if (i == 1) {
-            continue;
-        }
-        unit_tests::compute::binary::SingleCoreBinaryConfig test_config = {
-            .tile_byte_size = 2 * 32 * 32,
-            .l1_input_data_format = tt::DataFormat::Float16_b,
-            .l1_output_data_format = tt::DataFormat::Float16_b,
-            .core = CoreCoord(0, 0),
-            .binary_op = "sub",
-            .math_fidelity = MathFidelity(i)};
-        test_config.num_tiles = 4;
-        tt::log_info(tt::LogTest, "Math Fidelity = {}", i);
-        for (unsigned int id = 0; id < num_devices_; id++) {
-            ASSERT_TRUE(unit_tests::compute::binary::single_core_binary(devices_.at(id), test_config));
-        }
-    }
-}
-
-TEST_F(DeviceFixture, TensixBinaryComputeSingleCoreMultiTileMul) {
-    for (uint8_t i = uint8_t(MathFidelity::LoFi); i <= uint8_t(MathFidelity::HiFi4); i++) {
-        if (i == 1) {
-            continue;
-        }
-        unit_tests::compute::binary::SingleCoreBinaryConfig test_config = {
-            .tile_byte_size = 2 * 32 * 32,
-            .l1_input_data_format = tt::DataFormat::Float16_b,
-            .l1_output_data_format = tt::DataFormat::Float16_b,
-            .core = CoreCoord(0, 0),
-            .binary_op = "mul",
-            .math_fidelity = MathFidelity(i)};
-        test_config.num_tiles = 4;
-        tt::log_info(tt::LogTest, "Math Fidelity = {}", i);
-        for (unsigned int id = 0; id < num_devices_; id++) {
-            ASSERT_TRUE(unit_tests::compute::binary::single_core_binary(devices_.at(id), test_config));
-        }
-    }
-}
-
-TEST_F(DeviceFixture, TensixBinaryComputeSingleCoreMultiTileAddDestAcc) {
-    auto arch = this->arch_;
-    if (arch == tt::ARCH::GRAYSKULL) {
+TEST_P(TensixBinaryComputeSingleCoreMultiTileDestAccFixture, AllOpsTest) {
+    if (arch_ == tt::ARCH::GRAYSKULL) {
         GTEST_SKIP();
     }
-    for (uint8_t i = uint8_t(MathFidelity::LoFi); i <= uint8_t(MathFidelity::HiFi4); i++) {
-        if (i == 1) {
-            continue;
-        }
-        unit_tests::compute::binary::SingleCoreBinaryConfig test_config = {
-            .num_tiles = 4,
-            .tile_byte_size = 2 * 32 * 32,
-            .l1_input_data_format = tt::DataFormat::Float16_b,
-            .l1_output_data_format = tt::DataFormat::Float16_b,
-            .core = CoreCoord(0, 0),
-            .binary_op = "add",
-            .acc_to_dest = true,
-            .math_fidelity = MathFidelity(i),
-        };
-        tt::log_info(tt::LogTest, "Math Fidelity = {}", i);
-        for (unsigned int id = 0; id < num_devices_; id++) {
-            ASSERT_TRUE(unit_tests::compute::binary::single_core_binary(devices_.at(id), test_config));
-        }
+    const auto [math_fidelity, binary_op] = GetParam();
+    unit_tests::compute::binary::SingleCoreBinaryConfig test_config = {
+        .num_tiles = 4,
+        .tile_byte_size = 2 * 32 * 32,
+        .l1_input_data_format = tt::DataFormat::Float16_b,
+        .l1_output_data_format = tt::DataFormat::Float16_b,
+        .core = CoreCoord(0, 0),
+        .binary_op = binary_op,
+        .acc_to_dest = true,
+        .math_fidelity = math_fidelity,
+    };
+    ASSERT_EQ(num_devices_, devices_.size());
+    for (unsigned int id = 0; id < num_devices_; id++) {
+        ASSERT_TRUE(unit_tests::compute::binary::single_core_binary(devices_[id], test_config));
     }
-}
+};
 
-TEST_F(DeviceFixture, TensixBinaryComputeSingleCoreMultiTileSubDestAcc) {
-    auto arch = this->arch_;
-    if (arch == tt::ARCH::GRAYSKULL) {
-        GTEST_SKIP();
-    }
-    for (uint8_t i = uint8_t(MathFidelity::LoFi); i <= uint8_t(MathFidelity::HiFi4); i++) {
-        if (i == 1) {
-            continue;
-        }
-        unit_tests::compute::binary::SingleCoreBinaryConfig test_config = {
-            .num_tiles = 4,
-            .tile_byte_size = 2 * 32 * 32,
-            .l1_input_data_format = tt::DataFormat::Float16_b,
-            .l1_output_data_format = tt::DataFormat::Float16_b,
-            .core = CoreCoord(0, 0),
-            .binary_op = "sub",
-            .acc_to_dest = true,
-            .math_fidelity = MathFidelity(i),
-        };
-        tt::log_info(tt::LogTest, "Math Fidelity = {}", i);
-        for (unsigned int id = 0; id < num_devices_; id++) {
-            ASSERT_TRUE(unit_tests::compute::binary::single_core_binary(devices_.at(id), test_config));
-        }
-    }
-}
-
-TEST_F(DeviceFixture, TensixBinaryComputeSingleCoreMultiTileMulDestAcc) {
-    auto arch = this->arch_;
-    if (arch == tt::ARCH::GRAYSKULL) {
-        GTEST_SKIP();
-    }
-    for (uint8_t i = uint8_t(MathFidelity::LoFi); i <= uint8_t(MathFidelity::HiFi4); i++) {
-        if (i == 1) {
-            continue;
-        }
-        unit_tests::compute::binary::SingleCoreBinaryConfig test_config = {
-            .num_tiles = 4,
-            .tile_byte_size = 2 * 32 * 32,
-            .l1_input_data_format = tt::DataFormat::Float16_b,
-            .l1_output_data_format = tt::DataFormat::Float16_b,
-            .core = CoreCoord(0, 0),
-            .binary_op = "mul",
-            .acc_to_dest = true,
-            .math_fidelity = MathFidelity(i),
-        };
-        tt::log_info(tt::LogTest, "Math Fidelity = {}", i);
-        for (unsigned int id = 0; id < num_devices_; id++) {
-            ASSERT_TRUE(unit_tests::compute::binary::single_core_binary(devices_.at(id), test_config));
-        }
-    }
-}
+INSTANTIATE_TEST_CASE_P(
+    AllTensixBinaryOps,
+    TensixBinaryComputeSingleCoreMultiTileDestAccFixture,
+    testing::Combine(
+        testing::Values(MathFidelity::LoFi, MathFidelity::HiFi2, MathFidelity::HiFi3, MathFidelity::HiFi4),
+        testing::Values("add", "sub", "mul")),
+    TensixBinaryComputeSingleCoreDestAccTestNameGenerator);
 
 }  // namespace tt::tt_metal
