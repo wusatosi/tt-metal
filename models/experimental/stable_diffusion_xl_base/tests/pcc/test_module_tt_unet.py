@@ -10,58 +10,6 @@ from tests.ttnn.utils_for_testing import assert_with_pcc
 from models.utility_functions import torch_random
 
 
-def prepare_ttnn_tensors(
-    device, torch_input_tensor, torch_timestep_tensor, torch_temb_tensor, torch_encoder_tensor, torch_time_ids
-):
-    ttnn_input_tensor = ttnn.from_torch(
-        torch_input_tensor,
-        dtype=ttnn.bfloat16,
-        device=device,
-        layout=ttnn.TILE_LAYOUT,
-        memory_config=ttnn.L1_MEMORY_CONFIG,
-    )
-    B, C, H, W = list(ttnn_input_tensor.shape)
-
-    ttnn_input_tensor = ttnn.permute(ttnn_input_tensor, (0, 2, 3, 1))
-    ttnn_input_tensor = ttnn.reshape(ttnn_input_tensor, (B, 1, H * W, C))
-
-    ttnn_timestep_tensor = ttnn.from_torch(
-        torch_timestep_tensor,
-        dtype=ttnn.bfloat16,
-        device=device,
-        layout=ttnn.TILE_LAYOUT,
-        memory_config=ttnn.L1_MEMORY_CONFIG,
-    )
-    ttnn_encoder_tensor = ttnn.from_torch(
-        torch_encoder_tensor,
-        dtype=ttnn.bfloat16,
-        device=device,
-        layout=ttnn.TILE_LAYOUT,
-        memory_config=ttnn.L1_MEMORY_CONFIG,
-    )
-
-    ttnn_text_embeds = ttnn.from_torch(
-        torch_temb_tensor,
-        dtype=ttnn.bfloat16,
-        device=device,
-        layout=ttnn.TILE_LAYOUT,
-        memory_config=ttnn.L1_MEMORY_CONFIG,
-    )
-    ttnn_time_ids = ttnn.from_torch(
-        torch_time_ids,
-        dtype=ttnn.bfloat16,
-        device=device,
-        layout=ttnn.TILE_LAYOUT,
-        memory_config=ttnn.L1_MEMORY_CONFIG,
-    )
-    ttnn_added_cond_kwargs = {
-        "text_embeds": ttnn_text_embeds,
-        "time_ids": ttnn_time_ids,
-    }
-
-    return ttnn_input_tensor, [B, C, H, W], ttnn_timestep_tensor, ttnn_encoder_tensor, ttnn_added_cond_kwargs
-
-
 @pytest.mark.parametrize(
     "input_shape, timestep_shape, encoder_shape, temb_shape, time_ids_shape",
     [
@@ -84,6 +32,8 @@ def test_unet(
     unet = pipe.unet
     unet.eval()
     state_dict = unet.state_dict()
+
+    torch.manual_seed(0)
 
     torch_unet = unet
     tt_unet = TtUNet2DConditionModel(device, state_dict, "unet")
@@ -111,7 +61,7 @@ def test_unet(
         ttnn_timestep_tensor,
         ttnn_encoder_tensor,
         ttnn_added_cond_kwargs,
-    ) = prepare_ttnn_tensors(
+    ) = tt_unet.prepare_ttnn_tensors(
         device, torch_input_tensor, torch_timestep_tensor, torch_temb_tensor, torch_encoder_tensor, torch_time_ids
     )
 
@@ -132,7 +82,7 @@ def test_unet(
         ttnn_timestep_tensor,
         ttnn_encoder_tensor,
         ttnn_added_cond_kwargs,
-    ) = prepare_ttnn_tensors(
+    ) = tt_unet.prepare_ttnn_tensors(
         device, torch_input_tensor, torch_timestep_tensor, torch_temb_tensor, torch_encoder_tensor, torch_time_ids
     )
 

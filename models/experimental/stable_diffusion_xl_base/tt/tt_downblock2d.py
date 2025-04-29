@@ -16,7 +16,9 @@ class TtDownBlock2D(nn.Module):
         self.resnets = []
 
         for i in range(num_layers):
-            self.resnets.append(TtResnetBlock2D(device, state_dict, f"{module_path}.resnets.{i}"))
+            self.resnets.append(
+                TtResnetBlock2D(device, state_dict, f"{module_path}.resnets.{i}", dram_norm=(i == 0 or i == 1))
+            )
 
         self.downsamplers = TtDownsample2D(
             device, state_dict, f"{module_path}.downsamplers.0", (2, 2), (1, 1), (1, 1), 1
@@ -27,7 +29,9 @@ class TtDownBlock2D(nn.Module):
         output_states = ()
 
         for resnet in self.resnets:
+            print("Starting resnet")
             hidden_states, [C, H, W] = resnet.forward(hidden_states, temb, [B, C, H, W])
+            print("Finished resnet")
             residual = ttnn.to_memory_config(hidden_states, ttnn.DRAM_MEMORY_CONFIG)
             output_states = output_states + (residual,)
 

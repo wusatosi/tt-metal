@@ -100,14 +100,23 @@ def run_demo_inference(
     # - denoising end = none
 
     # 1. Load components
+    # pipeline = DiffusionPipeline.from_pretrained(
+    #     "stabilityai/stable-diffusion-xl-base-1.0",
+    #     torch_dtype=torch.bfloat16,
+    #     use_safetensors=True,
+    # )
+
     pipeline = DiffusionPipeline.from_pretrained(
         "stabilityai/stable-diffusion-xl-base-1.0",
         torch_dtype=torch.bfloat16,
         use_safetensors=True,
+        variant="fp16",
     )
+    unet = pipeline.unet
+    unet.eval()
 
     # 2. Load tt_unet
-    tt_unet = TtUNet2DConditionModel(ttnn_device, pipeline.unet.state_dict(), "unet")
+    tt_unet = TtUNet2DConditionModel(ttnn_device, unet.state_dict(), "unet")
 
     lora_scale = None
     # in case of classifier free guidance:
@@ -252,16 +261,23 @@ def run_demo_inference(
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
         )
 
-        ttnn_latent_model_input = ttnn.permute(ttnn_latent_model_input, (0, 2, 3, 1))
-        ttnn_latent_model_input = ttnn.reshape(ttnn_latent_model_input, (1, 1, B * H * W, C))
+        ttnn_latent_model_input_1 = ttnn.permute(ttnn_latent_model_input, (0, 2, 3, 1))
+        ttnn_latent_model_input_2 = ttnn.reshape(ttnn_latent_model_input_1, (1, 1, B * H * W, C))
+
+        ttnn.deallocate(ttnn_latent_model_input)
+        ttnn.deallocate(ttnn_latent_model_input_1)
 
         ttnn_noise_pred, output_shape = tt_unet.forward(
-            ttnn_latent_model_input,
+            ttnn_latent_model_input_2,
             [B, C, H, W],
             timestep=t,
             encoder_hidden_states=ttnn_prompt_embeds,
             added_cond_kwargs=ttnn_added_cond_kwargs,
-        )[0]
+        )
+
+        print("done with unet start sync")
+        ttnn.synchronize_device(ttnn_device)
+        print("done with unet end sync")
 
         noise_pred = ttnn.to_torch(ttnn_noise_pred)
         noise_pred = noise_pred.reshape(B, output_shape[1], output_shape[2], output_shape[0])
@@ -275,6 +291,7 @@ def run_demo_inference(
         latents = pipeline.scheduler.step(noise_pred, timesteps[i], latents, **extra_step_kwargs, return_dict=False)[0]
 
     # VAE upcasting to float32 is happening in the reference SDXL demo if VAE dtype is float16. If it's bfloat16, it will not be upcasted.
+
     has_latents_mean = hasattr(pipeline.vae.config, "latents_mean") and pipeline.vae.config.latents_mean is not None
     has_latents_std = hasattr(pipeline.vae.config, "latents_std") and pipeline.vae.config.latents_std is not None
     if has_latents_mean and has_latents_std:
@@ -300,11 +317,7 @@ def run_demo_inference(
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 4 * 16384}], indirect=True)
 @pytest.mark.parametrize(
     "prompt",
-    (
-        (
-            "Young male drinking espresso and smoking cigarretes with coca cola zero in New York City on a sunny day with sunglasses, make sure every component is displayed, and that it's coca cola zero!!"
-        ),
-    ),
+    (("Apple"),),
 )
 @pytest.mark.parametrize(
     "num_inference_steps",

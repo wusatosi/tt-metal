@@ -24,6 +24,67 @@ from models.experimental.stable_diffusion_xl_base.tt.sdxl_utility import (
 
 
 class TtUNet2DConditionModel(nn.Module):
+    def prepare_ttnn_tensors(
+        self, device, torch_input_tensor, torch_timestep_tensor, torch_temb_tensor, torch_encoder_tensor, torch_time_ids
+    ):
+        ttnn_input_tensor = ttnn.from_torch(
+            torch_input_tensor,
+            dtype=ttnn.bfloat16,
+            device=device,
+            layout=ttnn.TILE_LAYOUT,
+            memory_config=ttnn.L1_MEMORY_CONFIG,
+        )
+        B, C, H, W = list(ttnn_input_tensor.shape)
+
+        print("ttnn_input_tensor shape pre conversion is: ", ttnn_input_tensor.shape)
+
+        print("torch_timestep_tensor shape is: ", torch_timestep_tensor.shape)
+        print("torch_timestep_tensor is: ", torch_timestep_tensor)
+
+        ttnn_input_tensor = ttnn.permute(ttnn_input_tensor, (0, 2, 3, 1))
+        ttnn_input_tensor = ttnn.reshape(ttnn_input_tensor, (B, 1, H * W, C))
+
+        print("ttnn_input_tensor shape post conversion is: ", ttnn_input_tensor.shape)
+
+        ttnn_timestep_tensor = ttnn.from_torch(
+            torch_timestep_tensor,
+            dtype=ttnn.bfloat16,
+            device=device,
+            layout=ttnn.TILE_LAYOUT,
+            memory_config=ttnn.L1_MEMORY_CONFIG,
+        )
+        print("ttnn_timestep_tensor shape is: ", ttnn_timestep_tensor.shape)
+        print("ttnn_timestep_tensor is: ", ttnn_timestep_tensor)
+
+        ttnn_encoder_tensor = ttnn.from_torch(
+            torch_encoder_tensor,
+            dtype=ttnn.bfloat16,
+            device=device,
+            layout=ttnn.TILE_LAYOUT,
+            memory_config=ttnn.L1_MEMORY_CONFIG,
+        )
+
+        ttnn_text_embeds = ttnn.from_torch(
+            torch_temb_tensor,
+            dtype=ttnn.bfloat16,
+            device=device,
+            layout=ttnn.TILE_LAYOUT,
+            memory_config=ttnn.L1_MEMORY_CONFIG,
+        )
+        ttnn_time_ids = ttnn.from_torch(
+            torch_time_ids,
+            dtype=ttnn.bfloat16,
+            device=device,
+            layout=ttnn.TILE_LAYOUT,
+            memory_config=ttnn.L1_MEMORY_CONFIG,
+        )
+        ttnn_added_cond_kwargs = {
+            "text_embeds": ttnn_text_embeds,
+            "time_ids": ttnn_time_ids,
+        }
+
+        return ttnn_input_tensor, [B, C, H, W], ttnn_timestep_tensor, ttnn_encoder_tensor, ttnn_added_cond_kwargs
+
     def __init__(self, device, state_dict, module_path):
         super().__init__()
 
@@ -72,7 +133,7 @@ class TtUNet2DConditionModel(nn.Module):
             device, conv_weights_out, conv_bias_out, ttnn.bfloat8_b, act_block_h_override=32
         )
 
-        self.norm_core_grid = ttnn.CoreGrid(y=8, x=8)
+        self.norm_core_grid = ttnn.CoreGrid(y=2, x=8)
         self.norm_groups = 32
         self.norm_eps = 1e-5
 
@@ -86,11 +147,48 @@ class TtUNet2DConditionModel(nn.Module):
     def forward(self, sample, input_shape, timestep, encoder_hidden_states, added_cond_kwargs):
         B, C, H, W = input_shape
 
+        print("sample shape is: ", sample.shape, "df is: ", sample.dtype, "padded shape is: ", sample.padded_shape)
+        print("input shape is: ", input_shape)
+        print(
+            "timestep shape is: ",
+            timestep.shape,
+            "df is: ",
+            timestep.dtype,
+            " padded shape is: ",
+            timestep.padded_shape,
+        )
+        print(
+            "encoder_hidden_states shape is: ",
+            encoder_hidden_states.shape,
+            "df is: ",
+            encoder_hidden_states.dtype,
+            " padded shape is: ",
+            encoder_hidden_states.padded_shape,
+        )
+
         temb = self.time_proj.forward(timestep)
         temb = self.time_embedding.forward(temb)
 
         text_embeds = added_cond_kwargs.get("text_embeds")
         time_ids = added_cond_kwargs.get("time_ids")
+
+        print(
+            "text_embeds shape is: ",
+            text_embeds.shape,
+            "df is: ",
+            text_embeds.dtype,
+            " padded shape is: ",
+            text_embeds.padded_shape,
+        )
+        print(
+            "time_ids shape is: ",
+            time_ids.shape,
+            "df is: ",
+            time_ids.dtype,
+            " padded shape is: ",
+            time_ids.padded_shape,
+        )
+
         temb_add = self.add_time_proj.forward(time_ids)
         temb_add = ttnn.to_layout(temb_add, ttnn.ROW_MAJOR_LAYOUT)
         text_embeds = ttnn.to_layout(text_embeds, ttnn.ROW_MAJOR_LAYOUT)
@@ -124,8 +222,8 @@ class TtUNet2DConditionModel(nn.Module):
             return_weights_and_bias=True,
         )
         C = self.conv1_params["output_channels"]
-        self.tt_conv1_weights = d_w
-        self.tt_conv1_bias = d_b
+        # self.tt_conv1_weights = d_w
+        # self.tt_conv1_bias = d_b
 
         sample = ttnn.to_memory_config(sample, ttnn.DRAM_MEMORY_CONFIG)
         residuals = (sample,)
@@ -166,31 +264,39 @@ class TtUNet2DConditionModel(nn.Module):
                     encoder_hidden_states=encoder_hidden_states,
                 )
 
-        sample = ttnn.to_layout(sample, ttnn.ROW_MAJOR_LAYOUT)
+        sample = ttnn.to_layout(sample, ttnn.TILE_LAYOUT)
 
-        grid_coord = ttnn.CoreCoord(self.norm_core_grid.x - 1, self.norm_core_grid.y - 1)
-        shard_grid = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), grid_coord)})
-        shard_shape = B * H * W // self.norm_core_grid.x, C // self.norm_core_grid.y
-        shard_spec = ttnn.ShardSpec(shard_grid, shard_shape, ttnn.ShardOrientation.COL_MAJOR)
-        sharded_mem_config = ttnn.MemoryConfig(
-            ttnn.types.TensorMemoryLayout.BLOCK_SHARDED, ttnn.types.BufferType.L1, shard_spec
-        )
-        sample = ttnn.to_memory_config(sample, sharded_mem_config)
+        # grid_coord = ttnn.CoreCoord(self.norm_core_grid.x - 1, self.norm_core_grid.y - 1)
+        # shard_grid = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), grid_coord)})
+        # shard_shape = B * H * W // self.norm_core_grid.x, C // self.norm_core_grid.y
+        # shard_spec = ttnn.ShardSpec(shard_grid, shard_shape, ttnn.ShardOrientation.COL_MAJOR)
+        # sharded_mem_config = ttnn.MemoryConfig(
+        #     ttnn.types.TensorMemoryLayout.BLOCK_SHARDED, ttnn.types.BufferType.L1, shard_spec
+        # )
+        # sample = ttnn.to_memory_config(sample, sharded_mem_config)
 
+        sample = ttnn.to_memory_config(sample, ttnn.DRAM_MEMORY_CONFIG)
+
+        ttnn.synchronize_device(self.device)
+        print("Before final GN")
         sample = ttnn.group_norm(
             sample,
             num_groups=self.norm_groups,
             input_mask=self.input_mask,
             weight=self.gamma_t,
             bias=self.beta_t,
-            memory_config=sharded_mem_config,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
             core_grid=self.norm_core_grid,
             epsilon=self.norm_eps,
+            inplace=False,
+            num_out_blocks=2,
         )
-
+        ttnn.synchronize_device(self.device)
+        print("After final GN")
+        sample = ttnn.to_memory_config(sample, ttnn.DRAM_MEMORY_CONFIG)
         sample = ttnn.silu(sample)
 
-        sample = ttnn.sharded_to_interleaved(sample, ttnn.DRAM_MEMORY_CONFIG)
+        # sample = ttnn.sharded_to_interleaved(sample, ttnn.DRAM_MEMORY_CONFIG)
         self.conv_config.shard_layout = sample.memory_config().memory_layout if sample.is_sharded() else None
         self.conv_config.act_block_h_override = 32 if sample.is_sharded() else 0
 
@@ -216,10 +322,10 @@ class TtUNet2DConditionModel(nn.Module):
             return_weights_and_bias=True,
         )
         C = self.conv2_params["output_channels"]
-        self.tt_conv2_weights = d_w
-        self.tt_conv2_bias = d_b
+        # self.tt_conv2_weights = d_w
+        # self.tt_conv2_bias = d_b
 
-        self.conv_config.preprocess_weights_on_device = False
-        self.conv_config.always_preprocess_weights = False
+        # self.conv_config.preprocess_weights_on_device = False
+        # self.conv_config.always_preprocess_weights = False
 
         return sample, [C, H, W]
