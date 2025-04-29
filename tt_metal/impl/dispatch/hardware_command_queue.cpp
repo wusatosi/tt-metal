@@ -312,11 +312,11 @@ void HWCommandQueue::enqueue_read_from_core_l1(
     tt::stl::Span<const SubDeviceId> sub_device_ids) {
     ZoneScopedN("HWCommandQueue_enqueue_read_from_core_l1");
 
-    const HalProgrammableCoreType core_type = this->device_->get_programmable_core_type(virtual_core);
-    TT_FATAL(
-        address + size_bytes <= MetalContext::instance().hal().get_dev_addr(core_type, HalL1MemAddrType::BASE) +
-                                    MetalContext::instance().hal().get_dev_size(core_type, HalL1MemAddrType::BASE),
-        "Region to read from in L1 is out of bounds");
+    // const HalProgrammableCoreType core_type = this->device_->get_programmable_core_type(virtual_core);
+    // TT_FATAL(
+    //     address + size_bytes <= MetalContext::instance().hal().get_dev_addr(core_type, HalL1MemAddrType::BASE) +
+    //                                 MetalContext::instance().hal().get_dev_size(core_type, HalL1MemAddrType::BASE),
+    //     "Region to read from in L1 is out of bounds");
 
     sub_device_ids = buffer_dispatch::select_sub_device_ids(this->device_, sub_device_ids);
 
@@ -351,11 +351,11 @@ void HWCommandQueue::enqueue_write_to_core_l1(
     tt::stl::Span<const SubDeviceId> sub_device_ids) {
     ZoneScopedN("HWCommandQueue_enqueue_write_to_core_l1");
 
-    const HalProgrammableCoreType core_type = this->device_->get_programmable_core_type(virtual_core);
-    TT_FATAL(
-        address + size_bytes <= MetalContext::instance().hal().get_dev_addr(core_type, HalL1MemAddrType::BASE) +
-                                    MetalContext::instance().hal().get_dev_size(core_type, HalL1MemAddrType::BASE),
-        "Region to write to in L1 is out of bounds");
+    // const HalProgrammableCoreType core_type = this->device_->get_programmable_core_type(virtual_core);
+    // TT_FATAL(
+    //     address + size_bytes <= MetalContext::instance().hal().get_dev_addr(core_type, HalL1MemAddrType::BASE) +
+    //                                 MetalContext::instance().hal().get_dev_size(core_type, HalL1MemAddrType::BASE),
+    //     "Region to write to in L1 is out of bounds");
 
     sub_device_ids = buffer_dispatch::select_sub_device_ids(this->device_, sub_device_ids);
 

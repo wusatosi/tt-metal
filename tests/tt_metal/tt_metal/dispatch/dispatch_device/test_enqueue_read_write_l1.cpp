@@ -6,6 +6,7 @@
 #include "command_queue_fixture.hpp"
 #include "hal_types.hpp"
 #include "llrt.hpp"
+#include "tt_backend_api_types.hpp"
 #include "tt_metal/impl/dispatch/hardware_command_queue.hpp"
 #include "dispatch_test_utils.hpp"
 
@@ -181,6 +182,70 @@ TEST_F(CommandQueueSingleCardFixture, TestReadWriteEntireL1) {
         std::vector<uint32_t> dst_data(num_elements, 0);
         dynamic_cast<HWCommandQueue&>(device->command_queue())
             .enqueue_read_from_core_l1(virtual_core, dst_data.data(), address, size, false);
+
+        Finish(device->command_queue());
+
+        EXPECT_EQ(src_data, dst_data);
+    }
+}
+
+TEST_F(CommandQueueSingleCardFixture, TestBasicReadWriteDRAM) {
+    const uint32_t num_elements = 100000;
+    const std::vector<uint32_t> src_data = generate_arange_vector(num_elements * sizeof(uint32_t));
+
+    const CoreCoord logical_core = {0, 0};
+    const DeviceAddr address = MetalContext::instance().hal().get_dev_addr(HalDramMemAddrType::DRAM_BARRIER);
+
+    for (IDevice* device : this->devices_) {
+        const CoreCoord virtual_core = device->virtual_core_from_logical_core(logical_core, CoreType::DRAM);
+        dynamic_cast<HWCommandQueue&>(device->command_queue())
+            .enqueue_write_to_core_l1(virtual_core, src_data.data(), address, num_elements * sizeof(uint32_t), false);
+
+        std::vector<uint32_t> dst_data(num_elements, 0);
+        dynamic_cast<HWCommandQueue&>(device->command_queue())
+            .enqueue_read_from_core_l1(virtual_core, dst_data.data(), address, num_elements * sizeof(uint32_t), false);
+
+        Finish(device->command_queue());
+
+        EXPECT_EQ(src_data, dst_data);
+    }
+}
+
+TEST_F(CommandQueueSingleCardFixture, TestBasicReadDRAM) {
+    const uint32_t num_elements = 100000;
+    const std::vector<uint32_t> src_data = generate_arange_vector(num_elements * sizeof(uint32_t));
+
+    const CoreCoord logical_core = {0, 0};
+    const DeviceAddr address = MetalContext::instance().hal().get_dev_addr(HalDramMemAddrType::DRAM_BARRIER);
+
+    for (IDevice* device : this->devices_) {
+        const CoreCoord virtual_core = device->virtual_core_from_logical_core(logical_core, CoreType::DRAM);
+        tt::llrt::write_hex_vec_to_core(device->id(), virtual_core, src_data, address);
+
+        std::vector<uint32_t> dst_data(num_elements, 0);
+        dynamic_cast<HWCommandQueue&>(device->command_queue())
+            .enqueue_read_from_core_l1(virtual_core, dst_data.data(), address, num_elements * sizeof(uint32_t), false);
+
+        Finish(device->command_queue());
+
+        EXPECT_EQ(src_data, dst_data);
+    }
+}
+
+TEST_F(CommandQueueSingleCardFixture, TestBasicWriteDRAM) {
+    const uint32_t num_elements = 100000;
+    const std::vector<uint32_t> src_data = generate_arange_vector(num_elements * sizeof(uint32_t));
+
+    const CoreCoord logical_core = {0, 0};
+    const DeviceAddr address = MetalContext::instance().hal().get_dev_addr(HalDramMemAddrType::DRAM_BARRIER);
+
+    for (IDevice* device : this->devices_) {
+        const CoreCoord virtual_core = device->virtual_core_from_logical_core(logical_core, CoreType::DRAM);
+        dynamic_cast<HWCommandQueue&>(device->command_queue())
+            .enqueue_write_to_core_l1(virtual_core, src_data.data(), address, num_elements * sizeof(uint32_t), true);
+
+        std::vector<uint32_t> dst_data =
+            tt::llrt::read_hex_vec_from_core(device->id(), virtual_core, address, num_elements * sizeof(uint32_t));
 
         Finish(device->command_queue());
 
