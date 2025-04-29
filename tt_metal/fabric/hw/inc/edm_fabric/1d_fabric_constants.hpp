@@ -53,7 +53,9 @@ constexpr size_t SENDER_CHANNEL_NOC_CONFIG_START_IDX = 0;
 constexpr size_t NUM_SENDER_CHANNELS = get_compile_time_arg_val(SENDER_CHANNEL_NOC_CONFIG_START_IDX);
 constexpr size_t NUM_RECEIVER_CHANNELS_CT_ARG_IDX = SENDER_CHANNEL_NOC_CONFIG_START_IDX + 1;
 constexpr size_t NUM_RECEIVER_CHANNELS = get_compile_time_arg_val(NUM_RECEIVER_CHANNELS_CT_ARG_IDX);
-constexpr size_t wait_for_host_signal_IDX = NUM_RECEIVER_CHANNELS_CT_ARG_IDX + 1;
+constexpr size_t NUM_FORWARDING_PATHS_CT_ARG_IDX = NUM_RECEIVER_CHANNELS_CT_ARG_IDX + 1;
+constexpr size_t NUM_FORWARDING_PATHS = get_compile_time_arg_val(NUM_FORWARDING_PATHS_CT_ARG_IDX);
+constexpr size_t wait_for_host_signal_IDX = NUM_FORWARDING_PATHS_CT_ARG_IDX + 1;
 constexpr bool wait_for_host_signal = get_compile_time_arg_val(wait_for_host_signal_IDX);
 constexpr size_t MAIN_CT_ARGS_START_IDX = wait_for_host_signal_IDX + 1;
 
@@ -66,11 +68,11 @@ static_assert(
 static_assert(
     NUM_SENDER_CHANNELS <= MAX_NUM_SENDER_CHANNELS,
     "NUM_SENDER_CHANNELS must be less than or equal to MAX_NUM_SENDER_CHANNELS");
-static_assert(wait_for_host_signal_IDX == 2, "wait_for_host_signal_IDX must be 3");
+static_assert(wait_for_host_signal_IDX == 3, "wait_for_host_signal_IDX must be 3");
 static_assert(
     get_compile_time_arg_val(wait_for_host_signal_IDX) == 0 || get_compile_time_arg_val(wait_for_host_signal_IDX) == 1,
     "wait_for_host_signal must be 0 or 1");
-static_assert(MAIN_CT_ARGS_START_IDX == 3, "MAIN_CT_ARGS_START_IDX must be 3");
+static_assert(MAIN_CT_ARGS_START_IDX == 4, "MAIN_CT_ARGS_START_IDX must be 4");
 
 constexpr uint32_t SWITCH_INTERVAL =
 #ifndef DEBUG_PRINT_ENABLED
@@ -89,15 +91,14 @@ static_assert(enable_first_level_ack == 0, "enable_first_level_ack must be 0");
 static_assert(fuse_receiver_flush_and_completion_ptr == 1, "fuse_receiver_flush_and_completion_ptr must be 0");
 static_assert(!enable_ring_support || NUM_RECEIVER_CHANNELS > 1, "Ring support requires at least 2 receiver channels");
 // TODO: Pipe from host
-constexpr size_t NUM_USED_RECEIVER_CHANNELS = NUM_RECEIVER_CHANNELS;
-//constexpr size_t NUM_USED_RECEIVER_CHANNELS =
-//    enable_ring_support ? NUM_LINE_RECEIVER_CHANNELS * 4 + 1 : NUM_LINE_RECEIVER_CHANNELS * 4;
+constexpr size_t NUM_USED_RECEIVER_CHANNELS = NUM_FORWARDING_PATHS;
+
 constexpr size_t VC0_RECEIVER_CHANNEL = dateline_connection ? 1 : 0;
 // On a dateline connection, we would never forward through the dateline on VC1
 
 // VC1/dateline vc is the last of available sender channels.
 // For 1D, its 2, For 2D its 4.
-constexpr size_t VC1_SENDER_CHANNEL = NUM_RING_SENDER_CHANNELS - 1;
+constexpr size_t VC1_SENDER_CHANNEL = NUM_SENDER_CHANNELS - 1;
 
 // Doesn't REALLY matter but for consistency I picked the next available ID
 constexpr size_t worker_info_offset_past_connection_semaphore = 32;

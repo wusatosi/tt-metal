@@ -1064,7 +1064,7 @@ void __attribute__((noinline)) init_local_sender_channel_worker_interfaces(
             connection_worker_info_ptr,
             reinterpret_cast<volatile tt_l1_ptr uint32_t* const>(local_sender_flow_control_semaphores[2]),
             reinterpret_cast<volatile tt_l1_ptr uint32_t* const>(connection_live_semaphore_ptr),
-            worker_sender1_sync_cmd_buf);
+            sender_channel_ack_cmd_buf_ids[2]);
     }
     {
         auto connection_live_semaphore_ptr =
@@ -1076,7 +1076,7 @@ void __attribute__((noinline)) init_local_sender_channel_worker_interfaces(
             connection_worker_info_ptr,
             reinterpret_cast<volatile tt_l1_ptr uint32_t* const>(local_sender_flow_control_semaphores[3]),
             reinterpret_cast<volatile tt_l1_ptr uint32_t* const>(connection_live_semaphore_ptr),
-            worker_sender1_sync_cmd_buf);
+            sender_channel_ack_cmd_buf_ids[3]);
     }
 #endif
     if constexpr (NUM_SENDER_CHANNELS == 3 || NUM_SENDER_CHANNELS == 5) {
@@ -1092,7 +1092,7 @@ void __attribute__((noinline)) init_local_sender_channel_worker_interfaces(
                     reinterpret_cast<volatile tt_l1_ptr uint32_t* const>(
                         local_sender_flow_control_semaphores[VC1_SENDER_CHANNEL]),
                     reinterpret_cast<volatile tt_l1_ptr uint32_t* const>(connection_live_semaphore_ptr),
-                    sender_channel_ack_cmd_buf_ids[2]);
+                    sender_channel_ack_cmd_buf_ids[VC1_SENDER_CHANNEL]);
         }
     }
 }
@@ -1356,8 +1356,7 @@ void kernel_main() {
             std::array<size_t, MAX_NUM_RECEIVER_CHANNELS>{
                 remote_receiver_0_channel_buffer_address, remote_receiver_1_channel_buffer_address});
 
-
-    const auto& local_sender_channel_connection_buffer_index_id = 
+    const auto& local_sender_channel_connection_buffer_index_id =
         take_first_n_elements<NUM_SENDER_CHANNELS, MAX_NUM_SENDER_CHANNELS, size_t>(
             std::array<size_t, MAX_NUM_SENDER_CHANNELS>{
                 local_sender_channel_0_connection_buffer_index_id,
@@ -1563,8 +1562,6 @@ void kernel_main() {
         DPRINT << "READY FOR TRAFFIC\n";
     }
 
-    wait_for_static_connection_to_ready(local_sender_channel_worker_interfaces);
-
     if constexpr (is_2d_fabric) {
         uint32_t has_downstream_edm = has_downstream_edm_vc0_buffer_connection & 0xF;
         uint32_t edm_index = 0;
@@ -1590,7 +1587,8 @@ void kernel_main() {
                 connect_ring = (has_downstream_edm_vc0_buffer_connection & (0x1 << eth_chan_directions::NORTH)) != 0;
             }
             if (connect_ring) {
-                downstream_edm_noc_interfaces[NUM_USED_RECEIVER_CHANNELS - 1].template open<true>();
+                downstream_edm_noc_interfaces[NUM_USED_RECEIVER_CHANNELS - 1]
+                    .template open<true, tt::tt_fabric::worker_handshake_noc>();
                 *downstream_edm_noc_interfaces[NUM_USED_RECEIVER_CHANNELS - 1].from_remote_buffer_slot_rdptr_ptr =
                     0;  // UC: Maybe redundant. Remove.
             }
@@ -1604,6 +1602,8 @@ void kernel_main() {
             }
         }
     }
+
+    wait_for_static_connection_to_ready(local_sender_channel_worker_interfaces);
 
     //////////////////////////////
     //////////////////////////////

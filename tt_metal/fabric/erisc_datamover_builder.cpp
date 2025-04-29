@@ -127,14 +127,17 @@ FabricEriscDatamoverConfig::FabricEriscDatamoverConfig(std::size_t channel_buffe
     FabricEriscDatamoverConfig(topology) {
     if (topology == Topology::Mesh) {
         this->num_used_sender_channels = FabricEriscDatamoverConfig::num_sender_channels_2d;
+        this->num_fwd_paths = FabricEriscDatamoverConfig::num_sender_channels_2d;
     } else {
         this->num_used_sender_channels = FabricEriscDatamoverConfig::num_sender_channels;
+        this->num_fwd_paths = FabricEriscDatamoverConfig::num_sender_channels - 1;
     }
     this->num_used_receiver_channels = FabricEriscDatamoverConfig::num_receiver_channels;
     // this->topology = topology;
     if (topology == Topology::Linear || topology == Topology::Mesh) {
         this->num_used_sender_channels -= 1;
         this->num_used_receiver_channels -= 1;
+        this->num_fwd_paths -= 1;
     }
     for (uint32_t i = 0; i < this->num_used_receiver_channels; i++) {
         TT_FATAL(
@@ -433,6 +436,7 @@ std::vector<uint32_t> FabricEriscDatamoverBuilder::get_compile_time_args() const
     auto ct_args = std::vector<uint32_t>{
         num_sender_channels,
         num_receiver_channels,
+        config.num_fwd_paths,
         this->wait_for_host_signal ? 1 : 0,
 
         this->firmware_context_switch_interval,
