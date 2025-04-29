@@ -160,8 +160,7 @@ public:
 };
 
 class Fabric1DFixture : public BaseFabricFixture {
-    // void SetUp() override { this->SetUpDevices(tt::tt_metal::FabricConfig::FABRIC_1D); }
-    void SetUp() override { this->SetUpDevices(tt::tt_metal::FabricConfig::FABRIC_2D_PUSH); }
+    void SetUp() override { this->SetUpDevices(tt::tt_metal::FabricConfig::FABRIC_1D); }
 };
 
 class Fabric2DPullFixture : public BaseFabricFixture {
@@ -171,6 +170,8 @@ class Fabric2DPullFixture : public BaseFabricFixture {
 class Fabric2DPushFixture : public BaseFabricFixture {
     void SetUp() override { this->SetUpDevices(tt::tt_metal::FabricConfig::FABRIC_2D_PUSH); }
 };
+
+void RunTestUnicastRaw(BaseFabricFixture* fixture, RoutingDirection direction = RoutingDirection::E);
 
 }  // namespace fabric_router_tests
 }  // namespace tt::tt_fabric

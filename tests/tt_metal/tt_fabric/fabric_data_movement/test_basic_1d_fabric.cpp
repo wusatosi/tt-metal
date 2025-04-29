@@ -37,7 +37,7 @@
 namespace tt::tt_fabric {
 namespace fabric_router_tests {
 
-TEST_F(Fabric1DFixture, TestUnicastRaw) {
+void RunTestUnicastRaw(BaseFabricFixture* fixture, RoutingDirection direction) {
     CoreCoord sender_logical_core = {0, 0};
     CoreCoord receiver_logical_core = {1, 0};
 
@@ -48,7 +48,7 @@ TEST_F(Fabric1DFixture, TestUnicastRaw) {
     chip_id_t not_used_1;
     chip_id_t not_used_2;
     // Find a device with a neighbour in the East direction
-    bool connection_found = find_device_with_neighbor_in_direction(
+    bool connection_found = fixture->find_device_with_neighbor_in_direction(
         src_mesh_chip_id, dst_mesh_chip_id, not_used_1, not_used_2, RoutingDirection::E);
     if (!connection_found) {
         GTEST_SKIP() << "No path found between sender and receivers";
@@ -162,10 +162,10 @@ TEST_F(Fabric1DFixture, TestUnicastRaw) {
     tt_metal::SetRuntimeArgs(receiver_program, receiver_kernel, receiver_logical_core, receiver_runtime_args);
 
     // Launch sender and receiver programs and wait for them to finish
-    this->RunProgramNonblocking(receiver_device, receiver_program);
-    this->RunProgramNonblocking(sender_device, sender_program);
-    this->WaitForSingleProgramDone(sender_device, sender_program);
-    this->WaitForSingleProgramDone(receiver_device, receiver_program);
+    fixture->RunProgramNonblocking(receiver_device, receiver_program);
+    fixture->RunProgramNonblocking(sender_device, sender_program);
+    fixture->WaitForSingleProgramDone(sender_device, sender_program);
+    fixture->WaitForSingleProgramDone(receiver_device, receiver_program);
 
     // Validate the status and packets processed by sender and receiver
     std::vector<uint32_t> sender_status;
@@ -466,6 +466,8 @@ TEST_F(Fabric1DFixture, TestMCastConnAPI) {
     EXPECT_EQ(sender_bytes, left_recv_bytes);
     EXPECT_EQ(left_recv_bytes, right_recv_bytes);
 }
+
+TEST_F(Fabric1DFixture, TestUnicastRaw) { RunTestUnicastRaw(this); }
 
 }  // namespace fabric_router_tests
 }  // namespace tt::tt_fabric
