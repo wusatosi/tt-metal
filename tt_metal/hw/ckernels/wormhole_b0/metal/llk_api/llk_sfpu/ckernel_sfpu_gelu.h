@@ -6,7 +6,7 @@
 
 #include "ckernel_defs.h"
 #include "ckernel.h"
-#include "ckernel_sfpu_cdf.h"
+#include "ckernel_sfpu_cdf_gelu.h"
 
 namespace ckernel {
 namespace sfpu {
@@ -36,8 +36,10 @@ inline void calculate_gelu() {
         // SFPU microcode
         for (int d = 0; d < ITERATIONS; d++) {
             vFloat val = dst_reg[0];
-            vFloat result = calculate_cdf_appx(val, scaled);
-            dst_reg[0] = result;
+            // if x > 3.0, erf(x / sqrt(2)) ~ 1 => gelu(x) = x
+            vFloat result = val;
+            v_if(val < 3.0f) { result = calculate_cdf_appx(val, scaled); }
+            v_endif dst_reg[0] = result;
             dst_reg++;
         }
     }
