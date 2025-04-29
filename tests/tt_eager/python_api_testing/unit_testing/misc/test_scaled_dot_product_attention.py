@@ -251,9 +251,7 @@ def test_sdpa_tt_with_program_cache(device, b, nh, nkv, s, d, q_chunk_size, k_ch
     assert device.num_program_cache_entries() == 1
 
 
-def run_sdpa_noncausal(
-    device, b, nh, nkv, sq, d, q_chunk_size, k_chunk_size, dtype, sk=None, use_mask=True, grid=None, mse=None
-):
+def run_sdpa_noncausal(device, b, nh, nkv, sq, d, q_chunk_size, k_chunk_size, dtype, sk=None, use_mask=True):
     torch.manual_seed(1234)
     if sk is None:
         sk = sq
@@ -324,11 +322,8 @@ def run_sdpa_noncausal(
 
     out_pass, out_pcc = comp_pcc(gt, tt_back, 0.994)
     logger.debug(f"python vs pytorch: {out_pcc}")
-    got_mse = ((gt - tt_back) ** 2).mean()
-    logger.debug(f"mse: {got_mse}")
+    logger.debug(f"mse: {((gt - tt_back) ** 2).mean()}")
     assert out_pass
-    if mse is not None:
-        assert got_mse < mse
 
 
 # @pytest.mark.skip(reason="ND PCC issues")
