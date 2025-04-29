@@ -12,6 +12,8 @@
 #include "ttnn/tensor/types.hpp"
 #include <tt-metalium/work_split.hpp>
 
+#include <algorithm>
+
 namespace ttnn::operations::experimental::reduction {
 
 uint32_t CumprodDeviceOperation::SingleCoreCumprodProgramFactory::mul_lower_ranks(
@@ -61,8 +63,8 @@ CumprodDeviceOperation::SingleCoreCumprodProgramFactory::create(
 
     const uint32_t tiles_per_row{input_shape[dim]};
     const uint32_t num_rows{tensor_args.input_tensor.volume() / 1024 / tiles_per_row};
-    const uint32_t PHi{calc_phi(input_shape, dim)};
-    const uint32_t PLo{calc_plo(input_shape, dim)};
+    const uint32_t PHi{mul_higher_ranks(input_shape, dim)};
+    const uint32_t PLo{mul_lower_ranks(input_shape, dim)};
     const uint32_t HtWt{calc_htwt(input_shape)};
 
     Program program{};
@@ -72,9 +74,6 @@ CumprodDeviceOperation::SingleCoreCumprodProgramFactory::create(
     const uint32_t total_number_of_cores = compute_with_storage_grid_size.y * compute_with_storage_grid_size.x;
 
     const uint32_t all_work_units{PLo * PHi * HtWt};
-    const uint32_t work_units_per_core{all_work_units / total_number_of_cores};
-    const uint32_t work_units_per_core_remainder{all_work_units % total_number_of_cores};
-
     CoreRangeSet core_range_set{};
     uint32_t cores_x{compute_with_storage_grid_size.x};
     uint32_t cores_y{compute_with_storage_grid_size.y};
@@ -86,9 +85,9 @@ CumprodDeviceOperation::SingleCoreCumprodProgramFactory::create(
         } else if (cores_y == 0) {
             core_range_set = CoreRangeSet{CoreRange{{0, 0}, {cores_x - 1, 0}}};
         } else {
-            core_range_set = CoreRangeSet{CoreRange{{0, 0}, {compute_with_storage_grid_size.x - 1, cores_x}}};
-            if (cores_y > 0) {
-                core_range_set = core_range_set.merge(CoreRangeSet{CoreRange{{0, cores_y}, {cores_x, cores_y}}});
+            core_range_set = CoreRangeSet{CoreRange{{0, 0}, {compute_with_storage_grid_size.x - 1, cores_y - 1}}};
+            if (cores_x > 0) {
+                core_range_set = core_range_set.merge(CoreRangeSet{CoreRange{{0, cores_y}, {cores_x - 1, cores_y}}});
             }
         }
     } else {
@@ -119,6 +118,7 @@ CumprodDeviceOperation::SingleCoreCumprodProgramFactory::create(
         .math_fidelity = MathFidelity::HiFi4, .fp32_dest_acc_en = false, .math_approx_mode = false, .compile_args = {}};
     const WriterDataMovementConfig writer_config{};
 
+    const uint32_t core_utilization_count{std::min(total_number_of_cores, all_work_units ? all_work_units : 1)};
     auto cumprod_reader_kernel_id{create_kernel(
         program,
         KERNEL_PATHS[0],
@@ -130,15 +130,14 @@ CumprodDeviceOperation::SingleCoreCumprodProgramFactory::create(
          PHi,
          PLo,
          HtWt,
-         total_number_of_cores,
-         compute_with_storage_grid_size.x,
-         compute_with_storage_grid_size.y})};
+         core_utilization_count,
+         compute_with_storage_grid_size.x})};
     auto cumprod_compute_sc_kernel_id{create_kernel(
         program,
         KERNEL_PATHS[1],
         core_range_set,
         compute_config,
-        {PHi * PLo * HtWt, tiles_per_row, total_number_of_cores})};
+        {num_rows, tiles_per_row, PHi, PLo, HtWt, core_utilization_count, compute_with_storage_grid_size.x})};
     auto cumprod_writer_kernel_id{create_kernel(
         program,
         KERNEL_PATHS[2],
@@ -150,14 +149,44 @@ CumprodDeviceOperation::SingleCoreCumprodProgramFactory::create(
          PHi,
          PLo,
          HtWt,
-         total_number_of_cores,
-         compute_with_storage_grid_size.x,
-         compute_with_storage_grid_size.y})};
+         core_utilization_count,
+         compute_with_storage_grid_size.x})};
 
-    // TODO(jbbieniekTT): the following algorithm is to be explained.
-    for (uint32_t core{0}) {
-        //
-    }
+    // // TODO(jbbieniekTT): the following algorithm is to be explained.
+    // for (uint32_t core_id{0}; core_id < core_utilization_count; ++core_id) {
+    //     const CoreCoord core{core_id % compute_with_storage_grid_size.x, core_id / compute_with_storage_grid_size.x};
+    //     SetRuntimeArgs(program, cumprod_reader_kernel_id, core, {
+    //         src_buffer->address(),
+    //         num_rows,
+    //         tiles_per_row,
+    //         PHi,
+    //         PLo,
+    //         HtWt,
+    //         core_utilization_count,
+    //         compute_with_storage_grid_size.x
+    //     });
+
+    //     SetRuntimeArgs(program, cumprod_compute_sc_kernel_id, core, {
+    //         num_rows,
+    //         tiles_per_row,
+    //         PHi,
+    //         PLo,
+    //         HtWt,
+    //         core_utilization_count,
+    //         compute_with_storage_grid_size.x
+    //     });
+
+    //     SetRuntimeArgs(program, cumprod_writer_kernel_id, core, {
+    //         dst_buffer->address(),
+    //         num_rows,
+    //         tiles_per_row,
+    //         PHi,
+    //         PLo,
+    //         HtWt,
+    //         core_utilization_count,
+    //         compute_with_storage_grid_size.x
+    //     });
+    // }
 
     return {
         std::move(program),

@@ -13,17 +13,15 @@ void kernel_main() {
     const uint32_t PHi = get_arg_val<uint32_t>(3);
     const uint32_t PLo = get_arg_val<uint32_t>(4);
     const uint32_t HtWt = get_arg_val<uint32_t>(5);
-    const uint32_t core_loop_count = get_arg_val<uint32_t>(6);
-    const uint32_t total_number_of_cores = get_arg_val<uint32_t>(7);
-    const uint32_t compute_with_storage_grid_size_x = get_arg_val<uint32_t>(8);
-    const uint32_t compute_with_storage_grid_size_y = get_arg_val<uint32_t>(9);
+    const uint32_t core_utilization_count = get_arg_val<uint32_t>(6);
+    const uint32_t compute_with_storage_grid_size_x = get_arg_val<uint32_t>(7);
 
     const uint32_t x{get_absolute_logical_x()};
     const uint32_t y{get_absolute_logical_y()};
     const uint32_t core_id{y * compute_with_storage_grid_size_x + x};
     const uint32_t all_work_units{PHi * PLo * HtWt};
-    const uint32_t start_tile{get_start_tile(core_id, total_number_of_cores, all_work_units)};
-    const uint32_t end_tile{get_end_tile(core_id, total_number_of_cores, all_work_units)};
+    const uint32_t first_work_unit{get_first_work_unit(core_id, core_utilization_count, all_work_units)};
+    const uint32_t last_work_unit{get_last_work_unit(core_id, core_utilization_count, all_work_units)};
 
     const uint32_t ublock_size_bytes = get_tile_size(cb_out);
     const uint32_t input_sram_addr = get_read_ptr(cb_out);
@@ -50,7 +48,7 @@ void kernel_main() {
         .bank_base_address = output_dram_base_addr, .page_size = output_tile_bytes, .data_format = output_data_format};
 
     // TODO(jbbieniekTT): the following algorithm is to be explained.
-    for (uint32_t i{start_tile}; i < end_tile; ++i) {
+    for (uint32_t i{first_work_unit}; i < last_work_unit; ++i) {
         const uint32_t i0{i / (PHi * HtWt)};
         const uint32_t i1{i % (PHi * HtWt)};
         for (uint32_t j{0}; j < tiles_per_row; ++j) {
@@ -59,7 +57,7 @@ void kernel_main() {
             cb_reserve_back(cb_out, ONE_TILE);
 
             const uint32_t data_sram_addr = get_write_ptr(cb_out);
-            noc_async_read_tile(tileid, dram_input_addrg, data_sram_addr);
+            noc_async_read_tile(tileid, dram_output_addrg, data_sram_addr);
             noc_async_read_barrier();
 
             cb_push_back(cb_out, ONE_TILE);
