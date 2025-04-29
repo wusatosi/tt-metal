@@ -360,11 +360,12 @@ cb_acquire_pages(uint32_t cb_fence, uint32_t block_next_start_addr[], uint32_t r
     return usable;
 }
 
+static bool prev_block = false;
+
 template <uint8_t noc_idx, uint32_t noc_xy, uint32_t sem_id, uint32_t cb_pages_per_block>
 FORCE_INLINE void cb_block_release_pages(uint32_t& block_noc_writes_to_clear, uint8_t noc = noc_index) {
     // Do not release pages on the first call to this function
     // This is because the first call means we don't have a previous block to release
-    static bool prev_block = false;
     if (prev_block) {
         WAYPOINT("CBRW");
         uint32_t sem_addr = get_semaphore<fd_core_type>(sem_id);
