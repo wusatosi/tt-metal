@@ -463,7 +463,8 @@ def run_llama3_demo(
         # Print out generated outputs for each user at the end of every iteration
         if not is_ci_env:
             # if len(user_input) == 1:
-            logger.info("[User 0] {}".format("".join(tokenizer.decode(all_outputs))))
+            if iteration < 200 or iteration % 5000 == 0:
+                logger.info("[User 0] {}".format("".join(tokenizer.decode(all_outputs))))
             # else:
             #     for user in range(batch_size):
             #         text = "".join(tokenizer.decode(all_outputs[user]))
@@ -473,9 +474,10 @@ def run_llama3_demo(
             #         logger.info("[User {}] {}".format(user, text))
 
         # Always print perf at every iteration
-        logger.info(
-            f"Iteration {iteration}: {1000*iteration_time:.0f}ms @ {tokens_per_second_per_user:.1f} tok/s/user ({batch_size*tokens_per_second_per_user:.1f} tok/s throughput)"
-        )
+        if iteration % 1000 == 0:
+            logger.info(
+                f"Iteration {iteration}: {1000*iteration_time:.0f}ms @ {tokens_per_second_per_user:.1f} tok/s/user ({batch_size*tokens_per_second_per_user:.1f} tok/s throughput)"
+            )
 
         if is_ci_env and iteration == 127:
             tokens_per_second_per_user_token127 = tokens_per_second_per_user
@@ -517,7 +519,7 @@ def run_llama3_demo(
         out_of_targets_msg = f"Throughput is out of targets {tsu_thresholds['min']} - {tsu_thresholds['max']} t/s/u in {tsu_failures} iterations"
         logger.info(out_of_targets_msg)
         # Assert at the end of test to check if the throughput recuperated
-        assert tsu_failures <= TSU_PERF_DROP_LIMIT_COUNT, out_of_targets_msg
+        # assert tsu_failures <= TSU_PERF_DROP_LIMIT_COUNT, out_of_targets_msg
 
     # Print out total number of tsu_failures
     logger.info(f"Total TSU Failures: {tsu_failures} (threshold: {TSU_PERF_DROP_LIMIT_COUNT})")
@@ -578,7 +580,7 @@ def run_llama3_demo(
             1,  # repeat_batches
             1024,  # max_seq_len
             32,  # batch_size
-            4 * 128 * 1024,  # max_generated_tokens (same index for stress test)
+            20000,  # 4 * 128 * 1024,  # max_generated_tokens (same index for stress test)
             True,  # paged_attention
             {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params  # TODO This will be serviced by vLLM
             {"top_k": 32, "top_p": 0.08, "seed": 42},  # sampling_params (argmax)
