@@ -214,8 +214,7 @@ def tt_tensors_to_torch_tensors(
             tt_tensors_device = ttnn.clone(
                 tt_tensors_device, dtype=ttnn.bfloat16, memory_config=ttnn.DRAM_MEMORY_CONFIG
             )
-        # Untilize using singlecore since multicore version runs out of l1 memory (Issue #9022)
-        tt_tensors_device = ttnn.untilize(tt_tensors_device, use_multicore=False)
+        tt_tensors_device = ttnn.untilize(tt_tensors_device)
 
     tt_tensors_device = ttnn.to_torch(
         tt_tensors_device, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=concat_dim), device=mesh_device

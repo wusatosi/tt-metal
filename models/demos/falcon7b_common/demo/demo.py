@@ -148,7 +148,7 @@ def run_falcon_demo_kv(
 
     # Set up warmup iterations and targets dicts for saving benchmark data
     if perf_mode:
-        N_warmup_iter = {"inference_prefill": 5, "inference_decode": 10}  # Number of warmup iterations for perf mode
+        N_warmup_iter = {"inference_prefill": 5, "inference_decode": 25}  # Number of warmup iterations for perf mode
     else:
         N_warmup_iter = {}
 
@@ -346,7 +346,7 @@ def run_falcon_demo_kv(
         N_warmup_prefill = N_warmup_iter["inference_prefill"]
     for i in tqdm(range(N_prefill)):
         user_id = i if not perf_mode else 0
-        time_prefill_inference_start = time.time()
+        time_prefill_inference_start = time.perf_counter()
         (
             tt_prefill_input_ids,
             tt_prefill_attention_mask,
@@ -364,7 +364,6 @@ def run_falcon_demo_kv(
             layer_past_len=0,
             use_cache=use_cache,
         )
-        ttnn.synchronize_device(mesh_device)
 
         if tt_prefill_attention_mask is not None:
             if isinstance(tt_prefill_attention_mask, ttnn.Tensor):
@@ -384,7 +383,7 @@ def run_falcon_demo_kv(
         output_ids[user_id::batch_size] = user_output_ids
 
         if i >= N_warmup_prefill:
-            time_prefill_inference += time.time() - time_prefill_inference_start
+            time_prefill_inference += time.perf_counter() - time_prefill_inference_start
 
     profiler.end("inference_prefill")
     logger.info("Finished inference prefill stage!")
@@ -413,7 +412,7 @@ def run_falcon_demo_kv(
         N_decode = max_seq_len - num_input_tokens
         N_warmup_decode = 0
     else:
-        N_decode = 30
+        N_decode = 50
         N_warmup_decode = N_warmup_iter["inference_decode"]
     print_per_generated_token = (
         expected_greedy_output_path is None and num_devices == 1 and not is_ci_env
@@ -421,7 +420,7 @@ def run_falcon_demo_kv(
     for output_token_index in (
         range(N_decode) if print_per_generated_token else tqdm(range(N_decode), desc="Generating tokens")
     ):
-        time_decode_inference_start = time.time()
+        time_decode_inference_start = time.perf_counter()
         (
             tt_decode_input_ids,
             tt_decode_attention_mask,
@@ -436,7 +435,6 @@ def run_falcon_demo_kv(
             layer_past_len=kv_cache_len,
             use_cache=use_cache,
         )
-        ttnn.synchronize_device(mesh_device)
 
         logits = tt_tensors_to_torch_tensors(tt_logits, mesh_device, concat_dim=2).squeeze(1)
 
@@ -451,7 +449,7 @@ def run_falcon_demo_kv(
             decode_ids = top_pk_logits_efficient(logits.reshape(global_batch, -1)).reshape(global_batch, 1)
 
         if output_token_index >= N_warmup_decode:
-            time_decode_inference += time.time() - time_decode_inference_start
+            time_decode_inference += time.perf_counter() - time_decode_inference_start
 
         if not perf_mode:
             for user_id, user_decode_id in enumerate(decode_ids[:num_users]):
