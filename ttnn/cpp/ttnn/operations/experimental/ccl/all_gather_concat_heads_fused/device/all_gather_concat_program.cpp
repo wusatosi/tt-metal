@@ -94,17 +94,19 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
     std::vector<Tensor> output_tensors = {output_tensor};
     std::vector<Tensor> temp_tensors = {temp_tensor};
     const auto& op_config = ttnn::ccl::CCLOpConfig(input_tensors, temp_tensors, topology);
-    LineTopology line_topology(ring_size, ring_index);
-    const size_t num_targets_forward =
-        line_topology.get_distance_to_end_of_line(ttnn::ccl::EdmLineFabricOpInterface::Direction::FORWARD);
-    const size_t num_targets_backward =
-        line_topology.get_distance_to_end_of_line(ttnn::ccl::EdmLineFabricOpInterface::Direction::BACKWARD);
+    auto [num_targets_forward, num_targets_backward, dynamic_alternate] =
+        ccl::get_forward_backward_configuration(ring_size, ring_index, topology);
 
     // To overlap NLP local data with all gather, we divide the batches for each device into:
     //      - local batch (starts with start_local)
     //      - remote batches
     //          - batch 1 (from batch_start_1 to batch end_1)
     //          - batch 2 (from batch_start_2 to batch end_2) if applicable
+    LineTopology order_topology(ring_size, ring_index);
+    const size_t num_targets_right =
+        order_topology.get_distance_to_end_of_line(ttnn::ccl::EdmLineFabricOpInterface::Direction::FORWARD);
+    const size_t num_targets_left =
+        order_topology.get_distance_to_end_of_line(ttnn::ccl::EdmLineFabricOpInterface::Direction::BACKWARD);
     uint32_t batch_size = 1;
     uint32_t batch_start_1 = 8;
     uint32_t batch_end_1 = 32;
@@ -112,21 +114,21 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
     uint32_t batch_end_2 = 0;
     uint32_t start_local = 0;
 
-    if (num_targets_forward == 2 && num_targets_backward == 1) {
+    if (num_targets_right == 2 && num_targets_left == 1) {
         batch_size = 2;
         batch_start_1 = 0;
         batch_end_1 = 8;
         batch_start_2 = 16;
         batch_end_2 = 32;
         start_local = 8;
-    } else if (num_targets_forward == 1 && num_targets_backward == 2) {
+    } else if (num_targets_right == 1 && num_targets_left == 2) {
         batch_size = 2;
         batch_start_1 = 0;
         batch_end_1 = 16;
         batch_start_2 = 24;
         batch_end_2 = 32;
         start_local = 16;
-    } else if (num_targets_forward == 0 && num_targets_backward == 3) {
+    } else if (num_targets_right == 0 && num_targets_left == 3) {
         batch_size = 1;
         batch_start_1 = 0;
         batch_end_1 = 24;
@@ -348,7 +350,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
             .compile_args = all_gather_reader_ct_args});
 
     // Writer
-    uint32_t out_ready_sem_wait_value = ring_size * num_links;
+    uint32_t out_ready_sem_wait_value = (dynamic_alternate ? (ring_size + 1) : ring_size) * num_links;
     std::vector<uint32_t> all_gather_writer_ct_args = {
         ring_index,                       // my_chip_id
         reserved_packet_header_CB_index,  // reserved_packet_header_cb_id
@@ -358,6 +360,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_concat_llama_sharded(
         op_config.get_page_size(),        // tensor0_page_size
         num_targets_forward,              // num_targets_forward_direction
         num_targets_backward,             // num_targets_backward_direction
+        dynamic_alternate,                // alternate
         llama_configuration.num_semaphore_ranges,
         out_ready_sem_wait_value};
 
