@@ -588,7 +588,7 @@ def test_concat_fuse(
             3,
             ttnn.TILE_LAYOUT,
             (32, 32),
-            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(5, 4))}),
+            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(1, 0), ttnn.CoreCoord(3, 9))}),
             (32, 160),
             ttnn.CoreRangeSet(
                 [
@@ -630,10 +630,17 @@ def test_concat_fuse(
         ttnn.bfloat8_b,
     ],
 )
-@pytest.mark.parametrize("num_iters", [75])
+@pytest.mark.parametrize("num_iters, warmup_iters", [[75, 5]])
+@pytest.mark.parametrize("trace_mode", [True])
 @pytest.mark.parametrize(
     "device_params",
-    [{"fabric_config": ttnn.FabricConfig.FABRIC_1D, "dispatch_core_axis": ttnn.DispatchCoreAxis.COL}],
+    [
+        {
+            "trace_region_size": 23887872,
+            "fabric_config": ttnn.FabricConfig.FABRIC_1D,
+            "dispatch_core_axis": ttnn.DispatchCoreAxis.COL,
+        }
+    ],
     indirect=True,
 )
 @pytest.mark.parametrize("mesh_device", [pytest.param((8, 4), id="8x4_grid")], indirect=True)
@@ -653,7 +660,10 @@ def test_all_gather_silu(
     output_shard_shape,
     output_shard_grid,
     tensor_mem_layout,
+    trace_mode,
+    warmup_iters,
 ):
+    profiler = BenchmarkProfiler()
     run_all_gather_silu_impl(
         mesh_device,
         num_devices,
@@ -668,7 +678,10 @@ def test_all_gather_silu(
         input_shard_grid,
         all_gather_topology=ttnn.Topology.Linear,
         num_iters=num_iters,
+        warmup_iters=warmup_iters,
         output_shard_shape=output_shard_shape,
         output_shard_grid=output_shard_grid,
         tensor_mem_layout=tensor_mem_layout,
+        trace_mode=trace_mode,
+        profiler=profiler,
     )

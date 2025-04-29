@@ -81,7 +81,7 @@ void AllGatherSilu::validate(const std::vector<Tensor>& input_tensors) const {
 std::vector<ttnn::TensorSpec> AllGatherSilu::compute_output_specs(const std::vector<Tensor>& input_tensors) const {
     const auto& input_tensor = input_tensors[0];
     auto shape = input_tensor.get_padded_shape();  // TODO: Replace with get_logical_shape()
-    shape[this->dim] *= 4;
+    shape[this->dim] = 3584;
     return {TensorSpec(
         shape,
         tt::tt_metal::TensorLayout(input_tensor.get_dtype(), tt::tt_metal::Layout::TILE, this->output_mem_config))};

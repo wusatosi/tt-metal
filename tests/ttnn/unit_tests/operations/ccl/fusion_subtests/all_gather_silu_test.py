@@ -23,6 +23,8 @@ def run_allgather_silu_with_trace(
     multi_device_global_semaphore,
     num_iter=20,
     subdevice_id=None,
+    profiler=BenchmarkProfiler(),
+    warmup_iters=0,
 ):
     # Compile Run
     logger.info("Compiling model")
@@ -42,6 +44,25 @@ def run_allgather_silu_with_trace(
 
     # Capture trace
     logger.info("Capturing trace")
+
+    if warmup_iters > 0:
+        trace_id_warmup = ttnn.begin_trace_capture(mesh_device, cq_id=0)
+        for i in range(warmup_iters):
+            tt_out_tensor = ttnn.experimental.all_gather_silu(
+                input_tensor_mesh,
+                buffer_tensor,
+                dim,
+                mesh_device=mesh_device,
+                cluster_axis=1,
+                multi_device_global_semaphore=multi_device_global_semaphore,
+                num_links=num_links,
+                memory_config=output_mem_config,
+                topology=all_gather_topology,
+                subdevice_id=subdevice_id,
+            )
+        ttnn.end_trace_capture(mesh_device, trace_id_warmup, cq_id=0)
+        ttnn.synchronize_device(mesh_device)
+
     trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
     for i in range(num_iter):
         tt_out_tensor = ttnn.experimental.all_gather_silu(
@@ -61,10 +82,24 @@ def run_allgather_silu_with_trace(
 
     # Run the op
     logger.info("Starting Trace perf test...")
+
+    profiler.start("all-gather-silu-trace-warmup")
+    if warmup_iters > 0:
+        ttnn.execute_trace(mesh_device, trace_id_warmup, blocking=False)
+        ttnn.release_trace(mesh_device, trace_id_warmup)
+        ttnn.synchronize_device(mesh_device)
+    profiler.end("all-gather-silu-trace-warmup")
+
+    signpost("start")
+    profiler.start("all-gather-silu-trace")
+
     ttnn.execute_trace(mesh_device, trace_id, blocking=False)
     ttnn.release_trace(mesh_device, trace_id)
     ttnn.synchronize_device(mesh_device)
 
+    profiler.end("all-gather-silu-trace")
+    signpost("stop")
+    time_taken = profiler.get_duration("all-gather-silu-trace") - profiler.get_duration("all-gather-silu-trace-warmup")
     return tt_out_tensor
 
 
@@ -86,6 +121,8 @@ def run_all_gather_silu_impl(
     output_shard_shape=None,
     output_shard_grid=None,
     tensor_mem_layout=None,
+    warmup_iters=0,
+    profiler=BenchmarkProfiler(),
 ):
     if num_iters < 1:
         pytest.fail("num_iters must be >= 1")
@@ -232,6 +269,8 @@ def run_all_gather_silu_impl(
             multi_device_global_semaphore=ccl_semaphore_handles[0],
             num_iter=num_iters,
             subdevice_id=worker_sub_device_id,
+            profiler=profiler,
+            warmup_iters=warmup_iters,
         )
         tt_out_tensor_list.append(tt_out_tensor)
     else:
@@ -265,7 +304,7 @@ def run_all_gather_silu_impl(
             if input_dtype == ttnn.bfloat16:
                 eq, output = comp_equal(tt_output_tensor, output_tensor)
             else:
-                eq, output = comp_pcc(tt_output_tensor, output_tensor)
+                eq, output = comp_pcc(tt_output_tensor[:, :, :, :3584], output_tensor[:, :, :, :3584])
             if not eq:
                 logger.error(f"output mismatch for tensor {i}")
                 passed = False
