@@ -304,20 +304,7 @@ def run_llama3_demo(
         logger.info(f"tt_out done")
 
         # Sampling
-        # tt_out_tok_reset = tt_sampling(tt_out[0], tt_out_tok)
-
-        # Note: Persistent output buffer used, do not deallocate output!
-        tt_out_gathered = tt_model.tt_ccl.line_all_gather(
-            tt_out[0], dim=3, num_links=2, cluster_axis=0, memory_config=ttnn.DRAM_MEMORY_CONFIG, buffer_key="SAMPLING"
-        )
-        tt_out_rm = ttnn.untilize(tt_out_gathered, use_multicore=True, sub_core_grids=sub_core_grids)
-        # Run argmax only for user0
-        tt_out_rm = ttnn.reshape(
-            tt_out_rm, (1, 1, 1, tt_out_rm.shape[3]), (1, 1, tt_out_rm.shape[2], tt_out_rm.shape[3])
-        )
-        _ = ttnn.argmax(
-            tt_out_rm, dim=3, keepdim=True, use_multicore=True, output_tensor=tt_out_tok, sub_core_grids=sub_core_grids
-        )
+        tt_out_tok = tt_sampling(tt_out[0])
         logger.info(f"sampling done")
 
     if not stress_test:
@@ -349,16 +336,7 @@ def run_llama3_demo(
         mode="decode",
         page_table=page_table_tt,
     )
-
-    # Note: Persistent output buffer used, do not deallocate output!
-    tt_out_gathered = tt_model.tt_ccl.line_all_gather(
-        tt_out[0], dim=3, num_links=2, cluster_axis=0, memory_config=ttnn.DRAM_MEMORY_CONFIG, buffer_key="SAMPLING"
-    )
-    tt_out_rm = ttnn.untilize(tt_out_gathered, use_multicore=True, sub_core_grids=sub_core_grids)
-    tt_out_rm = ttnn.reshape(tt_out_rm, (1, 1, 1, tt_out_rm.shape[3]), (1, 1, tt_out_rm.shape[2], tt_out_rm.shape[3]))
-    _ = ttnn.argmax(
-        tt_out_rm, dim=3, keepdim=True, use_multicore=True, output_tensor=tt_out_tok, sub_core_grids=sub_core_grids
-    )
+    tt_out_tok = tt_sampling(tt_out[0])
 
     if not stress_test:
         ttnn.plus_one(
