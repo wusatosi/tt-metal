@@ -11,6 +11,9 @@ from tests.ttnn.unit_tests.operations.eltwise.backward.utility_funcs import (
 )
 from itertools import product
 from models.utility_functions import skip_for_grayskull
+import torch.nn as nn
+from tests.ttnn.utils_for_testing import assert_with_pcc
+from loguru import logger
 
 
 @skip_for_grayskull("Unsupported dtype for Grayskull")
@@ -421,4 +424,65 @@ def test_batch_norm_output_Default(input_shapes, device):
     tt_output = ttnn.to_torch(tt_output_tensor)
     torch_result = torch.nn.functional.batch_norm(input=in_data, running_mean=mean_data, running_var=var_data)
     comp_BN_Output = compare_results_batch_norm([tt_output], [torch_result])
+    assert comp_BN_Output
+
+
+@pytest.mark.parametrize(
+    "input_shapes",
+    [
+        torch.Size([1, 32, 480, 640]),
+    ],
+)
+def test_batch_norm_vanilla_unet(input_shapes, device):
+    input_tensor_torch = torch.full(torch.Size([1, 32, 480, 640]), 1, dtype=torch.float32)
+    num_features = 32
+    bn_layer = nn.BatchNorm2d(num_features=num_features)
+
+    torch_output_tensor = bn_layer(input_tensor_torch)
+
+    # Extract PyTorch tensors
+    weight_torch = bn_layer.weight if bn_layer.affine else None
+    bias_torch = bn_layer.bias if bn_layer.affine else None
+    batch_mean_torch = bn_layer.running_mean
+    batch_var_torch = bn_layer.running_var
+
+    # Reshape for broadcast compatibility (1, C, 1, 1)
+    batch_mean_torch = batch_mean_torch.view(1, num_features, 1, 1)
+    batch_var_torch = batch_var_torch.view(1, num_features, 1, 1)
+    weight_torch = weight_torch.view(1, num_features, 1, 1) if weight_torch is not None else None
+    bias_torch = bias_torch.view(1, num_features, 1, 1) if bias_torch is not None else None
+
+    # parameters["decoder1"] = parameters.get("decoder1", {})
+    weight = (
+        ttnn.from_torch(weight_torch, dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT)
+        if weight_torch is not None
+        else None
+    )
+    bias = (
+        ttnn.from_torch(bias_torch, dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT)
+        if bias_torch is not None
+        else None
+    )
+    running_mean = ttnn.from_torch(batch_mean_torch, dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT)
+    running_var = ttnn.from_torch(batch_var_torch, dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT)
+    eps = bn_layer.eps  # scalar, used directly in ops
+
+    ttnn_input_tensor = ttnn.from_torch(input_tensor_torch, device=device, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT)
+
+    print(
+        ttnn_input_tensor.shape,
+        ttnn_input_tensor.memory_config(),
+        ttnn_input_tensor.get_layout(),
+        ttnn_input_tensor.get_dtype(),
+    )
+    print(running_mean.shape, running_mean.memory_config(), running_mean.get_layout(), running_mean.get_dtype())
+    print(running_var.shape, running_var.memory_config(), running_var.get_layout(), running_var.get_dtype())
+    print(weight.shape, weight.memory_config(), weight.get_layout(), weight.get_dtype())
+    print(bias.shape, bias.memory_config(), bias.get_layout(), bias.get_dtype())
+
+    ttnn_output = ttnn.batch_norm(
+        ttnn_input_tensor, running_mean=running_mean, running_var=running_var, eps=eps, weight=weight, bias=bias
+    )
+    ttnn_output = ttnn.to_torch(ttnn_output)
+    comp_BN_Output = compare_results_batch_norm([ttnn_output], [torch_output_tensor])
     assert comp_BN_Output

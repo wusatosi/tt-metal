@@ -120,6 +120,9 @@ class UNet(nn.Module):
 
         dec1 = self.upconv1(dec2)
         dec1 = torch.cat((dec1, enc1), dim=1)
-        dec1 = self.decoder1(dec1)
+        torch.save(dec1, "vanilla_unet_split_conv_input.pt")
+        # dec1 = self.decoder1(dec1)
+        dec1 = self.decoder1[:2](dec1)
+        return dec1
 
         return torch.sigmoid(self.conv(dec1))

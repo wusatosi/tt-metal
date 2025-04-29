@@ -187,7 +187,7 @@ class ConvSplit:
     ) -> None:
         self.split_factor = split_factor
         self.weights = parameters["weight"]
-        self.bias = parameters["bias"]
+        # self.bias = parameters["bias"]
 
         self.kernel_size = (self.weights.shape[2], self.weights.shape[3])
         self.conv_params = conv_params
@@ -209,9 +209,10 @@ class ConvSplit:
         assert input_channels % self.split_factor == 0
         split_input_channels = input_channels // self.split_factor
 
-        split_input_tensors = ttnn.split(input_tensor, self.split_factor, 3, memory_config=ttnn.L1_MEMORY_CONFIG)
+        split_input_tensors = ttnn.split(input_tensor, split_input_channels, 3, memory_config=ttnn.DRAM_MEMORY_CONFIG)
         ttnn.deallocate(input_tensor)
-        split_weight_tensors = ttnn.split(self.weights, self.split_factor, 1)
+        self.weights = ttnn.from_torch(self.weights, dtype=ttnn.bfloat16, device=device)
+        split_weight_tensors = ttnn.split(self.weights, split_input_channels, 1)
 
         compute_config = ttnn.init_device_compute_kernel_config(
             device.arch(),
@@ -235,10 +236,11 @@ class ConvSplit:
         tt_weight_tensor = split_weight_tensors
         for i in range(self.split_factor):
             input_tensor = split_input_tensors[i]
+            tt_weight_tensor[i] = ttnn.from_device(tt_weight_tensor[i])
             tt_output_tensor_on_device, [_out_height, _out_width], [self.weights, self.bias] = ttnn.conv2d(
                 input_tensor=input_tensor,
                 weight_tensor=tt_weight_tensor[i],
-                bias_tensor=self.bias,
+                bias_tensor=None,
                 in_channels=input_tensor.shape[3],
                 out_channels=tt_weight_tensor[i].shape[0],
                 device=device,

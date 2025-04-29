@@ -13,6 +13,8 @@ from tests.ttnn.utils_for_testing import assert_with_pcc
 import os
 import torch.nn.functional as F
 from loguru import logger
+from models.experimental.functional_vanilla_unet.ttnn.common import Conv, ConvTranspose, ConvSplit
+import torch.nn as nn
 
 
 def create_custom_preprocessor(device):
@@ -72,7 +74,7 @@ def create_custom_preprocessor(device):
                     torch.reshape(getattr(model, f"upconv{i}").bias, (1, 1, 1, -1)), dtype=ttnn.bfloat16
                 )
 
-            for i in range(4, 0, -1):
+            for i in range(4, 1, -1):
                 parameters[f"decoder{i}"] = {}
                 parameters[f"decoder{i}"][0] = {}
                 conv_weight, conv_bias = fold_batch_norm2d_into_conv2d(
@@ -100,6 +102,57 @@ def create_custom_preprocessor(device):
                     dtype=ttnn.bfloat16,
                 )
 
+            parameters[f"decoder1"] = {}
+            parameters[f"decoder1"][0] = {}
+            parameters[f"decoder1"][0]["weight"] = model.decoder1[0].weight
+
+            bn_layer = model.decoder1[1]  # BatchNorm2d layer
+            channel_size = bn_layer.num_features
+
+            # Extract PyTorch tensors
+            weight_torch = bn_layer.weight if bn_layer.affine else None
+            bias_torch = bn_layer.bias if bn_layer.affine else None
+            batch_mean_torch = bn_layer.running_mean
+            batch_var_torch = bn_layer.running_var
+
+            # Reshape for broadcast compatibility (1, C, 1, 1)
+            batch_mean_torch = batch_mean_torch.view(1, channel_size, 1, 1)
+            batch_var_torch = batch_var_torch.view(1, channel_size, 1, 1)
+            weight_torch = weight_torch.view(1, channel_size, 1, 1) if weight_torch is not None else None
+            bias_torch = bias_torch.view(1, channel_size, 1, 1) if bias_torch is not None else None
+
+            parameters["decoder1"]["bn"] = {}
+            parameters["decoder1"]["bn"]["weight"] = (
+                ttnn.from_torch(weight_torch, dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT)
+                if weight_torch is not None
+                else None
+            )
+            parameters["decoder1"]["bn"]["bias"] = (
+                ttnn.from_torch(bias_torch, dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT)
+                if bias_torch is not None
+                else None
+            )
+            parameters["decoder1"]["bn"]["running_mean"] = ttnn.from_torch(
+                batch_mean_torch, dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT
+            )
+            parameters["decoder1"]["bn"]["running_var"] = ttnn.from_torch(
+                batch_var_torch, dtype=ttnn.bfloat16, device=device, layout=ttnn.TILE_LAYOUT
+            )
+            parameters["decoder1"]["bn"]["eps"] = bn_layer.eps  # scalar, used directly in ops
+
+            parameters[f"decoder1"][1] = {}
+            conv_weight, conv_bias = fold_batch_norm2d_into_conv2d(
+                getattr(model, f"decoder1")[3], getattr(model, f"decoder1")[4]
+            )
+            parameters[f"decoder1"][1]["weight"] = ttnn.from_torch(
+                conv_weight,
+                dtype=ttnn.bfloat16,
+            )
+            parameters[f"decoder1"][1]["bias"] = ttnn.from_torch(
+                torch.reshape(conv_bias, (1, 1, 1, -1)),
+                dtype=ttnn.bfloat16,
+            )
+
             parameters["conv"] = {}
             parameters["conv"]["weight"] = ttnn.from_torch(
                 model.conv.weight,
@@ -114,7 +167,7 @@ def create_custom_preprocessor(device):
     return custom_preprocessor
 
 
-@pytest.mark.parametrize("device_params", [{"l1_small_size": 65553}], indirect=True)
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 79104}], indirect=True)
 @skip_for_grayskull()
 def test_unet(device, reset_seeds, model_location_generator):
     weights_path = "models/experimental/functional_vanilla_unet/unet.pt"
@@ -166,3 +219,27 @@ def test_unet(device, reset_seeds, model_location_generator):
 
     pcc_passed, pcc_message = assert_with_pcc(torch_output_tensor, ttnn_output, pcc=0.96)
     logger.info(pcc_message)
+
+
+# @pytest.mark.parametrize("device_params", [{"l1_small_size": 79104}], indirect=True)
+# def test_split_conv(device, reset_seeds):
+#     torch_input_tensor_nchw = torch.load("vanilla_unet_split_conv_input.pt")
+#     conv = nn.Conv2d(32 * 2, 32, kernel_size=3, padding=1, bias=False)
+#     torch_output_tensor = conv(torch_input_tensor_nchw)
+#     torch_weight_tensor = conv.weight
+
+#     torch_input_tensor = torch_input_tensor_nchw.permute(0, 2, 3, 1)
+#     ttnn_input_tensor = ttnn.from_torch(
+#         torch_input_tensor, device=device, dtype=ttnn.bfloat16
+#     )
+#     parameters = {}
+#     parameters["weight"] = torch_weight_tensor
+
+#     split_conv = ConvSplit([1, 1, 1, 1], parameters, auto_shard=True)
+#     ttnn_output = split_conv(device, ttnn_input_tensor)
+
+#     ttnn_output = ttnn.to_torch(ttnn_output)
+#     ttnn_output = ttnn_output.permute(0, 3, 1, 2)
+#     ttnn_output = ttnn_output.reshape(torch_output_tensor.shape)
+#     pcc_passed, pcc_message = assert_with_pcc(torch_output_tensor, ttnn_output, pcc=0.96)
+#     logger.info(pcc_message)

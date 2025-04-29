@@ -27,6 +27,7 @@ class TtUnet:
         model,
     ):
         self.model = model
+        self.bn_parameters = parameters["decoder1"]["bn"]
         self.enc1_1 = Conv(
             [1, 1, 1, 1],
             parameters["encoder1"][0],
@@ -241,13 +242,54 @@ class TtUnet:
 
         ttnn.deallocate(enc1)
 
-        dec1 = ttnn_to_torch(dec1)
-        dec1 = dec1.permute(0, 3, 1, 2)
-        dec1 = dec1.to(torch.float)
-        dec1 = self.model.decoder1[:3](dec1)
-        dec1 = dec1.permute(0, 2, 3, 1)
-        dec1 = torch_to_ttnn(dec1, device)  # 0.9979
+        # dec1 = ttnn_to_torch(dec1)
+        # dec1 = dec1.permute(0, 3, 1, 2)
+        # dec1 = dec1.to(torch.float)
+        # dec1 = self.model.decoder1[:3](dec1)
+        # dec1 = dec1.permute(0, 2, 3, 1)
+        # dec1 = torch_to_ttnn(dec1, device)  # 0.9979
+
+        dec1 = self.dec1_1(device, dec1)
+        dec1 = ttnn.sharded_to_interleaved(dec1, ttnn.DRAM_MEMORY_CONFIG)
+        dec1 = ttnn.permute(dec1, (0, 3, 1, 2))
+        dec1 = ttnn.reshape(dec1, (1, 32, 480, 640))
+        print(dec1.shape, dec1.memory_config(), dec1.get_layout(), dec1.get_dtype())
+        print(
+            self.bn_parameters.running_mean.shape,
+            self.bn_parameters.running_mean.memory_config(),
+            self.bn_parameters.running_mean.get_layout(),
+            self.bn_parameters.running_mean.get_dtype(),
+        )
+        print(
+            self.bn_parameters.running_var.shape,
+            self.bn_parameters.running_var.memory_config(),
+            self.bn_parameters.running_var.get_layout(),
+            self.bn_parameters.running_var.get_dtype(),
+        )
+        print(
+            self.bn_parameters.weight.shape,
+            self.bn_parameters.weight.memory_config(),
+            self.bn_parameters.weight.get_layout(),
+            self.bn_parameters.weight.get_dtype(),
+        )
+        print(
+            self.bn_parameters.bias.shape,
+            self.bn_parameters.bias.memory_config(),
+            self.bn_parameters.bias.get_layout(),
+            self.bn_parameters.bias.get_dtype(),
+        )
+        dec1 = ttnn.batch_norm(
+            dec1,
+            running_mean=self.bn_parameters.running_mean,
+            running_var=self.bn_parameters.running_var,
+            eps=self.bn_parameters.eps,
+            weight=self.bn_parameters.weight,
+            bias=self.bn_parameters.bias,
+        )
+        return dec1
+
         dec1 = self.dec1_2(device, dec1)  # 0.9968
+        return dec1
 
         ttnn_output = self.conv(device, dec1)  # 0.9770
         ttnn.deallocate(dec1)
