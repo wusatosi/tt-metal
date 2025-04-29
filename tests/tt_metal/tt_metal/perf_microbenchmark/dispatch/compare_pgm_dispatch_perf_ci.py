@@ -39,7 +39,7 @@ def add_benchmark_iterations(input):
     for benchmark in input["benchmarks"]:
         if benchmark["repetitions"] == 1:
             out[benchmark["name"]] = benchmark
-        elif benchmark["run_type"] == "aggregate" and benchmark["aggregate_name"] == "mean":
+        elif benchmark["run_type"] == "aggregate" and benchmark["aggregate_name"] == "median":
             out[benchmark["name"].replace("_mean", "")] = benchmark
     return out
 
