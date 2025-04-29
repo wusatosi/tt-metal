@@ -55,8 +55,8 @@ def test_llama_decoder_same(
     dtype = ttnn.bfloat8_b
     seqlen = 1
 
-    model_args = TtModelArgs(mesh_device, max_batch_size=batch_size, max_seq_len=max_seq_len, dummy_weights=True)
-    model_args.n_layers = 1
+    model_args = TtModelArgs(mesh_device, max_batch_size=batch_size, max_seq_len=max_seq_len, dummy_weights=False)
+    model_args.n_layers = 40
 
     state_dict = model_args.load_state_dict()
 
@@ -72,7 +72,7 @@ def test_llama_decoder_same(
     tt_ccl = TT_CCL(mesh_device, model_args, prefetcher_setup.worker_sub_device_id)
 
     generation_start_pos = 127
-    generation_length = 100
+    generation_length = 100000
 
     # Setup RoPE transformation matrices
     rope_setup = TtLlamaRotarySetup(
@@ -131,38 +131,59 @@ def test_llama_decoder_same(
 
     # Get cos/sin matrices for the current position of each user
     rot_mats = rope_setup.get_rot_mats(current_pos)
+
+    # Get the tensor addrs for prefetcher
+    for _ in range(1, model_args.n_layers):
+        tt_model.prefetch(prefetcher_setup, tt_ccl)
     tt_pf = prefetcher_setup.get_input_tensors()
 
     # Explicitly allocate global CB to avoid memory fragmentation
     prefetcher_setup.create_global_cb()
 
-    ##### Run the decoder #####
-    outs = []
-    for i in range(generation_length):
-        logger.info(f"[Decoder] Generating token {i}")
+    def run_op():
         ttnn.dram_prefetcher(
             tt_pf,
-            num_layers=1,
+            num_layers=model_args.n_layers,
             global_cb=prefetcher_setup.global_circular_buffer,
         )
         mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
 
         # Run TT model
         res = None
-        tt_out, res = tt_model(
-            decode_input,
-            res,
-            current_pos_tensor,
-            rot_mats=rot_mats,
-            mode="decode",
-            page_table=page_table_tt,
-        )
-        tt_out = ttnn.to_torch(
+        for _ in range(model_args.n_layers):
+            tt_out, res = tt_model(
+                decode_input,
+                res,
+                current_pos_tensor,
+                rot_mats=rot_mats,
+                mode="decode",
+                page_table=page_table_tt,
+            )
+
+        mesh_device.reset_sub_device_stall_group()
+
+        return tt_out
+
+    logger.info("Compililng model")
+    tt_out = run_op()
+
+    logger.info("Capturing trace")
+    trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
+    tt_out = run_op()
+    ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
+
+    ##### Run the decoder #####
+    outs = []
+    for i in range(generation_length):
+        logger.info(f"[Decoder] Generating token {i}")
+
+        ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
+        tt_out_torch = ttnn.to_torch(
             tt_out,
             mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(1, 3), mesh_shape=model_args.cluster_shape),
-        )
+        )[:0, :0, :0, :0]
 
-        outs.append(tt_out)
+        outs.append(tt_out_torch)
 
     ##### Check outputs #####
     for arr in [outs]:
