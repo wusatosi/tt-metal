@@ -68,8 +68,11 @@ constexpr uint32_t multi_core_min_width = 8192;
 }  // namespace topk_utils
 namespace ttnn::operations::reduction {
 
-void TopK::validate_with_output_tensors(
-    const std::vector<Tensor>& input_tensors, const std::vector<std::optional<Tensor>>& output_tensors) const {
+void TopK::validate(
+    const std::vector<Tensor>& input_tensors,
+    const std::vector<std::optional<const Tensor>>& optional_input_tensors) const {
+    // void TopK::validate_with_output_tensors(
+    //     const std::vector<Tensor>& input_tensors, const std::vector<std::optional<Tensor>>& output_tensors) const {
     auto input_shape = input_tensors.at(0).get_padded_shape();
     TT_FATAL(input_shape.rank() == 4, "Input shape must be 4D, got {}", input_shape.rank());
 
@@ -139,8 +142,11 @@ std::vector<Tensor> TopK::create_output_tensors(
 }
 
 operation::ProgramWithCallbacks TopK::create_program(
-    const std::vector<Tensor>& input_tensors, std::vector<Tensor>& output_tensors) const {
+    const std::vector<Tensor>& input_tensors,
+    const std::vector<std::optional<const Tensor>>& optional_input_tensors,
+    std::vector<Tensor>& output_tensors) const {
     const auto& input_tensor = input_tensors.at(0);
+    const auto& indices_tensor = optional_input_tensors.at(0);
     bool multicore_supported = true;
     multicore_supported &= (input_tensor.get_padded_shape()[dim] >= topk_utils::multi_core_min_width);
 
@@ -175,6 +181,7 @@ operation::ProgramWithCallbacks TopK::create_program(
     } else {
         return detail::topk_multicore_interleaved(
             input_tensor,
+            indices_tensor,
             this->k,
             this->dim,
             this->largest,

@@ -258,6 +258,7 @@ static inline std::tuple<uint16_t, uint16_t, uint16_t, uint16_t> cores_utilized(
  */
 operation::ProgramWithCallbacks topk_multicore_interleaved(
     const Tensor& input_tensor,
+    const std::optional<const Tensor>& input_indices_tensor,
     const uint32_t k,
     const int8_t dim,
     const bool largest,
@@ -280,10 +281,14 @@ operation::ProgramWithCallbacks topk_multicore_interleaved(
     uint32_t index_tile_size = tile_size(index_cb_data_format);
 
     auto input_buffer = input_tensor.buffer();
+    auto input_indices_buffer = input_indices_tensor.has_value()
+                                    ? input_indices_tensor->buffer()
+                                    : nullptr;  // TODO: if not passed in we want to generate indices!!
     auto values_buffer = value_tensor.buffer();
     auto index_buffer = index_tensor.buffer();
 
     bool input_is_dram = input_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM;
+    bool input_indices_is_dram = input_indices_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM;
     bool values_is_dram = values_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM;
     bool index_is_dram = index_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM;
 
@@ -406,6 +411,7 @@ operation::ProgramWithCallbacks topk_multicore_interleaved(
         input_cb_index,
         index_cb_index,
         (uint32_t)input_is_dram,
+        (uint32_t)input_indices_is_dram,
         Ht,
         Wt_local,
         input_shape[-1] / TILE_WIDTH,  // Wt
@@ -515,6 +521,7 @@ operation::ProgramWithCallbacks topk_multicore_interleaved(
             core,
             {
                 input_buffer->address(),
+                input_indices_buffer->address(),
                 0,  // no height parallelism for now
                 core_w * Wt_local,
             });
@@ -547,19 +554,22 @@ operation::ProgramWithCallbacks topk_multicore_interleaved(
             index_buffer->address(),
         });
 
-    auto override_runtime_args_callback = [unary_reader_kernel_id, binary_writer_final_kernel_id, local_cores, final_core](
-                                              const void* operation,
-                                              const Program& program,
-                                              const std::vector<Tensor>& input_tensors,
-                                              const std::vector<std::optional<const Tensor>>&,
-                                              const std::vector<Tensor>& output_tensors) {
-        auto input_buffer = input_tensors.at(0).buffer();
-        auto values_buffer = output_tensors.at(0).buffer();
-        auto index_buffer = output_tensors.at(1).buffer();
+    auto override_runtime_args_callback =
+        [unary_reader_kernel_id, binary_writer_final_kernel_id, local_cores, final_core](
+            const void* operation,
+            const Program& program,
+            const std::vector<Tensor>& input_tensors,
+            const std::vector<std::optional<const Tensor>>& optional_inputs,
+            const std::vector<Tensor>& output_tensors) {
+            auto input_buffer = input_tensors.at(0).buffer();
+            auto input_indices_buffer = optional_inputs.at(0).value().buffer();
+            auto values_buffer = output_tensors.at(0).buffer();
+            auto index_buffer = output_tensors.at(1).buffer();
 
             for (auto core : local_cores) {
                 auto& reader_runtime_args = GetRuntimeArgs(program, unary_reader_kernel_id, core);
                 reader_runtime_args[0] = input_buffer->address();
+                reader_runtime_args[1] = input_indices_buffer->address();
             }
 
             auto& writer_runtime_args = GetRuntimeArgs(program, binary_writer_final_kernel_id, final_core);
