@@ -77,6 +77,98 @@ def get_torch_act_func_from_string(act_string):
     raise RuntimeError(f"Activation function {act_string} not supported")
 
 
+def p(x, b="x"):
+    print(f"{b}'s shape is {x.shape}")
+    print(f"{b}'s layout is {x.layout}")
+    print(f"{b}'s dtype is {x.dtype}")
+    print(f"{b}'s config is {x.memory_config()}")
+
+
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 79104}], indirect=True)
+@pytest.mark.parametrize(
+    "batch_size, input_channels, output_channels, input_height, input_width, filter_height, filter_width, stride_h, stride_w, pad_h, pad_w, groups, config_override, use_shallow_conv_variant",
+    (
+        # bs - 1
+        (1, 3, 64, 320, 800, 7, 7, 2, 2, 3, 3, 1, None, True),  # 1
+        #    bs-2
+        (2, 3, 64, 320, 800, 7, 7, 2, 2, 3, 3, 1, None, True),  # 1
+        # #  bs-4
+        (4, 3, 64, 320, 800, 7, 7, 2, 2, 3, 3, 1, {"act_block_h": 32}, True),  # 1
+    ),
+)
+@pytest.mark.parametrize(
+    "weights_dtype",
+    [ttnn.bfloat8_b],
+)
+@pytest.mark.parametrize(
+    "activations_dtype",
+    [ttnn.bfloat16],
+)
+@pytest.mark.parametrize("memory_config", [ttnn.L1_MEMORY_CONFIG])
+@pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
+@pytest.mark.parametrize("output_layout", [ttnn.TILE_LAYOUT])
+def test_conv_ultra_fastlane_detection_v2_tusimple(
+    device,
+    use_program_cache,
+    math_fidelity,
+    activations_dtype,
+    weights_dtype,
+    batch_size,
+    output_channels,
+    input_channels,
+    input_height,
+    input_width,
+    filter_height,
+    filter_width,
+    stride_h,
+    stride_w,
+    pad_h,
+    pad_w,
+    config_override,
+    use_shallow_conv_variant,
+    groups,
+    output_layout,
+    memory_config,
+):
+    torch_tensor_map = {}
+    dilation_h, dilation_w = 1, 1
+    padding = [pad_h, pad_w]
+    if output_channels == 8:
+        activation = ""
+    else:
+        activation = "relu"
+    if input_channels == 3:
+        activations_dtype = ttnn.bfloat8_b
+    run_conv(
+        device,
+        torch_tensor_map,
+        math_fidelity,
+        activations_dtype,
+        weights_dtype,
+        batch_size,
+        output_channels,
+        input_channels,
+        input_height,
+        input_width,
+        filter_height,
+        filter_width,
+        stride_h,
+        stride_w,
+        padding,
+        config_override,
+        dilation_h,
+        dilation_w,
+        use_shallow_conv_variant=use_shallow_conv_variant,
+        groups=groups,
+        output_layout=output_layout,
+        has_bias=True,
+        # memory_config=memory_config,
+        activation=activation,
+        shard_layout=ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+        auto_shard=False,
+    )
+
+
 def run_conv(
     device,
     torch_tensor_map,
@@ -170,8 +262,7 @@ def run_conv(
     conv_weight_shape = (output_channels, input_channels // groups, filter_height, filter_width)
     conv_bias_shape = (1, 1, 1, output_channels)
     torch_input_tensor_nchw = randomize_torch_tensor(torch_tensor_map, conv_input_shape)
-    torch_input_tensor = torch.permute(torch_input_tensor_nchw, (0, 2, 3, 1))
-
+    ttnn_input_tensor = torch.permute(torch_input_tensor_nchw, (0, 2, 3, 1))
     torch_weight_tensor = randomize_torch_tensor(torch_tensor_map, conv_weight_shape)
     torch_bias_tensor = randomize_torch_tensor(torch_tensor_map, conv_bias_shape) * 10 if has_bias else None
 
@@ -207,18 +298,37 @@ def run_conv(
             mesh_mapper=weight_mesh_mapper,
         )
 
-    tt_input_tensor = ttnn.from_torch(
-        torch_input_tensor,
-        activations_dtype if activations_dtype == ttnn.float32 else ttnn.bfloat16,
-        mesh_mapper=input_mesh_mapper,
-        layout=input_layout,
+    # tt_input_tensor = ttnn.from_torch(
+    #     torch_input_tensor,
+    #     activations_dtype if activations_dtype == ttnn.float32 else ttnn.bfloat16,
+    #     mesh_mapper=input_mesh_mapper,
+    #     layout=input_layout,
+    # )
+    core_grid = ttnn.CoreGrid(y=8, x=8)
+    num_cores = core_grid.x * core_grid.y
+    n, h, w, c = ttnn_input_tensor.shape
+    shard_h = (n * w * h + num_cores - 1) // num_cores
+    grid_size = core_grid
+    grid_coord = ttnn.CoreCoord(grid_size.x - 1, grid_size.y - 1)
+    shard_grid = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), grid_coord)})
+    shard_spec = ttnn.ShardSpec(shard_grid, (shard_h, 16), ttnn.ShardOrientation.ROW_MAJOR)
+    input_mem_config = ttnn.MemoryConfig(
+        ttnn.types.TensorMemoryLayout.HEIGHT_SHARDED, ttnn.types.BufferType.L1, shard_spec
     )
-
+    ttnn_input_tensor = ttnn_input_tensor.reshape(
+        1,
+        1,
+        (ttnn_input_tensor.shape[0] * ttnn_input_tensor.shape[1] * ttnn_input_tensor.shape[2]),
+        ttnn_input_tensor.shape[-1],
+    )
+    ttnn_input_tensor = ttnn.from_torch(ttnn_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
+    ttnn_input_tensor = ttnn.pad(ttnn_input_tensor, [1, 1, n * h * w, 16], [0, 0, 0, 0], 0)
+    ttnn_input_tensor = ttnn_input_tensor.to(device, input_mem_config)
     conv_config = ttnn.Conv2dConfig(
         dtype=activations_dtype,
         weights_dtype=weights_dtype,
         shard_layout=shard_layout if not auto_shard else None,
-        input_channels_alignment=8 if use_shallow_conv_variant and not auto_shard else 32,
+        input_channels_alignment=16,  # 8 if use_shallow_conv_variant and not auto_shard else 32,
         deallocate_activation=deallocate_activation,
         enable_act_double_buffer=False,
         enable_split_reader=enable_split_reader,
@@ -236,6 +346,7 @@ def run_conv(
         fp32_dest_acc_en=fp32_accum,
         packer_l1_acc=packer_l1_acc,
     )
+    print("config is", conv_config)
     if config_override and "act_block_h" in config_override and not auto_shard:
         conv_config.act_block_h_override = config_override["act_block_h"]
 
@@ -247,9 +358,9 @@ def run_conv(
             conv_config.core_grid = ttnn.CoreRangeSet({ttnn.CoreRange((0, 0), (11, 7)), ttnn.CoreRange((0, 8), (1, 8))})
             conv_config.override_sharding_config = True
             print("Setting num_cores_nhw to 98")
-
+    p(ttnn_input_tensor, "tt_input_tensor")
     [tt_output_tensor_on_device, [out_height, out_width], [d_w, d_b]] = ttnn.conv2d(
-        input_tensor=tt_input_tensor,
+        input_tensor=ttnn_input_tensor,
         weight_tensor=tt_weight_tensor,
         in_channels=input_channels,
         out_channels=output_channels,
@@ -270,6 +381,7 @@ def run_conv(
         return_output_dim=True,
         return_weights_and_bias=True,
     )
+    p(tt_output_tensor_on_device, "tt_output_tensor_on_device")
     if run_twice:
         [tt_output_tensor_on_device, [out_height, out_width], [d_w, d_b]] = ttnn.conv2d(
             input_tensor=tt_input_tensor,
