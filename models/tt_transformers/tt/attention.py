@@ -859,8 +859,6 @@ class Attention(LightweightModule):
                 values_BKSD,
                 page_table,
                 chunk_start_idx,
-                is_causal=self.causal_mask,
-                attn_mask=mask,
                 scale=self.scale,
                 compute_kernel_config=self.sdpa_prefill_compute_kernel_cfg,
                 program_config=self.model_config["SDPA_PROGCFG"](seq_len),
