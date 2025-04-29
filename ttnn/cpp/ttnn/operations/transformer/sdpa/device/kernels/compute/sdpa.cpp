@@ -140,6 +140,7 @@ void MAIN {
                         true /*transpose*/);
 
                     /* QK *= SCALE */
+                    reconfig_data_format(cb_qk_im, cb_scale_in);
                     mul_block_bcast_scalar_inplace<cb_qk_im, cb_scale_in, qk_chunk_tiles>();
 
                     // Finding the diagonal is harder now that q_chunk_size and k_chunk_size can differ
