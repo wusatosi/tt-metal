@@ -87,7 +87,14 @@ class FinalLayer(LightweightModule):
         if self.linear_bias is not None:
             ttnn.deallocate(self.linear_bias)
 
-    def forward(self, x: ttnn.Tensor, c: ttnn.Tensor) -> ttnn.Tensor:
+    def forward(
+        self,
+        x: ttnn.Tensor,
+        c: ttnn.Tensor,
+        ccl_semaphore_handles: dict,
+        worker_sub_device_id: ttnn.SubDeviceId,
+        topology: ttnn.Topology,
+    ) -> ttnn.Tensor:
         """Forward pass of the final layer.
 
         Args:
@@ -119,7 +126,15 @@ class FinalLayer(LightweightModule):
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
         )
         if self.num_devices > 1:
-            mod = ttnn.all_gather(mod, dim=3)
+            mod = ttnn.experimental.all_gather_async(
+                mod,
+                dim=3,
+                multi_device_global_semaphore=ccl_semaphore_handles["final_layer_mod"],
+                num_links=1,
+                memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                topology=topology,
+                subdevice_id=worker_sub_device_id,
+            )
 
         # Split modulation into shift and scale
         shift = ttnn.slice(mod, [0, 0, 0, 0], [1, 1, 1, self.hidden_size])
