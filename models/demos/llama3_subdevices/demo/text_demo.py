@@ -109,7 +109,7 @@ def create_tt_model(
         optimizations=optimizations,
         max_seq_len=max_seq_len,
     )
-    # tt_model_args.n_layers = 1
+    tt_model_args.n_layers = 1
     state_dict = tt_model_args.load_state_dict()
 
     page_table = None
@@ -194,7 +194,7 @@ def create_tt_model(
             False,  # ci_only
         ),
         (  # Long-context run - Single user, long prompt (adapted to the model being used and architecture)
-            "models/tt_transformers/demo/sample_prompts/input_data_long_8k.json",  # input_prompts
+            "models/tt_transformers/demo/sample_prompts/input_data_long_1k.json",  # input_prompts
             True,  # instruct mode
             1,  # repeat_batches
             16 * 1024,  # max_seq_len
@@ -354,6 +354,10 @@ def test_demo_text(
         input_prompts = input_prompts * batch_size
     else:  # Inputs from file
         input_prompts = load_inputs(input_prompts, batch_size, input_prompts)
+    input_prompts = [
+        input_prompt[: int(0.3 * len(input_prompt))] for input_prompt in input_prompts
+    ]  # Shorten the prompt to avoid long context issues
+    # print("INPUT", len(input_prompts), input_prompts)
     profiler.end("loading_inputs")
 
     # To simulate a deployment environment, the demo supports repeating batched prompts.

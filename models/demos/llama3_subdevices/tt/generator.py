@@ -19,13 +19,26 @@ from llama_models.llama3.reference_impl.generation import (
 )
 from models.tt_transformers.tt.common import (
     copy_host_to_device,
-    get_padded_prefill_len,
     num_blocks_in_seq,
     get_block_size,
     get_max_prefill_chunk_size,
 )
 
 from models.tt_transformers.tt.generator import SamplingParams
+
+
+def get_padded_prefill_len(seq_len):
+    """
+    Get the padded prefill length for a given sequence length.
+    This is used to pad the sequence length to the nearest power of 2.
+    """
+    if seq_len <= 128:
+        return 128
+    if seq_len <= 1024:
+        return 1024
+    else:
+        # return next power of 2 greater than seq_len
+        return 2 ** (seq_len - 1).bit_length()
 
 
 class Generator:
@@ -298,7 +311,6 @@ class Generator:
             sampling_params is None or sampling_params.temperature == 0
         ), "Currently only supporting greedy decoding (temperature=0) on device"
         argmax_on_device = sampling_params is not None and sampling_params.temperature == 0
-
         if self.model.is_decode_setup is False:
             self.model.switch_mode("decode")
         kv_cache = kv_cache[0]
@@ -411,6 +423,11 @@ class Generator:
             self.trace_id_text = trace_id
             self.trace_inputs_text = device_inputs
             self.trace_output_text = tt_out_trace
+            host_inputs = self.model.prepare_decode_inputs_host(tokens, current_pos, page_table)
+            device_inputs = copy_host_to_device(
+                host_tensors=host_inputs,
+                device_tensors=self.trace_inputs_text,
+            )
 
         if reset_inputs:
             host_inputs = self.model.prepare_decode_inputs_host(tokens, current_pos, page_table)
