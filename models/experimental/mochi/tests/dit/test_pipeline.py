@@ -32,7 +32,6 @@ from models.experimental.mochi.tests.dit.test_model import create_models
 @pytest.mark.parametrize("n_layers", [1, 2, 4, 48], ids=["L1", "L2", "L4", "L48"])
 def test_sample_model(mesh_device, use_program_cache, reset_seeds, n_layers):
     """Test TensorTorch sample_model against reference implementation."""
-    mesh_device.enable_async(True)
     device = torch.device("cpu")
 
     # Create models
@@ -120,7 +119,6 @@ def test_sample_model_perf(mesh_device, use_program_cache, reset_seeds, n_layers
     from genmo.mochi_preview.vae.vae_stats import dit_latents_to_vae_latents
 
     """Test TensorTorch sample_model against reference implementation."""
-    mesh_device.enable_async(True)
     device = torch.device("cpu")
 
     # Create models

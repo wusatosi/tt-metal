@@ -34,8 +34,6 @@ from genmo.mochi_preview.dit.joint_model.residual_tanh_gated_rmsnorm import (
 def test_modulated_rmsnorm(mesh_device, use_program_cache, reset_seeds, S, D):
     dtype = ttnn.bfloat16
 
-    mesh_device.enable_async(True)
-
     # Create random input and scale tensors
     torch_input = torch.randn(1, 1, S, D)
     torch_scale = torch.randn(1, 1, 1, D) * 0.1  # Small scale modulation
@@ -111,7 +109,6 @@ def test_modulated_rmsnorm(mesh_device, use_program_cache, reset_seeds, S, D):
 )
 def test_residual_tanh_gated_rmsnorm(mesh_device, use_program_cache, reset_seeds, S, D):
     dtype = ttnn.bfloat16
-    mesh_device.enable_async(True)
 
     # Create random input tensors
     torch_x = torch.randn(1, 1, S, D)
@@ -189,7 +186,6 @@ def test_residual_tanh_gated_rmsnorm(mesh_device, use_program_cache, reset_seeds
 )
 def test_layernorm(mesh_device, use_program_cache, reset_seeds, S, D):
     dtype = ttnn.bfloat16
-    mesh_device.enable_async(True)
 
     # Create random input tensors
     torch_x = torch.randn(1, 1, S, D)

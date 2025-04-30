@@ -95,7 +95,6 @@ def create_models(mesh_device, n_layers: int = 48):
 )
 def test_tt_asymm_dit_joint_inference(mesh_device, n_layers, use_program_cache, reset_seeds):
     dtype = ttnn.bfloat16
-    mesh_device.enable_async(True)
 
     # Create input tensors
     batch_size = 1
@@ -173,7 +172,6 @@ def test_tt_asymm_dit_joint_inference(mesh_device, n_layers, use_program_cache, 
 )
 def test_tt_asymm_dit_joint_prepare(mesh_device, use_program_cache, reset_seeds):
     """Test that prepare() function produces identical outputs to reference implementation."""
-    mesh_device.enable_async(True)
 
     # Create input tensors
     batch_size = 1
@@ -241,7 +239,6 @@ def test_tt_asymm_dit_joint_model_fn(mesh_device, use_program_cache, reset_seeds
     cfg_scale = 6.0
     sigma_schedule = [0.2, 0.1]
     dsigma = sigma_schedule[0] - sigma_schedule[1]
-    mesh_device.enable_async(True)
 
     def model_fn(model, x, sigma, cond):
         """Function to run model with both conditional and unconditional inputs.
@@ -460,7 +457,6 @@ def test_tt_asymm_dit_joint_model_fn(mesh_device, use_program_cache, reset_seeds
 )
 def test_tt_asymm_dit_joint_preprocess(mesh_device, use_program_cache, reset_seeds):
     """Test that we can reverse the preprocessing of input"""
-    mesh_device.enable_async(True)
     B, C, T, H, W = 1, 12, 28, 60, 106
     PATCH_SIZE = 2
     num_visual_tokens = T * H * W // (PATCH_SIZE**2)

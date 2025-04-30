@@ -8,7 +8,6 @@ from tests.tt_eager.python_api_testing.sweep_tests.comparison_funcs import comp_
 
 
 def test_allgather_pre_qkv(t3k_mesh_device, use_program_cache):
-    t3k_mesh_device.enable_async(True)
     shape = (1, 1, 44544, 3072)
     x = torch.randn(shape)
     x_tt = ttnn.from_torch(
@@ -28,7 +27,6 @@ def test_allgather_pre_qkv(t3k_mesh_device, use_program_cache):
 
 
 def test_allgather_pre_attention(t3k_mesh_device, use_program_cache):
-    t3k_mesh_device.enable_async(True)
     shape = (1, 1, 44544, 3072 * 3)
     x = torch.randn(shape)
     x_tt = ttnn.from_torch(
@@ -48,7 +46,6 @@ def test_allgather_pre_attention(t3k_mesh_device, use_program_cache):
 
 
 def test_allgather_post_attention(t3k_mesh_device, use_program_cache):
-    t3k_mesh_device.enable_async(True)
     shape = (1, 1, 44544, 3072)
     x = torch.randn(shape)
     x_tt = ttnn.from_torch(
@@ -79,7 +76,6 @@ def run_all_gather_impl(
     function_level_defaults,
     all_gather_topology,
     num_iters=1,
-    enable_async=False,
     trace_mode=False,
     rand_tensor=True,
     mem_config=None,
@@ -93,11 +89,6 @@ def run_all_gather_impl(
 ):
     if num_iters < 1:
         pytest.fail("num_iters must be >= 1")
-    # Use Async mode based on test input config
-    mesh_device.enable_async(enable_async)
-
-    if enable_async:
-        logger.info(f"Using Async Mode for All Gather Op Dispatch")
 
     compute_grid_size = mesh_device.compute_with_storage_grid_size()
     ccl_sub_device_crs = ttnn.CoreRangeSet(
@@ -299,7 +290,6 @@ def run_all_gather_impl(
 )
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 @pytest.mark.parametrize("num_iters", [10])
-@pytest.mark.parametrize("enable_async", [True])
 def test_all_gather_minimal(
     t3k_mesh_device,
     num_devices,
@@ -312,7 +302,6 @@ def test_all_gather_minimal(
     num_iters,
     use_program_cache,
     function_level_defaults,
-    enable_async,
 ):
     run_all_gather_impl(
         t3k_mesh_device,
@@ -326,7 +315,6 @@ def test_all_gather_minimal(
         function_level_defaults,
         all_gather_topology=ttnn.Topology.Ring,
         num_iters=num_iters,
-        enable_async=enable_async,
         rand_tensor=True,
         mem_config=mem_config,
     )
@@ -399,7 +387,6 @@ def run_all_to_all_impl(
     function_level_defaults,
     all_gather_topology,
     num_iters=1,
-    enable_async=False,
     trace_mode=False,
     mem_config=None,
     do_check=True,
@@ -408,9 +395,6 @@ def run_all_to_all_impl(
     if num_iters < 1:
         pytest.fail("num_iters must be >= 1")
     # Use Async mode based on test input config
-
-    if enable_async:
-        logger.info(f"Using Async Mode for All Gather Op Dispatch")
 
     compute_grid_size = mesh_device.compute_with_storage_grid_size()
     ccl_sub_device_crs = ttnn.CoreRangeSet(

@@ -103,7 +103,6 @@ def create_models(mesh_device, n_layers: int = 48):
 )
 def test_tt_asymm_dit_joint_inference(mesh_device, n_layers, use_program_cache, reset_seeds):
     dtype = ttnn.bfloat16
-    mesh_device.enable_async(True)
 
     # Create input tensors
     batch_size = 1
@@ -181,7 +180,6 @@ def test_tt_asymm_dit_joint_inference(mesh_device, n_layers, use_program_cache, 
 )
 def test_tt_asymm_dit_joint_prepare(mesh_device, use_program_cache, reset_seeds):
     """Test that prepare() function produces identical outputs to reference implementation."""
-    mesh_device.enable_async(True)
 
     # Create input tensors
     batch_size = 1
@@ -249,7 +247,6 @@ def test_tt_asymm_dit_joint_model_fn(mesh_device, use_program_cache, reset_seeds
     cfg_scale = 6.0
     sigma_schedule = [0.2, 0.1]
     dsigma = sigma_schedule[0] - sigma_schedule[1]
-    mesh_device.enable_async(True)
 
     def model_fn(model, x, sigma, cond):
         """Function to run model with both conditional and unconditional inputs.
@@ -491,7 +488,6 @@ def test_model_fn_no_e2e_optim(mesh_device, use_program_cache, reset_seeds, n_la
     cfg_scale = 6.0
     sigma_schedule = [0.2, 0.1]
     dsigma = sigma_schedule[0] - sigma_schedule[1]
-    mesh_device.enable_async(True)
 
     def model_fn(model, x, sigma, cond, is_tt_model):
         """Function to run model with both conditional and unconditional inputs.
@@ -674,7 +670,6 @@ def test_model_fn_no_e2e_optim(mesh_device, use_program_cache, reset_seeds, n_la
 @pytest.mark.parametrize("n_layers", [1, 5, 48], ids=["L1", "L5", "L48"])
 def test_each_step(mesh_device, use_program_cache, reset_seeds, n_layers):
     """Test the model with real inputs processed just like in the pipeline."""
-    mesh_device.enable_async(True)
 
     def model_fn(model, x, sigma, cond_text, cond_null, cfg_scale, is_tt_model):
         """Function to run model with both conditional and unconditional inputs.
@@ -799,7 +794,6 @@ def test_each_step(mesh_device, use_program_cache, reset_seeds, n_layers):
 @pytest.mark.parametrize("is_teacher_forcing", [True, False], ids=["teacher_forcing", "no_forcing"])
 def test_each_step_post_e2e_optim(mesh_device, use_program_cache, reset_seeds, n_layers, is_teacher_forcing):
     """Test the model with real inputs processed just like in the pipeline."""
-    mesh_device.enable_async(True)
 
     def model_fn_tt(model, z_BCTHW, sigma, cond_text, cond_null, cfg_scale, dsigma):
         T, H, W = z_BCTHW.shape[-3:]
@@ -962,7 +956,6 @@ def compare_to_reference(tt, ref_path):
 )
 def test_tt_asymm_dit_joint_preprocess(mesh_device, use_program_cache, reset_seeds):
     """Test that we can reverse the preprocessing of input"""
-    mesh_device.enable_async(True)
     B, C, T, H, W = 1, 12, 28, 60, 106
     PATCH_SIZE = 2
     num_visual_tokens = T * H * W // (PATCH_SIZE**2)

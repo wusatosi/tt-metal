@@ -28,7 +28,6 @@ def test_tt_final_layer_inference(mesh_device, use_program_cache, reset_seeds):
     seq_len = 44 * 1024  # Same as in feedforward test
     batch_size = 1
 
-    mesh_device.enable_async(True)
     from safetensors.torch import load_file
 
     weights_path = os.path.join(get_mochi_dir(), "dit.safetensors")
