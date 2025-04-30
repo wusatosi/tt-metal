@@ -20,6 +20,7 @@ from models.experimental.mochi.tt.common import get_mochi_dir, get_cache_path, c
     ],
     indirect=True,
 )
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_tt_final_layer_inference(mesh_device, use_program_cache, reset_seeds):
     dtype = ttnn.bfloat16
     hidden_size = 3072
@@ -27,6 +28,24 @@ def test_tt_final_layer_inference(mesh_device, use_program_cache, reset_seeds):
     out_channels = 12
     seq_len = 44 * 1024  # Same as in feedforward test
     batch_size = 1
+
+    # Fabric setup
+    compute_grid_size = mesh_device.compute_with_storage_grid_size()
+    ccl_sub_device_crs = ttnn.CoreRangeSet(
+        {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(compute_grid_size.x - 1, compute_grid_size.y - 1))}
+    )
+    worker_sub_device = ttnn.SubDevice(
+        [
+            ccl_sub_device_crs,
+        ]
+    )
+    worker_sub_device_id = ttnn.SubDeviceId(0)
+    sub_device_stall_group = [worker_sub_device_id]
+    sub_device_manager = mesh_device.create_sub_device_manager([worker_sub_device], 0)
+    mesh_device.load_sub_device_manager(sub_device_manager)
+    mesh_device.set_sub_device_stall_group(sub_device_stall_group)
+    # create global semaphore handles
+    ccl_semaphore_handles = {"final_layer_mod": ttnn.create_global_semaphore(mesh_device, ccl_sub_device_crs, 0)}
 
     from safetensors.torch import load_file
 
@@ -74,8 +93,10 @@ def test_tt_final_layer_inference(mesh_device, use_program_cache, reset_seeds):
         layout=ttnn.TILE_LAYOUT,
     )
 
+    torch_c_silu = torch.nn.functional.silu(torch_c)
+
     tt_c = ttnn.from_torch(
-        torch_c.unsqueeze(0).unsqueeze(0),
+        torch_c_silu.unsqueeze(0).unsqueeze(0),
         device=mesh_device,
         mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
         dtype=ttnn.bfloat16,
@@ -84,7 +105,7 @@ def test_tt_final_layer_inference(mesh_device, use_program_cache, reset_seeds):
     )
 
     logger.info("Run TtFinalLayer")
-    tt_output = tt_model(tt_x, tt_c)
+    tt_output = tt_model(tt_x, tt_c, ccl_semaphore_handles, worker_sub_device_id, ttnn.Topology.Ring)
 
     # Output is already replicated
     tt_output_torch = ttnn.to_torch(tt_output, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=0))[0:1]
@@ -92,6 +113,11 @@ def test_tt_final_layer_inference(mesh_device, use_program_cache, reset_seeds):
     # (c p p) -> (p p c)
     tt_output_torch = tt_output_torch.reshape(batch_size, seq_len, out_channels, patch_size, patch_size)
     tt_output_torch = tt_output_torch.permute(0, 1, 3, 4, 2).reshape(batch_size, seq_len, -1)
+
+    # Tear down what we created for fabric
+    mesh_device.reset_sub_device_stall_group()
+    mesh_device.clear_loaded_sub_device_manager()
+
     # Get reference output
     reference_output = reference_model(torch_x, torch_c)
 
