@@ -6,13 +6,7 @@
 #include "ttnn/decorators.hpp"
 #include "ttnn/operations/copy/typecast/device/typecast_device_op.hpp"
 
-<<<<<<< HEAD
-=======
-// #include "ttnn/common/queue_id.hpp"
-// #include "ttnn/operations/eltwise/unary/unary.hpp"
-#include "cpp/ttnn/operations/experimental/copy/typecast/typecast.hpp"
 
->>>>>>> 555dc22387 (21127: typecast device op with sub_core_grids)
 namespace ttnn {
 namespace operations {
 namespace copy {
@@ -61,22 +55,13 @@ Tensor Typecast::invoke(
             output_dtype == optional_output_tensor.value().get_dtype(),
             "If both output dtype and output tensor provided dtype should match");
     }
-<<<<<<< HEAD
 
-=======
-    if (input.device()->arch() == tt::ARCH::GRAYSKULL) {
-        return ttnn::experimental::typecast(queue_id, input, output_dtype, memory_config_arg, optional_output_tensor);
-    }
->>>>>>> 555dc22387 (21127: typecast device op with sub_core_grids)
     DataType input_dtype = input.get_dtype();
     return detail::typecast_impl(
         queue_id, input, output_dtype, memory_config_arg, optional_output_tensor, sub_core_grids);
 }
 
-<<<<<<< HEAD
-// eltwise_typecast is not currently supported on Grayskull
-=======
->>>>>>> 555dc22387 (21127: typecast device op with sub_core_grids)
+
 Tensor Typecast::invoke(
     const QueueId queue_id,
     const Tensor& input_tensor,
@@ -85,12 +70,7 @@ Tensor Typecast::invoke(
     const std::optional<MemoryConfig>& memory_config,
     const std::optional<Tensor>& optional_output_tensor,
     const std::optional<CoreRangeSet>& sub_core_grids) {
-<<<<<<< HEAD
-=======
-    TT_ASSERT(
-        input_tensor.device()->arch() != tt::ARCH::GRAYSKULL,
-        "eltwise_typecast is not currently supported on Grayskull");
->>>>>>> 555dc22387 (21127: typecast device op with sub_core_grids)
+
     TT_FATAL(tt_input_dtype == input_tensor.get_dtype(), "input dtype and input tensor's dtype provided should match");
     if (optional_output_tensor.has_value()) {
         TT_FATAL(

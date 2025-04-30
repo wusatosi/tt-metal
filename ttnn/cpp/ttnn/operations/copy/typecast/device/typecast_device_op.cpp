@@ -16,10 +16,8 @@ TypecastDeviceOperation::program_factory_t TypecastDeviceOperation::select_progr
     if (tensor_args.input.is_sharded()) {
         return program::TypecastShardedProgramFactory{};
     } else if (args.sub_core_grids.has_value()) {
-        tt::log_info(tt::LogOp, " ****** using TypecastSubgridProgramFactory");
         return program::TypecastSubgridProgramFactory{};
     } else {
-        tt::log_info(tt::LogOp, " ****** using TypecastProgramFactory");
         return program::TypecastProgramFactory{};
     }
 }
